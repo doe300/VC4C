@@ -1,0 +1,139 @@
+; ModuleID = 'copymakeborder.cl'
+target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-n8:16:32:64"
+target triple = "spir-unknown-unknown"
+
+%spirv.ConstantSampler = type { i32, i32, i32 }
+%spirv.Sampler = type opaque
+
+@.sampler.init = internal addrspace(2) constant %spirv.ConstantSampler zeroinitializer
+@DEFAULT_SAMPLER = constant %spirv.Sampler addrspace(2)* bitcast (%spirv.ConstantSampler addrspace(2)* @.sampler.init to %spirv.Sampler addrspace(2)*), align 4
+
+; Function Attrs: nounwind
+define spir_kernel void @copyMakeBorder(i8 addrspace(1)* nocapture readonly %srcptr, i32 %src_step, i32 %src_offset, i32 %src_rows, i32 %src_cols, i8 addrspace(1)* nocapture %dstptr, i32 %dst_step, i32 %dst_offset, i32 %dst_rows, i32 %dst_cols, i32 %top, i32 %left, i32 %nVal) #0 {
+  %1 = tail call spir_func i32 @_vc4cl_global_ids() #2
+  %2 = and i32 %1, 255
+  %3 = tail call spir_func i32 @_vc4cl_global_ids() #2
+  %4 = lshr i32 %3, 6
+  %5 = and i32 %4, 1020
+  %6 = icmp slt i32 %2, %dst_cols
+  br i1 %6, label %7, label %.loopexit
+
+; <label>:7                                       ; preds = %0
+  %8 = sub nsw i32 %2, %left
+  %9 = tail call spir_func i32 @_Z12_vc4cl_mul24ii(i32 %2, i32 4) #2
+  %10 = add nsw i32 %9, %dst_offset
+  %11 = tail call spir_func i32 @_Z12_vc4cl_mul24ii(i32 %5, i32 %dst_step) #2
+  %12 = add nsw i32 %10, %11
+  %13 = icmp sge i32 %8, %src_cols
+  %14 = icmp slt i32 %8, 0
+  %or.cond = or i1 %13, %14
+  br i1 %or.cond, label %15, label %25
+
+; <label>:15                                      ; preds = %7
+  %16 = add nuw nsw i32 %5, 4
+  %17 = tail call spir_func i32 @_Z10_vc4cl_minii(i32 %16, i32 %dst_rows) #2
+  %18 = icmp slt i32 %5, %17
+  br i1 %18, label %.lr.ph, label %.loopexit
+
+.lr.ph:                                           ; preds = %15
+  %19 = add i32 %17, -1
+  br label %20
+
+; <label>:20                                      ; preds = %20, %.lr.ph
+  %dst_index.09 = phi i32 [ %12, %.lr.ph ], [ %24, %20 ]
+  %y.08 = phi i32 [ %5, %.lr.ph ], [ %23, %20 ]
+  %21 = getelementptr inbounds i8 addrspace(1)* %dstptr, i32 %dst_index.09
+  %22 = bitcast i8 addrspace(1)* %21 to i32 addrspace(1)*
+  store i32 %nVal, i32 addrspace(1)* %22, align 4, !tbaa !10
+  %23 = add nuw nsw i32 %y.08, 1
+  %24 = add nsw i32 %dst_index.09, %dst_step
+  %exitcond = icmp eq i32 %y.08, %19
+  br i1 %exitcond, label %.loopexit.loopexit, label %20
+
+; <label>:25                                      ; preds = %7
+  %26 = tail call spir_func i32 @_Z12_vc4cl_mul24ii(i32 %8, i32 4) #2
+  %27 = add nsw i32 %26, %src_offset
+  %28 = add nuw nsw i32 %5, 4
+  %29 = tail call spir_func i32 @_Z10_vc4cl_minii(i32 %28, i32 %dst_rows) #2
+  %30 = icmp slt i32 %5, %29
+  br i1 %30, label %.lr.ph12, label %.loopexit
+
+.lr.ph12:                                         ; preds = %25
+  %31 = add i32 %29, -1
+  br label %32
+
+; <label>:32                                      ; preds = %47, %.lr.ph12
+  %dst_index.111 = phi i32 [ %12, %.lr.ph12 ], [ %49, %47 ]
+  %y2.010 = phi i32 [ %5, %.lr.ph12 ], [ %48, %47 ]
+  %33 = sub nsw i32 %y2.010, %top
+  %34 = icmp sge i32 %33, %src_rows
+  %35 = icmp slt i32 %33, 0
+  %or.cond6 = or i1 %34, %35
+  br i1 %or.cond6, label %36, label %39
+
+; <label>:36                                      ; preds = %32
+  %37 = getelementptr inbounds i8 addrspace(1)* %dstptr, i32 %dst_index.111
+  %38 = bitcast i8 addrspace(1)* %37 to i32 addrspace(1)*
+  store i32 %nVal, i32 addrspace(1)* %38, align 4, !tbaa !10
+  br label %47
+
+; <label>:39                                      ; preds = %32
+  %40 = tail call spir_func i32 @_Z12_vc4cl_mul24ii(i32 %33, i32 %src_step) #2
+  %41 = add nsw i32 %27, %40
+  %42 = getelementptr inbounds i8 addrspace(1)* %srcptr, i32 %41
+  %43 = bitcast i8 addrspace(1)* %42 to i32 addrspace(1)*
+  %44 = load i32 addrspace(1)* %43, align 4, !tbaa !10
+  %45 = getelementptr inbounds i8 addrspace(1)* %dstptr, i32 %dst_index.111
+  %46 = bitcast i8 addrspace(1)* %45 to i32 addrspace(1)*
+  store i32 %44, i32 addrspace(1)* %46, align 4, !tbaa !10
+  br label %47
+
+; <label>:47                                      ; preds = %39, %36
+  %48 = add nuw nsw i32 %y2.010, 1
+  %49 = add nsw i32 %dst_index.111, %dst_step
+  %exitcond13 = icmp eq i32 %y2.010, %31
+  br i1 %exitcond13, label %.loopexit.loopexit15, label %32
+
+.loopexit.loopexit:                               ; preds = %20
+  br label %.loopexit
+
+.loopexit.loopexit15:                             ; preds = %47
+  br label %.loopexit
+
+.loopexit:                                        ; preds = %.loopexit.loopexit15, %.loopexit.loopexit, %25, %15, %0
+  ret void
+}
+
+declare spir_func i32 @_Z10_vc4cl_minii(i32, i32) #1
+
+declare spir_func i32 @_Z12_vc4cl_mul24ii(i32, i32) #1
+
+declare spir_func i32 @_vc4cl_global_ids() #1
+
+attributes #0 = { nounwind "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-realign-stack" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #1 = { "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-realign-stack" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #2 = { alwaysinline nounwind }
+
+!opencl.kernels = !{!0}
+!opencl.enable.FP_CONTRACT = !{}
+!opencl.spir.version = !{!7}
+!opencl.ocl.version = !{!7}
+!opencl.used.extensions = !{!8}
+!opencl.used.optional.core.features = !{!8}
+!opencl.compiler.options = !{!8}
+!llvm.ident = !{!9}
+
+!0 = !{void (i8 addrspace(1)*, i32, i32, i32, i32, i8 addrspace(1)*, i32, i32, i32, i32, i32, i32, i32)* @copyMakeBorder, !1, !2, !3, !4, !5, !6}
+!1 = !{!"kernel_arg_addr_space", i32 1, i32 0, i32 0, i32 0, i32 0, i32 1, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0}
+!2 = !{!"kernel_arg_access_qual", !"none", !"none", !"none", !"none", !"none", !"none", !"none", !"none", !"none", !"none", !"none", !"none", !"none"}
+!3 = !{!"kernel_arg_type", !"uchar*", !"int", !"int", !"int", !"int", !"uchar*", !"int", !"int", !"int", !"int", !"int", !"int", !"int"}
+!4 = !{!"kernel_arg_base_type", !"uchar*", !"int", !"int", !"int", !"int", !"uchar*", !"int", !"int", !"int", !"int", !"int", !"int", !"int"}
+!5 = !{!"kernel_arg_type_qual", !"const", !"", !"", !"", !"", !"", !"", !"", !"", !"", !"", !"", !""}
+!6 = !{!"kernel_arg_name", !"srcptr", !"src_step", !"src_offset", !"src_rows", !"src_cols", !"dstptr", !"dst_step", !"dst_offset", !"dst_rows", !"dst_cols", !"top", !"left", !"nVal"}
+!7 = !{i32 1, i32 2}
+!8 = !{}
+!9 = !{!"clang version 3.6.1 (https://github.com/KhronosGroup/SPIR d7e44c3b27581e54ca0e522987d1ade2bd29b70d) (https://github.com/KhronosGroup/SPIRV-LLVM.git fffc52b7fb3552c045c398d68e22216c8d770c00)"}
+!10 = !{!11, !11, i64 0}
+!11 = !{!"int", !12, i64 0}
+!12 = !{!"omnipotent char", !13, i64 0}
+!13 = !{!"Simple C/C++ TBAA"}

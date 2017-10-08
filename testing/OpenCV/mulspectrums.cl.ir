@@ -1,0 +1,113 @@
+; ModuleID = 'mulspectrums.cl'
+target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-n8:16:32:64"
+target triple = "spir-unknown-unknown"
+
+; Function Attrs: nounwind
+define spir_kernel void @mulAndScaleSpectrums(i8 addrspace(1)* nocapture readonly %src1ptr, i32 %src1_step, i32 %src1_offset, i8 addrspace(1)* nocapture readonly %src2ptr, i32 %src2_step, i32 %src2_offset, i8 addrspace(1)* nocapture %dstptr, i32 %dst_step, i32 %dst_offset, i32 %dst_rows, i32 %dst_cols, i32 %rowsPerWI) #0 {
+  %1 = tail call spir_func i32 @_vc4cl_global_ids() #3
+  %2 = and i32 %1, 255
+  %3 = tail call spir_func i32 @_vc4cl_global_ids() #3
+  %4 = lshr i32 %3, 8
+  %5 = and i32 %4, 255
+  %6 = mul i32 %5, %rowsPerWI
+  %7 = icmp slt i32 %2, %dst_cols
+  br i1 %7, label %8, label %.loopexit
+
+; <label>:8                                       ; preds = %0
+  %9 = tail call spir_func i32 @_Z12_vc4cl_mul24ii(i32 %2, i32 8) #3
+  %10 = tail call spir_func i32 @_Z12_vc4cl_mul24ii(i32 %6, i32 %src1_step) #3
+  %11 = tail call spir_func i32 @_Z12_vc4cl_mul24ii(i32 %2, i32 8) #3
+  %12 = tail call spir_func i32 @_Z12_vc4cl_mul24ii(i32 %6, i32 %src2_step) #3
+  %13 = tail call spir_func i32 @_Z12_vc4cl_mul24ii(i32 %2, i32 8) #3
+  %14 = tail call spir_func i32 @_Z12_vc4cl_mul24ii(i32 %6, i32 %dst_step) #3
+  %15 = add nsw i32 %6, %rowsPerWI
+  %16 = tail call spir_func i32 @_Z10_vc4cl_minii(i32 %dst_rows, i32 %15) #3
+  %17 = icmp slt i32 %6, %16
+  br i1 %17, label %.lr.ph, label %.loopexit
+
+.lr.ph:                                           ; preds = %8
+  %18 = add nsw i32 %13, %dst_offset
+  %19 = add nsw i32 %18, %14
+  %20 = add nsw i32 %11, %src2_offset
+  %21 = add nsw i32 %20, %12
+  %22 = add nsw i32 %9, %src1_offset
+  %23 = add nsw i32 %22, %10
+  %24 = add i32 %16, -1
+  br label %25
+
+; <label>:25                                      ; preds = %25, %.lr.ph
+  %src1_index.04 = phi i32 [ %23, %.lr.ph ], [ %46, %25 ]
+  %src2_index.03 = phi i32 [ %21, %.lr.ph ], [ %47, %25 ]
+  %dst_index.02 = phi i32 [ %19, %.lr.ph ], [ %48, %25 ]
+  %y.01 = phi i32 [ %6, %.lr.ph ], [ %45, %25 ]
+  %26 = getelementptr inbounds i8 addrspace(1)* %src1ptr, i32 %src1_index.04
+  %27 = bitcast i8 addrspace(1)* %26 to <2 x float> addrspace(1)*
+  %28 = load <2 x float> addrspace(1)* %27, align 8, !tbaa !10
+  %29 = getelementptr inbounds i8 addrspace(1)* %src2ptr, i32 %src2_index.03
+  %30 = bitcast i8 addrspace(1)* %29 to <2 x float> addrspace(1)*
+  %31 = load <2 x float> addrspace(1)* %30, align 8, !tbaa !10
+  %32 = getelementptr inbounds i8 addrspace(1)* %dstptr, i32 %dst_index.02
+  %33 = bitcast i8 addrspace(1)* %32 to <2 x float> addrspace(1)*
+  %34 = extractelement <2 x float> %28, i32 0
+  %35 = extractelement <2 x float> %31, i32 0
+  %36 = extractelement <2 x float> %28, i32 1
+  %37 = extractelement <2 x float> %31, i32 1
+  %38 = fmul float %36, %37
+  %39 = fsub float -0.000000e+00, %38
+  %40 = tail call float @llvm.fmuladd.f32(float %34, float %35, float %39) #4
+  %41 = insertelement <2 x float> undef, float %40, i32 0
+  %42 = fmul float %36, %35
+  %43 = tail call float @llvm.fmuladd.f32(float %34, float %37, float %42) #4
+  %44 = insertelement <2 x float> %41, float %43, i32 1
+  store <2 x float> %44, <2 x float> addrspace(1)* %33, align 8, !tbaa !10
+  %45 = add nsw i32 %y.01, 1
+  %46 = add nsw i32 %src1_index.04, %src1_step
+  %47 = add nsw i32 %src2_index.03, %src2_step
+  %48 = add nsw i32 %dst_index.02, %dst_step
+  %exitcond = icmp eq i32 %y.01, %24
+  br i1 %exitcond, label %.loopexit.loopexit, label %25
+
+.loopexit.loopexit:                               ; preds = %25
+  br label %.loopexit
+
+.loopexit:                                        ; preds = %.loopexit.loopexit, %8, %0
+  ret void
+}
+
+; Function Attrs: nounwind readnone
+declare float @llvm.fmuladd.f32(float, float, float) #1
+
+declare spir_func i32 @_Z10_vc4cl_minii(i32, i32) #2
+
+declare spir_func i32 @_Z12_vc4cl_mul24ii(i32, i32) #2
+
+declare spir_func i32 @_vc4cl_global_ids() #2
+
+attributes #0 = { nounwind "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-realign-stack" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #1 = { nounwind readnone }
+attributes #2 = { "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-realign-stack" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #3 = { alwaysinline nounwind }
+attributes #4 = { nounwind }
+
+!opencl.kernels = !{!0}
+!opencl.enable.FP_CONTRACT = !{}
+!opencl.spir.version = !{!7}
+!opencl.ocl.version = !{!7}
+!opencl.used.extensions = !{!8}
+!opencl.used.optional.core.features = !{!8}
+!opencl.compiler.options = !{!8}
+!llvm.ident = !{!9}
+
+!0 = !{void (i8 addrspace(1)*, i32, i32, i8 addrspace(1)*, i32, i32, i8 addrspace(1)*, i32, i32, i32, i32, i32)* @mulAndScaleSpectrums, !1, !2, !3, !4, !5, !6}
+!1 = !{!"kernel_arg_addr_space", i32 1, i32 0, i32 0, i32 1, i32 0, i32 0, i32 1, i32 0, i32 0, i32 0, i32 0, i32 0}
+!2 = !{!"kernel_arg_access_qual", !"none", !"none", !"none", !"none", !"none", !"none", !"none", !"none", !"none", !"none", !"none", !"none"}
+!3 = !{!"kernel_arg_type", !"uchar*", !"int", !"int", !"uchar*", !"int", !"int", !"uchar*", !"int", !"int", !"int", !"int", !"int"}
+!4 = !{!"kernel_arg_base_type", !"uchar*", !"int", !"int", !"uchar*", !"int", !"int", !"uchar*", !"int", !"int", !"int", !"int", !"int"}
+!5 = !{!"kernel_arg_type_qual", !"const", !"", !"", !"const", !"", !"", !"", !"", !"", !"", !"", !""}
+!6 = !{!"kernel_arg_name", !"src1ptr", !"src1_step", !"src1_offset", !"src2ptr", !"src2_step", !"src2_offset", !"dstptr", !"dst_step", !"dst_offset", !"dst_rows", !"dst_cols", !"rowsPerWI"}
+!7 = !{i32 1, i32 2}
+!8 = !{}
+!9 = !{!"clang version 3.6.1 (https://github.com/KhronosGroup/SPIR d7e44c3b27581e54ca0e522987d1ade2bd29b70d) (https://github.com/KhronosGroup/SPIRV-LLVM.git fffc52b7fb3552c045c398d68e22216c8d770c00)"}
+!10 = !{!11, !11, i64 0}
+!11 = !{!"omnipotent char", !12, i64 0}
+!12 = !{!"Simple C/C++ TBAA"}

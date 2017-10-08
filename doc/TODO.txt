@@ -1,0 +1,165 @@
+Threads??
+- QPU can execute program 2 threads (via 2 hardware-threads) (page 21)
+- programs must be marked "threadable", how?
+- switch only cooperative via signal
+- registers are local for each thread, accumulators/flags are not! (page 20)
+- "half the physical register file" http://anholt.livejournal.com/50713.html
+-> a threaded kernel can only use 16 registers!
+- TMU is shared between both threads (page 40)
+-> seems like only shaders can run multi-threaded!
+
+as_type() operator?? (page 214ff)
+
+Edge case behavior (OpenCL 1.2, page 325ff)
+
+Decorations:
+- pass through everywhere
+- set for modifications (intrinsics)
+
+Unpack/Pack:
+- use for type conversions (only works, if both unpack/pack are used, otherwise, e.g. negative numbers have no leading ones!)
+- use to support half??
+
+Logging:
+- consistent use of level (e.g. info for all passes, debug for details, error for all errors, ...)
+ 
+Globals, Constants:
+ - only write used globals to binary
+ - __private memory is shared between all work-items, which it MUST NOT, need memory area per QPU!
+ - __local memory is not reset (to initial values) after every work-group! Allowed to have initial value? If not, no extra work required
+ - __global memory is handled correctly: initialized once (by copying the data into the buffer) and persistent through all work-groups
+ - __constant memory is handled correctly, since it is never overwritten
+ 
+Answer questions:
+- Two set-flags (with inverted conditions) in same instruction. Is flags of MUL set?
+- Can unpack from VPM/TMU? (If so, only when read from reg-file A) 
+- Is read from TMU 1 32-bit value for all SIMD-elements, 16 successive 32-bit values or 1 32-bit value per address specified at that element (i.e. 16 separate loads)?
+ 
+Support additional data types:
+- cl_khr_fp16:
+  - Internally calculate with float
+  - Map all std-functions to float
+  - on load/store (half-parameter are allowed even without this extension?), use un-/pack modes
+- long:
+  - first step: long pointer, split up load/store into/from two registers, disallow any arithmetics on type
+  -> could be enough to fix "struct converted to long by LLVM" problem (see https://stackoverflow.com/questions/22776391/why-does-clang-coerce-struct-parameters-to-ints) 
+ 
+ 
+New optimization steps:
+- split long-living locals, which are written just once ??
+  - copy into new local at the begin of every basic block, they are used
+  - use the new local with that basic block
+  -> can improve register-assignment
+  (- place copy in a way, that it can be (most likely) combined with another instruction, so it doesn't require any additional instructions)
+  - add before reordering
+- merge instructions
+  - if single use is a move, replace move with instruction (if neither has/uses side-effects and operands are not read in between)
+  - don't if operands are written just before?? So we do not expand their local life-time??
+  - or: only merge, if operands are literals, parameters or globals?
+  - if instruction is a move, and source is not (only) locally used, replace result with source (if not using/setting side-effects)
+- merge consecutive setting of same flags:
+  - e.g. for PHI-values of conditional branches/conditional branches themselves
+  - merge all consecutive identical setting of flags, unless any of them has additional side effects (writing to register other than NOP, signal)
+- simplify copies:
+  - for memory loads where the only use is a memory store, remove all instructions copying the data between VPM and QPU, simple load RAM -> VPM and store VPM -> RAM
+
+VPM:
+- allow up to 5 instructions to be moved before VPM in/out wait? Since this always blocks at least 5 cycles!
+- add handling of local/global offset/size to optimization combining VPM access. how? (e.g. ./testing/test_work_item.cl)
+- use VPM as cache:
+  find blocks of memory (how to determine their size??) read from/written to at several places
+  divide VPM to reserve a small portion for other read/writes, the remainder use as cache for this blocks of memory
+  if read access: read block once into VPM, then read from VPM
+  if write access: write to VPM and write once into memory
+  !!QPUs share the VPM, so access still critical section, also only need to read/write from/to RAM in one QPU
+- reserve area in VPM for spilling locals (not into memory, but into VPM)
+  need to reserve extra area per QPU
+  how to efficiently determine locals with a huge usage-range with gaps??
+  in Graph Coloring (or as an optimization step), spill locals where there is a big gap (heed branches!!) between two/or more "blocks" of uses
+  split those locals into "before spilling" and "after spilling" for easier/correct coloring
+- move global data into VPM??
+  pros: faster loading
+  cons: fill up VPM, what to do if doesn't fit
+- move local/private memory into VPM?
+  pros: no need to reserve memory host-side
+  cons: might exceed limit, seem global data
+- if memory access optimization can handle RAM <-> VPM and VPM <-> QPU separately, implement prefetch() by loading into VPM
+  need to heed VPM areas as well as synchronization
+  only useful if optimizer detects, that this specific area is currently cached in VPM
+  
+Make basic blocks explicit
+- split instructions/locals of method into list of basic blocks
+  -> every basic block has a list of instruction + locals
+  -> locals used in several basic blocks are maintained in method
+- pros:
+  register allocation: local can only conflict with locals from same basic block and locals from the method (e.g. excludes most of the unrelated temporaries)
+  no need to re-create basic blocks for optimizations (although this currently is done very fast) 
+- cons:
+  parser would take longer, need to create basic blocks when adding instructions
+- unsolved:
+  how to determine in which basic block(s) a local is used (since the instructions are not yet created, when a local is added, in parser) 
+  -> keep local in method for now
+  -> could keep all locals in method and associate basic-block with used locals
+  
+Image support:
+- use TMU for loading images:
+  automatically reads UNIFORMS containing the texture config (width, height, type, border wrap mode/border color) on initiating texture read (Broadcom specification page 40+)
+  could use the register to set the uniform pointer before initiating texture reads to point to an arbitrary buffer (e.g. in global data, extra segment) to read texture-info from (for the correct image)
+    how to get the correct texture base-pointer (run-time!) into the UNIFORM? would need to modify the data-location
+    or write texture-setup values host-side (when setting image as parameter), since we there know the real width/height, pixel-type as well as base-address
+    need to re-set the UNIFORM pointer at least once before running the next work-group iteration to the original value (passed via UNIFORM)
+  could use "2D child-images" for image arrays
+  texture coordinates: s, t = u,v = x,y. r is border color (coordinate, wrapping mode or color-value?), defaults to 0. "not used for normal 2D texturing" (page 44). b is LOD lookup bias
+  texture coordinate s needs to be written last, triggers the read. coordinates not written default to zero
+  supports image formats (table 18): RGBA8888 (8-bit RGBA), RGBX8888 (8-bit RGB, A=1.0), RGBA4444 (4-bit RGBA), RGBA5551 (5-bit RGB, 1-bit A), RGB565 (A=1.0), 
+    LUMINANCE (8-bit luminance, A=1.0), ALPHA (8-bit A, RGB=0), LUMALPHA (8-bit luminance, 8-bit A), ETC1 (Ericsson Texture Compression format),
+    S16F (16-bit float, with interpolation), S8 (8-bit integer, with interpolation), S16 (16-bit integer, without interpolation), BW (1-bit black/white),
+    A4 (4-bit A), A1 (1-bit A), RGBA64 (16-bit float per channel RGBA), RGBA32R (8-bit per channel RGBA, raster format), YUYV422R (8-bit per channel YUYV, raster format)
+    -> see also OpenGL-ES 1.x and 2.0 texture modes and formats specifications for meaning of modes
+  supports basic interpolation (for some types), see table 19
+  writing to s-coordinate triggers texture read (incl. wrapping, interpolation, correct type) at given coordinates s, t [0, 1] into register r4
+    can use pack-modes to convert into requested data-type??
+    write to s-coordinate cannot be conditional write, TMU is always triggered, may have undefined data (see Addendum)
+    writing 16 (SIMD!) different addresses to TMU_S loads values from 16 different locations? (see http://www.aholme.co.uk/GPU_FFT/Main.htm#Parallelism)
+  modes (Broadcom spec page 44): 
+    2D texture mode: s, t are float coords [0, 1], clamped according to wrap mode -> provides x, y coords in texture, r unused, bias (b?) added to parameter, if set
+    cube map mode: relevant?
+  automatic TMU swapping -> all writes to TMU0
+  slice shares 1/2 TMUs -> mutex required?
+  TMU has request FIFO with 8 (according to Addendum only 4 stable) entries (per slice? per QPU?)
+  texture memory layouts, see Broadcom specification, pages 105+
+  since TMU read always blocks 9 to 20 instructions, could add optimization, which reorders instructions between loadtmu and read of r4
+  3D images supported? via cube map image?
+  when an image format has 4 channels (e.g. RGBA), does this mean, we need to read 4 times from r4? since the vector-elements all read (the same channel) from different addresses
+  -> if so, need to assemble the pixel into an xxx, xxx2, xxx3 or xxx4 vector
+- tile buffer (Broadcom spec, pages 46+): 
+  what use does it have?
+- relevant HW errata: HW-2619, HW-2645, HW-2753
+
+Fix register conflicts:
+- case 1: inserting NOP to fix seems appropriate for now
+- case 2: problem: B blocked by small immediate
+  -> load all immediate values separately use register (accumulator) value? puts strain on accumulators
+  -> for every use with immediate, copy local (if range greater then accumulator range) before use, use temporary with immediate? ->done
+- case 3: ??
+
+Literal values:
+- make clear where Literal is used and where SmallImmediate:
+  - currently: up to handleImmediates, everything (except vector-rotations) are Literal, after this optimization step, everything (except load-instructions) is SmallImmediate
+  - how to make explicit?
+- remove Literal completely from Value?
+  - by default, in front-ends, on constants, insert load to load literal value (except vector-rotations, 0 and boolean values)
+  - revert optimization steps (handleContainer?, handleImmediate, handleUseWithImmediate) to in-line literals only into operations when they can be converted to small immediate, also check usage-range of other parameters of operation to make handleUseWithImmediate obsolete
+  - need extra case for global values/memory access indices, since they can have 32-bit literals, not just small immediates
+  - need to rewrite/rethink containers, could have non-scalar constant values? e.g. constant array of structs?
+  
+calculation:
+- make sure, all calculations are done with 32-bit types in mind (int, float)
+  - need to sign/zero-extend short/char to int, so calculations are correct
+  - e.g. -32 -11 is correct for integer, but not short, since it is loaded without extension from VPM
+  - writing to VPM is automatically truncated, seems correct, since short -32 = int -32 & 0xFFFF
+  - need to check/modify all arithmetic operators / integer functions whether they handle e.g. short-calculations on integers correctly (i.e. not truncating away signs, etc.)
+  - how to determine whether to zero- or sign-extend values read from VPM?? SPIR-V gives us no information about the signedness (2.16.3: "Validation Rules for Kernel Capabilities: The Signedness in OpTypeInt must always be 0.")
+- or: run arithmetic calculations with correct type
+  - need to make sure, results are correct, e.g. sub (short) 0xFBCD, 0x0010 yields different results when signed/unsigned?!
+  - need to make sure, flags are set correctly (esp. negative, since it probably checks for 31th bit, not the MSB of the real type!)

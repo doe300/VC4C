@@ -1,0 +1,1 @@
+for f in *.opencl; do clang -m32 -Dcl_clang_storage_class_specifiers -DVECTOR=8 -DLOCAL=0 -DPRECISION=32 -DVWM=16 -DVWN=16 -DSA=0 -DSB=0 -DSTRM=1 -DSTRN=1 -DUNROLL=4 -DUNROLL_FACTOR=4 -DWPTY=2 -DWPTX=2 -DTBY=2 -DTBX=4 -DMWG=1 -DNWG=1 -DMDIMC=1 -DNDIMC=1 -DTS=1 -DKWG=1 -DKWI=1 -isystem /generic/include -include clc/clc.h -x cl $f -S -emit-llvm -o $f.ir; done

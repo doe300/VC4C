@@ -1,0 +1,117 @@
+; ModuleID = 'set_identity.cl'
+target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-n8:16:32:64"
+target triple = "spir-unknown-unknown"
+
+%spirv.ConstantSampler = type { i32, i32, i32 }
+%spirv.Sampler = type opaque
+
+@.sampler.init = internal addrspace(2) constant %spirv.ConstantSampler zeroinitializer
+@DEFAULT_SAMPLER = constant %spirv.Sampler addrspace(2)* bitcast (%spirv.ConstantSampler addrspace(2)* @.sampler.init to %spirv.Sampler addrspace(2)*), align 4
+
+; Function Attrs: nounwind
+define spir_kernel void @setIdentity(i8 addrspace(1)* nocapture %srcptr, i32 %src_step, i32 %src_offset, i32 %rows, i32 %cols, i32 %scalar_) #0 {
+  %1 = tail call spir_func i32 @_vc4cl_global_ids() #2
+  %2 = and i32 %1, 255
+  %3 = tail call spir_func i32 @_vc4cl_global_ids() #2
+  %4 = lshr i32 %3, 6
+  %5 = and i32 %4, 1020
+  %6 = icmp slt i32 %2, %cols
+  br i1 %6, label %7, label %.loopexit4
+
+; <label>:7                                       ; preds = %0
+  %8 = tail call spir_func i32 @_Z12_vc4cl_mul24ii(i32 %2, i32 4) #2
+  %9 = add nsw i32 %8, %src_offset
+  %10 = tail call spir_func i32 @_Z12_vc4cl_mul24ii(i32 %5, i32 %src_step) #2
+  %11 = add nsw i32 %9, %10
+  %12 = add nuw nsw i32 %5, 4
+  %13 = tail call spir_func i32 @_Z10_vc4cl_minii(i32 %rows, i32 %12) #2
+  %14 = icmp slt i32 %5, %13
+  br i1 %14, label %15, label %20
+
+; <label>:15                                      ; preds = %7
+  %16 = icmp eq i32 %2, %5
+  %17 = select i1 %16, i32 %scalar_, i32 0
+  %18 = getelementptr inbounds i8 addrspace(1)* %srcptr, i32 %11
+  %19 = bitcast i8 addrspace(1)* %18 to i32 addrspace(1)*
+  store i32 %17, i32 addrspace(1)* %19, align 4, !tbaa !10
+  br label %20
+
+; <label>:20                                      ; preds = %7, %15
+  %21 = or i32 %5, 1
+  %22 = add nsw i32 %11, %src_step
+  %23 = icmp slt i32 %21, %13
+  br i1 %23, label %24, label %29
+
+.loopexit4:                                       ; preds = %38, %41, %0
+  ret void
+
+; <label>:24                                      ; preds = %20
+  %25 = icmp eq i32 %2, %21
+  %26 = select i1 %25, i32 %scalar_, i32 0
+  %27 = getelementptr inbounds i8 addrspace(1)* %srcptr, i32 %22
+  %28 = bitcast i8 addrspace(1)* %27 to i32 addrspace(1)*
+  store i32 %26, i32 addrspace(1)* %28, align 4, !tbaa !10
+  br label %29
+
+; <label>:29                                      ; preds = %24, %20
+  %30 = add nuw nsw i32 %21, 1
+  %31 = add nsw i32 %22, %src_step
+  %32 = icmp slt i32 %30, %13
+  br i1 %32, label %33, label %38
+
+; <label>:33                                      ; preds = %29
+  %34 = icmp eq i32 %2, %30
+  %35 = select i1 %34, i32 %scalar_, i32 0
+  %36 = getelementptr inbounds i8 addrspace(1)* %srcptr, i32 %31
+  %37 = bitcast i8 addrspace(1)* %36 to i32 addrspace(1)*
+  store i32 %35, i32 addrspace(1)* %37, align 4, !tbaa !10
+  br label %38
+
+; <label>:38                                      ; preds = %33, %29
+  %39 = or i32 %5, 3
+  %40 = icmp slt i32 %39, %13
+  br i1 %40, label %41, label %.loopexit4
+
+; <label>:41                                      ; preds = %38
+  %42 = add nsw i32 %31, %src_step
+  %43 = icmp eq i32 %2, %39
+  %44 = select i1 %43, i32 %scalar_, i32 0
+  %45 = getelementptr inbounds i8 addrspace(1)* %srcptr, i32 %42
+  %46 = bitcast i8 addrspace(1)* %45 to i32 addrspace(1)*
+  store i32 %44, i32 addrspace(1)* %46, align 4, !tbaa !10
+  br label %.loopexit4
+}
+
+declare spir_func i32 @_Z10_vc4cl_minii(i32, i32) #1
+
+declare spir_func i32 @_Z12_vc4cl_mul24ii(i32, i32) #1
+
+declare spir_func i32 @_vc4cl_global_ids() #1
+
+attributes #0 = { nounwind "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-realign-stack" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #1 = { "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-realign-stack" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #2 = { alwaysinline nounwind }
+
+!opencl.kernels = !{!0}
+!opencl.enable.FP_CONTRACT = !{}
+!opencl.spir.version = !{!7}
+!opencl.ocl.version = !{!7}
+!opencl.used.extensions = !{!8}
+!opencl.used.optional.core.features = !{!8}
+!opencl.compiler.options = !{!8}
+!llvm.ident = !{!9}
+
+!0 = !{void (i8 addrspace(1)*, i32, i32, i32, i32, i32)* @setIdentity, !1, !2, !3, !4, !5, !6}
+!1 = !{!"kernel_arg_addr_space", i32 1, i32 0, i32 0, i32 0, i32 0, i32 0}
+!2 = !{!"kernel_arg_access_qual", !"none", !"none", !"none", !"none", !"none", !"none"}
+!3 = !{!"kernel_arg_type", !"uchar*", !"int", !"int", !"int", !"int", !"int"}
+!4 = !{!"kernel_arg_base_type", !"uchar*", !"int", !"int", !"int", !"int", !"int"}
+!5 = !{!"kernel_arg_type_qual", !"", !"", !"", !"", !"", !""}
+!6 = !{!"kernel_arg_name", !"srcptr", !"src_step", !"src_offset", !"rows", !"cols", !"scalar_"}
+!7 = !{i32 1, i32 2}
+!8 = !{}
+!9 = !{!"clang version 3.6.1 (https://github.com/KhronosGroup/SPIR d7e44c3b27581e54ca0e522987d1ade2bd29b70d) (https://github.com/KhronosGroup/SPIRV-LLVM.git fffc52b7fb3552c045c398d68e22216c8d770c00)"}
+!10 = !{!11, !11, i64 0}
+!11 = !{!"int", !12, i64 0}
+!12 = !{!"omnipotent char", !13, i64 0}
+!13 = !{!"Simple C/C++ TBAA"}

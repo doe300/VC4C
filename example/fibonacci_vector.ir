@@ -1,0 +1,54 @@
+; ModuleID = './fibonacci.cl'
+target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-unknown-linux-gnu"
+
+; Function Attrs: norecurse nounwind uwtable
+define void @fibonacci(i32 %start0, i32 %start1, <4 x i32>* nocapture %out) #0 {
+  %1 = add nsw <4 x i32> %start0, %start1
+  store <4 x i32> %1, <4 x i32>* %out, align 4, !tbaa !7
+  %2 = add nsw i32 %1, %start1
+  %3 = getelementptr inbounds <4 x i32>, <4 x i32>* %out, i64 1
+  store <4 x i32> %2, <4 x i32>* %3, align 4, !tbaa !7
+  %4 = add nsw <4 x i32> %1, %2
+  %5 = getelementptr inbounds <4 x i32>, <4 x i32>* %out, i64 2
+  store <4 x i32> %4, <4 x i32>* %5, align 4, !tbaa !7
+  %6 = add nsw <4 x i32> %2, %4
+  %7 = getelementptr inbounds <4 x i32>, <4 x i32>* %out, i64 3
+  store <4 x i32> %6, <4 x i32>* %7, align 4, !tbaa !7
+  %8 = add nsw <4 x i32> %4, %6
+  %9 = getelementptr inbounds <4 x i32>, <4 x i32>* %out, i64 4
+  store <4 x i32> %8, <4 x i32>* %9, align 4, !tbaa !7
+  %10 = add nsw <4 x i32> %6, %8
+  %11 = getelementptr inbounds <4 x i32>, <4 x i32>* %out, i64 5
+  store <4 x i32> %10, <4 x i32>* %11, align 4, !tbaa !7
+  %12 = add nsw <4 x i32> %8, %10
+  %13 = getelementptr inbounds <4 x i32>, <4 x i32>* %out, i64 6
+  store <4 x i32> %12, <4 x i32>* %13, align 4, !tbaa !7
+  %14 = add nsw <4 x i32> %10, %12
+  %15 = getelementptr inbounds <4 x i32>, <4 x i32>* %out, i64 7
+  store <4 x i32> %14, <4 x i32>* %15, align 4, !tbaa !7
+  %16 = add nsw <4 x i32> %12, %14
+  %17 = getelementptr inbounds <4 x i32>, <4 x i32>* %out, i64 8
+  store <4 x i32> %16, <4 x i32>* %17, align 4, !tbaa !7
+  %18 = add nsw <4 x i32> %14, %16
+  %19 = getelementptr inbounds <4 x i32>, <4 x i32>* %out, i64 9
+  store <4 x i32> %18, <4 x i32>* %19, align 4, !tbaa !7
+  ret void
+}
+
+attributes #0 = { norecurse nounwind uwtable "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="true" "no-frame-pointer-elim-non-leaf" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+fxsr,+mmx,+sse,+sse2" "unsafe-fp-math"="false" "use-soft-float"="false" }
+
+!opencl.kernels = !{!0}
+!llvm.ident = !{!6}
+
+!0 = !{void (i32, i32, i32*)* @fibonacci, !1, !2, !3, !4, !5}
+!1 = !{!"kernel_arg_addr_space", i32 0, i32 0, i32 0}
+!2 = !{!"kernel_arg_access_qual", !"none", !"none", !"none"}
+!3 = !{!"kernel_arg_type", !"int", !"int", !"int*"}
+!4 = !{!"kernel_arg_base_type", !"int", !"int", !"int*"}
+!5 = !{!"kernel_arg_type_qual", !"const", !"const", !""}
+!6 = !{!"clang version 3.8.0 (tags/RELEASE_380/final)"}
+!7 = !{!8, !8, i64 0}
+!8 = !{!"int", !9, i64 0}
+!9 = !{!"omnipotent char", !10, i64 0}
+!10 = !{!"Simple C/C++ TBAA"}

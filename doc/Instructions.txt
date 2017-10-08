@@ -1,0 +1,4 @@
+ftoi always rounds towards 0:
+ 1.x -> 1
+ -1.x -> -1
+ (see test_other.cl)

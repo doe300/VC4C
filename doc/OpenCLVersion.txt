@@ -1,0 +1,6 @@
+
+TODO:
+- what standard version (1.0 to 2.1), why?
+-> OpenCL 1.2, since next version 2.0 requires double
+- embedded devices or standard, differences, why?
+-> EMBEDDED_PROFILE, since FULL_PROFILE requires long

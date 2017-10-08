@@ -1,9 +1,25 @@
-CMakeCache.txt
-CMakeFiles
-CMakeScripts
-Testing
-Makefile
+build/
+CMakeFiles/
+/CMakeCache.txt
 cmake_install.cmake
-install_manifest.txt
+cmake_uninstall.cmake
 compile_commands.json
-CTestTestfile.cmake
+install_manifest.txt
+Makefile
+
+# Eclipse 
+.cproject
+.project
+.csettings/
+
+# Netbeans
+dist/
+nbproject/
+
+# Other
+testResult.log
+.dep.inc
+/valgrind.supp
+lib/
+cmake/
+include/VC4CLStdLib.h.pch

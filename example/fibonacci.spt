@@ -1,0 +1,52 @@
+119734787 65536 393230 29 0 
+2 Capability Addresses 
+2 Capability Kernel 
+5 ExtInstImport 1 "OpenCL.std"
+3 MemoryModel 1 2 
+6 EntryPoint 6 6 "fibonacci"
+3 Source 3 100000 
+4 Name 7 "start0"
+4 Name 8 "start1"
+3 Name 9 "out"
+4 Name 15 "fc.0"
+4 Name 16 "fp.0"
+3 Name 21 "i.0"
+4 TypeInt 3 32 0 
+4 Constant 3 19 0 
+4 Constant 3 22 10 
+4 Constant 3 27 1 
+2 TypeVoid 2 
+4 TypePointer 4 5 3 
+6 TypeFunction 5 2 3 3 4 
+2 TypeBool 23 
+
+5 Function 2 6 0 5 
+3 FunctionParameter 3 7 
+3 FunctionParameter 3 8 
+3 FunctionParameter 4 9 
+
+2 Label 10 
+2 Branch 11 
+
+2 Label 11 
+7 Phi 3 16 7 10 15 13 
+7 Phi 3 15 8 10 17 13 
+7 Phi 3 21 19 10 20 13 
+5 SLessThan 23 24 21 22 
+4 BranchConditional 24 12 14 
+
+2 Label 12 
+5 IAdd 3 17 15 16 
+5 InBoundsPtrAccessChain 4 26 9 21 
+5 Store 26 17 2 4 
+2 Branch 13 
+
+2 Label 13 
+5 IAdd 3 20 21 27 
+2 Branch 11 
+
+2 Label 14 
+1 Return 
+
+1 FunctionEnd 
+

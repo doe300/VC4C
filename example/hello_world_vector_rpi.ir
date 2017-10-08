@@ -1,0 +1,36 @@
+; ModuleID = 'test/hello_world_vector.cl'
+source_filename = "test/hello_world_vector.cl"
+target datalayout = "e-m:e-p:32:32-i64:64-v128:64:128-a:0:32-n32-S64"
+target triple = "armv7-unknown-linux-gnueabihf"
+
+; Function Attrs: nounwind
+define void @hello_world(<16 x i8>* nocapture readonly, <16 x i8>* nocapture) local_unnamed_addr #0 !kernel_arg_addr_space !3 !kernel_arg_access_qual !4 !kernel_arg_type !5 !kernel_arg_base_type !6 !kernel_arg_type_qual !7 !reqd_work_group_size !8 {
+  %3 = tail call i32 @get_global_id(i32 0) #2
+  %4 = getelementptr inbounds <16 x i8>, <16 x i8>* %0, i32 %3
+  %5 = load <16 x i8>, <16 x i8>* %4, align 16, !tbaa !9
+  %6 = getelementptr inbounds <16 x i8>, <16 x i8>* %1, i32 %3
+  store <16 x i8> %5, <16 x i8>* %6, align 16, !tbaa !9
+  ret void
+}
+
+declare i32 @get_global_id(i32) local_unnamed_addr #1
+
+attributes #0 = { nounwind "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="true" "no-frame-pointer-elim-non-leaf" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="cortex-a8" "target-features"="+dsp,+neon,+vfp3" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #1 = { "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="true" "no-frame-pointer-elim-non-leaf" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="cortex-a8" "target-features"="+dsp,+neon,+vfp3" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #2 = { nounwind }
+
+!llvm.module.flags = !{!0, !1}
+!llvm.ident = !{!2}
+
+!0 = !{i32 1, !"wchar_size", i32 4}
+!1 = !{i32 1, !"min_enum_size", i32 4}
+!2 = !{!"clang version 3.9.0-4 (tags/RELEASE_390/final)"}
+!3 = !{i32 0, i32 0}
+!4 = !{!"none", !"none"}
+!5 = !{!"char16*", !"char16*"}
+!6 = !{!"char __attribute__((ext_vector_type(16)))*", !"char __attribute__((ext_vector_type(16)))*"}
+!7 = !{!"const", !""}
+!8 = !{i32 1, i32 1, i32 1}
+!9 = !{!10, !10, i64 0}
+!10 = !{!"omnipotent char", !11, i64 0}
+!11 = !{!"Simple C/C++ TBAA"}

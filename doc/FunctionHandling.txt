@@ -1,0 +1,8 @@
+Jump to Subroutine			vs.			Inlining
++ less machine code						- 2 less branches
+- need to reserve X registers			+ easier register mapping
+- no recursion possible					- dito
+- requires calling convention (which register has which parameter/return value)
+- no access to memory? so no stack possible	+ "stack-depth" = 1
+
+OpenCL forbids recursion anyway! (see OpenCL 1.2, page 234)
