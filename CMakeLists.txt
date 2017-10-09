@@ -14,22 +14,34 @@ option(MULTI_THREADED "Runs the optimization steps multi-threaded" ON)
 option(VERIFY_OUTPUT "uses the external library vc4asm to verify the output" ON)
 # Option whether to include the LLVM-IR front-end
 option(LLVMIR_FRONTEND "Enables the standard frontend for the LLVM intermediate language" ON)
-# Option whether to include the SPIR-V front-end
-option(SPIRV_FRONTEND "Enables a second frontend for the SPIR-V intermediate language" ON)
-set(SPIRV_COMPILER_ROOT "/opt/SPIRV-LLVM/build/bin/")
 # Option to enable/disable cross compilation
 option(CROSS_COMPILE "Cross compile for Raspbian" OFF)
+# Option whether to include the SPIR-V front-end
+option(SPIRV_FRONTEND "Enables a second frontend for the SPIR-V intermediate language" ON)
+
 # Path to the VC4CL standard library
-# TODO dynamic path
-set(VC4CL_STDLIB_HEADER_SOURCE "../VC4CLStdLib/include/VC4CLStdLib.h")
+if(NOT VC4CL_STDLIB_HEADER_SOURCE)
+	find_file(VC4CL_STDLIB_FOUND "VC4CLStdLib/include/VC4CLStdLib.h")
+	if(VC4CL_STDLIB_FOUND) # Check system path
+		set(VC4CL_STDLIB_HEADER_SOURCE "${VC4CL_STDLIB_FOUND}")
+	elseif(EXISTS "${CMAKE_SOURCE_DIR}/../VC4CLStdLib/include/VC4CLStdLib.h") # Check local path
+		set(VC4CL_STDLIB_HEADER_SOURCE "${CMAKE_SOURCE_DIR}/../VC4CLStdLib/include/VC4CLStdLib.h")
+	else()
+		message(FATAL_ERROR "VC4CL standard-library headers not found!")
+	endif()
+	message(STATUS "VC4CL standard library headers found: ${VC4CL_STDLIB_HEADER_SOURCE}")
+endif()
 
 if(CROSS_COMPILE)
-	message(STATUS "Cross compiling for Raspbian...")
+	if(NOT CROSS_COMPILER_PATH)
+		set(CROSS_COMPILER_PATH "/opt/rasperrypi/tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64")
+	endif()
+	message(STATUS "Cross compiling for Raspbian with compiler: ${CROSS_COMPILER_PATH}")
 	#Set Cross compiler
 	SET(CMAKE_SYSTEM_NAME 		"Linux")
-	SET(CMAKE_C_COMPILER   		/opt/rasperrypi/tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/bin/arm-linux-gnueabihf-gcc)
-	SET(CMAKE_CXX_COMPILER 		/opt/rasperrypi/tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/bin/arm-linux-gnueabihf-g++)
-	SET(CMAKE_FIND_ROOT_PATH  	/opt/rasperrypi/tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64 /opt/rasperrypi/tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/arm-linux-gnueabihf)
+	SET(CMAKE_C_COMPILER   		"${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-gcc")
+	SET(CMAKE_CXX_COMPILER 		"${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-g++")
+	SET(CMAKE_FIND_ROOT_PATH  	"${CROSS_COMPILER_PATH} ${CROSS_COMPILER_PATH}/arm-linux-gnueabihf")
 
 	# Raspbian ships CLang 3.9 in its repositories
 	add_definitions(-DCLANG_PATH="/usr/bin/clang-3.9")
@@ -80,6 +92,13 @@ ExternalProject_Add( cpplog-project
 )
 
 # Prefer Khronos OpenCL to LLVM IR (to SPIR-V) compiler
+if(NOT SPIRV_COMPILER_ROOT)
+	# Try to detect the location of the SPIR-VLLVM binaries
+	find_program(LLVM_SPIRV_FOUND NAMES llvm-spirv HINTS "/opt/SPIRV-LLVM/build/bin/")
+	if(LLVM_SPIRV_FOUND)
+		get_filename_component(SPIRV_COMPILER_ROOT "${LLVM_SPIRV_FOUND}" DIRECTORY)
+	endif()
+endif()
 if(SPIRV_COMPILER_ROOT)
 	message(STATUS "Khronos OpenCL toolkit: ${SPIRV_COMPILER_ROOT}")
 	find_file(SPIRV_CLANG_FOUND clang PATHS ${SPIRV_COMPILER_ROOT} NO_DEFAULT_PATH)
@@ -88,6 +107,8 @@ if(SPIRV_COMPILER_ROOT)
 		message(STATUS "Khronos OpenCL compiler: ${SPIRV_CLANG_FOUND}")
 		add_definitions(-DSPIRV_CLANG_PATH="${SPIRV_CLANG_FOUND}")
 	endif()
+elseif(SPIRV_FRONTEND)
+	message(STATUS "SPIR-V frontend configured, but no SPIR-V compiler found!")
 endif()
 
 # fall back to "standard" CLang
