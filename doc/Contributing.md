@@ -13,7 +13,7 @@ The next step after creating a ticket for a bug-fix or a new feature is to imple
 Please write readable code and explain, what the PR is for.
 
 ### Kernels
-If you have a kernel, that doesn't compile  or doesn't do what it is supposed to do, let me know.
+If you have an OpenCL kernel, that doesn't compile  or doesn't do what it is supposed to do, let me know.
 For me to be able to fix the problem the fastest, I'd be pleased if you send following information:
 
 * A short description of what doesn't behave the way it should
