@@ -270,15 +270,15 @@ const Optional<Value> Operation::getSecondArg() const
 	return getArgument(1);
 }
 
-Optional<Value> Operation::precalculate() const
+Optional<Value> Operation::precalculate(const std::size_t numIterations) const
 {
-	Optional<Value> arg0 = getPrecalculatedValueForArg(0);
+	Optional<Value> arg0 = getPrecalculatedValueForArg(0, numIterations);
 	if(!arg0.hasValue)
 		return NO_VALUE;
 	Optional<Value> arg1 = NO_VALUE;
     if (getSecondArg().hasValue)
     {
-    	arg1 = getPrecalculatedValueForArg(1);
+    	arg1 = getPrecalculatedValueForArg(1, numIterations);
     	if(!arg1.hasValue)
     		return NO_VALUE;
     }
@@ -457,9 +457,9 @@ bool MoveOperation::mapsToASMInstruction() const
 	return !getSource().isUndefined();
 }
 
-Optional<Value> MoveOperation::precalculate() const
+Optional<Value> MoveOperation::precalculate(const std::size_t numIterations) const
 {
-	return getPrecalculatedValueForArg(0);
+	return getPrecalculatedValueForArg(0, numIterations);
 }
 
 void MoveOperation::setSource(const Value& value)
@@ -533,7 +533,7 @@ Operation* VectorRotation::combineWith(const std::string& otherOpCode) const
     return nullptr;
 }
 
-Optional<Value> VectorRotation::precalculate() const
+Optional<Value> VectorRotation::precalculate(const std::size_t numIterations) const
 {
 	//for now, don't precalculate
 	return NO_VALUE;

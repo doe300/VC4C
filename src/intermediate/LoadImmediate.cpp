@@ -37,7 +37,7 @@ IntermediateInstruction* LoadImmediate::copyFor(Method& method, const std::strin
     return (new LoadImmediate(renameValue(method, getOutput(), localPrefix), getArgument(0).get().literal, conditional, setFlags))->copyExtrasFrom(this);
 }
 
-Optional<Value> LoadImmediate::precalculate() const
+Optional<Value> LoadImmediate::precalculate(const std::size_t numIterations) const
 {
 	return getArgument(0);
 }

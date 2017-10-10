@@ -496,7 +496,7 @@ static Optional<Literal> getSourceLiteral(InstructionWalker it)
 	}
 	else if(it.has<Operation>())
 	{
-		const auto val = it.get<Operation>()->precalculate();
+		const auto val = it.get<Operation>()->precalculate(2);
 		if(val.hasValue)
 			return val.get().literal;
 	}

@@ -114,7 +114,7 @@ namespace vc4c
 			bool hasConditionalExecution() const;
 
 			IntermediateInstruction* copyExtrasFrom(const IntermediateInstruction* src);
-			virtual Optional<Value> precalculate() const;
+			virtual Optional<Value> precalculate(const std::size_t numIterations) const;
 
 			Signaling signal;
 			Unpack unpackMode;
@@ -128,7 +128,7 @@ namespace vc4c
 
 			std::string createAdditionalInfoString() const;
 
-			Optional<Value> getPrecalculatedValueForArg(const std::size_t argIndex) const;
+			Optional<Value> getPrecalculatedValueForArg(const std::size_t argIndex, const std::size_t numIterations) const;
 
 		private:
 			Optional<Value> output;
@@ -153,7 +153,7 @@ namespace vc4c
 
 			const Value getFirstArg() const;
 			const Optional<Value> getSecondArg() const;
-			Optional<Value> precalculate() const override;
+			Optional<Value> precalculate(const std::size_t numIterations) const override;
 
 			std::string opCode;
 			CombinedOperation* parent;
@@ -200,7 +200,7 @@ namespace vc4c
 			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
 			Operation* combineWith(const std::string& otherOpCode) const;
 			virtual bool mapsToASMInstruction() const;
-			Optional<Value> precalculate() const override;
+			Optional<Value> precalculate(const std::size_t numIterations) const override;
 
 			void setSource(const Value& value);
 			const Value getSource() const;
@@ -215,7 +215,7 @@ namespace vc4c
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
 			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
 			Operation* combineWith(const std::string& otherOpCode) const;
-			Optional<Value> precalculate() const override;
+			Optional<Value> precalculate(const std::size_t numIterations) const override;
 
 			const Value getOffset() const;
 		};
@@ -352,7 +352,7 @@ namespace vc4c
 			std::string to_string() const override;
 			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
-			Optional<Value> precalculate() const override;
+			Optional<Value> precalculate(const std::size_t numIterations) const override;
 
 			const Literal& getImmediate() const;
 			void setImmediate(const Literal& value);

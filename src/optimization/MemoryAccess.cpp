@@ -39,7 +39,8 @@ static BaseAndOffset findOffset(const Value& val)
 	const LocalUser* writer = val.local->getSingleWriter();
 	if(dynamic_cast<const IntermediateInstruction*>(writer) != nullptr)
 	{
-		const Optional<Value> offset =  dynamic_cast<const IntermediateInstruction*>(writer)->precalculate();
+		logging::debug() << writer->to_string() << logging::endl;
+		const Optional<Value> offset =  dynamic_cast<const IntermediateInstruction*>(writer)->precalculate(8);
 		if(offset.hasValue && offset.get().hasType(ValueType::LITERAL))
 		{
 			return BaseAndOffset(NO_VALUE, offset.get().literal.integer, offset.get().literal.integer);

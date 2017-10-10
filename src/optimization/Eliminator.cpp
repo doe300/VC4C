@@ -305,7 +305,7 @@ InstructionWalker optimizations::calculateConstantInstruction(const Module& modu
 				//also skip any "xor ?, val, val", since they are created on purpose (by combineSelectionWithZero to allow for combination with the other case)
 				return it;
 			}
-			const Optional<Value> value = op->precalculate();
+			const Optional<Value> value = op->precalculate(3);
 			if(value)
 			{
 				logging::debug() << "Replacing '" << op->to_string() << "' with constant value: " << value.to_string() << logging::endl;

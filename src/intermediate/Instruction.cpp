@@ -213,7 +213,7 @@ IntermediateInstruction* IntermediateInstruction::copyExtrasFrom(const Intermedi
 	return this;
 }
 
-Optional<Value> IntermediateInstruction::precalculate() const
+Optional<Value> IntermediateInstruction::precalculate(const std::size_t numIterations) const
 {
 	return NO_VALUE;
 }
@@ -248,8 +248,10 @@ std::string IntermediateInstruction::createAdditionalInfoString() const
 	return std::string(" ()").compare(res) == 0 ? "" : res;
 }
 
-Optional<Value> IntermediateInstruction::getPrecalculatedValueForArg(const std::size_t argIndex) const
+Optional<Value> IntermediateInstruction::getPrecalculatedValueForArg(const std::size_t argIndex, const std::size_t numIterations) const
 {
+	if(numIterations == 0)
+		return NO_VALUE;
 	if(argIndex > arguments.size())
 		throw CompilationError(CompilationStep::GENERAL, "Invalid argument index", std::to_string(argIndex));
 	const Value& arg = arguments.at(argIndex);
@@ -264,8 +266,8 @@ Optional<Value> IntermediateInstruction::getPrecalculatedValueForArg(const std::
 		case ValueType::LOCAL:
 		{
 			auto writer = arg.local->getSingleWriter();
-			if(writer != nullptr)
-				return dynamic_cast<const IntermediateInstruction*>(writer)->precalculate();
+			if(dynamic_cast<const IntermediateInstruction*>(writer) != nullptr)
+				return dynamic_cast<const IntermediateInstruction*>(writer)->precalculate(numIterations - 1);
 			break;
 		}
 		default:
