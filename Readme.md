@@ -24,3 +24,9 @@ The following configuration variables can be set in CMake:
 - `CROSS_COMPILER_PATH` sets the root path to the Raspberry Pi cross compiler, defaults to `/opt/rasperrypi/tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64` (e.g. for the cross compiler cloned into the directory `/opt/raspberrypi/tools/`)
 - `SPIRV_FRONTEND` toggles building of the SPIR-V frontend, requires SPIRV-LLVM
 - `SPIRV_COMPILER_ROOT` sets the root-path to binaries of the [SPIRV-LLVM](https://github.com/KhronosGroup/SPIRV-LLVM) compiler, defaults to `/opt/SPIRV-LLVM/build/bin/`
+
+## Known Issues
+
+If the [VC4CLStdLib](https://github.com/doe300/VC4CLStdLib) is updated, the LLVM precompiled header (PCH) needs to be rebuilt. For this to happen, simply delete the file `include/VC4CLStdLib.h.pch` and rebuild the VC4C compiler (or just the vc4cl-stdlib target).
+
+Sometimes, at least on my Raspberry Pi, if a compilation fails, it somehow removes the symbolic `/dev/stdout` to the current process' standard output, resulting in no program can write to stdout anymore!! To remedy, restart the Pi.
