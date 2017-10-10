@@ -323,7 +323,8 @@ bool IndexOf::mapInstruction(Method& method) const
     //a[i] of type t is at position &a + i * sizeof(t)
     logging::debug() << "Generating calculating index " << to_string<Value>(indices) << " of " << container.to_string() << " into " << dest->to_string() << logging::endl;
     
-    intermediate::insertCalculateIndices(method.appendToEnd(), method, container, dest->createReference(), indices);
+    //TODO firstIndexIsElement is not true for all cases!! (E.g. not for pointers to pointers?)
+    intermediate::insertCalculateIndices(method.appendToEnd(), method, container, dest->createReference(), indices, true);
     return true;
 }
 

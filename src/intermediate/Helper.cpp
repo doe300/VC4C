@@ -412,7 +412,7 @@ InstructionWalker intermediate::insertInvertSign(InstructionWalker it, Method& m
 	return it;
 }
 
-InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Method& method, const Value& container, const Value& dest, const std::vector<Value>& indices)
+InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Method& method, const Value& container, const Value& dest, const std::vector<Value>& indices, const bool firstIndexIsElement)
 {
 	//handle multi-level indices
 	Value offset = INT_ZERO;
@@ -435,7 +435,10 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 				it.nextInBlock();
 			}
 
-			subContainerType = subContainerType.getElementType();
+			//according to SPIR-V 1.2 specification, the type doesn't change if the first index is the "element":
+			//"The type of Base after being dereferenced with Element is still the same as the original type of Base."
+			if(!firstIndexIsElement || &index != &indices.front())
+				subContainerType = subContainerType.getElementType().getElementType(index.hasType(ValueType::LITERAL) ? index.literal.integer : ANY_ELEMENT).toPointerType();
 		}
 		else if(subContainerType.getStructType().hasValue)
 		{
@@ -488,6 +491,9 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 	//the index referenced, for getting the correct type, e.g. for structs
 	const int refIndex = index.hasType(ValueType::LITERAL) ? index.literal.integer : ANY_ELEMENT;
 	const_cast<std::pair<Local*, int>&>(dest.local->reference) = std::make_pair(container.local, refIndex);
+
+	if(dest.type != subContainerType)
+		throw CompilationError(CompilationStep::LLVM_2_IR, "Types of retrieving indices do not match!", subContainerType.to_string());
 
 	return it;
 }

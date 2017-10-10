@@ -570,8 +570,8 @@ Optional<Value> SPIRVShuffle::precalculate(const std::map<uint32_t, DataType>& t
 	return NO_VALUE;
 }
 
-SPIRVIndexOf::SPIRVIndexOf(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const uint32_t containerID, const std::vector<uint32_t>& indices) :
-            SPIRVOperation(id, method), typeID(resultType), container(containerID), indices(indices)
+SPIRVIndexOf::SPIRVIndexOf(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const uint32_t containerID, const std::vector<uint32_t>& indices, const bool isPtrAcessChain) :
+            SPIRVOperation(id, method), typeID(resultType), container(containerID), indices(indices), isPtrAcessChain(isPtrAcessChain)
 {
 
 }
@@ -596,7 +596,7 @@ void SPIRVIndexOf::mapInstruction(std::map<uint32_t, DataType>& types, std::map<
     	indexValues.push_back(getValue(indexID, *method.method, types, constants, globals, localTypes));
     }
 
-    intermediate::insertCalculateIndices(method.method->appendToEnd(), *method.method.get(), container, dest, indexValues);
+    intermediate::insertCalculateIndices(method.method->appendToEnd(), *method.method.get(), container, dest, indexValues, isPtrAcessChain);
 }
 
 Optional<Value> SPIRVIndexOf::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
@@ -617,6 +617,8 @@ Optional<Value> SPIRVIndexOf::precalculate(const std::map<uint32_t, DataType>& t
 	std::for_each(indices.begin(), indices.end(), [&indexValues, &constants](uint32_t index) {indexValues.push_back(constants.at(index));});
 
 	logging::debug() << "Pre-calculating indices of " << container.to_string()  << logging::endl;
+
+	//TODO regard isPtrAcessChain, if set, type of first index is original type
 
 	Value offset = INT_ZERO;
 	DataType subContainerType = container.type;

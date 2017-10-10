@@ -37,7 +37,7 @@ namespace vc4c
 		InstructionWalker insertMakePositive(InstructionWalker it, Method& method, const Value& src, Value& dest);
 		InstructionWalker insertInvertSign(InstructionWalker it, Method& method, const Value& src, Value& dest, const ConditionCode cond = COND_ALWAYS);
 
-		InstructionWalker insertCalculateIndices(InstructionWalker it, Method& method, const Value& container, const Value& dest, const std::vector<Value>& indices);
+		InstructionWalker insertCalculateIndices(InstructionWalker it, Method& method, const Value& container, const Value& dest, const std::vector<Value>& indices, const bool firstIndexIsElement = false);
 	}
 }
 

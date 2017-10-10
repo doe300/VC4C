@@ -811,17 +811,17 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
 		return SPV_SUCCESS;
     case SpvOpAccessChain: //pointer into element(s) of composite
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVIndexOf(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, getWord(parsed_instruction, 3), parseArguments(parsed_instruction, 4)));
+        instructions.emplace_back(new SPIRVIndexOf(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, getWord(parsed_instruction, 3), parseArguments(parsed_instruction, 4), false));
         return SPV_SUCCESS;
     case SpvOpInBoundsAccessChain:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVIndexOf(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, getWord(parsed_instruction, 3), parseArguments(parsed_instruction, 4)));
+        instructions.emplace_back(new SPIRVIndexOf(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, getWord(parsed_instruction, 3), parseArguments(parsed_instruction, 4), false));
         return SPV_SUCCESS;
     case SpvOpPtrAccessChain:
     	//For pointers, the "Element" field is the first (top-level) index (see SPIR-V specification, OpPtrAccessChain):
 		//"Element is used to do the initial dereference of Base: Base is treated as the address of the first element of an array, and the Element element’s address is computed to be the base for the Indexes [...]"
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVIndexOf(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, getWord(parsed_instruction, 3), parseArguments(parsed_instruction, 4)));
+        instructions.emplace_back(new SPIRVIndexOf(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, getWord(parsed_instruction, 3), parseArguments(parsed_instruction, 4), true));
         return SPV_SUCCESS;
     case SpvOpGenericPtrMemSemantics:
     	//"Result is a valid Memory Semantics which includes mask bits set for the Storage Class for the specific (non-Generic) Storage Class of Pointer. "
@@ -830,7 +830,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case SpvOpInBoundsPtrAccessChain:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         //FIXME according to sanitizer, currentMethod seems to be null sometimes (/opt/SPIRV-LLVM/tools/clang/test/SemaOpenCL/str_literals.cl)
-        instructions.emplace_back(new SPIRVIndexOf(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, getWord(parsed_instruction, 3), parseArguments(parsed_instruction, 4)));
+        instructions.emplace_back(new SPIRVIndexOf(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, getWord(parsed_instruction, 3), parseArguments(parsed_instruction, 4), true));
         return SPV_SUCCESS;
     case SpvOpNoLine: //source level debug info -> skip
         return SPV_SUCCESS;

@@ -213,7 +213,7 @@ namespace vc4c
 		class SPIRVIndexOf: public SPIRVOperation
 		{
 		public:
-			SPIRVIndexOf(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const uint32_t containerID, const std::vector<uint32_t>& indices);
+			SPIRVIndexOf(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const uint32_t containerID, const std::vector<uint32_t>& indices, const bool isPtrAcessChain);
 			virtual ~SPIRVIndexOf();
 
 			void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Global*>& globals) const
@@ -224,6 +224,7 @@ namespace vc4c
 			const uint32_t typeID;
 			const uint32_t container;
 			const std::vector<uint32_t> indices;
+			const bool isPtrAcessChain;
 		};
 
 		class SPIRVPhi: public SPIRVOperation
