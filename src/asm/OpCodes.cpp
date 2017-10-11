@@ -166,6 +166,8 @@ Optional<Literal> SmallImmediate::toLiteral() const
 
 SmallImmediate SmallImmediate::fromRotationOffset(unsigned char offset)
 {
+	if(offset > 15)
+		throw CompilationError(CompilationStep::GENERAL, "Invalid vector rotation offset", std::to_string(static_cast<int>(offset)));
     return static_cast<SmallImmediate>(offset + VECTOR_ROTATE_R5);
 }
 

@@ -33,3 +33,27 @@ __kernel void test_param(const uchar16 in1, const int4 in2, __global int4* out)
 {
 	*out = in2 + vc4cl_bitcast_int(vc4cl_extend(in1.xyzw));
 }
+
+__kernel void test_vector_load(const __global char* in, __global char3* out)
+{
+	const uchar offset = 5;
+	char3 tmp0 = vload3(offset, in);
+	char3 tmp1 = ((const __global char3*)in)[offset];	//TODO this is wrong for char3, uses 4-byte stride
+	char3 tmp2 = *((const __global char3*)(in + offset * 3));
+	char3 tmp3 = (char3)(in[offset * 3], in[offset * 3 + 1], in[offset * 3 + 2]);	//pocl does this, but requires n loads for vloadn (see: https://github.com/pocl/pocl/blob/master/lib/kernel/vload.cl)
+	char3 tmp4 = *((const __global char3*) (&in[offset * 3]));	//libclc does this (see: https://llvm.org/viewvc/llvm-project/libclc/trunk/generic/lib/shared/vload.cl?view=markup)
+
+	//for char2 vector:
+	//LLVM recognizes tmp0, tmp1, tmp2 and tmp4 as identical, creates only one load
+	//tmp3 generates different code (as expected)
+	//all generate same result
+
+	//for char3 vector:
+	//tmp0, tmp2, tmp3 and tmp4 generate same result
+
+	out[0] = tmp0;
+	out[1] = tmp1;
+	out[2] = tmp2;
+	out[3] = tmp3;
+	out[4] = tmp4;
+}

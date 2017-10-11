@@ -62,6 +62,9 @@ New optimization steps:
   - merge all consecutive identical setting of flags, unless any of them has additional side effects (writing to register other than NOP, signal)
 - simplify copies:
   - for memory loads where the only use is a memory store, remove all instructions copying the data between VPM and QPU, simple load RAM -> VPM and store VPM -> RAM
+- combine vector rotations
+  - check for values used in vector rotations previously written by vector rotation and (if both rotations are literal), only rotate the difference
+  - can be introduced by Helper#insertVectorShuffle, since it always rotates an element first to position 0 then to the final position 
 
 VPM:
 - allow up to 5 instructions to be moved before VPM in/out wait? Since this always blocks at least 5 cycles!

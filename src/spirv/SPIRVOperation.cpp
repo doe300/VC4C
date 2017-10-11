@@ -562,6 +562,8 @@ void SPIRVShuffle::mapInstruction(std::map<uint32_t, DataType>& types, std::map<
     }
     logging::debug() << "Generating intermediate operations for mixing " << src0.to_string() << " and " << src1.to_string() << " into " << dest.to_string() << " with mask " << index.to_string(false, true) << logging::endl;
     
+    //zero out destination first, also required so register allocator find unconditional write to destination
+	method.method->appendToEnd(new intermediate::MoveOperation(dest, INT_ZERO));
     intermediate::insertVectorShuffle(method.method->appendToEnd(), *method.method, dest, src0, src1, index);
 }
 

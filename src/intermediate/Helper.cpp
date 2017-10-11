@@ -45,6 +45,10 @@ InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const
         {
             appliedOffset.immediate.value = (16 - offset.literal.integer) % 16;
         }
+        else
+        {
+        	appliedOffset.immediate.value = offset.literal.integer % 16;
+        }
         if(appliedOffset.immediate.value == 0)
         	//convert into simple move operation
         	appliedOffset= INT_ZERO;
@@ -61,6 +65,10 @@ InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const
 			{
 				appliedOffset.immediate.value = (16 - offset.immediate.value) % 16;
 			}
+    		else
+    		{
+    			appliedOffset.immediate.value = offset.immediate.value % 16;
+    		}
     		if(appliedOffset.immediate.value == 0)
 				appliedOffset= INT_ZERO;
 			else
@@ -199,7 +207,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         if(mask.container.elements.size() > source0.type.getVectorWidth() && checkIndicesNotUndefined(mask.container, source0.type.getVectorWidth()))
         {
             //TODO second vector!
-        	throw CompilationError(CompilationStep::GENERAL, "Coping corresponding indices with second container is not yet supported", mask.to_string());
+        	throw CompilationError(CompilationStep::GENERAL, "Copying corresponding indices with second container is not yet supported", mask.to_string());
         }
         return it.emplace( new MoveOperation(destination, source0));
     }
@@ -221,14 +229,12 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     }
     
     //mask is container of literals, indices have arbitrary order
-    //initially set destination to undefined, so register allocator find unconditional write to destination
-    it.emplace(new MoveOperation(destination, UNDEFINED_VALUE));
-    it.nextInBlock();
     for(std::size_t i = 0; i < mask.container.elements.size(); ++i)
     {
         Value index = mask.container.elements.at(i);
         if(index.isUndefined())
-        	index = INT_ZERO;
+        	//don't write anything at this position
+        	continue;
         if(!index.hasType(ValueType::LITERAL))
         	throw CompilationError(CompilationStep::GENERAL, "Invalid mask value", mask.to_string(false, true));
         const Value& container = index.literal.integer < static_cast<long>(source0.type.getVectorWidth()) ? source0 : source1;

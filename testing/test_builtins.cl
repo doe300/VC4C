@@ -167,8 +167,11 @@ __kernel void test_vector(__global const float* in, const int offset, __global f
 	vstore16(tmp, offset, out);
 	int i = 1;
 	out[i++] = vec_step(in[0]);
-	//TODO wrong out[i++] = shuffle(in[0], offset % 16);
-	//TODO wrong out[i++] = shuffle2(in[0], in[0], offset);
+	out[i++] = (shuffle(tmp, (uint2)(0))).y;
+	out[i++] = (shuffle2(tmp, in[0], (uint4)(4,2,1,8))).w;
+	float4 tmp1 = tmp.s9ab4;
+	tmp1.s31 = tmp.s57;
+	vstore4(tmp1, 20, out);
 }
 
 __attribute__((reqd_work_group_size(1,1,1)))
