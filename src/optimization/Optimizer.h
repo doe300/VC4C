@@ -76,6 +76,8 @@ namespace vc4c
 		extern const OptimizationPass SPILL_LOCALS;
 		//tries to combine VPW/VPR configurations and reads/writes within basic blocks
 		extern const OptimizationPass COMBINE_VPM_SETUP;
+		//combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation
+		extern const OptimizationPass COMBINE_ROTATIONS;
 		//eliminates useless instructions (dead store, move to same, add with zero, ...)
 		extern const OptimizationPass ELIMINATE;
 		//more like a de-optimization. Splits read-after-writes (except if the local is used only very locally), so the reordering and register-allocation have an easier job

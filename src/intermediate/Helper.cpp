@@ -187,10 +187,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     else if(mask.isZeroInitializer())
     {
         //initialize all values with the first index
-        if(mask.type.getVectorWidth() <= NATIVE_VECTOR_SIZE)
-            return intermediate::insertReplication(it, source0, destination);
-        else
-            throw CompilationError(CompilationStep::GENERAL, "Not supported!");
+		return intermediate::insertReplication(it, source0, destination);
     }
     else if(!mask.hasType(ValueType::CONTAINER))
     	//TODO could at least support this for one vector (e.g. second one is undefined or the same as the first) by selecting (at run-time) the vector element and rotating
@@ -228,6 +225,14 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         return insertReplication(it, tmp, destination);
     }
     
+    //zero out destination first, also required so register allocator finds unconditional write to destination
+    //TODO only, if not all vector-elements are set by code beneath?
+    if(destination.hasType(ValueType::LOCAL) && destination.local->getUsers(LocalUser::Type::WRITER).empty())
+    {
+		it.emplace(new intermediate::MoveOperation(destination, INT_ZERO));
+		it.nextInBlock();
+    }
+
     //mask is container of literals, indices have arbitrary order
     for(std::size_t i = 0; i < mask.container.elements.size(); ++i)
     {

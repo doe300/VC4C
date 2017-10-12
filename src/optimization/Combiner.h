@@ -41,6 +41,11 @@ namespace vc4c
 		 * for combination, by rewriting the zero-write to xor-ing the other value
 		 */
 		InstructionWalker combineSelectionWithZero(const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+
+		/*
+		 * Combines vector several consecutive rotations with the same data
+		 */
+		void combineVectorRotations(const Module& module, Method& method, const Configuration& config);
 	}
 }
 #endif /* COMBINER_H */

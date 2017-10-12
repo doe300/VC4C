@@ -191,6 +191,7 @@ namespace vc4c
 		//48 - multiplication output vector rotation is taken from accumulator r5, element 0, bits [3:0] (lower half)
 		//49 - 63 - multiplication output vector rotated by 1 - 15 upwards (so element 0 moves to element 1 - 15)
 		bool isVectorRotation() const;
+		Optional<unsigned char> getRotationOffset() const;
 
 		Optional<Literal> toLiteral() const;
 

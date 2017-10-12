@@ -613,3 +613,54 @@ InstructionWalker optimizations::combineSelectionWithZero(const Module& module, 
 	}
 	return it;
 }
+
+void optimizations::combineVectorRotations(const Module& module, Method& method, const Configuration& config)
+{
+	for(BasicBlock& block : method.getBasicBlocks())
+	{
+		InstructionWalker it = block.begin();
+		while(!it.isEndOfBlock())
+		{
+			if(it.has<VectorRotation>() && !it->hasSideEffects())
+			{
+				VectorRotation* rot = it.get<VectorRotation>();
+				if(rot->getSource().hasType(ValueType::LOCAL) && rot->getOffset().hasType(ValueType::SMALL_IMMEDIATE) && rot->getOffset().immediate != VECTOR_ROTATE_R5)
+				{
+					const LocalUser* writer = rot->getSource().local->getSingleWriter();
+					if(writer != nullptr)
+					{
+						const VectorRotation* firstRot = dynamic_cast<const VectorRotation*>(writer);
+						if(firstRot != nullptr && !firstRot->hasSideEffects() && firstRot->getOffset().hasType(ValueType::SMALL_IMMEDIATE) && firstRot->getOffset().immediate != VECTOR_ROTATE_R5)
+						{
+							auto firstIt = it.getBasicBlock()->findWalkerForInstruction(firstRot, it);
+							if(firstIt.hasValue)
+							{
+								/*
+								 * Can combine the offsets of two rotations,
+								 * - if the only source of a vector rotation is only written once,
+								 * - the source of the input is another vector rotation,
+								 * - both rotations only use immediate offsets and
+								 * - neither rotation has any side effects
+								 */
+								const uint8_t offset = (rot->getOffset().immediate.getRotationOffset().get() + firstRot->getOffset().immediate.getRotationOffset().get()) % 16;
+								if(offset == 0)
+								{
+									logging::debug() << "Replacing unnecessary vector rotations " << firstRot->to_string() << " and " << rot->to_string() << " with single move" << logging::endl;
+									it.reset(new MoveOperation(rot->getOutput(), firstRot->getSource()));
+									firstIt.get().erase();
+								}
+								else
+								{
+									logging::debug() << "Combining vector rotations " << firstRot->to_string() << " and " << rot->to_string() << " to a single rotation with offset " << static_cast<unsigned>(offset) << logging::endl;
+									it.reset(new VectorRotation(rot->getOutput(), firstRot->getSource(), Value(SmallImmediate::fromRotationOffset(offset), TYPE_INT8)));
+									firstIt.get().erase();
+								}
+							}
+						}
+					}
+				}
+			}
+			it.nextInBlock();
+		}
+	}
+}

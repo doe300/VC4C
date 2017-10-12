@@ -155,6 +155,15 @@ bool SmallImmediate::isVectorRotation() const
 	return value >= 48 && value <= 63;
 }
 
+Optional<unsigned char> SmallImmediate::getRotationOffset() const
+{
+	if(!isVectorRotation())
+		return {};
+	if(*this == VECTOR_ROTATE_R5)
+		return {};
+	return static_cast<unsigned char>(value - VECTOR_ROTATE_R5.value);
+}
+
 Optional<Literal> SmallImmediate::toLiteral() const
 {
 	if(getIntegerValue().hasValue)

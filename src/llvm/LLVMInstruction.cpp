@@ -546,8 +546,6 @@ bool ShuffleVector::mapInstruction(Method& method) const
     logging::debug() << "Generating operations mixing " << v1.to_string() << " and " << v2.to_string() << " into " << dest->name << logging::endl;
     DataType destType = v1.type;
     destType.num = mask.type.num;
-    //zero out destination first, also required so register allocator find unconditional write to destination
-    method.appendToEnd(new intermediate::MoveOperation(Value(dest, destType), INT_ZERO));
     intermediate::insertVectorShuffle(method.appendToEnd(), method, Value(dest, destType), v1, v2, mask);
     return true;
 }

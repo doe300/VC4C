@@ -165,6 +165,19 @@ bool BasicBlock::fallsThroughToNextBlock() const
 	return true;
 }
 
+Optional<InstructionWalker> BasicBlock::findWalkerForInstruction(const intermediate::IntermediateInstruction* instr, InstructionWalker start)
+{
+	while(!start.isStartOfBlock())
+	{
+		if(!start.isEndOfBlock() && start.get() == instr)
+		{
+			return start;
+		}
+		start.previousInBlock();
+	}
+	return {};
+}
+
 Method::Method(const Module& module) : isKernel(false), name(), returnType(TYPE_UNKNOWN), vpm(new periphery::VPM(module.compilationConfig.availableVPMSize)), module(module)
 {
 

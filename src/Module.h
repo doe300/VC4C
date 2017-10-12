@@ -80,6 +80,10 @@ namespace vc4c
 		 * Returns whether the control-flow falls through to the next basic block, e.g. there are no unconditional branches away
 		 */
 		bool fallsThroughToNextBlock() const;
+		/*
+		 * Returns the InstructionWalker for the given instruction, if any
+		 */
+		Optional<InstructionWalker> findWalkerForInstruction(const intermediate::IntermediateInstruction* instr, InstructionWalker start);
 	private:
 		Method& method;
 		RandomModificationList<std::unique_ptr<intermediate::IntermediateInstruction>> instructions;
