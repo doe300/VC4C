@@ -485,16 +485,42 @@ static void walkUsageRange(InstructionWalker start, const Local* local, FastMap<
 		{
 			//we found a write, stop this branch (and continue with others)
 			//only abort if we have found writes for all conditions (e.g. required for vector insertions, or selects)
-			if(it->conditional == COND_ALWAYS || it->conditional == start->conditional || it->conditional.isInversionOf(conditionalWrite))
-				conditionalWrite = COND_ALWAYS;
-			else if(conditionalWrite == COND_NEVER)
-				conditionalWrite = it->conditional;
-			if(conditionalWrite == COND_ALWAYS)
-				return InstructionVisitResult::STOP_BRANCH;
-			//TODO to be exact, we would need a check here, if the condition of the PHI-value setter is the same as the branch-condition jumping to the target label
-			if(has_flag(it->decoration, intermediate::InstructionDecorations::PHI_NODE))
-				//we found a (conditional) instruction setting this PHI-node value
-				return InstructionVisitResult::STOP_BRANCH;
+			const std::function<InstructionVisitResult(const intermediate::IntermediateInstruction*)> checkWritePerInstruction = [start, &conditionalWrite, local](const intermediate::IntermediateInstruction* inst) -> InstructionVisitResult
+			{
+				if(!inst->writesLocal(local) || has_flag(inst->decoration, intermediate::InstructionDecorations::ELEMENT_INSERTION))
+					return InstructionVisitResult::CONTINUE;
+				if(inst->conditional == COND_ALWAYS || inst->conditional == start->conditional || inst->conditional.isInversionOf(conditionalWrite))
+					conditionalWrite = COND_ALWAYS;
+				else if(conditionalWrite == COND_NEVER)
+					conditionalWrite = inst->conditional;
+				if(conditionalWrite == COND_ALWAYS)
+					return InstructionVisitResult::STOP_BRANCH;
+				//TODO to be exact, we would need a check here, if the condition of the PHI-value setter is the same as the branch-condition jumping to the target label
+				if(has_flag(inst->decoration, intermediate::InstructionDecorations::PHI_NODE))
+					//we found a (conditional) instruction setting this PHI-node value
+					return InstructionVisitResult::STOP_BRANCH;
+				return InstructionVisitResult::CONTINUE;
+			};
+			if(it.has<intermediate::CombinedOperation>())
+			{
+				intermediate::CombinedOperation* combined = it.get<intermediate::CombinedOperation>();
+				if(combined->op1.get() != nullptr)
+				{
+					InstructionVisitResult tmp = checkWritePerInstruction(combined->op1.get());
+					if(tmp == InstructionVisitResult::STOP_ALL || tmp == InstructionVisitResult::STOP_BRANCH)
+						return tmp;
+				}
+				if(combined->op2.get() != nullptr)
+				{
+					InstructionVisitResult tmp = checkWritePerInstruction(combined->op2.get());
+					if(tmp == InstructionVisitResult::STOP_ALL || tmp == InstructionVisitResult::STOP_BRANCH)
+						return tmp;
+				}
+			}
+			else
+			{
+				return checkWritePerInstruction(it.get());
+			}
 		}
 		if(it.isStartOfMethod() || (it.has<intermediate::BranchLabel>() && it.get<intermediate::BranchLabel>()->getLabel()->name.compare(BasicBlock::DEFAULT_BLOCK) == 0))
 		{

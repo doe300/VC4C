@@ -63,7 +63,9 @@ namespace vc4c
 			//The result is a value of a PHI-node being set
 			PHI_NODE = 0x4000,
 			//The conditional branch depends on ALL flags, not just the flag of the first SIMD-element
-			BRANCH_ON_ALL_ELEMENTS = 0x8000
+			BRANCH_ON_ALL_ELEMENTS = 0x8000,
+			//The instructions inserts a single element into a vector
+			ELEMENT_INSERTION = 0x10000
 		};
 
 		std::string toString(const InstructionDecorations decoration);
