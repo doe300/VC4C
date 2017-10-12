@@ -646,13 +646,15 @@ void optimizations::combineVectorRotations(const Module& module, Method& method,
 								if(offset == 0)
 								{
 									logging::debug() << "Replacing unnecessary vector rotations " << firstRot->to_string() << " and " << rot->to_string() << " with single move" << logging::endl;
-									it.reset(new MoveOperation(rot->getOutput(), firstRot->getSource()));
+									it.reset((new MoveOperation(rot->getOutput(), firstRot->getSource()))->copyExtrasFrom(rot));
+									it->copyExtrasFrom(firstRot);
 									firstIt.get().erase();
 								}
 								else
 								{
 									logging::debug() << "Combining vector rotations " << firstRot->to_string() << " and " << rot->to_string() << " to a single rotation with offset " << static_cast<unsigned>(offset) << logging::endl;
-									it.reset(new VectorRotation(rot->getOutput(), firstRot->getSource(), Value(SmallImmediate::fromRotationOffset(offset), TYPE_INT8)));
+									it.reset((new VectorRotation(rot->getOutput(), firstRot->getSource(), Value(SmallImmediate::fromRotationOffset(offset), TYPE_INT8)))->copyExtrasFrom(rot));
+									it->copyExtrasFrom(firstRot);
 									firstIt.get().erase();
 								}
 							}

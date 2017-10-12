@@ -45,6 +45,8 @@ std::string intermediate::toString(const InstructionDecorations decoration)
 		res.append("phi ");
 	if(has_flag(decoration, InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
 		res.append("all_elements ");
+	if(has_flag(decoration, InstructionDecorations::ELEMENT_INSERTION))
+		res.append("single_element ");
 	return res.substr(0, res.empty() ? 0 : res.size() - 1);
 }
 

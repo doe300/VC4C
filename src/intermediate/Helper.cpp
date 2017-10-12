@@ -159,6 +159,7 @@ InstructionWalker intermediate::insertVectorInsertion(InstructionWalker it, Meth
     it.nextInBlock();
     //3) move when condition is met
     it.emplace( new intermediate::MoveOperation(container, tmp, COND_ZERO_SET));
+    it->setDecorations(InstructionDecorations::ELEMENT_INSERTION);
     it.nextInBlock();
     return it;
 }
@@ -226,7 +227,6 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     }
     
     //zero out destination first, also required so register allocator finds unconditional write to destination
-    //TODO only, if not all vector-elements are set by code beneath?
     if(destination.hasType(ValueType::LOCAL) && destination.local->getUsers(LocalUser::Type::WRITER).empty())
     {
 		it.emplace(new intermediate::MoveOperation(destination, INT_ZERO));
