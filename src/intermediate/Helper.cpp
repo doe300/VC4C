@@ -134,18 +134,6 @@ InstructionWalker intermediate::insertVectorExtraction(InstructionWalker it, Met
 		it.nextInBlock();
 		return it;
 	}
-	//TODO is this necessary to extract the single element??
-	//because the old method was actually wrong
-	//the new method simply rotates the vector, so the desired element is at position 0
-//    const Value tmp = method.addNewLocal(container.type.getElementType(), "%vector_extract");
-//    //1) create condition only met by the given index
-//    it.emplace( new intermediate::Operation("xor", Value(REG_NOP), Value(REG_ELEMENT_NUMBER), index, COND_ALWAYS, SetFlag::SET_FLAGS));
-//    it.nextInBlock();
-//    //2) copy value at this position to destination
-//    it.emplace( new intermediate::MoveOperation(tmp, container, COND_ZERO_SET));
-//    it.nextInBlock();
-//    //3) rotate destination, so value is at element 0
-//    return intermediate::insertVectorRotation(it, tmp, index, dest, intermediate::Direction::DOWN);
 	return insertVectorRotation(it, container, index, dest, Direction::DOWN);
 }
 

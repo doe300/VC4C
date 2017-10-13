@@ -903,29 +903,6 @@ static void setDecorationToBranches(Local* condition)
 	});
 }
 
-static InstructionWalker intrinsifySpecial(Method& method, InstructionWalker it)
-{
-	MethodCall* callSite = it.get<MethodCall>();
-	if(callSite == nullptr)
-		return it;
-	if(callSite->getArguments().size() == 1)
-	{
-		if(callSite->methodName.find("vc4cl_any_non_zero") != std::string::npos)
-		{
-			logging::debug() << "Intrinsifying conditional branch on ALL SIMD-elements" << logging::endl;
-			setDecorationToBranches(it->getOutput().get().local);
-			return it.reset((new MoveOperation(it->getOutput(), it->getArgument(0)))->copyExtrasFrom(callSite));
-		}
-		if(callSite->methodName.find("vc4cl_all_non_zero") != std::string::npos)
-		{
-			logging::debug() << "Intrinsifying conditional branch on ALL SIMD-elements" << logging::endl;
-			setDecorationToBranches(it->getOutput().get().local);
-			return it.reset((new MoveOperation(it->getOutput(), it->getArgument(0)))->copyExtrasFrom(callSite));
-		}
-	}
-	return it;
-}
-
 InstructionWalker optimizations::intrinsify(const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
 	if(!it.has<Operation>() && !it.has<MethodCall>())
@@ -966,11 +943,6 @@ InstructionWalker optimizations::intrinsify(const Module& module, Method& method
 	{
 		//no changes so far
 		newIt = intrinsifyImageFunction(it, method);
-	}
-	if(newIt == it)
-	{
-		//no changes so far
-		newIt = intrinsifySpecial(method, it);
 	}
 	return newIt;
 }
