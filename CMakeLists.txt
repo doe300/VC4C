@@ -159,6 +159,8 @@ if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
 	add_definitions(-DSPIRV_HEADER="${PROJECT_SOURCE_DIR}/lib/spirv-headers/include/spirv/1.2/spirv.h")
 	add_definitions(-DSPIRV_OPENCL_HEADER="${PROJECT_SOURCE_DIR}/lib/spirv-headers/include/spirv/1.2/OpenCL.std.h")
 	add_definitions(-DSPIRV_PARSER_HEADER="${PROJECT_SOURCE_DIR}/lib/spirv-tools/include/spirv-tools/libspirv.h")
+	add_definitions(-DSPIRV_LINKER_HEADER="${PROJECT_SOURCE_DIR}/lib/spirv-tools/include/spirv-tools/linker.hpp")
+	include_directories ("${PROJECT_SOURCE_DIR}/lib/spirv-tools/include/")
 	# add_definitions(-DSPIRV_OPTIMIZER_HEADER="${PROJECT_SOURCE_DIR}/lib/spirv-tools/include/spirv-tools/optimizer.hpp")
 endif()
 

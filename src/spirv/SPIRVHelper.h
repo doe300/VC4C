@@ -15,6 +15,7 @@
 
 #include "log.h"
 #include "../Locals.h"
+#include <sstream>
 
 namespace vc4c
 {
@@ -27,6 +28,10 @@ namespace vc4c
 		void setParameterDecorations(Parameter& param, const std::vector<std::pair<SpvDecoration, uint32_t>>& decorations);
 		DataType getIntegerType(const uint32_t bitWidth, const uint32_t signedness);
 		AddressSpace toAddressSpace(const SpvStorageClass storageClass);
+		void consumeSPIRVMessage(spv_message_level_t level, const char* source, const spv_position_t& position, const char* message);
+
+		std::vector<uint32_t> readStreamOfWords(std::istream& in);
+		void linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output);
 	}
 }
 

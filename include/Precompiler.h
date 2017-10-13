@@ -44,6 +44,8 @@ namespace vc4c
 
 		static SourceType getSourceType(std::istream& stream);
 
+		static void linkSourceCode(const std::vector<std::istream*>& inputs, std::ostream& output);
+
 	private:
 		std::istream& input;
 		const SourceType inputType;

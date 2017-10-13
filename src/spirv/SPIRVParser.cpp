@@ -47,42 +47,12 @@ static std::string getErrorPosition(spv_diagnostic diagnostics)
     return std::to_string(diagnostics->position.line).append(":") + std::to_string(diagnostics->position.column);
 }
 
-static void consumeOptimizerMessage(spv_message_level_t level, const char* source, const spv_position_t& position, const char* message)
-{
-	std::string levelText;
-	switch(level)
-	{
-		case SPV_MSG_DEBUG:
-			levelText = "Debug";
-			break;
-		case SPV_MSG_ERROR:
-			levelText = "Error";
-			break;
-		case SPV_MSG_FATAL:
-			levelText = "Fatal";
-			break;
-		case SPV_MSG_INFO:
-			levelText = "Info";
-			break;
-		case SPV_MSG_INTERNAL_ERROR:
-			levelText = "Internal Error";
-			break;
-		case SPV_MSG_WARNING:
-			levelText = "Warning";
-			break;
-		case SPV_ERROR_MISSING_EXTENSION:
-			levelText = "Missing Extension";
-			break;
-	}
-	logging::info() << "SPIR-V Tools optimization: " << levelText << " message in '" << source << "' at position " << position.line << ":" << position.column << ": " << message <<logging::endl;
-}
-
 static std::vector<uint32_t> runSPRVToolsOptimizer(const std::vector<uint32_t>& input)
 {
 #ifdef SPIRV_OPTIMIZER_HEADER
 	logging::debug() << "Running SPIR-V Tools optimizations..." << logging::endl;
 	spvtools::Optimizer opt(SPV_ENV_OPENCL_2_1);
-	opt.SetMessageConsumer(consumeOptimizerMessage);
+	opt.SetMessageConsumer(consumeSPIRVMessage);
 	//converts OpSpecConstant(True/False) to OpConstant(True/False)
 	opt.RegisterPass(spvtools::CreateFreezeSpecConstantValuePass());
 	//converts OpSpecConstantOp and OpSpecConstantComposite to OpConstants
@@ -128,12 +98,7 @@ void SPIRVParser::parse(Module& module)
     }
 
     //read input and map into buffer
-    std::vector<uint32_t> words;
-    words.reserve(input.rdbuf()->in_avail());
-    char buffer[sizeof (uint32_t)];
-    while (input.read(buffer, sizeof (uint32_t)).good()) {
-        words.push_back(*(uint32_t*) buffer);
-    }
+    std::vector<uint32_t> words = readStreamOfWords(input);
 
     //if input is SPIR-V text, convert to binary representation
     spv_result_t result;

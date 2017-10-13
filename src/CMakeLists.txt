@@ -6,11 +6,10 @@ file( GLOB HDRS "${PROJECT_SOURCE_DIR}/include/*.h" "${PROJECT_SOURCE_DIR}/lib/c
 #Include the source files
 file( GLOB SRCS *.cpp */*.cpp )
 
-#Build QPUAsm
+## 
+# Build library
+##
 add_library( VC4CC SHARED ${SRCS} ${HDRS} )
-add_executable( VC4C main.cpp ${HDRS} )
-add_dependencies(VC4CC vc4cl-stdlib)
-
 add_dependencies(VC4CC cpplog-project-build)
 add_library(cpplog SHARED IMPORTED)
 ExternalProject_Get_Property(cpplog-project BINARY_DIR)
@@ -18,17 +17,27 @@ set_target_properties(cpplog PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/libcppl
 target_link_libraries(VC4CC cpplog)
 # For dlopen, dlsym
 target_link_libraries(VC4CC dl)
-
-target_link_libraries(VC4C VC4CC)
-
+add_dependencies(VC4CC vc4cl-stdlib)
 
 if(SPIRV_FRONTEND)
 	add_dependencies(VC4CC spirv-tools-project-build)
-	add_library(spirv-tools STATIC IMPORTED)
 	ExternalProject_Get_Property(spirv-tools-project BINARY_DIR)
-	set_target_properties(spirv-tools PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/source/libSPIRV-Tools.a")
-	target_link_libraries(VC4CC spirv-tools)
-	# target_link_libraries(VC4CC SPIRV-Tools-opt)
+	
+	#This discards some symbols (spvtools::SpirvTools) while including into libVC4CC, which are required by the SPIRV-Tools linker and optimizer
+	#add_library(spirv-tools STATIC IMPORTED)
+	#set_target_properties(spirv-tools PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/source/libSPIRV-Tools.a")
+	#target_link_libraries(VC4CC spirv-tools)
+	
+	set(spirv-tools "-Wl,--whole-archive ${BINARY_DIR}/source/libSPIRV-Tools.a -Wl,--no-whole-archive")
+	target_link_libraries(VC4CC "${spirv-tools}")
+	
+	add_library(spirv-tools-opt STATIC IMPORTED)
+	set_target_properties(spirv-tools-opt PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/source/opt/libSPIRV-Tools-opt.a")
+	target_link_libraries(VC4CC spirv-tools-opt)
+	
+	add_library(spirv-tools-link STATIC IMPORTED)
+	set_target_properties(spirv-tools-link PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/source/link/libSPIRV-Tools-link.a")
+	target_link_libraries(VC4CC spirv-tools-link)
 endif()
 
 if(VERIFY_OUTPUT)
@@ -38,6 +47,12 @@ if(VERIFY_OUTPUT)
 	set_target_properties(vc4asm PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/libvc4asm.a")
 	target_link_libraries(VC4CC vc4asm)
 endif()
+
+## 
+# Build executable
+##
+add_executable( VC4C main.cpp ${HDRS} )
+target_link_libraries(VC4C VC4CC)
 
 # "For shared libraries VERSION and SOVERSION can be used to specify the build version and API version respectively."
 set_target_properties(

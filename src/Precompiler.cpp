@@ -14,6 +14,9 @@
 #include "Precompiler.h"
 #include "log.h"
 #include "ProcessUtil.h"
+#ifdef SPIRV_HEADER
+#include "spirv/SPIRVHelper.h"
+#endif
 
 using namespace vc4c;
 
@@ -51,6 +54,35 @@ SourceType Precompiler::getSourceType(std::istream& stream)
     stream.seekg(0);
 
     return type;
+}
+
+void Precompiler::linkSourceCode(const std::vector<std::istream*>& inputs, std::ostream& output)
+{
+#ifndef SPIRV_HEADER
+	throw CompilationError(CompilationStep::LINKER, "SPIR-V front-end is not provided!");
+	//TODO also allow to link via llvm-link for "normal" LLVM (or generally link with (SPIR-V) LLVM?)
+#else
+	std::vector<std::istream*> convertedInputs;
+	std::vector<std::unique_ptr<std::istream>> conversionBuffer;
+	for(std::istream* in : inputs)
+	{
+		const SourceType type = getSourceType(*in);
+		if(type == SourceType::SPIRV_BIN)
+		{
+			convertedInputs.push_back(in);
+		}
+		else
+		{
+			Precompiler comp(*in, type);
+			conversionBuffer.emplace_back(new std::stringstream());
+			comp.run(conversionBuffer.back(), SourceType::SPIRV_BIN);
+			convertedInputs.push_back(conversionBuffer.back().get());
+		}
+	}
+
+	logging::debug() << "Linking " << inputs.size() << " input modules..." << logging::endl;
+	spirv2qasm::linkSPIRVModules(convertedInputs, output);
+#endif
 }
 
 static std::string buildCommand(const std::string& compiler, const std::string& defaultOptions, const std::string& options, const std::string& emitter, const std::string& outputFile, const std::string& inputFile = "-")

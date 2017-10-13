@@ -16,6 +16,8 @@ static std::string to_sting(const CompilationStep step)
         return "General";
     case CompilationStep::PRECOMPILATION:
         return "Pre-compilation";
+    case CompilationStep::LINKER:
+    	return "Linker";
     case CompilationStep::SCANNER:
         return "Scanner";
     case CompilationStep::PARSER:

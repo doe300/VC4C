@@ -9,6 +9,10 @@
 
 #include "../performance.h"
 
+#ifdef SPIRV_LINKER_HEADER
+#include SPIRV_LINKER_HEADER
+#endif
+
 using namespace vc4c;
 using namespace vc4c::spirv2qasm;
 
@@ -686,4 +690,76 @@ AddressSpace spirv2qasm::toAddressSpace(const SpvStorageClass storageClass)
 	}
 	//OpenCL's default address space
 	return AddressSpace::PRIVATE;
+}
+
+void spirv2qasm::consumeSPIRVMessage(spv_message_level_t level, const char* source, const spv_position_t& position, const char* message)
+{
+	std::string levelText;
+	switch(level)
+	{
+		case SPV_MSG_DEBUG:
+			levelText = "Debug";
+			break;
+		case SPV_MSG_ERROR:
+			levelText = "Error";
+			break;
+		case SPV_MSG_FATAL:
+			levelText = "Fatal";
+			break;
+		case SPV_MSG_INFO:
+			levelText = "Info";
+			break;
+		case SPV_MSG_INTERNAL_ERROR:
+			levelText = "Internal Error";
+			break;
+		case SPV_MSG_WARNING:
+			levelText = "Warning";
+			break;
+	}
+	logging::info() << "SPIR-V Tools: " << levelText << " message in '" << source << "' at position " << position.line << ":" << position.column << ": " << message <<logging::endl;
+}
+
+std::vector<uint32_t> spirv2qasm::readStreamOfWords(std::istream& in)
+{
+	std::vector<uint32_t> words;
+	words.reserve(in.rdbuf()->in_avail());
+	char buffer[sizeof (uint32_t)];
+	while (in.read(buffer, sizeof (uint32_t)).good()) {
+		words.push_back(*(uint32_t*) buffer);
+	}
+
+	return words;
+}
+
+void spirv2qasm::linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output)
+{
+#ifndef SPIRV_LINKER_HEADER
+	throw CompilationError(CompilationStep::LINKER, "SPIRV-Tools linker is not available!");
+#else
+	std::vector<std::vector<uint32_t>> binaries;
+	binaries.reserve(inputModules.size());
+	for(std::istream* is : inputModules)
+	{
+		binaries.push_back(readStreamOfWords(*is));
+	}
+
+	spvtools::LinkerOptions options;
+	options.SetCreateLibrary(false);
+
+	spvtools::Linker linker(SPV_ENV_OPENCL_2_1);
+	linker.SetMessageConsumer(consumeSPIRVMessage);
+
+	std::vector<uint32_t> linkedModules;
+	//TODO this seems only to work if all imported symbols are exported by one of the modules, even the intrinsic symbols!
+	spv_result_t result = linker.Link(binaries, linkedModules, options);
+
+	if(result != SPV_SUCCESS)
+		throw CompilationError(CompilationStep::PARSER, getErrorMessage(result));
+
+	for(const uint32_t u : linkedModules)
+	{
+		output.write(reinterpret_cast<const char*>(&u), sizeof(uint32_t));
+	}
+	logging::debug() << "Linked " << inputModules.size() << " modules into a single module with " << linkedModules.size() << " words of data." << logging::endl;
+#endif
 }

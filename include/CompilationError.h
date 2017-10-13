@@ -14,6 +14,7 @@ namespace vc4c
 	enum class CompilationStep
 	{
 	    GENERAL,
+		LINKER,
 	    SCANNER,
 	    PARSER,
 	    LLVM_2_IR,
