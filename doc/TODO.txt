@@ -124,14 +124,13 @@ Image support:
   modes (Broadcom spec page 44): 
     2D texture mode: s, t are float coords [0, 1], clamped according to wrap mode -> provides x, y coords in texture, r unused, bias (b?) added to parameter, if set
     cube map mode: relevant?
+    child image: need to set offset of currently used child image into the UNIFORM being loaded
   automatic TMU swapping -> all writes to TMU0
   slice shares 1/2 TMUs -> mutex required?
   TMU has request FIFO with 8 (according to Addendum only 4 stable) entries (per slice? per QPU?)
   texture memory layouts, see Broadcom specification, pages 105+
   since TMU read always blocks 9 to 20 instructions, could add optimization, which reorders instructions between loadtmu and read of r4
-  3D images supported? via cube map image?
-  when an image format has 4 channels (e.g. RGBA), does this mean, we need to read 4 times from r4? since the vector-elements all read (the same channel) from different addresses
-  -> if so, need to assemble the pixel into an xxx, xxx2, xxx3 or xxx4 vector
+  3D images supported? via cube map image? or child images?
 - tile buffer (Broadcom spec, pages 46+): 
   what use does it have?
 - relevant HW errata: HW-2619, HW-2645, HW-2753

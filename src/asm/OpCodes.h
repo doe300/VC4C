@@ -181,6 +181,12 @@ namespace vc4c
 	constexpr Unpack UNPACK_HALF_TO_FLOAT = UNPACK_16A_32;
 	constexpr Unpack UNPACK_CHAR_TO_INT = UNPACK_8A_32;
 
+	//8-bit color value (in range [0, 1.0]) to 32 bit float
+	constexpr Unpack UNPACK_R4_COLOR0 = UNPACK_8A_32;
+	constexpr Unpack UNPACK_R4_COLOR1 = UNPACK_8B_32;
+	constexpr Unpack UNPACK_R4_COLOR2 = UNPACK_8C_32;
+	constexpr Unpack UNPACK_R4_COLOR3 = UNPACK_8D_32;
+
 	struct Pack : public InstructionPart
 	{
 		constexpr Pack(unsigned char val) : InstructionPart(val) {};
@@ -229,7 +235,11 @@ namespace vc4c
 	constexpr Pack PACK_INT_TO_CHAR_TRUNCATE = PACK_32_8A;
 	constexpr Pack PACK_INT_TO_UNSIGNED_CHAR_SATURATE = PACK_32_8A_S;
 
-	//TODO additional R4/MUL pack modes?!
+	//Convert mul float result to 8-bit color in range [0, 1.0]
+	constexpr Pack PACK_MUL_COLOR0 = PACK_32_8A;
+	constexpr Pack PACK_MUL_COLOR1 = PACK_32_8B;
+	constexpr Pack PACK_MUL_COLOR2 = PACK_32_8C;
+	constexpr Pack PACK_MUL_COLOR3 = PACK_32_8D;
 
 	/*!
 	 * Flags are updated from the add ALU unless the add ALU performed a NOP

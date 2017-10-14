@@ -56,24 +56,25 @@ SourceType Precompiler::getSourceType(std::istream& stream)
     return type;
 }
 
-void Precompiler::linkSourceCode(const std::vector<std::istream*>& inputs, std::ostream& output)
+void Precompiler::linkSourceCode(const std::unordered_map<std::istream*, Optional<std::string>>& inputs, std::ostream& output)
 {
 #ifndef SPIRV_HEADER
 	throw CompilationError(CompilationStep::LINKER, "SPIR-V front-end is not provided!");
 	//TODO also allow to link via llvm-link for "normal" LLVM (or generally link with (SPIR-V) LLVM?)
+	//currently fails for "arm_get_core_id" being defined twice
 #else
 	std::vector<std::istream*> convertedInputs;
 	std::vector<std::unique_ptr<std::istream>> conversionBuffer;
-	for(std::istream* in : inputs)
+	for(auto& pair : inputs)
 	{
-		const SourceType type = getSourceType(*in);
+		const SourceType type = getSourceType(*pair.first);
 		if(type == SourceType::SPIRV_BIN)
 		{
-			convertedInputs.push_back(in);
+			convertedInputs.push_back(pair.first);
 		}
 		else
 		{
-			Precompiler comp(*in, type);
+			Precompiler comp(*pair.first, type, pair.second);
 			conversionBuffer.emplace_back(new std::stringstream());
 			comp.run(conversionBuffer.back(), SourceType::SPIRV_BIN);
 			convertedInputs.push_back(conversionBuffer.back().get());

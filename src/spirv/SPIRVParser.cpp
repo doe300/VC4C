@@ -609,7 +609,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     	//" Declare the Storage Class for a forward reference to a pointer."
     	// we are not interested in the storage-class -> skip
     	//TODO we actually are interested, currently at least to provide it as information for clGetKernelArgInfo
-        return UNSUPPORTED_INSTRUCTION("SpvOpTypeForwardPointer");;
+        return UNSUPPORTED_INSTRUCTION("SpvOpTypeForwardPointer");
     case SpvOpConstantTrue:
         constantMappings.emplace(parsed_instruction->result_id, BOOL_TRUE);
         return SPV_SUCCESS;
@@ -642,7 +642,6 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     	if(type.isScalarType() || type.isVectorType() || type.isPointerType())
     		constantMappings.emplace(parsed_instruction->result_id, Value(INT_ZERO.literal, type));
     	else if(type.getArrayType().hasValue)
-    		//TODO correct??
     		constantMappings.emplace(parsed_instruction->result_id, ZERO_INITIALIZER);
     	else
     		throw CompilationError(CompilationStep::LLVM_2_IR, "Unhandled type for null constant", type.to_string());
@@ -719,8 +718,8 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     {
         currentMethod = &getOrCreateMethod(*module, methods, parsed_instruction->result_id);
         currentMethod->method->returnType = typeMappings.at(parsed_instruction->type_id);
-        //TODO necessary??
         //add label %0 to the beginning of the method
+        //XXX maybe this is not necessary? If so, it is removed anyway
         typeMappings[0] = TYPE_LABEL;
         instructions.emplace_back(new SPIRVLabel(0, *currentMethod));
         logging::debug() << "Reading function: %" << parsed_instruction->result_id << " (" << (names.find(parsed_instruction->result_id) != names.end() ? names.at(parsed_instruction->result_id) : currentMethod->method->name) << ")" << logging::endl;
@@ -759,7 +758,6 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     }
     case SpvOpImageTexelPointer:
     	//"Form a pointer to a texel of an image. Use of such a pointer is limited to atomic operations."
-    	//TODO do we support atomic operations on images?
     	return UNSUPPORTED_INSTRUCTION("OpImageTexelPointer");
     case SpvOpLoad:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
@@ -1378,8 +1376,6 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     }
     case SpvOpLifetimeStop:
-    	//TODO we could use this to place non-overlapping temporary variables in the same memory-area
-    	//would need to keep track of maximum size as well as start and ends of all lifetimes
         return SPV_SUCCESS;
     case SpvOpGroupAsyncCopy:
         return UNSUPPORTED_INSTRUCTION("OpGroupAsyncCopy");

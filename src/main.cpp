@@ -105,11 +105,11 @@ int main(int argc, char** argv)
     if(inputFiles.size() > 1)
     {
     	std::vector<std::unique_ptr<std::istream>> fileStreams;
-    	std::vector<std::istream*> inputs;
+    	std::unordered_map<std::istream*, Optional<std::string>> inputs;
     	for(const std::string& file : inputFiles)
     	{
     		fileStreams.emplace_back(new std::ifstream(file));
-    		inputs.push_back(fileStreams.back().get());
+    		inputs.emplace(fileStreams.back().get(), Optional<std::string>(file));
     	}
     	input.reset(new std::stringstream());
     	Precompiler::linkSourceCode(inputs, *reinterpret_cast<std::ostream*>(input.get()));

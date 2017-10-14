@@ -418,7 +418,6 @@ IntermediateInstruction* MoveOperation::copyFor(Method& method, const std::strin
 qpu_asm::Instruction* MoveOperation::convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
     //simply call this method for intermediate-operation 
-    //TODO y = (f)add x 0 or y = (f)mul x 1 or y = x and/or x
     Operation op("or", getOutput(), getSource(), getSource(), conditional, setFlags);
     op.packMode = packMode;
     op.signal = signal;

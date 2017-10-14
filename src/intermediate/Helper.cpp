@@ -244,6 +244,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
 InstructionWalker intermediate::insertSFUCall(const Register sfuReg, InstructionWalker it, const Value& arg, const ConditionCode cond, const SetFlag setFlags)
 {
     //TODO need to synchronize SFU ?? (per slice!)
+	//Also need to include the reading of r4. And if this is enclosed in mutex, the NOPs are no longer replaced?
     //1. move argument to SFU register
     it.emplace( new MoveOperation(Value(sfuReg, TYPE_FLOAT), arg, cond, setFlags));
     it.nextInBlock();
@@ -448,11 +449,6 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 			subOffset = Value(Literal(static_cast<unsigned long>(subContainerType.getStructType().get()->getStructSize(index.literal.integer))), TYPE_INT32);
 			subContainerType = subContainerType.getElementType(index.literal.integer);
 		}
-//    	else if(subContainerType.isVectorType())
-//    	{
-//    		//index is element in vector-type, e.g. uint2 vec; uint x = *((uint*)vec);
-//    		//TODO can't handle via index offsets, need to do the index calculation and afterwards, extract the element (at the end of this method)
-//    	}
 		else
 			throw CompilationError(CompilationStep::LLVM_2_IR, "Invalid container-type to retrieve element via index", subContainerType.to_string());
 
