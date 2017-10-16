@@ -432,8 +432,8 @@ namespace vc4c
 			}
 		};
 
-		InstructionWalker insertReadDMA(InstructionWalker it, const Value& dest, const Value& addr, const bool useMutex = true) __attribute_deprecated__;
-		InstructionWalker insertWriteDMA(InstructionWalker it, const Value& src, const Value& addr, const bool useMutex = true) __attribute_deprecated__;
+		InstructionWalker insertReadDMA(Method& method, InstructionWalker it, const Value& dest, const Value& addr, const bool useMutex = true);
+		InstructionWalker insertWriteDMA(Method& method, InstructionWalker it, const Value& src, const Value& addr, const bool useMutex = true);
 
 		enum class VPMUsage
 		{

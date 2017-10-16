@@ -208,7 +208,7 @@ static InstructionWalker intrinsifyUnary(Method& method, InstructionWalker it)
             else if(pair.second.type == IntrinsicType::DMA_READ)
             {
                 logging::debug() << "Intrinsifying memory read " << callSite->to_string() << logging::endl;
-                it = periphery::insertReadDMA(it, callSite->getOutput(), callSite->getArgument(0), false);
+                it = periphery::insertReadDMA(method, it, callSite->getOutput(), callSite->getArgument(0), false);
                 it.erase();
                 //so next instruction is not skipped
                 it.previousInBlock();
@@ -273,7 +273,7 @@ static InstructionWalker intrinsifyUnary(Method& method, InstructionWalker it)
     return it;
 }
 
-static InstructionWalker intrinsifyBinary(InstructionWalker it)
+static InstructionWalker intrinsifyBinary(Method& method, InstructionWalker it)
 {
     MethodCall* callSite = it.get<MethodCall>();
     if(callSite == nullptr)
@@ -301,7 +301,7 @@ static InstructionWalker intrinsifyBinary(InstructionWalker it)
             else if(pair.second.type == IntrinsicType::DMA_WRITE)
             {
                 logging::debug() << "Intrinsifying memory write " << callSite->to_string() << logging::endl;
-                it = periphery::insertWriteDMA(it, callSite->getArgument(1), callSite->getArgument(0), false);
+                it = periphery::insertWriteDMA(method, it, callSite->getArgument(1), callSite->getArgument(0), false);
                 it.erase();
                 //so next instruction is not skipped
                 it.previousInBlock();
@@ -891,18 +891,6 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
 	return it;
 }
 
-static void setDecorationToBranches(Local* condition)
-{
-	condition->forUsers(LocalUser::Type::READER, [](const LocalUser* user) -> void
-	{
-		if(dynamic_cast<const Branch*>(user) != nullptr)
-		{
-			Branch* branch = dynamic_cast<Branch*>(const_cast<LocalUser*>(user));
-			branch->setDecorations(InstructionDecorations::BRANCH_ON_ALL_ELEMENTS);
-		}
-	});
-}
-
 InstructionWalker optimizations::intrinsify(const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
 	if(!it.has<Operation>() && !it.has<MethodCall>())
@@ -927,7 +915,7 @@ InstructionWalker optimizations::intrinsify(const Module& module, Method& method
 	if(newIt == it)
 	{
 		//no changes so far
-		newIt = intrinsifyBinary(it);
+		newIt = intrinsifyBinary(method, it);
 	}
 	if(newIt == it)
 	{

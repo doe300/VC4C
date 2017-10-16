@@ -72,11 +72,16 @@ InstructionWalker periphery::insertGeneralReadTMU(InstructionWalker it, const Va
 {
 	//TODO mutex lock required?
 
+	//this is wrong, e.g. REG_TMU_ADDRESS is not a memory-address, but the normalized coordinates (within the image)
+	//1) write address to TMU_S register
 	it.emplace(new intermediate::MoveOperation(TMU_GENERAL_READ_ADDRESS, addr));
 	it.nextInBlock();
+	//"General-memory lookups are performed by writing to just the s-parameter, using the absolute memory address" (page 41)
+	//2) trigger loading of TMU
 	it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_TMU));
 	it->setSignaling(Signaling::LOAD_TMU0);
 	it.nextInBlock();
+	//3) read value from R4
 	it.emplace(new intermediate::MoveOperation(dest, TMU_READ_REGISTER));
 	it.nextInBlock();
 	return it;

@@ -32,7 +32,7 @@ static InstructionWalker insertQueryPitches(InstructionWalker it, Method& method
 		it.emplace(new Operation("add", addr, image, IMAGE_DIMENSIONS_OFFSET));
 		it.nextInBlock();
 		//2. retrieve value
-		it = periphery::insertReadDMA(it, tmp, addr, true);
+		it = periphery::insertReadDMA(method, it, tmp, addr, true);
 	}
 	return insertZeroExtension(it, method, resultPitches, pitches);
 }
@@ -99,7 +99,7 @@ InstructionWalker intermediate::insertQueryChannelDataType(InstructionWalker it,
 		it.emplace( new Operation("add", addr, image, IMAGE_CHANNEL_TYPE_OFFSET));
 		it.nextInBlock();
 		//2. retrieve value
-		it = periphery::insertReadDMA(it, result, addr, true);
+		it = periphery::insertReadDMA(method, it, result, addr, true);
 	}
 	return insertZeroExtension( it, method, result, dest);
 }
@@ -121,7 +121,7 @@ InstructionWalker intermediate::insertQueryChannelOrder(InstructionWalker it, Me
 		it.emplace( new Operation("add", addr, image, IMAGE_CHANNEL_ORDER_OFFSET));
 		it.nextInBlock();
 		//2. retrieve value
-		it = periphery::insertReadDMA( it, result, addr, true);
+		it = periphery::insertReadDMA(method,  it, result, addr, true);
 	}
 	return insertZeroExtension(it, method, result, dest);
 }
@@ -148,7 +148,7 @@ InstructionWalker intermediate::insertQueryMeasurements(InstructionWalker it, Me
 		it.emplace(new Operation("add", addr, image, IMAGE_DIMENSIONS_OFFSET));
 		it.nextInBlock();
 		//2. retrieve value
-		it = periphery::insertReadDMA(it, result, addr, true);
+		it = periphery::insertReadDMA(method, it, result, addr, true);
 	}
 	return insertZeroExtension(it, method, result, dest);
 }

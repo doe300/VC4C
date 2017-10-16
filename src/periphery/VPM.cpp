@@ -44,6 +44,7 @@ static long getVPMDMAMode(const DataType& paramType)
 	}
 }
 
+/*
 static InstructionWalker insertConfigureVPRDMA(InstructionWalker it, const DataType& destType, const uint8_t numVectors = 1)
 {
 	//for some additional information, see
@@ -51,16 +52,18 @@ static InstructionWalker insertConfigureVPRDMA(InstructionWalker it, const DataT
 
 	//initialize VPM DMA for reading from host
 	const long dmaMode = getVPMDMAMode(destType);
-	const VPRSetup dmaSetup(VPRDMASetup(dmaMode, destType.getVectorWidth(true) % 16 /* 0 => 16 */, numVectors % 16 /* 0 => 16 */));
+	const VPRSetup dmaSetup(VPRDMASetup(dmaMode, destType.getVectorWidth(true) % 16 / * 0 => 16 * /, numVectors % 16 / * 0 => 16 * /));
 	it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<long>(dmaSetup))));
 	it.nextInBlock();
 	const VPRSetup strideSetup(VPRStrideSetup(destType.getPhysicalWidth()));
 	it.emplace( new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<long>(strideSetup))));
 	return it.nextInBlock();
 }
+*/
 
-InstructionWalker periphery::insertReadDMA(InstructionWalker it, const Value& dest, const Value& addr, const bool useMutex)
+InstructionWalker periphery::insertReadDMA(Method& method, InstructionWalker it, const Value& dest, const Value& addr, const bool useMutex)
 {
+/*
 	if(addr.hasType(ValueType::LOCAL))
 	{
 		//set the type of the parameter, if we can determine it
@@ -76,7 +79,7 @@ InstructionWalker periphery::insertReadDMA(InstructionWalker it, const Value& de
         it.emplace( new MoveOperation(NOP_REGISTER, MUTEX_REGISTER));
         it.nextInBlock();
     }
-    /*
+    / *
      * Reading memory has two step: (see https://www.raspberrypi.org/forums/viewtopic.php?p=1143940&sid=dc1d1cceda5f0b407b2bfca9ae3422ec#p1143940)
      * 1. reading from memory into VPM via DMA
      * 2. reading from VPM into QPU
@@ -87,7 +90,7 @@ InstructionWalker periphery::insertReadDMA(InstructionWalker it, const Value& de
      * 3. wait for DMA to finish
      * 4. configure VPR
      * 5. read value
-     */
+     * /
     //1) configure VPR DMA to read from memory into VPM
     it = insertConfigureVPRDMA(it, dest.type);
 	//2) write input-argument base address + offset/index into VPM_ADDR
@@ -107,16 +110,6 @@ InstructionWalker periphery::insertReadDMA(InstructionWalker it, const Value& de
 	it.emplace( new MoveOperation(dest, VPM_IO_REGISTER));
 	it.nextInBlock();
 
-    /* TMU
-    	//this is wrong, e.g. REG_TMU_ADDRESS is not a memory-address, but the normalized coordinates (within the image)
-        //1) write address to TMU_S register
-        //"General-memory lookups are performed by writing to just the �s� parameter, using the absolute memory address" (page 41)
-        instructions.emplace_back(new intermediate::MoveOperation(REG_TMU_ADDRESS, index));
-        //2) trigger loading of TMU
-        instructions.emplace_back(new intermediate::Nop(intermediate::DelayType::WAIT_TMU, Signaling::LOAD_TMU0));
-        //3) read value from R4
-        instructions.emplace_back(new intermediate::MoveOperation(Value(dest, TYPE_UNKNOWN), Value(REG_TMU_OUT)));
-     */
     if(useMutex)
     {
         //free mutex
@@ -124,6 +117,24 @@ InstructionWalker periphery::insertReadDMA(InstructionWalker it, const Value& de
         it.nextInBlock();
     }
     return it;
+*/
+	if(useMutex)
+	{
+		//acquire mutex
+		it.emplace( new MoveOperation(NOP_REGISTER, MUTEX_REGISTER));
+		it.nextInBlock();
+	}
+
+	it = method.vpm->insertReadRAM(it, addr, dest.type, false);
+	it = method.vpm->insertReadVPM(it, dest, false);
+
+	if(useMutex)
+	{
+		//free mutex
+		it.emplace( new MoveOperation(MUTEX_REGISTER, BOOL_TRUE));
+		it.nextInBlock();
+	}
+	return it;
 }
 
 //static InstructionWalker insertConfigureDynamicVPRDMA(InstructionWalker it, Method& method, const Value& numComponents, const Value& componentWidth, const Value& numVectors = INT_ONE)
@@ -207,11 +218,12 @@ InstructionWalker periphery::insertReadDMA(InstructionWalker it, const Value& de
 //	return it;
 //}
 
+/*
 static InstructionWalker insertConfigureVPW(InstructionWalker it, const DataType& sourceType, const uint8_t numVectors = 1)
 {
 	//initialize VPM DMA for writing to host
 	const long dmaMode = getVPMDMAMode(sourceType);
-	const VPWSetup dmaSetup(VPWDMASetup(dmaMode, sourceType.getVectorWidth(true), numVectors % 128 /* 0 => 128 */));
+	const VPWSetup dmaSetup(VPWDMASetup(dmaMode, sourceType.getVectorWidth(true), numVectors % 128 / * 0 => 128 * /));
 	it.emplace( new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<long>(dmaSetup))));
 	it.nextInBlock();
 	//set stride to zero
@@ -220,14 +232,16 @@ static InstructionWalker insertConfigureVPW(InstructionWalker it, const DataType
 	it.nextInBlock();
 	//general VPM configuration
 	const long vpmSize = getVPMSize(sourceType);
-	const VPWSetup genericSetup(VPWGenericSetup(vpmSize, TYPE_INT32.getScalarBitCount()/sourceType.getScalarBitCount() /* 0 => 64 */));
+	const VPWSetup genericSetup(VPWGenericSetup(vpmSize, TYPE_INT32.getScalarBitCount()/sourceType.getScalarBitCount() / * 0 => 64 * /));
 	it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<long>(genericSetup))));
 	it.nextInBlock();
 	return it;
 }
+*/
 
-InstructionWalker periphery::insertWriteDMA(InstructionWalker it, const Value& src, const Value& addr, const bool useMutex)
+InstructionWalker periphery::insertWriteDMA(Method& method, InstructionWalker it, const Value& src, const Value& addr, const bool useMutex)
 {
+/*
 	if(addr.hasType(ValueType::LOCAL))
 	{
 		//set the type of the parameter, if we can determine it
@@ -262,6 +276,24 @@ InstructionWalker periphery::insertWriteDMA(InstructionWalker it, const Value& s
         it.nextInBlock();
     }
     return it;
+*/
+	if(useMutex)
+	{
+		//acquire mutex
+		it.emplace( new MoveOperation(NOP_REGISTER, MUTEX_REGISTER));
+		it.nextInBlock();
+	}
+
+	it = method.vpm->insertWriteVPM(it, src, false);
+	it = method.vpm->insertWriteRAM(it, addr, src.type, false);
+
+	if(useMutex)
+	{
+		//free mutex
+		it.emplace( new MoveOperation(MUTEX_REGISTER, BOOL_TRUE));
+		it.nextInBlock();
+	}
+	return it;
 }
 
 //static InstructionWalker insertConfigureDynamicVPW(InstructionWalker it, Method& method, const Value& numComponents, const Value& componentWidth, const Value& numVectors = INT_ONE)
@@ -451,6 +483,7 @@ static uint8_t calculateAddress(const DataType& type, unsigned byteOffset)
 
 InstructionWalker VPM::insertReadVPM(InstructionWalker it, const Value& dest, bool useMutex)
 {
+	updateScratchSize(dest.type.getPhysicalWidth());
 	it = insertLockMutex(it, useMutex);
 	//1) configure reading from VPM into QPU
 	const auto size = getVPMSize(dest.type);
@@ -466,6 +499,7 @@ InstructionWalker VPM::insertReadVPM(InstructionWalker it, const Value& dest, bo
 
 InstructionWalker VPM::insertWriteVPM(InstructionWalker it, const Value& src, bool useMutex)
 {
+	updateScratchSize(src.type.getPhysicalWidth());
 	it = insertLockMutex(it, useMutex);
 	//1. configure writing from QPU into VPM
 	const long vpmSize = getVPMSize(src.type);

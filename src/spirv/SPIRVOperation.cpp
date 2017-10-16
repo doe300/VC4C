@@ -431,12 +431,12 @@ void SPIRVCopy::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uin
         if(memoryAccess == MemoryAccess::READ)
         {
             logging::debug() << "Generating reading of " << source.to_string() << " into " << dest.to_string() << logging::endl;
-            periphery::insertReadDMA(method.method->appendToEnd(), dest, source);
+            periphery::insertReadDMA(*method.method.get(), method.method->appendToEnd(), dest, source);
         }
         else if(memoryAccess == MemoryAccess::WRITE)
         {
             logging::debug() << "Generating writing of " << source.to_string() << " into " << dest.to_string() << logging::endl;
-            periphery::insertWriteDMA(method.method->appendToEnd(), source, dest);
+            periphery::insertWriteDMA(*method.method.get(), method.method->appendToEnd(), source, dest);
         }
         else if(memoryAccess == MemoryAccess::READ_WRITE)
         {
@@ -445,8 +445,9 @@ void SPIRVCopy::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uin
         		//copy single object
 				logging::debug() << "Generating copying of " << source.to_string() << " into " << dest.to_string() << logging::endl;
 				const Value tmp = method.method->addNewLocal(source.type, "%copy_tmp");
-				periphery::insertReadDMA(method.method->appendToEnd(), tmp, source);
-				periphery::insertWriteDMA(method.method->appendToEnd(), tmp, dest);
+				//TODO use VPM#insertCopyRAM
+				periphery::insertReadDMA(*method.method.get(), method.method->appendToEnd(), tmp, source);
+				periphery::insertWriteDMA(*method.method.get(), method.method->appendToEnd(), tmp, dest);
         	}
         	else
         	{

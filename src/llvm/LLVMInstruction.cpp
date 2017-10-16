@@ -209,12 +209,12 @@ bool Copy::mapInstruction(Method& method) const
         if(isRead)
         {
             logging::debug() << "Generating reading of " << orig.to_string() << " from index " << index.to_string() << " into " << dest->to_string() << logging::endl;
-            periphery::insertReadDMA(method.appendToEnd(), Value(dest, orig.type), index);
+            periphery::insertReadDMA(method, method.appendToEnd(), Value(dest, orig.type), index);
         }
         else
         {
             logging::debug() << "Generating writing of " << orig.to_string() << " into " << index.to_string() << logging::endl;
-            periphery::insertWriteDMA(method.appendToEnd(), orig, index);
+            periphery::insertWriteDMA(method, method.appendToEnd(), orig, index);
         }
     }
     else
