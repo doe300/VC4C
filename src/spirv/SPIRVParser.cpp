@@ -103,14 +103,12 @@ void SPIRVParser::parse(Module& module)
     //if input is SPIR-V text, convert to binary representation
     spv_result_t result;
     if (isTextInput) {
-        spv_binary binary_data = NULL;
-        logging::debug() << "Read SPIR-V text with " << words.size() * sizeof (uint32_t) << " characters" << logging::endl;
-        result = spvTextToBinary(context, (const char*) words.data(), words.size() * sizeof (uint32_t), &binary_data, &diagnostics);
-        if (result != SPV_SUCCESS) {
-            logging::error() << getErrorMessage(result) << ": " << (diagnostics != NULL ? diagnostics->error : errorExtra) << " at " << getErrorPosition(diagnostics) << logging::endl;
-            spvContextDestroy(context);
-            throw CompilationError(CompilationStep::PARSER, getErrorMessage(result), (diagnostics != NULL ? diagnostics->error : errorExtra));
-        }
+    	spvtools::SpirvTools tools(SPV_ENV_OPENCL_2_1);
+    	tools.SetMessageConsumer(consumeSPIRVMessage);
+    	std::vector<uint32_t> binaryData;
+    	logging::debug() << "Read SPIR-V text with " << words.size() * sizeof (uint32_t) << " characters" << logging::endl;
+    	if(tools.Assemble(reinterpret_cast<char*>(words.data()), words.size() * sizeof(uint32_t), &binaryData))
+    		words.swap(binaryData);
     }
     else {
         logging::debug() << "Read SPIR-V binary with " << words.size() << " words" << logging::endl;
