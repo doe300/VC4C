@@ -31,9 +31,13 @@ if(SPIRV_FRONTEND)
 	set(spirv-tools "-Wl,--whole-archive ${BINARY_DIR}/source/libSPIRV-Tools.a -Wl,--no-whole-archive")
 	target_link_libraries(VC4CC "${spirv-tools}")
 	
-	add_library(spirv-tools-opt STATIC IMPORTED)
-	set_target_properties(spirv-tools-opt PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/source/opt/libSPIRV-Tools-opt.a")
-	target_link_libraries(VC4CC spirv-tools-opt)
+	#This discards some symbols (spvtools::opt::*) while including into libVC4CC, which are somehow required by libVC4CL
+	#add_library(spirv-tools-opt STATIC IMPORTED)
+	#set_target_properties(spirv-tools-opt PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/source/opt/libSPIRV-Tools-opt.a")
+	#target_link_libraries(VC4CC spirv-tools-opt)
+	
+	set(spirv-tools-opt "-Wl,--whole-archive ${BINARY_DIR}/source/opt/libSPIRV-Tools-opt.a -Wl,--no-whole-archive")
+	target_link_libraries(VC4CC "${spirv-tools-opt}")
 	
 	add_library(spirv-tools-link STATIC IMPORTED)
 	set_target_properties(spirv-tools-link PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/source/link/libSPIRV-Tools-link.a")
