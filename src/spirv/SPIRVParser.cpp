@@ -354,7 +354,7 @@ static Value parseConstantComposite(const spv_parsed_instruction_t* instruction,
 	return Value(ContainerValue{constants}, containerType);
 }
 
-static Optional<Value> specializeConstant(const uint32_t resultID, const DataType& type, const std::map<uint32_t, std::vector<std::pair<SpvDecoration, uint32_t>>>& decorations)
+static Optional<Value> specializeConstant(const uint32_t resultID, const DataType& type, const FastMap<uint32_t, std::vector<std::pair<SpvDecoration, uint32_t>>>& decorations)
 {
 	if(decorations.find(resultID) != decorations.end())
 	{
@@ -993,7 +993,6 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
 		instructions.emplace_back(new SPIRVCopy(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, getWord(parsed_instruction, 3)));
 		return SPV_SUCCESS;
     case SpvOpBitcast:
-        //TODO can bit-cast over types of different sizes (e.g. 4 * short <-> 2 * int)
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::BITCAST, intermediate::InstructionDecorations::NONE));
         return SPV_SUCCESS;

@@ -349,19 +349,47 @@ void SPIRVConversion::mapInstruction(std::map<uint32_t, DataType>& types, std::m
     const uint8_t destWidth = dest.type.getScalarBitCount();
     
     logging::debug() << "Generating intermediate conversion from " << source.to_string(false) << " to " << dest.to_string(true) << logging::endl;
-    if(isSaturated)
-    	intermediate::insertSaturation(method.method->appendToEnd(), *method.method.get(), source, dest, type == ConversionType::SIGNED);
-    else if(type == ConversionType::BITCAST || sourceWidth == destWidth)
-    	method.method->appendToEnd((new intermediate::MoveOperation(dest, source))->setDecorations(decorations));
-    else if(sourceWidth > destWidth)
-    	//TODO SConvert ?? Signed truncation! Anything special to do?
-    	method.method->appendToEnd((new intermediate::Operation(type == ConversionType::FLOATING ? "fptrunc" : "trunc", dest, source))->setDecorations(decorations));
-    else    // |source| < |dest|
+    switch(type)
     {
-        if(type == ConversionType::SIGNED)
-        	method.method->appendToEnd((new intermediate::Operation("sext", dest, source))->setDecorations(decorations));
-        else if(type == ConversionType::UNSIGNED)
-        	method.method->appendToEnd((new intermediate::Operation("zext", dest, source))->setDecorations(add_flag(decorations, intermediate::InstructionDecorations::UNSIGNED_RESULT)));
+    	case ConversionType::BITCAST:
+    		if(source.type.num != dest.type.num)
+    		{
+    			//e.g. int2 -> ushort4, char16 -> uint4
+    			//TODO could make use of vector-shuffle instructions
+    			throw CompilationError(CompilationStep::LLVM_2_IR, "Bit-casts across different vector-sizes are not yet supported!");
+    		}
+    		//bit-casts with types of same vector-size (and therefore same element-size) are simple moves
+    		method.method->appendToEnd((new intermediate::MoveOperation(dest, source))->setDecorations(decorations));
+    		break;
+    	case ConversionType::FLOATING:
+    		if(sourceWidth > destWidth)
+    			method.method->appendToEnd((new intermediate::Operation("fptrunc", dest, source))->setDecorations(decorations));
+    		else
+    			//TODO half -> float -> unpack
+    			throw CompilationError(CompilationStep::LLVM_2_IR, "Unhandled floating-point conversion!");
+    		break;
+    	case ConversionType::SIGNED:
+    		if(isSaturated)
+    			intermediate::insertSaturation(method.method->appendToEnd(), *method.method.get(), source, dest, true);
+    		else if(sourceWidth > destWidth)
+    			//TODO SConvert ?? Signed truncation! Anything special to do?
+    			//or don't truncate at all?? since calculations are always 32-bit and we would loose the MSB set for negative numbers
+    			method.method->appendToEnd((new intermediate::Operation("trunc", dest, source))->setDecorations(decorations));
+    		else if(sourceWidth == destWidth)
+    			method.method->appendToEnd((new intermediate::MoveOperation(dest, source))->setDecorations(decorations));
+    		else // |source| < |dest|
+    			method.method->appendToEnd((new intermediate::Operation("sext", dest, source))->setDecorations(decorations));
+    		break;
+    	case ConversionType::UNSIGNED:
+    		if(isSaturated)
+    			intermediate::insertSaturation(method.method->appendToEnd(), *method.method.get(), source, dest, false);
+    		else if(sourceWidth > destWidth)
+    			method.method->appendToEnd((new intermediate::Operation("trunc", dest, source))->setDecorations(decorations));
+    		else if(sourceWidth == destWidth)
+				method.method->appendToEnd((new intermediate::MoveOperation(dest, source))->setDecorations(decorations));
+    		else // |source| < |dest|
+    			method.method->appendToEnd((new intermediate::Operation("zext", dest, source))->setDecorations(add_flag(decorations, intermediate::InstructionDecorations::UNSIGNED_RESULT)));
+    		break;
     }
 }
 
@@ -456,7 +484,7 @@ void SPIRVCopy::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uin
         		logging::debug() << "Generating copying of " << size.to_string() << " bytes from " << source.to_string() << " into " << dest.to_string() << logging::endl;
         		if(size.hasType(ValueType::LITERAL))
         		{
-        			method.method->vpm->insertCopyRAM(*method.method, method.method->appendToEnd(), dest, source, size.literal.integer, true);
+        			method.method->vpm->insertCopyRAM(*method.method, method.method->appendToEnd(), dest, source, size.literal.integer);
         		}
         		else
         			//TODO in any case, loop over copies, up to the size specified

@@ -63,17 +63,17 @@ namespace vc4c
 			//the global mapping of ID -> type
 			std::map<uint32_t, DataType> typeMappings;
 			//the global mapping of ID -> sampled images
-			std::map<uint32_t, SampledImage> sampledImages;
+			FastMap<uint32_t, SampledImage> sampledImages;
 			//the global mapping of ID -> decorations (applied to this ID)
-			std::map<uint32_t, std::vector<Decoration>> decorationMappings;
+			FastMap<uint32_t, std::vector<Decoration>> decorationMappings;
 			//mapping of locals to their types
 			std::map<uint32_t, uint32_t> localTypes;
 			//the global list of instructions, each instruction stores its own reference to the method it is in
 			std::vector<std::unique_ptr<SPIRVOperation>> instructions;
 			//the global mapping of kernel ID -> meta-data
-			std::map<uint32_t, std::map<MetaDataType, std::vector<std::string>>>metadataMappings;
+			FastMap<uint32_t, std::map<MetaDataType, std::vector<std::string>>>metadataMappings;
 			//the global mapping of ID -> name for this ID (e.g. type-, function-name)
-			std::map<uint32_t, std::string> names;
+			FastMap<uint32_t, std::string> names;
 
 			Module* module;
 
