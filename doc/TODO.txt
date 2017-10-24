@@ -86,6 +86,11 @@ VPM:
 - if memory access optimization can handle RAM <-> VPM and VPM <-> QPU separately, implement prefetch() by loading into VPM
   need to heed VPM areas as well as synchronization
   only useful if optimizer detects, that this specific area is currently cached in VPM
+- don't use fixed areas for fixed purposes, but track ranges (life-times) where how much of the VPM is used for what
+  similar to register-mapping (but much simpler), map ranges to VPM areas at the end of compilation, by setting the VPM offset
+  what to do if the VPM is full? Need to check enough free space for range before allocating it!
+  need to distinguish per-QPU usage (e.g. spilled locals) and common usage (I/O cache) and need to e.g. reserve 12-times the space for per-QPU usage and map QPU-index to correct offset
+  pros: better utilization of VPM
   
 Make basic blocks explicit
 - split instructions/locals of method into list of basic blocks

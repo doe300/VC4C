@@ -307,7 +307,7 @@ static std::vector<std::tuple<uint8_t, uint8_t, std::string, std::string>> allKe
 		{PASSED, FAST, "./testing/mixbench/mix_kernels.cl", "-Dblockdim=8 -Dclass_T=float -DELEMENTS_PER_THREAD=32 -DCOMPUTE_ITERATIONS=32 -DFUSION_DEGREE=8 -Dmemory_ratio=8"},
 
 		{PASSED, FAST, "./testing/OpenCV/convert.cl", "-DNO_SCALE -DsrcT=uint8 -DdstT=float8 -DconvertToDT=convert_float8"},
-		{PASSED, FAST, "./testing/OpenCV/copymakeborder.cl", "-Dcn=4 -DBORDER_REPLICATE -DST=uint -DrowsPerWI=16 -DTSIZE=16 -DT=int4"},
+		{PASSED, FAST, "./testing/OpenCV/copymakeborder.cl", "-Dcn=4 -DBORDER_REPLICATE -DST=uint -DrowsPerWI=16 -DT=int4"},
 		{PASSED, FAST, "./testing/OpenCV/copyset.cl", "-Dcn=8 -DdstT=float8 -DrowsPerWI=32 -DdstT1=float4"},
 		{PENDING, FAST, "./testing/OpenCV/cvtclr_dx.cl", ""},
 		{PENDING, FAST, "./testing/OpenCV/fft.cl", "-DFT=float -DCT=float2 -DLOCAL_SIZE=32 -Dkercn=4 -DRADIX_PROCESS"},

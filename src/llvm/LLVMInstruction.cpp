@@ -138,7 +138,7 @@ bool CallSite::mapInstruction(Method& method) const
     	//FIXME for now skip unsupported case, since errors here seem to crash the test-runner, but errors later on dont??
     	//@llvm.memcpy.p0i8.p0i8.i32(i8* <dest>, i8* <src>, i32 <len>, i32 <align>, i1 <isvolatile>)
     	logging::debug() << "Intrinsifying llvm.memcpy function-call" << logging::endl;
-    	method.vpm->insertCopyRAM(method, method.appendToEnd(), arguments.at(0), arguments.at(1), arguments.at(2).literal.integer, true);
+    	method.vpm->insertCopyRAM(method, method.appendToEnd(), arguments.at(0), arguments.at(1), arguments.at(2).literal.integer);
     	return true;
     }
     if(methodName.find("llvm.memset") == 0 && arguments.at(2).hasType(ValueType::LITERAL))
@@ -150,13 +150,13 @@ bool CallSite::mapInstruction(Method& method) const
 		const Value& numBytes = arguments.at(2);
 		const Value& volatileAccess = arguments.at(4);
 		method.appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, MUTEX_REGISTER));
-		method.vpm->insertWriteVPM(method.appendToEnd(), fillByte, false);
+		method.vpm->insertWriteVPM(method.appendToEnd(), fillByte, nullptr, false);
 		//TODO could be optimized, write multiple bytes at once
 		for(long i = 0; i < numBytes.literal.integer; ++i)
 		{
 			const Value tmp = method.addNewLocal(memAddr.type, "%memset_offset");
 			method.appendToEnd(new intermediate::Operation("add", tmp, memAddr, Value(Literal(i), TYPE_INT32)));
-			method.vpm->insertWriteRAM(method.appendToEnd(), tmp, TYPE_INT8, false);
+			method.vpm->insertWriteRAM(method.appendToEnd(), tmp, TYPE_INT8, nullptr, false);
 		}
 		method.appendToEnd( new intermediate::MoveOperation(MUTEX_REGISTER, BOOL_TRUE));
 	}

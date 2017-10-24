@@ -352,8 +352,8 @@ static InstructionWalker intrinsifyTernary(Method& method, InstructionWalker it)
 			   logging::debug() << "Intrinsifying ternary '" << callSite->to_string() << "' to DMA copy operation " << logging::endl;
 			   const DataType type = callSite->getArgument(0).get().type.getElementType();
 			   //TODO number of elements!
-			   it = method.vpm->insertReadRAM(it, callSite->getArgument(1), type, false);
-			   it = method.vpm->insertWriteRAM(it, callSite->getArgument(0), type, false);
+			   it = method.vpm->insertReadRAM(it, callSite->getArgument(1), type, nullptr, false);
+			   it = method.vpm->insertWriteRAM(it, callSite->getArgument(0), type, nullptr, false);
 			   it.erase();
 			   //so next instruction is not skipped
 			   it.previousInBlock();

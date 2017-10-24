@@ -125,8 +125,8 @@ InstructionWalker periphery::insertReadDMA(Method& method, InstructionWalker it,
 		it.nextInBlock();
 	}
 
-	it = method.vpm->insertReadRAM(it, addr, dest.type, false);
-	it = method.vpm->insertReadVPM(it, dest, false);
+	it = method.vpm->insertReadRAM(it, addr, dest.type, nullptr, false);
+	it = method.vpm->insertReadVPM(it, dest, nullptr, false);
 
 	if(useMutex)
 	{
@@ -284,8 +284,8 @@ InstructionWalker periphery::insertWriteDMA(Method& method, InstructionWalker it
 		it.nextInBlock();
 	}
 
-	it = method.vpm->insertWriteVPM(it, src, false);
-	it = method.vpm->insertWriteRAM(it, addr, src.type, false);
+	it = method.vpm->insertWriteVPM(it, src, nullptr, false);
+	it = method.vpm->insertWriteRAM(it, addr, src.type, nullptr, false);
 
 	if(useMutex)
 	{
@@ -481,13 +481,24 @@ static uint8_t calculateAddress(const DataType& type, unsigned byteOffset)
 		throw CompilationError(CompilationStep::GENERAL, "Invalid bit-width to store in VPM", type.to_string());
 }
 
-InstructionWalker VPM::insertReadVPM(InstructionWalker it, const Value& dest, bool useMutex)
+static unsigned calculateOffset(const VPMArea* area)
 {
-	updateScratchSize(dest.type.getPhysicalWidth());
+	if(area != nullptr)
+		return area->baseOffset;
+	return 0;
+}
+
+InstructionWalker VPM::insertReadVPM(InstructionWalker it, const Value& dest, const VPMArea* area, bool useMutex)
+{
+	if(area != nullptr)
+		area->checkAreaSize(dest.type.getPhysicalWidth());
+	else
+		updateScratchSize(dest.type.getPhysicalWidth());
+
 	it = insertLockMutex(it, useMutex);
 	//1) configure reading from VPM into QPU
 	const auto size = getVPMSize(dest.type);
-	const VPRSetup genericSetup(VPRGenericSetup(size, TYPE_INT32.getScalarBitCount() / dest.type.getScalarBitCount(), calculateAddress(dest.type, 0)));
+	const VPRSetup genericSetup(VPRGenericSetup(size, TYPE_INT32.getScalarBitCount() / dest.type.getScalarBitCount(), calculateAddress(dest.type, calculateOffset(area))));
 	it.emplace( new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<long>(genericSetup))));
 	it.nextInBlock();
 	//2) read value from VPM
@@ -497,13 +508,17 @@ InstructionWalker VPM::insertReadVPM(InstructionWalker it, const Value& dest, bo
 	return it;
 }
 
-InstructionWalker VPM::insertWriteVPM(InstructionWalker it, const Value& src, bool useMutex)
+InstructionWalker VPM::insertWriteVPM(InstructionWalker it, const Value& src, const VPMArea* area, bool useMutex)
 {
-	updateScratchSize(src.type.getPhysicalWidth());
+	if(area != nullptr)
+		area->checkAreaSize(src.type.getPhysicalWidth());
+	else
+		updateScratchSize(src.type.getPhysicalWidth());
+
 	it = insertLockMutex(it, useMutex);
 	//1. configure writing from QPU into VPM
 	const long vpmSize = getVPMSize(src.type);
-	const VPWSetup genericSetup(VPWGenericSetup(vpmSize, TYPE_INT32.getScalarBitCount() / src.type.getScalarBitCount(), calculateAddress(src.type, 0)));
+	const VPWSetup genericSetup(VPWGenericSetup(vpmSize, TYPE_INT32.getScalarBitCount() / src.type.getScalarBitCount(), calculateAddress(src.type, calculateOffset(area))));
 	it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<long>(genericSetup))));
 	it.nextInBlock();
 	//2. write data to VPM
@@ -513,8 +528,13 @@ InstructionWalker VPM::insertWriteVPM(InstructionWalker it, const Value& src, bo
 	return it;
 }
 
-InstructionWalker VPM::insertReadRAM(InstructionWalker it, const Value& memoryAddress, const DataType& type, bool useMutex)
+InstructionWalker VPM::insertReadRAM(InstructionWalker it, const Value& memoryAddress, const DataType& type, const VPMArea* area, bool useMutex)
 {
+	if(area != nullptr)
+		area->checkAreaSize(type.getPhysicalWidth());
+	else
+		updateScratchSize(type.getPhysicalWidth());
+
 	if(memoryAddress.hasType(ValueType::LOCAL) && memoryAddress.local != nullptr)
 	{
 		//set the type of the parameter, if we can determine it
@@ -531,7 +551,7 @@ InstructionWalker VPM::insertReadRAM(InstructionWalker it, const Value& memoryAd
 	//initialize VPM DMA for reading from host
 	const long dmaMode = getVPMDMAMode(type);
 	VPRSetup dmaSetup(VPRDMASetup(dmaMode, type.getVectorWidth(true) % 16 /* 0 => 16 */, 1 % 16 /* 0 => 16 */));
-	dmaSetup.dmaSetup.setAddress(0);
+	dmaSetup.dmaSetup.setAddress(calculateOffset(area));
 	it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<long>(dmaSetup))));
 	it.nextInBlock();
 	const VPRSetup strideSetup(VPRStrideSetup(type.getPhysicalWidth()));
@@ -550,8 +570,13 @@ InstructionWalker VPM::insertReadRAM(InstructionWalker it, const Value& memoryAd
 	return it;
 }
 
-InstructionWalker VPM::insertWriteRAM(InstructionWalker it, const Value& memoryAddress, const DataType& type, bool useMutex)
+InstructionWalker VPM::insertWriteRAM(InstructionWalker it, const Value& memoryAddress, const DataType& type, const VPMArea* area, bool useMutex)
 {
+	if(area != nullptr)
+		area->checkAreaSize(type.getPhysicalWidth());
+	else
+		updateScratchSize(type.getPhysicalWidth());
+
 	if(memoryAddress.hasType(ValueType::LOCAL) && memoryAddress.local != nullptr)
 	{
 		//set the type of the parameter, if we can determine it
@@ -566,7 +591,7 @@ InstructionWalker VPM::insertWriteRAM(InstructionWalker it, const Value& memoryA
 	//initialize VPM DMA for writing to host
 	const long dmaMode = getVPMDMAMode(type);
 	VPWSetup dmaSetup(VPWDMASetup(dmaMode, type.getVectorWidth(true), 1 % 128 /* 0 => 128 */));
-	dmaSetup.dmaSetup.setVPMBase(0);
+	dmaSetup.dmaSetup.setVPMBase(calculateOffset(area));
 	it.emplace( new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<long>(dmaSetup))));
 	it.nextInBlock();
 	//set stride to zero
@@ -586,15 +611,18 @@ InstructionWalker VPM::insertWriteRAM(InstructionWalker it, const Value& memoryA
 	return it;
 }
 
-InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const Value& destAddress, const Value& srcAddress, const unsigned numBytes, bool useMutex)
+InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const Value& destAddress, const Value& srcAddress, const unsigned numBytes, const VPMArea* area, bool useMutex)
 {
 	const auto size = getBestVectorSize(numBytes);
-	updateScratchSize(size.first.getPhysicalWidth());
+	if(area != nullptr)
+		area->checkAreaSize(size.first.getPhysicalWidth());
+	else
+		updateScratchSize(size.first.getPhysicalWidth());
 
 	it = insertLockMutex(it, useMutex);
 
-	it = insertReadRAM(it, srcAddress, size.first, false);
-	it = insertWriteRAM(it, destAddress, size.first, false);
+	it = insertReadRAM(it, srcAddress, size.first, area, false);
+	it = insertWriteRAM(it, destAddress, size.first, area, false);
 
 	for(uint8_t i = 1; i < size.second; ++i)
 	{
@@ -607,38 +635,62 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
 		it.emplace(new Operation("add", tmpDest, destAddress, Value(Literal(static_cast<long>(i * size.first.getPhysicalWidth())), TYPE_INT8)));
 		it.nextInBlock();
 
-		it = insertReadRAM(it, tmpSource, size.first, false);
-		it = insertWriteRAM(it, tmpDest, size.first, false);
+		it = insertReadRAM(it, tmpSource, size.first, area, false);
+		it = insertWriteRAM(it, tmpDest, size.first, area, false);
 	}
 	it = insertUnlockMutex(it, useMutex);
 
 	return it;
 }
 
+void VPMArea::checkAreaSize(const unsigned requestedSize) const
+{
+	if(requestedSize > size)
+		throw CompilationError(CompilationStep::GENERAL, "VPM area has not enough space available", std::to_string(requestedSize));
+}
+
+bool VPMArea::operator<(const VPMArea& other) const
+{
+	return baseOffset < other.baseOffset;
+}
+
+bool VPMArea::requiresSpacePerQPU() const
+{
+	return usageType == VPMUsage::REGISTER_SPILLING;
+}
+
+unsigned VPMArea::getTotalSize() const
+{
+	return (requiresSpacePerQPU() ? 12 : 1) * size;
+}
+
 VPM::VPM(const unsigned totalVPMSize) : maximumVPMSize(totalVPMSize), areas(), isScratchLocked(false)
 {
-	areas.push_back(VPMArea{VPMUsage::GENERAL_DMA, 0, 0, nullptr});
+	areas.emplace(VPMArea{VPMUsage::GENERAL_DMA, 0, 0, nullptr});
 }
 
-VPMArea& VPM::getScratchArea()
+const VPMArea& VPM::getScratchArea()
 {
-	return areas.front();
+	return *areas.begin();
 }
 
-VPMArea* VPM::findArea(const Local* local)
+const VPMArea* VPM::findArea(const Local* local)
 {
-	for(VPMArea& area : areas)
+	for(const VPMArea& area : areas)
 		if(area.dmaAddress == local)
 			return &area;
 	return nullptr;
 }
 
-VPMArea* VPM::addArea(const Local* local, unsigned requestedSize, bool alignToBack)
+const VPMArea* VPM::addArea(const Local* local, unsigned requestedSize, bool alignToBack)
 {
-	VPMArea* area = findArea(local);
+	const VPMArea* area = findArea(local);
 	if(area != nullptr && area->size >= requestedSize)
 		return area;
 	//TODO find free consecutive space in VPM with the requested size and return it
+
+	//lock scratch area, so it cannot expand over reserved VPM areas
+	isScratchLocked = true;
 
 	//no more (big enough) free space on VPM
 	return nullptr;
@@ -663,7 +715,7 @@ void VPM::updateScratchSize(unsigned requestedSize)
 
 	//TODO is this correct?
 	//Since we do not store all data completely packed, do we?
-	getScratchArea().size = std::max(getScratchArea().size, requestedSize);
+	const_cast<unsigned&>(getScratchArea().size) = std::max(getScratchArea().size, requestedSize);
 }
 
 InstructionWalker VPM::insertLockMutex(InstructionWalker it, bool useMutex) const

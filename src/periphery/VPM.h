@@ -452,13 +452,20 @@ namespace vc4c
 		struct VPMArea
 		{
 			//the usage type of this area of VPM
-			VPMUsage usageType;
+			const VPMUsage usageType;
 			//the base offset (from the start of the VPM) in bytes
-			unsigned baseOffset;
+			const unsigned baseOffset;
 			//the size of this area (in bytes)
-			unsigned size;
+			const unsigned size;
 			//the (optional) DMA address this area is assigned to (as DMA cache)
 			const Local* dmaAddress;
+
+			void checkAreaSize(const unsigned requestedSize) const;
+
+			bool operator<(const VPMArea& other) const;
+
+			bool requiresSpacePerQPU() const;
+			unsigned getTotalSize() const;
 		};
 
 		/*
@@ -469,9 +476,9 @@ namespace vc4c
 		public:
 			VPM(const unsigned totalVPMSize);
 
-			VPMArea& getScratchArea();
-			VPMArea* findArea(const Local* local);
-			VPMArea* addArea(const Local* local, unsigned requestedSize, bool alignToBack = false);
+			const VPMArea& getScratchArea();
+			const VPMArea* findArea(const Local* local);
+			const VPMArea* addArea(const Local* local, unsigned requestedSize, bool alignToBack = false);
 
 			/*
 			 * The maximum number of vectors (of the given type) which can be cached in this VPM.
@@ -483,24 +490,24 @@ namespace vc4c
 			/*
 			 * Inserts a read from VPM into a QPU register
 			 */
-			InstructionWalker insertReadVPM(InstructionWalker it, const Value& dest, bool useMutex = true);
+			InstructionWalker insertReadVPM(InstructionWalker it, const Value& dest, const VPMArea* area = nullptr, bool useMutex = true);
 			/*
 			 * Inserts a write from a QPU register into VPM
 			 */
-			InstructionWalker insertWriteVPM(InstructionWalker it, const Value& src, bool useMutex = true);
+			InstructionWalker insertWriteVPM(InstructionWalker it, const Value& src, const VPMArea* area = nullptr, bool useMutex = true);
 
 			/*
 			 * Inserts a read from RAM into VPM via DMA
 			 */
-			InstructionWalker insertReadRAM(InstructionWalker it, const Value& memoryAddress, const DataType& type, bool useMutex = true);
+			InstructionWalker insertReadRAM(InstructionWalker it, const Value& memoryAddress, const DataType& type, const VPMArea* area = nullptr, bool useMutex = true);
 			/*
 			 * Inserts a write from VPM into RAM via DMA
 			 */
-			InstructionWalker insertWriteRAM(InstructionWalker it, const Value& memoryAddress, const DataType& type, bool useMutex = true);
+			InstructionWalker insertWriteRAM(InstructionWalker it, const Value& memoryAddress, const DataType& type, const VPMArea* area = nullptr, bool useMutex = true);
 			/*
 			 * Inserts a copy from RAM via DMA and VPM into RAM
 			 */
-			InstructionWalker insertCopyRAM(Method& method, InstructionWalker it, const Value& destAddress, const Value& srcAddress, const unsigned numBytes, bool useMutex = true);
+			InstructionWalker insertCopyRAM(Method& method, InstructionWalker it, const Value& destAddress, const Value& srcAddress, const unsigned numBytes, const VPMArea* area = nullptr, bool useMutex = true);
 
 			/*
 			 * Updates the maximum size used by the scratch area.
@@ -510,7 +517,7 @@ namespace vc4c
 
 		private:
 			const unsigned maximumVPMSize;
-			std::vector<VPMArea> areas;
+			std::set<VPMArea> areas;
 			//whether the scratch area is locked to a fixed size
 			bool isScratchLocked;
 
