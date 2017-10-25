@@ -546,7 +546,7 @@ void GraphColoring::createGraph()
 	localRanges.reserve(method.countInstructions());
 
 	// 1. iteration: set files and locals used together and map to start/end of range
-	PROFILE_START(createColoredNodes); //TODO too slow: 20s keccak
+	PROFILE_START(createColoredNodes); //XXX too slow: 20s keccak
 	for(const auto& pair : localUses)
 	{
 		auto& node = graph.getOrCreateNode(pair.first);
@@ -577,27 +577,6 @@ void GraphColoring::createGraph()
 		{
 			node.addNeighbor(&(graph.getOrCreateNode(l)), LocalRelation::USED_TOGETHER);
 		});
-//		for(InstructionWalker it = pair.second.firstOccurrence; it.get() != pair.second.lastOccurrence.get(); it.nextInMethod())
-//		{
-//			//TODO can be a huge data-structure?
-//			//TODO need to follow branches, not walk linearly
-//			//FIXME is it guaranteed, that there is a path from EVERY write of a local to ALL of its reads??
-//			//-> for SSA it is (1 write, needed for initialization), for PHI nodes too (one write for every possible branch source block), ... what about own (not necessarily SSA) locals?
-//			//if so, iterate from every write to either (1) all of its reads met or (2) another write met (along jumps, not linearly)
-//			//-> would set usage-range correctly for blocks jumped over as well as phi-nodes!
-//			FastSet<const Local*>& range = localRanges[it.get()];
-//			//we already visited this instruction for this local
-//			if(range.find(pair.first) != range.end())
-//				continue;
-//			for(const Local* loc : range)
-//			{
-//				//pair up all locals as neighbors to this one
-//				auto& tmpNode = graph.at(loc);
-//				node.addNeighbor(&tmpNode, LocalRelation::USED_SIMULTANEOUSLY);
-//				tmpNode.addNeighbor(&node, LocalRelation::USED_SIMULTANEOUSLY);
-//			}
-//			range.insert(pair.first);
-//		}
 		logging::debug() << "Created node: " << node.to_string() << logging::endl;
 	}
 	PROFILE_END(createColoredNodes);
@@ -630,7 +609,7 @@ void GraphColoring::createGraph()
 		PROFILE_COUNTER(1000005, "SpillCandidates", node.second.getNeighbors().size() >= 64);
 	}
 	//2. iteration: associate locals used together
-	PROFILE_START(addEdges); //TODO too slow: 24s for keccak (240s total)
+	PROFILE_START(addEdges); //XXX too slow: 24s for keccak (240s total)
 	for(const auto& range : localRanges)
 	{
 		for(const Local* loc1 : range.second)
@@ -982,84 +961,6 @@ static bool fixSingleError(Method& method, ColoredGraph& graph, ColoredNode& nod
 			//TODO alternatively, we could move to the file, where we would need less copies
 		}
 
-		//need to copy the uses, since we edit them
-		/*
-		auto copyUses = localUse.associatedInstructions;
-		for(InstructionWalker use : copyUses)
-		{
-			bool splitCombined = false;
-			bool usedInOp1 = true;
-			bool isRead = true;
-			intermediate::CombinedOperation* op = use.get<intermediate::CombinedOperation>();
-			if(op != nullptr && op->op1 && op->op2)
-			{
-				if(op->op1->readsLocal(node.key))
-				{
-					usedInOp1 = true;
-					isRead = true;
-				}
-				else if(op->op2->readsLocal(node.key))
-				{
-					usedInOp1 = false;
-					isRead = true;
-				}
-				else if(op->op1->writesLocal(node.key))
-				{
-					usedInOp1 = true;
-					isRead = false;
-				}
-				else if(op->op2->writesLocal(node.key))
-				{
-					usedInOp1 = false;
-					isRead = false;
-				}
-				if(isRead)
-				{
-					for(const Value& arg : (usedInOp1 ? op->op2 : op->op1)->getArguments())
-					{
-						if(arg.hasType(ValueType::LOCAL))
-						{
-							ColoredNode* neighbor = reinterpret_cast<ColoredNode*>(&graph.assertNode(arg.local));
-							if(blocksLocal(neighbor, node.getNeighbors().at(neighbor)))
-							{
-								splitCombined = true;
-								break;
-							}
-						}
-					}
-				}
-				else if((usedInOp1 ? op->op2 : op->op1)->hasValueType(ValueType::LOCAL))
-				{
-					ColoredNode* neighbor = reinterpret_cast<ColoredNode*>(&graph.assertNode((usedInOp1 ? op->op2 : op->op1)->getOutput().get().local));
-					if(blocksLocal(neighbor, node.getNeighbors().at(neighbor)))
-					{
-						splitCombined = true;
-					}
-				}
-			}
-			if(splitCombined)
-			{
-				logging::debug() << "Fixing register conflict by splitting combined operation: " << op->to_string() << logging::endl;
-				localUse.associatedInstructions.erase(use);
-				if(usedInOp1)
-				{
-					use.emplace(const_cast<std::unique_ptr<intermediate::IntermediateInstruction>&>(op->op1).release());
-					localUse.associatedInstructions.emplace(use);
-					use = use.copy().nextInBlock();
-					use.reset(const_cast<std::unique_ptr<intermediate::IntermediateInstruction>&>(op->op2).release());
-					localUse.associatedInstructions.erase(use);
-				}
-				else
-				{
-					use.emplace(const_cast<std::unique_ptr<intermediate::IntermediateInstruction>&>(op->op2).release());
-					localUse.associatedInstructions.emplace(use);
-					use = use.copy().nextInBlock();
-					use.reset(const_cast<std::unique_ptr<intermediate::IntermediateInstruction>&>(op->op1).release());
-					localUse.associatedInstructions.erase(use);
-				}
-			}
-		}
-		*/
 		//TODO need to update blocked files for split combinations
 
 		logging::debug() << "Trying to fix local to register-file " << toString(add_flag(fileACouldBeUsed ? RegisterFile::PHYSICAL_A : RegisterFile::NONE, fileBCouldBeUsed ? RegisterFile::PHYSICAL_B : RegisterFile::NONE)) << logging::endl;

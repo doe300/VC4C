@@ -508,6 +508,10 @@ namespace vc4c
 			 * Inserts a copy from RAM via DMA and VPM into RAM
 			 */
 			InstructionWalker insertCopyRAM(Method& method, InstructionWalker it, const Value& destAddress, const Value& srcAddress, const unsigned numBytes, const VPMArea* area = nullptr, bool useMutex = true);
+			/*
+			 * Inserts a filling of a memory-area with a single value from VPM
+			 */
+			InstructionWalker insertFillRAM(Method& method, InstructionWalker it, const Value& memoryAddress, const DataType& type, const unsigned numCopies, const VPMArea* area = nullptr, bool useMutex = true);
 
 			/*
 			 * Updates the maximum size used by the scratch area.

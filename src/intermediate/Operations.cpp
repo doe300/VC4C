@@ -429,18 +429,18 @@ Operation* MoveOperation::combineWith(const std::string& otherOpCode) const
 {
     const auto opCodes = toOpCode(otherOpCode);
     Operation* op = nullptr;
-    if (opCodes.second != OPMUL_NOP) {
+    if (opCodes.second != OPMUL_NOP)
+    {
         //use ADD ALU
         op = new Operation("or", getOutput(), getSource(), getSource(), conditional, setFlags);
     }
-    else if (opCodes.first != OPADD_NOP) {
+    else if (opCodes.first != OPADD_NOP)
+    {
         //use MUL ALU
-        {
-            //TODO flags are not correct ?!?
-            op = new Operation("v8min", getOutput(), getSource(), getSource(), conditional, setFlags);
-        }
+		op = new Operation("v8min", getOutput(), getSource(), getSource(), conditional, setFlags);
     }
-    if (op != nullptr) {
+    if (op != nullptr)
+    {
         op->packMode = packMode;
         op->unpackMode = unpackMode;
         op->signal = signal;

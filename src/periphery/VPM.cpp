@@ -643,6 +643,33 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
 	return it;
 }
 
+InstructionWalker VPM::insertFillRAM(Method& method, InstructionWalker it, const Value& memoryAddress, const DataType& type, const unsigned numCopies, const VPMArea* area, bool useMutex)
+{
+	if(numCopies == 0)
+		return it;
+
+	if(area != nullptr)
+		area->checkAreaSize(type.getPhysicalWidth());
+	else
+		updateScratchSize(type.getPhysicalWidth());
+
+	it = insertLockMutex(it, useMutex);
+	it = insertWriteRAM(it, memoryAddress, type, area, false);
+	for(unsigned i = 1; i < numCopies; ++i)
+	{
+		const Value tmpDest = method.addNewLocal(memoryAddress.type, "%mem_fill_addr");
+
+		//increment offset from base address
+		it.emplace(new Operation("add", tmpDest, memoryAddress, Value(Literal(static_cast<long>(i * type.getPhysicalWidth())), TYPE_INT8)));
+		it.nextInBlock();
+
+		it = insertWriteRAM(it, tmpDest, type, area, false);
+	}
+	it = insertUnlockMutex(it, useMutex);
+
+	return it;
+}
+
 void VPMArea::checkAreaSize(const unsigned requestedSize) const
 {
 	if(requestedSize > size)

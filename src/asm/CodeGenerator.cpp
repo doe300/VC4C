@@ -196,7 +196,6 @@ static FastMap<const Local*, std::size_t> mapLabels(Method& method)
     //index is in bytes, so an increment of 1 instructions, increments by 8 bytes
     std::size_t index = 0;
     auto it = method.walkAllInstructions();
-    //TODO can be simplified, we only need to check the first instruction for every basic block (but need to count absolute position!)
     while(!it.isEndOfMethod())
 	{
     	BranchLabel* label = it.isEndOfBlock() ? nullptr : it.get<BranchLabel>();
@@ -318,7 +317,6 @@ static void toBinary(const Value& val, std::vector<uint8_t>& queue)
 				case LiteralType::REAL:
 					for(std::size_t i = 0; i < val.type.getVectorWidth(true); ++i)
 					{
-						//TODO endianess correct!?
 						//little endian
 						if(val.type.getElementType().getPhysicalWidth() > 3)
 							queue.push_back(static_cast<uint8_t>((val.literal.toImmediate() & 0xFF000000) >> 24));
@@ -338,7 +336,6 @@ static void toBinary(const Value& val, std::vector<uint8_t>& queue)
 			for(std::size_t s = 0; s < val.type.getPhysicalWidth(); ++s)
 				queue.push_back(0);
 			break;
-		//TODO structs/arrays?? (locals + struct-type??)
 		default:
 			throw CompilationError(CompilationStep::CODE_GENERATION, "Can't map value-type to binary literal!");
 	}
@@ -448,7 +445,6 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
 			for(const Global& global : module.globalData)
 				stream << "//" << global.to_string(true) << std::endl;
 			for(std::size_t i = 0; i < binary.size(); i += 8)
-				//TODO endianess correct??
 				stream << toHexString((static_cast<uint64_t>(binary.at(i)) << 56) | (static_cast<uint64_t>(binary.at(i+1)) << 48) | (static_cast<uint64_t>(binary.at(i+2)) << 40) |
 						(static_cast<uint64_t>(binary.at(i+3)) << 32) | (static_cast<uint64_t>(binary.at(i+4)) << 24) | (static_cast<uint64_t>(binary.at(i+5)) << 16) |
 						(static_cast<uint64_t>(binary.at(i+6)) << 8) | static_cast<uint64_t>(binary.at(i+7))) << std::endl;
@@ -466,7 +462,7 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
         case OutputMode::ASSEMBLER:
             for (const std::unique_ptr<Instruction>& instr : pair.second) {
                 stream << instr->toASMString() << std::endl;
-                numBytes += 0;//XXX ??
+                numBytes += 0; //doesn't matter here, since the number of bytes is unused for assembler output
             }
             break;
         case OutputMode::BINARY:
@@ -479,7 +475,7 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
         case OutputMode::HEX:
             for (const std::unique_ptr<Instruction>& instr : pair.second) {
                 stream << instr->toHexString(true) << std::endl;
-                numBytes += 8; //XXX ??
+                numBytes += 8; //doesn't matter here, since the number of bytes is unused for hexadecimal output
             }
         }
     }
