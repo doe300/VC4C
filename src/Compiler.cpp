@@ -161,10 +161,10 @@ std::size_t Compiler::compile(std::istream& input, std::ostream& output, const C
     PROFILE_START(Precompile);
     Precompiler precompiler(input, Precompiler::getSourceType(input), inputFile);
     std::unique_ptr<std::istream> in;
-#if defined SPIRV_CLANG_PATH
+#if defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_PARSER_HEADER
     precompiler.run(in, SourceType::SPIRV_BIN, options);
 #elif defined CLANG_PATH
-    precompiler.run(in, SourceType::LLVM_IR, options);
+    precompiler.run(in, SourceType::LLVM_IR_TEXT, options);
 #else
     throw CompilationError(CompilationStep::PRECOMPILATION, "No matching precompiler available!");
 #endif

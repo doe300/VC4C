@@ -9,6 +9,7 @@
 
 #include "../performance.h"
 
+#ifdef SPIRV_HEADER
 #ifdef SPIRV_LINKER_HEADER
 #include SPIRV_LINKER_HEADER
 #endif
@@ -763,3 +764,5 @@ void spirv2qasm::linkSPIRVModules(const std::vector<std::istream*>& inputModules
 	logging::debug() << "Linked " << inputModules.size() << " modules into a single module with " << linkedModules.size() << " words of data." << logging::endl;
 #endif
 }
+
+#endif /* SPIRV_HEADER */

@@ -95,16 +95,7 @@ namespace spirv2qasm
 			throw CompilationError(CompilationStep::GENERAL, "SPIR-V frontend is not active!");
 		}
 
-		std::vector<Method*> parse() override
-		{
-			throw CompilationError(CompilationStep::GENERAL, "SPIR-V frontend is not active!");
-		}
-
-		std::vector<Method*> getKernelFunctions() const override
-		{
-			throw CompilationError(CompilationStep::GENERAL, "SPIR-V frontend is not active!");
-		}
-		std::vector<Local> getGlobalData() const override
+		void parse(Module& module) override
 		{
 			throw CompilationError(CompilationStep::GENERAL, "SPIR-V frontend is not active!");
 		}

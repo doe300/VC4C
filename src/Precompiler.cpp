@@ -182,7 +182,7 @@ static void compileLLVMIRToSPIRV(std::istream& input, std::ostream& output, cons
 	throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-LLVM not configured, can't compile to SPIR-V!");
 #elif not defined SPIRV_PARSER_HEADER
 	throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-Tools not configured, can't process SPIR-V!");
-#endif
+#else
 	std::string command = (std::string(SPIRV_LLVM_SPIRV_PATH) + (toText ? " -spirv-text" : "")) + " -o ";
 	command.append(outputFile.hasValue ? outputFile.get() : "/dev/stdout").append(" ");
 	command.append(inputFile.hasValue ? inputFile.get() : "/dev/stdin");
@@ -190,6 +190,7 @@ static void compileLLVMIRToSPIRV(std::istream& input, std::ostream& output, cons
 	logging::info() << "Converting LLVM-IR to SPIR-V with :" << command << logging::endl;
 
 	runPrecompiler(command, inputFile.hasValue ? nullptr : &input, outputFile.hasValue ? nullptr : &output, outputFile);
+#endif
 }
 
 static void compileOpenCLToSPIRV(std::istream& input, std::ostream& output, const std::string& options, const bool toText = false, const Optional<std::string>& inputFile = {}, const Optional<std::string>& outputFile ={})
@@ -221,7 +222,7 @@ static void compileSPIRVToSPIRV(std::istream& input, std::ostream& output, const
 	throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-LLVM not configured, can't compile to SPIR-V!");
 #elif not defined SPIRV_PARSER_HEADER
 	throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-Tools not configured, can't process SPIR-V!");
-#endif
+#else
 	std::string command = (std::string(SPIRV_LLVM_SPIRV_PATH) + (toText ? " -to-text" : " -to-binary")) + " -o ";
 	command.append(outputFile.hasValue ? outputFile.get() : "/dev/stdout").append(" ");
 	command.append(inputFile.hasValue ? inputFile.get() : "/dev/stdin");
@@ -229,6 +230,7 @@ static void compileSPIRVToSPIRV(std::istream& input, std::ostream& output, const
 	logging::info() << "Converting between SPIR-V text and SPIR-V binary with :" << command << logging::endl;
 
 	runPrecompiler(command, inputFile.hasValue ? nullptr : &input, outputFile.hasValue ? nullptr : &output, outputFile);
+#endif
 }
 
 Precompiler::Precompiler(std::istream& input, const SourceType inputType, const Optional<std::string> inputFile) :
