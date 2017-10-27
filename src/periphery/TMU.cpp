@@ -11,6 +11,12 @@
 using namespace vc4c;
 using namespace vc4c::periphery;
 
+/*
+ * XXX the TMU can queue up to 2? load-requests per QPU, could be used to optimize/reorder TMU loads
+ *
+ * see i.e. https://github.com/raspberrypi/userland/blob/master/host_applications/linux/apps/hello_pi/hello_fft/qasm/gpu_fft.qinc (.macro load_tw, .macro read_lin/.macro load_lin)
+ */
+
 std::string TextureType::to_string() const
 {
 	switch(value)
@@ -55,28 +61,14 @@ std::string TextureType::to_string() const
 	throw CompilationError(CompilationStep::GENERAL, "Unhandled texture-type", std::to_string(value));
 }
 
-Global* periphery::reserveImageConfiguration(Module& module, const Value& image)
-{
-	if(!image.type.getImageType().hasValue)
-		throw CompilationError(CompilationStep::GENERAL, "Can't reserve global data for image-configuration of non-image type", image.type.to_string());
-	if(!image.hasType(ValueType::LOCAL))
-		throw CompilationError(CompilationStep::GENERAL, "Cannot reserve global data for non-local image", image.to_string());
-	//TODO 3 UNIFORMS for image-array and 3D image?
-	const unsigned char bufferSize = image.type.getImageType().get()->dimensions > 2 || image.type.getImageType().get()->isImageArray ? 3 : 2;
-	logging::debug() << "Reserving a buffer of " << static_cast<unsigned>(bufferSize) << " UNIFORMs for the image-configuration of " << image.to_string() << logging::endl;
-	auto it = module.globalData.emplace(module.globalData.end(), Global(ImageType::toImageConfigurationName(image.local->name), TYPE_INT32.toVectorType(bufferSize), INT_ZERO));
-	return &(*it);
-}
-
 InstructionWalker periphery::insertGeneralReadTMU(InstructionWalker it, const Value& dest, const Value& addr)
 {
 	//TODO mutex lock required?
 
-	//this is wrong, e.g. REG_TMU_ADDRESS is not a memory-address, but the normalized coordinates (within the image)
+	//"General-memory lookups are performed by writing to just the s-parameter, using the absolute memory address" (page 41)
 	//1) write address to TMU_S register
 	it.emplace(new intermediate::MoveOperation(TMU_GENERAL_READ_ADDRESS, addr));
 	it.nextInBlock();
-	//"General-memory lookups are performed by writing to just the s-parameter, using the absolute memory address" (page 41)
 	//2) trigger loading of TMU
 	it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_TMU));
 	it->setSignaling(Signaling::LOAD_TMU0);
@@ -114,6 +106,7 @@ InstructionWalker periphery::insertReadTMU(Method& method, InstructionWalker it,
 		it.emplace(new intermediate::MoveOperation(TMU_COORD_T_REGISTER, yCoord));
 		it.nextInBlock();
 	}
+	//TODO for 1D-images, we only have an x-coordinate. But if we only write the TMU_S register, general TMU lookup is used?!
 	it.emplace(new intermediate::MoveOperation(TMU_COORD_S_REGISTER, xCoord));
 	it.nextInBlock();
 	// 4. trigger loadtmu

@@ -118,6 +118,9 @@ namespace vc4c
 			CHILD_OFFSETS = 3
 		};
 
+		//XXX these types are not really required here (but in VC4CL),
+		//since we need the fields offsets, not access to them directly
+
 		/*
 		 * first UNIFORM-value read by the TMU to configure texture-reads
 		 *
@@ -202,11 +205,11 @@ namespace vc4c
 			/*
 			 * "T Wrap Mode (0, 1, 2, 3 = repeat, clamp, mirror, border)"
 			 */
-			BITFIELD_ENTRY(WrapT, WrapMode, 2, Triple)
+			BITFIELD_ENTRY(WrapT, WrapMode, 2, Tuple)
 			/*
 			 * "S Wrap Mode (0, 1, 2, 3 = repeat, clamp, mirror, border)"
 			 */
-			BITFIELD_ENTRY(WrapS, WrapMode, 0, Triple)
+			BITFIELD_ENTRY(WrapS, WrapMode, 0, Tuple)
 		};
 
 		/*
@@ -281,16 +284,6 @@ namespace vc4c
 			 */
 			BITFIELD_ENTRY(ChildOffsetX, uint16_t, 0, Undecuple)
 		};
-
-		/*
-		 * Prepares a segment of the global data to be used as buffer for the image-configuration for this image
-		 *
-		 * Depending on the type of the image, this segment contains of 2 (or 3) 32-bit values, which are by default zeroed out.
-		 * On setting the image as kernel-parameter, the host implementation writes the image-configuration into this buffer.
-		 *
-		 * Returns the global the buffer is allocated at, to be used to set the UNIFORM pointer as well as to be set into the parameter-info.
-		 */
-		Global* reserveImageConfiguration(Module& module, const Value& image);
 
 		/*
 		 * Perform a general 32-bit memory lookup via the TMU.

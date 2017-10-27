@@ -99,41 +99,17 @@ namespace vc4c
 			}
 		};
 
-		/*  0                   1                   2                   3
-		 *  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-		 * | channel-type  | channel-order | dimensions    | ???           |
-		 * | width (run-time limit is 4k)  | height (run-time limit is 4k) |
-		 * | depth (run-time limit is 4k)  | array-size (limit see others) |
-		 * | row pitch (distance y-coord)  | slice pitch (distance z-coord)|
+		/*
+		 * Prepares a segment of the global data to be used as buffer for the image-configuration for this image
+		 *
+		 * On setting the image as kernel-parameter, the host implementation writes the image-configuration into this buffer.
+		 *
+		 * Returns the global the buffer is allocated at, to be used to set the UNIFORM pointer as well as to be set into the parameter-info.
 		 */
-
-		//TODO sizes/positions/padding needs to match runtime
-		static const DataType IMAGE_INFO_TYPE = TYPE_INT8;
-		//offset of 0 bytes
-		static const Value IMAGE_CHANNEL_TYPE_OFFSET = INT_ZERO;
-		//offset of 1 byte
-		static const Value IMAGE_CHANNEL_ORDER_OFFSET = INT_ZERO;
-		//offset of 2 bytes
-		static const Value IMAGE_DIMENSIONS_OFFSET(Literal(2L), TYPE_INT8);
-		static const DataType IMAGE_SIZE_TYPE = TYPE_INT16;
-		//offset of 4 bytes
-		static const Value IMAGE_WIDTH_OFFSET(Literal(4L), TYPE_INT8);
-		//offset of 6 bytes
-		static const Value IMAGE_HEIGHT_OFFSET(Literal(6L), TYPE_INT8);
-		//offset of 8 bytes
-		static const Value IMAGE_DEPTH_OFFSET(Literal(8L), TYPE_INT8);
-		//offset of 10 bytes
-		static const Value IMAGE_ARRAY_SIZE_OFFSET(Literal(10L), TYPE_INT8);
-		//offset of 12 bytes
-		static const Value IMAGE_ROW_PITCH_OFFSET(Literal(12L), TYPE_INT8);
-		//offset of 14 bytes
-		static const Value IMAGE_SLICE_PITCH_OFFSET(Literal(14L), TYPE_INT8);
-		//offset of 16 bytes
-		static const Value IMAGE_DATA_OFFSET(Literal(16L), TYPE_INT8);
+		Global* reserveImageConfiguration(Module& module, const Value& image);
 
 		InstructionWalker intrinsifyImageFunction(InstructionWalker it, Method& method);
 
-		//TODO rewrite all query info to read from global representing the image-config (need to know layout!!), in VC4CLStdLib via intrinsics?
 		//TODO rewrite all queries to TMU call
 		//TODO VC4CLStdLib: rewrite all image-queries to use float-coordinate format with ranges [0, 1]
 
