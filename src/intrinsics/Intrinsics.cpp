@@ -19,22 +19,6 @@
 using namespace vc4c;
 using namespace vc4c::intermediate;
 
-enum class IntrinsicType
-{
-    ADD_ALU,
-    MUL_ALU,
-    SFU,
-    VALUE_READ,
-    NOOP,
-    SEMAPHORE_INCREMENT,
-    SEMAPHORE_DECREMENT,
-    MUTEX_LOCK,
-    MUTEX_UNLOCK,
-    DMA_READ,
-    DMA_WRITE,
-	DMA_COPY,
-	VECTOR_ROTATE
-};
 
 //The function to apply for pre-calculation
 using UnaryInstruction = std::function<Optional<Value>(const Value&)>;
@@ -46,86 +30,225 @@ static const BinaryInstruction NO_OP2 = [](const Value& val0, const Value& val1)
 //see VC4CLStdLib (_intrinsics.h)
 static constexpr unsigned char VC4CL_UNSIGNED {1};
 
+
+using IntrinsicFunction = std::function<InstructionWalker(Method&, InstructionWalker, const MethodCall*)>;
+//NOTE: copying the captures is on purpose, since the sources do not exist anymore!
+
+static IntrinsicFunction intrinsifyUnaryALUInstruction(const std::string& opCode, const bool useSignFlag = false)
+{
+	return [opCode, useSignFlag](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
+	{
+		bool isUnsigned = callSite->getArgument(1).hasValue && callSite->getArgument(1).get().hasType(ValueType::LITERAL) && callSite->getArgument(1).get().literal.integer == VC4CL_UNSIGNED;
+
+		logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to operation " << opCode << logging::endl;
+		it.reset((new Operation(opCode, callSite->getOutput(), callSite->getArgument(0)))->copyExtrasFrom(callSite));
+
+		if(useSignFlag && isUnsigned)
+			it->setDecorations(InstructionDecorations::UNSIGNED_RESULT);
+
+		return it;
+	};
+}
+
+static IntrinsicFunction intrinsifyBinaryALUInstruction(const std::string& opCode, const bool useSignFlag = false)
+{
+	return [opCode, useSignFlag](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
+	{
+		bool isUnsigned = callSite->getArgument(2).hasValue && callSite->getArgument(2).get().hasType(ValueType::LITERAL) && callSite->getArgument(2).get().literal.integer == VC4CL_UNSIGNED;
+
+		logging::debug() << "Intrinsifying binary '" << callSite->to_string() << "' to operation " << opCode << logging::endl;
+		it.reset((new Operation(opCode, callSite->getOutput(), callSite->getArgument(0), callSite->getArgument(1)))->copyExtrasFrom(callSite));
+
+		if(useSignFlag && isUnsigned)
+			it->setDecorations(InstructionDecorations::UNSIGNED_RESULT);
+
+		return it;
+	};
+}
+
+static IntrinsicFunction intrinsifySFUInstruction(const Register& sfuRegister)
+{
+	return [sfuRegister](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
+	{
+		logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to SFU call" << logging::endl;
+		it = insertSFUCall(sfuRegister, it, callSite->getArgument(0), callSite->conditional);
+		it.reset((new MoveOperation(callSite->getOutput(), Value(REG_SFU_OUT, callSite->getOutput().get().type)))->copyExtrasFrom(callSite));
+		return it;
+	};
+}
+
+static IntrinsicFunction intrinsifyValueRead(const Value& val)
+{
+	return [val](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
+	{
+		logging::debug() << "Intrinsifying method-call '" << callSite->to_string() << "' to value read" << logging::endl;
+		it.reset((new MoveOperation(callSite->getOutput(), val))->copyExtrasFrom(callSite));
+		return it;
+	};
+}
+
+static IntrinsicFunction intrinsifySemaphoreAccess(bool increment)
+{
+	return [increment](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
+	{
+		if(!callSite->getArgument(0).get().hasType(ValueType::LITERAL))
+			throw CompilationError(CompilationStep::OPTIMIZER, "Semaphore-number needs to be a compile-time constant", callSite->to_string());
+		if(callSite->getArgument(0).get().literal.integer < 0 || callSite->getArgument(0).get().literal.integer >= 16)
+			throw CompilationError(CompilationStep::OPTIMIZER, "Semaphore-number needs to be between 0 and 15", callSite->to_string());
+
+		if(increment)
+		{
+			logging::debug() << "Intrinsifying semaphore increment with instruction" << logging::endl;
+			it.reset((new SemaphoreAdjustment(static_cast<Semaphore>(callSite->getArgument(0).get().literal.integer), true))->copyExtrasFrom(callSite));
+		}
+		else
+		{
+			logging::debug() << "Intrinsifying semaphore decrement with instruction" << logging::endl;
+			it.reset((new SemaphoreAdjustment(static_cast<Semaphore>(callSite->getArgument(0).get().literal.integer), false))->copyExtrasFrom(callSite));
+		}
+		return it;
+	};
+}
+
+static IntrinsicFunction intrinsifyMutexAccess(bool lock)
+{
+	return [lock](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
+	{
+		if(lock)
+		{
+			logging::debug() << "Intrinsifying mutex lock with instruction" << logging::endl;
+			it.reset(new MoveOperation(NOP_REGISTER, MUTEX_REGISTER));
+		}
+		else
+		{
+			logging::debug() << "Intrinsifying mutex unlock with instruction" << logging::endl;
+			it.reset(new MoveOperation(MUTEX_REGISTER, BOOL_TRUE));
+		}
+		return it;
+	};
+}
+
+enum class DMAAccess
+{
+	READ,
+	WRITE,
+	COPY
+};
+
+static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access)
+{
+	return [access](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
+	{
+		switch(access)
+		{
+			case DMAAccess::READ:
+			{
+				logging::debug() << "Intrinsifying memory read " << callSite->to_string() << logging::endl;
+				it = periphery::insertReadDMA(method, it, callSite->getOutput(), callSite->getArgument(0), false);
+				break;
+			}
+			case DMAAccess::WRITE:
+			{
+				logging::debug() << "Intrinsifying memory write " << callSite->to_string() << logging::endl;
+				it = periphery::insertWriteDMA(method, it, callSite->getArgument(1), callSite->getArgument(0), false);
+				break;
+			}
+			case DMAAccess::COPY:
+			{
+				logging::debug() << "Intrinsifying ternary '" << callSite->to_string() << "' to DMA copy operation " << logging::endl;
+				const DataType type = callSite->getArgument(0).get().type.getElementType();
+				//TODO number of elements!
+				it = method.vpm->insertReadRAM(it, callSite->getArgument(1), type, nullptr, false);
+				it = method.vpm->insertWriteRAM(it, callSite->getArgument(0), type, nullptr, false);
+				break;
+			}
+		}
+
+		it.erase();
+		//so next instruction is not skipped
+		it.previousInBlock();
+
+		return it;
+	};
+}
+
+static IntrinsicFunction intrinsifyVectorRotation()
+{
+	return [](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
+	{
+		logging::debug() << "Intrinsifying vector rotation " << callSite->to_string() << logging::endl;
+		it = insertVectorRotation(it, callSite->getArgument(0), callSite->getArgument(1), callSite->getOutput(), Direction::UP);
+		it.erase();
+		//so next instruction is not skipped
+		it.previousInBlock();
+
+		return it;
+	};
+}
+
 struct Intrinsic
 {
-    const IntrinsicType type;
-	const char* opCode;
-    const Value val;
+	const IntrinsicFunction func;
     const Optional<UnaryInstruction> unaryInstr;
     const Optional<BinaryInstruction> binaryInstr;
-    const bool withSignFlag;
     
-    Intrinsic(const IntrinsicType type, const Value& val, const UnaryInstruction unary, bool withSignFlag = false) : type(type), opCode(""), val(val), unaryInstr(unary), withSignFlag(withSignFlag)
-    {
-        
-    }
+    Intrinsic(const IntrinsicFunction& func): func(func) { }
     
-    Intrinsic(const IntrinsicType type, const char* opcode, const UnaryInstruction unary, bool withSignFlag = false) : type(type), opCode(opcode), val(UNDEFINED_VALUE), binaryInstr(NO_OP2), withSignFlag(withSignFlag)
-    {
-        
-    }
+    Intrinsic(const IntrinsicFunction& func, const UnaryInstruction unary) : func(func), unaryInstr(unary) { }
     
-    Intrinsic(const IntrinsicType type, const char* opcode, const BinaryInstruction binary, bool withSignFlag = false) : type(type), opCode(opcode), val(UNDEFINED_VALUE), binaryInstr(binary), withSignFlag(withSignFlag)
-	{
-
-	}
-
-    Intrinsic(const IntrinsicType type, const Value& val) : type(type), opCode(""), val(val), withSignFlag(false)
-    {
-        
-    }
+    Intrinsic(const IntrinsicFunction& func, const BinaryInstruction binary) : func(func), binaryInstr(binary) { }
 };
 
 const static std::map<std::string, Intrinsic> nonaryInstrinsics = {
-    {"vc4cl_mutex_lock", Intrinsic{IntrinsicType::MUTEX_LOCK, NOP_REGISTER}},
-    {"vc4cl_mutex_unlock", Intrinsic{IntrinsicType::MUTEX_UNLOCK, NOP_REGISTER}},
-	{"vc4cl_element_number", Intrinsic{IntrinsicType::VALUE_READ, ELEMENT_NUMBER_REGISTER}},
-	{"vc4cl_qpu_number", Intrinsic{IntrinsicType::VALUE_READ, Value(REG_QPU_NUMBER, TYPE_INT8)}}
+    {"vc4cl_mutex_lock", Intrinsic{intrinsifyMutexAccess(true)}},
+    {"vc4cl_mutex_unlock", Intrinsic{intrinsifyMutexAccess(false)}},
+	{"vc4cl_element_number", Intrinsic{intrinsifyValueRead(ELEMENT_NUMBER_REGISTER)}},
+	{"vc4cl_qpu_number", Intrinsic{intrinsifyValueRead(Value(REG_QPU_NUMBER, TYPE_INT8))}}
 };
 
 const static std::map<std::string, Intrinsic> unaryIntrinsicMapping = {
-    {"vc4cl_ftoi", Intrinsic{IntrinsicType::ADD_ALU, "ftoi", [](const Value& val){return Value(Literal(static_cast<long>(std::round(val.literal.real))), TYPE_INT32);}}},
-    {"vc4cl_itof", Intrinsic{IntrinsicType::ADD_ALU, "itof", [](const Value& val){return Value(Literal(static_cast<double>(val.literal.integer)), TYPE_FLOAT);}}},
-    {"vc4cl_clz", Intrinsic{IntrinsicType::ADD_ALU, "clz", NO_OP}},
-    {"vc4cl_sfu_rsqrt", Intrinsic{IntrinsicType::SFU, Value(REG_SFU_RECIP_SQRT, TYPE_FLOAT), [](const Value& val){return Value(Literal(1.0 / std::sqrt(val.literal.real)), TYPE_FLOAT);}}},
-    {"vc4cl_sfu_exp2", Intrinsic{IntrinsicType::SFU, Value(REG_SFU_EXP2, TYPE_FLOAT), [](const Value& val){return Value(Literal(std::exp2(val.literal.real)), TYPE_FLOAT);}}},
-    {"vc4cl_sfu_log2", Intrinsic{IntrinsicType::SFU, Value(REG_SFU_LOG2, TYPE_FLOAT), [](const Value& val){return Value(Literal(std::log2(val.literal.real)), TYPE_FLOAT);}}},
-    {"vc4cl_sfu_recip", Intrinsic{IntrinsicType::SFU, Value(REG_SFU_RECIP, TYPE_FLOAT), [](const Value& val){return Value(Literal(1.0 / val.literal.real), TYPE_FLOAT);}}},
-    {"vc4cl_semaphore_increment", Intrinsic{IntrinsicType::SEMAPHORE_INCREMENT, NOP_REGISTER}},
-    {"vc4cl_semaphore_decrement", Intrinsic{IntrinsicType::SEMAPHORE_DECREMENT, NOP_REGISTER}},
-    {"vc4cl_dma_read", Intrinsic{IntrinsicType::DMA_READ, NOP_REGISTER}}
+    {"vc4cl_ftoi", Intrinsic{intrinsifyUnaryALUInstruction("ftoi"), [](const Value& val){return Value(Literal(static_cast<long>(std::round(val.literal.real))), TYPE_INT32);}}},
+    {"vc4cl_itof", Intrinsic{intrinsifyUnaryALUInstruction("itof"), [](const Value& val){return Value(Literal(static_cast<double>(val.literal.integer)), TYPE_FLOAT);}}},
+    {"vc4cl_clz", Intrinsic{intrinsifyUnaryALUInstruction("clz"), NO_OP}},
+    {"vc4cl_sfu_rsqrt", Intrinsic{intrinsifySFUInstruction(REG_SFU_RECIP_SQRT), [](const Value& val){return Value(Literal(1.0 / std::sqrt(val.literal.real)), TYPE_FLOAT);}}},
+    {"vc4cl_sfu_exp2", Intrinsic{intrinsifySFUInstruction(REG_SFU_EXP2), [](const Value& val){return Value(Literal(std::exp2(val.literal.real)), TYPE_FLOAT);}}},
+    {"vc4cl_sfu_log2", Intrinsic{intrinsifySFUInstruction(REG_SFU_LOG2), [](const Value& val){return Value(Literal(std::log2(val.literal.real)), TYPE_FLOAT);}}},
+    {"vc4cl_sfu_recip", Intrinsic{intrinsifySFUInstruction(REG_SFU_RECIP), [](const Value& val){return Value(Literal(1.0 / val.literal.real), TYPE_FLOAT);}}},
+    {"vc4cl_semaphore_increment", Intrinsic{intrinsifySemaphoreAccess(true)}},
+    {"vc4cl_semaphore_decrement", Intrinsic{intrinsifySemaphoreAccess(false)}},
+    {"vc4cl_dma_read", Intrinsic{intrinsifyDMAAccess(DMAAccess::READ)}}
 };
 
 const static std::map<std::string, Intrinsic> binaryIntrinsicMapping = {
-    {"vc4cl_fmax", Intrinsic{IntrinsicType::ADD_ALU, "fmax", [](const Value& val0, const Value& val1){return Value(Literal(std::max(val0.literal.real, val1.literal.real)), TYPE_FLOAT);}}},
-    {"vc4cl_fmin", Intrinsic{IntrinsicType::ADD_ALU, "fmin", [](const Value& val0, const Value& val1){return Value(Literal(std::min(val0.literal.real, val1.literal.real)), TYPE_FLOAT);}}},
-    {"vc4cl_fmaxabs", Intrinsic{IntrinsicType::ADD_ALU, "fmaxabs", [](const Value& val0, const Value& val1){return Value(Literal(std::max(std::abs(val0.literal.real), std::abs(val1.literal.real))), TYPE_FLOAT);}}},
-    {"vc4cl_fminabs", Intrinsic{IntrinsicType::ADD_ALU, "fminabs", [](const Value& val0, const Value& val1){return Value(Literal(std::min(std::abs(val0.literal.real), std::abs(val1.literal.real))), TYPE_FLOAT);}}},
+    {"vc4cl_fmax", Intrinsic{intrinsifyBinaryALUInstruction("fmax"), [](const Value& val0, const Value& val1){return Value(Literal(std::max(val0.literal.real, val1.literal.real)), TYPE_FLOAT);}}},
+    {"vc4cl_fmin", Intrinsic{intrinsifyBinaryALUInstruction("fmin"), [](const Value& val0, const Value& val1){return Value(Literal(std::min(val0.literal.real, val1.literal.real)), TYPE_FLOAT);}}},
+    {"vc4cl_fmaxabs", Intrinsic{intrinsifyBinaryALUInstruction("fmaxabs"), [](const Value& val0, const Value& val1){return Value(Literal(std::max(std::abs(val0.literal.real), std::abs(val1.literal.real))), TYPE_FLOAT);}}},
+    {"vc4cl_fminabs", Intrinsic{intrinsifyBinaryALUInstruction("fminabs"), [](const Value& val0, const Value& val1){return Value(Literal(std::min(std::abs(val0.literal.real), std::abs(val1.literal.real))), TYPE_FLOAT);}}},
 	//FIXME sign / no-sign!!
-    {"vc4cl_shr", Intrinsic{IntrinsicType::ADD_ALU, "shr", [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer >> val1.literal.integer), val0.type.getUnionType(val1.type));}}},
-    {"vc4cl_asr", Intrinsic{IntrinsicType::ADD_ALU, "asr", [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer >> val1.literal.integer), val0.type.getUnionType(val1.type));}}},
-    {"vc4cl_ror", Intrinsic{IntrinsicType::ADD_ALU, "ror", NO_OP2}},
-    {"vc4cl_shl", Intrinsic{IntrinsicType::ADD_ALU, "shl", [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer << val1.literal.integer), val0.type.getUnionType(val1.type));}}},
-    {"vc4cl_min", Intrinsic{IntrinsicType::ADD_ALU, "min", [](const Value& val0, const Value& val1){return Value(Literal(std::min(val0.literal.integer, val1.literal.integer)), val0.type.getUnionType(val1.type));}, true}},
-    {"vc4cl_max", Intrinsic{IntrinsicType::ADD_ALU, "max", [](const Value& val0, const Value& val1){return Value(Literal(std::max(val0.literal.integer, val1.literal.integer)), val0.type.getUnionType(val1.type));}, true}},
-    {"vc4cl_and", Intrinsic{IntrinsicType::ADD_ALU, "and", [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer & val1.literal.integer), val0.type.getUnionType(val1.type));}}},
-    {"vc4cl_mul24", Intrinsic{IntrinsicType::MUL_ALU, "mul24", [](const Value& val0, const Value& val1){return Value(Literal((val0.literal.integer & 0xFFFFFFL) * (val1.literal.integer & 0xFFFFFFL)), val0.type.getUnionType(val1.type));}, true}},
-    {"vc4cl_dma_write", Intrinsic{IntrinsicType::DMA_WRITE, NOP_REGISTER}},
-	{"vc4cl_vector_rotate", Intrinsic{IntrinsicType::VECTOR_ROTATE, NOP_REGISTER}}
+    {"vc4cl_shr", Intrinsic{intrinsifyBinaryALUInstruction("shr"), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer >> val1.literal.integer), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_asr", Intrinsic{intrinsifyBinaryALUInstruction("asr"), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer >> val1.literal.integer), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_ror", Intrinsic{intrinsifyBinaryALUInstruction("ror"), NO_OP2}},
+    {"vc4cl_shl", Intrinsic{intrinsifyBinaryALUInstruction("shl"), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer << val1.literal.integer), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_min", Intrinsic{intrinsifyBinaryALUInstruction("min", true), [](const Value& val0, const Value& val1){return Value(Literal(std::min(val0.literal.integer, val1.literal.integer)), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_max", Intrinsic{intrinsifyBinaryALUInstruction("max", true), [](const Value& val0, const Value& val1){return Value(Literal(std::max(val0.literal.integer, val1.literal.integer)), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_and", Intrinsic{intrinsifyBinaryALUInstruction("and"), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer & val1.literal.integer), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_mul24", Intrinsic{intrinsifyBinaryALUInstruction("mul24", true), [](const Value& val0, const Value& val1){return Value(Literal((val0.literal.integer & 0xFFFFFFL) * (val1.literal.integer & 0xFFFFFFL)), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_dma_write", Intrinsic{intrinsifyDMAAccess(DMAAccess::WRITE)}},
+	{"vc4cl_vector_rotate", Intrinsic{intrinsifyVectorRotation()}}
 };
 
 const static std::map<std::string, Intrinsic> ternaryIntrinsicMapping = {
-	{"vc4cl_dma_copy", Intrinsic{IntrinsicType::DMA_COPY, NOP_REGISTER}}
+	{"vc4cl_dma_copy", Intrinsic{intrinsifyDMAAccess(DMAAccess::COPY)}}
 };
 
 const static std::map<std::string, std::pair<Intrinsic, Optional<Value>>> typeCastIntrinsics = {
-    {"vc4cl_bitcast_uchar", {Intrinsic{IntrinsicType::ADD_ALU, "and", [](const Value& val){return Value(Literal(val.literal.integer & 0xFF), TYPE_INT8);}, true}, Value(Literal(0xFFUL), TYPE_INT8)}},
-    {"vc4cl_bitcast_char", {Intrinsic{IntrinsicType::ADD_ALU, "and", [](const Value& val){return Value(Literal(val.literal.integer & 0xFF), TYPE_INT8);}}, Value(Literal(0xFFUL), TYPE_INT8)}},
-    {"vc4cl_bitcast_ushort", {Intrinsic{IntrinsicType::ADD_ALU, "and", [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFF), TYPE_INT16);}, true}, Value(Literal(0xFFFFUL), TYPE_INT16)}},
-    {"vc4cl_bitcast_short", {Intrinsic{IntrinsicType::ADD_ALU, "and", [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFF), TYPE_INT16);}}, Value(Literal(0xFFFFUL), TYPE_INT16)}},
-    {"vc4cl_bitcast_uint", {Intrinsic{IntrinsicType::ADD_ALU, "mov", [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFFFFFFUL), TYPE_INT32);}, true}, NO_VALUE}},
-    {"vc4cl_bitcast_int", {Intrinsic{IntrinsicType::ADD_ALU, "mov", [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFFFFFFUL), TYPE_INT32);}}, NO_VALUE}},
-    {"vc4cl_bitcast_float", {Intrinsic{IntrinsicType::ADD_ALU, "mov", [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFFFFFFUL), TYPE_INT32);}}, NO_VALUE}}
+    {"vc4cl_bitcast_uchar", {Intrinsic{intrinsifyBinaryALUInstruction("and", true), [](const Value& val){return Value(Literal(val.literal.integer & 0xFF), TYPE_INT8);}}, Value(Literal(0xFFUL), TYPE_INT8)}},
+    {"vc4cl_bitcast_char", {Intrinsic{intrinsifyBinaryALUInstruction("and"), [](const Value& val){return Value(Literal(val.literal.integer & 0xFF), TYPE_INT8);}}, Value(Literal(0xFFUL), TYPE_INT8)}},
+    {"vc4cl_bitcast_ushort", {Intrinsic{intrinsifyBinaryALUInstruction("and", true), [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFF), TYPE_INT16);}}, Value(Literal(0xFFFFUL), TYPE_INT16)}},
+    {"vc4cl_bitcast_short", {Intrinsic{intrinsifyBinaryALUInstruction("and"), [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFF), TYPE_INT16);}}, Value(Literal(0xFFFFUL), TYPE_INT16)}},
+    {"vc4cl_bitcast_uint", {Intrinsic{intrinsifyBinaryALUInstruction("mov", true), [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFFFFFFUL), TYPE_INT32);}}, NO_VALUE}},
+    {"vc4cl_bitcast_int", {Intrinsic{intrinsifyBinaryALUInstruction("mov"), [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFFFFFFUL), TYPE_INT32);}}, NO_VALUE}},
+    {"vc4cl_bitcast_float", {Intrinsic{intrinsifyBinaryALUInstruction("mov"), [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFFFFFFUL), TYPE_INT32);}}, NO_VALUE}}
 };
 
 static InstructionWalker intrinsifyNoArgs(Method& method, InstructionWalker it)
@@ -143,24 +266,7 @@ static InstructionWalker intrinsifyNoArgs(Method& method, InstructionWalker it)
     {
         if(callSite->methodName.find(pair.first) != std::string::npos)
         {
-            logging::debug() << "Intrinsifying method-call without arguments to " << callSite->methodName << logging::endl;
-            if(pair.second.type == IntrinsicType::VALUE_READ)
-            {
-                it.reset(new MoveOperation(callSite->getOutput(), pair.second.val));
-            }
-            else if(pair.second.type == IntrinsicType::MUTEX_LOCK)
-            {
-                it.reset(new MoveOperation(NOP_REGISTER, MUTEX_REGISTER));
-            }
-            else if(pair.second.type == IntrinsicType::MUTEX_UNLOCK)
-            {
-                it.reset(new MoveOperation(MUTEX_REGISTER, BOOL_TRUE));
-            }
-            else
-            {
-                throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled no-arg intrisics", pair.first);
-            }
-            return it;
+        	return pair.second.func(method, it, callSite);
         }
     }
     return it;
@@ -186,58 +292,10 @@ static InstructionWalker intrinsifyUnary(Method& method, InstructionWalker it)
         		logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to pre-calculated value" << logging::endl;
         		it.reset(new MoveOperation(callSite->getOutput(), pair.second.unaryInstr.get()(callSite->getArgument(0)), callSite->conditional, callSite->setFlags));
         	}
-        	else if(pair.second.type == IntrinsicType::SFU)
-            {
-				logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to SFU call" << logging::endl;
-				it = insertSFUCall(pair.second.val.reg, it, callSite->getArgument(0), callSite->conditional, callSite->setFlags);
-				//3. write result to output (from r4)
-				it.reset(new MoveOperation(callSite->getOutput(), Value(REG_SFU_OUT, callSite->getOutput().get().type), COND_ALWAYS));
-            }
-            else if(pair.second.type == IntrinsicType::ADD_ALU || pair.second.type == IntrinsicType::MUL_ALU)
-            {
-                logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to operation " << pair.second.opCode << logging::endl;
-                it.reset(new Operation(pair.second.opCode, callSite->getOutput(), callSite->getArgument(0), COND_ALWAYS));
-            }
-            else if(pair.second.type == IntrinsicType::NOOP)
-            {
-                logging::debug() << "Skipping no-op " << callSite->to_string() << logging::endl;
-                it.erase();
-                //so next instruction is not skipped
-                it.previousInBlock();
-            }
-            else if(pair.second.type == IntrinsicType::DMA_READ)
-            {
-                logging::debug() << "Intrinsifying memory read " << callSite->to_string() << logging::endl;
-                it = periphery::insertReadDMA(method, it, callSite->getOutput(), callSite->getArgument(0), false);
-                it.erase();
-                //so next instruction is not skipped
-                it.previousInBlock();
-            }
-            else if(pair.second.type == IntrinsicType::SEMAPHORE_INCREMENT)
-            {
-            	if(!callSite->getArgument(0).get().hasType(ValueType::LITERAL))
-            		throw CompilationError(CompilationStep::OPTIMIZER, "Semaphore-number needs to be a compile-time constant", callSite->to_string());
-            	if(callSite->getArgument(0).get().literal.integer < 0 || callSite->getArgument(0).get().literal.integer >= 16)
-            		throw CompilationError(CompilationStep::OPTIMIZER, "Semaphore-number needs to be between 0 and 15", callSite->to_string());
-            	logging::debug() << "Intrinsifying semaphore increment with instruction" << logging::endl;
-            	it.reset(new SemaphoreAdjustment(static_cast<Semaphore>(callSite->getArgument(0).get().literal.integer), true, callSite->conditional, callSite->setFlags));
-            }
-            else if(pair.second.type == IntrinsicType::SEMAPHORE_DECREMENT)
-			{
-            	if(!callSite->getArgument(0).get().hasType(ValueType::LITERAL))
-					throw CompilationError(CompilationStep::OPTIMIZER, "Semaphore-number needs to be a compile-time constant", callSite->to_string());
-				if(callSite->getArgument(0).get().literal.integer < 0 || callSite->getArgument(0).get().literal.integer >= 16)
-					throw CompilationError(CompilationStep::OPTIMIZER, "Semaphore-number needs to be between 0 and 15", callSite->to_string());
-				logging::debug() << "Intrinsifying semaphore decrement with instruction" << logging::endl;
-				it.reset(new SemaphoreAdjustment(static_cast<Semaphore>(callSite->getArgument(0).get().literal.integer), false, callSite->conditional, callSite->setFlags));
-			}
-            else
-            {
-                throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled unary intrisics", pair.first);
-            }
-        	const bool isUnsigned = pair.second.withSignFlag && callSite->getArgument(2).hasValue && callSite->getArgument(2).get().literal.integer == VC4CL_UNSIGNED;
-        	if(isUnsigned)
-        		it->setDecorations(InstructionDecorations::UNSIGNED_RESULT);
+        	else
+        	{
+        		return pair.second.func(method, it, callSite);
+        	}
             return it;
         }
     }
@@ -255,18 +313,13 @@ static InstructionWalker intrinsifyUnary(Method& method, InstructionWalker it)
         		logging::debug() << "Intrinsifying '" << callSite->to_string() << "' to simple move" << logging::endl;
 				it.reset(new MoveOperation(callSite->getOutput(), callSite->getArgument(0)));
         	}
-        	else if(pair.second.first.type == IntrinsicType::ADD_ALU || pair.second.first.type == IntrinsicType::MUL_ALU)
+        	else
             {
         		//TODO could use pack-mode here, but only for UNSIGNED values!!
-				logging::debug() << "Intrinsifying '" << callSite->to_string() << "' to operation " << pair.second.first.opCode << " with constant " << pair.second.second.to_string() << logging::endl;
-                it.reset(new Operation(pair.second.first.opCode, callSite->getOutput(), callSite->getArgument(0), pair.second.second, COND_ALWAYS));
+				logging::debug() << "Intrinsifying '" << callSite->to_string() << "' to operation with constant " << pair.second.second.to_string() << logging::endl;
+				callSite->setArgument(1, pair.second.second);
+				return pair.second.first.func(method, it, callSite);
             }
-            else
-            {
-                throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled type-cast intrisics", pair.first);
-            }
-			if(pair.second.first.withSignFlag)
-				it->setDecorations(InstructionDecorations::UNSIGNED_RESULT);
             return it;
         }
     }
@@ -293,34 +346,10 @@ static InstructionWalker intrinsifyBinary(Method& method, InstructionWalker it)
 				logging::debug() << "Intrinsifying binary '" << callSite->to_string() << "' to pre-calculated value" << logging::endl;
 				it.reset(new MoveOperation(callSite->getOutput(), pair.second.binaryInstr.get()(callSite->getArgument(0), callSite->getArgument(1)), callSite->conditional, callSite->setFlags));
 			}
-        	else if(pair.second.type == IntrinsicType::ADD_ALU || pair.second.type == IntrinsicType::MUL_ALU)
-            {
-                logging::debug() << "Intrinsifying binary '" << callSite->to_string() << "' to operation " << pair.second.opCode << logging::endl;
-                it.reset(new Operation(pair.second.opCode, callSite->getOutput(), callSite->getArgument(0), callSite->getArgument(1), COND_ALWAYS));
-            }
-            else if(pair.second.type == IntrinsicType::DMA_WRITE)
-            {
-                logging::debug() << "Intrinsifying memory write " << callSite->to_string() << logging::endl;
-                it = periphery::insertWriteDMA(method, it, callSite->getArgument(1), callSite->getArgument(0), false);
-                it.erase();
-                //so next instruction is not skipped
-                it.previousInBlock();
-            }
-            else if(pair.second.type == IntrinsicType::VECTOR_ROTATE)
-            {
-            	logging::debug() << "Intrinsifying vector rotation " << callSite->to_string() << logging::endl;
-            	it = insertVectorRotation(it, callSite->getArgument(0), callSite->getArgument(1), callSite->getOutput(), Direction::UP);
-            	it.erase();
-				//so next instruction is not skipped
-            	it.previousInBlock();
-            }
-            else
-            {
-                throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled binary intrisics", pair.first);
-            }
-        	const bool isUnsigned = pair.second.withSignFlag && callSite->getArgument(3).hasValue && callSite->getArgument(3).get().literal.integer == VC4CL_UNSIGNED;
-        	if(isUnsigned)
-				it->setDecorations(InstructionDecorations::UNSIGNED_RESULT);
+        	else
+        	{
+        		return pair.second.func(method, it, callSite);
+        	}
             return it;
         }
     }
@@ -342,30 +371,7 @@ static InstructionWalker intrinsifyTernary(Method& method, InstructionWalker it)
     {
         if(callSite->methodName.find(pair.first) != std::string::npos)
         {
-            if(pair.second.type == IntrinsicType::ADD_ALU || pair.second.type == IntrinsicType::MUL_ALU)
-            {
-                logging::debug() << "Intrinsifying ternary '" << callSite->to_string() << "' to operation " << pair.second.opCode << logging::endl;
-                it.emplace(new Operation(pair.second.opCode, callSite->getOutput(), callSite->getArgument(0), callSite->getArgument(1)));
-            }
-            else if(pair.second.type == IntrinsicType::DMA_COPY)
-            {
-			   logging::debug() << "Intrinsifying ternary '" << callSite->to_string() << "' to DMA copy operation " << logging::endl;
-			   const DataType type = callSite->getArgument(0).get().type.getElementType();
-			   //TODO number of elements!
-			   it = method.vpm->insertReadRAM(it, callSite->getArgument(1), type, nullptr, false);
-			   it = method.vpm->insertWriteRAM(it, callSite->getArgument(0), type, nullptr, false);
-			   it.erase();
-			   //so next instruction is not skipped
-			   it.previousInBlock();
-            }
-            else
-            {
-                throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled ternary intrisics", pair.first);
-            }
-            const bool isUnsigned = pair.second.withSignFlag && callSite->getArgument(4).hasValue && callSite->getArgument(4).get().literal.integer == VC4CL_UNSIGNED;
-            if(isUnsigned)
-            	it->setDecorations(InstructionDecorations::UNSIGNED_RESULT);
-            return it;
+        	return pair.second.func(method, it, callSite);
         }
     }
     return it;

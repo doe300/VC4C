@@ -397,7 +397,7 @@ void Method::cleanLocals()
 	for(const Global& g : module.globalData)
 	{
 		if(!localNames.emplace(g.name).second)
-			throw CompilationError(CompilationStep::GENERAL, "Duplicate parameter for method", g.to_string());
+			throw CompilationError(CompilationStep::GENERAL, "Duplicate global", g.to_string());
 	}
 	for(const Parameter& p : parameters)
 	{
