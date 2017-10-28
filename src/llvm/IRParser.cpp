@@ -39,15 +39,64 @@ static std::string cleanMethodName(const std::string& name)
     return std::regex_replace(tmp, std::regex("Dv\\d+_"), std::string(""));
 }
 
+static bool skipToken(Scanner& scanner, const std::string& token)
+{
+	if(scanner.peek().hasValue(token))
+	{
+		scanner.pop();
+		return true;
+	}
+	return false;
+}
+
+static bool skipToken(Scanner& scanner, const char token)
+{
+	if(scanner.peek().hasValue(token))
+	{
+		scanner.pop();
+		return true;
+	}
+	return false;
+}
+
+static void expectSkipToken(Scanner& scanner, const std::string& token)
+{
+	if(scanner.peek().hasValue(token))
+	{
+		scanner.pop();
+	}
+	else
+	{
+		std::stringstream s;
+		s << "Expected '" << token << "', got '" << scanner.peek().to_string() << "'";
+		throw CompilationError(CompilationStep::PARSER, "Expected token not found", s.str());
+	}
+}
+
+static void expectSkipToken(Scanner& scanner, const char token)
+{
+	if(scanner.peek().hasValue(token))
+	{
+		scanner.pop();
+	}
+	else
+	{
+		std::stringstream s;
+		s << "Expected '" << token << "', got '" << scanner.peek().to_string() << "'";
+		throw CompilationError(CompilationStep::PARSER, "Expected token not found", s.str());
+	}
+}
+
 Value IRParser::toValue(const Token& token, const DataType& type)
 {
     Value val(Literal(false), type);
     val.valueType = toValueType(token.type);
-    if (token.type == TokenType::STRING) {
+    if (token.type == TokenType::STRING)
+    {
     	if(token.getText().get().compare("undef") == 0)
     		val.valueType = ValueType::UNDEFINED;
     	else if(token.getText().get().compare("zeroinitializer") == 0)
-    		return ZERO_INITIALIZER;
+    		return Value::createZeroInitializer(type);
     	else if(currentMethod != nullptr)
     		//FIXME somehow, parameters are not found, but they are there (at least at a later point!)
     		val.local = const_cast<Local*>(currentMethod->findOrCreateLocal(type, token.getText()));
@@ -146,10 +195,8 @@ static ParameterDecorations parseParameterDecorations(Scanner& scanner)
 static Optional<AddressSpace> readAddressSpace(Scanner& scanner)
 {
 	int64_t addressSpace = -1;
-	if(scanner.peek().hasValue("addrspace"))
+	if(skipToken(scanner, "addrspace"))
 	{
-		//pop 'addrspace'
-		scanner.pop();
 		//pop '('
 		scanner.pop();
 		//pop address space
@@ -185,27 +232,17 @@ DataType IRParser::parseType()
     unsigned num = 1;
     bool isArray = false;
     bool isVector = false;
-    if (scanner.peek().hasValue("exact")) {
-        //'exact <type>'
-        scanner.pop();
-    }
-    if (scanner.peek().hasValue('[')) {
-        isArray = true;
-        //pop '['
-        scanner.pop();
-    }
-    if (scanner.peek().hasValue('<')) {
-        isVector = true;
-        //pop '<'
-        scanner.pop();
-    }
+    //'exact <type>'
+    skipToken(scanner, "exact");
+    isArray = skipToken(scanner, '[');
+    isVector = skipToken(scanner, '<');
     DataType childType = TYPE_UNKNOWN;
     std::string typeName;
     if (isArray || isVector)
     {
         num = scanner.pop().integer;
         //pop 'x'
-        scanner.pop();
+        expectSkipToken(scanner, "x");
 
         childType = parseType();
 
@@ -214,31 +251,44 @@ DataType IRParser::parseType()
     }
     else
     {
-		if (scanner.peek().hasValue("zeroext")) {
+		if (skipToken(scanner, "zeroext")) {
 			//for method return types, this comes before the type
 			//XXX could be used as flag ??
-			scanner.pop();
 		}
 		typeName = scanner.pop().getText();
-		if (scanner.peek().hasValue("zeroext")) {
+		if (skipToken(scanner, "zeroext")) {
 			//for any other type, this comes afterwards
 			//XXX could be used as flag ??
-			scanner.pop();
 		}
     }
 
     unsigned numPointerTypes = 0;
-    const Optional<AddressSpace> addressSpace = readAddressSpace(scanner);
-    if (scanner.peek().hasValue('*')) {
-    	//pop '*'s, there can be several '*'s, so we need to count them
-    	const std::string ptrs = scanner.pop().getText();
-        numPointerTypes += std::count(ptrs.begin(), ptrs.end(), '*');
+    Optional<AddressSpace> addressSpace;
+    while(true)
+    {
+		//if the pointed to type is a pointer with an address space, the pointer can have multiple address space declarations
+    	//e.g. "%struct.Node.0 addrspace(1)* addrspace(1)* %pNext"
+		if(scanner.peek().hasValue("addrspace"))
+		{
+			//the outmost address space is the one of this pointer, so always overwrite
+			addressSpace = readAddressSpace(scanner);
+		}
+		if (scanner.peek().hasValue('*')) {
+			//pop '*'s, there can be several '*'s, so we need to count them
+			const std::string ptrs = scanner.pop().getText();
+			numPointerTypes += std::count(ptrs.begin(), ptrs.end(), '*');
+		}
+		else
+			break;
     }
     while (!typeName.empty() && typeName.back() == '*') {
         //since '*' is now considered a part of a string, it is concatenated to the type-name
         ++numPointerTypes;
         typeName = typeName.substr(0, typeName.size() - 1);
     }
+    //correct i1 to bool
+    if(typeName.compare("i1") == 0)
+    	typeName = TYPE_BOOL.typeName;
     DataType type = TYPE_UNKNOWN;
     if(isArray)
     {
@@ -271,16 +321,13 @@ std::vector<std::pair<Value, ParameterDecorations>> IRParser::parseParameters()
     std::size_t numParenthesis = 0;
     do {
         nextToken = scanner.peek();
-        if (nextToken.hasValue('(')) {
+        if (skipToken(scanner, '(')) {
             ++numParenthesis;
-            scanner.pop();
         }
-        else if (nextToken.hasValue(')')) {
+        else if (skipToken(scanner, ')')) {
             --numParenthesis;
-            scanner.pop();
         }
-        else if (nextToken.hasValue(',')) {
-            scanner.pop();
+        else if (skipToken(scanner, ',')) {
         }
         else {
             //<type> [attributes] <name/value> [','... , ')']
@@ -366,20 +413,11 @@ Value IRParser::parseValue(bool withType, const DataType& typeArg)
     if (nextToken.hasValue('<') || nextToken.hasValue('[') || nextToken.hasValue('{')) {
         val.valueType = ValueType::CONTAINER;
         //'<'|'[' <typ> <val> [, <typ> <val>] '>'|']'
-        //FIXME this is wrong for e.g. vectors in structs
         while (!scanner.peek().hasValue('>') && !scanner.peek().hasValue(']') && !scanner.peek().hasValue('}')) {
-            const DataType t(parseType());
-            nextToken = scanner.pop();
-            Value tmp(toValue(nextToken, t));
-            if (tmp.hasType(ValueType::LITERAL))
-                val.container.elements.push_back(tmp);
-            else if (tmp.isUndefined())
-                val.container.elements.push_back(tmp);
-            else
-                throw CompilationError(CompilationStep::PARSER, scanner.getLineNumber(), std::string("Invalid value-type for container: ") + tmp.to_string());
-            if (scanner.peek().hasValue(',')) {
-                scanner.pop();
-            }
+        	//this is required, e.g. for arrays/structs of vectors
+        	//e.g. "@grads3d = addrspace(2) constant [16 x <4 x i8>] [<4 x i8> <i8 1, i8 1, i8 0, i8 0>, <4 x i8> <i8 -1, i8 1, i8 0, i8 0>, ...]"
+        	val.container.elements.push_back(parseValue());
+            skipToken(scanner, ',');
         }
         scanner.pop();
         return val;
@@ -399,19 +437,15 @@ DataType IRParser::parseStructDefinition()
     //<name> = type { <type0>, <type1>, ... }
     //<name> = type <{ <type0>, <type1>, ... }> is a "packed" struct
     std::string name(scanner.pop().getText());
-    //pop '='
-    scanner.pop();
-    //pop 'type'
-    scanner.pop();
+    expectSkipToken(scanner, '=');
+    expectSkipToken(scanner, "type");
     DataType type;
     type.typeName = name;
     type.complexType.reset(new StructType({}));
-    if (scanner.peek().hasValue('<')) {
-        //pop '<'
-        scanner.pop();
+    if (skipToken(scanner, '<')) {
         type.getStructType().get()->isPacked = true;
     }
-    if(scanner.peek().hasValue("opaque"))
+    if(skipToken(scanner, "opaque"))
     {
     	//e.g. "%struct.Node.0 = type opaque"
     	//XXX anything special to do??
@@ -425,15 +459,14 @@ DataType IRParser::parseStructDefinition()
 			type.getStructType().get()->elementTypes.push_back(parseType());
 		}
 		while (scanner.peek().hasValue(','));
-		//pop '}'
-		scanner.pop();
+		expectSkipToken(scanner, '}');
     }
     if (type.getStructType().get()->isPacked) {
-        //pop '>'
-        scanner.pop();
+    	expectSkipToken(scanner, '>');
     }
     logging::debug() << "Struct type: " << type.to_string() << (type.getStructType().get()->isPacked ? " (packed)" : "") << logging::endl;
-    logging::debug() << "with elements: " << to_string<DataType>(type.getStructType().get()->elementTypes) << logging::endl;
+    if(!type.getStructType().get()->elementTypes.empty())
+    	logging::debug() << "with elements: " << to_string<DataType>(type.getStructType().get()->elementTypes) << logging::endl;
     return type;
 }
 
@@ -458,18 +491,21 @@ static void skipVisibility(Scanner& scanner)
 
 bool IRParser::parseGlobalData()
 {
-	//@<GlobalVarName> = [Linkage] [Visibility] [DLLStorageClass] [ThreadLocal] [(unnamed_addr|local_unnamed_addr)] [AddrSpace] [ExternallyInitialized] <global | constant> <Type> [<InitializerConstant>]
+	/*
+	 * @<GlobalVarName> = [Linkage] [Visibility] [DLLStorageClass] [ThreadLocal]
+	 * 			[(unnamed_addr|local_unnamed_addr)] [AddrSpace]
+	 * 			[ExternallyInitialized]
+	 * 			<global | constant> <Type> [<InitializerConstant>]
+	 * 			[, section "name"] [, comdat [($name)]]
+	 * 			[, align <Alignment>] (, !name !N)*
+	 */
 	const std::string name(scanner.pop().getText());
-    //pop '='
-    scanner.pop();
+	expectSkipToken(scanner, '=');
     bool isExternal = scanner.peek().hasValue("external") || scanner.peek().hasValue("extern_weak");
     skipLinkage(scanner);
     skipVisibility(scanner);
-    Token nextToken = scanner.peek();
-    while (nextToken.hasValue("unnamed_addr") || nextToken.hasValue("local_unnamed_addr")) {
-        scanner.pop();
-        nextToken = scanner.peek();
-    }
+    skipToken(scanner, "unnamed_addr");
+    skipToken(scanner, "local_unnamed_addr");
     readAddressSpace(scanner);
     while(scanner.peek().hasValue("global") || scanner.peek().hasValue("constant"))
     {
@@ -482,7 +518,14 @@ bool IRParser::parseGlobalData()
     	val = Value(parseType());
     }
     else
-    	val = parseValue();
+    {
+    	const DataType type(parseType());
+    	//TODO global as bitcast of address of of other global (e.g. in /opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/opencl_types.cl). How to handle??
+		//would need to retain in the same address of the other global?
+    	if(scanner.peek().hasValue("bitcast"))
+    		throw CompilationError(CompilationStep::PARSER, "Global as bitcast to other global is not implemented yet", name);
+    	val = parseValue(false, type);
+    }
 
     logging::debug() << "Reading global data '" << name << "' with " << val.to_string(false, true) << logging::endl;
     //store local + value
@@ -596,15 +639,14 @@ void IRParser::parseMethodBody(LLVMMethod& method)
         }
     }
     while (scanner.hasInput() && !scanner.peek().hasValue('}'));
-    //pop '}'
-    scanner.pop();
+    expectSkipToken(scanner, '}');
 
     logging::debug() << "Done, " << method.instructions.size() << " instructions" << logging::endl;
 }
 
 LLVMInstruction* IRParser::parseInstruction(LLVMMethod& method)
 {
-    //http://llvm.org/docs/LangRef.html
+	//http://releases.llvm.org/3.9.0/docs/LangRef.html
     LLVMInstruction* result = nullptr;
     //read 1 instruction per line
     Token nextToken = scanner.pop();
@@ -679,11 +721,8 @@ std::vector<Value> IRParser::parseIndices()
 {
     std::vector<Value> indices;
     do {
-        //skip ','
-        scanner.pop().to_string();
-        if(scanner.peek().hasValue("inrange"))
-            //pop 'inrange'
-        	scanner.pop().to_string();
+        expectSkipToken(scanner, ',');
+        skipToken(scanner, "inrange");
         indices.push_back(parseValue());
     }
     while (!scanner.peek().isEnd() && !scanner.peek().hasValue(')'));
@@ -694,7 +733,8 @@ static intermediate::InstructionDecorations parseFastMathFlags(Scanner& scanner)
 {
     intermediate::InstructionDecorations decorations = intermediate::InstructionDecorations::NONE;
     while (scanner.peek().hasValue("nsw") || scanner.peek().hasValue("nuw") || scanner.peek().hasValue("nnan") ||
-           scanner.peek().hasValue("ninf") || scanner.peek().hasValue("nsz") || scanner.peek().hasValue("arcp") || scanner.peek().hasValue("fast")) {
+           scanner.peek().hasValue("ninf") || scanner.peek().hasValue("nsz") || scanner.peek().hasValue("arcp") || scanner.peek().hasValue("fast") ||
+		   scanner.peek().hasValue("exact")) {
         //http://llvm.org/docs/LangRef.html#fast-math-flags
         if (scanner.peek().hasValue("nnan"))
         	decorations = add_flag(decorations, intermediate::InstructionDecorations::NO_NAN);
@@ -768,23 +808,32 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
     const std::string destination(dest.getText());
     intermediate::InstructionDecorations decorations = intermediate::InstructionDecorations::NONE;
 
-    //pop '='
-    scanner.pop();
+    expectSkipToken(scanner, '=');
 
     Token nextToken = scanner.pop();
 
     if (nextToken.hasValue("alloca")) {
-        //<result> = alloca [inalloca] <type> [, <ty> <NumElements>] [, align <alignment>]
+    	/*
+    	 * <result> = alloca [inalloca] <type> [, <ty> <NumElements>] [, align <alignment>] [, addrspace(<num>)]     ; yields type addrspace(num)*:result
+    	 */
         //allocation -> determine type
-        nextToken = scanner.peek();
-        if (nextToken.hasValue("inalloca")) {
-            scanner.pop();
-            nextToken = scanner.peek();
-        }
+    	skipToken(scanner, "inalloca");
         DataType type(parseType());
+        if(skipToken(scanner, ',') && !skipToken(scanner, "align") && !skipToken(scanner, "addrspace"))
+        {
+        	//[, <ty> <NumElements>]
+        	const Value numEntries = parseValue();
+        	if(!numEntries.hasType(ValueType::LITERAL))
+        		throw CompilationError(CompilationStep::PARSER, "Cannot allocate a non-constant number of entries", numEntries.to_string());
+        	const DataType childType = type;
+        	type.num = 1;
+			type.complexType.reset(new ArrayType{childType, static_cast<unsigned>(numEntries.literal.integer)});
+			type.typeName = (childType.to_string() + "[") + std::to_string(numEntries.literal.integer) +"]";
+        }
         logging::debug() << "Allocate " << type.to_string() << " for " << destination << logging::endl;
         //TODO for scalar or vector types, lower into local, possible??
         //lift into global, same as SPIR-V OpVariable
+        //FIXME this introduces duplicate globals, since multiple kernels can allocate locals with the same name! (e.g. for /opt/SPIRV-LLVM/test/SPIRV/simple.ll)
         method.module->globalData.push_back(Global(destination, type.toPointerType(), Value(type)));
         return nullptr;
     }
@@ -796,22 +845,23 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         const std::string source(scanner.pop().getText());
 
         //pop 'to'
-        scanner.pop();
+        expectSkipToken(scanner, "to");
 
         const DataType destType(parseType());
         logging::debug() << "Making reference from bitcast " << type.to_string() << " from " << source << " to " << destType.to_string() << ' ' << destination << logging::endl;
         //simply associate new and original
         Value ref = method.method->findOrCreateLocal(type, source)->createReference();
-        return new Copy(method.method->findOrCreateLocal(destType, destination), ref);
+        return new Copy(method.method->findOrCreateLocal(destType, destination)->createReference(), ref);
     }
     else if (nextToken.hasValue("load")) {
         //load from memory
-        //load [volatile] <ty>, <ty>* <pointer>[, align <alignment>]
-        //load atomic [volatile] <ty>, <ty>* <pointer> [singlethread] <ordering>, align <alignment>
-        //TODO handle atomic?!
-        while (scanner.peek().hasValue("atomic") || scanner.peek().hasValue("volatile")) {
-            scanner.pop();
-        }
+    	/*
+    	 * <result> = load [volatile] <ty>, <ty>* <pointer>[, align <alignment>][, !nontemporal !<index>][, !invariant.load !<index>][, !invariant.group !<index>][, !nonnull !<index>][, !dereferenceable !<deref_bytes_node>][, !dereferenceable_or_null !<deref_bytes_node>][, !align !<align_node>]
+    	 * <result> = load atomic [volatile] <ty>, <ty>* <pointer> [singlethread] <ordering>, align <alignment> [, !invariant.group !<index>]
+    	 */
+    	skipToken(scanner, "atomic");
+    	skipToken(scanner, "volatile");
+
         DataType type(parseType());
         DataType sourceType(TYPE_UNKNOWN);
         //Khronos CLang does not list pointer- and value-type separately
@@ -821,7 +871,7 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         }
         else {
             //pop ','
-            scanner.pop();
+            expectSkipToken(scanner, ',');
             //pop second type
             DataType sourceType(parseType());
         }
@@ -834,13 +884,9 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         	//e.g: "getelementptr inbounds ([256 x i32] addrspace(2)* @noise_table, i32 0, i32 0)"
 
         	//pop 'getelementptr'
-        	scanner.pop();
-        	if(scanner.peek().hasValue("inbounds"))
-        		//pop 'inbounds'
-        		scanner.pop();
-        	if(scanner.peek().hasValue('('))
-        		//pop '('
-        		scanner.pop();
+        	expectSkipToken(scanner, "getelementptr");
+        	skipToken(scanner, "inbounds");
+        	skipToken(scanner, '(');
         	const DataType ptrElementType = parseType();
         	Value pointer(UNDEFINED_VALUE);
         	//Khronos CLang does not list pointer- and value-type separately
@@ -851,7 +897,7 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         	else
         	{
         		//pop ','
-        		scanner.pop();
+        		expectSkipToken(scanner, ',');
         		pointer = parseValue();
         	}
         	const std::vector<Value> indices = parseIndices();
@@ -906,30 +952,30 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
             if (srcContainer.local->is<Parameter>()) {
                 //loads from input parameter
                 // -> make extra instruction/flag to be used later
-                return new Copy(method.method->findOrCreateLocal(type, destination), srcContainer, srcIndex, true);
+                return new Copy(method.method->findOrCreateLocal(type, destination)->createReference(), srcContainer, srcIndex, true);
             }
         }
-        return new Copy(method.method->findOrCreateLocal(type, destination), src);
+        return new Copy(method.method->findOrCreateLocal(type, destination)->createReference(), src);
     }
-    else if (nextToken.hasValue("call") || nextToken.hasValue("tail") || nextToken.hasValue("notail") || nextToken.hasValue("muttail")) {
-        //<result> = [tail | musttail | notail ] call [fast-math flags] [cconv] [ret attrs] <ty>|<fnty> <fnptrval>(<function args>) [fn attrs] [ operand bundles ]
-        if (!nextToken.hasValue("call")) {
-            //pop following 'call'
-            scanner.pop();
-        }
-        if(scanner.peek().hasValue("spir_func"))
-        	//pop 'spir_func'
-        	scanner.pop();
-        if (scanner.peek().hasValue("fast-math")) {
-            //pop 'fast-math'
-            scanner.pop();
+    else if (nextToken.hasValue("call") || nextToken.hasValue("tail") || nextToken.hasValue("notail") || nextToken.hasValue("musttail")) {
+        /*
+         * <result> = [tail | musttail | notail ] call [fast-math flags] [cconv] [ret attrs] <ty>|<fnty> <fnptrval>(<function args>) [fn attrs] [ operand bundles ]
+         */
+    	//pop following 'call'
+        skipToken(scanner, "call");
+        //pop 'spir_func'
+        skipToken(scanner, "spir_func");
+        //pop 'fast-math'
+        if(skipToken(scanner, "fast-math")) {
             //parse flags
             decorations = add_flag(decorations, parseFastMathFlags(scanner));
         }
-        if (scanner.peek().hasValue("cconv")) {
-            scanner.pop();
+        skipToken(scanner, "cconv");
+        if(skipToken(scanner, "ret"))
+        {
+        	//pop 'zeroext', signext' or 'inreg'
+        	scanner.pop();
         }
-        //TODO handle/discard return attributes (zeroext, signext, ...)
         const DataType returnType(parseType());
         if (scanner.peek().hasValue('(')) {
             //XXX what does the argument-types before the name do??
@@ -938,7 +984,7 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
             }
             while (!scanner.peek().hasValue(')'));
             //pop ')'
-            scanner.pop();
+            expectSkipToken(scanner, ')');
         }
         std::string name;
         if (scanner.peek().hasValue("bitcast")) {
@@ -948,9 +994,8 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
             }
             while (!scanner.peek().hasValue(')'));
             //pop ')'
-            scanner.pop();
-            if (scanner.peek().hasValue('*'))
-                scanner.pop();
+            expectSkipToken(scanner, ')');
+            skipToken(scanner, '*');
             name = scanner.pop().getText();
             std::size_t bracket_level = 1;
             while (bracket_level > 0) {
@@ -978,23 +1023,22 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
 
     }
     else if (nextToken.hasValue("getelementptr")) {
-        //<result> = getelementptr [[inbounds] <ty>, ]<ty>* <ptrval>{, [inrange] <ty> <idx>}*
-        if (scanner.peek().hasValue("inbounds")) {
-            scanner.pop();
-        }
+    	/*
+    	 * <result> = getelementptr <ty>, <ty>* <ptrval>{, <ty> <idx>}*
+    	 * <result> = getelementptr inbounds <ty>, <ty>* <ptrval>{, <ty> <idx>}*
+    	 * <result> = getelementptr <ty>, <ptr vector> <ptrval>, <vector index type> <idx>
+    	 */
+    	skipToken(scanner, "inbounds");
         //element type, is same as type (just without the pointer)
         //for Khronos CLang, the element type is not listed extra -> check if this has a pointer
         DataType type(parseType());
         if (!type.isPointerType()) {
             //pop ','
-            scanner.pop();
+            expectSkipToken(scanner, ',');
             //parse pointer type
             type = parseType();
         }
-        //TODO what is there to be skipped??
-        //while (!scanner.peek().hasValue('%') /* local */ && !scanner.peek().hasValue('@') /* global */)
-        //    scanner.pop();
-        const std::string var(scanner.pop().getText());
+        const Value src = parseValue(false, type);
 
         const std::vector<Value> indices = parseIndices();
         const std::vector<DataType> elementTypes = getElementTypes(indices, type);
@@ -1006,36 +1050,36 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         }
 
         const Value dest(method.method->findOrCreateLocal(elementType, destination)->createReference());
-        const Value src = method.method->findOrCreateLocal(type, var)->createReference();
         logging::debug() << "Getting " << elementType.to_string() << " " << to_string<Value>(indices) << " from " << src.to_string() << " into " << dest.to_string(true) << logging::endl;
         return new IndexOf(dest.local, src, indices);
     }
     else if (nextToken.hasValue("icmp") || nextToken.hasValue("fcmp")) {
         //compare
         //(icmp|fcmp) [fast-math flags] <flag> <type> <op1>, <op2>
-        while (scanner.peek().hasValue("fast-math")) {
-            //pop 'fast-math'
-            scanner.pop();
+        while (skipToken(scanner, "fast-math")) {
             decorations = add_flag(decorations, parseFastMathFlags(scanner));
         }
         const std::string flag(scanner.pop().getText());
         const Value op1(parseValue());
         //pop ','
-        scanner.pop();
+        expectSkipToken(scanner, ',');
         const Value op2(parseValue(false, op1.type));
 
         logging::debug() << "Comparison " << flag << " between " << op1.to_string() << " and " << op2.to_string() << " into " << destination << logging::endl;
         return (new Comparison(method.method->findOrCreateLocal(TYPE_BOOL, destination), flag, op1, op2, nextToken.hasValue("fcmp")))->setDecorations(decorations);
     }
     else if (nextToken.hasValue("insertelement") || nextToken.hasValue("insertvalue")) {
-        //<result> = insertelement <n x <ty>> <val>, <ty> <elt>, <ty2> <idx>
-    	//<result> = insertvalue <aggregate type> <val>, <ty> <elt>, <idx>{, <idx>}*    ; yields <aggregate type>
+    	/*
+    	 * <result> = insertelement <n x <ty>> <val>, <ty> <elt>, <ty2> <idx>    ; yields <n x <ty>>
+    	 *
+    	 * <result> = insertvalue <aggregate type> <val>, <ty> <elt>, <idx>{, <idx>}*    ; yields <aggregate type>
+    	 */
         const Value container(parseValue());
         //pop ','
-        scanner.pop();
+        expectSkipToken(scanner, ',');
         const Value newValue(parseValue());
         //pop ','
-        scanner.pop();
+        expectSkipToken(scanner, ',');
         Value index(UNDEFINED_VALUE);
 		if(nextToken.hasValue("insertvalue"))
 			//the indices of insertvalue are literals, without a type
@@ -1047,11 +1091,14 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         return new ContainerInsertion(method.method->findOrCreateLocal(container.type, destination), container, newValue, index);
     }
     else if (nextToken.hasValue("extractelement") || nextToken.hasValue("extractvalue")) {
-        //<result> = extractelement <n x <ty>> <val>, <ty2> <idx>
-        //<result> = extractvalue <aggregate type> <val>, <idx>{, <idx>}*
+    	/*
+    	 * <result> = extractelement <n x <ty>> <val>, <ty2> <idx>  ; yields <ty>
+    	 *
+    	 * <result> = extractvalue <aggregate type> <val>, <idx>{, <idx>}*
+    	 */
         const Value container(parseValue());
         //pop ','
-        scanner.pop();
+        expectSkipToken(scanner, ',');
         Value index(TYPE_UNKNOWN);
         if(nextToken.hasValue("extractvalue"))
         	//the indices of extractvalue are literals, without a type
@@ -1065,13 +1112,15 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         return new ContainerExtraction(method.method->findOrCreateLocal(container.type.getElementType(), destination), container, index);
     }
     else if (nextToken.hasValue("shufflevector")) {
-        //<result> = shufflevector <n x <ty>> <v1>, <n x <ty>> <v2>, <m x i32> <mask> 
+    	/*
+    	 * <result> = shufflevector <n x <ty>> <v1>, <n x <ty>> <v2>, <m x i32> <mask>    ; yields <m x <ty>>
+    	 */
         const Value container1(parseValue());
         //pop ','
-        scanner.pop();
+        expectSkipToken(scanner, ',');
         const Value container2(parseValue());
         //pop ','
-        scanner.pop();
+        expectSkipToken(scanner, ',');
         //mask is in value, e.g. "<i32 0, i32 2>"
         const Value shuffleMask = parseValue();
 
@@ -1080,23 +1129,24 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
 
         DataType resultType = container1.type;
         resultType.num = shuffleMask.type.num;
-        return new ShuffleVector(method.method->findOrCreateLocal(resultType, destination), container1, container2, shuffleMask);
+        return new ShuffleVector(method.method->findOrCreateLocal(resultType, destination)->createReference(), container1, container2, shuffleMask);
     }
     else if (nextToken.hasValue("phi")) {
-        //<result> = phi <ty> [ <val0>, <label0>], ...
+    	/*
+    	 * <result> = phi <ty> [ <val0>, <label0>], ...
+    	 */
         const DataType type(parseType());
         std::vector<std::pair<Value, const Local*>> labels;
         do {
-            if (scanner.peek().hasValue(','))
-                scanner.pop();
+        	skipToken(scanner, ',');
             //pop '['
-            nextToken = scanner.pop();
+            expectSkipToken(scanner, '[');
             const Value val(parseValue(false, type));
             //pop ','
-            scanner.pop();
+            expectSkipToken(scanner, ',');
             const std::string label(scanner.pop().getText());
             //pop ']'
-            scanner.pop();
+            expectSkipToken(scanner, ']');
             labels.emplace_back(val, method.method->findOrCreateLocal(TYPE_LABEL, label));
         }
         while (scanner.peek().hasValue(','));
@@ -1104,14 +1154,15 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         return new PhiNode(method.method->findOrCreateLocal(type, destination), labels);
     }
     else if (nextToken.hasValue("select")) {
-        //<result> = select <selty> <cond>, <ty> <val1>, <ty> <val2>
-        //skip 'selty'
+    	/*
+    	 * <result> = select selty <cond>, <ty> <val1>, <ty> <val2>             ; yields ty
+    	 */
         const Value cond(parseValue());
         //skip ','
-        scanner.pop();
+        expectSkipToken(scanner, ',');
         const Value val1(parseValue());
         //skip ','
-        scanner.pop();
+        expectSkipToken(scanner, ',');
         const Value val2(parseValue());
 
         logging::debug() << "Selection of " << val1.to_string() << " or " << val2.to_string() << " according to " << cond.to_string() << " into " << destination << logging::endl;
@@ -1126,7 +1177,6 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         if (nextToken.type != TokenType::STRING) {
             throw CompilationError(CompilationStep::PARSER, scanner.getLineNumber(), std::string("Unhandled instruction: ") + nextToken.to_string());
         }
-        //XXX no signed/unsigned wrap (nsw/nuw)
         decorations = add_flag(decorations, parseFastMathFlags(scanner));
         const DataType type(parseType());
 
@@ -1150,7 +1200,7 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
             {
             	const Value arg2 = parseValue(false, type);
                 logging::debug() << "Binary-Operator " << opCode << " with " << arg1.to_string() << " and " << arg2.to_string() << " into " << destination << logging::endl;
-                return (new BinaryOperator(opCode, method.method->findOrCreateLocal(type, destination), arg1, arg2))->setDecorations(decorations);
+                return (new BinaryOperator(opCode, method.method->findOrCreateLocal(type, destination)->createReference(), arg1, arg2))->setDecorations(decorations);
             }
         }
         else {
@@ -1163,9 +1213,8 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
 
 LLVMInstruction* IRParser::parseMethodCall(LLVMMethod& method)
 {
-	if(scanner.peek().hasValue("spir_func"))
-		//pop 'spir_func'
-		scanner.pop();
+	//pop 'spir_func'
+	skipToken(scanner, "spir_func");
     const DataType returnType(parseType());
     std::string name(cleanMethodName(scanner.pop().getText()));
 
@@ -1183,15 +1232,17 @@ LLVMInstruction* IRParser::parseMethodCall(LLVMMethod& method)
 
 LLVMInstruction* IRParser::parseStore(LLVMMethod& method)
 {
-    //store [volatile] <ty> <value>, <ty>* <pointer>[, align <alignment>][, !nontemporal !<index>][, !invariant.group !<index>]
-    //store atomic [volatile] <ty> <value>, <ty>* <pointer> [singlethread] <ordering>, align <alignment> [, !invariant.group !<index>]
-    //XXX handle atomic store?
-    while (scanner.peek().hasValue("atomic") || scanner.peek().hasValue("volatile")) {
-        scanner.pop();
-    }
+	/*
+	 * store [volatile] <ty> <value>, <ty>* <pointer>[, align <alignment>][, !nontemporal !<index>][, !invariant.group !<index>]        ; yields void
+	 * store atomic [volatile] <ty> <value>, <ty>* <pointer> [singlethread] <ordering>, align <alignment> [, !invariant.group !<index>] ; yields void
+	 */
+	skipToken(scanner, "atomic");
+	//XXX handle volatile?
+	skipToken(scanner, "volatile");
+
     const Value value(parseValue());
     //pop ','
-    scanner.pop();
+    expectSkipToken(scanner, ',');
 
     Value destination(parseValue());
 
@@ -1228,7 +1279,7 @@ LLVMInstruction* IRParser::parseStore(LLVMMethod& method)
         }
         else if (destination.hasType(ValueType::LOCAL) && value.type == destination.type) {
             //store into locally allocated object (with alloca)
-            return new Copy(destination.local, value, INT_ZERO);
+            return new Copy(destination, value, INT_ZERO);
         }
         else
         {
@@ -1240,6 +1291,7 @@ LLVMInstruction* IRParser::parseStore(LLVMMethod& method)
     if (destContainer.hasType(ValueType::LOCAL)) {
         //check whether output is a parameter
     	//FIXME rewrite
+//    	throw CompilationError(CompilationStep::PARSER, "This type of storing is not implemented yet", destContainer.to_string());
 //        if (!destContainer.local->is<Parameter>()) {
 //            //if not, check whether output is a reference to a parameter
 //            //TODO improve, so this works for arbitrary depth of referencing ??!
@@ -1255,16 +1307,17 @@ LLVMInstruction* IRParser::parseStore(LLVMMethod& method)
 //        }
     }
     //FIXME is this correct??
-    return new Copy(destContainer.hasType(ValueType::LOCAL) ? destContainer.local : destination.local, value, destIndex);
+    return new Copy(destContainer, value, destIndex);
 }
 
 LLVMInstruction* IRParser::parseBranch(LLVMMethod& method)
 {
-    //br i1 <cond>, label <iftrue>, label <iffalse>
-    //br label <dest>
-    Token nextToken = scanner.peek();
-    if (nextToken.hasValue("label")) {
-        scanner.pop();
+	/*
+	 * br i1 <cond>, label <iftrue>, label <iffalse>
+	 * br label <dest>          ; Unconditional branch
+	 *
+	 */
+    if (skipToken(scanner, "label")) {
         //unconditional branch
         const std::string label(scanner.pop().getText());
 
@@ -1275,23 +1328,27 @@ LLVMInstruction* IRParser::parseBranch(LLVMMethod& method)
         //conditional branch
         const Value cond(parseValue());
         //pop ','
-        scanner.pop();
+        expectSkipToken(scanner, ',');
         //pop 'label'
-        scanner.pop();
+        expectSkipToken(scanner, "label");
         const std::string trueLabel(scanner.pop().getText());
         //pop ','
-        scanner.pop();
+        expectSkipToken(scanner, ',');
         //pop 'label'
-        scanner.pop();
+        expectSkipToken(scanner, "label");
         const std::string falseLabel(scanner.pop().getText());
 
-        logging::debug() << "Branch when " << cond.to_string() << " to either " << trueLabel << " or " << falseLabel << logging::endl;
+        logging::debug() << "Branch on " << cond.to_string() << " to either " << trueLabel << " or " << falseLabel << logging::endl;
         return new Branch(cond, trueLabel, falseLabel);
     }
 }
 
 LLVMInstruction* IRParser::parseReturn(LLVMMethod& method)
 {
+	/*
+	 * ret <type> <value>       ; Return a value from a non-void function
+	 * ret void                 ; Return from void function
+	 */
     const DataType type(parseType());
     const Token value = scanner.peek();
 
@@ -1306,7 +1363,7 @@ LLVMInstruction* IRParser::parseReturn(LLVMMethod& method)
 LLVMInstruction* IRParser::parseLabel(LLVMMethod& method, const Token& label)
 {
     //pop ':'
-    scanner.pop();
+	expectSkipToken(scanner, ':');
     std::string labelName = label.getText();
     if (labelName.find("<label>") != std::string::npos) {
         labelName = labelName.substr(labelName.find(':') + 1);
@@ -1320,30 +1377,39 @@ LLVMInstruction* IRParser::parseLabel(LLVMMethod& method, const Token& label)
 
 LLVMInstruction* IRParser::parseSwitch(LLVMMethod& method)
 {
-    //switch <intty> <value>, label <defaultdest> [ <intty> <val>, label <dest> ... ]
+	/*
+	 * switch <intty> <value>, label <defaultdest> [ <intty> <val>, label <dest> ... ]
+	 */
     //generalization of the branch instruction
     const Value cond(parseValue());
     //skip ','
-    scanner.pop();
+    expectSkipToken(scanner, ',');
     //skip 'label'
-    scanner.pop();
+    expectSkipToken(scanner, "label");
     const std::string defaultLabel(scanner.pop().getText());
     //skip '['
-    scanner.pop();
-    //skip (end)
-    scanner.pop();
+    expectSkipToken(scanner, '[');
+    if(scanner.peek().isEnd())
+    {
+		//skip new-line, if any
+		scanner.pop();
+    }
     std::map<int, std::string> cases;
     do {
         const Value matchVal(parseValue());
         //skip ','
-        scanner.pop();
+        expectSkipToken(scanner, ',');
         //skip 'label'
-        scanner.pop();
+        expectSkipToken(scanner, "label");
         const std::string matchLabel(scanner.pop().getText());
 
+        // "[...] an array of pairs of comparison value constants and ‘label‘s"
         cases[matchVal.literal.integer] = matchLabel;
-        //skip (end)
-        scanner.pop();
+        if(scanner.peek().isEnd())
+        {
+        	//skip new-line, if any
+        	scanner.pop();
+        }
     }
     while (!scanner.peek().hasValue(']'));
 
@@ -1361,9 +1427,11 @@ void IRParser::parseMetaData()
     std::vector<std::string>& values = metaData[name];
 
     //pop '='
-    scanner.pop();
+    expectSkipToken(scanner, '=');
+    //pop 'distinct', if there: "Metadata nodes that aren’t uniqued use the distinct keyword"
+    skipToken(scanner, "distinct");
     //pop '!'
-    scanner.pop();
+    expectSkipToken(scanner, '!');
     Token nextToken;
     while (scanner.hasInput() && !(nextToken = scanner.pop()).isEnd() && (nextToken.hasValue(',') || nextToken.hasValue('{'))) {
         if (scanner.peek().hasValue('!') || scanner.peek().hasValue('"')) {
@@ -1376,9 +1444,10 @@ void IRParser::parseMetaData()
                 //cut off leading '!"' and trailing '"'
                 values.push_back(val.substr(2, val.size() - 3));
         }
-        else if (scanner.peek().hasValue('i')) {
+        else
+        {
             //index 'i32' or '64' before numbers
-            scanner.pop();
+            skipToken(scanner, 'i');
         }
         if (scanner.peek().type == TokenType::NUMBER)
             values.push_back(std::to_string(scanner.pop().integer));

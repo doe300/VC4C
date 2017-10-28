@@ -125,7 +125,7 @@ bool CallSite::mapInstruction(Method& method) const
     }
     const Value output = dest == nullptr ? NOP_REGISTER : Value(dest, returnType);
     //handle other llvm.* intrinsics
-    if(methodName.compare("llvm.fmuladd.f32") == 0)
+    if(methodName.find("llvm.fmuladd") == 0)
     {
     	logging::debug() << "Converting intrinsic method call '" << methodName << "' to operations" << logging::endl;
     	const Value tmp = method.addNewLocal(returnType, "%fmuladd");
@@ -178,7 +178,7 @@ const std::string& CallSite::getMethodName() const
     return methodName;
 }
 
-Copy::Copy(const Local* dest, const Value& orig, const Value& index, const bool isRead) : dest(dest), orig(orig), index(index), isRead(isRead)
+Copy::Copy(const Value& dest, const Value& orig, const Value& index, const bool isRead) : dest(dest), orig(orig), index(index), isRead(isRead)
 {
 
 }
@@ -190,16 +190,18 @@ Copy::~Copy()
 
 const Local* Copy::getDeclaredLocal() const
 {
-    return dest;
+    return dest.hasType(ValueType::LOCAL) ? dest.local : nullptr;
 }
 
 std::vector<const Local*> Copy::getAllLocals() const
 {
-    if(orig.hasType(ValueType::LOCAL))
+    if(dest.hasType(ValueType::LOCAL) && orig.hasType(ValueType::LOCAL))
     {
-        return {dest, orig.local};
+        return {dest.local, orig.local};
     }
-    return {dest};
+    if(dest.hasType(ValueType::LOCAL))
+    	return {dest.local};
+    return {};
 }
 
 bool Copy::mapInstruction(Method& method) const
@@ -208,8 +210,8 @@ bool Copy::mapInstruction(Method& method) const
     {
         if(isRead)
         {
-            logging::debug() << "Generating reading of " << orig.to_string() << " from index " << index.to_string() << " into " << dest->to_string() << logging::endl;
-            periphery::insertReadDMA(method, method.appendToEnd(), Value(dest, orig.type), index);
+            logging::debug() << "Generating reading of " << orig.to_string() << " from index " << index.to_string() << " into " << dest.to_string() << logging::endl;
+            periphery::insertReadDMA(method, method.appendToEnd(), dest, index);
         }
         else
         {
@@ -219,8 +221,8 @@ bool Copy::mapInstruction(Method& method) const
     }
     else
     {
-        logging::debug() << "Generating copy of " << orig.to_string() << " into " << dest->name << logging::endl;
-        method.appendToEnd(new intermediate::MoveOperation(Value(dest, orig.type), orig));
+        logging::debug() << "Generating copy of " << orig.to_string() << " into " << dest.to_string() << logging::endl;
+        method.appendToEnd(new intermediate::MoveOperation(dest, orig));
     }
     return true;
 }
@@ -261,8 +263,8 @@ bool UnaryOperator::mapInstruction(Method& method) const
     return true;
 }
 
-BinaryOperator::BinaryOperator(const std::string& opCode, const Local* dest, const Value& arg0, const Value& arg1) :
-UnaryOperator(opCode, Value(dest, TYPE_UNKNOWN), arg0), arg2(arg1)
+BinaryOperator::BinaryOperator(const std::string& opCode, const Value& dest, const Value& arg0, const Value& arg1) :
+UnaryOperator(opCode, dest, arg0), arg2(arg1)
 {
 
 }
@@ -324,6 +326,7 @@ bool IndexOf::mapInstruction(Method& method) const
     logging::debug() << "Generating calculating index " << to_string<Value>(indices) << " of " << container.to_string() << " into " << dest->to_string() << logging::endl;
     
     //TODO firstIndexIsElement is not true for all cases!! (E.g. not for pointers to pointers?)
+    //neither is it false for all cases?!
     intermediate::insertCalculateIndices(method.appendToEnd(), method, container, dest->createReference(), indices, true);
     return true;
 }
@@ -416,7 +419,7 @@ bool ContainerInsertion::mapInstruction(Method& method) const
     }
     else
     {
-        throw CompilationError(CompilationStep::LLVM_2_IR, "Not implemented!");
+        throw CompilationError(CompilationStep::LLVM_2_IR, "Container insertion into arrays is not yet implemented!");
         //TODO handle arrays
         //instructions.emplace_back(new intermediate::MoveOperation(Value(element, elementType), newValue));
     }
@@ -463,7 +466,7 @@ bool ContainerExtraction::mapInstruction(Method& method) const
     }
     else
     {
-        throw CompilationError(CompilationStep::LLVM_2_IR, "Not implemented!");
+        throw CompilationError(CompilationStep::LLVM_2_IR, "Container extraction from arrays is not yet implemented!");
         //TODO handle arrays
         //instructions.emplace_back(new intermediate::MoveOperation(Value(element, elementType), newValue));
     }
@@ -509,7 +512,7 @@ bool ValueReturn::mapInstruction(Method& method) const
     return true;
 }
 
-ShuffleVector::ShuffleVector(const Local* dest, const Value& v1, const Value& v2, const Value& mask) :
+ShuffleVector::ShuffleVector(const Value& dest, const Value& v1, const Value& v2, const Value& mask) :
         dest(dest), v1(v1), v2(v2), mask(mask)
 {
 
@@ -523,12 +526,14 @@ ShuffleVector::~ShuffleVector()
 
 const Local* ShuffleVector::getDeclaredLocal() const
 {
-    return dest;
+    return dest.hasType(ValueType::LOCAL) ? dest.local : nullptr;
 }
 
 std::vector<const Local*> ShuffleVector::getAllLocals() const
 {
-    std::vector<const Local*> tmp = {dest};
+    std::vector<const Local*> tmp = {};
+    if(dest.hasType(ValueType::LOCAL))
+    	tmp.push_back(dest.local);
     if(v1.hasType(ValueType::LOCAL))
         tmp.push_back(v1.local);
     if(v2.hasType(ValueType::LOCAL))
@@ -543,10 +548,10 @@ std::vector<const Local*> ShuffleVector::getAllLocals() const
 bool ShuffleVector::mapInstruction(Method& method) const
 {
     //shuffling = iteration over all elements in both vectors and re-ordering in order given
-    logging::debug() << "Generating operations mixing " << v1.to_string() << " and " << v2.to_string() << " into " << dest->name << logging::endl;
+    logging::debug() << "Generating operations mixing " << v1.to_string() << " and " << v2.to_string() << " into " << dest.to_string() << logging::endl;
     DataType destType = v1.type;
     destType.num = mask.type.num;
-    intermediate::insertVectorShuffle(method.appendToEnd(), method, Value(dest, destType), v1, v2, mask);
+    intermediate::insertVectorShuffle(method.appendToEnd(), method, dest, v1, v2, mask);
     return true;
 }
 
@@ -663,12 +668,18 @@ std::vector<const Local*> Branch::getAllLocals() const
 
 bool Branch::mapInstruction(Method& method) const
 {
-    logging::debug() << "Generating branch on condition " << cond.to_string() << " to either " << thenLabel << " or " << elseLabel << logging::endl;
-    method.appendToEnd(new intermediate::Branch(method.findOrCreateLocal(TYPE_LABEL, thenLabel), COND_ZERO_SET, cond));
-    if(!elseLabel.empty())
-    {
-    	method.appendToEnd(new intermediate::Branch(method.findOrCreateLocal(TYPE_LABEL, elseLabel),COND_ZERO_CLEAR, cond));
-    }
+	if(cond == BOOL_TRUE)
+	{
+		logging::debug() << "Generating unconditional branch to " << thenLabel << logging::endl;
+		method.appendToEnd(new intermediate::Branch(method.findOrCreateLocal(TYPE_LABEL, thenLabel), COND_ALWAYS, BOOL_TRUE));
+	}
+	else
+	{
+		logging::debug() << "Generating branch on condition " << cond.to_string() << " to either " << thenLabel << " or " << elseLabel << logging::endl;
+		method.appendToEnd(new intermediate::Branch(method.findOrCreateLocal(TYPE_LABEL, thenLabel), COND_ZERO_SET, cond));
+		method.appendToEnd(new intermediate::Branch(method.findOrCreateLocal(TYPE_LABEL, elseLabel),COND_ZERO_CLEAR, cond));
+	}
+
     return true;
 }
 

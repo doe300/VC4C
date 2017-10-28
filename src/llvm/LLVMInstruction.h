@@ -72,7 +72,7 @@ namespace vc4c
 		class Copy: public LLVMInstruction
 		{
 		public:
-			Copy(const Local* dest, const Value& orig, const Value& index = UNDEFINED_VALUE, const bool isRead = false);
+			Copy(const Value& dest, const Value& orig, const Value& index = UNDEFINED_VALUE, const bool isRead = false);
 			virtual ~Copy();
 
 			const Local* getDeclaredLocal() const override;
@@ -80,7 +80,7 @@ namespace vc4c
 			bool mapInstruction(Method& method) const override;
 
 		private:
-			const Local* dest;
+			const Value dest;
 			const Value orig;
 			const Value index;
 			const bool isRead;
@@ -105,7 +105,7 @@ namespace vc4c
 		class BinaryOperator: public UnaryOperator
 		{
 		public:
-			BinaryOperator(const std::string& opCode, const Local* dest, const Value& arg0, const Value& arg1);
+			BinaryOperator(const std::string& opCode, const Value& dest, const Value& arg0, const Value& arg1);
 			virtual ~BinaryOperator();
 
 			std::vector<const Local*> getAllLocals() const override;
@@ -203,14 +203,14 @@ namespace vc4c
 		class ShuffleVector: public LLVMInstruction
 		{
 		public:
-			ShuffleVector(const Local* dest, const Value& v1, const Value& v2, const Value& mask);
+			ShuffleVector(const Value& dest, const Value& v1, const Value& v2, const Value& mask);
 			virtual ~ShuffleVector();
 
 			std::vector<const Local*> getAllLocals() const override;
 			const Local* getDeclaredLocal() const override;
 			bool mapInstruction(Method& method) const override;
 		private:
-			const Local* dest;
+			const Value dest;
 			const Value v1;
 			const Value v2;
 			const Value mask;
