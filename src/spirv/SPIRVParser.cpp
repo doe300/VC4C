@@ -30,13 +30,13 @@ SPIRVParser::SPIRVParser(std::istream& input, const bool isSPIRVText) : isTextIn
 static spv_result_t parsedHeaderCallback(void* user_data, spv_endianness_t endian, uint32_t magic, uint32_t version, uint32_t generator, uint32_t id_bound, uint32_t reserved)
 {
     logging::debug() << "SPIR-V header parsed: magic-number 0x" << std::hex << magic << ", version 0x" << version << ", generator " << generator << ", max-ID " << std::dec << id_bound << logging::endl;
-    SPIRVParser* parser = (SPIRVParser*) user_data;
+    SPIRVParser* parser = static_cast<SPIRVParser*>(user_data);
     return parser->parseHeader(endian, magic, version, generator, id_bound, reserved);
 }
 
 static spv_result_t parsedInstructionCallback(void* user_data, const spv_parsed_instruction_t* parsed_instruction)
 {
-    SPIRVParser* parser = (SPIRVParser*) user_data;
+    SPIRVParser* parser = static_cast<SPIRVParser*>(user_data);
     return parser->parseInstruction(parsed_instruction);
 }
 
@@ -223,7 +223,7 @@ intermediate::InstructionDecorations SPIRVParser::toInstructionDecorations(const
     }
     const auto decoration = getDecoration(decorationMappings.at(id), SpvDecorationFPFastMathMode);
     if(decoration)
-    	deco = add_flag(deco, toInstructionDecoration((SpvFPFastMathModeMask)decoration.get()));
+    	deco = add_flag(deco, toInstructionDecoration(static_cast<SpvFPFastMathModeMask>(decoration.get())));
     if(getDecoration(decorationMappings.at(id), SpvDecorationSaturatedConversion))
     	deco = add_flag(deco, intermediate::InstructionDecorations::SATURATED_CONVERSION);
     return deco;
@@ -240,14 +240,14 @@ static std::string readLiteralString(const spv_parsed_instruction_t* instruction
 {
     if (instruction->num_words <= operand->offset)
         throw CompilationError(CompilationStep::PARSER, "Word index out of bounds", std::to_string(operand->offset));
-    const size_t length = strnlen((const char*) (instruction->words + operand->offset), sizeof (uint32_t) * operand->num_words);
-    return std::string((const char*) (instruction->words + operand->offset), length);
+    const size_t length = strnlen(reinterpret_cast<const char*>(instruction->words + operand->offset), sizeof (uint32_t) * operand->num_words);
+    return std::string(reinterpret_cast<const char*>(instruction->words + operand->offset), length);
 }
 
 spv_result_t SPIRVParser::parseDecoration(const spv_parsed_instruction_t* parsed_instruction)
 {
     const uint32_t target = getWord(parsed_instruction, 1);
-    switch ((SpvDecoration) getWord(parsed_instruction, 2)) {
+    switch (static_cast<SpvDecoration>(getWord(parsed_instruction, 2))) {
     case SpvDecorationCPacked:  //struct is "packed"
     case SpvDecorationBuiltIn:  //entity (object, struct-member) represents given built-in	//TODO map to built-in?
     case SpvDecorationSaturatedConversion: //out-of range results are clamped, do not overflow
@@ -260,7 +260,7 @@ spv_result_t SPIRVParser::parseDecoration(const spv_parsed_instruction_t* parsed
     case SpvDecorationConstant:	//global data is constant, is never written
     case SpvDecorationRestrict: //memory behind pointer is restricted, e.g. not aliased to another pointer
     case SpvDecorationVolatile: //data behind pointer is volatile
-        decorationMappings[target].push_back({(SpvDecoration) getWord(parsed_instruction, 2), parsed_instruction->num_words > 3 ? getWord(parsed_instruction, 3) : 0xFFFFFFFFU});
+        decorationMappings[target].push_back({static_cast<SpvDecoration>(getWord(parsed_instruction, 2)), parsed_instruction->num_words > 3 ? getWord(parsed_instruction, 3) : 0xFFFFFFFFU});
         return SPV_SUCCESS;
     case SpvDecorationAlignmentId:	//known alignment of pointer, but as constant, not literal value
     	decorationMappings[target].push_back({SpvDecorationAlignment, parsed_instruction->num_words > 3 ? constantMappings.at(getWord(parsed_instruction, 3)).literal.integer : 0xFFFFFFFFU});
@@ -288,7 +288,7 @@ static std::vector<uint32_t> parseArguments(const spv_parsed_instruction_t* inst
 static intermediate::Sampler parseSampler(const spv_parsed_instruction_t* instruction)
 {
     intermediate::Sampler tmp(0);
-    switch((SpvSamplerAddressingMode)getWord(instruction, 3))
+    switch(static_cast<SpvSamplerAddressingMode>(getWord(instruction, 3)))
     {
         case SpvSamplerAddressingModeNone:
             tmp.setAddressingMode(intermediate::AddressingMode::NONE);
@@ -311,7 +311,7 @@ static intermediate::Sampler parseSampler(const spv_parsed_instruction_t* instru
     
     tmp.setNormalizedCoordinates(getWord(instruction, 4));
     
-    switch((SpvSamplerFilterMode)getWord(instruction, 5))
+    switch(static_cast<SpvSamplerFilterMode>(getWord(instruction, 5)))
     {
         case SpvSamplerFilterModeNearest:
             tmp.setFilterMode(intermediate::FilterMode::NEAREST);
@@ -390,7 +390,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
      */
 
     //see: https://www.khronos.org/registry/spir-v/specs/1.0/SPIRV.html#_a_id_instructions_a_instructions
-    switch ((SpvOp) parsed_instruction->opcode) {
+    switch (static_cast<SpvOp>(parsed_instruction->opcode)) {
     case SpvOpNop:
         return SPV_SUCCESS;
     case SpvOpUndef:
@@ -640,7 +640,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     	if(type.isScalarType() || type.isVectorType() || type.isPointerType())
     		constantMappings.emplace(parsed_instruction->result_id, Value(INT_ZERO.literal, type));
     	else if(type.getArrayType().hasValue)
-    		constantMappings.emplace(parsed_instruction->result_id, ZERO_INITIALIZER);
+    		constantMappings.emplace(parsed_instruction->result_id, INT_ZERO);
     	else
     		throw CompilationError(CompilationStep::LLVM_2_IR, "Unhandled type for null constant", type.to_string());
 
@@ -1392,7 +1392,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     }
 
     //unhandled op-code
-    logging::warn() << "Unhandled instruction-type: " << (SpvOp) parsed_instruction->opcode << logging::endl;
+    logging::warn() << "Unhandled instruction-type: " << static_cast<SpvOp>(parsed_instruction->opcode) << logging::endl;
     return SPV_UNSUPPORTED;
 }
 

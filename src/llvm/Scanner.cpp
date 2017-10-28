@@ -130,7 +130,7 @@ const Token Scanner::readToken()
                 if((buffer[0] == '"' ? i > 0 : i > 1) && c =='"')
                 {
                     //include closing '"'
-                    buffer[i] = (char)skipChar();
+                    buffer[i] = static_cast<char>(skipChar());
                     ++i;
                     break;
                 }
@@ -139,7 +139,7 @@ const Token Scanner::readToken()
             {
                 break;
             }
-            buffer[i] = (char)skipChar();
+            buffer[i] = static_cast<char>(skipChar());
         }
         if (strcasecmp("true", buffer) == 0) // boolean true
         {
@@ -173,12 +173,12 @@ const Token Scanner::readToken()
             else if(d == c)     //++ or --
             {
                 skipChar();
-                result.text[0] = (char)c;
-                result.text[1] = (char)c;
+                result.text[0] = static_cast<char>(c);
+                result.text[1] = static_cast<char>(c);
             }
             else //operator
             {
-                result.text[0] = (char)c;
+                result.text[0] = static_cast<char>(c);
             }
         }
             //other single character tokens
@@ -189,7 +189,7 @@ const Token Scanner::readToken()
         }
         return result;
     }
-    throw CompilationError(CompilationStep::SCANNER, lineNumber, std::string("Invalid character:") + (char) c);
+    throw CompilationError(CompilationStep::SCANNER, lineNumber, std::string("Invalid character:") + static_cast<char>(c));
 }
 
 const Token Scanner::readNumber()

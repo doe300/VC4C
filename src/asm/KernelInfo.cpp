@@ -17,11 +17,11 @@ static void writeStream(std::ostream& stream, uint8_t buf[8], const OutputMode m
 {
     if(mode == OutputMode::BINARY)
     {
-        stream.write((const char*)buf, 8);
+        stream.write(reinterpret_cast<const char*>(buf), 8);
     }
     else if(mode == OutputMode::HEX)
     {
-        uint64_t binary = *(uint64_t*)buf;
+        uint64_t binary = *reinterpret_cast<uint64_t*>(buf);
         char buffer[64];
         snprintf(buffer, sizeof(buffer), "0x%08x, 0x%08x, ", static_cast<uint32_t>(binary & 0xFFFFFFFFLL), static_cast<uint32_t>((binary & 0xFFFFFFFF00000000LL) >> 32));
         stream << std::string(buffer) << std::endl;
@@ -70,23 +70,23 @@ uint8_t KernelInfo::write(std::ostream& stream, const OutputMode mode) const
     if(mode == OutputMode::BINARY || mode == OutputMode::HEX)
     {
         uint8_t buf[8];
-        ((uint16_t*)buf)[0] = offset;
-        ((uint16_t*)buf)[1] = length;
-        ((uint16_t*)buf)[2] = name.size();
-        ((uint16_t*)buf)[3] = parameters.size();
+        reinterpret_cast<uint16_t*>(buf)[0] = offset;
+        reinterpret_cast<uint16_t*>(buf)[1] = length;
+        reinterpret_cast<uint16_t*>(buf)[2] = name.size();
+        reinterpret_cast<uint16_t*>(buf)[3] = parameters.size();
         writeStream(stream, buf, mode);
         ++numWords;
-        *((uint64_t*)buf) = workGroupSize;
+        *reinterpret_cast<uint16_t*>(buf) = workGroupSize;
         writeStream(stream, buf, mode);
         ++numWords;
         numWords += copyName(stream, name, mode);
         for(uint16_t i = 0; i < parameters.size(); ++i)
         {
             //for each parameter, copy infos and name
-            ((uint16_t*)buf)[0] = parameters[i].elements << 8 | parameters[i].size;
-            ((uint16_t*)buf)[1] = parameters[i].name.size();
-            ((uint16_t*)buf)[2] = parameters[i].typeName.size();
-            ((uint16_t*)buf)[3] = parameters[i].isPointer << 12 | parameters[i].isOutput << 9 | parameters[i].isInput << 8 | (static_cast<unsigned char>(parameters[i].addressSpace) & 0xF) << 4 | parameters[i].isConst | parameters[i].isRestricted << 1 | parameters[i].isVolatile << 2;
+        	reinterpret_cast<uint16_t*>(buf)[0] = parameters[i].elements << 8 | parameters[i].size;
+        	reinterpret_cast<uint16_t*>(buf)[1] = parameters[i].name.size();
+        	reinterpret_cast<uint16_t*>(buf)[2] = parameters[i].typeName.size();
+        	reinterpret_cast<uint16_t*>(buf)[3] = parameters[i].isPointer << 12 | parameters[i].isOutput << 9 | parameters[i].isInput << 8 | (static_cast<unsigned char>(parameters[i].addressSpace) & 0xF) << 4 | parameters[i].isConst | parameters[i].isRestricted << 1 | parameters[i].isVolatile << 2;
             writeStream(stream, buf, mode);
             ++numWords;
             numWords += copyName(stream, parameters[i].name, mode);
@@ -160,7 +160,7 @@ KernelInfo qpu_asm::getKernelInfos(const Method& method, const std::size_t initi
 				getMetaData(method.metaData, MetaDataType::ARG_TYPE_QUALIFIERS, i).find("volatile") != std::string::npos || has_flag(method.parameters.at(i).decorations, ParameterDecorations::VOLATILE),
 				paramName[0] == '%' ? paramName.substr(1) : paramName,
                 typeName.empty() ? paramType.to_string() : typeName,
-				(paramType.isPointerType() ? (uint8_t)1 : paramType.num),
+				(paramType.isPointerType() ? static_cast<uint8_t>(1) : paramType.num),
 				paramType.isPointerType() ? paramType.getPointerType().get()->addressSpace : AddressSpace::PRIVATE
         });
     }

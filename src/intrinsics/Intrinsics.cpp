@@ -497,7 +497,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(arg0.hasType(ValueType::LITERAL) && arg1.hasType(ValueType::LITERAL))
         {
             logging::debug() << "Calculating result for division with constants" << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput().get().local, arg0.type), Value(Literal((long)(unsigned long)(arg0.literal.integer / arg1.literal.integer)), arg0.type), op->conditional, op->setFlags));
+            it.reset(new MoveOperation(Value(op->getOutput().get().local, arg0.type), Value(Literal(static_cast<unsigned long>(arg0.literal.integer / arg1.literal.integer)), arg0.type), op->conditional, op->setFlags));
         }
         //a / 2^n = a >> n
         else if(arg1.hasType(ValueType::LITERAL) && isPowerTwo(arg1.literal.integer))
@@ -543,7 +543,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(arg0.hasType(ValueType::LITERAL) && arg1.hasType(ValueType::LITERAL))
         {
             logging::debug() << "Calculating result for modulo with constants" << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput().get().local, arg0.type), Value(Literal((long)(unsigned long)(arg0.literal.integer % arg1.literal.integer)), arg0.type), op->conditional, op->setFlags));
+            it.reset(new MoveOperation(Value(op->getOutput().get().local, arg0.type), Value(Literal(static_cast<unsigned long>(arg0.literal.integer % arg1.literal.integer)), arg0.type), op->conditional, op->setFlags));
         }
         else if(arg1.hasType(ValueType::LITERAL) && isPowerTwo(arg1.literal.integer))
         {

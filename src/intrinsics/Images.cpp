@@ -17,11 +17,11 @@ static constexpr unsigned IMAGE_CONFIG_NUM_UNIFORMS {4};
 //The first entry is the base texture setup
 const Value IMAGE_CONFIG_BASE_OFFSET(INT_ZERO);
 //The second entry is the texture access setup
-const Value IMAGE_CONFIG_ACCESS_OFFSET(Literal(sizeof(unsigned)), TYPE_INT32);
+const Value IMAGE_CONFIG_ACCESS_OFFSET(Literal(static_cast<unsigned long>(sizeof(unsigned))), TYPE_INT32);
 //The third entry is the extended texture setup (e.g. cube map, child images, etc.)
-const Value IMAGE_CONFIG_EXTENDED_OFFSET(Literal(2 * sizeof(unsigned)), TYPE_INT32);
+const Value IMAGE_CONFIG_EXTENDED_OFFSET(Literal(2 * static_cast<unsigned long>(sizeof(unsigned))), TYPE_INT32);
 //The forth entry is the original OpenCL image- and channel-type configuration
-const Value IMAGE_CONFIG_CHANNEL_OFFSET(Literal(3 * sizeof(unsigned)), TYPE_INT32);
+const Value IMAGE_CONFIG_CHANNEL_OFFSET(Literal(3 * static_cast<unsigned long>(sizeof(unsigned))), TYPE_INT32);
 
 Global* intermediate::reserveImageConfiguration(Module& module, const Value& image)
 {

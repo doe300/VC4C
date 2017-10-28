@@ -19,7 +19,7 @@ using namespace vc4c::spirv2qasm;
 
 std::string spirv2qasm::getOpenCLMethodName(const uint32_t instructionID)
 {
-	switch ((OpenCLLIB::Entrypoints) instructionID)
+	switch (static_cast<OpenCLLIB::Entrypoints>(instructionID))
 	{
 		case OpenCLLIB::Entrypoints::Acos:
 			return "acos";
@@ -545,6 +545,12 @@ static std::string getCapabilityName(const SpvCapability cap)
 			return "ShaderStereoViewNV";
 		case SpvCapabilityPerViewAttributesNV :
 			return "PerViewAttributesNV";
+		case SpvCapabilitySubgroupShuffleINTEL:
+			return "SubgroupShuffleINTEL";
+		case SpvCapabilitySubgroupBufferBlockIOINTEL:
+			return "SubgroupBufferBlockIOINTEL";
+		case SpvCapabilitySubgroupImageBlockIOINTEL:
+			return "SubgroupImageBlockIOINTEL";
 		case SpvCapabilityMax:
 			throw CompilationError(CompilationStep::LLVM_2_IR, "Invalid capability constant!");
 	}
@@ -639,7 +645,7 @@ void spirv2qasm::setParameterDecorations(Parameter& param, const std::vector<std
 {
 	auto decoration = getDecoration(decorations, SpvDecorationFuncParamAttr);
 	if(decoration.hasValue)
-		param.decorations = add_flag(param.decorations, toDecoration((SpvFunctionParameterAttribute)decoration.get()));
+		param.decorations = add_flag(param.decorations, toDecoration(static_cast<SpvFunctionParameterAttribute>(decoration.get())));
 	decoration = getDecoration(decorations, SpvDecorationMaxByteOffset);
 	if(decoration.hasValue)
 		param.maxByteOffset = decoration.get();
@@ -726,7 +732,7 @@ std::vector<uint32_t> spirv2qasm::readStreamOfWords(std::istream& in)
 	words.reserve(in.rdbuf()->in_avail());
 	char buffer[sizeof (uint32_t)];
 	while (in.read(buffer, sizeof (uint32_t)).good()) {
-		words.push_back(*(uint32_t*) buffer);
+		words.push_back(*reinterpret_cast<uint32_t*>(buffer));
 	}
 
 	return words;

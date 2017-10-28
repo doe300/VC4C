@@ -378,8 +378,8 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
             stream << "0x" << std::hex << QPUASM_MAGIC_NUMBER << ", 0x" << QPUASM_MAGIC_NUMBER << std::dec << "," << std::endl;
             break;
         case OutputMode::BINARY:
-            stream.write((const char*)&QPUASM_MAGIC_NUMBER, 4);
-            stream.write((const char*)&QPUASM_MAGIC_NUMBER, 4);
+            stream.write(reinterpret_cast<const char*>(&QPUASM_MAGIC_NUMBER), 4);
+            stream.write(reinterpret_cast<const char*>(&QPUASM_MAGIC_NUMBER), 4);
             numBytes += 8;
             break;
      }
@@ -412,7 +412,7 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
         {
             //add empty command
             uint64_t zero = 0;
-            stream.write((char*)&zero, sizeof(uint64_t));
+            stream.write(reinterpret_cast<char*>(&zero), sizeof(uint64_t));
         }
         else if(config.outputMode == OutputMode::HEX)
         {
@@ -432,10 +432,10 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
     	case OutputMode::BINARY:
     	{
     		const auto binary = generateDataSegment(module.globalData);
-    		stream.write((const char*)binary.data(), binary.size());
+    		stream.write(reinterpret_cast<const char*>(binary.data()), binary.size());
     		//add empty command
 			uint64_t zero = 0;
-			stream.write((char*)&zero, sizeof(uint64_t));
+			stream.write(reinterpret_cast<char*>(&zero), sizeof(uint64_t));
 			numBytes += globalDataLength;
 			break;
     	}
@@ -468,7 +468,7 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
         case OutputMode::BINARY:
             for (const std::unique_ptr<Instruction>& instr : pair.second) {
                 const uint64_t binary = instr->toBinaryCode();
-                stream.write((const char*) &binary, 8);
+                stream.write(reinterpret_cast<const char*>(&binary), 8);
                 numBytes += 8;
             }
             break;

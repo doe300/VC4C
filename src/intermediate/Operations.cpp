@@ -326,11 +326,11 @@ Optional<Value> Operation::precalculate(const std::size_t numIterations) const
         return NO_VALUE;
     case OPADD_FTOI.opCode:
         if (!firstInt)
-            return packMode.pack(Value(Literal((long) first.real), getFirstArg().type));
+            return packMode.pack(Value(Literal(static_cast<long>(first.real)), getFirstArg().type));
         return NO_VALUE;
     case OPADD_ITOF.opCode:
         if (firstInt)
-            return packMode.pack(Value(Literal((double) first.integer), getFirstArg().type));
+            return packMode.pack(Value(Literal(static_cast<double>(first.integer)), getFirstArg().type));
         return NO_VALUE;
     case OPADD_MAX.opCode:
         if (firstInt && secondInt)
@@ -648,8 +648,8 @@ qpu_asm::Instruction* CombinedOperation::convertToAsm(const FastMap<const Local*
     		throw CompilationError(CompilationStep::CODE_GENERATION, "Can't map outputs of a combined instruction to two distinct registers in the same file", to_string());
     }
 
-    std::unique_ptr<qpu_asm::ALUInstruction> addInstr((qpu_asm::ALUInstruction*) addOp->convertToAsm(registerMapping, labelMapping, instructionIndex));
-    std::unique_ptr<qpu_asm::ALUInstruction> mulInstr((qpu_asm::ALUInstruction*) mulOp->convertToAsm(registerMapping, labelMapping, instructionIndex));
+    std::unique_ptr<qpu_asm::ALUInstruction> addInstr(static_cast<qpu_asm::ALUInstruction*>(addOp->convertToAsm(registerMapping, labelMapping, instructionIndex)));
+    std::unique_ptr<qpu_asm::ALUInstruction> mulInstr(static_cast<qpu_asm::ALUInstruction*>(mulOp->convertToAsm(registerMapping, labelMapping, instructionIndex)));
 
     addInstr->setMulCondition(mulInstr->getMulCondition());
     addInstr->setMulMutexA(mulInstr->getMulMutexA());
@@ -673,7 +673,7 @@ qpu_asm::Instruction* CombinedOperation::convertToAsm(const FastMap<const Local*
 
 IntermediateInstruction* CombinedOperation::copyFor(Method& method, const std::string& localPrefix) const
 {
-    return (new CombinedOperation((Operation*) op1->copyFor(method, localPrefix), (Operation*) op2->copyFor(method, localPrefix)))->copyExtrasFrom(this);
+    return (new CombinedOperation(static_cast<Operation*>(op1->copyFor(method, localPrefix)), static_cast<Operation*>(op2->copyFor(method, localPrefix))))->copyExtrasFrom(this);
 }
 
 bool CombinedOperation::mapsToASMInstruction() const

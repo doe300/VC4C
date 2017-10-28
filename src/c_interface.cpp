@@ -88,7 +88,7 @@ int convert(const storage* in, storage* out, const configuration config, const c
             out->data = static_cast<char*>(realloc(out->data, bytesWritten + 1));
             out->data_length = bytesWritten + 1;
         }
-        memcpy(out->data, ((std::ostringstream*)os.get())->str().data(), bytesWritten);
+        memcpy(out->data, static_cast<std::ostringstream*>(os.get())->str().data(), bytesWritten);
         out->data[bytesWritten] = '\0';
     }
     

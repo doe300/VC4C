@@ -108,7 +108,7 @@ void profiler::dumpProfileResults(bool writeAsWarning)
 				<< std::setw(5) << counter.invocations << " calls" << std::setw(6) << counter.count / counter.invocations << " avg./call"
 				<< std::setw(8) << (counter.prevCounter == SIZE_MAX ? "" : "diff")
 				<< std::setw(7) << std::showpos << (counter.prevCounter == SIZE_MAX ? 0 : counter.count - counters[counter.prevCounter].count) << " ("
-				<< std::setw(5) << std::showpos << (counter.prevCounter == SIZE_MAX ? 0 : (int)(100*(-1.0 + (double)counter.count / (double)counters[counter.prevCounter].count)))
+				<< std::setw(5) << std::showpos << (counter.prevCounter == SIZE_MAX ? 0 : static_cast<int>(100*(-1.0 + static_cast<double>(counter.count) / static_cast<double>(counters[counter.prevCounter].count))))
 				<< std::noshowpos << "%)" << std::setw(64) << counter.fileName << "#" << counter.lineNumber << logging::endl;
 	}
 }

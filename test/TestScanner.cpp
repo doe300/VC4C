@@ -63,7 +63,7 @@ void TestScanner::testFloat()
     
     uint64_t dummy = 0x47EFFFFFE0000000L;
     TEST_ASSERT_EQUALS(TokenType::NUMBER, s.peek().type);
-    TEST_ASSERT_EQUALS(*(double*)&dummy, s.pop().integer);
+    TEST_ASSERT_EQUALS(*reinterpret_cast<double*>(&dummy), s.pop().integer);
 }
 
 void TestScanner::testString()

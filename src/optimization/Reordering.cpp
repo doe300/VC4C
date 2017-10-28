@@ -191,6 +191,10 @@ static InstructionWalker findReplacementCandidate(BasicBlock& basicBlock, const 
 			PROFILE_END(findInstructionNotAccessing);
 			break;
 		}
+		case DelayType::WAIT_UNIFORM:
+			//TODO could reorder, as long as we do not access uniforms ??
+			PROFILE_END(findReplacementCandidate);
+			return basicBlock.end();
 	}
 	PROFILE_END(findReplacementCandidate);
 	return replacementIt;
