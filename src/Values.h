@@ -282,6 +282,8 @@ namespace vc4c
 		Value& assertWriteable();
 		const Value& assertReadable() const;
 		Value& assertReadable();
+
+		static Value createZeroInitializer(const DataType& type);
 	};
 
 	const Value BOOL_TRUE(Literal(true), TYPE_BOOL);
@@ -294,8 +296,6 @@ namespace vc4c
 	const Value FLOAT_NAN(Literal(0x7FC00000L), TYPE_FLOAT);
 	const Value UNDEFINED_VALUE(TYPE_UNKNOWN);
 	const Optional<Value> NO_VALUE(false, UNDEFINED_VALUE);
-	//TODO is this correct?? Or need some extra magic constant?
-	const Value ZERO_INITIALIZER = INT_ZERO;
 
 	const Value UNIFORM_REGISTER(REG_UNIFORM, TYPE_INT32.toVectorType(16));
 	const Value NOP_REGISTER(REG_NOP, TYPE_UNKNOWN);

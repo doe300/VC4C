@@ -582,8 +582,6 @@ void SPIRVShuffle::mapInstruction(std::map<uint32_t, DataType>& types, std::map<
 
 		if(allIndicesUndef)
 			index = UNDEFINED_VALUE;
-		else if(allIndicesZero)
-			index = ZERO_INITIALIZER;
 		else
 		{
 			index = Value(indices, TYPE_INT8);

@@ -497,7 +497,8 @@ bool Value::isUndefined() const
 bool Value::isZeroInitializer() const
 {
     return (hasType(ValueType::LITERAL) && literal.integer == 0) ||
-    		(hasType(ValueType::SMALL_IMMEDIATE) && immediate.value == 0);
+    		(hasType(ValueType::SMALL_IMMEDIATE) && immediate.value == 0) ||
+			(hasType(ValueType::CONTAINER) && std::all_of(container.elements.begin(), container.elements.end(), [](const Value& val) -> bool {return val.isZeroInitializer();}));
 }
 
 bool Value::isLiteralValue() const
@@ -523,6 +524,8 @@ std::string Value::to_string(const bool writeAccess, bool withLiterals) const
     			tmp.append(element.to_string(writeAccess, withLiterals)).append(", ");
     		return typeName + pre + tmp.substr(0, tmp.length() - 2) + post;
     	}
+    	if(isZeroInitializer())
+    		return typeName + "zeronitializer";
         return typeName + std::string("container with ") + std::to_string(container.elements.size()) + " elements";
     }
     case ValueType::LOCAL:
@@ -595,6 +598,20 @@ Value& Value::assertReadable()
 	if(isReadable())
 		return *this;
 	throw CompilationError(CompilationStep::GENERAL, "Cannot read from a write-only value", to_string(false));
+}
+
+Value Value::createZeroInitializer(const DataType& type)
+{
+	if(type.isScalarType())
+		return INT_ZERO;
+	if(!type.isVectorType())
+		throw CompilationError(CompilationStep::GENERAL, "Unhandled type for zero-initializer", type.to_string());
+	Value val(ContainerValue(), type);
+	for(unsigned i = 0; i < type.num; i++)
+	{
+		val.container.elements.push_back(INT_ZERO);
+	}
+	return val;
 }
 
 std::size_t vc4c::hash<vc4c::Value>::operator()(vc4c::Value const& val) const noexcept
