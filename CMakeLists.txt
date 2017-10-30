@@ -13,11 +13,15 @@ option(MULTI_THREADED "Runs the optimization steps multi-threaded" ON)
 # Option whether to verify the output (using vc4asm)
 option(VERIFY_OUTPUT "uses the external library vc4asm to verify the output" ON)
 # Option whether to include the LLVM-IR front-end
-option(LLVMIR_FRONTEND "Enables the standard frontend for the LLVM intermediate language" ON)
+option(LLVMIR_FRONTEND "Enables the standard front-end for the LLVM intermediate language" ON)
 # Option to enable/disable cross compilation
 option(CROSS_COMPILE "Cross compile for Raspbian" OFF)
 # Option whether to include the SPIR-V front-end
-option(SPIRV_FRONTEND "Enables a second frontend for the SPIR-V intermediate language" ON)
+option(SPIRV_FRONTEND "Enables a second front-end for the SPIR-V intermediate language" ON)
+# Option whether to drop the rights for the pre-compilation process (to the user pi).
+# This might be relevant when used in VC4CL, since VC4CL requires root access.
+# Turning this option on might fix the issue with pre-compiler deleting /dev/stdout
+option(PRECOMPILER_DROP_RIGHTS "Drop the rights for the pre-compiler to user pi" OFF)
 
 # Path to the VC4CL standard library
 if(NOT VC4CL_STDLIB_HEADER_SOURCE)
@@ -52,6 +56,11 @@ endif()
 
 project (VC4C VERSION 0.4)
 add_definitions(-DVC4C_VERSION="${PROJECT_VERSION}")
+
+if(PRECOMPILER_DROP_RIGHTS)
+	mesage(STATUS "Dropping rights of pre-compiler")
+	add_definitions(-DPRECOMPILER_DROP_RIGHTS=1)
+endif()
 
 # append usage of C++ to compiler flags, also optimize for speed and enable all warnings
 if(BUILD_DEBUG)

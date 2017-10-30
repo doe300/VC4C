@@ -15,6 +15,12 @@
 #include <sys/select.h>
 #include <sys/time.h>
 
+#ifdef PRECOMPILER_DROP_RIGHTS
+#include <sys/types.h>
+#include <pwd.h>
+#include <unistd.h>
+#endif
+
 #include "log.h"
 #include "ProcessUtil.h"
 #include "CompilationError.h"
@@ -60,6 +66,21 @@ static std::vector<std::string> splitString(const std::string& input, const char
     return result;
 }
 
+static void dropRights(const std::string& user)
+{
+#ifdef PRECOMPILER_DROP_RIGHTS
+	struct passwd* pwd = getpwnam(user.data());
+	if(pwd == nullptr)
+	{
+		//No such user, abort!
+		//Since we run in the child process, we can neither log nor write to stderr
+		return;
+	}
+	//Same here, we could check for status, but no way to inform the parent process
+	setuid(pwd->pw_uid);
+#endif
+}
+
 static void runChild(const std::string& command, int pipes[3][2], bool hasStdIn, bool hasStdOut, bool hasStdErr)
 {
 	//map pipes into stdin/stdout/stderr
@@ -82,6 +103,9 @@ static void runChild(const std::string& command, int pipes[3][2], bool hasStdIn,
 		closePipe(pipes[STD_ERR][READ]);
 		closePipe(pipes[STD_ERR][WRITE]);
 	}
+
+	//drop rights, if configured
+	dropRights("pi");
 
 	//split command
 	std::vector<std::string> parts = splitString(command, ' ');
