@@ -63,17 +63,18 @@ namespace vc4c
 
 			void parseMethodBody(LLVMMethod& method);
 
-			LLVMInstruction* parseInstruction(LLVMMethod& method);
-			LLVMInstruction* parseAssignment(LLVMMethod& method, const Token& dest);
-			LLVMInstruction* parseMethodCall(LLVMMethod& method);
-			LLVMInstruction* parseStore(LLVMMethod& method);
-			LLVMInstruction* parseBranch(LLVMMethod& method);
-			LLVMInstruction* parseReturn(LLVMMethod& method);
-			LLVMInstruction* parseLabel(LLVMMethod& method, const Token& label);
-			LLVMInstruction* parseSwitch(LLVMMethod& method);
+			void parseInstruction(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions);
+			void parseAssignment(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions, const Token& dest);
+			void parseMethodCall(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions);
+			void parseStore(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions);
+			void parseBranch(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions);
+			void parseReturn(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions);
+			void parseLabel(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions, const Token& label);
+			void parseSwitch(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions);
 
 			void parseMetaData();
 			void extractKernelInfo();
+			IndexOf* parseGetElementPtr(LLVMMethod& method, const std::string& destination);
 
 			void mapInstructions(LLVMMethod& method) const;
 		};

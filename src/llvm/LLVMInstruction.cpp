@@ -178,7 +178,7 @@ const std::string& CallSite::getMethodName() const
     return methodName;
 }
 
-Copy::Copy(const Value& dest, const Value& orig, const Value& index, const bool isRead) : dest(dest), orig(orig), index(index), isRead(isRead)
+Copy::Copy(const Value& dest, const Value& orig, const bool isLoadStore, const bool isRead) : dest(dest), orig(orig), isLoadStore(isLoadStore), isRead(isRead)
 {
 
 }
@@ -206,17 +206,17 @@ std::vector<const Local*> Copy::getAllLocals() const
 
 bool Copy::mapInstruction(Method& method) const
 {
-    if(!(index.type == TYPE_UNKNOWN))
+    if(isLoadStore)
     {
         if(isRead)
         {
-            logging::debug() << "Generating reading of " << orig.to_string() << " from index " << index.to_string() << " into " << dest.to_string() << logging::endl;
-            periphery::insertReadDMA(method, method.appendToEnd(), dest, index);
+            logging::debug() << "Generating reading from " << orig.to_string() << " into " << dest.to_string() << logging::endl;
+            periphery::insertReadDMA(method, method.appendToEnd(), dest, orig);
         }
         else
         {
-            logging::debug() << "Generating writing of " << orig.to_string() << " into " << index.to_string() << logging::endl;
-            periphery::insertWriteDMA(method, method.appendToEnd(), orig, index);
+            logging::debug() << "Generating writing of " << orig.to_string() << " into " << dest.to_string() << logging::endl;
+            periphery::insertWriteDMA(method, method.appendToEnd(), orig, dest);
         }
     }
     else

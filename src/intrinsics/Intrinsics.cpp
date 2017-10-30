@@ -242,12 +242,14 @@ const static std::map<std::string, Intrinsic> ternaryIntrinsicMapping = {
 };
 
 const static std::map<std::string, std::pair<Intrinsic, Optional<Value>>> typeCastIntrinsics = {
+	//since we run all the (not intrinsified) calculations with 32-bit, don't truncate signed conversions to smaller types
+	//TODO correct?? Since we do not discard out-of-bounds values!
     {"vc4cl_bitcast_uchar", {Intrinsic{intrinsifyBinaryALUInstruction("and", true), [](const Value& val){return Value(Literal(val.literal.integer & 0xFF), TYPE_INT8);}}, Value(Literal(0xFFUL), TYPE_INT8)}},
-    {"vc4cl_bitcast_char", {Intrinsic{intrinsifyBinaryALUInstruction("and"), [](const Value& val){return Value(Literal(val.literal.integer & 0xFF), TYPE_INT8);}}, Value(Literal(0xFFUL), TYPE_INT8)}},
+    {"vc4cl_bitcast_char", {Intrinsic{intrinsifyBinaryALUInstruction("mov"), [](const Value& val){return Value(val.literal, TYPE_INT8);}}, NO_VALUE}},
     {"vc4cl_bitcast_ushort", {Intrinsic{intrinsifyBinaryALUInstruction("and", true), [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFF), TYPE_INT16);}}, Value(Literal(0xFFFFUL), TYPE_INT16)}},
-    {"vc4cl_bitcast_short", {Intrinsic{intrinsifyBinaryALUInstruction("and"), [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFF), TYPE_INT16);}}, Value(Literal(0xFFFFUL), TYPE_INT16)}},
+    {"vc4cl_bitcast_short", {Intrinsic{intrinsifyBinaryALUInstruction("mov"), [](const Value& val){return Value(val.literal, TYPE_INT16);}}, NO_VALUE}},
     {"vc4cl_bitcast_uint", {Intrinsic{intrinsifyBinaryALUInstruction("mov", true), [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFFFFFFUL), TYPE_INT32);}}, NO_VALUE}},
-    {"vc4cl_bitcast_int", {Intrinsic{intrinsifyBinaryALUInstruction("mov"), [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFFFFFFUL), TYPE_INT32);}}, NO_VALUE}},
+    {"vc4cl_bitcast_int", {Intrinsic{intrinsifyBinaryALUInstruction("mov"), [](const Value& val){return Value(val.literal, TYPE_INT32);}}, NO_VALUE}},
     {"vc4cl_bitcast_float", {Intrinsic{intrinsifyBinaryALUInstruction("mov"), [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFFFFFFUL), TYPE_INT32);}}, NO_VALUE}}
 };
 

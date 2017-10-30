@@ -72,7 +72,7 @@ namespace vc4c
 		class Copy: public LLVMInstruction
 		{
 		public:
-			Copy(const Value& dest, const Value& orig, const Value& index = UNDEFINED_VALUE, const bool isRead = false);
+			Copy(const Value& dest, const Value& orig, const bool isLoadStore = false, const bool isRead = false);
 			virtual ~Copy();
 
 			const Local* getDeclaredLocal() const override;
@@ -82,7 +82,7 @@ namespace vc4c
 		private:
 			const Value dest;
 			const Value orig;
-			const Value index;
+			const bool isLoadStore;
 			const bool isRead;
 		};
 

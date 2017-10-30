@@ -132,7 +132,7 @@ void IRParser::parse(Module& module)
             nextToken = scanner.peek();
             if (nextToken.hasValue('%')) {
                 complexTypes.emplace(nextToken.getText(), parseStructDefinition());
-                //TODO unions!
+                //XXX are there union types? http://releases.llvm.org/3.9.0/docs/LangRef.html doesn't mention them
             }
             if (nextToken.hasValue('@')) {
                 //read global
@@ -170,7 +170,6 @@ void IRParser::parse(Module& module)
     //map meta-data to kernels
     extractKernelInfo();
 
-    //TODO module.globalData = std::move(globals);
     module.methods.reserve(methods.size());
     for(LLVMMethod& method: methods)
     	module.methods.emplace_back(method.method.release());
@@ -206,10 +205,11 @@ static Optional<AddressSpace> readAddressSpace(Scanner& scanner)
 	}
 	if(addressSpace < 0)
 		return Optional<AddressSpace>(false);
-	//TODO not guaranteed, mapping only determined by experiment
+	//XXX this mapping is not guaranteed, mapping only determined by experiment
 	switch(addressSpace)
 	{
 		case 0:
+			//According to the documentation for 'alloca', "The object is always allocated in the generic address space (address space zero)"
 			return AddressSpace::PRIVATE;
 		case 1:
 			return AddressSpace::GLOBAL;
@@ -355,7 +355,7 @@ std::vector<std::pair<Value, ParameterDecorations>> IRParser::parseParameters()
             	logging::debug() << "Parameter " << arg.to_string() << logging::endl;
 				res.push_back(std::make_pair(arg, decorations));
             }
-            else	//TODO correct??
+            else
             {
             	//as of CLang 3.9, parameters seem to not (always) have explicit names anymore
 				//if this is the case, assign the number of the parameter
@@ -633,10 +633,7 @@ void IRParser::parseMethodBody(LLVMMethod& method)
     //    if(method.method.findParameter(LocalRef("%0")) == nullptr)
     //        method.instructions.emplace_back(new LLVMLabel("%0"));
     do {
-        LLVMInstruction* ptr = parseInstruction(method);
-        if (ptr) {
-            method.instructions.emplace_back(ptr);
-        }
+        parseInstruction(method, method.instructions);
     }
     while (scanner.hasInput() && !scanner.peek().hasValue('}'));
     expectSkipToken(scanner, '}');
@@ -644,23 +641,21 @@ void IRParser::parseMethodBody(LLVMMethod& method)
     logging::debug() << "Done, " << method.instructions.size() << " instructions" << logging::endl;
 }
 
-LLVMInstruction* IRParser::parseInstruction(LLVMMethod& method)
+void IRParser::parseInstruction(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions)
 {
 	//http://releases.llvm.org/3.9.0/docs/LangRef.html
-    LLVMInstruction* result = nullptr;
-    //read 1 instruction per line
     Token nextToken = scanner.pop();
     bool skipEndofLine = true;
     if (nextToken.isEnd()) {
-        return nullptr;
+        return;
     }
     else if (nextToken.hasValue('%')) {
         //variable at left side
-        result = parseAssignment(method, nextToken);
+        parseAssignment(method, instructions, nextToken);
     }
     else if (nextToken.hasValue("store")) {
         //store instruction
-        result = parseStore(method);
+        parseStore(method, instructions);
     }
     else if (nextToken.hasValue("tail") || nextToken.hasValue("call")) {
         //XXX put method-call handling (with and without return) together
@@ -668,27 +663,27 @@ LLVMInstruction* IRParser::parseInstruction(LLVMMethod& method)
         	//pop following 'call'
             scanner.pop();
         //method invocation
-        result = parseMethodCall(method);
+        parseMethodCall(method, instructions);
     }
     else if (nextToken.hasValue("br")) {
         //branch
-        result = parseBranch(method);
+        parseBranch(method, instructions);
     }
     else if (nextToken.hasValue("ret")) {
         //return statement
-        result = parseReturn(method);
+        parseReturn(method, instructions);
     }
     else if (nextToken.hasValue("switch")) {
         //switch statement
-        result = parseSwitch(method);
+        parseSwitch(method, instructions);
     }
     else if (scanner.peek().hasValue(':')) {
         //label type 1
-        result = parseLabel(method, nextToken);
+        parseLabel(method, instructions, nextToken);
     }
     else if (nextToken.hasValue(';') && nextToken.to_string().find("<label>") != std::string::npos) {
         //label type 2
-        result = parseLabel(method, nextToken);
+        parseLabel(method, instructions, nextToken);
         //label is already full line, don't skip anything more
         skipEndofLine = false;
     }
@@ -704,8 +699,6 @@ LLVMInstruction* IRParser::parseInstruction(LLVMMethod& method)
     while (skipEndofLine && !(nextToken = scanner.peek()).isEnd()) {
         nextToken = scanner.pop();
     }
-
-    return result;
 }
 
 static LLVMInstruction* findInstruction(const LLVMMethod& method, const Local* output)
@@ -803,7 +796,52 @@ static std::string cleanMethodNameParameters(const std::string& name, const std:
 	return result;
 }
 
-LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest)
+IndexOf* IRParser::parseGetElementPtr(LLVMMethod& method, const std::string& destination)
+{
+	/*
+	 * Standalone:
+	 * <result> = getelementptr <ty>, <ty>* <ptrval>{, <ty> <idx>}*
+	 * <result> = getelementptr inbounds <ty>, <ty>* <ptrval>{, <ty> <idx>}*
+	 * <result> = getelementptr <ty>, <ptr vector> <ptrval>, <vector index type> <idx>
+	 * 
+	 * In load-instruction:
+	 * e.g: "getelementptr inbounds ([256 x i32] addrspace(2)* @noise_table, i32 0, i32 0)"
+	 */
+	
+	skipToken(scanner, "inbounds");
+	bool hadBracket = skipToken(scanner, '(');
+	const DataType ptrElementType = parseType();
+	Value pointer(UNDEFINED_VALUE);
+	//element type, is same as type (just without the pointer)
+	//for Khronos CLang, the element type is not listed extra -> check if this has a pointer
+	if(ptrElementType.isPointerType())
+	{
+		pointer = parseValue(false, ptrElementType);
+	}
+	else
+	{
+		//pop ','
+		expectSkipToken(scanner, ',');
+		pointer = parseValue();
+	}
+	const std::vector<Value> indices = parseIndices();
+	const std::vector<DataType> elementTypes = getElementTypes(indices, pointer.type);
+	DataType elementType = elementTypes.back();
+	//the output type needs to be a pointer to the last elementType!!
+	if(!elementType.isPointerType())
+	{
+		elementType = elementType.toPointerType();
+	}
+
+	if(hadBracket)
+		expectSkipToken(scanner, ')');
+
+	const Value dest = method.method->findOrCreateLocal(elementType, destination)->createReference();
+    logging::debug() << "Getting element " << to_string<Value>(indices) << " from " << pointer.to_string() << " into " << dest.to_string(true) << logging::endl;
+	return new IndexOf(dest.local, pointer, indices);
+}
+
+void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions, const Token& dest)
 {
     const std::string destination(dest.getText());
     intermediate::InstructionDecorations decorations = intermediate::InstructionDecorations::NONE;
@@ -835,7 +873,7 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         //lift into global, same as SPIR-V OpVariable
         //FIXME this introduces duplicate globals, since multiple kernels can allocate locals with the same name! (e.g. for /opt/SPIRV-LLVM/test/SPIRV/simple.ll)
         method.module->globalData.push_back(Global(destination, type.toPointerType(), Value(type)));
-        return nullptr;
+        return;
     }
     else if (nextToken.hasValue("bitcast")) {
         //<result> = bitcast <ty> <value> to <ty2> 
@@ -851,7 +889,8 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         logging::debug() << "Making reference from bitcast " << type.to_string() << " from " << source << " to " << destType.to_string() << ' ' << destination << logging::endl;
         //simply associate new and original
         Value ref = method.method->findOrCreateLocal(type, source)->createReference();
-        return new Copy(method.method->findOrCreateLocal(destType, destination)->createReference(), ref);
+        instructions.emplace_back(new Copy(method.method->findOrCreateLocal(destType, destination)->createReference(), ref));
+        return;
     }
     else if (nextToken.hasValue("load")) {
         //load from memory
@@ -881,32 +920,16 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         Value src(UNDEFINED_VALUE);
         if(scanner.peek().hasValue("getelementptr"))
         {
-        	//e.g: "getelementptr inbounds ([256 x i32] addrspace(2)* @noise_table, i32 0, i32 0)"
-
         	//pop 'getelementptr'
         	expectSkipToken(scanner, "getelementptr");
-        	skipToken(scanner, "inbounds");
-        	skipToken(scanner, '(');
-        	const DataType ptrElementType = parseType();
-        	Value pointer(UNDEFINED_VALUE);
-        	//Khronos CLang does not list pointer- and value-type separately
-        	if(ptrElementType.isPointerType())
+        	index = parseGetElementPtr(method, destination);
+        	if(index != nullptr)
         	{
-        		pointer = parseValue(false, ptrElementType);
+        		instructions.emplace_back(index);
+        		src = index->getDeclaredLocal()->createReference();
         	}
-        	else
-        	{
-        		//pop ','
-        		expectSkipToken(scanner, ',');
-        		pointer = parseValue();
-        	}
-        	const std::vector<Value> indices = parseIndices();
-
-        	src = method.method->findOrCreateLocal(pointer.type, "%getelementptr")->createReference();
-        	//TODO tmpIndex is not added to method -> never actually calculated
-        	//XXX is reference to parameter (for determining input/output parameters) correct?
-        	tmpIndex.reset(new IndexOf(src.local, pointer, indices));
-        	index = tmpIndex.get();
+        	return;
+        	
         }
         else
         {
@@ -915,7 +938,7 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         }
         logging::debug() << "Copying by loading of " << type.to_string() << " from " << src.to_string() << " into " << destination << logging::endl;
 
-        Value srcIndex(TYPE_UNKNOWN);
+        //TODO overhaul, remove srcIndex/srcContainer
         Value srcContainer(TYPE_UNKNOWN);
         //check whether read from in-parameter
         if(index == nullptr)
@@ -923,17 +946,16 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         	index = dynamic_cast<IndexOf*> (findInstruction(method, src.local));
         }
         if (src.hasType(ValueType::LOCAL) && src.local->is<Global>()) {
-            //load from global -> copy vale
-            return new ContainerExtraction(method.method->findOrCreateLocal(type, destination), src, INT_ZERO);
+            //load from global -> copy value
+            instructions.emplace_back(new ContainerExtraction(method.method->findOrCreateLocal(type, destination), src, INT_ZERO));
+            return;
         }
         else if (index != nullptr && index->getDeclaredLocal() == src.local) {
             //load via getelementptr (any previous instruction)
-            srcIndex = Value(src.local, TYPE_INT32);
             srcContainer = index->getContainer();
         }
         else if (src.hasType(ValueType::LOCAL) && src.local->is<Parameter>()) {
             //load directly from input (e.g. index 0)
-            srcIndex = Value(src.local, TYPE_INT32);
             srcContainer = src;
         }
         else if (src.hasType(ValueType::LOCAL)) {
@@ -952,10 +974,12 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
             if (srcContainer.local->is<Parameter>()) {
                 //loads from input parameter
                 // -> make extra instruction/flag to be used later
-                return new Copy(method.method->findOrCreateLocal(type, destination)->createReference(), srcContainer, srcIndex, true);
+                instructions.emplace_back(new Copy(method.method->findOrCreateLocal(type, destination)->createReference(), src, true, true));
+                return;
             }
         }
-        return new Copy(method.method->findOrCreateLocal(type, destination)->createReference(), src);
+        instructions.emplace_back(new Copy(method.method->findOrCreateLocal(type, destination)->createReference(), src));
+        return;
     }
     else if (nextToken.hasValue("call") || nextToken.hasValue("tail") || nextToken.hasValue("notail") || nextToken.hasValue("musttail")) {
         /*
@@ -1019,39 +1043,14 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         name = cleanMethodNameParameters(name, args);
         logging::debug() << "Method call to " << name << " storing " << returnType.to_string() << " into " << destination << logging::endl;
         method.method->findOrCreateLocal(returnType, destination);
-        return (new CallSite(method.method->findOrCreateLocal(returnType, destination), name, returnType, args))->setDecorations(decorations);
-
+        instructions.emplace_back((new CallSite(method.method->findOrCreateLocal(returnType, destination), name, returnType, args))->setDecorations(decorations));
+        return;
     }
     else if (nextToken.hasValue("getelementptr")) {
-    	/*
-    	 * <result> = getelementptr <ty>, <ty>* <ptrval>{, <ty> <idx>}*
-    	 * <result> = getelementptr inbounds <ty>, <ty>* <ptrval>{, <ty> <idx>}*
-    	 * <result> = getelementptr <ty>, <ptr vector> <ptrval>, <vector index type> <idx>
-    	 */
-    	skipToken(scanner, "inbounds");
-        //element type, is same as type (just without the pointer)
-        //for Khronos CLang, the element type is not listed extra -> check if this has a pointer
-        DataType type(parseType());
-        if (!type.isPointerType()) {
-            //pop ','
-            expectSkipToken(scanner, ',');
-            //parse pointer type
-            type = parseType();
-        }
-        const Value src = parseValue(false, type);
-
-        const std::vector<Value> indices = parseIndices();
-        const std::vector<DataType> elementTypes = getElementTypes(indices, type);
-        DataType elementType = elementTypes.back();
-        //the output type needs to be a pointer to the last elementType!!
-        if(!elementType.isPointerType())
-        {
-        	elementType = elementType.toPointerType();
-        }
-
-        const Value dest(method.method->findOrCreateLocal(elementType, destination)->createReference());
-        logging::debug() << "Getting " << elementType.to_string() << " " << to_string<Value>(indices) << " from " << src.to_string() << " into " << dest.to_string(true) << logging::endl;
-        return new IndexOf(dest.local, src, indices);
+    	IndexOf* index = parseGetElementPtr(method, destination);
+    	if(index != nullptr)
+    		instructions.emplace_back(index);
+    	return;
     }
     else if (nextToken.hasValue("icmp") || nextToken.hasValue("fcmp")) {
         //compare
@@ -1066,7 +1065,8 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         const Value op2(parseValue(false, op1.type));
 
         logging::debug() << "Comparison " << flag << " between " << op1.to_string() << " and " << op2.to_string() << " into " << destination << logging::endl;
-        return (new Comparison(method.method->findOrCreateLocal(TYPE_BOOL, destination), flag, op1, op2, nextToken.hasValue("fcmp")))->setDecorations(decorations);
+        instructions.emplace_back((new Comparison(method.method->findOrCreateLocal(TYPE_BOOL, destination), flag, op1, op2, nextToken.hasValue("fcmp")))->setDecorations(decorations));
+        return;
     }
     else if (nextToken.hasValue("insertelement") || nextToken.hasValue("insertvalue")) {
     	/*
@@ -1088,7 +1088,8 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
 			index = parseValue();
 
         logging::debug() << "Setting container element " << index.to_string() << " of " << container.to_string() << " to " << newValue.to_string() << logging::endl;
-        return new ContainerInsertion(method.method->findOrCreateLocal(container.type, destination), container, newValue, index);
+        instructions.emplace_back(new ContainerInsertion(method.method->findOrCreateLocal(container.type, destination), container, newValue, index));
+        return;
     }
     else if (nextToken.hasValue("extractelement") || nextToken.hasValue("extractvalue")) {
     	/*
@@ -1107,9 +1108,8 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         	index = parseValue();
 
         logging::debug() << "Reading container element " << index.to_string() << " of " << container.to_string() << " into " << destination << logging::endl;
-        //TODO still correct after removal of index?
-        //TODO extra operation required or is reference enough??
-        return new ContainerExtraction(method.method->findOrCreateLocal(container.type.getElementType(), destination), container, index);
+        instructions.emplace_back(new ContainerExtraction(method.method->findOrCreateLocal(container.type.getElementType(), destination), container, index));
+        return;
     }
     else if (nextToken.hasValue("shufflevector")) {
     	/*
@@ -1129,7 +1129,8 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
 
         DataType resultType = container1.type;
         resultType.num = shuffleMask.type.num;
-        return new ShuffleVector(method.method->findOrCreateLocal(resultType, destination)->createReference(), container1, container2, shuffleMask);
+        instructions.emplace_back(new ShuffleVector(method.method->findOrCreateLocal(resultType, destination)->createReference(), container1, container2, shuffleMask));
+        return;
     }
     else if (nextToken.hasValue("phi")) {
     	/*
@@ -1151,7 +1152,8 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         }
         while (scanner.peek().hasValue(','));
         logging::debug() << "Phi-Node into " << destination << logging::endl;
-        return new PhiNode(method.method->findOrCreateLocal(type, destination), labels);
+        instructions.emplace_back(new PhiNode(method.method->findOrCreateLocal(type, destination), labels));
+        return;
     }
     else if (nextToken.hasValue("select")) {
     	/*
@@ -1166,7 +1168,8 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
         const Value val2(parseValue());
 
         logging::debug() << "Selection of " << val1.to_string() << " or " << val2.to_string() << " according to " << cond.to_string() << " into " << destination << logging::endl;
-        return new Selection(method.method->findOrCreateLocal(val1.type, destination), cond, val1, val2);
+        instructions.emplace_back(new Selection(method.method->findOrCreateLocal(val1.type, destination), cond, val1, val2));
+        return;
     }
     else {
         //assume this format: <opcode> <format> <in1> [to | ,] [<in2>]
@@ -1193,25 +1196,25 @@ LLVMInstruction* IRParser::parseAssignment(LLVMMethod& method, const Token& dest
             {
             	const DataType destType = parseType();
                 logging::debug() << "Convert (" << opCode << ") " << arg1.to_string() << " to " << destType.to_string() << ' ' << destination << logging::endl;
-                return (new UnaryOperator(opCode, method.method->findOrCreateLocal(destType, destination)->createReference(), arg1))->setDecorations(decorations);
-
+                instructions.emplace_back((new UnaryOperator(opCode, method.method->findOrCreateLocal(destType, destination)->createReference(), arg1))->setDecorations(decorations));
             }
             else
             {
             	const Value arg2 = parseValue(false, type);
                 logging::debug() << "Binary-Operator " << opCode << " with " << arg1.to_string() << " and " << arg2.to_string() << " into " << destination << logging::endl;
-                return (new BinaryOperator(opCode, method.method->findOrCreateLocal(type, destination)->createReference(), arg1, arg2))->setDecorations(decorations);
+                instructions.emplace_back((new BinaryOperator(opCode, method.method->findOrCreateLocal(type, destination)->createReference(), arg1, arg2))->setDecorations(decorations));
             }
         }
         else {
             //unary instruction
             logging::debug() << "Unary-Operator " << opCode << " with " << type.to_string() << ' ' << arg1.to_string() << " into " << destination << logging::endl;
-            return (new UnaryOperator(opCode, method.method->findOrCreateLocal(type, destination)->createReference(), arg1))->setDecorations(decorations);
+            instructions.emplace_back((new UnaryOperator(opCode, method.method->findOrCreateLocal(type, destination)->createReference(), arg1))->setDecorations(decorations));
         }
+        return;
     }
 }
 
-LLVMInstruction* IRParser::parseMethodCall(LLVMMethod& method)
+void IRParser::parseMethodCall(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions)
 {
 	//pop 'spir_func'
 	skipToken(scanner, "spir_func");
@@ -1227,10 +1230,10 @@ LLVMInstruction* IRParser::parseMethodCall(LLVMMethod& method)
     });
     name = cleanMethodNameParameters(name, args);
     logging::debug() << "Method call to " << name << " -> " << returnType.to_string() << logging::endl;
-    return new CallSite(name, returnType, args);
+    instructions.emplace_back(new CallSite(name, returnType, args));
 }
 
-LLVMInstruction* IRParser::parseStore(LLVMMethod& method)
+void IRParser::parseStore(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions)
 {
 	/*
 	 * store [volatile] <ty> <value>, <ty>* <pointer>[, align <alignment>][, !nontemporal !<index>][, !invariant.group !<index>]        ; yields void
@@ -1248,21 +1251,17 @@ LLVMInstruction* IRParser::parseStore(LLVMMethod& method)
 
     //TODO overhaul, fix, remove destIndex, destContainer
     logging::debug() << "Copying by storing " << value.to_string() << " into " << destination.to_string() << logging::endl;
-    Value destIndex(UNDEFINED_VALUE);
     Value destContainer(UNDEFINED_VALUE);
     //check whether write to out-parameter
     IndexOf* index = dynamic_cast<IndexOf*> (findInstruction(method, destination.local));
     if (destination.hasType(ValueType::LOCAL) && destination.local->is<Global>()) {
         //store into global
-    	destIndex = destination;
         destContainer = destination;
     }
     else if (index != nullptr && index->getDeclaredLocal() == destination.local) {
-        destIndex = Value(destination.local, TYPE_INT32);
         destContainer = index->getContainer();
     }
     else if (destination.hasType(ValueType::LOCAL) && destination.local->is<Parameter>()) {
-        destIndex = Value(destination.local, TYPE_INT32);
         destContainer = destination;
     }
     else {
@@ -1273,13 +1272,13 @@ LLVMInstruction* IRParser::parseStore(LLVMMethod& method)
         if (cast != nullptr) {
             index = dynamic_cast<IndexOf*> (findInstruction(method, cast->getAllLocals()[1]));
             if (index != nullptr && index->getDeclaredLocal() == destination.local) {
-                destIndex = Value(destination.local, TYPE_INT32);
                 destContainer = index->getContainer();
             }
         }
         else if (destination.hasType(ValueType::LOCAL) && value.type == destination.type) {
             //store into locally allocated object (with alloca)
-            return new Copy(destination, value, INT_ZERO);
+            instructions.emplace_back(new Copy(destination, value, true));
+            return;
         }
         else
         {
@@ -1307,10 +1306,10 @@ LLVMInstruction* IRParser::parseStore(LLVMMethod& method)
 //        }
     }
     //FIXME is this correct??
-    return new Copy(destContainer, value, destIndex);
+    instructions.emplace_back(new Copy(destination, value, true));
 }
 
-LLVMInstruction* IRParser::parseBranch(LLVMMethod& method)
+void IRParser::parseBranch(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions)
 {
 	/*
 	 * br i1 <cond>, label <iftrue>, label <iffalse>
@@ -1322,7 +1321,7 @@ LLVMInstruction* IRParser::parseBranch(LLVMMethod& method)
         const std::string label(scanner.pop().getText());
 
         logging::debug() << "Unconditional branch to " << label << logging::endl;
-        return new Branch(label);
+        instructions.emplace_back(new Branch(label));
     }
     else {
         //conditional branch
@@ -1339,11 +1338,11 @@ LLVMInstruction* IRParser::parseBranch(LLVMMethod& method)
         const std::string falseLabel(scanner.pop().getText());
 
         logging::debug() << "Branch on " << cond.to_string() << " to either " << trueLabel << " or " << falseLabel << logging::endl;
-        return new Branch(cond, trueLabel, falseLabel);
+        instructions.emplace_back(new Branch(cond, trueLabel, falseLabel));
     }
 }
 
-LLVMInstruction* IRParser::parseReturn(LLVMMethod& method)
+void IRParser::parseReturn(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions)
 {
 	/*
 	 * ret <type> <value>       ; Return a value from a non-void function
@@ -1355,12 +1354,13 @@ LLVMInstruction* IRParser::parseReturn(LLVMMethod& method)
     logging::debug() << "Returning " << type.to_string() << ' ' << value.to_string() << logging::endl;
     if (!value.isEnd()) {
         scanner.pop();
-        return new ValueReturn(toValue(value, type));
+        instructions.emplace_back(new ValueReturn(toValue(value, type)));
     }
-    return new ValueReturn();
+    else
+    	instructions.emplace_back(new ValueReturn());
 }
 
-LLVMInstruction* IRParser::parseLabel(LLVMMethod& method, const Token& label)
+void IRParser::parseLabel(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions, const Token& label)
 {
     //pop ':'
 	expectSkipToken(scanner, ':');
@@ -1372,10 +1372,10 @@ LLVMInstruction* IRParser::parseLabel(LLVMMethod& method, const Token& label)
     labelName = labelName.substr(0, labelName.find("  "));
     labelName = std::string("%") + labelName;
     logging::debug() << "Setting label " << labelName << logging::endl;
-    return new LLVMLabel(labelName);
+    instructions.emplace_back(new LLVMLabel(labelName));
 }
 
-LLVMInstruction* IRParser::parseSwitch(LLVMMethod& method)
+void IRParser::parseSwitch(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions)
 {
 	/*
 	 * switch <intty> <value>, label <defaultdest> [ <intty> <val>, label <dest> ... ]
@@ -1414,7 +1414,7 @@ LLVMInstruction* IRParser::parseSwitch(LLVMMethod& method)
     while (!scanner.peek().hasValue(']'));
 
     logging::debug() << "Switching on " << cond.to_string() << " with " << cases.size() << " labels, defaulting to " << defaultLabel << logging::endl;
-    return new Switch(cond, defaultLabel, cases);
+    instructions.emplace_back(new Switch(cond, defaultLabel, cases));
 }
 
 void IRParser::parseMetaData()

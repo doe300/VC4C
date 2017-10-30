@@ -511,7 +511,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case SpvOpTypeImage:
     {
         ImageType* image = new ImageType();
-        //TODO if color-type is always unknown, remove to avoid confusion/wrong conclusions
+        //TODO if color-type is always unknown (is it? SPIR-V specification doesn't state that it has to be void for OpenCL), remove to avoid confusion/wrong conclusions
         image->colorType = typeMappings.at(getWord(parsed_instruction, 2));
         image->dimensions = static_cast<uint8_t>(getWord(parsed_instruction, 3)) + 1;
         //XXX depth?? (already contained the dimensions)
@@ -607,6 +607,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     	//" Declare the Storage Class for a forward reference to a pointer."
     	// we are not interested in the storage-class -> skip
     	//TODO we actually are interested, currently at least to provide it as information for clGetKernelArgInfo
+    	//but so far, this instruction was never encountered
         return UNSUPPORTED_INSTRUCTION("SpvOpTypeForwardPointer");
     case SpvOpConstantTrue:
         constantMappings.emplace(parsed_instruction->result_id, BOOL_TRUE);

@@ -129,6 +129,10 @@ Optional<Value> SPIRVInstruction::precalculate(const std::map<uint32_t, DataType
 	if(opcode.compare("umod") == 0)
 		return Value(Literal(bit_cast<long, unsigned long>(op1.literal.integer) % bit_cast<long, unsigned long>(op2.literal.integer)), op1.type.getUnionType(op2.type));
 	//TODO srem, smod, frem, fmod
+	//OpSRem: "Signed remainder operation of Operand 1 divided by Operand 2. The sign of a non-0 result comes from Operand 1."
+	//OpSMod: "Signed modulo operation of Operand 1 modulo Operand 2. The sign of a non-0 result comes from Operand 2."
+	//OpFRem: "Floating-point remainder operation of Operand 1 divided by Operand 2. The sign of a non-0 result comes from	Operand 1."
+	//OpFMod: "Floating-point remainder operation of Operand 1 divided by Operand 2. The sign of a non-0 result comes from Operand 2."
 	if(opcode.compare("or") == 0)
 		return Value(Literal(op1.literal.integer | op2.literal.integer), op1.type.getUnionType(op2.type));
 	if(opcode.compare("and") == 0)
@@ -137,7 +141,10 @@ Optional<Value> SPIRVInstruction::precalculate(const std::map<uint32_t, DataType
 		return Value(Literal(op1.literal.integer ^ op2.literal.integer), op1.type.getUnionType(op2.type));
 	if(opcode.compare("not") == 0)
 		return Value(Literal(~op1.literal.integer), op1.type);
-	//TODO shr, asr
+	if(opcode.compare("shr") == 0)
+		//in C++, unsigned right shift is logical (fills with zeroes)
+		return Value(Literal(bit_cast<unsigned long, long>(bit_cast<long unsigned, long>(op1.literal.integer)) >> op2.literal.integer), op1.type);
+	//TODO asr
 	if(opcode.compare("shl") == 0)
 		return Value(Literal(op1.literal.integer << op2.literal.integer), op1.type);
 
@@ -371,14 +378,13 @@ void SPIRVConversion::mapInstruction(std::map<uint32_t, DataType>& types, std::m
     	case ConversionType::SIGNED:
     		if(isSaturated)
     			intermediate::insertSaturation(method.method->appendToEnd(), *method.method.get(), source, dest, true);
-    		else if(sourceWidth > destWidth)
-    			//TODO SConvert ?? Signed truncation! Anything special to do?
-    			//or don't truncate at all?? since calculations are always 32-bit and we would loose the MSB set for negative numbers
-    			method.method->appendToEnd((new intermediate::Operation("trunc", dest, source))->setDecorations(decorations));
-    		else if(sourceWidth == destWidth)
-    			method.method->appendToEnd((new intermediate::MoveOperation(dest, source))->setDecorations(decorations));
-    		else // |source| < |dest|
+    		if(sourceWidth < destWidth)
     			method.method->appendToEnd((new intermediate::Operation("sext", dest, source))->setDecorations(decorations));
+    		else
+    			//for |dest| > |source|, we do nothing (just move), since truncating would cut off the leading 1-bits for negative numbers
+    			//and since the ALU only calculates 32-bit operations, we need 32-bit negative numbers
+    			//TODO completely correct? Since we do not truncate out-of-bounds values! (Same for bitcast-intrinsics)
+    			method.method->appendToEnd((new intermediate::MoveOperation(dest, source))->setDecorations(decorations));
     		break;
     	case ConversionType::UNSIGNED:
     		if(isSaturated)
@@ -405,10 +411,11 @@ Optional<Value> SPIRVConversion::precalculate(const std::map<uint32_t, DataType>
 			case ConversionType::BITCAST:
 				dest = source;
 				dest.type = destType;
-				return source;
+				return dest;
 			case ConversionType::FLOATING:
-				//TODO fptrunc/extend
-				break;
+				//double representation of all floating-point values is the same for the same value
+				//XXX not quite, since half/float is more inaccurate
+				return source;
 			case ConversionType::SIGNED:
 				//TODO trunc/sext + saturation
 				break;

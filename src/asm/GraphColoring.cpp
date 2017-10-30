@@ -487,9 +487,23 @@ static void walkUsageRange(InstructionWalker start, const Local* local, FastMap<
 			//only abort if we have found writes for all conditions (e.g. required for vector insertions, or selects)
 			const std::function<InstructionVisitResult(const intermediate::IntermediateInstruction*)> checkWritePerInstruction = [start, &conditionalWrite, local](const intermediate::IntermediateInstruction* inst) -> InstructionVisitResult
 			{
+				//if start is a combined instruction
+				ConditionCode realStartCondition = start.get()->conditional;
+				if(start.get<const intermediate::CombinedOperation>() != nullptr)
+				{
+					const intermediate::CombinedOperation* comb = start.get<const intermediate::CombinedOperation>();
+					if(comb->op1 && comb->op1->readsLocal(local) && comb->op2 && comb->op2->readsLocal(local) && comb->op1->conditional.isInversionOf(comb->op2->conditional))
+						realStartCondition = COND_ALWAYS;
+					else if(comb->op1 && comb->op1->readsLocal(local))
+						realStartCondition = comb->op1->conditional;
+					else if(comb->op2 && comb->op2->readsLocal(local))
+						realStartCondition = comb->op2->conditional;
+					else //neither part reads the local
+						throw CompilationError(CompilationStep::CODE_GENERATION, "Combined operation reads local, but none of its part do", start->to_string());
+				}
 				if(!inst->writesLocal(local) || has_flag(inst->decoration, intermediate::InstructionDecorations::ELEMENT_INSERTION))
 					return InstructionVisitResult::CONTINUE;
-				if(inst->conditional == COND_ALWAYS || inst->conditional == start->conditional || inst->conditional.isInversionOf(conditionalWrite))
+				if(inst->conditional == COND_ALWAYS || inst->conditional == realStartCondition || inst->conditional.isInversionOf(conditionalWrite))
 					conditionalWrite = COND_ALWAYS;
 				else if(conditionalWrite == COND_NEVER)
 					conditionalWrite = inst->conditional;
