@@ -26,6 +26,13 @@ namespace vc4c
 	    ASSEMBLER = 2
 	};
 
+	enum class Frontend
+	{
+		DEFAULT = 0,
+		LLVM_IR = 1,
+		SPIR_V = 2
+	};
+
 	/*
 	 * The maximum VPM size to be used (in bytes).
 	 *
@@ -43,6 +50,7 @@ namespace vc4c
 	    OutputMode outputMode = OutputMode::BINARY;
 	    bool writeKernelInfo = true;
 	    unsigned availableVPMSize = VPM_DEFAULT_SIZE;
+	    Frontend frontend = Frontend::DEFAULT;
 	};
 
 	/*

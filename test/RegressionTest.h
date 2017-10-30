@@ -13,12 +13,12 @@
 class RegressionTest : public Test::Suite
 {
 public:
-    RegressionTest();
+    RegressionTest(const vc4c::Frontend frontend, bool onlyRegressions = false);
     
-    void testRegression(std::string clFile, std::string options);
+    void testRegression(std::string clFile, std::string options, vc4c::Frontend frontend);
     
-    void testPending(std::string clFile, std::string options);
-    void testSlowPending(std::string clFile, std::string options);
+    void testPending(std::string clFile, std::string options, vc4c::Frontend frontend);
+    void testSlowPending(std::string clFile, std::string options, vc4c::Frontend frontend);
 
     void printProfilingInfo();
 };

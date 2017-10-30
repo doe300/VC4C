@@ -40,9 +40,38 @@ int main(int argc, char** argv)
     TestParser testParser;
     testParser.run(output);
     
+    vc4c::Frontend frontend = vc4c::Frontend::DEFAULT;
+
+    bool runRegressions = false;
+    for(int i = 1; i < argc; ++i)
+    {
+    	if(std::string("LLVMIR").compare(argv[i]) == 0)
+    	{
+    		frontend = vc4c::Frontend::LLVM_IR;
+    		printf("Running with LLVM-IR frontend...\n");
+    	}
+    	else if(std::string("SPIRV").compare(argv[i]) == 0)
+		{
+			frontend = vc4c::Frontend::SPIR_V;
+			printf("Running with SPIR-V frontend...\n");
+		}
+    	else if(std::string("regression").compare(argv[i]) == 0)
+    		runRegressions = true;
+    }
     
-    RegressionTest regressionTest;
-    regressionTest.run(output);
+    if(runRegressions)
+    {
+    	printf("Running regression test for LLVM-IR and SPIR-V front-ends...\n");
+    	RegressionTest llvmRegressions(vc4c::Frontend::LLVM_IR, true);
+    	llvmRegressions.run(output);
+		RegressionTest spirvRegressions(vc4c::Frontend::SPIR_V, true);
+		spirvRegressions.run(output);
+    }
+    else
+    {
+    	RegressionTest regressionTest(frontend);
+    	regressionTest.run(output);
+    }
     
     return 0;
 }
