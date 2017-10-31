@@ -49,14 +49,14 @@ static uint8_t copyName(std::ostream& stream, const std::string& name, const Out
 std::string ParamInfo::to_string() const
 {
 	//address space
-	return std::string((isPointer && addressSpace == AddressSpace::CONSTANT) ? "__constant " : "") + std::string((isPointer && addressSpace == AddressSpace::GLOBAL) ? "__global " : "") +
-			std::string((isPointer && addressSpace == AddressSpace::LOCAL) ? "__local " : "") + std::string((isPointer && addressSpace == AddressSpace::PRIVATE) ? "__private " : "") +
+	return std::string((getPointer() && getAddressSpace() == AddressSpace::CONSTANT) ? "__constant " : "") + std::string((getPointer() && getAddressSpace() == AddressSpace::GLOBAL) ? "__global " : "") +
+			std::string((getPointer() && getAddressSpace() == AddressSpace::LOCAL) ? "__local " : "") + std::string((getPointer() && getAddressSpace() == AddressSpace::PRIVATE) ? "__private " : "") +
 			//access qualifier
-			std::string((isPointer && isConst) ? "const " : "") + std::string((isPointer && isRestricted) ? "restrict " : "") + std::string((isPointer && isVolatile) ? "volatile " : "") +
+			std::string((getPointer() && getConstant()) ? "const " : "") + std::string((getPointer() && getRestricted()) ? "restrict " : "") + std::string((getPointer() && getVolatile()) ? "volatile " : "") +
 			//input/output
-			((isPointer && isInput) ? "in " : "") + ((isPointer && isOutput) ? "out " : "") +
+			((getPointer() && getInput()) ? "in " : "") + ((getPointer() && getOutput()) ? "out " : "") +
 			//type + name
-			((typeName) + " ") + (name + " (") + (std::to_string(size) + " B, ") + std::to_string(elements) + " items)";
+			((typeName) + " ") + (name + " (") + (std::to_string(getSize()) + " B, ") + std::to_string(getElements()) + " items)";
 }
 
 uint8_t KernelInfo::write(std::ostream& stream, const OutputMode mode) const
@@ -70,10 +70,7 @@ uint8_t KernelInfo::write(std::ostream& stream, const OutputMode mode) const
     if(mode == OutputMode::BINARY || mode == OutputMode::HEX)
     {
         uint8_t buf[8];
-        reinterpret_cast<uint16_t*>(buf)[0] = offset;
-        reinterpret_cast<uint16_t*>(buf)[1] = length;
-        reinterpret_cast<uint16_t*>(buf)[2] = name.size();
-        reinterpret_cast<uint16_t*>(buf)[3] = parameters.size();
+        *reinterpret_cast<uint64_t*>(buf) = value;
         writeStream(stream, buf, mode);
         ++numWords;
         *reinterpret_cast<uint64_t*>(buf) = workGroupSize;
@@ -83,10 +80,7 @@ uint8_t KernelInfo::write(std::ostream& stream, const OutputMode mode) const
         for(uint16_t i = 0; i < parameters.size(); ++i)
         {
             //for each parameter, copy infos and name
-        	reinterpret_cast<uint16_t*>(buf)[0] = parameters[i].elements << 8 | parameters[i].size;
-        	reinterpret_cast<uint16_t*>(buf)[1] = parameters[i].name.size();
-        	reinterpret_cast<uint16_t*>(buf)[2] = parameters[i].typeName.size();
-        	reinterpret_cast<uint16_t*>(buf)[3] = parameters[i].isPointer << 12 | parameters[i].isOutput << 9 | parameters[i].isInput << 8 | (static_cast<unsigned char>(parameters[i].addressSpace) & 0xF) << 4 | parameters[i].isConst | parameters[i].isRestricted << 1 | parameters[i].isVolatile << 2;
+        	*reinterpret_cast<uint64_t*>(buf) = parameters[i].value;
             writeStream(stream, buf, mode);
             ++numWords;
             numWords += copyName(stream, parameters[i].name, mode);
@@ -98,7 +92,7 @@ uint8_t KernelInfo::write(std::ostream& stream, const OutputMode mode) const
 
 std::string KernelInfo::to_string() const
 {
-	return std::string("Kernel '") + (name + "', offset ") + (std::to_string(offset) + ", with following parameters: ") + ::to_string<ParamInfo>(parameters);
+	return std::string("Kernel '") + (name + "', offset ") + (std::to_string(getOffset()) + ", with following parameters: ") + ::to_string<ParamInfo>(parameters);
 }
 
 static std::string getMetaData(const std::map<MetaDataType, std::vector<std::string>>& metaData, const MetaDataType type, const std::size_t index)
@@ -113,10 +107,10 @@ static std::string getMetaData(const std::map<MetaDataType, std::vector<std::str
 KernelInfo qpu_asm::getKernelInfos(const Method& method, const std::size_t initialOffset, const std::size_t numInstructions)
 {
     KernelInfo info;
-    info.offset = initialOffset;
-    info.length = numInstructions;
-    info.name = method.name[0] == '@' ? method.name.substr(1) : method.name;
-    info.parameters.reserve(method.parameters.size());
+    info.setOffset(initialOffset);
+    info.setLength(numInstructions);
+    info.setName(method.name[0] == '@' ? method.name.substr(1) : method.name);
+    //XXX info.parameters.reserve(method.parameters.size());
     info.workGroupSize = 0;
     if(method.metaData.find(MetaDataType::WORK_GROUP_SIZES) != method.metaData.end())
     {
@@ -153,16 +147,19 @@ KernelInfo qpu_asm::getKernelInfos(const Method& method, const std::size_t initi
     	paramName = paramName.empty() ? method.parameters.at(i).name : paramName;
         const DataType& paramType = method.parameters.at(i).type;
         std::string typeName = getMetaData(method.metaData, MetaDataType::ARG_TYPE_NAMES, i);
-        info.parameters.push_back(ParamInfo{static_cast<uint8_t>(paramType.getPhysicalWidth()), paramType.isPointerType() || paramType.getImageType().hasValue,
-                method.parameters.at(i).isOutputParameter(), method.parameters.at(i).isInputParameter(),
-                getMetaData(method.metaData, MetaDataType::ARG_TYPE_QUALIFIERS, i).find("const") != std::string::npos || has_flag(method.parameters.at(i).decorations, ParameterDecorations::READ_ONLY),
-				getMetaData(method.metaData, MetaDataType::ARG_TYPE_QUALIFIERS, i).find("restrict") != std::string::npos || has_flag(method.parameters.at(i).decorations, ParameterDecorations::RESTRICT),
-				getMetaData(method.metaData, MetaDataType::ARG_TYPE_QUALIFIERS, i).find("volatile") != std::string::npos || has_flag(method.parameters.at(i).decorations, ParameterDecorations::VOLATILE),
-				paramName[0] == '%' ? paramName.substr(1) : paramName,
-                typeName.empty() ? paramType.to_string() : typeName,
-				(paramType.isPointerType() ? static_cast<uint8_t>(1) : paramType.num),
-				paramType.isPointerType() ? paramType.getPointerType().get()->addressSpace : AddressSpace::PRIVATE
-        });
+        ParamInfo paramInfo;
+        paramInfo.setSize(static_cast<uint8_t>(paramType.getPhysicalWidth()));
+        paramInfo.setPointer(paramType.isPointerType() || paramType.getImageType().hasValue);
+        paramInfo.setOutput(method.parameters.at(i).isOutputParameter());
+        paramInfo.setInput(method.parameters.at(i).isInputParameter());
+        paramInfo.setConstant(getMetaData(method.metaData, MetaDataType::ARG_TYPE_QUALIFIERS, i).find("const") != std::string::npos || has_flag(method.parameters.at(i).decorations, ParameterDecorations::READ_ONLY));
+        paramInfo.setRestricted(getMetaData(method.metaData, MetaDataType::ARG_TYPE_QUALIFIERS, i).find("restrict") != std::string::npos || has_flag(method.parameters.at(i).decorations, ParameterDecorations::RESTRICT));
+        paramInfo.setVolatile(getMetaData(method.metaData, MetaDataType::ARG_TYPE_QUALIFIERS, i).find("volatile") != std::string::npos || has_flag(method.parameters.at(i).decorations, ParameterDecorations::VOLATILE));
+        paramInfo.setName(paramName[0] == '%' ? paramName.substr(1) : paramName);
+        paramInfo.setTypeName(typeName.empty() ? paramType.to_string() : typeName);
+        paramInfo.setElements((paramType.isPointerType() ? static_cast<uint8_t>(1) : paramType.num));
+        paramInfo.setAddressSpace(paramType.isPointerType() ? paramType.getPointerType().get()->addressSpace : AddressSpace::PRIVATE);
+        info.addParameter(paramInfo);
     }
     
     return info;

@@ -404,7 +404,7 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
         offset += 1;
         for(KernelInfo& info : infos)
         {
-            info.offset += offset;
+            info.setOffset(info.getOffset() + offset);
         }
         //prepend kernel-infos to output
         writeKernelInfos(infos, stream, config.outputMode);
