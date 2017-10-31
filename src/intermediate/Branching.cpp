@@ -63,7 +63,7 @@ Branch::~Branch()
 
 std::string Branch::to_string() const
 {
-    if (getCondition().hasLiteral(Literal(true))) {
+    if (getCondition() == BOOL_TRUE) {
         return std::string("br ") + getTarget()->name + createAdditionalInfoString();
     }
     return std::string("br.") + (conditional.toString() + " ") + getTarget()->name + (getCondition() != BOOL_TRUE ? std::string(" (on ") + getCondition().to_string(false, false) + ")" : "") + createAdditionalInfoString();
@@ -106,7 +106,7 @@ const Local* Branch::getTarget() const
 
 bool Branch::isUnconditional() const
 {
-    return conditional == COND_ALWAYS || getCondition().hasLiteral(Literal(true));
+    return conditional == COND_ALWAYS || getCondition() == BOOL_TRUE;
 }
 
 const Value Branch::getCondition() const

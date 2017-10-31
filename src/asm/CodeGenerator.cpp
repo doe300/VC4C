@@ -311,7 +311,7 @@ static void toBinary(const Value& val, std::vector<uint8_t>& queue)
 			{
 				case LiteralType::BOOL:
 					for(std::size_t i = 0; i < val.type.getVectorWidth(true); ++i)
-						queue.push_back(val.literal.flag);
+						queue.push_back(val.literal.isTrue());
 					break;
 				case LiteralType::INTEGER:
 				case LiteralType::REAL:

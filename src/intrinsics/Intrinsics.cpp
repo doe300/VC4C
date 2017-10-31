@@ -207,23 +207,23 @@ const static std::map<std::string, Intrinsic> nonaryInstrinsics = {
 };
 
 const static std::map<std::string, Intrinsic> unaryIntrinsicMapping = {
-    {"vc4cl_ftoi", Intrinsic{intrinsifyUnaryALUInstruction("ftoi"), [](const Value& val){return Value(Literal(static_cast<long>(std::round(val.literal.real))), TYPE_INT32);}}},
+    {"vc4cl_ftoi", Intrinsic{intrinsifyUnaryALUInstruction("ftoi"), [](const Value& val){return Value(Literal(static_cast<long>(std::round(val.literal.real()))), TYPE_INT32);}}},
     {"vc4cl_itof", Intrinsic{intrinsifyUnaryALUInstruction("itof"), [](const Value& val){return Value(Literal(static_cast<double>(val.literal.integer)), TYPE_FLOAT);}}},
     {"vc4cl_clz", Intrinsic{intrinsifyUnaryALUInstruction("clz"), NO_OP}},
-    {"vc4cl_sfu_rsqrt", Intrinsic{intrinsifySFUInstruction(REG_SFU_RECIP_SQRT), [](const Value& val){return Value(Literal(1.0 / std::sqrt(val.literal.real)), TYPE_FLOAT);}}},
-    {"vc4cl_sfu_exp2", Intrinsic{intrinsifySFUInstruction(REG_SFU_EXP2), [](const Value& val){return Value(Literal(std::exp2(val.literal.real)), TYPE_FLOAT);}}},
-    {"vc4cl_sfu_log2", Intrinsic{intrinsifySFUInstruction(REG_SFU_LOG2), [](const Value& val){return Value(Literal(std::log2(val.literal.real)), TYPE_FLOAT);}}},
-    {"vc4cl_sfu_recip", Intrinsic{intrinsifySFUInstruction(REG_SFU_RECIP), [](const Value& val){return Value(Literal(1.0 / val.literal.real), TYPE_FLOAT);}}},
+    {"vc4cl_sfu_rsqrt", Intrinsic{intrinsifySFUInstruction(REG_SFU_RECIP_SQRT), [](const Value& val){return Value(Literal(1.0 / std::sqrt(val.literal.real())), TYPE_FLOAT);}}},
+    {"vc4cl_sfu_exp2", Intrinsic{intrinsifySFUInstruction(REG_SFU_EXP2), [](const Value& val){return Value(Literal(std::exp2(val.literal.real())), TYPE_FLOAT);}}},
+    {"vc4cl_sfu_log2", Intrinsic{intrinsifySFUInstruction(REG_SFU_LOG2), [](const Value& val){return Value(Literal(std::log2(val.literal.real())), TYPE_FLOAT);}}},
+    {"vc4cl_sfu_recip", Intrinsic{intrinsifySFUInstruction(REG_SFU_RECIP), [](const Value& val){return Value(Literal(1.0 / val.literal.real()), TYPE_FLOAT);}}},
     {"vc4cl_semaphore_increment", Intrinsic{intrinsifySemaphoreAccess(true)}},
     {"vc4cl_semaphore_decrement", Intrinsic{intrinsifySemaphoreAccess(false)}},
     {"vc4cl_dma_read", Intrinsic{intrinsifyDMAAccess(DMAAccess::READ)}}
 };
 
 const static std::map<std::string, Intrinsic> binaryIntrinsicMapping = {
-    {"vc4cl_fmax", Intrinsic{intrinsifyBinaryALUInstruction("fmax"), [](const Value& val0, const Value& val1){return Value(Literal(std::max(val0.literal.real, val1.literal.real)), TYPE_FLOAT);}}},
-    {"vc4cl_fmin", Intrinsic{intrinsifyBinaryALUInstruction("fmin"), [](const Value& val0, const Value& val1){return Value(Literal(std::min(val0.literal.real, val1.literal.real)), TYPE_FLOAT);}}},
-    {"vc4cl_fmaxabs", Intrinsic{intrinsifyBinaryALUInstruction("fmaxabs"), [](const Value& val0, const Value& val1){return Value(Literal(std::max(std::abs(val0.literal.real), std::abs(val1.literal.real))), TYPE_FLOAT);}}},
-    {"vc4cl_fminabs", Intrinsic{intrinsifyBinaryALUInstruction("fminabs"), [](const Value& val0, const Value& val1){return Value(Literal(std::min(std::abs(val0.literal.real), std::abs(val1.literal.real))), TYPE_FLOAT);}}},
+    {"vc4cl_fmax", Intrinsic{intrinsifyBinaryALUInstruction("fmax"), [](const Value& val0, const Value& val1){return Value(Literal(std::max(val0.literal.real(), val1.literal.real())), TYPE_FLOAT);}}},
+    {"vc4cl_fmin", Intrinsic{intrinsifyBinaryALUInstruction("fmin"), [](const Value& val0, const Value& val1){return Value(Literal(std::min(val0.literal.real(), val1.literal.real())), TYPE_FLOAT);}}},
+    {"vc4cl_fmaxabs", Intrinsic{intrinsifyBinaryALUInstruction("fmaxabs"), [](const Value& val0, const Value& val1){return Value(Literal(std::max(std::abs(val0.literal.real()), std::abs(val1.literal.real()))), TYPE_FLOAT);}}},
+    {"vc4cl_fminabs", Intrinsic{intrinsifyBinaryALUInstruction("fminabs"), [](const Value& val0, const Value& val1){return Value(Literal(std::min(std::abs(val0.literal.real()), std::abs(val1.literal.real()))), TYPE_FLOAT);}}},
 	//FIXME sign / no-sign!!
     {"vc4cl_shr", Intrinsic{intrinsifyBinaryALUInstruction("shr"), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer >> val1.literal.integer), val0.type.getUnionType(val1.type));}}},
     {"vc4cl_asr", Intrinsic{intrinsifyBinaryALUInstruction("asr"), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer >> val1.literal.integer), val0.type.getUnionType(val1.type));}}},
@@ -577,13 +577,13 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(arg0.hasType(ValueType::LITERAL) && arg1.hasType(ValueType::LITERAL))
         {
             logging::debug() << "Calculating result for signed division with constants" << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput().get().local, arg0.type), Value(Literal(arg0.literal.real / arg1.literal.real), arg0.type), op->conditional, op->setFlags));
+            it.reset(new MoveOperation(Value(op->getOutput().get().local, arg0.type), Value(Literal(arg0.literal.real() / arg1.literal.real()), arg0.type), op->conditional, op->setFlags));
         }
         else if(arg1.hasType(ValueType::LITERAL))
         {
             logging::debug() << "Intrinsifying floating division with multiplication of constant inverse" << logging::endl;
             op->opCode = "fmul";
-            op->setArgument(1, Value(Literal(1.0f / arg1.literal.real), arg1.type));
+            op->setArgument(1, Value(Literal(1.0f / arg1.literal.real()), arg1.type));
         }
         else if(has_flag(op->decoration, InstructionDecorations::ALLOW_RECIP) || has_flag(op->decoration, InstructionDecorations::FAST_MATH))
         {

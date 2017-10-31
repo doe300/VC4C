@@ -157,7 +157,7 @@ static ImmediateHandler mapImmediateValue(const Literal& source)
     case LiteralType::BOOL:
         //no need to create a load-instruction
     	handler.changeValue = true;
-    	handler.immediate.value = source.flag;
+    	handler.immediate.value = source.isTrue();
         return handler;
     case LiteralType::INTEGER:
     {
@@ -215,7 +215,7 @@ static ImmediateHandler mapImmediateValue(const Literal& source)
     }
     case LiteralType::REAL:
         //handle values representable with integer small immediates
-        const int integer = bit_cast<float, int>(static_cast<float>(source.real));
+        const int integer = bit_cast<float, int>(static_cast<float>(source.real()));
         if(integer >= 0 && integer <= 15)
         {
             //0 <= x <= 15 -> keep as is
@@ -230,7 +230,7 @@ static ImmediateHandler mapImmediateValue(const Literal& source)
         int partOfTwo = -1;
         for(std::size_t i = 0; i < powersOf2.size(); ++i)
         {
-            if(static_cast<float>(source.real) == powersOf2[i])
+            if(static_cast<float>(source.real()) == powersOf2[i])
             {
                 powerOfTwo = i;
                 break;
@@ -238,7 +238,7 @@ static ImmediateHandler mapImmediateValue(const Literal& source)
         }
         for(std::size_t i = 0; i < partsOf2.size(); ++i)
         {
-            if(static_cast<float>(source.real) == partsOf2[i])
+            if(static_cast<float>(source.real()) == partsOf2[i])
             {
                 partOfTwo = i;
                 break;
@@ -256,8 +256,8 @@ static ImmediateHandler mapImmediateValue(const Literal& source)
             handler.immediate.value = 40 + partOfTwo;
             return handler;
         }
-		float root = static_cast<float>(sqrt(source.real));
-		if(static_cast<float>(root * root) == source.real && (contains(powersOf2, root) || contains(partsOf2, root)))
+		float root = static_cast<float>(sqrt(source.real()));
+		if(static_cast<float>(root * root) == source.real() && (contains(powersOf2, root) || contains(partsOf2, root)))
 		{
 			//need to map to the constant representing the power/part of two, not the value itself
 			int i = index(powersOf2, root);

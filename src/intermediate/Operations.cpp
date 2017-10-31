@@ -302,31 +302,31 @@ Optional<Value> Operation::precalculate(const std::size_t numIterations) const
         return NO_VALUE;
     case OPADD_FADD.opCode:
         if (!firstInt && !secondInt)
-            return packMode.pack(Value(Literal(first.real + second.real), getFirstArg().type));
+            return packMode.pack(Value(Literal(first.real() + second.real()), getFirstArg().type));
         return NO_VALUE;
     case OPADD_FMAX.opCode:
         if (!firstInt && !secondInt)
-            return packMode.pack(Value(Literal(std::max(first.real, second.real)), getFirstArg().type));
+            return packMode.pack(Value(Literal(std::max(first.real(), second.real())), getFirstArg().type));
         return NO_VALUE;
     case OPADD_FMAXABS.opCode:
         if (!firstInt && !secondInt)
-            return packMode.pack(Value(Literal(std::max(std::abs(first.real), std::abs(second.real))), getFirstArg().type));
+            return packMode.pack(Value(Literal(std::max(std::abs(first.real()), std::abs(second.real()))), getFirstArg().type));
         return NO_VALUE;
     case OPADD_FMIN.opCode:
         if (!firstInt && !secondInt)
-            return packMode.pack(Value(Literal(std::min(first.real, second.real)), getFirstArg().type));
+            return packMode.pack(Value(Literal(std::min(first.real(), second.real())), getFirstArg().type));
         return NO_VALUE;
     case OPADD_FMINABS.opCode:
         if (!firstInt && !secondInt)
-            return packMode.pack(Value(Literal(std::min(std::abs(first.real), std::abs(second.real))), getFirstArg().type));
+            return packMode.pack(Value(Literal(std::min(std::abs(first.real()), std::abs(second.real()))), getFirstArg().type));
         return NO_VALUE;
     case OPADD_FSUB.opCode:
         if (!firstInt && !secondInt)
-            return packMode.pack(Value(Literal(first.real - second.real), getFirstArg().type));
+            return packMode.pack(Value(Literal(first.real() - second.real()), getFirstArg().type));
         return NO_VALUE;
     case OPADD_FTOI.opCode:
         if (!firstInt)
-            return packMode.pack(Value(Literal(static_cast<long>(first.real)), getFirstArg().type));
+            return packMode.pack(Value(Literal(static_cast<long>(first.real())), getFirstArg().type));
         return NO_VALUE;
     case OPADD_ITOF.opCode:
         if (firstInt)
@@ -374,7 +374,7 @@ Optional<Value> Operation::precalculate(const std::size_t numIterations) const
     switch (opCodes.second.opCode) {
     case OPMUL_FMUL.opCode:
         if (!firstInt && !secondInt)
-            return packMode.pack(Value(Literal(first.real * second.real), getFirstArg().type));
+            return packMode.pack(Value(Literal(first.real() * second.real()), getFirstArg().type));
         return NO_VALUE;
     case OPMUL_MUL24.opCode:
         if (firstInt && secondInt)

@@ -141,16 +141,11 @@ namespace vc4c
 
 	struct Literal
 	{
-		union
-		{
-			long integer;
-			double real;
-			bool flag;
-		};
+		int64_t integer;
 		LiteralType type;
 
-		Literal(const long integer);
-		explicit Literal(const long unsigned integer);
+		Literal(const int64_t integer);
+		explicit Literal(const uint64_t integer);
 		Literal(const double real);
 		Literal(const bool flag);
 
@@ -164,6 +159,7 @@ namespace vc4c
 
 		const std::string to_string() const;
 		bool isTrue() const;
+		double real() const;
 
 		uint32_t toImmediate() const;
 	};

@@ -99,33 +99,33 @@ Optional<Value> SPIRVInstruction::precalculate(const std::map<uint32_t, DataType
 	const Value op2 = operands.size() > 1 ? constants.at(operands.at(1)) : UNDEFINED_VALUE;
 
 	if(opcode.compare("fptoui") == 0)
-		return Value(Literal(static_cast<unsigned long>(op1.literal.real)), TYPE_INT32);
+		return Value(Literal(static_cast<unsigned long>(op1.literal.real())), TYPE_INT32);
 	if(opcode.compare("fptosi") == 0)
-		return Value(Literal(static_cast<long>(op1.literal.real)), TYPE_INT32);
+		return Value(Literal(static_cast<long>(op1.literal.real())), TYPE_INT32);
 	if(opcode.compare("sitofp") == 0)
 		return Value(Literal(static_cast<double>(op1.literal.integer)), TYPE_FLOAT);
 	if(opcode.compare("uitofp") == 0)
 		return Value(Literal(static_cast<double>(bit_cast<long, unsigned long>(op1.literal.integer))), TYPE_FLOAT);
 	if(opcode.compare(OP_NEGATE) == 0)
-		return op1.type.isFloatingType() ? Value(Literal(-op1.literal.real), TYPE_FLOAT) : Value(Literal(-op1.literal.integer), TYPE_INT32);
+		return op1.type.isFloatingType() ? Value(Literal(-op1.literal.real()), TYPE_FLOAT) : Value(Literal(-op1.literal.integer), TYPE_INT32);
 	if(opcode.compare("add") == 0)
 		return Value(Literal(op1.literal.integer + op2.literal.integer), op1.type.getUnionType(op2.type));
 	if(opcode.compare("fadd") == 0)
-		return Value(Literal(op1.literal.real + op2.literal.real), op1.type.getUnionType(op2.type));
+		return Value(Literal(op1.literal.real() + op2.literal.real()), op1.type.getUnionType(op2.type));
 	if(opcode.compare("sub") == 0)
 		return Value(Literal(op1.literal.integer - op2.literal.integer), op1.type.getUnionType(op2.type));
 	if(opcode.compare("fsub") == 0)
-		return Value(Literal(op1.literal.real - op2.literal.real), op1.type.getUnionType(op2.type));
+		return Value(Literal(op1.literal.real() - op2.literal.real()), op1.type.getUnionType(op2.type));
 	if(opcode.compare("mul") == 0)
 		return Value(Literal(op1.literal.integer * op2.literal.integer), op1.type.getUnionType(op2.type));
 	if(opcode.compare("fmul") == 0)
-		return Value(Literal(op1.literal.real * op2.literal.real), op1.type.getUnionType(op2.type));
+		return Value(Literal(op1.literal.real() * op2.literal.real()), op1.type.getUnionType(op2.type));
 	if(opcode.compare("udiv") == 0)
 		return Value(Literal(bit_cast<long, unsigned long>(op1.literal.integer) / bit_cast<long, unsigned long>(op2.literal.integer)), op1.type.getUnionType(op2.type));
 	if(opcode.compare("sdiv") == 0)
 		return Value(Literal(op1.literal.integer / op2.literal.integer), op1.type.getUnionType(op2.type));
 	if(opcode.compare("fdiv") == 0)
-		return Value(Literal(op1.literal.real / op2.literal.real), op1.type.getUnionType(op2.type));
+		return Value(Literal(op1.literal.real() / op2.literal.real()), op1.type.getUnionType(op2.type));
 	if(opcode.compare("umod") == 0)
 		return Value(Literal(bit_cast<long, unsigned long>(op1.literal.integer) % bit_cast<long, unsigned long>(op2.literal.integer)), op1.type.getUnionType(op2.type));
 	//TODO srem, smod, frem, fmod
@@ -758,11 +758,11 @@ Optional<Value> SPIRVSelect::precalculate(const std::map<uint32_t, DataType>& ty
 {
 	if(constants.find(condID) != constants.end())
 	{
-		if(constants.at(condID).literal.flag && constants.find(trueID) != constants.end())
+		if(constants.at(condID).literal.isTrue() && constants.find(trueID) != constants.end())
 		{
 			return constants.at(trueID);
 		}
-		if(constants.at(condID).literal.flag == false && constants.find(falseID) != constants.end())
+		if(!constants.at(condID).literal.isTrue() && constants.find(falseID) != constants.end())
 		{
 			return constants.at(falseID);
 		}

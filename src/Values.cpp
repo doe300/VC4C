@@ -235,12 +235,12 @@ Literal::Literal(const long unsigned integer) : integer(integer), type(LiteralTy
 
 }
 
-Literal::Literal(const double real): real(real), type(LiteralType::REAL)
+Literal::Literal(const double real): integer(bit_cast<double, int64_t>(real)), type(LiteralType::REAL)
 {
 
 }
 
-Literal::Literal(const bool flag) : flag(flag), type(LiteralType::BOOL)
+Literal::Literal(const bool flag) : integer(flag), type(LiteralType::BOOL)
 {
 
 }
@@ -254,11 +254,11 @@ bool Literal::operator==(const Literal& other) const
     switch(type)
     {
     case LiteralType::BOOL:
-        return flag == other.flag;
+        return isTrue() == other.isTrue();
     case LiteralType::INTEGER:
         return integer == other.integer;
     case LiteralType::REAL:
-        return real == other.real;
+        return real() == other.real();
     }
     throw CompilationError(CompilationStep::GENERAL, "Unhandled literal type!");
 }
@@ -268,22 +268,25 @@ const std::string Literal::to_string() const
     switch(type)
     {
     case LiteralType::BOOL:
-        return (flag ? "true" : "false");
+        return (isTrue() ? "true" : "false");
     case LiteralType::INTEGER:
         return std::to_string(integer);
     case LiteralType::REAL:
-        return std::to_string(real);
+        return std::to_string(real());
     }
     throw CompilationError(CompilationStep::GENERAL, "Unhandled literal type!");
 }
 
 bool Literal::isTrue() const
 {
-    if(type == LiteralType::BOOL)
-        return flag;
-    if(type == LiteralType::INTEGER)
+    if(type == LiteralType::BOOL || type == LiteralType::INTEGER)
         return integer == 1;
     return false;
+}
+
+double Literal::real() const
+{
+	return bit_cast<int64_t, double>(integer);
 }
 
 uint32_t Literal::toImmediate() const
@@ -297,7 +300,7 @@ uint32_t Literal::toImmediate() const
     switch(type)
     {
         case LiteralType::BOOL:
-            return flag;
+            return isTrue();
         case LiteralType::INTEGER:
             if(static_cast<long>(std::numeric_limits<unsigned int>::max()) > 0 /* on Raspberry Pi this is -1, because long seems to only have 4 bytes too */
             		&& integer > static_cast<long>(std::numeric_limits<unsigned int>::max()))
@@ -308,7 +311,7 @@ uint32_t Literal::toImmediate() const
                 tmp.i = static_cast<int32_t>(integer);
             return tmp.u;
         case LiteralType::REAL:
-            tmp.f = static_cast<float>(real);
+            tmp.f = static_cast<float>(real());
             return tmp.u;
     }
     throw CompilationError(CompilationStep::GENERAL, "Unhandled literal type!");
@@ -477,7 +480,7 @@ bool Value::hasLiteral(const Literal& lit) const
 {
 	if(hasType(ValueType::SMALL_IMMEDIATE))
 		return (immediate.getIntegerValue().hasValue && immediate.getIntegerValue().get() == lit.integer) ||
-				(immediate.getFloatingValue().hasValue && immediate.getFloatingValue().get() == lit.real);
+				(immediate.getFloatingValue().hasValue && immediate.getFloatingValue().get() == lit.real());
     return hasType(ValueType::LITERAL) && this->literal == lit;
 }
 
@@ -485,7 +488,7 @@ bool Value::hasImmediate(const SmallImmediate& immediate) const
 {
 	if(hasType(ValueType::LITERAL))
 		return (immediate.getIntegerValue().hasValue && immediate.getIntegerValue().get() == literal.integer) ||
-				(immediate.getFloatingValue().hasValue && immediate.getFloatingValue().get() == literal.real);
+				(immediate.getFloatingValue().hasValue && immediate.getFloatingValue().get() == literal.real());
 	return hasType(ValueType::SMALL_IMMEDIATE) && this->immediate == immediate;
 }
 
