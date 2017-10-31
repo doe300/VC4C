@@ -13,7 +13,6 @@
 #include SPIRV_HEADER
 #include SPIRV_PARSER_HEADER
 
-#include "log.h"
 #include "../Locals.h"
 #include <sstream>
 

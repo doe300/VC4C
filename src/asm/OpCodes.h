@@ -18,6 +18,7 @@ namespace vc4c
 {
 	struct DataType;
 	struct Value;
+	enum class BranchCond : unsigned char;
 
 	template<typename T>
 	long saturate(long val) {
@@ -40,6 +41,7 @@ namespace vc4c
 		std::string toString() const;
 		ConditionCode invert() const;
 		bool isInversionOf(const ConditionCode other) const;
+		BranchCond toBranchCondition() const;
 	};
 
 	constexpr ConditionCode COND_NEVER{0};
@@ -466,7 +468,6 @@ namespace vc4c
 		ALWAYS = 15
 	};
 	std::string toString(const BranchCond cond);
-	BranchCond toBranchCondition(const ConditionCode cond);
 
 	enum class BranchRel
 		: unsigned char

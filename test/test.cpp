@@ -10,6 +10,8 @@
 #include "cpptest.h"
 #include "TestScanner.h"
 #include "TestParser.h"
+#include "TestInstructions.h"
+#include "TestSPIRVFrontend.h"
 
 #include "../lib/cpplog/include/logger.h"
 #include "RegressionTest.h"
@@ -40,6 +42,12 @@ int main(int argc, char** argv)
     TestParser testParser;
     testParser.run(output);
     
+    TestInstructions testInstructions;
+    testInstructions.run(output);
+
+    TestSPIRVFrontend testSPIRV;
+    testSPIRV.run(output);
+
     vc4c::Frontend frontend = vc4c::Frontend::DEFAULT;
 
     bool runRegressions = false;

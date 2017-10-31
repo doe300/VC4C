@@ -7,6 +7,7 @@
 #include "SPIRVHelper.h"
 #include "CompilationError.h"
 
+#include "log.h"
 #include "../performance.h"
 
 #ifdef SPIRV_HEADER

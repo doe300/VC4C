@@ -67,6 +67,28 @@ bool ConditionCode::isInversionOf(const ConditionCode other) const
 	return other ==  invert();
 }
 
+BranchCond ConditionCode::toBranchCondition() const
+{
+    switch(value)
+    {
+    case COND_ALWAYS.value:
+        return BranchCond::ALWAYS;
+    case COND_CARRY_CLEAR.value:
+        return BranchCond::ALL_C_CLEAR;
+    case COND_CARRY_SET.value:
+        return BranchCond::ALL_C_SET;
+    case COND_NEGATIVE_CLEAR.value:
+        return BranchCond::ALL_N_CLEAR;
+    case COND_NEGATIVE_SET.value:
+        return BranchCond::ALL_N_SET;
+    case COND_ZERO_CLEAR.value:
+        return BranchCond::ALL_Z_CLEAR;
+    case COND_ZERO_SET.value:
+        return BranchCond::ALL_Z_SET;
+    }
+    throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid condition for branch", toString());
+}
+
 std::string vc4c::toString(const Signaling signal)
 {
 	switch (signal)
@@ -417,38 +439,4 @@ std::string vc4c::toString(const BranchCond cond)
             return "ifanyz";
     }
     throw CompilationError(CompilationStep::GENERAL, "Invalid branch-condition!");
-}
-
-BranchCond vc4c::toBranchCondition(ConditionCode cond)
-{
-	/*
-	 * These mappings are chosen in a way, so all non-zero elements do not influence the condition.
-	 * see CodeGenerator#extendBranches for details
-	 */
-	if(cond == COND_ALWAYS)
-		return BranchCond::ALWAYS;
-	if(cond == COND_ZERO_CLEAR)
-		return BranchCond::ALL_Z_CLEAR;
-	if(cond == COND_ZERO_SET)
-		return BranchCond::ANY_Z_SET;
-//    switch(cond)
-//    {
-//    case ConditionCode::ALWAYS:
-//        return BranchCond::ALWAYS;
-//    case ConditionCode::CARRY_CLEAR:
-//        return BranchCond::ALL_C_CLEAR;
-//    case ConditionCode::CARRY_SET:
-//        return BranchCond::ALL_C_SET;
-//    case ConditionCode::NEGATIVE_CLEAR:
-//        return BranchCond::ALL_N_CLEAR;
-//    case ConditionCode::NEGATIVE_SET:
-//        return BranchCond::ALL_N_SET;
-//    case ConditionCode::ZERO_CLEAR:
-//        return BranchCond::ALL_Z_CLEAR;
-//    case ConditionCode::ZERO_SET:
-//        return BranchCond::ALL_Z_SET;
-//    case ConditionCode::NEVER:
-//        throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid condition for branch", std::to_string(static_cast<unsigned>(cond)));
-//    }
-    throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid condition for branch", std::to_string(static_cast<unsigned>(cond)));
 }

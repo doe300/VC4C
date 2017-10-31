@@ -95,7 +95,7 @@ qpu_asm::Instruction* Branch::convertToAsm(const FastMap<const Local*, Register>
 			throw CompilationError(CompilationStep::CODE_GENERATION, "Unhandled branch condition depending on all elements", conditional.toString());
 	}
 	else
-		cond = toBranchCondition(conditional);
+		cond = conditional.toBranchCondition();
     return new qpu_asm::BranchInstruction(cond, BranchRel::BRANCH_RELATIVE, BranchReg::NONE, 0 /* only 5 bits, so REG_NOP doesn't fit */, REG_NOP.num, REG_NOP.num, branchOffset);
 }
 
