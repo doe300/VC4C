@@ -53,15 +53,15 @@ void TestInstructions::testConstantSaturations()
 	TEST_ASSERT_EQUALS(255l, saturate<unsigned char>(1024));
 	TEST_ASSERT_EQUALS(32767l, saturate<short>(100000));
 	TEST_ASSERT_EQUALS(65535l, saturate<unsigned short>(100000));
-	TEST_ASSERT_EQUALS(2147483647l, saturate<int>(1l << 40));
-	TEST_ASSERT_EQUALS(4294967295l, saturate<unsigned int>(1l << 40));
+	TEST_ASSERT_EQUALS(2147483647l, saturate<int>(static_cast<int64_t>(1) << 40));
+	TEST_ASSERT_EQUALS(4294967295l, saturate<unsigned int>(static_cast<int64_t>(1) << 40));
 
 	TEST_ASSERT_EQUALS(-128l, saturate<char>(-1024));
 	TEST_ASSERT_EQUALS(0l, saturate<unsigned char>(-1024));
 	TEST_ASSERT_EQUALS(-32768l, saturate<short>(-100000));
 	TEST_ASSERT_EQUALS(0l, saturate<unsigned short>(-100000));
-	TEST_ASSERT_EQUALS(-2147483648l, saturate<int>(-(1l << 40)));
-	TEST_ASSERT_EQUALS(0l, saturate<unsigned int>(-(1l << 40)));
+	TEST_ASSERT_EQUALS(-2147483648l, saturate<int>(-(static_cast<int64_t>(1) << 40)));
+	TEST_ASSERT_EQUALS(0l, saturate<unsigned int>(-(static_cast<int64_t>(1) << 40)));
 }
 
 struct TestBitfield : public Bitfield<int32_t>

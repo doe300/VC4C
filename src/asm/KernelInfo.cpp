@@ -76,7 +76,7 @@ uint8_t KernelInfo::write(std::ostream& stream, const OutputMode mode) const
         reinterpret_cast<uint16_t*>(buf)[3] = parameters.size();
         writeStream(stream, buf, mode);
         ++numWords;
-        *reinterpret_cast<uint16_t*>(buf) = workGroupSize;
+        *reinterpret_cast<uint64_t*>(buf) = workGroupSize;
         writeStream(stream, buf, mode);
         ++numWords;
         numWords += copyName(stream, name, mode);
@@ -124,7 +124,7 @@ KernelInfo qpu_asm::getKernelInfos(const Method& method, const std::size_t initi
         unsigned char offset = 0;
         for(const std::string& s : method.metaData.at(MetaDataType::WORK_GROUP_SIZES))
         {
-            int size = std::atoi(s.data());
+            int64_t size = std::atoi(s.data());
             info.workGroupSize |= size << offset;
             offset += 16;
             requiredSize *= size;
