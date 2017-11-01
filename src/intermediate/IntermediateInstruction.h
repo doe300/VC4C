@@ -23,8 +23,6 @@ namespace vc4c
 
 	namespace intermediate
 	{
-		std::pair<Register, Optional<SmallImmediate>> getInputValue(const Value& val, const FastMap<const Local*, Register>& registerMapping);
-
 		/*
 		 * Additional flags set for individual instructions
 		 */
@@ -109,7 +107,6 @@ namespace vc4c
 			IntermediateInstruction* setUnpackMode(const Unpack unpackMode);
 			IntermediateInstruction* setDecorations(const InstructionDecorations decorations);
 
-			bool firesSignal(bool ignoreImmediates = true) const;
 			bool hasSideEffects() const;
 			bool hasUnpackMode() const;
 			bool hasPackMode() const;
@@ -270,7 +267,7 @@ namespace vc4c
 		struct Nop: public IntermediateInstruction
 		{
 		public:
-			Nop(const DelayType type, const Signaling signal = Signaling::NO_SIGNAL);
+			Nop(const DelayType type, const Signaling signal = SIGNAL_NONE);
 			virtual ~Nop();
 
 			std::string to_string() const override;

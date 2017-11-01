@@ -37,11 +37,11 @@ static InstructionWalker loadVectorParameter(const Parameter& param, Method& met
 		}
 		if(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND))
 		{
-			it = insertSignExtension(it, method, UNIFORM_REGISTER, param.createReference(), i == 0 ? COND_ALWAYS : COND_ZERO_SET);
+			it = insertSignExtension(it, method, Value(REG_UNIFORM, param.type), Value(&param, TYPE_INT32), false, i == 0 ? COND_ALWAYS : COND_ZERO_SET);
 		}
 		else if(has_flag(param.decorations, ParameterDecorations::ZERO_EXTEND))
 		{
-			it = insertZeroExtension(it, method, UNIFORM_REGISTER, param.createReference(), i == 0 ? COND_ALWAYS : COND_ZERO_SET);
+			it = insertZeroExtension(it, method, Value(REG_UNIFORM, param.type), Value(&param, TYPE_INT32), false, i == 0 ? COND_ALWAYS : COND_ZERO_SET);
 		}
 		else
 		{
@@ -112,11 +112,11 @@ static void generateStartSegment(Method& method)
     	}
     	else if(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND))
         {
-            it = insertSignExtension(it, method, UNIFORM_REGISTER, param.createReference());
+            it = insertSignExtension(it, method, Value(REG_UNIFORM, param.type), Value(&param, TYPE_INT32), false);
         }
         else if(has_flag(param.decorations, ParameterDecorations::ZERO_EXTEND))
         {
-            it = insertZeroExtension(it, method, UNIFORM_REGISTER, param.createReference());
+            it = insertZeroExtension(it, method, Value(REG_UNIFORM, param.type), Value(&param, TYPE_INT32), false);
         }
         else
         {
@@ -144,7 +144,7 @@ static void generateStopSegment(Method& method)
     method.appendToEnd(new Operation("not", Value(REG_HOST_INTERRUPT, TYPE_INT8), Value(REG_QPU_NUMBER, TYPE_INT8)));
     IntermediateInstruction* nop = new Nop(DelayType::THREAD_END);
     //set signals to stop thread/program    
-    nop->setSignaling(Signaling::PROGRAM_END);
+    nop->setSignaling(SIGNAL_END_PROGRAM);
     method.appendToEnd(nop);
     method.appendToEnd(new Nop(DelayType::THREAD_END));
     method.appendToEnd(new Nop(DelayType::THREAD_END));

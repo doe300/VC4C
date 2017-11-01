@@ -28,9 +28,9 @@ namespace vc4c
 
 		InstructionWalker insertSFUCall(const Register sfuReg, InstructionWalker it, const Value& arg, const ConditionCode cond = COND_ALWAYS, const SetFlag setFlags = SetFlag::DONT_SET);
 
-		InstructionWalker insertZeroExtension(InstructionWalker it, Method& method, const Value& src, const Value& dest, const ConditionCode conditional = COND_ALWAYS, const SetFlag setFlags =
+		InstructionWalker insertZeroExtension(InstructionWalker it, Method& method, const Value& src, const Value& dest, bool allowLiteral, const ConditionCode conditional = COND_ALWAYS, const SetFlag setFlags =
 				SetFlag::DONT_SET);
-		InstructionWalker insertSignExtension(InstructionWalker it, Method& method, const Value& src, const Value& dest, const ConditionCode conditional = COND_ALWAYS, const SetFlag setFlags =
+		InstructionWalker insertSignExtension(InstructionWalker it, Method& method, const Value& src, const Value& dest, bool allowLiteral, const ConditionCode conditional = COND_ALWAYS, const SetFlag setFlags =
 				SetFlag::DONT_SET);
 		InstructionWalker insertSaturation(InstructionWalker it, Method& method, const Value& src, const Value& dest, bool isSigned);
 

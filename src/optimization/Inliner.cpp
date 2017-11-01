@@ -53,11 +53,11 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                     const Value ref = currentMethod.findOrCreateLocal(param.type, newLocalPrefix + param.name)->createReference();
                     if(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND))
 					{
-						it = intermediate::insertSignExtension(it, currentMethod, call->getArgument(i), ref);
+						it = intermediate::insertSignExtension(it, currentMethod, call->getArgument(i), ref, true);
 					}
 					else if(has_flag(param.decorations, ParameterDecorations::ZERO_EXTEND))
 					{
-						it = intermediate::insertZeroExtension(it, currentMethod, call->getArgument(i), ref);
+						it = intermediate::insertZeroExtension(it, currentMethod, call->getArgument(i), ref, true);
 					}
 					else
 					{

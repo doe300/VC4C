@@ -207,7 +207,7 @@ const static std::map<std::string, Intrinsic> nonaryInstrinsics = {
 };
 
 const static std::map<std::string, Intrinsic> unaryIntrinsicMapping = {
-    {"vc4cl_ftoi", Intrinsic{intrinsifyUnaryALUInstruction("ftoi"), [](const Value& val){return Value(Literal(static_cast<long>(std::round(val.literal.real()))), TYPE_INT32);}}},
+    {"vc4cl_ftoi", Intrinsic{intrinsifyUnaryALUInstruction("ftoi"), [](const Value& val){return Value(Literal(static_cast<int64_t>(std::round(val.literal.real()))), TYPE_INT32);}}},
     {"vc4cl_itof", Intrinsic{intrinsifyUnaryALUInstruction("itof"), [](const Value& val){return Value(Literal(static_cast<double>(val.literal.integer)), TYPE_FLOAT);}}},
     {"vc4cl_clz", Intrinsic{intrinsifyUnaryALUInstruction("clz"), NO_OP}},
     {"vc4cl_sfu_rsqrt", Intrinsic{intrinsifySFUInstruction(REG_SFU_RECIP_SQRT), [](const Value& val){return Value(Literal(1.0 / std::sqrt(val.literal.real())), TYPE_FLOAT);}}},
@@ -444,7 +444,7 @@ static InstructionWalker intrinsifyComparison(Method& method, InstructionWalker 
     return it;
 }
 
-static bool isPowerTwo(long val)
+static bool isPowerTwo(int64_t val)
 {
     //https://en.wikipedia.org/wiki/Power_of_two#Fast_algorithm_to_check_if_a_positive_number_is_a_power_of_two
     return val > 0 && (val & (val - 1)) == 0;
@@ -475,13 +475,13 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             logging::debug() << "Intrinsifying multiplication with left-shift" << logging::endl;
             op->opCode = "shl";
             op->setArgument(0, arg1);
-            op->setArgument(1, Value(Literal(static_cast<long>(std::log2(arg0.literal.integer))), arg0.type));
+            op->setArgument(1, Value(Literal(static_cast<int64_t>(std::log2(arg0.literal.integer))), arg0.type));
         }
         else if(arg1.hasType(ValueType::LITERAL) && isPowerTwo(arg1.literal.integer))
         {
             logging::debug() << "Intrinsifying multiplication with left-shift" << logging::endl;
             op->opCode = "shl";
-            op->setArgument(1, Value(Literal(static_cast<long>(std::log2(arg1.literal.integer))), arg1.type));
+            op->setArgument(1, Value(Literal(static_cast<int64_t>(std::log2(arg1.literal.integer))), arg1.type));
         }
         else if(std::max(arg0.type.getScalarBitCount(), arg1.type.getScalarBitCount()) <= 24)
         {
@@ -499,14 +499,14 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(arg0.hasType(ValueType::LITERAL) && arg1.hasType(ValueType::LITERAL))
         {
             logging::debug() << "Calculating result for division with constants" << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput().get().local, arg0.type), Value(Literal(static_cast<unsigned long>(arg0.literal.integer / arg1.literal.integer)), arg0.type), op->conditional, op->setFlags));
+            it.reset(new MoveOperation(Value(op->getOutput().get().local, arg0.type), Value(Literal(static_cast<uint64_t>(arg0.literal.integer / arg1.literal.integer)), arg0.type), op->conditional, op->setFlags));
         }
         //a / 2^n = a >> n
         else if(arg1.hasType(ValueType::LITERAL) && isPowerTwo(arg1.literal.integer))
         {
             logging::debug() << "Intrinsifying division with right-shift" << logging::endl;
             op->opCode = "shr";
-            op->setArgument(1, Value(Literal(static_cast<long>(std::log2(arg1.literal.integer))), arg1.type));
+            op->setArgument(1, Value(Literal(static_cast<int64_t>(std::log2(arg1.literal.integer))), arg1.type));
         }
 //        else if(arg1.hasType(ValueType::LITERAL))
 //        {
@@ -531,7 +531,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         {
             logging::debug() << "Intrinsifying signed division with arithmetic right-shift" << logging::endl;
             op->opCode = "asr";
-            op->setArgument(1, Value(Literal(static_cast<long>(std::log2(arg1.literal.integer))), arg1.type));
+            op->setArgument(1, Value(Literal(static_cast<int64_t>(std::log2(arg1.literal.integer))), arg1.type));
         }
         else
         {
@@ -545,7 +545,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(arg0.hasType(ValueType::LITERAL) && arg1.hasType(ValueType::LITERAL))
         {
             logging::debug() << "Calculating result for modulo with constants" << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput().get().local, arg0.type), Value(Literal(static_cast<unsigned long>(arg0.literal.integer % arg1.literal.integer)), arg0.type), op->conditional, op->setFlags));
+            it.reset(new MoveOperation(Value(op->getOutput().get().local, arg0.type), Value(Literal(static_cast<uint64_t>(arg0.literal.integer % arg1.literal.integer)), arg0.type), op->conditional, op->setFlags));
         }
         else if(arg1.hasType(ValueType::LITERAL) && isPowerTwo(arg1.literal.integer))
         {
@@ -679,7 +679,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(op->getFirstArg().type.getScalarBitCount() < 32)
         {
             //make sure, leading bits are zeroes
-            const long mask = op->getFirstArg().type.getScalarWidthMask();
+            const int64_t mask = op->getFirstArg().type.getScalarWidthMask();
             it.emplace(new Operation("and", tmp, op->getFirstArg(), Value(Literal(mask), TYPE_INT32), op->conditional));
             it.nextInBlock();
             op->setArgument(0, tmp);
@@ -720,7 +720,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     else if(op->opCode.compare("sext") == 0)
     {
         logging::debug() << "Intrinsifying sign extension with shifting" << logging::endl;
-        it = insertSignExtension(it, method, op->getFirstArg(), op->getOutput(), op->conditional, op->setFlags);
+        it = insertSignExtension(it, method, op->getFirstArg(), op->getOutput(), true, op->conditional, op->setFlags);
         //remove 'sext'
         it.erase();
         //so next instruction is not skipped
@@ -730,7 +730,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     else if(op->opCode.compare("zext") == 0)
     {
         logging::debug() << "Intrinsifying zero extension with and" << logging::endl;
-        it = insertZeroExtension(it, method, op->getFirstArg(), op->getOutput(), op->conditional, op->setFlags);
+        it = insertZeroExtension(it, method, op->getFirstArg(), op->getOutput(), true, op->conditional, op->setFlags);
         //remove 'zext'
         it.erase();
         //so next instruction is not skipped

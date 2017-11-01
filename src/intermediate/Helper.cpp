@@ -199,8 +199,8 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     }
     if(allIndicesSame)
     {
-        const long indexValue = mask.container.elements[0].literal.integer < static_cast<long>(source0.type.getVectorWidth()) ? mask.container.elements[0].literal.integer : mask.container.elements[0].literal.integer - static_cast<long>(source0.type.num);
-        const Value source = mask.container.elements[0].literal.integer < static_cast<long>(source0.type.getVectorWidth()) ? source0 : source1;
+        const int64_t indexValue = mask.container.elements[0].literal.integer < static_cast<int64_t>(source0.type.getVectorWidth()) ? mask.container.elements[0].literal.integer : mask.container.elements[0].literal.integer - static_cast<long>(source0.type.num);
+        const Value source = mask.container.elements[0].literal.integer < static_cast<int64_t>(source0.type.getVectorWidth()) ? source0 : source1;
         //if all indices same, replicate
         Value tmp(UNDEFINED_VALUE);
         if(indexValue == 0)
@@ -230,13 +230,13 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         	continue;
         if(!index.hasType(ValueType::LITERAL))
         	throw CompilationError(CompilationStep::GENERAL, "Invalid mask value", mask.to_string(false, true));
-        const Value& container = index.literal.integer < static_cast<long>(source0.type.getVectorWidth()) ? source0 : source1;
-        if(index.literal.integer >= static_cast<long>(source0.type.getVectorWidth()))
+        const Value& container = index.literal.integer < static_cast<int64_t>(source0.type.getVectorWidth()) ? source0 : source1;
+        if(index.literal.integer >= static_cast<int64_t>(source0.type.getVectorWidth()))
         	index.literal.integer = index.literal.integer - source0.type.getVectorWidth();
         index.type = TYPE_INT8;
         const Value tmp = method.addNewLocal(container.type.getElementType(), "%vector_shuffle");
         it = insertVectorExtraction(it, method, container, index, tmp);
-        it = insertVectorInsertion(it, method, destination, Value(Literal(static_cast<long>(i)), TYPE_INT8), tmp);
+        it = insertVectorInsertion(it, method, destination, Value(Literal(static_cast<int64_t>(i)), TYPE_INT8), tmp);
     }
     return it;
 }
@@ -256,7 +256,7 @@ InstructionWalker intermediate::insertSFUCall(const Register sfuReg, Instruction
     return it;
 }
 
-InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method& method, const Value& src, const Value& dest, const ConditionCode conditional, const SetFlag setFlags)
+InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method& method, const Value& src, const Value& dest, bool allowLiteral, const ConditionCode conditional, const SetFlag setFlags)
 {
 	if(src.type.getScalarBitCount() == 32 && dest.type.getScalarBitCount() <= 32)
 	{
@@ -282,34 +282,69 @@ InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method
         //do nothing, is just a move, since we truncate the 64-bit integers anyway
         it.emplace( new MoveOperation(dest, src, conditional, setFlags));
     }
+	else if(dest.type.getScalarBitCount() == 32 && src.hasType(ValueType::REGISTER) &&
+			(has_flag(src.reg.file, RegisterFile::PHYSICAL_A) || has_flag(src.reg.file, RegisterFile::ACCUMULATOR)) &&
+			src.type.getScalarBitCount() == 8)
+	{
+		//if we zero-extend from register-file A, use unpack-modes
+		//this is applied e.g. for unpacking parameters in code-generation, since the source is UNIFORM
+		it.emplace(new MoveOperation(dest, src, conditional, setFlags));
+		it->setUnpackMode(UNPACK_CHAR_TO_INT_ZEXT);
+	}
+	else if(allowLiteral)
+	{
+		it.emplace(new Operation("and", dest, src, Value(Literal(src.type.getScalarWidthMask()), TYPE_INT32), conditional, setFlags));
+	}
     else
     {
-    	//TODO this literal here is wrong for usage in CodeGenerator
-    	it.emplace( new Operation("and", dest, src, Value(Literal(src.type.getScalarWidthMask()), TYPE_INT32), conditional, setFlags));
+    	const Value tmp = method.addNewLocal(TYPE_INT32, "%zext");
+    	it.emplace(new LoadImmediate(tmp, Literal(src.type.getScalarWidthMask())));
+    	it.nextInBlock();
+    	it.emplace( new Operation("and", dest, src, tmp, conditional, setFlags));
     }
+
     it->decoration = add_flag(it->decoration, InstructionDecorations::UNSIGNED_RESULT);
     it.nextInBlock();
     return it;
 }
 
-InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method& method, const Value& src, const Value& dest, const ConditionCode conditional, const SetFlag setFlags)
+InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method& method, const Value& src, const Value& dest, bool allowLiteral, const ConditionCode conditional, const SetFlag setFlags)
 {
 	if(dest.type.getScalarBitCount() >= 32 && src.type.getScalarBitCount() >= 32)
     {
         //do nothing, is just a move, since we truncate the 64-bit integers anyway
         it.emplace( new MoveOperation(dest, src, conditional, setFlags));
-        it.nextInBlock();
-        return it;
     }
-    
-    //TODO this literal here is wrong for usage in CodeGenerator
-    const Value widthDiff(Literal(static_cast<long>(dest.type.getScalarBitCount() - src.type.getScalarBitCount())), TYPE_INT8);
-    // TODO unpack-mode can sign-extend
-    // out = asr(shl(in, bit_diff) bit_diff)
-    const Value tmp = method.addNewLocal(TYPE_INT32, "%sext");
-    it.emplace( new Operation("shl", tmp, src, widthDiff, conditional));
-    it.nextInBlock();
-    it.emplace( new Operation("asr", dest, tmp, widthDiff, conditional, setFlags));
+	else if(dest.type.getScalarBitCount() == 32 && src.hasType(ValueType::REGISTER) &&
+			(has_flag(src.reg.file, RegisterFile::PHYSICAL_A) || has_flag(src.reg.file, RegisterFile::ACCUMULATOR)) &&
+			src.type.getScalarBitCount() == 16)
+	{
+		//if we sign-extend from register-file A, use unpack-modes
+		//this is applied e.g. for unpacking parameters in code-generation, since the source is UNIFORM
+		it.emplace(new MoveOperation(dest, src, conditional, setFlags));
+		it->setUnpackMode(UNPACK_SHORT_TO_INT_SEXT);
+	}
+	else
+	{
+
+		// out = asr(shl(in, bit_diff) bit_diff)
+		Value widthDiff(Literal(static_cast<int64_t>(dest.type.getScalarBitCount() - src.type.getScalarBitCount())), TYPE_INT8);
+
+		if(!allowLiteral)
+		{
+			Value tmp = method.addNewLocal(TYPE_INT8, "%sext");
+			it.emplace(new LoadImmediate(tmp, widthDiff.literal));
+			it.nextInBlock();
+
+			widthDiff = tmp;
+		}
+
+		const Value tmp = method.addNewLocal(TYPE_INT32, "%sext");
+		it.emplace( new Operation("shl", tmp, src, widthDiff, conditional));
+		it.nextInBlock();
+		it.emplace( new Operation("asr", dest, tmp, widthDiff, conditional, setFlags));
+	}
+
     it.nextInBlock();
     return it;
 }
@@ -371,7 +406,7 @@ InstructionWalker intermediate::insertMakePositive(InstructionWalker it, Method&
 	else
 	{
 		//do we have a negative number?
-		it.emplace(new Operation("shr", NOP_REGISTER, src, Value(Literal(static_cast<unsigned long>(src.type.getScalarBitCount() - 1)), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
+		it.emplace(new Operation("shr", NOP_REGISTER, src, Value(Literal(static_cast<uint64_t>(src.type.getScalarBitCount() - 1)), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
 		it.nextInBlock();
 		//flip all bits
 		const Value tmp = method.addNewLocal(src.type, "%tow_complement");
@@ -431,7 +466,7 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 			else
 			{
 				subOffset = method.addNewLocal(TYPE_INT32, "%index_offset");
-				it.emplace(new intermediate::Operation("mul", subOffset, index, Value(Literal(static_cast<unsigned long>(subContainerType.getElementType().getPhysicalWidth())), TYPE_INT32)));
+				it.emplace(new intermediate::Operation("mul", subOffset, index, Value(Literal(static_cast<uint64_t>(subContainerType.getElementType().getPhysicalWidth())), TYPE_INT32)));
 				it.nextInBlock();
 			}
 
@@ -446,7 +481,7 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 			if(!index.hasType(ValueType::LITERAL))
 				throw CompilationError(CompilationStep::LLVM_2_IR, "Can't access struct-element with non-literal index", index.to_string());
 
-			subOffset = Value(Literal(static_cast<unsigned long>(subContainerType.getStructType().get()->getStructSize(index.literal.integer))), TYPE_INT32);
+			subOffset = Value(Literal(static_cast<uint64_t>(subContainerType.getStructType().get()->getStructSize(index.literal.integer))), TYPE_INT32);
 			subContainerType = subContainerType.getElementType(index.literal.integer);
 		}
 		else
