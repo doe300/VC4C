@@ -35,6 +35,8 @@ int main(int argc, char** argv)
         std::cerr << "options:" << std::endl;
         std::cerr << "\t--kernel-info\t\tWrite the kernel-info meta-data (as required by VC4CL run-time, default)" << std::endl;
         std::cerr << "\t--no-kernel-info\tDont write the kernel-info meta-data" << std::endl;
+        std::cerr << "\t--spirv\t\t\tExplicitely use the SPIR-V front-end" << std::endl;
+        std::cerr << "\t--llvm\t\t\tExplicitely use the LLVM-IR front-end" << std::endl;
         std::cerr << "\tany other option is passed to the pre-compiler" << std::endl;
         return 1;
     }
@@ -64,6 +66,10 @@ int main(int argc, char** argv)
             config.writeKernelInfo = true;
         else if(strcmp("--no-kernel-info", argv[i]) == 0)
             config.writeKernelInfo = false;
+        else if(strcmp("--spirv", argv[i]) == 0)
+        	config.frontend = Frontend::SPIR_V;
+        else if(strcmp("--llvm", argv[i]) == 0)
+        	config.frontend = Frontend::LLVM_IR;
         else if(strcmp("-o", argv[i]) == 0)
         {
         	outputFile = argv[i+1];
