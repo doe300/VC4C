@@ -374,18 +374,14 @@ InstructionWalker intermediate::insertSaturation(InstructionWalker it, Method& m
 	}
 	else	//saturation can be easily done via pack-modes
 	{
-		switch(dest.type.getScalarBitCount())
-		{
-			//TODO truncation is wrong!!
-			case 8:
-				return it.emplace((new MoveOperation(dest, src))->setPackMode(isSigned ? PACK_INT_TO_CHAR_TRUNCATE : PACK_INT_TO_UNSIGNED_CHAR_SATURATE));
-			case 16:
-				return it.emplace((new MoveOperation(dest, src))->setPackMode(isSigned ? PACK_INT_TO_SIGNED_SHORT_SATURATE : PACK_INT_TO_SHORT_TRUNCATE));
-			case 32:
-				return it.emplace((new MoveOperation(dest, src))->setPackMode(PACK_32_32));
-			default:
-				throw CompilationError(CompilationStep::GENERAL, "Invalid target type for saturation", dest.type.to_string());
-		}
+		if(dest.type.getScalarBitCount() == 8 && !isSigned)
+			return it.emplace((new MoveOperation(dest, src))->setPackMode(PACK_INT_TO_UNSIGNED_CHAR_SATURATE));
+		else if(dest.type.getScalarBitCount() == 16 && isSigned)
+			return it.emplace((new MoveOperation(dest, src))->setPackMode(PACK_INT_TO_SIGNED_SHORT_SATURATE));
+		else if(dest.type.getScalarBitCount() == 32)
+			return it.emplace((new MoveOperation(dest, src))->setPackMode(PACK_32_32));
+		//TODO need to saturate manually
+		throw CompilationError(CompilationStep::GENERAL, "Saturation to this type is not yet supported", dest.type.to_string());
 	}
 }
 

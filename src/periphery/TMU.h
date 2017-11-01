@@ -118,7 +118,7 @@ namespace vc4c
 			CHILD_OFFSETS = 3
 		};
 
-		//XXX these types are not really required here (but in VC4CL),
+		//TODO these types are not really required here (but in VC4CL),
 		//since we need the fields offsets, not access to them directly
 
 		/*

@@ -182,7 +182,6 @@ bool Register::hasSideEffectsOnRead() const
 		return false;
 	if(num == 32 || num == 35 || num == 36) /* UNIFORM, VARYING and SFU/TMU read */
 		return true;
-	//XXX registers 41, 42?
 	if(num >= 48 && num <= 50) /* VPM read, busy, wait */
 		return true;
 	if(num == 51) /* mutex acquire */
@@ -200,7 +199,8 @@ bool Register::hasSideEffectsOnWrite() const
 		return true;
 	if(num == 40) /* UNIFORM address */
 		return true;
-	//XXX registers 41 - 47??
+	if(num >= 41 && num <= 47) /* Tile buffer setup and value writes */
+		return true;
 	if(num >= 48 && num <= 50) /* VPM setup */
 		return true;
 	if(num == 51) /* mutex release */

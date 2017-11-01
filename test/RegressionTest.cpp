@@ -35,6 +35,9 @@ static std::vector<Entry> allKernels =
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./example/md5.cl", ""},
 		Entry{PASSED, FAST, "./example/SHA-256.cl", ""},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./example/test_cl.cl", ""},
+		Entry{PENDING_LLVM, FAST, "./example/histogram.cl", "-DTYPE=char -DMAX_VALUE=127 -DMIN_VALUE=-128"},
+		Entry{PENDING_LLVM, FAST, "./example/histogram.cl", "-DTYPE=uchar -DMAX_VALUE=255 -DMIN_VALUE=0"},
+		Entry{PENDING_LLVM, FAST, "./example/histogram.cl", "-DTYPE=short -DMAX_VALUE=32767 -DMIN_VALUE=-32768"},
     
 		Entry{PENDING_LLVM, FAST, "./testing/test_barrier_fence.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_branches.cl", ""},
