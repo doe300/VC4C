@@ -36,7 +36,7 @@ SemaphoreInstruction::~SemaphoreInstruction()
 
 std::string SemaphoreInstruction::toASMString() const
 {
-    std::string result(toExtrasString(Signaling::NO_SIGNAL, getAddCondition(), getSetFlag(), UNPACK_NOP, getPack()));
+    std::string result(toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag(), UNPACK_NOP, getPack()));
     if(getIncrementSemaphore())
         return std::string("sacq") + (result + " ") + (toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + std::to_string(static_cast<unsigned char>(getSemaphore()));
     else

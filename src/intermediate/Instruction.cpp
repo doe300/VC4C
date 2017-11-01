@@ -51,7 +51,7 @@ std::string intermediate::toString(const InstructionDecorations decoration)
 }
 
 IntermediateInstruction::IntermediateInstruction(Optional<Value> output, ConditionCode cond, SetFlag setFlags, Pack packMode) :
-signal(Signaling::NO_SIGNAL), unpackMode(UNPACK_NOP),  packMode(packMode), conditional(cond), setFlags(setFlags), decoration(InstructionDecorations::NONE), canBeCombined(true), output(output), arguments()
+signal(SIGNAL_NONE), unpackMode(UNPACK_NOP),  packMode(packMode), conditional(cond), setFlags(setFlags), decoration(InstructionDecorations::NONE), canBeCombined(true), output(output), arguments()
 {
 	if(output.hasValue)
 		addAsUserToValue(output, LocalUser::Type::WRITER);
@@ -153,13 +153,6 @@ IntermediateInstruction* IntermediateInstruction::setDecorations(const Instructi
     return this;
 }
 
-bool IntermediateInstruction::firesSignal(bool ignoreImmediates) const
-{
-	if(ignoreImmediates)
-		return signal != Signaling::NO_SIGNAL && signal != Signaling::ALU_IMMEDIATE && signal != Signaling::LOAD_IMMEDIATE;
-	return signal != Signaling::NO_SIGNAL;
-}
-
 bool IntermediateInstruction::hasSideEffects() const
 {
 	if(dynamic_cast<const Branch*>(this) != nullptr)
@@ -173,7 +166,7 @@ bool IntermediateInstruction::hasSideEffects() const
 		if(arg.hasType(ValueType::REGISTER) && arg.reg.hasSideEffectsOnRead())
 			return true;
 	}
-	return firesSignal() || setFlags == SetFlag::SET_FLAGS;
+	return signal.hasSideEffects() || setFlags == SetFlag::SET_FLAGS;
 }
 
 bool IntermediateInstruction::hasUnpackMode() const
@@ -204,9 +197,9 @@ IntermediateInstruction* IntermediateInstruction::copyExtrasFrom(const Intermedi
 		this->setPackMode(src->packMode);
 	if(setFlags == SetFlag::DONT_SET)
 		this->setSetFlags(src->setFlags);
-	if(signal != Signaling::NO_SIGNAL && src->signal != Signaling::NO_SIGNAL && signal != src->signal)
+	if(signal != SIGNAL_NONE && src->signal != SIGNAL_NONE && signal != src->signal)
 		throw CompilationError(CompilationStep::GENERAL, "Failed to merge two distinct signals", to_string());
-	if(signal == Signaling::NO_SIGNAL)
+	if(signal == SIGNAL_NONE)
 		this->setSignaling(src->signal);
 	if(unpackMode != UNPACK_NOP && src->unpackMode != UNPACK_NOP && unpackMode != src->unpackMode)
 		throw CompilationError(CompilationStep::GENERAL, "Failed to merge two distinct unpack-modes", to_string());
@@ -232,8 +225,8 @@ const Value IntermediateInstruction::renameValue(Method& method, const Value& or
 std::string IntermediateInstruction::createAdditionalInfoString() const
 {
 	std::string res("(");
-	if(firesSignal(true) && signal != Signaling::BRANCH)
-		res.append(vc4c::toString(signal)).append(" ");
+	if(signal.hasSideEffects() && signal != SIGNAL_BRANCH)
+		res.append(signal.toString()).append(" ");
 	if(hasUnpackMode())
 		res.append(unpackMode.toString()).append(" ");
 	if(hasPackMode())

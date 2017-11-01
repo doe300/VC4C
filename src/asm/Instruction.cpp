@@ -78,8 +78,8 @@ std::string Instruction::toOutputRegister(bool regFileA, const Address reg)
 std::string Instruction::toExtrasString(const Signaling sig, const ConditionCode cond, const SetFlag flags, const Unpack unpack, const Pack pack)
 {
     std::string result("");
-    if(sig != Signaling::NO_SIGNAL && sig != Signaling::ALU_IMMEDIATE)
-        result += std::string(".") + toString(sig);
+    if(sig != SIGNAL_NONE && sig != SIGNAL_ALU_IMMEDIATE)
+        result += std::string(".") + sig.toString();
     if(cond != COND_ALWAYS)
         result += std::string(".") + cond.toString();
     if(flags == SetFlag::SET_FLAGS)

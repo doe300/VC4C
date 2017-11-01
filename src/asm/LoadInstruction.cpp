@@ -71,14 +71,14 @@ std::string LoadInstruction::toASMString() const
 {
 	if(getEntry<uint8_t>(57, MASK_Septuple) == static_cast<uint8_t>(OpLoad::LOAD_SIGNED))
 	{
-		return std::string("ldi") + (toExtrasString(Signaling::NO_SIGNAL, getAddCondition(), getSetFlag()) + " ") +
+		return std::string("ldi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
 		            ((toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + std::to_string(getImmediateSignedShort0()) + ", ") + std::to_string(getImmediateSignedShort1());
 	}
 	else if(getEntry<uint8_t>(57, MASK_Septuple) == static_cast<uint8_t>(OpLoad::LOAD_UNSIGNED))
 	{
-		return std::string("ldi") + (toExtrasString(Signaling::NO_SIGNAL, getAddCondition(), getSetFlag()) + " ") +
+		return std::string("ldi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
 				            ((toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + std::to_string(getImmediateShort0()) + ", ") + std::to_string(getImmediateShort1());
 	}
-    return std::string("ldi") + (toExtrasString(Signaling::NO_SIGNAL, getAddCondition(), getSetFlag()) + " ") +
+    return std::string("ldi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
             (toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + std::to_string(getImmediateInt());
 }

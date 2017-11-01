@@ -89,44 +89,49 @@ BranchCond ConditionCode::toBranchCondition() const
     throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid condition for branch", toString());
 }
 
-std::string vc4c::toString(const Signaling signal)
+std::string Signaling::toString() const
 {
-	switch (signal)
+	switch (*this)
 	{
-		case Signaling::ALPHA_LOAD:
+		case SIGNAL_LOAD_ALPHA:
 			return "loada";
-		case Signaling::ALU_IMMEDIATE:
+		case SIGNAL_ALU_IMMEDIATE:
 			return "imm";
-		case Signaling::BRANCH:
+		case SIGNAL_BRANCH:
 			return "br";
-		case Signaling::COLOR_LOAD:
+		case SIGNAL_LOAD_COLOR:
 			return "loadc";
-		case Signaling::COLOR_LOAD_END:
+		case SIGNAL_LOAD_COLOR_END:
 			return "loadc_end";
-		case Signaling::COVERAGE_LOAD:
+		case SIGNAL_LOAD_COVERAGE:
 			return "loadcov";
-		case Signaling::LAST_THREAD_SWITCH:
+		case SIGNAL_THREAD_SWITCH_LAST:
 			return "lthrsw";
-		case Signaling::LOAD_IMMEDIATE:
+		case SIGNAL_LOAD_IMMEDIATE:
 			return "load_imm";
-		case Signaling::LOAD_TMU0:
+		case SIGNAL_LOAD_TMU0:
 			return "load_tmu0";
-		case Signaling::LOAD_TMU1:
+		case SIGNAL_LOAD_TMU1:
 			return "load_tmu1";
-		case Signaling::NO_SIGNAL:
+		case SIGNAL_NONE:
 			return "";
-		case Signaling::PROGRAM_END:
+		case SIGNAL_END_PROGRAM:
 			return "thrend";
-		case Signaling::SCORE_UNLOCK:
+		case SIGNAL_UNLOCK_SCORE:
 			return "scoreu";
-		case Signaling::SOFT_BREAK:
+		case SIGNAL_SOFT_BREAK:
 			return "bkpt";
-		case Signaling::THREAD_SWITCH:
+		case SIGNAL_SWITCH_THREAD:
 			return "thrsw";
-		case Signaling::WAIT_FOR_SCORE:
+		case SIGNAL_WAIT_FOR_SCORE:
 			return "scorew";
 	}
-	throw CompilationError(CompilationStep::CODE_GENERATION, "Unsupported signal", std::to_string(static_cast<unsigned>(signal)));
+	throw CompilationError(CompilationStep::CODE_GENERATION, "Unsupported signal", std::to_string(static_cast<unsigned>(value)));
+}
+
+bool Signaling::hasSideEffects() const
+{
+	return *this != SIGNAL_NONE && *this != SIGNAL_ALU_IMMEDIATE && *this != SIGNAL_LOAD_IMMEDIATE;
 }
 
 std::string SmallImmediate::toString() const

@@ -71,7 +71,7 @@ InstructionWalker periphery::insertGeneralReadTMU(InstructionWalker it, const Va
 	it.nextInBlock();
 	//2) trigger loading of TMU
 	it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_TMU));
-	it->setSignaling(Signaling::LOAD_TMU0);
+	it->setSignaling(SIGNAL_LOAD_TMU0);
 	it.nextInBlock();
 	//3) read value from R4
 	it.emplace(new intermediate::MoveOperation(dest, TMU_READ_REGISTER));
@@ -111,7 +111,7 @@ InstructionWalker periphery::insertReadTMU(Method& method, InstructionWalker it,
 	it.nextInBlock();
 	// 4. trigger loadtmu
 	it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_TMU));
-	it->setSignaling(Signaling::LOAD_TMU0);
+	it->setSignaling(SIGNAL_LOAD_TMU0);
 	it.nextInBlock();
 	// 5. read from r4 (stalls 9 to 20 cycles)
 	it.emplace(new intermediate::MoveOperation(dest, TMU_READ_REGISTER));

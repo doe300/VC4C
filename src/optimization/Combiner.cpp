@@ -293,8 +293,8 @@ static const std::vector<MergeCondition> mergeConditions = {
     },
     //check at most 1 signal (including IMMEDIATE) is set, same for Un-/Pack
     [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool{
-        Signaling firstSignal = Signaling::NO_SIGNAL;
-        Signaling secondSignal = Signaling::NO_SIGNAL;
+        Signaling firstSignal = SIGNAL_NONE;
+        Signaling secondSignal = SIGNAL_NONE;
 
         Unpack firstUnpack = UNPACK_NOP;
         Unpack secondUnpack = UNPACK_NOP;
@@ -308,7 +308,7 @@ static const std::vector<MergeCondition> mergeConditions = {
         {
         	firstSignal = firstOp->signal;
         	if(firstOp->getFirstArg().hasType(ValueType::LITERAL) || (firstOp->getSecondArg() && firstOp->getSecondArg().get().hasType(ValueType::LITERAL)))
-				firstSignal = Signaling::ALU_IMMEDIATE;
+				firstSignal = SIGNAL_ALU_IMMEDIATE;
         	firstPack = firstOp->packMode;
         	firstUnpack = firstOp->unpackMode;
         }
@@ -316,7 +316,7 @@ static const std::vector<MergeCondition> mergeConditions = {
         {
         	firstSignal = firstMove->signal;
         	if(firstMove->getSource().hasType(ValueType::LITERAL))
-        		firstSignal = Signaling::ALU_IMMEDIATE;
+        		firstSignal = SIGNAL_ALU_IMMEDIATE;
         	firstPack = firstMove->packMode;
         	firstUnpack = firstMove->unpackMode;
         }
@@ -324,7 +324,7 @@ static const std::vector<MergeCondition> mergeConditions = {
         {
         	secondSignal = secondOp->signal;
         	if(secondOp->getFirstArg().hasType(ValueType::LITERAL) || (secondOp->getSecondArg() && secondOp->getSecondArg().get().hasType(ValueType::LITERAL)))
-        		secondSignal = Signaling::ALU_IMMEDIATE;
+        		secondSignal = SIGNAL_ALU_IMMEDIATE;
         	secondPack = secondOp->packMode;
         	secondUnpack = secondOp->unpackMode;
         }
@@ -332,12 +332,12 @@ static const std::vector<MergeCondition> mergeConditions = {
         {
         	secondSignal = secondMove->signal;
         	if(secondMove->getSource().hasType(ValueType::LITERAL))
-        		secondSignal = Signaling::ALU_IMMEDIATE;
+        		secondSignal = SIGNAL_ALU_IMMEDIATE;
         	secondPack = secondMove->packMode;
         	secondUnpack = secondMove->unpackMode;
         }
         //only one signal can be fired (independent of ALU conditions)
-        if(firstSignal != Signaling::NO_SIGNAL && secondSignal != Signaling::NO_SIGNAL && firstSignal != secondSignal)
+        if(firstSignal != SIGNAL_NONE && secondSignal != SIGNAL_NONE && firstSignal != secondSignal)
         	return false;
         //both instructions need to have the SAME pack-mode (including NOP), unless they have inverted conditions
 		if(firstPack != secondPack && !invertedConditions)

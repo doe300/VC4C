@@ -46,7 +46,7 @@ ALUInstruction::ALUInstruction(const Unpack unpack, const Pack pack,
                                const Address addOut, const Address mulOut, const OpMul mul, const OpAdd add, const Address addInA, const SmallImmediate addInB, 
                                const InputMutex muxAddA, const InputMutex muxAddB, const InputMutex muxMulA, const InputMutex muxMulB)
 {
-    this->setSig(Signaling::ALU_IMMEDIATE);
+    this->setSig(SIGNAL_ALU_IMMEDIATE);
     this->setUnpack(unpack);
     this->setPack(pack);
     this->setAddCondition(condAdd);
@@ -75,7 +75,7 @@ std::string ALUInstruction::toASMString() const
 {
     std::string addPart;
     std::string mulPart;
-    bool hasImmediate = getSig() == Signaling::ALU_IMMEDIATE;
+    bool hasImmediate = getSig() == SIGNAL_ALU_IMMEDIATE;
     std::string addArgs, mulArgs;
     if(getAddition().numOperands > 0)
     	addArgs.append(", ").append(toInputRegister(getAddMutexA(), getInputA(), getInputB(), hasImmediate));
@@ -87,7 +87,7 @@ std::string ALUInstruction::toASMString() const
 		mulArgs.append(", ").append(toInputRegister(getMulMutexB(), getInputA(), getInputB(), hasImmediate));
     addPart = std::string(getAddition().name) + (toExtrasString(getSig(), getAddCondition(), getSetFlag(), getUnpack(), getPack()) + " ") + (getAddition() != OPADD_NOP ? toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) : "") + addArgs;
     mulPart = std::string(getMultiplication().name) + (toExtrasString(getSig(), getMulCondition(), getSetFlag(), getUnpack(), getPack()) + " ") + (getMultiplication() != OPMUL_NOP ? toOutputRegister(getWriteSwap() == WriteSwap::SWAP, getMulOut()) : "") + mulArgs;
-    if(getMulMutexA() != InputMutex::REGA && getMulMutexA() != InputMutex::REGB && getMulMutexB() != InputMutex::REGA && getMulMutexB() != InputMutex::REGB && getSig() == Signaling::ALU_IMMEDIATE && (getAddition() == OPADD_NOP || (getAddMutexA() != InputMutex::REGB && getAddMutexB() != InputMutex::REGB)))
+    if(getMulMutexA() != InputMutex::REGA && getMulMutexA() != InputMutex::REGB && getMulMutexB() != InputMutex::REGA && getMulMutexB() != InputMutex::REGB && getSig() == SIGNAL_ALU_IMMEDIATE && (getAddition() == OPADD_NOP || (getAddMutexA() != InputMutex::REGB && getAddMutexB() != InputMutex::REGB)))
     {
     	//both inputs for mul are accumulators, an immediate value is used
     	//and the ADD ALU executes NOP or both inputs from the ADD ALU are not on register-file B

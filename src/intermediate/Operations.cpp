@@ -94,7 +94,7 @@ static Register getRegister(const RegisterFile file, const Register reg0, const 
     return REG_NOP;
 }
 
-std::pair<Register, Optional<SmallImmediate>> intermediate::getInputValue(const Value& val, const FastMap<const Local*, Register>& registerMapping)
+static std::pair<Register, Optional<SmallImmediate>> getInputValue(const Value& val, const FastMap<const Local*, Register>& registerMapping, const IntermediateInstruction* instr)
 {
     if (val.hasType(ValueType::REGISTER))
         return std::make_pair(val.reg, Optional<SmallImmediate>(false, 0));
@@ -106,7 +106,7 @@ std::pair<Register, Optional<SmallImmediate>> intermediate::getInputValue(const 
     	return std::make_pair(Register{RegisterFile::PHYSICAL_B, val.immediate.value}, val.immediate);
 //    if (val.hasType(ValueType::LITERAL))
 //        return std::make_pair(Register{RegisterFile::PHYSICAL_B, val.literal.toImmediate()}, static_cast<SmallImmediate> (val.literal.toImmediate()));
-    throw CompilationError(CompilationStep::CODE_GENERATION, "Unhandled value", val.to_string(false));
+    throw CompilationError(CompilationStep::CODE_GENERATION, "Unhandled value", instr->to_string());
 }
 
 qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
@@ -114,7 +114,7 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
     std::pair<OpAdd, OpMul> opCodes = toOpCode(opCode);
     const Register outReg = getOutput().get().hasType(ValueType::LOCAL) ? registerMapping.at(getOutput().get().local) : getOutput().get().reg;
 
-    auto input0 = getInputValue(getFirstArg(), registerMapping);
+    auto input0 = getInputValue(getFirstArg(), registerMapping, this);
     const InputMutex inMux0 = getInputMux(input0.first, getFirstArg().hasType(ValueType::REGISTER), input0.second);
     if (!input0.second) {
         if (input0.first.isAccumulator() && inMux0 != InputMutex::REGA && inMux0 != InputMutex::REGB)
@@ -130,7 +130,7 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
     const WriteSwap swap = writeSwap ? WriteSwap::SWAP : WriteSwap::DONT_SWAP;
 
     if (getSecondArg()) {
-        auto input1 = getInputValue(getSecondArg(), registerMapping);
+        auto input1 = getInputValue(getSecondArg(), registerMapping, this);
         InputMutex inMux1 = getInputMux(input1.first, getSecondArg().get().hasType(ValueType::REGISTER), input1.second, input0.first.file == RegisterFile::PHYSICAL_A, input0.first.file == RegisterFile::PHYSICAL_B);
 
         //one of the values is a literal immediate
@@ -149,9 +149,9 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
             	regA = REG_NOP;
             else if(input1.second.hasValue && input0.first.file == RegisterFile::ACCUMULATOR)
             	regA = REG_NOP;
-            if(firesSignal())
+            if(signal.hasSideEffects())
             {
-            	throw CompilationError(CompilationStep::CODE_GENERATION, "Signal is discarded, since the operation takes an immediate", toString(signal));
+            	throw CompilationError(CompilationStep::CODE_GENERATION, "Signal is discarded, since the operation takes an immediate", signal.toString());
             }
 
             if (isAddALU) {
@@ -173,7 +173,7 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
                 input1.first.num = REG_NOP.num; //Cosmetics, so vc4asm does not print "maybe reading reg xx"
             else if (has_flag(input1.first.file, RegisterFile::PHYSICAL_ANY))
             {
-            	if(getInputValue(getFirstArg(), registerMapping).first == getInputValue(getSecondArg(), registerMapping).first)
+            	if(getInputValue(getFirstArg(), registerMapping, this).first == getInputValue(getSecondArg(), registerMapping, this).first)
             	{
             		//same inputs - this allows e.g. vc4asm to recognize "mov x, uniform" correctly
             		input1.first.file = input0.first.file;
@@ -206,9 +206,9 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
         {
         	// unary operation with immediate
         	const SmallImmediate imm = input0.second;
-        	if(firesSignal())
+        	if(signal.hasSideEffects())
 			{
-				throw CompilationError(CompilationStep::CODE_GENERATION, "Signal is discarded, since the operation takes an immediate", toString(signal));
+				throw CompilationError(CompilationStep::CODE_GENERATION, "Signal is discarded, since the operation takes an immediate", signal.toString());
 			}
 
         	if(isAddALU)
@@ -326,7 +326,7 @@ Optional<Value> Operation::precalculate(const std::size_t numIterations) const
         return NO_VALUE;
     case OPADD_FTOI.opCode:
         if (!firstInt)
-            return packMode.pack(Value(Literal(static_cast<long>(first.real())), getFirstArg().type));
+            return packMode.pack(Value(Literal(static_cast<int64_t>(first.real())), getFirstArg().type));
         return NO_VALUE;
     case OPADD_ITOF.opCode:
         if (firstInt)
@@ -474,7 +474,7 @@ const Value MoveOperation::getSource() const
 VectorRotation::VectorRotation(const Value& dest, const Value& src, const Value& offset, const ConditionCode cond, const SetFlag setFlags) :
 MoveOperation(dest, src, cond, setFlags)
 {
-    signal = Signaling::ALU_IMMEDIATE;
+    signal = SIGNAL_ALU_IMMEDIATE;
     setArgument(1, offset);
 }
 
@@ -497,8 +497,8 @@ qpu_asm::Instruction* VectorRotation::convertToAsm(const FastMap<const Local*, R
 {
     const Register outReg = getOutput().get().hasType(ValueType::LOCAL) ? registerMapping.at(getOutput().get().local) : getOutput().get().reg;
 
-    auto input = getInputValue(getSource(), registerMapping);
-    auto rotationOffset = getInputValue(getOffset(), registerMapping);
+    auto input = getInputValue(getSource(), registerMapping, this);
+    auto rotationOffset = getInputValue(getOffset(), registerMapping, this);
     const InputMutex inMux = getInputMux(input.first, false, Optional<SmallImmediate>(false, SmallImmediate(0)));
     if (inMux == InputMutex::REGA || inMux == InputMutex::REGB) {
         throw CompilationError(CompilationStep::CODE_GENERATION, "Can't rotate from register as input", to_string());
@@ -664,7 +664,7 @@ qpu_asm::Instruction* CombinedOperation::convertToAsm(const FastMap<const Local*
     if (addInstr->getInputB() == REG_NOP.num) {
         addInstr->setInputB(mulInstr->getInputB());
         //if ADD doesn't use register-file B and no small immediate, set signaling to value of MUL
-        if (addInstr->getSig() == Signaling::NO_SIGNAL)
+        if (addInstr->getSig() == SIGNAL_NONE)
             addInstr->setSig(mulInstr->getSig());
     }
 

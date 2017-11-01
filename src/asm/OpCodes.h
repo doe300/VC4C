@@ -27,7 +27,7 @@ namespace vc4c
 
 	/*!
 	 * The QPU keeps a set of N, Z and C flag bits per 16 SIMD element.
-	 * These flags are updated based on the result of the ADD ALU if the �sf� bit is set.
+	 * These flags are updated based on the result of the ADD ALU if the 'sf' bit is set.
 	 * If the sf bit is set and the ADD ALU executes a NOP or its condition code was NEVER,
 	 * flags are set based upon the result of the MUL ALU result.
 	 *
@@ -92,48 +92,55 @@ namespace vc4c
 
 	/*!
 	 * The 4-bit signaling field signal is connected to the 3d pipeline and is set to indicate one
-	 * of a number of conditions to the 3d hardware. Values from this field are also used to encode a �BKPT� instruction,
+	 * of a number of conditions to the 3d hardware. Values from this field are also used to encode a 'BKPT' instruction,
 	 * and to encode Branches and Load Immediate instructions.
 	 *
 	 * page 29
 	 */
-	enum class Signaling
-		: unsigned char
-		{
-			//software breakpoint
-		SOFT_BREAK = 0,
-		NO_SIGNAL = 1,
-		//last execution before thread switch
-		THREAD_SWITCH = 2,
-		//last execution
-		PROGRAM_END = 3,
-		//wait for scoreboard - stall until this QPU can safely access tile buffer
-		// "The explicit Wait for Scoreboard signal (4) is not required in most fragment shaders,
-		// because the QPU will implicitly wait for the scoreboard on the first instruction that accesses the tile buffer."
-		WAIT_FOR_SCORE = 4,
-		//scoreboard unlock
-		SCORE_UNLOCK = 5,
-		LAST_THREAD_SWITCH = 6,
-		//coverage load from tile buffer to r4
-		COVERAGE_LOAD = 7,
-		//color load from tile buffer to r4
-		COLOR_LOAD = 8,
-		//color load and program end
-		COLOR_LOAD_END = 9,
-		//read data from TMU0 to r4
-		LOAD_TMU0 = 10,
-		//read data from TMU1 to r4
-		LOAD_TMU1 = 11,
-		//alpha-mast load from tile buffer to r4
-		ALPHA_LOAD = 12,
-		//ALU instruction with raddr_b specifying small immediate or vector rotate
-		ALU_IMMEDIATE = 13,
-		//load immediate instruction
-		LOAD_IMMEDIATE = 14,
-		//branch instruction
-		BRANCH = 15
+	struct Signaling : public InstructionPart
+	{
+		constexpr Signaling(const unsigned char val) : InstructionPart(val) {};
+
+		std::string toString() const;
+		bool hasSideEffects() const;
 	};
-	std::string toString(const Signaling signal);
+
+	//software breakpoint
+	constexpr Signaling SIGNAL_SOFT_BREAK { 0 };
+	constexpr Signaling SIGNAL_NONE { 1 };
+	//last execution before thread switch
+	constexpr Signaling SIGNAL_SWITCH_THREAD { 2 };
+	//last execution
+	constexpr Signaling SIGNAL_END_PROGRAM { 3 };
+	/*
+	 * wait for scoreboard - stall until this QPU can safely access tile buffer
+	 *
+	 * "The explicit Wait for Scoreboard signal (4) is not required in most fragment shaders,
+	 * because the QPU will implicitly wait for the scoreboard on the first instruction that accesses the tile buffer."
+	 */
+	constexpr Signaling SIGNAL_WAIT_FOR_SCORE {4 };
+	//scoreboard unlock
+	constexpr Signaling	SIGNAL_UNLOCK_SCORE { 5 };
+	//Last Thread Switch
+	constexpr Signaling SIGNAL_THREAD_SWITCH_LAST { 6 };
+	//coverage load from tile buffer to r4
+	constexpr Signaling SIGNAL_LOAD_COVERAGE { 7 };
+	//color load from tile buffer to r4
+	constexpr Signaling	SIGNAL_LOAD_COLOR { 8 };
+	//color load and program end
+	constexpr Signaling SIGNAL_LOAD_COLOR_END { 9 };
+	//read data from TMU0 to r4
+	constexpr Signaling SIGNAL_LOAD_TMU0 { 10 };
+	//read data from TMU1 to r4
+	constexpr Signaling SIGNAL_LOAD_TMU1 { 11 };
+	//alpha-mask load from tile buffer to r4
+	constexpr Signaling SIGNAL_LOAD_ALPHA { 12 };
+	//ALU instruction with raddr_b specifying small immediate or vector rotate
+	constexpr Signaling SIGNAL_ALU_IMMEDIATE { 13 };
+	//load immediate instruction
+	constexpr Signaling SIGNAL_LOAD_IMMEDIATE { 14 };
+	//branch instruction
+	constexpr Signaling SIGNAL_BRANCH { 15 };
 
 	/*!
 	 * Normally, the Pack and Unpack fields program the A register file pack/unpack blocks.
@@ -383,7 +390,7 @@ namespace vc4c
 	 * while the lower 32 bits contain the immediate value(s) instead of the add and mul opcodes and read/mux fields.
 	 *
 	 * When a load immediate instruction is encountered, the processor feeds the immediate value into the add and
-	 * mul pipes and sets them to perform a �mov�. The immediate value turns up at the output of the ALUs as if it
+	 * mul pipes and sets them to perform a 'mov'. The immediate value turns up at the output of the ALUs as if it
 	 * were just a normal arithmetic result and hence all of the write fields, conditions and modes (specified in the
 	 * upper 32-bits of the encoding) work just as they would for a normal ALU instruction.
 	 *
@@ -426,7 +433,7 @@ namespace vc4c
 	 * and therefore may be written to a register-file location to support branch-with-link functionality.
 	 *
 	 * For simplicity, the QPUs do not use branch prediction and never cancel the sequentially fetched instructions
-	 * when a branch is encountered. This means that three �delay slot� instructions following a branch instruction
+	 * when a branch is encountered. This means that three 'delay slot' instructions following a branch instruction
 	 * are always executed.
 	 *
 	 * page 34
