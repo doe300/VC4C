@@ -179,7 +179,7 @@ static ImmediateHandler mapImmediateValue(const Literal& source)
         else
         {
         	//FIXME sanitizer fails for -1 * -1 (aka. -9223372036854775808 * -9223372036854775808) not fitting into long (./example/SHA-256.cl)
-            long root = static_cast<long>(sqrt(integer));
+        	int64_t root = static_cast<int64_t>(sqrt(integer));
             if(root * root == integer && root >= 0 && root <= 15 )
             {
                 handler.changeValue = true;

@@ -17,11 +17,11 @@ static constexpr unsigned IMAGE_CONFIG_NUM_UNIFORMS {4};
 //The first entry is the base texture setup
 const Value IMAGE_CONFIG_BASE_OFFSET(INT_ZERO);
 //The second entry is the texture access setup
-const Value IMAGE_CONFIG_ACCESS_OFFSET(Literal(static_cast<unsigned long>(sizeof(unsigned))), TYPE_INT32);
+const Value IMAGE_CONFIG_ACCESS_OFFSET(Literal(static_cast<uint64_t>(sizeof(unsigned))), TYPE_INT32);
 //The third entry is the extended texture setup (e.g. cube map, child images, etc.)
-const Value IMAGE_CONFIG_EXTENDED_OFFSET(Literal(2 * static_cast<unsigned long>(sizeof(unsigned))), TYPE_INT32);
+const Value IMAGE_CONFIG_EXTENDED_OFFSET(Literal(2 * static_cast<uint64_t>(sizeof(unsigned))), TYPE_INT32);
 //The forth entry is the original OpenCL image- and channel-type configuration
-const Value IMAGE_CONFIG_CHANNEL_OFFSET(Literal(3 * static_cast<unsigned long>(sizeof(unsigned))), TYPE_INT32);
+const Value IMAGE_CONFIG_CHANNEL_OFFSET(Literal(3 * static_cast<uint64_t>(sizeof(unsigned))), TYPE_INT32);
 
 Global* intermediate::reserveImageConfiguration(Module& module, const Value& image)
 {
@@ -97,7 +97,7 @@ static InstructionWalker insertLoadImageWidth(InstructionWalker it, Method& meth
 	const Value widthTemp = method.addNewLocal(TYPE_INT32, "%image_config");
 	it.emplace(new Operation("shr", widthTemp, valTemp, Value(Literal(8L), TYPE_INT8)));
 	it.nextInBlock();
-	it.emplace(new Operation("and", dest, widthTemp, Value(Literal(static_cast<long>(Bitfield<uint32_t>::MASK_Undecuple)), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
+	it.emplace(new Operation("and", dest, widthTemp, Value(Literal(static_cast<int64_t>(Bitfield<uint32_t>::MASK_Undecuple)), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
 	it.nextInBlock();
 	//0 => 2048
 	it.emplace(new MoveOperation(dest, Value(Literal(2048L), TYPE_INT32), COND_ZERO_SET));
@@ -112,7 +112,7 @@ static InstructionWalker insertLoadImageHeight(InstructionWalker it, Method& met
 	const Value heightTemp = method.addNewLocal(TYPE_INT32, "%image_config");
 	it.emplace(new Operation("shr", heightTemp, valTemp, Value(Literal(20L), TYPE_INT8)));
 	it.nextInBlock();
-	it.emplace(new Operation("and", dest, heightTemp, Value(Literal(static_cast<long>(Bitfield<uint32_t>::MASK_Undecuple)), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
+	it.emplace(new Operation("and", dest, heightTemp, Value(Literal(static_cast<int64_t>(Bitfield<uint32_t>::MASK_Undecuple)), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
 	it.nextInBlock();
 	//0 => 2048
 	it.emplace(new MoveOperation(dest, Value(Literal(2048L), TYPE_INT32), COND_ZERO_SET));

@@ -39,7 +39,7 @@ struct Entry
 struct Counter
 {
 	std::string name;
-	long count;
+	int64_t count;
 	std::size_t index;
 	std::size_t invocations;
 	std::size_t prevCounter;

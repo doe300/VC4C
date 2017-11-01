@@ -152,7 +152,7 @@ bool CallSite::mapInstruction(Method& method) const
 		method.appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, MUTEX_REGISTER));
 		method.vpm->insertWriteVPM(method.appendToEnd(), fillByte, nullptr, false);
 		//TODO could be optimized, write multiple bytes at once
-		for(long i = 0; i < numBytes.literal.integer; ++i)
+		for(int64_t i = 0; i < numBytes.literal.integer; ++i)
 		{
 			const Value tmp = method.addNewLocal(memAddr.type, "%memset_offset");
 			method.appendToEnd(new intermediate::Operation("add", tmp, memAddr, Value(Literal(i), TYPE_INT32)));
@@ -708,7 +708,7 @@ bool Switch::mapInstruction(Method& method) const
     {
         //for every case, if equal,branch to given label
         const Value tmp = method.addNewLocal(TYPE_BOOL, "%switch");
-        method.appendToEnd(new intermediate::Comparison(intermediate::COMP_EQ, tmp, cond, Value(Literal(static_cast<long>(option.first)), TYPE_INT32)));
+        method.appendToEnd(new intermediate::Comparison(intermediate::COMP_EQ, tmp, cond, Value(Literal(static_cast<int64_t>(option.first)), TYPE_INT32)));
         method.appendToEnd(new intermediate::Branch(method.findOrCreateLocal(TYPE_LABEL, option.second), COND_ZERO_CLEAR, tmp));
     }
     //branch default label

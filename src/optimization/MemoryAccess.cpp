@@ -22,13 +22,13 @@ using namespace vc4c::periphery;
 struct BaseAndOffset
 {
 	Optional<Value> base;
-	Optional<long> offset;
-	Optional<long> maxOffset;
+	Optional<int64_t> offset;
+	Optional<int64_t> maxOffset;
 
 	explicit BaseAndOffset() : base(NO_VALUE), offset(false, -1L), maxOffset(false, -1L)
 	{}
 
-	BaseAndOffset(Optional<Value> base, Optional<long> offset, Optional<long> maxOffset = Optional<long>(false, -1L)) : base(base), offset(offset), maxOffset(maxOffset)
+	BaseAndOffset(Optional<Value> base, Optional<int64_t> offset, Optional<int64_t> maxOffset = Optional<int64_t>(false, -1L)) : base(base), offset(offset), maxOffset(maxOffset)
 	{}
 };
 
@@ -60,7 +60,7 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 		return BaseAndOffset(val, 0L);
 
 	if(val.local->reference.first != nullptr && val.local->reference.second != ANY_ELEMENT)
-		return BaseAndOffset(val.local->reference.first->createReference(), static_cast<long>(val.local->reference.second));
+		return BaseAndOffset(val.local->reference.first->createReference(), static_cast<int64_t>(val.local->reference.second));
 
 	const auto writers = val.local->getUsers(LocalUser::Type::WRITER);
 	if(writers.size() != 1)
@@ -75,7 +75,7 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 	if(args.size() == 2 && std::any_of(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.hasType(ValueType::LOCAL);}) && std::any_of(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.hasType(ValueType::LITERAL);}))
 	{
 		return BaseAndOffset(*std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.hasType(ValueType::LOCAL);}),
-				static_cast<long>((*std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.hasType(ValueType::LITERAL);})).literal.integer / val.type.getElementType().getPhysicalWidth()));
+				static_cast<int64_t>((*std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.hasType(ValueType::LITERAL);})).literal.integer / val.type.getElementType().getPhysicalWidth()));
 	}
 
 	//3. an arithmetic operation with two locals -> one is the base, the other the calculation of the literal
@@ -84,9 +84,9 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 		const auto offset0 = findOffset(args.at(0));
 		const auto offset1 = findOffset(args.at(1));
 		if(offset0.offset.hasValue && args.at(1).hasType(ValueType::LOCAL))
-			return BaseAndOffset(args.at(1), static_cast<long>(offset0.offset.get() / val.type.getElementType().getPhysicalWidth()));
+			return BaseAndOffset(args.at(1), static_cast<int64_t>(offset0.offset.get() / val.type.getElementType().getPhysicalWidth()));
 		if(offset1.offset.hasValue && args.at(0).hasType(ValueType::LOCAL))
-			return BaseAndOffset(args.at(0), static_cast<long>(offset1.offset.get() / val.type.getElementType().getPhysicalWidth()));
+			return BaseAndOffset(args.at(0), static_cast<int64_t>(offset1.offset.get() / val.type.getElementType().getPhysicalWidth()));
 	}
 
 	return BaseAndOffset();
@@ -158,7 +158,7 @@ struct VPMAccessGroup
 static InstructionWalker findGroupOfVPMAccess(VPM& vpm, InstructionWalker start, const InstructionWalker end, VPMAccessGroup& group)
 {
 	Optional<Value> baseAddress = NO_VALUE;
-	long nextOffset = -1;
+	int64_t nextOffset = -1;
 	group.groupType = TYPE_UNKNOWN;
 	group.dmaSetups.clear();
 	group.genericSetups.clear();
@@ -282,7 +282,7 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
 	//1. Update DMA setup to the number of rows written
 	VPWSetup dmaSetupValue(group.dmaSetups.at(0).get<LoadImmediate>()->getImmediate().integer);
 	dmaSetupValue.dmaSetup.setUnits(group.addressWrites.size());
-	group.dmaSetups.at(0).get<LoadImmediate>()->setImmediate(Literal(static_cast<long>(dmaSetupValue.value)));
+	group.dmaSetups.at(0).get<LoadImmediate>()->setImmediate(Literal(static_cast<int64_t>(dmaSetupValue.value)));
 	std::size_t numRemoved = 0;
 	vpm.updateScratchSize(group.addressWrites.size() * group.groupType.getElementType().getPhysicalWidth());
 
@@ -342,14 +342,14 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
 	//1. Update DMA setup to the number of rows read
 	VPRSetup dmaSetupValue(group.dmaSetups.at(0).get<LoadImmediate>()->getImmediate().integer);
 	dmaSetupValue.dmaSetup.setNumberRows(group.genericSetups.size() % 16);
-	group.dmaSetups.at(0).get<LoadImmediate>()->setImmediate(Literal(static_cast<long>(dmaSetupValue.value)));
+	group.dmaSetups.at(0).get<LoadImmediate>()->setImmediate(Literal(static_cast<int64_t>(dmaSetupValue.value)));
 	std::size_t numRemoved = 0;
 	vpm.updateScratchSize(group.genericSetups.size() * group.groupType.getElementType().getPhysicalWidth());
 
 	//1.1 Update generic Setup to the number of rows read
 	VPRSetup genericSetup(group.genericSetups.at(0).get<LoadImmediate>()->getImmediate().integer);
 	genericSetup.genericSetup.setNumber(group.genericSetups.size() % 16);
-	group.genericSetups.at(0).get<LoadImmediate>()->setImmediate(Literal(static_cast<long>(genericSetup.value)));
+	group.genericSetups.at(0).get<LoadImmediate>()->setImmediate(Literal(static_cast<int64_t>(genericSetup.value)));
 
 	//2. Remove all but the first generic and DMA setups
 	for(std::size_t i = 1; i < group.genericSetups.size(); ++i)
@@ -447,7 +447,7 @@ InstructionWalker optimizations::accessGlobalData(const Module& module, Method& 
 				{
 					//emplace calculation of global-data pointer and replace argument
 					tmp = method.addNewLocal(TYPE_INT32, "%global_data_offset");
-					it.emplace(new intermediate::Operation("add", tmp, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference(), Value(Literal(static_cast<unsigned long>(globalOffset)), TYPE_INT32)));
+					it.emplace(new intermediate::Operation("add", tmp, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference(), Value(Literal(static_cast<uint64_t>(globalOffset)), TYPE_INT32)));
 					it.nextInBlock();
 				}
 				it->setArgument(i, tmp);

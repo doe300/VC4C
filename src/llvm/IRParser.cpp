@@ -113,7 +113,7 @@ Value IRParser::toValue(const Token& token, const DataType& type)
         if(type.isFloatingType())
             val.literal = Literal(token.real);
         else
-            val.literal = Literal(static_cast<long>(token.integer));
+            val.literal = Literal(static_cast<int64_t>(token.integer));
     }
     else
         throw CompilationError(CompilationStep::PARSER, "Unhandled type", token.to_string());
@@ -389,7 +389,7 @@ static std::vector<Value> parseStringConstant(const std::string& constant, const
 			++index;
 			std::string tmp(constant.substr(index, 2));
 			unsigned char c = strtoul(tmp.data(), nullptr, 0x10);
-			elements.push_back(Value(Literal(static_cast<long>(c)), TYPE_INT8));
+			elements.push_back(Value(Literal(static_cast<int64_t>(c)), TYPE_INT8));
 			index += 2;
 		}
 		else if(constant.at(index) == '"')
@@ -397,7 +397,7 @@ static std::vector<Value> parseStringConstant(const std::string& constant, const
 			break;
 		else
 		{
-			elements.push_back(Value(Literal(static_cast<long>(constant.at(index))), TYPE_INT8));
+			elements.push_back(Value(Literal(static_cast<int64_t>(constant.at(index))), TYPE_INT8));
 			++index;
 		}
 	}

@@ -332,7 +332,7 @@ static Value parseConstant(const spv_parsed_instruction_t* instruction, const st
 	if (instruction->num_words > 3) {
 		constant.valueType = ValueType::LITERAL;
 		//"Types 32 bits wide or smaller take one word."
-		constant.literal = Literal(static_cast<long> (getWord(instruction, 3)));
+		constant.literal = Literal(static_cast<int64_t> (getWord(instruction, 3)));
 		if (instruction->num_words > 4)
 			//"[...] Larger types take multiple words, with low-order words appearing first."
 			//e.g. for long/double constants
@@ -360,7 +360,7 @@ static Optional<Value> specializeConstant(const uint32_t resultID, const DataTyp
 	{
 		Optional<uint32_t> res(getDecoration(decorations.at(resultID), SpvDecorationSpecId));
 		if(res.hasValue)
-			return Value(Literal(static_cast<long>(res.get())), type);
+			return Value(Literal(static_cast<int64_t>(res.get())), type);
 	}
 	return NO_VALUE;
 }
@@ -625,7 +625,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     {
         Value sampler(typeMappings.at(parsed_instruction->type_id));
         sampler.valueType = ValueType::LITERAL;
-        sampler.literal = Literal(static_cast<long>(parseSampler(parsed_instruction)));
+        sampler.literal = Literal(static_cast<int64_t>(parseSampler(parsed_instruction)));
         constantMappings.emplace(parsed_instruction->result_id, sampler);
         return SPV_SUCCESS;
     }

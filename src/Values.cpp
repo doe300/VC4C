@@ -225,12 +225,12 @@ bool Register::isWriteable() const
 	return true;
 }
 
-Literal::Literal(const long integer) : integer(integer), type(LiteralType::INTEGER)
+Literal::Literal(const int64_t integer) : integer(integer), type(LiteralType::INTEGER)
 {
 
 }
 
-Literal::Literal(const long unsigned integer) : integer(integer), type(LiteralType::INTEGER)
+Literal::Literal(const uint64_t integer) : integer(integer), type(LiteralType::INTEGER)
 {
 
 }
@@ -341,7 +341,7 @@ bool ContainerValue::isElementNumber(bool withOffset) const
 	{
 		return true;
 	}
-	const long offset = withOffset ? elements.at(0).literal.integer : 0;
+	const int64_t offset = withOffset ? elements.at(0).literal.integer : 0;
 	for(std::size_t i = 0; i < elements.size(); ++i)
 	{
 		if(elements.at(i).isUndefined())
@@ -349,7 +349,7 @@ bool ContainerValue::isElementNumber(bool withOffset) const
 			continue;
 		if(!elements.at(i).hasType(ValueType::LITERAL))
 			throw CompilationError(CompilationStep::GENERAL, "Invalid container element", elements.at(i).to_string());
-		if(elements.at(i).literal.integer != static_cast<long>(i) + offset)
+		if(elements.at(i).literal.integer != static_cast<int64_t>(i) + offset)
 			return false;
 	}
 	return true;

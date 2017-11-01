@@ -21,8 +21,8 @@ namespace vc4c
 	enum class BranchCond : unsigned char;
 
 	template<typename T>
-	long saturate(long val) {
-	    return std::min(std::max(val, static_cast<long>(std::numeric_limits<T>::min())), static_cast<long>(std::numeric_limits<T>::max()));
+	int64_t saturate(int64_t val) {
+	    return std::min(std::max(val, static_cast<int64_t>(std::numeric_limits<T>::min())), static_cast<int64_t>(std::numeric_limits<T>::max()));
 	}
 
 	/*!
@@ -179,9 +179,10 @@ namespace vc4c
 	//8-bit color value (in range [0, 1.0]) from byte 3 (MSB) to 32 bit float if any ALU consuming data executes float instruction,
 	//else unsigned int8 -> int32
 	constexpr Unpack UNPACK_8D_32{7};
-	constexpr Unpack UNPACK_SHORT_TO_INT = UNPACK_16A_32;
+	constexpr Unpack UNPACK_SHORT_TO_INT_SEXT = UNPACK_16A_32;
+	//TODO only, if operation consumes float!!
 	constexpr Unpack UNPACK_HALF_TO_FLOAT = UNPACK_16A_32;
-	constexpr Unpack UNPACK_CHAR_TO_INT = UNPACK_8A_32;
+	constexpr Unpack UNPACK_CHAR_TO_INT_ZEXT = UNPACK_8A_32;
 
 	//8-bit color value (in range [0, 1.0]) to 32 bit float
 	constexpr Unpack UNPACK_R4_COLOR0 = UNPACK_8A_32;

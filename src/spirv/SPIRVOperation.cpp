@@ -99,13 +99,13 @@ Optional<Value> SPIRVInstruction::precalculate(const std::map<uint32_t, DataType
 	const Value op2 = operands.size() > 1 ? constants.at(operands.at(1)) : UNDEFINED_VALUE;
 
 	if(opcode.compare("fptoui") == 0)
-		return Value(Literal(static_cast<unsigned long>(op1.literal.real())), TYPE_INT32);
+		return Value(Literal(static_cast<uint64_t>(op1.literal.real())), TYPE_INT32);
 	if(opcode.compare("fptosi") == 0)
-		return Value(Literal(static_cast<long>(op1.literal.real())), TYPE_INT32);
+		return Value(Literal(static_cast<int64_t>(op1.literal.real())), TYPE_INT32);
 	if(opcode.compare("sitofp") == 0)
 		return Value(Literal(static_cast<double>(op1.literal.integer)), TYPE_FLOAT);
 	if(opcode.compare("uitofp") == 0)
-		return Value(Literal(static_cast<double>(bit_cast<long, unsigned long>(op1.literal.integer))), TYPE_FLOAT);
+		return Value(Literal(static_cast<double>(bit_cast<int64_t, uint64_t>(op1.literal.integer))), TYPE_FLOAT);
 	if(opcode.compare(OP_NEGATE) == 0)
 		return op1.type.isFloatingType() ? Value(Literal(-op1.literal.real()), TYPE_FLOAT) : Value(Literal(-op1.literal.integer), TYPE_INT32);
 	if(opcode.compare("add") == 0)
@@ -121,13 +121,13 @@ Optional<Value> SPIRVInstruction::precalculate(const std::map<uint32_t, DataType
 	if(opcode.compare("fmul") == 0)
 		return Value(Literal(op1.literal.real() * op2.literal.real()), op1.type.getUnionType(op2.type));
 	if(opcode.compare("udiv") == 0)
-		return Value(Literal(bit_cast<long, unsigned long>(op1.literal.integer) / bit_cast<long, unsigned long>(op2.literal.integer)), op1.type.getUnionType(op2.type));
+		return Value(Literal(bit_cast<int64_t, uint64_t>(op1.literal.integer) / bit_cast<int64_t, uint64_t>(op2.literal.integer)), op1.type.getUnionType(op2.type));
 	if(opcode.compare("sdiv") == 0)
 		return Value(Literal(op1.literal.integer / op2.literal.integer), op1.type.getUnionType(op2.type));
 	if(opcode.compare("fdiv") == 0)
 		return Value(Literal(op1.literal.real() / op2.literal.real()), op1.type.getUnionType(op2.type));
 	if(opcode.compare("umod") == 0)
-		return Value(Literal(bit_cast<long, unsigned long>(op1.literal.integer) % bit_cast<long, unsigned long>(op2.literal.integer)), op1.type.getUnionType(op2.type));
+		return Value(Literal(bit_cast<int64_t, uint64_t>(op1.literal.integer) % bit_cast<int64_t, uint64_t>(op2.literal.integer)), op1.type.getUnionType(op2.type));
 	//TODO srem, smod, frem, fmod
 	//OpSRem: "Signed remainder operation of Operand 1 divided by Operand 2. The sign of a non-0 result comes from Operand 1."
 	//OpSMod: "Signed modulo operation of Operand 1 modulo Operand 2. The sign of a non-0 result comes from Operand 2."
@@ -143,7 +143,7 @@ Optional<Value> SPIRVInstruction::precalculate(const std::map<uint32_t, DataType
 		return Value(Literal(~op1.literal.integer), op1.type);
 	if(opcode.compare("shr") == 0)
 		//in C++, unsigned right shift is logical (fills with zeroes)
-		return Value(Literal(bit_cast<unsigned long, long>(bit_cast<long unsigned, long>(op1.literal.integer)) >> op2.literal.integer), op1.type);
+		return Value(Literal(bit_cast<uint64_t, int64_t>(bit_cast<uint64_t, int64_t>(op1.literal.integer)) >> op2.literal.integer), op1.type);
 	//TODO asr
 	if(opcode.compare("shl") == 0)
 		return Value(Literal(op1.literal.integer << op2.literal.integer), op1.type);
@@ -511,7 +511,7 @@ void SPIRVCopy::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uin
     		throw CompilationError(CompilationStep::LLVM_2_IR, "Multi level indices are not implemented yet");
         //index is literal
         logging::debug() << "Generating intermediate extraction of index " << sourceIndices.get().at(0) << " from " << source.to_string() << " into " << dest.to_string(true) << logging::endl;
-        intermediate::insertVectorExtraction(method.method->appendToEnd(), *method.method, source, Value(Literal(static_cast<long>(sourceIndices.get().at(0))), TYPE_INT8), dest);
+        intermediate::insertVectorExtraction(method.method->appendToEnd(), *method.method, source, Value(Literal(static_cast<int64_t>(sourceIndices.get().at(0))), TYPE_INT8), dest);
     }
     else if((!sourceIndices || (sourceIndices.get().at(0) == 0)) && destIndices)
     {
@@ -520,7 +520,7 @@ void SPIRVCopy::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uin
         //add element to vector to element
         //index is literal
         logging::debug() << "Generating intermediate insertion of " << source.to_string() << " into element " << destIndices.get().at(0) << " of " << dest.to_string(true) << logging::endl;
-        intermediate::insertVectorInsertion(method.method->appendToEnd(), *method.method, dest, Value(Literal(static_cast<long>(destIndices.get().at(0))), TYPE_INT8), source);
+        intermediate::insertVectorInsertion(method.method->appendToEnd(), *method.method, dest, Value(Literal(static_cast<int64_t>(destIndices.get().at(0))), TYPE_INT8), source);
     }
     else
     {
@@ -583,7 +583,7 @@ void SPIRVShuffle::mapInstruction(std::map<uint32_t, DataType>& types, std::map<
 				if(index != 0 && index != 0xFFFFFFFFU)
 					//accept UNDEF as zero, so i.e. (0,0,0,UNDEF) can be simplified as all-zero
 					allIndicesZero = false;
-				indices.elements.emplace_back(Literal(static_cast<long>(index)), TYPE_INT8);
+				indices.elements.emplace_back(Literal(static_cast<int64_t>(index)), TYPE_INT8);
 			}
 		}
 
@@ -680,7 +680,7 @@ Optional<Value> SPIRVIndexOf::precalculate(const std::map<uint32_t, DataType>& t
 			if(!index.hasType(ValueType::LITERAL))
 				throw CompilationError(CompilationStep::LLVM_2_IR, "Can't access struct-element with non-literal index", index.to_string());
 
-			subOffset = Value(Literal(static_cast<unsigned long>(container.type.getStructType().get()->getStructSize(index.literal.integer))), TYPE_INT32);
+			subOffset = Value(Literal(static_cast<uint64_t>(container.type.getStructType().get()->getStructSize(index.literal.integer))), TYPE_INT32);
 			subContainerType = subContainerType.getElementType(index.literal.integer);
 		}
 		else
@@ -791,7 +791,7 @@ void SPIRVSwitch::mapInstruction(std::map<uint32_t, DataType>& types, std::map<u
     for(const auto& pair : destinations)
     {
         //comparison value is a literal
-        const Value comparison(Literal(static_cast<long>(pair.first)), selector.type);
+        const Value comparison(Literal(static_cast<int64_t>(pair.first)), selector.type);
         const Value destination = getValue(pair.second, *method.method, types, constants, globals, localTypes);
         //for every case, if equal,branch to given label
         const Value tmp = method.method->addNewLocal(TYPE_BOOL, "%switch");
@@ -809,7 +809,7 @@ Optional<Value> SPIRVSwitch::precalculate(const std::map<uint32_t, DataType>& ty
 		Value selector = constants.at(selectorID);
 		for(const auto& pair : destinations)
 		{
-			if(selector.hasLiteral(Literal(static_cast<long>(pair.first))) && constants.find(pair.second) != constants.end())
+			if(selector.hasLiteral(Literal(static_cast<int64_t>(pair.first))) && constants.find(pair.second) != constants.end())
 			{
 				return constants.at(pair.second);
 			}

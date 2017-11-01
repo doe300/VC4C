@@ -92,10 +92,10 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
     if(arg0.hasType(ValueType::LITERAL))
     {
         hasA1Part = (arg0.literal.integer & 0xFFFF) != 0;
-        it.emplace(new MoveOperation(a1, Value(Literal(static_cast<long>(arg0.literal.integer & 0xFFFF)), TYPE_INT16)));
+        it.emplace(new MoveOperation(a1, Value(Literal(static_cast<int64_t>(arg0.literal.integer & 0xFFFF)), TYPE_INT16)));
         it.nextInBlock();
         hasA0Part = (arg0.literal.integer >> 16) != 0;
-		it.emplace(new MoveOperation(a0, Value(Literal(static_cast<long>(arg0.literal.integer >> 16)), TYPE_INT16)));
+		it.emplace(new MoveOperation(a0, Value(Literal(static_cast<int64_t>(arg0.literal.integer >> 16)), TYPE_INT16)));
 		it.nextInBlock();
     }
     else
@@ -110,10 +110,10 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
     if(arg1.hasType(ValueType::LITERAL))
     {
     	hasB1Part = (arg1.literal.integer & 0xFFFF) != 0;
-		it.emplace(new MoveOperation(b1, Value(Literal(static_cast<long>(arg1.literal.integer & 0xFFFF)), TYPE_INT8)));
+		it.emplace(new MoveOperation(b1, Value(Literal(static_cast<int64_t>(arg1.literal.integer & 0xFFFF)), TYPE_INT8)));
 		it.nextInBlock();
         hasB0Part = (arg1.literal.integer >> 16) != 0;
-        it.emplace(new MoveOperation(b0, Value(Literal(static_cast<long>(arg1.literal.integer >> 16)), TYPE_INT8)));
+        it.emplace(new MoveOperation(b0, Value(Literal(static_cast<int64_t>(arg1.literal.integer >> 16)), TYPE_INT8)));
         it.nextInBlock();
     }
     else

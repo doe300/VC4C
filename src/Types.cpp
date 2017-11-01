@@ -190,9 +190,9 @@ unsigned char DataType::getScalarBitCount() const
     return 32;
 }
 
-unsigned long DataType::getScalarWidthMask() const
+uint64_t DataType::getScalarWidthMask() const
 {
-	return (static_cast<unsigned long>(1) << getScalarBitCount()) - 1;
+	return (static_cast<uint64_t>(1) << getScalarBitCount()) - 1;
 }
 
 unsigned int DataType::getPhysicalWidth() const

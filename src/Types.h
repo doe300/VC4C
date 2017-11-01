@@ -71,7 +71,7 @@ namespace vc4c
 		const DataType getUnionType(const DataType& other) const;
 
 		unsigned char getScalarBitCount() const;
-		unsigned long getScalarWidthMask() const;
+		uint64_t getScalarWidthMask() const;
 
 		/*
 		 * Returns the width of this type in bytes

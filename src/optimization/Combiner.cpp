@@ -492,7 +492,7 @@ static Optional<Literal> getSourceLiteral(InstructionWalker it)
 	}
 	else if(it.has<MoveOperation>() && it.get<MoveOperation>()->getSource().hasType(ValueType::SMALL_IMMEDIATE))
 	{
-		return Literal(static_cast<long>(it.get<MoveOperation>()->getSource().immediate.getIntegerValue()));
+		return Literal(static_cast<int64_t>(it.get<MoveOperation>()->getSource().immediate.getIntegerValue()));
 	}
 	else if(it.has<Operation>())
 	{
@@ -522,7 +522,7 @@ void optimizations::combineLoadingLiterals(const Module& module, Method& method,
 {
 	for(BasicBlock& block : method.getBasicBlocks())
 	{
-		FastMap<long, InstructionWalker> lastLoadImmediate;
+		FastMap<int64_t, InstructionWalker> lastLoadImmediate;
 		InstructionWalker it = block.begin();
 		while(!it.isEndOfBlock())
 		{

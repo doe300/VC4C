@@ -220,7 +220,7 @@ namespace vc4c
 				return (value & 0xC0000000) == 0xC0000000;
 			}
 
-			static VPWSetup fromLiteral(unsigned long val)
+			static VPWSetup fromLiteral(uint64_t val)
 			{
 				return VPWSetup(static_cast<uint32_t>(val));
 			}
@@ -426,7 +426,7 @@ namespace vc4c
 				return (value & 0xF0000000) == 0x90000000;
 			}
 
-			static VPRSetup fromLiteral(unsigned long val)
+			static VPRSetup fromLiteral(uint64_t val)
 			{
 				return VPRSetup(static_cast<uint32_t>(val));
 			}

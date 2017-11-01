@@ -189,7 +189,7 @@ Optional<unsigned char> SmallImmediate::getRotationOffset() const
 Optional<Literal> SmallImmediate::toLiteral() const
 {
 	if(getIntegerValue().hasValue)
-		return Literal(static_cast<long>(getIntegerValue().get()));
+		return Literal(static_cast<int64_t>(getIntegerValue().get()));
 	if(getFloatingValue().hasValue)
 		return Literal(getFloatingValue().get());
 	return Optional<Literal>(false, 0L);

@@ -11,7 +11,7 @@ using namespace vc4c;
 using namespace vc4c::periphery;
 using namespace vc4c::intermediate;
 
-static long getVPMSize(const DataType& paramType)
+static int64_t getVPMSize(const DataType& paramType)
 {
     //documentation, table 32 (page 57)
 	switch(paramType.getScalarBitCount())
@@ -27,7 +27,7 @@ static long getVPMSize(const DataType& paramType)
 	}
 }
 
-static long getVPMDMAMode(const DataType& paramType)
+static int64_t getVPMDMAMode(const DataType& paramType)
 {
     //documentation, table 34 (page 58) / table 36 (page 59)
     //The offset is added initially onto the address, so don't set it (it will skip to write the first byte(s)/half word)
@@ -432,7 +432,7 @@ InstructionWalker periphery::insertWriteDMA(Method& method, InstructionWalker it
 //	return it;
 //}
 
-std::pair<DataType, uint8_t> getBestVectorSize(const long numBytes)
+std::pair<DataType, uint8_t> getBestVectorSize(const int64_t numBytes)
 {
 	for(uint8_t numElements = 16; numElements > 0; --numElements)
 	{
@@ -499,7 +499,7 @@ InstructionWalker VPM::insertReadVPM(InstructionWalker it, const Value& dest, co
 	//1) configure reading from VPM into QPU
 	const auto size = getVPMSize(dest.type);
 	const VPRSetup genericSetup(VPRGenericSetup(size, TYPE_INT32.getScalarBitCount() / dest.type.getScalarBitCount(), calculateAddress(dest.type, calculateOffset(area))));
-	it.emplace( new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<long>(genericSetup))));
+	it.emplace( new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<int64_t>(genericSetup))));
 	it.nextInBlock();
 	//2) read value from VPM
 	it.emplace( new MoveOperation(dest, VPM_IO_REGISTER));
@@ -517,9 +517,9 @@ InstructionWalker VPM::insertWriteVPM(InstructionWalker it, const Value& src, co
 
 	it = insertLockMutex(it, useMutex);
 	//1. configure writing from QPU into VPM
-	const long vpmSize = getVPMSize(src.type);
+	const int64_t vpmSize = getVPMSize(src.type);
 	const VPWSetup genericSetup(VPWGenericSetup(vpmSize, TYPE_INT32.getScalarBitCount() / src.type.getScalarBitCount(), calculateAddress(src.type, calculateOffset(area))));
-	it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<long>(genericSetup))));
+	it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<int64_t>(genericSetup))));
 	it.nextInBlock();
 	//2. write data to VPM
 	it.emplace(new MoveOperation(VPM_IO_REGISTER, src));
@@ -549,13 +549,13 @@ InstructionWalker VPM::insertReadRAM(InstructionWalker it, const Value& memoryAd
 	//http://maazl.de/project/vc4asm/doc/VideoCoreIV-addendum.html
 
 	//initialize VPM DMA for reading from host
-	const long dmaMode = getVPMDMAMode(type);
+	const int64_t dmaMode = getVPMDMAMode(type);
 	VPRSetup dmaSetup(VPRDMASetup(dmaMode, type.getVectorWidth(true) % 16 /* 0 => 16 */, 1 % 16 /* 0 => 16 */));
 	dmaSetup.dmaSetup.setAddress(calculateOffset(area));
-	it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<long>(dmaSetup))));
+	it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<int64_t>(dmaSetup))));
 	it.nextInBlock();
 	const VPRSetup strideSetup(VPRStrideSetup(type.getPhysicalWidth()));
-	it.emplace( new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<long>(strideSetup))));
+	it.emplace( new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<int64_t>(strideSetup))));
 	it.nextInBlock();
 
 	//"the actual DMA load or store operation is initiated by writing the memory address to the VCD_LD_ADDR or VCD_ST_ADDR register" (p. 56)
@@ -589,14 +589,14 @@ InstructionWalker VPM::insertWriteRAM(InstructionWalker it, const Value& memoryA
 	it = insertLockMutex(it, useMutex);
 
 	//initialize VPM DMA for writing to host
-	const long dmaMode = getVPMDMAMode(type);
+	const int64_t dmaMode = getVPMDMAMode(type);
 	VPWSetup dmaSetup(VPWDMASetup(dmaMode, type.getVectorWidth(true), 1 % 128 /* 0 => 128 */));
 	dmaSetup.dmaSetup.setVPMBase(calculateOffset(area));
-	it.emplace( new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<long>(dmaSetup))));
+	it.emplace( new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<int64_t>(dmaSetup))));
 	it.nextInBlock();
 	//set stride to zero
 	const VPWSetup strideSetup(VPWStrideSetup(0));
-	it.emplace( new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<long>(strideSetup))));
+	it.emplace( new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<int64_t>(strideSetup))));
 	it.nextInBlock();
 
 	//"the actual DMA load or store operation is initiated by writing the memory address to the VCD_LD_ADDR or VCD_ST_ADDR register" (p. 56)
@@ -630,9 +630,9 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
 		const Value tmpDest = method.addNewLocal(destAddress.type, "%mem_copy_addr");
 
 		//increment offset from base address
-		it.emplace(new Operation("add", tmpSource, srcAddress, Value(Literal(static_cast<long>(i * size.first.getPhysicalWidth())), TYPE_INT8)));
+		it.emplace(new Operation("add", tmpSource, srcAddress, Value(Literal(static_cast<int64_t>(i * size.first.getPhysicalWidth())), TYPE_INT8)));
 		it.nextInBlock();
-		it.emplace(new Operation("add", tmpDest, destAddress, Value(Literal(static_cast<long>(i * size.first.getPhysicalWidth())), TYPE_INT8)));
+		it.emplace(new Operation("add", tmpDest, destAddress, Value(Literal(static_cast<int64_t>(i * size.first.getPhysicalWidth())), TYPE_INT8)));
 		it.nextInBlock();
 
 		it = insertReadRAM(it, tmpSource, size.first, area, false);
@@ -660,7 +660,7 @@ InstructionWalker VPM::insertFillRAM(Method& method, InstructionWalker it, const
 		const Value tmpDest = method.addNewLocal(memoryAddress.type, "%mem_fill_addr");
 
 		//increment offset from base address
-		it.emplace(new Operation("add", tmpDest, memoryAddress, Value(Literal(static_cast<long>(i * type.getPhysicalWidth())), TYPE_INT8)));
+		it.emplace(new Operation("add", tmpDest, memoryAddress, Value(Literal(static_cast<int64_t>(i * type.getPhysicalWidth())), TYPE_INT8)));
 		it.nextInBlock();
 
 		it = insertWriteRAM(it, tmpDest, type, area, false);
