@@ -739,20 +739,29 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case SpvOpVariable:
     {
     	//"Allocate an object in memory, resulting in a pointer to it"
-    	 //used for global values
+    	 //used for global values as well as stack-allocations
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         const std::string name = names.find(parsed_instruction->result_id) != names.end() ? names.at(parsed_instruction->result_id) : (std::string("%") + std::to_string(parsed_instruction->result_id));
-        const DataType& globalType = typeMappings.at(parsed_instruction->type_id);
-        Value val(globalType.getElementType());
+        const DataType& type = typeMappings.at(parsed_instruction->type_id);
+        Value val(type.getElementType());
         if(parsed_instruction->num_words > 4)
-        {
         	val = constantMappings.at(getWord(parsed_instruction, 4));
-        }
         //the type of OpVariable is the pointer
-        //... but the global data needs to have the real type (is re-set in #parse())
-        module->globalData.emplace_back(Global(name, globalType, val));
-        globalData.emplace(parsed_instruction->result_id, &module->globalData.back());
-        logging::debug() << "Reading variable: " << globalType.to_string() << " " << name << " with value: " << val.to_string(false, true) << logging::endl;
+        //... but the global data/stack allocation needs to have the real type (is re-set in #parse())
+        if(currentMethod != nullptr && AddressSpace::PRIVATE == toAddressSpace(static_cast<SpvStorageClass>(getWord(parsed_instruction, 3))))
+        {
+        	//OpVariables within a function body are stack allocations
+        	//"All OpVariable instructions in a function must have a Storage Class of Function."
+        	currentMethod->method->stackAllocations.push_back(StackAllocation(name, type));
+        	//TODO set initial value!. Allowed for OpVariables with storage-class Function?
+        }
+        else
+        {
+        	//OpVariables outside of any function are global data
+        	module->globalData.emplace_back(Global(name, type, val));
+			globalData.emplace(parsed_instruction->result_id, &module->globalData.back());
+        }
+        logging::debug() << "Reading variable: " << type.to_string() << " " << name << " with value: " << val.to_string(false, true) << logging::endl;
         return SPV_SUCCESS;
     }
     case SpvOpImageTexelPointer:
@@ -1363,18 +1372,12 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case SpvOpLifetimeStart:
     {
     	//for temporary variables (e.g. Function-Scope), the size is set via the OpLifetimeStart, since the OpVariable is of type void
-    	uint32_t byteSize = getWord(parsed_instruction, 2);
-    	if(byteSize != 0 && globalData.at(getWord(parsed_instruction, 1))->value.type == TYPE_VOID)
-    	{
-    		//"If Size is non-zero, it is the number of bytes of memory whose lifetime is starting"
-    		std::shared_ptr<ComplexType> arrayType(new ArrayType(TYPE_VOID, byteSize));
-			DataType bufferType(std::string("void[") + std::to_string(byteSize) + "]", 1, arrayType);
-			globalData.at(getWord(parsed_instruction, 1))->value = Value(bufferType);
-    	}
+    	instructions.emplace_back(new SPIRVLifetimeInstruction(getWord(parsed_instruction, 1), *currentMethod, getWord(parsed_instruction, 2), false, toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
     }
     case SpvOpLifetimeStop:
-        return SPV_SUCCESS;
+    	instructions.emplace_back(new SPIRVLifetimeInstruction(getWord(parsed_instruction, 1), *currentMethod, getWord(parsed_instruction, 2), true, toInstructionDecorations(parsed_instruction->result_id)));
+		return SPV_SUCCESS;
     case SpvOpGroupAsyncCopy:
         return UNSUPPORTED_INSTRUCTION("OpGroupAsyncCopy");
     case SpvOpGroupWaitEvents:

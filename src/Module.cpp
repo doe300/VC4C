@@ -178,6 +178,25 @@ Optional<InstructionWalker> BasicBlock::findWalkerForInstruction(const intermedi
 	return {};
 }
 
+Optional<InstructionWalker> BasicBlock::findLastSettingOfFlags(const InstructionWalker start)
+{
+	InstructionWalker it = start.copy().previousInBlock();
+	while(!it.isStartOfBlock())
+	{
+		if(it->setFlags == SetFlag::SET_FLAGS)
+			return it;
+		const intermediate::CombinedOperation* comb = it.get<intermediate::CombinedOperation>();
+		if(comb != nullptr)
+		{
+			if(comb->op1 && comb->op1->setFlags == SetFlag::SET_FLAGS)
+				return it;
+			if(comb->op2 && comb->op2->setFlags == SetFlag::SET_FLAGS)
+				return it;
+		}
+	}
+	return {};
+}
+
 Method::Method(const Module& module) : isKernel(false), name(), returnType(TYPE_UNKNOWN), vpm(new periphery::VPM(module.compilationConfig.availableVPMSize)), module(module)
 {
 
@@ -216,6 +235,16 @@ const Global* Method::findGlobal(const std::string& name) const
 	return nullptr;
 }
 
+const StackAllocation* Method::findStackAllocation(const std::string& name) const
+{
+	for(const StackAllocation& s : stackAllocations)
+	{
+		if(s.name.compare(name) == 0)
+			return &s;
+	}
+	return nullptr;
+}
+
 const Local* Method::findOrCreateLocal(const DataType& type, const std::string& name)
 {
 	const Local* loc = findLocal(name);
@@ -223,6 +252,8 @@ const Local* Method::findOrCreateLocal(const DataType& type, const std::string& 
 		loc = findParameter(name);
 	if(loc == nullptr)
 		loc = findGlobal(name);
+	if(loc == nullptr)
+		loc = findStackAllocation(name);
 	if(loc != nullptr)
 		return loc;
 	auto it = locals.emplace(name, Local(type, name));
@@ -478,6 +509,19 @@ InstructionWalker Method::emplaceLabel(InstructionWalker it, intermediate::Branc
 	return newBlock.begin();
 }
 
+std::size_t Method::calculateStackSize() const
+{
+	if(stackAllocations.empty())
+		return 0;
+	const StackAllocation* max = &stackAllocations.front();
+	for(const StackAllocation& s : stackAllocations)
+	{
+		if(s.offset + s.size > max->offset + max->size)
+			max = &s;
+	}
+	return max->offset + max->size;
+}
+
 BasicBlock* Method::getNextBlockAfter(const BasicBlock* block)
 {
 	bool returnNext = false;
@@ -590,7 +634,8 @@ std::vector<Method*> Module::getKernels()
 
 Optional<unsigned int> Module::getGlobalDataOffset(const Local* local) const
 {
-	if(!local->is<Global>())
+	if(local != nullptr && !local->residesInMemory())
+		//this accepts StackAllocations on purpose, since they are located after the global data
 		return {};
 	unsigned int offset = 0;
 	for(const Global& global : globalData)
@@ -601,6 +646,8 @@ Optional<unsigned int> Module::getGlobalDataOffset(const Local* local) const
 		}
 		offset += global.value.type.getPhysicalWidth();
 	}
+	if(local == nullptr)
+		return offset;
 	return {};
 }
 

@@ -91,6 +91,7 @@ namespace vc4c
 		}
 
 		virtual std::string to_string(bool withContent = false) const;
+		virtual bool residesInMemory() const;
 
 		const DataType type;
 		const std::string name;
@@ -141,7 +142,7 @@ namespace vc4c
 		VOLATILE = 0x30
 	};
 
-	struct Parameter: public Local
+	struct Parameter : public Local
 	{
 		Parameter(const std::string& name, const DataType& type, const ParameterDecorations decorations = ParameterDecorations::NONE);
 		Parameter(Parameter&&) = default;
@@ -156,16 +157,43 @@ namespace vc4c
 		std::string parameterName;
 	};
 
-	struct Global: public Local
+	/*
+	 * Global data, can be accessed by all kernel-functions in a module and is consistent across kernel-invocations.
+	 * The global data segment is part of the module binary code and contains the initial values for all global data.
+	 */
+	struct Global : public Local
 	{
 		Global(const std::string& name, const DataType& globalType, const Value& value);
 		Global(Global&&) = default;
 		~Global();
 
 		std::string to_string(bool withContent = false) const override;
+		bool residesInMemory() const override;
 
 		Value value;
 	};
+
+	/*
+	 * Allocation on the "stack". Since call stacks are not supported, the allocations are located on a special area of the global data.
+	 * Contrary to global data, stack-allocated locals have a finite life-time and need to be located in separate memory areas for each QPU,
+	 * since their values are not shared between the kernel invocations, but private to the QPU.
+	 */
+	struct StackAllocation : public Local
+	{
+		StackAllocation(const std::string& name, const DataType& type, std::size_t size = 0, std::size_t alignment = 1);
+		StackAllocation(StackAllocation&&) = default;
+		~StackAllocation();
+
+		bool residesInMemory() const override;
+
+		//the offset from the start of the stack-allocations area (per QPU)
+		std::size_t offset;
+		//the alignment of the data, in bytes
+		std::size_t alignment;
+		//the size of the data (for an execution), in bytes
+		std::size_t size;
+	};
+
 } /* namespace vc4c */
 
 #endif /* LOCALS_H */

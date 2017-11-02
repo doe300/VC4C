@@ -72,6 +72,8 @@ namespace vc4c
 		extern const OptimizationPass RUN_SINGLE_STEPS;
 		//combines loadings of the same literal value within a small range of a basic block
 		extern const OptimizationPass COMBINE_LITERAL_LOADS;
+		//handles stack-allocations by calculating their offsets and indices
+		extern const OptimizationPass RESOLVE_STACK_ALLOCATIONS;
 		//spills long-living, rarely written locals into the VPM
 		extern const OptimizationPass SPILL_LOCALS;
 		//tries to combine VPW/VPR configurations and reads/writes within basic blocks

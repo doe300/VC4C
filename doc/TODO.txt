@@ -25,7 +25,7 @@ Logging:
  
 Globals, Constants:
  - only write used globals to binary
- - __private memory is shared between all work-items, which it MUST NOT, need memory area per QPU!
+ - __private memory is shared between all work-items, which it MUST NOT, need memory area per QPU! StackAllocations handle private memory correctly
  - __local memory is not reset (to initial values) after every work-group! Allowed to have initial value? If not, no extra work required
  - __global memory is handled correctly: initialized once (by copying the data into the buffer) and persistent through all work-groups
  - __constant memory is handled correctly, since it is never overwritten

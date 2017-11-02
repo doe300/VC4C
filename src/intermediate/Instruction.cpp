@@ -219,6 +219,14 @@ const Value IntermediateInstruction::renameValue(Method& method, const Value& or
 		return orig;
 	if(orig.local->is<Global>())
 		return orig;
+	if(orig.local->is<StackAllocation>())
+	{
+		const StackAllocation* alloc = orig.local->as<StackAllocation>();
+		if(method.findStackAllocation(prefix + alloc->name) != nullptr)
+			return method.findStackAllocation(prefix + alloc->name)->createReference();
+		method.stackAllocations.push_back(StackAllocation(prefix + alloc->name, alloc->type, alloc->size, alloc->alignment));
+		return method.stackAllocations.back().createReference();
+	}
 	return method.findOrCreateLocal(orig.type, prefix + orig.local->name)->createReference();
 }
 

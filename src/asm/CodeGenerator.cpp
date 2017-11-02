@@ -341,14 +341,26 @@ static void toBinary(const Value& val, std::vector<uint8_t>& queue)
 	}
 }
 
-static std::vector<uint8_t> generateDataSegment(const ReferenceRetainingList<Global>& globalData)
+static std::vector<uint8_t> generateDataSegment(const Module& module)
 {
-	logging::debug() << "Writing data segment for " << globalData.size() << " values..." << logging::endl;
+	logging::debug() << "Writing data segment for " << module.globalData.size() << " values..." << logging::endl;
 	//the first entry is the value, the second the width (in bytes)
 	std::vector<uint8_t> bytes;
 	bytes.reserve(2048);
-	for(const Global& global : globalData)
+	for(const Global& global : module.globalData)
 		toBinary(global.value, bytes);
+
+	//allocate space for stack
+	std::size_t maxStackSize = 0;
+	for(const auto& m : module.methods)
+		maxStackSize = std::max(maxStackSize, m->calculateStackSize());
+	if(maxStackSize > 0)
+	{
+		logging::debug() << "Reserving " << KernelInfo::MAX_WORK_GROUP_SIZES << " \"stack-frames\" with " << maxStackSize << " bytes each..." << logging::endl;
+		for(std::size_t s = 0; s < maxStackSize * KernelInfo::MAX_WORK_GROUP_SIZES; ++s)
+			bytes.push_back(0);
+	}
+
 	while((bytes.size() % 8) != 0)
 	{
 		bytes.push_back(0);
@@ -431,7 +443,7 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
     	}
     	case OutputMode::BINARY:
     	{
-    		const auto binary = generateDataSegment(module.globalData);
+    		const auto binary = generateDataSegment(module);
     		stream.write(reinterpret_cast<const char*>(binary.data()), binary.size());
     		//add empty command
 			uint64_t zero = 0;
@@ -441,9 +453,10 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
     	}
     	case OutputMode::HEX:
     	{
-			const auto binary = generateDataSegment(module.globalData);
+			const auto binary = generateDataSegment(module);
 			for(const Global& global : module.globalData)
 				stream << "//" << global.to_string(true) << std::endl;
+			stream << "// plus additional space for " << KernelInfo::MAX_WORK_GROUP_SIZES << " \"stack-frames\"" << std::endl;
 			for(std::size_t i = 0; i < binary.size(); i += 8)
 				stream << toHexString((static_cast<uint64_t>(binary.at(i)) << 56) | (static_cast<uint64_t>(binary.at(i+1)) << 48) | (static_cast<uint64_t>(binary.at(i+2)) << 40) |
 						(static_cast<uint64_t>(binary.at(i+3)) << 32) | (static_cast<uint64_t>(binary.at(i+4)) << 24) | (static_cast<uint64_t>(binary.at(i+5)) << 16) |

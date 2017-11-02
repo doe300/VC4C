@@ -26,6 +26,15 @@ namespace vc4c
 		 * Also splits the uses before and after being spilled into several locals
 		 */
 		void spillLocals(const Module& module, Method& method, const Configuration& config);
+
+		//TODO (Optional optimization): lower stack allocations into registers (e.g. for vectors/scalars)
+		/*
+		 * Handles stack allocations:
+		 * - calculates the offsets from the start of one QPU's "stack"
+		 * - removes the life-time instructions
+		 * - maps the addresses to offsets from global-data pointer (see #accessGlobalData)
+		 */
+		void resolveStackAllocations(const Module& module, Method& method, const Configuration& config);
 	}
 }
 

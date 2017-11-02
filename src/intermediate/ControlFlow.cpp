@@ -106,3 +106,40 @@ bool MemoryBarrier::mapsToASMInstruction() const
 {
 	return false;
 }
+
+LifetimeBoundary::LifetimeBoundary(const Value& allocation, const bool lifetimeEnd) : IntermediateInstruction(NO_VALUE), isLifetimeEnd(lifetimeEnd)
+{
+	if(!allocation.hasType(ValueType::LOCAL) || !allocation.local->is<StackAllocation>())
+		throw CompilationError(CompilationStep::LLVM_2_IR, "Cannot control life-time of object not located on stack", allocation.to_string());
+
+	setArgument(0, allocation);
+}
+
+LifetimeBoundary::~LifetimeBoundary()
+{
+
+}
+
+std::string LifetimeBoundary::to_string() const
+{
+	return std::string("life-time for ") + getStackAllocation().to_string() + (isLifetimeEnd ? " ends" : " starts");
+}
+qpu_asm::Instruction* LifetimeBoundary::convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
+{
+	throw CompilationError(CompilationStep::CODE_GENERATION, "There should be no more lifetime instructions at this point", to_string());
+}
+
+IntermediateInstruction* LifetimeBoundary::copyFor(Method& method, const std::string& localPrefix) const
+{
+	return (new LifetimeBoundary(renameValue(method, getStackAllocation(), localPrefix), isLifetimeEnd))->copyExtrasFrom(this);
+}
+
+bool LifetimeBoundary::mapsToASMInstruction() const
+{
+	return false;
+}
+
+Value LifetimeBoundary::getStackAllocation() const
+{
+	return getArgument(0);
+}

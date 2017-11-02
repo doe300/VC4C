@@ -102,7 +102,7 @@ Value IRParser::toValue(const Token& token, const DataType& type)
     		val.local = const_cast<Local*>(currentMethod->findOrCreateLocal(type, token.getText()));
     	else
     	{
-    		module->globalData.emplace_back(Global(token.getText(), type, type));
+    		module->globalData.emplace_back(Global(token.getText(), type.toPointerType(), type));
     		val.local = &module->globalData.back();
     	}
     }
@@ -132,7 +132,6 @@ void IRParser::parse(Module& module)
             nextToken = scanner.peek();
             if (nextToken.hasValue('%')) {
                 complexTypes.emplace(nextToken.getText(), parseStructDefinition());
-                //XXX are there union types? http://releases.llvm.org/3.9.0/docs/LangRef.html doesn't mention them
             }
             if (nextToken.hasValue('@')) {
                 //read global
@@ -148,7 +147,7 @@ void IRParser::parse(Module& module)
                 scanner.pop();
         }
         while (scanner.hasInput() && !nextToken.hasValue(methodKeyword));
-        //struct/union definitions allow forward references, so we need to re-resolve them here
+        //struct definitions allow forward references, so we need to re-resolve them here
         for(auto& pair : complexTypes)
         {
         	if(pair.second.getStructType().hasValue)
@@ -448,7 +447,6 @@ DataType IRParser::parseStructDefinition()
     if(skipToken(scanner, "opaque"))
     {
     	//e.g. "%struct.Node.0 = type opaque"
-    	//XXX anything special to do??
     }
     else
     {
@@ -868,11 +866,14 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
 			type.complexType.reset(new ArrayType{childType, static_cast<unsigned>(numEntries.literal.integer)});
 			type.typeName = (childType.to_string() + "[") + std::to_string(numEntries.literal.integer) +"]";
         }
-        logging::debug() << "Allocate " << type.to_string() << " for " << destination << logging::endl;
-        //TODO for scalar or vector types, lower into local, possible??
-        //lift into global, same as SPIR-V OpVariable
-        //FIXME this introduces duplicate globals, since multiple kernels can allocate locals with the same name! (e.g. for /opt/SPIRV-LLVM/test/SPIRV/simple.ll)
-        method.module->globalData.push_back(Global(destination, type.toPointerType(), Value(type)));
+        std::size_t alignment = 1;
+        skipToken(scanner, ',');
+        if(skipToken(scanner, "align"))
+        {
+        	alignment = scanner.pop().integer;
+        }
+        logging::debug() << "Stack-allocation for " << type.to_string() << " " << destination << " with alignment of " << alignment << " bytes" << logging::endl;
+        method.method->stackAllocations.push_back(StackAllocation(destination, type.toPointerType(), type.getPhysicalWidth(), alignment));
         return;
     }
     else if (nextToken.hasValue("bitcast")) {
@@ -886,10 +887,11 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
         expectSkipToken(scanner, "to");
 
         const DataType destType(parseType());
-        logging::debug() << "Making reference from bitcast " << type.to_string() << " from " << source << " to " << destType.to_string() << ' ' << destination << logging::endl;
+        const Value src = method.method->findOrCreateLocal(type, source)->createReference();
+        const Value dest = method.method->findOrCreateLocal(destType, destination)->createReference();
+        logging::debug() << "Making reference from bitcast from " << src.to_string() << " to " << dest.to_string() << logging::endl;
         //simply associate new and original
-        Value ref = method.method->findOrCreateLocal(type, source)->createReference();
-        instructions.emplace_back(new Copy(method.method->findOrCreateLocal(destType, destination)->createReference(), ref));
+        instructions.emplace_back(new Copy(dest, src));
         return;
     }
     else if (nextToken.hasValue("load")) {
@@ -1121,6 +1123,7 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
         const Value container2(parseValue());
         //pop ','
         expectSkipToken(scanner, ',');
+        //"The shuffle mask operand is required to be a constant vector with either constant integer or undef values."
         //mask is in value, e.g. "<i32 0, i32 2>"
         const Value shuffleMask = parseValue();
 
@@ -1254,7 +1257,7 @@ void IRParser::parseStore(LLVMMethod& method, FastModificationList<std::unique_p
     Value destContainer(UNDEFINED_VALUE);
     //check whether write to out-parameter
     IndexOf* index = dynamic_cast<IndexOf*> (findInstruction(method, destination.local));
-    if (destination.hasType(ValueType::LOCAL) && destination.local->is<Global>()) {
+    if (destination.hasType(ValueType::LOCAL) && destination.local->residesInMemory()) {
         //store into global
         destContainer = destination;
     }

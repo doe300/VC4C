@@ -30,7 +30,7 @@ Global* intermediate::reserveImageConfiguration(Module& module, const Value& ima
 	if(!image.hasType(ValueType::LOCAL))
 		throw CompilationError(CompilationStep::GENERAL, "Cannot reserve global data for non-local image", image.to_string());
 	logging::debug() << "Reserving a buffer of " << IMAGE_CONFIG_NUM_UNIFORMS << " UNIFORMs for the image-configuration of " << image.to_string() << logging::endl;
-	auto it = module.globalData.emplace(module.globalData.end(), Global(ImageType::toImageConfigurationName(image.local->name), TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS), INT_ZERO));
+	auto it = module.globalData.emplace(module.globalData.end(), Global(ImageType::toImageConfigurationName(image.local->name), TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS).toPointerType(), Value(Literal(0L), TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS))));
 	return &(*it);
 }
 

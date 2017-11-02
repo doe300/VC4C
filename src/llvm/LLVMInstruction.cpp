@@ -117,10 +117,34 @@ std::vector<const Local*> CallSite::getAllLocals() const
 
 bool CallSite::mapInstruction(Method& method) const
 {
-    //remove calls to @llvm.lifetime.start / @llvm.lifetime.end
+    //map calls to @llvm.lifetime.start / @llvm.lifetime.end to lifetime-instructions
     if(methodName.compare("llvm.lifetime.start") == 0 || methodName.compare("llvm.lifetime.end") == 0)
     {
-        logging::debug() << "Dropping intrinsic method call to " << methodName << logging::endl;
+    	Value pointer = arguments.at(1);
+    	if(!pointer.local->is<StackAllocation>())
+    	{
+    		//the source of the life-time intrinsic could be bit-cast from an alloca-instruction
+    		if(dynamic_cast<const intermediate::MoveOperation*>(pointer.local->getSingleWriter()) != nullptr)
+    		{
+    			pointer = dynamic_cast<const intermediate::MoveOperation*>(pointer.local->getSingleWriter())->getSource();
+    		}
+    		//it also could be a getelementptr (to the index 0)
+    		else if(pointer.local->reference.first != nullptr && pointer.local->reference.first->is<StackAllocation>())
+    		{
+    			pointer = pointer.local->reference.first->createReference();
+    		}
+    		//TODO still fails for values passed as parameter (e.g. in /opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/addr-space-struct-arg.cl)
+    	}
+    	logging::debug() << "Converting life-time instrinsic to life-time instruction" << logging::endl;
+    	if(arguments.at(0).hasType(ValueType::LITERAL) && arguments.at(0).literal.integer > 0)
+    	{
+    		//"The first argument is a constant integer representing the size of the object, or -1 if it is variable sized"
+    		StackAllocation* alloc = pointer.local->as<StackAllocation>();
+    		if(alloc == nullptr)
+    			throw CompilationError(CompilationStep::LLVM_2_IR, "Cannot start life-time of object not located on stack", pointer.to_string());
+    	}
+    	//"The second argument is a pointer to the object."
+    	method.appendToEnd(new intermediate::LifetimeBoundary(pointer, methodName.compare("llvm.lifetime.end") == 0));
         return true;
     }
     const Value output = dest == nullptr ? NOP_REGISTER : Value(dest, returnType);

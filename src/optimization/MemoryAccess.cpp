@@ -56,7 +56,7 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 	//but how to determine?
 	if(!val.hasType(ValueType::LOCAL))
 		return BaseAndOffset();
-	if(dynamic_cast<Parameter*>(val.local) != nullptr || dynamic_cast<Global*>(val.local) != nullptr)
+	if(val.local->is<Parameter>() || val.local->is<Global>() || val.local->is<StackAllocation>())
 		return BaseAndOffset(val, 0L);
 
 	if(val.local->reference.first != nullptr && val.local->reference.second != ANY_ELEMENT)
@@ -420,7 +420,7 @@ void optimizations::combineVPMAccess(const Module& module, Method& method, const
 
 	// clean up empty instructions
 	method.cleanEmptyInstructions();
-	PROFILE_COUNTER(8010, "Scratch memory size", method.vpm->getScratchArea().size);
+	PROFILE_COUNTER(9010, "Scratch memory size", method.vpm->getScratchArea().size);
 }
 
 InstructionWalker optimizations::accessGlobalData(const Module& module, Method& method, InstructionWalker it, const Configuration& config)
@@ -523,4 +523,83 @@ void optimizations::spillLocals(const Module& module, Method& method, const Conf
 	}
 
 	//TODO do not preemptively spill, only on register conflicts. Which case??
+}
+
+static void calculateStackOffsets(const Module& module, Method& method)
+{
+	//TODO this could be greatly improved, by re-using space for other stack-allocations, when their life-times cond't intersect (similar to register allocation)
+	const std::size_t globalDataSize = module.getGlobalDataOffset(nullptr);
+
+	//Simple version: reserve extra space for every stack-allocation
+	std::size_t currentOffset = 0;
+	for(StackAllocation& s : method.stackAllocations)
+	{
+		if((globalDataSize + currentOffset) % s.alignment != 0)
+			currentOffset += s.alignment - ((globalDataSize + currentOffset) % s.alignment);
+		s.offset = currentOffset;
+		currentOffset += s.size;
+	}
+}
+
+static InstructionWalker accessStackAllocations(const Module& module, Method& method, InstructionWalker it)
+{
+	const unsigned int globalDataSize = module.getGlobalDataOffset(nullptr);
+	const std::size_t maximumStackSize = method.calculateStackSize();
+
+	for(std::size_t i = 0; i < it->getArguments().size(); ++i)
+	{
+		const Value arg = it->getArgument(i).get();
+		if(arg.hasType(ValueType::LOCAL) && arg.type.isPointerType() && arg.local->is<StackAllocation>())
+		{
+			if(it.get<intermediate::LifetimeBoundary>() != nullptr)
+			{
+				logging::debug() << "Dropping life-time instruction for stack-allocation: " << arg.to_string() << logging::endl;
+				it.erase();
+			}
+			else
+			{
+				/*
+				 * Stack allocations are located in the binary data after the global data.
+				 *
+				 *
+				 * To reduce the number of calculations, all stack allocations are grouped by their QPU, so the layout is as follows:
+				 *
+				 * | "Stack" of QPU0 | "Stack" of QPU1 | ...
+				 *
+				 * The offset of a single stack allocation can be calculated as:
+				 * global-data address + global-data size + (QPU-ID * stack allocations maximum size) + offset of stack allocation
+				 * = global-data address + (QPU-ID * stack allocations maximum size) + (global-data size + offset of stack allocation)
+				 */
+				//TODO to save instructions, could pre-calculate 'global-data address + global-data size + (QPU-ID * stack allocations maximum size)' once, if any stack-allocation exists ??
+
+				logging::debug() << "Replacing access to stack allocated data: " << it->to_string() << logging::endl;
+				const Value qpuOffset = method.addNewLocal(TYPE_INT32, "%stack_offset");
+				const Value addrTemp = method.addNewLocal(arg.type, "%stack_addr");
+				const Value finalAddr = method.addNewLocal(arg.type, "%stack_addr");
+
+				it.emplace(new Operation("mul24", qpuOffset, Value(REG_QPU_NUMBER, TYPE_INT8), Value(Literal(static_cast<uint64_t>(maximumStackSize)), TYPE_INT32)));
+				it.nextInBlock();
+				it.emplace(new Operation("add", addrTemp, qpuOffset, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference()));
+				it.nextInBlock();
+				it.emplace(new Operation("add", finalAddr, addrTemp, Value(Literal(static_cast<uint64_t>(arg.local->as<StackAllocation>()->offset + globalDataSize)), TYPE_INT32)));
+				it.nextInBlock();
+				it->setArgument(i, finalAddr);
+			}
+		}
+	}
+	return it.nextInMethod();
+}
+
+void optimizations::resolveStackAllocations(const Module& module, Method& method, const Configuration& config)
+{
+	//1. calculate the offsets from the start of one QPU's "stack", heed alignment!
+	calculateStackOffsets(module, method);
+
+	//2.remove the life-time instructions
+	//3. map the addresses to offsets from global-data pointer (see #accessGlobalData)
+	InstructionWalker it = method.walkAllInstructions();
+	while(!it.isEndOfMethod())
+	{
+		it = accessStackAllocations(module, method, it);
+	}
 }

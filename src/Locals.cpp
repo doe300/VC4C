@@ -134,6 +134,11 @@ std::string Local::to_string(bool withContent) const
 	return (type.to_string() + " ") + name + content;
 }
 
+bool Local::residesInMemory() const
+{
+	return false;
+}
+
 Parameter::Parameter(const std::string& name, const DataType& type, const ParameterDecorations decorations) : Local(type, name), decorations(decorations)
 {
 
@@ -167,4 +172,24 @@ Global::~Global()
 std::string Global::to_string(bool withContent) const
 {
 	return (name + ": ") + value.to_string(false, withContent);
+}
+
+bool Global::residesInMemory() const
+{
+	return true;
+}
+
+StackAllocation::StackAllocation(const std::string& name, const DataType& type, std::size_t size, std::size_t alignment) : Local(type, name), offset(0), alignment(alignment), size(size > 0 ? size : type.getElementType().getPhysicalWidth())
+{
+
+}
+
+StackAllocation::~StackAllocation()
+{
+
+}
+
+bool StackAllocation::residesInMemory() const
+{
+	return true;
 }

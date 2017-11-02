@@ -84,6 +84,10 @@ namespace vc4c
 		 * Returns the InstructionWalker for the given instruction, if any
 		 */
 		Optional<InstructionWalker> findWalkerForInstruction(const intermediate::IntermediateInstruction* instr, InstructionWalker start);
+		/*
+		 * Returns the InstructionWalker for the last (as in prior to the given instruction) instruction setting flags within this basoc block
+		 */
+		Optional<InstructionWalker> findLastSettingOfFlags(const InstructionWalker start);
 	private:
 		Method& method;
 		RandomModificationList<std::unique_ptr<intermediate::IntermediateInstruction>> instructions;
@@ -116,6 +120,7 @@ namespace vc4c
 		std::string name;
 		DataType returnType;
 		std::vector<Parameter> parameters;
+		ReferenceRetainingList<StackAllocation> stackAllocations;
 		std::map<MetaDataType, std::vector<std::string>> metaData;
 		std::unique_ptr<periphery::VPM> vpm;
 
@@ -130,6 +135,7 @@ namespace vc4c
 		const Local* findLocal(const std::string& name) const;
 		const Parameter* findParameter(const std::string& name) const;
 		const Global* findGlobal(const std::string& name) const;
+		const StackAllocation* findStackAllocation(const std::string& name) const;
 		const Local* findOrCreateLocal(const DataType& type, const std::string& name) __attribute__((returns_nonnull));
 
 		/*!
@@ -152,6 +158,11 @@ namespace vc4c
 		BasicBlock* findBasicBlock(const Local* label);
 
 		InstructionWalker emplaceLabel(InstructionWalker it, intermediate::BranchLabel* label);
+
+		/*
+		 * Calculates the maximum size used by all stack allocations for a single execution
+		 */
+		std::size_t calculateStackSize() const;
 
 	private:
 		const Module& module;

@@ -310,6 +310,20 @@ namespace vc4c
 			const uint32_t scopeID;
 			const uint32_t semanticsID;
 		};
+
+		class SPIRVLifetimeInstruction : public SPIRVOperation
+		{
+		public:
+			SPIRVLifetimeInstruction(const uint32_t id, SPIRVMethod& method, uint32_t size, bool lifetimeEnd, const intermediate::InstructionDecorations decorations = intermediate::InstructionDecorations::NONE);
+			virtual ~SPIRVLifetimeInstruction();
+
+			void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Global*>& globals) const
+					override;
+			Optional<Value> precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const override;
+		private:
+			const uint32_t sizeInBytes;
+			const bool isLifetimeEnd;
+		};
 	}
 }
 

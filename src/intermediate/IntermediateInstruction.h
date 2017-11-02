@@ -445,6 +445,25 @@ namespace vc4c
 			MemorySemantics semantics;
 		};
 
+		/*
+		 * Instruction specifying the begin/end of the life-time of a stack allocation
+		 */
+		struct LifetimeBoundary : IntermediateInstruction
+		{
+		public:
+			LifetimeBoundary(const Value& allocation, const bool lifetimeEnd);
+			virtual ~LifetimeBoundary();
+
+			std::string to_string() const override;
+			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
+			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
+			bool mapsToASMInstruction() const override;
+
+			Value getStackAllocation() const;
+
+			bool isLifetimeEnd;
+		};
+
 		using Instructions = FastModificationList<std::unique_ptr<IntermediateInstruction>>;
 		using InstructionsIterator = FastModificationList<std::unique_ptr<IntermediateInstruction>>::iterator;
 		using ConstInstructionsIterator = FastModificationList<std::unique_ptr<IntermediateInstruction>>::const_iterator;

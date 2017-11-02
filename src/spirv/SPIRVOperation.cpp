@@ -896,10 +896,38 @@ void vc4c::spirv2qasm::SPIRVMemoryBarrier::mapInstruction(std::map<uint32_t, Dat
 	if(!scope.hasType(ValueType::LITERAL) || !semantics.hasType(ValueType::LITERAL))
 		throw CompilationError(CompilationStep::LLVM_2_IR, "Memory barriers with non-constant scope or memory semantics are not supported!");
 
+	logging::debug() << "Generating memory barrier" << logging::endl;
 	method.method->appendToEnd(new intermediate::MemoryBarrier(static_cast<intermediate::MemoryScope>(scope.literal.integer), static_cast<intermediate::MemorySemantics>(semantics.literal.integer)));
 }
 
 Optional<Value> vc4c::spirv2qasm::SPIRVMemoryBarrier::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
+{
+	return NO_VALUE;
+}
+
+SPIRVLifetimeInstruction::SPIRVLifetimeInstruction(const uint32_t id, SPIRVMethod& method, uint32_t size, bool lifetimeEnd, const intermediate::InstructionDecorations decorations) : SPIRVOperation(id, method, decorations), sizeInBytes(size), isLifetimeEnd(lifetimeEnd)
+{
+
+}
+
+SPIRVLifetimeInstruction::~SPIRVLifetimeInstruction()
+{
+
+}
+
+void SPIRVLifetimeInstruction::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Global*>& globals) const
+{
+	const Value pointer = getValue(id, *method.method, types, constants, globals, localTypes);
+
+	//"If Size is non-zero, it is the number of bytes of memory whose lifetime is starting"
+	if(sizeInBytes != 0)
+		pointer.local->as<StackAllocation>()->size = sizeInBytes;
+
+	logging::debug() << "Generating life-time " << (isLifetimeEnd ? "end" : "start") << " for " << pointer.to_string() << logging::endl;
+	method.method->appendToEnd(new intermediate::LifetimeBoundary(pointer, isLifetimeEnd));
+}
+
+Optional<Value> SPIRVLifetimeInstruction::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
 {
 	return NO_VALUE;
 }
