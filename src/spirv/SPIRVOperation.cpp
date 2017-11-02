@@ -19,30 +19,30 @@
 using namespace vc4c;
 using namespace vc4c::spirv2qasm;
 
-Value toNewLocal(Method& method, const uint32_t id, const uint32_t typeID, const std::map<uint32_t, DataType>& typeMappings, std::map<uint32_t, uint32_t>& localTypes)
+static Value toNewLocal(Method& method, const uint32_t id, const uint32_t typeID, const std::map<uint32_t, DataType>& typeMappings, std::map<uint32_t, uint32_t>& localTypes)
 {
     localTypes[id] = typeID;
     return method.findOrCreateLocal(typeMappings.at(typeID), std::string("%") + std::to_string(id))->createReference();
 }
 
-DataType getType(const uint32_t id, const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals, const std::map<uint32_t, uint32_t>& localTypes)
+static DataType getType(const uint32_t id, const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated, const std::map<uint32_t, uint32_t>& localTypes)
 {
     if(types.find(id) != types.end())
         return types.at(id);
     if(constants.find(id) != constants.end())
         return constants.at(id).type;
-    if(globals.find(id) != globals.end())
-        return globals.at(id)->type;
+    if(memoryAllocated.find(id) != memoryAllocated.end())
+        return memoryAllocated.at(id)->type;
     return types.at(localTypes.at(id));
 }
 
-Value getValue(const uint32_t id, Method& method, const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals, const std::map<uint32_t, uint32_t>& localTypes)
+static Value getValue(const uint32_t id, Method& method, const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated, const std::map<uint32_t, uint32_t>& localTypes)
 {
     if(constants.find(id) != constants.end())
         return constants.at(id);
-    if(globals.find(id) != globals.end())
-        return globals.at(id)->createReference();
-    return method.findOrCreateLocal(getType(id, types, constants, globals, localTypes), std::string("%") + std::to_string(id))->createReference();
+    if(memoryAllocated.find(id) != memoryAllocated.end())
+        return memoryAllocated.at(id)->createReference();
+    return method.findOrCreateLocal(getType(id, types, constants, memoryAllocated, localTypes), std::string("%") + std::to_string(id))->createReference();
 }
 
 SPIRVOperation::SPIRVOperation(const uint32_t id, SPIRVMethod& method, const intermediate::InstructionDecorations decorations) : id(id), method(method), decorations(decorations)
@@ -65,10 +65,10 @@ SPIRVInstruction::~SPIRVInstruction()
 
 }
 
-void SPIRVInstruction::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Global*>& globals) const
+void SPIRVInstruction::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
-    Value arg0 = getValue(operands.at(0), *method.method, types, constants, globals, localTypes);
+    Value arg0 = getValue(operands.at(0), *method.method, types, constants, memoryAllocated, localTypes);
     Optional<Value> arg1(NO_VALUE);
     std::string opCode = opcode;
     if(OP_NEGATE.compare(opcode) == 0)
@@ -79,7 +79,7 @@ void SPIRVInstruction::mapInstruction(std::map<uint32_t, DataType>& types, std::
     }
     else if(operands.size() > 1)
     {
-        arg1 = getValue(operands.at(1), *method.method, types, constants, globals, localTypes);
+        arg1 = getValue(operands.at(1), *method.method, types, constants, memoryAllocated, localTypes);
     }
     if(!arg1)   //unary
     {
@@ -93,7 +93,7 @@ void SPIRVInstruction::mapInstruction(std::map<uint32_t, DataType>& types, std::
     }
 }
 
-Optional<Value> SPIRVInstruction::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
+Optional<Value> SPIRVInstruction::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
 	const Value op1 = constants.at(operands.at(0));
 	const Value op2 = operands.size() > 1 ? constants.at(operands.at(1)) : UNDEFINED_VALUE;
@@ -162,16 +162,16 @@ SPIRVComparison::~SPIRVComparison()
 
 }
 
-void SPIRVComparison::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Global*>& globals) const
+void SPIRVComparison::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
-    const Value arg0 = getValue(operands.at(0), *method.method, types, constants, globals, localTypes);
-    const Value arg1 = getValue(operands.at(1), *method.method, types, constants, globals, localTypes);
+    const Value arg0 = getValue(operands.at(0), *method.method, types, constants, memoryAllocated, localTypes);
+    const Value arg1 = getValue(operands.at(1), *method.method, types, constants, memoryAllocated, localTypes);
     logging::debug() << "Generating intermediate comparison '" << opcode << "' of " << arg0.to_string(false) << " and " << arg1.to_string(false) << " into " << dest.to_string(true) << logging::endl;
     method.method->appendToEnd((new intermediate::Comparison(opcode, dest, arg0, arg1))->setDecorations(decorations));
 }
 
-Optional<Value> SPIRVComparison::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
+Optional<Value> SPIRVComparison::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
 	const Value op1 = constants.at(operands.at(0));
 	const Value op2 = constants.at(operands.at(1));
@@ -219,7 +219,7 @@ SPIRVCallSite::~SPIRVCallSite()
 
 }
 
-void SPIRVCallSite::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Global*>& globals) const
+void SPIRVCallSite::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
     std::string calledFunction = methodName.orElse("");
@@ -228,13 +228,13 @@ void SPIRVCallSite::mapInstruction(std::map<uint32_t, DataType>& types, std::map
     std::vector<Value> args;
     for(const uint32_t op : arguments)
     {
-        args.push_back(getValue(op, *method.method, types, constants, globals, localTypes));
+        args.push_back(getValue(op, *method.method, types, constants, memoryAllocated, localTypes));
     }
     logging::debug() << "Generating intermediate call-site to '" << calledFunction << "' with " << args.size() << " parameters into " << dest.to_string(true) << logging::endl;
     method.method->appendToEnd((new intermediate::MethodCall(dest, calledFunction, args))->setDecorations(decorations));
 }
 
-Optional<Value> SPIRVCallSite::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
+Optional<Value> SPIRVCallSite::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
 	return NO_VALUE;
 }
@@ -254,11 +254,11 @@ SPIRVReturn::~SPIRVReturn()
 
 }
 
-void SPIRVReturn::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Global*>& globals) const
+void SPIRVReturn::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
     if(returnValue)
     {
-        const Value value = getValue(returnValue, *method.method, types, constants, globals, localTypes);
+        const Value value = getValue(returnValue, *method.method, types, constants, memoryAllocated, localTypes);
         logging::debug() << "Generating intermediate return of value: " << value.to_string(false) << logging::endl;
         method.method->appendToEnd(new intermediate::Return(value));
     }
@@ -269,7 +269,7 @@ void SPIRVReturn::mapInstruction(std::map<uint32_t, DataType>& types, std::map<u
     }
 }
 
-Optional<Value> SPIRVReturn::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
+Optional<Value> SPIRVReturn::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
 	if(returnValue && constants.find(returnValue) != constants.end())
 		return constants.at(returnValue);
@@ -292,12 +292,12 @@ SPIRVBranch::~SPIRVBranch()
 
 }
 
-void SPIRVBranch::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Global*>& globals) const
+void SPIRVBranch::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
     if(conditionID)
     {
         logging::debug() << "Generating intermediate conditional branch on %" << conditionID.get() << " to either %" << defaultLabelID << " or %" << falseLabelID.get() << logging::endl;
-        const Value cond = getValue(conditionID, *method.method, types, constants, globals, localTypes);
+        const Value cond = getValue(conditionID, *method.method, types, constants, memoryAllocated, localTypes);
         const Local* trueLabel = method.method->findOrCreateLocal(TYPE_LABEL, std::string("%") + std::to_string(defaultLabelID));
         const Local*  falseLabel = method.method->findOrCreateLocal(TYPE_LABEL, std::string("%") + std::to_string(falseLabelID.get()));
         method.method->appendToEnd(new intermediate::Branch(trueLabel, COND_ZERO_CLEAR, cond));
@@ -311,7 +311,7 @@ void SPIRVBranch::mapInstruction(std::map<uint32_t, DataType>& types, std::map<u
     }
 }
 
-Optional<Value> SPIRVBranch::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
+Optional<Value> SPIRVBranch::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
 	return NO_VALUE;
 }
@@ -326,13 +326,13 @@ SPIRVLabel::~SPIRVLabel()
 
 }
 
-void SPIRVLabel::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Global*>& globals) const
+void SPIRVLabel::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
     logging::debug() << "Generating intermediate label %" << id << logging::endl;
     method.method->appendToEnd(new intermediate::BranchLabel(*method.method->findOrCreateLocal(TYPE_LABEL, std::string("%") + std::to_string(id))));
 }
 
-Optional<Value> SPIRVLabel::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
+Optional<Value> SPIRVLabel::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
 	return NO_VALUE;
 }
@@ -348,9 +348,9 @@ SPIRVConversion::~SPIRVConversion()
 
 }
 
-void SPIRVConversion::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Global*>& globals) const
+void SPIRVConversion::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
-    const Value source = getValue(sourceID, *method.method, types, constants, globals, localTypes);
+    const Value source = getValue(sourceID, *method.method, types, constants, memoryAllocated, localTypes);
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
     const uint8_t sourceWidth = source.type.getScalarBitCount();
     const uint8_t destWidth = dest.type.getScalarBitCount();
@@ -399,7 +399,7 @@ void SPIRVConversion::mapInstruction(std::map<uint32_t, DataType>& types, std::m
     }
 }
 
-Optional<Value> SPIRVConversion::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
+Optional<Value> SPIRVConversion::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
 	if(constants.find(sourceID) != constants.end())
 	{
@@ -445,15 +445,15 @@ SPIRVCopy::~SPIRVCopy()
 
 }
 
-void SPIRVCopy::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Global*>& globals) const
+void SPIRVCopy::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
-    const Value source = getValue(sourceID, *method.method, types, constants, globals, localTypes);
+    const Value source = getValue(sourceID, *method.method, types, constants, memoryAllocated, localTypes);
     Value dest(UNDEFINED_VALUE);
     if(typeID == UNDEFINED_ID)
     {
     	//globals may have other names than their ID, so check them first
-    	if(globals.find(id) != globals.end())
-    		dest = globals.at(id)->createReference(destIndices.hasValue && !destIndices.get().empty() ? destIndices.get().at(0) : ANY_ELEMENT);
+    	if(memoryAllocated.find(id) != memoryAllocated.end())
+    		dest = memoryAllocated.at(id)->createReference(destIndices.hasValue && !destIndices.get().empty() ? destIndices.get().at(0) : ANY_ELEMENT);
     	else
     		dest = method.method->findOrCreateLocal(source.type, std::string("%") + std::to_string(id))->createReference();
     }
@@ -487,7 +487,7 @@ void SPIRVCopy::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uin
         	else
         	{
         		//copy area of memory
-        		const Value size = getValue(sizeID, *method.method, types, constants, globals, localTypes);
+        		const Value size = getValue(sizeID, *method.method, types, constants, memoryAllocated, localTypes);
         		logging::debug() << "Generating copying of " << size.to_string() << " bytes from " << source.to_string() << " into " << dest.to_string() << logging::endl;
         		if(size.hasType(ValueType::LITERAL))
         		{
@@ -529,7 +529,7 @@ void SPIRVCopy::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uin
     }
 }
 
-Optional<Value> SPIRVCopy::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
+Optional<Value> SPIRVCopy::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
 	if(constants.find(sourceID) != constants.end())
 		return constants.at(sourceID);
@@ -553,17 +553,17 @@ SPIRVShuffle::~SPIRVShuffle()
 
 }
 
-void SPIRVShuffle::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Global*>& globals) const
+void SPIRVShuffle::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
     //shuffling = iteration over all elements in both vectors and re-ordering in order given
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
-    const Value src0 = getValue(source0, *method.method, types, constants, globals, localTypes);
-    const Value src1 = getValue(source1, *method.method, types, constants, globals, localTypes);
+    const Value src0 = getValue(source0, *method.method, types, constants, memoryAllocated, localTypes);
+    const Value src1 = getValue(source1, *method.method, types, constants, memoryAllocated, localTypes);
     Value index(UNDEFINED_VALUE);
     if(compositeIndex)
     {
     	//there is just one index, which is a composite
-    	index = getValue(indices.at(0), *method.method, types, constants, globals, localTypes);
+    	index = getValue(indices.at(0), *method.method, types, constants, memoryAllocated, localTypes);
     }
     else	//all indices are literal values
     {
@@ -599,7 +599,7 @@ void SPIRVShuffle::mapInstruction(std::map<uint32_t, DataType>& types, std::map<
     intermediate::insertVectorShuffle(method.method->appendToEnd(), *method.method, dest, src0, src1, index);
 }
 
-Optional<Value> SPIRVShuffle::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
+Optional<Value> SPIRVShuffle::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
 	return NO_VALUE;
 }
@@ -615,31 +615,31 @@ SPIRVIndexOf::~SPIRVIndexOf()
 
 }
 
-void SPIRVIndexOf::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Global*>& globals) const
+void SPIRVIndexOf::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
     //need to get pointer/address -> reference to content
     //a[i] of type t is at position &a + i * sizeof(t)
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
-    const Value container = getValue(this->container, *method.method, types, constants, globals, localTypes);
+    const Value container = getValue(this->container, *method.method, types, constants, memoryAllocated, localTypes);
 
     logging::debug() << "Generating calculating indices of " << container.to_string() << " into " << dest.to_string() << logging::endl;
     std::vector<Value> indexValues;
     indexValues.reserve(indices.size());
     for(const uint32_t indexID : indices)
     {
-    	indexValues.push_back(getValue(indexID, *method.method, types, constants, globals, localTypes));
+    	indexValues.push_back(getValue(indexID, *method.method, types, constants, memoryAllocated, localTypes));
     }
 
     intermediate::insertCalculateIndices(method.method->appendToEnd(), *method.method.get(), container, dest, indexValues, isPtrAcessChain);
 }
 
-Optional<Value> SPIRVIndexOf::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
+Optional<Value> SPIRVIndexOf::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
 	Value container(UNDEFINED_VALUE);
 	if(constants.find(this->container) != constants.end())
 		container = constants.at(this->container);
-	else if(globals.find(this->container) != globals.end())
-		container = globals.at(this->container)->createReference();
+	else if(memoryAllocated.find(this->container) != memoryAllocated.end())
+		container = memoryAllocated.at(this->container)->createReference();
 	else
 	{
 		logging::error() << this->container << " " << this->id << logging::endl;
@@ -706,7 +706,7 @@ SPIRVPhi::~SPIRVPhi()
 
 }
 
-void SPIRVPhi::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Global*>& globals) const
+void SPIRVPhi::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
     
@@ -717,14 +717,14 @@ void SPIRVPhi::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint
     labelPairs.reserve(sources.size());
     for(const std::pair<uint32_t, uint32_t>& option : sources)
     {
-    	const Value source = getValue(option.second, *method.method, types, constants, globals, localTypes);
-		const Value val = getValue(option.first, *method.method, types, constants, globals, localTypes);
+    	const Value source = getValue(option.second, *method.method, types, constants, memoryAllocated, localTypes);
+		const Value val = getValue(option.first, *method.method, types, constants, memoryAllocated, localTypes);
 		labelPairs.emplace_back(val, source.local);
     }
     method.method->appendToEnd(new intermediate::PhiNode(dest, labelPairs));
 }
 
-Optional<Value> SPIRVPhi::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
+Optional<Value> SPIRVPhi::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
 	return NO_VALUE;
 }
@@ -740,11 +740,11 @@ SPIRVSelect::~SPIRVSelect()
 
 }
 
-void SPIRVSelect::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Global*>& globals) const
+void SPIRVSelect::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
-    const Value sourceTrue = getValue(trueID, *method.method, types, constants, globals, localTypes);
-    const Value sourceFalse = getValue(falseID, *method.method, types, constants, globals, localTypes);
-    const Value condition = getValue(condID, *method.method, types, constants, globals, localTypes);
+    const Value sourceTrue = getValue(trueID, *method.method, types, constants, memoryAllocated, localTypes);
+    const Value sourceFalse = getValue(falseID, *method.method, types, constants, memoryAllocated, localTypes);
+    const Value condition = getValue(condID, *method.method, types, constants, memoryAllocated, localTypes);
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
     
     logging::debug() << "Generating intermediate select on " << condition.to_string() << " whether to write " << sourceTrue.to_string() << " or " << sourceFalse.to_string() << " into " << dest.to_string(true) << logging::endl;
@@ -754,7 +754,7 @@ void SPIRVSelect::mapInstruction(std::map<uint32_t, DataType>& types, std::map<u
     method.method->appendToEnd(new intermediate::MoveOperation(dest, sourceFalse, COND_ZERO_SET));
 }
 
-Optional<Value> SPIRVSelect::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
+Optional<Value> SPIRVSelect::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
 	if(constants.find(condID) != constants.end())
 	{
@@ -781,10 +781,10 @@ SPIRVSwitch::~SPIRVSwitch()
 
 }
 
-void SPIRVSwitch::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Global*>& globals) const
+void SPIRVSwitch::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
-    const Value selector = getValue(selectorID, *method.method, types, constants, globals, localTypes);
-    const Value defaultLabel = getValue(defaultID, *method.method, types, constants, globals, localTypes);
+    const Value selector = getValue(selectorID, *method.method, types, constants, memoryAllocated, localTypes);
+    const Value defaultLabel = getValue(defaultID, *method.method, types, constants, memoryAllocated, localTypes);
     
     logging::debug() << "Generating intermediate switched jump on " << selector.to_string() << " to " << destinations.size() << " destinations with default " << defaultLabel.to_string() << logging::endl;
     
@@ -792,7 +792,7 @@ void SPIRVSwitch::mapInstruction(std::map<uint32_t, DataType>& types, std::map<u
     {
         //comparison value is a literal
         const Value comparison(Literal(static_cast<int64_t>(pair.first)), selector.type);
-        const Value destination = getValue(pair.second, *method.method, types, constants, globals, localTypes);
+        const Value destination = getValue(pair.second, *method.method, types, constants, memoryAllocated, localTypes);
         //for every case, if equal,branch to given label
         const Value tmp = method.method->addNewLocal(TYPE_BOOL, "%switch");
         method.method->appendToEnd(new intermediate::Comparison(intermediate::COMP_EQ, tmp, selector, comparison));
@@ -802,7 +802,7 @@ void SPIRVSwitch::mapInstruction(std::map<uint32_t, DataType>& types, std::map<u
     method.method->appendToEnd(new intermediate::Branch(defaultLabel.local, COND_ALWAYS, BOOL_TRUE));
 }
 
-Optional<Value> SPIRVSwitch::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
+Optional<Value> SPIRVSwitch::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
 	if(constants.find(selectorID) != constants.end())
 	{
@@ -829,14 +829,14 @@ SPIRVImageQuery::~SPIRVImageQuery()
 
 }
 
-void SPIRVImageQuery::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Global*>& globals) const
+void SPIRVImageQuery::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
-    const Value image = getValue(imageID, *method.method, types, constants, globals, localTypes);
+    const Value image = getValue(imageID, *method.method, types, constants, memoryAllocated, localTypes);
     Value param(UNDEFINED_VALUE);
     if(lodOrCoordinate != UNDEFINED_ID)
     {
-    	param = getValue(lodOrCoordinate, *method.method, types, constants, globals, localTypes);
+    	param = getValue(lodOrCoordinate, *method.method, types, constants, memoryAllocated, localTypes);
     }
     
     switch(valueID)
@@ -873,7 +873,7 @@ void SPIRVImageQuery::mapInstruction(std::map<uint32_t, DataType>& types, std::m
     
 }
 
-Optional<Value> SPIRVImageQuery::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
+Optional<Value> SPIRVImageQuery::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
 	return NO_VALUE;
 }
@@ -888,10 +888,10 @@ vc4c::spirv2qasm::SPIRVMemoryBarrier::~SPIRVMemoryBarrier()
 }
 
 void vc4c::spirv2qasm::SPIRVMemoryBarrier::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods,
-		std::map<uint32_t, Global*>& globals) const
+		std::map<uint32_t, Local*>& memoryAllocated) const
 {
-	const Value scope = getValue(scopeID, *method.method, types, constants, globals, localTypes);
-	const Value semantics = getValue(semanticsID, *method.method, types, constants, globals, localTypes);
+	const Value scope = getValue(scopeID, *method.method, types, constants, memoryAllocated, localTypes);
+	const Value semantics = getValue(semanticsID, *method.method, types, constants, memoryAllocated, localTypes);
 
 	if(!scope.hasType(ValueType::LITERAL) || !semantics.hasType(ValueType::LITERAL))
 		throw CompilationError(CompilationStep::LLVM_2_IR, "Memory barriers with non-constant scope or memory semantics are not supported!");
@@ -900,7 +900,7 @@ void vc4c::spirv2qasm::SPIRVMemoryBarrier::mapInstruction(std::map<uint32_t, Dat
 	method.method->appendToEnd(new intermediate::MemoryBarrier(static_cast<intermediate::MemoryScope>(scope.literal.integer), static_cast<intermediate::MemorySemantics>(semantics.literal.integer)));
 }
 
-Optional<Value> vc4c::spirv2qasm::SPIRVMemoryBarrier::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
+Optional<Value> vc4c::spirv2qasm::SPIRVMemoryBarrier::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
 	return NO_VALUE;
 }
@@ -915,9 +915,9 @@ SPIRVLifetimeInstruction::~SPIRVLifetimeInstruction()
 
 }
 
-void SPIRVLifetimeInstruction::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Global*>& globals) const
+void SPIRVLifetimeInstruction::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
-	const Value pointer = getValue(id, *method.method, types, constants, globals, localTypes);
+	const Value pointer = getValue(id, *method.method, types, constants, memoryAllocated, localTypes);
 
 	//"If Size is non-zero, it is the number of bytes of memory whose lifetime is starting"
 	if(sizeInBytes != 0)
@@ -927,7 +927,7 @@ void SPIRVLifetimeInstruction::mapInstruction(std::map<uint32_t, DataType>& type
 	method.method->appendToEnd(new intermediate::LifetimeBoundary(pointer, isLifetimeEnd));
 }
 
-Optional<Value> SPIRVLifetimeInstruction::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Global*>& globals) const
+Optional<Value> SPIRVLifetimeInstruction::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
 	return NO_VALUE;
 }

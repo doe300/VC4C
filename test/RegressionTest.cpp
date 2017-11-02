@@ -97,7 +97,9 @@ static std::vector<Entry> allKernels =
 		Entry{PENDING_BOTH, SLOW, "./testing/CLTune/conv_simple_kernel.opencl", "-DVECTOR=16 -DWPTX=256 -DWPTY=64 -DTBX=2 -DTBY=2 -DUNROLL_FACTOR -Dfloatvec=float16"},
 		Entry{PASSED, FAST, "./testing/CLTune/multiple_kernels_tiled.opencl", "-DVECTOR=16 -DWPTX=256 -DWPTY=64 -DTBX=2 -DTBY=2 -DUNROLL_FACTOR -Dfloatvec=float16 -DTS=8"},
 
+#ifdef SPIRV_CLANG_PATH	//XXX check, only if SPIRV-LLVM is located exactly here!
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/spir/metadata/access_qualifier/images/read_only.cl", ""},
+		//XXX object which life-time is started is passed as parameter, cannot yet determine the stack-allocated source
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/addr-space-struct-arg.cl", ""},
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/astype.cl", ""},
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/constant-addr-space-globals.cl", ""},
@@ -110,7 +112,8 @@ static std::vector<Entry> allKernels =
 		Entry{PENDING_LLVM, FAST, "/opt/SPIRV-LLVM/tools/clang/test/SemaOpenCL/str_literals.cl", ""},
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/tools/clang/test/SemaOpenCL/warn-missing-prototypes.cl", ""},
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/tools/clang/test/SemaOpenCL/warn-potential-abiguity.cl", ""},
-		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "/opt/SPIRV-LLVM/test/SPIRV/transcoding/extract_insert_value.ll", ""},
+		//I think this type of operation is not supported by OpenCL anyway
+		//Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "/opt/SPIRV-LLVM/test/SPIRV/transcoding/extract_insert_value.ll", ""},
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/test/SPIRV/transcoding/OpConstantBool.ll", ""},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "/opt/SPIRV-LLVM/test/SPIRV/transcoding/OpPhi_ArgumentsPlaceholders.ll", ""},
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/test/SPIRV/transcoding/RecursiveType.ll", ""},
@@ -126,8 +129,10 @@ static std::vector<Entry> allKernels =
 		//TODO produces completely wrong machine code?! (e.g. discards all writes/reads from parameters/globals)
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "/opt/SPIRV-LLVM/test/SPIRV/simple.ll", ""},
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/test/SPIRV/no_capability_shader.ll", ""},
+#endif
 
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/bullet/jointSolver.cl", ""},
+		//XXX seems like a problem with stack-allocation and inlined functions
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/bullet/solveContact.cl", ""},
 		Entry{PENDING_LLVM, FAST, "./testing/bullet/solveFriction.cl", ""},
 

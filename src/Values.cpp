@@ -605,15 +605,32 @@ Value& Value::assertReadable()
 
 Value Value::createZeroInitializer(const DataType& type)
 {
-	if(type.isScalarType())
+	if(type.isScalarType() || type.getPointerType().hasValue)
 		return INT_ZERO;
-	if(!type.isVectorType())
-		throw CompilationError(CompilationStep::GENERAL, "Unhandled type for zero-initializer", type.to_string());
 	Value val(ContainerValue(), type);
-	for(unsigned i = 0; i < type.num; i++)
+	if(type.isVectorType())
 	{
-		val.container.elements.push_back(INT_ZERO);
+		for(unsigned i = 0; i < type.num; i++)
+		{
+			val.container.elements.push_back(INT_ZERO);
+		}
 	}
+	else if(type.getArrayType().hasValue)
+	{
+		for(unsigned i = 0; i < type.getArrayType().get()->size; i++)
+		{
+			val.container.elements.push_back(createZeroInitializer(type.getElementType()));
+		}
+	}
+	else if(type.getStructType().hasValue)
+	{
+		for(unsigned i = 0; i < type.getStructType().get()->elementTypes.size(); i++)
+		{
+			val.container.elements.push_back(createZeroInitializer(type.getElementType(i)));
+		}
+	}
+	else
+		throw CompilationError(CompilationStep::GENERAL, "Unhandled type for zero-initializer", type.to_string());
 	return val;
 }
 

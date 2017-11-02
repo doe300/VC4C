@@ -160,7 +160,7 @@ void SPIRVParser::parse(Module& module)
     //map SPIRVOperations to IntermediateInstructions
     logging::debug() << "Mapping instructions to intermediate..." << logging::endl;
     for (const std::unique_ptr<SPIRVOperation>& op : instructions) {
-        op->mapInstruction(typeMappings, constantMappings, localTypes, methods, globalData);
+        op->mapInstruction(typeMappings, constantMappings, localTypes, methods, memoryAllocatedData);
     }
 
     //apply kernel meta-data, decorations, ...
@@ -754,12 +754,13 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         	//"All OpVariable instructions in a function must have a Storage Class of Function."
         	currentMethod->method->stackAllocations.push_back(StackAllocation(name, type));
         	//TODO set initial value!. Allowed for OpVariables with storage-class Function?
+        	memoryAllocatedData.emplace(parsed_instruction->result_id, &currentMethod->method->stackAllocations.back());
         }
         else
         {
         	//OpVariables outside of any function are global data
         	module->globalData.emplace_back(Global(name, type, val));
-			globalData.emplace(parsed_instruction->result_id, &module->globalData.back());
+			memoryAllocatedData.emplace(parsed_instruction->result_id, &module->globalData.back());
         }
         logging::debug() << "Reading variable: " << type.to_string() << " " << name << " with value: " << val.to_string(false, true) << logging::endl;
         return SPV_SUCCESS;
@@ -1442,7 +1443,7 @@ std::pair<spv_result_t, Optional<Value>> SPIRVParser::calculateConstantOperation
 		return std::make_pair(result, NO_VALUE);
 	}
 
-	const Optional<Value> value = instructions.at(0)->precalculate(typeMappings, constantMappings, globalData);
+	const Optional<Value> value = instructions.at(0)->precalculate(typeMappings, constantMappings, memoryAllocatedData);
 
 	//swap back
 	currentMethod = methodBackup;

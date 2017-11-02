@@ -58,8 +58,8 @@ namespace vc4c
 			SPIRVMethod* currentMethod;
 			//the global mapping of ID -> constants
 			std::map<uint32_t, Value> constantMappings;
-			//the global mapping of ID -> global data
-			std::map<uint32_t, Global*> globalData;
+			//the mapping of ID -> global/stack allocated data
+			std::map<uint32_t, Local*> memoryAllocatedData;
 			//the global mapping of ID -> type
 			std::map<uint32_t, DataType> typeMappings;
 			//the global mapping of ID -> sampled images

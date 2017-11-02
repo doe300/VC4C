@@ -93,9 +93,12 @@ Value IRParser::toValue(const Token& token, const DataType& type)
     val.valueType = toValueType(token.type);
     if (token.type == TokenType::STRING)
     {
-    	if(token.getText().get().compare("undef") == 0)
+    	if(token.hasValue("undef"))
     		val.valueType = ValueType::UNDEFINED;
-    	else if(token.getText().get().compare("zeroinitializer") == 0)
+    	else if(token.hasValue("zeroinitializer"))
+    		return Value::createZeroInitializer(type);
+    	else if(token.hasValue("null"))
+    		//"The identifier ‘null‘ is recognized as a null pointer constant and must be of pointer type."
     		return Value::createZeroInitializer(type);
     	else if(currentMethod != nullptr)
     		//FIXME somehow, parameters are not found, but they are there (at least at a later point!)
