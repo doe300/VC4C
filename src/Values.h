@@ -284,12 +284,12 @@ namespace vc4c
 
 	const Value BOOL_TRUE(Literal(true), TYPE_BOOL);
 	const Value BOOL_FALSE(Literal(false), TYPE_BOOL);
-	const Value INT_ZERO(Literal(0L), TYPE_INT8);
-	const Value INT_ONE(Literal(1L), TYPE_INT8);
+	const Value INT_ZERO(Literal(static_cast<int64_t>(0)), TYPE_INT8);
+	const Value INT_ONE(Literal(static_cast<int64_t>(1)), TYPE_INT8);
 	const Value FLOAT_ZERO(Literal(0.0), TYPE_FLOAT);
 	const Value FLOAT_ONE(Literal(1.0), TYPE_FLOAT);
-	const Value FLOAT_INF(Literal(0x7F700000L), TYPE_FLOAT);
-	const Value FLOAT_NAN(Literal(0x7FC00000L), TYPE_FLOAT);
+	const Value FLOAT_INF(Literal(static_cast<uint64_t>(0x7F700000)), TYPE_FLOAT);
+	const Value FLOAT_NAN(Literal(static_cast<uint64_t>(0x7FC00000)), TYPE_FLOAT);
 	const Value UNDEFINED_VALUE(TYPE_UNKNOWN);
 	const Optional<Value> NO_VALUE(false, UNDEFINED_VALUE);
 

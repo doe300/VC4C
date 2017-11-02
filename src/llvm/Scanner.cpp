@@ -210,7 +210,7 @@ const Token Scanner::readNumber()
     else
     {
         //integer literal
-        result.integer = std::strtol(numberToken.data(), nullptr, 0 /* let method decide */);
+        result.integer = std::strtoll(numberToken.data(), nullptr, 0 /* let method decide */);
     }
     //so our index is correct again
     result.type = TokenType::NUMBER;

@@ -46,7 +46,7 @@ InstructionWalker intermediate::intrinsifyIntegerRelation(Method& method, Instru
     if(COMP_EQ.compare(comp->opCode) == 0)
     {
         // a == b <=> a xor b == 0 [<=> a - b == 0]
-        if(comp->getFirstArg().hasType(ValueType::LOCAL) && comp->getSecondArg().get().hasLiteral(Literal(0L)))
+        if(comp->getFirstArg().hasType(ValueType::LOCAL) && comp->getSecondArg().get().hasLiteral(Literal(static_cast<int64_t>(0))))
             //special case for a == 0
             //does not save instructions, but does not force value a to be on register-file A (since B is reserved for literal 0)
             it.emplace(new MoveOperation(NOP_REGISTER, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
@@ -58,7 +58,7 @@ InstructionWalker intermediate::intrinsifyIntegerRelation(Method& method, Instru
     else if(COMP_NEQ.compare(comp->opCode) == 0)
     {
         // a != b <=> a xor b != 0 [<=> a - b != 0] [<=> max(a,b) - min(a,b) != 0]
-        if(comp->getFirstArg().hasType(ValueType::LOCAL) && comp->getSecondArg().get().hasLiteral(Literal(0L)))
+        if(comp->getFirstArg().hasType(ValueType::LOCAL) && comp->getSecondArg().get().hasLiteral(Literal(static_cast<int64_t>(0))))
             //special case for a != 0
             //does not save instructions, but does not force value a to be on register-file A (since B is reserved for literal 0)
             it.emplace( new MoveOperation(NOP_REGISTER, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
@@ -125,10 +125,35 @@ InstructionWalker intermediate::intrinsifyIntegerRelation(Method& method, Instru
     return it;
 }
 
+static std::pair<InstructionWalker, Value> insertCheckForNaN(Method& method, InstructionWalker it, const Comparison* comp)
+{
+	const Value firstArgNaN = method.addNewLocal(TYPE_BOOL, "%nan_check");
+	it.emplace(new Operation("xor", firstArgNaN, comp->getFirstArg(), FLOAT_NAN, comp->conditional));
+	it.nextInBlock();
+	Value eitherNaN = firstArgNaN;
+	if(comp->getArguments().size() > 1)
+	{
+		const Value secondArgNaN = method.addNewLocal(TYPE_BOOL, "%nan_check");
+		it.emplace(new Operation("xor", secondArgNaN, comp->getSecondArg(), FLOAT_NAN, comp->conditional));
+		it.nextInBlock();
+		eitherNaN = method.addNewLocal(TYPE_BOOL, "%nan_check");
+		it.emplace(new Operation("or", eitherNaN, firstArgNaN, secondArgNaN, comp->conditional));
+		it.nextInBlock();
+	}
+	return std::make_pair(it, eitherNaN);
+}
+
 InstructionWalker intermediate::intrinsifyFloatingRelation(Method& method, InstructionWalker it, const Comparison* comp)
 {
-    //since we do not supprt NaNs/Inf and denormals, all ordered comparisons are treated as unordered
+    //since we do not support NaNs/Inf and denormals, all ordered comparisons are treated as unordered
 	// -> "don't care if value could be Nan/Inf"
+
+	/*
+	 * Expected treatment of NaN:
+	 * == -> false, if any is NaN
+	 * != -> true, if any is NaN
+	 * >, <, >=, <= -> false if any is NaN
+	 */
 
     //http://llvm.org/docs/LangRef.html#fcmp-instruction
 	const Value tmp = method.addNewLocal(comp->getFirstArg().type, comp->getOutput().get().local->name);
@@ -221,7 +246,7 @@ InstructionWalker intermediate::insertIsNegative(InstructionWalker it, const Val
 	}
 	else
 	{
-		it.emplace(new Operation("shr", NOP_REGISTER, src, Value(Literal(static_cast<unsigned long>(src.type.getScalarBitCount() - 1)), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
+		it.emplace(new Operation("shr", NOP_REGISTER, src, Value(Literal(static_cast<uint64_t>(src.type.getScalarBitCount() - 1)), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
 		it.nextInBlock();
 		//some dummy instruction to be replaced
 		it.emplace(new Nop(DelayType::WAIT_REGISTER));

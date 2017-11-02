@@ -73,9 +73,9 @@ namespace vc4c
 		struct Sampler : private Bitfield<uint8_t>
 		{
 		
-			static constexpr unsigned long MASK_NORMALIZED_COORDS { 0x1 };
-			static constexpr unsigned long MASK_ADDRESSING_MODE { 0xE };
-			static constexpr unsigned long MASK_FILTER_MODE { 0x30 };
+			static constexpr uint64_t MASK_NORMALIZED_COORDS { 0x1 };
+			static constexpr uint64_t MASK_ADDRESSING_MODE { 0xE };
+			static constexpr uint64_t MASK_FILTER_MODE { 0x30 };
 
 			constexpr Sampler(const uint8_t val) : Bitfield(val)
 			{

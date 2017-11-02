@@ -88,7 +88,7 @@ InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const
             it.emplace( new MoveOperation(NOP_REGISTER, offset, COND_ALWAYS, SetFlag::SET_FLAGS));
             it.nextInBlock();
             //r5 = 16 - offset
-            it.emplace( new Operation("sub", ROTATION_REGISTER, Value(Literal(16L), TYPE_INT8), offset, COND_ZERO_CLEAR));
+            it.emplace( new Operation("sub", ROTATION_REGISTER, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8), offset, COND_ZERO_CLEAR));
             it.nextInBlock();
             it.emplace( new MoveOperation(ROTATION_REGISTER, INT_ZERO, COND_ZERO_SET));
         }

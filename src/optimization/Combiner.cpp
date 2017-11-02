@@ -500,7 +500,7 @@ static Optional<Literal> getSourceLiteral(InstructionWalker it)
 		if(val.hasValue)
 			return val.get().literal;
 	}
-	return Optional<Literal>(false, 0L);
+	return Optional<Literal>(false, static_cast<int64_t>(0));
 }
 
 static bool canReplaceLiteralLoad(InstructionWalker it, const InstructionWalker start, const InstructionWalker match)

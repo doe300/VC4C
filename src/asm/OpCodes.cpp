@@ -197,7 +197,7 @@ Optional<Literal> SmallImmediate::toLiteral() const
 		return Literal(static_cast<int64_t>(getIntegerValue().get()));
 	if(getFloatingValue().hasValue)
 		return Literal(getFloatingValue().get());
-	return Optional<Literal>(false, 0L);
+	return Optional<Literal>(false, static_cast<int64_t>(0));
 }
 
 SmallImmediate SmallImmediate::fromRotationOffset(unsigned char offset)

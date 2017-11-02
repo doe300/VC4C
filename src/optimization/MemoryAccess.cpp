@@ -57,7 +57,7 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 	if(!val.hasType(ValueType::LOCAL))
 		return BaseAndOffset();
 	if(val.local->is<Parameter>() || val.local->is<Global>() || val.local->is<StackAllocation>())
-		return BaseAndOffset(val, 0L);
+		return BaseAndOffset(val, static_cast<int64_t>(0));
 
 	if(val.local->reference.first != nullptr && val.local->reference.second != ANY_ELEMENT)
 		return BaseAndOffset(val.local->reference.first->createReference(), static_cast<int64_t>(val.local->reference.second));

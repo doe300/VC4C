@@ -244,13 +244,13 @@ const static std::map<std::string, Intrinsic> ternaryIntrinsicMapping = {
 const static std::map<std::string, std::pair<Intrinsic, Optional<Value>>> typeCastIntrinsics = {
 	//since we run all the (not intrinsified) calculations with 32-bit, don't truncate signed conversions to smaller types
 	//TODO correct?? Since we do not discard out-of-bounds values!
-    {"vc4cl_bitcast_uchar", {Intrinsic{intrinsifyBinaryALUInstruction("and", true), [](const Value& val){return Value(Literal(val.literal.integer & 0xFF), TYPE_INT8);}}, Value(Literal(0xFFUL), TYPE_INT8)}},
+    {"vc4cl_bitcast_uchar", {Intrinsic{intrinsifyBinaryALUInstruction("and", true), [](const Value& val){return Value(Literal(val.literal.integer & 0xFF), TYPE_INT8);}}, Value(Literal(static_cast<uint64_t>(0xFF)), TYPE_INT8)}},
     {"vc4cl_bitcast_char", {Intrinsic{intrinsifyBinaryALUInstruction("mov"), [](const Value& val){return Value(val.literal, TYPE_INT8);}}, NO_VALUE}},
-    {"vc4cl_bitcast_ushort", {Intrinsic{intrinsifyBinaryALUInstruction("and", true), [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFF), TYPE_INT16);}}, Value(Literal(0xFFFFUL), TYPE_INT16)}},
+    {"vc4cl_bitcast_ushort", {Intrinsic{intrinsifyBinaryALUInstruction("and", true), [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFF), TYPE_INT16);}}, Value(Literal(static_cast<uint64_t>(0xFFFF)), TYPE_INT16)}},
     {"vc4cl_bitcast_short", {Intrinsic{intrinsifyBinaryALUInstruction("mov"), [](const Value& val){return Value(val.literal, TYPE_INT16);}}, NO_VALUE}},
-    {"vc4cl_bitcast_uint", {Intrinsic{intrinsifyBinaryALUInstruction("mov", true), [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFFFFFFUL), TYPE_INT32);}}, NO_VALUE}},
+    {"vc4cl_bitcast_uint", {Intrinsic{intrinsifyBinaryALUInstruction("mov", true), [](const Value& val){return Value(Literal(val.literal.integer & static_cast<int64_t>(0xFFFFFFFF)), TYPE_INT32);}}, NO_VALUE}},
     {"vc4cl_bitcast_int", {Intrinsic{intrinsifyBinaryALUInstruction("mov"), [](const Value& val){return Value(val.literal, TYPE_INT32);}}, NO_VALUE}},
-    {"vc4cl_bitcast_float", {Intrinsic{intrinsifyBinaryALUInstruction("mov"), [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFFFFFFUL), TYPE_INT32);}}, NO_VALUE}}
+    {"vc4cl_bitcast_float", {Intrinsic{intrinsifyBinaryALUInstruction("mov"), [](const Value& val){return Value(Literal(val.literal.integer & static_cast<int64_t>(0xFFFFFFFF)), TYPE_INT32);}}, NO_VALUE}}
 };
 
 static InstructionWalker intrinsifyNoArgs(Method& method, InstructionWalker it)
@@ -771,12 +771,12 @@ static InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, Instruction
 	it.emplace(new MoveOperation(it->getOutput(), method.findOrCreateLocal(TYPE_INT32, locals.at(1))->createReference(), COND_ZERO_SET));
 	it.nextInBlock();
 	//dim == 2 -> return third value
-	it.emplace((new Operation("xor", NOP_REGISTER, arg, Value(Literal(2L), TYPE_INT32)))->setSetFlags(SetFlag::SET_FLAGS));
+	it.emplace((new Operation("xor", NOP_REGISTER, arg, Value(Literal(static_cast<int64_t>(2)), TYPE_INT32)))->setSetFlags(SetFlag::SET_FLAGS));
 	it.nextInBlock();
 	it.emplace(new MoveOperation(it->getOutput(), method.findOrCreateLocal(TYPE_INT32, locals.at(2))->createReference(), COND_ZERO_SET));
 	it.nextInBlock();
 	//otherwise (dim > 2 -> 2 - dim < 0) return default value
-	it.emplace((new Operation("sub", NOP_REGISTER, Value(Literal(2L), TYPE_INT32), arg))->setSetFlags(SetFlag::SET_FLAGS));
+	it.emplace((new Operation("sub", NOP_REGISTER, Value(Literal(static_cast<int64_t>(2)), TYPE_INT32), arg))->setSetFlags(SetFlag::SET_FLAGS));
 	it.nextInBlock();
 	return it.reset(new MoveOperation(it->getOutput(), defaultValue, COND_NEGATIVE_SET));
 }
@@ -799,13 +799,13 @@ static InstructionWalker intrinsifyReadWorkItemInfo(Method& method, InstructionW
 //	else
 	{
 		tmp0 = method.addNewLocal(TYPE_INT32, "%local_info");
-		it.emplace(new Operation("mul24", tmp0, arg, Value(Literal(8L), TYPE_INT32)));
+		it.emplace(new Operation("mul24", tmp0, arg, Value(Literal(static_cast<int64_t>(8)), TYPE_INT32)));
 		it.nextInBlock();
 	}
 	const Value tmp1 = method.addNewLocal(TYPE_INT32, "%local_info");
 	it.emplace(new Operation("shr", tmp1, itemInfo->createReference(), tmp0));
 	it.nextInBlock();
-	return it.reset((new Operation("and", it->getOutput(), tmp1, Value(Literal(0xFFL), TYPE_INT8)))->copyExtrasFrom(it.get()));
+	return it.reset((new Operation("and", it->getOutput(), tmp1, Value(Literal(static_cast<int64_t>(0xFF)), TYPE_INT8)))->copyExtrasFrom(it.get()));
 }
 
 static InstructionWalker intrinsifyWorkItemFunctions(Method& method, InstructionWalker it)

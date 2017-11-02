@@ -284,7 +284,7 @@ Optional<Value> Operation::precalculate(const std::size_t numIterations) const
     }
     std::pair<OpAdd, OpMul> opCodes = toOpCode(opCode);
     const Literal first = arg0.get().literal;
-    const Literal second = arg1.hasValue ? arg1.get().literal : Literal(0L);
+    const Literal second = arg1.hasValue ? arg1.get().literal : Literal(static_cast<int64_t>(0));
     bool firstInt = getFirstArg().literal.type == LiteralType::BOOL || getFirstArg().literal.type == LiteralType::INTEGER;
     bool secondInt = getSecondArg() && (getSecondArg().get().literal.type == LiteralType::BOOL || getSecondArg().get().literal.type == LiteralType::INTEGER);
     switch (opCodes.first.opCode) {

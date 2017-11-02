@@ -102,9 +102,9 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
     {
         hasA0Part = true;   //not known
         hasA1Part = true;
-        it.emplace(new Operation("and", a1, arg0, Value(Literal(0xFFFFL), TYPE_INT16)));
+        it.emplace(new Operation("and", a1, arg0, Value(Literal(static_cast<uint64_t>(0xFFFF)), TYPE_INT16)));
         it.nextInBlock();
-        it.emplace(new Operation("shr", a0, arg0, Value(Literal(16L), TYPE_INT16)));
+        it.emplace(new Operation("shr", a0, arg0, Value(Literal(static_cast<int64_t>(16)), TYPE_INT16)));
         it.nextInBlock();
     }
     if(arg1.hasType(ValueType::LITERAL))
@@ -121,9 +121,9 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
         //not known
         hasB0Part = true;
         hasB1Part = true;
-        it.emplace( new Operation("and", b1, arg1, Value(Literal(0xFFFFL), TYPE_INT8)));
+        it.emplace( new Operation("and", b1, arg1, Value(Literal(static_cast<uint64_t>(0xFFFF)), TYPE_INT8)));
         it.nextInBlock();
-        it.emplace( new Operation("shr", b0, arg1, Value(Literal(16L), TYPE_INT8)));
+        it.emplace( new Operation("shr", b0, arg1, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
         it.nextInBlock();
     }
     if(hasA1Part && hasB1Part)
@@ -141,7 +141,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
     	const Value tmp = method.addNewLocal(op.getOutput().get().type);
         it.emplace( new Operation("mul24", tmp, a1, b0));
         it.nextInBlock();
-        it.emplace( new Operation("shl", tmp, tmp, Value(Literal(16L), TYPE_INT8)));
+        it.emplace( new Operation("shl", tmp, tmp, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
         it.nextInBlock();
         it.emplace( new Operation("add", out1, out0, tmp));
         it.nextInBlock();
@@ -156,7 +156,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
     	const Value tmp = method.addNewLocal(op.getOutput().get().type);
         it.emplace( new Operation("mul24", tmp, a0, b1));
         it.nextInBlock();
-        it.emplace( new Operation("shl", out2, tmp, Value(Literal(16L), TYPE_INT8)));
+        it.emplace( new Operation("shl", out2, tmp, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
         it.nextInBlock();
     }
     else
@@ -250,7 +250,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
         //R(0) := N(i)         -- set the least-significant bit of R equal to bit i of the numerator
         //R = R | ((N >> i) & 1) <=> R = R | (N & (1 << i) == 1 ? 1 : 0) <=> R = R | 1, if N & (1 << i) != 0
         newRemainder = method.addNewLocal(op.getOutput().get().type, "%udiv.remainder");
-        it.emplace(new Operation("and", NOP_REGISTER, numerator, Value(Literal(1L << i), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
+        it.emplace(new Operation("and", NOP_REGISTER, numerator, Value(Literal(static_cast<int64_t>(1) << i), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
         it.nextInBlock();
         it.emplace( new Operation("or", newRemainder, remainder, INT_ONE, COND_ZERO_CLEAR));
         it.nextInBlock();
@@ -274,7 +274,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
         remainder = newRemainder;
         //Q(i) := 1
         Value newQuotient = method.addNewLocal(op.getOutput().get().type, "%udiv.quotient");
-        it.emplace( new Operation("or", newQuotient, quotient, Value(Literal(1L << i), TYPE_INT32), COND_ZERO_SET));
+        it.emplace( new Operation("or", newQuotient, quotient, Value(Literal(static_cast<int64_t>(1) << i), TYPE_INT32), COND_ZERO_SET));
         it.nextInBlock();
         //else Q(new) := Q(old)
         it.emplace(new MoveOperation(newQuotient, quotient, COND_ZERO_CLEAR));

@@ -436,7 +436,7 @@ bool ContainerInsertion::mapInstruction(Method& method) const
     method.appendToEnd(new intermediate::MoveOperation(Value(dest, container.type), container));
     //2. insert new element
     //either into vector or into scalar at "element 0"
-    if(container.type.isVectorType() || index.hasLiteral(Literal(0L)))
+    if(container.type.isVectorType() || index.hasLiteral(Literal(static_cast<int64_t>(0))))
     {
         //insert element at given index into vector
         intermediate::insertVectorInsertion(method.appendToEnd(), method, Value(dest, container.type), index, newValue);
@@ -484,7 +484,7 @@ bool ContainerExtraction::mapInstruction(Method& method) const
     const DataType elementType = container.type.getElementType();
     logging::debug() << "Generation extraction of " << elementType.to_string() << " at " << index.to_string() << " from " << container.to_string() << " into " << dest->to_string() << logging::endl;
     
-    if(container.type.isVectorType() || index.hasLiteral(Literal(0L)))
+    if(container.type.isVectorType() || index.hasLiteral(Literal(static_cast<int64_t>(0))))
     {
         intermediate::insertVectorExtraction(method.appendToEnd(), method, container, index, Value(dest, elementType));
     }
