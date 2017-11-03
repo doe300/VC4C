@@ -2,5 +2,5 @@
 
 * [maazl](https://github.com/maazl/vc4asm) for his great work on the [vc4asm](https://github.com/maazl/vc4asm) assembler (especially the validator).
 * everybody, maazl based his work upon: [Pete Warden](https://github.com/jetpacapp/), [Herman Hermitage](https://github.com/hermanhermitage/videocoreiv-qpu), ...
-* [Eric Anholt](http://anholt.livejournal.com/)
+* Eric Anholt, [here](http://anholt.livejournal.com/) (old stuff) and [here](https://anholt.github.io/twivc4/) (newer stuff, mostly VC5)
 * [Akane](https://www.raspberrypi.org/forums/memberlist.php?mode=viewprofile&u=110968) for him answering all my questions [here](https://www.raspberrypi.org/forums/viewtopic.php?f=67&t=169576) with good explanations

@@ -22,7 +22,7 @@ vector_convert-test-opencl		compilation error
 Boost Compute:
 test_accumulate					abort ("sum_int", std::out_of_range)
 test_adjacent_difference		PASSED
-test_adjacent_find				PASSED/result mismatch ("adjacent_find_int", "adjacent_find_int2")
+test_adjacent_find				result mismatch ("adjacent_find_int", "adjacent_find_int2")
 test_any_all_none_of			PASSED
 test_array						PASSED
 test_async_wait					PASSED
@@ -39,7 +39,7 @@ test_complex					PASSED
 test_constant_iterator			PASSED
 test_context					PASSED
 test_context_error				PASSED
-test_copy						value mismatch (in "copy_swizzle_iterator", first two of int4 values do not match, error(1)?!)
+test_copy						PASSED
 test_copy_if					PASSED
 test_copy_type_mismatch			result mismatch (fails for float <-> int transformations: 0 != x in both directions), "Invalid Value" exceptions
 test_count						compilation error (ulong)
@@ -75,7 +75,7 @@ test_image1d					SKIPPED
 test_image2d					SKIPPED
 test_image3d					SKIPPED
 test_image_sampler				SKIPPED
-test_includes					assertion failed (result mismatch)
+test_includes					PASSED
 test_inner_product				PASSED
 test_inplace_merge				PASSED
 test_inplace_reduce				result mismatch ("reduce_iota")
@@ -83,7 +83,7 @@ test_insertion_sort				result mismatch ("sort_short_vector", (u)char and ushort 
 test_invoke						result mismatch (ULP, "invoke_builtin": result: inf expected: 256.f for function pow(2, 8))
 test_iota						PASSED
 test_is_permutation				PASSED
-test_is_sorted					PASSED/result mismatch ("is_sorted_iota")
+test_is_sorted					result mismatch ("is_sorted_iota")
 test_kernel						error in get arg info (kernel argument type names do not match, e.g. i32* != int*)
 test_lambda						result mismatch ("lambda_tenary_function_with_pointer_remquo", calculation error in remquo)
 test_lexicographical_compare	PASSED
@@ -103,13 +103,13 @@ test_nth_element				compilation error
 test_opencl_error				PASSED
 test_pair						PASSED
 test_partial_sum				PASSED
-test_partition					hangs/runs infinite (TODO: check number of work-items, barrier)
+test_partition					PASSED
 test_partition_point			PASSED
 test_radix_sort					result mismatches, compilation errors
-test_radix_sort_by_key			result mismatches
+test_radix_sort_by_key			result mismatches ("stable_radix_sort_int_by_int"), memory access violation ("stable_radix_sort_int_by_int_desc")
 test_random_fill				result mismatch ("random_fill_float", 6 != 0)
 test_random_shuffle				PASSED
-test_reduce						result mismatches (0 != x)
+test_reduce						result mismatches (0 != x), SIGABRT (std::out_of_range in vector)
 test_reduce_by_key				compilation error (ulong)
 test_remove						PASSED
 test_replace					PASSED
@@ -134,12 +134,12 @@ test_stable_sort_by_key			result mismatch (all test-cases)
 test_stack						PASSED
 test_strided_iterator			PASSED
 test_string						PASSED
-test_struct						result mismatch ("struct_with_array")
+test_struct						result mismatch ("atom_struct", "struct_with_array")
 test_svm_ptr					PASSED
 test_system						PASSED
 test_tabulate					PASSED
 test_threefry_engine			compilation error (struct, converted to long by LLVM)
-test_transform					result mismatch (ULP pow/sqrt and 0 != x), compilation error (locals not initialized)/hangs
+test_transform					result mismatch (ULP pow/sqrt and 0 != x), compilation error (locals not initialized)
 test_transform_if				PASSED
 test_transform_iterator			PASSED
 test_transform_reduce			result mismatch (ULP, "multiply_vector_length", "mean_and_std_dev")
@@ -153,7 +153,7 @@ test_unique_copy				PASSED
 test_unsupported_extension		PASSED
 test_user_defined_types			compilation error (packed struct, converted to ulong by LLVM)
 test_user_event					PASSED
-test_valarray					result mismatch ("modulus_ca_operator" for int(3 % 3) -> 1 != 0), compilation error
+test_valarray					compilation error (kernel "serial_find_extrema")
 test_vector						PASSED
 test_wait_list					PASSED
 test_zip_iterator				PASSED

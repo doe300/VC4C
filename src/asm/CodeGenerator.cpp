@@ -456,7 +456,8 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
 			const auto binary = generateDataSegment(module);
 			for(const Global& global : module.globalData)
 				stream << "//" << global.to_string(true) << std::endl;
-			stream << "// plus additional space for " << KernelInfo::MAX_WORK_GROUP_SIZES << " \"stack-frames\"" << std::endl;
+			if(!binary.empty())
+				stream << "// plus additional space for " << KernelInfo::MAX_WORK_GROUP_SIZES << " \"stack-frames\"" << std::endl;
 			for(std::size_t i = 0; i < binary.size(); i += 8)
 				stream << toHexString((static_cast<uint64_t>(binary.at(i)) << 56) | (static_cast<uint64_t>(binary.at(i+1)) << 48) | (static_cast<uint64_t>(binary.at(i+2)) << 40) |
 						(static_cast<uint64_t>(binary.at(i+3)) << 32) | (static_cast<uint64_t>(binary.at(i+4)) << 24) | (static_cast<uint64_t>(binary.at(i+5)) << 16) |

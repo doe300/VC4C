@@ -498,7 +498,7 @@ InstructionWalker VPM::insertReadVPM(InstructionWalker it, const Value& dest, co
 	it = insertLockMutex(it, useMutex);
 	//1) configure reading from VPM into QPU
 	const auto size = getVPMSize(dest.type);
-	const VPRSetup genericSetup(VPRGenericSetup(size, TYPE_INT32.getScalarBitCount() / dest.type.getScalarBitCount(), calculateAddress(dest.type, calculateOffset(area))));
+	const VPRSetup genericSetup(VPRGenericSetup(size, TYPE_INT32.getScalarBitCount() / dest.type.getScalarBitCount(), 1, calculateAddress(dest.type, calculateOffset(area))));
 	it.emplace( new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<int64_t>(genericSetup))));
 	it.nextInBlock();
 	//2) read value from VPM

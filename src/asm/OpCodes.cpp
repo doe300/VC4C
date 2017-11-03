@@ -76,15 +76,15 @@ BranchCond ConditionCode::toBranchCondition() const
     case COND_CARRY_CLEAR.value:
         return BranchCond::ALL_C_CLEAR;
     case COND_CARRY_SET.value:
-        return BranchCond::ALL_C_SET;
+        return BranchCond::ANY_C_SET;
     case COND_NEGATIVE_CLEAR.value:
         return BranchCond::ALL_N_CLEAR;
     case COND_NEGATIVE_SET.value:
-        return BranchCond::ALL_N_SET;
+        return BranchCond::ANY_N_SET;
     case COND_ZERO_CLEAR.value:
         return BranchCond::ALL_Z_CLEAR;
     case COND_ZERO_SET.value:
-        return BranchCond::ALL_Z_SET;
+        return BranchCond::ANY_Z_SET;
     }
     throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid condition for branch", toString());
 }
