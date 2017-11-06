@@ -17,53 +17,12 @@ using namespace vc4c::periphery;
  * see i.e. https://github.com/raspberrypi/userland/blob/master/host_applications/linux/apps/hello_pi/hello_fft/qasm/gpu_fft.qinc (.macro load_tw, .macro read_lin/.macro load_lin)
  */
 
-std::string TextureType::to_string() const
-{
-	switch(value)
-	{
-		case RGBA8888.value:
-			return "RGBA 32-bit";
-		case RGBX8888.value:
-			return "RGB 24-bit";
-		case RGBA4444.value:
-			return "RGBA 16-bit";
-		case RGBA5551.value:
-			return "RGBA 16-bit 5-5-5-1";
-		case RGB565.value:
-			return "RGB 16-bit 5-6-5";
-		case LUMINANCE.value:
-			return "luminance 8-bit";
-		case ALPHA.value:
-			return "alpha 8-bit";
-		case LUMALPHA.value:
-			return "luminance, alpha 16-bit";
-		case ECT1.value:
-			return "Ericsson Texture Compression";
-		case S16F.value:
-			return "float 16-bit";
-		case S8.value:
-			return "int 8-bit";
-		case S16.value:
-			return "int 16-bit";
-		case BW1.value:
-			return "black-white 1-bit";
-		case A4.value:
-			return "alpha 4-bit";
-		case A1.value:
-			return "alpha 1-bit";
-		case RGBA64.value:
-			return "RGBA float 64-bit";
-		case RGBA32R.value:
-			return "RGBA raster, 32-bit";
-		case YUYV422R.value:
-			return "YUYV raster, 32-bit";
-	}
-	throw CompilationError(CompilationStep::GENERAL, "Unhandled texture-type", std::to_string(value));
-}
-
 InstructionWalker periphery::insertGeneralReadTMU(InstructionWalker it, const Value& dest, const Value& addr)
 {
-	//TODO mutex lock required?
+	/*
+	 * Mutex lock?
+	 * hello_fft (FFT2) from the Raspbian userland-repository doesn't lock its TMU requests so for now, we don't either
+	 */
 
 	//"General-memory lookups are performed by writing to just the s-parameter, using the absolute memory address" (page 41)
 	//1) write address to TMU_S register
@@ -81,7 +40,6 @@ InstructionWalker periphery::insertGeneralReadTMU(InstructionWalker it, const Va
 
 InstructionWalker periphery::insertReadTMU(Method& method, InstructionWalker it, const Value& image, const Value& dest, const Value& xCoord, const Optional<Value>& yCoord)
 {
-	//TODO mutex lock required?
 	if(!image.hasType(ValueType::LOCAL))
 		throw CompilationError(CompilationStep::GENERAL, "Cannot access image-configuration for non-local image", image.to_string());
 	const Global* imageConfig = method.findGlobal(ImageType::toImageConfigurationName(image.local->name));
@@ -106,7 +64,13 @@ InstructionWalker periphery::insertReadTMU(Method& method, InstructionWalker it,
 		it.emplace(new intermediate::MoveOperation(TMU_COORD_T_REGISTER, yCoord));
 		it.nextInBlock();
 	}
-	//TODO for 1D-images, we only have an x-coordinate. But if we only write the TMU_S register, general TMU lookup is used?!
+	else
+	{
+		//for 1D-images, we only have an x-coordinate, but if we only write the TMU_S register, general TMU lookup is used!
+		//so we write a dummy y-coordinate with a value of zero, to select the first row
+		it.emplace(new intermediate::MoveOperation(TMU_COORD_T_REGISTER, INT_ZERO));
+		it.nextInBlock();
+	}
 	it.emplace(new intermediate::MoveOperation(TMU_COORD_S_REGISTER, xCoord));
 	it.nextInBlock();
 	// 4. trigger loadtmu

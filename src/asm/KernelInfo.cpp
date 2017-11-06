@@ -59,6 +59,11 @@ std::string ParamInfo::to_string() const
 			((typeName) + " ") + (name + " (") + (std::to_string(getSize()) + " B, ") + std::to_string(getElements()) + " items)";
 }
 
+KernelInfo::KernelInfo(const std::size_t& numParameters) : Bitfield(0), workGroupSize(0)
+{
+	parameters.reserve(numParameters);
+}
+
 uint8_t KernelInfo::write(std::ostream& stream, const OutputMode mode) const
 {
     std::size_t numWords = 0;
@@ -106,11 +111,10 @@ static std::string getMetaData(const std::map<MetaDataType, std::vector<std::str
 
 KernelInfo qpu_asm::getKernelInfos(const Method& method, const std::size_t initialOffset, const std::size_t numInstructions)
 {
-    KernelInfo info;
+    KernelInfo info(method.parameters.size());
     info.setOffset(initialOffset);
     info.setLength(numInstructions);
     info.setName(method.name[0] == '@' ? method.name.substr(1) : method.name);
-    //XXX info.parameters.reserve(method.parameters.size());
     info.workGroupSize = 0;
     if(method.metaData.find(MetaDataType::WORK_GROUP_SIZES) != method.metaData.end())
     {

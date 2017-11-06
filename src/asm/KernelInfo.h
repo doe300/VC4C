@@ -69,6 +69,9 @@ namespace vc4c
 		class KernelInfo : private Bitfield<uint64_t>
 		{
 		public:
+
+			KernelInfo(const std::size_t& numParameters);
+
 			//offset in multiple of 64-bit
 			BITFIELD_ENTRY(Offset, uint16_t, 0, Short)
 			//number of 64-bit instructions

@@ -508,11 +508,10 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             op->opCode = "shr";
             op->setArgument(1, Value(Literal(static_cast<int64_t>(std::log2(arg1.literal.integer))), arg1.type));
         }
-//        else if(arg1.hasType(ValueType::LITERAL))
-//        {
-//            //TODO replace with multiplication and shift (only if no overflow!)
-//            //http://forums.parallax.com/discussion/114807/fast-faster-fastest-code-integer-division
-//        }
+        //TODO for constant numerators, we could check if a 8 or 16-bit division is enough. Extra handling required for d > n?
+		//TODO for constant denominator, replace with multiplication and shift (only if multiplication does not overflow!)
+		//see: http://forums.parallax.com/discussion/114807/fast-faster-fastest-code-integer-division
+		//and: http://www.hackersdelight.org/hdcodetxt/magic.c.txt
         else
         {
             it = intrinsifyUnsignedIntegerDivision(method, it, *op);
@@ -705,7 +704,6 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     else if(op->opCode.compare("fptosi") == 0)
     {
         //just surgical modification
-    	//TODO truncate to type?
         op->opCode = "ftoi";
     }
     //float to unsigned integer

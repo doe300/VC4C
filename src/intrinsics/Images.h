@@ -110,9 +110,6 @@ namespace vc4c
 
 		InstructionWalker intrinsifyImageFunction(InstructionWalker it, Method& method);
 
-		//TODO rewrite all queries to TMU call
-		//TODO VC4CLStdLib: rewrite all image-queries to use float-coordinate format with ranges [0, 1]
-
 		InstructionWalker insertQueryChannelDataType(InstructionWalker it, Method& method, const Value& image, const Value& dest);
 		InstructionWalker insertQueryChannelOrder(InstructionWalker it, Method& method, const Value& image, const Value& dest);
 		InstructionWalker insertQueryMeasurements(InstructionWalker it, Method& method, const Value& image, const Value& dest);

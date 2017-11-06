@@ -12,16 +12,18 @@
 using namespace vc4c;
 using namespace vc4c::intermediate;
 
-static constexpr unsigned IMAGE_CONFIG_NUM_UNIFORMS {4};
+static constexpr unsigned IMAGE_CONFIG_NUM_UNIFORMS {5};
 
 //The first entry is the base texture setup
 const Value IMAGE_CONFIG_BASE_OFFSET(INT_ZERO);
 //The second entry is the texture access setup
 const Value IMAGE_CONFIG_ACCESS_OFFSET(Literal(static_cast<uint64_t>(sizeof(unsigned))), TYPE_INT32);
 //The third entry is the extended texture setup (e.g. cube map, child images, etc.)
-const Value IMAGE_CONFIG_EXTENDED_OFFSET(Literal(2 * static_cast<uint64_t>(sizeof(unsigned))), TYPE_INT32);
+const Value IMAGE_CONFIG_CHILD_DIMENSION_OFFSET(Literal(2 * static_cast<uint64_t>(sizeof(unsigned))), TYPE_INT32);
+//The forth entry is the second extended texture setup (e.g. child image offsets)
+const Value IMAGE_CONFIG_CHILD_OFFSET_OFFSET(Literal(3 * static_cast<uint64_t>(sizeof(unsigned))), TYPE_INT32);
 //The forth entry is the original OpenCL image- and channel-type configuration
-const Value IMAGE_CONFIG_CHANNEL_OFFSET(Literal(3 * static_cast<uint64_t>(sizeof(unsigned))), TYPE_INT32);
+const Value IMAGE_CONFIG_CHANNEL_OFFSET(Literal(4 * static_cast<uint64_t>(sizeof(unsigned))), TYPE_INT32);
 
 Global* intermediate::reserveImageConfiguration(Module& module, const Value& image)
 {
