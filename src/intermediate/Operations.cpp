@@ -14,14 +14,26 @@
 using namespace vc4c;
 using namespace vc4c::intermediate;
 
+Operation::Operation(const OpCode& opCode, const Value& dest, const Value& arg0, const ConditionCode cond, const SetFlag setFlags) : Operation(opCode.name, dest, arg0, cond, setFlags)
+{
+	if(opCode.numOperands != 1)
+		throw CompilationError(CompilationStep::GENERAL, "Passing a single argument to a non-unary operation", opCode.name);
+}
+
+Operation::Operation(const OpCode& opCode, const Value& dest, const Value& arg0, const Value& arg1, const ConditionCode cond, const SetFlag setFlags) : Operation(opCode.name, dest, arg0, arg1, cond, setFlags)
+{
+	if(opCode.numOperands != 2)
+		throw CompilationError(CompilationStep::GENERAL, "Passing two arguments to a non-binary operation", opCode.name);
+}
+
 Operation::Operation(const std::string& opCode, const Value& dest, const Value& arg0, const ConditionCode cond, const SetFlag setFlags) :
-IntermediateInstruction(dest, cond, setFlags), opCode(opCode), parent(nullptr)
+IntermediateInstruction(dest, cond, setFlags), op(OpCode::findOpCode(opCode)), opCode(opCode), parent(nullptr)
 {
 	setArgument(0, arg0);
 }
 
 Operation::Operation(const std::string& opCode, const Value& dest, const Value& arg0, const Value& arg1, const ConditionCode cond, const SetFlag setFlags) :
-IntermediateInstruction(dest, cond, setFlags), opCode(opCode), parent(nullptr)
+IntermediateInstruction(dest, cond, setFlags), op(OpCode::findOpCode(opCode)), opCode(opCode), parent(nullptr)
 {
 	setArgument(0, arg0);
 	setArgument(1, arg1);
@@ -111,7 +123,6 @@ static std::pair<Register, Optional<SmallImmediate>> getInputValue(const Value& 
 
 qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
-    std::pair<OpAdd, OpMul> opCodes = toOpCode(opCode);
     const Register outReg = getOutput().get().hasType(ValueType::LOCAL) ? registerMapping.at(getOutput().get().local) : getOutput().get().reg;
 
     auto input0 = getInputValue(getFirstArg(), registerMapping, this);
@@ -122,11 +133,11 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
         else if (has_flag(input0.first.file, RegisterFile::PHYSICAL_ANY))
             input0.first.file = RegisterFile::PHYSICAL_A;
     }
-    const bool writeSwap = (opCodes.first != OPADD_NOP && outReg.file == RegisterFile::PHYSICAL_B) ||
-            (opCodes.second != OPMUL_NOP && outReg.file == RegisterFile::PHYSICAL_A);
+    //FIXME won't work with v8adds, need to fix to one ALU
+    const bool writeSwap = (op.runsOnAddALU() && outReg.file == RegisterFile::PHYSICAL_B) || (op.runsOnMulALU() && outReg.file == RegisterFile::PHYSICAL_A);
 
-    const bool isAddALU = opCodes.first != OPADD_NOP;
-    const bool isMulALU = opCodes.second != OPMUL_NOP;
+	const bool isAddALU = op.runsOnAddALU();
+    const bool isMulALU = op.runsOnMulALU();
     const WriteSwap swap = writeSwap ? WriteSwap::SWAP : WriteSwap::DONT_SWAP;
 
     if (getSecondArg()) {
@@ -156,12 +167,12 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
 
             if (isAddALU) {
                 return new qpu_asm::ALUInstruction(unpackMode, packMode, conditional, COND_NEVER, setFlags, swap,
-                                          outReg.num, REG_NOP.num, OPMUL_NOP, opCodes.first, regA.num, imm,
+                                          outReg.num, REG_NOP.num, OP_NOP, op, regA.num, imm,
                                           inMux0, inMux1, MUTEX_NONE, MUTEX_NONE);
             }
             else if (isMulALU) {
                 return new qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap,
-                                          REG_NOP.num, outReg.num, opCodes.second, OPADD_NOP, regA.num, imm,
+                                          REG_NOP.num, outReg.num, op, OP_NOP, regA.num, imm,
                                           MUTEX_NONE, MUTEX_NONE, inMux0, inMux1);
             }
             throw CompilationError(CompilationStep::CODE_GENERATION, "No instruction set", to_string());
@@ -184,14 +195,14 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
             }
             if (isAddALU) {
                 return new qpu_asm::ALUInstruction(signal, unpackMode, packMode, conditional, COND_NEVER, setFlags, swap,
-                                          outReg.num, REG_NOP.num, OPMUL_NOP, opCodes.first,
+                                          outReg.num, REG_NOP.num, OP_NOP, op,
                                           getRegister(RegisterFile::PHYSICAL_A, input0.first, input1.first, this).num,
                                           getRegister(RegisterFile::PHYSICAL_B, input0.first, input1.first, this).num,
                                           inMux0, inMux1, MUTEX_NONE, MUTEX_NONE);
             }
             else if (isMulALU) {
                 return new qpu_asm::ALUInstruction(signal, unpackMode, packMode, COND_NEVER, conditional, setFlags, swap,
-                                          REG_NOP.num, outReg.num, opCodes.second, OPADD_NOP,
+                                          REG_NOP.num, outReg.num, op, OP_NOP,
                                           getRegister(RegisterFile::PHYSICAL_A, input0.first, input1.first, this).num,
                                           getRegister(RegisterFile::PHYSICAL_B, input0.first, input1.first, this).num,
                                           MUTEX_NONE, MUTEX_NONE, inMux0, inMux1);
@@ -214,26 +225,26 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
         	if(isAddALU)
         	{
         		return new qpu_asm::ALUInstruction(unpackMode, packMode, conditional, COND_NEVER, setFlags, swap,
-        				outReg.num, REG_NOP.num, OPMUL_NOP, opCodes.first, REG_NOP.num, imm, inMux0, MUTEX_NONE, MUTEX_NONE, MUTEX_NONE);
+        				outReg.num, REG_NOP.num, OP_NOP, op, REG_NOP.num, imm, inMux0, MUTEX_NONE, MUTEX_NONE, MUTEX_NONE);
         	}
         	else if(isMulALU)
         	{
         		return new qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap,
-						REG_NOP.num, outReg.num, opCodes.second, OPADD_NOP, REG_NOP.num, imm, MUTEX_NONE, MUTEX_NONE, inMux0, MUTEX_NONE);
+						REG_NOP.num, outReg.num, op, OP_NOP, REG_NOP.num, imm, MUTEX_NONE, MUTEX_NONE, inMux0, MUTEX_NONE);
         	}
         }
         else
         {
 			if (isAddALU) {
 				return new qpu_asm::ALUInstruction(signal, unpackMode, packMode, conditional, COND_NEVER, setFlags, swap,
-										  outReg.num, REG_NOP.num, OPMUL_NOP, opCodes.first,
+										  outReg.num, REG_NOP.num, OP_NOP, op,
 										  getRegister(RegisterFile::PHYSICAL_A, input0.first, REG_NOP, this).num,
 										  getRegister(RegisterFile::PHYSICAL_B, input0.first, REG_NOP, this).num,
 										  inMux0, MUTEX_NONE, MUTEX_NONE, MUTEX_NONE);
 			}
 			else if (isMulALU) {
 				return new qpu_asm::ALUInstruction(signal, unpackMode, packMode, COND_NEVER, conditional, setFlags, swap,
-										  REG_NOP.num, outReg.num, opCodes.second, OPADD_NOP,
+										  REG_NOP.num, outReg.num, op, OP_NOP,
 										  getRegister(RegisterFile::PHYSICAL_A, input0.first, REG_NOP, this).num,
 										  getRegister(RegisterFile::PHYSICAL_B, input0.first, REG_NOP, this).num,
 										  MUTEX_NONE, MUTEX_NONE, inMux0, MUTEX_NONE);
@@ -245,17 +256,10 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
 
 bool Operation::mapsToASMInstruction() const
 {
-	auto pair = toOpCode(opCode);
-	unsigned numOperands = 1;
-	if(pair.first != OPADD_NOP)
-		numOperands = pair.first.numOperands;
-	else
-		numOperands = pair.second.numOperands;
-
 	//this instruction is not mapped to an ASM instruction, if either of the operands is undefined, since then the result is undefined too
 	if(getFirstArg().isUndefined())
 		return false;
-	if(numOperands > 1 && getSecondArg().get().isUndefined())
+	if(op.numOperands > 1 && getSecondArg().get().isUndefined())
 		return false;
 	return true;
 }
@@ -282,116 +286,121 @@ Optional<Value> Operation::precalculate(const std::size_t numIterations) const
     	if(!arg1.hasValue)
     		return NO_VALUE;
     }
-    std::pair<OpAdd, OpMul> opCodes = toOpCode(opCode);
     const Literal first = arg0.get().literal;
     const Literal second = arg1.hasValue ? arg1.get().literal : Literal(static_cast<int64_t>(0));
     bool firstInt = getFirstArg().literal.type == LiteralType::BOOL || getFirstArg().literal.type == LiteralType::INTEGER;
     bool secondInt = getSecondArg() && (getSecondArg().get().literal.type == LiteralType::BOOL || getSecondArg().get().literal.type == LiteralType::INTEGER);
-    switch (opCodes.first.opCode) {
-    case OPADD_ADD.opCode:
+    switch (op.opAdd) {
+    case OP_ADD.opAdd:
         if (firstInt && secondInt)
             return packMode.pack(Value(Literal(first.integer + second.integer), getFirstArg().type));
         return NO_VALUE;
-    case OPADD_AND.opCode:
+    case OP_AND.opAdd:
         if (firstInt && secondInt)
             return packMode.pack(Value(Literal(first.integer & second.integer), getFirstArg().type));
         return NO_VALUE;
-    case OPADD_ASR.opCode:
+    case OP_ASR.opAdd:
         return NO_VALUE;
-    case OPADD_CLZ.opCode:
+    case OP_CLZ.opAdd:
         return NO_VALUE;
-    case OPADD_FADD.opCode:
+    case OP_FADD.opAdd:
         if (!firstInt && !secondInt)
             return packMode.pack(Value(Literal(first.real() + second.real()), getFirstArg().type));
         return NO_VALUE;
-    case OPADD_FMAX.opCode:
+    case OP_FMAX.opAdd:
         if (!firstInt && !secondInt)
             return packMode.pack(Value(Literal(std::max(first.real(), second.real())), getFirstArg().type));
         return NO_VALUE;
-    case OPADD_FMAXABS.opCode:
+    case OP_FMAXABS.opAdd:
         if (!firstInt && !secondInt)
             return packMode.pack(Value(Literal(std::max(std::abs(first.real()), std::abs(second.real()))), getFirstArg().type));
         return NO_VALUE;
-    case OPADD_FMIN.opCode:
+    case OP_FMIN.opAdd:
         if (!firstInt && !secondInt)
             return packMode.pack(Value(Literal(std::min(first.real(), second.real())), getFirstArg().type));
         return NO_VALUE;
-    case OPADD_FMINABS.opCode:
+    case OP_FMINABS.opAdd:
         if (!firstInt && !secondInt)
             return packMode.pack(Value(Literal(std::min(std::abs(first.real()), std::abs(second.real()))), getFirstArg().type));
         return NO_VALUE;
-    case OPADD_FSUB.opCode:
+    case OP_FSUB.opAdd:
         if (!firstInt && !secondInt)
             return packMode.pack(Value(Literal(first.real() - second.real()), getFirstArg().type));
         return NO_VALUE;
-    case OPADD_FTOI.opCode:
+    case OP_FTOI.opAdd:
         if (!firstInt)
             return packMode.pack(Value(Literal(static_cast<int64_t>(first.real())), getFirstArg().type));
         return NO_VALUE;
-    case OPADD_ITOF.opCode:
+    case OP_ITOF.opAdd:
         if (firstInt)
             return packMode.pack(Value(Literal(static_cast<double>(first.integer)), getFirstArg().type));
         return NO_VALUE;
-    case OPADD_MAX.opCode:
+    case OP_MAX.opAdd:
         if (firstInt && secondInt)
             return packMode.pack(Value(Literal(std::max(first.integer, second.integer)), getFirstArg().type));
         return NO_VALUE;
-    case OPADD_MIN.opCode:
+    case OP_MIN.opAdd:
         if (firstInt && secondInt)
             return packMode.pack(Value(Literal(std::min(first.integer, second.integer)), getFirstArg().type));
         return NO_VALUE;
-    case OPADD_NOT.opCode:
+    case OP_NOT.opAdd:
         if (firstInt)
             return packMode.pack(Value(Literal(~first.integer), getFirstArg().type));
         return NO_VALUE;
-    case OPADD_OR.opCode:
+    case OP_OR.opAdd:
         if (firstInt && secondInt)
             return packMode.pack(Value(Literal(first.integer | second.integer), getFirstArg().type));
         return NO_VALUE;
-    case OPADD_ROR.opCode:
+    case OP_ROR.opAdd:
         return NO_VALUE;
-    case OPADD_SHL.opCode:
+    case OP_SHL.opAdd:
         if (firstInt && secondInt)
             return packMode.pack(Value(Literal(first.integer << second.integer), getFirstArg().type));
         return NO_VALUE;
-    case OPADD_SHR.opCode:
+    case OP_SHR.opAdd:
         if (firstInt && secondInt)
             return packMode.pack(Value(Literal(first.integer >> second.integer), getFirstArg().type));
         return NO_VALUE;
-    case OPADD_SUB.opCode:
+    case OP_SUB.opAdd:
         if (firstInt && secondInt)
             return packMode.pack(Value(Literal(first.integer - second.integer), getFirstArg().type));
         return NO_VALUE;
-    case OPADD_V8ADDS.opCode:
+    case OP_V8ADDS.opAdd:
         return NO_VALUE;
-    case OPADD_V8SUBS.opCode:
+    case OP_V8SUBS.opAdd:
         return NO_VALUE;
-    case OPADD_XOR.opCode:
+    case OP_XOR.opAdd:
         if (firstInt && secondInt)
             return packMode.pack(Value(Literal(first.integer ^ second.integer), getFirstArg().type));
         return NO_VALUE;
     }
-    switch (opCodes.second.opCode) {
-    case OPMUL_FMUL.opCode:
+    switch (op.opMul) {
+    case OP_FMUL.opMul:
         if (!firstInt && !secondInt)
             return packMode.pack(Value(Literal(first.real() * second.real()), getFirstArg().type));
         return NO_VALUE;
-    case OPMUL_MUL24.opCode:
+    case OP_MUL24.opMul:
         if (firstInt && secondInt)
             return packMode.pack(Value(Literal((first.integer & 0xFFFFFF) * (second.integer & 0xFFFFFF)), getFirstArg().type));
         return NO_VALUE;
-    case OPMUL_V8ADDS.opCode:
+    case OP_V8ADDS.opMul:
         return NO_VALUE;
-    case OPMUL_V8MAX.opCode:
+    case OP_V8MAX.opMul:
         return NO_VALUE;
-    case OPMUL_V8MIN.opCode:
+    case OP_V8MIN.opMul:
         return NO_VALUE;
-    case OPMUL_V8MULD.opCode:
+    case OP_V8MULD.opMul:
         return NO_VALUE;
-    case OPMUL_V8SUBS.opCode:
+    case OP_V8SUBS.opMul:
         return NO_VALUE;
     }
     return NO_VALUE;
+}
+
+void Operation::setOpCode(const OpCode& op)
+{
+	const_cast<OpCode&>(this->op) = op;
+	const_cast<std::string&>(this->opCode) = op.name;
 }
 
 MoveOperation::MoveOperation(const Value& dest, const Value& arg, const ConditionCode cond, const SetFlag setFlags) :
@@ -425,19 +434,21 @@ qpu_asm::Instruction* MoveOperation::convertToAsm(const FastMap<const Local*, Re
     return op.convertToAsm(registerMapping, labelMapping, instructionIndex);
 }
 
-Operation* MoveOperation::combineWith(const std::string& otherOpCode) const
+Operation* MoveOperation::combineWith(const OpCode& otherOpCode) const
 {
-    const auto opCodes = toOpCode(otherOpCode);
+	if(otherOpCode == OP_NOP)
+		throw CompilationError(CompilationStep::GENERAL, "Cannot combine move-operation with operation without a valid ALU instruction!");
+    //TODO how to handle other op is v8adds?
     Operation* op = nullptr;
-    if (opCodes.second != OPMUL_NOP)
+    if (otherOpCode.runsOnMulALU())
     {
         //use ADD ALU
-        op = new Operation("or", getOutput(), getSource(), getSource(), conditional, setFlags);
+        op = new Operation(OP_OR, getOutput(), getSource(), getSource(), conditional, setFlags);
     }
-    else if (opCodes.first != OPADD_NOP)
+    else if (otherOpCode.runsOnAddALU())
     {
         //use MUL ALU
-		op = new Operation("v8min", getOutput(), getSource(), getSource(), conditional, setFlags);
+		op = new Operation(OP_V8MIN, getOutput(), getSource(), getSource(), conditional, setFlags);
     }
     if (op != nullptr)
     {
@@ -510,19 +521,19 @@ qpu_asm::Instruction* VectorRotation::convertToAsm(const FastMap<const Local*, R
     if (getOffset().hasType(ValueType::LITERAL)) {
         SmallImmediate imm = static_cast<SmallImmediate> (VECTOR_ROTATE_R5 + static_cast<unsigned>(rotationOffset.second.get()));
         return new qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap,
-                                  REG_NOP.num, outReg.num, OPMUL_V8MIN, OPADD_NOP,
+                                  REG_NOP.num, outReg.num, OP_V8MIN, OP_NOP,
                                   REG_NOP.num, imm, MUTEX_NONE, MUTEX_NONE, inMux, inMux);
     }
     else if(getOffset().hasType(ValueType::SMALL_IMMEDIATE))
     {
     	return new qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap,
-    	                                  REG_NOP.num, outReg.num, OPMUL_V8MIN, OPADD_NOP,
+    	                                  REG_NOP.num, outReg.num, OP_V8MIN, OP_NOP,
     	                                  REG_NOP.num, getOffset().immediate, MUTEX_NONE, MUTEX_NONE, inMux, inMux);
     }
     else
         //use offset from r5
         return new qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap,
-                                  REG_NOP.num, outReg.num, OPMUL_V8MIN, OPADD_NOP,
+                                  REG_NOP.num, outReg.num, OP_V8MIN, OP_NOP,
                                   REG_NOP.num, VECTOR_ROTATE_R5, MUTEX_NONE, MUTEX_NONE, inMux, inMux);
 }
 
@@ -567,7 +578,7 @@ IntermediateInstruction* Nop::copyFor(Method& method, const std::string& localPr
 qpu_asm::Instruction* Nop::convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
     return new qpu_asm::ALUInstruction(signal, UNPACK_NOP, PACK_NOP, COND_NEVER, COND_NEVER, SetFlag::DONT_SET, WriteSwap::DONT_SWAP,
-                              REG_NOP.num, REG_NOP.num, OPMUL_NOP, OPADD_NOP, REG_NOP.num, REG_NOP.num, InputMutex::ACC0, InputMutex::ACC0, InputMutex::ACC0, InputMutex::ACC0);
+                              REG_NOP.num, REG_NOP.num, OP_NOP, OP_NOP, REG_NOP.num, REG_NOP.num, InputMutex::ACC0, InputMutex::ACC0, InputMutex::ACC0, InputMutex::ACC0);
 }
 
 Comparison::Comparison(const std::string& comp, const Value& dest, const Value& val0, const Value& val1) :
@@ -636,9 +647,9 @@ std::string CombinedOperation::to_string() const
 
 qpu_asm::Instruction* CombinedOperation::convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
-    const auto op1Codes = toOpCode(getFirstOp()->opCode);
-    const IntermediateInstruction* addOp = op1Codes.first != OPADD_NOP ? op1.get() : op2.get();
-    const IntermediateInstruction* mulOp = op1Codes.second != OPMUL_NOP ? op1.get() : op2.get();
+    //TODO handle v8adds in first op (could be mapped to MUL ALU)
+    const IntermediateInstruction* addOp = getFirstOp()->op.runsOnAddALU() ? op1.get() : op2.get();
+    const IntermediateInstruction* mulOp = !getFirstOp()->op.runsOnAddALU() ? op1.get() : op2.get();
 
     if(addOp != nullptr && mulOp != nullptr && addOp->getOutput().hasValue && mulOp->getOutput().hasValue && addOp->getOutput().get() != mulOp->getOutput().get())
     {

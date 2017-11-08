@@ -346,71 +346,58 @@ std::string vc4c::toString(const SetFlag flag)
 	throw CompilationError(CompilationStep::CODE_GENERATION, "Unsupported set-flags flag", std::to_string(static_cast<unsigned>(flag)));
 }
 
-static std::vector<OpAdd> opAdds = { OPADD_NOP, OPADD_FADD, OPADD_FSUB, OPADD_FMIN, OPADD_FMAX, OPADD_FMINABS, OPADD_FMAXABS, OPADD_FTOI, OPADD_ITOF,
-		OPADD_NOP, OPADD_NOP, OPADD_NOP,
-		OPADD_ADD, OPADD_SUB, OPADD_SHR, OPADD_ASR, OPADD_ROR, OPADD_SHL, OPADD_MIN, OPADD_MAX, OPADD_AND, OPADD_OR, OPADD_XOR, OPADD_NOT, OPADD_CLZ,
-		OPADD_NOP, OPADD_NOP, OPADD_NOP, OPADD_NOP, OPADD_NOP,
-		OPADD_V8ADDS, OPADD_V8SUBS
+bool OpCode::operator==(const OpCode& right) const
+{
+	return opAdd == right.opAdd && opMul == right.opMul;
+}
+
+bool OpCode::operator!=(const OpCode& right) const
+{
+	return opAdd != right.opAdd || opMul != right.opMul;
+}
+
+bool OpCode::operator<(const OpCode& right) const
+{
+	return opAdd < right.opAdd || opMul < right.opMul;
+}
+
+const OpCode& OpCode::toOpCode(const std::string& name)
+{
+	const OpCode& code = findOpCode(name);
+	if(code == OP_NOP && name.compare("nop") != 0)
+		throw CompilationError(CompilationStep::GENERAL, "No machine code operation for this op-code", name);
+	return code;
+}
+
+static std::vector<OpCode> opCodes = {
+		OP_ADD, OP_AND, OP_ASR, OP_CLZ, OP_FADD, OP_FMAX, OP_FMAXABS, OP_FMIN, OP_FMINABS, OP_FMUL, OP_FSUB, OP_FTOI, OP_ITOF,
+		OP_MAX, OP_MIN, OP_MUL24, OP_NOP, OP_NOT, OP_OR, OP_ROR, OP_SHL, OP_SHR, OP_SUB, OP_V8ADDS, OP_V8MAX, OP_V8MIN, OP_V8MULD, OP_V8SUBS, OP_XOR
 };
 
-OpAdd::OpAdd(const unsigned char opCode) : name(opAdds.at(opCode).name), opCode(opCode), numOperands(opAdds.at(opCode).numOperands)
+const OpCode& OpCode::toOpCode(const unsigned char opCode, const bool isMulALU)
 {
-}
-
-bool OpAdd::operator ==(const OpAdd& right) const
-{
-	return this->opCode == right.opCode;
-}
-
-bool OpAdd::operator !=(const OpAdd& right) const
-{
-	return this->opCode != right.opCode;
-}
-
-OpAdd::operator unsigned char() const
-{
-	return opCode;
-}
-
-const OpAdd& OpAdd::toOpCode(const std::string& opCode)
-{
-	for(const OpAdd& op : opAdds)
+	if(opCode == 0)
+		return OP_NOP;
+	for(const OpCode& op : opCodes)
 	{
-		if(opCode.compare(op.name) == 0)
+		if(!isMulALU && op.opAdd == opCode)
+		{
+			return op;
+		}
+		if(isMulALU && op.opMul == opCode)
 			return op;
 	}
-	throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid op-code", opCode);
+	throw CompilationError(CompilationStep::GENERAL, "No machine code operation for this op-code", std::to_string(static_cast<unsigned>(opCode)));
 }
 
-static std::vector<OpMul> opMuls = { OPMUL_NOP, OPMUL_FMUL, OPMUL_MUL24, OPMUL_V8MULD, OPMUL_V8MIN, OPMUL_V8MAX, OPMUL_V8ADDS, OPMUL_V8SUBS};
-
-OpMul::OpMul(const unsigned char opCode) : name(opMuls.at(opCode).name), opCode(opCode), numOperands(opMuls.at(opCode).numOperands)
+const OpCode& OpCode::findOpCode(const std::string& name)
 {
-}
-
-bool OpMul::operator ==(const OpMul& right) const
-{
-	return this->opCode == right.opCode;
-}
-
-bool OpMul::operator !=(const OpMul& right) const
-{
-	return this->opCode != right.opCode;
-}
-
-OpMul::operator unsigned char() const
-{
-	return opCode;
-}
-
-const OpMul& OpMul::toOpCode(const std::string& opCode)
-{
-	for(const OpMul& op : opMuls)
+	for(const OpCode& op : opCodes)
 	{
-		if(opCode.compare(op.name) == 0)
+		if(name.compare(op.name) == 0)
 			return op;
 	}
-	throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid op-code", opCode);
+	return OP_NOP;
 }
 
 std::string vc4c::toString(const BranchCond cond)

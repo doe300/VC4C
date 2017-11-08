@@ -107,7 +107,6 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 	intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
 	if(op != nullptr)
 	{
-		const auto opCodes = toOpCode(op->opCode);
 		if(!op->hasSideEffects())
 		{
 			//writes into the input -> can be removed, if it doesn't do anything
@@ -116,10 +115,8 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 				if(op->getSecondArg() && op->getSecondArg().get().hasType(ValueType::LITERAL))
 				{
 					//check whether second-arg does nothing
-					if(op->getSecondArg().get().hasLiteral(Literal(static_cast<int64_t>(0))) && (opCodes.first == OPADD_ADD || opCodes.first == OPADD_ASR
-					   || opCodes.first == OPADD_OR || opCodes.first == OPADD_ROR
-					   || opCodes.first == OPADD_SHL || opCodes.first == OPADD_SHR
-					   || opCodes.first == OPADD_SUB || opCodes.first == OPADD_XOR))
+					if(op->getSecondArg().get().hasLiteral(Literal(static_cast<int64_t>(0))) && (op->op == OP_ADD || op->op == OP_ASR
+					   || op->op == OP_OR || op->op == OP_ROR || op->op == OP_SHL || op->op == OP_SHR || op->op == OP_SUB || op->op == OP_XOR))
 					{
 						//any of these instructions do exactly nothing if the second argument is zero
 						logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
@@ -127,7 +124,7 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 						//don't skip next instruction
 						it.previousInBlock();
 					}
-					else if(op->getSecondArg().get().hasLiteral(Literal(0.0)) && (opCodes.first == OPADD_FADD || opCodes.first == OPADD_FSUB))
+					else if(op->getSecondArg().get().hasLiteral(Literal(0.0)) && (op->op == OP_FADD || op->op == OP_FSUB))
 					{
 						//any of these instructions do exactly nothing if the second argument is zero
 						logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
@@ -135,7 +132,7 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 						//don't skip next instruction
 						it.previousInBlock();
 					}
-					else if(op->getSecondArg().get().hasLiteral(Literal(static_cast<int64_t>(0))) && (opCodes.second == OPMUL_MUL24))
+					else if(op->getSecondArg().get().hasLiteral(Literal(static_cast<int64_t>(0))) && (op->op == OP_MUL24))
 					{
 						//any of these instructions do exactly nothing if the second argument is one
 						logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
@@ -143,7 +140,7 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 						//don't skip next instruction
 						it.previousInBlock();
 					}
-					else if(op->getSecondArg().get().hasLiteral(Literal(static_cast<uint64_t>(0xFFFFFFFF))) && (opCodes.first == OPADD_AND))
+					else if(op->getSecondArg().get().hasLiteral(Literal(static_cast<uint64_t>(0xFFFFFFFF))) && (op->op == OP_AND))
 					{
 						//and all bits set doesn't do anything useful
 						logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
@@ -159,9 +156,8 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 				if(op->getFirstArg().hasType(ValueType::LITERAL))
 				{
 					//check whether first-arg does nothing
-					if(op->getFirstArg().hasLiteral(Literal(static_cast<int64_t>(0))) && (opCodes.first == OPADD_ADD || opCodes.first == OPADD_ASR
-					   || opCodes.first == OPADD_OR || opCodes.first == OPADD_ROR
-					   || opCodes.first == OPADD_SHL || opCodes.first == OPADD_SHR || opCodes.first == OPADD_XOR))
+					if(op->getFirstArg().hasLiteral(Literal(static_cast<int64_t>(0))) && (op->op == OP_ADD || op->op == OP_ASR
+					   || op->op == OP_OR || op->op == OP_ROR || op->op == OP_SHL || op->op == OP_SHR || op->op == OP_XOR))
 					{
 						//any of these instructions do exactly nothing if the first argument is zero
 						logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
@@ -169,7 +165,7 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 						//don't skip next instruction
 						it.previousInBlock();
 					}
-					else if(op->getFirstArg().hasLiteral(Literal(0.0)) && (opCodes.first == OPADD_FADD))
+					else if(op->getFirstArg().hasLiteral(Literal(0.0)) && (op->op == OP_FADD))
 					{
 						//any of these instructions do exactly nothing if the first argument is zero
 						logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
@@ -177,7 +173,7 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 						//don't skip next instruction
 						it.previousInBlock();
 					}
-					else if(op->getFirstArg().hasLiteral(Literal(static_cast<int64_t>(0))) && (opCodes.second == OPMUL_MUL24))
+					else if(op->getFirstArg().hasLiteral(Literal(static_cast<int64_t>(0))) && (op->op == OP_MUL24))
 					{
 						//any of these instructions do exactly nothing if the first argument is one
 						logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
@@ -185,7 +181,7 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 						//don't skip next instruction
 						it.previousInBlock();
 					}
-					else if(op->getFirstArg().hasLiteral(Literal(static_cast<uint64_t>(0xFFFFFFFF))) && (opCodes.first == OPADD_AND))
+					else if(op->getFirstArg().hasLiteral(Literal(static_cast<uint64_t>(0xFFFFFFFF))) && (op->op == OP_AND))
 					{
 						//and all bits set doesn't do anything useful
 						logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
@@ -200,22 +196,21 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 				if(op->getSecondArg() && op->getSecondArg().get().hasType(ValueType::LITERAL))
 				{
 					//check whether second argument does nothing
-					if((op->getSecondArg().get().hasLiteral(Literal(static_cast<int64_t>(0))) || op->getSecondArg().get().hasLiteral(Literal(0.0))) && (opCodes.first == OPADD_ADD || opCodes.first == OPADD_ASR
-					   || opCodes.first == OPADD_OR || opCodes.first == OPADD_ROR || opCodes.first == OPADD_SHL
-					   || opCodes.first == OPADD_SHR || opCodes.first == OPADD_SUB || opCodes.first == OPADD_XOR
-					   || opCodes.first == OPADD_FADD || opCodes.first == OPADD_FSUB))
+					if((op->getSecondArg().get().hasLiteral(Literal(static_cast<int64_t>(0))) || op->getSecondArg().get().hasLiteral(Literal(0.0))) && (op->op == OP_ADD || op->op == OP_ASR
+					   || op->op == OP_OR || op->op == OP_ROR || op->op == OP_SHL || op->op == OP_SHR || op->op == OP_SUB || op->op == OP_XOR
+					   || op->op == OP_FADD || op->op == OP_FSUB))
 					{
 						//any of these instructions do exactly nothing if the second argument is zero
 						logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
 						it.reset(new intermediate::MoveOperation(op->getOutput().get(), op->getFirstArg(), op->conditional, op->setFlags));
 					}
-					else if(op->getSecondArg().get().hasLiteral(Literal(static_cast<int64_t>(0))) && (opCodes.second == OPMUL_MUL24))
+					else if(op->getSecondArg().get().hasLiteral(Literal(static_cast<int64_t>(0))) && (op->op == OP_MUL24))
 					{
 						//any of these instructions do exactly nothing if the second argument is one
 						logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
 						it.reset(new intermediate::MoveOperation(op->getOutput().get(), op->getFirstArg(), op->conditional, op->setFlags));
 					}
-					else if(op->getSecondArg().get().hasLiteral(Literal(static_cast<uint64_t>(0xFFFFFFFF))) && (opCodes.first == OPADD_AND))
+					else if(op->getSecondArg().get().hasLiteral(Literal(static_cast<uint64_t>(0xFFFFFFFF))) && (op->op == OP_AND))
 					{
 						//and all bits set doesn't do anything useful
 						logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
@@ -225,21 +220,20 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 				else if(op->getSecondArg() && op->getFirstArg().hasType(ValueType::LITERAL))
 				{
 					//check whether first argument does nothing
-					if((op->getFirstArg().hasLiteral(Literal(static_cast<int64_t>(0))) || op->getFirstArg().hasLiteral(Literal(0.0))) && (opCodes.first == OPADD_ADD || opCodes.first == OPADD_ASR
-					   || opCodes.first == OPADD_OR || opCodes.first == OPADD_ROR || opCodes.first == OPADD_FADD
-					   || opCodes.first == OPADD_SHL || opCodes.first == OPADD_SHR || opCodes.first == OPADD_XOR))
+					if((op->getFirstArg().hasLiteral(Literal(static_cast<int64_t>(0))) || op->getFirstArg().hasLiteral(Literal(0.0))) && (op->op == OP_ADD || op->op == OP_ASR
+					   || op->op == OP_OR || op->op == OP_ROR || op->op == OP_FADD || op->op == OP_SHL || op->op == OP_SHR || op->op == OP_XOR))
 					{
 						//any of these instructions do exactly nothing if the first argument is zero
 						logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
 						it.reset(new intermediate::MoveOperation(op->getOutput().get(), op->getSecondArg(), op->conditional, op->setFlags));
 					}
-					else if(op->getFirstArg().hasLiteral(Literal(static_cast<int64_t>(0))) && (opCodes.second == OPMUL_MUL24))
+					else if(op->getFirstArg().hasLiteral(Literal(static_cast<int64_t>(0))) && (op->op == OP_MUL24))
 					{
 						//any of these instructions do exactly nothing if the first argument is one
 						logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
 						it.reset(new intermediate::MoveOperation(op->getOutput().get(), op->getSecondArg(), op->conditional, op->setFlags));
 					}
-					else if(op->getFirstArg().hasLiteral(Literal(static_cast<uint64_t>(0xFFFFFFFF))) && (opCodes.first == OPADD_AND))
+					else if(op->getFirstArg().hasLiteral(Literal(static_cast<uint64_t>(0xFFFFFFFF))) && (op->op == OP_AND))
 					{
 						//and all bits set doesn't do anything useful
 						logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;

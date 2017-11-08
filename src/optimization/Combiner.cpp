@@ -90,11 +90,10 @@ static const std::vector<MergeCondition> mergeConditions = {
     [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool{
         if(firstOp != nullptr && secondOp != nullptr)
         {
-            const auto firstCodes = toOpCode(firstOp->opCode);
-            const auto secondCodes = toOpCode(secondOp->opCode);
-            if(firstCodes.first != OPADD_NOP && secondCodes.first != OPADD_NOP)
+            //TODO handle v8adds, can be mapped to either ALU
+            if(firstOp->op.runsOnAddALU() && secondOp->op.runsOnAddALU())
                 return false;
-            else if(firstCodes.second != OPMUL_NOP && secondCodes.second != OPMUL_NOP)
+            else if(firstOp->op.runsOnMulALU() && secondOp->op.runsOnMulALU())
                 return false;
         }
         return true;
@@ -213,9 +212,10 @@ static const std::vector<MergeCondition> mergeConditions = {
 			//if they have inverted conditions, the ADD ALU can't set the flags, the MUL ALU is supposed to
 			return true;
 		}
-        if(firstOp != nullptr && toOpCode(firstOp->opCode).second != OPMUL_NOP && firstOp->setFlags == SetFlag::SET_FLAGS)
+		//TODO handle v8adds, can be on ADD and MUL ALU
+        if(firstOp != nullptr && firstOp->op.runsOnMulALU() && firstOp->setFlags == SetFlag::SET_FLAGS)
             return false;
-        else if(secondOp != nullptr && toOpCode(secondOp->opCode).second != OPMUL_NOP && secondOp->setFlags == SetFlag::SET_FLAGS)
+        else if(secondOp != nullptr && secondOp->op.runsOnMulALU() && secondOp->setFlags == SetFlag::SET_FLAGS)
             return false;
         return true;
     },
@@ -438,7 +438,7 @@ void optimizations::combineOperations(const Module& module, Method& method, cons
 						}
 						else if(op != nullptr && nextMove != nullptr)
 						{
-							Operation* newMove = nextMove->combineWith(op->opCode);
+							Operation* newMove = nextMove->combineWith(op->op);
 							if(newMove != nullptr)
 							{
 								it.reset(new CombinedOperation(dynamic_cast<Operation*>(it.release()), newMove));
@@ -449,7 +449,7 @@ void optimizations::combineOperations(const Module& module, Method& method, cons
 						}
 						else if(move != nullptr && nextOp != nullptr)
 						{
-							Operation* newMove = move->combineWith(nextOp->opCode);
+							Operation* newMove = move->combineWith(nextOp->op);
 							if(newMove != nullptr)
 							{
 								it.reset(new CombinedOperation(newMove, dynamic_cast<Operation*>(nextIt.release())));
@@ -460,8 +460,8 @@ void optimizations::combineOperations(const Module& module, Method& method, cons
 						}
 						else if(move != nullptr && nextMove != nullptr)
 						{
-							Operation* newMove0 = move->combineWith("mul24");
-							Operation* newMove1 = nextMove->combineWith("add");
+							Operation* newMove0 = move->combineWith(OP_MUL24);
+							Operation* newMove1 = nextMove->combineWith(OP_ADD);
 							if(newMove0 != nullptr && newMove1 != nullptr)
 							{
 								it.reset(new CombinedOperation(newMove0, newMove1));
@@ -492,7 +492,7 @@ static Optional<Literal> getSourceLiteral(InstructionWalker it)
 	}
 	else if(it.has<MoveOperation>() && it.get<MoveOperation>()->getSource().hasType(ValueType::SMALL_IMMEDIATE))
 	{
-		return Literal(static_cast<int64_t>(it.get<MoveOperation>()->getSource().immediate.getIntegerValue()));
+		it.get<MoveOperation>()->getSource().immediate.toLiteral();
 	}
 	else if(it.has<Operation>())
 	{

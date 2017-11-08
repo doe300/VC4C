@@ -156,6 +156,7 @@ namespace vc4c
 		Literal& operator=(Literal&&) = default;
 
 		bool operator==(const Literal& other) const;
+		bool operator<(const Literal& other) const;
 
 		const std::string to_string() const;
 		bool isTrue() const;

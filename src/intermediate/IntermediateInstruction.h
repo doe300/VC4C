@@ -141,6 +141,9 @@ namespace vc4c
 
 		struct Operation: public IntermediateInstruction
 		{
+			Operation(const OpCode& opCode, const Value& dest, const Value& arg0, const ConditionCode cond = COND_ALWAYS, const SetFlag setFlags = SetFlag::DONT_SET);
+			Operation(const OpCode& opCode, const Value& dest, const Value& arg0, const Value& arg1, const ConditionCode cond = COND_ALWAYS, const SetFlag setFlags = SetFlag::DONT_SET);
+
 			Operation(const std::string& opCode, const Value& dest, const Value& arg0, const ConditionCode cond = COND_ALWAYS, const SetFlag setFlags = SetFlag::DONT_SET);
 			Operation(const std::string& opCode, const Value& dest, const Value& arg0, const Value& arg1, const ConditionCode cond = COND_ALWAYS, const SetFlag setFlags = SetFlag::DONT_SET);
 			virtual ~Operation();
@@ -154,7 +157,10 @@ namespace vc4c
 			const Optional<Value> getSecondArg() const;
 			Optional<Value> precalculate(const std::size_t numIterations) const override;
 
-			std::string opCode;
+			void setOpCode(const OpCode& op);
+
+			const OpCode op;
+			const std::string opCode;
 			CombinedOperation* parent;
 		};
 
@@ -197,7 +203,7 @@ namespace vc4c
 			std::string to_string() const override;
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
 			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
-			Operation* combineWith(const std::string& otherOpCode) const;
+			Operation* combineWith(const OpCode& otherOpCode) const;
 			virtual bool mapsToASMInstruction() const;
 			Optional<Value> precalculate(const std::size_t numIterations) const override;
 

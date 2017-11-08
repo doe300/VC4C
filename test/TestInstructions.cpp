@@ -40,11 +40,11 @@ void TestInstructions::testConditionCodes()
 
 	TEST_ASSERT_EQUALS(BranchCond::ALWAYS, COND_ALWAYS.toBranchCondition());
 	TEST_ASSERT_EQUALS(BranchCond::ALL_C_CLEAR, COND_CARRY_CLEAR.toBranchCondition());
-	TEST_ASSERT_EQUALS(BranchCond::ALL_C_SET, COND_CARRY_SET.toBranchCondition());
+	TEST_ASSERT_EQUALS(BranchCond::ANY_C_SET, COND_CARRY_SET.toBranchCondition());
 	TEST_ASSERT_EQUALS(BranchCond::ALL_N_CLEAR, COND_NEGATIVE_CLEAR.toBranchCondition());
-	TEST_ASSERT_EQUALS(BranchCond::ALL_N_SET, COND_NEGATIVE_SET.toBranchCondition());
+	TEST_ASSERT_EQUALS(BranchCond::ANY_N_SET, COND_NEGATIVE_SET.toBranchCondition());
 	TEST_ASSERT_EQUALS(BranchCond::ALL_Z_CLEAR, COND_ZERO_CLEAR.toBranchCondition());
-	TEST_ASSERT_EQUALS(BranchCond::ALL_Z_SET, COND_ZERO_SET.toBranchCondition());
+	TEST_ASSERT_EQUALS(BranchCond::ANY_Z_SET, COND_ZERO_SET.toBranchCondition());
 }
 
 void TestInstructions::testConstantSaturations()

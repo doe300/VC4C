@@ -384,7 +384,8 @@ static void swapComparisons(const std::string& opCode, Comparison* comp)
     Value tmp = comp->getFirstArg();
     comp->setArgument(0, comp->getSecondArg());
     comp->setArgument(1, tmp);
-    comp->opCode = opCode;
+    comp->setOpCode(OP_NOP);
+    const_cast<std::string&>(comp->opCode) = opCode;
 }
 
 static InstructionWalker intrinsifyComparison(Method& method, InstructionWalker it)
@@ -473,20 +474,20 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         else if(arg0.hasType(ValueType::LITERAL) && isPowerTwo(arg0.literal.integer))
         {
             logging::debug() << "Intrinsifying multiplication with left-shift" << logging::endl;
-            op->opCode = "shl";
+            op->setOpCode(OP_SHL);
             op->setArgument(0, arg1);
             op->setArgument(1, Value(Literal(static_cast<int64_t>(std::log2(arg0.literal.integer))), arg0.type));
         }
         else if(arg1.hasType(ValueType::LITERAL) && isPowerTwo(arg1.literal.integer))
         {
             logging::debug() << "Intrinsifying multiplication with left-shift" << logging::endl;
-            op->opCode = "shl";
+            op->setOpCode(OP_SHL);
             op->setArgument(1, Value(Literal(static_cast<int64_t>(std::log2(arg1.literal.integer))), arg1.type));
         }
         else if(std::max(arg0.type.getScalarBitCount(), arg1.type.getScalarBitCount()) <= 24)
         {
             logging::debug() << "Intrinsifying multiplication of small integers to mul24" << logging::endl;
-            op->opCode = "mul24";
+            op->setOpCode(OP_MUL24);
         }
         else
         {
@@ -505,7 +506,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         else if(arg1.hasType(ValueType::LITERAL) && isPowerTwo(arg1.literal.integer))
         {
             logging::debug() << "Intrinsifying division with right-shift" << logging::endl;
-            op->opCode = "shr";
+            op->setOpCode(OP_SHR);
             op->setArgument(1, Value(Literal(static_cast<int64_t>(std::log2(arg1.literal.integer))), arg1.type));
         }
         //TODO for constant numerators, we could check if a 8 or 16-bit division is enough. Extra handling required for d > n?
@@ -529,7 +530,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         else if(arg1.hasType(ValueType::LITERAL) && isPowerTwo(arg1.literal.integer))
         {
             logging::debug() << "Intrinsifying signed division with arithmetic right-shift" << logging::endl;
-            op->opCode = "asr";
+            op->setOpCode(OP_ASR);
             op->setArgument(1, Value(Literal(static_cast<int64_t>(std::log2(arg1.literal.integer))), arg1.type));
         }
         else
@@ -549,7 +550,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         else if(arg1.hasType(ValueType::LITERAL) && isPowerTwo(arg1.literal.integer))
         {
             logging::debug() << "Intrinsifying unsigned modulo by power of two" << logging::endl;
-            op->opCode = "and";
+            op->setOpCode(OP_AND);
             op->setArgument(1, Value(Literal(arg1.literal.integer - 1), arg1.type));
         }
         else
@@ -581,7 +582,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         else if(arg1.hasType(ValueType::LITERAL))
         {
             logging::debug() << "Intrinsifying floating division with multiplication of constant inverse" << logging::endl;
-            op->opCode = "fmul";
+            op->setOpCode(OP_FMUL);
             op->setArgument(1, Value(Literal(1.0f / arg1.literal.real()), arg1.type));
         }
         else if(has_flag(op->decoration, InstructionDecorations::ALLOW_RECIP) || has_flag(op->decoration, InstructionDecorations::FAST_MATH))
@@ -589,7 +590,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             logging::debug() << "Intrinsifying floating division with multiplication of reciprocal" << logging::endl;
             it = insertSFUCall(REG_SFU_RECIP, it, arg1, op->conditional);
             it.nextInBlock();
-            op->opCode = "fmul";
+            op->setOpCode(OP_FMUL);
             op->setArgument(1, Value(REG_SFU_OUT, op->getFirstArg().type));
         }
         else
@@ -620,7 +621,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         else if(op->getOutput().get().type.getScalarBitCount() < 32)
         {
             logging::debug() << "Intrinsifying truncate with and" << logging::endl;
-            op->opCode = "and";
+            op->setOpCode(OP_AND);
             op->setArgument(1, Value(Literal(op->getOutput().get().type.getScalarWidthMask()), TYPE_INT32));
         }
     }
@@ -648,13 +649,13 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     else if(op->opCode.compare("ashr") == 0)
     {
         //just surgical modification
-        op->opCode = "asr";
+        op->setOpCode(OP_ASR);
     }
     else if(op->opCode.compare("lshr") == 0)
     {
         //TODO only if type <= i32 and/or offset <= 32
         //just surgical modification
-        op->opCode = "shr";
+        op->setOpCode(OP_SHR);
     }
     //integer to float
     else if(op->opCode.compare("sitofp") == 0)
@@ -668,7 +669,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     		it.nextInBlock();
     	}
         //just surgical modification
-        op->opCode = "itof";
+        op->setOpCode(OP_ITOF);
         if(tmp != op->getFirstArg())
         	op->setArgument(0, tmp);
     }
@@ -682,7 +683,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             it.emplace(new Operation("and", tmp, op->getFirstArg(), Value(Literal(mask), TYPE_INT32), op->conditional));
             it.nextInBlock();
             op->setArgument(0, tmp);
-            op->opCode = "itof";
+            op->setOpCode(OP_ITOF);
         }
         else if(op->getFirstArg().type.getScalarBitCount() > 32)
         {
@@ -697,21 +698,21 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
 //            ++it;
 //            it.reset(new Operation("fadd", op->getOutput(), tmp, Value(Literal(std::pow(2, 31)), TYPE_FLOAT), COND_ZERO_CLEAR));
         	//TODO this passed OpenCL-CTS parameter_types, but what of large values (MSB set)??
-        	op->opCode = "itof";
+        	op->setOpCode(OP_ITOF);
         }
     }
     //float to integer
     else if(op->opCode.compare("fptosi") == 0)
     {
         //just surgical modification
-        op->opCode = "ftoi";
+        op->setOpCode(OP_FTOI);
     }
     //float to unsigned integer
     else if(op->opCode.compare("fptoui") == 0)
     {
         //TODO special treatment??
     	//TODO truncate to type?
-        op->opCode = "ftoi";
+        op->setOpCode(OP_FTOI);
         op->decoration = add_flag(op->decoration, InstructionDecorations::UNSIGNED_RESULT);
     }
     //sign extension

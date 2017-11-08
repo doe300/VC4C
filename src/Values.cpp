@@ -263,6 +263,11 @@ bool Literal::operator==(const Literal& other) const
     throw CompilationError(CompilationStep::GENERAL, "Unhandled literal type!");
 }
 
+bool Literal::operator<(const Literal& other) const
+{
+	return integer < other.integer;
+}
+
 const std::string Literal::to_string() const
 {
     switch(type)

@@ -164,7 +164,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
         it.emplace( new MoveOperation(out2, INT_ZERO));
         it.nextInBlock();
     }
-    op.opCode = "add";
+    op.setOpCode(OP_ADD);
     op.setArgument(0, out1);
     op.setArgument(1, out2);
     op.decoration = add_flag(op.decoration, InstructionDecorations::UNSIGNED_RESULT);
@@ -283,7 +283,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
     }
     
     //make move from original instruction
-    op.opCode = "or";
+    op.setOpCode(OP_OR);
     op.decoration = add_flag(op.decoration, InstructionDecorations::UNSIGNED_RESULT);
     if(useRemainder)
     {
@@ -385,7 +385,7 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
     //3. final step: Q = Pn * N
     op.setArgument(0, nominator);
     op.setArgument(1, P5_2);
-    op.opCode = "fmul";
+    op.setOpCode(OP_FMUL);
     
     return it;
 }

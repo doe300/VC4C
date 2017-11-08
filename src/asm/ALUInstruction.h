@@ -21,12 +21,12 @@ namespace vc4c
 			ALUInstruction();
 			ALUInstruction(const Signaling sig, const Unpack unpack, const Pack pack,
 					const ConditionCode condAdd, const ConditionCode condMul, const SetFlag sf, const WriteSwap ws,
-					const Address addOut, const Address mulOut, const OpMul mul, const OpAdd add,
+					const Address addOut, const Address mulOut, const OpCode& mul, const OpCode& add,
 					const Address addInA, const Address addInB,
 					const InputMutex muxAddA, const InputMutex muxAddB, const InputMutex muxMulA, const InputMutex muxMulB);
 			ALUInstruction(const Unpack unpack, const Pack pack,
 					const ConditionCode condAdd, const ConditionCode condMul, const SetFlag sf, const WriteSwap ws,
-					const Address addOut, const Address mulOut, const OpMul mul, const OpAdd add,
+					const Address addOut, const Address mulOut, const OpCode& mul, const OpCode& add,
 					const Address addInA, const SmallImmediate addInB,
 					const InputMutex muxAddA, const InputMutex muxAddB, const InputMutex muxMulA, const InputMutex muxMulB);
 			virtual ~ALUInstruction();
@@ -43,8 +43,8 @@ namespace vc4c
 			BITFIELD_ENTRY(AddOut, Address, 38, Sextuple)
 			BITFIELD_ENTRY(MulOut, Address, 32, Sextuple)
 
-			BITFIELD_ENTRY(Multiplication, OpMul, 29, Triple)
-			BITFIELD_ENTRY(Addition, OpAdd, 24, Quintuple)
+			BITFIELD_ENTRY(Multiplication, unsigned char, 29, Triple)
+			BITFIELD_ENTRY(Addition, unsigned char, 24, Quintuple)
 			BITFIELD_ENTRY(InputA, Address, 18, Sextuple)
 			BITFIELD_ENTRY(InputB, Address, 12, Sextuple)
 			BITFIELD_ENTRY(AddMutexA, InputMutex, 9, Triple)

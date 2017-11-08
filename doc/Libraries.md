@@ -89,6 +89,8 @@ Lists all libraries for which all OpenCL relevant test-cases run successfully.
 * [libxcam](https://github.com/01org/libxcam): image quality improvement library
 
   *NOTE: requires DRM library*
+  
+* [sycl-gtx](https://github.com/ProGTX/sycl-gtx/): open SYCL implementation
 
 
 ### Won't work
