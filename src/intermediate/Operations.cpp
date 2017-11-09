@@ -133,11 +133,22 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
         else if (has_flag(input0.first.file, RegisterFile::PHYSICAL_ANY))
             input0.first.file = RegisterFile::PHYSICAL_A;
     }
-    //FIXME won't work with v8adds, need to fix to one ALU
-    const bool writeSwap = (op.runsOnAddALU() && outReg.file == RegisterFile::PHYSICAL_B) || (op.runsOnMulALU() && outReg.file == RegisterFile::PHYSICAL_A);
 
-	const bool isAddALU = op.runsOnAddALU();
-    const bool isMulALU = op.runsOnMulALU();
+    //for instructions, which can be mapped to both ALUs, map to add ALU
+    bool writeSwap = false;
+    bool isAddALU = false;
+    bool isMulALU = false;
+    if(op.runsOnAddALU())
+    {
+    	writeSwap = outReg.file == RegisterFile::PHYSICAL_B;
+    	isAddALU = true;
+    }
+    else if(op.runsOnMulALU())
+    {
+    	writeSwap = outReg.file == RegisterFile::PHYSICAL_A;
+    	isMulALU = true;
+    }
+
     const WriteSwap swap = writeSwap ? WriteSwap::SWAP : WriteSwap::DONT_SWAP;
 
     if (getSecondArg()) {
@@ -438,7 +449,6 @@ Operation* MoveOperation::combineWith(const OpCode& otherOpCode) const
 {
 	if(otherOpCode == OP_NOP)
 		throw CompilationError(CompilationStep::GENERAL, "Cannot combine move-operation with operation without a valid ALU instruction!");
-    //TODO how to handle other op is v8adds?
     Operation* op = nullptr;
     if (otherOpCode.runsOnMulALU())
     {
@@ -647,7 +657,8 @@ std::string CombinedOperation::to_string() const
 
 qpu_asm::Instruction* CombinedOperation::convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
-    //TODO handle v8adds in first op (could be mapped to MUL ALU)
+	if((getFirstOp()->op.runsOnAddALU() && getFirstOp()->op.runsOnMulALU()) || (getSecondOP()->op.runsOnAddALU() && getSecondOP()->op.runsOnMulALU()))
+		throw CompilationError(CompilationStep::CODE_GENERATION, "Cannot combine operations, where one can run on both ALUs", to_string());
     const IntermediateInstruction* addOp = getFirstOp()->op.runsOnAddALU() ? op1.get() : op2.get();
     const IntermediateInstruction* mulOp = !getFirstOp()->op.runsOnAddALU() ? op1.get() : op2.get();
 

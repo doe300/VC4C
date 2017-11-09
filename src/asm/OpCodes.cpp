@@ -348,12 +348,18 @@ std::string vc4c::toString(const SetFlag flag)
 
 bool OpCode::operator==(const OpCode& right) const
 {
-	return opAdd == right.opAdd && opMul == right.opMul;
+	if(opAdd > 0 && opAdd == right.opAdd)
+		return true;
+	if(opMul > 0 && opMul == right.opMul)
+		return true;
+	if(opAdd == 0 && opMul == 0 && right.opAdd == 0 && right.opMul == 0)
+		return true;
+	return false;
 }
 
 bool OpCode::operator!=(const OpCode& right) const
 {
-	return opAdd != right.opAdd || opMul != right.opMul;
+	return !(*this == right);
 }
 
 bool OpCode::operator<(const OpCode& right) const

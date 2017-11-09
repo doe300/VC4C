@@ -90,7 +90,9 @@ static const std::vector<MergeCondition> mergeConditions = {
     [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool{
         if(firstOp != nullptr && secondOp != nullptr)
         {
-            //TODO handle v8adds, can be mapped to either ALU
+        	if((firstOp->op.runsOnAddALU() && firstOp->op.runsOnMulALU()) || (secondOp->op.runsOnAddALU() && secondOp->op.runsOnMulALU()))
+        		//both instructions can be mapped to use different ALUs
+        		return true;
             if(firstOp->op.runsOnAddALU() && secondOp->op.runsOnAddALU())
                 return false;
             else if(firstOp->op.runsOnMulALU() && secondOp->op.runsOnMulALU())
@@ -212,7 +214,7 @@ static const std::vector<MergeCondition> mergeConditions = {
 			//if they have inverted conditions, the ADD ALU can't set the flags, the MUL ALU is supposed to
 			return true;
 		}
-		//TODO handle v8adds, can be on ADD and MUL ALU
+		//XXXX handle v8adds, can be on ADD and MUL ALU. Would need to make sure, flag-setting instruction is on ADD ALU
         if(firstOp != nullptr && firstOp->op.runsOnMulALU() && firstOp->setFlags == SetFlag::SET_FLAGS)
             return false;
         else if(secondOp != nullptr && secondOp->op.runsOnMulALU() && secondOp->setFlags == SetFlag::SET_FLAGS)
@@ -472,6 +474,31 @@ void optimizations::combineOperations(const Module& module, Method& method, cons
 						}
 						else
 							throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled combination, type", (instr->to_string() + ", ") + nextInstr->to_string());
+						if(it.get<CombinedOperation>() != nullptr)
+						{
+							//move instruction usable on both ALUs to the free ALU
+							CombinedOperation* comb = it.get<CombinedOperation>();
+							if(comb->getFirstOp()->op.runsOnAddALU() && comb->getFirstOp()->op.runsOnMulALU())
+							{
+								OpCode code = comb->getFirstOp()->op;
+								if(comb->getSecondOP()->op.runsOnAddALU())
+									code.opAdd = 0;
+								else //by default (e.g. both run on both ALUs), map to ADD ALU
+									code.opMul = 0;
+								dynamic_cast<Operation*>(comb->op1.get())->setOpCode(code);
+								logging::debug() << "Fixing operation available on both ALUs to " << (code.opAdd == 0 ? "MUL" : "ADD") << " ALU: " << comb->op1->to_string() << logging::endl;
+							}
+							if(comb->getSecondOP()->op.runsOnAddALU() && comb->getSecondOP()->op.runsOnMulALU())
+							{
+								OpCode code = comb->getSecondOP()->op;
+								if(comb->getFirstOp()->op.runsOnMulALU())
+									code.opMul = 0;
+								else //by default (e.g. both run on both ALUs), map to MUL ALU
+									code.opAdd = 0;
+								dynamic_cast<Operation*>(comb->op2.get())->setOpCode(code);
+								logging::debug() << "Fixing operation available on both ALUs to " << (code.opAdd == 0 ? "MUL" : "ADD") << " ALU: " << comb->op2->to_string() << logging::endl;
+							}
+						}
 					}
 				}
 			}
