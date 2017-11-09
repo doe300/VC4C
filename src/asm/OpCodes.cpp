@@ -9,7 +9,7 @@
 #include "CompilationError.h"
 #include "../Values.h"
 
-#include <vector>
+#include <map>
 
 using namespace vc4c;
 
@@ -147,7 +147,7 @@ std::string SmallImmediate::toString() const
 		return (std::to_string(static_cast<float>(1 << (static_cast<int>(value) - 32))) + " (") + std::to_string(static_cast<int>(value)) + ")";
 	if (value <= 47)
 		// 1/256, ..., 1/2
-		return (std::to_string(1.0f / (1 << (48 - static_cast<int>(value)))) + " (") + std::to_string(static_cast<int>(value)) + ")";
+		return (std::to_string(1.0f / static_cast<float>(1 << (48 - static_cast<int>(value)))) + " (") + std::to_string(static_cast<int>(value)) + ")";
 	if (value == 48)
 		return "<< r5";
 	if (value <= 63)
@@ -173,7 +173,7 @@ Optional<float> SmallImmediate::getFloatingValue() const
 		return static_cast<float>(1 << (static_cast<unsigned>(value) - 32));
 	if (value >= 40 && value <= 47)
 		// 1/256, ..., 1/2
-		return 1.0f / (1 << (48 - static_cast<unsigned>(value)));
+		return 1.0f / static_cast<float>(1 << (48 - static_cast<unsigned>(value)));
 	return {};
 }
 
@@ -369,34 +369,55 @@ const OpCode& OpCode::toOpCode(const std::string& name)
 	return code;
 }
 
-static std::vector<OpCode> opCodes = {
-		OP_ADD, OP_AND, OP_ASR, OP_CLZ, OP_FADD, OP_FMAX, OP_FMAXABS, OP_FMIN, OP_FMINABS, OP_FMUL, OP_FSUB, OP_FTOI, OP_ITOF,
-		OP_MAX, OP_MIN, OP_MUL24, OP_NOP, OP_NOT, OP_OR, OP_ROR, OP_SHL, OP_SHR, OP_SUB, OP_V8ADDS, OP_V8MAX, OP_V8MIN, OP_V8MULD, OP_V8SUBS, OP_XOR
+static const std::multimap<std::string, OpCode> opCodes = {
+		{OP_ADD.name, OP_ADD}, {OP_AND.name, OP_AND}, {OP_ASR.name, OP_ASR}, {OP_CLZ.name, OP_CLZ},
+		{OP_FADD.name, OP_FADD}, {OP_FMAX.name, OP_FMAX}, {OP_FMAXABS.name, OP_FMAXABS}, {OP_FMIN.name, OP_FMIN},
+		{OP_FMINABS.name, OP_FMINABS}, {OP_FMUL.name, OP_FMUL}, {OP_FSUB.name, OP_FSUB}, {OP_FTOI.name, OP_FTOI},
+		{OP_ITOF.name, OP_ITOF}, {OP_MAX.name, OP_MAX}, {OP_MIN.name, OP_MIN}, {OP_MUL24.name, OP_MUL24},
+		{OP_NOP.name, OP_NOP}, {OP_NOT.name, OP_NOT}, {OP_OR.name, OP_OR}, {OP_ROR.name, OP_ROR},
+		{OP_SHL.name, OP_SHL}, {OP_SHR.name, OP_SHR}, {OP_SUB.name, OP_SUB}, {OP_V8ADDS.name, OP_V8ADDS},
+		{OP_V8MAX.name, OP_V8MAX}, {OP_V8MIN.name, OP_V8MIN}, {OP_V8MULD.name, OP_V8MULD}, {OP_V8SUBS.name, OP_V8SUBS},
+		{OP_XOR.name, OP_XOR}
+};
+
+static const std::map<unsigned char, OpCode> addCodes = {
+		{OP_ADD.opAdd, OP_ADD}, {OP_AND.opAdd, OP_AND}, {OP_ASR.opAdd, OP_ASR}, {OP_CLZ.opAdd, OP_CLZ},
+		{OP_FADD.opAdd, OP_FADD}, {OP_FMAX.opAdd, OP_FMAX}, {OP_FMAXABS.opAdd, OP_FMAXABS}, {OP_FMIN.opAdd, OP_FMIN},
+		{OP_FMINABS.opAdd, OP_FMINABS}, {OP_FSUB.opAdd, OP_FSUB}, {OP_FTOI.opAdd, OP_FTOI}, {OP_ITOF.opAdd, OP_ITOF},
+		{OP_MAX.opAdd, OP_MAX}, {OP_MIN.opAdd, OP_MIN}, {OP_NOP.opAdd, OP_NOP}, {OP_NOT.opAdd, OP_NOT},
+		{OP_OR.opAdd, OP_OR}, {OP_ROR.opAdd, OP_ROR}, {OP_SHL.opAdd, OP_SHL}, {OP_SHR.opAdd, OP_SHR},
+		{OP_SUB.opAdd, OP_SUB}, {OP_V8ADDS.opAdd, OP_V8ADDS}, {OP_V8SUBS.opAdd, OP_V8SUBS}, {OP_XOR.opAdd, OP_XOR}
+};
+
+static const std::map<unsigned char, OpCode> mulCodes = {
+		{OP_FMUL.opMul, OP_FMUL}, {OP_MUL24.opMul, OP_MUL24}, {OP_NOP.opMul, OP_NOP}, {OP_V8ADDS.opMul, OP_V8ADDS},
+		{OP_V8MAX.opMul, OP_V8MAX}, {OP_V8MIN.opMul, OP_V8MIN}, {OP_V8MULD.opMul, OP_V8MULD}, {OP_V8SUBS.opMul, OP_V8SUBS}
 };
 
 const OpCode& OpCode::toOpCode(const unsigned char opCode, const bool isMulALU)
 {
 	if(opCode == 0)
 		return OP_NOP;
-	for(const OpCode& op : opCodes)
+	if(isMulALU)
 	{
-		if(!isMulALU && op.opAdd == opCode)
-		{
-			return op;
-		}
-		if(isMulALU && op.opMul == opCode)
-			return op;
+		auto it = mulCodes.find(opCode);
+		if(it != mulCodes.end())
+			return it->second;
+	}
+	else
+	{
+		auto it = addCodes.find(opCode);
+		if(it != addCodes.end())
+			return it->second;
 	}
 	throw CompilationError(CompilationStep::GENERAL, "No machine code operation for this op-code", std::to_string(static_cast<unsigned>(opCode)));
 }
 
 const OpCode& OpCode::findOpCode(const std::string& name)
 {
-	for(const OpCode& op : opCodes)
-	{
-		if(name.compare(op.name) == 0)
-			return op;
-	}
+	auto it = opCodes.find(name);
+	if(it != opCodes.end())
+		return it->second;
 	return OP_NOP;
 }
 

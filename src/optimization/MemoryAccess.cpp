@@ -447,7 +447,7 @@ InstructionWalker optimizations::accessGlobalData(const Module& module, Method& 
 				{
 					//emplace calculation of global-data pointer and replace argument
 					tmp = method.addNewLocal(TYPE_INT32, "%global_data_offset");
-					it.emplace(new intermediate::Operation("add", tmp, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference(), Value(Literal(static_cast<uint64_t>(globalOffset)), TYPE_INT32)));
+					it.emplace(new intermediate::Operation(OP_ADD, tmp, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference(), Value(Literal(static_cast<uint64_t>(globalOffset)), TYPE_INT32)));
 					it.nextInBlock();
 				}
 				it->setArgument(i, tmp);
@@ -577,11 +577,11 @@ static InstructionWalker accessStackAllocations(const Module& module, Method& me
 				const Value addrTemp = method.addNewLocal(arg.type, "%stack_addr");
 				const Value finalAddr = method.addNewLocal(arg.type, "%stack_addr");
 
-				it.emplace(new Operation("mul24", qpuOffset, Value(REG_QPU_NUMBER, TYPE_INT8), Value(Literal(static_cast<uint64_t>(maximumStackSize)), TYPE_INT32)));
+				it.emplace(new Operation(OP_MUL24, qpuOffset, Value(REG_QPU_NUMBER, TYPE_INT8), Value(Literal(static_cast<uint64_t>(maximumStackSize)), TYPE_INT32)));
 				it.nextInBlock();
-				it.emplace(new Operation("add", addrTemp, qpuOffset, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference()));
+				it.emplace(new Operation(OP_ADD, addrTemp, qpuOffset, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference()));
 				it.nextInBlock();
-				it.emplace(new Operation("add", finalAddr, addrTemp, Value(Literal(static_cast<uint64_t>(arg.local->as<StackAllocation>()->offset + globalDataSize)), TYPE_INT32)));
+				it.emplace(new Operation(OP_ADD, finalAddr, addrTemp, Value(Literal(static_cast<uint64_t>(arg.local->as<StackAllocation>()->offset + globalDataSize)), TYPE_INT32)));
 				it.nextInBlock();
 				it->setArgument(i, finalAddr);
 			}

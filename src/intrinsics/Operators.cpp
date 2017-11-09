@@ -54,7 +54,7 @@ InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(Method& me
 	}
 
 	//if exactly one operand was negative, invert sign of result
-	it.emplace(new Operation("xor", NOP_REGISTER, op1Sign, op2Sign, COND_ALWAYS, SetFlag::SET_FLAGS));
+	it.emplace(new Operation(OP_XOR, NOP_REGISTER, op1Sign, op2Sign, COND_ALWAYS, SetFlag::SET_FLAGS));
 	it.nextInBlock();
 	return insertInvertSign(it, method, tmpDest, opDest, COND_ZERO_CLEAR);
 }
@@ -102,9 +102,9 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
     {
         hasA0Part = true;   //not known
         hasA1Part = true;
-        it.emplace(new Operation("and", a1, arg0, Value(Literal(static_cast<uint64_t>(0xFFFF)), TYPE_INT16)));
+        it.emplace(new Operation(OP_AND, a1, arg0, Value(Literal(static_cast<uint64_t>(0xFFFF)), TYPE_INT16)));
         it.nextInBlock();
-        it.emplace(new Operation("shr", a0, arg0, Value(Literal(static_cast<int64_t>(16)), TYPE_INT16)));
+        it.emplace(new Operation(OP_SHR, a0, arg0, Value(Literal(static_cast<int64_t>(16)), TYPE_INT16)));
         it.nextInBlock();
     }
     if(arg1.hasType(ValueType::LITERAL))
@@ -121,14 +121,14 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
         //not known
         hasB0Part = true;
         hasB1Part = true;
-        it.emplace( new Operation("and", b1, arg1, Value(Literal(static_cast<uint64_t>(0xFFFF)), TYPE_INT8)));
+        it.emplace( new Operation(OP_AND, b1, arg1, Value(Literal(static_cast<uint64_t>(0xFFFF)), TYPE_INT8)));
         it.nextInBlock();
-        it.emplace( new Operation("shr", b0, arg1, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
+        it.emplace( new Operation(OP_SHR, b0, arg1, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
         it.nextInBlock();
     }
     if(hasA1Part && hasB1Part)
     {
-        it.emplace( new Operation("mul24", out0, a1, b1));
+        it.emplace( new Operation(OP_MUL24, out0, a1, b1));
         it.nextInBlock();
     }
     else
@@ -139,11 +139,11 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
     if(hasA1Part && hasB0Part)
     {
     	const Value tmp = method.addNewLocal(op.getOutput().get().type);
-        it.emplace( new Operation("mul24", tmp, a1, b0));
+        it.emplace( new Operation(OP_MUL24, tmp, a1, b0));
         it.nextInBlock();
-        it.emplace( new Operation("shl", tmp, tmp, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
+        it.emplace( new Operation(OP_SHL, tmp, tmp, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
         it.nextInBlock();
-        it.emplace( new Operation("add", out1, out0, tmp));
+        it.emplace( new Operation(OP_ADD, out1, out0, tmp));
         it.nextInBlock();
     }
     else
@@ -154,9 +154,9 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
     if(hasA0Part && hasB1Part)
     {
     	const Value tmp = method.addNewLocal(op.getOutput().get().type);
-        it.emplace( new Operation("mul24", tmp, a0, b1));
+        it.emplace( new Operation(OP_MUL24, tmp, a0, b1));
         it.nextInBlock();
-        it.emplace( new Operation("shl", out2, tmp, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
+        it.emplace( new Operation(OP_SHL, out2, tmp, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
         it.nextInBlock();
     }
     else
@@ -210,7 +210,7 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivision(Method& method, 
     it.nextInBlock();
     
     //if exactly one operand was negative, invert sign of result
-	it.emplace(new Operation("xor", NOP_REGISTER, op1Sign, op2Sign, COND_ALWAYS, SetFlag::SET_FLAGS));
+	it.emplace(new Operation(OP_XOR, NOP_REGISTER, op1Sign, op2Sign, COND_ALWAYS, SetFlag::SET_FLAGS));
 	it.nextInBlock();
 	it = insertInvertSign(it, method, tmpDest, opDest, COND_ZERO_CLEAR);
 	return it;
@@ -244,15 +244,15 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
     {
         //R := R << 1          -- left-shift R by 1 bit
     	Value newRemainder = method.addNewLocal(op.getOutput().get().type, "%udiv.remainder");
-        it.emplace(new Operation("shl", newRemainder, remainder, INT_ONE));
+        it.emplace(new Operation(OP_SHL, newRemainder, remainder, INT_ONE));
         it.nextInBlock();
         remainder = newRemainder;
         //R(0) := N(i)         -- set the least-significant bit of R equal to bit i of the numerator
         //R = R | ((N >> i) & 1) <=> R = R | (N & (1 << i) == 1 ? 1 : 0) <=> R = R | 1, if N & (1 << i) != 0
         newRemainder = method.addNewLocal(op.getOutput().get().type, "%udiv.remainder");
-        it.emplace(new Operation("and", NOP_REGISTER, numerator, Value(Literal(static_cast<int64_t>(1) << i), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
+        it.emplace(new Operation(OP_AND, NOP_REGISTER, numerator, Value(Literal(static_cast<int64_t>(1) << i), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
         it.nextInBlock();
-        it.emplace( new Operation("or", newRemainder, remainder, INT_ONE, COND_ZERO_CLEAR));
+        it.emplace( new Operation(OP_OR, newRemainder, remainder, INT_ONE, COND_ZERO_CLEAR));
         it.nextInBlock();
         //else R(new) := R(old)
         it.emplace(new MoveOperation(newRemainder, remainder, COND_ZERO_SET));
@@ -260,13 +260,13 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
         remainder = newRemainder;
         //if R >= D then
         const Value tmp = method.addNewLocal(op.getOutput().get().type, "%udiv.tmp");
-        it.emplace(new Operation("max", tmp, remainder, divisor));
+        it.emplace(new Operation(OP_MAX, tmp, remainder, divisor));
         it.nextInBlock();
-        it.emplace(new Operation("xor", NOP_REGISTER, tmp, remainder, COND_ALWAYS, SetFlag::SET_FLAGS));
+        it.emplace(new Operation(OP_XOR, NOP_REGISTER, tmp, remainder, COND_ALWAYS, SetFlag::SET_FLAGS));
         it.nextInBlock();
         //R := R - D
         newRemainder = method.addNewLocal(op.getOutput().get().type, "%udiv.remainder");
-        it.emplace( new Operation("sub", newRemainder, remainder, divisor, COND_ZERO_SET));
+        it.emplace( new Operation(OP_SUB, newRemainder, remainder, divisor, COND_ZERO_SET));
         it.nextInBlock();
         //else R(new) := R(old)
         it.emplace(new MoveOperation(newRemainder, remainder, COND_ZERO_CLEAR));
@@ -274,7 +274,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
         remainder = newRemainder;
         //Q(i) := 1
         Value newQuotient = method.addNewLocal(op.getOutput().get().type, "%udiv.quotient");
-        it.emplace( new Operation("or", newQuotient, quotient, Value(Literal(static_cast<int64_t>(1) << i), TYPE_INT32), COND_ZERO_SET));
+        it.emplace( new Operation(OP_OR, newQuotient, quotient, Value(Literal(static_cast<int64_t>(1) << i), TYPE_INT32), COND_ZERO_SET));
         it.nextInBlock();
         //else Q(new) := Q(old)
         it.emplace(new MoveOperation(newQuotient, quotient, COND_ZERO_CLEAR));
@@ -335,51 +335,51 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
     const Value P1 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p1");
     const Value P1_1 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p1");
     const Value P1_2 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p1");
-    it.emplace( new Operation("fmul", P1, divisor, P0));
+    it.emplace( new Operation(OP_FMUL, P1, divisor, P0));
     it.nextInBlock();
-    it.emplace( new Operation("fsub", P1_1, const2, P1));
+    it.emplace( new Operation(OP_FSUB, P1_1, const2, P1));
     it.nextInBlock();
-    it.emplace( new Operation("fmul", P1_2, P0, P1_1));
+    it.emplace( new Operation(OP_FMUL, P1_2, P0, P1_1));
     it.nextInBlock();
     
     const Value P2 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p2");
     const Value P2_1 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p2");
     const Value P2_2 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p2");
-    it.emplace( new Operation("fmul", P2, divisor, P1_2));
+    it.emplace( new Operation(OP_FMUL, P2, divisor, P1_2));
     it.nextInBlock();
-    it.emplace( new Operation("fsub", P2_1, const2, P2));
+    it.emplace( new Operation(OP_FSUB, P2_1, const2, P2));
     it.nextInBlock();
-    it.emplace( new Operation("fmul", P2_2, P1_2, P2_1));
+    it.emplace( new Operation(OP_FMUL, P2_2, P1_2, P2_1));
     it.nextInBlock();
     
     const Value P3 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p3");
     const Value P3_1 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p3");
     const Value P3_2 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p3");
-    it.emplace( new Operation("fmul", P3, divisor, P2_2));
+    it.emplace( new Operation(OP_FMUL, P3, divisor, P2_2));
     it.nextInBlock();
-    it.emplace( new Operation("fsub", P3_1, const2, P3));
+    it.emplace( new Operation(OP_FSUB, P3_1, const2, P3));
     it.nextInBlock();
-    it.emplace( new Operation("fmul", P3_2, P2_2, P3_1));
+    it.emplace( new Operation(OP_FMUL, P3_2, P2_2, P3_1));
     it.nextInBlock();
     
     const Value P4 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p4");
     const Value P4_1 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p4");
     const Value P4_2 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p4");
-    it.emplace( new Operation("fmul", P4, divisor, P3_2));
+    it.emplace( new Operation(OP_FMUL, P4, divisor, P3_2));
     it.nextInBlock();
-    it.emplace( new Operation("fsub", P4_1, const2, P4));
+    it.emplace( new Operation(OP_FSUB, P4_1, const2, P4));
     it.nextInBlock();
-    it.emplace( new Operation("fmul", P4_2, P3_2, P4_1));
+    it.emplace( new Operation(OP_FMUL, P4_2, P3_2, P4_1));
     it.nextInBlock();
     
     const Value P5 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p5");
     const Value P5_1 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p5");
     const Value P5_2 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p5");
-	it.emplace( new Operation("fmul", P5, divisor, P4_2));
+	it.emplace( new Operation(OP_FMUL, P5, divisor, P4_2));
 	it.nextInBlock();
-	it.emplace( new Operation("fsub", P5_1, const2, P5));
+	it.emplace( new Operation(OP_FSUB, P5_1, const2, P5));
 	it.nextInBlock();
-	it.emplace( new Operation("fmul", P5_2, P4_2, P5_1));
+	it.emplace( new Operation(OP_FMUL, P5_2, P4_2, P5_1));
 	it.nextInBlock();
 
     //3. final step: Q = Pn * N

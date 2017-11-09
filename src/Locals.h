@@ -8,6 +8,7 @@
 #define LOCALS_H
 
 #include <utility>
+#include <functional>
 
 #include "Values.h"
 

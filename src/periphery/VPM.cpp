@@ -284,9 +284,9 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
 		const Value tmpDest = method.addNewLocal(destAddress.type, "%mem_copy_addr");
 
 		//increment offset from base address
-		it.emplace(new Operation("add", tmpSource, srcAddress, Value(Literal(static_cast<int64_t>(i * size.first.getPhysicalWidth())), TYPE_INT8)));
+		it.emplace(new Operation(OP_ADD, tmpSource, srcAddress, Value(Literal(static_cast<int64_t>(i * size.first.getPhysicalWidth())), TYPE_INT8)));
 		it.nextInBlock();
-		it.emplace(new Operation("add", tmpDest, destAddress, Value(Literal(static_cast<int64_t>(i * size.first.getPhysicalWidth())), TYPE_INT8)));
+		it.emplace(new Operation(OP_ADD, tmpDest, destAddress, Value(Literal(static_cast<int64_t>(i * size.first.getPhysicalWidth())), TYPE_INT8)));
 		it.nextInBlock();
 
 		it = insertReadRAM(it, tmpSource, size.first, area, false);
@@ -314,7 +314,7 @@ InstructionWalker VPM::insertFillRAM(Method& method, InstructionWalker it, const
 		const Value tmpDest = method.addNewLocal(memoryAddress.type, "%mem_fill_addr");
 
 		//increment offset from base address
-		it.emplace(new Operation("add", tmpDest, memoryAddress, Value(Literal(static_cast<int64_t>(i * type.getPhysicalWidth())), TYPE_INT8)));
+		it.emplace(new Operation(OP_ADD, tmpDest, memoryAddress, Value(Literal(static_cast<int64_t>(i * type.getPhysicalWidth())), TYPE_INT8)));
 		it.nextInBlock();
 
 		it = insertWriteRAM(it, tmpDest, type, area, false);

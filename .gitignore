@@ -11,6 +11,7 @@ Makefile
 .cproject
 .project
 .csettings/
+.settings/
 
 # Netbeans
 dist/

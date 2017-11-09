@@ -34,13 +34,13 @@ static constexpr unsigned char VC4CL_UNSIGNED {1};
 using IntrinsicFunction = std::function<InstructionWalker(Method&, InstructionWalker, const MethodCall*)>;
 //NOTE: copying the captures is on purpose, since the sources do not exist anymore!
 
-static IntrinsicFunction intrinsifyUnaryALUInstruction(const std::string& opCode, const bool useSignFlag = false)
+static IntrinsicFunction intrinsifyUnaryALUInstruction(const OpCode& opCode, const bool useSignFlag = false)
 {
 	return [opCode, useSignFlag](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
 	{
 		bool isUnsigned = callSite->getArgument(1).hasValue && callSite->getArgument(1).get().hasType(ValueType::LITERAL) && callSite->getArgument(1).get().literal.integer == VC4CL_UNSIGNED;
 
-		logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to operation " << opCode << logging::endl;
+		logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to operation " << opCode.name << logging::endl;
 		it.reset((new Operation(opCode, callSite->getOutput(), callSite->getArgument(0)))->copyExtrasFrom(callSite));
 
 		if(useSignFlag && isUnsigned)
@@ -207,9 +207,9 @@ const static std::map<std::string, Intrinsic> nonaryInstrinsics = {
 };
 
 const static std::map<std::string, Intrinsic> unaryIntrinsicMapping = {
-    {"vc4cl_ftoi", Intrinsic{intrinsifyUnaryALUInstruction("ftoi"), [](const Value& val){return Value(Literal(static_cast<int64_t>(std::round(val.literal.real()))), TYPE_INT32);}}},
-    {"vc4cl_itof", Intrinsic{intrinsifyUnaryALUInstruction("itof"), [](const Value& val){return Value(Literal(static_cast<double>(val.literal.integer)), TYPE_FLOAT);}}},
-    {"vc4cl_clz", Intrinsic{intrinsifyUnaryALUInstruction("clz"), NO_OP}},
+    {"vc4cl_ftoi", Intrinsic{intrinsifyUnaryALUInstruction(OP_FTOI), [](const Value& val){return Value(Literal(static_cast<int64_t>(std::round(val.literal.real()))), TYPE_INT32);}}},
+    {"vc4cl_itof", Intrinsic{intrinsifyUnaryALUInstruction(OP_ITOF), [](const Value& val){return Value(Literal(static_cast<double>(val.literal.integer)), TYPE_FLOAT);}}},
+    {"vc4cl_clz", Intrinsic{intrinsifyUnaryALUInstruction(OP_CLZ), NO_OP}},
     {"vc4cl_sfu_rsqrt", Intrinsic{intrinsifySFUInstruction(REG_SFU_RECIP_SQRT), [](const Value& val){return Value(Literal(1.0 / std::sqrt(val.literal.real())), TYPE_FLOAT);}}},
     {"vc4cl_sfu_exp2", Intrinsic{intrinsifySFUInstruction(REG_SFU_EXP2), [](const Value& val){return Value(Literal(std::exp2(val.literal.real())), TYPE_FLOAT);}}},
     {"vc4cl_sfu_log2", Intrinsic{intrinsifySFUInstruction(REG_SFU_LOG2), [](const Value& val){return Value(Literal(std::log2(val.literal.real())), TYPE_FLOAT);}}},
@@ -680,7 +680,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         {
             //make sure, leading bits are zeroes
             const int64_t mask = op->getFirstArg().type.getScalarWidthMask();
-            it.emplace(new Operation("and", tmp, op->getFirstArg(), Value(Literal(mask), TYPE_INT32), op->conditional));
+            it.emplace(new Operation(OP_AND, tmp, op->getFirstArg(), Value(Literal(mask), TYPE_INT32), op->conditional));
             it.nextInBlock();
             op->setArgument(0, tmp);
             op->setOpCode(OP_ITOF);
@@ -760,22 +760,22 @@ static InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, Instruction
 		return it.reset((new MoveOperation(it->getOutput(), src))->copyExtrasFrom(it.get()));
 	}
 	//dim == 0 -> return first value
-	it.emplace((new Operation("xor", NOP_REGISTER, arg, INT_ZERO))->setSetFlags(SetFlag::SET_FLAGS));
+	it.emplace((new Operation(OP_XOR, NOP_REGISTER, arg, INT_ZERO))->setSetFlags(SetFlag::SET_FLAGS));
 	it.nextInBlock();
 	it.emplace(new MoveOperation(it->getOutput(), method.findOrCreateLocal(TYPE_INT32, locals.at(0))->createReference(), COND_ZERO_SET));
 	it.nextInBlock();
 	//dim == 1 -> return second value
-	it.emplace((new Operation("xor", NOP_REGISTER, arg, INT_ONE))->setSetFlags(SetFlag::SET_FLAGS));
+	it.emplace((new Operation(OP_XOR, NOP_REGISTER, arg, INT_ONE))->setSetFlags(SetFlag::SET_FLAGS));
 	it.nextInBlock();
 	it.emplace(new MoveOperation(it->getOutput(), method.findOrCreateLocal(TYPE_INT32, locals.at(1))->createReference(), COND_ZERO_SET));
 	it.nextInBlock();
 	//dim == 2 -> return third value
-	it.emplace((new Operation("xor", NOP_REGISTER, arg, Value(Literal(static_cast<int64_t>(2)), TYPE_INT32)))->setSetFlags(SetFlag::SET_FLAGS));
+	it.emplace((new Operation(OP_XOR, NOP_REGISTER, arg, Value(Literal(static_cast<int64_t>(2)), TYPE_INT32)))->setSetFlags(SetFlag::SET_FLAGS));
 	it.nextInBlock();
 	it.emplace(new MoveOperation(it->getOutput(), method.findOrCreateLocal(TYPE_INT32, locals.at(2))->createReference(), COND_ZERO_SET));
 	it.nextInBlock();
 	//otherwise (dim > 2 -> 2 - dim < 0) return default value
-	it.emplace((new Operation("sub", NOP_REGISTER, Value(Literal(static_cast<int64_t>(2)), TYPE_INT32), arg))->setSetFlags(SetFlag::SET_FLAGS));
+	it.emplace((new Operation(OP_SUB, NOP_REGISTER, Value(Literal(static_cast<int64_t>(2)), TYPE_INT32), arg))->setSetFlags(SetFlag::SET_FLAGS));
 	it.nextInBlock();
 	return it.reset(new MoveOperation(it->getOutput(), defaultValue, COND_NEGATIVE_SET));
 }
@@ -798,13 +798,13 @@ static InstructionWalker intrinsifyReadWorkItemInfo(Method& method, InstructionW
 //	else
 	{
 		tmp0 = method.addNewLocal(TYPE_INT32, "%local_info");
-		it.emplace(new Operation("mul24", tmp0, arg, Value(Literal(static_cast<int64_t>(8)), TYPE_INT32)));
+		it.emplace(new Operation(OP_MUL24, tmp0, arg, Value(Literal(static_cast<int64_t>(8)), TYPE_INT32)));
 		it.nextInBlock();
 	}
 	const Value tmp1 = method.addNewLocal(TYPE_INT32, "%local_info");
-	it.emplace(new Operation("shr", tmp1, itemInfo->createReference(), tmp0));
+	it.emplace(new Operation(OP_SHR, tmp1, itemInfo->createReference(), tmp0));
 	it.nextInBlock();
-	return it.reset((new Operation("and", it->getOutput(), tmp1, Value(Literal(static_cast<int64_t>(0xFF)), TYPE_INT8)))->copyExtrasFrom(it.get()));
+	return it.reset((new Operation(OP_AND, it->getOutput(), tmp1, Value(Literal(static_cast<int64_t>(0xFF)), TYPE_INT8)))->copyExtrasFrom(it.get()));
 }
 
 static InstructionWalker intrinsifyWorkItemFunctions(Method& method, InstructionWalker it)
@@ -863,7 +863,7 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
 		it.emplace(new MoveOperation(tmpNumGroups, NOP_REGISTER));
 		it = intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0), {Method::NUM_GROUPS_X, Method::NUM_GROUPS_Y, Method::NUM_GROUPS_Z}, INT_ONE, InstructionDecorations::BUILTIN_NUM_GROUPS);
 		it.nextInBlock();
-		return it.reset((new Operation("mul24", callSite->getOutput(), tmpLocalSize, tmpNumGroups))->copyExtrasFrom(callSite)->setDecorations(add_flag(callSite->decoration, InstructionDecorations::BUILTIN_GLOBAL_SIZE)));
+		return it.reset((new Operation(OP_MUL24, callSite->getOutput(), tmpLocalSize, tmpNumGroups))->copyExtrasFrom(callSite)->setDecorations(add_flag(callSite->decoration, InstructionDecorations::BUILTIN_GLOBAL_SIZE)));
 	}
 	if(callSite->methodName.compare("vc4cl_global_id") == 0 && callSite->getArguments().size() == 1)
 	{
@@ -889,11 +889,11 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
 		it.emplace(new MoveOperation(tmpLocalID, NOP_REGISTER));
 		it = intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0), Method::LOCAL_IDS, InstructionDecorations::BUILTIN_LOCAL_ID);
 		it.nextInBlock();
-		it.emplace(new Operation("mul24", tmpRes0, tmpGroupID, tmpLocalSize));
+		it.emplace(new Operation(OP_MUL24, tmpRes0, tmpGroupID, tmpLocalSize));
 		it.nextInBlock();
-		it.emplace(new Operation("add", tmpRes1, tmpGlobalOffset, tmpRes0));
+		it.emplace(new Operation(OP_ADD, tmpRes1, tmpGlobalOffset, tmpRes0));
 		it.nextInBlock();
-		return it.reset((new Operation("add", callSite->getOutput(), tmpRes1, tmpLocalID))->copyExtrasFrom(callSite)->setDecorations(add_flag(callSite->decoration, InstructionDecorations::BUILTIN_GLOBAL_ID)));
+		return it.reset((new Operation(OP_ADD, callSite->getOutput(), tmpRes1, tmpLocalID))->copyExtrasFrom(callSite)->setDecorations(add_flag(callSite->decoration, InstructionDecorations::BUILTIN_GLOBAL_ID)));
 	}
 	return it;
 }

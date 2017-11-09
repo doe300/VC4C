@@ -153,8 +153,8 @@ bool CallSite::mapInstruction(Method& method) const
     {
     	logging::debug() << "Converting intrinsic method call '" << methodName << "' to operations" << logging::endl;
     	const Value tmp = method.addNewLocal(returnType, "%fmuladd");
-    	method.appendToEnd(new intermediate::Operation("fmul", tmp, arguments.at(0), arguments.at(1)));
-    	method.appendToEnd(new intermediate::Operation("fadd", output, tmp, arguments.at(2)));
+    	method.appendToEnd(new intermediate::Operation(OP_FMUL, tmp, arguments.at(0), arguments.at(1)));
+    	method.appendToEnd(new intermediate::Operation(OP_FADD, output, tmp, arguments.at(2)));
     	return true;
     }
     if(methodName.find("llvm.memcpy") == 0 && arguments.at(2).hasType(ValueType::LITERAL))
@@ -179,7 +179,7 @@ bool CallSite::mapInstruction(Method& method) const
 		for(int64_t i = 0; i < numBytes.literal.integer; ++i)
 		{
 			const Value tmp = method.addNewLocal(memAddr.type, "%memset_offset");
-			method.appendToEnd(new intermediate::Operation("add", tmp, memAddr, Value(Literal(i), TYPE_INT32)));
+			method.appendToEnd(new intermediate::Operation(OP_ADD, tmp, memAddr, Value(Literal(i), TYPE_INT32)));
 			method.vpm->insertWriteRAM(method.appendToEnd(), tmp, TYPE_INT8, nullptr, false);
 		}
 		method.appendToEnd( new intermediate::MoveOperation(MUTEX_REGISTER, BOOL_TRUE));

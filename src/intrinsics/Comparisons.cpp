@@ -34,7 +34,7 @@ static InstructionWalker replaceWithSetBoolean(InstructionWalker it, const Value
 	{
 		it.emplace(new MoveOperation(dest, value, trueCode));
 		it.nextInBlock();
-		it.reset(new Operation("xor", dest, value, value, trueCode.invert()));
+		it.reset(new Operation(OP_XOR, dest, value, value, trueCode.invert()));
 	}
 	return it;
 }
@@ -51,7 +51,7 @@ InstructionWalker intermediate::intrinsifyIntegerRelation(Method& method, Instru
             //does not save instructions, but does not force value a to be on register-file A (since B is reserved for literal 0)
             it.emplace(new MoveOperation(NOP_REGISTER, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
         else
-            it.emplace(new Operation("xor", NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
+            it.emplace(new Operation(OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
         it.nextInBlock();
         it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_SET);
     }
@@ -63,7 +63,7 @@ InstructionWalker intermediate::intrinsifyIntegerRelation(Method& method, Instru
             //does not save instructions, but does not force value a to be on register-file A (since B is reserved for literal 0)
             it.emplace( new MoveOperation(NOP_REGISTER, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
         else
-            it.emplace(new Operation("xor", NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
+            it.emplace(new Operation(OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
         it.nextInBlock();
         //true if ZERO is not set, otherwise false
         it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_CLEAR);
@@ -71,9 +71,9 @@ InstructionWalker intermediate::intrinsifyIntegerRelation(Method& method, Instru
     else if(COMP_UNSIGNED_LT.compare(comp->opCode) == 0)
     {
         //a < b [<=> min(a, b) != b] <=> max(a, b) != a
-        it.emplace(new Operation("max", tmp, comp->getFirstArg(), comp->getSecondArg(), comp->conditional));
+        it.emplace(new Operation(OP_MAX, tmp, comp->getFirstArg(), comp->getSecondArg(), comp->conditional));
         it.nextInBlock();
-        it.emplace(new Operation("xor", NOP_REGISTER, tmp, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
+        it.emplace(new Operation(OP_XOR, NOP_REGISTER, tmp, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
         it.nextInBlock();
         //true if ZERO is not set, otherwise false
         it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_CLEAR);
@@ -81,9 +81,9 @@ InstructionWalker intermediate::intrinsifyIntegerRelation(Method& method, Instru
     else if(COMP_UNSIGNED_LE.compare(comp->opCode) == 0)
     {
         //a <= b [<=> min(a, b) == a] <=> max(a, b) == b
-        it.emplace(new Operation("max", tmp, comp->getFirstArg(), comp->getSecondArg(), comp->conditional));
+        it.emplace(new Operation(OP_MAX, tmp, comp->getFirstArg(), comp->getSecondArg(), comp->conditional));
         it.nextInBlock();
-        it.emplace(new Operation("xor", NOP_REGISTER, tmp, comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
+        it.emplace(new Operation(OP_XOR, NOP_REGISTER, tmp, comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
         it.nextInBlock();
         it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_SET);
     }
@@ -104,7 +104,7 @@ InstructionWalker intermediate::intrinsifyIntegerRelation(Method& method, Instru
 //		}
 //		else
 		{
-			it.emplace(new Operation("sub", NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
+			it.emplace(new Operation(OP_SUB, NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
 		}
 		it.nextInBlock();
 		//true if NEGATIVE is set, otherwise false
@@ -113,9 +113,9 @@ InstructionWalker intermediate::intrinsifyIntegerRelation(Method& method, Instru
     else if(COMP_SIGNED_LE.compare(comp->opCode) == 0)
     {
         //a <= b <=> min(a, b) == a [<=> max(a, b) == b]
-        it.emplace(new Operation("min", tmp, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
+        it.emplace(new Operation(OP_MIN, tmp, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
         it.nextInBlock();
-        it.emplace(new Operation("xor", NOP_REGISTER, tmp, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
+        it.emplace(new Operation(OP_XOR, NOP_REGISTER, tmp, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
         it.nextInBlock();
         it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_SET);
     }
@@ -128,16 +128,16 @@ InstructionWalker intermediate::intrinsifyIntegerRelation(Method& method, Instru
 static std::pair<InstructionWalker, Value> insertCheckForNaN(Method& method, InstructionWalker it, const Comparison* comp)
 {
 	const Value firstArgNaN = method.addNewLocal(TYPE_BOOL, "%nan_check");
-	it.emplace(new Operation("xor", firstArgNaN, comp->getFirstArg(), FLOAT_NAN, comp->conditional));
+	it.emplace(new Operation(OP_XOR, firstArgNaN, comp->getFirstArg(), FLOAT_NAN, comp->conditional));
 	it.nextInBlock();
 	Value eitherNaN = firstArgNaN;
 	if(comp->getArguments().size() > 1)
 	{
 		const Value secondArgNaN = method.addNewLocal(TYPE_BOOL, "%nan_check");
-		it.emplace(new Operation("xor", secondArgNaN, comp->getSecondArg(), FLOAT_NAN, comp->conditional));
+		it.emplace(new Operation(OP_XOR, secondArgNaN, comp->getSecondArg(), FLOAT_NAN, comp->conditional));
 		it.nextInBlock();
 		eitherNaN = method.addNewLocal(TYPE_BOOL, "%nan_check");
-		it.emplace(new Operation("or", eitherNaN, firstArgNaN, secondArgNaN, comp->conditional));
+		it.emplace(new Operation(OP_OR, eitherNaN, firstArgNaN, secondArgNaN, comp->conditional));
 		it.nextInBlock();
 	}
 	return std::make_pair(it, eitherNaN);
@@ -170,21 +170,21 @@ InstructionWalker intermediate::intrinsifyFloatingRelation(Method& method, Instr
     else if(COMP_ORDERED_EQ.compare(comp->opCode) == 0 || COMP_UNORDERED_EQ.compare(comp->opCode) == 0)
     {
         // a == b <=> a xor b == 0 [<=> a - b == 0]
-        it.emplace(new Operation("xor", NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
+        it.emplace(new Operation(OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
         it.nextInBlock();
         it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_SET);
     }
     else if(COMP_ORDERED_NEQ.compare(comp->opCode) == 0 || COMP_UNORDERED_NEQ.compare(comp->opCode) == 0)
     {
         //a != b <=> a xor b != 0
-        it.emplace(new Operation("xor", NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
+        it.emplace(new Operation(OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
         it.nextInBlock();
         it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_CLEAR);
     }
     else if(COMP_ORDERED_LT.compare(comp->opCode) == 0 || COMP_UNORDERED_LT.compare(comp->opCode) == 0)
     {
         //a < b [<=> min(a, b) != b] [<=> max(a, b) != a] <=> a - b < 0
-        it.emplace(new Operation("fsub", NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
+        it.emplace(new Operation(OP_FSUB, NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
         it.nextInBlock();
         //true if NEGATIVE is set, otherwise false
         it = replaceWithSetBoolean(it, comp->getOutput(), COND_NEGATIVE_SET);
@@ -192,9 +192,9 @@ InstructionWalker intermediate::intrinsifyFloatingRelation(Method& method, Instr
     else if(COMP_ORDERED_LE.compare(comp->opCode) == 0 || COMP_UNORDERED_LE.compare(comp->opCode) == 0)
     {
         //a <= b <=> min(a, b) == a [<=> max(a, b) == b]
-        it.emplace(new Operation("fmin", tmp, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
+        it.emplace(new Operation(OP_FMIN, tmp, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
         it.nextInBlock();
-        it.emplace(new Operation("xor", NOP_REGISTER, tmp, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
+        it.emplace(new Operation(OP_XOR, NOP_REGISTER, tmp, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
         it.nextInBlock();
         it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_SET);
     }
@@ -204,13 +204,13 @@ InstructionWalker intermediate::intrinsifyFloatingRelation(Method& method, Instr
     	const Value tmp0 = method.addNewLocal(TYPE_BOOL, "%ordered");
     	const Value tmp1 = method.addNewLocal(TYPE_BOOL, "%ordered");
     	//tmp0 = a != NaN
-    	it.emplace(new Operation("xor", tmp0, comp->getFirstArg(), FLOAT_NAN, comp->conditional));
+    	it.emplace(new Operation(OP_XOR, tmp0, comp->getFirstArg(), FLOAT_NAN, comp->conditional));
     	it.nextInBlock();
     	//tmp1 = b != NaN
-    	it.emplace(new Operation("xor", tmp1, comp->getSecondArg(), FLOAT_NAN, comp->conditional));
+    	it.emplace(new Operation(OP_XOR, tmp1, comp->getSecondArg(), FLOAT_NAN, comp->conditional));
 		it.nextInBlock();
 		//tmp = tmp0 && tmp1
-		it.emplace(new Operation("and", tmp, tmp0, tmp1, comp->conditional, SetFlag::SET_FLAGS));
+		it.emplace(new Operation(OP_AND, tmp, tmp0, tmp1, comp->conditional, SetFlag::SET_FLAGS));
 		it.nextInBlock();
 		//res = tmp != 0 <=> (tmp0 && tmp1) == 0 <=> (a != NaN) && (b != NaN)
 		it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_CLEAR);
@@ -221,13 +221,13 @@ InstructionWalker intermediate::intrinsifyFloatingRelation(Method& method, Instr
 		const Value tmp0 = method.addNewLocal(TYPE_BOOL, "%ordered");
 		const Value tmp1 = method.addNewLocal(TYPE_BOOL, "%ordered");
 		//tmp0 = a != NaN
-		it.emplace(new Operation("xor", tmp0, comp->getFirstArg(), FLOAT_NAN, comp->conditional));
+		it.emplace(new Operation(OP_XOR, tmp0, comp->getFirstArg(), FLOAT_NAN, comp->conditional));
 		it.nextInBlock();
 		//tmp1 = b != NaN
-		it.emplace(new Operation("xor", tmp1, comp->getSecondArg(), FLOAT_NAN, comp->conditional));
+		it.emplace(new Operation(OP_XOR, tmp1, comp->getSecondArg(), FLOAT_NAN, comp->conditional));
 		it.nextInBlock();
 		//tmp = tmp0 && tmp1
-		it.emplace(new Operation("and", tmp, tmp0, tmp1, comp->conditional, SetFlag::SET_FLAGS));
+		it.emplace(new Operation(OP_AND, tmp, tmp0, tmp1, comp->conditional, SetFlag::SET_FLAGS));
 		it.nextInBlock();
 		//res = tmp == 0 <=> (tmp0 || tmp1) == 0 <=> (a != NaN) || (b != NaN) == 0 <=> (a == NaN) || (b == NaN)
 		it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_SET);
@@ -246,7 +246,7 @@ InstructionWalker intermediate::insertIsNegative(InstructionWalker it, const Val
 	}
 	else
 	{
-		it.emplace(new Operation("shr", NOP_REGISTER, src, Value(Literal(static_cast<uint64_t>(src.type.getScalarBitCount() - 1)), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
+		it.emplace(new Operation(OP_SHR, NOP_REGISTER, src, Value(Literal(static_cast<uint64_t>(src.type.getScalarBitCount() - 1)), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
 		it.nextInBlock();
 		//some dummy instruction to be replaced
 		it.emplace(new Nop(DelayType::WAIT_REGISTER));

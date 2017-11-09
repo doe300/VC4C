@@ -602,14 +602,14 @@ InstructionWalker optimizations::combineSelectionWithZero(const Module& module, 
 	if(move->getSource().hasLiteral(INT_ZERO.literal))
 	{
 		logging::debug() << "Rewriting selection of either zero or " << nextMove->getSource().to_string() << " using only one input" << logging::endl;
-		it.reset((new Operation("xor", move->getOutput(), nextMove->getSource(), nextMove->getSource()))->copyExtrasFrom(move));
+		it.reset((new Operation(OP_XOR, move->getOutput(), nextMove->getSource(), nextMove->getSource()))->copyExtrasFrom(move));
 		//to process this instruction again (e.g. loading literals)
 		it.previousInBlock();
 	}
 	else if(nextMove->getSource().hasLiteral(INT_ZERO.literal))
 	{
 		logging::debug() << "Rewriting selection of either " << move->getSource().to_string() << " or zero using only one input" << logging::endl;
-		nextIt.reset((new Operation("xor", nextMove->getOutput(), move->getSource(), move->getSource()))->copyExtrasFrom(nextMove));
+		nextIt.reset((new Operation(OP_XOR, nextMove->getOutput(), move->getSource(), move->getSource()))->copyExtrasFrom(nextMove));
 	}
 	return it;
 }

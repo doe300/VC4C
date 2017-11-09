@@ -44,17 +44,17 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
 		if(callSite->methodName.find("vc4cl_sampler_get_normalized_coords") != std::string::npos)
 		{
 			logging::debug() << "Intrinsifying getting normalized-coordinates flag from sampler" << logging::endl;
-			it.reset(new Operation("and", callSite->getOutput(), callSite->getArgument(0), Value(Literal(Sampler::MASK_NORMALIZED_COORDS), TYPE_INT8)));
+			it.reset(new Operation(OP_AND, callSite->getOutput(), callSite->getArgument(0), Value(Literal(Sampler::MASK_NORMALIZED_COORDS), TYPE_INT8)));
 		}
 		else if(callSite->methodName.find("vc4cl_sampler_get_addressing_mode") != std::string::npos)
 		{
 			logging::debug() << "Intrinsifying getting addressing-mode flag from sampler" << logging::endl;
-			it.reset(new Operation("and", callSite->getOutput(), callSite->getArgument(0), Value(Literal(Sampler::MASK_ADDRESSING_MODE), TYPE_INT8)));
+			it.reset(new Operation(OP_AND, callSite->getOutput(), callSite->getArgument(0), Value(Literal(Sampler::MASK_ADDRESSING_MODE), TYPE_INT8)));
 		}
 		else if(callSite->methodName.find("vc4cl_sampler_get_filter_mode") != std::string::npos)
 		{
 			logging::debug() << "Intrinsifying getting filter-mode flag from sampler" << logging::endl;
-			it.reset(new Operation("and", callSite->getOutput(), callSite->getArgument(0), Value(Literal(Sampler::MASK_FILTER_MODE), TYPE_INT8)));
+			it.reset(new Operation(OP_AND, callSite->getOutput(), callSite->getArgument(0), Value(Literal(Sampler::MASK_FILTER_MODE), TYPE_INT8)));
 		}
 	}
 	return it;
@@ -66,7 +66,7 @@ static InstructionWalker insertLoadImageConfig(InstructionWalker it, Method& met
 	if(imageConfig == nullptr)
 		throw CompilationError(CompilationStep::GENERAL, "Image-configuration is not yet reserved!");
 	const Value addrTemp = method.addNewLocal(TYPE_INT32.toPointerType(), "%image_config");
-	it.emplace(new Operation("add", addrTemp, imageConfig->createReference(), offset));
+	it.emplace(new Operation(OP_ADD, addrTemp, imageConfig->createReference(), offset));
 	it.nextInBlock();
 	it = periphery::insertReadDMA(method, it, dest, addrTemp);
 	return it;
@@ -77,7 +77,7 @@ InstructionWalker intermediate::insertQueryChannelDataType(InstructionWalker it,
 	//upper half of the channel-info field
 	const Value valTemp = method.addNewLocal(TYPE_INT32, "%image_config");
 	it = insertLoadImageConfig(it, method, image, valTemp, IMAGE_CONFIG_CHANNEL_OFFSET);
-	it.emplace(new Operation("shr", dest, valTemp, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
+	it.emplace(new Operation(OP_SHR, dest, valTemp, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
 	it.nextInBlock();
 	return it;
 }
@@ -87,7 +87,7 @@ InstructionWalker intermediate::insertQueryChannelOrder(InstructionWalker it, Me
 	//lower half of the channel-info field
 	const Value valTemp = method.addNewLocal(TYPE_INT32, "%image_config");
 	it = insertLoadImageConfig(it, method, image, valTemp, IMAGE_CONFIG_CHANNEL_OFFSET);
-	it.emplace(new Operation("and", dest, valTemp, Value(Literal(static_cast<int64_t>(0xFFFF)), TYPE_INT16)));
+	it.emplace(new Operation(OP_AND, dest, valTemp, Value(Literal(static_cast<int64_t>(0xFFFF)), TYPE_INT16)));
 	it.nextInBlock();
 	return it;
 }
@@ -97,9 +97,9 @@ static InstructionWalker insertLoadImageWidth(InstructionWalker it, Method& meth
 	const Value valTemp = method.addNewLocal(TYPE_INT32, "%image_config");
 	it = insertLoadImageConfig(it, method, image, valTemp, IMAGE_CONFIG_ACCESS_OFFSET);
 	const Value widthTemp = method.addNewLocal(TYPE_INT32, "%image_config");
-	it.emplace(new Operation("shr", widthTemp, valTemp, Value(Literal(static_cast<int64_t>(8)), TYPE_INT8)));
+	it.emplace(new Operation(OP_SHR, widthTemp, valTemp, Value(Literal(static_cast<int64_t>(8)), TYPE_INT8)));
 	it.nextInBlock();
-	it.emplace(new Operation("and", dest, widthTemp, Value(Literal(static_cast<int64_t>(Bitfield<uint32_t>::MASK_Undecuple)), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
+	it.emplace(new Operation(OP_AND, dest, widthTemp, Value(Literal(static_cast<int64_t>(Bitfield<uint32_t>::MASK_Undecuple)), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
 	it.nextInBlock();
 	//0 => 2048
 	it.emplace(new MoveOperation(dest, Value(Literal(static_cast<int64_t>(2048)), TYPE_INT32), COND_ZERO_SET));
@@ -112,9 +112,9 @@ static InstructionWalker insertLoadImageHeight(InstructionWalker it, Method& met
 	const Value valTemp = method.addNewLocal(TYPE_INT32, "%image_config");
 	it = insertLoadImageConfig(it, method, image, valTemp, IMAGE_CONFIG_ACCESS_OFFSET);
 	const Value heightTemp = method.addNewLocal(TYPE_INT32, "%image_config");
-	it.emplace(new Operation("shr", heightTemp, valTemp, Value(Literal(static_cast<int64_t>(20)), TYPE_INT8)));
+	it.emplace(new Operation(OP_SHR, heightTemp, valTemp, Value(Literal(static_cast<int64_t>(20)), TYPE_INT8)));
 	it.nextInBlock();
-	it.emplace(new Operation("and", dest, heightTemp, Value(Literal(static_cast<int64_t>(Bitfield<uint32_t>::MASK_Undecuple)), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
+	it.emplace(new Operation(OP_AND, dest, heightTemp, Value(Literal(static_cast<int64_t>(Bitfield<uint32_t>::MASK_Undecuple)), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
 	it.nextInBlock();
 	//0 => 2048
 	it.emplace(new MoveOperation(dest, Value(Literal(static_cast<int64_t>(2048)), TYPE_INT32), COND_ZERO_SET));

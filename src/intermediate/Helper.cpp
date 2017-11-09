@@ -88,7 +88,7 @@ InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const
             it.emplace( new MoveOperation(NOP_REGISTER, offset, COND_ALWAYS, SetFlag::SET_FLAGS));
             it.nextInBlock();
             //r5 = 16 - offset
-            it.emplace( new Operation("sub", ROTATION_REGISTER, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8), offset, COND_ZERO_CLEAR));
+            it.emplace( new Operation(OP_SUB, ROTATION_REGISTER, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8), offset, COND_ZERO_CLEAR));
             it.nextInBlock();
             it.emplace( new MoveOperation(ROTATION_REGISTER, INT_ZERO, COND_ZERO_SET));
         }
@@ -143,7 +143,7 @@ InstructionWalker intermediate::insertVectorInsertion(InstructionWalker it, Meth
 	//1) rotate scalar value to the correct vector-position
 	it = intermediate::insertVectorRotation(it, value, index, tmp, intermediate::Direction::UP);
     //2) create condition only met in given index
-    it.emplace( new intermediate::Operation("xor", NOP_REGISTER, ELEMENT_NUMBER_REGISTER, index, COND_ALWAYS, SetFlag::SET_FLAGS));
+    it.emplace( new intermediate::Operation(OP_XOR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, index, COND_ALWAYS, SetFlag::SET_FLAGS));
     it.nextInBlock();
     //3) move when condition is met
     it.emplace( new intermediate::MoveOperation(container, tmp, COND_ZERO_SET));
@@ -293,14 +293,14 @@ InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method
 	}
 	else if(allowLiteral)
 	{
-		it.emplace(new Operation("and", dest, src, Value(Literal(src.type.getScalarWidthMask()), TYPE_INT32), conditional, setFlags));
+		it.emplace(new Operation(OP_AND, dest, src, Value(Literal(src.type.getScalarWidthMask()), TYPE_INT32), conditional, setFlags));
 	}
     else
     {
     	const Value tmp = method.addNewLocal(TYPE_INT32, "%zext");
     	it.emplace(new LoadImmediate(tmp, Literal(src.type.getScalarWidthMask())));
     	it.nextInBlock();
-    	it.emplace( new Operation("and", dest, src, tmp, conditional, setFlags));
+    	it.emplace( new Operation(OP_AND, dest, src, tmp, conditional, setFlags));
     }
 
     it->decoration = add_flag(it->decoration, InstructionDecorations::UNSIGNED_RESULT);
@@ -340,9 +340,9 @@ InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method
 		}
 
 		const Value tmp = method.addNewLocal(TYPE_INT32, "%sext");
-		it.emplace( new Operation("shl", tmp, src, widthDiff, conditional));
+		it.emplace( new Operation(OP_SHL, tmp, src, widthDiff, conditional));
 		it.nextInBlock();
-		it.emplace( new Operation("asr", dest, tmp, widthDiff, conditional, setFlags));
+		it.emplace( new Operation(OP_ASR, dest, tmp, widthDiff, conditional, setFlags));
 	}
 
     it.nextInBlock();
@@ -402,14 +402,14 @@ InstructionWalker intermediate::insertMakePositive(InstructionWalker it, Method&
 	else
 	{
 		//do we have a negative number?
-		it.emplace(new Operation("shr", NOP_REGISTER, src, Value(Literal(static_cast<uint64_t>(src.type.getScalarBitCount() - 1)), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
+		it.emplace(new Operation(OP_SHR, NOP_REGISTER, src, Value(Literal(static_cast<uint64_t>(src.type.getScalarBitCount() - 1)), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
 		it.nextInBlock();
 		//flip all bits
 		const Value tmp = method.addNewLocal(src.type, "%tow_complement");
-		it.emplace(new Operation("not", tmp, src, COND_ZERO_CLEAR));
+		it.emplace(new Operation(OP_NOT, tmp, src, COND_ZERO_CLEAR));
 		it.nextInBlock();
 		//add 1
-		it.emplace(new Operation("add", dest, tmp, INT_ONE, COND_ZERO_CLEAR));
+		it.emplace(new Operation(OP_ADD, dest, tmp, INT_ONE, COND_ZERO_CLEAR));
 		it.nextInBlock();
 		//simply copy for already positive numbers
 		it.emplace(new MoveOperation(dest, src, COND_ZERO_SET));
@@ -431,10 +431,10 @@ InstructionWalker intermediate::insertInvertSign(InstructionWalker it, Method& m
 	{
 		//flip all bits
 		const Value tmp = method.addNewLocal(src.type, "%twos_complement");
-		it.emplace(new Operation("not", tmp, src, cond));
+		it.emplace(new Operation(OP_NOT, tmp, src, cond));
 		it.nextInBlock();
 		//add 1
-		it.emplace(new Operation("add", dest, tmp, INT_ONE, cond));
+		it.emplace(new Operation(OP_ADD, dest, tmp, INT_ONE, cond));
 		it.nextInBlock();
 		//otherwise, simply copy
 		it.emplace(new MoveOperation(dest, src, cond.invert()));
@@ -500,13 +500,13 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 		else
 		{
 			Value tmp = method.addNewLocal(TYPE_INT32, "%index_offset");
-			it.emplace(new intermediate::Operation("add", tmp, offset, subOffset));
+			it.emplace(new intermediate::Operation(OP_ADD, tmp, offset, subOffset));
 			it.nextInBlock();
 			offset = tmp;
 		}
 	}
 	//add last offset to container
-	it.emplace(new intermediate::Operation("add", dest, container, offset));
+	it.emplace(new intermediate::Operation(OP_ADD, dest, container, offset));
 	it.nextInBlock();
 
 	/*

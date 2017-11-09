@@ -32,7 +32,7 @@ static InstructionWalker loadVectorParameter(const Parameter& param, Method& met
 		//the first write to the parameter needs to unconditional, so the register allocator can find it
 		if(i > 0)
 		{
-			it.emplace( new Operation("xor", NOP_REGISTER, ELEMENT_NUMBER_REGISTER, Value(SmallImmediate(i), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
+			it.emplace( new Operation(OP_XOR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, Value(SmallImmediate(i), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
 			it.nextInBlock();
 		}
 		if(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND))
@@ -141,7 +141,7 @@ static void generateStopSegment(Method& method)
 {
     //write interrupt for host
     //write QPU number finished (value must be NON-NULL, so we invert it -> the first 28 bits are always 1)
-    method.appendToEnd(new Operation("not", Value(REG_HOST_INTERRUPT, TYPE_INT8), Value(REG_QPU_NUMBER, TYPE_INT8)));
+    method.appendToEnd(new Operation(OP_NOT, Value(REG_HOST_INTERRUPT, TYPE_INT8), Value(REG_QPU_NUMBER, TYPE_INT8)));
     IntermediateInstruction* nop = new Nop(DelayType::THREAD_END);
     //set signals to stop thread/program    
     nop->setSignaling(SIGNAL_END_PROGRAM);
@@ -171,9 +171,9 @@ static void extendBranches(Method& method)
 				//TODO can be skipped, if it is checked/guaranteed, that the last instruction setting flags is the boolean-selection for the given condition
 				//but we need to check more than the last instructions, since there could be moves inserted by phi
 				if(has_flag(branch->decoration, InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
-					it.emplace(new Operation("or", NOP_REGISTER, branch->getCondition(), branch->getCondition(), COND_ALWAYS, SetFlag::SET_FLAGS));
+					it.emplace(new Operation(OP_OR, NOP_REGISTER, branch->getCondition(), branch->getCondition(), COND_ALWAYS, SetFlag::SET_FLAGS));
 				else
-					it.emplace(new Operation("or", NOP_REGISTER, ELEMENT_NUMBER_REGISTER, branch->getCondition(), COND_ALWAYS, SetFlag::SET_FLAGS));
+					it.emplace(new Operation(OP_OR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, branch->getCondition(), COND_ALWAYS, SetFlag::SET_FLAGS));
 				it.nextInBlock();
 			}
 			++num;
