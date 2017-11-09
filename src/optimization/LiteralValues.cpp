@@ -41,7 +41,7 @@ static InstructionWalker copyVector(Method& method, InstructionWalker it, const 
     
     for(std::size_t i = 0; i < in.type.getVectorWidth(); ++i)
     {
-    	//copy first element without test for flags, so the register allocator finds an unconditional write ot the container
+    	//copy first element without test for flags, so the register allocator finds an unconditional write of the container
         //1) set flags for element i
     	if(i > 0)
     	{
@@ -66,12 +66,28 @@ InstructionWalker optimizations::handleContainer(const Module& module, Method& m
 	intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
 	intermediate::Operation* op = it.get<intermediate::Operation>();
 	intermediate::VectorRotation* rot = it.get<intermediate::VectorRotation>();
-	if(rot != nullptr && rot->getSource().hasType(ValueType::CONTAINER) && rot->getOffset().hasType(ValueType::LITERAL))
+	if(rot != nullptr && rot->getSource().hasType(ValueType::CONTAINER) && (rot->getOffset().hasType(ValueType::LITERAL) || rot->getOffset().hasType(ValueType::SMALL_IMMEDIATE)))
 	{
 		Value src = rot->getSource();
 		//vector rotation -> rotate container (if static offset)
-		std::rotate(src.container.elements.begin(), src.container.elements.end(), src.container.elements.begin() + rot->getOffset().literal.integer);
+		std::size_t offset = rot->getOffset().hasType(ValueType::LITERAL) ? rot->getOffset().literal.integer : rot->getOffset().immediate.getRotationOffset().get();
+		//"Rotates the order of the elements in the range [first,last), in such a way that the element pointed by middle becomes the new first element."
+		offset = (16 - offset);
+		//need to rotate all (possible non-existing) 16 elements, so use a temporary vector with 16 elements and rotate it
+		std::vector<Value> tmp;
+		tmp.reserve(16);
+		for(const Value& e : src.container.elements)
+			tmp.push_back(e);
+		while(tmp.size() != 16)
+			tmp.push_back(UNDEFINED_VALUE);
+		std::rotate(tmp.begin(), tmp.begin() + offset, tmp.end());
+		for(std::size_t i = 0; i < src.container.elements.size(); ++i)
+		{
+			src.container.elements[i] = tmp.at(i);
+		}
 		rot->setSource(src);
+		//TODO next step could be optimized, if we used the vector-rotation to extract an element
+		//In which case, a simple copy suffices?? At least, we don't need to set the other elements
 	}
 	//jump from previous block to next one intended, so no "else"
 	if(move != nullptr && move->getSource().hasType(ValueType::CONTAINER))
