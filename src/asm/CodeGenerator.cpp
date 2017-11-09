@@ -348,7 +348,15 @@ static std::vector<uint8_t> generateDataSegment(const Module& module)
 	std::vector<uint8_t> bytes;
 	bytes.reserve(2048);
 	for(const Global& global : module.globalData)
+	{
+		//add alignment per element
+		const unsigned alignment = global.type.getPointerType().get()->getAlignment();
+		while(bytes.size() % alignment != 0)
+		{
+			bytes.push_back(0);
+		}
 		toBinary(global.value, bytes);
+	}
 
 	//allocate space for stack
 	std::size_t maxStackSize = 0;
@@ -373,6 +381,12 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
 	std::size_t globalDataLength = 0;
 	for(const Global& global : module.globalData)
 	{
+		//add alignment per element
+		const unsigned alignment = global.type.getPointerType().get()->getAlignment();
+		if(globalDataLength % alignment != 0)
+		{
+			globalDataLength += alignment - (globalDataLength % alignment);
+		}
 		globalDataLength += global.value.type.getPhysicalWidth();
 	}
 	//add padding, so the global data is a multiple of 8 Bytes

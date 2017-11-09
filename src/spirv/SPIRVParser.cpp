@@ -746,13 +746,19 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         Value val(type.getElementType());
         if(parsed_instruction->num_words > 4)
         	val = constantMappings.at(getWord(parsed_instruction, 4));
+        unsigned alignment = 0;
+        if(decorationMappings.find(parsed_instruction->type_id) != decorationMappings.end())
+        	alignment = getDecoration(decorationMappings.at(parsed_instruction->type_id), SpvDecorationAlignment).orElse(0);
+        if(alignment == 0 && decorationMappings.find(parsed_instruction->result_id) != decorationMappings.end())
+        	alignment = getDecoration(decorationMappings.at(parsed_instruction->result_id), SpvDecorationAlignment).orElse(0);
+
         //the type of OpVariable is the pointer
         //... but the global data/stack allocation needs to have the real type (is re-set in #parse())
         if(currentMethod != nullptr && AddressSpace::PRIVATE == toAddressSpace(static_cast<SpvStorageClass>(getWord(parsed_instruction, 3))))
         {
         	//OpVariables within a function body are stack allocations
         	//"All OpVariable instructions in a function must have a Storage Class of Function."
-        	currentMethod->method->stackAllocations.push_back(StackAllocation(name, type));
+        	currentMethod->method->stackAllocations.push_back(StackAllocation(name, type, 0, alignment == 0 ? 1 : 0));
         	//TODO set initial value!. Allowed for OpVariables with storage-class Function?
         	memoryAllocatedData.emplace(parsed_instruction->result_id, &currentMethod->method->stackAllocations.back());
         }
@@ -760,6 +766,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         {
         	//OpVariables outside of any function are global data
         	module->globalData.emplace_back(Global(name, type, val));
+        	module->globalData.back().type.getPointerType().get()->alignment = alignment;
 			memoryAllocatedData.emplace(parsed_instruction->result_id, &module->globalData.back());
         }
         logging::debug() << "Reading variable: " << type.to_string() << " " << name << " with value: " << val.to_string(false, true) << logging::endl;

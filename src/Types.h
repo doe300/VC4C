@@ -125,6 +125,8 @@ namespace vc4c
 		PointerType(const DataType& elementType, const AddressSpace addressSpace = AddressSpace::PRIVATE, unsigned alignment = 0);
 		virtual ~PointerType();
 		bool operator==(const ComplexType& other) const override;
+		unsigned getAlignment() const;
+
 	};
 
 	struct StructType: public ComplexType

@@ -640,6 +640,11 @@ Optional<unsigned int> Module::getGlobalDataOffset(const Local* local) const
 	unsigned int offset = 0;
 	for(const Global& global : globalData)
 	{
+		const unsigned alignment = global.type.getPointerType().get()->getAlignment();
+		if(offset % alignment != 0)
+		{
+			offset += alignment - (offset % alignment);
+		}
 		if(local == &global)
 		{
 			return offset;

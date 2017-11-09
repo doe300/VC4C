@@ -245,6 +245,13 @@ bool PointerType::operator==(const ComplexType& other) const
 	return elementType == right->elementType;
 }
 
+unsigned PointerType::getAlignment() const
+{
+	if(alignment != 0)
+		return alignment;
+	return elementType.getPhysicalWidth();
+}
+
 StructType::StructType(const std::vector<DataType>& elementTypes, const bool isPacked) : elementTypes(elementTypes), isPacked(isPacked)
 {
 
