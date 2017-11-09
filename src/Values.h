@@ -24,10 +24,10 @@ namespace vc4c
 	struct Register
 	{
 		RegisterFile file;
-		std::size_t num;
+		unsigned char num;
 
 		explicit Register();
-		constexpr Register(const RegisterFile file, const std::size_t num) : file(file), num(num) {};
+		constexpr Register(const RegisterFile file, const unsigned char num) : file(file), num(num) {};
 
 		bool isGeneralPurpose() const;
 		std::string to_string(bool specialNames, bool readAccess = true) const;

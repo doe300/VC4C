@@ -38,13 +38,13 @@ namespace vc4c
 			inline void setName(const std::string& name)
 			{
 				this->name = name;
-				setNameLength(name.size());
+				setNameLength(static_cast<uint16_t>(name.size()));
 			}
 
 			inline void setTypeName(const std::string& name)
 			{
 				typeName = name;
-				setTypeNameLength(name.size());
+				setTypeNameLength(static_cast<uint16_t>(name.size()));
 			}
 
 			std::string to_string() const;
@@ -88,13 +88,13 @@ namespace vc4c
 			inline void setName(const std::string& name)
 			{
 				this->name = name;
-				setNameLength(name.size());
+				setNameLength(static_cast<uint16_t>(name.size()));
 			}
 
 			inline void addParameter(const ParamInfo& param)
 			{
-				setParamCount(getParamCount() + 1);
 				parameters.push_back(param);
+				setParamCount(static_cast<uint16_t>(parameters.size()));
 			}
 
 		private:
@@ -104,7 +104,7 @@ namespace vc4c
 			std::vector<ParamInfo> parameters;
 		};
 
-		KernelInfo getKernelInfos(const Method& method, const std::size_t initialOffset, const std::size_t numInstructions);
+		KernelInfo getKernelInfos(const Method& method, const uint16_t initialOffset, const uint16_t numInstructions);
 		void writeKernelInfos(const std::vector<KernelInfo>& info, std::ostream& output, const OutputMode mode);
 	}
 }

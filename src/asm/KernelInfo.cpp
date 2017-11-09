@@ -66,7 +66,7 @@ KernelInfo::KernelInfo(const std::size_t& numParameters) : Bitfield(0), workGrou
 
 uint8_t KernelInfo::write(std::ostream& stream, const OutputMode mode) const
 {
-    std::size_t numWords = 0;
+    uint8_t numWords = 0;
     if(mode == OutputMode::HEX || mode == OutputMode::ASSEMBLER)
 	{
 		const std::string s = to_string();
@@ -109,7 +109,7 @@ static std::string getMetaData(const std::map<MetaDataType, std::vector<std::str
     return metaData.at(type).at(index);
 }
 
-KernelInfo qpu_asm::getKernelInfos(const Method& method, const std::size_t initialOffset, const std::size_t numInstructions)
+KernelInfo qpu_asm::getKernelInfos(const Method& method, const uint16_t initialOffset, const uint16_t numInstructions)
 {
     KernelInfo info(method.parameters.size());
     info.setOffset(initialOffset);
@@ -118,8 +118,8 @@ KernelInfo qpu_asm::getKernelInfos(const Method& method, const std::size_t initi
     info.workGroupSize = 0;
     if(method.metaData.find(MetaDataType::WORK_GROUP_SIZES) != method.metaData.end())
     {
-        uint32_t requiredSize = 1;
-        unsigned char offset = 0;
+        size_t requiredSize = 1;
+        unsigned offset = 0;
         for(const std::string& s : method.metaData.at(MetaDataType::WORK_GROUP_SIZES))
         {
             int64_t size = std::atoi(s.data());

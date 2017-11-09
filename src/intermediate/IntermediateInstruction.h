@@ -84,7 +84,6 @@ namespace vc4c
 			bool writesLocal(const Local* local) const override;
 			void replaceLocal(const Local* oldLocal, const Local* newLocal, const Type type) override;
 
-			virtual std::string to_string() const = 0;
 			virtual IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const = 0;
 			virtual qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const = 0;
 			/*
@@ -151,7 +150,7 @@ namespace vc4c
 			std::string to_string() const override;
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
 			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
-			virtual bool mapsToASMInstruction() const;
+			virtual bool mapsToASMInstruction() const override;
 
 			const Value getFirstArg() const;
 			const Optional<Value> getSecondArg() const;
@@ -204,7 +203,7 @@ namespace vc4c
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
 			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
 			Operation* combineWith(const OpCode& otherOpCode) const;
-			virtual bool mapsToASMInstruction() const;
+			virtual bool mapsToASMInstruction() const override;
 			Optional<Value> precalculate(const std::size_t numIterations) const override;
 
 			void setSource(const Value& value);
@@ -339,7 +338,7 @@ namespace vc4c
 
 			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
-			virtual bool mapsToASMInstruction() const;
+			virtual bool mapsToASMInstruction() const override;
 
 			const Operation* getFirstOp() const;
 			const Operation* getSecondOP() const;

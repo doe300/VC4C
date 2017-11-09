@@ -242,7 +242,7 @@ DataType IRParser::parseType()
     std::string typeName;
     if (isArray || isVector)
     {
-        num = scanner.pop().integer;
+        num = static_cast<unsigned>(scanner.pop().integer);
         //pop 'x'
         expectSkipToken(scanner, "x");
 
@@ -264,7 +264,7 @@ DataType IRParser::parseType()
 		}
     }
 
-    unsigned numPointerTypes = 0;
+    std::size_t numPointerTypes = 0;
     Optional<AddressSpace> addressSpace;
     while(true)
     {

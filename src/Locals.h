@@ -36,8 +36,8 @@ namespace vc4c
 
 	struct LocalUse
 	{
-		uint8_t numWrites = 0;
-		uint8_t numReads = 0;
+		uint32_t numWrites = 0;
+		uint32_t numReads = 0;
 
 		bool writesLocal() const
 		{

@@ -583,7 +583,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         {
             logging::debug() << "Intrinsifying floating division with multiplication of constant inverse" << logging::endl;
             op->setOpCode(OP_FMUL);
-            op->setArgument(1, Value(Literal(1.0f / arg1.literal.real()), arg1.type));
+            op->setArgument(1, Value(Literal(1.0 / arg1.literal.real()), arg1.type));
         }
         else if(has_flag(op->decoration, InstructionDecorations::ALLOW_RECIP) || has_flag(op->decoration, InstructionDecorations::FAST_MATH))
         {
