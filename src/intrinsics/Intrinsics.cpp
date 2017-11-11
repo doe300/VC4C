@@ -34,14 +34,23 @@ static constexpr unsigned char VC4CL_UNSIGNED {1};
 using IntrinsicFunction = std::function<InstructionWalker(Method&, InstructionWalker, const MethodCall*)>;
 //NOTE: copying the captures is on purpose, since the sources do not exist anymore!
 
-static IntrinsicFunction intrinsifyUnaryALUInstruction(const OpCode& opCode, const bool useSignFlag = false)
+static IntrinsicFunction intrinsifyUnaryALUInstruction(const std::string& opCode, const bool useSignFlag = false, const Pack& packMode = PACK_NOP, const Unpack& unpackMode = UNPACK_NOP, bool setFlags = false)
 {
-	return [opCode, useSignFlag](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
+	return [opCode, useSignFlag, packMode, unpackMode, setFlags](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
 	{
 		bool isUnsigned = callSite->getArgument(1).hasValue && callSite->getArgument(1).get().hasType(ValueType::LITERAL) && callSite->getArgument(1).get().literal.integer == VC4CL_UNSIGNED;
 
-		logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to operation " << opCode.name << logging::endl;
+		logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to operation " << opCode << logging::endl;
+		if(opCode.compare("mov") == 0)
+			it.reset((new MoveOperation(callSite->getOutput(), callSite->getArgument(0)))->copyExtrasFrom(callSite));
+		else
 		it.reset((new Operation(opCode, callSite->getOutput(), callSite->getArgument(0)))->copyExtrasFrom(callSite));
+		if(packMode != PACK_NOP)
+			it->setPackMode(packMode);
+		if(unpackMode != UNPACK_NOP)
+			it->setUnpackMode(unpackMode);
+		if(setFlags)
+			it->setSetFlags(SetFlag::SET_FLAGS);
 
 		if(useSignFlag && isUnsigned)
 			it->setDecorations(InstructionDecorations::UNSIGNED_RESULT);
@@ -50,14 +59,20 @@ static IntrinsicFunction intrinsifyUnaryALUInstruction(const OpCode& opCode, con
 	};
 }
 
-static IntrinsicFunction intrinsifyBinaryALUInstruction(const std::string& opCode, const bool useSignFlag = false)
+static IntrinsicFunction intrinsifyBinaryALUInstruction(const std::string& opCode, const bool useSignFlag = false, const Pack& packMode = PACK_NOP, const Unpack& unpackMode = UNPACK_NOP, bool setFlags = false)
 {
-	return [opCode, useSignFlag](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
+	return [opCode, useSignFlag, packMode, unpackMode, setFlags](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
 	{
 		bool isUnsigned = callSite->getArgument(2).hasValue && callSite->getArgument(2).get().hasType(ValueType::LITERAL) && callSite->getArgument(2).get().literal.integer == VC4CL_UNSIGNED;
 
 		logging::debug() << "Intrinsifying binary '" << callSite->to_string() << "' to operation " << opCode << logging::endl;
 		it.reset((new Operation(opCode, callSite->getOutput(), callSite->getArgument(0), callSite->getArgument(1)))->copyExtrasFrom(callSite));
+		if(packMode != PACK_NOP)
+			it->setPackMode(packMode);
+		if(unpackMode != UNPACK_NOP)
+			it->setUnpackMode(unpackMode);
+		if(setFlags)
+			it->setSetFlags(SetFlag::SET_FLAGS);
 
 		if(useSignFlag && isUnsigned)
 			it->setDecorations(InstructionDecorations::UNSIGNED_RESULT);
@@ -132,7 +147,8 @@ enum class DMAAccess
 {
 	READ,
 	WRITE,
-	COPY
+	COPY,
+	PREFETCH
 };
 
 static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access)
@@ -157,9 +173,16 @@ static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access)
 			{
 				logging::debug() << "Intrinsifying ternary '" << callSite->to_string() << "' to DMA copy operation " << logging::endl;
 				const DataType type = callSite->getArgument(0).get().type.getElementType();
-				//TODO number of elements!
-				it = method.vpm->insertReadRAM(it, callSite->getArgument(1), type, nullptr, false);
-				it = method.vpm->insertWriteRAM(it, callSite->getArgument(0), type, nullptr, false);
+				if(!callSite->getArgument(2).hasValue || !callSite->getArgument(2).get().hasType(ValueType::LITERAL))
+					throw CompilationError(CompilationStep::OPTIMIZER, "Memory copy with non-constant size is not yet supported", callSite->to_string());
+				it = method.vpm->insertCopyRAM(method, it, callSite->getArgument(0), callSite->getArgument(1), callSite->getArgument(2).get().literal.integer * type.getPhysicalWidth(), nullptr, false);
+				break;
+			}
+			case DMAAccess::PREFETCH:
+			{
+				//TODO could be used to load into VPM and then use the cache for further reads
+				//for now, simply discard
+				logging::debug() << "Discarding unsupported DMA pre-fetch: " << callSite->to_string() << logging::endl;
 				break;
 			}
 		}
@@ -207,34 +230,51 @@ const static std::map<std::string, Intrinsic> nonaryInstrinsics = {
 };
 
 const static std::map<std::string, Intrinsic> unaryIntrinsicMapping = {
-    {"vc4cl_ftoi", Intrinsic{intrinsifyUnaryALUInstruction(OP_FTOI), [](const Value& val){return Value(Literal(static_cast<int64_t>(std::round(val.literal.real()))), TYPE_INT32);}}},
-    {"vc4cl_itof", Intrinsic{intrinsifyUnaryALUInstruction(OP_ITOF), [](const Value& val){return Value(Literal(static_cast<double>(val.literal.integer)), TYPE_FLOAT);}}},
-    {"vc4cl_clz", Intrinsic{intrinsifyUnaryALUInstruction(OP_CLZ), NO_OP}},
+    {"vc4cl_ftoi", Intrinsic{intrinsifyUnaryALUInstruction(OP_FTOI.name), [](const Value& val){return Value(Literal(static_cast<int64_t>(std::round(val.literal.real()))), TYPE_INT32);}}},
+    {"vc4cl_itof", Intrinsic{intrinsifyUnaryALUInstruction(OP_ITOF.name), [](const Value& val){return Value(Literal(static_cast<double>(val.literal.integer)), TYPE_FLOAT);}}},
+    {"vc4cl_clz", Intrinsic{intrinsifyUnaryALUInstruction(OP_CLZ.name), NO_OP}},
     {"vc4cl_sfu_rsqrt", Intrinsic{intrinsifySFUInstruction(REG_SFU_RECIP_SQRT), [](const Value& val){return Value(Literal(1.0 / std::sqrt(val.literal.real())), TYPE_FLOAT);}}},
     {"vc4cl_sfu_exp2", Intrinsic{intrinsifySFUInstruction(REG_SFU_EXP2), [](const Value& val){return Value(Literal(std::exp2(val.literal.real())), TYPE_FLOAT);}}},
     {"vc4cl_sfu_log2", Intrinsic{intrinsifySFUInstruction(REG_SFU_LOG2), [](const Value& val){return Value(Literal(std::log2(val.literal.real())), TYPE_FLOAT);}}},
     {"vc4cl_sfu_recip", Intrinsic{intrinsifySFUInstruction(REG_SFU_RECIP), [](const Value& val){return Value(Literal(1.0 / val.literal.real()), TYPE_FLOAT);}}},
     {"vc4cl_semaphore_increment", Intrinsic{intrinsifySemaphoreAccess(true)}},
     {"vc4cl_semaphore_decrement", Intrinsic{intrinsifySemaphoreAccess(false)}},
-    {"vc4cl_dma_read", Intrinsic{intrinsifyDMAAccess(DMAAccess::READ)}}
+    {"vc4cl_dma_read", Intrinsic{intrinsifyDMAAccess(DMAAccess::READ)}},
+	{"vc4cl_unpack_sext", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_NOP, UNPACK_SHORT_TO_INT_SEXT)}},
+	{"vc4cl_unpack_color_byte0", Intrinsic{intrinsifyUnaryALUInstruction(OP_FMIN.name, false, PACK_NOP, UNPACK_8A_32)}},
+	{"vc4cl_unpack_color_byte1", Intrinsic{intrinsifyUnaryALUInstruction(OP_FMIN.name, false, PACK_NOP, UNPACK_8B_32)}},
+	{"vc4cl_unpack_color_byte2", Intrinsic{intrinsifyUnaryALUInstruction(OP_FMIN.name, false, PACK_NOP, UNPACK_8C_32)}},
+	{"vc4cl_unpack_color_byte3", Intrinsic{intrinsifyUnaryALUInstruction(OP_FMIN.name, false, PACK_NOP, UNPACK_8D_32)}},
+    {"vc4cl_unpack_byte0", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_NOP, UNPACK_8A_32)}},
+	{"vc4cl_unpack_byte1", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_NOP, UNPACK_8B_32)}},
+	{"vc4cl_unpack_byte2", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_NOP, UNPACK_8C_32)}},
+	{"vc4cl_unpack_byte3", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_NOP, UNPACK_8D_32)}},
+	{"vc4cl_pack_truncate", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_SHORT_TRUNCATE)}},
+	{"vc4cl_replicate_lsb", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_32_8888)}},
+	{"vc4c_pack_lsb", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_CHAR_TRUNCATE)}},
+	{"vc4cl_saturate_short", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_SIGNED_SHORT_SATURATE)}},
+	{"vc4c_saturate_lsb", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_UNSIGNED_CHAR_SATURATE)}}
 };
 
 const static std::map<std::string, Intrinsic> binaryIntrinsicMapping = {
-    {"vc4cl_fmax", Intrinsic{intrinsifyBinaryALUInstruction("fmax"), [](const Value& val0, const Value& val1){return Value(Literal(std::max(val0.literal.real(), val1.literal.real())), TYPE_FLOAT);}}},
-    {"vc4cl_fmin", Intrinsic{intrinsifyBinaryALUInstruction("fmin"), [](const Value& val0, const Value& val1){return Value(Literal(std::min(val0.literal.real(), val1.literal.real())), TYPE_FLOAT);}}},
-    {"vc4cl_fmaxabs", Intrinsic{intrinsifyBinaryALUInstruction("fmaxabs"), [](const Value& val0, const Value& val1){return Value(Literal(std::max(std::abs(val0.literal.real()), std::abs(val1.literal.real()))), TYPE_FLOAT);}}},
-    {"vc4cl_fminabs", Intrinsic{intrinsifyBinaryALUInstruction("fminabs"), [](const Value& val0, const Value& val1){return Value(Literal(std::min(std::abs(val0.literal.real()), std::abs(val1.literal.real()))), TYPE_FLOAT);}}},
+    {"vc4cl_fmax", Intrinsic{intrinsifyBinaryALUInstruction(OP_FMAX.name), [](const Value& val0, const Value& val1){return Value(Literal(std::max(val0.literal.real(), val1.literal.real())), TYPE_FLOAT);}}},
+    {"vc4cl_fmin", Intrinsic{intrinsifyBinaryALUInstruction(OP_FMIN.name), [](const Value& val0, const Value& val1){return Value(Literal(std::min(val0.literal.real(), val1.literal.real())), TYPE_FLOAT);}}},
+    {"vc4cl_fmaxabs", Intrinsic{intrinsifyBinaryALUInstruction(OP_FMAXABS.name), [](const Value& val0, const Value& val1){return Value(Literal(std::max(std::abs(val0.literal.real()), std::abs(val1.literal.real()))), TYPE_FLOAT);}}},
+    {"vc4cl_fminabs", Intrinsic{intrinsifyBinaryALUInstruction(OP_FMINABS.name), [](const Value& val0, const Value& val1){return Value(Literal(std::min(std::abs(val0.literal.real()), std::abs(val1.literal.real()))), TYPE_FLOAT);}}},
 	//FIXME sign / no-sign!!
-    {"vc4cl_shr", Intrinsic{intrinsifyBinaryALUInstruction("shr"), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer >> val1.literal.integer), val0.type.getUnionType(val1.type));}}},
-    {"vc4cl_asr", Intrinsic{intrinsifyBinaryALUInstruction("asr"), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer >> val1.literal.integer), val0.type.getUnionType(val1.type));}}},
-    {"vc4cl_ror", Intrinsic{intrinsifyBinaryALUInstruction("ror"), NO_OP2}},
-    {"vc4cl_shl", Intrinsic{intrinsifyBinaryALUInstruction("shl"), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer << val1.literal.integer), val0.type.getUnionType(val1.type));}}},
-    {"vc4cl_min", Intrinsic{intrinsifyBinaryALUInstruction("min", true), [](const Value& val0, const Value& val1){return Value(Literal(std::min(val0.literal.integer, val1.literal.integer)), val0.type.getUnionType(val1.type));}}},
-    {"vc4cl_max", Intrinsic{intrinsifyBinaryALUInstruction("max", true), [](const Value& val0, const Value& val1){return Value(Literal(std::max(val0.literal.integer, val1.literal.integer)), val0.type.getUnionType(val1.type));}}},
-    {"vc4cl_and", Intrinsic{intrinsifyBinaryALUInstruction("and"), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer & val1.literal.integer), val0.type.getUnionType(val1.type));}}},
-    {"vc4cl_mul24", Intrinsic{intrinsifyBinaryALUInstruction("mul24", true), [](const Value& val0, const Value& val1){return Value(Literal((val0.literal.integer & 0xFFFFFFL) * (val1.literal.integer & 0xFFFFFFL)), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_shr", Intrinsic{intrinsifyBinaryALUInstruction(OP_SHR.name), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer >> val1.literal.integer), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_asr", Intrinsic{intrinsifyBinaryALUInstruction(OP_ASR.name), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer >> val1.literal.integer), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_ror", Intrinsic{intrinsifyBinaryALUInstruction(OP_ROR.name), NO_OP2}},
+    {"vc4cl_shl", Intrinsic{intrinsifyBinaryALUInstruction(OP_SHL.name), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer << val1.literal.integer), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_min", Intrinsic{intrinsifyBinaryALUInstruction(OP_MIN.name, true), [](const Value& val0, const Value& val1){return Value(Literal(std::min(val0.literal.integer, val1.literal.integer)), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_max", Intrinsic{intrinsifyBinaryALUInstruction(OP_MAX.name, true), [](const Value& val0, const Value& val1){return Value(Literal(std::max(val0.literal.integer, val1.literal.integer)), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_and", Intrinsic{intrinsifyBinaryALUInstruction(OP_AND.name), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer & val1.literal.integer), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_mul24", Intrinsic{intrinsifyBinaryALUInstruction(OP_MUL24.name, true), [](const Value& val0, const Value& val1){return Value(Literal((val0.literal.integer & 0xFFFFFFL) * (val1.literal.integer & 0xFFFFFFL)), val0.type.getUnionType(val1.type));}}},
     {"vc4cl_dma_write", Intrinsic{intrinsifyDMAAccess(DMAAccess::WRITE)}},
-	{"vc4cl_vector_rotate", Intrinsic{intrinsifyVectorRotation()}}
+	{"vc4cl_vector_rotate", Intrinsic{intrinsifyVectorRotation()}},
+	//XXX correct, can use the flags emitted by the very same instruction?
+	{"vc4cl_saturated_add", Intrinsic{intrinsifyBinaryALUInstruction(OP_ADD.name, false, PACK_32_32, UNPACK_NOP, true)}},
+	{"vc4cl_saturated_sub", Intrinsic{intrinsifyBinaryALUInstruction(OP_SUB.name, false, PACK_32_32, UNPACK_NOP, true)}},
 };
 
 const static std::map<std::string, Intrinsic> ternaryIntrinsicMapping = {

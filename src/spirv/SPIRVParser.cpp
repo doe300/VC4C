@@ -758,7 +758,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         {
         	//OpVariables within a function body are stack allocations
         	//"All OpVariable instructions in a function must have a Storage Class of Function."
-        	currentMethod->method->stackAllocations.push_back(StackAllocation(name, type, 0, alignment == 0 ? 1 : 0));
+        	currentMethod->method->stackAllocations.push_back(StackAllocation(name, type, 0, alignment));
         	//TODO set initial value!. Allowed for OpVariables with storage-class Function?
         	memoryAllocatedData.emplace(parsed_instruction->result_id, &currentMethod->method->stackAllocations.back());
         }

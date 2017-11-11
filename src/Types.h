@@ -172,29 +172,6 @@ namespace vc4c
 
 		static std::string toImageConfigurationName(const std::string& localName);
 	};
-
-	//TODO move somewhere else?
-
-	enum class Semaphore
-	{
-		BARRIER_WORK_ITEM_0 = 0,
-		BARRIER_WORK_ITEM_1 = 1,
-		BARRIER_WORK_ITEM_2 = 2,
-		BARRIER_WORK_ITEM_3 = 3,
-		BARRIER_WORK_ITEM_4 = 4,
-		BARRIER_WORK_ITEM_5 = 5,
-		BARRIER_WORK_ITEM_6 = 6,
-		BARRIER_WORK_ITEM_7 = 7,
-		BARRIER_WORK_ITEM_8 = 8,
-		BARRIER_WORK_ITEM_9 = 9,
-		BARRIER_WORK_ITEM_10 = 10,
-		BARRIER_WORK_ITEM_11 = 11,
-		BARRIER_SFU_SLICE_0 = 12,
-		BARRIER_SFU_SLICE_1 = 13,
-		BARRIER_SFU_SLICE_2 = 14,
-		BARRIER_SFU_SLICE_3 = 15
-	};
-
 }
 
 #endif /* TYPES_H */

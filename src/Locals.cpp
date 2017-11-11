@@ -179,7 +179,7 @@ bool Global::residesInMemory() const
 	return true;
 }
 
-StackAllocation::StackAllocation(const std::string& name, const DataType& type, std::size_t size, std::size_t alignment) : Local(type, name), offset(0), alignment(alignment), size(size > 0 ? size : type.getElementType().getPhysicalWidth())
+StackAllocation::StackAllocation(const std::string& name, const DataType& type, std::size_t size, std::size_t alignment) : Local(type, name), offset(0), alignment(alignment == 0 ? 1 : alignment), size(size > 0 ? size : type.getElementType().getPhysicalWidth())
 {
 
 }

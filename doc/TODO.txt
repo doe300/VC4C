@@ -8,8 +8,6 @@ Threads??
 - TMU is shared between both threads (page 40)
 -> seems like only shaders can run multi-threaded!
 
-as_type() operator?? (page 214ff)
-
 Edge case behavior (OpenCL 1.2, page 325ff)
 
 Decorations:

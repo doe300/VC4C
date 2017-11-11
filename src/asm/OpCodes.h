@@ -411,6 +411,26 @@ namespace vc4c
 			SEMAPHORE = 0b01110100
 	};
 
+	enum class Semaphore
+	{
+		BARRIER_WORK_ITEM_0 = 0,
+		BARRIER_WORK_ITEM_1 = 1,
+		BARRIER_WORK_ITEM_2 = 2,
+		BARRIER_WORK_ITEM_3 = 3,
+		BARRIER_WORK_ITEM_4 = 4,
+		BARRIER_WORK_ITEM_5 = 5,
+		BARRIER_WORK_ITEM_6 = 6,
+		BARRIER_WORK_ITEM_7 = 7,
+		BARRIER_WORK_ITEM_8 = 8,
+		BARRIER_WORK_ITEM_9 = 9,
+		BARRIER_WORK_ITEM_10 = 10,
+		BARRIER_WORK_ITEM_11 = 11,
+		BARRIER_SFU_SLICE_0 = 12,
+		BARRIER_SFU_SLICE_1 = 13,
+		BARRIER_SFU_SLICE_2 = 14,
+		BARRIER_SFU_SLICE_3 = 15
+	};
+
 	/*!
 	 * QPU branches are conditional based on the status of the ALU flag bits across all 16 elements of the SIMD array.
 	 * If a branch condition is satisfied, a new program counter value is calculated as the sum of the (signed) immediate field,
