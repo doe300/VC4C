@@ -271,7 +271,7 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
 			//logging::debug() << "Local " << secondArg.get().local.to_string() << " must be on register-file A, because of unpack-mode in " << instr.to_string() << logging::endl;
 			blockRegisterFile(remove_flag(RegisterFile::ANY, RegisterFile::PHYSICAL_A), secondArg.get().local, localUses);
 		}
-		else if (firstArg.get().hasType(ValueType::LOCAL) && secondArg && secondArg.get().hasType(ValueType::LOCAL))
+		else if (firstArg.get().hasType(ValueType::LOCAL) && secondArg && secondArg.get().hasType(ValueType::LOCAL) && firstArg.get() != secondArg.get())
 		{
 			throw CompilationError(CompilationStep::LABEL_REGISTER_MAPPING, "Can't unpack two inputs in one instruction", instr.to_string());
 		}

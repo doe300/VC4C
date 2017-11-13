@@ -270,9 +270,10 @@ void optimizations::splitReadAfterWrites(const Module& module, Method& method, c
 				if(it->readsLocal(lastWrittenTo))
 				{
 					//only insert instruction, if local is used afterwards (and not just in the next few instructions)
-					//or the pack-mode is set, since in that case, the register-file A MUST be used, so it cannot be read in the next instruction
+					//or the pack-mode of the previous instruction is set, since in that case, the register-file A MUST be used, so it cannot be read in the next instruction
+					//or the unpack-mode of this instruction is set, since in that case, the register-file A MUST be used, so it cannot be written to in the previous instruction
 					//also vector-rotations MUST be on accumulator, but the input MUST NOT be written in the previous instruction, so they are also split up
-					if(lastInstruction->hasPackMode() || it.has<VectorRotation>() || !lastInstruction.getBasicBlock()->isLocallyLimited(lastInstruction, lastWrittenTo))
+					if(lastInstruction->hasPackMode() || it->hasUnpackMode() || it.has<VectorRotation>() || !lastInstruction.getBasicBlock()->isLocallyLimited(lastInstruction, lastWrittenTo))
 					{
 						logging::debug() << "Inserting NOP to split up read-after-write before: " << it->to_string() << logging::endl;
 						//emplacing after the last instruction instead of before this one fixes errors with wrote-label-read, which then becomes

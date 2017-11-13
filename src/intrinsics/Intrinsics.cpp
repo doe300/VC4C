@@ -251,9 +251,9 @@ const static std::map<std::string, Intrinsic> unaryIntrinsicMapping = {
 	{"vc4cl_unpack_byte3", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_NOP, UNPACK_8D_32)}},
 	{"vc4cl_pack_truncate", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_SHORT_TRUNCATE)}},
 	{"vc4cl_replicate_lsb", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_32_8888)}},
-	{"vc4c_pack_lsb", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_CHAR_TRUNCATE)}},
+	{"vc4cl_pack_lsb", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_CHAR_TRUNCATE)}},
 	{"vc4cl_saturate_short", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_SIGNED_SHORT_SATURATE)}},
-	{"vc4c_saturate_lsb", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_UNSIGNED_CHAR_SATURATE)}}
+	{"vc4cl_saturate_lsb", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_UNSIGNED_CHAR_SATURATE)}}
 };
 
 const static std::map<std::string, Intrinsic> binaryIntrinsicMapping = {
@@ -799,6 +799,9 @@ static InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, Instruction
 		}
 		return it.reset((new MoveOperation(it->getOutput(), src))->copyExtrasFrom(it.get()));
 	}
+	//set default value first and always, so a path for the destination local is guaranteed
+	it.emplace(new MoveOperation(it->getOutput(), defaultValue));
+	it.nextInBlock();
 	//dim == 0 -> return first value
 	it.emplace((new Operation(OP_XOR, NOP_REGISTER, arg, INT_ZERO))->setSetFlags(SetFlag::SET_FLAGS));
 	it.nextInBlock();
@@ -812,12 +815,7 @@ static InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, Instruction
 	//dim == 2 -> return third value
 	it.emplace((new Operation(OP_XOR, NOP_REGISTER, arg, Value(Literal(static_cast<int64_t>(2)), TYPE_INT32)))->setSetFlags(SetFlag::SET_FLAGS));
 	it.nextInBlock();
-	it.emplace(new MoveOperation(it->getOutput(), method.findOrCreateLocal(TYPE_INT32, locals.at(2))->createReference(), COND_ZERO_SET));
-	it.nextInBlock();
-	//otherwise (dim > 2 -> 2 - dim < 0) return default value
-	it.emplace((new Operation(OP_SUB, NOP_REGISTER, Value(Literal(static_cast<int64_t>(2)), TYPE_INT32), arg))->setSetFlags(SetFlag::SET_FLAGS));
-	it.nextInBlock();
-	return it.reset(new MoveOperation(it->getOutput(), defaultValue, COND_NEGATIVE_SET));
+	return it.reset(new MoveOperation(it->getOutput(), method.findOrCreateLocal(TYPE_INT32, locals.at(2))->createReference(), COND_ZERO_SET));
 }
 
 static InstructionWalker intrinsifyReadWorkItemInfo(Method& method, InstructionWalker it, const Value& arg, const std::string& local, const InstructionDecorations decoration)

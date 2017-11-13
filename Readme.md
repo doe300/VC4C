@@ -29,4 +29,4 @@ The following configuration variables can be set in CMake:
 
 If the [VC4CLStdLib](https://github.com/doe300/VC4CLStdLib) is updated, the LLVM precompiled header (PCH) needs to be rebuilt. For this to happen, simply delete the file `include/VC4CLStdLib.h.pch` and rebuild the VC4C compiler (or just the `vc4cl-stdlib` target).
 
-Sometimes, at least on my Raspberry Pi, if a compilation fails, it somehow removes the symbolic `/dev/stdout` to the current process' standard output, resulting in no program can write to stdout anymore!! To remedy, restart the Pi.
+Sometimes, at least on my Raspberry Pi, if a compilation fails, it somehow removes the symbolic `/dev/stdout` to the current process' standard output, resulting in no program can write to stdout anymore!! To remedy, restart the Pi. See [here](https://github.com/doe300/VC4C/issues/3) for the status of the issue.

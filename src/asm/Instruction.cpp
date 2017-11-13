@@ -75,7 +75,7 @@ std::string Instruction::toOutputRegister(bool regFileA, const Address reg)
     return tmp.to_string(true, false);
 }
 
-std::string Instruction::toExtrasString(const Signaling sig, const ConditionCode cond, const SetFlag flags, const Unpack unpack, const Pack pack)
+std::string Instruction::toExtrasString(const Signaling sig, const ConditionCode cond, const SetFlag flags, const Unpack unpack, const Pack pack, bool usesOutputA, bool usesInputAOrR4)
 {
     std::string result("");
     if(sig != SIGNAL_NONE && sig != SIGNAL_ALU_IMMEDIATE)
@@ -84,9 +84,9 @@ std::string Instruction::toExtrasString(const Signaling sig, const ConditionCode
         result += std::string(".") + cond.toString();
     if(flags == SetFlag::SET_FLAGS)
         result += std::string(".") + toString(flags);
-    if(unpack != UNPACK_NOP)
+    if(usesInputAOrR4 && unpack != UNPACK_NOP)
     	result += std::string(".") + unpack.toString();
-    if(pack != PACK_NOP)
+    if(usesOutputA && pack != PACK_NOP)
     	result += std::string(".") + pack.toString();
     return result;
 }

@@ -22,7 +22,7 @@ vector_convert-test-opencl		compilation error
 Boost Compute:
 test_accumulate					abort ("sum_int", std::out_of_range)
 test_adjacent_difference		PASSED
-test_adjacent_find				result mismatch ("adjacent_find_int", "adjacent_find_int2")
+test_adjacent_find				result mismatch ("adjacent_find_int2")
 test_any_all_none_of			PASSED
 test_array						PASSED
 test_async_wait					PASSED

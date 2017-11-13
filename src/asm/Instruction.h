@@ -38,7 +38,7 @@ namespace vc4c
 
 			static std::string toInputRegister(const InputMutex mutex, const Address regA, const Address regB, const bool hasImmediate = false);
 			static std::string toOutputRegister(const bool regFileA, const Address reg);
-			static std::string toExtrasString(const Signaling sig, const ConditionCode cond = COND_ALWAYS, const SetFlag flags = SetFlag::DONT_SET, const Unpack unpack = UNPACK_NOP, const Pack pack = PACK_NOP);
+			static std::string toExtrasString(const Signaling sig, const ConditionCode cond = COND_ALWAYS, const SetFlag flags = SetFlag::DONT_SET, const Unpack unpack = UNPACK_NOP, const Pack pack = PACK_NOP, bool usesOutputA = true, bool usesInputAOrR4 = true);
 		};
 
 		std::string toHexString(const uint64_t code);

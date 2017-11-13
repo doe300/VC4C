@@ -19,8 +19,9 @@ option(CROSS_COMPILE "Cross compile for Raspbian" OFF)
 # Option whether to include the SPIR-V front-end
 option(SPIRV_FRONTEND "Enables a second front-end for the SPIR-V intermediate language" ON)
 # Option whether to drop the rights for the pre-compilation process (to the user pi).
-# This might be relevant when used in VC4CL, since VC4CL requires root access.
-# Turning this option on might fix the issue with pre-compiler deleting /dev/stdout
+# This is relevant when used in VC4CL, since VC4CL requires root access.
+# Turning this option off results in the  pre-compiler deleting /dev/stdout on errors
+# NOTE: This feature currently does not work and will result in compilation errors!
 option(PRECOMPILER_DROP_RIGHTS "Drop the rights for the pre-compiler to user pi" OFF)
 
 # Path to the VC4CL standard library
@@ -58,7 +59,7 @@ project (VC4C VERSION 0.4)
 add_definitions(-DVC4C_VERSION="${PROJECT_VERSION}")
 
 if(PRECOMPILER_DROP_RIGHTS)
-	mesage(STATUS "Dropping rights of pre-compiler")
+	message(STATUS "Dropping rights of pre-compiler")
 	add_definitions(-DPRECOMPILER_DROP_RIGHTS=1)
 endif()
 

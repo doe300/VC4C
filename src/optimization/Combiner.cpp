@@ -344,10 +344,14 @@ static const std::vector<MergeCondition> mergeConditions = {
         //both instructions need to have the SAME pack-mode (including NOP), unless they have inverted conditions
 		if(firstPack != secondPack && !invertedConditions)
 			return false;
+		//if both have a pack-mode set (excluding NOP), it must be the same, since we can only set one pack-mode per (combined) instruction
+		if(firstPack != PACK_NOP && secondPack != PACK_NOP && firstPack != secondPack)
+			return false;
+		//if both have an unpack-mode set (excluding NOP), it must be the same, since we can only set one unpack-mode per (combined) instruction
+		if(firstUnpack != UNPACK_NOP && secondUnpack != UNPACK_NOP && firstUnpack != secondUnpack)
+			return false;
 		//can only unpack from reg-file A -> 1 input
 		//TODO check if both use same input, then allow (or have inverted conditions)
-		if(firstUnpack != UNPACK_NOP && secondUnpack != UNPACK_NOP)
-			return false;
         return true;
     },
 	//check not two different boolean values which both are used in conditional jump
@@ -427,7 +431,38 @@ void optimizations::combineOperations(const Module& module, Method& method, cons
 							if(nextInstr->hasValueType(ValueType::LOCAL) && nextInstr->getOutput().get() == src)
 								conditionsMet = false;
 						}
+						//the next instruction MUST NOT unpack a value written to in one of the combined instructions
+						//equally, neither of the combined instructions is allowed to pack a value read in the following instructions
+						if(!checkIt.isEndOfBlock())
+						{
+							if(checkIt->unpackMode != UNPACK_NOP)
+							{
+								if(std::any_of(checkIt->getArguments().begin(), checkIt->getArguments().end(), [instr, nextInstr](const Value& val) -> bool {
+									return val.hasType(ValueType::LOCAL) && (instr->writesLocal(val.local) || nextInstr->writesLocal(val.local));
+								}))
+								{
+									conditionsMet = false;
+								}
+							}
+							if(instr->packMode != PACK_NOP && instr->hasValueType(ValueType::LOCAL) && checkIt->readsLocal(instr->getOutput().get().local))
+								conditionsMet = false;
+							if(nextInstr->packMode != PACK_NOP && nextInstr->hasValueType(ValueType::LOCAL) && checkIt->readsLocal(nextInstr->getOutput().get().local))
+								conditionsMet = false;
+						}
+						//run previous checks also for the previous (before instr) instruction
+						//this time with inverted checks (since the order is inverted)
+						checkIt = it.copy().previousInBlock();
+						if(!checkIt.isStartOfBlock() && checkIt->hasValueType(ValueType::LOCAL))
+						{
+							if(checkIt->packMode != PACK_NOP && (instr->readsLocal(checkIt->getOutput().get().local) || nextInstr->readsLocal(checkIt->getOutput().get().local)))
+								conditionsMet = false;
+							if(instr->unpackMode != UNPACK_NOP && instr->readsLocal(checkIt->getOutput().get().local))
+								conditionsMet = false;
+							if(nextInstr->unpackMode != UNPACK_NOP && nextInstr->readsLocal(checkIt->getOutput().get().local))
+								conditionsMet = false;
+						}
 					}
+
 					if(conditionsMet)
 					{
 						//move supports both ADD and MUL ALU

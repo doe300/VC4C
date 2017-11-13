@@ -85,16 +85,34 @@ std::string ALUInstruction::toASMString() const
     std::string mulPart;
     bool hasImmediate = getSig() == SIGNAL_ALU_IMMEDIATE;
     std::string addArgs, mulArgs;
+    bool addCanUnpack = false;
+    bool mulCanUnpack = false;
     if(opAdd.numOperands > 0)
+    {
     	addArgs.append(", ").append(toInputRegister(getAddMutexA(), getInputA(), getInputB(), hasImmediate));
+    	addCanUnpack |= getAddMutexA() == InputMutex::REGA;
+    	addCanUnpack |= getAddMutexA() == InputMutex::ACC4;
+    }
     if(opAdd.numOperands > 1)
+    {
 		addArgs.append(", ").append(toInputRegister(getAddMutexB(), getInputA(), getInputB(), hasImmediate));
+		addCanUnpack |= getAddMutexB() == InputMutex::REGA;
+		addCanUnpack |= getAddMutexB() == InputMutex::ACC4;
+    }
     if(opMul.numOperands > 0)
+    {
     	mulArgs.append(", ").append(toInputRegister(getMulMutexA(), getInputA(), getInputB(), hasImmediate));
+    	mulCanUnpack |= getMulMutexA() == InputMutex::REGA;
+    	mulCanUnpack |= getMulMutexA() == InputMutex::ACC4;
+    }
     if(opMul.numOperands > 1)
+    {
 		mulArgs.append(", ").append(toInputRegister(getMulMutexB(), getInputA(), getInputB(), hasImmediate));
-    addPart = std::string(opAdd.name) + (toExtrasString(getSig(), getAddCondition(), getSetFlag(), getUnpack(), getPack()) + " ") + (opAdd != OP_NOP ? toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) : "") + addArgs;
-    mulPart = std::string(opMul.name) + (toExtrasString(getSig(), getMulCondition(), getSetFlag(), getUnpack(), getPack()) + " ") + (opMul != OP_NOP ? toOutputRegister(getWriteSwap() == WriteSwap::SWAP, getMulOut()) : "") + mulArgs;
+		mulCanUnpack |= getMulMutexB() == InputMutex::REGA;
+		mulCanUnpack |= getMulMutexB() == InputMutex::ACC4;
+    }
+    addPart = std::string(opAdd.name) + (toExtrasString(getSig(), getAddCondition(), getSetFlag(), getUnpack(), getPack(), getWriteSwap() == WriteSwap::DONT_SWAP, addCanUnpack) + " ") + (opAdd != OP_NOP ? toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) : "") + addArgs;
+    mulPart = std::string(opMul.name) + (toExtrasString(getSig(), getMulCondition(), getSetFlag(), getUnpack(), getPack(), getWriteSwap() == WriteSwap::SWAP, mulCanUnpack) + " ") + (opMul != OP_NOP ? toOutputRegister(getWriteSwap() == WriteSwap::SWAP, getMulOut()) : "") + mulArgs;
     if(getMulMutexA() != InputMutex::REGA && getMulMutexA() != InputMutex::REGB && getMulMutexB() != InputMutex::REGA && getMulMutexB() != InputMutex::REGB && getSig() == SIGNAL_ALU_IMMEDIATE && (opAdd == OP_NOP || (getAddMutexA() != InputMutex::REGB && getAddMutexB() != InputMutex::REGB)))
     {
     	//both inputs for mul are accumulators, an immediate value is used
