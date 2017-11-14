@@ -30,11 +30,30 @@ namespace vc4c
 	    QPUASM_BIN = 7
 	};
 
+	class TemporaryFile : private NonCopyable
+	{
+	public:
+		TemporaryFile(const std::string& fileTemplate = "/tmp/vc4c-XXXXXX");
+		TemporaryFile(TemporaryFile&& other);
+		~TemporaryFile();
+
+		void openOutputStream(std::unique_ptr<std::ostream>& ptr) const;
+		void openInputStream(std::unique_ptr<std::istream>& ptr) const;
+
+		const std::string fileName;
+	};
+
 	class Precompiler
 	{
 	public:
 		Precompiler(std::istream& input, const SourceType inputType, const Optional<std::string> inputFile = {});
 
+		/*
+		 * Runs the pre-compilation from the source-type passed to the constructor to the output-type specified.
+		 *
+		 * NOTE: pre-compilation without an output-file specified may result in deleting the symlink /dev/stdout and is therefore discouraged!
+		 * See also: github issue 3 (https://github.com/doe300/VC4C/issues/3)
+		 */
 	#if defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_PARSER_HEADER
 		void run(std::unique_ptr<std::istream>& output, const SourceType outputType = SourceType::SPIRV_BIN, const std::string& options = "", Optional<std::string> outputFile = {});
 	#elif defined CLANG_PATH

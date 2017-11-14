@@ -4,12 +4,20 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include <string.h>
 #include <sstream>
-#include <stdlib.h>
 #include <fstream>
-#include <libgen.h>
 #include <iterator>
+
+#include <string.h>
+#include <stdlib.h>
+#include <libgen.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#ifdef PRECOMPILER_DROP_RIGHTS
+#include <sys/stat.h>
+#endif
 
 #include "Precompiler.h"
 #include "log.h"
@@ -19,6 +27,57 @@
 #endif
 
 using namespace vc4c;
+
+static const std::string TEMP_FILE_TEMPLATE = "XXXXXX";
+
+TemporaryFile::TemporaryFile(const std::string& fileTemplate) : fileName(fileTemplate)
+{
+	//make sure, the format is as expected by mkstemp()
+	//taken from: https://stackoverflow.com/questions/20446201/how-to-check-if-string-ends-with-txt#20446239
+	if(fileName.size() < TEMP_FILE_TEMPLATE.size() || fileName.compare(fileName.size() - TEMP_FILE_TEMPLATE.size(), TEMP_FILE_TEMPLATE.size(), TEMP_FILE_TEMPLATE) != 0)
+		throw CompilationError(CompilationStep::PRECOMPILATION, "Invalid template for temporary file", fileName);
+	if(fileName.find("/tmp/") != 0)
+		logging::warn() << "Temporary file is not created in /tmp/: " << fileTemplate << logging::endl;
+	int fd = mkostemp(const_cast<char*>(fileName.data()), O_CREAT);
+	if(fd < 0)
+		throw CompilationError(CompilationStep::PRECOMPILATION, "Failed to create an unique temporary file", strerror(errno));
+#ifdef PRECOMPILER_DROP_RIGHTS
+	//modify the access-rights, so the pre-compiler (running as non-root) can access this file too
+	if(fchmod(fd, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH) < 0)
+		throw CompilationError(CompilationStep::PRECOMPILATION, "Failed to change the access-mode for temporary file", strerror(errno));
+#endif
+	//we don't need this file-descriptor anymore
+	if(close(fd) < 0)
+		throw CompilationError(CompilationStep::PRECOMPILATION, "Failed to close file-descriptor for temporary file", strerror(errno));
+	logging::debug() << "Temporary file '" << fileName << "' created" << logging::endl;
+}
+
+TemporaryFile::TemporaryFile(TemporaryFile&& other) : fileName(other.fileName)
+{
+	const_cast<std::string&>(other.fileName) = "";
+}
+
+TemporaryFile::~TemporaryFile()
+{
+	if(fileName.empty())
+		//e.g. via move-constructor
+		return;
+	//since C++ doesn't like exceptions in destructors, just print an error-message and continue
+	if(remove(fileName.data()) < 0)
+	{
+		logging::error() << "Failed to remove temporary file: " << strerror(errno) << logging::endl;
+	}
+	logging::debug() << "Temporary file '" << fileName << "' deleted" << logging::endl;
+}
+
+void TemporaryFile::openOutputStream(std::unique_ptr<std::ostream>& ptr) const
+{
+	ptr.reset(new std::ofstream(fileName, std::ios_base::out|std::ios_base::trunc|std::ios_base::binary));
+}
+void TemporaryFile::openInputStream(std::unique_ptr<std::istream>& ptr) const
+{
+	ptr.reset( new std::ifstream(fileName, std::ios_base::in|std::ios_base::binary));
+}
 
 SourceType Precompiler::getSourceType(std::istream& stream)
 {
@@ -65,6 +124,7 @@ void Precompiler::linkSourceCode(const std::unordered_map<std::istream*, Optiona
 #else
 	std::vector<std::istream*> convertedInputs;
 	std::vector<std::unique_ptr<std::istream>> conversionBuffer;
+	std::vector<TemporaryFile> tempFiles;
 	for(auto& pair : inputs)
 	{
 		const SourceType type = getSourceType(*pair.first);
@@ -75,8 +135,10 @@ void Precompiler::linkSourceCode(const std::unordered_map<std::istream*, Optiona
 		else
 		{
 			Precompiler comp(*pair.first, type, pair.second);
-			conversionBuffer.emplace_back(new std::stringstream());
-			comp.run(conversionBuffer.back(), SourceType::SPIRV_BIN);
+			tempFiles.emplace_back();
+			conversionBuffer.emplace_back();
+			comp.run(conversionBuffer.back(), SourceType::SPIRV_BIN, "", tempFiles.back().fileName);
+			tempFiles.back().openInputStream(conversionBuffer.back());
 			convertedInputs.push_back(conversionBuffer.back().get());
 		}
 	}
@@ -173,7 +235,9 @@ static void compileOpenCLToLLVMIR(std::istream& input, std::ostream& output, con
 
 	logging::info() << "Compiling OpenCL to LLVM-IR with :" << command << logging::endl;
 
-	runPrecompiler(command, inputFile.hasValue ? nullptr : &input, outputFile.hasValue ? nullptr : &output, outputFile);
+	//XXX not setting a stream to put the stdout of the child-process in doesn't currently work (hangs the child-process)
+	//so we always set an output-stream, even if we write to file. But since the stream will have no content (is not written to), it has no impact
+	runPrecompiler(command, inputFile.hasValue ? nullptr : &input, &output, outputFile);
 }
 
 static void compileLLVMIRToSPIRV(std::istream& input, std::ostream& output, const std::string& options, const bool toText = false, const Optional<std::string>& inputFile = {}, const Optional<std::string>& outputFile ={})
@@ -189,7 +253,9 @@ static void compileLLVMIRToSPIRV(std::istream& input, std::ostream& output, cons
 
 	logging::info() << "Converting LLVM-IR to SPIR-V with :" << command << logging::endl;
 
-	runPrecompiler(command, inputFile.hasValue ? nullptr : &input, outputFile.hasValue ? nullptr : &output, outputFile);
+	//XXX not setting a stream to put the stdout of the child-process in doesn't currently work (hangs the child-process)
+	//so we always set an output-stream, even if we write to file. But since the stream will have no content (is not written to), it has no impact
+	runPrecompiler(command, inputFile.hasValue ? nullptr : &input, &output, outputFile);
 #endif
 }
 
@@ -201,13 +267,14 @@ static void compileOpenCLToSPIRV(std::istream& input, std::ostream& output, cons
 	throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-Tools not configured, can't process SPIR-V!");
 #endif
 
-	std::stringstream tmp;
+	TemporaryFile tmp;
+	std::stringstream dummy;
 	//1) OpenCL C -> LLVM IR BC (with Khronos CLang)
-	compileOpenCLToLLVMIR(input, tmp, options, false, inputFile);
+	compileOpenCLToLLVMIR(input, dummy, options, false, inputFile, tmp.fileName);
 	//2) LLVM IR BC -> SPIR-V
 	try
 	{
-		compileLLVMIRToSPIRV(tmp, output, options, toText, {}, outputFile);
+		compileLLVMIRToSPIRV(dummy, output, options, toText, tmp.fileName, outputFile);
 	}
 	catch(const CompilationError& e)
 	{
@@ -229,7 +296,9 @@ static void compileSPIRVToSPIRV(std::istream& input, std::ostream& output, const
 
 	logging::info() << "Converting between SPIR-V text and SPIR-V binary with :" << command << logging::endl;
 
-	runPrecompiler(command, inputFile.hasValue ? nullptr : &input, outputFile.hasValue ? nullptr : &output, outputFile);
+	//XXX not setting a stream to put the stdout of the child-process in doesn't currently work (hangs the child-process)
+	//so we always set an output-stream, even if we write to file. But since the stream will have no content (is not written to), it has no impact
+	runPrecompiler(command, inputFile.hasValue ? nullptr : &input, &output, outputFile);
 #endif
 }
 
@@ -246,6 +315,9 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
 {
 	if(outputType == SourceType::QPUASM_BIN || outputType == SourceType::QPUASM_HEX || outputType == SourceType::UNKNOWN)
 		throw CompilationError(CompilationStep::PRECOMPILATION, "Invalid output-type for pre-compilation!");
+
+	if(!outputFile.hasValue)
+		logging::warn() << "When running the pre-compiler with root rights and writing to /dev/stdout, the compiler might delete the /dev/stdout symlink!" << logging::endl;
 
 	std::string extendedOptions = options;
 	if(inputFile.hasValue)
@@ -279,7 +351,7 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
 	}
 	else if(inputType == SourceType::LLVM_IR_TEXT)
 	{
-		//TODO the result of this does not have the correct output-format (but can be handled by the LLVM front-end)
+		// the result of this does not have the correct output-format (but can be handled by the LLVM front-end)
 		tempStream << input.rdbuf();
 	}
 	else if(inputType == SourceType::LLVM_IR_BIN)
