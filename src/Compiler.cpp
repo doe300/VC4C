@@ -157,15 +157,17 @@ const Configuration& Compiler::getConfiguration() const
 
 std::size_t Compiler::compile(std::istream& input, std::ostream& output, const Configuration config, const std::string& options, const Optional<std::string>& inputFile)
 {
-    //pre-compilation
-    PROFILE_START(Precompile);
-    Precompiler precompiler(input, Precompiler::getSourceType(input), inputFile);
-    std::unique_ptr<std::istream> in;
-    TemporaryFile tmpFile;
-    if(config.frontend != Frontend::DEFAULT)
-    	precompiler.run(in, config.frontend == Frontend::LLVM_IR ? SourceType::LLVM_IR_TEXT : SourceType::SPIRV_BIN, options, tmpFile.fileName);
-    else
-    {
+	try
+	{
+		//pre-compilation
+		PROFILE_START(Precompile);
+		Precompiler precompiler(input, Precompiler::getSourceType(input), inputFile);
+		std::unique_ptr<std::istream> in;
+		TemporaryFile tmpFile;
+		if(config.frontend != Frontend::DEFAULT)
+			precompiler.run(in, config.frontend == Frontend::LLVM_IR ? SourceType::LLVM_IR_TEXT : SourceType::SPIRV_BIN, options, tmpFile.fileName);
+		else
+		{
 #if defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_PARSER_HEADER
     	precompiler.run(in, SourceType::SPIRV_BIN, options, tmpFile.fileName);
 #elif defined CLANG_PATH
@@ -173,25 +175,35 @@ std::size_t Compiler::compile(std::istream& input, std::ostream& output, const C
 #else
     	throw CompilationError(CompilationStep::PRECOMPILATION, "No matching precompiler available!");
 #endif
-    }
-    PROFILE_END(Precompile);
-    
-    if(in.get() == nullptr || (dynamic_cast<std::istringstream*>(in.get()) != nullptr && dynamic_cast<std::istringstream*>(in.get())->str().empty()))
-    	//replace only when pre-compiled (and not just linked output to input, e.g. if source-type is output-type)
-    	tmpFile.openInputStream(in);
+		}
+		PROFILE_END(Precompile);
 
-    //compilation
-    Compiler conv(*in.get(), output);
+		if(in.get() == nullptr || (dynamic_cast<std::istringstream*>(in.get()) != nullptr && dynamic_cast<std::istringstream*>(in.get())->str().empty()))
+			//replace only when pre-compiled (and not just linked output to input, e.g. if source-type is output-type)
+			tmpFile.openInputStream(in);
 
-    conv.getConfiguration() = config;
-    std::size_t result = conv.convert();
-    
-    //clean-up
-    std::wcout.flush();
-    std::wcerr.flush();
-    output.flush();
-    
-    return result;
+		//compilation
+		Compiler conv(*in.get(), output);
+
+		conv.getConfiguration() = config;
+		std::size_t result = conv.convert();
+
+		//clean-up
+		std::wcout.flush();
+		std::wcerr.flush();
+		output.flush();
+
+		logging::debug() << "Compilation complete: " << result << " bytes written" << logging::endl;
+
+		return result;
+	}
+	catch(const CompilationError& e)
+	{
+		//log exception to log
+		logging::error() << "Compiler threw exception: " << e.what() << logging::endl;
+		//re-throw, so caller gets notified
+		throw;
+	}
 }
 
 std::unique_ptr<logging::Logger> logging::LOGGER(new logging::ColoredLogger(std::wcout, logging::Level::WARNING));

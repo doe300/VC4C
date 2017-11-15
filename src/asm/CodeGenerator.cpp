@@ -341,7 +341,7 @@ static void toBinary(const Value& val, std::vector<uint8_t>& queue)
 	}
 }
 
-static std::vector<uint8_t> generateDataSegment(const Module& module)
+static std::vector<uint8_t> generateDataSegment(const Module& module, const std::size_t maxStackSize)
 {
 	logging::debug() << "Writing data segment for " << module.globalData.size() << " values..." << logging::endl;
 	//the first entry is the value, the second the width (in bytes)
@@ -359,9 +359,6 @@ static std::vector<uint8_t> generateDataSegment(const Module& module)
 	}
 
 	//allocate space for stack
-	std::size_t maxStackSize = 0;
-	for(const auto& m : module.methods)
-		maxStackSize = std::max(maxStackSize, m->calculateStackSize());
 	if(maxStackSize > 0)
 	{
 		logging::debug() << "Reserving " << KernelInfo::MAX_WORK_GROUP_SIZES << " \"stack-frames\" with " << maxStackSize << " bytes each..." << logging::endl;
@@ -389,9 +386,15 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
 		}
 		globalDataLength += global.value.type.getPhysicalWidth();
 	}
+	std::size_t maxStackSize = 0;
+	for(const auto& m : module.methods)
+		maxStackSize = std::max(maxStackSize, m->calculateStackSize());
+	globalDataLength += maxStackSize * KernelInfo::MAX_WORK_GROUP_SIZES;
+
 	//add padding, so the global data is a multiple of 8 Bytes
 	if((globalDataLength % 8) != 0)
 		globalDataLength = globalDataLength + (8 - globalDataLength % 8);
+
 	//add a single dummy-command as delimiter
 	globalDataLength += 8;
 
@@ -457,7 +460,7 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
     	}
     	case OutputMode::BINARY:
     	{
-    		const auto binary = generateDataSegment(module);
+    		const auto binary = generateDataSegment(module, maxStackSize);
     		stream.write(reinterpret_cast<const char*>(binary.data()), binary.size());
     		//add empty command
 			uint64_t zero = 0;
@@ -467,7 +470,7 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
     	}
     	case OutputMode::HEX:
     	{
-			const auto binary = generateDataSegment(module);
+			const auto binary = generateDataSegment(module, maxStackSize);
 			for(const Global& global : module.globalData)
 				stream << "//" << global.to_string(true) << std::endl;
 			if(!binary.empty())

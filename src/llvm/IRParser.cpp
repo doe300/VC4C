@@ -751,9 +751,7 @@ static std::vector<DataType> getElementTypes(const std::vector<Value>& indices, 
 	std::size_t curIndex = 0;
 	while(curIndex < indices.size())
 	{
-		if(subContainerType.complexType.get() == nullptr)
-			throw CompilationError(CompilationStep::LLVM_2_IR, "Cannot access index of non-complex type", subContainerType.to_string());
-		else if(subContainerType.isPointerType())
+		if(subContainerType.isPointerType())
 		{
 			elementTypes.push_back(subContainerType.getPointerType().get()->elementType);
 		}
@@ -769,6 +767,15 @@ static std::vector<DataType> getElementTypes(const std::vector<Value>& indices, 
 				throw CompilationError(CompilationStep::LLVM_2_IR, "Cannot access struct-element with non-scalar index", idxVal.to_string());
 			elementTypes.push_back(subContainerType.getStructType().get()->elementTypes.at(idxVal.literal.integer));
 		}
+		else if(subContainerType.isVectorType())
+		{
+			//This branch is e.g. used to get the pointer for lifetime-start instructions on vectors
+			//Since the lifetime-start instruction always takes an i8*, for vectors of i8 elements, the pointer of the first element is taken
+			//XXX not sure, if this is correct!
+			elementTypes.push_back(subContainerType.getElementType(curIndex).toPointerType());
+		}
+		else
+			throw CompilationError(CompilationStep::LLVM_2_IR, "Cannot access index of type", subContainerType.to_string());
 
 		++curIndex;
 		subContainerType = elementTypes.back();
