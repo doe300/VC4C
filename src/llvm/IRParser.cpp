@@ -611,6 +611,10 @@ bool IRParser::parseMethod()
             isKernelSet = true;
             method.metaDataMapping[MetaDataType::WORK_GROUP_SIZES_HINT] = scanner.pop().getText();
         }
+        else if (nextToken.hasValue("!vec_type_hint")) {
+        	//vector-type hint, currently unsupported
+        	logging::info() << "Vector type hint is currently not supported: " << scanner.pop().getText() << logging::endl;
+        }
     }
     while (!nextToken.hasValue('{'));
     //skip remainder of '{' line
@@ -1563,6 +1567,11 @@ void IRParser::extractKernelInfo()
             else if (pair.second[0].compare("work_group_size_hint") == 0) {
                 pair.second.erase(pair.second.begin());
                 typeMapping[pair.first] = MetaDataType::WORK_GROUP_SIZES_HINT;
+            }
+            else if(pair.second[0].compare("vec_type_hint") == 0) {
+            	pair.second.erase(pair.second.begin());
+            	//vector-type hint, currently unsupported
+				logging::info() << "Vector type hint is currently not supported: " << to_string<std::string>(pair.second) << logging::endl;
             }
         }
     }

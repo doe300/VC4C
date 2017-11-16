@@ -372,6 +372,29 @@ static SPIRVMethod& getOrCreateMethod(const Module& module, std::map<uint32_t, S
 	return methods.at(id);
 }
 
+static std::string toScalarType(uint16_t vectorType)
+{
+	switch(vectorType)
+	{
+		case 0:
+			return "i8";
+		case 1:
+			return "i16";
+		case 2:
+			return "i32";
+		case 3:
+			return "i64";
+		case 4:
+			return "half";
+		case 5:
+			return "float";
+		case 6:
+			return "double";
+		default:
+			throw CompilationError(CompilationStep::PARSER, "Unsupported vector-type", std::to_string(vectorType));
+	}
+}
+
 #define UNSUPPORTED_INSTRUCTION(name) (errorExtra = name, logging::error() << "Unsupported SPIR-V instruction: " << name << logging::endl, SPV_UNSUPPORTED)
 
 spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parsed_instruction)
@@ -468,8 +491,15 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         else if (getWord(parsed_instruction, 2) == SpvExecutionModeLocalSizeHint)
             //"A hint to the compiler, which indicates the most likely to be used work-group size in the x, y, and z dimensions"
             metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES_HINT] = {std::to_string(getWord(parsed_instruction, 3)), std::to_string(getWord(parsed_instruction, 4)), std::to_string(getWord(parsed_instruction, 5))};
-        else if (getWord(parsed_instruction, 2) != SpvExecutionModeVecTypeHint && getWord(parsed_instruction, 2) != SpvExecutionModeContractionOff)
-            throw CompilationError(CompilationStep::PARSER, "Invalid execution mode");
+        else if(getWord(parsed_instruction, 2) == SpvExecutionModeVecTypeHint)
+        	/*
+        	 * "A hint to the compiler, which indicates that most operations used in the entry point are explicitly vectorized using a particular vector type.
+        	 * The 16 high-order bits of Vector Type operand specify the number of components of the vector.
+        	 * The 16 low-order bits of Vector Type operand specify the data type of the vector."
+        	 */
+        	logging::info() << "Vector type hint is currently not supported: " << static_cast<uint16_t>(getWord(parsed_instruction, 3) >> 16) << " x " << toScalarType(static_cast<uint16_t>(getWord(parsed_instruction, 3) & 0xFFFF)) << logging::endl;
+        else if(getWord(parsed_instruction, 2) != SpvExecutionModeContractionOff)
+        		throw CompilationError(CompilationStep::PARSER, "Invalid execution mode");
         return SPV_SUCCESS;
     case SpvOpExecutionModeId:
     	//only Kernel or native execution modes are supported
