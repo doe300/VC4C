@@ -19,8 +19,6 @@ namespace vc4c
 	namespace qpu_asm
 	{
 
-		class KernelInfo;
-
 		class ParamInfo : public Bitfield<uint64_t>
 		{
 		public:
@@ -48,13 +46,13 @@ namespace vc4c
 			}
 
 			std::string to_string() const;
+
+			uint16_t write(std::ostream& stream, const OutputMode mode) const;
 		private:
 			BITFIELD_ENTRY(NameLength, uint16_t, 16, Short)
 			BITFIELD_ENTRY(TypeNameLength, uint16_t, 32, Short)
 			std::string name;
 			std::string typeName;
-
-			friend class KernelInfo;
 		};
 
 		/*
@@ -79,7 +77,7 @@ namespace vc4c
 			//the 3 dimensions for the work-group size specified in the source code
 			uint64_t workGroupSize;
 
-			uint8_t write(std::ostream& stream, const OutputMode mode) const;
+			uint16_t write(std::ostream& stream, const OutputMode mode) const;
 			std::string to_string() const;
 
 			//The maximum work group sizes specified in the VC4CL runtime library
@@ -104,8 +102,39 @@ namespace vc4c
 			std::vector<ParamInfo> parameters;
 		};
 
+		/*
+		 * Binary layout:
+		 *
+		 * | num kernel-infos | global-data offset | global-data size | stack-frame size |
+		 */
+		class ModuleInfo : Bitfield<uint64_t>
+		{
+		public:
+
+			//offset of global-data in multiples of 64-bit
+			BITFIELD_ENTRY(GlobalDataOffset, uint16_t, 16, Short)
+			//size of the global data segment in multiples of 64-bit
+			BITFIELD_ENTRY(GlobalDataSize, uint16_t, 32, Short)
+			//size of a single stack-frame, appended to the global-data segment. In multiples of 64-bit
+			BITFIELD_ENTRY(StackFrameSize, uint16_t, 48, Short)
+
+			/*
+			 * NOTE: Writing once sets the global-data offset and size, so they are correct for the second write
+			 */
+			uint16_t write(std::ostream& stream, const OutputMode mode, const Module& module);
+
+			inline void addKernelInfo(const KernelInfo& info)
+			{
+				kernelInfos.push_back(info);
+				setInfoCount(static_cast<uint16_t>(kernelInfos.size()));
+			}
+
+			std::vector<KernelInfo> kernelInfos;
+		private:
+			BITFIELD_ENTRY(InfoCount, uint16_t, 0, Short)
+		};
+
 		KernelInfo getKernelInfos(const Method& method, const uint16_t initialOffset, const uint16_t numInstructions);
-		void writeKernelInfos(const std::vector<KernelInfo>& info, std::ostream& output, const OutputMode mode);
 	}
 }
 

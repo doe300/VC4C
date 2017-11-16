@@ -298,195 +298,45 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
     return generatedInstructions;
 }
 
-static void toBinary(const Value& val, std::vector<uint8_t>& queue)
-{
-	switch(val.valueType)
-	{
-		case ValueType::CONTAINER:
-			for(const Value& element : val.container.elements)
-				toBinary(element, queue);
-			break;
-		case ValueType::LITERAL:
-			switch(val.literal.type)
-			{
-				case LiteralType::BOOL:
-					for(std::size_t i = 0; i < val.type.getVectorWidth(true); ++i)
-						queue.push_back(val.literal.isTrue());
-					break;
-				case LiteralType::INTEGER:
-				case LiteralType::REAL:
-					for(std::size_t i = 0; i < val.type.getVectorWidth(true); ++i)
-					{
-						//little endian
-						if(val.type.getElementType().getPhysicalWidth() > 3)
-							queue.push_back(static_cast<uint8_t>((val.literal.toImmediate() & 0xFF000000) >> 24));
-						if(val.type.getElementType().getPhysicalWidth() > 2)
-							queue.push_back(static_cast<uint8_t>((val.literal.toImmediate() & 0xFF0000) >> 16));
-						if(val.type.getElementType().getPhysicalWidth() > 1)
-							queue.push_back(static_cast<uint8_t>((val.literal.toImmediate() & 0xFF00) >> 8));
-						queue.push_back(static_cast<uint8_t>(val.literal.toImmediate() & 0xFF));
-					}
-					break;
-				default:
-					throw CompilationError(CompilationStep::CODE_GENERATION, "Unrecognized literal-type!");
-			}
-			break;
-		case ValueType::UNDEFINED:
-			//e.g. for array <type> undefined, need to reserve enough bytes
-			for(std::size_t s = 0; s < val.type.getPhysicalWidth(); ++s)
-				queue.push_back(0);
-			break;
-		default:
-			throw CompilationError(CompilationStep::CODE_GENERATION, "Can't map value-type to binary literal!");
-	}
-}
-
-static std::vector<uint8_t> generateDataSegment(const Module& module, const std::size_t maxStackSize)
-{
-	logging::debug() << "Writing data segment for " << module.globalData.size() << " values..." << logging::endl;
-	//the first entry is the value, the second the width (in bytes)
-	std::vector<uint8_t> bytes;
-	bytes.reserve(2048);
-	for(const Global& global : module.globalData)
-	{
-		//add alignment per element
-		const unsigned alignment = global.type.getPointerType().get()->getAlignment();
-		while(bytes.size() % alignment != 0)
-		{
-			bytes.push_back(0);
-		}
-		toBinary(global.value, bytes);
-	}
-
-	//allocate space for stack
-	if(maxStackSize > 0)
-	{
-		logging::debug() << "Reserving " << KernelInfo::MAX_WORK_GROUP_SIZES << " \"stack-frames\" with " << maxStackSize << " bytes each..." << logging::endl;
-		for(std::size_t s = 0; s < maxStackSize * KernelInfo::MAX_WORK_GROUP_SIZES; ++s)
-			bytes.push_back(0);
-	}
-
-	while((bytes.size() % 8) != 0)
-	{
-		bytes.push_back(0);
-	}
-	return bytes;
-}
-
 std::size_t CodeGenerator::writeOutput(std::ostream& stream)
 {
-	std::size_t globalDataLength = 0;
-	for(const Global& global : module.globalData)
-	{
-		//add alignment per element
-		const unsigned alignment = global.type.getPointerType().get()->getAlignment();
-		if(globalDataLength % alignment != 0)
-		{
-			globalDataLength += alignment - (globalDataLength % alignment);
-		}
-		globalDataLength += global.value.type.getPhysicalWidth();
-	}
+	ModuleInfo moduleInfo;
+
 	std::size_t maxStackSize = 0;
 	for(const auto& m : module.methods)
 		maxStackSize = std::max(maxStackSize, m->calculateStackSize());
-	globalDataLength += maxStackSize * KernelInfo::MAX_WORK_GROUP_SIZES;
+	if(maxStackSize / sizeof(uint64_t) > std::numeric_limits<uint16_t>::max())
+		throw CompilationError(CompilationStep::CODE_GENERATION, "Stack-frame has unsupported size of", std::to_string(maxStackSize / sizeof(uint64_t)));
+	moduleInfo.setStackFrameSize(maxStackSize / sizeof(uint64_t));
 
-	//add padding, so the global data is a multiple of 8 Bytes
-	if((globalDataLength % 8) != 0)
-		globalDataLength = globalDataLength + (8 - globalDataLength % 8);
-
-	//add a single dummy-command as delimiter
-	globalDataLength += 8;
 
     std::size_t numBytes = 0;
-    //initial offset -> magic number + global data length
-    std::size_t offset = 1 + (globalDataLength / 8);
-     switch (config.outputMode) {
-        case OutputMode::ASSEMBLER:
-        case OutputMode::HEX:
-            stream << "0x" << std::hex << QPUASM_MAGIC_NUMBER << ", 0x" << QPUASM_MAGIC_NUMBER << std::dec << "," << std::endl;
-            break;
-        case OutputMode::BINARY:
-            stream.write(reinterpret_cast<const char*>(&QPUASM_MAGIC_NUMBER), 4);
-            stream.write(reinterpret_cast<const char*>(&QPUASM_MAGIC_NUMBER), 4);
-            numBytes += 8;
-            break;
-     }
+    //initial offset is zero
+    std::size_t offset = 0;
     if(config.writeKernelInfo)
     {
-        std::vector<KernelInfo> infos;
-        infos.reserve(allInstructions.size());
+        moduleInfo.kernelInfos.reserve(allInstructions.size());
         //generate kernel-infos
         for(const auto& pair : allInstructions)
         {
-            infos.push_back(getKernelInfos(*pair.first, offset, pair.second.size()));
+        	moduleInfo.addKernelInfo(getKernelInfos(*pair.first, offset, pair.second.size()));
             offset += pair.second.size();
         }
-        //add global offset (size of all kernel-infos)
+        //add global offset (size of  header)
         std::ostringstream dummyStream;
-        offset = 0;
-        for(const KernelInfo& info : infos)
+        offset = moduleInfo.write(dummyStream, config.outputMode, module);
+
+        for(KernelInfo& info : moduleInfo.kernelInfos)
         {
-            offset += info.write(dummyStream, config.outputMode);
-        }
-        //for the dummy-command as delimiter
-        offset += 1;
-        for(KernelInfo& info : infos)
-        {
+        	if(info.getOffset() + offset > std::numeric_limits<uint16_t>::max())
+				throw CompilationError(CompilationStep::CODE_GENERATION, "Kernel-function has unsupported offset of", std::to_string(info.getOffset() + offset));
             info.setOffset(static_cast<uint16_t>(info.getOffset() + offset));
         }
-        //prepend kernel-infos to output
-        writeKernelInfos(infos, stream, config.outputMode);
-        if(config.outputMode == OutputMode::BINARY)
-        {
-            //add empty command
-            uint64_t zero = 0;
-            stream.write(reinterpret_cast<char*>(&zero), sizeof(uint64_t));
-        }
-        else if(config.outputMode == OutputMode::HEX)
-        {
-            uint64_t zero = 0;
-            stream << zero << ',' << zero << ',' << std::endl;
-        }
-        numBytes += offset * 8;
-    }
-    switch (config.outputMode)
-    {
-    	case OutputMode::ASSEMBLER:
-    	{
-    		for(const Global& global : module.globalData)
-    			stream << global.to_string(true) << std::endl;
-    		break;
-    	}
-    	case OutputMode::BINARY:
-    	{
-    		const auto binary = generateDataSegment(module, maxStackSize);
-    		stream.write(reinterpret_cast<const char*>(binary.data()), binary.size());
-    		//add empty command
-			uint64_t zero = 0;
-			stream.write(reinterpret_cast<char*>(&zero), sizeof(uint64_t));
-			numBytes += globalDataLength;
-			break;
-    	}
-    	case OutputMode::HEX:
-    	{
-			const auto binary = generateDataSegment(module, maxStackSize);
-			for(const Global& global : module.globalData)
-				stream << "//" << global.to_string(true) << std::endl;
-			if(!binary.empty())
-				stream << "// plus additional space for " << KernelInfo::MAX_WORK_GROUP_SIZES << " \"stack-frames\"" << std::endl;
-			for(std::size_t i = 0; i < binary.size(); i += 8)
-				stream << toHexString((static_cast<uint64_t>(binary.at(i)) << 56) | (static_cast<uint64_t>(binary.at(i+1)) << 48) | (static_cast<uint64_t>(binary.at(i+2)) << 40) |
-						(static_cast<uint64_t>(binary.at(i+3)) << 32) | (static_cast<uint64_t>(binary.at(i+4)) << 24) | (static_cast<uint64_t>(binary.at(i+5)) << 16) |
-						(static_cast<uint64_t>(binary.at(i+6)) << 8) | static_cast<uint64_t>(binary.at(i+7))) << std::endl;
-			//add empty command
-			uint64_t zero = 0;
-			stream << zero << ',' << zero << ',' << std::endl;
-			numBytes += globalDataLength;
-			break;
-		}
-	}
 
+        //prepend module header to output
+        logging::debug() << "Writing module header..." << logging::endl;
+        numBytes += moduleInfo.write(stream, config.outputMode, module) * sizeof(uint64_t);
+    }
     for(const auto& pair : allInstructions)
     {
         switch (config.outputMode) {
