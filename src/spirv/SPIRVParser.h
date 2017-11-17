@@ -8,6 +8,7 @@
 #define SPIRV_PARSER_H
 
 #include <iostream>
+#include <array>
 
 #include "../Parser.h"
 #include "../performance.h"
@@ -71,7 +72,7 @@ namespace vc4c
 			//the global list of instructions, each instruction stores its own reference to the method it is in
 			std::vector<std::unique_ptr<SPIRVOperation>> instructions;
 			//the global mapping of kernel ID -> meta-data
-			FastMap<uint32_t, std::map<MetaDataType, std::vector<std::string>>>metadataMappings;
+			FastMap<uint32_t, std::map<MetaDataType, std::array<uint32_t, 3>>> metadataMappings;
 			//the global mapping of ID -> name for this ID (e.g. type-, function-name)
 			FastMap<uint32_t, std::string> names;
 

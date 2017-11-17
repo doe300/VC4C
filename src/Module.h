@@ -26,22 +26,21 @@ namespace vc4c
 		class VPM;
 	}
 
-	enum class MetaDataType
+	struct KernelMetaData
 	{
-		//TODO remove most of them (except work-group-sizes and size-hint)
-		ARG_ADDR_SPACES, ARG_ACCESS_QUALIFIERS, ARG_TYPE_NAMES, ARG_TYPE_QUALIFIERS, ARG_NAMES, WORK_GROUP_SIZES, WORK_GROUP_SIZES_HINT, OTHER
-	};
+		std::array<uint32_t, 3> workGroupSizes;
+		std::array<uint32_t, 3> workGroupSizeHints;
 
-	template<>
-	struct hash<MetaDataType> : public std::hash<uint8_t>
-	{
-		size_t operator()(const MetaDataType& ) const noexcept;
+		KernelMetaData()
+		{
+			workGroupSizes.fill(0);
+			workGroupSizeHints.fill(0);
+		}
 	};
 
 	struct InstructionWalker;
 	class Module;
 	class Method;
-
 
 	class BasicBlock : private NonCopyable
 	{
@@ -121,7 +120,7 @@ namespace vc4c
 		DataType returnType;
 		std::vector<Parameter> parameters;
 		ReferenceRetainingList<StackAllocation> stackAllocations;
-		std::map<MetaDataType, std::vector<std::string>> metaData;
+		KernelMetaData metaData;
 		std::unique_ptr<periphery::VPM> vpm;
 
 		Method(const Module& module);

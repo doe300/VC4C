@@ -31,11 +31,6 @@ const std::string Method::GLOBAL_OFFSET_Z("%global_offset_z");
 const std::string Method::GLOBAL_DATA_ADDRESS("%global_data_address");
 const std::string Method::GROUP_LOOP_SIZE("%group_loop_size");
 
-std::size_t vc4c::hash<vc4c::MetaDataType>::operator()(vc4c::MetaDataType const& val) const noexcept
-{
-	return std::hash<uint8_t>::operator()(static_cast<uint8_t>(val));
-}
-
 BasicBlock::BasicBlock(Method& method, intermediate::BranchLabel* label) : method(method)
 {
 	instructions.emplace_back(label);

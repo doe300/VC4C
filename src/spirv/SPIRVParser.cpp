@@ -140,19 +140,14 @@ void SPIRVParser::parse(Module& module)
         m.second.method->parameters.reserve(m.second.parameters.size());
         for (const auto& pair : m.second.parameters)
         {
-            std::string name;
-            if (names.find(pair.first) != names.end())
-            {
-            	//parameters are referenced by their IDs, not their names, but for meta-data the names are better
-                name = names.at(pair.first);
-                m.second.method->metaData[MetaDataType::ARG_NAMES].push_back(name);
-            }
             const DataType& type = typeMappings.at(pair.second);
             Parameter param(std::string("%") + std::to_string(pair.first), type);
             if(decorationMappings.find(pair.first) != decorationMappings.end())
-            {
             	setParameterDecorations(param, decorationMappings.at(pair.first));
-            }
+            if (names.find(pair.first) != names.end())
+            	//parameters are referenced by their IDs, not their names, but for meta-data the names are better
+                param.parameterName = names.at(pair.first);
+
             m.second.method->parameters.emplace_back(std::move(param));
         }
     }
@@ -164,8 +159,21 @@ void SPIRVParser::parse(Module& module)
     }
 
     //apply kernel meta-data, decorations, ...
-    for (const auto& pair : metadataMappings) {
-        methods.at(pair.first).method->metaData.insert(pair.second.begin(), pair.second.end());
+    for (const auto& pair : metadataMappings)
+    {
+    	Method& method = *methods.at(pair.first).method.get();
+    	for(const auto& meta : pair.second)
+    	{
+    		switch(meta.first)
+    		{
+    			case MetaDataType::WORK_GROUP_SIZES:
+    				method.metaData.workGroupSizes = meta.second;
+    			case MetaDataType::WORK_GROUP_SIZES_HINT:
+    				method.metaData.workGroupSizeHints = meta.second;
+    			default:
+    				throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data type", std::to_string(static_cast<uint32_t>(meta.first)));
+    		}
+    	}
     }
 
     //delete empty functions (e.g. declared, but not defined, externally linked, intrinsics)
@@ -487,10 +495,10 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         //only Kernel or native execution modes are supported
         if (getWord(parsed_instruction, 2) == SpvExecutionModeLocalSize)
             //"Indicates the work-group size in the x, y, and z dimensions"
-            metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES] = {std::to_string(getWord(parsed_instruction, 3)), std::to_string(getWord(parsed_instruction, 4)), std::to_string(getWord(parsed_instruction, 5))};
+            metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES] = {getWord(parsed_instruction, 3), getWord(parsed_instruction, 4), getWord(parsed_instruction, 5)};
         else if (getWord(parsed_instruction, 2) == SpvExecutionModeLocalSizeHint)
             //"A hint to the compiler, which indicates the most likely to be used work-group size in the x, y, and z dimensions"
-            metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES_HINT] = {std::to_string(getWord(parsed_instruction, 3)), std::to_string(getWord(parsed_instruction, 4)), std::to_string(getWord(parsed_instruction, 5))};
+            metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES_HINT] = {getWord(parsed_instruction, 3), getWord(parsed_instruction, 4), getWord(parsed_instruction, 5)};
         else if(getWord(parsed_instruction, 2) == SpvExecutionModeVecTypeHint)
         	/*
         	 * "A hint to the compiler, which indicates that most operations used in the entry point are explicitly vectorized using a particular vector type.
@@ -505,10 +513,10 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     	//only Kernel or native execution modes are supported
 		if (getWord(parsed_instruction, 2) == SpvExecutionModeLocalSizeId)
 			//"Indicates the work-group size in the x, y, and z dimensions"
-			metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES] = {std::to_string(constantMappings.at(getWord(parsed_instruction, 3)).literal.integer), std::to_string(constantMappings.at(getWord(parsed_instruction, 4)).literal.integer), std::to_string(constantMappings.at(getWord(parsed_instruction, 5)).literal.integer)};
+			metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES] = {constantMappings.at(getWord(parsed_instruction, 3)).literal.integer, constantMappings.at(getWord(parsed_instruction, 4)).literal.integer, constantMappings.at(getWord(parsed_instruction, 5)).literal.integer};
 		else if (getWord(parsed_instruction, 2) == SpvExecutionModeLocalSizeHintId)
 			//"A hint to the compiler, which indicates the most likely to be used work-group size in the x, y, and z dimensions"
-			metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES_HINT] = {std::to_string(constantMappings.at(getWord(parsed_instruction, 3)).literal.integer), std::to_string(constantMappings.at(getWord(parsed_instruction, 4)).literal.integer), std::to_string(constantMappings.at(getWord(parsed_instruction, 5)).literal.integer)};
+			metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES_HINT] = {constantMappings.at(getWord(parsed_instruction, 3)).literal.integer, constantMappings.at(getWord(parsed_instruction, 4)).literal.integer, constantMappings.at(getWord(parsed_instruction, 5)).literal.integer};
 		else
 			throw CompilationError(CompilationStep::PARSER, "Invalid execution mode");
 		return SPV_SUCCESS;

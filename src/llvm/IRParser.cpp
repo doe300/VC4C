@@ -193,22 +193,10 @@ static ParameterDecorations parseParameterDecorations(Scanner& scanner)
     return decorations;
 }
 
-static Optional<AddressSpace> readAddressSpace(Scanner& scanner)
+static AddressSpace toAddressSpace(int num)
 {
-	int64_t addressSpace = -1;
-	if(skipToken(scanner, "addrspace"))
-	{
-		//pop '('
-		scanner.pop();
-		//pop address space
-		addressSpace = scanner.pop().integer;
-		//pop ')'
-		scanner.pop();
-	}
-	if(addressSpace < 0)
-		return Optional<AddressSpace>(false);
 	//XXX this mapping is not guaranteed, mapping only determined by experiment
-	switch(addressSpace)
+	switch(num)
 	{
 		case 0:
 			//According to the documentation for 'alloca', "The object is always allocated in the generic address space (address space zero)"
@@ -224,6 +212,23 @@ static Optional<AddressSpace> readAddressSpace(Scanner& scanner)
 		default:
 			return AddressSpace::GENERIC;
 	}
+}
+
+static Optional<AddressSpace> readAddressSpace(Scanner& scanner)
+{
+	int64_t addressSpace = -1;
+	if(skipToken(scanner, "addrspace"))
+	{
+		//pop '('
+		scanner.pop();
+		//pop address space
+		addressSpace = scanner.pop().integer;
+		//pop ')'
+		scanner.pop();
+	}
+	if(addressSpace < 0)
+		return Optional<AddressSpace>(false);
+	return toAddressSpace(addressSpace);
 }
 
 DataType IRParser::parseType()
@@ -610,6 +615,13 @@ bool IRParser::parseMethod()
                 kernelNames.push_back(methodName);
             isKernelSet = true;
             method.metaDataMapping[MetaDataType::WORK_GROUP_SIZES_HINT] = scanner.pop().getText();
+        }
+        else if (nextToken.hasValue("!kernel_arg_name")) {
+        	//set as kernel
+			if (!isKernelSet)
+				kernelNames.push_back(methodName);
+			isKernelSet = true;
+			method.metaDataMapping[MetaDataType::ARG_NAMES] = scanner.pop().getText();
         }
         else if (nextToken.hasValue("!vec_type_hint")) {
         	//vector-type hint, currently unsupported
@@ -1568,6 +1580,10 @@ void IRParser::extractKernelInfo()
                 pair.second.erase(pair.second.begin());
                 typeMapping[pair.first] = MetaDataType::WORK_GROUP_SIZES_HINT;
             }
+            else if (pair.second[0].compare("kernel_arg_name") == 0) {
+            	pair.second.erase(pair.second.begin());
+				typeMapping[pair.first] = MetaDataType::ARG_NAMES;
+            }
             else if(pair.second[0].compare("vec_type_hint") == 0) {
             	pair.second.erase(pair.second.begin());
             	//vector-type hint, currently unsupported
@@ -1602,7 +1618,57 @@ void IRParser::extractKernelInfo()
     //3. map all meta-data-type -> ID associations to the data
     for (LLVMMethod& method : methods) {
         for (const auto& pair : method.metaDataMapping) {
-            method.method->metaData[pair.first] = metaData.at(pair.second);
+        	const std::vector<std::string> values = metaData.at(pair.second);
+            switch(pair.first)
+            {
+            	case MetaDataType::ARG_ACCESS_QUALIFIERS:
+            		//XXX what to do with them? Only valid for images?
+					break;
+            	case MetaDataType::ARG_ADDR_SPACES:
+            	{
+            		for(std::size_t i = 0; i < values.size(); ++i)
+            		{
+            			Optional<PointerType*> ptrType = method.method->parameters.at(i).type.getPointerType();
+            			if(ptrType.hasValue && ptrType.get()->addressSpace == AddressSpace::GENERIC)
+            				ptrType.get()->addressSpace = toAddressSpace(std::atoi(values.at(i).data()));
+            		}
+            		break;
+            	}
+            	case MetaDataType::ARG_TYPE_QUALIFIERS:
+            	{
+            		for(std::size_t i = 0; i < values.size(); ++i)
+            		{
+            			Parameter& param = method.method->parameters.at(i);
+            			if(values.at(i).find("const") != std::string::npos)
+            				param.decorations = add_flag(param.decorations, ParameterDecorations::READ_ONLY);
+            			if(values.at(i).find("restrict") != std::string::npos)
+            				param.decorations = add_flag(param.decorations, ParameterDecorations::RESTRICT);
+            			if(values.at(i).find("volatile") != std::string::npos)
+							param.decorations = add_flag(param.decorations, ParameterDecorations::VOLATILE);
+            		}
+            		break;
+            	}
+            	case MetaDataType::ARG_NAMES:
+            	{
+            		for(std::size_t i = 0; i < values.size(); ++i)
+					{
+						Parameter& param = method.method->parameters.at(i);
+						param.parameterName = values.at(i);
+					}
+            		break;
+            	}
+            	case MetaDataType::ARG_TYPE_NAMES:
+            		//TODO
+            		break;
+            	case MetaDataType::WORK_GROUP_SIZES:
+            		method.method->metaData.workGroupSizes = {std::atoi(values.at(0).data()), std::atoi(values.at(1).data()), std::atoi(values.at(2).data())};
+            		break;
+            	case MetaDataType::WORK_GROUP_SIZES_HINT:
+					method.method->metaData.workGroupSizeHints = {std::atoi(values.at(0).data()), std::atoi(values.at(1).data()), std::atoi(values.at(2).data())};
+					break;
+            	default:
+            		throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data", to_string<std::string>(values));
+            }
         }
     }
 

@@ -275,15 +275,6 @@ uint16_t ModuleInfo::write(std::ostream& stream, const OutputMode mode, const Mo
 	return numWords;
 }
 
-static std::string getMetaData(const std::map<MetaDataType, std::vector<std::string>>& metaData, const MetaDataType type, const std::size_t index)
-{
-    if(metaData.find(type) == metaData.end())
-        return "";
-    if(metaData.at(type).size() <= index)
-        return "";
-    return metaData.at(type).at(index);
-}
-
 KernelInfo qpu_asm::getKernelInfos(const Method& method, const uint16_t initialOffset, const uint16_t numInstructions)
 {
 	if(numInstructions > std::numeric_limits<uint16_t>::max())
@@ -294,14 +285,12 @@ KernelInfo qpu_asm::getKernelInfos(const Method& method, const uint16_t initialO
     info.setLength(numInstructions);
     info.setName(method.name[0] == '@' ? method.name.substr(1) : method.name);
     info.workGroupSize = 0;
-    if(method.metaData.find(MetaDataType::WORK_GROUP_SIZES) != method.metaData.end())
     {
         size_t requiredSize = 1;
         unsigned offset = 0;
-        for(const std::string& s : method.metaData.at(MetaDataType::WORK_GROUP_SIZES))
+        for(uint32_t size : method.metaData.workGroupSizes)
         {
-            int64_t size = std::atoi(s.data());
-            info.workGroupSize |= size << offset;
+            info.workGroupSize |= static_cast<uint64_t>(size) << offset;
             offset += 16;
             requiredSize *= size;
         }
@@ -310,12 +299,11 @@ KernelInfo qpu_asm::getKernelInfos(const Method& method, const uint16_t initialO
             logging::error() << "Required work-group size " << requiredSize << " exceeds the limit of " << KernelInfo::MAX_WORK_GROUP_SIZES << logging::endl;
         }
     }
-    if(method.metaData.find(MetaDataType::WORK_GROUP_SIZES_HINT) != method.metaData.end())
     {
         uint32_t requiredSize = 1;
-        for(const std::string& s : method.metaData.at(MetaDataType::WORK_GROUP_SIZES_HINT))
+        for(uint32_t size : method.metaData.workGroupSizeHints)
         {
-            requiredSize *= std::atoi(s.data());
+            requiredSize *= size;
         }
         if(requiredSize > KernelInfo::MAX_WORK_GROUP_SIZES)
         {
@@ -324,19 +312,19 @@ KernelInfo qpu_asm::getKernelInfos(const Method& method, const uint16_t initialO
     }
     for(std::size_t i = 0; i < method.parameters.size(); ++i)
     {
-    	std::string paramName = getMetaData(method.metaData, MetaDataType::ARG_NAMES, i);
-    	paramName = paramName.empty() ? method.parameters.at(i).parameterName : paramName;
+    	std::string paramName = method.parameters.at(i).parameterName;
     	paramName = paramName.empty() ? method.parameters.at(i).name : paramName;
         const DataType& paramType = method.parameters.at(i).type;
-        std::string typeName = getMetaData(method.metaData, MetaDataType::ARG_TYPE_NAMES, i);
+        //TODO std::string typeName = getMetaData(method.metaData, MetaDataType::ARG_TYPE_NAMES, i);
+        std::string typeName;
         ParamInfo paramInfo;
         paramInfo.setSize(static_cast<uint8_t>(paramType.getPhysicalWidth()));
         paramInfo.setPointer(paramType.isPointerType() || paramType.getImageType().hasValue);
         paramInfo.setOutput(method.parameters.at(i).isOutputParameter());
         paramInfo.setInput(method.parameters.at(i).isInputParameter());
-        paramInfo.setConstant(getMetaData(method.metaData, MetaDataType::ARG_TYPE_QUALIFIERS, i).find("const") != std::string::npos || has_flag(method.parameters.at(i).decorations, ParameterDecorations::READ_ONLY));
-        paramInfo.setRestricted(getMetaData(method.metaData, MetaDataType::ARG_TYPE_QUALIFIERS, i).find("restrict") != std::string::npos || has_flag(method.parameters.at(i).decorations, ParameterDecorations::RESTRICT));
-        paramInfo.setVolatile(getMetaData(method.metaData, MetaDataType::ARG_TYPE_QUALIFIERS, i).find("volatile") != std::string::npos || has_flag(method.parameters.at(i).decorations, ParameterDecorations::VOLATILE));
+        paramInfo.setConstant(has_flag(method.parameters.at(i).decorations, ParameterDecorations::READ_ONLY));
+        paramInfo.setRestricted(has_flag(method.parameters.at(i).decorations, ParameterDecorations::RESTRICT));
+        paramInfo.setVolatile(has_flag(method.parameters.at(i).decorations, ParameterDecorations::VOLATILE));
         paramInfo.setName(paramName[0] == '%' ? paramName.substr(1) : paramName);
         paramInfo.setTypeName(typeName.empty() ? paramType.to_string() : typeName);
         paramInfo.setElements((paramType.isPointerType() ? static_cast<uint8_t>(1) : paramType.num));
