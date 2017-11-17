@@ -15,6 +15,7 @@
 #include "../lib/cpplog/include/logger.h"
 #include "log.h"
 #include "CompilationError.h"
+#include "Precompiler.h"
 
 using namespace vc4c;
 

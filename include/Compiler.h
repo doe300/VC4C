@@ -9,12 +9,12 @@
 #ifndef COMPILER_H
 #define COMPILER_H
 
-#include "./config.h"
-#include <iostream>
-#include <memory>
-#include <map>
+#include "config.h"
+#include "helper.h"
 
-#include "Precompiler.h"
+#include <iostream>
+#include <map>
+#include <memory>
 
 namespace vc4c
 {
@@ -44,7 +44,7 @@ namespace vc4c
 	    Configuration& getConfiguration();
 	    const Configuration& getConfiguration() const;
 
-	    static std::size_t compile(std::istream& input, std::ostream& output, const Configuration config = {}, const std::string& options = "", const Optional<std::string>& inputFile = {});
+	    static std::size_t compile(std::istream& input, std::ostream& output, Configuration config = {}, const std::string& options = "", const Optional<std::string>& inputFile = {});
 
 	private:
 	    std::istream& input;
@@ -56,8 +56,8 @@ namespace vc4c
 	 * Sets the global logger
 	 * This defaults to logging to the console
 	 */
-	void setLogger(std::wostream& outputStream, const bool coloredOutput, const LogLevel level = LogLevel::WARNING);
-}
+	void setLogger(std::wostream& outputStream, bool coloredOutput, LogLevel level = LogLevel::WARNING);
+} // namespace vc4c
 
 #endif /* COMPILER_H */
 

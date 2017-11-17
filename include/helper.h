@@ -64,31 +64,31 @@ namespace vc4c
 	}
 
 	template<typename Bitfield>
-	inline __attribute__((warn_unused_result)) Bitfield add_flag(const Bitfield orig, const Bitfield flag)
+	inline __attribute__((warn_unused_result)) Bitfield add_flag(Bitfield orig, Bitfield flag)
 	{
 	    return static_cast<Bitfield>(static_cast<unsigned>(orig) | static_cast<unsigned>(flag));
 	}
 
 	template<typename Bitfield>
-	inline __attribute__((warn_unused_result)) Bitfield remove_flag(const Bitfield orig, const Bitfield flag)
+	inline __attribute__((warn_unused_result)) Bitfield remove_flag(Bitfield orig, Bitfield flag)
 	{
 	    return static_cast<Bitfield>(static_cast<unsigned>(orig) & ~static_cast<unsigned>(flag));
 	}
 
 	template<typename Bitfield>
-	inline bool has_flag(const Bitfield field, const Bitfield flag)
+	inline bool has_flag(Bitfield field, Bitfield flag)
 	{
 	    return (static_cast<unsigned>(field) & static_cast<unsigned>(flag)) == static_cast<unsigned>(flag);
 	}
 
 	template<typename Bitfield>
-	inline __attribute__((warn_unused_result)) Bitfield intersect_flags(const Bitfield field0, const Bitfield field1)
+	inline __attribute__((warn_unused_result)) Bitfield intersect_flags(Bitfield field0, Bitfield field1)
 	{
 		return static_cast<Bitfield>(static_cast<unsigned>(field0) & static_cast<unsigned>(field1));
 	}
 
 	template<typename Bitfield>
-	inline __attribute__((warn_unused_result)) Bitfield combine_flags(const Bitfield field0, const Bitfield field1)
+	inline __attribute__((warn_unused_result)) Bitfield combine_flags(Bitfield field0, Bitfield field1)
 	{
 		return static_cast<Bitfield>(static_cast<unsigned>(field0) | static_cast<unsigned>(field1));
 	}
@@ -107,7 +107,7 @@ namespace vc4c
 
 	    }
 
-	    Optional(const bool hasValue, const T& dummyValue = {}) : hasValue(hasValue), value(dummyValue)
+	    Optional(bool hasValue, const T& dummyValue = {}) : hasValue(hasValue), value(dummyValue)
 	    {
 
 	    }
@@ -171,17 +171,15 @@ namespace vc4c
 
 	struct NonCopyable
 	{
-	protected:
 		constexpr NonCopyable() = default;
 		~NonCopyable() = default;
 
-		NonCopyable(NonCopyable&&) = default;
-		NonCopyable& operator=(NonCopyable&&) = default;
-	private:
+		NonCopyable(NonCopyable&&) noexcept = default;
+		NonCopyable& operator=(NonCopyable&&) noexcept = default;
 		NonCopyable(const NonCopyable&) = delete;
 		NonCopyable& operator=(const NonCopyable&) = delete;
 	};
-}
+} // namespace vc4c
 
 #endif /* HELPER_H */
 

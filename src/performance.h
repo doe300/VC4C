@@ -7,12 +7,12 @@
 #ifndef PERFORMANCE_H
 #define PERFORMANCE_H
 
+#include <list>
 #include <map>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <list>
 
 namespace vc4c
 {
@@ -29,13 +29,13 @@ namespace vc4c
 	{
 		FRONT = 1,
 		END = 2,
-		ARBITRARY_POSITION = 3,
+		ARBITRARY_POSITION = 3
 	};
 
 	enum class OrderType
 	{
 		ORDERED = 1,
-		UNORDERED = 2,
+		UNORDERED = 2
 	};
 
 	////
@@ -102,7 +102,7 @@ namespace vc4c
 	using OrderedMap = PerformanceMap<K, V, OrderType::ORDERED, C>;
 	template<typename K, typename V>
 	using FastMap = UnorderedMap<K, V>;
-}
+} // namespace vc4c
 
 
 #endif /* PERFORMANCE_H */

@@ -22,11 +22,6 @@ IntermediateInstruction({true, dest}), methodName(methodName)
 		setArgument(i, args[i]);
 }
 
-MethodCall::~MethodCall()
-{
-
-}
-
 std::string MethodCall::to_string() const
 {
     std::string signature = (getReturnType() == TYPE_VOID ? "" : getOutput().get().to_string(true) + " = ") + (getReturnType().to_string() + " ") + methodName + "(";
@@ -98,11 +93,6 @@ Return::Return(const Value& val) : IntermediateInstruction(NO_VALUE)
 }
 
 Return::Return() : IntermediateInstruction(NO_VALUE)
-{
-
-}
-
-Return::~Return()
 {
 
 }

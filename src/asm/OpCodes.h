@@ -7,12 +7,12 @@
 #ifndef OPCODES_H
 #define OPCODES_H
 
-#include <string>
-#include <limits>
-#include <algorithm>
-
-#include "helper.h"
 #include "../Bitfield.h"
+#include "helper.h"
+
+#include <algorithm>
+#include <limits>
+#include <string>
 
 namespace vc4c
 {
@@ -35,12 +35,11 @@ namespace vc4c
 	 */
 	struct ConditionCode : public InstructionPart
 	{
-		constexpr ConditionCode(const unsigned char val) : InstructionPart(val)
-		{};
+		explicit constexpr ConditionCode(unsigned char val) noexcept : InstructionPart(val) { }
 
 		std::string toString() const;
 		ConditionCode invert() const;
-		bool isInversionOf(const ConditionCode other) const;
+		bool isInversionOf(ConditionCode other) const;
 		BranchCond toBranchCondition() const;
 	};
 
@@ -99,7 +98,7 @@ namespace vc4c
 	 */
 	struct Signaling : public InstructionPart
 	{
-		constexpr Signaling(const unsigned char val) : InstructionPart(val) {};
+		explicit constexpr Signaling(unsigned char val) noexcept : InstructionPart(val) { }
 
 		std::string toString() const;
 		bool hasSideEffects() const;
@@ -158,7 +157,7 @@ namespace vc4c
 	 */
 	struct Unpack : public InstructionPart
 	{
-		constexpr Unpack(unsigned char val) : InstructionPart(val) {};
+		explicit constexpr Unpack(unsigned char val) noexcept : InstructionPart(val) { }
 
 		std::string toString() const;
 
@@ -199,7 +198,7 @@ namespace vc4c
 
 	struct Pack : public InstructionPart
 	{
-		constexpr Pack(unsigned char val) : InstructionPart(val) {};
+		explicit constexpr Pack(unsigned char val) noexcept : InstructionPart(val) { }
 
 		std::string toString() const;
 
@@ -262,7 +261,7 @@ namespace vc4c
 		{
 			DONT_SET = 0, SET_FLAGS = 1
 	};
-	std::string toString(const SetFlag flag);
+	std::string toString(SetFlag flag);
 
 	/*!
 	 * Write swap for add and multiply unit outputs
@@ -275,7 +274,7 @@ namespace vc4c
 			//add ALU writes to regfile A, mult to regfile B
 		DONT_SWAP = 0,
 		//add ALU writes to regfile B, mult to regfile A
-		SWAP = 1,
+		SWAP = 1
 	};
 
 	struct OpCode
@@ -285,7 +284,7 @@ namespace vc4c
 		unsigned char opMul;
 		unsigned char numOperands;
 
-		constexpr OpCode(const char* name, unsigned char opAdd, unsigned char opMul, const unsigned char numOperands) : name(name), opAdd(opAdd), opMul(opMul), numOperands(numOperands)
+		constexpr OpCode(const char* name, unsigned char opAdd, unsigned char opMul, unsigned char numOperands) noexcept : name(name), opAdd(opAdd), opMul(opMul), numOperands(numOperands)
 		{
 		}
 
@@ -304,7 +303,7 @@ namespace vc4c
 		}
 
 		static const OpCode& toOpCode(const std::string& name);
-		static const OpCode& toOpCode(const unsigned char opcode, const bool isMulALU);
+		static const OpCode& toOpCode(unsigned char opcode, bool isMulALU);
 		/*
 		 * Similar to #toOpCode, but returns OP_NUL of op-code is not a valid machine code instruction, instead of throwing an exception
 		 */
@@ -392,7 +391,7 @@ namespace vc4c
 		//write 16 individual 2-bit (signed) values per-element
 		LOAD_SIGNED = 0b01110001,
 		//write 16 individual 2-bit (unsigned) values per-element
-		LOAD_UNSIGNED = 0b01110011,
+		LOAD_UNSIGNED = 0b01110011
 	};
 
 	/*!
@@ -483,7 +482,7 @@ namespace vc4c
 		//Always execute (unconditional)
 		ALWAYS = 15
 	};
-	std::string toString(const BranchCond cond);
+	std::string toString(BranchCond cond);
 
 	enum class BranchRel
 		: unsigned char
@@ -502,7 +501,7 @@ namespace vc4c
 	};
 
 	using Address = uint8_t;
-}
+} // namespace vc4c
 
 #endif /* OPCODES_H */
 

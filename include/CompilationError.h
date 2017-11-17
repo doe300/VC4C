@@ -28,13 +28,17 @@ namespace vc4c
 	class CompilationError : public std::runtime_error
 	{
 	public:
-	    CompilationError(const CompilationStep step, const std::string& message);
-	    CompilationError(const CompilationStep step, const std::size_t line, const std::string& message);
-	    CompilationError(const CompilationStep step, const std::string& type, const std::string& message);
+	    CompilationError(CompilationStep step, const std::string& message);
+	    CompilationError(CompilationStep step, std::size_t line, const std::string& message);
+	    CompilationError(CompilationStep step, const std::string& type, const std::string& message);
+	    CompilationError(const CompilationError&) = default;
+	    CompilationError(CompilationError&&) noexcept = default;
+	    ~CompilationError() override;
 
-	    virtual ~CompilationError();
+	    CompilationError& operator=(const CompilationError&) = default;
+	    CompilationError& operator=(CompilationError&&) noexcept = default;
 	};
-}
+} // namespace vc4c
 
 #endif /* COMPILATIONERROR_H */
 

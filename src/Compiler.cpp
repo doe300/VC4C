@@ -4,26 +4,28 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include <vector>
-#include <memory>
-#include <cstdlib>
-#include <cstdio>
-#include <fcntl.h>
-#include <unistd.h>
-#include <iterator>
-#include <algorithm>
-#include <sstream>
-
 #include "Compiler.h"
+
+#include "BackgroundWorker.h"
 #include "Parser.h"
-#include "llvm/IRParser.h"
-#include "spirv/SPIRVParser.h"
-#include "optimization/Optimizer.h"
+#include "Precompiler.h"
+#include "Profiler.h"
 #include "asm/CodeGenerator.h"
+#include "llvm/IRParser.h"
 #include "log.h"
 #include "logger.h"
-#include "Profiler.h"
-#include "BackgroundWorker.h"
+#include "optimization/Optimizer.h"
+#include "spirv/SPIRVParser.h"
+
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <fcntl.h>
+#include <iterator>
+#include <memory>
+#include <sstream>
+#include <unistd.h>
+#include <vector>
 
 #ifdef VERIFIER_HEADER
 #include VERIFIER_HEADER
@@ -178,7 +180,7 @@ std::size_t Compiler::compile(std::istream& input, std::ostream& output, const C
 		}
 		PROFILE_END(Precompile);
 
-		if(in.get() == nullptr || (dynamic_cast<std::istringstream*>(in.get()) != nullptr && dynamic_cast<std::istringstream*>(in.get())->str().empty()))
+		if(in == nullptr || (dynamic_cast<std::istringstream*>(in.get()) != nullptr && dynamic_cast<std::istringstream*>(in.get())->str().empty()))
 			//replace only when pre-compiled (and not just linked output to input, e.g. if source-type is output-type)
 			tmpFile.openInputStream(in);
 

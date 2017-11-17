@@ -4,12 +4,13 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include "periphery/VPM.h"
-#include "log.h"
 #include "Module.h"
+
 #include "InstructionWalker.h"
-#include "intermediate/IntermediateInstruction.h"
 #include "Profiler.h"
+#include "intermediate/IntermediateInstruction.h"
+#include "log.h"
+#include "periphery/VPM.h"
 
 using namespace vc4c;
 
@@ -38,7 +39,7 @@ BasicBlock::BasicBlock(Method& method, intermediate::BranchLabel* label) : metho
 
 bool BasicBlock::empty() const
 {
-	return instructions.size() == 0 || (instructions.size() == 1 && dynamic_cast<intermediate::BranchLabel*>(instructions.front().get()) != nullptr);
+	return instructions.empty() || (instructions.size() == 1 && dynamic_cast<intermediate::BranchLabel*>(instructions.front().get()) != nullptr);
 }
 
 InstructionWalker BasicBlock::begin()
@@ -55,7 +56,7 @@ bool BasicBlock::isLocallyLimited(InstructionWalker curIt, const Local* locale, 
 {
 	auto remainingUsers = locale->getUsers();
 
-	int usageRangeLeft = threshold;
+	int32_t usageRangeLeft = static_cast<int32_t>(threshold);
 	//check whether the local is written in the instruction before (and this)
 	//this happens e.g. for comparisons
 	if(!curIt.isStartOfBlock())
@@ -277,7 +278,7 @@ bool Method::isLocallyLimited(InstructionWalker curIt, const Local* locale, cons
 {
 	auto remainingUsers = locale->getUsers();
 
-	int usageRangeLeft = threshold;
+	int32_t usageRangeLeft = static_cast<int32_t>(threshold);
 	//check whether the local is written in the instruction before (and this)
 	//this happens e.g. for comparisons
 	if(!curIt.isStartOfBlock())
@@ -609,11 +610,6 @@ BasicBlock* Method::getPreviousBlock(const BasicBlock* block)
 
 
 Module::Module(const Configuration& compilationConfig): compilationConfig(compilationConfig)
-{
-
-}
-
-Module::~Module()
 {
 
 }

@@ -9,14 +9,14 @@
 
 #include "log.h"
 
-#include <functional>
 #include <exception>
+#include <functional>
 
 #ifdef MULTI_THREADED
-#include <thread>
+#include <dlfcn.h>
 #include <mutex>
 #include <sys/prctl.h>
-#include <dlfcn.h>
+#include <thread>
 #endif
 
 namespace threading

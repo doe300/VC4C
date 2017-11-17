@@ -7,10 +7,10 @@
 #ifndef LOCALS_H
 #define LOCALS_H
 
-#include <utility>
-#include <functional>
-
 #include "Values.h"
+
+#include <functional>
+#include <utility>
 
 namespace vc4c
 {
@@ -22,13 +22,13 @@ namespace vc4c
 		};
 
 		LocalUser() = default;
-		virtual ~LocalUser();
+		virtual ~LocalUser() = default;
 
 		virtual FastMap<const Local*, Type> getUsedLocals() const = 0;
 		virtual void forUsedLocals(const std::function<void(const Local*, LocalUser::Type)>& consumer) const = 0;
 		virtual bool readsLocal(const Local* local) const;
 		virtual bool writesLocal(const Local* local) const;
-		virtual void replaceLocal(const Local* oldLocal, const Local* newLocal, const Type type = add_flag(Type::READER, Type::WRITER)) = 0;
+		virtual void replaceLocal(const Local* oldLocal, const Local* newLocal, Type type = add_flag(Type::READER, Type::WRITER)) = 0;
 
 		virtual std::string to_string() const = 0;
 	};
@@ -54,9 +54,11 @@ namespace vc4c
 	class Local : private NonCopyable
 	{
 	public:
+		Local(const Local&) = delete;
 		Local(Local&&) = default;
-		virtual ~Local();
+		virtual ~Local() = default;
 
+		Local& operator=(const Local&) = delete;
 		Local& operator=(Local&&) = default;
 		bool operator<(const Local& other);
 		bool operator==(const Local& other);
@@ -64,10 +66,10 @@ namespace vc4c
 		const Value createReference(int index = WHOLE_OBJECT) const;
 
 		const OrderedMap<const LocalUser*, LocalUse>& getUsers() const;
-		FastSet<const LocalUser*> getUsers(const LocalUser::Type type) const;
+		FastSet<const LocalUser*> getUsers(LocalUser::Type type) const;
 		void forUsers(const LocalUser::Type type, const std::function<void(const LocalUser*)>& consumer) const;
-		void removeUser(const LocalUser& user, const LocalUser::Type type);
-		void addUser(const LocalUser& user, const LocalUser::Type type);
+		void removeUser(const LocalUser& user, LocalUser::Type type);
+		void addUser(const LocalUser& user, LocalUser::Type type);
 		/*
 		 * Returns the only instruction writing to this local, if there is exactly one
 		 */
@@ -145,9 +147,9 @@ namespace vc4c
 
 	struct Parameter : public Local
 	{
-		Parameter(const std::string& name, const DataType& type, const ParameterDecorations decorations = ParameterDecorations::NONE);
+		Parameter(const std::string& name, const DataType& type, ParameterDecorations decorations = ParameterDecorations::NONE);
 		Parameter(Parameter&&) = default;
-		~Parameter();
+		~Parameter() override;
 
 		bool isInputParameter() const;
 		bool isOutputParameter() const;
@@ -166,7 +168,7 @@ namespace vc4c
 	{
 		Global(const std::string& name, const DataType& globalType, const Value& value);
 		Global(Global&&) = default;
-		~Global();
+		~Global() override = default;
 
 		std::string to_string(bool withContent = false) const override;
 		bool residesInMemory() const override;
@@ -183,7 +185,7 @@ namespace vc4c
 	{
 		StackAllocation(const std::string& name, const DataType& type, std::size_t size = 0, std::size_t alignment = 1);
 		StackAllocation(StackAllocation&&) = default;
-		~StackAllocation();
+		~StackAllocation() override = default;
 
 		bool residesInMemory() const override;
 

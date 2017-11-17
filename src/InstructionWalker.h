@@ -7,11 +7,11 @@
 #ifndef INSTRUCTION_WALKER_H
 #define INSTRUCTION_WALKER_H
 
-#include <functional>
-
+#include "Graph.h"
 #include "Module.h"
 #include "intermediate/IntermediateInstruction.h"
-#include "Graph.h"
+
+#include <functional>
 
 namespace vc4c
 {
@@ -50,13 +50,14 @@ namespace vc4c
 	public:
 		explicit InstructionWalker();
 		InstructionWalker(BasicBlock* basicBlock, intermediate::InstructionsIterator pos);
-		InstructionWalker(const InstructionWalker& other) = default;
-		InstructionWalker(InstructionWalker&& other) = default;
+		InstructionWalker(const InstructionWalker&) = default;
+		InstructionWalker(InstructionWalker&&) noexcept = default;
+		~InstructionWalker() = default;
+
+		InstructionWalker& operator=(const InstructionWalker&) = default;
+		InstructionWalker& operator=(InstructionWalker&&) noexcept = default;
 
 		BasicBlock* getBasicBlock();
-
-		InstructionWalker& operator=(const InstructionWalker& other) = default;
-		InstructionWalker& operator=(InstructionWalker&& other) = default;
 
 		InstructionWalker& nextInBlock();
 		InstructionWalker& previousInBlock();

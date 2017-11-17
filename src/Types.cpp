@@ -5,12 +5,13 @@
  */
 
 #include "Types.h"
+
 #include "CompilationError.h"
 #include "helper.h"
 
-#include <stdexcept>
-#include <stdlib.h>
+#include <cstdlib>
 #include <limits>
+#include <stdexcept>
 
 using namespace vc4c;
 
@@ -21,11 +22,6 @@ ComplexType::~ComplexType()
 
 DataType::DataType(const std::string& name, const unsigned char num, const std::shared_ptr<ComplexType>& complexType) :
     typeName(name), num(num), complexType(complexType)
-{
-
-}
-
-DataType::~DataType()
 {
 
 }
@@ -43,7 +39,7 @@ bool DataType::operator==(const DataType& right) const
 {
 	if(this == &right)
 		return true;
-    return typeName.compare(right.typeName) == 0 && num == right.num && (complexType.get() == nullptr) == (right.complexType.get() == nullptr) && (complexType.get() != nullptr ? (*complexType.get()) == (*right.complexType.get()) : true);
+    return typeName.compare(right.typeName) == 0 && num == right.num && (complexType == nullptr) == (right.complexType == nullptr) && (complexType != nullptr ? (*complexType.get()) == (*right.complexType.get()) : true);
 }
 
 bool DataType::isScalarType() const
@@ -64,7 +60,7 @@ bool DataType::isPointerType() const
 Optional<PointerType*> DataType::getPointerType() const
 {
 	PointerType* pointerType = dynamic_cast<PointerType*>(complexType.get());
-	if(pointerType)
+	if(pointerType != nullptr)
 			return pointerType;
 	return Optional<PointerType*>(false, nullptr);
 }
@@ -72,7 +68,7 @@ Optional<PointerType*> DataType::getPointerType() const
 Optional<ArrayType*> DataType::getArrayType() const
 {
 	ArrayType* arrayType = dynamic_cast<ArrayType*>(complexType.get());
-	if(arrayType)
+	if(arrayType != nullptr)
 		return arrayType;
 	return Optional<ArrayType*>(false, nullptr);
 }
@@ -80,7 +76,7 @@ Optional<ArrayType*> DataType::getArrayType() const
 Optional<StructType*> DataType::getStructType() const
 {
 	StructType* structType = dynamic_cast<StructType*>(complexType.get());
-	if(structType)
+	if(structType != nullptr)
 		return structType;
 	return Optional<StructType*>(false, nullptr);
 }
@@ -89,7 +85,7 @@ Optional<StructType*> DataType::getStructType() const
 Optional<ImageType*> DataType::getImageType() const
 {
 	ImageType* imageType = dynamic_cast<ImageType*>(complexType.get());
-	if(imageType)
+	if(imageType != nullptr)
 		return imageType;
 	return Optional<ImageType*>(false, nullptr);
 }
@@ -98,7 +94,7 @@ bool DataType::isFloatingType() const
 {
 	if(complexType)
 		return false;
-    return typeName.compare("float") == 0 || typeName.compare("double") == 0 || typeName.compare("half") == 0;
+    return typeName == "float" || typeName == "double" || typeName == "half";
 }
 
 bool DataType::isUnknown() const
@@ -113,7 +109,7 @@ const DataType DataType::getElementType(const int index) const
 	if(getArrayType().hasValue)
 		return getArrayType().get()->elementType;
 	if(getStructType().hasValue && index >= 0)
-		return getStructType().get()->elementTypes.at(index);
+		return getStructType().get()->elementTypes.at(static_cast<std::size_t>(index));
 	if(complexType)
 		throw CompilationError(CompilationStep::GENERAL, "Can't get element-type of heterogeneous complex type", to_string());
     if(num == 1)
@@ -179,7 +175,7 @@ unsigned char DataType::getScalarBitCount() const
     if(typeName[0] == 'i')
     {
         int bitCount = atoi(typeName.substr(1).data());
-        return bitCount;
+        return static_cast<unsigned char>(bitCount);
     }
     if(typeName.compare("half") == 0)
     	//16-bit floating point type
@@ -230,11 +226,6 @@ PointerType::PointerType(const DataType& elementType, const AddressSpace address
 
 }
 
-PointerType::~PointerType()
-{
-
-}
-
 bool PointerType::operator==(const ComplexType& other) const
 {
 	if(this == &other)
@@ -253,11 +244,6 @@ unsigned PointerType::getAlignment() const
 }
 
 StructType::StructType(const std::vector<DataType>& elementTypes, const bool isPacked) : elementTypes(elementTypes), isPacked(isPacked)
-{
-
-}
-
-StructType::~StructType()
 {
 
 }
@@ -288,7 +274,7 @@ unsigned int StructType::getStructSize(const int index) const
     }
     //TODO calculate size of struct (!!SAME AS HOST!!) including padding -> correct??
     //http://stackoverflow.com/a/2749096
-    unsigned int alignment = 0;
+    unsigned int alignment = 1;
     for(std::size_t i = 0; i < elementTypes.size(); ++i)
     {
     	if(i == static_cast<std::size_t>(index))
@@ -316,7 +302,7 @@ unsigned int StructType::getStructSize(const int index) const
     else
     {
     	//add padding for element which is retrieved
-    	auto elementSize = elementTypes.at(index).getPhysicalWidth();
+    	auto elementSize = elementTypes.at(static_cast<std::size_t>(index)).getPhysicalWidth();
     	if(size % elementSize != 0)
 		{
 			//alignment is added before the next type, not after the last
@@ -332,11 +318,6 @@ ArrayType::ArrayType(const DataType& elementType, const unsigned int size) : ele
 
 }
 
-ArrayType::~ArrayType()
-{
-
-}
-
 bool ArrayType::operator==(const ComplexType& other) const
 {
 	if(this == &other)
@@ -345,11 +326,6 @@ bool ArrayType::operator==(const ComplexType& other) const
 	if(right == nullptr)
 		return false;
 	return size == right->size && elementType == right->elementType;
-}
-
-ImageType::~ImageType()
-{
-
 }
 
 bool ImageType::operator==(const ComplexType& other) const

@@ -8,11 +8,6 @@
 
 using namespace vc4c;
 
-LocalUser::~LocalUser()
-{
-
-}
-
 bool LocalUser::readsLocal(const Local* local) const
 {
 	const auto allLocals = getUsedLocals();
@@ -30,10 +25,6 @@ Local::Local(const DataType& type, const std::string& name) : type(type), name(n
 
 }
 
-Local::~Local()
-{
-}
-
 bool Local::operator<(const Local& other)
 {
 	return name < other.name;
@@ -41,7 +32,7 @@ bool Local::operator<(const Local& other)
 
 bool Local::operator==(const Local& other)
 {
-	return this == &other || name.compare(other.name) == 0;
+	return this == &other || name == other.name;
 }
 
 const Value Local::createReference(int index) const
@@ -164,11 +155,6 @@ Global::Global(const std::string& name, const DataType& globalType, const Value&
 
 }
 
-Global::~Global()
-{
-
-}
-
 std::string Global::to_string(bool withContent) const
 {
 	return (name + ": ") + value.to_string(false, withContent);
@@ -180,11 +166,6 @@ bool Global::residesInMemory() const
 }
 
 StackAllocation::StackAllocation(const std::string& name, const DataType& type, std::size_t size, std::size_t alignment) : Local(type, name), offset(0), alignment(alignment == 0 ? 1 : alignment), size(size > 0 ? size : type.getElementType().getPhysicalWidth())
-{
-
-}
-
-StackAllocation::~StackAllocation()
 {
 
 }

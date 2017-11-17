@@ -7,7 +7,7 @@
 #ifndef BITFIELD_H
 #define BITFIELD_H
 
-#include <stdint.h>
+#include <cstdint>
 
 namespace vc4c
 {
@@ -32,10 +32,8 @@ namespace vc4c
 		static constexpr uint32_t MASK_Int { 0xFFFFFFFF };
 		static constexpr uint32_t MASK_SignedInt { 0xFFFFFFFF };
 
-		constexpr Bitfield(UnderlyingType val = 0) : value(val)
-		{
-
-		}
+		explicit constexpr Bitfield(UnderlyingType val = 0) noexcept : value(val)
+		{ }
 
 		template<typename T>
 		inline void setEntry(T val, uint8_t pos, UnderlyingType mask)
@@ -71,8 +69,8 @@ namespace vc4c
 	{
 		unsigned char value;
 
-		constexpr InstructionPart(const unsigned char val) : value(val)
-		{};
+		explicit constexpr InstructionPart(unsigned char val) noexcept : value(val)
+		{ }
 
 		constexpr operator unsigned char() const
 		{
@@ -89,6 +87,6 @@ namespace vc4c
 			return value != other.value;
 		}
 	};
-};
+} // namespace vc4c
 
 #endif /* BITFIELD_H */

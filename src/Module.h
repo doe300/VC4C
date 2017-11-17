@@ -8,23 +8,22 @@
 #define SRC_MODULE_H_
 
 #include "config.h"
-#include "Types.h"
-#include "Values.h"
 #include "Locals.h"
 #include "performance.h"
+#include "Types.h"
 
 namespace vc4c
 {
 	namespace intermediate
 	{
 		class IntermediateInstruction;
-		class BranchLabel;
-	}
+		struct BranchLabel;
+	} // namespace intermediate
 
 	namespace periphery
 	{
 		class VPM;
-	}
+	} // namespace periphery
 
 	struct KernelMetaData
 	{
@@ -38,7 +37,7 @@ namespace vc4c
 		}
 	};
 
-	struct InstructionWalker;
+	class InstructionWalker;
 	class Module;
 	class Method;
 
@@ -49,8 +48,11 @@ namespace vc4c
 		static const std::string LAST_BLOCK;
 
 		BasicBlock(Method& method, intermediate::BranchLabel* label);
+		BasicBlock(const BasicBlock&) = delete;
 		BasicBlock(BasicBlock&&) = delete;
+		~BasicBlock() = default;
 
+		BasicBlock& operator=(const BasicBlock&) = delete;
 		BasicBlock& operator=(BasicBlock&&) = delete;
 
 		bool empty() const;
@@ -60,7 +62,7 @@ namespace vc4c
 		/*!
 		 * Checks if all usages of this local are within a certain range from the current instruction within a single basic block
 		 */
-		bool isLocallyLimited(InstructionWalker curIt, const Local* locale, const std::size_t threshold = ACCUMULATOR_THRESHOLD_HINT) const;
+		bool isLocallyLimited(InstructionWalker curIt, const Local* locale, std::size_t threshold = ACCUMULATOR_THRESHOLD_HINT) const;
 
 		const intermediate::BranchLabel* getLabel() const;
 		/*
@@ -86,7 +88,7 @@ namespace vc4c
 		/*
 		 * Returns the InstructionWalker for the last (as in prior to the given instruction) instruction setting flags within this basoc block
 		 */
-		Optional<InstructionWalker> findLastSettingOfFlags(const InstructionWalker start);
+		Optional<InstructionWalker> findLastSettingOfFlags(InstructionWalker start);
 	private:
 		Method& method;
 		RandomModificationList<std::unique_ptr<intermediate::IntermediateInstruction>> instructions;
@@ -123,11 +125,13 @@ namespace vc4c
 		KernelMetaData metaData;
 		std::unique_ptr<periphery::VPM> vpm;
 
-		Method(const Module& module);
+		explicit Method(const Module& module);
+		Method(const Method&) = delete;
+		Method(Method&&) = delete;
 		~Method();
 
-		Method(Method&& old) = delete;
-		Method& operator=(Method&& old) = delete;
+		Method& operator=(const Method&) = delete;
+		Method& operator=(Method&&) = delete;
 
 		const Value addNewLocal(const DataType& type, const std::string& prefix = "", const std::string& postfix = "");
 
@@ -140,7 +144,7 @@ namespace vc4c
 		/*!
 		 * Checks if all usages of this local are within a certain range from the current instruction, but following branches
 		 */
-		bool isLocallyLimited(InstructionWalker curIt, const Local* locale, const std::size_t threshold = ACCUMULATOR_THRESHOLD_HINT) const;
+		bool isLocallyLimited(InstructionWalker curIt, const Local* locale, std::size_t threshold = ACCUMULATOR_THRESHOLD_HINT) const;
 
 		InstructionWalker walkAllInstructions();
 		void forAllInstructions(const std::function<void(const intermediate::IntermediateInstruction*)>& consumer) const;
@@ -180,11 +184,13 @@ namespace vc4c
 	class Module : private NonCopyable
 	{
 	public:
-		Module(const Configuration& compilationConfig);
-		~Module();
+		explicit Module(const Configuration& compilationConfig);
+		Module(const Module&) = delete;
+		Module(Module&&) = default;
+		~Module() = default;
 
-		Module(Module&& old) = default;
-		Module& operator=(Module&& old) = default;
+		Module& operator=(const Module&) = delete;
+		Module& operator=(Module&&) = delete;
 
 		ReferenceRetainingList<Global> globalData;
 		std::vector<std::unique_ptr<Method>> methods;
@@ -194,8 +200,6 @@ namespace vc4c
 
 		const Configuration& compilationConfig;
 	};
-}
-
-
+} // namespace vc4c
 
 #endif /* SRC_MODULE_H_ */

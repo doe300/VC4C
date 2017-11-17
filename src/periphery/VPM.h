@@ -4,12 +4,12 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#ifndef INTERMEDIATE_VPM_H
-#define INTERMEDIATE_VPM_H
+#ifndef VC4C_VPM_H
+#define VC4C_VPM_H
 
-#include "../Module.h"
-#include "../InstructionWalker.h"
 #include "../Bitfield.h"
+#include "../InstructionWalker.h"
+#include "../Module.h"
 
 namespace vc4c
 {
@@ -156,7 +156,7 @@ namespace vc4c
 		class VPWStrideSetup : private Bitfield<uint32_t>
 		{
 		public:
-			VPWStrideSetup(uint16_t stride = 0) : Bitfield(0)
+			explicit VPWStrideSetup(uint16_t stride = 0) : Bitfield(0)
 			{
 				setStride(stride);
 				setBlockMode(true);
@@ -195,10 +195,10 @@ namespace vc4c
 				VPWStrideSetup strideSetup;
 			};
 
-			VPWSetup(uint32_t val) : value(val) {};
-			VPWSetup(VPWGenericSetup generic) : genericSetup(generic) {};
-			VPWSetup(VPWDMASetup dma) : dmaSetup(dma) {};
-			VPWSetup(VPWStrideSetup stride) : strideSetup(stride) {};
+			explicit VPWSetup(uint32_t val) : value(val) { }
+			explicit VPWSetup(VPWGenericSetup generic) : genericSetup(generic) { }
+			explicit VPWSetup(VPWDMASetup dma) : dmaSetup(dma) { }
+			explicit VPWSetup(VPWStrideSetup stride) : strideSetup(stride) { }
 
 			operator uint32_t() const
 			{
@@ -372,7 +372,7 @@ namespace vc4c
 		{
 		public:
 
-			VPRStrideSetup(uint16_t stride = 0) : Bitfield(0)
+			explicit VPRStrideSetup(uint16_t stride = 0) : Bitfield(0)
 			{
 				setStride(stride);
 				setID(9);
@@ -401,10 +401,10 @@ namespace vc4c
 				VPRStrideSetup strideSetup;
 			};
 
-			VPRSetup(uint32_t val) : value(val) {};
-			VPRSetup(VPRGenericSetup generic) : genericSetup(generic) {};
-			VPRSetup(VPRDMASetup dma) : dmaSetup(dma) {};
-			VPRSetup(VPRStrideSetup stride) : strideSetup(stride) {};
+			explicit VPRSetup(uint32_t val) : value(val) { }
+			explicit VPRSetup(VPRGenericSetup generic) : genericSetup(generic) { }
+			explicit VPRSetup(VPRDMASetup dma) : dmaSetup(dma) { }
+			explicit VPRSetup(VPRStrideSetup stride) : strideSetup(stride) { }
 
 			operator uint32_t() const
 			{
@@ -460,7 +460,7 @@ namespace vc4c
 			//the (optional) DMA address this area is assigned to (as DMA cache)
 			const Local* dmaAddress;
 
-			void checkAreaSize(const unsigned requestedSize) const;
+			void checkAreaSize(unsigned requestedSize) const;
 
 			bool operator<(const VPMArea& other) const;
 
@@ -474,7 +474,7 @@ namespace vc4c
 		class VPM : private NonCopyable
 		{
 		public:
-			VPM(const unsigned totalVPMSize);
+			explicit VPM(unsigned totalVPMSize);
 
 			const VPMArea& getScratchArea();
 			const VPMArea* findArea(const Local* local);
@@ -507,11 +507,11 @@ namespace vc4c
 			/*
 			 * Inserts a copy from RAM via DMA and VPM into RAM
 			 */
-			InstructionWalker insertCopyRAM(Method& method, InstructionWalker it, const Value& destAddress, const Value& srcAddress, const unsigned numBytes, const VPMArea* area = nullptr, bool useMutex = true);
+			InstructionWalker insertCopyRAM(Method& method, InstructionWalker it, const Value& destAddress, const Value& srcAddress, unsigned numBytes, const VPMArea* area = nullptr, bool useMutex = true);
 			/*
 			 * Inserts a filling of a memory-area with a single value from VPM
 			 */
-			InstructionWalker insertFillRAM(Method& method, InstructionWalker it, const Value& memoryAddress, const DataType& type, const unsigned numCopies, const VPMArea* area = nullptr, bool useMutex = true);
+			InstructionWalker insertFillRAM(Method& method, InstructionWalker it, const Value& memoryAddress, const DataType& type, unsigned numCopies, const VPMArea* area = nullptr, bool useMutex = true);
 
 			/*
 			 * Updates the maximum size used by the scratch area.
@@ -528,8 +528,8 @@ namespace vc4c
 			InstructionWalker insertLockMutex(InstructionWalker it, bool useMutex) const;
 			InstructionWalker insertUnlockMutex(InstructionWalker it, bool useMutex) const;
 		};
-	}
-}
+	} // namespace periphery
+} // namespace vc4c
 
 
-#endif /* INTERMEDIATE_VPM_H */
+#endif /* VC4C_VPM_H */

@@ -5,12 +5,14 @@
  */
 
 #include "Profiler.h"
+
 #include "log.h"
 
 #include <chrono>
+#include <iomanip>
 #include <map>
 #include <set>
-#include <iomanip>
+
 #ifdef MULTI_THREADED
 #include <mutex>
 #endif

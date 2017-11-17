@@ -9,12 +9,12 @@
 #ifndef PRECOMPILER_H
 #define PRECOMPILER_H
 
-#include "./config.h"
+#include "config.h"
+#include "helper.h"
+
 #include <iostream>
 #include <memory>
 #include <unordered_map>
-
-#include "helper.h"
 
 namespace vc4c
 {
@@ -33,9 +33,13 @@ namespace vc4c
 	class TemporaryFile : private NonCopyable
 	{
 	public:
-		TemporaryFile(const std::string& fileTemplate = "/tmp/vc4c-XXXXXX");
-		TemporaryFile(TemporaryFile&& other);
+		explicit TemporaryFile(const std::string& fileTemplate = "/tmp/vc4c-XXXXXX");
+		TemporaryFile(const TemporaryFile&) = delete;
+		TemporaryFile(TemporaryFile&& other) noexcept;
 		~TemporaryFile();
+
+		TemporaryFile& operator=(const TemporaryFile&) = delete;
+		TemporaryFile& operator=(TemporaryFile&&) = delete;
 
 		void openOutputStream(std::unique_ptr<std::ostream>& ptr) const;
 		void openInputStream(std::unique_ptr<std::istream>& ptr) const;
@@ -46,7 +50,7 @@ namespace vc4c
 	class Precompiler
 	{
 	public:
-		Precompiler(std::istream& input, const SourceType inputType, const Optional<std::string> inputFile = {});
+		Precompiler(std::istream& input, SourceType inputType, Optional<std::string> inputFile = {});
 
 		/*
 		 * Runs the pre-compilation from the source-type passed to the constructor to the output-type specified.
@@ -55,11 +59,11 @@ namespace vc4c
 		 * See also: github issue 3 (https://github.com/doe300/VC4C/issues/3)
 		 */
 	#if defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_PARSER_HEADER
-		void run(std::unique_ptr<std::istream>& output, const SourceType outputType = SourceType::SPIRV_BIN, const std::string& options = "", Optional<std::string> outputFile = {});
+		void run(std::unique_ptr<std::istream>& output, SourceType outputType = SourceType::SPIRV_BIN, const std::string& options = "", Optional<std::string> outputFile = {});
 	#elif defined CLANG_PATH
-		void run(std::unique_ptr<std::istream>& output, const SourceType outputType = SourceType::LLVM_IR_TEXT, const std::string& options = "", Optional<std::string> outputFile = {});
+		void run(std::unique_ptr<std::istream>& output, SourceType outputType = SourceType::LLVM_IR_TEXT, const std::string& options = "", Optional<std::string> outputFile = {});
 	#else
-		void run(std::unique_ptr<std::istream>& output, const SourceType outputType, const std::string& options = "", Optional<std::string> outputFile = {});
+		void run(std::unique_ptr<std::istream>& output, SourceType outputType, const std::string& options = "", Optional<std::string> outputFile = {});
 	#endif
 
 		static SourceType getSourceType(std::istream& stream);
@@ -71,6 +75,6 @@ namespace vc4c
 		const SourceType inputType;
 		const Optional<std::string> inputFile;
 	};
-}
+} // namespace vc4c
 
 #endif /* PRECOMPILER_H */

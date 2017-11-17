@@ -16,11 +16,6 @@ BranchLabel::BranchLabel(const Local& label) : IntermediateInstruction(label.cre
 	setArgument(0, label.createReference());
 }
 
-BranchLabel::~BranchLabel()
-{
-
-}
-
 std::string BranchLabel::to_string() const
 {
     return std::string("label: ") + getLabel()->name + createAdditionalInfoString();
@@ -54,11 +49,6 @@ IntermediateInstruction(NO_VALUE, condCode)
 		throw CompilationError(CompilationStep::GENERAL, "Invalid condition for branches", condCode.toString());
 	setArgument(0, target->createReference());
 	setArgument(1, cond);
-}
-
-Branch::~Branch()
-{
-
 }
 
 std::string Branch::to_string() const
@@ -122,11 +112,6 @@ PhiNode::PhiNode(const Value& dest, const std::vector<std::pair<Value, const Loc
 		setArgument(i * 2, labelPairs.at(i).second->createReference());
 		setArgument(i * 2 + 1, labelPairs.at(i).first);
 	}
-}
-
-PhiNode::~PhiNode()
-{
-
 }
 
 std::string PhiNode::to_string() const

@@ -4,17 +4,19 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include <config.h>
-#include <cstdlib>
-#include <fstream>
-#include <string.h>
-#include <cstdio>
-#include <unistd.h>
-#include <sstream>
-
 #include "Compiler.h"
-#include "log.h"
+#include "Precompiler.h"
 #include "Profiler.h"
+#include "config.h"
+#include "log.h"
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <unordered_map>
+#include <sstream>
+#include <unistd.h>
 
 using namespace std;
 using namespace vc4c;
@@ -83,7 +85,7 @@ int main(int argc, char** argv)
     
     for(;i < argc; ++i)
     {
-    	inputFiles.push_back(argv[i]);
+    	inputFiles.emplace_back(argv[i]);
     }
 
     if(inputFiles.empty())

@@ -7,9 +7,9 @@
 #ifndef VALUES_H
 #define VALUES_H
 
+#include "Bitfield.h"
 #include "Types.h"
 #include "performance.h"
-#include "Bitfield.h"
 
 namespace vc4c
 {
@@ -18,16 +18,16 @@ namespace vc4c
 		NONE = 0, PHYSICAL_A = 1, PHYSICAL_B = 2, PHYSICAL_ANY = 3, ACCUMULATOR = 4, ANY = 7
 	};
 
-	std::string toString(const RegisterFile file);
-	bool isFixed(const RegisterFile file);
+	std::string toString(RegisterFile file);
+	bool isFixed(RegisterFile file);
 
 	struct Register
 	{
 		RegisterFile file;
 		unsigned char num;
 
-		explicit Register();
-		constexpr Register(const RegisterFile file, const unsigned char num) : file(file), num(num) {};
+		explicit Register() noexcept;
+		constexpr Register(RegisterFile file, unsigned char num) noexcept : file(file), num(num) {}
 
 		bool isGeneralPurpose() const;
 		std::string to_string(bool specialNames, bool readAccess = true) const;
@@ -144,16 +144,17 @@ namespace vc4c
 		int64_t integer;
 		LiteralType type;
 
-		Literal(const int64_t integer);
-		explicit Literal(const uint64_t integer);
-		Literal(const double real);
-		Literal(const bool flag);
+		Literal(int64_t integer) noexcept;
+		explicit Literal(uint64_t integer) noexcept;
+		explicit Literal(double real) noexcept;
+		Literal(bool flag) noexcept;
+		~Literal() = default;
 
 		Literal(const Literal&) = default;
-		Literal(Literal&&) = default;
+		Literal(Literal&&) noexcept = default;
 
 		Literal& operator=(const Literal&) = default;
-		Literal& operator=(Literal&&) = default;
+		Literal& operator=(Literal&&) noexcept = default;
 
 		bool operator==(const Literal& other) const;
 		bool operator<(const Literal& other) const;
@@ -173,7 +174,7 @@ namespace vc4c
 	 */
 	struct SmallImmediate : public InstructionPart
 	{
-		constexpr SmallImmediate(const unsigned char val) : InstructionPart(val) {};
+		explicit constexpr SmallImmediate(unsigned char val) noexcept : InstructionPart(val) {}
 
 		std::string toString() const;
 
@@ -239,17 +240,18 @@ namespace vc4c
 		};
 		//XXX or rewrite and use pointer?
 		DataType type;
-		ValueType valueType;
 		ContainerValue container;
+		ValueType valueType;
 
-		Value(const Literal& lit, const DataType& type);
-		Value(const Register& reg, const DataType& type);
+		Value(const Literal& lit, const DataType& type) noexcept;
+		Value(const Register& reg, const DataType& type) noexcept;
 		Value(const ContainerValue& container, const DataType& type);
 		Value(const Value& val);
 		Value(Value&& val);
-		Value(const Local* local, const DataType& type);
-		Value(const DataType& type);
-		Value(const SmallImmediate& immediate, const DataType& type);
+		Value(const Local* local, const DataType& type) noexcept;
+		Value(const DataType& type) noexcept;
+		Value(const SmallImmediate& immediate, const DataType& type) noexcept;
+		~Value() = default;
 
 		Value& operator=(const Value& right) = default;
 		Value& operator=(Value&& right) = default;
@@ -260,8 +262,8 @@ namespace vc4c
 			return !(*this == other);
 		}
 
-		Value getCompoundPart(int index) const;
-		bool hasType(const ValueType type) const;
+		Value getCompoundPart(std::size_t index) const;
+		bool hasType(ValueType type) const;
 		bool hasLocal(const Local* local) const;
 		bool hasRegister(const Register& reg) const;
 		bool hasLiteral(const Literal& lit) const;
@@ -271,7 +273,7 @@ namespace vc4c
 		bool isZeroInitializer() const;
 		bool isLiteralValue() const;
 
-		std::string to_string(const bool writeAccess = false, bool withLiterals = false) const;
+		std::string to_string(bool writeAccess = false, bool withLiterals = false) const;
 
 		bool isWriteable() const;
 		bool isReadable() const;
@@ -303,7 +305,7 @@ namespace vc4c
 	template<>
 	struct hash<Value> : public std::hash<std::string>
 	{
-		size_t operator()(const Value& ) const noexcept;
+		size_t operator()(const Value& val) const noexcept;
 	};
 } /* namespace vc4c */
 

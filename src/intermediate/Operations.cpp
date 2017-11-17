@@ -39,11 +39,6 @@ IntermediateInstruction(dest, cond, setFlags), op(OpCode::findOpCode(opCode)), o
 	setArgument(1, arg1);
 }
 
-Operation::~Operation()
-{
-
-}
-
 std::string Operation::to_string() const
 {
     return (getOutput().get().to_string(true) + " = ") + (opCode + " ") + getFirstArg().to_string() + (getSecondArg() ? std::string(", ") + getSecondArg().to_string() : "") + createAdditionalInfoString();
@@ -109,10 +104,10 @@ static Register getRegister(const RegisterFile file, const Register reg0, const 
 static std::pair<Register, Optional<SmallImmediate>> getInputValue(const Value& val, const FastMap<const Local*, Register>& registerMapping, const IntermediateInstruction* instr)
 {
     if (val.hasType(ValueType::REGISTER))
-        return std::make_pair(val.reg, Optional<SmallImmediate>(false, 0));
+        return std::make_pair(val.reg, Optional<SmallImmediate>(false, SmallImmediate(0)));
     if (val.hasType(ValueType::LOCAL)) {
         const Register reg = registerMapping.at(val.local);
-        return std::make_pair(reg, Optional<SmallImmediate>(false, 0));
+        return std::make_pair(reg, Optional<SmallImmediate>(false, SmallImmediate(0)));
     }
     if(val.hasType(ValueType::SMALL_IMMEDIATE))
     	return std::make_pair(Register{RegisterFile::PHYSICAL_B, val.immediate.value}, val.immediate);
@@ -420,11 +415,6 @@ IntermediateInstruction({true, dest}, cond, setFlags)
 	setArgument(0, arg);
 }
 
-MoveOperation::~MoveOperation()
-{
-
-}
-
 std::string MoveOperation::to_string() const
 {
     return (getOutput().get().to_string(true) + " = ") +getSource().to_string() + createAdditionalInfoString();
@@ -499,11 +489,6 @@ MoveOperation(dest, src, cond, setFlags)
     setArgument(1, offset);
 }
 
-VectorRotation::~VectorRotation()
-{
-
-}
-
 std::string VectorRotation::to_string() const
 {
     return (getOutput().get().to_string(true) + " = ") + (getSource().to_string() + " ") + getOffset().immediate.toString() + createAdditionalInfoString();
@@ -570,11 +555,6 @@ Nop::Nop(const DelayType type, const Signaling signal) : IntermediateInstruction
     this->canBeCombined = false;
 }
 
-Nop::~Nop()
-{
-
-}
-
 std::string Nop::to_string() const
 {
     return std::string("nop") + createAdditionalInfoString();
@@ -597,11 +577,6 @@ Operation(comp, dest, val0, val1)
 
 }
 
-Comparison::~Comparison()
-{
-
-}
-
 IntermediateInstruction* Comparison::copyFor(Method& method, const std::string& localPrefix) const
 {
     return (new Comparison(opCode, renameValue(method, getOutput(), localPrefix), renameValue(method, getFirstArg(), localPrefix), renameValue(method, getSecondArg(), localPrefix)))->copyExtrasFrom(this);
@@ -611,11 +586,6 @@ CombinedOperation::CombinedOperation(Operation* op1, Operation* op2) : Intermedi
 {
 	op1->parent = this;
 	op2->parent = this;
-}
-
-CombinedOperation::~CombinedOperation()
-{
-
 }
 
 FastMap<const Local*, LocalUser::Type> CombinedOperation::getUsedLocals() const

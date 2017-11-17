@@ -17,11 +17,6 @@ IntermediateInstruction(NO_VALUE, cond, setFlags), semaphore(semaphore), increas
 
 }
 
-SemaphoreAdjustment::~SemaphoreAdjustment()
-{
-
-}
-
 std::string SemaphoreAdjustment::to_string() const
 {
     return std::string("semaphore ") + (std::to_string(static_cast<unsigned>(semaphore)) + " ") + (increase ? "increase" : "decrease") + createAdditionalInfoString();
@@ -38,11 +33,6 @@ IntermediateInstruction* SemaphoreAdjustment::copyFor(Method& method, const std:
 }
 
 MemoryBarrier::MemoryBarrier(const MemoryScope scope, const MemorySemantics semantics) : IntermediateInstruction(NO_VALUE), scope(scope), semantics(semantics)
-{
-
-}
-
-MemoryBarrier::~MemoryBarrier()
 {
 
 }
@@ -113,11 +103,6 @@ LifetimeBoundary::LifetimeBoundary(const Value& allocation, const bool lifetimeE
 		throw CompilationError(CompilationStep::LLVM_2_IR, "Cannot control life-time of object not located on stack", allocation.to_string());
 
 	setArgument(0, allocation);
-}
-
-LifetimeBoundary::~LifetimeBoundary()
-{
-
 }
 
 std::string LifetimeBoundary::to_string() const

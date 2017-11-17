@@ -4,11 +4,11 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#ifndef PROFILER_H_
-#define PROFILER_H_
+#ifndef PROFILER_H
+#define PROFILER_H
 
-#include <string>
 #include <chrono>
+#include <string>
 
 namespace vc4c
 {
@@ -60,10 +60,10 @@ namespace vc4c
 
 		void dumpProfileResults(bool writeAsWarning = false);
 
-		void increaseCounter(const std::size_t index, const std::string& name, const std::size_t value, const std::string& file, const std::size_t line, const std::size_t prevIndex = SIZE_MAX);
-	}
-}
+		void increaseCounter(std::size_t index, const std::string& name, std::size_t value, const std::string& file, std::size_t line, std::size_t prevIndex = SIZE_MAX);
+	} // namespace profiler
+} // namespace vc4c
 
 
 
-#endif /* PROFILER_H_ */
+#endif /* PROFILER_H */

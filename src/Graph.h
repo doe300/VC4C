@@ -7,10 +7,11 @@
 #ifndef VC4C_GRAPH_H
 #define VC4C_GRAPH_H
 
-#include <type_traits>
-
-#include "performance.h"
 #include "CompilationError.h"
+#include "performance.h"
+
+#include <functional>
+#include <type_traits>
 
 namespace vc4c
 {
@@ -19,9 +20,7 @@ namespace vc4c
 	{
 		const K key;
 
-		Node(const K key) : key(key)
-		{
-		}
+		explicit Node(const K key) : key(key) { }
 
 		/*!
 		 * Adds the given neighbor with the given relation.
@@ -73,7 +72,7 @@ namespace vc4c
 			return Base::at(key);
 		}
 	};
-}
+} // namespace vc4c
 
 
 #endif /* VC4C_GRAPH_H */

@@ -5,9 +5,10 @@
  */
 
 #include "Values.h"
-#include "Locals.h"
+
 #include "CompilationError.h"
 #include "intermediate/IntermediateInstruction.h"
+#include "Locals.h"
 
 #include <limits>
 
@@ -35,7 +36,7 @@ bool vc4c::isFixed(const RegisterFile file)
 	return file == RegisterFile::ACCUMULATOR || file == RegisterFile::PHYSICAL_A || file == RegisterFile::PHYSICAL_B;
 }
 
-Register::Register() : file(RegisterFile::NONE), num(SIZE_MAX)
+Register::Register() noexcept : file(RegisterFile::NONE), num(std::numeric_limits<unsigned char>::max())
 {
 
 }
@@ -142,7 +143,7 @@ bool Register::operator<(const Register& right) const
 {
     const auto tmp = static_cast<unsigned char>(file) < static_cast<unsigned char>(right.file);
     if(tmp != 0)
-        return tmp;
+        return true;
     return num < right.num;
 }
 
@@ -150,7 +151,7 @@ bool Register::operator>(const Register& right) const
 {
 	const auto tmp = static_cast<unsigned char>(file) > static_cast<unsigned char>(right.file);
 	if(tmp != 0)
-		return tmp;
+		return true;
 	return num > right.num;
 }
 
@@ -214,8 +215,7 @@ bool Register::hasSideEffectsOnWrite() const
 
 bool Register::isReadable() const
 {
-	if(num == 40 /* UNIFORM address */ || (num >= 43 && num <= 47) /* TLB setup */ ||
-			num >= 52 /* SFU, TMU write */)
+	if(num == 40 /* UNIFORM address */ || (num >= 43 && num <= 47) /* TLB setup */ || num >= 52 /* SFU, TMU write */)
 		return false;
 	return true;
 }
@@ -225,22 +225,22 @@ bool Register::isWriteable() const
 	return true;
 }
 
-Literal::Literal(const int64_t integer) : integer(integer), type(LiteralType::INTEGER)
+Literal::Literal(const int64_t integer) noexcept : integer(integer), type(LiteralType::INTEGER)
 {
 
 }
 
-Literal::Literal(const uint64_t integer) : integer(integer), type(LiteralType::INTEGER)
+Literal::Literal(const uint64_t integer) noexcept : integer(bit_cast<uint64_t, int64_t>(integer)), type(LiteralType::INTEGER)
 {
 
 }
 
-Literal::Literal(const double real): integer(bit_cast<double, int64_t>(real)), type(LiteralType::REAL)
+Literal::Literal(const double real) noexcept : integer(bit_cast<double, int64_t>(real)), type(LiteralType::REAL)
 {
 
 }
 
-Literal::Literal(const bool flag) : integer(flag), type(LiteralType::BOOL)
+Literal::Literal(const bool flag) noexcept : integer(static_cast<int64_t>(flag)), type(LiteralType::BOOL)
 {
 
 }
@@ -296,38 +296,24 @@ double Literal::real() const
 
 uint32_t Literal::toImmediate() const
 {
-    //https://stackoverflow.com/questions/12342926/casting-float-to-int-bitwise-in-c
-    union {
-        int32_t i;
-        uint32_t u;
-        float f;
-    } tmp;
     switch(type)
     {
         case LiteralType::BOOL:
-            return isTrue();
+            return static_cast<uint32_t>(isTrue());
         case LiteralType::INTEGER:
-            if(static_cast<long>(std::numeric_limits<unsigned int>::max()) > 0 /* on Raspberry Pi this is -1, because long seems to only have 4 bytes too */
-            		&& integer > static_cast<long>(std::numeric_limits<unsigned int>::max()))
-                throw CompilationError(CompilationStep::GENERAL, "Immediate out of range", std::to_string(integer));
-            if(integer > std::numeric_limits<int>::max())
-                tmp.u = static_cast<uint32_t>(integer);
-            else
-                tmp.i = static_cast<int32_t>(integer);
-            return tmp.u;
+            if(integer > std::numeric_limits<uint32_t>::max() || integer < std::numeric_limits<int32_t>::min())
+            	throw CompilationError(CompilationStep::GENERAL, "Literal out of range", std::to_string(integer));
+			return bit_cast<int32_t, uint32_t>(static_cast<uint32_t>(integer));
         case LiteralType::REAL:
-            tmp.f = static_cast<float>(real());
-            return tmp.u;
+        	return bit_cast<float, uint32_t>(static_cast<float>(real()));
     }
     throw CompilationError(CompilationStep::GENERAL, "Unhandled literal type!");
 }
 
 bool ContainerValue::isAllSame(const Optional<Literal>& value) const
 {
-	if(elements.size() == 0)
-	{
+	if(elements.empty())
 		return true;
-	}
 	const Literal singleValue = value ? value.get() : elements.at(0).literal;
 	for(const Value& element : elements)
 	{
@@ -342,10 +328,8 @@ bool ContainerValue::isAllSame(const Optional<Literal>& value) const
 
 bool ContainerValue::isElementNumber(bool withOffset) const
 {
-	if(elements.size() == 0)
-	{
+	if(elements.empty())
 		return true;
-	}
 	const int64_t offset = withOffset ? elements.at(0).literal.integer : 0;
 	for(std::size_t i = 0; i < elements.size(); ++i)
 	{
@@ -360,17 +344,17 @@ bool ContainerValue::isElementNumber(bool withOffset) const
 	return true;
 }
 
-Value::Value(const Literal& lit, const DataType& type) : literal(lit), type(type), valueType(ValueType::LITERAL)
+Value::Value(const Literal& lit, const DataType& type) noexcept : literal(lit), type(type), valueType(ValueType::LITERAL)
 {
 
 }
 
-Value::Value(const Register& reg, const DataType& type) : reg(reg), type(type), valueType(ValueType::REGISTER)
+Value::Value(const Register& reg, const DataType& type) noexcept : reg(reg), type(type), valueType(ValueType::REGISTER)
 {
 
 }
 
-Value::Value(const ContainerValue& container, const DataType& type) : local(), type(type), valueType(ValueType::CONTAINER), container(container)
+Value::Value(const ContainerValue& container, const DataType& type) : local(), type(type), container(container), valueType(ValueType::CONTAINER)
 {
 
 }
@@ -403,17 +387,17 @@ Value::Value(Value&& val) : local(val.local), type(val.type), valueType(val.valu
         throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type!");
 }
 
-Value::Value(const Local* local, const DataType& type) : local(const_cast<Local*>(local)), type(type), valueType(ValueType::LOCAL)
+Value::Value(const Local* local, const DataType& type) noexcept : local(const_cast<Local*>(local)), type(type), valueType(ValueType::LOCAL)
 {
 
 }
 
-Value::Value(const DataType& type) : local(), type(type), valueType(ValueType::UNDEFINED)
+Value::Value(const DataType& type) noexcept : local(), type(type), valueType(ValueType::UNDEFINED)
 {
 
 }
 
-Value::Value(const SmallImmediate& immediate, const DataType& type) : immediate(immediate), type(type), valueType(ValueType::SMALL_IMMEDIATE)
+Value::Value(const SmallImmediate& immediate, const DataType& type) noexcept : immediate(immediate), type(type), valueType(ValueType::SMALL_IMMEDIATE)
 {
 
 }
@@ -444,25 +428,17 @@ bool Value::operator==(const Value& other) const
     throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type!");
 }
 
-Value Value::getCompoundPart(int index) const
+Value Value::getCompoundPart(std::size_t index) const
 {
     if(hasType(ValueType::CONTAINER))
-    {
         return container.elements.at(index);
-    }
-    else if(hasType(ValueType::LOCAL))
-    {
+    if(hasType(ValueType::LOCAL))
         return Value(local, type.getElementType());
-    }
-    else if(hasType(ValueType::UNDEFINED))
-    {
+    if(hasType(ValueType::UNDEFINED))
         return UNDEFINED_VALUE;
-    }
-    else if(hasType(ValueType::REGISTER))
-    {
+    if(hasType(ValueType::REGISTER))
         //would only be valid for IO-registers, writing all values sequentially??
         return Value(reg, type.getElementType());
-    }
     throw CompilationError(CompilationStep::GENERAL, "Can't get part of non-compound value", to_string(false));
 }
 

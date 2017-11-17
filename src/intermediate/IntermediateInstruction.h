@@ -19,7 +19,7 @@ namespace vc4c
 	namespace qpu_asm
 	{
 		class Instruction;
-	}
+	} // namespace qpu_asm
 
 	namespace intermediate
 	{
@@ -66,7 +66,7 @@ namespace vc4c
 			ELEMENT_INSERTION = 0x10000
 		};
 
-		std::string toString(const InstructionDecorations decoration);
+		std::string toString(InstructionDecorations decoration);
 
 		/*
 		 * Converted to QPU instructions,
@@ -75,36 +75,36 @@ namespace vc4c
 		class IntermediateInstruction : public LocalUser
 		{
 		public:
-			IntermediateInstruction(Optional<Value> output = { }, ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET, Pack packMode = PACK_NOP);
-			virtual ~IntermediateInstruction();
+			explicit IntermediateInstruction(Optional<Value> output = { }, ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET, Pack packMode = PACK_NOP);
+			~IntermediateInstruction() override;
 
 			FastMap<const Local*, LocalUser::Type> getUsedLocals() const override;
 			void forUsedLocals(const std::function<void(const Local*, LocalUser::Type)>& consumer) const override;
 			bool readsLocal(const Local* local) const override;
 			bool writesLocal(const Local* local) const override;
-			void replaceLocal(const Local* oldLocal, const Local* newLocal, const Type type) override;
+			void replaceLocal(const Local* oldLocal, const Local* newLocal, Type type) override;
 
 			virtual IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const = 0;
-			virtual qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const = 0;
+			virtual qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const = 0;
 			/*
 			 * Whether this intermediate instruction will map to an assembler instruction
 			 */
 			virtual bool mapsToASMInstruction() const;
 
 			const Optional<Value>& getOutput() const;
-			bool hasValueType(const ValueType type) const;
+			bool hasValueType(ValueType type) const;
 
-			const Optional<Value> getArgument(const std::size_t index) const;
+			const Optional<Value> getArgument(std::size_t index) const;
 			const std::vector<Value>& getArguments() const;
-			void setArgument(const std::size_t index, const Value& arg);
+			void setArgument(std::size_t index, const Value& arg);
 
 			IntermediateInstruction* setOutput(const Optional<Value>& output);
-			IntermediateInstruction* setSignaling(const Signaling signal);
-			IntermediateInstruction* setPackMode(const Pack packMode);
-			IntermediateInstruction* setCondition(const ConditionCode condition);
-			IntermediateInstruction* setSetFlags(const SetFlag setFlags);
-			IntermediateInstruction* setUnpackMode(const Unpack unpackMode);
-			IntermediateInstruction* setDecorations(const InstructionDecorations decorations);
+			IntermediateInstruction* setSignaling(Signaling signal);
+			IntermediateInstruction* setPackMode(Pack packMode);
+			IntermediateInstruction* setCondition(ConditionCode condition);
+			IntermediateInstruction* setSetFlags(SetFlag setFlags);
+			IntermediateInstruction* setUnpackMode(Unpack unpackMode);
+			IntermediateInstruction* setDecorations(InstructionDecorations decorations);
 
 			bool hasSideEffects() const;
 			bool hasUnpackMode() const;
@@ -112,7 +112,7 @@ namespace vc4c
 			bool hasConditionalExecution() const;
 
 			IntermediateInstruction* copyExtrasFrom(const IntermediateInstruction* src);
-			virtual Optional<Value> precalculate(const std::size_t numIterations) const;
+			virtual Optional<Value> precalculate(std::size_t numIterations) const;
 
 			Signaling signal;
 			Unpack unpackMode;
@@ -126,13 +126,13 @@ namespace vc4c
 
 			std::string createAdditionalInfoString() const;
 
-			Optional<Value> getPrecalculatedValueForArg(const std::size_t argIndex, const std::size_t numIterations) const;
+			Optional<Value> getPrecalculatedValueForArg(std::size_t argIndex, std::size_t numIterations) const;
 
 		private:
 			Optional<Value> output;
 			std::vector<Value> arguments;
 
-			void removeAsUserFromValue(const Value& value, const LocalUser::Type type);
+			void removeAsUserFromValue(const Value& value, LocalUser::Type type);
 			void addAsUserToValue(const Value& value, LocalUser::Type type);
 		};
 
@@ -140,21 +140,21 @@ namespace vc4c
 
 		struct Operation: public IntermediateInstruction
 		{
-			Operation(const OpCode& opCode, const Value& dest, const Value& arg0, const ConditionCode cond = COND_ALWAYS, const SetFlag setFlags = SetFlag::DONT_SET);
-			Operation(const OpCode& opCode, const Value& dest, const Value& arg0, const Value& arg1, const ConditionCode cond = COND_ALWAYS, const SetFlag setFlags = SetFlag::DONT_SET);
+			Operation(const OpCode& opCode, const Value& dest, const Value& arg0, ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
+			Operation(const OpCode& opCode, const Value& dest, const Value& arg0, const Value& arg1, ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
 
-			Operation(const std::string& opCode, const Value& dest, const Value& arg0, const ConditionCode cond = COND_ALWAYS, const SetFlag setFlags = SetFlag::DONT_SET);
-			Operation(const std::string& opCode, const Value& dest, const Value& arg0, const Value& arg1, const ConditionCode cond = COND_ALWAYS, const SetFlag setFlags = SetFlag::DONT_SET);
-			virtual ~Operation();
+			Operation(const std::string& opCode, const Value& dest, const Value& arg0, ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
+			Operation(const std::string& opCode, const Value& dest, const Value& arg0, const Value& arg1, ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
+			~Operation() override = default;
 
 			std::string to_string() const override;
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
-			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
-			virtual bool mapsToASMInstruction() const override;
+			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
+			bool mapsToASMInstruction() const override;
 
 			const Value getFirstArg() const;
 			const Optional<Value> getSecondArg() const;
-			Optional<Value> precalculate(const std::size_t numIterations) const override;
+			Optional<Value> precalculate(std::size_t numIterations) const override;
 
 			void setOpCode(const OpCode& op);
 
@@ -165,13 +165,13 @@ namespace vc4c
 
 		struct MethodCall: public IntermediateInstruction
 		{
-			MethodCall(const std::string& methodName, const std::vector<Value>& args = { });
+			explicit MethodCall(const std::string& methodName, const std::vector<Value>& args = { });
 			MethodCall(const Value& dest, const std::string& methodName, const std::vector<Value>& args = { });
-			virtual ~MethodCall();
+			~MethodCall() override = default;
 
 			std::string to_string() const override;
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
-			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
+			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
 
 			const DataType getReturnType() const;
 
@@ -182,13 +182,13 @@ namespace vc4c
 
 		struct Return: public IntermediateInstruction
 		{
-			Return(const Value& val);
-			Return();
-			virtual ~Return();
+			explicit Return();
+			explicit Return(const Value& val);
+			~Return() override = default;
 
 			std::string to_string() const override;
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
-			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
+			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
 			bool mapsToASMInstruction() const override;
 
 			Optional<Value> getReturnValue() const;
@@ -196,15 +196,15 @@ namespace vc4c
 
 		struct MoveOperation: public IntermediateInstruction
 		{
-			MoveOperation(const Value& dest, const Value& arg, const ConditionCode cond = COND_ALWAYS, const SetFlag setFlags = SetFlag::DONT_SET);
-			virtual ~MoveOperation();
+			MoveOperation(const Value& dest, const Value& arg, ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
+			~MoveOperation() override = default;
 
 			std::string to_string() const override;
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
-			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
+			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
 			Operation* combineWith(const OpCode& otherOpCode) const;
-			virtual bool mapsToASMInstruction() const override;
-			Optional<Value> precalculate(const std::size_t numIterations) const override;
+			bool mapsToASMInstruction() const override;
+			Optional<Value> precalculate(std::size_t numIterations) const override;
 
 			void setSource(const Value& value);
 			const Value getSource() const;
@@ -212,14 +212,14 @@ namespace vc4c
 
 		struct VectorRotation: public MoveOperation
 		{
-			VectorRotation(const Value& dest, const Value& src, const Value& offset, const ConditionCode cond = COND_ALWAYS, const SetFlag setFlags = SetFlag::DONT_SET);
-			virtual ~VectorRotation();
+			VectorRotation(const Value& dest, const Value& src, const Value& offset, ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
+			~VectorRotation() override =default;
 
 			std::string to_string() const override;
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
-			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
+			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
 			Operation* combineWith(const std::string& otherOpCode) const;
-			Optional<Value> precalculate(const std::size_t numIterations) const override;
+			Optional<Value> precalculate(std::size_t numIterations) const override;
 
 			const Value getOffset() const;
 		};
@@ -227,12 +227,12 @@ namespace vc4c
 		struct BranchLabel: public IntermediateInstruction
 		{
 		public:
-			BranchLabel(const Local& label);
-			virtual ~BranchLabel();
+			explicit BranchLabel(const Local& label);
+			~BranchLabel() override = default;
 
 			std::string to_string() const override;
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
-			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
+			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
 			bool mapsToASMInstruction() const override;
 
 			const Local* getLabel() const;
@@ -240,12 +240,12 @@ namespace vc4c
 
 		struct Branch: public IntermediateInstruction
 		{
-			Branch(const Local* target, const ConditionCode condCode, const Value& cond);
-			virtual ~Branch();
+			Branch(const Local* target, ConditionCode condCode, const Value& cond);
+			~Branch() override = default;
 
 			std::string to_string() const override;
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
-			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
+			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
 
 			const Local* getTarget() const;
 
@@ -272,12 +272,12 @@ namespace vc4c
 		struct Nop: public IntermediateInstruction
 		{
 		public:
-			Nop(const DelayType type, const Signaling signal = SIGNAL_NONE);
-			virtual ~Nop();
+			explicit Nop(DelayType type, Signaling signal = SIGNAL_NONE);
+			~Nop() override = default;
 
 			std::string to_string() const override;
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
-			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
+			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
 
 			DelayType type;
 		};
@@ -318,7 +318,8 @@ namespace vc4c
 		{
 		public:
 			Comparison(const std::string& comp, const Value& dest, const Value& val0, const Value& val1);
-			virtual ~Comparison();
+			~Comparison() override = default;
+
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
 		};
 
@@ -326,19 +327,19 @@ namespace vc4c
 		{
 		public:
 			CombinedOperation(Operation* op1, Operation* op2);
-			virtual ~CombinedOperation();
+			~CombinedOperation() override = default;
 
 			FastMap<const Local*, LocalUser::Type> getUsedLocals() const override;
 			void forUsedLocals(const std::function<void(const Local*, LocalUser::Type)>& consumer) const override;
 			bool readsLocal(const Local* local) const override;
 			bool writesLocal(const Local* local) const override;
-			void replaceLocal(const Local* oldLocal, const Local* newLocal, const Type type) override;
+			void replaceLocal(const Local* oldLocal, const Local* newLocal, Type type) override;
 
 			std::string to_string() const override;
 
-			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
+			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
-			virtual bool mapsToASMInstruction() const override;
+			bool mapsToASMInstruction() const override;
 
 			const Operation* getFirstOp() const;
 			const Operation* getSecondOP() const;
@@ -350,13 +351,13 @@ namespace vc4c
 		struct LoadImmediate: public IntermediateInstruction
 		{
 		public:
-			LoadImmediate(const Value& dest, const Literal& source, const ConditionCode& cond = COND_ALWAYS, const SetFlag setFlags = SetFlag::DONT_SET);
-			virtual ~LoadImmediate();
+			LoadImmediate(const Value& dest, const Literal& source, const ConditionCode& cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
+			~LoadImmediate() override = default;
 
 			std::string to_string() const override;
-			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
+			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
-			Optional<Value> precalculate(const std::size_t numIterations) const override;
+			Optional<Value> precalculate(std::size_t numIterations) const override;
 
 			const Literal& getImmediate() const;
 			void setImmediate(const Literal& value);
@@ -365,11 +366,11 @@ namespace vc4c
 		struct SemaphoreAdjustment: public IntermediateInstruction
 		{
 		public:
-			SemaphoreAdjustment(const Semaphore semaphore, const bool increase, const ConditionCode& cond = COND_ALWAYS, const SetFlag setFlags = SetFlag::DONT_SET);
-			virtual ~SemaphoreAdjustment();
+			SemaphoreAdjustment(const Semaphore semaphore, bool increase, const ConditionCode& cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
+			~SemaphoreAdjustment() override = default;
 
 			std::string to_string() const override;
-			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
+			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
 
 			const Semaphore semaphore;
@@ -379,11 +380,11 @@ namespace vc4c
 		struct PhiNode: public IntermediateInstruction
 		{
 		public:
-			PhiNode(const Value& dest, const std::vector<std::pair<Value, const Local*>>& labelPairs, const ConditionCode& cond = COND_ALWAYS, const SetFlag setFlags = SetFlag::DONT_SET);
-			virtual ~PhiNode();
+			PhiNode(const Value& dest, const std::vector<std::pair<Value, const Local*>>& labelPairs, const ConditionCode& cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
+			~PhiNode() override = default;
 
 			std::string to_string() const override;
-			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
+			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
 
 			FastMap<const Local*, Value> getValuesForLabels() const;
@@ -438,11 +439,11 @@ namespace vc4c
 		struct MemoryBarrier : public IntermediateInstruction
 		{
 		public:
-			MemoryBarrier(const MemoryScope scope, const MemorySemantics semantics);
-			virtual ~MemoryBarrier();
+			MemoryBarrier(MemoryScope scope, MemorySemantics semantics);
+			~MemoryBarrier() override = default;
 
 			std::string to_string() const override;
-			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
+			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
 			bool mapsToASMInstruction() const override;
 
@@ -456,11 +457,11 @@ namespace vc4c
 		struct LifetimeBoundary : IntermediateInstruction
 		{
 		public:
-			LifetimeBoundary(const Value& allocation, const bool lifetimeEnd);
-			virtual ~LifetimeBoundary();
+			LifetimeBoundary(const Value& allocation, bool lifetimeEnd);
+			~LifetimeBoundary() override = default;
 
 			std::string to_string() const override;
-			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const override;
+			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
 			bool mapsToASMInstruction() const override;
 
@@ -472,8 +473,8 @@ namespace vc4c
 		using Instructions = FastModificationList<std::unique_ptr<IntermediateInstruction>>;
 		using InstructionsIterator = FastModificationList<std::unique_ptr<IntermediateInstruction>>::iterator;
 		using ConstInstructionsIterator = FastModificationList<std::unique_ptr<IntermediateInstruction>>::const_iterator;
-	}
-}
+	} // namespace intermediate
+} // namespace vc4c
 
 
 #endif /* INTERMEDIATEINSTRUCTION_H */

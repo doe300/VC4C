@@ -22,11 +22,6 @@ IntermediateInstruction({true, dest}, cond, setFlags)
 	setImmediate(source);
 }
 
-LoadImmediate::~LoadImmediate()
-{
-
-}
-
 std::string LoadImmediate::to_string() const
 {
     return (getOutput().get().to_string(true) + " = loadi ") + getArgument(0).to_string() + createAdditionalInfoString();

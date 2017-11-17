@@ -4,24 +4,25 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include <sstream>
+#include "Precompiler.h"
+
+#include "ProcessUtil.h"
+#include "log.h"
+
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
+#include <fcntl.h>
 #include <fstream>
 #include <iterator>
-
-#include <string.h>
-#include <stdlib.h>
 #include <libgen.h>
-#include <errno.h>
-#include <stdlib.h>
+#include <sstream>
 #include <unistd.h>
-#include <fcntl.h>
+
 #ifdef PRECOMPILER_DROP_RIGHTS
 #include <sys/stat.h>
 #endif
 
-#include "Precompiler.h"
-#include "log.h"
-#include "ProcessUtil.h"
 #ifdef SPIRV_HEADER
 #include "spirv/SPIRVHelper.h"
 #endif
@@ -52,7 +53,7 @@ TemporaryFile::TemporaryFile(const std::string& fileTemplate) : fileName(fileTem
 	logging::debug() << "Temporary file '" << fileName << "' created" << logging::endl;
 }
 
-TemporaryFile::TemporaryFile(TemporaryFile&& other) : fileName(other.fileName)
+TemporaryFile::TemporaryFile(TemporaryFile&& other) noexcept : fileName(other.fileName)
 {
 	const_cast<std::string&>(other.fileName) = "";
 }
@@ -86,22 +87,22 @@ SourceType Precompiler::getSourceType(std::istream& stream)
     static const uint32_t SPIRV_MAGIC_NUMBER = 0x07230203;
     static const char SPIRV_MAGIC_NUMBER_LITTLE_ENDIAN[4] = {0x07, 0x23, 0x02, 0x03};
     static const char SPIRV_MAGIC_NUMBER_BIG_ENDIAN[4] = {0x03, 0x02, 0x23, 0x07};
-    char buffer[1024];
-    stream.read(buffer, 1000);
-    const std::string s(buffer, stream.gcount());
+    std::array<char, 1024> buffer;
+    stream.read(buffer.data(), 1000);
+    const std::string s(buffer.data(), stream.gcount());
 
     SourceType type = SourceType::UNKNOWN;
     if(s.find("ModuleID") != std::string::npos || s.find("\ntarget triple") != std::string::npos)
         type = SourceType::LLVM_IR_TEXT;
-    else if(memcmp(buffer, LLVM_BITCODE_MAGIC_NUMBER, 2) == 0)
+    else if(memcmp(buffer.data(), LLVM_BITCODE_MAGIC_NUMBER, 2) == 0)
     	type = SourceType::LLVM_IR_BIN;
-    else if(memcmp(buffer, SPIRV_MAGIC_NUMBER_LITTLE_ENDIAN, 4) == 0 || memcmp(buffer, SPIRV_MAGIC_NUMBER_BIG_ENDIAN, 4) == 0)
+    else if(memcmp(buffer.data(), SPIRV_MAGIC_NUMBER_LITTLE_ENDIAN, 4) == 0 || memcmp(buffer.data(), SPIRV_MAGIC_NUMBER_BIG_ENDIAN, 4) == 0)
         type = SourceType::SPIRV_BIN;
-    else if(std::atol(buffer) == SPIRV_MAGIC_NUMBER)
+    else if(std::atol(buffer.data()) == SPIRV_MAGIC_NUMBER)
         type = SourceType::SPIRV_TEXT;
-    else if(memcmp(buffer, &QPUASM_MAGIC_NUMBER, 4) == 0 || memcmp(buffer, &QPUASM_NUMBER_MAGIC, 4) == 0)
+    else if(memcmp(buffer.data(), &QPUASM_MAGIC_NUMBER, 4) == 0 || memcmp(buffer.data(), &QPUASM_NUMBER_MAGIC, 4) == 0)
         type = SourceType::QPUASM_BIN;
-    else if(std::atol(buffer) == QPUASM_MAGIC_NUMBER || std::atol(buffer) == QPUASM_NUMBER_MAGIC)
+    else if(std::atol(buffer.data()) == QPUASM_MAGIC_NUMBER || std::atol(buffer.data()) == QPUASM_NUMBER_MAGIC)
         type = SourceType::QPUASM_HEX;
     else if(s.find_first_of(" \n\t") != std::string::npos || s.find("kernel") != std::string::npos)
         //XXX better check
@@ -279,6 +280,7 @@ static void compileOpenCLToSPIRV(std::istream& input, std::ostream& output, cons
 	catch(const CompilationError& e)
 	{
 		logging::warn() << "LLVM-IR to SPIR-V failed, trying to compile with the LLVM-IR front-end..." << logging::endl;
+		logging::warn() << e.what() << logging::endl;
 		compileOpenCLToLLVMIR(input, output, options, true, inputFile, outputFile);
 	}
 }
@@ -323,9 +325,9 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
 	if(inputFile.hasValue)
 	{
 		//for resolving relative includes
-		char buffer[1024];
-		strcpy(buffer, inputFile.get().data());
-		std::string tmp = dirname(buffer);
+		std::array<char, 1024> buffer;
+		strcpy(buffer.data(), inputFile.get().data());
+		std::string tmp = dirname(buffer.data());
 		extendedOptions.append(" -I ").append(tmp);
 	}
 

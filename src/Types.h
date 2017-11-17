@@ -7,11 +7,11 @@
 #ifndef TYPES_H
 #define TYPES_H
 
+#include "helper.h"
+
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
-
-#include "helper.h"
 
 namespace vc4c
 {
@@ -37,8 +37,7 @@ namespace vc4c
 		unsigned char num;
 		std::shared_ptr<ComplexType> complexType;
 
-		DataType(const std::string& name = "", const unsigned char num = 1, const std::shared_ptr<ComplexType>& complexType = nullptr);
-		virtual ~DataType();
+		DataType(const std::string& name = "", unsigned char num = 1, const std::shared_ptr<ComplexType>& complexType = nullptr);
 
 		std::string to_string() const;
 
@@ -63,7 +62,7 @@ namespace vc4c
 		bool isFloatingType() const;
 		bool isUnknown() const;
 
-		const DataType getElementType(const int index = ANY_ELEMENT) const;
+		const DataType getElementType(int index = ANY_ELEMENT) const;
 		const DataType toPointerType() const;
 		const DataType toVectorType(unsigned char vectorWidth) const;
 
@@ -122,8 +121,8 @@ namespace vc4c
 		AddressSpace addressSpace;
 		unsigned alignment;
 
-		PointerType(const DataType& elementType, const AddressSpace addressSpace = AddressSpace::PRIVATE, unsigned alignment = 0);
-		virtual ~PointerType();
+		PointerType(const DataType& elementType, AddressSpace addressSpace = AddressSpace::PRIVATE, unsigned alignment = 0);
+		~PointerType() override = default;
 		bool operator==(const ComplexType& other) const override;
 		unsigned getAlignment() const;
 
@@ -136,8 +135,8 @@ namespace vc4c
 		//"Apply to a structure type, to marks it as "packed", indicating that the alignment of the structure is one and that there is no padding between structure members." - SPIR-V
 		bool isPacked;
 
-		StructType(const std::vector<DataType>& elementTypes, const bool isPacked = false);
-		virtual ~StructType();
+		StructType(const std::vector<DataType>& elementTypes, bool isPacked = false);
+		~StructType() override = default;
 		bool operator==(const ComplexType& other) const override;
 
 		/*
@@ -152,8 +151,8 @@ namespace vc4c
 		DataType elementType;
 		unsigned int size;
 
-		ArrayType(const DataType& elementType, const unsigned int size);
-		virtual ~ArrayType();
+		ArrayType(const DataType& elementType, unsigned int size);
+		~ArrayType() override = default;
 		bool operator==(const ComplexType& other) const override;
 	};
 
@@ -165,14 +164,14 @@ namespace vc4c
 		bool isImageBuffer;
 		bool isSampled;
 
-		virtual ~ImageType();
+		~ImageType() override = default;
 		bool operator==(const ComplexType& other) const override;
 
 		std::string getImageTypeName() const;
 
 		static std::string toImageConfigurationName(const std::string& localName);
 	};
-}
+} // namespace vc4c
 
 #endif /* TYPES_H */
 

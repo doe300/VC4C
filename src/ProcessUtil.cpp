@@ -4,42 +4,43 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include <unistd.h>
-#include <stdio.h>
-#include <string.h>
-#include <vector>
-#include <sstream>
-#include <sys/wait.h>
-#include <chrono>
-#include <thread>
-#include <sys/select.h>
-#include <sys/time.h>
-
-#ifdef PRECOMPILER_DROP_RIGHTS
-#include <sys/types.h>
-#include <pwd.h>
-#include <unistd.h>
-#endif
-
-#include "log.h"
 #include "ProcessUtil.h"
+
 #include "CompilationError.h"
 #include "Profiler.h"
+#include "log.h"
+
+#include <array>
+#include <chrono>
+#include <cstdio>
+#include <cstring>
+#include <sstream>
+#include <sys/select.h>
+#include <sys/time.h>
+#include <sys/wait.h>
+#include <thread>
+#include <unistd.h>
+#include <vector>
+
+#ifdef PRECOMPILER_DROP_RIGHTS
+#include <pwd.h>
+#include <sys/types.h>
+#endif
 
 using namespace vc4c;
 
-static int STD_IN = 0;
-static int STD_OUT = 1;
-static int STD_ERR = 2;
+static constexpr int STD_IN = 0;
+static constexpr int STD_OUT = 1;
+static constexpr int STD_ERR = 2;
 
-static int READ = 0;
-static int WRITE = 1;
+static constexpr int READ = 0;
+static constexpr int WRITE = 1;
 
-static int BUFFER_SIZE = 1024;
+static constexpr int BUFFER_SIZE = 1024;
 
-static void initPipe(int fds[2])
+static void initPipe(std::array<int, 2>& fds)
 {
-	if(pipe(fds) != 0)
+	if(pipe(fds.data()) != 0)
 		throw CompilationError(CompilationStep::GENERAL, "Error creating pipe", strerror(errno));
 }
 
@@ -81,7 +82,7 @@ static void dropRights(const std::string& user)
 #endif
 }
 
-static void runChild(const std::string& command, int pipes[3][2], bool hasStdIn, bool hasStdOut, bool hasStdErr)
+static void runChild(const std::string& command, std::array<std::array<int, 2>, 3>& pipes, bool hasStdIn, bool hasStdOut, bool hasStdErr)
 {
 	//map pipes into stdin/stdout/stderr
 	//close pipes not used by child
@@ -110,15 +111,15 @@ static void runChild(const std::string& command, int pipes[3][2], bool hasStdIn,
 	//split command
 	std::vector<std::string> parts = splitString(command, ' ');
 	const std::string file = parts.at(0);
-	char* args[128];
+	std::array<char*, 128> args{};
+	args.fill(nullptr);
 	//man(3) exec: "The first argument, by convention, should point to the filename associated with the file being executed"
 	for(std::size_t i = 0; i < parts.size(); ++i)
 	{
-		args[i] = const_cast<char*>(parts.at(i).data());
+		args.at(i) = const_cast<char*>(parts.at(i).data());
 	}
-	args[parts.size()] = nullptr;
 
-	execvp(file.data(), args);
+	execvp(file.data(), args.data());
 }
 
 static bool isChildFinished(pid_t pid, int* exitStatus, bool wait = false)
@@ -156,7 +157,7 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
 	 * https://stackoverflow.com/questions/29554036/waiting-for-popen-subprocess-to-terminate-before-reading?rq=1
 	 */
 
-	int pipes[3][2];
+	std::array<std::array<int, 2>, 3> pipes{};
 
 	if(stdin != nullptr)
 		initPipe(pipes[STD_IN]);
@@ -175,8 +176,8 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
 		throw CompilationError(CompilationStep::GENERAL, "Error executing the child process", strerror(errno));
 	}
 
-	char buffer[BUFFER_SIZE];
-	int numBytes = -1;
+	std::array<char, BUFFER_SIZE> buffer{};
+	ssize_t numBytes;
 	int exitStatus = 0;
 	bool childFinished = false;
 
@@ -187,10 +188,10 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
 		std::istream& in = *stdin;
 		while(!(childFinished = childFinished || isChildFinished(pid, &exitStatus)))
 		{
-			in.read(buffer, BUFFER_SIZE);
+			in.read(buffer.data(), buffer.size());
 			numBytes = in.gcount();
-			write(pipes[STD_IN][WRITE], buffer, in.gcount());
-			if(numBytes != BUFFER_SIZE)
+			write(pipes[STD_IN][WRITE], buffer.data(), in.gcount());
+			if(numBytes != buffer.size())
 				break;
 		}
 		closePipe(pipes[STD_IN][READ]);
@@ -202,9 +203,9 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
 	bool stdErrFinished = stderr != nullptr;
 
 	int highestFD = std::max(pipes[STD_OUT][READ], pipes[STD_ERR][READ]);
-	fd_set readDescriptors;
+	fd_set readDescriptors{};
 	//wait 1ms
-	timeval timeout;
+	timeval timeout{};
 	timeout.tv_sec = 0;
 	timeout.tv_usec = 1000;
 
@@ -229,7 +230,7 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
 		 * "On success, select() and pselect() return the number of file descriptors contained in the three returned descriptor sets
 		 * [...] which may be zero if the timeout expires before anything interesting happens"
 		 */
-		int selectStatus = select(highestFD + 1, &readDescriptors, NULL, NULL, &timeout);
+		int selectStatus = select(highestFD + 1, &readDescriptors, nullptr, nullptr, &timeout);
 		if(selectStatus == -1)
 			throw CompilationError(CompilationStep::GENERAL, "Error waiting on child's output streams", strerror(errno));
 		else if(selectStatus != 0)
@@ -237,16 +238,16 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
 			//something happened
 			if(stdout != nullptr && FD_ISSET(pipes[STD_OUT][READ], &readDescriptors))
 			{
-				numBytes = read(pipes[STD_OUT][READ], buffer, BUFFER_SIZE);
-				stdout->write(buffer, numBytes);
+				numBytes = read(pipes[STD_OUT][READ], buffer.data(), buffer.size());
+				stdout->write(buffer.data(), numBytes);
 				if(numBytes == 0)
 					//EOF
 					stdOutFinished = true;
 			}
 			if(stderr != nullptr && FD_ISSET(pipes[STD_ERR][READ], &readDescriptors))
 			{
-				numBytes = read(pipes[STD_ERR][READ], buffer, BUFFER_SIZE);
-				stderr->write(buffer, numBytes);
+				numBytes = read(pipes[STD_ERR][READ], buffer.data(), buffer.size());
+				stderr->write(buffer.data(), numBytes);
 				if(numBytes == 0)
 					//EOF
 					stdErrFinished = true;
