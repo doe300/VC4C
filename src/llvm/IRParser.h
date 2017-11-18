@@ -7,13 +7,13 @@
 #ifndef IR_PARSER_H
 #define IR_PARSER_H
 
-#include <iostream>
-#include <memory>
-
 #include "../Parser.h"
 #include "../performance.h"
 #include "LLVMInstruction.h"
 #include "Scanner.h"
+
+#include <iostream>
+#include <memory>
 
 namespace vc4c
 {
@@ -21,8 +21,7 @@ namespace vc4c
 	{
 		struct LLVMMethod
 		{
-			LLVMMethod(const Module& module) : method(new Method(module)), module(const_cast<Module*>(&module))
-			{};
+			explicit LLVMMethod(const Module& module) : method(new Method(module)), module(const_cast<Module*>(&module)) { }
 			LLVMMethod(LLVMMethod&& old) = default;
 			LLVMMethod& operator=(LLVMMethod&& old) = default;
 			std::unique_ptr<Method> method;
@@ -34,9 +33,9 @@ namespace vc4c
 		class IRParser: public Parser
 		{
 		public:
-			IRParser(std::istream& stream = std::cin);
-			IRParser(Scanner& scanner);
-			~IRParser();
+			explicit IRParser(std::istream& stream = std::cin);
+			explicit IRParser(Scanner& scanner);
+			~IRParser() override = default;
 
 			void parse(Module& module) override;
 
@@ -78,8 +77,8 @@ namespace vc4c
 
 			void mapInstructions(LLVMMethod& method) const;
 		};
-	}
-}
+	} // namespace llvm2qasm
+} // namespace vc4c
 
 
 #endif /* IR_PARSER_H */

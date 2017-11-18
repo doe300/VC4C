@@ -7,17 +7,18 @@
 #ifndef SPIRV_PARSER_H
 #define SPIRV_PARSER_H
 
-#include <iostream>
-#include <array>
-
 #include "../Parser.h"
-#include "../performance.h"
 #include "CompilationError.h"
+
+#include <array>
+#include <iostream>
 
 #ifdef SPIRV_HEADER
 
 #include SPIRV_HEADER
 #include SPIRV_PARSER_HEADER
+
+#include "../performance.h"
 #include "SPIRVOperation.h"
 
 namespace vc4c
@@ -27,14 +28,15 @@ namespace vc4c
 		class SPIRVParser: public Parser
 		{
 		public:
-			SPIRVParser(std::istream& input = std::cin, const bool isSPIRVText = false);
+			explicit SPIRVParser(std::istream& input = std::cin, bool isSPIRVText = false);
+			~SPIRVParser() override = default;
 
 			void parse(Module& module) override;
 
 			spv_result_t parseHeader(spv_endianness_t endian, uint32_t magic, uint32_t version, uint32_t generator, uint32_t id_bound, uint32_t reserved);
 			spv_result_t parseInstruction(const spv_parsed_instruction_t* parsed_instruction);
 			spv_result_t parseDecoration(const spv_parsed_instruction_t* parsed_instruction);
-			intermediate::InstructionDecorations toInstructionDecorations(const uint32_t id);
+			intermediate::InstructionDecorations toInstructionDecorations(uint32_t id);
 
 		private:
 			using Decoration = std::pair<SpvDecoration, uint32_t>;
@@ -80,29 +82,29 @@ namespace vc4c
 
 			std::pair<spv_result_t, Optional<Value>> calculateConstantOperation(const spv_parsed_instruction_t* instruction);
 		};
-	}
-}
+	} // namespace spirv2qasm
+} // namespace vc4c
 #else
 namespace vc4c
 {
-
-namespace spirv2qasm
-{
-	class SPIRVParser : public Parser
+	namespace spirv2qasm
 	{
-	public:
-		SPIRVParser(std::istream& input = std::cin, const bool isSPIRVText = false)
+		class SPIRVParser : public Parser
 		{
-			throw CompilationError(CompilationStep::GENERAL, "SPIR-V frontend is not active!");
-		}
+		public:
+			explicit SPIRVParser(std::istream& input = std::cin, bool isSPIRVText = false)
+			{
+				throw CompilationError(CompilationStep::GENERAL, "SPIR-V frontend is not active!");
+			}
+			~SPIRVParser() override = default;
 
-		void parse(Module& module) override
-		{
-			throw CompilationError(CompilationStep::GENERAL, "SPIR-V frontend is not active!");
-		}
-	};
-}
-}
+			void parse(Module& module) override
+			{
+				throw CompilationError(CompilationStep::GENERAL, "SPIR-V frontend is not active!");
+			}
+		};
+	} // namespace spirv2qasm
+} // namespace vc4c
 #endif
 
 #endif /* SPIRV_PARSER_H */

@@ -4,16 +4,17 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include <stdbool.h>
-#include <vector>
-#include <string.h>
-#include <regex>
-#include <algorithm>
-
 #include "IRParser.h"
+
 #include "../intermediate/IntermediateInstruction.h"
-#include "log.h"
 #include "Token.h"
+#include "log.h"
+
+#include <algorithm>
+#include <cstdbool>
+#include <cstring>
+#include <regex>
+#include <vector>
 
 using namespace vc4c;
 using namespace vc4c::llvm2qasm;
@@ -26,10 +27,6 @@ IRParser::IRParser(Scanner& scanner) : scanner(scanner), module(nullptr), curren
 IRParser::IRParser(std::istream& stream) : scanner(stream), module(nullptr), currentMethod(nullptr)
 {
 
-}
-
-IRParser::~IRParser()
-{
 }
 
 static std::string cleanMethodName(const std::string& name)
@@ -130,7 +127,7 @@ void IRParser::parse(Module& module)
     const std::string declarationKeyword = "declare";
     const std::string methodKeyword = "define";
     while (scanner.hasInput()) {
-        Token nextToken;
+        Token nextToken{};
         do {
             nextToken = scanner.peek();
             if (nextToken.hasValue('%')) {
@@ -228,7 +225,7 @@ static Optional<AddressSpace> readAddressSpace(Scanner& scanner)
 	}
 	if(addressSpace < 0)
 		return Optional<AddressSpace>(false);
-	return toAddressSpace(addressSpace);
+	return toAddressSpace(static_cast<int>(addressSpace));
 }
 
 DataType IRParser::parseType()
@@ -306,10 +303,10 @@ DataType IRParser::parseType()
     else if(isVector)
     {
     	type = childType;
-    	type.num = num;
+    	type.num = static_cast<uint8_t>(num);
     }
     else //scalar or complex type
-    	type = DataType(typeName, num);
+    	type = DataType(typeName, static_cast<uint8_t>(num));
     if(complexTypes.find(typeName) != complexTypes.end())
     	type.complexType = complexTypes.at(typeName).complexType;
     for(unsigned i = 0; i < numPointerTypes; ++i)
@@ -323,7 +320,7 @@ DataType IRParser::parseType()
 
 std::vector<std::pair<Value, ParameterDecorations>> IRParser::parseParameters()
 {
-    Token nextToken;
+    Token nextToken{};
     std::vector<std::pair<Value, ParameterDecorations>> res;
     std::size_t numParenthesis = 0;
     do {
@@ -368,14 +365,14 @@ std::vector<std::pair<Value, ParameterDecorations>> IRParser::parseParameters()
 				//if this is the case, assign the number of the parameter
 				if (nextToken.type == TokenType::STRING && !nextToken.hasValue('%')) {
 					nextToken.type = TokenType::STRING;
-					strncpy(nextToken.text, (std::string("%") + std::to_string(res.size())).data(), TOKEN_BUFFER_SIZE);
+					strncpy(nextToken.text.data(), (std::string("%") + std::to_string(res.size())).data(), TOKEN_BUFFER_SIZE);
 				}
 				logging::debug() << "Parameter " << type.to_string() << ' ' << nextToken.to_string() << logging::endl;
 				res.push_back(std::make_pair(toValue(nextToken, type), decorations));
             }
         }
     }
-    while (scanner.hasInput() && !numParenthesis == 0);
+    while (scanner.hasInput() && numParenthesis != 0);
     return res;
 }
 
@@ -396,7 +393,7 @@ static std::vector<Value> parseStringConstant(const std::string& constant, const
 			++index;
 			std::string tmp(constant.substr(index, 2));
 			unsigned char c = strtoul(tmp.data(), nullptr, 0x10);
-			elements.push_back(Value(Literal(static_cast<int64_t>(c)), TYPE_INT8));
+			elements.emplace_back(Literal(static_cast<int64_t>(c)), TYPE_INT8);
 			index += 2;
 		}
 		else if(constant.at(index) == '"')
@@ -404,7 +401,7 @@ static std::vector<Value> parseStringConstant(const std::string& constant, const
 			break;
 		else
 		{
-			elements.push_back(Value(Literal(static_cast<int64_t>(constant.at(index))), TYPE_INT8));
+			elements.emplace_back(Literal(static_cast<int64_t>(constant.at(index))), TYPE_INT8);
 			++index;
 		}
 	}
@@ -554,14 +551,14 @@ bool IRParser::parseMethod()
     const DataType returnType(parseType());
     const std::string methodName(cleanMethodName(scanner.pop().getText()));
     logging::debug() << "Reading method '" << methodName << "' -> " << returnType.to_string() << ':' << logging::endl;
-    methods.push_back(LLVMMethod(*module));
+    methods.emplace_back(LLVMMethod(*module));
     auto& method = methods.back();
     method.method->name = methodName;
     method.method->returnType = returnType;
     currentMethod = method.method.get();
     const auto params = parseParameters();
     for (const auto& param : params) {
-    	method.method->parameters.emplace_back(std::move(Parameter(param.first.local->name, param.first.type, param.second)));
+    	method.method->parameters.emplace_back(param.first.local->name, param.first.type, param.second);
     	//since with creating the Value for the parameter, a new local is allocated, we need to remove it
     	const_cast<OrderedMap<std::string, Local>&>(method.method->readLocals()).erase(param.first.local->name);
     }
@@ -569,7 +566,7 @@ bool IRParser::parseMethod()
         return false;
     }
     //skip everything up to '{'
-    Token nextToken;
+    Token nextToken{};
     do {
         nextToken = scanner.pop();
         //since CLang 3.9, kernel-attributes are appended to the function-definition
@@ -1461,7 +1458,7 @@ void IRParser::parseMetaData()
     skipToken(scanner, "distinct");
     //pop '!'
     expectSkipToken(scanner, '!');
-    Token nextToken;
+    Token nextToken{};
     while (scanner.hasInput() && !(nextToken = scanner.pop()).isEnd() && (nextToken.hasValue(',') || nextToken.hasValue('{'))) {
         if (scanner.peek().hasValue('!') || scanner.peek().hasValue('"')) {
             //string
@@ -1556,35 +1553,35 @@ void IRParser::extractKernelInfo()
     std::map<std::string, MetaDataType> typeMapping;
     for (auto& pair : metaData) {
         if (pair.second.size() > 0) {
-            if (pair.second[0].compare("kernel_arg_addr_space") == 0) {
+            if (pair.second[0] == "kernel_arg_addr_space") {
                 pair.second.erase(pair.second.begin());
                 typeMapping[pair.first] = MetaDataType::ARG_ADDR_SPACES;
             }
-            else if (pair.second[0].compare("kernel_arg_access_qual") == 0) {
+            else if (pair.second[0] == "kernel_arg_access_qual") {
                 pair.second.erase(pair.second.begin());
                 typeMapping[pair.first] = MetaDataType::ARG_ACCESS_QUALIFIERS;
             }
-            else if (pair.second[0].compare("kernel_arg_type_qual") == 0) {
+            else if (pair.second[0] == "kernel_arg_type_qual") {
                 pair.second.erase(pair.second.begin());
                 typeMapping[pair.first] = MetaDataType::ARG_TYPE_QUALIFIERS;
             }
-            else if (pair.second[0].compare("kernel_arg_type") == 0) {
+            else if (pair.second[0] == "kernel_arg_type") {
                 pair.second.erase(pair.second.begin());
                 typeMapping[pair.first] = MetaDataType::ARG_TYPE_NAMES;
             }
-            else if (pair.second[0].compare("reqd_work_group_size") == 0) {
+            else if (pair.second[0] == "reqd_work_group_size") {
                 pair.second.erase(pair.second.begin());
                 typeMapping[pair.first] = MetaDataType::WORK_GROUP_SIZES;
             }
-            else if (pair.second[0].compare("work_group_size_hint") == 0) {
+            else if (pair.second[0] == "work_group_size_hint") {
                 pair.second.erase(pair.second.begin());
                 typeMapping[pair.first] = MetaDataType::WORK_GROUP_SIZES_HINT;
             }
-            else if (pair.second[0].compare("kernel_arg_name") == 0) {
+            else if (pair.second[0] == "kernel_arg_name") {
             	pair.second.erase(pair.second.begin());
 				typeMapping[pair.first] = MetaDataType::ARG_NAMES;
             }
-            else if(pair.second[0].compare("vec_type_hint") == 0) {
+            else if(pair.second[0] == "vec_type_hint") {
             	pair.second.erase(pair.second.begin());
             	//vector-type hint, currently unsupported
 				logging::info() << "Vector type hint is currently not supported: " << to_string<std::string>(pair.second) << logging::endl;
@@ -1603,7 +1600,7 @@ void IRParser::extractKernelInfo()
                     nameFound = true;
                     kernelNames.push_back(methodName);
                     for (LLVMMethod& m : methods) {
-                        if (m.method->name.compare(methodName) == 0)
+                        if (m.method->name == methodName)
                             method = &m;
                     }
                 }
@@ -1661,10 +1658,10 @@ void IRParser::extractKernelInfo()
             		//TODO
             		break;
             	case MetaDataType::WORK_GROUP_SIZES:
-            		method.method->metaData.workGroupSizes = {std::atoi(values.at(0).data()), std::atoi(values.at(1).data()), std::atoi(values.at(2).data())};
+            		method.method->metaData.workGroupSizes = {static_cast<uint32_t>(std::atoi(values.at(0).data())), static_cast<uint32_t>(std::atoi(values.at(1).data())), static_cast<uint32_t>(std::atoi(values.at(2).data()))};
             		break;
             	case MetaDataType::WORK_GROUP_SIZES_HINT:
-					method.method->metaData.workGroupSizeHints = {std::atoi(values.at(0).data()), std::atoi(values.at(1).data()), std::atoi(values.at(2).data())};
+					method.method->metaData.workGroupSizeHints = {static_cast<uint32_t>(std::atoi(values.at(0).data())), static_cast<uint32_t>(std::atoi(values.at(1).data())), static_cast<uint32_t>(std::atoi(values.at(2).data()))};
 					break;
             	default:
             		throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data", to_string<std::string>(values));

@@ -5,10 +5,10 @@
  */
 
 #include "SPIRVHelper.h"
-#include "CompilationError.h"
 
-#include "log.h"
+#include "CompilationError.h"
 #include "../performance.h"
+#include "log.h"
 
 #ifdef SPIRV_HEADER
 #ifdef SPIRV_LINKER_HEADER

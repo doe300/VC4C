@@ -9,6 +9,7 @@
 
 #include "Instruction.h"
 #include "config.h"
+#include "../performance.h"
 
 #include <map>
 #include <memory>

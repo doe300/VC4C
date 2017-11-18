@@ -4,14 +4,15 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include <config.h>
-#include <algorithm>
-
 #include "LLVMInstruction.h"
+
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/Helper.h"
 #include "../periphery/VPM.h"
+#include "config.h"
 #include "log.h"
+
+#include <algorithm>
 
 using namespace vc4c;
 using namespace vc4c::llvm2qasm;
@@ -47,7 +48,7 @@ const Local* LLVMInstruction::getDeclaredLocal() const
 std::vector<const Local*> LLVMInstruction::getAllLocals() const
 {
     const auto tmp = getDeclaredLocal();
-    if(tmp)
+    if(tmp != nullptr)
     {
         return {tmp};
     }
@@ -86,11 +87,6 @@ CallSite::CallSite(const Method& method, const std::vector<Value>& args) : dest(
     {
         throw CompilationError(CompilationStep::PARSER, "Invalid numbers of method arguments", std::string("Got ") + (std::to_string(args.size()) + ", expected ") + std::to_string(method.parameters.size()));
     }
-}
-
-CallSite::~CallSite()
-{
-
 }
 
 const Local* CallSite::getDeclaredLocal() const
@@ -202,11 +198,6 @@ Copy::Copy(const Value& dest, const Value& orig, const bool isLoadStore, const b
 
 }
 
-Copy::~Copy()
-{
-
-}
-
 const Local* Copy::getDeclaredLocal() const
 {
     return dest.hasType(ValueType::LOCAL) ? dest.local : nullptr;
@@ -251,11 +242,6 @@ UnaryOperator::UnaryOperator(const std::string& opCode, const Value& dest, const
 
 }
 
-UnaryOperator::~UnaryOperator()
-{
-
-}
-
 const Local* UnaryOperator::getDeclaredLocal() const
 {
     if(dest.hasType(ValueType::LOCAL))
@@ -288,11 +274,6 @@ UnaryOperator(opCode, dest, arg0), arg2(arg1)
 
 }
 
-BinaryOperator::~BinaryOperator()
-{
-
-}
-
 std::vector<const Local*> BinaryOperator::getAllLocals() const
 {
     auto tmp = UnaryOperator::getAllLocals();
@@ -311,11 +292,6 @@ bool BinaryOperator::mapInstruction(Method& method) const
 }
 
 IndexOf::IndexOf(const Local* dest,  const Value& container, const std::vector<Value>& indices) : dest(dest), container(container), indices(indices)
-{
-
-}
-
-IndexOf::~IndexOf()
 {
 
 }
@@ -361,11 +337,6 @@ dest(dest), comp(comp), isFloat(isFloat), op1(op1), op2(op2)
 
 }
 
-Comparison::~Comparison()
-{
-
-}
-
 const Local* Comparison::getDeclaredLocal() const
 {
     return dest;
@@ -394,11 +365,6 @@ bool Comparison::mapInstruction(Method& method) const
 
 ContainerInsertion::ContainerInsertion(const Local* dest, const Value& container, const Value& newValue, const Value& index) :
 dest(dest), container(container), newValue(newValue), index(index)
-{
-
-}
-
-ContainerInsertion::~ContainerInsertion()
 {
 
 }
@@ -451,12 +417,6 @@ dest(dest), container(container), index(index)
 
 }
 
-ContainerExtraction::~ContainerExtraction()
-{
-
-}
-
-
 const Local* ContainerExtraction::getDeclaredLocal() const
 {
     return dest;
@@ -503,12 +463,6 @@ ValueReturn::ValueReturn(const Value& val): hasValue(true), val(val)
 
 }
 
-ValueReturn::~ValueReturn()
-{
-
-}
-
-
 std::vector<const Local*> ValueReturn::getAllLocals() const
 {
     if(hasValue && val.hasType(ValueType::LOCAL))
@@ -536,12 +490,6 @@ ShuffleVector::ShuffleVector(const Value& dest, const Value& v1, const Value& v2
 {
 
 }
-
-ShuffleVector::~ShuffleVector()
-{
-
-}
-
 
 const Local* ShuffleVector::getDeclaredLocal() const
 {
@@ -579,11 +527,6 @@ LLVMLabel::LLVMLabel(const std::string& name) : label(name)
 
 }
 
-LLVMLabel::~LLVMLabel()
-{
-
-}
-
 bool LLVMLabel::mapInstruction(Method& method) const
 {
     logging::debug() << "Generating label " << label << logging::endl;
@@ -592,11 +535,6 @@ bool LLVMLabel::mapInstruction(Method& method) const
 }
 
 PhiNode::PhiNode(const Local* dest, const std::vector<std::pair<Value, const Local*> >& labels) : dest(dest), labels(labels)
-{
-
-}
-
-PhiNode::~PhiNode()
 {
 
 }
@@ -625,11 +563,6 @@ bool PhiNode::mapInstruction(Method& method) const
 }
 
 Selection::Selection(const Local* dest, const Value& cond, const Value& opt1, const Value& opt2) : dest(dest), cond(cond), opt1(opt1), opt2(opt2)
-{
-
-}
-
-Selection::~Selection()
 {
 
 }
@@ -673,11 +606,6 @@ Branch::Branch(const Value& cond, const std::string& thenLabel, const std::strin
 
 }
 
-Branch::~Branch()
-{
-
-}
-
 std::vector<const Local*> Branch::getAllLocals() const
 {
     if(cond.hasType(ValueType::LOCAL))
@@ -708,11 +636,6 @@ Switch::Switch(const Value& cond, const std::string& defaultLabel, const std::ma
 
 }
 
-Switch::~Switch()
-{
-
-}
-
 std::vector<const Local*> Switch::getAllLocals() const
 {
     if(cond.hasType(ValueType::LOCAL))
@@ -723,7 +646,7 @@ std::vector<const Local*> Switch::getAllLocals() const
 bool Switch::mapInstruction(Method& method) const
 {
     logging::debug() << "Generating branches for switch on " << cond.to_string() << " with " << jumpLabels.size() << " options and the default " << defaultLabel << logging::endl;
-    for(const std::pair<int, std::string>& option : jumpLabels)
+    for(const auto& option : jumpLabels)
     {
         //for every case, if equal,branch to given label
         const Value tmp = method.addNewLocal(TYPE_BOOL, "%switch");

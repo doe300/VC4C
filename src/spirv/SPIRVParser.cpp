@@ -4,15 +4,16 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include <string.h>
-#include <stdint.h>
-
 #include "SPIRVParser.h"
-#include "log.h"
-#include "SPIRVHelper.h"
 
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intrinsics/Images.h"
+#include "SPIRVHelper.h"
+#include "log.h"
+
+#include <cstdint>
+#include <cstring>
+
 #ifdef SPIRV_HEADER
 
 #ifdef SPIRV_OPTIMIZER_HEADER
@@ -403,7 +404,7 @@ static std::string toScalarType(uint16_t vectorType)
 	}
 }
 
-#define UNSUPPORTED_INSTRUCTION(name) (errorExtra = name, logging::error() << "Unsupported SPIR-V instruction: " << name << logging::endl, SPV_UNSUPPORTED)
+#define UNSUPPORTED_INSTRUCTION(name) (errorExtra = (name), logging::error() << "Unsupported SPIR-V instruction: " << (name) << logging::endl, SPV_UNSUPPORTED)
 
 spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parsed_instruction)
 {

@@ -7,11 +7,11 @@
 #ifndef SCANNER_H
 #define SCANNER_H
 
+#include "Token.h"
+
 #include <iostream>
 #include <string>
 #include <utility>
-
-#include "Token.h"
 
 namespace vc4c
 {
@@ -23,9 +23,9 @@ namespace vc4c
 		{
 		public:
 
-			Scanner(std::istream& input = std::cin);
-			Scanner(const Scanner& orig);
-			~Scanner();
+			explicit Scanner(std::istream& input = std::cin);
+			Scanner(const Scanner& orig) = default;
+			~Scanner()= default;
 
 			const Token peek();
 			const Token pop();
@@ -50,7 +50,7 @@ namespace vc4c
 
 			int skipChar();
 		};
-	}
-}
+	} // namespace llvm2qasm
+} // namespace vc4c
 #endif /* SCANNER_H */
 

@@ -4,17 +4,17 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include <stdbool.h>
-#include <algorithm>
-
 #include "SPIRVOperation.h"
-#ifdef SPIRV_HEADER
 
+#ifdef SPIRV_HEADER
 #include "../intermediate/Helper.h"
-#include "../periphery/VPM.h"
-#include "log.h"
 #include "../intrinsics/Images.h"
+#include "../periphery/VPM.h"
 #include "helper.h"
+#include "log.h"
+
+#include <algorithm>
+#include <cstdbool>
 
 using namespace vc4c;
 using namespace vc4c::spirv2qasm;
@@ -60,18 +60,13 @@ SPIRVOperation(id, method, decorations), typeID(resultType), opcode(opcode), ope
 {
 }
 
-SPIRVInstruction::~SPIRVInstruction()
-{
-
-}
-
 void SPIRVInstruction::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
     Value arg0 = getValue(operands.at(0), *method.method, types, constants, memoryAllocated, localTypes);
     Optional<Value> arg1(NO_VALUE);
     std::string opCode = opcode;
-    if(OP_NEGATE.compare(opcode) == 0)
+    if(OP_NEGATE == opCode)
     {
         opCode = dest.type.isFloatingType() ? "fsub" : "sub";
         arg1 = arg0;
@@ -95,57 +90,57 @@ void SPIRVInstruction::mapInstruction(std::map<uint32_t, DataType>& types, std::
 
 Optional<Value> SPIRVInstruction::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
-	const Value op1 = constants.at(operands.at(0));
+	const Value& op1 = constants.at(operands.at(0));
 	const Value op2 = operands.size() > 1 ? constants.at(operands.at(1)) : UNDEFINED_VALUE;
 
-	if(opcode.compare("fptoui") == 0)
+	if(opcode == "fptoui")
 		return Value(Literal(static_cast<uint64_t>(op1.literal.real())), TYPE_INT32);
-	if(opcode.compare("fptosi") == 0)
+	if(opcode == "fptosi")
 		return Value(Literal(static_cast<int64_t>(op1.literal.real())), TYPE_INT32);
-	if(opcode.compare("sitofp") == 0)
+	if(opcode == "sitofp")
 		return Value(Literal(static_cast<double>(op1.literal.integer)), TYPE_FLOAT);
-	if(opcode.compare("uitofp") == 0)
+	if(opcode == "uitofp")
 		return Value(Literal(static_cast<double>(bit_cast<int64_t, uint64_t>(op1.literal.integer))), TYPE_FLOAT);
-	if(opcode.compare(OP_NEGATE) == 0)
+	if(opcode == OP_NEGATE)
 		return op1.type.isFloatingType() ? Value(Literal(-op1.literal.real()), TYPE_FLOAT) : Value(Literal(-op1.literal.integer), TYPE_INT32);
-	if(opcode.compare("add") == 0)
+	if(opcode == "add")
 		return Value(Literal(op1.literal.integer + op2.literal.integer), op1.type.getUnionType(op2.type));
-	if(opcode.compare("fadd") == 0)
+	if(opcode == "fadd")
 		return Value(Literal(op1.literal.real() + op2.literal.real()), op1.type.getUnionType(op2.type));
-	if(opcode.compare("sub") == 0)
+	if(opcode == "sub")
 		return Value(Literal(op1.literal.integer - op2.literal.integer), op1.type.getUnionType(op2.type));
-	if(opcode.compare("fsub") == 0)
+	if(opcode == "fsub")
 		return Value(Literal(op1.literal.real() - op2.literal.real()), op1.type.getUnionType(op2.type));
-	if(opcode.compare("mul") == 0)
+	if(opcode == "mul")
 		return Value(Literal(op1.literal.integer * op2.literal.integer), op1.type.getUnionType(op2.type));
-	if(opcode.compare("fmul") == 0)
+	if(opcode == "fmul")
 		return Value(Literal(op1.literal.real() * op2.literal.real()), op1.type.getUnionType(op2.type));
-	if(opcode.compare("udiv") == 0)
+	if(opcode == "udiv")
 		return Value(Literal(bit_cast<int64_t, uint64_t>(op1.literal.integer) / bit_cast<int64_t, uint64_t>(op2.literal.integer)), op1.type.getUnionType(op2.type));
-	if(opcode.compare("sdiv") == 0)
+	if(opcode == "sdiv")
 		return Value(Literal(op1.literal.integer / op2.literal.integer), op1.type.getUnionType(op2.type));
-	if(opcode.compare("fdiv") == 0)
+	if(opcode == "fdiv")
 		return Value(Literal(op1.literal.real() / op2.literal.real()), op1.type.getUnionType(op2.type));
-	if(opcode.compare("umod") == 0)
+	if(opcode == "umod")
 		return Value(Literal(bit_cast<int64_t, uint64_t>(op1.literal.integer) % bit_cast<int64_t, uint64_t>(op2.literal.integer)), op1.type.getUnionType(op2.type));
 	//TODO srem, smod, frem, fmod
 	//OpSRem: "Signed remainder operation of Operand 1 divided by Operand 2. The sign of a non-0 result comes from Operand 1."
 	//OpSMod: "Signed modulo operation of Operand 1 modulo Operand 2. The sign of a non-0 result comes from Operand 2."
 	//OpFRem: "Floating-point remainder operation of Operand 1 divided by Operand 2. The sign of a non-0 result comes from	Operand 1."
 	//OpFMod: "Floating-point remainder operation of Operand 1 divided by Operand 2. The sign of a non-0 result comes from Operand 2."
-	if(opcode.compare("or") == 0)
+	if(opcode == "or")
 		return Value(Literal(op1.literal.integer | op2.literal.integer), op1.type.getUnionType(op2.type));
-	if(opcode.compare("and") == 0)
+	if(opcode == "and")
 		return Value(Literal(op1.literal.integer & op2.literal.integer), op1.type.getUnionType(op2.type));
-	if(opcode.compare("xor") == 0)
+	if(opcode == "xor")
 		return Value(Literal(op1.literal.integer ^ op2.literal.integer), op1.type.getUnionType(op2.type));
-	if(opcode.compare("not") == 0)
+	if(opcode == "not")
 		return Value(Literal(~op1.literal.integer), op1.type);
-	if(opcode.compare("shr") == 0)
+	if(opcode == "shr")
 		//in C++, unsigned right shift is logical (fills with zeroes)
-		return Value(Literal(bit_cast<uint64_t, int64_t>(bit_cast<uint64_t, int64_t>(op1.literal.integer)) >> op2.literal.integer), op1.type);
+		return Value(Literal(bit_cast<uint64_t, int64_t>(bit_cast<int64_t, uint64_t>(op1.literal.integer)) >> op2.literal.integer), op1.type);
 	//TODO asr
-	if(opcode.compare("shl") == 0)
+	if(opcode == "shl")
 		return Value(Literal(op1.literal.integer << op2.literal.integer), op1.type);
 
 	return NO_VALUE;
@@ -153,11 +148,6 @@ Optional<Value> SPIRVInstruction::precalculate(const std::map<uint32_t, DataType
 
 SPIRVComparison::SPIRVComparison(const uint32_t id, SPIRVMethod& method, const std::string& opcode, const uint32_t resultType, const std::vector<uint32_t>& operands, const intermediate::InstructionDecorations decorations) :
     SPIRVInstruction(id, method, opcode, resultType, operands, decorations)
-{
-
-}
-
-SPIRVComparison::~SPIRVComparison()
 {
 
 }
@@ -173,32 +163,32 @@ void SPIRVComparison::mapInstruction(std::map<uint32_t, DataType>& types, std::m
 
 Optional<Value> SPIRVComparison::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
-	const Value op1 = constants.at(operands.at(0));
-	const Value op2 = constants.at(operands.at(1));
+	const Value& op1 = constants.at(operands.at(0));
+	const Value& op2 = constants.at(operands.at(1));
 
-	if(intermediate::COMP_EQ.compare(opcode) == 0)
+	if(intermediate::COMP_EQ == opcode)
 		return op1 == op2 ? BOOL_TRUE : BOOL_FALSE;
-	if(intermediate::COMP_FALSE.compare(opcode) == 0)
+	if(intermediate::COMP_FALSE == opcode)
 		return BOOL_FALSE;
-	if(intermediate::COMP_NEQ.compare(opcode) == 0)
+	if(intermediate::COMP_NEQ == opcode)
 		return op1 != op2 ? BOOL_TRUE : BOOL_FALSE;
-	if(intermediate::COMP_TRUE.compare(opcode) == 0)
+	if(intermediate::COMP_TRUE == opcode)
 		return BOOL_TRUE;
-	if(intermediate::COMP_SIGNED_GE.compare(opcode) == 0)
+	if(intermediate::COMP_SIGNED_GE == opcode)
 		return op1.literal.integer >= op2.literal.integer ? BOOL_TRUE : BOOL_FALSE;
-	if(intermediate::COMP_SIGNED_GT.compare(opcode) == 0)
+	if(intermediate::COMP_SIGNED_GT == opcode)
 		return op1.literal.integer > op2.literal.integer ? BOOL_TRUE : BOOL_FALSE;
-	if(intermediate::COMP_SIGNED_LE.compare(opcode) == 0)
+	if(intermediate::COMP_SIGNED_LE == opcode)
 		return op1.literal.integer <= op2.literal.integer ? BOOL_TRUE : BOOL_FALSE;
-	if(intermediate::COMP_SIGNED_LT.compare(opcode) == 0)
+	if(intermediate::COMP_SIGNED_LT == opcode)
 		return op1.literal.integer < op2.literal.integer ? BOOL_TRUE : BOOL_FALSE;
-	if(intermediate::COMP_UNSIGNED_GE.compare(opcode) == 0)
+	if(intermediate::COMP_UNSIGNED_GE == opcode)
 		return op1.literal.integer >= op2.literal.integer ? BOOL_TRUE : BOOL_FALSE;
-	if(intermediate::COMP_UNSIGNED_GT.compare(opcode) == 0)
+	if(intermediate::COMP_UNSIGNED_GT == opcode)
 		return op1.literal.integer > op2.literal.integer ? BOOL_TRUE : BOOL_FALSE;
-	if(intermediate::COMP_UNSIGNED_LE.compare(opcode) == 0)
+	if(intermediate::COMP_UNSIGNED_LE == opcode)
 		return op1.literal.integer <= op2.literal.integer ? BOOL_TRUE : BOOL_FALSE;
-	if(intermediate::COMP_UNSIGNED_LT.compare(opcode) == 0)
+	if(intermediate::COMP_UNSIGNED_LT == opcode)
 		return op1.literal.integer < op2.literal.integer ? BOOL_TRUE : BOOL_FALSE;
 
 	return NO_VALUE;
@@ -212,11 +202,6 @@ SPIRVCallSite::SPIRVCallSite(const uint32_t id, SPIRVMethod& method, const uint3
 SPIRVCallSite::SPIRVCallSite(const uint32_t id, SPIRVMethod& method, const std::string& methodName, const uint32_t resultType, const std::vector<uint32_t>& arguments) :
             SPIRVOperation(id, method), typeID(resultType), methodName(methodName), arguments(arguments)
 {
-}
-
-SPIRVCallSite::~SPIRVCallSite()
-{
-
 }
 
 void SPIRVCallSite::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
@@ -245,11 +230,6 @@ SPIRVReturn::SPIRVReturn(SPIRVMethod& method) : SPIRVOperation(UNDEFINED_ID, met
 }
 
 SPIRVReturn::SPIRVReturn(const uint32_t returnValue, SPIRVMethod& method) : SPIRVOperation(UNDEFINED_ID, method), returnValue(returnValue)
-{
-
-}
-
-SPIRVReturn::~SPIRVReturn()
 {
 
 }
@@ -287,11 +267,6 @@ SPIRVBranch::SPIRVBranch(SPIRVMethod& method, const uint32_t conditionID, const 
 
 }
 
-SPIRVBranch::~SPIRVBranch()
-{
-
-}
-
 void SPIRVBranch::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
     if(conditionID)
@@ -321,11 +296,6 @@ SPIRVLabel::SPIRVLabel(const uint32_t id, SPIRVMethod& method) : SPIRVOperation(
 
 }
 
-SPIRVLabel::~SPIRVLabel()
-{
-
-}
-
 void SPIRVLabel::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
     logging::debug() << "Generating intermediate label %" << id << logging::endl;
@@ -339,11 +309,6 @@ Optional<Value> SPIRVLabel::precalculate(const std::map<uint32_t, DataType>& typ
 
 SPIRVConversion::SPIRVConversion(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const uint32_t sourceID, const ConversionType type, const intermediate::InstructionDecorations decorations, bool isSaturated) :
 SPIRVOperation(id, method, decorations), typeID(resultType), sourceID(sourceID), type(type), isSaturated(isSaturated)
-{
-
-}
-
-SPIRVConversion::~SPIRVConversion()
 {
 
 }
@@ -403,9 +368,9 @@ Optional<Value> SPIRVConversion::precalculate(const std::map<uint32_t, DataType>
 {
 	if(constants.find(sourceID) != constants.end())
 	{
-		const Value source = constants.at(sourceID);
+		const Value& source = constants.at(sourceID);
 		Value dest(UNDEFINED_VALUE);
-		const DataType destType = types.at(typeID);
+		const DataType& destType = types.at(typeID);
 		switch(type)
 		{
 			case ConversionType::BITCAST:
@@ -436,11 +401,6 @@ SPIRVCopy::SPIRVCopy(const uint32_t id, SPIRVMethod& method, const uint32_t resu
 
 SPIRVCopy::SPIRVCopy(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const uint32_t sourceID, const std::vector<uint32_t>& destIndices, const std::vector<uint32_t>& sourceIndices) :
             SPIRVOperation(id, method), typeID(resultType), sourceID(sourceID), memoryAccess(MemoryAccess::NONE), destIndices(destIndices), sourceIndices(sourceIndices)
-{
-
-}
-
-SPIRVCopy::~SPIRVCopy()
 {
 
 }
@@ -548,11 +508,6 @@ SPIRVShuffle::SPIRVShuffle(const uint32_t id, SPIRVMethod& method, const uint32_
 
 }
 
-SPIRVShuffle::~SPIRVShuffle()
-{
-
-}
-
 void SPIRVShuffle::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
     //shuffling = iteration over all elements in both vectors and re-ordering in order given
@@ -606,11 +561,6 @@ Optional<Value> SPIRVShuffle::precalculate(const std::map<uint32_t, DataType>& t
 
 SPIRVIndexOf::SPIRVIndexOf(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const uint32_t containerID, const std::vector<uint32_t>& indices, const bool isPtrAcessChain) :
             SPIRVOperation(id, method), typeID(resultType), container(containerID), indices(indices), isPtrAcessChain(isPtrAcessChain)
-{
-
-}
-
-SPIRVIndexOf::~SPIRVIndexOf()
 {
 
 }
@@ -701,11 +651,6 @@ SPIRVPhi::SPIRVPhi(const uint32_t id, SPIRVMethod& method, const uint32_t result
 
 }
 
-SPIRVPhi::~SPIRVPhi()
-{
-
-}
-
 void SPIRVPhi::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
@@ -731,11 +676,6 @@ Optional<Value> SPIRVPhi::precalculate(const std::map<uint32_t, DataType>& types
 
 SPIRVSelect::SPIRVSelect(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const uint32_t conditionID, const uint32_t trueObj, const uint32_t falseObj) :
         SPIRVOperation(id, method), typeID(resultType), condID(conditionID), trueID(trueObj), falseID(falseObj)
-{
-
-}
-
-SPIRVSelect::~SPIRVSelect()
 {
 
 }
@@ -776,11 +716,6 @@ SPIRVSwitch::SPIRVSwitch(const uint32_t id, SPIRVMethod& method, const uint32_t 
 
 }
 
-SPIRVSwitch::~SPIRVSwitch()
-{
-
-}
-
 void SPIRVSwitch::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
     const Value selector = getValue(selectorID, *method.method, types, constants, memoryAllocated, localTypes);
@@ -806,7 +741,7 @@ Optional<Value> SPIRVSwitch::precalculate(const std::map<uint32_t, DataType>& ty
 {
 	if(constants.find(selectorID) != constants.end())
 	{
-		Value selector = constants.at(selectorID);
+		const Value& selector = constants.at(selectorID);
 		for(const auto& pair : destinations)
 		{
 			if(selector.hasLiteral(Literal(static_cast<int64_t>(pair.first))) && constants.find(pair.second) != constants.end())
@@ -820,11 +755,6 @@ Optional<Value> SPIRVSwitch::precalculate(const std::map<uint32_t, DataType>& ty
 
 SPIRVImageQuery::SPIRVImageQuery(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const ImageQuery value, const uint32_t imageID, const uint32_t lodOrCoordinate) :
         SPIRVOperation(id, method), typeID(resultType), valueID(value), imageID(imageID), lodOrCoordinate(lodOrCoordinate)
-{
-
-}
-
-SPIRVImageQuery::~SPIRVImageQuery()
 {
 
 }
@@ -883,10 +813,6 @@ vc4c::spirv2qasm::SPIRVMemoryBarrier::SPIRVMemoryBarrier(SPIRVMethod& method, co
 {
 }
 
-vc4c::spirv2qasm::SPIRVMemoryBarrier::~SPIRVMemoryBarrier()
-{
-}
-
 void vc4c::spirv2qasm::SPIRVMemoryBarrier::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods,
 		std::map<uint32_t, Local*>& memoryAllocated) const
 {
@@ -906,11 +832,6 @@ Optional<Value> vc4c::spirv2qasm::SPIRVMemoryBarrier::precalculate(const std::ma
 }
 
 SPIRVLifetimeInstruction::SPIRVLifetimeInstruction(const uint32_t id, SPIRVMethod& method, uint32_t size, bool lifetimeEnd, const intermediate::InstructionDecorations decorations) : SPIRVOperation(id, method, decorations), sizeInBytes(size), isLifetimeEnd(lifetimeEnd)
-{
-
-}
-
-SPIRVLifetimeInstruction::~SPIRVLifetimeInstruction()
 {
 
 }

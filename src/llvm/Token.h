@@ -10,6 +10,8 @@
 #include "CompilationError.h"
 #include "helper.h"
 
+#include <array>
+
 namespace vc4c
 {
 
@@ -54,7 +56,7 @@ namespace vc4c
 					case TokenType::NUMBER:
 						return std::to_string(integer);
 					case TokenType::STRING:
-						return text;
+						return text.data();
 					case TokenType::EMPTY:
 						return "(empty)";
 					case TokenType::END:
@@ -66,29 +68,29 @@ namespace vc4c
 
 			bool hasValue(const std::string& val) const
 			{
-				return type == TokenType::STRING && val.compare(text) == 0;
+				return type == TokenType::STRING && val.compare(text.data()) == 0;
 			}
 
-			bool hasValue(const char val) const
+			bool hasValue(char val) const
 			{
-				return type == TokenType::STRING && *text == val;
+				return type == TokenType::STRING && text[0] == val;
 			}
 
 			Optional<std::string> getText() const
 			{
 				if (type == TokenType::STRING)
-					return std::string(text);
+					return std::string(text.data());
 				return
 				{};
 			}
 		private:
-			char text[TOKEN_BUFFER_SIZE];
+			std::array<char, TOKEN_BUFFER_SIZE> text;
 
 			friend class Scanner;
 			friend class IRParser;
 		};
-	}
-}
+	} // namespace llvm2qasm
+} // namespace vc4c
 
 #endif /* TOKEN_H */
 

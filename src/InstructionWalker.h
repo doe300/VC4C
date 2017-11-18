@@ -7,7 +7,6 @@
 #ifndef INSTRUCTION_WALKER_H
 #define INSTRUCTION_WALKER_H
 
-#include "Graph.h"
 #include "Module.h"
 #include "intermediate/IntermediateInstruction.h"
 
@@ -15,6 +14,11 @@
 
 namespace vc4c
 {
+	template<typename K, typename R>
+	struct Node;
+	template<typename K, typename NodeType>
+	struct Graph;
+
 	enum class InstructionVisitResult
 	{
 		//continue to visit the next instruction

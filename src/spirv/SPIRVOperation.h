@@ -8,27 +8,31 @@
 #define SPIRVOPERATION_H
 #ifdef SPIRV_HEADER
 
-#include <memory>
-#include <map>
-#include <vector>
-
 #include "../Module.h"
 #include "helper.h"
-#include "../intermediate/IntermediateInstruction.h"
+
+#include <map>
+#include <memory>
+#include <vector>
 
 namespace vc4c
 {
+	namespace intermediate
+	{
+		enum class InstructionDecorations;
+	} // namespace intermediate
+
 	namespace spirv2qasm
 	{
 		static constexpr uint32_t UNDEFINED_ID { 0 };
 
 		struct SPIRVMethod
 		{
-			const uint32_t id;
 			std::unique_ptr<Method> method;
 			std::vector<std::pair<uint32_t, uint32_t>> parameters;
+			const uint32_t id;
 
-			SPIRVMethod(const uint32_t id, const Module& module) : id(id), method(new Method(module))
+			SPIRVMethod(uint32_t id, const Module& module) : method(new Method(module)), id(id)
 			{
 
 			}
@@ -37,7 +41,7 @@ namespace vc4c
 		class SPIRVOperation
 		{
 		public:
-			SPIRVOperation(const uint32_t id, SPIRVMethod& method, const intermediate::InstructionDecorations decorations = intermediate::InstructionDecorations::NONE);
+			SPIRVOperation(uint32_t id, SPIRVMethod& method, intermediate::InstructionDecorations decorations = static_cast<intermediate::InstructionDecorations>(0));
 			virtual ~SPIRVOperation();
 
 			virtual void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods,
@@ -57,12 +61,11 @@ namespace vc4c
 		{
 		public:
 
-			SPIRVInstruction(const uint32_t id, SPIRVMethod& method, const std::string& opcode, const uint32_t resultType, const std::vector<uint32_t>& operands, const intermediate::InstructionDecorations decorations =
-					intermediate::InstructionDecorations::NONE);
-			virtual ~SPIRVInstruction();
+			SPIRVInstruction(uint32_t id, SPIRVMethod& method, const std::string& opcode, uint32_t resultType, const std::vector<uint32_t>& operands, intermediate::InstructionDecorations decorations =
+					static_cast<intermediate::InstructionDecorations>(0));
+			~SPIRVInstruction() override = default;
 
-			virtual void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
-					override;
+			void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const override;
 			Optional<Value> precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const override;
 
 		protected:
@@ -75,11 +78,11 @@ namespace vc4c
 		{
 		public:
 
-			SPIRVComparison(const uint32_t id, SPIRVMethod& method, const std::string& opcode, const uint32_t resultType, const std::vector<uint32_t>& operands, const intermediate::InstructionDecorations decorations =
-					intermediate::InstructionDecorations::NONE);
-			virtual ~SPIRVComparison();
+			SPIRVComparison(uint32_t id, SPIRVMethod& method, const std::string& opcode, uint32_t resultType, const std::vector<uint32_t>& operands, intermediate::InstructionDecorations decorations =
+					static_cast<intermediate::InstructionDecorations>(0));
+			~SPIRVComparison() override = default;
 
-			virtual void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
+			void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 					override;
 			Optional<Value> precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const override;
 		};
@@ -87,11 +90,11 @@ namespace vc4c
 		class SPIRVCallSite: public SPIRVOperation
 		{
 		public:
-			SPIRVCallSite(const uint32_t id, SPIRVMethod& method, const uint32_t methodID, const uint32_t resultType, const std::vector<uint32_t>& arguments);
-			SPIRVCallSite(const uint32_t id, SPIRVMethod& method, const std::string& methodName, const uint32_t resultType, const std::vector<uint32_t>& arguments);
-			virtual ~SPIRVCallSite();
+			SPIRVCallSite(uint32_t id, SPIRVMethod& method, uint32_t methodID, uint32_t resultType, const std::vector<uint32_t>& arguments);
+			SPIRVCallSite(uint32_t id, SPIRVMethod& method, const std::string& methodName, uint32_t resultType, const std::vector<uint32_t>& arguments);
+			~SPIRVCallSite() override = default;
 
-			virtual void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
+			void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 					override;
 			Optional<Value> precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const override;
 
@@ -105,9 +108,9 @@ namespace vc4c
 		class SPIRVReturn: public SPIRVOperation
 		{
 		public:
-			SPIRVReturn(SPIRVMethod& method);
-			SPIRVReturn(const uint32_t returnValue, SPIRVMethod& method);
-			virtual ~SPIRVReturn();
+			explicit SPIRVReturn(SPIRVMethod& method);
+			SPIRVReturn(uint32_t returnValue, SPIRVMethod& method);
+			~SPIRVReturn() override = default;
 
 			void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 					override;
@@ -120,9 +123,9 @@ namespace vc4c
 		class SPIRVBranch: public SPIRVOperation
 		{
 		public:
-			SPIRVBranch(SPIRVMethod& method, const uint32_t labelID);
-			SPIRVBranch(SPIRVMethod& method, const uint32_t conditionID, const uint32_t trueLabelID, const uint32_t falseLabelID);
-			virtual ~SPIRVBranch();
+			SPIRVBranch(SPIRVMethod& method, uint32_t labelID);
+			SPIRVBranch(SPIRVMethod& method, uint32_t conditionID, uint32_t trueLabelID, uint32_t falseLabelID);
+			~SPIRVBranch() override = default;
 
 			void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 					override;
@@ -136,8 +139,8 @@ namespace vc4c
 		class SPIRVLabel: public SPIRVOperation
 		{
 		public:
-			SPIRVLabel(const uint32_t id, SPIRVMethod& method);
-			virtual ~SPIRVLabel();
+			SPIRVLabel(uint32_t id, SPIRVMethod& method);
+			~SPIRVLabel() override = default;
 
 			void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 					override;
@@ -152,8 +155,8 @@ namespace vc4c
 		class SPIRVConversion: public SPIRVOperation
 		{
 		public:
-			SPIRVConversion(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const uint32_t sourceID, const ConversionType type, const intermediate::InstructionDecorations decorations, bool isSaturated = false);
-			virtual ~SPIRVConversion();
+			SPIRVConversion(uint32_t id, SPIRVMethod& method, uint32_t resultType, uint32_t sourceID, ConversionType type, intermediate::InstructionDecorations decorations, bool isSaturated = false);
+			~SPIRVConversion() override = default;
 
 			void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 					override;
@@ -174,10 +177,10 @@ namespace vc4c
 		{
 		public:
 			//copies whole object
-			SPIRVCopy(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const uint32_t sourceID, const MemoryAccess memoryAccess = MemoryAccess::NONE, const uint32_t size = UNDEFINED_ID);
+			SPIRVCopy(uint32_t id, SPIRVMethod& method, uint32_t resultType, uint32_t sourceID, MemoryAccess memoryAccess = MemoryAccess::NONE, uint32_t size = UNDEFINED_ID);
 			//copies single parts
-			SPIRVCopy(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const uint32_t sourceID, const std::vector<uint32_t>& destIndices, const std::vector<uint32_t>& sourceIndices);
-			virtual ~SPIRVCopy();
+			SPIRVCopy(uint32_t id, SPIRVMethod& method, uint32_t resultType, uint32_t sourceID, const std::vector<uint32_t>& destIndices, const std::vector<uint32_t>& sourceIndices);
+			~SPIRVCopy() override = default;
 			void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 					override;
 			Optional<Value> precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const override;
@@ -194,9 +197,9 @@ namespace vc4c
 		class SPIRVShuffle: public SPIRVOperation
 		{
 		public:
-			SPIRVShuffle(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const uint32_t sourceID0, const uint32_t sourceID1, const std::vector<uint32_t>& indices);
-			SPIRVShuffle(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const uint32_t sourceID0, const uint32_t sourceID1, const uint32_t compositeIndex);
-			virtual ~SPIRVShuffle();
+			SPIRVShuffle(uint32_t id, SPIRVMethod& method, uint32_t resultType, uint32_t sourceID0, uint32_t sourceID1, const std::vector<uint32_t>& indices);
+			SPIRVShuffle(uint32_t id, SPIRVMethod& method, uint32_t resultType, uint32_t sourceID0, uint32_t sourceID1, uint32_t compositeIndex);
+			~SPIRVShuffle() override = default;
 
 			void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 					override;
@@ -213,8 +216,8 @@ namespace vc4c
 		class SPIRVIndexOf: public SPIRVOperation
 		{
 		public:
-			SPIRVIndexOf(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const uint32_t containerID, const std::vector<uint32_t>& indices, const bool isPtrAcessChain);
-			virtual ~SPIRVIndexOf();
+			SPIRVIndexOf(uint32_t id, SPIRVMethod& method, uint32_t resultType, uint32_t containerID, const std::vector<uint32_t>& indices, bool isPtrAcessChain);
+			~SPIRVIndexOf() override = default;
 
 			void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 					override;
@@ -230,8 +233,8 @@ namespace vc4c
 		class SPIRVPhi: public SPIRVOperation
 		{
 		public:
-			SPIRVPhi(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const std::vector<std::pair<uint32_t, uint32_t>>& sources);
-			virtual ~SPIRVPhi();
+			SPIRVPhi(uint32_t id, SPIRVMethod& method, uint32_t resultType, const std::vector<std::pair<uint32_t, uint32_t>>& sources);
+			~SPIRVPhi() override = default;
 
 			void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 					override;
@@ -245,12 +248,11 @@ namespace vc4c
 		class SPIRVSelect: public SPIRVOperation
 		{
 		public:
-			SPIRVSelect(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const uint32_t conditionID, const uint32_t trueObj, const uint32_t falseObj);
-			virtual ~SPIRVSelect();
+			SPIRVSelect(uint32_t id, SPIRVMethod& method, uint32_t resultType, uint32_t conditionID, uint32_t trueObj, uint32_t falseObj);
+			~SPIRVSelect() override = default;
 
 			void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 					override;
-			;
 			Optional<Value> precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const override;
 		private:
 			const uint32_t typeID;
@@ -262,8 +264,8 @@ namespace vc4c
 		class SPIRVSwitch: public SPIRVOperation
 		{
 		public:
-			SPIRVSwitch(const uint32_t id, SPIRVMethod& method, const uint32_t selectorID, const uint32_t defaultID, const std::vector<std::pair<uint32_t, uint32_t>>& destinations);
-			virtual ~SPIRVSwitch();
+			SPIRVSwitch(uint32_t id, SPIRVMethod& method, uint32_t selectorID, uint32_t defaultID, const std::vector<std::pair<uint32_t, uint32_t>>& destinations);
+			~SPIRVSwitch() override = default;
 
 			void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 					override;
@@ -283,8 +285,8 @@ namespace vc4c
 		class SPIRVImageQuery: public SPIRVOperation
 		{
 		public:
-			SPIRVImageQuery(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const ImageQuery value, const uint32_t imageID, const uint32_t lodOrCoordinate = UNDEFINED_ID);
-			virtual ~SPIRVImageQuery();
+			SPIRVImageQuery(uint32_t id, SPIRVMethod& method, uint32_t resultType, ImageQuery value, uint32_t imageID, uint32_t lodOrCoordinate = UNDEFINED_ID);
+			~SPIRVImageQuery() override = default;
 
 			void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 					override;
@@ -300,8 +302,8 @@ namespace vc4c
 		class SPIRVMemoryBarrier : public SPIRVOperation
 		{
 		public:
-			SPIRVMemoryBarrier(SPIRVMethod& method, const uint32_t scopeID, const uint32_t semanticsID);
-			virtual ~SPIRVMemoryBarrier();
+			SPIRVMemoryBarrier(SPIRVMethod& method, uint32_t scopeID, uint32_t semanticsID);
+			~SPIRVMemoryBarrier() override = default;
 
 			void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 					override;
@@ -314,8 +316,8 @@ namespace vc4c
 		class SPIRVLifetimeInstruction : public SPIRVOperation
 		{
 		public:
-			SPIRVLifetimeInstruction(const uint32_t id, SPIRVMethod& method, uint32_t size, bool lifetimeEnd, const intermediate::InstructionDecorations decorations = intermediate::InstructionDecorations::NONE);
-			virtual ~SPIRVLifetimeInstruction();
+			SPIRVLifetimeInstruction(uint32_t id, SPIRVMethod& method, uint32_t size, bool lifetimeEnd, intermediate::InstructionDecorations decorations = static_cast<intermediate::InstructionDecorations>(0));
+			~SPIRVLifetimeInstruction() override = default;
 
 			void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 					override;
@@ -324,8 +326,8 @@ namespace vc4c
 			const uint32_t sizeInBytes;
 			const bool isLifetimeEnd;
 		};
-	}
-}
+	} // namespace spirv2qasm
+} // namespace vc4c
 
 
 

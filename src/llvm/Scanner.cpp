@@ -4,24 +4,17 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include <string.h>
-#include <algorithm>
-#include <cmath>
 
 #include "Scanner.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstring>
 
 using namespace vc4c;
 using namespace vc4c::llvm2qasm;
 
 Scanner::Scanner(std::istream& input) : lineNumber(0), rowNumber(0), input(input), lookAhead(false,{})
-{
-}
-
-Scanner::Scanner(const Scanner& orig) : lineNumber(orig.lineNumber), rowNumber(orig.rowNumber), input(orig.input), lookAhead(orig.lookAhead)
-{
-}
-
-Scanner::~Scanner()
 {
 }
 
@@ -54,10 +47,10 @@ bool Scanner::hasInput()
 
 std::string Scanner::getErrorPosition() const
 {
-    char buffer[1024] = {0};
+	std::array<char, 1024> buffer{};
     //TODO always points to the end of the error (since we read until there)
-    sprintf(buffer, "Error in line %u, row %u: ", lineNumber, rowNumber);
-    return buffer;
+    sprintf(buffer.data(), "Error in line %u, row %u: ", lineNumber, rowNumber);
+    return buffer.data();
 }
 
 unsigned int Scanner::getLineNumber() const
@@ -78,7 +71,7 @@ inline bool isStringCharacter(char c)
 
 const Token Scanner::readToken()
 {
-    Token result = {};
+    Token result{};
     //skip all leading white-spaces
     std::iostream::traits_type::int_type c;
     while (std::isspace(c = input.peek())) {
@@ -103,7 +96,7 @@ const Token Scanner::readToken()
         const Token t = readLine();
         if(t.to_string().find("<label>") != std::string::npos)
             return t;
-        Token end;
+        Token end{};
         end.type = TokenType::END;
         return end;
     }
@@ -114,7 +107,8 @@ const Token Scanner::readToken()
     else if (isStringCharacter(c))   //text -> text or bool
     {
         bool inStringLiteral = c == '"';
-        char buffer[TOKEN_BUFFER_SIZE] = {0};
+        std::array<char, TOKEN_BUFFER_SIZE> buffer{};
+        buffer.fill(0);
         unsigned i = 0;
         for(; i < TOKEN_BUFFER_SIZE; ++i)
         {
@@ -130,7 +124,7 @@ const Token Scanner::readToken()
                 if((buffer[0] == '"' ? i > 0 : i > 1) && c =='"')
                 {
                     //include closing '"'
-                    buffer[i] = static_cast<char>(skipChar());
+                    buffer.at(i) = static_cast<char>(skipChar());
                     ++i;
                     break;
                 }
@@ -139,14 +133,14 @@ const Token Scanner::readToken()
             {
                 break;
             }
-            buffer[i] = static_cast<char>(skipChar());
+            buffer.at(i) = static_cast<char>(skipChar());
         }
-        if (strcasecmp("true", buffer) == 0) // boolean true
+        if (strcasecmp("true", buffer.data()) == 0) // boolean true
         {
             result.type = TokenType::BOOLEAN;
             result.flag = true;
         }
-        else if (strcasecmp("false", buffer) == 0) // boolean false
+        else if (strcasecmp("false", buffer.data()) == 0) // boolean false
         {
             result.type = TokenType::BOOLEAN;
             result.flag = false;
@@ -154,7 +148,7 @@ const Token Scanner::readToken()
         else // some other text
         {
             result.type = TokenType::STRING;
-            memcpy(result.text, buffer, i);
+            memcpy(result.text.data(), buffer.data(), i);
         }
         return result;
     }
@@ -194,7 +188,7 @@ const Token Scanner::readToken()
 
 const Token Scanner::readNumber()
 {
-    Token result;
+    Token result{};
     std::string numberToken;
     while(std::isalnum(input.peek()) || input.peek() == '.' || input.peek() == '-' || input.peek() == '+')
     {
@@ -220,9 +214,9 @@ const Token Scanner::readNumber()
 const Token Scanner::readLine()
 {
     std::iostream::traits_type::int_type c;
-    Token line;
+    Token line{};
     line.type = TokenType::STRING;
-    memset(line.text, '\0', TOKEN_BUFFER_SIZE);
+    memset(line.text.data(), '\0', TOKEN_BUFFER_SIZE);
     std::size_t i = 0;
     while ((c = input.peek()) != std::iostream::traits_type::eof() && c != '\0')
     {
@@ -232,7 +226,7 @@ const Token Scanner::readLine()
             rowNumber = 0;
             break;
         }
-        line.text[i++] = skipChar();
+        line.text.at(i++) = skipChar();
     }
     return line;
 }

@@ -4,8 +4,10 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include "CompilationError.h"
 #include "InstructionWalker.h"
+
+#include "CompilationError.h"
+#include "Graph.h"
 
 using namespace vc4c;
 
