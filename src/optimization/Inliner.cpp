@@ -5,8 +5,9 @@
  */
 
 #include "Inliner.h"
-#include "../intermediate/IntermediateInstruction.h"
+
 #include "../intermediate/Helper.h"
+#include "../intermediate/IntermediateInstruction.h"
 #include "log.h"
 
 using namespace vc4c;

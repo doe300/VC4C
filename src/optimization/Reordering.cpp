@@ -5,9 +5,10 @@
  */
 
 #include "Reordering.h"
-#include "log.h"
+
 #include "../intermediate/Helper.h"
 #include "../Profiler.h"
+#include "log.h"
 
 using namespace vc4c;
 using namespace vc4c::optimizations;

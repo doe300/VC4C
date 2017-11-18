@@ -11,6 +11,7 @@
 
 #include <exception>
 #include <functional>
+#include <vector>
 
 #ifdef MULTI_THREADED
 #include <dlfcn.h>

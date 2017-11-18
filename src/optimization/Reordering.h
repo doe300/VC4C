@@ -7,15 +7,13 @@
 #ifndef REORDERING_H
 #define REORDERING_H
 
-#include <config.h>
-#include "../intermediate/IntermediateInstruction.h"
-#include "../Module.h"
-#include "../InstructionWalker.h"
-
-#include <list>
+#include "config.h"
 
 namespace vc4c
 {
+	class Method;
+	class Module;
+	class InstructionWalker;
 
 	namespace optimizations
 	{
@@ -30,8 +28,8 @@ namespace vc4c
 		void reorderWithinBasicBlocks(const Module& module, Method& method, const Configuration& config);
 
 		InstructionWalker moveRotationSourcesToAccumulators(const Module& module, Method& method, InstructionWalker it, const Configuration& config);
-	}
-}
+	} // namespace optimizations
+} // namespace vc4c
 
 #endif /* REORDERING_H */
 

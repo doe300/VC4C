@@ -4,11 +4,12 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include <config.h>
-#include <algorithm>
-
 #include "Helper.h"
+
 #include "CompilationError.h"
+#include "config.h"
+
+#include <algorithm>
 
 using namespace vc4c;
 using namespace vc4c::intermediate;

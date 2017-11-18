@@ -4,16 +4,19 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include "../periphery/VPM.h"
 #include "Intrinsics.h"
-#include "Comparisons.h"
-#include "Operators.h"
-#include "Images.h"
-#include "log.h"
+
 #include "../intermediate/Helper.h"
-#include <map>
+#include "../periphery/VPM.h"
+
+#include "Comparisons.h"
+#include "Images.h"
+#include "Operators.h"
+#include "log.h"
+
 #include <cmath>
-#include <stdbool.h>
+#include <cstdbool>
+#include <map>
 #include <vector>
 
 using namespace vc4c;
@@ -41,7 +44,7 @@ static IntrinsicFunction intrinsifyUnaryALUInstruction(const std::string& opCode
 		bool isUnsigned = callSite->getArgument(1).hasValue && callSite->getArgument(1).get().hasType(ValueType::LITERAL) && callSite->getArgument(1).get().literal.integer == VC4CL_UNSIGNED;
 
 		logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to operation " << opCode << logging::endl;
-		if(opCode.compare("mov") == 0)
+		if(opCode == "mov")
 			it.reset((new MoveOperation(callSite->getOutput(), callSite->getArgument(0)))->copyExtrasFrom(callSite));
 		else
 		it.reset((new Operation(opCode, callSite->getOutput(), callSite->getArgument(0)))->copyExtrasFrom(callSite));
@@ -215,7 +218,7 @@ struct Intrinsic
     const Optional<UnaryInstruction> unaryInstr;
     const Optional<BinaryInstruction> binaryInstr;
     
-    Intrinsic(const IntrinsicFunction& func): func(func) { }
+    explicit Intrinsic(const IntrinsicFunction& func): func(func) { }
     
     Intrinsic(const IntrinsicFunction& func, const UnaryInstruction unary) : func(func), unaryInstr(unary) { }
     
@@ -440,19 +443,19 @@ static InstructionWalker intrinsifyComparison(Method& method, InstructionWalker 
     if(!isFloating)
     {
         //simplification, make a R b -> b R' a
-        if(COMP_UNSIGNED_GE.compare(comp->opCode) == 0)
+        if(COMP_UNSIGNED_GE == comp->opCode)
         {
             swapComparisons(COMP_UNSIGNED_LE, comp);
         }
-        else if(COMP_UNSIGNED_GT.compare(comp->opCode) == 0)
+        else if(COMP_UNSIGNED_GT == comp->opCode)
         {
             swapComparisons(COMP_UNSIGNED_LT, comp);
         }
-        else if(COMP_SIGNED_GE.compare(comp->opCode) == 0)
+        else if(COMP_SIGNED_GE == comp->opCode)
         {
             swapComparisons(COMP_SIGNED_LE, comp);
         }
-        else if(COMP_SIGNED_GT.compare(comp->opCode) == 0)
+        else if(COMP_SIGNED_GT == comp->opCode)
         {
             swapComparisons(COMP_SIGNED_LT, comp);
         }
@@ -462,19 +465,19 @@ static InstructionWalker intrinsifyComparison(Method& method, InstructionWalker 
     else
     {
         //simplification, make a R b -> b R' a
-        if(COMP_ORDERED_GE.compare(comp->opCode) == 0)
+        if(COMP_ORDERED_GE == comp->opCode)
         {
             swapComparisons(COMP_ORDERED_LE, comp);
         }
-        else if(COMP_ORDERED_GT.compare(comp->opCode) == 0)
+        else if(COMP_ORDERED_GT == comp->opCode)
         {
             swapComparisons(COMP_ORDERED_LT, comp);
         }
-        else if(COMP_UNORDERED_GE.compare(comp->opCode) == 0)
+        else if(COMP_UNORDERED_GE == comp->opCode)
         {
             swapComparisons(COMP_UNORDERED_LE, comp);
         }
-        else if(COMP_UNORDERED_GT.compare(comp->opCode) == 0)
+        else if(COMP_UNORDERED_GT == comp->opCode)
         {
             swapComparisons(COMP_UNORDERED_LT, comp);
         }
@@ -502,7 +505,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     const Value& arg1 = op->getSecondArg().orElse(UNDEFINED_VALUE);
     const bool saturateResult = has_flag(op->decoration, InstructionDecorations::SATURATED_CONVERSION);
     //integer multiplication
-    if(op->opCode.compare("mul") == 0)
+    if(op->opCode == "mul")
     {
         //a * b = b * a
         //a * 2^n = a << n
@@ -535,7 +538,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         }
     }
     //unsigned division
-    else if(op->opCode.compare("udiv") == 0)
+    else if(op->opCode == "udiv")
     {
         if(arg0.hasType(ValueType::LITERAL) && arg1.hasType(ValueType::LITERAL))
         {
@@ -559,7 +562,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         }
     }
     //signed division
-    else if(op->opCode.compare("sdiv") == 0)
+    else if(op->opCode == "sdiv")
     {
         if(arg0.hasType(ValueType::LITERAL) && arg1.hasType(ValueType::LITERAL))
         {
@@ -580,7 +583,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     }
     //unsigned modulo
     //LLVM IR calls it urem, SPIR-V umod
-    else if(op->opCode.compare("urem") == 0 || op->opCode.compare("umod") == 0)
+    else if(op->opCode == "urem" || op->opCode == "umod")
     {
         if(arg0.hasType(ValueType::LITERAL) && arg1.hasType(ValueType::LITERAL))
         {
@@ -599,7 +602,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         }
     }
     //signed modulo
-    else if(op->opCode.compare("srem") == 0)
+    else if(op->opCode == "srem")
     {
         if(arg0.hasType(ValueType::LITERAL) && arg1.hasType(ValueType::LITERAL))
         {
@@ -612,7 +615,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         }
     }
     //floating division
-    else if(op->opCode.compare("fdiv") == 0)
+    else if(op->opCode == "fdiv")
     {
         if(arg0.hasType(ValueType::LITERAL) && arg1.hasType(ValueType::LITERAL))
         {
@@ -640,7 +643,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         }
     }
     //truncate bits
-    else if(op->opCode.compare("trunc") == 0)
+    else if(op->opCode == "trunc")
     {
     	if(saturateResult)
     	{
@@ -665,7 +668,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             op->setArgument(1, Value(Literal(op->getOutput().get().type.getScalarWidthMask()), TYPE_INT32));
         }
     }
-    else if(op->opCode.compare("fptrunc") == 0)
+    else if(op->opCode == "fptrunc")
     {
     	if(saturateResult)
     	{
@@ -686,26 +689,26 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             throw CompilationError(CompilationStep::OPTIMIZER, "Unsupported floating-point type", op->getOutput().get().type.to_string());
     }
     //arithmetic shift right
-    else if(op->opCode.compare("ashr") == 0)
+    else if(op->opCode == "ashr")
     {
         //just surgical modification
         op->setOpCode(OP_ASR);
     }
-    else if(op->opCode.compare("lshr") == 0)
+    else if(op->opCode == "lshr")
     {
         //TODO only if type <= i32 and/or offset <= 32
         //just surgical modification
         op->setOpCode(OP_SHR);
     }
     //integer to float
-    else if(op->opCode.compare("sitofp") == 0)
+    else if(op->opCode == "sitofp")
     {
     	//for non 32-bit types, need to sign-extend
     	Value tmp = op->getFirstArg();
     	if(op->getFirstArg().type.getScalarBitCount() < 32)
     	{
     		tmp = method.addNewLocal(TYPE_INT32, "%sitofp");
-    		it = insertSignExtension(it, method, op->getFirstArg(), tmp, op->conditional);
+    		it = insertSignExtension(it, method, op->getFirstArg(), tmp, true, op->conditional);
     		it.nextInBlock();
     	}
         //just surgical modification
@@ -713,7 +716,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(tmp != op->getFirstArg())
         	op->setArgument(0, tmp);
     }
-    else if(op->opCode.compare("uitofp") == 0)
+    else if(op->opCode == "uitofp")
     {
     	const Value tmp = method.addNewLocal(op->getOutput().get().type, "%uitofp");
         if(op->getFirstArg().type.getScalarBitCount() < 32)
@@ -742,13 +745,13 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         }
     }
     //float to integer
-    else if(op->opCode.compare("fptosi") == 0)
+    else if(op->opCode == "fptosi")
     {
         //just surgical modification
         op->setOpCode(OP_FTOI);
     }
     //float to unsigned integer
-    else if(op->opCode.compare("fptoui") == 0)
+    else if(op->opCode == "fptoui")
     {
         //TODO special treatment??
     	//TODO truncate to type?
@@ -756,7 +759,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         op->decoration = add_flag(op->decoration, InstructionDecorations::UNSIGNED_RESULT);
     }
     //sign extension
-    else if(op->opCode.compare("sext") == 0)
+    else if(op->opCode == "sext")
     {
         logging::debug() << "Intrinsifying sign extension with shifting" << logging::endl;
         it = insertSignExtension(it, method, op->getFirstArg(), op->getOutput(), true, op->conditional, op->setFlags);
@@ -766,7 +769,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         it.previousInBlock();
     }
     //zero extension
-    else if(op->opCode.compare("zext") == 0)
+    else if(op->opCode == "zext")
     {
         logging::debug() << "Intrinsifying zero extension with and" << logging::endl;
         it = insertZeroExtension(it, method, op->getFirstArg(), op->getOutput(), true, op->conditional, op->setFlags);
@@ -861,33 +864,35 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
 		out.type = TYPE_INT8;
 		return it.reset((new MoveOperation(out, method.findOrCreateLocal(TYPE_INT32, Method::WORK_DIMENSIONS)->createReference()))->copyExtrasFrom(callSite)->setDecorations(add_flag(callSite->decoration, InstructionDecorations::BUILTIN_WORK_DIMENSIONS)));
 	}
-	if(callSite->methodName.compare("vc4cl_num_groups") == 0 && callSite->getArguments().size() == 1)
+	if(callSite->methodName == "vc4cl_num_groups" && callSite->getArguments().size() == 1)
 	{
 		logging::debug() << "Intrinsifying reading of the number of work-groups" << logging::endl;
 		return intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0), {Method::NUM_GROUPS_X, Method::NUM_GROUPS_Y, Method::NUM_GROUPS_Z}, INT_ONE, InstructionDecorations::BUILTIN_NUM_GROUPS);
 	}
-	if(callSite->methodName.compare("vc4cl_group_id") == 0 && callSite->getArguments().size() == 1)
+	if(callSite->methodName == "vc4cl_group_id" && callSite->getArguments().size() == 1)
 	{
 		logging::debug() << "Intrinsifying reading of the work-group ids" << logging::endl;
 		return intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0), {Method::GROUP_ID_X, Method::GROUP_ID_Y, Method::GROUP_ID_Z}, INT_ZERO, InstructionDecorations::BUILTIN_GROUP_ID);
 	}
-	if(callSite->methodName.compare("vc4cl_global_offset") == 0 && callSite->getArguments().size() == 1)
+	if(callSite->methodName == "vc4cl_global_offset" && callSite->getArguments().size() == 1)
 	{
 		logging::debug() << "Intrinsifying reading of the global offsets" << logging::endl;
 		return intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0), {Method::GLOBAL_OFFSET_X, Method::GLOBAL_OFFSET_Y, Method::GLOBAL_OFFSET_Z}, INT_ZERO, InstructionDecorations::BUILTIN_GLOBAL_OFFSET);
 	}
-	if(callSite->methodName.compare("vc4cl_local_size") == 0 && callSite->getArguments().size() == 1)
+	if(callSite->methodName == "vc4cl_local_size" && callSite->getArguments().size() == 1)
 	{
 		logging::debug() << "Intrinsifying reading of local work-item sizes" << logging::endl;
 		//TODO needs to have a size of 1 for all higher dimensions (instead of currently implicit 0)
+		//TODO could use the value set via reqd_work_group_size(x, y, z) - if set - and return here
+		//this is valid, since the OpenCL standard states: "is the work-group size that must be used as the local_work_size argument to clEnqueueNDRangeKernel." (page 231)
 		return intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0), Method::LOCAL_SIZES, InstructionDecorations::BUILTIN_LOCAL_SIZE);
 	}
-	if(callSite->methodName.compare("vc4cl_local_id") == 0 && callSite->getArguments().size() == 1)
+	if(callSite->methodName == "vc4cl_local_id" && callSite->getArguments().size() == 1)
 	{
 		logging::debug() << "Intrinsifying reading of local work-item ids" << logging::endl;
 		return intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0), Method::LOCAL_IDS, InstructionDecorations::BUILTIN_LOCAL_ID);
 	}
-	if(callSite->methodName.compare("vc4cl_global_size") == 0 && callSite->getArguments().size() == 1)
+	if(callSite->methodName == "vc4cl_global_size" && callSite->getArguments().size() == 1)
 	{
 		//global_size(dim) = local_size(dim) * num_groups(dim)
 		logging::debug() << "Intrinsifying reading of global work-item sizes" << logging::endl;
@@ -903,7 +908,7 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
 		it.nextInBlock();
 		return it.reset((new Operation(OP_MUL24, callSite->getOutput(), tmpLocalSize, tmpNumGroups))->copyExtrasFrom(callSite)->setDecorations(add_flag(callSite->decoration, InstructionDecorations::BUILTIN_GLOBAL_SIZE)));
 	}
-	if(callSite->methodName.compare("vc4cl_global_id") == 0 && callSite->getArguments().size() == 1)
+	if(callSite->methodName == "vc4cl_global_id" && callSite->getArguments().size() == 1)
 	{
 		//global_id(dim) = global_offset(dim) + (group_id(dim) * local_size(dim) + local_id(dim)
 		logging::debug() << "Intrinsifying reading of global work-item ids" << logging::endl;

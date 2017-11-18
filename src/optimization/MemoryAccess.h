@@ -7,11 +7,14 @@
 #ifndef OPTIMIZATION_MEMORYACCESS_H
 #define OPTIMIZATION_MEMORYACCESS_H
 
-#include <config.h>
-#include "../Module.h"
+#include "config.h"
 
 namespace vc4c
 {
+	class Method;
+	class Module;
+	class InstructionWalker;
+
 	namespace optimizations
 	{
 		/*
@@ -35,7 +38,7 @@ namespace vc4c
 		 * - maps the addresses to offsets from global-data pointer (see #accessGlobalData)
 		 */
 		void resolveStackAllocations(const Module& module, Method& method, const Configuration& config);
-	}
-}
+	} // namespace optimizations
+} // namespace vc4c
 
 #endif /* OPTIMIZATION_MEMORYACCESS_H */

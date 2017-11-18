@@ -7,8 +7,6 @@
 #ifndef INTERMEDIATE_TMU_H
 #define INTERMEDIATE_TMU_H
 
-#include "../Bitfield.h"
-#include "../Types.h"
 #include "../Module.h"
 
 namespace vc4c

@@ -4,11 +4,12 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include <math.h>
-
 #include "Comparisons.h"
-#include "helper.h"
+
 #include "../intermediate/Helper.h"
+#include "helper.h"
+
+#include <cmath>
 
 using namespace vc4c;
 using namespace vc4c::intermediate;
@@ -43,7 +44,7 @@ InstructionWalker intermediate::intrinsifyIntegerRelation(Method& method, Instru
 {
     //http://llvm.org/docs/LangRef.html#icmp-instruction
 	const Value tmp = method.addNewLocal(comp->getFirstArg().type, "%icomp");
-    if(COMP_EQ.compare(comp->opCode) == 0)
+    if(COMP_EQ == comp->opCode)
     {
         // a == b <=> a xor b == 0 [<=> a - b == 0]
         if(comp->getFirstArg().hasType(ValueType::LOCAL) && comp->getSecondArg().get().hasLiteral(Literal(static_cast<int64_t>(0))))
@@ -55,7 +56,7 @@ InstructionWalker intermediate::intrinsifyIntegerRelation(Method& method, Instru
         it.nextInBlock();
         it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_SET);
     }
-    else if(COMP_NEQ.compare(comp->opCode) == 0)
+    else if(COMP_NEQ == comp->opCode)
     {
         // a != b <=> a xor b != 0 [<=> a - b != 0] [<=> max(a,b) - min(a,b) != 0]
         if(comp->getFirstArg().hasType(ValueType::LOCAL) && comp->getSecondArg().get().hasLiteral(Literal(static_cast<int64_t>(0))))
@@ -68,7 +69,7 @@ InstructionWalker intermediate::intrinsifyIntegerRelation(Method& method, Instru
         //true if ZERO is not set, otherwise false
         it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_CLEAR);
     }
-    else if(COMP_UNSIGNED_LT.compare(comp->opCode) == 0)
+    else if(COMP_UNSIGNED_LT== comp->opCode)
     {
         //a < b [<=> min(a, b) != b] <=> max(a, b) != a
         it.emplace(new Operation(OP_MAX, tmp, comp->getFirstArg(), comp->getSecondArg(), comp->conditional));
@@ -78,7 +79,7 @@ InstructionWalker intermediate::intrinsifyIntegerRelation(Method& method, Instru
         //true if ZERO is not set, otherwise false
         it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_CLEAR);
     }
-    else if(COMP_UNSIGNED_LE.compare(comp->opCode) == 0)
+    else if(COMP_UNSIGNED_LE == comp->opCode)
     {
         //a <= b [<=> min(a, b) == a] <=> max(a, b) == b
         it.emplace(new Operation(OP_MAX, tmp, comp->getFirstArg(), comp->getSecondArg(), comp->conditional));
@@ -87,7 +88,7 @@ InstructionWalker intermediate::intrinsifyIntegerRelation(Method& method, Instru
         it.nextInBlock();
         it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_SET);
     }
-    else if(COMP_SIGNED_LT.compare(comp->opCode) == 0)
+    else if(COMP_SIGNED_LT == comp->opCode)
     {
         //a < b [<=> min(a, b) != b] [<=> max(a, b) != a] <=> a - b < 0
 
@@ -110,7 +111,7 @@ InstructionWalker intermediate::intrinsifyIntegerRelation(Method& method, Instru
 		//true if NEGATIVE is set, otherwise false
 		it = replaceWithSetBoolean(it, comp->getOutput(), COND_NEGATIVE_SET);
     }
-    else if(COMP_SIGNED_LE.compare(comp->opCode) == 0)
+    else if(COMP_SIGNED_LE == comp->opCode)
     {
         //a <= b <=> min(a, b) == a [<=> max(a, b) == b]
         it.emplace(new Operation(OP_MIN, tmp, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
@@ -157,31 +158,31 @@ InstructionWalker intermediate::intrinsifyFloatingRelation(Method& method, Instr
 
     //http://llvm.org/docs/LangRef.html#fcmp-instruction
 	const Value tmp = method.addNewLocal(comp->getFirstArg().type, comp->getOutput().get().local->name);
-    if(COMP_TRUE.compare(comp->opCode) == 0)
+    if(COMP_TRUE == comp->opCode)
     {
         // true
         it.reset(new MoveOperation(comp->getOutput(), BOOL_TRUE, comp->conditional, SetFlag::SET_FLAGS));
     }
-    else if(COMP_FALSE.compare(comp->opCode) == 0)
+    else if(COMP_FALSE == comp->opCode)
     {
         // false
         it.reset(new MoveOperation(comp->getOutput(), BOOL_FALSE, comp->conditional, SetFlag::SET_FLAGS));
     }
-    else if(COMP_ORDERED_EQ.compare(comp->opCode) == 0 || COMP_UNORDERED_EQ.compare(comp->opCode) == 0)
+    else if(COMP_ORDERED_EQ == comp->opCode || COMP_UNORDERED_EQ == comp->opCode)
     {
         // a == b <=> a xor b == 0 [<=> a - b == 0]
         it.emplace(new Operation(OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
         it.nextInBlock();
         it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_SET);
     }
-    else if(COMP_ORDERED_NEQ.compare(comp->opCode) == 0 || COMP_UNORDERED_NEQ.compare(comp->opCode) == 0)
+    else if(COMP_ORDERED_NEQ == comp->opCode || COMP_UNORDERED_NEQ == comp->opCode)
     {
         //a != b <=> a xor b != 0
         it.emplace(new Operation(OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
         it.nextInBlock();
         it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_CLEAR);
     }
-    else if(COMP_ORDERED_LT.compare(comp->opCode) == 0 || COMP_UNORDERED_LT.compare(comp->opCode) == 0)
+    else if(COMP_ORDERED_LT == comp->opCode || COMP_UNORDERED_LT == comp->opCode)
     {
         //a < b [<=> min(a, b) != b] [<=> max(a, b) != a] <=> a - b < 0
         it.emplace(new Operation(OP_FSUB, NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
@@ -189,7 +190,7 @@ InstructionWalker intermediate::intrinsifyFloatingRelation(Method& method, Instr
         //true if NEGATIVE is set, otherwise false
         it = replaceWithSetBoolean(it, comp->getOutput(), COND_NEGATIVE_SET);
     }
-    else if(COMP_ORDERED_LE.compare(comp->opCode) == 0 || COMP_UNORDERED_LE.compare(comp->opCode) == 0)
+    else if(COMP_ORDERED_LE == comp->opCode || COMP_UNORDERED_LE == comp->opCode)
     {
         //a <= b <=> min(a, b) == a [<=> max(a, b) == b]
         it.emplace(new Operation(OP_FMIN, tmp, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
@@ -198,7 +199,7 @@ InstructionWalker intermediate::intrinsifyFloatingRelation(Method& method, Instr
         it.nextInBlock();
         it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_SET);
     }
-    else if(COMP_ORDERED.compare(comp->opCode) == 0)
+    else if(COMP_ORDERED == comp->opCode)
     {
         //ord(a, b) <=> a != NaN && b != NaN
     	const Value tmp0 = method.addNewLocal(TYPE_BOOL, "%ordered");
@@ -215,7 +216,7 @@ InstructionWalker intermediate::intrinsifyFloatingRelation(Method& method, Instr
 		//res = tmp != 0 <=> (tmp0 && tmp1) == 0 <=> (a != NaN) && (b != NaN)
 		it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_CLEAR);
     }
-    else if(COMP_UNORDERED.compare(comp->opCode) == 0)
+    else if(COMP_UNORDERED == comp->opCode)
     {
     	//uno(a, b) <=> a == NaN || b == NaN
 		const Value tmp0 = method.addNewLocal(TYPE_BOOL, "%ordered");

@@ -4,13 +4,14 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include <math.h>
-
 #include "Operators.h"
+
+#include "../intermediate/Helper.h"
 #include "Comparisons.h"
 #include "helper.h"
-#include "../intermediate/Helper.h"
 #include "log.h"
+
+#include <cmath>
 
 using namespace vc4c;
 using namespace vc4c::intermediate;

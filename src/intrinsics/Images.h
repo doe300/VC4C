@@ -7,15 +7,13 @@
 #ifndef IMAGES_H
 #define IMAGES_H
 
-#include <stdint.h>
-
-#include "../Module.h"
 #include "../InstructionWalker.h"
 #include "../periphery/TMU.h"
 
+#include <cstdint>
+
 namespace vc4c
 {
-
 	namespace intermediate
 	{
 		/*
@@ -77,10 +75,7 @@ namespace vc4c
 			static constexpr uint64_t MASK_ADDRESSING_MODE { 0xE };
 			static constexpr uint64_t MASK_FILTER_MODE { 0x30 };
 
-			constexpr Sampler(const uint8_t val) : Bitfield(val)
-			{
-
-			}
+			explicit constexpr Sampler(uint8_t val) : Bitfield(val) { }
 
 			Sampler(AddressingMode addressingMode, bool normalizedCoords, FilterMode filterMode) : Bitfield(0)
 			{
@@ -113,8 +108,8 @@ namespace vc4c
 		InstructionWalker insertQueryChannelDataType(InstructionWalker it, Method& method, const Value& image, const Value& dest);
 		InstructionWalker insertQueryChannelOrder(InstructionWalker it, Method& method, const Value& image, const Value& dest);
 		InstructionWalker insertQueryMeasurements(InstructionWalker it, Method& method, const Value& image, const Value& dest);
-	}
-}
+	} // namespace intermediate
+} // namespace vc4c
 
 #endif /* IMAGES_H */
 

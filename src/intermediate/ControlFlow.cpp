@@ -59,21 +59,21 @@ static std::string toString(const MemorySemantics semantics)
 {
 	std::vector<std::string> result;
 	if(has_flag(semantics, MemorySemantics::ACQUIRE) || has_flag(semantics, MemorySemantics::ACQUIRE_RELEASE))
-		result.push_back("acquire");
+		result.emplace_back("acquire");
 	if(has_flag(semantics, MemorySemantics::RELEASE) || has_flag(semantics, MemorySemantics::ACQUIRE_RELEASE))
-		result.push_back("release");
+		result.emplace_back("release");
 	if(has_flag(semantics, MemorySemantics::SEQUENTIALLY_CONSISTENT))
-		result.push_back("sequentially consistent");
+		result.emplace_back("sequentially consistent");
 	if(has_flag(semantics, MemorySemantics::SUBGROUP_MEMORY))
-		result.push_back("sub-group");
+		result.emplace_back("sub-group");
 	if(has_flag(semantics, MemorySemantics::WORK_GROUP_MEMORY))
-		result.push_back("work-group");
+		result.emplace_back("work-group");
 	if(has_flag(semantics, MemorySemantics::CROSS_WORK_GROUP_MEMORY))
-		result.push_back("global");
+		result.emplace_back("global");
 	if(has_flag(semantics, MemorySemantics::ATOMIC_COUNTER_MEMORY))
-		result.push_back("atomic counter");
+		result.emplace_back("atomic counter");
 	if(has_flag(semantics, MemorySemantics::IMAGE_MEMORY))
-		result.push_back("image");
+		result.emplace_back("image");
 	return vc4c::to_string<std::string>(result, "|");
 }
 

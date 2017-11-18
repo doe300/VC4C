@@ -5,13 +5,14 @@
  */
 
 #include "Combiner.h"
-#include "log.h"
-#include "helper.h"
-#include "../intermediate/Helper.h"
-#include "../InstructionWalker.h"
 
-#include <stdlib.h>
+#include "../InstructionWalker.h"
+#include "../intermediate/Helper.h"
+#include "helper.h"
+#include "log.h"
+
 #include <algorithm>
+#include <cstdlib>
 #include <memory>
 
 using namespace vc4c;

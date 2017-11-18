@@ -5,12 +5,13 @@
  */
 
 #include "Eliminator.h"
-#include "log.h"
+
 #include "../InstructionWalker.h"
+#include "log.h"
 
 #include <algorithm>
-#include <map>
 #include <list>
+#include <map>
 
 using namespace vc4c;
 using namespace vc4c::optimizations;
@@ -293,7 +294,7 @@ InstructionWalker optimizations::calculateConstantInstruction(const Module& modu
 		//calculations with literals can be pre-calculated
 		if(op->getFirstArg().hasType(ValueType::LITERAL) && (!op->getSecondArg() || op->getSecondArg().get().hasType(ValueType::LITERAL)))
 		{
-			if(op->conditional != COND_ALWAYS && op->opCode.compare("xor") == 0 && op->getSecondArg().hasValue && op->getFirstArg() == op->getSecondArg())
+			if(op->conditional != COND_ALWAYS && op->opCode == "xor" && op->getSecondArg().hasValue && op->getFirstArg() == op->getSecondArg())
 			{
 				//skip "xor ?, true, true", so it can be optimized (combined with "move ?, true") afterwards
 				//also skip any "xor ?, val, val", since they are created on purpose (by combineSelectionWithZero to allow for combination with the other case)

@@ -7,7 +7,6 @@
 #ifndef INSTRUCTION_HELPER_H
 #define INSTRUCTION_HELPER_H
 
-#include "../Module.h"
 #include "../InstructionWalker.h"
 
 namespace vc4c
@@ -18,28 +17,28 @@ namespace vc4c
 		{
 			UP, DOWN
 		};
-		InstructionWalker insertVectorRotation(InstructionWalker it, const Value& src, const Value& offset, const Value& dest, const Direction direction = Direction::UP);
+		InstructionWalker insertVectorRotation(InstructionWalker it, const Value& src, const Value& offset, const Value& dest, Direction direction = Direction::UP);
 
-		InstructionWalker insertReplication(InstructionWalker it, const Value& src, const Value& dest, const bool useDestionation = true);
+		InstructionWalker insertReplication(InstructionWalker it, const Value& src, const Value& dest, bool useDestionation = true);
 
 		InstructionWalker insertVectorExtraction(InstructionWalker it, Method& method, const Value& container, const Value& index, const Value& dest);
 		InstructionWalker insertVectorInsertion(InstructionWalker it, Method& method, const Value& container, const Value& index, const Value& value);
 		InstructionWalker insertVectorShuffle(InstructionWalker it, Method& method, const Value& destination, const Value& source0, const Value& source1, const Value& mask);
 
-		InstructionWalker insertSFUCall(const Register sfuReg, InstructionWalker it, const Value& arg, const ConditionCode cond = COND_ALWAYS, const SetFlag setFlags = SetFlag::DONT_SET);
+		InstructionWalker insertSFUCall(Register sfuReg, InstructionWalker it, const Value& arg, ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
 
-		InstructionWalker insertZeroExtension(InstructionWalker it, Method& method, const Value& src, const Value& dest, bool allowLiteral, const ConditionCode conditional = COND_ALWAYS, const SetFlag setFlags =
+		InstructionWalker insertZeroExtension(InstructionWalker it, Method& method, const Value& src, const Value& dest, bool allowLiteral, ConditionCode conditional = COND_ALWAYS, SetFlag setFlags =
 				SetFlag::DONT_SET);
-		InstructionWalker insertSignExtension(InstructionWalker it, Method& method, const Value& src, const Value& dest, bool allowLiteral, const ConditionCode conditional = COND_ALWAYS, const SetFlag setFlags =
+		InstructionWalker insertSignExtension(InstructionWalker it, Method& method, const Value& src, const Value& dest, bool allowLiteral, ConditionCode conditional = COND_ALWAYS, SetFlag setFlags =
 				SetFlag::DONT_SET);
 		InstructionWalker insertSaturation(InstructionWalker it, Method& method, const Value& src, const Value& dest, bool isSigned);
 
 		InstructionWalker insertMakePositive(InstructionWalker it, Method& method, const Value& src, Value& dest);
-		InstructionWalker insertInvertSign(InstructionWalker it, Method& method, const Value& src, Value& dest, const ConditionCode cond = COND_ALWAYS);
+		InstructionWalker insertInvertSign(InstructionWalker it, Method& method, const Value& src, Value& dest, ConditionCode cond = COND_ALWAYS);
 
-		InstructionWalker insertCalculateIndices(InstructionWalker it, Method& method, const Value& container, const Value& dest, const std::vector<Value>& indices, const bool firstIndexIsElement = false);
-	}
-}
+		InstructionWalker insertCalculateIndices(InstructionWalker it, Method& method, const Value& container, const Value& dest, const std::vector<Value>& indices, bool firstIndexIsElement = false);
+	} // namespace intermediate
+} // namespace vc4c
 
 #endif /* INSTRUCTION_HELPER_H */
 

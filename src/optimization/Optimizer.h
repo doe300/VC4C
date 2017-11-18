@@ -7,13 +7,16 @@
 #ifndef OPTIMIZER_H
 #define OPTIMIZER_H
 
-#include <config.h>
-#include "../Module.h"
-#include "../intermediate/IntermediateInstruction.h"
+#include "config.h"
+
+#include <functional>
 #include <set>
 
 namespace vc4c
 {
+	class Method;
+	class Module;
+	class InstructionWalker;
 
 	namespace optimizations
 	{
@@ -29,7 +32,7 @@ namespace vc4c
 			 */
 			using Pass = std::function<void(const Module&, Method&, const Configuration&)>;
 
-			OptimizationPass(const std::string& name, const Pass pass, const std::size_t index);
+			OptimizationPass(const std::string& name, const Pass pass, std::size_t index);
 
 			bool operator<(const OptimizationPass& other) const;
 			void operator()(const Module& module, Method& method, const Configuration& config) const;
@@ -53,7 +56,7 @@ namespace vc4c
 			 */
 			using Step = std::function<InstructionWalker(const Module&, Method&, InstructionWalker, const Configuration&)>;
 
-			OptimizationStep(const std::string& name, const Step step, const std::size_t index);
+			OptimizationStep(const std::string& name, const Step step, std::size_t index);
 
 			bool operator<(const OptimizationStep& other) const;
 			InstructionWalker operator()(const Module& module, Method& method, InstructionWalker it, const Configuration& config) const;
@@ -102,7 +105,6 @@ namespace vc4c
 		{
 		public:
 			Optimizer(const Configuration& config = { }, const std::set<OptimizationPass>& passes = DEFAULT_PASSES);
-			~Optimizer();
 
 			void optimize(Module& module) const;
 
@@ -113,7 +115,7 @@ namespace vc4c
 			Configuration config;
 			std::set<OptimizationPass> passes;
 		};
-	}
-}
+	} // namespace optimizations
+} // namespace vc4c
 #endif /* OPTIMIZER_H */
 

@@ -5,12 +5,13 @@
  */
 
 #include "LiteralValues.h"
-#include "log.h"
-#include "../Profiler.h"
-#include "../InstructionWalker.h"
 
-#include <cmath>
+#include "../InstructionWalker.h"
+#include "../Profiler.h"
+#include "log.h"
+
 #include <algorithm>
+#include <cmath>
 
 using namespace vc4c;
 using namespace vc4c::optimizations;
@@ -166,9 +167,9 @@ struct ImmediateSupplier
 	const SmallImmediate immediate;
 
 	//insert operation on one of the ALUs
-	ImmediateSupplier(const OpCode& opCode, const SmallImmediate imm) : opCode(opCode), immediate(imm) {}
+	ImmediateSupplier(const OpCode& opCode, SmallImmediate imm) : opCode(opCode), immediate(imm) {}
 	//no operation required, directly use small immediate value
-	ImmediateSupplier(const SmallImmediate imm) : opCode(OP_NOP), immediate(imm) {}
+	explicit ImmediateSupplier(SmallImmediate imm) : opCode(OP_NOP), immediate(imm) {}
 };
 
 static Literal toLiteral(uint32_t mask, float f)
@@ -476,8 +477,19 @@ static const std::map<Literal, ImmediateSupplier> immediateMappings = {
 		{toLiteral(0xffffffff, -1), ImmediateSupplier(SmallImmediate(31))},
 };
 
-//TODO is slower/replaces less values? then before
 /*
+ * XXX New version:
+ * - passes more test-cases (179 vs. 178)
+ * - is slightly faster than old version (complete SingleSteps slower than before, probably due to reversion via precalculate)
+ * - introduces less additional instructions (~2464 for 243 test-cases, complete SingleSteps!)
+ * - causes less loads to be combined (~10k), resulting in 	more instructions remaining
+ * - requires more split read-after-write (~100)
+ * - results in ~300 less replaced NOPs (either no match found or NOP not introduced)
+ * - allows for ~4k more ALU instructions being combined
+ * - requires CodeGenerator to fix more register-errors (case 2: 74 vs. 61) and 153 vs. 123 fixToRegister calls
+ * ->results in a total of ~5k more instructions (!!also with 1 complete test-case more!!)
+ *
+ */
 static ImmediateHandler mapImmediateValue(const Literal& source)
 {
 	ImmediateHandler handler;
@@ -502,8 +514,8 @@ static ImmediateHandler mapImmediateValue(const Literal& source)
 	handler.loadImmediate = true;
 	return handler;
 }
-*/
 
+/*
 static ImmediateHandler mapImmediateValue(const Literal& source)
 {
     static const std::vector<int> intAdds = {0 +0, 1+1, 2+2, 3+3, 4+4, 5+5, 6+6, 7+7, 8+8, 9+9, 10+10, 11+11, 12+12, 13+13, 14+14, 15+15, -16-16, -15-15, -14-14, -13-13, -12-12, -11-11, -10-10, -9-9, -8-8, -7-7, -6-6, -5-5, -4-4, -3-3, -2-2, -1-1};
@@ -528,7 +540,7 @@ static ImmediateHandler mapImmediateValue(const Literal& source)
             if(integer < 0)
                 //-16 <= x < 0
                 //need to move values, because bit-value 16 means -16, 17 -> -15, ..., 31 -> -1
-                handler.immediate.value = 32 + integer /* + since integer is negative */;
+                handler.immediate.value = 32 + integer / * + since integer is negative * /;
             else    //0 <= x <= 15 -> keep as is
             	handler.immediate.value = integer;
             handler.changeValue = true;
@@ -636,6 +648,7 @@ static ImmediateHandler mapImmediateValue(const Literal& source)
     }
     throw CompilationError(CompilationStep::OPTIMIZER, "Unknown literal-type", source.to_string());
 }
+*/
 
 InstructionWalker optimizations::handleImmediate(const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {

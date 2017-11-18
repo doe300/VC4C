@@ -5,14 +5,15 @@
  */
 
 #include "MemoryAccess.h"
-#include "../InstructionWalker.h"
-#include "../intermediate/IntermediateInstruction.h"
-#include "log.h"
-#include "../periphery/VPM.h"
-#include "../Profiler.h"
 
-#include <functional>
+#include "../intermediate/IntermediateInstruction.h"
+#include "../periphery/VPM.h"
+#include "../InstructionWalker.h"
+#include "../Profiler.h"
+#include "log.h"
+
 #include <algorithm>
+#include <functional>
 
 using namespace vc4c;
 using namespace vc4c::optimizations;
@@ -162,7 +163,7 @@ static InstructionWalker findGroupOfVPMAccess(VPM& vpm, InstructionWalker start,
 	group.groupType = TYPE_UNKNOWN;
 	group.dmaSetups.clear();
 	group.genericSetups.clear();
-	group.addressWrites.clear(),
+	group.addressWrites.clear();
 	group.dmaSetups.reserve(64);
 	group.dmaSetups.reserve(64);
 	group.addressWrites.reserve(64);

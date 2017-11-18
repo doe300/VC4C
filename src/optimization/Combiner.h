@@ -7,11 +7,13 @@
 #ifndef COMBINER_H
 #define COMBINER_H
 
-#include <config.h>
-#include "../Module.h"
+#include "config.h"
 
 namespace vc4c
 {
+	class Method;
+	class Module;
+	class InstructionWalker;
 
 	namespace optimizations
 	{
@@ -46,7 +48,7 @@ namespace vc4c
 		 * Combines vector several consecutive rotations with the same data
 		 */
 		void combineVectorRotations(const Module& module, Method& method, const Configuration& config);
-	}
-}
+	} // namespace optimizations
+} // namespace vc4c
 #endif /* COMBINER_H */
 

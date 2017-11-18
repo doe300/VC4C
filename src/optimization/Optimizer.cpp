@@ -5,15 +5,16 @@
  */
 
 #include "Optimizer.h"
-#include "Inliner.h"
-#include "LiteralValues.h"
-#include "Eliminator.h"
-#include "Reordering.h"
-#include "Combiner.h"
-#include "MemoryAccess.h"
+
+#include "../BackgroundWorker.h"
 #include "../intrinsics/Intrinsics.h"
 #include "../Profiler.h"
-#include "../BackgroundWorker.h"
+#include "Combiner.h"
+#include "Eliminator.h"
+#include "Inliner.h"
+#include "LiteralValues.h"
+#include "MemoryAccess.h"
+#include "Reordering.h"
 #include "log.h"
 
 using namespace vc4c;
@@ -35,7 +36,7 @@ void OptimizationPass::operator ()(const Module& module, Method& method, const C
 
 bool OptimizationPass::operator ==(const OptimizationPass& other) const
 {
-	return name.compare(other.name) == 0 && index == other.index;
+	return name == other.name && index == other.index;
 }
 
 OptimizationStep::OptimizationStep(const std::string& name, const Step step, const std::size_t index) : name(name), index(index), step(step)
@@ -163,10 +164,6 @@ const std::set<OptimizationPass> optimizations::DEFAULT_PASSES = {
 };
 
 Optimizer::Optimizer(const Configuration& config, const std::set<OptimizationPass>& passes) : config(config), passes(passes)
-{
-}
-
-Optimizer::~Optimizer()
 {
 }
 

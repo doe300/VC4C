@@ -7,12 +7,10 @@
 #ifndef INTERMEDIATEINSTRUCTION_H
 #define INTERMEDIATEINSTRUCTION_H
 
-#include <map>
-
 #include "../Module.h"
-#include "helper.h"
 #include "../asm/OpCodes.h"
 #include "CompilationError.h"
+#include "helper.h"
 
 namespace vc4c
 {
@@ -359,7 +357,7 @@ namespace vc4c
 			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
 			Optional<Value> precalculate(std::size_t numIterations) const override;
 
-			const Literal& getImmediate() const;
+			Literal getImmediate() const;
 			void setImmediate(const Literal& value);
 		};
 

@@ -4,12 +4,13 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include <stdbool.h>
-#include <memory>
-
 #include "IntermediateInstruction.h"
+
 #include "../asm/LoadInstruction.h"
 #include "log.h"
+
+#include <cstdbool>
+#include <memory>
 
 using namespace vc4c;
 using namespace vc4c::intermediate;
@@ -43,10 +44,9 @@ qpu_asm::Instruction* LoadImmediate::convertToAsm(const FastMap<const Local*, Re
     const ConditionCode conditional0 = outReg.num == REG_NOP.num ? COND_NEVER : this->conditional;
     return new qpu_asm::LoadInstruction(PACK_NOP, conditional0, COND_NEVER, setFlags,
                                outReg.file == RegisterFile::PHYSICAL_A ? WriteSwap::DONT_SWAP : WriteSwap::SWAP, outReg.num, REG_NOP.num, getArgument(0).get().literal.toImmediate());
-    
 }
 
-const Literal& LoadImmediate::getImmediate() const
+Literal LoadImmediate::getImmediate() const
 {
 	return getArgument(0).get().literal;
 }

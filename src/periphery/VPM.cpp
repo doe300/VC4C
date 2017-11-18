@@ -5,6 +5,7 @@
  */
 
 #include "VPM.h"
+
 #include "log.h"
 
 using namespace vc4c;
@@ -98,7 +99,7 @@ std::pair<DataType, uint8_t> getBestVectorSize(const int64_t numBytes)
 			{
 				DataType result = typeSize == 4 ? TYPE_INT32 : typeSize == 2 ? TYPE_INT16 : TYPE_INT8;
 				result.num = numElements;
-				uint8_t numVectors = numBytes / (numElements * typeSize);
+				uint8_t numVectors = static_cast<uint8_t>(numBytes / (static_cast<int64_t>(numElements) * static_cast<int64_t>(typeSize)));
 				return std::make_pair(result, numVectors);
 			}
 		}
@@ -127,10 +128,10 @@ static uint8_t calculateAddress(const DataType& type, unsigned byteOffset)
 		return yCoord;
 	else if(type.getScalarBitCount() == 16)
 		// "ADDR[6:0] = Y[5:0] | H[0]"
-		return (yCoord << 1) | (remainder / 32);
+		return static_cast<uint8_t>(yCoord << 1) | static_cast<uint8_t>(remainder / 32);
 	else if(type.getScalarBitCount() == 8)
 		// "ADDR[7:0] = Y[5:0] | B[1:0]"
-		return (yCoord << 2) | (remainder / 16);
+		return static_cast<uint8_t>(yCoord << 2) | static_cast<uint8_t>(remainder / 16);
 	else
 		throw CompilationError(CompilationStep::GENERAL, "Invalid bit-width to store in VPM", type.to_string());
 }
