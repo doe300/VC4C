@@ -8,7 +8,6 @@
 #define SEMAPHOREINSTRUCTION_H
 
 #include "Instruction.h"
-#include "../Types.h"
 
 namespace vc4c
 {
@@ -18,9 +17,8 @@ namespace vc4c
 		class SemaphoreInstruction: public Instruction
 		{
 		public:
-			SemaphoreInstruction();
-			SemaphoreInstruction(const Pack pack, const ConditionCode condAdd, const ConditionCode condMul, const SetFlag sf, const WriteSwap ws, const Address addOut, const Address mulOut, const bool increment, const Semaphore semaphore);
-			~SemaphoreInstruction();
+			SemaphoreInstruction(Pack pack, ConditionCode condAdd, ConditionCode condMul, SetFlag sf, WriteSwap ws, Address addOut, Address mulOut, bool increment, Semaphore semaphore);
+			~SemaphoreInstruction() override = default;
 
 			std::string toASMString() const override;
 
@@ -35,8 +33,8 @@ namespace vc4c
 			BITFIELD_ENTRY(IncrementSemaphore, bool, 4, Bit)
 			BITFIELD_ENTRY(Semaphore, Semaphore, 0, Quadruple)
 		};
-	}
-}
+	} // namespace qpu_asm
+} // namespace vc4c
 
 #endif /* SEMAPHOREINSTRUCTION_H */
 

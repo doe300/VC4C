@@ -7,10 +7,10 @@
 #ifndef DEBUG_GRAPH_H
 #define DEBUG_GRAPH_H
 
+#include "GraphColoring.h"
+
 #include <fstream>
 #include <functional>
-
-#include "GraphColoring.h"
 
 namespace vc4c
 {
@@ -28,7 +28,7 @@ namespace vc4c
 		class DebugGraph
 		{
 		public:
-			DebugGraph(const std::string& fileName, bool isDirected = false) : isDirected(isDirected), file(fileName)
+			explicit DebugGraph(const std::string& fileName, bool isDirected = false) : isDirected(isDirected), file(fileName)
 			{
 				//strict: at most one edge can connect two nodes, multiple same connections are merged (including their attributes)
 				//graph: undirected graph, digraph: directed graph
@@ -41,6 +41,7 @@ namespace vc4c
 				//fill background of nodes white
 				file << "node [style=\"filled\", fillcolor=\"white\"];" << std::endl;
 			}
+			
 			~DebugGraph()
 			{
 				file << "}" << std::endl;

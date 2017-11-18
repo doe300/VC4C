@@ -7,15 +7,9 @@
 #ifndef REGISTER_ALLOCATION_H
 #define REGISTER_ALLOCATION_H
 
-#include <map>
-#include <vector>
-#include <string>
-#include <memory>
-#include <set>
+#include "../Values.h"
 
-#include "../Module.h"
-#include "../performance.h"
-#include "../intermediate/IntermediateInstruction.h"
+#include <vector>
 
 namespace vc4c
 {
@@ -64,8 +58,8 @@ namespace vc4c
 				{ RegisterFile::ACCUMULATOR, 35 }  //ACC3
 				//ACC4 and ACC5 have special meanings
 		};
-	}
-}
+	} // namespace qpu_asm
+} // namespace vc4c
 
 #endif /* REGISTER_ALLOCATION_H */
 

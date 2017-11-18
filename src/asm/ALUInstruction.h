@@ -11,6 +11,8 @@
 
 namespace vc4c
 {
+	struct SmallImmediate;
+
 	namespace qpu_asm
 	{
 
@@ -18,18 +20,17 @@ namespace vc4c
 		{
 		public:
 
-			ALUInstruction();
-			ALUInstruction(const Signaling sig, const Unpack unpack, const Pack pack,
-					const ConditionCode condAdd, const ConditionCode condMul, const SetFlag sf, const WriteSwap ws,
-					const Address addOut, const Address mulOut, const OpCode& mul, const OpCode& add,
-					const Address addInA, const Address addInB,
-					const InputMutex muxAddA, const InputMutex muxAddB, const InputMutex muxMulA, const InputMutex muxMulB);
-			ALUInstruction(const Unpack unpack, const Pack pack,
-					const ConditionCode condAdd, const ConditionCode condMul, const SetFlag sf, const WriteSwap ws,
-					const Address addOut, const Address mulOut, const OpCode& mul, const OpCode& add,
-					const Address addInA, const SmallImmediate addInB,
-					const InputMutex muxAddA, const InputMutex muxAddB, const InputMutex muxMulA, const InputMutex muxMulB);
-			virtual ~ALUInstruction();
+			ALUInstruction(Signaling sig, Unpack unpack, Pack pack,
+					ConditionCode condAdd, ConditionCode condMul, SetFlag sf, WriteSwap ws,
+					Address addOut, Address mulOut, const OpCode& mul, const OpCode& add,
+					Address addInA, Address addInB,
+					InputMutex muxAddA, InputMutex muxAddB, InputMutex muxMulA, InputMutex muxMulB);
+			ALUInstruction(Unpack unpack, Pack pack,
+					ConditionCode condAdd, ConditionCode condMul, SetFlag sf, WriteSwap ws,
+					Address addOut, Address mulOut, const OpCode& mul, const OpCode& add,
+					Address addInA, SmallImmediate addInB,
+					InputMutex muxAddA, InputMutex muxAddB, InputMutex muxMulA, InputMutex muxMulB);
+			~ALUInstruction() override = default;
 
 			std::string toASMString() const override;
 
@@ -52,8 +53,8 @@ namespace vc4c
 			BITFIELD_ENTRY(MulMutexA, InputMutex, 3, Triple)
 			BITFIELD_ENTRY(MulMutexB, InputMutex, 0, Triple)
 		};
-	}
-}
+	} // namespace qpu_asm
+} // namespace vc4c
 
 
 #endif /* ALUINSTRUCTION_H */

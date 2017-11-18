@@ -7,17 +7,11 @@
 #ifndef GRAPH_COLORING_H
 #define GRAPH_COLORING_H
 
-#include <map>
-#include <unordered_map>
-#include <set>
-#include <unordered_set>
-#include <bitset>
-
-#include "../performance.h"
-#include "../Types.h"
-#include "../Module.h"
-#include "../InstructionWalker.h"
 #include "../Graph.h"
+#include "../InstructionWalker.h"
+#include "../performance.h"
+
+#include <bitset>
 
 namespace vc4c
 {
@@ -28,7 +22,7 @@ namespace vc4c
 			// tow locals are in use at the same time, but do not block each other's register-file (only the specific register)
 			USED_SIMULTANEOUSLY = 1,
 			//two locals are in use (as inputs or outputs) by the same instructions, so they block each other's register-file (at least for physical files A and B)
-			USED_TOGETHER = 2,
+			USED_TOGETHER = 2
 		};
 
 		struct LocalUsage
@@ -51,15 +45,15 @@ namespace vc4c
 		class ColoredNode : public Node<const Local*, LocalRelation>
 		{
 		public:
-			ColoredNode(const Local* local, const RegisterFile possibleFiles = RegisterFile::ANY);
+			explicit ColoredNode(const Local* local, RegisterFile possibleFiles = RegisterFile::ANY);
 
 			/*!
 			 * Blocks a single register or a whole register-file.
 			 * Any blocked register (file) is no longer available to be used by this node
 			 */
-			void blockRegister(RegisterFile file, const std::size_t index);
-			bool hasFreeRegisters(const RegisterFile file) const;
-			std::size_t countFreeRegisters(const RegisterFile file) const;
+			void blockRegister(RegisterFile file, std::size_t index);
+			bool hasFreeRegisters(RegisterFile file) const;
+			std::size_t countFreeRegisters(RegisterFile file) const;
 			void takeValues(const ColoredNode& other);
 
 			/*
@@ -137,7 +131,7 @@ namespace vc4c
 			void createGraph();
 			void resetGraph();
 		};
-	}
-}
+	} // namespace qpu_asm
+} // namespace vc4c
 
 #endif /* GRAPH_COLORING_H */

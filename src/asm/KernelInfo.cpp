@@ -4,13 +4,14 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
+#include "KernelInfo.h"
+
+#include "../intermediate/IntermediateInstruction.h"
+#include "Instruction.h"
+#include "log.h"
+
 #include <array>
 #include <cstring>
-
-#include "KernelInfo.h"
-#include "../intermediate/IntermediateInstruction.h"
-#include "log.h"
-#include "Instruction.h"
 
 using namespace vc4c;
 using namespace vc4c::qpu_asm;
@@ -24,15 +25,15 @@ static void writeStream(std::ostream& stream, const std::array<uint8_t, 8>& buf,
     else if(mode == OutputMode::HEX)
     {
         const uint64_t binary = *reinterpret_cast<const uint64_t*>(buf.data());
-        char buffer[64];
-        snprintf(buffer, sizeof(buffer), "0x%08x, 0x%08x, ", static_cast<uint32_t>(binary & 0xFFFFFFFFLL), static_cast<uint32_t>((binary & 0xFFFFFFFF00000000LL) >> 32));
-        stream << std::string(buffer) << std::endl;
+        std::array<char, 64> buffer{};
+        snprintf(buffer.data(), buffer.size(), "0x%08x, 0x%08x, ", static_cast<uint32_t>(binary & 0xFFFFFFFFLL), static_cast<uint32_t>((binary & 0xFFFFFFFF00000000LL) >> 32));
+        stream << std::string(buffer.data()) << std::endl;
     }
 }
 
 static uint8_t copyName(std::ostream& stream, const std::string& name, const OutputMode mode, std::size_t bytesInFirstBlock = 8)
 {
-	std::array<uint8_t, 8> buf;
+	std::array<uint8_t, 8> buf{};
     uint8_t numWords = 0;
     for(std::size_t i = 0; i < name.size(); i += buf.size())
     {
@@ -64,7 +65,7 @@ std::string ParamInfo::to_string() const
 uint16_t ParamInfo::write(std::ostream& stream, const OutputMode mode) const
 {
 	uint16_t numWords = 0;
-	std::array<uint8_t, 8> buf;
+	std::array<uint8_t, 8> buf{};
 	if(mode == OutputMode::BINARY || mode == OutputMode::HEX)
 	{
 		*reinterpret_cast<uint64_t*>(buf.data()) = value;
@@ -91,7 +92,7 @@ uint16_t KernelInfo::write(std::ostream& stream, const OutputMode mode) const
 	}
     if(mode == OutputMode::BINARY || mode == OutputMode::HEX)
     {
-    	std::array<uint8_t, 8> buf;
+    	std::array<uint8_t, 8> buf{};
         *reinterpret_cast<uint64_t*>(buf.data()) = value;
         writeStream(stream, buf, mode);
         ++numWords;
@@ -126,7 +127,7 @@ static void toBinary(const Value& val, std::vector<uint8_t>& queue)
 			{
 				case LiteralType::BOOL:
 					for(std::size_t i = 0; i < val.type.getVectorWidth(true); ++i)
-						queue.push_back(val.literal.isTrue());
+						queue.push_back(static_cast<uint8_t>(val.literal.isTrue()));
 					break;
 				case LiteralType::INTEGER:
 				case LiteralType::REAL:
@@ -194,7 +195,7 @@ uint16_t ModuleInfo::write(std::ostream& stream, const OutputMode mode, const Mo
 	{
 		stream << "// Module with " << getInfoCount() << " kernels, global data with " << getGlobalDataSize() << " words (64-bit each), starting at offset " << getGlobalDataOffset() << " words and " << getStackFrameSize() << " words of stack-frame" << std::endl;
 	}
-	std::array<uint8_t, 8> buf;
+	std::array<uint8_t, 8> buf{};
 	if(mode== OutputMode::BINARY || mode == OutputMode::HEX)
 	{
 		//write magic number
@@ -310,21 +311,21 @@ KernelInfo qpu_asm::getKernelInfos(const Method& method, const uint16_t initialO
             logging::warn() << "Work-group size hint " << requiredSize << " exceeds the limit of " << KernelInfo::MAX_WORK_GROUP_SIZES << logging::endl;
         }
     }
-    for(std::size_t i = 0; i < method.parameters.size(); ++i)
+    for(const Parameter& param : method.parameters)
     {
-    	std::string paramName = method.parameters.at(i).parameterName;
-    	paramName = paramName.empty() ? method.parameters.at(i).name : paramName;
-        const DataType& paramType = method.parameters.at(i).type;
+    	std::string paramName = param.parameterName;
+    	paramName = paramName.empty() ? param.name : paramName;
+        const DataType& paramType = param.type;
         //TODO std::string typeName = getMetaData(method.metaData, MetaDataType::ARG_TYPE_NAMES, i);
         std::string typeName;
         ParamInfo paramInfo;
         paramInfo.setSize(static_cast<uint8_t>(paramType.getPhysicalWidth()));
         paramInfo.setPointer(paramType.isPointerType() || paramType.getImageType().hasValue);
-        paramInfo.setOutput(method.parameters.at(i).isOutputParameter());
-        paramInfo.setInput(method.parameters.at(i).isInputParameter());
-        paramInfo.setConstant(has_flag(method.parameters.at(i).decorations, ParameterDecorations::READ_ONLY));
-        paramInfo.setRestricted(has_flag(method.parameters.at(i).decorations, ParameterDecorations::RESTRICT));
-        paramInfo.setVolatile(has_flag(method.parameters.at(i).decorations, ParameterDecorations::VOLATILE));
+        paramInfo.setOutput(param.isOutputParameter());
+        paramInfo.setInput(param.isInputParameter());
+        paramInfo.setConstant(has_flag(param.decorations, ParameterDecorations::READ_ONLY));
+        paramInfo.setRestricted(has_flag(param.decorations, ParameterDecorations::RESTRICT));
+        paramInfo.setVolatile(has_flag(param.decorations, ParameterDecorations::VOLATILE));
         paramInfo.setName(paramName[0] == '%' ? paramName.substr(1) : paramName);
         paramInfo.setTypeName(typeName.empty() ? paramType.to_string() : typeName);
         paramInfo.setElements((paramType.isPointerType() ? static_cast<uint8_t>(1) : paramType.num));

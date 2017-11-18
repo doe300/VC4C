@@ -5,11 +5,11 @@
  */
 
 #include "GraphColoring.h"
-#include "RegisterAllocation.h"
-#include "log.h"
-#include "DebugGraph.h"
 
+#include "DebugGraph.h"
+#include "RegisterAllocation.h"
 #include "../Profiler.h"
+#include "log.h"
 
 #include <algorithm>
 
@@ -518,13 +518,13 @@ static void walkUsageRange(InstructionWalker start, const Local* local, FastMap<
 			if(it.has<intermediate::CombinedOperation>())
 			{
 				intermediate::CombinedOperation* combined = it.get<intermediate::CombinedOperation>();
-				if(combined->op1.get() != nullptr)
+				if(combined->op1 != nullptr)
 				{
 					InstructionVisitResult tmp = checkWritePerInstruction(combined->op1.get());
 					if(tmp == InstructionVisitResult::STOP_ALL || tmp == InstructionVisitResult::STOP_BRANCH)
 						return tmp;
 				}
-				if(combined->op2.get() != nullptr)
+				if(combined->op2 != nullptr)
 				{
 					InstructionVisitResult tmp = checkWritePerInstruction(combined->op2.get());
 					if(tmp == InstructionVisitResult::STOP_ALL || tmp == InstructionVisitResult::STOP_BRANCH)

@@ -17,11 +17,10 @@ namespace vc4c
 		class LoadInstruction: public Instruction
 		{
 		public:
-			LoadInstruction();
-			LoadInstruction(const Pack pack, const ConditionCode condAdd, const ConditionCode condMul, const SetFlag sf, const WriteSwap ws, const Address addOut, const Address mulOut, const uint32_t value);
-			LoadInstruction(const Pack pack, const ConditionCode condAdd, const ConditionCode condMul, const SetFlag sf, const WriteSwap ws, const Address addOut, const Address mulOut, const int16_t value0, int16_t value1);
-			LoadInstruction(const Pack pack, const ConditionCode condAdd, const ConditionCode condMul, const SetFlag sf, const WriteSwap ws, const Address addOut, const Address mulOut, const uint16_t value0, uint16_t value1);
-			~LoadInstruction();
+			LoadInstruction(Pack pack, ConditionCode condAdd, ConditionCode condMul, SetFlag sf, WriteSwap ws, Address addOut, Address mulOut, uint32_t value);
+			LoadInstruction(Pack pack, ConditionCode condAdd, ConditionCode condMul, SetFlag sf, WriteSwap ws, Address addOut, Address mulOut, int16_t value0, int16_t value1);
+			LoadInstruction(Pack pack, ConditionCode condAdd, ConditionCode condMul, SetFlag sf, WriteSwap ws, Address addOut, Address mulOut, uint16_t value0, uint16_t value1);
+			~LoadInstruction() override = default;
 
 			std::string toASMString() const override;
 
@@ -39,8 +38,8 @@ namespace vc4c
 			BITFIELD_ENTRY(ImmediateSignedShort0, int16_t, 16, SignedShort)
 			BITFIELD_ENTRY(ImmediateSignedShort1, int16_t, 0, SignedShort)
 		};
-	}
-}
+	} // namespace qpu_asm
+} // namespace vc4c
 
 #endif /* LOADINSTRUCTION_H */
 

@@ -17,9 +17,8 @@ namespace vc4c
 		class BranchInstruction: public Instruction
 		{
 		public:
-			BranchInstruction();
-			BranchInstruction(const BranchCond cond, const BranchRel relative, const BranchReg addRegister, const Address branchRegister, const Address addOut, const Address mulOut, const int32_t offset);
-			~BranchInstruction();
+			BranchInstruction(BranchCond cond, BranchRel relative, BranchReg addRegister, Address branchRegister, Address addOut, Address mulOut, int32_t offset);
+			~BranchInstruction() override = default;
 
 			std::string toASMString() const override;
 
@@ -32,8 +31,8 @@ namespace vc4c
 
 			BITFIELD_ENTRY(Immediate, int32_t, 0, SignedInt)
 		};
-	}
-}
+	} // namespace qpu_asm
+} // namespace vc4c
 
 
 

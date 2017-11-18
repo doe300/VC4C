@@ -6,8 +6,8 @@
 
 #include "OpCodes.h"
 
-#include "CompilationError.h"
 #include "../Values.h"
+#include "CompilationError.h"
 
 #include <map>
 
@@ -132,80 +132,6 @@ std::string Signaling::toString() const
 bool Signaling::hasSideEffects() const
 {
 	return *this != SIGNAL_NONE && *this != SIGNAL_ALU_IMMEDIATE && *this != SIGNAL_LOAD_IMMEDIATE;
-}
-
-std::string SmallImmediate::toString() const
-{
-	if (value <= 15)
-		// 0, ..., 15
-		return (std::to_string(static_cast<int>(value)) + " (") + std::to_string(static_cast<int>(value)) + ")";
-	if (value <= 31)
-		// -16, ..., -1
-		return (std::to_string(static_cast<int>(value) - 32) + " (") + std::to_string(static_cast<int>(value)) + ")";
-	if (value <= 39)
-		// 1.0, ..., 128.0
-		return (std::to_string(static_cast<float>(1 << (static_cast<int>(value) - 32))) + " (") + std::to_string(static_cast<int>(value)) + ")";
-	if (value <= 47)
-		// 1/256, ..., 1/2
-		return (std::to_string(1.0f / static_cast<float>(1 << (48 - static_cast<int>(value)))) + " (") + std::to_string(static_cast<int>(value)) + ")";
-	if (value == 48)
-		return "<< r5";
-	if (value <= 63)
-		return std::string("<< ") + std::to_string(static_cast<int>(value) - 48);
-	throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid small immediate value", std::to_string(static_cast<unsigned>(value)));
-}
-
-Optional<char> SmallImmediate::getIntegerValue() const
-{
-	if (value <= 15)
-		// 0, ..., 15
-		return static_cast<char>(value);
-	if (value <= 31)
-		// -16, ..., -1
-		return static_cast<char>(32 - static_cast<char>(value));
-	return {};
-}
-
-Optional<float> SmallImmediate::getFloatingValue() const
-{
-	if (value >= 32 && value <= 39)
-		// 1.0, ..., 128.0
-		return static_cast<float>(1 << (static_cast<unsigned>(value) - 32));
-	if (value >= 40 && value <= 47)
-		// 1/256, ..., 1/2
-		return 1.0f / static_cast<float>(1 << (48 - static_cast<unsigned>(value)));
-	return {};
-}
-
-bool SmallImmediate::isVectorRotation() const
-{
-	return value >= 48 && value <= 63;
-}
-
-Optional<unsigned char> SmallImmediate::getRotationOffset() const
-{
-	if(!isVectorRotation())
-		return {};
-	if(*this == VECTOR_ROTATE_R5)
-		return {};
-	return static_cast<unsigned char>(value - VECTOR_ROTATE_R5.value);
-}
-
-Optional<Literal> SmallImmediate::toLiteral() const
-{
-	if(getIntegerValue().hasValue)
-		return Literal(static_cast<int64_t>(getIntegerValue().get()));
-	if(getFloatingValue().hasValue)
-		return Literal(getFloatingValue().get());
-	return Optional<Literal>(false, static_cast<int64_t>(0));
-}
-
-SmallImmediate SmallImmediate::fromRotationOffset(unsigned char offset)
-{
-	if(offset == 0 || offset > 15)
-		//Offset of 0 would result in the use of r5 register
-		throw CompilationError(CompilationStep::GENERAL, "Invalid vector rotation offset", std::to_string(static_cast<int>(offset)));
-    return static_cast<SmallImmediate>(offset + VECTOR_ROTATE_R5);
 }
 
 std::string Unpack::toString() const

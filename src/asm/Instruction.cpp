@@ -4,10 +4,11 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include <stdbool.h>
-
 #include "Instruction.h"
+
 #include "../Values.h"
+
+#include <cstdbool>
 
 using namespace vc4c;
 using namespace vc4c::qpu_asm;

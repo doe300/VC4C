@@ -97,20 +97,11 @@ namespace vc4c
 	class Optional
 	{
 	public:
-	    Optional() : hasValue(false)
-	    {
+	    Optional() : hasValue(false) { }
+	    Optional(const T& value) : hasValue(true), value(value) { }
+	    Optional(T&& value) : hasValue(true), value(value) { }
 
-	    }
-
-	    Optional(const T& value) : hasValue(true), value(value)
-	    {
-
-	    }
-
-	    Optional(bool hasValue, const T& dummyValue = {}) : hasValue(hasValue), value(dummyValue)
-	    {
-
-	    }
+	    Optional(bool hasValue, const T& dummyValue = {}) : hasValue(hasValue), value(dummyValue) { }
 
 	    Optional<T>& operator=(const T& value)
 	    {

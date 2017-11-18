@@ -7,12 +7,11 @@
 #ifndef INSTRUCTION_H
 #define INSTRUCTION_H
 
-#include <string>
-
-#include "OpCodes.h"
-#include "CompilationError.h"
 #include "../Bitfield.h"
-#include "../Values.h"
+#include "CompilationError.h"
+#include "OpCodes.h"
+
+#include <string>
 
 namespace vc4c
 {
@@ -36,14 +35,14 @@ namespace vc4c
 
 		protected:
 
-			static std::string toInputRegister(const InputMutex mutex, const Address regA, const Address regB, const bool hasImmediate = false);
-			static std::string toOutputRegister(const bool regFileA, const Address reg);
-			static std::string toExtrasString(const Signaling sig, const ConditionCode cond = COND_ALWAYS, const SetFlag flags = SetFlag::DONT_SET, const Unpack unpack = UNPACK_NOP, const Pack pack = PACK_NOP, bool usesOutputA = true, bool usesInputAOrR4 = true);
+			static std::string toInputRegister(InputMutex mutex, Address regA, Address regB, bool hasImmediate = false);
+			static std::string toOutputRegister(bool regFileA, Address reg);
+			static std::string toExtrasString(Signaling sig, ConditionCode cond = COND_ALWAYS, SetFlag flags = SetFlag::DONT_SET, Unpack unpack = UNPACK_NOP, Pack pack = PACK_NOP, bool usesOutputA = true, bool usesInputAOrR4 = true);
 		};
 
-		std::string toHexString(const uint64_t code);
-	}
-}
+		std::string toHexString(uint64_t code);
+	} // namespace qpu_asm
+} // namespace vc4c
 
 #endif /* INSTRUCTION_H */
 

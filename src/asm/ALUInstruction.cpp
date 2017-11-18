@@ -4,16 +4,14 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include <stdexcept>
-
 #include "ALUInstruction.h"
+
+#include "../Values.h"
+
+#include <stdexcept>
 
 using namespace vc4c;
 using namespace vc4c::qpu_asm;
-
-ALUInstruction::ALUInstruction()
-{
-}
 
 ALUInstruction::ALUInstruction(const Signaling sig, const Unpack unpack, const Pack pack,
                                const ConditionCode condAdd, const ConditionCode condMul, const SetFlag sf, const WriteSwap ws,
@@ -70,11 +68,6 @@ ALUInstruction::ALUInstruction(const Unpack unpack, const Pack pack,
 
     if(( mul != OP_NOP && !mul.runsOnMulALU()) || (add != OP_NOP && !add.runsOnAddALU()))
 		throw CompilationError(CompilationStep::CODE_GENERATION, "Opcode specified for wrong ALU");
-}
-
-
-ALUInstruction::~ALUInstruction()
-{
 }
 
 std::string ALUInstruction::toASMString() const

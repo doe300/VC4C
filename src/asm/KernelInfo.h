@@ -7,14 +7,17 @@
 #ifndef KERNELINFO_H
 #define KERNELINFO_H
 
-#include <vector>
-#include <iostream>
-
-#include "../Module.h"
+#include "../Bitfield.h"
 #include "config.h"
+
+#include <iostream>
+#include <vector>
 
 namespace vc4c
 {
+	enum class AddressSpace;
+	class Method;
+	class Module;
 
 	namespace qpu_asm
 	{
@@ -47,7 +50,7 @@ namespace vc4c
 
 			std::string to_string() const;
 
-			uint16_t write(std::ostream& stream, const OutputMode mode) const;
+			uint16_t write(std::ostream& stream, OutputMode mode) const;
 		private:
 			BITFIELD_ENTRY(NameLength, uint16_t, 16, Short)
 			BITFIELD_ENTRY(TypeNameLength, uint16_t, 32, Short)
@@ -68,7 +71,7 @@ namespace vc4c
 		{
 		public:
 
-			KernelInfo(const std::size_t& numParameters);
+			explicit KernelInfo(const std::size_t& numParameters);
 
 			//offset in multiple of 64-bit
 			BITFIELD_ENTRY(Offset, uint16_t, 0, Short)
@@ -77,7 +80,7 @@ namespace vc4c
 			//the 3 dimensions for the work-group size specified in the source code
 			uint64_t workGroupSize;
 
-			uint16_t write(std::ostream& stream, const OutputMode mode) const;
+			uint16_t write(std::ostream& stream, OutputMode mode) const;
 			std::string to_string() const;
 
 			//The maximum work group sizes specified in the VC4CL runtime library
@@ -121,7 +124,7 @@ namespace vc4c
 			/*
 			 * NOTE: Writing once sets the global-data offset and size, so they are correct for the second write
 			 */
-			uint16_t write(std::ostream& stream, const OutputMode mode, const Module& module);
+			uint16_t write(std::ostream& stream, OutputMode mode, const Module& module);
 
 			inline void addKernelInfo(const KernelInfo& info)
 			{
@@ -134,9 +137,9 @@ namespace vc4c
 			BITFIELD_ENTRY(InfoCount, uint16_t, 0, Short)
 		};
 
-		KernelInfo getKernelInfos(const Method& method, const uint16_t initialOffset, const uint16_t numInstructions);
-	}
-}
+		KernelInfo getKernelInfos(const Method& method, uint16_t initialOffset, uint16_t numInstructions);
+	} // namespace qpu_asm
+} // namespace vc4c
 
 #endif /* KERNELINFO_H */
 

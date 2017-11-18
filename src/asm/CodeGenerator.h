@@ -7,27 +7,29 @@
 #ifndef CODEGENERATOR_H
 #define CODEGENERATOR_H
 
-#include <memory>
-#include <vector>
-#include <ostream>
+#include "Instruction.h"
+#include "config.h"
+
 #include <map>
+#include <memory>
+#include <ostream>
+#include <vector>
 #ifdef MULTI_THREADED
 #include <mutex>
 #endif
 
-#include "../Module.h"
-#include "Instruction.h"
-#include <config.h>
-
 namespace vc4c
 {
+	class Method;
+	class Module;
+
 	namespace qpu_asm
 	{
 
 		class CodeGenerator
 		{
 		public:
-			CodeGenerator(const Module& module, const Configuration& config = { });
+			explicit CodeGenerator(const Module& module, const Configuration& config = { });
 
 			/*
 			 * NOTE: Instruction to Assembler mapping can be run in parallel for different methods,
@@ -42,12 +44,12 @@ namespace vc4c
 			const Module& module;
 			std::map<Method*, FastModificationList<std::unique_ptr<qpu_asm::Instruction>>> allInstructions;
 #ifdef MULTI_THREADED
-		std::mutex instructionsLock;
+			std::mutex instructionsLock;
 #endif
 
-	};
-}
-}
+		};
+	} // namespace qpu_asm
+} // namespace vc4c
 
 
 

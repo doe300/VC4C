@@ -10,10 +10,6 @@
 using namespace vc4c;
 using namespace vc4c::qpu_asm;
 
-BranchInstruction::BranchInstruction()
-{
-}
-
 BranchInstruction::BranchInstruction(const BranchCond cond, const BranchRel relative, const BranchReg addRegister, const Address branchRegister, 
                                      const Address addOut, const Address mulOut, const int32_t offset)
 {
@@ -27,10 +23,6 @@ BranchInstruction::BranchInstruction(const BranchCond cond, const BranchRel rela
     setImmediate(offset);
 }
 
-
-BranchInstruction::~BranchInstruction()
-{
-}
 
 std::string BranchInstruction::toASMString() const
 {

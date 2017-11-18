@@ -4,17 +4,18 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include "GraphColoring.h"
 #include "CodeGenerator.h"
+
 #include "../InstructionWalker.h"
-#include "log.h"
-#include "KernelInfo.h"
 #include "../intermediate/Helper.h"
 #include "../Profiler.h"
+#include "GraphColoring.h"
+#include "KernelInfo.h"
+#include "log.h"
 
-#include <sstream>
+#include <climits>
 #include <map>
-#include <limits.h>
+#include <sstream>
 
 using namespace vc4c;
 using namespace vc4c::qpu_asm;
