@@ -169,8 +169,10 @@ void SPIRVParser::parse(Module& module)
     		{
     			case MetaDataType::WORK_GROUP_SIZES:
     				method.metaData.workGroupSizes = meta.second;
+    				break;
     			case MetaDataType::WORK_GROUP_SIZES_HINT:
     				method.metaData.workGroupSizeHints = meta.second;
+    				break;
     			default:
     				throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data type", std::to_string(static_cast<uint32_t>(meta.first)));
     		}
@@ -514,10 +516,10 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     	//only Kernel or native execution modes are supported
 		if (getWord(parsed_instruction, 2) == SpvExecutionModeLocalSizeId)
 			//"Indicates the work-group size in the x, y, and z dimensions"
-			metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES] = {constantMappings.at(getWord(parsed_instruction, 3)).literal.integer, constantMappings.at(getWord(parsed_instruction, 4)).literal.integer, constantMappings.at(getWord(parsed_instruction, 5)).literal.integer};
+			metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES] = {static_cast<uint32_t>(constantMappings.at(getWord(parsed_instruction, 3)).literal.integer), static_cast<uint32_t>(constantMappings.at(getWord(parsed_instruction, 4)).literal.integer), static_cast<uint32_t>(constantMappings.at(getWord(parsed_instruction, 5)).literal.integer)};
 		else if (getWord(parsed_instruction, 2) == SpvExecutionModeLocalSizeHintId)
 			//"A hint to the compiler, which indicates the most likely to be used work-group size in the x, y, and z dimensions"
-			metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES_HINT] = {constantMappings.at(getWord(parsed_instruction, 3)).literal.integer, constantMappings.at(getWord(parsed_instruction, 4)).literal.integer, constantMappings.at(getWord(parsed_instruction, 5)).literal.integer};
+			metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES_HINT] = {static_cast<uint32_t>(constantMappings.at(getWord(parsed_instruction, 3)).literal.integer), static_cast<uint32_t>(constantMappings.at(getWord(parsed_instruction, 4)).literal.integer), static_cast<uint32_t>(constantMappings.at(getWord(parsed_instruction, 5)).literal.integer)};
 		else
 			throw CompilationError(CompilationStep::PARSER, "Invalid execution mode");
 		return SPV_SUCCESS;

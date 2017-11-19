@@ -12,6 +12,7 @@
 #include "config.h"
 #include "helper.h"
 #include "Compiler.h"
+#include "Precompiler.h"
 
 
 #endif /* VC4C_H */
