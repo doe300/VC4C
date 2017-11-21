@@ -48,6 +48,11 @@ namespace vc4c
 		 * Combines vector several consecutive rotations with the same data
 		 */
 		void combineVectorRotations(const Module& module, Method& method, const Configuration& config);
+
+		/*
+		 * Combines successive setting of the same flag (e.g. introduced by PHI-nodes)
+		 */
+		InstructionWalker combineSameFlags(const Module& module, Method& method, InstructionWalker it, const Configuration& config);
 	} // namespace optimizations
 } // namespace vc4c
 #endif /* COMBINER_H */

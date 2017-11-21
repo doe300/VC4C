@@ -729,3 +729,39 @@ void optimizations::combineVectorRotations(const Module& module, Method& method,
 		}
 	}
 }
+
+InstructionWalker optimizations::combineSameFlags(const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+{
+	if(it.get() == nullptr || it->setFlags != SetFlag::SET_FLAGS)
+		return it;
+	//only combine writing into NOP-register for now
+	if(it->getOutput().hasValue && it->getOutput().get() != NOP_REGISTER)
+		return it;
+	//only remove this setting of flags, if we have no other side effects and don't execute conditionally
+	if(it->signal.hasSideEffects() || it->conditional != COND_ALWAYS)
+		return it;
+	//only combine setting flags from moves (e.g. for PHI-nodes) for now
+	if(it.get<intermediate::MoveOperation>() == nullptr)
+		return it;
+	const Value src = it.get<intermediate::MoveOperation>()->getSource();
+
+	InstructionWalker checkIt = it.copy().previousInBlock();
+	while(!checkIt.isStartOfBlock())
+	{
+		if(checkIt.get() && checkIt->setFlags == SetFlag::SET_FLAGS)
+		{
+			if(checkIt.get<intermediate::MoveOperation>() != nullptr && checkIt.get<intermediate::MoveOperation>()->getSource() == src && checkIt->conditional == COND_ALWAYS)
+			{
+				logging::debug() << "Removing duplicate setting of same flags: " << it->to_string() << logging::endl;
+				it.erase();
+				//don't skip next instruction
+				it.previousInBlock();
+			}
+			//otherwise some other flags are set -> cancel
+			return it;
+		}
+		checkIt.previousInBlock();
+	}
+
+	return it;
+}

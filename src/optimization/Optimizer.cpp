@@ -94,7 +94,9 @@ static const std::set<OptimizationStep> SINGLE_STEPS = {
 		//simple fail-fast for not inlined or intrinsified method-calls
 		OptimizationStep("CheckMethodCalls", checkMethodCalls, 110),
 		//combine consecutive instructions writing the same local with a value and zero depending on some flags
-		OptimizationStep("CombineSelectionWithZero", combineSelectionWithZero, 120)
+		OptimizationStep("CombineSelectionWithZero", combineSelectionWithZero, 120),
+		//combine successive setting of the same flags
+		OptimizationStep("CombineSettingSameFlags", combineSameFlags, 130)
 };
 
 static void runSingleSteps(const Module& module, Method& method, const Configuration& config)
