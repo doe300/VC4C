@@ -59,9 +59,6 @@ if(CROSS_COMPILE)
 	add_definitions(-DUSE_CLANG_OPENCL=1)
 endif()
 
-message(STATUS ${CMAKE_C_COMPILER})
-message(STATUS ${CMAKE_CXX_COMPILER})
-
 project (VC4C VERSION 0.4)
 add_definitions(-DVC4C_VERSION="${PROJECT_VERSION}")
 
