@@ -32,11 +32,11 @@ namespace vc4c
 	    CompilationError(CompilationStep step, std::size_t line, const std::string& message);
 	    CompilationError(CompilationStep step, const std::string& type, const std::string& message);
 	    CompilationError(const CompilationError&) = default;
-	    CompilationError(CompilationError&&) noexcept = default;
+	    CompilationError(CompilationError&&) = default; //RPi cross-compiler throws on noexcept
 	    ~CompilationError() override;
 
 	    CompilationError& operator=(const CompilationError&) = default;
-	    CompilationError& operator=(CompilationError&&) noexcept = default;
+	    CompilationError& operator=(CompilationError&&) = default; //RPi cross-compiler throws on noexcept
 	};
 } // namespace vc4c
 

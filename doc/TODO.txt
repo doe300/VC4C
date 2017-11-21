@@ -75,10 +75,10 @@ VPM:
   how to efficiently determine locals with a huge usage-range with gaps??
   in Graph Coloring (or as an optimization step), spill locals where there is a big gap (heed branches!!) between two/or more "blocks" of uses
   split those locals into "before spilling" and "after spilling" for easier/correct coloring
-- move global data into VPM??
+- move global/local data into VPM??
   pros: faster loading
   cons: fill up VPM, what to do if doesn't fit
-- move local/private memory into VPM?
+- move private memory (stack) into VPM
   pros: no need to reserve memory host-side
   cons: might exceed limit, see global data
 - if memory access optimization can handle RAM <-> VPM and VPM <-> QPU separately, implement prefetch() by loading into VPM
