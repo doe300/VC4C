@@ -11,10 +11,10 @@ file( GLOB SRCS *.cpp */*.cpp )
 ##
 add_library( VC4CC SHARED ${SRCS} ${HDRS} )
 add_dependencies(VC4CC cpplog-project-build)
-add_library(cpplog SHARED IMPORTED)
+add_library(cpplog-static STATIC IMPORTED)
 ExternalProject_Get_Property(cpplog-project BINARY_DIR)
-set_target_properties(cpplog PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/libcpplog.so")
-target_link_libraries(VC4CC cpplog)
+set_target_properties(cpplog-static PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/libcpplog-static.a")
+target_link_libraries(VC4CC cpplog-static)
 # For dlopen, dlsym
 target_link_libraries(VC4CC dl)
 add_dependencies(VC4CC vc4cl-stdlib)

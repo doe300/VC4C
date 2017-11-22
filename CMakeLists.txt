@@ -43,16 +43,16 @@ if(CROSS_COMPILE)
 	endif()
 	message(STATUS "Cross compiling for Raspbian with compiler: ${CROSS_COMPILER_PATH}")
 	#Set Cross compiler
-	SET(CMAKE_SYSTEM_NAME 		"Linux")
-	SET(CMAKE_C_COMPILER   		"${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-gcc")
-	SET(CMAKE_CXX_COMPILER 		"${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-g++")
-	SET(CMAKE_FIND_ROOT_PATH  	"${CROSS_COMPILER_PATH} ${CROSS_COMPILER_PATH}/arm-linux-gnueabihf")
-        SET(CMAKE_AR                    "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-ar")
-        SET(CMAKE_CXX_COMPILER_AR       "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-gcc-ar")
-        SET(CMAKE_CXX_COMPILER_RANLIB   "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-ranlib")
-        SET(CMAKE_C_COMPILER_AR         "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-gcc-ar")
-        SET(CMAKE_CXX_COMPILER_RANLIB   "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-ranlib")
-        SET(CMAKE_LINKER                "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-ld")
+	SET(CMAKE_SYSTEM_NAME 		    "Linux")
+	SET(CMAKE_C_COMPILER   		    "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-gcc")
+	SET(CMAKE_CXX_COMPILER 		    "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-g++")
+	SET(CMAKE_FIND_ROOT_PATH  	    "${CROSS_COMPILER_PATH} ${CROSS_COMPILER_PATH}/arm-linux-gnueabihf")
+	SET(CMAKE_AR                    "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-ar")
+	SET(CMAKE_CXX_COMPILER_AR       "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-gcc-ar")
+	SET(CMAKE_CXX_COMPILER_RANLIB   "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-ranlib")
+	SET(CMAKE_C_COMPILER_AR         "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-gcc-ar")
+	SET(CMAKE_CXX_COMPILER_RANLIB   "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-ranlib")
+	SET(CMAKE_LINKER                "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-ld")
 	# Raspbian ships CLang 3.9 in its repositories
 	add_definitions(-DCLANG_PATH="/usr/bin/clang-3.9")
 	set(CLANG_FOUND ON)
@@ -104,8 +104,8 @@ ExternalProject_Add( cpplog-project
 	STEP_TARGETS 		build	#If we set our dependency on this, the install step is skipped
   	EXCLUDE_FROM_ALL 	TRUE	#Skip for "make all" to skip install
   	TIMEOUT 			30		#Timeout for downloads, in seconds
-        CMAKE_ARGS
-          -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+  	CMAKE_ARGS
+  	  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
 	  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
 	  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
 )
@@ -161,10 +161,10 @@ if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
 		STEP_TARGETS 		build
   		EXCLUDE_FROM_ALL	TRUE
   		TIMEOUT 			30		#Timeout for downloads, in seconds
-                CMAKE_ARGS
-                  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-                  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-                  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
+  		CMAKE_ARGS
+  		  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+  		  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+  		  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
 	)
 	# skip executables and tests for the SPIR-V parser
 	ExternalProject_Add(spirv-tools-project
@@ -177,10 +177,10 @@ if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
 		STEP_TARGETS 		build
   		EXCLUDE_FROM_ALL	TRUE
   		TIMEOUT 			30		#Timeout for downloads, in seconds
-                CMAKE_ARGS
-                  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-                  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-                  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
+  		CMAKE_ARGS
+  		  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+  		  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+  		  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
 	)
 	add_definitions(-DSPIRV_LLVM_SPIRV_PATH="${SPIRV_LLVM_SPIR_FOUND}")
 	add_definitions(-DSPIRV_HEADER="${PROJECT_SOURCE_DIR}/lib/spirv-headers/include/spirv/1.2/spirv.h")
@@ -200,10 +200,10 @@ if(VERIFY_OUTPUT)
 		STEP_TARGETS 		build
   		EXCLUDE_FROM_ALL	TRUE
   		TIMEOUT 			30		#Timeout for downloads, in seconds
-                CMAKE_ARGS
-                  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-                  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-                  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
+  		CMAKE_ARGS
+  		  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+  		  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+  		  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
 	)
 
 	add_definitions(-DVERIFIER_HEADER="${PROJECT_SOURCE_DIR}/lib/vc4asm/src/Validator.h")
@@ -240,10 +240,10 @@ if (BUILD_TESTING)
 		STEP_TARGETS 		build
   		EXCLUDE_FROM_ALL	TRUE
   		TIMEOUT 			30		#Timeout for downloads, in seconds
-                CMAKE_ARGS
-                  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-                  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-                  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
+  		CMAKE_ARGS
+  		  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+  		  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+  		  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
 	)
     add_subdirectory(test build/test)
 endif (BUILD_TESTING)
