@@ -1,4 +1,3 @@
-/*
 __kernel void serial_count_if_int_equal(uint size, __global uint* result, __global int* _buf0)
 {
 uint count = 0;
@@ -55,7 +54,6 @@ for(uint i = 0; i < size; i++)
 }
 *result = count;
 }
-*/
 
 
 __kernel void serial_count_if_element_equal(uint size, __global uint* result, __global int2* _buf0)

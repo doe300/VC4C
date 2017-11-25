@@ -3,7 +3,6 @@
 #define boost_make_pair(t1, x, t2, y) (boost_pair_type(t1, t2)) { x, y }
 #define boost_tuple_get(x, n) (x.v ## n)
 
-/*
 __kernel void search(uint p_count, __global char* _buf0, __global char* _buf1, __global uint* _buf2)
 {
 uint i = get_global_id(0);
@@ -20,7 +19,6 @@ else
 _buf2[i1] = 0;
 
 }
-*/
 
 __kernel void find_if(__global int* index, __global uint* _buf0)
 {

@@ -41,12 +41,16 @@ static std::vector<Entry> allKernels =
     
 		Entry{PENDING_LLVM, FAST, "./testing/test_barrier_fence.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_branches.cl", ""},
-		Entry{PENDING_LLVM, FAST, "./testing/test_builtins.cl", ""},
+		Entry{PENDING_BOTH, FAST, "./testing/test_builtins.cl", ""},
+		Entry{PASSED, FAST, "./testing/test_conversions.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_float.cl", ""},
-		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/test_images.cl", ""},
+		Entry{PASSED, FAST, "./testing/test_global_data.cl", ""},
+		Entry{PENDING_BOTH, FAST, "./testing/test_images.cl", ""},
+		Entry{PENDING_BOTH, FAST, "./testing/test_immediates.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_int.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_other.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_sfu.cl", ""},
+		Entry{PENDING_LLVM, FAST, "./testing/test_shuffle.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_struct.cl", ""},
 		Entry{PENDING_SPIRV, FAST, "./testing/test_vector.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_vector3_layout.cl", ""},
@@ -201,8 +205,6 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./testing/clNN/SpatialAveragePooling.cl", "-DDtype=float -DCOUNT_INCLUDE_PAD=true"},
 		Entry{PASSED, FAST, "./testing/clNN/SpatialMaxPooling.cl", "-DDtype=float"},
 
-		Entry{PASSED, FAST, "./testing/boost-compute/linear_congruential_engine.cl", ""},
-
 		//all kernels
 		//Entry{PASSED, FAST, "./testing/HandBrake/openclkernels.cl", ""},
 		//kernels split up
@@ -214,7 +216,7 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./testing/HandBrake/vscale_all_dither_opencl.cl", ""},
 		Entry{PASSED, FAST, "./testing/HandBrake/vscale_all_nodither_opencl.cl", ""},
 		Entry{PASSED, FAST, "./testing/HandBrake/vscale_fast_opencl.cl", ""},
-		Entry{PENDING_SPIRV, FAST, "./testing/HandBrake/yaif_filter.cl", ""},
+		Entry{PASSED, FAST, "./testing/HandBrake/yaif_filter.cl", ""},
 
 		Entry{PASSED, SLOW, "./testing/bfgminer/diablo.cl", "-DWORKSIZE=8"},
 		Entry{PASSED, SLOW, "./testing/bfgminer/diakgcn.cl", "-DWORKSIZE=8"},
@@ -265,12 +267,15 @@ static std::vector<Entry> allKernels =
 		Entry{PENDING_BOTH, SLOW, "./testing/rodinia/heartwall_kernel_gpu_opencl.cl", ""},
 		Entry{PASSED, FAST, "./testing/rodinia/hotspot_kernel.cl", ""},
 		Entry{PASSED, FAST, "./testing/rodinia/kmeans.cl", ""},
+		Entry{PENDING_BOTH, FAST, "./testing/rodinia/lavaMD_kernel_gpu_opencl.cl", ""},
 		Entry{PASSED, FAST, "./testing/rodinia/lud_kernel.cl", ""},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/rodinia/myocyte_kernel_gpu_opencl.cl", ""},
 		Entry{PASSED, FAST, "./testing/rodinia/nearestNeighbor_kernel.cl", ""},
 		Entry{PASSED, FAST, "./testing/rodinia/nw.cl", ""},
 		Entry{PENDING_SPIRV, FAST, "./testing/rodinia/particle_single.cl", ""},
 		Entry{PASSED, FAST, "./testing/rodinia/pathfinder_kernels.cl", ""},
+		Entry{PENDING_SPIRV, FAST, "./testing/rodinia/srad_kernel_gpu_opencl.cl", ""},
+		//Entry{PENDING_BOTH, FAST, "./testing/rodinia/streamcluster-Kernels.cl", ""}, // 64-bit integer
 		Entry{PASSED, FAST, "./testing/rodinia/track_ellipse_kernel.cl", ""},
 
 		Entry{PASSED, FAST, "./testing/NVIDIA/BitonicSort.cl", "-DLOCAL_SIZE_LIMIT=8"},
@@ -331,8 +336,47 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./testing/OpenCV/minmaxloc.cl", "-DWGS2_ALIGNED=3 -DMINMAX_STRUCT_ALIGNMENT=16 -Dkercn=4 -DdstT=float4 -DWGS=8 -DsrcT=int4 -DconvertToDT=convert_float4 -DsrcT1=int"},
 		//TODO OpenCV, cltorch, blender, x264, hashcat
 
+		Entry{PASSED, FAST, "./testing/boost-compute/adjacent_difference.cl", ""},
+		Entry{PENDING_LLVM, FAST, "./testing/boost-compute/adjacent_find.cl", ""},
+		Entry{PASSED, FAST, "./testing/boost-compute/copy_on_device.cl", ""},
+		Entry{PASSED, FAST, "./testing/boost-compute/linear_congruential_engine.cl", ""},
+		Entry{PENDING_LLVM, FAST, "./testing/boost-compute/test_accumulate.cl", ""},
+		Entry{PASSED, FAST, "./testing/boost-compute/test_any_all_none_of.cl", ""},
+		Entry{PASSED, FAST, "./testing/boost-compute/test_binary_search.cl", ""},
+		Entry{PASSED, FAST, "./testing/boost-compute/test_closure.cl", ""},
+		Entry{PENDING_LLVM, FAST, "./testing/boost-compute/test_count.cl", ""},
+		Entry{PASSED, FAST, "./testing/boost-compute/test_extrema.cl", ""},
+		Entry{PENDING_BOTH, FAST, "./testing/boost-compute/test_function.cl", ""},
+		Entry{PASSED, FAST, "./testing/boost-compute/test_gather.cl", ""},
+		Entry{PENDING_LLVM, FAST, "./testing/boost-compute/test_inner_product.cl", ""},
+		Entry{PASSED, FAST, "./testing/boost-compute/test_insertion_sort.cl", ""},
+		Entry{PASSED, FAST, "./testing/boost-compute/test_iota.cl", ""},
+		Entry{PASSED, FAST, "./testing/boost-compute/test_lambda.cl", ""},
+		//Entry{PENDING_BOTH, FAST, "./testing/boost-compute/test_radix_sort.cl", ""},
+		Entry{PENDING_SPIRV, FAST, "./testing/boost-compute/test_reduce_by_key.cl", ""},
+		Entry{PASSED, FAST, "./testing/boost-compute/test_search.cl", ""},
 		Entry{PASSED, FAST, "./testing/boost-compute/test_transform1.cl", ""},
-		Entry{PENDING_LLVM, FAST, "./testing/boost-compute/test_transform2.cl", ""}
+		Entry{PENDING_LLVM, FAST, "./testing/boost-compute/test_transform2.cl", ""},
+		Entry{PASSED, FAST, "./testing/boost-compute/test_valarray.cl", ""},
+		Entry{PASSED, FAST, "./testing/boost-compute/test_vector.cl", ""},
+		Entry{PENDING_BOTH, FAST, "./testing/boost-compute/threefry_engine.cl", ""},
+		Entry{PENDING_BOTH, FAST, "./testing/boost-compute/user_defined_types.cl", ""},
+
+		Entry{PENDING_LLVM, FAST, "./testing/OpenCL-CTS/abs_diff.cl", ""},
+		Entry{PASSED, FAST, "./testing/OpenCL-CTS/clamp.cl", ""},
+		Entry{PASSED, FAST, "./testing/OpenCL-CTS/cross_product.cl", ""},
+		Entry{PASSED, FAST, "./testing/OpenCL-CTS/explicit_s2v_char8.cl", ""},
+		Entry{PENDING_LLVM, FAST, "./testing/OpenCL-CTS/parameter_types.cl", ""},
+		Entry{PASSED, FAST, "./testing/OpenCL-CTS/pointer_cast.cl", ""},
+		Entry{PASSED, FAST, "./testing/OpenCL-CTS/quick_1d_explicit_load.cl", ""},
+		Entry{PENDING_BOTH, FAST, "./testing/OpenCL-CTS/shuffle_builtin_dual_input.cl", ""},
+		Entry{PASSED, FAST, "./testing/OpenCL-CTS/shuffle_copy.cl", ""},
+		Entry{PASSED, FAST, "./testing/OpenCL-CTS/sub_sat.cl", ""},
+		Entry{PASSED, FAST, "./testing/OpenCL-CTS/test_vload.cl", ""},
+		Entry{PASSED, FAST, "./testing/OpenCL-CTS/vload_private.cl", ""},
+		Entry{PENDING_BOTH, FAST, "./testing/OpenCL-CTS/vstore_private.cl", ""},
+		Entry{PASSED, FAST, "./testing/OpenCL-CTS/work_item_functions.cl", ""},
+
 };
 
 RegressionTest::RegressionTest(const vc4c::Frontend frontend, bool onlyRegressions)

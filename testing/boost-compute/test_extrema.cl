@@ -1,4 +1,3 @@
-/*
 __kernel void copy(__global int* _buf0, const uint count)
 {
 uint index = get_local_id(0) + (32 * get_group_id(0));
@@ -59,7 +58,7 @@ old = _buf0[old_index];
 }
 }
 #undef BOOST_COMPUTE_FIND_MAXIMUM
-*/
+
 __kernel void find_extrema_on_cpu_min(uint count, __global int* output, __global uint* output_idx, __global int* _buf0)
 {
 uint block = (uint)ceil(((float)count)/get_global_size(0));
@@ -83,7 +82,6 @@ output[get_global_id(0)] = value;
 output_idx[get_global_id(0)] = value_index;
 }
 
-/*
 __kernel void serial_find_extrema_min(__global int* _buf0, __global uint* index, uint size)
 {
 int value = _buf0[0];
@@ -292,4 +290,3 @@ _buf0[get_group_id(0)] = block_idx[0];
 }
 }
 #undef BOOST_COMPUTE_FIND_MAXIMUM
-*/
