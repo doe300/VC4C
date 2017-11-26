@@ -1652,8 +1652,18 @@ void IRParser::extractKernelInfo()
             		break;
             	}
             	case MetaDataType::ARG_TYPE_NAMES:
-            		//TODO
+            	{
+            		for(std::size_t i = 0; i < values.size(); ++i)
+					{
+						Parameter& param = method.method->parameters.at(i);
+						param.origTypeName = values.at(i);
+						if(!param.type.isPointerType() && (values.at(i).find("uint") == 0 || values.at(i).find("ushort") == 0 || values.at(i).find("uchar") == 0))
+							param.decorations = add_flag(param.decorations, ParameterDecorations::ZERO_EXTEND);
+						else if(!param.type.isPointerType() && (values.at(i).find("int") == 0 || values.at(i).find("short") == 0 || values.at(i).find("char") == 0))
+							param.decorations = add_flag(param.decorations, ParameterDecorations::SIGN_EXTEND);
+					}
             		break;
+            	}
             	case MetaDataType::WORK_GROUP_SIZES:
             		method.method->metaData.workGroupSizes = {static_cast<uint32_t>(std::atoi(values.at(0).data())), static_cast<uint32_t>(std::atoi(values.at(1).data())), static_cast<uint32_t>(std::atoi(values.at(2).data()))};
             		break;

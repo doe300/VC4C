@@ -316,8 +316,7 @@ KernelInfo qpu_asm::getKernelInfos(const Method& method, const uint16_t initialO
     	std::string paramName = param.parameterName;
     	paramName = paramName.empty() ? param.name : paramName;
         const DataType& paramType = param.type;
-        //TODO std::string typeName = getMetaData(method.metaData, MetaDataType::ARG_TYPE_NAMES, i);
-        std::string typeName;
+        std::string typeName = param.origTypeName;
         ParamInfo paramInfo;
         paramInfo.setSize(static_cast<uint8_t>(paramType.getPhysicalWidth()));
         paramInfo.setPointer(paramType.isPointerType() || paramType.getImageType().hasValue);

@@ -49,6 +49,7 @@ static InstructionWalker loadVectorParameter(const Parameter& param, Method& met
 			it.emplace(new MoveOperation(param.createReference(), UNIFORM_REGISTER, i == 0 ? COND_ALWAYS : COND_ZERO_SET));
 			it.nextInBlock();
 		}
+		//TODo improve performance by first putting together the vector, then zero/sign extending all elements?
 	}
 	return it;
 }

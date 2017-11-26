@@ -158,6 +158,8 @@ namespace vc4c
 		std::size_t maxByteOffset = SIZE_MAX;
 		//the "real" parameter-name from the source-code
 		std::string parameterName;
+		//the "real" type-name from the source-code
+		std::string origTypeName;
 	};
 
 	/*
