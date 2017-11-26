@@ -10,10 +10,6 @@ Threads??
 
 Edge case behavior (OpenCL 1.2, page 325ff)
 
-Decorations:
-- pass through everywhere
-- set for modifications (intrinsics)
-
 Unpack/Pack:
 - use for type conversions (only works, if both unpack/pack are used, otherwise, e.g. negative numbers have no leading ones!)
 - use to support half??
@@ -180,7 +176,19 @@ calculation:
   - need to make sure, flags are set correctly (esp. negative, since it probably checks for 31th bit, not the MSB of the real type, which the ALU doesn't know!)
   
 Instructions:
-- rewrite Operation to only contain valid (as in mappable to ALU-instruction) op-codes
+- rewrite Operation to only contain valid (as in mappable to ALU-instruction) op-codes ??
   - need to resolve unsupported op-codes in front-end (e.g. via shared function)
+  - more complex replacing comparisons/unsupported arithmetic operations
   + cleans-up Intrinsics-handling
   + can remove string op-code from Operation, resulting in earlier check for support op-codes among other things
+  
+Signedness:
+- for arithmetic 32-bit calculations, the signedness is handled correctly (+, - execute the same for un/signed, * too? / and % have separate op-codes (both LLVM-IR and SPIR-V))
+- problematic:
+  comparison operators?
+- where need to be fixed:
+  - results of stdlib-functions
+  - kernel-parameter (scalar, vector), scalar are correctly for non 32-bit types
+  - loading from VPM (currently always zero-extended)
+- how to know signedness (other than from signext/zeroext decoration)?
+

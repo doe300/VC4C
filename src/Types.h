@@ -41,6 +41,12 @@ namespace vc4c
 
 		std::string to_string() const;
 
+		/*
+		 * Tries to reconstruct the original type-name from the signedness-information passed.
+		 * Otherwise, returns #to_string()
+		 */
+		std::string getTypeName(bool isSigned = false, bool isUnsigned = false) const;
+
 		bool operator==(const DataType& right) const;
 		inline bool operator!=(const DataType& right) const
 		{

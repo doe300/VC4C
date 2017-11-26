@@ -35,6 +35,9 @@ namespace vc4c
 			BITFIELD_ENTRY(Input, bool, 56, Bit)
 			BITFIELD_ENTRY(Output, bool, 57, Bit)
 			BITFIELD_ENTRY(Pointer, bool, 60, Bit)
+			BITFIELD_ENTRY(FloatingType, bool, 61, Bit)
+			BITFIELD_ENTRY(Signed, bool, 62, Bit)
+			BITFIELD_ENTRY(Unsigned, bool, 63, Bit)
 
 			inline void setName(const std::string& name)
 			{

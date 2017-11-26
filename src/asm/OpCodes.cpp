@@ -142,19 +142,19 @@ std::string Unpack::toString() const
 		case UNPACK_NOP:
 			return "";
 		case UNPACK_16A_32:
-			return "upLow16to32";
+			return "sextLow16to32";
 		case UNPACK_16B_32:
-			return "upHigh16to32";
+			return "sextHigh16to32";
 		case UNPACK_8888_32:
-			return "replMSByte";
+			return "replMSB";
 		case UNPACK_8A_32:
-			return "upByte0To32";
+			return "zextByte0To32";
 		case UNPACK_8B_32:
-			return "upByte1To32";
+			return "zextByte1To32";
 		case UNPACK_8C_32:
-			return "upByte2To32";
+			return "zextByte2To32";
 		case UNPACK_8D_32:
-			return "upByte3To32";
+			return "zextByte3To32";
 	}
 	throw CompilationError(CompilationStep::CODE_GENERATION, "Unsupported unpack-mode", std::to_string(static_cast<unsigned>(value)));
 }
@@ -178,35 +178,35 @@ std::string Pack::toString() const
 		case PACK_NOP:
 			return "";
 		case PACK_32_16A:
-			return "p32toLow16";
+			return "trunc32toLow16";
 		case PACK_32_16A_S:
 			return "sat16ToLow16";
 		case PACK_32_16B:
-			return "p32ToHigh16";
+			return "trunc32ToHigh16";
 		case PACK_32_16B_S:
 			return "sat16ToHigh16";
 		case PACK_32_32:
 			return "sat";
 		case PACK_32_8888:
-			return "replLSByte";
+			return "replLSB";
 		case PACK_32_8888_S:
-			return "replLSByteSat";
+			return "replLSBSat";
 		case PACK_32_8A:
-			return "pLSByteToByte0";
+			return "truncLSBToByte0";
 		case PACK_32_8A_S:
-			return "sat8ToByte0";
+			return "satLSBToByte0";
 		case PACK_32_8B:
-			return "pLSByteToByte1";
+			return "truncLSBToByte1";
 		case PACK_32_8B_S:
-			return "sat8ToByte1";
+			return "satLSBToByte1";
 		case PACK_32_8C:
-			return "pLSByteToByte2";
+			return "truncLSBToByte2";
 		case PACK_32_8C_S:
-			return "sat8ToByte2";
+			return "satLSBToByte2";
 		case PACK_32_8D:
-			return "pLSByteToByte3";
+			return "truncLSBToByte3";
 		case PACK_32_8D_S:
-			return "sat8ToByte3";
+			return "satLSBToByte3";
 	}
 	throw CompilationError(CompilationStep::CODE_GENERATION, "Unsupported pack-mode", std::to_string(static_cast<unsigned>(value)));
 }

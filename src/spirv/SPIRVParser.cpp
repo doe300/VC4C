@@ -991,7 +991,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     case SpvOpConvertFToU:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "fptoui", parsed_instruction->type_id, parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
+        instructions.emplace_back(new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "fptoui", parsed_instruction->type_id, parseArguments(parsed_instruction, 3), add_flag(toInstructionDecorations(parsed_instruction->result_id), intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
     case SpvOpConvertFToS:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
@@ -1007,7 +1007,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     case SpvOpUConvert: //change bit-width (type) of value
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::UNSIGNED, toInstructionDecorations(parsed_instruction->result_id)));
+        instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::UNSIGNED, add_flag(toInstructionDecorations(parsed_instruction->result_id), intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
     case SpvOpSConvert: //change bit-width (type) of value
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
@@ -1019,11 +1019,11 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     case SpvOpConvertPtrToU: //pointer to unsigned -> same as OpUConvert
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::UNSIGNED, toInstructionDecorations(parsed_instruction->result_id)));
+        instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::UNSIGNED, add_flag(toInstructionDecorations(parsed_instruction->result_id), intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
     case SpvOpSatConvertSToU: //signed to unsigned (with saturation)
     	localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-		instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::UNSIGNED, toInstructionDecorations(parsed_instruction->result_id), true));
+		instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::UNSIGNED, add_flag(toInstructionDecorations(parsed_instruction->result_id), intermediate::InstructionDecorations::UNSIGNED_RESULT), true));
 		return SPV_SUCCESS;
     case SpvOpSatConvertUToS: //unsigned to signed (with saturation)
     	localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
@@ -1089,7 +1089,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     case SpvOpUDiv:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "udiv", parsed_instruction->type_id, parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
+        instructions.emplace_back(new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "udiv", parsed_instruction->type_id, parseArguments(parsed_instruction, 3), add_flag(toInstructionDecorations(parsed_instruction->result_id), intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
     case SpvOpSDiv:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
@@ -1101,7 +1101,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     case SpvOpUMod:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "umod", parsed_instruction->type_id, parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
+        instructions.emplace_back(new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "umod", parsed_instruction->type_id, parseArguments(parsed_instruction, 3), add_flag(toInstructionDecorations(parsed_instruction->result_id), intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
     case SpvOpSRem:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
@@ -1209,7 +1209,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     case SpvOpUGreaterThan:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod, intermediate::COMP_UNSIGNED_GT, parsed_instruction->type_id, parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
+        instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod, intermediate::COMP_UNSIGNED_GT, parsed_instruction->type_id, parseArguments(parsed_instruction, 3), add_flag(toInstructionDecorations(parsed_instruction->result_id), intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
     case SpvOpSGreaterThan:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
@@ -1217,7 +1217,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     case SpvOpUGreaterThanEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod, intermediate::COMP_UNSIGNED_GE, parsed_instruction->type_id, parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
+        instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod, intermediate::COMP_UNSIGNED_GE, parsed_instruction->type_id, parseArguments(parsed_instruction, 3), add_flag(toInstructionDecorations(parsed_instruction->result_id), intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
     case SpvOpSGreaterThanEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
@@ -1225,7 +1225,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     case SpvOpULessThan:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod, intermediate::COMP_UNSIGNED_LT, parsed_instruction->type_id, parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
+        instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod, intermediate::COMP_UNSIGNED_LT, parsed_instruction->type_id, parseArguments(parsed_instruction, 3), add_flag(toInstructionDecorations(parsed_instruction->result_id), intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
     case SpvOpSLessThan:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
@@ -1233,7 +1233,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     case SpvOpULessThanEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod, intermediate::COMP_UNSIGNED_LE, parsed_instruction->type_id, parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
+        instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod, intermediate::COMP_UNSIGNED_LE, parsed_instruction->type_id, parseArguments(parsed_instruction, 3), add_flag(toInstructionDecorations(parsed_instruction->result_id), intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
     case SpvOpSLessThanEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;

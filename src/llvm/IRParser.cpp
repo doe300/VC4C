@@ -260,10 +260,7 @@ DataType IRParser::parseType()
 			//XXX could be used as flag ??
 		}
 		typeName = scanner.pop().getText();
-		if (skipToken(scanner, "zeroext")) {
-			//for any other type, this comes afterwards
-			//XXX could be used as flag ??
-		}
+		//for any other type (parameter), "zeroext" comes afterwards, but is handled outside of this function
     }
 
     std::size_t numPointerTypes = 0;

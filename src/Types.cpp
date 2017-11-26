@@ -35,6 +35,42 @@ std::string DataType::to_string() const
     return typeName;
 }
 
+static std::string toSignedTypeName(const std::string& typeName)
+{
+	if(typeName == "i64")
+		return "long";
+	if(typeName == "i32")
+		return "int";
+	if(typeName == "i16")
+		return "short";
+	if(typeName == "i8")
+		return "char";
+	return typeName;
+}
+
+static std::string toUnsignedTypeName(const std::string& typeName)
+{
+	if(typeName == "i64")
+		return "ulong";
+	if(typeName == "i32")
+		return "uint";
+	if(typeName == "i16")
+		return "ushort";
+	if(typeName == "i8")
+		return "uchar";
+	return typeName;
+}
+
+std::string DataType::getTypeName(bool isSigned, bool isUnsigned) const
+{
+	if(complexType != nullptr || (!isFloatingType() && !isSigned && !isUnsigned))
+		return to_string();
+	const std::string tName = isSigned ? toSignedTypeName(typeName) : isUnsigned ? toUnsignedTypeName(typeName) : typeName;
+	if(num > 1)
+		return tName + std::to_string(num);
+	return tName;
+}
+
 bool DataType::operator==(const DataType& right) const
 {
 	if(this == &right)

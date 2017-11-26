@@ -327,9 +327,13 @@ KernelInfo qpu_asm::getKernelInfos(const Method& method, const uint16_t initialO
         paramInfo.setRestricted(has_flag(param.decorations, ParameterDecorations::RESTRICT));
         paramInfo.setVolatile(has_flag(param.decorations, ParameterDecorations::VOLATILE));
         paramInfo.setName(paramName[0] == '%' ? paramName.substr(1) : paramName);
-        paramInfo.setTypeName(typeName.empty() ? paramType.to_string() : typeName);
         paramInfo.setElements((paramType.isPointerType() ? static_cast<uint8_t>(1) : paramType.num));
         paramInfo.setAddressSpace(paramType.isPointerType() ? paramType.getPointerType().get()->addressSpace : AddressSpace::PRIVATE);
+        paramInfo.setFloatingType(paramType.isFloatingType());
+        //FIXME signedness is only recognized correctly for non-32 bit scalar types (e.g. (u)char, (u)short), not for pointers or even vector-types
+        paramInfo.setSigned(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND));
+        paramInfo.setUnsigned(has_flag(param.decorations, ParameterDecorations::ZERO_EXTEND));
+        paramInfo.setTypeName(typeName.empty() ? paramType.getTypeName(paramInfo.getSigned(), paramInfo.getUnsigned()) : typeName);
         info.addParameter(paramInfo);
     }
     
