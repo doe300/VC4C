@@ -185,7 +185,7 @@ Instructions:
 Signedness:
 - for arithmetic 32-bit calculations, the signedness is handled correctly (+, - execute the same for un/signed, * too? / and % have separate op-codes (both LLVM-IR and SPIR-V))
 - problematic:
-  comparison operators?
+  comparison operators? needs to sign/zero-extend all values before integer comparisons!
 - where need to be fixed:
   - results of stdlib-functions
   - kernel-parameter (scalar, vector), scalar are correctly for non 32-bit types

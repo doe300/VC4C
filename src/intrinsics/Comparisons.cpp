@@ -8,6 +8,7 @@
 
 #include "../intermediate/Helper.h"
 #include "helper.h"
+#include "log.h"
 
 #include <cmath>
 
@@ -40,13 +41,14 @@ static InstructionWalker replaceWithSetBoolean(InstructionWalker it, const Value
 	return it;
 }
 
-InstructionWalker intermediate::intrinsifyIntegerRelation(Method& method, InstructionWalker it, const Comparison* comp)
+InstructionWalker intrinsifyIntegerRelation(Method& method, InstructionWalker it, const Comparison* comp, bool invertResult)
 {
     //http://llvm.org/docs/LangRef.html#icmp-instruction
 	const Value tmp = method.addNewLocal(comp->getFirstArg().type, "%icomp");
     if(COMP_EQ == comp->opCode)
     {
         // a == b <=> a xor b == 0 [<=> a - b == 0]
+    	// a != b <=> a xor b != 0
         if(comp->getFirstArg().hasType(ValueType::LOCAL) && comp->getSecondArg().get().hasLiteral(Literal(static_cast<int64_t>(0))))
             //special case for a == 0
             //does not save instructions, but does not force value a to be on register-file A (since B is reserved for literal 0)
@@ -54,71 +56,87 @@ InstructionWalker intermediate::intrinsifyIntegerRelation(Method& method, Instru
         else
             it.emplace(new Operation(OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
         it.nextInBlock();
-        it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_SET);
+        it = replaceWithSetBoolean(it, comp->getOutput(), invertResult ? COND_ZERO_CLEAR : COND_ZERO_SET);
     }
-    else if(COMP_NEQ == comp->opCode)
+    else if(COMP_UNSIGNED_LT == comp->opCode)
     {
-        // a != b <=> a xor b != 0 [<=> a - b != 0] [<=> max(a,b) - min(a,b) != 0]
-        if(comp->getFirstArg().hasType(ValueType::LOCAL) && comp->getSecondArg().get().hasLiteral(Literal(static_cast<int64_t>(0))))
-            //special case for a != 0
-            //does not save instructions, but does not force value a to be on register-file A (since B is reserved for literal 0)
-            it.emplace( new MoveOperation(NOP_REGISTER, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
-        else
-            it.emplace(new Operation(OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
-        it.nextInBlock();
-        //true if ZERO is not set, otherwise false
-        it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_CLEAR);
-    }
-    else if(COMP_UNSIGNED_LT== comp->opCode)
-    {
-        //a < b [<=> min(a, b) != b] <=> max(a, b) != a
-        it.emplace(new Operation(OP_MAX, tmp, comp->getFirstArg(), comp->getSecondArg(), comp->conditional));
-        it.nextInBlock();
-        it.emplace(new Operation(OP_XOR, NOP_REGISTER, tmp, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
-        it.nextInBlock();
-        //true if ZERO is not set, otherwise false
-        it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_CLEAR);
-    }
-    else if(COMP_UNSIGNED_LE == comp->opCode)
-    {
-        //a <= b [<=> min(a, b) == a] <=> max(a, b) == b
-        it.emplace(new Operation(OP_MAX, tmp, comp->getFirstArg(), comp->getSecondArg(), comp->conditional));
-        it.nextInBlock();
-        it.emplace(new Operation(OP_XOR, NOP_REGISTER, tmp, comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
-        it.nextInBlock();
-        it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_SET);
+        //a < b [<=> umin(a, b) != b] <=> umax(a, b) != a
+    	/*
+    	 * 32-bit:
+    	 * a < b <=> (a >> 16 < b >> 16) || ((a >> 16 == b >> 16) && a & 0xFFFF < b & 0xFFFF)
+    	 *
+    	 * 16-bit:
+    	 * a < b [<=> max(a & 0xFFFF, b & 0xFFFF) != a] <=> max(a, b) != a (since MSB is never set -> always positive)
+    	 *
+    	 * 8-bit:
+    	 * a < b [<=> max(a & 0xFF, b & 0xFF) != a] <=> max(a, b) != a (since MSB is never set -> always positive)
+    	 */
+    	if(comp->getFirstArg().type.getScalarBitCount() == 32)
+    	{
+    		//XXX optimize? combine both comparisons of upper half? can short-circuit on ||?
+    		const Value tmp1 = method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.num), "%icomp");
+    		const Value tmp2 = method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.num), "%icomp");
+    		const Value tmp3 = method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.num), "%icomp");
+    		const Value tmp4 = method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.num), "%icomp");
+    		const Value leftUpper = method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.num), "%comp.left");
+    		const Value leftLower = method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.num), "%comp.left");
+    		const Value rightUpper = method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.num), "%comp.right");
+    		const Value rightLower = method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.num), "%comp.right");
+    		it.emplace(new Operation(OP_SHR, leftUpper, comp->getFirstArg(), Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
+    		it.nextInBlock();
+    		it.emplace(new Operation(OP_AND, leftLower, comp->getFirstArg(), Value(Literal(TYPE_INT16.getScalarWidthMask()), TYPE_INT32)));
+    		it.nextInBlock();
+    		it.emplace(new Operation(OP_SHR, rightUpper, comp->getSecondArg(), Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
+			it.nextInBlock();
+			it.emplace(new Operation(OP_AND, rightLower, comp->getSecondArg(), Value(Literal(TYPE_INT16.getScalarWidthMask()), TYPE_INT32)));
+			it.nextInBlock();
+			//(a >> 16) < (b >> 16)
+			//insert dummy comparison to be intrinsified
+			it.emplace(new Comparison(COMP_UNSIGNED_LT, tmp1, leftUpper, rightUpper));
+			it = intrinsifyIntegerRelation(method, it, it.get<Comparison>(), false);
+			it.nextInBlock();
+			//(a >> 16) == (b >> 16)
+			//insert dummy comparison to be intrinsified
+			it.emplace(new Comparison(COMP_EQ, tmp2, leftUpper, rightUpper));
+			it = intrinsifyIntegerRelation(method, it, it.get<Comparison>(), false);
+			it.nextInBlock();
+			//(a & 0xFFFF) < (b & 0xFFFF)
+			//insert dummy comparison to be intrinsified
+			it.emplace(new Comparison(COMP_UNSIGNED_LT, tmp3, leftLower, rightLower));
+			it = intrinsifyIntegerRelation(method, it, it.get<Comparison>(), false);
+			it.nextInBlock();
+			//upper && lower
+			it.emplace(new Operation(OP_AND, tmp4, tmp2, tmp3));
+			it.nextInBlock();
+			it.emplace(new Operation(OP_OR, NOP_REGISTER, tmp1, tmp4, comp->conditional, SetFlag::SET_FLAGS));
+			it.nextInBlock();
+    	}
+    	else
+    	{
+			it.emplace(new Operation(OP_MAX, tmp, comp->getFirstArg(), comp->getSecondArg(), comp->conditional));
+			it.nextInBlock();
+			it.emplace(new Operation(OP_XOR, NOP_REGISTER, tmp, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
+			it.nextInBlock();
+    	}
+        it = replaceWithSetBoolean(it, comp->getOutput(), invertResult ? COND_ZERO_SET : COND_ZERO_CLEAR);
     }
     else if(COMP_SIGNED_LT == comp->opCode)
     {
-        //a < b [<=> min(a, b) != b] [<=> max(a, b) != a] <=> a - b < 0
-
-    	//TODO fails even more for boost-compute/test_insertion_sort
-//		if(comp->getFirstArg().type.getScalarBitCount() < 32)
-//		{
-//			//for non 32-bit types, we need to make sure the correct flag (MSB instead of always the 31th bit) is checked
-//			it.emplace(new Operation("sub", tmp, comp->getFirstArg(), comp->getSecondArg(), comp->conditional));
-//			it.nextInBlock();
-//			it.emplace(new Nop(DelayType::WAIT_REGISTER));
-//			it.nextInBlock();
-//			it.emplace(new MoveOperation(NOP_REGISTER, tmp, comp->conditional, SetFlag::SET_FLAGS));
-//			it->setUnpackMode(Unpack::unpackTo32Bit(tmp.type));
-//		}
-//		else
-		{
-			it.emplace(new Operation(OP_SUB, NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
-		}
+        //a < b [<=> min(a, b) != b] <=> max(a, b) != a
+    	Value firstArg = comp->getFirstArg();
+    	Value secondArg = comp->getSecondArg();
+    	if(firstArg.type.getScalarBitCount() < 32)
+    	{
+    		firstArg = method.addNewLocal(TYPE_INT32.toVectorType(firstArg.type.num), "%icomp");
+    		secondArg = method.addNewLocal(TYPE_INT32.toVectorType(secondArg.type.num), "%icomp");
+    		it = insertSignExtension(it, method, comp->getFirstArg(), firstArg, true);
+    		it = insertSignExtension(it, method, comp->getSecondArg(), secondArg, true);
+    	}
+    	it.emplace(new Operation(OP_MAX, tmp, firstArg, secondArg, comp->conditional));
 		it.nextInBlock();
-		//true if NEGATIVE is set, otherwise false
-		it = replaceWithSetBoolean(it, comp->getOutput(), COND_NEGATIVE_SET);
-    }
-    else if(COMP_SIGNED_LE == comp->opCode)
-    {
-        //a <= b <=> min(a, b) == a [<=> max(a, b) == b]
-        it.emplace(new Operation(OP_MIN, tmp, comp->getFirstArg(), comp->getSecondArg(), comp->conditional, SetFlag::SET_FLAGS));
-        it.nextInBlock();
-        it.emplace(new Operation(OP_XOR, NOP_REGISTER, tmp, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
-        it.nextInBlock();
-        it = replaceWithSetBoolean(it, comp->getOutput(), COND_ZERO_SET);
+		it.emplace(new Operation(OP_XOR, NOP_REGISTER, tmp, firstArg, comp->conditional, SetFlag::SET_FLAGS));
+		it.nextInBlock();
+		it = replaceWithSetBoolean(it, comp->getOutput(), invertResult ? COND_ZERO_SET : COND_ZERO_CLEAR);
     }
     else
     	throw CompilationError(CompilationStep::OPTIMIZER, "Unrecognized integer comparison", comp->opCode);
@@ -144,7 +162,7 @@ static std::pair<InstructionWalker, Value> insertCheckForNaN(Method& method, Ins
 	return std::make_pair(it, eitherNaN);
 }
 
-InstructionWalker intermediate::intrinsifyFloatingRelation(Method& method, InstructionWalker it, const Comparison* comp)
+InstructionWalker intrinsifyFloatingRelation(Method& method, InstructionWalker it, const Comparison* comp)
 {
     //since we do not support NaNs/Inf and denormals, all ordered comparisons are treated as unordered
 	// -> "don't care if value could be Nan/Inf"
@@ -236,6 +254,99 @@ InstructionWalker intermediate::intrinsifyFloatingRelation(Method& method, Instr
     else
     	throw CompilationError(CompilationStep::OPTIMIZER, "Unrecognized floating-point comparison", comp->opCode);
     
+    return it;
+}
+
+static void swapComparisons(const std::string& opCode, Comparison* comp)
+{
+    Value tmp = comp->getFirstArg();
+    comp->setArgument(0, comp->getSecondArg());
+    comp->setArgument(1, tmp);
+    comp->setOpCode(OP_NOP);
+    const_cast<std::string&>(comp->opCode) = opCode;
+}
+
+InstructionWalker intermediate::intrinsifyComparison(Method& method, InstructionWalker it)
+{
+    Comparison* comp = it.get<Comparison>();
+    if(comp == nullptr)
+    {
+        return it;
+    }
+    logging::debug() << "Intrinsifying comparison '" << comp->opCode << "' to arithmetic operations" << logging::endl;
+    bool isFloating = comp->getFirstArg().type.isFloatingType();
+    bool negateResult = false;
+    if(!isFloating)
+    {
+        //simplification, map all unequal comparisons to "equals" and "less-then"
+    	if(COMP_NEQ == comp->opCode)
+    	{
+    		// a != b == !(a == b)
+    		negateResult = true;
+    		const_cast<std::string&>(comp->opCode) = COMP_EQ;
+    	}
+    	else if(COMP_UNSIGNED_GE == comp->opCode)
+        {
+        	// a >= b -> !(a < b)
+    		const_cast<std::string&>(comp->opCode) = COMP_UNSIGNED_LT;
+        	negateResult = true;
+        }
+        else if(COMP_UNSIGNED_GT == comp->opCode)
+        {
+        	// a > b -> b < a
+            swapComparisons(COMP_UNSIGNED_LT, comp);
+            negateResult = false;
+        }
+        else if(COMP_UNSIGNED_LE == comp->opCode)
+        {
+        	// a <= b -> !(b < a)
+        	swapComparisons(COMP_UNSIGNED_LT, comp);
+        	negateResult = true;
+        }
+        else if(COMP_SIGNED_GE == comp->opCode)
+        {
+        	// a >= b -> !(a < b)
+        	const_cast<std::string&>(comp->opCode) = COMP_SIGNED_LT;
+        	negateResult = true;
+        }
+        else if(COMP_SIGNED_GT == comp->opCode)
+        {
+        	// a > b -> b < a
+            swapComparisons(COMP_SIGNED_LT, comp);
+            negateResult = false;
+        }
+        else if(COMP_SIGNED_LE == comp->opCode)
+        {
+        	// a <= b -> !(b < a)
+        	swapComparisons(COMP_SIGNED_LT, comp);
+        	negateResult = true;
+        }
+
+        it = intrinsifyIntegerRelation(method, it, comp, negateResult);
+    }
+    else
+    {
+        //simplification, make a R b -> b R' a
+        if(COMP_ORDERED_GE == comp->opCode)
+        {
+            swapComparisons(COMP_ORDERED_LE, comp);
+        }
+        else if(COMP_ORDERED_GT == comp->opCode)
+        {
+            swapComparisons(COMP_ORDERED_LT, comp);
+        }
+        else if(COMP_UNORDERED_GE == comp->opCode)
+        {
+            swapComparisons(COMP_UNORDERED_LE, comp);
+        }
+        else if(COMP_UNORDERED_GT == comp->opCode)
+        {
+            swapComparisons(COMP_UNORDERED_LT, comp);
+        }
+
+        it = intrinsifyFloatingRelation(method, it, comp);
+    }
+
     return it;
 }
 

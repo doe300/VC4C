@@ -13,9 +13,8 @@ namespace vc4c
 {
 	namespace intermediate
 	{
-		//LLVM relational operators
-		InstructionWalker intrinsifyIntegerRelation(Method& method, InstructionWalker it, const Comparison* comp);
-		InstructionWalker intrinsifyFloatingRelation(Method& method, InstructionWalker it, const Comparison* comp);
+		//relational operators
+		InstructionWalker intrinsifyComparison(Method& method, InstructionWalker it);
 
 		InstructionWalker insertIsNegative(InstructionWalker it, const Value& src, Value& dest);
 	} // namespace intermediate
