@@ -225,11 +225,11 @@ static void compileOpenCLToLLVMIR(std::istream& input, std::ostream& output, con
 #ifdef SPIRV_CLANG_PATH
 	//just OpenCL C -> LLVM IR (but with Khronos CLang)
 	const std::string compiler = SPIRV_CLANG_PATH;
-	const std::string defaultOptions = "-cc1 -triple spir-unknown-unknown";
 #else
 	const std::string compiler = CLANG_PATH;
-	const std::string defaultOptions = "-m32";
 #endif
+	//in both instances, compile to SPIR to match the "architecture" the PCH was compiled for
+	const std::string defaultOptions = "-cc1 -triple spir-unknown-unknown";
 	//only run preprocessor and compilation, no linking and code-generation
 	//emit LLVM IR
 	const std::string command = buildCommand(compiler, defaultOptions, options, std::string("-S ").append(toText ? "-emit-llvm": "-emit-llvm-bc"), outputFile.hasValue ? outputFile.get() : "/dev/stdout", inputFile.hasValue ? inputFile.get() : "-");

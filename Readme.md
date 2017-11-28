@@ -7,7 +7,7 @@ This compiler supports OpenCL C (via LLVM or [SPIRV-LLVM](https://github.com/Khr
 
 - A C++11 capable compiler
 - CMake in version >= 3.1
-- A suitable OpenCL 1.2 compiler. Supported versions are the "original" LLVM/CLang (version 3.9 and up), which can be found in the Raspbian repositories, and Khronos [SPIRV-LLVM](https://github.com/KhronosGroup/SPIRV-LLVM) with the Khronos [SPIR-V compiler frontend](https://github.com/KhronosGroup/SPIR/tree/spirv-1.0) (only the tools clang and llvm-spirv need to be built).
+- A suitable OpenCL 1.2 compiler. Supported versions are the "original" LLVM/CLang (version 3.9 and up), which can be found in the Raspbian repositories, and Khronos [SPIRV-LLVM](https://github.com/KhronosGroup/SPIRV-LLVM) with the Khronos [SPIR-V compiler frontend](https://github.com/KhronosGroup/SPIR/tree/spirv-1.0) (only the tools clang and llvm-spirv need to be built, **using this one is recommended**).
 - The source-code for [VC4CLStdLib](https://github.com/doe300/VC4CLStdLib) for the GPU-side standard-library
 
 ## Build

@@ -138,9 +138,11 @@ if(LLVMIR_FRONTEND AND NOT CLANG_FOUND)
 		add_definitions(-DCLANG_PATH="${CLANG_FOUND}")
 		# check whether CLang is installed in the version 3.9 or greater
 		# https://stackoverflow.com/questions/16150888/cmake-branch-on-clang-version
-		EXECUTE_PROCESS( COMMAND ${CMAKE_CXX_COMPILER} --version OUTPUT_VARIABLE clang_full_version_string )
+		EXECUTE_PROCESS( COMMAND ${CLANG_FOUND} --version OUTPUT_VARIABLE clang_full_version_string )
 		string (REGEX REPLACE ".*clang version ([0-9]+\\.[0-9]+).*" "\\1" CLANG_VERSION_STRING ${clang_full_version_string})
-		if (CLANG_VERSION_STRING VERSION_GREATER 3.9)
+		if (CLANG_VERSION_STRING VERSION_LESS 3.9)
+			message(SEND_ERROR "CLang version ${CLANG_VERSION_STRING} is not supported, update your CLang to version 3.9+!")
+		else()
 			message(STATUS "Using enhanced OpenCL features of Clang 3.9+!")
 			add_definitions(-DUSE_CLANG_OPENCL=1)
 		endif()
