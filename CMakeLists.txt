@@ -132,7 +132,7 @@ endif()
 
 # fall back to "standard" CLang
 if(LLVMIR_FRONTEND AND NOT CLANG_FOUND)
-	find_program(CLANG_FOUND clang)
+	find_program(CLANG_FOUND clang NAMES clang-3.9 clang)
 	if(CLANG_FOUND)
 		message(STATUS "CLang compiler found: " ${CLANG_FOUND})
 		add_definitions(-DCLANG_PATH="${CLANG_FOUND}")
