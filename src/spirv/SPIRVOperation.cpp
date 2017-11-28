@@ -689,7 +689,15 @@ void SPIRVSelect::mapInstruction(std::map<uint32_t, DataType>& types, std::map<u
     
     logging::debug() << "Generating intermediate select on " << condition.to_string() << " whether to write " << sourceTrue.to_string() << " or " << sourceFalse.to_string() << " into " << dest.to_string(true) << logging::endl;
     
-    method.method->appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, condition, COND_ALWAYS, SetFlag::SET_FLAGS));
+    if(condition.type.isScalarType() && (!sourceTrue.type.isScalarType() || !sourceFalse.type.isScalarType()))
+    {
+    	//if a vector is selected on a scalar value, the whole vector needs to be selected -> replicate the condition to all elements
+    	auto it = intermediate::insertReplication(method.method->appendToEnd(), condition, NOP_REGISTER, true);
+    	it.previousInBlock()->setFlags = SetFlag::SET_FLAGS;
+    }
+    else
+    	method.method->appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, condition, COND_ALWAYS, SetFlag::SET_FLAGS));
+
     method.method->appendToEnd(new intermediate::MoveOperation(dest, sourceTrue, COND_ZERO_CLEAR));
     method.method->appendToEnd(new intermediate::MoveOperation(dest, sourceFalse, COND_ZERO_SET));
 }

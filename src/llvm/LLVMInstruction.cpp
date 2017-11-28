@@ -589,7 +589,19 @@ bool Selection::mapInstruction(Method& method) const
     logging::debug() << "Generating moves for selection " << opt1.to_string() << " or " << opt2.to_string() << " according to " << cond.to_string() << logging::endl;
     //if cond == 1 -> first else second
     //makes sure, the flags are set for the correction value
-    method.appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, cond, COND_ALWAYS, SetFlag::SET_FLAGS));
+
+    if(cond.type.isScalarType() && (!opt1.type.isScalarType() || !opt2.type.isScalarType()))
+    {
+    	/*
+		 * LLVM language reference, section 'select' semantics:
+		 * "If the condition is an i1 and the value arguments are vectors of the same size, then an entire vector is selected."
+		 */
+    	auto it = intermediate::insertReplication(method.appendToEnd(), cond, NOP_REGISTER, true);
+    	it.previousInBlock()->setFlags = SetFlag::SET_FLAGS;
+    }
+    else
+    	method.appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, cond, COND_ALWAYS, SetFlag::SET_FLAGS));
+
     method.appendToEnd(new intermediate::MoveOperation(Value(dest, opt1.type), opt1, COND_ZERO_CLEAR));
     method.appendToEnd(new intermediate::MoveOperation(Value(dest, opt2.type), opt2, COND_ZERO_SET));
     return true;
