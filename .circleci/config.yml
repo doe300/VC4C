@@ -18,6 +18,8 @@ jobs:
           name: deb-packing
           command: cpack -G DEB
       - store_artifacts:
+          path: build/{libVC4CC.so,libVC4CC.so.0.4,libVC4CC.so.1.2,VC4C}
+      - store_artifacts:
           path: build/test/TestVC4C
           distination: TestVC4C
       - store_artifacts:
