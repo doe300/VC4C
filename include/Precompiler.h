@@ -33,7 +33,18 @@ namespace vc4c
 	class TemporaryFile : private NonCopyable
 	{
 	public:
+		/*
+		 * Creates and manages a new empty temporary file
+		 */
 		explicit TemporaryFile(const std::string& fileTemplate = "/tmp/vc4c-XXXXXX");
+		/*
+		 * Creates and manages a new temporary file with fixed file-name and initial content
+		 */
+		explicit TemporaryFile(const std::string& fileName, std::istream& data);
+		/*
+		 * Creates and manages a new temporary file with fixed file-name and initial content
+		 */
+		explicit TemporaryFile(const std::string& fileName, const std::vector<char>& data);
 		TemporaryFile(const TemporaryFile&) = delete;
 		TemporaryFile(TemporaryFile&& other) noexcept;
 		~TemporaryFile();

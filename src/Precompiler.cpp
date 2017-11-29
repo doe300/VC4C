@@ -53,6 +53,26 @@ TemporaryFile::TemporaryFile(const std::string& fileTemplate) : fileName(fileTem
 	logging::debug() << "Temporary file '" << fileName << "' created" << logging::endl;
 }
 
+TemporaryFile::TemporaryFile(const std::string& fileName, std::istream& data) : fileName(fileName)
+{
+	if(fileName.find("/tmp/") != 0)
+		logging::warn() << "Temporary file is not created in /tmp/: " << fileName << logging::endl;
+	std::ofstream f(fileName, std::ios_base::out|std::ios_base::trunc|std::ios_base::binary);
+	f << data.rdbuf();
+	//XXX error-check (both streams?)
+	logging::debug() << "Temporary file '" << fileName << "' created" << logging::endl;
+}
+
+TemporaryFile::TemporaryFile(const std::string& fileName, const std::vector<char>& data) : fileName(fileName)
+{
+	if(fileName.find("/tmp/") != 0)
+		logging::warn() << "Temporary file is not created in /tmp/: " << fileName << logging::endl;
+	std::ofstream f(fileName, std::ios_base::out|std::ios_base::trunc|std::ios_base::binary);
+	f.write(data.data(), data.size());
+	//XXX error-check stream
+	logging::debug() << "Temporary file '" << fileName << "' created" << logging::endl;
+}
+
 TemporaryFile::TemporaryFile(TemporaryFile&& other) noexcept : fileName(other.fileName)
 {
 	const_cast<std::string&>(other.fileName) = "";
