@@ -570,50 +570,36 @@ bool IRParser::parseMethod()
         //see http://releases.llvm.org/3.9.0/tools/clang/docs/ReleaseNotes.html#opencl-c-language-changes-in-clang
         if (nextToken.hasValue("!kernel_arg_addr_space")) {
             //set as kernel
-            if (!isKernelSet)
-                kernelNames.push_back(methodName);
             isKernelSet = true;
             method.metaDataMapping[MetaDataType::ARG_ADDR_SPACES] = scanner.pop().getText();
         }
         else if (nextToken.hasValue("!kernel_arg_access_qual")) {
             //set as kernel
-            if (!isKernelSet)
-                kernelNames.push_back(methodName);
             isKernelSet = true;
             method.metaDataMapping[MetaDataType::ARG_ACCESS_QUALIFIERS] = scanner.pop().getText();
         }
         else if (nextToken.hasValue("!kernel_arg_type")) {
             //set as kernel
-            if (!isKernelSet)
-                kernelNames.push_back(methodName);
             isKernelSet = true;
             method.metaDataMapping[MetaDataType::ARG_TYPE_NAMES] = scanner.pop().getText();
         }
         else if (nextToken.hasValue("!kernel_arg_type_qual")) {
             //set as kernel
-            if (!isKernelSet)
-                kernelNames.push_back(methodName);
             isKernelSet = true;
             method.metaDataMapping[MetaDataType::ARG_TYPE_QUALIFIERS] = scanner.pop().getText();
         }
         else if (nextToken.hasValue("!reqd_work_group_size")) {
             //set as kernel
-            if (!isKernelSet)
-                kernelNames.push_back(methodName);
             isKernelSet = true;
             method.metaDataMapping[MetaDataType::WORK_GROUP_SIZES] = scanner.pop().getText();
         }
         else if (nextToken.hasValue("!work_group_size_hint")) {
             //set as kernel
-            if (!isKernelSet)
-                kernelNames.push_back(methodName);
             isKernelSet = true;
             method.metaDataMapping[MetaDataType::WORK_GROUP_SIZES_HINT] = scanner.pop().getText();
         }
         else if (nextToken.hasValue("!kernel_arg_name")) {
         	//set as kernel
-			if (!isKernelSet)
-				kernelNames.push_back(methodName);
 			isKernelSet = true;
 			method.metaDataMapping[MetaDataType::ARG_NAMES] = scanner.pop().getText();
         }
@@ -623,6 +609,8 @@ bool IRParser::parseMethod()
         }
     }
     while (!nextToken.hasValue('{'));
+    if (isKernelSet)
+    	kernelNames.push_back(methodName);
     //skip remainder of '{' line
     while (scanner.peek().type == TokenType::END) {
         scanner.pop();
@@ -641,8 +629,8 @@ void IRParser::parseMethodBody(LLVMMethod& method)
     logging::debug() << "Reading method body: " << logging::endl;
     //    //add label %0 to the beginning of the method
     //    //as of CLang 3.9, the first parameter can have the name %0
-    //    if(method.method.findParameter(LocalRef("%0")) == nullptr)
-    //        method.instructions.emplace_back(new LLVMLabel("%0"));
+    if(method.method->findParameter("%0") == nullptr)
+    	method.instructions.emplace_back(new LLVMLabel("%0"));
     do {
         parseInstruction(method, method.instructions);
     }
@@ -1385,8 +1373,8 @@ void IRParser::parseReturn(LLVMMethod& method, FastModificationList<std::unique_
 
 void IRParser::parseLabel(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions, const Token& label)
 {
-    //pop ':'
-	expectSkipToken(scanner, ':');
+    //pop ':' (only present in type-1 labels)
+	skipToken(scanner, ':');
     std::string labelName = label.getText();
     if (labelName.find("<label>") != std::string::npos) {
         labelName = labelName.substr(labelName.find(':') + 1);
@@ -1394,6 +1382,9 @@ void IRParser::parseLabel(LLVMMethod& method, FastModificationList<std::unique_p
     //trunc trailing comment
     labelName = labelName.substr(0, labelName.find("  "));
     labelName = std::string("%") + labelName;
+    //truncate training ':' (for type-2 labels)
+    if(labelName.find(':') != std::string::npos)
+    	labelName = labelName.substr(0, labelName.find(':'));
     logging::debug() << "Setting label " << labelName << logging::endl;
     instructions.emplace_back(new LLVMLabel(labelName));
 }

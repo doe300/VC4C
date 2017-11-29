@@ -177,6 +177,8 @@ namespace vc4c
 		BasicBlock* getNextBlockAfter(const BasicBlock* block);
 		BasicBlock* getPreviousBlock(const BasicBlock* block);
 
+		void checkAndCreateDefaultBasicBlock();
+
 		friend class BasicBlock;
 		friend class InstructionWalker;
 	};

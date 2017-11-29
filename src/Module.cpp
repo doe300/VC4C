@@ -394,20 +394,15 @@ void Method::appendToEnd(intermediate::IntermediateInstruction* instr)
 {
 	if(dynamic_cast<intermediate::BranchLabel*>(instr) != nullptr)
 		basicBlocks.emplace_back(*this, dynamic_cast<intermediate::BranchLabel*>(instr));
-	else if(basicBlocks.empty())
+	else
 	{
-		// in case the input code does not always add a label to the start of a function
-		basicBlocks.emplace_back(*this, new intermediate::BranchLabel(*findOrCreateLocal(TYPE_LABEL, BasicBlock::DEFAULT_BLOCK)));
+		checkAndCreateDefaultBasicBlock();
 		basicBlocks.back().instructions.emplace_back(instr);
 	}
-	else
-		basicBlocks.back().instructions.emplace_back(instr);
 }
-
 InstructionWalker Method::appendToEnd()
 {
-	if(basicBlocks.empty())
-		throw CompilationError(CompilationStep::GENERAL, "This method has no basic blocks");
+	checkAndCreateDefaultBasicBlock();
 	return basicBlocks.back().end();
 }
 
@@ -546,68 +541,14 @@ BasicBlock* Method::getPreviousBlock(const BasicBlock* block)
 	return nullptr;
 }
 
-//FastAccessList<BasicBlock> getBasicBlocks() const
-//{
-//    /*
-//     * A basic block is limited by:
-//     * (see https://en.wikipedia.org/wiki/Basic_block)
-//     * Starts of basic blocks:
-//     * - program start
-//     * - jump target (label)
-//     * - instruction after a branch
-//     * Ends of basic blocks:
-//     * - branches
-//     * - program end
-//     */
-//	PROFILE_START(getBasicBlocks);
-//    logging::debug() << "------" << logging::endl;
-//    logging::debug() << "Extracting basic blocks..." << logging::endl;
-//    FastAccessList<BasicBlock> blocks;
-//    blocks.reserve(16);
-//    auto it = const_cast<Method*>(this)->modifyInstructions();
-//    BasicBlock currentBlock;
-//    bool blockEnded = true;
-//    while(!it.isEnd())
-//    {
-//        if(blockEnded)
-//        {
-//            //logging::debug() << "Basic block start..." << logging::endl;
-//            currentBlock.begin = it;
-//            blockEnded = false;
-//        }
-//        auto nextIt = it.next();
-//        if(it.get<intermediate::Branch>() != nullptr)
-//        {
-//            blockEnded = true;
-//        }
-//        else if(nextIt.isEnd())
-//        {
-//            blockEnded = true;
-//        }
-//        else if(nextIt.get<intermediate::BranchLabel>() != nullptr)
-//        {
-//            blockEnded = true;
-//        }
-//
-//        //logging::debug() << (*it)->to_string() << logging::endl;
-//        if(blockEnded)
-//        {
-//            if(currentBlock.begin != it)
-//            {
-//                //skip basic blocks with only 1 instruction
-//                currentBlock.end = it;
-//                blocks.push_back(currentBlock);
-//            }
-//            //logging::debug() << "Basic block end" << logging::endl;
-//        }
-//        ++it;
-//    }
-//
-//    logging::debug() << blocks.size() << " basic blocks found" << logging::endl;
-//    PROFILE_END(getBasicBlocks);
-//    return blocks;
-//}
-
+void Method::checkAndCreateDefaultBasicBlock()
+{
+	if(basicBlocks.empty())
+	{
+		// in case the input code does not always add a label to the start of a function
+		basicBlocks.emplace_back(*this, new intermediate::BranchLabel(*findOrCreateLocal(TYPE_LABEL, BasicBlock::DEFAULT_BLOCK)));
+	}
+}
 
 Module::Module(const Configuration& compilationConfig): compilationConfig(compilationConfig)
 {

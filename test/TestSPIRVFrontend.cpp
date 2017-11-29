@@ -9,9 +9,9 @@
 #include "spirv/SPIRVHelper.h"
 #ifdef SPIRV_HEADER
 #include SPIRV_PARSER_HEADER
-#endif
 
 using namespace vc4c::spirv2qasm;
+#endif
 
 TestSPIRVFrontend::TestSPIRVFrontend()
 {
