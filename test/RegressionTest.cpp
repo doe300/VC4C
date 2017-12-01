@@ -33,7 +33,7 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./example/test_instructions.cl", ""},
 		Entry{PASSED, FAST, "./example/test_prime.cl", ""},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./example/md5.cl", ""},
-		Entry{PASSED, FAST, "./example/SHA-256.cl", ""},
+		Entry{PENDING_BOTH, FAST, "./example/SHA-256.cl", ""},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./example/test_cl.cl", ""},
 		Entry{PENDING_LLVM, FAST, "./example/histogram.cl", "-DTYPE=char -DMAX_VALUE=127 -DMIN_VALUE=-128"},
 		Entry{PENDING_LLVM, FAST, "./example/histogram.cl", "-DTYPE=uchar -DMAX_VALUE=255 -DMIN_VALUE=0"},
@@ -77,7 +77,7 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./testing/deepCL/backward_cached.cl", "-DgFilterSize=4 -DgFilterSizeSquared=16 -DgOutputSize=16 -DgInputSize=16 -DgMargin=1 -DgInputStripeInnerSize=2 -DgInputStripeOuterSize=3 -DgOutputSizeSquared=16 -DgInputStripeMarginSize=1 -DgNumStripes=16 -DgOutputStripeSize=16 -DgOutputStripeNumRows=4 -DgNumFilters=4 -DgInputPlanes=4 -DgInputSizeSquared=16"},
 		Entry{PASSED, FAST, "./testing/deepCL/copyBlock.cl", ""},
 		Entry{PASSED, FAST, "./testing/deepCL/copyLocal.cl", ""},
-		Entry{PASSED, FAST, "./testing/deepCL/forward.cl", ""},
+		Entry{PENDING_LLVM, FAST, "./testing/deepCL/forward.cl", ""},
 		Entry{PASSED, FAST, "./testing/deepCL/forward1.cl", "-DgHalfFilterSize=8 -DgInputSize=16 -DgOutputSize=16 -DgFilterSizeSquared=64 -DgNumFilters=4 -DgOutputSizeSquared=64 -DgInputSizeSquared=64 -DgNumInputPlanes=4 -DgEven=2 -DgFilterSize=16"},
 		Entry{PASSED, FAST, "./testing/deepCL/forward2.cl", "-DgWorkgroupSize=8"},
 		Entry{PASSED, FAST, "./testing/deepCL/forward3.cl", "-DgHalfFilterSize=8 -DgInputSize=16 -DgOutputSize=16 -DgFilterSizeSquared=64 -DgNumFilters=4 -DgOutputSizeSquared=64 -DgInputSizeSquared=64 -DgNumInputPlanes=4 -DgEven=2 -DgFilterSize=16 -DgPadZeros=true -DgInputPlanes=8"},
@@ -104,7 +104,7 @@ static std::vector<Entry> allKernels =
 #ifdef SPIRV_CLANG_PATH	//XXX check, only if SPIRV-LLVM is located exactly here!
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/spir/metadata/access_qualifier/images/read_only.cl", ""},
 		//XXX object which life-time is started is passed as parameter, cannot yet determine the stack-allocated source
-		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/addr-space-struct-arg.cl", ""},
+		Entry{PENDING_BOTH, FAST, "/opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/addr-space-struct-arg.cl", ""},
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/astype.cl", ""},
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/constant-addr-space-globals.cl", ""},
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/kernel-attributes.cl", ""},
@@ -200,10 +200,10 @@ static std::vector<Entry> allKernels =
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/gputools/transformations.cl", ""},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/gputools/tv_chambolle.cl", ""},
 
-		Entry{PASSED, FAST, "./testing/clNN/im2col.cl", ""},
+		Entry{PENDING_SPIRV, FAST, "./testing/clNN/im2col.cl", ""},
 		Entry{PENDING_LLVM, FAST, "./testing/clNN/SoftMax.cl", "-DSOFTMAX_THREADS=4"},
 		Entry{PASSED, FAST, "./testing/clNN/SpatialAveragePooling.cl", "-DDtype=float -DCOUNT_INCLUDE_PAD=true"},
-		Entry{PASSED, FAST, "./testing/clNN/SpatialMaxPooling.cl", "-DDtype=float"},
+		Entry{PENDING_SPIRV, FAST, "./testing/clNN/SpatialMaxPooling.cl", "-DDtype=float"},
 
 		//all kernels
 		//Entry{PASSED, FAST, "./testing/HandBrake/openclkernels.cl", ""},
@@ -216,7 +216,7 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./testing/HandBrake/vscale_all_dither_opencl.cl", ""},
 		Entry{PASSED, FAST, "./testing/HandBrake/vscale_all_nodither_opencl.cl", ""},
 		Entry{PASSED, FAST, "./testing/HandBrake/vscale_fast_opencl.cl", ""},
-		Entry{PASSED, FAST, "./testing/HandBrake/yaif_filter.cl", ""},
+		Entry{PENDING_LLVM, FAST, "./testing/HandBrake/yaif_filter.cl", ""},
 
 		Entry{PASSED, SLOW, "./testing/bfgminer/diablo.cl", "-DWORKSIZE=8"},
 		Entry{PASSED, SLOW, "./testing/bfgminer/diakgcn.cl", "-DWORKSIZE=8"},
@@ -241,7 +241,7 @@ static std::vector<Entry> allKernels =
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/JohnTheRipper/enpass_kernel.cl", "-DHASH_LOOPS=4 -DOUTLEN=16"},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/JohnTheRipper/gpg_kernel.cl", "-DPLAINTEXT_LENGTH=32 -DSALT_LENGTH=32"},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/JohnTheRipper/iwork_kernel.cl", "-DOUTLEN=8 -DHASH_LOOPS=4"},
-		Entry{PASSED, FAST, "./testing/JohnTheRipper/keystore_kernel.cl", "-DPASSLEN=8 -DSALTLEN=16"},
+		Entry{PENDING_BOTH, FAST, "./testing/JohnTheRipper/keystore_kernel.cl", "-DPASSLEN=8 -DSALTLEN=16"},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/JohnTheRipper/lotus5_kernel.cl", ""},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/JohnTheRipper/o5logon_kernel.cl", ""},
 		//TODO freezes/hangs llvm-spirv/the calling of it
@@ -292,8 +292,8 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./testing/NVIDIA/Histogram256.cl", "-DLOCAL_SIZE_LIMIT=8 -DLOG2_WARP_SIZE=2U -DWARP_COUNT=3 -DMERGE_WORKGROUP_SIZE=8"},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/NVIDIA/marchingCubes_kernel.cl", "-DLOCAL_SIZE_LIMIT=8"},
 		Entry{PASSED, FAST, "./testing/NVIDIA/matrixMul.cl", "-DLOCAL_SIZE_LIMIT=8 -DBLOCK_SIZE=8"},
-		Entry{PASSED, FAST, "./testing/NVIDIA/MedianFilter.cl", "-DLOCAL_SIZE_LIMIT=8"},
-		Entry{PASSED, FAST, "./testing/NVIDIA/MersenneTwister.cl", "-DLOCAL_SIZE_LIMIT=8"},
+		Entry{PENDING_LLVM, FAST, "./testing/NVIDIA/MedianFilter.cl", "-DLOCAL_SIZE_LIMIT=8"},
+		Entry{PENDING_BOTH, FAST, "./testing/NVIDIA/MersenneTwister.cl", "-DLOCAL_SIZE_LIMIT=8"},
 		Entry{PASSED, FAST, "./testing/NVIDIA/oclMatVecMul.cl", "-DLOCAL_SIZE_LIMIT=8"},
 		Entry{PENDING_SPIRV, FAST, "./testing/NVIDIA/oclNbodyKernel.cl", "-DLOCAL_SIZE_LIMIT=8 -DREAL3=float3 -DREAL4=float4 -DREAL=float -DZERO3=(float3)0"},
 		Entry{PASSED, FAST, "./testing/NVIDIA/oclReduction_kernel.cl", "-DLOCAL_SIZE_LIMIT=8 -DT=float -DblockSize=128 -DnIsPow2=1"},
@@ -310,7 +310,7 @@ static std::vector<Entry> allKernels =
 		Entry{PENDING_LLVM, FAST, "./testing/NVIDIA/simpleGL.cl", "-DLOCAL_SIZE_LIMIT=8"},
 		Entry{PASSED, FAST, "./testing/NVIDIA/simpleMultiGPU.cl", "-DLOCAL_SIZE_LIMIT=8"},
 		Entry{PASSED, FAST, "./testing/NVIDIA/SobelFilter.cl", "-DLOCAL_SIZE_LIMIT=8"},
-		Entry{PASSED, FAST, "./testing/NVIDIA/sweep_kernels.cl", "-DLOCAL_SIZE_LIMIT=8 -Dsystem_size=16 -DBLOCK_DIM=3"},
+		Entry{PENDING_BOTH, FAST, "./testing/NVIDIA/sweep_kernels.cl", "-DLOCAL_SIZE_LIMIT=8 -Dsystem_size=16 -DBLOCK_DIM=3"},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/NVIDIA/texture_2d.cl", "-DLOCAL_SIZE_LIMIT=8"},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/NVIDIA/texture_cube.cl", "-DLOCAL_SIZE_LIMIT=8"},
 		Entry{PENDING_LLVM, FAST, "./testing/NVIDIA/texture_volume.cl", "-DLOCAL_SIZE_LIMIT=8"},
@@ -320,7 +320,7 @@ static std::vector<Entry> allKernels =
 		Entry{PENDING_LLVM, FAST, "./testing/NVIDIA/Viterbi.cl", "-DLOCAL_SIZE_LIMIT=8"},
 		Entry{PENDING_LLVM, FAST, "./testing/NVIDIA/volumeRender.cl", "-DLOCAL_SIZE_LIMIT=8"},
 
-		Entry{PASSED, FAST, "./testing/mixbench/mix_kernels_ro.cl", "-Dblockdim=8 -Dclass_T=float -DELEMENTS_PER_THREAD=32 -DCOMPUTE_ITERATIONS=32 -DFUSION_DEGREE=8"},
+		Entry{PENDING_BOTH, FAST, "./testing/mixbench/mix_kernels_ro.cl", "-Dblockdim=8 -Dclass_T=float -DELEMENTS_PER_THREAD=32 -DCOMPUTE_ITERATIONS=32 -DFUSION_DEGREE=8"},
 		Entry{PASSED, FAST, "./testing/mixbench/mix_kernels.cl", "-Dblockdim=8 -Dclass_T=float -DELEMENTS_PER_THREAD=32 -DCOMPUTE_ITERATIONS=32 -DFUSION_DEGREE=8 -Dmemory_ratio=8"},
 
 		Entry{PENDING_LLVM, FAST, "./testing/OpenCV/convert.cl", "-DNO_SCALE -DsrcT=uint8 -DdstT=float8 -DconvertToDT=convert_float8"},
@@ -373,7 +373,7 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./testing/OpenCL-CTS/shuffle_copy.cl", ""},
 		Entry{PASSED, FAST, "./testing/OpenCL-CTS/sub_sat.cl", ""},
 		Entry{PASSED, FAST, "./testing/OpenCL-CTS/test_vload.cl", ""},
-		Entry{PASSED, FAST, "./testing/OpenCL-CTS/vload_private.cl", ""},
+		Entry{PENDING_BOTH, FAST, "./testing/OpenCL-CTS/vload_private.cl", ""},
 		Entry{PENDING_BOTH, FAST, "./testing/OpenCL-CTS/vstore_private.cl", ""},
 		Entry{PASSED, FAST, "./testing/OpenCL-CTS/work_item_functions.cl", ""},
 

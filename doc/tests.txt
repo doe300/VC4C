@@ -54,8 +54,8 @@ test_event						PASSED
 test_extents					PASSED
 test_extrema					result mismatch ("int_min_max", "int2_min_max_custom_comparision_function", "iota_min_max", "max_vector_length"), compilation error
 test_fill						PASSED
-test_find						PASSED
-test_find_end					result value mismatch ("find_end_string")
+test_find						result value mismatch ("find_int2")
+test_find_end					result value mismatch ("find_end_int", "find_end_string")
 test_flat_map					PASSED
 test_flat_set					PASSED
 test_for_each					PASSED
@@ -79,7 +79,7 @@ test_includes					PASSED
 test_inner_product				PASSED
 test_inplace_merge				PASSED
 test_inplace_reduce				result mismatch ("reduce_iota")
-test_insertion_sort				result mismatch ("sort_short_vector", (u)char and ushort as well as (u)int tests pass, conversion from negative int to short is not sign-extended!), compilation error (long)
+test_insertion_sort				compilation error (long)
 test_invoke						result mismatch (ULP, "invoke_builtin": result: inf expected: 256.f for function pow(2, 8))
 test_iota						PASSED
 test_is_permutation				PASSED
@@ -106,7 +106,7 @@ test_partial_sum				PASSED
 test_partition					PASSED
 test_partition_point			PASSED
 test_radix_sort					hangs/result mismatches, compilation errors
-test_radix_sort_by_key			result mismatches ("stable_radix_sort_int_by_int"), memory access violation ("stable_radix_sort_int_by_int_desc")
+test_radix_sort_by_key			hangs/result mismatches ("stable_radix_sort_int_by_int"), memory access violation ("stable_radix_sort_int_by_int_desc")
 test_random_fill				result mismatch ("random_fill_float", 6 != 0)
 test_random_shuffle				PASSED
 test_reduce						hangs/result mismatches (0 != x), SIGABRT (std::out_of_range in vector)
