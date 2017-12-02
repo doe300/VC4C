@@ -4,8 +4,8 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#ifndef INTERMEDIATE_TMU_H
-#define INTERMEDIATE_TMU_H
+#ifndef VC4C_TMU_H
+#define VC4C_TMU_H
 
 #include "../Module.h"
 
@@ -34,4 +34,4 @@ namespace vc4c
 	} /* namespace periphery */
 } /* namespace vc4c */
 
-#endif /* INTERMEDIATE_TMU_H */
+#endif /* VC4C_TMU_H */

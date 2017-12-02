@@ -8,6 +8,7 @@
 
 #include "../intermediate/Helper.h"
 #include "../intermediate/IntermediateInstruction.h"
+#include "../intermediate/TypeConversions.h"
 #include "log.h"
 
 using namespace vc4c;

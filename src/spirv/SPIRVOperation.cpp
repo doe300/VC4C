@@ -8,6 +8,7 @@
 
 #ifdef SPIRV_HEADER
 #include "../intermediate/Helper.h"
+#include "../intermediate/TypeConversions.h"
 #include "../intrinsics/Images.h"
 #include "../periphery/VPM.h"
 #include "helper.h"

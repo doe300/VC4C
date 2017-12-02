@@ -25,14 +25,6 @@ namespace vc4c
 		InstructionWalker insertVectorInsertion(InstructionWalker it, Method& method, const Value& container, const Value& index, const Value& value);
 		InstructionWalker insertVectorShuffle(InstructionWalker it, Method& method, const Value& destination, const Value& source0, const Value& source1, const Value& mask);
 
-		InstructionWalker insertSFUCall(Register sfuReg, InstructionWalker it, const Value& arg, ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
-
-		InstructionWalker insertZeroExtension(InstructionWalker it, Method& method, const Value& src, const Value& dest, bool allowLiteral, ConditionCode conditional = COND_ALWAYS, SetFlag setFlags =
-				SetFlag::DONT_SET);
-		InstructionWalker insertSignExtension(InstructionWalker it, Method& method, const Value& src, const Value& dest, bool allowLiteral, ConditionCode conditional = COND_ALWAYS, SetFlag setFlags =
-				SetFlag::DONT_SET);
-		InstructionWalker insertSaturation(InstructionWalker it, Method& method, const Value& src, const Value& dest, bool isSigned);
-
 		InstructionWalker insertMakePositive(InstructionWalker it, Method& method, const Value& src, Value& dest);
 		InstructionWalker insertInvertSign(InstructionWalker it, Method& method, const Value& src, Value& dest, ConditionCode cond = COND_ALWAYS);
 

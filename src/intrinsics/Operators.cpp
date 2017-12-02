@@ -7,6 +7,7 @@
 #include "Operators.h"
 
 #include "../intermediate/Helper.h"
+#include "../periphery/SFU.h"
 #include "Comparisons.h"
 #include "helper.h"
 #include "log.h"
@@ -326,7 +327,7 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
      * see http://anholt.livejournal.com/49474.html
      */
     const Value P0 = method.addNewLocal(op.getOutput().get().type, "%fdiv_recip");
-    insertSFUCall(REG_SFU_RECIP, it, divisor);
+    periphery::insertSFUCall(REG_SFU_RECIP, it, divisor);
     it.emplace(new MoveOperation(P0, Value(REG_SFU_OUT, TYPE_FLOAT)));
     it.nextInBlock();
     const Value const2(Literal(2.0), TYPE_FLOAT);

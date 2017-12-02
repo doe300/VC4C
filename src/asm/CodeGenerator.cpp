@@ -8,6 +8,7 @@
 
 #include "../InstructionWalker.h"
 #include "../intermediate/Helper.h"
+#include "../intermediate/TypeConversions.h"
 #include "../Profiler.h"
 #include "GraphColoring.h"
 #include "KernelInfo.h"

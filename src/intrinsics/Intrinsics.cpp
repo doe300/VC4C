@@ -7,6 +7,8 @@
 #include "Intrinsics.h"
 
 #include "../intermediate/Helper.h"
+#include "../intermediate/TypeConversions.h"
+#include "../periphery/SFU.h"
 #include "../periphery/VPM.h"
 
 #include "Comparisons.h"
@@ -89,7 +91,7 @@ static IntrinsicFunction intrinsifySFUInstruction(const Register& sfuRegister)
 	return [sfuRegister](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
 	{
 		logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to SFU call" << logging::endl;
-		it = insertSFUCall(sfuRegister, it, callSite->getArgument(0), callSite->conditional);
+		it = periphery::insertSFUCall(sfuRegister, it, callSite->getArgument(0), callSite->conditional);
 		it.reset((new MoveOperation(callSite->getOutput(), Value(REG_SFU_OUT, callSite->getOutput().get().type)))->copyExtrasFrom(callSite));
 		return it;
 	};
@@ -565,7 +567,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         else if(has_flag(op->decoration, InstructionDecorations::ALLOW_RECIP) || has_flag(op->decoration, InstructionDecorations::FAST_MATH))
         {
             logging::debug() << "Intrinsifying floating division with multiplication of reciprocal" << logging::endl;
-            it = insertSFUCall(REG_SFU_RECIP, it, arg1, op->conditional);
+            it = periphery::insertSFUCall(REG_SFU_RECIP, it, arg1, op->conditional);
             it.nextInBlock();
             op->setOpCode(OP_FMUL);
             op->setArgument(1, Value(REG_SFU_OUT, op->getFirstArg().type));

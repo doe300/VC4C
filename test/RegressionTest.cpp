@@ -377,6 +377,9 @@ static std::vector<Entry> allKernels =
 		Entry{PENDING_BOTH, FAST, "./testing/OpenCL-CTS/vstore_private.cl", ""},
 		Entry{PASSED, FAST, "./testing/OpenCL-CTS/work_item_functions.cl", ""},
 
+		Entry{PENDING_BOTH, FAST, "./testing/FFmpeg/overlay.cl", ""},
+		Entry{PENDING_BOTH, FAST, "./testing/FFmpeg/unsharp.cl", ""}
+
 };
 
 RegressionTest::RegressionTest(const vc4c::Frontend frontend, bool onlyRegressions)
