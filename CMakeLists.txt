@@ -31,6 +31,10 @@ if(NOT VC4CL_STDLIB_HEADER_SOURCE)
 	find_file(VC4CL_STDLIB_FOUND "VC4CLStdLib/include/VC4CLStdLib.h")
 	if(VC4CL_STDLIB_FOUND) # Check system path
 		set(VC4CL_STDLIB_HEADER_SOURCE "${VC4CL_STDLIB_FOUND}")
+	elseif(EXISTS "/usr/local/include/vc4cl-stdlib/VC4CLStdLib.h") # Check installed path (I)
+		set(VC4CL_STDLIB_HEADER_SOURCE "/usr/local/include/vc4cl-stdlib/VC4CLStdLib.h")
+	elseif(EXISTS "/usr/include/vc4cl-stdlib/VC4CLStdLib.h") # Check installed path (II)
+		set(VC4CL_STDLIB_HEADER_SOURCE "/usr/include/vc4cl-stdlib/VC4CLStdLib.h")
 	elseif(EXISTS "${CMAKE_SOURCE_DIR}/../VC4CLStdLib/include/VC4CLStdLib.h") # Check local path
 		set(VC4CL_STDLIB_HEADER_SOURCE "${CMAKE_SOURCE_DIR}/../VC4CLStdLib/include/VC4CLStdLib.h")
 	else()
@@ -254,6 +258,7 @@ endif (BUILD_TESTING)
 
 if (BUILD_DEB_PACKAGE)
 	message(STATUS "build deb package...")
+	message(STATUS "Debian package expects VC4CLStdLib PCH to be located in: ${VC4CL_STDLIB_HEADER}")
 
 	set(CPACK_GENERATOR "DEB")
 	set(CPACK_PACKAGING_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")

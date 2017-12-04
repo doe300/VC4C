@@ -7,7 +7,7 @@ jobs:
       - checkout
       - run:
           name: download header
-          command: git clone https://github.com/doe300/VC4CLStdLib.git VC4CLStdLib
+          command: git clone https://github.com/doe300/VC4CLStdLib.git VC4CLStdLib && cd VC4CLStdLib && cmake . && make install && cd ..
       - run:
           name: configure
           command: cmake . -DCROSS_COMPILE=ON -DBUILD_TESTING=ON -DVC4CL_STDLIB_HEADER_SOURCE=./VC4CLStdLib/include/VC4CLStdLib.h
