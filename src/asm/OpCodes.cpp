@@ -293,6 +293,100 @@ bool OpCode::operator<(const OpCode& right) const
 	return opAdd < right.opAdd || opMul < right.opMul;
 }
 
+Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> secondOperand, const std::function<Optional<Value>(const Value&)>& valueSupplier) const
+{
+	if(!firstOperand.hasValue)
+		return NO_VALUE;
+	if(numOperands > 1 && !secondOperand.hasValue)
+		return NO_VALUE;
+
+	//extract the literal value behind the operands
+	Optional<Value> firstVal = firstOperand.get().hasType(ValueType::LITERAL) || firstOperand.get().hasType(ValueType::SMALL_IMMEDIATE) || firstOperand.get().hasType(ValueType::CONTAINER) ? firstOperand : valueSupplier(firstOperand);
+	Optional<Value> secondVal = !secondOperand.hasValue || (secondOperand.get().hasType(ValueType::LITERAL) || secondOperand.get().hasType(ValueType::SMALL_IMMEDIATE) || secondOperand.get().hasType(ValueType::CONTAINER)) ? secondOperand : valueSupplier(secondOperand);
+
+	if(!firstVal.hasValue)
+		return NO_VALUE;
+	if(numOperands > 1 && !secondVal.hasValue)
+		return NO_VALUE;
+
+	if(firstVal.get().hasType(ValueType::SMALL_IMMEDIATE) && firstVal.get().immediate.isVectorRotation())
+		return NO_VALUE;
+	if(numOperands > 1 && secondVal.get().hasType(ValueType::SMALL_IMMEDIATE) && secondVal.get().immediate.isVectorRotation())
+		return NO_VALUE;
+
+	//both (used) values are literals (or literal containers)
+
+	bool calcPerComponent = (firstVal.get().hasType(ValueType::CONTAINER) && firstVal.get().container.elements.size() > 1 && !firstVal.get().container.isAllSame()) ||
+			(numOperands > 1 && secondVal.get().hasType(ValueType::CONTAINER) && secondVal.get().container.elements.size() > 1 && !secondVal.get().container.isAllSame());
+	DataType resultType = firstVal.get().type;
+	if(numOperands > 1 && (secondVal.get().type.num > resultType.num || secondVal.get().type.containsType(firstVal.get().type)))
+		resultType = secondVal.get().type;
+
+	//at least one used value is a container, need to calculate component-wise
+	if(calcPerComponent)
+	{
+		Value res(ContainerValue(), resultType);
+		for(unsigned char i = 0; i < resultType.num; ++i)
+		{
+			auto tmp = calculate(firstVal.get().hasType(ValueType::CONTAINER) ? firstVal.get().container.elements.at(i) : firstVal.get(),
+					secondVal.get().hasType(ValueType::CONTAINER) ? secondVal.get().container.elements.at(i) : secondVal.get(), valueSupplier);
+			if(!tmp.hasValue)
+				//result could not be calculated for a single component of the vector, abort
+				return NO_VALUE;
+			res.container.elements.at(i) = tmp;
+		}
+		return res;
+	}
+
+	const Literal firstLit = firstVal.get().hasType(ValueType::SMALL_IMMEDIATE) ? firstVal.get().immediate.toLiteral().get() : firstVal.get().literal;
+	const Literal secondLit = !secondVal.hasValue ? INT_ZERO.literal : (secondVal.get().hasType(ValueType::SMALL_IMMEDIATE) ? secondVal.get().immediate.toLiteral().get() : secondVal.get().literal);
+
+	if(*this == OP_ADD)
+		return Value(Literal(firstLit.integer + secondLit.integer), resultType);
+	if(*this == OP_AND)
+		return Value(Literal(firstLit.integer & secondLit.integer), resultType);
+	//XXX ASR, CLZ
+	if(*this == OP_FADD)
+		return Value(Literal(firstLit.real() + secondLit.real()), resultType);
+	if(*this == OP_FMAX)
+		return Value(Literal(std::max(firstLit.real(), secondLit.real())), resultType);
+	if(*this == OP_FMAXABS)
+		return Value(Literal(std::max(std::abs(firstLit.real()), std::abs(secondLit.real()))), resultType);
+	if(*this == OP_FMIN)
+		return Value(Literal(std::min(firstLit.real(), secondLit.real())), resultType);
+	if(*this == OP_FMAXABS)
+		return Value(Literal(std::min(std::abs(firstLit.real()), std::abs(secondLit.real()))), resultType);
+	if(*this == OP_FMUL)
+		return Value(Literal(firstLit.real() * secondLit.real()), resultType);
+	if(*this == OP_FSUB)
+		return Value(Literal(firstLit.real() - secondLit.real()), resultType);
+	if(*this == OP_FTOI)
+		return Value(Literal(static_cast<int64_t>(firstLit.real())), resultType);
+	if(*this == OP_ITOF)
+		return Value(Literal(static_cast<double>(firstLit.integer)), resultType);
+	if(*this == OP_MAX)
+		return Value(Literal(std::max(firstLit.integer, secondLit.integer)), resultType);
+	if(*this == OP_MIN)
+		return Value(Literal(std::min(firstLit.integer, secondLit.integer)), resultType);
+	if(*this == OP_MUL24)
+		return Value(Literal((firstLit.integer & 0xFFFFFF) * (secondLit.integer & 0xFFFFFF)), resultType);
+	if(*this == OP_NOT)
+		return Value(Literal(~firstLit.integer), resultType);
+	if(*this == OP_OR)
+		return Value(Literal(firstLit.integer | secondLit.integer), resultType);
+	if(*this == OP_SHL)
+		return Value(Literal(firstLit.integer << secondLit.integer), resultType);
+	if(*this == OP_SHR)
+		return Value(Literal(firstLit.integer >> secondLit.integer), resultType);
+	if(*this == OP_SUB)
+		return Value(Literal(firstLit.integer - secondLit.integer), resultType);
+	//XXX v8xxx?
+	if(*this == OP_XOR)
+		return Value(Literal(firstLit.integer ^ secondLit.integer), resultType);
+
+	return NO_VALUE;
+}
+
 const OpCode& OpCode::toOpCode(const std::string& name)
 {
 	const OpCode& code = findOpCode(name);

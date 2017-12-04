@@ -24,3 +24,7 @@ testResult.log
 lib/
 cmake/
 include/VC4CLStdLib.h.pch
+
+#CPack
+/CPackConfig.cmake
+/CPackSourceConfig.cmake

@@ -11,6 +11,7 @@
 #include "helper.h"
 
 #include <algorithm>
+#include <functional>
 #include <limits>
 #include <string>
 
@@ -301,6 +302,8 @@ namespace vc4c
 		{
 			return opMul != 0;
 		}
+
+		Optional<Value> calculate(Optional<Value> firstOperand, Optional<Value> secondOperand, const std::function<Optional<Value>(const Value&)>& valueSupplier) const;
 
 		static const OpCode& toOpCode(const std::string& name);
 		static const OpCode& toOpCode(unsigned char opcode, bool isMulALU);
