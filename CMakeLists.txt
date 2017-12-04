@@ -218,7 +218,10 @@ if(VERIFY_OUTPUT)
 endif()
 
 # Pre-compile VC4CL standard-library into pre-compiled header
-set(VC4CL_STDLIB_HEADER "${PROJECT_SOURCE_DIR}/include/VC4CLStdLib.h.pch")
+if(NOT VC4CL_STDLIB_HEADER)
+	get_filename_component(VC4CL_STDLIB_DIR ${VC4CL_STDLIB_HEADER_SOURCE} DIRECTORY)
+	set(VC4CL_STDLIB_HEADER "${VC4CL_STDLIB_DIR}/VC4CLStdLib.h.pch")
+endif()
 if(SPIRV_CLANG_FOUND)
 	set(PRECOMPILE_COMMAND "${SPIRV_CLANG_FOUND}")
 elseif(CLANG_FOUND)
@@ -228,7 +231,7 @@ else()
 endif()
 add_custom_target(vc4cl-stdlib
     COMMAND             if [ ! -e ${VC4CL_STDLIB_HEADER} ]; then ${PRECOMPILE_COMMAND} -cc1 -triple spir-unknown-unknown -O3 -cl-std=CL1.2 -cl-kernel-arg-info -cl-single-precision-constant -Wno-all -Wno-gcc-compat -x cl -emit-pch -o ${VC4CL_STDLIB_HEADER} ${VC4CL_STDLIB_HEADER_SOURCE} && echo \"VC4CL standard library precompiled into ${VC4CL_STDLIB_HEADER}\" \; fi
-    WORKING_DIRECTORY   ${PROJECT_SOURCE_DIR}
+    WORKING_DIRECTORY   ${VC4CL_STDLIB_DIR}
     SOURCES				${VC4CL_STDLIB_HEADER_SOURCE}
 )
 add_definitions(-DVC4CL_STDLIB_HEADER="${VC4CL_STDLIB_HEADER}")
