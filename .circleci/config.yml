@@ -7,16 +7,23 @@ jobs:
       - checkout
       - run:
           name: download header
-          command: git clone https://github.com/doe300/VC4CLStdLib.git VC4CLStdLib && cd VC4CLStdLib && cmake . && make install && cd ..
+          command:
+            - git clone https://github.com/doe300/VC4CLStdLib.git VC4CLStdLib
+            - cd VC4CLStdLib
+            - cmake .
+            - make install
+            - cd ..
       - run:
           name: configure
-          command: cmake . -DCROSS_COMPILE=ON -DBUILD_TESTING=ON -DVC4CL_STDLIB_HEADER_SOURCE=./VC4CLStdLib/include/VC4CLStdLib.h
+          command: cmake . -DCROSS_COMPILE=ON -DBUILD_TESTING=ON
       - run:
           name: make
           command: make -j2
       - run:
           name: deb-packing
-          command: cpack -G DEB
+          command:
+            - cpack -G DEB
+            - cpack -G DEB --config ./VC4CLStdLib/CPackConfig.cmake
       - store_artifacts:
           path: build/libVC4CC.so.0.4
           distination: libVC4CC.so.0.4
@@ -29,3 +36,6 @@ jobs:
       - store_artifacts:
           path: vc4c-0.4-Linux.deb
           distination: vc4c-0.4-Linux.deb
+      - store_artifacts:
+          path: vc4cl-stdlib-0.4-Linux.deb
+          distination: vc4cl-stdlib-0.4-Linux.deb
