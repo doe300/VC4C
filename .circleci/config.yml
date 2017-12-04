@@ -7,12 +7,7 @@ jobs:
       - checkout
       - run:
           name: download header
-          command:
-            - git clone https://github.com/doe300/VC4CLStdLib.git VC4CLStdLib
-            - cd VC4CLStdLib
-            - cmake .
-            - make install
-            - cd ..
+          command: git clone https://github.com/doe300/VC4CLStdLib.git VC4CLStdLib && cd VC4CLStdLib && cmake . && make install && cd ..
       - run:
           name: configure
           command: cmake . -DCROSS_COMPILE=ON -DBUILD_TESTING=ON
@@ -21,9 +16,7 @@ jobs:
           command: make -j2
       - run:
           name: deb-packing
-          command:
-            - cpack -G DEB
-            - cpack -G DEB --config ./VC4CLStdLib/CPackConfig.cmake
+          command: cpack -G DEB && cpack -G DEB --config ./VC4CLStdLib/CPackConfig.cmake
       - store_artifacts:
           path: build/libVC4CC.so.0.4
           distination: libVC4CC.so.0.4
