@@ -1,0 +1,31 @@
+version: 2
+jobs:
+  build:
+    docker:
+      - image: nomaddo/cross-rpi
+    steps:
+      - checkout
+      - run:
+          name: download header
+          command: git clone https://github.com/doe300/VC4CLStdLib.git VC4CLStdLib
+      - run:
+          name: configure
+          command: cmake . -DCROSS_COMPILE=ON -DBUILD_TESTING=ON -DVC4CL_STDLIB_HEADER_SOURCE=./VC4CLStdLib/include/VC4CLStdLib.h
+      - run:
+          name: make
+          command: make -j2
+      - run:
+          name: deb-packing
+          command: cpack -G DEB
+      - store_artifacts:
+          path: build/libVC4CC.so.0.4
+          distination: libVC4CC.so.0.4
+      - store_artifacts:
+          path: build/VC4C
+          distination: VC4C
+      - store_artifacts:
+          path: build/test/TestVC4C
+          distination: TestVC4C
+      - store_artifacts:
+          path: vc4c-0.4-Linux.deb
+          distination: vc4c-0.4-Linux.deb

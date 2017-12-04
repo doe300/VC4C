@@ -23,6 +23,8 @@ option(SPIRV_FRONTEND "Enables a second front-end for the SPIR-V intermediate la
 # Turning this option off results in the  pre-compiler deleting /dev/stdout on errors
 # NOTE: This feature currently does not work and will result in compilation errors!
 option(PRECOMPILER_DROP_RIGHTS "Drop the rights for the pre-compiler to user pi" OFF)
+# Option whether to create deb package
+option(BUILD_DEB_PACKAGE "Enables creating .deb package" ON)
 
 # Path to the VC4CL standard library
 if(NOT VC4CL_STDLIB_HEADER_SOURCE)
@@ -249,3 +251,19 @@ if (BUILD_TESTING)
 	)
     add_subdirectory(test build/test)
 endif (BUILD_TESTING)
+
+if (BUILD_DEB_PACKAGE)
+	message(STATUS "build deb package...")
+
+	set(CPACK_GENERATOR "DEB")
+	set(CPACK_PACKAGING_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
+	set(CPACK_PACKAGE_NAME "vc4c")
+	set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+	set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "armhf")
+	set(CPACK_DEBIAN_PACKAGE_DEPENDS "opencl-c-headers, clang-3.9")
+	set(CPACK_PACKAGE_VENDOR "doe300")
+	set(CPACK_PACKAGE_CONTACT "doe300@example.com")
+	set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Videocore 4 compiler for VC4CL (rasberrypi only)")
+	set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/doe300/VC4C")
+        include(CPack)
+endif (BUILD_DEB_PACKAGE)
