@@ -1,3 +1,7 @@
+# Status
+
+[![CircleCI](https://circleci.com/gh/doe300/VC4C.svg?style=svg)](https://circleci.com/gh/doe300/VC4C)
+
 # VC4C
 
 Compiler for the [VC4CL](https://github.com/doe300/VC4CL) OpenCL-implementation.
