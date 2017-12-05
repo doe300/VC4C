@@ -1,0 +1,4 @@
+#!/bin/sh
+set -e
+cd @VC4CL_STDLIB_DIR@
+rm -f @VC4CL_STDLIB_HEADER@

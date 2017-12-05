@@ -22,7 +22,6 @@ testResult.log
 .dep.inc
 /valgrind.supp
 lib/
-cmake/
 include/VC4CLStdLib.h.pch
 
 #CPack

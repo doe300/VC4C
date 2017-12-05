@@ -229,12 +229,17 @@ elseif(CLANG_FOUND)
 else()
 	message(FATAL_ERROR "No supported OpenCL compiler found!")
 endif()
+# Re-use the parameters for local and debian-package installation build
+set(VC4CL_STDLIB_PCH_ARGS "-cc1 -triple spir-unknown-unknown -O3 -cl-std=CL1.2 -cl-kernel-arg-info -cl-single-precision-constant -Wno-all -Wno-gcc-compat -x cl -emit-pch -o")
 add_custom_target(vc4cl-stdlib
-    COMMAND             if [ ! -e ${VC4CL_STDLIB_HEADER} ]; then ${PRECOMPILE_COMMAND} -cc1 -triple spir-unknown-unknown -O3 -cl-std=CL1.2 -cl-kernel-arg-info -cl-single-precision-constant -Wno-all -Wno-gcc-compat -x cl -emit-pch -o ${VC4CL_STDLIB_HEADER} ${VC4CL_STDLIB_HEADER_SOURCE} && echo \"VC4CL standard library precompiled into ${VC4CL_STDLIB_HEADER}\" \; fi
+    COMMAND             if [ ! -e ${VC4CL_STDLIB_HEADER} ]; then ${PRECOMPILE_COMMAND} ${VC4CL_STDLIB_PCH_ARGS} ${VC4CL_STDLIB_HEADER} ${VC4CL_STDLIB_HEADER_SOURCE} && echo \"VC4CL standard library precompiled into ${VC4CL_STDLIB_HEADER}\" \; fi
     WORKING_DIRECTORY   ${VC4CL_STDLIB_DIR}
     SOURCES				${VC4CL_STDLIB_HEADER_SOURCE}
 )
 add_definitions(-DVC4CL_STDLIB_HEADER="${VC4CL_STDLIB_HEADER}")
+# Generate postint-script for debian package, building the VC4CLStdLib PCH
+configure_file(cmake/deb-postint.in "${CMAKE_BINARY_DIR}/build/postinst" @ONLY NEWLINE_STYLE UNIX)
+configure_file(cmake/deb-prerem.in "${CMAKE_BINARY_DIR}/build/prerem" @ONLY NEWLINE_STYLE UNIX)
 
 ####
 # Main files
@@ -273,5 +278,6 @@ if (BUILD_DEB_PACKAGE)
 	set(CPACK_PACKAGE_CONTACT "doe300@example.com")
 	set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenCL C compiler for VC4CL (rasberrypi only)")
 	set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/doe300/VC4C")
+	set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA ${CMAKE_BINARY_DIR}/build/postinst ${CMAKE_BINARY_DIR}/build/prerem)
 	include(CPack)
 endif (BUILD_DEB_PACKAGE)
