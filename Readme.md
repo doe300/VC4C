@@ -25,9 +25,10 @@ The following configuration variables can be set in CMake:
 - `LLVMIR_FRONTEND` toggles building of the LLVM-IR frontend, requires an installed CLang compiler (LLVM or SPIRV-LLVM)
 - `VC4CL_STDLIB_HEADER_SOURCE` sets the headers for the GPU-side [VC4CLStdLib](https://github.com/doe300/VC4CLStdLib), defaults to `../VC4CLStdLib/include/VC4CLStdLib.h`
 - `CROSS_COMPILE` toggles whether to cross-compile for the Raspberry Pi, requires the [Raspberry Pi cross-compiler](https://github.com/raspberrypi/tools) to be installed
-- `CROSS_COMPILER_PATH` sets the root path to the Raspberry Pi cross compiler, defaults to `/opt/rasperrypi/tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64` (e.g. for the cross compiler cloned into the directory `/opt/raspberrypi/tools/`)
+- `CROSS_COMPILER_PATH` sets the root path to the Raspberry Pi cross compiler, defaults to `/opt/raspberrypi/tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64` (e.g. for the cross compiler cloned into the directory `/opt/raspberrypi/tools/`)
 - `SPIRV_FRONTEND` toggles building of the SPIR-V frontend, requires SPIRV-LLVM
 - `SPIRV_COMPILER_ROOT` sets the root-path to binaries of the [SPIRV-LLVM](https://github.com/KhronosGroup/SPIRV-LLVM) compiler, defaults to `/opt/SPIRV-LLVM/build/bin/`
+- `BUILD_DEB_PACKAGE` toggles whether to create the necessary configuration to build `vc4c-xxx.deb` package for installation on Raspbian. The actual packaging is started with `cpack -G DEB` 
 
 ## Known Issues
 
