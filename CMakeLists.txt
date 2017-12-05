@@ -230,7 +230,8 @@ else()
 	message(FATAL_ERROR "No supported OpenCL compiler found!")
 endif()
 # Re-use the parameters for local and debian-package installation build
-set(VC4CL_STDLIB_PCH_ARGS "-cc1 -triple spir-unknown-unknown -O3 -cl-std=CL1.2 -cl-kernel-arg-info -cl-single-precision-constant -Wno-all -Wno-gcc-compat -x cl -emit-pch -o")
+set(VC4CL_STDLIB_PCH_ARGS -cc1 -triple spir-unknown-unknown -O3 -cl-std=CL1.2 -cl-kernel-arg-info -cl-single-precision-constant -Wno-all -Wno-gcc-compat -x cl -emit-pch -o)
+string(REPLACE ";" " " VC4CL_STDLIB_PCH_ARGS_LIST "${VC4CL_STDLIB_PCH_ARGS}")
 add_custom_target(vc4cl-stdlib
     COMMAND             if [ ! -e ${VC4CL_STDLIB_HEADER} ]; then ${PRECOMPILE_COMMAND} ${VC4CL_STDLIB_PCH_ARGS} ${VC4CL_STDLIB_HEADER} ${VC4CL_STDLIB_HEADER_SOURCE} && echo \"VC4CL standard library precompiled into ${VC4CL_STDLIB_HEADER}\" \; fi
     WORKING_DIRECTORY   ${VC4CL_STDLIB_DIR}
