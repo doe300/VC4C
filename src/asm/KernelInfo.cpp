@@ -157,7 +157,7 @@ static void toBinary(const Value& val, std::vector<uint8_t>& queue)
 	}
 }
 
-static std::vector<uint8_t> generateDataSegment(const Module& module, const std::size_t maxStackSize)
+static std::vector<uint8_t> generateDataSegment(const Module& module)
 {
 	logging::debug() << "Writing data segment for " << module.globalData.size() << " values..." << logging::endl;
 	std::vector<uint8_t> bytes;
@@ -171,14 +171,6 @@ static std::vector<uint8_t> generateDataSegment(const Module& module, const std:
 			bytes.push_back(0);
 		}
 		toBinary(global.value, bytes);
-	}
-
-	//allocate space for stack
-	if(maxStackSize > 0)
-	{
-		logging::debug() << "Reserving " << KernelInfo::MAX_WORK_GROUP_SIZES << " \"stack-frames\" with " << maxStackSize << " bytes each..." << logging::endl;
-		for(std::size_t s = 0; s < maxStackSize * KernelInfo::MAX_WORK_GROUP_SIZES; ++s)
-			bytes.push_back(0);
 	}
 
 	while((bytes.size() % 8) != 0)
@@ -215,7 +207,7 @@ uint16_t ModuleInfo::write(std::ostream& stream, const OutputMode mode, const Mo
 		logging::debug() << info.to_string() << logging::endl;
 		numWords += info.write(stream, mode);
 	}
-	//write kernel-info to global-data delimiter
+	//write kernel-info-to-global-data delimiter
 	buf.fill(0);
 	writeStream(stream, buf, mode);
 	++numWords;
@@ -242,18 +234,16 @@ uint16_t ModuleInfo::write(std::ostream& stream, const OutputMode mode, const Mo
 		}
 		case OutputMode::BINARY:
 		{
-			const auto binary = generateDataSegment(module, getStackFrameSize() * sizeof(uint64_t));
+			const auto binary = generateDataSegment(module);
 			stream.write(reinterpret_cast<const char*>(binary.data()), binary.size());
 			numWords += binary.size() / sizeof(uint64_t);
 			break;
 		}
 		case OutputMode::HEX:
 		{
-			const auto binary = generateDataSegment(module, getStackFrameSize() * sizeof(uint64_t));
+			const auto binary = generateDataSegment(module);
 			for(const Global& global : module.globalData)
 				stream << "//" << global.to_string(true) << std::endl;
-			if(!binary.empty())
-				stream << "// plus additional space for " << KernelInfo::MAX_WORK_GROUP_SIZES << " \"stack-frames\"" << std::endl;
 			for(std::size_t i = 0; i < binary.size(); i += 8)
 				stream << toHexString((static_cast<uint64_t>(binary.at(i)) << 56) | (static_cast<uint64_t>(binary.at(i+1)) << 48) | (static_cast<uint64_t>(binary.at(i+2)) << 40) |
 						(static_cast<uint64_t>(binary.at(i+3)) << 32) | (static_cast<uint64_t>(binary.at(i+4)) << 24) | (static_cast<uint64_t>(binary.at(i+5)) << 16) |
@@ -268,7 +258,7 @@ uint16_t ModuleInfo::write(std::ostream& stream, const OutputMode mode, const Mo
 		throw CompilationError(CompilationStep::CODE_GENERATION, "Global data has unsupported size of", std::to_string(numWords - getGlobalDataOffset()));
 	setGlobalDataSize(numWords - getGlobalDataOffset());
 
-	//write global data to kernel instructions delimiter
+	//write global-data-to-kernel-instructions delimiter
 	buf.fill(0);
 	writeStream(stream, buf, mode);
 	++numWords;

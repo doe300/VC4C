@@ -532,8 +532,11 @@ std::size_t Method::calculateStackSize() const
 	std::size_t maxAlignment = 1;
 	if(!stackAllocations.empty())
 		maxAlignment = stackAllocations.begin()->alignment;
-	if(stackSize & maxAlignment != 0)
+	if(stackSize % maxAlignment != 0)
 		stackSize += maxAlignment - (stackSize % maxAlignment);
+	//align size of stack-frame to at least 8 bytes, so the code-block is aligned correctly
+	if(stackSize % 8 != 0)
+		stackSize += 8 - (stackSize % 8);
 	return stackSize;
 }
 
@@ -547,6 +550,10 @@ std::size_t Method::getStackBaseOffset() const
 
 	if((baseOffset % maxAlignment) != 0)
 		baseOffset += maxAlignment - (baseOffset % maxAlignment);
+
+	//align offset of stack-frame to at least 8 bytes
+	if(baseOffset % 8 != 0)
+		baseOffset += 8 - (baseOffset % 8);
 	return baseOffset;
 }
 

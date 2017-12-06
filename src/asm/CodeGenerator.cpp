@@ -308,8 +308,8 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
 	std::size_t maxStackSize = 0;
 	for(const auto& m : module.methods)
 		maxStackSize = std::max(maxStackSize, m->calculateStackSize());
-	if(maxStackSize / sizeof(uint64_t) > std::numeric_limits<uint16_t>::max())
-		throw CompilationError(CompilationStep::CODE_GENERATION, "Stack-frame has unsupported size of", std::to_string(maxStackSize / sizeof(uint64_t)));
+	if(maxStackSize / sizeof(uint64_t) > std::numeric_limits<uint16_t>::max() || maxStackSize % sizeof(uint64_t) != 0)
+		throw CompilationError(CompilationStep::CODE_GENERATION, "Stack-frame has unsupported size of", std::to_string(maxStackSize));
 	moduleInfo.setStackFrameSize(maxStackSize / sizeof(uint64_t));
 
 
@@ -335,11 +335,12 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
 				throw CompilationError(CompilationStep::CODE_GENERATION, "Kernel-function has unsupported offset of", std::to_string(info.getOffset() + offset));
             info.setOffset(static_cast<uint16_t>(info.getOffset() + offset));
         }
-
-        //prepend module header to output
-        logging::debug() << "Writing module header..." << logging::endl;
-        numBytes += moduleInfo.write(stream, config.outputMode, module) * sizeof(uint64_t);
     }
+    //prepend module header to output
+    //also write, if writeKernelInfo is not set, since global-data is written in here too
+	logging::debug() << "Writing module header..." << logging::endl;
+	numBytes += moduleInfo.write(stream, config.outputMode, module) * sizeof(uint64_t);
+
     for(const auto& pair : allInstructions)
     {
         switch (config.outputMode) {
