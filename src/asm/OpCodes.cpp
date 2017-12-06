@@ -9,6 +9,7 @@
 #include "../Values.h"
 #include "CompilationError.h"
 
+#include <cmath>
 #include <map>
 
 using namespace vc4c;
@@ -355,7 +356,7 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 	if(*this == OP_FMIN)
 		return Value(Literal(std::min(firstLit.real(), secondLit.real())), resultType);
 	if(*this == OP_FMAXABS)
-		return Value(Literal(std::min(std::abs(firstLit.real()), std::abs(secondLit.real()))), resultType);
+		return Value(Literal(std::min(std::fabs(firstLit.real()), std::fabs(secondLit.real()))), resultType);
 	if(*this == OP_FMUL)
 		return Value(Literal(firstLit.real() * secondLit.real()), resultType);
 	if(*this == OP_FSUB)
