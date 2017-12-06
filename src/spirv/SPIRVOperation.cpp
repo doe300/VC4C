@@ -333,6 +333,10 @@ void SPIRVConversion::mapInstruction(std::map<uint32_t, DataType>& types, std::m
     		}
     		//bit-casts with types of same vector-size (and therefore same element-size) are simple moves
     		method.method->appendToEnd((new intermediate::MoveOperation(dest, source))->setDecorations(decorations));
+
+    		if(dest.hasType(ValueType::LOCAL) && source.hasType(ValueType::LOCAL) && dest.type.isPointerType() && source.type.isPointerType())
+    			//this helps recognizing lifetime-starts of bit-cast stack-allocations
+    			const_cast<std::pair<Local*, int>&>(dest.local->reference) = std::make_pair(source.local, ANY_ELEMENT);
     		break;
     	case ConversionType::FLOATING:
     		if(sourceWidth > destWidth)

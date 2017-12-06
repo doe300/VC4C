@@ -863,7 +863,7 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
         //allocation -> determine type
     	skipToken(scanner, "inalloca");
         DataType type(parseType());
-        if(skipToken(scanner, ',') && !skipToken(scanner, "align") && !skipToken(scanner, "addrspace"))
+        if(skipToken(scanner, ',') && !scanner.peek().hasValue("align") && !scanner.peek().hasValue("addrspace"))
         {
         	//[, <ty> <NumElements>]
         	const Value numEntries = parseValue();
@@ -881,7 +881,7 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
         	alignment = scanner.pop().integer;
         }
         logging::debug() << "Stack-allocation for " << type.to_string() << " " << destination << " with alignment of " << alignment << " bytes" << logging::endl;
-        method.method->stackAllocations.push_back(StackAllocation(destination, type.toPointerType(), type.getPhysicalWidth(), alignment));
+        method.method->stackAllocations.emplace(StackAllocation(destination, type.toPointerType(), type.getPhysicalWidth(), alignment));
         return;
     }
     else if (nextToken.hasValue("bitcast")) {
@@ -897,6 +897,11 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
         const DataType destType(parseType());
         const Value src = method.method->findOrCreateLocal(type, source)->createReference();
         const Value dest = method.method->findOrCreateLocal(destType, destination)->createReference();
+
+        if(dest.hasType(ValueType::LOCAL) && src.hasType(ValueType::LOCAL) && dest.type.isPointerType() && src.type.isPointerType())
+        	//this helps recognizing lifetime-starts of bit-cast stack-allocations
+        	const_cast<std::pair<Local*, int>&>(dest.local->reference) = std::make_pair(src.local, ANY_ELEMENT);
+
         logging::debug() << "Making reference from bitcast from " << src.to_string() << " to " << dest.to_string() << logging::endl;
         //simply associate new and original
         instructions.emplace_back(new Copy(dest, src));
@@ -988,7 +993,7 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
                 return;
             }
         }
-        instructions.emplace_back(new Copy(method.method->findOrCreateLocal(type, destination)->createReference(), src));
+        instructions.emplace_back(new Copy(method.method->findOrCreateLocal(type, destination)->createReference(), src, true, true));
         return;
     }
     else if (nextToken.hasValue("call") || nextToken.hasValue("tail") || nextToken.hasValue("notail") || nextToken.hasValue("musttail")) {

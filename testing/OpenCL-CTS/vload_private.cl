@@ -12,7 +12,8 @@ __kernel void test_fn( __global char2 *src, __global uint *offsets, __global uin
    results[ tid ] = tmp;
 }
 
-
+#undef PRIV_TYPE
+#undef PRIV_SIZE
 #define PRIV_TYPE uchar2
 #define PRIV_SIZE 128
 __kernel void test_fn2( __global uchar2 *src, __global uint *offsets, __global uint *alignmentOffsets, __global uchar2 *results )
@@ -27,6 +28,8 @@ __kernel void test_fn2( __global uchar2 *src, __global uint *offsets, __global u
    results[ tid ] = tmp;
 }
 
+#undef PRIV_TYPE
+#undef PRIV_SIZE
 #define PRIV_TYPE short2
 #define PRIV_SIZE 64
 __kernel void test_fn3( __global short2 *src, __global uint *offsets, __global uint *alignmentOffsets, __global short2 *results )
@@ -41,6 +44,8 @@ __kernel void test_fn3( __global short2 *src, __global uint *offsets, __global u
    results[ tid ] = tmp;
 }
 
+#undef PRIV_TYPE
+#undef PRIV_SIZE
 #define PRIV_TYPE ushort2
 #define PRIV_SIZE 64
 __kernel void test_fn4( __global ushort2 *src, __global uint *offsets, __global uint *alignmentOffsets, __global ushort2 *results )
@@ -55,6 +60,8 @@ __kernel void test_fn4( __global ushort2 *src, __global uint *offsets, __global 
    results[ tid ] = tmp;
 }
 
+#undef PRIV_TYPE
+#undef PRIV_SIZE
 #define PRIV_TYPE int2
 #define PRIV_SIZE 32
 __kernel void test_fn5( __global int2 *src, __global uint *offsets, __global uint *alignmentOffsets, __global int2 *results )
@@ -69,6 +76,8 @@ __kernel void test_fn5( __global int2 *src, __global uint *offsets, __global uin
    results[ tid ] = tmp;
 }
 
+#undef PRIV_TYPE
+#undef PRIV_SIZE
 #define PRIV_TYPE uint2
 #define PRIV_SIZE 32
 __kernel void test_fn6( __global uint2 *src, __global uint *offsets, __global uint *alignmentOffsets, __global uint2 *results )
@@ -83,6 +92,8 @@ __kernel void test_fn6( __global uint2 *src, __global uint *offsets, __global ui
    results[ tid ] = tmp;
 }
 
+#undef PRIV_TYPE
+#undef PRIV_SIZE
 #define PRIV_TYPE float2
 #define PRIV_SIZE 32
 __kernel void test_fn7( __global float2 *src, __global uint *offsets, __global uint *alignmentOffsets, __global float2 *results )
@@ -96,4 +107,3 @@ __kernel void test_fn7( __global float2 *src, __global uint *offsets, __global u
     float2 tmp = vload2( offsets[ tid ], ( (__private float *) sPrivateStorage ) + alignmentOffsets[ tid ] );
    results[ tid ] = tmp;
 }
-
