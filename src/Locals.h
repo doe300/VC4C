@@ -60,8 +60,8 @@ namespace vc4c
 
 		Local& operator=(const Local&) = delete;
 		Local& operator=(Local&&) = default;
-		bool operator<(const Local& other);
-		bool operator==(const Local& other);
+		bool operator<(const Local& other) const;
+		bool operator==(const Local& other) const;
 
 		const Value createReference(int index = WHOLE_OBJECT) const;
 
@@ -197,6 +197,11 @@ namespace vc4c
 		std::size_t alignment;
 		//the size of the data (for an execution), in bytes
 		std::size_t size;
+	};
+
+	struct order_by_alignment_and_name
+	{
+		bool operator()(const StackAllocation& sa1, const StackAllocation& sa2) const;
 	};
 
 } /* namespace vc4c */

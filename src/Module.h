@@ -121,7 +121,8 @@ namespace vc4c
 		std::string name;
 		DataType returnType;
 		std::vector<Parameter> parameters;
-		ReferenceRetainingList<StackAllocation> stackAllocations;
+		//sort stack allocations by descending alignment value
+		OrderedSet<StackAllocation, order_by_alignment_and_name> stackAllocations;
 		KernelMetaData metaData;
 		std::unique_ptr<periphery::VPM> vpm;
 
@@ -163,9 +164,26 @@ namespace vc4c
 		InstructionWalker emplaceLabel(InstructionWalker it, intermediate::BranchLabel* label);
 
 		/*
+		 * Calculates the offsets (within a stack-frame) of the single stack-items
+		 *
+		 * The total offset (StackAllocation's offset added to the stack base-offset) is aligned to the alignment of the stack-allocation
+		 */
+		void calculateStackOffsets();
+
+		/*
 		 * Calculates the maximum size used by all stack allocations for a single execution
+		 *
+		 * The stack-size is aligned to the maximum alignment of any stack entry (the alignment of the first entry),
+		 * to make sure all other stack-frames (for 2nd, 3rd, ... QPU) are aligned correctly
 		 */
 		std::size_t calculateStackSize() const;
+
+		/*
+		 * Calculates the base offset of the (first) stack-frame from the beginning of the global data segment.
+		 *
+		 * The stack base offset is aligned to the maximum alignment of any stack-entry (alignment of first stack-entry)
+		 */
+		std::size_t getStackBaseOffset() const;
 
 	private:
 		const Module& module;

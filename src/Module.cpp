@@ -500,17 +500,54 @@ InstructionWalker Method::emplaceLabel(InstructionWalker it, intermediate::Branc
 	return newBlock.begin();
 }
 
+void Method::calculateStackOffsets()
+{
+	//TODO this could be greatly improved, by re-using space for other stack-allocations, when their life-times don't intersect (similar to register allocation)
+	const std::size_t stackBaseOffset = getStackBaseOffset();
+
+	//Simple version: reserve extra space for every stack-allocation
+	std::size_t currentOffset = 0;
+	for(auto it = stackAllocations.begin(); it != stackAllocations.end(); ++it)
+	{
+		if((stackBaseOffset + currentOffset) % it->alignment != 0)
+			currentOffset += it->alignment - ((stackBaseOffset + currentOffset) % it->alignment);
+		const_cast<std::size_t&>(it->offset) = currentOffset;
+		currentOffset += it->size;
+	}
+}
+
 std::size_t Method::calculateStackSize() const
 {
 	if(stackAllocations.empty())
 		return 0;
-	const StackAllocation* max = &stackAllocations.front();
+	const StackAllocation* max = &(*stackAllocations.begin());
 	for(const StackAllocation& s : stackAllocations)
 	{
 		if(s.offset + s.size > max->offset + max->size)
 			max = &s;
 	}
-	return max->offset + max->size;
+	std::size_t stackSize = max->offset + max->size;
+
+	//make sure, stack-size is aligned to maximum stack entry alignment (for 2nd, 3rd, ... stack-frame)
+	std::size_t maxAlignment = 1;
+	if(!stackAllocations.empty())
+		maxAlignment = stackAllocations.begin()->alignment;
+	if(stackSize & maxAlignment != 0)
+		stackSize += maxAlignment - (stackSize % maxAlignment);
+	return stackSize;
+}
+
+std::size_t Method::getStackBaseOffset() const
+{
+	unsigned baseOffset = module.getGlobalDataOffset(nullptr);
+
+	std::size_t maxAlignment = 1;
+	if(!stackAllocations.empty())
+		maxAlignment = stackAllocations.begin()->alignment;
+
+	if((baseOffset % maxAlignment) != 0)
+		baseOffset += maxAlignment - (baseOffset % maxAlignment);
+	return baseOffset;
 }
 
 BasicBlock* Method::getNextBlockAfter(const BasicBlock* block)
@@ -566,8 +603,7 @@ std::vector<Method*> Module::getKernels()
 
 Optional<unsigned int> Module::getGlobalDataOffset(const Local* local) const
 {
-	if(local != nullptr && !local->residesInMemory())
-		//this accepts StackAllocations on purpose, since they are located after the global data
+	if(local != nullptr && !local->is<Global>())
 		return {};
 	unsigned int offset = 0;
 	for(const Global& global : globalData)

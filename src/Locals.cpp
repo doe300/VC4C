@@ -25,12 +25,12 @@ Local::Local(const DataType& type, const std::string& name) : type(type), name(n
 
 }
 
-bool Local::operator<(const Local& other)
+bool Local::operator<(const Local& other) const
 {
 	return name < other.name;
 }
 
-bool Local::operator==(const Local& other)
+bool Local::operator==(const Local& other) const
 {
 	return this == &other || name == other.name;
 }
@@ -173,4 +173,11 @@ StackAllocation::StackAllocation(const std::string& name, const DataType& type, 
 bool StackAllocation::residesInMemory() const
 {
 	return true;
+}
+
+bool order_by_alignment_and_name::operator()(const StackAllocation& sa1, const StackAllocation& sa2) const
+{
+	if(sa1.alignment > sa2.alignment)
+		return true;
+	return sa1 < sa2;
 }

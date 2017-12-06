@@ -40,7 +40,6 @@ static BaseAndOffset findOffset(const Value& val)
 	const LocalUser* writer = val.local->getSingleWriter();
 	if(dynamic_cast<const IntermediateInstruction*>(writer) != nullptr)
 	{
-		logging::debug() << writer->to_string() << logging::endl;
 		const Optional<Value> offset =  dynamic_cast<const IntermediateInstruction*>(writer)->precalculate(8);
 		if(offset.hasValue && offset.get().hasType(ValueType::LITERAL))
 		{
@@ -526,25 +525,9 @@ void optimizations::spillLocals(const Module& module, Method& method, const Conf
 	//TODO do not preemptively spill, only on register conflicts. Which case??
 }
 
-static void calculateStackOffsets(const Module& module, Method& method)
-{
-	//TODO this could be greatly improved, by re-using space for other stack-allocations, when their life-times cond't intersect (similar to register allocation)
-	const std::size_t globalDataSize = module.getGlobalDataOffset(nullptr);
-
-	//Simple version: reserve extra space for every stack-allocation
-	std::size_t currentOffset = 0;
-	for(StackAllocation& s : method.stackAllocations)
-	{
-		if((globalDataSize + currentOffset) % s.alignment != 0)
-			currentOffset += s.alignment - ((globalDataSize + currentOffset) % s.alignment);
-		s.offset = currentOffset;
-		currentOffset += s.size;
-	}
-}
-
 static InstructionWalker accessStackAllocations(const Module& module, Method& method, InstructionWalker it)
 {
-	const unsigned int globalDataSize = module.getGlobalDataOffset(nullptr);
+	const unsigned int stackBaseOffset = method.getStackBaseOffset();
 	const std::size_t maximumStackSize = method.calculateStackSize();
 
 	for(std::size_t i = 0; i < it->getArguments().size(); ++i)
@@ -582,7 +565,7 @@ static InstructionWalker accessStackAllocations(const Module& module, Method& me
 				it.nextInBlock();
 				it.emplace(new Operation(OP_ADD, addrTemp, qpuOffset, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference()));
 				it.nextInBlock();
-				it.emplace(new Operation(OP_ADD, finalAddr, addrTemp, Value(Literal(static_cast<uint64_t>(arg.local->as<StackAllocation>()->offset + globalDataSize)), TYPE_INT32)));
+				it.emplace(new Operation(OP_ADD, finalAddr, addrTemp, Value(Literal(static_cast<uint64_t>(arg.local->as<StackAllocation>()->offset + stackBaseOffset)), TYPE_INT32)));
 				it.nextInBlock();
 				it->setArgument(i, finalAddr);
 			}
@@ -594,7 +577,7 @@ static InstructionWalker accessStackAllocations(const Module& module, Method& me
 void optimizations::resolveStackAllocations(const Module& module, Method& method, const Configuration& config)
 {
 	//1. calculate the offsets from the start of one QPU's "stack", heed alignment!
-	calculateStackOffsets(module, method);
+	method.calculateStackOffsets();
 
 	//2.remove the life-time instructions
 	//3. map the addresses to offsets from global-data pointer (see #accessGlobalData)
