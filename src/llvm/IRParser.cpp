@@ -629,8 +629,9 @@ void IRParser::parseMethodBody(LLVMMethod& method)
     logging::debug() << "Reading method body: " << logging::endl;
     //    //add label %0 to the beginning of the method
     //    //as of CLang 3.9, the first parameter can have the name %0
-    if(method.method->findParameter("%0") == nullptr)
-    	method.instructions.emplace_back(new LLVMLabel("%0"));
+    //this is not true, e.g. for OpenCL-CTS/kernel_memory_alignment_private.cl
+    //if(method.method->findParameter("%0") == nullptr)
+    //	method.instructions.emplace_back(new LLVMLabel("%0"));
     do {
         parseInstruction(method, method.instructions);
     }
@@ -887,7 +888,6 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
     else if (nextToken.hasValue("bitcast")) {
         //<result> = bitcast <ty> <value> to <ty2> 
         //convert bits -> determine source address
-        nextToken = scanner.peek();
         const DataType type(parseType());
         const std::string source(scanner.pop().getText());
 
@@ -906,6 +906,25 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
         //simply associate new and original
         instructions.emplace_back(new Copy(dest, src));
         return;
+    }
+    else if(nextToken.hasValue("ptrtoint") || nextToken.hasValue("inttoptr")) {
+    	//<result> = ptrtoint <ty> <value> to <ty2>
+    	//<result> = inttoptr <ty> <value> to <ty2>
+    	//convert bits with truncation/zero extension
+    	const Value src(parseValue());
+
+    	//pop 'to'
+    	expectSkipToken(scanner, "to");
+
+    	const DataType destType(parseType());
+    	const Value dest = method.method->findOrCreateLocal(destType, destination)->createReference();
+
+    	logging::debug() << "Casting between pointer and integer: " << src.to_string() << " to " << dest.to_string() << logging::endl;
+    	if(destType.getScalarBitCount() > src.type.getScalarBitCount())
+    		instructions.emplace_back(new UnaryOperator("zext", dest, src));
+    	else
+    		instructions.emplace_back(new Copy(dest, src));
+    	return;
     }
     else if (nextToken.hasValue("load")) {
         //load from memory

@@ -539,6 +539,8 @@ static InstructionWalker accessStackAllocations(const Module& module, Method& me
 			{
 				logging::debug() << "Dropping life-time instruction for stack-allocation: " << arg.to_string() << logging::endl;
 				it.erase();
+				//to not skip the next instruction
+				it.previousInBlock();
 			}
 			else
 			{

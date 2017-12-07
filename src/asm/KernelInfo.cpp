@@ -326,5 +326,11 @@ KernelInfo qpu_asm::getKernelInfos(const Method& method, const uint16_t initialO
         info.addParameter(paramInfo);
     }
     
+#ifdef DEBUG_MODE
+    logging::debug() << "Kernel " << method.name << ":" << logging::endl;
+    for(const auto& s : method.stackAllocations)
+    	logging::debug() << "Stack-Entry: " << s.to_string() << ", size: " << s.size << ", alignment: " << s.alignment << ", offset: " << s.offset << logging::endl;
+#endif
+
     return info;
 }

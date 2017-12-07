@@ -113,8 +113,9 @@ static void toMachineCode(qpu_asm::CodeGenerator& codeGen, Method& kernel)
 
 std::size_t Compiler::convert()
 {
+	Module module(config);
+
     std::unique_ptr<Parser> parser = getParser(input);
-    Module module(config);
     PROFILE_START(Parser);
     parser->parse(module);
     PROFILE_END(Parser);

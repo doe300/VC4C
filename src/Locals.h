@@ -194,7 +194,7 @@ namespace vc4c
 		//the offset from the start of the stack-allocations area (per QPU)
 		std::size_t offset;
 		//the alignment of the data, in bytes
-		std::size_t alignment;
+		const std::size_t alignment;
 		//the size of the data (for an execution), in bytes
 		std::size_t size;
 	};

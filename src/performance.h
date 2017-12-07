@@ -63,13 +63,13 @@ namespace vc4c
 	template<typename T, typename H>
 	class PerformanceSet<T, OrderType::UNORDERED, H> : public std::unordered_set<T, H> {};
 	template<typename T, typename H>
-	class PerformanceSet<T, OrderType::ORDERED, H> : public std::set<T> {};
+	class PerformanceSet<T, OrderType::ORDERED, H> : public std::set<T, H> {};
 
 	template<typename K, typename V, typename C>
 	class PerformanceMap<K, V, OrderType::UNORDERED, C> : public std::unordered_map<K, V, C> {};
 
 	template<typename K, typename V, typename C>
-	class PerformanceMap<K, V, OrderType::ORDERED, C> : public std::map<K, V> {};
+	class PerformanceMap<K, V, OrderType::ORDERED, C> : public std::map<K, V, C> {};
 
 	////
 	// Easier names
