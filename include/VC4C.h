@@ -18,7 +18,8 @@
 
 namespace vc4c
 {
-	std::size_t disassemble(std::istream& binary, std::ostream& output, const OutputMode outputMode = OutputMode::HEX);
+	std::size_t disassembleModule(std::istream& binary, std::ostream& output, const OutputMode outputMode = OutputMode::HEX);
+	std::size_t disassembleCodeOnly(std::istream& binary, std::ostream& output, std::size_t numInstructions, const OutputMode outputMode = OutputMode::HEX);
 }
 
 #endif /* VC4C_H */

@@ -126,7 +126,7 @@ static std::size_t generateOutput(std::ostream& stream, qpu_asm::ModuleInfo& mod
 	return numBytes;
 }
 
-std::size_t vc4c::disassemble(std::istream& binary, std::ostream& output, const OutputMode outputMode)
+std::size_t vc4c::disassembleModule(std::istream& binary, std::ostream& output, const OutputMode outputMode)
 {
 	if(Precompiler::getSourceType(binary) != SourceType::QPUASM_BIN)
 		throw CompilationError(CompilationStep::GENERAL, "Invalid input binary for disassembling!");
@@ -142,6 +142,33 @@ std::size_t vc4c::disassemble(std::istream& binary, std::ostream& output, const 
 	extractBinary(binary, moduleInfo, globals, instructions);
 
 	return generateOutput(output, moduleInfo, globals, instructions, outputMode);
+}
+
+std::size_t vc4c::disassembleCodeOnly(std::istream& binary, std::ostream& output, std::size_t numInstructions, const OutputMode outputMode)
+{
+	uint64_t tmp64;
+	std::size_t numBytes = 0;
+	for(std::size_t i = 0; i < numInstructions; ++i)
+	{
+		binary.read(reinterpret_cast<char*>(&tmp64), sizeof(tmp64));
+		qpu_asm::Instruction* instr = qpu_asm::Instruction::readFromBinary(tmp64);
+		if(instr == nullptr)
+			throw CompilationError(CompilationStep::GENERAL, "Unrecognized instruction", std::to_string(tmp64));
+		switch (outputMode)
+		{
+		case OutputMode::ASSEMBLER:
+			output << instr->toASMString() << std::endl;
+			numBytes += 0; //doesn't matter here, since the number of bytes is unused for assembler output
+			break;
+		case OutputMode::HEX:
+			output << instr->toHexString(true) << std::endl;
+			numBytes += 8; //doesn't matter here, since the number of bytes is unused for hexadecimal output
+			break;
+		default:
+			throw CompilationError(CompilationStep::GENERAL, "Invalid output mode", std::to_string(static_cast<unsigned>(outputMode)));
+		}
+	}
+	return numBytes;
 }
 
 //command-line version
@@ -168,5 +195,5 @@ void disassemble(const std::string& input, const std::string& output, const Outp
 		os = outputFile.get();
 	}
 
-	disassemble(*is, *os, outputMode);
+	disassembleModule(*is, *os, outputMode);
 }
