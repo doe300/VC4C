@@ -14,5 +14,11 @@
 #include "Compiler.h"
 #include "Precompiler.h"
 
+#include <iostream>
+
+namespace vc4c
+{
+	std::size_t disassemble(std::istream& binary, std::ostream& output, const OutputMode outputMode = OutputMode::HEX);
+}
 
 #endif /* VC4C_H */

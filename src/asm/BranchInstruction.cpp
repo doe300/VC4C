@@ -35,3 +35,7 @@ std::string BranchInstruction::toASMString() const
             (getAddRegister() == BranchReg::BRANCH_REG ? std::string(" + ") + Register{RegisterFile::PHYSICAL_A, getRegisterAddress()}.to_string(true, true) : "");
 }
 
+bool BranchInstruction::isValidInstruction() const
+{
+	return getSig() == SIGNAL_BRANCH;
+}

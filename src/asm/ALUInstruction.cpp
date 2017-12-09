@@ -125,3 +125,15 @@ std::string ALUInstruction::toASMString() const
         return mulPart;
     return addPart;
 }
+
+bool ALUInstruction::isValidInstruction() const
+{
+	switch(getSig().value)
+	{
+		case SIGNAL_BRANCH.value:
+		case SIGNAL_LOAD_IMMEDIATE.value:
+			return false;
+		default:
+			return true;
+	}
+}

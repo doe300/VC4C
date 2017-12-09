@@ -21,6 +21,8 @@
 using namespace std;
 using namespace vc4c;
 
+extern void disassemble(const std::string& input, const std::string& output, const OutputMode outputMode);
+
 /*
  * 
  */
@@ -39,6 +41,7 @@ int main(int argc, char** argv)
         std::cerr << "\t--no-kernel-info\tDont write the kernel-info meta-data" << std::endl;
         std::cerr << "\t--spirv\t\t\tExplicitely use the SPIR-V front-end" << std::endl;
         std::cerr << "\t--llvm\t\t\tExplicitely use the LLVM-IR front-end" << std::endl;
+        std::cerr << "\t--disassemble\t\tDisassembles the binary input to either hex or assembler output" << std::endl;
         std::cerr << "\tany other option is passed to the pre-compiler" << std::endl;
         return 1;
     }
@@ -47,6 +50,7 @@ int main(int argc, char** argv)
     std::vector<std::string> inputFiles;
     std::string outputFile;
     std::string options;
+    bool runDisassembler;
     
     int i = 1;
     for(; i < argc - 2; ++i)
@@ -72,6 +76,8 @@ int main(int argc, char** argv)
         	config.frontend = Frontend::SPIR_V;
         else if(strcmp("--llvm", argv[i]) == 0)
         	config.frontend = Frontend::LLVM_IR;
+        else if(strcmp("--disassemble", argv[i]) == 0)
+        	runDisassembler = true;
         else if(strcmp("-o", argv[i]) == 0)
         {
         	outputFile = argv[i+1];
@@ -98,14 +104,26 @@ int main(int argc, char** argv)
     	std::cerr << "No output file specified, aborting!" << std::endl;
 		return 3;
     }
-
-    std::cout << "Compiling '" << to_string<std::string>(inputFiles, "', '") << "' into '" << outputFile << "' with options '" << options << "' ..." << std::endl;
     
 #if DEBUG_MODE
     setLogger(std::wcout, true, LogLevel::DEBUG);
 #else
     setLogger(std::wcout, true, LogLevel::WARNING);
 #endif
+
+    if(runDisassembler)
+    {
+    	if(inputFiles.size() != 1)
+    	{
+    		std::cerr << "For disassembling, a single input file must be specified, aborting!" << std::endl;
+    		return 4;
+    	}
+    	logging::debug() << "Disassembling '" << inputFiles.at(0) << "' into '" << outputFile << "'..." << logging::endl;
+		disassemble(inputFiles.at(0), outputFile, config.outputMode);
+    	return 0;
+    }
+
+    logging::debug() << "Compiling '" << to_string<std::string>(inputFiles, "', '") << "' into '" << outputFile << "' with options '" << options << "' ..." << logging::endl;
 
     Optional<std::string> inputFile;
     std::unique_ptr<std::istream> input;

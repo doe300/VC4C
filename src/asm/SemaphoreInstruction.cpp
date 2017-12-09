@@ -32,3 +32,10 @@ std::string SemaphoreInstruction::toASMString() const
         return std::string("sacq") + (result + " ") + (toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + std::to_string(static_cast<unsigned char>(getSemaphore()));
     return std::string("srel") + (result + " ") + (toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + std::to_string(static_cast<unsigned char>(getSemaphore()));
 }
+
+bool SemaphoreInstruction::isValidInstruction() const
+{
+	if(getSig() != SIGNAL_LOAD_IMMEDIATE) // Semaphores and Loads have the same signal bit-mask
+		return false;
+	return getEntry<OpSemaphore>(57, MASK_Septuple) == OpSemaphore::SEMAPHORE;
+}

@@ -24,14 +24,21 @@ namespace vc4c
 		public:
 
 			Instruction();
-
+			explicit Instruction(uint64_t code);
 			virtual ~Instruction();
 
 			virtual std::string toASMString() const = 0;
+			virtual bool isValidInstruction() const = 0;
 
 			uint64_t toBinaryCode() const;
-
 			std::string toHexString(bool withAssemblerCode) const;
+
+			static Instruction* readFromBinary(uint64_t binary);
+
+			BITFIELD_ENTRY(Sig, Signaling, 60, Quadruple)
+			BITFIELD_ENTRY(WriteSwap, WriteSwap, 44, Bit)
+			BITFIELD_ENTRY(AddOut, Address, 38, Sextuple)
+			BITFIELD_ENTRY(MulOut, Address, 32, Sextuple)
 
 		protected:
 

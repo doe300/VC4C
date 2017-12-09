@@ -71,3 +71,10 @@ std::string LoadInstruction::toASMString() const
     return std::string("ldi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
             (toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + std::to_string(getImmediateInt());
 }
+
+bool LoadInstruction::isValidInstruction() const
+{
+	if(getSig() != SIGNAL_LOAD_IMMEDIATE)
+		return false;
+	return getEntry<OpLoad>(57, MASK_Septuple) == OpLoad::LOAD_IMM_32 || getEntry<OpLoad>(57, MASK_Septuple) == OpLoad::LOAD_SIGNED || getEntry<OpLoad>(57, MASK_Septuple) == OpLoad::LOAD_UNSIGNED;
+}

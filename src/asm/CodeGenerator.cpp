@@ -327,7 +327,7 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
         }
         //add global offset (size of  header)
         std::ostringstream dummyStream;
-        offset = moduleInfo.write(dummyStream, config.outputMode, module);
+        offset = moduleInfo.write(dummyStream, config.outputMode, module.globalData);
 
         for(KernelInfo& info : moduleInfo.kernelInfos)
         {
@@ -339,7 +339,7 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
     //prepend module header to output
     //also write, if writeKernelInfo is not set, since global-data is written in here too
 	logging::debug() << "Writing module header..." << logging::endl;
-	numBytes += moduleInfo.write(stream, config.outputMode, module) * sizeof(uint64_t);
+	numBytes += moduleInfo.write(stream, config.outputMode, module.globalData) * sizeof(uint64_t);
 
     for(const auto& pair : allInstructions)
     {

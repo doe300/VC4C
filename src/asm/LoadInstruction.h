@@ -17,20 +17,19 @@ namespace vc4c
 		class LoadInstruction: public Instruction
 		{
 		public:
+			explicit LoadInstruction(uint64_t code) : Instruction(code) { }
 			LoadInstruction(Pack pack, ConditionCode condAdd, ConditionCode condMul, SetFlag sf, WriteSwap ws, Address addOut, Address mulOut, uint32_t value);
 			LoadInstruction(Pack pack, ConditionCode condAdd, ConditionCode condMul, SetFlag sf, WriteSwap ws, Address addOut, Address mulOut, int16_t value0, int16_t value1);
 			LoadInstruction(Pack pack, ConditionCode condAdd, ConditionCode condMul, SetFlag sf, WriteSwap ws, Address addOut, Address mulOut, uint16_t value0, uint16_t value1);
 			~LoadInstruction() override = default;
 
 			std::string toASMString() const override;
+			bool isValidInstruction() const override;
 
 			BITFIELD_ENTRY(Pack, Pack, 52, Quintuple)
 			BITFIELD_ENTRY(AddCondition, ConditionCode, 49, Triple)
 			BITFIELD_ENTRY(MulCondition, ConditionCode, 46, Triple)
 			BITFIELD_ENTRY(SetFlag, SetFlag, 45, Bit)
-			BITFIELD_ENTRY(WriteSwap, WriteSwap, 44, Bit)
-			BITFIELD_ENTRY(AddOut, Address, 38, Sextuple)
-			BITFIELD_ENTRY(MulOut, Address, 32, Sextuple)
 
 			BITFIELD_ENTRY(ImmediateInt, uint32_t, 0, Int)
 			BITFIELD_ENTRY(ImmediateShort0, uint16_t, 16, Short)

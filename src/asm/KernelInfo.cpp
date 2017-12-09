@@ -157,12 +157,12 @@ static void toBinary(const Value& val, std::vector<uint8_t>& queue)
 	}
 }
 
-static std::vector<uint8_t> generateDataSegment(const Module& module)
+static std::vector<uint8_t> generateDataSegment(const ReferenceRetainingList<Global>& globalData)
 {
-	logging::debug() << "Writing data segment for " << module.globalData.size() << " values..." << logging::endl;
+	logging::debug() << "Writing data segment for " << globalData.size() << " values..." << logging::endl;
 	std::vector<uint8_t> bytes;
 	bytes.reserve(2048);
-	for(const Global& global : module.globalData)
+	for(const Global& global : globalData)
 	{
 		//add alignment per element
 		const unsigned alignment = global.type.getPointerType().get()->getAlignment();
@@ -180,7 +180,7 @@ static std::vector<uint8_t> generateDataSegment(const Module& module)
 	return bytes;
 }
 
-uint16_t ModuleInfo::write(std::ostream& stream, const OutputMode mode, const Module& module)
+uint16_t ModuleInfo::write(std::ostream& stream, const OutputMode mode, const ReferenceRetainingList<Global>& globalData)
 {
 	uint16_t numWords = 0;
 	if(mode == OutputMode::HEX || mode == OutputMode::ASSEMBLER)
@@ -219,7 +219,7 @@ uint16_t ModuleInfo::write(std::ostream& stream, const OutputMode mode, const Mo
 
 	if(mode == OutputMode::HEX || mode == OutputMode::ASSEMBLER)
 	{
-		for(const Global& global : module.globalData)
+		for(const Global& global : globalData)
 			stream << "//" << global.to_string(true) << std::endl;
 	}
 
@@ -228,21 +228,21 @@ uint16_t ModuleInfo::write(std::ostream& stream, const OutputMode mode, const Mo
 	{
 		case OutputMode::ASSEMBLER:
 		{
-			for(const Global& global : module.globalData)
+			for(const Global& global : globalData)
 				stream << global.to_string(true) << std::endl;
 			break;
 		}
 		case OutputMode::BINARY:
 		{
-			const auto binary = generateDataSegment(module);
+			const auto binary = generateDataSegment(globalData);
 			stream.write(reinterpret_cast<const char*>(binary.data()), binary.size());
 			numWords += binary.size() / sizeof(uint64_t);
 			break;
 		}
 		case OutputMode::HEX:
 		{
-			const auto binary = generateDataSegment(module);
-			for(const Global& global : module.globalData)
+			const auto binary = generateDataSegment(globalData);
+			for(const Global& global : globalData)
 				stream << "//" << global.to_string(true) << std::endl;
 			for(std::size_t i = 0; i < binary.size(); i += 8)
 				stream << toHexString((static_cast<uint64_t>(binary.at(i)) << 56) | (static_cast<uint64_t>(binary.at(i+1)) << 48) | (static_cast<uint64_t>(binary.at(i+2)) << 40) |
@@ -327,9 +327,12 @@ KernelInfo qpu_asm::getKernelInfos(const Method& method, const uint16_t initialO
     }
     
 #ifdef DEBUG_MODE
-    logging::debug() << "Kernel " << method.name << ":" << logging::endl;
-    for(const auto& s : method.stackAllocations)
-    	logging::debug() << "Stack-Entry: " << s.to_string() << ", size: " << s.size << ", alignment: " << s.alignment << ", offset: " << s.offset << logging::endl;
+    if(!method.stackAllocations.empty())
+    {
+		logging::debug() << "Kernel " << method.name << ":" << logging::endl;
+		for(const auto& s : method.stackAllocations)
+			logging::debug() << "Stack-Entry: " << s.to_string() << ", size: " << s.size << ", alignment: " << s.alignment << ", offset: " << s.offset << logging::endl;
+    }
 #endif
 
     return info;

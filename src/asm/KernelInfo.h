@@ -9,6 +9,7 @@
 
 #include "../Bitfield.h"
 #include "config.h"
+#include "../performance.h"
 
 #include <iostream>
 #include <vector>
@@ -17,7 +18,7 @@ namespace vc4c
 {
 	enum class AddressSpace;
 	class Method;
-	class Module;
+	struct Global;
 
 	namespace qpu_asm
 	{
@@ -28,6 +29,8 @@ namespace vc4c
 			//size of the parameter in bytes
 			BITFIELD_ENTRY(Size, uint8_t, 0, Byte)
 			BITFIELD_ENTRY(Elements, uint8_t, 8, Byte)
+			BITFIELD_ENTRY(NameLength, uint16_t, 16, Short)
+			BITFIELD_ENTRY(TypeNameLength, uint16_t, 32, Short)
 			BITFIELD_ENTRY(Constant, bool, 48, Bit)
 			BITFIELD_ENTRY(Restricted, bool, 49, Bit)
 			BITFIELD_ENTRY(Volatile, bool, 50, Bit)
@@ -54,9 +57,7 @@ namespace vc4c
 			std::string to_string() const;
 
 			uint16_t write(std::ostream& stream, OutputMode mode) const;
-		private:
-			BITFIELD_ENTRY(NameLength, uint16_t, 16, Short)
-			BITFIELD_ENTRY(TypeNameLength, uint16_t, 32, Short)
+
 			std::string name;
 			std::string typeName;
 		};
@@ -70,7 +71,7 @@ namespace vc4c
 		 *   ...                                             |
 		 *
 		 */
-		class KernelInfo : private Bitfield<uint64_t>
+		class KernelInfo : public Bitfield<uint64_t>
 		{
 		public:
 
@@ -80,6 +81,10 @@ namespace vc4c
 			BITFIELD_ENTRY(Offset, uint16_t, 0, Short)
 			//number of 64-bit instructions
 			BITFIELD_ENTRY(Length, uint16_t, 16, Short)
+			//the length of the kernel-name (in bytes) excluding padding bytes. NOTE: Do not set this value manually!
+			BITFIELD_ENTRY(NameLength, uint16_t, 32, Short)
+			//the number of parameters. NOTE: Do not set this value manually!
+			BITFIELD_ENTRY(ParamCount, uint16_t, 48, Short)
 			//the 3 dimensions for the work-group size specified in the source code
 			uint64_t workGroupSize;
 
@@ -101,9 +106,7 @@ namespace vc4c
 				setParamCount(static_cast<uint16_t>(parameters.size()));
 			}
 
-		private:
-			BITFIELD_ENTRY(NameLength, uint16_t, 32, Short)
-			BITFIELD_ENTRY(ParamCount, uint16_t, 48, Short)
+
 			std::string name;
 			std::vector<ParamInfo> parameters;
 		};
@@ -113,10 +116,11 @@ namespace vc4c
 		 *
 		 * | num kernel-infos | global-data offset | global-data size | stack-frame size |
 		 */
-		class ModuleInfo : Bitfield<uint64_t>
+		class ModuleInfo : public Bitfield<uint64_t>
 		{
 		public:
-
+			//the number of kernel-infos in this module. NOTE: Do not set this number manually!
+			BITFIELD_ENTRY(InfoCount, uint16_t, 0, Short)
 			//offset of global-data in multiples of 64-bit
 			BITFIELD_ENTRY(GlobalDataOffset, uint16_t, 16, Short)
 			//size of the global data segment in multiples of 64-bit
@@ -127,7 +131,7 @@ namespace vc4c
 			/*
 			 * NOTE: Writing once sets the global-data offset and size, so they are correct for the second write
 			 */
-			uint16_t write(std::ostream& stream, OutputMode mode, const Module& module);
+			uint16_t write(std::ostream& stream, OutputMode mode, const ReferenceRetainingList<Global>& globalData);
 
 			inline void addKernelInfo(const KernelInfo& info)
 			{
@@ -136,8 +140,6 @@ namespace vc4c
 			}
 
 			std::vector<KernelInfo> kernelInfos;
-		private:
-			BITFIELD_ENTRY(InfoCount, uint16_t, 0, Short)
 		};
 
 		KernelInfo getKernelInfos(const Method& method, uint16_t initialOffset, uint16_t numInstructions);

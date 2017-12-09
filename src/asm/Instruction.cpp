@@ -6,14 +6,24 @@
 
 #include "Instruction.h"
 
+#include "ALUInstruction.h"
+#include "BranchInstruction.h"
+#include "LoadInstruction.h"
+#include "SemaphoreInstruction.h"
 #include "../Values.h"
 
 #include <cstdbool>
+#include <memory>
 
 using namespace vc4c;
 using namespace vc4c::qpu_asm;
 
 Instruction::Instruction() : Bitfield(0)
+{
+
+}
+
+Instruction::Instruction(uint64_t code) : Bitfield(code)
 {
 
 }
@@ -36,6 +46,29 @@ std::string Instruction::toHexString(bool withAssemblerCode) const
         return (std::string(qpu_asm::toHexString(binaryCode)) + "//") + toASMString();
     }
     return qpu_asm::toHexString(binaryCode);
+}
+
+Instruction* Instruction::readFromBinary(uint64_t binary)
+{
+	std::unique_ptr<Instruction> inst;
+
+	inst.reset(new ALUInstruction(binary));
+	if(inst->isValidInstruction())
+		return inst.release();
+
+	inst.reset(new BranchInstruction(binary));
+	if(inst->isValidInstruction())
+		return inst.release();
+
+	inst.reset(new LoadInstruction(binary));
+	if(inst->isValidInstruction())
+		return inst.release();
+
+	inst.reset(new SemaphoreInstruction(binary));
+	if(inst->isValidInstruction())
+		return inst.release();
+
+	return nullptr;
 }
 
 std::string Instruction::toInputRegister(const InputMutex mutex, const Address regA, const Address regB, const bool hasImmediate)
