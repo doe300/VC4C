@@ -50,7 +50,7 @@ int main(int argc, char** argv)
     std::vector<std::string> inputFiles;
     std::string outputFile;
     std::string options;
-    bool runDisassembler;
+    bool runDisassembler = false;
     
     int i = 1;
     for(; i < argc - 2; ++i)
