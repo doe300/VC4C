@@ -7,7 +7,11 @@
 #ifndef BITFIELD_H
 #define BITFIELD_H
 
+#include "CompilationError.h"
+#include "helper.h"
+
 #include <cstdint>
+#include <type_traits>
 
 namespace vc4c
 {
@@ -29,6 +33,9 @@ namespace vc4c
 		static constexpr uint16_t MASK_Tredecuple = { 0x1FFF };
 		static constexpr uint16_t MASK_Short { 0xFFFF };
 		static constexpr uint16_t MASK_SignedShort { 0xFFFF };
+		static constexpr uint32_t MASK_Vigintuple { 0xFFFFF };
+		static constexpr uint32_t MASK_Quattuorvigintuple { 0xFFFFFF };
+		static constexpr uint32_t MASK_Duovigintuple { 0x3FFFFF };
 		static constexpr uint32_t MASK_Int { 0xFFFFFFFF };
 		static constexpr uint32_t MASK_SignedInt { 0xFFFFFFFF };
 
@@ -49,17 +56,36 @@ namespace vc4c
 			return static_cast<T>(mask & getValue(pos));
 		}
 
+		template<typename T>
+		constexpr inline typename std::enable_if<!std::is_signed<T>::value, bool>::type fitsEntry(T val, UnderlyingType mask) const
+		{
+			return (static_cast<UnderlyingType>(mask) & static_cast<UnderlyingType>(val)) == static_cast<UnderlyingType>(val);
+		}
+
+		template<typename T>
+		constexpr inline typename std::enable_if<std::is_signed<T>::value, bool>::type fitsEntry(T val, UnderlyingType mask) const
+		{
+			typedef typename std::make_unsigned<T>::type UT;
+			return (static_cast<UnderlyingType>(mask) & static_cast<UnderlyingType>(bit_cast<T, UT>(val))) == static_cast<UnderlyingType>(bit_cast<T, UT>(val));
+		}
+
 #define BITFIELD_ENTRY(name, Type, pos, length) \
-    inline Type get##name() const { \
-        return getEntry<Type>(pos, MASK_##length); \
-    } \
-    inline void set##name(Type val) { \
-    	setEntry<Type>(val, pos, MASK_##length); \
-    }
+		inline bool fits##name##Field(Type val) \
+		{ \
+			return fitsEntry<Type>(val, Bitfield::MASK_##length); \
+		} \
+		inline Type get##name() const { \
+			return getEntry<Type>(pos, Bitfield::MASK_##length); \
+		} \
+		inline void set##name(Type val) { \
+			if(!fits##name##Field(val)) \
+				throw CompilationError(CompilationStep::GENERAL, "Value is out of bounds for bit-field type");\
+			setEntry<Type>(val, pos, Bitfield::MASK_##length); \
+		}
 
 		UnderlyingType value;
 
-		constexpr inline uint32_t getValue(uint8_t startPos) const
+		constexpr inline UnderlyingType getValue(uint8_t startPos) const
 		{
 			return value >> startPos;
 		}
