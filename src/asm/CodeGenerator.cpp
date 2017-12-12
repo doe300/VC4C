@@ -330,11 +330,7 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
         offset = moduleInfo.write(dummyStream, config.outputMode, module.globalData);
 
         for(KernelInfo& info : moduleInfo.kernelInfos)
-        {
-        	if(info.getOffset() + offset > std::numeric_limits<uint16_t>::max())
-				throw CompilationError(CompilationStep::CODE_GENERATION, "Kernel-function has unsupported offset of", std::to_string(info.getOffset() + offset));
-            info.setOffset(static_cast<uint16_t>(info.getOffset() + offset));
-        }
+            info.setOffset(static_cast<uint32_t>(info.getOffset() + offset));
     }
     //prepend module header to output
     //also write, if writeKernelInfo is not set, since global-data is written in here too

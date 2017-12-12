@@ -107,7 +107,7 @@ namespace vc4c
 
 			std::string to_string() const;
 
-			uint16_t write(std::ostream& stream, OutputMode mode) const;
+			std::size_t write(std::ostream& stream, OutputMode mode) const;
 
 			std::string name;
 			std::string typeName;
@@ -157,7 +157,7 @@ namespace vc4c
 			 */
 			uint64_t workGroupSize;
 
-			uint16_t write(std::ostream& stream, OutputMode mode) const;
+			std::size_t write(std::ostream& stream, OutputMode mode) const;
 			std::string to_string() const;
 
 			//The maximum work group sizes specified in the VC4CL runtime library
@@ -216,7 +216,7 @@ namespace vc4c
 			/*
 			 * NOTE: Writing once sets the global-data offset and size, so they are correct for the second write
 			 */
-			uint16_t write(std::ostream& stream, OutputMode mode, const ReferenceRetainingList<Global>& globalData);
+			std::size_t write(std::ostream& stream, OutputMode mode, const ReferenceRetainingList<Global>& globalData);
 
 			inline void addKernelInfo(const KernelInfo& info)
 			{
@@ -227,7 +227,7 @@ namespace vc4c
 			std::vector<KernelInfo> kernelInfos;
 		};
 
-		KernelInfo getKernelInfos(const Method& method, uint16_t initialOffset, uint16_t numInstructions);
+		KernelInfo getKernelInfos(const Method& method, std::size_t initialOffset, std::size_t numInstructions);
 	} // namespace qpu_asm
 } // namespace vc4c
 

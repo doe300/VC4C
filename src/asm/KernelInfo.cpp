@@ -31,10 +31,10 @@ static void writeStream(std::ostream& stream, const std::array<uint8_t, 8>& buf,
     }
 }
 
-static uint8_t copyName(std::ostream& stream, const std::string& name, const OutputMode mode, std::size_t bytesInFirstBlock = 8)
+static std::size_t copyName(std::ostream& stream, const std::string& name, const OutputMode mode, std::size_t bytesInFirstBlock = 8)
 {
 	std::array<uint8_t, 8> buf{};
-    uint8_t numWords = 0;
+	std::size_t numWords = 0;
     for(std::size_t i = 0; i < name.size(); i += buf.size())
     {
         const std::size_t bytesInBlock = i == 0 ? bytesInFirstBlock : buf.size();
@@ -62,9 +62,9 @@ std::string ParamInfo::to_string() const
 			((typeName) + " ") + (name + " (") + (std::to_string(getSize()) + " B, ") + std::to_string(getElements()) + " items)";
 }
 
-uint16_t ParamInfo::write(std::ostream& stream, const OutputMode mode) const
+std::size_t ParamInfo::write(std::ostream& stream, const OutputMode mode) const
 {
-	uint16_t numWords = 0;
+	std::size_t numWords = 0;
 	std::array<uint8_t, 8> buf{};
 	if(mode == OutputMode::BINARY || mode == OutputMode::HEX)
 	{
@@ -82,9 +82,9 @@ KernelInfo::KernelInfo(const std::size_t& numParameters) : Bitfield(0), workGrou
 	parameters.reserve(numParameters);
 }
 
-uint16_t KernelInfo::write(std::ostream& stream, const OutputMode mode) const
+std::size_t KernelInfo::write(std::ostream& stream, const OutputMode mode) const
 {
-    uint16_t numWords = 0;
+	std::size_t numWords = 0;
     if(mode == OutputMode::HEX || mode == OutputMode::ASSEMBLER)
 	{
 		const std::string s = to_string();
@@ -111,7 +111,7 @@ uint16_t KernelInfo::write(std::ostream& stream, const OutputMode mode) const
 
 std::string KernelInfo::to_string() const
 {
-	return std::string("Kernel '") + (name + "', offset ") + (std::to_string(getOffset()) + ", with following parameters: ") + ::to_string<ParamInfo>(parameters);
+	return std::string("Kernel '") + (name + "' with ") + (std::to_string(getLength()) + " instructions, offset ") + (std::to_string(getOffset()) + ", with following parameters: ") + ::to_string<ParamInfo>(parameters);
 }
 
 static void toBinary(const Value& val, std::vector<uint8_t>& queue)
@@ -180,9 +180,9 @@ static std::vector<uint8_t> generateDataSegment(const ReferenceRetainingList<Glo
 	return bytes;
 }
 
-uint16_t ModuleInfo::write(std::ostream& stream, const OutputMode mode, const ReferenceRetainingList<Global>& globalData)
+std::size_t ModuleInfo::write(std::ostream& stream, const OutputMode mode, const ReferenceRetainingList<Global>& globalData)
 {
-	uint16_t numWords = 0;
+	std::size_t numWords = 0;
 	if(mode == OutputMode::HEX || mode == OutputMode::ASSEMBLER)
 	{
 		stream << "// Module with " << getInfoCount() << " kernels, global data with " << getGlobalDataSize() << " words (64-bit each), starting at offset " << getGlobalDataOffset() << " words and " << getStackFrameSize() << " words of stack-frame" << std::endl;
@@ -213,8 +213,6 @@ uint16_t ModuleInfo::write(std::ostream& stream, const OutputMode mode, const Re
 	++numWords;
 
 	//update global data offset
-	if(numWords > std::numeric_limits<uint16_t>::max())
-		throw CompilationError(CompilationStep::CODE_GENERATION, "Global data has unsupported offset of", std::to_string(numWords));
 	setGlobalDataOffset(numWords);
 
 	if(mode == OutputMode::HEX || mode == OutputMode::ASSEMBLER)
@@ -254,8 +252,6 @@ uint16_t ModuleInfo::write(std::ostream& stream, const OutputMode mode, const Re
 	}
 
 	//update global data size
-	if(numWords > std::numeric_limits<uint16_t>::max())
-		throw CompilationError(CompilationStep::CODE_GENERATION, "Global data has unsupported size of", std::to_string(numWords - getGlobalDataOffset()));
 	setGlobalDataSize(numWords - getGlobalDataOffset());
 
 	//write global-data-to-kernel-instructions delimiter
@@ -266,11 +262,8 @@ uint16_t ModuleInfo::write(std::ostream& stream, const OutputMode mode, const Re
 	return numWords;
 }
 
-KernelInfo qpu_asm::getKernelInfos(const Method& method, const uint16_t initialOffset, const uint16_t numInstructions)
+KernelInfo qpu_asm::getKernelInfos(const Method& method, const std::size_t initialOffset, const std::size_t numInstructions)
 {
-	if(numInstructions > std::numeric_limits<uint16_t>::max())
-		throw CompilationError(CompilationStep::CODE_GENERATION, "Kernel has unsupported size of", std::to_string(numInstructions));
-
     KernelInfo info(method.parameters.size());
     info.setOffset(initialOffset);
     info.setLength(numInstructions);
