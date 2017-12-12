@@ -36,15 +36,15 @@ static InstructionWalker findPreviousInstruction(BasicBlock& basicBlock, const I
  */
 static InstructionWalker findInstructionNotAccessing(BasicBlock& basicBlock, const InstructionWalker pos, FastSet<Value>& excludedValues)
 {
-	std::size_t instrctionsLeft = REPLACE_NOP_MAX_INSTRUCTIONS_TO_CHECK;
+	std::size_t instructionsLeft = REPLACE_NOP_MAX_INSTRUCTIONS_TO_CHECK;
 	auto it = pos;
-	while(instrctionsLeft > 0 && !it.isEndOfBlock())
+	while(instructionsLeft > 0 && !it.isEndOfBlock())
 	{
 		if(it.get() == nullptr)
 		{
 			//skip already replaced instructions
 			it.nextInBlock();
-			--instrctionsLeft;
+			--instructionsLeft;
 			continue;
 		}
 		bool validReplacement = true;
@@ -62,6 +62,20 @@ static InstructionWalker findInstructionNotAccessing(BasicBlock& basicBlock, con
 			}
 		}
 		PROFILE_END(checkExcludedValues);
+		if(validReplacement && it->getOutput() && it->getOutput().get().hasRegister(REG_MUTEX))
+		{
+			//never move MUTEX_RELEASE
+			validReplacement = false;
+			//Allow instructions to be moved over MUTEX_RELEASE to replace the VPM wait nops
+		}
+		if(validReplacement && ((it->getArgument(0) && it->getArgument(0).get().hasRegister(REG_MUTEX)) || (it->getArgument(1) && it->getArgument(1).get().hasRegister(REG_MUTEX))))
+		{
+			//Re-ordering MUTEX_ACQUIRE would extend the critical section (maybe a lot!), so don't move it
+			validReplacement = false;
+			//Also, never move anything out of (or over) the critical section
+			return basicBlock.end();
+
+		}
 		//for now, skip everything setting and using flags/signals
 		if(validReplacement && (it->hasConditionalExecution() || it->hasSideEffects()))
 		{
@@ -69,8 +83,7 @@ static InstructionWalker findInstructionNotAccessing(BasicBlock& basicBlock, con
 		}
 		if(validReplacement && (it.has<Branch>() || it.has<BranchLabel>() || it.has<MemoryBarrier>()))
 		{
-			//TODO prevent from re-ordering over memory fences? Not necessary, unless we re-oder memory accesses
-			//NEVER RE-ORDER BRANCHS, LABELS OR BARRIERS!
+			//NEVER RE-ORDER BRANCHES, LABELS OR BARRIERS!
 			validReplacement = false;
 		}
 		if(validReplacement && it.has<Nop>())
@@ -82,23 +95,6 @@ static InstructionWalker findInstructionNotAccessing(BasicBlock& basicBlock, con
 		{
 			//skip every instruction, which is not mapped to machine code, since otherwise the delay for the NOP will be violated
 			validReplacement = false;
-		}
-		if(validReplacement && it->getOutput() && it->getOutput().get().hasRegister(REG_MUTEX))
-		{
-			//never move MUTEX_RELEASE, but MUTEX_ACQUIRE can be moved, so a general test on REG_MUTEX is wrong
-			validReplacement = false;
-			//Also, never move any instruction over MUTEX_RELEASE to not expand the critical section
-			return basicBlock.end();
-		}
-		if(validReplacement && ((it->getArgument(0) && it->getArgument(0).get().hasRegister(REG_MUTEX)) || (it->getArgument(1) && it->getArgument(1).get().hasRegister(REG_MUTEX))))
-		{
-			//TODO prevent MUTEX_ACQUIRE from being re-ordered?
-			//Re-ordering MUTEX_ACQUIRE extends the critical section (maybe a lot!)
-			//-> Would need to prohibit anything after MUTEX_ACQUIRE from being re-ordered (similar to MUTEX_RELEASE)
-			//-> only move a maximum amount of instructions (e.g. short more than VPM wait delay)?
-			validReplacement = false;
-			return basicBlock.end();
-
 		}
 		if(validReplacement)
 		{
@@ -123,10 +119,10 @@ static InstructionWalker findInstructionNotAccessing(BasicBlock& basicBlock, con
 				excludedValues.emplace(Value(REG_TMU_ADDRESS, TYPE_VOID.toPointerType()));
 			}
 		}
-		--instrctionsLeft;
+		--instructionsLeft;
 		it.nextInBlock();
 	}
-	if(instrctionsLeft == 0)
+	if(instructionsLeft == 0)
 		it = basicBlock.end();
 	return it;
 }
@@ -150,6 +146,7 @@ static InstructionWalker findReplacementCandidate(BasicBlock& basicBlock, const 
 			//there are no more instructions after THREND
 			PROFILE_END(findReplacementCandidate);
 			return basicBlock.end();
+		case DelayType::WAIT_VPM:
 		case DelayType::WAIT_REGISTER:
 		{
 			//can insert any instruction which does not access the given register/local
@@ -247,6 +244,14 @@ static void replaceNOPs(BasicBlock& basicBlock, Method& method)
 				if(cannotBeCombined)
 					it->canBeCombined = false;
 			}
+			else if(nop->type == DelayType::WAIT_VPM)
+			{
+				//nops inserted to wait for VPM to finish can be removed again,
+				//since the wait-instruction will correctly wait the remaining number of instructions
+				it.erase();
+				//to not skip the next nop
+				it.previousInBlock();
+			}
 		}
 		it.nextInBlock();
 	}
@@ -288,6 +293,22 @@ void optimizations::splitReadAfterWrites(const Module& module, Method& method, c
 				//ignoring instructions not mapped to machine code, e.g. labels will also check for write-label-read
 				lastWrittenTo = it->hasValueType(ValueType::LOCAL) ? it->getOutput().get().local : nullptr;
 				lastInstruction = it;
+			}
+
+			if(it.has<MoveOperation>() && (it.get<MoveOperation>()->getSource().hasRegister(REG_VPM_IN_WAIT) || it.get<MoveOperation>()->getSource().hasRegister(REG_VPM_OUT_WAIT) || it.get<MoveOperation>()->getSource().hasRegister(REG_VPM_IO)))
+			{
+				//TODO constant + x * nrows
+				unsigned numDelays = 0;
+				if(it.get<MoveOperation>()->getSource().hasRegister(REG_VPM_IN_WAIT))
+					numDelays = 6; //XXX 8
+				else if(it.get<MoveOperation>()->getSource().hasRegister(REG_VPM_OUT_WAIT))
+					numDelays = 10; //XXX 12
+				//TODO else insert delay only before first read!
+				for(unsigned i = 0; i < numDelays; ++i)
+				{
+					it.emplace(new Nop(DelayType::WAIT_VPM));
+					it.nextInBlock();
+				}
 			}
 		}
 		it.nextInMethod();

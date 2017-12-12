@@ -20,7 +20,7 @@ self_assign-test-opencl			local size (128) exceeds device maximum
 vector_convert-test-opencl		compilation error
 
 Boost Compute:
-test_accumulate					hangs/abort ("sum_int", std::out_of_range)
+test_accumulate					result mismatch ("sum_int"), hangs
 test_adjacent_difference		PASSED
 test_adjacent_find				result mismatch ("adjacent_find_int2")
 test_any_all_none_of			PASSED
@@ -91,7 +91,7 @@ test_linear_congruential_engine	PASSED
 test_literal_conversion			PASSED
 test_local_buffer				SKIPPED ("device does not support local memory")
 test_malloc						PASSED
-test_mapped_view				hangs/result value mismatch ("fill", "sort", 0 != x, "mapped_view_reduce_doctest")
+test_mapped_view				result value mismatch ("mapped_view_reduce_doctest")
 test_merge						compilation error (struct, is converted to long by LLVM)
 test_merge_sort_gpu				exception: "Invalid Value" in boost/compute/detail/get_object_info.hpp(94), compilation error (ulong), double test skipped
 test_mersenne_twister_engine	PASSED
@@ -105,11 +105,11 @@ test_pair						PASSED
 test_partial_sum				PASSED
 test_partition					PASSED
 test_partition_point			PASSED
-test_radix_sort					hangs/result mismatches, compilation errors
-test_radix_sort_by_key			hangs/result mismatches ("stable_radix_sort_int_by_int"), memory access violation ("stable_radix_sort_int_by_int_desc")
+test_radix_sort					result mismatches, compilation errors
+test_radix_sort_by_key			result mismatches
 test_random_fill				result mismatch ("random_fill_float", 6 != 0)
 test_random_shuffle				PASSED
-test_reduce						hangs/result mismatches (0 != x), SIGABRT (std::out_of_range in vector)
+test_reduce						result mismatches (0 != x), SIGABRT (std::out_of_range in vector)
 test_reduce_by_key				compilation error (ulong)
 test_remove						PASSED
 test_replace					PASSED
@@ -129,7 +129,7 @@ test_sort						result mismatch; compilation error (packed struct, converted to l
 test_sort_by_key				result mismatch, exception: "Invalid Value" in boost/compute/detail/get_object_info.hpp(94)
 test_sort_by_transform			result mismatch (all test-cases)
 test_stable_partition			PASSED
-test_stable_sort				hangs/result mismatch ("sort_int_vector", "sort_int2")
+test_stable_sort				result mismatch ("sort_int_vector", "sort_int2")
 test_stable_sort_by_key			result mismatch (all test-cases)
 test_stack						PASSED
 test_strided_iterator			PASSED
@@ -142,7 +142,7 @@ test_threefry_engine			compilation error (struct, converted to long by LLVM)
 test_transform					result mismatch (ULP pow/sqrt and 0 != x), compilation error (locals not initialized)
 test_transform_if				PASSED
 test_transform_iterator			PASSED
-test_transform_reduce			hangs/result mismatch (ULP, "multiply_vector_length", "mean_and_std_dev")
+test_transform_reduce			result mismatch (ULP, "multiply_vector_length", "mean_and_std_dev")
 test_tuple						PASSED
 test_types						PASSED
 test_type_traits				PASSED
@@ -153,7 +153,7 @@ test_unique_copy				PASSED
 test_unsupported_extension		PASSED
 test_user_defined_types			compilation error (packed struct, converted to ulong by LLVM)
 test_user_event					PASSED
-test_valarray					hangs/compilation error (kernel "serial_find_extrema")
+test_valarray					compilation error (kernel "serial_find_extrema")
 test_vector						PASSED
 test_wait_list					PASSED
 test_zip_iterator				PASSED

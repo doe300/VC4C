@@ -264,7 +264,9 @@ namespace vc4c
 			//delay-slots for thread-end. There is no code afterwards to replace them
 			THREAD_END,
 			//waiting for the UNIFORM address-register to be changed before reading an UNIFORM value
-			WAIT_UNIFORM
+			WAIT_UNIFORM,
+			//waiting for a VPM operation (DMA read/write or VPM read) to finish. These types of nops can be removed, after they are replaced
+			WAIT_VPM
 		};
 
 		struct Nop: public IntermediateInstruction
