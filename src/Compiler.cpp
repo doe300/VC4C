@@ -33,6 +33,10 @@
 
 using namespace vc4c;
 
+Parser::~Parser()
+{
+	//out-of-line virtual method definition
+}
 
 Compiler::Compiler(std::istream& stream, std::ostream& output) : input(stream), output(output), config()
 {

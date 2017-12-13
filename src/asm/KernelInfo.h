@@ -172,7 +172,7 @@ namespace vc4c
 			inline void addParameter(const ParamInfo& param)
 			{
 				parameters.push_back(param);
-				setParamCount(static_cast<uint16_t>(parameters.size()));
+				setParamCount(static_cast<uint8_t>(parameters.size()));
 			}
 
 

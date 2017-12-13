@@ -13,6 +13,7 @@ class TestInstructions : public Test::Suite
 {
 public:
 	TestInstructions();
+	~TestInstructions() override;
 
 	void testConditionCodes();
 	void testConstantSaturations();

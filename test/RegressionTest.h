@@ -14,6 +14,7 @@ class RegressionTest : public Test::Suite
 {
 public:
     RegressionTest(const vc4c::Frontend frontend, bool onlyRegressions = false);
+    ~RegressionTest() override;
     
     void testRegression(std::string clFile, std::string options, vc4c::Frontend frontend);
     

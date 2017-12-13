@@ -94,7 +94,7 @@ namespace vc4c
 		RandomModificationList<std::unique_ptr<intermediate::IntermediateInstruction>> instructions;
 
 		friend class InstructionWalker;
-		friend class InstructionVisitor;
+		friend struct InstructionVisitor;
 		friend class Method;
 	};
 

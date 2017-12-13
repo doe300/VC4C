@@ -18,6 +18,11 @@ TestSPIRVFrontend::TestSPIRVFrontend()
 	TEST_ADD(TestSPIRVFrontend::testCapabilitiesSupport);
 }
 
+TestSPIRVFrontend::~TestSPIRVFrontend()
+{
+	//out-of-line virtual destructor
+}
+
 void TestSPIRVFrontend::testCapabilitiesSupport()
 {
 #ifdef SPIRV_HEADER

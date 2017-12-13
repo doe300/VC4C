@@ -18,6 +18,11 @@ TestInstructions::TestInstructions()
 	TEST_ADD(TestInstructions::testBitfields);
 }
 
+TestInstructions::~TestInstructions()
+{
+	//out-of-line virtual destructor
+}
+
 void TestInstructions::testConditionCodes()
 {
 	TEST_ASSERT(COND_CARRY_CLEAR.isInversionOf(COND_CARRY_SET));

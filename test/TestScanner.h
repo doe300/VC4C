@@ -14,6 +14,7 @@ class TestScanner : public Test::Suite
 {
 public:
     TestScanner();
+    ~TestScanner() override;
     
     void testEnd();
     void testInteger();

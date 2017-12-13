@@ -13,6 +13,7 @@ class TestSPIRVFrontend : public Test::Suite
 {
 public:
 	TestSPIRVFrontend();
+	~TestSPIRVFrontend() override;
 
 	void testCapabilitiesSupport();
 };

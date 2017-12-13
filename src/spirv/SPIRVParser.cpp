@@ -52,7 +52,7 @@ static std::vector<uint32_t> runSPRVToolsOptimizer(const std::vector<uint32_t>& 
 {
 #ifdef SPIRV_OPTIMIZER_HEADER
 	logging::debug() << "Running SPIR-V Tools optimizations..." << logging::endl;
-	spvtools::Optimizer opt(SPV_ENV_OPENCL_2_1);
+	spvtools::Optimizer opt(SPV_ENV_OPENCL_EMBEDDED_1_2);
 	opt.SetMessageConsumer(consumeSPIRVMessage);
 	//converts OpSpecConstant(True/False) to OpConstant(True/False)
 	opt.RegisterPass(spvtools::CreateFreezeSpecConstantValuePass());
@@ -93,7 +93,7 @@ void SPIRVParser::parse(Module& module)
 {
 	this->module = &module;
     spv_diagnostic diagnostics = NULL;
-    spv_context context = spvContextCreate(SPV_ENV_OPENCL_2_1);
+    spv_context context = spvContextCreate(SPV_ENV_OPENCL_EMBEDDED_1_2);
     if (context == NULL) {
         throw CompilationError(CompilationStep::PARSER, "Failed to create SPIR-V context");
     }
@@ -104,7 +104,7 @@ void SPIRVParser::parse(Module& module)
     //if input is SPIR-V text, convert to binary representation
     spv_result_t result;
     if (isTextInput) {
-    	spvtools::SpirvTools tools(SPV_ENV_OPENCL_2_1);
+    	spvtools::SpirvTools tools(SPV_ENV_OPENCL_EMBEDDED_1_2);
     	tools.SetMessageConsumer(consumeSPIRVMessage);
     	std::vector<uint32_t> binaryData;
     	logging::debug() << "Read SPIR-V text with " << words.size() * sizeof (uint32_t) << " characters" << logging::endl;

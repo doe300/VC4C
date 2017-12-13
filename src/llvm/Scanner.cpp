@@ -64,7 +64,7 @@ int Scanner::skipChar()
     return input.get();
 }
 
-inline bool isStringCharacter(char c)
+inline bool isStringCharacter(int c)
 {
     return std::isalnum(c) || c == '@' || c == '%' || c == '"' || c == '_' || c == '.' || c == '#' || c == '/' || c == '*' || c == '!';
 }
@@ -179,7 +179,7 @@ const Token Scanner::readToken()
         else if (c == '(' || c == ')' || c == '*' || c == ':' || c == ',' || c == '[' || c == ']' 
                  || c == '=' || c == '{' || c == '}' || c == '<' || c == '>') {
             skipChar();
-            result.text[0] = c;
+            result.text[0] = static_cast<char>(c);
         }
         return result;
     }
@@ -193,7 +193,7 @@ const Token Scanner::readNumber()
     while(std::isalnum(input.peek()) || input.peek() == '.' || input.peek() == '-' || input.peek() == '+')
     {
         ++rowNumber;
-        numberToken.push_back(input.get());
+        numberToken.push_back(static_cast<char>(input.get()));
     }
     result.type = TokenType::NUMBER;
     if(numberToken.find_first_of("e.p") != std::string::npos)
@@ -226,7 +226,7 @@ const Token Scanner::readLine()
             rowNumber = 0;
             break;
         }
-        line.text.at(i++) = skipChar();
+        line.text.at(i++) = static_cast<char>(skipChar());
     }
     return line;
 }

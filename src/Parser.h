@@ -28,7 +28,7 @@ namespace vc4c
 	class Parser
 	{
 	public:
-		virtual ~Parser() = default;
+		virtual ~Parser();
 		virtual void parse(Module& module) = 0;
 	};
 } // namespace vc4c

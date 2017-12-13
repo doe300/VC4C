@@ -252,7 +252,7 @@ std::size_t ModuleInfo::write(std::ostream& stream, const OutputMode mode, const
 	}
 
 	//update global data size
-	setGlobalDataSize(numWords - getGlobalDataOffset());
+	setGlobalDataSize(static_cast<uint32_t>(numWords - getGlobalDataOffset()));
 
 	//write global-data-to-kernel-instructions delimiter
 	buf.fill(0);
@@ -265,8 +265,8 @@ std::size_t ModuleInfo::write(std::ostream& stream, const OutputMode mode, const
 KernelInfo qpu_asm::getKernelInfos(const Method& method, const std::size_t initialOffset, const std::size_t numInstructions)
 {
     KernelInfo info(method.parameters.size());
-    info.setOffset(initialOffset);
-    info.setLength(numInstructions);
+    info.setOffset(static_cast<uint32_t>(initialOffset));
+    info.setLength(static_cast<uint32_t>(numInstructions));
     info.setName(method.name[0] == '@' ? method.name.substr(1) : method.name);
     info.workGroupSize = 0;
     {

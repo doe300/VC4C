@@ -402,6 +402,11 @@ RegressionTest::RegressionTest(const vc4c::Frontend frontend, bool onlyRegressio
     TEST_ADD(RegressionTest::printProfilingInfo);
 }
 
+RegressionTest::~RegressionTest()
+{
+	//out-of-line virtual destructor
+}
+
 void RegressionTest::testRegression(std::string clFile, std::string options, vc4c::Frontend frontend)
 {
     Configuration config;

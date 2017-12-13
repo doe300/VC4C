@@ -73,7 +73,7 @@ qpu_asm::Instruction* Branch::convertToAsm(const FastMap<const Local*, Register>
 	 * Broadcom specification, page 34:
 	 * "branch target is relative to PC+4 (add PC+4 to target)"
 	 */
-	const uint32_t branchOffset = static_cast<uint32_t>(labelMapping.at(getTarget()) - (instructionIndex + 4 /*  NOPs */) * 8) /* convert instruction-index to byte-index */;
+	const int64_t branchOffset = static_cast<int64_t>(labelMapping.at(getTarget())) - static_cast<int64_t>((instructionIndex + 4 /*  NOPs */) * sizeof(uint64_t)) /* convert instruction-index to byte-index */;
 	BranchCond cond = BranchCond::ALWAYS;
 	if(conditional != COND_ALWAYS && has_flag(decoration, InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
 	{
@@ -86,7 +86,9 @@ qpu_asm::Instruction* Branch::convertToAsm(const FastMap<const Local*, Register>
 	}
 	else
 		cond = conditional.toBranchCondition();
-    return new qpu_asm::BranchInstruction(cond, BranchRel::BRANCH_RELATIVE, BranchReg::NONE, 0 /* only 5 bits, so REG_NOP doesn't fit */, REG_NOP.num, REG_NOP.num, branchOffset);
+	if(branchOffset < static_cast<int64_t>(std::numeric_limits<int32_t>::min()) || branchOffset > static_cast<int64_t>(std::numeric_limits<int32_t>::max()))
+		throw CompilationError(CompilationStep::CODE_GENERATION, "Cannot jump a distance not fitting into 32-bit integer", std::to_string(branchOffset));
+    return new qpu_asm::BranchInstruction(cond, BranchRel::BRANCH_RELATIVE, BranchReg::NONE, 0 /* only 5 bits, so REG_NOP doesn't fit */, REG_NOP.num, REG_NOP.num, static_cast<int32_t>(branchOffset));
 }
 
 const Local* Branch::getTarget() const

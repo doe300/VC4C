@@ -20,6 +20,11 @@ TestScanner::TestScanner()
     TEST_ADD(TestScanner::testBool);
 }
 
+TestScanner::~TestScanner()
+{
+	//out-of-line virtual destructor
+}
+
 void TestScanner::testEnd()
 {
     std::stringstream stream;
