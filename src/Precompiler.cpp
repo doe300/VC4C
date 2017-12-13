@@ -185,6 +185,11 @@ static std::string buildCommand(const std::string& compiler, const std::string& 
 		//unroll loops, pre-calculate constants, inline functions, ...
 		command.append("-O3 ");
 	}
+	if(options.find("-ffp-contract") == std::string::npos)
+	{
+		//disable fused floationg-point operations, since we do not support them anyway
+		command.append("-ffp-contract=off ");
+	}
 
 #if defined USE_CLANG_OPENCL || defined SPIRV_CLANG_PATH
 	if(options.find("-cl-std") == std::string::npos)

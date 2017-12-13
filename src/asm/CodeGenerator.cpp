@@ -158,6 +158,8 @@ static void extendBranches(Method& method)
     std::size_t num = 0;
     logging::debug() << "-----" << logging::endl;
     auto it = method.walkAllInstructions();
+    //we only need to set the same flag once
+    std::pair<Value, InstructionDecorations> lastSetFlags = std::make_pair(UNDEFINED_VALUE, InstructionDecorations::NONE);
     while(!it.isEndOfMethod())
 	{
     	Branch* branch = it.get<Branch>();
@@ -173,11 +175,18 @@ static void extendBranches(Method& method)
 				 */
 				//TODO can be skipped, if it is checked/guaranteed, that the last instruction setting flags is the boolean-selection for the given condition
 				//but we need to check more than the last instructions, since there could be moves inserted by phi
-				if(has_flag(branch->decoration, InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
-					it.emplace(new Operation(OP_OR, NOP_REGISTER, branch->getCondition(), branch->getCondition(), COND_ALWAYS, SetFlag::SET_FLAGS));
-				else
-					it.emplace(new Operation(OP_OR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, branch->getCondition(), COND_ALWAYS, SetFlag::SET_FLAGS));
-				it.nextInBlock();
+
+				//skip setting of flags, if the previous setting wrote the same flags
+				if(lastSetFlags.first != branch->getCondition() || has_flag(branch->decoration, InstructionDecorations::BRANCH_ON_ALL_ELEMENTS) != has_flag(lastSetFlags.second, InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
+				{
+					if(has_flag(branch->decoration, InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
+						it.emplace(new Operation(OP_OR, NOP_REGISTER, branch->getCondition(), branch->getCondition(), COND_ALWAYS, SetFlag::SET_FLAGS));
+					else
+						it.emplace(new Operation(OP_OR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, branch->getCondition(), COND_ALWAYS, SetFlag::SET_FLAGS));
+					it.nextInBlock();
+				}
+				lastSetFlags.first = branch->getCondition();
+				lastSetFlags.second = branch->decoration;
 			}
 			++num;
 			//go to next instruction
@@ -186,6 +195,11 @@ static void extendBranches(Method& method)
 			it.emplace(new Nop(DelayType::BRANCH_DELAY));
 			it.emplace(new Nop(DelayType::BRANCH_DELAY));
 			it.emplace(new Nop(DelayType::BRANCH_DELAY));
+		}
+		else if(it.get() != nullptr && it->setFlags == SetFlag::SET_FLAGS)
+		{
+			//any other instruction setting flags, need to re-set the branch-condition
+			lastSetFlags = std::make_pair(UNDEFINED_VALUE, InstructionDecorations::NONE);
 		}
 		it.nextInMethod();
 	}

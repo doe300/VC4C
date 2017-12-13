@@ -215,7 +215,7 @@ static const std::vector<MergeCondition> mergeConditions = {
 			//if they have inverted conditions, the ADD ALU can't set the flags, the MUL ALU is supposed to
 			return true;
 		}
-		//XXXX handle v8adds, can be on ADD and MUL ALU. Would need to make sure, flag-setting instruction is on ADD ALU
+		//XXX handle v8adds, can be on ADD and MUL ALU. Would need to make sure, flag-setting instruction is on ADD ALU
         if(firstOp != nullptr && firstOp->op.runsOnMulALU() && firstOp->setFlags == SetFlag::SET_FLAGS)
             return false;
         else if(secondOp != nullptr && secondOp->op.runsOnMulALU() && secondOp->setFlags == SetFlag::SET_FLAGS)
@@ -364,7 +364,8 @@ static const std::vector<MergeCondition> mergeConditions = {
     	{
     		if(((secondOp != nullptr && secondOp->hasValueType(ValueType::LOCAL) && secondOp->getOutput().get().type == TYPE_BOOL) || (secondMove != nullptr && secondMove->hasValueType(ValueType::LOCAL) && secondMove->getOutput().get().type == TYPE_BOOL)))
     		{
-    			return false;
+    			//this is not an issue, if the output of the two instructions is the same in which case it can be assigned to register-file B
+				return (firstOp != nullptr ? firstOp->getOutput() : firstMove->getOutput()).get() == (secondOp != nullptr ? secondOp->getOutput() : secondMove->getOutput()).get();
     		}
     	}
     	return true;

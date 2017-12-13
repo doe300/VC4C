@@ -106,26 +106,6 @@ static void runSingleSteps(const Module& module, Method& method, const Configura
 		s << step.name << ", ";
 	s << logging::endl;
 
-//	//FOR VECTOR:
-//
-//	//since an optimization-step can be run on the result of the previous step,
-//	//we can't just pass the resulting iterator (pointing behind the optimization result) into the next optimization-step
-//	//using the index makes sure, that any added instruction is processed by the following optimization-steps
-//	//for removed instructions, the next optimization-step automatically handles the next instruction (which moves to the index of the removed one)
-//	for(std::size_t i = 0; i < method.readInstructions().size(); ++i)
-//	{
-//		for(const OptimizationStep& step : SINGLE_STEPS)
-//		{
-//			auto it = method.modifyInstructions();
-//			//this is actually constant time, something like "it = it + i"
-//			std::advance(it, i);
-//			PROFILE_START_DYNAMIC(step.name);
-//			step(module, method, it, config);
-//			PROFILE_END_DYNAMIC(step.name);
-//		}
-//	}
-	//FOR LIST:
-
 	//since an optimization-step can be run on the result of the previous step,
 	//we can't just pass the resulting iterator (pointing behind the optimization result) into the next optimization-step
 	//but since lists do not reallocate elements at inserting/removing, we can re-use the previous iterator
