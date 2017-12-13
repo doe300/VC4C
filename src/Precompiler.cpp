@@ -191,6 +191,8 @@ static std::string buildCommand(const std::string& compiler, const std::string& 
 		command.append("-ffp-contract=off ");
 	}
 
+	command.append("-ffp-contract=off ");
+
 #if defined USE_CLANG_OPENCL || defined SPIRV_CLANG_PATH
 	if(options.find("-cl-std") == std::string::npos)
 	{
