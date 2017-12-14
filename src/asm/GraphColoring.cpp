@@ -6,8 +6,8 @@
 
 #include "GraphColoring.h"
 
-#include "DebugGraph.h"
 #include "RegisterAllocation.h"
+#include "../DebugGraph.h"
 #include "../Profiler.h"
 #include "log.h"
 
@@ -446,13 +446,9 @@ static Graph<InstructionWalker, Node<InstructionWalker, bool>> createBlockGraph(
 		});
 	}
 #ifdef DEBUG_MODE
-	DebugGraph<InstructionWalker, bool> debugGraph("/tmp/vc4c-block-graph.dot", true);
 	auto nameFunc = [](const InstructionWalker& it) -> std::string {return const_cast<InstructionWalker&>(it).getBasicBlock()->getLabel()->getLabel()->name;};
 	auto weakLinkFunc = [](const bool b) -> bool {return b;};
-	for(const auto& node : graph)
-	{
-		debugGraph.addNodeWithNeighbors(node.second, nameFunc, weakLinkFunc);
-	}
+	DebugGraph<InstructionWalker, bool>::dumpGraph(graph, "/tmp/vc4c-block-graph.dot", true, nameFunc, weakLinkFunc);
 #endif
 	return graph;
 }

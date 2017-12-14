@@ -200,7 +200,6 @@ Signedness:
 - how to know signedness (other than from signext/zeroext decoration)?
 
 Load via TMU:
-- need to re-test loads for every type-width and vector-width
 - allows for/requires new optimizations:
   - use VPM for private memory (if it fits), see above. NOTE: would need extra code to load private memory from VPM (instead of everything else from TMU)
   - schedule which TMU to use:

@@ -43,6 +43,11 @@ namespace vc4c
 					consumer(pair.first);
 		}
 
+		static std::string to_string(const K& key)
+		{
+			return key.to_string();
+		}
+
 	protected:
 		//TODO find better way, so the map is to the actual (child) type
 		FastMap<Node*, R> neighbors;
