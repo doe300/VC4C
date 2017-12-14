@@ -199,3 +199,13 @@ Signedness:
   - loading from VPM (currently always zero-extended)
 - how to know signedness (other than from signext/zeroext decoration)?
 
+Load via TMU:
+- need to re-test loads for every type-width and vector-width
+- allows for/requires new optimizations:
+  - use VPM for private memory (if it fits), see above. NOTE: would need extra code to load private memory from VPM (instead of everything else from TMU)
+  - schedule which TMU to use:
+    - every QPU can use both TMUs to load several values at once
+    -> re-map e.g. every second load to TMU1
+  - queue TMu requests:
+    - TMU allows a queue up to 4 requests (load_tmux signal) per QPU
+    - to utilize this, move setting of TMU address and triggering of signal up as far as possible. NOTE: cannot re-order or jump over any r4 read (e.g. SFU)

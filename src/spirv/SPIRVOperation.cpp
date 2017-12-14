@@ -431,7 +431,7 @@ void SPIRVCopy::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uin
         if(memoryAccess == MemoryAccess::READ)
         {
             logging::debug() << "Generating reading of " << source.to_string() << " into " << dest.to_string() << logging::endl;
-            periphery::insertReadDMA(*method.method.get(), method.method->appendToEnd(), dest, source);
+            periphery::insertReadVectorFromTMU(*method.method.get(), method.method->appendToEnd(), dest, source);
         }
         else if(memoryAccess == MemoryAccess::WRITE)
         {

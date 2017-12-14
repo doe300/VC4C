@@ -8,6 +8,7 @@
 
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/Helper.h"
+#include "../periphery/TMU.h"
 #include "../periphery/VPM.h"
 #include "config.h"
 #include "log.h"
@@ -221,7 +222,7 @@ bool Copy::mapInstruction(Method& method) const
         if(isRead)
         {
             logging::debug() << "Generating reading from " << orig.to_string() << " into " << dest.to_string() << logging::endl;
-            periphery::insertReadDMA(method, method.appendToEnd(), dest, orig);
+            periphery::insertReadVectorFromTMU(method, method.appendToEnd(), dest, orig);
         }
         else
         {

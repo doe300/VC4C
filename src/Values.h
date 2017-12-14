@@ -67,6 +67,7 @@ namespace vc4c
 	 * - see https://www.raspberrypi.org/forums/viewtopic.php?p=1143940#p1144081
 	 */
 	static constexpr Register REG_TMU_OUT { RegisterFile::ACCUMULATOR, 36 };
+	static constexpr Register REG_TMU_NOSWAP { RegisterFile::PHYSICAL_ANY, 36 };
 	static constexpr Register REG_ACC5 { RegisterFile::ACCUMULATOR, 37 };
 //distributes the value from the first element of the quad (0, 4, 8, 12) to all other elements of this quad
 	static constexpr Register REG_REPLICATE_QUAD { RegisterFile::PHYSICAL_A, 37 };
@@ -118,21 +119,17 @@ namespace vc4c
 	static constexpr Register REG_SFU_LOG2 { RegisterFile::PHYSICAL_ANY, 55 };
 
 //Texture Memory Unit
-//since we leave TMU auto-swap enabled, we only need to write to TMU0
-
-	/*
-	 * "General-memory lookups are performed by writing to just the ‘s’ parameter, using the absolute memory address.
-	 * In this case no uniform is read. General-memory lookups always return a 32-bit value, and the bottom two bits of the address are ignored."
-	 * - Broadcom specification, page 41
-	 *
-	 * According to several sources, when writing 16 different addresses via the 16 SIMD-elements, the TMU returns values read from the 16 addresses,
-	 * not just the one for element 0. (e.g. https://www.raspberrypi.org/forums/viewtopic.php?p=1143940#p1143940 and http://www.aholme.co.uk/GPU_FFT/Main.htm#Parallelism)
-	 */
-	static constexpr Register REG_TMU_ADDRESS { RegisterFile::PHYSICAL_ANY, 56 };
-	static constexpr Register REG_TMU_COORD_S_U_X { RegisterFile::PHYSICAL_ANY, 56 };
-	static constexpr Register REG_TMU_COORD_T_V_Y { RegisterFile::PHYSICAL_ANY, 57 };
-	static constexpr Register REG_TMU_COORD_R_BORDER_COLOR { RegisterFile::PHYSICAL_ANY, 58 };
-	static constexpr Register REG_TMU_COORD_B_LOD_BIAS { RegisterFile::PHYSICAL_ANY, 59 };
+//if we leave TMU auto-swap enabled, we only need to write to TMU0, otherwise, we need to access both TMUs
+	static constexpr Register REG_TMU0_ADDRESS { RegisterFile::PHYSICAL_ANY, 56 };
+	static constexpr Register REG_TMU0_COORD_S_U_X { RegisterFile::PHYSICAL_ANY, 56 };
+	static constexpr Register REG_TMU0_COORD_T_V_Y { RegisterFile::PHYSICAL_ANY, 57 };
+	static constexpr Register REG_TMU0_COORD_R_BORDER_COLOR { RegisterFile::PHYSICAL_ANY, 58 };
+	static constexpr Register REG_TMU0_COORD_B_LOD_BIAS { RegisterFile::PHYSICAL_ANY, 59 };
+	static constexpr Register REG_TMU1_ADDRESS { RegisterFile::PHYSICAL_ANY, 60 };
+	static constexpr Register REG_TMU1_COORD_S_U_X { RegisterFile::PHYSICAL_ANY, 60 };
+	static constexpr Register REG_TMU1_COORD_T_V_Y { RegisterFile::PHYSICAL_ANY, 61 };
+	static constexpr Register REG_TMU1_COORD_R_BORDER_COLOR { RegisterFile::PHYSICAL_ANY, 62 };
+	static constexpr Register REG_TMU1_COORD_B_LOD_BIAS { RegisterFile::PHYSICAL_ANY, 63 };
 
 	enum class LiteralType
 	{

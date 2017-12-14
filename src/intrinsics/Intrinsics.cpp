@@ -9,6 +9,7 @@
 #include "../intermediate/Helper.h"
 #include "../intermediate/TypeConversions.h"
 #include "../periphery/SFU.h"
+#include "../periphery/TMU.h"
 #include "../periphery/VPM.h"
 
 #include "Comparisons.h"
@@ -165,7 +166,7 @@ static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access)
 			case DMAAccess::READ:
 			{
 				logging::debug() << "Intrinsifying memory read " << callSite->to_string() << logging::endl;
-				it = periphery::insertReadDMA(method, it, callSite->getOutput(), callSite->getArgument(0), false);
+				it = periphery::insertReadVectorFromTMU(method, it, callSite->getOutput(), callSite->getArgument(0));
 				break;
 			}
 			case DMAAccess::WRITE:

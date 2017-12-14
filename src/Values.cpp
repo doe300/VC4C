@@ -57,8 +57,7 @@ std::string Register::to_string(bool specialNames, bool readAccess) const
             if(num == 35)
                 return "varying";
             if(num == 36)
-            	//previously "tmu_in|sfu_in", but TMU is not used
-                return "sfu_in";
+                return "sfu_tmu_in";
             if(num == 37)
                 return "rep";
             if(num == 38)

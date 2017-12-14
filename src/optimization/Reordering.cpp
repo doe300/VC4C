@@ -109,14 +109,15 @@ static InstructionWalker findInstructionNotAccessing(BasicBlock& basicBlock, con
 			//make sure, SFU/TMU calls are not moved over other SFU/TMU calls
 			//this prevents nop-sfu-... from being replaced with sfu-sfu-...
 			if(it->getOutput().get().hasRegister(REG_SFU_EXP2) || it->getOutput().get().hasRegister(REG_SFU_LOG2) || it->getOutput().get().hasRegister(REG_SFU_RECIP)
-					|| it->getOutput().get().hasRegister(REG_SFU_RECIP_SQRT) || it->getOutput().get().hasRegister(REG_TMU_ADDRESS))
+					|| it->getOutput().get().hasRegister(REG_SFU_RECIP_SQRT) || it->getOutput().get().hasRegister(REG_TMU0_ADDRESS) || it->getOutput().get().hasRegister(REG_TMU1_ADDRESS))
 			{
 				excludedValues.emplace(Value(REG_SFU_EXP2, TYPE_FLOAT));
 				excludedValues.emplace(Value(REG_SFU_LOG2, TYPE_FLOAT));
 				excludedValues.emplace(Value(REG_SFU_OUT, TYPE_FLOAT));
 				excludedValues.emplace(Value(REG_SFU_RECIP, TYPE_FLOAT));
 				excludedValues.emplace(Value(REG_SFU_RECIP_SQRT, TYPE_FLOAT));
-				excludedValues.emplace(Value(REG_TMU_ADDRESS, TYPE_VOID.toPointerType()));
+				excludedValues.emplace(Value(REG_TMU0_ADDRESS, TYPE_VOID.toPointerType()));
+				excludedValues.emplace(Value(REG_TMU1_ADDRESS, TYPE_VOID.toPointerType()));
 			}
 		}
 		--instructionsLeft;
@@ -183,7 +184,8 @@ static InstructionWalker findReplacementCandidate(BasicBlock& basicBlock, const 
 			excludedValues.emplace(Value(REG_SFU_OUT, TYPE_FLOAT));
 			excludedValues.emplace(Value(REG_SFU_RECIP, TYPE_FLOAT));
 			excludedValues.emplace(Value(REG_SFU_RECIP_SQRT, TYPE_FLOAT));
-			excludedValues.emplace(Value(REG_TMU_ADDRESS, TYPE_VOID.toPointerType()));
+			excludedValues.emplace(Value(REG_TMU0_ADDRESS, TYPE_VOID.toPointerType()));
+			excludedValues.emplace(Value(REG_TMU1_ADDRESS, TYPE_VOID.toPointerType()));
 			PROFILE_START(findInstructionNotAccessing);
 			replacementIt = findInstructionNotAccessing(basicBlock, pos, excludedValues);
 			PROFILE_END(findInstructionNotAccessing);

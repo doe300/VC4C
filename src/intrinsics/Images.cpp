@@ -69,7 +69,7 @@ static InstructionWalker insertLoadImageConfig(InstructionWalker it, Method& met
 	const Value addrTemp = method.addNewLocal(TYPE_INT32.toPointerType(), "%image_config");
 	it.emplace(new Operation(OP_ADD, addrTemp, imageConfig->createReference(), offset));
 	it.nextInBlock();
-	it = periphery::insertReadDMA(method, it, dest, addrTemp);
+	it = periphery::insertReadVectorFromTMU(method, it, dest, addrTemp);
 	return it;
 }
 
