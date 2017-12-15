@@ -37,6 +37,8 @@ namespace vc4c
 
 	    CompilationError& operator=(const CompilationError&) = default;
 	    CompilationError& operator=(CompilationError&&) = default; //RPi cross-compiler throws on noexcept
+
+	    static void logBacktrace();
 	};
 } // namespace vc4c
 

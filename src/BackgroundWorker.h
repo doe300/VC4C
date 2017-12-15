@@ -91,7 +91,6 @@ namespace threading
 			}
 			//throwing the exception after all workers are finished solves the problem of terminating worker-threads
 			//-> which crashes the program
-			//XXX only reports one error, but does it really matter?
 			if(err)
 				std::rethrow_exception(err);
 		}
