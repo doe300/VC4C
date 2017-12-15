@@ -840,7 +840,7 @@ static bool moveLocalToRegisterFile(Method& method, ColoredGraph& graph, Colored
 		localUse.associatedInstructions.erase(it);
 		localUse.associatedInstructions.insert(tmpUse.firstOccurrence);
 		//TODO or always force a re-creation of the graph ?? Could remove all setting/updating of graph-nodes
-		auto tmpNode = graph.emplace(tmp.local, ColoredNode(tmp.local, RegisterFile::ACCUMULATOR)).first->second;
+		auto& tmpNode = graph.emplace(tmp.local, ColoredNode(tmp.local, RegisterFile::ACCUMULATOR)).first->second;
 		//XXX setting the neighbors of the temporary to the neighbors of the local actually is far too broad, but we cannot determine the actual neighbors
 		tmpNode.takeValues(node);
 		//TODO need to update the local used in the current instruction as input with the new temporary

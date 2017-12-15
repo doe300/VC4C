@@ -16,7 +16,7 @@
 
 namespace vc4c
 {
-	void printEdge(std::ofstream& file, const std::string& name1, const std::string& name2, bool weakEdge, bool isDirected);
+	void printEdge(std::ofstream& file, const std::string& name1, const std::string& name2, bool weakEdge, bool isDirected, const std::string& edgeLabel);
 
 	/*
 	 * Generates a Graphviz (http://graphviz.org/) graph out of the colored graph/basic block graph
@@ -27,6 +27,10 @@ namespace vc4c
 	class DebugGraph
 	{
 	public:
+
+		template<typename U>
+		using NameFunc = std::function<std::string(const U&)>;
+
 		explicit DebugGraph(const std::string& fileName, bool isDirected = false) : isDirected(isDirected), file(fileName)
 		{
 			//strict: at most one edge can connect two nodes, multiple same connections are merged (including their attributes)
@@ -49,26 +53,26 @@ namespace vc4c
 		}
 
 		template<typename NodeType = Node<T, R>>
-		void addNodeWithNeighbors(const NodeType& node, const std::function<std::string(const T&)>& nameFunc = NodeType::to_string, const std::function<bool(const R&)>& weakEdgeFunc = [](const R& r) -> bool{return false;})
+		void addNodeWithNeighbors(const NodeType& node, const NameFunc<T>& nameFunc = NodeType::to_string, const std::function<bool(const R&)>& weakEdgeFunc = [](const R& r) -> bool{return false;}, const NameFunc<R>& edgeLabelFunc = [](const R& r) -> std::string{ return "";})
 		{
 			processedNodes.emplace(reinterpret_cast<const Node<T, R>*>(&node));
 			for(const auto& pair : node.getNeighbors())
 			{
 				//making sure every edge is printed just once is not necessary because of the "strict" keyword,
 				//but it saves a lot of processing time in Graphviz
-				if(processedNodes.find(reinterpret_cast<const Node<T, R>*>(pair.first)) != processedNodes.end())
+				if(!isDirected && processedNodes.find(reinterpret_cast<const Node<T, R>*>(pair.first)) != processedNodes.end())
 					return;
-				printEdge(file, nameFunc(const_cast<T&>(node.key)), nameFunc(const_cast<T&>(pair.first->key)), weakEdgeFunc(pair.second), isDirected);
+				printEdge(file, nameFunc(const_cast<T&>(node.key)), nameFunc(const_cast<T&>(pair.first->key)), weakEdgeFunc(pair.second), isDirected, edgeLabelFunc(pair.second));
 			}
 		}
 
 		template<typename G = Graph<T, Node<T, R>>>
-		static void dumpGraph(const G& graph, const std::string& fileName, bool isDirected, const std::function<std::string(const T&)>& nameFunc = Node<T, R>::to_string, const std::function<bool(const R&)>& weakEdgeFunc = [](const R& r) -> bool{return false;})
+		static void dumpGraph(const G& graph, const std::string& fileName, bool isDirected, const NameFunc<T>& nameFunc = Node<T, R>::to_string, const std::function<bool(const R&)>& weakEdgeFunc = [](const R& r) -> bool{return false;}, const NameFunc<R>& edgeLabelFunc = [](const R& r) -> std::string{ return "";})
 		{
 			DebugGraph<T, R> debugGraph(fileName, isDirected);
 			for(const auto& node : graph)
 			{
-				debugGraph.addNodeWithNeighbors(node.second, nameFunc, weakEdgeFunc);
+				debugGraph.addNodeWithNeighbors(node.second, nameFunc, weakEdgeFunc, edgeLabelFunc);
 			}
 		}
 

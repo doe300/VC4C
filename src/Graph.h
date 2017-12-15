@@ -8,6 +8,7 @@
 #define VC4C_GRAPH_H
 
 #include "CompilationError.h"
+#include "helper.h"
 #include "performance.h"
 
 #include <functional>
@@ -16,7 +17,7 @@
 namespace vc4c
 {
 	template<typename K, typename R>
-	struct Node
+	struct Node : private NonCopyable
 	{
 		const K key;
 
@@ -57,6 +58,7 @@ namespace vc4c
 	struct Graph : public FastMap<K, NodeType>
 	{
 		using Base = FastMap<K, NodeType>;
+		using Node = typename Base::value_type;
 
 		template<typename... Args>
 		NodeType& getOrCreateNode(const K& key, const Args... initialPayload)
