@@ -7,6 +7,7 @@
 #ifndef HELPER_H
 #define HELPER_H
 
+#include <functional>
 #include <vector>
 
 #include "CompilationError.h"
@@ -140,6 +141,11 @@ namespace vc4c
 	        return value;
 	    }
 
+	    bool is(const T& val) const
+	    {
+	    	return hasValue && value == val;
+	    }
+
 	    T orElse(const T& other) const
 	    {
 	        return hasValue ? value : other;
@@ -154,6 +160,19 @@ namespace vc4c
 	    {
 	        return hasValue ? value.to_string() : "-";
 	    }
+
+	    bool ifPresent(const std::function<bool(const T&)>& predicate) const
+	    {
+	    	return hasValue && predicate(value);
+	    }
+
+	    template<typename R>
+	    Optional<R> map(const std::function<R(const T&)>& mapper, const Optional<R>& defaultValue = {}) const
+		{
+	    	if(hasValue)
+	    		return Optional<R>(mapper(value));
+	    	return defaultValue;
+		}
 
 	    bool hasValue;
 	private:
@@ -170,6 +189,16 @@ namespace vc4c
 		NonCopyable(const NonCopyable&) = delete;
 		NonCopyable& operator=(const NonCopyable&) = delete;
 	};
+
+	template<typename T, typename R, typename... Args>
+	std::function<R(const T&)> toFunction(R (T::*memberFunc)(Args...) const, Args&&... args)
+	{
+		return [memberFunc,args...](const T& val) -> R
+		{
+			return (val.*memberFunc)(std::forward<Args>(args)...);
+		};
+	}
+
 } // namespace vc4c
 
 #endif /* HELPER_H */

@@ -19,6 +19,7 @@ namespace vc4c
 {
 	struct DataType;
 	struct Value;
+	struct OpCode;
 	enum class BranchCond : unsigned char;
 
 	template<typename T>
@@ -103,6 +104,7 @@ namespace vc4c
 
 		std::string toString() const;
 		bool hasSideEffects() const;
+		bool triggersReadOfR4() const;
 	};
 
 	//software breakpoint
@@ -163,6 +165,7 @@ namespace vc4c
 		std::string toString() const;
 
 		Optional<Value> unpack(const Value& val) const;
+		bool handlesFloat(const OpCode& opCode) const;
 
 		static const Unpack unpackTo32Bit(const DataType& type);
 	};
@@ -187,7 +190,6 @@ namespace vc4c
 	//else unsigned int8 -> int32
 	constexpr Unpack UNPACK_8D_32{7};
 	constexpr Unpack UNPACK_SHORT_TO_INT_SEXT = UNPACK_16A_32;
-	//TODO only, if operation consumes float!!
 	constexpr Unpack UNPACK_HALF_TO_FLOAT = UNPACK_16A_32;
 	constexpr Unpack UNPACK_CHAR_TO_INT_ZEXT = UNPACK_8A_32;
 
@@ -204,6 +206,7 @@ namespace vc4c
 		std::string toString() const;
 
 		Optional<Value> pack(const Value& val) const;
+		bool handlesFloat(const OpCode& opCode) const;
 	};
 
 	constexpr Pack PACK_NOP{0};
@@ -284,8 +287,11 @@ namespace vc4c
 		unsigned char opAdd;
 		unsigned char opMul;
 		unsigned char numOperands;
+		bool acceptsFloat;
+		bool returnsFloat;
 
-		constexpr OpCode(const char* name, unsigned char opAdd, unsigned char opMul, unsigned char numOperands) noexcept : name(name), opAdd(opAdd), opMul(opMul), numOperands(numOperands)
+		constexpr OpCode(const char* name, unsigned char opAdd, unsigned char opMul, unsigned char numOperands, bool acceptsFloat, bool returnsFloat) noexcept :
+				name(name), opAdd(opAdd), opMul(opMul), numOperands(numOperands), acceptsFloat(acceptsFloat), returnsFloat(returnsFloat)
 		{
 		}
 
@@ -313,64 +319,64 @@ namespace vc4c
 		static const OpCode& findOpCode(const std::string& name);
 	};
 
-	static constexpr OpCode OP_NOP { "nop", 0, 0, 0 };
+	static constexpr OpCode OP_NOP { "nop", 0, 0, 0, false, false };
 //floating point addition
-	static constexpr OpCode OP_FADD { "fadd", 1, 0, 2 };
+	static constexpr OpCode OP_FADD { "fadd", 1, 0, 2, true, true };
 //floating point subtraction
-	static constexpr OpCode OP_FSUB { "fsub", 2, 0, 2 };
+	static constexpr OpCode OP_FSUB { "fsub", 2, 0, 2, true, true };
 //floating point minimum
-	static constexpr OpCode OP_FMIN { "fmin", 3, 0, 2 };
+	static constexpr OpCode OP_FMIN { "fmin", 3, 0, 2, true, true };
 //floating point maximum
-	static constexpr OpCode OP_FMAX { "fmax", 4, 0, 2 };
+	static constexpr OpCode OP_FMAX { "fmax", 4, 0, 2, true, true };
 //floating point minimum of absolute values
-	static constexpr OpCode OP_FMINABS { "fminabs", 5, 0, 2 };
+	static constexpr OpCode OP_FMINABS { "fminabs", 5, 0, 2, true, true };
 //floating point maximum of absolute values
-	static constexpr OpCode OP_FMAXABS { "fmaxabs", 6, 0, 2 };
+	static constexpr OpCode OP_FMAXABS { "fmaxabs", 6, 0, 2, true, true };
 //floating point to signed integer
-	static constexpr OpCode OP_FTOI { "ftoi", 7, 0, 1 };
+	static constexpr OpCode OP_FTOI { "ftoi", 7, 0, 1, true, false };
 //signed integer to floating point
-	static constexpr OpCode OP_ITOF { "itof", 8, 0, 1 };
+	static constexpr OpCode OP_ITOF { "itof", 8, 0, 1, false, true };
 //integer addition
-	static constexpr OpCode OP_ADD { "add", 12, 0, 2 };
+	static constexpr OpCode OP_ADD { "add", 12, 0, 2, false, false };
 //integer subtraction
-	static constexpr OpCode OP_SUB { "sub", 13, 0, 2 };
+	static constexpr OpCode OP_SUB { "sub", 13, 0, 2, false, false };
 //integer right shift
-	static constexpr OpCode OP_SHR { "shr", 14, 0, 2 };
+	static constexpr OpCode OP_SHR { "shr", 14, 0, 2, false, false };
 //integer arithmetic right shift
-	static constexpr OpCode OP_ASR { "asr", 15, 0, 2 };
+	static constexpr OpCode OP_ASR { "asr", 15, 0, 2, false, false };
 //integer rotate right
-	static constexpr OpCode OP_ROR { "ror", 16, 0, 2 };
+	static constexpr OpCode OP_ROR { "ror", 16, 0, 2, false, false };
 //integer left shift
-	static constexpr OpCode OP_SHL { "shl", 17, 0, 2 };
+	static constexpr OpCode OP_SHL { "shl", 17, 0, 2, false, false };
 //integer minimum
-	static constexpr OpCode OP_MIN { "min", 18, 0, 2 };
+	static constexpr OpCode OP_MIN { "min", 18, 0, 2, false, false };
 //integer maximum
-	static constexpr OpCode OP_MAX { "max", 19, 0, 2 };
+	static constexpr OpCode OP_MAX { "max", 19, 0, 2, false, false };
 //bitwise AND
-	static constexpr OpCode OP_AND { "and", 20, 0, 2 };
+	static constexpr OpCode OP_AND { "and", 20, 0, 2, false, false };
 //bitwise OR
-	static constexpr OpCode OP_OR { "or", 21, 0, 2 };
+	static constexpr OpCode OP_OR { "or", 21, 0, 2, false, false };
 //bitwise XOR
-	static constexpr OpCode OP_XOR { "xor", 22, 0, 2 };
+	static constexpr OpCode OP_XOR { "xor", 22, 0, 2, false, false };
 //bitwise not
-	static constexpr OpCode OP_NOT { "not", 23, 0, 1 };
+	static constexpr OpCode OP_NOT { "not", 23, 0, 1, false, false };
 //count leading zeroes
-	static constexpr OpCode OP_CLZ { "clz", 24, 0, 1 };
+	static constexpr OpCode OP_CLZ { "clz", 24, 0, 1, false, false };
 //add with saturation per 8-bit element
-	static constexpr OpCode OP_V8ADDS { "v8adds", 30, 6, 2 };
+	static constexpr OpCode OP_V8ADDS { "v8adds", 30, 6, 2, false, false };
 //subtract with saturation per 8-bit element
-	static constexpr OpCode OP_V8SUBS { "v8subs", 31, 7, 2 };
+	static constexpr OpCode OP_V8SUBS { "v8subs", 31, 7, 2, false, false };
 
 //floating point multiplication
-	static constexpr OpCode OP_FMUL { "fmul", 0, 1, 2 };
+	static constexpr OpCode OP_FMUL { "fmul", 0, 1, 2, true, true };
 //24-bit multiplication
-	static constexpr OpCode OP_MUL24 { "mul24", 0, 2, 2 };
+	static constexpr OpCode OP_MUL24 { "mul24", 0, 2, 2, false, false };
 //multiply two vectors of 8-bit values in the range [1.0, 0]
-	static constexpr OpCode OP_V8MULD { "v8muld", 0, 3, 2 };
+	static constexpr OpCode OP_V8MULD { "v8muld", 0, 3, 2, false, false };
 //minimum value per 8-bit element
-	static constexpr OpCode OP_V8MIN { "v8min", 0, 4, 2 };
+	static constexpr OpCode OP_V8MIN { "v8min", 0, 4, 2, false, false };
 //maximum value per 8-bit element
-	static constexpr OpCode OP_V8MAX { "v8max", 0, 5, 2 };
+	static constexpr OpCode OP_V8MAX { "v8max", 0, 5, 2, false, false };
 
 	/*!
 	 * The load immediate instructions can be used to write either a 32-bit immediate across the entire SIMD array,

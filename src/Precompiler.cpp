@@ -257,7 +257,7 @@ static void compileOpenCLToLLVMIR(std::istream& input, std::ostream& output, con
 	const std::string defaultOptions = "-cc1 -triple spir-unknown-unknown";
 	//only run preprocessor and compilation, no linking and code-generation
 	//emit LLVM IR
-	const std::string command = buildCommand(compiler, defaultOptions, options, std::string("-S ").append(toText ? "-emit-llvm": "-emit-llvm-bc"), outputFile.hasValue ? outputFile.get() : "/dev/stdout", inputFile.hasValue ? inputFile.get() : "-");
+	const std::string command = buildCommand(compiler, defaultOptions, options, std::string("-S ").append(toText ? "-emit-llvm": "-emit-llvm-bc"), outputFile.orElse("/dev/stdout"), inputFile.orElse("-"));
 
 	logging::info() << "Compiling OpenCL to LLVM-IR with :" << command << logging::endl;
 
@@ -274,8 +274,8 @@ static void compileLLVMIRToSPIRV(std::istream& input, std::ostream& output, cons
 	throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-Tools not configured, can't process SPIR-V!");
 #else
 	std::string command = (std::string(SPIRV_LLVM_SPIRV_PATH) + (toText ? " -spirv-text" : "")) + " -o ";
-	command.append(outputFile.hasValue ? outputFile.get() : "/dev/stdout").append(" ");
-	command.append(inputFile.hasValue ? inputFile.get() : "/dev/stdin");
+	command.append(outputFile.orElse("/dev/stdout")).append(" ");
+	command.append(inputFile.orElse("/dev/stdin"));
 
 	logging::info() << "Converting LLVM-IR to SPIR-V with :" << command << logging::endl;
 
@@ -318,8 +318,8 @@ static void compileSPIRVToSPIRV(std::istream& input, std::ostream& output, const
 	throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-Tools not configured, can't process SPIR-V!");
 #else
 	std::string command = (std::string(SPIRV_LLVM_SPIRV_PATH) + (toText ? " -to-text" : " -to-binary")) + " -o ";
-	command.append(outputFile.hasValue ? outputFile.get() : "/dev/stdout").append(" ");
-	command.append(inputFile.hasValue ? inputFile.get() : "/dev/stdin");
+	command.append(outputFile.orElse("/dev/stdout")).append(" ");
+	command.append(inputFile.orElse("/dev/stdin"));
 
 	logging::info() << "Converting between SPIR-V text and SPIR-V binary with :" << command << logging::endl;
 

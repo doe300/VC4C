@@ -313,7 +313,7 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
 	auto it = group.dmaSetups.front();
 	while(!it.isEndOfBlock() && it != group.addressWrites.back())
 	{
-		if(it.get() && it->getOutput().hasValue && it->getOutput().get().hasRegister(REG_MUTEX))
+		if(it.get() && it->getOutput().ifPresent(toFunction(&Value::hasRegister, REG_MUTEX)))
 		{
 			it = it.erase();
 			++numRemoved;

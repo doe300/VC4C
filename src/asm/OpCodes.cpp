@@ -135,6 +135,12 @@ bool Signaling::hasSideEffects() const
 	return *this != SIGNAL_NONE && *this != SIGNAL_ALU_IMMEDIATE && *this != SIGNAL_LOAD_IMMEDIATE;
 }
 
+bool Signaling::triggersReadOfR4() const
+{
+	return *this == SIGNAL_LOAD_ALPHA || *this == SIGNAL_LOAD_COLOR || *this == SIGNAL_LOAD_COLOR_END ||
+			*this == SIGNAL_LOAD_COVERAGE || *this ==SIGNAL_LOAD_TMU0 || *this == SIGNAL_LOAD_TMU1;
+}
+
 std::string Unpack::toString() const
 {
 	//http://maazl.de/project/vc4asm/doc/extensions.html#pack
@@ -158,6 +164,13 @@ std::string Unpack::toString() const
 			return "zextByte3To32";
 	}
 	throw CompilationError(CompilationStep::CODE_GENERATION, "Unsupported unpack-mode", std::to_string(static_cast<unsigned>(value)));
+}
+
+bool Unpack::handlesFloat(const OpCode& opCode) const
+{
+	if(*this == UNPACK_16A_32 || *this == UNPACK_16B_32 || *this == UNPACK_8A_32 || *this == UNPACK_8B_32 || *this == UNPACK_8C_32 || *this == UNPACK_8D_32)
+		return opCode.acceptsFloat;
+	return false;
 }
 
 const Unpack Unpack::unpackTo32Bit(const DataType& type)
@@ -259,6 +272,13 @@ Optional<Value> Pack::pack(const Value& val) const
 			return Value(Literal(saturate<uint8_t>(val.literal.integer) << 24), val.type);
 	}
 	throw CompilationError(CompilationStep::GENERAL, "Unsupported pack-mode", std::to_string(static_cast<unsigned>(value)));
+}
+
+bool Pack::handlesFloat(const OpCode& opCode) const
+{
+	if(*this == PACK_32_16A || *this == PACK_32_16B || *this == PACK_32_16A_S || *this == PACK_32_16B_S)
+		return opCode.returnsFloat;
+	return false;
 }
 
 std::string vc4c::toString(const SetFlag flag)

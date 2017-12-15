@@ -166,6 +166,11 @@ bool Register::isAccumulator() const
     return (num >= 32 && num <= 37) || file == RegisterFile::ACCUMULATOR;
 }
 
+bool Register::isTileBuffer() const
+{
+	return num >= 43 && num <= 47;
+}
+
 bool Register::isVertexPipelineMemory() const
 {
     return num >= 48 && num <= 50;
@@ -174,6 +179,11 @@ bool Register::isVertexPipelineMemory() const
 bool Register::isSpecialFunctionsUnit() const
 {
     return num >= 52 && num <= 55;
+}
+
+bool Register::isTextureMemoryUnit() const
+{
+	return num <= 56;
 }
 
 bool Register::hasSideEffectsOnRead() const
@@ -222,6 +232,11 @@ bool Register::isReadable() const
 bool Register::isWriteable() const
 {
 	return true;
+}
+
+bool Register::triggersReadOfR4() const
+{
+	return isSpecialFunctionsUnit() || (num == 56 || num == 60) /* TMU S coordinates */;
 }
 
 Literal::Literal(const int64_t integer) noexcept : integer(integer), type(LiteralType::INTEGER)
@@ -533,16 +548,16 @@ bool Value::hasRegister(const Register& reg) const
 bool Value::hasLiteral(const Literal& lit) const
 {
 	if(hasType(ValueType::SMALL_IMMEDIATE))
-		return (immediate.getIntegerValue().hasValue && immediate.getIntegerValue().get() == lit.integer) ||
-				(immediate.getFloatingValue().hasValue && immediate.getFloatingValue().get() == lit.real());
+		return (immediate.getIntegerValue().is(lit.integer)) ||
+				(immediate.getFloatingValue().is(lit.real()));
     return hasType(ValueType::LITERAL) && this->literal == lit;
 }
 
 bool Value::hasImmediate(const SmallImmediate& immediate) const
 {
 	if(hasType(ValueType::LITERAL))
-		return (immediate.getIntegerValue().hasValue && immediate.getIntegerValue().get() == literal.integer) ||
-				(immediate.getFloatingValue().hasValue && immediate.getFloatingValue().get() == literal.real());
+		return (immediate.getIntegerValue().is(literal.integer)) ||
+				(immediate.getFloatingValue().is(literal.real()));
 	return hasType(ValueType::SMALL_IMMEDIATE) && this->immediate == immediate;
 }
 

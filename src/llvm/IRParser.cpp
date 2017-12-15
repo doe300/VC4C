@@ -309,7 +309,7 @@ DataType IRParser::parseType()
     for(unsigned i = 0; i < numPointerTypes; ++i)
     {
     	//wrap in pointer type
-    	std::shared_ptr<ComplexType> elementType(new PointerType(type, addressSpace.hasValue ? addressSpace.get() : AddressSpace::PRIVATE));
+    	std::shared_ptr<ComplexType> elementType(new PointerType(type, addressSpace.orElse(AddressSpace::PRIVATE)));
     	type = DataType(type.to_string() + "*", 1, elementType);
     }
     return type;

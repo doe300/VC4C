@@ -29,7 +29,6 @@ namespace vc4c
 		explicit Register() noexcept;
 		constexpr Register(RegisterFile file, unsigned char num) noexcept : file(file), num(num) {}
 
-		bool isGeneralPurpose() const;
 		std::string to_string(bool specialNames, bool readAccess = true) const;
 		int getAccumulatorNumber() const;
 
@@ -41,14 +40,19 @@ namespace vc4c
 			return !(*this == right);
 		}
 
+		bool isGeneralPurpose() const;
 		bool isAccumulator() const;
+		bool isTileBuffer() const;
 		bool isVertexPipelineMemory() const;
 		bool isSpecialFunctionsUnit() const;
+		bool isTextureMemoryUnit() const;
 		bool hasSideEffectsOnRead() const;
 		bool hasSideEffectsOnWrite() const;
 
 		bool isReadable() const;
 		bool isWriteable() const;
+
+		bool triggersReadOfR4() const;
 
 		static constexpr int INVALID_ACCUMULATOR { -1 };
 	};

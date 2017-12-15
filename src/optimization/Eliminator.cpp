@@ -294,7 +294,7 @@ InstructionWalker optimizations::calculateConstantInstruction(const Module& modu
 		//calculations with literals can be pre-calculated
 		if(op->getFirstArg().hasType(ValueType::LITERAL) && (!op->getSecondArg() || op->getSecondArg().get().hasType(ValueType::LITERAL)))
 		{
-			if(op->conditional != COND_ALWAYS && op->opCode == "xor" && op->getSecondArg().hasValue && op->getFirstArg() == op->getSecondArg())
+			if(op->conditional != COND_ALWAYS && op->opCode == "xor" && op->getSecondArg().is(op->getFirstArg()))
 			{
 				//skip "xor ?, true, true", so it can be optimized (combined with "move ?, true") afterwards
 				//also skip any "xor ?, val, val", since they are created on purpose (by combineSelectionWithZero to allow for combination with the other case)
