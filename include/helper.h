@@ -190,14 +190,43 @@ namespace vc4c
 		NonCopyable& operator=(const NonCopyable&) = delete;
 	};
 
-	template<typename T, typename R, typename... Args>
-	std::function<R(const T&)> toFunction(R (T::*memberFunc)(Args...) const, Args&&... args)
+	// Variadic captures are not supported by Raspbian GCC
+//	template<typename T, typename R, typename... Args>
+//	std::function<R(const T&)> toFunction(R (T::*memberFunc)(Args...) const, Args&&... args)
+//	{
+//		return [memberFunc,args...](const T& val) -> R
+//		{
+//			return (val.*memberFunc)(std::forward<Args>(args)...);
+//		};
+//	}
+
+	template<typename T, typename R, typename Arg>
+	std::function<R(const T&)> toFunction(R (T::*memberFunc)(Arg) const, Arg&& arg)
 	{
-		return [memberFunc,args...](const T& val) -> R
+		return [memberFunc,arg](const T& val) -> R
 		{
-			return (val.*memberFunc)(std::forward<Args>(args)...);
+			return (val.*memberFunc)(std::forward<Arg>(arg));
 		};
 	}
+
+	template<typename T, typename R, typename Arg0, typename Arg1>
+	std::function<R(const T&)> toFunction(R (T::*memberFunc)(Arg0, Arg1) const, Arg0&& arg0, Arg1&& arg1)
+	{
+		return [memberFunc,arg0, arg1](const T& val) -> R
+		{
+			return (val.*memberFunc)(std::forward<Arg0>(arg0), std::forward<Arg1>(arg1));
+		};
+	}
+
+	template<typename T, typename R, typename Arg0, typename Arg1, typename Arg2>
+	std::function<R(const T&)> toFunction(R (T::*memberFunc)(Arg0,Arg1,Arg2) const, Arg0&& arg0, Arg1&& arg1, Arg2&& arg2)
+	{
+		return [memberFunc,arg0,arg1,arg2](const T& val) -> R
+		{
+			return (val.*memberFunc)(std::forward<Arg0>(arg0), std::forward<Arg1>(arg1), std::forward<Arg2>(arg2));
+		};
+	}
+
 
 } // namespace vc4c
 

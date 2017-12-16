@@ -107,7 +107,7 @@ static void demangleAndPrint(char* line, int i)
 		// if demangling is successful, output the demangled function name
 		if (status == 0)
 		{
-			logging::error() << "[bt]: (" << i << ") " << line << " : "
+			logging::error() << " (" << i << ") " << line << " : "
 					  << real_name << "+" << offset_begin << offset_end
 					  << logging::endl;
 
@@ -115,7 +115,7 @@ static void demangleAndPrint(char* line, int i)
 		// otherwise, output the mangled function name
 		else
 		{
-			logging::error() << "[bt]: (" << i << ") " << line << " : "
+			logging::error() << " (" << i << ") " << line << " : "
 					  << mangled_name << "+" << offset_begin << offset_end
 					  << logging::endl;
 		}
@@ -124,7 +124,7 @@ static void demangleAndPrint(char* line, int i)
 	// otherwise, print the whole line
 	else
 	{
-		logging::error() << "[bt]: (" << i << ") " << line << logging::endl;
+		logging::error() << " (" << i << ") " << line << logging::endl;
 	}
 }
 #endif
