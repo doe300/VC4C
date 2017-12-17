@@ -23,7 +23,7 @@ static InstructionWalker findPreviousInstruction(BasicBlock& basicBlock, const I
 	auto it = pos;
 	while(!it.isStartOfBlock())
 	{
-		if(it.get() != nullptr && it->getOutput().hasValue)
+		if(it.get() != nullptr && it->mapsToASMInstruction() && it->getOutput().hasValue)
 			break;
 		it.previousInBlock();
 	}

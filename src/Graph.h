@@ -19,6 +19,8 @@ namespace vc4c
 	template<typename K, typename R>
 	struct Node : private NonCopyable
 	{
+		using NeighborsType = FastMap<Node*, R>;
+
 		const K key;
 
 		explicit Node(const K key) : key(key) { }
@@ -32,7 +34,12 @@ namespace vc4c
 			neighbors.emplace(neighbor, relation);
 		}
 
-		const FastMap<Node*, R>& getNeighbors() const
+		const NeighborsType& getNeighbors() const
+		{
+			return neighbors;
+		}
+
+		NeighborsType& getNeighbors()
 		{
 			return neighbors;
 		}

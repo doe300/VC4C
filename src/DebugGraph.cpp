@@ -44,9 +44,14 @@ static std::string toEdgeAttributes(bool weakEdge, const std::string& label)
 	return std::string("[") + to_string<std::string>(attrs) + "]";
 }
 
-void vc4c::printEdge(std::ofstream& file, const std::string& name1, const std::string& name2, bool weakEdge, bool isDirected, const std::string& edgeLabel)
+void vc4c::printEdge(std::ofstream& file, uintptr_t id1, uintptr_t id2, bool weakEdge, bool isDirected, const std::string& edgeLabel)
 {
-	file << cleanName(name1) << createEdge(isDirected) << cleanName(name2) << toEdgeAttributes(weakEdge, edgeLabel) << ";" << std::endl;
+	file << id1 << createEdge(isDirected) << id2 << toEdgeAttributes(weakEdge, edgeLabel) << ";" << std::endl;
+}
+
+void vc4c::printNode(std::ofstream& file, uintptr_t ID, const std::string& name)
+{
+	file << ID << " [label=" << cleanName(name) << "];" << std::endl;
 }
 
 #endif

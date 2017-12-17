@@ -135,7 +135,7 @@ static InstructionWalker insertExtractByteElements(Method& method, InstructionWa
 
 InstructionWalker periphery::insertReadVectorFromTMU(Method& method, InstructionWalker it, const Value& dest, const Value& addr, const TMU& tmu)
 {
-	if(dest.type.complexType)
+	if(dest.type.complexType && !dest.type.getPointerType().hasValue)
 		throw CompilationError(CompilationStep::GENERAL, "Reading of this type via TMU is not (yet) implemented", dest.type.to_string());
 
 	Value addresses(UNDEFINED_VALUE);
