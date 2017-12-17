@@ -317,6 +317,9 @@ namespace vc4c
 		 * Similar to #toOpCode, but returns OP_NUL of op-code is not a valid machine code instruction, instead of throwing an exception
 		 */
 		static const OpCode& findOpCode(const std::string& name);
+
+		static Optional<Value> getLeftIdentity(const OpCode& code);
+		static Optional<Value> getRightIdentity(const OpCode& code);
 	};
 
 	static constexpr OpCode OP_NOP { "nop", 0, 0, 0, false, false };

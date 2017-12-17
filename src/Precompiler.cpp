@@ -323,7 +323,7 @@ static void compileSPIRVToSPIRV(std::istream& input, std::ostream& output, const
 
 	logging::info() << "Converting between SPIR-V text and SPIR-V binary with :" << command << logging::endl;
 
-	//XXX not setting a stream to put the stdout of the child-process in doesn't currently work (hangs the child-process)
+	//NOTE: not setting a stream to put the stdout of the child-process in doesn't currently work (hangs the child-process)
 	//so we always set an output-stream, even if we write to file. But since the stream will have no content (is not written to), it has no impact
 	runPrecompiler(command, inputFile.hasValue ? nullptr : &input, &output, outputFile);
 #endif
@@ -332,8 +332,6 @@ static void compileSPIRVToSPIRV(std::istream& input, std::ostream& output, const
 Precompiler::Precompiler(std::istream& input, const SourceType inputType, const Optional<std::string> inputFile) :
 		input(input), inputType(inputType), inputFile(inputFile)
 {
-	//FIXME on Raspberry, errors in precompiler (sometimes) deletes /dev/stdout
-	//the next compilation then replaces it with normal file
 	if(inputType == SourceType::QPUASM_BIN || inputType == SourceType::QPUASM_HEX || inputType == SourceType::UNKNOWN)
 		throw CompilationError(CompilationStep::PRECOMPILATION, "Invalid input-type for pre-compilation!");
 }

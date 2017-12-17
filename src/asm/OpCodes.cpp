@@ -468,6 +468,68 @@ const OpCode& OpCode::findOpCode(const std::string& name)
 	return OP_NOP;
 }
 
+Optional<Value> OpCode::getLeftIdentity(const OpCode& code)
+{
+	if(code == OP_ADD)
+		return INT_ZERO;
+	if(code == OP_AND)
+		return Value(Literal(static_cast<int64_t>(0xFFFFFFFF)), TYPE_INT32);
+	if(code == OP_ASR)
+		return INT_ZERO;
+	if(code == OP_FADD)
+		return FLOAT_ZERO;
+	if(code == OP_FMAXABS)
+		return FLOAT_ZERO;
+	if(code == OP_FMUL)
+		return FLOAT_ONE;
+	if(code == OP_MUL24)
+		return INT_ONE;
+	if(code == OP_OR)
+		return INT_ZERO;
+	if(code == OP_ROR)
+		return INT_ZERO;
+	if(code == OP_SHL)
+		return INT_ZERO;
+	if(code == OP_SHR)
+		return INT_ZERO;
+	if(code == OP_XOR)
+		return INT_ZERO;
+	return NO_VALUE;
+}
+
+Optional<Value> OpCode::getRightIdentity(const OpCode& code)
+{
+	if(code == OP_ADD)
+		return INT_ZERO;
+	if(code == OP_AND)
+		return Value(Literal(static_cast<int64_t>(0xFFFFFFFF)), TYPE_INT32);
+	if(code == OP_ASR)
+		return INT_ZERO;
+	if(code == OP_FADD)
+		return FLOAT_ZERO;
+	if(code == OP_FMAXABS)
+		return FLOAT_ZERO;
+	if(code == OP_FMUL)
+		return FLOAT_ONE;
+	if(code == OP_FSUB)
+		return FLOAT_ZERO;
+	if(code == OP_MUL24)
+		return INT_ONE;
+	if(code == OP_OR)
+		return INT_ZERO;
+	if(code == OP_ROR)
+		return INT_ZERO;
+	if(code == OP_SHL)
+		return INT_ZERO;
+	if(code == OP_SHR)
+		return INT_ZERO;
+	if(code == OP_SUB)
+		return INT_ZERO;
+	if(code == OP_XOR)
+		return INT_ZERO;
+	return NO_VALUE;
+}
+
 std::string vc4c::toString(const BranchCond cond)
 {
     switch(cond)
