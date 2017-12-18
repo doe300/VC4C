@@ -552,15 +552,18 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case SpvOpTypeImage:
     {
         ImageType* image = new ImageType();
-        //TODO if color-type is always unknown (is it? SPIR-V specification doesn't state that it has to be void for OpenCL), remove to avoid confusion/wrong conclusions
-        image->colorType = typeMappings.at(getWord(parsed_instruction, 2));
         image->dimensions = static_cast<uint8_t>(getWord(parsed_instruction, 3)) + 1;
-        //XXX depth?? (already contained the dimensions)
         image->isImageArray = getWord(parsed_instruction, 5);
-        image->isImageBuffer = getWord(parsed_instruction, 7);
+        if(image->dimensions == 6 /* buffered */)
+        {
+        	//there are only buffered 1D images
+        	image->dimensions = 1;
+        	image->isImageBuffer = true;
+        }
         image->isSampled = false;
-        typeMappings[parsed_instruction->result_id] = DataType(image->getImageTypeName(), image->colorType.num);
+        typeMappings[parsed_instruction->result_id] = DataType(image->getImageTypeName());
         typeMappings.at(parsed_instruction->result_id).complexType.reset(image);
+        logging::debug() << "Reading image-type '" << image->getImageTypeName() << "' with " << image->dimensions << " dimensions" << (image->isImageArray ? " (array)" : "") << (image->isImageBuffer ? " (buffer)" : "") << logging::endl;
         return SPV_SUCCESS;
     }
     case SpvOpTypeSampler:
@@ -570,7 +573,6 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     {
     	const ImageType* image = typeMappings.at(getWord(parsed_instruction, 2)).getImageType();
     	ImageType* sampledImage = new ImageType();
-    	sampledImage->colorType = image->colorType;
     	sampledImage->dimensions = image->dimensions;
     	sampledImage->isImageArray = image->isImageArray;
     	sampledImage->isImageBuffer = image->isImageBuffer;
@@ -578,6 +580,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
 
         typeMappings[parsed_instruction->result_id] = typeMappings.at(getWord(parsed_instruction, 2));
         typeMappings.at(parsed_instruction->result_id).complexType.reset(sampledImage);
+        logging::debug() << "Reading sampled image-type '" << image->getImageTypeName() << "' with " << image->dimensions << " dimensions" << (image->isImageArray ? " (array)" : "") << (image->isImageBuffer ? " (buffer)" : "") << logging::endl;
         return SPV_SUCCESS;
     }
     case SpvOpTypeArray:
@@ -646,7 +649,6 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return UNSUPPORTED_INSTRUCTION("OpTypePipe");
     case SpvOpTypeForwardPointer:
     	//" Declare the Storage Class for a forward reference to a pointer."
-    	// we are not interested in the storage-class -> skip
     	//TODO we actually are interested, currently at least to provide it as information for clGetKernelArgInfo
     	//but so far, this instruction was never encountered
         return UNSUPPORTED_INSTRUCTION("SpvOpTypeForwardPointer");
@@ -849,7 +851,6 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     case SpvOpInBoundsPtrAccessChain:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        //FIXME according to sanitizer, currentMethod seems to be null sometimes (/opt/SPIRV-LLVM/tools/clang/test/SemaOpenCL/str_literals.cl)
         instructions.emplace_back(new SPIRVIndexOf(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, getWord(parsed_instruction, 3), parseArguments(parsed_instruction, 4), true));
         return SPV_SUCCESS;
     case SpvOpNoLine: //source level debug info -> skip
@@ -952,7 +953,6 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case SpvOpImage:
         //"Extract the image from a sampled image."
     	//this is not really an instruction for the runtime, but to associate images <-> sampled-image
-    	//XXX type-association correct??
     	localTypes[parsed_instruction->result_id] = localTypes.at(getWord(parsed_instruction, 3));
     	//this is not quite correct (to store a sampled-image where an image is supposed to go), but we extract the image in the image-accessing methods
     	sampledImages[parsed_instruction->result_id] = sampledImages.at(getWord(parsed_instruction, 3));

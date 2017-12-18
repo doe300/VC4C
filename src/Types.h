@@ -164,7 +164,6 @@ namespace vc4c
 
 	struct ImageType: public ComplexType
 	{
-		DataType colorType;
 		uint8_t dimensions;
 		bool isImageArray;
 		bool isImageBuffer;

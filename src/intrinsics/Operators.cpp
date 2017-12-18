@@ -12,6 +12,7 @@
 #include "helper.h"
 #include "log.h"
 
+#include <bitset>
 #include <cmath>
 
 using namespace vc4c;
@@ -390,4 +391,52 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
     op.setOpCode(OP_FMUL);
     
     return it;
+}
+
+Literal intermediate::asr(const DataType& type, const Literal& left, const Literal& right)
+{
+	std::bitset<sizeof(int64_t) * 8> tmp(left.integer);
+	if(right.integer < 0)
+		throw CompilationError(CompilationStep::GENERAL, "ASR with negative numbers is not implemented");
+	for(auto i = 0; i < right.integer; ++i)
+	{
+
+		bool MSBSet = tmp.test(type.getScalarBitCount() - 1);
+		tmp >>= 1;
+		tmp.set(type.getScalarBitCount() - 1, MSBSet);
+	}
+	if(sizeof(unsigned long) == sizeof(int64_t))
+		return Literal(static_cast<uint64_t>(tmp.to_ulong()));
+	else
+		return Literal(static_cast<uint64_t>(tmp.to_ullong()));
+}
+
+Literal intermediate::clz(const DataType& type, const Literal& val)
+{
+	for(auto i = type.getScalarBitCount() - 1; i >= 0; --i)
+	{
+		if(((val.integer >> i) & 0x1) == 0x1)
+			return Literal(static_cast<int64_t>(type.getScalarBitCount() - 1 - i));
+	}
+	return Literal(static_cast<int64_t>(type.getScalarBitCount()));
+}
+
+Literal intermediate::smod(const DataType& type, const Literal& numerator, const Literal& denominator)
+{
+	throw CompilationError(CompilationStep::GENERAL, "SMOD is currently not implemented!");
+}
+
+Literal intermediate::srem(const DataType& type, const Literal& numerator, const Literal& denominator)
+{
+	throw CompilationError(CompilationStep::GENERAL, "SREM is currently not implemented!");
+}
+
+Literal intermediate::fmod(const DataType& type, const Literal& numerator, const Literal& denominator)
+{
+	throw CompilationError(CompilationStep::GENERAL, "FMOD is currently not implemented!");
+}
+
+Literal intermediate::frem(const DataType& type, const Literal& numerator, const Literal& denominator)
+{
+	throw CompilationError(CompilationStep::GENERAL, "FREM is currently not implemented!");
 }

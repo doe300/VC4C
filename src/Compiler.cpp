@@ -143,7 +143,7 @@ std::size_t Compiler::convert()
     threading::BackgroundWorker::waitForAll(workers);
     
     //TODO could discard unused globals
-    //since they are exported, they are still in the code, even if not used (e.g. optimized away)
+    //since they are exported, they are still in the intermediate code, even if not used (e.g. optimized away)
 
     //code generation
     std::size_t bytesWritten = codeGen.writeOutput(output);

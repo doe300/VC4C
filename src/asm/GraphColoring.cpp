@@ -556,7 +556,7 @@ void GraphColoring::createGraph()
 	localRanges.reserve(method.countInstructions());
 
 	// 1. iteration: set files and locals used together and map to start/end of range
-	PROFILE_START(createColoredNodes); //XXX too slow: 20s keccak
+	PROFILE_START(createColoredNodes);
 	for(const auto& pair : localUses)
 	{
 		auto& node = graph.getOrCreateNode(pair.first);
@@ -619,7 +619,7 @@ void GraphColoring::createGraph()
 		PROFILE_COUNTER(1000005, "SpillCandidates", node.second.getNeighbors().size() >= 64);
 	}
 	//2. iteration: associate locals used together
-	PROFILE_START(addEdges); //XXX too slow: 24s for keccak (240s total)
+	PROFILE_START(addEdges);
 	for(const auto& range : localRanges)
 	{
 		for(const Local* loc1 : range.second)

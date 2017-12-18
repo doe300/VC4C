@@ -369,10 +369,25 @@ const VPMArea* VPM::addArea(const Local* local, unsigned requestedSize, bool ali
 	const VPMArea* area = findArea(local);
 	if(area != nullptr && area->size >= requestedSize)
 		return area;
-	//TODO find free consecutive space in VPM with the requested size and return it
 
 	//lock scratch area, so it cannot expand over reserved VPM areas
 	isScratchLocked = true;
+
+	//find free consecutive space in VPM with the requested size and return it
+	unsigned baseOffset = 0;
+	for(const VPMArea& area : areas)
+	{
+		if(baseOffset + requestedSize < area.baseOffset)
+			//if the new area doesn't fit before the current one, place it after
+			baseOffset = area.baseOffset + area.size;
+	}
+
+	//check if we can fit at the end
+	if(baseOffset + requestedSize < maximumVPMSize)
+	{
+		auto it = areas.emplace(VPMArea{VPMUsage::SPECIFIC_DMA, baseOffset, requestedSize, local});
+		return &(*it.first);
+	}
 
 	//no more (big enough) free space on VPM
 	return nullptr;

@@ -9,9 +9,10 @@
 
 #include "cpptest.h"
 #include "cpptest-main.h"
-#include "TestScanner.h"
-#include "TestParser.h"
 #include "TestInstructions.h"
+#include "TestOperators.h"
+#include "TestParser.h"
+#include "TestScanner.h"
 #include "TestSPIRVFrontend.h"
 
 #include "../lib/cpplog/include/logger.h"
@@ -55,6 +56,7 @@ int main(int argc, char** argv)
     //only output errors
     logging::LOGGER.reset(new logging::ConsoleLogger(logging::Level::WARNING));
 
+    Test::registerSuite(Test::newInstance<TestOperators>, "test-operators", "Tests the implementation of some operators");
     Test::registerSuite(Test::newInstance<TestScanner>, "test-scanner", "Tests the LLVM IR scanner");
     Test::registerSuite(Test::newInstance<TestParser>, "test-parser", "Tests the LLVM IR parser");
     Test::registerSuite(Test::newInstance<TestInstructions>, "test-instructions", "Tests some common instruction handling");

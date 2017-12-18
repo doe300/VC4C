@@ -767,18 +767,9 @@ static InstructionWalker intrinsifyReadWorkItemInfo(Method& method, InstructionW
 	 * -> res = (UNIFORM >> (dim * 8)) & 0xFF
 	 */
 	const Local* itemInfo = method.findOrCreateLocal(TYPE_INT32, local);
-	Value tmp0(UNDEFINED_VALUE);
-	//TODO this pre-calculation causes invalid values for get_global_id(), but why?? (see ./testing/test_work_item.cl)
-//	if(arg.hasType(ValueType::LITERAL))
-//	{
-//		tmp0 = Value(Literal(arg.literal.integer * 8L), TYPE_INT8);
-//	}
-//	else
-	{
-		tmp0 = method.addNewLocal(TYPE_INT32, "%local_info");
-		it.emplace(new Operation(OP_MUL24, tmp0, arg, Value(Literal(static_cast<int64_t>(8)), TYPE_INT32)));
-		it.nextInBlock();
-	}
+	Value tmp0 = method.addNewLocal(TYPE_INT32, "%local_info");
+	it.emplace(new Operation(OP_MUL24, tmp0, arg, Value(Literal(static_cast<int64_t>(8)), TYPE_INT32)));
+	it.nextInBlock();
 	const Value tmp1 = method.addNewLocal(TYPE_INT32, "%local_info");
 	it.emplace(new Operation(OP_SHR, tmp1, itemInfo->createReference(), tmp0));
 	it.nextInBlock();
@@ -819,9 +810,22 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
 	if(callSite->methodName == "vc4cl_local_size" && callSite->getArguments().size() == 1)
 	{
 		logging::debug() << "Intrinsifying reading of local work-item sizes" << logging::endl;
+		/*
+		 * Use the value set via reqd_work_group_size(x, y, z) - if set - and return here.
+		 * This is valid, since the OpenCL standard states: "is the work-group size that must be used as the local_work_size argument to clEnqueueNDRangeKernel." (page 231)
+		 */
+		const auto& arg0 = callSite->getArgument(0).get();
+		const auto& workGroupSizes = method.metaData.workGroupSizes;
+		if(workGroupSizes.at(0) > 0 && arg0.isLiteralValue())
+		{
+			const Literal immediate = arg0.hasType(ValueType::LITERAL) ? arg0.literal : arg0.immediate.toLiteral().get();
+			if(immediate.integer > static_cast<int64_t>(workGroupSizes.size()) || workGroupSizes.at(immediate.integer) == 0)
+			{
+				return it.reset((new MoveOperation(callSite->getOutput(), INT_ONE))->setDecorations(InstructionDecorations::BUILTIN_LOCAL_SIZE));
+			}
+			return it.reset((new MoveOperation(callSite->getOutput(), Value(Literal(static_cast<uint64_t>(workGroupSizes.at(immediate.integer))), TYPE_INT8)))->setDecorations(InstructionDecorations::BUILTIN_LOCAL_SIZE));
+		}
 		//TODO needs to have a size of 1 for all higher dimensions (instead of currently implicit 0)
-		//TODO could use the value set via reqd_work_group_size(x, y, z) - if set - and return here
-		//this is valid, since the OpenCL standard states: "is the work-group size that must be used as the local_work_size argument to clEnqueueNDRangeKernel." (page 231)
 		return intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0), Method::LOCAL_SIZES, InstructionDecorations::BUILTIN_LOCAL_SIZE);
 	}
 	if(callSite->methodName == "vc4cl_local_id" && callSite->getArguments().size() == 1)

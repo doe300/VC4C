@@ -180,6 +180,7 @@ bool DataType::containsType(const DataType& other) const
     {
         if(getScalarBitCount() <= other.getScalarBitCount())
         {
+        	//FIXME correct? doesn't the comparison need to be the other way round?
             return true;
         }
     }
@@ -308,8 +309,8 @@ unsigned int StructType::getStructSize(const int index) const
         }
         return size;
     }
-    //TODO calculate size of struct (!!SAME AS HOST!!) including padding -> correct??
-    //http://stackoverflow.com/a/2749096
+    //calculates size of struct including padding (!!NEED TO MATCH THE HOST!!)
+    //see also: http://stackoverflow.com/a/2749096
     unsigned int alignment = 1;
     for(std::size_t i = 0; i < elementTypes.size(); ++i)
     {
@@ -371,7 +372,7 @@ bool ImageType::operator==(const ComplexType& other) const
 	const ImageType* right = dynamic_cast<const ImageType*>(&other);
 	if(right == nullptr)
 		return false;
-	return colorType == right->colorType && dimensions == right->dimensions && isImageArray == right->isImageArray && isImageBuffer == right->isImageBuffer && isSampled == right->isSampled;
+	return dimensions == right->dimensions && isImageArray == right->isImageArray && isImageBuffer == right->isImageBuffer && isSampled == right->isSampled;
 }
 
 std::string ImageType::getImageTypeName() const

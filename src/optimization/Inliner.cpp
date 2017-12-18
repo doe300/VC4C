@@ -6,6 +6,7 @@
 
 #include "Inliner.h"
 
+#include "../Profiler.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/TypeConversions.h"
@@ -72,9 +73,15 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                 {
                 	currentMethod.findOrCreateLocal(arg.type, newLocalPrefix + arg.name);
                 }
-                //TODO maybe this is not needed at all? Since IntermediateInstruction#copyFor already creates all used locals
                 for(const auto& pair : calledMethod->readLocals())
                 {
+                	//TODO maybe this is not needed at all? Since IntermediateInstruction#copyFor already creates all used locals
+                	//In regressions tests, there were 3k locals added by this
+                	if(currentMethod.findLocal(newLocalPrefix + pair.second.name) == nullptr)
+                	{
+                		PROFILE_COUNTER(108, "Missing locals (used)", !pair.second.getUsers().empty());
+                		logging::debug() << "Adding missing local to caller: " << pair.second.to_string() << logging::endl;
+                	}
                 	currentMethod.findOrCreateLocal(pair.second.type, newLocalPrefix + pair.second.name);
                 }
                 //insert instructions

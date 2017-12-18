@@ -261,7 +261,7 @@ static void compileOpenCLToLLVMIR(std::istream& input, std::ostream& output, con
 
 	logging::info() << "Compiling OpenCL to LLVM-IR with :" << command << logging::endl;
 
-	//XXX not setting a stream to put the stdout of the child-process in doesn't currently work (hangs the child-process)
+	//NOTE: not setting a stream to put the stdout of the child-process in doesn't currently work (hangs the child-process)
 	//so we always set an output-stream, even if we write to file. But since the stream will have no content (is not written to), it has no impact
 	runPrecompiler(command, inputFile.hasValue ? nullptr : &input, &output, outputFile);
 }
@@ -279,7 +279,7 @@ static void compileLLVMIRToSPIRV(std::istream& input, std::ostream& output, cons
 
 	logging::info() << "Converting LLVM-IR to SPIR-V with :" << command << logging::endl;
 
-	//XXX not setting a stream to put the stdout of the child-process in doesn't currently work (hangs the child-process)
+	//NOTE: not setting a stream to put the stdout of the child-process in doesn't currently work (hangs the child-process)
 	//so we always set an output-stream, even if we write to file. But since the stream will have no content (is not written to), it has no impact
 	runPrecompiler(command, inputFile.hasValue ? nullptr : &input, &output, outputFile);
 #endif

@@ -141,26 +141,6 @@ struct ImmediateHandler
     SmallImmediate immediate = SmallImmediate(0);
 };
 
-static bool contains(const std::vector<float>& container, const float val)
-{
-	for(const float v : container)
-	{
-		if(val == v)
-			return true;
-	}
-	return false;
-}
-
-static int index(const std::vector<float>& container, const float val)
-{
-	for(std::size_t i = 0; i < container.size(); ++i)
-	{
-		if(val == container[i])
-			return i;
-	}
-	return -1;
-}
-
 struct ImmediateSupplier
 {
 	const OpCode& opCode;
@@ -478,7 +458,7 @@ static const std::map<Literal, ImmediateSupplier> immediateMappings = {
 };
 
 /*
- * XXX New version:
+ * New version:
  * - passes more test-cases (179 vs. 178)
  * - is slightly faster than old version (complete SingleSteps slower than before, probably due to reversion via precalculate)
  * - introduces less additional instructions (~2464 for 243 test-cases, complete SingleSteps!)
@@ -515,145 +495,8 @@ static ImmediateHandler mapImmediateValue(const Literal& source)
 	return handler;
 }
 
-/*
-static ImmediateHandler mapImmediateValue(const Literal& source)
-{
-    static const std::vector<int> intAdds = {0 +0, 1+1, 2+2, 3+3, 4+4, 5+5, 6+6, 7+7, 8+8, 9+9, 10+10, 11+11, 12+12, 13+13, 14+14, 15+15, -16-16, -15-15, -14-14, -13-13, -12-12, -11-11, -10-10, -9-9, -8-8, -7-7, -6-6, -5-5, -4-4, -3-3, -2-2, -1-1};
-    static const std::vector<int> shifts = {0 << 0, 1 << 1, 2 << 2, 3 << 3, 4 << 4, 5 << 5, 6 << 6, 7 << 7, 8 << 8, 9 << 9, 10 << 10, 11 << 11, 12 << 12, 13 << 13, 14 << 14, 15 << 15};
-    static const std::vector<float> powersOf2 = {1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0};
-    static const std::vector<float> partsOf2 = {1.0/256.0, 1.0/128.0, 1.0/64.0, 1.0/32.0, 1.0/16.0, 1.0/8.0, 1.0/4.0, 1.0/2.0};
-    ImmediateHandler handler;
-    switch(source.type)
-    {
-    case LiteralType::BOOL:
-        //no need to create a load-instruction
-    	handler.changeValue = true;
-    	handler.immediate.value = source.isTrue();
-        return handler;
-    case LiteralType::INTEGER:
-    {
-    	//to convert to real negative values
-    	const int32_t integer = static_cast<int32_t>(source.integer);
-        //ALU with immediate supports -16 <= x <= 15
-        if(integer >= -16 && integer <= 15)
-        {
-            if(integer < 0)
-                //-16 <= x < 0
-                //need to move values, because bit-value 16 means -16, 17 -> -15, ..., 31 -> -1
-                handler.immediate.value = 32 + integer / * + since integer is negative * /;
-            else    //0 <= x <= 15 -> keep as is
-            	handler.immediate.value = integer;
-            handler.changeValue = true;
-            return handler;
-        }
-        // integer value x < -16 || x > 15
-        else
-        {
-        	//FIXME sanitizer fails for -1 * -1 (aka. -9223372036854775808 * -9223372036854775808) not fitting into long (./example/SHA-256.cl)
-        	int64_t root = static_cast<int64_t>(sqrt(integer));
-            if(root * root == integer && root >= 0 && root <= 15 )
-            {
-                handler.changeValue = true;
-                handler.immediate.value = root;
-                handler.opCode = OP_MUL24;
-                return handler;
-            }
-        }
-        for(std::size_t i = 0; i < intAdds.size(); ++i)
-        {
-            if(intAdds[i] == integer)
-            {
-                handler.changeValue = true;
-                handler.immediate.value = i;
-                handler.opCode = OP_ADD;
-                return handler;
-            }
-        }
-        for(std::size_t i = 0; i < shifts.size(); ++i)
-        {
-            if(shifts[i] == integer)
-            {
-                handler.changeValue = true;
-                handler.immediate.value = i;
-                handler.opCode = OP_SHL;
-                return handler;
-            }
-        }
-        //need load immediate instruction
-        handler.changeValue = true;
-        handler.loadImmediate = true;
-        return handler;
-    }
-    case LiteralType::REAL:
-        //handle values representable with integer small immediates
-        const int integer = bit_cast<float, int>(static_cast<float>(source.real()));
-        if(integer >= 0 && integer <= 15)
-        {
-            //0 <= x <= 15 -> keep as is
-        	handler.changeValue = true;
-        	handler.immediate.value = integer;
-            return handler;
-        }
-        //ALU with immediate supports
-        //1.0, 2.0, 4.0, ..., 128.0
-        //1/256, 1/128, ..., 1/2
-        int powerOfTwo = -1;
-        int partOfTwo = -1;
-        for(std::size_t i = 0; i < powersOf2.size(); ++i)
-        {
-            if(static_cast<float>(source.real()) == powersOf2[i])
-            {
-                powerOfTwo = i;
-                break;
-            }
-        }
-        for(std::size_t i = 0; i < partsOf2.size(); ++i)
-        {
-            if(static_cast<float>(source.real()) == partsOf2[i])
-            {
-                partOfTwo = i;
-                break;
-            }
-        }
-        if(powerOfTwo != -1)
-        {
-            handler.changeValue = true;
-            handler.immediate.value = 32 + powerOfTwo;
-            return handler;
-        }
-        if(partOfTwo != -1)
-        {
-            handler.changeValue = true;
-            handler.immediate.value = 40 + partOfTwo;
-            return handler;
-        }
-		float root = static_cast<float>(sqrt(source.real()));
-		if(static_cast<float>(root * root) == source.real() && (contains(powersOf2, root) || contains(partsOf2, root)))
-		{
-			//need to map to the constant representing the power/part of two, not the value itself
-			int i = index(powersOf2, root);
-			if(i >= 0)
-				i += 32;
-			if(i < 0)
-				i = 40 + index(partsOf2, root);
-			handler.changeValue = true;
-			handler.immediate.value = i;
-			handler.opCode = OP_FMUL;
-			return handler;
-		}
-        //any other float, load-immediate bit-casted integer
-        handler.changeValue = true;
-        handler.loadImmediate = true;
-        return handler;
-    }
-    throw CompilationError(CompilationStep::OPTIMIZER, "Unknown literal-type", source.to_string());
-}
-*/
-
 InstructionWalker optimizations::handleImmediate(const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
-	//TODO see http://maazl.de/project/vc4asm/doc/instructions.html#mov
-	//http://maazl.de/project/vc4asm/doc/smallimmediate.html
 	intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
 	if(move != nullptr)
 	{

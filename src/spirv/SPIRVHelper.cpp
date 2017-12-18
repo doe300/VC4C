@@ -758,7 +758,6 @@ void spirv2qasm::linkSPIRVModules(const std::vector<std::istream*>& inputModules
 	linker.SetMessageConsumer(consumeSPIRVMessage);
 
 	std::vector<uint32_t> linkedModules;
-	//TODO this seems only to work if all imported symbols are exported by one of the modules, even the intrinsic symbols!
 	spv_result_t result = linker.Link(binaries, linkedModules, options);
 
 	if(result != SPV_SUCCESS)

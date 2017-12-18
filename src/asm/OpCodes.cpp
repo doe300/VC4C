@@ -7,6 +7,7 @@
 #include "OpCodes.h"
 
 #include "../Values.h"
+#include "../intrinsics/Operators.h"
 #include "CompilationError.h"
 
 #include <cmath>
@@ -366,7 +367,10 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 		return Value(Literal(firstLit.integer + secondLit.integer), resultType);
 	if(*this == OP_AND)
 		return Value(Literal(firstLit.integer & secondLit.integer), resultType);
-	//XXX ASR, CLZ
+	if(*this == OP_ASR)
+		return Value(intermediate::asr(resultType, firstLit, secondLit), resultType);
+	if(*this == OP_CLZ)
+		return Value(intermediate::clz(resultType, firstLit), resultType);
 	if(*this == OP_FADD)
 		return Value(Literal(firstLit.real() + secondLit.real()), resultType);
 	if(*this == OP_FMAX)

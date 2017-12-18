@@ -413,6 +413,7 @@ const OrderedMap<std::string, Local>& Method::readLocals() const
 
 void Method::cleanLocals()
 {
+	PROFILE_COUNTER(7, "Clean locals (before)", locals.size());
 #ifdef DEBUG_MODE
 	//check duplicate locals
 	FastSet<std::string> localNames;
@@ -438,11 +439,13 @@ void Method::cleanLocals()
 		if((*it).second.getUsers().empty())
 		{
 			it = locals.erase(it);
+			++numCleaned;
 		}
 		else
 			++it;
 	}
 	logging::debug() << "Cleaned " << numCleaned << " unused locals from method " << name << logging::endl;
+	PROFILE_COUNTER_WITH_PREV(8, "Clean locals (after)", locals.size(), 7);
 }
 
 void Method::dumpInstructions() const

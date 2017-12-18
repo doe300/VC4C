@@ -15,12 +15,6 @@ using namespace vc4c::periphery;
 const TMU periphery::TMU0{REG_TMU0_COORD_S_U_X, REG_TMU0_COORD_T_V_Y, REG_TMU0_COORD_R_BORDER_COLOR, REG_TMU0_COORD_B_LOD_BIAS, SIGNAL_LOAD_TMU0};
 const TMU periphery::TMU1{REG_TMU1_COORD_S_U_X, REG_TMU1_COORD_T_V_Y, REG_TMU1_COORD_R_BORDER_COLOR, REG_TMU1_COORD_B_LOD_BIAS, SIGNAL_LOAD_TMU1};
 
-/*
- * XXX the TMU can queue up to 4 load-requests per QPU, could be used to optimize/reorder TMU loads
- *
- * see i.e. https://github.com/raspberrypi/userland/blob/master/host_applications/linux/apps/hello_pi/hello_fft/qasm/gpu_fft.qinc (.macro load_tw, .macro read_lin/.macro load_lin)
- */
-
 static InstructionWalker insertCalculateAddressOffsets(Method& method, InstructionWalker it, const Value& baseAddress, const DataType& type, Value& outputAddress)
 {
 	if(type.num == 1)
@@ -39,7 +33,7 @@ static InstructionWalker insertCalculateAddressOffsets(Method& method, Instructi
 	 * any element not in use (e.g. 5 to 15 for 4-element vector) needs to be set to 0
 	 */
 	const Value addressOffsets = method.addNewLocal(TYPE_INT32.toVectorType(type.num), "%address_offset");
-	//XXX actually this is baseAddr.type * type.num
+	//XXX actually this is baseAddr.type * type.num, but we can't have vectors of pointers
 	outputAddress = method.addNewLocal(TYPE_INT32.toVectorType(type.num), "%tmu_address");
 
 	//addressOffsets = sizeof(type) * elem_num

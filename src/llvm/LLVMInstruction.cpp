@@ -406,8 +406,6 @@ bool ContainerInsertion::mapInstruction(Method& method) const
     else
     {
         throw CompilationError(CompilationStep::LLVM_2_IR, "Container insertion into arrays is not yet implemented!");
-        //TODO handle arrays
-        //instructions.emplace_back(new intermediate::MoveOperation(Value(element, elementType), newValue));
     }
     return true;
 }
@@ -447,8 +445,6 @@ bool ContainerExtraction::mapInstruction(Method& method) const
     else
     {
         throw CompilationError(CompilationStep::LLVM_2_IR, "Container extraction from arrays is not yet implemented!");
-        //TODO handle arrays
-        //instructions.emplace_back(new intermediate::MoveOperation(Value(element, elementType), newValue));
     }
     
     return true;

@@ -239,7 +239,6 @@ namespace vc4c
 			Local* local;
 			SmallImmediate immediate;
 		};
-		//XXX or rewrite and use pointer?
 		DataType type;
 		ContainerValue container;
 		ValueType valueType;

@@ -10,6 +10,7 @@
 #include "../intermediate/Helper.h"
 #include "../intermediate/TypeConversions.h"
 #include "../intrinsics/Images.h"
+#include "../intrinsics/Operators.h"
 #include "../periphery/VPM.h"
 #include "helper.h"
 #include "log.h"
@@ -124,11 +125,14 @@ Optional<Value> SPIRVInstruction::precalculate(const std::map<uint32_t, DataType
 		return Value(Literal(op1.literal.real() / op2.literal.real()), op1.type.getUnionType(op2.type));
 	if(opcode == "umod")
 		return Value(Literal(bit_cast<int64_t, uint64_t>(op1.literal.integer) % bit_cast<int64_t, uint64_t>(op2.literal.integer)), op1.type.getUnionType(op2.type));
-	//TODO srem, smod, frem, fmod
-	//OpSRem: "Signed remainder operation of Operand 1 divided by Operand 2. The sign of a non-0 result comes from Operand 1."
-	//OpSMod: "Signed modulo operation of Operand 1 modulo Operand 2. The sign of a non-0 result comes from Operand 2."
-	//OpFRem: "Floating-point remainder operation of Operand 1 divided by Operand 2. The sign of a non-0 result comes from	Operand 1."
-	//OpFMod: "Floating-point remainder operation of Operand 1 divided by Operand 2. The sign of a non-0 result comes from Operand 2."
+	if(opcode == "srem")
+		return Value(intermediate::srem(op1.type, op1.literal, op2.literal), op1.type);
+	if(opcode == "smod")
+		return Value(intermediate::smod(op1.type, op1.literal, op2.literal), op1.type);
+	if(opcode == "frem")
+		return Value(intermediate::frem(op1.type, op1.literal, op2.literal), op1.type);
+	if(opcode == "fmod")
+		return Value(intermediate::fmod(op1.type, op1.literal, op2.literal), op1.type);
 	if(opcode == "or")
 		return Value(Literal(op1.literal.integer | op2.literal.integer), op1.type.getUnionType(op2.type));
 	if(opcode == "and")
@@ -140,7 +144,8 @@ Optional<Value> SPIRVInstruction::precalculate(const std::map<uint32_t, DataType
 	if(opcode == "shr")
 		//in C++, unsigned right shift is logical (fills with zeroes)
 		return Value(Literal(bit_cast<uint64_t, int64_t>(bit_cast<int64_t, uint64_t>(op1.literal.integer)) >> op2.literal.integer), op1.type);
-	//TODO asr
+	if(opcode == "asr")
+		return Value(intermediate::asr(op1.type, op1.literal, op2.literal), op1.type);
 	if(opcode == "shl")
 		return Value(Literal(op1.literal.integer << op2.literal.integer), op1.type);
 
@@ -342,8 +347,8 @@ void SPIRVConversion::mapInstruction(std::map<uint32_t, DataType>& types, std::m
     		if(sourceWidth > destWidth)
     			method.method->appendToEnd((new intermediate::Operation("fptrunc", dest, source))->setDecorations(decorations));
     		else
-    			//TODO half -> float -> unpack
-    			throw CompilationError(CompilationStep::LLVM_2_IR, "Unhandled floating-point conversion!");
+    			//half -> float -> unpack
+    			method.method->appendToEnd((new intermediate::Operation(OP_FMUL, dest, source, OpCode::getRightIdentity(OP_FMUL)))->setDecorations(decorations)->setPackMode(PACK_FLOAT_TO_HALF_TRUNCATE));
     		break;
     	case ConversionType::SIGNED:
     		if(isSaturated)
@@ -384,7 +389,6 @@ Optional<Value> SPIRVConversion::precalculate(const std::map<uint32_t, DataType>
 				return dest;
 			case ConversionType::FLOATING:
 				//double representation of all floating-point values is the same for the same value
-				//XXX not quite, since half/float is more inaccurate
 				return source;
 			case ConversionType::SIGNED:
 				//TODO trunc/sext + saturation
