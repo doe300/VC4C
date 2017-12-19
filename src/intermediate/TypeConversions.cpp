@@ -148,3 +148,16 @@ InstructionWalker intermediate::insertTruncate(InstructionWalker it, Method& met
 
 	return it.nextInBlock();
 }
+
+InstructionWalker intermediate::insertFloatingPointConversion(InstructionWalker it, Method& method, const Value& src, const Value& dest)
+{
+	if(src.type.getScalarBitCount() == dest.type.getScalarBitCount())
+		it.emplace(new MoveOperation(dest, src));
+	else if(src.type.getScalarBitCount() == 16 && dest.type.getScalarBitCount() == 32)
+		it.emplace((new Operation(OP_FMUL, dest, src, OpCode::getRightIdentity(OP_FMUL)))->setUnpackMode(UNPACK_HALF_TO_FLOAT));
+	else if(src.type.getScalarBitCount() == 32 && dest.type.getScalarBitCount() == 16)
+		it.emplace((new intermediate::Operation(OP_FMUL, dest, src, OpCode::getRightIdentity(OP_FMUL)))->setPackMode(PACK_FLOAT_TO_HALF_TRUNCATE));
+	else
+		throw CompilationError(CompilationStep::GENERAL, "Unsupported floating-point conversion");
+	return it.nextInBlock();
+}

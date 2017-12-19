@@ -200,6 +200,15 @@ namespace vc4c
 //		};
 //	}
 
+	template<typename T, typename R>
+	std::function<R(const T&)> toFunction(R (T::*memberFunc)() const)
+	{
+		return [memberFunc](const T& val) -> R
+		{
+			return (val.*memberFunc)();
+		};
+	}
+
 	template<typename T, typename R, typename Arg>
 	std::function<R(const T&)> toFunction(R (T::*memberFunc)(Arg) const, Arg&& arg)
 	{

@@ -27,7 +27,6 @@ Globals, Constants:
 Answer questions:
 - Two set-flags (with inverted conditions) in same instruction. Is flags of MUL set?
 - Can unpack from VPM/TMU? (If so, only when read from reg-file A) 
-- Is read from TMU 1 32-bit value for all SIMD-elements, 16 successive 32-bit values or 1 32-bit value per address specified at that element (i.e. 16 separate loads)?
  
 Support additional data types:
 - cl_khr_fp16:
@@ -65,7 +64,6 @@ New optimization steps:
   - for memory loads where the only use is a memory store, remove all instructions copying the data between VPM and QPU, simple load RAM -> VPM and store VPM -> RAM 
 
 VPM:
-- allow up to 5 instructions to be moved before VPM in/out wait? Since this always blocks at least 5 cycles!
 - add handling of local/global offset/size to optimization combining VPM access. how? (e.g. ./testing/test_work_item.cl)
 - use VPM as cache:
   find blocks of memory (how to determine their size??) read from/written to at several places

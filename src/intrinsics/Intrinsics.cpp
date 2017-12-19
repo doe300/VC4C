@@ -489,10 +489,10 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             op->setOpCode(OP_SHR);
             op->setArgument(1, Value(Literal(static_cast<int64_t>(std::log2(arg1.literal.integer))), arg1.type));
         }
-        //TODO for constant numerators, we could check if a 8 or 16-bit division is enough. Extra handling required for d > n?
-		//TODO for constant denominator, replace with multiplication and shift (only if multiplication does not overflow!)
-		//see: http://forums.parallax.com/discussion/114807/fast-faster-fastest-code-integer-division
-		//and: http://www.hackersdelight.org/hdcodetxt/magic.c.txt
+        else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
+        {
+        	it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, *op);
+        }
         else
         {
             it = intrinsifyUnsignedIntegerDivision(method, it, *op);
@@ -533,6 +533,10 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             op->setOpCode(OP_AND);
             op->setArgument(1, Value(Literal(arg1.literal.integer - 1), arg1.type));
         }
+        else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
+		{
+			it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, *op, true);
+		}
         else
         {
             it = intrinsifyUnsignedIntegerDivision(method, it, *op, true);
@@ -609,21 +613,13 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     {
     	if(saturateResult)
     	{
-    		//let pack-mode handle saturation
-    		it = insertSaturation(it, method, op->getFirstArg(), op->getOutput(), !has_flag(op->decoration, InstructionDecorations::UNSIGNED_RESULT));
-			it.nextInBlock();
-			it.erase();
+    		throw CompilationError(CompilationStep::OPTIMIZER, "Saturation on floating-point conversion is not supprted", op->to_string());
     	}
-        //if orig = i64, dest = i32 -> move
-    	else if(op->getFirstArg().type.getScalarBitCount() >= 32 && op->getOutput().get().type.getScalarBitCount() == 32)
-        {
-            logging::debug() << "Intrinsifying fptrunc with move" << logging::endl;
-            it.reset((new MoveOperation(op->getOutput(), op->getFirstArg(), op->conditional, op->setFlags))->copyExtrasFrom(op));
-        }
-        else if(op->getFirstArg().type.getScalarBitCount() < 32)
-            throw CompilationError(CompilationStep::OPTIMIZER, "Unsupported floating-point type", op->getFirstArg().type.to_string());
-        else
-            throw CompilationError(CompilationStep::OPTIMIZER, "Unsupported floating-point type", op->getOutput().get().type.to_string());
+        it = insertFloatingPointConversion(it, method, arg0, op->getOutput());
+        //remove 'fptrunc'
+        it.erase();
+        //so next instruction is not skipped
+		it.previousInBlock();
     }
     //arithmetic shift right
     else if(op->opCode == "ashr")
@@ -646,7 +642,6 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     	{
     		tmp = method.addNewLocal(TYPE_INT32, "%sitofp");
     		it = insertSignExtension(it, method, op->getFirstArg(), tmp, true, op->conditional);
-    		it.nextInBlock();
     	}
         //just surgical modification
         op->setOpCode(OP_ITOF);

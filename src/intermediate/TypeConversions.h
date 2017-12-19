@@ -19,6 +19,7 @@ namespace vc4c
 				SetFlag::DONT_SET);
 		InstructionWalker insertSaturation(InstructionWalker it, Method& method, const Value& src, const Value& dest, bool isSigned);
 		InstructionWalker insertTruncate(InstructionWalker it, Method& method, const Value& src, const Value& dest);
+		InstructionWalker insertFloatingPointConversion(InstructionWalker it, Method& method, const Value& src, const Value& dest);
 	} /* namespace intermediate */
 
 } /* namespace vc4c */

@@ -302,6 +302,110 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
     return it;
 }
 
+static std::pair<Literal, Literal> calculateConstant(Literal divisor, unsigned accuracy)
+{
+	uint64_t shift = static_cast<uint64_t>(std::log2(divisor.integer * accuracy)) + 2;
+	uint64_t factor = static_cast<uint64_t>(std::round(std::pow(2.0, shift) / static_cast<double>(divisor.integer)));
+	if(shift > 31)
+		throw CompilationError(CompilationStep::OPTIMIZER, "Unsigned division by constant generated invalid shift offset", std::to_string(shift));
+	if(factor >= std::numeric_limits<uint16_t>::max())
+		throw CompilationError(CompilationStep::OPTIMIZER, "Unsigned division by constant generated invalid multiplication factor", std::to_string(factor));
+	return std::make_pair(Literal(factor), Literal(shift));
+}
+
+static std::pair<Value, Value> calculateConstant(const Value& divisor, unsigned accuracy)
+{
+	if(divisor.hasType(ValueType::CONTAINER))
+	{
+		Value factors(ContainerValue(), divisor.type);
+		Value shifts(ContainerValue(), divisor.type);
+		for(const auto& element : divisor.container.elements)
+		{
+			auto tmp = calculateConstant(element.literal.integer, accuracy);
+			factors.container.elements.push_back(Value(tmp.first, factors.type.toVectorType(1)));
+			shifts.container.elements.push_back(Value(tmp.second, shifts.type.toVectorType(1)));
+		}
+		return std::make_pair(factors, shifts);
+	}
+
+	const Literal div = divisor.hasType(ValueType::LITERAL) ? divisor.literal : divisor.immediate.toLiteral().get();
+	auto tmp = calculateConstant(div, accuracy);
+	return std::make_pair(Value(tmp.first, divisor.type), Value(tmp.second, divisor.type));
+}
+
+InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(Method& method, InstructionWalker it, Operation& op, bool useRemainder)
+{
+	/*
+	 * Taken from here:
+	 * http://forums.parallax.com/discussion/114807/fast-faster-fastest-code-integer-division
+	 *
+	 * If we accept unsigned char and short values, the maximum values for the numerator/denominator are USHORT_MAX (65536).
+	 * Thus, for the multiplication not to overflow for any numerator, the maximum value for the factor can be USHORT_MAX - 1.
+	 */
+
+	if(op.getFirstArg().type.getScalarBitCount() > 16)
+		throw CompilationError(CompilationStep::OPTIMIZER, "Division by constant may overflow for argument type", op.getFirstArg().type.to_string());
+	if(!op.getSecondArg().ifPresent(toFunction(&Value::isLiteralValue)) && !(op.getSecondArg().hasValue && op.getSecondArg().get().hasType(ValueType::CONTAINER)))
+		throw CompilationError(CompilationStep::OPTIMIZER, "Can only optimize division by constant", op.to_string());
+
+	/*
+	 * Relative accuracy, the value is determined by experiment:
+	 * - values <= 16000 trigger value mismatch to "exact" division
+	 * - values >= 16500 trigger overflow in multiplication with factor or shifts of >= 32 positions
+	 */
+	static const unsigned accuracy = 16100;
+	auto constants = calculateConstant(op.getSecondArg(), accuracy);
+	logging::debug() << "Intrinsifying unsigned division by " << op.getSecondArg().get().to_string(false, true) << " by multiplication with " << constants.first.to_string(false, true) << " and right-shift by " << constants.second.to_string(false, true) << logging::endl;
+
+	const Value tmp = method.addNewLocal(op.getFirstArg().type, "%udiv");
+	it.emplace(new Operation(OP_MUL24, tmp, op.getFirstArg(), constants.first));
+	it.nextInBlock();
+	const Value divOut = method.addNewLocal(op.getFirstArg().type, "%udiv");
+	it.emplace(new Operation(OP_SHR, divOut, tmp, constants.second));
+	it->copyExtrasFrom(&op);
+	it->setDecorations(InstructionDecorations::UNSIGNED_RESULT);
+	it.nextInBlock();
+	//the original version has an error, which returns a too small value for exact multiples of the denominator, the next lines fix this error
+	const Value tmpFix0 = method.addNewLocal(op.getFirstArg().type, "%udiv.fix");
+	const Value tmpFix1 = method.addNewLocal(op.getFirstArg().type, "%udiv.fix");
+	it.emplace(new Operation(OP_MUL24, tmpFix0, divOut, op.getSecondArg()));
+	it.nextInBlock();
+	it.emplace(new Operation(OP_SUB, tmpFix1, op.getFirstArg(), tmpFix0));
+	it.nextInBlock();
+	it.emplace(new Operation(OP_SUB, NOP_REGISTER, op.getSecondArg(), tmpFix1, COND_ALWAYS, SetFlag::SET_FLAGS));
+	it.nextInBlock();
+	const Value finalResult = useRemainder ? method.addNewLocal(op.getFirstArg().type, "%udiv.result") : op.getOutput().get();
+	it.emplace(new MoveOperation(finalResult, divOut));
+	it->setDecorations(InstructionDecorations::UNSIGNED_RESULT);
+	it.nextInBlock();
+	it.emplace(new Operation(OP_ADD, finalResult, divOut, INT_ONE, COND_NEGATIVE_SET));
+	it->setDecorations(InstructionDecorations::UNSIGNED_RESULT);
+	it.nextInBlock();
+	it.emplace(new Operation(OP_ADD, finalResult, divOut, INT_ONE, COND_ZERO_SET));
+	it->setDecorations(InstructionDecorations::UNSIGNED_RESULT);
+	it.nextInBlock();
+
+	if(useRemainder)
+	{
+		//x mod y = x - (x/y) * y;
+		const Value tmpMul = method.addNewLocal(op.getFirstArg().type, "%udiv.remainder");
+		it.emplace(new Operation(OP_MUL24, tmpMul, finalResult, op.getSecondArg()));
+		it.nextInBlock();
+		//replace original division
+		op.setArgument(1, tmpMul);
+		op.setOpCode(OP_SUB);
+		op.setDecorations(InstructionDecorations::UNSIGNED_RESULT);
+	}
+	else
+	{
+		//erase original division
+		it.erase();
+		//so next instruction is not skipped
+		it.previousInBlock();
+	}
+	return it;
+}
+
 InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, InstructionWalker it, Operation& op)
 {
     //TODO correct??

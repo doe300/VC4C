@@ -344,11 +344,7 @@ void SPIRVConversion::mapInstruction(std::map<uint32_t, DataType>& types, std::m
     			const_cast<std::pair<Local*, int>&>(dest.local->reference) = std::make_pair(source.local, ANY_ELEMENT);
     		break;
     	case ConversionType::FLOATING:
-    		if(sourceWidth > destWidth)
-    			method.method->appendToEnd((new intermediate::Operation("fptrunc", dest, source))->setDecorations(decorations));
-    		else
-    			//half -> float -> unpack
-    			method.method->appendToEnd((new intermediate::Operation(OP_FMUL, dest, source, OpCode::getRightIdentity(OP_FMUL)))->setDecorations(decorations)->setPackMode(PACK_FLOAT_TO_HALF_TRUNCATE));
+			method.method->appendToEnd((new intermediate::Operation("fptrunc", dest, source))->setDecorations(decorations));
     		break;
     	case ConversionType::SIGNED:
     		if(isSaturated)
