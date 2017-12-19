@@ -8,6 +8,7 @@
 #define KERNELINFO_H
 
 #include "../Bitfield.h"
+#include "../Units.h"
 #include "config.h"
 #include "../performance.h"
 
@@ -43,13 +44,13 @@ namespace vc4c
 			 *
 			 * Type considerations: byte can contain 255 characters, ushort 64k
 			 */
-			BITFIELD_ENTRY(NameLength, uint16_t, 16, Short)
+			BITFIELD_ENTRY(NameLength, Byte, 16, Short)
 			/*
 			 * The length of the parameter type-name in characters
 			 *
 			 * Type considerations: byte can contain 255 characters, ushort 64k
 			 */
-			BITFIELD_ENTRY(TypeNameLength, uint16_t, 32, Short)
+			BITFIELD_ENTRY(TypeNameLength, Byte, 32, Short)
 			/*
 			 * Whether this parameter is constant (read-only), only useful for pointers/images
 			 */
@@ -96,13 +97,13 @@ namespace vc4c
 			inline void setName(const std::string& name)
 			{
 				this->name = name;
-				setNameLength(static_cast<uint16_t>(name.size()));
+				setNameLength(Byte(name.size()));
 			}
 
 			inline void setTypeName(const std::string& name)
 			{
 				typeName = name;
-				setTypeNameLength(static_cast<uint16_t>(name.size()));
+				setTypeNameLength(Byte(name.size()));
 			}
 
 			std::string to_string() const;
@@ -133,19 +134,19 @@ namespace vc4c
 			 *
 			 * Type considerations: ushort supports a maximum kernel offset (of the last kernel) of 512 kB (64k * 8 byte), 24-bit integer up to 128 MB
 			 */
-			BITFIELD_ENTRY(Offset, uint32_t, 0, Quattuorvigintuple)
+			BITFIELD_ENTRY(Offset, Word, 0, Quattuorvigintuple)
 			/*
 			 * The number of 64-bit instructions
 			 *
 			 * Type considerations: ushort supports a maximum kernel size of 64k instructions (512 kB), 22-bit integer up to 32 MB
 			 */
-			BITFIELD_ENTRY(Length, uint32_t, 24, Duovigintuple)
+			BITFIELD_ENTRY(Length, Word, 24, Duovigintuple)
 			/*
 			 * The length of the kernel-name (in bytes) excluding padding bytes. NOTE: Do not set this value manually!
 			 *
 			 * Type considerations: byte can contain 255 characters, decuple up to 1023, ushort 64k
 			 */
-			BITFIELD_ENTRY(NameLength, uint16_t, 46, Decuple)
+			BITFIELD_ENTRY(NameLength, Byte, 46, Decuple)
 			/*
 			 * The number of parameters. NOTE: Do not set this value manually!
 			 *
@@ -166,7 +167,7 @@ namespace vc4c
 			inline void setName(const std::string& name)
 			{
 				this->name = name;
-				setNameLength(static_cast<uint16_t>(name.size()));
+				setNameLength(Byte(name.size()));
 			}
 
 			inline void addParameter(const ParamInfo& param)
@@ -199,19 +200,19 @@ namespace vc4c
 			 *
 			 * Type considerations: ushort supports an offset of 512 kB, vigintuple (20 bits) up to 8 MB and 24-bit integer up to 128 MB
 			 */
-			BITFIELD_ENTRY(GlobalDataOffset, uint16_t, 10, Short)
+			BITFIELD_ENTRY(GlobalDataOffset, Word, 10, Short)
 			/*
 			 * The size of the global data segment in multiples of 64-bit
 			 *
 			 * Type considerations: ushort supports 512 kB of global data, vigintuple (20 bits) up to 8 MB and 24-bit integer up to 128 MB
 			 */
-			BITFIELD_ENTRY(GlobalDataSize, uint32_t, 26, Vigintuple)
+			BITFIELD_ENTRY(GlobalDataSize, Word, 26, Vigintuple)
 			/*
 			 * The size of a single stack-frame, appended to the global-data segment. In multiples of 64-bit
 			 *
 			 * Type considerations: ushort supports 512 kB of stack-frame, vigintuple (20 bits) up to 8 MB and 24-bit integer up to 128 MB
 			 */
-			BITFIELD_ENTRY(StackFrameSize, uint16_t, 46, Short)
+			BITFIELD_ENTRY(StackFrameSize, Word, 46, Short)
 
 			/*
 			 * NOTE: Writing once sets the global-data offset and size, so they are correct for the second write

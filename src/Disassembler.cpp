@@ -22,7 +22,7 @@ static std::string readString(std::istream& binary, uint16_t stringLength)
 
 	binary.read(buffer.data(), stringLength);
 	const std::string name(buffer.data(), stringLength);
-	uint16_t numPaddingBytes = stringLength % sizeof(uint64_t) == 0 ? 0 : sizeof(uint64_t) - (stringLength % sizeof(uint64_t));
+	uint16_t numPaddingBytes = Byte(stringLength).getPaddingTo(sizeof(uint64_t));
 	//skip padding after kernel name
 	binary.read(buffer.data(), numPaddingBytes);
 
@@ -45,16 +45,16 @@ static void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo,
 		qpu_asm::KernelInfo kernelInfo(4);
 		binary.read(reinterpret_cast<char*>(&kernelInfo.value), sizeof(kernelInfo.value));
 		binary.read(reinterpret_cast<char*>(&kernelInfo.workGroupSize), sizeof(kernelInfo.workGroupSize));
-		kernelInfo.name = readString(binary, kernelInfo.getNameLength());
-		totalInstructions += kernelInfo.getLength();
+		kernelInfo.name = readString(binary, kernelInfo.getNameLength().getValue());
+		totalInstructions += kernelInfo.getLength().getValue();
 		logging::debug() << "Extracted kernel '" << kernelInfo.name << "' with " << kernelInfo.getParamCount() << " parameters" << logging::endl;
 
 		for(uint16_t p = 0; p < kernelInfo.getParamCount(); ++p)
 		{
 			qpu_asm::ParamInfo paramInfo;
 			binary.read(reinterpret_cast<char*>(&paramInfo.value), sizeof(paramInfo.value));
-			paramInfo.name = readString(binary, paramInfo.getNameLength());
-			paramInfo.typeName = readString(binary, paramInfo.getTypeNameLength());
+			paramInfo.name = readString(binary, paramInfo.getNameLength().getValue());
+			paramInfo.typeName = readString(binary, paramInfo.getTypeNameLength().getValue());
 			logging::debug() << "Extracted parameter '" << paramInfo.typeName << " " << paramInfo.name << logging::endl;
 			kernelInfo.parameters.push_back(paramInfo);
 		}
@@ -64,14 +64,14 @@ static void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo,
 	//skip zero-word between kernels and globals
 	binary.seekg(sizeof(uint64_t), std::ios_base::cur);
 
-	if(moduleInfo.getGlobalDataSize() > 0)
+	if(moduleInfo.getGlobalDataSize().getValue() > 0)
 	{
 		//since we don't know the number, sizes and types of the original globals, we build a single global containing all the data
 		std::vector<uint64_t> tmp;
-		tmp.resize(moduleInfo.getGlobalDataSize());
-		binary.read(reinterpret_cast<char*>(tmp.data()), moduleInfo.getGlobalDataSize() * sizeof(uint64_t));
+		tmp.resize(moduleInfo.getGlobalDataSize().getValue());
+		binary.read(reinterpret_cast<char*>(tmp.data()), moduleInfo.getGlobalDataSize().toBytes().getValue());
 
-		std::shared_ptr<ComplexType> elementType(new ArrayType(TYPE_INT64, moduleInfo.getGlobalDataSize()));
+		std::shared_ptr<ComplexType> elementType(new ArrayType(TYPE_INT64, moduleInfo.getGlobalDataSize().getValue()));
 		const DataType type("i64[]", 1, elementType);
 		globals.emplace_back("globalData", type.toPointerType(), Value(ContainerValue(), type));
 
