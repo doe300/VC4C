@@ -302,6 +302,44 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
     return it;
 }
 
+InstructionWalker intermediate::intrinsifySignedIntegerDivisionByConstant(Method& method, InstructionWalker it, Operation& op, bool useRemainder)
+{
+	Value opDest = op.getOutput();
+	//check any operand is negative
+	Value op1Sign = method.addNewLocal(TYPE_BOOL, "%sign");
+	Value op2Sign = method.addNewLocal(TYPE_BOOL, "%sign");
+	it = insertIsNegative(it, op.getArgument(0), op1Sign);
+	it = insertIsNegative(it, op.getArgument(1), op2Sign);
+	if(op1Sign.hasType(ValueType::LITERAL) && op2Sign.hasType(ValueType::LITERAL))
+	{
+		throw CompilationError(CompilationStep::OPTIMIZER, "This case of multiplication of literal integers should have been replaced with constant", op.to_string());
+	}
+
+	//convert operands to positive
+	Value op1Pos = method.addNewLocal(op.getArgument(0).get().type, "%unsigned");
+	Value op2Pos = method.addNewLocal(op.getArgument(0).get().type, "%unsigned");
+
+	it = insertMakePositive(it, method, op.getArgument(0), op1Pos);
+	it = insertMakePositive(it, method, op.getArgument(1), op2Pos);
+
+	op.setArgument(0, op1Pos);
+	op.setArgument(1, op2Pos);
+
+	//use new temporary result, so we can store the final result in the correct value
+	const Value tmpDest = method.addNewLocal(opDest.type, "%result");
+	op.setOutput(tmpDest);
+
+	//calculate unsigned division
+	it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, op, useRemainder);
+	it.nextInBlock();
+
+	//if exactly one operand was negative, invert sign of result
+	it.emplace(new Operation(OP_XOR, NOP_REGISTER, op1Sign, op2Sign, COND_ALWAYS, SetFlag::SET_FLAGS));
+	it.nextInBlock();
+	it = insertInvertSign(it, method, tmpDest, opDest, COND_ZERO_CLEAR);
+	return it;
+}
+
 static std::pair<Literal, Literal> calculateConstant(Literal divisor, unsigned accuracy)
 {
 	uint64_t shift = static_cast<uint64_t>(std::log2(divisor.integer * accuracy)) + 2;

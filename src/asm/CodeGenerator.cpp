@@ -306,7 +306,7 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
     logging::debug() << "-----" << logging::endl;
     index = 0;
     for (const std::unique_ptr<Instruction>& instr : generatedInstructions) {
-        logging::debug() << std::hex << index << ' ' << instr->toHexString(true) << logging::endl;
+        logging::debug() << std::hex << index << " " << instr->toHexString(true) << logging::endl;
         index += 8;
     }
     logging::debug() << "Generated " << std::dec << generatedInstructions.size() << " instructions!" << logging::endl;

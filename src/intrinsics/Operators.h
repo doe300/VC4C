@@ -17,6 +17,7 @@ namespace vc4c
 		InstructionWalker intrinsifyUnsignedIntegerMultiplication(Method& method, InstructionWalker it, Operation& op);
 		InstructionWalker intrinsifySignedIntegerDivision(Method& method, InstructionWalker it, Operation& op, bool useRemainder = false);
 		InstructionWalker intrinsifyUnsignedIntegerDivision(Method& method, InstructionWalker it, Operation& op, bool useRemainder = false);
+		InstructionWalker intrinsifySignedIntegerDivisionByConstant(Method& method, InstructionWalker it, Operation& op, bool useRemainder = false);
 		InstructionWalker intrinsifyUnsignedIntegerDivisionByConstant(Method& method, InstructionWalker it, Operation& op, bool useRemainder = false);
 
 		InstructionWalker intrinsifyFloatingDivision(Method& method, InstructionWalker it, Operation& op);

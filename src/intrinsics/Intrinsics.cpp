@@ -513,6 +513,10 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             op->setOpCode(OP_ASR);
             op->setArgument(1, Value(Literal(static_cast<int64_t>(std::log2(arg1.literal.integer))), arg1.type));
         }
+        else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
+        {
+        	it = intrinsifySignedIntegerDivisionByConstant(method, it, *op);
+        }
         else
         {
             it = intrinsifySignedIntegerDivision(method, it, *op);
@@ -550,6 +554,10 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             logging::debug() << "Calculating result for signed modulo with constants" << logging::endl;
             it.reset(new MoveOperation(Value(op->getOutput().get().local, arg0.type), Value(Literal(arg0.literal.integer % arg1.literal.integer), arg0.type), op->conditional, op->setFlags));
         }
+        else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
+		{
+			it = intrinsifySignedIntegerDivisionByConstant(method, it, *op, true);
+		}
         else
         {
             it = intrinsifySignedIntegerDivision(method, it, *op, true);

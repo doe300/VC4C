@@ -247,13 +247,17 @@ InstructionWalker intermediate::insertMakePositive(InstructionWalker it, Method&
 	if(src.hasType(ValueType::LITERAL))
 	{
 		bool isNegative = src.literal.integer < 0;
-		if(isNegative)
+		dest = isNegative ? Value(Literal(-src.literal.integer), src.type) : src;
+	}
+	else if(src.hasType(ValueType::CONTAINER))
+	{
+		dest = Value(ContainerValue(), src.type);
+		for(const auto& elem : src.container.elements)
 		{
-			dest = Value(Literal(-src.literal.integer), src.type);
-		}
-		else
-		{
-			dest = src;
+			if(!elem.hasType(ValueType::LITERAL))
+				throw CompilationError(CompilationStep::OPTIMIZER, "Can't handle container with non-literal values", src.to_string(false, true));
+			bool isNegative = elem.literal.integer < 0;
+			dest.container.elements.push_back(isNegative ? Value(Literal(-elem.literal.integer), elem.type) : elem);
 		}
 	}
 	else

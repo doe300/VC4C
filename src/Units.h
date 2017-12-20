@@ -46,15 +46,16 @@ namespace vc4c
 			return Byte(value - other.value);
 		}
 
-		friend std::ostream& operator<<(std::ostream& s, const Byte& b)
-		{
-			return s << static_cast<uint64_t>(b);
-		}
-
-		friend std::wostream& operator<<(std::wostream& s, const Byte& b)
-		{
-			return s << static_cast<uint64_t>(b);
-		}
+		//XXX These operators bring gcc 4.9 to fail for other stream operators
+//		friend std::ostream& operator<<(std::ostream& s, const Byte& b)
+//		{
+//			return s << static_cast<uint64_t>(b);
+//		}
+//
+//		friend std::wostream& operator<<(std::wostream& s, const Byte& b)
+//		{
+//			return s << static_cast<uint64_t>(b);
+//		}
 
 	private:
 		uint64_t value;
@@ -93,15 +94,15 @@ namespace vc4c
 			return Word(value - other.value);
 		}
 
-		friend std::ostream& operator<<(std::ostream& s, const Word& word)
-		{
-			return s << static_cast<uint64_t>(word);
-		}
-
-		friend std::wostream& operator<<(std::wostream& s, const Word& word)
-		{
-			return s << static_cast<uint64_t>(word);
-		}
+//		friend std::ostream& operator<<(std::ostream& s, const Word& word)
+//		{
+//			return s << static_cast<uint64_t>(word);
+//		}
+//
+//		friend std::wostream& operator<<(std::wostream& s, const Word& word)
+//		{
+//			return s << static_cast<uint64_t>(word);
+//		}
 
 	private:
 		uint64_t value;

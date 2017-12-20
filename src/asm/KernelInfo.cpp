@@ -185,7 +185,7 @@ std::size_t ModuleInfo::write(std::ostream& stream, const OutputMode mode, const
 	std::size_t numWords = 0;
 	if(mode == OutputMode::HEX || mode == OutputMode::ASSEMBLER)
 	{
-		stream << "// Module with " << getInfoCount() << " kernels, global data with " << getGlobalDataSize() << " words (64-bit each), starting at offset " << getGlobalDataOffset() << " words and " << getStackFrameSize() << " words of stack-frame" << std::endl;
+		stream << "// Module with " << getInfoCount() << " kernels, global data with " << getGlobalDataSize().getValue() << " words (64-bit each), starting at offset " << getGlobalDataOffset().getValue() << " words and " << getStackFrameSize().getValue() << " words of stack-frame" << std::endl;
 	}
 	std::array<uint8_t, 8> buf{};
 	if(mode== OutputMode::BINARY || mode == OutputMode::HEX)

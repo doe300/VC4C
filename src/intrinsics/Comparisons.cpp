@@ -357,6 +357,23 @@ InstructionWalker intermediate::insertIsNegative(InstructionWalker it, const Val
 	{
 		dest = src.literal.integer < 0 ? BOOL_TRUE : BOOL_FALSE;
 	}
+	else if(src.hasType(ValueType::SMALL_IMMEDIATE))
+	{
+		dest = src.immediate.toLiteral().get().integer < 0 ? BOOL_TRUE : BOOL_FALSE;
+	}
+	else if(src.hasType(ValueType::CONTAINER))
+	{
+		dest = Value(ContainerValue(), TYPE_BOOL);
+		for(const auto& elem : src.container.elements)
+		{
+			if(elem.hasType(ValueType::LITERAL))
+				dest.container.elements.push_back(elem.literal.integer < 0 ? BOOL_TRUE : BOOL_FALSE);
+			else if(elem.hasType(ValueType::SMALL_IMMEDIATE))
+				dest.container.elements.push_back(elem.immediate.toLiteral().get().integer < 0 ? BOOL_TRUE : BOOL_FALSE);
+			else
+				throw CompilationError(CompilationStep::OPTIMIZER, "Can't handle container with non-literal values", src.to_string(false, true));
+		}
+	}
 	else
 	{
 		it.emplace(new Operation(OP_SHR, NOP_REGISTER, src, Value(Literal(static_cast<uint64_t>(src.type.getScalarBitCount() - 1)), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));

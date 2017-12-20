@@ -8,3 +8,7 @@ http://llvm.org/docs/CodeGenerator.html#selectiondag-select-phase
 http://llvm.org/docs/LangRef.html#metadata
 https://jonathan2251.github.io/lbd/index.html
 http://web.cs.ucla.edu/classes/spring08/cs259/llvm-2.2/docs/
+
+
+http://www.hackersdelight.org/hdcode.htm
+http://graphics.stanford.edu/~seander/bithacks.html
