@@ -622,6 +622,26 @@ static InstructionWalker findWriteOfLocal(InstructionWalker it, const Local* loc
 	return it;
 }
 
+static const std::string localPrefix = "%use_with_literal";
+
+static Optional<Value> findPreviousUseWithImmediate(InstructionWalker it, const Value& arg)
+{
+	auto instRemaining = ACCUMULATOR_THRESHOLD_HINT;
+
+	while(instRemaining > 0 && !it.isStartOfBlock())
+	{
+		if(it.has<intermediate::MoveOperation>() && it->getArgument(0).is(arg) && it->conditional == COND_ALWAYS && it->getOutput().ifPresent([](const Value& val) -> bool { return val.hasType(ValueType::LOCAL) && val.local->name.find(localPrefix) == 0;}))
+		{
+			return it->getOutput();
+		}
+
+		--instRemaining;
+		it.previousInBlock();
+	}
+
+	return NO_VALUE;
+}
+
 InstructionWalker optimizations::handleUseWithImmediate(const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
 	//- for all locals used together with small immediate values
@@ -639,12 +659,22 @@ InstructionWalker optimizations::handleUseWithImmediate(const Module& module, Me
 			if(localIt != args.end() && !it.getBasicBlock()->isLocallyLimited(findWriteOfLocal(it, localIt->local), localIt->local))
 			{
 				//one other local is used and its range is greater than the accumulator threshold
-				logging::debug() << "Inserting temporary to split up use of long-living local with immediate value: " << op->to_string() << logging::endl;
-				const Value tmp = method.addNewLocal(localIt->type, "%use_with_literal");
-				it.emplace(new intermediate::MoveOperation(tmp, *localIt));
-				it.nextInBlock();
+				//check if we have introduced an earlier use-with-immediate for the same value within the accumulator-range
+				Optional<Value> prefTemp = findPreviousUseWithImmediate(it, *localIt);
 				const Local* oldLocal = localIt->local;
-				op->replaceLocal(oldLocal, tmp.local, LocalUser::Type::READER);
+				if(prefTemp)
+				{
+					logging::debug() << "Re-using temporary to split up use of long-living local with immediate value: " << op->to_string() << logging::endl;
+					op->replaceLocal(oldLocal, prefTemp.get().local, LocalUser::Type::READER);
+				}
+				else
+				{
+					logging::debug() << "Inserting temporary to split up use of long-living local with immediate value: " << op->to_string() << logging::endl;
+					const Value tmp = method.addNewLocal(localIt->type, localPrefix);
+					it.emplace(new intermediate::MoveOperation(tmp, *localIt));
+					it.nextInBlock();
+					op->replaceLocal(oldLocal, tmp.local, LocalUser::Type::READER);
+				}
 			}
 		}
 	}
