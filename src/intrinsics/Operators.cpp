@@ -366,7 +366,7 @@ static std::pair<Value, Value> calculateConstant(const Value& divisor, unsigned 
 		return std::make_pair(factors, shifts);
 	}
 
-	const Literal div = divisor.hasType(ValueType::LITERAL) ? divisor.literal : divisor.immediate.toLiteral().get();
+	const Literal div = divisor.getLiteralValue().get();
 	auto tmp = calculateConstant(div, accuracy);
 	return std::make_pair(Value(tmp.first, divisor.type), Value(tmp.second, divisor.type));
 }

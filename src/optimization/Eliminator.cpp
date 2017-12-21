@@ -173,15 +173,16 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 
 InstructionWalker optimizations::eliminateUselessBranch(const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
-    //eliminates branches to the next instruction to save up to 4 instructions (1 branch + 4 NOP)
+    //eliminates branches to the next instruction to save up to 4 instructions (1 branch + 3 NOP)
 	intermediate::Branch* branch = it.get<intermediate::Branch>();
 	if(branch != nullptr)
 	{
 		//eliminate branches to the next instruction, such branches are e.g. introduced by method-inlining
 		auto nextIt = it.copy().nextInMethod();
-		if(!nextIt.isEndOfMethod())
+		while(!nextIt.isEndOfMethod())
 		{
 			intermediate::BranchLabel* label = nextIt.get<intermediate::BranchLabel>();
+			intermediate::Branch* br = nextIt.get<intermediate::Branch>();
 			if(label != nullptr)
 			{
 				if(label->getLabel() == branch->getTarget())
@@ -191,7 +192,18 @@ InstructionWalker optimizations::eliminateUselessBranch(const Module& module, Me
 					//don't skip next instruction
 					it.previousInMethod();
 				}
+				break;
 			}
+			else if(br != nullptr)
+			{
+				//if the following branch has the same condition with inverted flags (either-or-branch), it can be skipped
+				if(!(br->conditional.isInversionOf(branch->conditional) && br->getCondition() == branch->getCondition()))
+				{
+					//otherwise, abort this optimization
+					break;
+				}
+			}
+			nextIt.nextInMethod();
 		}
 	}
 	return it;

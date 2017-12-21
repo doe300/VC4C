@@ -360,8 +360,8 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 		return res;
 	}
 
-	const Literal firstLit = firstVal.get().hasType(ValueType::SMALL_IMMEDIATE) ? firstVal.get().immediate.toLiteral().get() : firstVal.get().literal;
-	const Literal secondLit = !secondVal.hasValue ? INT_ZERO.literal : (secondVal.get().hasType(ValueType::SMALL_IMMEDIATE) ? secondVal.get().immediate.toLiteral().get() : secondVal.get().literal);
+	const Literal firstLit = firstVal.get().getLiteralValue();
+	const Literal secondLit = !secondVal.hasValue ? INT_ZERO.literal : secondVal.get().getLiteralValue().get();
 
 	if(*this == OP_ADD)
 		return Value(Literal(firstLit.integer + secondLit.integer), resultType);

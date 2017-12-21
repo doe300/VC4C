@@ -550,13 +550,9 @@ static Optional<Literal> getSourceLiteral(InstructionWalker it)
 	{
 		return it.get<LoadImmediate>()->getImmediate();
 	}
-	else if(it.has<MoveOperation>() && it.get<MoveOperation>()->getSource().hasType(ValueType::LITERAL))
+	else if(it.has<MoveOperation>() && it.get<MoveOperation>()->getSource().isLiteralValue())
 	{
-		return it.get<MoveOperation>()->getSource().literal;
-	}
-	else if(it.has<MoveOperation>() && it.get<MoveOperation>()->getSource().hasType(ValueType::SMALL_IMMEDIATE))
-	{
-		it.get<MoveOperation>()->getSource().immediate.toLiteral();
+		return it.get<MoveOperation>()->getSource().getLiteralValue();
 	}
 	else if(it.has<Operation>())
 	{

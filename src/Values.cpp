@@ -578,6 +578,15 @@ bool Value::isLiteralValue() const
 	return hasType(ValueType::LITERAL) || hasType(ValueType::SMALL_IMMEDIATE);
 }
 
+Optional<Literal> Value::getLiteralValue() const
+{
+	if(hasType(ValueType::LITERAL))
+		return literal;
+	if(hasType(ValueType::SMALL_IMMEDIATE))
+		return immediate.toLiteral();
+	return Optional<Literal>(false, Literal(false));
+}
+
 std::string Value::to_string(const bool writeAccess, bool withLiterals) const
 {
     const std::string typeName = (type.typeName.empty() ? "unknown" : type.to_string()) + ' ';

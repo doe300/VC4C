@@ -272,6 +272,7 @@ namespace vc4c
 		bool isUndefined() const;
 		bool isZeroInitializer() const;
 		bool isLiteralValue() const;
+		Optional<Literal> getLiteralValue() const;
 
 		std::string to_string(bool writeAccess = false, bool withLiterals = false) const;
 

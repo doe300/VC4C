@@ -821,7 +821,7 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
 		const auto& workGroupSizes = method.metaData.workGroupSizes;
 		if(workGroupSizes.at(0) > 0 && arg0.isLiteralValue())
 		{
-			const Literal immediate = arg0.hasType(ValueType::LITERAL) ? arg0.literal : arg0.immediate.toLiteral().get();
+			const Literal immediate = arg0.getLiteralValue();
 			if(immediate.integer > static_cast<int64_t>(workGroupSizes.size()) || workGroupSizes.at(immediate.integer) == 0)
 			{
 				return it.reset((new MoveOperation(callSite->getOutput(), INT_ONE))->setDecorations(InstructionDecorations::BUILTIN_LOCAL_SIZE));

@@ -632,7 +632,7 @@ InstructionWalker optimizations::handleUseWithImmediate(const Module& module, Me
 	if(op != nullptr)
 	{
 		const auto& args = op->getArguments();
-		if(std::any_of(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.hasType(ValueType::LITERAL) || arg.hasType(ValueType::SMALL_IMMEDIATE);}))
+		if(std::any_of(args.begin(), args.end(), toFunction(&Value::isLiteralValue)))
 		{
 			//at least one immediate value is used
 			const auto localIt = std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool {return arg.hasType(ValueType::LOCAL);});
