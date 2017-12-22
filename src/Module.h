@@ -40,6 +40,7 @@ namespace vc4c
 	class InstructionWalker;
 	class Module;
 	class Method;
+	class ControlFlowGraph;
 
 	class BasicBlock : private NonCopyable
 	{
@@ -86,13 +87,18 @@ namespace vc4c
 		 */
 		Optional<InstructionWalker> findWalkerForInstruction(const intermediate::IntermediateInstruction* instr, InstructionWalker start);
 		/*
-		 * Returns the InstructionWalker for the last (as in prior to the given instruction) instruction setting flags within this basoc block
+		 * Returns the InstructionWalker for the last (as in prior to the given instruction) instruction setting flags within this basic block
 		 */
 		Optional<InstructionWalker> findLastSettingOfFlags(InstructionWalker start);
+		/*
+		 * Returns whether this basic-block is the start of the method body
+		 */
+		bool isStartOfMethod() const;
 	private:
 		Method& method;
 		RandomModificationList<std::unique_ptr<intermediate::IntermediateInstruction>> instructions;
 
+		friend class ControlFlowGraph;
 		friend class InstructionWalker;
 		friend struct InstructionVisitor;
 		friend class Method;
@@ -198,6 +204,7 @@ namespace vc4c
 		void checkAndCreateDefaultBasicBlock();
 
 		friend class BasicBlock;
+		friend class ControlFlowGraph;
 		friend class InstructionWalker;
 	};
 

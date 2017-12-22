@@ -7,6 +7,7 @@
 #include "GraphColoring.h"
 
 #include "RegisterAllocation.h"
+#include "../ControlFlowGraph.h"
 #include "../DebugGraph.h"
 #include "../Profiler.h"
 #include "log.h"
@@ -431,29 +432,7 @@ GraphColoring::GraphColoring(Method& method, InstructionWalker it) : method(meth
 	}
 }
 
-static Graph<InstructionWalker, Node<InstructionWalker, bool>> createBlockGraph(Method& method)
-{
-	Graph<InstructionWalker, Node<InstructionWalker, bool>> graph;
-
-	for(BasicBlock& bb :method.getBasicBlocks())
-	{
-		bb.forPredecessors([&bb, &graph](InstructionWalker it) -> void
-		{
-			//forward connection
-			graph.getOrCreateNode(it).addNeighbor(&graph.getOrCreateNode(bb.begin()), false);
-			//backward connection
-			graph.getOrCreateNode(bb.begin()).addNeighbor(&graph.getOrCreateNode(it), true);
-		});
-	}
-#ifdef DEBUG_MODE
-	auto nameFunc = [](const InstructionWalker& it) -> std::string {return const_cast<InstructionWalker&>(it).getBasicBlock()->getLabel()->getLabel()->name;};
-	auto weakLinkFunc = [](const bool b) -> bool {return b;};
-	DebugGraph<InstructionWalker, bool>::dumpGraph(graph, "/tmp/vc4c-block-graph.dot", true, nameFunc, weakLinkFunc);
-#endif
-	return graph;
-}
-
-static void walkUsageRange(InstructionWalker start, const Local* local, FastMap<intermediate::IntermediateInstruction*, FastSet<const Local*>>& localRanges, Graph<InstructionWalker, Node<InstructionWalker, bool>>* blockGraph = nullptr)
+static void walkUsageRange(InstructionWalker start, const Local* local, FastMap<intermediate::IntermediateInstruction*, FastSet<const Local*>>& localRanges, ControlFlowGraph* blockGraph = nullptr)
 {
 	//to prevent infinite recursions
 	//TODO is tracking labels enough or need we track all instructions (or branches, since we jump backwards?)??
@@ -591,9 +570,7 @@ void GraphColoring::createGraph()
 	}
 	PROFILE_END(createColoredNodes);
 
-	PROFILE_START(createBlockGraph);
-	auto blockGraph = createBlockGraph(method);
-	PROFILE_END(createBlockGraph);
+	auto blockGraph = ControlFlowGraph::createCFG(method);
 
 	PROFILE_START(createUsageRanges);
 	InstructionWalker it = method.walkAllInstructions();

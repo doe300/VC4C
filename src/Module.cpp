@@ -193,6 +193,11 @@ Optional<InstructionWalker> BasicBlock::findLastSettingOfFlags(const Instruction
 	return {};
 }
 
+bool BasicBlock::isStartOfMethod() const
+{
+	return &method.basicBlocks.front() == this;
+}
+
 Method::Method(const Module& module) : isKernel(false), name(), returnType(TYPE_UNKNOWN), vpm(new periphery::VPM(module.compilationConfig.availableVPMSize)), module(module)
 {
 

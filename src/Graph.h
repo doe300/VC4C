@@ -51,6 +51,13 @@ namespace vc4c
 					consumer(pair.first);
 		}
 
+		void forAllNeighbors(const std::function<bool(const R&)>& relation, const std::function<void(const Node*, const R&)>& consumer) const
+		{
+			for(const auto& pair : neighbors)
+				if(relation(pair.second))
+					consumer(pair.first, pair.second);
+		}
+
 		static std::string to_string(const K& key)
 		{
 			return key.to_string();

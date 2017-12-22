@@ -17,7 +17,7 @@ kernel void sum_f16 (global float a[], global float b[], global float c[]) {
 }
 */
 
-//code by @noaddo (see https://github.com/doe300/VC4C/issues/22)
+//code by @nomaddo (see https://github.com/doe300/VC4C/issues/22)
 kernel void loop1 (global float a[], global float b[]) {
   for (int i = 0; i < 1000; i++) {
     a[i] = -i;

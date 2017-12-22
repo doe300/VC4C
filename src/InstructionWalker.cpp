@@ -7,7 +7,7 @@
 #include "InstructionWalker.h"
 
 #include "CompilationError.h"
-#include "Graph.h"
+#include "ControlFlowGraph.h"
 
 using namespace vc4c;
 
@@ -66,7 +66,7 @@ bool InstructionVisitor::visit(const InstructionWalker& start) const
 	}
 }
 
-bool InstructionVisitor::visitReverse(const InstructionWalker& start, Graph<InstructionWalker, Node<InstructionWalker, bool>>* blockGraph) const
+bool InstructionVisitor::visitReverse(const InstructionWalker& start, ControlFlowGraph* blockGraph) const
 {
 	InstructionWalker it(start);
 	while(true)
@@ -96,11 +96,11 @@ bool InstructionVisitor::visitReverse(const InstructionWalker& start, Graph<Inst
 					if(blockGraph != nullptr)
 					{
 						//use pre-calculated graph of basic blocks
-						blockGraph->assertNode(it).forAllNeighbors(true, [&continueBranches, this, blockGraph](const Node<InstructionWalker, bool>* node) -> void
+						blockGraph->assertNode(it.getBasicBlock()).forAllNeighbors(toFunction(&CFGRelation::isReverseRelation), [&continueBranches, this, blockGraph](const CFGNode* node, const CFGRelation& rel) -> void
 						{
 							//this makes sure, a STOP_ALL skips other predecessors
 							if(continueBranches)
-								continueBranches = visitReverse(node->key, blockGraph);
+								continueBranches = visitReverse(rel.predecessor, blockGraph);
 						});
 					}
 					else

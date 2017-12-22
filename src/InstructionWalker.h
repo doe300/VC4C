@@ -14,10 +14,7 @@
 
 namespace vc4c
 {
-	template<typename K, typename R>
-	struct Node;
-	template<typename K, typename NodeType>
-	struct Graph;
+	class ControlFlowGraph;
 
 	enum class InstructionVisitResult
 	{
@@ -46,7 +43,7 @@ namespace vc4c
 		 *
 		 * \return true, if the beginning of the block/method was reached, false, of the visiting operation aborted with STOP_ALL
 		 */
-		bool visitReverse(const InstructionWalker& start, Graph<InstructionWalker, Node<InstructionWalker, bool>>* blockGraph = nullptr) const;
+		bool visitReverse(const InstructionWalker& start, ControlFlowGraph* blockGraph = nullptr) const;
 	};
 
 	class InstructionWalker
