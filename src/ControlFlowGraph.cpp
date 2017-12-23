@@ -185,3 +185,95 @@ ControlFlowLoop ControlFlowGraph::findLoopsHelper(CFGNode* node, FastMap<CFGNode
 
 	return loop;
 }
+
+using InstructionMapping = FastMap<const LocalUser*, InstructionWalker>;
+
+static InstructionMapping mapInstructionsToPosition(Method& method)
+{
+	InstructionMapping mapping;
+
+	auto it = method.walkAllInstructions();
+	while(!it.isEndOfMethod())
+	{
+		mapping.emplace(it.get(), it);
+		it.nextInMethod();
+	}
+
+	return mapping;
+}
+
+static void findDependencies(BasicBlock& bb, DataDependencyGraph& graph, InstructionMapping& mapping)
+{
+	auto it = bb.begin();
+	while(!it.isEndOfBlock())
+	{
+		it->forUsedLocals([it, &bb, &mapping, &graph](const Local* local, LocalUser::Type type) -> void
+		{
+			if(has_flag(type, LocalUser::Type::READER))
+			{
+				local->forUsers(LocalUser::Type::WRITER, [local, &bb, &mapping, &graph](const LocalUser* user) -> void
+				{
+					auto& instIt = mapping.at(user);
+
+					//add local to relation (may not yet exist)
+					if(instIt.getBasicBlock() != &bb || has_flag(instIt->decoration, intermediate::InstructionDecorations::PHI_NODE))
+					{
+						auto& neighborDependencies = graph.getOrCreateNode(&bb).getNeighbors()[&graph.getOrCreateNode(instIt.getBasicBlock())];
+						neighborDependencies[const_cast<Local*>(local)] = add_flag(neighborDependencies[const_cast<Local*>(local)], DataDependencyType::FLOW);
+					}
+					if(has_flag(instIt->decoration, intermediate::InstructionDecorations::PHI_NODE))
+					{
+						auto& neighborDependencies = graph.getOrCreateNode(&bb).getNeighbors()[&graph.getOrCreateNode(instIt.getBasicBlock())];
+						neighborDependencies[const_cast<Local*>(local)] = add_flag(neighborDependencies[const_cast<Local*>(local)], DataDependencyType::PHI);
+					}
+				});
+			}
+			//XXX do we care for these at all?
+			if(has_flag(type, LocalUser::Type::WRITER))
+			{
+				local->forUsers(LocalUser::Type::READER, [it, local, &bb, &mapping, &graph](const LocalUser* user) -> void
+				{
+					auto& instIt = mapping.at(user);
+
+					//add local to relation (may not yet exist)
+					if(instIt.getBasicBlock() != &bb || has_flag(it->decoration, intermediate::InstructionDecorations::PHI_NODE))
+					{
+						auto& neighborDependencies = graph.getOrCreateNode(&bb).getNeighbors()[&graph.getOrCreateNode(instIt.getBasicBlock())];
+						neighborDependencies[const_cast<Local*>(local)] = add_flag(neighborDependencies[const_cast<Local*>(local)], DataDependencyType::ANTI);
+					}
+				});
+			}
+		});
+		it.nextInBlock();
+	}
+}
+
+static std::string toEdgeLabel(const DataDependency& dependency)
+{
+	std::string label;
+
+	for(const auto& pair : dependency)
+	{
+		label.append(" ").append(pair.first->name);
+	}
+
+	return label.empty() ? "" : label.substr(1);
+}
+
+DataDependencyGraph DataDependencyGraph::createDependencyGraph(Method& method)
+{
+	InstructionMapping mapping = mapInstructionsToPosition(method);
+	DataDependencyGraph graph;
+	for(auto& block : method.getBasicBlocks())
+	{
+		findDependencies(block, graph, mapping);
+	}
+
+#ifdef DEBUG_MODE
+	auto nameFunc = [](const BasicBlock* bb) -> std::string {return bb->getLabel()->getLabel()->name;};
+	auto weakEdgeFunc = [](const DataDependency& dep) -> bool { return std::all_of(dep.begin(), dep.end(), [](const std::pair<Local*, DataDependencyType>& pair) -> bool { return !has_flag(pair.second, DataDependencyType::FLOW);});};
+	DebugGraph<BasicBlock*, DataDependency>::dumpGraph<DataDependencyGraph>(graph, "/tmp/vc4c-data-dependencies.dot", true, nameFunc, weakEdgeFunc, toEdgeLabel);
+#endif
+
+	return graph;
+}
