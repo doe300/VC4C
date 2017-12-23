@@ -630,8 +630,12 @@ void IRParser::parseMethodBody(LLVMMethod& method)
     //    //add label %0 to the beginning of the method
     //    //as of CLang 3.9, the first parameter can have the name %0
     //this is not true, e.g. for OpenCL-CTS/kernel_memory_alignment_private.cl
-    //if(method.method->findParameter("%0") == nullptr)
-    //	method.instructions.emplace_back(new LLVMLabel("%0"));
+    /*
+     * NOTE: This is required by "default" CLang 3.9 and 4.0.
+     * SPIRV-LLVM/CLang adds an additional label to the beginning, so this introduces two labels with the same position (an empty basic block), which has no negative effect (maybe a little loss in performance)
+     */
+    if(method.method->findParameter("%0") == nullptr && method.method->findLocal("%0") == nullptr)
+    	method.instructions.emplace_back(new LLVMLabel("%0"));
     do {
         parseInstruction(method, method.instructions);
     }
