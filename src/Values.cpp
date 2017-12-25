@@ -390,6 +390,15 @@ Optional<Literal> SmallImmediate::toLiteral() const
 	return Optional<Literal>(false, static_cast<int64_t>(0));
 }
 
+Optional<SmallImmediate> SmallImmediate::fromInteger(signed char val)
+{
+	if(val < -16 || val > 15)
+		return Optional<SmallImmediate>(false, SmallImmediate(0));
+	if(val < 0)
+		return SmallImmediate(static_cast<unsigned char>(32 + val));
+	return SmallImmediate(static_cast<unsigned char>(val));
+}
+
 SmallImmediate SmallImmediate::fromRotationOffset(unsigned char offset)
 {
 	if(offset == 0 || offset > 15)

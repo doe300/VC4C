@@ -27,41 +27,43 @@ namespace vc4c
 		enum class InstructionDecorations
 		{
 			//There are no decorations set for this instruction
-			NONE = 0x0,
+			NONE = 0,
 			//The result and parameters (floating-point values) are assumed to be non-NaN
-			NO_NAN = 0x1,
+			NO_NAN = 1 << 0,
 			//The result and parameters (floating-point values) are assumed to be not +/- Inf
-			NO_INF = 0x2,
+			NO_INF = 1 << 1,
 			//The use of a reciprocal is allowed for this division
-			ALLOW_RECIP = 0x4,
+			ALLOW_RECIP = 1 << 2,
 			//Implies NO_NAN, NO_INF and ALLOW_RECIP
-			FAST_MATH = 0x8,
+			FAST_MATH = 1 << 3,
 			//The conversion result needs be saturated within the limits of the result type
-			SATURATED_CONVERSION = 0x10,
+			SATURATED_CONVERSION = 1 << 4,
 			//The result is the number of work-dimensions as of get_work_dim()
-			BUILTIN_WORK_DIMENSIONS = 0x20,
+			BUILTIN_WORK_DIMENSIONS = 1 << 5,
 			//The result is the local size in one of the dimensions as of get_local_size()
-			BUILTIN_LOCAL_SIZE = 0x40,
+			BUILTIN_LOCAL_SIZE = 1 << 6,
 			//The result is the local ID in one of the dimensions as of get_local_id()
-			BUILTIN_LOCAL_ID = 0x80,
+			BUILTIN_LOCAL_ID = 1 << 7,
 			//The result is the number of work-groups in one of the dimensions as of get_num_groups()
-			BUILTIN_NUM_GROUPS = 0x100,
+			BUILTIN_NUM_GROUPS = 1 << 8,
 			//The result is the group-ID in one of the dimensions as of get_group_id()
-			BUILTIN_GROUP_ID = 0x200,
+			BUILTIN_GROUP_ID = 1 << 9,
 			//The result is the global offset in one dimension as of get_global_offset()
-			BUILTIN_GLOBAL_OFFSET = 0x400,
+			BUILTIN_GLOBAL_OFFSET = 1 << 10,
 			//The result is the global size in one dimension as of get_global_size()
-			BUILTIN_GLOBAL_SIZE = 0x800,
+			BUILTIN_GLOBAL_SIZE = 1 << 11,
 			//The result is the global id for one dimension (get_global_id())
-			BUILTIN_GLOBAL_ID = 0x1000,
+			BUILTIN_GLOBAL_ID = 1 << 12,
 			//The result value is unsigned (signed by default)
-			UNSIGNED_RESULT = 0x2000,
+			UNSIGNED_RESULT = 1 << 13,
 			//The result is a value of a PHI-node being set
-			PHI_NODE = 0x4000,
+			PHI_NODE = 1 << 14,
 			//The conditional branch depends on ALL flags, not just the flag of the first SIMD-element
-			BRANCH_ON_ALL_ELEMENTS = 0x8000,
+			BRANCH_ON_ALL_ELEMENTS = 1 << 15,
 			//The instructions inserts a single element into a vector
-			ELEMENT_INSERTION = 0x10000
+			ELEMENT_INSERTION = 1 << 16,
+			//The instruction was already processed by auto-vectorization
+			AUTO_VECTORIZED = 1 << 17
 		};
 
 		std::string toString(InstructionDecorations decoration);

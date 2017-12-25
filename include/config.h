@@ -51,6 +51,7 @@ namespace vc4c
 	    bool writeKernelInfo = true;
 	    unsigned availableVPMSize = VPM_DEFAULT_SIZE;
 	    Frontend frontend = Frontend::DEFAULT;
+	    bool autoVectorization = false;
 	};
 
 	/*

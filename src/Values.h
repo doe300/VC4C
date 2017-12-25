@@ -194,6 +194,7 @@ namespace vc4c
 
 		Optional<Literal> toLiteral() const;
 
+		static Optional<SmallImmediate> fromInteger(signed char val);
 		static SmallImmediate fromRotationOffset(unsigned char offset);
 	};
 

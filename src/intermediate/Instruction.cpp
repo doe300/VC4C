@@ -47,6 +47,8 @@ std::string intermediate::toString(const InstructionDecorations decoration)
 		res.append("all_elements ");
 	if(has_flag(decoration, InstructionDecorations::ELEMENT_INSERTION))
 		res.append("single_element ");
+	if(has_flag(decoration, InstructionDecorations::AUTO_VECTORIZED))
+		res.append("vectorized ");
 	return res.substr(0, res.empty() ? 0 : res.size() - 1);
 }
 
