@@ -432,6 +432,44 @@ namespace vc4c
 			}
 		};
 
+		/*
+		 * Wraps around a load-immediate instruction and acts like a bit-field.
+		 *
+		 * It automatically writes the changes to the bit-field back to the load-instruction on destruction
+		 */
+		template<typename T>
+		struct SetupWrapper : public T
+		{
+		private:
+			using Base = T;
+		public:
+
+			explicit SetupWrapper(intermediate::LoadImmediate* load) : T(0), load(load)
+			{
+				if(load != nullptr)
+					Base::value = load->getImmediate().toImmediate();
+			}
+
+			~SetupWrapper()
+			{
+				if(load != nullptr)
+					load->setImmediate(Literal(static_cast<uint64_t>(Base::value)));
+			}
+
+			inline void resetSetup() const
+			{
+				if(load != nullptr)
+					Base::value = load->getImmediate().toImmediate();
+			}
+
+		private:
+			intermediate::LoadImmediate* load;
+		};
+
+		using VPWSetupWrapper = SetupWrapper<VPWSetup>;
+		using VPRSetupWrapper = SetupWrapper<VPRSetup>;
+
+
 		InstructionWalker insertReadDMA(Method& method, InstructionWalker it, const Value& dest, const Value& addr, const bool useMutex = true);
 		InstructionWalker insertWriteDMA(Method& method, InstructionWalker it, const Value& src, const Value& addr, const bool useMutex = true);
 

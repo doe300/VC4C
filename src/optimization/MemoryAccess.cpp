@@ -280,9 +280,10 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
 	logging::debug() << "Combining " << group.addressWrites.size() << " writes to consecutive memory into one DMA write... " << logging::endl;
 
 	//1. Update DMA setup to the number of rows written
-	VPWSetup dmaSetupValue(group.dmaSetups.at(0).get<LoadImmediate>()->getImmediate().integer);
-	dmaSetupValue.dmaSetup.setUnits(group.addressWrites.size());
-	group.dmaSetups.at(0).get<LoadImmediate>()->setImmediate(Literal(static_cast<int64_t>(dmaSetupValue.value)));
+	{
+		VPWSetupWrapper dmaSetupValue(group.dmaSetups.at(0).get<LoadImmediate>());
+		dmaSetupValue.dmaSetup.setUnits(group.addressWrites.size());
+	}
 	std::size_t numRemoved = 0;
 	vpm.updateScratchSize(group.addressWrites.size() * group.groupType.getElementType().getPhysicalWidth());
 
@@ -340,16 +341,18 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
 	logging::debug() << "Combining " << group.genericSetups.size() << " reads of consecutive memory into one DMA read... " << logging::endl;
 
 	//1. Update DMA setup to the number of rows read
-	VPRSetup dmaSetupValue(group.dmaSetups.at(0).get<LoadImmediate>()->getImmediate().integer);
-	dmaSetupValue.dmaSetup.setNumberRows(group.genericSetups.size() % 16);
-	group.dmaSetups.at(0).get<LoadImmediate>()->setImmediate(Literal(static_cast<int64_t>(dmaSetupValue.value)));
+	{
+		VPRSetupWrapper dmaSetupValue(group.dmaSetups.at(0).get<LoadImmediate>());
+		dmaSetupValue.dmaSetup.setNumberRows(group.genericSetups.size() % 16);
+		vpm.updateScratchSize(group.genericSetups.size() * group.groupType.getElementType().getPhysicalWidth());
+	}
 	std::size_t numRemoved = 0;
-	vpm.updateScratchSize(group.genericSetups.size() * group.groupType.getElementType().getPhysicalWidth());
 
 	//1.1 Update generic Setup to the number of rows read
-	VPRSetup genericSetup(group.genericSetups.at(0).get<LoadImmediate>()->getImmediate().integer);
-	genericSetup.genericSetup.setNumber(group.genericSetups.size() % 16);
-	group.genericSetups.at(0).get<LoadImmediate>()->setImmediate(Literal(static_cast<int64_t>(genericSetup.value)));
+	{
+		VPRSetupWrapper genericSetup(group.genericSetups.at(0).get<LoadImmediate>());
+		genericSetup.genericSetup.setNumber(group.genericSetups.size() % 16);
+	}
 
 	//2. Remove all but the first generic and DMA setups
 	for(std::size_t i = 1; i < group.genericSetups.size(); ++i)
