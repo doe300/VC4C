@@ -84,6 +84,10 @@ namespace vc4c
 			bool writesLocal(const Local* local) const override;
 			void replaceLocal(const Local* oldLocal, const Local* newLocal, Type type) override;
 
+			bool readsRegister(const Register& reg) const;
+			bool writesRegister(const Register& reg) const;
+			bool readsLiteral() const;
+
 			virtual IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const = 0;
 			virtual qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const = 0;
 			/*

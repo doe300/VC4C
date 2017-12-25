@@ -651,10 +651,10 @@ InstructionWalker optimizations::handleUseWithImmediate(const Module& module, Me
 	intermediate::Operation* op = it.get<intermediate::Operation>();
 	if(op != nullptr)
 	{
-		const auto& args = op->getArguments();
-		if(std::any_of(args.begin(), args.end(), toFunction(&Value::isLiteralValue)))
+		if(op->readsLiteral())
 		{
 			//at least one immediate value is used
+			const auto& args = op->getArguments();
 			const auto localIt = std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool {return arg.hasType(ValueType::LOCAL);});
 			if(localIt != args.end() && !it.getBasicBlock()->isLocallyLimited(findWriteOfLocal(it, localIt->local), localIt->local))
 			{

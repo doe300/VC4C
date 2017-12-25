@@ -98,9 +98,9 @@ static InstructionWalker findDMASetup(InstructionWalker pos, const InstructionWa
 	{
 		if(pos.has<LoadImmediate>() && pos->hasValueType(ValueType::REGISTER))
 		{
-			if(isVPMWrite && pos->getOutput().get().hasRegister(REG_VPM_OUT_SETUP) && VPWSetup::fromLiteral(pos.get<LoadImmediate>()->getImmediate().integer).isDMASetup())
+			if(isVPMWrite && pos->writesRegister(REG_VPM_OUT_SETUP) && VPWSetup::fromLiteral(pos.get<LoadImmediate>()->getImmediate().integer).isDMASetup())
 				return pos;
-			if(!isVPMWrite && pos->getOutput().get().hasRegister(REG_VPM_IN_SETUP) && VPRSetup::fromLiteral(pos.get<LoadImmediate>()->getImmediate().integer).isDMASetup())
+			if(!isVPMWrite && pos->writesRegister(REG_VPM_IN_SETUP) && VPRSetup::fromLiteral(pos.get<LoadImmediate>()->getImmediate().integer).isDMASetup())
 				return pos;
 		}
 		if(pos.has<MutexLock>() && pos.get<MutexLock>()->locksMutex())
@@ -118,7 +118,7 @@ static InstructionWalker findGenericSetup(InstructionWalker it, const Instructio
 		//for VPM writes, the generic setups is located before the address write
 		while(!it.isStartOfBlock())
 		{
-			if(it.has<LoadImmediate>() && it->hasValueType(ValueType::REGISTER) && it->getOutput().get().hasRegister(REG_VPM_OUT_SETUP) && VPWSetup::fromLiteral(it.get<LoadImmediate>()->getImmediate().integer).isGenericSetup())
+			if(it.has<LoadImmediate>() && it->writesRegister(REG_VPM_OUT_SETUP) && VPWSetup::fromLiteral(it.get<LoadImmediate>()->getImmediate().integer).isGenericSetup())
 			{
 				return it;
 			}
@@ -133,11 +133,11 @@ static InstructionWalker findGenericSetup(InstructionWalker it, const Instructio
 		//for VPM reads, the generic setups is located after the address write
 		while(!it.isEndOfBlock())
 		{
-			if(it.has<LoadImmediate>() && it->hasValueType(ValueType::REGISTER) && it->getOutput().get().hasRegister(REG_VPM_IN_SETUP) && VPRSetup::fromLiteral(it.get<LoadImmediate>()->getImmediate().integer).isGenericSetup())
+			if(it.has<LoadImmediate>() && it->writesRegister(REG_VPM_IN_SETUP) && VPRSetup::fromLiteral(it.get<LoadImmediate>()->getImmediate().integer).isGenericSetup())
 			{
 				return it;
 			}
-			else if(it.get() && it->hasValueType(ValueType::REGISTER) && it->getOutput().get().hasRegister(REG_MUTEX))
+			else if(it.get() && it->writesRegister(REG_MUTEX))
 				//only search  to the next mutex release
 				break;
 			it.nextInBlock();
@@ -183,13 +183,13 @@ static InstructionWalker findGroupOfVPMAccess(VPM& vpm, InstructionWalker start,
 			//semaphore accesses end groups, also don't check this instruction again
 			return it.nextInBlock();
 
-		if(!it->hasValueType(ValueType::REGISTER) || !(it->getOutput().get().hasRegister(REG_VPM_IN_ADDR) || it->getOutput().get().hasRegister(REG_VPM_OUT_ADDR)))
+		if(!(it->writesRegister(REG_VPM_IN_ADDR) || it->writesRegister(REG_VPM_OUT_ADDR)))
 			//for simplicity, we only check for VPM addresses and find all other instructions relative to it
 			continue;
 		if(!it.has<MoveOperation>())
 			throw CompilationError(CompilationStep::OPTIMIZER, "Setting VPM address with non-move is not supported", it->to_string());
 		const auto baseAndOffset = findBaseAndOffset(it.get<MoveOperation>()->getSource());
-		const bool isVPMWrite = it->getOutput().get().hasRegister(REG_VPM_OUT_ADDR);
+		const bool isVPMWrite = it->writesRegister(REG_VPM_OUT_ADDR);
 		logging::debug() << "Found base address " << baseAndOffset.base.to_string() << " with offset " << std::to_string(baseAndOffset.offset.orElse(-1L)) << " for " << (isVPMWrite ? "writing into" : "reading from") << " memory" << logging::endl;
 
 		if(!baseAndOffset.base.hasValue)
@@ -292,7 +292,7 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
 	{
 		group.genericSetups.at(i).erase();
 		const LoadImmediate* strideSetup = group.dmaSetups.at(i).copy().nextInBlock().get<LoadImmediate>();
-		if(strideSetup == nullptr || !strideSetup->getOutput().get().hasRegister(REG_VPM_OUT_SETUP) || !VPWSetup::fromLiteral(strideSetup->getImmediate().integer).isStrideSetup())
+		if(strideSetup == nullptr || !strideSetup->writesRegister(REG_VPM_OUT_SETUP) || !VPWSetup::fromLiteral(strideSetup->getImmediate().integer).isStrideSetup())
 			throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find VPW DMA stride setup for DMA setup", group.dmaSetups.at(i)->to_string());
 		group.dmaSetups.at(i).copy().nextInBlock().erase();
 		group.dmaSetups.at(i).erase();
@@ -303,7 +303,7 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
 	group.addressWrites.back().get<MoveOperation>()->setSource(group.addressWrites.at(0).get<MoveOperation>()->getSource());
 	for(std::size_t i = 0; i < group.addressWrites.size() - 1; ++i)
 	{
-		if(!group.addressWrites.at(i).copy().nextInBlock().has<MoveOperation>() || !group.addressWrites.at(i).copy().nextInBlock().get<MoveOperation>()->getSource().hasRegister(group.isVPMWrite ? REG_VPM_OUT_WAIT : REG_VPM_IN_WAIT))
+		if(!group.addressWrites.at(i).copy().nextInBlock()->readsRegister(group.isVPMWrite ? REG_VPM_OUT_WAIT : REG_VPM_IN_WAIT))
 			throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find VPW wait for address write", group.addressWrites.at(i)->to_string());
 		group.addressWrites.at(i).copy().nextInBlock().erase();
 		group.addressWrites.at(i).erase();
@@ -314,12 +314,12 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
 	auto it = group.dmaSetups.front();
 	while(!it.isEndOfBlock() && it != group.addressWrites.back())
 	{
-		if(it.get() && it->getOutput().ifPresent(toFunction(&Value::hasRegister, REG_MUTEX)))
+		if(it.get() && it->writesRegister(REG_MUTEX))
 		{
 			it = it.erase();
 			++numRemoved;
 		}
-		else if(it.has<MutexLock>() && it.get<MutexLock>()->locksMutex())
+		else if(it.get() && it->readsRegister(REG_MUTEX))
 		{
 			it = it.erase();
 			++numRemoved;
@@ -359,7 +359,7 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
 	{
 		group.genericSetups.at(i).erase();
 		const LoadImmediate* strideSetup = group.dmaSetups.at(i).copy().nextInBlock().get<LoadImmediate>();
-		if(strideSetup == nullptr || !strideSetup->getOutput().get().hasRegister(REG_VPM_IN_SETUP) || !VPRSetup::fromLiteral(strideSetup->getImmediate().integer).isStrideSetup())
+		if(strideSetup == nullptr || !strideSetup->writesRegister(REG_VPM_IN_SETUP) || !VPRSetup::fromLiteral(strideSetup->getImmediate().integer).isStrideSetup())
 			throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find VPR DMA stride setup for DMA setup", group.dmaSetups.at(i)->to_string());
 		group.dmaSetups.at(i).copy().nextInBlock().erase();
 		group.dmaSetups.at(i).erase();
@@ -370,12 +370,12 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
 	auto it = group.addressWrites.front();
 	while(!it.isEndOfBlock() && it != group.addressWrites.back())
 	{
-		if(it.get() && it->getOutput().hasValue && it->getOutput().get().hasRegister(REG_MUTEX))
+		if(it.get() && it->writesRegister(REG_MUTEX))
 		{
 			it = it.erase();
 			++numRemoved;
 		}
-		else if(it.has<MutexLock>() && it.get<MutexLock>()->locksMutex())
+		else if(it.get() && it->readsRegister(REG_MUTEX))
 		{
 			it = it.erase();
 			++numRemoved;
@@ -387,7 +387,7 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
 	//4. remove all but the first address writes (and the following DMA writes)
 	for(std::size_t i = 1; i < group.addressWrites.size(); ++i)
 	{
-		if(!group.addressWrites.at(i).copy().nextInBlock().has<MoveOperation>() || !group.addressWrites.at(i).copy().nextInBlock().get<MoveOperation>()->getSource().hasRegister(group.isVPMWrite ? REG_VPM_OUT_WAIT : REG_VPM_IN_WAIT))
+		if(!group.addressWrites.at(i).copy().nextInBlock()->readsRegister(group.isVPMWrite ? REG_VPM_OUT_WAIT : REG_VPM_IN_WAIT))
 			throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find VPR wait for address write", group.addressWrites.at(i)->to_string());
 		group.addressWrites.at(i).copy().nextInBlock().erase();
 		group.addressWrites.at(i).erase();

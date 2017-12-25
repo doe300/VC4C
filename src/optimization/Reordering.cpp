@@ -62,13 +62,13 @@ static InstructionWalker findInstructionNotAccessing(BasicBlock& basicBlock, con
 			}
 		}
 		PROFILE_END(checkExcludedValues);
-		if(validReplacement && it->getOutput() && it->getOutput().get().hasRegister(REG_MUTEX))
+		if(validReplacement && it->writesRegister(REG_MUTEX))
 		{
 			//never move MUTEX_RELEASE
 			validReplacement = false;
 			//Allow instructions to be moved over MUTEX_RELEASE to replace the VPM wait nops
 		}
-		if(validReplacement && ((it->getArgument(0) && it->getArgument(0).get().hasRegister(REG_MUTEX)) || (it->getArgument(1) && it->getArgument(1).get().hasRegister(REG_MUTEX))))
+		if(validReplacement && it->readsRegister(REG_MUTEX))
 		{
 			//Re-ordering MUTEX_ACQUIRE would extend the critical section (maybe a lot!), so don't move it
 			validReplacement = false;
@@ -103,13 +103,13 @@ static InstructionWalker findInstructionNotAccessing(BasicBlock& basicBlock, con
 		}
 
 		//otherwise add all outputs by instructions in between (the NOP and the replacement), since they could be used as input in the following instructions
-		if(it->getOutput() && !it->getOutput().get().hasRegister(REG_NOP))
+		if(it->getOutput() && !it->writesRegister(REG_NOP))
 		{
 			excludedValues.insert(it->getOutput().get());
 			//make sure, SFU/TMU calls are not moved over other SFU/TMU calls
 			//this prevents nop-sfu-... from being replaced with sfu-sfu-...
-			if(it->getOutput().get().hasRegister(REG_SFU_EXP2) || it->getOutput().get().hasRegister(REG_SFU_LOG2) || it->getOutput().get().hasRegister(REG_SFU_RECIP)
-					|| it->getOutput().get().hasRegister(REG_SFU_RECIP_SQRT) || it->getOutput().get().hasRegister(REG_TMU0_ADDRESS) || it->getOutput().get().hasRegister(REG_TMU1_ADDRESS))
+			if(it->writesRegister(REG_SFU_EXP2) || it->writesRegister(REG_SFU_LOG2) || it->writesRegister(REG_SFU_RECIP)
+					|| it->writesRegister(REG_SFU_RECIP_SQRT) || it->writesRegister(REG_TMU0_ADDRESS) || it->writesRegister(REG_TMU1_ADDRESS))
 			{
 				excludedValues.emplace(Value(REG_SFU_EXP2, TYPE_FLOAT));
 				excludedValues.emplace(Value(REG_SFU_LOG2, TYPE_FLOAT));
@@ -160,12 +160,12 @@ static InstructionWalker findReplacementCandidate(BasicBlock& basicBlock, const 
 				return basicBlock.end();
 			}
 			excludedValues.insert(lastInstruction->getOutput().get());
-			if(lastInstruction->getOutput().get().hasRegister(REG_VPM_IN_ADDR))
+			if(lastInstruction->writesRegister(REG_VPM_IN_ADDR))
 			{
 				excludedValues.emplace(Value(REG_VPM_IN_BUSY, TYPE_UNKNOWN));
 				excludedValues.emplace(Value(REG_VPM_IO, TYPE_UNKNOWN));
 			}
-			if(lastInstruction->getOutput().get().hasRegister(REG_VPM_OUT_ADDR))
+			if(lastInstruction->writesRegister(REG_VPM_OUT_ADDR))
 			{
 				excludedValues.emplace(Value(REG_VPM_OUT_BUSY, TYPE_UNKNOWN));
 				excludedValues.emplace(Value(REG_VPM_IO, TYPE_UNKNOWN));
@@ -297,13 +297,13 @@ void optimizations::splitReadAfterWrites(const Module& module, Method& method, c
 				lastInstruction = it;
 			}
 
-			if(it.has<MoveOperation>() && (it.get<MoveOperation>()->getSource().hasRegister(REG_VPM_IN_WAIT) || it.get<MoveOperation>()->getSource().hasRegister(REG_VPM_OUT_WAIT) || it.get<MoveOperation>()->getSource().hasRegister(REG_VPM_IO)))
+			if(it->readsRegister(REG_VPM_IN_WAIT) || it->readsRegister(REG_VPM_OUT_WAIT) || it->readsRegister(REG_VPM_IO))
 			{
 				//TODO constant + x * nrows
 				unsigned numDelays = 0;
-				if(it.get<MoveOperation>()->getSource().hasRegister(REG_VPM_IN_WAIT))
+				if(it->readsRegister(REG_VPM_IN_WAIT))
 					numDelays = 6; //XXX 8
-				else if(it.get<MoveOperation>()->getSource().hasRegister(REG_VPM_OUT_WAIT))
+				else if(it->readsRegister(REG_VPM_OUT_WAIT))
 					numDelays = 10; //XXX 12
 				//TODO else insert delay only before first read!
 				for(unsigned i = 0; i < numDelays; ++i)

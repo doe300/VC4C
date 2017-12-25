@@ -344,6 +344,27 @@ void IntermediateInstruction::replaceLocal(const Local* oldLocal, const Local* n
 	}
 }
 
+bool IntermediateInstruction::readsRegister(const Register& reg) const
+{
+	for(const Value& arg : arguments)
+		if(arg.hasRegister(reg))
+			return true;
+	return false;
+}
+
+bool IntermediateInstruction::writesRegister(const Register& reg) const
+{
+	return output.ifPresent(toFunction(&Value::hasRegister, reg));
+}
+
+bool IntermediateInstruction::readsLiteral() const
+{
+	for(const Value& arg : arguments)
+		if(arg.isLiteralValue())
+			return true;
+	return false;
+}
+
 void IntermediateInstruction::removeAsUserFromValue(const Value& value, const LocalUser::Type type)
 {
 	if(value.hasType(ValueType::LOCAL))

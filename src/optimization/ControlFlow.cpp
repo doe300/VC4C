@@ -144,9 +144,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 		//XXX this currently only looks for single operations with immediate values (e.g. +1,-1)
 		else if(pair.second.readsLocal() && it.hasValue)
 		{
-			if(it.get().has<intermediate::Operation>() && it.get()->getArguments().size() == 2 &&
-					((it.get()->getArgument(0).get().hasLocal(local) && it.get()->getArgument(1).get().isLiteralValue()) ||
-					(it.get()->getArgument(1).get().hasLocal(local) && it.get()->getArgument(0).get().isLiteralValue())) &&
+			if(it.get().has<intermediate::Operation>() && it.get()->getArguments().size() == 2 && it.get()->readsLiteral() &&
 					//TODO could here more simply check against output being the local the iteration variable is set to (in the phi-node inside the loop)
 					it.get()->getOutput().ifPresent([](const Value& val) -> bool { return val.hasType(ValueType::LOCAL) && std::any_of(val.local->getUsers().begin(), val.local->getUsers().end(), [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {return has_flag(dynamic_cast<const intermediate::IntermediateInstruction*>(pair.first)->decoration, intermediate::InstructionDecorations::PHI_NODE);});}))
 			{
@@ -165,9 +163,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 					//iteration step: the instruction inside the loop where the iteration variable is changed
 					if(pair.second.readsLocal() && it.hasValue)
 					{
-						if(it.get().has<intermediate::Operation>() && it.get()->getArguments().size() == 2 &&
-								((it.get()->getArgument(0).get().hasLocal(stepLocal) && it.get()->getArgument(1).get().isLiteralValue()) ||
-								(it.get()->getArgument(1).get().hasLocal(stepLocal) && it.get()->getArgument(0).get().isLiteralValue())) &&
+						if(it.get().has<intermediate::Operation>() && it.get()->getArguments().size() == 2 && it.get()->readsLiteral() &&
 								it.get()->getOutput().ifPresent([](const Value& val) -> bool { return val.hasType(ValueType::LOCAL) && std::any_of(val.local->getUsers().begin(), val.local->getUsers().end(), [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {return has_flag(dynamic_cast<const intermediate::IntermediateInstruction*>(pair.first)->decoration, intermediate::InstructionDecorations::PHI_NODE);});}))
 						{
 							logging::debug() << "Found iteration instruction: " << it.get()->to_string() << logging::endl;
@@ -411,7 +407,7 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
 
 	while(!it.isEndOfMethod() && it != loop.back()->key->end())
 	{
-		if(it->hasValueType(ValueType::REGISTER) && it->getOutput().get().hasRegister(REG_VPM_OUT_SETUP))
+		if(it->writesRegister(REG_VPM_OUT_SETUP))
 		{
 			periphery::VPWSetupWrapper vpwSetup(it.get<intermediate::LoadImmediate>());
 			if(vpwSetup.isDMASetup())
@@ -422,7 +418,7 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
 				it->setDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
 			}
 		}
-		else if(it->hasValueType(ValueType::REGISTER) && it->getOutput().get().hasRegister(REG_VPM_IN_SETUP))
+		else if(it->writesRegister(REG_VPM_IN_SETUP))
 			throw CompilationError(CompilationStep::OPTIMIZER, "Reading from VPM is not handled yet by the vectorizer", it->to_string());
 
 
