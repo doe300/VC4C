@@ -94,7 +94,18 @@ namespace vc4c
 	 */
 	using DataDependency = FastMap<Local*, DataDependencyType>;
 
-	class DataDependencyGraph : public Graph<BasicBlock*, Node<BasicBlock*, DataDependency>>
+	struct DataDependencyNode : public Node<BasicBlock*, DataDependency>
+	{
+		using Base = Node<BasicBlock*, DataDependency>;
+
+		explicit DataDependencyNode(BasicBlock* key) : Base(key) { }
+
+		bool dependsOnBlock(const BasicBlock& bb, const DataDependencyType type = DataDependencyType::FLOW) const;
+		bool hasExternalDependencies(const Local* local, const DataDependencyType type = DataDependencyType::FLOW) const;
+		FastSet<const Local*> getAllExternalDependencies(const DataDependencyType type = DataDependencyType::FLOW) const;
+	};
+
+	class DataDependencyGraph : public Graph<BasicBlock*, DataDependencyNode>
 	{
 	public:
 		/*

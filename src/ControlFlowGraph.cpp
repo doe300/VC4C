@@ -96,7 +96,7 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops()
 		{
 			//extra case, loop with single block
 			ControlFlowLoop loop;
-			loop.resize(2, node);
+			loop.emplace_back(node);
 			loops.emplace_back(loop);
 		}
 	}
@@ -184,6 +184,42 @@ ControlFlowLoop ControlFlowGraph::findLoopsHelper(CFGNode* node, FastMap<CFGNode
 	}
 
 	return loop;
+}
+
+bool DataDependencyNode::dependsOnBlock(const BasicBlock& bb, const DataDependencyType type) const
+{
+	for(const auto& neighbor : getNeighbors())
+	{
+		if(neighbor.first->key == &bb && std::any_of(neighbor.second.begin(), neighbor.second.end(), [&type](const std::pair<Local*, DataDependencyType>& pair) -> bool { return has_flag(pair.second, type);}))
+			return true;
+	}
+	return false;
+}
+
+bool DataDependencyNode::hasExternalDependencies(const Local* local, const DataDependencyType type) const
+{
+	for(const auto& neighbor : getNeighbors())
+	{
+		if(std::any_of(neighbor.second.begin(), neighbor.second.end(), [local,&type](const std::pair<Local*, DataDependencyType>& pair) -> bool { return pair.first == local && has_flag(pair.second, type);}))
+			return true;
+	}
+	return false;
+}
+
+FastSet<const Local*> DataDependencyNode::getAllExternalDependencies(const DataDependencyType type) const
+{
+	FastSet<const Local*> results;
+
+	for(const auto& neighbor : getNeighbors())
+	{
+		for(const auto& dependency : neighbor.second)
+		{
+			if(has_flag(dependency.second, type))
+				results.emplace(dependency.first);
+		}
+	}
+
+	return results;
 }
 
 using InstructionMapping = FastMap<const LocalUser*, InstructionWalker>;

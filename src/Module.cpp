@@ -52,6 +52,11 @@ InstructionWalker BasicBlock::end()
 	return InstructionWalker(this, instructions.end());
 }
 
+std::size_t BasicBlock::size() const
+{
+	return instructions.size();
+}
+
 bool BasicBlock::isLocallyLimited(InstructionWalker curIt, const Local* locale, const std::size_t threshold) const
 {
 	auto remainingUsers = locale->getUsers();

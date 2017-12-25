@@ -89,7 +89,7 @@ void TestInstructions::testBitfields()
 	TEST_ASSERT_EQUALS(127 << 7, t2.value);
 
 	TestBitfield t3;
-	t3.setTupleOffset9(0xF);
+	t3.setTupleOffset9(0x3);
 	TEST_ASSERT_EQUALS(3, t3.getTupleOffset9());
 	TEST_ASSERT_EQUALS(3 << 9, t3.value);
 }

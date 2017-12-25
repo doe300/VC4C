@@ -59,6 +59,7 @@ namespace vc4c
 		bool empty() const;
 		InstructionWalker begin();
 		InstructionWalker end();
+		std::size_t size() const;
 
 		/*!
 		 * Checks if all usages of this local are within a certain range from the current instruction within a single basic block
