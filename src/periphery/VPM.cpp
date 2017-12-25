@@ -50,7 +50,7 @@ InstructionWalker periphery::insertReadDMA(Method& method, InstructionWalker it,
 	if(useMutex)
 	{
 		//acquire mutex
-		it.emplace( new MoveOperation(NOP_REGISTER, MUTEX_REGISTER));
+		it.emplace( new MutexLock(MutexAccess::LOCK));
 		it.nextInBlock();
 	}
 
@@ -60,7 +60,7 @@ InstructionWalker periphery::insertReadDMA(Method& method, InstructionWalker it,
 	if(useMutex)
 	{
 		//free mutex
-		it.emplace( new MoveOperation(MUTEX_REGISTER, BOOL_TRUE));
+		it.emplace( new MutexLock(MutexAccess::RELEASE));
 		it.nextInBlock();
 	}
 	return it;
@@ -71,7 +71,7 @@ InstructionWalker periphery::insertWriteDMA(Method& method, InstructionWalker it
 	if(useMutex)
 	{
 		//acquire mutex
-		it.emplace( new MoveOperation(NOP_REGISTER, MUTEX_REGISTER));
+		it.emplace( new MutexLock(MutexAccess::LOCK));
 		it.nextInBlock();
 	}
 
@@ -81,7 +81,7 @@ InstructionWalker periphery::insertWriteDMA(Method& method, InstructionWalker it
 	if(useMutex)
 	{
 		//free mutex
-		it.emplace( new MoveOperation(MUTEX_REGISTER, BOOL_TRUE));
+		it.emplace( new MutexLock(MutexAccess::RELEASE));
 		it.nextInBlock();
 	}
 	return it;
@@ -420,7 +420,7 @@ InstructionWalker VPM::insertLockMutex(InstructionWalker it, bool useMutex) cons
 	if(useMutex)
 	{
 		//acquire mutex
-		it.emplace( new MoveOperation(NOP_REGISTER, MUTEX_REGISTER));
+		it.emplace( new MutexLock(MutexAccess::LOCK));
 		it.nextInBlock();
 	}
 	return it;
@@ -431,7 +431,7 @@ InstructionWalker VPM::insertUnlockMutex(InstructionWalker it, bool useMutex) co
 	if(useMutex)
 	{
 		//free mutex
-		it.emplace( new MoveOperation(MUTEX_REGISTER, BOOL_TRUE));
+		it.emplace( new MutexLock(MutexAccess::RELEASE));
 		it.nextInBlock();
 	}
 	return it;

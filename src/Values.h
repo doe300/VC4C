@@ -302,7 +302,6 @@ namespace vc4c
 	const Value NOP_REGISTER(REG_NOP, TYPE_UNKNOWN);
 	const Value ELEMENT_NUMBER_REGISTER(REG_ELEMENT_NUMBER, TYPE_INT8.toVectorType(16));
 	const Value ROTATION_REGISTER(REG_ACC5, TYPE_INT8);
-	const Value MUTEX_REGISTER(REG_MUTEX, TYPE_BOOL);
 
 	template<>
 	struct hash<Value> : public std::hash<std::string>

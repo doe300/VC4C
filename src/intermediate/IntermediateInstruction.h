@@ -472,6 +472,32 @@ namespace vc4c
 			bool isLifetimeEnd;
 		};
 
+		enum class MutexAccess
+		{
+			LOCK,
+			RELEASE
+		};
+
+		/*
+		 * Instruction accessing (locking/unlocking) the hardware-mutex
+		 */
+		struct MutexLock : IntermediateInstruction
+		{
+		public:
+			MutexLock(MutexAccess accessType);
+			~MutexLock() override = default;
+
+			std::string to_string() const override;
+			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
+			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
+
+			bool locksMutex() const;
+			bool releasesMutex() const;
+
+		private:
+			MutexAccess accessType;
+		};
+
 		using Instructions = FastModificationList<std::unique_ptr<IntermediateInstruction>>;
 		using InstructionsIterator = FastModificationList<std::unique_ptr<IntermediateInstruction>>::iterator;
 		using ConstInstructionsIterator = FastModificationList<std::unique_ptr<IntermediateInstruction>>::const_iterator;

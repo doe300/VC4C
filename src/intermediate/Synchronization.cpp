@@ -128,3 +128,39 @@ Value LifetimeBoundary::getStackAllocation() const
 {
 	return getArgument(0);
 }
+
+static const Value MUTEX_REGISTER(REG_MUTEX, TYPE_BOOL);
+
+MutexLock::MutexLock(MutexAccess accessType) : IntermediateInstruction(NO_VALUE), accessType(accessType)
+{
+	if(locksMutex())
+		setArgument(0, MUTEX_REGISTER);
+	else
+		setOutput(MUTEX_REGISTER);
+}
+
+std::string MutexLock::to_string() const
+{
+	return REG_MUTEX.to_string(true, locksMutex());
+}
+
+qpu_asm::Instruction* MutexLock::convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const
+{
+	MoveOperation move(locksMutex() ? NOP_REGISTER : MUTEX_REGISTER, locksMutex() ? MUTEX_REGISTER : Value(SmallImmediate(1), TYPE_BOOL));
+	return move.convertToAsm(registerMapping, labelMapping, instructionIndex);
+}
+
+IntermediateInstruction* MutexLock::copyFor(Method& method, const std::string& localPrefix) const
+{
+	return new MutexLock(accessType);
+}
+
+bool MutexLock::locksMutex() const
+{
+	return accessType == MutexAccess::LOCK;
+}
+
+bool MutexLock::releasesMutex() const
+{
+	return accessType == MutexAccess::RELEASE;
+}

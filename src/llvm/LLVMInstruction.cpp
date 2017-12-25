@@ -170,11 +170,11 @@ bool CallSite::mapInstruction(Method& method) const
 		const Value& fillByte = arguments.at(1);
 		const Value& numBytes = arguments.at(2);
 		const Value& volatileAccess = arguments.at(4);
-		method.appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, MUTEX_REGISTER));
+		method.appendToEnd(new intermediate::MutexLock(intermediate::MutexAccess::LOCK));
 		//TODO could be optimized, write multiple bytes at once
 		method.vpm->insertWriteVPM(method.appendToEnd(), fillByte, nullptr, false);
 		method.vpm->insertFillRAM(method, method.appendToEnd(), memAddr, TYPE_INT8, numBytes.literal.integer, nullptr, false);
-		method.appendToEnd( new intermediate::MoveOperation(MUTEX_REGISTER, BOOL_TRUE));
+		method.appendToEnd( new intermediate::MutexLock(intermediate::MutexAccess::RELEASE));
 	}
     logging::debug() << "Generating immediate call to " << methodName << " -> " << returnType.to_string() << logging::endl;
     if(dest == nullptr)

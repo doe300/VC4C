@@ -103,7 +103,7 @@ static InstructionWalker findDMASetup(InstructionWalker pos, const InstructionWa
 			if(!isVPMWrite && pos->getOutput().get().hasRegister(REG_VPM_IN_SETUP) && VPRSetup::fromLiteral(pos.get<LoadImmediate>()->getImmediate().integer).isDMASetup())
 				return pos;
 		}
-		if(pos.has<MoveOperation>() && pos.get<MoveOperation>()->getSource().hasRegister(REG_MUTEX))
+		if(pos.has<MutexLock>() && pos.get<MutexLock>()->locksMutex())
 			//only read up to the previous mutex acquire
 			break;
 		pos.previousInBlock();
@@ -122,7 +122,7 @@ static InstructionWalker findGenericSetup(InstructionWalker it, const Instructio
 			{
 				return it;
 			}
-			else if(it.has<MoveOperation>() && it.get<MoveOperation>()->getSource().hasRegister(REG_MUTEX))
+			else if(it.has<MutexLock>() && it.get<MutexLock>()->locksMutex())
 				//only search up to the previous mutex write
 				break;
 			it.previousInBlock();
@@ -319,7 +319,7 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
 			it = it.erase();
 			++numRemoved;
 		}
-		else if(it.has<MoveOperation>() && it.get<MoveOperation>()->getSource().hasRegister(REG_MUTEX))
+		else if(it.has<MutexLock>() && it.get<MutexLock>()->locksMutex())
 		{
 			it = it.erase();
 			++numRemoved;
@@ -375,7 +375,7 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
 			it = it.erase();
 			++numRemoved;
 		}
-		else if(it.has<MoveOperation>() && it.get<MoveOperation>()->getSource().hasRegister(REG_MUTEX))
+		else if(it.has<MutexLock>() && it.get<MutexLock>()->locksMutex())
 		{
 			it = it.erase();
 			++numRemoved;

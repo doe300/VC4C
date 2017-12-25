@@ -138,12 +138,12 @@ static IntrinsicFunction intrinsifyMutexAccess(bool lock)
 		if(lock)
 		{
 			logging::debug() << "Intrinsifying mutex lock with instruction" << logging::endl;
-			it.reset(new MoveOperation(NOP_REGISTER, MUTEX_REGISTER));
+			it.reset(new MutexLock(MutexAccess::LOCK));
 		}
 		else
 		{
 			logging::debug() << "Intrinsifying mutex unlock with instruction" << logging::endl;
-			it.reset(new MoveOperation(MUTEX_REGISTER, BOOL_TRUE));
+			it.reset(new MutexLock(MutexAccess::RELEASE));
 		}
 		return it;
 	};
