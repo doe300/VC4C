@@ -8,8 +8,10 @@
 
 #include "../InstructionWalker.h"
 #include "../intermediate/Helper.h"
+#include "../ControlFlowGraph.h"
 #include "helper.h"
 #include "log.h"
+#include "DAG.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -740,4 +742,10 @@ InstructionWalker optimizations::combineSameFlags(const Module& module, Method& 
 	}
 
 	return it;
+}
+
+void vc4c::optimizations::instructionScheduling(const Module &module, Method &method, const Configuration &config){
+	for (auto &bb : method.getBasicBlocks()) {
+		auto dag = new DAG(bb);
+	}
 }

@@ -102,6 +102,8 @@ namespace vc4c
 		//adds the start- and stop-segments to the beginning and end of the kernel
 		extern const OptimizationPass ADD_START_STOP_SEGMENT;
 
+		extern const OptimizationPass INSTRUCTION_SCHEDULING;
+
 		/*
 		 * The default optimization passes consist of all passes listed above.
 		 * NOTE: Some of the passes are REQUIRED and the compilation will fail, if they are removed.

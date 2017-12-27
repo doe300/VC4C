@@ -8,6 +8,7 @@
 #define COMBINER_H
 
 #include "config.h"
+#include "../InstructionWalker.h"
 
 namespace vc4c
 {
@@ -129,7 +130,11 @@ namespace vc4c
 		 * NOTE: Currently, only moves into nop-register are combined, but in an extended optimization-step any two instructions setting flags for the same value and with at most one output could be combined.
 		 */
 		InstructionWalker combineSameFlags(const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+
+		/*
+		 * Instruction scheduling for dual-issue, hide latency of memory load, etc...
+		 */
+		void instructionScheduling(const Module& module, Method& method, const Configuration& config);
 	} // namespace optimizations
 } // namespace vc4c
 #endif /* COMBINER_H */
-

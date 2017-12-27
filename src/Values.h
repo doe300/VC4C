@@ -7,6 +7,7 @@
 #ifndef VALUES_H
 #define VALUES_H
 
+#include <assert.h>
 #include "Bitfield.h"
 #include "Types.h"
 #include "performance.h"
@@ -470,7 +471,7 @@ namespace vc4c
 		LITERAL, LOCAL,  //also contains labels
 		REGISTER,
 		CONTAINER,
-		UNDEFINED,
+		UNDEFINED,       // XXX CombinedOperation has this type
 		//literal values passed by the parsers are either converted to load-instructions or small immediate values
 		SMALL_IMMEDIATE
 	};
@@ -542,6 +543,7 @@ namespace vc4c
 		{
 			return !(*this == other);
 		}
+		bool operator<(Value v) const;
 
 		/*
 		 * Returns the element-value for the given index.
@@ -592,6 +594,10 @@ namespace vc4c
 		 * This function also converts a stored SmallImmediate into the corresponding Literal value
 		 */
 		Optional<Literal> getLiteralValue() const;
+		bool isLiteral() const;
+		bool isLocal() const;
+		bool isSmallImmediate() const;
+		bool isRegister() const;
 
 		std::string to_string(bool writeAccess = false, bool withLiterals = false) const;
 
@@ -624,6 +630,7 @@ namespace vc4c
 		 * For scalar types, a simple INT_ZERO is returned, for compound types, a container containing the correct amount of zero-elements is created
 		 */
 		static Value createZeroInitializer(const DataType& type);
+
 	};
 
 	/*
