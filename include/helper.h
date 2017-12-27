@@ -94,6 +94,11 @@ namespace vc4c
 		return static_cast<Bitfield>(static_cast<unsigned>(field0) | static_cast<unsigned>(field1));
 	}
 
+	/*
+	 * Implementation of an optional value.
+	 *
+	 * This class is mostly compatible with C++17 std::optional and its used should be replaced by std::optional when C++17 support is enabled
+	 */
 	template<typename T>
 	class Optional
 	{

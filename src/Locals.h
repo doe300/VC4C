@@ -22,7 +22,12 @@ namespace vc4c
 		};
 
 		LocalUser() = default;
+		LocalUser(const LocalUser&) = delete;
+		LocalUser(LocalUser&&) = delete;
 		virtual ~LocalUser() = default;
+
+		LocalUser& operator=(const LocalUser&) = delete;
+		LocalUser& operator=(LocalUser&&) = delete;
 
 		virtual FastMap<const Local*, Type> getUsedLocals() const = 0;
 		virtual void forUsedLocals(const std::function<void(const Local*, LocalUser::Type)>& consumer) const = 0;
@@ -59,7 +64,7 @@ namespace vc4c
 		virtual ~Local() = default;
 
 		Local& operator=(const Local&) = delete;
-		Local& operator=(Local&&) = default;
+		Local& operator=(Local&&) = delete;
 		bool operator<(const Local& other) const;
 		bool operator==(const Local& other) const;
 

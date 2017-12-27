@@ -7,6 +7,7 @@
 #include "Compiler.h"
 #include "Precompiler.h"
 #include "Profiler.h"
+#include "concepts.h"
 #include "config.h"
 #include "log.h"
 

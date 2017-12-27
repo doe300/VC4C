@@ -502,7 +502,6 @@ namespace vc4c
 			MutexAccess accessType;
 		};
 
-		using Instructions = FastModificationList<std::unique_ptr<IntermediateInstruction>>;
 		using InstructionsIterator = FastModificationList<std::unique_ptr<IntermediateInstruction>>::iterator;
 		using ConstInstructionsIterator = FastModificationList<std::unique_ptr<IntermediateInstruction>>::const_iterator;
 	} // namespace intermediate

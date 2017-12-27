@@ -214,7 +214,7 @@ namespace vc4c
 	public:
 		explicit Module(const Configuration& compilationConfig);
 		Module(const Module&) = delete;
-		Module(Module&&) = default;
+		Module(Module&&) = delete;
 		~Module() = default;
 
 		Module& operator=(const Module&) = delete;
