@@ -345,13 +345,13 @@ static void fixLocals(const InstructionWalker it, FastMap<const Local*, LocalUsa
 		if (comp->op1)
 		{
 			PROFILE_START(updateFixedLocals);
-			updateFixedLocals(*comp->op1.get(), lastWrittenLocal0.value(), lastWrittenLocal1.value(), blockedFiles, localUses);
+			updateFixedLocals(*comp->op1.get(), lastWrittenLocal0, lastWrittenLocal1, blockedFiles, localUses);
 			PROFILE_END(updateFixedLocals);
 		}
 		if (comp->op2)
 		{
 			PROFILE_START(updateFixedLocals);
-			updateFixedLocals(*comp->op2.get(), lastWrittenLocal0.value(), lastWrittenLocal1.value(), blockedFiles, localUses);
+			updateFixedLocals(*comp->op2.get(), lastWrittenLocal0, lastWrittenLocal1, blockedFiles, localUses);
 			PROFILE_END(updateFixedLocals);
 		}
 		//if both instructions for a combined instruction write to the same output, the output MUST be on an accumulator

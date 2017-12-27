@@ -659,7 +659,7 @@ InstructionWalker optimizations::combineSelectionWithZero(const Module& module, 
 		return it;
 	//we have two consecutive moves to the same value, without side-effects and inverted conditions.
 	//additionally, one of the moves writes a zero-vale
-	if(move->getSource().hasLiteral(INT_ZERO.literal))
+	if(move->getSource().hasLiteral(INT_ZERO.literal) && !nextMove->getSource().hasLiteral(INT_ZERO.literal))
 	{
 		logging::debug() << "Rewriting selection of either zero or " << nextMove->getSource().to_string() << " using only one input" << logging::endl;
 		it.reset((new Operation(OP_XOR, move->getOutput().value(), nextMove->getSource(), nextMove->getSource()))->copyExtrasFrom(move));

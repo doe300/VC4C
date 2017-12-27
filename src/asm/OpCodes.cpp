@@ -323,8 +323,8 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 		return NO_VALUE;
 
 	//extract the literal value behind the operands
-	Optional<Value> firstVal = firstOperand->hasType(ValueType::LITERAL) || firstOperand->hasType(ValueType::SMALL_IMMEDIATE) || firstOperand->hasType(ValueType::CONTAINER) ? firstOperand.value() : valueSupplier(firstOperand.value());
-	Optional<Value> secondVal = !secondOperand || (secondOperand->hasType(ValueType::LITERAL) || secondOperand->hasType(ValueType::SMALL_IMMEDIATE) || secondOperand->hasType(ValueType::CONTAINER)) ? secondOperand.value() : valueSupplier(secondOperand.value());
+	Optional<Value> firstVal = (firstOperand->hasType(ValueType::LITERAL) || firstOperand->hasType(ValueType::SMALL_IMMEDIATE) || firstOperand->hasType(ValueType::CONTAINER)) ? firstOperand.value() : valueSupplier(firstOperand.value());
+	Optional<Value> secondVal = !secondOperand || (secondOperand->hasType(ValueType::LITERAL) || secondOperand->hasType(ValueType::SMALL_IMMEDIATE) || secondOperand->hasType(ValueType::CONTAINER)) ? secondOperand : valueSupplier(secondOperand.value());
 
 	if(!firstVal)
 		return NO_VALUE;

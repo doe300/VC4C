@@ -329,7 +329,7 @@ static void compileSPIRVToSPIRV(std::istream& input, std::ostream& output, const
 #endif
 }
 
-Precompiler::Precompiler(std::istream& input, const SourceType inputType, const Optional<std::string> inputFile) :
+Precompiler::Precompiler(std::istream& input, const SourceType inputType, const Optional<std::string>& inputFile) :
 		input(input), inputType(inputType), inputFile(inputFile)
 {
 	if(inputType == SourceType::QPUASM_BIN || inputType == SourceType::QPUASM_HEX || inputType == SourceType::UNKNOWN)

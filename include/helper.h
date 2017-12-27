@@ -213,9 +213,9 @@ namespace vc4c
 	    	return value();
 	    }
 
-	    bool is(const T& val) const
+	    bool is(const T& value) const
 	    {
-	    	return hasValue && val == val;
+	    	return hasValue && this->val == value;
 	    }
 
 	    Optional<T> orOther(const Optional<T>& other) const
