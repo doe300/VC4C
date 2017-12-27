@@ -60,7 +60,7 @@ InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const
     {
     	appliedOffset = offset;
     	//vector is rotated by offset-constant not by rotation constant -> convert to rotation constant
-    	if(offset.immediate.getIntegerValue().hasValue)
+    	if(offset.immediate.getIntegerValue())
     	{
     		if(direction == Direction::DOWN)
 			{
@@ -312,7 +312,7 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 	for(const Value& index : indices)
 	{
 		Value subOffset(UNDEFINED_VALUE);
-		if(subContainerType.isPointerType() || subContainerType.getArrayType().hasValue)
+		if(subContainerType.isPointerType() || subContainerType.getArrayType())
 		{
 			//index is index in pointer/array
 			//-> add offset of element at given index to global offset
@@ -332,13 +332,13 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 			if(!firstIndexIsElement || &index != &indices.front())
 				subContainerType = subContainerType.getElementType().getElementType(index.hasType(ValueType::LITERAL) ? index.literal.integer : ANY_ELEMENT).toPointerType();
 		}
-		else if(subContainerType.getStructType().hasValue)
+		else if(subContainerType.getStructType())
 		{
 			//index is element in struct -> MUST be literal
 			if(!index.hasType(ValueType::LITERAL))
 				throw CompilationError(CompilationStep::LLVM_2_IR, "Can't access struct-element with non-literal index", index.to_string());
 
-			subOffset = Value(Literal(static_cast<uint64_t>(subContainerType.getStructType().get()->getStructSize(index.literal.integer))), TYPE_INT32);
+			subOffset = Value(Literal(static_cast<uint64_t>(subContainerType.getStructType().value()->getStructSize(index.literal.integer))), TYPE_INT32);
 			subContainerType = subContainerType.getElementType(index.literal.integer);
 		}
 		else

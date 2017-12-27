@@ -90,7 +90,7 @@ bool DataType::isVectorType() const
 
 bool DataType::isPointerType() const
 {
-	return getPointerType().hasValue;
+	return getPointerType().has_value();
 }
 
 Optional<PointerType*> DataType::getPointerType() const
@@ -141,11 +141,11 @@ bool DataType::isUnknown() const
 const DataType DataType::getElementType(const int index) const
 {
 	if(isPointerType())
-		return getPointerType().get()->elementType;
-	if(getArrayType().hasValue)
-		return getArrayType().get()->elementType;
-	if(getStructType().hasValue && index >= 0)
-		return getStructType().get()->elementTypes.at(static_cast<std::size_t>(index));
+		return getPointerType().value()->elementType;
+	if(getArrayType())
+		return getArrayType().value()->elementType;
+	if(getStructType() && index >= 0)
+		return getStructType().value()->elementTypes.at(static_cast<std::size_t>(index));
 	if(complexType)
 		throw CompilationError(CompilationStep::GENERAL, "Can't get element-type of heterogeneous complex type", to_string());
     if(num == 1)
@@ -204,7 +204,7 @@ unsigned char DataType::getScalarBitCount() const
 	if(isPointerType())
 		//32-bit pointer
 		return 32;
-	if(getImageType().hasValue)
+	if(getImageType())
 		//images are pointers to the image-data
 		return 32;
 	if(complexType)
@@ -233,11 +233,11 @@ unsigned int DataType::getPhysicalWidth() const
 	if(isPointerType())
 		//32-bit pointer
 		return 4;
-	if(getArrayType().hasValue)
-		return getArrayType().get()->elementType.getPhysicalWidth() * getArrayType().get()->size;
-	if(getStructType().hasValue)
-		return getStructType().get()->getStructSize();
-	if(getImageType().hasValue)
+	if(getArrayType())
+		return getArrayType().value()->elementType.getPhysicalWidth() * getArrayType().value()->size;
+	if(getStructType())
+		return getStructType().value()->getStructSize();
+	if(getImageType())
 		//images are just pointers to data
 		//32-bit pointer
 		return 4;

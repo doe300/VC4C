@@ -79,13 +79,13 @@ void TestScanner::testString()
     stream << "apple.and.an_eye \"tree with space\" !\"stump is cut off\"";
     
     TEST_ASSERT_EQUALS(TokenType::STRING, s.peek().type);
-    TEST_ASSERT(strcmp("apple.and.an_eye", s.pop().getText().get().data()) == 0);
+    TEST_ASSERT(strcmp("apple.and.an_eye", s.pop().getText()->data()) == 0);
     
     TEST_ASSERT_EQUALS(TokenType::STRING, s.peek().type);
-    TEST_ASSERT(strcmp("\"tree with space\"", s.pop().getText().get().data()) == 0);
+    TEST_ASSERT(strcmp("\"tree with space\"", s.pop().getText()->data()) == 0);
     
     TEST_ASSERT_EQUALS(TokenType::STRING, s.peek().type);
-    TEST_ASSERT(strcmp("!\"stump is cut off\"", s.pop().getText().get().data()) == 0);
+    TEST_ASSERT(strcmp("!\"stump is cut off\"", s.pop().getText()->data()) == 0);
 }
 
 void TestScanner::testBool()

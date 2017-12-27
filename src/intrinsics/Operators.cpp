@@ -22,10 +22,10 @@ using namespace vc4c::intermediate;
 
 InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(Method& method, InstructionWalker it, Operation& op)
 {
-	Value opDest = op.getOutput();
+	Value opDest = op.getOutput().value();
 
-	const Value arg0 = op.getArgument(0);
-	const Value arg1 = op.getArgument(1);
+	const Value arg0 = op.getArgument(0).value();
+	const Value arg1 = op.getArgument(1).value();
 
 	//convert operands to positive
 	Value op1Pos = method.addNewLocal(arg0.type, "%unsigned");
@@ -65,20 +65,20 @@ InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(Method& me
 InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& method, InstructionWalker it, Operation& op)
 {
     const Value& arg0 = op.getFirstArg();
-    const Value& arg1 = op.getSecondArg().orElse(UNDEFINED_VALUE);
+    const Value& arg1 = op.getSecondArg().value_or(UNDEFINED_VALUE);
     
     //mul24 can multiply 24-bits * 24-bits into 32-bits
     //default case, full multiplication
     //NOTE: the instructions are ordered in a way, that the insertion of NOPs to split read-after-write is minimal
     logging::debug() << "Intrinsifying unsigned multiplication of integers" << logging::endl;
 
-    const Value a0 = method.addNewLocal(op.getOutput().get().type, "%mul.a0");
-    const Value a1 = method.addNewLocal(op.getOutput().get().type, "%mul.a1");
-    const Value b0 = method.addNewLocal(op.getOutput().get().type, "%mul.b0");
-    const Value b1 = method.addNewLocal(op.getOutput().get().type, "%mul.b1");
-    const Value out0 = method.addNewLocal(op.getOutput().get().type, "%mul.out0");
-    const Value out1 = method.addNewLocal(op.getOutput().get().type, "%mul.out1");
-    const Value out2 = method.addNewLocal(op.getOutput().get().type, "%mul.out2");
+    const Value a0 = method.addNewLocal(op.getOutput()->type, "%mul.a0");
+    const Value a1 = method.addNewLocal(op.getOutput()->type, "%mul.a1");
+    const Value b0 = method.addNewLocal(op.getOutput()->type, "%mul.b0");
+    const Value b1 = method.addNewLocal(op.getOutput()->type, "%mul.b1");
+    const Value out0 = method.addNewLocal(op.getOutput()->type, "%mul.out0");
+    const Value out1 = method.addNewLocal(op.getOutput()->type, "%mul.out1");
+    const Value out2 = method.addNewLocal(op.getOutput()->type, "%mul.out2");
     /*
      *                             |     a[0]    .    a[1]     |
      *  *                          |     b[0]    .    b[1]     |
@@ -141,7 +141,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
     }
     if(hasA1Part && hasB0Part)
     {
-    	const Value tmp = method.addNewLocal(op.getOutput().get().type);
+    	const Value tmp = method.addNewLocal(op.getOutput()->type);
         it.emplace( new Operation(OP_MUL24, tmp, a1, b0));
         it.nextInBlock();
         it.emplace( new Operation(OP_SHL, tmp, tmp, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
@@ -156,7 +156,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
     }
     if(hasA0Part && hasB1Part)
     {
-    	const Value tmp = method.addNewLocal(op.getOutput().get().type);
+    	const Value tmp = method.addNewLocal(op.getOutput()->type);
         it.emplace( new Operation(OP_MUL24, tmp, a0, b1));
         it.nextInBlock();
         it.emplace( new Operation(OP_SHL, out2, tmp, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
@@ -183,23 +183,23 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
 
 InstructionWalker intermediate::intrinsifySignedIntegerDivision(Method& method, InstructionWalker it, Operation& op, const bool useRemainder)
 {
-	Value opDest = op.getOutput();
+	Value opDest = op.getOutput().value();
 	//check any operand is negative
 	Value op1Sign = method.addNewLocal(TYPE_BOOL, "%sign");
 	Value op2Sign = method.addNewLocal(TYPE_BOOL, "%sign");
-	it = insertIsNegative(it, op.getArgument(0), op1Sign);
-	it = insertIsNegative(it, op.getArgument(1), op2Sign);
+	it = insertIsNegative(it, op.getArgument(0).value(), op1Sign);
+	it = insertIsNegative(it, op.getArgument(1).value(), op2Sign);
 	if(op1Sign.hasType(ValueType::LITERAL) && op2Sign.hasType(ValueType::LITERAL))
 	{
 		throw CompilationError(CompilationStep::OPTIMIZER, "This case of multiplication of literal integers should have been replaced with constant", op.to_string());
 	}
 
 	//convert operands to positive
-	Value op1Pos = method.addNewLocal(op.getArgument(0).get().type, "%unsigned");
-	Value op2Pos = method.addNewLocal(op.getArgument(0).get().type, "%unsigned");
+	Value op1Pos = method.addNewLocal(op.getArgument(0)->type, "%unsigned");
+	Value op2Pos = method.addNewLocal(op.getArgument(0)->type, "%unsigned");
 
-	it = insertMakePositive(it, method, op.getArgument(0), op1Pos);
-	it = insertMakePositive(it, method, op.getArgument(1), op2Pos);
+	it = insertMakePositive(it, method, op.getArgument(0).value(), op1Pos);
+	it = insertMakePositive(it, method, op.getArgument(1).value(), op2Pos);
 
 	op.setArgument(0, op1Pos);
 	op.setArgument(1, op2Pos);
@@ -226,7 +226,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
 	//TODO for |type| < 24, use floating-point division??
 	//NOTE: the instructions are ordered in a way, that the insertion of NOPs to split read-after-write is minimal
     const Value& numerator = op.getFirstArg();
-    const Value& divisor = op.getSecondArg().orElse(UNDEFINED_VALUE);
+    const Value& divisor = op.getSecondArg().value_or(UNDEFINED_VALUE);
     
     logging::debug() << "Intrinsifying division of unsigned integers" << logging::endl;
     
@@ -234,8 +234,8 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
     
     //Q := 0                 -- initialize quotient and remainder to zero
     //R := 0      
-    Value quotient = method.addNewLocal(op.getOutput().get().type, "%udiv.quotient");
-    Value remainder = method.addNewLocal(op.getOutput().get().type, "%udiv.remainder");
+    Value quotient = method.addNewLocal(op.getOutput()->type, "%udiv.quotient");
+    Value remainder = method.addNewLocal(op.getOutput()->type, "%udiv.remainder");
     //set explicitly to zero
 	it.emplace( new MoveOperation(remainder, INT_ZERO));
 	it.nextInBlock();
@@ -246,13 +246,13 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
     for(int i = numerator.type.getScalarBitCount() - 1; i >= 0; --i)
     {
         //R := R << 1          -- left-shift R by 1 bit
-    	Value newRemainder = method.addNewLocal(op.getOutput().get().type, "%udiv.remainder");
+    	Value newRemainder = method.addNewLocal(op.getOutput()->type, "%udiv.remainder");
         it.emplace(new Operation(OP_SHL, newRemainder, remainder, INT_ONE));
         it.nextInBlock();
         remainder = newRemainder;
         //R(0) := N(i)         -- set the least-significant bit of R equal to bit i of the numerator
         //R = R | ((N >> i) & 1) <=> R = R | (N & (1 << i) == 1 ? 1 : 0) <=> R = R | 1, if N & (1 << i) != 0
-        newRemainder = method.addNewLocal(op.getOutput().get().type, "%udiv.remainder");
+        newRemainder = method.addNewLocal(op.getOutput()->type, "%udiv.remainder");
         it.emplace(new Operation(OP_AND, NOP_REGISTER, numerator, Value(Literal(static_cast<int64_t>(1) << i), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
         it.nextInBlock();
         it.emplace( new Operation(OP_OR, newRemainder, remainder, INT_ONE, COND_ZERO_CLEAR));
@@ -262,13 +262,13 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
 		it.nextInBlock();
         remainder = newRemainder;
         //if R >= D then
-        const Value tmp = method.addNewLocal(op.getOutput().get().type, "%udiv.tmp");
+        const Value tmp = method.addNewLocal(op.getOutput()->type, "%udiv.tmp");
         it.emplace(new Operation(OP_MAX, tmp, remainder, divisor));
         it.nextInBlock();
         it.emplace(new Operation(OP_XOR, NOP_REGISTER, tmp, remainder, COND_ALWAYS, SetFlag::SET_FLAGS));
         it.nextInBlock();
         //R := R - D
-        newRemainder = method.addNewLocal(op.getOutput().get().type, "%udiv.remainder");
+        newRemainder = method.addNewLocal(op.getOutput()->type, "%udiv.remainder");
         it.emplace( new Operation(OP_SUB, newRemainder, remainder, divisor, COND_ZERO_SET));
         it.nextInBlock();
         //else R(new) := R(old)
@@ -276,7 +276,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
         it.nextInBlock();
         remainder = newRemainder;
         //Q(i) := 1
-        Value newQuotient = method.addNewLocal(op.getOutput().get().type, "%udiv.quotient");
+        Value newQuotient = method.addNewLocal(op.getOutput()->type, "%udiv.quotient");
         it.emplace( new Operation(OP_OR, newQuotient, quotient, Value(Literal(static_cast<int64_t>(1) << i), TYPE_INT32), COND_ZERO_SET));
         it.nextInBlock();
         //else Q(new) := Q(old)
@@ -304,23 +304,23 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
 
 InstructionWalker intermediate::intrinsifySignedIntegerDivisionByConstant(Method& method, InstructionWalker it, Operation& op, bool useRemainder)
 {
-	Value opDest = op.getOutput();
+	Value opDest = op.getOutput().value();
 	//check any operand is negative
 	Value op1Sign = method.addNewLocal(TYPE_BOOL, "%sign");
 	Value op2Sign = method.addNewLocal(TYPE_BOOL, "%sign");
-	it = insertIsNegative(it, op.getArgument(0), op1Sign);
-	it = insertIsNegative(it, op.getArgument(1), op2Sign);
+	it = insertIsNegative(it, op.getArgument(0).value(), op1Sign);
+	it = insertIsNegative(it, op.getArgument(1).value(), op2Sign);
 	if(op1Sign.hasType(ValueType::LITERAL) && op2Sign.hasType(ValueType::LITERAL))
 	{
 		throw CompilationError(CompilationStep::OPTIMIZER, "This case of multiplication of literal integers should have been replaced with constant", op.to_string());
 	}
 
 	//convert operands to positive
-	Value op1Pos = method.addNewLocal(op.getArgument(0).get().type, "%unsigned");
-	Value op2Pos = method.addNewLocal(op.getArgument(0).get().type, "%unsigned");
+	Value op1Pos = method.addNewLocal(op.getArgument(0)->type, "%unsigned");
+	Value op2Pos = method.addNewLocal(op.getArgument(0)->type, "%unsigned");
 
-	it = insertMakePositive(it, method, op.getArgument(0), op1Pos);
-	it = insertMakePositive(it, method, op.getArgument(1), op2Pos);
+	it = insertMakePositive(it, method, op.getArgument(0).value(), op1Pos);
+	it = insertMakePositive(it, method, op.getArgument(1).value(), op2Pos);
 
 	op.setArgument(0, op1Pos);
 	op.setArgument(1, op2Pos);
@@ -366,7 +366,7 @@ static std::pair<Value, Value> calculateConstant(const Value& divisor, unsigned 
 		return std::make_pair(factors, shifts);
 	}
 
-	const Literal div = divisor.getLiteralValue().get();
+	const Literal div = divisor.getLiteralValue().value();
 	auto tmp = calculateConstant(div, accuracy);
 	return std::make_pair(Value(tmp.first, divisor.type), Value(tmp.second, divisor.type));
 }
@@ -383,7 +383,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(Meth
 
 	if(op.getFirstArg().type.getScalarBitCount() > 16)
 		throw CompilationError(CompilationStep::OPTIMIZER, "Division by constant may overflow for argument type", op.getFirstArg().type.to_string());
-	if(!op.getSecondArg().ifPresent(toFunction(&Value::isLiteralValue)) && !(op.getSecondArg().hasValue && op.getSecondArg().get().hasType(ValueType::CONTAINER)))
+	if(!op.getSecondArg().ifPresent(toFunction(&Value::isLiteralValue)) && !(op.getSecondArg() && op.getSecondArg()->hasType(ValueType::CONTAINER)))
 		throw CompilationError(CompilationStep::OPTIMIZER, "Can only optimize division by constant", op.to_string());
 
 	/*
@@ -392,8 +392,8 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(Meth
 	 * - values >= 16500 trigger overflow in multiplication with factor or shifts of >= 32 positions
 	 */
 	static const unsigned accuracy = 16100;
-	auto constants = calculateConstant(op.getSecondArg(), accuracy);
-	logging::debug() << "Intrinsifying unsigned division by " << op.getSecondArg().get().to_string(false, true) << " by multiplication with " << constants.first.to_string(false, true) << " and right-shift by " << constants.second.to_string(false, true) << logging::endl;
+	auto constants = calculateConstant(op.getSecondArg().value(), accuracy);
+	logging::debug() << "Intrinsifying unsigned division by " << op.getSecondArg()->to_string(false, true) << " by multiplication with " << constants.first.to_string(false, true) << " and right-shift by " << constants.second.to_string(false, true) << logging::endl;
 
 	const Value tmp = method.addNewLocal(op.getFirstArg().type, "%udiv");
 	it.emplace(new Operation(OP_MUL24, tmp, op.getFirstArg(), constants.first));
@@ -406,13 +406,13 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(Meth
 	//the original version has an error, which returns a too small value for exact multiples of the denominator, the next lines fix this error
 	const Value tmpFix0 = method.addNewLocal(op.getFirstArg().type, "%udiv.fix");
 	const Value tmpFix1 = method.addNewLocal(op.getFirstArg().type, "%udiv.fix");
-	it.emplace(new Operation(OP_MUL24, tmpFix0, divOut, op.getSecondArg()));
+	it.emplace(new Operation(OP_MUL24, tmpFix0, divOut, op.getSecondArg().value()));
 	it.nextInBlock();
 	it.emplace(new Operation(OP_SUB, tmpFix1, op.getFirstArg(), tmpFix0));
 	it.nextInBlock();
-	it.emplace(new Operation(OP_SUB, NOP_REGISTER, op.getSecondArg(), tmpFix1, COND_ALWAYS, SetFlag::SET_FLAGS));
+	it.emplace(new Operation(OP_SUB, NOP_REGISTER, op.getSecondArg().value(), tmpFix1, COND_ALWAYS, SetFlag::SET_FLAGS));
 	it.nextInBlock();
-	const Value finalResult = useRemainder ? method.addNewLocal(op.getFirstArg().type, "%udiv.result") : op.getOutput().get();
+	const Value finalResult = useRemainder ? method.addNewLocal(op.getFirstArg().type, "%udiv.result") : op.getOutput().value();
 	it.emplace(new MoveOperation(finalResult, divOut));
 	it->setDecorations(InstructionDecorations::UNSIGNED_RESULT);
 	it.nextInBlock();
@@ -427,7 +427,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(Meth
 	{
 		//x mod y = x - (x/y) * y;
 		const Value tmpMul = method.addNewLocal(op.getFirstArg().type, "%udiv.remainder");
-		it.emplace(new Operation(OP_MUL24, tmpMul, finalResult, op.getSecondArg()));
+		it.emplace(new Operation(OP_MUL24, tmpMul, finalResult, op.getSecondArg().value()));
 		it.nextInBlock();
 		//replace original division
 		op.setArgument(1, tmpMul);
@@ -456,7 +456,7 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
     logging::debug() << "Intrinsifying floating-point division" << logging::endl;
     
     const Value nominator = op.getFirstArg();
-    const Value divisor = op.getSecondArg();
+    const Value divisor = op.getSecondArg().value();
     
     ////
     // Newton-Raphson
@@ -469,7 +469,7 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
      * The GLSL shader uses the SFU_RECIP with a Newton-Raphson step "to improve our approximation",
      * see http://anholt.livejournal.com/49474.html
      */
-    const Value P0 = method.addNewLocal(op.getOutput().get().type, "%fdiv_recip");
+    const Value P0 = method.addNewLocal(op.getOutput()->type, "%fdiv_recip");
     periphery::insertSFUCall(REG_SFU_RECIP, it, divisor);
     it.emplace(new MoveOperation(P0, Value(REG_SFU_OUT, TYPE_FLOAT)));
     it.nextInBlock();
@@ -477,9 +477,9 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
     
     //2. iteration step: Pi+1 = Pi(2 - D * Pi)
     //run 5 iterations
-    const Value P1 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p1");
-    const Value P1_1 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p1");
-    const Value P1_2 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p1");
+    const Value P1 = method.addNewLocal(op.getOutput()->type, "%fdiv_p1");
+    const Value P1_1 = method.addNewLocal(op.getOutput()->type, "%fdiv_p1");
+    const Value P1_2 = method.addNewLocal(op.getOutput()->type, "%fdiv_p1");
     it.emplace( new Operation(OP_FMUL, P1, divisor, P0));
     it.nextInBlock();
     it.emplace( new Operation(OP_FSUB, P1_1, const2, P1));
@@ -487,9 +487,9 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
     it.emplace( new Operation(OP_FMUL, P1_2, P0, P1_1));
     it.nextInBlock();
     
-    const Value P2 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p2");
-    const Value P2_1 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p2");
-    const Value P2_2 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p2");
+    const Value P2 = method.addNewLocal(op.getOutput()->type, "%fdiv_p2");
+    const Value P2_1 = method.addNewLocal(op.getOutput()->type, "%fdiv_p2");
+    const Value P2_2 = method.addNewLocal(op.getOutput()->type, "%fdiv_p2");
     it.emplace( new Operation(OP_FMUL, P2, divisor, P1_2));
     it.nextInBlock();
     it.emplace( new Operation(OP_FSUB, P2_1, const2, P2));
@@ -497,9 +497,9 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
     it.emplace( new Operation(OP_FMUL, P2_2, P1_2, P2_1));
     it.nextInBlock();
     
-    const Value P3 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p3");
-    const Value P3_1 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p3");
-    const Value P3_2 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p3");
+    const Value P3 = method.addNewLocal(op.getOutput()->type, "%fdiv_p3");
+    const Value P3_1 = method.addNewLocal(op.getOutput()->type, "%fdiv_p3");
+    const Value P3_2 = method.addNewLocal(op.getOutput()->type, "%fdiv_p3");
     it.emplace( new Operation(OP_FMUL, P3, divisor, P2_2));
     it.nextInBlock();
     it.emplace( new Operation(OP_FSUB, P3_1, const2, P3));
@@ -507,9 +507,9 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
     it.emplace( new Operation(OP_FMUL, P3_2, P2_2, P3_1));
     it.nextInBlock();
     
-    const Value P4 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p4");
-    const Value P4_1 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p4");
-    const Value P4_2 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p4");
+    const Value P4 = method.addNewLocal(op.getOutput()->type, "%fdiv_p4");
+    const Value P4_1 = method.addNewLocal(op.getOutput()->type, "%fdiv_p4");
+    const Value P4_2 = method.addNewLocal(op.getOutput()->type, "%fdiv_p4");
     it.emplace( new Operation(OP_FMUL, P4, divisor, P3_2));
     it.nextInBlock();
     it.emplace( new Operation(OP_FSUB, P4_1, const2, P4));
@@ -517,9 +517,9 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
     it.emplace( new Operation(OP_FMUL, P4_2, P3_2, P4_1));
     it.nextInBlock();
     
-    const Value P5 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p5");
-    const Value P5_1 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p5");
-    const Value P5_2 = method.addNewLocal(op.getOutput().get().type, "%fdiv_p5");
+    const Value P5 = method.addNewLocal(op.getOutput()->type, "%fdiv_p5");
+    const Value P5_1 = method.addNewLocal(op.getOutput()->type, "%fdiv_p5");
+    const Value P5_2 = method.addNewLocal(op.getOutput()->type, "%fdiv_p5");
 	it.emplace( new Operation(OP_FMUL, P5, divisor, P4_2));
 	it.nextInBlock();
 	it.emplace( new Operation(OP_FSUB, P5_1, const2, P5));

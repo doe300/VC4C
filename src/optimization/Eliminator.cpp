@@ -36,7 +36,7 @@ void optimizations::eliminateDeadStore(const Module& module, Method& method, con
             //only check for ALU-operations and loads, if no flags are set and no special signals are sent
             if((move != nullptr || op != nullptr || load != nullptr) && !instr->hasSideEffects())
             {
-                const Local* dest = instr->getOutput().get().local;
+                const Local* dest = instr->getOutput()->local;
                 //check whether local is 
                 //a) no parameter ??
                 if(!dest->is<Parameter>())
@@ -56,14 +56,14 @@ void optimizations::eliminateDeadStore(const Module& module, Method& method, con
             }
 			if(move != nullptr)
 			{
-				if(move->getSource().hasType(ValueType::LOCAL) && move->getOutput().get().hasType(ValueType::LOCAL) && !move->hasConditionalExecution() && !move->hasPackMode() && !move->hasSideEffects() && dynamic_cast<intermediate::VectorRotation*>(move) == nullptr)
+				if(move->getSource().hasType(ValueType::LOCAL) && move->getOutput()->hasType(ValueType::LOCAL) && !move->hasConditionalExecution() && !move->hasPackMode() && !move->hasSideEffects() && dynamic_cast<intermediate::VectorRotation*>(move) == nullptr)
 				{
 					//if for a move, neither the input-local nor the output-local are written to afterwards,
 					//XXX or the input -local is only written after the last use of the output-local
 					//both locals can be the same and the move can be removed
 
 					const Local* inLoc = move->getSource().local;
-					const Local* outLoc = move->getOutput().get().local;
+					const Local* outLoc = move->getOutput()->local;
 					//for instruction added by phi-elimination, the result could have been written to (with a different source) previously, so check
 					bool isWrittenTo = !outLoc->getUsers(LocalUser::Type::WRITER).empty();
 					if(!isWrittenTo && inLoc->type == outLoc->type)
@@ -76,7 +76,7 @@ void optimizations::eliminateDeadStore(const Module& module, Method& method, con
 							bool outLocFound = false;
 							for(std::size_t i = 0; i< dynamic_cast<const intermediate::IntermediateInstruction*>(instr)->getArguments().size(); ++i)
 							{
-								Value tmp = dynamic_cast<const intermediate::IntermediateInstruction*>(instr)->getArgument(i);
+								Value tmp = dynamic_cast<const intermediate::IntermediateInstruction*>(instr)->getArgument(i).value();
 								if(tmp.hasLocal(outLoc))
 								{
 									tmp = Value(inLoc, tmp.type);
@@ -111,11 +111,11 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 		if(!op->hasSideEffects() && !op->hasPackMode() && !op->hasUnpackMode())
 		{
 			//writes into the input -> can be removed, if it doesn't do anything
-			if(op->getOutput() && op->getOutput().get() == op->getFirstArg())
+			if(op->getOutput() && op->getOutput().value() == op->getFirstArg())
 			{
 				Optional<Value> opIdentity = OpCode::getRightIdentity(op->op);
 				//check whether second-arg exists and does nothing
-				if(opIdentity && op->getSecondArg() && op->getSecondArg().get().hasLiteral(opIdentity.get().literal))
+				if(opIdentity && op->getSecondArg() && op->getSecondArg()->hasLiteral(opIdentity->literal))
 				{
 					logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
 					it.erase();
@@ -124,11 +124,11 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 				}
 			}
 			//writes into the input -> can be removed, if it doesn't do anything
-			else if(op->getOutput() && op->getSecondArg() && op->getOutput().get() == op->getSecondArg())
+			else if(op->getOutput() && op->getSecondArg() && op->getOutput().value() == op->getSecondArg().value())
 			{
 				Optional<Value> opIdentity = OpCode::getLeftIdentity(op->op);
 				//check whether first-arg does nothing
-				if(opIdentity && op->getFirstArg().hasLiteral(opIdentity.get().literal))
+				if(opIdentity && op->getFirstArg().hasLiteral(opIdentity->literal))
 				{
 					logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
 					it.erase();
@@ -141,16 +141,16 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 				Optional<Value> rightIdentity = OpCode::getRightIdentity(op->op);
 				Optional<Value> leftIdentity = OpCode::getLeftIdentity(op->op);
 				//check whether second argument exists and does nothing
-				if(rightIdentity && op->getSecondArg() && op->getSecondArg().get().hasLiteral(rightIdentity.get().literal))
+				if(rightIdentity && op->getSecondArg() && op->getSecondArg()->hasLiteral(rightIdentity->literal))
 				{
 					logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
-					it.reset(new intermediate::MoveOperation(op->getOutput().get(), op->getFirstArg(), op->conditional, op->setFlags));
+					it.reset(new intermediate::MoveOperation(op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags));
 				}
 				//check whether first argument does nothing
-				else if(leftIdentity && op->getSecondArg() && op->getFirstArg().hasLiteral(leftIdentity.get().literal))
+				else if(leftIdentity && op->getSecondArg() && op->getFirstArg().hasLiteral(leftIdentity->literal))
 				{
 					logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
-					it.reset(new intermediate::MoveOperation(op->getOutput().get(), op->getSecondArg(), op->conditional, op->setFlags));
+					it.reset(new intermediate::MoveOperation(op->getOutput().value(), op->getSecondArg().value(), op->conditional, op->setFlags));
 				}
 			}
 		}
@@ -158,7 +158,7 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 	}
 	else if(move != nullptr)
 	{
-		if(move->getSource() == move->getOutput().get() && !move->hasSideEffects() && !move->hasPackMode() && !move->hasUnpackMode() && !it.has<intermediate::VectorRotation>())
+		if(move->getSource() == move->getOutput().value() && !move->hasSideEffects() && !move->hasPackMode() && !move->hasUnpackMode() && !it.has<intermediate::VectorRotation>())
 		{
 			//skip copying to same, if no flags/signals/pack and unpack-modes are set
 			logging::debug() << "Removing obsolete " << move->to_string() << logging::endl;
@@ -215,7 +215,7 @@ InstructionWalker optimizations::calculateConstantInstruction(const Module& modu
 	if(op != nullptr && !op->hasUnpackMode())
 	{
 		//calculations with literals can be pre-calculated
-		if(op->getFirstArg().hasType(ValueType::LITERAL) && (!op->getSecondArg() || op->getSecondArg().get().hasType(ValueType::LITERAL)))
+		if(op->getFirstArg().hasType(ValueType::LITERAL) && (!op->getSecondArg() || op->getSecondArg()->hasType(ValueType::LITERAL)))
 		{
 			if(op->conditional != COND_ALWAYS && op->opCode == "xor" && op->getSecondArg().is(op->getFirstArg()))
 			{
@@ -227,7 +227,7 @@ InstructionWalker optimizations::calculateConstantInstruction(const Module& modu
 			if(value)
 			{
 				logging::debug() << "Replacing '" << op->to_string() << "' with constant value: " << value.to_string() << logging::endl;
-				it.reset((new intermediate::MoveOperation(op->getOutput(), value))->copyExtrasFrom(op));
+				it.reset((new intermediate::MoveOperation(op->getOutput().value(), value.value()))->copyExtrasFrom(op));
 			}
 		}
 	}
@@ -273,7 +273,7 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
 			it.emplace(new intermediate::MoveOperation(NOP_REGISTER, condition, COND_ALWAYS, SetFlag::SET_FLAGS));
 			it.nextInBlock();
 		}
-		it.emplace((new intermediate::MoveOperation(node.getOutput(), pair.second, jumpCondition))->copyExtrasFrom(&node)->setDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
+		it.emplace((new intermediate::MoveOperation(node.getOutput().value(), pair.second, jumpCondition))->copyExtrasFrom(&node)->setDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
 	}
 }
 

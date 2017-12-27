@@ -86,7 +86,7 @@ void SPIRVInstruction::mapInstruction(std::map<uint32_t, DataType>& types, std::
     else    //binary
     {
         logging::debug() << "Generating intermediate binary operation '" << opcode << "' with " << arg0.to_string(false) << " and " << arg1.to_string() << " into " << dest.to_string(true) << logging::endl;
-        method.method->appendToEnd((new intermediate::Operation(opCode, dest, arg0, arg1))->setDecorations(decorations));
+        method.method->appendToEnd((new intermediate::Operation(opCode, dest, arg0, arg1.value()))->setDecorations(decorations));
     }
 }
 
@@ -213,9 +213,9 @@ SPIRVCallSite::SPIRVCallSite(const uint32_t id, SPIRVMethod& method, const std::
 void SPIRVCallSite::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
 {
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
-    std::string calledFunction = methodName.orElse("");
+    std::string calledFunction = methodName.value_or("");
     if(methodID)
-        calledFunction = methods.at(methodID).method->name;
+        calledFunction = methods.at(methodID.value()).method->name;
     std::vector<Value> args;
     for(const uint32_t op : arguments)
     {
@@ -244,7 +244,7 @@ void SPIRVReturn::mapInstruction(std::map<uint32_t, DataType>& types, std::map<u
 {
     if(returnValue)
     {
-        const Value value = getValue(returnValue, *method.method, types, constants, memoryAllocated, localTypes);
+        const Value value = getValue(returnValue.value(), *method.method, types, constants, memoryAllocated, localTypes);
         logging::debug() << "Generating intermediate return of value: " << value.to_string(false) << logging::endl;
         method.method->appendToEnd(new intermediate::Return(value));
     }
@@ -257,8 +257,8 @@ void SPIRVReturn::mapInstruction(std::map<uint32_t, DataType>& types, std::map<u
 
 Optional<Value> SPIRVReturn::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
-	if(returnValue && constants.find(returnValue) != constants.end())
-		return constants.at(returnValue);
+	if(returnValue && constants.find(returnValue.value()) != constants.end())
+		return constants.at(returnValue.value());
 	return NO_VALUE;
 }
 
@@ -277,10 +277,10 @@ void SPIRVBranch::mapInstruction(std::map<uint32_t, DataType>& types, std::map<u
 {
     if(conditionID)
     {
-        logging::debug() << "Generating intermediate conditional branch on %" << conditionID.get() << " to either %" << defaultLabelID << " or %" << falseLabelID.get() << logging::endl;
-        const Value cond = getValue(conditionID, *method.method, types, constants, memoryAllocated, localTypes);
+        logging::debug() << "Generating intermediate conditional branch on %" << conditionID.value() << " to either %" << defaultLabelID << " or %" << falseLabelID.value() << logging::endl;
+        const Value cond = getValue(conditionID.value(), *method.method, types, constants, memoryAllocated, localTypes);
         const Local* trueLabel = method.method->findOrCreateLocal(TYPE_LABEL, std::string("%") + std::to_string(defaultLabelID));
-        const Local*  falseLabel = method.method->findOrCreateLocal(TYPE_LABEL, std::string("%") + std::to_string(falseLabelID.get()));
+        const Local*  falseLabel = method.method->findOrCreateLocal(TYPE_LABEL, std::string("%") + std::to_string(falseLabelID.value()));
         method.method->appendToEnd(new intermediate::Branch(trueLabel, COND_ZERO_CLEAR, cond));
         method.method->appendToEnd(new intermediate::Branch(falseLabel, COND_ZERO_SET, cond));
     }
@@ -418,7 +418,7 @@ void SPIRVCopy::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uin
     {
     	//globals may have other names than their ID, so check them first
     	if(memoryAllocated.find(id) != memoryAllocated.end())
-    		dest = memoryAllocated.at(id)->createReference(destIndices.hasValue && !destIndices.get().empty() ? destIndices.get().at(0) : ANY_ELEMENT);
+    		dest = memoryAllocated.at(id)->createReference(destIndices && !destIndices->empty() ? destIndices->at(0) : ANY_ELEMENT);
     	else
     		dest = method.method->findOrCreateLocal(source.type, std::string("%") + std::to_string(id))->createReference();
     }
@@ -440,7 +440,7 @@ void SPIRVCopy::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uin
         }
         else if(memoryAccess == MemoryAccess::READ_WRITE)
         {
-        	if(sizeID == UNDEFINED_ID)
+        	if(sizeID.value() == UNDEFINED_ID)
         	{
         		//copy single object
 				logging::debug() << "Generating copying of " << source.to_string() << " into " << dest.to_string() << logging::endl;
@@ -452,7 +452,7 @@ void SPIRVCopy::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uin
         	else
         	{
         		//copy area of memory
-        		const Value size = getValue(sizeID, *method.method, types, constants, memoryAllocated, localTypes);
+        		const Value size = getValue(sizeID.value(), *method.method, types, constants, memoryAllocated, localTypes);
         		logging::debug() << "Generating copying of " << size.to_string() << " bytes from " << source.to_string() << " into " << dest.to_string() << logging::endl;
         		if(size.hasType(ValueType::LITERAL))
         		{
@@ -472,20 +472,20 @@ void SPIRVCopy::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uin
     }
     else if(sourceIndices && dest.type.isScalarType())
     {
-    	if(sourceIndices.get().size() > 1)
+    	if(sourceIndices->size() > 1)
     		throw CompilationError(CompilationStep::LLVM_2_IR, "Multi level indices are not implemented yet");
         //index is literal
-        logging::debug() << "Generating intermediate extraction of index " << sourceIndices.get().at(0) << " from " << source.to_string() << " into " << dest.to_string(true) << logging::endl;
-        intermediate::insertVectorExtraction(method.method->appendToEnd(), *method.method, source, Value(Literal(static_cast<int64_t>(sourceIndices.get().at(0))), TYPE_INT8), dest);
+        logging::debug() << "Generating intermediate extraction of index " << sourceIndices->at(0) << " from " << source.to_string() << " into " << dest.to_string(true) << logging::endl;
+        intermediate::insertVectorExtraction(method.method->appendToEnd(), *method.method, source, Value(Literal(static_cast<int64_t>(sourceIndices->at(0))), TYPE_INT8), dest);
     }
-    else if((!sourceIndices || (sourceIndices.get().at(0) == 0)) && destIndices)
+    else if((!sourceIndices || (sourceIndices->at(0) == 0)) && destIndices)
     {
-    	if(destIndices.get().size() > 1)
+    	if(destIndices->size() > 1)
 			throw CompilationError(CompilationStep::LLVM_2_IR, "Multi level indices are not implemented yet");
         //add element to vector to element
         //index is literal
-        logging::debug() << "Generating intermediate insertion of " << source.to_string() << " into element " << destIndices.get().at(0) << " of " << dest.to_string(true) << logging::endl;
-        intermediate::insertVectorInsertion(method.method->appendToEnd(), *method.method, dest, Value(Literal(static_cast<int64_t>(destIndices.get().at(0))), TYPE_INT8), source);
+        logging::debug() << "Generating intermediate insertion of " << source.to_string() << " into element " << destIndices->at(0) << " of " << dest.to_string(true) << logging::endl;
+        intermediate::insertVectorInsertion(method.method->appendToEnd(), *method.method, dest, Value(Literal(static_cast<int64_t>(destIndices->at(0))), TYPE_INT8), source);
     }
     else
     {
@@ -614,7 +614,7 @@ Optional<Value> SPIRVIndexOf::precalculate(const std::map<uint32_t, DataType>& t
 	for(const Value& index : indexValues)
 	{
 		Value subOffset(UNDEFINED_VALUE);
-		if(subContainerType.isPointerType() || subContainerType.getArrayType().hasValue)
+		if(subContainerType.isPointerType() || subContainerType.getArrayType())
 		{
 			//index is index in pointer/array
 			//-> add offset of element at given index to global offset
@@ -629,13 +629,13 @@ Optional<Value> SPIRVIndexOf::precalculate(const std::map<uint32_t, DataType>& t
 
 			subContainerType = subContainerType.getElementType();
 		}
-		else if(subContainerType.getStructType().hasValue)
+		else if(subContainerType.getStructType())
 		{
 			//index is element in struct -> MUST be literal
 			if(!index.hasType(ValueType::LITERAL))
 				throw CompilationError(CompilationStep::LLVM_2_IR, "Can't access struct-element with non-literal index", index.to_string());
 
-			subOffset = Value(Literal(static_cast<uint64_t>(container.type.getStructType().get()->getStructSize(index.literal.integer))), TYPE_INT32);
+			subOffset = Value(Literal(static_cast<uint64_t>(container.type.getStructType().value()->getStructSize(index.literal.integer))), TYPE_INT32);
 			subContainerType = subContainerType.getElementType(index.literal.integer);
 		}
 		else

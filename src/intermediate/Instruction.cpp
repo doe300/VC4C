@@ -55,8 +55,8 @@ std::string intermediate::toString(const InstructionDecorations decoration)
 IntermediateInstruction::IntermediateInstruction(Optional<Value> output, ConditionCode cond, SetFlag setFlags, Pack packMode) :
 signal(SIGNAL_NONE), unpackMode(UNPACK_NOP),  packMode(packMode), conditional(cond), setFlags(setFlags), decoration(InstructionDecorations::NONE), canBeCombined(true), output(output), arguments()
 {
-	if(output.hasValue)
-		addAsUserToValue(output, LocalUser::Type::WRITER);
+	if(output)
+		addAsUserToValue(output.value(), LocalUser::Type::WRITER);
 }
 
 IntermediateInstruction::~IntermediateInstruction()
@@ -79,7 +79,7 @@ const Optional<Value>& IntermediateInstruction::getOutput() const
 
 bool IntermediateInstruction::hasValueType(const ValueType type) const
 {
-    return output && output.get().hasType(type);
+    return output && output->hasType(type);
 }
 
 const Optional<Value> IntermediateInstruction::getArgument(const std::size_t index) const
@@ -111,11 +111,11 @@ void IntermediateInstruction::setArgument(const std::size_t index, const Value& 
 
 IntermediateInstruction* IntermediateInstruction::setOutput(const Optional<Value>& output)
 {
-	if(this->output.hasValue)
-		removeAsUserFromValue(this->output, LocalUser::Type::WRITER);
+	if(this->output)
+		removeAsUserFromValue(this->output.value(), LocalUser::Type::WRITER);
 	this->output = output;
-	if(output.hasValue)
-		addAsUserToValue(output, LocalUser::Type::WRITER);
+	if(output)
+		addAsUserToValue(output.value(), LocalUser::Type::WRITER);
 	return this;
 }
 
@@ -161,7 +161,7 @@ bool IntermediateInstruction::hasSideEffects() const
 		return true;
 	if(dynamic_cast<const SemaphoreAdjustment*>(this) != nullptr)
 		return true;
-	if(hasValueType(ValueType::REGISTER) && output.get().reg.hasSideEffectsOnWrite())
+	if(hasValueType(ValueType::REGISTER) && output->reg.hasSideEffectsOnWrite())
 		return true;
 	for(const Value& arg : arguments)
 	{
@@ -263,8 +263,8 @@ Optional<Value> IntermediateInstruction::getPrecalculatedValueForArg(const std::
 	switch(arg.valueType)
 	{
 		case ValueType::SMALL_IMMEDIATE:
-			if(arg.immediate.toLiteral().hasValue)
-				return Value(arg.immediate.toLiteral(), arg.type);
+			if(arg.immediate.toLiteral())
+				return Value(arg.immediate.toLiteral().value(), arg.type);
 			break;
 		case ValueType::LITERAL:
 			return arg;
@@ -284,8 +284,8 @@ Optional<Value> IntermediateInstruction::getPrecalculatedValueForArg(const std::
 FastMap<const Local*, LocalUser::Type> IntermediateInstruction::getUsedLocals() const
 {
 	FastMap<const Local*, LocalUser::Type> locals;
-	if(output.hasValue && output.get().hasType(ValueType::LOCAL))
-		locals.emplace(output.get().local, LocalUser::Type::WRITER);
+	if(output && output->hasType(ValueType::LOCAL))
+		locals.emplace(output->local, LocalUser::Type::WRITER);
 	for(const Value& arg : arguments)
 	{
 		if(arg.hasType(ValueType::LOCAL))
@@ -296,8 +296,8 @@ FastMap<const Local*, LocalUser::Type> IntermediateInstruction::getUsedLocals() 
 
 void IntermediateInstruction::forUsedLocals(const std::function<void(const Local*, LocalUser::Type)>& consumer) const
 {
-	if(output.hasValue && output.get().hasType(ValueType::LOCAL))
-		consumer(output.get().local, LocalUser::Type::WRITER);
+	if(output && output->hasType(ValueType::LOCAL))
+		consumer(output->local, LocalUser::Type::WRITER);
 	for(const Value& arg : arguments)
 	{
 		if(arg.hasType(ValueType::LOCAL))
@@ -317,18 +317,18 @@ bool IntermediateInstruction::readsLocal(const Local* local) const
 
 bool IntermediateInstruction::writesLocal(const Local* local) const
 {
-	return hasValueType(ValueType::LOCAL) && output.get().hasLocal(local);
+	return hasValueType(ValueType::LOCAL) && output->hasLocal(local);
 }
 
 void IntermediateInstruction::replaceLocal(const Local* oldLocal, const Local* newLocal, const Type type)
 {
 	if(oldLocal == newLocal)
 		return;
-	if(has_flag(type, LocalUser::Type::WRITER) && output.hasValue && output.get().hasLocal(oldLocal))
+	if(has_flag(type, LocalUser::Type::WRITER) && output && output->hasLocal(oldLocal))
 	{
-		removeAsUserFromValue(output, LocalUser::Type::WRITER);
-		output.get().local = const_cast<Local*>(newLocal);
-		addAsUserToValue(output, LocalUser::Type::WRITER);
+		removeAsUserFromValue(output.value(), LocalUser::Type::WRITER);
+		output->local = const_cast<Local*>(newLocal);
+		addAsUserToValue(output.value(), LocalUser::Type::WRITER);
 	}
 	if(has_flag(type, LocalUser::Type::READER))
 	{

@@ -645,11 +645,11 @@ static ParameterDecorations toDecoration(SpvFunctionParameterAttribute attribute
 void spirv2qasm::setParameterDecorations(Parameter& param, const std::vector<std::pair<SpvDecoration, uint32_t>>& decorations)
 {
 	auto decoration = getDecoration(decorations, SpvDecorationFuncParamAttr);
-	if(decoration.hasValue)
-		param.decorations = add_flag(param.decorations, toDecoration(static_cast<SpvFunctionParameterAttribute>(decoration.get())));
+	if(decoration)
+		param.decorations = add_flag(param.decorations, toDecoration(static_cast<SpvFunctionParameterAttribute>(decoration.value())));
 	decoration = getDecoration(decorations, SpvDecorationMaxByteOffset);
-	if(decoration.hasValue)
-		param.maxByteOffset = decoration.get();
+	if(decoration)
+		param.maxByteOffset = decoration.value();
 
 	for(const auto& pair : decorations)
 	{

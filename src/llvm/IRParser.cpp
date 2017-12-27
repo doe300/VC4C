@@ -99,10 +99,10 @@ Value IRParser::toValue(const Token& token, const DataType& type)
     		return Value::createZeroInitializer(type);
     	else if(currentMethod != nullptr)
     		//FIXME somehow, parameters are not found, but they are there (at least at a later point!)
-    		val.local = const_cast<Local*>(currentMethod->findOrCreateLocal(type, token.getText()));
+    		val.local = const_cast<Local*>(currentMethod->findOrCreateLocal(type, token.getText().value()));
     	else
     	{
-    		module->globalData.emplace_back(Global(token.getText(), type.toPointerType(), type));
+    		module->globalData.emplace_back(Global(token.getText().value(), type.toPointerType(), type));
     		val.local = &module->globalData.back();
     	}
     }
@@ -131,7 +131,7 @@ void IRParser::parse(Module& module)
         do {
             nextToken = scanner.peek();
             if (nextToken.hasValue('%')) {
-                complexTypes.emplace(nextToken.getText(), parseStructDefinition());
+                complexTypes.emplace(nextToken.getText().value(), parseStructDefinition());
             }
             if (nextToken.hasValue('@')) {
                 //read global
@@ -150,9 +150,9 @@ void IRParser::parse(Module& module)
         //struct definitions allow forward references, so we need to re-resolve them here
         for(auto& pair : complexTypes)
         {
-        	if(pair.second.getStructType().hasValue)
+        	if(pair.second.getStructType())
         	{
-        		for(DataType& childType : pair.second.getStructType().get()->elementTypes)
+        		for(DataType& childType : pair.second.getStructType().value()->elementTypes)
         		{
         			if(childType.complexType == nullptr && complexTypes.find(childType.typeName) != complexTypes.end())
         			{
@@ -259,7 +259,7 @@ DataType IRParser::parseType()
 			//for method return types, this comes before the type
 			//XXX could be used as flag ??
 		}
-		typeName = scanner.pop().getText();
+		typeName = scanner.pop().getText().value();
 		//for any other type (parameter), "zeroext" comes afterwards, but is handled outside of this function
     }
 
@@ -276,7 +276,7 @@ DataType IRParser::parseType()
 		}
 		if (scanner.peek().hasValue('*')) {
 			//pop '*'s, there can be several '*'s, so we need to count them
-			const std::string ptrs = scanner.pop().getText();
+			const std::string ptrs = scanner.pop().getText().value();
 			numPointerTypes += std::count(ptrs.begin(), ptrs.end(), '*');
 		}
 		else
@@ -309,7 +309,7 @@ DataType IRParser::parseType()
     for(unsigned i = 0; i < numPointerTypes; ++i)
     {
     	//wrap in pointer type
-    	std::shared_ptr<ComplexType> elementType(new PointerType(type, addressSpace.orElse(AddressSpace::PRIVATE)));
+    	std::shared_ptr<ComplexType> elementType(new PointerType(type, addressSpace.value_or(AddressSpace::PRIVATE)));
     	type = DataType(type.to_string() + "*", 1, elementType);
     }
     return type;
@@ -423,11 +423,11 @@ Value IRParser::parseValue(bool withType, const DataType& typeArg)
         scanner.pop();
         return val;
     }
-    else if(nextToken.hasValue('c') && nextToken.getText().get().find("c\"") == 0)
+    else if(nextToken.hasValue('c') && nextToken.getText()->find("c\"") == 0)
     {
     	//special case: string-constant (of type char[]), see https://llvm.org/docs/LangRef.html#complex-constants
-    	const std::string stringConstant = nextToken.getText();
-    	return Value(ContainerValue{parseStringConstant(stringConstant, type.getArrayType().get()->size)}, type);
+    	const std::string stringConstant = nextToken.getText().value();
+    	return Value(ContainerValue{parseStringConstant(stringConstant, type.getArrayType().value()->size)}, type);
     }
     else
         return toValue(nextToken, type);
@@ -437,14 +437,14 @@ DataType IRParser::parseStructDefinition()
 {
     //<name> = type { <type0>, <type1>, ... }
     //<name> = type <{ <type0>, <type1>, ... }> is a "packed" struct
-    std::string name(scanner.pop().getText());
+    std::string name(scanner.pop().getText().value());
     expectSkipToken(scanner, '=');
     expectSkipToken(scanner, "type");
     DataType type;
     type.typeName = name;
     type.complexType.reset(new StructType({}));
     if (skipToken(scanner, '<')) {
-        type.getStructType().get()->isPacked = true;
+        type.getStructType().value()->isPacked = true;
     }
     if(skipToken(scanner, "opaque"))
     {
@@ -456,17 +456,17 @@ DataType IRParser::parseStructDefinition()
 		{
 			//pops initial '{' and following ','s
 			scanner.pop();
-			type.getStructType().get()->elementTypes.push_back(parseType());
+			type.getStructType().value()->elementTypes.push_back(parseType());
 		}
 		while (scanner.peek().hasValue(','));
 		expectSkipToken(scanner, '}');
     }
-    if (type.getStructType().get()->isPacked) {
+    if (type.getStructType().value()->isPacked) {
     	expectSkipToken(scanner, '>');
     }
-    logging::debug() << "Struct type: " << type.to_string() << (type.getStructType().get()->isPacked ? " (packed)" : "") << logging::endl;
-    if(!type.getStructType().get()->elementTypes.empty())
-    	logging::debug() << "with elements: " << to_string<DataType>(type.getStructType().get()->elementTypes) << logging::endl;
+    logging::debug() << "Struct type: " << type.to_string() << (type.getStructType().value()->isPacked ? " (packed)" : "") << logging::endl;
+    if(!type.getStructType().value()->elementTypes.empty())
+    	logging::debug() << "with elements: " << to_string<DataType>(type.getStructType().value()->elementTypes) << logging::endl;
     return type;
 }
 
@@ -499,7 +499,7 @@ bool IRParser::parseGlobalData()
 	 * 			[, section "name"] [, comdat [($name)]]
 	 * 			[, align <Alignment>] (, !name !N)*
 	 */
-	const std::string name(scanner.pop().getText());
+	const std::string name(scanner.pop().getText().value());
 	expectSkipToken(scanner, '=');
     bool isExternal = scanner.peek().hasValue("external") || scanner.peek().hasValue("extern_weak");
     skipLinkage(scanner);
@@ -546,7 +546,7 @@ bool IRParser::parseMethod()
             isKernelSet = true;
     }
     const DataType returnType(parseType());
-    const std::string methodName(cleanMethodName(scanner.pop().getText()));
+    const std::string methodName(cleanMethodName(scanner.pop().getText().value()));
     logging::debug() << "Reading method '" << methodName << "' -> " << returnType.to_string() << ':' << logging::endl;
     methods.emplace_back(LLVMMethod(*module));
     auto& method = methods.back();
@@ -571,41 +571,41 @@ bool IRParser::parseMethod()
         if (nextToken.hasValue("!kernel_arg_addr_space")) {
             //set as kernel
             isKernelSet = true;
-            method.metaDataMapping[MetaDataType::ARG_ADDR_SPACES] = scanner.pop().getText();
+            method.metaDataMapping[MetaDataType::ARG_ADDR_SPACES] = scanner.pop().getText().value();
         }
         else if (nextToken.hasValue("!kernel_arg_access_qual")) {
             //set as kernel
             isKernelSet = true;
-            method.metaDataMapping[MetaDataType::ARG_ACCESS_QUALIFIERS] = scanner.pop().getText();
+            method.metaDataMapping[MetaDataType::ARG_ACCESS_QUALIFIERS] = scanner.pop().getText().value();
         }
         else if (nextToken.hasValue("!kernel_arg_type")) {
             //set as kernel
             isKernelSet = true;
-            method.metaDataMapping[MetaDataType::ARG_TYPE_NAMES] = scanner.pop().getText();
+            method.metaDataMapping[MetaDataType::ARG_TYPE_NAMES] = scanner.pop().getText().value();
         }
         else if (nextToken.hasValue("!kernel_arg_type_qual")) {
             //set as kernel
             isKernelSet = true;
-            method.metaDataMapping[MetaDataType::ARG_TYPE_QUALIFIERS] = scanner.pop().getText();
+            method.metaDataMapping[MetaDataType::ARG_TYPE_QUALIFIERS] = scanner.pop().getText().value();
         }
         else if (nextToken.hasValue("!reqd_work_group_size")) {
             //set as kernel
             isKernelSet = true;
-            method.metaDataMapping[MetaDataType::WORK_GROUP_SIZES] = scanner.pop().getText();
+            method.metaDataMapping[MetaDataType::WORK_GROUP_SIZES] = scanner.pop().getText().value();
         }
         else if (nextToken.hasValue("!work_group_size_hint")) {
             //set as kernel
             isKernelSet = true;
-            method.metaDataMapping[MetaDataType::WORK_GROUP_SIZES_HINT] = scanner.pop().getText();
+            method.metaDataMapping[MetaDataType::WORK_GROUP_SIZES_HINT] = scanner.pop().getText().value();
         }
         else if (nextToken.hasValue("!kernel_arg_name")) {
         	//set as kernel
 			isKernelSet = true;
-			method.metaDataMapping[MetaDataType::ARG_NAMES] = scanner.pop().getText();
+			method.metaDataMapping[MetaDataType::ARG_NAMES] = scanner.pop().getText().value();
         }
         else if (nextToken.hasValue("!vec_type_hint")) {
         	//vector-type hint, currently unsupported
-        	logging::info() << "Vector type hint is currently not supported: " << scanner.pop().getText() << logging::endl;
+        	logging::info() << "Vector type hint is currently not supported: " << scanner.pop().getText().value() << logging::endl;
         }
     }
     while (!nextToken.hasValue('{'));
@@ -756,19 +756,19 @@ static std::vector<DataType> getElementTypes(const std::vector<Value>& indices, 
 	{
 		if(subContainerType.isPointerType())
 		{
-			elementTypes.push_back(subContainerType.getPointerType().get()->elementType);
+			elementTypes.push_back(subContainerType.getPointerType().value()->elementType);
 		}
-		else if(subContainerType.getArrayType().hasValue)
+		else if(subContainerType.getArrayType())
 		{
-			elementTypes.push_back(subContainerType.getArrayType().get()->elementType);
+			elementTypes.push_back(subContainerType.getArrayType().value()->elementType);
 		}
-		else if(subContainerType.getStructType().hasValue)
+		else if(subContainerType.getStructType())
 		{
 			//for structs, the index MUST be scalar
 			const Value idxVal = indices.at(curIndex);
 			if(!idxVal.hasType(ValueType::LITERAL))
 				throw CompilationError(CompilationStep::LLVM_2_IR, "Cannot access struct-element with non-scalar index", idxVal.to_string());
-			elementTypes.push_back(subContainerType.getStructType().get()->elementTypes.at(idxVal.literal.integer));
+			elementTypes.push_back(subContainerType.getStructType().value()->elementTypes.at(idxVal.literal.integer));
 		}
 		else if(subContainerType.isVectorType())
 		{
@@ -854,7 +854,7 @@ IndexOf* IRParser::parseGetElementPtr(LLVMMethod& method, const std::string& des
 
 void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions, const Token& dest)
 {
-    const std::string destination(dest.getText());
+    const std::string destination(dest.getText().value());
     intermediate::InstructionDecorations decorations = intermediate::InstructionDecorations::NONE;
 
     expectSkipToken(scanner, '=');
@@ -893,7 +893,7 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
         //<result> = bitcast <ty> <value> to <ty2> 
         //convert bits -> determine source address
         const DataType type(parseType());
-        const std::string source(scanner.pop().getText());
+        const std::string source(scanner.pop().getText().value());
 
         //pop 'to'
         expectSkipToken(scanner, "to");
@@ -944,7 +944,7 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
         //Khronos CLang does not list pointer- and value-type separately
         if (type.isPointerType()) {
             sourceType = type;
-            type = type.getPointerType().get()->elementType;
+            type = type.getPointerType().value()->elementType;
         }
         else {
             //pop ','
@@ -971,7 +971,7 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
         }
         else
         {
-        	const std::string sourceName(scanner.pop().getText());
+        	const std::string sourceName(scanner.pop().getText().value());
         	src = method.method->findOrCreateLocal(sourceType, sourceName)->createReference();
         }
         logging::debug() << "Copying by loading of " << type.to_string() << " from " << src.to_string() << " into " << destination << logging::endl;
@@ -1058,7 +1058,7 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
             //pop ')'
             expectSkipToken(scanner, ')');
             skipToken(scanner, '*');
-            name = scanner.pop().getText();
+            name = scanner.pop().getText().value();
             std::size_t bracket_level = 1;
             while (bracket_level > 0) {
                 if (scanner.peek().hasValue('('))
@@ -1069,7 +1069,7 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
             }
         }
         else
-            name = scanner.pop().getText();
+            name = scanner.pop().getText().value();
         name = cleanMethodName(name);
         std::vector<Value> args;
         const auto params = parseParameters();
@@ -1096,7 +1096,7 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
         while (skipToken(scanner, "fast-math")) {
             decorations = add_flag(decorations, parseFastMathFlags(scanner));
         }
-        const std::string flag(scanner.pop().getText());
+        const std::string flag(scanner.pop().getText().value());
         const Value op1(parseValue());
         //pop ','
         expectSkipToken(scanner, ',');
@@ -1184,7 +1184,7 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
             const Value val(parseValue(false, type));
             //pop ','
             expectSkipToken(scanner, ',');
-            const std::string label(scanner.pop().getText());
+            const std::string label(scanner.pop().getText().value());
             //pop ']'
             expectSkipToken(scanner, ']');
             labels.emplace_back(val, method.method->findOrCreateLocal(TYPE_LABEL, label));
@@ -1214,7 +1214,7 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
         //assume this format: <opcode> <format> <in1> [to | ,] [<in2>]
         //add, fadd, sub, fsub, mul, fmul, udiv, sdiv, fdiv, urem, srem, frem, shl, lshr, ashr, and, or, xor
         //trunc, zext, sext, fptrunc, fpext, fptoui, fptosi, uitofp, sitofp, ptrtoint, inttoptr, addrspacecast
-        const std::string opCode(nextToken.getText());
+        const std::string opCode(nextToken.getText().value());
         nextToken = scanner.peek();
         if (nextToken.type != TokenType::STRING) {
             throw CompilationError(CompilationStep::PARSER, scanner.getLineNumber(), std::string("Unhandled instruction: ") + nextToken.to_string());
@@ -1258,7 +1258,7 @@ void IRParser::parseMethodCall(LLVMMethod& method, FastModificationList<std::uni
 	//pop 'spir_func'
 	skipToken(scanner, "spir_func");
     const DataType returnType(parseType());
-    std::string name(cleanMethodName(scanner.pop().getText()));
+    std::string name(cleanMethodName(scanner.pop().getText().value()));
 
     std::vector<Value> args;
     const auto params = parseParameters();
@@ -1357,7 +1357,7 @@ void IRParser::parseBranch(LLVMMethod& method, FastModificationList<std::unique_
 	 */
     if (skipToken(scanner, "label")) {
         //unconditional branch
-        const std::string label(scanner.pop().getText());
+        const std::string label(scanner.pop().getText().value());
 
         logging::debug() << "Unconditional branch to " << label << logging::endl;
         instructions.emplace_back(new Branch(label));
@@ -1369,12 +1369,12 @@ void IRParser::parseBranch(LLVMMethod& method, FastModificationList<std::unique_
         expectSkipToken(scanner, ',');
         //pop 'label'
         expectSkipToken(scanner, "label");
-        const std::string trueLabel(scanner.pop().getText());
+        const std::string trueLabel(scanner.pop().getText().value());
         //pop ','
         expectSkipToken(scanner, ',');
         //pop 'label'
         expectSkipToken(scanner, "label");
-        const std::string falseLabel(scanner.pop().getText());
+        const std::string falseLabel(scanner.pop().getText().value());
 
         logging::debug() << "Branch on " << cond.to_string() << " to either " << trueLabel << " or " << falseLabel << logging::endl;
         instructions.emplace_back(new Branch(cond, trueLabel, falseLabel));
@@ -1403,7 +1403,7 @@ void IRParser::parseLabel(LLVMMethod& method, FastModificationList<std::unique_p
 {
     //pop ':' (only present in type-1 labels)
 	skipToken(scanner, ':');
-    std::string labelName = label.getText();
+    std::string labelName = label.getText().value();
     if (labelName.find("<label>") != std::string::npos) {
         labelName = labelName.substr(labelName.find(':') + 1);
     }
@@ -1428,7 +1428,7 @@ void IRParser::parseSwitch(LLVMMethod& method, FastModificationList<std::unique_
     expectSkipToken(scanner, ',');
     //skip 'label'
     expectSkipToken(scanner, "label");
-    const std::string defaultLabel(scanner.pop().getText());
+    const std::string defaultLabel(scanner.pop().getText().value());
     //skip '['
     expectSkipToken(scanner, '[');
     if(scanner.peek().isEnd())
@@ -1443,7 +1443,7 @@ void IRParser::parseSwitch(LLVMMethod& method, FastModificationList<std::unique_
         expectSkipToken(scanner, ',');
         //skip 'label'
         expectSkipToken(scanner, "label");
-        const std::string matchLabel(scanner.pop().getText());
+        const std::string matchLabel(scanner.pop().getText().value());
 
         // "[...] an array of pairs of comparison value constants and ‘label‘s"
         cases[matchVal.literal.integer] = matchLabel;
@@ -1465,7 +1465,7 @@ void IRParser::parseMetaData()
     //e.g. "!foo = !{!4, !3}", "!42 = !{ i32 1234567 }", "!opencl.kernels = !{!0, !6, !12, !18, !21, !27, !30}"
     if (scanner.peek().type != TokenType::STRING)
         return;
-    std::string name(scanner.pop().getText());
+    std::string name(scanner.pop().getText().value());
     std::vector<std::string>& values = metaData[name];
 
     //pop '='
@@ -1478,7 +1478,7 @@ void IRParser::parseMetaData()
     while (scanner.hasInput() && !(nextToken = scanner.pop()).isEnd() && (nextToken.hasValue(',') || nextToken.hasValue('{'))) {
         if (scanner.peek().hasValue('!') || scanner.peek().hasValue('"')) {
             //string
-            std::string val(scanner.pop().getText());
+            std::string val(scanner.pop().getText().value());
             //don't cut off anything for references to IDs
             if (val[0] == '!' && std::isdigit(val[1]))
                 values.push_back(val);
@@ -1497,7 +1497,7 @@ void IRParser::parseMetaData()
             //e.g. kernel method-header
             while (!(nextToken = scanner.peek()).isEnd() && !nextToken.hasValue(',')) {
                 if (nextToken.hasValue('@'))
-                    values.push_back(nextToken.getText());
+                    values.push_back(nextToken.getText().value());
                 scanner.pop();
             }
         }
@@ -1642,8 +1642,8 @@ void IRParser::extractKernelInfo()
             		for(std::size_t i = 0; i < values.size(); ++i)
             		{
             			Optional<PointerType*> ptrType = method.method->parameters.at(i).type.getPointerType();
-            			if(ptrType.hasValue && ptrType.get()->addressSpace == AddressSpace::GENERIC)
-            				ptrType.get()->addressSpace = toAddressSpace(std::atoi(values.at(i).data()));
+            			if(ptrType && ptrType.value()->addressSpace == AddressSpace::GENERIC)
+            				ptrType.value()->addressSpace = toAddressSpace(std::atoi(values.at(i).data()));
             		}
             		break;
             	}

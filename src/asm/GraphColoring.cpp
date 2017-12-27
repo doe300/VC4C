@@ -43,12 +43,12 @@ static void forLocalsUsedTogether(const Local* local, const std::function<void(c
 			if(op != nullptr && op->parent != nullptr)
 			{
 				if(op->parent->op1 != nullptr && op->parent->op2 != nullptr && op->parent->op1->hasValueType(ValueType::LOCAL) && op->parent->op2->hasValueType(ValueType::LOCAL) &&
-						op->parent->op1->getOutput().get().local != op->parent->op2->getOutput().get().local)
+						op->parent->op1->getOutput()->local != op->parent->op2->getOutput()->local)
 				{
-					if(op->parent->op1->getOutput().get().hasLocal(local))
-						func(op->parent->op2->getOutput().get().local);
-					if(op->parent->op2->getOutput().get().hasLocal(local))
-						func(op->parent->op1->getOutput().get().local);
+					if(op->parent->op1->getOutput()->hasLocal(local))
+						func(op->parent->op2->getOutput()->local);
+					if(op->parent->op2->getOutput()->hasLocal(local))
+						func(op->parent->op1->getOutput()->local);
 				}
 			}
 		}
@@ -225,33 +225,33 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
 		if (dynamic_cast<const intermediate::VectorRotation*>(&instr) != nullptr)
 		{
 			//logging::debug() << "Local " << firstArg.get().local.to_string() << " must be an accumulator, because it is used in a vector-rotation in " << instr.to_string() << logging::endl;
-			blockRegisterFile(RegisterFile::PHYSICAL_ANY, firstArg.get().local, localUses);
+			blockRegisterFile(RegisterFile::PHYSICAL_ANY, firstArg->local, localUses);
 		} //the else here skip all the other checks, since they are useless for vector-rotations (already limits to accumulator-only)
-		else if (firstArg.get().hasType(ValueType::LOCAL) && secondArg.get().hasType(ValueType::SMALL_IMMEDIATE))
+		else if (firstArg->hasType(ValueType::LOCAL) && secondArg->hasType(ValueType::SMALL_IMMEDIATE))
 		{
 			//B is reserved ->other input must be on A or accumulator
 			//logging::debug() << "Local " << firstArg.get().local.to_string() << " can't be on register-file B, because of " << instr.to_string() << logging::endl;
-			blockRegisterFile(RegisterFile::PHYSICAL_B, firstArg.get().local, localUses);
+			blockRegisterFile(RegisterFile::PHYSICAL_B, firstArg->local, localUses);
 		}
-		else if (firstArg.get().hasType(ValueType::SMALL_IMMEDIATE) && secondArg.get().hasType(ValueType::LOCAL))
+		else if (firstArg->hasType(ValueType::SMALL_IMMEDIATE) && secondArg->hasType(ValueType::LOCAL))
 		{
 			//B is reserved ->other input must be on A or accumulator
 			//logging::debug() << "Local " << secondArg.get().local.to_string() << " can't be on register-file B, because of " << instr.to_string() << logging::endl;
-			blockRegisterFile(RegisterFile::PHYSICAL_B, secondArg.get().local, localUses);
+			blockRegisterFile(RegisterFile::PHYSICAL_B, secondArg->local, localUses);
 		}
-		else if (firstArg.get().hasType(ValueType::LOCAL) && secondArg.get().hasType(ValueType::REGISTER) && (secondArg.get().reg.file == RegisterFile::PHYSICAL_A || secondArg.get().reg.file == RegisterFile::PHYSICAL_B))
+		else if (firstArg->hasType(ValueType::LOCAL) && secondArg->hasType(ValueType::REGISTER) && (secondArg->reg.file == RegisterFile::PHYSICAL_A || secondArg->reg.file == RegisterFile::PHYSICAL_B))
 		{
-			const RegisterFile file = secondArg.get().reg.file;
+			const RegisterFile file = secondArg->reg.file;
 			//one of the inputs is fixed to a file, exclude from other
 			//logging::debug() << "Local " << firstArg.get().local->to_string() << " can't be on register-file " << (file == RegisterFile::PHYSICAL_A ? 'A' : 'B') << ", because of " << instr.to_string() << logging::endl;
-			blockRegisterFile(file, firstArg.get().local, localUses);
+			blockRegisterFile(file, firstArg->local, localUses);
 		}
-		else if (firstArg.get().hasType(ValueType::REGISTER) && secondArg.get().hasType(ValueType::LOCAL) && (firstArg.get().reg.file == RegisterFile::PHYSICAL_A || firstArg.get().reg.file == RegisterFile::PHYSICAL_B))
+		else if (firstArg->hasType(ValueType::REGISTER) && secondArg->hasType(ValueType::LOCAL) && (firstArg->reg.file == RegisterFile::PHYSICAL_A || firstArg->reg.file == RegisterFile::PHYSICAL_B))
 		{
-			const RegisterFile file = firstArg.get().reg.file;
+			const RegisterFile file = firstArg->reg.file;
 			//one of the inputs is fixed to a file, exclude from other
 			//logging::debug() << "Local " << secondArg.get().local->to_string() << " can't be on register-file " << (file == RegisterFile::PHYSICAL_A ? 'A' : 'B') << ", because of " << instr.to_string() << logging::endl;
-			blockRegisterFile(file, secondArg.get().local, localUses);
+			blockRegisterFile(file, secondArg->local, localUses);
 		}
 	}
 
@@ -260,19 +260,19 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
 	//Broadcom Specification, page 30
 	if (instr.hasUnpackMode())
 	{
-		if (firstArg.get().hasType(ValueType::LOCAL) && (!secondArg || !secondArg.get().hasType(ValueType::LOCAL)))
+		if (firstArg->hasType(ValueType::LOCAL) && (!secondArg || !secondArg->hasType(ValueType::LOCAL)))
 		{
 			//there is only one input local, fix to file A
 			//logging::debug() << "Local " << firstArg.get().local.to_string() << " must be on register-file A, because of unpack-mode in " << instr.to_string() << logging::endl;
-			blockRegisterFile(remove_flag(RegisterFile::ANY, RegisterFile::PHYSICAL_A), firstArg.get().local, localUses);
+			blockRegisterFile(remove_flag(RegisterFile::ANY, RegisterFile::PHYSICAL_A), firstArg->local, localUses);
 		}
-		else if (!firstArg.get().hasType(ValueType::LOCAL) && secondArg && secondArg.get().hasType(ValueType::LOCAL))
+		else if (!firstArg->hasType(ValueType::LOCAL) && secondArg && secondArg->hasType(ValueType::LOCAL))
 		{
 			//there is only one input local, fix to file A
 			//logging::debug() << "Local " << secondArg.get().local.to_string() << " must be on register-file A, because of unpack-mode in " << instr.to_string() << logging::endl;
-			blockRegisterFile(remove_flag(RegisterFile::ANY, RegisterFile::PHYSICAL_A), secondArg.get().local, localUses);
+			blockRegisterFile(remove_flag(RegisterFile::ANY, RegisterFile::PHYSICAL_A), secondArg->local, localUses);
 		}
-		else if (firstArg.get().hasType(ValueType::LOCAL) && secondArg && secondArg.get().hasType(ValueType::LOCAL) && firstArg.get() != secondArg.get())
+		else if (firstArg->hasType(ValueType::LOCAL) && secondArg && secondArg->hasType(ValueType::LOCAL) && firstArg.value() != secondArg.value())
 		{
 			throw CompilationError(CompilationStep::LABEL_REGISTER_MAPPING, "Can't unpack two inputs in one instruction", instr.to_string());
 		}
@@ -281,47 +281,47 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
 	{
 		//"[...] the a-regfile pack block allows the 32-bit ALU result to be packed back into the a-regfile as 8 or 16 bit data."
 		//logging::debug() << "Fixed local " << instr.output.get().local.to_string() << " to register-file A, because of pack-mode in " << instr.to_string() << logging::endl;
-		blockRegisterFile(remove_flag(RegisterFile::ANY, RegisterFile::PHYSICAL_A), instr.getOutput().get().local, localUses);
+		blockRegisterFile(remove_flag(RegisterFile::ANY, RegisterFile::PHYSICAL_A), instr.getOutput()->local, localUses);
 	}
 
 	if (writtenInPreviousInstruction0)
 	{
 		//if the first argument was written in the previous instruction, it MUST be on accumulator
-		if (firstArg.get().hasLocal(writtenInPreviousInstruction0))
+		if (firstArg->hasLocal(writtenInPreviousInstruction0.value()))
 		{
 			//logging::debug() << "Local " << firstArg.get().local.to_string() << " must be an accumulator, because it is written in the previous instruction before " << instr.to_string() << logging::endl;
-			fixToRegisterFile(RegisterFile::ACCUMULATOR, firstArg.get().local, localUses);
+			fixToRegisterFile(RegisterFile::ACCUMULATOR, firstArg->local, localUses);
 		}
-		else if (secondArg && secondArg.get().hasLocal(writtenInPreviousInstruction0))
+		else if (secondArg && secondArg->hasLocal(writtenInPreviousInstruction0.value()))
 		{
 			//logging::debug() << "Local " << secondArg.get().local.to_string() << " must be an accumulator, because it is written in the previous instruction before " << instr.to_string() << logging::endl;
-			fixToRegisterFile(RegisterFile::ACCUMULATOR, secondArg.get().local, localUses);
+			fixToRegisterFile(RegisterFile::ACCUMULATOR, secondArg->local, localUses);
 		}
 	}
 
 	if (writtenInPreviousInstruction1)
 	{
 		//if the first argument was written in the previous instruction, it MUST be on accumulator
-		if (firstArg.get().hasLocal(writtenInPreviousInstruction1))
+		if (firstArg->hasLocal(writtenInPreviousInstruction1.value()))
 		{
 			//logging::debug() << "Local " << firstArg.get().local.to_string() << " must be an accumulator, because it is written in the previous instruction before " << instr.to_string() << logging::endl;
-			fixToRegisterFile(RegisterFile::ACCUMULATOR, firstArg.get().local, localUses);
+			fixToRegisterFile(RegisterFile::ACCUMULATOR, firstArg->local, localUses);
 		}
-		else if (secondArg && secondArg.get().hasLocal(writtenInPreviousInstruction1))
+		else if (secondArg && secondArg->hasLocal(writtenInPreviousInstruction1.value()))
 		{
 			//logging::debug() << "Local " << secondArg.get().local.to_string() << " must be an accumulator, because it is written in the previous instruction before " << instr.to_string() << logging::endl;
-			fixToRegisterFile(RegisterFile::ACCUMULATOR, secondArg.get().local, localUses);
+			fixToRegisterFile(RegisterFile::ACCUMULATOR, secondArg->local, localUses);
 		}
 	}
 
 	//remove all blocked files from all locals
 	if(blockedFiles != RegisterFile::NONE)
 	{
-		if(firstArg && firstArg.get().hasType(ValueType::LOCAL))
-			blockRegisterFile(blockedFiles, firstArg.get().local, localUses);
+		if(firstArg && firstArg->hasType(ValueType::LOCAL))
+			blockRegisterFile(blockedFiles, firstArg->local, localUses);
 
-		if(secondArg && secondArg.get().hasType(ValueType::LOCAL))
-			blockRegisterFile(blockedFiles, secondArg.get().local, localUses);
+		if(secondArg && secondArg->hasType(ValueType::LOCAL))
+			blockRegisterFile(blockedFiles, secondArg->local, localUses);
 	}
 }
 
@@ -345,28 +345,28 @@ static void fixLocals(const InstructionWalker it, FastMap<const Local*, LocalUsa
 		if (comp->op1)
 		{
 			PROFILE_START(updateFixedLocals);
-			updateFixedLocals(*comp->op1.get(), lastWrittenLocal0, lastWrittenLocal1, blockedFiles, localUses);
+			updateFixedLocals(*comp->op1.get(), lastWrittenLocal0.value(), lastWrittenLocal1.value(), blockedFiles, localUses);
 			PROFILE_END(updateFixedLocals);
 		}
 		if (comp->op2)
 		{
 			PROFILE_START(updateFixedLocals);
-			updateFixedLocals(*comp->op2.get(), lastWrittenLocal0, lastWrittenLocal1, blockedFiles, localUses);
+			updateFixedLocals(*comp->op2.get(), lastWrittenLocal0.value(), lastWrittenLocal1.value(), blockedFiles, localUses);
 			PROFILE_END(updateFixedLocals);
 		}
 		//if both instructions for a combined instruction write to the same output, the output MUST be on an accumulator
-		if(comp->op1 && comp->op1->hasValueType(ValueType::LOCAL) && comp->op2 && comp->op2->hasValueType(ValueType::LOCAL) && comp->op1->getOutput().get().local == comp->op2->getOutput().get().local)
+		if(comp->op1 && comp->op1->hasValueType(ValueType::LOCAL) && comp->op2 && comp->op2->hasValueType(ValueType::LOCAL) && comp->op1->getOutput()->local == comp->op2->getOutput()->local)
 		{
-			fixToRegisterFile(RegisterFile::ACCUMULATOR, comp->op1->getOutput().get().local, localUses);
+			fixToRegisterFile(RegisterFile::ACCUMULATOR, comp->op1->getOutput()->local, localUses);
 		}
 		//FIXME handling of forcing local to register-file A because of unpack-mode (unpack + combined even possible??)
-		lastWrittenLocal0 = comp->op1 && comp->op1->hasValueType(ValueType::LOCAL) ? Optional<const Local*>(comp->op1->getOutput().get().local) : EMPTY;
-		lastWrittenLocal1 = comp->op2 && comp->op2->hasValueType(ValueType::LOCAL) ? Optional<const Local*>(comp->op2->getOutput().get().local) : EMPTY;
+		lastWrittenLocal0 = comp->op1 && comp->op1->hasValueType(ValueType::LOCAL) ? Optional<const Local*>(comp->op1->getOutput()->local) : EMPTY;
+		lastWrittenLocal1 = comp->op2 && comp->op2->hasValueType(ValueType::LOCAL) ? Optional<const Local*>(comp->op2->getOutput()->local) : EMPTY;
 	}
 	else
 	{
 		PROFILE(updateFixedLocals, *it.get(), lastWrittenLocal0, lastWrittenLocal1, RegisterFile::NONE, localUses);
-		lastWrittenLocal0 = it->hasValueType(ValueType::LOCAL) ? Optional<const Local*>(it->getOutput().get().local) : EMPTY;
+		lastWrittenLocal0 = it->hasValueType(ValueType::LOCAL) ? Optional<const Local*>(it->getOutput()->local) : EMPTY;
 		lastWrittenLocal1 = EMPTY;
 	}
 }

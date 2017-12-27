@@ -383,10 +383,10 @@ Optional<unsigned char> SmallImmediate::getRotationOffset() const
 
 Optional<Literal> SmallImmediate::toLiteral() const
 {
-	if(getIntegerValue().hasValue)
-		return Literal(static_cast<int64_t>(getIntegerValue().get()));
-	if(getFloatingValue().hasValue)
-		return Literal(getFloatingValue().get());
+	if(getIntegerValue())
+		return Literal(static_cast<int64_t>(getIntegerValue().value()));
+	if(getFloatingValue())
+		return Literal(getFloatingValue().value());
 	return Optional<Literal>(false, static_cast<int64_t>(0));
 }
 
@@ -411,7 +411,7 @@ bool ContainerValue::isAllSame(const Optional<Literal>& value) const
 {
 	if(elements.empty())
 		return true;
-	const Literal singleValue = value ? value.get() : elements.at(0).literal;
+	const Literal singleValue = value.value_or(elements.at(0).literal);
 	for(const Value& element : elements)
 	{
 		if(element.isUndefined())
@@ -608,8 +608,8 @@ std::string Value::to_string(const bool writeAccess, bool withLiterals) const
     	if(withLiterals)
     	{
     		std::string tmp;
-    		const std::string pre = type.isVectorType() ? "<" : type.getArrayType().hasValue ? "[" : "{";
-    		const std::string post = type.isVectorType() ? ">" : type.getArrayType().hasValue ? "]" : "}";
+    		const std::string pre = type.isVectorType() ? "<" : type.getArrayType() ? "[" : "{";
+    		const std::string post = type.isVectorType() ? ">" : type.getArrayType() ? "]" : "}";
     		for(const Value& element : container.elements)
     			tmp.append(element.to_string(writeAccess, withLiterals)).append(", ");
     		return typeName + pre + tmp.substr(0, tmp.length() - 2) + post;
@@ -692,7 +692,7 @@ Value& Value::assertReadable()
 
 Value Value::createZeroInitializer(const DataType& type)
 {
-	if(type.isScalarType() || type.getPointerType().hasValue)
+	if(type.isScalarType() || type.getPointerType())
 		return INT_ZERO;
 	Value val(ContainerValue(), type);
 	if(type.isVectorType())
@@ -702,16 +702,16 @@ Value Value::createZeroInitializer(const DataType& type)
 			val.container.elements.push_back(INT_ZERO);
 		}
 	}
-	else if(type.getArrayType().hasValue)
+	else if(type.getArrayType())
 	{
-		for(unsigned i = 0; i < type.getArrayType().get()->size; i++)
+		for(unsigned i = 0; i < type.getArrayType().value()->size; i++)
 		{
 			val.container.elements.push_back(createZeroInitializer(type.getElementType()));
 		}
 	}
-	else if(type.getStructType().hasValue)
+	else if(type.getStructType())
 	{
-		for(unsigned i = 0; i < type.getStructType().get()->elementTypes.size(); i++)
+		for(unsigned i = 0; i < type.getStructType().value()->elementTypes.size(); i++)
 		{
 			val.container.elements.push_back(createZeroInitializer(type.getElementType(i)));
 		}

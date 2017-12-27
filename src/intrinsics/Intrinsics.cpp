@@ -44,13 +44,13 @@ static IntrinsicFunction intrinsifyUnaryALUInstruction(const std::string& opCode
 {
 	return [opCode, useSignFlag, packMode, unpackMode, setFlags](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
 	{
-		bool isUnsigned = callSite->getArgument(1).hasValue && callSite->getArgument(1).get().hasType(ValueType::LITERAL) && callSite->getArgument(1).get().literal.integer == VC4CL_UNSIGNED;
+		bool isUnsigned = callSite->getArgument(1) && callSite->getArgument(1)->hasType(ValueType::LITERAL) && callSite->getArgument(1)->literal.integer == VC4CL_UNSIGNED;
 
 		logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to operation " << opCode << logging::endl;
 		if(opCode == "mov")
-			it.reset((new MoveOperation(callSite->getOutput(), callSite->getArgument(0)))->copyExtrasFrom(callSite));
+			it.reset((new MoveOperation(callSite->getOutput().value(), callSite->getArgument(0).value()))->copyExtrasFrom(callSite));
 		else
-		it.reset((new Operation(opCode, callSite->getOutput(), callSite->getArgument(0)))->copyExtrasFrom(callSite));
+		it.reset((new Operation(opCode, callSite->getOutput().value(), callSite->getArgument(0).value()))->copyExtrasFrom(callSite));
 		if(packMode != PACK_NOP)
 			it->setPackMode(packMode);
 		if(unpackMode != UNPACK_NOP)
@@ -69,10 +69,10 @@ static IntrinsicFunction intrinsifyBinaryALUInstruction(const std::string& opCod
 {
 	return [opCode, useSignFlag, packMode, unpackMode, setFlags](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
 	{
-		bool isUnsigned = callSite->getArgument(2).hasValue && callSite->getArgument(2).get().hasType(ValueType::LITERAL) && callSite->getArgument(2).get().literal.integer == VC4CL_UNSIGNED;
+		bool isUnsigned = callSite->getArgument(2) && callSite->getArgument(2)->hasType(ValueType::LITERAL) && callSite->getArgument(2)->literal.integer == VC4CL_UNSIGNED;
 
 		logging::debug() << "Intrinsifying binary '" << callSite->to_string() << "' to operation " << opCode << logging::endl;
-		it.reset((new Operation(opCode, callSite->getOutput(), callSite->getArgument(0), callSite->getArgument(1)))->copyExtrasFrom(callSite));
+		it.reset((new Operation(opCode, callSite->getOutput().value(), callSite->getArgument(0).value(), callSite->getArgument(1).value()))->copyExtrasFrom(callSite));
 		if(packMode != PACK_NOP)
 			it->setPackMode(packMode);
 		if(unpackMode != UNPACK_NOP)
@@ -92,8 +92,8 @@ static IntrinsicFunction intrinsifySFUInstruction(const Register& sfuRegister)
 	return [sfuRegister](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
 	{
 		logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to SFU call" << logging::endl;
-		it = periphery::insertSFUCall(sfuRegister, it, callSite->getArgument(0), callSite->conditional);
-		it.reset((new MoveOperation(callSite->getOutput(), Value(REG_SFU_OUT, callSite->getOutput().get().type)))->copyExtrasFrom(callSite));
+		it = periphery::insertSFUCall(sfuRegister, it, callSite->getArgument(0).value(), callSite->conditional);
+		it.reset((new MoveOperation(callSite->getOutput().value(), Value(REG_SFU_OUT, callSite->getOutput()->type)))->copyExtrasFrom(callSite));
 		return it;
 	};
 }
@@ -103,7 +103,7 @@ static IntrinsicFunction intrinsifyValueRead(const Value& val)
 	return [val](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
 	{
 		logging::debug() << "Intrinsifying method-call '" << callSite->to_string() << "' to value read" << logging::endl;
-		it.reset((new MoveOperation(callSite->getOutput(), val))->copyExtrasFrom(callSite));
+		it.reset((new MoveOperation(callSite->getOutput().value(), val))->copyExtrasFrom(callSite));
 		return it;
 	};
 }
@@ -112,20 +112,20 @@ static IntrinsicFunction intrinsifySemaphoreAccess(bool increment)
 {
 	return [increment](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
 	{
-		if(!callSite->getArgument(0).get().hasType(ValueType::LITERAL))
+		if(!callSite->getArgument(0)->hasType(ValueType::LITERAL))
 			throw CompilationError(CompilationStep::OPTIMIZER, "Semaphore-number needs to be a compile-time constant", callSite->to_string());
-		if(callSite->getArgument(0).get().literal.integer < 0 || callSite->getArgument(0).get().literal.integer >= 16)
+		if(callSite->getArgument(0)->literal.integer < 0 || callSite->getArgument(0)->literal.integer >= 16)
 			throw CompilationError(CompilationStep::OPTIMIZER, "Semaphore-number needs to be between 0 and 15", callSite->to_string());
 
 		if(increment)
 		{
 			logging::debug() << "Intrinsifying semaphore increment with instruction" << logging::endl;
-			it.reset((new SemaphoreAdjustment(static_cast<Semaphore>(callSite->getArgument(0).get().literal.integer), true))->copyExtrasFrom(callSite));
+			it.reset((new SemaphoreAdjustment(static_cast<Semaphore>(callSite->getArgument(0)->literal.integer), true))->copyExtrasFrom(callSite));
 		}
 		else
 		{
 			logging::debug() << "Intrinsifying semaphore decrement with instruction" << logging::endl;
-			it.reset((new SemaphoreAdjustment(static_cast<Semaphore>(callSite->getArgument(0).get().literal.integer), false))->copyExtrasFrom(callSite));
+			it.reset((new SemaphoreAdjustment(static_cast<Semaphore>(callSite->getArgument(0)->literal.integer), false))->copyExtrasFrom(callSite));
 		}
 		return it;
 	};
@@ -166,22 +166,22 @@ static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access)
 			case DMAAccess::READ:
 			{
 				logging::debug() << "Intrinsifying memory read " << callSite->to_string() << logging::endl;
-				it = periphery::insertReadVectorFromTMU(method, it, callSite->getOutput(), callSite->getArgument(0));
+				it = periphery::insertReadVectorFromTMU(method, it, callSite->getOutput().value(), callSite->getArgument(0).value());
 				break;
 			}
 			case DMAAccess::WRITE:
 			{
 				logging::debug() << "Intrinsifying memory write " << callSite->to_string() << logging::endl;
-				it = periphery::insertWriteDMA(method, it, callSite->getArgument(1), callSite->getArgument(0), false);
+				it = periphery::insertWriteDMA(method, it, callSite->getArgument(1).value(), callSite->getArgument(0).value(), false);
 				break;
 			}
 			case DMAAccess::COPY:
 			{
 				logging::debug() << "Intrinsifying ternary '" << callSite->to_string() << "' to DMA copy operation " << logging::endl;
-				const DataType type = callSite->getArgument(0).get().type.getElementType();
-				if(!callSite->getArgument(2).hasValue || !callSite->getArgument(2).get().hasType(ValueType::LITERAL))
+				const DataType type = callSite->getArgument(0)->type.getElementType();
+				if(!callSite->getArgument(2) || !callSite->getArgument(2)->hasType(ValueType::LITERAL))
 					throw CompilationError(CompilationStep::OPTIMIZER, "Memory copy with non-constant size is not yet supported", callSite->to_string());
-				it = method.vpm->insertCopyRAM(method, it, callSite->getArgument(0), callSite->getArgument(1), callSite->getArgument(2).get().literal.integer * type.getPhysicalWidth(), nullptr, false);
+				it = method.vpm->insertCopyRAM(method, it, callSite->getArgument(0).value(), callSite->getArgument(1).value(), callSite->getArgument(2)->literal.integer * type.getPhysicalWidth(), nullptr, false);
 				break;
 			}
 			case DMAAccess::PREFETCH:
@@ -206,7 +206,7 @@ static IntrinsicFunction intrinsifyVectorRotation()
 	return [](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
 	{
 		logging::debug() << "Intrinsifying vector rotation " << callSite->to_string() << logging::endl;
-		it = insertVectorRotation(it, callSite->getArgument(0), callSite->getArgument(1), callSite->getOutput(), Direction::UP);
+		it = insertVectorRotation(it, callSite->getArgument(0).value(), callSite->getArgument(1).value(), callSite->getOutput().value(), Direction::UP);
 		it.erase();
 		//so next instruction is not skipped
 		it.previousInBlock();
@@ -335,10 +335,10 @@ static InstructionWalker intrinsifyUnary(Method& method, InstructionWalker it)
     {
         if(callSite->methodName.find(pair.first) != std::string::npos)
         {
-        	if(callSite->getArgument(0).get().hasType(ValueType::LITERAL) && pair.second.unaryInstr && pair.second.unaryInstr.get()(callSite->getArgument(0)).hasValue)
+        	if(callSite->getArgument(0)->hasType(ValueType::LITERAL) && pair.second.unaryInstr && pair.second.unaryInstr.value()(callSite->getArgument(0).value()))
         	{
         		logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to pre-calculated value" << logging::endl;
-        		it.reset(new MoveOperation(callSite->getOutput(), pair.second.unaryInstr.get()(callSite->getArgument(0)), callSite->conditional, callSite->setFlags));
+        		it.reset(new MoveOperation(callSite->getOutput().value(), pair.second.unaryInstr.value()(callSite->getArgument(0).value()).value(), callSite->conditional, callSite->setFlags));
         	}
         	else
         	{
@@ -351,21 +351,21 @@ static InstructionWalker intrinsifyUnary(Method& method, InstructionWalker it)
     {
         if(callSite->methodName.find(pair.first) != std::string::npos)
         {
-        	if(callSite->getArgument(0).get().hasType(ValueType::LITERAL) && pair.second.first.unaryInstr && pair.second.first.unaryInstr.get()(callSite->getArgument(0)).hasValue)
+        	if(callSite->getArgument(0)->hasType(ValueType::LITERAL) && pair.second.first.unaryInstr && pair.second.first.unaryInstr.value()(callSite->getArgument(0).value()))
 			{
 				logging::debug() << "Intrinsifying type-cast '" << callSite->to_string() << "' to pre-calculated value" << logging::endl;
-				it.reset(new MoveOperation(callSite->getOutput(), pair.second.first.unaryInstr.get()(callSite->getArgument(0)), callSite->conditional, callSite->setFlags));
+				it.reset(new MoveOperation(callSite->getOutput().value(), pair.second.first.unaryInstr.value()(callSite->getArgument(0).value()).value(), callSite->conditional, callSite->setFlags));
 			}
-        	else if(!pair.second.second.hasValue)	//there is no value to apply -> simple move
+        	else if(!pair.second.second)	//there is no value to apply -> simple move
         	{
         		logging::debug() << "Intrinsifying '" << callSite->to_string() << "' to simple move" << logging::endl;
-				it.reset(new MoveOperation(callSite->getOutput(), callSite->getArgument(0)));
+				it.reset(new MoveOperation(callSite->getOutput().value(), callSite->getArgument(0).value()));
         	}
         	else
             {
         		//TODO could use pack-mode here, but only for UNSIGNED values!!
 				logging::debug() << "Intrinsifying '" << callSite->to_string() << "' to operation with constant " << pair.second.second.to_string() << logging::endl;
-				callSite->setArgument(1, pair.second.second);
+				callSite->setArgument(1, pair.second.second.value());
 				return pair.second.first.func(method, it, callSite);
             }
             return it;
@@ -389,10 +389,10 @@ static InstructionWalker intrinsifyBinary(Method& method, InstructionWalker it)
     {
         if(callSite->methodName.find(pair.first) != std::string::npos)
         {
-        	if(callSite->getArgument(0).get().hasType(ValueType::LITERAL) && callSite->getArgument(1).get().hasType(ValueType::LITERAL) && pair.second.binaryInstr && pair.second.binaryInstr.get()(callSite->getArgument(0), callSite->getArgument(1)).hasValue)
+        	if(callSite->getArgument(0)->hasType(ValueType::LITERAL) && callSite->getArgument(1)->hasType(ValueType::LITERAL) && pair.second.binaryInstr && pair.second.binaryInstr.value()(callSite->getArgument(0).value(), callSite->getArgument(1).value()))
 			{
 				logging::debug() << "Intrinsifying binary '" << callSite->to_string() << "' to pre-calculated value" << logging::endl;
-				it.reset(new MoveOperation(callSite->getOutput(), pair.second.binaryInstr.get()(callSite->getArgument(0), callSite->getArgument(1)), callSite->conditional, callSite->setFlags));
+				it.reset(new MoveOperation(callSite->getOutput().value(), pair.second.binaryInstr.value()(callSite->getArgument(0).value(), callSite->getArgument(1).value()).value(), callSite->conditional, callSite->setFlags));
 			}
         	else
         	{
@@ -439,7 +439,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         return it;
     }
     const Value& arg0 = op->getFirstArg();
-    const Value& arg1 = op->getSecondArg().orElse(UNDEFINED_VALUE);
+    const Value& arg1 = op->getSecondArg().value_or(UNDEFINED_VALUE);
     const bool saturateResult = has_flag(op->decoration, InstructionDecorations::SATURATED_CONVERSION);
     //integer multiplication
     if(op->opCode == "mul")
@@ -449,7 +449,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(arg0.hasType(ValueType::LITERAL) && arg1.hasType(ValueType::LITERAL))
         {
             logging::debug() << "Calculating result for multiplication with constants" << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput().get().local, arg0.type), Value(Literal(arg0.literal.integer * arg1.literal.integer), arg0.type), op->conditional, op->setFlags));
+            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(arg0.literal.integer * arg1.literal.integer), arg0.type), op->conditional, op->setFlags));
         }
         else if(arg0.hasType(ValueType::LITERAL) && isPowerTwo(arg0.literal.integer))
         {
@@ -480,7 +480,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(arg0.hasType(ValueType::LITERAL) && arg1.hasType(ValueType::LITERAL))
         {
             logging::debug() << "Calculating result for division with constants" << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput().get().local, arg0.type), Value(Literal(static_cast<uint64_t>(arg0.literal.integer / arg1.literal.integer)), arg0.type), op->conditional, op->setFlags));
+            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(static_cast<uint64_t>(arg0.literal.integer / arg1.literal.integer)), arg0.type), op->conditional, op->setFlags));
         }
         //a / 2^n = a >> n
         else if(arg1.hasType(ValueType::LITERAL) && isPowerTwo(arg1.literal.integer))
@@ -504,7 +504,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(arg0.hasType(ValueType::LITERAL) && arg1.hasType(ValueType::LITERAL))
         {
             logging::debug() << "Calculating result for signed division with constants" << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput().get().local, arg0.type), Value(Literal(arg0.literal.integer / arg1.literal.integer), arg0.type), op->conditional, op->setFlags));
+            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(arg0.literal.integer / arg1.literal.integer), arg0.type), op->conditional, op->setFlags));
         }
         //a / 2^n = a >> n
         else if(arg1.hasType(ValueType::LITERAL) && isPowerTwo(arg1.literal.integer))
@@ -529,7 +529,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(arg0.hasType(ValueType::LITERAL) && arg1.hasType(ValueType::LITERAL))
         {
             logging::debug() << "Calculating result for modulo with constants" << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput().get().local, arg0.type), Value(Literal(static_cast<uint64_t>(arg0.literal.integer % arg1.literal.integer)), arg0.type), op->conditional, op->setFlags));
+            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(static_cast<uint64_t>(arg0.literal.integer % arg1.literal.integer)), arg0.type), op->conditional, op->setFlags));
         }
         else if(arg1.hasType(ValueType::LITERAL) && isPowerTwo(arg1.literal.integer))
         {
@@ -552,7 +552,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(arg0.hasType(ValueType::LITERAL) && arg1.hasType(ValueType::LITERAL))
         {
             logging::debug() << "Calculating result for signed modulo with constants" << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput().get().local, arg0.type), Value(Literal(arg0.literal.integer % arg1.literal.integer), arg0.type), op->conditional, op->setFlags));
+            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(arg0.literal.integer % arg1.literal.integer), arg0.type), op->conditional, op->setFlags));
         }
         else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
 		{
@@ -569,7 +569,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(arg0.hasType(ValueType::LITERAL) && arg1.hasType(ValueType::LITERAL))
         {
             logging::debug() << "Calculating result for signed division with constants" << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput().get().local, arg0.type), Value(Literal(arg0.literal.real() / arg1.literal.real()), arg0.type), op->conditional, op->setFlags));
+            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(arg0.literal.real() / arg1.literal.real()), arg0.type), op->conditional, op->setFlags));
         }
         else if(arg1.hasType(ValueType::LITERAL))
         {
@@ -598,23 +598,23 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     	{
     		//let pack-mode handle saturation
     		logging::debug() << "Intrinsifying saturated truncate with move and pack-mode" << logging::endl;
-    		it = insertSaturation(it, method, op->getFirstArg(), op->getOutput(), !has_flag(op->decoration, InstructionDecorations::UNSIGNED_RESULT));
+    		it = insertSaturation(it, method, op->getFirstArg(), op->getOutput().value(), !has_flag(op->decoration, InstructionDecorations::UNSIGNED_RESULT));
     		it.nextInBlock();
     		it.erase();
     	}
         //if orig = i64, dest = i32 -> move
-    	else if(op->getFirstArg().type.getScalarBitCount() > 32 && op->getOutput().get().type.getScalarBitCount() == 32)
+    	else if(op->getFirstArg().type.getScalarBitCount() > 32 && op->getOutput()->type.getScalarBitCount() == 32)
         {
             //do nothing, is just a move, since we truncate the 64-bit integers anyway
             logging::debug() << "Intrinsifying truncate from unsupported type with move" << logging::endl;
-            it.reset((new MoveOperation(op->getOutput(), op->getFirstArg(), op->conditional, op->setFlags))->copyExtrasFrom(op));
+            it.reset((new MoveOperation(op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags))->copyExtrasFrom(op));
         }
         //if dest < i32 -> orig & dest-bits or pack-code
-        else if(op->getOutput().get().type.getScalarBitCount() < 32)
+        else if(op->getOutput()->type.getScalarBitCount() < 32)
         {
             logging::debug() << "Intrinsifying truncate with and" << logging::endl;
             op->setOpCode(OP_AND);
-            op->setArgument(1, Value(Literal(op->getOutput().get().type.getScalarWidthMask()), TYPE_INT32));
+            op->setArgument(1, Value(Literal(op->getOutput()->type.getScalarWidthMask()), TYPE_INT32));
         }
     }
     else if(op->opCode == "fptrunc")
@@ -623,7 +623,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     	{
     		throw CompilationError(CompilationStep::OPTIMIZER, "Saturation on floating-point conversion is not supprted", op->to_string());
     	}
-        it = insertFloatingPointConversion(it, method, arg0, op->getOutput());
+        it = insertFloatingPointConversion(it, method, arg0, op->getOutput().value());
         //remove 'fptrunc'
         it.erase();
         //so next instruction is not skipped
@@ -658,7 +658,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     }
     else if(op->opCode == "uitofp")
     {
-    	const Value tmp = method.addNewLocal(op->getOutput().get().type, "%uitofp");
+    	const Value tmp = method.addNewLocal(op->getOutput()->type, "%uitofp");
         if(op->getFirstArg().type.getScalarBitCount() < 32)
         {
             //make sure, leading bits are zeroes
@@ -702,7 +702,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     else if(op->opCode == "sext")
     {
         logging::debug() << "Intrinsifying sign extension with shifting" << logging::endl;
-        it = insertSignExtension(it, method, op->getFirstArg(), op->getOutput(), true, op->conditional, op->setFlags);
+        it = insertSignExtension(it, method, op->getFirstArg(), op->getOutput().value(), true, op->conditional, op->setFlags);
         //remove 'sext'
         it.erase();
         //so next instruction is not skipped
@@ -712,7 +712,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     else if(op->opCode == "zext")
     {
         logging::debug() << "Intrinsifying zero extension with and" << logging::endl;
-        it = insertZeroExtension(it, method, op->getFirstArg(), op->getOutput(), true, op->conditional, op->setFlags);
+        it = insertZeroExtension(it, method, op->getFirstArg(), op->getOutput().value(), true, op->conditional, op->setFlags);
         //remove 'zext'
         it.erase();
         //so next instruction is not skipped
@@ -740,25 +740,25 @@ static InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, Instruction
 			default:
 				src = defaultValue;
 		}
-		return it.reset((new MoveOperation(it->getOutput(), src))->copyExtrasFrom(it.get()));
+		return it.reset((new MoveOperation(it->getOutput().value(), src))->copyExtrasFrom(it.get()));
 	}
 	//set default value first and always, so a path for the destination local is guaranteed
-	it.emplace(new MoveOperation(it->getOutput(), defaultValue));
+	it.emplace(new MoveOperation(it->getOutput().value(), defaultValue));
 	it.nextInBlock();
 	//dim == 0 -> return first value
 	it.emplace((new Operation(OP_XOR, NOP_REGISTER, arg, INT_ZERO))->setSetFlags(SetFlag::SET_FLAGS));
 	it.nextInBlock();
-	it.emplace(new MoveOperation(it->getOutput(), method.findOrCreateLocal(TYPE_INT32, locals.at(0))->createReference(), COND_ZERO_SET));
+	it.emplace(new MoveOperation(it->getOutput().value(), method.findOrCreateLocal(TYPE_INT32, locals.at(0))->createReference(), COND_ZERO_SET));
 	it.nextInBlock();
 	//dim == 1 -> return second value
 	it.emplace((new Operation(OP_XOR, NOP_REGISTER, arg, INT_ONE))->setSetFlags(SetFlag::SET_FLAGS));
 	it.nextInBlock();
-	it.emplace(new MoveOperation(it->getOutput(), method.findOrCreateLocal(TYPE_INT32, locals.at(1))->createReference(), COND_ZERO_SET));
+	it.emplace(new MoveOperation(it->getOutput().value(), method.findOrCreateLocal(TYPE_INT32, locals.at(1))->createReference(), COND_ZERO_SET));
 	it.nextInBlock();
 	//dim == 2 -> return third value
 	it.emplace((new Operation(OP_XOR, NOP_REGISTER, arg, Value(Literal(static_cast<int64_t>(2)), TYPE_INT32)))->setSetFlags(SetFlag::SET_FLAGS));
 	it.nextInBlock();
-	return it.reset(new MoveOperation(it->getOutput(), method.findOrCreateLocal(TYPE_INT32, locals.at(2))->createReference(), COND_ZERO_SET));
+	return it.reset(new MoveOperation(it->getOutput().value(), method.findOrCreateLocal(TYPE_INT32, locals.at(2))->createReference(), COND_ZERO_SET));
 }
 
 static InstructionWalker intrinsifyReadWorkItemInfo(Method& method, InstructionWalker it, const Value& arg, const std::string& local, const InstructionDecorations decoration)
@@ -776,7 +776,7 @@ static InstructionWalker intrinsifyReadWorkItemInfo(Method& method, InstructionW
 	const Value tmp1 = method.addNewLocal(TYPE_INT32, "%local_info");
 	it.emplace(new Operation(OP_SHR, tmp1, itemInfo->createReference(), tmp0));
 	it.nextInBlock();
-	return it.reset((new Operation(OP_AND, it->getOutput(), tmp1, Value(Literal(static_cast<int64_t>(0xFF)), TYPE_INT8)))->copyExtrasFrom(it.get()));
+	return it.reset((new Operation(OP_AND, it->getOutput().value(), tmp1, Value(Literal(static_cast<int64_t>(0xFF)), TYPE_INT8)))->copyExtrasFrom(it.get()));
 }
 
 static InstructionWalker intrinsifyWorkItemFunctions(Method& method, InstructionWalker it)
@@ -791,24 +791,24 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
 	{
 		logging::debug() << "Intrinsifying reading of work-item dimensions" << logging::endl;
 		//setting the type to int8 allows us to optimize e.g. multiplications with work-item values
-		Value out = callSite->getOutput();
+		Value out = callSite->getOutput().value();
 		out.type = TYPE_INT8;
 		return it.reset((new MoveOperation(out, method.findOrCreateLocal(TYPE_INT32, Method::WORK_DIMENSIONS)->createReference()))->copyExtrasFrom(callSite)->setDecorations(add_flag(callSite->decoration, InstructionDecorations::BUILTIN_WORK_DIMENSIONS)));
 	}
 	if(callSite->methodName == "vc4cl_num_groups" && callSite->getArguments().size() == 1)
 	{
 		logging::debug() << "Intrinsifying reading of the number of work-groups" << logging::endl;
-		return intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0), {Method::NUM_GROUPS_X, Method::NUM_GROUPS_Y, Method::NUM_GROUPS_Z}, INT_ONE, InstructionDecorations::BUILTIN_NUM_GROUPS);
+		return intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0).value(), {Method::NUM_GROUPS_X, Method::NUM_GROUPS_Y, Method::NUM_GROUPS_Z}, INT_ONE, InstructionDecorations::BUILTIN_NUM_GROUPS);
 	}
 	if(callSite->methodName == "vc4cl_group_id" && callSite->getArguments().size() == 1)
 	{
 		logging::debug() << "Intrinsifying reading of the work-group ids" << logging::endl;
-		return intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0), {Method::GROUP_ID_X, Method::GROUP_ID_Y, Method::GROUP_ID_Z}, INT_ZERO, InstructionDecorations::BUILTIN_GROUP_ID);
+		return intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0).value(), {Method::GROUP_ID_X, Method::GROUP_ID_Y, Method::GROUP_ID_Z}, INT_ZERO, InstructionDecorations::BUILTIN_GROUP_ID);
 	}
 	if(callSite->methodName == "vc4cl_global_offset" && callSite->getArguments().size() == 1)
 	{
 		logging::debug() << "Intrinsifying reading of the global offsets" << logging::endl;
-		return intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0), {Method::GLOBAL_OFFSET_X, Method::GLOBAL_OFFSET_Y, Method::GLOBAL_OFFSET_Z}, INT_ZERO, InstructionDecorations::BUILTIN_GLOBAL_OFFSET);
+		return intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0).value(), {Method::GLOBAL_OFFSET_X, Method::GLOBAL_OFFSET_Y, Method::GLOBAL_OFFSET_Z}, INT_ZERO, InstructionDecorations::BUILTIN_GLOBAL_OFFSET);
 	}
 	if(callSite->methodName == "vc4cl_local_size" && callSite->getArguments().size() == 1)
 	{
@@ -817,24 +817,24 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
 		 * Use the value set via reqd_work_group_size(x, y, z) - if set - and return here.
 		 * This is valid, since the OpenCL standard states: "is the work-group size that must be used as the local_work_size argument to clEnqueueNDRangeKernel." (page 231)
 		 */
-		const auto& arg0 = callSite->getArgument(0).get();
+		const auto& arg0 = callSite->getArgument(0).value();
 		const auto& workGroupSizes = method.metaData.workGroupSizes;
 		if(workGroupSizes.at(0) > 0 && arg0.isLiteralValue())
 		{
-			const Literal immediate = arg0.getLiteralValue();
+			const Literal immediate = arg0.getLiteralValue().value();
 			if(immediate.integer > static_cast<int64_t>(workGroupSizes.size()) || workGroupSizes.at(immediate.integer) == 0)
 			{
-				return it.reset((new MoveOperation(callSite->getOutput(), INT_ONE))->setDecorations(InstructionDecorations::BUILTIN_LOCAL_SIZE));
+				return it.reset((new MoveOperation(callSite->getOutput().value(), INT_ONE))->setDecorations(InstructionDecorations::BUILTIN_LOCAL_SIZE));
 			}
-			return it.reset((new MoveOperation(callSite->getOutput(), Value(Literal(static_cast<uint64_t>(workGroupSizes.at(immediate.integer))), TYPE_INT8)))->setDecorations(InstructionDecorations::BUILTIN_LOCAL_SIZE));
+			return it.reset((new MoveOperation(callSite->getOutput().value(), Value(Literal(static_cast<uint64_t>(workGroupSizes.at(immediate.integer))), TYPE_INT8)))->setDecorations(InstructionDecorations::BUILTIN_LOCAL_SIZE));
 		}
 		//TODO needs to have a size of 1 for all higher dimensions (instead of currently implicit 0)
-		return intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0), Method::LOCAL_SIZES, InstructionDecorations::BUILTIN_LOCAL_SIZE);
+		return intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0).value(), Method::LOCAL_SIZES, InstructionDecorations::BUILTIN_LOCAL_SIZE);
 	}
 	if(callSite->methodName == "vc4cl_local_id" && callSite->getArguments().size() == 1)
 	{
 		logging::debug() << "Intrinsifying reading of local work-item ids" << logging::endl;
-		return intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0), Method::LOCAL_IDS, InstructionDecorations::BUILTIN_LOCAL_ID);
+		return intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0).value(), Method::LOCAL_IDS, InstructionDecorations::BUILTIN_LOCAL_ID);
 	}
 	if(callSite->methodName == "vc4cl_global_size" && callSite->getArguments().size() == 1)
 	{
@@ -845,12 +845,12 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
 		const Value tmpNumGroups = method.addNewLocal(TYPE_INT32, "%num_groups");
 		//emplace dummy instructions to be replaced
 		it.emplace(new MoveOperation(tmpLocalSize, NOP_REGISTER));
-		it = intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0), Method::LOCAL_SIZES, InstructionDecorations::BUILTIN_LOCAL_SIZE);
+		it = intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0).value(), Method::LOCAL_SIZES, InstructionDecorations::BUILTIN_LOCAL_SIZE);
 		it.nextInBlock();
 		it.emplace(new MoveOperation(tmpNumGroups, NOP_REGISTER));
-		it = intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0), {Method::NUM_GROUPS_X, Method::NUM_GROUPS_Y, Method::NUM_GROUPS_Z}, INT_ONE, InstructionDecorations::BUILTIN_NUM_GROUPS);
+		it = intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0).value(), {Method::NUM_GROUPS_X, Method::NUM_GROUPS_Y, Method::NUM_GROUPS_Z}, INT_ONE, InstructionDecorations::BUILTIN_NUM_GROUPS);
 		it.nextInBlock();
-		return it.reset((new Operation(OP_MUL24, callSite->getOutput(), tmpLocalSize, tmpNumGroups))->copyExtrasFrom(callSite)->setDecorations(add_flag(callSite->decoration, InstructionDecorations::BUILTIN_GLOBAL_SIZE)));
+		return it.reset((new Operation(OP_MUL24, callSite->getOutput().value(), tmpLocalSize, tmpNumGroups))->copyExtrasFrom(callSite)->setDecorations(add_flag(callSite->decoration, InstructionDecorations::BUILTIN_GLOBAL_SIZE)));
 	}
 	if(callSite->methodName == "vc4cl_global_id" && callSite->getArguments().size() == 1)
 	{
@@ -865,22 +865,22 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
 		const Value tmpRes1 = method.addNewLocal(TYPE_INT32, "%global_id");
 		//emplace dummy instructions to be replaced
 		it.emplace(new MoveOperation(tmpGroupID, NOP_REGISTER));
-		it = intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0), {Method::GROUP_ID_X, Method::GROUP_ID_Y, Method::GROUP_ID_Z}, INT_ZERO, InstructionDecorations::BUILTIN_GROUP_ID);
+		it = intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0).value(), {Method::GROUP_ID_X, Method::GROUP_ID_Y, Method::GROUP_ID_Z}, INT_ZERO, InstructionDecorations::BUILTIN_GROUP_ID);
 		it.nextInBlock();
 		it.emplace(new MoveOperation(tmpLocalSize, NOP_REGISTER));
-		it = intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0), Method::LOCAL_SIZES, InstructionDecorations::BUILTIN_LOCAL_SIZE);
+		it = intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0).value(), Method::LOCAL_SIZES, InstructionDecorations::BUILTIN_LOCAL_SIZE);
 		it.nextInBlock();
 		it.emplace(new MoveOperation(tmpGlobalOffset, NOP_REGISTER));
-		it = intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0), {Method::GLOBAL_OFFSET_X, Method::GLOBAL_OFFSET_Y, Method::GLOBAL_OFFSET_Z}, INT_ZERO, InstructionDecorations::BUILTIN_GLOBAL_OFFSET);
+		it = intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0).value(), {Method::GLOBAL_OFFSET_X, Method::GLOBAL_OFFSET_Y, Method::GLOBAL_OFFSET_Z}, INT_ZERO, InstructionDecorations::BUILTIN_GLOBAL_OFFSET);
 		it.nextInBlock();
 		it.emplace(new MoveOperation(tmpLocalID, NOP_REGISTER));
-		it = intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0), Method::LOCAL_IDS, InstructionDecorations::BUILTIN_LOCAL_ID);
+		it = intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0).value(), Method::LOCAL_IDS, InstructionDecorations::BUILTIN_LOCAL_ID);
 		it.nextInBlock();
 		it.emplace(new Operation(OP_MUL24, tmpRes0, tmpGroupID, tmpLocalSize));
 		it.nextInBlock();
 		it.emplace(new Operation(OP_ADD, tmpRes1, tmpGlobalOffset, tmpRes0));
 		it.nextInBlock();
-		return it.reset((new Operation(OP_ADD, callSite->getOutput(), tmpRes1, tmpLocalID))->copyExtrasFrom(callSite)->setDecorations(add_flag(callSite->decoration, InstructionDecorations::BUILTIN_GLOBAL_ID)));
+		return it.reset((new Operation(OP_ADD, callSite->getOutput().value(), tmpRes1, tmpLocalID))->copyExtrasFrom(callSite)->setDecorations(add_flag(callSite->decoration, InstructionDecorations::BUILTIN_GLOBAL_ID)));
 	}
 	return it;
 }

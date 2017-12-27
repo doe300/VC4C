@@ -98,57 +98,119 @@ namespace vc4c
 	class Optional
 	{
 	public:
-	    Optional() : hasValue(false) { }
-	    Optional(const T& value) : hasValue(true), value(value) { }
-	    Optional(T&& value) : hasValue(true), value(value) { }
-
-	    Optional(bool hasValue, const T& dummyValue = {}) : hasValue(hasValue), value(dummyValue) { }
-
-	    Optional<T>& operator=(const T& value)
+	    Optional() : hasValue(false)
+		{
+	    	static_assert(std::is_default_constructible<T>::value, "Cannot use default constructor on non default-constructible type!");
+		}
+	    Optional(const T& value) : hasValue(true), val(value)
 	    {
+	    	static_assert(std::is_copy_constructible<T>::value, "Cannot use copy constructor on non copy-constructible type!");
+	    }
+	    Optional(T&& value) : hasValue(true), val(value)  /* matches C++17 std::optional */
+	    {
+	    	static_assert(std::is_move_constructible<T>::value, "Cannot use move constructor on non move-constructible type!");
+	    }
+	    Optional(const Optional<T>& other) : hasValue(other.hasValue), val(other.val)  /* matches C++17 std::optional */
+	    {
+	    	static_assert(std::is_copy_constructible<T>::value, "Cannot use copy constructor on non copy-constructible type!");
+	    }
+	    Optional(Optional<T>&& other) : hasValue(other.hasValue), val(std::forward<T>(other.val))  /* matches C++17 std::optional */
+		{
+	    	static_assert(std::is_move_constructible<T>::value, "Cannot use move constructor on non move-constructible type!");
+		}
+
+	    Optional(bool hasValue, const T& dummyValue = {}) : hasValue(hasValue), val(dummyValue) { }
+
+	    Optional<T>& operator=(const Optional<T>& other) /* matches C++17 std::optional */
+	    {
+	    	static_assert(std::is_copy_assignable<T>::value, "Cannot use copy assignment operator on non copy-assignable type!");
+	    	hasValue = other.hasValue;
+	    	val = other.val;
+	    	return *this;
+	    }
+
+	    Optional<T>& operator=(Optional<T>&& other) /* matches C++17 std::optional */
+		{
+	    	static_assert(std::is_move_assignable<T>::value, "Cannot use move assignment operator on non copy-assignable type!");
+			hasValue = other.hasValue;
+			val = other.val;
+			return *this;
+		}
+
+	    Optional<T>& operator=(const T& value) /* matches C++17 std::optional */
+	    {
+	    	static_assert(std::is_copy_assignable<T>::value, "Cannot use copy assignment operator on non copy-assignable type!");
 	        hasValue = true;
-	        this->value = value;
+	        this->val = value;
 	        return *this;
 	    }
 
+	    Optional<T>& operator=(T&& value) /* matches C++17 std::optional */
+	    {
+	    	static_assert(std::is_move_assignable<T>::value, "Cannot use move assignment operator on non copy-assignable type!");
+	    	hasValue = true;
+	    	this->val = std::forward<T>(value);
+	    	return *this;
+	    }
+
 	    //"contextual conversion operator"
-	    explicit operator bool() const
+	    explicit operator bool() const /* matches C++17 std::optional */
 		{
 			return hasValue;
 		}
 
-	    operator T() const
+	    bool has_value() const /* matches C++17 std::optional */
 	    {
-	        return get();
+	    	return hasValue;
 	    }
 
-	    operator T()
+	    T& value() /* matches C++17 std::optional */
 	    {
-	        return get();
+	    	if(!hasValue)
+				throw CompilationError(CompilationStep::GENERAL, "Invalid read of optional value!");
+			return val;
 	    }
 
-	    const T& get() const
+	    const T& value() const /* matches C++17 std::optional */
 	    {
-	        if(!hasValue)
-	            throw CompilationError(CompilationStep::GENERAL, "Invalid read of optional value!");
-	        return value;
+	    	if(!hasValue)
+				throw CompilationError(CompilationStep::GENERAL, "Invalid read of optional value!");
+			return val;
 	    }
 
-	    T& get()
+	    T value_or(T&& defaultValue) const /* matches C++17 std::optional */
 	    {
-	        if(!hasValue)
-	            throw CompilationError(CompilationStep::GENERAL, "Invalid read of optional value!");
-	        return value;
+	    	return hasValue ? val : std::forward<T>(defaultValue);
+	    }
+
+	    T value_or(const T& defaultValue) const
+	    {
+	    	return hasValue ? val : std::forward<const T>(defaultValue);
+	    }
+
+	    const T* operator->() const /* matches C++17 std::optional */
+	    {
+	    	return &value();
+	    }
+
+	    T* operator->() /* matches C++17 std::optional */
+	    {
+	    	return &value();
+	    }
+
+	    const T& operator*() const /* matches C++17 std::optional */
+	    {
+	    	return value();
+	    }
+
+	    T& operator*() /* matches C++17 std::optional */
+	    {
+	    	return value();
 	    }
 
 	    bool is(const T& val) const
 	    {
-	    	return hasValue && value == val;
-	    }
-
-	    T orElse(const T& other) const
-	    {
-	        return hasValue ? value : other;
+	    	return hasValue && val == val;
 	    }
 
 	    Optional<T> orOther(const Optional<T>& other) const
@@ -158,25 +220,25 @@ namespace vc4c
 
 	    std::string to_string() const
 	    {
-	        return hasValue ? value.to_string() : "-";
+	        return hasValue ? val.to_string() : "-";
 	    }
 
 	    bool ifPresent(const std::function<bool(const T&)>& predicate) const
 	    {
-	    	return hasValue && predicate(value);
+	    	return hasValue && predicate(val);
 	    }
 
 	    template<typename R>
 	    Optional<R> map(const std::function<R(const T&)>& mapper, const Optional<R>& defaultValue = {}) const
 		{
 	    	if(hasValue)
-	    		return Optional<R>(mapper(value));
+	    		return Optional<R>(mapper(val));
 	    	return defaultValue;
 		}
 
-	    bool hasValue;
 	private:
-	    T value;
+	    bool hasValue;
+	    T val;
 	};
 
 	struct NonCopyable

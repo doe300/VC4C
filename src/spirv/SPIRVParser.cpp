@@ -234,7 +234,7 @@ intermediate::InstructionDecorations SPIRVParser::toInstructionDecorations(const
     }
     const auto decoration = getDecoration(decorationMappings.at(id), SpvDecorationFPFastMathMode);
     if(decoration)
-    	deco = add_flag(deco, toInstructionDecoration(static_cast<SpvFPFastMathModeMask>(decoration.get())));
+    	deco = add_flag(deco, toInstructionDecoration(static_cast<SpvFPFastMathModeMask>(decoration.value())));
     if(getDecoration(decorationMappings.at(id), SpvDecorationSaturatedConversion))
     	deco = add_flag(deco, intermediate::InstructionDecorations::SATURATED_CONVERSION);
     return deco;
@@ -370,8 +370,8 @@ static Optional<Value> specializeConstant(const uint32_t resultID, const DataTyp
 	if(decorations.find(resultID) != decorations.end())
 	{
 		Optional<uint32_t> res(getDecoration(decorations.at(resultID), SpvDecorationSpecId));
-		if(res.hasValue)
-			return Value(Literal(static_cast<int64_t>(res.get())), type);
+		if(res)
+			return Value(Literal(static_cast<int64_t>(res.value())), type);
 	}
 	return NO_VALUE;
 }
@@ -571,7 +571,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
 		return SPV_SUCCESS;
     case SpvOpTypeSampledImage:
     {
-    	const ImageType* image = typeMappings.at(getWord(parsed_instruction, 2)).getImageType();
+    	const ImageType* image = typeMappings.at(getWord(parsed_instruction, 2)).getImageType().value();
     	ImageType* sampledImage = new ImageType();
     	sampledImage->dimensions = image->dimensions;
     	sampledImage->isImageArray = image->isImageArray;
@@ -683,7 +683,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     	const DataType& type = typeMappings.at(parsed_instruction->type_id);
     	if(type.isScalarType() || type.isVectorType() || type.isPointerType())
     		constantMappings.emplace(parsed_instruction->result_id, Value(INT_ZERO.literal, type));
-    	else if(type.getArrayType().hasValue)
+    	else if(type.getArrayType())
     		constantMappings.emplace(parsed_instruction->result_id, INT_ZERO);
     	else
     		throw CompilationError(CompilationStep::LLVM_2_IR, "Unhandled type for null constant", type.to_string());
@@ -710,14 +710,14 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     {
     	//"[...] Similarly, the "True" and "False" parts of OpSpecConstantTrue and OpSpecConstantFalse provide the default Boolean specialization constants."
     	const Optional<Value> spec = specializeConstant(parsed_instruction->result_id, TYPE_BOOL, decorationMappings);
-		constantMappings.emplace(parsed_instruction->result_id, spec ? spec.get() : BOOL_TRUE);
+		constantMappings.emplace(parsed_instruction->result_id, spec.value_or(BOOL_TRUE));
     	return SPV_SUCCESS;
     }
     case SpvOpSpecConstantFalse:
     {
     	//"[...] Similarly, the "True" and "False" parts of OpSpecConstantTrue and OpSpecConstantFalse provide the default Boolean specialization constants."
     	const Optional<Value> spec = specializeConstant(parsed_instruction->result_id, TYPE_BOOL, decorationMappings);
-		constantMappings.emplace(parsed_instruction->result_id, spec ? spec.get() : BOOL_FALSE);
+		constantMappings.emplace(parsed_instruction->result_id, spec.value_or(BOOL_FALSE));
 		return SPV_SUCCESS;
     }
     case SpvOpSpecConstant:
@@ -725,14 +725,14 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     	//"The literal operands to OpSpecConstant are the default numerical specialization constants."
     	const Value constant = parseConstant(parsed_instruction, typeMappings);
     	const Optional<Value> spec = specializeConstant(parsed_instruction->result_id, constant.type, decorationMappings);
-    	constantMappings.emplace(parsed_instruction->result_id, spec ? spec.get() : constant);
+    	constantMappings.emplace(parsed_instruction->result_id, spec.value_or(constant));
 		return SPV_SUCCESS;
     }
     case SpvOpSpecConstantComposite:
     {
     	const Value constant = parseConstantComposite(parsed_instruction, typeMappings, constantMappings);
     	const Optional<Value> spec = specializeConstant(parsed_instruction->result_id, constant.type, decorationMappings);
-    	constantMappings.emplace(parsed_instruction->result_id, spec ? spec.get() : constant);
+    	constantMappings.emplace(parsed_instruction->result_id, spec.value_or(constant));
 		return SPV_SUCCESS;
     }
     case SpvOpSpecConstantOp:
@@ -742,14 +742,14 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     	const Optional<Value> spec = specializeConstant(parsed_instruction->result_id, type, decorationMappings);
     	if(spec)
     	{
-    		constantMappings.emplace(parsed_instruction->result_id, spec.get());
+    		constantMappings.emplace(parsed_instruction->result_id, spec.value());
     		return SPV_SUCCESS;
     	}
     	else
     	{
 			const auto result = calculateConstantOperation(parsed_instruction);
 			if(result.first == SPV_SUCCESS && result.second)
-				constantMappings.emplace(parsed_instruction->result_id, result.second);
+				constantMappings.emplace(parsed_instruction->result_id, result.second.value());
 			else if(result.first == SPV_SUCCESS)
 				//can't fall back to inserting the instruction, since there is no method associated with it!
 				throw CompilationError(CompilationStep::PARSER, "Failed to pre-calculate specialization value!");
@@ -791,9 +791,9 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         	val = constantMappings.at(getWord(parsed_instruction, 4));
         unsigned alignment = 0;
         if(decorationMappings.find(parsed_instruction->type_id) != decorationMappings.end())
-        	alignment = getDecoration(decorationMappings.at(parsed_instruction->type_id), SpvDecorationAlignment).orElse(0);
+        	alignment = getDecoration(decorationMappings.at(parsed_instruction->type_id), SpvDecorationAlignment).value_or(0);
         if(alignment == 0 && decorationMappings.find(parsed_instruction->result_id) != decorationMappings.end())
-        	alignment = getDecoration(decorationMappings.at(parsed_instruction->result_id), SpvDecorationAlignment).orElse(0);
+        	alignment = getDecoration(decorationMappings.at(parsed_instruction->result_id), SpvDecorationAlignment).value_or(0);
 
         //the type of OpVariable is the pointer
         //... but the global data/stack allocation needs to have the real type (is re-set in #parse())
@@ -809,7 +809,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         {
         	//OpVariables outside of any function are global data
         	module->globalData.emplace_back(Global(name, type, val));
-        	module->globalData.back().type.getPointerType().get()->alignment = alignment;
+        	module->globalData.back().type.getPointerType().value()->alignment = alignment;
 			memoryAllocatedData.emplace(parsed_instruction->result_id, &module->globalData.back());
         }
         logging::debug() << "Reading variable: " << type.to_string() << " " << name << " with value: " << val.to_string(false, true) << logging::endl;

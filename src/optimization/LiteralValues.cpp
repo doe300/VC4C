@@ -71,7 +71,7 @@ InstructionWalker optimizations::handleContainer(const Module& module, Method& m
 	{
 		Value src = rot->getSource();
 		//vector rotation -> rotate container (if static offset)
-		std::size_t offset = rot->getOffset().hasType(ValueType::LITERAL) ? rot->getOffset().literal.integer : rot->getOffset().immediate.getRotationOffset().get();
+		std::size_t offset = rot->getOffset().hasType(ValueType::LITERAL) ? rot->getOffset().literal.integer : rot->getOffset().immediate.getRotationOffset().value();
 		//"Rotates the order of the elements in the range [first,last), in such a way that the element pointed by middle becomes the new first element."
 		offset = (16 - offset);
 		//need to rotate all (possible non-existing) 16 elements, so use a temporary vector with 16 elements and rotate it
@@ -96,28 +96,28 @@ InstructionWalker optimizations::handleContainer(const Module& module, Method& m
 		if(!move->getSource().type.isPointerType())
 		{
 			logging::debug() << "Rewriting move from container " << move->to_string() << logging::endl;
-			it = copyVector(method, it, move->getOutput(), move->getSource());
+			it = copyVector(method, it, move->getOutput().value(), move->getSource());
 			it.erase();
 			//don't skip next instruction
 			it.previousInBlock();
 		}
 	}
-	else if(op != nullptr && (op->getFirstArg().hasType(ValueType::CONTAINER) || (op->getSecondArg() && op->getSecondArg().get().hasType(ValueType::CONTAINER))))
+	else if(op != nullptr && (op->getFirstArg().hasType(ValueType::CONTAINER) || (op->getSecondArg() && op->getSecondArg()->hasType(ValueType::CONTAINER))))
 	{
 		if(op->getFirstArg().hasType(ValueType::CONTAINER) && !op->getFirstArg().type.isPointerType())
 		{
 			logging::debug() << "Rewriting operation with container-input " << op->to_string() << logging::endl;
-			const Value tmpVal = method.addNewLocal(op->getOutput().get().type, "%container");
+			const Value tmpVal = method.addNewLocal(op->getOutput()->type, "%container");
 			it = copyVector(method, it, tmpVal, op->getFirstArg());
 			op->setArgument(0, tmpVal);
 			//don't skip next instruction
 			it.previousInBlock();
 		}
-		if(op->getSecondArg() && op->getSecondArg().get().hasType(ValueType::CONTAINER) && !op->getSecondArg().get().type.isPointerType())
+		if(op->getSecondArg() && op->getSecondArg()->hasType(ValueType::CONTAINER) && !op->getSecondArg()->type.isPointerType())
 		{
 			logging::debug() << "Rewriting operation with container-input " << op->to_string() << logging::endl;
-			const Value tmpVal = method.addNewLocal(op->getOutput().get().type, "%container");
-			it = copyVector(method, it, tmpVal, op->getSecondArg());
+			const Value tmpVal = method.addNewLocal(op->getOutput()->type, "%container");
+			it = copyVector(method, it, tmpVal, op->getSecondArg().value());
 			op->setArgument(1, tmpVal);
 			//don't skip next instruction
 			it.previousInBlock();
@@ -513,14 +513,14 @@ InstructionWalker optimizations::handleImmediate(const Module& module, Method& m
 				{
 					//requires load immediate
 					logging::debug() << "Loading immediate value: " << source.literal.to_string() << logging::endl;
-					it.reset((new intermediate::LoadImmediate(move->getOutput(), source.literal))->copyExtrasFrom(move));
+					it.reset((new intermediate::LoadImmediate(move->getOutput().value(), source.literal))->copyExtrasFrom(move));
 				}
 				else if(mapped.opCode != OP_NOP)
 				{
 					if(mapped.opCode.numOperands == 1)
-						it.reset((new intermediate::Operation(mapped.opCode, move->getOutput(), Value(mapped.immediate, move->getSource().type)))->copyExtrasFrom(move));
+						it.reset((new intermediate::Operation(mapped.opCode, move->getOutput().value(), Value(mapped.immediate, move->getSource().type)))->copyExtrasFrom(move));
 					else
-						it.reset((new intermediate::Operation(mapped.opCode, move->getOutput(), Value(mapped.immediate, move->getSource().type), Value(mapped.immediate, move->getSource().type)))->copyExtrasFrom(move));
+						it.reset((new intermediate::Operation(mapped.opCode, move->getOutput().value(), Value(mapped.immediate, move->getSource().type), Value(mapped.immediate, move->getSource().type)))->copyExtrasFrom(move));
 				}
 				else
 				{
@@ -555,7 +555,7 @@ InstructionWalker optimizations::handleImmediate(const Module& module, Method& m
 				}
 				else if(mapped.opCode != OP_NOP)
 				{
-					DataType type = mapped.immediate.getFloatingValue().hasValue ? TYPE_FLOAT : TYPE_INT32;
+					DataType type = mapped.immediate.getFloatingValue() ? TYPE_FLOAT : TYPE_INT32;
 					if(mapped.opCode.numOperands == 1)
 						it.emplace(new intermediate::Operation(mapped.opCode, tmp, Value(mapped.immediate, type), op->conditional));
 					else
@@ -572,7 +572,7 @@ InstructionWalker optimizations::handleImmediate(const Module& module, Method& m
 		}
 		if(op->getSecondArg())
 		{
-			source = op->getSecondArg();
+			source = op->getSecondArg().value();
 			if(source.hasType(ValueType::LITERAL))
 			{
 				PROFILE_START(mapImmediateValue);
@@ -592,7 +592,7 @@ InstructionWalker optimizations::handleImmediate(const Module& module, Method& m
 					}
 					else if(mapped.opCode != OP_NOP)
 					{
-						DataType type = mapped.immediate.getFloatingValue().hasValue ? TYPE_FLOAT : TYPE_INT32;
+						DataType type = mapped.immediate.getFloatingValue() ? TYPE_FLOAT : TYPE_INT32;
 						if(mapped.opCode.numOperands == 1)
 							it.emplace(new intermediate::Operation(mapped.opCode, tmp, Value(mapped.immediate, type), op->conditional));
 						else
@@ -615,7 +615,7 @@ InstructionWalker optimizations::handleImmediate(const Module& module, Method& m
 static InstructionWalker findWriteOfLocal(InstructionWalker it, const Local* loc)
 {
 	//TODO could already abort after X steps (X being the accumulator threshold)
-	while(!it.isStartOfBlock() && !(it->hasValueType(ValueType::LOCAL) && it->getOutput().get().hasLocal(loc)))
+	while(!it.isStartOfBlock() && !(it->hasValueType(ValueType::LOCAL) && it->getOutput()->hasLocal(loc)))
 	{
 		it.previousInBlock();
 	}
@@ -665,7 +665,7 @@ InstructionWalker optimizations::handleUseWithImmediate(const Module& module, Me
 				if(prefTemp)
 				{
 					logging::debug() << "Re-using temporary to split up use of long-living local with immediate value: " << op->to_string() << logging::endl;
-					op->replaceLocal(oldLocal, prefTemp.get().local, LocalUser::Type::READER);
+					op->replaceLocal(oldLocal, prefTemp->local, LocalUser::Type::READER);
 				}
 				else
 				{

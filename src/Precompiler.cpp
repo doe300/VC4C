@@ -257,13 +257,13 @@ static void compileOpenCLToLLVMIR(std::istream& input, std::ostream& output, con
 	const std::string defaultOptions = "-cc1 -triple spir-unknown-unknown";
 	//only run preprocessor and compilation, no linking and code-generation
 	//emit LLVM IR
-	const std::string command = buildCommand(compiler, defaultOptions, options, std::string("-S ").append(toText ? "-emit-llvm": "-emit-llvm-bc"), outputFile.orElse("/dev/stdout"), inputFile.orElse("-"));
+	const std::string command = buildCommand(compiler, defaultOptions, options, std::string("-S ").append(toText ? "-emit-llvm": "-emit-llvm-bc"), outputFile.value_or("/dev/stdout"), inputFile.value_or("-"));
 
 	logging::info() << "Compiling OpenCL to LLVM-IR with :" << command << logging::endl;
 
 	//NOTE: not setting a stream to put the stdout of the child-process in doesn't currently work (hangs the child-process)
 	//so we always set an output-stream, even if we write to file. But since the stream will have no content (is not written to), it has no impact
-	runPrecompiler(command, inputFile.hasValue ? nullptr : &input, &output, outputFile);
+	runPrecompiler(command, inputFile ? nullptr : &input, &output, outputFile);
 }
 
 static void compileLLVMIRToSPIRV(std::istream& input, std::ostream& output, const std::string& options, const bool toText = false, const Optional<std::string>& inputFile = {}, const Optional<std::string>& outputFile ={})
@@ -274,14 +274,14 @@ static void compileLLVMIRToSPIRV(std::istream& input, std::ostream& output, cons
 	throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-Tools not configured, can't process SPIR-V!");
 #else
 	std::string command = (std::string(SPIRV_LLVM_SPIRV_PATH) + (toText ? " -spirv-text" : "")) + " -o ";
-	command.append(outputFile.orElse("/dev/stdout")).append(" ");
-	command.append(inputFile.orElse("/dev/stdin"));
+	command.append(outputFile.value_or("/dev/stdout")).append(" ");
+	command.append(inputFile.value_or("/dev/stdin"));
 
 	logging::info() << "Converting LLVM-IR to SPIR-V with :" << command << logging::endl;
 
 	//NOTE: not setting a stream to put the stdout of the child-process in doesn't currently work (hangs the child-process)
 	//so we always set an output-stream, even if we write to file. But since the stream will have no content (is not written to), it has no impact
-	runPrecompiler(command, inputFile.hasValue ? nullptr : &input, &output, outputFile);
+	runPrecompiler(command, inputFile ? nullptr : &input, &output, outputFile);
 #endif
 }
 
@@ -318,14 +318,14 @@ static void compileSPIRVToSPIRV(std::istream& input, std::ostream& output, const
 	throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-Tools not configured, can't process SPIR-V!");
 #else
 	std::string command = (std::string(SPIRV_LLVM_SPIRV_PATH) + (toText ? " -to-text" : " -to-binary")) + " -o ";
-	command.append(outputFile.orElse("/dev/stdout")).append(" ");
-	command.append(inputFile.orElse("/dev/stdin"));
+	command.append(outputFile.value_or("/dev/stdout")).append(" ");
+	command.append(inputFile.value_or("/dev/stdin"));
 
 	logging::info() << "Converting between SPIR-V text and SPIR-V binary with :" << command << logging::endl;
 
 	//NOTE: not setting a stream to put the stdout of the child-process in doesn't currently work (hangs the child-process)
 	//so we always set an output-stream, even if we write to file. But since the stream will have no content (is not written to), it has no impact
-	runPrecompiler(command, inputFile.hasValue ? nullptr : &input, &output, outputFile);
+	runPrecompiler(command, inputFile ? nullptr : &input, &output, outputFile);
 #endif
 }
 
@@ -341,15 +341,15 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
 	if(outputType == SourceType::QPUASM_BIN || outputType == SourceType::QPUASM_HEX || outputType == SourceType::UNKNOWN)
 		throw CompilationError(CompilationStep::PRECOMPILATION, "Invalid output-type for pre-compilation!");
 
-	if(!outputFile.hasValue)
+	if(!outputFile)
 		logging::warn() << "When running the pre-compiler with root rights and writing to /dev/stdout, the compiler might delete the /dev/stdout symlink!" << logging::endl;
 
 	std::string extendedOptions = options;
-	if(inputFile.hasValue)
+	if(inputFile)
 	{
 		//for resolving relative includes
 		std::array<char, 1024> buffer;
-		strcpy(buffer.data(), inputFile.get().data());
+		strcpy(buffer.data(), inputFile->data());
 		std::string tmp = dirname(buffer.data());
 		extendedOptions.append(" -I ").append(tmp);
 	}

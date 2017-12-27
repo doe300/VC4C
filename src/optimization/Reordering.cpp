@@ -23,7 +23,7 @@ static InstructionWalker findPreviousInstruction(BasicBlock& basicBlock, const I
 	auto it = pos;
 	while(!it.isStartOfBlock())
 	{
-		if(it.get() != nullptr && it->mapsToASMInstruction() && it->getOutput().hasValue)
+		if(it.get() != nullptr && it->mapsToASMInstruction() && it->getOutput())
 			break;
 		it.previousInBlock();
 	}
@@ -49,7 +49,7 @@ static InstructionWalker findInstructionNotAccessing(BasicBlock& basicBlock, con
 		}
 		bool validReplacement = true;
 		PROFILE_START(checkExcludedValues);
-		if(it->getOutput().hasValue && excludedValues.find(it->getOutput().get()) != excludedValues.end())
+		if(it->getOutput() && excludedValues.find(it->getOutput().value()) != excludedValues.end())
 		{
 			validReplacement = false;
 		}
@@ -105,7 +105,7 @@ static InstructionWalker findInstructionNotAccessing(BasicBlock& basicBlock, con
 		//otherwise add all outputs by instructions in between (the NOP and the replacement), since they could be used as input in the following instructions
 		if(it->getOutput() && !it->writesRegister(REG_NOP))
 		{
-			excludedValues.insert(it->getOutput().get());
+			excludedValues.insert(it->getOutput().value());
 			//make sure, SFU/TMU calls are not moved over other SFU/TMU calls
 			//this prevents nop-sfu-... from being replaced with sfu-sfu-...
 			if(it->writesRegister(REG_SFU_EXP2) || it->writesRegister(REG_SFU_LOG2) || it->writesRegister(REG_SFU_RECIP)
@@ -159,7 +159,7 @@ static InstructionWalker findReplacementCandidate(BasicBlock& basicBlock, const 
 				logging::debug() << "Can't find reason for NOP in block: " << basicBlock.begin()->to_string() << logging::endl;
 				return basicBlock.end();
 			}
-			excludedValues.insert(lastInstruction->getOutput().get());
+			excludedValues.insert(lastInstruction->getOutput().value());
 			if(lastInstruction->writesRegister(REG_VPM_IN_ADDR))
 			{
 				excludedValues.emplace(Value(REG_VPM_IN_BUSY, TYPE_UNKNOWN));
@@ -293,7 +293,7 @@ void optimizations::splitReadAfterWrites(const Module& module, Method& method, c
 			if(it->mapsToASMInstruction())
 			{
 				//ignoring instructions not mapped to machine code, e.g. labels will also check for write-label-read
-				lastWrittenTo = it->hasValueType(ValueType::LOCAL) ? it->getOutput().get().local : nullptr;
+				lastWrittenTo = it->hasValueType(ValueType::LOCAL) ? it->getOutput()->local : nullptr;
 				lastInstruction = it;
 			}
 
@@ -344,7 +344,7 @@ InstructionWalker optimizations::moveRotationSourcesToAccumulators(const Module&
 		InstructionWalker writer = it.copy().previousInBlock();
 		while(!writer.isStartOfBlock())
 		{
-			if(writer.has() && writer->hasValueType(ValueType::LOCAL) && writer->getOutput().get().hasLocal(loc))
+			if(writer.has() && writer->hasValueType(ValueType::LOCAL) && writer->getOutput()->hasLocal(loc))
 				break;
 			writer.previousInBlock();
 		}

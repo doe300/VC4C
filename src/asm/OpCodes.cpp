@@ -317,32 +317,32 @@ bool OpCode::operator<(const OpCode& right) const
 
 Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> secondOperand, const std::function<Optional<Value>(const Value&)>& valueSupplier) const
 {
-	if(!firstOperand.hasValue)
+	if(!firstOperand)
 		return NO_VALUE;
-	if(numOperands > 1 && !secondOperand.hasValue)
+	if(numOperands > 1 && !secondOperand)
 		return NO_VALUE;
 
 	//extract the literal value behind the operands
-	Optional<Value> firstVal = firstOperand.get().hasType(ValueType::LITERAL) || firstOperand.get().hasType(ValueType::SMALL_IMMEDIATE) || firstOperand.get().hasType(ValueType::CONTAINER) ? firstOperand : valueSupplier(firstOperand);
-	Optional<Value> secondVal = !secondOperand.hasValue || (secondOperand.get().hasType(ValueType::LITERAL) || secondOperand.get().hasType(ValueType::SMALL_IMMEDIATE) || secondOperand.get().hasType(ValueType::CONTAINER)) ? secondOperand : valueSupplier(secondOperand);
+	Optional<Value> firstVal = firstOperand->hasType(ValueType::LITERAL) || firstOperand->hasType(ValueType::SMALL_IMMEDIATE) || firstOperand->hasType(ValueType::CONTAINER) ? firstOperand.value() : valueSupplier(firstOperand.value());
+	Optional<Value> secondVal = !secondOperand || (secondOperand->hasType(ValueType::LITERAL) || secondOperand->hasType(ValueType::SMALL_IMMEDIATE) || secondOperand->hasType(ValueType::CONTAINER)) ? secondOperand.value() : valueSupplier(secondOperand.value());
 
-	if(!firstVal.hasValue)
+	if(!firstVal)
 		return NO_VALUE;
-	if(numOperands > 1 && !secondVal.hasValue)
+	if(numOperands > 1 && !secondVal)
 		return NO_VALUE;
 
-	if(firstVal.get().hasType(ValueType::SMALL_IMMEDIATE) && firstVal.get().immediate.isVectorRotation())
+	if(firstVal->hasType(ValueType::SMALL_IMMEDIATE) && firstVal->immediate.isVectorRotation())
 		return NO_VALUE;
-	if(numOperands > 1 && secondVal.get().hasType(ValueType::SMALL_IMMEDIATE) && secondVal.get().immediate.isVectorRotation())
+	if(numOperands > 1 && secondVal->hasType(ValueType::SMALL_IMMEDIATE) && secondVal->immediate.isVectorRotation())
 		return NO_VALUE;
 
 	//both (used) values are literals (or literal containers)
 
-	bool calcPerComponent = (firstVal.get().hasType(ValueType::CONTAINER) && firstVal.get().container.elements.size() > 1 && !firstVal.get().container.isAllSame()) ||
-			(numOperands > 1 && secondVal.get().hasType(ValueType::CONTAINER) && secondVal.get().container.elements.size() > 1 && !secondVal.get().container.isAllSame());
-	DataType resultType = firstVal.get().type;
-	if(numOperands > 1 && (secondVal.get().type.num > resultType.num || secondVal.get().type.containsType(firstVal.get().type)))
-		resultType = secondVal.get().type;
+	bool calcPerComponent = (firstVal->hasType(ValueType::CONTAINER) && firstVal->container.elements.size() > 1 && !firstVal->container.isAllSame()) ||
+			(numOperands > 1 && secondVal->hasType(ValueType::CONTAINER) && secondVal->container.elements.size() > 1 && !secondVal->container.isAllSame());
+	DataType resultType = firstVal->type;
+	if(numOperands > 1 && (secondVal->type.num > resultType.num || secondVal->type.containsType(firstVal->type)))
+		resultType = secondVal->type;
 
 	//at least one used value is a container, need to calculate component-wise
 	if(calcPerComponent)
@@ -350,18 +350,18 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 		Value res(ContainerValue(), resultType);
 		for(unsigned char i = 0; i < resultType.num; ++i)
 		{
-			auto tmp = calculate(firstVal.get().hasType(ValueType::CONTAINER) ? firstVal.get().container.elements.at(i) : firstVal.get(),
-					secondVal.get().hasType(ValueType::CONTAINER) ? secondVal.get().container.elements.at(i) : secondVal.get(), valueSupplier);
-			if(!tmp.hasValue)
+			auto tmp = calculate(firstVal->hasType(ValueType::CONTAINER) ? firstVal->container.elements.at(i) : firstVal.value(),
+					secondVal->hasType(ValueType::CONTAINER) ? secondVal->container.elements.at(i) : secondVal.value(), valueSupplier);
+			if(!tmp)
 				//result could not be calculated for a single component of the vector, abort
 				return NO_VALUE;
-			res.container.elements.at(i) = tmp;
+			res.container.elements.at(i) = tmp.value();
 		}
 		return res;
 	}
 
-	const Literal firstLit = firstVal.get().getLiteralValue();
-	const Literal secondLit = !secondVal.hasValue ? INT_ZERO.literal : secondVal.get().getLiteralValue().get();
+	const Literal firstLit = firstVal->getLiteralValue().value();
+	const Literal secondLit = !secondVal ? INT_ZERO.literal : secondVal->getLiteralValue().value();
 
 	if(*this == OP_ADD)
 		return Value(Literal(firstLit.integer + secondLit.integer), resultType);

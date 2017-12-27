@@ -43,7 +43,7 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
             {
                 const std::size_t numInstructions = currentMethod.countInstructions();
                 //recursively search for used methods
-                const std::string newLocalPrefix = localPrefix + (!(call->getReturnType() == TYPE_VOID) ? call->getOutput().get().local->name : std::string("%") + (calledMethod->name + ".") + std::to_string(rand())) + '.';
+                const std::string newLocalPrefix = localPrefix + (!(call->getReturnType() == TYPE_VOID) ? call->getOutput()->local->name : std::string("%") + (calledMethod->name + ".") + std::to_string(rand())) + '.';
                 const Local* methodEndLabel = currentMethod.findOrCreateLocal(TYPE_LABEL, newLocalPrefix + "after");
                 inlineMethod(newLocalPrefix, methods, const_cast<Method&>(*calledMethod));
                 //at this point, the called method has already inlined all other methods
@@ -56,15 +56,15 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                     const Value ref = currentMethod.findOrCreateLocal(param.type, newLocalPrefix + param.name)->createReference();
                     if(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND))
 					{
-						it = intermediate::insertSignExtension(it, currentMethod, call->getArgument(i), ref, true);
+						it = intermediate::insertSignExtension(it, currentMethod, call->getArgument(i).value(), ref, true);
 					}
 					else if(has_flag(param.decorations, ParameterDecorations::ZERO_EXTEND))
 					{
-						it = intermediate::insertZeroExtension(it, currentMethod, call->getArgument(i), ref, true);
+						it = intermediate::insertZeroExtension(it, currentMethod, call->getArgument(i).value(), ref, true);
 					}
 					else
 					{
-						it.emplace(new intermediate::MoveOperation(ref, call->getArgument(i)));
+						it.emplace(new intermediate::MoveOperation(ref, call->getArgument(i).value()));
 						it.nextInMethod();
 					}
                 }
@@ -94,12 +94,12 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                         {
                             //prefix locals with destination of call
                             //map return-value to destination
-                            Value retVal(ret->getReturnValue().get());
+                            Value retVal(ret->getReturnValue().value());
                             if(retVal.hasType(ValueType::LOCAL))
                             {
                                 retVal.local = const_cast<Local*>(currentMethod.findOrCreateLocal(retVal.type, newLocalPrefix + retVal.local->name));
                             }
-                            it.emplace(new intermediate::MoveOperation(call->getOutput(), retVal));
+                            it.emplace(new intermediate::MoveOperation(call->getOutput().value(), retVal));
                             it.nextInMethod();
                         }
                         //after each return, jump to label after call-site (since there may be several return statements in a method)

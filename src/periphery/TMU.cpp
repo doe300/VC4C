@@ -129,7 +129,7 @@ static InstructionWalker insertExtractByteElements(Method& method, InstructionWa
 
 InstructionWalker periphery::insertReadVectorFromTMU(Method& method, InstructionWalker it, const Value& dest, const Value& addr, const TMU& tmu)
 {
-	if(dest.type.complexType && !dest.type.getPointerType().hasValue)
+	if(dest.type.complexType && !dest.type.getPointerType())
 		throw CompilationError(CompilationStep::GENERAL, "Reading of this type via TMU is not (yet) implemented", dest.type.to_string());
 
 	Value addresses(UNDEFINED_VALUE);
@@ -192,7 +192,7 @@ InstructionWalker periphery::insertReadTMU(Method& method, InstructionWalker it,
 		throw CompilationError(CompilationStep::GENERAL, "Failed to find the image-configuration for", image.to_string());
 	if(!xCoord.type.isFloatingType())
 		throw CompilationError(CompilationStep::GENERAL, "Can only read with floating-point coordinates in the x-axis", xCoord.to_string());
-	if(yCoord.hasValue && !yCoord.get().type.isFloatingType())
+	if(yCoord && !yCoord->type.isFloatingType())
 		throw CompilationError(CompilationStep::GENERAL, "Can only read with floating-point coordinates in the y-axis", yCoord.to_string());
 
 	// 1. set the UNIFORM pointer to point to the configurations for the image about to be read
@@ -204,9 +204,9 @@ InstructionWalker periphery::insertReadTMU(Method& method, InstructionWalker it,
 	it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_UNIFORM));
 	it.nextInBlock();
 	// 3. write the TMU addresses
-	if(yCoord.hasValue)
+	if(yCoord)
 	{
-		it.emplace(new intermediate::MoveOperation(tmu.getYCoord(yCoord.get().type), yCoord));
+		it.emplace(new intermediate::MoveOperation(tmu.getYCoord(yCoord->type), yCoord.value()));
 		it.nextInBlock();
 	}
 	else

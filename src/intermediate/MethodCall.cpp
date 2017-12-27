@@ -24,7 +24,7 @@ IntermediateInstruction({true, dest}), methodName(methodName)
 
 std::string MethodCall::to_string() const
 {
-    std::string signature = (getReturnType() == TYPE_VOID ? "" : getOutput().get().to_string(true) + " = ") + (getReturnType().to_string() + " ") + methodName + "(";
+    std::string signature = (getReturnType() == TYPE_VOID ? "" : getOutput()->to_string(true) + " = ") + (getReturnType().to_string() + " ") + methodName + "(";
     if(!getArguments().empty())
     {
         for (const Value& arg : getArguments()) {
@@ -44,8 +44,8 @@ IntermediateInstruction* MethodCall::copyFor(Method& method, const std::string& 
     for (const Value& arg : getArguments()) {
     	newArgs.push_back(renameValue(method, arg, localPrefix));
     }
-    if(getOutput().hasValue)
-    	return (new MethodCall(renameValue(method, getOutput(), localPrefix), methodName, newArgs))->copyExtrasFrom(this);
+    if(getOutput())
+    	return (new MethodCall(renameValue(method, getOutput().value(), localPrefix), methodName, newArgs))->copyExtrasFrom(this);
     else
     	return (new MethodCall(methodName, newArgs))->copyExtrasFrom(this);
 }
@@ -57,9 +57,9 @@ qpu_asm::Instruction* MethodCall::convertToAsm(const FastMap<const Local*, Regis
 
 const DataType MethodCall::getReturnType() const
 {
-	if(!getOutput().hasValue)
+	if(!getOutput())
 		return TYPE_VOID;
-	return getOutput().get().type;
+	return getOutput()->type;
 }
 
 bool MethodCall::matchesSignature(const Method& method) const
@@ -78,7 +78,7 @@ bool MethodCall::matchesSignature(const Method& method) const
 	}
 	for(std::size_t i = 0; i < method.parameters.size(); ++i)
 	{
-		if(!(method.parameters.at(i).type.containsType(getArgument(i).get().type)))
+		if(!(method.parameters.at(i).type.containsType(getArgument(i)->type)))
 		{
 			return false;
 		}

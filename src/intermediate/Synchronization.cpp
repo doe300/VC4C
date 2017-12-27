@@ -126,7 +126,7 @@ bool LifetimeBoundary::mapsToASMInstruction() const
 
 Value LifetimeBoundary::getStackAllocation() const
 {
-	return getArgument(0);
+	return getArgument(0).value();
 }
 
 static const Value MUTEX_REGISTER(REG_MUTEX, TYPE_BOOL);

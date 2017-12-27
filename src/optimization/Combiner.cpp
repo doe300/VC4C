@@ -103,11 +103,11 @@ static const std::vector<MergeCondition> mergeConditions = {
     },
     //check reads from or writes to special registers
     [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool{
-        if(firstOp != nullptr && (firstOp->hasValueType(ValueType::REGISTER) || firstOp->getFirstArg().hasType(ValueType::REGISTER) || (firstOp->getSecondArg() && firstOp->getSecondArg().get().hasType(ValueType::REGISTER))))
+        if(firstOp != nullptr && (firstOp->hasValueType(ValueType::REGISTER) || firstOp->getFirstArg().hasType(ValueType::REGISTER) || (firstOp->getSecondArg() && firstOp->getSecondArg()->hasType(ValueType::REGISTER))))
             return false;
         else if(firstMove != nullptr && (firstMove->hasValueType(ValueType::REGISTER) || firstMove->getSource().hasType(ValueType::REGISTER)))
             return false;
-        else if(secondOp != nullptr && (secondOp->hasValueType(ValueType::REGISTER) || secondOp->getFirstArg().hasType(ValueType::REGISTER) || (secondOp->getSecondArg() && secondOp->getSecondArg().get().hasType(ValueType::REGISTER))))
+        else if(secondOp != nullptr && (secondOp->hasValueType(ValueType::REGISTER) || secondOp->getFirstArg().hasType(ValueType::REGISTER) || (secondOp->getSecondArg() && secondOp->getSecondArg()->hasType(ValueType::REGISTER))))
             return false;
         else if(secondMove != nullptr && (secondMove->hasValueType(ValueType::REGISTER) || secondMove->getSource().hasType(ValueType::REGISTER)))
             return false;
@@ -117,16 +117,16 @@ static const std::vector<MergeCondition> mergeConditions = {
     [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool{
         Value outFirst(UNDEFINED_VALUE);
         if(firstOp != nullptr && firstOp->getOutput())
-            outFirst = firstOp->getOutput();
+            outFirst = firstOp->getOutput().value();
         else if(firstMove != nullptr && firstMove->getOutput())
-            outFirst = firstMove->getOutput();
+            outFirst = firstMove->getOutput().value();
         if(outFirst.type != TYPE_UNKNOWN)
         {
             if(secondOp != nullptr)
             {
                 if(secondOp->getFirstArg() == outFirst)
                     return false;
-                else if(secondOp->getSecondArg() && secondOp->getSecondArg().get() == outFirst)
+                else if(secondOp->getSecondArg().is(outFirst))
                     return false;
             }
             if(secondMove != nullptr)
@@ -143,24 +143,24 @@ static const std::vector<MergeCondition> mergeConditions = {
         ConditionCode condFirst = COND_ALWAYS;
         if(firstOp != nullptr && firstOp->getOutput())
         {
-            outFirst = firstOp->getOutput();
+            outFirst = firstOp->getOutput().value();
             condFirst = firstOp->conditional;
         }
         else if(firstMove != nullptr && firstMove->getOutput())
         {
-            outFirst = firstMove->getOutput();
+            outFirst = firstMove->getOutput().value();
             condFirst = firstMove->conditional;
         }
         Value outSecond(UNDEFINED_VALUE);
         ConditionCode condSecond = COND_ALWAYS;
         if(secondOp != nullptr && secondOp->getOutput())
         {
-            outSecond = secondOp->getOutput();
+            outSecond = secondOp->getOutput().value();
             condSecond = secondOp->conditional;
         }
         else if(secondMove != nullptr && secondMove->getOutput())
         {
-            outSecond = secondMove->getOutput();
+            outSecond = secondMove->getOutput().value();
             condSecond = secondMove->conditional;
         }
         if(outFirst == outSecond || (outFirst.hasType(ValueType::LOCAL) && outSecond.hasType(ValueType::LOCAL) && outSecond.hasLocal(outFirst.local)))
@@ -229,8 +229,8 @@ static const std::vector<MergeCondition> mergeConditions = {
         {
             if(firstOp->getFirstArg().hasType(ValueType::SMALL_IMMEDIATE))
             	immediate = firstOp->getFirstArg().immediate;
-            if(firstOp->getSecondArg() && firstOp->getSecondArg().get().hasType(ValueType::SMALL_IMMEDIATE))
-            	immediate = firstOp->getSecondArg().get().immediate;
+            if(firstOp->getSecondArg() && firstOp->getSecondArg()->hasType(ValueType::SMALL_IMMEDIATE))
+            	immediate = firstOp->getSecondArg()->immediate;
         }
         if(firstMove != nullptr)
         {
@@ -241,14 +241,14 @@ static const std::vector<MergeCondition> mergeConditions = {
         {
             if(secondOp != nullptr)
             {
-                if(secondOp->getFirstArg().hasType(ValueType::SMALL_IMMEDIATE) && !secondOp->getFirstArg().hasImmediate(immediate))
+                if(secondOp->getFirstArg().hasType(ValueType::SMALL_IMMEDIATE) && !secondOp->getFirstArg().hasImmediate(immediate.value()))
                     return false;
-                if(secondOp->getSecondArg() && secondOp->getSecondArg().get().hasType(ValueType::SMALL_IMMEDIATE) && !secondOp->getSecondArg().get().hasImmediate(immediate))
+                if(secondOp->getSecondArg() && secondOp->getSecondArg()->hasType(ValueType::SMALL_IMMEDIATE) && !secondOp->getSecondArg()->hasImmediate(immediate.value()))
                     return false;
             }
             if(secondMove != nullptr)
             {
-                if(secondMove->getSource().hasType(ValueType::SMALL_IMMEDIATE) && !secondMove->getSource().hasImmediate(immediate))
+                if(secondMove->getSource().hasType(ValueType::SMALL_IMMEDIATE) && !secondMove->getSource().hasImmediate(immediate.value()))
                     return false;
             }
         }
@@ -261,7 +261,7 @@ static const std::vector<MergeCondition> mergeConditions = {
         {
             inputs.first = firstOp->getFirstArg();
             if(firstOp->getSecondArg())
-                inputs.second = firstOp->getSecondArg();
+                inputs.second = firstOp->getSecondArg().value();
         }
         if(firstMove != nullptr)
             inputs.first = firstMove->getSource();
@@ -274,11 +274,11 @@ static const std::vector<MergeCondition> mergeConditions = {
                 else if(secondOp->getFirstArg() != inputs.second)
 					return false;
             }
-            if(secondOp->getSecondArg() && secondOp->getSecondArg().get() != inputs.first)
+            if(secondOp->getSecondArg() && secondOp->getSecondArg().value() != inputs.first)
             {
             	if(inputs.second.type == TYPE_UNKNOWN)
-					inputs.second = secondOp->getSecondArg();
-            	else if(secondOp->getSecondArg().get() != inputs.second)
+					inputs.second = secondOp->getSecondArg().value();
+            	else if(secondOp->getSecondArg().value() != inputs.second)
                     return false;
             }
         }
@@ -310,7 +310,7 @@ static const std::vector<MergeCondition> mergeConditions = {
         if(firstOp != nullptr)
         {
         	firstSignal = firstOp->signal;
-        	if(firstOp->getFirstArg().hasType(ValueType::LITERAL) || (firstOp->getSecondArg() && firstOp->getSecondArg().get().hasType(ValueType::LITERAL)))
+        	if(firstOp->getFirstArg().hasType(ValueType::LITERAL) || (firstOp->getSecondArg() && firstOp->getSecondArg()->hasType(ValueType::LITERAL)))
 				firstSignal = SIGNAL_ALU_IMMEDIATE;
         	firstPack = firstOp->packMode;
         	firstUnpack = firstOp->unpackMode;
@@ -326,7 +326,7 @@ static const std::vector<MergeCondition> mergeConditions = {
         if(secondOp != nullptr)
         {
         	secondSignal = secondOp->signal;
-        	if(secondOp->getFirstArg().hasType(ValueType::LITERAL) || (secondOp->getSecondArg() && secondOp->getSecondArg().get().hasType(ValueType::LITERAL)))
+        	if(secondOp->getFirstArg().hasType(ValueType::LITERAL) || (secondOp->getSecondArg() && secondOp->getSecondArg()->hasType(ValueType::LITERAL)))
         		secondSignal = SIGNAL_ALU_IMMEDIATE;
         	secondPack = secondOp->packMode;
         	secondUnpack = secondOp->unpackMode;
@@ -360,12 +360,12 @@ static const std::vector<MergeCondition> mergeConditions = {
     	//since boolean values are combined with ELEM_NUMBER (reg-file A) before conditional branch, they cannot be on reg-file A
     	//combining two of those can cause register-association errors
     	//TODO find a way to fix this
-    	if(((firstOp != nullptr && firstOp->hasValueType(ValueType::LOCAL) && firstOp->getOutput().get().type == TYPE_BOOL) || (firstMove != nullptr && firstMove->hasValueType(ValueType::LOCAL) && firstMove->getOutput().get().type == TYPE_BOOL)))
+    	if(((firstOp != nullptr && firstOp->hasValueType(ValueType::LOCAL) && firstOp->getOutput()->type == TYPE_BOOL) || (firstMove != nullptr && firstMove->hasValueType(ValueType::LOCAL) && firstMove->getOutput()->type == TYPE_BOOL)))
     	{
-    		if(((secondOp != nullptr && secondOp->hasValueType(ValueType::LOCAL) && secondOp->getOutput().get().type == TYPE_BOOL) || (secondMove != nullptr && secondMove->hasValueType(ValueType::LOCAL) && secondMove->getOutput().get().type == TYPE_BOOL)))
+    		if(((secondOp != nullptr && secondOp->hasValueType(ValueType::LOCAL) && secondOp->getOutput()->type == TYPE_BOOL) || (secondMove != nullptr && secondMove->hasValueType(ValueType::LOCAL) && secondMove->getOutput()->type == TYPE_BOOL)))
     		{
     			//this is not an issue, if the output of the two instructions is the same in which case it can be assigned to register-file B
-				return (firstOp != nullptr ? firstOp->getOutput() : firstMove->getOutput()).get() == (secondOp != nullptr ? secondOp->getOutput() : secondMove->getOutput()).get();
+				return (firstOp != nullptr ? firstOp->getOutput() : firstMove->getOutput()).value() == (secondOp != nullptr ? secondOp->getOutput() : secondMove->getOutput()).value();
     		}
     	}
     	return true;
@@ -417,7 +417,7 @@ void optimizations::combineOperations(const Module& module, Method& method, cons
 					{
 						//extra check, only combine writes to the same local, if local is only used within the next instruction
 						//this is required, since we cannot write to a physical register from both ALUs, so the local needs to be on an accumulator
-						if(instr->getOutput().get().local == nextInstr->getOutput().get().local && !nextIt.getBasicBlock()->isLocallyLimited(nextIt, instr->getOutput().get().local))
+						if(instr->getOutput()->local == nextInstr->getOutput()->local && !nextIt.getBasicBlock()->isLocallyLimited(nextIt, instr->getOutput()->local))
 							conditionsMet = false;
 					}
 					if(instr->hasValueType(ValueType::LOCAL) || nextInstr->hasValueType(ValueType::LOCAL))
@@ -428,9 +428,9 @@ void optimizations::combineOperations(const Module& module, Method& method, cons
 						if(!checkIt.isEndOfBlock() && checkIt.has<VectorRotation>())
 						{
 							const Value src = checkIt.get<VectorRotation>()->getSource();
-							if(instr->hasValueType(ValueType::LOCAL) && instr->getOutput().get() == src)
+							if(instr->hasValueType(ValueType::LOCAL) && instr->getOutput().is(src))
 								conditionsMet = false;
-							if(nextInstr->hasValueType(ValueType::LOCAL) && nextInstr->getOutput().get() == src)
+							if(nextInstr->hasValueType(ValueType::LOCAL) && nextInstr->getOutput().is(src))
 								conditionsMet = false;
 						}
 						//the next instruction MUST NOT unpack a value written to in one of the combined instructions
@@ -446,9 +446,9 @@ void optimizations::combineOperations(const Module& module, Method& method, cons
 									conditionsMet = false;
 								}
 							}
-							if(instr->packMode != PACK_NOP && instr->hasValueType(ValueType::LOCAL) && checkIt->readsLocal(instr->getOutput().get().local))
+							if(instr->packMode != PACK_NOP && instr->hasValueType(ValueType::LOCAL) && checkIt->readsLocal(instr->getOutput()->local))
 								conditionsMet = false;
-							if(nextInstr->packMode != PACK_NOP && nextInstr->hasValueType(ValueType::LOCAL) && checkIt->readsLocal(nextInstr->getOutput().get().local))
+							if(nextInstr->packMode != PACK_NOP && nextInstr->hasValueType(ValueType::LOCAL) && checkIt->readsLocal(nextInstr->getOutput()->local))
 								conditionsMet = false;
 						}
 						//run previous checks also for the previous (before instr) instruction
@@ -456,11 +456,11 @@ void optimizations::combineOperations(const Module& module, Method& method, cons
 						checkIt = it.copy().previousInBlock();
 						if(!checkIt.isStartOfBlock() && checkIt->hasValueType(ValueType::LOCAL))
 						{
-							if(checkIt->packMode != PACK_NOP && (instr->readsLocal(checkIt->getOutput().get().local) || nextInstr->readsLocal(checkIt->getOutput().get().local)))
+							if(checkIt->packMode != PACK_NOP && (instr->readsLocal(checkIt->getOutput()->local) || nextInstr->readsLocal(checkIt->getOutput()->local)))
 								conditionsMet = false;
-							if(instr->unpackMode != UNPACK_NOP && instr->readsLocal(checkIt->getOutput().get().local))
+							if(instr->unpackMode != UNPACK_NOP && instr->readsLocal(checkIt->getOutput()->local))
 								conditionsMet = false;
-							if(nextInstr->unpackMode != UNPACK_NOP && nextInstr->readsLocal(checkIt->getOutput().get().local))
+							if(nextInstr->unpackMode != UNPACK_NOP && nextInstr->readsLocal(checkIt->getOutput()->local))
 								conditionsMet = false;
 						}
 					}
@@ -557,8 +557,8 @@ static Optional<Literal> getSourceLiteral(InstructionWalker it)
 	else if(it.has<Operation>())
 	{
 		const auto val = it.get<Operation>()->precalculate(2);
-		if(val.hasValue)
-			return val.get().literal;
+		if(val)
+			return val->literal;
 	}
 	return Optional<Literal>(false, static_cast<int64_t>(0));
 }
@@ -586,15 +586,15 @@ void optimizations::combineLoadingLiterals(const Module& module, Method& method,
 		InstructionWalker it = block.begin();
 		while(!it.isEndOfBlock())
 		{
-			if(it->hasValueType(ValueType::LOCAL) && it->getOutput().get().local->getUsers(LocalUser::Type::WRITER).size() == 1 && block.isLocallyLimited(it, it->getOutput().get().local))
+			if(it->hasValueType(ValueType::LOCAL) && it->getOutput()->local->getUsers(LocalUser::Type::WRITER).size() == 1 && block.isLocallyLimited(it, it->getOutput()->local))
 			{
 				Optional<Literal> literal = getSourceLiteral(it);
-				if(literal.hasValue)
+				if(literal)
 				{
-					if(lastLoadImmediate.find(literal.get().integer) != lastLoadImmediate.end() && canReplaceLiteralLoad(it, block.begin(), lastLoadImmediate.at(literal.get().integer)))
+					if(lastLoadImmediate.find(literal->integer) != lastLoadImmediate.end() && canReplaceLiteralLoad(it, block.begin(), lastLoadImmediate.at(literal->integer)))
 					{
-						Local* oldLocal = it->getOutput().get().local;
-						Local* newLocal = lastLoadImmediate.at(literal.get().integer)->getOutput().get().local;
+						Local* oldLocal = it->getOutput()->local;
+						Local* newLocal = lastLoadImmediate.at(literal->integer)->getOutput()->local;
 						logging::debug() << "Removing duplicate loading of local: " << it->to_string() << logging::endl;
 						//Local#forUsers can't be used here, since we modify the list of users via LocalUser#replaceLocal
 						FastSet<const LocalUser*> readers = oldLocal->getUsers(LocalUser::Type::READER);
@@ -606,7 +606,7 @@ void optimizations::combineLoadingLiterals(const Module& module, Method& method,
 						continue;
 					}
 					else
-						lastLoadImmediate[literal.get().integer] =  it;
+						lastLoadImmediate[literal->integer] =  it;
 				}
 			}
 			it.nextInBlock();
@@ -647,13 +647,13 @@ InstructionWalker optimizations::combineSelectionWithZero(const Module& module, 
 		return it;
 	if(!it.has<MoveOperation>() || !nextIt.has<MoveOperation>())
 		return it;
-	if(!it->getOutput().hasValue || !nextIt->getOutput().hasValue)
+	if(!it->getOutput() || !nextIt->getOutput())
 		return it;
 	MoveOperation* move = it.get<MoveOperation>();
 	MoveOperation* nextMove = nextIt.get<MoveOperation>();
 	if(it->hasSideEffects() || nextIt->hasSideEffects())
 		return it;
-	if(it->getOutput().get() != nextIt->getOutput().get())
+	if(it->getOutput().value() != nextIt->getOutput().value())
 		return it;
 	if(it->conditional == COND_ALWAYS || nextIt->conditional == COND_ALWAYS || !it->conditional.isInversionOf(nextIt->conditional))
 		return it;
@@ -662,14 +662,14 @@ InstructionWalker optimizations::combineSelectionWithZero(const Module& module, 
 	if(move->getSource().hasLiteral(INT_ZERO.literal))
 	{
 		logging::debug() << "Rewriting selection of either zero or " << nextMove->getSource().to_string() << " using only one input" << logging::endl;
-		it.reset((new Operation(OP_XOR, move->getOutput(), nextMove->getSource(), nextMove->getSource()))->copyExtrasFrom(move));
+		it.reset((new Operation(OP_XOR, move->getOutput().value(), nextMove->getSource(), nextMove->getSource()))->copyExtrasFrom(move));
 		//to process this instruction again (e.g. loading literals)
 		it.previousInBlock();
 	}
 	else if(nextMove->getSource().hasLiteral(INT_ZERO.literal))
 	{
 		logging::debug() << "Rewriting selection of either " << move->getSource().to_string() << " or zero using only one input" << logging::endl;
-		nextIt.reset((new Operation(OP_XOR, nextMove->getOutput(), move->getSource(), move->getSource()))->copyExtrasFrom(nextMove));
+		nextIt.reset((new Operation(OP_XOR, nextMove->getOutput().value(), move->getSource(), move->getSource()))->copyExtrasFrom(nextMove));
 	}
 	return it;
 }
@@ -693,7 +693,7 @@ void optimizations::combineVectorRotations(const Module& module, Method& method,
 						if(firstRot != nullptr && !firstRot->hasSideEffects() && firstRot->getOffset().hasType(ValueType::SMALL_IMMEDIATE) && firstRot->getOffset().immediate != VECTOR_ROTATE_R5)
 						{
 							auto firstIt = it.getBasicBlock()->findWalkerForInstruction(firstRot, it);
-							if(firstIt.hasValue)
+							if(firstIt)
 							{
 								/*
 								 * Can combine the offsets of two rotations,
@@ -702,20 +702,20 @@ void optimizations::combineVectorRotations(const Module& module, Method& method,
 								 * - both rotations only use immediate offsets and
 								 * - neither rotation has any side effects
 								 */
-								const uint8_t offset = (rot->getOffset().immediate.getRotationOffset().get() + firstRot->getOffset().immediate.getRotationOffset().get()) % 16;
+								const uint8_t offset = (rot->getOffset().immediate.getRotationOffset().value() + firstRot->getOffset().immediate.getRotationOffset().value()) % 16;
 								if(offset == 0)
 								{
 									logging::debug() << "Replacing unnecessary vector rotations " << firstRot->to_string() << " and " << rot->to_string() << " with single move" << logging::endl;
-									it.reset((new MoveOperation(rot->getOutput(), firstRot->getSource()))->copyExtrasFrom(rot));
+									it.reset((new MoveOperation(rot->getOutput().value(), firstRot->getSource()))->copyExtrasFrom(rot));
 									it->copyExtrasFrom(firstRot);
-									firstIt.get().erase();
+									firstIt->erase();
 								}
 								else
 								{
 									logging::debug() << "Combining vector rotations " << firstRot->to_string() << " and " << rot->to_string() << " to a single rotation with offset " << static_cast<unsigned>(offset) << logging::endl;
-									it.reset((new VectorRotation(rot->getOutput(), firstRot->getSource(), Value(SmallImmediate::fromRotationOffset(offset), TYPE_INT8)))->copyExtrasFrom(rot));
+									it.reset((new VectorRotation(rot->getOutput().value(), firstRot->getSource(), Value(SmallImmediate::fromRotationOffset(offset), TYPE_INT8)))->copyExtrasFrom(rot));
 									it->copyExtrasFrom(firstRot);
-									firstIt.get().erase();
+									firstIt->erase();
 								}
 							}
 						}
@@ -732,7 +732,7 @@ InstructionWalker optimizations::combineSameFlags(const Module& module, Method& 
 	if(it.get() == nullptr || it->setFlags != SetFlag::SET_FLAGS)
 		return it;
 	//only combine writing into NOP-register for now
-	if(it->getOutput().hasValue && it->getOutput().get() != NOP_REGISTER)
+	if(it->getOutput() && it->getOutput().value() != NOP_REGISTER)
 		return it;
 	//only remove this setting of flags, if we have no other side effects and don't execute conditionally
 	if(it->signal.hasSideEffects() || it->conditional != COND_ALWAYS)

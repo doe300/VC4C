@@ -71,7 +71,7 @@ static Optional<InstructionWalker> findInLoop(const intermediate::IntermediateIn
 	for(const CFGNode* node : loop)
 	{
 		auto it = node->key->findWalkerForInstruction(inst, node->key->end());
-		if(it.hasValue)
+		if(it)
 			return it;
 	}
 	return Optional<InstructionWalker>(false, InstructionWalker());
@@ -100,19 +100,19 @@ struct LoopControl
 	{
 		if(!iterationStep.ifPresent([](const InstructionWalker& it) -> bool {return it.has<const intermediate::Operation>();}))
 			return OP_NOP;
-		return iterationStep.get().get<const intermediate::Operation>()->op;
+		return iterationStep->get<const intermediate::Operation>()->op;
 	}
 
 	Optional<Literal> getStep() const
 	{
 		if(!iterationStep.ifPresent([](const InstructionWalker& it) -> bool {return it.has<const intermediate::Operation>();}))
 			return Optional<Literal>(false, Literal(false));
-		const intermediate::Operation* op = iterationStep.get().get<const intermediate::Operation>();
+		const intermediate::Operation* op = iterationStep->get<const intermediate::Operation>();
 		if(op->getArguments().size() != 2)
 			return Optional<Literal>(false, Literal(false));
 		if(op->getArgument(0).ifPresent(toFunction(&Value::isLiteralValue)))
-			return op->getArgument(0).get().getLiteralValue();
-		return op->getArgument(1).get().getLiteralValue();
+			return op->getArgument(0)->getLiteralValue();
+		return op->getArgument(1)->getLiteralValue();
 	}
 };
 
@@ -131,42 +131,42 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 		const intermediate::IntermediateInstruction* inst = dynamic_cast<const intermediate::IntermediateInstruction*>(pair.first);
 		Optional<InstructionWalker> it = findInLoop(inst, loop);
 		//"lower" bound: the initial setting of the value outside of the loop
-		if(pair.second.writesLocal() && has_flag(inst->decoration, intermediate::InstructionDecorations::PHI_NODE) && !it.hasValue)
+		if(pair.second.writesLocal() && has_flag(inst->decoration, intermediate::InstructionDecorations::PHI_NODE) && !it)
 		{
 			auto tmp = inst->precalculate(4);
-			if(tmp.hasValue)
+			if(tmp)
 			{
-				logging::debug() << "Found lower bound: " << tmp.get().to_string() << logging::endl;
-				loopControl.initialValue = tmp;
+				logging::debug() << "Found lower bound: " << tmp->to_string() << logging::endl;
+				loopControl.initialValue = tmp.value();
 			}
 		}
 		//iteration step: the instruction inside the loop where the iteration variable is changed
 		//XXX this currently only looks for single operations with immediate values (e.g. +1,-1)
-		else if(pair.second.readsLocal() && it.hasValue)
+		else if(pair.second.readsLocal() && it)
 		{
-			if(it.get().has<intermediate::Operation>() && it.get()->getArguments().size() == 2 && it.get()->readsLiteral() &&
+			if(it->has<intermediate::Operation>() && it.value()->getArguments().size() == 2 && it.value()->readsLiteral() &&
 					//TODO could here more simply check against output being the local the iteration variable is set to (in the phi-node inside the loop)
-					it.get()->getOutput().ifPresent([](const Value& val) -> bool { return val.hasType(ValueType::LOCAL) && std::any_of(val.local->getUsers().begin(), val.local->getUsers().end(), [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {return has_flag(dynamic_cast<const intermediate::IntermediateInstruction*>(pair.first)->decoration, intermediate::InstructionDecorations::PHI_NODE);});}))
+					it.value()->getOutput().ifPresent([](const Value& val) -> bool { return val.hasType(ValueType::LOCAL) && std::any_of(val.local->getUsers().begin(), val.local->getUsers().end(), [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {return has_flag(dynamic_cast<const intermediate::IntermediateInstruction*>(pair.first)->decoration, intermediate::InstructionDecorations::PHI_NODE);});}))
 			{
-				logging::debug() << "Found iteration instruction: " << it.get()->to_string() << logging::endl;
+				logging::debug() << "Found iteration instruction: " << it.value()->to_string() << logging::endl;
 				loopControl.iterationStep = it;
 			}
 			//for use-with immediate local, TODO need better checking
-			else if(it.get().has<intermediate::MoveOperation>() && it.get()->hasValueType(ValueType::LOCAL))
+			else if(it->has<intermediate::MoveOperation>() && it.value()->hasValueType(ValueType::LOCAL))
 			{
 				//second-level checking for loop iteration step (e.g. if loop variable is copied for use-with-immediate)
-				const Local* stepLocal = it.get()->getOutput().get().local;
+				const Local* stepLocal = it.value()->getOutput()->local;
 				for(const auto& pair : stepLocal->getUsers())
 				{
 					const intermediate::IntermediateInstruction* inst = dynamic_cast<const intermediate::IntermediateInstruction*>(pair.first);
 					Optional<InstructionWalker> it = findInLoop(inst, loop);
 					//iteration step: the instruction inside the loop where the iteration variable is changed
-					if(pair.second.readsLocal() && it.hasValue)
+					if(pair.second.readsLocal() && it)
 					{
-						if(it.get().has<intermediate::Operation>() && it.get()->getArguments().size() == 2 && it.get()->readsLiteral() &&
-								it.get()->getOutput().ifPresent([](const Value& val) -> bool { return val.hasType(ValueType::LOCAL) && std::any_of(val.local->getUsers().begin(), val.local->getUsers().end(), [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {return has_flag(dynamic_cast<const intermediate::IntermediateInstruction*>(pair.first)->decoration, intermediate::InstructionDecorations::PHI_NODE);});}))
+						if(it->has<intermediate::Operation>() && it.value()->getArguments().size() == 2 && it.value()->readsLiteral() &&
+								it.value()->getOutput().ifPresent([](const Value& val) -> bool { return val.hasType(ValueType::LOCAL) && std::any_of(val.local->getUsers().begin(), val.local->getUsers().end(), [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {return has_flag(dynamic_cast<const intermediate::IntermediateInstruction*>(pair.first)->decoration, intermediate::InstructionDecorations::PHI_NODE);});}))
 						{
-							logging::debug() << "Found iteration instruction: " << it.get()->to_string() << logging::endl;
+							logging::debug() << "Found iteration instruction: " << it.value()->to_string() << logging::endl;
 							loopControl.iterationStep = it;
 						}
 					}
@@ -182,16 +182,16 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 			if(std::find(loop.begin(), loop.end(), neighbor.first) != loop.end())
 			{
 				loopControl.repetitionJump = neighbor.second.predecessor;
-				logging::debug() << "Found loop repetition branch: " << loopControl.repetitionJump.get()->to_string() << logging::endl;
+				logging::debug() << "Found loop repetition branch: " << loopControl.repetitionJump.value()->to_string() << logging::endl;
 			}
 		}
 	}
 
 	//"upper" bound: the value being checked against inside the loop
-	if(loopControl.repetitionJump.hasValue && loopControl.iterationStep.hasValue)
+	if(loopControl.repetitionJump && loopControl.iterationStep)
 	{
-		const Value repeatCond = loopControl.repetitionJump.get().get<intermediate::Branch>()->getCondition();
-		const Value iterationStep = loopControl.iterationStep.get()->getOutput();
+		const Value repeatCond = loopControl.repetitionJump->get<intermediate::Branch>()->getCondition();
+		const Value iterationStep = loopControl.iterationStep.value()->getOutput().value();
 
 		//check for either local (iteration-variable or iteration-step result) whether they are used in the condition on which the loop is repeated
 		//and select the literal used together with in this condition
@@ -208,7 +208,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 				//if not, set userIt to loop.end()
 				auto instIt = findInLoop(dynamic_cast<const intermediate::IntermediateInstruction*>(userIt->first), loop);
 				loopControl.comparisonInstruction = instIt;
-				logging::debug() << "Found loop continue condition: " << loopControl.comparisonInstruction.get()->to_string() << logging::endl;
+				logging::debug() << "Found loop continue condition: " << loopControl.comparisonInstruction.value()->to_string() << logging::endl;
 			}
 		}
 
@@ -220,15 +220,15 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 			{
 				//TODO error
 			}
-			if(inst->getArgument(0).get().hasLocal(iterationStep.local))
-				loopControl.terminatingValue = inst->getArgument(1);
+			if(inst->getArgument(0)->hasLocal(iterationStep.local))
+				loopControl.terminatingValue = inst->getArgument(1).value();
 			else
-				loopControl.terminatingValue = inst->getArgument(0);
+				loopControl.terminatingValue = inst->getArgument(0).value();
 			if(loopControl.terminatingValue.hasType(ValueType::LOCAL) && loopControl.terminatingValue.local->getSingleWriter() != nullptr)
 			{
 				auto tmp = dynamic_cast<const intermediate::IntermediateInstruction*>(loopControl.terminatingValue.local->getSingleWriter())->precalculate(4);
-				if(tmp.hasValue)
-					loopControl.terminatingValue = tmp;
+				if(tmp)
+					loopControl.terminatingValue = tmp.value();
 			}
 			logging::debug() << "Found upper bound: " << loopControl.terminatingValue.to_string() << logging::endl;
 
@@ -265,24 +265,24 @@ static Optional<unsigned> determineVectorizationFactor(const ControlFlowLoop& lo
 	InstructionWalker it = loop.front()->key->begin();
 	while(!it.isEndOfMethod() && it != loop.back()->key->end())
 	{
-		if(it->getOutput().hasValue)
+		if(it->getOutput())
 		{
 			//TODO is this check enough?
-			maxTypeWidth = std::max(maxTypeWidth, it->getOutput().get().type.num);
+			maxTypeWidth = std::max(maxTypeWidth, it->getOutput()->type.num);
 		}
 		it.nextInMethod();
 	}
 
 	logging::debug() << "Found maximum used vector-width of " << static_cast<unsigned>(maxTypeWidth) << " elements" << logging::endl;
 
-	const Literal initial = loopControl.initialValue.getLiteralValue();
-	const Literal end = loopControl.terminatingValue.getLiteralValue();
+	const Literal initial = loopControl.initialValue.getLiteralValue().value();
+	const Literal end = loopControl.terminatingValue.getLiteralValue().value();
 	int64_t lowerBound = std::min(initial, end).integer;
 	int64_t upperBound = std::max(initial, end).integer;
 	int64_t iterations = 0;
 	//the number of iterations from the bounds depends on the iteration operation
 	const OpCode stepOperation = loopControl.getStepOperation();
-	Literal step = loopControl.getStep();
+	Literal step = loopControl.getStep().value();
 	if(stepOperation.runsOnAddALU())
 	{
 		switch(stepOperation.opAdd)
@@ -293,7 +293,7 @@ static Optional<unsigned> determineVectorizationFactor(const ControlFlowLoop& lo
 				iterations = (upperBound - lowerBound) / step.integer;
 				break;
 			default:
-				logging::warn() << "Unhandled operation for iteration-step: " << loopControl.iterationStep.get()->to_string() << logging::endl;
+				logging::warn() << "Unhandled operation for iteration-step: " << loopControl.iterationStep.value()->to_string() << logging::endl;
 				return {};
 		}
 	}
@@ -304,7 +304,7 @@ static Optional<unsigned> determineVectorizationFactor(const ControlFlowLoop& lo
 			case OP_MUL24.opMul:
 				//TODO logarithmic with step as exponent?
 			default:
-				logging::warn() << "Unhandled operation for iteration-step: " << loopControl.iterationStep.get()->to_string() << logging::endl;
+				logging::warn() << "Unhandled operation for iteration-step: " << loopControl.iterationStep.value()->to_string() << logging::endl;
 				return {};
 		}
 	}
@@ -381,10 +381,10 @@ static void vectorizeInstruction(InstructionWalker it, FastSet<intermediate::Int
 	}
 
 	//2. depending on operation performed, update type of output
-	if(it->getOutput().hasValue && (it.has<intermediate::Operation>() || it.has<intermediate::MoveOperation>()))
+	if(it->getOutput() && (it.has<intermediate::Operation>() || it.has<intermediate::MoveOperation>()))
 	{
 		//TODO vector-rotations need special handling?!
-		Value& out = const_cast<Value&>(it->getOutput().get());
+		Value& out = const_cast<Value&>(it->getOutput().value());
 		out.type.num = vectorWidth;
 		if(out.hasType(ValueType::LOCAL))
 		{
@@ -430,7 +430,7 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
 
 static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopControl)
 {
-	intermediate::Operation* stepOp = loopControl.iterationStep.get().get<intermediate::Operation>();
+	intermediate::Operation* stepOp = loopControl.iterationStep->get<intermediate::Operation>();
 	if(stepOp == nullptr)
 		throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled iteration step operation");
 
@@ -438,9 +438,9 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
 	for(auto& user : loopControl.iterationVariable->getUsers())
 	{
 		intermediate::IntermediateInstruction* inst = const_cast<intermediate::IntermediateInstruction*>(dynamic_cast<const intermediate::IntermediateInstruction*>(user.first));
-		if(user.second.writesLocal() && !findInLoop(inst, loop).hasValue)
+		if(user.second.writesLocal() && !findInLoop(inst, loop))
 		{
-			const_cast<DataType&>(inst->getOutput().get().type).num = loopControl.iterationVariable->type.num;
+			const_cast<DataType&>(inst->getOutput()->type).num = loopControl.iterationVariable->type.num;
 
 			intermediate::MoveOperation* move = dynamic_cast<intermediate::MoveOperation*>(inst);
 			if(move != nullptr && (move->getSource().hasLiteral(INT_ZERO.literal) || move->getSource().hasImmediate(SmallImmediate(0))))
@@ -462,11 +462,11 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
 		case OP_SUB.opAdd:
 			if(stepOp->getFirstArg().hasType(ValueType::LOCAL))
 			{
-				Value offset = stepOp->getSecondArg();
+				Value offset = stepOp->getSecondArg().value();
 				if(offset.hasType(ValueType::LITERAL))
 					offset.literal.integer *= loopControl.vectorizationFactor;
 				else if(offset.hasType(ValueType::SMALL_IMMEDIATE))
-					offset.immediate = SmallImmediate::fromInteger(offset.immediate.getIntegerValue() * static_cast<char>(loopControl.vectorizationFactor));
+					offset.immediate = SmallImmediate::fromInteger(offset.immediate.getIntegerValue().value() * static_cast<char>(loopControl.vectorizationFactor)).value();
 				else
 					throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled iteration step", stepOp->to_string());
 				stepOp->setArgument(1, offset);
@@ -477,7 +477,7 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
 				if(offset.hasType(ValueType::LITERAL))
 					offset.literal.integer *= loopControl.vectorizationFactor;
 				else if(offset.hasType(ValueType::SMALL_IMMEDIATE))
-					offset.immediate = SmallImmediate::fromInteger(offset.immediate.getIntegerValue() * static_cast<char>(loopControl.vectorizationFactor));
+					offset.immediate = SmallImmediate::fromInteger(offset.immediate.getIntegerValue().value() * static_cast<char>(loopControl.vectorizationFactor)).value();
 				else
 					throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled iteration step", stepOp->to_string());
 				stepOp->setArgument(0, offset);
@@ -510,14 +510,14 @@ static void vectorize(ControlFlowLoop& loop, LoopControl& loopControl, const Dat
 	while(!openInstructions.empty())
 	{
 		auto it = findInLoop(*openInstructions.begin(), loop);
-		if(!it.hasValue)
+		if(!it)
 		{
 			//TODO what to do??
 			openInstructions.erase(openInstructions.begin());
 		}
 		else
 		{
-			vectorizeInstruction(it, openInstructions, loopControl.vectorizationFactor);
+			vectorizeInstruction(it.value(), openInstructions, loopControl.vectorizationFactor);
 			++numVectorized;
 		}
 	}
@@ -550,7 +550,7 @@ void optimizations::vectorizeLoops(const Module& module, Method& method, const C
 			//we could not find the iteration variable, skip this loop
 			continue;
 
-		if(loopControl.initialValue.isUndefined() || loopControl.terminatingValue.isUndefined() || !loopControl.iterationStep.hasValue || !loopControl.repetitionJump.hasValue)
+		if(loopControl.initialValue.isUndefined() || loopControl.terminatingValue.isUndefined() || !loopControl.iterationStep || !loopControl.repetitionJump)
 		{
 			//we need to know both bounds and the iteration step (for now)
 			logging::warn() << "Failed to find all bounds and step for loop, aborting vectorization!" << logging::endl;
@@ -559,15 +559,15 @@ void optimizations::vectorizeLoops(const Module& module, Method& method, const C
 
 		//4. determine vectorization factor
 		Optional<unsigned> vectorizationFactor = determineVectorizationFactor(loop, loopControl);
-		if(!vectorizationFactor.hasValue)
+		if(!vectorizationFactor)
 		{
 			logging::warn() << "Failed to determine a vectorization factor for the loop, aborting!" << logging::endl;
 			continue;
 		}
-		if(vectorizationFactor.get() == 1)
+		if(vectorizationFactor.value() == 1)
 			//nothing to do
 			continue;
-		loopControl.vectorizationFactor = vectorizationFactor;
+		loopControl.vectorizationFactor = vectorizationFactor.value();
 
 		//5. cost-benefit calculation
 		int rating = calculateCostsVsBenefits(loop, loopControl, dependencyGraph);

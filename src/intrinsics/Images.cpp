@@ -28,7 +28,7 @@ const Value IMAGE_CONFIG_CHANNEL_OFFSET(Literal(4 * static_cast<uint64_t>(sizeof
 
 Global* intermediate::reserveImageConfiguration(Module& module, const Value& image)
 {
-	if(!image.type.getImageType().hasValue)
+	if(!image.type.getImageType())
 		throw CompilationError(CompilationStep::GENERAL, "Can't reserve global data for image-configuration of non-image type", image.type.to_string());
 	if(!image.hasType(ValueType::LOCAL))
 		throw CompilationError(CompilationStep::GENERAL, "Cannot reserve global data for non-local image", image.to_string());
@@ -45,17 +45,17 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
 		if(callSite->methodName.find("vc4cl_sampler_get_normalized_coords") != std::string::npos)
 		{
 			logging::debug() << "Intrinsifying getting normalized-coordinates flag from sampler" << logging::endl;
-			it.reset(new Operation(OP_AND, callSite->getOutput(), callSite->getArgument(0), Value(Literal(Sampler::MASK_NORMALIZED_COORDS), TYPE_INT8)));
+			it.reset(new Operation(OP_AND, callSite->getOutput().value(), callSite->getArgument(0).value(), Value(Literal(Sampler::MASK_NORMALIZED_COORDS), TYPE_INT8)));
 		}
 		else if(callSite->methodName.find("vc4cl_sampler_get_addressing_mode") != std::string::npos)
 		{
 			logging::debug() << "Intrinsifying getting addressing-mode flag from sampler" << logging::endl;
-			it.reset(new Operation(OP_AND, callSite->getOutput(), callSite->getArgument(0), Value(Literal(Sampler::MASK_ADDRESSING_MODE), TYPE_INT8)));
+			it.reset(new Operation(OP_AND, callSite->getOutput().value(), callSite->getArgument(0).value(), Value(Literal(Sampler::MASK_ADDRESSING_MODE), TYPE_INT8)));
 		}
 		else if(callSite->methodName.find("vc4cl_sampler_get_filter_mode") != std::string::npos)
 		{
 			logging::debug() << "Intrinsifying getting filter-mode flag from sampler" << logging::endl;
-			it.reset(new Operation(OP_AND, callSite->getOutput(), callSite->getArgument(0), Value(Literal(Sampler::MASK_FILTER_MODE), TYPE_INT8)));
+			it.reset(new Operation(OP_AND, callSite->getOutput().value(), callSite->getArgument(0).value(), Value(Literal(Sampler::MASK_FILTER_MODE), TYPE_INT8)));
 		}
 	}
 	return it;
@@ -125,7 +125,7 @@ static InstructionWalker insertLoadImageHeight(InstructionWalker it, Method& met
 
 InstructionWalker intermediate::insertQueryMeasurements(InstructionWalker it, Method& method, const Value& image, const Value& dest)
 {
-	if(!image.type.getImageType().hasValue)
+	if(!image.type.getImageType())
 		throw CompilationError(CompilationStep::GENERAL, "Can't query image measurements from non-image object", image.to_string());
 	//TODO queries the measurements of the image
 	//depending on number of dimensions, load x int16 values,
@@ -134,7 +134,7 @@ InstructionWalker intermediate::insertQueryMeasurements(InstructionWalker it, Me
 	//-> store dimensions in an extra field something like e.g. for 1D-array x, length, for 2D-array x, y, length, ... ??
 	//or depending on image type (known here!), create different load instruction
 	//available types: 1D, 1D array, 2D, 2D array, 3D
-	const ImageType* imageType = image.type.getImageType().get();
+	const ImageType* imageType = image.type.getImageType().value();
 	if(imageType->isImageArray)
 		//XXX need to add a dimension, where to get the array-size from?
 		throw CompilationError(CompilationStep::GENERAL, "Image-arrays are not supported yet", image.to_string());

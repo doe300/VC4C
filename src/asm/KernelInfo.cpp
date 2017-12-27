@@ -165,7 +165,7 @@ static std::vector<uint8_t> generateDataSegment(const ReferenceRetainingList<Glo
 	for(const Global& global : globalData)
 	{
 		//add alignment per element
-		const unsigned alignment = global.type.getPointerType().get()->getAlignment();
+		const unsigned alignment = global.type.getPointerType().value()->getAlignment();
 		while(bytes.size() % alignment != 0)
 		{
 			bytes.push_back(0);
@@ -302,7 +302,7 @@ KernelInfo qpu_asm::getKernelInfos(const Method& method, const std::size_t initi
         std::string typeName = param.origTypeName;
         ParamInfo paramInfo;
         paramInfo.setSize(static_cast<uint8_t>(paramType.getPhysicalWidth()));
-        paramInfo.setPointer(paramType.isPointerType() || paramType.getImageType().hasValue);
+        paramInfo.setPointer(paramType.isPointerType() || paramType.getImageType());
         paramInfo.setOutput(param.isOutputParameter());
         paramInfo.setInput(param.isInputParameter());
         paramInfo.setConstant(has_flag(param.decorations, ParameterDecorations::READ_ONLY));
@@ -310,7 +310,7 @@ KernelInfo qpu_asm::getKernelInfos(const Method& method, const std::size_t initi
         paramInfo.setVolatile(has_flag(param.decorations, ParameterDecorations::VOLATILE));
         paramInfo.setName(paramName[0] == '%' ? paramName.substr(1) : paramName);
         paramInfo.setElements((paramType.isPointerType() ? static_cast<uint8_t>(1) : paramType.num));
-        paramInfo.setAddressSpace(paramType.isPointerType() ? paramType.getPointerType().get()->addressSpace : AddressSpace::PRIVATE);
+        paramInfo.setAddressSpace(paramType.isPointerType() ? paramType.getPointerType().value()->addressSpace : AddressSpace::PRIVATE);
         paramInfo.setFloatingType(paramType.isFloatingType());
         //FIXME signedness is only recognized correctly for non-32 bit scalar types (e.g. (u)char, (u)short), not for pointers or even vector-types
         paramInfo.setSigned(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND));

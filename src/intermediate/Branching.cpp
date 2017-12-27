@@ -38,7 +38,7 @@ bool BranchLabel::mapsToASMInstruction() const
 
 const Local* BranchLabel::getLabel() const
 {
-	return getArgument(0).get().local;
+	return getArgument(0)->local;
 }
 
 Branch::Branch(const Local* target, const ConditionCode condCode, const Value& cond) :
@@ -61,7 +61,7 @@ std::string Branch::to_string() const
 
 IntermediateInstruction* Branch::copyFor(Method& method, const std::string& localPrefix) const
 {
-    return (new Branch(method.findOrCreateLocal(TYPE_LABEL, localPrefix + getTarget()->name), conditional, renameValue(method, getArgument(1), localPrefix)))->setOutput(getOutput())->copyExtrasFrom(this);
+    return (new Branch(method.findOrCreateLocal(TYPE_LABEL, localPrefix + getTarget()->name), conditional, renameValue(method, getCondition(), localPrefix)))->setOutput(getOutput())->copyExtrasFrom(this);
 }
 
 qpu_asm::Instruction* Branch::convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
@@ -93,7 +93,7 @@ qpu_asm::Instruction* Branch::convertToAsm(const FastMap<const Local*, Register>
 
 const Local* Branch::getTarget() const
 {
-	return getArgument(0).get().local;
+	return getArgument(0)->local;
 }
 
 bool Branch::isUnconditional() const
@@ -103,7 +103,7 @@ bool Branch::isUnconditional() const
 
 const Value Branch::getCondition() const
 {
-	return getArgument(1);
+	return getArgument(1).value();
 }
 
 PhiNode::PhiNode(const Value& dest, const std::vector<std::pair<Value, const Local*>>& labelPairs, const ConditionCode& cond, const SetFlag setFlags) :
@@ -131,10 +131,10 @@ qpu_asm::Instruction* PhiNode::convertToAsm(const FastMap<const Local*, Register
 
 IntermediateInstruction* PhiNode::copyFor(Method& method, const std::string& localPrefix) const
 {
-	IntermediateInstruction* tmp = (new PhiNode(renameValue(method, getOutput(), localPrefix), {}, conditional, setFlags))->copyExtrasFrom(this);
+	IntermediateInstruction* tmp = (new PhiNode(renameValue(method, getOutput().value(), localPrefix), {}, conditional, setFlags))->copyExtrasFrom(this);
 	for(std::size_t i = 0; i < getArguments().size(); ++i)
 	{
-		tmp->setArgument(i, renameValue(method, getArgument(i), localPrefix));
+		tmp->setArgument(i, renameValue(method, getArgument(i).value(), localPrefix));
 	}
 	return tmp;
 }
@@ -144,7 +144,7 @@ FastMap<const Local*, Value> PhiNode::getValuesForLabels() const
 	FastMap<const Local*, Value> res;
 	for(std::size_t i = 0; i < getArguments().size(); i += 2)
 	{
-		res.emplace(getArgument(i).get().local, getArgument(i + 1).get());
+		res.emplace(getArgument(i)->local, getArgument(i + 1).value());
 	}
 	return res;
 }

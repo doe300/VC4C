@@ -41,9 +41,9 @@ static BaseAndOffset findOffset(const Value& val)
 	if(dynamic_cast<const IntermediateInstruction*>(writer) != nullptr)
 	{
 		const Optional<Value> offset =  dynamic_cast<const IntermediateInstruction*>(writer)->precalculate(8);
-		if(offset.hasValue && offset.get().hasType(ValueType::LITERAL))
+		if(offset && offset->hasType(ValueType::LITERAL))
 		{
-			return BaseAndOffset(NO_VALUE, offset.get().literal.integer, offset.get().literal.integer);
+			return BaseAndOffset(NO_VALUE, offset->literal.integer, offset->literal.integer);
 		}
 	}
 	return BaseAndOffset();
@@ -83,10 +83,10 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 	{
 		const auto offset0 = findOffset(args.at(0));
 		const auto offset1 = findOffset(args.at(1));
-		if(offset0.offset.hasValue && args.at(1).hasType(ValueType::LOCAL))
-			return BaseAndOffset(args.at(1), static_cast<int64_t>(offset0.offset.get() / val.type.getElementType().getPhysicalWidth()));
-		if(offset1.offset.hasValue && args.at(0).hasType(ValueType::LOCAL))
-			return BaseAndOffset(args.at(0), static_cast<int64_t>(offset1.offset.get() / val.type.getElementType().getPhysicalWidth()));
+		if(offset0.offset && args.at(1).hasType(ValueType::LOCAL))
+			return BaseAndOffset(args.at(1), static_cast<int64_t>(offset0.offset.value() / val.type.getElementType().getPhysicalWidth()));
+		if(offset1.offset && args.at(0).hasType(ValueType::LOCAL))
+			return BaseAndOffset(args.at(0), static_cast<int64_t>(offset1.offset.value() / val.type.getElementType().getPhysicalWidth()));
 	}
 
 	return BaseAndOffset();
@@ -190,37 +190,37 @@ static InstructionWalker findGroupOfVPMAccess(VPM& vpm, InstructionWalker start,
 			throw CompilationError(CompilationStep::OPTIMIZER, "Setting VPM address with non-move is not supported", it->to_string());
 		const auto baseAndOffset = findBaseAndOffset(it.get<MoveOperation>()->getSource());
 		const bool isVPMWrite = it->writesRegister(REG_VPM_OUT_ADDR);
-		logging::debug() << "Found base address " << baseAndOffset.base.to_string() << " with offset " << std::to_string(baseAndOffset.offset.orElse(-1L)) << " for " << (isVPMWrite ? "writing into" : "reading from") << " memory" << logging::endl;
+		logging::debug() << "Found base address " << baseAndOffset.base.to_string() << " with offset " << std::to_string(baseAndOffset.offset.value_or(-1L)) << " for " << (isVPMWrite ? "writing into" : "reading from") << " memory" << logging::endl;
 
-		if(!baseAndOffset.base.hasValue)
+		if(!baseAndOffset.base)
 			//this address-write could not be fixed to a base and an offset
 			//skip this address write for the next check
 			return it.nextInBlock();
-		if(baseAndOffset.base.hasValue && baseAndOffset.base.get().hasType(ValueType::LOCAL) && baseAndOffset.base.get().local->is<Parameter>() && has_flag(baseAndOffset.base.get().local->as<Parameter>()->decorations, ParameterDecorations::VOLATILE))
+		if(baseAndOffset.base && baseAndOffset.base->hasType(ValueType::LOCAL) && baseAndOffset.base->local->is<Parameter>() && has_flag(baseAndOffset.base->local->as<Parameter>()->decorations, ParameterDecorations::VOLATILE))
 			//address points to a volatile parameter, which explicitly forbids combining reads/writes
 			//skip this address write for the next check
 			return it.nextInBlock();
 
 		//check if this address is consecutive to the previous one (if any)
-		if(baseAddress.hasValue)
+		if(baseAddress)
 		{
-			if(baseAndOffset.base.hasValue && baseAddress.get() != baseAndOffset.base.get())
+			if(baseAndOffset.base && baseAddress.value() != baseAndOffset.base.value())
 				//a group exists, but the base addresses don't match
 				break;
-			if(!baseAndOffset.offset.hasValue || baseAndOffset.offset.get() != nextOffset)
+			if(!baseAndOffset.offset || baseAndOffset.offset.value() != nextOffset)
 				//a group exists, but the offsets do not match
 				break;
 		}
 
 		//check if the access mode (read/write) is the same as for the group
-		if(baseAddress.hasValue && group.isVPMWrite != isVPMWrite)
+		if(baseAddress && group.isVPMWrite != isVPMWrite)
 			break;
 
 		auto genericSetup = findGenericSetup(it, end, isVPMWrite);
 		auto dmaSetup = findDMASetup(it, end, isVPMWrite);
 
 		//check if the VPM and DMA configurations match with the previous one
-		if(baseAddress.hasValue)
+		if(baseAddress)
 		{
 			if(genericSetup == end || dmaSetup == end)
 				//either there are no setups for this VPM access, or they are not loaded from literals (e.g. dynamic setup)
@@ -234,8 +234,8 @@ static InstructionWalker findGroupOfVPMAccess(VPM& vpm, InstructionWalker start,
 		}
 
 		//check for complex types
-		DataType elementType = baseAndOffset.base.get().type.isPointerType() ? baseAndOffset.base.get().type.getPointerType().get()->elementType : baseAndOffset.base.get().type;
-		elementType = elementType.getArrayType().hasValue ? elementType.getArrayType().get()->elementType : elementType;
+		DataType elementType = baseAndOffset.base->type.isPointerType() ? baseAndOffset.base->type.getPointerType().value()->elementType : baseAndOffset.base->type;
+		elementType = elementType.getArrayType() ? elementType.getArrayType().value()->elementType : elementType;
 		if(elementType.complexType)
 			//XXX for now, skip combining any access to complex types (here: only struct, image)
 			//don't check this read/write again
@@ -243,12 +243,12 @@ static InstructionWalker findGroupOfVPMAccess(VPM& vpm, InstructionWalker start,
 
 		//all matches so far, add to group (or create a new one)
 		group.isVPMWrite = isVPMWrite;
-		group.groupType = baseAndOffset.base.get().type;
-		baseAddress = baseAndOffset.base.get();
+		group.groupType = baseAndOffset.base->type;
+		baseAddress = baseAndOffset.base.value();
 		group.addressWrites.push_back(it);
 		group.dmaSetups.push_back(dmaSetup);
 		group.genericSetups.push_back(genericSetup);
-		nextOffset = baseAndOffset.offset.orElse(-1L) + 1;
+		nextOffset = baseAndOffset.offset.value_or(-1L) + 1;
 
 		if(group.isVPMWrite && group.addressWrites.size() >= vpm.getMaxCacheVectors(elementType, true))
 		{
@@ -434,15 +434,15 @@ InstructionWalker optimizations::accessGlobalData(const Module& module, Method& 
 	 */
 	for(std::size_t i = 0; i < it->getArguments().size(); ++i)
 	{
-		const auto& arg = it->getArgument(i).get();
+		const auto& arg = it->getArgument(i).value();
 		if(arg.hasType(ValueType::LOCAL) && arg.type.isPointerType() && arg.local->is<Global>())
 		{
 			const Optional<unsigned int> globalOffset = module.getGlobalDataOffset(arg.local);
-			if(globalOffset.hasValue)
+			if(globalOffset)
 			{
 				logging::debug() << "Replacing access to global data: " << it->to_string() << logging::endl;
 				Value tmp = UNDEFINED_VALUE;
-				if(globalOffset.get() == 0)
+				if(globalOffset.value() == 0)
 				{
 					tmp = method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference();
 				}
@@ -450,7 +450,7 @@ InstructionWalker optimizations::accessGlobalData(const Module& module, Method& 
 				{
 					//emplace calculation of global-data pointer and replace argument
 					tmp = method.addNewLocal(TYPE_INT32, "%global_data_offset");
-					it.emplace(new intermediate::Operation(OP_ADD, tmp, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference(), Value(Literal(static_cast<uint64_t>(globalOffset)), TYPE_INT32)));
+					it.emplace(new intermediate::Operation(OP_ADD, tmp, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference(), Value(Literal(static_cast<uint64_t>(globalOffset.value())), TYPE_INT32)));
 					it.nextInBlock();
 				}
 				it->setArgument(i, tmp);
@@ -510,12 +510,12 @@ void optimizations::spillLocals(const Module& module, Method& method, const Conf
 	while(!it.isEndOfMethod() && !spillingCandidates.empty())
 	{
 		//TODO if at some point all Basic block have references to their used locals, remove all locals which are used just in one basic block instead of this logic??
-		if(it->hasValueType(ValueType::LOCAL) && spillingCandidates.find(it->getOutput().get().local) != spillingCandidates.end())
+		if(it->hasValueType(ValueType::LOCAL) && spillingCandidates.find(it->getOutput()->local) != spillingCandidates.end())
 		{
-			if(method.isLocallyLimited(it, it->getOutput().get().local, MINIMUM_THRESHOLD))
-				spillingCandidates.erase(it->getOutput().get().local);
+			if(method.isLocallyLimited(it, it->getOutput()->local, MINIMUM_THRESHOLD))
+				spillingCandidates.erase(it->getOutput()->local);
 			else
-				spillingCandidates.at(it->getOutput().get().local) = it;
+				spillingCandidates.at(it->getOutput()->local) = it;
 		}
 		it.nextInMethod();
 	}
@@ -535,7 +535,7 @@ static InstructionWalker accessStackAllocations(const Module& module, Method& me
 
 	for(std::size_t i = 0; i < it->getArguments().size(); ++i)
 	{
-		const Value arg = it->getArgument(i).get();
+		const Value arg = it->getArgument(i).value();
 		if(arg.hasType(ValueType::LOCAL) && arg.type.isPointerType() && arg.local->is<StackAllocation>())
 		{
 			if(it.get<intermediate::LifetimeBoundary>() != nullptr)

@@ -555,7 +555,7 @@ std::size_t Method::calculateStackSize() const
 
 std::size_t Method::getStackBaseOffset() const
 {
-	unsigned baseOffset = module.getGlobalDataOffset(nullptr);
+	unsigned baseOffset = module.getGlobalDataOffset(nullptr).value();
 
 	std::size_t maxAlignment = 1;
 	if(!stackAllocations.empty())
@@ -628,7 +628,7 @@ Optional<unsigned int> Module::getGlobalDataOffset(const Local* local) const
 	unsigned int offset = 0;
 	for(const Global& global : globalData)
 	{
-		const unsigned alignment = global.type.getPointerType().get()->getAlignment();
+		const unsigned alignment = global.type.getPointerType().value()->getAlignment();
 		if(offset % alignment != 0)
 		{
 			offset += alignment - (offset % alignment);

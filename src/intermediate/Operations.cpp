@@ -42,19 +42,19 @@ IntermediateInstruction(dest, cond, setFlags), op(OpCode::findOpCode(opCode)), o
 
 std::string Operation::to_string() const
 {
-    return (getOutput().get().to_string(true) + " = ") + (opCode + " ") + getFirstArg().to_string() + (getSecondArg() ? std::string(", ") + getSecondArg().to_string() : "") + createAdditionalInfoString();
+    return (getOutput()->to_string(true) + " = ") + (opCode + " ") + getFirstArg().to_string() + (getSecondArg() ? std::string(", ") + getSecondArg().to_string() : "") + createAdditionalInfoString();
 }
 
 IntermediateInstruction* Operation::copyFor(Method& method, const std::string& localPrefix) const
 {
     if (!getSecondArg())
-        return (new Operation(opCode, renameValue(method, getOutput(), localPrefix), renameValue(method, getFirstArg(), localPrefix), conditional, setFlags))->copyExtrasFrom(this);
-    return (new Operation(opCode, renameValue(method, getOutput(), localPrefix), renameValue(method, getFirstArg(), localPrefix), renameValue(method, getSecondArg(), localPrefix), conditional, setFlags))->copyExtrasFrom(this);
+        return (new Operation(opCode, renameValue(method, getOutput().value(), localPrefix), renameValue(method, getFirstArg(), localPrefix), conditional, setFlags))->copyExtrasFrom(this);
+    return (new Operation(opCode, renameValue(method, getOutput().value(), localPrefix), renameValue(method, getFirstArg(), localPrefix), renameValue(method, getSecondArg().value(), localPrefix), conditional, setFlags))->copyExtrasFrom(this);
 }
 
 static InputMutex getInputMux(const Register& reg, const bool isExplicitRegister, const Optional<SmallImmediate>& immediate, const bool isABlocked = false, const bool isBBlocked = false)
 {
-	if(immediate.hasValue)
+	if(immediate)
 		return InputMutex::REGB;
     if (!isExplicitRegister && reg.isAccumulator()) {
         return static_cast<InputMutex> (reg.getAccumulatorNumber());
@@ -119,7 +119,7 @@ static std::pair<Register, Optional<SmallImmediate>> getInputValue(const Value& 
 
 qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
-    const Register outReg = getOutput().get().hasType(ValueType::LOCAL) ? registerMapping.at(getOutput().get().local) : getOutput().get().reg;
+    const Register outReg = getOutput()->hasType(ValueType::LOCAL) ? registerMapping.at(getOutput()->local) : getOutput()->reg;
 
     auto input0 = getInputValue(getFirstArg(), registerMapping, this);
     const InputMutex inMux0 = getInputMux(input0.first, getFirstArg().hasType(ValueType::REGISTER), input0.second);
@@ -148,24 +148,24 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
     const WriteSwap swap = writeSwap ? WriteSwap::SWAP : WriteSwap::DONT_SWAP;
 
     if (getSecondArg()) {
-        auto input1 = getInputValue(getSecondArg(), registerMapping, this);
-        InputMutex inMux1 = getInputMux(input1.first, getSecondArg().get().hasType(ValueType::REGISTER), input1.second, input0.first.file == RegisterFile::PHYSICAL_A, input0.first.file == RegisterFile::PHYSICAL_B);
+        auto input1 = getInputValue(getSecondArg().value(), registerMapping, this);
+        InputMutex inMux1 = getInputMux(input1.first, getSecondArg()->hasType(ValueType::REGISTER), input1.second, input0.first.file == RegisterFile::PHYSICAL_A, input0.first.file == RegisterFile::PHYSICAL_B);
 
         //one of the values is a literal immediate
         if (input0.second || input1.second) {
 
-            SmallImmediate imm = input0.second ? input0.second : input1.second;
+            SmallImmediate imm = input0.second.orOther(input1.second).value();
             Register regA = input0.second ? input1.first : input0.first;
             if (input0.second && input1.second) {
                 //both operands have literal
-                if (input0.second.get() != input1.second.get())
+                if (input0.second.value() != input1.second.value())
                     throw CompilationError(CompilationStep::CODE_GENERATION, "Can't perform operation with two distinguish literals", to_string());
                 regA = REG_NOP;
             }
-            else if(input0.second.hasValue && input1.first.file == RegisterFile::ACCUMULATOR)
+            else if(input0.second && input1.first.file == RegisterFile::ACCUMULATOR)
             	//don't read register overlapped by accumulator, e.g. UNIFORM
             	regA = REG_NOP;
-            else if(input1.second.hasValue && input0.first.file == RegisterFile::ACCUMULATOR)
+            else if(input1.second && input0.first.file == RegisterFile::ACCUMULATOR)
             	regA = REG_NOP;
             if(signal.hasSideEffects())
             {
@@ -191,7 +191,7 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
                 input1.first.num = REG_NOP.num; //Cosmetics, so vc4asm does not print "maybe reading reg xx"
             else if (has_flag(input1.first.file, RegisterFile::PHYSICAL_ANY))
             {
-            	if(getInputValue(getFirstArg(), registerMapping, this).first == getInputValue(getSecondArg(), registerMapping, this).first)
+            	if(getInputValue(getFirstArg(), registerMapping, this).first == getInputValue(getSecondArg().value(), registerMapping, this).first)
             	{
             		//same inputs - this allows e.g. vc4asm to recognize "mov x, uniform" correctly
             		input1.first.file = input0.first.file;
@@ -220,10 +220,10 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
         //only 1 input
     else {
 
-        if(input0.second.hasValue)
+        if(input0.second)
         {
         	// unary operation with immediate
-        	const SmallImmediate imm = input0.second;
+        	const SmallImmediate imm = input0.second.value();
         	if(signal.hasSideEffects())
 			{
 				throw CompilationError(CompilationStep::CODE_GENERATION, "Signal is discarded, since the operation takes an immediate", signal.toString());
@@ -266,14 +266,14 @@ bool Operation::mapsToASMInstruction() const
 	//this instruction is not mapped to an ASM instruction, if either of the operands is undefined, since then the result is undefined too
 	if(getFirstArg().isUndefined())
 		return false;
-	if(op.numOperands > 1 && getSecondArg().get().isUndefined())
+	if(op.numOperands > 1 && getSecondArg()->isUndefined())
 		return false;
 	return true;
 }
 
 const Value Operation::getFirstArg() const
 {
-	return getArgument(0);
+	return getArgument(0).value();
 }
 
 const Optional<Value> Operation::getSecondArg() const
@@ -284,13 +284,13 @@ const Optional<Value> Operation::getSecondArg() const
 Optional<Value> Operation::precalculate(const std::size_t numIterations) const
 {
 	Optional<Value> arg0 = getPrecalculatedValueForArg(0, numIterations);
-	if(!arg0.hasValue)
+	if(!arg0)
 		return NO_VALUE;
 	Optional<Value> arg1 = NO_VALUE;
-    if (getSecondArg().hasValue)
+    if (getSecondArg())
     {
     	arg1 = getPrecalculatedValueForArg(1, numIterations);
-    	if(!arg1.hasValue)
+    	if(!arg1)
     		return NO_VALUE;
     }
 
@@ -311,18 +311,18 @@ IntermediateInstruction({true, dest}, cond, setFlags)
 
 std::string MoveOperation::to_string() const
 {
-    return (getOutput().get().to_string(true) + " = ") +getSource().to_string() + createAdditionalInfoString();
+    return (getOutput()->to_string(true) + " = ") +getSource().to_string() + createAdditionalInfoString();
 }
 
 IntermediateInstruction* MoveOperation::copyFor(Method& method, const std::string& localPrefix) const
 {
-    return (new MoveOperation(renameValue(method, getOutput(), localPrefix), renameValue(method, getSource(), localPrefix), conditional, setFlags))->copyExtrasFrom(this);
+    return (new MoveOperation(renameValue(method, getOutput().value(), localPrefix), renameValue(method, getSource(), localPrefix), conditional, setFlags))->copyExtrasFrom(this);
 }
 
 qpu_asm::Instruction* MoveOperation::convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
     //simply call this method for intermediate-operation 
-    Operation op(OP_OR, getOutput(), getSource(), getSource(), conditional, setFlags);
+    Operation op(OP_OR, getOutput().value(), getSource(), getSource(), conditional, setFlags);
     op.packMode = packMode;
     op.signal = signal;
     op.unpackMode = unpackMode;
@@ -337,12 +337,12 @@ Operation* MoveOperation::combineWith(const OpCode& otherOpCode) const
     if (otherOpCode.runsOnMulALU())
     {
         //use ADD ALU
-        op = new Operation(OP_OR, getOutput(), getSource(), getSource(), conditional, setFlags);
+        op = new Operation(OP_OR, getOutput().value(), getSource(), getSource(), conditional, setFlags);
     }
     else if (otherOpCode.runsOnAddALU())
     {
         //use MUL ALU
-		op = new Operation(OP_V8MIN, getOutput(), getSource(), getSource(), conditional, setFlags);
+		op = new Operation(OP_V8MIN, getOutput().value(), getSource(), getSource(), conditional, setFlags);
     }
     if (op != nullptr)
     {
@@ -373,7 +373,7 @@ void MoveOperation::setSource(const Value& value)
 
 const Value MoveOperation::getSource() const
 {
-	return getArgument(0);
+	return getArgument(0).value();
 }
 
 VectorRotation::VectorRotation(const Value& dest, const Value& src, const Value& offset, const ConditionCode cond, const SetFlag setFlags) :
@@ -385,17 +385,17 @@ MoveOperation(dest, src, cond, setFlags)
 
 std::string VectorRotation::to_string() const
 {
-    return (getOutput().get().to_string(true) + " = ") + (getSource().to_string() + " ") + getOffset().immediate.toString() + createAdditionalInfoString();
+    return (getOutput()->to_string(true) + " = ") + (getSource().to_string() + " ") + getOffset().immediate.toString() + createAdditionalInfoString();
 }
 
 IntermediateInstruction* VectorRotation::copyFor(Method& method, const std::string& localPrefix) const
 {
-    return (new VectorRotation(renameValue(method, getOutput(), localPrefix), renameValue(method, getSource(), localPrefix), renameValue(method, getOffset(), localPrefix), conditional, setFlags))->copyExtrasFrom(this);
+    return (new VectorRotation(renameValue(method, getOutput().value(), localPrefix), renameValue(method, getSource(), localPrefix), renameValue(method, getOffset(), localPrefix), conditional, setFlags))->copyExtrasFrom(this);
 }
 
 qpu_asm::Instruction* VectorRotation::convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
-    const Register outReg = getOutput().get().hasType(ValueType::LOCAL) ? registerMapping.at(getOutput().get().local) : getOutput().get().reg;
+    const Register outReg = getOutput()->hasType(ValueType::LOCAL) ? registerMapping.at(getOutput()->local) : getOutput()->reg;
 
     auto input = getInputValue(getSource(), registerMapping, this);
     auto rotationOffset = getInputValue(getOffset(), registerMapping, this);
@@ -408,7 +408,7 @@ qpu_asm::Instruction* VectorRotation::convertToAsm(const FastMap<const Local*, R
     const WriteSwap swap = writeSwap ? WriteSwap::SWAP : WriteSwap::DONT_SWAP;
 
     if (getOffset().hasType(ValueType::LITERAL)) {
-        SmallImmediate imm = static_cast<SmallImmediate> (VECTOR_ROTATE_R5 + static_cast<unsigned>(rotationOffset.second.get()));
+        SmallImmediate imm = static_cast<SmallImmediate> (VECTOR_ROTATE_R5 + static_cast<unsigned>(rotationOffset.second.value()));
         return new qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap,
                                   REG_NOP.num, outReg.num, OP_V8MIN, OP_NOP,
                                   REG_NOP.num, imm, MUTEX_NONE, MUTEX_NONE, inMux, inMux);
@@ -440,7 +440,7 @@ Optional<Value> VectorRotation::precalculate(const std::size_t numIterations) co
 
 const Value VectorRotation::getOffset() const
 {
-	return getArgument(1);
+	return getArgument(1).value();
 }
 
 Nop::Nop(const DelayType type, const Signaling signal) : IntermediateInstruction(NO_VALUE), type(type)
@@ -473,7 +473,7 @@ Operation(comp, dest, val0, val1)
 
 IntermediateInstruction* Comparison::copyFor(Method& method, const std::string& localPrefix) const
 {
-    return (new Comparison(opCode, renameValue(method, getOutput(), localPrefix), renameValue(method, getFirstArg(), localPrefix), renameValue(method, getSecondArg(), localPrefix)))->copyExtrasFrom(this);
+    return (new Comparison(opCode, renameValue(method, getOutput().value(), localPrefix), renameValue(method, getFirstArg(), localPrefix), renameValue(method, getSecondArg().value(), localPrefix)))->copyExtrasFrom(this);
 }
 
 CombinedOperation::CombinedOperation(Operation* op1, Operation* op2) : IntermediateInstruction(NO_VALUE), op1(op1), op2(op2)
@@ -526,10 +526,10 @@ qpu_asm::Instruction* CombinedOperation::convertToAsm(const FastMap<const Local*
     const IntermediateInstruction* addOp = getFirstOp()->op.runsOnAddALU() ? op1.get() : op2.get();
     const IntermediateInstruction* mulOp = !getFirstOp()->op.runsOnAddALU() ? op1.get() : op2.get();
 
-    if(addOp != nullptr && mulOp != nullptr && addOp->getOutput().hasValue && mulOp->getOutput().hasValue && addOp->getOutput().get() != mulOp->getOutput().get())
+    if(addOp != nullptr && mulOp != nullptr && addOp->getOutput() && mulOp->getOutput() && addOp->getOutput().value() != mulOp->getOutput().value())
     {
-    	const Register addOut = addOp->getOutput().get().hasType(ValueType::LOCAL) ? registerMapping.at(addOp->getOutput().get().local) : addOp->getOutput().get().reg;
-    	const Register mulOut = mulOp->getOutput().get().hasType(ValueType::LOCAL) ? registerMapping.at(mulOp->getOutput().get().local) : mulOp->getOutput().get().reg;
+    	const Register addOut = addOp->getOutput()->hasType(ValueType::LOCAL) ? registerMapping.at(addOp->getOutput()->local) : addOp->getOutput()->reg;
+    	const Register mulOut = mulOp->getOutput()->hasType(ValueType::LOCAL) ? registerMapping.at(mulOp->getOutput()->local) : mulOp->getOutput()->reg;
     	if(addOut != mulOut && !addOut.isAccumulator() && addOut.file == mulOut.file)
     		throw CompilationError(CompilationStep::CODE_GENERATION, "Can't map outputs of a combined instruction to two distinct registers in the same file", to_string());
     }
