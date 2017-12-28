@@ -1,6 +1,8 @@
-//
-// Created by nomaddo on 17/12/18.
-//
+/*
+ * Author: nomaddo
+ *
+ * See the file "LICENSE" for the full license governing this code.
+ */
 
 #ifndef VC4C_DAG_H
 #define VC4C_DAG_H
@@ -8,8 +10,6 @@
 #include "../Graph.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../DebugGraph.h"
-
-using namespace vc4c;;
 
 using IL = vc4c::intermediate::IntermediateInstruction;
 
@@ -21,13 +21,6 @@ namespace vc4c
 
   public:
     DAG(BasicBlock &bb);
-
-    void getRoots();
-
-    void addAsRoot();
-    void addDepend();
-    void remove();
-
   };
 
 }

@@ -612,21 +612,21 @@ bool Value::isLiteral() const {
   return (valueType == ValueType::LITERAL);
 }
 
-bool Value::operator<(const Value u) const {
-   if (this->valueType == u.valueType) {
-         if (isRegister()) {
-	   	return this->reg < u.reg;
-         } else if (isLiteral()) {
-		return this->literal < u.literal;
-         } else if (isSmallImmediate()) {
-		return this->immediate < u.immediate;
-         } else if (isLocal()) {
-		 return this->local < u.local;
-         } else {
-		throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type!");
-         }
+bool Value::operator<(const Value &v) const {
+   if (this->valueType == v.valueType) {
+	   if (isRegister()) {
+		   return this->reg < v.reg;
+	   } else if (isLiteral()) {
+		   return this->literal < v.literal;
+	   } else if (isSmallImmediate()) {
+		   return this->immediate < v.immediate;
+	   } else if (isLocal()) {
+		   return this->local < v.local;
+	   } else {
+		   throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type!");
+	   }
    } else {
-         return this->valueType < u.valueType;
+	   return this->valueType < v.valueType;
    }
 }
 

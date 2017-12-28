@@ -1,6 +1,8 @@
-//
-// Created by nomaddo on 17/12/18.
-//
+/*
+ * Author: nomaddo
+ *
+ * See the file "LICENSE" for the full license governing this code.
+ */
 
 #include <log.h>
 #include <assert.h>
@@ -21,28 +23,17 @@
 #include "../InstructionWalker.h"
 #include "../Profiler.h"
 
+
 namespace vc4c {
 
-/* XXX should be replaced with common routines that generate such instructions? */
 /* reading from mutex I/O register means getting mutex */
 static bool isGetLocInstruction (IL * instr) {
-	for (Value v: instr->getArguments()) {
-		if (v.hasRegister(REG_MUTEX)) {
-			return true;
-		}
-	}
-
-	return false;
+	return instr->readsRegister(REG_MUTEX);
 }
 
 /* writing to mutex I/O register means release of mutex */
 static bool isReleaseLocInstruction (IL * instr) {
-	if (instr->getOutput().has_value()) {
-		auto output = instr->getOutput().value();
-		return output.hasRegister(REG_MUTEX);
-	}
-
-	return false;
+	return instr->writesRegister(REG_MUTEX);
 }
 
 DAG::DAG(BasicBlock &bb) {

@@ -194,11 +194,6 @@ namespace vc4c
 			InstructionDecorations decoration;
 			bool canBeCombined;
 
-			/* TODO should be fix for lower cost implementation */
-			bool operator<(const IntermediateInstruction &il) const {
-			  return this->to_string() < il.to_string();
-			}
-
 		protected:
 			const Value renameValue(Method& method, const Value& orig, const std::string& prefix) const;
 
@@ -579,15 +574,6 @@ namespace vc4c
 		using InstructionsIterator = FastModificationList<std::unique_ptr<IntermediateInstruction>>::iterator;
 		using ConstInstructionsIterator = FastModificationList<std::unique_ptr<IntermediateInstruction>>::const_iterator;
 	} // namespace intermediate
-
-
-
-  template<>
-  struct hash<intermediate::IntermediateInstruction> : public std::hash<std::string>
-  {
-	size_t operator()(const intermediate::IntermediateInstruction &) const noexcept;
-  };
-
 } // namespace vc4c
 
 

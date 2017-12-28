@@ -543,7 +543,7 @@ namespace vc4c
 		{
 			return !(*this == other);
 		}
-		bool operator<(Value v) const;
+		bool operator<(const Value& v) const;
 
 		/*
 		 * Returns the element-value for the given index.
