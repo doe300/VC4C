@@ -10,6 +10,7 @@
 #include "../intrinsics/Intrinsics.h"
 #include "../Profiler.h"
 #include "Combiner.h"
+#include "ControlFlow.h"
 #include "Eliminator.h"
 #include "Inliner.h"
 #include "LiteralValues.h"
@@ -136,13 +137,14 @@ const OptimizationPass optimizations::COMBINE_VPM_SETUP = OptimizationPass("Comb
 const OptimizationPass optimizations::COMBINE_LITERAL_LOADS = OptimizationPass("CombineLiteralLoads", combineLoadingLiterals, 100);
 const OptimizationPass optimizations::COMBINE_ROTATIONS = OptimizationPass("CombineRotations", combineVectorRotations, 110);
 const OptimizationPass optimizations::ELIMINATE = OptimizationPass("EliminateDeadStores", eliminateDeadStore, 120);
-const OptimizationPass optimizations::SPLIT_READ_WRITES = OptimizationPass("SplitReadAfterWrites", splitReadAfterWrites, 130);
-const OptimizationPass optimizations::REORDER = OptimizationPass("ReorderInstructions", reorderWithinBasicBlocks, 140);
-const OptimizationPass optimizations::COMBINE = OptimizationPass("CombineALUIinstructions", combineOperations, 150);
-const OptimizationPass optimizations::UNROLL_WORK_GROUPS = OptimizationPass("UnrollWorkGroups", unrollWorkGroups, 160);
+const OptimizationPass optimizations::VECTORIZE = OptimizationPass("VectorizeLoops", vectorizeLoops, 130);
+const OptimizationPass optimizations::SPLIT_READ_WRITES = OptimizationPass("SplitReadAfterWrites", splitReadAfterWrites, 140);
+const OptimizationPass optimizations::REORDER = OptimizationPass("ReorderInstructions", reorderWithinBasicBlocks, 150);
+const OptimizationPass optimizations::COMBINE = OptimizationPass("CombineALUIinstructions", combineOperations, 160);
+const OptimizationPass optimizations::UNROLL_WORK_GROUPS = OptimizationPass("UnrollWorkGroups", unrollWorkGroups, 170);
 
 const std::set<OptimizationPass> optimizations::DEFAULT_PASSES = {
-		RUN_SINGLE_STEPS, /* SPILL_LOCALS, */ COMBINE_VPM_SETUP, COMBINE_LITERAL_LOADS, RESOLVE_STACK_ALLOCATIONS, COMBINE_ROTATIONS, ELIMINATE, SPLIT_READ_WRITES, REORDER, COMBINE, UNROLL_WORK_GROUPS
+		RUN_SINGLE_STEPS, /* SPILL_LOCALS, */ COMBINE_VPM_SETUP, COMBINE_LITERAL_LOADS, RESOLVE_STACK_ALLOCATIONS, COMBINE_ROTATIONS, ELIMINATE, VECTORIZE, SPLIT_READ_WRITES, REORDER, COMBINE, UNROLL_WORK_GROUPS
 };
 
 Optimizer::Optimizer(const Configuration& config, const std::set<OptimizationPass>& passes) : config(config), passes(passes)

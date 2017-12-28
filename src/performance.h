@@ -93,8 +93,8 @@ namespace vc4c
 	using UnorderedSet = PerformanceSet<T, OrderType::UNORDERED, H>;
 	template<typename T, typename C = std::less<T>>
 	using OrderedSet = PerformanceSet<T, OrderType::ORDERED, C>;
-	template<typename T>
-	using FastSet = UnorderedSet<T>;
+	template<typename T, typename H = vc4c::hash<T>>
+	using FastSet = UnorderedSet<T, H>;
 
 	template<typename K, typename V, typename H = vc4c::hash<K>>
 	using UnorderedMap = PerformanceMap<K, V, OrderType::UNORDERED, H>;

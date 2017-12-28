@@ -85,6 +85,8 @@ namespace vc4c
 		extern const OptimizationPass COMBINE_ROTATIONS;
 		//eliminates useless instructions (dead store, move to same, add with zero, ...)
 		extern const OptimizationPass ELIMINATE;
+		//vectorizes loops
+		extern const OptimizationPass VECTORIZE;
 		//more like a de-optimization. Splits read-after-writes (except if the local is used only very locally), so the reordering and register-allocation have an easier job
 		extern const OptimizationPass SPLIT_READ_WRITES;
 		//re-order instructions to eliminate more NOPs and stall cycles
