@@ -38,9 +38,38 @@ static bool isReleaseLocInstruction (IL * instr) {
 
 DAG::DAG(BasicBlock &bb) {
 	std::map<Value, IL*> map;
+
+	/* To fix the order of mutex lock. its release and instructions between them,
+	 * - Remember an instruction that get mutex lock (as `getMutexInstr`)
+	 * - Remember all of instrctions after execution of the getting mutex lock (as `mutexInstructions`)
+	 *
+	 * Create dependency between `getMutexInstr` and each `mutexInstructions`
+	 * If an instructions, that release mutex lock, is found, create dependencies between the instruction and each `mutexInstructions`
+	 *
+	 * This code only remember one instruction that get mutex lock.
+	 * It doesn't assume as the following case, because such program has no meaning (get stuck)
+	 *
+	 *   register mutex_rel = bool 1 (1)
+	 *   register mutex_rel = bool 1 (1)
+	 *   ... getting mutex lock before releaasing it.  ...
+	 */
   auto mutexInstructions = std::shared_ptr<std::vector<IL*>>(new std::vector<IL*>());
 	IL * getMutexInstr = nullptr;
 
+	/* To fix the order of setting flags, and instructions that use it,
+	 * - Remember an instruction that set flags (as `setFlagInstr`)
+	 * - Remember all of instructions that use flags (as `setFlagInstructions`)
+	 *
+	 * Create dependencies between `setFlagInstr` and each of `setFlagInstructions`.
+	 * If we found other instruction that set flags, create dependencies between that instructions and each of `setFlagInstructions`.
+	 *
+	 *   1 ... set flag ...
+	 *   2 ... use flags ... must be issued after 1
+	 *   3 ... use flags ... must be issued after 1
+	 *   ..................
+	 *   4 ... set flags ... must be issued after 2 and 3
+	 *   5 ... use flags ... must be issued after 4
+	 */
 	auto setFlagInstructions = std::shared_ptr<std::vector<IL*>>(new std::vector<IL*>());
 	IL * setFlagInstr = nullptr;
 
