@@ -7,8 +7,6 @@
 #include "CodeGenerator.h"
 
 #include "../InstructionWalker.h"
-#include "../intermediate/Helper.h"
-#include "../intermediate/TypeConversions.h"
 #include "../Profiler.h"
 #include "GraphColoring.h"
 #include "KernelInfo.h"
@@ -24,186 +22,6 @@ using namespace vc4c::intermediate;
 
 CodeGenerator::CodeGenerator(const Module& module, const Configuration& config) : config(config), module(module)
 {
-}
-
-static InstructionWalker loadVectorParameter(const Parameter& param, Method& method, InstructionWalker it)
-{
-	//we need to load a UNIFORM per vector element into the particular vector element
-	for(uint8_t i = 0; i < param.type.num; ++i)
-	{
-		//the first write to the parameter needs to unconditional, so the register allocator can find it
-		if(i > 0)
-		{
-			it.emplace( new Operation(OP_XOR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, Value(SmallImmediate(i), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
-			it.nextInBlock();
-		}
-		if(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND))
-		{
-			it = insertSignExtension(it, method, Value(REG_UNIFORM, param.type), Value(&param, TYPE_INT32), false, i == 0 ? COND_ALWAYS : COND_ZERO_SET);
-		}
-		else if(has_flag(param.decorations, ParameterDecorations::ZERO_EXTEND))
-		{
-			it = insertZeroExtension(it, method, Value(REG_UNIFORM, param.type), Value(&param, TYPE_INT32), false, i == 0 ? COND_ALWAYS : COND_ZERO_SET);
-		}
-		else
-		{
-			it.emplace(new MoveOperation(param.createReference(), UNIFORM_REGISTER, i == 0 ? COND_ALWAYS : COND_ZERO_SET));
-			it.nextInBlock();
-		}
-		//TODO improve performance by first putting together the vector, then zero/sign extending all elements?
-	}
-	return it;
-}
-
-static void generateStartSegment(Method& method)
-{
-    auto it = method.walkAllInstructions();
-    if(!it.has<BranchLabel>() || BasicBlock::DEFAULT_BLOCK.compare(it.get<BranchLabel>()->getLabel()->name) != 0)
-    {
-    	it = method.emplaceLabel(it, new BranchLabel(*method.findOrCreateLocal(TYPE_LABEL, BasicBlock::DEFAULT_BLOCK)));
-    }
-	it.nextInBlock();
-    
-    /*
-     * The first UNIFORMs are reserved for relaying information about the work-item and work-group
-     * - work_dim: number of dimensions
-     * - global_size: global number of work-items per dimension
-     * - global_id: global id of this work-item per dimension
-     * - local_size: local number of work-items in its work-group per dimension
-     * - local_id: local id of this work-item within its work-group
-     * - num_groups: global number of work-groups per dimension
-     * - group_id: id of this work-group
-     * - global_offset: global initial offset per dimension
-     * - address of global data / to load the global data from
-     * 
-     */
-    it.emplace(new MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::WORK_DIMENSIONS)->createReference(), UNIFORM_REGISTER));
-    it.nextInBlock();
-    it.emplace(new MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::LOCAL_SIZES)->createReference(), UNIFORM_REGISTER));
-    it.nextInBlock();
-    it.emplace(new MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::LOCAL_IDS)->createReference(), UNIFORM_REGISTER));
-    it.nextInBlock();
-    it.emplace(new MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_X)->createReference(), UNIFORM_REGISTER));
-    it.nextInBlock();
-    it.emplace(new MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_Y)->createReference(), UNIFORM_REGISTER));
-    it.nextInBlock();
-	it.emplace(new MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_Z)->createReference(), UNIFORM_REGISTER));
-	it.nextInBlock();
-    it.emplace(new MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_X)->createReference(), UNIFORM_REGISTER));
-    it.nextInBlock();
-    it.emplace(new MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_Y)->createReference(), UNIFORM_REGISTER));
-    it.nextInBlock();
-	it.emplace(new MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_Z)->createReference(), UNIFORM_REGISTER));
-	it.nextInBlock();
-    it.emplace(new MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_X)->createReference(), UNIFORM_REGISTER));
-    it.nextInBlock();
-    it.emplace(new MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_Y)->createReference(), UNIFORM_REGISTER));
-    it.nextInBlock();
-	it.emplace(new MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_Z)->createReference(), UNIFORM_REGISTER));
-	it.nextInBlock();
-    it.emplace(new MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference(), UNIFORM_REGISTER));
-    it.nextInBlock();
-    
-    //load arguments to locals (via reading from uniform)
-    for(const Parameter& param : method.parameters)
-    {
-        //do the loading
-    	//we need special treatment for non-scalar parameter (e.g. vectors), since they can't be read with just 1 UNIFORM
-    	if(!param.type.isPointerType() && param.type.num != 1)
-    	{
-    		it = loadVectorParameter(param, method, it);
-    	}
-    	else if(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND))
-        {
-            it = insertSignExtension(it, method, Value(REG_UNIFORM, param.type), Value(&param, TYPE_INT32), false);
-        }
-        else if(has_flag(param.decorations, ParameterDecorations::ZERO_EXTEND))
-        {
-            it = insertZeroExtension(it, method, Value(REG_UNIFORM, param.type), Value(&param, TYPE_INT32), false);
-        }
-        else
-        {
-            it.emplace(new MoveOperation(param.createReference(), UNIFORM_REGISTER));
-            it.nextInBlock();
-        }
-    }
-
-//    //write initial values to locals
-//    for(const Local& local : method.readLocals())
-//    {
-//        if(local.value.hasType(ValueType::LITERAL))
-//        {
-//            logging::debug() << "Initalizing local " << local.name << " with value " << local.value.to_string() << logging::endl;
-//            it.emplace(new LoadImmediate(Value(LocalRef{local.name}, local.value.type), local.value.literal));
-//            ++it;
-//        }
-//    }
-}
-
-static void generateStopSegment(Method& method)
-{
-    //write interrupt for host
-    //write QPU number finished (value must be NON-NULL, so we invert it -> the first 28 bits are always 1)
-    method.appendToEnd(new Operation(OP_NOT, Value(REG_HOST_INTERRUPT, TYPE_INT8), Value(REG_QPU_NUMBER, TYPE_INT8)));
-    IntermediateInstruction* nop = new Nop(DelayType::THREAD_END);
-    //set signals to stop thread/program    
-    nop->setSignaling(SIGNAL_END_PROGRAM);
-    method.appendToEnd(nop);
-    method.appendToEnd(new Nop(DelayType::THREAD_END));
-    method.appendToEnd(new Nop(DelayType::THREAD_END));
-}
-
-static void extendBranches(Method& method)
-{
-    std::size_t num = 0;
-    logging::debug() << "-----" << logging::endl;
-    auto it = method.walkAllInstructions();
-    //we only need to set the same flag once
-    std::pair<Value, InstructionDecorations> lastSetFlags = std::make_pair(UNDEFINED_VALUE, InstructionDecorations::NONE);
-    while(!it.isEndOfMethod())
-	{
-    	Branch* branch = it.get<Branch>();
-		if (branch != nullptr)
-		{
-			if(branch->hasConditionalExecution() || !branch->getCondition().hasLiteral(BOOL_TRUE.literal))
-			{
-				/*
-				 * branch can only depend on scalar value
-				 * -> set any not used vector-element (all except element 0) to a value where it doesn't influence the condition
-				 *
-				 * Using ELEMENT_NUMBER sets the vector-elements 1 to 15 to a non-zero value and 0 to either 0 (if condition was false) or 1 (if condition was true)
-				 */
-				//TODO can be skipped, if it is checked/guaranteed, that the last instruction setting flags is the boolean-selection for the given condition
-				//but we need to check more than the last instructions, since there could be moves inserted by phi
-
-				//skip setting of flags, if the previous setting wrote the same flags
-				if(lastSetFlags.first != branch->getCondition() || has_flag(branch->decoration, InstructionDecorations::BRANCH_ON_ALL_ELEMENTS) != has_flag(lastSetFlags.second, InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
-				{
-					if(has_flag(branch->decoration, InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
-						it.emplace(new Operation(OP_OR, NOP_REGISTER, branch->getCondition(), branch->getCondition(), COND_ALWAYS, SetFlag::SET_FLAGS));
-					else
-						it.emplace(new Operation(OP_OR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, branch->getCondition(), COND_ALWAYS, SetFlag::SET_FLAGS));
-					it.nextInBlock();
-				}
-				lastSetFlags.first = branch->getCondition();
-				lastSetFlags.second = branch->decoration;
-			}
-			++num;
-			//go to next instruction
-			it.nextInBlock();
-			//insert 3 NOPs before
-			it.emplace(new Nop(DelayType::BRANCH_DELAY));
-			it.emplace(new Nop(DelayType::BRANCH_DELAY));
-			it.emplace(new Nop(DelayType::BRANCH_DELAY));
-		}
-		else if(it.get() != nullptr && it->setFlags == SetFlag::SET_FLAGS)
-		{
-			//any other instruction setting flags, need to re-set the branch-condition
-			lastSetFlags = std::make_pair(UNDEFINED_VALUE, InstructionDecorations::NONE);
-		}
-		it.nextInMethod();
-	}
-    logging::debug() << "Extended " << num << " branches" << logging::endl;
 }
 
 static FastMap<const Local*, std::size_t> mapLabels(Method& method)
@@ -252,13 +70,6 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
 #ifdef MULTI_THREADED
     instructionsLock.unlock();
 #endif
-    //prepend start segment
-    generateStartSegment(method);
-    //append end segment
-    generateStopSegment(method);
-
-    //expand branches (add 3 NOPs)
-    extendBranches(method);
 
     //check and fix possible errors with register-association
     PROFILE_START(initializeLocalsUses);

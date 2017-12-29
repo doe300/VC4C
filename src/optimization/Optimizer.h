@@ -95,6 +95,10 @@ namespace vc4c
 		extern const OptimizationPass COMBINE;
 		//add (runtime-configurable) loop over the whole kernel execution, allowing for skipping some of the syscall overhead for kernels with many work-groups
 		extern const OptimizationPass UNROLL_WORK_GROUPS;
+		//extends the branches by adding the conditional execution and the delay-nops
+		extern const OptimizationPass EXTEND_BRANCHES;
+		//adds the start- and stop-segments to the beginning and end of the kernel
+		extern const OptimizationPass ADD_START_STOP_SEGMENT;
 
 		/*
 		 * The default optimization passes consist of all passes listed above.

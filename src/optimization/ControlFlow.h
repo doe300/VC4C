@@ -20,6 +20,18 @@ namespace vc4c
 		 */
 		void vectorizeLoops(const Module& module, Method& method, const Configuration& config);
 
+		/*
+		 * Extends the branches (up to now represented by a single instruction) by
+		 * inserting instructions setting the necessary flags (if required)
+		 * and the subsequent delay-instructions
+		 */
+		void extendBranches(const Module& module, Method& method, const Configuration& config);
+
+		/*
+		 * Adds the start- and stop-segment to the kernel code
+		 */
+		void addStartStopSegment(const Module& module, Method& method, const Configuration& config);
+
 	} /* namespace optimizations */
 } /* namespace vc4c */
 
