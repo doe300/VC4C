@@ -123,11 +123,10 @@ DAG::DAG(BasicBlock &bb) {
 			setFlagInstructions->clear();
 		}
 
-		if (instr->hasConditionalExecution()){
-			if (setFlagInstr != nullptr) {
-				/* XXX should be change it to an assertion.
-				 * but, in the basic block of end of function, the case of using flags (but not set in the block) appears.
-				 */
+		/* XXX In branch instruction `hasConditionalExecution()` return true, but doesn't use flags.
+		 */
+		if (! dynamic_cast<intermediate::Branch*>(instr) && instr->hasConditionalExecution()){
+			if (setFlagInstr != nullptr){
 				setFlagInstructions->push_back(instr);
 				graph->getOrCreateNode(setFlagInstr).addNeighbor(&graph->getOrCreateNode(instr), true);
 			}
