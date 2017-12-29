@@ -21,13 +21,13 @@
 using namespace vc4c;
 using namespace vc4c::spirv2qasm;
 
-static Value toNewLocal(Method& method, const uint32_t id, const uint32_t typeID, const std::map<uint32_t, DataType>& typeMappings, std::map<uint32_t, uint32_t>& localTypes)
+static Value toNewLocal(Method& method, const uint32_t id, const uint32_t typeID, const TypeMapping& typeMappings, LocalTypeMapping& localTypes)
 {
     localTypes[id] = typeID;
     return method.findOrCreateLocal(typeMappings.at(typeID), std::string("%") + std::to_string(id))->createReference();
 }
 
-static DataType getType(const uint32_t id, const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated, const std::map<uint32_t, uint32_t>& localTypes)
+static DataType getType(const uint32_t id, const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated, const LocalTypeMapping& localTypes)
 {
     if(types.find(id) != types.end())
         return types.at(id);
@@ -38,7 +38,7 @@ static DataType getType(const uint32_t id, const std::map<uint32_t, DataType>& t
     return types.at(localTypes.at(id));
 }
 
-static Value getValue(const uint32_t id, Method& method, const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated, const std::map<uint32_t, uint32_t>& localTypes)
+static Value getValue(const uint32_t id, Method& method, const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated, const LocalTypeMapping& localTypes)
 {
     if(constants.find(id) != constants.end())
         return constants.at(id);
@@ -62,7 +62,7 @@ SPIRVOperation(id, method, decorations), typeID(resultType), opcode(opcode), ope
 {
 }
 
-void SPIRVInstruction::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
+void SPIRVInstruction::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated) const
 {
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
     Value arg0 = getValue(operands.at(0), *method.method, types, constants, memoryAllocated, localTypes);
@@ -90,7 +90,7 @@ void SPIRVInstruction::mapInstruction(std::map<uint32_t, DataType>& types, std::
     }
 }
 
-Optional<Value> SPIRVInstruction::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
+Optional<Value> SPIRVInstruction::precalculate(const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
 	const Value& op1 = constants.at(operands.at(0));
 	const Value op2 = operands.size() > 1 ? constants.at(operands.at(1)) : UNDEFINED_VALUE;
@@ -158,7 +158,7 @@ SPIRVComparison::SPIRVComparison(const uint32_t id, SPIRVMethod& method, const s
 
 }
 
-void SPIRVComparison::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
+void SPIRVComparison::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated) const
 {
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
     const Value arg0 = getValue(operands.at(0), *method.method, types, constants, memoryAllocated, localTypes);
@@ -167,7 +167,7 @@ void SPIRVComparison::mapInstruction(std::map<uint32_t, DataType>& types, std::m
     method.method->appendToEnd((new intermediate::Comparison(opcode, dest, arg0, arg1))->setDecorations(decorations));
 }
 
-Optional<Value> SPIRVComparison::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
+Optional<Value> SPIRVComparison::precalculate(const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
 	const Value& op1 = constants.at(operands.at(0));
 	const Value& op2 = constants.at(operands.at(1));
@@ -210,7 +210,7 @@ SPIRVCallSite::SPIRVCallSite(const uint32_t id, SPIRVMethod& method, const std::
 {
 }
 
-void SPIRVCallSite::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
+void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated) const
 {
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
     std::string calledFunction = methodName.value_or("");
@@ -225,7 +225,7 @@ void SPIRVCallSite::mapInstruction(std::map<uint32_t, DataType>& types, std::map
     method.method->appendToEnd((new intermediate::MethodCall(dest, calledFunction, args))->setDecorations(decorations));
 }
 
-Optional<Value> SPIRVCallSite::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
+Optional<Value> SPIRVCallSite::precalculate(const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
 	return NO_VALUE;
 }
@@ -240,7 +240,7 @@ SPIRVReturn::SPIRVReturn(const uint32_t returnValue, SPIRVMethod& method) : SPIR
 
 }
 
-void SPIRVReturn::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
+void SPIRVReturn::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated) const
 {
     if(returnValue)
     {
@@ -255,7 +255,7 @@ void SPIRVReturn::mapInstruction(std::map<uint32_t, DataType>& types, std::map<u
     }
 }
 
-Optional<Value> SPIRVReturn::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
+Optional<Value> SPIRVReturn::precalculate(const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
 	if(returnValue && constants.find(returnValue.value()) != constants.end())
 		return constants.at(returnValue.value());
@@ -273,7 +273,7 @@ SPIRVBranch::SPIRVBranch(SPIRVMethod& method, const uint32_t conditionID, const 
 
 }
 
-void SPIRVBranch::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
+void SPIRVBranch::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated) const
 {
     if(conditionID)
     {
@@ -292,7 +292,7 @@ void SPIRVBranch::mapInstruction(std::map<uint32_t, DataType>& types, std::map<u
     }
 }
 
-Optional<Value> SPIRVBranch::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
+Optional<Value> SPIRVBranch::precalculate(const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
 	return NO_VALUE;
 }
@@ -308,7 +308,7 @@ void SPIRVLabel::mapInstruction(std::map<uint32_t, DataType>& types, std::map<ui
     method.method->appendToEnd(new intermediate::BranchLabel(*method.method->findOrCreateLocal(TYPE_LABEL, std::string("%") + std::to_string(id))));
 }
 
-Optional<Value> SPIRVLabel::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
+Optional<Value> SPIRVLabel::precalculate(const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
 	return NO_VALUE;
 }
@@ -319,7 +319,7 @@ SPIRVOperation(id, method, decorations), typeID(resultType), sourceID(sourceID),
 
 }
 
-void SPIRVConversion::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
+void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated) const
 {
     const Value source = getValue(sourceID, *method.method, types, constants, memoryAllocated, localTypes);
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
@@ -333,7 +333,7 @@ void SPIRVConversion::mapInstruction(std::map<uint32_t, DataType>& types, std::m
     		if(source.type.num != dest.type.num)
     		{
     			//e.g. int2 -> ushort4, char16 -> uint4
-    			//TODO could make use of vector-shuffle instructions
+    			//TODO could make use of vector-shuffle instructions. Or are these the same instructions as ladoing non 32-bit values from TMU?
     			throw CompilationError(CompilationStep::LLVM_2_IR, "Bit-casts across different vector-sizes are not yet supported!");
     		}
     		//bit-casts with types of same vector-size (and therefore same element-size) are simple moves
@@ -370,7 +370,7 @@ void SPIRVConversion::mapInstruction(std::map<uint32_t, DataType>& types, std::m
     }
 }
 
-Optional<Value> SPIRVConversion::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
+Optional<Value> SPIRVConversion::precalculate(const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
 	if(constants.find(sourceID) != constants.end())
 	{
@@ -410,7 +410,7 @@ SPIRVCopy::SPIRVCopy(const uint32_t id, SPIRVMethod& method, const uint32_t resu
 
 }
 
-void SPIRVCopy::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
+void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated) const
 {
     const Value source = getValue(sourceID, *method.method, types, constants, memoryAllocated, localTypes);
     Value dest(UNDEFINED_VALUE);
@@ -494,7 +494,7 @@ void SPIRVCopy::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uin
     }
 }
 
-Optional<Value> SPIRVCopy::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
+Optional<Value> SPIRVCopy::precalculate(const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
 	if(constants.find(sourceID) != constants.end())
 		return constants.at(sourceID);
@@ -513,7 +513,7 @@ SPIRVShuffle::SPIRVShuffle(const uint32_t id, SPIRVMethod& method, const uint32_
 
 }
 
-void SPIRVShuffle::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
+void SPIRVShuffle::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated) const
 {
     //shuffling = iteration over all elements in both vectors and re-ordering in order given
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
@@ -533,14 +533,14 @@ void SPIRVShuffle::mapInstruction(std::map<uint32_t, DataType>& types, std::map<
 		for(const uint32_t index : this->indices)
 		{
 			//"A Component literal may also be FFFFFFFF, which means the corresponding result component has no source and is undefined"
-			if(index == 0xFFFFFFFFU)
+			if(index == UNDEFINED_LITERAL)
 			{
 				indices.elements.emplace_back(UNDEFINED_VALUE);
 			}
 			else
 			{
 				allIndicesUndef = false;
-				if(index != 0 && index != 0xFFFFFFFFU)
+				if(index != 0 && index != UNDEFINED_LITERAL)
 					//accept UNDEF as zero, so i.e. (0,0,0,UNDEF) can be simplified as all-zero
 					allIndicesZero = false;
 				indices.elements.emplace_back(Literal(static_cast<int64_t>(index)), TYPE_INT8);
@@ -570,7 +570,7 @@ SPIRVIndexOf::SPIRVIndexOf(const uint32_t id, SPIRVMethod& method, const uint32_
 
 }
 
-void SPIRVIndexOf::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
+void SPIRVIndexOf::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated) const
 {
     //need to get pointer/address -> reference to content
     //a[i] of type t is at position &a + i * sizeof(t)
@@ -588,7 +588,7 @@ void SPIRVIndexOf::mapInstruction(std::map<uint32_t, DataType>& types, std::map<
     intermediate::insertCalculateIndices(method.method->appendToEnd(), *method.method.get(), container, dest, indexValues, isPtrAcessChain);
 }
 
-Optional<Value> SPIRVIndexOf::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
+Optional<Value> SPIRVIndexOf::precalculate(const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
 	Value container(UNDEFINED_VALUE);
 	if(constants.find(this->container) != constants.end())
@@ -656,7 +656,7 @@ SPIRVPhi::SPIRVPhi(const uint32_t id, SPIRVMethod& method, const uint32_t result
 
 }
 
-void SPIRVPhi::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
+void SPIRVPhi::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated) const
 {
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
     
@@ -674,7 +674,7 @@ void SPIRVPhi::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint
     method.method->appendToEnd(new intermediate::PhiNode(dest, labelPairs));
 }
 
-Optional<Value> SPIRVPhi::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
+Optional<Value> SPIRVPhi::precalculate(const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
 	return NO_VALUE;
 }
@@ -685,7 +685,7 @@ SPIRVSelect::SPIRVSelect(const uint32_t id, SPIRVMethod& method, const uint32_t 
 
 }
 
-void SPIRVSelect::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
+void SPIRVSelect::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated) const
 {
     const Value sourceTrue = getValue(trueID, *method.method, types, constants, memoryAllocated, localTypes);
     const Value sourceFalse = getValue(falseID, *method.method, types, constants, memoryAllocated, localTypes);
@@ -729,7 +729,7 @@ SPIRVSwitch::SPIRVSwitch(const uint32_t id, SPIRVMethod& method, const uint32_t 
 
 }
 
-void SPIRVSwitch::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
+void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated) const
 {
     const Value selector = getValue(selectorID, *method.method, types, constants, memoryAllocated, localTypes);
     const Value defaultLabel = getValue(defaultID, *method.method, types, constants, memoryAllocated, localTypes);
@@ -750,7 +750,7 @@ void SPIRVSwitch::mapInstruction(std::map<uint32_t, DataType>& types, std::map<u
     method.method->appendToEnd(new intermediate::Branch(defaultLabel.local, COND_ALWAYS, BOOL_TRUE));
 }
 
-Optional<Value> SPIRVSwitch::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
+Optional<Value> SPIRVSwitch::precalculate(const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
 	if(constants.find(selectorID) != constants.end())
 	{
@@ -772,7 +772,7 @@ SPIRVImageQuery::SPIRVImageQuery(const uint32_t id, SPIRVMethod& method, const u
 
 }
 
-void SPIRVImageQuery::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
+void SPIRVImageQuery::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated) const
 {
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
     const Value image = getValue(imageID, *method.method, types, constants, memoryAllocated, localTypes);
@@ -816,7 +816,7 @@ void SPIRVImageQuery::mapInstruction(std::map<uint32_t, DataType>& types, std::m
     
 }
 
-Optional<Value> SPIRVImageQuery::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
+Optional<Value> SPIRVImageQuery::precalculate(const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
 	return NO_VALUE;
 }
@@ -826,8 +826,7 @@ vc4c::spirv2qasm::SPIRVMemoryBarrier::SPIRVMemoryBarrier(SPIRVMethod& method, co
 {
 }
 
-void vc4c::spirv2qasm::SPIRVMemoryBarrier::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods,
-		std::map<uint32_t, Local*>& memoryAllocated) const
+void vc4c::spirv2qasm::SPIRVMemoryBarrier::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated) const
 {
 	const Value scope = getValue(scopeID, *method.method, types, constants, memoryAllocated, localTypes);
 	const Value semantics = getValue(semanticsID, *method.method, types, constants, memoryAllocated, localTypes);
@@ -839,7 +838,7 @@ void vc4c::spirv2qasm::SPIRVMemoryBarrier::mapInstruction(std::map<uint32_t, Dat
 	method.method->appendToEnd(new intermediate::MemoryBarrier(static_cast<intermediate::MemoryScope>(scope.literal.integer), static_cast<intermediate::MemorySemantics>(semantics.literal.integer)));
 }
 
-Optional<Value> vc4c::spirv2qasm::SPIRVMemoryBarrier::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
+Optional<Value> vc4c::spirv2qasm::SPIRVMemoryBarrier::precalculate(const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
 	return NO_VALUE;
 }
@@ -849,7 +848,7 @@ SPIRVLifetimeInstruction::SPIRVLifetimeInstruction(const uint32_t id, SPIRVMetho
 
 }
 
-void SPIRVLifetimeInstruction::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants, std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods, std::map<uint32_t, Local*>& memoryAllocated) const
+void SPIRVLifetimeInstruction::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated) const
 {
 	const Value pointer = getValue(id, *method.method, types, constants, memoryAllocated, localTypes);
 
@@ -861,7 +860,7 @@ void SPIRVLifetimeInstruction::mapInstruction(std::map<uint32_t, DataType>& type
 	method.method->appendToEnd(new intermediate::LifetimeBoundary(pointer, isLifetimeEnd));
 }
 
-Optional<Value> SPIRVLifetimeInstruction::precalculate(const std::map<uint32_t, DataType>& types, const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
+Optional<Value> SPIRVLifetimeInstruction::precalculate(const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
 	return NO_VALUE;
 }

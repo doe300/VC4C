@@ -35,7 +35,7 @@ namespace vc4c
 
 			spv_result_t parseHeader(spv_endianness_t endian, uint32_t magic, uint32_t version, uint32_t generator, uint32_t id_bound, uint32_t reserved);
 			spv_result_t parseInstruction(const spv_parsed_instruction_t* parsed_instruction);
-			spv_result_t parseDecoration(const spv_parsed_instruction_t* parsed_instruction);
+			spv_result_t parseDecoration(const spv_parsed_instruction_t* parsed_instruction, uint32_t value);
 			intermediate::InstructionDecorations toInstructionDecorations(uint32_t id);
 
 		private:
@@ -54,23 +54,23 @@ namespace vc4c
 			//whether the input is SPIR-V text representation
 			const bool isTextInput;
 			//all global methods in the module
-			std::map<uint32_t, SPIRVMethod> methods;
+			MethodMapping methods;
 			//the input stream
 			std::istream& input;
 			//the currently processed method, only valid while parsing
 			SPIRVMethod* currentMethod;
 			//the global mapping of ID -> constants
-			std::map<uint32_t, Value> constantMappings;
+			ConstantMapping constantMappings;
 			//the mapping of ID -> global/stack allocated data
-			std::map<uint32_t, Local*> memoryAllocatedData;
+			AllocationMapping memoryAllocatedData;
 			//the global mapping of ID -> type
-			std::map<uint32_t, DataType> typeMappings;
+			TypeMapping typeMappings;
 			//the global mapping of ID -> sampled images
 			FastMap<uint32_t, SampledImage> sampledImages;
 			//the global mapping of ID -> decorations (applied to this ID)
 			FastMap<uint32_t, std::vector<Decoration>> decorationMappings;
 			//mapping of locals to their types
-			std::map<uint32_t, uint32_t> localTypes;
+			LocalTypeMapping localTypes;
 			//the global list of instructions, each instruction stores its own reference to the method it is in
 			std::vector<std::unique_ptr<SPIRVOperation>> instructions;
 			//the global mapping of kernel ID -> meta-data

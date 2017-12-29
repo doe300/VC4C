@@ -255,30 +255,34 @@ static std::string readLiteralString(const spv_parsed_instruction_t* instruction
     return std::string(reinterpret_cast<const char*>(instruction->words + operand->offset), length);
 }
 
-spv_result_t SPIRVParser::parseDecoration(const spv_parsed_instruction_t* parsed_instruction)
+spv_result_t SPIRVParser::parseDecoration(const spv_parsed_instruction_t* parsed_instruction, uint32_t value)
 {
     const uint32_t target = getWord(parsed_instruction, 1);
     switch (static_cast<SpvDecoration>(getWord(parsed_instruction, 2))) {
     case SpvDecorationCPacked:  //struct is "packed"
-    case SpvDecorationBuiltIn:  //entity (object, struct-member) represents given built-in	//TODO map to built-in?
     case SpvDecorationSaturatedConversion: //out-of range results are clamped, do not overflow
     case SpvDecorationFuncParamAttr:
-    case SpvDecorationFPRoundingMode: //explicit rounding mode
     case SpvDecorationFPFastMathMode: //allows fast-math modes
-    case SpvDecorationSpecId:	//constant as specialization-value of OpSpecXXX
+    case SpvDecorationSpecId: //constant as specialization-value of OpSpecXXX
     case SpvDecorationAlignment: //known alignment of pointer
     case SpvDecorationMaxByteOffset: //known maximum offset (in bytes) from base address, this pointer is accessed at
     case SpvDecorationConstant:	//global data is constant, is never written
     case SpvDecorationRestrict: //memory behind pointer is restricted, e.g. not aliased to another pointer
     case SpvDecorationVolatile: //data behind pointer is volatile
-        decorationMappings[target].push_back({static_cast<SpvDecoration>(getWord(parsed_instruction, 2)), parsed_instruction->num_words > 3 ? getWord(parsed_instruction, 3) : 0xFFFFFFFFU});
+        decorationMappings[target].push_back({static_cast<SpvDecoration>(getWord(parsed_instruction, 2)), value});
         return SPV_SUCCESS;
     case SpvDecorationAlignmentId:	//known alignment of pointer, but as constant, not literal value
-    	decorationMappings[target].push_back({SpvDecorationAlignment, parsed_instruction->num_words > 3 ? constantMappings.at(getWord(parsed_instruction, 3)).literal.integer : 0xFFFFFFFFU});
+    	decorationMappings[target].push_back({SpvDecorationAlignment, value});
 		return SPV_SUCCESS;
     case SpvDecorationMaxByteOffsetId:	//known maximum offset (in bytes) from base address, this pointer is accessed at, but as constant, not literal value
-    	decorationMappings[target].push_back({SpvDecorationMaxByteOffset, parsed_instruction->num_words > 3 ? constantMappings.at(getWord(parsed_instruction, 3)).literal.integer : 0xFFFFFFFFU});
+    	decorationMappings[target].push_back({SpvDecorationMaxByteOffset, value});
 		return SPV_SUCCESS;
+    case SpvDecorationBuiltIn: //entity (object, struct-member) represents given built-in
+    case SpvDecorationAliased: //pointer needs to be accessed with aliased access in mind. XXX how/is it handled?
+    case SpvDecorationFPRoundingMode: //explicit rounding mode
+    	//handle unsupported decorations which can't be simply ignored
+    	logging::error() << "Met unsupported instruction-decoration " << getWord(parsed_instruction, 2) << logging::endl;
+    	return SPV_UNSUPPORTED;
     default:
         //simply ignore all other decorations
         return SPV_SUCCESS;
@@ -337,7 +341,7 @@ static intermediate::Sampler parseSampler(const spv_parsed_instruction_t* instru
     return tmp;
 }
 
-static Value parseConstant(const spv_parsed_instruction_t* instruction, const std::map<uint32_t, DataType>& typeMappings)
+static Value parseConstant(const spv_parsed_instruction_t* instruction, const TypeMapping& typeMappings)
 {
 	Value constant(typeMappings.at(instruction->type_id));
 	if (instruction->num_words > 3) {
@@ -352,7 +356,7 @@ static Value parseConstant(const spv_parsed_instruction_t* instruction, const st
 	return constant;
 }
 
-static Value parseConstantComposite(const spv_parsed_instruction_t* instruction, const std::map<uint32_t, DataType>& typeMappings, const std::map<uint32_t, Value>& constantMappings)
+static Value parseConstantComposite(const spv_parsed_instruction_t* instruction, const TypeMapping& typeMappings, const ConstantMapping& constantMappings)
 {
 	DataType containerType = typeMappings.at(getWord(instruction, 1));
 	std::vector<Value> constants;
@@ -376,7 +380,7 @@ static Optional<Value> specializeConstant(const uint32_t resultID, const DataTyp
 	return NO_VALUE;
 }
 
-static SPIRVMethod& getOrCreateMethod(const Module& module, std::map<uint32_t, SPIRVMethod>& methods, const uint32_t id)
+static SPIRVMethod& getOrCreateMethod(const Module& module, MethodMapping& methods, const uint32_t id)
 {
 	if(methods.find(id) == methods.end())
 		methods.emplace(id, SPIRVMethod(id, module));
@@ -862,13 +866,13 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         //"Target is the <id> to decorate. It can potentially be any <id> that is a forward reference"
         // -> decorations are always forward references
         // -> can be applied to instruction/parameter/type on parsing it
-        return parseDecoration(parsed_instruction);
+        return parseDecoration(parsed_instruction, parsed_instruction->num_words > 3 ? getWord(parsed_instruction, 3) : UNDEFINED_LITERAL);
     case SpvOpDecorateId:
     	//"Target is the <id> to decorate. It can potentially be any <id> that is a forward reference"
     	// -> decorations are always forward references
 		// -> can be applied to instruction/parameter/type on parsing it
     	//In this version, the decoration operands are not literals, but specified by their IDs
-    	return parseDecoration(parsed_instruction);
+    	return parseDecoration(parsed_instruction, parsed_instruction->num_words > 3 ? constantMappings.at(getWord(parsed_instruction, 3)).getLiteralValue()->integer : UNDEFINED_LITERAL);
     case SpvOpMemberDecorate:
         return UNSUPPORTED_INSTRUCTION("OpMemberDecorate");
     case SpvOpDecorationGroup:
