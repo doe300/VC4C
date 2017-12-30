@@ -164,8 +164,7 @@ struct LoopControl
 	}
 };
 
-template<>
-struct vc4c::hash<LoopControl> : public std::hash<Local*>
+struct LoopControlHash : public std::hash<Local*>
 {
 	size_t operator()(const LoopControl& val) const noexcept
 	{
@@ -175,7 +174,7 @@ struct vc4c::hash<LoopControl> : public std::hash<Local*>
 
 static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDependencyGraph& dependencyGraph)
 {
-	FastSet<LoopControl> availableLoopControls;
+	FastSet<LoopControl, LoopControlHash> availableLoopControls;
 
 	for(Local* local : findLoopIterations(loop, dependencyGraph))
 	{
@@ -571,10 +570,11 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
 			const_cast<DataType&>(inst->getOutput()->type).num = loopControl.iterationVariable->type.num;
 
 			intermediate::MoveOperation* move = dynamic_cast<intermediate::MoveOperation*>(inst);
-			if(move != nullptr && (move->getSource().hasLiteral(INT_ZERO.literal) || move->getSource().hasImmediate(SmallImmediate(0))))
+			if(move != nullptr && move->getSource().hasLiteral(INT_ZERO.literal) && loopControl.stepKind == StepKind::ADD_CONSTANT && loopControl.getStep().is(INT_ONE.literal))
 			{
-				//XXX: This is only true for initial-value of zero and an iteration-step of +1
+				//special/default case: initial value is zero and step is +1
 				move->setSource(ELEMENT_NUMBER_REGISTER);
+				move->setDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
 				logging::debug() << "Changed initial value: " << inst->to_string() << logging::endl;
 			}
 			else
