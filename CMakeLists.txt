@@ -18,6 +18,8 @@ option(LLVMIR_FRONTEND "Enables the standard front-end for the LLVM intermediate
 option(CROSS_COMPILE "Cross compile for Raspbian" OFF)
 # Option whether to include the SPIR-V front-end
 option(SPIRV_FRONTEND "Enables a second front-end for the SPIR-V intermediate language" ON)
+# Option whether to include the LLVM library front-end. This requires the LLVM development-headers to be available for the (SPIRV-)LLVM used
+option(LLVMLIB_FRONTEND "Enables the front-end using the LLVM library to read LLVM IR" OFF)
 # Option whether to drop the rights for the pre-compilation process (to the user pi).
 # This is relevant when used in VC4CL, since VC4CL requires root access.
 # Turning this option off results in the  pre-compiler deleting /dev/stdout on errors
@@ -161,7 +163,7 @@ if(LLVMIR_FRONTEND AND NOT CLANG_FOUND)
 	endif()
 endif()
 
-# If the complete tool collection is provided, compile the SPIR-V frontend
+# If the complete tool collection is provided, compile the SPIR-V front-end
 if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
 	message(STATUS "Compiling SPIR-V front-end...")
 	#Add SPIR-V headers project
@@ -201,6 +203,37 @@ if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
 	add_definitions(-DSPIRV_LINKER_HEADER="${PROJECT_SOURCE_DIR}/lib/spirv-tools/include/spirv-tools/linker.hpp")
 	include_directories ("${PROJECT_SOURCE_DIR}/lib/spirv-tools/include/")
 	# add_definitions(-DSPIRV_OPTIMIZER_HEADER="${PROJECT_SOURCE_DIR}/lib/spirv-tools/include/spirv-tools/optimizer.hpp")
+endif()
+
+# If enabled, check whether the LLVM library front-end can be built
+if(LLVMLIB_FRONTEND)
+	# LLVM_CONFIG_PATH can be used to configure the path for the llvm-config program
+	if(NOT LLVM_CONFIG_PATH)
+		#if(SPIRV_COMPILER_ROOT) # use the SPIRV-LLVM llvm-config
+		#	set(LLVM_CONFIG_PATH ${SPIRV_COMPILER_ROOT}/llvm-config)
+		#else() # Use the "default" llvm-config
+			set(LLVM_CONFIG_PATH llvm-config)
+		#endif()
+	endif()
+	
+	execute_process(COMMAND ${LLVM_CONFIG_PATH} --libdir OUTPUT_VARIABLE LLVM_LIBS_PATH OUTPUT_STRIP_TRAILING_WHITESPACE)
+	execute_process(COMMAND ${LLVM_CONFIG_PATH} --includedir OUTPUT_VARIABLE LLVM_INCLUDE_PATH OUTPUT_STRIP_TRAILING_WHITESPACE)
+	execute_process(COMMAND ${LLVM_CONFIG_PATH} --cppflags OUTPUT_VARIABLE LLVM_LIB_FLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
+	execute_process(COMMAND ${LLVM_CONFIG_PATH} --version OUTPUT_VARIABLE LLVM_LIB_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE)
+	execute_process(COMMAND ${LLVM_CONFIG_PATH} --libs core irreader bitreader OUTPUT_VARIABLE LLVM_LIB_NAMES OUTPUT_STRIP_TRAILING_WHITESPACE)
+	
+	if(LLVM_LIBS_PATH AND LLVM_INCLUDE_PATH AND LLVM_LIB_NAMES)
+		message(STATUS "Compiling LLVM library front-end with LLVM in version ${LLVM_LIB_VERSION} located in '${LLVM_LIBS_PATH}'")
+		set(ENABLE_LLVM_LIB_FRONTEND ON)
+		add_definitions(-DLLVM_INCLUDE_PATH=${LLVM_INCLUDE_PATH})
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_LIB_FLAGS}")
+	else()
+		message(STATUS "LLVM library front-end enabled, but LLVM library was not found!")
+	endif()
+endif()
+
+if(ENABLE_LLVM_LIB_FRONTEND AND SPIRV_CLANG_FOUND)
+	message(FATAL_ERROR "Using LLVM library as front-end currently only supports the default clang/LLVM, not SPIRV-LLVM!")
 endif()
 
 if(VERIFY_OUTPUT)

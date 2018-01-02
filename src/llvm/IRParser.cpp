@@ -190,7 +190,7 @@ static ParameterDecorations parseParameterDecorations(Scanner& scanner)
     return decorations;
 }
 
-static AddressSpace toAddressSpace(int num)
+AddressSpace toAddressSpace(int num)
 {
 	//XXX this mapping is not guaranteed, mapping only determined by experiment
 	switch(num)

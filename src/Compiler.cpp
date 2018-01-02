@@ -11,6 +11,7 @@
 #include "Precompiler.h"
 #include "Profiler.h"
 #include "asm/CodeGenerator.h"
+#include "llvm/BitcodeReader.h"
 #include "llvm/IRParser.h"
 #include "log.h"
 #include "logger.h"
@@ -59,9 +60,17 @@ static std::unique_ptr<Parser> getParser(std::istream& stream)
     {
     case SourceType::LLVM_IR_TEXT:
         logging::info() << "Using LLVM-IR frontend..." << logging::endl;
+#ifdef LLVM_INCLUDE_PATH
+        return std::unique_ptr<Parser>(new llvm2qasm::BitcodeReader(stream, SourceType::LLVM_IR_TEXT));
+#else
         return std::unique_ptr<Parser>(new llvm2qasm::IRParser(stream));
+#endif
     case SourceType::LLVM_IR_BIN:
+#ifdef LLVM_INCLUDE_PATH
+    	return std::unique_ptr<Parser>(new llvm2qasm::BitcodeReader(stream, SourceType::LLVM_IR_BIN));
+#else
     	throw CompilationError(CompilationStep::GENERAL, "LLVM-IR binary needs to be first converted to SPIR-V binary or LLVM-IR text!");
+#endif
     case SourceType::SPIRV_TEXT:
     	throw CompilationError(CompilationStep::GENERAL, "SPIR-V text needs to be first converted to SPIR-V binary!");
     case SourceType::SPIRV_BIN:

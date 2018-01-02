@@ -44,6 +44,12 @@ if(SPIRV_FRONTEND)
 	target_link_libraries(VC4CC spirv-tools-link)
 endif()
 
+if(ENABLE_LLVM_LIB_FRONTEND)
+	#This works with libLLVM.so as well as the single static component libraries
+	set(llvm "-L ${LLVM_LIBS_PATH} ${LLVM_LIB_NAMES}")
+	target_link_libraries(VC4CC "${llvm}")
+endif(ENABLE_LLVM_LIB_FRONTEND)
+
 if(VERIFY_OUTPUT)
 	add_dependencies(VC4CC vc4asm-project-build)
 	add_library(vc4asm STATIC IMPORTED)
