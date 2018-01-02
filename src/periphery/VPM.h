@@ -469,8 +469,13 @@ namespace vc4c
 		using VPWSetupWrapper = SetupWrapper<VPWSetup>;
 		using VPRSetupWrapper = SetupWrapper<VPRSetup>;
 
-
+		/*
+		 * Inserts a read from the memory located at addr into the value dest
+		 */
 		InstructionWalker insertReadDMA(Method& method, InstructionWalker it, const Value& dest, const Value& addr, const bool useMutex = true);
+		/*
+		 * Inserts write from the value src into the memory located at addr
+		 */
 		InstructionWalker insertWriteDMA(Method& method, InstructionWalker it, const Value& src, const Value& addr, const bool useMutex = true);
 
 		enum class VPMUsage

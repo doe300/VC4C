@@ -84,22 +84,54 @@ namespace vc4c
 			bool writesLocal(const Local* local) const override;
 			void replaceLocal(const Local* oldLocal, const Local* newLocal, Type type) override;
 
+			/*
+			 * Whether this instructions reads the given register
+			 */
 			bool readsRegister(const Register& reg) const;
+			/*
+			 * Whether this instructions writes into the given register
+			 */
 			bool writesRegister(const Register& reg) const;
+			/*
+			 * Whether at least one of the operands of this instruction is a constant
+			 */
 			bool readsLiteral() const;
 
+			/*
+			 * Copies this instruction for the given method, renaming all locals by appending the local-prefix specified
+			 *
+			 * This function is used for inlining instructions
+			 */
 			virtual IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const = 0;
+			/*
+			 * Converts the instruction to an equivalent assembler-instruction with the local-register- and label-position-mappings resolved
+			 */
 			virtual qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const = 0;
 			/*
 			 * Whether this intermediate instruction will map to an assembler instruction
 			 */
 			virtual bool mapsToASMInstruction() const;
 
+			/*
+			 * Returns the output value, if any
+			 */
 			const Optional<Value>& getOutput() const;
+			/*
+			 * Whether the instruction has an output and the output has the given type
+			 */
 			bool hasValueType(ValueType type) const;
 
+			/*
+			 * Returns the argument for the given index
+			 */
 			const Optional<Value> getArgument(std::size_t index) const;
+			/*
+			 * Lists all arguments/operands
+			 */
 			const std::vector<Value>& getArguments() const;
+			/*
+			 * Sets the argument for the given index to the value specified
+			 */
 			void setArgument(std::size_t index, const Value& arg);
 
 			IntermediateInstruction* setOutput(const Optional<Value>& output);
@@ -110,12 +142,39 @@ namespace vc4c
 			IntermediateInstruction* setUnpackMode(Unpack unpackMode);
 			IntermediateInstruction* setDecorations(InstructionDecorations decorations);
 
+			/*
+			 * Whether this instruction has any side-effects.
+			 *
+			 * Side-effects include:
+			 * - accessing a register with side-effects (e.g. reading/writing hardware-mutex)
+			 * - triggering a signal (excluding ALU_IMMEDIATE, LOAD_IMMEDIATE signals)
+			 * - branches, semaphores
+			 * - setting of ALU flags
+			 */
 			bool hasSideEffects() const;
+			/*
+			 * Whether an unpack-mode is set
+			 */
 			bool hasUnpackMode() const;
+			/*
+			 * Whether a pack-mode is set
+			 */
 			bool hasPackMode() const;
+			/*
+			 * Whether the execution of this instruction depends on ALU flags
+			 */
 			bool hasConditionalExecution() const;
 
+			/*
+			 * Copies all the extras (signal, pack-modes, etc.) from the given instruction.
+			 *
+			 * NOTE: This function throws errors on merging incompatible extras (e.g. different non-default pack-modes)
+			 */
 			IntermediateInstruction* copyExtrasFrom(const IntermediateInstruction* src);
+			/*
+			 * Tries to calculate the operation performed by this instruction and returns a constant value if successful.
+			 * The parameter numIterations determines the number of instructions providing the operands (e.g. writing the local being read here) to usefor determining the operand values
+			 */
 			virtual Optional<Value> precalculate(std::size_t numIterations) const;
 
 			Signaling signal;

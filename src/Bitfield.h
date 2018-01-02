@@ -15,6 +15,11 @@
 
 namespace vc4c
 {
+	/*
+	 * A bit-field is an integral type with a specific binary layout where different parts of the binary code have different meanings.
+	 *
+	 * The Macro BITFIELD_ENTRY can be used to generate getter/setter for the various parts of the binary representation with arbitrary offset and bit-size.
+	 */
 	template<typename UnderlyingType>
 	struct Bitfield
 	{
@@ -91,6 +96,9 @@ namespace vc4c
 		}
 	};
 
+	/*
+	 * Values which are part of an instruction and can be uniquely represented by some kind of integral value.
+	 */
 	struct InstructionPart
 	{
 		unsigned char value;
@@ -103,6 +111,9 @@ namespace vc4c
 			return value;
 		}
 
+		/*
+		 * Two objects are the same, if their integral values match
+		 */
 		constexpr bool operator==(const InstructionPart& other) const
 		{
 			return value == other.value;

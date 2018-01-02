@@ -52,8 +52,17 @@ namespace vc4c
 			 * Any blocked register (file) is no longer available to be used by this node
 			 */
 			void blockRegister(RegisterFile file, std::size_t index);
+			/*
+			 * Whether there are any available registers left for this node on the given register-file
+			 */
 			bool hasFreeRegisters(RegisterFile file) const;
+			/*
+			 * Counts the number of free registers for the given register-file
+			 */
 			std::size_t countFreeRegisters(RegisterFile file) const;
+			/*
+			 * Copied the status of the other node into this
+			 */
 			void takeValues(const ColoredNode& other);
 
 			/*

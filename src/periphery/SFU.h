@@ -13,6 +13,10 @@ namespace vc4c
 {
 	namespace periphery
 	{
+		/*
+		 * Inserts a SFU call to the given SFU register at the position specified.
+		 * Also inserts the nop-instructions required to wait for the result being available.
+		 */
 		InstructionWalker insertSFUCall(Register sfuReg, InstructionWalker it, const Value& arg, ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
 
 	} /* namespace periphery */

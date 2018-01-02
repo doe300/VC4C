@@ -52,16 +52,31 @@ namespace vc4c
 
 	using CFGNode = Node<BasicBlock*, CFGRelation>;
 	bool operator<(const CFGNode& one, const CFGNode& other);
+	/*
+	 * A loop in the control-flow represented by the basic-blocks taking part in it
+	 */
 	using ControlFlowLoop = FastAccessList<CFGNode*>;
 
+	/*
+	 * The control-flow graph (CFG) represents the order/relation of basic-blocks by connecting basic-blocks which can follow directly after one another (e.g. by branching or fall-through)
+	 */
 	class ControlFlowGraph : public Graph<BasicBlock*, CFGNode>
 	{
 	public:
 
+		/*
+		 * Returns the node which represents the first basic-block being executed by the QPU
+		 */
 		CFGNode& getStartOfControlFlow();
 
+		/*
+		 * Finds all loops in the CFG
+		 */
 		FastAccessList<ControlFlowLoop> findLoops();
 
+		/*
+		 * Creates the CFG from the basic-blocks within the given method
+		 */
 		static ControlFlowGraph createCFG(Method& method);
 
 	private:
@@ -105,6 +120,12 @@ namespace vc4c
 		FastSet<const Local*> getAllExternalDependencies(const DataDependencyType type = DataDependencyType::FLOW) const;
 	};
 
+	/*
+	 * The data-dependency graph represents the data-dependencies between basic-blocks.
+	 *
+	 * A data-dependency is e.g. a local being written-to in block A and read in block B.
+	 * Data-dependencies within a single basic block are ignored.
+	 */
 	class DataDependencyGraph : public Graph<BasicBlock*, DataDependencyNode>
 	{
 	public:

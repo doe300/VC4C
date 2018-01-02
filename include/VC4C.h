@@ -18,7 +18,13 @@
 
 namespace vc4c
 {
+	/*
+	 * Disassembles the given machine-code module and writes the converted code into output
+	 */
 	std::size_t disassembleModule(std::istream& binary, std::ostream& output, const OutputMode outputMode = OutputMode::HEX);
+	/*
+	 * Disassembles the given machine code (containing only instructions) and writes the converted code into output
+	 */
 	std::size_t disassembleCodeOnly(std::istream& binary, std::ostream& output, std::size_t numInstructions, const OutputMode outputMode = OutputMode::HEX);
 }
 

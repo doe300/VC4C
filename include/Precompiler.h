@@ -18,18 +18,50 @@
 
 namespace vc4c
 {
+	/*
+	 * The type of input-code determined for the input
+	 */
 	enum class SourceType
 	{
+		/*
+		 * Type was not (yet) determined
+		 */
 	    UNKNOWN = 0,
+		/*
+		 * OpenCL C source-code
+		 */
 	    OPENCL_C = 1,
+		/*
+		 * LLVM IR in textual representation
+		 */
 	    LLVM_IR_TEXT = 2,
+		/*
+		 * LLVM IR bit-code
+		 */
 		LLVM_IR_BIN = 3,
+		/*
+		 * SPIR-V in binary representation
+		 */
 	    SPIRV_BIN = 4,
+		/*
+		 * SPIR-V in textual representation
+		 */
 	    SPIRV_TEXT = 5,
+		/*
+		 * generated machine code in hexadecimal representation
+		 */
 	    QPUASM_HEX = 6,
+		/*
+		 * generated machine code in binary representation
+		 */
 	    QPUASM_BIN = 7
 	};
 
+	/*
+	 * RAII object to manage a temporary file.
+	 *
+	 * This class guarantees the temporary file to be deleted even if the compilation is cancelled by throwing an exception.
+	 */
 	class TemporaryFile : private NonCopyable
 	{
 	public:
@@ -58,6 +90,10 @@ namespace vc4c
 		const std::string fileName;
 	};
 
+	/*
+	 * The pre-compiler manages and executes the conversion of the input from a various of supported types to a type which can be read by one of the
+	 * configured compiler front-ends.
+	 */
 	class Precompiler
 	{
 	public:
@@ -65,9 +101,6 @@ namespace vc4c
 
 		/*
 		 * Runs the pre-compilation from the source-type passed to the constructor to the output-type specified.
-		 *
-		 * NOTE: pre-compilation without an output-file specified may result in deleting the symlink /dev/stdout and is therefore discouraged!
-		 * See also: github issue 3 (https://github.com/doe300/VC4C/issues/3)
 		 */
 	#if defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_PARSER_HEADER
 		void run(std::unique_ptr<std::istream>& output, SourceType outputType = SourceType::SPIRV_BIN, const std::string& options = "", Optional<std::string> outputFile = {});
@@ -77,8 +110,16 @@ namespace vc4c
 		void run(std::unique_ptr<std::istream>& output, SourceType outputType, const std::string& options = "", Optional<std::string> outputFile = {});
 	#endif
 
+		/*
+		 * Determines the type of code stored in the given stream.
+		 *
+		 * NOTE: This function reads from the stream but resets the cursor back to the beginning.
+		 */
 		static SourceType getSourceType(std::istream& stream);
 
+		/*
+		 * Links multiple source-code files using a linker provided by the pre-compilers
+		 */
 		static void linkSourceCode(const std::unordered_map<std::istream*, Optional<std::string>>& inputs, std::ostream& output);
 
 	private:

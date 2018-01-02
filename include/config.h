@@ -19,24 +19,50 @@ namespace vc4c
 	    STRICT = 2
 	};
 
+	/*
+	 * The kind of code to generate
+	 */
 	enum class OutputMode
 	{
+		/*
+		 * Generate binary code (as used in the VC4CL host-library)
+		 */
 	    BINARY = 0,
+		/*
+		 * Generate hexadecimal code (e.g. to be included on source-files)
+		 */
 	    HEX = 1,
+		/*
+		 * Generate custom assembler code (for debugging/analysis purposes only)
+		 */
 	    ASSEMBLER = 2
 	};
 
+	/*
+	 * Specifies which compiler front-end to use.
+	 *
+	 * NOTE: Forcing a specific front-end will cause compilation-errors, if it is not available
+	 */
 	enum class Frontend
 	{
+		/*
+		 * Use the default front-end, depending on how this compiler was configured on build
+		 */
 		DEFAULT = 0,
+		/*
+		 * Force the use of the LLVM IR front-end
+		 */
 		LLVM_IR = 1,
+		/*
+		 * Force the use of the SPIR-V front-end
+		 */
 		SPIR_V = 2
 	};
 
 	/*
 	 * The maximum VPM size to be used (in bytes).
 	 *
-	 * according to tests the configured VPM size (at least for the Raspberry Pi 2) is 12 KB.
+	 * According to tests the configured VPM size (at least for the Raspberry Pi 2) is 12 KB.
 	 * but there is another register "VPM memory reserved for user programs", which could be configured and has a default size of 4KB (according to tests).
 	 */
 	constexpr unsigned VPM_DEFAULT_SIZE = 4 * 1024;
@@ -47,10 +73,29 @@ namespace vc4c
 	struct Configuration
 	{
 	    MathType mathType = MathType::FAST;
+	    /*
+	     * The output-mode to write the generated code in
+	     */
 	    OutputMode outputMode = OutputMode::BINARY;
+	    /*
+	     * Whether to prepend the kernel meta-data block at the start of the output.
+	     *
+	     * NOTE: This option is required for being able to load the generated binary code with the VC4CL host-library
+	     */
 	    bool writeKernelInfo = true;
+	    /*
+	     * The maximum size of the VPM available to be used as cache.
+	     *
+	     * NOTE: Setting this to a value not available hardware-side may hang the execution/system
+	     */
 	    unsigned availableVPMSize = VPM_DEFAULT_SIZE;
+	    /*
+	     * The front-end to be used
+	     */
 	    Frontend frontend = Frontend::DEFAULT;
+	    /*
+	     * Whether to turn on auto-vectorization of loops
+	     */
 	    bool autoVectorization = false;
 	};
 

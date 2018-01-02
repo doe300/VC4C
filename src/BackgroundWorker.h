@@ -22,6 +22,15 @@
 
 namespace threading
 {
+	/*
+	 * Container for code-executions which can be run in parallel
+	 *
+	 * Depending on the value of MULTI_THREADED, a background-worker executes the function in a background-thread or the current one.
+	 *
+	 * BackgroundWorker also manage the throwing of exceptions from within the background thread:
+	 * If the function throws an exception (and MULTI_THREADED is set), it is caught (to not terminate the program) and then re-thrown
+	 * in the operator(), allowing it to be handled by the calling thread
+	 */
 	struct BackgroundWorker
 	{
 	public:

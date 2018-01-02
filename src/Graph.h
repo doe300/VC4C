@@ -16,6 +16,9 @@
 
 namespace vc4c
 {
+	/*
+	 * A node for in a graph, general base-class maintaining the list of neighbors and their relations
+	 */
 	template<typename K, typename R>
 	struct Node : private NonCopyable
 	{
@@ -44,6 +47,9 @@ namespace vc4c
 			return neighbors;
 		}
 
+		/*
+		 * Executes the given consumer for all neighbors with the given relation
+		 */
 		void forAllNeighbors(const R relation, const std::function<void(const Node*)>& consumer) const
 		{
 			for(const auto& pair : neighbors)
@@ -51,6 +57,9 @@ namespace vc4c
 					consumer(pair.first);
 		}
 
+		/*
+		 * Executes the given consumer for all neighbors, where the relation to this node match the given predicate
+		 */
 		void forAllNeighbors(const std::function<bool(const R&)>& relation, const std::function<void(const Node*, const R&)>& consumer) const
 		{
 			for(const auto& pair : neighbors)
@@ -68,12 +77,26 @@ namespace vc4c
 		FastMap<Node*, R> neighbors;
 	};
 
+	/*
+	 * General base type for graphs of any kind.
+	 *
+	 * A graph contains nodes containing the object being represented as well as some arbitrary additional information.
+	 * Additionally, the object-type of the relations between the nodes can be specified allowing for extra data being stored in them.
+	 *
+	 * NOTE: The fact whether the graph is directed or not must be managed by the user.
+	 * E.g. for an undirected graph, a relationship must be added to both nodes taking place in it.
+	 */
 	template<typename K, typename NodeType>
 	struct Graph : public FastMap<K, NodeType>
 	{
 		using Base = FastMap<K, NodeType>;
 		using Node = typename Base::value_type;
 
+		/*
+		 * Returns the node for the given key
+		 *
+		 * If such a node does not exist yet, a new node is created with the given additional initial payload
+		 */
 		template<typename... Args>
 		NodeType& getOrCreateNode(const K& key, const Args... initialPayload)
 		{
@@ -84,6 +107,10 @@ namespace vc4c
 			return Base::at(key);
 		}
 
+		/*
+		 * Guarantees a node for the given key to exist within the graph and returns it.
+		 * Throws a compilation-error otherwise
+		 */
 		NodeType& assertNode(const K& key)
 		{
 			if(Base::find(key) == Base::end())

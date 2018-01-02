@@ -26,10 +26,19 @@ namespace vc4c
 		STOP_ALL
 	};
 
+	/*
+	 * Visitor-pattern to iterate over instructions in a method
+	 */
 	struct InstructionVisitor
 	{
 		const std::function<InstructionVisitResult(InstructionWalker&)> op;
+		/*
+		 * Whether to stop at the end/beginning of a basic-block or continue with its successors/predecessors
+		 */
 		const bool stopAtBlock;
+		/*
+		 * Whether to follow jumps (e.g. iterate in order of execution) or linearly iterate over the basic blocks (e.g. in order of appearance)
+		 */
 		const bool followJumps;
 
 		/*
@@ -46,6 +55,12 @@ namespace vc4c
 		bool visitReverse(const InstructionWalker& start, ControlFlowGraph* blockGraph = nullptr) const;
 	};
 
+	/*
+	 * Enhanced version of an iterator over instructions within a method.
+	 *
+	 * NOTE: Since a InstructionWalker can walk just within a basic-block or over all instructions in a method, the operators ++ and -- are not implemented.
+	 * The functions to go to the next/previous instruction within a basic-block/the whole method need to be used.
+	 */
 	class InstructionWalker
 	{
 	public:
@@ -58,18 +73,50 @@ namespace vc4c
 		InstructionWalker& operator=(const InstructionWalker&) = default;
 		InstructionWalker& operator=(InstructionWalker&&) noexcept = default;
 
+		/*
+		 * Returns the basic-block the current position belongs to
+		 */
 		BasicBlock* getBasicBlock();
 
+		/*
+		 * Steps forward to the next instruction within the same basic block
+		 */
 		InstructionWalker& nextInBlock();
+		/*
+		 * Steps backwards to the previous instruction within the same basic block
+		 */
 		InstructionWalker& previousInBlock();
+		/*
+		 * Whether this object points to the end of the basic block (one past the last instruction)
+		 */
 		bool isEndOfBlock() const;
+		/*
+		 * Whether this object points to the beginning of the basic block (the block's label)
+		 */
 		bool isStartOfBlock() const;
 
+		/*
+		 * Steps forward to the next instruction.
+		 * If the end of the basic-block is reached, steps to the first instruction of the next basic-block
+		 */
 		InstructionWalker& nextInMethod();
+		/*
+		 * Steps backward to the previous instruction.
+		 * If the step is taken before the beginning of the current block, steps to the last instruction of the previous block
+		 */
 		InstructionWalker& previousInMethod();
+		/*
+		 * Whether the end of the method (end of the last basic-block) is reached
+		 */
 		bool isEndOfMethod() const;
+		/*
+		 * Whether the beginning of the method (beginning of the first basic-block) is reached
+		 */
 		bool isStartOfMethod() const;
 
+		/*
+		 * Creates a copy of this object with the same position
+		 */
 		InstructionWalker copy() const;
 
 		bool operator==(const InstructionWalker& other) const;
@@ -78,6 +125,9 @@ namespace vc4c
 			return !(*this == other);
 		}
 
+		/*
+		 * Returns the instruction stored at this position of the given type
+		 */
 		template<typename T>
 		inline T* get()
 		{
@@ -90,11 +140,19 @@ namespace vc4c
 			return dynamic_cast<T*>(get());
 		}
 
+		/*
+		 * Returns whether the instruction at this position is set.
+		 *
+		 * During some optimizations, instructions may be removed without their positions being cleared
+		 */
 		inline bool has() const
 		{
 			return get() != nullptr;
 		}
 
+		/*
+		 * Whether the current position contains an object of the given type
+		 */
 		template<typename T>
 		inline bool has() const
 		{
@@ -111,14 +169,38 @@ namespace vc4c
 			return get();
 		}
 
+		/*
+		 * Accesses the instruction stored at this position
+		 *
+		 * If the position points is invalid (e.g. past the end), an exception is thrown
+		 */
 		intermediate::IntermediateInstruction* get();
 		const intermediate::IntermediateInstruction* get() const;
+		/*
+		 * Releases the instruction-object pointed to (see std::unique_ptr::release) without removing this position from the list of instructions
+		 */
 		intermediate::IntermediateInstruction* release();
 
+		/*
+		 * Replaces the instruction pointed to with the given object
+		 */
 		InstructionWalker& reset(intermediate::IntermediateInstruction* instr);
+		/*
+		 * Erases this position (and the instruction stored), automatically jumping to the next position
+		 */
 		InstructionWalker& erase();
+		/*
+		 * Places the given instruction before this position and jumping to the newly inserted position
+		 *
+		 * NOTE: labels cannot be added this way, neither can any instructions be placed at the start of a basic-block (before its label)
+		 */
 		InstructionWalker& emplace(intermediate::IntermediateInstruction* instr);
 
+		/*
+		 * Executes the given function for all instructions stored at this position.
+		 *
+		 * If the current instruction is a combined instruction, the function is executed for both single instructions
+		 */
 		inline void forAllInstructions(const std::function<void(const intermediate::IntermediateInstruction*)>& func) const
 		{
 			const intermediate::CombinedOperation* combined = get<const intermediate::CombinedOperation>();
@@ -131,6 +213,11 @@ namespace vc4c
 				func(get());
 		}
 
+		/*
+		 * Checks whether the given predicate matches for all instructions stored at this position.
+		 *
+		 * If the current instruction is a combined instruction, the predicate is tested for both single instructions
+		 */
 		inline bool allInstructionMatches(const std::function<bool(const intermediate::IntermediateInstruction*)>& func) const
 		{
 			const intermediate::CombinedOperation* combined = get<const intermediate::CombinedOperation>();
@@ -141,6 +228,11 @@ namespace vc4c
 			return func(get());
 		}
 
+		/*
+		 * Checks whether the given predicate matches for any instructions stored at this position.
+		 *
+		 * If the current instruction is a combined instruction, the predicate is checked for both single instructions
+		 */
 		inline bool anyInstructionMatches(const std::function<bool(const intermediate::IntermediateInstruction*)>& func) const
 		{
 			const intermediate::CombinedOperation* combined = get<const intermediate::CombinedOperation>();
