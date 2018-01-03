@@ -149,6 +149,9 @@ bool BasicBlock::fallsThroughToNextBlock() const
 			it.previousInBlock();
 		do
 		{
+			if(it.isStartOfBlock())
+				//special handling for blocks with only label and branches
+				break;
 			it.previousInBlock();
 		}
 		while(it.has<intermediate::Nop>());

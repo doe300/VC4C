@@ -54,6 +54,7 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./testing/test_struct.cl", ""},
 		Entry{PENDING_SPIRV, FAST, "./testing/test_vector.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_vector3_layout.cl", ""},
+		Entry{PENDING_BOTH, FAST, "./testing/test_vectorization.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_vpm_read.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_vpm_write.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_work_item.cl", ""},

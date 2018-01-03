@@ -117,7 +117,7 @@ ControlFlowGraph ControlFlowGraph::createCFG(Method& method)
 	PROFILE_START(createCFG);
 	ControlFlowGraph graph;
 
-	for(BasicBlock& bb :method.getBasicBlocks())
+	for(BasicBlock& bb : method.getBasicBlocks())
 	{
 		bb.forPredecessors([&bb, &graph](InstructionWalker it) -> void
 		{
