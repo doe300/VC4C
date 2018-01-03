@@ -14,9 +14,9 @@
 #include <iostream>
 #include <memory>
 
-#ifdef LLVM_INCLUDE_PATH
-#include <llvm/IR/LLVMContext.h>
-#include <llvm/IR/Module.h>
+#ifdef USE_LLVM_LIBRARY
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #endif
 
 namespace llvm
@@ -32,7 +32,7 @@ namespace vc4c
 	{
 		using LLVMInstructionList = FastModificationList<std::unique_ptr<LLVMInstruction>>;
 
-#ifdef LLVM_INCLUDE_PATH
+#ifdef USE_LLVM_LIBRARY
 		class BitcodeReader: public Parser
 		{
 		public:
@@ -46,13 +46,15 @@ namespace vc4c
 			std::unique_ptr<llvm::Module> llvmModule;
 			FastMap<const llvm::Function*, std::pair<Method*, LLVMInstructionList>> parsedFunctions;
 			//BasicBlocks in LLVM have no name
-			FastMap<const llvm::Value*, Local*> labelMap;
+			FastMap<const llvm::Value*, Local*> localMap;
 
 			Method& parseFunction(Module& module, const llvm::Function& func);
 			void parseFunctionBody(Module& module, Method& method, LLVMInstructionList& instructions, const llvm::Function& func);
 			void parseInstruction(Module& module, Method& method, LLVMInstructionList& instructions, const llvm::Instruction& inst);
+			void parseGlobalData(Module& module);
 
 			Value toValue(Method& method, const llvm::Value* val);
+			Value toConstant(const llvm::Value* val);
 		};
 #endif
 

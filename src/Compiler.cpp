@@ -60,13 +60,13 @@ static std::unique_ptr<Parser> getParser(std::istream& stream)
     {
     case SourceType::LLVM_IR_TEXT:
         logging::info() << "Using LLVM-IR frontend..." << logging::endl;
-#ifdef LLVM_INCLUDE_PATH
+#ifdef USE_LLVM_LIBRARY
         return std::unique_ptr<Parser>(new llvm2qasm::BitcodeReader(stream, SourceType::LLVM_IR_TEXT));
 #else
         return std::unique_ptr<Parser>(new llvm2qasm::IRParser(stream));
 #endif
     case SourceType::LLVM_IR_BIN:
-#ifdef LLVM_INCLUDE_PATH
+#ifdef USE_LLVM_LIBRARY
     	return std::unique_ptr<Parser>(new llvm2qasm::BitcodeReader(stream, SourceType::LLVM_IR_BIN));
 #else
     	throw CompilationError(CompilationStep::GENERAL, "LLVM-IR binary needs to be first converted to SPIR-V binary or LLVM-IR text!");
@@ -184,7 +184,9 @@ std::size_t Compiler::compile(std::istream& input, std::ostream& output, const C
 			precompiler.run(in, config.frontend == Frontend::LLVM_IR ? SourceType::LLVM_IR_TEXT : SourceType::SPIRV_BIN, options, tmpFile.fileName);
 		else
 		{
-#if defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_PARSER_HEADER
+#ifdef USE_LLVM_LIBRARY
+			precompiler.run(in, SourceType::LLVM_IR_BIN, options, tmpFile.fileName);
+#elif defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_PARSER_HEADER
     	precompiler.run(in, SourceType::SPIRV_BIN, options, tmpFile.fileName);
 #elif defined CLANG_PATH
     	precompiler.run(in, SourceType::LLVM_IR_TEXT, options, tmpFile.fileName);

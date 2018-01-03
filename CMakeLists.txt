@@ -209,11 +209,13 @@ endif()
 if(LLVMLIB_FRONTEND)
 	# LLVM_CONFIG_PATH can be used to configure the path for the llvm-config program
 	if(NOT LLVM_CONFIG_PATH)
-		#if(SPIRV_COMPILER_ROOT) # use the SPIRV-LLVM llvm-config
-		#	set(LLVM_CONFIG_PATH ${SPIRV_COMPILER_ROOT}/llvm-config)
-		#else() # Use the "default" llvm-config
+		if(SPIRV_COMPILER_ROOT) # use the SPIRV-LLVM llvm-config
+			set(LLVM_CONFIG_PATH ${SPIRV_COMPILER_ROOT}/llvm-config)
+			set(LLVM_LIBRARY_TYPE 2)
+		else() # Use the "default" llvm-config
 			set(LLVM_CONFIG_PATH llvm-config)
-		#endif()
+			set(LLVM_LIBRARY_TYPE 1)
+		endif()
 	endif()
 	
 	execute_process(COMMAND ${LLVM_CONFIG_PATH} --libdir OUTPUT_VARIABLE LLVM_LIBS_PATH OUTPUT_STRIP_TRAILING_WHITESPACE)
@@ -225,15 +227,12 @@ if(LLVMLIB_FRONTEND)
 	if(LLVM_LIBS_PATH AND LLVM_INCLUDE_PATH AND LLVM_LIB_NAMES)
 		message(STATUS "Compiling LLVM library front-end with LLVM in version ${LLVM_LIB_VERSION} located in '${LLVM_LIBS_PATH}'")
 		set(ENABLE_LLVM_LIB_FRONTEND ON)
-		add_definitions(-DLLVM_INCLUDE_PATH=${LLVM_INCLUDE_PATH})
+		add_definitions(-DUSE_LLVM_LIBRARY=${LLVM_LIBRARY_TYPE})
+		# Adds require macros as well as include-paths
 		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_LIB_FLAGS}")
 	else()
 		message(STATUS "LLVM library front-end enabled, but LLVM library was not found!")
 	endif()
-endif()
-
-if(ENABLE_LLVM_LIB_FRONTEND AND SPIRV_CLANG_FOUND)
-	message(FATAL_ERROR "Using LLVM library as front-end currently only supports the default clang/LLVM, not SPIRV-LLVM!")
 endif()
 
 if(VERIFY_OUTPUT)

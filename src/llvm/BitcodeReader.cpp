@@ -6,17 +6,27 @@
 
 #include "BitcodeReader.h"
 
-#ifdef LLVM_INCLUDE_PATH
+#ifdef USE_LLVM_LIBRARY
+
+#define SPIRV_LLVM_LIBRARY 2
+#define DEFAULT_LLVM_LIBRARY 1
 
 #include "../intermediate/IntermediateInstruction.h"
 #include "log.h"
 
-#include <llvm-c/Core.h>
-#include <llvm/Bitcode/BitcodeReader.h>
-#include <llvm/IR/Constants.h>
-#include <llvm/IR/Instructions.h>
-#include <llvm/IRReader/IRReader.h>
-#include <llvm/Support/SourceMgr.h>
+#include "llvm-c/Core.h"
+#if USE_LLVM_LIBRARY == SPIRV_LLVM_LIBRARY /* SPIR-V LLVM */
+#include "llvm/Bitcode/ReaderWriter.h"
+#else
+#include "llvm/Bitcode/BitcodeReader.h"
+#endif
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Operator.h"
+#include "llvm/IRReader/IRReader.h"
+#include "llvm/Support/SourceMgr.h"
+
+#include <system_error>
 
 using namespace vc4c;
 using namespace vc4c::llvm2qasm;
@@ -28,30 +38,133 @@ BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType) : cont
 	//required, since LLVM cannot read from std::istreams
 	const std::string tmp((std::istreambuf_iterator<char>(stream)), (std::istreambuf_iterator<char>()));
 	std::unique_ptr<llvm::MemoryBuffer> buf(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(tmp)));
-	llvm::SMDiagnostic error;
 	if(sourceType == SourceType::LLVM_IR_BIN)
 	{
 		logging::debug() << "Reading LLVM module from bit-code..." << logging::endl;
 		auto expected = llvm::parseBitcodeFile(buf->getMemBufferRef(), context);
 		if(!expected)
 		{
-			llvm::Error error = expected.takeError();
-			//TODO handle error
+#if USE_LLVM_LIBRARY == SPIRV_LLVM_LIBRARY /* SPIR-V LLVM */
+			throw std::system_error(expected.getError(), "Error parsing LLVM module");
+#else
+			throw std::system_error(llvm::errorToErrorCode(expected.takeError()), "Error parsing LLVM module");
+#endif
 		}
 		else
-			llvmModule.swap(expected.get());
+		{
+			//expected.get() is either std::unique_ptr<llvm::Module> or llvm::Module*
+			std::unique_ptr<llvm::Module> tmp(std::move(expected.get()));
+			llvmModule.swap(tmp);
+		}
 	}
 	else if(sourceType == SourceType::LLVM_IR_TEXT)
 	{
 		logging::debug() << "Reading LLVM module from IR..." << logging::endl;
+		llvm::SMDiagnostic error;
 		llvmModule = llvm::parseIR(buf->getMemBufferRef(), error, context);
-		//TODO handle error
+		if(!llvmModule)
+			throw CompilationError(CompilationStep::PARSER, "Error parsing LLVM IR module", error.getMessage());
 	}
 	else
 		throw CompilationError(CompilationStep::PARSER, "Unhandled source-type for LLVM bitcode reader", std::to_string(static_cast<unsigned>(sourceType)));
 }
 
-static void extractKernelMetadata(Method& kernel, const llvm::Function& func)
+#if USE_LLVM_LIBRARY == SPIRV_LLVM_LIBRARY /* SPIR-V LLVM */
+static void extractKernelMetadata(Method& kernel, const llvm::Function& func, const llvm::Module& llvmModule, const llvm::LLVMContext& context)
+{
+	llvm::NamedMDNode* kernelsMetaData = llvmModule.getNamedMetadata("opencl.kernels");
+	if(kernelsMetaData != nullptr)
+	{
+		//each kernel is a single meta-data entry
+		for(const llvm::MDNode* entry : kernelsMetaData->operands())
+		{
+			//each kernel-entry has the the function as well as additional links to the kernel meta-data
+			const llvm::Metadata* function = entry->getOperand(0).get();
+			if(function->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind && llvm::cast<const llvm::ConstantAsMetadata>(function)->getValue() == &func)
+			{
+				for(unsigned i = 1; i < entry->getNumOperands(); ++i)
+				{
+					const llvm::MDTuple* node = llvm::cast<const llvm::MDTuple>(entry->getOperand(i).get());
+					if(node->getOperand(0)->getMetadataID() == llvm::Metadata::MDStringKind && llvm::cast<const llvm::MDString>(node->getOperand(0).get())->getString() == "kernel_arg_addr_space")
+					{
+						//address spaces for kernel pointer arguments, e.g. "!1 = !{!"kernel_arg_addr_space", i32 1, i32 1}"
+						for(unsigned i = 1; i < node->getNumOperands(); ++i)
+						{
+							if(kernel.parameters.at(i - 1).type.getPointerType())
+							{
+								const llvm::Metadata* operand = node->getOperand(i).get();
+								if(operand->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind)
+								{
+									const llvm::ConstantAsMetadata* constant = llvm::cast<const llvm::ConstantAsMetadata>(operand);
+									kernel.parameters.at(i - 1).type.getPointerType().value()->addressSpace = toAddressSpace(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getSExtValue());
+								}
+								else
+									throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+							}
+						}
+					}
+					else if(node->getOperand(0)->getMetadataID() == llvm::Metadata::MDStringKind && llvm::cast<const llvm::MDString>(node->getOperand(0).get())->getString() == "kernel_arg_access_qual")
+					{
+						//access qualifiers for image arguments, e.g. "!2 = !{!"kernel_arg_access_qual", !"none", !"none"}"
+					}
+					else if(node->getOperand(0)->getMetadataID() == llvm::Metadata::MDStringKind && llvm::cast<const llvm::MDString>(node->getOperand(0).get())->getString() == "kernel_arg_type")
+					{
+						//original type-names for kernel arguments, e.g. "!3 = !{!"kernel_arg_type", !"float*", !"float*"}"
+						for(unsigned i = 1; i < node->getNumOperands(); ++i)
+						{
+							const llvm::Metadata* operand = node->getOperand(i).get();
+							if(operand->getMetadataID() == llvm::Metadata::MDStringKind)
+							{
+								const llvm::MDString* name = llvm::cast<const llvm::MDString>(operand);
+								kernel.parameters.at(i - 1).origTypeName = name->getString();
+							}
+							else
+								throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+						}
+					}
+					else if(node->getOperand(0)->getMetadataID() == llvm::Metadata::MDStringKind && llvm::cast<const llvm::MDString>(node->getOperand(0).get())->getString() == "kernel_arg_type_qual")
+					{
+						//additional type qualifiers, e.g. "!5 = !{!"kernel_arg_type_qual", !"", !""}"
+						for(unsigned i = 1; i < node->getNumOperands(); ++i)
+						{
+							const llvm::Metadata* operand = node->getOperand(i).get();
+							if(operand->getMetadataID() == llvm::Metadata::MDStringKind)
+							{
+								const llvm::MDString* name = llvm::cast<const llvm::MDString>(operand);
+								Parameter& param = kernel.parameters.at(i - 1);
+								if(name->getString().find("const") != std::string::npos)
+									param.decorations = add_flag(param.decorations, ParameterDecorations::READ_ONLY);
+								if(name->getString().find("restrict") != std::string::npos)
+									param.decorations = add_flag(param.decorations, ParameterDecorations::RESTRICT);
+								if(name->getString().find("volatile") != std::string::npos)
+									param.decorations = add_flag(param.decorations, ParameterDecorations::VOLATILE);
+							}
+							else
+								throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+						}
+					}
+					else if(node->getOperand(0)->getMetadataID() == llvm::Metadata::MDStringKind && llvm::cast<const llvm::MDString>(node->getOperand(0).get())->getString() == "kernel_arg_name")
+					{
+						//the original argument names, e.g. "!6 = !{!"kernel_arg_name", !"a", !"b"}"
+						for(unsigned i = 1; i < node->getNumOperands(); ++i)
+						{
+							const llvm::Metadata* operand = node->getOperand(i).get();
+							if(operand->getMetadataID() == llvm::Metadata::MDStringKind)
+							{
+								const llvm::MDString* name = llvm::cast<const llvm::MDString>(operand);
+								kernel.parameters.at(i - 1).parameterName = name->getString();
+							}
+							else
+								throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+						}
+					}
+				}
+			}
+		}
+	}
+}
+#else /* "standard" LLVM */
+static void extractKernelMetadata(Method& kernel, const llvm::Function& func, const llvm::Module& llvmModule, const llvm::LLVMContext& context)
 {
 	llvm::MDNode* metadata = func.getMetadata("kernel_arg_addr_space");
 	if(metadata != nullptr)
@@ -139,18 +252,33 @@ static void extractKernelMetadata(Method& kernel, const llvm::Function& func)
 		}
 	}
 }
+#endif
 
 void BitcodeReader::parse(Module& module)
 {
 	const llvm::Module::FunctionListType& functions = llvmModule->getFunctionList();
+
+	parseGlobalData(module);
+	//parse functions
+	//Starting with kernel-functions, recursively parse all included functions (and only those)
 	for(const llvm::Function& func : functions)
 	{
 		if(func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)
 		{
 			logging::debug() << "Found SPIR kernel-function: " << func.getName() << logging::endl;
 			Method& kernelFunc = parseFunction(module, func);
-			extractKernelMetadata(kernelFunc, func);
+			extractKernelMetadata(kernelFunc, func, *llvmModule.get(), context);
 			kernelFunc.isKernel = true;
+		}
+	}
+
+	//map instructions to intermediate representation
+	for(auto& method : parsedFunctions)
+	{
+		logging::debug() << "Mapping function '" << method.second.first->name << "'..." << logging::endl;
+		for(LLVMInstructionList::value_type& inst : method.second.second)
+		{
+			inst->mapInstruction(*method.second.first);
 		}
 	}
 }
@@ -171,6 +299,8 @@ static DataType toDataType(const llvm::Type* type)
 		return TYPE_FLOAT;
 	if(type->isLabelTy())
 		return TYPE_LABEL;
+	if(type->isIntegerTy(1))
+		return TYPE_BOOL;
 	if(type->isIntegerTy(8))
 		return TYPE_INT8;
 	if(type->isIntegerTy(16))
@@ -204,14 +334,23 @@ static DataType toDataType(const llvm::Type* type)
 	throw CompilationError(CompilationStep::PARSER, "Unknown LLVM type", std::to_string(type->getTypeID()));
 }
 
+void BitcodeReader::parseGlobalData(Module& module)
+{
+	for(const llvm::GlobalVariable& global : llvmModule->getGlobalList())
+	{
+		module.globalData.emplace_back(Global(("@" + global.getName()).str(), toDataType(global.getType()), global.hasInitializer() ? toConstant(global.getInitializer()) : UNDEFINED_VALUE));
+		logging::debug() << "Global read: " << module.globalData.back().to_string() << logging::endl;
+	}
+}
+
 static ParameterDecorations toParameterDecorations(const llvm::Argument& arg)
 {
 	ParameterDecorations deco = ParameterDecorations::NONE;
-	if(arg.hasAttribute(llvm::Attribute::SExt))
+	if(arg.hasSExtAttr())
 		deco = add_flag(deco, ParameterDecorations::SIGN_EXTEND);
-	if(arg.hasAttribute(llvm::Attribute::ZExt))
+	if(arg.hasZExtAttr())
 		deco = add_flag(deco, ParameterDecorations::ZERO_EXTEND);
-	if(arg.hasAttribute(llvm::Attribute::NoAlias))
+	if(arg.hasNoAliasAttr())
 		deco = add_flag(deco, ParameterDecorations::RESTRICT);
 	return deco;
 }
@@ -232,7 +371,7 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
 
 	for(const llvm::Argument& arg : func.getArgumentList())
 	{
-		method->parameters.emplace_back(Parameter(arg.getName(), toDataType(arg.getType()), toParameterDecorations(arg)));
+		method->parameters.emplace_back(Parameter((std::string("%") + arg.getName()).str(), toDataType(arg.getType()), toParameterDecorations(arg)));
 		logging::debug() << "Reading parameter " << method->parameters.back().to_string() << logging::endl;
 	}
 
@@ -258,13 +397,13 @@ static intermediate::InstructionDecorations toInstructionDecorations(const llvm:
 {
 	intermediate::InstructionDecorations deco = intermediate::InstructionDecorations::NONE;
 
-	if(inst.hasNoNaNs())
+	if(llvm::isa<llvm::FPMathOperator>(&inst) && inst.hasNoNaNs())
 		deco = add_flag(deco, intermediate::InstructionDecorations::NO_NAN);
-	if(inst.hasNoInfs())
+	if(llvm::isa<llvm::FPMathOperator>(&inst) && inst.hasNoInfs())
 		deco = add_flag(deco, intermediate::InstructionDecorations::NO_INF);
-	if(inst.hasAllowReciprocal())
+	if(llvm::isa<llvm::FPMathOperator>(&inst) && inst.hasAllowReciprocal())
 		deco = add_flag(deco, intermediate::InstructionDecorations::ALLOW_RECIP);
-	if(inst.hasUnsafeAlgebra())
+	if(llvm::isa<llvm::FPMathOperator>(&inst) && inst.hasUnsafeAlgebra())
 		//XXX correct?
 		deco = add_flag(deco, intermediate::InstructionDecorations::FAST_MATH);
 
@@ -277,57 +416,57 @@ static std::pair<std::string, bool> toComparison(llvm::CmpInst::Predicate pred)
 	switch(pred)
 	{
 		case P::FCMP_FALSE:
-			return std::make_pair("false", true);
+			return std::make_pair(intermediate::COMP_FALSE, true);
 		case P::FCMP_OEQ:
-			return std::make_pair("oeq", true);
+			return std::make_pair(intermediate::COMP_ORDERED_EQ, true);
 		case P::FCMP_OGE:
-			return std::make_pair("oge", true);
+			return std::make_pair(intermediate::COMP_ORDERED_GE, true);
 		case P::FCMP_OGT:
-			return std::make_pair("ogt", true);
+			return std::make_pair(intermediate::COMP_ORDERED_GT, true);
 		case P::FCMP_OLE:
-			return std::make_pair("ole", true);
+			return std::make_pair(intermediate::COMP_ORDERED_LE, true);
 		case P::FCMP_OLT:
-			return std::make_pair("olt", true);
+			return std::make_pair(intermediate::COMP_ORDERED_LT, true);
 		case P::FCMP_ONE:
-			return std::make_pair("one", true);
+			return std::make_pair(intermediate::COMP_ORDERED_NEQ, true);
 		case P::FCMP_ORD:
-			return std::make_pair("ord", true);
+			return std::make_pair(intermediate::COMP_ORDERED, true);
 		case P::FCMP_TRUE:
-			return std::make_pair("true", true);
+			return std::make_pair(intermediate::COMP_TRUE, true);
 		case P::FCMP_UEQ:
-			return std::make_pair("ueq", true);
+			return std::make_pair(intermediate::COMP_UNORDERED_EQ, true);
 		case P::FCMP_UGE:
-			return std::make_pair("uge", true);
+			return std::make_pair(intermediate::COMP_UNORDERED_GE, true);
 		case P::FCMP_UGT:
-			return std::make_pair("ugt", true);
+			return std::make_pair(intermediate::COMP_UNORDERED_GT, true);
 		case P::FCMP_ULE:
-			return std::make_pair("ule", true);
+			return std::make_pair(intermediate::COMP_UNORDERED_LE, true);
 		case P::FCMP_ULT:
-			return std::make_pair("ult", true);
+			return std::make_pair(intermediate::COMP_UNORDERED_LT, true);
 		case P::FCMP_UNE:
-			return std::make_pair("une", true);
+			return std::make_pair(intermediate::COMP_UNORDERED_NEQ, true);
 		case P::FCMP_UNO:
-			return std::make_pair("uno", true);
+			return std::make_pair(intermediate::COMP_UNORDERED, true);
 		case P::ICMP_EQ:
-			return std::make_pair("eq", false);
+			return std::make_pair(intermediate::COMP_EQ, false);
 		case P::ICMP_NE:
-			return std::make_pair("neq", false);
+			return std::make_pair(intermediate::COMP_NEQ, false);
 		case P::ICMP_SGE:
-			return std::make_pair("sge", false);
+			return std::make_pair(intermediate::COMP_SIGNED_GE, false);
 		case P::ICMP_SGT:
-			return std::make_pair("sgt", false);
+			return std::make_pair(intermediate::COMP_SIGNED_GT, false);
 		case P::ICMP_SLE:
-			return std::make_pair("sle", false);
+			return std::make_pair(intermediate::COMP_SIGNED_LE, false);
 		case P::ICMP_SLT:
-			return std::make_pair("slt", false);
+			return std::make_pair(intermediate::COMP_SIGNED_LT, false);
 		case P::ICMP_UGE:
-			return std::make_pair("uge", false);
+			return std::make_pair(intermediate::COMP_UNSIGNED_GE, false);
 		case P::ICMP_UGT:
-			return std::make_pair("ugt", false);
+			return std::make_pair(intermediate::COMP_UNSIGNED_GT, false);
 		case P::ICMP_ULE:
-			return std::make_pair("ule", false);
+			return std::make_pair(intermediate::COMP_UNSIGNED_LE, false);
 		case P::ICMP_ULT:
-			return std::make_pair("ult", false);
+			return std::make_pair(intermediate::COMP_UNSIGNED_LT, false);
 		default:throw CompilationError(CompilationStep::PARSER, "Unhandled comparison predicate", std::to_string(pred));
 	}
 }
@@ -434,41 +573,79 @@ void BitcodeReader::parseInstruction(Module& module, Method& method, LLVMInstruc
 		case MemoryOps::Store:
 		{
 			const llvm::StoreInst* store = llvm::cast<const llvm::StoreInst>(&inst);
-			Value src = toValue(method, store->getPointerOperand());
-			if(store->isVolatile() && src.hasType(ValueType::LOCAL) && src.local->is<Parameter>())
-				src.local->as<Parameter>()->decorations = add_flag(src.local->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
-			instructions.emplace_back(new Copy(toValue(method, store), src, true, false));
+			Value dest = toValue(method, store->getPointerOperand());
+			if(store->isVolatile() && dest.hasType(ValueType::LOCAL) && dest.local->is<Parameter>())
+				dest.local->as<Parameter>()->decorations = add_flag(dest.local->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
+			instructions.emplace_back(new Copy(dest, toValue(method, store->getValueOperand()), true, false));
 			instructions.back()->setDecorations(deco);
 			break;
 		}
 		case CastOps::AddrSpaceCast: //fall-through
 		case CastOps::BitCast:
+		{
+			if(inst.getOperand(0)->getType()->getScalarSizeInBits() != inst.getType()->getScalarSizeInBits())
+			{
+				throw CompilationError(CompilationStep::PARSER, "Bit-casts over different type-sizes are not yet implemented!");
+			}
 			instructions.emplace_back(new Copy(toValue(method, &inst), toValue(method, inst.getOperand(0))));
 			instructions.back()->setDecorations(deco);
 			break;
-		case CastOps::FPExt:
-		case CastOps::FPToSI:
-		case CastOps::FPToUI:
-		case CastOps::FPTrunc:
-		case CastOps::IntToPtr:
-		case CastOps::PtrToInt:
-		case CastOps::SExt:
-		case CastOps::SIToFP:
-		case CastOps::Trunc:
-		case CastOps::UIToFP:
-		case CastOps::ZExt:
+		}
+		case CastOps::FPExt:    //fall-through
+		case CastOps::FPToSI:   //fall-through
+		case CastOps::FPToUI:   //fall-through
+		case CastOps::FPTrunc:  //fall-through
+		case CastOps::IntToPtr: //fall-through
+		case CastOps::PtrToInt: //fall-through
+		case CastOps::SExt:     //fall-through
+		case CastOps::SIToFP:   //fall-through
+		case CastOps::Trunc:    //fall-through
+		case CastOps::UIToFP:   //fall-through
+		case CastOps::ZExt:     //fall-through
+		{
+			instructions.emplace_back(new UnaryOperator(inst.getOpcodeName(), toValue(method, &inst), toValue(method, inst.getOperand(0))));
+			instructions.back()->setDecorations(deco);
+			break;
+		}
 		case OtherOps::Call:
 		{
 			const llvm::CallInst* call = llvm::cast<const llvm::CallInst>(&inst);
-			Method& dest = parseFunction(module, *call->getFunction());
 			std::vector<Value> args;
-			std::for_each(call->arg_begin(), call->arg_end(), [this, &method, &args](const llvm::Value* val) -> void { args.emplace_back(toValue(method, val));});
-			instructions.emplace_back(new CallSite(toValue(method, call).local, dest, args));
+			for(unsigned i = 0; i < call->getNumArgOperands(); ++i)
+			{
+				args.emplace_back(toValue(method, call->getArgOperand(i)));
+			}
+			if(call->getCalledFunction()->isDeclaration())
+			{
+				//functions without definitions (e.g. intrinsic functions)
+				instructions.emplace_back(new CallSite(toValue(method, call).local, call->getCalledFunction()->getName(), toDataType(call->getCalledFunction()->getReturnType()), args));
+			}
+			else
+			{
+				Method& dest = parseFunction(module, *call->getCalledFunction());
+				instructions.emplace_back(new CallSite(toValue(method, call).local, dest, args));
+			}
+
 			instructions.back()->setDecorations(deco);
 			break;
 		}
 		case OtherOps::ExtractElement:
+		{
+			instructions.emplace_back(new ContainerExtraction(toValue(method, &inst).local, toValue(method, inst.getOperand(0)), toValue(method, inst.getOperand(1))));
+			instructions.back()->setDecorations(deco);
+			break;
+		}
 		case OtherOps::ExtractValue:
+		{
+			const llvm::ExtractValueInst* extraction = llvm::cast<const llvm::ExtractValueInst>(&inst);
+			if(extraction->getIndices().size() != 1)
+			{
+				throw CompilationError(CompilationStep::PARSER, "Container extraction with multi-level indices is not yet implemented!");
+			}
+			instructions.emplace_back(new ContainerExtraction(toValue(method, extraction).local, toValue(method, extraction->getAggregateOperand()), Value(Literal(static_cast<int64_t>(extraction->getIndices().front())), TYPE_INT32)));
+			instructions.back()->setDecorations(deco);
+			break;
+		}
 			break;
 		case OtherOps::FCmp: //fall-through
 		case OtherOps::ICmp:
@@ -480,13 +657,23 @@ void BitcodeReader::parseInstruction(Module& module, Method& method, LLVMInstruc
 			break;
 		}
 
-		case OtherOps::InsertElement: //fall-through
-		case OtherOps::InsertValue:
-			//TODO correct for either instruction type?
-			//XXX multi-level indices!
+		case OtherOps::InsertElement:
+		{
 			instructions.emplace_back(new ContainerInsertion(toValue(method, &inst).local, toValue(method, inst.getOperand(0)), toValue(method, inst.getOperand(1)), toValue(method, inst.getOperand(2))));
 			instructions.back()->setDecorations(deco);
 			break;
+		}
+		case OtherOps::InsertValue:
+		{
+			const llvm::InsertValueInst* insertion = llvm::cast<const llvm::InsertValueInst>(&inst);
+			if(insertion->getIndices().size() != 1)
+			{
+				throw CompilationError(CompilationStep::PARSER, "Container insertion with multi-level indices is not yet implemented!");
+			}
+			instructions.emplace_back(new ContainerInsertion(toValue(method, insertion).local, toValue(method, insertion->getAggregateOperand()), toValue(method, insertion->getInsertedValueOperand()), Value(Literal(static_cast<int64_t>(insertion->getIndices().front())), TYPE_INT32)));
+			instructions.back()->setDecorations(deco);
+			break;
+		}
 		case OtherOps::PHI:
 		{
 			const llvm::PHINode* phi = llvm::cast<const llvm::PHINode>(&inst);
@@ -520,23 +707,134 @@ void BitcodeReader::parseInstruction(Module& module, Method& method, LLVMInstruc
 
 Value BitcodeReader::toValue(Method& method, const llvm::Value* val)
 {
-	if(labelMap.find(val) != labelMap.end())
+	const Local* loc;
+	const std::string valueName = val->getName().empty() ? "" : (std::string("%") + val->getName()).str();
+	if((loc = method.findParameter(valueName)) != nullptr ||
+			(loc = method.findStackAllocation(valueName)) != nullptr ||
+			(loc = method.findGlobal((std::string("@") + val->getName()).str())) != nullptr)
 	{
-		return labelMap.at(val)->createReference();
+		return loc->createReference();
+	}
+	if(localMap.find(val) != localMap.end())
+	{
+		return localMap.at(val)->createReference();
 	}
 	if(llvm::dyn_cast<const llvm::BranchInst>(val) != nullptr)
 	{
 		//label
 		Local* loc = method.addNewLocal(TYPE_LABEL, "%label").local;
-		labelMap[val] = loc;
+		localMap[val] = loc;
 		return loc->createReference();
 	}
 	const DataType type = toDataType(val->getType());
 	if(llvm::dyn_cast<const llvm::Constant>(val) != nullptr)
 	{
-		//TODO literal constants (float, integer, vectors, structs/arrays?)
+		return toConstant(val);
 	}
-	//other locals
-	return method.findOrCreateLocal(type, val->getName())->createReference();
+	//locals of any kind have no name (most of the time)
+	if(!val->getName().empty())
+		loc = method.findOrCreateLocal(type, valueName);
+	else
+		loc = method.addNewLocal(type).local;
+	localMap.emplace(val, const_cast<Local*>(loc));
+	return loc->createReference();
+}
+
+Value BitcodeReader::toConstant(const llvm::Value* val)
+{
+	const DataType type = toDataType(val->getType());
+	if(llvm::dyn_cast<const llvm::ConstantInt>(val) != nullptr)
+	{
+		return Value(Literal(llvm::cast<const llvm::ConstantInt>(val)->getSExtValue()), type);
+	}
+	/*
+	 * DO NOT COMBINE THE NEXT ELSE-CLAUSES
+	 *
+	 * For "standard" LLVM (4.0+), ConstantVector, ConstantArray and ConstantStruct have a common super-type
+	 * ConstantAggregate, but not yet for SPIRV-LLVM (~3.6)
+	 */
+	else if(llvm::dyn_cast<const llvm::ConstantVector>(val) != nullptr)
+	{
+		//element types are stored as operands
+		const llvm::ConstantVector* constant = llvm::cast<const llvm::ConstantVector>(val);
+		Value aggregate(ContainerValue(), type);
+		for(unsigned i = 0; i < constant->getNumOperands(); ++i)
+		{
+			aggregate.container.elements.push_back(toConstant(constant->getOperand(i)));
+		}
+		return aggregate;
+	}
+	else if(llvm::dyn_cast<const llvm::ConstantArray>(val) != nullptr)
+	{
+		//element types are stored as operands
+		const llvm::ConstantArray* constant = llvm::cast<const llvm::ConstantArray>(val);
+		Value aggregate(ContainerValue(), type);
+		for(unsigned i = 0; i < constant->getNumOperands(); ++i)
+		{
+			aggregate.container.elements.push_back(toConstant(constant->getOperand(i)));
+		}
+		return aggregate;
+	}
+	else if(llvm::dyn_cast<const llvm::ConstantStruct>(val) != nullptr)
+	{
+		//element types are stored as operands
+		const llvm::ConstantStruct* constant = llvm::cast<const llvm::ConstantStruct>(val);
+		Value aggregate(ContainerValue(), type);
+		for(unsigned i = 0; i < constant->getNumOperands(); ++i)
+		{
+			aggregate.container.elements.push_back(toConstant(constant->getOperand(i)));
+		}
+		return aggregate;
+	}
+	else if(llvm::dyn_cast<const llvm::ConstantDataSequential>(val) != nullptr)
+	{
+		//vector/array constant, but packed in storage
+		const llvm::ConstantDataSequential* constant = llvm::cast<const llvm::ConstantDataSequential>(val);
+		Value aggregate(ContainerValue(), type);
+		for(unsigned i = 0; i < constant->getNumElements(); ++i)
+		{
+			aggregate.container.elements.push_back(toConstant(constant->getElementAsConstant(i)));
+		}
+		return aggregate;
+	}
+	else if(llvm::dyn_cast<const llvm::ConstantAggregateZero>(val) != nullptr)
+	{
+		const llvm::ConstantAggregateZero* constant = llvm::cast<const llvm::ConstantAggregateZero>(val);
+		Value aggregate(ContainerValue(), type);
+		for(unsigned i = 0; i < constant->getNumElements(); ++i)
+		{
+			aggregate.container.elements.push_back(toConstant(constant->getElementValue(i)));
+		}
+		return aggregate;
+	}
+	else if(llvm::dyn_cast<const llvm::ConstantFP>(val) != nullptr)
+	{
+		return Value(Literal(llvm::cast<const llvm::ConstantFP>(val)->getValueAPF().convertToFloat()), type);
+	}
+	else if(llvm::dyn_cast<const llvm::ConstantPointerNull>(val) != nullptr)
+	{
+		return Value(INT_ZERO.literal, type);
+	}
+	else if(llvm::dyn_cast<const llvm::ConstantExpr>(val) != nullptr)
+	{
+//#if USE_LLVM_LIBRARY == SPIRV_LLVM_LIBRARY /* SPIR-V LLVM */
+//		 const llvm::Constant* res = llvm::ConstantFoldConstantExpression(llvm::cast<const llvm::ConstantExpr>(val));
+//		 if(res != nullptr)
+//			return toConstant(res);
+//#endif
+		val->dump();
+		throw CompilationError(CompilationStep::PARSER, "Constant expressions are not supported yet", llvm::cast<const llvm::ConstantExpr>(val)->getOpcodeName());
+	}
+	else if(llvm::dyn_cast<const llvm::UndefValue>(val) != nullptr)
+	{
+		Value res = UNDEFINED_VALUE;
+		res.type = type;
+		return res;
+	}
+	else
+	{
+		val->dump();
+		throw CompilationError(CompilationStep::PARSER, "Unhandled constant type", std::to_string(val->getValueID()));
+	}
 }
 #endif

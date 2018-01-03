@@ -19,7 +19,7 @@ target_link_libraries(VC4CC cpplog-static)
 target_link_libraries(VC4CC dl)
 add_dependencies(VC4CC vc4cl-stdlib)
 
-if(SPIRV_FRONTEND)
+if(SPIRV_FRONTEND AND SPIRV_COMPILER_ROOT)
 	add_dependencies(VC4CC spirv-tools-project-build)
 	ExternalProject_Get_Property(spirv-tools-project BINARY_DIR)
 	

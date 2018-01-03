@@ -102,7 +102,9 @@ namespace vc4c
 		/*
 		 * Runs the pre-compilation from the source-type passed to the constructor to the output-type specified.
 		 */
-	#if defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_PARSER_HEADER
+	#ifdef USE_LLVM_LIBRARY
+		void run(std::unique_ptr<std::istream>& output, SourceType outputType = SourceType::LLVM_IR_BIN, const std::string& options = "", Optional<std::string> outputFile = {});
+	#elif defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_PARSER_HEADER
 		void run(std::unique_ptr<std::istream>& output, SourceType outputType = SourceType::SPIRV_BIN, const std::string& options = "", Optional<std::string> outputFile = {});
 	#elif defined CLANG_PATH
 		void run(std::unique_ptr<std::istream>& output, SourceType outputType = SourceType::LLVM_IR_TEXT, const std::string& options = "", Optional<std::string> outputFile = {});
