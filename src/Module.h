@@ -338,11 +338,12 @@ namespace vc4c
 		 */
 		std::size_t getStackBaseOffset() const;
 
-	private:
 		/*
 		 * The module the method belongs to
 		 */
 		const Module& module;
+
+	private:
 		/*
 		 * The list of basic blocks
 		 */

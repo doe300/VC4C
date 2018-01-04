@@ -217,6 +217,9 @@ unsigned char DataType::getScalarBitCount() const
     if(typeName.compare("half") == 0)
     	//16-bit floating point type
     	return 16;
+    if(typeName.compare("double") == 0)
+    	//64-bit floating point type
+    	return 64;
     if(typeName.compare("void") == 0)
     	//single byte
     	return 8;

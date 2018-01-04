@@ -153,7 +153,7 @@ static void toBinary(const Value& val, std::vector<uint8_t>& queue)
 				queue.push_back(0);
 			break;
 		default:
-			throw CompilationError(CompilationStep::CODE_GENERATION, "Can't map value-type to binary literal!");
+			throw CompilationError(CompilationStep::CODE_GENERATION, "Can't map value-type to binary literal", val.to_string());
 	}
 }
 

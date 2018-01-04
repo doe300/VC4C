@@ -543,6 +543,8 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     		typeMappings[getWord(parsed_instruction, 1)] = TYPE_FLOAT;
     	else if(getWord(parsed_instruction, 2) == 16)
     		typeMappings[getWord(parsed_instruction, 1)] = TYPE_HALF;
+    	else if(getWord(parsed_instruction, 2) == 64)
+    		typeMappings[getWord(parsed_instruction, 1)] = TYPE_DOUBLE;
     	else
             throw CompilationError(CompilationStep::PARSER, "Unsupported floating-point type");
         return SPV_SUCCESS;

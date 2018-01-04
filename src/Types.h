@@ -166,6 +166,8 @@ namespace vc4c
 	static const DataType TYPE_INT32 = DataType { "i32", 1 };
 	/*
 	 * 64-bit integer type (e.g. long, ulong)
+	 *
+	 * NOTE: Is only supported for constants
 	 */
 	static const DataType TYPE_INT64 = DataType { "i64", 1 };
 	/*
@@ -176,6 +178,12 @@ namespace vc4c
 	 * 16-bit floating-point type
 	 */
 	static const DataType TYPE_HALF = DataType { "half", 1 };
+	/*
+	 * 64-bit floating-point type
+	 *
+	 * NOTE: Is only supported for constants
+	 */
+	static const DataType TYPE_DOUBLE = DataType { "double", 1 };
 	/*
 	 * 1-bit boolean type
 	 */

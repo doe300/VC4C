@@ -322,6 +322,13 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 	if(numOperands > 1 && !secondOperand)
 		return NO_VALUE;
 
+	if(numOperands == 1 && firstOperand->isUndefined())
+		//returns an undefined value (of the correct type)
+		return (acceptsFloat == returnsFloat) ? Value(firstOperand->type) : UNDEFINED_VALUE;
+	if(numOperands == 2 && secondOperand->isUndefined())
+		//returns an undefined value (of the correct type)
+		return (acceptsFloat == returnsFloat && firstOperand->type == secondOperand->type) ? Value(firstOperand->type) : UNDEFINED_VALUE;
+
 	//extract the literal value behind the operands
 	Optional<Value> firstVal = (firstOperand->hasType(ValueType::LITERAL) || firstOperand->hasType(ValueType::SMALL_IMMEDIATE) || firstOperand->hasType(ValueType::CONTAINER)) ? firstOperand.value() : valueSupplier(firstOperand.value());
 	Optional<Value> secondVal = !secondOperand || (secondOperand->hasType(ValueType::LITERAL) || secondOperand->hasType(ValueType::SMALL_IMMEDIATE) || secondOperand->hasType(ValueType::CONTAINER)) ? secondOperand : valueSupplier(secondOperand.value());
