@@ -20,11 +20,6 @@ option(CROSS_COMPILE "Cross compile for Raspbian" OFF)
 option(SPIRV_FRONTEND "Enables a second front-end for the SPIR-V intermediate language" ON)
 # Option whether to include the LLVM library front-end. This requires the LLVM development-headers to be available for the (SPIRV-)LLVM used
 option(LLVMLIB_FRONTEND "Enables the front-end using the LLVM library to read LLVM IR" OFF)
-# Option whether to drop the rights for the pre-compilation process (to the user pi).
-# This is relevant when used in VC4CL, since VC4CL requires root access.
-# Turning this option off results in the  pre-compiler deleting /dev/stdout on errors
-# NOTE: This feature currently does not work and will result in compilation errors!
-option(PRECOMPILER_DROP_RIGHTS "Drop the rights for the pre-compiler to user pi" OFF)
 # Option whether to create deb package
 option(BUILD_DEB_PACKAGE "Enables creating .deb package" ON)
 
@@ -69,11 +64,6 @@ endif()
 
 project (VC4C VERSION 0.4)
 add_definitions(-DVC4C_VERSION="${PROJECT_VERSION}")
-
-if(PRECOMPILER_DROP_RIGHTS)
-	message(STATUS "Dropping rights of pre-compiler")
-	add_definitions(-DPRECOMPILER_DROP_RIGHTS=1)
-endif()
 
 # append usage of C++ to compiler flags, also optimize for speed and enable all warnings
 if(BUILD_DEBUG)

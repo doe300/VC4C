@@ -84,7 +84,7 @@ enum class StepKind
 struct LoopControl
 {
 	//the initial value for the loop iteration variable
-	Value initialValue = UNDEFINED_VALUE;
+	intermediate::IntermediateInstruction* initialization = nullptr;
 	//the value compared with to terminate the loop
 	Value terminatingValue = UNDEFINED_VALUE;
 	//the local containing the current iteration-variable
@@ -197,7 +197,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 				if(tmp)
 				{
 					logging::debug() << "Found lower bound: " << tmp->to_string() << logging::endl;
-					loopControl.initialValue = tmp.value();
+					loopControl.initialization = const_cast<intermediate::IntermediateInstruction*>(inst);
 				}
 			}
 			//iteration step: the instruction inside the loop where the iteration variable is changed
@@ -263,6 +263,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 			if(userIt == iterationStep.local->getUsers().end())
 			{
 				//"default" case, the iteration-variable is compared to something and the result of this comparison is used to branch
+				//e.g. "- = xor <iteration-variable>, <upper-bound> (setf)"
 				userIt = std::find_if(iterationStep.local->getUsers().begin(), iterationStep.local->getUsers().end(), [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool { return dynamic_cast<const intermediate::IntermediateInstruction*>(pair.first)->setFlags == SetFlag::SET_FLAGS;});
 				if(userIt != iterationStep.local->getUsers().end())
 				{
@@ -271,6 +272,11 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 					auto instIt = findInLoop(dynamic_cast<const intermediate::IntermediateInstruction*>(userIt->first), loop);
 					loopControl.comparisonInstruction = instIt;
 					logging::debug() << "Found loop continue condition: " << loopControl.comparisonInstruction.value()->to_string() << logging::endl;
+				}
+				else
+				{
+					//TODO more complex case, the iteration-variable is used in an operation, whose result is compared to something and that result is used to branch
+					//e.g "<tmp> = max <iteration-variable>, <upper-bound>; - = xor <tmp>, <upper-bound> (setf)"
 				}
 			}
 
@@ -313,7 +319,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 			}
 		}
 
-		if(!loopControl.initialValue.isUndefined() && !loopControl.terminatingValue.isUndefined() && loopControl.iterationStep && loopControl.repetitionJump)
+		if(loopControl.initialization && !loopControl.terminatingValue.isUndefined() && loopControl.iterationStep && loopControl.repetitionJump)
 		{
 			availableLoopControls.emplace(loopControl);
 		}
@@ -350,7 +356,7 @@ static Optional<unsigned> determineVectorizationFactor(const ControlFlowLoop& lo
 
 	logging::debug() << "Found maximum used vector-width of " << static_cast<unsigned>(maxTypeWidth) << " elements" << logging::endl;
 
-	const Literal initial = loopControl.initialValue.getLiteralValue().value();
+	const Literal initial = loopControl.initialization->precalculate(4)->getLiteralValue().value();
 	const Literal end = loopControl.terminatingValue.getLiteralValue().value();
 	//the number of iterations from the bounds depends on the iteration operation
 	int64_t iterations = loopControl.countIterations(initial.integer, end.integer, loopControl.getStep()->integer);
@@ -527,6 +533,46 @@ static void vectorizeInstruction(InstructionWalker it, FastSet<intermediate::Int
 	openInstructions.erase(it.get());
 }
 
+/*
+ * Look within this mutex-block for the nearest instruction accessing the VPM in the given way
+ */
+static Optional<InstructionWalker> findVPMAccess(InstructionWalker pos, bool writeAccess)
+{
+	auto it = pos;
+	while(!it.isStartOfBlock())
+	{
+		//only look up to the next mutex (un)lock
+		if(it.has<intermediate::MutexLock>())
+			break;
+		//also to not accept a vectorized VPM access while this access is not vectorized (e.g. when accesses are combined), abort at writing of addresses
+		if(it->writesRegister(REG_VPM_IN_ADDR) || it->writesRegister(REG_VPM_OUT_ADDR))
+			break;
+		if(writeAccess && it->writesRegister(REG_VPM_IO))
+			return it;
+		if(!writeAccess && it->readsRegister(REG_VPM_IO))
+			return it;
+		it.previousInBlock();
+	}
+
+	it = pos;
+	while(!it.isEndOfBlock())
+	{
+		//only look up to the next mutex (un)lock
+		if(it.has<intermediate::MutexLock>())
+			break;
+		//also to not accept a vectorized VPM access while this access is not vectorized (e.g. when accesses are combined), abort at writing of addresses
+		if(it->writesRegister(REG_VPM_IN_ADDR) || it->writesRegister(REG_VPM_OUT_ADDR))
+			break;
+		if(writeAccess && it->writesRegister(REG_VPM_IO))
+			return it;
+		if(!writeAccess && it->readsRegister(REG_VPM_IO))
+			return it;
+		it.nextInBlock();
+	}
+
+	return {};
+}
+
 static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
 {
 	InstructionWalker it = loop.front()->key->begin();
@@ -537,17 +583,27 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
 		if(it->writesRegister(REG_VPM_OUT_SETUP))
 		{
 			periphery::VPWSetupWrapper vpwSetup(it.get<intermediate::LoadImmediate>());
-			if(vpwSetup.isDMASetup())
+			auto vpmWrite = findVPMAccess(it, true);
+			if(vpwSetup.isDMASetup() && vpmWrite && has_flag((*vpmWrite)->decoration, intermediate::InstructionDecorations::AUTO_VECTORIZED))
 			{
-				//FIXME this is only true for values actually vectorized! Need to check if corresponding VPM-write is vectorized
+				//Since this is only true for values actually vectorized, the corresponding VPM-write is checked
 				vpwSetup.dmaSetup.setDepth(vpwSetup.dmaSetup.getDepth() * loopControl.vectorizationFactor);
 				++numVectorized;
 				it->setDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
 			}
 		}
 		else if(it->writesRegister(REG_VPM_IN_SETUP))
-			throw CompilationError(CompilationStep::OPTIMIZER, "Reading from VPM is not handled yet by the vectorizer", it->to_string());
-
+		{
+			periphery::VPRSetupWrapper vprSetup(it.get<intermediate::LoadImmediate>());
+			auto vpmRead = findVPMAccess(it, false);
+			if(vprSetup.isDMASetup() && vpmRead && has_flag((*vpmRead)->decoration, intermediate::InstructionDecorations::AUTO_VECTORIZED))
+			{
+				//See VPM write
+				vprSetup.dmaSetup.setRowLength((vprSetup.dmaSetup.getRowLength() * loopControl.vectorizationFactor) % 16 /* 0 => 16 */);
+				++numVectorized;
+				it->setDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+			}
+		}
 
 		it.nextInMethod();
 	}
@@ -561,27 +617,17 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
 	if(stepOp == nullptr)
 		throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled iteration step operation");
 
-	//initial value is set by the phi-node writing into the iteration-variable that lies outside of the loop (XXX or store in loop-control?)
-	for(auto& user : loopControl.iterationVariable->getUsers())
+	const_cast<DataType&>(loopControl.initialization->getOutput()->type).num = loopControl.iterationVariable->type.num;
+	intermediate::MoveOperation* move = dynamic_cast<intermediate::MoveOperation*>(loopControl.initialization);
+	if(move != nullptr && move->getSource().hasLiteral(INT_ZERO.literal) && loopControl.stepKind == StepKind::ADD_CONSTANT && loopControl.getStep().is(INT_ONE.literal))
 	{
-		intermediate::IntermediateInstruction* inst = const_cast<intermediate::IntermediateInstruction*>(dynamic_cast<const intermediate::IntermediateInstruction*>(user.first));
-		if(user.second.writesLocal() && !findInLoop(inst, loop))
-		{
-			const_cast<DataType&>(inst->getOutput()->type).num = loopControl.iterationVariable->type.num;
-
-			intermediate::MoveOperation* move = dynamic_cast<intermediate::MoveOperation*>(inst);
-			if(move != nullptr && move->getSource().hasLiteral(INT_ZERO.literal) && loopControl.stepKind == StepKind::ADD_CONSTANT && loopControl.getStep().is(INT_ONE.literal))
-			{
-				//special/default case: initial value is zero and step is +1
-				move->setSource(ELEMENT_NUMBER_REGISTER);
-				move->setDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
-				logging::debug() << "Changed initial value: " << inst->to_string() << logging::endl;
-			}
-			else
-				throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled initial value", inst->to_string());
-			//TODO more general version
-		}
+		//special/default case: initial value is zero and step is +1
+		move->setSource(ELEMENT_NUMBER_REGISTER);
+		move->setDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+		logging::debug() << "Changed initial value: " << loopControl.initialization->to_string() << logging::endl;
 	}
+	else
+		throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled initial value", loopControl.initialization->to_string());
 
 	bool stepChanged = false;
 	switch(stepOp->op.opAdd)
@@ -675,7 +721,7 @@ void optimizations::vectorizeLoops(const Module& module, Method& method, const C
 			//we could not find the iteration variable, skip this loop
 			continue;
 
-		if(loopControl.initialValue.isUndefined() || loopControl.terminatingValue.isUndefined() || !loopControl.iterationStep || !loopControl.repetitionJump)
+		if(!loopControl.initialization || loopControl.terminatingValue.isUndefined() || !loopControl.iterationStep || !loopControl.repetitionJump)
 		{
 			//we need to know both bounds and the iteration step (for now)
 			logging::debug() << "Failed to find all bounds and step for loop, aborting vectorization!" << logging::endl;
