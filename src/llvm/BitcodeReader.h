@@ -24,6 +24,8 @@ namespace llvm
 	class Function;
 	class Instruction;
 	class Value;
+	class Type;
+	class ConstantExpr;
 } /* namespace llvm */
 
 namespace vc4c
@@ -45,16 +47,19 @@ namespace vc4c
 			llvm::LLVMContext context;
 			std::unique_ptr<llvm::Module> llvmModule;
 			FastMap<const llvm::Function*, std::pair<Method*, LLVMInstructionList>> parsedFunctions;
-			//BasicBlocks in LLVM have no name
 			FastMap<const llvm::Value*, Local*> localMap;
+			//required to support recursive types
+			FastMap<const llvm::Type*, DataType> typesMap;
 
 			Method& parseFunction(Module& module, const llvm::Function& func);
 			void parseFunctionBody(Module& module, Method& method, LLVMInstructionList& instructions, const llvm::Function& func);
 			void parseInstruction(Module& module, Method& method, LLVMInstructionList& instructions, const llvm::Instruction& inst);
 			void parseGlobalData(Module& module);
 
+			DataType toDataType(const llvm::Type* type);
 			Value toValue(Method& method, const llvm::Value* val);
-			Value toConstant(const llvm::Value* val);
+			Value toConstant(const Module& module, const llvm::Value* val);
+			Value precalculateConstantExpression(const Module& module, const llvm::ConstantExpr* expr);
 		};
 #endif
 

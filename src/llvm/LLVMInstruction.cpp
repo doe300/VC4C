@@ -175,7 +175,16 @@ bool CallSite::mapInstruction(Method& method) const
 		method.vpm->insertWriteVPM(method.appendToEnd(), fillByte, nullptr, false);
 		method.vpm->insertFillRAM(method, method.appendToEnd(), memAddr, TYPE_INT8, numBytes.literal.integer, nullptr, false);
 		method.appendToEnd( new intermediate::MutexLock(intermediate::MutexAccess::RELEASE));
+		//FIXME correctly handling this case (by returning true) throws errors in some optmizataion
+		//maybe combination of VPM access cannot handle this case correctly??
+		//return true;
 	}
+    if(methodName.find("mem_fence") == 0 || methodName.find("read_mem_fence") == 0 || methodName.find("write_mem_fence") == 0)
+    {
+    	logging::debug() << "Intrinsifying 'mem_fence' with memory barrier" << logging::endl;
+    	method.appendToEnd(new intermediate::MemoryBarrier(static_cast<intermediate::MemoryScope>(arguments.at(0).getLiteralValue()->integer), intermediate::MemorySemantics::ACQUIRE_RELEASE));
+    	return true;
+    }
     logging::debug() << "Generating immediate call to " << methodName << " -> " << returnType.to_string() << logging::endl;
     if(dest == nullptr)
     	method.appendToEnd((new intermediate::MethodCall(methodName, arguments))->setDecorations(decorations));

@@ -12,6 +12,7 @@
 #define DEFAULT_LLVM_LIBRARY 1
 
 #include "../intermediate/IntermediateInstruction.h"
+#include "../intrinsics/Images.h"
 #include "log.h"
 
 #include "llvm-c/Core.h"
@@ -32,6 +33,7 @@ using namespace vc4c;
 using namespace vc4c::llvm2qasm;
 
 extern AddressSpace toAddressSpace(int num);
+extern std::string cleanMethodName(const std::string& name);
 
 BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType) : context()
 {
@@ -283,10 +285,17 @@ void BitcodeReader::parse(Module& module)
 	}
 }
 
-static DataType toDataType(const llvm::Type* type)
+static DataType& addToMap(DataType&& dataType, const llvm::Type* type, FastMap<const llvm::Type*, DataType>& typesMap)
 {
-	if(type == nullptr || type->isEmptyTy())
+	return typesMap.emplace(type, dataType).first->second;
+}
+
+DataType BitcodeReader::toDataType(const llvm::Type* type)
+{
+	if(type == nullptr)
 		return TYPE_UNKNOWN;
+	if(typesMap.find(type) != typesMap.end())
+		return typesMap.at(type);
 	if(type->isVectorTy())
 	{
 		return toDataType(type->getVectorElementType()).toVectorType(static_cast<unsigned char>(llvm::cast<const llvm::VectorType>(type)->getVectorNumElements()));
@@ -297,6 +306,8 @@ static DataType toDataType(const llvm::Type* type)
 		return TYPE_HALF;
 	if(type->isFloatTy())
 		return TYPE_FLOAT;
+	if(type->isDoubleTy())
+		return TYPE_DOUBLE;
 	if(type->isLabelTy())
 		return TYPE_LABEL;
 	if(type->isIntegerTy(1))
@@ -309,21 +320,45 @@ static DataType toDataType(const llvm::Type* type)
 		return TYPE_INT32;
 	if(type->isIntegerTy(64))
 		return TYPE_INT64;
+	if(type->isPointerTy() && type->getPointerElementType()->isStructTy())
+	{
+		//recognize image types - taken from https://github.com/KhronosGroup/SPIRV-LLVM/blob/khronos/spirv-3.6.1/lib/SPIRV/SPIRVUtil.cpp (#isOCLImageType)
+		const llvm::StructType* str = llvm::cast<const llvm::StructType>(type->getPointerElementType());
+		if(str->isOpaque() && str->getName().find("opencl.image") == 0)
+		{
+			ImageType* imageType = new ImageType();
+			imageType->dimensions = str->getName().find('3') != llvm::StringRef::npos ? 3 : str->getName().find('2') != llvm::StringRef::npos ? 2 : 1;
+			imageType->isImageArray = str->getName().find("array") != llvm::StringRef::npos;
+			imageType->isImageBuffer = str->getName().find("buffer") != llvm::StringRef::npos;
+			imageType->isSampled = false;
+
+			std::shared_ptr<ComplexType> c(imageType);
+			return addToMap(DataType(imageType->getImageTypeName(), 1, c), type, typesMap);
+		}
+	}
 	if(type->isStructTy())
 	{
+		//detect SPIRV sampler-type
+		if(type->getStructName() == "spirv.Sampler" || type->getStructName() == "spirv.ConstantSampler")
+		{
+			return TYPE_SAMPLER;
+		}
+		//need to be added to the map before iterating over the children to prevent stack-overflow
+		DataType& dataType = addToMap(DataType(type->getStructName(), 1), type, typesMap);
 		std::vector<DataType> elementTypes;
 		for(unsigned i = 0; i < type->getStructNumElements(); ++i)
 		{
 			elementTypes.emplace_back(toDataType(type->getStructElementType(i)));
 		}
 		std::shared_ptr<ComplexType> structType(new StructType(elementTypes, llvm::cast<const llvm::StructType>(type)->isPacked()));
-		return DataType(type->getStructName(), 1, structType);
+		dataType.complexType = structType;
+		return dataType;
 	}
 	if(type->isArrayTy())
 	{
 		const DataType elementType = toDataType(type->getArrayElementType());
 		std::shared_ptr<ComplexType> c(new ArrayType(elementType, type->getArrayNumElements()));
-		return DataType((elementType.to_string() + "[") + std::to_string(type->getArrayNumElements()) +"]", 1, c);
+		return addToMap(DataType((elementType.to_string() + "[") + std::to_string(type->getArrayNumElements()) +"]", 1, c), type, typesMap);
 	}
 	if(type->isPointerTy())
 	{
@@ -338,7 +373,7 @@ void BitcodeReader::parseGlobalData(Module& module)
 {
 	for(const llvm::GlobalVariable& global : llvmModule->getGlobalList())
 	{
-		module.globalData.emplace_back(Global(("@" + global.getName()).str(), toDataType(global.getType()), global.hasInitializer() ? toConstant(global.getInitializer()) : UNDEFINED_VALUE));
+		module.globalData.emplace_back(Global(("@" + global.getName()).str(), toDataType(global.getType()), global.hasInitializer() ? toConstant(module, global.getInitializer()) : UNDEFINED_VALUE));
 		logging::debug() << "Global read: " << module.globalData.back().to_string() << logging::endl;
 	}
 }
@@ -364,7 +399,7 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
 	module.methods.emplace_back(method);
 	parsedFunctions[&func] = std::make_pair(method, LLVMInstructionList{});
 
-	method->name = func.getName();
+	method->name = cleanMethodName(func.getName());
 	method->returnType = toDataType(func.getReturnType());
 
 	logging::debug() << "Reading function " << method->returnType.to_string() << " " << method->name << "(...)" << logging::endl;
@@ -548,7 +583,7 @@ void BitcodeReader::parseInstruction(Module& module, Method& method, LLVMInstruc
 			const DataType pointerType = toDataType(alloca->getType());
 			unsigned alignment = alloca->getAlignment();
 			//XXX need to heed the array-size?
-			method.stackAllocations.emplace(StackAllocation(alloca->getName(), pointerType, contentType.getPhysicalWidth(), alignment));
+			method.stackAllocations.emplace(StackAllocation(("%" + alloca->getName()).str(), pointerType, contentType.getPhysicalWidth(), alignment));
 			break;
 		}
 		case MemoryOps::GetElementPtr:
@@ -618,7 +653,8 @@ void BitcodeReader::parseInstruction(Module& module, Method& method, LLVMInstruc
 			if(call->getCalledFunction()->isDeclaration())
 			{
 				//functions without definitions (e.g. intrinsic functions)
-				instructions.emplace_back(new CallSite(toValue(method, call).local, call->getCalledFunction()->getName(), toDataType(call->getCalledFunction()->getReturnType()), args));
+				std::string funcName = call->getCalledFunction()->getName();
+				instructions.emplace_back(new CallSite(toValue(method, call).local, cleanMethodName(funcName.find("_Z") == 0 ? std::string("@") + funcName : funcName), toDataType(call->getCalledFunction()->getReturnType()), args));
 			}
 			else
 			{
@@ -729,7 +765,7 @@ Value BitcodeReader::toValue(Method& method, const llvm::Value* val)
 	const DataType type = toDataType(val->getType());
 	if(llvm::dyn_cast<const llvm::Constant>(val) != nullptr)
 	{
-		return toConstant(val);
+		return toConstant(method.module, val);
 	}
 	//locals of any kind have no name (most of the time)
 	if(!val->getName().empty())
@@ -740,7 +776,7 @@ Value BitcodeReader::toValue(Method& method, const llvm::Value* val)
 	return loc->createReference();
 }
 
-Value BitcodeReader::toConstant(const llvm::Value* val)
+Value BitcodeReader::toConstant(const Module& module, const llvm::Value* val)
 {
 	const DataType type = toDataType(val->getType());
 	if(llvm::dyn_cast<const llvm::ConstantInt>(val) != nullptr)
@@ -760,7 +796,7 @@ Value BitcodeReader::toConstant(const llvm::Value* val)
 		Value aggregate(ContainerValue(), type);
 		for(unsigned i = 0; i < constant->getNumOperands(); ++i)
 		{
-			aggregate.container.elements.push_back(toConstant(constant->getOperand(i)));
+			aggregate.container.elements.push_back(toConstant(module, constant->getOperand(i)));
 		}
 		return aggregate;
 	}
@@ -771,18 +807,27 @@ Value BitcodeReader::toConstant(const llvm::Value* val)
 		Value aggregate(ContainerValue(), type);
 		for(unsigned i = 0; i < constant->getNumOperands(); ++i)
 		{
-			aggregate.container.elements.push_back(toConstant(constant->getOperand(i)));
+			aggregate.container.elements.push_back(toConstant(module, constant->getOperand(i)));
 		}
 		return aggregate;
 	}
 	else if(llvm::dyn_cast<const llvm::ConstantStruct>(val) != nullptr)
 	{
-		//element types are stored as operands
 		const llvm::ConstantStruct* constant = llvm::cast<const llvm::ConstantStruct>(val);
+
+		//special treatment for spirv.ConstantSampler type
+		if(type == TYPE_SAMPLER)
+		{
+			intermediate::Sampler sampler(static_cast<intermediate::AddressingMode>(toConstant(module, constant->getOperand(0)).getLiteralValue()->integer),
+					toConstant(module, constant->getOperand(1)).getLiteralValue()->isTrue(),
+					static_cast<intermediate::FilterMode>(toConstant(module, constant->getOperand(2)).getLiteralValue()->integer));
+			return Value(Literal(static_cast<int64_t>(sampler)), TYPE_SAMPLER);
+		}
+		//element types are stored as operands
 		Value aggregate(ContainerValue(), type);
 		for(unsigned i = 0; i < constant->getNumOperands(); ++i)
 		{
-			aggregate.container.elements.push_back(toConstant(constant->getOperand(i)));
+			aggregate.container.elements.push_back(toConstant(module, constant->getOperand(i)));
 		}
 		return aggregate;
 	}
@@ -793,7 +838,7 @@ Value BitcodeReader::toConstant(const llvm::Value* val)
 		Value aggregate(ContainerValue(), type);
 		for(unsigned i = 0; i < constant->getNumElements(); ++i)
 		{
-			aggregate.container.elements.push_back(toConstant(constant->getElementAsConstant(i)));
+			aggregate.container.elements.push_back(toConstant(module, constant->getElementAsConstant(i)));
 		}
 		return aggregate;
 	}
@@ -803,7 +848,7 @@ Value BitcodeReader::toConstant(const llvm::Value* val)
 		Value aggregate(ContainerValue(), type);
 		for(unsigned i = 0; i < constant->getNumElements(); ++i)
 		{
-			aggregate.container.elements.push_back(toConstant(constant->getElementValue(i)));
+			aggregate.container.elements.push_back(toConstant(module, constant->getElementValue(i)));
 		}
 		return aggregate;
 	}
@@ -817,13 +862,18 @@ Value BitcodeReader::toConstant(const llvm::Value* val)
 	}
 	else if(llvm::dyn_cast<const llvm::ConstantExpr>(val) != nullptr)
 	{
-//#if USE_LLVM_LIBRARY == SPIRV_LLVM_LIBRARY /* SPIR-V LLVM */
-//		 const llvm::Constant* res = llvm::ConstantFoldConstantExpression(llvm::cast<const llvm::ConstantExpr>(val));
-//		 if(res != nullptr)
-//			return toConstant(res);
-//#endif
-		val->dump();
-		throw CompilationError(CompilationStep::PARSER, "Constant expressions are not supported yet", llvm::cast<const llvm::ConstantExpr>(val)->getOpcodeName());
+		return precalculateConstantExpression(module, llvm::cast<const llvm::ConstantExpr>(val));
+	}
+	else if(llvm::dyn_cast<const llvm::GlobalVariable>(val) != nullptr)
+	{
+		for(const Global& global : module.globalData)
+		{
+			if(global.name == ("@" + val->getName()).str())
+			{
+				return global.createReference();
+			}
+		}
+		throw CompilationError(CompilationStep::PARSER, "Failed to find global data", ("@" + val->getName()).str());
 	}
 	else if(llvm::dyn_cast<const llvm::UndefValue>(val) != nullptr)
 	{
@@ -837,4 +887,44 @@ Value BitcodeReader::toConstant(const llvm::Value* val)
 		throw CompilationError(CompilationStep::PARSER, "Unhandled constant type", std::to_string(val->getValueID()));
 	}
 }
+
+Value BitcodeReader::precalculateConstantExpression(const Module& module, const llvm::ConstantExpr* expr)
+{
+	if(expr->getOpcode() == llvm::Instruction::CastOps::BitCast || expr->getOpcode() == llvm::Instruction::CastOps::AddrSpaceCast)
+	{
+		Value result = toConstant(module, expr->getOperand(0));
+		if(expr->getOperand(0)->getType()->getScalarSizeInBits() != expr->getType()->getScalarSizeInBits())
+		{
+			throw CompilationError(CompilationStep::PARSER, "Bit-casts over different type-sizes are not yet implemented!");
+		}
+		result.type = toDataType(expr->getType());
+		return result;
+	}
+	if(expr->getOpcode() == llvm::Instruction::MemoryOps::GetElementPtr)
+	{
+		llvm::GetElementPtrInst* indexOf = llvm::cast<llvm::GetElementPtrInst>(const_cast<llvm::ConstantExpr*>(expr)->getAsInstruction());
+		if(indexOf->hasAllZeroIndices())
+		{
+			//TODO this is wrong, needs to make value referring to other value
+			Value val = toConstant(module, indexOf->getPointerOperand());
+			val.type = toDataType(indexOf->getType());
+			indexOf->dropAllReferences();
+			return val;
+		}
+		indexOf->dropAllReferences();
+	}
+	OpCode opCode = OpCode::findOpCode(expr->getOpcodeName());
+
+	Optional<Value> result = NO_VALUE;
+	if(opCode.numOperands == 1)
+		result = opCode.calculate(toConstant(module, expr->getOperand(0)), NO_VALUE, [](const Value&) -> Optional<Value>{return NO_VALUE;});
+	else if (opCode.numOperands == 2)
+		result = opCode.calculate(toConstant(module, expr->getOperand(0)), toConstant(module, expr->getOperand(1)), [](const Value&) -> Optional<Value>{return NO_VALUE;});
+
+	if(result)
+		return result.value();
+	expr->dump();
+	throw CompilationError(CompilationStep::PARSER, "Constant expressions are not supported yet", expr->getOpcodeName());
+}
+
 #endif

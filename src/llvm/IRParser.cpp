@@ -29,7 +29,7 @@ IRParser::IRParser(std::istream& stream) : scanner(stream), module(nullptr), cur
 
 }
 
-static std::string cleanMethodName(const std::string& name)
+std::string cleanMethodName(const std::string& name)
 {
     //truncate prefix and postfix added by LLVM
     std::string tmp = std::regex_replace(name, std::regex("@(_Z\\d+)?"), std::string(""));
