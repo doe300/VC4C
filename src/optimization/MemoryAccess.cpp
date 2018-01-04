@@ -404,7 +404,7 @@ void optimizations::combineVPMAccess(const Module& module, Method& method, const
 	//TODO for now, this cannot handle RAM->VPM, VPM->RAM only access as well as VPM->QPU or QPU->VPM
 
 	// run within all basic blocks
-	for(BasicBlock& block : method.getBasicBlocks())
+	for(BasicBlock& block : method)
 	{
 		auto it = block.begin();
 		while(!it.isEndOfBlock())

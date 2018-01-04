@@ -117,7 +117,7 @@ ControlFlowGraph ControlFlowGraph::createCFG(Method& method)
 	PROFILE_START(createCFG);
 	ControlFlowGraph graph;
 
-	for(BasicBlock& bb : method.getBasicBlocks())
+	for(BasicBlock& bb : method)
 	{
 		bb.forPredecessors([&bb, &graph](InstructionWalker it) -> void
 		{
@@ -300,7 +300,7 @@ DataDependencyGraph DataDependencyGraph::createDependencyGraph(Method& method)
 {
 	InstructionMapping mapping = mapInstructionsToPosition(method);
 	DataDependencyGraph graph;
-	for(auto& block : method.getBasicBlocks())
+	for(auto& block : method)
 	{
 		findDependencies(block, graph, mapping);
 	}

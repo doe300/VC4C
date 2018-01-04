@@ -184,7 +184,7 @@ void Optimizer::optimize(Module& module) const
 {
 	std::vector<threading::BackgroundWorker> workers;
 	workers.reserve(module.getKernels().size());
-	for(auto& method : module.methods)
+	for(auto& method : module)
 	{
 		//PHI-nodes need to be eliminated before inlining functions
 		//since otherwise the phi-node is mapped to the initial label, not to the last label added by the functions (the real end of the original, but split up block)

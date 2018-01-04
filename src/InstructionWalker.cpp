@@ -268,3 +268,17 @@ std::size_t vc4c::hash<vc4c::InstructionWalker>::operator()(vc4c::InstructionWal
 	std::hash<const intermediate::IntermediateInstruction*> h;
 	return h(it.get());
 }
+
+void vc4c::swap(BlockIterator& a, BlockIterator& b)
+{
+	BlockIterator tmp = b;
+	b = a;
+	a = tmp;
+}
+
+void vc4c::swap(MethodIterator& a, MethodIterator& b)
+{
+	MethodIterator tmp = b;
+	b = a;
+	a = tmp;
+}

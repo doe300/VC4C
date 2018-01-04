@@ -11,6 +11,7 @@
 #include "intermediate/IntermediateInstruction.h"
 
 #include <functional>
+#include <iterator>
 
 namespace vc4c
 {
@@ -255,6 +256,123 @@ namespace vc4c
 	{
 		size_t operator()(const InstructionWalker& ) const noexcept;
 	};
+
+	/*
+	 * Extends the instruction-walker type to be used as an iterator within the given scope
+	 *
+	 * An Iterator has following requirements:
+	 * - CopyConstructible, CopyAssignable
+	 * - Destructible
+	 * - Swappable
+	 *
+	 * Additional requirements for InputIterator:
+	 * - EqualityComparable
+	 *
+	 * Additional requirements for ForwardIterator:
+	 * - DefaultConstuctible
+	 * - provides multipass guarantee
+	 *
+	 * Additional requirements for BidirectionalIterator:
+	 */
+	template<typename Scope>
+	struct ScopedInstructionWalker { };
+
+	/*
+	 * Can be used as a default iterator iterating over the elements within a single basic block
+	 */
+	template<>
+	struct ScopedInstructionWalker<BasicBlock> : public InstructionWalker, public std::iterator<std::bidirectional_iterator_tag, intermediate::IntermediateInstruction*, intermediate::IntermediateInstruction*, intermediate::IntermediateInstruction*>
+	{
+		explicit ScopedInstructionWalker() {}
+		explicit ScopedInstructionWalker(InstructionWalker it) : InstructionWalker(it) { }
+		ScopedInstructionWalker(BasicBlock* basicBlock, intermediate::InstructionsIterator pos) : InstructionWalker(basicBlock, pos) { }
+
+		inline const intermediate::IntermediateInstruction* operator*() const
+		{
+			return get();
+		}
+
+		inline intermediate::IntermediateInstruction* operator*()
+		{
+			return get();
+		}
+
+		inline ScopedInstructionWalker<BasicBlock>& operator ++()
+		{
+			nextInBlock();
+			return *this;
+		}
+
+		inline ScopedInstructionWalker<BasicBlock>& operator --()
+		{
+			previousInBlock();
+			return *this;
+		}
+
+		inline ScopedInstructionWalker<BasicBlock> operator ++(int)
+		{
+			ScopedInstructionWalker<BasicBlock> tmp(*this);
+			nextInBlock();
+			return tmp;
+		}
+
+		inline ScopedInstructionWalker<BasicBlock> operator --(int)
+		{
+			ScopedInstructionWalker<BasicBlock> tmp(*this);
+			previousInBlock();
+			return tmp;
+		}
+	};
+
+	template<>
+	struct ScopedInstructionWalker<Method> : public InstructionWalker, public std::iterator<std::bidirectional_iterator_tag, intermediate::IntermediateInstruction*, intermediate::IntermediateInstruction*, intermediate::IntermediateInstruction*>
+	{
+		explicit ScopedInstructionWalker() {}
+		explicit ScopedInstructionWalker(InstructionWalker it) : InstructionWalker(it) { }
+		ScopedInstructionWalker(BasicBlock* basicBlock, intermediate::InstructionsIterator pos) : InstructionWalker(basicBlock, pos) { }
+
+		inline const intermediate::IntermediateInstruction* operator*() const
+		{
+			return get();
+		}
+
+		inline intermediate::IntermediateInstruction* operator*()
+		{
+			return get();
+		}
+
+		inline ScopedInstructionWalker<Method>& operator ++()
+		{
+			nextInMethod();
+			return *this;
+		}
+
+		inline ScopedInstructionWalker<Method>& operator --()
+		{
+			previousInMethod();
+			return *this;
+		}
+
+		inline ScopedInstructionWalker<Method> operator ++(int)
+		{
+			ScopedInstructionWalker<Method> tmp(*this);
+			nextInMethod();
+			return tmp;
+		}
+
+		inline ScopedInstructionWalker<Method> operator --(int)
+		{
+			ScopedInstructionWalker<Method> tmp(*this);
+			previousInMethod();
+			return tmp;
+		}
+	};
+
+	/*
+	 * Satifies the Swappable requirement
+	 */
+	void swap(BlockIterator& a, BlockIterator& b);
+	void swap(MethodIterator& a, MethodIterator& b);
 
 } /* namespace vc4c */
 

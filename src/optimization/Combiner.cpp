@@ -375,7 +375,7 @@ static const std::vector<MergeCondition> mergeConditions = {
 void optimizations::combineOperations(const Module& module, Method& method, const Configuration& config)
 {
 	//TODO can combine operation x and y if y is something like (result of x & 0xFF/0xFFFF) -> pack-mode
-	for(BasicBlock& bb : method.getBasicBlocks())
+	for(BasicBlock& bb : method)
 	{
 		auto it = bb.begin();
 		while(!it.isEndOfBlock() && !it.copy().nextInBlock().isEndOfBlock())
@@ -580,7 +580,7 @@ static bool canReplaceLiteralLoad(InstructionWalker it, const InstructionWalker 
 
 void optimizations::combineLoadingLiterals(const Module& module, Method& method, const Configuration& config)
 {
-	for(BasicBlock& block : method.getBasicBlocks())
+	for(BasicBlock& block : method)
 	{
 		FastMap<int64_t, InstructionWalker> lastLoadImmediate;
 		InstructionWalker it = block.begin();
@@ -676,7 +676,7 @@ InstructionWalker optimizations::combineSelectionWithZero(const Module& module, 
 
 void optimizations::combineVectorRotations(const Module& module, Method& method, const Configuration& config)
 {
-	for(BasicBlock& block : method.getBasicBlocks())
+	for(BasicBlock& block : method)
 	{
 		InstructionWalker it = block.begin();
 		while(!it.isEndOfBlock())

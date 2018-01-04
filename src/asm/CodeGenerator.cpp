@@ -131,7 +131,7 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
 	ModuleInfo moduleInfo;
 
 	std::size_t maxStackSize = 0;
-	for(const auto& m : module.methods)
+	for(const auto& m : module)
 		maxStackSize = std::max(maxStackSize, m->calculateStackSize());
 	if(maxStackSize / sizeof(uint64_t) > std::numeric_limits<uint16_t>::max() || maxStackSize % sizeof(uint64_t) != 0)
 		throw CompilationError(CompilationStep::CODE_GENERATION, "Stack-frame has unsupported size of", std::to_string(maxStackSize));

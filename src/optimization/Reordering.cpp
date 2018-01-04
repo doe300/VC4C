@@ -325,7 +325,7 @@ void optimizations::reorderWithinBasicBlocks(const Module& module, Method& metho
      * 3. split up VPM setup and wait VPM wait, so the delay can be used productively (only possible if we allow reordering over mutex-release).
      *    How many instructions to try to insert? 3?
      */
-	for(BasicBlock& block : method.getBasicBlocks())
+	for(BasicBlock& block : method)
 	{
 		// remove NOPs by inserting instructions which do not violate the reason for the NOP
 		PROFILE(replaceNOPs, block, method);

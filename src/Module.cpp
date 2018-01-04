@@ -112,7 +112,7 @@ void BasicBlock::forPredecessors(const std::function<void(InstructionWalker)>& c
 	const Local* label = getLabel()->getLabel();
 	BasicBlock* prevBlock = nullptr;
 	bool prevBlockFound = false;
-	for(BasicBlock& bb : method.getBasicBlocks())
+	for(BasicBlock& bb : method)
 	{
 		for(auto it = bb.begin(); !it.isEndOfBlock(); it.nextInBlock())
 		{

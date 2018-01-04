@@ -26,7 +26,7 @@ namespace vc4c
 	} // namespace periphery
 
 	/*
-	 * Container for addtional meta-date of kernel-functions
+	 * Container for additional meta-data of kernel-functions
 	 */
 	struct KernelMetaData
 	{
@@ -47,9 +47,15 @@ namespace vc4c
 	};
 
 	class InstructionWalker;
+	class BasicBlock;
 	class Module;
 	class Method;
 	class ControlFlowGraph;
+
+	template<typename Scope>
+	struct ScopedInstructionWalker;
+	using BlockIterator = ScopedInstructionWalker<BasicBlock>;
+	using MethodIterator = ScopedInstructionWalker<Method>;
 
 	/*
 	 * A basic-block is a sequence of continuous instructions within a function body.
@@ -140,6 +146,7 @@ namespace vc4c
 	 */
 	class Method : private NonCopyable
 	{
+		using BasicBlockList = RandomModificationList<BasicBlock>;
 	public:
 		static const std::string WORK_DIMENSIONS;
 		static const std::string LOCAL_SIZES;
@@ -275,7 +282,28 @@ namespace vc4c
 		/*
 		 * Returns the basic-blocks within this method
 		 */
-		RandomModificationList<BasicBlock>& getBasicBlocks();
+		BasicBlockList& getBasicBlocks();
+
+		inline BasicBlockList::iterator begin()
+		{
+			return basicBlocks.begin();
+		}
+
+		inline BasicBlockList::const_iterator begin() const
+		{
+			return basicBlocks.begin();
+		}
+
+		inline BasicBlockList::iterator end()
+		{
+			return basicBlocks.end();
+		}
+
+		inline BasicBlockList::const_iterator end() const
+		{
+			return basicBlocks.end();
+		}
+
 		/*
 		 * Searches for the basic-block belonging to the given label
 		 */
@@ -318,7 +346,7 @@ namespace vc4c
 		/*
 		 * The list of basic blocks
 		 */
-		RandomModificationList<BasicBlock> basicBlocks;
+		BasicBlockList basicBlocks;
 		/*
 		 * The list of locals
 		 */
@@ -343,6 +371,8 @@ namespace vc4c
 	 */
 	class Module : private NonCopyable
 	{
+		using MethodList = std::vector<std::unique_ptr<Method>>;
+
 	public:
 		explicit Module(const Configuration& compilationConfig);
 		Module(const Module&) = delete;
@@ -359,7 +389,27 @@ namespace vc4c
 		/*
 		 * The module's methods
 		 */
-		std::vector<std::unique_ptr<Method>> methods;
+		MethodList methods;
+
+		inline MethodList::iterator begin()
+		{
+			return methods.begin();
+		}
+
+		inline MethodList::const_iterator begin() const
+		{
+			return methods.begin();
+		}
+
+		inline MethodList::iterator end()
+		{
+			return methods.end();
+		}
+
+		inline MethodList::const_iterator end() const
+		{
+			return methods.end();
+		}
 
 		/*
 		 * Returns the methods marked as OpenCL kernels
