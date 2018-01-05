@@ -551,14 +551,14 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case SpvOpTypeVector:
     {
         DataType type = typeMappings.at(getWord(parsed_instruction, 2));
-        type.num = getWord(parsed_instruction, 3);
+        type.num = static_cast<unsigned char>(getWord(parsed_instruction, 3));
         typeMappings[getWord(parsed_instruction, 1)] = type;
         return SPV_SUCCESS;
     }
     case SpvOpTypeImage:
     {
         ImageType* image = new ImageType();
-        image->dimensions = static_cast<uint8_t>(getWord(parsed_instruction, 3)) + 1;
+        image->dimensions = static_cast<uint8_t>(getWord(parsed_instruction, 3) + 1);
         image->isImageArray = getWord(parsed_instruction, 5);
         if(image->dimensions == 6 /* buffered */)
         {
@@ -593,7 +593,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     {
         const DataType elementType = typeMappings.at(getWord(parsed_instruction, 2));
         DataType arrayType((elementType.to_string() + "[") + std::to_string(constantMappings.at(getWord(parsed_instruction, 3)).literal.integer) + "]");
-        arrayType.complexType.reset(new ArrayType(elementType, constantMappings.at(getWord(parsed_instruction, 3)).literal.integer));
+        arrayType.complexType.reset(new ArrayType(elementType, static_cast<unsigned>(constantMappings.at(getWord(parsed_instruction, 3)).literal.integer)));
         typeMappings[getWord(parsed_instruction, 1)] = arrayType;
         return SPV_SUCCESS;
     }
@@ -874,7 +874,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     	// -> decorations are always forward references
 		// -> can be applied to instruction/parameter/type on parsing it
     	//In this version, the decoration operands are not literals, but specified by their IDs
-    	return parseDecoration(parsed_instruction, parsed_instruction->num_words > 3 ? constantMappings.at(getWord(parsed_instruction, 3)).getLiteralValue()->integer : UNDEFINED_LITERAL);
+    	return parseDecoration(parsed_instruction, parsed_instruction->num_words > 3 ? static_cast<uint32_t>(constantMappings.at(getWord(parsed_instruction, 3)).getLiteralValue()->integer) : UNDEFINED_LITERAL);
     case SpvOpMemberDecorate:
         return UNSUPPORTED_INSTRUCTION("OpMemberDecorate");
     case SpvOpDecorationGroup:
@@ -1477,10 +1477,10 @@ std::pair<spv_result_t, Optional<Value>> SPIRVParser::calculateConstantOperation
 	spv_parsed_instruction_t dummyInstruction;
 
 	dummyInstruction.words = dummyWords;
-	dummyInstruction.num_words = instruction->num_words - 1;
+	dummyInstruction.num_words = static_cast<uint16_t>(instruction->num_words - 1);
 	dummyInstruction.ext_inst_type = SPV_EXT_INST_TYPE_NONE;
 	dummyInstruction.num_operands = 0;
-	dummyInstruction.opcode = getWord(instruction, 3);
+	dummyInstruction.opcode = static_cast<uint16_t>(getWord(instruction, 3));
 	dummyInstruction.operands = NULL;
 	dummyInstruction.result_id = instruction->result_id;
 	dummyInstruction.type_id = instruction->type_id;

@@ -98,7 +98,7 @@ static void extractKernelMetadata(Method& kernel, const llvm::Function& func, co
 								if(operand->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind)
 								{
 									const llvm::ConstantAsMetadata* constant = llvm::cast<const llvm::ConstantAsMetadata>(operand);
-									kernel.parameters.at(i - 1).type.getPointerType().value()->addressSpace = toAddressSpace(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getSExtValue());
+									kernel.parameters.at(i - 1).type.getPointerType().value()->addressSpace = toAddressSpace(static_cast<int>(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getSExtValue()));
 								}
 								else
 									throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
@@ -357,7 +357,7 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
 	if(type->isArrayTy())
 	{
 		const DataType elementType = toDataType(type->getArrayElementType());
-		std::shared_ptr<ComplexType> c(new ArrayType(elementType, type->getArrayNumElements()));
+		std::shared_ptr<ComplexType> c(new ArrayType(elementType, static_cast<unsigned>(type->getArrayNumElements())));
 		return addToMap(DataType((elementType.to_string() + "[") + std::to_string(type->getArrayNumElements()) +"]", 1, c), type, typesMap);
 	}
 	if(type->isPointerTy())
@@ -439,9 +439,7 @@ static intermediate::InstructionDecorations toInstructionDecorations(const llvm:
 	if(llvm::isa<llvm::FPMathOperator>(&inst) && inst.hasAllowReciprocal())
 		deco = add_flag(deco, intermediate::InstructionDecorations::ALLOW_RECIP);
 	if(llvm::isa<llvm::FPMathOperator>(&inst) && inst.hasUnsafeAlgebra())
-		//XXX correct?
 		deco = add_flag(deco, intermediate::InstructionDecorations::FAST_MATH);
-
 	return deco;
 }
 

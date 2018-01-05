@@ -282,10 +282,10 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
 	//1. Update DMA setup to the number of rows written
 	{
 		VPWSetupWrapper dmaSetupValue(group.dmaSetups.at(0).get<LoadImmediate>());
-		dmaSetupValue.dmaSetup.setUnits(group.addressWrites.size());
+		dmaSetupValue.dmaSetup.setUnits(static_cast<uint8_t>(group.addressWrites.size()));
 	}
 	std::size_t numRemoved = 0;
-	vpm.updateScratchSize(group.addressWrites.size() * group.groupType.getElementType().getPhysicalWidth());
+	vpm.updateScratchSize(static_cast<unsigned>(group.addressWrites.size() * group.groupType.getElementType().getPhysicalWidth()));
 
 	//2. Remove all but the first generic and DMA setups
 	for(std::size_t i = 1; i < group.genericSetups.size(); ++i)
@@ -344,7 +344,7 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
 	{
 		VPRSetupWrapper dmaSetupValue(group.dmaSetups.at(0).get<LoadImmediate>());
 		dmaSetupValue.dmaSetup.setNumberRows(group.genericSetups.size() % 16);
-		vpm.updateScratchSize(group.genericSetups.size() * group.groupType.getElementType().getPhysicalWidth());
+		vpm.updateScratchSize(static_cast<unsigned>(group.genericSetups.size() * group.groupType.getElementType().getPhysicalWidth()));
 	}
 	std::size_t numRemoved = 0;
 
@@ -530,7 +530,7 @@ void optimizations::spillLocals(const Module& module, Method& method, const Conf
 
 static InstructionWalker accessStackAllocations(const Module& module, Method& method, InstructionWalker it)
 {
-	const unsigned int stackBaseOffset = method.getStackBaseOffset();
+	const std::size_t stackBaseOffset = method.getStackBaseOffset();
 	const std::size_t maximumStackSize = method.calculateStackSize();
 
 	for(std::size_t i = 0; i < it->getArguments().size(); ++i)

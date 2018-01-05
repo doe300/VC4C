@@ -122,6 +122,8 @@ struct LoopControl
 				return OP_SUB;
 			case StepKind::MUL_CONSTANT:
 				return OP_MUL24;
+			default:
+				throw CompilationError(CompilationStep::OPTIMIZER, "Operation for this step-kind is not yet mapped!");
 		}
 		if(!iterationStep.ifPresent([](const InstructionWalker& it) -> bool {return it.has<const intermediate::Operation>();}))
 			return OP_NOP;
@@ -508,7 +510,7 @@ static void vectorizeInstruction(InstructionWalker it, FastSet<intermediate::Int
 		else if(arg.hasType(ValueType::REGISTER))
 		{
 			//TODO correct?? This is at least required for reading from TMU
-			vectorWidth = vectorizationFactor;
+			vectorWidth = static_cast<unsigned char>(vectorizationFactor);
 		}
 	}
 
@@ -587,7 +589,7 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
 			if(vpwSetup.isDMASetup() && vpmWrite && has_flag((*vpmWrite)->decoration, intermediate::InstructionDecorations::AUTO_VECTORIZED))
 			{
 				//Since this is only true for values actually vectorized, the corresponding VPM-write is checked
-				vpwSetup.dmaSetup.setDepth(vpwSetup.dmaSetup.getDepth() * loopControl.vectorizationFactor);
+				vpwSetup.dmaSetup.setDepth(static_cast<uint8_t>(vpwSetup.dmaSetup.getDepth() * loopControl.vectorizationFactor));
 				++numVectorized;
 				it->setDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
 			}
@@ -638,7 +640,7 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
 			{
 				Value offset = stepOp->getSecondArg().value();
 				if(offset.getLiteralValue())
-					stepOp->setArgument(1, Value(Literal(offset.getLiteralValue()->integer * loopControl.vectorizationFactor), offset.type.toVectorType(offset.type.num * loopControl.vectorizationFactor)));
+					stepOp->setArgument(1, Value(Literal(offset.getLiteralValue()->integer * loopControl.vectorizationFactor), offset.type.toVectorType(static_cast<unsigned char>(offset.type.num * loopControl.vectorizationFactor))));
 				else
 					throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled iteration step", stepOp->to_string());
 			}
@@ -646,7 +648,7 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
 			{
 				Value offset = stepOp->getFirstArg();
 				if(offset.getLiteralValue())
-					stepOp->setArgument(0, Value(Literal(offset.getLiteralValue()->integer * loopControl.vectorizationFactor), offset.type.toVectorType(offset.type.num * loopControl.vectorizationFactor)));
+					stepOp->setArgument(0, Value(Literal(offset.getLiteralValue()->integer * loopControl.vectorizationFactor), offset.type.toVectorType(static_cast<unsigned char>(offset.type.num * loopControl.vectorizationFactor))));
 				else
 					throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled iteration step", stepOp->to_string());
 			}
@@ -670,7 +672,7 @@ static void vectorize(ControlFlowLoop& loop, LoopControl& loopControl, const Dat
 {
 	FastSet<intermediate::IntermediateInstruction*> openInstructions;
 
-	const_cast<DataType&>(loopControl.iterationVariable->type).num *= loopControl.vectorizationFactor;
+	const_cast<DataType&>(loopControl.iterationVariable->type).num *= static_cast<unsigned char>(loopControl.vectorizationFactor);
 	scheduleForVectorization(loopControl.iterationVariable, openInstructions, loop);
 	std::size_t numVectorized = 0;
 

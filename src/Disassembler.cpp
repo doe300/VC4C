@@ -16,13 +16,13 @@
 
 using namespace vc4c;
 
-static std::string readString(std::istream& binary, uint16_t stringLength)
+static std::string readString(std::istream& binary, uint64_t stringLength)
 {
 	std::array<char, 1024> buffer;
 
 	binary.read(buffer.data(), stringLength);
 	const std::string name(buffer.data(), stringLength);
-	uint16_t numPaddingBytes = Byte(stringLength).getPaddingTo(sizeof(uint64_t));
+	uint64_t numPaddingBytes = Byte(stringLength).getPaddingTo(sizeof(uint64_t));
 	//skip padding after kernel name
 	binary.read(buffer.data(), numPaddingBytes);
 
@@ -71,7 +71,7 @@ static void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo,
 		tmp.resize(moduleInfo.getGlobalDataSize().getValue());
 		binary.read(reinterpret_cast<char*>(tmp.data()), moduleInfo.getGlobalDataSize().toBytes().getValue());
 
-		std::shared_ptr<ComplexType> elementType(new ArrayType(TYPE_INT64, moduleInfo.getGlobalDataSize().getValue()));
+		std::shared_ptr<ComplexType> elementType(new ArrayType(TYPE_INT64, static_cast<unsigned>(moduleInfo.getGlobalDataSize().getValue())));
 		const DataType type("i64[]", 1, elementType);
 		globals.emplace_back("globalData", type.toPointerType(), Value(ContainerValue(), type));
 

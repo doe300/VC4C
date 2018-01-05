@@ -330,7 +330,7 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 			//according to SPIR-V 1.2 specification, the type doesn't change if the first index is the "element":
 			//"The type of Base after being dereferenced with Element is still the same as the original type of Base."
 			if(!firstIndexIsElement || &index != &indices.front())
-				subContainerType = subContainerType.getElementType().getElementType(index.hasType(ValueType::LITERAL) ? index.literal.integer : ANY_ELEMENT).toPointerType();
+				subContainerType = subContainerType.getElementType().getElementType(index.hasType(ValueType::LITERAL) ? static_cast<int>(index.literal.integer) : ANY_ELEMENT).toPointerType();
 		}
 		else if(subContainerType.getStructType())
 		{
@@ -338,8 +338,8 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 			if(!index.hasType(ValueType::LITERAL))
 				throw CompilationError(CompilationStep::LLVM_2_IR, "Can't access struct-element with non-literal index", index.to_string());
 
-			subOffset = Value(Literal(static_cast<uint64_t>(subContainerType.getStructType().value()->getStructSize(index.literal.integer))), TYPE_INT32);
-			subContainerType = subContainerType.getElementType(index.literal.integer);
+			subOffset = Value(Literal(static_cast<uint64_t>(subContainerType.getStructType().value()->getStructSize(static_cast<int>(index.literal.integer)))), TYPE_INT32);
+			subContainerType = subContainerType.getElementType(static_cast<int>(index.literal.integer));
 		}
 		else
 			throw CompilationError(CompilationStep::LLVM_2_IR, "Invalid container-type to retrieve element via index", subContainerType.to_string());
@@ -376,7 +376,7 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 	 */
 	const Value index = indices.size() == 0 ? INT_ZERO : indices[0];
 	//the index referenced, for getting the correct type, e.g. for structs
-	const int refIndex = index.hasType(ValueType::LITERAL) ? index.literal.integer : ANY_ELEMENT;
+	const int refIndex = index.hasType(ValueType::LITERAL) ? static_cast<int>(index.literal.integer) : ANY_ELEMENT;
 	const_cast<std::pair<Local*, int>&>(dest.local->reference) = std::make_pair(container.local, refIndex);
 
 	if(dest.type != subContainerType)

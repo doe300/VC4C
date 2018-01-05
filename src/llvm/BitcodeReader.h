@@ -41,7 +41,7 @@ namespace vc4c
 			explicit BitcodeReader(std::istream& stream, SourceType sourceType);
 			~BitcodeReader() override = default;
 
-			void parse(Module& module);
+			void parse(Module& module) override;
 		private:
 			//"the lifetime of the LLVMContext needs to outlast the module"
 			llvm::LLVMContext context;

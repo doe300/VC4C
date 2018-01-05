@@ -9,6 +9,8 @@
 #ifndef C_INTERFACE_H
 #define C_INTERFACE_H
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -49,7 +51,7 @@ extern "C"
 
     int convert(const storage* in, storage* out, const configuration config, const char* options);
 
-    typedef void(*CompilationErrorHandler)(const char* message, const unsigned length, void* userData);
+    typedef void(*CompilationErrorHandler)(const char* message, const size_t length, void* userData);
     void setErrorHandler(CompilationErrorHandler errorHandler, void* userData);
     
     #define SOURCE_TYPE_UNKNOWN 0

@@ -404,7 +404,7 @@ SmallImmediate SmallImmediate::fromRotationOffset(unsigned char offset)
 	if(offset == 0 || offset > 15)
 		//Offset of 0 would result in the use of r5 register
 		throw CompilationError(CompilationStep::GENERAL, "Invalid vector rotation offset", std::to_string(static_cast<int>(offset)));
-    return static_cast<SmallImmediate>(offset + VECTOR_ROTATE_R5);
+    return static_cast<SmallImmediate>(static_cast<unsigned char>(offset + VECTOR_ROTATE_R5));
 }
 
 bool ContainerValue::isAllSame(const Optional<Literal>& value) const
@@ -558,7 +558,7 @@ bool Value::hasLiteral(const Literal& lit) const
 {
 	if(hasType(ValueType::SMALL_IMMEDIATE))
 		return (immediate.getIntegerValue().is(lit.integer)) ||
-				(immediate.getFloatingValue().is(lit.real()));
+				(immediate.getFloatingValue().is(static_cast<float>(lit.real())));
     return hasType(ValueType::LITERAL) && this->literal == lit;
 }
 
@@ -566,7 +566,7 @@ bool Value::hasImmediate(const SmallImmediate& immediate) const
 {
 	if(hasType(ValueType::LITERAL))
 		return (immediate.getIntegerValue().is(literal.integer)) ||
-				(immediate.getFloatingValue().is(literal.real()));
+				(immediate.getFloatingValue().is(static_cast<float>(literal.real())));
 	return hasType(ValueType::SMALL_IMMEDIATE) && this->immediate == immediate;
 }
 

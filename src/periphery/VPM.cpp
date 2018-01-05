@@ -121,7 +121,7 @@ static uint8_t calculateAddress(const DataType& type, unsigned byteOffset)
 		throw CompilationError(CompilationStep::GENERAL, "Invalid alignment in VPM for type", type.to_string());
 
 	//TODO correct?? needs testing!
-	uint8_t yCoord = byteOffset / 64;
+	uint8_t yCoord = static_cast<uint8_t>(byteOffset / 64);
 	uint8_t remainder = byteOffset % 64;
 	if(type.getScalarBitCount() == 32)
 		//"ADDR[5:0] = Y[5:0]"
@@ -206,10 +206,10 @@ InstructionWalker VPM::insertReadRAM(InstructionWalker it, const Value& memoryAd
 	//initialize VPM DMA for reading from host
 	const int64_t dmaMode = getVPMDMAMode(type);
 	VPRSetup dmaSetup(VPRDMASetup(dmaMode, type.getVectorWidth(true) % 16 /* 0 => 16 */, 1 % 16 /* 0 => 16 */));
-	dmaSetup.dmaSetup.setAddress(calculateOffset(area));
+	dmaSetup.dmaSetup.setAddress(static_cast<uint16_t>(calculateOffset(area)));
 	it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<int64_t>(dmaSetup))));
 	it.nextInBlock();
-	const VPRSetup strideSetup(VPRStrideSetup(type.getPhysicalWidth()));
+	const VPRSetup strideSetup(VPRStrideSetup(static_cast<uint16_t>(type.getPhysicalWidth())));
 	it.emplace( new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<int64_t>(strideSetup))));
 	it.nextInBlock();
 
@@ -246,7 +246,7 @@ InstructionWalker VPM::insertWriteRAM(InstructionWalker it, const Value& memoryA
 	//initialize VPM DMA for writing to host
 	const int64_t dmaMode = getVPMDMAMode(type);
 	VPWSetup dmaSetup(VPWDMASetup(dmaMode, type.getVectorWidth(true), 1 % 128 /* 0 => 128 */));
-	dmaSetup.dmaSetup.setVPMBase(calculateOffset(area));
+	dmaSetup.dmaSetup.setVPMBase(static_cast<uint16_t>(calculateOffset(area)));
 	it.emplace( new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<int64_t>(dmaSetup))));
 	it.nextInBlock();
 	//set stride to zero

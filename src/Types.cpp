@@ -250,7 +250,7 @@ unsigned int DataType::getPhysicalWidth() const
 	return getVectorWidth(true) * getScalarBitCount() / 8;
 }
 
-unsigned int DataType::getVectorWidth(bool physicalWidth) const
+unsigned char DataType::getVectorWidth(bool physicalWidth) const
 {
 	if(complexType && num != 1)
 		throw CompilationError(CompilationStep::GENERAL, "Can't have vectors of complex types", to_string());

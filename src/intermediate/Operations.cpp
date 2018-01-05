@@ -408,7 +408,7 @@ qpu_asm::Instruction* VectorRotation::convertToAsm(const FastMap<const Local*, R
     const WriteSwap swap = writeSwap ? WriteSwap::SWAP : WriteSwap::DONT_SWAP;
 
     if (getOffset().hasType(ValueType::LITERAL)) {
-        SmallImmediate imm = static_cast<SmallImmediate> (VECTOR_ROTATE_R5 + static_cast<unsigned>(rotationOffset.second.value()));
+        SmallImmediate imm(VECTOR_ROTATE_R5 + static_cast<unsigned char>(rotationOffset.second.value()));
         return new qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap,
                                   REG_NOP.num, outReg.num, OP_V8MIN, OP_NOP,
                                   REG_NOP.num, imm, MUTEX_NONE, MUTEX_NONE, inMux, inMux);

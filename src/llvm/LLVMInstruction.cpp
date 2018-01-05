@@ -159,7 +159,7 @@ bool CallSite::mapInstruction(Method& method) const
     	//FIXME for now skip unsupported case, since errors here seem to crash the test-runner, but errors later on dont??
     	//@llvm.memcpy.p0i8.p0i8.i32(i8* <dest>, i8* <src>, i32 <len>, i32 <align>, i1 <isvolatile>)
     	logging::debug() << "Intrinsifying llvm.memcpy function-call" << logging::endl;
-    	method.vpm->insertCopyRAM(method, method.appendToEnd(), arguments.at(0), arguments.at(1), arguments.at(2).literal.integer);
+    	method.vpm->insertCopyRAM(method, method.appendToEnd(), arguments.at(0), arguments.at(1), static_cast<unsigned>(arguments.at(2).literal.integer));
     	return true;
     }
     if(methodName.find("llvm.memset") == 0 && arguments.at(2).hasType(ValueType::LITERAL))
@@ -173,7 +173,7 @@ bool CallSite::mapInstruction(Method& method) const
 		method.appendToEnd(new intermediate::MutexLock(intermediate::MutexAccess::LOCK));
 		//TODO could be optimized, write multiple bytes at once
 		method.vpm->insertWriteVPM(method.appendToEnd(), fillByte, nullptr, false);
-		method.vpm->insertFillRAM(method, method.appendToEnd(), memAddr, TYPE_INT8, numBytes.literal.integer, nullptr, false);
+		method.vpm->insertFillRAM(method, method.appendToEnd(), memAddr, TYPE_INT8, static_cast<unsigned>(numBytes.literal.integer), nullptr, false);
 		method.appendToEnd( new intermediate::MutexLock(intermediate::MutexAccess::RELEASE));
 		//FIXME correctly handling this case (by returning true) throws errors in some optmizataion
 		//maybe combination of VPM access cannot handle this case correctly??

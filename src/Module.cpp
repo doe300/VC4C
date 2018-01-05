@@ -558,7 +558,7 @@ std::size_t Method::calculateStackSize() const
 
 std::size_t Method::getStackBaseOffset() const
 {
-	unsigned baseOffset = module.getGlobalDataOffset(nullptr).value();
+	std::size_t baseOffset = module.getGlobalDataOffset(nullptr).value();
 
 	std::size_t maxAlignment = 1;
 	if(!stackAllocations.empty())

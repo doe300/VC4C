@@ -161,7 +161,7 @@ const Token Scanner::readToken()
             auto d = input.peek();
             if (std::isdigit(d)) {
                 //start of number
-                input.putback(c);
+                input.putback(static_cast<char>(c));
                 return readNumber();
             }
             else if(d == c)     //++ or --

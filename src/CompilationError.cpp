@@ -73,7 +73,9 @@ CompilationError::~CompilationError()
 //adapted from here: https://stackoverflow.com/a/2526298/8720655
 static void demangleAndPrint(char* line, int i)
 {
-	char *mangled_name = 0, *offset_begin = 0, *offset_end = 0;
+	char* mangled_name = nullptr;
+	char* offset_begin = nullptr;
+	char* offset_end = nullptr;
 
 	// find parentheses and +address offset surrounding mangled name
 	for (char *p = line; *p != '\0'; ++p)
@@ -102,7 +104,7 @@ static void demangleAndPrint(char* line, int i)
 		*offset_end++ = '\0';
 
 		int status;
-		char * real_name = abi::__cxa_demangle(mangled_name, 0, 0, &status);
+		char * real_name = abi::__cxa_demangle(mangled_name, nullptr, nullptr, &status);
 
 		// if demangling is successful, output the demangled function name
 		if (status == 0)

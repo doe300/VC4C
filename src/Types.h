@@ -149,7 +149,7 @@ namespace vc4c
 		 *
 		 * NOTE: as per OpenCL 1.2 standard, the physical-width of a 3-element vector equals the physical/logical-width of a 4-element vector with same scalar type.
 		 */
-		unsigned int getVectorWidth(bool physicalWidth = false) const;
+		unsigned char getVectorWidth(bool physicalWidth = false) const;
 	};
 
 	/*

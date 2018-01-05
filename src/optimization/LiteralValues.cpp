@@ -40,7 +40,7 @@ static InstructionWalker copyVector(Method& method, InstructionWalker it, const 
         throw CompilationError(CompilationStep::OPTIMIZER, "Input vector has invalid type", in.type.to_string());
     }
     
-    for(std::size_t i = 0; i < in.type.getVectorWidth(); ++i)
+    for(uint8_t i = 0; i < in.type.getVectorWidth(); ++i)
     {
     	//copy first element without test for flags, so the register allocator finds an unconditional write of the container
         //1) set flags for element i

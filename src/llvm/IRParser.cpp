@@ -389,7 +389,7 @@ static std::vector<Value> parseStringConstant(const std::string& constant, const
 			// "\XY" is a hexadecimal representation of a character
 			++index;
 			std::string tmp(constant.substr(index, 2));
-			unsigned char c = strtoul(tmp.data(), nullptr, 0x10);
+			auto c = strtoul(tmp.data(), nullptr, 0x10);
 			elements.emplace_back(Literal(static_cast<int64_t>(c)), TYPE_INT8);
 			index += 2;
 		}
@@ -775,7 +775,7 @@ static std::vector<DataType> getElementTypes(const std::vector<Value>& indices, 
 			//This branch is e.g. used to get the pointer for lifetime-start instructions on vectors
 			//Since the lifetime-start instruction always takes an i8*, for vectors of i8 elements, the pointer of the first element is taken
 			//XXX not sure, if this is correct!
-			elementTypes.push_back(subContainerType.getElementType(curIndex).toPointerType());
+			elementTypes.push_back(subContainerType.getElementType(static_cast<int>(curIndex)).toPointerType());
 		}
 		else
 			throw CompilationError(CompilationStep::LLVM_2_IR, "Cannot access index of type", subContainerType.to_string());
@@ -1446,7 +1446,7 @@ void IRParser::parseSwitch(LLVMMethod& method, FastModificationList<std::unique_
         const std::string matchLabel(scanner.pop().getText().value());
 
         // "[...] an array of pairs of comparison value constants and ‘label‘s"
-        cases[matchVal.literal.integer] = matchLabel;
+        cases[static_cast<int>(matchVal.literal.integer)] = matchLabel;
         if(scanner.peek().isEnd())
         {
         	//skip new-line, if any

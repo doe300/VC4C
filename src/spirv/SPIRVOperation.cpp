@@ -456,7 +456,7 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
         		logging::debug() << "Generating copying of " << size.to_string() << " bytes from " << source.to_string() << " into " << dest.to_string() << logging::endl;
         		if(size.hasType(ValueType::LITERAL))
         		{
-        			method.method->vpm->insertCopyRAM(*method.method, method.method->appendToEnd(), dest, source, size.literal.integer);
+        			method.method->vpm->insertCopyRAM(*method.method, method.method->appendToEnd(), dest, source, static_cast<unsigned>(size.literal.integer));
         		}
         		else
         			//TODO in any case, loop over copies, up to the size specified
@@ -635,8 +635,8 @@ Optional<Value> SPIRVIndexOf::precalculate(const TypeMapping& types, const Const
 			if(!index.hasType(ValueType::LITERAL))
 				throw CompilationError(CompilationStep::LLVM_2_IR, "Can't access struct-element with non-literal index", index.to_string());
 
-			subOffset = Value(Literal(static_cast<uint64_t>(container.type.getStructType().value()->getStructSize(index.literal.integer))), TYPE_INT32);
-			subContainerType = subContainerType.getElementType(index.literal.integer);
+			subOffset = Value(Literal(static_cast<uint64_t>(container.type.getStructType().value()->getStructSize(static_cast<int>(index.literal.integer)))), TYPE_INT32);
+			subContainerType = subContainerType.getElementType(static_cast<int>(index.literal.integer));
 		}
 		else
 			throw CompilationError(CompilationStep::LLVM_2_IR, "Invalid container-type to retrieve element via index", subContainerType.to_string());
