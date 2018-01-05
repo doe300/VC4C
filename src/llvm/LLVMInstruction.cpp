@@ -8,6 +8,7 @@
 
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/Helper.h"
+#include "../intermediate/TypeConversions.h"
 #include "../periphery/TMU.h"
 #include "../periphery/VPM.h"
 #include "config.h"
@@ -203,7 +204,7 @@ const std::string& CallSite::getMethodName() const
     return methodName;
 }
 
-Copy::Copy(const Value& dest, const Value& orig, const bool isLoadStore, const bool isRead) : dest(dest), orig(orig), isLoadStore(isLoadStore), isRead(isRead)
+Copy::Copy(const Value& dest, const Value& orig, const bool isLoadStore, const bool isRead, bool isBitcast) : dest(dest), orig(orig), isLoadStore(isLoadStore), isRead(isRead), isBitcast(isBitcast)
 {
 
 }
@@ -226,7 +227,12 @@ std::vector<const Local*> Copy::getAllLocals() const
 
 bool Copy::mapInstruction(Method& method) const
 {
-    if(isLoadStore)
+	if(isBitcast)
+	{
+		logging::debug() << "Generating bit-cast from " << orig.to_string() << " into " << dest.to_string() << logging::endl;
+		intermediate::insertBitcast(method.appendToEnd(), method, orig, dest);
+	}
+	else if(isLoadStore)
     {
         if(isRead)
         {

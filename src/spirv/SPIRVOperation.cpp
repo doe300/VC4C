@@ -330,18 +330,7 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
     switch(type)
     {
     	case ConversionType::BITCAST:
-    		if(source.type.num != dest.type.num)
-    		{
-    			//e.g. int2 -> ushort4, char16 -> uint4
-    			//TODO could make use of vector-shuffle instructions. Or are these the same instructions as ladoing non 32-bit values from TMU?
-    			throw CompilationError(CompilationStep::LLVM_2_IR, "Bit-casts across different vector-sizes are not yet supported!");
-    		}
-    		//bit-casts with types of same vector-size (and therefore same element-size) are simple moves
-    		method.method->appendToEnd((new intermediate::MoveOperation(dest, source))->setDecorations(decorations));
-
-    		if(dest.hasType(ValueType::LOCAL) && source.hasType(ValueType::LOCAL) && dest.type.isPointerType() && source.type.isPointerType())
-    			//this helps recognizing lifetime-starts of bit-cast stack-allocations
-    			const_cast<std::pair<Local*, int>&>(dest.local->reference) = std::make_pair(source.local, ANY_ELEMENT);
+    		intermediate::insertBitcast(method.method->appendToEnd(), *method.method.get(), source, dest, decorations);
     		break;
     	case ConversionType::FLOATING:
 			method.method->appendToEnd((new intermediate::Operation("fptrunc", dest, source))->setDecorations(decorations));

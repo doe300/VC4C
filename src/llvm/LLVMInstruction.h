@@ -77,7 +77,7 @@ namespace vc4c
 		class Copy: public LLVMInstruction
 		{
 		public:
-			Copy(const Value& dest, const Value& orig, bool isLoadStore = false, bool isRead = false);
+			Copy(const Value& dest, const Value& orig, bool isLoadStore = false, bool isRead = false, bool isBitcast = false);
 			~Copy() override = default;
 
 			const Local* getDeclaredLocal() const override;
@@ -89,6 +89,7 @@ namespace vc4c
 			const Value orig;
 			const bool isLoadStore;
 			const bool isRead;
+			const bool isBitcast;
 		};
 
 		class UnaryOperator: public LLVMInstruction

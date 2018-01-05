@@ -596,7 +596,21 @@ void BitcodeReader::parseInstruction(Module& module, Method& method, LLVMInstruc
 		case MemoryOps::Load:
 		{
 			const llvm::LoadInst* load = llvm::cast<const llvm::LoadInst>(&inst);
-			Value src = toValue(method, load->getPointerOperand());
+			Value src = UNDEFINED_VALUE;
+			if(load->getPointerOperand()->getValueID() == llvm::Constant::ConstantExprVal)
+			{
+				//the source is given as an in-line getelementptr instruction, insert as extra instruction calculating indices
+				llvm::ConstantExpr* constExpr = const_cast<llvm::ConstantExpr*>(llvm::cast<const llvm::ConstantExpr>(load->getPointerOperand()));
+				if(constExpr->getOpcode() != llvm::Instruction::MemoryOps::GetElementPtr)
+					throw CompilationError(CompilationStep::PARSER, "Invalid constant operation for load-instruction!");
+				llvm::GetElementPtrInst* indexOf = llvm::cast<llvm::GetElementPtrInst>(constExpr->getAsInstruction());
+				parseInstruction(module, method, instructions, *indexOf);
+				src = toValue(method, indexOf);
+				//required so LLVM can clean up the constant expression correctly
+				indexOf->dropAllReferences();
+			}
+			else
+				src = toValue(method, load->getPointerOperand());
 			if(load->isVolatile() && src.hasType(ValueType::LOCAL) && src.local->is<Parameter>())
 				src.local->as<Parameter>()->decorations = add_flag(src.local->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
 			instructions.emplace_back(new Copy(toValue(method, load), src, true, true));
@@ -606,7 +620,21 @@ void BitcodeReader::parseInstruction(Module& module, Method& method, LLVMInstruc
 		case MemoryOps::Store:
 		{
 			const llvm::StoreInst* store = llvm::cast<const llvm::StoreInst>(&inst);
-			Value dest = toValue(method, store->getPointerOperand());
+			Value dest = UNDEFINED_VALUE;
+			if(store->getPointerOperand()->getValueID() == llvm::Constant::ConstantExprVal)
+			{
+				//the destination is given as an in-line getelementptr instruction, insert as extra instruction
+				llvm::ConstantExpr* constExpr = const_cast<llvm::ConstantExpr*>(llvm::cast<const llvm::ConstantExpr>(store->getPointerOperand()));
+				if(constExpr->getOpcode() != llvm::Instruction::MemoryOps::GetElementPtr)
+					throw CompilationError(CompilationStep::PARSER, "Invalid constant operation for store-instruction!");
+				llvm::GetElementPtrInst* indexOf = llvm::cast<llvm::GetElementPtrInst>(constExpr->getAsInstruction());
+				parseInstruction(module, method, instructions, *indexOf);
+				dest = toValue(method, indexOf);
+				//required so LLVM can clean up the constant expression correctly
+				indexOf->dropAllReferences();
+			}
+			else
+				dest = toValue(method, store->getPointerOperand());
 			if(store->isVolatile() && dest.hasType(ValueType::LOCAL) && dest.local->is<Parameter>())
 				dest.local->as<Parameter>()->decorations = add_flag(dest.local->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
 			instructions.emplace_back(new Copy(dest, toValue(method, store->getValueOperand()), true, false));
@@ -616,11 +644,7 @@ void BitcodeReader::parseInstruction(Module& module, Method& method, LLVMInstruc
 		case CastOps::AddrSpaceCast: //fall-through
 		case CastOps::BitCast:
 		{
-			if(inst.getOperand(0)->getType()->getScalarSizeInBits() != inst.getType()->getScalarSizeInBits())
-			{
-				throw CompilationError(CompilationStep::PARSER, "Bit-casts over different type-sizes are not yet implemented!");
-			}
-			instructions.emplace_back(new Copy(toValue(method, &inst), toValue(method, inst.getOperand(0))));
+			instructions.emplace_back(new Copy(toValue(method, &inst), toValue(method, inst.getOperand(0)), false, false, true));
 			instructions.back()->setDecorations(deco);
 			break;
 		}
@@ -897,19 +921,6 @@ Value BitcodeReader::precalculateConstantExpression(const Module& module, const 
 		}
 		result.type = toDataType(expr->getType());
 		return result;
-	}
-	if(expr->getOpcode() == llvm::Instruction::MemoryOps::GetElementPtr)
-	{
-		llvm::GetElementPtrInst* indexOf = llvm::cast<llvm::GetElementPtrInst>(const_cast<llvm::ConstantExpr*>(expr)->getAsInstruction());
-		if(indexOf->hasAllZeroIndices())
-		{
-			//TODO this is wrong, needs to make value referring to other value
-			Value val = toConstant(module, indexOf->getPointerOperand());
-			val.type = toDataType(indexOf->getType());
-			indexOf->dropAllReferences();
-			return val;
-		}
-		indexOf->dropAllReferences();
 	}
 	OpCode opCode = OpCode::findOpCode(expr->getOpcodeName());
 

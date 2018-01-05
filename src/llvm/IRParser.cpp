@@ -908,7 +908,7 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
 
         logging::debug() << "Making reference from bitcast from " << src.to_string() << " to " << dest.to_string() << logging::endl;
         //simply associate new and original
-        instructions.emplace_back(new Copy(dest, src));
+        instructions.emplace_back(new Copy(dest, src, false, false, true));
         return;
     }
     else if(nextToken.hasValue("ptrtoint") || nextToken.hasValue("inttoptr")) {
