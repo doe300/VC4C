@@ -9,6 +9,32 @@
 using namespace vc4c;
 using namespace vc4c::intermediate;
 
+InstructionWalker intermediate::insertBitcast(InstructionWalker it, Method& method, const Value& src, const Value& dest, const InstructionDecorations deco)
+{
+	if(src.type.num != dest.type.num)
+	{
+		//e.g. int2 -> ushort4, char16 -> uint4
+		/*
+		 * Need at least 4 variations:
+		 * - 1 element to 2 sub-elements (int2 -> short4, short8 -> char16)
+		 * - 1 element to 4 sub-elements (int -> char4, int4 -> char16)
+		 * - 2 sub-elements to 1 element (char4 -> short2, short8 -> int4)
+		 * - 4 sub-elements to 1 element (char4 -> int, char16 -> int4)
+		 */
+		//TODO could make use of vector-shuffle instructions. Or are these the same instructions as loading non 32-bit values from TMU?
+		throw CompilationError(CompilationStep::LLVM_2_IR, "Bit-casts across different vector-sizes are not yet supported!");
+	}
+	//bit-casts with types of same vector-size (and therefore same element-size) are simple moves
+	it.emplace((new intermediate::MoveOperation(dest, src))->setDecorations(deco));
+
+	//last step: map destination to source (if bit-cast of pointers)
+	if(dest.hasType(ValueType::LOCAL) && src.hasType(ValueType::LOCAL) && dest.type.isPointerType() && src.type.isPointerType())
+		//this helps recognizing lifetime-starts of bit-cast stack-allocations
+		const_cast<std::pair<Local*, int>&>(dest.local->reference) = std::make_pair(src.local, ANY_ELEMENT);
+	it.nextInBlock();
+	return it;
+}
+
 InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method& method, const Value& src, const Value& dest, bool allowLiteral, const ConditionCode conditional, const SetFlag setFlags)
 {
 	if(src.type.getScalarBitCount() == 32 && dest.type.getScalarBitCount() <= 32)

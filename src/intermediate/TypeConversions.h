@@ -13,6 +13,7 @@ namespace vc4c
 {
 	namespace intermediate
 	{
+		InstructionWalker insertBitcast(InstructionWalker it, Method& method, const Value& src, const Value& dest, const InstructionDecorations deco = InstructionDecorations::NONE);
 		InstructionWalker insertZeroExtension(InstructionWalker it, Method& method, const Value& src, const Value& dest, bool allowLiteral, ConditionCode conditional = COND_ALWAYS, SetFlag setFlags =
 				SetFlag::DONT_SET);
 		InstructionWalker insertSignExtension(InstructionWalker it, Method& method, const Value& src, const Value& dest, bool allowLiteral, ConditionCode conditional = COND_ALWAYS, SetFlag setFlags =
