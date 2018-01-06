@@ -754,11 +754,10 @@ void spirv2qasm::linkSPIRVModules(const std::vector<std::istream*>& inputModules
 	spvtools::LinkerOptions options;
 	options.SetCreateLibrary(false);
 
-	spvtools::Linker linker(SPV_ENV_OPENCL_2_1);
-	linker.SetMessageConsumer(consumeSPIRVMessage);
+	spvtools::Context spvContext(SPV_ENV_OPENCL_EMBEDDED_1_2);
 
 	std::vector<uint32_t> linkedModules;
-	spv_result_t result = linker.Link(binaries, linkedModules, options);
+	spv_result_t result = spvtools::Link(spvContext, binaries, &linkedModules, options);
 
 	if(result != SPV_SUCCESS)
 		throw CompilationError(CompilationStep::PARSER, getErrorMessage(result));
