@@ -260,7 +260,8 @@ void BitcodeReader::parse(Module& module)
 {
 	const llvm::Module::FunctionListType& functions = llvmModule->getFunctionList();
 
-	parseGlobalData(module);
+	//The global data is explicitly not read here, but on #toConstant() only resolving global data actually used
+
 	//parse functions
 	//Starting with kernel-functions, recursively parse all included functions (and only those)
 	for(const llvm::Function& func : functions)
@@ -369,15 +370,6 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
 	throw CompilationError(CompilationStep::PARSER, "Unknown LLVM type", std::to_string(type->getTypeID()));
 }
 
-void BitcodeReader::parseGlobalData(Module& module)
-{
-	for(const llvm::GlobalVariable& global : llvmModule->getGlobalList())
-	{
-		module.globalData.emplace_back(Global(("@" + global.getName()).str(), toDataType(global.getType()), global.hasInitializer() ? toConstant(module, global.getInitializer()) : UNDEFINED_VALUE));
-		logging::debug() << "Global read: " << module.globalData.back().to_string() << logging::endl;
-	}
-}
-
 static ParameterDecorations toParameterDecorations(const llvm::Argument& arg)
 {
 	ParameterDecorations deco = ParameterDecorations::NONE;
@@ -408,6 +400,8 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
 	{
 		method->parameters.emplace_back(Parameter((std::string("%") + arg.getName()).str(), toDataType(arg.getType()), toParameterDecorations(arg)));
 		logging::debug() << "Reading parameter " << method->parameters.back().to_string() << logging::endl;
+		if(method->parameters.back().type.getImageType())
+			intermediate::reserveImageConfiguration(module, method->parameters.back().createReference());
 	}
 
 	parseFunctionBody(module, *method, parsedFunctions.at(&func).second, func);
@@ -787,7 +781,7 @@ Value BitcodeReader::toValue(Method& method, const llvm::Value* val)
 	const DataType type = toDataType(val->getType());
 	if(llvm::dyn_cast<const llvm::Constant>(val) != nullptr)
 	{
-		return toConstant(method.module, val);
+		return toConstant(const_cast<Module&>(method.module), val);
 	}
 	//locals of any kind have no name (most of the time)
 	if(!val->getName().empty())
@@ -798,7 +792,7 @@ Value BitcodeReader::toValue(Method& method, const llvm::Value* val)
 	return loc->createReference();
 }
 
-Value BitcodeReader::toConstant(const Module& module, const llvm::Value* val)
+Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
 {
 	const DataType type = toDataType(val->getType());
 	if(llvm::dyn_cast<const llvm::ConstantInt>(val) != nullptr)
@@ -888,14 +882,15 @@ Value BitcodeReader::toConstant(const Module& module, const llvm::Value* val)
 	}
 	else if(llvm::dyn_cast<const llvm::GlobalVariable>(val) != nullptr)
 	{
-		for(const Global& global : module.globalData)
-		{
-			if(global.name == ("@" + val->getName()).str())
-			{
-				return global.createReference();
-			}
-		}
-		throw CompilationError(CompilationStep::PARSER, "Failed to find global data", ("@" + val->getName()).str());
+		const std::string name = ("@" + val->getName()).str();
+		auto globalIt = std::find_if(module.globalData.begin(), module.globalData.end(), [&name](const Global& global) -> bool { return global.name == name;});
+		if(globalIt != module.globalData.end())
+			return globalIt->createReference();
+
+		const llvm::GlobalVariable* global = llvm::cast<const llvm::GlobalVariable>(val);
+		module.globalData.emplace_back(Global(name, toDataType(global->getType()), global->hasInitializer() ? toConstant(module, global->getInitializer()) : UNDEFINED_VALUE, global->isConstant()));
+		logging::debug() << "Global read: " << module.globalData.back().to_string() << logging::endl;
+		return module.globalData.back().createReference();
 	}
 	else if(llvm::dyn_cast<const llvm::UndefValue>(val) != nullptr)
 	{
@@ -910,7 +905,7 @@ Value BitcodeReader::toConstant(const Module& module, const llvm::Value* val)
 	}
 }
 
-Value BitcodeReader::precalculateConstantExpression(const Module& module, const llvm::ConstantExpr* expr)
+Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::ConstantExpr* expr)
 {
 	if(expr->getOpcode() == llvm::Instruction::CastOps::BitCast || expr->getOpcode() == llvm::Instruction::CastOps::AddrSpaceCast)
 	{

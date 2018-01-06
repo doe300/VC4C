@@ -54,12 +54,11 @@ namespace vc4c
 			Method& parseFunction(Module& module, const llvm::Function& func);
 			void parseFunctionBody(Module& module, Method& method, LLVMInstructionList& instructions, const llvm::Function& func);
 			void parseInstruction(Module& module, Method& method, LLVMInstructionList& instructions, const llvm::Instruction& inst);
-			void parseGlobalData(Module& module);
 
 			DataType toDataType(const llvm::Type* type);
 			Value toValue(Method& method, const llvm::Value* val);
-			Value toConstant(const Module& module, const llvm::Value* val);
-			Value precalculateConstantExpression(const Module& module, const llvm::ConstantExpr* expr);
+			Value toConstant(Module& module, const llvm::Value* val);
+			Value precalculateConstantExpression(Module& module, const llvm::ConstantExpr* expr);
 		};
 #endif
 

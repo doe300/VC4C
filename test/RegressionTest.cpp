@@ -26,7 +26,7 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./example/fft2_2.cl", ""},
 		Entry{PASSED, FAST, "./example/fibonacci.cl", ""},
 		Entry{PENDING_LLVM, FAST, "./example/fibonacci.spt", ""},
-		Entry{PASSED, FAST, "./example/fibonacci_vector.ir", ""},
+		Entry{PENDING_BOTH, FAST, "./example/fibonacci_vector.ir", ""},
 		Entry{PASSED, FAST, "./example/hello_world.cl", ""},
 		Entry{PASSED, FAST, "./example/hello_world_vector.cl", ""},
 		Entry{PASSED, FAST, "./example/test.cl", ""},
