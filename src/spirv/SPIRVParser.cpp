@@ -150,6 +150,9 @@ void SPIRVParser::parse(Module& module)
                 param.parameterName = names.at(pair.first);
 
             m.second.method->parameters.emplace_back(std::move(param));
+
+            if(param.type.getImageType())
+            	intermediate::reserveImageConfiguration(module, param.createReference());
         }
     }
 
@@ -814,7 +817,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         else
         {
         	//OpVariables outside of any function are global data
-        	module->globalData.emplace_back(Global(name, type, val));
+        	module->globalData.emplace_back(Global(name, type, val, static_cast<SpvStorageClass>(getWord(parsed_instruction, 3)) == SpvStorageClassUniformConstant));
         	module->globalData.back().type.getPointerType().value()->alignment = alignment;
 			memoryAllocatedData.emplace(parsed_instruction->result_id, &module->globalData.back());
         }

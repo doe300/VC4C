@@ -150,14 +150,14 @@ bool Parameter::isOutputParameter() const
     return has_flag(decorations, ParameterDecorations::OUTPUT);
 }
 
-Global::Global(const std::string& name, const DataType& globalType, const Value& value) : Local(globalType, name), value(value)
+Global::Global(const std::string& name, const DataType& globalType, const Value& value, bool isConstant) : Local(globalType, name), value(value), isConstant(isConstant)
 {
 
 }
 
 std::string Global::to_string(bool withContent) const
 {
-	return (name + ": ") + value.to_string(false, withContent);
+	return (name + ": ") + value.to_string(false, withContent) + (isConstant ? " (const)" : "");
 }
 
 bool Global::residesInMemory() const

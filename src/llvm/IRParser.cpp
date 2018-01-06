@@ -102,7 +102,7 @@ Value IRParser::toValue(const Token& token, const DataType& type)
     		val.local = const_cast<Local*>(currentMethod->findOrCreateLocal(type, token.getText().value()));
     	else
     	{
-    		module->globalData.emplace_back(Global(token.getText().value(), type.toPointerType(), type));
+    		module->globalData.emplace_back(Global(token.getText().value(), type.toPointerType(), type, false));
     		val.local = &module->globalData.back();
     	}
     }
@@ -507,8 +507,11 @@ bool IRParser::parseGlobalData()
     skipToken(scanner, "unnamed_addr");
     skipToken(scanner, "local_unnamed_addr");
     readAddressSpace(scanner);
+    bool isConstant;
     while(scanner.peek().hasValue("global") || scanner.peek().hasValue("constant"))
     {
+    	if(scanner.peek().hasValue("constant"))
+    		isConstant = true;
     	scanner.pop();
     }
     Value val(UNDEFINED_VALUE);
@@ -529,7 +532,7 @@ bool IRParser::parseGlobalData()
 
     logging::debug() << "Reading global data '" << name << "' with " << val.to_string(false, true) << logging::endl;
     //store local + value
-    module->globalData.push_back(Global(name, val.type.toPointerType(), val));
+    module->globalData.push_back(Global(name, val.type.toPointerType(), val, isConstant));
     return true;
 }
 

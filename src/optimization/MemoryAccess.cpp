@@ -453,6 +453,8 @@ InstructionWalker optimizations::accessGlobalData(const Module& module, Method& 
 					it.emplace(new intermediate::Operation(OP_ADD, tmp, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference(), Value(Literal(static_cast<uint64_t>(globalOffset.value())), TYPE_INT32)));
 					it.nextInBlock();
 				}
+				//the address calculated points to the given global data
+				const_cast<std::pair<Local*, int>&>(tmp.local->reference) = std::make_pair(arg.local, 0);
 				it->setArgument(i, tmp);
 			}
 		}

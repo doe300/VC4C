@@ -73,7 +73,7 @@ static void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo,
 
 		std::shared_ptr<ComplexType> elementType(new ArrayType(TYPE_INT64, static_cast<unsigned>(moduleInfo.getGlobalDataSize().getValue())));
 		const DataType type("i64[]", 1, elementType);
-		globals.emplace_back("globalData", type.toPointerType(), Value(ContainerValue(), type));
+		globals.emplace_back("globalData", type.toPointerType(), Value(ContainerValue(), type), false);
 
 		auto& elements = globals.begin()->value.container.elements;
 		for(uint64_t t : tmp)

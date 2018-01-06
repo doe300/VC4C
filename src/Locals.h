@@ -308,7 +308,7 @@ namespace vc4c
 	 */
 	struct Global : public Local
 	{
-		Global(const std::string& name, const DataType& globalType, const Value& value);
+		Global(const std::string& name, const DataType& globalType, const Value& value, bool isConstant);
 		Global(Global&&) = default;
 		~Global() override = default;
 
@@ -323,6 +323,11 @@ namespace vc4c
 		 * The initial value, usually defaults to a zero-initializer
 		 */
 		Value value;
+
+		/*
+		 * Whether this global value is a constant
+		 */
+		const bool isConstant;
 	};
 
 	/*

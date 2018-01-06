@@ -28,13 +28,27 @@ const Value IMAGE_CONFIG_CHANNEL_OFFSET(Literal(4 * static_cast<uint64_t>(sizeof
 
 Global* intermediate::reserveImageConfiguration(Module& module, const Value& image)
 {
+	//TODO find a better/more central way to reserve space for image configurations (not in every front-end)
+	//XXX also make sure, a config for every image is only created once
 	if(!image.type.getImageType())
 		throw CompilationError(CompilationStep::GENERAL, "Can't reserve global data for image-configuration of non-image type", image.type.to_string());
 	if(!image.hasType(ValueType::LOCAL))
 		throw CompilationError(CompilationStep::GENERAL, "Cannot reserve global data for non-local image", image.to_string());
 	logging::debug() << "Reserving a buffer of " << IMAGE_CONFIG_NUM_UNIFORMS << " UNIFORMs for the image-configuration of " << image.to_string() << logging::endl;
-	auto it = module.globalData.emplace(module.globalData.end(), Global(ImageType::toImageConfigurationName(image.local->name), TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS).toPointerType(), Value(Literal(static_cast<int64_t>(0)), TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS))));
+	auto it = module.globalData.emplace(module.globalData.end(), Global(ImageType::toImageConfigurationName(image.local->name), TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS).toPointerType(), Value(Literal(static_cast<int64_t>(0)), TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS)), false));
 	return &(*it);
+}
+
+static InstructionWalker insertLoadImageConfig(InstructionWalker it, Method& method, const Value& image, const Value& dest, const Value& offset)
+{
+	const Global* imageConfig = method.findGlobal(ImageType::toImageConfigurationName(image.local->name));
+	if(imageConfig == nullptr)
+		throw CompilationError(CompilationStep::GENERAL, "Image-configuration is not yet reserved", image.to_string());
+	const Value addrTemp = method.addNewLocal(TYPE_INT32.toPointerType(), "%image_config");
+	it.emplace(new Operation(OP_ADD, addrTemp, imageConfig->createReference(), offset));
+	it.nextInBlock();
+	it = periphery::insertReadVectorFromTMU(method, it, dest, addrTemp);
+	return it;
 }
 
 InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Method& method)
@@ -57,19 +71,47 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
 			logging::debug() << "Intrinsifying getting filter-mode flag from sampler" << logging::endl;
 			it.reset(new Operation(OP_AND, callSite->getOutput().value(), callSite->getArgument(0).value(), Value(Literal(Sampler::MASK_FILTER_MODE), TYPE_INT8)));
 		}
+		else if(callSite->methodName.find("vc4cl_image_basic_setup") != std::string::npos)
+		{
+			logging::debug() << "Intrinsifying getting image basic setup: " << callSite->getArgument(0)->to_string() << logging::endl;
+			it = insertLoadImageConfig(it, method, callSite->getArgument(0).value() , callSite->getOutput().value(), IMAGE_CONFIG_BASE_OFFSET);
+			it.erase();
+			//to not skip next instruction
+			it.previousInBlock();
+		}
+		else if(callSite->methodName.find("vc4cl_image_access_setup") != std::string::npos)
+		{
+			logging::debug() << "Intrinsifying getting image access setup: " << callSite->getArgument(0)->to_string() << logging::endl;
+			it = insertLoadImageConfig(it, method, callSite->getArgument(0).value() , callSite->getOutput().value(), IMAGE_CONFIG_ACCESS_OFFSET);
+			it.erase();
+			//to not skip next instruction
+			it.previousInBlock();
+		}
+		else if(callSite->methodName.find("vc4cl_image_extended_setup") != std::string::npos)
+		{
+			logging::debug() << "Intrinsifying getting image extended setup: " << callSite->getArgument(0)->to_string() << logging::endl;
+			it = insertLoadImageConfig(it, method, callSite->getArgument(0).value() , callSite->getOutput().value(), IMAGE_CONFIG_CHILD_OFFSET_OFFSET);
+			it.erase();
+			//to not skip next instruction
+			it.previousInBlock();
+		}
+		else if(callSite->methodName.find("get_image_channel_data_type") != std::string::npos)
+		{
+            logging::debug() << "Generating query of image's channel data-type for image: " << callSite->getArgument(0)->to_string() << logging::endl;
+            it = insertQueryChannelDataType(it, method, callSite->getArgument(0).value(), callSite->getOutput().value());
+            it.erase();
+			//to not skip next instruction
+			it.previousInBlock();
+		}
+		else if(callSite->methodName.find("get_image_channel_order") != std::string::npos)
+		{
+			logging::debug() << "Generating query of image's channel order for image: " << callSite->getArgument(0)->to_string() << logging::endl;
+			it = insertQueryChannelOrder(it, method, callSite->getArgument(0).value(), callSite->getOutput().value());
+			it.erase();
+			//to not skip next instruction
+			it.previousInBlock();
+		}
 	}
-	return it;
-}
-
-static InstructionWalker insertLoadImageConfig(InstructionWalker it, Method& method, const Value& image, const Value& dest, const Value& offset)
-{
-	const Global* imageConfig = method.findGlobal(ImageType::toImageConfigurationName(image.local->name));
-	if(imageConfig == nullptr)
-		throw CompilationError(CompilationStep::GENERAL, "Image-configuration is not yet reserved!");
-	const Value addrTemp = method.addNewLocal(TYPE_INT32.toPointerType(), "%image_config");
-	it.emplace(new Operation(OP_ADD, addrTemp, imageConfig->createReference(), offset));
-	it.nextInBlock();
-	it = periphery::insertReadVectorFromTMU(method, it, dest, addrTemp);
 	return it;
 }
 
