@@ -52,6 +52,59 @@ bool vc4c::operator<(const CFGNode& one, const CFGNode& other)
 	return firstLabel > secondLabel;
 }
 
+const CFGNode* ControlFlowLoop::findPredecessor() const
+{
+	const CFGNode* predecessor = nullptr;
+	for(const CFGNode* node : *this)
+	{
+		node->forAllNeighbors([](const CFGRelation& rel) -> bool {return rel.isReverseRelation();}, [this,&predecessor](const CFGNode* neighbor, const CFGRelation& rel) -> void
+		{
+			if(std::find(begin(), end(), neighbor) == end())
+			{
+				//the relation is backwards and node is not within this loop -> predecessor
+				if(predecessor != nullptr)
+					throw CompilationError(CompilationStep::GENERAL, "Found multiple predecessors for CFG loop", neighbor->key->getLabel()->to_string());
+
+				logging::debug() << "Found predecessor for CFG loop: " << neighbor->key->getLabel()->to_string() << logging::endl;
+				predecessor = neighbor;
+			}
+		});
+	}
+	return predecessor;
+}
+
+const CFGNode* ControlFlowLoop::findSuccessor() const
+{
+	const CFGNode* successor = nullptr;
+	for(const CFGNode* node : *this)
+	{
+		node->forAllNeighbors([](const CFGRelation& rel) -> bool {return rel.isForwardRelation();}, [this,&successor](const CFGNode* neighbor, const CFGRelation& rel) -> void
+		{
+			if(std::find(begin(), end(), neighbor) == end())
+			{
+				//the relation is forward and node is not within this loop -> successor
+				if(successor != nullptr)
+					throw CompilationError(CompilationStep::GENERAL, "Found multiple successors for CFG loop", neighbor->key->getLabel()->to_string());
+
+				logging::debug() << "Found successor for CFG loop: " << neighbor->key->getLabel()->to_string() << logging::endl;
+				successor = neighbor;
+			}
+		});
+	}
+	return successor;
+}
+
+Optional<InstructionWalker> ControlFlowLoop::findInLoop(const intermediate::IntermediateInstruction* inst) const
+{
+	for(const CFGNode* node : *this)
+	{
+		auto it = const_cast<BasicBlock*>(node->key)->findWalkerForInstruction(inst, node->key->end());
+		if(it)
+			return it;
+	}
+	return {};
+}
+
 CFGNode& ControlFlowGraph::getStartOfControlFlow()
 {
 	return assertNode(&begin()->first->method.basicBlocks.front());
@@ -284,6 +337,7 @@ static void findDependencies(BasicBlock& bb, DataDependencyGraph& graph, Instruc
 	}
 }
 
+#ifdef DEBUG_MODE
 static std::string toEdgeLabel(const DataDependency& dependency)
 {
 	std::string label;
@@ -295,6 +349,7 @@ static std::string toEdgeLabel(const DataDependency& dependency)
 
 	return label.empty() ? "" : label.substr(1);
 }
+#endif
 
 DataDependencyGraph DataDependencyGraph::createDependencyGraph(Method& method)
 {

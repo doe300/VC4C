@@ -58,17 +58,6 @@ static FastSet<Local*> findLoopIterations(const ControlFlowLoop& loop, const Dat
 	return intersection;
 }
 
-static Optional<InstructionWalker> findInLoop(const intermediate::IntermediateInstruction* inst, const ControlFlowLoop& loop)
-{
-	for(const CFGNode* node : loop)
-	{
-		auto it = node->key->findWalkerForInstruction(inst, node->key->end());
-		if(it)
-			return it;
-	}
-	return Optional<InstructionWalker>(false, InstructionWalker());
-}
-
 enum class StepKind
 {
 	//step-kind is not known
@@ -191,7 +180,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 		for(const auto& pair : local->getUsers())
 		{
 			const intermediate::IntermediateInstruction* inst = dynamic_cast<const intermediate::IntermediateInstruction*>(pair.first);
-			Optional<InstructionWalker> it = findInLoop(inst, loop);
+			Optional<InstructionWalker> it = loop.findInLoop(inst);
 			//"lower" bound: the initial setting of the value outside of the loop
 			if(pair.second.writesLocal() && has_flag(inst->decoration, intermediate::InstructionDecorations::PHI_NODE) && !it)
 			{
@@ -222,7 +211,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 					for(const auto& pair : stepLocal->getUsers())
 					{
 						const intermediate::IntermediateInstruction* inst = dynamic_cast<const intermediate::IntermediateInstruction*>(pair.first);
-						Optional<InstructionWalker> it = findInLoop(inst, loop);
+						Optional<InstructionWalker> it = loop.findInLoop(inst);
 						//iteration step: the instruction inside the loop where the iteration variable is changed
 						if(pair.second.readsLocal() && it)
 						{
@@ -271,7 +260,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 				{
 					//TODO need to check, whether the comparison result is the one used for branching
 					//if not, set userIt to loop.end()
-					auto instIt = findInLoop(dynamic_cast<const intermediate::IntermediateInstruction*>(userIt->first), loop);
+					auto instIt = loop.findInLoop(dynamic_cast<const intermediate::IntermediateInstruction*>(userIt->first));
 					loopControl.comparisonInstruction = instIt;
 					logging::debug() << "Found loop continue condition: " << loopControl.comparisonInstruction.value()->to_string() << logging::endl;
 				}
@@ -474,7 +463,7 @@ static void scheduleForVectorization(const Local* local, FastSet<intermediate::I
 		if(inst->getOutput().ifPresent([](const Value& out) -> bool { return out.hasType(ValueType::REGISTER) && (out.reg.isSpecialFunctionsUnit() || out.reg.isTextureMemoryUnit());}))
 		{
 			//need to add the reading of SFU/TMU too
-			auto optIt = findInLoop(inst, loop);
+			auto optIt = loop.findInLoop(inst);
 			if(optIt)
 			{
 				InstructionWalker it = optIt.value().nextInBlock();
@@ -679,7 +668,7 @@ static void vectorize(ControlFlowLoop& loop, LoopControl& loopControl, const Dat
 	//iteratively change all instructions
 	while(!openInstructions.empty())
 	{
-		auto it = findInLoop(*openInstructions.begin(), loop);
+		auto it = loop.findInLoop(*openInstructions.begin());
 		if(!it)
 		{
 			//TODO what to do?? These are e.g. for accumulation-variables (like sum, maximum)

@@ -52,10 +52,29 @@ namespace vc4c
 
 	using CFGNode = Node<BasicBlock*, CFGRelation>;
 	bool operator<(const CFGNode& one, const CFGNode& other);
+
 	/*
 	 * A loop in the control-flow represented by the basic-blocks taking part in it
+	 *
+	 * NOTE: A control-flow loop can only be used within the life-time of the ControlFlowGraph it is created from!
 	 */
-	using ControlFlowLoop = FastAccessList<CFGNode*>;
+	struct ControlFlowLoop : public FastAccessList<CFGNode*>
+	{
+		/*
+		 * Returns the basic-block in the CFG preceding the first node in the loop, the node from which the loop is entered.
+		 */
+		const CFGNode* findPredecessor() const;
+
+		/*
+		 * Returns the basic-block in the CFG following the last node in the loop, the node into which this loop exits into.
+		 */
+		const CFGNode* findSuccessor() const;
+
+		/*
+		 * Returns the InstructionWalker for the given instruction, if it is within the loop.
+		 */
+		Optional<InstructionWalker> findInLoop(const intermediate::IntermediateInstruction* inst) const;
+	};
 
 	/*
 	 * The control-flow graph (CFG) represents the order/relation of basic-blocks by connecting basic-blocks which can follow directly after one another (e.g. by branching or fall-through)
