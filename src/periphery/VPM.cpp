@@ -436,3 +436,104 @@ InstructionWalker VPM::insertUnlockMutex(InstructionWalker it, bool useMutex) co
 	}
 	return it;
 }
+
+VPMInstructions periphery::findRelatedVPMInstructions(InstructionWalker anyVPMInstruction, bool isVPMRead)
+{
+	const auto predAddressWrite = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool
+	{
+		if(isVPMRead)
+			return inst->writesRegister(REG_VPM_IN_ADDR);
+		return inst->writesRegister(REG_VPM_OUT_ADDR);
+	};
+	const auto predDMASetup = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool
+	{
+		if(dynamic_cast<const intermediate::LoadImmediate*>(inst) == nullptr)
+			return false;
+		if(isVPMRead)
+			return inst->writesRegister(REG_VPM_IN_SETUP) && VPRSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().integer).isDMASetup();
+		return inst->writesRegister(REG_VPM_OUT_SETUP) && VPWSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().integer).isDMASetup();
+	};
+	const auto predDMAWait = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool
+	{
+		if(isVPMRead)
+			return inst->readsRegister(REG_VPM_IN_WAIT);
+		return inst->readsRegister(REG_VPM_OUT_WAIT);
+	};
+	const auto predGenericSetup = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool
+	{
+		if(dynamic_cast<const intermediate::LoadImmediate*>(inst) == nullptr)
+			return false;
+		if(isVPMRead)
+			return inst->writesRegister(REG_VPM_IN_SETUP) && VPRSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().integer).isGenericSetup();
+		return inst->writesRegister(REG_VPM_OUT_SETUP) && VPWSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().integer).isGenericSetup();
+	};
+	const auto predStrideSetup = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool
+	{
+		if(dynamic_cast<const intermediate::LoadImmediate*>(inst) == nullptr)
+			return false;
+		if(isVPMRead)
+			return inst->writesRegister(REG_VPM_IN_SETUP) && VPRSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().integer).isStrideSetup();
+		return inst->writesRegister(REG_VPM_OUT_SETUP) && VPWSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().integer).isStrideSetup();
+	};
+	const auto predVPMAccess = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool
+	{
+		if(isVPMRead)
+			return inst->readsRegister(REG_VPM_IO);
+		return inst->writesRegister(REG_VPM_IO);
+	};
+
+	VPMInstructions result;
+
+
+	//TODO could this select the wrong instructions for multiple VPM accesses within a single mutex-lock block?
+	//XXX are multiple VPM accesses within a mutex-lock even possible without combining the setups and addresses?
+	auto it = anyVPMInstruction;
+	while(!it.isStartOfBlock())
+	{
+		//only look up to the next mutex (un)lock
+		if(it.has<intermediate::MutexLock>())
+			break;
+		if(it.has())
+		{
+			if(!result.addressWrite && predAddressWrite(it.get()))
+				result.addressWrite = it;
+			if(!result.dmaSetup && predDMASetup(it.get()))
+				result.dmaSetup = it;
+			if(!result.dmaWait && predDMAWait(it.get()))
+				result.dmaWait = it;
+			if(!result.genericVPMSetup && predGenericSetup(it.get()))
+				result.genericVPMSetup = it;
+			if(!result.strideSetup && predStrideSetup(it.get()))
+				result.strideSetup = it;
+			if(!result.vpmAccess && predVPMAccess(it.get()))
+				result.vpmAccess = it;
+		}
+		it.previousInBlock();
+	}
+
+	it = anyVPMInstruction;
+	while(!it.isEndOfBlock())
+	{
+		//only look up to the next mutex (un)lock
+		if(it.has<intermediate::MutexLock>())
+			break;
+		if(it.has())
+		{
+			if(!result.addressWrite && predAddressWrite(it.get()))
+				result.addressWrite = it;
+			if(!result.dmaSetup && predDMASetup(it.get()))
+				result.dmaSetup = it;
+			if(!result.dmaWait && predDMAWait(it.get()))
+				result.dmaWait = it;
+			if(!result.genericVPMSetup && predGenericSetup(it.get()))
+				result.genericVPMSetup = it;
+			if(!result.strideSetup && predStrideSetup(it.get()))
+				result.strideSetup = it;
+			if(!result.vpmAccess && predVPMAccess(it.get()))
+				result.vpmAccess = it;
+		}
+		it.nextInBlock();
+	}
+
+	return result;
+}

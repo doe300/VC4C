@@ -92,60 +92,6 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 	return BaseAndOffset();
 }
 
-static InstructionWalker findDMASetup(InstructionWalker pos, const InstructionWalker end, bool isVPMWrite)
-{
-	while(!pos.isStartOfBlock())
-	{
-		if(pos.has<LoadImmediate>() && pos->hasValueType(ValueType::REGISTER))
-		{
-			if(isVPMWrite && pos->writesRegister(REG_VPM_OUT_SETUP) && VPWSetup::fromLiteral(pos.get<LoadImmediate>()->getImmediate().integer).isDMASetup())
-				return pos;
-			if(!isVPMWrite && pos->writesRegister(REG_VPM_IN_SETUP) && VPRSetup::fromLiteral(pos.get<LoadImmediate>()->getImmediate().integer).isDMASetup())
-				return pos;
-		}
-		if(pos.has<MutexLock>() && pos.get<MutexLock>()->locksMutex())
-			//only read up to the previous mutex acquire
-			break;
-		pos.previousInBlock();
-	}
-	return end;
-}
-
-static InstructionWalker findGenericSetup(InstructionWalker it, const InstructionWalker end, bool isVPMWrite)
-{
-	if(isVPMWrite)
-	{
-		//for VPM writes, the generic setups is located before the address write
-		while(!it.isStartOfBlock())
-		{
-			if(it.has<LoadImmediate>() && it->writesRegister(REG_VPM_OUT_SETUP) && VPWSetup::fromLiteral(it.get<LoadImmediate>()->getImmediate().integer).isGenericSetup())
-			{
-				return it;
-			}
-			else if(it.has<MutexLock>() && it.get<MutexLock>()->locksMutex())
-				//only search up to the previous mutex write
-				break;
-			it.previousInBlock();
-		}
-	}
-	else
-	{
-		//for VPM reads, the generic setups is located after the address write
-		while(!it.isEndOfBlock())
-		{
-			if(it.has<LoadImmediate>() && it->writesRegister(REG_VPM_IN_SETUP) && VPRSetup::fromLiteral(it.get<LoadImmediate>()->getImmediate().integer).isGenericSetup())
-			{
-				return it;
-			}
-			else if(it.get() && it->writesRegister(REG_MUTEX))
-				//only search  to the next mutex release
-				break;
-			it.nextInBlock();
-		}
-	}
-	return end;
-}
-
 struct VPMAccessGroup
 {
 	bool isVPMWrite;
@@ -216,19 +162,20 @@ static InstructionWalker findGroupOfVPMAccess(VPM& vpm, InstructionWalker start,
 		if(baseAddress && group.isVPMWrite != isVPMWrite)
 			break;
 
-		auto genericSetup = findGenericSetup(it, end, isVPMWrite);
-		auto dmaSetup = findDMASetup(it, end, isVPMWrite);
+		auto vpmSetups = periphery::findRelatedVPMInstructions(it, !isVPMWrite);
+		auto genericSetup = vpmSetups.genericVPMSetup;
+		auto dmaSetup = vpmSetups.dmaSetup;
 
 		//check if the VPM and DMA configurations match with the previous one
 		if(baseAddress)
 		{
-			if(genericSetup == end || dmaSetup == end)
+			if(!genericSetup || !dmaSetup)
 				//either there are no setups for this VPM access, or they are not loaded from literals (e.g. dynamic setup)
 				break;
-			if(!genericSetup.has<LoadImmediate>() || genericSetup.get<LoadImmediate>()->getImmediate().integer != group.genericSetups.at(0).get<LoadImmediate>()->getImmediate().integer)
+			if(!genericSetup->has<LoadImmediate>() || genericSetup->get<LoadImmediate>()->getImmediate().integer != group.genericSetups.at(0).get<LoadImmediate>()->getImmediate().integer)
 				//generic setups do not match
 				break;
-			if(!dmaSetup.has<LoadImmediate>() || dmaSetup.get<LoadImmediate>()->getImmediate().integer != group.dmaSetups.at(0).get<LoadImmediate>()->getImmediate().integer)
+			if(!dmaSetup->has<LoadImmediate>() || dmaSetup->get<LoadImmediate>()->getImmediate().integer != group.dmaSetups.at(0).get<LoadImmediate>()->getImmediate().integer)
 				//DMA setups do not match
 				break;
 		}
@@ -246,8 +193,8 @@ static InstructionWalker findGroupOfVPMAccess(VPM& vpm, InstructionWalker start,
 		group.groupType = baseAndOffset.base->type;
 		baseAddress = baseAndOffset.base.value();
 		group.addressWrites.push_back(it);
-		group.dmaSetups.push_back(dmaSetup);
-		group.genericSetups.push_back(genericSetup);
+		group.dmaSetups.push_back(dmaSetup.value());
+		group.genericSetups.push_back(genericSetup.value());
 		nextOffset = baseAndOffset.offset.value_or(-1L) + 1;
 
 		if(group.isVPMWrite && group.addressWrites.size() >= vpm.getMaxCacheVectors(elementType, true))
@@ -453,8 +400,6 @@ InstructionWalker optimizations::accessGlobalData(const Module& module, Method& 
 					it.emplace(new intermediate::Operation(OP_ADD, tmp, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference(), Value(Literal(static_cast<uint64_t>(globalOffset.value())), TYPE_INT32)));
 					it.nextInBlock();
 				}
-				//the address calculated points to the given global data
-				const_cast<std::pair<Local*, int>&>(tmp.local->reference) = std::make_pair(arg.local, 0);
 				it->setArgument(i, tmp);
 			}
 		}

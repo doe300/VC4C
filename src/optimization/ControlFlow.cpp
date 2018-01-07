@@ -524,46 +524,6 @@ static void vectorizeInstruction(InstructionWalker it, FastSet<intermediate::Int
 	openInstructions.erase(it.get());
 }
 
-/*
- * Look within this mutex-block for the nearest instruction accessing the VPM in the given way
- */
-static Optional<InstructionWalker> findVPMAccess(InstructionWalker pos, bool writeAccess)
-{
-	auto it = pos;
-	while(!it.isStartOfBlock())
-	{
-		//only look up to the next mutex (un)lock
-		if(it.has<intermediate::MutexLock>())
-			break;
-		//also to not accept a vectorized VPM access while this access is not vectorized (e.g. when accesses are combined), abort at writing of addresses
-		if(it->writesRegister(REG_VPM_IN_ADDR) || it->writesRegister(REG_VPM_OUT_ADDR))
-			break;
-		if(writeAccess && it->writesRegister(REG_VPM_IO))
-			return it;
-		if(!writeAccess && it->readsRegister(REG_VPM_IO))
-			return it;
-		it.previousInBlock();
-	}
-
-	it = pos;
-	while(!it.isEndOfBlock())
-	{
-		//only look up to the next mutex (un)lock
-		if(it.has<intermediate::MutexLock>())
-			break;
-		//also to not accept a vectorized VPM access while this access is not vectorized (e.g. when accesses are combined), abort at writing of addresses
-		if(it->writesRegister(REG_VPM_IN_ADDR) || it->writesRegister(REG_VPM_OUT_ADDR))
-			break;
-		if(writeAccess && it->writesRegister(REG_VPM_IO))
-			return it;
-		if(!writeAccess && it->readsRegister(REG_VPM_IO))
-			return it;
-		it.nextInBlock();
-	}
-
-	return {};
-}
-
 static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
 {
 	InstructionWalker it = loop.front()->key->begin();
@@ -574,7 +534,7 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
 		if(it->writesRegister(REG_VPM_OUT_SETUP))
 		{
 			periphery::VPWSetupWrapper vpwSetup(it.get<intermediate::LoadImmediate>());
-			auto vpmWrite = findVPMAccess(it, true);
+			auto vpmWrite = periphery::findRelatedVPMInstructions(it, false).vpmAccess;
 			if(vpwSetup.isDMASetup() && vpmWrite && has_flag((*vpmWrite)->decoration, intermediate::InstructionDecorations::AUTO_VECTORIZED))
 			{
 				//Since this is only true for values actually vectorized, the corresponding VPM-write is checked
@@ -586,7 +546,7 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
 		else if(it->writesRegister(REG_VPM_IN_SETUP))
 		{
 			periphery::VPRSetupWrapper vprSetup(it.get<intermediate::LoadImmediate>());
-			auto vpmRead = findVPMAccess(it, false);
+			auto vpmRead = periphery::findRelatedVPMInstructions(it, true).vpmAccess;
 			if(vprSetup.isDMASetup() && vpmRead && has_flag((*vpmRead)->decoration, intermediate::InstructionDecorations::AUTO_VECTORIZED))
 			{
 				//See VPM write
