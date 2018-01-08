@@ -5,8 +5,10 @@
  */
 
 #include "Eliminator.h"
+#include "LiteralValues.h"
 
 #include "../InstructionWalker.h"
+#include "../Profiler.h"
 #include "log.h"
 
 #include <algorithm>
@@ -293,6 +295,99 @@ void optimizations::eliminatePhiNodes(const Module& module, Method& method, cons
 		}
 		else
 			it.nextInMethod();
+	}
+}
+
+void optimizations::eliminateLoadingOfConstants(const Module& module, Method& method, const Configuration& config)
+{
+	for(auto it = method.walkAllInstructions();!it.isEndOfMethod(); it.nextInMethod())
+	{
+		if(it.has() && it->hasValueType(ValueType::LOCAL) && it->getOutput()->local->reference.first != nullptr && it->getOutput()->local->reference.first->is<Global>() && it->getOutput()->local->reference.first->as<Global>()->isConstant)
+		{
+			const Global* global = it->getOutput()->local->reference.first->as<Global>();
+			logging::debug() << "Found reference to constant global: " << it->getOutput()->local->to_string(true) << logging::endl;
+
+			//1. find constant value read from the Global
+			Value content = UNDEFINED_VALUE;
+			if(it->getOutput()->local->reference.second >= 0 && global->value.hasType(ValueType::CONTAINER)) // fixed index
+				content = global->value.container.elements.at(it->getOutput()->local->reference.second);
+			else if(global->value.isLiteralValue()) // scalar value
+				content = global->value;
+			else if(global->value.isZeroInitializer()) // all entries are the same
+				content = Value::createZeroInitializer(global->value.type);
+			else if(global->value.isUndefined()) // all entries are undefined
+				content = Value(global->value.type);
+			else
+				continue;
+
+			//At this point: local references a constant global data where we can determine the constant value for the index referenced
+			auto indexIt = it;
+			Local* index = it->getOutput()->local;
+
+			//2. find usage of index and check whether it is used in memory reads (needs to lie within the same basic block)
+			while(!it.isEndOfBlock())
+			{
+				if(it.has() && it->readsLocal(index))
+				{
+					if(it->writesRegister(REG_TMU0_ADDRESS) || it->writesRegister(REG_TMU1_ADDRESS))
+					{
+						break;
+					}
+					else if(it.has<intermediate::MoveOperation>() && it->hasValueType(ValueType::LOCAL))
+						index = it->getOutput()->local;
+					else if(it.has<intermediate::Operation>() && it->hasValueType(ValueType::LOCAL) && it.get<intermediate::Operation>()->op == OP_ADD)
+						//for vector reads, the offset of the different elements is added
+						//TODO better check for addition of element-types
+						index = it->getOutput()->local;
+				}
+				it.nextInBlock();
+			}
+
+			if(it.isEndOfBlock())
+				//reading from TMU for this index not found
+				continue;
+			logging::debug() << "Found instruction reading constant: " << it->to_string() << logging::endl;
+			auto writeAddressIt = it;
+
+			//3. find instruction triggering the TMU load
+			while(!it.isEndOfBlock())
+			{
+				if(it.has() && (it->signal == SIGNAL_LOAD_TMU0 || it->signal == SIGNAL_LOAD_TMU1))
+					break;
+				it.nextInBlock();
+			}
+			if(it.isEndOfBlock())
+				//triggering of TMU read not found
+				continue;
+			logging::debug() << "Found triggering of TMU load: " << it->to_string() << logging::endl;
+			auto triggerLoadIt = it;
+
+			//4. find reading of value from TMU
+			while(!it.isEndOfBlock())
+			{
+				if(it->readsRegister(REG_TMU_OUT) && it.has<intermediate::MoveOperation>())
+				{
+					break;
+				}
+				it.nextInBlock();
+			}
+			if(it.isEndOfBlock())
+				//reading from memory not found
+				continue;
+			logging::debug() << "Found reading of TMU value: " << it->to_string() << logging::endl;
+			auto loadIt = it;
+
+			//5. replace reading of TMU value with constant and remove other instructions
+			indexIt.erase();
+			//other index-calculation instructions are erased by EliminateDeadStores
+			//XXX not all obsolete instructions are erased (e.g. setting of flags for vector-element addresses)
+			writeAddressIt.erase();
+			triggerLoadIt.erase();
+			loadIt.get<intermediate::MoveOperation>()->setSource(content);
+			//the constant could be a literal value
+			it = handleImmediate(module, method, loadIt, config);
+			logging::debug() << "Replaced loading of constant memory with constant literal: " << loadIt->to_string() << logging::endl;
+		}
 	}
 }
 

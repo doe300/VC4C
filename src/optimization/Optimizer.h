@@ -73,6 +73,8 @@ namespace vc4c
 		 */
 		//runs all the single-step optimizations. Combining them results in fewer iterations over the instructions
 		extern const OptimizationPass RUN_SINGLE_STEPS;
+		//eliminates/inlines loads of global data
+		extern const OptimizationPass ELIMINATE_CONSTANT_LOADS;
 		//combines loadings of the same literal value within a small range of a basic block
 		extern const OptimizationPass COMBINE_LITERAL_LOADS;
 		//handles stack-allocations by calculating their offsets and indices

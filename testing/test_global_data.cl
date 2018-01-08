@@ -1,3 +1,4 @@
+__constant uint8 globalData[32] = {};
 
 __kernel void test_global_data(__global const uint8* in, __global uint8* out)
 {
@@ -14,5 +15,5 @@ __kernel void test_global_data(__global const uint8* in, __global uint8* out)
 	if(get_global_id(0) > 0)
 		buffer[get_global_id(0)] += buffer[get_global_id(0) - 1];
 	barrier(CLK_LOCAL_MEM_FENCE);
-	out[get_global_id(0)] = buffer[get_global_id(0)];
+	out[get_global_id(0)] = buffer[get_global_id(0)] + globalData[get_global_id(0)];
 }

@@ -19,6 +19,7 @@ namespace vc4c
 	{
 		void eliminateDeadStore(const Module& module, Method& method, const Configuration& config);
 		void eliminatePhiNodes(const Module& module, Method& method, const Configuration& config);
+		void eliminateLoadingOfConstants(const Module& module, Method& method, const Configuration& config);
 
 		InstructionWalker eliminateUselessInstruction(const Module& module, Method& method, InstructionWalker it, const Configuration& config);
 		InstructionWalker calculateConstantInstruction(const Module& module, Method& method, InstructionWalker it, const Configuration& config);
