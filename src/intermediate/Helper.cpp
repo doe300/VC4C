@@ -252,6 +252,7 @@ InstructionWalker intermediate::insertMakePositive(InstructionWalker it, Method&
 	else if(src.hasType(ValueType::CONTAINER))
 	{
 		dest = Value(ContainerValue(), src.type);
+		dest.container.elements.reserve(src.container.elements.size());
 		for(const auto& elem : src.container.elements)
 		{
 			if(!elem.hasType(ValueType::LITERAL))
@@ -316,13 +317,14 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 		{
 			//index is index in pointer/array
 			//-> add offset of element at given index to global offset
-			if(index.hasType(ValueType::LITERAL))
+			if(index.getLiteralValue())
 			{
-				subOffset = Value(Literal(index.literal.integer * subContainerType.getElementType().getPhysicalWidth()), TYPE_INT32);
+				subOffset = Value(Literal(index.getLiteralValue()->integer * subContainerType.getElementType().getPhysicalWidth()), TYPE_INT32);
 			}
 			else
 			{
 				subOffset = method.addNewLocal(TYPE_INT32, "%index_offset");
+				//FIXME is wrong for array types? E.g. test_global_data.cl loading global data (container is pointer to array, element 0, but for second element the physical-size of the array is used as offset-factor)
 				it.emplace(new intermediate::Operation("mul", subOffset, index, Value(Literal(static_cast<uint64_t>(subContainerType.getElementType().getPhysicalWidth())), TYPE_INT32)));
 				it.nextInBlock();
 			}
@@ -330,30 +332,30 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 			//according to SPIR-V 1.2 specification, the type doesn't change if the first index is the "element":
 			//"The type of Base after being dereferenced with Element is still the same as the original type of Base."
 			if(!firstIndexIsElement || &index != &indices.front())
-				subContainerType = subContainerType.getElementType().getElementType(index.hasType(ValueType::LITERAL) ? static_cast<int>(index.literal.integer) : ANY_ELEMENT).toPointerType();
+				subContainerType = subContainerType.getElementType().getElementType(index.getLiteralValue().value_or(Literal(static_cast<int64_t>(ANY_ELEMENT))).integer).toPointerType();
 		}
 		else if(subContainerType.getStructType())
 		{
 			//index is element in struct -> MUST be literal
-			if(!index.hasType(ValueType::LITERAL))
+			if(!index.getLiteralValue())
 				throw CompilationError(CompilationStep::LLVM_2_IR, "Can't access struct-element with non-literal index", index.to_string());
 
-			subOffset = Value(Literal(static_cast<uint64_t>(subContainerType.getStructType().value()->getStructSize(static_cast<int>(index.literal.integer)))), TYPE_INT32);
-			subContainerType = subContainerType.getElementType(static_cast<int>(index.literal.integer));
+			subOffset = Value(Literal(static_cast<uint64_t>(subContainerType.getStructType().value()->getStructSize(static_cast<int>(index.getLiteralValue()->integer)))), TYPE_INT32);
+			subContainerType = subContainerType.getElementType(static_cast<int>(index.getLiteralValue()->integer));
 		}
 		else
 			throw CompilationError(CompilationStep::LLVM_2_IR, "Invalid container-type to retrieve element via index", subContainerType.to_string());
 
-		if(offset.hasType(ValueType::LITERAL) && subOffset.hasType(ValueType::LITERAL))
+		if(offset.getLiteralValue() && subOffset.getLiteralValue())
 		{
-			offset.literal.integer += subOffset.literal.integer;
+			offset = Value(Literal(offset.getLiteralValue()->integer + subOffset.getLiteralValue()->integer), TYPE_INT32);
 		}
-		else if(offset.hasLiteral(INT_ZERO.literal))
+		else if(offset.isZeroInitializer())
 		{
 			//previous offset is zero -> zero + x = x
 			offset = subOffset;
 		}
-		else if(subOffset.hasLiteral(INT_ZERO.literal))
+		else if(subOffset.isZeroInitializer())
 		{
 			//sub-offset is zero -> x + zero = x
 			//offset = offset -> do nothing
@@ -373,10 +375,16 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 	/*
 	 * associates the index with the local/parameter it refers to.
 	 * This is required, so the input/output-parameters are correctly recognized
+	 *
+	 * NOTE: The associated index can only be set, if there is a single literal index.
+	 * (Or the element is element 0, than the reference-index can be retrieved from the second index)
 	 */
-	const Value index = indices.size() == 0 ? INT_ZERO : indices[0];
-	//the index referenced, for getting the correct type, e.g. for structs
-	const int refIndex = index.hasType(ValueType::LITERAL) ? static_cast<int>(index.literal.integer) : ANY_ELEMENT;
+	Value index = UNDEFINED_VALUE;
+	if(indices.size() == 1)
+		index = indices.at(0);
+	if(firstIndexIsElement && indices.at(0).isZeroInitializer())
+		index = indices.size() > 1 ? indices.at(1) : UNDEFINED_VALUE;
+	const int refIndex = index.getLiteralValue().value_or(Literal(static_cast<int64_t>(ANY_ELEMENT))).integer;
 	const_cast<std::pair<Local*, int>&>(dest.local->reference) = std::make_pair(container.local, refIndex);
 
 	if(dest.type != subContainerType)

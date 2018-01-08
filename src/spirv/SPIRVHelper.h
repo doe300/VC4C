@@ -30,7 +30,7 @@ namespace vc4c
 		AddressSpace toAddressSpace(SpvStorageClass storageClass);
 		void consumeSPIRVMessage(spv_message_level_t level, const char* source, const spv_position_t& position, const char* message);
 
-		std::vector<uint32_t> readStreamOfWords(std::istream& in);
+		std::vector<uint32_t> readStreamOfWords(std::istream* in);
 		void linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output);
 	} // namespace spirv2qasm
 } // namespace vc4c

@@ -12,6 +12,7 @@
 
 #include <array>
 #include <cstring>
+#include <numeric>
 
 using namespace vc4c;
 using namespace vc4c::qpu_asm;
@@ -284,11 +285,7 @@ KernelInfo qpu_asm::getKernelInfos(const Method& method, const std::size_t initi
         }
     }
     {
-        uint32_t requiredSize = 1;
-        for(uint32_t size : method.metaData.workGroupSizeHints)
-        {
-            requiredSize *= size;
-        }
+        uint32_t requiredSize = std::accumulate(method.metaData.workGroupSizeHints.begin(), method.metaData.workGroupSizeHints.end(), 1, std::multiplies<uint32_t>());
         if(requiredSize > KernelInfo::MAX_WORK_GROUP_SIZES)
         {
             logging::warn() << "Work-group size hint " << requiredSize << " exceeds the limit of " << KernelInfo::MAX_WORK_GROUP_SIZES << logging::endl;

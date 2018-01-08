@@ -77,8 +77,7 @@ InstructionWalker optimizations::handleContainer(const Module& module, Method& m
 		//need to rotate all (possible non-existing) 16 elements, so use a temporary vector with 16 elements and rotate it
 		std::vector<Value> tmp;
 		tmp.reserve(16);
-		for(const Value& e : src.container.elements)
-			tmp.push_back(e);
+		tmp.insert(tmp.begin(), src.container.elements.begin(), src.container.elements.end());
 		while(tmp.size() != 16)
 			tmp.push_back(UNDEFINED_VALUE);
 		std::rotate(tmp.begin(), tmp.begin() + offset, tmp.end());
@@ -208,7 +207,8 @@ static const std::map<Literal, ImmediateSupplier> immediateMappings = {
 		//{toLiteral(0x0000001e, 15 + 15), ImmediateSupplier(OP_ADD, SmallImmediate(15))},
 		//{toLiteral(0x0000001e, 30), ImmediateSupplier(OP_CLZ, SmallImmediate(2))},
 		{toLiteral(0x0000001f, 31), ImmediateSupplier(OP_CLZ, SmallImmediate(1))},
-		{toLiteral(0x00000020, 32), ImmediateSupplier(OP_CLZ, SmallImmediate(0))},
+		{toLiteral(0x00000020, static_cast<int32_t>(32.0f)), ImmediateSupplier(OP_FTOI, SmallImmediate(37))},
+		//{toLiteral(0x00000020, 32), ImmediateSupplier(OP_CLZ, SmallImmediate(0))},
 		{toLiteral(0x00000024, 6 * 6), ImmediateSupplier(OP_MUL24, SmallImmediate(6))},
 		{toLiteral(0x00000040, 4 << 4), ImmediateSupplier(OP_SHL, SmallImmediate(4))},
 		{toLiteral(0x00000031, 7 * 7), ImmediateSupplier(OP_MUL24, SmallImmediate(7))},

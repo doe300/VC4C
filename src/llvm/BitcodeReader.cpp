@@ -347,6 +347,7 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
 		//need to be added to the map before iterating over the children to prevent stack-overflow
 		DataType& dataType = addToMap(DataType(type->getStructName(), 1), type, typesMap);
 		std::vector<DataType> elementTypes;
+		elementTypes.reserve(type->getStructNumElements());
 		for(unsigned i = 0; i < type->getStructNumElements(); ++i)
 		{
 			elementTypes.emplace_back(toDataType(type->getStructElementType(i)));
@@ -396,6 +397,7 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
 
 	logging::debug() << "Reading function " << method->returnType.to_string() << " " << method->name << "(...)" << logging::endl;
 
+	method->parameters.reserve(func.getArgumentList().size());
 	for(const llvm::Argument& arg : func.getArgumentList())
 	{
 		method->parameters.emplace_back(Parameter((std::string("%") + arg.getName()).str(), toDataType(arg.getType()), toParameterDecorations(arg)));

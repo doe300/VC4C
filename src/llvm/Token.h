@@ -80,8 +80,7 @@ namespace vc4c
 			{
 				if (type == TokenType::STRING)
 					return std::string(text.data());
-				return
-				{};
+				return {};
 			}
 		private:
 			std::array<char, TOKEN_BUFFER_SIZE> text;

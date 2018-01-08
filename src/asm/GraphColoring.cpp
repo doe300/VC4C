@@ -81,9 +81,9 @@ bool ColoredNode::hasFreeRegisters(const RegisterFile file) const
 	if(has_flag(file, RegisterFile::ACCUMULATOR) && availableAcc.any())
 		return true;
 	if(has_flag(file, RegisterFile::PHYSICAL_A) && availableA.any())
-			return true;
+		return true;
 	if(has_flag(file, RegisterFile::PHYSICAL_B) && availableB.any())
-			return true;
+		return true;
 	return false;
 }
 

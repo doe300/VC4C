@@ -15,6 +15,8 @@
 #include SPIRV_LINKER_HEADER
 #endif
 
+#include <algorithm>
+
 using namespace vc4c;
 using namespace vc4c::spirv2qasm;
 
@@ -727,12 +729,12 @@ void spirv2qasm::consumeSPIRVMessage(spv_message_level_t level, const char* sour
 	logging::info() << "SPIR-V Tools: " << levelText << " message in '" << source << "' at position " << position.line << ":" << position.column << ": " << message <<logging::endl;
 }
 
-std::vector<uint32_t> spirv2qasm::readStreamOfWords(std::istream& in)
+std::vector<uint32_t> spirv2qasm::readStreamOfWords(std::istream* in)
 {
 	std::vector<uint32_t> words;
-	words.reserve(in.rdbuf()->in_avail());
+	words.reserve(in->rdbuf()->in_avail());
 	char buffer[sizeof (uint32_t)];
-	while (in.read(buffer, sizeof (uint32_t)).good()) {
+	while (in->read(buffer, sizeof (uint32_t)).good()) {
 		words.push_back(*reinterpret_cast<uint32_t*>(buffer));
 	}
 
@@ -746,10 +748,7 @@ void spirv2qasm::linkSPIRVModules(const std::vector<std::istream*>& inputModules
 #else
 	std::vector<std::vector<uint32_t>> binaries;
 	binaries.reserve(inputModules.size());
-	for(std::istream* is : inputModules)
-	{
-		binaries.push_back(readStreamOfWords(*is));
-	}
+	std::transform(inputModules.begin(), inputModules.end(), std::back_inserter(binaries), readStreamOfWords);
 
 	spvtools::LinkerOptions options;
 	options.SetCreateLibrary(false);

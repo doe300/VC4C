@@ -99,7 +99,7 @@ void SPIRVParser::parse(Module& module)
     }
 
     //read input and map into buffer
-    std::vector<uint32_t> words = readStreamOfWords(input);
+    std::vector<uint32_t> words = readStreamOfWords(&input);
 
     //if input is SPIR-V text, convert to binary representation
     spv_result_t result;
@@ -799,8 +799,12 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         if(parsed_instruction->num_words > 4)
         	val = constantMappings.at(getWord(parsed_instruction, 4));
         unsigned alignment = 0;
+        bool isConstant = false;
         if(decorationMappings.find(parsed_instruction->type_id) != decorationMappings.end())
+        {
         	alignment = getDecoration(decorationMappings.at(parsed_instruction->type_id), SpvDecorationAlignment).value_or(0);
+        	isConstant = getDecoration(decorationMappings.at(parsed_instruction->type_id), SpvDecorationConstant).has_value();
+        }
         if(alignment == 0 && decorationMappings.find(parsed_instruction->result_id) != decorationMappings.end())
         	alignment = getDecoration(decorationMappings.at(parsed_instruction->result_id), SpvDecorationAlignment).value_or(0);
 
@@ -817,7 +821,8 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         else
         {
         	//OpVariables outside of any function are global data
-        	module->globalData.emplace_back(Global(name, type, val, static_cast<SpvStorageClass>(getWord(parsed_instruction, 3)) == SpvStorageClassUniformConstant));
+        	isConstant = isConstant || static_cast<SpvStorageClass>(getWord(parsed_instruction, 3)) == SpvStorageClassUniformConstant;
+        	module->globalData.emplace_back(Global(name, type, val, isConstant));
         	module->globalData.back().type.getPointerType().value()->alignment = alignment;
 			memoryAllocatedData.emplace(parsed_instruction->result_id, &module->globalData.back());
         }

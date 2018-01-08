@@ -76,6 +76,7 @@ static void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo,
 		globals.emplace_back("globalData", type.toPointerType(), Value(ContainerValue(), type), false);
 
 		auto& elements = globals.begin()->value.container.elements;
+		elements.reserve(tmp.size());
 		for(uint64_t t : tmp)
 			elements.emplace_back(Literal(t), TYPE_INT64);
 
