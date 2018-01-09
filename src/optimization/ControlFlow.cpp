@@ -416,6 +416,18 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const LoopContr
 				logging::debug() << "Cannot vectorize loops containing vector rotations: " << it->to_string() << logging::endl;
 				return std::numeric_limits<int>::min();
 			}
+			else if(it.has<intermediate::MemoryBarrier>())
+			{
+				//abort
+				logging::debug() << "Cannot vectorize loops containing memory barriers: " << it->to_string() << logging::endl;
+				return std::numeric_limits<int>::min();
+			}
+			else if(it.has<intermediate::SemaphoreAdjustment>())
+			{
+				//abort
+				logging::debug() << "Cannot vectorize loops containing semaphore calls: " << it->to_string() << logging::endl;
+				return std::numeric_limits<int>::min();
+			}
 		}
 
 		//TODO check and increase costs
@@ -562,6 +574,14 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
 	return numVectorized;
 }
 
+/*
+ * Makes sure, the predecessor-node and the instruction-walker are found in correct order
+ */
+static Optional<InstructionWalker> findWalker(const CFGNode* node, const intermediate::IntermediateInstruction* inst)
+{
+	return node != nullptr ? node->key->findWalkerForInstruction(inst, node->key->end()) : Optional<InstructionWalker>{};
+}
+
 static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopControl)
 {
 	intermediate::Operation* stepOp = loopControl.iterationStep->get<intermediate::Operation>();
@@ -570,11 +590,21 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
 
 	const_cast<DataType&>(loopControl.initialization->getOutput()->type).num = loopControl.iterationVariable->type.num;
 	intermediate::MoveOperation* move = dynamic_cast<intermediate::MoveOperation*>(loopControl.initialization);
+	Optional<InstructionWalker> initialValueWalker;
 	if(move != nullptr && move->getSource().hasLiteral(INT_ZERO.literal) && loopControl.stepKind == StepKind::ADD_CONSTANT && loopControl.getStep().is(INT_ONE.literal))
 	{
 		//special/default case: initial value is zero and step is +1
 		move->setSource(ELEMENT_NUMBER_REGISTER);
 		move->setDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+		logging::debug() << "Changed initial value: " << loopControl.initialization->to_string() << logging::endl;
+	}
+	else if(move != nullptr && move->getSource().getLiteralValue() && loopControl.stepKind == StepKind::ADD_CONSTANT && loopControl.getStep().is(INT_ONE.literal) &&
+			(initialValueWalker = findWalker(loop.findPredecessor(), move)).has_value())
+	{
+		//more general case: initial value is a literal and step is +1
+		initialValueWalker->reset((new intermediate::Operation(OP_ADD, move->getOutput().value(), move->getSource(), ELEMENT_NUMBER_REGISTER))->copyExtrasFrom(move));
+		initialValueWalker.value()->setDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+		loopControl.initialization = initialValueWalker->get();
 		logging::debug() << "Changed initial value: " << loopControl.initialization->to_string() << logging::endl;
 	}
 	else
