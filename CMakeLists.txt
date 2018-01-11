@@ -19,7 +19,7 @@ option(CROSS_COMPILE "Cross compile for Raspbian" OFF)
 # Option whether to include the SPIR-V front-end
 option(SPIRV_FRONTEND "Enables a second front-end for the SPIR-V intermediate language" ON)
 # Option whether to include the LLVM library front-end. This requires the LLVM development-headers to be available for the (SPIRV-)LLVM used
-option(LLVMLIB_FRONTEND "Enables the front-end using the LLVM library to read LLVM IR" OFF)
+option(LLVMLIB_FRONTEND "Enables the front-end using the LLVM library to read LLVM IR" ON)
 # Option whether to create deb package
 option(BUILD_DEB_PACKAGE "Enables creating .deb package" ON)
 
@@ -75,20 +75,17 @@ else()
 	SET(CMAKE_BUILD_TYPE 		Release)
 endif()
 
+# Enable additional warnings, if available
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
 	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-shadow -Wno-padded -Wno-shadow-field-in-constructor -Wno-global-constructors -Wno-exit-time-destructors -Wno-c++14-binary-literal -Wno-missing-prototypes -Wno-gnu-anonymous-struct -Wno-nested-anon-types -Wno-documentation -Wno-unused-command-line-argument -Wno-unused-member-function -Wno-gnu-zero-variadic-macro-arguments -Wno-covered-switch-default -Wno-switch-enum -Wswitch")
+elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wdouble-promotion -fdelete-null-pointer-checks -Wnull-dereference -Wuninitialized -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=format -Wsuggest-override -Wconversion -Wzero-as-null-pointer-constant")
 endif()
 
 if(MULTI_THREADED)
 	message(STATUS "Enabling multi-threaded optimizations")
 	add_definitions(-DMULTI_THREADED=1)
 	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
-endif()
-
-# Enable sanitizers
-if(BUILD_DEBUG AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER "6.0.0" AND FALSE)
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fsanitize=leak -fsanitize=undefined ")
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wdouble-promotion -fdelete-null-pointer-checks -Wnull-dereference -Wuninitialized -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=format -Wsuggest-override -Wconversion -Wzero-as-null-pointer-constant")
 endif()
 
 ####
@@ -114,7 +111,7 @@ ExternalProject_Add( cpplog-project
 
 # Prefer Khronos OpenCL to LLVM IR (to SPIR-V) compiler
 if(NOT SPIRV_COMPILER_ROOT)
-	# Try to detect the location of the SPIR-VLLVM binaries
+	# Try to detect the location of the SPIRV-LLVM binaries
 	find_program(LLVM_SPIRV_FOUND NAMES llvm-spirv HINTS "/opt/SPIRV-LLVM/build/bin/")
 	if(LLVM_SPIRV_FOUND)
 		get_filename_component(SPIRV_COMPILER_ROOT "${LLVM_SPIRV_FOUND}" DIRECTORY)
@@ -202,6 +199,9 @@ if(LLVMLIB_FRONTEND)
 		if(SPIRV_COMPILER_ROOT) # use the SPIRV-LLVM llvm-config
 			set(LLVM_CONFIG_PATH ${SPIRV_COMPILER_ROOT}/llvm-config)
 			set(LLVM_LIBRARY_TYPE 2)
+		elseif(CROSS_COMPILE) # use llvm-config-3.9 for the clang-3.9 we use in cross-compilation
+			set(LLVM_CONFIG_PATH llvm-config-3.9)
+			set(LLVM_LIBRARY_TYPE 1)
 		else() # Use the "default" llvm-config
 			set(LLVM_CONFIG_PATH llvm-config)
 			set(LLVM_LIBRARY_TYPE 1)
@@ -298,9 +298,10 @@ if (BUILD_DEB_PACKAGE)
 	set(CPACK_GENERATOR "DEB")
 	set(CPACK_PACKAGING_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 	set(CPACK_PACKAGE_NAME "vc4c")
-	set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+	string(TIMESTAMP BUILD_TIMESTAMP "%Y-%m-%d")
+	set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}-${BUILD_TIMESTAMP}")
 	set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "armhf")
-	set(CPACK_DEBIAN_PACKAGE_DEPENDS "opencl-c-headers, clang-3.9, vc4cl-stdlib")
+	set(CPACK_DEBIAN_PACKAGE_DEPENDS "opencl-c-headers, clang-3.9, vc4cl-stdlib, llvm-3.9-dev")
 	set(CPACK_PACKAGE_VENDOR "doe300")
 	set(CPACK_PACKAGE_CONTACT "doe300@example.com")
 	set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenCL C compiler for VC4CL (rasberrypi only)")
