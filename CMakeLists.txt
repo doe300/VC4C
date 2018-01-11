@@ -19,7 +19,7 @@ option(CROSS_COMPILE "Cross compile for Raspbian" OFF)
 # Option whether to include the SPIR-V front-end
 option(SPIRV_FRONTEND "Enables a second front-end for the SPIR-V intermediate language" ON)
 # Option whether to include the LLVM library front-end. This requires the LLVM development-headers to be available for the (SPIRV-)LLVM used
-option(LLVMLIB_FRONTEND "Enables the front-end using the LLVM library to read LLVM IR" ON)
+option(LLVMLIB_FRONTEND "Enables the front-end using the LLVM library to read LLVM IR" OFF)
 # Option whether to create deb package
 option(BUILD_DEB_PACKAGE "Enables creating .deb package" ON)
 
