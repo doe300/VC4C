@@ -130,7 +130,7 @@ elseif(SPIRV_FRONTEND)
 endif()
 
 # fall back to "standard" CLang
-if(LLVMIR_FRONTEND AND NOT CLANG_FOUND)
+if((LLVMIR_FRONTEND OR LLVMLIB_FRONTEND) AND NOT CLANG_FOUND)
 	find_program(CLANG_FOUND clang NAMES clang-3.9 clang)
 	if(CLANG_FOUND)
 		message(STATUS "CLang compiler found: " ${CLANG_FOUND})
@@ -199,11 +199,8 @@ if(LLVMLIB_FRONTEND)
 		if(SPIRV_COMPILER_ROOT) # use the SPIRV-LLVM llvm-config
 			set(LLVM_CONFIG_PATH ${SPIRV_COMPILER_ROOT}/llvm-config)
 			set(LLVM_LIBRARY_TYPE 2)
-		elseif(CROSS_COMPILE) # use llvm-config-3.9 for the clang-3.9 we use in cross-compilation
-			set(LLVM_CONFIG_PATH llvm-config-3.9)
-			set(LLVM_LIBRARY_TYPE 1)
 		else() # Use the "default" llvm-config
-			set(LLVM_CONFIG_PATH llvm-config)
+			find_program(LLVM_CONFIG_PATH llvm-config NAMES llvm-config-3.9 llvm-config)
 			set(LLVM_LIBRARY_TYPE 1)
 		endif()
 	endif()
