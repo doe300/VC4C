@@ -48,7 +48,6 @@ bool vc4c::operator<(const CFGNode& one, const CFGNode& other)
 	if(firstLabel == BasicBlock::LAST_BLOCK)
 		return secondLabel == BasicBlock::LAST_BLOCK ? false : true;
 
-	//XXX correct??
 	return firstLabel > secondLabel;
 }
 
@@ -317,7 +316,6 @@ static void findDependencies(BasicBlock& bb, DataDependencyGraph& graph, Instruc
 					}
 				});
 			}
-			//XXX do we care for these at all?
 			if(has_flag(type, LocalUser::Type::WRITER))
 			{
 				local->forUsers(LocalUser::Type::READER, [it, local, &bb, &mapping, &graph](const LocalUser* user) -> void

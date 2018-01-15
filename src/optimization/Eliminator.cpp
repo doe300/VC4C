@@ -298,7 +298,7 @@ void optimizations::eliminatePhiNodes(const Module& module, Method& method, cons
 	}
 }
 
-void optimizations::eliminateLoadingOfConstants(const Module& module, Method& method, const Configuration& config)
+void optimizations::eliminateLoadingOfConstantGlobals(const Module& module, Method& method, const Configuration& config)
 {
 	for(auto it = method.walkAllInstructions();!it.isEndOfMethod(); it.nextInMethod())
 	{

@@ -21,27 +21,6 @@ using namespace vc4c::intermediate;
 
 InstructionWalker optimizations::combineDuplicateBranches(const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
-	/*
-	 * label: %91
-	 * br %103
-	 * label: %92
-	 * br %103
-	 * label: %93
-	 * br %103
-	 * label: %94
-	 * br %103
-	 * label: %95
-	 * br %103
-	 *
-	 * is converted into:
-	 *
-	 * label: %91
-	 * label: %92
-	 * label: %93
-	 * label: %94
-	 * label: %95
-	 * br %103
-	 */
 	Branch* thisBranch = it.get<Branch>();
 	if(thisBranch != nullptr)
 	{

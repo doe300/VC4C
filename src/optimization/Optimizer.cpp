@@ -59,6 +59,9 @@ bool OptimizationStep::operator ==(const OptimizationStep& other) const
 	return name.compare(other.name) == 0 && index == other.index;
 }
 
+/*
+ * Fail-fast for unresolved function-calls
+ */
 static InstructionWalker checkMethodCalls(const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
 	if(it.has<intermediate::MethodCall>())
@@ -133,7 +136,7 @@ static void runSingleSteps(const Module& module, Method& method, const Configura
 const OptimizationPass optimizations::RESOLVE_STACK_ALLOCATIONS = OptimizationPass("ResolveStackAllocations", resolveStackAllocations, 10);
 const OptimizationPass optimizations::RUN_SINGLE_STEPS = OptimizationPass("SingleSteps", runSingleSteps, 20);
 const OptimizationPass optimizations::SPILL_LOCALS = OptimizationPass("SpillLocals", spillLocals, 80);
-const OptimizationPass optimizations::ELIMINATE_CONSTANT_LOADS = OptimizationPass("EliminateConstantLoads", eliminateLoadingOfConstants, 30);
+const OptimizationPass optimizations::ELIMINATE_CONSTANT_LOADS = OptimizationPass("EliminateConstantLoads", eliminateLoadingOfConstantGlobals, 30);
 const OptimizationPass optimizations::COMBINE_VPM_SETUP = OptimizationPass("CombineVPMAccess", combineVPMAccess, 90);
 const OptimizationPass optimizations::COMBINE_LITERAL_LOADS = OptimizationPass("CombineLiteralLoads", combineLoadingLiterals, 100);
 const OptimizationPass optimizations::COMBINE_ROTATIONS = OptimizationPass("CombineRotations", combineVectorRotations, 110);
