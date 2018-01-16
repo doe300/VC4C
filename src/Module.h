@@ -424,6 +424,13 @@ namespace vc4c
 		 */
 		Optional<unsigned int> getGlobalDataOffset(const Local* local) const;
 
+		/*
+		 * Looks for a global with the given name and returns it.
+		 *
+		 * Returns nullptr otherwise
+		 */
+		const Global* findGlobal(const std::string& name) const;
+
 		const Configuration& compilationConfig;
 	};
 } // namespace vc4c

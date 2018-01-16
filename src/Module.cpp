@@ -236,12 +236,7 @@ const Parameter* Method::findParameter(const std::string& name) const
 
 const Global* Method::findGlobal(const std::string& name) const
 {
-	for(const Global& global : module.globalData)
-	{
-		if(global.name.compare(name) == 0)
-			return &global;
-	}
-	return nullptr;
+	return module.findGlobal(name);
 }
 
 const StackAllocation* Method::findStackAllocation(const std::string& name) const
@@ -647,3 +642,12 @@ Optional<unsigned int> Module::getGlobalDataOffset(const Local* local) const
 	return {};
 }
 
+const Global* Module::findGlobal(const std::string& name) const
+{
+	for(const Global& global : globalData)
+	{
+		if(global.name.compare(name) == 0)
+			return &global;
+	}
+	return nullptr;
+}

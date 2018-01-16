@@ -412,7 +412,6 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 		return Value(Literal(firstLit.integer >> secondLit.integer), resultType);
 	if(*this == OP_SUB)
 		return Value(Literal(firstLit.integer - secondLit.integer), resultType);
-	//XXX v8xxx?
 	if(*this == OP_XOR)
 		return Value(Literal(firstLit.integer ^ secondLit.integer), resultType);
 
