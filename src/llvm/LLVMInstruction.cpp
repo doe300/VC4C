@@ -190,6 +190,12 @@ bool CallSite::mapInstruction(Method& method) const
     	intermediate::insertByteSwap(method.appendToEnd(), method, arguments.at(0), output);
     	return true;
     }
+    if(methodName.find("shuffle2") == 0)
+    {
+    	logging::debug() << "Intrinsifying OpenCL shuffle2 function with " << arguments.at(0).to_string() << ", " << arguments.at(1).to_string() << " and mask " << arguments.at(2).to_string(false, true) << logging::endl;
+    	intermediate::insertVectorShuffle(method.appendToEnd(), method, output, arguments.at(0), arguments.at(1), arguments.at(2));
+    	return true;
+    }
     if(methodName.find("mem_fence") == 0 || methodName.find("read_mem_fence") == 0 || methodName.find("write_mem_fence") == 0)
     {
     	logging::debug() << "Intrinsifying 'mem_fence' with memory barrier" << logging::endl;

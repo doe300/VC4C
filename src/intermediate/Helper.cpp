@@ -193,10 +193,26 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         //the vector is copied in-order
         if(mask.container.elements.size() > source0.type.getVectorWidth() && checkIndicesNotUndefined(mask.container, source0.type.getVectorWidth()))
         {
-            //TODO second vector!
-        	throw CompilationError(CompilationStep::GENERAL, "Copying corresponding indices with second container is not yet supported", mask.to_string());
+        	//The second vector participates in the shuffling
+        	//move the first vector in-order
+        	it.emplace(new intermediate::MoveOperation(destination, source0));
+        	it.nextInBlock();
+        	//rotate the second vector with the size of the first as offset
+        	const Value secondRotated = method.addNewLocal(destination.type, "%vector_shuffle");
+        	const Value numElementsFirst(Literal(static_cast<uint64_t>(source0.type.num)), TYPE_INT8);
+        	it = insertVectorRotation(it, source1, numElementsFirst, secondRotated, Direction::UP);
+        	//insert the elements of the second vector with an element-number of higher or equals the size of the first vector into the result
+        	it.emplace(new intermediate::Operation(OP_SUB, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, numElementsFirst, COND_ALWAYS, SetFlag::SET_FLAGS));
+        	it.nextInBlock();
+        	it.emplace(new intermediate::MoveOperation(destination, secondRotated, COND_NEGATIVE_CLEAR));
         }
-        return it.emplace( new MoveOperation(destination, source0));
+        else
+        {
+        	//only one vector participates in the shuffling and the elements are inserted in-order -> simply move
+        	it.emplace( new MoveOperation(destination, source0));
+        }
+        it.nextInBlock();
+		return it;
     }
     if(allIndicesSame)
     {
