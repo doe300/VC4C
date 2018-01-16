@@ -180,6 +180,16 @@ bool CallSite::mapInstruction(Method& method) const
 		//maybe combination of VPM access cannot handle this case correctly??
 		//return true;
 	}
+    if(methodName.find("llvm.bswap") == 0)
+    {
+    	/*
+    	 * declare i16 @llvm.bswap.i16(i16 <id>)
+    	 * declare i32 @llvm.bswap.i32(i32 <id>)
+    	 */
+    	logging::debug() << "Intrinsifying llvm.bswap with manual byte-swapping" << logging::endl;
+    	intermediate::insertByteSwap(method.appendToEnd(), method, arguments.at(0), output);
+    	return true;
+    }
     if(methodName.find("mem_fence") == 0 || methodName.find("read_mem_fence") == 0 || methodName.find("write_mem_fence") == 0)
     {
     	logging::debug() << "Intrinsifying 'mem_fence' with memory barrier" << logging::endl;
@@ -307,19 +317,21 @@ bool BinaryOperator::mapInstruction(Method& method) const
     return true;
 }
 
-IndexOf::IndexOf(const Local* dest,  const Value& container, const std::vector<Value>& indices) : dest(dest), container(container), indices(indices)
+IndexOf::IndexOf(const Value& dest,  const Value& container, const std::vector<Value>& indices) : dest(dest), container(container), indices(indices)
 {
 
 }
 
 const Local* IndexOf::getDeclaredLocal() const
 {
-    return dest;
+    return dest.local;
 }
 
 std::vector<const Local*> IndexOf::getAllLocals() const
 {
-    std::vector<const Local*> res = {dest};
+    std::vector<const Local*> res;
+    if(dest.hasType(ValueType::LOCAL))
+    	res.push_back(dest.local);
     if(container.hasType(ValueType::LOCAL))
         res.push_back(container.local);
     for(const Value& index : indices)
@@ -334,11 +346,11 @@ bool IndexOf::mapInstruction(Method& method) const
 {
     //need to get pointer/address -> reference to content
     //a[i] of type t is at position &a + i * sizeof(t)
-    logging::debug() << "Generating calculating index " << to_string<Value>(indices) << " of " << container.to_string() << " into " << dest->to_string() << logging::endl;
+    logging::debug() << "Generating calculating index " << to_string<Value>(indices) << " of " << container.to_string() << " into " << dest.to_string() << logging::endl;
     
     //TODO firstIndexIsElement is not true for all cases!! (E.g. not for pointers to pointers?)
     //neither is it false for all cases?!
-    intermediate::insertCalculateIndices(method.appendToEnd(), method, container, dest->createReference(), indices, true);
+    intermediate::insertCalculateIndices(method.appendToEnd(), method, container, dest, indices, true);
     return true;
 }
 
@@ -375,7 +387,7 @@ std::vector<const Local*> Comparison::getAllLocals() const
 bool Comparison::mapInstruction(Method& method) const
 {
     logging::debug() << "Generating comparison " << comp << " with " << op1.to_string() << " and " << op2.to_string() << " into " << dest->name << logging::endl;
-    method.appendToEnd((new intermediate::Comparison(comp, Value(dest, TYPE_BOOL), op1, op2))->setDecorations(decorations));
+    method.appendToEnd((new intermediate::Comparison(comp, dest->createReference(), op1, op2))->setDecorations(decorations));
     return true;
 }
 
@@ -534,15 +546,15 @@ bool ShuffleVector::mapInstruction(Method& method) const
     return true;
 }
 
-LLVMLabel::LLVMLabel(const std::string& name) : label(name)
+LLVMLabel::LLVMLabel(const Local* label) : label(label)
 {
 
 }
 
 bool LLVMLabel::mapInstruction(Method& method) const
 {
-    logging::debug() << "Generating label " << label << logging::endl;
-    method.appendToEnd(new intermediate::BranchLabel(*method.findOrCreateLocal(TYPE_LABEL, label)));
+    logging::debug() << "Generating label " << label->to_string() << logging::endl;
+    method.appendToEnd(new intermediate::BranchLabel(*label));
     return true;
 }
 
@@ -619,12 +631,12 @@ bool Selection::mapInstruction(Method& method) const
     return true;
 }
 
-Branch::Branch(const std::string& label) : thenLabel(label), elseLabel(""), cond(BOOL_TRUE)
+Branch::Branch(const Local* label) : thenLabel(label), elseLabel(nullptr), cond(BOOL_TRUE)
 {
 
 }
 
-Branch::Branch(const Value& cond, const std::string& thenLabel, const std::string& elseLabel) : 
+Branch::Branch(const Value& cond, const Local* thenLabel, const Local* elseLabel) :
         thenLabel(thenLabel), elseLabel(elseLabel), cond(cond)
 {
 
@@ -642,13 +654,13 @@ bool Branch::mapInstruction(Method& method) const
 	if(cond == BOOL_TRUE)
 	{
 		logging::debug() << "Generating unconditional branch to " << thenLabel << logging::endl;
-		method.appendToEnd(new intermediate::Branch(method.findOrCreateLocal(TYPE_LABEL, thenLabel), COND_ALWAYS, BOOL_TRUE));
+		method.appendToEnd(new intermediate::Branch(thenLabel, COND_ALWAYS, BOOL_TRUE));
 	}
 	else
 	{
-		logging::debug() << "Generating branch on condition " << cond.to_string() << " to either " << thenLabel << " or " << elseLabel << logging::endl;
-		method.appendToEnd(new intermediate::Branch(method.findOrCreateLocal(TYPE_LABEL, thenLabel), COND_ZERO_SET, cond));
-		method.appendToEnd(new intermediate::Branch(method.findOrCreateLocal(TYPE_LABEL, elseLabel),COND_ZERO_CLEAR, cond));
+		logging::debug() << "Generating branch on condition " << cond.to_string() << " to either " << thenLabel->to_string() << " or " << elseLabel->to_string() << logging::endl;
+		method.appendToEnd(new intermediate::Branch(thenLabel, COND_ZERO_SET, cond));
+		method.appendToEnd(new intermediate::Branch(elseLabel,COND_ZERO_CLEAR, cond));
 	}
 
     return true;

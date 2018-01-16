@@ -29,6 +29,8 @@ namespace vc4c
 		InstructionWalker insertInvertSign(InstructionWalker it, Method& method, const Value& src, Value& dest, ConditionCode cond = COND_ALWAYS);
 
 		InstructionWalker insertCalculateIndices(InstructionWalker it, Method& method, const Value& container, const Value& dest, const std::vector<Value>& indices, bool firstIndexIsElement = false);
+
+		InstructionWalker insertByteSwap(InstructionWalker it, Method& method, const Value& src, const Value& dest);
 	} // namespace intermediate
 } // namespace vc4c
 

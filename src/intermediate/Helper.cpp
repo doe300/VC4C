@@ -392,3 +392,81 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 
 	return it;
 }
+
+InstructionWalker intermediate::insertByteSwap(InstructionWalker it, Method& method, const Value& src, const Value& dest)
+{
+	/*
+	 * llvm.bswap:
+	 * "The llvm.bswap.i16 intrinsic returns an i16 value that has the high and low byte of the input i16 swapped.
+	 * Similarly, the llvm.bswap.i32 intrinsic returns an i32 value that has the four bytes of the input i32 swapped,
+	 * so that if the input bytes are numbered 0, 1, 2, 3 then the returned i32 will have its bytes in 3, 2, 1, 0 order. "
+	 */
+	auto numBytes = src.type.getScalarBitCount() / 8;
+
+	//TODO loses signedness!
+
+	if(numBytes == 2)
+	{
+		// ? ? A B -> 0 ? ? A
+		const Value tmpA0 = method.addNewLocal(src.type, "byte_swap");
+		it.emplace(new Operation(OP_SHR, tmpA0, src, Value(SmallImmediate::fromInteger(8).value(), TYPE_INT8)));
+		it.nextInBlock();
+		// ? ? A B -> ? A B 0
+		const Value tmpB0 = method.addNewLocal(src.type, "byte_swap");
+		it.emplace(new Operation(OP_SHL, tmpB0, src, Value(SmallImmediate::fromInteger(8).value(), TYPE_INT8)));
+		it.nextInBlock();
+		// 0 ? ? A -> 0 0 0 A
+		const Value tmpA1 = method.addNewLocal(src.type, "byte_swap");
+		it.emplace(new Operation(OP_AND, tmpA1, tmpA0, Value(Literal(TYPE_INT8.getScalarWidthMask()), src.type)));
+		it.nextInBlock();
+		// ? A B 0 -> 0 0 B 0
+		const Value tmpB1 = method.addNewLocal(src.type, "byte_swap");
+		it.emplace(new Operation(OP_AND, tmpB1, tmpB0, Value(Literal(TYPE_INT8.getScalarWidthMask() << 8), src.type)));
+		it.nextInBlock();
+		// 0 0 0 A | 0 0 B 0 -> 0 0 A B
+		it.emplace(new Operation(OP_OR, dest, tmpA1, tmpB1));
+		it.nextInBlock();
+	}
+	else if(numBytes == 4)
+	{
+		// A B C D -> B C D A
+		const Value tmpAC0 = method.addNewLocal(src.type, "byte_swap");
+		it.emplace(new Operation(OP_ROR, tmpAC0, src, Value(Literal(static_cast<int64_t>(24)), TYPE_INT8)));
+		it.nextInBlock();
+		// A B C D -> D A B C
+		const Value tmpBD0 = method.addNewLocal(src.type, "byte_swap");
+		it.emplace(new Operation(OP_ROR, tmpBD0, src, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
+		it.nextInBlock();
+		// B C D A -> 0 0 0 A
+		const Value tmpA1 = method.addNewLocal(src.type, "byte_swap");
+		it.emplace(new Operation(OP_AND, tmpA1, tmpAC0, Value(Literal(TYPE_INT8.getScalarWidthMask()), src.type)));
+		it.nextInBlock();
+		// D A B C -> 0 0 B 0
+		const Value tmpB1 = method.addNewLocal(src.type, "byte_swap");
+		it.emplace(new Operation(OP_AND, tmpB1, tmpBD0, Value(Literal(TYPE_INT8.getScalarWidthMask() << 8), src.type)));
+		it.nextInBlock();
+		// B C D A -> 0 C 0 0
+		const Value tmpC1 = method.addNewLocal(src.type, "byte_swap");
+		it.emplace(new Operation(OP_AND, tmpC1, tmpAC0, Value(Literal(TYPE_INT8.getScalarWidthMask() << 16), src.type)));
+		it.nextInBlock();
+		// D A B C -> D 0 0 0
+		const Value tmpD1 = method.addNewLocal(src.type, "byte_swap");
+		it.emplace(new Operation(OP_AND, tmpD1, tmpBD0, Value(Literal(TYPE_INT8.getScalarWidthMask() << 24), src.type)));
+		it.nextInBlock();
+		// 0 0 0 A | 0 0 B 0 -> 0 0 B A
+		const Value tmpAB2 = method.addNewLocal(src.type, "byte_swap");
+		it.emplace(new Operation(OP_OR, tmpAB2, tmpA1, tmpB1));
+		it.nextInBlock();
+		// 0 C 0 0 | D 0 0 0 -> D C 0 0
+		const Value tmpCD2 = method.addNewLocal(src.type, "byte_swap");
+		it.emplace(new Operation(OP_OR, tmpCD2, tmpC1, tmpD1));
+		it.nextInBlock();
+		// 0 0 B A | D C 0 0 -> D C B A
+		it.emplace(new Operation(OP_OR, dest, tmpAB2, tmpCD2));
+		it.nextInBlock();
+	}
+	else
+		throw CompilationError(CompilationStep::GENERAL, "Invalid number of bytes for byte-swap", std::to_string(numBytes));
+
+	return it;
+}

@@ -125,7 +125,7 @@ namespace vc4c
 		class IndexOf: public LLVMInstruction
 		{
 		public:
-			IndexOf(const Local* dest, const Value& container, const std::vector<Value>& indices);
+			IndexOf(const Value& dest, const Value& container, const std::vector<Value>& indices);
 			~IndexOf() override = default;
 
 			const Local* getDeclaredLocal() const override;
@@ -135,7 +135,7 @@ namespace vc4c
 			const Value getContainer() const;
 
 		private:
-			const Local* dest;
+			const Value dest;
 			const Value container;
 			const std::vector<Value> indices;
 		};
@@ -225,12 +225,12 @@ namespace vc4c
 		class LLVMLabel: public LLVMInstruction
 		{
 		public:
-			explicit LLVMLabel(const std::string& name);
+			explicit LLVMLabel(const Local* label);
 			~LLVMLabel() override = default;
 
 			bool mapInstruction(Method& method) const override;
 		private:
-			const std::string label;
+			const Local* label;
 		};
 
 		class PhiNode: public LLVMInstruction
@@ -268,15 +268,15 @@ namespace vc4c
 		class Branch: public LLVMInstruction
 		{
 		public:
-			explicit Branch(const std::string& label);
-			Branch(const Value& cond, const std::string& thenLabel, const std::string& elseLabel);
+			explicit Branch(const Local* label);
+			Branch(const Value& cond, const Local* thenLabel, const Local* elseLabel);
 			~Branch() override = default;
 
 			std::vector<const Local*> getAllLocals() const override;
 			bool mapInstruction(Method& method) const override;
 		private:
-			const std::string thenLabel;
-			const std::string elseLabel;
+			const Local* thenLabel;
+			const Local* elseLabel;
 			const Value cond;
 		};
 

@@ -638,7 +638,7 @@ void IRParser::parseMethodBody(LLVMMethod& method)
      * SPIRV-LLVM/CLang adds an additional label to the beginning, so this introduces two labels with the same position (an empty basic block), which has no negative effect (maybe a little loss in performance)
      */
     if(method.method->findParameter("%0") == nullptr && method.method->findLocal("%0") == nullptr)
-    	method.instructions.emplace_back(new LLVMLabel("%0"));
+    	method.instructions.emplace_back(new LLVMLabel(method.method->findOrCreateLocal(TYPE_LABEL, "%0")));
     do {
         parseInstruction(method, method.instructions);
     }
@@ -852,7 +852,7 @@ IndexOf* IRParser::parseGetElementPtr(LLVMMethod& method, const std::string& des
 
 	const Value dest = method.method->findOrCreateLocal(elementType, destination)->createReference();
     logging::debug() << "Getting element " << to_string<Value>(indices) << " from " << pointer.to_string() << " into " << dest.to_string(true) << logging::endl;
-	return new IndexOf(dest.local, pointer, indices);
+	return new IndexOf(dest, pointer, indices);
 }
 
 void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions, const Token& dest)
@@ -1363,7 +1363,7 @@ void IRParser::parseBranch(LLVMMethod& method, FastModificationList<std::unique_
         const std::string label(scanner.pop().getText().value());
 
         logging::debug() << "Unconditional branch to " << label << logging::endl;
-        instructions.emplace_back(new Branch(label));
+        instructions.emplace_back(new Branch(method.method->findOrCreateLocal(TYPE_LABEL, label)));
     }
     else {
         //conditional branch
@@ -1380,7 +1380,7 @@ void IRParser::parseBranch(LLVMMethod& method, FastModificationList<std::unique_
         const std::string falseLabel(scanner.pop().getText().value());
 
         logging::debug() << "Branch on " << cond.to_string() << " to either " << trueLabel << " or " << falseLabel << logging::endl;
-        instructions.emplace_back(new Branch(cond, trueLabel, falseLabel));
+        instructions.emplace_back(new Branch(cond, method.method->findOrCreateLocal(TYPE_LABEL, trueLabel), method.method->findOrCreateLocal(TYPE_LABEL, falseLabel)));
     }
 }
 
@@ -1417,7 +1417,7 @@ void IRParser::parseLabel(LLVMMethod& method, FastModificationList<std::unique_p
     if(labelName.find(':') != std::string::npos)
     	labelName = labelName.substr(0, labelName.find(':'));
     logging::debug() << "Setting label " << labelName << logging::endl;
-    instructions.emplace_back(new LLVMLabel(labelName));
+    instructions.emplace_back(new LLVMLabel(method.method->findOrCreateLocal(TYPE_LABEL, labelName)));
 }
 
 void IRParser::parseSwitch(LLVMMethod& method, FastModificationList<std::unique_ptr<LLVMInstruction>>& instructions)

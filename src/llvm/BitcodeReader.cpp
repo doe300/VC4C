@@ -416,7 +416,7 @@ void BitcodeReader::parseFunctionBody(Module& module, Method& method, LLVMInstru
 	for(const llvm::BasicBlock& block : func)
 	{
 		// need to extract label from basic block
-		instructions.emplace_back(new LLVMLabel(toValue(method, &block).local->name));
+		instructions.emplace_back(new LLVMLabel(toValue(method, &block).local));
 		for(const llvm::Instruction& inst : block)
 		{
 			parseInstruction(module, method, instructions, inst);
@@ -516,9 +516,9 @@ void BitcodeReader::parseInstruction(Module& module, Method& method, LLVMInstruc
 		{
 			const llvm::BranchInst* br = llvm::cast<const llvm::BranchInst>(&inst);
 			if(br->isUnconditional())
-				instructions.emplace_back(new Branch(toValue(method, br->getSuccessor(0)).local->name));
+				instructions.emplace_back(new Branch(toValue(method, br->getSuccessor(0)).local));
 			else
-				instructions.emplace_back(new Branch(toValue(method, br->getCondition()), toValue(method, br->getSuccessor(0)).local->name, toValue(method, br->getSuccessor(1)).local->name));
+				instructions.emplace_back(new Branch(toValue(method, br->getCondition()), toValue(method, br->getSuccessor(0)).local, toValue(method, br->getSuccessor(1)).local));
 			instructions.back()->setDecorations(deco);
 			break;
 		}
@@ -585,7 +585,7 @@ void BitcodeReader::parseInstruction(Module& module, Method& method, LLVMInstruc
 			const llvm::GetElementPtrInst* indexOf = llvm::cast<const llvm::GetElementPtrInst>(&inst);
 			std::vector<Value> indices;
 			std::for_each(indexOf->idx_begin(), indexOf->idx_end(), [this,&method,&indices](const llvm::Value* val) -> void {indices.emplace_back(toValue(method, val));});
-			instructions.emplace_back(new IndexOf(toValue(method, indexOf).local, toValue(method, indexOf->getPointerOperand()), indices));
+			instructions.emplace_back(new IndexOf(toValue(method, indexOf), toValue(method, indexOf->getPointerOperand()), indices));
 			instructions.back()->setDecorations(deco);
 			break;
 		}
@@ -919,6 +919,29 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
 		result.type = toDataType(expr->getType());
 		return result;
 	}
+	if(expr->getOpcode() == llvm::Instruction::MemoryOps::GetElementPtr)
+	{
+		//e.g. in-line getelementptr in load or store instructions
+		if(llvm::dyn_cast<const llvm::GlobalVariable>(expr->getOperand(0)) != nullptr)
+		{
+			Value srcGlobal = toConstant(module, expr->getOperand(0));
+
+			//for now, we only support indices of all zero -> reference to the global itself (or the first entry)
+			for(unsigned i = 1; i < expr->getNumOperands(); ++i)
+			{
+				if(!toConstant(module, expr->getOperand(i)).isZeroInitializer())
+				{
+					expr->dump();
+					throw CompilationError(CompilationStep::PARSER, "Only constant getelementptr without offsets are supported for now");
+				}
+			}
+
+			//we need to make the type of the value fit the return-type expected
+			srcGlobal.type = toDataType(expr->getType());
+			//TODO is this correct or would we need a new local referring to the global?
+			return srcGlobal;
+		}
+	}
 	OpCode opCode = OpCode::findOpCode(expr->getOpcodeName());
 
 	Optional<Value> result = NO_VALUE;
@@ -930,7 +953,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
 	if(result)
 		return result.value();
 	expr->dump();
-	throw CompilationError(CompilationStep::PARSER, "Constant expressions are not supported yet", expr->getOpcodeName());
+	throw CompilationError(CompilationStep::PARSER, "This type of constant expression is not supported yet", expr->getOpcodeName());
 }
 
 #endif
