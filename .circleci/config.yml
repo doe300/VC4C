@@ -11,8 +11,8 @@ jobs:
       - run:
           name: configure
           # Use the libLLVM of the default LLVM/CLang, disable search for SPIRV-LLVM
-          command: cmake . -DCROSS_COMPILE=ON -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=ON -DLLVM_CONFIG_PATH=llvm-config-3.9 -DLLVM_LIBRARY_TYPE=1 -DSPIRV_FRONTEND=OFF -DSPIRV_COMPILER_ROOT=/tmp/skip-searching
-#          command: cmake . -DCROSS_COMPILE=ON -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=OFF
+#          command: cmake . -DCROSS_COMPILE=ON -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=ON -DLLVM_CONFIG_PATH=llvm-config-3.9 -DSPIRV_FRONTEND=OFF -DSPIRV_COMPILER_ROOT=/tmp/skip-searching
+          command: cmake . -DCROSS_COMPILE=ON -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=OFF
       - run:
           name: make
           command: make -j2
