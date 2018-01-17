@@ -67,6 +67,12 @@ namespace vc4c
 		};
 
 		std::string toString(InstructionDecorations decoration);
+		/*
+		 * Returns all decorations set in the given decorations which can be forwarded to a move of the output-value of the decorated instruction
+		 * E.g. if an output is unsigned, the value moved to another register is still unsigned, same for all built-in flags.
+		 * On the other side, a moved value is no longer a PHI-node instruction or an element insertion
+		 */
+		InstructionDecorations forwardDecorations(InstructionDecorations decorations);
 
 		/*
 		 * Converted to QPU instructions,

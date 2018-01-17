@@ -277,13 +277,18 @@ InstructionWalker intermediate::insertMakePositive(InstructionWalker it, Method&
 			dest.container.elements.push_back(isNegative ? Value(Literal(-elem.literal.integer), elem.type) : elem);
 		}
 	}
+	else if(src.hasType(ValueType::LOCAL) && src.local->getSingleWriter() != nullptr && has_flag(dynamic_cast<const IntermediateInstruction*>(src.local->getSingleWriter())->decoration, InstructionDecorations::UNSIGNED_RESULT))
+	{
+		//the value is already unsigned
+		dest = src;
+	}
 	else
 	{
 		//do we have a negative number?
 		it.emplace(new Operation(OP_SHR, NOP_REGISTER, src, Value(Literal(static_cast<uint64_t>(src.type.getScalarBitCount() - 1)), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
 		it.nextInBlock();
 		//flip all bits
-		const Value tmp = method.addNewLocal(src.type, "%tow_complement");
+		const Value tmp = method.addNewLocal(src.type, "%twos_complement");
 		it.emplace(new Operation(OP_NOT, tmp, src, COND_ZERO_CLEAR));
 		it.nextInBlock();
 		//add 1

@@ -51,15 +51,21 @@ InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(Method& me
 	Value op2Sign = method.addNewLocal(TYPE_BOOL, "%sign");
 	it = insertIsNegative(it, arg0, op1Sign);
 	it = insertIsNegative(it, arg1, op2Sign);
-	if(op1Sign.hasType(ValueType::LITERAL) && op2Sign.hasType(ValueType::LITERAL))
-	{
-		throw CompilationError(CompilationStep::OPTIMIZER, "This case of multiplication of literal integers should have been replaced with constant", op.to_string());
-	}
 
-	//if exactly one operand was negative, invert sign of result
-	it.emplace(new Operation(OP_XOR, NOP_REGISTER, op1Sign, op2Sign, COND_ALWAYS, SetFlag::SET_FLAGS));
-	it.nextInBlock();
-	return insertInvertSign(it, method, tmpDest, opDest, COND_ZERO_CLEAR);
+	if(op1Sign.hasLiteral(BOOL_FALSE.literal) && op2Sign.hasLiteral(BOOL_FALSE.literal))
+	{
+		//if both operands are marked with (unsigned), we don't need to invert the result
+		it.emplace(new MoveOperation(opDest, tmpDest));
+		it.nextInBlock();
+		return it;
+	}
+	else
+	{
+		//if exactly one operand was negative, invert sign of result
+		it.emplace(new Operation(OP_XOR, NOP_REGISTER, op1Sign, op2Sign, COND_ALWAYS, SetFlag::SET_FLAGS));
+		it.nextInBlock();
+		return insertInvertSign(it, method, tmpDest, opDest, COND_ZERO_CLEAR);
+	}
 }
 
 InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& method, InstructionWalker it, Operation& op)
@@ -170,7 +176,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
     op.setOpCode(OP_ADD);
     op.setArgument(0, out1);
     op.setArgument(1, out2);
-    op.decoration = add_flag(op.decoration, InstructionDecorations::UNSIGNED_RESULT);
+    op.setDecorations(InstructionDecorations::UNSIGNED_RESULT);
     
     return it;
 }
@@ -212,10 +218,19 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivision(Method& method, 
     it = intrinsifyUnsignedIntegerDivision(method, it, op, useRemainder);
     it.nextInBlock();
     
-    //if exactly one operand was negative, invert sign of result
-	it.emplace(new Operation(OP_XOR, NOP_REGISTER, op1Sign, op2Sign, COND_ALWAYS, SetFlag::SET_FLAGS));
-	it.nextInBlock();
-	it = insertInvertSign(it, method, tmpDest, opDest, COND_ZERO_CLEAR);
+    if(op1Sign.hasLiteral(BOOL_FALSE.literal) && op2Sign.hasLiteral(BOOL_FALSE.literal))
+	{
+		//if both operands are marked with (unsigned), we don't need to invert the result
+		it.emplace(new MoveOperation(opDest, tmpDest));
+		it.nextInBlock();
+	}
+    else
+    {
+    	//if exactly one operand was negative, invert sign of result
+		it.emplace(new Operation(OP_XOR, NOP_REGISTER, op1Sign, op2Sign, COND_ALWAYS, SetFlag::SET_FLAGS));
+		it.nextInBlock();
+		it = insertInvertSign(it, method, tmpDest, opDest, COND_ZERO_CLEAR);
+    }
 	return it;
 }
 
@@ -287,7 +302,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
     
     //make move from original instruction
     op.setOpCode(OP_OR);
-    op.decoration = add_flag(op.decoration, InstructionDecorations::UNSIGNED_RESULT);
+    op.setDecorations(InstructionDecorations::UNSIGNED_RESULT);
     if(useRemainder)
     {
         op.setArgument(0, remainder);
@@ -333,10 +348,19 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivisionByConstant(Method
 	it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, op, useRemainder);
 	it.nextInBlock();
 
-	//if exactly one operand was negative, invert sign of result
-	it.emplace(new Operation(OP_XOR, NOP_REGISTER, op1Sign, op2Sign, COND_ALWAYS, SetFlag::SET_FLAGS));
-	it.nextInBlock();
-	it = insertInvertSign(it, method, tmpDest, opDest, COND_ZERO_CLEAR);
+	if(op1Sign.hasLiteral(BOOL_FALSE.literal) && op2Sign.hasLiteral(BOOL_FALSE.literal))
+	{
+		//if both operands are marked with (unsigned), we don't need to invert the result
+		it.emplace(new MoveOperation(opDest, tmpDest));
+		it.nextInBlock();
+	}
+	else
+	{
+		//if exactly one operand was negative, invert sign of result
+		it.emplace(new Operation(OP_XOR, NOP_REGISTER, op1Sign, op2Sign, COND_ALWAYS, SetFlag::SET_FLAGS));
+		it.nextInBlock();
+		it = insertInvertSign(it, method, tmpDest, opDest, COND_ZERO_CLEAR);
+	}
 	return it;
 }
 

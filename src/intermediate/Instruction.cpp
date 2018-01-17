@@ -52,6 +52,28 @@ std::string intermediate::toString(const InstructionDecorations decoration)
 	return res.substr(0, res.empty() ? 0 : res.size() - 1);
 }
 
+InstructionDecorations intermediate::forwardDecorations(InstructionDecorations decorations)
+{
+	InstructionDecorations res = InstructionDecorations::NONE;
+	if(has_flag(decorations, InstructionDecorations::BUILTIN_GLOBAL_ID))
+		res = add_flag(res, InstructionDecorations::BUILTIN_GLOBAL_ID);
+	if(has_flag(decorations, InstructionDecorations::BUILTIN_GLOBAL_OFFSET))
+		res = add_flag(res, InstructionDecorations::BUILTIN_GLOBAL_OFFSET);
+	if(has_flag(decorations, InstructionDecorations::BUILTIN_GLOBAL_SIZE))
+		res = add_flag(res, InstructionDecorations::BUILTIN_GLOBAL_SIZE);
+	if(has_flag(decorations, InstructionDecorations::BUILTIN_LOCAL_ID))
+		res = add_flag(res, InstructionDecorations::BUILTIN_LOCAL_ID);
+	if(has_flag(decorations, InstructionDecorations::BUILTIN_LOCAL_SIZE))
+		res = add_flag(res, InstructionDecorations::BUILTIN_LOCAL_SIZE);
+	if(has_flag(decorations, InstructionDecorations::BUILTIN_NUM_GROUPS))
+		res = add_flag(res, InstructionDecorations::BUILTIN_NUM_GROUPS);
+	if(has_flag(decorations, InstructionDecorations::BUILTIN_WORK_DIMENSIONS))
+		res = add_flag(res, InstructionDecorations::BUILTIN_WORK_DIMENSIONS);
+	if(has_flag(decorations, InstructionDecorations::UNSIGNED_RESULT))
+		res = add_flag(res, InstructionDecorations::UNSIGNED_RESULT);
+	return res;
+}
+
 IntermediateInstruction::IntermediateInstruction(Optional<Value> output, ConditionCode cond, SetFlag setFlags, Pack packMode) :
 signal(SIGNAL_NONE), unpackMode(UNPACK_NOP),  packMode(packMode), conditional(cond), setFlags(setFlags), decoration(InstructionDecorations::NONE), canBeCombined(true), output(output), arguments()
 {

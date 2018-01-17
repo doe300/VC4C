@@ -672,6 +672,10 @@ InstructionWalker optimizations::handleUseWithImmediate(const Module& module, Me
 					logging::debug() << "Inserting temporary to split up use of long-living local with immediate value: " << op->to_string() << logging::endl;
 					const Value tmp = method.addNewLocal(localIt->type, localPrefix);
 					it.emplace(new intermediate::MoveOperation(tmp, *localIt));
+					//since we simply move the source, some decorations for the writing of the source still apply
+					//TODO or more generally propagate (unsigned) decoration for every moves and some operations (e.g. and with constant/unsigned, etc.)
+					if(localIt->local->getSingleWriter() != nullptr)
+						it->setDecorations(intermediate::forwardDecorations(dynamic_cast<const intermediate::IntermediateInstruction*>(localIt->local->getSingleWriter())->decoration));
 					it.nextInBlock();
 					op->replaceLocal(oldLocal, tmp.local, LocalUser::Type::READER);
 				}
