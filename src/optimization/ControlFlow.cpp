@@ -532,7 +532,7 @@ static void vectorizeInstruction(InstructionWalker it, FastSet<intermediate::Int
 	//TODO cosmetic errors: depending on the order of vectorization, some locals are written as vectors, but read as scalars, if the read-instruction was vectorized before the write-instruction
 
 	// mark as already processed and remove from open-set
-	it->setDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+	it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
 	openInstructions.erase(it.get());
 }
 
@@ -552,7 +552,7 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
 				//Since this is only true for values actually vectorized, the corresponding VPM-write is checked
 				vpwSetup.dmaSetup.setDepth(static_cast<uint8_t>(vpwSetup.dmaSetup.getDepth() * loopControl.vectorizationFactor));
 				++numVectorized;
-				it->setDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+				it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
 			}
 		}
 		else if(it->writesRegister(REG_VPM_IN_SETUP))
@@ -564,7 +564,7 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
 				//See VPM write
 				vprSetup.dmaSetup.setRowLength((vprSetup.dmaSetup.getRowLength() * loopControl.vectorizationFactor) % 16 /* 0 => 16 */);
 				++numVectorized;
-				it->setDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+				it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
 			}
 		}
 
@@ -595,7 +595,7 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
 	{
 		//special/default case: initial value is zero and step is +1
 		move->setSource(ELEMENT_NUMBER_REGISTER);
-		move->setDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+		move->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
 		logging::debug() << "Changed initial value: " << loopControl.initialization->to_string() << logging::endl;
 	}
 	else if(move != nullptr && move->getSource().getLiteralValue() && loopControl.stepKind == StepKind::ADD_CONSTANT && loopControl.getStep().is(INT_ONE.literal) &&
@@ -603,7 +603,7 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
 	{
 		//more general case: initial value is a literal and step is +1
 		initialValueWalker->reset((new intermediate::Operation(OP_ADD, move->getOutput().value(), move->getSource(), ELEMENT_NUMBER_REGISTER))->copyExtrasFrom(move));
-		initialValueWalker.value()->setDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+		initialValueWalker.value()->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
 		loopControl.initialization = initialValueWalker->get();
 		logging::debug() << "Changed initial value: " << loopControl.initialization->to_string() << logging::endl;
 	}

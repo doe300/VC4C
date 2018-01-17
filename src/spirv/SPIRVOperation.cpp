@@ -81,12 +81,12 @@ void SPIRVInstruction::mapInstruction(TypeMapping& types, ConstantMapping& const
     if(!arg1)   //unary
     {
         logging::debug() << "Generating intermediate unary operation '" << opcode << "' with " << arg0.to_string(false) << " into " << dest.to_string(true) << logging::endl;
-        method.method->appendToEnd((new intermediate::Operation(opCode, dest, arg0))->setDecorations(decorations));
+        method.method->appendToEnd((new intermediate::Operation(opCode, dest, arg0))->addDecorations(decorations));
     }
     else    //binary
     {
         logging::debug() << "Generating intermediate binary operation '" << opcode << "' with " << arg0.to_string(false) << " and " << arg1.to_string() << " into " << dest.to_string(true) << logging::endl;
-        method.method->appendToEnd((new intermediate::Operation(opCode, dest, arg0, arg1.value()))->setDecorations(decorations));
+        method.method->appendToEnd((new intermediate::Operation(opCode, dest, arg0, arg1.value()))->addDecorations(decorations));
     }
 }
 
@@ -164,7 +164,7 @@ void SPIRVComparison::mapInstruction(TypeMapping& types, ConstantMapping& consta
     const Value arg0 = getValue(operands.at(0), *method.method, types, constants, memoryAllocated, localTypes);
     const Value arg1 = getValue(operands.at(1), *method.method, types, constants, memoryAllocated, localTypes);
     logging::debug() << "Generating intermediate comparison '" << opcode << "' of " << arg0.to_string(false) << " and " << arg1.to_string(false) << " into " << dest.to_string(true) << logging::endl;
-    method.method->appendToEnd((new intermediate::Comparison(opcode, dest, arg0, arg1))->setDecorations(decorations));
+    method.method->appendToEnd((new intermediate::Comparison(opcode, dest, arg0, arg1))->addDecorations(decorations));
 }
 
 Optional<Value> SPIRVComparison::precalculate(const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
@@ -222,7 +222,7 @@ void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constant
         args.push_back(getValue(op, *method.method, types, constants, memoryAllocated, localTypes));
     }
     logging::debug() << "Generating intermediate call-site to '" << calledFunction << "' with " << args.size() << " parameters into " << dest.to_string(true) << logging::endl;
-    method.method->appendToEnd((new intermediate::MethodCall(dest, calledFunction, args))->setDecorations(decorations));
+    method.method->appendToEnd((new intermediate::MethodCall(dest, calledFunction, args))->addDecorations(decorations));
 }
 
 Optional<Value> SPIRVCallSite::precalculate(const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
@@ -333,28 +333,28 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
     		intermediate::insertBitcast(method.method->appendToEnd(), *method.method.get(), source, dest, decorations);
     		break;
     	case ConversionType::FLOATING:
-			method.method->appendToEnd((new intermediate::Operation("fptrunc", dest, source))->setDecorations(decorations));
+			method.method->appendToEnd((new intermediate::Operation("fptrunc", dest, source))->addDecorations(decorations));
     		break;
     	case ConversionType::SIGNED:
     		if(isSaturated)
     			intermediate::insertSaturation(method.method->appendToEnd(), *method.method.get(), source, dest, true);
     		if(sourceWidth < destWidth)
-    			method.method->appendToEnd((new intermediate::Operation("sext", dest, source))->setDecorations(decorations));
+    			method.method->appendToEnd((new intermediate::Operation("sext", dest, source))->addDecorations(decorations));
     		else
     			//for |dest| > |source|, we do nothing (just move), since truncating would cut off the leading 1-bits for negative numbers
     			//and since the ALU only calculates 32-bit operations, we need 32-bit negative numbers
     			//TODO completely correct? Since we do not truncate out-of-bounds values! (Same for bitcast-intrinsics)
-    			method.method->appendToEnd((new intermediate::MoveOperation(dest, source))->setDecorations(decorations));
+    			method.method->appendToEnd((new intermediate::MoveOperation(dest, source))->addDecorations(decorations));
     		break;
     	case ConversionType::UNSIGNED:
     		if(isSaturated)
     			intermediate::insertSaturation(method.method->appendToEnd(), *method.method.get(), source, dest, false);
     		else if(sourceWidth > destWidth)
-    			method.method->appendToEnd((new intermediate::Operation("trunc", dest, source))->setDecorations(decorations));
+    			method.method->appendToEnd((new intermediate::Operation("trunc", dest, source))->addDecorations(decorations));
     		else if(sourceWidth == destWidth)
-				method.method->appendToEnd((new intermediate::MoveOperation(dest, source))->setDecorations(decorations));
+				method.method->appendToEnd((new intermediate::MoveOperation(dest, source))->addDecorations(decorations));
     		else // |source| < |dest|
-    			method.method->appendToEnd((new intermediate::Operation("zext", dest, source))->setDecorations(add_flag(decorations, intermediate::InstructionDecorations::UNSIGNED_RESULT)));
+    			method.method->appendToEnd((new intermediate::Operation("zext", dest, source))->addDecorations(add_flag(decorations, intermediate::InstructionDecorations::UNSIGNED_RESULT)));
     		break;
     }
 }
@@ -457,7 +457,7 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
     {
         //simple move
         logging::debug() << "Generating intermediate move from " << source.to_string() << " into " << dest.to_string(true) << logging::endl;
-        method.method->appendToEnd((new intermediate::MoveOperation(dest, source))->setDecorations(decorations));
+        method.method->appendToEnd((new intermediate::MoveOperation(dest, source))->addDecorations(decorations));
     }
     else if(sourceIndices && dest.type.isScalarType())
     {

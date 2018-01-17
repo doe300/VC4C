@@ -204,9 +204,9 @@ bool CallSite::mapInstruction(Method& method) const
     }
     logging::debug() << "Generating immediate call to " << methodName << " -> " << returnType.to_string() << logging::endl;
     if(dest == nullptr)
-    	method.appendToEnd((new intermediate::MethodCall(methodName, arguments))->setDecorations(decorations));
+    	method.appendToEnd((new intermediate::MethodCall(methodName, arguments))->addDecorations(decorations));
     else
-    	method.appendToEnd((new intermediate::MethodCall(output, methodName, arguments))->setDecorations(decorations));
+    	method.appendToEnd((new intermediate::MethodCall(output, methodName, arguments))->addDecorations(decorations));
     return true;
 }
 
@@ -296,7 +296,7 @@ std::vector<const Local*> UnaryOperator::getAllLocals() const
 bool UnaryOperator::mapInstruction(Method& method) const
 {
     logging::debug() << "Generating unary operation " << opCode << " with " << arg.to_string() << " into " << dest.to_string() << logging::endl;
-    method.appendToEnd((new intermediate::Operation(opCode, dest, arg))->setDecorations(decorations));
+    method.appendToEnd((new intermediate::Operation(opCode, dest, arg))->addDecorations(decorations));
     return true;
 }
 
@@ -319,7 +319,7 @@ std::vector<const Local*> BinaryOperator::getAllLocals() const
 bool BinaryOperator::mapInstruction(Method& method) const
 {
     logging::debug() << "Generating binary operation " << opCode << " with " << arg.to_string() << " and " << arg2.to_string() << " into " << dest.to_string() <<logging::endl;
-    method.appendToEnd((new intermediate::Operation(opCode, dest, arg, arg2))->setDecorations(decorations));
+    method.appendToEnd((new intermediate::Operation(opCode, dest, arg, arg2))->addDecorations(decorations));
     return true;
 }
 
@@ -393,7 +393,7 @@ std::vector<const Local*> Comparison::getAllLocals() const
 bool Comparison::mapInstruction(Method& method) const
 {
     logging::debug() << "Generating comparison " << comp << " with " << op1.to_string() << " and " << op2.to_string() << " into " << dest->name << logging::endl;
-    method.appendToEnd((new intermediate::Comparison(comp, dest->createReference(), op1, op2))->setDecorations(decorations));
+    method.appendToEnd((new intermediate::Comparison(comp, dest->createReference(), op1, op2))->addDecorations(decorations));
     return true;
 }
 

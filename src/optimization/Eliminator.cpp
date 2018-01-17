@@ -275,7 +275,7 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
 			it.emplace(new intermediate::MoveOperation(NOP_REGISTER, condition, COND_ALWAYS, SetFlag::SET_FLAGS));
 			it.nextInBlock();
 		}
-		it.emplace((new intermediate::MoveOperation(node.getOutput().value(), pair.second, jumpCondition))->copyExtrasFrom(&node)->setDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
+		it.emplace((new intermediate::MoveOperation(node.getOutput().value(), pair.second, jumpCondition))->copyExtrasFrom(&node)->addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
 	}
 }
 

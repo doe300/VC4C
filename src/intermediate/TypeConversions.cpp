@@ -25,7 +25,7 @@ InstructionWalker intermediate::insertBitcast(InstructionWalker it, Method& meth
 		throw CompilationError(CompilationStep::LLVM_2_IR, "Bit-casts across different vector-sizes are not yet supported!");
 	}
 	//bit-casts with types of same vector-size (and therefore same element-size) are simple moves
-	it.emplace((new intermediate::MoveOperation(dest, src))->setDecorations(deco));
+	it.emplace((new intermediate::MoveOperation(dest, src))->addDecorations(deco));
 
 	//last step: map destination to source (if bit-cast of pointers)
 	if(dest.hasType(ValueType::LOCAL) && src.hasType(ValueType::LOCAL) && dest.type.isPointerType() && src.type.isPointerType())
@@ -82,7 +82,7 @@ InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method
     	it.emplace( new Operation(OP_AND, dest, src, tmp, conditional, setFlags));
     }
 
-	it->setDecorations(InstructionDecorations::UNSIGNED_RESULT);
+	it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
     it.nextInBlock();
     return it;
 }
@@ -142,11 +142,11 @@ InstructionWalker intermediate::insertSaturation(InstructionWalker it, Method& m
 		switch(dest.type.getScalarBitCount())
 		{
 			case 8:
-				return it.emplace((new MoveOperation(dest, Value(Literal(isSigned ? saturate<int8_t>(src.literal.integer) : saturate<uint8_t>(src.literal.integer)), dest.type)))->setDecorations(isSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT));
+				return it.emplace((new MoveOperation(dest, Value(Literal(isSigned ? saturate<int8_t>(src.literal.integer) : saturate<uint8_t>(src.literal.integer)), dest.type)))->addDecorations(isSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT));
 			case 16:
-				return it.emplace((new MoveOperation(dest, Value(Literal(isSigned ? saturate<int16_t>(src.literal.integer) : saturate<uint16_t>(src.literal.integer)), dest.type)))->setDecorations(isSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT));
+				return it.emplace((new MoveOperation(dest, Value(Literal(isSigned ? saturate<int16_t>(src.literal.integer) : saturate<uint16_t>(src.literal.integer)), dest.type)))->addDecorations(isSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT));
 			case 32:
-				return it.emplace((new MoveOperation(dest, Value(Literal(isSigned ? saturate<int32_t>(src.literal.integer) : saturate<uint32_t>(src.literal.integer)), dest.type)))->setDecorations(isSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT));
+				return it.emplace((new MoveOperation(dest, Value(Literal(isSigned ? saturate<int32_t>(src.literal.integer) : saturate<uint32_t>(src.literal.integer)), dest.type)))->addDecorations(isSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT));
 			default:
 				throw CompilationError(CompilationStep::GENERAL, "Invalid target type for saturation", dest.type.to_string());
 		}
@@ -154,7 +154,7 @@ InstructionWalker intermediate::insertSaturation(InstructionWalker it, Method& m
 	else	//saturation can be easily done via pack-modes
 	{
 		if(dest.type.getScalarBitCount() == 8 && !isSigned)
-			return it.emplace((new MoveOperation(dest, src))->setPackMode(PACK_INT_TO_UNSIGNED_CHAR_SATURATE)->setDecorations(InstructionDecorations::UNSIGNED_RESULT));
+			return it.emplace((new MoveOperation(dest, src))->setPackMode(PACK_INT_TO_UNSIGNED_CHAR_SATURATE)->addDecorations(InstructionDecorations::UNSIGNED_RESULT));
 		else if(dest.type.getScalarBitCount() == 16 && isSigned)
 			return it.emplace((new MoveOperation(dest, src))->setPackMode(PACK_INT_TO_SIGNED_SHORT_SATURATE));
 		else if(dest.type.getScalarBitCount() == 32)

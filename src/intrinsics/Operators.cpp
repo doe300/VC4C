@@ -176,7 +176,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
     op.setOpCode(OP_ADD);
     op.setArgument(0, out1);
     op.setArgument(1, out2);
-    op.setDecorations(InstructionDecorations::UNSIGNED_RESULT);
+    op.addDecorations(InstructionDecorations::UNSIGNED_RESULT);
     
     return it;
 }
@@ -302,7 +302,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
     
     //make move from original instruction
     op.setOpCode(OP_OR);
-    op.setDecorations(InstructionDecorations::UNSIGNED_RESULT);
+    op.addDecorations(InstructionDecorations::UNSIGNED_RESULT);
     if(useRemainder)
     {
         op.setArgument(0, remainder);
@@ -425,7 +425,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(Meth
 	const Value divOut = method.addNewLocal(op.getFirstArg().type, "%udiv");
 	it.emplace(new Operation(OP_SHR, divOut, tmp, constants.second));
 	it->copyExtrasFrom(&op);
-	it->setDecorations(InstructionDecorations::UNSIGNED_RESULT);
+	it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
 	it.nextInBlock();
 	//the original version has an error, which returns a too small value for exact multiples of the denominator, the next lines fix this error
 	const Value tmpFix0 = method.addNewLocal(op.getFirstArg().type, "%udiv.fix");
@@ -438,13 +438,13 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(Meth
 	it.nextInBlock();
 	const Value finalResult = useRemainder ? method.addNewLocal(op.getFirstArg().type, "%udiv.result") : op.getOutput().value();
 	it.emplace(new MoveOperation(finalResult, divOut));
-	it->setDecorations(InstructionDecorations::UNSIGNED_RESULT);
+	it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
 	it.nextInBlock();
 	it.emplace(new Operation(OP_ADD, finalResult, divOut, INT_ONE, COND_NEGATIVE_SET));
-	it->setDecorations(InstructionDecorations::UNSIGNED_RESULT);
+	it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
 	it.nextInBlock();
 	it.emplace(new Operation(OP_ADD, finalResult, divOut, INT_ONE, COND_ZERO_SET));
-	it->setDecorations(InstructionDecorations::UNSIGNED_RESULT);
+	it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
 	it.nextInBlock();
 
 	if(useRemainder)
@@ -456,7 +456,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(Meth
 		//replace original division
 		op.setArgument(1, tmpMul);
 		op.setOpCode(OP_SUB);
-		op.setDecorations(InstructionDecorations::UNSIGNED_RESULT);
+		op.addDecorations(InstructionDecorations::UNSIGNED_RESULT);
 	}
 	else
 	{

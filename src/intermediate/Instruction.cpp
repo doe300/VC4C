@@ -171,7 +171,7 @@ IntermediateInstruction* IntermediateInstruction::setUnpackMode(const Unpack unp
     return this;
 }
 
-IntermediateInstruction* IntermediateInstruction::setDecorations(const InstructionDecorations decorations)
+IntermediateInstruction* IntermediateInstruction::addDecorations(const InstructionDecorations decorations)
 {
 	this->decoration = add_flag(this->decoration, decorations);
     return this;
@@ -214,7 +214,7 @@ IntermediateInstruction* IntermediateInstruction::copyExtrasFrom(const Intermedi
 		throw CompilationError(CompilationStep::GENERAL, "Failed to merge two distinct conditions", to_string());
 	if(conditional == COND_ALWAYS)
 		this->setCondition(src->conditional);
-	this->setDecorations(add_flag(this->decoration, src->decoration));
+	this->addDecorations(add_flag(this->decoration, src->decoration));
 	if(packMode != PACK_NOP && src->packMode != PACK_NOP && packMode != src->packMode)
 		throw CompilationError(CompilationStep::GENERAL, "Failed to merge two distinct pack-modes", to_string());
 	if(packMode == PACK_NOP)

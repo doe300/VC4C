@@ -146,7 +146,7 @@ namespace vc4c
 			IntermediateInstruction* setCondition(ConditionCode condition);
 			IntermediateInstruction* setSetFlags(SetFlag setFlags);
 			IntermediateInstruction* setUnpackMode(Unpack unpackMode);
-			IntermediateInstruction* setDecorations(InstructionDecorations decorations);
+			IntermediateInstruction* addDecorations(InstructionDecorations decorations);
 
 			/*
 			 * Whether this instruction has any side-effects.

@@ -675,7 +675,7 @@ InstructionWalker optimizations::handleUseWithImmediate(const Module& module, Me
 					//since we simply move the source, some decorations for the writing of the source still apply
 					//TODO or more generally propagate (unsigned) decoration for every moves and some operations (e.g. and with constant/unsigned, etc.)
 					if(localIt->local->getSingleWriter() != nullptr)
-						it->setDecorations(intermediate::forwardDecorations(dynamic_cast<const intermediate::IntermediateInstruction*>(localIt->local->getSingleWriter())->decoration));
+						it->addDecorations(intermediate::forwardDecorations(dynamic_cast<const intermediate::IntermediateInstruction*>(localIt->local->getSingleWriter())->decoration));
 					it.nextInBlock();
 					op->replaceLocal(oldLocal, tmp.local, LocalUser::Type::READER);
 				}

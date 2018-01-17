@@ -148,7 +148,7 @@ InstructionWalker intermediate::insertVectorInsertion(InstructionWalker it, Meth
     it.nextInBlock();
     //3) move when condition is met
     it.emplace( new intermediate::MoveOperation(container, tmp, COND_ZERO_SET));
-    it->setDecorations(InstructionDecorations::ELEMENT_INSERTION);
+    it->addDecorations(InstructionDecorations::ELEMENT_INSERTION);
     it.nextInBlock();
     return it;
 }
