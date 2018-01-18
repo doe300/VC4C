@@ -8,18 +8,15 @@
 
 #ifdef USE_LLVM_LIBRARY
 
-#define SPIRV_LLVM_LIBRARY 2
-#define DEFAULT_LLVM_LIBRARY 1
-
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intrinsics/Images.h"
 #include "log.h"
 
 #include "llvm-c/Core.h"
-#if USE_LLVM_LIBRARY == SPIRV_LLVM_LIBRARY /* SPIR-V LLVM */
-#include "llvm/Bitcode/ReaderWriter.h"
-#else
+#if LLVM_LIBRARY_VERSION >= 40
 #include "llvm/Bitcode/BitcodeReader.h"
+#else
+#include "llvm/Bitcode/ReaderWriter.h"
 #endif
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
@@ -46,10 +43,10 @@ BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType) : cont
 		auto expected = llvm::parseBitcodeFile(buf->getMemBufferRef(), context);
 		if(!expected)
 		{
-#if USE_LLVM_LIBRARY == SPIRV_LLVM_LIBRARY /* SPIR-V LLVM */
-			throw std::system_error(expected.getError(), "Error parsing LLVM module");
-#else
+#if LLVM_LIBRARY_VERSION >= 40
 			throw std::system_error(llvm::errorToErrorCode(expected.takeError()), "Error parsing LLVM module");
+#else
+			throw std::system_error(expected.getError(), "Error parsing LLVM module");
 #endif
 		}
 		else
@@ -71,7 +68,96 @@ BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType) : cont
 		throw CompilationError(CompilationStep::PARSER, "Unhandled source-type for LLVM bitcode reader", std::to_string(static_cast<unsigned>(sourceType)));
 }
 
-#if USE_LLVM_LIBRARY == SPIRV_LLVM_LIBRARY /* SPIR-V LLVM */
+#if LLVM_LIBRARY_VERSION >= 39 /* Function meta-data was introduced in LLVM 3.9 */
+static void extractKernelMetadata(Method& kernel, const llvm::Function& func, const llvm::Module& llvmModule, const llvm::LLVMContext& context)
+{
+	llvm::MDNode* metadata = func.getMetadata("kernel_arg_addr_space");
+	if(metadata != nullptr)
+	{
+		//address spaces for kernel pointer arguments, e.g. "!2 = !{i32 1, i32 1}"
+		for(unsigned i = 0; i < metadata->getNumOperands(); ++i)
+		{
+			if(kernel.parameters.at(i).type.getPointerType())
+			{
+				const llvm::Metadata* operand = metadata->getOperand(i).get();
+				if(operand->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind)
+				{
+					const llvm::ConstantAsMetadata* constant = llvm::cast<const llvm::ConstantAsMetadata>(operand);
+					kernel.parameters.at(i).type.getPointerType().value()->addressSpace = toAddressSpace(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getSExtValue());
+				}
+				else
+					throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+			}
+		}
+	}
+	metadata = func.getMetadata("kernel_arg_access_qual");
+	if(metadata != nullptr)
+	{
+		//access qualifiers for image arguments, e.g. "!3 = !{!"none", !"none"}"
+		//XXX what to do with them? Only valid for images
+	}
+	metadata = func.getMetadata("kernel_arg_type");
+	if(metadata != nullptr)
+	{
+		//original type-names for kernel arguments, e.g. "!4 = !{!"float*", !"float*"}"
+		for(unsigned i = 0; i < metadata->getNumOperands(); ++i)
+		{
+			const llvm::Metadata* operand = metadata->getOperand(i).get();
+			if(operand->getMetadataID() == llvm::Metadata::MDStringKind)
+			{
+				const llvm::MDString* name = llvm::cast<const llvm::MDString>(operand);
+				kernel.parameters.at(i).origTypeName = name->getString();
+			}
+			else
+				throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+		}
+	}
+	metadata = func.getMetadata("kernel_arg_base_type");
+	if(metadata != nullptr)
+	{
+		//base types, e.g. for type-defs, e.g. "!4 = !{!"float*", !"float*"}"
+		//is not used
+	}
+	metadata = func.getMetadata("kernel_arg_type_qual");
+	if(metadata != nullptr)
+	{
+		//additional type qualifiers, e.g. "!5 = !{!"", !""}"
+		for(unsigned i = 0; i < metadata->getNumOperands(); ++i)
+		{
+			const llvm::Metadata* operand = metadata->getOperand(i).get();
+			if(operand->getMetadataID() == llvm::Metadata::MDStringKind)
+			{
+				const llvm::MDString* name = llvm::cast<const llvm::MDString>(operand);
+				Parameter& param = kernel.parameters.at(i);
+				if(name->getString().find("const") != std::string::npos)
+					param.decorations = add_flag(param.decorations, ParameterDecorations::READ_ONLY);
+				if(name->getString().find("restrict") != std::string::npos)
+					param.decorations = add_flag(param.decorations, ParameterDecorations::RESTRICT);
+				if(name->getString().find("volatile") != std::string::npos)
+					param.decorations = add_flag(param.decorations, ParameterDecorations::VOLATILE);
+			}
+			else
+				throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+		}
+	}
+	metadata = func.getMetadata("kernel_arg_name");
+	if(metadata != nullptr)
+	{
+		//the original argument names, e.g. "!6 = !{!"a", !"b"}"
+		for(unsigned i = 0; i < metadata->getNumOperands(); ++i)
+		{
+			const llvm::Metadata* operand = metadata->getOperand(i).get();
+			if(operand->getMetadataID() == llvm::Metadata::MDStringKind)
+			{
+				const llvm::MDString* name = llvm::cast<const llvm::MDString>(operand);
+				kernel.parameters.at(i).parameterName = name->getString();
+			}
+			else
+				throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+		}
+	}
+}
+#else
 static void extractKernelMetadata(Method& kernel, const llvm::Function& func, const llvm::Module& llvmModule, const llvm::LLVMContext& context)
 {
 	llvm::NamedMDNode* kernelsMetaData = llvmModule.getNamedMetadata("opencl.kernels");
@@ -162,95 +248,6 @@ static void extractKernelMetadata(Method& kernel, const llvm::Function& func, co
 					}
 				}
 			}
-		}
-	}
-}
-#else /* "standard" LLVM */
-static void extractKernelMetadata(Method& kernel, const llvm::Function& func, const llvm::Module& llvmModule, const llvm::LLVMContext& context)
-{
-	llvm::MDNode* metadata = func.getMetadata("kernel_arg_addr_space");
-	if(metadata != nullptr)
-	{
-		//address spaces for kernel pointer arguments, e.g. "!2 = !{i32 1, i32 1}"
-		for(unsigned i = 0; i < metadata->getNumOperands(); ++i)
-		{
-			if(kernel.parameters.at(i).type.getPointerType())
-			{
-				const llvm::Metadata* operand = metadata->getOperand(i).get();
-				if(operand->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind)
-				{
-					const llvm::ConstantAsMetadata* constant = llvm::cast<const llvm::ConstantAsMetadata>(operand);
-					kernel.parameters.at(i).type.getPointerType().value()->addressSpace = toAddressSpace(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getSExtValue());
-				}
-				else
-					throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
-			}
-		}
-	}
-	metadata = func.getMetadata("kernel_arg_access_qual");
-	if(metadata != nullptr)
-	{
-		//access qualifiers for image arguments, e.g. "!3 = !{!"none", !"none"}"
-		//XXX what to do with them? Only valid for images
-	}
-	metadata = func.getMetadata("kernel_arg_type");
-	if(metadata != nullptr)
-	{
-		//original type-names for kernel arguments, e.g. "!4 = !{!"float*", !"float*"}"
-		for(unsigned i = 0; i < metadata->getNumOperands(); ++i)
-		{
-			const llvm::Metadata* operand = metadata->getOperand(i).get();
-			if(operand->getMetadataID() == llvm::Metadata::MDStringKind)
-			{
-				const llvm::MDString* name = llvm::cast<const llvm::MDString>(operand);
-				kernel.parameters.at(i).origTypeName = name->getString();
-			}
-			else
-				throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
-		}
-	}
-	metadata = func.getMetadata("kernel_arg_base_type");
-	if(metadata != nullptr)
-	{
-		//base types, e.g. for type-defs, e.g. "!4 = !{!"float*", !"float*"}"
-		//is not used
-	}
-	metadata = func.getMetadata("kernel_arg_type_qual");
-	if(metadata != nullptr)
-	{
-		//additional type qualifiers, e.g. "!5 = !{!"", !""}"
-		for(unsigned i = 0; i < metadata->getNumOperands(); ++i)
-		{
-			const llvm::Metadata* operand = metadata->getOperand(i).get();
-			if(operand->getMetadataID() == llvm::Metadata::MDStringKind)
-			{
-				const llvm::MDString* name = llvm::cast<const llvm::MDString>(operand);
-				Parameter& param = kernel.parameters.at(i);
-				if(name->getString().find("const") != std::string::npos)
-					param.decorations = add_flag(param.decorations, ParameterDecorations::READ_ONLY);
-				if(name->getString().find("restrict") != std::string::npos)
-					param.decorations = add_flag(param.decorations, ParameterDecorations::RESTRICT);
-				if(name->getString().find("volatile") != std::string::npos)
-					param.decorations = add_flag(param.decorations, ParameterDecorations::VOLATILE);
-			}
-			else
-				throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
-		}
-	}
-	metadata = func.getMetadata("kernel_arg_name");
-	if(metadata != nullptr)
-	{
-		//the original argument names, e.g. "!6 = !{!"a", !"b"}"
-		for(unsigned i = 0; i < metadata->getNumOperands(); ++i)
-		{
-			const llvm::Metadata* operand = metadata->getOperand(i).get();
-			if(operand->getMetadataID() == llvm::Metadata::MDStringKind)
-			{
-				const llvm::MDString* name = llvm::cast<const llvm::MDString>(operand);
-				kernel.parameters.at(i).parameterName = name->getString();
-			}
-			else
-				throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
 		}
 	}
 }

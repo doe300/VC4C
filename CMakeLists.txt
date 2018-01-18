@@ -126,7 +126,7 @@ if(SPIRV_COMPILER_ROOT)
 		add_definitions(-DSPIRV_CLANG_PATH="${SPIRV_CLANG_FOUND}")
 	endif()
 elseif(SPIRV_FRONTEND)
-	message(STATUS "SPIR-V frontend configured, but no SPIR-V compiler found!")
+	message(WARNING "SPIR-V frontend configured, but no SPIR-V compiler found!")
 endif()
 
 # fall back to "standard" CLang
@@ -146,7 +146,7 @@ if((LLVMIR_FRONTEND OR LLVMLIB_FRONTEND) AND NOT CLANG_FOUND)
 			add_definitions(-DUSE_CLANG_OPENCL=1)
 		endif()
 	else()
-		message(STATUS "No CLang compiler found!")
+		message(WARNING "No CLang compiler found!")
 	endif()
 endif()
 
@@ -198,10 +198,8 @@ if(LLVMLIB_FRONTEND)
 	if(NOT LLVM_CONFIG_PATH)
 		if(SPIRV_COMPILER_ROOT) # use the SPIRV-LLVM llvm-config
 			set(LLVM_CONFIG_PATH ${SPIRV_COMPILER_ROOT}/llvm-config)
-			set(LLVM_LIBRARY_TYPE 2)
 		else() # Use the "default" llvm-config
 			find_program(LLVM_CONFIG_PATH llvm-config NAMES llvm-config-3.9 llvm-config)
-			set(LLVM_LIBRARY_TYPE 1)
 		endif()
 	endif()
 
@@ -214,15 +212,25 @@ if(LLVMLIB_FRONTEND)
 		execute_process(COMMAND ${LLVM_CONFIG_PATH} --cppflags OUTPUT_VARIABLE LLVM_LIB_FLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
 		execute_process(COMMAND ${LLVM_CONFIG_PATH} --version OUTPUT_VARIABLE LLVM_LIB_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE)
 		execute_process(COMMAND ${LLVM_CONFIG_PATH} --libs core irreader bitreader OUTPUT_VARIABLE LLVM_LIB_NAMES OUTPUT_STRIP_TRAILING_WHITESPACE)
-	
+		
+		#Depending on the LLVM library version used, we need to use some other functions/headers in the LLVM library front-end
+		if(LLVM_LIB_VERSION)
+			string(REPLACE "." ";" LLVM_VERSION_ELEMENTS ${LLVM_LIB_VERSION})
+			list(GET LLVM_VERSION_ELEMENTS 0 LLVM_LIB_VERSION_MAJOR)
+			list(GET LLVM_VERSION_ELEMENTS 1 LLVM_LIB_VERSION_MINOR)
+			add_definitions(-DLLVM_LIBRARY_VERSION=${LLVM_LIB_VERSION_MAJOR}${LLVM_LIB_VERSION_MINOR})
+		else()
+			message(WARNING "Failed to determine LLVM library version")
+		endif()
+		
 		if(LLVM_LIBS_PATH AND LLVM_INCLUDE_PATH AND LLVM_LIB_FLAGS AND LLVM_LIB_NAMES)
 			message(STATUS "Compiling LLVM library front-end with LLVM in version ${LLVM_LIB_VERSION} located in '${LLVM_LIBS_PATH}'")
 			set(ENABLE_LLVM_LIB_FRONTEND ON)
-			add_definitions(-DUSE_LLVM_LIBRARY=${LLVM_LIBRARY_TYPE})
+			add_definitions(-DUSE_LLVM_LIBRARY=1)
 			# Adds require macros as well as include-paths
 			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_LIB_FLAGS}")
 		else()
-			message(STATUS "LLVM library front-end enabled, but LLVM library was not found!")
+			message(WARNING "LLVM library front-end enabled, but LLVM library was not found!")
 			message(STATUS "LLVM libraries: ${LLVM_LIBS_PATH}")
 			message(STATUS "LLVM headers: ${LLVM_INCLUDE_PATH}")
 			message(STATUS "LLVM flags: ${LLVM_LIB_FLAGS}")
