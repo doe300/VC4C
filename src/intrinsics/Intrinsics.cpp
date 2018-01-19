@@ -509,12 +509,6 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(arg0.literal.integer / arg1.literal.integer), arg0.type), op->conditional, op->setFlags));
         }
         //a / 2^n = a >> n
-        else if(arg1.hasType(ValueType::LITERAL) && isPowerTwo(arg1.literal.integer))
-        {
-            logging::debug() << "Intrinsifying signed division with arithmetic right-shift" << logging::endl;
-            op->setOpCode(OP_ASR);
-            op->setArgument(1, Value(Literal(static_cast<int64_t>(std::log2(arg1.literal.integer))), arg1.type));
-        }
         else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
         {
         	it = intrinsifySignedIntegerDivisionByConstant(method, it, *op);
@@ -553,10 +547,10 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     //signed modulo
     else if(op->opCode == "srem")
     {
-        if(arg0.hasType(ValueType::LITERAL) && arg1.hasType(ValueType::LITERAL))
+        if(arg0.getLiteralValue() && arg1.getLiteralValue())
         {
             logging::debug() << "Calculating result for signed modulo with constants" << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(arg0.literal.integer % arg1.literal.integer), arg0.type), op->conditional, op->setFlags));
+            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(arg0.getLiteralValue()->integer % arg1.getLiteralValue()->integer), arg0.type), op->conditional, op->setFlags));
         }
         else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
 		{

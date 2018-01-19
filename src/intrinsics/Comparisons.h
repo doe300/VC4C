@@ -16,6 +16,9 @@ namespace vc4c
 		//relational operators
 		InstructionWalker intrinsifyComparison(Method& method, InstructionWalker it);
 
+		/*
+		 * NOTE: Returns -1 if the value is negative, 0 otherwise
+		 */
 		InstructionWalker insertIsNegative(InstructionWalker it, const Value& src, Value& dest);
 	} // namespace intermediate
 } // namespace vc4c

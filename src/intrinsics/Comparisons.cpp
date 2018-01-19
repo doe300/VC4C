@@ -355,7 +355,7 @@ InstructionWalker intermediate::insertIsNegative(InstructionWalker it, const Val
 {
 	if(src.getLiteralValue())
 	{
-		dest = src.getLiteralValue()->integer < 0 ? BOOL_TRUE : BOOL_FALSE;
+		dest = src.getLiteralValue()->integer < 0 ? INT_MINUS_ONE : INT_ZERO;
 	}
 	else if(src.hasType(ValueType::CONTAINER))
 	{
@@ -364,9 +364,9 @@ InstructionWalker intermediate::insertIsNegative(InstructionWalker it, const Val
 		for(const auto& elem : src.container.elements)
 		{
 			if(elem.hasType(ValueType::LITERAL))
-				dest.container.elements.push_back(elem.literal.integer < 0 ? BOOL_TRUE : BOOL_FALSE);
+				dest.container.elements.push_back(elem.literal.integer < 0 ? INT_MINUS_ONE : INT_ZERO);
 			else if(elem.hasType(ValueType::SMALL_IMMEDIATE))
-				dest.container.elements.push_back(elem.immediate.toLiteral()->integer < 0 ? BOOL_TRUE : BOOL_FALSE);
+				dest.container.elements.push_back(elem.immediate.toLiteral()->integer < 0 ? INT_MINUS_ONE : INT_ZERO);
 			else
 				throw CompilationError(CompilationStep::OPTIMIZER, "Can't handle container with non-literal values", src.to_string(false, true));
 		}
@@ -374,15 +374,13 @@ InstructionWalker intermediate::insertIsNegative(InstructionWalker it, const Val
 	else if(src.hasType(ValueType::LOCAL) && src.local->getSingleWriter() != nullptr && has_flag(dynamic_cast<const IntermediateInstruction*>(src.local->getSingleWriter())->decoration, InstructionDecorations::UNSIGNED_RESULT))
 	{
 		//the value is set to be unsigned, so it cannot be negative
-		dest = BOOL_FALSE;
+		dest = INT_ZERO;
 	}
 	else
 	{
-		it.emplace(new Operation(OP_SHR, NOP_REGISTER, src, Value(Literal(static_cast<uint64_t>(src.type.getScalarBitCount() - 1)), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
-		it.nextInBlock();
-		//some dummy instruction to be replaced
-		it.emplace(new Nop(DelayType::WAIT_REGISTER));
-		replaceWithSetBoolean(it, dest, COND_ZERO_CLEAR);
+		if(dest.isUndefined() || !dest.isWriteable())
+			throw CompilationError(CompilationStep::GENERAL, "Cannot write into this value", dest.to_string(true));
+		it.emplace(new Operation(OP_ASR, dest, src, Value(Literal(static_cast<uint64_t>(TYPE_INT32.getScalarBitCount() - 1)), TYPE_INT32)));
 		it.nextInBlock();
 	}
 	return it;

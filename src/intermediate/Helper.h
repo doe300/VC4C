@@ -25,8 +25,18 @@ namespace vc4c
 		InstructionWalker insertVectorInsertion(InstructionWalker it, Method& method, const Value& container, const Value& index, const Value& value);
 		InstructionWalker insertVectorShuffle(InstructionWalker it, Method& method, const Value& destination, const Value& source0, const Value& source1, const Value& mask);
 
-		InstructionWalker insertMakePositive(InstructionWalker it, Method& method, const Value& src, Value& dest);
-		InstructionWalker insertInvertSign(InstructionWalker it, Method& method, const Value& src, Value& dest, ConditionCode cond = COND_ALWAYS);
+		/*
+		 * After this function returns, dest will contain the positive value of src (either src or it's tow's compliment)
+		 * and writeIsNegative will return whether the src was negative (-1 if negative, 0 otherwise)
+		 */
+		InstructionWalker insertMakePositive(InstructionWalker it, Method& method, const Value& src, Value& dest, Value& writeIsNegative);
+		/*
+		 * Restores the original sign to the value in src and writes into dest according to the value of sign.
+		 * Sign is -1 to restore a negative value and 0 to restore a positive value.
+		 *
+		 * NOTE: src is required to be unsigned!
+		 */
+		InstructionWalker insertRestoreSign(InstructionWalker it, Method& method, const Value& src, Value& dest, const Value& sign);
 
 		InstructionWalker insertCalculateIndices(InstructionWalker it, Method& method, const Value& container, const Value& dest, const std::vector<Value>& indices, bool firstIndexIsElement = false);
 

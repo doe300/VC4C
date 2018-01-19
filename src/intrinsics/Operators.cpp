@@ -28,11 +28,13 @@ InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(Method& me
 	const Value arg1 = op.getArgument(1).value();
 
 	//convert operands to positive
+	Value op1Sign = UNDEFINED_VALUE;
+	Value op2Sign = UNDEFINED_VALUE;
 	Value op1Pos = method.addNewLocal(arg0.type, "%unsigned");
 	Value op2Pos = method.addNewLocal(arg1.type, "%unsigned");
 
-	it = insertMakePositive(it, method, arg0, op1Pos);
-	it = insertMakePositive(it, method, arg1, op2Pos);
+	it = insertMakePositive(it, method, arg0, op1Pos, op1Sign);
+	it = insertMakePositive(it, method, arg1, op2Pos, op2Sign);
 
 	op.setArgument(0, op1Pos);
 	op.setArgument(1, op2Pos);
@@ -46,13 +48,7 @@ InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(Method& me
 	//skip the original instruction
 	it.nextInBlock();
 
-	//check any operand is negative
-	Value op1Sign = method.addNewLocal(TYPE_BOOL, "%sign");
-	Value op2Sign = method.addNewLocal(TYPE_BOOL, "%sign");
-	it = insertIsNegative(it, arg0, op1Sign);
-	it = insertIsNegative(it, arg1, op2Sign);
-
-	if(op1Sign.hasLiteral(BOOL_FALSE.literal) && op2Sign.hasLiteral(BOOL_FALSE.literal))
+	if(op1Sign.hasLiteral(INT_ZERO.literal) && op2Sign.hasLiteral(INT_ZERO.literal))
 	{
 		//if both operands are marked with (unsigned), we don't need to invert the result
 		it.emplace(new MoveOperation(opDest, tmpDest));
@@ -62,9 +58,10 @@ InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(Method& me
 	else
 	{
 		//if exactly one operand was negative, invert sign of result
-		it.emplace(new Operation(OP_XOR, NOP_REGISTER, op1Sign, op2Sign, COND_ALWAYS, SetFlag::SET_FLAGS));
+		const Value eitherSign = method.addNewLocal(TYPE_INT32.toVectorType(tmpDest.type.num));
+		it.emplace(new Operation(OP_XOR, eitherSign, op1Sign, op2Sign));
 		it.nextInBlock();
-		return insertInvertSign(it, method, tmpDest, opDest, COND_ZERO_CLEAR);
+		return insertRestoreSign(it, method, tmpDest, opDest, eitherSign);
 	}
 }
 
@@ -191,21 +188,15 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivision(Method& method, 
 {
 	Value opDest = op.getOutput().value();
 	//check any operand is negative
-	Value op1Sign = method.addNewLocal(TYPE_BOOL, "%sign");
-	Value op2Sign = method.addNewLocal(TYPE_BOOL, "%sign");
-	it = insertIsNegative(it, op.getArgument(0).value(), op1Sign);
-	it = insertIsNegative(it, op.getArgument(1).value(), op2Sign);
-	if(op1Sign.hasType(ValueType::LITERAL) && op2Sign.hasType(ValueType::LITERAL))
-	{
-		throw CompilationError(CompilationStep::OPTIMIZER, "This case of multiplication of literal integers should have been replaced with constant", op.to_string());
-	}
+	Value op1Sign = UNDEFINED_VALUE;
+	Value op2Sign = UNDEFINED_VALUE;
 
 	//convert operands to positive
 	Value op1Pos = method.addNewLocal(op.getArgument(0)->type, "%unsigned");
 	Value op2Pos = method.addNewLocal(op.getArgument(0)->type, "%unsigned");
 
-	it = insertMakePositive(it, method, op.getArgument(0).value(), op1Pos);
-	it = insertMakePositive(it, method, op.getArgument(1).value(), op2Pos);
+	it = insertMakePositive(it, method, op.getArgument(0).value(), op1Pos, op1Sign);
+	it = insertMakePositive(it, method, op.getArgument(1).value(), op2Pos, op2Sign);
 
 	op.setArgument(0, op1Pos);
 	op.setArgument(1, op2Pos);
@@ -218,18 +209,24 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivision(Method& method, 
     it = intrinsifyUnsignedIntegerDivision(method, it, op, useRemainder);
     it.nextInBlock();
     
-    if(op1Sign.hasLiteral(BOOL_FALSE.literal) && op2Sign.hasLiteral(BOOL_FALSE.literal))
+    if(op1Sign.hasLiteral(INT_ZERO.literal) && op2Sign.hasLiteral(INT_ZERO.literal))
 	{
 		//if both operands are marked with (unsigned), we don't need to invert the result
 		it.emplace(new MoveOperation(opDest, tmpDest));
 		it.nextInBlock();
 	}
+    else if(useRemainder)
+	{
+    	//For signed remainder (srem), the results sign only depends on the sign of the dividend!
+		return insertRestoreSign(it, method, tmpDest, opDest, op1Sign);
+	}
     else
     {
     	//if exactly one operand was negative, invert sign of result
-		it.emplace(new Operation(OP_XOR, NOP_REGISTER, op1Sign, op2Sign, COND_ALWAYS, SetFlag::SET_FLAGS));
+		const Value eitherSign = method.addNewLocal(TYPE_INT32.toVectorType(tmpDest.type.num));
+		it.emplace(new Operation(OP_XOR, eitherSign, op1Sign, op2Sign));
 		it.nextInBlock();
-		it = insertInvertSign(it, method, tmpDest, opDest, COND_ZERO_CLEAR);
+		return insertRestoreSign(it, method, tmpDest, opDest, eitherSign);
     }
 	return it;
 }
@@ -319,23 +316,22 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
 
 InstructionWalker intermediate::intrinsifySignedIntegerDivisionByConstant(Method& method, InstructionWalker it, Operation& op, bool useRemainder)
 {
+	/*
+	 * Conversion between signedness is taken from:
+	 * https://llvm.org/doxygen/IntegerDivision_8cpp_source.html
+	 */
+
 	Value opDest = op.getOutput().value();
 	//check any operand is negative
-	Value op1Sign = method.addNewLocal(TYPE_BOOL, "%sign");
-	Value op2Sign = method.addNewLocal(TYPE_BOOL, "%sign");
-	it = insertIsNegative(it, op.getArgument(0).value(), op1Sign);
-	it = insertIsNegative(it, op.getArgument(1).value(), op2Sign);
-	if(op1Sign.hasType(ValueType::LITERAL) && op2Sign.hasType(ValueType::LITERAL))
-	{
-		throw CompilationError(CompilationStep::OPTIMIZER, "This case of multiplication of literal integers should have been replaced with constant", op.to_string());
-	}
+	Value op1Sign = UNDEFINED_VALUE;
+	Value op2Sign = UNDEFINED_VALUE;
 
 	//convert operands to positive
 	Value op1Pos = method.addNewLocal(op.getArgument(0)->type, "%unsigned");
 	Value op2Pos = method.addNewLocal(op.getArgument(0)->type, "%unsigned");
 
-	it = insertMakePositive(it, method, op.getArgument(0).value(), op1Pos);
-	it = insertMakePositive(it, method, op.getArgument(1).value(), op2Pos);
+	it = insertMakePositive(it, method, op.getArgument(0).value(), op1Pos, op1Sign);
+	it = insertMakePositive(it, method, op.getArgument(1).value(), op2Pos, op2Sign);
 
 	op.setArgument(0, op1Pos);
 	op.setArgument(1, op2Pos);
@@ -348,18 +344,24 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivisionByConstant(Method
 	it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, op, useRemainder);
 	it.nextInBlock();
 
-	if(op1Sign.hasLiteral(BOOL_FALSE.literal) && op2Sign.hasLiteral(BOOL_FALSE.literal))
+	if(op1Sign.hasLiteral(INT_ZERO.literal) && op2Sign.hasLiteral(INT_ZERO.literal))
 	{
 		//if both operands are marked with (unsigned), we don't need to invert the result
 		it.emplace(new MoveOperation(opDest, tmpDest));
 		it.nextInBlock();
 	}
+	else if(useRemainder)
+	{
+		//For signed remainder (srem), the results sign only depends on the sign of the dividend!
+		return insertRestoreSign(it, method, tmpDest, opDest, op1Sign);
+	}
 	else
 	{
 		//if exactly one operand was negative, invert sign of result
-		it.emplace(new Operation(OP_XOR, NOP_REGISTER, op1Sign, op2Sign, COND_ALWAYS, SetFlag::SET_FLAGS));
+		const Value eitherSign = method.addNewLocal(TYPE_INT32.toVectorType(tmpDest.type.num));
+		it.emplace(new Operation(OP_XOR, eitherSign, op1Sign, op2Sign));
 		it.nextInBlock();
-		it = insertInvertSign(it, method, tmpDest, opDest, COND_ZERO_CLEAR);
+		return insertRestoreSign(it, method, tmpDest, opDest, eitherSign);
 	}
 	return it;
 }

@@ -7,6 +7,7 @@
 #include "Helper.h"
 
 #include "CompilationError.h"
+#include "TypeConversions.h"
 #include "config.h"
 
 #include <algorithm>
@@ -258,69 +259,117 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     return it;
 }
 
-InstructionWalker intermediate::insertMakePositive(InstructionWalker it, Method& method, const Value& src, Value& dest)
+InstructionWalker intermediate::insertMakePositive(InstructionWalker it, Method& method, const Value& src, Value& dest, Value& writeIsNegative)
 {
 	if(src.hasType(ValueType::LITERAL))
 	{
 		bool isNegative = src.literal.integer < 0;
 		dest = isNegative ? Value(Literal(-src.literal.integer), src.type) : src;
+		writeIsNegative = isNegative ? INT_MINUS_ONE : INT_ZERO;
 	}
 	else if(src.hasType(ValueType::CONTAINER))
 	{
 		dest = Value(ContainerValue(), src.type);
 		dest.container.elements.reserve(src.container.elements.size());
+		writeIsNegative = Value(ContainerValue(), src.type);
+		writeIsNegative.container.elements.reserve(src.container.elements.size());
 		for(const auto& elem : src.container.elements)
 		{
-			if(!elem.hasType(ValueType::LITERAL))
+			if(!elem.getLiteralValue())
 				throw CompilationError(CompilationStep::OPTIMIZER, "Can't handle container with non-literal values", src.to_string(false, true));
 			bool isNegative = elem.literal.integer < 0;
 			dest.container.elements.push_back(isNegative ? Value(Literal(-elem.literal.integer), elem.type) : elem);
+			writeIsNegative.container.elements.push_back(isNegative ? INT_MINUS_ONE : INT_ZERO);
 		}
 	}
 	else if(src.hasType(ValueType::LOCAL) && src.local->getSingleWriter() != nullptr && has_flag(dynamic_cast<const IntermediateInstruction*>(src.local->getSingleWriter())->decoration, InstructionDecorations::UNSIGNED_RESULT))
 	{
 		//the value is already unsigned
 		dest = src;
+		writeIsNegative = INT_ZERO;
 	}
 	else
 	{
-		//do we have a negative number?
-		it.emplace(new Operation(OP_SHR, NOP_REGISTER, src, Value(Literal(static_cast<uint64_t>(src.type.getScalarBitCount() - 1)), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
+		/*
+		 * Calculation of positive value:
+		 * %sign = asr %src, 31 -> -1 for negative, 0 for positive numbers
+		 * %tmp = xor %src, %sign
+		 * %unsigned = sub %tmp, %sign
+		 *
+		 * For positive:
+		 * %sign = 0
+		 * %tmp = %src
+		 * %unsigned = sub %src, 0 -> %src
+		 *
+		 * For negative:
+		 * %sign = -1
+		 * %tmp = ~%src
+		 * %unsigned = ~%src, -1 -> ~%src + 1 -> two's complement
+		 *
+		 * Source:
+		 * https://llvm.org/doxygen/IntegerDivision_8cpp_source.html
+		 */
+
+		//%sign = asr %src, 31 -> -1 for negative, 0 for positive numbers
+		Value srcInt = src;
+		if(src.type.getScalarBitCount() < 32)
+		{
+			//to make sure, the leading bits are set
+			srcInt = method.addNewLocal(TYPE_INT32.toVectorType(src.type.num), "%sext");
+			it = insertSignExtension(it, method, src, srcInt, true);
+		}
+		if(!writeIsNegative.hasType(ValueType::LOCAL))
+			writeIsNegative = method.addNewLocal(TYPE_INT32.toVectorType(src.type.num), "%sign");
+		it.emplace(new Operation(OP_ASR, writeIsNegative, srcInt, Value(Literal(static_cast<uint64_t>(31)), TYPE_INT8)));
 		it.nextInBlock();
-		//flip all bits
+		//%tmp = xor %src, %sign
 		const Value tmp = method.addNewLocal(src.type, "%twos_complement");
-		it.emplace(new Operation(OP_NOT, tmp, src, COND_ZERO_CLEAR));
+		it.emplace(new Operation(OP_XOR, tmp, srcInt, writeIsNegative));
 		it.nextInBlock();
-		//add 1
-		it.emplace(new Operation(OP_ADD, dest, tmp, INT_ONE, COND_ZERO_CLEAR));
-		it.nextInBlock();
-		//simply copy for already positive numbers
-		it.emplace(new MoveOperation(dest, src, COND_ZERO_SET));
+		//%unsigned = sub %tmp, %sign
+		if(!dest.isWriteable())
+			dest = method.addNewLocal(src.type, "%unsigned");
+		it.emplace(new Operation(OP_SUB, dest, tmp, writeIsNegative));
+		it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
 		it.nextInBlock();
 	}
 	return it;
 }
 
-InstructionWalker intermediate::insertInvertSign(InstructionWalker it, Method& method, const Value& src, Value& dest, const ConditionCode cond)
+InstructionWalker intermediate::insertRestoreSign(InstructionWalker it, Method& method, const Value& src, Value& dest, const Value& sign)
 {
-	if(src.hasType(ValueType::LITERAL))
+	if(src.getLiteralValue() && sign.getLiteralValue())
 	{
-		it.emplace(new MoveOperation(dest, Value(Literal(-src.literal.integer), src.type), cond));
-		it.nextInBlock();
-		it.emplace(new MoveOperation(dest, src, cond.invert()));
-		it.nextInBlock();
+		dest = sign.isZeroInitializer() ? src : Value(Literal(-src.literal.integer), src.type);
 	}
 	else
 	{
-		//flip all bits
+		/*
+		 * Calculation of signed value:
+		 *
+		 * %tmp = xor %src, %sign
+		 * %dest = sub %tmp, %sign
+		 *
+		 * To restore positive value (%sign = 0):
+		 * %tmp = %src
+		 * %dest = sub %src, 0 -> %src
+		 *
+		 * To restore negative value (%sign = -1):
+		 * %tmp = ~%src
+		 * %dest = sub ~%src, -1 -> ~%src + 1 -> tow's complement
+		 *
+		 * Source:
+		 * https://llvm.org/doxygen/IntegerDivision_8cpp_source.html
+		 */
+
+		//%tmp = xor %src, %sign
 		const Value tmp = method.addNewLocal(src.type, "%twos_complement");
-		it.emplace(new Operation(OP_NOT, tmp, src, cond));
+		it.emplace(new Operation(OP_XOR, tmp, src, sign));
 		it.nextInBlock();
-		//add 1
-		it.emplace(new Operation(OP_ADD, dest, tmp, INT_ONE, cond));
-		it.nextInBlock();
-		//otherwise, simply copy
-		it.emplace(new MoveOperation(dest, src, cond.invert()));
+		//%dest = sub %tmp, %sign
+		if(!dest.isWriteable())
+			dest = method.addNewLocal(src.type, "%twos_complement");
+		it.emplace(new Operation(OP_SUB, dest, tmp, sign));
 		it.nextInBlock();
 	}
 	return it;

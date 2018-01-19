@@ -643,6 +643,10 @@ namespace vc4c
 	 */
 	const Value INT_ONE(Literal(static_cast<int64_t>(1)), TYPE_INT8);
 	/*
+	 * The integer value of minus one
+	 */
+	const Value INT_MINUS_ONE(Literal(static_cast<int64_t>(0xFFFFFFFF)), TYPE_INT32);
+	/*
 	 * The floating-point value of zero
 	 */
 	const Value FLOAT_ZERO(Literal(0.0), TYPE_FLOAT);
@@ -666,6 +670,10 @@ namespace vc4c
 	 * A constant Optional value containing no value
 	 */
 	const Optional<Value> NO_VALUE(false, UNDEFINED_VALUE);
+	/*
+	 * All 32 bits are set
+	 */
+	const Value VALUE_ALL_BITS_SET = INT_MINUS_ONE;
 
 	/*
 	 * The Value representing the REG_UNIFORM register to read UNIFORMs
