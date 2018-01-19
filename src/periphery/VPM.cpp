@@ -24,7 +24,7 @@ static int64_t getVPMSize(const DataType& paramType)
 		case 32:
 			return 2;
 		default:
-			throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid parameter type-size", std::to_string(paramType.getScalarBitCount()));
+			throw CompilationError(CompilationStep::GENERAL, "Invalid parameter type-size", std::to_string(paramType.getScalarBitCount()));
 	}
 }
 
@@ -41,7 +41,7 @@ static int64_t getVPMDMAMode(const DataType& paramType)
 		case 32:
 			return 0;
 		default:
-			throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid parameter type-size", std::to_string(paramType.getScalarBitCount()));
+			throw CompilationError(CompilationStep::GENERAL, "Invalid parameter type-size", std::to_string(paramType.getScalarBitCount()));
 	}
 }
 

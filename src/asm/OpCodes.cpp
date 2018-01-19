@@ -483,7 +483,7 @@ Optional<Value> OpCode::getLeftIdentity(const OpCode& code)
 	if(code == OP_ADD)
 		return INT_ZERO;
 	if(code == OP_AND)
-		return Value(Literal(static_cast<int64_t>(0xFFFFFFFF)), TYPE_INT32);
+		return VALUE_ALL_BITS_SET;
 	if(code == OP_ASR)
 		return INT_ZERO;
 	if(code == OP_FADD)
@@ -512,7 +512,7 @@ Optional<Value> OpCode::getRightIdentity(const OpCode& code)
 	if(code == OP_ADD)
 		return INT_ZERO;
 	if(code == OP_AND)
-		return Value(Literal(static_cast<int64_t>(0xFFFFFFFF)), TYPE_INT32);
+		return VALUE_ALL_BITS_SET;
 	if(code == OP_ASR)
 		return INT_ZERO;
 	if(code == OP_FADD)
@@ -536,6 +536,56 @@ Optional<Value> OpCode::getRightIdentity(const OpCode& code)
 	if(code == OP_SUB)
 		return INT_ZERO;
 	if(code == OP_XOR)
+		return INT_ZERO;
+	return NO_VALUE;
+}
+
+Optional<Value> OpCode::getLeftAbsorbingElement(const OpCode code)
+{
+	if(code == OP_AND)
+		return INT_ZERO;
+	if(code == OP_FMAX)
+		return Value(Literal(std::numeric_limits<float>::infinity()), TYPE_FLOAT);
+	if(code == OP_FMAXABS)
+		return Value(Literal(std::numeric_limits<float>::infinity()), TYPE_FLOAT);
+	if(code == OP_FMINABS)
+		return FLOAT_ZERO;
+	if(code == OP_FMUL)
+		return FLOAT_ZERO;
+	if(code == OP_MUL24)
+		return INT_ZERO;
+	if(code == OP_OR)
+		return VALUE_ALL_BITS_SET;
+	if(code == OP_V8MIN)
+		return INT_ZERO;
+	if(code == OP_V8MAX)
+		return VALUE_ALL_BITS_SET;
+	if(code == OP_V8MULD)
+		return INT_ZERO;
+	return NO_VALUE;
+}
+
+Optional<Value> OpCode::getRightAbsorbingElement(const OpCode code)
+{
+	if(code == OP_AND)
+		return INT_ZERO;
+	if(code == OP_FMAX)
+		return Value(Literal(std::numeric_limits<float>::infinity()), TYPE_FLOAT);
+	if(code == OP_FMAXABS)
+		return Value(Literal(std::numeric_limits<float>::infinity()), TYPE_FLOAT);
+	if(code == OP_FMINABS)
+		return FLOAT_ZERO;
+	if(code == OP_FMUL)
+		return FLOAT_ZERO;
+	if(code == OP_MUL24)
+		return INT_ZERO;
+	if(code == OP_OR)
+		return VALUE_ALL_BITS_SET;
+	if(code == OP_V8MIN)
+		return INT_ZERO;
+	if(code == OP_V8MAX)
+		return VALUE_ALL_BITS_SET;
+	if(code == OP_V8MULD)
 		return INT_ZERO;
 	return NO_VALUE;
 }

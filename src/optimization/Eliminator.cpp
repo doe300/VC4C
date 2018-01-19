@@ -142,6 +142,8 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 			{
 				Optional<Value> rightIdentity = OpCode::getRightIdentity(op->op);
 				Optional<Value> leftIdentity = OpCode::getLeftIdentity(op->op);
+				Optional<Value> rightAbsordbing = OpCode::getRightAbsorbingElement(op->op);
+				Optional<Value> leftAbsorbing = OpCode::getLeftAbsorbingElement(op->op);
 				//check whether second argument exists and does nothing
 				if(rightIdentity && op->getSecondArg() && op->getSecondArg()->hasLiteral(rightIdentity->literal))
 				{
@@ -150,6 +152,18 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 				}
 				//check whether first argument does nothing
 				else if(leftIdentity && op->getSecondArg() && op->getFirstArg().hasLiteral(leftIdentity->literal))
+				{
+					logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
+					it.reset(new intermediate::MoveOperation(op->getOutput().value(), op->getSecondArg().value(), op->conditional, op->setFlags));
+				}
+				//check whether the first element is the absorbing element
+				else if(leftAbsorbing && op->getFirstArg().hasLiteral(leftAbsorbing->getLiteralValue().value()))
+				{
+					logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
+					it.reset(new intermediate::MoveOperation(op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags));
+				}
+				//check whether the second element absorbs the result
+				else if(rightAbsordbing && op->getSecondArg() && op->getSecondArg()->hasLiteral(rightAbsordbing->getLiteralValue().value()))
 				{
 					logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
 					it.reset(new intermediate::MoveOperation(op->getOutput().value(), op->getSecondArg().value(), op->conditional, op->setFlags));

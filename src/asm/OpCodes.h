@@ -484,6 +484,18 @@ namespace vc4c
 		 * The right-identity is a value used as the right operand, which results in the result being the left operand (e.g. all-bits set for AND, 1 for multiplications)
 		 */
 		static Optional<Value> getRightIdentity(const OpCode& code);
+		/*
+		 * Returns the left absorbing element for the given op-code
+		 *
+		 * The left absorbing element is a value used as the left operand, which results in the result being the absorbing element (e.g. 0 for multiplications and for and)
+		 */
+		static Optional<Value> getLeftAbsorbingElement(const OpCode code);
+		/*
+		 * Returns the right absorbing element for the given op-code
+		 *
+		 * The right absorbing element is a value used as the right operand, which results in the result being the absorbing element (e.g. 0 for multiplications and for and)
+		 */
+		static Optional<Value> getRightAbsorbingElement(const OpCode code);
 	};
 
 	/*

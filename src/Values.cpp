@@ -619,7 +619,7 @@ std::string Value::to_string(const bool writeAccess, bool withLiterals) const
         return typeName + std::string("container with ") + std::to_string(container.elements.size()) + " elements";
     }
     case ValueType::LOCAL:
-        return typeName + local->name;
+        return withLiterals ? local->to_string(true) : (typeName +  local->name);
     case ValueType::REGISTER:
         return std::string("register ") + reg.to_string(true, !writeAccess);
     case ValueType::UNDEFINED:
