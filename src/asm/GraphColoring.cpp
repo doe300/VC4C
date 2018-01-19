@@ -338,7 +338,7 @@ static void fixLocals(const InstructionWalker it, FastMap<const Local*, LocalUsa
 		{
 			for(const Value& arg : instr->getArguments())
 			{
-				if(arg.hasType(ValueType::LITERAL) || arg.hasType(ValueType::SMALL_IMMEDIATE))
+				if(arg.getLiteralValue())
 					blockedFiles = add_flag(blockedFiles, RegisterFile::PHYSICAL_B);
 			}
 		});
@@ -718,7 +718,7 @@ static RegisterFile getBlockedInputs(const InstructionWalker it, const ColoredGr
 				continue;
 			if(arg.hasType(ValueType::LOCAL) && isFixed(graph.at(arg.local).possibleFiles) && graph.at(arg.local).possibleFiles != RegisterFile::ACCUMULATOR)
 				blockedFiles = add_flag(blockedFiles, graph.at(arg.local).possibleFiles);
-			else if(arg.hasType(ValueType::LITERAL) || arg.hasType(ValueType::SMALL_IMMEDIATE))
+			else if(arg.getLiteralValue())
 				blockedFiles = add_flag(blockedFiles, RegisterFile::PHYSICAL_B);
 			else if(arg.hasType(ValueType::REGISTER))
 				blockedFiles = add_flag(blockedFiles, arg.reg.file);

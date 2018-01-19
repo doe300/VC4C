@@ -95,13 +95,13 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
      */
     //split arguments into parts
     bool hasA0Part, hasA1Part, hasB0Part, hasB1Part;
-    if(arg0.hasType(ValueType::LITERAL))
+    if(arg0.getLiteralValue())
     {
-        hasA1Part = (arg0.literal.integer & 0xFFFF) != 0;
-        it.emplace(new MoveOperation(a1, Value(Literal(static_cast<int64_t>(arg0.literal.integer & 0xFFFF)), TYPE_INT16)));
+        hasA1Part = (arg0.getLiteralValue()->integer & 0xFFFF) != 0;
+        it.emplace(new MoveOperation(a1, Value(Literal(static_cast<int64_t>(arg0.getLiteralValue()->integer & 0xFFFF)), TYPE_INT16)));
         it.nextInBlock();
-        hasA0Part = (arg0.literal.integer >> 16) != 0;
-		it.emplace(new MoveOperation(a0, Value(Literal(static_cast<int64_t>(arg0.literal.integer >> 16)), TYPE_INT16)));
+        hasA0Part = (arg0.getLiteralValue()->integer >> 16) != 0;
+		it.emplace(new MoveOperation(a0, Value(Literal(static_cast<int64_t>(arg0.getLiteralValue()->integer >> 16)), TYPE_INT16)));
 		it.nextInBlock();
     }
     else
@@ -113,13 +113,13 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
         it.emplace(new Operation(OP_SHR, a0, arg0, Value(Literal(static_cast<int64_t>(16)), TYPE_INT16)));
         it.nextInBlock();
     }
-    if(arg1.hasType(ValueType::LITERAL))
+    if(arg1.getLiteralValue())
     {
-    	hasB1Part = (arg1.literal.integer & 0xFFFF) != 0;
-		it.emplace(new MoveOperation(b1, Value(Literal(static_cast<int64_t>(arg1.literal.integer & 0xFFFF)), TYPE_INT8)));
+    	hasB1Part = (arg1.getLiteralValue()->integer & 0xFFFF) != 0;
+		it.emplace(new MoveOperation(b1, Value(Literal(static_cast<int64_t>(arg1.getLiteralValue()->integer & 0xFFFF)), TYPE_INT8)));
 		it.nextInBlock();
-        hasB0Part = (arg1.literal.integer >> 16) != 0;
-        it.emplace(new MoveOperation(b0, Value(Literal(static_cast<int64_t>(arg1.literal.integer >> 16)), TYPE_INT8)));
+        hasB0Part = (arg1.getLiteralValue()->integer >> 16) != 0;
+        it.emplace(new MoveOperation(b0, Value(Literal(static_cast<int64_t>(arg1.getLiteralValue()->integer >> 16)), TYPE_INT8)));
         it.nextInBlock();
     }
     else

@@ -67,7 +67,7 @@ InstructionWalker optimizations::handleContainer(const Module& module, Method& m
 	intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
 	intermediate::Operation* op = it.get<intermediate::Operation>();
 	intermediate::VectorRotation* rot = it.get<intermediate::VectorRotation>();
-	if(rot != nullptr && rot->getSource().hasType(ValueType::CONTAINER) && (rot->getOffset().hasType(ValueType::LITERAL) || rot->getOffset().hasType(ValueType::SMALL_IMMEDIATE)))
+	if(rot != nullptr && rot->getSource().hasType(ValueType::CONTAINER) && (rot->getOffset().getLiteralValue()))
 	{
 		Value src = rot->getSource();
 		//vector rotation -> rotate container (if static offset)

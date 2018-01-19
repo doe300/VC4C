@@ -261,10 +261,10 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
 
 InstructionWalker intermediate::insertMakePositive(InstructionWalker it, Method& method, const Value& src, Value& dest, Value& writeIsNegative)
 {
-	if(src.hasType(ValueType::LITERAL))
+	if(src.getLiteralValue())
 	{
-		bool isNegative = src.literal.integer < 0;
-		dest = isNegative ? Value(Literal(-src.literal.integer), src.type) : src;
+		bool isNegative = src.getLiteralValue()->integer < 0;
+		dest = isNegative ? Value(Literal(-src.getLiteralValue()->integer), src.type) : src;
 		writeIsNegative = isNegative ? INT_MINUS_ONE : INT_ZERO;
 	}
 	else if(src.hasType(ValueType::CONTAINER))
@@ -277,8 +277,8 @@ InstructionWalker intermediate::insertMakePositive(InstructionWalker it, Method&
 		{
 			if(!elem.getLiteralValue())
 				throw CompilationError(CompilationStep::OPTIMIZER, "Can't handle container with non-literal values", src.to_string(false, true));
-			bool isNegative = elem.literal.integer < 0;
-			dest.container.elements.push_back(isNegative ? Value(Literal(-elem.literal.integer), elem.type) : elem);
+			bool isNegative = elem.getLiteralValue()->integer < 0;
+			dest.container.elements.push_back(isNegative ? Value(Literal(-elem.getLiteralValue()->integer), elem.type) : elem);
 			writeIsNegative.container.elements.push_back(isNegative ? INT_MINUS_ONE : INT_ZERO);
 		}
 	}

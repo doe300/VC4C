@@ -134,7 +134,7 @@ bool CallSite::mapInstruction(Method& method) const
     		//TODO still fails for values passed as parameter (e.g. in /opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/addr-space-struct-arg.cl)
     	}
     	logging::debug() << "Converting life-time instrinsic to life-time instruction" << logging::endl;
-    	if(arguments.at(0).hasType(ValueType::LITERAL) && arguments.at(0).literal.integer > 0)
+    	if(arguments.at(0).getLiteralValue() && arguments.at(0).getLiteralValue()->integer > 0)
     	{
     		//"The first argument is a constant integer representing the size of the object, or -1 if it is variable sized"
     		StackAllocation* alloc = pointer.local->as<StackAllocation>();
@@ -155,15 +155,15 @@ bool CallSite::mapInstruction(Method& method) const
     	method.appendToEnd(new intermediate::Operation(OP_FADD, output, tmp, arguments.at(2)));
     	return true;
     }
-    if(methodName.find("llvm.memcpy") == 0 && arguments.at(2).hasType(ValueType::LITERAL))
+    if(methodName.find("llvm.memcpy") == 0 && arguments.at(2).getLiteralValue())
     {
     	//FIXME for now skip unsupported case, since errors here seem to crash the test-runner, but errors later on dont??
     	//@llvm.memcpy.p0i8.p0i8.i32(i8* <dest>, i8* <src>, i32 <len>, i32 <align>, i1 <isvolatile>)
     	logging::debug() << "Intrinsifying llvm.memcpy function-call" << logging::endl;
-    	method.vpm->insertCopyRAM(method, method.appendToEnd(), arguments.at(0), arguments.at(1), static_cast<unsigned>(arguments.at(2).literal.integer));
+    	method.vpm->insertCopyRAM(method, method.appendToEnd(), arguments.at(0), arguments.at(1), static_cast<unsigned>(arguments.at(2).getLiteralValue()->integer));
     	return true;
     }
-    if(methodName.find("llvm.memset") == 0 && arguments.at(2).hasType(ValueType::LITERAL))
+    if(methodName.find("llvm.memset") == 0 && arguments.at(2).getLiteralValue())
 	{
 		//declare void @llvm.memset.p0i8.i32(i8* <dest>, i8 <val>, i32|i64 <len>, i32 <align>, i1 <isvolatile>)
 		logging::debug() << "Intrinsifying llvm.memset with DMA writes" << logging::endl;
@@ -174,7 +174,7 @@ bool CallSite::mapInstruction(Method& method) const
 		method.appendToEnd(new intermediate::MutexLock(intermediate::MutexAccess::LOCK));
 		//TODO could be optimized, write multiple bytes at once
 		method.vpm->insertWriteVPM(method.appendToEnd(), fillByte, nullptr, false);
-		method.vpm->insertFillRAM(method, method.appendToEnd(), memAddr, TYPE_INT8, static_cast<unsigned>(numBytes.literal.integer), nullptr, false);
+		method.vpm->insertFillRAM(method, method.appendToEnd(), memAddr, TYPE_INT8, static_cast<unsigned>(numBytes.getLiteralValue()->integer), nullptr, false);
 		method.appendToEnd( new intermediate::MutexLock(intermediate::MutexAccess::RELEASE));
 		//FIXME correctly handling this case (by returning true) throws errors in some optmizataion
 		//maybe combination of VPM access cannot handle this case correctly??

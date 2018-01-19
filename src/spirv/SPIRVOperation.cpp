@@ -443,9 +443,9 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
         		//copy area of memory
         		const Value size = getValue(sizeID.value(), *method.method, types, constants, memoryAllocated, localTypes);
         		logging::debug() << "Generating copying of " << size.to_string() << " bytes from " << source.to_string() << " into " << dest.to_string() << logging::endl;
-        		if(size.hasType(ValueType::LITERAL))
+        		if(size.getLiteralValue())
         		{
-        			method.method->vpm->insertCopyRAM(*method.method, method.method->appendToEnd(), dest, source, static_cast<unsigned>(size.literal.integer));
+        			method.method->vpm->insertCopyRAM(*method.method, method.method->appendToEnd(), dest, source, static_cast<unsigned>(size.getLiteralValue()->integer));
         		}
         		else
         			//TODO in any case, loop over copies, up to the size specified
@@ -608,9 +608,9 @@ Optional<Value> SPIRVIndexOf::precalculate(const TypeMapping& types, const Const
 		{
 			//index is index in pointer/array
 			//-> add offset of element at given index to global offset
-			if(index.hasType(ValueType::LITERAL))
+			if(index.getLiteralValue())
 			{
-				subOffset = Value(Literal(index.literal.integer * subContainerType.getElementType().getPhysicalWidth()), TYPE_INT32);
+				subOffset = Value(Literal(index.getLiteralValue()->integer * subContainerType.getElementType().getPhysicalWidth()), TYPE_INT32);
 			}
 			else
 			{
@@ -622,17 +622,17 @@ Optional<Value> SPIRVIndexOf::precalculate(const TypeMapping& types, const Const
 		else if(subContainerType.getStructType())
 		{
 			//index is element in struct -> MUST be literal
-			if(!index.hasType(ValueType::LITERAL))
+			if(!index.getLiteralValue())
 				throw CompilationError(CompilationStep::LLVM_2_IR, "Can't access struct-element with non-literal index", index.to_string());
 
-			subOffset = Value(Literal(static_cast<uint64_t>(container.type.getStructType().value()->getStructSize(static_cast<int>(index.literal.integer)))), TYPE_INT32);
-			subContainerType = subContainerType.getElementType(static_cast<int>(index.literal.integer));
+			subOffset = Value(Literal(static_cast<uint64_t>(container.type.getStructType().value()->getStructSize(static_cast<int>(index.getLiteralValue()->integer)))), TYPE_INT32);
+			subContainerType = subContainerType.getElementType(static_cast<int>(index.getLiteralValue()->integer));
 		}
 		else
 			throw CompilationError(CompilationStep::LLVM_2_IR, "Invalid container-type to retrieve element via index", subContainerType.to_string());
 
-		if(offset.hasType(ValueType::LITERAL) && subOffset.hasType(ValueType::LITERAL))
-			offset.literal.integer += subOffset.literal.integer;
+		if(offset.hasType(ValueType::LITERAL) && subOffset.getLiteralValue())
+			offset.literal.integer += subOffset.getLiteralValue()->integer;
 		else
 			throw CompilationError(CompilationStep::LLVM_2_IR, "Invalid index for constant expression", offset.to_string());
 	}
@@ -821,11 +821,11 @@ void vc4c::spirv2qasm::SPIRVMemoryBarrier::mapInstruction(TypeMapping& types, Co
 	const Value scope = getValue(scopeID, *method.method, types, constants, memoryAllocated, localTypes);
 	const Value semantics = getValue(semanticsID, *method.method, types, constants, memoryAllocated, localTypes);
 
-	if(!scope.hasType(ValueType::LITERAL) || !semantics.hasType(ValueType::LITERAL))
+	if(!scope.getLiteralValue() || !semantics.getLiteralValue())
 		throw CompilationError(CompilationStep::LLVM_2_IR, "Memory barriers with non-constant scope or memory semantics are not supported!");
 
 	logging::debug() << "Generating memory barrier" << logging::endl;
-	method.method->appendToEnd(new intermediate::MemoryBarrier(static_cast<intermediate::MemoryScope>(scope.literal.integer), static_cast<intermediate::MemorySemantics>(semantics.literal.integer)));
+	method.method->appendToEnd(new intermediate::MemoryBarrier(static_cast<intermediate::MemoryScope>(scope.getLiteralValue()->integer), static_cast<intermediate::MemorySemantics>(semantics.getLiteralValue()->integer)));
 }
 
 Optional<Value> vc4c::spirv2qasm::SPIRVMemoryBarrier::precalculate(const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const

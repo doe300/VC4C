@@ -289,7 +289,7 @@ static const std::vector<MergeCondition> mergeConditions = {
         if(firstOp != nullptr)
         {
         	firstSignal = firstOp->signal;
-        	if(firstOp->getFirstArg().hasType(ValueType::LITERAL) || (firstOp->getSecondArg() && firstOp->getSecondArg()->hasType(ValueType::LITERAL)))
+        	if(firstOp->getFirstArg().getLiteralValue() || (firstOp->getSecondArg() && firstOp->getSecondArg()->getLiteralValue()))
 				firstSignal = SIGNAL_ALU_IMMEDIATE;
         	firstPack = firstOp->packMode;
         	firstUnpack = firstOp->unpackMode;
@@ -297,7 +297,7 @@ static const std::vector<MergeCondition> mergeConditions = {
         if(firstMove != nullptr)
         {
         	firstSignal = firstMove->signal;
-        	if(firstMove->getSource().hasType(ValueType::LITERAL))
+        	if(firstMove->getSource().getLiteralValue())
         		firstSignal = SIGNAL_ALU_IMMEDIATE;
         	firstPack = firstMove->packMode;
         	firstUnpack = firstMove->unpackMode;
@@ -305,7 +305,7 @@ static const std::vector<MergeCondition> mergeConditions = {
         if(secondOp != nullptr)
         {
         	secondSignal = secondOp->signal;
-        	if(secondOp->getFirstArg().hasType(ValueType::LITERAL) || (secondOp->getSecondArg() && secondOp->getSecondArg()->hasType(ValueType::LITERAL)))
+        	if(secondOp->getFirstArg().getLiteralValue() || (secondOp->getSecondArg() && secondOp->getSecondArg()->getLiteralValue()))
         		secondSignal = SIGNAL_ALU_IMMEDIATE;
         	secondPack = secondOp->packMode;
         	secondUnpack = secondOp->unpackMode;
@@ -313,7 +313,7 @@ static const std::vector<MergeCondition> mergeConditions = {
         if(secondMove != nullptr)
         {
         	secondSignal = secondMove->signal;
-        	if(secondMove->getSource().hasType(ValueType::LITERAL))
+        	if(secondMove->getSource().getLiteralValue())
         		secondSignal = SIGNAL_ALU_IMMEDIATE;
         	secondPack = secondMove->packMode;
         	secondUnpack = secondMove->unpackMode;

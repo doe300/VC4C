@@ -231,7 +231,7 @@ InstructionWalker optimizations::calculateConstantInstruction(const Module& modu
 	if(op != nullptr && !op->hasUnpackMode())
 	{
 		//calculations with literals can be pre-calculated
-		if(op->getFirstArg().hasType(ValueType::LITERAL) && (!op->getSecondArg() || op->getSecondArg()->hasType(ValueType::LITERAL)))
+		if(op->getFirstArg().getLiteralValue() && (!op->getSecondArg() || op->getSecondArg()->getLiteralValue()))
 		{
 			if(op->conditional != COND_ALWAYS && op->opCode == "xor" && op->getSecondArg().is(op->getFirstArg()))
 			{

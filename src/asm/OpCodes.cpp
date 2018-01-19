@@ -235,7 +235,7 @@ Optional<Value> Pack::pack(const Value& val) const
 	if(val.type.isFloatingType())
 		return NO_VALUE;
 	//can only pack literals
-	if(!val.hasType(ValueType::LITERAL) && !val.hasType(ValueType::SMALL_IMMEDIATE))
+	if(!val.getLiteralValue())
 		return NO_VALUE;
 	switch (*this)
 	{
@@ -330,8 +330,8 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 		return (acceptsFloat == returnsFloat && firstOperand->type == secondOperand->type) ? Value(firstOperand->type) : UNDEFINED_VALUE;
 
 	//extract the literal value behind the operands
-	Optional<Value> firstVal = (firstOperand->hasType(ValueType::LITERAL) || firstOperand->hasType(ValueType::SMALL_IMMEDIATE) || firstOperand->hasType(ValueType::CONTAINER)) ? firstOperand.value() : valueSupplier(firstOperand.value());
-	Optional<Value> secondVal = !secondOperand || (secondOperand->hasType(ValueType::LITERAL) || secondOperand->hasType(ValueType::SMALL_IMMEDIATE) || secondOperand->hasType(ValueType::CONTAINER)) ? secondOperand : valueSupplier(secondOperand.value());
+	Optional<Value> firstVal = (firstOperand->getLiteralValue() || firstOperand->hasType(ValueType::CONTAINER)) ? firstOperand.value() : valueSupplier(firstOperand.value());
+	Optional<Value> secondVal = !secondOperand || (secondOperand->getLiteralValue() || secondOperand->hasType(ValueType::CONTAINER)) ? secondOperand : valueSupplier(secondOperand.value());
 
 	if(!firstVal)
 		return NO_VALUE;

@@ -137,16 +137,16 @@ InstructionWalker intermediate::insertSaturation(InstructionWalker it, Method& m
 	if(dest.type.complexType || dest.type.isFloatingType())
 		throw CompilationError(CompilationStep::GENERAL, "Invalid target type for saturation", dest.type.to_string());
 
-	if(src.hasType(ValueType::LITERAL))
+	if(src.getLiteralValue())
 	{
 		switch(dest.type.getScalarBitCount())
 		{
 			case 8:
-				return it.emplace((new MoveOperation(dest, Value(Literal(isSigned ? saturate<int8_t>(src.literal.integer) : saturate<uint8_t>(src.literal.integer)), dest.type)))->addDecorations(isSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT));
+				return it.emplace((new MoveOperation(dest, Value(Literal(isSigned ? saturate<int8_t>(src.getLiteralValue()->integer) : saturate<uint8_t>(src.getLiteralValue()->integer)), dest.type)))->addDecorations(isSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT));
 			case 16:
-				return it.emplace((new MoveOperation(dest, Value(Literal(isSigned ? saturate<int16_t>(src.literal.integer) : saturate<uint16_t>(src.literal.integer)), dest.type)))->addDecorations(isSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT));
+				return it.emplace((new MoveOperation(dest, Value(Literal(isSigned ? saturate<int16_t>(src.getLiteralValue()->integer) : saturate<uint16_t>(src.getLiteralValue()->integer)), dest.type)))->addDecorations(isSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT));
 			case 32:
-				return it.emplace((new MoveOperation(dest, Value(Literal(isSigned ? saturate<int32_t>(src.literal.integer) : saturate<uint32_t>(src.literal.integer)), dest.type)))->addDecorations(isSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT));
+				return it.emplace((new MoveOperation(dest, Value(Literal(isSigned ? saturate<int32_t>(src.getLiteralValue()->integer) : saturate<uint32_t>(src.getLiteralValue()->integer)), dest.type)))->addDecorations(isSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT));
 			default:
 				throw CompilationError(CompilationStep::GENERAL, "Invalid target type for saturation", dest.type.to_string());
 		}

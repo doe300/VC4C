@@ -41,9 +41,9 @@ static BaseAndOffset findOffset(const Value& val)
 	if(dynamic_cast<const IntermediateInstruction*>(writer) != nullptr)
 	{
 		const Optional<Value> offset =  dynamic_cast<const IntermediateInstruction*>(writer)->precalculate(8);
-		if(offset && offset->hasType(ValueType::LITERAL))
+		if(offset && offset->getLiteralValue())
 		{
-			return BaseAndOffset(NO_VALUE, offset->literal.integer, offset->literal.integer);
+			return BaseAndOffset(NO_VALUE, offset->getLiteralValue()->integer, offset->getLiteralValue()->integer);
 		}
 	}
 	return BaseAndOffset();
@@ -72,10 +72,10 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 		return findBaseAndOffset(dynamic_cast<const MoveOperation*>(*writers.begin())->getSource());
 	const auto& args = dynamic_cast<const IntermediateInstruction*>(*writers.begin())->getArguments();
 	//2. an arithmetic operation with a local and a literal -> the local is the base, the literal the offset
-	if(args.size() == 2 && std::any_of(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.hasType(ValueType::LOCAL);}) && std::any_of(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.hasType(ValueType::LITERAL);}))
+	if(args.size() == 2 && std::any_of(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.hasType(ValueType::LOCAL);}) && std::any_of(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.getLiteralValue().has_value();}))
 	{
 		return BaseAndOffset(*std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.hasType(ValueType::LOCAL);}),
-				static_cast<int64_t>((*std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.hasType(ValueType::LITERAL);})).literal.integer / val.type.getElementType().getPhysicalWidth()));
+				static_cast<int64_t>((*std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.getLiteralValue().has_value();})).getLiteralValue()->integer / val.type.getElementType().getPhysicalWidth()));
 	}
 
 	//3. an arithmetic operation with two locals -> one is the base, the other the calculation of the literal

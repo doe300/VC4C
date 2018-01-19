@@ -769,9 +769,9 @@ static std::vector<DataType> getElementTypes(const std::vector<Value>& indices, 
 		{
 			//for structs, the index MUST be scalar
 			const Value idxVal = indices.at(curIndex);
-			if(!idxVal.hasType(ValueType::LITERAL))
+			if(!idxVal.getLiteralValue())
 				throw CompilationError(CompilationStep::LLVM_2_IR, "Cannot access struct-element with non-scalar index", idxVal.to_string());
-			elementTypes.push_back(subContainerType.getStructType().value()->elementTypes.at(idxVal.literal.integer));
+			elementTypes.push_back(subContainerType.getStructType().value()->elementTypes.at(idxVal.getLiteralValue()->integer));
 		}
 		else if(subContainerType.isVectorType())
 		{
@@ -875,11 +875,11 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
         {
         	//[, <ty> <NumElements>]
         	const Value numEntries = parseValue();
-        	if(!numEntries.hasType(ValueType::LITERAL))
+        	if(!numEntries.getLiteralValue())
         		throw CompilationError(CompilationStep::PARSER, "Cannot allocate a non-constant number of entries", numEntries.to_string());
         	const DataType childType = type;
         	type.num = 1;
-			type.complexType.reset(new ArrayType{childType, static_cast<unsigned>(numEntries.literal.integer)});
+			type.complexType.reset(new ArrayType{childType, static_cast<unsigned>(numEntries.getLiteralValue()->integer)});
 			type.typeName = (childType.to_string() + "[") + std::to_string(numEntries.literal.integer) +"]";
         }
         std::size_t alignment = 1;

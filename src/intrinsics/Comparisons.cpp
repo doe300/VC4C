@@ -363,10 +363,8 @@ InstructionWalker intermediate::insertIsNegative(InstructionWalker it, const Val
 		dest.container.elements.reserve(src.container.elements.size());
 		for(const auto& elem : src.container.elements)
 		{
-			if(elem.hasType(ValueType::LITERAL))
-				dest.container.elements.push_back(elem.literal.integer < 0 ? INT_MINUS_ONE : INT_ZERO);
-			else if(elem.hasType(ValueType::SMALL_IMMEDIATE))
-				dest.container.elements.push_back(elem.immediate.toLiteral()->integer < 0 ? INT_MINUS_ONE : INT_ZERO);
+			if(elem.getLiteralValue())
+				dest.container.elements.push_back(elem.getLiteralValue()->integer < 0 ? INT_MINUS_ONE : INT_ZERO);
 			else
 				throw CompilationError(CompilationStep::OPTIMIZER, "Can't handle container with non-literal values", src.to_string(false, true));
 		}
