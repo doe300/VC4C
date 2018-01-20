@@ -537,7 +537,7 @@ static Optional<Literal> getSourceLiteral(InstructionWalker it)
 	{
 		const auto val = it.get<Operation>()->precalculate(2);
 		if(val)
-			return val->literal;
+			return val->getLiteralValue();
 	}
 	return Optional<Literal>(false, static_cast<int64_t>(0));
 }

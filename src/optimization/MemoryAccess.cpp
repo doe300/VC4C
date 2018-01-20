@@ -41,7 +41,7 @@ static BaseAndOffset findOffset(const Value& val)
 	if(dynamic_cast<const IntermediateInstruction*>(writer) != nullptr)
 	{
 		const Optional<Value> offset =  dynamic_cast<const IntermediateInstruction*>(writer)->precalculate(8);
-		if(offset && offset->getLiteralValue())
+		if(offset.ifPresent(toFunction(&Value::isLiteralValue)))
 		{
 			return BaseAndOffset(NO_VALUE, offset->getLiteralValue()->integer, offset->getLiteralValue()->integer);
 		}

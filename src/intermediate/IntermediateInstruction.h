@@ -179,7 +179,9 @@ namespace vc4c
 			IntermediateInstruction* copyExtrasFrom(const IntermediateInstruction* src);
 			/*
 			 * Tries to calculate the operation performed by this instruction and returns a constant value if successful.
-			 * The parameter numIterations determines the number of instructions providing the operands (e.g. writing the local being read here) to usefor determining the operand values
+			 * The parameter numIterations determines the number of instructions providing the operands (e.g. writing the local being read here) to use for determining the operand values
+			 *
+			 * NOTE: The constant value returned can be of value-type REGISTER, LITERAL, SMALL_IMMEDIATE or CONTAINER
 			 */
 			virtual Optional<Value> precalculate(std::size_t numIterations) const;
 

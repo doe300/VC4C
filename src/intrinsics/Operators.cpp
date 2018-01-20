@@ -18,8 +18,6 @@
 using namespace vc4c;
 using namespace vc4c::intermediate;
 
-//TODO reorder instructions, so no/less NOPs are inserted (and again reordered away)
-
 InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(Method& method, InstructionWalker it, Operation& op)
 {
 	Value opDest = op.getOutput().value();

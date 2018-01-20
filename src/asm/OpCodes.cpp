@@ -414,6 +414,20 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 		return Value(Literal(firstLit.integer - secondLit.integer), resultType);
 	if(*this == OP_XOR)
 		return Value(Literal(firstLit.integer ^ secondLit.integer), resultType);
+	if(*this == OP_V8ADDS || *this == OP_V8MAX || *this == OP_V8MIN)
+	{
+		//Supports the "simple" version, only the first byte is set
+		uint64_t firstArg = bit_cast<int64_t, uint64_t>(firstLit.integer);
+		uint64_t secondArg = bit_cast<int64_t, uint64_t>(secondLit.integer);
+		if(firstArg > 255 || secondArg > 255)
+			return NO_VALUE;
+		if(*this == OP_V8ADDS)
+			return Value(Literal(std::min(firstArg + secondArg, static_cast<uint64_t>(255))), resultType);
+		if(*this == OP_V8MAX)
+			return Value(Literal(std::max(firstArg, secondArg)), resultType);
+		if(*this == OP_V8MIN)
+			return Value(Literal(std::min(firstArg, secondArg)), resultType);
+	}
 
 	return NO_VALUE;
 }
