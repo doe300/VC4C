@@ -355,6 +355,7 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 	if(calcPerComponent)
 	{
 		Value res(ContainerValue(), resultType);
+		res.container.elements.reserve(resultType.num);
 		for(unsigned char i = 0; i < resultType.num; ++i)
 		{
 			auto tmp = calculate(firstVal->hasType(ValueType::CONTAINER) ? firstVal->container.elements.at(i) : firstVal.value(),
@@ -362,7 +363,7 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 			if(!tmp)
 				//result could not be calculated for a single component of the vector, abort
 				return NO_VALUE;
-			res.container.elements.at(i) = tmp.value();
+			res.container.elements.push_back(tmp.value());
 		}
 		return res;
 	}

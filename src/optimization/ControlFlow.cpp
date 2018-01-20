@@ -185,7 +185,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 			if(pair.second.writesLocal() && has_flag(inst->decoration, intermediate::InstructionDecorations::PHI_NODE) && !it)
 			{
 				auto tmp = inst->precalculate(4);
-				if(tmp)
+				if(tmp.ifPresent(toFunction(&Value::isLiteralValue)))
 				{
 					logging::debug() << "Found lower bound: " << tmp->to_string() << logging::endl;
 					loopControl.initialization = const_cast<intermediate::IntermediateInstruction*>(inst);
@@ -286,7 +286,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 				if(loopControl.terminatingValue.hasType(ValueType::LOCAL) && loopControl.terminatingValue.local->getSingleWriter() != nullptr)
 				{
 					auto tmp = dynamic_cast<const intermediate::IntermediateInstruction*>(loopControl.terminatingValue.local->getSingleWriter())->precalculate(4);
-					if(tmp)
+					if(tmp.ifPresent(toFunction(&Value::isLiteralValue)))
 						loopControl.terminatingValue = tmp.value();
 				}
 				logging::debug() << "Found upper bound: " << loopControl.terminatingValue.to_string() << logging::endl;

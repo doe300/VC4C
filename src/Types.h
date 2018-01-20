@@ -87,6 +87,11 @@ namespace vc4c
 		 */
 		bool isFloatingType() const;
 		/*
+		 * Whether this is a scalar- or vector-variant of an integral type (e.g. integers, boolean, pointers)
+		 */
+		bool isIntegralType() const;
+
+		/*
 		 * Whether this type is the unknown-type
 		 */
 		bool isUnknown() const;

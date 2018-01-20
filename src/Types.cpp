@@ -133,6 +133,13 @@ bool DataType::isFloatingType() const
     return typeName == "float" || typeName == "double" || typeName == "half";
 }
 
+bool DataType::isIntegralType() const
+{
+	if(isPointerType())
+		return true;
+	return !complexType && (typeName.at(0) == 'i' || typeName == TYPE_BOOL.typeName);
+}
+
 bool DataType::isUnknown() const
 {
     return typeName[0] == '?';

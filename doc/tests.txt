@@ -282,7 +282,7 @@ testLuaTemplater.
   codingerror					PASSED
   include						PASSED
 testTemplatedKernel.
-  basic							FAILED (invalid arg value)
+  basic							FAILED (invalid work-group size)
   withbuilderror				PASSED
   withtemplateerror				PASSED
   withbuilderrorintargs			PASSED
