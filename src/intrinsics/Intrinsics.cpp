@@ -777,6 +777,45 @@ static InstructionWalker intrinsifyReadWorkItemInfo(Method& method, InstructionW
 	return it.reset((new Operation(OP_AND, it->getOutput().value(), tmp1, Value(Literal(static_cast<int64_t>(0xFF)), TYPE_INT8)))->copyExtrasFrom(it.get())->addDecorations(decoration));
 }
 
+static InstructionWalker intrinsifyReadLocalSize(Method& method, InstructionWalker it, const Value& arg)
+{
+	/*
+	 * Use the value set via reqd_work_group_size(x, y, z) - if set - and return here.
+	 * This is valid, since the OpenCL standard states: "is the work-group size that must be used as the local_work_size argument to clEnqueueNDRangeKernel." (page 231)
+	 */
+	if(method.metaData.isWorkGroupSizeSet())
+	{
+		const auto& workGroupSizes = method.metaData.workGroupSizes;
+		Optional<Literal> immediate(false, false);
+		if(arg.isLiteralValue())
+			//the dimension is a literal value -> look this dimension up
+			immediate = arg.getLiteralValue();
+		else if(std::all_of(workGroupSizes.begin(), workGroupSizes.end(), [](uint32_t u) -> bool {return u == 1;}))
+			//all dimensions are 1 (for any set or not explicitly set dimension) -> take any of them
+			immediate = Literal(static_cast<int64_t>(0));
+		if(immediate)
+		{
+			if(immediate->integer > static_cast<int64_t>(workGroupSizes.size()) || workGroupSizes.at(immediate->integer) == 0)
+			{
+				return it.reset((new MoveOperation(it->getOutput().value(), INT_ONE))->addDecorations(add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::UNSIGNED_RESULT)));
+			}
+			return it.reset((new MoveOperation(it->getOutput().value(), Value(Literal(static_cast<uint64_t>(workGroupSizes.at(immediate->integer))), TYPE_INT8)))->addDecorations(add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::UNSIGNED_RESULT)));
+		}
+	}
+	//TODO needs to have a size of 1 for all higher dimensions (instead of currently implicit 0)
+	return intrinsifyReadWorkItemInfo(method, it, arg, Method::LOCAL_SIZES, add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::UNSIGNED_RESULT));
+}
+
+static InstructionWalker intrinsifyReadLocalID(Method& method, InstructionWalker it, const Value& arg)
+{
+	if(method.metaData.isWorkGroupSizeSet() && std::all_of(method.metaData.workGroupSizes.begin(), method.metaData.workGroupSizes.end(), [](uint32_t u) -> bool {return u == 1;}))
+	{
+		//if all the work-group sizes are 1, the ID is always 0 for all dimensions
+		return it.reset((new MoveOperation(it->getOutput().value(), INT_ZERO))->addDecorations(add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::UNSIGNED_RESULT)));
+	}
+	return intrinsifyReadWorkItemInfo(method, it, it->getArgument(0).value(), Method::LOCAL_IDS, add_flag(InstructionDecorations::BUILTIN_LOCAL_ID, InstructionDecorations::UNSIGNED_RESULT));
+}
+
 static InstructionWalker intrinsifyWorkItemFunctions(Method& method, InstructionWalker it)
 {
 	MethodCall* callSite = it.get<MethodCall>();
@@ -811,28 +850,12 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
 	if(callSite->methodName == "vc4cl_local_size" && callSite->getArguments().size() == 1)
 	{
 		logging::debug() << "Intrinsifying reading of local work-item sizes" << logging::endl;
-		/*
-		 * Use the value set via reqd_work_group_size(x, y, z) - if set - and return here.
-		 * This is valid, since the OpenCL standard states: "is the work-group size that must be used as the local_work_size argument to clEnqueueNDRangeKernel." (page 231)
-		 */
-		const auto& arg0 = callSite->getArgument(0).value();
-		const auto& workGroupSizes = method.metaData.workGroupSizes;
-		if(workGroupSizes.at(0) > 0 && arg0.isLiteralValue())
-		{
-			const Literal immediate = arg0.getLiteralValue().value();
-			if(immediate.integer > static_cast<int64_t>(workGroupSizes.size()) || workGroupSizes.at(immediate.integer) == 0)
-			{
-				return it.reset((new MoveOperation(callSite->getOutput().value(), INT_ONE))->addDecorations(add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::UNSIGNED_RESULT)));
-			}
-			return it.reset((new MoveOperation(callSite->getOutput().value(), Value(Literal(static_cast<uint64_t>(workGroupSizes.at(immediate.integer))), TYPE_INT8)))->addDecorations(add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::UNSIGNED_RESULT)));
-		}
-		//TODO needs to have a size of 1 for all higher dimensions (instead of currently implicit 0)
-		return intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0).value(), Method::LOCAL_SIZES, add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::UNSIGNED_RESULT));
+		return intrinsifyReadLocalSize(method, it, callSite->getArgument(0).value());
 	}
 	if(callSite->methodName == "vc4cl_local_id" && callSite->getArguments().size() == 1)
 	{
 		logging::debug() << "Intrinsifying reading of local work-item ids" << logging::endl;
-		return intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0).value(), Method::LOCAL_IDS, add_flag(InstructionDecorations::BUILTIN_LOCAL_ID, InstructionDecorations::UNSIGNED_RESULT));
+		return intrinsifyReadLocalID(method, it, callSite->getArgument(0).value());
 	}
 	if(callSite->methodName == "vc4cl_global_size" && callSite->getArguments().size() == 1)
 	{
@@ -843,7 +866,7 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
 		const Value tmpNumGroups = method.addNewLocal(TYPE_INT32, "%num_groups");
 		//emplace dummy instructions to be replaced
 		it.emplace(new MoveOperation(tmpLocalSize, NOP_REGISTER));
-		it = intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0).value(), Method::LOCAL_SIZES, add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::UNSIGNED_RESULT));
+		it = intrinsifyReadLocalSize(method, it, callSite->getArgument(0).value());
 		it.nextInBlock();
 		it.emplace(new MoveOperation(tmpNumGroups, NOP_REGISTER));
 		it = intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0).value(), {Method::NUM_GROUPS_X, Method::NUM_GROUPS_Y, Method::NUM_GROUPS_Z}, INT_ONE, add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT));
@@ -866,13 +889,13 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
 		it = intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0).value(), {Method::GROUP_ID_X, Method::GROUP_ID_Y, Method::GROUP_ID_Z}, INT_ZERO, add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT));
 		it.nextInBlock();
 		it.emplace(new MoveOperation(tmpLocalSize, NOP_REGISTER));
-		it = intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0).value(), Method::LOCAL_SIZES, add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::UNSIGNED_RESULT));
+		it = intrinsifyReadLocalSize(method, it, callSite->getArgument(0).value());
 		it.nextInBlock();
 		it.emplace(new MoveOperation(tmpGlobalOffset, NOP_REGISTER));
 		it = intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0).value(), {Method::GLOBAL_OFFSET_X, Method::GLOBAL_OFFSET_Y, Method::GLOBAL_OFFSET_Z}, INT_ZERO, add_flag(InstructionDecorations::BUILTIN_GLOBAL_OFFSET, InstructionDecorations::UNSIGNED_RESULT));
 		it.nextInBlock();
 		it.emplace(new MoveOperation(tmpLocalID, NOP_REGISTER));
-		it = intrinsifyReadWorkItemInfo(method, it, callSite->getArgument(0).value(), Method::LOCAL_IDS, add_flag(InstructionDecorations::BUILTIN_LOCAL_ID, InstructionDecorations::UNSIGNED_RESULT));
+		it = intrinsifyReadLocalID(method, it, callSite->getArgument(0).value());
 		it.nextInBlock();
 		it.emplace(new Operation(OP_MUL24, tmpRes0, tmpGroupID, tmpLocalSize));
 		it.nextInBlock();

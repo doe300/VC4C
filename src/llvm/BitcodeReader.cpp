@@ -156,6 +156,38 @@ static void extractKernelMetadata(Method& kernel, const llvm::Function& func, co
 				throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
 		}
 	}
+	metadata = func.getMetadata("reqd_work_group_size");
+	if(metadata != nullptr)
+	{
+		//compile time work-group size, e.g. "!2 = !{i32 1, i32 1, i32 1}"
+		for(unsigned i = 0; i < metadata->getNumOperands(); ++i)
+		{
+			const llvm::Metadata* operand = metadata->getOperand(i).get();
+			if(operand->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind)
+			{
+				const llvm::ConstantAsMetadata* constant = llvm::cast<const llvm::ConstantAsMetadata>(operand);
+				kernel.metaData.workGroupSizes.at(i) = static_cast<uint32_t>(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getZExtValue());
+			}
+			else
+				throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+		}
+	}
+	metadata = func.getMetadata("work_group_size_hint");
+	if(metadata != nullptr)
+	{
+		//compile time work-group size hint, e.g. "!2 = !{i32 1, i32 1, i32 1}"
+		for(unsigned i = 0; i < metadata->getNumOperands(); ++i)
+		{
+			const llvm::Metadata* operand = metadata->getOperand(i).get();
+			if(operand->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind)
+			{
+				const llvm::ConstantAsMetadata* constant = llvm::cast<const llvm::ConstantAsMetadata>(operand);
+				kernel.metaData.workGroupSizeHints.at(i) = static_cast<uint32_t>(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getZExtValue());
+			}
+			else
+				throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+		}
+	}
 }
 #else
 static void extractKernelMetadata(Method& kernel, const llvm::Function& func, const llvm::Module& llvmModule, const llvm::LLVMContext& context)
@@ -241,6 +273,36 @@ static void extractKernelMetadata(Method& kernel, const llvm::Function& func, co
 							{
 								const llvm::MDString* name = llvm::cast<const llvm::MDString>(operand);
 								kernel.parameters.at(i - 1).parameterName = name->getString();
+							}
+							else
+								throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+						}
+					}
+					else if(node->getOperand(0)->getMetadataID() == llvm::Metadata::MDStringKind && llvm::cast<const llvm::MDString>(node->getOperand(0).get())->getString() == "reqd_work_group_size")
+					{
+						//compile time work-group size, e.g. "!1 = !{!"reqd_work_group_size", i32 1, i32 1, i32 1}"
+						for(unsigned i = 1; i < node->getNumOperands(); ++i)
+						{
+							const llvm::Metadata* operand = node->getOperand(i).get();
+							if(operand->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind)
+							{
+								const llvm::ConstantAsMetadata* constant = llvm::cast<const llvm::ConstantAsMetadata>(operand);
+								kernel.metaData.workGroupSizes.at(i - 1) = static_cast<uint32_t>(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getZExtValue());
+							}
+							else
+								throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+						}
+					}
+					else if(node->getOperand(0)->getMetadataID() == llvm::Metadata::MDStringKind && llvm::cast<const llvm::MDString>(node->getOperand(0).get())->getString() == "work_group_size_hint")
+					{
+						//compile time work-group size hint, e.g. "!1 = !{!"reqd_work_group_size", i32 1, i32 1, i32 1}"
+						for(unsigned i = 1; i < node->getNumOperands(); ++i)
+						{
+							const llvm::Metadata* operand = node->getOperand(i).get();
+							if(operand->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind)
+							{
+								const llvm::ConstantAsMetadata* constant = llvm::cast<const llvm::ConstantAsMetadata>(operand);
+								kernel.metaData.workGroupSizeHints.at(i - 1) = static_cast<uint32_t>(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getZExtValue());
 							}
 							else
 								throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));

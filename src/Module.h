@@ -35,7 +35,7 @@ namespace vc4c
 		 */
 		std::array<uint32_t, 3> workGroupSizes;
 		/*
-		 * The compilation-time preferred wor-group size, specified by the work_group_size_hint attribute
+		 * The compilation-time preferred work-group size, specified by the work_group_size_hint attribute
 		 */
 		std::array<uint32_t, 3> workGroupSizeHints;
 
@@ -44,6 +44,11 @@ namespace vc4c
 			workGroupSizes.fill(0);
 			workGroupSizeHints.fill(0);
 		}
+
+		/*
+		 * Retuns whether the explicit work-group size is set
+		 */
+		bool isWorkGroupSizeSet() const;
 	};
 
 	class InstructionWalker;
