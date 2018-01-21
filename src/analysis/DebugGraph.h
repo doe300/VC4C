@@ -7,7 +7,7 @@
 #ifndef DEBUG_GRAPH_H
 #define DEBUG_GRAPH_H
 
-#include "Graph.h"
+#include "../Graph.h"
 
 #include <fstream>
 #include <functional>

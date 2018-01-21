@@ -6,8 +6,8 @@
 
 #include "ControlFlowGraph.h"
 #include "DebugGraph.h"
-#include "InstructionWalker.h"
-#include "Profiler.h"
+#include "../InstructionWalker.h"
+#include "../Profiler.h"
 
 #include "log.h"
 

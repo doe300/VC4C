@@ -7,7 +7,7 @@
 #include "ControlFlow.h"
 
 #include "LiteralValues.h"
-#include "../ControlFlowGraph.h"
+#include "../analysis/ControlFlowGraph.h"
 #include "../intermediate/TypeConversions.h"
 #include "../periphery/VPM.h"
 #include "log.h"

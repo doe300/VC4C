@@ -7,7 +7,7 @@
 #include "InstructionWalker.h"
 
 #include "CompilationError.h"
-#include "ControlFlowGraph.h"
+#include "analysis/ControlFlowGraph.h"
 
 using namespace vc4c;
 

@@ -7,10 +7,9 @@
 #ifndef VC4C_CONTROLFLOWGRAPH_H
 #define VC4C_CONTROLFLOWGRAPH_H
 
-#include "Graph.h"
-
-#include "InstructionWalker.h"
-#include "Module.h"
+#include "../Graph.h"
+#include "../InstructionWalker.h"
+#include "../Module.h"
 
 namespace vc4c
 {

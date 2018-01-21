@@ -7,8 +7,8 @@
 #include "GraphColoring.h"
 
 #include "RegisterAllocation.h"
-#include "../ControlFlowGraph.h"
-#include "../DebugGraph.h"
+#include "../analysis/ControlFlowGraph.h"
+#include "../analysis/DebugGraph.h"
 #include "../Profiler.h"
 #include "log.h"
 
