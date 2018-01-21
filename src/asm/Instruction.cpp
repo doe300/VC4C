@@ -94,7 +94,7 @@ std::string Instruction::toInputRegister(const InputMutex mutex, const Address r
     else if(hasImmediate)
     {
         //is immediate value
-        return static_cast<SmallImmediate>(regB).toString();
+        return static_cast<SmallImmediate>(regB).to_string();
     }
     else
     {
@@ -113,15 +113,15 @@ std::string Instruction::toExtrasString(const Signaling sig, const ConditionCode
 {
     std::string result("");
     if(sig != SIGNAL_NONE && sig != SIGNAL_ALU_IMMEDIATE)
-        result += std::string(".") + sig.toString();
+        result += std::string(".") + sig.to_string();
     if(cond != COND_ALWAYS)
-        result += std::string(".") + cond.toString();
+        result += std::string(".") + cond.to_string();
     if(flags == SetFlag::SET_FLAGS)
         result += std::string(".") + toString(flags);
     if(usesInputAOrR4 && unpack != UNPACK_NOP)
-    	result += std::string(".") + unpack.toString();
+    	result += std::string(".") + unpack.to_string();
     if(usesOutputA && pack != PACK_NOP)
-    	result += std::string(".") + pack.toString();
+    	result += std::string(".") + pack.to_string();
     return result;
 }
 

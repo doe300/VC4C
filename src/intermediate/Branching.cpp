@@ -46,7 +46,7 @@ IntermediateInstruction(NO_VALUE, condCode)
 {
 	if(condCode != COND_ALWAYS && condCode != COND_ZERO_CLEAR && condCode != COND_ZERO_SET)
 		//only allow always and comparison for zero, since branches only work on boolean values (0, 1)
-		throw CompilationError(CompilationStep::GENERAL, "Invalid condition for branches", condCode.toString());
+		throw CompilationError(CompilationStep::GENERAL, "Invalid condition for branches", condCode.to_string());
 	setArgument(0, target->createReference());
 	setArgument(1, cond);
 }
@@ -56,7 +56,7 @@ std::string Branch::to_string() const
     if (getCondition() == BOOL_TRUE) {
         return std::string("br ") + getTarget()->name + createAdditionalInfoString();
     }
-    return std::string("br.") + (conditional.toString() + " ") + getTarget()->name + (getCondition() != BOOL_TRUE ? std::string(" (on ") + getCondition().to_string(false, false) + ")" : "") + createAdditionalInfoString();
+    return std::string("br.") + (conditional.to_string() + " ") + getTarget()->name + (getCondition() != BOOL_TRUE ? std::string(" (on ") + getCondition().to_string(false, false) + ")" : "") + createAdditionalInfoString();
 }
 
 IntermediateInstruction* Branch::copyFor(Method& method, const std::string& localPrefix) const
@@ -82,7 +82,7 @@ qpu_asm::Instruction* Branch::convertToAsm(const FastMap<const Local*, Register>
 		else if(conditional == COND_ZERO_SET)
 			cond = BranchCond::ALL_Z_SET;
 		else
-			throw CompilationError(CompilationStep::CODE_GENERATION, "Unhandled branch condition depending on all elements", conditional.toString());
+			throw CompilationError(CompilationStep::CODE_GENERATION, "Unhandled branch condition depending on all elements", conditional.to_string());
 	}
 	else
 		cond = conditional.toBranchCondition();

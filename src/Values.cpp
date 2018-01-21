@@ -282,7 +282,7 @@ bool Literal::operator<(const Literal& other) const
 	return integer < other.integer;
 }
 
-const std::string Literal::to_string() const
+std::string Literal::to_string() const
 {
     switch(type)
     {
@@ -324,7 +324,7 @@ uint32_t Literal::toImmediate() const
     throw CompilationError(CompilationStep::GENERAL, "Unhandled literal type!");
 }
 
-std::string SmallImmediate::toString() const
+std::string SmallImmediate::to_string() const
 {
 	if (value <= 15)
 		// 0, ..., 15
@@ -625,7 +625,7 @@ std::string Value::to_string(const bool writeAccess, bool withLiterals) const
     case ValueType::UNDEFINED:
         return typeName + "undefined";
     case ValueType::SMALL_IMMEDIATE:
-		return typeName + immediate.toString();
+		return typeName + immediate.to_string();
     }
     throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type!");
 }

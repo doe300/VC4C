@@ -39,7 +39,7 @@ namespace vc4c
 	{
 		explicit constexpr ConditionCode(unsigned char val) noexcept : InstructionPart(val) { }
 
-		std::string toString() const;
+		std::string to_string() const;
 		ConditionCode invert() const;
 		bool isInversionOf(ConditionCode other) const;
 		BranchCond toBranchCondition() const;
@@ -122,7 +122,7 @@ namespace vc4c
 	{
 		explicit constexpr Signaling(unsigned char val) noexcept : InstructionPart(val) { }
 
-		std::string toString() const;
+		std::string to_string() const;
 		bool hasSideEffects() const;
 		bool triggersReadOfR4() const;
 	};
@@ -215,7 +215,7 @@ namespace vc4c
 	{
 		explicit constexpr Unpack(unsigned char val) noexcept : InstructionPart(val) { }
 
-		std::string toString() const;
+		std::string to_string() const;
 
 		Optional<Value> unpack(const Value& val) const;
 		bool handlesFloat(const OpCode& opCode) const;
@@ -278,7 +278,7 @@ namespace vc4c
 	{
 		explicit constexpr Pack(unsigned char val) noexcept : InstructionPart(val) { }
 
-		std::string toString() const;
+		std::string to_string() const;
 
 		Optional<Value> pack(const Value& val) const;
 		bool handlesFloat(const OpCode& opCode) const;

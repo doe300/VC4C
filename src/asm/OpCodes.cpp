@@ -16,7 +16,7 @@
 using namespace vc4c;
 
 
-std::string ConditionCode::toString() const
+std::string ConditionCode::to_string() const
 {
 	switch (*this)
 	{
@@ -88,10 +88,10 @@ BranchCond ConditionCode::toBranchCondition() const
     case COND_ZERO_SET.value:
         return BranchCond::ANY_Z_SET;
     }
-    throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid condition for branch", toString());
+    throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid condition for branch", to_string());
 }
 
-std::string Signaling::toString() const
+std::string Signaling::to_string() const
 {
 	switch (*this)
 	{
@@ -142,7 +142,7 @@ bool Signaling::triggersReadOfR4() const
 			*this == SIGNAL_LOAD_COVERAGE || *this ==SIGNAL_LOAD_TMU0 || *this == SIGNAL_LOAD_TMU1;
 }
 
-std::string Unpack::toString() const
+std::string Unpack::to_string() const
 {
 	//http://maazl.de/project/vc4asm/doc/extensions.html#pack
 	switch (*this)
@@ -185,7 +185,7 @@ const Unpack Unpack::unpackTo32Bit(const DataType& type)
 	throw CompilationError(CompilationStep::GENERAL, "Unhandled type-width for unpack-modes", type.to_string());
 }
 
-std::string Pack::toString() const
+std::string Pack::to_string() const
 {
 	//http://maazl.de/project/vc4asm/doc/extensions.html#pack
 	switch (*this)

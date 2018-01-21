@@ -47,6 +47,16 @@ namespace vc4c
 		explicit constexpr Bitfield(UnderlyingType val = 0) noexcept : value(val)
 		{ }
 
+		constexpr bool operator<(const Bitfield<UnderlyingType> other) const noexcept
+		{
+			return value < other.value;
+		}
+
+		constexpr bool operator==(const Bitfield<UnderlyingType> other) const noexcept
+		{
+			return value == other.value;
+		}
+
 		template<typename T>
 		inline void setEntry(T val, uint8_t pos, UnderlyingType mask)
 		{

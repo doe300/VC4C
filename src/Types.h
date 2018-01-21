@@ -18,6 +18,9 @@ namespace vc4c
 	static constexpr int WHOLE_OBJECT { -1 };
 	static constexpr int ANY_ELEMENT { -1 };
 
+	template<typename T>
+	struct hash;
+
 	/*
 	 * Base class for "complex" data types. A ComplexType contains additional information not contained in the standard DataType object.
 	 *
@@ -63,6 +66,7 @@ namespace vc4c
 		{
 			return !(*this == right);
 		}
+		bool operator<(const DataType& other) const;
 
 		//"simple" types
 		//vector can only be vector of scalars, so its counts as simple type!
@@ -155,6 +159,12 @@ namespace vc4c
 		 * NOTE: as per OpenCL 1.2 standard, the physical-width of a 3-element vector equals the physical/logical-width of a 4-element vector with same scalar type.
 		 */
 		unsigned char getVectorWidth(bool physicalWidth = false) const;
+	};
+
+	template<>
+	struct hash<DataType>
+	{
+		std::size_t operator()(const DataType& type) const noexcept;
 	};
 
 	/*

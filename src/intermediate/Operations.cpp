@@ -169,7 +169,7 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
             	regA = REG_NOP;
             if(signal.hasSideEffects())
             {
-            	throw CompilationError(CompilationStep::CODE_GENERATION, "Signal is discarded, since the operation takes an immediate", signal.toString());
+            	throw CompilationError(CompilationStep::CODE_GENERATION, "Signal is discarded, since the operation takes an immediate", signal.to_string());
             }
 
             if (isAddALU) {
@@ -226,7 +226,7 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
         	const SmallImmediate imm = input0.second.value();
         	if(signal.hasSideEffects())
 			{
-				throw CompilationError(CompilationStep::CODE_GENERATION, "Signal is discarded, since the operation takes an immediate", signal.toString());
+				throw CompilationError(CompilationStep::CODE_GENERATION, "Signal is discarded, since the operation takes an immediate", signal.to_string());
 			}
 
         	if(isAddALU)
@@ -385,7 +385,7 @@ MoveOperation(dest, src, cond, setFlags)
 
 std::string VectorRotation::to_string() const
 {
-    return (getOutput()->to_string(true) + " = ") + (getSource().to_string() + " ") + getOffset().immediate.toString() + createAdditionalInfoString();
+    return (getOutput()->to_string(true) + " = ") + (getSource().to_string() + " ") + getOffset().immediate.to_string() + createAdditionalInfoString();
 }
 
 IntermediateInstruction* VectorRotation::copyFor(Method& method, const std::string& localPrefix) const

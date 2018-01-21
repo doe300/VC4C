@@ -192,7 +192,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 					|| has_flag(it->decoration, InstructionDecorations::BUILTIN_NUM_GROUPS))
 			{
 				//is always positive
-				range.extendBoundaries(0l, std::numeric_limits<uint32_t>::max());
+				range.extendBoundaries(static_cast<int64_t>(0), std::numeric_limits<uint32_t>::max());
 			}
 			else if(has_flag(it->decoration, InstructionDecorations::BUILTIN_LOCAL_ID))
 			{
@@ -218,7 +218,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 			}
 			else if(has_flag(it->decoration, InstructionDecorations::BUILTIN_WORK_DIMENSIONS))
 			{
-				range.extendBoundaries(1l, 3l);
+				range.extendBoundaries(static_cast<int64_t>(1), static_cast<int64_t>(3));
 			}
 			//loading of immediates/literals
 			else if(constant.ifPresent(toFunction(&Value::isLiteralValue)))

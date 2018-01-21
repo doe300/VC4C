@@ -49,7 +49,7 @@ namespace vc4c
 		explicit Register() noexcept;
 		constexpr Register(RegisterFile file, unsigned char num) noexcept : file(file), num(num) {}
 
-		std::string to_string(bool specialNames, bool readAccess = true) const;
+		std::string to_string(bool specialNames = true, bool readAccess = true) const;
 
 		/*
 		 * Returns the accumulator-number for the physical register, if it represents an accumulator. Returns -1 otherwise.
@@ -371,7 +371,7 @@ namespace vc4c
 		bool operator==(const Literal& other) const;
 		bool operator<(const Literal& other) const;
 
-		const std::string to_string() const;
+		std::string to_string() const;
 
 		/*
 		 * Whether this literal represents the boolean value true
@@ -405,7 +405,7 @@ namespace vc4c
 		 */
 		explicit constexpr SmallImmediate(unsigned char val) noexcept : InstructionPart(val) {}
 
-		std::string toString() const;
+		std::string to_string() const;
 
 		//the "real" values being loaded with this small immediate
 

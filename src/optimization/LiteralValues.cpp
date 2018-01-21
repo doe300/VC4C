@@ -524,7 +524,7 @@ InstructionWalker optimizations::handleImmediate(const Module& module, Method& m
 				}
 				else
 				{
-					logging::debug() << "Mapping constant for immediate value " << source.literal.to_string() << " to: " << mapped.immediate.toString() << logging::endl;
+					logging::debug() << "Mapping constant for immediate value " << source.literal.to_string() << " to: " << mapped.immediate.to_string() << logging::endl;
 					move->setSource(Value(mapped.immediate, source.type));
 				}
 			}
@@ -565,7 +565,7 @@ InstructionWalker optimizations::handleImmediate(const Module& module, Method& m
 				}
 				else
 				{
-					logging::debug() << "Mapping constant for immediate value " << source.literal.to_string() << " to: " << mapped.immediate.toString() << logging::endl;
+					logging::debug() << "Mapping constant for immediate value " << source.literal.to_string() << " to: " << mapped.immediate.to_string() << logging::endl;
 					op->setArgument(0, Value(mapped.immediate, source.type));
 				}
 			}
@@ -602,7 +602,7 @@ InstructionWalker optimizations::handleImmediate(const Module& module, Method& m
 					}
 					else
 					{
-						logging::debug() << "Mapping constant for immediate value " << source.literal.to_string() << " to: " << mapped.immediate.toString() << logging::endl;
+						logging::debug() << "Mapping constant for immediate value " << source.literal.to_string() << " to: " << mapped.immediate.to_string() << logging::endl;
 						op->setArgument(1, Value(mapped.immediate, source.type));
 					}
 				}

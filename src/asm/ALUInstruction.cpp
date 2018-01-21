@@ -111,7 +111,7 @@ std::string ALUInstruction::toASMString() const
     	//both inputs for mul are accumulators, an immediate value is used
     	//and the ADD ALU executes NOP or both inputs from the ADD ALU are not on register-file B
     	// -> vector rotation
-    	mulPart.append(" ").append(static_cast<SmallImmediate>(getInputB()).toString());
+    	mulPart.append(" ").append(static_cast<SmallImmediate>(getInputB()).to_string());
     }
     if(opAdd != OP_NOP)
     {

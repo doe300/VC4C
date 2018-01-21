@@ -258,13 +258,13 @@ std::string IntermediateInstruction::createAdditionalInfoString() const
 {
 	std::string res("(");
 	if(signal.hasSideEffects() && signal != SIGNAL_BRANCH)
-		res.append(signal.toString()).append(" ");
+		res.append(signal.to_string()).append(" ");
 	if(hasUnpackMode())
-		res.append(unpackMode.toString()).append(" ");
+		res.append(unpackMode.to_string()).append(" ");
 	if(hasPackMode())
-		res.append(packMode.toString()).append(" ");
+		res.append(packMode.to_string()).append(" ");
 	if(hasConditionalExecution())
-		res.append(conditional.toString()).append(" ");
+		res.append(conditional.to_string()).append(" ");
 	if(setFlags != SetFlag::DONT_SET)
 		res.append(vc4c::toString(setFlags)).append(" ");
 	res.append(toString(decoration)).append(" ");

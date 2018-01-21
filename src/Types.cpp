@@ -78,6 +78,11 @@ bool DataType::operator==(const DataType& right) const
     return typeName.compare(right.typeName) == 0 && num == right.num && (complexType == nullptr) == (right.complexType == nullptr) && (complexType != nullptr ? (*complexType.get()) == (*right.complexType.get()) : true);
 }
 
+bool DataType::operator<(const DataType& other) const
+{
+	return complexType < other.complexType || typeName < other.typeName || num < other.num;
+}
+
 bool DataType::isScalarType() const
 {
     return !complexType && num == 1;
@@ -266,6 +271,14 @@ unsigned char DataType::getVectorWidth(bool physicalWidth) const
 		//"For 3-component vector data types, the size of the data type is 4 * sizeof(component)"
 		return 4;
 	return num;
+}
+
+std::size_t vc4c::hash<DataType>::operator()(const DataType& type) const noexcept
+{
+	const std::hash<std::string> nameHash;
+	const std::hash<std::shared_ptr<ComplexType>> complexHash;
+	const std::hash<unsigned char> numHash;
+	return nameHash(type.typeName) ^ complexHash(type.complexType) ^ numHash(type.num);
 }
 
 PointerType::PointerType(const DataType& elementType, const AddressSpace addressSpace, unsigned alignment) : elementType(elementType), addressSpace(addressSpace), alignment(alignment)

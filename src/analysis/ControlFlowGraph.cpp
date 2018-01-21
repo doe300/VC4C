@@ -184,7 +184,7 @@ ControlFlowGraph ControlFlowGraph::createCFG(Method& method)
 
 #ifdef DEBUG_MODE
 	auto nameFunc = [](const BasicBlock* bb) -> std::string {return bb->getLabel()->getLabel()->name;};
-	auto edgeLabelFunc = [](const CFGRelation& r) -> std::string {return r.isReverseRelation() || r.isImplicit || !r.predecessor.has<intermediate::Branch>() ? "" : std::string("br ") + r.predecessor->conditional.toString();};
+	auto edgeLabelFunc = [](const CFGRelation& r) -> std::string {return r.isReverseRelation() || r.isImplicit || !r.predecessor.has<intermediate::Branch>() ? "" : std::string("br ") + r.predecessor->conditional.to_string();};
 	DebugGraph<BasicBlock*, CFGRelation>::dumpGraph<ControlFlowGraph>(graph, "/tmp/vc4c-cfg.dot", true, nameFunc, toFunction(&CFGRelation::isReverseRelation), edgeLabelFunc);
 #endif
 
