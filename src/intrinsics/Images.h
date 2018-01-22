@@ -101,7 +101,7 @@ namespace vc4c
 		 *
 		 * Returns the global the buffer is allocated at, to be used to set the UNIFORM pointer as well as to be set into the parameter-info.
 		 */
-		Global* reserveImageConfiguration(Module& module, const Value& image);
+		Global* reserveImageConfiguration(Module& module, Parameter& image);
 
 		InstructionWalker intrinsifyImageFunction(InstructionWalker it, Method& method);
 

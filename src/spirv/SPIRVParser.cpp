@@ -149,10 +149,10 @@ void SPIRVParser::parse(Module& module)
             	//parameters are referenced by their IDs, not their names, but for meta-data the names are better
                 param.parameterName = names.at(pair.first);
 
-            m.second.method->parameters.emplace_back(std::move(param));
-
             if(param.type.getImageType())
-            	intermediate::reserveImageConfiguration(module, param.createReference());
+            	intermediate::reserveImageConfiguration(module, param);
+
+            m.second.method->parameters.emplace_back(std::move(param));
         }
     }
 
@@ -369,7 +369,7 @@ static Value parseConstantComposite(const spv_parsed_instruction_t* instruction,
 		const Value element = constantMappings.at(instruction->words[i]);
 		constants.push_back(element);
 	}
-	return Value(ContainerValue{constants}, containerType);
+	return Value(ContainerValue{std::move(constants)}, containerType);
 }
 
 static Optional<Value> specializeConstant(const uint32_t resultID, const DataType& type, const FastMap<uint32_t, std::vector<std::pair<SpvDecoration, uint32_t>>>& decorations)

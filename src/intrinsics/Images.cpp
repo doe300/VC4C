@@ -13,7 +13,7 @@
 using namespace vc4c;
 using namespace vc4c::intermediate;
 
-static constexpr unsigned IMAGE_CONFIG_NUM_UNIFORMS {5};
+static constexpr unsigned IMAGE_CONFIG_NUM_UNIFORMS {6};
 
 //The first entry is the base texture setup
 const Value IMAGE_CONFIG_BASE_OFFSET(INT_ZERO);
@@ -23,19 +23,20 @@ const Value IMAGE_CONFIG_ACCESS_OFFSET(Literal(static_cast<uint64_t>(sizeof(unsi
 const Value IMAGE_CONFIG_CHILD_DIMENSION_OFFSET(Literal(2 * static_cast<uint64_t>(sizeof(unsigned))), TYPE_INT32);
 //The forth entry is the second extended texture setup (e.g. child image offsets)
 const Value IMAGE_CONFIG_CHILD_OFFSET_OFFSET(Literal(3 * static_cast<uint64_t>(sizeof(unsigned))), TYPE_INT32);
-//The forth entry is the original OpenCL image- and channel-type configuration
+//The fifth entry is the original OpenCL image- and channel-type configuration
 const Value IMAGE_CONFIG_CHANNEL_OFFSET(Literal(4 * static_cast<uint64_t>(sizeof(unsigned))), TYPE_INT32);
+//The sixth entry is the array-size or image-depth
+const Value IMAGE_CONFIG_ARRAY_SIZE_OFFSET(Literal(5 * static_cast<uint64_t>(sizeof(unsigned))), TYPE_INT32);
+const Value IMAGE_CONFIG_IMAGE_DEPTH_OFFSET = IMAGE_CONFIG_ARRAY_SIZE_OFFSET;
 
-Global* intermediate::reserveImageConfiguration(Module& module, const Value& image)
+Global* intermediate::reserveImageConfiguration(Module& module, Parameter& image)
 {
 	//TODO find a better/more central way to reserve space for image configurations (not in every front-end)
 	//XXX also make sure, a config for every image is only created once
 	if(!image.type.getImageType())
 		throw CompilationError(CompilationStep::GENERAL, "Can't reserve global data for image-configuration of non-image type", image.type.to_string());
-	if(!image.hasType(ValueType::LOCAL))
-		throw CompilationError(CompilationStep::GENERAL, "Cannot reserve global data for non-local image", image.to_string());
 	logging::debug() << "Reserving a buffer of " << IMAGE_CONFIG_NUM_UNIFORMS << " UNIFORMs for the image-configuration of " << image.to_string() << logging::endl;
-	auto it = module.globalData.emplace(module.globalData.end(), Global(ImageType::toImageConfigurationName(image.local->name), TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS).toPointerType(), Value(Literal(static_cast<int64_t>(0)), TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS)), false));
+	auto it = module.globalData.emplace(module.globalData.end(), Global(ImageType::toImageConfigurationName(image.name), TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS).toPointerType(), Value(Literal(static_cast<int64_t>(0)), TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS)), false));
 	return &(*it);
 }
 
@@ -49,6 +50,11 @@ static InstructionWalker insertLoadImageConfig(InstructionWalker it, Method& met
 	it.nextInBlock();
 	it = periphery::insertReadVectorFromTMU(method, it, dest, addrTemp);
 	return it;
+}
+
+static InstructionWalker insertLoadArraySizeOrImageDepth(InstructionWalker it, Method& method, const Value& image, const Value& dest)
+{
+	return insertLoadImageConfig(it, method, image, dest, IMAGE_CONFIG_ARRAY_SIZE_OFFSET);
 }
 
 InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Method& method)
@@ -111,6 +117,22 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
 			//to not skip next instruction
 			it.previousInBlock();
 		}
+		else if(callSite->methodName.find("get_image_depth") != std::string::npos)
+		{
+			logging::debug() << "Generating query of image's depth for image: " << callSite->getArgument(0)->to_string() << logging::endl;
+			it = insertLoadArraySizeOrImageDepth(it, method, callSite->getArgument(0).value(), callSite->getOutput().value());
+			it.erase();
+			//to not skip next instruction
+			it.previousInBlock();
+		}
+		else if(callSite->methodName.find("get_image_array_size") != std::string::npos)
+		{
+			logging::debug() << "Generating query of image-array's size for image: " << callSite->getArgument(0)->to_string() << logging::endl;
+			it = insertLoadArraySizeOrImageDepth(it, method, callSite->getArgument(0).value(), callSite->getOutput().value());
+			it.erase();
+			//to not skip next instruction
+			it.previousInBlock();
+		}
 	}
 	return it;
 }
@@ -169,19 +191,19 @@ InstructionWalker intermediate::insertQueryMeasurements(InstructionWalker it, Me
 {
 	if(!image.type.getImageType())
 		throw CompilationError(CompilationStep::GENERAL, "Can't query image measurements from non-image object", image.to_string());
-	//TODO queries the measurements of the image
-	//depending on number of dimensions, load x int16 values,
-	//or always load all 4 possible dimensions
-	//XXX for arrays, e.g. 1D-array, second dimension is array-size, not forth
-	//-> store dimensions in an extra field something like e.g. for 1D-array x, length, for 2D-array x, y, length, ... ??
-	//or depending on image type (known here!), create different load instruction
 	//available types: 1D, 1D array, 2D, 2D array, 3D
 	const ImageType* imageType = image.type.getImageType().value();
-	if(imageType->isImageArray)
-		//XXX need to add a dimension, where to get the array-size from?
-		throw CompilationError(CompilationStep::GENERAL, "Image-arrays are not supported yet", image.to_string());
 	if(imageType->dimensions == 1)
 	{
+		if(imageType->isImageArray)
+		{
+			const Value imgWidth = method.addNewLocal(TYPE_INT32, "%image_width");
+			const Value arraySize = method.addNewLocal(TYPE_INT32, "%image_array_size");
+			it = insertLoadImageWidth(it, method, image, imgWidth);
+			it = insertLoadArraySizeOrImageDepth(it, method, image, arraySize);
+			Value mask(ContainerValue({INT_ZERO, INT_ONE}), TYPE_INT8.toVectorType(2));
+			return insertVectorShuffle(it, method, dest, imgWidth, arraySize, mask);
+		}
 		return insertLoadImageWidth(it, method, image, dest);
 	}
 	else if(imageType->dimensions == 2)
@@ -190,18 +212,38 @@ InstructionWalker intermediate::insertQueryMeasurements(InstructionWalker it, Me
 		const Value imgHeight = method.addNewLocal(TYPE_INT32, "%image_height");
 		it = insertLoadImageWidth(it, method, image, imgWidth);
 		it = insertLoadImageHeight(it, method, image, imgHeight);
-		Value mask(ContainerValue(), TYPE_INT8);
-		mask.container.elements.push_back(INT_ZERO);
-		mask.container.elements.push_back(INT_ONE);
+		Value mask(ContainerValue({INT_ZERO, INT_ONE}), TYPE_INT8.toVectorType(2));
+		if(imageType->isImageArray)
+		{
+			//XXX OpenCL C function get_image_dim() for image_2d_array_t does not return the array-size (only width and height)
+			const Value tmp = method.addNewLocal(TYPE_INT32.toVectorType(2), "%image_dimensions");
+			it = insertVectorShuffle(it, method, tmp, imgWidth, imgHeight, mask);
+
+			const Value arraySize = method.addNewLocal(TYPE_INT32, "%image_array_size");
+			it = insertLoadArraySizeOrImageDepth(it, method, image, arraySize);
+
+			mask = Value(ContainerValue({INT_ZERO, INT_ONE, Value(Literal(static_cast<int64_t>(2)), TYPE_INT8)}), TYPE_INT8.toVectorType(3));
+			return insertVectorShuffle(it, method, dest, tmp, arraySize, mask);
+		}
 		return insertVectorShuffle(it, method, dest, imgWidth, imgHeight, mask);
 	}
-	//TODO how to get image depth? sub-images?
-	/*
 	else if(imageType->dimensions == 3)
 	{
+		const Value imgWidth = method.addNewLocal(TYPE_INT32, "%image_width");
+		const Value imgHeight = method.addNewLocal(TYPE_INT32, "%image_height");
+		it = insertLoadImageWidth(it, method, image, imgWidth);
+		it = insertLoadImageHeight(it, method, image, imgHeight);
+		Value mask(ContainerValue({INT_ZERO, INT_ONE}), TYPE_INT8.toVectorType(2));
 
+		const Value tmp = method.addNewLocal(TYPE_INT32.toVectorType(2), "%image_dimensions");
+		it = insertVectorShuffle(it, method, tmp, imgWidth, imgHeight, mask);
+
+		const Value arraySize = method.addNewLocal(TYPE_INT32, "%image_depth");
+		it = insertLoadArraySizeOrImageDepth(it, method, image, arraySize);
+
+		mask = Value(ContainerValue({INT_ZERO, INT_ONE, Value(Literal(static_cast<int64_t>(2)), TYPE_INT8)}), TYPE_INT8.toVectorType(3));
+		return insertVectorShuffle(it, method, dest, tmp, arraySize, mask);
 	}
-	*/
 	else
 		throw CompilationError(CompilationStep::GENERAL, "Unsupported image dimensions", std::to_string(static_cast<unsigned>(imageType->dimensions)));
 	throw CompilationError(CompilationStep::GENERAL, "Unimplemented image-query function", it->to_string());
