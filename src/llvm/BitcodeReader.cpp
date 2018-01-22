@@ -95,6 +95,7 @@ static void extractKernelMetadata(Method& kernel, const llvm::Function& func, co
 	{
 		//access qualifiers for image arguments, e.g. "!3 = !{!"none", !"none"}"
 		//XXX what to do with them? Only valid for images
+		//if we don't use image-config for writing images, we could e.g. don't write it for write-only images
 	}
 	metadata = func.getMetadata("kernel_arg_type");
 	if(metadata != nullptr)
@@ -462,7 +463,7 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
 		method->parameters.emplace_back(Parameter((std::string("%") + arg.getName()).str(), toDataType(arg.getType()), toParameterDecorations(arg)));
 		logging::debug() << "Reading parameter " << method->parameters.back().to_string() << logging::endl;
 		if(method->parameters.back().type.getImageType())
-			intermediate::reserveImageConfiguration(module, method->parameters.back().createReference());
+			intermediate::reserveImageConfiguration(module, method->parameters.back());
 	}
 
 	parseFunctionBody(module, *method, parsedFunctions.at(&func).second, func);
@@ -870,7 +871,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
 	{
 		//element types are stored as operands
 		const llvm::ConstantVector* constant = llvm::cast<const llvm::ConstantVector>(val);
-		Value aggregate(ContainerValue(), type);
+		Value aggregate(ContainerValue(constant->getNumOperands()), type);
 		for(unsigned i = 0; i < constant->getNumOperands(); ++i)
 		{
 			aggregate.container.elements.push_back(toConstant(module, constant->getOperand(i)));
@@ -881,7 +882,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
 	{
 		//element types are stored as operands
 		const llvm::ConstantArray* constant = llvm::cast<const llvm::ConstantArray>(val);
-		Value aggregate(ContainerValue(), type);
+		Value aggregate(ContainerValue(constant->getNumOperands()), type);
 		for(unsigned i = 0; i < constant->getNumOperands(); ++i)
 		{
 			aggregate.container.elements.push_back(toConstant(module, constant->getOperand(i)));
@@ -901,7 +902,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
 			return Value(Literal(static_cast<int64_t>(sampler)), TYPE_SAMPLER);
 		}
 		//element types are stored as operands
-		Value aggregate(ContainerValue(), type);
+		Value aggregate(ContainerValue(constant->getNumOperands()), type);
 		for(unsigned i = 0; i < constant->getNumOperands(); ++i)
 		{
 			aggregate.container.elements.push_back(toConstant(module, constant->getOperand(i)));
@@ -912,7 +913,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
 	{
 		//vector/array constant, but packed in storage
 		const llvm::ConstantDataSequential* constant = llvm::cast<const llvm::ConstantDataSequential>(val);
-		Value aggregate(ContainerValue(), type);
+		Value aggregate(ContainerValue(constant->getNumElements()), type);
 		for(unsigned i = 0; i < constant->getNumElements(); ++i)
 		{
 			aggregate.container.elements.push_back(toConstant(module, constant->getElementAsConstant(i)));
@@ -922,7 +923,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
 	else if(llvm::dyn_cast<const llvm::ConstantAggregateZero>(val) != nullptr)
 	{
 		const llvm::ConstantAggregateZero* constant = llvm::cast<const llvm::ConstantAggregateZero>(val);
-		Value aggregate(ContainerValue(), type);
+		Value aggregate(ContainerValue(constant->getNumElements()), type);
 		for(unsigned i = 0; i < constant->getNumElements(); ++i)
 		{
 			aggregate.container.elements.push_back(toConstant(module, constant->getElementValue(i)));

@@ -379,8 +379,8 @@ static std::pair<Value, Value> calculateConstant(const Value& divisor, unsigned 
 {
 	if(divisor.hasType(ValueType::CONTAINER))
 	{
-		Value factors(ContainerValue(), divisor.type);
-		Value shifts(ContainerValue(), divisor.type);
+		Value factors(ContainerValue(divisor.container.elements.size()), divisor.type);
+		Value shifts(ContainerValue(divisor.container.elements.size()), divisor.type);
 		for(const auto& element : divisor.container.elements)
 		{
 			auto tmp = calculateConstant(element.literal.integer, accuracy);

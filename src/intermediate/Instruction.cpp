@@ -301,8 +301,7 @@ Optional<Value> IntermediateInstruction::getPrecalculatedValueForArg(const std::
 		{
 			if(arg.hasRegister(REG_ELEMENT_NUMBER))
 			{
-				Value elementIndices(ContainerValue(), arg.type);
-				elementIndices.container.elements.reserve(16);
+				Value elementIndices(ContainerValue(16), arg.type);
 				for(unsigned i = 0; i < NATIVE_VECTOR_SIZE; ++i)
 				{
 					elementIndices.container.elements.emplace_back(Literal(static_cast<uint64_t>(i)), TYPE_INT8);

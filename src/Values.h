@@ -487,6 +487,13 @@ namespace vc4c
 		 */
 		std::vector<Value> elements;
 
+		ContainerValue() = default;
+		ContainerValue(std::size_t size)
+		{
+			elements.reserve(size);
+		};
+		ContainerValue(std::vector<Value>&& values) : elements(values) { }
+
 		/*
 		 * Determines whether all elements of this container have the same value.
 		 * If the parameter is set, checks if all elements have this exact value

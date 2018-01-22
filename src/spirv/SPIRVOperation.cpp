@@ -516,10 +516,9 @@ void SPIRVShuffle::mapInstruction(TypeMapping& types, ConstantMapping& constants
     }
     else	//all indices are literal values
     {
-    	ContainerValue indices;
+    	ContainerValue indices(this->indices.size());
 		bool allIndicesUndef = true;
 		bool allIndicesZero = true;
-		indices.elements.reserve(this->indices.size());
 		for(const uint32_t index : this->indices)
 		{
 			//"A Component literal may also be FFFFFFFF, which means the corresponding result component has no source and is undefined"

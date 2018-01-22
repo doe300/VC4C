@@ -198,6 +198,14 @@ namespace vc4c
 		virtual bool residesInMemory() const;
 
 		/*
+		 * Returns the base local, this local refers to.
+		 * Returns this, if this local does not refer any other local
+		 *
+		 * \param includeOffsets whether to also follow references with offsets != 0
+		 */
+		const Local* getBase(bool includeOffsets) const;
+
+		/*
 		 * The type of the data represented by this local
 		 */
 		const DataType type;

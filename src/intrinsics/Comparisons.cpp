@@ -359,8 +359,7 @@ InstructionWalker intermediate::insertIsNegative(InstructionWalker it, const Val
 	}
 	else if(src.hasType(ValueType::CONTAINER))
 	{
-		dest = Value(ContainerValue(), TYPE_BOOL);
-		dest.container.elements.reserve(src.container.elements.size());
+		dest = Value(ContainerValue(src.container.elements.size()), TYPE_BOOL);
 		for(const auto& elem : src.container.elements)
 		{
 			if(elem.getLiteralValue())

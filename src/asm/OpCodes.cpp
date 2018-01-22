@@ -354,8 +354,7 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 	//at least one used value is a container, need to calculate component-wise
 	if(calcPerComponent)
 	{
-		Value res(ContainerValue(), resultType);
-		res.container.elements.reserve(resultType.num);
+		Value res(ContainerValue(resultType.num), resultType);
 		for(unsigned char i = 0; i < resultType.num; ++i)
 		{
 			auto tmp = calculate(firstVal->hasType(ValueType::CONTAINER) ? firstVal->container.elements.at(i) : firstVal.value(),

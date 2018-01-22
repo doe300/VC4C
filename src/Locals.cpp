@@ -130,6 +130,15 @@ bool Local::residesInMemory() const
 	return false;
 }
 
+const Local* Local::getBase(bool includeOffsets) const
+{
+	if(reference.first != nullptr && (reference.second == 0 || includeOffsets))
+	{
+		return reference.first->getBase(includeOffsets);
+	}
+	return this;
+}
+
 Parameter::Parameter(const std::string& name, const DataType& type, const ParameterDecorations decorations) : Local(type, name), decorations(decorations)
 {
 

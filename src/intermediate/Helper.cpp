@@ -269,10 +269,8 @@ InstructionWalker intermediate::insertMakePositive(InstructionWalker it, Method&
 	}
 	else if(src.hasType(ValueType::CONTAINER))
 	{
-		dest = Value(ContainerValue(), src.type);
-		dest.container.elements.reserve(src.container.elements.size());
-		writeIsNegative = Value(ContainerValue(), src.type);
-		writeIsNegative.container.elements.reserve(src.container.elements.size());
+		dest = Value(ContainerValue(src.container.elements.size()), src.type);
+		writeIsNegative = Value(ContainerValue(src.container.elements.size()), src.type);
 		for(const auto& elem : src.container.elements)
 		{
 			if(!elem.getLiteralValue())
@@ -473,10 +471,10 @@ InstructionWalker intermediate::insertByteSwap(InstructionWalker it, Method& met
 	 */
 	auto numBytes = src.type.getScalarBitCount() / 8;
 
-	//TODO loses signedness!
-
 	if(numBytes == 2)
 	{
+		//TODO shorts lose signedness!
+
 		// ? ? A B -> 0 ? ? A
 		const Value tmpA0 = method.addNewLocal(src.type, "byte_swap");
 		it.emplace(new Operation(OP_SHR, tmpA0, src, Value(SmallImmediate::fromInteger(8).value(), TYPE_INT8)));
