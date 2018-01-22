@@ -87,7 +87,7 @@ InstructionWalker periphery::insertWriteDMA(Method& method, InstructionWalker it
 	return it;
 }
 
-std::pair<DataType, uint8_t> getBestVectorSize(const int64_t numBytes)
+std::pair<DataType, uint8_t> periphery::getBestVectorSize(const int64_t numBytes)
 {
 	for(uint8_t numElements = 16; numElements > 0; --numElements)
 	{

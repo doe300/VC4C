@@ -433,10 +433,8 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
         	{
         		//copy single object
 				logging::debug() << "Generating copying of " << source.to_string() << " into " << dest.to_string() << logging::endl;
-				const Value tmp = method.method->addNewLocal(source.type, "%copy_tmp");
-				//TODO use VPM#insertCopyRAM
-				periphery::insertReadDMA(*method.method.get(), method.method->appendToEnd(), tmp, source);
-				periphery::insertWriteDMA(*method.method.get(), method.method->appendToEnd(), tmp, dest);
+				unsigned numBytes = source.type.getElementType().getScalarBitCount() / 8;
+				method.method->vpm->insertCopyRAM(*method.method.get(), method.method->appendToEnd(), dest, source, numBytes);
         	}
         	else
         	{

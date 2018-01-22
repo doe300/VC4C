@@ -157,7 +157,6 @@ bool CallSite::mapInstruction(Method& method) const
     }
     if(methodName.find("llvm.memcpy") == 0 && arguments.at(2).getLiteralValue())
     {
-    	//FIXME for now skip unsupported case, since errors here seem to crash the test-runner, but errors later on dont??
     	//@llvm.memcpy.p0i8.p0i8.i32(i8* <dest>, i8* <src>, i32 <len>, i32 <align>, i1 <isvolatile>)
     	logging::debug() << "Intrinsifying llvm.memcpy function-call" << logging::endl;
     	method.vpm->insertCopyRAM(method, method.appendToEnd(), arguments.at(0), arguments.at(1), static_cast<unsigned>(arguments.at(2).getLiteralValue()->integer));
@@ -165,20 +164,37 @@ bool CallSite::mapInstruction(Method& method) const
     }
     if(methodName.find("llvm.memset") == 0 && arguments.at(2).getLiteralValue())
 	{
-		//declare void @llvm.memset.p0i8.i32(i8* <dest>, i8 <val>, i32|i64 <len>, i32 <align>, i1 <isvolatile>)
+		//declare void @llvm.memset.p0i8.i32|i.64(i8* <dest>, i8 <val>, i32|i64 <len>, i32 <align>, i1 <isvolatile>)
+    	/*
+    	 * XXX for later LLVM versions, this syntax changes!!
+    	 * declare void @llvm.memset.p0i8.i32|i64(i8* <dest>, i8 <val>, i32 <len>, i1 <isvolatile>)
+    	 */
 		logging::debug() << "Intrinsifying llvm.memset with DMA writes" << logging::endl;
 		const Value& memAddr = arguments.at(0);
 		const Value& fillByte = arguments.at(1);
 		const Value& numBytes = arguments.at(2);
 		const Value& volatileAccess = arguments.at(4);
+		if(volatileAccess.getLiteralValue() && volatileAccess.getLiteralValue()->isTrue() && memAddr.hasType(ValueType::LOCAL) && memAddr.local->getBase(true)->is<Parameter>())
+		{
+			//set parameter to volatile
+			const_cast<Local*>(memAddr.local->getBase(true))->as<Parameter>()->decorations = add_flag(memAddr.local->getBase(true)->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
+		}
 		method.appendToEnd(new intermediate::MutexLock(intermediate::MutexAccess::LOCK));
-		//TODO could be optimized, write multiple bytes at once
-		method.vpm->insertWriteVPM(method.appendToEnd(), fillByte, nullptr, false);
-		method.vpm->insertFillRAM(method, method.appendToEnd(), memAddr, TYPE_INT8, static_cast<unsigned>(numBytes.getLiteralValue()->integer), nullptr, false);
+		if(fillByte.isZeroInitializer())
+		{
+			//at least for zero, we can decrease the number of writes by increasing the data-type
+			std::pair<DataType, uint8_t> pair = periphery::getBestVectorSize(numBytes.getLiteralValue()->integer);
+			logging::debug() << "Using zero-initializer of type " << pair.first.to_string() << " with " << static_cast<unsigned>(pair.second) << " copies" << logging::endl;
+			method.vpm->insertWriteVPM(method.appendToEnd(), Value::createZeroInitializer(pair.first), nullptr, false);
+			method.vpm->insertFillRAM(method, method.appendToEnd(), memAddr, pair.first, pair.second, nullptr, false);
+		}
+		else
+		{
+			method.vpm->insertWriteVPM(method.appendToEnd(), fillByte, nullptr, false);
+			method.vpm->insertFillRAM(method, method.appendToEnd(), memAddr, TYPE_INT8, static_cast<unsigned>(numBytes.getLiteralValue()->integer), nullptr, false);
+		}
 		method.appendToEnd( new intermediate::MutexLock(intermediate::MutexAccess::RELEASE));
-		//FIXME correctly handling this case (by returning true) throws errors in some optmizataion
-		//maybe combination of VPM access cannot handle this case correctly??
-		//return true;
+		return true;
 	}
     if(methodName.find("llvm.bswap") == 0)
     {

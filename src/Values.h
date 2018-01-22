@@ -268,7 +268,7 @@ namespace vc4c
 	 */
 	static constexpr Register REG_SFU_RECIP { RegisterFile::PHYSICAL_ANY, 52 };
 	/*
-	 * Writing this register triggers the SFU to approximate the reciprocal sqaure-root (1/sqrt(x)) of the floating-point value passed.
+	 * Writing this register triggers the SFU to approximate the reciprocal square-root (1/sqrt(x)) of the floating-point value passed.
 	 * The result is available in r4 three instructions later, in which no SFU-register nor r4 can be touched!
 	 */
 	static constexpr Register REG_SFU_RECIP_SQRT { RegisterFile::PHYSICAL_ANY, 53 };
@@ -313,7 +313,7 @@ namespace vc4c
 	/*
 	 * Same as above, for TMU1
 	 *
-	 * NOTE: To manually access the second TMU, tmu-swapping needs to be disabled
+	 * NOTE: To manually access the second TMU, TMU-swapping needs to be disabled
 	 */
 	static constexpr Register REG_TMU1_ADDRESS { RegisterFile::PHYSICAL_ANY, 60 };
 	/*
@@ -611,7 +611,7 @@ namespace vc4c
 		/*
 		 * Whether this object can be read from.
 		 *
-		 * Almost all value-types can be read, excecpt for some write-only registers
+		 * Almost all value-types can be read, except for some write-only registers
 		 */
 		bool isReadable() const;
 		/*

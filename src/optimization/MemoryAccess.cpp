@@ -103,6 +103,43 @@ struct VPMAccessGroup
 	RandomAccessList<InstructionWalker> dmaSetups;
 	RandomAccessList<InstructionWalker> genericSetups;
 	RandomAccessList<InstructionWalker> addressWrites;
+
+	/*
+	 * E.g. for memory-fills or -copies, the setup-instructions are re-used,
+	 * so we need to clear the duplicates
+	 */
+	void cleanDuplicateInstructions()
+	{
+		auto it = dmaSetups.begin();
+		++it;
+		while(it != dmaSetups.end())
+		{
+			if((it - 1)->get() == it->get())
+				it = dmaSetups.erase(it);
+			else
+				++it;
+		}
+
+		it = genericSetups.begin();
+		++it;
+		while(it != genericSetups.end())
+		{
+			if((it - 1)->get() == it->get())
+				it = genericSetups.erase(it);
+			else
+				++it;
+		}
+
+		it = addressWrites.begin();
+		++it;
+		while(it != addressWrites.end())
+		{
+			if((it - 1)->get() == it->get())
+				it = addressWrites.erase(it);
+			else
+				++it;
+		}
+	}
 };
 
 static InstructionWalker findGroupOfVPMAccess(VPM& vpm, InstructionWalker start, const InstructionWalker end, VPMAccessGroup& group)
@@ -197,8 +234,12 @@ static InstructionWalker findGroupOfVPMAccess(VPM& vpm, InstructionWalker start,
 		group.groupType = baseAndOffset.base->type;
 		baseAddress = baseAndOffset.base.value();
 		group.addressWrites.push_back(it);
-		group.dmaSetups.push_back(dmaSetup.value());
-		group.genericSetups.push_back(genericSetup.value());
+		if(dmaSetup)
+			//not always given, e.g. for caching in VPM without accessing RAM
+			group.dmaSetups.push_back(dmaSetup.value());
+		if(genericSetup)
+			//not always given, e.g. for copying memory without reading/writing into/from QPU
+			group.genericSetups.push_back(genericSetup.value());
 		nextOffset = baseAndOffset.offset.value_or(-1L) + 1;
 
 		if(group.isVPMWrite && group.addressWrites.size() >= vpm.getMaxCacheVectors(elementType, true))
@@ -353,6 +394,7 @@ void optimizations::combineVPMAccess(const Module& module, Method& method, const
 	//combine configurations of VPM (VPW/VPR) which have the same values
 
 	//TODO for now, this cannot handle RAM->VPM, VPM->RAM only access as well as VPM->QPU or QPU->VPM
+	//currently, this gracefully fails with an invalid optional read in such cases!
 
 	// run within all basic blocks
 	for(BasicBlock& block : method)
@@ -364,6 +406,7 @@ void optimizations::combineVPMAccess(const Module& module, Method& method, const
 			it = findGroupOfVPMAccess(*method.vpm.get(), it, block.end(), group);
 			if(group.addressWrites.size() > 1)
 			{
+				group.cleanDuplicateInstructions();
 				if(group.isVPMWrite)
 					groupVPMWrites(*method.vpm.get(), group);
 				else

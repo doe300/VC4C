@@ -478,6 +478,13 @@ namespace vc4c
 		 */
 		InstructionWalker insertWriteDMA(Method& method, InstructionWalker it, const Value& src, const Value& addr, const bool useMutex = true);
 
+		/*
+		 * Tries to find a combination of a vector of an integer-type and a number of vectors to match the given size in bytes.
+		 *
+		 * E.g. for 64 bytes, the pair (int16, 1) is returned and an input of 6 bytes yields the pair (short3, 1)
+		 */
+		std::pair<DataType, uint8_t> getBestVectorSize(const int64_t numBytes);
+
 		enum class VPMUsage
 		{
 			//the area of the VPM to be used as cache for general DMA access
