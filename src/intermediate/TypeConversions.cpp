@@ -30,7 +30,7 @@ InstructionWalker intermediate::insertBitcast(InstructionWalker it, Method& meth
 	//last step: map destination to source (if bit-cast of pointers)
 	if(dest.hasType(ValueType::LOCAL) && src.hasType(ValueType::LOCAL) && dest.type.isPointerType() && src.type.isPointerType())
 		//this helps recognizing lifetime-starts of bit-cast stack-allocations
-		const_cast<std::pair<Local*, int>&>(dest.local->reference) = std::make_pair(src.local, ANY_ELEMENT);
+		const_cast<std::pair<Local*, int>&>(dest.local->reference) = std::make_pair(src.local, 0);
 	it.nextInBlock();
 	return it;
 }

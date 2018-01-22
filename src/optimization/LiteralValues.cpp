@@ -670,7 +670,10 @@ InstructionWalker optimizations::handleUseWithImmediate(const Module& module, Me
 				else
 				{
 					logging::debug() << "Inserting temporary to split up use of long-living local with immediate value: " << op->to_string() << logging::endl;
-					const Value tmp = method.addNewLocal(localIt->type, localPrefix);
+					Value tmp = method.addNewLocal(localIt->type, localPrefix);
+					if(localIt->local->reference.first != nullptr)
+						//the use-with literal also references the value referenced by the original local
+						const_cast<std::pair<Local*, int>&>(tmp.local->reference) = localIt->local->reference;
 					it.emplace(new intermediate::MoveOperation(tmp, *localIt));
 					//since we simply move the source, some decorations for the writing of the source still apply
 					//TODO or more generally propagate (unsigned) decoration for every moves and some operations (e.g. and with constant/unsigned, etc.)

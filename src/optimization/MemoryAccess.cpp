@@ -59,6 +59,10 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 	if(val.local->is<Parameter>() || val.local->is<Global>() || val.local->is<StackAllocation>())
 		return BaseAndOffset(val, static_cast<int64_t>(0));
 
+	//follow the references
+	const Local* ref = val.local->getBase(false);
+	if(ref != val.local)
+		return findBaseAndOffset(ref->createReference());
 	if(val.local->reference.first != nullptr && val.local->reference.second != ANY_ELEMENT)
 		return BaseAndOffset(val.local->reference.first->createReference(), static_cast<int64_t>(val.local->reference.second));
 
@@ -74,7 +78,7 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 	//2. an arithmetic operation with a local and a literal -> the local is the base, the literal the offset
 	if(args.size() == 2 && std::any_of(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.hasType(ValueType::LOCAL);}) && std::any_of(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.getLiteralValue().has_value();}))
 	{
-		return BaseAndOffset(*std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.hasType(ValueType::LOCAL);}),
+		return BaseAndOffset(std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.hasType(ValueType::LOCAL);})->local->getBase(false)->createReference(),
 				static_cast<int64_t>((*std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.getLiteralValue().has_value();})).getLiteralValue()->integer / val.type.getElementType().getPhysicalWidth()));
 	}
 
@@ -84,9 +88,9 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 		const auto offset0 = findOffset(args.at(0));
 		const auto offset1 = findOffset(args.at(1));
 		if(offset0.offset && args.at(1).hasType(ValueType::LOCAL))
-			return BaseAndOffset(args.at(1), static_cast<int64_t>(offset0.offset.value() / val.type.getElementType().getPhysicalWidth()));
+			return BaseAndOffset(args.at(1).local->getBase(false)->createReference(), static_cast<int64_t>(offset0.offset.value() / val.type.getElementType().getPhysicalWidth()));
 		if(offset1.offset && args.at(0).hasType(ValueType::LOCAL))
-			return BaseAndOffset(args.at(0), static_cast<int64_t>(offset1.offset.value() / val.type.getElementType().getPhysicalWidth()));
+			return BaseAndOffset(args.at(0).local->getBase(false)->createReference(), static_cast<int64_t>(offset1.offset.value() / val.type.getElementType().getPhysicalWidth()));
 	}
 
 	return BaseAndOffset();
