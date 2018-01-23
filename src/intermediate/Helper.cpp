@@ -42,20 +42,30 @@ InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const
     if(offset.hasType(ValueType::LITERAL))
     {
         //if the offset is a literal, set it as small immediate
-        appliedOffset = Value(SmallImmediate(offset.literal.integer), offset.type);
-        if(direction == Direction::DOWN)
+    	/*
+    	 * Possible inputs and their outputs:
+    	 * negative offset, rotate upwards   -> rotate downwards with absolute value
+    	 * positive offset, rotate upwards   -> rotate upwards with absolute value
+    	 * negative offset, rotate downwards -> rotate upwards with absolute value
+    	 * positive offset, rotate downwards -> rotate downwards with absolute value
+    	 */
+    	int64_t offsetValue = offset.literal.integer;
+        const Direction actualDirection = offset.literal.integer >= 0 ? direction : (direction == Direction::DOWN ? Direction::UP : Direction::DOWN);
+        offsetValue = actualDirection != direction ? -offsetValue : offsetValue;
+
+        if(actualDirection == Direction::DOWN)
         {
-            appliedOffset.immediate.value = (16 - offset.literal.integer) % 16;
+            offsetValue = (16 - offsetValue) % 16;
         }
         else
         {
-        	appliedOffset.immediate.value = offset.literal.integer % 16;
+        	offsetValue = offsetValue % 16;
         }
-        if(appliedOffset.immediate.value == 0)
+        if(offsetValue == 0)
         	//convert into simple move operation
-        	appliedOffset= INT_ZERO;
+        	appliedOffset = INT_ZERO;
         else
-        	appliedOffset.immediate = SmallImmediate::fromRotationOffset(appliedOffset.immediate);
+        	appliedOffset = Value(SmallImmediate::fromRotationOffset(static_cast<uint8_t>(offsetValue)), offset.type);
     }
     else if(offset.hasType(ValueType::SMALL_IMMEDIATE))
     {

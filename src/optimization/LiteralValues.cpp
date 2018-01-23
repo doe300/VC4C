@@ -37,7 +37,7 @@ static InstructionWalker copyVector(Method& method, InstructionWalker it, const 
     }
     if(!out.hasType(ValueType::REGISTER) && !out.type.isUnknown() && in.type.getVectorWidth() > out.type.getVectorWidth())
     {
-        throw CompilationError(CompilationStep::OPTIMIZER, "Input vector has invalid type", in.type.to_string());
+        throw CompilationError(CompilationStep::OPTIMIZER, "Input vector has invalid type", in.to_string(false, true));
     }
     
     for(uint8_t i = 0; i < in.type.getVectorWidth(); ++i)
@@ -67,11 +67,11 @@ InstructionWalker optimizations::handleContainer(const Module& module, Method& m
 	intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
 	intermediate::Operation* op = it.get<intermediate::Operation>();
 	intermediate::VectorRotation* rot = it.get<intermediate::VectorRotation>();
-	if(rot != nullptr && rot->getSource().hasType(ValueType::CONTAINER) && (rot->getOffset().getLiteralValue()))
+	if(rot != nullptr && rot->getSource().hasType(ValueType::CONTAINER) && (rot->getOffset().isLiteralValue()))
 	{
 		Value src = rot->getSource();
 		//vector rotation -> rotate container (if static offset)
-		std::size_t offset = rot->getOffset().hasType(ValueType::LITERAL) ? rot->getOffset().literal.integer : rot->getOffset().immediate.getRotationOffset().value();
+		std::size_t offset = rot->getOffset().getLiteralValue() ? rot->getOffset().getLiteralValue()->integer : rot->getOffset().immediate.getRotationOffset().value();
 		//"Rotates the order of the elements in the range [first,last), in such a way that the element pointed by middle becomes the new first element."
 		offset = (16 - offset);
 		//need to rotate all (possible non-existing) 16 elements, so use a temporary vector with 16 elements and rotate it

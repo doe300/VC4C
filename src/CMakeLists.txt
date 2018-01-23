@@ -46,7 +46,7 @@ endif()
 
 if(ENABLE_LLVM_LIB_FRONTEND)
 	#This works with libLLVM.so as well as the single static component libraries
-	set(llvm "-L ${LLVM_LIBS_PATH} ${LLVM_LIB_NAMES}")
+	set(llvm "-L ${LLVM_LIBS_PATH} ${LLVM_LIB_NAMES} ${LLVM_SYSTEM_LIB_NAMES}")
 	target_link_libraries(VC4CC "${llvm}")
 endif(ENABLE_LLVM_LIB_FRONTEND)
 
