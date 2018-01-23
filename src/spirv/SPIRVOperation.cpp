@@ -281,8 +281,8 @@ void SPIRVBranch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
         const Value cond = getValue(conditionID.value(), *method.method, types, constants, memoryAllocated, localTypes);
         const Local* trueLabel = method.method->findOrCreateLocal(TYPE_LABEL, std::string("%") + std::to_string(defaultLabelID));
         const Local*  falseLabel = method.method->findOrCreateLocal(TYPE_LABEL, std::string("%") + std::to_string(falseLabelID.value()));
-        method.method->appendToEnd(new intermediate::Branch(trueLabel, COND_ZERO_CLEAR, cond));
-        method.method->appendToEnd(new intermediate::Branch(falseLabel, COND_ZERO_SET, cond));
+        method.method->appendToEnd(new intermediate::Branch(trueLabel, COND_ZERO_CLEAR /* condition is true */, cond));
+        method.method->appendToEnd(new intermediate::Branch(falseLabel, COND_ZERO_SET /* condition is false */, cond));
     }
     else
     {

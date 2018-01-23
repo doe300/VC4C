@@ -681,8 +681,8 @@ bool Branch::mapInstruction(Method& method) const
 	else
 	{
 		logging::debug() << "Generating branch on condition " << cond.to_string() << " to either " << thenLabel->to_string() << " or " << elseLabel->to_string() << logging::endl;
-		method.appendToEnd(new intermediate::Branch(thenLabel, COND_ZERO_SET, cond));
-		method.appendToEnd(new intermediate::Branch(elseLabel,COND_ZERO_CLEAR, cond));
+		method.appendToEnd(new intermediate::Branch(thenLabel, COND_ZERO_CLEAR /* condition is true */, cond));
+		method.appendToEnd(new intermediate::Branch(elseLabel,COND_ZERO_SET /* condition is false */, cond));
 	}
 
     return true;
