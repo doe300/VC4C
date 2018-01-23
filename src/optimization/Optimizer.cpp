@@ -59,9 +59,6 @@ bool OptimizationStep::operator ==(const OptimizationStep& other) const
 	return name.compare(other.name) == 0 && index == other.index;
 }
 
-/*
- * Fail-fast for unresolved function-calls
- */
 static InstructionWalker checkMethodCalls(const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
 	if(it.has<intermediate::MethodCall>())
@@ -136,20 +133,21 @@ static void runSingleSteps(const Module& module, Method& method, const Configura
 const OptimizationPass optimizations::RESOLVE_STACK_ALLOCATIONS = OptimizationPass("ResolveStackAllocations", resolveStackAllocations, 10);
 const OptimizationPass optimizations::RUN_SINGLE_STEPS = OptimizationPass("SingleSteps", runSingleSteps, 20);
 const OptimizationPass optimizations::SPILL_LOCALS = OptimizationPass("SpillLocals", spillLocals, 80);
-const OptimizationPass optimizations::ELIMINATE_CONSTANT_LOADS = OptimizationPass("EliminateConstantLoads", eliminateLoadingOfConstantGlobals, 30);
 const OptimizationPass optimizations::COMBINE_VPM_SETUP = OptimizationPass("CombineVPMAccess", combineVPMAccess, 90);
 const OptimizationPass optimizations::COMBINE_LITERAL_LOADS = OptimizationPass("CombineLiteralLoads", combineLoadingLiterals, 100);
 const OptimizationPass optimizations::COMBINE_ROTATIONS = OptimizationPass("CombineRotations", combineVectorRotations, 110);
 const OptimizationPass optimizations::ELIMINATE = OptimizationPass("EliminateDeadStores", eliminateDeadStore, 120);
-const OptimizationPass optimizations::SPLIT_READ_WRITES = OptimizationPass("SplitReadAfterWrites", splitReadAfterWrites, 130);
-const OptimizationPass optimizations::REORDER = OptimizationPass("ReorderInstructions", reorderWithinBasicBlocks, 140);
-const OptimizationPass optimizations::COMBINE = OptimizationPass("CombineALUIinstructions", combineOperations, 150);
-const OptimizationPass optimizations::UNROLL_WORK_GROUPS = OptimizationPass("UnrollWorkGroups", unrollWorkGroups, 160);
-const OptimizationPass optimizations::INSTRUCTION_SCHEDULING = OptimizationPass("InstructionScheduling", instructionScheduling, 170);
+const OptimizationPass optimizations::VECTORIZE = OptimizationPass("VectorizeLoops", vectorizeLoops, 130);
+const OptimizationPass optimizations::SPLIT_READ_WRITES = OptimizationPass("SplitReadAfterWrites", splitReadAfterWrites, 140);
+const OptimizationPass optimizations::REORDER = OptimizationPass("ReorderInstructions", reorderWithinBasicBlocks, 150);
+const OptimizationPass optimizations::COMBINE = OptimizationPass("CombineALUIinstructions", combineOperations, 160);
+const OptimizationPass optimizations::UNROLL_WORK_GROUPS = OptimizationPass("UnrollWorkGroups", unrollWorkGroups, 170);
+const OptimizationPass optimizations::ADD_START_STOP_SEGMENT = OptimizationPass("AddStartStopSegment", addStartStopSegment, 180);
+const OptimizationPass optimizations::INSTRUCTION_SCHEDULING = OptimizationPass("InstructionScheduling", instructionScheduling, 190);
+const OptimizationPass optimizations::EXTEND_BRANCHES = OptimizationPass("ExtendBranches", extendBranches, 200); // TODO remove it after implementation of scheduler
 
 const std::set<OptimizationPass> optimizations::DEFAULT_PASSES = {
-		RUN_SINGLE_STEPS, /* SPILL_LOCALS, */ COMBINE_VPM_SETUP, COMBINE_LITERAL_LOADS, RESOLVE_STACK_ALLOCATIONS,
-		COMBINE_ROTATIONS, ELIMINATE, SPLIT_READ_WRITES, REORDER, /* COMBINE ,*/ UNROLL_WORK_GROUPS, INSTRUCTION_SCHEDULING
+  RUN_SINGLE_STEPS, /* SPILL_LOCALS, */ COMBINE_VPM_SETUP, COMBINE_LITERAL_LOADS, RESOLVE_STACK_ALLOCATIONS, COMBINE_ROTATIONS, ELIMINATE, VECTORIZE, SPLIT_READ_WRITES, REORDER, /* COMBINE ,*/ UNROLL_WORK_GROUPS, ADD_START_STOP_SEGMENT, INSTRUCTION_SCHEDULING, EXTEND_BRANCHES
 };
 
 Optimizer::Optimizer(const Configuration& config, const std::set<OptimizationPass>& passes) : config(config), passes(passes)

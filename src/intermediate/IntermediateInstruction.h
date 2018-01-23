@@ -281,6 +281,9 @@ namespace vc4c
 
 			void setSource(const Value& value);
 			const Value getSource() const;
+
+		public:
+			Operation* convertToOperation(bool isAdd);
 		};
 
 		struct VectorRotation: public MoveOperation

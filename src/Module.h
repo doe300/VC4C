@@ -136,6 +136,11 @@ namespace vc4c
 		 * Returns whether this basic-block is the start of the method body
 		 */
 		bool isStartOfMethod() const;
+
+		void removeAll();
+		void pushBack(intermediate::IntermediateInstruction *);
+		void dumpInstructions() const;
+
 	private:
 		Method& method;
 		RandomModificationList<std::unique_ptr<intermediate::IntermediateInstruction>> instructions;

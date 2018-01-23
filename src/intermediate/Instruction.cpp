@@ -419,3 +419,24 @@ void IntermediateInstruction::addAsUserToValue(const Value& value, LocalUser::Ty
 	if(value.hasType(ValueType::LOCAL))
 		const_cast<Local*>(value.local)->addUser(*this, type);
 }
+
+Operation* convertToOr(intermediate::MoveOperation & mov) {
+	assert (mov.getOutput().has_value());
+	assert (mov.getArgument(0).has_value());
+	auto Or = new intermediate::Operation(OP_OR, mov.getOutput().operator*(),*mov.getArgument(0), *mov.getArgument(0));
+	return Or;
+}
+
+Operation* convertToMin(intermediate::MoveOperation & mov) {
+	assert (mov.getOutput().has_value());
+	assert (mov.getArgument(0).has_value());
+	auto Min = new intermediate::Operation(OP_V8MIN, *mov.getOutput(), *mov.getArgument(0), *mov.getArgument(0));
+	return Min;
+}
+
+Operation* MoveOperation::convertToOperation(bool isAddOp){
+	if (isAddOp)
+		return convertToOr(*this);
+	else
+		return convertToMin(*this);
+}

@@ -1,8 +1,6 @@
-/*
- * Author: nomaddo
- *
- * See the file "LICENSE" for the full license governing this code.
- */
+//
+// Created by nomaddo on 17/12/18.
+//
 
 #include <log.h>
 #include <assert.h>
@@ -18,58 +16,40 @@
 #include "../InstructionWalker.h"
 #include "log.h"
 
-#include "../ControlFlowGraph.h"
-#include "../DebugGraph.h"
+#include "../analysis/ControlFlowGraph.h"
+#include "../analysis/DebugGraph.h"
 #include "../InstructionWalker.h"
 #include "../Profiler.h"
 
-
 namespace vc4c {
 
+/* XXX should be replaced with common routines that generate such instructions? */
 /* reading from mutex I/O register means getting mutex */
 static bool isGetLocInstruction (IL * instr) {
-	return instr->readsRegister(REG_MUTEX);
+	for (Value v: instr->getArguments()) {
+		if (v.hasRegister(REG_MUTEX)) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 /* writing to mutex I/O register means release of mutex */
 static bool isReleaseLocInstruction (IL * instr) {
-	return instr->writesRegister(REG_MUTEX);
+	if (instr->getOutput().has_value()) {
+		auto output = instr->getOutput().value();
+		return output.hasRegister(REG_MUTEX);
+	}
+
+	return false;
 }
 
-DAG::DAG(BasicBlock &bb) {
+DAG::DAG(BasicBlock &bb) : label(bb.getLabel()){
 	std::map<Value, IL*> map;
-
-	/* To fix the order of mutex lock. its release and instructions between them,
-	 * - Remember an instruction that get mutex lock (as `getMutexInstr`)
-	 * - Remember all of instrctions after execution of the getting mutex lock (as `mutexInstructions`)
-	 *
-	 * Create dependency between `getMutexInstr` and each `mutexInstructions`
-	 * If an instructions, that release mutex lock, is found, create dependencies between the instruction and each `mutexInstructions`
-	 *
-	 * This code only remember one instruction that get mutex lock.
-	 * It doesn't assume as the following case, because such program has no meaning (get stuck)
-	 *
-	 *   register mutex_rel = bool 1 (1)
-	 *   register mutex_rel = bool 1 (1)
-	 *   ... getting mutex lock before releaasing it.  ...
-	 */
   auto mutexInstructions = std::shared_ptr<std::vector<IL*>>(new std::vector<IL*>());
 	IL * getMutexInstr = nullptr;
 
-	/* To fix the order of setting flags, and instructions that use it,
-	 * - Remember an instruction that set flags (as `setFlagInstr`)
-	 * - Remember all of instructions that use flags (as `setFlagInstructions`)
-	 *
-	 * Create dependencies between `setFlagInstr` and each of `setFlagInstructions`.
-	 * If we found other instruction that set flags, create dependencies between that instructions and each of `setFlagInstructions`.
-	 *
-	 *   1 ... set flag ...
-	 *   2 ... use flags ... must be issued after 1
-	 *   3 ... use flags ... must be issued after 1
-	 *   ..................
-	 *   4 ... set flags ... must be issued after 2 and 3
-	 *   5 ... use flags ... must be issued after 4
-	 */
 	auto setFlagInstructions = std::shared_ptr<std::vector<IL*>>(new std::vector<IL*>());
 	IL * setFlagInstr = nullptr;
 
@@ -123,10 +103,11 @@ DAG::DAG(BasicBlock &bb) {
 			setFlagInstructions->clear();
 		}
 
-		/* XXX In branch instruction `hasConditionalExecution()` return true, but doesn't use flags.
-		 */
-		if (! dynamic_cast<intermediate::Branch*>(instr) && instr->hasConditionalExecution()){
-			if (setFlagInstr != nullptr){
+		if (instr->hasConditionalExecution()){
+			if (setFlagInstr != nullptr) {
+				/* XXX should be change it to an assertion.
+				 * but, in the basic block of end of function, the case of using flags (but not set in the block) appears.
+				 */
 				setFlagInstructions->push_back(instr);
 				graph->getOrCreateNode(setFlagInstr).addNeighbor(&graph->getOrCreateNode(instr), true);
 			}
@@ -165,4 +146,47 @@ DAG::DAG(BasicBlock &bb) {
 	DebugGraph<IL*, bool>::dumpGraph(*graph, bb.getLabel()->to_string() + ".dot", true, nameFunc, weakEdgeFunc);
 #endif
   }
+
+void DAG::erase(IL * il) {
+	graph->erase(il);
+}
+
+std::vector<IL *> DAG::getRoots() {
+	auto list = std::vector<IL *>();
+	std::for_each(graph->begin(), graph->end(),[&](std::pair<IL* const, Node<IL*, bool>> & nodePair){
+		if (nodePair.second.getNeighbors().size() == 0)
+			list.push_back(nodePair.first);
+	});
+
+	return list;
+}
+
+int DAG::getNeighborsNumber(IL * il) {
+	return graph->at(il).getNeighbors().size();
+}
+
+Optional<int> DAG::stepForTMULoad(IL *il) {
+	if (il->signal == SIGNAL_LOAD_TMU0 || il->signal == SIGNAL_LOAD_TMU1)
+		return new Optional<int>(0);
+	if (getNeighborsNumber(il) == 0)
+		return new Optional<int>(false, -1);
+
+	auto neighbors = graph->at(il).getNeighbors();
+	std::for_each(neighbors.begin(), neighbors.end(), [&](std::pair<Node<IL*, bool>* const, bool> & nodePair){
+		auto opt = stepForTMULoad(nodePair.first->key);
+		if (opt.has_value() && opt.value() > 0){
+			return new Optional<int>(opt.has_value() + 1);
+		}
+	});
+}
+
+	void DAG::dumpGraph() {
+		auto nameFunc = [](const IL *il) -> std::string { return il->to_string(); };
+		std::function<bool(const bool &)> weakEdgeFunc = [](const bool &b) -> bool { return b; };
+		DebugGraph<IL *, bool>::dumpGraph(*graph, getLabel()->to_string() + ".dot", true, nameFunc, weakEdgeFunc);
+	}
+
+	const intermediate::BranchLabel *DAG::getLabel() const {
+		return label;
+	}
 }

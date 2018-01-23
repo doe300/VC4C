@@ -211,6 +211,31 @@ bool BasicBlock::isStartOfMethod() const
 	return &method.basicBlocks.front() == this;
 }
 
+void BasicBlock::removeAll() {
+	auto it = std::remove_if(instructions.begin(), instructions.end(), [](std::unique_ptr<intermediate::IntermediateInstruction> & il){
+		if (dynamic_cast<intermediate::BranchLabel *>(&(*il)))
+			return false;
+		il.release();
+		return true;
+	});
+
+	instructions.erase(it, instructions.end());
+}
+
+
+void BasicBlock::pushBack(intermediate::IntermediateInstruction * il) {
+	instructions.push_back(std::unique_ptr<intermediate::IntermediateInstruction>(il));
+}
+
+void BasicBlock::dumpInstructions() const {
+	logging::debug() << "Basic block ----" << logging::endl;
+	for (const auto &instr : this->instructions) {
+		if (instr)
+			logging::debug() << instr->to_string() << logging::endl;
+	}
+	logging::debug() << "Block end ----" << logging::endl;
+}
+
 Method::Method(const Module& module) : isKernel(false), name(), returnType(TYPE_UNKNOWN), vpm(new periphery::VPM(module.compilationConfig.availableVPMSize)), module(module)
 {
 
@@ -465,13 +490,7 @@ void Method::dumpInstructions() const
 {
 	for(const BasicBlock& bb : basicBlocks)
 	{
-		logging::debug() << "Basic block ----" << logging::endl;
-		for(const auto& instr : bb.instructions)
-		{
-			if(instr)
-				logging::debug() << instr->to_string() << logging::endl;
-		}
-		logging::debug() << "Block end ----" << logging::endl;
+		bb.dumpInstructions();
 	}
 }
 
