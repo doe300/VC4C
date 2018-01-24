@@ -19,12 +19,11 @@ void Scheduler::doScheduling(vc4c::BasicBlock &bb, vc4c::DAG &dag) {
 
 	while(!selector.empty()) {
 		IL * il = selector.choose();
-        logging::debug() << "select: " << il->to_string() << std::endl;
 		bb.pushBack(il);
 	}
 
 	logging::debug() << "doScheduling" << std::endl;
-    bb.dumpInstructions();
+	bb.dumpInstructions();
 }
 
 InstructionSelector::InstructionSelector(DAG &dag) : dag(dag) {}
@@ -214,7 +213,7 @@ IL * InstructionSelector::issueCombined (Ops & addOp, Ops & mulOp, std::vector<i
     }
 
     if (auto mov = dynamic_cast<intermediate::MoveOperation *>(mulIL)) {
-        addIL = mov->convertToOperation(false);
+        mulIL = mov->convertToOperation(false);
     }
 
     if (addIL == nullptr)
@@ -222,8 +221,11 @@ IL * InstructionSelector::issueCombined (Ops & addOp, Ops & mulOp, std::vector<i
     else if (mulIL == nullptr)
       return addIL;
 
-    return new intermediate::CombinedOperation(dynamic_cast<intermediate::Operation *>(addIL),
-                                               dynamic_cast<intermediate::Operation *>(mulIL));
+	auto add = dynamic_cast<intermediate::Operation *>(addIL);
+	auto mul = dynamic_cast<intermediate::Operation *>(mulIL);
+	assert (add != nullptr);
+	assert (mul != nullptr);
+	return new intermediate::CombinedOperation(add, mul);
 }
 
 
@@ -272,7 +274,7 @@ intermediate::Operation *InstructionSelector::chooseInstructionForNumber(Ops & i
 }
 
 IL * InstructionSelector::choose() {
-	auto ils = dag.getRoots();
+	auto & ils = * dag.getRoots();
 	assert(ils.size() > 0);
 
 	auto addOp = std::vector<intermediate::Operation *>(std::vector<intermediate::Operation *>());
@@ -320,7 +322,12 @@ IL * InstructionSelector::choose() {
 }
 
 bool InstructionSelector::empty() {
-	return dag.getRoots().size() == 0;
+	if (dag.getRoots()->size() == 0) {
+		assert (dag.empty());
+		return true;
+	}
+
+	return false;
 }
 
 }

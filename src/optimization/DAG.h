@@ -1,6 +1,8 @@
-//
-// Created by nomaddo on 17/12/18.
-//
+/*
+ * Author: nomaddo
+ *
+ * See the file "LICENSE" for the full license governing this code.
+ */
 
 #ifndef VC4C_DAG_H
 #define VC4C_DAG_H
@@ -9,26 +11,31 @@
 #include "../intermediate/IntermediateInstruction.h"
 #include "../analysis/DebugGraph.h"
 
-using namespace vc4c;;
-
-using IL = vc4c::intermediate::IntermediateInstruction;
-
 namespace vc4c
 {
+  enum class DAGDependType { Depend, AntiDepend };
+
+  using IL = vc4c::intermediate::IntermediateInstruction;
+  using DagType = Graph<IL*, Node <IL*, DAGDependType>>;
+
   class DAG {
 	  /* dependency graph */
-	  Graph<IL*, Node <IL*, bool>> * graph = new Graph<IL*, Node <IL*, bool>>;
+	  DagType * graph = new Graph<IL*, Node <IL*, DAGDependType>>;
 	  const intermediate::BranchLabel* label;
+	  std::vector<IL*> * roots = new std::vector<IL*>();
 
   public:
-	  DAG(BasicBlock &bb);
-	  std::vector<IL*> getRoots();
+	  DAG(Method & method, BasicBlock &bb);
+	  Method & method;
+	  std::vector<IL*> * getRoots();
 	  void erase(IL *);
 	  Optional<int> stepForTMULoad(IL * il);
 	  int getNeighborsNumber(IL *);
 	  void dumpGraph();
 	  const intermediate::BranchLabel* getLabel() const;
+	  void addDependency (IL *, IL *);
+	  bool empty();
   };
-
 }
+
 #endif //VC4C_DAG_H

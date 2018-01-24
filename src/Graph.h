@@ -13,6 +13,7 @@
 
 #include <functional>
 #include <type_traits>
+#include <algorithm>
 
 namespace vc4c
 {
@@ -20,13 +21,22 @@ namespace vc4c
 	 * A node for in a graph, general base-class maintaining the list of neighbors and their relations
 	 */
 	template<typename K, typename R>
-	struct Node : private NonCopyable
+	struct Node
 	{
 		using NeighborsType = FastMap<Node*, R>;
+		using RelationType = R;
 
-		const K key;
+		K key;
 
 		explicit Node(const K key) : key(key) { }
+
+		Node(Node const & node) : key(node.key), neighbors(node.neighbors) {}
+
+		Node &operator=(const Node & node) {
+			key = node.key;
+			neighbors = node.neighbors;
+			return *this;
+		}
 
 		/*!
 		 * Adds the given neighbor with the given relation.
@@ -35,6 +45,16 @@ namespace vc4c
 		void addNeighbor(Node* neighbor, const R relation)
 		{
 			neighbors.emplace(neighbor, relation);
+		}
+
+		void eraseNeighbors(K k) {
+			for (auto it = neighbors.begin(); it != neighbors.end(); ){
+				auto pair = *it;
+				if (pair.first->key == k)
+					it = neighbors.erase(it);
+				else
+					++it;
+			}
 		}
 
 		const NeighborsType& getNeighbors() const
@@ -77,7 +97,7 @@ namespace vc4c
 			return key->to_string();
 		}
 
-	protected:
+	// protected:
 		//TODO find better way, so the map is to the actual (child) type
 		FastMap<Node*, R> neighbors;
 	};

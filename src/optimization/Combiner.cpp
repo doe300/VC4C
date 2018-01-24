@@ -745,9 +745,9 @@ InstructionWalker optimizations::combineSameFlags(const Module& module, Method& 
 	return it;
 }
 
-void vc4c::optimizations::instructionScheduling(const Module &module, Method &method, const Configuration &config){
+void optimizations::instructionScheduling(const Module &module, Method &method, const Configuration &config){
 	for (auto &bb : method.getBasicBlocks()) {
-		auto dag = DAG(bb);
+		auto dag = DAG(method, bb);
 		Scheduler::doScheduling(bb, dag);
 	}
 }
