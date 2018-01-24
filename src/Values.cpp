@@ -596,6 +596,40 @@ Optional<Literal> Value::getLiteralValue() const
 	return Optional<Literal>(false, Literal(false));
 }
 
+bool Value::isLocal() const {
+  return (valueType == ValueType::LOCAL);
+}
+
+bool Value::isSmallImmediate() const {
+  return (valueType == ValueType::SMALL_IMMEDIATE);
+}
+
+bool Value::isRegister() const {
+  return (valueType == ValueType::REGISTER);
+}
+
+bool Value::isLiteral() const {
+  return (valueType == ValueType::LITERAL);
+}
+
+bool Value::operator<(const Value &v) const {
+   if (this->valueType == v.valueType) {
+	   if (isRegister()) {
+		   return this->reg < v.reg;
+	   } else if (isLiteral()) {
+		   return this->literal < v.literal;
+	   } else if (isSmallImmediate()) {
+		   return this->immediate < v.immediate;
+	   } else if (isLocal()) {
+		   return this->local < v.local;
+	   } else {
+		   throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type!");
+	   }
+   } else {
+	   return this->valueType < v.valueType;
+   }
+}
+
 std::string Value::to_string(const bool writeAccess, bool withLiterals) const
 {
     const std::string typeName = (type.typeName.empty() ? "unknown" : type.to_string()) + ' ';

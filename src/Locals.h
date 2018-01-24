@@ -386,6 +386,7 @@ namespace vc4c
 		bool operator()(const StackAllocation& sa1, const StackAllocation& sa2) const;
 	};
 
+
 } /* namespace vc4c */
 
 #endif /* LOCALS_H */

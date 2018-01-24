@@ -76,7 +76,8 @@ namespace vc4c
 
 		/*
 		 * Converted to QPU instructions,
-		 * but still with method-calls and typed locals
+		 * but still with method-calls and typed locals.
+		 * NOTE: If it is CombinedOperation, its fields have dummy values.
 		 */
 		class IntermediateInstruction : public LocalUser
 		{
@@ -192,6 +193,7 @@ namespace vc4c
 			SetFlag setFlags;
 			InstructionDecorations decoration;
 			bool canBeCombined;
+
 		protected:
 			const Value renameValue(Method& method, const Value& orig, const std::string& prefix) const;
 
@@ -576,4 +578,3 @@ namespace vc4c
 
 
 #endif /* INTERMEDIATEINSTRUCTION_H */
-
