@@ -71,6 +71,8 @@ namespace vc4c
 		/*
 		 * List of pre-defined optimization passes
 		 */
+		//maps all memory-accessing instructions to instructions actually performing the hardware memory-access
+		extern const OptimizationPass MAP_MEMORY_ACCESS;
 		//runs all the single-step optimizations. Combining them results in fewer iterations over the instructions
 		extern const OptimizationPass RUN_SINGLE_STEPS;
 		//eliminates/inlines loads of global data

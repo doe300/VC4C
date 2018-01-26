@@ -7,6 +7,7 @@
 #include "MemoryAccess.h"
 
 #include "../intermediate/IntermediateInstruction.h"
+#include "../periphery/TMU.h"
 #include "../periphery/VPM.h"
 #include "../InstructionWalker.h"
 #include "../Profiler.h"
@@ -665,5 +666,55 @@ void optimizations::resolveStackAllocations(const Module& module, Method& method
 	while(!it.isEndOfMethod())
 	{
 		it = accessStackAllocations(module, method, it);
+	}
+}
+
+void optimizations::mapMemoryAccess(const Module& module, Method& method, const Configuration& config)
+{
+	//TODO merge all/most memory-access optimizations in here to have more info (need less searching) to perform optimizations
+
+	//for now, just map to VPM/TMU (like previously done in front-ends)
+	InstructionWalker it = method.walkAllInstructions();
+	while(!it.isEndOfMethod())
+	{
+		if(it.has<MemoryInstruction>())
+		{
+			const MemoryInstruction* mem = it.get<MemoryInstruction>();
+			switch(mem->op)
+			{
+				case MemoryOperation::COPY:
+				{
+					if(!mem->getNumEntries().isLiteralValue())
+						throw CompilationError(CompilationStep::LLVM_2_IR, "Copying dynamically sized memory is not yet implemented", mem->to_string());
+					unsigned numBytes = mem->getNumEntries().getLiteralValue()->integer * mem->getSourceElementType().getScalarBitCount() / 8;
+					it = method.vpm->insertCopyRAM(method, it, mem->getDestination(), mem->getSource(), numBytes);
+					break;
+				}
+				case MemoryOperation::FILL:
+				{
+					if(!mem->getNumEntries().isLiteralValue())
+						throw CompilationError(CompilationStep::LLVM_2_IR, "Filling dynamically sized memory is not yet implemented", mem->to_string());
+					unsigned numCopies = mem->getNumEntries().getLiteralValue()->integer;
+					it.emplace(new intermediate::MutexLock(intermediate::MutexAccess::LOCK));
+					it.nextInBlock();
+					//TODO could optimize (e.g. for zero-initializers) by writing several bytes at once
+					method.vpm->insertWriteVPM(it, mem->getSource(), nullptr, false);
+					it = method.vpm->insertFillRAM(method, it, mem->getDestination(), mem->getSourceElementType(), numCopies, nullptr, false);
+					it.emplace(new intermediate::MutexLock(intermediate::MutexAccess::RELEASE));
+					it.nextInBlock();
+					break;
+				}
+				case MemoryOperation::READ:
+					it = periphery::insertReadVectorFromTMU(method, it, mem->getDestination(), mem->getSource());
+					break;
+				case MemoryOperation::WRITE:
+					it = periphery::insertWriteDMA(method, it, mem->getSource(), mem->getDestination());
+					break;
+			}
+			//remove MemoryInstruction
+			it.erase();
+		}
+		else
+			it.nextInMethod();
 	}
 }

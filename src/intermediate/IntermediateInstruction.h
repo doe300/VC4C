@@ -569,6 +569,65 @@ namespace vc4c
 			MutexAccess accessType;
 		};
 
+		enum class MemoryOperation
+		{
+			//simple read from memory into a local register of a QPU
+			READ,
+			//simple write of a local register into memory
+			WRITE,
+			//(sized) copy of memory from one area into another
+			COPY,
+			//fills the destination area with a fixed copies of the source value
+			FILL
+		};
+
+		/*
+		 * Instruction operating (reading/writing/copying/filling) on memory or VPM cache
+		 */
+		struct MemoryInstruction : IntermediateInstruction
+		{
+		public:
+
+			MemoryInstruction(const MemoryOperation op, const Value dest, const Value src, const Value numEntries = INT_ONE);
+
+			std::string to_string() const override;
+			qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
+			IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
+
+			const Value& getSource() const;
+			const Value& getDestination() const;
+			const Value& getNumEntries() const;
+
+			/*
+			 * Whether the source (address or local value) can be moved into VPM
+			 */
+			bool canMoveSourceIntoVPM() const;
+			/*
+			 * Whether the destination (address or local value) can be moved into VPM
+			 */
+			bool canMoveDestinationIntoVPM() const;
+
+			/*
+			 * Returns the element-type (e.g. type of area pointed to) for the source
+			 *
+			 * For local values, this returns the value-type, for pointers the pointed-to type.
+			 *
+			 * If sizedType is true, a type spanning the whole copied memory-area is returned for sized memory-copy operations.
+			 */
+			DataType getSourceElementType(bool sizedType = false) const;
+			/*
+			 * Returns the element-type (e.g. type of area pointed to) for the destination
+			 *
+			 * For local values, this returns the value-type, for pointers the pointed-to type.
+			 *
+			 * If sizedType is true, a type spanning the whole copied memory-area is returned for sized memory-copy operations.
+			 * For the memory-fill operation, this also constructs a type spanning the complete area filled.
+			 */
+			DataType getDestinationElementType(bool sizedType = false) const;
+
+			const MemoryOperation op;
+		};
+
 		using InstructionsIterator = FastModificationList<std::unique_ptr<IntermediateInstruction>>::iterator;
 		using ConstInstructionsIterator = FastModificationList<std::unique_ptr<IntermediateInstruction>>::const_iterator;
 	} // namespace intermediate

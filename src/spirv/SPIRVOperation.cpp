@@ -11,7 +11,6 @@
 #include "../intermediate/TypeConversions.h"
 #include "../intrinsics/Images.h"
 #include "../intrinsics/Operators.h"
-#include "../periphery/VPM.h"
 #include "helper.h"
 #include "log.h"
 
@@ -420,12 +419,12 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
         if(memoryAccess == MemoryAccess::READ)
         {
             logging::debug() << "Generating reading of " << source.to_string() << " into " << dest.to_string() << logging::endl;
-            periphery::insertReadVectorFromTMU(*method.method.get(), method.method->appendToEnd(), dest, source);
+            method.method->appendToEnd((new intermediate::MemoryInstruction(intermediate::MemoryOperation::READ, dest, source))->addDecorations(decorations));
         }
         else if(memoryAccess == MemoryAccess::WRITE)
         {
             logging::debug() << "Generating writing of " << source.to_string() << " into " << dest.to_string() << logging::endl;
-            periphery::insertWriteDMA(*method.method.get(), method.method->appendToEnd(), source, dest);
+            method.method->appendToEnd((new intermediate::MemoryInstruction(intermediate::MemoryOperation::WRITE, dest, source))->addDecorations(decorations));
         }
         else if(memoryAccess == MemoryAccess::READ_WRITE)
         {
@@ -433,8 +432,7 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
         	{
         		//copy single object
 				logging::debug() << "Generating copying of " << source.to_string() << " into " << dest.to_string() << logging::endl;
-				unsigned numBytes = source.type.getElementType().getScalarBitCount() / 8;
-				method.method->vpm->insertCopyRAM(*method.method.get(), method.method->appendToEnd(), dest, source, numBytes);
+				method.method->appendToEnd((new intermediate::MemoryInstruction(intermediate::MemoryOperation::COPY, dest, source))->addDecorations(decorations));
         	}
         	else
         	{
@@ -443,8 +441,11 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
         		logging::debug() << "Generating copying of " << size.to_string() << " bytes from " << source.to_string() << " into " << dest.to_string() << logging::endl;
         		if(size.getLiteralValue())
         		{
-        			method.method->vpm->insertCopyRAM(*method.method, method.method->appendToEnd(), dest, source, static_cast<unsigned>(size.getLiteralValue()->integer));
+        			method.method->appendToEnd((new intermediate::MemoryInstruction(intermediate::MemoryOperation::COPY, dest, source, Value(Literal(size.getLiteralValue()->integer / (source.type.getElementType().getScalarBitCount() / 8)), TYPE_INT32)))->addDecorations(decorations));
         		}
+        		else if(source.type.getElementType() == TYPE_INT8)
+        			//if the element-size is 1 byte, the number of elements is the byte-size to copy
+        			method.method->appendToEnd((new intermediate::MemoryInstruction(intermediate::MemoryOperation::COPY, dest, source, size))->addDecorations(decorations));
         		else
         			//TODO in any case, loop over copies, up to the size specified
         			throw CompilationError(CompilationStep::LLVM_2_IR, "Copying dynamically sized memory is not yet implemented", size.to_string());

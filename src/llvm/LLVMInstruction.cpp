@@ -9,8 +9,6 @@
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/TypeConversions.h"
-#include "../periphery/TMU.h"
-#include "../periphery/VPM.h"
 #include "config.h"
 #include "log.h"
 
@@ -155,14 +153,14 @@ bool CallSite::mapInstruction(Method& method) const
     	method.appendToEnd(new intermediate::Operation(OP_FADD, output, tmp, arguments.at(2)));
     	return true;
     }
-    if(methodName.find("llvm.memcpy") == 0 && arguments.at(2).getLiteralValue())
+    if(methodName.find("llvm.memcpy") == 0)
     {
     	//@llvm.memcpy.p0i8.p0i8.i32(i8* <dest>, i8* <src>, i32 <len>, i32 <align>, i1 <isvolatile>)
     	logging::debug() << "Intrinsifying llvm.memcpy function-call" << logging::endl;
-    	method.vpm->insertCopyRAM(method, method.appendToEnd(), arguments.at(0), arguments.at(1), static_cast<unsigned>(arguments.at(2).getLiteralValue()->integer));
+    	method.appendToEnd(new intermediate::MemoryInstruction(intermediate::MemoryOperation::COPY, arguments.at(0), arguments.at(1), arguments.at(2)));
     	return true;
     }
-    if(methodName.find("llvm.memset") == 0 && arguments.at(2).getLiteralValue())
+    if(methodName.find("llvm.memset") == 0)
 	{
 		//declare void @llvm.memset.p0i8.i32|i.64(i8* <dest>, i8 <val>, i32|i64 <len>, i32 <align>, i1 <isvolatile>)
     	/*
@@ -179,21 +177,7 @@ bool CallSite::mapInstruction(Method& method) const
 			//set parameter to volatile
 			const_cast<Local*>(memAddr.local->getBase(true))->as<Parameter>()->decorations = add_flag(memAddr.local->getBase(true)->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
 		}
-		method.appendToEnd(new intermediate::MutexLock(intermediate::MutexAccess::LOCK));
-		if(fillByte.isZeroInitializer())
-		{
-			//at least for zero, we can decrease the number of writes by increasing the data-type
-			std::pair<DataType, uint8_t> pair = periphery::getBestVectorSize(numBytes.getLiteralValue()->integer);
-			logging::debug() << "Using zero-initializer of type " << pair.first.to_string() << " with " << static_cast<unsigned>(pair.second) << " copies" << logging::endl;
-			method.vpm->insertWriteVPM(method.appendToEnd(), Value::createZeroInitializer(pair.first), nullptr, false);
-			method.vpm->insertFillRAM(method, method.appendToEnd(), memAddr, pair.first, pair.second, nullptr, false);
-		}
-		else
-		{
-			method.vpm->insertWriteVPM(method.appendToEnd(), fillByte, nullptr, false);
-			method.vpm->insertFillRAM(method, method.appendToEnd(), memAddr, TYPE_INT8, static_cast<unsigned>(numBytes.getLiteralValue()->integer), nullptr, false);
-		}
-		method.appendToEnd( new intermediate::MutexLock(intermediate::MutexAccess::RELEASE));
+		method.appendToEnd(new intermediate::MemoryInstruction(intermediate::MemoryOperation::FILL, memAddr, fillByte, numBytes));
 		return true;
 	}
     if(methodName.find("llvm.bswap") == 0)
@@ -269,12 +253,12 @@ bool Copy::mapInstruction(Method& method) const
         if(isRead)
         {
             logging::debug() << "Generating reading from " << orig.to_string() << " into " << dest.to_string() << logging::endl;
-            periphery::insertReadVectorFromTMU(method, method.appendToEnd(), dest, orig);
+            method.appendToEnd(new intermediate::MemoryInstruction(intermediate::MemoryOperation::READ, dest, orig));
         }
         else
         {
             logging::debug() << "Generating writing of " << orig.to_string() << " into " << dest.to_string() << logging::endl;
-            periphery::insertWriteDMA(method, method.appendToEnd(), orig, dest);
+            method.appendToEnd(new intermediate::MemoryInstruction(intermediate::MemoryOperation::WRITE, dest, orig));
         }
     }
     else

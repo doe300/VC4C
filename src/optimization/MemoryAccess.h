@@ -56,6 +56,11 @@ namespace vc4c
 		 * NOTE: This optimization-pass is required for the compiler to handle stack-allocations correctly
 		 */
 		void resolveStackAllocations(const Module& module, Method& method, const Configuration& config);
+
+		/*
+		 * Maps the memory-instructions to instructions actually performing the memory-access (e.g. TMU, VPM access).
+		 */
+		void mapMemoryAccess(const Module& module, Method& method, const Configuration& config);
 	} // namespace optimizations
 } // namespace vc4c
 

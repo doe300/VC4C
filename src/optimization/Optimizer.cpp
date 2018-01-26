@@ -133,8 +133,9 @@ static void runSingleSteps(const Module& module, Method& method, const Configura
 }
 
 //need to run before mapping literals
-const OptimizationPass optimizations::RESOLVE_STACK_ALLOCATIONS = OptimizationPass("ResolveStackAllocations", resolveStackAllocations, 10);
-const OptimizationPass optimizations::RUN_SINGLE_STEPS = OptimizationPass("SingleSteps", runSingleSteps, 20);
+const OptimizationPass optimizations::MAP_MEMORY_ACCESS = OptimizationPass("MapMemoryAccess", mapMemoryAccess, 10);
+const OptimizationPass optimizations::RESOLVE_STACK_ALLOCATIONS = OptimizationPass("ResolveStackAllocations", resolveStackAllocations, 20);
+const OptimizationPass optimizations::RUN_SINGLE_STEPS = OptimizationPass("SingleSteps", runSingleSteps, 30);
 const OptimizationPass optimizations::SPILL_LOCALS = OptimizationPass("SpillLocals", spillLocals, 80);
 const OptimizationPass optimizations::ELIMINATE_CONSTANT_LOADS = OptimizationPass("EliminateConstantLoads", eliminateLoadingOfConstantGlobals, 30);
 const OptimizationPass optimizations::COMBINE_VPM_SETUP = OptimizationPass("CombineVPMAccess", combineVPMAccess, 80);
@@ -151,7 +152,7 @@ const OptimizationPass optimizations::ADD_START_STOP_SEGMENT = OptimizationPass(
 const OptimizationPass optimizations::EXTEND_BRANCHES = OptimizationPass("ExtendBranches", extendBranches, 190);
 
 const std::set<OptimizationPass> optimizations::DEFAULT_PASSES = {
-		RUN_SINGLE_STEPS, ELIMINATE_CONSTANT_LOADS, /* SPILL_LOCALS, */ COMBINE_VPM_SETUP, COMBINE_LITERAL_LOADS, RESOLVE_STACK_ALLOCATIONS, COMBINE_ROTATIONS, ELIMINATE, VECTORIZE, SPLIT_READ_WRITES, REORDER, COMBINE, UNROLL_WORK_GROUPS, ADD_START_STOP_SEGMENT, EXTEND_BRANCHES
+		MAP_MEMORY_ACCESS, RUN_SINGLE_STEPS, ELIMINATE_CONSTANT_LOADS, /* SPILL_LOCALS, */ COMBINE_VPM_SETUP, COMBINE_LITERAL_LOADS, RESOLVE_STACK_ALLOCATIONS, COMBINE_ROTATIONS, ELIMINATE, VECTORIZE, SPLIT_READ_WRITES, REORDER, COMBINE, UNROLL_WORK_GROUPS, ADD_START_STOP_SEGMENT, EXTEND_BRANCHES
 };
 
 Optimizer::Optimizer(const Configuration& config, const std::set<OptimizationPass>& passes) : config(config), passes(passes)
