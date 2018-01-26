@@ -6,13 +6,70 @@
 
 #include "VPM.h"
 
+#include "../Profiler.h"
 #include "log.h"
 
 using namespace vc4c;
 using namespace vc4c::periphery;
 using namespace vc4c::intermediate;
 
-static int64_t getVPMSize(const DataType& paramType)
+//"[...] of 32-bit words,  [...]"
+static constexpr unsigned VPM_WORD_WIDTH = sizeof(unsigned);
+//"[...] 16 words wide [...]"
+static constexpr unsigned VPM_NUM_COLUMNS = 16;
+//"[...] maximum height of 64 words [...]"
+static constexpr unsigned VPM_NUM_ROWS = 64;
+//Store all data horizontally
+static constexpr bool IS_HORIZONTAL = true;
+//Store all data packed
+static constexpr bool IS_PACKED = true;
+
+/*
+ * Returns the divisor for the column-offset applicable for the given type.
+ * This is also the number of columns used by a 16-element vector of the given scalar type.
+ *
+ * Examples (assuming horizontal mode and packed data):
+ * 8-bit (vector) types can have a byte-offset of 0 - 3 which translate to column-offsets of 0, 4, 8 and 12
+ * and means, that the values need to be positioned at the column 0, 4, 8 or 12
+ *
+ * Usage:
+ * alignment correct = column % column-divisor == 0
+ * byte/half-word-offset = column / column-divisor
+ */
+static unsigned char getColumnDivisor(const DataType& type)
+{
+	/*
+	 * Since we currently use one VPM row for a single vector,
+	 * all values are positioned at the beginning of the row (row-index 0)
+	 */
+	if(true)
+		return 16;
+
+	/*
+	 * General solution
+	 *
+	 * Returns 4 for byte types, 8 for half-word types and 1 for word-types
+	 */
+	return static_cast<unsigned char>(VPM_NUM_COLUMNS / (TYPE_INT32.getScalarBitCount() / type.getScalarBitCount()));
+}
+
+/*
+ * Checks whether the given area fits into the VPM area
+ */
+static bool checkIndices(const DataType& type, unsigned char rowIndex, unsigned char columnIndex, unsigned char numRows, unsigned char numColumns)
+{
+	logging::debug() << static_cast<unsigned>(columnIndex) << " " << static_cast<unsigned>(numColumns) << " " <<
+			static_cast<unsigned>(rowIndex) << " " << static_cast<unsigned>(numRows) << logging::endl;
+	if((columnIndex + numColumns) > VPM_NUM_COLUMNS)
+		return false;
+	if((rowIndex + numRows) > VPM_NUM_ROWS)
+		return false;
+	if((columnIndex % getColumnDivisor(type)) != 0)
+		return false;
+	return true;
+}
+
+static uint8_t getVPMSize(const DataType& paramType)
 {
     //documentation, table 32 (page 57)
 	switch(paramType.getScalarBitCount())
@@ -28,7 +85,7 @@ static int64_t getVPMSize(const DataType& paramType)
 	}
 }
 
-static int64_t getVPMDMAMode(const DataType& paramType)
+static uint8_t getVPMDMAMode(const DataType& paramType)
 {
     //documentation, table 34 (page 58) / table 36 (page 59)
     //The offset is added initially onto the address, so don't set it (it will skip to write the first byte(s)/half word)
@@ -107,39 +164,44 @@ std::pair<DataType, uint8_t> periphery::getBestVectorSize(const int64_t numBytes
 	throw CompilationError(CompilationStep::LLVM_2_IR, "Failed to find element- and vector-sizes matching the given amount of bytes", std::to_string(numBytes));
 }
 
-static uint8_t calculateAddress(const DataType& type, unsigned byteOffset)
+/*
+ * Calculates the address of the data in the VPM in the format used by the QPU-side access (read/write VPM)
+ */
+static uint8_t calculateQPUSideAddress(const DataType& type, unsigned char rowIndex, unsigned char columnIndex)
 {
 	//see Broadcom spec, pages 57, 58 and figure 8 (page 54)
 	//Y coord is the multiple of 16 * 32-bit (= 64 Byte)
 	//B coord is the byte [0, 1, 2, 3] in the word
 	//H coord is the half-word [0, 1] in the word
-	//the stride is always 32-bit and the pack-mode is always laned
-	//XXX for now, we always address in size of 16-element vectors, since there is now way to address the upper-half of an 16-element vector (correct?)
 
 	//check alignment
-	if((byteOffset * 8) % (16 * type.getScalarBitCount()) != 0)
+	if(!checkIndices(type, rowIndex, columnIndex, 1, getColumnDivisor(type)))
 		throw CompilationError(CompilationStep::GENERAL, "Invalid alignment in VPM for type", type.to_string());
 
-	//TODO correct?? needs testing!
-	uint8_t yCoord = static_cast<uint8_t>(byteOffset / 64);
-	uint8_t remainder = byteOffset % 64;
 	if(type.getScalarBitCount() == 32)
 		//"ADDR[5:0] = Y[5:0]"
-		return yCoord;
+		return static_cast<uint8_t>(rowIndex);
 	else if(type.getScalarBitCount() == 16)
 		// "ADDR[6:0] = Y[5:0] | H[0]"
-		return static_cast<uint8_t>(yCoord << 1) | static_cast<uint8_t>(remainder / 32);
+		return static_cast<uint8_t>(rowIndex << 1) | static_cast<uint8_t>(columnIndex / getColumnDivisor(type));
 	else if(type.getScalarBitCount() == 8)
 		// "ADDR[7:0] = Y[5:0] | B[1:0]"
-		return static_cast<uint8_t>(yCoord << 2) | static_cast<uint8_t>(remainder / 16);
+		return static_cast<uint8_t>(rowIndex << 2) | static_cast<uint8_t>(columnIndex / getColumnDivisor(type));
 	else
 		throw CompilationError(CompilationStep::GENERAL, "Invalid bit-width to store in VPM", type.to_string());
 }
 
-static unsigned calculateOffset(const VPMArea* area)
+static unsigned char calculateRowIndex(const VPMArea* area)
 {
 	if(area != nullptr)
-		return area->baseOffset;
+		return area->rowOffset;
+	return 0;
+}
+
+static unsigned char calculateColumnIndex(const VPMArea* area)
+{
+	if(area != nullptr)
+		return area->columnOffset;
 	return 0;
 }
 
@@ -148,12 +210,14 @@ InstructionWalker VPM::insertReadVPM(InstructionWalker it, const Value& dest, co
 	if(area != nullptr)
 		area->checkAreaSize(dest.type.getPhysicalWidth());
 	else
-		updateScratchSize(dest.type.getPhysicalWidth());
+		updateScratchSize(1);
 
 	it = insertLockMutex(it, useMutex);
 	//1) configure reading from VPM into QPU
 	const auto size = getVPMSize(dest.type);
-	const VPRSetup genericSetup(VPRGenericSetup(size, TYPE_INT32.getScalarBitCount() / dest.type.getScalarBitCount(), 1, calculateAddress(dest.type, calculateOffset(area))));
+	VPRSetup genericSetup(VPRGenericSetup(size, TYPE_INT32.getScalarBitCount() / dest.type.getScalarBitCount(), 1, calculateQPUSideAddress(dest.type, calculateRowIndex(area), calculateColumnIndex(area))));
+	genericSetup.genericSetup.setHorizontal(IS_HORIZONTAL);
+	genericSetup.genericSetup.setLaned(!IS_PACKED);
 	it.emplace( new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<int64_t>(genericSetup))));
 	it.nextInBlock();
 	//2) read value from VPM
@@ -168,12 +232,14 @@ InstructionWalker VPM::insertWriteVPM(InstructionWalker it, const Value& src, co
 	if(area != nullptr)
 		area->checkAreaSize(src.type.getPhysicalWidth());
 	else
-		updateScratchSize(src.type.getPhysicalWidth());
+		updateScratchSize(1);
 
 	it = insertLockMutex(it, useMutex);
 	//1. configure writing from QPU into VPM
 	const int64_t vpmSize = getVPMSize(src.type);
-	const VPWSetup genericSetup(VPWGenericSetup(vpmSize, TYPE_INT32.getScalarBitCount() / src.type.getScalarBitCount(), calculateAddress(src.type, calculateOffset(area))));
+	VPWSetup genericSetup(VPWGenericSetup(vpmSize, TYPE_INT32.getScalarBitCount() / src.type.getScalarBitCount(), calculateQPUSideAddress(src.type, calculateRowIndex(area), calculateColumnIndex(area))));
+	genericSetup.genericSetup.setHorizontal(IS_HORIZONTAL);
+	genericSetup.genericSetup.setLaned(!IS_PACKED);
 	it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<int64_t>(genericSetup))));
 	it.nextInBlock();
 	//2. write data to VPM
@@ -188,7 +254,7 @@ InstructionWalker VPM::insertReadRAM(InstructionWalker it, const Value& memoryAd
 	if(area != nullptr)
 		area->checkAreaSize(type.getPhysicalWidth());
 	else
-		updateScratchSize(type.getPhysicalWidth());
+		updateScratchSize(1);
 
 	if(memoryAddress.hasType(ValueType::LOCAL) && memoryAddress.local != nullptr)
 	{
@@ -205,8 +271,10 @@ InstructionWalker VPM::insertReadRAM(InstructionWalker it, const Value& memoryAd
 
 	//initialize VPM DMA for reading from host
 	const int64_t dmaMode = getVPMDMAMode(type);
-	VPRSetup dmaSetup(VPRDMASetup(dmaMode, type.getVectorWidth(true) % 16 /* 0 => 16 */, 1 % 16 /* 0 => 16 */));
-	dmaSetup.dmaSetup.setAddress(static_cast<uint16_t>(calculateOffset(area)));
+	VPRSetup dmaSetup(VPRDMASetup(dmaMode, type.getVectorWidth(true) % 16 /* 0 => 16 */, 1 /* 0 => 16 */));
+	dmaSetup.dmaSetup.setWordRow(calculateRowIndex(area));
+	dmaSetup.dmaSetup.setWordColumn(calculateColumnIndex(area));
+	dmaSetup.dmaSetup.setVertical(!IS_HORIZONTAL);
 	it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<int64_t>(dmaSetup))));
 	it.nextInBlock();
 	const VPRSetup strideSetup(VPRStrideSetup(static_cast<uint16_t>(type.getPhysicalWidth())));
@@ -230,7 +298,7 @@ InstructionWalker VPM::insertWriteRAM(InstructionWalker it, const Value& memoryA
 	if(area != nullptr)
 		area->checkAreaSize(type.getPhysicalWidth());
 	else
-		updateScratchSize(type.getPhysicalWidth());
+		updateScratchSize(1);
 
 	if(memoryAddress.hasType(ValueType::LOCAL) && memoryAddress.local != nullptr)
 	{
@@ -245,8 +313,10 @@ InstructionWalker VPM::insertWriteRAM(InstructionWalker it, const Value& memoryA
 
 	//initialize VPM DMA for writing to host
 	const int64_t dmaMode = getVPMDMAMode(type);
-	VPWSetup dmaSetup(VPWDMASetup(dmaMode, type.getVectorWidth(true), 1 % 128 /* 0 => 128 */));
-	dmaSetup.dmaSetup.setVPMBase(static_cast<uint16_t>(calculateOffset(area)));
+	VPWSetup dmaSetup(VPWDMASetup(dmaMode, type.getVectorWidth(true), 1 /* 0 => 128 */));
+	dmaSetup.dmaSetup.setWordRow(calculateRowIndex(area));
+	dmaSetup.dmaSetup.setWordColumn(calculateColumnIndex(area));
+	dmaSetup.dmaSetup.setHorizontal(IS_HORIZONTAL);
 	it.emplace( new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<int64_t>(dmaSetup))));
 	it.nextInBlock();
 	//set stride to zero
@@ -272,7 +342,7 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
 	if(area != nullptr)
 		area->checkAreaSize(size.first.getPhysicalWidth());
 	else
-		updateScratchSize(size.first.getPhysicalWidth());
+		updateScratchSize(1);
 
 	it = insertLockMutex(it, useMutex);
 
@@ -306,7 +376,7 @@ InstructionWalker VPM::insertFillRAM(Method& method, InstructionWalker it, const
 	if(area != nullptr)
 		area->checkAreaSize(type.getPhysicalWidth());
 	else
-		updateScratchSize(type.getPhysicalWidth());
+		updateScratchSize(1);
 
 	it = insertLockMutex(it, useMutex);
 	it = insertWriteRAM(it, memoryAddress, type, area, false);
@@ -327,28 +397,23 @@ InstructionWalker VPM::insertFillRAM(Method& method, InstructionWalker it, const
 
 void VPMArea::checkAreaSize(const unsigned requestedSize) const
 {
-	if(requestedSize > size)
+	if(requestedSize > (numRows * VPM_NUM_COLUMNS * VPM_WORD_WIDTH))
 		throw CompilationError(CompilationStep::GENERAL, "VPM area has not enough space available", std::to_string(requestedSize));
 }
 
 bool VPMArea::operator<(const VPMArea& other) const
 {
-	return baseOffset < other.baseOffset;
+	return rowOffset < other.rowOffset || columnOffset < other.columnOffset;
 }
 
 bool VPMArea::requiresSpacePerQPU() const
 {
-	return usageType == VPMUsage::REGISTER_SPILLING;
+	return usageType == VPMUsage::REGISTER_SPILLING || (dmaAddress != nullptr && dmaAddress->type.getPointerType() && dmaAddress->type.getPointerType().value()->addressSpace == AddressSpace::PRIVATE);
 }
 
-unsigned VPMArea::getTotalSize() const
+VPM::VPM(const unsigned totalVPMSize) : maximumVPMSize(std::min(VPM_DEFAULT_SIZE, totalVPMSize)), areas(), isScratchLocked(false)
 {
-	return (requiresSpacePerQPU() ? 12 : 1) * size;
-}
-
-VPM::VPM(const unsigned totalVPMSize) : maximumVPMSize(totalVPMSize), areas(), isScratchLocked(false)
-{
-	areas.emplace(VPMArea{VPMUsage::GENERAL_DMA, 0, 0, nullptr});
+	areas.emplace(VPMArea{VPMUsage::GENERAL_DMA, 0, 0, 0, nullptr});
 }
 
 const VPMArea& VPM::getScratchArea()
@@ -366,26 +431,32 @@ const VPMArea* VPM::findArea(const Local* local)
 
 const VPMArea* VPM::addArea(const Local* local, unsigned requestedSize, bool alignToBack)
 {
+	uint8_t numRows = static_cast<unsigned char>(requestedSize / (VPM_NUM_COLUMNS * VPM_WORD_WIDTH) + (requestedSize % (VPM_NUM_COLUMNS * VPM_WORD_WIDTH) != 0));
 	const VPMArea* area = findArea(local);
-	if(area != nullptr && area->size >= requestedSize)
+	if(area != nullptr && area->numRows >= numRows)
 		return area;
 
 	//lock scratch area, so it cannot expand over reserved VPM areas
 	isScratchLocked = true;
 
 	//find free consecutive space in VPM with the requested size and return it
-	unsigned baseOffset = 0;
+	uint8_t rowOffset = 0;
 	for(const VPMArea& area : areas)
 	{
-		if(baseOffset + requestedSize < area.baseOffset)
+		if(rowOffset + numRows > area.rowOffset)
+		{
 			//if the new area doesn't fit before the current one, place it after
-			baseOffset = area.baseOffset + area.size;
+			rowOffset = static_cast<unsigned char>(area.rowOffset + area.numRows);
+		}
 	}
 
 	//check if we can fit at the end
-	if(baseOffset + requestedSize < maximumVPMSize)
+	if(rowOffset + numRows < VPM_NUM_ROWS)
 	{
-		auto it = areas.emplace(VPMArea{VPMUsage::SPECIFIC_DMA, baseOffset, requestedSize, local});
+		//for now align all new VPM areas at the beginning of a column
+		auto it = areas.emplace(VPMArea{VPMUsage::SPECIFIC_DMA, 0, rowOffset, numRows, local});
+		logging::debug() << "Allocating " << numRows << " rows (per 64 byte) of VPM cache starting at row " << rowOffset << " for local: " << local->to_string(false) << logging::endl;
+		PROFILE_COUNTER(9010, "VPM cache size", requestedSize);
 		return &(*it.first);
 	}
 
@@ -400,19 +471,18 @@ unsigned VPM::getMaxCacheVectors(const DataType& type, bool writeAccess) const
 	return std::min(15u, (maximumVPMSize / 16) / (type.getScalarBitCount() / 8));
 }
 
-void VPM::updateScratchSize(unsigned requestedSize)
+void VPM::updateScratchSize(unsigned char requestedRows)
 {
 	if(isScratchLocked)
 		throw CompilationError(CompilationStep::GENERAL, "Size of the scratch area is already locked");
-	if(requestedSize > maximumVPMSize)
-		throw CompilationError(CompilationStep::GENERAL, "The requested size of the scratch area exceeds the total VPM size", std::to_string(requestedSize));
+	if(requestedRows > VPM_NUM_ROWS)
+		throw CompilationError(CompilationStep::GENERAL, "The requested size of the scratch area exceeds the total VPM size", std::to_string(requestedRows));
 
-	if(getScratchArea().size < requestedSize)
-		logging::debug() << "Increased the scratch size to " << requestedSize << " bytes" << logging::endl;
-
-	//TODO is this correct?
-	//Since we do not store all data completely packed, do we?
-	const_cast<unsigned&>(getScratchArea().size) = std::max(getScratchArea().size, requestedSize);
+	if(getScratchArea().numRows < requestedRows)
+	{
+		logging::debug() << "Increased the scratch size to " << requestedRows << " rows (" << requestedRows * 64 << " bytes)" << logging::endl;
+		const_cast<unsigned char&>(getScratchArea().numRows) = requestedRows;
+	}
 }
 
 InstructionWalker VPM::insertLockMutex(InstructionWalker it, bool useMutex) const

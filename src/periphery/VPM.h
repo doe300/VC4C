@@ -43,13 +43,33 @@ namespace vc4c
 			}
 
 			/*
-			 * "Location of the first vector accessed."
+			 * "Location of the first vector accessed.
+			 * The LS 1 or 2 bits select the Half-word or Byte sub-vector for 16 or 8-bit width. The LS 4 bits of the 32-bit vector address are Y address if horizontal or X address if vertical.
+			 * Horizontal 8-bit: ADDR[7:0] = {Y[5:0], B[1:0]}
+			 * Horizontal 16-bit: ADDR[6:0] = {Y[5:0], H[0]}
+			 * Horizontal 32-bit: ADDR[5:0] = Y[5:0]"
 			 *
-			 * This is the address (in VPM) to write the first vector to. All consecutive writes write to this address incremented by the type-width + stride
+			 * This is the address (in VPM) to write the first vector to. All consecutive writes write to this address incremented by the type-width * stride.
+			 * The meaning of the address depends on the type-width, laned/packed and horizontal/vertical mode.
+			 *
+			 * Examples:
+			 * For packed and horizontal mode (default), an address of 7 for 8-bit values writes into the columns 12 to 15 in the first row of the VPM
+			 * The same values for vertical laned mode write into the third byte of the third row into the columns 0 to 15
+			 *
+			 * NOTE:
+			 * In contrast to the VPM addressing for DMA operations the addressing for QPU-side accessing has a rather wide granularity,
+			 * allowing to address only blocks of 4 words (16 byte-sized elements)
 			 */
 			BITFIELD_ENTRY(Address, uint8_t, 0, Byte)
+			BITFIELD_ENTRY(WordRow, uint8_t, 0, Byte)
+			BITFIELD_ENTRY(HalfWordRow, uint8_t, 1, Septuple)
+			BITFIELD_ENTRY(HalfWordOffset, bool, 0, Bit)
+			BITFIELD_ENTRY(ByteRow, uint8_t, 2, Sextuple)
+			BITFIELD_ENTRY(ByteOffset, uint8_t, 0, Tuple)
 			/*
 			 * "0,1,2,3 = 8-bit, 16-bit, 32-bit, reserved"
+			 *
+			 * NOTE: Writing into VPM always writes all 16 vector-elements, so depending on the size-value, 16, 32 or 64 bytes are written!
 			 */
 			BITFIELD_ENTRY(Size, uint8_t, 8, Tuple)
 			/*
@@ -71,8 +91,15 @@ namespace vc4c
 			 * "Stride. This is added to ADDR after every vector written. 0 => 64."
 			 *
 			 * This is the address increment between two consecutive writes (for the VPM address).
-			 * In practice, this is the offset to the next n-elment 32-bit row in the width of the element type.
-			 * So for now, setting this to 4 for bytes, 2 for half-words and 1 for words seems to be correct.
+			 * This increment considers the byte-/half-word offset as well as the row and column position.
+			 *
+			 * Example:
+			 * Writing 16 bytes horizontal and packed with a stride of 1 and an initial address of 0 results in following new address:
+			 * 0 + 1 = 1 -> (column 0, byte offset 0) + 1 -> (column 0, byte offset 1)
+			 *
+			 * NOTE:
+			 * If only one value (one 16-byte, 16-half-word or 16-word vector) should be written per row (16-words),
+			 * the stride has to be 4 for bytes, 2 for half-words and 1 for words to skip the remainder of the row until to the beginning of the next.
 			 */
 			BITFIELD_ENTRY(Stride, uint8_t, 12, Sextuple)
 		private:
@@ -106,18 +133,29 @@ namespace vc4c
 			 * 2-3: width = 16-bit, Half-word offset (packed only) = MODEW[0]
 			 * 4-7: width = 8-bit, Byte offset (packed only) = MODEW[1:0]"
 			 *
-			 * The byte/half-word offsets determine how many bytes/half-words to skip in a 32-bit word.
-			 * So a byte-offset of 2 for the word | b1 | b2 | b3 | b4 | would start at | b3 |.
-			 * There is currently no need to set the offset to any other value than 0.
+			 * Example:
+			 * For a base-address of 0 and a mode of 3 (16-bit width, half-word offset), the first element will be read from the byte-address 2 (offset of 16 bit),
+			 * same for a base-address of 0 and a mode of 6 (8-bit width, 2 bytes offset)
+			 *
+			 * NOTE:
+			 * The mode combines the element-size with the alignment (byte/half-word offset).
+			 * While the base alignment is 32-bit, the byte/half-word offset can be used to specify up to byte-wise alignment (for byte types)
 			 */
 			BITFIELD_ENTRY(Mode, uint8_t, 0, Triple)
+			BITFIELD_ENTRY(HalfRowOffset, bool, 0, Bit)
+			BITFIELD_ENTRY(ByteOffset, uint8_t, 0, Tuple)
 			/*
 			 * "X,Y address of first 32-bit word in VPM to load to/store from. ADDRA[10:0] = {Y[6:0], X[3:0]}"
 			 *
-			 * This determines the address (in VPM, in X and Y coordinates) to be written into memory.
-			 * For now, we do not use the VPM as cache for some other data, so we always write (and read) from the start (address 0).
+			 * This determines the base address (in VPM, in X and Y coordinates) to be written into memory
+			 * and allows to address data with a granularity of one word.
+			 *
+			 * Example:
+			 * Values read with a horizontal access-mode from a base-address-value of 23 addresses the seventh column of the first row
 			 */
 			BITFIELD_ENTRY(VPMBase, uint16_t, 3, Undecuple)
+			BITFIELD_ENTRY(WordRow, uint8_t, 7, Septuple)
+			BITFIELD_ENTRY(WordColumn, uint8_t, 3, Quadruple)
 			/*
 			 * "0,1 = Vertical, Horizontal"
 			 *
@@ -128,15 +166,27 @@ namespace vc4c
 			 * "Row Length of 2D block in memory (0 => 128)"
 			 *
 			 * The length of a single row (in elements of the size given in Mode) to be written into memory.
+			 * Depending on the stride applied to successive values written into VPM, this may exceed the vector-width of a single value (see examples).
 			 *
-			 * Currently a row represents a SIMD-vector, so this is the number of vector-elements.
+			 * Examples:
+			 * To write 4 consecutive byte vectors of size n into RAM which have been written into VPM with a stride of 4 (one byte-vector per row),
+			 * the depth needs to be n (only write one n-element vector per row) and the units need to be 4 (read 4 rows).
+			 * To write 4 consecutive byte vectors of size 16 into RAM which have been written into VPM with a stride of 1 (all 4 byte-vectors in a single row),
+			 * the depth needs to be 64 to write all 64 vector-elements (the whole row), while only one row is set in the units-field.
+			 *
+			 * NOTE:
+			 * As the example suggest, it is not possible (correct?!) to write several vectors packed into a single row in VPM (see example 2)
+			 * to consecutive memory space if the vector-width is not 16 (since the "dummy" vector-elements) are written in between.
 			 */
 			BITFIELD_ENTRY(Depth, uint8_t, 16, Septuple)
 			/*
 			 * "Number of Rows of 2D block in memory (0 => 128)"
 			 *
 			 * The total number of rows (of length Depth * element-size) to be written into memory.
-			 * Since a row is a SIMD-vector, this equals the number of vectors to write
+			 *
+			 * NOTE:
+			 * Depending on the layout multiple vectors have been written to into VPM (see Depth), this is either the number of vectors (for one-vector-per-row)
+			 * or less (if several vectors are packed into a single row).
 			 */
 			BITFIELD_ENTRY(Units, uint8_t, 23, Septuple)
 
@@ -167,9 +217,10 @@ namespace vc4c
 			 * "Distance between last byte of a row and start of next row in memory, in bytes."
 			 * Addendum to the Broadcom documentation: "Unlike the documentation suggests the STRIDE field is 16 bits wide."
 			 *
-			 * This is the distance in memory between two consecutive rows (vectors) written.
+			 * This is the distance in MEMORY between two consecutive rows (vectors) written.
 			 * With a value of 0, the vectors v1, v2, v3, ... will be in consecutive addresses: | v1 | v2 | v3 | ... |
 			 * With a value of 1, there will be space of the byte width of one vector (or one element??) between each vector: | v1 | xx | v2 | xx | v3 | ... |
+			 *
 			 * Since we write consecutive memory, this is always 0.
 			 */
 			BITFIELD_ENTRY(Stride, uint16_t, 0, Short)
@@ -250,38 +301,51 @@ namespace vc4c
 			 * "Location of the first vector accessed."
 			 *
 			 * This is the address (in VPM) of the first vector to be read by the following VPM_READ instructions.
-			 * Currently always 0.
+			 *
+			 * See VPWGenericSetup#Address for more detailed description
 			 */
 			BITFIELD_ENTRY(Address, uint8_t, 0, Byte)
+			BITFIELD_ENTRY(WordRow, uint8_t, 0, Byte)
+			BITFIELD_ENTRY(HalfWordRow, uint8_t, 1, Septuple)
+			BITFIELD_ENTRY(HalfWordOffset, bool, 0, Bit)
+			BITFIELD_ENTRY(ByteRow, uint8_t, 2, Sextuple)
+			BITFIELD_ENTRY(ByteOffset, uint8_t, 0, Tuple)
 			/*
 			 * "0,1,2,3 = 8-bit, 16-bit, 32-bit, reserved"
+			 *
+			 * The size of one vector-element
+			 *
+			 * NOTE:
+			 * The QPU always reads a whole 16-element vector from VPM!
 			 */
 			BITFIELD_ENTRY(Size, uint8_t, 8, Tuple)
 			/*
 			 * "0,1 = Packed, Laned. Ignored for 32-bit width"
 			 *
 			 * Whether to read the data (for non-word sizes) packed or laned, see VPWGenericSetup#Laned.
+			 *
 			 * Only packed reading is used.
 			 */
 			BITFIELD_ENTRY(Laned, bool, 10, Bit)
 			/*
 			 * "0,1 = Vertical, Horizontal"
+			 *
 			 * Currently only horizontal reading is used.
 			 */
 			BITFIELD_ENTRY(Horizontal, bool, 11, Bit)
 			/*
 			 * "Stride. This is added to ADDR after every vector read. 0 => 64."
 			 *
-			 * Same as for VPW generic setup, this value is in the byte-size of the element-type and added to the address (in VPM).
-			 * The result is currently the offset to the next 32-bit vector and therefore the size of a word in units of the type specified.
-			 * So for bytes, this is 4, for half-words 2 and for words 1.
+			 * See VPWGenericSetup#Stride for more details
 			 */
 			BITFIELD_ENTRY(Stride, uint8_t, 12, Sextuple)
 			/*
 			 * "Number of vectors to read (0 => 16)."
 			 *
-			 * The number of vectors to read from the VPM. This needs to equal to the number of VPM_READ instructions,
-			 * otherwise the VPM_READ may block infinitely.
+			 * The number of vectors to read from the VPM.
+			 *
+			 * NOTE:
+			 * This needs to equal to the number of VPM_READ instructions, otherwise the VPM_READ may block infinitely.
 			 */
 			BITFIELD_ENTRY(Number, uint8_t, 20, Quadruple)
 
@@ -314,9 +378,12 @@ namespace vc4c
 			 * "X,Y address of first 32-bit word in VPM to load to /store from."
 			 *
 			 * The starting address (in VPM) to read the data from memory into.
-			 * For now, always 0.
+			 *
+			 * See VPWDMASetup#Address for more details
 			 */
 			BITFIELD_ENTRY(Address, uint16_t, 0, Undecuple)
+			BITFIELD_ENTRY(WordRow, uint8_t, 4, Septuple)
+			BITFIELD_ENTRY(WordColumn, uint8_t, 0, Quadruple)
 			/*
 			 * "0,1 = Horizontal, Vertical"
 			 * Currently all reads are horizontal.
@@ -324,27 +391,45 @@ namespace vc4c
 			BITFIELD_ENTRY(Vertical, bool, 11, Bit)
 			/*
 			 * "Row-to-row pitch of 2D block when loaded into VPM memory. (0 => 16).
-			 *  Added to the Y address and Byte/Half-word sel after each row is loaded, for both horizontal and vertical modes."
+			 *  Added to the Y address and Byte/Half-word sel after each row is loaded, for both horizontal and vertical modes.
+			 *
+			 *  For 8-bit width, VPITCH is added to {Y[1:0], B[1:0]}.
+			 *  For 16-bit width, VPITCH is added to {Y[2:0], H[0]}.
+			 *  For 32-bit width, VPITCH is added to Y[3:0]."
 			 *
 			 * This is the distance (in rows in VPM) of two consecutive elements loaded from memory.
 			 * Since we only load consecutive memory with consecutive loads, this is always 1.
+			 *
+			 * Example:
+			 * Reading byte vectors with horizontal mode, a VPitch value of 2 (byte-offset of 2) and a VPM base-address of 0 reads the first 16 bytes into VPM
+			 * row 0 columns 0 to 3 and the second 16 bytes into row 0 columns 8 to 11, the third 16 bytes into row 1 columns 0 to 3 and so on..
+			 *
+			 * NOTE:
+			 * This value is the counterpart to the offset-values in VPWDMASetup#Mode
 			 */
 			BITFIELD_ENTRY(VPitch, uint8_t, 12, Quadruple)
 			/*
 			 * "Number of rows in 2D block in memory. (0 => 16)"
 			 *
-			 * Since a row is used for a single SIMD-vector, this is the number of vectors to read from memory to VPM.
+			 * Similar to VPWDMASetup#Units and #Depth, depending on the number of vectors read into a single row,
+			 * this is either the number of vectors read or a factor of that number.
+			 *
 			 */
 			BITFIELD_ENTRY(NumberRows, uint8_t, 16, Quadruple)
 			/*
 			 * "Row length of 2D block in memory. In units of width (8, 16 or 32 bits). (0 => 16)"
 			 *
-			 * We use a row for a single SIMD-vector, so this is the number of vector-elements.
+			 * Similar to VPMDMASetup#Depth, this is the number of elements (of the given type) to read into a single row in VPM.
+			 * This needs to be at least the element-count a single vector.
+			 *
+			 * NOTE:
+			 * Since the maximum value is 16, multiple vectors can only be packed into the VPM for smaller vector-sizes.
 			 */
 			BITFIELD_ENTRY(RowLength, uint8_t, 20, Quadruple)
 			/*
 			 * "Row-to-row pitch of 2D block in memory. If MPITCH is 0, selects MPITCHB from the extended pitch setup register. Otherwise, pitch = 8*2^MPITCH bytes."
 			 *
+			 * This is the pitch between rows in MEMORY!
 			 * Always zero, to enable the extended stride setup.
 			 */
 			BITFIELD_ENTRY(MPitch, uint8_t, 24, Quadruple)
@@ -355,9 +440,11 @@ namespace vc4c
 			 * 2-3: width = 16-bit, Half-word sel (packed only) = MODEW[0]
 			 * 4-7: width = 8-bit, Byte sel (packed only) = MODEW[1:0]"
 			 *
-			 * See VPWDMASetup#Mode for the meaning of the byte/half-word offsets. They are always zero for now.
+			 * See VPWDMASetup#Mode for the meaning of the byte/half-word offsets.
 			 */
 			BITFIELD_ENTRY(Mode, uint8_t, 28, Triple)
+			BITFIELD_ENTRY(HalfRowOffset, bool, 28, Bit)
+			BITFIELD_ENTRY(ByteOffset, uint8_t, 28, Tuple)
 		private:
 			//"Selects VDR DMA basic setup (in addition, bits[30:28] != 1)"
 			BITFIELD_ENTRY(ID, uint8_t, 31, Bit)
@@ -379,7 +466,7 @@ namespace vc4c
 			}
 
 			/*
-			 * "Row-to-row pitch of 2D block in memory, in bytes. Only used if MPITCH in VPM DMA Load basic setup is 0."
+			 * "Row-to-row pitch of 2D block in MEMORY, in bytes. Only used if MPITCH in VPM DMA Load basic setup is 0."
 			 *
 			 * This is the address distance (on the memory side) between two vectors loaded with the same instruction.
 			 * Similar to VPWStrideSetup#Stride, this is currently always 0.
@@ -503,10 +590,12 @@ namespace vc4c
 		{
 			//the usage type of this area of VPM
 			const VPMUsage usageType;
-			//the base offset (from the start of the VPM) in bytes
-			const unsigned baseOffset;
-			//the size of this area (in bytes)
-			const unsigned size;
+			//the column-index in VPM of the first value belonging to this area
+			const unsigned char columnOffset;
+			//the row-index in VPM of the first value belonging to this area
+			const unsigned char rowOffset;
+			//the size of this area in rows in VPM
+			const unsigned char numRows;
 			//the (optional) DMA address this area is assigned to (as DMA cache)
 			const Local* dmaAddress;
 
@@ -515,16 +604,25 @@ namespace vc4c
 			bool operator<(const VPMArea& other) const;
 
 			bool requiresSpacePerQPU() const;
-			unsigned getTotalSize() const;
 		};
 
 		/*
 		 * Object wrapping the VPM cache component
+		 *
+		 * "From the QPU perspective the window into the locally allocated portion of the VPM is a 2D array of 32-bit words,
+		 * 16 words wide with a maximum height of 64 words. The array is read and written as horizontal or vertical 16-way vectors of 32, 16 or 8-bit data, with natural alignment.
+		 * Thus horizontal 32-bit vectors start in column 0 and vertical 32-bit vectors must start on a row multiple of 16.
+		 *
+		 * To access the VPM as 16-bit or 8-bit vectors, each 32-bit vector is simply split into 2x 16-bit or 4x 8-bit sub-vectors.
+		 * There are two alternative split modes supported for sub-vectors: ‘laned’, where each 32-bit word is split into two 16-bit lanes or four 8-bit lanes;
+		 * or ‘packed’, where the 16-bit or 8-bit sub-vector is taken from the whole of eight or four successive 32-bit words."
+		 *
+		 * -Broadcom specification, pages 53+
 		 */
 		class VPM : private NonCopyable
 		{
 		public:
-			explicit VPM(unsigned totalVPMSize);
+			explicit VPM(unsigned totalVPMSize = VPM_DEFAULT_SIZE);
 
 			const VPMArea& getScratchArea();
 			const VPMArea* findArea(const Local* local);
@@ -567,7 +665,7 @@ namespace vc4c
 			 * Updates the maximum size used by the scratch area.
 			 * This can only be called until the scratch-area is locked!
 			 */
-			void updateScratchSize(unsigned requestedSize);
+			void updateScratchSize(unsigned char requestedRows);
 
 		private:
 			const unsigned maximumVPMSize;

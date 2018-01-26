@@ -216,12 +216,6 @@ std::size_t ModuleInfo::write(std::ostream& stream, const OutputMode mode, const
 	//update global data offset
 	setGlobalDataOffset(Word(numWords));
 
-	if(mode == OutputMode::HEX || mode == OutputMode::ASSEMBLER)
-	{
-		for(const Global& global : globalData)
-			stream << "//" << global.to_string(true) << std::endl;
-	}
-
 	//write global data, padded to multiples of 8 Byte
 	switch (mode)
 	{

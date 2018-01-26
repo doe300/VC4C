@@ -40,7 +40,13 @@ namespace vc4c
 		 */
 		void spillLocals(const Module& module, Method& method, const Configuration& config);
 
-		//TODO (Optional optimization): lower stack allocations into registers (e.g. for vectors/scalars)
+		/*
+		 * Tries to lower access to __private and __local memory into the VPM.
+		 * The lowering only works, if:
+		 * - the size of the memory accessed can be determined, and
+		 * - there is enough space left in the (available) VPM cache to store the data
+		 */
+		void lowerMemoryIntoVPM(const Module& module, Method& method, const Configuration& config);
 		/*
 		 * Handles stack allocations:
 		 * - calculates the offsets from the start of one QPU's "stack"

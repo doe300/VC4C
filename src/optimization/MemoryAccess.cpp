@@ -277,7 +277,7 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
 		dmaSetupValue.dmaSetup.setUnits(static_cast<uint8_t>(group.addressWrites.size()));
 	}
 	std::size_t numRemoved = 0;
-	vpm.updateScratchSize(static_cast<unsigned>(group.addressWrites.size() * group.groupType.getElementType().getPhysicalWidth()));
+	vpm.updateScratchSize(static_cast<unsigned char>(group.addressWrites.size()));
 
 	//2. Remove all but the first generic and DMA setups
 	for(std::size_t i = 1; i < group.genericSetups.size(); ++i)
@@ -336,7 +336,7 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
 	{
 		VPRSetupWrapper dmaSetupValue(group.dmaSetups.at(0).get<LoadImmediate>());
 		dmaSetupValue.dmaSetup.setNumberRows(group.genericSetups.size() % 16);
-		vpm.updateScratchSize(static_cast<unsigned>(group.genericSetups.size() * group.groupType.getElementType().getPhysicalWidth()));
+		vpm.updateScratchSize(static_cast<unsigned char>(group.genericSetups.size()));
 	}
 	std::size_t numRemoved = 0;
 
@@ -417,7 +417,7 @@ void optimizations::combineVPMAccess(const Module& module, Method& method, const
 
 	// clean up empty instructions
 	method.cleanEmptyInstructions();
-	PROFILE_COUNTER(9010, "Scratch memory size", method.vpm->getScratchArea().size);
+	PROFILE_COUNTER(8010, "Scratch memory size (in rows)", method.vpm->getScratchArea().numRows);
 }
 
 InstructionWalker optimizations::accessGlobalData(const Module& module, Method& method, InstructionWalker it, const Configuration& config)
@@ -522,6 +522,86 @@ void optimizations::spillLocals(const Module& module, Method& method, const Conf
 	//TODO do not preemptively spill, only on register conflicts. Which case??
 }
 
+static std::pair<InstructionWalker, InstructionWalker> findRelatedTMUInstructions(const InstructionWalker addressWrite)
+{
+	auto it = addressWrite;
+	std::pair<InstructionWalker, InstructionWalker> pair;
+	bool firstSet = false;
+	bool secondSet = false;
+	while(!it.isEndOfBlock() && !(firstSet && secondSet))
+	{
+		if(!firstSet && it->signal.triggersReadOfR4())
+		{
+			pair.first = it;
+			firstSet = true;
+		}
+		if(!secondSet && it->readsRegister(REG_TMU_OUT))
+		{
+			pair.second = it;
+			secondSet = true;
+		}
+		it.nextInBlock();
+	}
+	if(it.isEndOfBlock())
+		throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find triggering of TMU read or TMU read for writing of TMU address", addressWrite->to_string());
+
+	return pair;
+}
+
+void optimizations::lowerMemoryIntoVPM(const Module& module, Method& method, const Configuration& config)
+{
+	auto it = method.walkAllInstructions();
+	while(!it.isEndOfMethod())
+	{
+		if(it->writesRegister(REG_TMU0_ADDRESS) || it->writesRegister(REG_TMU1_ADDRESS) || it->writesRegister(REG_VPM_IN_ADDR) || it->writesRegister(REG_VPM_OUT_ADDR))
+		{
+			std::vector<Value>::const_iterator argIt = std::find_if(it->getArguments().begin(), it->getArguments().end(), [](const Value& val) -> bool { return val.hasType(ValueType::LOCAL) && val.local->getBase(true)->residesInMemory();});
+			if(argIt != it->getArguments().end() && argIt->type.getPointerType() && (argIt->type.getPointerType().value()->addressSpace == AddressSpace::PRIVATE || argIt->type.getPointerType().value()->addressSpace == AddressSpace::LOCAL))
+			{
+				const Local* base = argIt->local->getBase(true);
+				const unsigned areaSize = base->type.getElementType().getPhysicalWidth();
+				logging::debug() << "Found access of local/private: " << argIt->local->to_string(true) << " with " << areaSize << " bytes" << logging::endl;
+
+				const VPMArea* area = method.vpm->addArea(base, areaSize);
+				if(area == nullptr)
+					logging::debug() << "No more space in the VPM cache to store " << base->to_string(false) << ", skipping" << logging::endl;
+				else
+				{
+					if(it->writesRegister(REG_TMU0_ADDRESS) || it->writesRegister(REG_TMU1_ADDRESS))
+					{
+						/*
+						 * If this is a load via TMU, rewrite to load via VPM:
+						 * - find destination value of TMU load
+						 * - insert VPM load (without DMA) with same address and output as TMU load
+						 * - remove TMU load (setting of address, triggering TMU load, reading of r4)
+						 */
+						std::pair<InstructionWalker, InstructionWalker> pair = findRelatedTMUInstructions(it);
+						it = method.vpm->insertReadVPM(it, pair.second->getOutput().value(), area, true);
+						pair.first.erase();
+						pair.second.erase();
+						it.erase();
+						//FIXME discards the offset from the start of the data
+					}
+					if(argIt->type.getPointerType().value()->addressSpace == AddressSpace::PRIVATE)
+					{
+						/*
+						 * For stack-allocations:
+						 * - change VPM base address to fit the beginning of the VPM area
+						 * - remove loading/storing from/to RMA via DMA
+						 * - if this is a load via TMU, rewrite to load from VPM
+						 */
+					}
+					else
+					{
+
+					}
+				}
+			}
+		}
+		it.nextInMethod();
+	}
+}
+
 static InstructionWalker accessStackAllocations(const Module& module, Method& method, InstructionWalker it)
 {
 	const std::size_t stackBaseOffset = method.getStackBaseOffset();
@@ -558,7 +638,8 @@ static InstructionWalker accessStackAllocations(const Module& module, Method& me
 				logging::debug() << "Replacing access to stack allocated data: " << it->to_string() << logging::endl;
 				const Value qpuOffset = method.addNewLocal(TYPE_INT32, "%stack_offset");
 				const Value addrTemp = method.addNewLocal(arg.type, "%stack_addr");
-				const Value finalAddr = method.addNewLocal(arg.type, "%stack_addr");
+				Value finalAddr = method.addNewLocal(arg.type, "%stack_addr");
+				const_cast<std::pair<Local*, int>&>(finalAddr.local->reference) = std::make_pair(arg.local, ANY_ELEMENT);
 
 				it.emplace(new Operation(OP_MUL24, qpuOffset, Value(REG_QPU_NUMBER, TYPE_INT8), Value(Literal(static_cast<uint64_t>(maximumStackSize)), TYPE_INT32)));
 				it.nextInBlock();

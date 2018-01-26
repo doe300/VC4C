@@ -64,6 +64,8 @@ namespace vc4c
 	 *
 	 * According to tests the configured VPM size (at least for the Raspberry Pi 2) is 12 KB.
 	 * but there is another register "VPM memory reserved for user programs", which could be configured and has a default size of 4KB (according to tests).
+	 *
+	 * Due to a hardware bug (HW-2253), user programs can only use the first 64 rows of VPM, resulting in a total of 4KB available VPM cache size (64 * 16 * sizeof(uint))
 	 */
 	constexpr unsigned VPM_DEFAULT_SIZE = 4 * 1024;
 
