@@ -42,6 +42,8 @@ namespace vc4c
 				setID(0);
 			}
 
+			std::string to_string() const;
+
 			/*
 			 * "Location of the first vector accessed.
 			 * The LS 1 or 2 bits select the Half-word or Byte sub-vector for 16 or 8-bit width. The LS 4 bits of the 32-bit vector address are Y address if horizontal or X address if vertical.
@@ -125,6 +127,8 @@ namespace vc4c
 				setUnits(units);
 				setID(2);
 			}
+
+			std::string to_string() const;
 
 			/*
 			 * "Mode, combining width with start Byte/Half-word offset for 8 and 16-bit widths.
@@ -213,6 +217,8 @@ namespace vc4c
 				setID(3);
 			}
 
+			std::string to_string() const;
+
 			/*
 			 * "Distance between last byte of a row and start of next row in memory, in bytes."
 			 * Addendum to the Broadcom documentation: "Unlike the documentation suggests the STRIDE field is 16 bits wide."
@@ -250,6 +256,8 @@ namespace vc4c
 			explicit VPWSetup(VPWGenericSetup generic) : genericSetup(generic) { }
 			explicit VPWSetup(VPWDMASetup dma) : dmaSetup(dma) { }
 			explicit VPWSetup(VPWStrideSetup stride) : strideSetup(stride) { }
+
+			std::string to_string() const;
 
 			operator uint32_t() const
 			{
@@ -296,6 +304,8 @@ namespace vc4c
 				setNumber(numVectors);
 				setID(0);
 			}
+
+			std::string to_string() const;
 
 			/*
 			 * "Location of the first vector accessed."
@@ -373,6 +383,8 @@ namespace vc4c
 				setMPitch(0);
 				setID(1);
 			}
+
+			std::string to_string() const;
 
 			/*
 			 * "X,Y address of first 32-bit word in VPM to load to /store from."
@@ -465,6 +477,8 @@ namespace vc4c
 				setID(9);
 			}
 
+			std::string to_string() const;
+
 			/*
 			 * "Row-to-row pitch of 2D block in MEMORY, in bytes. Only used if MPITCH in VPM DMA Load basic setup is 0."
 			 *
@@ -492,6 +506,8 @@ namespace vc4c
 			explicit VPRSetup(VPRGenericSetup generic) : genericSetup(generic) { }
 			explicit VPRSetup(VPRDMASetup dma) : dmaSetup(dma) { }
 			explicit VPRSetup(VPRStrideSetup stride) : strideSetup(stride) { }
+
+			std::string to_string() const;
 
 			operator uint32_t() const
 			{
@@ -547,6 +563,11 @@ namespace vc4c
 			{
 				if(load != nullptr)
 					Base::value = load->getImmediate().toImmediate();
+			}
+
+			inline std::string to_string() const
+			{
+				return Base::to_string();
 			}
 
 		private:

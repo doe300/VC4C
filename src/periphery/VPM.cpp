@@ -25,6 +25,154 @@ static constexpr bool IS_HORIZONTAL = true;
 static constexpr bool IS_PACKED = true;
 
 /*
+ * The naming of the setup-parameters are adopted from http://maazl.de/project/vc4asm/doc/vc4.qinc.html#VPM
+ */
+
+static std::string getVPMSizeName(uint8_t size)
+{
+	switch(size)
+	{
+		case 0: // 8 bit
+			return "16 bytes";
+		case 1: // 16 bit
+			return "16 half-words";
+		case 2: // 32 bit
+			return "16 words";
+		default:
+			throw CompilationError(CompilationStep::GENERAL, "Invalid parameter type-size", std::to_string(static_cast<unsigned>(size)));
+	}
+}
+
+static uint8_t getVPMSize(const DataType& paramType)
+{
+    //documentation, table 32 (page 57)
+	switch(paramType.getScalarBitCount())
+	{
+		case 8:
+			return 0;
+		case 16:
+			return 1;
+		case 32:
+			return 2;
+		default:
+			throw CompilationError(CompilationStep::GENERAL, "Invalid parameter type-size", std::to_string(paramType.getScalarBitCount()));
+	}
+}
+
+static std::string getVPMModeName(uint8_t mode)
+{
+	if(mode >= 4)
+		return " bytes";
+	if(mode >= 2)
+		return " half-words";
+	return " words";
+}
+
+static std::string toAddressAndModeString(uint8_t size, uint16_t address, bool isHorizontal, bool isPacked)
+{
+	std::string res;
+
+	res.append(isHorizontal ? "h" : "v");
+	unsigned typeSize = 0;
+	unsigned xCoord = 0;
+	unsigned yCoord = 0;
+	switch(size)
+	{
+		case 0: // 8 bit
+			typeSize = 8;
+			xCoord = address & 0x3;
+			yCoord = address >> 2;
+			break;
+		case 1: // 16 bit
+			typeSize = 16;
+			xCoord = address & 0x1;
+			yCoord = address >> 1;
+			break;
+		case 2: // 32 bit
+			typeSize = 32;
+			yCoord = address;
+			break;
+		default:
+			throw CompilationError(CompilationStep::GENERAL, "Invalid parameter type-size", std::to_string(static_cast<unsigned>(size)));
+	}
+
+	res.append(std::to_string(typeSize));
+	if(typeSize != 32)
+		res.append(isPacked ? "p" : "l");
+	res.append("(").append(std::to_string(yCoord));
+	if(typeSize != 32)
+		res.append(",").append(std::to_string(xCoord));
+	res.append(")");
+
+	return res;
+}
+
+static std::string toStride(uint8_t stride, uint8_t size)
+{
+	switch(size)
+	{
+		case 0: // 8 bit
+			return stride >= 4 ? (std::to_string(stride / 4) + " rows") : (std::to_string(stride * 16) + " bytes");
+		case 1: // 16 bit
+			return stride >= 2 ? (std::to_string(stride / 2) + " rows") : (std::to_string(stride * 16) + " half-words");
+		case 2: // 32 bit
+			return (std::to_string(stride) + " rows");
+		default:
+			throw CompilationError(CompilationStep::GENERAL, "Invalid parameter type-size", std::to_string(static_cast<unsigned>(size)));
+	}
+}
+
+std::string VPWGenericSetup::to_string() const
+{
+	return std::string("vpm_setup(size: ") + (getVPMSizeName(getSize()) + ", stride: ") + (toStride(getStride(), getSize()) + ", address: ") + toAddressAndModeString(getSize(), getAddress(), getHorizontal(), !getLaned()) + ")";
+}
+
+std::string VPWDMASetup::to_string() const
+{
+	//TODO byte/half-word offset (VPR too)
+	return std::string("vdw_setup(rows: ") + (std::to_string(getUnits()) + ", elements: ") + std::to_string(getDepth()) + (getVPMModeName(getMode()) + ", address: ") + toAddressAndModeString(getVPMSize(TYPE_INT32), getVPMBase(), getHorizontal(), true) + ")";
+}
+
+std::string VPWStrideSetup::to_string() const
+{
+	return (std::string("vdw_setup(stride: ") + std::to_string(getStride())) + ")";
+}
+
+std::string VPWSetup::to_string() const
+{
+	if(isGenericSetup())
+		return genericSetup.to_string();
+	if(isDMASetup())
+		return dmaSetup.to_string();
+	return strideSetup.to_string();
+}
+
+std::string VPRGenericSetup::to_string() const
+{
+	return std::string("vpm_setup(num: ") + (std::to_string(getNumber()) + ", size: ") + (getVPMSizeName(getSize()) + ", stride: ") + (toStride(getStride(), getSize()) + ", address: ") + toAddressAndModeString(getSize(), getAddress(), getHorizontal(), !getLaned()) + ")";
+}
+
+std::string VPRDMASetup::to_string() const
+{
+	//TODO VPM/memory pitch
+	return std::string("vdr_setup(rows: ") + (std::to_string(getNumberRows()) + ", elements: ") + std::to_string(getRowLength()) + (getVPMModeName(getMode()) + ", address: ") + toAddressAndModeString(getVPMSize(TYPE_INT32), getAddress(), !getVertical(), true) + ")";
+}
+
+std::string VPRStrideSetup::to_string() const
+{
+	return (std::string("vdr_setup(stride: ") + std::to_string(getStride())) + ")";
+}
+
+std::string VPRSetup::to_string() const
+{
+	if(isGenericSetup())
+		return genericSetup.to_string();
+	if(isDMASetup())
+		return dmaSetup.to_string();
+	return strideSetup.to_string();
+}
+
+/*
  * Returns the divisor for the column-offset applicable for the given type.
  * This is also the number of columns used by a 16-element vector of the given scalar type.
  *
@@ -67,22 +215,6 @@ static bool checkIndices(const DataType& type, unsigned char rowIndex, unsigned 
 	if((columnIndex % getColumnDivisor(type)) != 0)
 		return false;
 	return true;
-}
-
-static uint8_t getVPMSize(const DataType& paramType)
-{
-    //documentation, table 32 (page 57)
-	switch(paramType.getScalarBitCount())
-	{
-		case 8:
-			return 0;
-		case 16:
-			return 1;
-		case 32:
-			return 2;
-		default:
-			throw CompilationError(CompilationStep::GENERAL, "Invalid parameter type-size", std::to_string(paramType.getScalarBitCount()));
-	}
 }
 
 static uint8_t getVPMDMAMode(const DataType& paramType)

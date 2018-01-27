@@ -6,6 +6,8 @@
 
 #include "LoadInstruction.h"
 
+#include "../periphery/VPM.h"
+
 using namespace vc4c;
 using namespace vc4c::qpu_asm;
 
@@ -68,8 +70,20 @@ std::string LoadInstruction::toASMString() const
 		return std::string("ldi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
 				            ((toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + std::to_string(getImmediateShort0()) + ", ") + std::to_string(getImmediateShort1());
 	}
+	std::string valString;
+	if(getAddOut() == REG_VPM_OUT_SETUP.num)
+	{
+		if(getWriteSwap() == WriteSwap::DONT_SWAP)
+			//VPR setup
+			valString = periphery::VPRSetup::fromLiteral(getImmediateInt()).to_string();
+		else
+			//VPW setup
+			valString = periphery::VPWSetup::fromLiteral(getImmediateInt()).to_string();
+	}
+	else
+		valString = std::to_string(getImmediateInt());
     return std::string("ldi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
-            (toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + std::to_string(getImmediateInt());
+            (toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + valString;
 }
 
 bool LoadInstruction::isValidInstruction() const

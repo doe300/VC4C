@@ -7,6 +7,7 @@
 #include "IntermediateInstruction.h"
 
 #include "../asm/LoadInstruction.h"
+#include "../periphery/VPM.h"
 #include "log.h"
 
 #include <cstdbool>
@@ -25,6 +26,10 @@ IntermediateInstruction({true, dest}, cond, setFlags)
 
 std::string LoadImmediate::to_string() const
 {
+	if(getOutput()->hasRegister(REG_VPM_IN_SETUP))
+		return (getOutput()->to_string(true) + " = loadi ") + periphery::VPRSetup::fromLiteral(bit_cast<int64_t, uint64_t>(getImmediate().integer)).to_string() + createAdditionalInfoString();
+	if(getOutput()->hasRegister(REG_VPM_OUT_SETUP))
+		return (getOutput()->to_string(true) + " = loadi ") + periphery::VPWSetup::fromLiteral(bit_cast<int64_t, uint64_t>(getImmediate().integer)).to_string() + createAdditionalInfoString();
     return (getOutput()->to_string(true) + " = loadi ") + getArgument(0)->to_string() + createAdditionalInfoString();
 }
 
