@@ -23,14 +23,6 @@ namespace vc4c
 		 */
 		void eliminateDeadStore(const Module& module, Method& method, const Configuration& config);
 		void eliminatePhiNodes(const Module& module, Method& method, const Configuration& config);
-		/*
-		 * Eliminates reading of constant global values from memory by replacing them with the load of the global's content value.
-		 *
-		 * The following conditions need to be fulfilled for this optimization to apply:
-		 * - the source needs to be a Global with the constant-flag set
-		 * - if the global is a compound value (e.g. not read completely), the index needs a literal value or the global needs to be uniform (e.g. all zeroes)
-		 */
-		void eliminateLoadingOfConstantGlobals(const Module& module, Method& method, const Configuration& config);
 
 		/*
 		 * Eliminates instructions which have no semantical meaning (e.g. addition with 0, xor with 0, and with all bits set, etc.)

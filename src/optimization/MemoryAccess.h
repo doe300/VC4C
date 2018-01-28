@@ -18,16 +18,6 @@ namespace vc4c
 	namespace optimizations
 	{
 		/*
-		 * Combine consecutive configuration of VPW/VPR with the same settings
-		 *
-		 * In detail, this combines VPM read/writes of uniform type of access (read or write), uniform data-type and consecutive memory-addresses
-		 *
-		 * NOTE: Combining VPM accesses merges their mutex-lock blocks which can cause other QPUs to stall for a long time.
-		 * Also, this optimization currently only supports access memory <-> QPU, data exchange between only memory and VPM are not optimized
-		 */
-		void combineVPMAccess(const Module& module, Method& method, const Configuration& config);
-
-		/*
 		 * Replaces the address of global data with the corresponding offset from the GLOBAL_DATA_ADDRESS value
 		 */
 		InstructionWalker accessGlobalData(const Module& module, Method& method, InstructionWalker it, const Configuration& config);
@@ -41,13 +31,6 @@ namespace vc4c
 		void spillLocals(const Module& module, Method& method, const Configuration& config);
 
 		/*
-		 * Tries to lower access to __private and __local memory into the VPM.
-		 * The lowering only works, if:
-		 * - the size of the memory accessed can be determined, and
-		 * - there is enough space left in the (available) VPM cache to store the data
-		 */
-		void lowerMemoryIntoVPM(const Module& module, Method& method, const Configuration& config);
-		/*
 		 * Handles stack allocations:
 		 * - calculates the offsets from the start of one QPU's "stack"
 		 * - removes the life-time instructions
@@ -59,6 +42,8 @@ namespace vc4c
 
 		/*
 		 * Maps the memory-instructions to instructions actually performing the memory-access (e.g. TMU, VPM access).
+		 *
+		 * This optimization-step also contains most of the optimizations for accessing VPM/RAM.
 		 */
 		void mapMemoryAccess(const Module& module, Method& method, const Configuration& config);
 	} // namespace optimizations

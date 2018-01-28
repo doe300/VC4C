@@ -93,11 +93,11 @@ namespace vc4c
 			 * "Stride. This is added to ADDR after every vector written. 0 => 64."
 			 *
 			 * This is the address increment between two consecutive writes (for the VPM address).
-			 * This increment considers the byte-/half-word offset as well as the row and column position.
+			 * This increment considers the byte-/half-word offset as well as the row position.
 			 *
 			 * Example:
 			 * Writing 16 bytes horizontal and packed with a stride of 1 and an initial address of 0 results in following new address:
-			 * 0 + 1 = 1 -> (column 0, byte offset 0) + 1 -> (column 0, byte offset 1)
+			 * 0 + 1 = 1 -> (row 0, column 0) + 1 -> (row 0, column 4 (4 * 4 byte integer))
 			 *
 			 * NOTE:
 			 * If only one value (one 16-byte, 16-half-word or 16-word vector) should be written per row (16-words),
@@ -409,15 +409,11 @@ namespace vc4c
 			 *  For 16-bit width, VPITCH is added to {Y[2:0], H[0]}.
 			 *  For 32-bit width, VPITCH is added to Y[3:0]."
 			 *
-			 * This is the distance (in rows in VPM) of two consecutive elements loaded from memory.
-			 * Since we only load consecutive memory with consecutive loads, this is always 1.
+			 * This is the distance of two consecutive elements loaded from memory.
 			 *
 			 * Example:
 			 * Reading byte vectors with horizontal mode, a VPitch value of 2 (byte-offset of 2) and a VPM base-address of 0 reads the first 16 bytes into VPM
 			 * row 0 columns 0 to 3 and the second 16 bytes into row 0 columns 8 to 11, the third 16 bytes into row 1 columns 0 to 3 and so on..
-			 *
-			 * NOTE:
-			 * This value is the counterpart to the offset-values in VPWDMASetup#Mode
 			 */
 			BITFIELD_ENTRY(VPitch, uint8_t, 12, Quadruple)
 			/*
@@ -595,14 +591,30 @@ namespace vc4c
 
 		enum class VPMUsage
 		{
-			//the area of the VPM to be used as cache for general DMA access
-			//This area needs to always be at offset 0, its size is calculated to match the required scratch size
-			GENERAL_DMA,
-			//part of the VPM used as cache for DMA access to specific memory regions
-			SPECIFIC_DMA,
-			//this area is used to spill registers into
+			/*
+			 * The area of the VPM to be used as cache for general DMA access.
+			 *
+			 * NOTE:
+			 * This area needs to always be at offset 0, its size is calculated to match the required scratch size
+			 */
+			SCRATCH,
+			/*
+			 * This area is used as storage for local memory areas which fit into VPM.
+			 */
+			LOCAL_MEMORY,
+			/*
+			 * This area is used to spill registers into.
+			 *
+			 * NOTE:
+			 * Its size needs include the spilled locals for all available QPUs!
+			 */
 			REGISTER_SPILLING,
-			//this area contains data from the QPUs stack
+			/*
+			 * This area contains data from the QPUs stack.
+			 *
+			 * NOTE:
+			 * Its size needs include the spilled locals for all available QPUs!
+			 */
 			STACK
 		};
 
@@ -613,20 +625,95 @@ namespace vc4c
 		{
 			//the usage type of this area of VPM
 			const VPMUsage usageType;
-			//the column-index in VPM of the first value belonging to this area
-			const unsigned char columnOffset;
-			//the row-index in VPM of the first value belonging to this area
+			/*
+			 * The row-index in VPM of the first value belonging to this area.
+			 *
+			 * For simplicity (and to enable being accessed via DMA), all VPM areas start at a new row.
+			 */
 			const unsigned char rowOffset;
-			//the size of this area in rows in VPM
+			/*
+			 * The size of this area in rows in VPM.
+			 *
+			 * For simplicity (and the fact that the remainder of the last row would be padded anyway), all VPM areas have an integral number of rows as size (a multiple of 64 Byte).
+			 */
 			const unsigned char numRows;
-			//the (optional) DMA address this area is assigned to (as DMA cache)
-			const Local* dmaAddress;
+			/*
+			 * The (optional) memory address this area is assigned to.
+			 *
+			 * This value can either set so this area is used as cache for the given address or as a replace (the memory is lowered into VPM).
+			 */
+			const Local* originalAddress;
 
 			void checkAreaSize(unsigned requestedSize) const;
 
 			bool operator<(const VPMArea& other) const;
 
 			bool requiresSpacePerQPU() const;
+
+			/*
+			 * Returns the default element-type for data stored in this VPM area, depends on the usage-type of the area.
+			 * For e.g. local-memory, this returns the element-type of the local memory assigned to this area,
+			 * for register-spilling area, this returns "int16", since all registers have this size.
+			 *
+			 * NOTE:
+			 * This type is not necessarily accurate (e.g. for scratch, which contains elements of all sizes)
+			 */
+			DataType getElementType() const;
+
+			/*
+			 * Returns the number of scalar elements of the given type that fit into a single row.
+			 * The data-type defaults to this area's element-type if undefined.
+			 *
+			 * NOTE:
+			 * The number of elements is the number of SCALAR elements!
+			 */
+			uint8_t getElementsInRow(const DataType& elementType) const;
+
+			/*
+			 * If we pack multiple values (value = byte/half-word/word vector of size 1 to 16) into a single row (e.g. up to 4 for bytes and 2 for half-words),
+			 * we cannot write them to DMA unless the vector-width is 16 elements.
+			 *
+			 * When writing into VPM, a QPU always writes vectors of 16 elements. Since the DMA configuration cannot set a stride of less than a row,
+			 * we would not be able to transfer the second, third, etc. value without copying all the junk of the remaining (unset) vector-elements
+			 * of the previous values.
+			 */
+			bool canBeAccessedViaDMA() const;
+
+			/*
+			 * If we need this VPM area to be transferable via DMA, we cannot pack multiple values into a single row.
+			 * 16-element vectors make the exception (can be transferred via DMA and packed to one row)
+			 *
+			 * See #canBeAccessedViaDMA
+			 */
+			bool canBePackedIntoRow() const;
+
+			/*
+			 * Generates a QPU-to-VPM write setup for accessing the base-address of this VPM area for elements of the given data-type.
+			 *
+			 * If the data-type is set to unknown, the element-type of the local associated with this area is used
+			 */
+			VPWGenericSetup toWriteSetup(const DataType& elementType) const;
+
+			/*
+			 * Generates a VPM-to-RAM DMA write setup for storing the contents of the VPM area into RAM with the given element-type and number of values of the given type.
+			 *
+			 * If the data-type is set to unknown, the element-type of the local associated with this area is used
+			 */
+			VPWDMASetup toWriteDMASetup(const DataType& elementType, uint8_t numValues = 1) const;
+
+			/*
+			 * Generates a VPM-to-QPU read setup for accessing the base-address of this VPM area for the given number of elements of the given data-type.
+			 *
+			 * If the data-type is set to unknown, the default element-type of this area is used
+			 */
+			VPRGenericSetup toReadSetup(const DataType& elementType, uint8_t numValues = 1) const;
+
+			/*
+			 * Generates a RAM-to-VPM DMA read setup for loading the contents of a memory address into this VPM area given the element-type and numbr of values of the given type.
+			 *
+			 * If the data-type is set to unknown, the default element-type of this area is used
+			 */
+			VPRDMASetup toReadDMASetup(const DataType& elementType, uint8_t numValues = 1) const;
 		};
 
 		/*

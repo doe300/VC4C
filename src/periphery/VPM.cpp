@@ -325,32 +325,20 @@ static uint8_t calculateQPUSideAddress(const DataType& type, unsigned char rowIn
 		throw CompilationError(CompilationStep::GENERAL, "Invalid bit-width to store in VPM", type.to_string());
 }
 
-static unsigned char calculateRowIndex(const VPMArea* area)
-{
-	if(area != nullptr)
-		return area->rowOffset;
-	return 0;
-}
-
-static unsigned char calculateColumnIndex(const VPMArea* area)
-{
-	if(area != nullptr)
-		return area->columnOffset;
-	return 0;
-}
-
-static InstructionWalker calculateElementOffset(Method& method, InstructionWalker it, const DataType& vpmStorageType, const Value& inAreaOffset, Value& elementOffset)
+static InstructionWalker calculateElementOffset(Method& method, InstructionWalker it, const DataType& elementType, const Value& inAreaOffset, Value& elementOffset)
 {
 	if(inAreaOffset.getLiteralValue())
 	{
 		//e.g. 32-bit type, 4 byte offset -> 1 32-bit vector offset
-		elementOffset = Value(Literal((inAreaOffset.getLiteralValue()->integer * 8) / vpmStorageType.getScalarBitCount()), inAreaOffset.type);
+		//e.g. byte4 type, 4 byte offset -> 1 byte-vector offset
+		//e.g. half-word8 type, 32 byte offset -> 2 half-word vector offset
+		elementOffset = Value(Literal(inAreaOffset.getLiteralValue()->integer / elementType.getPhysicalWidth()), inAreaOffset.type);
 	}
 	else
 	{
 		//e.g. 32-bit type, 4 byte offset -> shr by 2 (= division by 4)
 		elementOffset = method.addNewLocal(TYPE_INT32, "%vpm_element_offset");
-		it.emplace(new Operation(OP_SHR, elementOffset, inAreaOffset, Value(Literal(static_cast<int64_t>(std::log2(vpmStorageType.getScalarBitCount() / 8.0))), TYPE_INT8)));
+		it.emplace(new Operation(OP_SHR, elementOffset, inAreaOffset, Value(Literal(static_cast<int64_t>(std::log2(elementType.getPhysicalWidth()))), TYPE_INT8)));
 		it.nextInBlock();
 	}
 	return it;
@@ -367,10 +355,8 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
 
 	it = insertLockMutex(it, useMutex);
 	//1) configure reading from VPM into QPU
-	const auto size = getVPMSize(dest.type);
-	VPRSetup genericSetup(VPRGenericSetup(size, TYPE_INT32.getScalarBitCount() / dest.type.getScalarBitCount(), 1, calculateQPUSideAddress(dest.type, calculateRowIndex(area), calculateColumnIndex(area))));
-	genericSetup.genericSetup.setHorizontal(IS_HORIZONTAL);
-	genericSetup.genericSetup.setLaned(!IS_PACKED);
+	const VPMArea& realArea = area != nullptr ? *area : getScratchArea();
+	const VPRSetup genericSetup(realArea.toReadSetup(dest.type));
 	if(inAreaOffset == INT_ZERO)
 	{
 		it.emplace( new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<int64_t>(genericSetup))));
@@ -382,7 +368,7 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
 
 		//1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
 		Value elementOffset = UNDEFINED_VALUE;
-		calculateElementOffset(method, it, vpmStorageType, inAreaOffset, elementOffset);
+		calculateElementOffset(method, it, dest.type, inAreaOffset, elementOffset);
 		//2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
 		//3) write setup with dynamic address
 		it.emplace(new Operation(OP_ADD, VPM_IN_SETUP_REGISTER, Value(Literal(static_cast<int64_t>(genericSetup)), TYPE_INT32), elementOffset));
@@ -406,10 +392,8 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
 
 	it = insertLockMutex(it, useMutex);
 	//1. configure writing from QPU into VPM
-	const int64_t vpmSize = getVPMSize(src.type);
-	VPWSetup genericSetup(VPWGenericSetup(vpmSize, TYPE_INT32.getScalarBitCount() / src.type.getScalarBitCount(), calculateQPUSideAddress(src.type, calculateRowIndex(area), calculateColumnIndex(area))));
-	genericSetup.genericSetup.setHorizontal(IS_HORIZONTAL);
-	genericSetup.genericSetup.setLaned(!IS_PACKED);
+	const VPMArea& realArea = area != nullptr ? *area : getScratchArea();
+	const VPWSetup genericSetup(realArea.toWriteSetup(src.type));
 	if(inAreaOffset == INT_ZERO)
 	{
 		it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<int64_t>(genericSetup))));
@@ -421,7 +405,7 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
 
 		//1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
 		Value elementOffset = UNDEFINED_VALUE;
-		calculateElementOffset(method, it, vpmStorageType, inAreaOffset, elementOffset);
+		calculateElementOffset(method, it, src.type, inAreaOffset, elementOffset);
 		//2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
 		//3) write setup with dynamic address
 		it.emplace(new Operation(OP_ADD, VPM_IN_SETUP_REGISTER, Value(Literal(static_cast<int64_t>(genericSetup)), TYPE_INT32), elementOffset));
@@ -456,11 +440,8 @@ InstructionWalker VPM::insertReadRAM(InstructionWalker it, const Value& memoryAd
 	//http://maazl.de/project/vc4asm/doc/VideoCoreIV-addendum.html
 
 	//initialize VPM DMA for reading from host
-	const int64_t dmaMode = getVPMDMAMode(type);
-	VPRSetup dmaSetup(VPRDMASetup(dmaMode, type.getVectorWidth(true) % 16 /* 0 => 16 */, 1 /* 0 => 16 */));
-	dmaSetup.dmaSetup.setWordRow(calculateRowIndex(area));
-	dmaSetup.dmaSetup.setWordColumn(calculateColumnIndex(area));
-	dmaSetup.dmaSetup.setVertical(!IS_HORIZONTAL);
+	const VPMArea& realArea = area != nullptr ? *area : getScratchArea();
+	const VPRSetup dmaSetup(realArea.toReadDMASetup(type));
 	it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<int64_t>(dmaSetup))));
 	it.nextInBlock();
 	const VPRSetup strideSetup(VPRStrideSetup(static_cast<uint16_t>(type.getPhysicalWidth())));
@@ -499,11 +480,8 @@ InstructionWalker VPM::insertWriteRAM(InstructionWalker it, const Value& memoryA
 	it = insertLockMutex(it, useMutex);
 
 	//initialize VPM DMA for writing to host
-	const int64_t dmaMode = getVPMDMAMode(type);
-	VPWSetup dmaSetup(VPWDMASetup(dmaMode, type.getVectorWidth(true), 1 /* 0 => 128 */));
-	dmaSetup.dmaSetup.setWordRow(calculateRowIndex(area));
-	dmaSetup.dmaSetup.setWordColumn(calculateColumnIndex(area));
-	dmaSetup.dmaSetup.setHorizontal(IS_HORIZONTAL);
+	const VPMArea& realArea = area != nullptr ? *area : getScratchArea();
+	const VPWSetup dmaSetup(realArea.toWriteDMASetup(type));
 	it.emplace( new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<int64_t>(dmaSetup))));
 	it.nextInBlock();
 	//set stride to zero
@@ -584,23 +562,146 @@ InstructionWalker VPM::insertFillRAM(Method& method, InstructionWalker it, const
 
 void VPMArea::checkAreaSize(const unsigned requestedSize) const
 {
-	if(requestedSize > (numRows * VPM_NUM_COLUMNS * VPM_WORD_WIDTH))
+	if(requestedSize > (numRows * VPM_NUM_COLUMNS * VPM_WORD_WIDTH)) //TODO rewrite packed/not packed!
 		throw CompilationError(CompilationStep::GENERAL, "VPM area has not enough space available", std::to_string(requestedSize));
 }
 
 bool VPMArea::operator<(const VPMArea& other) const
 {
-	return rowOffset < other.rowOffset || columnOffset < other.columnOffset;
+	return rowOffset < other.rowOffset;
 }
 
 bool VPMArea::requiresSpacePerQPU() const
 {
-	return usageType == VPMUsage::REGISTER_SPILLING || (dmaAddress != nullptr && dmaAddress->type.getPointerType() && dmaAddress->type.getPointerType().value()->addressSpace == AddressSpace::PRIVATE);
+	return usageType == VPMUsage::REGISTER_SPILLING || usageType == VPMUsage::STACK;
+}
+
+DataType VPMArea::getElementType() const
+{
+	switch(usageType)
+	{
+		case VPMUsage::SCRATCH:
+			//is not known
+			return TYPE_UNKNOWN;
+		case VPMUsage::LOCAL_MEMORY:
+			//element-type of local assigned to this area
+			return originalAddress->type.getElementType();
+		case VPMUsage::REGISTER_SPILLING:
+			//all registers have the same size
+			return TYPE_INT32.toVectorType(16);
+		case VPMUsage::STACK:
+			//is not known
+			return TYPE_UNKNOWN;
+	}
+	return TYPE_UNKNOWN;
+}
+
+uint8_t VPMArea::getElementsInRow(const DataType& elementType) const
+{
+	DataType type = (elementType.isUnknown() ? getElementType() : elementType).toVectorType(1);
+	if(type.isUnknown())
+		throw CompilationError(CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type");
+
+	if(!canBePackedIntoRow())
+		//if we cannot pack multiple vectors into one row, a row holds 1 vector (16 elements)
+		return static_cast<uint8_t>(NATIVE_VECTOR_SIZE);
+	//otherwise, a row has 64 Bytes of data, so we can calculate the number of elements fitting
+	return static_cast<uint8_t>((VPM_NUM_COLUMNS * VPM_WORD_WIDTH * 8) / type.getScalarBitCount());
+}
+
+bool VPMArea::canBeAccessedViaDMA() const
+{
+	return usageType == VPMUsage::SCRATCH || getElementType().num == NATIVE_VECTOR_SIZE;
+}
+
+bool VPMArea::canBePackedIntoRow() const
+{
+	return !canBeAccessedViaDMA() || getElementType().num == NATIVE_VECTOR_SIZE;
+}
+
+VPWGenericSetup VPMArea::toWriteSetup(const DataType& elementType) const
+{
+	DataType type = elementType.isUnknown() ? getElementType() : elementType;
+	if(type.isUnknown())
+		throw CompilationError(CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type");
+
+	//if we can pack into a single row, do so. Otherwise set stride to beginning of next row
+	const uint8_t stride = canBePackedIntoRow() ? 1 : static_cast<uint8_t>(TYPE_INT32.getScalarBitCount() / type.getScalarBitCount());
+	VPWGenericSetup setup(getVPMSize(type), stride, calculateQPUSideAddress(type, rowOffset, 0));
+	setup.setHorizontal(IS_HORIZONTAL);
+	setup.setLaned(!IS_PACKED);
+	return setup;
+}
+
+VPWDMASetup VPMArea::toWriteDMASetup(const DataType& elementType, uint8_t numValues) const
+{
+	DataType type = elementType.isUnknown() ? getElementType() : elementType;
+	if(type.isUnknown())
+		throw CompilationError(CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type");
+
+	//by "default", one value per row, so we need to store the number of values as number of rows
+	uint8_t rowDepth = type.getVectorWidth(true);
+	uint8_t numRows = numValues;
+	if(canBePackedIntoRow())
+	{
+		//if we have the row packed, we need to calculate the row-width from the maximum row-width and the number of elements
+		const unsigned totalNumElements = type.getVectorWidth(true) * numValues;
+		const uint8_t elementsPerRow = getElementsInRow(type);
+		if((totalNumElements > elementsPerRow) && (totalNumElements % elementsPerRow != 0))
+			throw CompilationError(CompilationStep::GENERAL, "Cannot store a number of values which is not a multiple of the row-length ");
+		if(totalNumElements > elementsPerRow)
+		{
+			rowDepth = elementsPerRow;
+			numRows = static_cast<uint8_t>(totalNumElements / elementsPerRow);
+		}
+		else
+		{
+			rowDepth = static_cast<uint8_t>(totalNumElements);
+			numRows = 1;
+		}
+	}
+
+	VPWDMASetup setup(getVPMDMAMode(type), rowDepth, numRows);
+	setup.setHorizontal(IS_HORIZONTAL);
+	setup.setWordRow(rowOffset);
+
+	return setup;
+}
+
+VPRGenericSetup VPMArea::toReadSetup(const DataType& elementType, uint8_t numValues) const
+{
+	DataType type = elementType.isUnknown() ? getElementType() : elementType;
+	if(type.isUnknown())
+		throw CompilationError(CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type");
+
+	//if we can pack into a single row, do so. Otherwise set stride to beginning of next row
+	const uint8_t stride = canBePackedIntoRow() ? 1 : static_cast<uint8_t>(TYPE_INT32.getScalarBitCount() / type.getScalarBitCount());
+	VPRGenericSetup setup(getVPMSize(type), stride, numValues, calculateQPUSideAddress(type, rowOffset, 0));
+	setup.setHorizontal(IS_HORIZONTAL);
+	setup.setLaned(!IS_PACKED);
+	return setup;
+}
+
+VPRDMASetup VPMArea::toReadDMASetup(const DataType& elementType, uint8_t numValues) const
+{
+	DataType type = elementType.isUnknown() ? getElementType() : elementType;
+	if(type.isUnknown())
+		throw CompilationError(CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type");
+	if(numValues > 16)
+		throw CompilationError(CompilationStep::GENERAL, "Cannot read more than 16 rows via DMA into VPW at a time");
+
+	//If the data is packed, have a pitch of 1 unit (e.g. 1 byte/half-word/word offset depending on type)
+	//otherwise, always jump to the next row
+	const uint8_t vpmPitch = canBePackedIntoRow() ? 1 : TYPE_INT32.getScalarBitCount() / type.getScalarBitCount();
+	VPRDMASetup setup(getVPMDMAMode(type), type.getVectorWidth(true) % 16 /* 0 => 16 */, numValues % 16 /* 0 => 16 */, vpmPitch % 16 /* 0 => 16 */);
+	setup.setWordRow(rowOffset);
+	setup.setVertical(!IS_HORIZONTAL);
+	return setup;
 }
 
 VPM::VPM(const unsigned totalVPMSize) : maximumVPMSize(std::min(VPM_DEFAULT_SIZE, totalVPMSize)), areas(), isScratchLocked(false)
 {
-	areas.emplace(VPMArea{VPMUsage::GENERAL_DMA, 0, 0, 0, nullptr});
+	areas.emplace(VPMArea{VPMUsage::SCRATCH, 0, 0, nullptr});
 }
 
 const VPMArea& VPM::getScratchArea()
@@ -611,7 +712,7 @@ const VPMArea& VPM::getScratchArea()
 const VPMArea* VPM::findArea(const Local* local)
 {
 	for(const VPMArea& area : areas)
-		if(area.dmaAddress == local)
+		if(area.originalAddress == local)
 			return &area;
 	return nullptr;
 }
@@ -645,7 +746,7 @@ const VPMArea* VPM::addArea(const Local* local, const DataType& elementType, boo
 	if(rowOffset + numRows < VPM_NUM_ROWS)
 	{
 		//for now align all new VPM areas at the beginning of a column
-		auto it = areas.emplace(VPMArea{isStackArea ? VPMUsage::STACK : VPMUsage::SPECIFIC_DMA, 0, rowOffset, numRows, local});
+		auto it = areas.emplace(VPMArea{isStackArea ? VPMUsage::STACK : VPMUsage::LOCAL_MEMORY, rowOffset, numRows, local});
 		logging::debug() << "Allocating " << numRows << " rows (per 64 byte) of VPM cache starting at row " << rowOffset << " for local: " << local->to_string(false) << (isStackArea ? std::string("(") + std::to_string(numStacks) + " stacks )" : "") << logging::endl;
 		PROFILE_COUNTER(9010, "VPM cache size", requestedSize);
 		return &(*it.first);

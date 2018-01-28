@@ -123,9 +123,9 @@ static bool canMoveIntoVPM(const Value& val, bool isMemoryAddress)
 		if(base->is<Parameter>())
 			/*
 			 * Since parameter are used outside of the kernel execution (host-side), they cannot be lowered into VPM.
-			 * The only exception are __local parameter, which are not used outside of the work-group and can therefore handled as local values.
+			 * XXX The only exception are __local parameter, which are not used outside of the work-group and can therefore handled as local values.
 			 */
-			return base->type.getPointerType().value()->addressSpace == AddressSpace::LOCAL;
+			return false;
 		if(base->is<StackAllocation>())
 			//the stack can always be lowered into VPM (if it fits!)
 			return (inVPMType.getPhysicalWidth() * 12 /* number of stacks */) < VPM_DEFAULT_SIZE;
@@ -143,8 +143,8 @@ static bool canMoveIntoVPM(const Value& val, bool isMemoryAddress)
 
 	return std::all_of(val.local->getUsers().begin(), val.local->getUsers().end(), [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool
 	{
-		//TODO correct?
-		return dynamic_cast<const MemoryInstruction*>(pair.first) != nullptr;
+		//TODO enable if handled correctly by optimizations (e.g. combination of read/write into copy)
+		return false; //return dynamic_cast<const MemoryInstruction*>(pair.first) != nullptr;
 	});
 }
 

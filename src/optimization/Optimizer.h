@@ -75,18 +75,12 @@ namespace vc4c
 		extern const OptimizationPass MAP_MEMORY_ACCESS;
 		//runs all the single-step optimizations. Combining them results in fewer iterations over the instructions
 		extern const OptimizationPass RUN_SINGLE_STEPS;
-		//eliminates/inlines loads of global data
-		extern const OptimizationPass ELIMINATE_CONSTANT_LOADS;
 		//combines loadings of the same literal value within a small range of a basic block
 		extern const OptimizationPass COMBINE_LITERAL_LOADS;
 		//handles stack-allocations by calculating their offsets and indices
 		extern const OptimizationPass RESOLVE_STACK_ALLOCATIONS;
 		//spills long-living, rarely written locals into the VPM
 		extern const OptimizationPass SPILL_LOCALS;
-		//tries to combine VPW/VPR configurations and reads/writes within basic blocks
-		extern const OptimizationPass COMBINE_VPM_SETUP;
-		//lowers access to __local and __private memory areas into the VPM, if there is enough space for it
-		extern const OptimizationPass LOWER_MEMORY_INTO_VPM;
 		//combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation
 		extern const OptimizationPass COMBINE_ROTATIONS;
 		//eliminates useless instructions (dead store, move to same, add with zero, ...)

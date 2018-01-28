@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <numeric>
 
 using namespace vc4c;
 using namespace vc4c::optimizations;
@@ -338,6 +339,7 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
 		VPRSetupWrapper dmaSetupValue(group.dmaSetups.at(0).get<LoadImmediate>());
 		dmaSetupValue.dmaSetup.setNumberRows(group.genericSetups.size() % 16);
 		vpm.updateScratchSize(static_cast<unsigned char>(group.genericSetups.size()));
+		//TODO can be space-optimized, half-words and bytes can be packed into single row (VPM writes too)
 	}
 	std::size_t numRemoved = 0;
 
@@ -390,21 +392,28 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
 	logging::debug() << "Removed " << numRemoved << " instructions by combining VPR reads" << logging::endl;
 }
 
-void optimizations::combineVPMAccess(const Module& module, Method& method, const Configuration& config)
+/*
+ * Combine consecutive configuration of VPW/VPR with the same settings
+ *
+ * In detail, this combines VPM read/writes of uniform type of access (read or write), uniform data-type and consecutive memory-addresses
+ *
+ * NOTE: Combining VPM accesses merges their mutex-lock blocks which can cause other QPUs to stall for a long time.
+ * Also, this optimization currently only supports access memory <-> QPU, data exchange between only memory and VPM are not optimized
+ */
+static void combineVPMAccess(FastSet<BasicBlock*>& blocks, Method& method)
 {
 	//combine configurations of VPM (VPW/VPR) which have the same values
 
 	//TODO for now, this cannot handle RAM->VPM, VPM->RAM only access as well as VPM->QPU or QPU->VPM
-	//currently, this gracefully fails with an invalid optional read in such cases!
 
 	// run within all basic blocks
-	for(BasicBlock& block : method)
+	for(BasicBlock* block : blocks)
 	{
-		auto it = block.begin();
+		auto it = block->begin();
 		while(!it.isEndOfBlock())
 		{
 			VPMAccessGroup group;
-			it = findGroupOfVPMAccess(*method.vpm.get(), it, block.end(), group);
+			it = findGroupOfVPMAccess(*method.vpm.get(), it, block->end(), group);
 			if(group.addressWrites.size() > 1)
 			{
 				group.cleanDuplicateInstructions();
@@ -523,86 +532,6 @@ void optimizations::spillLocals(const Module& module, Method& method, const Conf
 	//TODO do not preemptively spill, only on register conflicts. Which case??
 }
 
-static std::pair<InstructionWalker, InstructionWalker> findRelatedTMUInstructions(const InstructionWalker addressWrite)
-{
-	auto it = addressWrite;
-	std::pair<InstructionWalker, InstructionWalker> pair;
-	bool firstSet = false;
-	bool secondSet = false;
-	while(!it.isEndOfBlock() && !(firstSet && secondSet))
-	{
-		if(!firstSet && it->signal.triggersReadOfR4())
-		{
-			pair.first = it;
-			firstSet = true;
-		}
-		if(!secondSet && it->readsRegister(REG_TMU_OUT))
-		{
-			pair.second = it;
-			secondSet = true;
-		}
-		it.nextInBlock();
-	}
-	if(it.isEndOfBlock())
-		throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find triggering of TMU read or TMU read for writing of TMU address", addressWrite->to_string());
-
-	return pair;
-}
-
-void optimizations::lowerMemoryIntoVPM(const Module& module, Method& method, const Configuration& config)
-{
-	auto it = method.walkAllInstructions();
-	while(!it.isEndOfMethod())
-	{
-		if(it->writesRegister(REG_TMU0_ADDRESS) || it->writesRegister(REG_TMU1_ADDRESS) || it->writesRegister(REG_VPM_IN_ADDR) || it->writesRegister(REG_VPM_OUT_ADDR))
-		{
-			std::vector<Value>::const_iterator argIt = std::find_if(it->getArguments().begin(), it->getArguments().end(), [](const Value& val) -> bool { return val.hasType(ValueType::LOCAL) && val.local->getBase(true)->residesInMemory();});
-			if(argIt != it->getArguments().end() && argIt->type.getPointerType() && (argIt->type.getPointerType().value()->addressSpace == AddressSpace::PRIVATE || argIt->type.getPointerType().value()->addressSpace == AddressSpace::LOCAL))
-			{
-				const Local* base = argIt->local->getBase(true);
-				const unsigned areaSize = base->type.getElementType().getPhysicalWidth();
-				logging::debug() << "Found access of local/private: " << argIt->local->to_string(true) << " with " << areaSize << " bytes" << logging::endl;
-
-				const VPMArea* area = method.vpm->addArea(base, areaSize);
-				if(area == nullptr)
-					logging::debug() << "No more space in the VPM cache to store " << base->to_string(false) << ", skipping" << logging::endl;
-				else
-				{
-					if(it->writesRegister(REG_TMU0_ADDRESS) || it->writesRegister(REG_TMU1_ADDRESS))
-					{
-						/*
-						 * If this is a load via TMU, rewrite to load via VPM:
-						 * - find destination value of TMU load
-						 * - insert VPM load (without DMA) with same address and output as TMU load
-						 * - remove TMU load (setting of address, triggering TMU load, reading of r4)
-						 */
-						std::pair<InstructionWalker, InstructionWalker> pair = findRelatedTMUInstructions(it);
-						it = method.vpm->insertReadVPM(it, pair.second->getOutput().value(), area, true);
-						pair.first.erase();
-						pair.second.erase();
-						it.erase();
-						//FIXME discards the offset from the start of the data
-					}
-					if(argIt->type.getPointerType().value()->addressSpace == AddressSpace::PRIVATE)
-					{
-						/*
-						 * For stack-allocations:
-						 * - change VPM base address to fit the beginning of the VPM area
-						 * - remove loading/storing from/to RMA via DMA
-						 * - if this is a load via TMU, rewrite to load from VPM
-						 */
-					}
-					else
-					{
-
-					}
-				}
-			}
-		}
-		it.nextInMethod();
-	}
-}
-
 static InstructionWalker accessStackAllocations(const Module& module, Method& method, InstructionWalker it)
 {
 	const std::size_t stackBaseOffset = method.getStackBaseOffset();
@@ -669,52 +598,365 @@ void optimizations::resolveStackAllocations(const Module& module, Method& method
 	}
 }
 
-void optimizations::mapMemoryAccess(const Module& module, Method& method, const Configuration& config)
+/*
+ * Calculates the offset from the base-address in bytes
+ */
+static InstructionWalker calculateInAreaOffset(Method& method, InstructionWalker it, const Local* baseAddress, const Value& index, Value& inAreaOffset)
 {
-	//TODO merge all/most memory-access optimizations in here to have more info (need less searching) to perform optimizations
-
-	//for now, just map to VPM/TMU (like previously done in front-ends)
-	InstructionWalker it = method.walkAllInstructions();
-	while(!it.isEndOfMethod())
+	if(index.hasLocal(baseAddress) || (index.hasType(ValueType::LOCAL) && index.local->getBase(false) == baseAddress))
+		//no offset
+		inAreaOffset = INT_ZERO;
+	else if(index.hasType(ValueType::LOCAL) && index.local->reference.first == baseAddress && index.local->reference.second >= 0)
+		//fixed element offset
+		//is offset in elements, not bytes -> so convert to byte-offset
+		inAreaOffset = Value(Literal(static_cast<int64_t>(index.local->reference.second * baseAddress->type.getElementType().getPhysicalWidth())), TYPE_INT32);
+	else if(index.hasType(ValueType::LOCAL) && index.local->getSingleWriter() != nullptr && dynamic_cast<const IntermediateInstruction*>(index.local->getSingleWriter())->readsLocal(baseAddress))
 	{
-		if(it.has<MemoryInstruction>())
+		//index is directly calculated from base-address
+		const Operation* op = dynamic_cast<const Operation*>(index.local->getSingleWriter());
+		const MoveOperation* move = dynamic_cast<const MoveOperation*>(index.local->getSingleWriter());
+		if(op != nullptr && op->op == OP_ADD)
 		{
-			const MemoryInstruction* mem = it.get<MemoryInstruction>();
-			switch(mem->op)
-			{
-				case MemoryOperation::COPY:
-				{
-					if(!mem->getNumEntries().isLiteralValue())
-						throw CompilationError(CompilationStep::LLVM_2_IR, "Copying dynamically sized memory is not yet implemented", mem->to_string());
-					unsigned numBytes = mem->getNumEntries().getLiteralValue()->integer * mem->getSourceElementType().getScalarBitCount() / 8;
-					it = method.vpm->insertCopyRAM(method, it, mem->getDestination(), mem->getSource(), numBytes);
-					break;
-				}
-				case MemoryOperation::FILL:
-				{
-					if(!mem->getNumEntries().isLiteralValue())
-						throw CompilationError(CompilationStep::LLVM_2_IR, "Filling dynamically sized memory is not yet implemented", mem->to_string());
-					unsigned numCopies = mem->getNumEntries().getLiteralValue()->integer;
-					it.emplace(new intermediate::MutexLock(intermediate::MutexAccess::LOCK));
-					it.nextInBlock();
-					//TODO could optimize (e.g. for zero-initializers) by writing several bytes at once
-					method.vpm->insertWriteVPM(it, mem->getSource(), nullptr, false);
-					it = method.vpm->insertFillRAM(method, it, mem->getDestination(), mem->getSourceElementType(), numCopies, nullptr, false);
-					it.emplace(new intermediate::MutexLock(intermediate::MutexAccess::RELEASE));
-					it.nextInBlock();
-					break;
-				}
-				case MemoryOperation::READ:
-					it = periphery::insertReadVectorFromTMU(method, it, mem->getDestination(), mem->getSource());
-					break;
-				case MemoryOperation::WRITE:
-					it = periphery::insertWriteDMA(method, it, mem->getSource(), mem->getDestination());
-					break;
-			}
-			//remove MemoryInstruction
-			it.erase();
+			//index = base-address + something -> offset = something
+			if(op->getArgument(0)->hasLocal(baseAddress))
+				inAreaOffset = op->getArgument(1).value();
+			else
+				inAreaOffset = op->getArgument(0).value();
+		}
+		else if(move != nullptr && move->getSource().hasLocal(baseAddress))
+		{
+			//index = base-address
+			inAreaOffset = INT_ZERO;
 		}
 		else
-			it.nextInMethod();
+			throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled case of in-area offset calculation", index.local->getSingleWriter()->to_string());
 	}
+	else
+	{
+		//need to dynamically calculate offset
+		if(!inAreaOffset.hasType(ValueType::LOCAL))
+			inAreaOffset = method.addNewLocal(TYPE_INT32, "%relative_offset");
+		//in-area offset = absolute index - start-address
+		it.emplace(new Operation(OP_SUB, inAreaOffset, index, baseAddress->createReference()));
+		it.nextInBlock();
+	}
+	return it;
+}
+
+static InstructionWalker mapToMemoryAccessInstructions(Method& method, InstructionWalker it, const VPMArea* sourceArea = nullptr, const VPMArea* destArea = nullptr)
+{
+	const MemoryInstruction* mem = it.get<MemoryInstruction>();
+	switch(mem->op)
+	{
+		case MemoryOperation::COPY:
+		{
+			if(!mem->getNumEntries().isLiteralValue())
+				throw CompilationError(CompilationStep::OPTIMIZER, "Copying dynamically sized memory is not yet implemented", mem->to_string());
+			int64_t numBytes = mem->getNumEntries().getLiteralValue()->integer * mem->getSourceElementType().getScalarBitCount() / 8;
+			if(numBytes > std::numeric_limits<unsigned>::max())
+				throw CompilationError(CompilationStep::OPTIMIZER, "Cannot copy more than 4GB of data", mem->to_string());
+			if(sourceArea != nullptr || destArea != nullptr)
+			{
+				throw CompilationError(CompilationStep::OPTIMIZER, "Copying from/to VPM cached data is not yet implemented", mem->to_string());
+			}
+			it = method.vpm->insertCopyRAM(method, it, mem->getDestination(), mem->getSource(), static_cast<unsigned>(numBytes));
+			break;
+		}
+		case MemoryOperation::FILL:
+		{
+			if(!mem->getNumEntries().isLiteralValue())
+				throw CompilationError(CompilationStep::OPTIMIZER, "Filling dynamically sized memory is not yet implemented", mem->to_string());
+			int64_t numCopies = mem->getNumEntries().getLiteralValue()->integer;
+			if(numCopies > std::numeric_limits<unsigned>::max())
+				throw CompilationError(CompilationStep::OPTIMIZER, "Cannot fill more than 4GB of data", mem->to_string());
+			if(destArea != nullptr)
+			{
+				throw CompilationError(CompilationStep::OPTIMIZER, "Filling VPM cached data is not yet implemented", mem->to_string());
+			}
+			it.emplace(new intermediate::MutexLock(intermediate::MutexAccess::LOCK));
+			it.nextInBlock();
+			//TODO could optimize (e.g. for zero-initializers) by writing several bytes at once
+			method.vpm->insertWriteVPM(method, it, mem->getSource(), nullptr, false);
+			it = method.vpm->insertFillRAM(method, it, mem->getDestination(), mem->getSourceElementType(), static_cast<unsigned>(numCopies), nullptr, false);
+			it.emplace(new intermediate::MutexLock(intermediate::MutexAccess::RELEASE));
+			it.nextInBlock();
+			break;
+		}
+		case MemoryOperation::READ:
+			if(sourceArea != nullptr)
+			{
+				Value subIndex = UNDEFINED_VALUE;
+				it = calculateInAreaOffset(method, it, mem->getSource().local->getBase(true), mem->getSource(), subIndex);
+				it = method.vpm->insertReadVPM(method, it, mem->getDestination(), sourceArea, true, subIndex);
+			}
+			else
+				it = periphery::insertReadVectorFromTMU(method, it, mem->getDestination(), mem->getSource());
+			break;
+		case MemoryOperation::WRITE:
+			if(destArea != nullptr)
+			{
+				Value subIndex = UNDEFINED_VALUE;
+				it = calculateInAreaOffset(method, it, mem->getSource().local->getBase(true), mem->getSource(), subIndex);
+				it = method.vpm->insertWriteVPM(method, it, mem->getSource(), destArea, true, subIndex);
+			}
+			else
+				it = periphery::insertWriteDMA(method, it, mem->getSource(), mem->getDestination());
+			break;
+	}
+	//remove MemoryInstruction
+	it.erase();
+	return it;
+}
+
+static void generateStandardMemoryAccessInstructions(Method& method, FastSet<InstructionWalker>& memoryInstructions, bool checkOptimizable)
+{
+	//list of basic blocks where multiple VPM accesses could be combined
+	FastSet<BasicBlock*> affectedBlocks;
+	auto walkerIt = memoryInstructions.begin();
+	while(walkerIt != memoryInstructions.end())
+	{
+		if(!checkOptimizable || (!walkerIt->get<const MemoryInstruction>()->canMoveSourceIntoVPM() && !walkerIt->get<const MemoryInstruction>()->canMoveDestinationIntoVPM()))
+		{
+			//cannot be optimized (or check skipped), simply map to TMU/VPM instructions
+			InstructionWalker it = *walkerIt;
+			if(!checkOptimizable)
+				logging::debug() << "Found memory access for which none of the optimization-steps fit: " << it->to_string() << logging::endl;
+			else
+				logging::debug() << "Generating memory access which cannot be lowered into VPM: " << it->to_string() << logging::endl;
+			walkerIt = memoryInstructions.erase(walkerIt);
+			it = mapToMemoryAccessInstructions(method, it);
+			affectedBlocks.emplace(it.getBasicBlock());
+		}
+		else
+			++walkerIt;
+	}
+
+	//combine VPM access for all modified basic blocks
+	if(checkOptimizable)
+		combineVPMAccess(affectedBlocks, method);
+}
+
+static void lowerStackIntoVPM(Method& method, FastSet<InstructionWalker>& memoryInstructions, FastMap<const Local*, const VPMArea*>& vpmMappedLocals)
+{
+	const unsigned stackSize = method.metaData.isWorkGroupSizeSet() ? std::accumulate(method.metaData.workGroupSizes.begin(), method.metaData.workGroupSizes.end(), 1u, std::multiplies<uint32_t>()) : 12;
+	auto walkerIt = memoryInstructions.begin();
+	while(walkerIt != memoryInstructions.end())
+	{
+		const MemoryInstruction* mem = walkerIt->get<const MemoryInstruction>();
+		if(mem->accessesStackAllocation())
+		{
+			InstructionWalker it = *walkerIt;
+			walkerIt = memoryInstructions.erase(walkerIt);
+
+			const VPMArea* sourceArea = nullptr;
+			const VPMArea* destArea = nullptr;
+
+			//mapped to VPM by previous operation
+			if(mem->getSource().hasType(ValueType::LOCAL) && vpmMappedLocals.find(mem->getSource().local->getBase(true)) != vpmMappedLocals.end())
+			{
+				sourceArea = vpmMappedLocals.at(mem->getSource().local->getBase(true));
+			}
+			if(mem->getDestination().hasType(ValueType::LOCAL) && vpmMappedLocals.find(mem->getDestination().local->getBase(true)) != vpmMappedLocals.end())
+			{
+				destArea = vpmMappedLocals.at(mem->getDestination().local->getBase(true));
+			}
+			if(false) //TODO doesn't heed in-stack-offset
+			{
+				if(sourceArea == nullptr && mem->getSource().hasType(ValueType::LOCAL) && mem->getSource().local->getBase(true)->is<StackAllocation>())
+				{
+					const Local* src = mem->getSource().local->getBase(true);
+					sourceArea = method.vpm->addArea(src, src->type.getElementType(), true, stackSize);
+					vpmMappedLocals.emplace(src, sourceArea);
+				}
+				if(destArea == nullptr && mem->getDestination().hasType(ValueType::LOCAL) && mem->getDestination().local->getBase(true)->is<StackAllocation>())
+				{
+					const Local* dest = mem->getDestination().local->getBase(true);
+					destArea = method.vpm->addArea(dest, dest->type.getElementType(), true, stackSize);
+					vpmMappedLocals.emplace(dest, destArea);
+				}
+				if(sourceArea != nullptr)
+					logging::debug() << "Lowering stack-allocated data '" << sourceArea->originalAddress->to_string() << "' into VPM" << logging::endl;
+				if(destArea != nullptr)
+					logging::debug() << "Lowering stack-allocated data '" << destArea->originalAddress->to_string() << "' into VPM" << logging::endl;
+				if(sourceArea != nullptr || destArea != nullptr)
+					logging::debug() << "Optimizing access to stack allocated data by using the VPM as cache: " << mem->to_string() << logging::endl;
+			}
+			//automatically handles both cases (lowered to VPM, not lowered to VPM)
+			//for copying stack <-> local, we assign an VPM area to the stack-object here, but delay the copying until the locals are lowered to be able to lower into copy VPM <-> VPM
+			if(mem->op != MemoryOperation::COPY || !mem->accessesLocalMemory())
+			{
+				mapToMemoryAccessInstructions(method, it, sourceArea, destArea);
+				//TODO handle offset for selecting the correct stack-frame in VPM!
+			}
+		}
+		else
+			++walkerIt;
+	}
+}
+
+static void lowerLocalDataIntoVPM(Method& method, FastSet<InstructionWalker>& memoryInstructions, FastMap<const Local*, const VPMArea*>& vpmMappedLocals)
+{
+	auto walkerIt = memoryInstructions.begin();
+	while(walkerIt != memoryInstructions.end())
+	{
+		const MemoryInstruction* mem = walkerIt->get<const MemoryInstruction>();
+		if(mem->accessesLocalMemory())
+		{
+			InstructionWalker it = *walkerIt;
+			walkerIt = memoryInstructions.erase(walkerIt);
+
+			const VPMArea* sourceArea = nullptr;
+			const VPMArea* destArea = nullptr;
+			//mapped to VPM by previous operation
+			if(mem->getSource().hasType(ValueType::LOCAL) && vpmMappedLocals.find(mem->getSource().local->getBase(true)) != vpmMappedLocals.end())
+			{
+				sourceArea = vpmMappedLocals.at(mem->getSource().local->getBase(true));
+			}
+			if(mem->getDestination().hasType(ValueType::LOCAL) && vpmMappedLocals.find(mem->getDestination().local->getBase(true)) != vpmMappedLocals.end())
+			{
+				destArea = vpmMappedLocals.at(mem->getDestination().local->getBase(true));
+			}
+			if(sourceArea == nullptr && mem->getSource().hasType(ValueType::LOCAL) && mem->getSource().local->getBase(true)->is<Global>() && mem->getSource().local->getBase(true)->type.getPointerType().value()->addressSpace == AddressSpace::LOCAL)
+			{
+				const Local* src = mem->getSource().local->getBase(true);
+				sourceArea = method.vpm->addArea(src, src->type.getElementType(), false);
+				vpmMappedLocals.emplace(src, sourceArea);
+			}
+			if(destArea == nullptr && mem->getDestination().hasType(ValueType::LOCAL) && mem->getDestination().local->getBase(true)->is<Global>() && mem->getDestination().local->getBase(true)->type.getPointerType().value()->addressSpace == AddressSpace::LOCAL)
+			{
+				const Local* dest = mem->getDestination().local->getBase(true);
+				destArea = method.vpm->addArea(dest, dest->type.getElementType(), false);
+				vpmMappedLocals.emplace(dest, destArea);
+			}
+			if(sourceArea != nullptr)
+				logging::debug() << "Lowering local '" << sourceArea->originalAddress->to_string() << "' into VPM" << logging::endl;
+			if(destArea != nullptr)
+				logging::debug() << "Lowering local '" << destArea->originalAddress->to_string() << "' into VPM" << logging::endl;
+			if(sourceArea != nullptr || destArea != nullptr)
+				logging::debug() << "Optimizing access to local allocated data by using the VPM as cache: " << mem->to_string() << logging::endl;
+			//automatically handles both cases (lowered to VPM, not lowered to VPM)
+			mapToMemoryAccessInstructions(method, it, sourceArea, destArea);
+		}
+		else
+			++walkerIt;
+	}
+}
+
+static Optional<Value> getConstantValue(const MemoryInstruction* mem)
+{
+	//can only read from constant global data, so the global is always the source
+	const Global* global = mem->getSource().local->getBase(true)->as<Global>();
+	if(mem->getSource().local->reference.second >= 0 && global->value.hasType(ValueType::CONTAINER))
+		 // fixed index
+		return global->value.container.elements.at(mem->getSource().local->reference.second);
+	else if(global->value.isLiteralValue())
+		 // scalar value
+		return global->value;
+	else if(global->value.isZeroInitializer())
+		 // all entries are the same
+		return Value::createZeroInitializer(global->value.type.getElementType());
+	else if(global->value.isUndefined())
+		 // all entries are undefined
+		return Value(global->value.type.getElementType());
+	return NO_VALUE;
+}
+
+static void lowerGlobalsToConstants(Method& method, FastSet<InstructionWalker>& memoryInstructions)
+{
+	/*
+	 * Tries to eliminate reading of constant global values from memory by replacing them with the load of the global's content value.
+	 *
+	 * The following conditions need to be fulfilled for this optimization to apply:
+	 * - the source needs to be a Global with the constant-flag set
+	 * - if the global is a compound value (e.g. not read completely), the index needs a literal value or the global needs to be uniform (e.g. all zeroes)
+	 *
+	 * Any other access to globals is simply mapped to the corresponding TMU/VPM operations
+	 */
+	auto walkerIt = memoryInstructions.begin();
+	while(walkerIt != memoryInstructions.end())
+	{
+		const MemoryInstruction* mem = walkerIt->get<const MemoryInstruction>();
+		if(mem->accessesConstantGlobal())
+		{
+			logging::debug() << "Found reference to constant global: " << mem->to_string() << " (" << mem->getSource().local->getBase(true)->to_string(true) << ")" << logging::endl;
+
+			InstructionWalker it = *walkerIt;
+			walkerIt = memoryInstructions.erase(walkerIt);
+
+			//1. find constant value read from the Global
+			Optional<Value> content = getConstantValue(mem);
+			if(content)
+			{
+				it.reset(new MoveOperation(mem->getOutput().value(), content.value()));
+				logging::debug() << "Replaced loading of constant memory with constant literal: " << it->to_string() << logging::endl;
+			}
+			else
+				//generate simply access to global data residing in memory
+				mapToMemoryAccessInstructions(method, it);
+		}
+		else
+			++walkerIt;
+	}
+}
+
+void optimizations::mapMemoryAccess(const Module& module, Method& method, const Configuration& config)
+{
+	/*
+	 * Goals:
+	 * 1. map all memory-accesses correctly, so all QPUs accessing the same memory see the same/expected values
+	 * 2. lower/lift as many memory-accesses as possible into VPM to save unnecessary instructions accessing QPU/RAM
+	 *
+	 * Steps:
+	 * 1. map all "standard" memory accesses
+	 *  - map memory accesses which cannot be optimized into VPM to TMU/VPM instructions
+	 *  - combine successive accesses (use/replace #combineVPMAccess)
+	 *  -> determine VPM scratch size
+	 * 2. try to lower all stack-allocations into VPM
+	 *  - reserve enough space (for 12 stacks unless specified in compile-time work-group size!)
+	 *  - map accesses to stack to use the correct area in VPM
+	 *  - calculate offsets in VPM for every stack entry (see/replace #resolveStackAllocations)
+	 *  - rewrite indices to match offsets in VPM
+	 *  - generate TMU/VPM instructions for stack-allocations not fitting into VPM
+	 *  - update total stack-size (the buffer-size required to be reserved) for the method
+	 * 3. try to lower local memory into VPM
+	 *  - check sizes, reserve VPM area
+	 *  - map accesses using correct VPM area
+	 *  - rewrite indices to match offsets in VPM
+	 *  - generate TMU/VPM instructions for local memory areas not fitting into VPM
+	 *  - update globals, remove local memory areas located in VPM from buffer-size to be reserved
+	 * 4. try to lower constant globals into constant values
+	 *  - update globals, remove global memory for which all usages are rewritten from buffer-size to be reserved
+	 *  - generate TMU/VPM instructions for other globals
+	 *  - rewrite indices to remaining globals (see #accessGlobalData)
+	 * 5. map all remaining memory access to default TMU/VPM access
+	 */
+
+	//contains all the positions of MemoryInstructions for easier/faster iteration in the next steps
+	FastSet<InstructionWalker> memoryInstructions;
+	{
+		InstructionWalker it = method.walkAllInstructions();
+		while(!it.isEndOfMethod())
+		{
+			if(it.has<MemoryInstruction>())
+				memoryInstructions.emplace(it);
+			it.nextInMethod();
+		}
+	}
+
+	//stores already assigned VPM areas, e.g. for memory-copy operations
+	FastMap<const Local*, const VPMArea*> vpmMappedLocals;
+
+	//Step 1
+	generateStandardMemoryAccessInstructions(method, memoryInstructions, true);
+	//Step 2
+	lowerStackIntoVPM(method, memoryInstructions, vpmMappedLocals);
+	//Step 3
+	lowerLocalDataIntoVPM(method, memoryInstructions, vpmMappedLocals);
+	//Step 4
+	lowerGlobalsToConstants(method, memoryInstructions);
+	//Step 5
+	//since we use at most 16 ints of scratch here (we don't combine anymore), the scratch-area is always large enough
+	generateStandardMemoryAccessInstructions(method, memoryInstructions, false);
+
+	//TODO move calculation of stack/global indices in here too?
 }
