@@ -9,6 +9,8 @@
 #include "../Profiler.h"
 #include "log.h"
 
+#include <cmath>
+
 using namespace vc4c;
 using namespace vc4c::periphery;
 using namespace vc4c::intermediate;
@@ -244,7 +246,7 @@ InstructionWalker periphery::insertReadDMA(Method& method, InstructionWalker it,
 	}
 
 	it = method.vpm->insertReadRAM(it, addr, dest.type, nullptr, false);
-	it = method.vpm->insertReadVPM(it, dest, nullptr, false);
+	it = method.vpm->insertReadVPM(method, it, dest, nullptr, false);
 
 	if(useMutex)
 	{
@@ -264,7 +266,7 @@ InstructionWalker periphery::insertWriteDMA(Method& method, InstructionWalker it
 		it.nextInBlock();
 	}
 
-	it = method.vpm->insertWriteVPM(it, src, nullptr, false);
+	it = method.vpm->insertWriteVPM(method, it, src, nullptr, false);
 	it = method.vpm->insertWriteRAM(it, addr, src.type, nullptr, false);
 
 	if(useMutex)
@@ -337,11 +339,30 @@ static unsigned char calculateColumnIndex(const VPMArea* area)
 	return 0;
 }
 
-InstructionWalker VPM::insertReadVPM(InstructionWalker it, const Value& dest, const VPMArea* area, bool useMutex)
+static InstructionWalker calculateElementOffset(Method& method, InstructionWalker it, const DataType& vpmStorageType, const Value& inAreaOffset, Value& elementOffset)
 {
-	if(area != nullptr)
-		area->checkAreaSize(dest.type.getPhysicalWidth());
+	if(inAreaOffset.getLiteralValue())
+	{
+		//e.g. 32-bit type, 4 byte offset -> 1 32-bit vector offset
+		elementOffset = Value(Literal((inAreaOffset.getLiteralValue()->integer * 8) / vpmStorageType.getScalarBitCount()), inAreaOffset.type);
+	}
 	else
+	{
+		//e.g. 32-bit type, 4 byte offset -> shr by 2 (= division by 4)
+		elementOffset = method.addNewLocal(TYPE_INT32, "%vpm_element_offset");
+		it.emplace(new Operation(OP_SHR, elementOffset, inAreaOffset, Value(Literal(static_cast<int64_t>(std::log2(vpmStorageType.getScalarBitCount() / 8.0))), TYPE_INT8)));
+		it.nextInBlock();
+	}
+	return it;
+}
+
+InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const Value& dest, const VPMArea* area, bool useMutex, const Value& inAreaOffset)
+{
+	const DataType vpmStorageType = getVPMStorageType(dest.type);
+	if(area != nullptr)
+		area->checkAreaSize(vpmStorageType.getPhysicalWidth());
+	else
+		//a single vector can only use a maximum of 1 row
 		updateScratchSize(1);
 
 	it = insertLockMutex(it, useMutex);
@@ -350,8 +371,23 @@ InstructionWalker VPM::insertReadVPM(InstructionWalker it, const Value& dest, co
 	VPRSetup genericSetup(VPRGenericSetup(size, TYPE_INT32.getScalarBitCount() / dest.type.getScalarBitCount(), 1, calculateQPUSideAddress(dest.type, calculateRowIndex(area), calculateColumnIndex(area))));
 	genericSetup.genericSetup.setHorizontal(IS_HORIZONTAL);
 	genericSetup.genericSetup.setLaned(!IS_PACKED);
-	it.emplace( new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<int64_t>(genericSetup))));
-	it.nextInBlock();
+	if(inAreaOffset == INT_ZERO)
+	{
+		it.emplace( new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<int64_t>(genericSetup))));
+		it.nextInBlock();
+	}
+	else
+	{
+		//this is the offset in byte -> calculate the offset in elements of destination-type
+
+		//1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
+		Value elementOffset = UNDEFINED_VALUE;
+		calculateElementOffset(method, it, vpmStorageType, inAreaOffset, elementOffset);
+		//2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
+		//3) write setup with dynamic address
+		it.emplace(new Operation(OP_ADD, VPM_IN_SETUP_REGISTER, Value(Literal(static_cast<int64_t>(genericSetup)), TYPE_INT32), elementOffset));
+		it.nextInBlock();
+	}
 	//2) read value from VPM
 	it.emplace( new MoveOperation(dest, VPM_IO_REGISTER));
 	it.nextInBlock();
@@ -359,11 +395,13 @@ InstructionWalker VPM::insertReadVPM(InstructionWalker it, const Value& dest, co
 	return it;
 }
 
-InstructionWalker VPM::insertWriteVPM(InstructionWalker it, const Value& src, const VPMArea* area, bool useMutex)
+InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, const Value& src, const VPMArea* area, bool useMutex, const Value& inAreaOffset)
 {
+	const DataType vpmStorageType = getVPMStorageType(src.type);
 	if(area != nullptr)
-		area->checkAreaSize(src.type.getPhysicalWidth());
+		area->checkAreaSize(vpmStorageType.getPhysicalWidth());
 	else
+		//a single vector can only use a maximum of 1 row
 		updateScratchSize(1);
 
 	it = insertLockMutex(it, useMutex);
@@ -372,8 +410,23 @@ InstructionWalker VPM::insertWriteVPM(InstructionWalker it, const Value& src, co
 	VPWSetup genericSetup(VPWGenericSetup(vpmSize, TYPE_INT32.getScalarBitCount() / src.type.getScalarBitCount(), calculateQPUSideAddress(src.type, calculateRowIndex(area), calculateColumnIndex(area))));
 	genericSetup.genericSetup.setHorizontal(IS_HORIZONTAL);
 	genericSetup.genericSetup.setLaned(!IS_PACKED);
-	it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<int64_t>(genericSetup))));
-	it.nextInBlock();
+	if(inAreaOffset == INT_ZERO)
+	{
+		it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<int64_t>(genericSetup))));
+		it.nextInBlock();
+	}
+	else
+	{
+		//this is the offset in byte -> calculate the offset in elements of destination-type
+
+		//1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
+		Value elementOffset = UNDEFINED_VALUE;
+		calculateElementOffset(method, it, vpmStorageType, inAreaOffset, elementOffset);
+		//2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
+		//3) write setup with dynamic address
+		it.emplace(new Operation(OP_ADD, VPM_IN_SETUP_REGISTER, Value(Literal(static_cast<int64_t>(genericSetup)), TYPE_INT32), elementOffset));
+		it.nextInBlock();
+	}
 	//2. write data to VPM
 	it.emplace(new MoveOperation(VPM_IO_REGISTER, src));
 	it.nextInBlock();
@@ -384,8 +437,9 @@ InstructionWalker VPM::insertWriteVPM(InstructionWalker it, const Value& src, co
 InstructionWalker VPM::insertReadRAM(InstructionWalker it, const Value& memoryAddress, const DataType& type, const VPMArea* area, bool useMutex)
 {
 	if(area != nullptr)
-		area->checkAreaSize(type.getPhysicalWidth());
+		area->checkAreaSize(getVPMStorageType(type).getPhysicalWidth());
 	else
+		//a single vector can only use a maximum of 1 row
 		updateScratchSize(1);
 
 	if(memoryAddress.hasType(ValueType::LOCAL) && memoryAddress.local != nullptr)
@@ -428,8 +482,9 @@ InstructionWalker VPM::insertReadRAM(InstructionWalker it, const Value& memoryAd
 InstructionWalker VPM::insertWriteRAM(InstructionWalker it, const Value& memoryAddress, const DataType& type, const VPMArea* area, bool useMutex)
 {
 	if(area != nullptr)
-		area->checkAreaSize(type.getPhysicalWidth());
+		area->checkAreaSize(getVPMStorageType(type).getPhysicalWidth());
 	else
+		//a single vector can only use a maximum of 1 row
 		updateScratchSize(1);
 
 	if(memoryAddress.hasType(ValueType::LOCAL) && memoryAddress.local != nullptr)
@@ -561,8 +616,12 @@ const VPMArea* VPM::findArea(const Local* local)
 	return nullptr;
 }
 
-const VPMArea* VPM::addArea(const Local* local, unsigned requestedSize, bool alignToBack)
+const VPMArea* VPM::addArea(const Local* local, const DataType& elementType, bool isStackArea, unsigned numStacks)
 {
+	//Since we can only read/write in packages of 16-element vectors on the QPU-side, we need to reserve enough space for 16-element vectors (even if we do not use all of the elements)
+	DataType inVPMType = getVPMStorageType(elementType);
+
+	unsigned requestedSize = inVPMType.getPhysicalWidth() * (isStackArea ? numStacks : 1);
 	uint8_t numRows = static_cast<unsigned char>(requestedSize / (VPM_NUM_COLUMNS * VPM_WORD_WIDTH) + (requestedSize % (VPM_NUM_COLUMNS * VPM_WORD_WIDTH) != 0));
 	const VPMArea* area = findArea(local);
 	if(area != nullptr && area->numRows >= numRows)
@@ -586,8 +645,8 @@ const VPMArea* VPM::addArea(const Local* local, unsigned requestedSize, bool ali
 	if(rowOffset + numRows < VPM_NUM_ROWS)
 	{
 		//for now align all new VPM areas at the beginning of a column
-		auto it = areas.emplace(VPMArea{VPMUsage::SPECIFIC_DMA, 0, rowOffset, numRows, local});
-		logging::debug() << "Allocating " << numRows << " rows (per 64 byte) of VPM cache starting at row " << rowOffset << " for local: " << local->to_string(false) << logging::endl;
+		auto it = areas.emplace(VPMArea{isStackArea ? VPMUsage::STACK : VPMUsage::SPECIFIC_DMA, 0, rowOffset, numRows, local});
+		logging::debug() << "Allocating " << numRows << " rows (per 64 byte) of VPM cache starting at row " << rowOffset << " for local: " << local->to_string(false) << (isStackArea ? std::string("(") + std::to_string(numStacks) + " stacks )" : "") << logging::endl;
 		PROFILE_COUNTER(9010, "VPM cache size", requestedSize);
 		return &(*it.first);
 	}
@@ -605,13 +664,13 @@ unsigned VPM::getMaxCacheVectors(const DataType& type, bool writeAccess) const
 
 void VPM::updateScratchSize(unsigned char requestedRows)
 {
-	if(isScratchLocked)
-		throw CompilationError(CompilationStep::GENERAL, "Size of the scratch area is already locked");
 	if(requestedRows > VPM_NUM_ROWS)
 		throw CompilationError(CompilationStep::GENERAL, "The requested size of the scratch area exceeds the total VPM size", std::to_string(requestedRows));
 
 	if(getScratchArea().numRows < requestedRows)
 	{
+		if(isScratchLocked)
+			throw CompilationError(CompilationStep::GENERAL, "Size of the scratch area is already locked");
 		logging::debug() << "Increased the scratch size to " << requestedRows << " rows (" << requestedRows * 64 << " bytes)" << logging::endl;
 		const_cast<unsigned char&>(getScratchArea().numRows) = requestedRows;
 	}
@@ -738,4 +797,24 @@ VPMInstructions periphery::findRelatedVPMInstructions(InstructionWalker anyVPMIn
 	}
 
 	return result;
+}
+
+DataType VPM::getVPMStorageType(const DataType& type)
+{
+	DataType inVPMType = TYPE_UNKNOWN;
+	if(type.getArrayType())
+	{
+		//e.g. short2[17] -> short16[17]
+		ArrayType* array = new ArrayType(type.getElementType().toVectorType(16), type.getArrayType().value()->size);
+		inVPMType = DataType((array->elementType.to_string() + "[") + std::to_string(array->size) + "]", 1, std::shared_ptr<ComplexType>(array));
+	}
+	else if(type.getPointerType())
+		//e.g. int* -> int16
+		inVPMType = TYPE_INT32.toVectorType(16);
+	else if(type.complexType)
+		throw CompilationError(CompilationStep::GENERAL, "Unhandled element-type to cache in VPM", type.to_string());
+	else
+		//e.g. char3 -> char16
+		inVPMType = type.toVectorType(16);
+	return inVPMType;
 }

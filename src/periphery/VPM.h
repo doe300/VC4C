@@ -601,7 +601,9 @@ namespace vc4c
 			//part of the VPM used as cache for DMA access to specific memory regions
 			SPECIFIC_DMA,
 			//this area is used to spill registers into
-			REGISTER_SPILLING
+			REGISTER_SPILLING,
+			//this area contains data from the QPUs stack
+			STACK
 		};
 
 		/*
@@ -647,7 +649,7 @@ namespace vc4c
 
 			const VPMArea& getScratchArea();
 			const VPMArea* findArea(const Local* local);
-			const VPMArea* addArea(const Local* local, unsigned requestedSize, bool alignToBack = false);
+			const VPMArea* addArea(const Local* local, const DataType& elementType, bool isStackArea, unsigned numStacks = 12);
 
 			/*
 			 * The maximum number of vectors (of the given type) which can be cached in this VPM.
@@ -659,11 +661,11 @@ namespace vc4c
 			/*
 			 * Inserts a read from VPM into a QPU register
 			 */
-			InstructionWalker insertReadVPM(InstructionWalker it, const Value& dest, const VPMArea* area = nullptr, bool useMutex = true);
+			InstructionWalker insertReadVPM(Method& method, InstructionWalker it, const Value& dest, const VPMArea* area = nullptr, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
 			/*
 			 * Inserts a write from a QPU register into VPM
 			 */
-			InstructionWalker insertWriteVPM(InstructionWalker it, const Value& src, const VPMArea* area = nullptr, bool useMutex = true);
+			InstructionWalker insertWriteVPM(Method& method, InstructionWalker it, const Value& src, const VPMArea* area = nullptr, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
 
 			/*
 			 * Inserts a read from RAM into VPM via DMA
@@ -687,6 +689,13 @@ namespace vc4c
 			 * This can only be called until the scratch-area is locked!
 			 */
 			void updateScratchSize(unsigned char requestedRows);
+
+			/*
+			 * Since we can only access the VPM from QPU-side in vectors of 16 elements,
+			 * the type needs to be converted to a type with all element-types set to 16-element vectors
+			 * to correctly determine the amount of VPM cache required to store the data.
+			 */
+			static DataType getVPMStorageType(const DataType& type);
 
 		private:
 			const unsigned maximumVPMSize;
