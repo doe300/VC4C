@@ -6,6 +6,8 @@
 
 #include "IntermediateInstruction.h"
 
+#include "../periphery/VPM.h"
+
 using namespace vc4c;
 using namespace vc4c::intermediate;
 
@@ -68,9 +70,9 @@ std::string MemoryInstruction::to_string() const
 		case MemoryOperation::FILL:
 			return std::string("fill ") + (getDestination().to_string() + " with ") + (getNumEntries().to_string() + " copies of ") + getSource().to_string();
 		case MemoryOperation::READ:
-			return std::string("read ") + (getSource().to_string() + " into ") + getDestination().to_string();
+			return (getDestination().to_string() + " = load memory at ") + getSource().to_string();
 		case MemoryOperation::WRITE:
-			return std::string("write ") + (getSource().to_string() + " into ") + getDestination().to_string();
+			return std::string("store ") + (getSource().to_string() + " into ") + getDestination().to_string();
 	}
 	throw CompilationError(CompilationStep::GENERAL, "Unknown memory operation type", std::to_string(static_cast<unsigned>(op)));
 }
@@ -108,6 +110,9 @@ static bool canMoveIntoVPM(const Value& val, bool isMemoryAddress)
 		if(!val.hasType(ValueType::LOCAL))
 			throw CompilationError(CompilationStep::GENERAL, "Cannot access memory-address without a local", val.to_string());
 		const Local* base = val.local->getBase(true);
+		const DataType inVPMType = periphery::VPM::getVPMStorageType(base->type.getElementType());
+		if(inVPMType.getPhysicalWidth() > VPM_DEFAULT_SIZE)
+			return false;
 		if(base->is<Global>())
 			/*
 			 * Constant globals can be moved into VPM (actually completely into constant values), since they do not change.
@@ -122,8 +127,8 @@ static bool canMoveIntoVPM(const Value& val, bool isMemoryAddress)
 			 */
 			return base->type.getPointerType().value()->addressSpace == AddressSpace::LOCAL;
 		if(base->is<StackAllocation>())
-			//the stack can always be lowered into VPM
-			return true;
+			//the stack can always be lowered into VPM (if it fits!)
+			return (inVPMType.getPhysicalWidth() * 12 /* number of stacks */) < VPM_DEFAULT_SIZE;
 		//for any other value, do not lower
 		return false;
 	}
@@ -150,7 +155,60 @@ bool MemoryInstruction::canMoveSourceIntoVPM() const
 
 bool MemoryInstruction::canMoveDestinationIntoVPM() const
 {
-	return canMoveIntoVPM(getDestination(), op != MemoryOperation::WRITE);
+	return canMoveIntoVPM(getDestination(), op != MemoryOperation::READ);
+}
+
+bool MemoryInstruction::accessesConstantGlobal() const
+{
+	switch(op)
+	{
+		case MemoryOperation::COPY:
+			return (getSource().local->getBase(true)->is<Global>() && getSource().local->getBase(true)->as<Global>()->isConstant) || (getDestination().local->getBase(true)->is<Global>() && getDestination().local->getBase(true)->as<Global>()->isConstant);
+		case MemoryOperation::FILL:
+			return getDestination().local->getBase(true)->is<Global>() && getDestination().local->getBase(true)->as<Global>()->isConstant;
+		case MemoryOperation::READ:
+			return getSource().local->getBase(true)->is<Global>() && getSource().local->getBase(true)->as<Global>()->isConstant;
+		case MemoryOperation::WRITE:
+			return getDestination().local->getBase(true)->is<Global>() && getDestination().local->getBase(true)->as<Global>()->isConstant;
+	}
+	return false;
+}
+
+bool MemoryInstruction::accessesStackAllocation() const
+{
+	switch(op)
+	{
+		case MemoryOperation::COPY:
+			return getSource().local->getBase(true)->is<StackAllocation>() || getDestination().local->getBase(true)->is<StackAllocation>();
+		case MemoryOperation::FILL:
+			return getDestination().local->getBase(true)->is<StackAllocation>();
+		case MemoryOperation::READ:
+			return getSource().local->getBase(true)->is<StackAllocation>();
+		case MemoryOperation::WRITE:
+			return getDestination().local->getBase(true)->is<StackAllocation>();
+	}
+	return false;
+}
+
+static bool isGlobalWithLocalAddressSpace(const Local* local)
+{
+	return local->is<Global>() && local->type.getPointerType().value()->addressSpace == AddressSpace::LOCAL;
+}
+
+bool MemoryInstruction::accessesLocalMemory() const
+{
+	switch(op)
+	{
+		case MemoryOperation::COPY:
+			return isGlobalWithLocalAddressSpace(getSource().local->getBase(true)) || isGlobalWithLocalAddressSpace(getDestination().local->getBase(true));
+		case MemoryOperation::FILL:
+			return isGlobalWithLocalAddressSpace(getDestination().local->getBase(true));
+		case MemoryOperation::READ:
+			return isGlobalWithLocalAddressSpace(getSource().local->getBase(true));
+		case MemoryOperation::WRITE:
+			return isGlobalWithLocalAddressSpace(getDestination().local->getBase(true));
+	}
+	return false;
 }
 
 DataType MemoryInstruction::getSourceElementType(bool sizedType) const
@@ -208,4 +266,26 @@ DataType MemoryInstruction::getDestinationElementType(bool sizedType) const
 			return getDestination().type.getElementType();
 	}
 	throw CompilationError(CompilationStep::GENERAL, "Unknown memory operation type", std::to_string(static_cast<unsigned>(op)));
+}
+
+FastSet<const Local*> MemoryInstruction::getMemoryAreas() const
+{
+	FastSet<const Local*> res;
+	switch(op)
+	{
+		case MemoryOperation::COPY:
+			res.emplace(getSource().local->getBase(true));
+			res.emplace(getDestination().local->getBase(true));
+			break;
+		case MemoryOperation::FILL:
+			res.emplace(getDestination().local->getBase(true));
+			break;
+		case MemoryOperation::READ:
+			res.emplace(getSource().local->getBase(true));
+			break;
+		case MemoryOperation::WRITE:
+			res.emplace(getDestination().local->getBase(true));
+			break;
+	}
+	return res;
 }

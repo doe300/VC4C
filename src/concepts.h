@@ -138,6 +138,7 @@ namespace vc4c
 	static_assert(std::is_default_constructible<InstructionWalker>::value, "InstructionWalker is not default constructible!");
 	static_assert(assert_assignable<InstructionWalker>::value, "InstructionWalker is not assignable!");
 	static_assert(std::is_destructible<InstructionWalker>::value, "InstructionWalker is not destructible!");
+	static_assert(assert_hashable<InstructionWalker>::value, "InstructionWalker is not hashable!");
 
 	/*
 	 * Intermediate instructions

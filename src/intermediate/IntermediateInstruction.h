@@ -598,6 +598,10 @@ namespace vc4c
 			const Value& getDestination() const;
 			const Value& getNumEntries() const;
 
+			bool accessesConstantGlobal() const;
+			bool accessesStackAllocation() const;
+			bool accessesLocalMemory() const;
+
 			/*
 			 * Whether the source (address or local value) can be moved into VPM
 			 */
@@ -624,6 +628,11 @@ namespace vc4c
 			 * For the memory-fill operation, this also constructs a type spanning the complete area filled.
 			 */
 			DataType getDestinationElementType(bool sizedType = false) const;
+
+			/*
+			 * Returns the base-addresses for the accessed memory-areas
+			 */
+			FastSet<const Local*> getMemoryAreas() const;
 
 			const MemoryOperation op;
 		};
