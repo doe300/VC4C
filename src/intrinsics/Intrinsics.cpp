@@ -166,7 +166,8 @@ static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access)
 			case DMAAccess::READ:
 			{
 				logging::debug() << "Intrinsifying memory read " << callSite->to_string() << logging::endl;
-				it = periphery::insertReadVectorFromTMU(method, it, callSite->getOutput().value(), callSite->getArgument(0).value());
+				//This needs to be access via VPM for atomic-instructions to work correctly!!
+				it = periphery::insertReadDMA(method, it, callSite->getOutput().value(), callSite->getArgument(0).value(), false);
 				break;
 			}
 			case DMAAccess::WRITE:
@@ -811,9 +812,9 @@ static InstructionWalker intrinsifyReadLocalID(Method& method, InstructionWalker
 	if(method.metaData.isWorkGroupSizeSet() && std::all_of(method.metaData.workGroupSizes.begin(), method.metaData.workGroupSizes.end(), [](uint32_t u) -> bool {return u == 1;}))
 	{
 		//if all the work-group sizes are 1, the ID is always 0 for all dimensions
-		return it.reset((new MoveOperation(it->getOutput().value(), INT_ZERO))->addDecorations(add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::UNSIGNED_RESULT)));
+		return it.reset((new MoveOperation(it->getOutput().value(), INT_ZERO))->addDecorations(add_flag(InstructionDecorations::BUILTIN_LOCAL_ID, InstructionDecorations::UNSIGNED_RESULT)));
 	}
-	return intrinsifyReadWorkItemInfo(method, it, it->getArgument(0).value(), Method::LOCAL_IDS, add_flag(InstructionDecorations::BUILTIN_LOCAL_ID, InstructionDecorations::UNSIGNED_RESULT));
+	return intrinsifyReadWorkItemInfo(method, it, arg, Method::LOCAL_IDS, add_flag(InstructionDecorations::BUILTIN_LOCAL_ID, InstructionDecorations::UNSIGNED_RESULT));
 }
 
 static InstructionWalker intrinsifyWorkItemFunctions(Method& method, InstructionWalker it)

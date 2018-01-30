@@ -140,6 +140,7 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 			}
 			else    //writes to another local -> can be replaced with move
 			{
+				//TODO improve be pre-calculating first and second arguments
 				Optional<Value> rightIdentity = OpCode::getRightIdentity(op->op);
 				Optional<Value> leftIdentity = OpCode::getLeftIdentity(op->op);
 				Optional<Value> rightAbsordbing = OpCode::getRightAbsorbingElement(op->op);
@@ -195,10 +196,12 @@ InstructionWalker optimizations::eliminateUselessBranch(const Module& module, Me
 	{
 		//eliminate branches to the next instruction, such branches are e.g. introduced by method-inlining
 		auto nextIt = it.copy().nextInMethod();
-		while(!nextIt.isEndOfMethod())
+		//FIXME removing conditional branches to next instruction hangs QPU (e.g. because of successive PHI-writes?)
+//		while(!nextIt.isEndOfMethod())
+		if(!nextIt.isEndOfMethod())
 		{
 			intermediate::BranchLabel* label = nextIt.get<intermediate::BranchLabel>();
-			intermediate::Branch* br = nextIt.get<intermediate::Branch>();
+//			intermediate::Branch* br = nextIt.get<intermediate::Branch>();
 			if(label != nullptr)
 			{
 				if(label->getLabel() == branch->getTarget())
@@ -208,9 +211,9 @@ InstructionWalker optimizations::eliminateUselessBranch(const Module& module, Me
 					//don't skip next instruction
 					it.previousInMethod();
 				}
-				break;
+//				break;
 			}
-			else if(br != nullptr)
+/*			else if(br != nullptr)
 			{
 				//if the following branch has the same condition with inverted flags (either-or-branch), it can be skipped
 				if(!(br->conditional.isInversionOf(branch->conditional) && br->getCondition() == branch->getCondition()))
@@ -220,6 +223,7 @@ InstructionWalker optimizations::eliminateUselessBranch(const Module& module, Me
 				}
 			}
 			nextIt.nextInMethod();
+*/
 		}
 	}
 	return it;
