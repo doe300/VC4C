@@ -441,7 +441,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     }
     const Value& arg0 = op->getFirstArg();
     const Value& arg1 = op->getSecondArg().value_or(UNDEFINED_VALUE);
-    const bool saturateResult = has_flag(op->decoration, InstructionDecorations::SATURATED_CONVERSION);
+    const bool saturateResult = op->hasDecoration(InstructionDecorations::SATURATED_CONVERSION);
     //integer multiplication
     if(op->opCode == "mul")
     {
@@ -576,7 +576,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             op->setOpCode(OP_FMUL);
             op->setArgument(1, Value(Literal(1.0 / arg1.getLiteralValue()->real()), arg1.type));
         }
-        else if(has_flag(op->decoration, InstructionDecorations::ALLOW_RECIP) || has_flag(op->decoration, InstructionDecorations::FAST_MATH))
+        else if(op->hasDecoration(InstructionDecorations::ALLOW_RECIP) || op->hasDecoration(InstructionDecorations::FAST_MATH))
         {
             logging::debug() << "Intrinsifying floating division with multiplication of reciprocal" << logging::endl;
             it = periphery::insertSFUCall(REG_SFU_RECIP, it, arg1, op->conditional);
@@ -597,7 +597,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     	{
     		//let pack-mode handle saturation
     		logging::debug() << "Intrinsifying saturated truncate with move and pack-mode" << logging::endl;
-    		it = insertSaturation(it, method, op->getFirstArg(), op->getOutput().value(), !has_flag(op->decoration, InstructionDecorations::UNSIGNED_RESULT));
+    		it = insertSaturation(it, method, op->getFirstArg(), op->getOutput().value(), !op->hasDecoration(InstructionDecorations::UNSIGNED_RESULT));
     		it.nextInBlock();
     		it.erase();
     	}

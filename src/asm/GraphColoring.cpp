@@ -31,9 +31,9 @@ static void forLocalsUsedTogether(const Local* local, const std::function<void(c
 			continue;
 		if(pair.second.readsLocal())
 		{
-			pair.first->forUsedLocals([local, &func](const Local* l, LocalUser::Type type) -> void
+			pair.first->forUsedLocals([local, &func](const Local* l, LocalUse::Type type) -> void
 			{
-				if(has_flag(type, LocalUser::Type::READER) && l != local)
+				if(has_flag(type, LocalUse::Type::READER) && l != local)
 					func(l);
 			});
 		}
@@ -384,7 +384,7 @@ GraphColoring::GraphColoring(Method& method, InstructionWalker it) : method(meth
 		if(it.get() != nullptr && !it.has<intermediate::Branch>() && !it.has<intermediate::BranchLabel>() && !it.has<intermediate::MemoryBarrier>())
 		{
 			// 1) create entry per local
-			it->forUsedLocals([this, it](const Local* l, const LocalUser::Type type) -> void
+			it->forUsedLocals([this, it](const Local* l, const LocalUse::Type type) -> void
 			{
 				if(localUses.find(l) == localUses.end())
 				{
@@ -396,7 +396,7 @@ GraphColoring::GraphColoring(Method& method, InstructionWalker it) : method(meth
 			// 2) update fixed locals
 			PROFILE(fixLocals, it, localUses, lastWrittenLocal0, lastWrittenLocal1);
 			// 3) update local usage-ranges as well as assign all locals to closed-set or open-set
-			it->forUsedLocals([this, it](const Local* l, const LocalUser::Type type) -> void
+			it->forUsedLocals([this, it](const Local* l, const LocalUse::Type type) -> void
 			{
 				auto& range = localUses.at(l);
 				range.associatedInstructions.insert(it);
@@ -476,7 +476,7 @@ static void walkUsageRange(InstructionWalker start, const Local* local, FastMap<
 					else //neither part reads the local
 						throw CompilationError(CompilationStep::CODE_GENERATION, "Combined operation reads local, but none of its part do", start->to_string());
 				}
-				if(!inst->writesLocal(local) || has_flag(inst->decoration, intermediate::InstructionDecorations::ELEMENT_INSERTION))
+				if(!inst->writesLocal(local) || inst->hasDecoration(intermediate::InstructionDecorations::ELEMENT_INSERTION))
 					return InstructionVisitResult::CONTINUE;
 				if(inst->conditional == COND_ALWAYS || inst->conditional == realStartCondition || inst->conditional.isInversionOf(conditionalWrite))
 					conditionalWrite = COND_ALWAYS;
@@ -485,7 +485,7 @@ static void walkUsageRange(InstructionWalker start, const Local* local, FastMap<
 				if(conditionalWrite == COND_ALWAYS)
 					return InstructionVisitResult::STOP_BRANCH;
 				//TODO to be exact, we would need a check here, if the condition of the PHI-value setter is the same as the branch-condition jumping to the target label
-				if(has_flag(inst->decoration, intermediate::InstructionDecorations::PHI_NODE))
+				if(inst->hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
 					//we found a (conditional) instruction setting this PHI-node value
 					return InstructionVisitResult::STOP_BRANCH;
 				return InstructionVisitResult::CONTINUE;
@@ -579,9 +579,9 @@ void GraphColoring::createGraph()
 		//from all reading instructions, walk up to the writes of the locals and add all instructions in between to the local usage-range
 		if(!it.has<intermediate::BranchLabel>() && !it.has<intermediate::Branch>())
 		{
-			it->forUsedLocals([it, &localRanges, &blockGraph](const Local* local, LocalUser::Type usageType) -> void
+			it->forUsedLocals([it, &localRanges, &blockGraph](const Local* local, LocalUse::Type usageType) -> void
 			{
-				if(has_flag(usageType, LocalUser::Type::READER))
+				if(has_flag(usageType, LocalUse::Type::READER))
 				{
 					PROFILE(walkUsageRange, it, local, localRanges, &blockGraph);
 				}
@@ -802,7 +802,7 @@ static bool moveLocalToRegisterFile(Method& method, ColoredGraph& graph, Colored
 		it.emplace(new intermediate::MoveOperation(tmp, node.key->createReference()));
 		auto tmpUse = localUses.emplace(tmp.local, LocalUsage(it, it)).first->second;
 		it.nextInBlock();
-		it->replaceLocal(node.key, tmp.local, LocalUser::Type::READER);
+		it->replaceLocal(node.key, tmp.local, LocalUse::Type::READER);
 		//4) add temporary to graph (and local usage) with same blocked registers as local, but accumulator as file (since it is read in the next instruction)
 		tmpUse.possibleFiles = RegisterFile::ACCUMULATOR;
 		//XXX or RegisterFile::NONE, since we do not know, if the block come from literals/fixed registers ??

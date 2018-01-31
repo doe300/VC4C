@@ -14,12 +14,14 @@
 
 namespace vc4c
 {
+	class Method;
+
 	/*
-	 * Base-class for all objects (currently only Instructions) using locals.
+	 * Represents a edge between a Local and a LocalUser.
 	 *
-	 * A LocalUser automatically tracks the used locals and provides easy access to them.
+	 * Since a LocalUser can use the same Local "several times" (e.g. uses it as both operands), the number of reads and writes need to be tracked.
 	 */
-	struct LocalUser
+	struct LocalUse
 	{
 		/*
 		 * The type of the local-use
@@ -41,51 +43,6 @@ namespace vc4c
 			BOTH = 3
 		};
 
-		LocalUser() = default;
-		LocalUser(const LocalUser&) = delete;
-		LocalUser(LocalUser&&) = delete;
-		virtual ~LocalUser() = default;
-
-		LocalUser& operator=(const LocalUser&) = delete;
-		LocalUser& operator=(LocalUser&&) = delete;
-
-		/*
-		 * Returns all locals used by this object.
-		 *
-		 * NOTE: This function always assembles a new map-object. For performance-reasons, one of the other accessor-functions should be preferred.
-		 */
-		virtual FastMap<const Local*, Type> getUsedLocals() const = 0;
-		/*
-		 * Executes the given consumer for all locals used by this object.
-		 */
-		virtual void forUsedLocals(const std::function<void(const Local*, LocalUser::Type)>& consumer) const = 0;
-		/*
-		 * Whether this object reads the given local
-		 */
-		virtual bool readsLocal(const Local* local) const;
-		/*
-		 * Whether this object writes to the given local
-		 */
-		virtual bool writesLocal(const Local* local) const;
-		/*
-		 * Replaces all uses of the Local given in oldLocal with the Local in newLocal.
-		 *
-		 * The optional type parameter specifies to e.g. only replace reads or writes of the oldLocal. By default, all accesses are replaced
-		 */
-		virtual void replaceLocal(const Local* oldLocal, const Local* newLocal, Type type = Type::BOTH) = 0;
-
-		virtual std::string to_string() const = 0;
-	};
-
-	class Method;
-
-	/*
-	 * Represents a edge between a Local and a LocalUser.
-	 *
-	 * Since a LocalUser can use the same Local "several times" (e.g. uses it as both operands), the number of reads and writes need to be tracked.
-	 */
-	struct LocalUse
-	{
 		uint32_t numWrites = 0;
 		uint32_t numReads = 0;
 
@@ -139,23 +96,23 @@ namespace vc4c
 		/*
 		 * Returns the users of the given kind (reading or writing) accessing this Local
 		 */
-		FastSet<const LocalUser*> getUsers(LocalUser::Type type) const;
+		FastSet<const LocalUser*> getUsers(LocalUse::Type type) const;
 		/*
 		 * Executes the consumer for all users of the type specified
 		 */
-		void forUsers(const LocalUser::Type type, const std::function<void(const LocalUser*)>& consumer) const;
+		void forUsers(const LocalUse::Type type, const std::function<void(const LocalUser*)>& consumer) const;
 		/*
 		 * Removes an instance of use for the given user and usage-type.
 		 *
 		 * If a user e.g. reads a Local several times, it needs to be removed as reader the correct number of times to be completely removed as reader.
 		 */
-		void removeUser(const LocalUser& user, LocalUser::Type type);
+		void removeUser(const LocalUser& user, LocalUse::Type type);
 		/*
 		 * Adds an instance of use for the given user and usage-type.
 		 *
 		 * A usage needs to be added the correct times the local is actually read (e.g. twice as reader when used in both operands and once as writer when also written to)
 		 */
-		void addUser(const LocalUser& user, LocalUser::Type type);
+		void addUser(const LocalUser& user, LocalUse::Type type);
 		/*
 		 * Returns the only instruction writing to this local, if there is exactly one
 		 */

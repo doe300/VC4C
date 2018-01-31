@@ -508,6 +508,11 @@ namespace vc4c
 	};
 
 	class Local;
+	namespace intermediate
+	{
+		class IntermediateInstruction;
+	};
+	using LocalUser = intermediate::IntermediateInstruction;
 
 	/*
 	 * The main type representing all values being operated on
@@ -624,6 +629,11 @@ namespace vc4c
 		 */
 		const Value& assertReadable() const;
 		Value& assertReadable();
+
+		/*
+		 * Wrapper for Local#getSingleWriter() for easier access
+		 */
+		const LocalUser* getSingleWriter() const;
 
 		/*
 		 * Creates a zero-initializer Value for the given data-type.

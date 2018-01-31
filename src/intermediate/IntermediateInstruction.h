@@ -78,17 +78,22 @@ namespace vc4c
 		 * Converted to QPU instructions,
 		 * but still with method-calls and typed locals
 		 */
-		class IntermediateInstruction : public LocalUser
+		class IntermediateInstruction
 		{
 		public:
 			explicit IntermediateInstruction(Optional<Value> output = { }, ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET, Pack packMode = PACK_NOP);
-			~IntermediateInstruction() override;
+			IntermediateInstruction(const IntermediateInstruction&) = delete;
+			IntermediateInstruction(IntermediateInstruction&&) noexcept = delete;
+			virtual ~IntermediateInstruction();
 
-			FastMap<const Local*, LocalUser::Type> getUsedLocals() const override;
-			void forUsedLocals(const std::function<void(const Local*, LocalUser::Type)>& consumer) const override;
-			bool readsLocal(const Local* local) const override;
-			bool writesLocal(const Local* local) const override;
-			void replaceLocal(const Local* oldLocal, const Local* newLocal, Type type) override;
+			IntermediateInstruction& operator=(const IntermediateInstruction&) = delete;
+			IntermediateInstruction& operator=(IntermediateInstruction&&) = delete;
+
+			virtual FastMap<const Local*, LocalUse::Type> getUsedLocals() const;
+			virtual void forUsedLocals(const std::function<void(const Local*, LocalUse::Type)>& consumer) const;
+			virtual bool readsLocal(const Local* local) const;
+			virtual bool writesLocal(const Local* local) const;
+			virtual void replaceLocal(const Local* oldLocal, const Local* newLocal, LocalUse::Type type = LocalUse::Type::BOTH);
 
 			/*
 			 * Whether this instructions reads the given register
@@ -103,6 +108,7 @@ namespace vc4c
 			 */
 			bool readsLiteral() const;
 
+			virtual std::string to_string() const = 0;
 			/*
 			 * Copies this instruction for the given method, renaming all locals by appending the local-prefix specified
 			 *
@@ -147,6 +153,7 @@ namespace vc4c
 			IntermediateInstruction* setSetFlags(SetFlag setFlags);
 			IntermediateInstruction* setUnpackMode(Unpack unpackMode);
 			IntermediateInstruction* addDecorations(InstructionDecorations decorations);
+			bool hasDecoration(InstructionDecorations deco) const;
 
 			/*
 			 * Whether this instruction has any side-effects.
@@ -203,8 +210,8 @@ namespace vc4c
 			Optional<Value> output;
 			std::vector<Value> arguments;
 
-			void removeAsUserFromValue(const Value& value, LocalUser::Type type);
-			void addAsUserToValue(const Value& value, LocalUser::Type type);
+			void removeAsUserFromValue(const Value& value, LocalUse::Type type);
+			void addAsUserToValue(const Value& value, LocalUse::Type type);
 		};
 
 		struct CombinedOperation;
@@ -402,11 +409,11 @@ namespace vc4c
 			CombinedOperation(Operation* op1, Operation* op2);
 			~CombinedOperation() override = default;
 
-			FastMap<const Local*, LocalUser::Type> getUsedLocals() const override;
-			void forUsedLocals(const std::function<void(const Local*, LocalUser::Type)>& consumer) const override;
+			FastMap<const Local*, LocalUse::Type> getUsedLocals() const override;
+			void forUsedLocals(const std::function<void(const Local*, LocalUse::Type)>& consumer) const override;
 			bool readsLocal(const Local* local) const override;
 			bool writesLocal(const Local* local) const override;
-			void replaceLocal(const Local* oldLocal, const Local* newLocal, Type type) override;
+			void replaceLocal(const Local* oldLocal, const Local* newLocal, LocalUse::Type type) override;
 
 			std::string to_string() const override;
 

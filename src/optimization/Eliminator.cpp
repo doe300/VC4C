@@ -45,7 +45,7 @@ void optimizations::eliminateDeadStore(const Module& module, Method& method, con
                 {
                     //b) never read at all
                 	//must check from the start, because in SPIR-V, locals can be read before they are written to (e.g. in phi-node and branch backwards)
-                    bool isRead = !dest->getUsers(LocalUser::Type::READER).empty();
+                    bool isRead = !dest->getUsers(LocalUse::Type::READER).empty();
                     if(!isRead)
                     {
                         logging::debug() << "Removing instruction " << instr->to_string() << ", since its output is never read" << logging::endl;
@@ -67,22 +67,22 @@ void optimizations::eliminateDeadStore(const Module& module, Method& method, con
 					const Local* inLoc = move->getSource().local;
 					const Local* outLoc = move->getOutput()->local;
 					//for instruction added by phi-elimination, the result could have been written to (with a different source) previously, so check
-					bool isWrittenTo = !outLoc->getUsers(LocalUser::Type::WRITER).empty();
+					bool isWrittenTo = !outLoc->getUsers(LocalUse::Type::WRITER).empty();
 					if(!isWrittenTo && inLoc->type == outLoc->type)
 					{
 						//TODO what if both locals are written before (and used differently), possible??
 						logging::debug() << "Merging locals " << inLoc->to_string() << " and " <<  outLoc->to_string() << " since they contain the same value" << logging::endl;
-						outLoc->forUsers(LocalUser::Type::READER, [inLoc, outLoc](const LocalUser* instr) -> void
+						outLoc->forUsers(LocalUse::Type::READER, [inLoc, outLoc](const LocalUser* instr) -> void
 						{
 							//change outLoc to inLoc
 							bool outLocFound = false;
-							for(std::size_t i = 0; i< dynamic_cast<const intermediate::IntermediateInstruction*>(instr)->getArguments().size(); ++i)
+							for(std::size_t i = 0; i< instr->getArguments().size(); ++i)
 							{
-								Value tmp = dynamic_cast<const intermediate::IntermediateInstruction*>(instr)->getArgument(i).value();
+								Value tmp = instr->getArgument(i).value();
 								if(tmp.hasLocal(outLoc))
 								{
 									tmp = Value(inLoc, tmp.type);
-									dynamic_cast<intermediate::IntermediateInstruction*>(const_cast<LocalUser*>(instr))->setArgument(i, tmp);
+									const_cast<LocalUser*>(instr)->setArgument(i, tmp);
 									outLocFound = true;
 								}
 							}
@@ -140,34 +140,37 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 			}
 			else    //writes to another local -> can be replaced with move
 			{
-				//TODO improve be pre-calculating first and second arguments
+				//improve by pre-calculating first and second arguments
+				const Value firstArg = (op->getFirstArg().getSingleWriter() != nullptr ? op->getFirstArg().getSingleWriter()->precalculate(3) : NO_VALUE).value_or(op->getFirstArg());
+				const Optional<Value> secondArg = (op->getSecondArg() && op->getSecondArg()->getSingleWriter() != nullptr ? op->getSecondArg()->getSingleWriter()->precalculate(3) : NO_VALUE).orOther(op->getSecondArg());
+
 				Optional<Value> rightIdentity = OpCode::getRightIdentity(op->op);
 				Optional<Value> leftIdentity = OpCode::getLeftIdentity(op->op);
 				Optional<Value> rightAbsordbing = OpCode::getRightAbsorbingElement(op->op);
 				Optional<Value> leftAbsorbing = OpCode::getLeftAbsorbingElement(op->op);
 				//check whether second argument exists and does nothing
-				if(rightIdentity && op->getSecondArg() && op->getSecondArg()->hasLiteral(rightIdentity->literal))
+				if(rightIdentity && secondArg && secondArg->hasLiteral(rightIdentity->literal))
 				{
 					logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
-					it.reset(new intermediate::MoveOperation(op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags));
+					it.reset(new intermediate::MoveOperation(op->getOutput().value(), firstArg, op->conditional, op->setFlags));
 				}
 				//check whether first argument does nothing
-				else if(leftIdentity && op->getSecondArg() && op->getFirstArg().hasLiteral(leftIdentity->literal))
+				else if(leftIdentity && secondArg && firstArg.hasLiteral(leftIdentity->literal))
 				{
 					logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
-					it.reset(new intermediate::MoveOperation(op->getOutput().value(), op->getSecondArg().value(), op->conditional, op->setFlags));
+					it.reset(new intermediate::MoveOperation(op->getOutput().value(), secondArg.value(), op->conditional, op->setFlags));
 				}
 				//check whether the first element is the absorbing element
-				else if(leftAbsorbing && op->getFirstArg().hasLiteral(leftAbsorbing->getLiteralValue().value()))
+				else if(leftAbsorbing && firstArg.hasLiteral(leftAbsorbing->getLiteralValue().value()))
 				{
 					logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
-					it.reset(new intermediate::MoveOperation(op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags));
+					it.reset(new intermediate::MoveOperation(op->getOutput().value(), firstArg, op->conditional, op->setFlags));
 				}
 				//check whether the second element absorbs the result
-				else if(rightAbsordbing && op->getSecondArg() && op->getSecondArg()->hasLiteral(rightAbsordbing->getLiteralValue().value()))
+				else if(rightAbsordbing && secondArg && secondArg->hasLiteral(rightAbsordbing->getLiteralValue().value()))
 				{
 					logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
-					it.reset(new intermediate::MoveOperation(op->getOutput().value(), op->getSecondArg().value(), op->conditional, op->setFlags));
+					it.reset(new intermediate::MoveOperation(op->getOutput().value(), secondArg.value(), op->conditional, op->setFlags));
 				}
 			}
 		}
@@ -196,7 +199,7 @@ InstructionWalker optimizations::eliminateUselessBranch(const Module& module, Me
 	{
 		//eliminate branches to the next instruction, such branches are e.g. introduced by method-inlining
 		auto nextIt = it.copy().nextInMethod();
-		//FIXME removing conditional branches to next instruction hangs QPU (e.g. because of successive PHI-writes?)
+		//FIXME removing conditional branches to next instruction hangs QPU (e.g. because of successive PHI-writes not being skipped?)
 //		while(!nextIt.isEndOfMethod())
 		if(!nextIt.isEndOfMethod())
 		{

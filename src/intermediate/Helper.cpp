@@ -243,7 +243,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     }
     
     //zero out destination first, also required so register allocator finds unconditional write to destination
-    if(destination.hasType(ValueType::LOCAL) && destination.local->getUsers(LocalUser::Type::WRITER).empty())
+    if(destination.hasType(ValueType::LOCAL) && destination.local->getUsers(LocalUse::Type::WRITER).empty())
     {
 		it.emplace(new intermediate::MoveOperation(destination, INT_ZERO));
 		it.nextInBlock();
@@ -290,7 +290,7 @@ InstructionWalker intermediate::insertMakePositive(InstructionWalker it, Method&
 			writeIsNegative.container.elements.push_back(isNegative ? INT_MINUS_ONE : INT_ZERO);
 		}
 	}
-	else if(src.hasType(ValueType::LOCAL) && src.local->getSingleWriter() != nullptr && has_flag(dynamic_cast<const IntermediateInstruction*>(src.local->getSingleWriter())->decoration, InstructionDecorations::UNSIGNED_RESULT))
+	else if(src.getSingleWriter() != nullptr && src.getSingleWriter()->hasDecoration(InstructionDecorations::UNSIGNED_RESULT))
 	{
 		//the value is already unsigned
 		dest = src;

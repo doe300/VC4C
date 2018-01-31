@@ -565,7 +565,7 @@ void optimizations::combineLoadingLiterals(const Module& module, Method& method,
 		InstructionWalker it = block.begin();
 		while(!it.isEndOfBlock())
 		{
-			if(it->hasValueType(ValueType::LOCAL) && it->getOutput()->local->getUsers(LocalUser::Type::WRITER).size() == 1 && block.isLocallyLimited(it, it->getOutput()->local))
+			if(it->hasValueType(ValueType::LOCAL) && it->getOutput()->local->getUsers(LocalUse::Type::WRITER).size() == 1 && block.isLocallyLimited(it, it->getOutput()->local))
 			{
 				Optional<Literal> literal = getSourceLiteral(it);
 				if(literal)
@@ -576,7 +576,7 @@ void optimizations::combineLoadingLiterals(const Module& module, Method& method,
 						Local* newLocal = lastLoadImmediate.at(literal->integer)->getOutput()->local;
 						logging::debug() << "Removing duplicate loading of local: " << it->to_string() << logging::endl;
 						//Local#forUsers can't be used here, since we modify the list of users via LocalUser#replaceLocal
-						FastSet<const LocalUser*> readers = oldLocal->getUsers(LocalUser::Type::READER);
+						FastSet<const LocalUser*> readers = oldLocal->getUsers(LocalUse::Type::READER);
 						for(const LocalUser* reader : readers)
 						{
 							const_cast<LocalUser*>(reader)->replaceLocal(oldLocal, newLocal);
@@ -665,7 +665,7 @@ void optimizations::combineVectorRotations(const Module& module, Method& method,
 				VectorRotation* rot = it.get<VectorRotation>();
 				if(rot->getSource().hasType(ValueType::LOCAL) && rot->getOffset().hasType(ValueType::SMALL_IMMEDIATE) && rot->getOffset().immediate != VECTOR_ROTATE_R5)
 				{
-					const LocalUser* writer = rot->getSource().local->getSingleWriter();
+					const LocalUser* writer = rot->getSource().getSingleWriter();
 					if(writer != nullptr)
 					{
 						const VectorRotation* firstRot = dynamic_cast<const VectorRotation*>(writer);

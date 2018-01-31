@@ -690,6 +690,13 @@ Value& Value::assertReadable()
 	throw CompilationError(CompilationStep::GENERAL, "Cannot read from a write-only value", to_string(false));
 }
 
+const LocalUser* Value::getSingleWriter() const
+{
+	if(valueType == ValueType::LOCAL)
+		return local->getSingleWriter();
+	return nullptr;
+}
+
 Value Value::createZeroInitializer(const DataType& type)
 {
 	if(type.isScalarType() || type.getPointerType())

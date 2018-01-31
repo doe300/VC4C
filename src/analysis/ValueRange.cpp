@@ -187,14 +187,14 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 			const Operation* op = it.get<Operation>();
 
 			//values set by built-ins
-			if(has_flag(it->decoration, InstructionDecorations::BUILTIN_GLOBAL_ID) || has_flag(it->decoration, InstructionDecorations::BUILTIN_GLOBAL_OFFSET)
-					|| has_flag(it->decoration, InstructionDecorations::BUILTIN_GLOBAL_SIZE) || has_flag(it->decoration, InstructionDecorations::BUILTIN_GROUP_ID)
-					|| has_flag(it->decoration, InstructionDecorations::BUILTIN_NUM_GROUPS))
+			if(it->hasDecoration(InstructionDecorations::BUILTIN_GLOBAL_ID) || it->hasDecoration(InstructionDecorations::BUILTIN_GLOBAL_OFFSET)
+					|| it->hasDecoration(InstructionDecorations::BUILTIN_GLOBAL_SIZE) || it->hasDecoration(InstructionDecorations::BUILTIN_GROUP_ID)
+					|| it->hasDecoration(InstructionDecorations::BUILTIN_NUM_GROUPS))
 			{
 				//is always positive
 				range.extendBoundaries(static_cast<int64_t>(0), std::numeric_limits<uint32_t>::max());
 			}
-			else if(has_flag(it->decoration, InstructionDecorations::BUILTIN_LOCAL_ID))
+			else if(it->hasDecoration(InstructionDecorations::BUILTIN_LOCAL_ID))
 			{
 				int64_t maxID = 0;
 				if(method.metaData.isWorkGroupSizeSet())
@@ -205,7 +205,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 					maxID = 11;
 				range.extendBoundaries(0l, maxID);
 			}
-			else if(has_flag(it->decoration, InstructionDecorations::BUILTIN_LOCAL_SIZE))
+			else if(it->hasDecoration(InstructionDecorations::BUILTIN_LOCAL_SIZE))
 			{
 				int64_t maxSize = 0;
 				if(method.metaData.isWorkGroupSizeSet())
@@ -216,7 +216,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 					maxSize = 12;
 				range.extendBoundaries(0l, maxSize);
 			}
-			else if(has_flag(it->decoration, InstructionDecorations::BUILTIN_WORK_DIMENSIONS))
+			else if(it->hasDecoration(InstructionDecorations::BUILTIN_WORK_DIMENSIONS))
 			{
 				range.extendBoundaries(static_cast<int64_t>(1), static_cast<int64_t>(3));
 			}
@@ -325,7 +325,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 			//general case for operations, only works if the used locals are only written once (otherwise, their range could change afterwards!)
 			else if(op && !it->getArguments().empty() && (op->op == OP_ADD || op->op == OP_AND || op->op == OP_FADD || op->op == OP_FMAX || op->op == OP_FMAXABS || op->op == OP_FMIN || op->op == OP_FMINABS || op->op == OP_FMUL || op->op == OP_FSUB ||
 					op->op == OP_ITOF || op->op == OP_MAX || op->op == OP_MIN || op->op == OP_MUL24 || op->op == OP_SHR || op->op == OP_SUB) &&
-					std::all_of(it->getArguments().begin(), it->getArguments().end(), [](const Value& arg) -> bool { return arg.isLiteralValue() || (arg.hasType(ValueType::LOCAL) && arg.local->getSingleWriter() != nullptr);}))
+					std::all_of(it->getArguments().begin(), it->getArguments().end(), [](const Value& arg) -> bool { return arg.isLiteralValue() || (arg.getSingleWriter() != nullptr);}))
 			{
 				/*
 				 * We have an operation (with a valid op-code) where all operands are either constants or locals which are written only once before
@@ -407,12 +407,12 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 				}
 				else
 					//failed to pre-calculate the bounds
-					range.extendBoundariesToUnknown(isUnsignedType(it->getOutput()->type) || has_flag(it->decoration, InstructionDecorations::UNSIGNED_RESULT));
+					range.extendBoundariesToUnknown(isUnsignedType(it->getOutput()->type) || it->hasDecoration(InstructionDecorations::UNSIGNED_RESULT));
 			}
 			else
 			{
 				//any other operation, set to min/max?
-				range.extendBoundariesToUnknown(isUnsignedType(it->getOutput()->type) || has_flag(it->decoration, InstructionDecorations::UNSIGNED_RESULT));
+				range.extendBoundariesToUnknown(isUnsignedType(it->getOutput()->type) || it->hasDecoration(InstructionDecorations::UNSIGNED_RESULT));
 			}
 		}
 

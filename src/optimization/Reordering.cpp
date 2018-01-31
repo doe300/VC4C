@@ -358,7 +358,7 @@ InstructionWalker optimizations::moveRotationSourcesToAccumulators(const Module&
 			logging::debug() << "Moving source of vector-rotation to temporary for: " << it->to_string() << logging::endl;
 			const Value tmp = method.addNewLocal(loc->type, "%vector_rotation");
 			mapper.emplace(new MoveOperation(tmp, loc->createReference()));
-			it->replaceLocal(loc, tmp.local, LocalUser::Type::READER);
+			it->replaceLocal(loc, tmp.local, LocalUse::Type::READER);
 			return writer;
 		}
 	}

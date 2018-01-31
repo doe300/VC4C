@@ -482,15 +482,15 @@ CombinedOperation::CombinedOperation(Operation* op1, Operation* op2) : Intermedi
 	op2->parent = this;
 }
 
-FastMap<const Local*, LocalUser::Type> CombinedOperation::getUsedLocals() const
+FastMap<const Local*, LocalUse::Type> CombinedOperation::getUsedLocals() const
 {
-	FastMap<const Local*, LocalUser::Type> res = op1 != nullptr ? op1->getUsedLocals() : FastMap<const Local*, LocalUser::Type>{};
-	const FastMap<const Local*, LocalUser::Type> tmp = op2 != nullptr ? op2->getUsedLocals() : FastMap<const Local*, LocalUser::Type>{};
+	FastMap<const Local*, LocalUse::Type> res = op1 != nullptr ? op1->getUsedLocals() : FastMap<const Local*, LocalUse::Type>{};
+	const FastMap<const Local*, LocalUse::Type> tmp = op2 != nullptr ? op2->getUsedLocals() : FastMap<const Local*, LocalUse::Type>{};
 	res.insert(tmp.begin(), tmp.end());
 	return res;
 }
 
-void CombinedOperation::forUsedLocals(const std::function<void(const Local*, LocalUser::Type)>& consumer) const
+void CombinedOperation::forUsedLocals(const std::function<void(const Local*, LocalUse::Type)>& consumer) const
 {
 	if(op1)
 		op1->forUsedLocals(consumer);
@@ -508,7 +508,7 @@ bool CombinedOperation::writesLocal(const Local* local) const
 	return (op1 && op1->writesLocal(local)) || (op2 && op2->writesLocal(local));
 }
 
-void CombinedOperation::replaceLocal(const Local* oldLocal, const Local* newLocal, const Type type)
+void CombinedOperation::replaceLocal(const Local* oldLocal, const Local* newLocal, const LocalUse::Type type)
 {
 	op1->replaceLocal(oldLocal, newLocal, type);
 	op2->replaceLocal(oldLocal, newLocal, type);

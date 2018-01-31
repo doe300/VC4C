@@ -179,10 +179,10 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 
 		for(const auto& pair : local->getUsers())
 		{
-			const intermediate::IntermediateInstruction* inst = dynamic_cast<const intermediate::IntermediateInstruction*>(pair.first);
+			const intermediate::IntermediateInstruction* inst = pair.first;
 			Optional<InstructionWalker> it = loop.findInLoop(inst);
 			//"lower" bound: the initial setting of the value outside of the loop
-			if(pair.second.writesLocal() && has_flag(inst->decoration, intermediate::InstructionDecorations::PHI_NODE) && !it)
+			if(pair.second.writesLocal() && inst->hasDecoration(intermediate::InstructionDecorations::PHI_NODE) && !it)
 			{
 				auto tmp = inst->precalculate(4);
 				if(tmp.ifPresent(toFunction(&Value::isLiteralValue)))
@@ -197,7 +197,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 			{
 				if(it->has<intermediate::Operation>() && it.value()->getArguments().size() == 2 && it.value()->readsLiteral() &&
 						//TODO could here more simply check against output being the local the iteration variable is set to (in the phi-node inside the loop)
-						it.value()->getOutput().ifPresent([](const Value& val) -> bool { return val.hasType(ValueType::LOCAL) && std::any_of(val.local->getUsers().begin(), val.local->getUsers().end(), [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {return has_flag(dynamic_cast<const intermediate::IntermediateInstruction*>(pair.first)->decoration, intermediate::InstructionDecorations::PHI_NODE);});}))
+						it.value()->getOutput().ifPresent([](const Value& val) -> bool { return val.hasType(ValueType::LOCAL) && std::any_of(val.local->getUsers().begin(), val.local->getUsers().end(), [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {return pair.first->hasDecoration(intermediate::InstructionDecorations::PHI_NODE);});}))
 				{
 					logging::debug() << "Found iteration instruction: " << it.value()->to_string() << logging::endl;
 					loopControl.iterationStep = it;
@@ -210,13 +210,13 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 					const Local* stepLocal = it.value()->getOutput()->local;
 					for(const auto& pair : stepLocal->getUsers())
 					{
-						const intermediate::IntermediateInstruction* inst = dynamic_cast<const intermediate::IntermediateInstruction*>(pair.first);
+						const intermediate::IntermediateInstruction* inst = pair.first;
 						Optional<InstructionWalker> it = loop.findInLoop(inst);
 						//iteration step: the instruction inside the loop where the iteration variable is changed
 						if(pair.second.readsLocal() && it)
 						{
 							if(it->has<intermediate::Operation>() && it.value()->getArguments().size() == 2 && it.value()->readsLiteral() &&
-									it.value()->getOutput().ifPresent([](const Value& val) -> bool { return val.hasType(ValueType::LOCAL) && std::any_of(val.local->getUsers().begin(), val.local->getUsers().end(), [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {return has_flag(dynamic_cast<const intermediate::IntermediateInstruction*>(pair.first)->decoration, intermediate::InstructionDecorations::PHI_NODE);});}))
+									it.value()->getOutput().ifPresent([](const Value& val) -> bool { return val.hasType(ValueType::LOCAL) && std::any_of(val.local->getUsers().begin(), val.local->getUsers().end(), [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {return pair.first->hasDecoration(intermediate::InstructionDecorations::PHI_NODE);});}))
 							{
 								logging::debug() << "Found iteration instruction: " << it.value()->to_string() << logging::endl;
 								loopControl.iterationStep = it;
@@ -255,12 +255,12 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 			{
 				//"default" case, the iteration-variable is compared to something and the result of this comparison is used to branch
 				//e.g. "- = xor <iteration-variable>, <upper-bound> (setf)"
-				userIt = std::find_if(iterationStep.local->getUsers().begin(), iterationStep.local->getUsers().end(), [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool { return dynamic_cast<const intermediate::IntermediateInstruction*>(pair.first)->setFlags == SetFlag::SET_FLAGS;});
+				userIt = std::find_if(iterationStep.local->getUsers().begin(), iterationStep.local->getUsers().end(), [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool { return pair.first->setFlags == SetFlag::SET_FLAGS;});
 				if(userIt != iterationStep.local->getUsers().end())
 				{
 					//TODO need to check, whether the comparison result is the one used for branching
 					//if not, set userIt to loop.end()
-					auto instIt = loop.findInLoop(dynamic_cast<const intermediate::IntermediateInstruction*>(userIt->first));
+					auto instIt = loop.findInLoop(userIt->first);
 					loopControl.comparisonInstruction = instIt;
 					logging::debug() << "Found loop continue condition: " << loopControl.comparisonInstruction.value()->to_string() << logging::endl;
 				}
@@ -274,7 +274,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 			if(userIt != iterationStep.local->getUsers().end())
 			{
 				//userIt converts the loop-variable to the condition. The comparison value is the upper bound
-				const intermediate::IntermediateInstruction* inst = dynamic_cast<const intermediate::IntermediateInstruction*>(userIt->first);
+				const intermediate::IntermediateInstruction* inst = userIt->first;
 				if(inst->getArguments().size() != 2)
 				{
 					//TODO error
@@ -283,9 +283,9 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 					loopControl.terminatingValue = inst->getArgument(1).value();
 				else
 					loopControl.terminatingValue = inst->getArgument(0).value();
-				if(loopControl.terminatingValue.hasType(ValueType::LOCAL) && loopControl.terminatingValue.local->getSingleWriter() != nullptr)
+				if(loopControl.terminatingValue.getSingleWriter() != nullptr)
 				{
-					auto tmp = dynamic_cast<const intermediate::IntermediateInstruction*>(loopControl.terminatingValue.local->getSingleWriter())->precalculate(4);
+					auto tmp = loopControl.terminatingValue.getSingleWriter()->precalculate(4);
 					if(tmp.ifPresent(toFunction(&Value::isLiteralValue)))
 						loopControl.terminatingValue = tmp.value();
 				}
@@ -467,10 +467,10 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const LoopContr
 
 static void scheduleForVectorization(const Local* local, FastSet<intermediate::IntermediateInstruction*>& openInstructions, ControlFlowLoop& loop)
 {
-	local->forUsers(LocalUser::Type::READER, [&openInstructions, &loop](const LocalUser* user) -> void
+	local->forUsers(LocalUse::Type::READER, [&openInstructions, &loop](const LocalUser* user) -> void
 	{
-		intermediate::IntermediateInstruction* inst = dynamic_cast<intermediate::IntermediateInstruction*>(const_cast<LocalUser*>(user));
-		if(!has_flag(inst->decoration, intermediate::InstructionDecorations::AUTO_VECTORIZED))
+		intermediate::IntermediateInstruction* inst = const_cast<intermediate::IntermediateInstruction*>(user);
+		if(!inst->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
 			openInstructions.emplace(inst);
 		if(inst->getOutput().ifPresent([](const Value& out) -> bool { return out.hasType(ValueType::REGISTER) && (out.reg.isSpecialFunctionsUnit() || out.reg.isTextureMemoryUnit());}))
 		{
@@ -481,7 +481,7 @@ static void scheduleForVectorization(const Local* local, FastSet<intermediate::I
 				InstructionWalker it = optIt.value().nextInBlock();
 				while(!it.isEndOfBlock())
 				{
-					if(it->readsRegister(REG_SFU_OUT) && !has_flag(it->decoration, intermediate::InstructionDecorations::AUTO_VECTORIZED))
+					if(it->readsRegister(REG_SFU_OUT) && !it->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
 					{
 						openInstructions.emplace(it.get());
 						break;
@@ -547,7 +547,7 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
 		{
 			periphery::VPWSetupWrapper vpwSetup(it.get<intermediate::LoadImmediate>());
 			auto vpmWrite = periphery::findRelatedVPMInstructions(it, false).vpmAccess;
-			if(vpwSetup.isDMASetup() && vpmWrite && has_flag((*vpmWrite)->decoration, intermediate::InstructionDecorations::AUTO_VECTORIZED))
+			if(vpwSetup.isDMASetup() && vpmWrite && (*vpmWrite)->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
 			{
 				//Since this is only true for values actually vectorized, the corresponding VPM-write is checked
 				vpwSetup.dmaSetup.setDepth(static_cast<uint8_t>(vpwSetup.dmaSetup.getDepth() * loopControl.vectorizationFactor));
@@ -559,7 +559,7 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
 		{
 			periphery::VPRSetupWrapper vprSetup(it.get<intermediate::LoadImmediate>());
 			auto vpmRead = periphery::findRelatedVPMInstructions(it, true).vpmAccess;
-			if(vprSetup.isDMASetup() && vpmRead && has_flag((*vpmRead)->decoration, intermediate::InstructionDecorations::AUTO_VECTORIZED))
+			if(vprSetup.isDMASetup() && vpmRead && (*vpmRead)->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
 			{
 				//See VPM write
 				vprSetup.dmaSetup.setRowLength((vprSetup.dmaSetup.getRowLength() * loopControl.vectorizationFactor) % 16 /* 0 => 16 */);
@@ -756,9 +756,9 @@ void optimizations::extendBranches(const Module& module, Method& method, const C
 				//but we need to check more than the last instructions, since there could be moves inserted by phi
 
 				//skip setting of flags, if the previous setting wrote the same flags
-				if(lastSetFlags.first != branch->getCondition() || has_flag(branch->decoration, intermediate::InstructionDecorations::BRANCH_ON_ALL_ELEMENTS) != has_flag(lastSetFlags.second, intermediate::InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
+				if(lastSetFlags.first != branch->getCondition() || branch->hasDecoration(intermediate::InstructionDecorations::BRANCH_ON_ALL_ELEMENTS) != has_flag(lastSetFlags.second, intermediate::InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
 				{
-					if(has_flag(branch->decoration, intermediate::InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
+					if(branch->hasDecoration(intermediate::InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
 						it.emplace(new intermediate::Operation(OP_OR, NOP_REGISTER, branch->getCondition(), branch->getCondition(), COND_ALWAYS, SetFlag::SET_FLAGS));
 					else
 						it.emplace(new intermediate::Operation(OP_OR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, branch->getCondition(), COND_ALWAYS, SetFlag::SET_FLAGS));

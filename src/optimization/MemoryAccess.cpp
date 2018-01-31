@@ -39,10 +39,10 @@ static BaseAndOffset findOffset(const Value& val)
 {
 	if(!val.hasType(ValueType::LOCAL))
 		return BaseAndOffset();
-	const LocalUser* writer = val.local->getSingleWriter();
-	if(dynamic_cast<const IntermediateInstruction*>(writer) != nullptr)
+	const LocalUser* writer = val.getSingleWriter();
+	if(writer != nullptr)
 	{
-		const Optional<Value> offset =  dynamic_cast<const IntermediateInstruction*>(writer)->precalculate(8);
+		const Optional<Value> offset = writer->precalculate(8);
 		if(offset.ifPresent(toFunction(&Value::isLiteralValue)))
 		{
 			return BaseAndOffset(NO_VALUE, offset->getLiteralValue()->integer, offset->getLiteralValue()->integer);
@@ -68,7 +68,7 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 	if(val.local->reference.first != nullptr && val.local->reference.second != ANY_ELEMENT)
 		return BaseAndOffset(val.local->reference.first->createReference(), static_cast<int64_t>(val.local->reference.second));
 
-	const auto writers = val.local->getUsers(LocalUser::Type::WRITER);
+	const auto writers = val.local->getUsers(LocalUse::Type::WRITER);
 	if(writers.size() != 1)
 		return BaseAndOffset();
 
@@ -76,7 +76,7 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 	//1. a move from another local -> need to follow the move
 	if(dynamic_cast<const MoveOperation*>(*writers.begin()) != nullptr)
 		return findBaseAndOffset(dynamic_cast<const MoveOperation*>(*writers.begin())->getSource());
-	const auto& args = dynamic_cast<const IntermediateInstruction*>(*writers.begin())->getArguments();
+	const auto& args = (*writers.begin())->getArguments();
 	//2. an arithmetic operation with a local and a literal -> the local is the base, the literal the offset
 	if(args.size() == 2 && std::any_of(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.hasType(ValueType::LOCAL);}) && std::any_of(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.getLiteralValue().has_value();}))
 	{
@@ -489,8 +489,8 @@ void optimizations::spillLocals(const Module& module, Method& method, const Conf
 		//or maybe never (not yet), e.g. for hidden parameter
 		//or written several times but read only once
 		//TODO also include explicit parameters
-		auto numWrites = pair.second.getUsers(LocalUser::Type::WRITER).size();
-		auto numReads = pair.second.getUsers(LocalUser::Type::READER).size();
+		auto numWrites = pair.second.getUsers(LocalUse::Type::WRITER).size();
+		auto numReads = pair.second.getUsers(LocalUse::Type::READER).size();
 		if((numWrites <= 1 && numReads > 0) || (numWrites >= 1 && numReads == 1))
 		{
 			spillingCandidates.emplace(&pair.second, InstructionWalker{});
@@ -526,7 +526,7 @@ void optimizations::spillLocals(const Module& module, Method& method, const Conf
 
 	for(const auto& pair : spillingCandidates)
 	{
-		logging::debug() << "Spilling candidate: " << pair.first->to_string() << " (" << pair.first->getUsers(LocalUser::Type::WRITER).size() << " writes, " << pair.first->getUsers(LocalUser::Type::READER).size() << " reads)" << logging::endl;
+		logging::debug() << "Spilling candidate: " << pair.first->to_string() << " (" << pair.first->getUsers(LocalUse::Type::WRITER).size() << " writes, " << pair.first->getUsers(LocalUse::Type::READER).size() << " reads)" << logging::endl;
 	}
 
 	//TODO do not preemptively spill, only on register conflicts. Which case??
@@ -610,11 +610,11 @@ static InstructionWalker calculateInAreaOffset(Method& method, InstructionWalker
 		//fixed element offset
 		//is offset in elements, not bytes -> so convert to byte-offset
 		inAreaOffset = Value(Literal(static_cast<int64_t>(index.local->reference.second * baseAddress->type.getElementType().getPhysicalWidth())), TYPE_INT32);
-	else if(index.hasType(ValueType::LOCAL) && index.local->getSingleWriter() != nullptr && dynamic_cast<const IntermediateInstruction*>(index.local->getSingleWriter())->readsLocal(baseAddress))
+	else if(index.getSingleWriter() != nullptr && index.getSingleWriter()->readsLocal(baseAddress))
 	{
 		//index is directly calculated from base-address
-		const Operation* op = dynamic_cast<const Operation*>(index.local->getSingleWriter());
-		const MoveOperation* move = dynamic_cast<const MoveOperation*>(index.local->getSingleWriter());
+		const Operation* op = dynamic_cast<const Operation*>(index.getSingleWriter());
+		const MoveOperation* move = dynamic_cast<const MoveOperation*>(index.getSingleWriter());
 		if(op != nullptr && op->op == OP_ADD)
 		{
 			//index = base-address + something -> offset = something
@@ -629,7 +629,7 @@ static InstructionWalker calculateInAreaOffset(Method& method, InstructionWalker
 			inAreaOffset = INT_ZERO;
 		}
 		else
-			throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled case of in-area offset calculation", index.local->getSingleWriter()->to_string());
+			throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled case of in-area offset calculation", index.getSingleWriter()->to_string());
 	}
 	else
 	{

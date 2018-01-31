@@ -368,7 +368,7 @@ InstructionWalker intermediate::insertIsNegative(InstructionWalker it, const Val
 				throw CompilationError(CompilationStep::OPTIMIZER, "Can't handle container with non-literal values", src.to_string(false, true));
 		}
 	}
-	else if(src.hasType(ValueType::LOCAL) && src.local->getSingleWriter() != nullptr && has_flag(dynamic_cast<const IntermediateInstruction*>(src.local->getSingleWriter())->decoration, InstructionDecorations::UNSIGNED_RESULT))
+	else if(src.getSingleWriter() != nullptr && src.getSingleWriter()->hasDecoration(InstructionDecorations::UNSIGNED_RESULT))
 	{
 		//the value is set to be unsigned, so it cannot be negative
 		dest = INT_ZERO;

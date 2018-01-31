@@ -295,35 +295,35 @@ static void findDependencies(BasicBlock& bb, DataDependencyGraph& graph, Instruc
 	auto it = bb.begin();
 	while(!it.isEndOfBlock())
 	{
-		it->forUsedLocals([it, &bb, &mapping, &graph](const Local* local, LocalUser::Type type) -> void
+		it->forUsedLocals([it, &bb, &mapping, &graph](const Local* local, LocalUse::Type type) -> void
 		{
-			if(has_flag(type, LocalUser::Type::READER))
+			if(has_flag(type, LocalUse::Type::READER))
 			{
-				local->forUsers(LocalUser::Type::WRITER, [local, &bb, &mapping, &graph](const LocalUser* user) -> void
+				local->forUsers(LocalUse::Type::WRITER, [local, &bb, &mapping, &graph](const LocalUser* user) -> void
 				{
 					auto& instIt = mapping.at(user);
 
 					//add local to relation (may not yet exist)
-					if(instIt.getBasicBlock() != &bb || has_flag(instIt->decoration, intermediate::InstructionDecorations::PHI_NODE))
+					if(instIt.getBasicBlock() != &bb || instIt->hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
 					{
 						auto& neighborDependencies = graph.getOrCreateNode(&bb).getNeighbors()[&graph.getOrCreateNode(instIt.getBasicBlock())];
 						neighborDependencies[const_cast<Local*>(local)] = add_flag(neighborDependencies[const_cast<Local*>(local)], DataDependencyType::FLOW);
 					}
-					if(has_flag(instIt->decoration, intermediate::InstructionDecorations::PHI_NODE))
+					if(instIt->hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
 					{
 						auto& neighborDependencies = graph.getOrCreateNode(&bb).getNeighbors()[&graph.getOrCreateNode(instIt.getBasicBlock())];
 						neighborDependencies[const_cast<Local*>(local)] = add_flag(neighborDependencies[const_cast<Local*>(local)], DataDependencyType::PHI);
 					}
 				});
 			}
-			if(has_flag(type, LocalUser::Type::WRITER))
+			if(has_flag(type, LocalUse::Type::WRITER))
 			{
-				local->forUsers(LocalUser::Type::READER, [it, local, &bb, &mapping, &graph](const LocalUser* user) -> void
+				local->forUsers(LocalUse::Type::READER, [it, local, &bb, &mapping, &graph](const LocalUser* user) -> void
 				{
 					auto& instIt = mapping.at(user);
 
 					//add local to relation (may not yet exist)
-					if(instIt.getBasicBlock() != &bb || has_flag(it->decoration, intermediate::InstructionDecorations::PHI_NODE))
+					if(instIt.getBasicBlock() != &bb || it->hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
 					{
 						auto& neighborDependencies = graph.getOrCreateNode(&bb).getNeighbors()[&graph.getOrCreateNode(instIt.getBasicBlock())];
 						neighborDependencies[const_cast<Local*>(local)] = add_flag(neighborDependencies[const_cast<Local*>(local)], DataDependencyType::ANTI);

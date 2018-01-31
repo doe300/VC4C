@@ -78,7 +78,7 @@ IntermediateInstruction::IntermediateInstruction(Optional<Value> output, Conditi
 signal(SIGNAL_NONE), unpackMode(UNPACK_NOP),  packMode(packMode), conditional(cond), setFlags(setFlags), decoration(InstructionDecorations::NONE), canBeCombined(true), output(output), arguments()
 {
 	if(output)
-		addAsUserToValue(output.value(), LocalUser::Type::WRITER);
+		addAsUserToValue(output.value(), LocalUse::Type::WRITER);
 }
 
 IntermediateInstruction::~IntermediateInstruction()
@@ -86,7 +86,7 @@ IntermediateInstruction::~IntermediateInstruction()
 	//this can't be in LocalUser
 	//since at the time, the ~LocalUser() is called, the IntermediateInstruction "part" is already destroyed
 	for(const auto& pair : getUsedLocals())
-		const_cast<Local*>(pair.first)->removeUser(*this, LocalUser::Type::BOTH);
+		const_cast<Local*>(pair.first)->removeUser(*this, LocalUse::Type::BOTH);
 }
 
 bool IntermediateInstruction::mapsToASMInstruction() const
@@ -121,23 +121,23 @@ void IntermediateInstruction::setArgument(const std::size_t index, const Value& 
 {
 	if(index < arguments.size())
 	{
-		removeAsUserFromValue(arguments[index], LocalUser::Type::READER);
+		removeAsUserFromValue(arguments[index], LocalUse::Type::READER);
 		arguments[index] = arg;
 	}
 	else
 		//this is somehow required, since it crashes, when an uninitialized Value is assigned a value
 		arguments.insert(arguments.begin() + index, arg);
 
-	addAsUserToValue(arg, LocalUser::Type::READER);
+	addAsUserToValue(arg, LocalUse::Type::READER);
 }
 
 IntermediateInstruction* IntermediateInstruction::setOutput(const Optional<Value>& output)
 {
 	if(this->output)
-		removeAsUserFromValue(this->output.value(), LocalUser::Type::WRITER);
+		removeAsUserFromValue(this->output.value(), LocalUse::Type::WRITER);
 	this->output = output;
 	if(output)
-		addAsUserToValue(output.value(), LocalUser::Type::WRITER);
+		addAsUserToValue(output.value(), LocalUse::Type::WRITER);
 	return this;
 }
 
@@ -175,6 +175,11 @@ IntermediateInstruction* IntermediateInstruction::addDecorations(const Instructi
 {
 	this->decoration = add_flag(this->decoration, decorations);
     return this;
+}
+
+bool IntermediateInstruction::hasDecoration(InstructionDecorations deco) const
+{
+	return has_flag(decoration, deco);
 }
 
 bool IntermediateInstruction::hasSideEffects() const
@@ -293,8 +298,8 @@ Optional<Value> IntermediateInstruction::getPrecalculatedValueForArg(const std::
 		case ValueType::LOCAL:
 		{
 			auto writer = arg.local->getSingleWriter();
-			if(dynamic_cast<const IntermediateInstruction*>(writer) != nullptr)
-				return dynamic_cast<const IntermediateInstruction*>(writer)->precalculate(numIterations - 1);
+			if(writer != nullptr)
+				return writer->precalculate(numIterations - 1);
 			break;
 		}
 		case ValueType::REGISTER:
@@ -318,27 +323,27 @@ Optional<Value> IntermediateInstruction::getPrecalculatedValueForArg(const std::
 	return NO_VALUE;
 }
 
-FastMap<const Local*, LocalUser::Type> IntermediateInstruction::getUsedLocals() const
+FastMap<const Local*, LocalUse::Type> IntermediateInstruction::getUsedLocals() const
 {
-	FastMap<const Local*, LocalUser::Type> locals;
+	FastMap<const Local*, LocalUse::Type> locals;
 	if(output && output->hasType(ValueType::LOCAL))
-		locals.emplace(output->local, LocalUser::Type::WRITER);
+		locals.emplace(output->local, LocalUse::Type::WRITER);
 	for(const Value& arg : arguments)
 	{
 		if(arg.hasType(ValueType::LOCAL))
-			locals.emplace(arg.local, LocalUser::Type::READER);
+			locals.emplace(arg.local, LocalUse::Type::READER);
 	}
 	return locals;
 }
 
-void IntermediateInstruction::forUsedLocals(const std::function<void(const Local*, LocalUser::Type)>& consumer) const
+void IntermediateInstruction::forUsedLocals(const std::function<void(const Local*, LocalUse::Type)>& consumer) const
 {
 	if(output && output->hasType(ValueType::LOCAL))
-		consumer(output->local, LocalUser::Type::WRITER);
+		consumer(output->local, LocalUse::Type::WRITER);
 	for(const Value& arg : arguments)
 	{
 		if(arg.hasType(ValueType::LOCAL))
-			consumer(arg.local, LocalUser::Type::READER);
+			consumer(arg.local, LocalUse::Type::READER);
 	}
 }
 
@@ -357,25 +362,25 @@ bool IntermediateInstruction::writesLocal(const Local* local) const
 	return hasValueType(ValueType::LOCAL) && output->hasLocal(local);
 }
 
-void IntermediateInstruction::replaceLocal(const Local* oldLocal, const Local* newLocal, const Type type)
+void IntermediateInstruction::replaceLocal(const Local* oldLocal, const Local* newLocal, const LocalUse::Type type)
 {
 	if(oldLocal == newLocal)
 		return;
-	if(has_flag(type, LocalUser::Type::WRITER) && output && output->hasLocal(oldLocal))
+	if(has_flag(type, LocalUse::Type::WRITER) && output && output->hasLocal(oldLocal))
 	{
-		removeAsUserFromValue(output.value(), LocalUser::Type::WRITER);
+		removeAsUserFromValue(output.value(), LocalUse::Type::WRITER);
 		output->local = const_cast<Local*>(newLocal);
-		addAsUserToValue(output.value(), LocalUser::Type::WRITER);
+		addAsUserToValue(output.value(), LocalUse::Type::WRITER);
 	}
-	if(has_flag(type, LocalUser::Type::READER))
+	if(has_flag(type, LocalUse::Type::READER))
 	{
 		for(Value& arg : arguments)
 		{
 			if(arg.hasLocal(oldLocal))
 			{
-				removeAsUserFromValue(arg,  LocalUser::Type::READER);
+				removeAsUserFromValue(arg,  LocalUse::Type::READER);
 				arg.local = const_cast<Local*>(newLocal);
-				addAsUserToValue(arg, LocalUser::Type::READER);
+				addAsUserToValue(arg, LocalUse::Type::READER);
 			}
 		}
 	}
@@ -402,17 +407,17 @@ bool IntermediateInstruction::readsLiteral() const
 	return false;
 }
 
-void IntermediateInstruction::removeAsUserFromValue(const Value& value, const LocalUser::Type type)
+void IntermediateInstruction::removeAsUserFromValue(const Value& value, const LocalUse::Type type)
 {
 	if(value.hasType(ValueType::LOCAL))
 		const_cast<Local*>(value.local)->removeUser(*this, type);
 }
 
-void IntermediateInstruction::addAsUserToValue(const Value& value, LocalUser::Type type)
+void IntermediateInstruction::addAsUserToValue(const Value& value, LocalUse::Type type)
 {
-	if(has_flag(type, LocalUser::Type::READER))
+	if(has_flag(type, LocalUse::Type::READER))
 		value.assertReadable();
-	if(has_flag(type, LocalUser::Type::WRITER))
+	if(has_flag(type, LocalUse::Type::WRITER))
 		value.assertWriteable();
 
 	if(value.hasType(ValueType::LOCAL))
