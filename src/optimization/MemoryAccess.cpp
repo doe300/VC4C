@@ -696,7 +696,7 @@ static InstructionWalker mapToMemoryAccessInstructions(Method& method, Instructi
 			if(destArea != nullptr)
 			{
 				Value subIndex = UNDEFINED_VALUE;
-				it = calculateInAreaOffset(method, it, mem->getSource().local->getBase(true), mem->getSource(), subIndex);
+				it = calculateInAreaOffset(method, it, mem->getDestination().local->getBase(true), mem->getDestination(), subIndex);
 				it = method.vpm->insertWriteVPM(method, it, mem->getSource(), destArea, true, subIndex);
 			}
 			else
@@ -796,6 +796,7 @@ static void lowerStackIntoVPM(Method& method, FastSet<InstructionWalker>& memory
 
 static void lowerLocalDataIntoVPM(Method& method, FastSet<InstructionWalker>& memoryInstructions, FastMap<const Local*, const VPMArea*>& vpmMappedLocals)
 {
+	//TODO errors when local memory is also accessed via DMA intrinsic??
 	auto walkerIt = memoryInstructions.begin();
 	while(walkerIt != memoryInstructions.end())
 	{

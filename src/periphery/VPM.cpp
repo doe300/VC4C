@@ -906,7 +906,8 @@ DataType VPM::getVPMStorageType(const DataType& type)
 	if(type.getArrayType())
 	{
 		//e.g. short2[17] -> short16[17]
-		ArrayType* array = new ArrayType(type.getElementType().toVectorType(16), type.getArrayType().value()->size);
+		//also int4[1][2] -> int16[1][2]
+		ArrayType* array = new ArrayType(getVPMStorageType(type.getElementType()), type.getArrayType().value()->size);
 		inVPMType = DataType((array->elementType.to_string() + "[") + std::to_string(array->size) + "]", 1, std::shared_ptr<ComplexType>(array));
 	}
 	else if(type.getPointerType())

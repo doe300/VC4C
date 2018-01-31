@@ -14,22 +14,22 @@ using namespace vc4c::intermediate;
 static void checkMemoryLocation(const Value& val)
 {
 	if(!val.type.getPointerType())
-		throw CompilationError(CompilationStep::LLVM_2_IR, "Parameter needs to be a pointer", val.to_string());
+		throw CompilationError(CompilationStep::LLVM_2_IR, "Operand needs to be a pointer", val.to_string());
 	if(!val.hasType(ValueType::LOCAL) || !(val.local->getBase(true)->residesInMemory() || val.local->getBase(true)->is<Parameter>()))
-		throw CompilationError(CompilationStep::LLVM_2_IR, "Parameter needs to refer to a memory location or a parameter containing one", val.to_string());
+		throw CompilationError(CompilationStep::LLVM_2_IR, "Operand needs to refer to a memory location or a parameter containing one", val.to_string());
 }
 
 static void checkLocalValue(const Value& val)
 {
-	if(val.hasType(ValueType::LOCAL) && (val.local->residesInMemory() || val.local->is<Parameter>()))
-		throw CompilationError(CompilationStep::LLVM_2_IR, "Parameter needs to be a local value (local, register)", val.to_string());
+	if(val.hasType(ValueType::LOCAL) && (val.local->residesInMemory() || (val.local->is<Parameter>() && (val.local->type.getPointerType() || val.local->type.getArrayType()))))
+		throw CompilationError(CompilationStep::LLVM_2_IR, "Operand needs to be a local value (local, register)", val.to_string());
 }
 
 static void checkSingleValue(const Value& val)
 {
 	if(val.getLiteralValue().is(Literal(static_cast<int64_t>(1))))
 		return;
-	throw CompilationError(CompilationStep::LLVM_2_IR, "Parameter needs to the constant one", val.to_string());
+	throw CompilationError(CompilationStep::LLVM_2_IR, "Operand needs to the constant one", val.to_string());
 }
 
 MemoryInstruction::MemoryInstruction(const MemoryOperation op, const Value dest, const Value src, const Value numEntries) : IntermediateInstruction(dest),
@@ -37,28 +37,6 @@ MemoryInstruction::MemoryInstruction(const MemoryOperation op, const Value dest,
 {
 	setArgument(0, src);
 	setArgument(1, numEntries);
-	switch(op)
-	{
-		case MemoryOperation::COPY:
-			checkMemoryLocation(src);
-			checkMemoryLocation(dest);
-			checkLocalValue(numEntries);
-			break;
-		case MemoryOperation::FILL:
-			checkLocalValue(src);
-			checkMemoryLocation(dest);
-			checkLocalValue(numEntries);
-			break;
-		case MemoryOperation::READ:
-			checkMemoryLocation(src);
-			checkLocalValue(dest);
-			checkSingleValue(numEntries);
-			break;
-		case MemoryOperation::WRITE:
-			checkLocalValue(src);
-			checkMemoryLocation(dest);
-			checkSingleValue(numEntries);
-	}
 }
 
 std::string MemoryInstruction::to_string() const
@@ -106,10 +84,12 @@ static bool canMoveIntoVPM(const Value& val, bool isMemoryAddress)
 {
 	if(isMemoryAddress)
 	{
+		checkMemoryLocation(val);
 		//Checks whether the memory-address can be lowered into VPM
-		if(!val.hasType(ValueType::LOCAL))
-			throw CompilationError(CompilationStep::GENERAL, "Cannot access memory-address without a local", val.to_string());
 		const Local* base = val.local->getBase(true);
+		if(base->type.getElementType().getStructType() || (base->type.getElementType().getArrayType() && base->type.getElementType().getArrayType().value()->elementType.getStructType()))
+			//cannot lower structs/arrays of structs into VPM
+			return false;
 		const DataType inVPMType = periphery::VPM::getVPMStorageType(base->type.getElementType());
 		if(inVPMType.getPhysicalWidth() > VPM_DEFAULT_SIZE)
 			return false;
@@ -150,11 +130,15 @@ static bool canMoveIntoVPM(const Value& val, bool isMemoryAddress)
 
 bool MemoryInstruction::canMoveSourceIntoVPM() const
 {
+	if(op == MemoryOperation::READ || op == MemoryOperation::WRITE)
+		checkSingleValue(getNumEntries());
 	return canMoveIntoVPM(getSource(), op == MemoryOperation::COPY || op == MemoryOperation::READ);
 }
 
 bool MemoryInstruction::canMoveDestinationIntoVPM() const
 {
+	if(op == MemoryOperation::READ || op == MemoryOperation::WRITE)
+		checkSingleValue(getNumEntries());
 	return canMoveIntoVPM(getDestination(), op != MemoryOperation::READ);
 }
 
@@ -163,12 +147,17 @@ bool MemoryInstruction::accessesConstantGlobal() const
 	switch(op)
 	{
 		case MemoryOperation::COPY:
+			checkMemoryLocation(getSource());
+			checkMemoryLocation(getDestination());
 			return (getSource().local->getBase(true)->is<Global>() && getSource().local->getBase(true)->as<Global>()->isConstant) || (getDestination().local->getBase(true)->is<Global>() && getDestination().local->getBase(true)->as<Global>()->isConstant);
 		case MemoryOperation::FILL:
+			checkMemoryLocation(getDestination());
 			return getDestination().local->getBase(true)->is<Global>() && getDestination().local->getBase(true)->as<Global>()->isConstant;
 		case MemoryOperation::READ:
+			checkMemoryLocation(getSource());
 			return getSource().local->getBase(true)->is<Global>() && getSource().local->getBase(true)->as<Global>()->isConstant;
 		case MemoryOperation::WRITE:
+			checkMemoryLocation(getDestination());
 			return getDestination().local->getBase(true)->is<Global>() && getDestination().local->getBase(true)->as<Global>()->isConstant;
 	}
 	return false;
@@ -179,12 +168,17 @@ bool MemoryInstruction::accessesStackAllocation() const
 	switch(op)
 	{
 		case MemoryOperation::COPY:
+			checkMemoryLocation(getSource());
+			checkMemoryLocation(getDestination());
 			return getSource().local->getBase(true)->is<StackAllocation>() || getDestination().local->getBase(true)->is<StackAllocation>();
 		case MemoryOperation::FILL:
+			checkMemoryLocation(getDestination());
 			return getDestination().local->getBase(true)->is<StackAllocation>();
 		case MemoryOperation::READ:
+			checkMemoryLocation(getSource());
 			return getSource().local->getBase(true)->is<StackAllocation>();
 		case MemoryOperation::WRITE:
+			checkMemoryLocation(getDestination());
 			return getDestination().local->getBase(true)->is<StackAllocation>();
 	}
 	return false;
@@ -200,12 +194,17 @@ bool MemoryInstruction::accessesLocalMemory() const
 	switch(op)
 	{
 		case MemoryOperation::COPY:
+			checkMemoryLocation(getSource());
+			checkMemoryLocation(getDestination());
 			return isGlobalWithLocalAddressSpace(getSource().local->getBase(true)) || isGlobalWithLocalAddressSpace(getDestination().local->getBase(true));
 		case MemoryOperation::FILL:
+			checkMemoryLocation(getDestination());
 			return isGlobalWithLocalAddressSpace(getDestination().local->getBase(true));
 		case MemoryOperation::READ:
+			checkMemoryLocation(getSource());
 			return isGlobalWithLocalAddressSpace(getSource().local->getBase(true));
 		case MemoryOperation::WRITE:
+			checkMemoryLocation(getDestination());
 			return isGlobalWithLocalAddressSpace(getDestination().local->getBase(true));
 	}
 	return false;
@@ -217,6 +216,7 @@ DataType MemoryInstruction::getSourceElementType(bool sizedType) const
 	{
 		case MemoryOperation::COPY:
 		{
+			checkMemoryLocation(getSource());
 			DataType elementType = getSource().type.getElementType();
 			if(!sizedType)
 				//simple pointed-to type
@@ -229,12 +229,17 @@ DataType MemoryInstruction::getSourceElementType(bool sizedType) const
 		}
 		case MemoryOperation::FILL:
 			//local value
+			checkLocalValue(getSource());
 			return getSource().type;
 		case MemoryOperation::READ:
 			//pointed-to type
+			checkMemoryLocation(getSource());
+			checkSingleValue(getNumEntries());
 			return getSource().type.getElementType();
 		case MemoryOperation::WRITE:
 			//local value
+			checkLocalValue(getSource());
+			checkSingleValue(getNumEntries());
 			return getSource().type;
 	}
 	throw CompilationError(CompilationStep::GENERAL, "Unknown memory operation type", std::to_string(static_cast<unsigned>(op)));
@@ -248,6 +253,7 @@ DataType MemoryInstruction::getDestinationElementType(bool sizedType) const
 			//fall-through on purpose
 		case MemoryOperation::FILL:
 		{
+			checkMemoryLocation(getDestination());
 			DataType elementType = getDestination().type.getElementType();
 			if(!sizedType)
 				//simple pointed-to type
@@ -260,9 +266,13 @@ DataType MemoryInstruction::getDestinationElementType(bool sizedType) const
 		}
 		case MemoryOperation::READ:
 			//local value
+			checkLocalValue(getDestination());
+			checkSingleValue(getNumEntries());
 			return getDestination().type;
 		case MemoryOperation::WRITE:
 			//pointed-to type
+			checkMemoryLocation(getDestination());
+			checkSingleValue(getNumEntries());
 			return getDestination().type.getElementType();
 	}
 	throw CompilationError(CompilationStep::GENERAL, "Unknown memory operation type", std::to_string(static_cast<unsigned>(op)));
@@ -274,16 +284,21 @@ FastSet<const Local*> MemoryInstruction::getMemoryAreas() const
 	switch(op)
 	{
 		case MemoryOperation::COPY:
+			checkMemoryLocation(getSource());
+			checkMemoryLocation(getDestination());
 			res.emplace(getSource().local->getBase(true));
 			res.emplace(getDestination().local->getBase(true));
 			break;
 		case MemoryOperation::FILL:
+			checkMemoryLocation(getDestination());
 			res.emplace(getDestination().local->getBase(true));
 			break;
 		case MemoryOperation::READ:
+			checkMemoryLocation(getSource());
 			res.emplace(getSource().local->getBase(true));
 			break;
 		case MemoryOperation::WRITE:
+			checkMemoryLocation(getDestination());
 			res.emplace(getDestination().local->getBase(true));
 			break;
 	}
