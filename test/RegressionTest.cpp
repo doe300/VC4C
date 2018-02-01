@@ -367,6 +367,7 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./testing/OpenCL-CTS/clamp.cl", ""},
 		Entry{PASSED, FAST, "./testing/OpenCL-CTS/cross_product.cl", ""},
 		Entry{PASSED, FAST, "./testing/OpenCL-CTS/explicit_s2v_char8.cl", ""},
+		Entry{PASSED, FAST, "./testing/OpenCL-CTS/kernel_memory_alignments.cl", ""},
 		Entry{PENDING_LLVM, FAST, "./testing/OpenCL-CTS/parameter_types.cl", ""},
 		Entry{PASSED, FAST, "./testing/OpenCL-CTS/pointer_cast.cl", ""},
 		Entry{PASSED, FAST, "./testing/OpenCL-CTS/quick_1d_explicit_load.cl", ""},

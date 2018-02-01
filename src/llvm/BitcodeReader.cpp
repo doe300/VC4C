@@ -708,15 +708,24 @@ void BitcodeReader::parseInstruction(Module& module, Method& method, LLVMInstruc
 		case CastOps::FPToSI:   //fall-through
 		case CastOps::FPToUI:   //fall-through
 		case CastOps::FPTrunc:  //fall-through
-		case CastOps::IntToPtr: //fall-through
-		case CastOps::PtrToInt: //fall-through
 		case CastOps::SExt:     //fall-through
 		case CastOps::SIToFP:   //fall-through
 		case CastOps::Trunc:    //fall-through
-		case CastOps::UIToFP:   //fall-through
-		case CastOps::ZExt:     //fall-through
+		case CastOps::UIToFP:
 		{
 			instructions.emplace_back(new UnaryOperator(inst.getOpcodeName(), toValue(method, &inst), toValue(method, inst.getOperand(0))));
+			instructions.back()->setDecorations(deco);
+			break;
+		}
+		case CastOps::IntToPtr: //fall-through
+		case CastOps::PtrToInt: //fall-through
+		case CastOps::ZExt:
+		{
+			/*
+			 * Both inttoptr-cast and ptrtoint-case say:
+			 * "by applying either a zero extension or a truncation"
+			 */
+			instructions.emplace_back(new UnaryOperator("zext", toValue(method, &inst), toValue(method, inst.getOperand(0))));
 			instructions.back()->setDecorations(deco);
 			break;
 		}
@@ -1001,6 +1010,51 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
 			//TODO is this correct or would we need a new local referring to the global?
 			return srcGlobal;
 		}
+	}
+	if(expr->getOpcode() == llvm::Instruction::CastOps::PtrToInt || expr->getOpcode() == llvm::Instruction::CastOps::IntToPtr || expr->getOpcode() == llvm::Instruction::CastOps::ZExt)
+	{
+		//int <-> pointer cast is a zext (+ type conversion)
+		const Value src = toConstant(module, expr->getOperand(0));
+		const DataType destType = toDataType(expr->getType());
+		//if the bit-widths of the source and destination are the the same width, simply return the source
+		//otherwise, simply truncate or zero-extend
+		Value dest(src);
+		dest.type = destType;
+		switch(src.type.getScalarBitCount())
+		{
+			case 32:
+			{
+				switch(destType.getScalarBitCount())
+				{
+					case 32:
+						return dest;
+					case 16:
+						return PACK_INT_TO_SHORT_TRUNCATE.pack(dest).value();
+					case 8:
+						return PACK_INT_TO_CHAR_TRUNCATE.pack(dest).value();
+				}
+				break;
+			}
+			case 16:
+				switch(destType.getScalarBitCount())
+				{
+					case 16:
+						return dest;
+					case 8:
+						return UNPACK_CHAR_TO_INT_ZEXT.unpack(dest).value();
+				}
+				break;
+			case 8:
+				switch(destType.getScalarBitCount())
+				{
+					case 32: // fall-through
+					case 16:
+						return UNPACK_CHAR_TO_INT_ZEXT.unpack(dest).value();
+					case 8:
+						return dest;
+				}
+		}
+		throw CompilationError(CompilationStep::PARSER, "Unhandled bit-width of type", src.to_string());
 	}
 	OpCode opCode = OpCode::findOpCode(expr->getOpcodeName());
 

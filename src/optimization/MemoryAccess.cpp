@@ -439,7 +439,7 @@ InstructionWalker optimizations::accessGlobalData(const Module& module, Method& 
 	for(std::size_t i = 0; i < it->getArguments().size(); ++i)
 	{
 		const auto& arg = it->getArgument(i).value();
-		if(arg.hasType(ValueType::LOCAL) && arg.type.isPointerType() && arg.local->is<Global>())
+		if(arg.hasType(ValueType::LOCAL) && arg.local->is<Global>())
 		{
 			const Optional<unsigned int> globalOffset = module.getGlobalDataOffset(arg.local);
 			if(globalOffset)

@@ -167,6 +167,67 @@ std::string Unpack::to_string() const
 	throw CompilationError(CompilationStep::CODE_GENERATION, "Unsupported unpack-mode", std::to_string(static_cast<unsigned>(value)));
 }
 
+Optional<Value> Unpack::unpack(const Value& val) const
+{
+	//we never can pack complex types (even pointer, there are always 32-bit)
+	if(val.type.complexType)
+		return NO_VALUE;
+	//for now, we can't unpack floats
+	if(val.type.isFloatingType())
+		return NO_VALUE;
+	//can only unpack literals
+	if(!val.getLiteralValue())
+		return NO_VALUE;
+	switch (*this)
+	{
+		case UNPACK_NOP:
+			return val;
+		case UNPACK_16A_32:
+		{
+			//unsigned cast required to guarantee cutting off the value
+			uint16_t lowWord = static_cast<uint16_t>(bit_cast<int64_t, uint64_t>(val.getLiteralValue()->integer));
+			return Value(Literal(static_cast<int64_t>(bit_cast<uint16_t, int16_t>(lowWord))), val.type);
+		}
+		case UNPACK_16B_32:
+		{
+			//unsigned cast required to guarantee cutting off the value
+			uint16_t highWord = static_cast<uint16_t>(bit_cast<int64_t, uint64_t>(val.getLiteralValue()->integer >> 16));
+			return Value(Literal(static_cast<int64_t>(bit_cast<uint16_t, int16_t>(highWord))), val.type);
+		}
+		case UNPACK_8888_32:
+		{
+			//unsigned cast required to guarantee cutting off the value
+			uint8_t lsb = static_cast<uint8_t>(bit_cast<int64_t, uint64_t>(val.getLiteralValue()->integer));
+			return Value(Literal((static_cast<uint64_t>(lsb) << 24) | (static_cast<uint64_t>(lsb) << 16) | (static_cast<uint64_t>(lsb) << 8) | lsb), val.type);
+		}
+		case UNPACK_8A_32:
+		{
+			//unsigned cast required to guarantee cutting off the value
+			uint8_t byte0 = static_cast<uint8_t>(bit_cast<int64_t, uint64_t>(val.getLiteralValue()->integer));
+			return Value(Literal(static_cast<uint64_t>(byte0)), val.type);
+		}
+		case UNPACK_8B_32:
+		{
+			//unsigned cast required to guarantee cutting off the value
+			uint8_t byte1 = static_cast<uint8_t>(bit_cast<int64_t, uint64_t>(val.getLiteralValue()->integer) >> 8);
+			return Value(Literal(static_cast<uint64_t>(byte1)), val.type);
+		}
+		case UNPACK_8C_32:
+		{
+			//unsigned cast required to guarantee cutting off the value
+			uint8_t byte2 = static_cast<uint8_t>(bit_cast<int64_t, uint64_t>(val.getLiteralValue()->integer) >> 16);
+			return Value(Literal(static_cast<uint64_t>(byte2)), val.type);
+		}
+		case UNPACK_8D_32:
+		{
+			//unsigned cast required to guarantee cutting off the value
+			uint8_t byte3 = static_cast<uint8_t>(bit_cast<int64_t, uint64_t>(val.getLiteralValue()->integer) >> 24);
+			return Value(Literal(static_cast<uint64_t>(byte3)), val.type);
+		}
+	}
+	throw CompilationError(CompilationStep::GENERAL, "Unsupported unpack-mode", std::to_string(static_cast<unsigned>(value)));
+}
+
 bool Unpack::handlesFloat(const OpCode& opCode) const
 {
 	if(*this == UNPACK_16A_32 || *this == UNPACK_16B_32 || *this == UNPACK_8A_32 || *this == UNPACK_8B_32 || *this == UNPACK_8C_32 || *this == UNPACK_8D_32)
