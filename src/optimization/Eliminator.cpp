@@ -138,6 +138,16 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 					it.previousInBlock();
 				}
 			}
+			//writes fadd x, 0 -> replace with move
+			else if(op->opCode == "fadd" && op->getSecondArg().value().isZeroInitializer()) {
+				logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
+				it.reset(new intermediate::MoveOperation(op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags));
+			}
+			//writes fmul x, 0 -> replace with move x, 0
+			else if(op->opCode == "fmul" && op->getSecondArg().value().isZeroInitializer()) {
+				logging::debug() << "Replacing obsolete " << op->to_string() << " with load 0 imm" << logging::endl;
+				it.reset(new intermediate::MoveOperation(op->getOutput().value(), FLOAT_ZERO, op->conditional, op->setFlags));
+			}
 			else    //writes to another local -> can be replaced with move
 			{
 				//TODO improve be pre-calculating first and second arguments
