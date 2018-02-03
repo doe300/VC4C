@@ -174,9 +174,26 @@ Optional<Value> Unpack::unpack(const Value& val) const
 		return NO_VALUE;
 	//for now, we can't unpack floats
 	if(val.type.isFloatingType())
+	{
+		if(*this == PACK_NOP)
+			return val;
 		return NO_VALUE;
+	}
+	if(val.hasType(ValueType::CONTAINER))
+	{
+		//unpack vectors per element
+		Value result(ContainerValue(val.container.elements.size()), val.type);
+		for(const Value& elem : val.container.elements)
+		{
+			auto tmp = unpack(elem);
+			if(!tmp)
+				return NO_VALUE;
+			result.container.elements.push_back(tmp.value());
+		}
+		return result;
+	}
 	//can only unpack literals
-	if(!val.getLiteralValue())
+	if(!val.getLiteralValue() && *this != UNPACK_NOP)
 		return NO_VALUE;
 	switch (*this)
 	{
@@ -294,9 +311,26 @@ Optional<Value> Pack::pack(const Value& val) const
 		return NO_VALUE;
 	//for now, we can't pack floats
 	if(val.type.isFloatingType())
+	{
+		if(*this == PACK_NOP)
+			return val;
 		return NO_VALUE;
+	}
+	if(val.hasType(ValueType::CONTAINER))
+	{
+		//pack vectors per element
+		Value result(ContainerValue(val.container.elements.size()), val.type);
+		for(const Value& elem : val.container.elements)
+		{
+			auto tmp = pack(elem);
+			if(!tmp)
+				return NO_VALUE;
+			result.container.elements.push_back(tmp.value());
+		}
+		return result;
+	}
 	//can only pack literals
-	if(!val.getLiteralValue())
+	if(!val.getLiteralValue() && *this != PACK_NOP)
 		return NO_VALUE;
 	switch (*this)
 	{
@@ -415,8 +449,9 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 	//at least one used value is a container, need to calculate component-wise
 	if(calcPerComponent)
 	{
-		Value res(ContainerValue(resultType.num), resultType);
-		for(unsigned char i = 0; i < resultType.num; ++i)
+		auto numElements = std::max(firstVal->hasType(ValueType::CONTAINER) ? firstVal->container.elements.size() : 1, secondVal ? (secondVal->hasType(ValueType::CONTAINER) ? secondVal->container.elements.size() : 1) : 0);
+		Value res(ContainerValue(numElements), resultType);
+		for(unsigned char i = 0; i < numElements; ++i)
 		{
 			auto tmp = calculate(firstVal->hasType(ValueType::CONTAINER) ? firstVal->container.elements.at(i) : firstVal.value(),
 					secondVal->hasType(ValueType::CONTAINER) ? secondVal->container.elements.at(i) : secondVal.value(), valueSupplier);
@@ -428,8 +463,11 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 		return res;
 	}
 
-	const Literal firstLit = firstVal->getLiteralValue().value();
-	const Literal secondLit = !secondVal ? INT_ZERO.literal : secondVal->getLiteralValue().value();
+	if(firstVal->isUndefined() || (numOperands > 1 && secondVal && secondVal->isUndefined()))
+		return UNDEFINED_VALUE;
+
+	const Literal firstLit = firstVal->getLiteralValue() ? firstVal->getLiteralValue().value() : firstVal->container.elements.at(0).getLiteralValue().value();
+	const Literal secondLit = (!secondVal || numOperands == 1) ? INT_ZERO.literal : secondVal->getLiteralValue() ? secondVal->getLiteralValue().value() : secondVal->container.elements.at(0).getLiteralValue().value();
 
 	if(*this == OP_ADD)
 		return Value(Literal(firstLit.integer + secondLit.integer), resultType);
@@ -454,9 +492,9 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 	if(*this == OP_FSUB)
 		return Value(Literal(firstLit.real() - secondLit.real()), resultType);
 	if(*this == OP_FTOI)
-		return Value(Literal(static_cast<int64_t>(firstLit.real())), resultType);
+		return Value(Literal(static_cast<int64_t>(firstLit.real())), TYPE_FLOAT.toVectorType(firstVal->type.num));
 	if(*this == OP_ITOF)
-		return Value(Literal(static_cast<double>(firstLit.integer)), resultType);
+		return Value(Literal(static_cast<double>(firstLit.integer)), TYPE_INT32.toVectorType(firstVal->type.num));
 	if(*this == OP_MAX)
 		return Value(Literal(std::max(firstLit.integer, secondLit.integer)), resultType);
 	if(*this == OP_MIN)
@@ -477,11 +515,14 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 		return Value(Literal(firstLit.integer ^ secondLit.integer), resultType);
 	if(*this == OP_V8ADDS || *this == OP_V8MAX || *this == OP_V8MIN)
 	{
-		//Supports the "simple" version, only the first byte is set
 		uint64_t firstArg = bit_cast<int64_t, uint64_t>(firstLit.integer);
 		uint64_t secondArg = bit_cast<int64_t, uint64_t>(secondLit.integer);
+		//Supports the "move" version, if both operands are the same
+		if((*this == OP_V8MIN || *this == OP_V8MAX) && firstArg && secondArg)
+			return firstVal;
 		if(firstArg > 255 || secondArg > 255)
 			return NO_VALUE;
+		//Supports the "simple" version, only the first byte is set
 		if(*this == OP_V8ADDS)
 			return Value(Literal(std::min(firstArg + secondArg, static_cast<uint64_t>(255))), resultType);
 		if(*this == OP_V8MAX)

@@ -61,14 +61,14 @@ namespace vc4c
 		inline void setEntry(T val, uint8_t pos, UnderlyingType mask)
 		{
 			/* since for some fields, the "default" or "not set" value has not the bit-mask 0..0, we need to clear them first */
-			value &= ~(mask << static_cast<UnderlyingType>(pos));
-			value |= (mask & static_cast<UnderlyingType>(val)) << static_cast<UnderlyingType>(pos);
+			value &= static_cast<UnderlyingType>(~(mask << static_cast<UnderlyingType>(pos)));
+			value |= static_cast<UnderlyingType>((mask & static_cast<UnderlyingType>(val)) << static_cast<UnderlyingType>(pos));
 		}
 
 		template<typename T>
 		constexpr inline T getEntry(uint8_t pos, UnderlyingType mask) const
 		{
-			return static_cast<T>(mask & getValue(pos));
+			return static_cast<T>(static_cast<UnderlyingType>(mask) & getValue(pos));
 		}
 
 		template<typename T>
@@ -102,7 +102,7 @@ namespace vc4c
 
 		constexpr inline UnderlyingType getValue(uint8_t startPos) const
 		{
-			return value >> static_cast<UnderlyingType>(startPos);
+			return static_cast<UnderlyingType>(value >> static_cast<UnderlyingType>(startPos));
 		}
 	};
 

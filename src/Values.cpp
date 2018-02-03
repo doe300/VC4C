@@ -50,7 +50,7 @@ std::string Register::to_string(bool specialNames, bool readAccess) const
 {
     if(specialNames)
     {
-        if(readAccess)
+        if(readAccess && file != RegisterFile::ACCUMULATOR)
         {
             if(num == 32)
                 return "unif";
@@ -141,17 +141,13 @@ int Register::getAccumulatorNumber() const
 bool Register::operator<(const Register& right) const
 {
     const auto tmp = static_cast<unsigned char>(file) < static_cast<unsigned char>(right.file);
-    if(tmp != 0)
-        return true;
-    return num < right.num;
+    return tmp || num < right.num;
 }
 
 bool Register::operator>(const Register& right) const
 {
 	const auto tmp = static_cast<unsigned char>(file) > static_cast<unsigned char>(right.file);
-	if(tmp != 0)
-		return true;
-	return num > right.num;
+	return tmp || num > right.num;
 }
 
 bool Register::operator==(const Register& right) const
@@ -237,6 +233,12 @@ bool Register::isWriteable() const
 bool Register::triggersReadOfR4() const
 {
 	return isSpecialFunctionsUnit() || (num == 56 || num == 60) /* TMU S coordinates */;
+}
+
+std::size_t vc4c::hash<vc4c::Register>::operator()(vc4c::Register const& val) const noexcept
+{
+	static const std::hash<unsigned char> hash;
+	return hash(static_cast<unsigned char>(val.file)) ^ hash(val.num);
 }
 
 Literal::Literal(const int64_t integer) noexcept : integer(integer), type(LiteralType::INTEGER)
@@ -352,7 +354,7 @@ Optional<char> SmallImmediate::getIntegerValue() const
 		return static_cast<char>(value);
 	if (value <= 31)
 		// -16, ..., -1
-		return static_cast<char>(32 - static_cast<char>(value));
+		return static_cast<char>(static_cast<char>(value) - 32);
 	return {};
 }
 
@@ -436,6 +438,16 @@ bool ContainerValue::isElementNumber(bool withOffset) const
 		if(!elements.at(i).hasType(ValueType::LITERAL))
 			throw CompilationError(CompilationStep::GENERAL, "Invalid container element", elements.at(i).to_string());
 		if(elements.at(i).literal.integer != static_cast<int64_t>(i) + offset)
+			return false;
+	}
+	return true;
+}
+
+bool ContainerValue::isUndefined() const
+{
+	for(const Value& elem : elements)
+	{
+		if(!elem.isUndefined())
 			return false;
 	}
 	return true;

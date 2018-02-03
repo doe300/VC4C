@@ -5,6 +5,8 @@ include_directories ("${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/lib/
 file( GLOB HDRS "${PROJECT_SOURCE_DIR}/include/*.h" "${PROJECT_SOURCE_DIR}/lib/cpplog/include/*.h" "${PROJECT_SOURCE_DIR}/lib/vc4asm/src/*.h")
 #Include the source files
 file( GLOB SRCS *.cpp */*.cpp )
+#To allow other executables to statically link the library
+list(REMOVE_ITEM SRCS "${PROJECT_SOURCE_DIR}/src/main.cpp")
 
 ## 
 # Build library

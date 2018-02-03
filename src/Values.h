@@ -333,6 +333,12 @@ namespace vc4c
 	 */
 	static constexpr Register REG_TMU1_COORD_B_LOD_BIAS { RegisterFile::PHYSICAL_ANY, 63 };
 
+	template<>
+	struct hash<Register>
+	{
+		size_t operator()(const Register& val) const noexcept;
+	};
+
 	/*
 	 * The arithmetic type of a literal value
 	 */
@@ -505,6 +511,11 @@ namespace vc4c
 		 * if the parameter is set to true, an arbitrary initial offset is allowed, e.g. i32 5, i32 6, ...
 		 */
 		bool isElementNumber(bool withOffset = false) const;
+
+		/*
+		 * Returns whether all elements contained are undefined
+		 */
+		bool isUndefined() const;
 	};
 
 	class Local;

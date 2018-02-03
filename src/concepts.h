@@ -94,6 +94,7 @@ namespace vc4c
 	static_assert(assert_assignable<Register>::value, "Register is not assignable!");
 	static_assert(std::is_destructible<Register>::value, "Register is not destructible!");
 	static_assert(assert_comparable<Register>::value, "Register is not comparable");
+	static_assert(assert_hashable<Register>::value, "Register is not hashable!");
 	static_assert(assert_stringifyable<Register>::value, "Register is not stringify-able!");
 
 	static_assert(assert_assignable<Literal>::value, "Literal is not assignable!");
