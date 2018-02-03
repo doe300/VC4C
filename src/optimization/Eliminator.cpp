@@ -112,12 +112,31 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 	{
 		if(!op->hasSideEffects() && !op->hasPackMode() && !op->hasUnpackMode())
 		{
-			//writes into the input -> can be removed, if it doesn't do anything
-			if(op->getOutput() && op->getOutput().value() == op->getFirstArg())
+			//improve by pre-calculating first and second arguments
+			const Value firstArg = (op->getFirstArg().getSingleWriter() != nullptr ? op->getFirstArg().getSingleWriter()->precalculate(3) : NO_VALUE).value_or(op->getFirstArg());
+			const Optional<Value> secondArg = (op->getSecondArg() && op->getSecondArg()->getSingleWriter() != nullptr ? op->getSecondArg()->getSingleWriter()->precalculate(3) : NO_VALUE).orOther(op->getSecondArg());
+
+			Optional<Value> rightIdentity = OpCode::getRightIdentity(op->op);
+			Optional<Value> leftIdentity = OpCode::getLeftIdentity(op->op);
+			Optional<Value> rightAbsorbing = OpCode::getRightAbsorbingElement(op->op);
+			Optional<Value> leftAbsorbing = OpCode::getLeftAbsorbingElement(op->op);
+
+			//one of the operands is the absorbing element, operation can be replaced with move
+			if(leftAbsorbing && firstArg.hasLiteral(leftAbsorbing->getLiteralValue().value()))
 			{
-				Optional<Value> opIdentity = OpCode::getRightIdentity(op->op);
+				logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
+				it.reset(new intermediate::MoveOperation(op->getOutput().value(), leftAbsorbing.value(), op->conditional, op->setFlags));
+			}
+			else if(rightAbsorbing && secondArg && secondArg->hasLiteral(rightAbsorbing->getLiteralValue().value()))
+			{
+				logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
+				it.reset(new intermediate::MoveOperation(op->getOutput().value(), rightAbsorbing.value(), op->conditional, op->setFlags));
+			}
+			//writes into the input -> can be removed, if it doesn't do anything
+			else if(op->getOutput() && op->getOutput().value() == op->getFirstArg())
+			{
 				//check whether second-arg exists and does nothing
-				if(opIdentity && op->getSecondArg() && op->getSecondArg()->hasLiteral(opIdentity->literal))
+				if(rightIdentity && secondArg && secondArg->hasLiteral(rightIdentity->getLiteralValue().value()))
 				{
 					logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
 					it.erase();
@@ -125,12 +144,10 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 					it.previousInBlock();
 				}
 			}
-			//writes into the input -> can be removed, if it doesn't do anything
 			else if(op->getOutput() && op->getSecondArg() && op->getOutput().value() == op->getSecondArg().value())
 			{
-				Optional<Value> opIdentity = OpCode::getLeftIdentity(op->op);
 				//check whether first-arg does nothing
-				if(opIdentity && op->getFirstArg().hasLiteral(opIdentity->literal))
+				if(leftIdentity && firstArg.hasLiteral(leftIdentity->getLiteralValue().value()))
 				{
 					logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
 					it.erase();
@@ -140,37 +157,17 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 			}
 			else    //writes to another local -> can be replaced with move
 			{
-				//improve by pre-calculating first and second arguments
-				const Value firstArg = (op->getFirstArg().getSingleWriter() != nullptr ? op->getFirstArg().getSingleWriter()->precalculate(3) : NO_VALUE).value_or(op->getFirstArg());
-				const Optional<Value> secondArg = (op->getSecondArg() && op->getSecondArg()->getSingleWriter() != nullptr ? op->getSecondArg()->getSingleWriter()->precalculate(3) : NO_VALUE).orOther(op->getSecondArg());
-
-				Optional<Value> rightIdentity = OpCode::getRightIdentity(op->op);
-				Optional<Value> leftIdentity = OpCode::getLeftIdentity(op->op);
-				Optional<Value> rightAbsordbing = OpCode::getRightAbsorbingElement(op->op);
-				Optional<Value> leftAbsorbing = OpCode::getLeftAbsorbingElement(op->op);
 				//check whether second argument exists and does nothing
-				if(rightIdentity && secondArg && secondArg->hasLiteral(rightIdentity->literal))
+				if(rightIdentity && secondArg && secondArg->hasLiteral(rightIdentity->getLiteralValue().value()))
 				{
 					logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
-					it.reset(new intermediate::MoveOperation(op->getOutput().value(), firstArg, op->conditional, op->setFlags));
+					it.reset(new intermediate::MoveOperation(op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags));
 				}
 				//check whether first argument does nothing
-				else if(leftIdentity && secondArg && firstArg.hasLiteral(leftIdentity->literal))
+				else if(leftIdentity && secondArg && firstArg.hasLiteral(leftIdentity->getLiteralValue().value()))
 				{
 					logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
-					it.reset(new intermediate::MoveOperation(op->getOutput().value(), secondArg.value(), op->conditional, op->setFlags));
-				}
-				//check whether the first element is the absorbing element
-				else if(leftAbsorbing && firstArg.hasLiteral(leftAbsorbing->getLiteralValue().value()))
-				{
-					logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
-					it.reset(new intermediate::MoveOperation(op->getOutput().value(), firstArg, op->conditional, op->setFlags));
-				}
-				//check whether the second element absorbs the result
-				else if(rightAbsordbing && secondArg && secondArg->hasLiteral(rightAbsordbing->getLiteralValue().value()))
-				{
-					logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
-					it.reset(new intermediate::MoveOperation(op->getOutput().value(), secondArg.value(), op->conditional, op->setFlags));
+					it.reset(new intermediate::MoveOperation(op->getOutput().value(), op->getSecondArg().value(), op->conditional, op->setFlags));
 				}
 			}
 		}

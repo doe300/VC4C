@@ -265,12 +265,9 @@ bool Literal::operator==(const Literal& other) const
 {
 	if(this == &other)
 		return true;
-    if(type != other.type)
-        return false;
     switch(type)
     {
-    case LiteralType::BOOL:
-        return isTrue() == other.isTrue();
+    case LiteralType::BOOL: // fall-through
     case LiteralType::INTEGER:
         return integer == other.integer;
     case LiteralType::REAL:
