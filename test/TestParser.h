@@ -15,7 +15,7 @@ class TestParser : public Test::Suite
 public:
     TestParser();
     
-    virtual bool setup();
+    bool setup() override;
 
     void testKernelMethod();
     void testGlobalData();

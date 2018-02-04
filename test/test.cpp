@@ -9,6 +9,7 @@
 
 #include "cpptest.h"
 #include "cpptest-main.h"
+#include "TestEmulator.h"
 #include "TestInstructions.h"
 #include "TestOperators.h"
 #include "TestParser.h"
@@ -67,6 +68,7 @@ int main(int argc, char** argv)
     Test::registerSuite(newCompilationTest<false>, "test-compilation", "Runs all the compilation tests using the default front-end", true);
     Test::registerSuite(newLLVMCompilationTest<false>, "test-compilation-llvm", "Runs all the compilation tests using the LLVM-IR front-end", false);
     Test::registerSuite(newSPIRVCompiltionTest<false>, "test-compilation-spirv", "Runs all the compilation tests using the SPIR-V front-end", false);
+    Test::registerSuite(Test::newInstance<TestEmulator>, "test-emulator", "Runs selected code-samples through the emulator");
 
     return Test::runSuites(argc, argv);
 }

@@ -29,7 +29,7 @@ static std::string readString(std::istream& binary, uint64_t stringLength)
 	return name;
 }
 
-static void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, ReferenceRetainingList<Global>& globals, std::vector<std::unique_ptr<qpu_asm::Instruction>>& instructions)
+void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, ReferenceRetainingList<Global>& globals, std::vector<std::unique_ptr<qpu_asm::Instruction>>& instructions)
 {
 	uint64_t tmp64;
 

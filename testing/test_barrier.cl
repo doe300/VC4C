@@ -10,11 +10,9 @@ __kernel void test_barrier(__global int* status)
 	base[2] = 2;
 
 
-///*
 	for(int i = 1; i < TPB; i += 1)
 	{
 		barrier(CLK_LOCAL_MEM_FENCE);
 		base[3 + i] = 3 + i;
 	}
-//*/
 }

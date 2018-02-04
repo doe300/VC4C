@@ -337,35 +337,35 @@ Optional<Value> Pack::pack(const Value& val) const
 		case PACK_NOP:
 			return val;
 		case PACK_32_16A:
-			return Value(Literal(val.literal.integer & 0xFFFF), val.type);
+			return Value(Literal(val.getLiteralValue()->integer & 0xFFFF), val.type);
 		case PACK_32_16A_S:
-			return Value(Literal(saturate<int16_t>(val.literal.integer)), val.type);
+			return Value(Literal(saturate<int16_t>(val.getLiteralValue()->integer)), val.type);
 		case PACK_32_16B:
-			return Value(Literal((val.literal.integer & 0xFFFF) << 16), val.type);
+			return Value(Literal((val.getLiteralValue()->integer & 0xFFFF) << 16), val.type);
 		case PACK_32_16B_S:
 			return NO_VALUE;
 		case PACK_32_32:
-			return Value(Literal(saturate<int32_t>(val.literal.integer)), val.type);
+			return Value(Literal(saturate<int32_t>(val.getLiteralValue()->integer)), val.type);
 		case PACK_32_8888:
-			return Value(Literal(((val.literal.integer & 0xFF) << 24) | ((val.literal.integer & 0xFF) << 16) | ((val.literal.integer & 0xFF) << 8) | (val.literal.integer & 0xFF)), val.type);
+			return Value(Literal(((val.getLiteralValue()->integer & 0xFF) << 24) | ((val.getLiteralValue()->integer & 0xFF) << 16) | ((val.getLiteralValue()->integer & 0xFF) << 8) | (val.getLiteralValue()->integer & 0xFF)), val.type);
 		case PACK_32_8888_S:
-			return Value(Literal((saturate<uint8_t>(val.literal.integer) << 24) | (saturate<uint8_t>(val.literal.integer) << 16) | (saturate<uint8_t>(val.literal.integer) << 8) | saturate<uint8_t>(val.literal.integer)), val.type);
+			return Value(Literal((saturate<uint8_t>(val.getLiteralValue()->integer) << 24) | (saturate<uint8_t>(val.getLiteralValue()->integer) << 16) | (saturate<uint8_t>(val.getLiteralValue()->integer) << 8) | saturate<uint8_t>(val.getLiteralValue()->integer)), val.type);
 		case PACK_32_8A:
-			return Value(Literal(val.literal.integer & 0xFF), val.type);
+			return Value(Literal(val.getLiteralValue()->integer & 0xFF), val.type);
 		case PACK_32_8A_S:
-			return Value(Literal(saturate<uint8_t>(val.literal.integer)), val.type);
+			return Value(Literal(saturate<uint8_t>(val.getLiteralValue()->integer)), val.type);
 		case PACK_32_8B:
-			return Value(Literal((val.literal.integer & 0xFF) << 8), val.type);
+			return Value(Literal((val.getLiteralValue()->integer & 0xFF) << 8), val.type);
 		case PACK_32_8B_S:
-			return Value(Literal(saturate<uint8_t>(val.literal.integer) << 8), val.type);
+			return Value(Literal(saturate<uint8_t>(val.getLiteralValue()->integer) << 8), val.type);
 		case PACK_32_8C:
-			return Value(Literal((val.literal.integer & 0xFF) << 16), val.type);
+			return Value(Literal((val.getLiteralValue()->integer & 0xFF) << 16), val.type);
 		case PACK_32_8C_S:
-			return Value(Literal(saturate<uint8_t>(val.literal.integer) << 16), val.type);
+			return Value(Literal(saturate<uint8_t>(val.getLiteralValue()->integer) << 16), val.type);
 		case PACK_32_8D:
-			return Value(Literal((val.literal.integer & 0xFF) << 24), val.type);
+			return Value(Literal((val.getLiteralValue()->integer & 0xFF) << 24), val.type);
 		case PACK_32_8D_S:
-			return Value(Literal(saturate<uint8_t>(val.literal.integer) << 24), val.type);
+			return Value(Literal(saturate<uint8_t>(val.getLiteralValue()->integer) << 24), val.type);
 	}
 	throw CompilationError(CompilationStep::GENERAL, "Unsupported pack-mode", std::to_string(static_cast<unsigned>(value)));
 }

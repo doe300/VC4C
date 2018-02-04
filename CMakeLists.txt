@@ -289,6 +289,7 @@ configure_file(cmake/deb-prerem.in "${CMAKE_BINARY_DIR}/build/prerem" @ONLY NEWL
 ####
 #build all from ./src into ./build
 add_subdirectory(./src build)
+add_subdirectory(tools build/tools)
 
 if (BUILD_TESTING)
 	ExternalProject_Add(cpptest-lite-project
