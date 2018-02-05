@@ -265,7 +265,8 @@ void optimizations::splitReadAfterWrites(const Module& module, Method& method, c
 	//the NOP then can be replaced with other instructions by the next optimization (#reorderWithinBasicBlocks)
 	auto it = method.walkAllInstructions();
 	InstructionWalker lastInstruction = it;
-	const Local* lastWrittenTo = nullptr;
+	//at the beginning, the last parameter read is the last local written
+	const Local* lastWrittenTo = method.parameters.empty() ? nullptr : &method.parameters.back();
 	//skip the first instruction, since we start the check at the read (and need to look back at the write)
 	it.nextInMethod();
 	while(!it.isEndOfMethod())

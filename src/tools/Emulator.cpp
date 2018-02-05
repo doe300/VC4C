@@ -1204,6 +1204,15 @@ bool QPU::executeSignal(Signaling signal)
 	return true;
 }
 
+static std::string toFlagString(uint8_t flag, char flagChar)
+{
+	if(flag == ElementFlags::FLAG_CLEAR)
+		return "-";
+	if(flag == ElementFlags::FLAG_SET)
+		return std::string(&flagChar, 1);
+	return "?";
+}
+
 void QPU::setFlags(const Value& output, ConditionCode cond)
 {
 	std::vector<std::string> parts;
@@ -1226,7 +1235,7 @@ void QPU::setFlags(const Value& output, ConditionCode cond)
 				flags.at(i).negative = ElementFlags::FLAG_UNDEFINED;
 				flags.at(i).carry = ElementFlags::FLAG_UNDEFINED;
 			}
-			parts.push_back(std::string(flags.at(i).zero == ElementFlags::FLAG_SET ? "z" : "-") + std::string(flags.at(i).negative == ElementFlags::FLAG_SET ? "n" : "-") + std::string(flags.at(i).carry == ElementFlags::FLAG_SET ? "c" : "-"));
+			parts.push_back(toFlagString(flags.at(i).zero, 'z') + toFlagString(flags.at(i).negative, 'n') + toFlagString(flags.at(i).carry, 'c'));
 		}
 	}
 	logging::debug() << "Setting flags: {" + to_string<std::string>(parts) << "}" << logging::endl;

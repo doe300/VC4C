@@ -20,6 +20,7 @@ public:
 	void testBarrier();
 	void testBranches();
 	void testWorkItem();
+	void testBug30();
 };
 
 #endif /* TEST_EMULATOR_H */

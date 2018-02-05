@@ -31,6 +31,7 @@ TestEmulator::TestEmulator()
 	TEST_ADD(TestEmulator::testBarrier);
 	TEST_ADD(TestEmulator::testBranches);
 	TEST_ADD(TestEmulator::testWorkItem);
+	TEST_ADD(TestEmulator::testBug30);
 }
 
 static std::vector<std::unique_ptr<qpu_asm::Instruction>> compileFile(const std::string& fileName, qpu_asm::ModuleInfo& moduleInfo, ReferenceRetainingList<Global>& globals)
@@ -130,6 +131,7 @@ void TestEmulator::testBarrier()
 	TEST_ASSERT_EQUALS(std::string("test_barrier"), module.kernelInfos.front().name);
 
 	WorkGroupConfig config;
+	config.dimensions = 3;
 	config.globalOffsets = {0, 0, 0};
 	config.localSizes = {8, 1, 1};
 	config.numGroups = {2, 1, 1};
@@ -139,14 +141,13 @@ void TestEmulator::testBarrier()
 	//UNIFORM have size: <= 16 * Word * sizes
 	MemoryAddress uniformOffset = 16 * globalSize;
 	Memory memory(2 * uniformOffset);
-	auto uniformAddresses = buildUniforms(memory, uniformOffset, {0}, config, 0);
+	auto uniformAddresses = buildUniforms(memory, uniformOffset * sizeof(tools::Word), {0}, config, 0);
 
-	//FIXME hangs in QPU 0 trying to release semaphore 9 (which should never be accessed for 8 local work-items)!!
 	emulate(instructions.begin(), memory, uniformAddresses, maxExecutionCycles);
 
 	for(uint32_t i = 0; i < globalSize; ++i)
 	{
-		tools::Word* base = memory.getWordAddress(i * 16 * globalSize * sizeof(tools::Word));
+		tools::Word* base = memory.getWordAddress(i * 12 * sizeof(tools::Word));
 
 		TEST_ASSERT_EQUALS(0u, base[0]);
 		TEST_ASSERT_EQUALS(1u, base[1]);
@@ -196,6 +197,7 @@ void TestEmulator::testWorkItem()
 	TEST_ASSERT_EQUALS(std::string("test_work_item"), module.kernelInfos.front().name);
 
 	WorkGroupConfig config;
+	config.dimensions = 3;
 	config.globalOffsets = {0, 0, 0};
 	config.localSizes = {8, 1, 1};
 	config.numGroups = {4, 1, 1};
@@ -218,7 +220,6 @@ void TestEmulator::testWorkItem()
 			auto globalID = config.globalOffsets.at(0) + (xGroup * config.localSizes.at(0) + xItem);
 			tools::Word* base = memory.getWordAddress(sizeof(tools::Word) * globalID * 24);
 
-			//FIXME global offset value!
 			TEST_ASSERT_EQUALS(3u, base[0]);
 			TEST_ASSERT_EQUALS(config.numGroups.at(0) * config.localSizes.at(0), base[1]);
 			TEST_ASSERT_EQUALS(config.numGroups.at(1) * config.localSizes.at(1), base[2]);
@@ -244,4 +245,46 @@ void TestEmulator::testWorkItem()
 			TEST_ASSERT_EQUALS(1u, base[22]);
 		}
 	}
+}
+
+void TestEmulator::testBug30()
+{
+	qpu_asm::ModuleInfo module;
+	ReferenceRetainingList<Global> globals;
+	const auto instructions = compileFile("./testing/bugs/30_local_memory.cl", module, globals);
+
+	TEST_ASSERT_EQUALS(1u, module.kernelInfos.size());
+	TEST_ASSERT(globals.empty());
+	TEST_ASSERT_EQUALS(std::string("dot3"), module.kernelInfos.front().name);
+
+	WorkGroupConfig config;
+	config.dimensions = 3;
+	config.globalOffsets = {0, 0, 0};
+	config.localSizes = {8, 1, 1};
+	config.numGroups = {4, 1, 1};
+
+	auto globalSize = config.localSizes.at(0) * config.localSizes.at(1) * config.localSizes.at(2) * config.numGroups.at(0) * config.numGroups.at(1) * config.numGroups.at(2);
+	//num inputs = 2 * globalSize + localSize
+	//num outputs = globalSize
+	//num uniforms = globalSize * 18
+	Memory memory(globalSize * (3 + 1 + 18));
+
+	//fill parameters
+	for(uint32_t i = 0; i < globalSize; ++i)
+	{
+		reinterpret_cast<float*>(memory.getWordAddress(0))[i] = static_cast<float>(i);
+		reinterpret_cast<float*>(memory.getWordAddress(static_cast<MemoryAddress>(globalSize * sizeof(tools::Word))))[i] = 0.1f;
+	}
+
+	auto uniformAddresses = buildUniforms(memory, static_cast<MemoryAddress>(globalSize *sizeof(tools::Word) * 4),
+			{0, static_cast<MemoryAddress>(globalSize * sizeof(tools::Word)), static_cast<MemoryAddress>(globalSize * sizeof(tools::Word) * 2), static_cast<MemoryAddress>(globalSize *sizeof(tools::Word) * 3)},
+			config, 0);
+
+	emulate(instructions.begin(), memory, uniformAddresses, maxExecutionCycles);
+
+	MemoryAddress outputBase = static_cast<MemoryAddress>(globalSize * sizeof(tools::Word) * 2);
+
+	//TODO local parameter as well as output are all-zero
+	for(uint32_t i = 0; i < globalSize; ++i)
+		std::cout << (reinterpret_cast<float*>(memory.getWordAddress(outputBase))[i]) << std::endl;
 }
