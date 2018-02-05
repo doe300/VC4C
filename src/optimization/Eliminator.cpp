@@ -331,3 +331,49 @@ InstructionWalker optimizations::eliminateReturn(const Module& module, Method& m
 	}
 	return it;
 }
+
+void optimizations::eliminateRedundantMoves(const Module& module, Method& method, const Configuration& config)
+{
+	auto it = method.walkAllInstructions();
+	while(!it.isEndOfMethod())
+	{
+		if(it.has<intermediate::MoveOperation>() && !it->hasDecoration(intermediate::InstructionDecorations::PHI_NODE) && !it->hasPackMode() && !it->hasUnpackMode() && it->conditional == COND_ALWAYS && !it.has<intermediate::VectorRotation>())
+		{
+			//skip PHI-nodes, since they are read in another basic block (and the output is written more than once anyway) as well as modification of the value, conditional execution and vector-rotations
+			const intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
+
+			//the source is written and read only once
+			bool sourceUsedOnce = move->getSource().getSingleWriter() != nullptr && move->getSource().local->getUsers(LocalUse::Type::READER).size() == 1;
+			//the destination is written and read only once (and not in combination with a literal value, to not introduce register conflicts)
+			bool destUsedOnce = move->hasValueType(ValueType::LOCAL) && move->getOutput()->getSingleWriter() == move && move->getOutput()->local->getUsers(LocalUse::Type::READER).size() == 1 && !(*move->getOutput()->local->getUsers(LocalUse::Type::READER).begin())->readsLiteral();
+
+			auto sourceWriter = it.getBasicBlock()->findWalkerForInstruction(move->getSource().getSingleWriter(), it);
+
+			if(!it->hasSideEffects() && sourceUsedOnce && destUsedOnce && move->getSource().type == move->getOutput()->type)
+			{
+				//if the source is written only once and the destination is read only once, we can replace the uses of the output with the input
+				//XXX we need to check the type equality, since otherwise Reordering might re-order the reading before the writing (if the local is written as type A and read as type B)
+				logging::debug() << "Removing obsolete move by replacing uses of the output with the input: " << it->to_string() << logging::endl;
+				const LocalUser* reader = *move->getOutput()->local->getUsers(LocalUse::Type::READER).begin();
+				const_cast<LocalUser*>(reader)->replaceLocal(move->getOutput()->local, move->getSource().local, LocalUse::Type::READER);
+				it.erase();
+				//to not skip the next instruction
+				it.previousInBlock();
+			}
+			else if(it->hasValueType(ValueType::REGISTER) && sourceUsedOnce && sourceWriter && !(*sourceWriter)->hasSideEffects() && !it->signal.hasSideEffects())
+			{
+				//if the source is only used once (by this move) and the destination is a register, we can replace this move by the operation calculating the source
+				//This optimization can save almost one instruction per VPM write/VPM address write
+				//TODO This could potentially lead to far longer usage-ranges for operands of sourceWriter and therefore to register conflicts
+				logging::debug() << "Replacing obsolete move with instruction calculating its source: " << it->to_string() << logging::endl;
+				auto output = it->getOutput();
+				auto setFlags = it->setFlags;
+				it.reset(sourceWriter->release());
+				sourceWriter->erase();
+				it->setOutput(output);
+				it->setSetFlags(setFlags);
+			}
+		}
+		it.nextInMethod();
+	}
+}

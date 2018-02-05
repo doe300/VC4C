@@ -76,6 +76,29 @@ namespace vc4c
 		 * Also, this optimization-step is required for the compilation to work correctly
 		 */
 		InstructionWalker eliminateReturn(const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+
+		/*
+		 * Eliminates various types of redundant moves
+		 *
+		 * Example:
+		 *   %add = fadd %tmp.1, %tmp.3
+		 *   [...]
+		 *   %x = mov %add
+		 *
+		 * becomes:
+		 *   [...]
+		 *   %x = fadd %tmp.1, %tmp.3
+		 *
+		 * Also:
+		 *   %add = fadd %tmp.1, %tmp.3
+		 *   [...]
+		 *   vpm = mov %add
+		 *
+		 * becomes:
+		 *   [...]
+		 *   vpm = fadd %tmp.1, %tmp.3
+		 */
+		void eliminateRedundantMoves(const Module& module, Method& method, const Configuration& config);
 	} // namespace optimizations
 } // namespace vc4c
 #endif /* ELIMINATOR_H */

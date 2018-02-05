@@ -83,6 +83,8 @@ namespace vc4c
 		extern const OptimizationPass SPILL_LOCALS;
 		//combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation
 		extern const OptimizationPass COMBINE_ROTATIONS;
+		//removes various cases of redundant moves
+		extern const OptimizationPass REMOVE_REDUNDANT_MOVES;
 		//eliminates useless instructions (dead store, move to same, add with zero, ...)
 		extern const OptimizationPass ELIMINATE;
 		//vectorizes loops
