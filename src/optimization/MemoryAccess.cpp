@@ -752,13 +752,14 @@ static void lowerStackIntoVPM(Method& method, FastSet<InstructionWalker>& memory
 			const VPMArea* destArea = nullptr;
 
 			//mapped to VPM by previous operation
-			if(mem->getSource().hasType(ValueType::LOCAL) && vpmMappedLocals.find(mem->getSource().local->getBase(true)) != vpmMappedLocals.end())
+			FastMap<const Local*, const VPMArea*>::iterator mappedIt;
+			if(mem->getSource().hasType(ValueType::LOCAL) && (mappedIt = vpmMappedLocals.find(mem->getSource().local->getBase(true))) != vpmMappedLocals.end())
 			{
-				sourceArea = vpmMappedLocals.at(mem->getSource().local->getBase(true));
+				sourceArea = mappedIt->second;
 			}
-			if(mem->getDestination().hasType(ValueType::LOCAL) && vpmMappedLocals.find(mem->getDestination().local->getBase(true)) != vpmMappedLocals.end())
+			if(mem->getDestination().hasType(ValueType::LOCAL) && (mappedIt = vpmMappedLocals.find(mem->getDestination().local->getBase(true))) != vpmMappedLocals.end())
 			{
-				destArea = vpmMappedLocals.at(mem->getDestination().local->getBase(true));
+				destArea = mappedIt->second;
 			}
 			if(false) //TODO doesn't heed in-stack-offset
 			{
@@ -766,13 +767,15 @@ static void lowerStackIntoVPM(Method& method, FastSet<InstructionWalker>& memory
 				{
 					const Local* src = mem->getSource().local->getBase(true);
 					sourceArea = method.vpm->addArea(src, src->type.getElementType(), true, stackSize);
-					vpmMappedLocals.emplace(src, sourceArea);
+					if(sourceArea != nullptr)
+						vpmMappedLocals.emplace(src, sourceArea);
 				}
 				if(destArea == nullptr && mem->getDestination().hasType(ValueType::LOCAL) && mem->getDestination().local->getBase(true)->is<StackAllocation>())
 				{
 					const Local* dest = mem->getDestination().local->getBase(true);
 					destArea = method.vpm->addArea(dest, dest->type.getElementType(), true, stackSize);
-					vpmMappedLocals.emplace(dest, destArea);
+					if(sourceArea != nullptr)
+						vpmMappedLocals.emplace(dest, destArea);
 				}
 				if(sourceArea != nullptr)
 					logging::debug() << "Lowering stack-allocated data '" << sourceArea->originalAddress->to_string() << "' into VPM" << logging::endl;
@@ -809,25 +812,28 @@ static void lowerLocalDataIntoVPM(Method& method, FastSet<InstructionWalker>& me
 			const VPMArea* sourceArea = nullptr;
 			const VPMArea* destArea = nullptr;
 			//mapped to VPM by previous operation
-			if(mem->getSource().hasType(ValueType::LOCAL) && vpmMappedLocals.find(mem->getSource().local->getBase(true)) != vpmMappedLocals.end())
+			FastMap<const Local*, const VPMArea*>::iterator mappedIt;
+			if(mem->getSource().hasType(ValueType::LOCAL) && (mappedIt = vpmMappedLocals.find(mem->getSource().local->getBase(true))) != vpmMappedLocals.end())
 			{
-				sourceArea = vpmMappedLocals.at(mem->getSource().local->getBase(true));
+				sourceArea = mappedIt->second;
 			}
-			if(mem->getDestination().hasType(ValueType::LOCAL) && vpmMappedLocals.find(mem->getDestination().local->getBase(true)) != vpmMappedLocals.end())
+			if(mem->getDestination().hasType(ValueType::LOCAL) && (mappedIt = vpmMappedLocals.find(mem->getDestination().local->getBase(true))) != vpmMappedLocals.end())
 			{
-				destArea = vpmMappedLocals.at(mem->getDestination().local->getBase(true));
+				destArea = mappedIt->second;
 			}
 			if(sourceArea == nullptr && mem->getSource().hasType(ValueType::LOCAL) && mem->getSource().local->getBase(true)->is<Global>() && mem->getSource().local->getBase(true)->type.getPointerType().value()->addressSpace == AddressSpace::LOCAL)
 			{
 				const Local* src = mem->getSource().local->getBase(true);
 				sourceArea = method.vpm->addArea(src, src->type.getElementType(), false);
-				vpmMappedLocals.emplace(src, sourceArea);
+				if(sourceArea != nullptr)
+					vpmMappedLocals.emplace(src, sourceArea);
 			}
 			if(destArea == nullptr && mem->getDestination().hasType(ValueType::LOCAL) && mem->getDestination().local->getBase(true)->is<Global>() && mem->getDestination().local->getBase(true)->type.getPointerType().value()->addressSpace == AddressSpace::LOCAL)
 			{
 				const Local* dest = mem->getDestination().local->getBase(true);
 				destArea = method.vpm->addArea(dest, dest->type.getElementType(), false);
-				vpmMappedLocals.emplace(dest, destArea);
+				if(destArea != nullptr)
+					vpmMappedLocals.emplace(dest, destArea);
 			}
 			if(sourceArea != nullptr)
 				logging::debug() << "Lowering local '" << sourceArea->originalAddress->to_string() << "' into VPM" << logging::endl;

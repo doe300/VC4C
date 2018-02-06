@@ -256,7 +256,11 @@ const Value IntermediateInstruction::renameValue(Method& method, const Value& or
 		auto pos = method.stackAllocations.emplace(StackAllocation(prefix + alloc->name, alloc->type, alloc->size, alloc->alignment));
 		return pos.first->createReference();
 	}
-	return method.findOrCreateLocal(orig.type, prefix + orig.local->name)->createReference();
+	const Local* copy = method.findOrCreateLocal(orig.type, prefix + orig.local->name);
+	if(orig.local->reference.first != nullptr)
+		//re-reference the copied local to the (original) source
+		const_cast<std::pair<Local*, int>&>(copy->reference) = std::make_pair(renameValue(method, orig.local->reference.first->createReference(), prefix).local, orig.local->reference.second);
+	return copy->createReference();
 }
 
 std::string IntermediateInstruction::createAdditionalInfoString() const

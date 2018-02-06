@@ -701,7 +701,8 @@ VPRDMASetup VPMArea::toReadDMASetup(const DataType& elementType, uint8_t numValu
 
 VPM::VPM(const unsigned totalVPMSize) : maximumVPMSize(std::min(VPM_DEFAULT_SIZE, totalVPMSize)), areas(), isScratchLocked(false)
 {
-	areas.emplace(VPMArea{VPMUsage::SCRATCH, 0, 0, nullptr});
+	//set a size of at least 1 row, so if no scratch is used, the first area has an offset of != 0 and therefore is different than the scratch-area
+	areas.emplace(VPMArea{VPMUsage::SCRATCH, 0, 1, nullptr});
 }
 
 const VPMArea& VPM::getScratchArea()

@@ -65,6 +65,8 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
 					else
 					{
 						it.emplace(new intermediate::MoveOperation(ref, call->getArgument(i).value()));
+						if(ref.hasType(ValueType::LOCAL) && call->getArgument(i)->hasType(ValueType::LOCAL))
+							const_cast<std::pair<Local*, int>&>(it->getOutput()->local->reference) = std::make_pair(call->getArgument(i)->local, 0);
 						it.nextInMethod();
 					}
                 }
@@ -72,17 +74,6 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                 for(const Parameter& arg : calledMethod->parameters)
                 {
                 	currentMethod.findOrCreateLocal(arg.type, newLocalPrefix + arg.name);
-                }
-                for(const auto& pair : calledMethod->readLocals())
-                {
-                	//TODO maybe this is not needed at all? Since IntermediateInstruction#copyFor already creates all used locals
-                	//In regressions tests, there were 3k locals added by this
-                	if(currentMethod.findLocal(newLocalPrefix + pair.second.name) == nullptr)
-                	{
-                		PROFILE_COUNTER(108, "Missing locals (used)", !pair.second.getUsers().empty());
-                		logging::debug() << "Adding missing local to caller: " << pair.second.to_string() << logging::endl;
-                	}
-                	currentMethod.findOrCreateLocal(pair.second.type, newLocalPrefix + pair.second.name);
                 }
                 //insert instructions
                 calledMethod->forAllInstructions([&it, &currentMethod, &methodEndLabel, &newLocalPrefix, &call](const intermediate::IntermediateInstruction* instr) -> void

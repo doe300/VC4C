@@ -11,6 +11,12 @@
 using namespace vc4c;
 using namespace vc4c::intermediate;
 
+/*
+ * TODO some memory locations are not recognized:
+ * - when pointer is set via PHI-node
+ * - pointers loaded from stack allocations storing pointers to pointers
+ */
+
 static void checkMemoryLocation(const Value& val)
 {
 	if(!val.type.getPointerType())
