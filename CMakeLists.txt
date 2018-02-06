@@ -130,8 +130,10 @@ elseif(SPIRV_FRONTEND)
 endif()
 
 # fall back to "standard" CLang
-if((LLVMIR_FRONTEND OR LLVMLIB_FRONTEND) AND NOT CLANG_FOUND)
-	find_program(CLANG_FOUND clang NAMES clang-3.9 clang)
+if((LLVMIR_FRONTEND OR LLVMLIB_FRONTEND) AND NOT CROSS_COMPILE)
+	if(NOT CLANG_FOUND)
+		find_program(CLANG_FOUND clang NAMES clang-3.9 clang)
+	endif()
 	if(CLANG_FOUND)
 		message(STATUS "CLang compiler found: " ${CLANG_FOUND})
 		add_definitions(-DCLANG_PATH="${CLANG_FOUND}")
