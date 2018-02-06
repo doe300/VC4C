@@ -332,6 +332,19 @@ InstructionWalker optimizations::eliminateReturn(const Module& module, Method& m
 	return it;
 }
 
+static bool isNoReadBetween(InstructionWalker first, InstructionWalker second, Register reg)
+{
+	first.nextInBlock();
+	while(!first.isEndOfBlock() && first != second)
+	{
+		//just to be sure (e.g. for reading TMU/SFU/VPM), check triggering load of r4 and releasing of mutex too
+		if(first->readsRegister(reg) || first->writesRegister(reg) || first->signal.triggersReadOfR4() || first->writesRegister(REG_MUTEX))
+			return false;
+		first.nextInBlock();
+	}
+	return true;
+}
+
 void optimizations::eliminateRedundantMoves(const Module& module, Method& method, const Configuration& config)
 {
 	auto it = method.walkAllInstructions();
@@ -347,15 +360,15 @@ void optimizations::eliminateRedundantMoves(const Module& module, Method& method
 			//the destination is written and read only once (and not in combination with a literal value, to not introduce register conflicts)
 			bool destUsedOnce = move->hasValueType(ValueType::LOCAL) && move->getOutput()->getSingleWriter() == move && move->getOutput()->local->getUsers(LocalUse::Type::READER).size() == 1 && !(*move->getOutput()->local->getUsers(LocalUse::Type::READER).begin())->readsLiteral();
 
-			auto sourceWriter = it.getBasicBlock()->findWalkerForInstruction(move->getSource().getSingleWriter(), it);
+			auto sourceWriter = (move->getSource().getSingleWriter() != nullptr) ? it.getBasicBlock()->findWalkerForInstruction(move->getSource().getSingleWriter(), it) : Optional<InstructionWalker>{};
+			auto destinationReader = (move->hasValueType(ValueType::LOCAL) && move->getOutput()->local->getUsers(LocalUse::Type::READER).size() == 1) ? it.getBasicBlock()->findWalkerForInstruction(*move->getOutput()->local->getUsers(LocalUse::Type::READER).begin(), it.getBasicBlock()->end()) : Optional<InstructionWalker>{};
 
-			if(!it->hasSideEffects() && sourceUsedOnce && destUsedOnce && move->getSource().type == move->getOutput()->type)
+			if(!it->hasSideEffects() && sourceUsedOnce && destUsedOnce && destinationReader && move->getSource().type == move->getOutput()->type)
 			{
 				//if the source is written only once and the destination is read only once, we can replace the uses of the output with the input
 				//XXX we need to check the type equality, since otherwise Reordering might re-order the reading before the writing (if the local is written as type A and read as type B)
 				logging::debug() << "Removing obsolete move by replacing uses of the output with the input: " << it->to_string() << logging::endl;
-				const LocalUser* reader = *move->getOutput()->local->getUsers(LocalUse::Type::READER).begin();
-				const_cast<LocalUser*>(reader)->replaceLocal(move->getOutput()->local, move->getSource().local, LocalUse::Type::READER);
+				(*destinationReader)->replaceLocal(move->getOutput()->local, move->getSource().local, LocalUse::Type::READER);
 				it.erase();
 				//to not skip the next instruction
 				it.previousInBlock();
@@ -372,6 +385,23 @@ void optimizations::eliminateRedundantMoves(const Module& module, Method& method
 				sourceWriter->erase();
 				it->setOutput(output);
 				it->setSetFlags(setFlags);
+			}
+			else if(move->getSource().hasType(ValueType::REGISTER) && destUsedOnce && destinationReader && !move->signal.hasSideEffects() && move->setFlags == SetFlag::DONT_SET &&
+					!(*destinationReader)->hasUnpackMode() && (*destinationReader)->conditional == COND_ALWAYS && !(*destinationReader)->readsRegister(move->getSource().reg) && isNoReadBetween(it, destinationReader.value(), move->getSource().reg))
+			{
+				//if the source is a register, the output is only used once, this instruction has no signals/sets no flags, the output consumer does not also read this move's source and there is no read of the source
+				//between the move and the consumer, the consumer can directly use the register moved here
+				logging::debug() << "Replacing obsolete move by inserting the source into the instruction consuming its result: " << it->to_string() << logging::endl;
+				const Value newInput(move->getSource().reg, move->getOutput()->type);
+				const Local* oldLocal = move->getOutput()->local;
+				for(std::size_t i = 0; i < (*destinationReader)->getArguments().size(); ++i)
+				{
+					if((*destinationReader)->getArgument(i)->hasLocal(oldLocal))
+						(*destinationReader)->setArgument(i, newInput);
+				}
+				it.erase();
+				//to not skip the next instruction
+				it.previousInBlock();
 			}
 		}
 		it.nextInMethod();

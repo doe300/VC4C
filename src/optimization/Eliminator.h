@@ -97,6 +97,13 @@ namespace vc4c
 		 * becomes:
 		 *   [...]
 		 *   vpm = fadd %tmp.1, %tmp.3
+		 *
+		 * And:
+		 *   %in = move unif
+		 *   %x = add %in, %y
+		 *
+		 * becomes:
+		 *   %x = add unif, %y
 		 */
 		void eliminateRedundantMoves(const Module& module, Method& method, const Configuration& config);
 	} // namespace optimizations

@@ -122,11 +122,14 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
     const Register outReg = getOutput()->hasType(ValueType::LOCAL) ? registerMapping.at(getOutput()->local) : getOutput()->reg;
 
     auto input0 = getInputValue(getFirstArg(), registerMapping, this);
+    auto input1 = getSecondArg() ? getInputValue(getSecondArg().value(), registerMapping, this) : std::make_pair(REG_NOP, Optional<SmallImmediate>(false, SmallImmediate(0)));
+
     const InputMutex inMux0 = getInputMux(input0.first, getFirstArg().hasType(ValueType::REGISTER), input0.second);
     if (!input0.second) {
         if (input0.first.isAccumulator() && inMux0 != InputMutex::REGA && inMux0 != InputMutex::REGB)
             input0.first.num = REG_NOP.num; //Cosmetics, so vc4asm does not print "maybe reading reg xx"
-        else if (has_flag(input0.first.file, RegisterFile::PHYSICAL_ANY))
+        else if (has_flag(input0.first.file, RegisterFile::PHYSICAL_ANY) && (!getSecondArg() || input1.first.file != RegisterFile::PHYSICAL_A))
+        	//this is only correct, if the second value is not fixed to file A
             input0.first.file = RegisterFile::PHYSICAL_A;
     }
 
@@ -148,7 +151,6 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
     const WriteSwap swap = writeSwap ? WriteSwap::SWAP : WriteSwap::DONT_SWAP;
 
     if (getSecondArg()) {
-        auto input1 = getInputValue(getSecondArg().value(), registerMapping, this);
         InputMutex inMux1 = getInputMux(input1.first, getSecondArg()->hasType(ValueType::REGISTER), input1.second, input0.first.file == RegisterFile::PHYSICAL_A, input0.first.file == RegisterFile::PHYSICAL_B);
 
         //one of the values is a literal immediate
