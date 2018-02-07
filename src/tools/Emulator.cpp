@@ -21,10 +21,14 @@
 
 #include <cmath>
 #include <cstring>
+#include <fstream>
 #include <iomanip>
+#include <numeric>
 
 using namespace vc4c;
 using namespace vc4c::tools;
+
+extern void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, ReferenceRetainingList<Global>& globals, std::vector<std::unique_ptr<qpu_asm::Instruction>>& instructions);
 
 static Value ELEMENT_NUMBER(ContainerValue({
 	Value(SmallImmediate(0), TYPE_INT8), Value(SmallImmediate(1), TYPE_INT8), Value(SmallImmediate(2), TYPE_INT8), Value(SmallImmediate(3), TYPE_INT8),
@@ -32,6 +36,19 @@ static Value ELEMENT_NUMBER(ContainerValue({
 	Value(SmallImmediate(8), TYPE_INT8), Value(SmallImmediate(9), TYPE_INT8), Value(SmallImmediate(10), TYPE_INT8), Value(SmallImmediate(11), TYPE_INT8),
 	Value(SmallImmediate(12), TYPE_INT8), Value(SmallImmediate(13), TYPE_INT8), Value(SmallImmediate(14), TYPE_INT8), Value(SmallImmediate(15), TYPE_INT8)
 }), TYPE_INT8);
+
+std::size_t EmulationData::calcParameterSize() const
+{
+	return std::accumulate(parameter.begin(), parameter.end(), 0, [](std::size_t size, const std::pair<uint32_t, vc4c::Optional<std::vector<uint32_t>>>& pair) -> std::size_t
+	{
+		return size + (pair.second ? pair.second->size() * sizeof(uint32_t) : sizeof(uint32_t));
+	}) / sizeof(uint32_t);
+}
+
+tools::Word EmulationData::calcNumWorkItems() const
+{
+	return workGroup.localSizes[0] * workGroup.localSizes[1] * workGroup.localSizes[2] * workGroup.numGroups[0] * workGroup.numGroups[1] * workGroup.numGroups[2];
+}
 
 tools::Word* Memory::getWordAddress(MemoryAddress address)
 {
@@ -1308,7 +1325,7 @@ static void emulateStep(std::vector<std::unique_ptr<qpu_asm::Instruction>>::cons
 	}
 }
 
-void tools::emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, Memory& memory, const std::vector<MemoryAddress>& uniformAddresses, uint32_t maxCycles)
+bool tools::emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, Memory& memory, const std::vector<MemoryAddress>& uniformAddresses, uint32_t maxCycles)
 {
 	if(uniformAddresses.size() > 12)
 		throw CompilationError(CompilationStep::GENERAL, "Cannot use more than 12 QPUs!");
@@ -1327,6 +1344,7 @@ void tools::emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_it
 	}
 
 	uint32_t cycle = 0;
+	bool success = true;
 	while(!qpus.empty())
 	{
 		logging::debug() << "Emulating cycle: " << cycle << logging::endl;
@@ -1342,19 +1360,19 @@ void tools::emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_it
 		{
 			logging::error() << "After the maximum number of execution cycles, following QPUs are still running: " << logging::endl;
 			for(const QPU& qpu : qpus)
-			{
 				logging::error() << "QPU " << static_cast<unsigned>(qpu.ID) << ": " << qpu.getCurrentInstruction(firstInstruction)->toASMString() << logging::endl;
-			}
-			throw CompilationError(CompilationStep::GENERAL, "Maximum number of execution cycles reached, aborting!");
+			success = false;
+			break;
 		}
 	}
 
-	logging::info() << "Emulation finished for " << uniformAddresses.size() << " QPUs in " << cycle << " cycles" << logging::endl;
+	logging::info() << "Emulation " << (success ? "finished" : "timed out") << " for " << uniformAddresses.size() << " QPUs after " << cycle << " cycles" << logging::endl;
 
 	vpm.dumpContents();
+	return success;
 }
 
-void tools::emulateTask(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, const std::vector<MemoryAddress>& parameter, Memory& memory, MemoryAddress uniformBaseAddress, MemoryAddress globalData, uint32_t maxCycles)
+bool tools::emulateTask(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, const std::vector<MemoryAddress>& parameter, Memory& memory, MemoryAddress uniformBaseAddress, MemoryAddress globalData, uint32_t maxCycles)
 {
 	WorkGroupConfig config;
 	config.dimensions = 1;
@@ -1362,5 +1380,73 @@ void tools::emulateTask(std::vector<std::unique_ptr<qpu_asm::Instruction>>::cons
 	config.localSizes = {1, 1, 1};
 	config.numGroups = {1, 1, 1};
 	const auto uniformAddresses = buildUniforms(memory, uniformBaseAddress, parameter, config, globalData);
-	emulate(firstInstruction, memory, uniformAddresses, maxCycles);
+	return emulate(firstInstruction, memory, uniformAddresses, maxCycles);
+}
+
+static Memory fillMemory(const EmulationData& settings, MemoryAddress& uniformBaseAddressOut, std::vector<MemoryAddress>& parameterAddressesOut)
+{
+	auto size = settings.calcParameterSize() + settings.calcNumWorkItems() * (16 + settings.parameter.size());
+	Memory mem(size);
+
+	MemoryAddress currentAddress = 0;
+
+	for(const auto& pair : settings.parameter)
+	{
+		tools::Word* addr = mem.getWordAddress(currentAddress);
+		if(pair.second)
+		{
+			parameterAddressesOut.push_back(currentAddress);
+			std::copy_n(pair.second->data(), pair.second->size(), addr);
+			currentAddress += static_cast<MemoryAddress>(pair.second->size() * sizeof(uint32_t));
+		}
+		else
+			//value is directly read as input
+			parameterAddressesOut.push_back(pair.first);
+	}
+
+	uniformBaseAddressOut = currentAddress;
+
+	return mem;
+}
+
+EmulationResult tools::emulate(const EmulationData& data)
+{
+	qpu_asm::ModuleInfo module;
+	ReferenceRetainingList<Global> globals;
+	std::vector<std::unique_ptr<qpu_asm::Instruction>> instructions;
+	if(data.module.second != nullptr)
+		extractBinary(*data.module.second, module, globals, instructions);
+	else
+	{
+		std::ifstream f(data.module.first);
+		extractBinary(f, module, globals, instructions);
+	}
+
+	auto kernelInfo = std::find_if(module.kernelInfos.begin(), module.kernelInfos.end(), [&data](const qpu_asm::KernelInfo& info) -> bool { return info.name == data.kernelName; });
+	if(kernelInfo == module.kernelInfos.end())
+		throw CompilationError(CompilationStep::GENERAL, "Failed to find kernel-info for kernel", data.kernelName);
+
+	MemoryAddress uniformAddress;
+	std::vector<MemoryAddress> paramAddresses;
+	Memory mem(fillMemory(data, uniformAddress, paramAddresses));
+
+	auto uniformAddresses = buildUniforms(mem, uniformAddress, paramAddresses, data.workGroup, 0);
+	bool status = emulate(instructions.begin() + (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue(), mem, uniformAddresses, data.maxEmulationCycles);
+
+	EmulationResult result{data};
+	result.executionSuccessful = status;
+
+	result.results.reserve(data.parameter.size());
+	for(std::size_t i = 0; i < data.parameter.size(); ++i)
+	{
+		if(!data.parameter[i].second)
+			result.results.push_back(std::make_pair(data.parameter[i].first, Optional<std::vector<uint32_t>>{}));
+		else
+		{
+			result.results.push_back(std::make_pair(paramAddresses[i], std::vector<uint32_t>{}));
+			std::copy_n(mem.getWordAddress(paramAddresses[i]), data.parameter[i].second->size(), std::back_inserter(*result.results[i].second));
+		}
+	}
+
+	return result;
 }

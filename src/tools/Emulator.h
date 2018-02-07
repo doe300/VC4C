@@ -11,6 +11,7 @@
 #include "../Values.h"
 #include "../asm/OpCodes.h"
 #include "config.h"
+#include "tools.h"
 
 #include <bitset>
 #include <limits>
@@ -269,17 +270,9 @@ namespace vc4c
 			void setFlags(const Value& output, ConditionCode cond);
 		};
 
-		struct WorkGroupConfig
-		{
-			Word dimensions;
-			std::array<Word, 3> localSizes;
-			std::array<Word, 3> numGroups;
-			std::array<Word, 3> globalOffsets;
-		};
-
 		std::vector<MemoryAddress> buildUniforms(Memory& memory, MemoryAddress baseAddress, const std::vector<MemoryAddress>& parameter, const WorkGroupConfig& config, MemoryAddress globalData);
-		void emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, Memory& memory, const std::vector<MemoryAddress>& uniformAddresses, uint32_t maxCycles = std::numeric_limits<uint32_t>::max());
-		void emulateTask(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, const std::vector<MemoryAddress>& parameter, Memory& memory, MemoryAddress uniformBaseAddress, MemoryAddress globalData, uint32_t maxCycles = std::numeric_limits<uint32_t>::max());
+		bool emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, Memory& memory, const std::vector<MemoryAddress>& uniformAddresses, uint32_t maxCycles = std::numeric_limits<uint32_t>::max());
+		bool emulateTask(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, const std::vector<MemoryAddress>& parameter, Memory& memory, MemoryAddress uniformBaseAddress, MemoryAddress globalData, uint32_t maxCycles = std::numeric_limits<uint32_t>::max());
 	}
 }
 
