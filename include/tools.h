@@ -25,9 +25,9 @@ namespace vc4c
 		struct WorkGroupConfig
 		{
 			uint32_t dimensions = 3;
-			std::array<uint32_t, 3> localSizes = {1, 1, 1};
-			std::array<uint32_t, 3> numGroups = {1, 1, 1};
-			std::array<uint32_t, 3> globalOffsets = {0, 0, 0};
+			std::array<uint32_t, 3> localSizes = { { 1, 1, 1 } }; /* second braces require for GCC bug 65815 */
+			std::array<uint32_t, 3> numGroups = { {1, 1, 1} };
+			std::array<uint32_t, 3> globalOffsets = {0};
 		};
 
 		/*
