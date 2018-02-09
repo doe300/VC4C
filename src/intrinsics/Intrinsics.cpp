@@ -883,8 +883,8 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
 		const Value tmpLocalSize = method.addNewLocal(TYPE_INT8, "%local_size");
 		const Value tmpGlobalOffset = method.addNewLocal(TYPE_INT32, "%global_offset");
 		const Value tmpLocalID = method.addNewLocal(TYPE_INT8, "%local_id");
-		const Value tmpRes0 = method.addNewLocal(TYPE_INT32, "%global_id");
-		const Value tmpRes1 = method.addNewLocal(TYPE_INT32, "%global_id");
+		const Value tmpRes0 = method.addNewLocal(TYPE_INT32, "%group_global_id");
+		const Value tmpRes1 = method.addNewLocal(TYPE_INT32, "%group_global_id");
 		//emplace dummy instructions to be replaced
 		it.emplace(new MoveOperation(tmpGroupID, NOP_REGISTER));
 		it = intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0).value(), {Method::GROUP_ID_X, Method::GROUP_ID_Y, Method::GROUP_ID_Z}, INT_ZERO, add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT));

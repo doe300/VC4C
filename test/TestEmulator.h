@@ -21,6 +21,8 @@ public:
 	void testBranches();
 	void testWorkItem();
 	void testBug30();
+	void testIntegerEmulations(std::size_t index, std::string name);
+	void testFloatEmulations(std::size_t index, std::string name);
 };
 
 #endif /* TEST_EMULATOR_H */

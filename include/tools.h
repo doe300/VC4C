@@ -60,6 +60,14 @@ namespace vc4c
 			 */
 			uint32_t maxEmulationCycles = std::numeric_limits<uint32_t>::max();
 
+			explicit EmulationData() { };
+
+			EmulationData(const std::string& moduleFile, const std::string& kernelName, const std::vector<std::pair<uint32_t, Optional<std::vector<uint32_t>>>>& parameter, const WorkGroupConfig& config = {}, uint32_t maxCycles = std::numeric_limits<uint32_t>::max()) :
+				module(std::make_pair(moduleFile, nullptr)), kernelName(kernelName), parameter(parameter), workGroup(config), maxEmulationCycles(maxCycles) { }
+
+			EmulationData(std::istream& moduleData, const std::string& kernelName, const std::vector<std::pair<uint32_t, Optional<std::vector<uint32_t>>>>& parameter, const WorkGroupConfig& config = {}, uint32_t maxCycles = std::numeric_limits<uint32_t>::max()) :
+				module(std::make_pair("", &moduleData)), kernelName(kernelName), parameter(parameter), workGroup(config), maxEmulationCycles(maxCycles) { }
+
 			std::size_t calcParameterSize() const;
 			uint32_t calcNumWorkItems() const;
 		};

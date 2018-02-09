@@ -11,7 +11,8 @@
 #include "asm/Instruction.h"
 #include "asm/KernelInfo.h"
 #include "helper.h"
-#include "tools.h"
+
+#include "test_cases.h"
 
 #include <cstring>
 #include <fstream>
@@ -19,8 +20,6 @@
 
 using namespace vc4c;
 using namespace vc4c::tools;
-
-static constexpr uint32_t maxExecutionCycles{1 << 16};
 
 TestEmulator::TestEmulator()
 {
@@ -31,6 +30,14 @@ TestEmulator::TestEmulator()
 	TEST_ADD(TestEmulator::testBranches);
 	TEST_ADD(TestEmulator::testWorkItem);
 	TEST_ADD(TestEmulator::testBug30);
+	for(std::size_t i = 0; i < vc4c::test::integerTests.size(); ++i)
+	{
+		TEST_ADD_TWO_ARGUMENTS(TestEmulator::testIntegerEmulations, i, vc4c::test::integerTests.at(i).first.kernelName);
+	}
+	for(std::size_t i = 0; i < vc4c::test::floatTests.size(); ++i)
+	{
+		TEST_ADD_TWO_ARGUMENTS(TestEmulator::testFloatEmulations, i, vc4c::test::floatTests.at(i).first.kernelName);
+	}
 }
 
 static std::stringstream compileFile(const std::string& fileName, const std::string& options = "")
@@ -47,11 +54,11 @@ static std::stringstream compileFile(const std::string& fileName, const std::str
 
 void TestEmulator::testHelloWorld()
 {
-	std::stringstream buffer(compileFile("./example/hello_world.cl"));
+	std::stringstream buffer(std::move(compileFile("./example/hello_world.cl")));
 
 	EmulationData data;
 	data.kernelName = "hello_world";
-	data.maxEmulationCycles = maxExecutionCycles;
+	data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
 	data.module = std::make_pair("", &buffer);
 	data.workGroup.globalOffsets = {0, 0, 0};
 	data.workGroup.localSizes = {8, 1, 1};
@@ -77,11 +84,11 @@ void TestEmulator::testHelloWorld()
 
 void TestEmulator::testHelloWorldVector()
 {
-	std::stringstream buffer(compileFile("./example/hello_world_vector.cl"));
+	std::stringstream buffer(std::move(compileFile("./example/hello_world_vector.cl")));
 
 	EmulationData data;
 	data.kernelName = "hello_world";
-	data.maxEmulationCycles = maxExecutionCycles;
+	data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
 	data.module = std::make_pair("", &buffer);
 	//16 characters input
 	data.parameter.emplace_back(0u, std::vector<uint32_t>(16 / sizeof(uint32_t)));
@@ -102,17 +109,17 @@ void TestEmulator::testHelloWorldVector()
 
 void TestEmulator::testPrime()
 {
-	std::stringstream buffer(compileFile("./example/test_prime.cl"));
+	std::stringstream buffer(std::move(compileFile("./example/test_prime.cl")));
 	//TODO needs v8adds with arbitrary value to be implemented
 }
 
 void TestEmulator::testBarrier()
 {
-	std::stringstream buffer(compileFile("./testing/test_barrier.cl"));
+	std::stringstream buffer(std::move(compileFile("./testing/test_barrier.cl")));
 
 	EmulationData data;
 	data.kernelName = "test_barrier";
-	data.maxEmulationCycles = maxExecutionCycles;
+	data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
 	data.module = std::make_pair("", &buffer);
 	data.workGroup.localSizes = {8, 1, 1};
 	data.workGroup.numGroups = {2, 1, 1};
@@ -143,11 +150,11 @@ void TestEmulator::testBarrier()
 
 void TestEmulator::testBranches()
 {
-	std::stringstream buffer(compileFile("./testing/test_branches.cl"));
+	std::stringstream buffer(std::move(compileFile("./testing/test_branches.cl")));
 
 	EmulationData data;
 	data.kernelName = "test_branches";
-	data.maxEmulationCycles = maxExecutionCycles;
+	data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
 	data.module = std::make_pair("", &buffer);
 
 	//input value 512
@@ -173,11 +180,11 @@ void TestEmulator::testBranches()
 
 void TestEmulator::testWorkItem()
 {
-	std::stringstream buffer(compileFile("./testing/test_work_item.cl"));
+	std::stringstream buffer(std::move(compileFile("./testing/test_work_item.cl")));
 
 	EmulationData data;
 	data.kernelName = "test_work_item";
-	data.maxEmulationCycles = maxExecutionCycles;
+	data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
 	data.module = std::make_pair("", &buffer);
 	data.workGroup.dimensions = 3;
 	data.workGroup.globalOffsets = {0, 0, 0};
@@ -231,11 +238,11 @@ void TestEmulator::testWorkItem()
 
 void TestEmulator::testBug30()
 {
-	std::stringstream buffer(compileFile("./testing/bugs/30_local_memory.cl"));
+	std::stringstream buffer(std::move(compileFile("./testing/bugs/30_local_memory.cl")));
 
 	EmulationData data;
 	data.kernelName = "dot3";
-	data.maxEmulationCycles = maxExecutionCycles;
+	data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
 	data.module = std::make_pair("", &buffer);
 	data.workGroup.localSizes = {8, 1, 1};
 	data.workGroup.numGroups = {4, 1, 1};
@@ -263,4 +270,70 @@ void TestEmulator::testBug30()
 		std::cout << (reinterpret_cast<const float*>(result.results[2].second->data())[i]) << std::endl;
 
 	//TODO also test __local memory version
+}
+
+void TestEmulator::testIntegerEmulations(std::size_t index, std::string name)
+{
+	auto& data = vc4c::test::integerTests.at(index).first;
+
+	std::stringstream buffer(std::move(compileFile(data.module.first)));
+	data.module.second = &buffer;
+
+	const auto result = emulate(data);
+	TEST_ASSERT(result.executionSuccessful);
+	TEST_ASSERT_EQUALS(data.parameter.size(), result.results.size());
+
+	for(const auto& pair : vc4c::test::integerTests.at(index).second)
+	{
+		const auto& output = *result.results.at(pair.first).second;
+		const auto& expected = pair.second;
+
+		//we might write values we do not check
+		TEST_ASSERT(expected.size() <= output.size());
+
+		//general test equality
+		if(output != expected)
+		{
+			//if that fails, test single elements
+			for(std::size_t i = 0; i < expected.size(); ++i)
+			{
+				int e = bit_cast<uint32_t, int>(expected.at(i));
+				int o = bit_cast<uint32_t, int>(output.at(i));
+				TEST_ASSERT_EQUALS(e, o);
+			}
+		}
+	}
+}
+
+void TestEmulator::testFloatEmulations(std::size_t index, std::string name)
+{
+	auto& data = vc4c::test::floatTests.at(index).first;
+
+	std::stringstream buffer(std::move(compileFile(data.module.first)));
+	data.module.second = &buffer;
+
+	const auto result = emulate(data);
+	TEST_ASSERT(result.executionSuccessful);
+	TEST_ASSERT_EQUALS(data.parameter.size(), result.results.size());
+
+	for(const auto& pair : vc4c::test::floatTests.at(index).second)
+	{
+		const auto& output = *result.results.at(pair.first).second;
+		const auto& expected = pair.second;
+
+		//we might write values we do not check
+		TEST_ASSERT(expected.size() <= output.size());
+
+		//general test equality
+		if(output != expected)
+		{
+			//if that fails, test single elements
+			for(std::size_t i = 0; i < expected.size(); ++i)
+			{
+				float e = bit_cast<uint32_t, float>(expected.at(i));
+				float o = bit_cast<uint32_t, float>(output.at(i));
+				TEST_ASSERT_EQUALS(e, o);
+			}
+		}
+	}
 }

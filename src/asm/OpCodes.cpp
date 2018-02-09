@@ -410,6 +410,14 @@ bool OpCode::operator<(const OpCode& right) const
 	return opAdd < right.opAdd || opMul < right.opMul;
 }
 
+//Taken from https://stackoverflow.com/questions/2835469/how-to-perform-rotate-shift-in-c?noredirect=1&lq=1
+static unsigned int rotate_right(unsigned int value, int shift)
+{
+	if((shift &= 31) == 0)
+		return value;
+	return (value >> shift) | (value << (32 - shift));
+}
+
 Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> secondOperand, const std::function<Optional<Value>(const Value&)>& valueSupplier) const
 {
 	if(!firstOperand)
@@ -505,6 +513,8 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 		return Value(Literal(~firstLit.integer), resultType);
 	if(*this == OP_OR)
 		return Value(Literal(firstLit.integer | secondLit.integer), resultType);
+	if(*this == OP_ROR)
+		return Value(Literal(static_cast<uint64_t>(rotate_right(static_cast<uint32_t>(firstLit.integer), static_cast<int32_t>(secondLit.integer)))), resultType);
 	if(*this == OP_SHL)
 		return Value(Literal(firstLit.integer << secondLit.integer), resultType);
 	if(*this == OP_SHR)
@@ -513,23 +523,33 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 		return Value(Literal(firstLit.integer - secondLit.integer), resultType);
 	if(*this == OP_XOR)
 		return Value(Literal(firstLit.integer ^ secondLit.integer), resultType);
-	if(*this == OP_V8ADDS || *this == OP_V8MAX || *this == OP_V8MIN)
+	if(*this == OP_V8ADDS || *this == OP_V8SUBS || *this == OP_V8MAX || *this == OP_V8MIN)
 	{
-		uint64_t firstArg = bit_cast<int64_t, uint64_t>(firstLit.integer);
-		uint64_t secondArg = bit_cast<int64_t, uint64_t>(secondLit.integer);
-		//Supports the "move" version, if both operands are the same
-		if((*this == OP_V8MIN || *this == OP_V8MAX) && firstArg && secondArg)
-			return firstVal;
-		if(firstArg > 255 || secondArg > 255)
-			return NO_VALUE;
-		//Supports the "simple" version, only the first byte is set
-		if(*this == OP_V8ADDS)
-			return Value(Literal(std::min(firstArg + secondArg, static_cast<uint64_t>(255))), resultType);
-		if(*this == OP_V8MAX)
-			return Value(Literal(std::max(firstArg, secondArg)), resultType);
-		if(*this == OP_V8MIN)
-			return Value(Literal(std::min(firstArg, secondArg)), resultType);
+		std::array<uint32_t, 4> bytesA, bytesB, bytesOut;
+		bytesA[0] = static_cast<uint32_t>(firstLit.integer) & 0xFF;
+		bytesA[1] = static_cast<uint32_t>(firstLit.integer >> 8) & 0xFF;
+		bytesA[2] = static_cast<uint32_t>(firstLit.integer >> 16) & 0xFF;
+		bytesA[3] = static_cast<uint32_t>(firstLit.integer >> 24) & 0xFF;
+		bytesB[0] = static_cast<uint32_t>(secondLit.integer) & 0xFF;
+		bytesB[1] = static_cast<uint32_t>(secondLit.integer >> 8) & 0xFF;
+		bytesB[2] = static_cast<uint32_t>(secondLit.integer >> 16) & 0xFF;
+		bytesB[3] = static_cast<uint32_t>(secondLit.integer >> 24) & 0xFF;
+		std::transform(bytesA.begin(), bytesA.end(), bytesB.begin(), bytesOut.begin(), [this](uint32_t a, uint32_t b) -> uint32_t
+		{
+			if(*this == OP_V8ADDS)
+				return std::min(a + b, 255u);
+			if(*this == OP_V8SUBS)
+				return std::max(std::min(a - b, 255u), 0u);
+			if(*this == OP_V8MAX)
+				return std::max(a, b);
+			if(*this == OP_V8MIN)
+				return std::min(a, b);
+			throw CompilationError(CompilationStep::GENERAL, "Unhandled op-code", this->name);
+		});
+		uint64_t result = ((bytesOut[3] & 0xFF) << 24) | ((bytesOut[2] & 0xFF) << 16) | ((bytesOut[1] & 0xFF) << 8) | (bytesOut[0] & 0xFF);
+		return Value(Literal(result), resultType);
 	}
+	//TODO v8muld
 
 	return NO_VALUE;
 }
