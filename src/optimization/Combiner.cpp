@@ -539,7 +539,7 @@ static Optional<Literal> getSourceLiteral(InstructionWalker it)
 		if(val)
 			return val->getLiteralValue();
 	}
-	return Optional<Literal>(false, static_cast<int64_t>(0));
+	return Optional<Literal>(false, Literal(false));
 }
 
 static bool canReplaceLiteralLoad(InstructionWalker it, const InstructionWalker start, const InstructionWalker match)
@@ -561,7 +561,7 @@ void optimizations::combineLoadingLiterals(const Module& module, Method& method,
 {
 	for(BasicBlock& block : method)
 	{
-		FastMap<int64_t, InstructionWalker> lastLoadImmediate;
+		FastMap<uint32_t, InstructionWalker> lastLoadImmediate;
 		InstructionWalker it = block.begin();
 		while(!it.isEndOfBlock())
 		{
@@ -570,10 +570,10 @@ void optimizations::combineLoadingLiterals(const Module& module, Method& method,
 				Optional<Literal> literal = getSourceLiteral(it);
 				if(literal)
 				{
-					if(lastLoadImmediate.find(literal->integer) != lastLoadImmediate.end() && canReplaceLiteralLoad(it, block.begin(), lastLoadImmediate.at(literal->integer)))
+					if(lastLoadImmediate.find(literal->unsignedInt()) != lastLoadImmediate.end() && canReplaceLiteralLoad(it, block.begin(), lastLoadImmediate.at(literal->unsignedInt())))
 					{
 						Local* oldLocal = it->getOutput()->local;
-						Local* newLocal = lastLoadImmediate.at(literal->integer)->getOutput()->local;
+						Local* newLocal = lastLoadImmediate.at(literal->unsignedInt())->getOutput()->local;
 						logging::debug() << "Removing duplicate loading of local: " << it->to_string() << logging::endl;
 						//Local#forUsers can't be used here, since we modify the list of users via LocalUser#replaceLocal
 						FastSet<const LocalUser*> readers = oldLocal->getUsers(LocalUse::Type::READER);
@@ -585,7 +585,7 @@ void optimizations::combineLoadingLiterals(const Module& module, Method& method,
 						continue;
 					}
 					else
-						lastLoadImmediate[literal->integer] =  it;
+						lastLoadImmediate[literal->unsignedInt()] =  it;
 				}
 			}
 			it.nextInBlock();

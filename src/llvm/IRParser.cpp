@@ -111,9 +111,10 @@ Value IRParser::toValue(const Token& token, const DataType& type)
     }
     else if (token.type == TokenType::NUMBER) {
         if(type.isFloatingType())
-            val.literal = Literal(token.real);
+        	//TODO throw error if value cannot be represented
+            val.literal = Literal(static_cast<float>(token.real));
         else
-            val.literal = Literal(static_cast<int64_t>(token.integer));
+            val.literal = Literal(static_cast<int32_t>(token.integer));
     }
     else
         throw CompilationError(CompilationStep::PARSER, "Unhandled type", token.to_string());
@@ -390,7 +391,7 @@ static std::vector<Value> parseStringConstant(const std::string& constant, const
 			++index;
 			std::string tmp(constant.substr(index, 2));
 			auto c = strtoul(tmp.data(), nullptr, 0x10);
-			elements.emplace_back(Literal(static_cast<int64_t>(c)), TYPE_INT8);
+			elements.emplace_back(Literal(static_cast<uint32_t>(c)), TYPE_INT8);
 			index += 2;
 		}
 		else if(constant.at(index) == '"')
@@ -398,7 +399,7 @@ static std::vector<Value> parseStringConstant(const std::string& constant, const
 			break;
 		else
 		{
-			elements.emplace_back(Literal(static_cast<int64_t>(constant.at(index))), TYPE_INT8);
+			elements.emplace_back(Literal(static_cast<uint32_t>(constant.at(index))), TYPE_INT8);
 			++index;
 		}
 	}
@@ -771,7 +772,7 @@ static std::vector<DataType> getElementTypes(const std::vector<Value>& indices, 
 			const Value idxVal = indices.at(curIndex);
 			if(!idxVal.getLiteralValue())
 				throw CompilationError(CompilationStep::LLVM_2_IR, "Cannot access struct-element with non-scalar index", idxVal.to_string());
-			elementTypes.push_back(subContainerType.getStructType().value()->elementTypes.at(idxVal.getLiteralValue()->integer));
+			elementTypes.push_back(subContainerType.getStructType().value()->elementTypes.at(idxVal.getLiteralValue()->unsignedInt()));
 		}
 		else if(subContainerType.isVectorType())
 		{
@@ -879,8 +880,8 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
         		throw CompilationError(CompilationStep::PARSER, "Cannot allocate a non-constant number of entries", numEntries.to_string());
         	const DataType childType = type;
         	type.num = 1;
-			type.complexType.reset(new ArrayType{childType, static_cast<unsigned>(numEntries.getLiteralValue()->integer)});
-			type.typeName = (childType.to_string() + "[") + std::to_string(numEntries.literal.integer) +"]";
+			type.complexType.reset(new ArrayType{childType, numEntries.getLiteralValue()->unsignedInt()});
+			type.typeName = (childType.to_string() + "[") + std::to_string(numEntries.literal.unsignedInt()) +"]";
         }
         std::size_t alignment = 1;
         skipToken(scanner, ',');
@@ -1449,7 +1450,7 @@ void IRParser::parseSwitch(LLVMMethod& method, FastModificationList<std::unique_
         const std::string matchLabel(scanner.pop().getText().value());
 
         // "[...] an array of pairs of comparison value constants and ‘label‘s"
-        cases[static_cast<int>(matchVal.literal.integer)] = matchLabel;
+        cases[matchVal.literal.unsignedInt()] = matchLabel;
         if(scanner.peek().isEnd())
         {
         	//skip new-line, if any

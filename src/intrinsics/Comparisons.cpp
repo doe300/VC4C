@@ -50,7 +50,7 @@ InstructionWalker intrinsifyIntegerRelation(Method& method, InstructionWalker it
     {
         // a == b <=> a xor b == 0 [<=> a - b == 0]
     	// a != b <=> a xor b != 0
-        if(comp->getFirstArg().hasType(ValueType::LOCAL) && comp->getSecondArg()->hasLiteral(Literal(static_cast<int64_t>(0))))
+        if(comp->getFirstArg().hasType(ValueType::LOCAL) && comp->getSecondArg()->hasLiteral(Literal(0u)))
             //special case for a == 0
             //does not save instructions, but does not force value a to be on register-file A (since B is reserved for literal 0)
             it.emplace(new MoveOperation(NOP_REGISTER, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
@@ -83,11 +83,11 @@ InstructionWalker intrinsifyIntegerRelation(Method& method, InstructionWalker it
     		const Value leftLower = method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.num), "%comp.left");
     		const Value rightUpper = method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.num), "%comp.right");
     		const Value rightLower = method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.num), "%comp.right");
-    		it.emplace(new Operation(OP_SHR, leftUpper, comp->getFirstArg(), Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
+    		it.emplace(new Operation(OP_SHR, leftUpper, comp->getFirstArg(), Value(Literal(16u), TYPE_INT8)));
     		it.nextInBlock();
     		it.emplace(new Operation(OP_AND, leftLower, comp->getFirstArg(), Value(Literal(TYPE_INT16.getScalarWidthMask()), TYPE_INT32)));
     		it.nextInBlock();
-    		it.emplace(new Operation(OP_SHR, rightUpper, comp->getSecondArg().value(), Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
+    		it.emplace(new Operation(OP_SHR, rightUpper, comp->getSecondArg().value(), Value(Literal(16u), TYPE_INT8)));
 			it.nextInBlock();
 			it.emplace(new Operation(OP_AND, rightLower, comp->getSecondArg().value(), Value(Literal(TYPE_INT16.getScalarWidthMask()), TYPE_INT32)));
 			it.nextInBlock();
@@ -355,7 +355,7 @@ InstructionWalker intermediate::insertIsNegative(InstructionWalker it, const Val
 {
 	if(src.getLiteralValue())
 	{
-		dest = src.getLiteralValue()->integer < 0 ? INT_MINUS_ONE : INT_ZERO;
+		dest = src.getLiteralValue()->signedInt() < 0 ? INT_MINUS_ONE : INT_ZERO;
 	}
 	else if(src.hasType(ValueType::CONTAINER))
 	{
@@ -363,7 +363,7 @@ InstructionWalker intermediate::insertIsNegative(InstructionWalker it, const Val
 		for(const auto& elem : src.container.elements)
 		{
 			if(elem.getLiteralValue())
-				dest.container.elements.push_back(elem.getLiteralValue()->integer < 0 ? INT_MINUS_ONE : INT_ZERO);
+				dest.container.elements.push_back(elem.getLiteralValue()->signedInt() < 0 ? INT_MINUS_ONE : INT_ZERO);
 			else
 				throw CompilationError(CompilationStep::OPTIMIZER, "Can't handle container with non-literal values", src.to_string(false, true));
 		}
@@ -377,7 +377,7 @@ InstructionWalker intermediate::insertIsNegative(InstructionWalker it, const Val
 	{
 		if(dest.isUndefined() || !dest.isWriteable())
 			throw CompilationError(CompilationStep::GENERAL, "Cannot write into this value", dest.to_string(true));
-		it.emplace(new Operation(OP_ASR, dest, src, Value(Literal(static_cast<uint64_t>(TYPE_INT32.getScalarBitCount() - 1)), TYPE_INT32)));
+		it.emplace(new Operation(OP_ASR, dest, src, Value(Literal(static_cast<uint32_t>(TYPE_INT32.getScalarBitCount() - 1)), TYPE_INT32)));
 		it.nextInBlock();
 	}
 	return it;

@@ -765,7 +765,7 @@ void BitcodeReader::parseInstruction(Module& module, Method& method, LLVMInstruc
 			{
 				throw CompilationError(CompilationStep::PARSER, "Container extraction with multi-level indices is not yet implemented!");
 			}
-			instructions.emplace_back(new ContainerExtraction(toValue(method, extraction).local, toValue(method, extraction->getAggregateOperand()), Value(Literal(static_cast<int64_t>(extraction->getIndices().front())), TYPE_INT32)));
+			instructions.emplace_back(new ContainerExtraction(toValue(method, extraction).local, toValue(method, extraction->getAggregateOperand()), Value(Literal(extraction->getIndices().front()), TYPE_INT32)));
 			instructions.back()->setDecorations(deco);
 			break;
 		}
@@ -793,7 +793,7 @@ void BitcodeReader::parseInstruction(Module& module, Method& method, LLVMInstruc
 			{
 				throw CompilationError(CompilationStep::PARSER, "Container insertion with multi-level indices is not yet implemented!");
 			}
-			instructions.emplace_back(new ContainerInsertion(toValue(method, insertion).local, toValue(method, insertion->getAggregateOperand()), toValue(method, insertion->getInsertedValueOperand()), Value(Literal(static_cast<int64_t>(insertion->getIndices().front())), TYPE_INT32)));
+			instructions.emplace_back(new ContainerInsertion(toValue(method, insertion).local, toValue(method, insertion->getAggregateOperand()), toValue(method, insertion->getInsertedValueOperand()), Value(Literal(insertion->getIndices().front()), TYPE_INT32)));
 			instructions.back()->setDecorations(deco);
 			break;
 		}
@@ -868,7 +868,12 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
 	const DataType type = toDataType(val->getType());
 	if(llvm::dyn_cast<const llvm::ConstantInt>(val) != nullptr)
 	{
-		return Value(Literal(llvm::cast<const llvm::ConstantInt>(val)->getSExtValue()), type);
+		auto constant = llvm::cast<const llvm::ConstantInt>(val);
+		if(constant->getSExtValue() > std::numeric_limits<uint32_t>::max() || constant->getSExtValue() < std::numeric_limits<int32_t>::min())
+			throw CompilationError(CompilationStep::PARSER, "Constant value is out of valid range", std::to_string(constant->getSExtValue()));
+		if(constant->isNegative())
+			return Value(Literal(static_cast<int32_t>(constant->getSExtValue())), type);
+		return Value(Literal(static_cast<uint32_t>(constant->getZExtValue())), type);
 	}
 	/*
 	 * DO NOT COMBINE THE NEXT ELSE-CLAUSES
@@ -905,10 +910,10 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
 		//special treatment for spirv.ConstantSampler type
 		if(type == TYPE_SAMPLER)
 		{
-			intermediate::Sampler sampler(static_cast<intermediate::AddressingMode>(toConstant(module, constant->getOperand(0)).getLiteralValue()->integer),
+			intermediate::Sampler sampler(static_cast<intermediate::AddressingMode>(toConstant(module, constant->getOperand(0)).getLiteralValue()->unsignedInt()),
 					toConstant(module, constant->getOperand(1)).getLiteralValue()->isTrue(),
-					static_cast<intermediate::FilterMode>(toConstant(module, constant->getOperand(2)).getLiteralValue()->integer));
-			return Value(Literal(static_cast<int64_t>(sampler)), TYPE_SAMPLER);
+					static_cast<intermediate::FilterMode>(toConstant(module, constant->getOperand(2)).getLiteralValue()->unsignedInt()));
+			return Value(Literal(static_cast<uint32_t>(sampler)), TYPE_SAMPLER);
 		}
 		//element types are stored as operands
 		Value aggregate(ContainerValue(constant->getNumOperands()), type);

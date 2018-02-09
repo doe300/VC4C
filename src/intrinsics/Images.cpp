@@ -18,15 +18,15 @@ static constexpr unsigned IMAGE_CONFIG_NUM_UNIFORMS {6};
 //The first entry is the base texture setup
 const Value IMAGE_CONFIG_BASE_OFFSET(INT_ZERO);
 //The second entry is the texture access setup
-const Value IMAGE_CONFIG_ACCESS_OFFSET(Literal(static_cast<uint64_t>(sizeof(unsigned))), TYPE_INT32);
+const Value IMAGE_CONFIG_ACCESS_OFFSET(Literal(static_cast<uint32_t>(sizeof(unsigned))), TYPE_INT32);
 //The third entry is the extended texture setup (e.g. cube map, child images, etc.)
-const Value IMAGE_CONFIG_CHILD_DIMENSION_OFFSET(Literal(2 * static_cast<uint64_t>(sizeof(unsigned))), TYPE_INT32);
+const Value IMAGE_CONFIG_CHILD_DIMENSION_OFFSET(Literal(2 * static_cast<uint32_t>(sizeof(unsigned))), TYPE_INT32);
 //The forth entry is the second extended texture setup (e.g. child image offsets)
-const Value IMAGE_CONFIG_CHILD_OFFSET_OFFSET(Literal(3 * static_cast<uint64_t>(sizeof(unsigned))), TYPE_INT32);
+const Value IMAGE_CONFIG_CHILD_OFFSET_OFFSET(Literal(3 * static_cast<uint32_t>(sizeof(unsigned))), TYPE_INT32);
 //The fifth entry is the original OpenCL image- and channel-type configuration
-const Value IMAGE_CONFIG_CHANNEL_OFFSET(Literal(4 * static_cast<uint64_t>(sizeof(unsigned))), TYPE_INT32);
+const Value IMAGE_CONFIG_CHANNEL_OFFSET(Literal(4 * static_cast<uint32_t>(sizeof(unsigned))), TYPE_INT32);
 //The sixth entry is the array-size or image-depth
-const Value IMAGE_CONFIG_ARRAY_SIZE_OFFSET(Literal(5 * static_cast<uint64_t>(sizeof(unsigned))), TYPE_INT32);
+const Value IMAGE_CONFIG_ARRAY_SIZE_OFFSET(Literal(5 * static_cast<uint32_t>(sizeof(unsigned))), TYPE_INT32);
 const Value IMAGE_CONFIG_IMAGE_DEPTH_OFFSET = IMAGE_CONFIG_ARRAY_SIZE_OFFSET;
 
 Global* intermediate::reserveImageConfiguration(Module& module, Parameter& image)
@@ -36,7 +36,7 @@ Global* intermediate::reserveImageConfiguration(Module& module, Parameter& image
 	if(!image.type.getImageType())
 		throw CompilationError(CompilationStep::GENERAL, "Can't reserve global data for image-configuration of non-image type", image.type.to_string());
 	logging::debug() << "Reserving a buffer of " << IMAGE_CONFIG_NUM_UNIFORMS << " UNIFORMs for the image-configuration of " << image.to_string() << logging::endl;
-	auto it = module.globalData.emplace(module.globalData.end(), Global(ImageType::toImageConfigurationName(image.name), TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS).toPointerType(), Value(Literal(static_cast<int64_t>(0)), TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS)), false));
+	auto it = module.globalData.emplace(module.globalData.end(), Global(ImageType::toImageConfigurationName(image.name), TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS).toPointerType(), Value(Literal(0u), TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS)), false));
 	return &(*it);
 }
 
@@ -142,7 +142,7 @@ InstructionWalker intermediate::insertQueryChannelDataType(InstructionWalker it,
 	//upper half of the channel-info field
 	const Value valTemp = method.addNewLocal(TYPE_INT32, "%image_config");
 	it = insertLoadImageConfig(it, method, image, valTemp, IMAGE_CONFIG_CHANNEL_OFFSET);
-	it.emplace(new Operation(OP_SHR, dest, valTemp, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
+	it.emplace(new Operation(OP_SHR, dest, valTemp, Value(Literal(16u), TYPE_INT8)));
 	it.nextInBlock();
 	return it;
 }
@@ -152,7 +152,7 @@ InstructionWalker intermediate::insertQueryChannelOrder(InstructionWalker it, Me
 	//lower half of the channel-info field
 	const Value valTemp = method.addNewLocal(TYPE_INT32, "%image_config");
 	it = insertLoadImageConfig(it, method, image, valTemp, IMAGE_CONFIG_CHANNEL_OFFSET);
-	it.emplace(new Operation(OP_AND, dest, valTemp, Value(Literal(static_cast<int64_t>(0xFFFF)), TYPE_INT16)));
+	it.emplace(new Operation(OP_AND, dest, valTemp, Value(Literal(0xFFFFu), TYPE_INT16)));
 	it.nextInBlock();
 	return it;
 }
@@ -162,12 +162,12 @@ static InstructionWalker insertLoadImageWidth(InstructionWalker it, Method& meth
 	const Value valTemp = method.addNewLocal(TYPE_INT32, "%image_config");
 	it = insertLoadImageConfig(it, method, image, valTemp, IMAGE_CONFIG_ACCESS_OFFSET);
 	const Value widthTemp = method.addNewLocal(TYPE_INT32, "%image_config");
-	it.emplace(new Operation(OP_SHR, widthTemp, valTemp, Value(Literal(static_cast<int64_t>(8)), TYPE_INT8)));
+	it.emplace(new Operation(OP_SHR, widthTemp, valTemp, Value(Literal(8u), TYPE_INT8)));
 	it.nextInBlock();
-	it.emplace(new Operation(OP_AND, dest, widthTemp, Value(Literal(static_cast<int64_t>(Bitfield<uint32_t>::MASK_Undecuple)), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
+	it.emplace(new Operation(OP_AND, dest, widthTemp, Value(Literal(Bitfield<uint32_t>::MASK_Undecuple), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
 	it.nextInBlock();
 	//0 => 2048
-	it.emplace(new MoveOperation(dest, Value(Literal(static_cast<int64_t>(2048)), TYPE_INT32), COND_ZERO_SET));
+	it.emplace(new MoveOperation(dest, Value(Literal(2048u), TYPE_INT32), COND_ZERO_SET));
 	it.nextInBlock();
 	return it;
 }
@@ -177,12 +177,12 @@ static InstructionWalker insertLoadImageHeight(InstructionWalker it, Method& met
 	const Value valTemp = method.addNewLocal(TYPE_INT32, "%image_config");
 	it = insertLoadImageConfig(it, method, image, valTemp, IMAGE_CONFIG_ACCESS_OFFSET);
 	const Value heightTemp = method.addNewLocal(TYPE_INT32, "%image_config");
-	it.emplace(new Operation(OP_SHR, heightTemp, valTemp, Value(Literal(static_cast<int64_t>(20)), TYPE_INT8)));
+	it.emplace(new Operation(OP_SHR, heightTemp, valTemp, Value(Literal(20u), TYPE_INT8)));
 	it.nextInBlock();
-	it.emplace(new Operation(OP_AND, dest, heightTemp, Value(Literal(static_cast<int64_t>(Bitfield<uint32_t>::MASK_Undecuple)), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
+	it.emplace(new Operation(OP_AND, dest, heightTemp, Value(Literal(Bitfield<uint32_t>::MASK_Undecuple), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
 	it.nextInBlock();
 	//0 => 2048
-	it.emplace(new MoveOperation(dest, Value(Literal(static_cast<int64_t>(2048)), TYPE_INT32), COND_ZERO_SET));
+	it.emplace(new MoveOperation(dest, Value(Literal(2048u), TYPE_INT32), COND_ZERO_SET));
 	it.nextInBlock();
 	return it;
 }
@@ -222,7 +222,7 @@ InstructionWalker intermediate::insertQueryMeasurements(InstructionWalker it, Me
 			const Value arraySize = method.addNewLocal(TYPE_INT32, "%image_array_size");
 			it = insertLoadArraySizeOrImageDepth(it, method, image, arraySize);
 
-			mask = Value(ContainerValue({INT_ZERO, INT_ONE, Value(Literal(static_cast<int64_t>(2)), TYPE_INT8)}), TYPE_INT8.toVectorType(3));
+			mask = Value(ContainerValue({INT_ZERO, INT_ONE, Value(Literal(2u), TYPE_INT8)}), TYPE_INT8.toVectorType(3));
 			return insertVectorShuffle(it, method, dest, tmp, arraySize, mask);
 		}
 		return insertVectorShuffle(it, method, dest, imgWidth, imgHeight, mask);
@@ -241,7 +241,7 @@ InstructionWalker intermediate::insertQueryMeasurements(InstructionWalker it, Me
 		const Value arraySize = method.addNewLocal(TYPE_INT32, "%image_depth");
 		it = insertLoadArraySizeOrImageDepth(it, method, image, arraySize);
 
-		mask = Value(ContainerValue({INT_ZERO, INT_ONE, Value(Literal(static_cast<int64_t>(2)), TYPE_INT8)}), TYPE_INT8.toVectorType(3));
+		mask = Value(ContainerValue({INT_ZERO, INT_ONE, Value(Literal(2u), TYPE_INT8)}), TYPE_INT8.toVectorType(3));
 		return insertVectorShuffle(it, method, dest, tmp, arraySize, mask);
 	}
 	else

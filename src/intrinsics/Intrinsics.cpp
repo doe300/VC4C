@@ -44,7 +44,7 @@ static IntrinsicFunction intrinsifyUnaryALUInstruction(const std::string& opCode
 {
 	return [opCode, useSignFlag, packMode, unpackMode, setFlags](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
 	{
-		bool isUnsigned = callSite->getArgument(1) && callSite->getArgument(1)->getLiteralValue() && callSite->getArgument(1)->getLiteralValue()->integer == VC4CL_UNSIGNED;
+		bool isUnsigned = callSite->getArgument(1) && callSite->getArgument(1)->getLiteralValue() && callSite->getArgument(1)->getLiteralValue()->unsignedInt() == VC4CL_UNSIGNED;
 
 		logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to operation " << opCode << logging::endl;
 		if(opCode == "mov")
@@ -69,7 +69,7 @@ static IntrinsicFunction intrinsifyBinaryALUInstruction(const std::string& opCod
 {
 	return [opCode, useSignFlag, packMode, unpackMode, setFlags](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker
 	{
-		bool isUnsigned = callSite->getArgument(2) && callSite->getArgument(2)->getLiteralValue() && callSite->getArgument(2)->getLiteralValue()->integer == VC4CL_UNSIGNED;
+		bool isUnsigned = callSite->getArgument(2) && callSite->getArgument(2)->getLiteralValue() && callSite->getArgument(2)->getLiteralValue()->unsignedInt() == VC4CL_UNSIGNED;
 
 		logging::debug() << "Intrinsifying binary '" << callSite->to_string() << "' to operation " << opCode << logging::endl;
 		it.reset((new Operation(opCode, callSite->getOutput().value(), callSite->getArgument(0).value(), callSite->getArgument(1).value()))->copyExtrasFrom(callSite));
@@ -114,18 +114,18 @@ static IntrinsicFunction intrinsifySemaphoreAccess(bool increment)
 	{
 		if(!callSite->getArgument(0)->getLiteralValue())
 			throw CompilationError(CompilationStep::OPTIMIZER, "Semaphore-number needs to be a compile-time constant", callSite->to_string());
-		if(callSite->getArgument(0)->getLiteralValue()->integer < 0 || callSite->getArgument(0)->getLiteralValue()->integer >= 16)
+		if(callSite->getArgument(0)->getLiteralValue()->signedInt() < 0 || callSite->getArgument(0)->getLiteralValue()->signedInt() >= 16)
 			throw CompilationError(CompilationStep::OPTIMIZER, "Semaphore-number needs to be between 0 and 15", callSite->to_string());
 
 		if(increment)
 		{
 			logging::debug() << "Intrinsifying semaphore increment with instruction" << logging::endl;
-			it.reset((new SemaphoreAdjustment(static_cast<Semaphore>(callSite->getArgument(0)->getLiteralValue()->integer), true))->copyExtrasFrom(callSite));
+			it.reset((new SemaphoreAdjustment(static_cast<Semaphore>(callSite->getArgument(0)->getLiteralValue()->unsignedInt()), true))->copyExtrasFrom(callSite));
 		}
 		else
 		{
 			logging::debug() << "Intrinsifying semaphore decrement with instruction" << logging::endl;
-			it.reset((new SemaphoreAdjustment(static_cast<Semaphore>(callSite->getArgument(0)->getLiteralValue()->integer), false))->copyExtrasFrom(callSite));
+			it.reset((new SemaphoreAdjustment(static_cast<Semaphore>(callSite->getArgument(0)->getLiteralValue()->unsignedInt()), false))->copyExtrasFrom(callSite));
 		}
 		return it;
 	};
@@ -182,7 +182,7 @@ static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access)
 				const DataType type = callSite->getArgument(0)->type.getElementType();
 				if(!callSite->getArgument(2) || !callSite->getArgument(2)->getLiteralValue())
 					throw CompilationError(CompilationStep::OPTIMIZER, "Memory copy with non-constant size is not yet supported", callSite->to_string());
-				it = method.vpm->insertCopyRAM(method, it, callSite->getArgument(0).value(), callSite->getArgument(1).value(), callSite->getArgument(2)->getLiteralValue()->integer * type.getPhysicalWidth(), nullptr, false);
+				it = method.vpm->insertCopyRAM(method, it, callSite->getArgument(0).value(), callSite->getArgument(1).value(), callSite->getArgument(2)->getLiteralValue()->unsignedInt() * type.getPhysicalWidth(), nullptr, false);
 				break;
 			}
 			case DMAAccess::PREFETCH:
@@ -237,13 +237,13 @@ const static std::map<std::string, Intrinsic> nonaryInstrinsics = {
 };
 
 const static std::map<std::string, Intrinsic> unaryIntrinsicMapping = {
-    {"vc4cl_ftoi", Intrinsic{intrinsifyUnaryALUInstruction(OP_FTOI.name), [](const Value& val){return Value(Literal(static_cast<int64_t>(std::round(val.literal.real()))), TYPE_INT32);}}},
-    {"vc4cl_itof", Intrinsic{intrinsifyUnaryALUInstruction(OP_ITOF.name), [](const Value& val){return Value(Literal(static_cast<double>(val.literal.integer)), TYPE_FLOAT);}}},
+    {"vc4cl_ftoi", Intrinsic{intrinsifyUnaryALUInstruction(OP_FTOI.name), [](const Value& val){return Value(Literal(static_cast<int32_t>(std::round(val.literal.real()))), TYPE_INT32);}}},
+    {"vc4cl_itof", Intrinsic{intrinsifyUnaryALUInstruction(OP_ITOF.name), [](const Value& val){return Value(Literal(static_cast<float>(val.literal.signedInt())), TYPE_FLOAT);}}},
     {"vc4cl_clz", Intrinsic{intrinsifyUnaryALUInstruction(OP_CLZ.name), NO_OP}},
-    {"vc4cl_sfu_rsqrt", Intrinsic{intrinsifySFUInstruction(REG_SFU_RECIP_SQRT), [](const Value& val){return Value(Literal(1.0 / std::sqrt(val.literal.real())), TYPE_FLOAT);}}},
+    {"vc4cl_sfu_rsqrt", Intrinsic{intrinsifySFUInstruction(REG_SFU_RECIP_SQRT), [](const Value& val){return Value(Literal(1.0f / std::sqrt(val.literal.real())), TYPE_FLOAT);}}},
     {"vc4cl_sfu_exp2", Intrinsic{intrinsifySFUInstruction(REG_SFU_EXP2), [](const Value& val){return Value(Literal(std::exp2(val.literal.real())), TYPE_FLOAT);}}},
     {"vc4cl_sfu_log2", Intrinsic{intrinsifySFUInstruction(REG_SFU_LOG2), [](const Value& val){return Value(Literal(std::log2(val.literal.real())), TYPE_FLOAT);}}},
-    {"vc4cl_sfu_recip", Intrinsic{intrinsifySFUInstruction(REG_SFU_RECIP), [](const Value& val){return Value(Literal(1.0 / val.literal.real()), TYPE_FLOAT);}}},
+    {"vc4cl_sfu_recip", Intrinsic{intrinsifySFUInstruction(REG_SFU_RECIP), [](const Value& val){return Value(Literal(1.0f / val.literal.real()), TYPE_FLOAT);}}},
     {"vc4cl_semaphore_increment", Intrinsic{intrinsifySemaphoreAccess(true)}},
     {"vc4cl_semaphore_decrement", Intrinsic{intrinsifySemaphoreAccess(false)}},
     {"vc4cl_dma_read", Intrinsic{intrinsifyDMAAccess(DMAAccess::READ)}},
@@ -269,14 +269,14 @@ const static std::map<std::string, Intrinsic> binaryIntrinsicMapping = {
     {"vc4cl_fmaxabs", Intrinsic{intrinsifyBinaryALUInstruction(OP_FMAXABS.name), [](const Value& val0, const Value& val1){return Value(Literal(std::max(std::abs(val0.literal.real()), std::abs(val1.literal.real()))), TYPE_FLOAT);}}},
     {"vc4cl_fminabs", Intrinsic{intrinsifyBinaryALUInstruction(OP_FMINABS.name), [](const Value& val0, const Value& val1){return Value(Literal(std::min(std::abs(val0.literal.real()), std::abs(val1.literal.real()))), TYPE_FLOAT);}}},
 	//FIXME sign / no-sign!!
-    {"vc4cl_shr", Intrinsic{intrinsifyBinaryALUInstruction(OP_SHR.name), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer >> val1.literal.integer), val0.type.getUnionType(val1.type));}}},
-    {"vc4cl_asr", Intrinsic{intrinsifyBinaryALUInstruction(OP_ASR.name), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer >> val1.literal.integer), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_shr", Intrinsic{intrinsifyBinaryALUInstruction(OP_SHR.name), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.unsignedInt() >> val1.literal.signedInt()), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_asr", Intrinsic{intrinsifyBinaryALUInstruction(OP_ASR.name), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.signedInt() >> val1.literal.signedInt()), val0.type.getUnionType(val1.type));}}},
     {"vc4cl_ror", Intrinsic{intrinsifyBinaryALUInstruction(OP_ROR.name), NO_OP2}},
-    {"vc4cl_shl", Intrinsic{intrinsifyBinaryALUInstruction(OP_SHL.name), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer << val1.literal.integer), val0.type.getUnionType(val1.type));}}},
-    {"vc4cl_min", Intrinsic{intrinsifyBinaryALUInstruction(OP_MIN.name, true), [](const Value& val0, const Value& val1){return Value(Literal(std::min(val0.literal.integer, val1.literal.integer)), val0.type.getUnionType(val1.type));}}},
-    {"vc4cl_max", Intrinsic{intrinsifyBinaryALUInstruction(OP_MAX.name, true), [](const Value& val0, const Value& val1){return Value(Literal(std::max(val0.literal.integer, val1.literal.integer)), val0.type.getUnionType(val1.type));}}},
-    {"vc4cl_and", Intrinsic{intrinsifyBinaryALUInstruction(OP_AND.name), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.integer & val1.literal.integer), val0.type.getUnionType(val1.type));}}},
-    {"vc4cl_mul24", Intrinsic{intrinsifyBinaryALUInstruction(OP_MUL24.name, true), [](const Value& val0, const Value& val1){return Value(Literal((val0.literal.integer & 0xFFFFFFL) * (val1.literal.integer & 0xFFFFFFL)), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_shl", Intrinsic{intrinsifyBinaryALUInstruction(OP_SHL.name), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.unsignedInt() << val1.literal.signedInt()), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_min", Intrinsic{intrinsifyBinaryALUInstruction(OP_MIN.name, true), [](const Value& val0, const Value& val1){return Value(Literal(std::min(val0.literal.signedInt(), val1.literal.signedInt())), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_max", Intrinsic{intrinsifyBinaryALUInstruction(OP_MAX.name, true), [](const Value& val0, const Value& val1){return Value(Literal(std::max(val0.literal.signedInt(), val1.literal.signedInt())), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_and", Intrinsic{intrinsifyBinaryALUInstruction(OP_AND.name), [](const Value& val0, const Value& val1){return Value(Literal(val0.literal.unsignedInt() & val1.literal.unsignedInt()), val0.type.getUnionType(val1.type));}}},
+    {"vc4cl_mul24", Intrinsic{intrinsifyBinaryALUInstruction(OP_MUL24.name, true), [](const Value& val0, const Value& val1){return Value(Literal((val0.literal.unsignedInt() & 0xFFFFFF) * (val1.literal.unsignedInt() & 0xFFFFFF)), val0.type.getUnionType(val1.type));}}},
     {"vc4cl_dma_write", Intrinsic{intrinsifyDMAAccess(DMAAccess::WRITE)}},
 	{"vc4cl_vector_rotate", Intrinsic{intrinsifyVectorRotation()}},
 	//XXX correct, can use the flags emitted by the very same instruction?
@@ -291,13 +291,13 @@ const static std::map<std::string, Intrinsic> ternaryIntrinsicMapping = {
 const static std::map<std::string, std::pair<Intrinsic, Optional<Value>>> typeCastIntrinsics = {
 	//since we run all the (not intrinsified) calculations with 32-bit, don't truncate signed conversions to smaller types
 	//TODO correct?? Since we do not discard out-of-bounds values!
-    {"vc4cl_bitcast_uchar", {Intrinsic{intrinsifyBinaryALUInstruction("and", true), [](const Value& val){return Value(Literal(val.literal.integer & 0xFF), TYPE_INT8);}}, Value(Literal(static_cast<uint64_t>(0xFF)), TYPE_INT8)}},
+    {"vc4cl_bitcast_uchar", {Intrinsic{intrinsifyBinaryALUInstruction("and", true), [](const Value& val){return Value(Literal(val.literal.unsignedInt() & 0xFF), TYPE_INT8);}}, Value(Literal(0xFFu), TYPE_INT8)}},
     {"vc4cl_bitcast_char", {Intrinsic{intrinsifyBinaryALUInstruction("mov"), [](const Value& val){return Value(val.literal, TYPE_INT8);}}, NO_VALUE}},
-    {"vc4cl_bitcast_ushort", {Intrinsic{intrinsifyBinaryALUInstruction("and", true), [](const Value& val){return Value(Literal(val.literal.integer & 0xFFFF), TYPE_INT16);}}, Value(Literal(static_cast<uint64_t>(0xFFFF)), TYPE_INT16)}},
+    {"vc4cl_bitcast_ushort", {Intrinsic{intrinsifyBinaryALUInstruction("and", true), [](const Value& val){return Value(Literal(val.literal.unsignedInt() & 0xFFFF), TYPE_INT16);}}, Value(Literal(0xFFFFu), TYPE_INT16)}},
     {"vc4cl_bitcast_short", {Intrinsic{intrinsifyBinaryALUInstruction("mov"), [](const Value& val){return Value(val.literal, TYPE_INT16);}}, NO_VALUE}},
-    {"vc4cl_bitcast_uint", {Intrinsic{intrinsifyBinaryALUInstruction("mov", true), [](const Value& val){return Value(Literal(val.literal.integer & static_cast<int64_t>(0xFFFFFFFF)), TYPE_INT32);}}, NO_VALUE}},
+    {"vc4cl_bitcast_uint", {Intrinsic{intrinsifyBinaryALUInstruction("mov", true), [](const Value& val){return Value(Literal(val.literal), TYPE_INT32);}}, NO_VALUE}},
     {"vc4cl_bitcast_int", {Intrinsic{intrinsifyBinaryALUInstruction("mov"), [](const Value& val){return Value(val.literal, TYPE_INT32);}}, NO_VALUE}},
-    {"vc4cl_bitcast_float", {Intrinsic{intrinsifyBinaryALUInstruction("mov"), [](const Value& val){return Value(Literal(val.literal.integer & static_cast<int64_t>(0xFFFFFFFF)), TYPE_INT32);}}, NO_VALUE}}
+    {"vc4cl_bitcast_float", {Intrinsic{intrinsifyBinaryALUInstruction("mov"), [](const Value& val){return Value(Literal(val.literal), TYPE_INT32);}}, NO_VALUE}}
 };
 
 static InstructionWalker intrinsifyNoArgs(Method& method, InstructionWalker it)
@@ -426,7 +426,7 @@ static InstructionWalker intrinsifyTernary(Method& method, InstructionWalker it)
     return it;
 }
 
-static bool isPowerTwo(int64_t val)
+static bool isPowerTwo(int32_t val)
 {
     //https://en.wikipedia.org/wiki/Power_of_two#Fast_algorithm_to_check_if_a_positive_number_is_a_power_of_two
     return val > 0 && (val & (val - 1)) == 0;
@@ -450,20 +450,20 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(arg0.getLiteralValue() && arg1.getLiteralValue())
         {
             logging::debug() << "Calculating result for multiplication with constants" << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(arg0.getLiteralValue()->integer * arg1.getLiteralValue()->integer), arg0.type), op->conditional, op->setFlags));
+            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(arg0.getLiteralValue()->signedInt() * arg1.getLiteralValue()->signedInt()), arg0.type), op->conditional, op->setFlags));
         }
-        else if(arg0.getLiteralValue() && isPowerTwo(arg0.getLiteralValue()->integer))
+        else if(arg0.getLiteralValue() && isPowerTwo(arg0.getLiteralValue()->signedInt()))
         {
             logging::debug() << "Intrinsifying multiplication with left-shift" << logging::endl;
             op->setOpCode(OP_SHL);
             op->setArgument(0, arg1);
-            op->setArgument(1, Value(Literal(static_cast<int64_t>(std::log2(arg0.getLiteralValue()->integer))), arg0.type));
+            op->setArgument(1, Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt()))), arg0.type));
         }
-        else if(arg1.getLiteralValue() && isPowerTwo(arg1.getLiteralValue()->integer))
+        else if(arg1.getLiteralValue() && isPowerTwo(arg1.getLiteralValue()->signedInt()))
         {
             logging::debug() << "Intrinsifying multiplication with left-shift" << logging::endl;
             op->setOpCode(OP_SHL);
-            op->setArgument(1, Value(Literal(static_cast<int64_t>(std::log2(arg1.getLiteralValue()->integer))), arg1.type));
+            op->setArgument(1, Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt()))), arg1.type));
         }
         else if(std::max(arg0.type.getScalarBitCount(), arg1.type.getScalarBitCount()) <= 24)
         {
@@ -481,15 +481,15 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(arg0.getLiteralValue() && arg1.getLiteralValue())
         {
             logging::debug() << "Calculating result for division with constants" << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(static_cast<uint64_t>(arg0.getLiteralValue()->integer / arg1.getLiteralValue()->integer)), arg0.type), op->conditional, op->setFlags));
+            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(arg0.getLiteralValue()->unsignedInt() / arg1.getLiteralValue()->unsignedInt()), arg0.type), op->conditional, op->setFlags));
             it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
         //a / 2^n = a >> n
-        else if(arg1.getLiteralValue() && isPowerTwo(arg1.getLiteralValue()->integer))
+        else if(arg1.getLiteralValue() && isPowerTwo(arg1.getLiteralValue()->signedInt()))
         {
             logging::debug() << "Intrinsifying division with right-shift" << logging::endl;
             op->setOpCode(OP_SHR);
-            op->setArgument(1, Value(Literal(static_cast<int64_t>(std::log2(arg1.getLiteralValue()->integer))), arg1.type));
+            op->setArgument(1, Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->unsignedInt()))), arg1.type));
             op->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
         else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
@@ -507,7 +507,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(arg0.getLiteralValue() && arg1.getLiteralValue())
         {
             logging::debug() << "Calculating result for signed division with constants" << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(arg0.getLiteralValue()->integer / arg1.getLiteralValue()->integer), arg0.type), op->conditional, op->setFlags));
+            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(arg0.getLiteralValue()->signedInt() / arg1.getLiteralValue()->signedInt()), arg0.type), op->conditional, op->setFlags));
         }
         //a / 2^n = a >> n
         else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
@@ -526,14 +526,14 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(arg0.getLiteralValue() && arg1.getLiteralValue())
         {
             logging::debug() << "Calculating result for modulo with constants" << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(static_cast<uint64_t>(arg0.getLiteralValue()->integer % arg1.getLiteralValue()->integer)), arg0.type), op->conditional, op->setFlags));
+            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(arg0.getLiteralValue()->unsignedInt() % arg1.getLiteralValue()->unsignedInt()), arg0.type), op->conditional, op->setFlags));
             it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
-        else if(arg1.getLiteralValue() && isPowerTwo(arg1.getLiteralValue()->integer))
+        else if(arg1.getLiteralValue() && isPowerTwo(arg1.getLiteralValue()->unsignedInt()))
         {
             logging::debug() << "Intrinsifying unsigned modulo by power of two" << logging::endl;
             op->setOpCode(OP_AND);
-            op->setArgument(1, Value(Literal(arg1.getLiteralValue()->integer - 1), arg1.type));
+            op->setArgument(1, Value(Literal(arg1.getLiteralValue()->unsignedInt() - 1), arg1.type));
             op->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
         else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
@@ -551,7 +551,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(arg0.getLiteralValue() && arg1.getLiteralValue())
         {
             logging::debug() << "Calculating result for signed modulo with constants" << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(arg0.getLiteralValue()->integer % arg1.getLiteralValue()->integer), arg0.type), op->conditional, op->setFlags));
+            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type), Value(Literal(arg0.getLiteralValue()->signedInt() % arg1.getLiteralValue()->signedInt()), arg0.type), op->conditional, op->setFlags));
         }
         else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
 		{
@@ -574,7 +574,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         {
             logging::debug() << "Intrinsifying floating division with multiplication of constant inverse" << logging::endl;
             op->setOpCode(OP_FMUL);
-            op->setArgument(1, Value(Literal(1.0 / arg1.getLiteralValue()->real()), arg1.type));
+            op->setArgument(1, Value(Literal(1.0f / arg1.getLiteralValue()->real()), arg1.type));
         }
         else if(op->hasDecoration(InstructionDecorations::ALLOW_RECIP) || op->hasDecoration(InstructionDecorations::FAST_MATH))
         {
@@ -661,7 +661,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(op->getFirstArg().type.getScalarBitCount() < 32)
         {
             //make sure, leading bits are zeroes
-            const int64_t mask = op->getFirstArg().type.getScalarWidthMask();
+            const uint32_t mask = op->getFirstArg().type.getScalarWidthMask();
             it.emplace(new Operation(OP_AND, tmp, op->getFirstArg(), Value(Literal(mask), TYPE_INT32), op->conditional));
             it.nextInBlock();
             op->setArgument(0, tmp);
@@ -725,7 +725,7 @@ static InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, Instruction
 	if(arg.getLiteralValue())
 	{
 		Value src = UNDEFINED_VALUE;
-		switch(arg.getLiteralValue()->integer)
+		switch(arg.getLiteralValue()->unsignedInt())
 		{
 			case 0:
 				src = method.findOrCreateLocal(TYPE_INT32, locals.at(0))->createReference();
@@ -755,7 +755,7 @@ static InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, Instruction
 	it.emplace(new MoveOperation(it->getOutput().value(), method.findOrCreateLocal(TYPE_INT32, locals.at(1))->createReference(), COND_ZERO_SET));
 	it.nextInBlock();
 	//dim == 2 -> return third value
-	it.emplace((new Operation(OP_XOR, NOP_REGISTER, arg, Value(Literal(static_cast<int64_t>(2)), TYPE_INT32)))->setSetFlags(SetFlag::SET_FLAGS));
+	it.emplace((new Operation(OP_XOR, NOP_REGISTER, arg, Value(Literal(static_cast<uint32_t>(2)), TYPE_INT32)))->setSetFlags(SetFlag::SET_FLAGS));
 	it.nextInBlock();
 	return it.reset((new MoveOperation(it->getOutput().value(), method.findOrCreateLocal(TYPE_INT32, locals.at(2))->createReference(), COND_ZERO_SET))->addDecorations(decoration));
 }
@@ -770,12 +770,12 @@ static InstructionWalker intrinsifyReadWorkItemInfo(Method& method, InstructionW
 	 */
 	const Local* itemInfo = method.findOrCreateLocal(TYPE_INT32, local);
 	Value tmp0 = method.addNewLocal(TYPE_INT32, "%local_info");
-	it.emplace(new Operation(OP_MUL24, tmp0, arg, Value(Literal(static_cast<int64_t>(8)), TYPE_INT32)));
+	it.emplace(new Operation(OP_MUL24, tmp0, arg, Value(Literal(static_cast<uint32_t>(8)), TYPE_INT32)));
 	it.nextInBlock();
 	const Value tmp1 = method.addNewLocal(TYPE_INT32, "%local_info");
 	it.emplace(new Operation(OP_SHR, tmp1, itemInfo->createReference(), tmp0));
 	it.nextInBlock();
-	return it.reset((new Operation(OP_AND, it->getOutput().value(), tmp1, Value(Literal(static_cast<int64_t>(0xFF)), TYPE_INT8)))->copyExtrasFrom(it.get())->addDecorations(decoration));
+	return it.reset((new Operation(OP_AND, it->getOutput().value(), tmp1, Value(Literal(static_cast<uint32_t>(0xFF)), TYPE_INT8)))->copyExtrasFrom(it.get())->addDecorations(decoration));
 }
 
 static InstructionWalker intrinsifyReadLocalSize(Method& method, InstructionWalker it, const Value& arg)
@@ -787,20 +787,20 @@ static InstructionWalker intrinsifyReadLocalSize(Method& method, InstructionWalk
 	if(method.metaData.isWorkGroupSizeSet())
 	{
 		const auto& workGroupSizes = method.metaData.workGroupSizes;
-		Optional<Literal> immediate(false, false);
+		Optional<Literal> immediate(false, Literal(false));
 		if(arg.isLiteralValue())
 			//the dimension is a literal value -> look this dimension up
 			immediate = arg.getLiteralValue();
 		else if(std::all_of(workGroupSizes.begin(), workGroupSizes.end(), [](uint32_t u) -> bool {return u == 1;}))
 			//all dimensions are 1 (for any set or not explicitly set dimension) -> take any of them
-			immediate = Literal(static_cast<int64_t>(0));
+			immediate = Literal(0u);
 		if(immediate)
 		{
-			if(immediate->integer > static_cast<int64_t>(workGroupSizes.size()) || workGroupSizes.at(immediate->integer) == 0)
+			if(immediate->unsignedInt() > workGroupSizes.size() || workGroupSizes.at(immediate->unsignedInt()) == 0)
 			{
 				return it.reset((new MoveOperation(it->getOutput().value(), INT_ONE))->addDecorations(add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::UNSIGNED_RESULT)));
 			}
-			return it.reset((new MoveOperation(it->getOutput().value(), Value(Literal(static_cast<uint64_t>(workGroupSizes.at(immediate->integer))), TYPE_INT8)))->addDecorations(add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::UNSIGNED_RESULT)));
+			return it.reset((new MoveOperation(it->getOutput().value(), Value(Literal(workGroupSizes.at(immediate->unsignedInt())), TYPE_INT8)))->addDecorations(add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::UNSIGNED_RESULT)));
 		}
 	}
 	//TODO needs to have a size of 1 for all higher dimensions (instead of currently implicit 0)

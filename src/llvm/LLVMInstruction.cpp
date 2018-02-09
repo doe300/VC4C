@@ -132,7 +132,7 @@ bool CallSite::mapInstruction(Method& method) const
     		//TODO still fails for values passed as parameter (e.g. in /opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/addr-space-struct-arg.cl)
     	}
     	logging::debug() << "Converting life-time instrinsic to life-time instruction" << logging::endl;
-    	if(arguments.at(0).getLiteralValue() && arguments.at(0).getLiteralValue()->integer > 0)
+    	if(arguments.at(0).getLiteralValue() && arguments.at(0).getLiteralValue()->signedInt() > 0)
     	{
     		//"The first argument is a constant integer representing the size of the object, or -1 if it is variable sized"
     		StackAllocation* alloc = pointer.local->as<StackAllocation>();
@@ -199,7 +199,7 @@ bool CallSite::mapInstruction(Method& method) const
     if(methodName.find("mem_fence") == 0 || methodName.find("read_mem_fence") == 0 || methodName.find("write_mem_fence") == 0)
     {
     	logging::debug() << "Intrinsifying 'mem_fence' with memory barrier" << logging::endl;
-    	method.appendToEnd(new intermediate::MemoryBarrier(static_cast<intermediate::MemoryScope>(arguments.at(0).getLiteralValue()->integer), intermediate::MemorySemantics::ACQUIRE_RELEASE));
+    	method.appendToEnd(new intermediate::MemoryBarrier(static_cast<intermediate::MemoryScope>(arguments.at(0).getLiteralValue()->unsignedInt()), intermediate::MemorySemantics::ACQUIRE_RELEASE));
     	return true;
     }
     logging::debug() << "Generating immediate call to " << methodName << " -> " << returnType.to_string() << logging::endl;
@@ -431,7 +431,7 @@ bool ContainerInsertion::mapInstruction(Method& method) const
     method.appendToEnd(new intermediate::MoveOperation(Value(dest, container.type), container));
     //2. insert new element
     //either into vector or into scalar at "element 0"
-    if(container.type.isVectorType() || index.hasLiteral(Literal(static_cast<int64_t>(0))))
+    if(container.type.isVectorType() || index.hasLiteral(Literal(0u)))
     {
         //insert element at given index into vector
         intermediate::insertVectorInsertion(method.appendToEnd(), method, Value(dest, container.type), index, newValue);
@@ -471,7 +471,7 @@ bool ContainerExtraction::mapInstruction(Method& method) const
     const DataType elementType = container.type.getElementType();
     logging::debug() << "Generation extraction of " << elementType.to_string() << " at " << index.to_string() << " from " << container.to_string() << " into " << dest->to_string() << logging::endl;
     
-    if(container.type.isVectorType() || index.hasLiteral(Literal(static_cast<int64_t>(0))))
+    if(container.type.isVectorType() || index.hasLiteral(Literal(0u)))
     {
         intermediate::insertVectorExtraction(method.appendToEnd(), method, container, index, Value(dest, elementType));
     }
@@ -692,7 +692,7 @@ bool Switch::mapInstruction(Method& method) const
     {
         //for every case, if equal,branch to given label
         const Value tmp = method.addNewLocal(TYPE_BOOL, "%switch");
-        method.appendToEnd(new intermediate::Comparison(intermediate::COMP_EQ, tmp, cond, Value(Literal(static_cast<int64_t>(option.first)), TYPE_INT32)));
+        method.appendToEnd(new intermediate::Comparison(intermediate::COMP_EQ, tmp, cond, Value(Literal(option.first), TYPE_INT32)));
         method.appendToEnd(new intermediate::Branch(method.findOrCreateLocal(TYPE_LABEL, option.second), COND_ZERO_CLEAR, tmp));
     }
     //branch default label

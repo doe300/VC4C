@@ -141,7 +141,7 @@ namespace vc4c
 		/*
 		 * Returns the bit-mask to limit a value to the scalar bit-width of this type.
 		 */
-		uint64_t getScalarWidthMask() const;
+		uint32_t getScalarWidthMask() const;
 
 		/*
 		 * Returns the width of this type in bytes.

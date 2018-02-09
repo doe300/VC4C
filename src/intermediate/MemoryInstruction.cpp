@@ -33,7 +33,7 @@ static void checkLocalValue(const Value& val)
 
 static void checkSingleValue(const Value& val)
 {
-	if(val.getLiteralValue().is(Literal(static_cast<int64_t>(1))))
+	if(val.getLiteralValue().is(Literal(1u)))
 		return;
 	throw CompilationError(CompilationStep::LLVM_2_IR, "Operand needs to the constant one", val.to_string());
 }
@@ -230,8 +230,8 @@ DataType MemoryInstruction::getSourceElementType(bool sizedType) const
 			//sized pointed-to type
 			if(!getNumEntries().isLiteralValue())
 				throw CompilationError(CompilationStep::GENERAL, "Cannot calculate type-size from dynamically sized memory-operation", to_string());
-			std::shared_ptr<ComplexType> complex(new ArrayType(elementType, static_cast<unsigned>(getNumEntries().getLiteralValue()->integer)));
-			return DataType((elementType.to_string() + "[") + std::to_string(getNumEntries().getLiteralValue()->integer) + "]", 1, complex);
+			std::shared_ptr<ComplexType> complex(new ArrayType(elementType, getNumEntries().getLiteralValue()->unsignedInt()));
+			return DataType((elementType.to_string() + "[") + std::to_string(getNumEntries().getLiteralValue()->unsignedInt()) + "]", 1, complex);
 		}
 		case MemoryOperation::FILL:
 			//local value
@@ -267,8 +267,8 @@ DataType MemoryInstruction::getDestinationElementType(bool sizedType) const
 			//sized pointed-to type
 			if(!getNumEntries().isLiteralValue())
 				throw CompilationError(CompilationStep::GENERAL, "Cannot calculate type-size from dynamically sized memory-operation", to_string());
-			std::shared_ptr<ComplexType> complex(new ArrayType(elementType, static_cast<unsigned>(getNumEntries().getLiteralValue()->integer)));
-			return DataType((elementType.to_string() + "[") + std::to_string(getNumEntries().getLiteralValue()->integer) + "]", 1, complex);
+			std::shared_ptr<ComplexType> complex(new ArrayType(elementType, getNumEntries().getLiteralValue()->unsignedInt()));
+			return DataType((elementType.to_string() + "[") + std::to_string(getNumEntries().getLiteralValue()->unsignedInt()) + "]", 1, complex);
 		}
 		case MemoryOperation::READ:
 			//local value

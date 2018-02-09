@@ -241,22 +241,21 @@ std::size_t vc4c::hash<vc4c::Register>::operator()(vc4c::Register const& val) co
 	return hash(static_cast<unsigned char>(val.file)) ^ hash(val.num);
 }
 
-Literal::Literal(const int64_t integer) noexcept : integer(integer), type(LiteralType::INTEGER)
+Literal::Literal(int32_t integer) noexcept : type(LiteralType::INTEGER), i(integer)
 {
 
 }
 
-Literal::Literal(const uint64_t integer) noexcept : integer(bit_cast<uint64_t, int64_t>(integer)), type(LiteralType::INTEGER)
+Literal::Literal(uint32_t integer) noexcept : type(LiteralType::INTEGER), u(integer)
 {
 
 }
 
-Literal::Literal(const double real) noexcept : integer(bit_cast<double, int64_t>(real)), type(LiteralType::REAL)
+Literal::Literal(float real) noexcept : type(LiteralType::REAL), f(real)
 {
-
 }
 
-Literal::Literal(const bool flag) noexcept : integer(static_cast<int64_t>(flag)), type(LiteralType::BOOL)
+Literal::Literal(bool flag) noexcept : type(LiteralType::BOOL), u(flag)
 {
 
 }
@@ -265,20 +264,13 @@ bool Literal::operator==(const Literal& other) const
 {
 	if(this == &other)
 		return true;
-    switch(type)
-    {
-    case LiteralType::BOOL: // fall-through
-    case LiteralType::INTEGER:
-        return integer == other.integer;
-    case LiteralType::REAL:
-        return real() == other.real();
-    }
-    throw CompilationError(CompilationStep::GENERAL, "Unhandled literal type!");
+	//checks for bit-equality
+    return u == other.u;
 }
 
 bool Literal::operator<(const Literal& other) const
 {
-	return integer < other.integer;
+	return u < other.u;
 }
 
 std::string Literal::to_string() const
@@ -288,7 +280,7 @@ std::string Literal::to_string() const
     case LiteralType::BOOL:
         return (isTrue() ? "true" : "false");
     case LiteralType::INTEGER:
-        return std::to_string(integer);
+        return std::to_string(i);
     case LiteralType::REAL:
         return std::to_string(real());
     }
@@ -298,29 +290,28 @@ std::string Literal::to_string() const
 bool Literal::isTrue() const
 {
     if(type == LiteralType::BOOL || type == LiteralType::INTEGER)
-        return integer == 1;
+        return u == 1;
     return false;
 }
 
-double Literal::real() const
+float Literal::real() const
 {
-	return bit_cast<int64_t, double>(integer);
+	return f;
+}
+
+int32_t Literal::signedInt() const
+{
+	return i;
+}
+
+uint32_t Literal::unsignedInt() const
+{
+	return u;
 }
 
 uint32_t Literal::toImmediate() const
 {
-    switch(type)
-    {
-        case LiteralType::BOOL:
-            return static_cast<uint32_t>(isTrue());
-        case LiteralType::INTEGER:
-            if(integer > std::numeric_limits<uint32_t>::max() || integer < std::numeric_limits<int32_t>::min())
-            	throw CompilationError(CompilationStep::GENERAL, "Literal out of range", std::to_string(integer));
-			return bit_cast<int32_t, uint32_t>(static_cast<uint32_t>(integer));
-        case LiteralType::REAL:
-        	return bit_cast<float, uint32_t>(static_cast<float>(real()));
-    }
-    throw CompilationError(CompilationStep::GENERAL, "Unhandled literal type!");
+	return u;
 }
 
 std::string SmallImmediate::to_string() const
@@ -383,10 +374,10 @@ Optional<unsigned char> SmallImmediate::getRotationOffset() const
 Optional<Literal> SmallImmediate::toLiteral() const
 {
 	if(getIntegerValue())
-		return Literal(static_cast<int64_t>(getIntegerValue().value()));
+		return Literal(static_cast<int32_t>(getIntegerValue().value()));
 	if(getFloatingValue())
 		return Literal(getFloatingValue().value());
-	return Optional<Literal>(false, static_cast<int64_t>(0));
+	return Optional<Literal>(false, Literal(static_cast<int32_t>(0)));
 }
 
 Optional<SmallImmediate> SmallImmediate::fromInteger(signed char val)
@@ -426,7 +417,7 @@ bool ContainerValue::isElementNumber(bool withOffset) const
 {
 	if(elements.empty())
 		return true;
-	const int64_t offset = withOffset ? elements.at(0).literal.integer : 0;
+	const int32_t offset = withOffset ? elements.at(0).literal.signedInt() : 0;
 	for(std::size_t i = 0; i < elements.size(); ++i)
 	{
 		if(elements.at(i).isUndefined())
@@ -434,7 +425,7 @@ bool ContainerValue::isElementNumber(bool withOffset) const
 			continue;
 		if(!elements.at(i).hasType(ValueType::LITERAL))
 			throw CompilationError(CompilationStep::GENERAL, "Invalid container element", elements.at(i).to_string());
-		if(elements.at(i).literal.integer != static_cast<int64_t>(i) + offset)
+		if(elements.at(i).literal.signedInt() != static_cast<int32_t>(i) + offset)
 			return false;
 	}
 	return true;
@@ -566,7 +557,7 @@ bool Value::hasRegister(const Register& reg) const
 bool Value::hasLiteral(const Literal& lit) const
 {
 	if(hasType(ValueType::SMALL_IMMEDIATE))
-		return (immediate.getIntegerValue().is(lit.integer)) ||
+		return (immediate.getIntegerValue().is(lit.signedInt())) ||
 				(immediate.getFloatingValue().is(static_cast<float>(lit.real())));
     return hasType(ValueType::LITERAL) && this->literal == lit;
 }
@@ -574,7 +565,7 @@ bool Value::hasLiteral(const Literal& lit) const
 bool Value::hasImmediate(const SmallImmediate& immediate) const
 {
 	if(hasType(ValueType::LITERAL))
-		return (immediate.getIntegerValue().is(literal.integer)) ||
+		return (immediate.getIntegerValue().is(literal.signedInt())) ||
 				(immediate.getFloatingValue().is(static_cast<float>(literal.real())));
 	return hasType(ValueType::SMALL_IMMEDIATE) && this->immediate == immediate;
 }
@@ -586,7 +577,7 @@ bool Value::isUndefined() const
 
 bool Value::isZeroInitializer() const
 {
-    return (hasType(ValueType::LITERAL) && literal.integer == 0) ||
+    return (hasType(ValueType::LITERAL) && literal.unsignedInt() == 0) ||
     		(hasType(ValueType::SMALL_IMMEDIATE) && immediate.value == 0) ||
 			(hasType(ValueType::CONTAINER) && std::all_of(container.elements.begin(), container.elements.end(), [](const Value& val) -> bool {return val.isZeroInitializer();}));
 }

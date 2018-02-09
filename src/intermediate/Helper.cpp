@@ -49,8 +49,8 @@ InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const
     	 * negative offset, rotate downwards -> rotate upwards with absolute value
     	 * positive offset, rotate downwards -> rotate downwards with absolute value
     	 */
-    	int64_t offsetValue = offset.literal.integer;
-        const Direction actualDirection = offset.literal.integer >= 0 ? direction : (direction == Direction::DOWN ? Direction::UP : Direction::DOWN);
+    	int32_t offsetValue = offset.literal.signedInt();
+        const Direction actualDirection = offset.literal.signedInt() >= 0 ? direction : (direction == Direction::DOWN ? Direction::UP : Direction::DOWN);
         offsetValue = actualDirection != direction ? -offsetValue : offsetValue;
 
         if(actualDirection == Direction::DOWN)
@@ -100,7 +100,7 @@ InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const
             it.emplace( new MoveOperation(NOP_REGISTER, offset, COND_ALWAYS, SetFlag::SET_FLAGS));
             it.nextInBlock();
             //r5 = 16 - offset
-            it.emplace( new Operation(OP_SUB, ROTATION_REGISTER, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8), offset, COND_ZERO_CLEAR));
+            it.emplace( new Operation(OP_SUB, ROTATION_REGISTER, Value(Literal(16u), TYPE_INT8), offset, COND_ZERO_CLEAR));
             it.nextInBlock();
             it.emplace( new MoveOperation(ROTATION_REGISTER, INT_ZERO, COND_ZERO_SET));
         }
@@ -210,7 +210,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         	it.nextInBlock();
         	//rotate the second vector with the size of the first as offset
         	const Value secondRotated = method.addNewLocal(destination.type, "%vector_shuffle");
-        	const Value numElementsFirst(Literal(static_cast<uint64_t>(source0.type.num)), TYPE_INT8);
+        	const Value numElementsFirst(Literal(static_cast<uint32_t>(source0.type.num)), TYPE_INT8);
         	it = insertVectorRotation(it, source1, numElementsFirst, secondRotated, Direction::UP);
         	//insert the elements of the second vector with an element-number of higher or equals the size of the first vector into the result
         	it.emplace(new intermediate::Operation(OP_SUB, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, numElementsFirst, COND_ALWAYS, SetFlag::SET_FLAGS));
@@ -227,8 +227,8 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     }
     if(allIndicesSame)
     {
-        const int64_t indexValue = mask.container.elements[0].literal.integer < static_cast<int64_t>(source0.type.getVectorWidth()) ? mask.container.elements[0].literal.integer : mask.container.elements[0].literal.integer - static_cast<long>(source0.type.num);
-        const Value source = mask.container.elements[0].literal.integer < static_cast<int64_t>(source0.type.getVectorWidth()) ? source0 : source1;
+        const int32_t indexValue = mask.container.elements[0].literal.signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ? mask.container.elements[0].literal.signedInt() : mask.container.elements[0].literal.signedInt() - static_cast<int32_t>(source0.type.num);
+        const Value source = mask.container.elements[0].literal.signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ? source0 : source1;
         //if all indices same, replicate
         Value tmp(UNDEFINED_VALUE);
         if(indexValue == 0)
@@ -258,13 +258,13 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         	continue;
         if(!index.hasType(ValueType::LITERAL))
         	throw CompilationError(CompilationStep::GENERAL, "Invalid mask value", mask.to_string(false, true));
-        const Value& container = index.literal.integer < static_cast<int64_t>(source0.type.getVectorWidth()) ? source0 : source1;
-        if(index.literal.integer >= static_cast<int64_t>(source0.type.getVectorWidth()))
-        	index.literal.integer = index.literal.integer - source0.type.getVectorWidth();
+        const Value& container = index.literal.signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ? source0 : source1;
+        if(index.literal.signedInt() >= static_cast<int32_t>(source0.type.getVectorWidth()))
+        	index.literal = Literal(index.literal.signedInt() - source0.type.getVectorWidth());
         index.type = TYPE_INT8;
         const Value tmp = method.addNewLocal(container.type.getElementType(), "%vector_shuffle");
         it = insertVectorExtraction(it, method, container, index, tmp);
-        it = insertVectorInsertion(it, method, destination, Value(Literal(static_cast<int64_t>(i)), TYPE_INT8), tmp);
+        it = insertVectorInsertion(it, method, destination, Value(Literal(static_cast<int32_t>(i)), TYPE_INT8), tmp);
     }
     return it;
 }
@@ -273,8 +273,8 @@ InstructionWalker intermediate::insertMakePositive(InstructionWalker it, Method&
 {
 	if(src.getLiteralValue())
 	{
-		bool isNegative = src.getLiteralValue()->integer < 0;
-		dest = isNegative ? Value(Literal(-src.getLiteralValue()->integer), src.type) : src;
+		bool isNegative = src.getLiteralValue()->signedInt() < 0;
+		dest = isNegative ? Value(Literal(-src.getLiteralValue()->signedInt()), src.type) : src;
 		writeIsNegative = isNegative ? INT_MINUS_ONE : INT_ZERO;
 	}
 	else if(src.hasType(ValueType::CONTAINER))
@@ -285,8 +285,8 @@ InstructionWalker intermediate::insertMakePositive(InstructionWalker it, Method&
 		{
 			if(!elem.getLiteralValue())
 				throw CompilationError(CompilationStep::OPTIMIZER, "Can't handle container with non-literal values", src.to_string(false, true));
-			bool isNegative = elem.getLiteralValue()->integer < 0;
-			dest.container.elements.push_back(isNegative ? Value(Literal(-elem.getLiteralValue()->integer), elem.type) : elem);
+			bool isNegative = elem.getLiteralValue()->signedInt() < 0;
+			dest.container.elements.push_back(isNegative ? Value(Literal(-elem.getLiteralValue()->signedInt()), elem.type) : elem);
 			writeIsNegative.container.elements.push_back(isNegative ? INT_MINUS_ONE : INT_ZERO);
 		}
 	}
@@ -328,7 +328,7 @@ InstructionWalker intermediate::insertMakePositive(InstructionWalker it, Method&
 		}
 		if(!writeIsNegative.hasType(ValueType::LOCAL))
 			writeIsNegative = method.addNewLocal(TYPE_INT32.toVectorType(src.type.num), "%sign");
-		it.emplace(new Operation(OP_ASR, writeIsNegative, srcInt, Value(Literal(static_cast<uint64_t>(31)), TYPE_INT8)));
+		it.emplace(new Operation(OP_ASR, writeIsNegative, srcInt, Value(Literal(31u), TYPE_INT8)));
 		it.nextInBlock();
 		//%tmp = xor %src, %sign
 		const Value tmp = method.addNewLocal(src.type, "%twos_complement");
@@ -348,7 +348,7 @@ InstructionWalker intermediate::insertRestoreSign(InstructionWalker it, Method& 
 {
 	if(src.getLiteralValue() && sign.getLiteralValue())
 	{
-		dest = sign.isZeroInitializer() ? src : Value(Literal(-src.literal.integer), src.type);
+		dest = sign.isZeroInitializer() ? src : Value(Literal(-src.literal.signedInt()), src.type);
 	}
 	else
 	{
@@ -397,20 +397,20 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 			//-> add offset of element at given index to global offset
 			if(index.getLiteralValue())
 			{
-				subOffset = Value(Literal(index.getLiteralValue()->integer * subContainerType.getElementType().getPhysicalWidth()), TYPE_INT32);
+				subOffset = Value(Literal(index.getLiteralValue()->signedInt() * subContainerType.getElementType().getPhysicalWidth()), TYPE_INT32);
 			}
 			else
 			{
 				subOffset = method.addNewLocal(TYPE_INT32, "%index_offset");
 				//FIXME is wrong for array types? E.g. test_global_data.cl loading global data (container is pointer to array, element 0, but for second element the physical-size of the array is used as offset-factor)
-				it.emplace(new intermediate::Operation("mul", subOffset, index, Value(Literal(static_cast<uint64_t>(subContainerType.getElementType().getPhysicalWidth())), TYPE_INT32)));
+				it.emplace(new intermediate::Operation("mul", subOffset, index, Value(Literal(subContainerType.getElementType().getPhysicalWidth()), TYPE_INT32)));
 				it.nextInBlock();
 			}
 
 			//according to SPIR-V 1.2 specification, the type doesn't change if the first index is the "element":
 			//"The type of Base after being dereferenced with Element is still the same as the original type of Base."
 			if(!firstIndexIsElement || &index != &indices.front())
-				subContainerType = subContainerType.getElementType().getElementType(index.getLiteralValue().value_or(Literal(static_cast<int64_t>(ANY_ELEMENT))).integer).toPointerType();
+				subContainerType = subContainerType.getElementType().getElementType(index.getLiteralValue().value_or(Literal(ANY_ELEMENT)).signedInt()).toPointerType();
 		}
 		else if(subContainerType.getStructType())
 		{
@@ -418,15 +418,15 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 			if(!index.getLiteralValue())
 				throw CompilationError(CompilationStep::LLVM_2_IR, "Can't access struct-element with non-literal index", index.to_string());
 
-			subOffset = Value(Literal(static_cast<uint64_t>(subContainerType.getStructType().value()->getStructSize(static_cast<int>(index.getLiteralValue()->integer)))), TYPE_INT32);
-			subContainerType = subContainerType.getElementType(static_cast<int>(index.getLiteralValue()->integer));
+			subOffset = Value(Literal(subContainerType.getStructType().value()->getStructSize(index.getLiteralValue()->signedInt())), TYPE_INT32);
+			subContainerType = subContainerType.getElementType(index.getLiteralValue()->signedInt());
 		}
 		else
 			throw CompilationError(CompilationStep::LLVM_2_IR, "Invalid container-type to retrieve element via index", subContainerType.to_string());
 
 		if(offset.getLiteralValue() && subOffset.getLiteralValue())
 		{
-			offset = Value(Literal(offset.getLiteralValue()->integer + subOffset.getLiteralValue()->integer), TYPE_INT32);
+			offset = Value(Literal(offset.getLiteralValue()->signedInt() + subOffset.getLiteralValue()->signedInt()), TYPE_INT32);
 		}
 		else if(offset.isZeroInitializer())
 		{
@@ -462,7 +462,7 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 		index = indices.at(0);
 	if(firstIndexIsElement && indices.at(0).isZeroInitializer())
 		index = indices.size() > 1 ? indices.at(1) : UNDEFINED_VALUE;
-	const int refIndex = index.getLiteralValue().value_or(Literal(static_cast<int64_t>(ANY_ELEMENT))).integer;
+	const int refIndex = index.getLiteralValue().value_or(Literal(ANY_ELEMENT)).signedInt();
 	const_cast<std::pair<Local*, int>&>(dest.local->reference) = std::make_pair(container.local, refIndex);
 
 	if(dest.type != subContainerType)
@@ -509,11 +509,11 @@ InstructionWalker intermediate::insertByteSwap(InstructionWalker it, Method& met
 	{
 		// A B C D -> B C D A
 		const Value tmpAC0 = method.addNewLocal(src.type, "byte_swap");
-		it.emplace(new Operation(OP_ROR, tmpAC0, src, Value(Literal(static_cast<int64_t>(24)), TYPE_INT8)));
+		it.emplace(new Operation(OP_ROR, tmpAC0, src, Value(Literal(24u), TYPE_INT8)));
 		it.nextInBlock();
 		// A B C D -> D A B C
 		const Value tmpBD0 = method.addNewLocal(src.type, "byte_swap");
-		it.emplace(new Operation(OP_ROR, tmpBD0, src, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
+		it.emplace(new Operation(OP_ROR, tmpBD0, src, Value(Literal(16u), TYPE_INT8)));
 		it.nextInBlock();
 		// B C D A -> 0 0 0 A
 		const Value tmpA1 = method.addNewLocal(src.type, "byte_swap");

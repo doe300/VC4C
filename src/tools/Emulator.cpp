@@ -52,6 +52,8 @@ tools::Word EmulationData::calcNumWorkItems() const
 
 tools::Word* Memory::getWordAddress(MemoryAddress address)
 {
+	if(address >= data.size() * sizeof(Word))
+		throw CompilationError(CompilationStep::GENERAL, "Memory address is out of bounds, consider using larger buffer");
 	return data.data() + (address / sizeof(Word));
 }
 
@@ -59,7 +61,7 @@ Value Memory::readWord(MemoryAddress address) const
 {
 	if(address % sizeof(Word) != 0)
 		logging::warn() << "Reading word from non-word-aligned memory location will be truncated to align with word-boundaries: " << address << logging::endl;
-	return Value(Literal(static_cast<uint64_t>(data.at(address / sizeof(Word)))), TYPE_INT32);
+	return Value(Literal(data.at(address / sizeof(Word))), TYPE_INT32);
 }
 
 MemoryAddress Memory::incrementAddress(MemoryAddress address, const DataType& typeSize) const
@@ -601,7 +603,7 @@ Value VPM::readValue()
 			result = Value(ContainerValue(NATIVE_VECTOR_SIZE), TYPE_INT8.toVectorType(NATIVE_VECTOR_SIZE));
 			for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
 			{
-				result.container.elements.push_back(Value(Literal((static_cast<uint64_t>(dataPtr[i / 4]) >> ((i % 4) * 8)) & 0xFF), TYPE_INT8));
+				result.container.elements.push_back(Value(Literal((dataPtr[i / 4] >> ((i % 4) * 8)) & 0xFF), TYPE_INT8));
 			}
 			break;
 		}
@@ -610,7 +612,7 @@ Value VPM::readValue()
 			result = Value(ContainerValue(NATIVE_VECTOR_SIZE), TYPE_INT16.toVectorType(NATIVE_VECTOR_SIZE));
 			for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
 			{
-				result.container.elements.push_back(Value(Literal((static_cast<uint64_t>(dataPtr[i / 2]) >> ((i % 2) * 16)) & 0xFFFF), TYPE_INT16));
+				result.container.elements.push_back(Value(Literal((dataPtr[i / 2] >> ((i % 2) * 16)) & 0xFFFF), TYPE_INT16));
 			}
 			break;
 		}
@@ -619,7 +621,7 @@ Value VPM::readValue()
 			result = Value(ContainerValue(NATIVE_VECTOR_SIZE), TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE));
 			for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
 			{
-				result.container.elements.push_back(Value(Literal(static_cast<uint64_t>(dataPtr[i])), TYPE_INT32));
+				result.container.elements.push_back(Value(Literal(dataPtr[i]), TYPE_INT32));
 			}
 			break;
 		}
@@ -662,7 +664,7 @@ void VPM::writeValue(const Value& val)
 				dataPtr[i / 4] &= ~(0xFF << ((i % 4) * 8));
 				if(element.getLiteralValue())
 					//non-literal (e.g. undefined possible, simply skip writing element)
-					dataPtr[i / 4] |= static_cast<Word>(element.getLiteralValue()->integer & 0xFF) << ((i % 4) * 8);
+					dataPtr[i / 4] |= static_cast<Word>(element.getLiteralValue()->unsignedInt() & 0xFF) << ((i % 4) * 8);
 			}
 			break;
 		}
@@ -674,7 +676,7 @@ void VPM::writeValue(const Value& val)
 				dataPtr[i / 2] &= ~(0xFFFF << ((i % 2) * 16));
 				if(element.getLiteralValue())
 					//non-literal (e.g. undefined possible, simply skip writing element)
-					dataPtr[i / 2] |= static_cast<Word>(element.getLiteralValue()->integer & 0xFFFF) << ((i % 2) * 16);
+					dataPtr[i / 2] |= static_cast<Word>(element.getLiteralValue()->unsignedInt() & 0xFFFF) << ((i % 2) * 16);
 			}
 			break;
 		}
@@ -685,7 +687,7 @@ void VPM::writeValue(const Value& val)
 				const Value& element = val.hasType(ValueType::CONTAINER) ? val.container.elements.at(i) : val;
 				if(element.getLiteralValue())
 					//non-literal (e.g. undefined possible, simply skip writing element)
-					dataPtr[i] = static_cast<Word>(element.getLiteralValue()->integer);
+					dataPtr[i] = static_cast<Word>(element.getLiteralValue()->unsignedInt());
 			}
 			break;
 		}
@@ -703,7 +705,7 @@ void VPM::setWriteSetup(const Value& val)
 	const Value& element0 = val.hasType(ValueType::CONTAINER) ? val.container.elements.at(0) : val;
 	if(element0.isUndefined())
 		throw CompilationError(CompilationStep::GENERAL, "Undefined VPM setup value", val.to_string());
-	periphery::VPWSetup setup = periphery::VPWSetup::fromLiteral(element0.getLiteralValue()->integer);
+	periphery::VPWSetup setup = periphery::VPWSetup::fromLiteral(element0.getLiteralValue()->unsignedInt());
 	if(setup.isDMASetup())
 		dmaWriteSetup = setup.value;
 	else if(setup.isGenericSetup())
@@ -711,7 +713,7 @@ void VPM::setWriteSetup(const Value& val)
 	else if(setup.isStrideSetup())
 		writeStrideSetup = setup.value;
 	else
-		logging::warn() << "Writing unknown VPM write setup: " << element0.getLiteralValue()->integer << logging::endl;
+		logging::warn() << "Writing unknown VPM write setup: " << element0.getLiteralValue()->unsignedInt() << logging::endl;
 	logging::debug() << "Set VPM write setup: " << setup.to_string() << logging::endl;
 }
 
@@ -720,7 +722,7 @@ void VPM::setReadSetup(const Value& val)
 	const Value& element0 = val.hasType(ValueType::CONTAINER) ? val.container.elements.at(0) : val;
 	if(element0.isUndefined())
 		throw CompilationError(CompilationStep::GENERAL, "Undefined VPM setup value", val.to_string());
-	periphery::VPRSetup setup = periphery::VPRSetup::fromLiteral(element0.getLiteralValue()->integer);
+	periphery::VPRSetup setup = periphery::VPRSetup::fromLiteral(element0.getLiteralValue()->unsignedInt());
 	if(setup.isDMASetup())
 		dmaReadSetup = setup.value;
 	else if(setup.isGenericSetup())
@@ -728,7 +730,7 @@ void VPM::setReadSetup(const Value& val)
 	else if(setup.isStrideSetup())
 		readStrideSetup = setup.value;
 	else
-		logging::warn() << "Writing unknown VPM read setup: " << element0.getLiteralValue()->integer << logging::endl;
+		logging::warn() << "Writing unknown VPM read setup: " << element0.getLiteralValue()->unsignedInt() << logging::endl;
 	logging::debug() << "Set VPM read setup: " << setup.to_string() << logging::endl;
 }
 
@@ -752,7 +754,7 @@ void VPM::setDMAWriteAddress(const Value& val)
 	if(typeSize * sizes.second > sizeof(Word) * NATIVE_VECTOR_SIZE)
 		throw CompilationError(CompilationStep::GENERAL, "Accessing more than a VPM row at once is not supported", setup.to_string());
 
-	MemoryAddress address = static_cast<MemoryAddress>(element0.getLiteralValue()->integer);
+	MemoryAddress address = static_cast<MemoryAddress>(element0.getLiteralValue()->unsignedInt());
 
 	logging::debug() << "Copying " << sizes.first << " rows with " << sizes.second << " elements of " << typeSize << " bytes each from VPM address " << vpmBaseAddress.first << "," << vpmBaseAddress.second << " into RAM at " << address << logging::endl;
 
@@ -790,7 +792,7 @@ void VPM::setDMAReadAddress(const Value& val)
 	if(typeSize * sizes.second > sizeof(Word) * NATIVE_VECTOR_SIZE)
 		throw CompilationError(CompilationStep::GENERAL, "Accessing more than a VPM row at once is not supported", setup.to_string());
 
-	MemoryAddress address = static_cast<MemoryAddress>(element0.getLiteralValue()->integer);
+	MemoryAddress address = static_cast<MemoryAddress>(element0.getLiteralValue()->unsignedInt());
 
 	logging::debug() << "Copying " << sizes.first << " rows with " << sizes.second << " elements of " << typeSize << " bytes each from RAM address " << address << " into VPM at " << vpmBaseAddress.first << "," << vpmBaseAddress.second << " with byte-offset of " << byteOffset << logging::endl;
 
@@ -943,8 +945,8 @@ bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iter
 			nextPC += offset;
 
 			//see Broadcom specification, page 34
-			registers.writeRegister(toRegister(br->getAddOut(), br->getWriteSwap() == WriteSwap::SWAP), Value(Literal(static_cast<uint64_t>(pc + 4)), TYPE_INT32), std::bitset<16>(0xFFFF));
-			registers.writeRegister(toRegister(br->getMulOut(), br->getWriteSwap() == WriteSwap::DONT_SWAP), Value(Literal(static_cast<uint64_t>(pc + 4)), TYPE_INT32), std::bitset<16>(0xFFFF));
+			registers.writeRegister(toRegister(br->getAddOut(), br->getWriteSwap() == WriteSwap::SWAP), Value(Literal(pc + 4), TYPE_INT32), std::bitset<16>(0xFFFF));
+			registers.writeRegister(toRegister(br->getMulOut(), br->getWriteSwap() == WriteSwap::DONT_SWAP), Value(Literal(pc + 4), TYPE_INT32), std::bitset<16>(0xFFFF));
 		}
 		else
 			//simply skip to next PC
@@ -953,7 +955,7 @@ bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iter
 	else if(dynamic_cast<const qpu_asm::LoadInstruction*>(inst) != nullptr)
 	{
 		const auto load = dynamic_cast<const qpu_asm::LoadInstruction*>(inst);
-		Value imm = Value(Literal(static_cast<uint64_t>(load->getImmediateInt())), TYPE_INT32);
+		Value imm = Value(Literal(load->getImmediateInt()), TYPE_INT32);
 		imm = load->getPack().pack(imm).value();
 		if(load->getSetFlag() == SetFlag::SET_FLAGS)
 			setFlags(imm, load->getAddCondition() != COND_NEVER ? load->getAddCondition() : load->getMulCondition());
@@ -1241,8 +1243,8 @@ void QPU::setFlags(const Value& output, ConditionCode cond)
 			const Value& element = output.hasType(ValueType::CONTAINER) ? (i < output.container.elements.size() ? output.container.elements.at(i) : UNDEFINED_VALUE) : output;
 			if(element.getLiteralValue())
 			{
-				flags.at(i).zero = element.getLiteralValue()->integer == 0 ? ElementFlags::FLAG_SET : ElementFlags::FLAG_CLEAR;
-				flags.at(i).negative = (element.type.isFloatingType() ? element.getLiteralValue()->real() < 0.0 : element.getLiteralValue()->integer < 0) ? ElementFlags::FLAG_SET : ElementFlags::FLAG_CLEAR;
+				flags.at(i).zero = element.getLiteralValue()->unsignedInt() == 0 ? ElementFlags::FLAG_SET : ElementFlags::FLAG_CLEAR;
+				flags.at(i).negative = (element.type.isFloatingType() ? element.getLiteralValue()->real() < 0.0f : element.getLiteralValue()->signedInt() < 0) ? ElementFlags::FLAG_SET : ElementFlags::FLAG_CLEAR;
 				//TODO carry!!
 				flags.at(i).carry = ElementFlags::FLAG_UNDEFINED;
 			}
@@ -1418,9 +1420,13 @@ EmulationResult tools::emulate(const EmulationData& data)
 		extractBinary(*data.module.second, module, globals, instructions);
 	else
 	{
-		std::ifstream f(data.module.first);
+		std::ifstream f(data.module.first, std::ios_base::in|std::ios_base::binary);
 		extractBinary(f, module, globals, instructions);
 	}
+	if(instructions.empty())
+		throw CompilationError(CompilationStep::GENERAL, "Extracted module has no instructions!");
+	if(module.kernelInfos.empty())
+		throw CompilationError(CompilationStep::GENERAL, "Extracted module has no kernels!");
 
 	auto kernelInfo = std::find_if(module.kernelInfos.begin(), module.kernelInfos.end(), [&data](const qpu_asm::KernelInfo& info) -> bool { return info.name == data.kernelName; });
 	if(kernelInfo == module.kernelInfos.end())

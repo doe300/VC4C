@@ -37,10 +37,10 @@ static InstructionWalker insertCalculateAddressOffsets(Method& method, Instructi
 	outputAddress = method.addNewLocal(TYPE_INT32.toVectorType(type.num), "%tmu_address");
 
 	//addressOffsets = sizeof(type) * elem_num
-	it.emplace(new intermediate::Operation(OP_MUL24, addressOffsets, Value(Literal(static_cast<int64_t>(type.getScalarBitCount()) / 8), TYPE_INT8), ELEMENT_NUMBER_REGISTER));
+	it.emplace(new intermediate::Operation(OP_MUL24, addressOffsets, Value(Literal(static_cast<uint32_t>(type.getScalarBitCount()) / 8), TYPE_INT8), ELEMENT_NUMBER_REGISTER));
 	it.nextInBlock();
 	//outputAddress = (elem_num < type.num) ? baseAddress + addressOffsets : 0
-	it.emplace(new intermediate::Operation(OP_SUB, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, Value(Literal(static_cast<int64_t>(type.num)), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
+	it.emplace(new intermediate::Operation(OP_SUB, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, Value(Literal(static_cast<int32_t>(type.num)), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
 	it.nextInBlock();
 	//XXX rewrite, so it can be combined with next instruction
 	//TODO or generally check if we can rewrite "mov out, 0" in way so we can combine it with next/previous instruction (e.g. by using "xor out, x, x" or "v8subs out, x, x")
@@ -75,7 +75,7 @@ static InstructionWalker insertCalculateAddressOffsets(Method& method, Instructi
 static InstructionWalker insertExtractHalfWordElements(Method& method, InstructionWalker it, const Value& dest, const Value& src, const Value& addressVector)
 {
 	//1) for every address, check if it is aligned to 4 Byte <-> address & 0b11 == 0
-	it.emplace(new intermediate::Operation(OP_AND, NOP_REGISTER, addressVector, Value(Literal(static_cast<int64_t>(3)), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
+	it.emplace(new intermediate::Operation(OP_AND, NOP_REGISTER, addressVector, Value(Literal(3u), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
 	it.nextInBlock();
 	//2) extract short values
 	//2.1) if the element address is aligned correctly, use lower half-word, otherwise use upper-half word
@@ -83,7 +83,7 @@ static InstructionWalker insertExtractHalfWordElements(Method& method, Instructi
 
 	//tmp = address & 0b11 ? src >> 16 : src
 	const Value tmp = method.addNewLocal(dest.type, "%tmp_result");
-	it.emplace(new intermediate::Operation(OP_SHR, tmp, src, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8), COND_ZERO_CLEAR));
+	it.emplace(new intermediate::Operation(OP_SHR, tmp, src, Value(Literal(16u), TYPE_INT8), COND_ZERO_CLEAR));
 	it.nextInBlock();
 	it.emplace(new intermediate::MoveOperation(tmp, src, COND_ZERO_SET));
 	it.nextInBlock();
@@ -108,12 +108,12 @@ static InstructionWalker insertExtractByteElements(Method& method, InstructionWa
 {
 	//alignmentOffset = address & 0b11
 	const Value alignmentOffset = method.addNewLocal(dest.type, "%alignment_offset");
-	it.emplace(new intermediate::Operation(OP_AND, alignmentOffset, addressVector, Value(Literal(static_cast<int64_t>(3)), TYPE_INT8)));
+	it.emplace(new intermediate::Operation(OP_AND, alignmentOffset, addressVector, Value(Literal(3u), TYPE_INT8)));
 	it.nextInBlock();
 
 	//shiftOffset = alignmentOffset * 8
 	const Value shiftOffset = method.addNewLocal(dest.type, "%shift_offset");
-	it.emplace(new intermediate::Operation(OP_MUL24, shiftOffset, alignmentOffset, Value(Literal(static_cast<int64_t>(8)), TYPE_INT8)));
+	it.emplace(new intermediate::Operation(OP_MUL24, shiftOffset, alignmentOffset, Value(Literal(8u), TYPE_INT8)));
 	it.nextInBlock();
 
 	//tmp = src >> shiftOffset

@@ -71,7 +71,7 @@ static void dumpMemory(const Memory& memory, const std::string& fileName, Memory
 			f << "Uniforms: " << std::endl;
 		if(addr % (sizeof(tools::Word) * 8) == 0)
 			f << std::hex << "0x" << addr << "\t";
-		f << " " << std::hex << std::setfill('0') << std::setw(8) << static_cast<tools::Word>(memory.readWord(addr).getLiteralValue()->integer);
+		f << " " << std::hex << std::setfill('0') << std::setw(8) << memory.readWord(addr).getLiteralValue()->unsignedInt();
 		if(addr % (sizeof(tools::Word) * 8) == (sizeof(tools::Word) * 7))
 			f << std::endl;
 		addr += sizeof(tools::Word);

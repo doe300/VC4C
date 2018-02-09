@@ -95,29 +95,29 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
     bool hasA0Part, hasA1Part, hasB0Part, hasB1Part;
     if(arg0.getLiteralValue())
     {
-        hasA1Part = (arg0.getLiteralValue()->integer & 0xFFFF) != 0;
-        it.emplace(new MoveOperation(a1, Value(Literal(static_cast<int64_t>(arg0.getLiteralValue()->integer & 0xFFFF)), TYPE_INT16)));
+        hasA1Part = (arg0.getLiteralValue()->unsignedInt() & 0xFFFF) != 0;
+        it.emplace(new MoveOperation(a1, Value(Literal(arg0.getLiteralValue()->unsignedInt() & 0xFFFF), TYPE_INT16)));
         it.nextInBlock();
-        hasA0Part = (arg0.getLiteralValue()->integer >> 16) != 0;
-		it.emplace(new MoveOperation(a0, Value(Literal(static_cast<int64_t>(arg0.getLiteralValue()->integer >> 16)), TYPE_INT16)));
+        hasA0Part = (arg0.getLiteralValue()->unsignedInt() >> 16) != 0;
+		it.emplace(new MoveOperation(a0, Value(Literal(arg0.getLiteralValue()->unsignedInt() >> 16), TYPE_INT16)));
 		it.nextInBlock();
     }
     else
     {
         hasA0Part = true;   //not known
         hasA1Part = true;
-        it.emplace(new Operation(OP_AND, a1, arg0, Value(Literal(static_cast<uint64_t>(0xFFFF)), TYPE_INT16)));
+        it.emplace(new Operation(OP_AND, a1, arg0, Value(Literal(0xFFFFu), TYPE_INT16)));
         it.nextInBlock();
-        it.emplace(new Operation(OP_SHR, a0, arg0, Value(Literal(static_cast<int64_t>(16)), TYPE_INT16)));
+        it.emplace(new Operation(OP_SHR, a0, arg0, Value(Literal(16u), TYPE_INT16)));
         it.nextInBlock();
     }
     if(arg1.getLiteralValue())
     {
-    	hasB1Part = (arg1.getLiteralValue()->integer & 0xFFFF) != 0;
-		it.emplace(new MoveOperation(b1, Value(Literal(static_cast<int64_t>(arg1.getLiteralValue()->integer & 0xFFFF)), TYPE_INT8)));
+    	hasB1Part = (arg1.getLiteralValue()->unsignedInt() & 0xFFFF) != 0;
+		it.emplace(new MoveOperation(b1, Value(Literal(arg1.getLiteralValue()->unsignedInt() & 0xFFFF), TYPE_INT8)));
 		it.nextInBlock();
-        hasB0Part = (arg1.getLiteralValue()->integer >> 16) != 0;
-        it.emplace(new MoveOperation(b0, Value(Literal(static_cast<int64_t>(arg1.getLiteralValue()->integer >> 16)), TYPE_INT8)));
+        hasB0Part = (arg1.getLiteralValue()->unsignedInt() >> 16) != 0;
+        it.emplace(new MoveOperation(b0, Value(Literal(arg1.getLiteralValue()->unsignedInt() >> 16), TYPE_INT8)));
         it.nextInBlock();
     }
     else
@@ -125,9 +125,9 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
         //not known
         hasB0Part = true;
         hasB1Part = true;
-        it.emplace( new Operation(OP_AND, b1, arg1, Value(Literal(static_cast<uint64_t>(0xFFFF)), TYPE_INT8)));
+        it.emplace( new Operation(OP_AND, b1, arg1, Value(Literal(0xFFFFu), TYPE_INT8)));
         it.nextInBlock();
-        it.emplace( new Operation(OP_SHR, b0, arg1, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
+        it.emplace( new Operation(OP_SHR, b0, arg1, Value(Literal(16u), TYPE_INT8)));
         it.nextInBlock();
     }
     if(hasA1Part && hasB1Part)
@@ -145,7 +145,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
     	const Value tmp = method.addNewLocal(op.getOutput()->type);
         it.emplace( new Operation(OP_MUL24, tmp, a1, b0));
         it.nextInBlock();
-        it.emplace( new Operation(OP_SHL, tmp, tmp, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
+        it.emplace( new Operation(OP_SHL, tmp, tmp, Value(Literal(16u), TYPE_INT8)));
         it.nextInBlock();
         it.emplace( new Operation(OP_ADD, out1, out0, tmp));
         it.nextInBlock();
@@ -160,7 +160,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(Method& 
     	const Value tmp = method.addNewLocal(op.getOutput()->type);
         it.emplace( new Operation(OP_MUL24, tmp, a0, b1));
         it.nextInBlock();
-        it.emplace( new Operation(OP_SHL, out2, tmp, Value(Literal(static_cast<int64_t>(16)), TYPE_INT8)));
+        it.emplace( new Operation(OP_SHL, out2, tmp, Value(Literal(16u), TYPE_INT8)));
         it.nextInBlock();
     }
     else
@@ -263,7 +263,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
         //R(0) := N(i)         -- set the least-significant bit of R equal to bit i of the numerator
         //R = R | ((N >> i) & 1) <=> R = R | (N & (1 << i) == 1 ? 1 : 0) <=> R = R | 1, if N & (1 << i) != 0
         newRemainder = method.addNewLocal(op.getOutput()->type, "%udiv.remainder");
-        it.emplace(new Operation(OP_AND, NOP_REGISTER, numerator, Value(Literal(static_cast<int64_t>(1) << i), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
+        it.emplace(new Operation(OP_AND, NOP_REGISTER, numerator, Value(Literal(static_cast<int32_t>(1) << i), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
         it.nextInBlock();
         it.emplace( new Operation(OP_OR, newRemainder, remainder, INT_ONE, COND_ZERO_CLEAR));
         it.nextInBlock();
@@ -287,7 +287,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(Method& method
         remainder = newRemainder;
         //Q(i) := 1
         Value newQuotient = method.addNewLocal(op.getOutput()->type, "%udiv.quotient");
-        it.emplace( new Operation(OP_OR, newQuotient, quotient, Value(Literal(static_cast<int64_t>(1) << i), TYPE_INT32), COND_ZERO_SET));
+        it.emplace( new Operation(OP_OR, newQuotient, quotient, Value(Literal(static_cast<int32_t>(1) << i), TYPE_INT32), COND_ZERO_SET));
         it.nextInBlock();
         //else Q(new) := Q(old)
         it.emplace(new MoveOperation(newQuotient, quotient, COND_ZERO_CLEAR));
@@ -366,8 +366,8 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivisionByConstant(Method
 
 static std::pair<Literal, Literal> calculateConstant(Literal divisor, unsigned accuracy)
 {
-	uint64_t shift = static_cast<uint64_t>(std::log2(divisor.integer * accuracy)) + 2;
-	uint64_t factor = static_cast<uint64_t>(std::round(std::pow(2.0, shift) / static_cast<double>(divisor.integer)));
+	uint32_t shift = static_cast<uint32_t>(std::log2(divisor.unsignedInt() * accuracy)) + 2;
+	uint32_t factor = static_cast<uint32_t>(std::round(std::pow(2.0f, shift) / static_cast<float>(divisor.unsignedInt())));
 	if(shift > 31)
 		throw CompilationError(CompilationStep::OPTIMIZER, "Unsigned division by constant generated invalid shift offset", std::to_string(shift));
 	if(factor >= std::numeric_limits<uint16_t>::max())
@@ -383,7 +383,7 @@ static std::pair<Value, Value> calculateConstant(const Value& divisor, unsigned 
 		Value shifts(ContainerValue(divisor.container.elements.size()), divisor.type);
 		for(const auto& element : divisor.container.elements)
 		{
-			auto tmp = calculateConstant(element.literal.integer, accuracy);
+			auto tmp = calculateConstant(element.literal, accuracy);
 			factors.container.elements.push_back(Value(tmp.first, factors.type.toVectorType(1)));
 			shifts.container.elements.push_back(Value(tmp.second, shifts.type.toVectorType(1)));
 		}
@@ -497,7 +497,7 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
     periphery::insertSFUCall(REG_SFU_RECIP, it, divisor);
     it.emplace(new MoveOperation(P0, Value(REG_SFU_OUT, TYPE_FLOAT)));
     it.nextInBlock();
-    const Value const2(Literal(2.0), TYPE_FLOAT);
+    const Value const2(Literal(2.0f), TYPE_FLOAT);
     
     //2. iteration step: Pi+1 = Pi(2 - D * Pi)
     //run 5 iterations
@@ -561,30 +561,27 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
 
 Literal intermediate::asr(const DataType& type, const Literal& left, const Literal& right)
 {
-	std::bitset<sizeof(int64_t) * 8> tmp(left.integer);
-	if(right.integer < 0)
+	std::bitset<sizeof(int32_t) * 8> tmp(left.signedInt());
+	if(right.signedInt() < 0)
 		throw CompilationError(CompilationStep::GENERAL, "ASR with negative numbers is not implemented");
-	for(auto i = 0; i < right.integer; ++i)
+	for(auto i = 0; i < right.signedInt(); ++i)
 	{
 
 		bool MSBSet = tmp.test(type.getScalarBitCount() - 1);
 		tmp >>= 1;
 		tmp.set(type.getScalarBitCount() - 1, MSBSet);
 	}
-	if(sizeof(unsigned long) == sizeof(int64_t))
-		return Literal(static_cast<uint64_t>(tmp.to_ulong()));
-	else
-		return Literal(static_cast<uint64_t>(tmp.to_ullong()));
+	return Literal(static_cast<uint32_t>(tmp.to_ulong()));
 }
 
 Literal intermediate::clz(const DataType& type, const Literal& val)
 {
 	for(auto i = type.getScalarBitCount() - 1; i >= 0; --i)
 	{
-		if(((val.integer >> i) & 0x1) == 0x1)
-			return Literal(static_cast<int64_t>(type.getScalarBitCount() - 1 - i));
+		if(((val.unsignedInt() >> i) & 0x1) == 0x1)
+			return Literal(static_cast<int32_t>(type.getScalarBitCount() - 1 - i));
 	}
-	return Literal(static_cast<int64_t>(type.getScalarBitCount()));
+	return Literal(static_cast<int32_t>(type.getScalarBitCount()));
 }
 
 Literal intermediate::smod(const DataType& type, const Literal& numerator, const Literal& denominator)

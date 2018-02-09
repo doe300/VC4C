@@ -313,7 +313,7 @@ Optional<Value> IntermediateInstruction::getPrecalculatedValueForArg(const std::
 				Value elementIndices(ContainerValue(16), arg.type);
 				for(unsigned i = 0; i < NATIVE_VECTOR_SIZE; ++i)
 				{
-					elementIndices.container.elements.emplace_back(Literal(static_cast<uint64_t>(i)), TYPE_INT8);
+					elementIndices.container.elements.emplace_back(Literal(i), TYPE_INT8);
 				}
 				return elementIndices;
 			}

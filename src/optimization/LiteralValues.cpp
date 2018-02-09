@@ -71,7 +71,8 @@ InstructionWalker optimizations::handleContainer(const Module& module, Method& m
 	{
 		Value src = rot->getSource();
 		//vector rotation -> rotate container (if static offset)
-		std::size_t offset = rot->getOffset().getLiteralValue() ? rot->getOffset().getLiteralValue()->integer : rot->getOffset().immediate.getRotationOffset().value();
+		//TODO negative offset possible?
+		std::size_t offset = rot->getOffset().getLiteralValue() ? rot->getOffset().getLiteralValue()->unsignedInt() : rot->getOffset().immediate.getRotationOffset().value();
 		//"Rotates the order of the elements in the range [first,last), in such a way that the element pointed by middle becomes the new first element."
 		offset = (16 - offset);
 		//need to rotate all (possible non-existing) 16 elements, so use a temporary vector with 16 elements and rotate it
@@ -156,14 +157,14 @@ static Literal toLiteral(uint32_t mask, float f)
 	//TODO static_assert(bit_cast<double, int64_t>(d) == i, "Values do not match!");
 	if(bit_cast<float, uint32_t>(f) != mask)
 		throw CompilationError(CompilationStep::GENERAL, std::string("Small immediate values do not match for ") + std::to_string(mask) + " and", (std::to_string(f) + " aka ") + std::to_string(bit_cast<float, uint32_t>(f)));
-	return Literal(static_cast<uint64_t>(mask));
+	return Literal(mask);
 }
 
 static Literal toLiteral(uint32_t mask, int32_t j)
 {
 	if((static_cast<int64_t>(j) & 0xFFFFFFFF) != (static_cast<int64_t>(mask) & 0xFFFFFFFF))
 		throw CompilationError(CompilationStep::GENERAL, std::string("Small immediate values do not match for ") + std::to_string(mask) + " and", std::to_string(j));
-	return Literal(static_cast<uint64_t>(mask));
+	return Literal(mask);
 }
 
 //source: http://maazl.de/project/vc4asm/doc/smallimmediate.html
@@ -234,33 +235,33 @@ static const std::map<Literal, ImmediateSupplier> immediateMappings = {
 		{toLiteral(0x00038000, 14 << 14), ImmediateSupplier(OP_SHL, SmallImmediate(14))},
 		{toLiteral(0x00078000, 15 << 15), ImmediateSupplier(OP_SHL, SmallImmediate(15))},
 
-		{Literal(static_cast<int64_t>(0x001e0000)), ImmediateSupplier(OP_ROR, SmallImmediate(15))},
-		{Literal(static_cast<int64_t>(0x00380000)), ImmediateSupplier(OP_ROR, SmallImmediate(14))},
-		{Literal(static_cast<int64_t>(0x00680000)), ImmediateSupplier(OP_ROR, SmallImmediate(13))},
-		{Literal(static_cast<int64_t>(0x00c00000)), ImmediateSupplier(OP_ROR, SmallImmediate(12))},
-		{Literal(static_cast<int64_t>(0x01600000)), ImmediateSupplier(OP_ROR, SmallImmediate(11))},
-		{Literal(static_cast<int64_t>(0x02800000)), ImmediateSupplier(OP_ROR, SmallImmediate(10))},
-		{Literal(static_cast<int64_t>(0x04800000)), ImmediateSupplier(OP_ROR, SmallImmediate(9))},
-		{Literal(static_cast<int64_t>(0x08000000)), ImmediateSupplier(OP_ROR, SmallImmediate(8))},
-		{Literal(static_cast<int64_t>(0x0e000000)), ImmediateSupplier(OP_V8MULD, SmallImmediate(41))},
-		//{Literal(static_cast<int64_t>(0x0e000000)), ImmediateSupplier(OP_ROR, SmallImmediate(7))},
-		{Literal(static_cast<int64_t>(0x0e400000)), ImmediateSupplier(OP_V8MULD, SmallImmediate(40))},
-		//{Literal(static_cast<int64_t>(0x0e400000)), ImmediateSupplier(OP_V8MULD, SmallImmediate(42))},
-		{Literal(static_cast<int64_t>(0x0f000000)), ImmediateSupplier(OP_V8MULD, SmallImmediate(43))},
-		//{Literal(static_cast<int64_t>(0x0f000000)), ImmediateSupplier(OP_V8MULD, SmallImmediate(45))},
-		{Literal(static_cast<int64_t>(0x0f400000)), ImmediateSupplier(OP_V8MULD, SmallImmediate(44))},
-		//{Literal(static_cast<int64_t>(0x0f400000)), ImmediateSupplier(OP_V8MULD, SmallImmediate(46))},
-		{Literal(static_cast<int64_t>(0x10000000)), ImmediateSupplier(OP_V8MULD, SmallImmediate(47))},
-		//{Literal(static_cast<int64_t>(0x10000000)), ImmediateSupplier(OP_V8MULD, SmallImmediate(33))},
-		{Literal(static_cast<int64_t>(0x10400000)), ImmediateSupplier(OP_V8MULD, SmallImmediate(32))},
-		//{Literal(static_cast<int64_t>(0x10400000)), ImmediateSupplier(OP_V8MULD, SmallImmediate(34))},
-		{Literal(static_cast<int64_t>(0x11000000)), ImmediateSupplier(OP_V8MULD, SmallImmediate(35))},
-		//{Literal(static_cast<int64_t>(0x11000000)), ImmediateSupplier(OP_V8MULD, SmallImmediate(37))},
-		{Literal(static_cast<int64_t>(0x11400000)), ImmediateSupplier(OP_V8MULD, SmallImmediate(36))},
-		//{Literal(static_cast<int64_t>(0x11400000)), ImmediateSupplier(OP_V8MULD, SmallImmediate(38))},
-		{Literal(static_cast<int64_t>(0x12000000)), ImmediateSupplier(OP_V8MULD, SmallImmediate(39))},
-		{Literal(static_cast<int64_t>(0x18000000)), ImmediateSupplier(OP_ROR, SmallImmediate(6))},
-		{Literal(static_cast<int64_t>(0x28000000)), ImmediateSupplier(OP_ROR, SmallImmediate(5))},
+		{Literal(0x001e0000u), ImmediateSupplier(OP_ROR, SmallImmediate(15))},
+		{Literal(0x00380000u), ImmediateSupplier(OP_ROR, SmallImmediate(14))},
+		{Literal(0x00680000u), ImmediateSupplier(OP_ROR, SmallImmediate(13))},
+		{Literal(0x00c00000u), ImmediateSupplier(OP_ROR, SmallImmediate(12))},
+		{Literal(0x01600000u), ImmediateSupplier(OP_ROR, SmallImmediate(11))},
+		{Literal(0x02800000u), ImmediateSupplier(OP_ROR, SmallImmediate(10))},
+		{Literal(0x04800000u), ImmediateSupplier(OP_ROR, SmallImmediate(9))},
+		{Literal(0x08000000u), ImmediateSupplier(OP_ROR, SmallImmediate(8))},
+		{Literal(0x0e000000u), ImmediateSupplier(OP_V8MULD, SmallImmediate(41))},
+		//{Literal(0x0e000000u), ImmediateSupplier(OP_ROR, SmallImmediate(7))},
+		{Literal(0x0e400000u), ImmediateSupplier(OP_V8MULD, SmallImmediate(40))},
+		//{Literal(0x0e400000u), ImmediateSupplier(OP_V8MULD, SmallImmediate(42))},
+		{Literal(0x0f000000u), ImmediateSupplier(OP_V8MULD, SmallImmediate(43))},
+		//{Literal(0x0f000000u), ImmediateSupplier(OP_V8MULD, SmallImmediate(45))},
+		{Literal(0x0f400000u), ImmediateSupplier(OP_V8MULD, SmallImmediate(44))},
+		//{Literal(0x0f400000u), ImmediateSupplier(OP_V8MULD, SmallImmediate(46))},
+		{Literal(0x10000000u), ImmediateSupplier(OP_V8MULD, SmallImmediate(47))},
+		//{Literal(0x10000000u), ImmediateSupplier(OP_V8MULD, SmallImmediate(33))},
+		{Literal(0x10400000u), ImmediateSupplier(OP_V8MULD, SmallImmediate(32))},
+		//{Literal(0x10400000u), ImmediateSupplier(OP_V8MULD, SmallImmediate(34))},
+		{Literal(0x11000000u), ImmediateSupplier(OP_V8MULD, SmallImmediate(35))},
+		//{Literal(0x11000000u), ImmediateSupplier(OP_V8MULD, SmallImmediate(37))},
+		{Literal(0x11400000u), ImmediateSupplier(OP_V8MULD, SmallImmediate(36))},
+		//{Literal(0x11400000u), ImmediateSupplier(OP_V8MULD, SmallImmediate(38))},
+		{Literal(0x12000000u), ImmediateSupplier(OP_V8MULD, SmallImmediate(39))},
+		{Literal(0x18000000u), ImmediateSupplier(OP_ROR, SmallImmediate(6))},
+		{Literal(0x28000000u), ImmediateSupplier(OP_ROR, SmallImmediate(5))},
 
 		{toLiteral(0x37800000, 1.0f / (256.0f * 256.0f)), ImmediateSupplier(OP_FMUL, SmallImmediate(40))},
 		{toLiteral(0x38800000, 1.0f / (128.0f * 128.0f)), ImmediateSupplier(OP_FMUL, SmallImmediate(41))},
@@ -276,7 +277,7 @@ static const std::map<Literal, ImmediateSupplier> immediateMappings = {
 		{toLiteral(0x3f000000, 1.0f/2.0f), ImmediateSupplier(SmallImmediate(47))},
 		{toLiteral(0x3f800000, 1.0f), ImmediateSupplier(SmallImmediate(32))},
 		{toLiteral(0x40000000, 2.0f), ImmediateSupplier(SmallImmediate(33))},
-		//{Literal(static_cast<int64_t>(0x40000000)), ImmediateSupplier(OP_ROR, SmallImmediate(4))},
+		//{Literal(0x40000000u), ImmediateSupplier(OP_ROR, SmallImmediate(4))},
 		{toLiteral(0x40400000, static_cast<float>(3)), ImmediateSupplier(OP_ITOF, SmallImmediate(3))},
 		{toLiteral(0x40800000, 4.0f), ImmediateSupplier(SmallImmediate(34))},
 		{toLiteral(0x40a00000, static_cast<float>(5)), ImmediateSupplier(OP_ITOF, SmallImmediate(5))},
@@ -317,47 +318,47 @@ static const std::map<Literal, ImmediateSupplier> immediateMappings = {
 		{toLiteral(0x4e850000, static_cast<float>(bit_cast<float, int32_t>(64.0f))), ImmediateSupplier(OP_ITOF, SmallImmediate(38))},
 		{toLiteral(0x4e860000, static_cast<float>(bit_cast<float, int32_t>(128.0f))), ImmediateSupplier(OP_ITOF, SmallImmediate(39))},
 
-		{Literal(static_cast<int64_t>(0x60000000)), ImmediateSupplier(OP_ROR, SmallImmediate(3))},
+		{Literal(0x60000000u), ImmediateSupplier(OP_ROR, SmallImmediate(3))},
 
-		{Literal(static_cast<int64_t>(0x76ff0000)), ImmediateSupplier(OP_V8ADDS, SmallImmediate(40))},
+		{Literal(0x76ff0000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(40))},
 		{toLiteral(0x77000000, bit_cast<float, int32_t>(1.0f/256.0f) + bit_cast<float, int32_t>(1.0f/256.0f)), ImmediateSupplier(OP_ADD, SmallImmediate(40))},
-		{Literal(static_cast<int64_t>(0x78000000)), ImmediateSupplier(OP_V8ADDS, SmallImmediate(41))},
+		{Literal(0x78000000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(41))},
 		//{toLiteral(0x78000000, std::pow(2.0f, 113.0f)), ImmediateSupplier(OP_ADD, SmallImmediate(41))},
-		{Literal(static_cast<int64_t>(0x78ff0000)), ImmediateSupplier(OP_V8ADDS, SmallImmediate(42))},
+		{Literal(0x78ff0000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(42))},
 		{toLiteral(0x79000000, bit_cast<float, int32_t>(1.0f/64.0f) + bit_cast<float, int32_t>(1.0f/64.0f)), ImmediateSupplier(OP_ADD, SmallImmediate(42))},
-		{Literal(static_cast<int64_t>(0x7a000000)), ImmediateSupplier(OP_V8ADDS, SmallImmediate(43))},
+		{Literal(0x7a000000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(43))},
 		//{toLiteral(0x7a000000, std::pow(2.0f, 117.0f)), ImmediateSupplier(OP_ADD, SmallImmediate(43))},
-		{Literal(static_cast<int64_t>(0x7aff0000)), ImmediateSupplier(OP_V8ADDS, SmallImmediate(44))},
+		{Literal(0x7aff0000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(44))},
 		{toLiteral(0x7b000000, bit_cast<float, int32_t>(1.0f/16.0f) + bit_cast<float, int32_t>(1.0f/16.0f)), ImmediateSupplier(OP_ADD, SmallImmediate(44))},
-		{Literal(static_cast<int64_t>(0x7c000000)), ImmediateSupplier(OP_V8ADDS, SmallImmediate(45))},
+		{Literal(0x7c000000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(45))},
 		//{toLiteral(0x7c000000, std::pow(2.0f, 121.0f)), ImmediateSupplier(OP_ADD, SmallImmediate(45))},
-		{Literal(static_cast<int64_t>(0x7cff0000)), ImmediateSupplier(OP_V8ADDS, SmallImmediate(46))},
+		{Literal(0x7cff0000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(46))},
 		{toLiteral(0x7d000000, bit_cast<float, int32_t>(1.0f/4.0f) + bit_cast<float, int32_t>(1.0f/4.0f)), ImmediateSupplier(OP_ADD, SmallImmediate(46))},
-		{Literal(static_cast<int64_t>(0x7e000000)), ImmediateSupplier(OP_V8ADDS, SmallImmediate(47))},
+		{Literal(0x7e000000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(47))},
 		//{toLiteral(0x7e000000, std::pow(2.0f, 125.0f)), ImmediateSupplier(OP_ADD, SmallImmediate(47))},
-		{Literal(static_cast<int64_t>(0x7eff0000)), ImmediateSupplier(OP_V8ADDS, SmallImmediate(32))},
+		{Literal(0x7eff0000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(32))},
 		{toLiteral(0x7f000000, bit_cast<float, int32_t>(1.0f) + bit_cast<float, int32_t>(1.0f)), ImmediateSupplier(OP_ADD, SmallImmediate(32))},
 		{toLiteral(0x80000000, bit_cast<float, int32_t>(2.0f) + bit_cast<float, int32_t>(2.0f)), ImmediateSupplier(OP_V8ADDS, SmallImmediate(33))},
 		//-2^-126 (a denormal number), pow results in -0.0
-		//{Literal(static_cast<int64_t>(0x80000000)), ImmediateSupplier(OP_ADD, SmallImmediate(33))},
-		{Literal(static_cast<int64_t>(0x80ff0000)), ImmediateSupplier(OP_V8ADDS, SmallImmediate(34))},
+		//{Literal(0x80000000u), ImmediateSupplier(OP_ADD, SmallImmediate(33))},
+		{Literal(0x80ff0000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(34))},
 		//-2^-125, pow results in -0.0
 		{toLiteral(0x81000000, bit_cast<float, int32_t>(4.0f) + bit_cast<float, int32_t>(4.0f)), ImmediateSupplier(OP_ADD, SmallImmediate(34))},
-		{Literal(static_cast<int64_t>(0x82000000)), ImmediateSupplier(OP_V8ADDS, SmallImmediate(35))},
+		{Literal(0x82000000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(35))},
 		//-2^-123, pow results in -0.0
-		//{Literal(static_cast<int64_t>(0x82000000)), ImmediateSupplier(OP_ADD, SmallImmediate(35))},
-		{Literal(static_cast<int64_t>(0x82ff0000)), ImmediateSupplier(OP_V8ADDS, SmallImmediate(36))},
+		//{Literal(0x82000000u), ImmediateSupplier(OP_ADD, SmallImmediate(35))},
+		{Literal(0x82ff0000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(36))},
 		//-2^-121, pow results in -0.0
 		{toLiteral(0x83000000, bit_cast<float, int32_t>(16.0f) + bit_cast<float, int32_t>(16.0f)), ImmediateSupplier(OP_ADD, SmallImmediate(36))},
-		{Literal(static_cast<int64_t>(0x84000000)), ImmediateSupplier(OP_V8ADDS, SmallImmediate(37))},
+		{Literal(0x84000000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(37))},
 		//-2^-119, pow results in -0.0
-		//{Literal(static_cast<int64_t>(0x84000000)), ImmediateSupplier(OP_ADD, SmallImmediate(37))},
-		{Literal(static_cast<int64_t>(0x84ff0000)), ImmediateSupplier(OP_V8ADDS, SmallImmediate(38))},
+		//{Literal(0x84000000u), ImmediateSupplier(OP_ADD, SmallImmediate(37))},
+		{Literal(0x84ff0000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(38))},
 		//-2^-117, pow results in -0.0
 		{toLiteral(0x85000000, bit_cast<float, int32_t>(64.0f) + bit_cast<float, int32_t>(64.0f)), ImmediateSupplier(OP_ADD, SmallImmediate(38))},
-		{Literal(static_cast<int64_t>(0x86000000)), ImmediateSupplier(OP_V8ADDS, SmallImmediate(39))},
+		{Literal(0x86000000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(39))},
 		//-2^-115, pow results in -0.0
-		//{Literal(static_cast<int64_t>(0x86000000)), ImmediateSupplier(OP_ADD, SmallImmediate(39))},
+		//{Literal(0x86000000u), ImmediateSupplier(OP_ADD, SmallImmediate(39))},
 
 		{toLiteral(0xbcffffff, ~0x43000000), ImmediateSupplier(OP_NOT, SmallImmediate(39))},
 		{toLiteral(0xbd7fffff, ~0x42800000), ImmediateSupplier(OP_NOT, SmallImmediate(38))},
@@ -410,17 +411,17 @@ static const std::map<Literal, ImmediateSupplier> immediateMappings = {
 		{toLiteral(0xfc000004, static_cast<int32_t>(static_cast<int64_t>(-2 & 0xFFFFFF) * static_cast<int64_t>(-2 & 0xFFFFFF))), ImmediateSupplier(OP_MUL24, SmallImmediate(30))},
 		{toLiteral(0xfe000001, static_cast<int32_t>(static_cast<int64_t>(-1 & 0xFFFFFF) * static_cast<int64_t>(-1 & 0xFFFFFF))), ImmediateSupplier(OP_MUL24, SmallImmediate(31))},
 
-		{Literal(static_cast<int64_t>(0xfff0ffff)), ImmediateSupplier(OP_ROR, SmallImmediate(16))},
-		{Literal(static_cast<int64_t>(0xfff8ffff)), ImmediateSupplier(OP_ROR, SmallImmediate(17))},
-		{Literal(static_cast<int64_t>(0xfffcbfff)), ImmediateSupplier(OP_ROR, SmallImmediate(18))},
-		{Literal(static_cast<int64_t>(0xfffe7fff)), ImmediateSupplier(OP_ROR, SmallImmediate(19))},
-		{Literal(static_cast<int64_t>(0xffff4fff)), ImmediateSupplier(OP_ROR, SmallImmediate(20))},
-		{Literal(static_cast<int64_t>(0xffffafff)), ImmediateSupplier(OP_ROR, SmallImmediate(21))},
-		{Literal(static_cast<int64_t>(0xffffdbff)), ImmediateSupplier(OP_ROR, SmallImmediate(22))},
-		{Literal(static_cast<int64_t>(0xffffefff)), ImmediateSupplier(OP_ROR, SmallImmediate(23))},
-		{Literal(static_cast<int64_t>(0xfffff8ff)), ImmediateSupplier(OP_ROR, SmallImmediate(24))},
-		{Literal(static_cast<int64_t>(0xfffffcff)), ImmediateSupplier(OP_ROR, SmallImmediate(25))},
-		{Literal(static_cast<int64_t>(0xfffffebf)), ImmediateSupplier(OP_ROR, SmallImmediate(26))},
+		{Literal(0xfff0ffffu), ImmediateSupplier(OP_ROR, SmallImmediate(16))},
+		{Literal(0xfff8ffffu), ImmediateSupplier(OP_ROR, SmallImmediate(17))},
+		{Literal(0xfffcbfffu), ImmediateSupplier(OP_ROR, SmallImmediate(18))},
+		{Literal(0xfffe7fffu), ImmediateSupplier(OP_ROR, SmallImmediate(19))},
+		{Literal(0xffff4fffu), ImmediateSupplier(OP_ROR, SmallImmediate(20))},
+		{Literal(0xffffafffu), ImmediateSupplier(OP_ROR, SmallImmediate(21))},
+		{Literal(0xffffdbffu), ImmediateSupplier(OP_ROR, SmallImmediate(22))},
+		{Literal(0xffffefffu), ImmediateSupplier(OP_ROR, SmallImmediate(23))},
+		{Literal(0xfffff8ffu), ImmediateSupplier(OP_ROR, SmallImmediate(24))},
+		{Literal(0xfffffcffu), ImmediateSupplier(OP_ROR, SmallImmediate(25))},
+		{Literal(0xfffffebfu), ImmediateSupplier(OP_ROR, SmallImmediate(26))},
 
 		{toLiteral(0xffffffe0, -16 - 16), ImmediateSupplier(OP_ADD, SmallImmediate(16))},
 		{toLiteral(0xffffffe2, -30), ImmediateSupplier(OP_V8MULD, SmallImmediate(16))},
@@ -475,12 +476,7 @@ static ImmediateHandler mapImmediateValue(const Literal& source)
 	ImmediateHandler handler;
 	handler.changeValue = true;
 
-	Literal index(false);
-	if(source.type == LiteralType::REAL)
-		index = Literal(static_cast<int64_t>(bit_cast<float, int32_t>(static_cast<float>(source.real()))) & 0xFFFFFFFF);
-	else
-		index = Literal(source.integer & 0xFFFFFFFF);
-	auto it = immediateMappings.find(index);
+	auto it = immediateMappings.find(source);
 	if(it != immediateMappings.end())
 	{
 		handler.immediate = it->second.immediate;

@@ -354,18 +354,15 @@ namespace vc4c
 	 * While "smaller" literal values can be directly used by ALU instructions in form of SmallImmediates,
 	 * "larger" values need to be loaded via a load-immediate instruction.
 	 */
-	struct Literal
+	class Literal
 	{
-		/*
-		 * The bit-wise representation of this literal
-		 */
-		int64_t integer;
+	public:
 		LiteralType type;
 
-		Literal(int64_t integer) noexcept;
-		explicit Literal(uint64_t integer) noexcept;
-		explicit Literal(double real) noexcept;
-		Literal(bool flag) noexcept;
+		explicit Literal(int32_t integer) noexcept;
+		explicit Literal(uint32_t integer) noexcept;
+		explicit Literal(float real) noexcept;
+		explicit Literal(bool flag) noexcept;
 		~Literal() = default;
 
 		Literal(const Literal&) = default;
@@ -375,6 +372,10 @@ namespace vc4c
 		Literal& operator=(Literal&&) noexcept = default;
 
 		bool operator==(const Literal& other) const;
+		inline bool operator!=(const Literal& other) const
+		{
+			return !(*this == other);
+		}
 		bool operator<(const Literal& other) const;
 
 		std::string to_string() const;
@@ -386,12 +387,33 @@ namespace vc4c
 		/*
 		 * Bit-casts the stored value to a floating-point value
 		 */
-		double real() const;
+		float real() const;
+		/*
+		 * Bit-casts the stored value to a signed value
+		 */
+		int32_t signedInt() const;
+		/*
+		 * Bit-casts the stored value to an unsigned value
+		 */
+		uint32_t unsignedInt() const;
 
 		/*
 		 * Converts the stored value to a immediate-value which can be used in a load-immediate instruction.
 		 */
 		uint32_t toImmediate() const;
+
+	private:
+		/*
+		 * The bit-wise representation of this literal
+		 */
+		union
+		{
+			int32_t i;
+			uint32_t u;
+			float f;
+		};
+
+		static_assert(sizeof(int32_t) == sizeof(uint32_t) && sizeof(uint32_t) == sizeof(float), "Sizes of literal types do not match!");
 	};
 
 	/*!
@@ -504,7 +526,7 @@ namespace vc4c
 		 * Determines whether all elements of this container have the same value.
 		 * If the parameter is set, checks if all elements have this exact value
 		 */
-		bool isAllSame(const Optional<Literal>& value = { false, false }) const;
+		bool isAllSame(const Optional<Literal>& value = { false, Literal(false) }) const;
 
 		/*
 		 * Determines whether all element-values correspond to their element number,  e.g. i32 1, i32 2, ...
@@ -665,31 +687,31 @@ namespace vc4c
 	/*
 	 * The integer value of zero
 	 */
-	const Value INT_ZERO(Literal(static_cast<int64_t>(0)), TYPE_INT8);
+	const Value INT_ZERO(Literal(static_cast<uint32_t>(0)), TYPE_INT8);
 	/*
 	 * The integer value of one
 	 */
-	const Value INT_ONE(Literal(static_cast<int64_t>(1)), TYPE_INT8);
+	const Value INT_ONE(Literal(static_cast<uint32_t>(1)), TYPE_INT8);
 	/*
 	 * The integer value of minus one
 	 */
-	const Value INT_MINUS_ONE(Literal(static_cast<int64_t>(0xFFFFFFFF)), TYPE_INT32);
+	const Value INT_MINUS_ONE(Literal(static_cast<uint32_t>(0xFFFFFFFF)), TYPE_INT32);
 	/*
 	 * The floating-point value of zero
 	 */
-	const Value FLOAT_ZERO(Literal(0.0), TYPE_FLOAT);
+	const Value FLOAT_ZERO(Literal(0.0f), TYPE_FLOAT);
 	/*
 	 * The floating-point value of one
 	 */
-	const Value FLOAT_ONE(Literal(1.0), TYPE_FLOAT);
+	const Value FLOAT_ONE(Literal(1.0f), TYPE_FLOAT);
 	/*
 	 * The floating-point constant representing INF
 	 */
-	const Value FLOAT_INF(Literal(static_cast<uint64_t>(0x7F700000)), TYPE_FLOAT);
+	const Value FLOAT_INF(Literal(static_cast<uint32_t>(0x7F700000)), TYPE_FLOAT);
 	/*
 	 * The floating-point constant representing NAN
 	 */
-	const Value FLOAT_NAN(Literal(static_cast<uint64_t>(0x7FC00000)), TYPE_FLOAT);
+	const Value FLOAT_NAN(Literal(static_cast<uint32_t>(0x7FC00000)), TYPE_FLOAT);
 	/*
 	 * A undefined value
 	 */

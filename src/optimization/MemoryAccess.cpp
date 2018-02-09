@@ -25,13 +25,13 @@ using namespace vc4c::periphery;
 struct BaseAndOffset
 {
 	Optional<Value> base;
-	Optional<int64_t> offset;
-	Optional<int64_t> maxOffset;
+	Optional<int32_t> offset;
+	Optional<int32_t> maxOffset;
 
-	explicit BaseAndOffset() : base(NO_VALUE), offset(false, -1L), maxOffset(false, -1L)
+	explicit BaseAndOffset() : base(NO_VALUE), offset(false, -1), maxOffset(false, -1)
 	{}
 
-	BaseAndOffset(Optional<Value> base, Optional<int64_t> offset, Optional<int64_t> maxOffset = Optional<int64_t>(false, -1L)) : base(base), offset(offset), maxOffset(maxOffset)
+	BaseAndOffset(Optional<Value> base, Optional<int32_t> offset, Optional<int32_t> maxOffset = Optional<int32_t>(false, -1)) : base(base), offset(offset), maxOffset(maxOffset)
 	{}
 };
 
@@ -45,7 +45,7 @@ static BaseAndOffset findOffset(const Value& val)
 		const Optional<Value> offset = writer->precalculate(8);
 		if(offset.ifPresent(toFunction(&Value::isLiteralValue)))
 		{
-			return BaseAndOffset(NO_VALUE, offset->getLiteralValue()->integer, offset->getLiteralValue()->integer);
+			return BaseAndOffset(NO_VALUE, offset->getLiteralValue()->signedInt(), offset->getLiteralValue()->signedInt());
 		}
 	}
 	return BaseAndOffset();
@@ -59,14 +59,14 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 	if(!val.hasType(ValueType::LOCAL))
 		return BaseAndOffset();
 	if(val.local->is<Parameter>() || val.local->is<Global>() || val.local->is<StackAllocation>())
-		return BaseAndOffset(val, static_cast<int64_t>(0));
+		return BaseAndOffset(val, 0);
 
 	//follow the references
 	const Local* ref = val.local->getBase(false);
 	if(ref != val.local)
 		return findBaseAndOffset(ref->createReference());
 	if(val.local->reference.first != nullptr && val.local->reference.second != ANY_ELEMENT)
-		return BaseAndOffset(val.local->reference.first->createReference(), static_cast<int64_t>(val.local->reference.second));
+		return BaseAndOffset(val.local->reference.first->createReference(), val.local->reference.second);
 
 	const auto writers = val.local->getUsers(LocalUse::Type::WRITER);
 	if(writers.size() != 1)
@@ -81,7 +81,7 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 	if(args.size() == 2 && std::any_of(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.hasType(ValueType::LOCAL);}) && std::any_of(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.getLiteralValue().has_value();}))
 	{
 		return BaseAndOffset(std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.hasType(ValueType::LOCAL);})->local->getBase(false)->createReference(),
-				static_cast<int64_t>((*std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.getLiteralValue().has_value();})).getLiteralValue()->integer / val.type.getElementType().getPhysicalWidth()));
+				static_cast<int32_t>((*std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool{return arg.getLiteralValue().has_value();})).getLiteralValue()->signedInt() / val.type.getElementType().getPhysicalWidth()));
 	}
 
 	//3. an arithmetic operation with two locals -> one is the base, the other the calculation of the literal
@@ -90,9 +90,9 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 		const auto offset0 = findOffset(args.at(0));
 		const auto offset1 = findOffset(args.at(1));
 		if(offset0.offset && args.at(1).hasType(ValueType::LOCAL))
-			return BaseAndOffset(args.at(1).local->getBase(false)->createReference(), static_cast<int64_t>(offset0.offset.value() / val.type.getElementType().getPhysicalWidth()));
+			return BaseAndOffset(args.at(1).local->getBase(false)->createReference(), static_cast<int32_t>(offset0.offset.value() / val.type.getElementType().getPhysicalWidth()));
 		if(offset1.offset && args.at(0).hasType(ValueType::LOCAL))
-			return BaseAndOffset(args.at(0).local->getBase(false)->createReference(), static_cast<int64_t>(offset1.offset.value() / val.type.getElementType().getPhysicalWidth()));
+			return BaseAndOffset(args.at(0).local->getBase(false)->createReference(), static_cast<int32_t>(offset1.offset.value() / val.type.getElementType().getPhysicalWidth()));
 	}
 
 	return BaseAndOffset();
@@ -147,7 +147,7 @@ struct VPMAccessGroup
 static InstructionWalker findGroupOfVPMAccess(VPM& vpm, InstructionWalker start, const InstructionWalker end, VPMAccessGroup& group)
 {
 	Optional<Value> baseAddress = NO_VALUE;
-	int64_t nextOffset = -1;
+	int32_t nextOffset = -1;
 	group.groupType = TYPE_UNKNOWN;
 	group.dmaSetups.clear();
 	group.genericSetups.clear();
@@ -215,10 +215,10 @@ static InstructionWalker findGroupOfVPMAccess(VPM& vpm, InstructionWalker start,
 			if(!genericSetup || !dmaSetup)
 				//either there are no setups for this VPM access, or they are not loaded from literals (e.g. dynamic setup)
 				break;
-			if(!genericSetup->has<LoadImmediate>() || genericSetup->get<LoadImmediate>()->getImmediate().integer != group.genericSetups.at(0).get<LoadImmediate>()->getImmediate().integer)
+			if(!genericSetup->has<LoadImmediate>() || genericSetup->get<LoadImmediate>()->getImmediate() != group.genericSetups.at(0).get<LoadImmediate>()->getImmediate())
 				//generic setups do not match
 				break;
-			if(!dmaSetup->has<LoadImmediate>() || dmaSetup->get<LoadImmediate>()->getImmediate().integer != group.dmaSetups.at(0).get<LoadImmediate>()->getImmediate().integer)
+			if(!dmaSetup->has<LoadImmediate>() || dmaSetup->get<LoadImmediate>()->getImmediate() != group.dmaSetups.at(0).get<LoadImmediate>()->getImmediate())
 				//DMA setups do not match
 				break;
 		}
@@ -242,7 +242,7 @@ static InstructionWalker findGroupOfVPMAccess(VPM& vpm, InstructionWalker start,
 		if(genericSetup)
 			//not always given, e.g. for copying memory without reading/writing into/from QPU
 			group.genericSetups.push_back(genericSetup.value());
-		nextOffset = baseAndOffset.offset.value_or(-1L) + 1;
+		nextOffset = baseAndOffset.offset.value_or(-1) + 1;
 
 		if(group.isVPMWrite && group.addressWrites.size() >= vpm.getMaxCacheVectors(elementType, true))
 		{
@@ -286,7 +286,7 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
 	{
 		group.genericSetups.at(i).erase();
 		const LoadImmediate* strideSetup = group.dmaSetups.at(i).copy().nextInBlock().get<LoadImmediate>();
-		if(strideSetup == nullptr || !strideSetup->writesRegister(REG_VPM_OUT_SETUP) || !VPWSetup::fromLiteral(strideSetup->getImmediate().integer).isStrideSetup())
+		if(strideSetup == nullptr || !strideSetup->writesRegister(REG_VPM_OUT_SETUP) || !VPWSetup::fromLiteral(strideSetup->getImmediate().unsignedInt()).isStrideSetup())
 			throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find VPW DMA stride setup for DMA setup", group.dmaSetups.at(i)->to_string());
 		group.dmaSetups.at(i).copy().nextInBlock().erase();
 		group.dmaSetups.at(i).erase();
@@ -354,7 +354,7 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
 	{
 		group.genericSetups.at(i).erase();
 		const LoadImmediate* strideSetup = group.dmaSetups.at(i).copy().nextInBlock().get<LoadImmediate>();
-		if(strideSetup == nullptr || !strideSetup->writesRegister(REG_VPM_IN_SETUP) || !VPRSetup::fromLiteral(strideSetup->getImmediate().integer).isStrideSetup())
+		if(strideSetup == nullptr || !strideSetup->writesRegister(REG_VPM_IN_SETUP) || !VPRSetup::fromLiteral(strideSetup->getImmediate().unsignedInt()).isStrideSetup())
 			throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find VPR DMA stride setup for DMA setup", group.dmaSetups.at(i)->to_string());
 		group.dmaSetups.at(i).copy().nextInBlock().erase();
 		group.dmaSetups.at(i).erase();
@@ -454,7 +454,7 @@ InstructionWalker optimizations::accessGlobalData(const Module& module, Method& 
 				{
 					//emplace calculation of global-data pointer and replace argument
 					tmp = method.addNewLocal(TYPE_INT32, "%global_data_offset");
-					it.emplace(new intermediate::Operation(OP_ADD, tmp, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference(), Value(Literal(static_cast<uint64_t>(globalOffset.value())), TYPE_INT32)));
+					it.emplace(new intermediate::Operation(OP_ADD, tmp, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference(), Value(Literal(globalOffset.value()), TYPE_INT32)));
 					it.nextInBlock();
 				}
 				it->setArgument(i, tmp);
@@ -571,11 +571,11 @@ static InstructionWalker accessStackAllocations(const Module& module, Method& me
 				Value finalAddr = method.addNewLocal(arg.type, "%stack_addr");
 				const_cast<std::pair<Local*, int>&>(finalAddr.local->reference) = std::make_pair(arg.local, ANY_ELEMENT);
 
-				it.emplace(new Operation(OP_MUL24, qpuOffset, Value(REG_QPU_NUMBER, TYPE_INT8), Value(Literal(static_cast<uint64_t>(maximumStackSize)), TYPE_INT32)));
+				it.emplace(new Operation(OP_MUL24, qpuOffset, Value(REG_QPU_NUMBER, TYPE_INT8), Value(Literal(static_cast<uint32_t>(maximumStackSize)), TYPE_INT32)));
 				it.nextInBlock();
 				it.emplace(new Operation(OP_ADD, addrTemp, qpuOffset, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference()));
 				it.nextInBlock();
-				it.emplace(new Operation(OP_ADD, finalAddr, addrTemp, Value(Literal(static_cast<uint64_t>(arg.local->as<StackAllocation>()->offset + stackBaseOffset)), TYPE_INT32)));
+				it.emplace(new Operation(OP_ADD, finalAddr, addrTemp, Value(Literal(static_cast<uint32_t>(arg.local->as<StackAllocation>()->offset + stackBaseOffset)), TYPE_INT32)));
 				it.nextInBlock();
 				it->setArgument(i, finalAddr);
 			}
@@ -609,7 +609,7 @@ static InstructionWalker calculateInAreaOffset(Method& method, InstructionWalker
 	else if(index.hasType(ValueType::LOCAL) && index.local->reference.first == baseAddress && index.local->reference.second >= 0)
 		//fixed element offset
 		//is offset in elements, not bytes -> so convert to byte-offset
-		inAreaOffset = Value(Literal(static_cast<int64_t>(index.local->reference.second * baseAddress->type.getElementType().getPhysicalWidth())), TYPE_INT32);
+		inAreaOffset = Value(Literal(static_cast<int32_t>(index.local->reference.second * baseAddress->type.getElementType().getPhysicalWidth())), TYPE_INT32);
 	else if(index.getSingleWriter() != nullptr && index.getSingleWriter()->readsLocal(baseAddress))
 	{
 		//index is directly calculated from base-address
@@ -652,7 +652,7 @@ static InstructionWalker mapToMemoryAccessInstructions(Method& method, Instructi
 		{
 			if(!mem->getNumEntries().isLiteralValue())
 				throw CompilationError(CompilationStep::OPTIMIZER, "Copying dynamically sized memory is not yet implemented", mem->to_string());
-			int64_t numBytes = mem->getNumEntries().getLiteralValue()->integer * mem->getSourceElementType().getScalarBitCount() / 8;
+			uint64_t numBytes = mem->getNumEntries().getLiteralValue()->unsignedInt() * mem->getSourceElementType().getScalarBitCount() / 8;
 			if(numBytes > std::numeric_limits<unsigned>::max())
 				throw CompilationError(CompilationStep::OPTIMIZER, "Cannot copy more than 4GB of data", mem->to_string());
 			if(sourceArea != nullptr || destArea != nullptr)
@@ -666,7 +666,7 @@ static InstructionWalker mapToMemoryAccessInstructions(Method& method, Instructi
 		{
 			if(!mem->getNumEntries().isLiteralValue())
 				throw CompilationError(CompilationStep::OPTIMIZER, "Filling dynamically sized memory is not yet implemented", mem->to_string());
-			int64_t numCopies = mem->getNumEntries().getLiteralValue()->integer;
+			uint64_t numCopies = mem->getNumEntries().getLiteralValue()->unsignedInt();
 			if(numCopies > std::numeric_limits<unsigned>::max())
 				throw CompilationError(CompilationStep::OPTIMIZER, "Cannot fill more than 4GB of data", mem->to_string());
 			if(destArea != nullptr)

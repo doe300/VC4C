@@ -131,7 +131,7 @@ struct LoopControl
 		return op->getArgument(1)->getLiteralValue();
 	}
 
-	int64_t countIterations(int64_t initial, int64_t limit, int64_t step) const
+	int32_t countIterations(int32_t initial, int32_t limit, int32_t step) const
 	{
 		switch(stepKind)
 		{
@@ -143,7 +143,7 @@ struct LoopControl
 				return (initial - limit) / step;
 			case StepKind::MUL_CONSTANT:
 				// limit = (start * step) ^ iterations -> iterations = log(start * step) / log(limit)
-				return static_cast<int64_t>(std::log(initial * step) / std::log(limit));
+				return static_cast<int32_t>(std::log(initial * step) / std::log(limit));
 			default:
 				throw CompilationError(CompilationStep::OPTIMIZER, "Invalid step type!");
 		}
@@ -350,7 +350,7 @@ static Optional<unsigned> determineVectorizationFactor(const ControlFlowLoop& lo
 	const Literal initial = loopControl.initialization->precalculate(4)->getLiteralValue().value();
 	const Literal end = loopControl.terminatingValue.getLiteralValue().value();
 	//the number of iterations from the bounds depends on the iteration operation
-	int64_t iterations = loopControl.countIterations(initial.integer, end.integer, loopControl.getStep()->integer);
+	auto iterations = loopControl.countIterations(initial.signedInt(), end.signedInt(), loopControl.getStep()->signedInt());
 	logging::debug() << "Determined iteration count of " << iterations << logging::endl;
 
 	//find the biggest factor fitting into 16 SIMD-elements
@@ -358,7 +358,7 @@ static Optional<unsigned> determineVectorizationFactor(const ControlFlowLoop& lo
 	while(factor > 0)
 	{
 		//TODO factors not in [1,2,3,4,8,16] possible?? Should be from hardware-specification side
-		if((iterations % static_cast<int64_t>(factor)) == 0)
+		if((iterations % static_cast<int32_t>(factor)) == 0)
 			break;
 		--factor;
 	}
@@ -619,7 +619,7 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
 			{
 				Value offset = stepOp->getSecondArg().value();
 				if(offset.getLiteralValue())
-					stepOp->setArgument(1, Value(Literal(offset.getLiteralValue()->integer * loopControl.vectorizationFactor), offset.type.toVectorType(static_cast<unsigned char>(offset.type.num * loopControl.vectorizationFactor))));
+					stepOp->setArgument(1, Value(Literal(offset.getLiteralValue()->signedInt() * loopControl.vectorizationFactor), offset.type.toVectorType(static_cast<unsigned char>(offset.type.num * loopControl.vectorizationFactor))));
 				else
 					throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled iteration step", stepOp->to_string());
 			}
@@ -627,7 +627,7 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
 			{
 				Value offset = stepOp->getFirstArg();
 				if(offset.getLiteralValue())
-					stepOp->setArgument(0, Value(Literal(offset.getLiteralValue()->integer * loopControl.vectorizationFactor), offset.type.toVectorType(static_cast<unsigned char>(offset.type.num * loopControl.vectorizationFactor))));
+					stepOp->setArgument(0, Value(Literal(offset.getLiteralValue()->signedInt() * loopControl.vectorizationFactor), offset.type.toVectorType(static_cast<unsigned char>(offset.type.num * loopControl.vectorizationFactor))));
 				else
 					throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled iteration step", stepOp->to_string());
 			}

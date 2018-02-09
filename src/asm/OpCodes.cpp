@@ -202,44 +202,44 @@ Optional<Value> Unpack::unpack(const Value& val) const
 		case UNPACK_16A_32:
 		{
 			//unsigned cast required to guarantee cutting off the value
-			uint16_t lowWord = static_cast<uint16_t>(bit_cast<int64_t, uint64_t>(val.getLiteralValue()->integer));
-			return Value(Literal(static_cast<int64_t>(bit_cast<uint16_t, int16_t>(lowWord))), val.type);
+			uint16_t lowWord = static_cast<uint16_t>(val.getLiteralValue()->unsignedInt());
+			return Value(Literal(static_cast<uint32_t>(lowWord)), val.type);
 		}
 		case UNPACK_16B_32:
 		{
 			//unsigned cast required to guarantee cutting off the value
-			uint16_t highWord = static_cast<uint16_t>(bit_cast<int64_t, uint64_t>(val.getLiteralValue()->integer >> 16));
-			return Value(Literal(static_cast<int64_t>(bit_cast<uint16_t, int16_t>(highWord))), val.type);
+			uint16_t highWord = static_cast<uint16_t>(val.getLiteralValue()->unsignedInt() >> 16);
+			return Value(Literal(static_cast<uint32_t>(highWord)), val.type);
 		}
 		case UNPACK_8888_32:
 		{
 			//unsigned cast required to guarantee cutting off the value
-			uint8_t lsb = static_cast<uint8_t>(bit_cast<int64_t, uint64_t>(val.getLiteralValue()->integer));
-			return Value(Literal((static_cast<uint64_t>(lsb) << 24) | (static_cast<uint64_t>(lsb) << 16) | (static_cast<uint64_t>(lsb) << 8) | lsb), val.type);
+			uint8_t lsb = static_cast<uint8_t>(val.getLiteralValue()->unsignedInt());
+			return Value(Literal((static_cast<uint32_t>(lsb) << 24) | (static_cast<uint32_t>(lsb) << 16) | (static_cast<uint32_t>(lsb) << 8) | lsb), val.type);
 		}
 		case UNPACK_8A_32:
 		{
 			//unsigned cast required to guarantee cutting off the value
-			uint8_t byte0 = static_cast<uint8_t>(bit_cast<int64_t, uint64_t>(val.getLiteralValue()->integer));
-			return Value(Literal(static_cast<uint64_t>(byte0)), val.type);
+			uint8_t byte0 = static_cast<uint8_t>(val.getLiteralValue()->unsignedInt());
+			return Value(Literal(static_cast<uint32_t>(byte0)), val.type);
 		}
 		case UNPACK_8B_32:
 		{
 			//unsigned cast required to guarantee cutting off the value
-			uint8_t byte1 = static_cast<uint8_t>(bit_cast<int64_t, uint64_t>(val.getLiteralValue()->integer) >> 8);
-			return Value(Literal(static_cast<uint64_t>(byte1)), val.type);
+			uint8_t byte1 = static_cast<uint8_t>(val.getLiteralValue()->unsignedInt() >> 8);
+			return Value(Literal(static_cast<uint32_t>(byte1)), val.type);
 		}
 		case UNPACK_8C_32:
 		{
 			//unsigned cast required to guarantee cutting off the value
-			uint8_t byte2 = static_cast<uint8_t>(bit_cast<int64_t, uint64_t>(val.getLiteralValue()->integer) >> 16);
-			return Value(Literal(static_cast<uint64_t>(byte2)), val.type);
+			uint8_t byte2 = static_cast<uint8_t>(val.getLiteralValue()->unsignedInt() >> 16);
+			return Value(Literal(static_cast<uint32_t>(byte2)), val.type);
 		}
 		case UNPACK_8D_32:
 		{
 			//unsigned cast required to guarantee cutting off the value
-			uint8_t byte3 = static_cast<uint8_t>(bit_cast<int64_t, uint64_t>(val.getLiteralValue()->integer) >> 24);
-			return Value(Literal(static_cast<uint64_t>(byte3)), val.type);
+			uint8_t byte3 = static_cast<uint8_t>(val.getLiteralValue()->unsignedInt() >> 24);
+			return Value(Literal(static_cast<uint32_t>(byte3)), val.type);
 		}
 	}
 	throw CompilationError(CompilationStep::GENERAL, "Unsupported unpack-mode", std::to_string(static_cast<unsigned>(value)));
@@ -337,35 +337,35 @@ Optional<Value> Pack::pack(const Value& val) const
 		case PACK_NOP:
 			return val;
 		case PACK_32_16A:
-			return Value(Literal(val.getLiteralValue()->integer & 0xFFFF), val.type);
+			return Value(Literal(val.getLiteralValue()->unsignedInt() & 0xFFFF), val.type);
 		case PACK_32_16A_S:
-			return Value(Literal(saturate<int16_t>(val.getLiteralValue()->integer)), val.type);
+			return Value(Literal(saturate<int16_t>(val.getLiteralValue()->signedInt())), val.type);
 		case PACK_32_16B:
-			return Value(Literal((val.getLiteralValue()->integer & 0xFFFF) << 16), val.type);
+			return Value(Literal((val.getLiteralValue()->unsignedInt() & 0xFFFF) << 16), val.type);
 		case PACK_32_16B_S:
 			return NO_VALUE;
 		case PACK_32_32:
-			return Value(Literal(saturate<int32_t>(val.getLiteralValue()->integer)), val.type);
+			return Value(Literal(saturate<int32_t>(val.getLiteralValue()->signedInt())), val.type);
 		case PACK_32_8888:
-			return Value(Literal(((val.getLiteralValue()->integer & 0xFF) << 24) | ((val.getLiteralValue()->integer & 0xFF) << 16) | ((val.getLiteralValue()->integer & 0xFF) << 8) | (val.getLiteralValue()->integer & 0xFF)), val.type);
+			return Value(Literal(((val.getLiteralValue()->unsignedInt() & 0xFF) << 24) | ((val.getLiteralValue()->unsignedInt() & 0xFF) << 16) | ((val.getLiteralValue()->unsignedInt() & 0xFF) << 8) | (val.getLiteralValue()->unsignedInt() & 0xFF)), val.type);
 		case PACK_32_8888_S:
-			return Value(Literal((saturate<uint8_t>(val.getLiteralValue()->integer) << 24) | (saturate<uint8_t>(val.getLiteralValue()->integer) << 16) | (saturate<uint8_t>(val.getLiteralValue()->integer) << 8) | saturate<uint8_t>(val.getLiteralValue()->integer)), val.type);
+			return Value(Literal((saturate<uint8_t>(val.getLiteralValue()->unsignedInt()) << 24) | (saturate<uint8_t>(val.getLiteralValue()->unsignedInt()) << 16) | (saturate<uint8_t>(val.getLiteralValue()->unsignedInt()) << 8) | saturate<uint8_t>(val.getLiteralValue()->unsignedInt())), val.type);
 		case PACK_32_8A:
-			return Value(Literal(val.getLiteralValue()->integer & 0xFF), val.type);
+			return Value(Literal(val.getLiteralValue()->unsignedInt() & 0xFF), val.type);
 		case PACK_32_8A_S:
-			return Value(Literal(saturate<uint8_t>(val.getLiteralValue()->integer)), val.type);
+			return Value(Literal(saturate<uint8_t>(val.getLiteralValue()->unsignedInt())), val.type);
 		case PACK_32_8B:
-			return Value(Literal((val.getLiteralValue()->integer & 0xFF) << 8), val.type);
+			return Value(Literal((val.getLiteralValue()->unsignedInt() & 0xFF) << 8), val.type);
 		case PACK_32_8B_S:
-			return Value(Literal(saturate<uint8_t>(val.getLiteralValue()->integer) << 8), val.type);
+			return Value(Literal(saturate<uint8_t>(val.getLiteralValue()->unsignedInt()) << 8), val.type);
 		case PACK_32_8C:
-			return Value(Literal((val.getLiteralValue()->integer & 0xFF) << 16), val.type);
+			return Value(Literal((val.getLiteralValue()->unsignedInt() & 0xFF) << 16), val.type);
 		case PACK_32_8C_S:
-			return Value(Literal(saturate<uint8_t>(val.getLiteralValue()->integer) << 16), val.type);
+			return Value(Literal(saturate<uint8_t>(val.getLiteralValue()->unsignedInt()) << 16), val.type);
 		case PACK_32_8D:
-			return Value(Literal((val.getLiteralValue()->integer & 0xFF) << 24), val.type);
+			return Value(Literal((val.getLiteralValue()->unsignedInt() & 0xFF) << 24), val.type);
 		case PACK_32_8D_S:
-			return Value(Literal(saturate<uint8_t>(val.getLiteralValue()->integer) << 24), val.type);
+			return Value(Literal(saturate<uint8_t>(val.getLiteralValue()->unsignedInt()) << 24), val.type);
 	}
 	throw CompilationError(CompilationStep::GENERAL, "Unsupported pack-mode", std::to_string(static_cast<unsigned>(value)));
 }
@@ -478,9 +478,9 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 	const Literal secondLit = (!secondVal || numOperands == 1) ? INT_ZERO.literal : secondVal->getLiteralValue() ? secondVal->getLiteralValue().value() : secondVal->container.elements.at(0).getLiteralValue().value();
 
 	if(*this == OP_ADD)
-		return Value(Literal(firstLit.integer + secondLit.integer), resultType);
+		return Value(Literal(firstLit.signedInt() + secondLit.signedInt()), resultType);
 	if(*this == OP_AND)
-		return Value(Literal(firstLit.integer & secondLit.integer), resultType);
+		return Value(Literal(firstLit.unsignedInt() & secondLit.unsignedInt()), resultType);
 	if(*this == OP_ASR)
 		return Value(intermediate::asr(resultType, firstLit, secondLit), resultType);
 	if(*this == OP_CLZ)
@@ -500,40 +500,40 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 	if(*this == OP_FSUB)
 		return Value(Literal(firstLit.real() - secondLit.real()), resultType);
 	if(*this == OP_FTOI)
-		return Value(Literal(static_cast<int64_t>(firstLit.real())), TYPE_FLOAT.toVectorType(firstVal->type.num));
+		return Value(Literal(static_cast<int32_t>(firstLit.real())), TYPE_FLOAT.toVectorType(firstVal->type.num));
 	if(*this == OP_ITOF)
-		return Value(Literal(static_cast<double>(firstLit.integer)), TYPE_INT32.toVectorType(firstVal->type.num));
+		return Value(Literal(static_cast<float>(firstLit.signedInt())), TYPE_INT32.toVectorType(firstVal->type.num));
 	if(*this == OP_MAX)
-		return Value(Literal(std::max(firstLit.integer, secondLit.integer)), resultType);
+		return Value(Literal(std::max(firstLit.signedInt(), secondLit.signedInt())), resultType);
 	if(*this == OP_MIN)
-		return Value(Literal(std::min(firstLit.integer, secondLit.integer)), resultType);
+		return Value(Literal(std::min(firstLit.signedInt(), secondLit.signedInt())), resultType);
 	if(*this == OP_MUL24)
-		return Value(Literal((firstLit.integer & 0xFFFFFF) * (secondLit.integer & 0xFFFFFF)), resultType);
+		return Value(Literal((firstLit.unsignedInt() & 0xFFFFFF) * (secondLit.unsignedInt() & 0xFFFFFF)), resultType);
 	if(*this == OP_NOT)
-		return Value(Literal(~firstLit.integer), resultType);
+		return Value(Literal(~firstLit.unsignedInt()), resultType);
 	if(*this == OP_OR)
-		return Value(Literal(firstLit.integer | secondLit.integer), resultType);
+		return Value(Literal(firstLit.unsignedInt() | secondLit.unsignedInt()), resultType);
 	if(*this == OP_ROR)
-		return Value(Literal(static_cast<uint64_t>(rotate_right(static_cast<uint32_t>(firstLit.integer), static_cast<int32_t>(secondLit.integer)))), resultType);
+		return Value(Literal(rotate_right(firstLit.unsignedInt(), secondLit.signedInt())), resultType);
 	if(*this == OP_SHL)
-		return Value(Literal(firstLit.integer << secondLit.integer), resultType);
+		return Value(Literal(firstLit.unsignedInt() << secondLit.signedInt()), resultType);
 	if(*this == OP_SHR)
-		return Value(Literal(firstLit.integer >> secondLit.integer), resultType);
+		return Value(Literal(firstLit.unsignedInt() >> secondLit.signedInt()), resultType);
 	if(*this == OP_SUB)
-		return Value(Literal(firstLit.integer - secondLit.integer), resultType);
+		return Value(Literal(firstLit.signedInt() - secondLit.signedInt()), resultType);
 	if(*this == OP_XOR)
-		return Value(Literal(firstLit.integer ^ secondLit.integer), resultType);
+		return Value(Literal(firstLit.unsignedInt() ^ secondLit.unsignedInt()), resultType);
 	if(*this == OP_V8ADDS || *this == OP_V8SUBS || *this == OP_V8MAX || *this == OP_V8MIN)
 	{
 		std::array<uint32_t, 4> bytesA, bytesB, bytesOut;
-		bytesA[0] = static_cast<uint32_t>(firstLit.integer) & 0xFF;
-		bytesA[1] = static_cast<uint32_t>(firstLit.integer >> 8) & 0xFF;
-		bytesA[2] = static_cast<uint32_t>(firstLit.integer >> 16) & 0xFF;
-		bytesA[3] = static_cast<uint32_t>(firstLit.integer >> 24) & 0xFF;
-		bytesB[0] = static_cast<uint32_t>(secondLit.integer) & 0xFF;
-		bytesB[1] = static_cast<uint32_t>(secondLit.integer >> 8) & 0xFF;
-		bytesB[2] = static_cast<uint32_t>(secondLit.integer >> 16) & 0xFF;
-		bytesB[3] = static_cast<uint32_t>(secondLit.integer >> 24) & 0xFF;
+		bytesA[0] = firstLit.unsignedInt() & 0xFF;
+		bytesA[1] = firstLit.unsignedInt() >> 8 & 0xFF;
+		bytesA[2] = firstLit.unsignedInt() >> 16 & 0xFF;
+		bytesA[3] = firstLit.unsignedInt() >> 24 & 0xFF;
+		bytesB[0] = secondLit.unsignedInt() & 0xFF;
+		bytesB[1] = secondLit.unsignedInt() >> 8 & 0xFF;
+		bytesB[2] = secondLit.unsignedInt() >> 16 & 0xFF;
+		bytesB[3] = secondLit.unsignedInt() >> 24 & 0xFF;
 		std::transform(bytesA.begin(), bytesA.end(), bytesB.begin(), bytesOut.begin(), [this](uint32_t a, uint32_t b) -> uint32_t
 		{
 			if(*this == OP_V8ADDS)
@@ -546,7 +546,7 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 				return std::min(a, b);
 			throw CompilationError(CompilationStep::GENERAL, "Unhandled op-code", this->name);
 		});
-		uint64_t result = ((bytesOut[3] & 0xFF) << 24) | ((bytesOut[2] & 0xFF) << 16) | ((bytesOut[1] & 0xFF) << 8) | (bytesOut[0] & 0xFF);
+		uint32_t result = ((bytesOut[3] & 0xFF) << 24) | ((bytesOut[2] & 0xFF) << 16) | ((bytesOut[1] & 0xFF) << 8) | (bytesOut[0] & 0xFF);
 		return Value(Literal(result), resultType);
 	}
 	//TODO v8muld

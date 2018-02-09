@@ -95,35 +95,35 @@ Optional<Value> SPIRVInstruction::precalculate(const TypeMapping& types, const C
 	const Value op2 = operands.size() > 1 ? constants.at(operands.at(1)) : UNDEFINED_VALUE;
 
 	if(opcode == "fptoui")
-		return Value(Literal(static_cast<uint64_t>(op1.literal.real())), TYPE_INT32);
+		return Value(Literal(static_cast<uint32_t>(op1.literal.real())), TYPE_INT32);
 	if(opcode == "fptosi")
-		return Value(Literal(static_cast<int64_t>(op1.literal.real())), TYPE_INT32);
+		return Value(Literal(static_cast<int32_t>(op1.literal.real())), TYPE_INT32);
 	if(opcode == "sitofp")
-		return Value(Literal(static_cast<double>(op1.literal.integer)), TYPE_FLOAT);
+		return Value(Literal(static_cast<float>(op1.literal.signedInt())), TYPE_FLOAT);
 	if(opcode == "uitofp")
-		return Value(Literal(static_cast<double>(bit_cast<int64_t, uint64_t>(op1.literal.integer))), TYPE_FLOAT);
+		return Value(Literal(static_cast<float>(op1.literal.unsignedInt())), TYPE_FLOAT);
 	if(opcode == OP_NEGATE)
-		return op1.type.isFloatingType() ? Value(Literal(-op1.literal.real()), TYPE_FLOAT) : Value(Literal(-op1.literal.integer), TYPE_INT32);
+		return op1.type.isFloatingType() ? Value(Literal(-op1.literal.real()), TYPE_FLOAT) : Value(Literal(-op1.literal.signedInt()), TYPE_INT32);
 	if(opcode == "add")
-		return Value(Literal(op1.literal.integer + op2.literal.integer), op1.type.getUnionType(op2.type));
+		return Value(Literal(op1.literal.signedInt() + op2.literal.signedInt()), op1.type.getUnionType(op2.type));
 	if(opcode == "fadd")
 		return Value(Literal(op1.literal.real() + op2.literal.real()), op1.type.getUnionType(op2.type));
 	if(opcode == "sub")
-		return Value(Literal(op1.literal.integer - op2.literal.integer), op1.type.getUnionType(op2.type));
+		return Value(Literal(op1.literal.signedInt() - op2.literal.signedInt()), op1.type.getUnionType(op2.type));
 	if(opcode == "fsub")
 		return Value(Literal(op1.literal.real() - op2.literal.real()), op1.type.getUnionType(op2.type));
 	if(opcode == "mul")
-		return Value(Literal(op1.literal.integer * op2.literal.integer), op1.type.getUnionType(op2.type));
+		return Value(Literal(op1.literal.signedInt() * op2.literal.signedInt()), op1.type.getUnionType(op2.type));
 	if(opcode == "fmul")
 		return Value(Literal(op1.literal.real() * op2.literal.real()), op1.type.getUnionType(op2.type));
 	if(opcode == "udiv")
-		return Value(Literal(bit_cast<int64_t, uint64_t>(op1.literal.integer) / bit_cast<int64_t, uint64_t>(op2.literal.integer)), op1.type.getUnionType(op2.type));
+		return Value(Literal(op1.literal.unsignedInt() / op2.literal.unsignedInt()), op1.type.getUnionType(op2.type));
 	if(opcode == "sdiv")
-		return Value(Literal(op1.literal.integer / op2.literal.integer), op1.type.getUnionType(op2.type));
+		return Value(Literal(op1.literal.signedInt() / op2.literal.signedInt()), op1.type.getUnionType(op2.type));
 	if(opcode == "fdiv")
 		return Value(Literal(op1.literal.real() / op2.literal.real()), op1.type.getUnionType(op2.type));
 	if(opcode == "umod")
-		return Value(Literal(bit_cast<int64_t, uint64_t>(op1.literal.integer) % bit_cast<int64_t, uint64_t>(op2.literal.integer)), op1.type.getUnionType(op2.type));
+		return Value(Literal(op1.literal.unsignedInt() % op2.literal.unsignedInt()), op1.type.getUnionType(op2.type));
 	if(opcode == "srem")
 		return Value(intermediate::srem(op1.type, op1.literal, op2.literal), op1.type);
 	if(opcode == "smod")
@@ -133,20 +133,20 @@ Optional<Value> SPIRVInstruction::precalculate(const TypeMapping& types, const C
 	if(opcode == "fmod")
 		return Value(intermediate::fmod(op1.type, op1.literal, op2.literal), op1.type);
 	if(opcode == "or")
-		return Value(Literal(op1.literal.integer | op2.literal.integer), op1.type.getUnionType(op2.type));
+		return Value(Literal(op1.literal.unsignedInt() | op2.literal.unsignedInt()), op1.type.getUnionType(op2.type));
 	if(opcode == "and")
-		return Value(Literal(op1.literal.integer & op2.literal.integer), op1.type.getUnionType(op2.type));
+		return Value(Literal(op1.literal.unsignedInt() & op2.literal.unsignedInt()), op1.type.getUnionType(op2.type));
 	if(opcode == "xor")
-		return Value(Literal(op1.literal.integer ^ op2.literal.integer), op1.type.getUnionType(op2.type));
+		return Value(Literal(op1.literal.unsignedInt() ^ op2.literal.unsignedInt()), op1.type.getUnionType(op2.type));
 	if(opcode == "not")
-		return Value(Literal(~op1.literal.integer), op1.type);
+		return Value(Literal(~op1.literal.unsignedInt()), op1.type);
 	if(opcode == "shr")
 		//in C++, unsigned right shift is logical (fills with zeroes)
-		return Value(Literal(bit_cast<uint64_t, int64_t>(bit_cast<int64_t, uint64_t>(op1.literal.integer)) >> op2.literal.integer), op1.type);
+		return Value(Literal(op1.literal.unsignedInt() >> op2.literal.signedInt()), op1.type);
 	if(opcode == "asr")
 		return Value(intermediate::asr(op1.type, op1.literal, op2.literal), op1.type);
 	if(opcode == "shl")
-		return Value(Literal(op1.literal.integer << op2.literal.integer), op1.type);
+		return Value(Literal(op1.literal.unsignedInt() << op2.literal.signedInt()), op1.type);
 
 	return NO_VALUE;
 }
@@ -180,21 +180,21 @@ Optional<Value> SPIRVComparison::precalculate(const TypeMapping& types, const Co
 	if(intermediate::COMP_TRUE == opcode)
 		return BOOL_TRUE;
 	if(intermediate::COMP_SIGNED_GE == opcode)
-		return op1.literal.integer >= op2.literal.integer ? BOOL_TRUE : BOOL_FALSE;
+		return op1.literal.signedInt() >= op2.literal.signedInt() ? BOOL_TRUE : BOOL_FALSE;
 	if(intermediate::COMP_SIGNED_GT == opcode)
-		return op1.literal.integer > op2.literal.integer ? BOOL_TRUE : BOOL_FALSE;
+		return op1.literal.signedInt() > op2.literal.signedInt() ? BOOL_TRUE : BOOL_FALSE;
 	if(intermediate::COMP_SIGNED_LE == opcode)
-		return op1.literal.integer <= op2.literal.integer ? BOOL_TRUE : BOOL_FALSE;
+		return op1.literal.signedInt() <= op2.literal.signedInt() ? BOOL_TRUE : BOOL_FALSE;
 	if(intermediate::COMP_SIGNED_LT == opcode)
-		return op1.literal.integer < op2.literal.integer ? BOOL_TRUE : BOOL_FALSE;
+		return op1.literal.signedInt() < op2.literal.signedInt() ? BOOL_TRUE : BOOL_FALSE;
 	if(intermediate::COMP_UNSIGNED_GE == opcode)
-		return op1.literal.integer >= op2.literal.integer ? BOOL_TRUE : BOOL_FALSE;
+		return op1.literal.unsignedInt() >= op2.literal.unsignedInt() ? BOOL_TRUE : BOOL_FALSE;
 	if(intermediate::COMP_UNSIGNED_GT == opcode)
-		return op1.literal.integer > op2.literal.integer ? BOOL_TRUE : BOOL_FALSE;
+		return op1.literal.unsignedInt() > op2.literal.unsignedInt() ? BOOL_TRUE : BOOL_FALSE;
 	if(intermediate::COMP_UNSIGNED_LE == opcode)
-		return op1.literal.integer <= op2.literal.integer ? BOOL_TRUE : BOOL_FALSE;
+		return op1.literal.unsignedInt() <= op2.literal.unsignedInt() ? BOOL_TRUE : BOOL_FALSE;
 	if(intermediate::COMP_UNSIGNED_LT == opcode)
-		return op1.literal.integer < op2.literal.integer ? BOOL_TRUE : BOOL_FALSE;
+		return op1.literal.unsignedInt() < op2.literal.unsignedInt() ? BOOL_TRUE : BOOL_FALSE;
 
 	return NO_VALUE;
 }
@@ -441,7 +441,7 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
         		logging::debug() << "Generating copying of " << size.to_string() << " bytes from " << source.to_string() << " into " << dest.to_string() << logging::endl;
         		if(size.getLiteralValue())
         		{
-        			method.method->appendToEnd((new intermediate::MemoryInstruction(intermediate::MemoryOperation::COPY, dest, source, Value(Literal(size.getLiteralValue()->integer / (source.type.getElementType().getScalarBitCount() / 8)), TYPE_INT32)))->addDecorations(decorations));
+        			method.method->appendToEnd((new intermediate::MemoryInstruction(intermediate::MemoryOperation::COPY, dest, source, Value(Literal(size.getLiteralValue()->unsignedInt() / (source.type.getElementType().getScalarBitCount() / 8)), TYPE_INT32)))->addDecorations(decorations));
         		}
         		else if(source.type.getElementType() == TYPE_INT8)
         			//if the element-size is 1 byte, the number of elements is the byte-size to copy
@@ -464,7 +464,7 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
     		throw CompilationError(CompilationStep::LLVM_2_IR, "Multi level indices are not implemented yet");
         //index is literal
         logging::debug() << "Generating intermediate extraction of index " << sourceIndices->at(0) << " from " << source.to_string() << " into " << dest.to_string(true) << logging::endl;
-        intermediate::insertVectorExtraction(method.method->appendToEnd(), *method.method, source, Value(Literal(static_cast<int64_t>(sourceIndices->at(0))), TYPE_INT8), dest);
+        intermediate::insertVectorExtraction(method.method->appendToEnd(), *method.method, source, Value(Literal(sourceIndices->at(0)), TYPE_INT8), dest);
     }
     else if((!sourceIndices || (sourceIndices->at(0) == 0)) && destIndices)
     {
@@ -473,7 +473,7 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
         //add element to vector to element
         //index is literal
         logging::debug() << "Generating intermediate insertion of " << source.to_string() << " into element " << destIndices->at(0) << " of " << dest.to_string(true) << logging::endl;
-        intermediate::insertVectorInsertion(method.method->appendToEnd(), *method.method, dest, Value(Literal(static_cast<int64_t>(destIndices->at(0))), TYPE_INT8), source);
+        intermediate::insertVectorInsertion(method.method->appendToEnd(), *method.method, dest, Value(Literal(destIndices->at(0)), TYPE_INT8), source);
     }
     else
     {
@@ -531,7 +531,7 @@ void SPIRVShuffle::mapInstruction(TypeMapping& types, ConstantMapping& constants
 				if(index != 0 && index != UNDEFINED_LITERAL)
 					//accept UNDEF as zero, so i.e. (0,0,0,UNDEF) can be simplified as all-zero
 					allIndicesZero = false;
-				indices.elements.emplace_back(Literal(static_cast<int64_t>(index)), TYPE_INT8);
+				indices.elements.emplace_back(Literal(index), TYPE_INT8);
 			}
 		}
 
@@ -608,7 +608,7 @@ Optional<Value> SPIRVIndexOf::precalculate(const TypeMapping& types, const Const
 			//-> add offset of element at given index to global offset
 			if(index.getLiteralValue())
 			{
-				subOffset = Value(Literal(index.getLiteralValue()->integer * subContainerType.getElementType().getPhysicalWidth()), TYPE_INT32);
+				subOffset = Value(Literal(index.getLiteralValue()->signedInt() * subContainerType.getElementType().getPhysicalWidth()), TYPE_INT32);
 			}
 			else
 			{
@@ -623,14 +623,14 @@ Optional<Value> SPIRVIndexOf::precalculate(const TypeMapping& types, const Const
 			if(!index.getLiteralValue())
 				throw CompilationError(CompilationStep::LLVM_2_IR, "Can't access struct-element with non-literal index", index.to_string());
 
-			subOffset = Value(Literal(static_cast<uint64_t>(container.type.getStructType().value()->getStructSize(static_cast<int>(index.getLiteralValue()->integer)))), TYPE_INT32);
-			subContainerType = subContainerType.getElementType(static_cast<int>(index.getLiteralValue()->integer));
+			subOffset = Value(Literal(container.type.getStructType().value()->getStructSize(index.getLiteralValue()->unsignedInt())), TYPE_INT32);
+			subContainerType = subContainerType.getElementType(index.getLiteralValue()->signedInt());
 		}
 		else
 			throw CompilationError(CompilationStep::LLVM_2_IR, "Invalid container-type to retrieve element via index", subContainerType.to_string());
 
 		if(offset.hasType(ValueType::LITERAL) && subOffset.getLiteralValue())
-			offset.literal.integer += subOffset.getLiteralValue()->integer;
+			offset.literal = Literal(offset.literal.signedInt() + subOffset.getLiteralValue()->signedInt());
 		else
 			throw CompilationError(CompilationStep::LLVM_2_IR, "Invalid index for constant expression", offset.to_string());
 	}
@@ -727,7 +727,7 @@ void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
     for(const auto& pair : destinations)
     {
         //comparison value is a literal
-        const Value comparison(Literal(static_cast<int64_t>(pair.first)), selector.type);
+        const Value comparison(Literal(pair.first), selector.type);
         const Value destination = getValue(pair.second, *method.method, types, constants, memoryAllocated, localTypes);
         //for every case, if equal,branch to given label
         const Value tmp = method.method->addNewLocal(TYPE_BOOL, "%switch");
@@ -745,7 +745,7 @@ Optional<Value> SPIRVSwitch::precalculate(const TypeMapping& types, const Consta
 		const Value& selector = constants.at(selectorID);
 		for(const auto& pair : destinations)
 		{
-			if(selector.hasLiteral(Literal(static_cast<int64_t>(pair.first))) && constants.find(pair.second) != constants.end())
+			if(selector.hasLiteral(Literal(pair.first)) && constants.find(pair.second) != constants.end())
 			{
 				return constants.at(pair.second);
 			}
@@ -823,7 +823,7 @@ void vc4c::spirv2qasm::SPIRVMemoryBarrier::mapInstruction(TypeMapping& types, Co
 		throw CompilationError(CompilationStep::LLVM_2_IR, "Memory barriers with non-constant scope or memory semantics are not supported!");
 
 	logging::debug() << "Generating memory barrier" << logging::endl;
-	method.method->appendToEnd(new intermediate::MemoryBarrier(static_cast<intermediate::MemoryScope>(scope.getLiteralValue()->integer), static_cast<intermediate::MemorySemantics>(semantics.getLiteralValue()->integer)));
+	method.method->appendToEnd(new intermediate::MemoryBarrier(static_cast<intermediate::MemoryScope>(scope.getLiteralValue()->unsignedInt()), static_cast<intermediate::MemorySemantics>(semantics.getLiteralValue()->unsignedInt())));
 }
 
 Optional<Value> vc4c::spirv2qasm::SPIRVMemoryBarrier::precalculate(const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const

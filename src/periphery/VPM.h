@@ -279,9 +279,9 @@ namespace vc4c
 				return (value & 0xC0000000) == 0xC0000000;
 			}
 
-			static VPWSetup fromLiteral(uint64_t val)
+			static VPWSetup fromLiteral(uint32_t val)
 			{
-				return VPWSetup(static_cast<uint32_t>(val));
+				return VPWSetup(val);
 			}
 		};
 
@@ -525,9 +525,9 @@ namespace vc4c
 				return (value & 0xF0000000) == 0x90000000;
 			}
 
-			static VPRSetup fromLiteral(uint64_t val)
+			static VPRSetup fromLiteral(uint32_t val)
 			{
-				return VPRSetup(static_cast<uint32_t>(val));
+				return VPRSetup(val);
 			}
 		};
 
@@ -552,7 +552,7 @@ namespace vc4c
 			~SetupWrapper()
 			{
 				if(load != nullptr)
-					load->setImmediate(Literal(static_cast<uint64_t>(Base::value)));
+					load->setImmediate(Literal(Base::value));
 			}
 
 			inline void resetSetup() const

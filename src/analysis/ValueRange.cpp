@@ -7,6 +7,7 @@
 
 #include "../InstructionWalker.h"
 #include "../Module.h"
+#include "../asm/OpCodes.h"
 
 #include "log.h"
 
@@ -226,7 +227,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 				if(constant->type.isFloatingType())
 					range.extendBoundaries(constant->getLiteralValue()->real(), constant->getLiteralValue()->real());
 				else
-					range.extendBoundaries(constant->getLiteralValue()->integer, constant->getLiteralValue()->integer);
+					range.extendBoundaries(std::min(static_cast<int64_t>(constant->getLiteralValue()->signedInt()), static_cast<int64_t>(constant->getLiteralValue()->unsignedInt())), std::max(static_cast<int64_t>(constant->getLiteralValue()->signedInt()), static_cast<int64_t>(constant->getLiteralValue()->unsignedInt())));
 			}
 			else if(constant && constant->hasType(ValueType::CONTAINER))
 			{
@@ -236,8 +237,8 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 					double max = std::numeric_limits<double>::min();
 					for(const Value& element : constant->container.elements)
 					{
-						min = std::min(min, element.getLiteralValue()->real());
-						max = std::max(max, element.getLiteralValue()->real());
+						min = std::min(min, static_cast<double>(element.getLiteralValue()->real()));
+						max = std::max(max, static_cast<double>(element.getLiteralValue()->real()));
 					}
 					range.extendBoundaries(min, max);
 				}
@@ -247,8 +248,8 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 					int64_t max = std::numeric_limits<int64_t>::min();
 					for(const Value& element : constant->container.elements)
 					{
-						min = std::min(min, element.getLiteralValue()->integer);
-						max = std::max(max, element.getLiteralValue()->integer);
+						min = std::min(min, std::min(static_cast<int64_t>(element.getLiteralValue()->signedInt()), static_cast<int64_t>(element.getLiteralValue()->unsignedInt())));
+						max = std::max(max, std::max(static_cast<int64_t>(element.getLiteralValue()->signedInt()), static_cast<int64_t>(element.getLiteralValue()->unsignedInt())));
 					}
 					range.extendBoundaries(min, max);
 				}
@@ -277,7 +278,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 				auto argIt = std::find_if(it->getArguments().begin(), it->getArguments().end(), [](const Value& val) -> bool { return val.isLiteralValue();});
 				if(argIt == it->getArguments().end())
 					throw CompilationError(CompilationStep::GENERAL, "Failed to get literal argument for operation which reads a literal value", it->to_string());
-				range.extendBoundaries(0, argIt->getLiteralValue()->integer);
+				range.extendBoundaries(0, static_cast<int64_t>(argIt->getLiteralValue()->unsignedInt()));
 			}
 			else if(op && op->op == OP_CLZ)
 			{
@@ -307,7 +308,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 				if(it->getArgument(0)->hasType(ValueType::LOCAL) && ranges.find(it->getArgument(0)->local) != ranges.end() && it->getArgument(1)->isLiteralValue())
 				{
 					const ValueRange& sourceRange = ranges.at(it->getArgument(0)->local);
-					int64_t offset = it->getArgument(1)->getLiteralValue()->integer;
+					int64_t offset = static_cast<int64_t>(it->getArgument(1)->getLiteralValue()->signedInt());
 					//TODO not correct if min/max is negative
 					range.extendBoundaries(sourceRange.getIntRange()->minValue >> offset, sourceRange.getIntRange()->maxValue >> offset);
 				}
@@ -319,7 +320,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 				 */
 				if(it->getArgument(0)->isLiteralValue())
 				{
-					range.extendBoundaries(0, it->getArgument(0)->getLiteralValue()->integer);
+					range.extendBoundaries(0, static_cast<int64_t>(it->getArgument(0)->getLiteralValue()->unsignedInt()));
 				}
 			}
 			//general case for operations, only works if the used locals are only written once (otherwise, their range could change afterwards!)
@@ -338,7 +339,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 					if(arg0.type.isFloatingType())
 						firstRange.extendBoundaries(arg0.getLiteralValue()->real(), arg0.getLiteralValue()->real());
 					else
-						firstRange.extendBoundaries(arg0.getLiteralValue()->integer, arg0.getLiteralValue()->integer);
+						firstRange.extendBoundaries(std::min(static_cast<int64_t>(arg0.getLiteralValue()->signedInt()), static_cast<int64_t>(arg0.getLiteralValue()->unsignedInt())), std::min(static_cast<int64_t>(arg0.getLiteralValue()->signedInt()), static_cast<int64_t>(arg0.getLiteralValue()->unsignedInt())));
 				}
 				else if(arg0.hasType(ValueType::LOCAL) && ranges.find(arg0.local) != ranges.end())
 					firstRange.extendBoundaries(ranges.at(arg0.local));
@@ -348,13 +349,13 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 
 				if(arg0.type.isFloatingType())
 				{
-					firstMin = Value(Literal(firstRange.getFloatRange()->minValue), arg0.type);
-					firstMax = Value(Literal(firstRange.getFloatRange()->maxValue), arg0.type);
+					firstMin = Value(Literal(saturate(firstRange.getFloatRange()->minValue)), arg0.type);
+					firstMax = Value(Literal(saturate(firstRange.getFloatRange()->maxValue)), arg0.type);
 				}
 				else
 				{
-					firstMin = Value(Literal(firstRange.getIntRange()->minValue), arg0.type);
-					firstMax = Value(Literal(firstRange.getIntRange()->maxValue), arg0.type);
+					firstMin = Value(Literal(saturate<int32_t>(firstRange.getIntRange()->minValue)), arg0.type);
+					firstMax = Value(Literal(saturate<uint32_t>(firstRange.getIntRange()->maxValue)), arg0.type);
 				}
 
 				Optional<Value> minVal = NO_VALUE;
@@ -369,7 +370,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 						if(arg1.type.isFloatingType())
 							secondRange.extendBoundaries(arg1.getLiteralValue()->real(), arg1.getLiteralValue()->real());
 						else
-							secondRange.extendBoundaries(arg1.getLiteralValue()->integer, arg1.getLiteralValue()->integer);
+							secondRange.extendBoundaries(std::min(static_cast<int64_t>(arg1.getLiteralValue()->signedInt()), static_cast<int64_t>(arg1.getLiteralValue()->unsignedInt())), std::min(static_cast<int64_t>(arg1.getLiteralValue()->signedInt()), static_cast<int64_t>(arg1.getLiteralValue()->unsignedInt())));
 					}
 					else if(arg1.hasType(ValueType::LOCAL) && ranges.find(arg1.local) != ranges.end())
 						secondRange.extendBoundaries(ranges.at(arg1.local));
@@ -380,13 +381,13 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 
 					if(arg1.type.isFloatingType())
 					{
-						secondMin = Value(Literal(secondRange.getFloatRange()->minValue), arg1.type);
-						secondMax = Value(Literal(secondRange.getFloatRange()->maxValue), arg1.type);
+						secondMin = Value(Literal(saturate(secondRange.getFloatRange()->minValue)), arg1.type);
+						secondMax = Value(Literal(saturate(secondRange.getFloatRange()->maxValue)), arg1.type);
 					}
 					else
 					{
-						secondMin = Value(Literal(secondRange.getIntRange()->minValue), arg1.type);
-						secondMax = Value(Literal(secondRange.getIntRange()->maxValue), arg1.type);
+						secondMin = Value(Literal(saturate<int32_t>(secondRange.getIntRange()->minValue)), arg1.type);
+						secondMax = Value(Literal(saturate<uint32_t>(secondRange.getIntRange()->maxValue)), arg1.type);
 					}
 
 					minVal = op->op.calculate(firstMin, secondMin, [](const Value& val) -> Optional<Value>{ return NO_VALUE;});
@@ -403,7 +404,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 					if(it->getOutput()->type.isFloatingType())
 						range.extendBoundaries(minVal->getLiteralValue()->real(), maxVal->getLiteralValue()->real());
 					else
-						range.extendBoundaries(minVal->getLiteralValue()->integer, maxVal->getLiteralValue()->integer);
+						range.extendBoundaries(std::min(static_cast<int64_t>(minVal->getLiteralValue()->signedInt()), static_cast<int64_t>(minVal->getLiteralValue()->unsignedInt())), std::max(static_cast<int64_t>(maxVal->getLiteralValue()->signedInt()), static_cast<int64_t>(maxVal->getLiteralValue()->unsignedInt())));
 				}
 				else
 					//failed to pre-calculate the bounds

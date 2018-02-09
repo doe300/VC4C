@@ -332,13 +332,13 @@ static InstructionWalker calculateElementOffset(Method& method, InstructionWalke
 		//e.g. 32-bit type, 4 byte offset -> 1 32-bit vector offset
 		//e.g. byte4 type, 4 byte offset -> 1 byte-vector offset
 		//e.g. half-word8 type, 32 byte offset -> 2 half-word vector offset
-		elementOffset = Value(Literal(inAreaOffset.getLiteralValue()->integer / elementType.getPhysicalWidth()), inAreaOffset.type);
+		elementOffset = Value(Literal(inAreaOffset.getLiteralValue()->signedInt() / elementType.getPhysicalWidth()), inAreaOffset.type);
 	}
 	else
 	{
 		//e.g. 32-bit type, 4 byte offset -> shr by 2 (= division by 4)
 		elementOffset = method.addNewLocal(TYPE_INT32, "%vpm_element_offset");
-		it.emplace(new Operation(OP_SHR, elementOffset, inAreaOffset, Value(Literal(static_cast<int64_t>(std::log2(elementType.getPhysicalWidth()))), TYPE_INT8)));
+		it.emplace(new Operation(OP_SHR, elementOffset, inAreaOffset, Value(Literal(static_cast<int32_t>(std::log2(elementType.getPhysicalWidth()))), TYPE_INT8)));
 		it.nextInBlock();
 	}
 	return it;
@@ -359,7 +359,7 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
 	const VPRSetup genericSetup(realArea.toReadSetup(dest.type));
 	if(inAreaOffset == INT_ZERO)
 	{
-		it.emplace( new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<int64_t>(genericSetup))));
+		it.emplace( new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(genericSetup.value)));
 		it.nextInBlock();
 	}
 	else
@@ -371,7 +371,7 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
 		calculateElementOffset(method, it, dest.type, inAreaOffset, elementOffset);
 		//2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
 		//3) write setup with dynamic address
-		it.emplace(new Operation(OP_ADD, VPM_IN_SETUP_REGISTER, Value(Literal(static_cast<int64_t>(genericSetup)), TYPE_INT32), elementOffset));
+		it.emplace(new Operation(OP_ADD, VPM_IN_SETUP_REGISTER, Value(Literal(genericSetup.value), TYPE_INT32), elementOffset));
 		it.nextInBlock();
 	}
 	//2) read value from VPM
@@ -396,7 +396,7 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
 	const VPWSetup genericSetup(realArea.toWriteSetup(src.type));
 	if(inAreaOffset == INT_ZERO)
 	{
-		it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<int64_t>(genericSetup))));
+		it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(genericSetup.value)));
 		it.nextInBlock();
 	}
 	else
@@ -408,7 +408,7 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
 		calculateElementOffset(method, it, src.type, inAreaOffset, elementOffset);
 		//2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
 		//3) write setup with dynamic address
-		it.emplace(new Operation(OP_ADD, VPM_IN_SETUP_REGISTER, Value(Literal(static_cast<int64_t>(genericSetup)), TYPE_INT32), elementOffset));
+		it.emplace(new Operation(OP_ADD, VPM_IN_SETUP_REGISTER, Value(Literal(genericSetup.value), TYPE_INT32), elementOffset));
 		it.nextInBlock();
 	}
 	//2. write data to VPM
@@ -442,10 +442,10 @@ InstructionWalker VPM::insertReadRAM(InstructionWalker it, const Value& memoryAd
 	//initialize VPM DMA for reading from host
 	const VPMArea& realArea = area != nullptr ? *area : getScratchArea();
 	const VPRSetup dmaSetup(realArea.toReadDMASetup(type));
-	it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<int64_t>(dmaSetup))));
+	it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(dmaSetup.value)));
 	it.nextInBlock();
 	const VPRSetup strideSetup(VPRStrideSetup(static_cast<uint16_t>(type.getPhysicalWidth())));
-	it.emplace( new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(static_cast<int64_t>(strideSetup))));
+	it.emplace( new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(strideSetup.value)));
 	it.nextInBlock();
 
 	//"the actual DMA load or store operation is initiated by writing the memory address to the VCD_LD_ADDR or VCD_ST_ADDR register" (p. 56)
@@ -482,11 +482,11 @@ InstructionWalker VPM::insertWriteRAM(InstructionWalker it, const Value& memoryA
 	//initialize VPM DMA for writing to host
 	const VPMArea& realArea = area != nullptr ? *area : getScratchArea();
 	const VPWSetup dmaSetup(realArea.toWriteDMASetup(type));
-	it.emplace( new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<int64_t>(dmaSetup))));
+	it.emplace( new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(dmaSetup.value)));
 	it.nextInBlock();
 	//set stride to zero
 	const VPWSetup strideSetup(VPWStrideSetup(0));
-	it.emplace( new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(static_cast<int64_t>(strideSetup))));
+	it.emplace( new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(strideSetup.value)));
 	it.nextInBlock();
 
 	//"the actual DMA load or store operation is initiated by writing the memory address to the VCD_LD_ADDR or VCD_ST_ADDR register" (p. 56)
@@ -514,15 +514,15 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
 	it = insertReadRAM(it, srcAddress, size.first, area, false);
 	it = insertWriteRAM(it, destAddress, size.first, area, false);
 
-	for(uint8_t i = 1; i < size.second; ++i)
+	for(unsigned i = 1; i < size.second; ++i)
 	{
 		const Value tmpSource = method.addNewLocal(srcAddress.type, "%mem_copy_addr");
 		const Value tmpDest = method.addNewLocal(destAddress.type, "%mem_copy_addr");
 
 		//increment offset from base address
-		it.emplace(new Operation(OP_ADD, tmpSource, srcAddress, Value(Literal(static_cast<int64_t>(i * size.first.getPhysicalWidth())), TYPE_INT8)));
+		it.emplace(new Operation(OP_ADD, tmpSource, srcAddress, Value(Literal(i * size.first.getPhysicalWidth()), TYPE_INT8)));
 		it.nextInBlock();
-		it.emplace(new Operation(OP_ADD, tmpDest, destAddress, Value(Literal(static_cast<int64_t>(i * size.first.getPhysicalWidth())), TYPE_INT8)));
+		it.emplace(new Operation(OP_ADD, tmpDest, destAddress, Value(Literal(i * size.first.getPhysicalWidth()), TYPE_INT8)));
 		it.nextInBlock();
 
 		it = insertReadRAM(it, tmpSource, size.first, area, false);
@@ -550,7 +550,7 @@ InstructionWalker VPM::insertFillRAM(Method& method, InstructionWalker it, const
 		const Value tmpDest = method.addNewLocal(memoryAddress.type, "%mem_fill_addr");
 
 		//increment offset from base address
-		it.emplace(new Operation(OP_ADD, tmpDest, memoryAddress, Value(Literal(static_cast<int64_t>(i * type.getPhysicalWidth())), TYPE_INT8)));
+		it.emplace(new Operation(OP_ADD, tmpDest, memoryAddress, Value(Literal(i * type.getPhysicalWidth()), TYPE_INT8)));
 		it.nextInBlock();
 
 		it = insertWriteRAM(it, tmpDest, type, area, false);
@@ -813,8 +813,8 @@ VPMInstructions periphery::findRelatedVPMInstructions(InstructionWalker anyVPMIn
 		if(dynamic_cast<const intermediate::LoadImmediate*>(inst) == nullptr)
 			return false;
 		if(isVPMRead)
-			return inst->writesRegister(REG_VPM_IN_SETUP) && VPRSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().integer).isDMASetup();
-		return inst->writesRegister(REG_VPM_OUT_SETUP) && VPWSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().integer).isDMASetup();
+			return inst->writesRegister(REG_VPM_IN_SETUP) && VPRSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().unsignedInt()).isDMASetup();
+		return inst->writesRegister(REG_VPM_OUT_SETUP) && VPWSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().unsignedInt()).isDMASetup();
 	};
 	const auto predDMAWait = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool
 	{
@@ -827,16 +827,16 @@ VPMInstructions periphery::findRelatedVPMInstructions(InstructionWalker anyVPMIn
 		if(dynamic_cast<const intermediate::LoadImmediate*>(inst) == nullptr)
 			return false;
 		if(isVPMRead)
-			return inst->writesRegister(REG_VPM_IN_SETUP) && VPRSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().integer).isGenericSetup();
-		return inst->writesRegister(REG_VPM_OUT_SETUP) && VPWSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().integer).isGenericSetup();
+			return inst->writesRegister(REG_VPM_IN_SETUP) && VPRSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().unsignedInt()).isGenericSetup();
+		return inst->writesRegister(REG_VPM_OUT_SETUP) && VPWSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().unsignedInt()).isGenericSetup();
 	};
 	const auto predStrideSetup = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool
 	{
 		if(dynamic_cast<const intermediate::LoadImmediate*>(inst) == nullptr)
 			return false;
 		if(isVPMRead)
-			return inst->writesRegister(REG_VPM_IN_SETUP) && VPRSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().integer).isStrideSetup();
-		return inst->writesRegister(REG_VPM_OUT_SETUP) && VPWSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().integer).isStrideSetup();
+			return inst->writesRegister(REG_VPM_IN_SETUP) && VPRSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().unsignedInt()).isStrideSetup();
+		return inst->writesRegister(REG_VPM_OUT_SETUP) && VPWSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().unsignedInt()).isStrideSetup();
 	};
 	const auto predVPMAccess = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool
 	{

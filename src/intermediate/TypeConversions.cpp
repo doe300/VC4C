@@ -107,7 +107,7 @@ InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method
 	{
 
 		// out = asr(shl(in, bit_diff) bit_diff)
-		Value widthDiff(Literal(static_cast<int64_t>(dest.type.getScalarBitCount() - src.type.getScalarBitCount())), TYPE_INT8);
+		Value widthDiff(Literal(static_cast<int32_t>(dest.type.getScalarBitCount() - src.type.getScalarBitCount())), TYPE_INT8);
 
 		if(!allowLiteral)
 		{
@@ -142,11 +142,11 @@ InstructionWalker intermediate::insertSaturation(InstructionWalker it, Method& m
 		switch(dest.type.getScalarBitCount())
 		{
 			case 8:
-				return it.emplace((new MoveOperation(dest, Value(Literal(isSigned ? saturate<int8_t>(src.getLiteralValue()->integer) : saturate<uint8_t>(src.getLiteralValue()->integer)), dest.type)))->addDecorations(isSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT));
+				return it.emplace((new MoveOperation(dest, Value(Literal(isSigned ? saturate<int8_t>(src.getLiteralValue()->signedInt()) : saturate<uint8_t>(src.getLiteralValue()->unsignedInt())), dest.type)))->addDecorations(isSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT));
 			case 16:
-				return it.emplace((new MoveOperation(dest, Value(Literal(isSigned ? saturate<int16_t>(src.getLiteralValue()->integer) : saturate<uint16_t>(src.getLiteralValue()->integer)), dest.type)))->addDecorations(isSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT));
+				return it.emplace((new MoveOperation(dest, Value(Literal(isSigned ? saturate<int16_t>(src.getLiteralValue()->signedInt()) : saturate<uint16_t>(src.getLiteralValue()->unsignedInt())), dest.type)))->addDecorations(isSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT));
 			case 32:
-				return it.emplace((new MoveOperation(dest, Value(Literal(isSigned ? saturate<int32_t>(src.getLiteralValue()->integer) : saturate<uint32_t>(src.getLiteralValue()->integer)), dest.type)))->addDecorations(isSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT));
+				return it.emplace((new MoveOperation(dest, Value(Literal(isSigned ? saturate<int32_t>(src.getLiteralValue()->signedInt()) : saturate<uint32_t>(src.getLiteralValue()->unsignedInt())), dest.type)))->addDecorations(isSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT));
 			default:
 				throw CompilationError(CompilationStep::GENERAL, "Invalid target type for saturation", dest.type.to_string());
 		}

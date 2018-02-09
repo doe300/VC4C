@@ -22,9 +22,13 @@ namespace vc4c
 	struct OpCode;
 	enum class BranchCond : unsigned char;
 
-	template<typename T>
-	int64_t saturate(int64_t val) {
-	    return std::min(std::max(val, static_cast<int64_t>(std::numeric_limits<T>::min())), static_cast<int64_t>(std::numeric_limits<T>::max()));
+	template<typename T, typename R = typename std::conditional<std::numeric_limits<T>::is_signed, int32_t, uint32_t>::type>
+	R saturate(int64_t val) {
+	    return static_cast<int32_t>(std::min(std::max(val, static_cast<int64_t>(std::numeric_limits<T>::min())), static_cast<int64_t>(std::numeric_limits<T>::max())));
+	}
+
+	inline float saturate(double val) {
+		return static_cast<float>(std::min(std::max(val, static_cast<double>(std::numeric_limits<float>::lowest())), static_cast<double>(std::numeric_limits<float>::max())));
 	}
 
 	/*!

@@ -67,18 +67,18 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Refere
 	if(moduleInfo.getGlobalDataSize().getValue() > 0)
 	{
 		//since we don't know the number, sizes and types of the original globals, we build a single global containing all the data
-		std::vector<uint64_t> tmp;
-		tmp.resize(moduleInfo.getGlobalDataSize().getValue());
+		std::vector<uint32_t> tmp;
+		tmp.resize(moduleInfo.getGlobalDataSize().getValue() * 2);
 		binary.read(reinterpret_cast<char*>(tmp.data()), moduleInfo.getGlobalDataSize().toBytes().getValue());
 
-		std::shared_ptr<ComplexType> elementType(new ArrayType(TYPE_INT64, static_cast<unsigned>(moduleInfo.getGlobalDataSize().getValue())));
-		const DataType type("i64[]", 1, elementType);
+		std::shared_ptr<ComplexType> elementType(new ArrayType(TYPE_INT32, static_cast<unsigned>(moduleInfo.getGlobalDataSize().getValue()) * 2));
+		const DataType type("i32[]", 1, elementType);
 		globals.emplace_back("globalData", type.toPointerType(), Value(ContainerValue(), type), false);
 
 		auto& elements = globals.begin()->value.container.elements;
 		elements.reserve(tmp.size());
-		for(uint64_t t : tmp)
-			elements.emplace_back(Literal(t), TYPE_INT64);
+		for(uint32_t t : tmp)
+			elements.emplace_back(Literal(t), TYPE_INT32);
 
 		logging::debug() << "Extracted " << moduleInfo.getGlobalDataSize().getValue() << " words of global data" << logging::endl;
 	}
