@@ -50,7 +50,7 @@ std::string MemoryInstruction::to_string() const
 	switch(op)
 	{
 		case MemoryOperation::COPY:
-			return std::string("copy ") + (getNumEntries().to_string() + " from ") + (getSource().to_string() + " into ") + getDestination().to_string();
+			return std::string("copy ") + (getNumEntries().to_string() + " entries from ") + (getSource().to_string() + " into ") + getDestination().to_string();
 		case MemoryOperation::FILL:
 			return std::string("fill ") + (getDestination().to_string() + " with ") + (getNumEntries().to_string() + " copies of ") + getSource().to_string();
 		case MemoryOperation::READ:

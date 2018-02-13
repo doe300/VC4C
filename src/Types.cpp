@@ -273,6 +273,13 @@ unsigned char DataType::getVectorWidth(bool physicalWidth) const
 	return num;
 }
 
+unsigned DataType::getAlignmentInBytes() const
+{
+	if(complexType)
+		return complexType->getAlignmentInBytes();
+	return getPhysicalWidth();
+}
+
 std::size_t vc4c::hash<DataType>::operator()(const DataType& type) const noexcept
 {
 	const std::hash<std::string> nameHash;
@@ -301,6 +308,12 @@ unsigned PointerType::getAlignment() const
 	if(alignment != 0)
 		return alignment;
 	return elementType.getPhysicalWidth();
+}
+
+unsigned PointerType::getAlignmentInBytes() const
+{
+	//pointer are words, so they are aligned as such
+	return 4;
 }
 
 StructType::StructType(const std::vector<DataType>& elementTypes, const bool isPacked) : elementTypes(elementTypes), isPacked(isPacked)
@@ -339,14 +352,14 @@ unsigned int StructType::getStructSize(const int index) const
     {
     	if(i == static_cast<std::size_t>(index))
     		break;
-    	auto elementSize = elementTypes.at(i).getPhysicalWidth();
-    	alignment = std::max(alignment, elementSize);
+    	auto elementAlignment = elementTypes.at(i).getAlignmentInBytes();
+    	alignment = std::max(alignment, elementAlignment);
     	//OpenCL 1.2, page 203
 		//"A data item declared to be a data type in memory is always aligned to the size of the data type in bytes."
-    	if(size % elementSize != 0)
+    	if(size % elementAlignment != 0)
     	{
     		//alignment is added before the next type, not after the last
-    		size += elementSize - (size % elementSize);
+    		size += elementAlignment - (size % elementAlignment);
     	}
     	size += elementTypes.at(i).getPhysicalWidth();
     }
@@ -362,15 +375,20 @@ unsigned int StructType::getStructSize(const int index) const
     else
     {
     	//add padding for element which is retrieved
-    	auto elementSize = elementTypes.at(static_cast<std::size_t>(index)).getPhysicalWidth();
-    	if(size % elementSize != 0)
+    	auto elementAlignment = elementTypes.at(static_cast<std::size_t>(index)).getAlignmentInBytes();
+    	if(size % elementAlignment != 0)
 		{
 			//alignment is added before the next type, not after the last
-			size += elementSize - (size % elementSize);
+			size += elementAlignment - (size % elementAlignment);
 		}
     }
 
     return size;
+}
+
+unsigned StructType::getAlignmentInBytes() const
+{
+	return getStructSize();
 }
 
 ArrayType::ArrayType(const DataType& elementType, const unsigned int size) : elementType(elementType), size(size)
@@ -386,6 +404,12 @@ bool ArrayType::operator==(const ComplexType& other) const
 	if(right == nullptr)
 		return false;
 	return size == right->size && elementType == right->elementType;
+}
+
+unsigned ArrayType::getAlignmentInBytes() const
+{
+	//arrays are only aligned to their element-type size, not their complete size
+	return elementType.getPhysicalWidth();
 }
 
 bool ImageType::operator==(const ComplexType& other) const
@@ -407,6 +431,12 @@ std::string ImageType::getImageTypeName() const
     if(isImageBuffer)
         name.append("_buffer");
     return name;
+}
+
+unsigned ImageType::getAlignmentInBytes() const
+{
+	//TODO ??
+	throw CompilationError(CompilationStep::GENERAL, "Alignment for images is not implemented yet");
 }
 
 std::string ImageType::toImageConfigurationName(const std::string& localName)

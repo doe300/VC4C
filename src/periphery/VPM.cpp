@@ -444,7 +444,7 @@ InstructionWalker VPM::insertReadRAM(InstructionWalker it, const Value& memoryAd
 	const VPRSetup dmaSetup(realArea.toReadDMASetup(type));
 	it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(dmaSetup.value)));
 	it.nextInBlock();
-	const VPRSetup strideSetup(VPRStrideSetup(static_cast<uint16_t>(type.getPhysicalWidth())));
+	const VPRSetup strideSetup(VPRStrideSetup(0));
 	it.emplace( new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(strideSetup.value)));
 	it.nextInBlock();
 

@@ -32,6 +32,8 @@ namespace vc4c
 		virtual ~ComplexType();
 
 		virtual bool operator==(const ComplexType& other) const = 0;
+
+		virtual unsigned getAlignmentInBytes() const = 0;
 	};
 
 	struct PointerType;
@@ -159,6 +161,11 @@ namespace vc4c
 		 * NOTE: as per OpenCL 1.2 standard, the physical-width of a 3-element vector equals the physical/logical-width of a 4-element vector with same scalar type.
 		 */
 		unsigned char getVectorWidth(bool physicalWidth = false) const;
+
+		/*
+		 * Returns the alignment of an object of this type
+		 */
+		unsigned getAlignmentInBytes() const;
 	};
 
 	template<>
@@ -272,6 +279,7 @@ namespace vc4c
 		 */
 		unsigned getAlignment() const;
 
+		unsigned getAlignmentInBytes() const override;
 	};
 
 	/*
@@ -300,6 +308,8 @@ namespace vc4c
 		 * If index is -1 (WHOLE_OBJECT), the complete size of the struct is returned
 		 */
 		unsigned int getStructSize(const int index = WHOLE_OBJECT) const;
+
+		unsigned getAlignmentInBytes() const override;
 	};
 
 	/*
@@ -319,6 +329,8 @@ namespace vc4c
 		ArrayType(const DataType& elementType, unsigned int size);
 		~ArrayType() override = default;
 		bool operator==(const ComplexType& other) const override;
+
+		unsigned getAlignmentInBytes() const override;
 	};
 
 	/*
@@ -350,6 +362,8 @@ namespace vc4c
 		 * Reconstructs the OpenCL C image-type name out of the image-info stored
 		 */
 		std::string getImageTypeName() const;
+
+		unsigned getAlignmentInBytes() const override;
 
 		/*
 		 * Creates a name for a new local storing the image-configuration
