@@ -80,6 +80,20 @@ static void dumpMemory(const Memory& memory, const std::string& fileName, Memory
 	logging::debug() << std::dec << "Dumped " << addr << " words of memory into " << fileName << logging::endl;
 }
 
+static void printHelp()
+{
+	std::cout << "Usage: emulator [-k <kernel-name>] [-d <dump-file>] [-l <local-sizes>] [-g <global-sizes>] [args] input-file" << std::endl;
+	std::cout << "\t-k <kernel-name>\tSpecifies the kernel to run, defaults to the first/only kernel in the module" << std::endl;
+	std::cout << "\t-d <dump-file>\t\tWrites the memory contents into the file specified, before and after the execution" << std::endl;
+	std::cout << "\t-l <local-sizes>\tUses the given local sizes in the format \"x y z\" (3 parameter), defaults to single execution" << std::endl;
+	std::cout << "\t-g <num-groups>\t\tUses the given number of work-groups in the format \"x y z\" (3 parameter), defaults to single execution" << std::endl;
+	std::cout << "\t-h, --help\t\tPrint this help message" << std::endl;
+	std::cout << "[args] specify the values for the input parameters and can take following values:" << std::endl;
+	std::cout << "\t-f <file-name>\t\tRead <file-name> as binary file" << std::endl;
+	std::cout << "\t-s <string>\t\tUse <string> as input string" << std::endl;
+	std::cout << "\t-b <num>\t\tAllocate anempty buffer with <num> words of size" << std::endl;
+	std::cout << "\t<data>\t\t\tUse <data> as input word" << std::endl;
+}
 
 int main(int argc, char** argv)
 {
@@ -89,18 +103,9 @@ int main(int argc, char** argv)
     setLogger(std::wcout, true, LogLevel::WARNING);
 #endif
 
-	if(argc == 1)
+	if(argc == 1 || (argc == 2 && (std::string("-h") == argv[1] || std::string("--help") == argv[1])))
 	{
-		std::cout << "Usage: emulator [-k <kernel-name>] [-d <dump-file>] [-l <local-sizes>] [-g <global-sizes>] [args] input-file" << std::endl;
-		std::cout << "\t-k <kernel-name>\t\tSpecifies the kernel to run, defaults to the first/only kernel in the module" << std::endl;
-		std::cout << "\t-d <dump-file>\t\tWrites the memory contents into the file specified, before and after the execution" << std::endl;
-		std::cout << "\t-l <local-sizes>\t\tUses the given local sizes in the format \"x y z\" (3 parameter), defaults to single execution" << std::endl;
-		std::cout << "\t-g <num-groups>\t\tUses the given number of work-groups in the format \"x y z\" (3 parameter), defaults to single execution" << std::endl;
-		std::cout << "[args] specify the values for the input parameters and can take following values:" << std::endl;
-		std::cout << "\t-f <file-name>\t\tRead <file-name> as binary file" << std::endl;
-		std::cout << "\t-s <string>\t\tUse <string> as input string" << std::endl;
-		std::cout << "\t-b <num>\t\tAllocate <num> words of buffer" << std::endl;
-		std::cout << "\t<data>\t\t\tUse <data> as input word" << std::endl;
+		printHelp();
 		return 0;
 	}
 
@@ -117,7 +122,12 @@ int main(int argc, char** argv)
 
 	for(int i = 1; i < argc - 1; ++i)
 	{
-		if(std::string("-l") == argv[i])
+		if(std::string("-h") == argv[i] || std::string("--help") == argv[i])
+		{
+			printHelp();
+			return 0;
+		}
+		else if(std::string("-l") == argv[i])
 		{
 			++i;
 			config.localSizes.at(0) = static_cast<tools::Word>(std::atol(argv[i]));

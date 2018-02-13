@@ -244,7 +244,7 @@ void TestEmulator::testBug30()
 	data.kernelName = "dot3";
 	data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
 	data.module = std::make_pair("", &buffer);
-	data.workGroup.localSizes = {8, 1, 1};
+	data.workGroup.localSizes = {10, 1, 1};
 	data.workGroup.numGroups = {4, 1, 1};
 
 	//num inputs = 2 * globalSize + localSize

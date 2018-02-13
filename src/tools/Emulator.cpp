@@ -393,7 +393,7 @@ std::pair<Value, bool> TMUs::readTMU()
 	{
 		if(queue->front().second + 20 > qpu.getCurrentCycle())
 			//blocks up to 20 cycles when reading from RAM
-			logging::warn() << "Distance between triggering of TMU read and read is " << (qpu.getCurrentCycle() - queue->front().second) << ", additional stally may be introduced" << logging::endl;
+			logging::debug() << "Distance between triggering of TMU read and read is " << (qpu.getCurrentCycle() - queue->front().second) << ", additional stally may be introduced" << logging::endl;
 		queue->pop_front();
 	}
 	return std::make_pair(val, !blocks);

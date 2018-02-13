@@ -35,9 +35,9 @@ kernel void test4(global int *A, global int *B) {
   *B = sum;
 }
 
-kernel void test5(global float *A, float K) {
+kernel void test5(global float *A) {
   //Expected: should be able to vectorize
-  //Actual: loop is recognized and vectorited (factor 16)
+  //Actual: loop is recognized and vectorized (factor 16)
   for (int i = 0; i < 1024; ++i)
     A[i] = i;
 }
@@ -52,7 +52,7 @@ kernel void test6(global int *A, global int *B) {
   *B = sum;
 }
 
-kernel void test7(global int *A, global int *B) {
+kernel void test7(global int *A) {
   //Expected: should be able to vectorize
   //Actual: cannot find the "upper" bound, comparison is more complex than checked for
   for (int i = 1024; i > 0; --i)
@@ -75,7 +75,7 @@ kernel void test9(global int * A, global int * B) {
       A[i * 4] += B[i];
 }
 
-kernel void test10(global int *A, global char *B, int k) {
+kernel void test10(global int *A, global char *B) {
   //Expected: should be able to vectorize
   //Actual: declines vectorization for reading and writing same memory address
   for (int i = 0; i < 1024; ++i)
