@@ -141,27 +141,6 @@ static std::vector<Entry> allKernels =
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/bullet/solveContact.cl", ""},
 		Entry{PENDING_LLVM, FAST, "./testing/bullet/solveFriction.cl", ""},
 
-		/* TODO require -cl-std=c++
-		"./testing/OpenCL-caffe/bnll_layer.cl",
-		"./testing/OpenCL-caffe/concat_layer.cl",
-		"./testing/OpenCL-caffe/contrastive_loss_layer.cl",
-		"./testing/OpenCL-caffe/dropout_layer.cl",
-		"./testing/OpenCL-caffe/eltwise_layer.cl",
-		"./testing/OpenCL-caffe/im2col.cl",
-		"./testing/OpenCL-caffe/lrn_layer.cl",
-		"./testing/OpenCL-caffe/pooling_layer.cl",
-		"./testing/OpenCL-caffe/prelu_layer.cl",
-		"./testing/OpenCL-caffe/random.cl",
-		"./testing/OpenCL-caffe/relu_layer.cl",
-		"./testing/OpenCL-caffe/sigmoid_layer.cl",
-		"./testing/OpenCL-caffe/slice_layer.cl",
-		"./testing/OpenCL-caffe/softmax_layer.cl",
-		"./testing/OpenCL-caffe/softmaxwithloss_layer.cl",
-		"./testing/OpenCL-caffe/tanh_layer.cl",
-		"./testing/OpenCL-caffe/threshold_layer.cl",
-		"./testing/OpenCL-caffe/util.cl",
-		 */
-
 		Entry{PASSED, SLOW, "./testing/clpeak/compute_integer_kernels.cl", ""},
 		Entry{PASSED, FAST, "./testing/clpeak/compute_sp_kernels.cl", ""},
 		//XXX Entry{PASSED, FAST, "./testing/clpeak/compute_hp_kernels.cl", "-DHALF_AVAILABLE"},
