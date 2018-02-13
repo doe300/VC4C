@@ -6,31 +6,220 @@
 
 #include "TypeConversions.h"
 
+#include "Helper.h"
+
 using namespace vc4c;
 using namespace vc4c::intermediate;
 
+/*
+ * Inserts a bit-cast where the destination element-type is larger than the source element-type, combining multiple elements into a single one.
+ *
+ * This also means, the source vector has more elements (of smaller type-size) than the destination vector
+ */
+static InstructionWalker insertCombiningBitcast(InstructionWalker it, Method& method, const Value& src, const Value& dest)
+{
+	//the number of source elements to combine in a single destination element
+	auto sizeFactor = dest.type.getScalarBitCount() / src.type.getScalarBitCount();
+	//the number of bits to shift per element
+	auto shift = src.type.getScalarBitCount();
+
+	/*
+	 * By shifting and ANDing whole source vector, we save a few instructions for sources with more than 1 element
+	 *
+	 * E.g. short4 -> int2 can be written as
+	 * (short4 & 0xFFFF) << 0 -> int2 (lower half-words in elements 0 and 2)
+	 * (short4 & 0xFFFF) << 16 -> int2 (upper half-words in element 1 and 3)
+	 * -> we only need 2 shifts and 2 ANDs instead of 4 (per element)
+	 */
+
+	const Value truncatedSource = method.addNewLocal(src.type, "%bit_cast");
+	it.emplace(new Operation(OP_AND, truncatedSource, src, Value(Literal(src.type.getScalarWidthMask()), TYPE_INT32)));
+	it.nextInBlock();
+
+	std::vector<Value> shiftedTruncatedVectors;
+	shiftedTruncatedVectors.reserve(sizeFactor);
+	for(auto i = 0; i < sizeFactor; ++i)
+	{
+		shiftedTruncatedVectors.emplace_back(method.addNewLocal(dest.type.toVectorType(src.type.num), "%bit_cast"));
+		const Value& result = shiftedTruncatedVectors.back();
+		it.emplace(new Operation(OP_SHL, result, truncatedSource, Value(Literal(static_cast<unsigned>(shift * i)), TYPE_INT8)));
+		it.nextInBlock();
+	}
+
+	/*
+	 * The up to 8 destination elements are now distributed across the shiftedTruncatedVectors (stvs) as follows:
+	 *
+	 * Size-factor of 2:
+	 * stv0[0] | stv1[1], stv0[2] | stv1[3], stv0[4] | stv1[5], ...
+	 *
+	 * Size-factor of 4;
+	 * stv0[0] | stv1[1] | stv2[2] | stv3[3], stv0[4] | stv1[5] | stv2[6] | stv3[7], ...
+	 *
+	 * To simplify the assembly of the destination, we rotate the vectors, so their element-numbers align
+	 */
+
+	std::vector<Value> rotatedVectors;
+	rotatedVectors.reserve(shiftedTruncatedVectors.size());
+	for(unsigned i = 0; i < shiftedTruncatedVectors.size(); ++i)
+	{
+		if(i == 0)
+			//no need to rotate
+			rotatedVectors.emplace_back(shiftedTruncatedVectors.front());
+		else
+		{
+			rotatedVectors.emplace_back(method.addNewLocal(dest.type.toVectorType(src.type.num), "%bit_cast"));
+			const Value& result = rotatedVectors.back();
+			it = insertVectorRotation(it, shiftedTruncatedVectors.at(i), Value(Literal(i), TYPE_INT8), result, Direction::DOWN);
+		}
+	}
+
+	/*
+	 * The up to 8 destination elements are now distributed across the rotatedVectors (rvs) as follows:
+	 *
+	 * Size-factor of 2:
+	 * rv0[0] | rv1[0], rv0[2] | rv1[2], rv0[4] | rv1[4], ...
+	 *
+	 * Size-factor of 4;
+	 * rv0[0] | rv1[0] | rv2[0] | rv3[0], rv0[4] | rv1[4] | rv2[4] | rv3[4], ...
+	 *
+	 * In the next step, we OR the separate vectors to a single one
+	 */
+	Value combinedVector = INT_ZERO;
+	for(const Value& rv : rotatedVectors)
+	{
+		Value newCombinedVector = method.addNewLocal(dest.type.toVectorType(src.type.num), "%bit_cast");
+		it.emplace(new Operation(OP_OR, newCombinedVector, combinedVector, rv));
+		it.nextInBlock();
+		combinedVector = newCombinedVector;
+	}
+
+	/*
+	 * Now, we have the destination elements as follows:
+	 *
+	 * Size-factor of 2:
+	 * cv[0], cv[2], cv[4], cv[6], ...
+	 *
+	 * Size-factor of 4;
+	 * cv[0], cv[4], cv[8], cv[12], ...
+	 *
+	 * Finally, we rotate the single elements to fit their position in the destination
+	 */
+
+	Value destination = method.addNewLocal(dest.type, "%bit_cast");
+	//initialize destination with zero so register-allocation finds unconditional assignment
+	it.emplace(new MoveOperation(destination, INT_ZERO));
+	it.nextInBlock();
+
+	for(unsigned i = 0; i < dest.type.num; ++i)
+	{
+		unsigned sourceIndex = i * sizeFactor;
+
+		const Value tmp = method.addNewLocal(dest.type, "%bit_cast");
+		//the vector-rotation to element 0 and then to the destination element should be combined by optimization-step #combineVectorRotations
+		it = insertVectorExtraction(it, method, combinedVector, Value(Literal(sourceIndex), TYPE_INT8), tmp);
+		it = insertVectorInsertion(it, method, destination, Value(Literal(i), TYPE_INT8), tmp);
+	}
+
+	it.emplace(new MoveOperation(dest, destination));
+	return it;
+}
+
+/*
+ * Inserts a bit-cast where the destination element-type is smaller than the source element-type, splitting a single element into several ones.
+ *
+ * This also means, the source vector has less elements (of larger type-size) than the destination vector
+ */
+static InstructionWalker insertSplittingBitcast(InstructionWalker it, Method& method, const Value& src, const Value& dest)
+{
+	//the number of destination elements to extract from a single source element
+	auto sizeFactor = src.type.getScalarBitCount() / dest.type.getScalarBitCount();
+	//the number of bits to shift per element
+	auto shift = dest.type.getScalarBitCount();
+
+	/*
+	 * By shifting and ANDing whole source vector, we save a few instructions for sources with more than 1 element
+	 *
+	 * E.g. int2 -> short4 can be written as
+	 * (int2 >> 0) & 0xFFFF -> short4 (lower half-words)
+	 * (int2 >> 16) & 0xFFFF -> short4 (upper half-words)
+	 * -> we only need 2 shifts and 2 ANDs instead of 4 (per element)
+	 */
+	std::vector<Value> shiftedTruncatedVectors;
+	shiftedTruncatedVectors.reserve(sizeFactor);
+	for(auto i = 0; i < sizeFactor; ++i)
+	{
+		shiftedTruncatedVectors.emplace_back(method.addNewLocal(dest.type, "%bit_cast"));
+		const Value& result = shiftedTruncatedVectors.back();
+		const Value tmp = method.addNewLocal(dest.type, "%bit_cast");
+		it.emplace(new Operation(OP_SHR, tmp, src, Value(Literal(static_cast<unsigned>(shift * i)), TYPE_INT8)));
+		it.nextInBlock();
+		it.emplace(new Operation(OP_AND, result, tmp, Value(Literal(dest.type.getScalarWidthMask()), TYPE_INT32)));
+		it.nextInBlock();
+	}
+
+	/*
+	 * The up to 16 destination elements are now distributed across the shiftedTruncatedVectors (stvs) as follows:
+	 *
+	 * Size-factor of 2:
+	 * stv0[0], stv1[0], stv0[1], stv1[1], stv0[2], ...
+	 *
+	 * Size-factor of 4;
+	 * stv0[0], stv1[0], stv2[0], stv3[0], stv0[1], ...
+	 *
+	 * So we need to assemble the destination vector from these vectors
+	 */
+
+	const Value destination = method.addNewLocal(dest.type, "%bit_cast");
+	//initialize destination with zero so register-allocation finds unconditional assignment
+	it.emplace(new MoveOperation(destination, INT_ZERO));
+	it.nextInBlock();
+
+	for(unsigned i = 0; i < dest.type.num; ++i)
+	{
+		const Value& stv = shiftedTruncatedVectors.at(i % shiftedTruncatedVectors.size());
+		unsigned sourceElement = static_cast<unsigned>(i / shiftedTruncatedVectors.size());
+
+		const Value tmp = method.addNewLocal(dest.type, "%bit_cast");
+		//the vector-rotation to element 0 and then to the destination element should be combined by optimization-step #combineVectorRotations
+		it = insertVectorExtraction(it, method, stv, Value(Literal(sourceElement), TYPE_INT8), tmp);
+		it = insertVectorInsertion(it, method, destination, Value(Literal(i), TYPE_INT8), tmp);
+	}
+
+	it.emplace(new MoveOperation(dest, destination));
+	return it;
+}
+
 InstructionWalker intermediate::insertBitcast(InstructionWalker it, Method& method, const Value& src, const Value& dest, const InstructionDecorations deco)
 {
-	if(src.type.num != dest.type.num)
-	{
-		//e.g. int2 -> ushort4, char16 -> uint4
-		/*
-		 * Need at least 4 variations:
-		 * - 1 element to 2 sub-elements (int2 -> short4, short8 -> char16)
-		 * - 1 element to 4 sub-elements (int -> char4, int4 -> char16)
-		 * - 2 sub-elements to 1 element (char4 -> short2, short8 -> int4)
-		 * - 4 sub-elements to 1 element (char4 -> int, char16 -> int4)
-		 */
-		//TODO could make use of vector-shuffle instructions. Or are these the same instructions as loading non 32-bit values from TMU?
-		throw CompilationError(CompilationStep::LLVM_2_IR, "Bit-casts across different vector-sizes are not yet supported!");
-	}
-	//bit-casts with types of same vector-size (and therefore same element-size) are simple moves
-	it.emplace((new intermediate::MoveOperation(dest, src))->addDecorations(deco));
+	/*
+	 * TODO room for optimization:
+	 * to extract e.g. a single char from a char4, LLVM generates something like:
+	 *
+	 * int tmp = bitcast char4 in to int
+	 * char out = convert tmp to char
+	 *
+	 * For example in test_vector.cl kernel test_vector_load.
+	 *
+	 * => If we can detect the bit-cast to be used only to extract an element (of the original type before casting), we can skip it?!
+	 *
+	 */
+	if(src.isUndefined())
+		it.emplace(new intermediate::MoveOperation(dest, UNDEFINED_VALUE));
+	else if(src.isZeroInitializer())
+		it.emplace(new intermediate::MoveOperation(dest, INT_ZERO));
+	else if(src.type.num > dest.type.num)
+		it = insertCombiningBitcast(it, method, src, dest);
+	else if(src.type.num < dest.type.num)
+		it = insertSplittingBitcast(it, method, src, dest);
+	else
+		//bit-casts with types of same vector-size (and therefore same element-size) are simple moves
+		it.emplace((new intermediate::MoveOperation(dest, src))->addDecorations(deco));
 
 	//last step: map destination to source (if bit-cast of pointers)
 	if(dest.hasType(ValueType::LOCAL) && src.hasType(ValueType::LOCAL) && dest.type.isPointerType() && src.type.isPointerType())
 		//this helps recognizing lifetime-starts of bit-cast stack-allocations
 		const_cast<std::pair<Local*, int>&>(dest.local->reference) = std::make_pair(src.local, 0);
+	it->addDecorations(deco);
 	it.nextInBlock();
 	return it;
 }
