@@ -7,6 +7,7 @@
 #include <tuple>
 #include "Scheduler.h"
 #include <memory>
+#include <algorithm>
 #include <log.h>
 #include "../Units.h"
 #include "../InstructionWalker.h"
@@ -22,7 +23,7 @@ void Scheduler::doScheduling(vc4c::BasicBlock &bb, vc4c::DAG &dag) {
 		bb.pushBack(il);
 	}
 
-	logging::debug() << "doScheduling" << std::endl;
+	logging::debug() << "doScheduling" << logging::endl;
 	bb.dumpInstructions();
 }
 
@@ -87,145 +88,183 @@ bool isAssigned(IL * il, Value & v) {
 class SchedulingProperty {
 public:
 	bool operator<(SchedulingProperty & p) {
-		if (first.has_value() && p.first.has_value())
-			return second < p.second;
-		else if (first.has_value())
+		if (stepNumberForTMU.has_value() && p.stepNumberForTMU.has_value())
+			return neighborsNumber < p.neighborsNumber;
+		else if (stepNumberForTMU.has_value())
 			return true;
-		else if (p.first.has_value())
+		else if (p.stepNumberForTMU.has_value())
 			return false;
-		else if (! first.has_value() && ! p.first.has_value())
-			return second < p.second;
+		else if (! stepNumberForTMU.has_value() && ! p.stepNumberForTMU.has_value())
+			return neighborsNumber < p.neighborsNumber;
 	}
 
-    Optional<int> first;
-    int second;
-    IL * third;
+    Optional<int> stepNumberForTMU;
+    int neighborsNumber;
+    IL * il;
 
-    SchedulingProperty(Optional<int> opt, int n, IL * il) : first(opt), second(n), third(il) {}
+    SchedulingProperty(Optional<int> opt, int n, IL * il) : stepNumberForTMU(opt), neighborsNumber(n), il(il) {}
+
+		SchedulingProperty(DAG dag, IL * il) {
+			auto opt = dag.stepForTMULoad(il);
+			auto neighbors = dag.getNeighborsNumber(il);
+
+			stepNumberForTMU = opt;
+			neighborsNumber = neighbors;
+			this->il = il;
+		};
+
+		static std::shared_ptr<SchedulingProperty> create_shared(DAG dag, IL * il){
+			return std::shared_ptr<SchedulingProperty>(new SchedulingProperty (dag, il));
+		}
 };
 
-IL * InstructionSelector::issueCombined (Ops & addOp, Ops & mulOp, std::vector<intermediate::MoveOperation*> & moves) {
-    auto addp = std::vector<std::shared_ptr<SchedulingProperty>>(addOp.size());
-    auto mulp = std::vector<std::shared_ptr<SchedulingProperty>>(mulOp.size());
-    auto movp = std::vector<std::shared_ptr<SchedulingProperty>>(moves.size());
+bool canCombined(IL * ila, IL * ilb) {
+	assert (dynamic_cast<intermediate::Operation*>(ila) || dynamic_cast<intermediate::MoveOperation*>(ila));
+	assert (dynamic_cast<intermediate::Operation*>(ilb) || dynamic_cast<intermediate::MoveOperation*>(ilb));
 
-    auto getProperties = [&](IL *il) {
-        auto opt = dag.stepForTMULoad(il);
-        auto neighbors = dag.getNeighborsNumber(il);
+	/* check confliction of smallImmediate */
+	auto useImm = Optional<SmallImmediate>(false, SmallImmediate('0'));
+	for (auto il : {ila, ilb}) {
+		for (auto arg : il->getArguments()) {
+			if (arg.isSmallImmediate()) {
+				if (useImm.has_value() && arg.immediate == useImm.value()) {
+					return false;
+				}
 
-        return std::shared_ptr<SchedulingProperty>(new SchedulingProperty(std::move(opt), neighbors, il));
-    };
+				/* assume useImm.hasValue() == false */
+				useImm = Optional<SmallImmediate>(arg.immediate);
+			}
+		}
+	}
 
-    for (int i = 0; i < addp.size(); i++) {
-        addp[i] = getProperties(addOp[i]);
-    }
-    for (int i = 0; i < mulp.size(); i++) {
-        mulp[i] = getProperties(mulOp[i]);
-    }
-    for (int i = 0; i < movp.size(); i++) {
-        movp[i] = getProperties(moves[i]);
-    }
+	return true;
+}
 
-    std::sort(addp.begin(), addp.end());
-    std::sort(mulp.begin(), mulp.end());
-    std::sort(movp.begin(), movp.end());
+		using property = std::shared_ptr<SchedulingProperty>;
+		using properties = std::vector<property>;
 
-    auto compare = [](std::shared_ptr<SchedulingProperty> &x1, std::shared_ptr<SchedulingProperty> &x2,
-                      std::shared_ptr<SchedulingProperty> &y1, std::shared_ptr<SchedulingProperty> &y2) {
-        int xNum = 0;
-        int yNum = 0;
+template<typename X>
+IL* single(DAG dag, std::vector<X*> vec) {
+	auto ps = std::vector<property>(vec.size());
+	std::transform(vec.begin(), vec.end(), std::back_inserter(ps), [&](X * il) {
+		return SchedulingProperty::create_shared(dag, il);
+	});
 
-        if (x1->first.has_value())
-            xNum++;
-        if (x2->first.has_value())
-            xNum++;
+	property max = nullptr;
+	for (auto x : ps) {
+		if (max == nullptr || (*max) < *x)
+			max = x;
+	}
 
-        if (y1->first.has_value())
-            yNum++;
-        if (y2->first.has_value())
-            yNum++;
+	return max->il;
+}
 
-        if (xNum > yNum)
-            return true;
-        else if (xNum < yNum)
-            return false;
-        /* xNum == yNum */
+IL * InstructionSelector::issueCombined (Ops & addOp, Ops & mulOp,
+																				 Moves & moves) {
+	IL * add = nullptr;
+	IL * mul = nullptr;
 
-        int sumX = x1->second + x2->second;
-        int sumY = y1->second + y2->second;
-        return sumX > sumY;
-    };
+	if (addOp.empty() && mulOp.empty()) {
+		add = single(dag, moves);
+		dag.erase(add);
+		return add;
+	}
+	else if (addOp.empty() && moves.empty()) {
+		mul = single(dag, mulOp);
+		dag.erase(mul);
+		return mul;
 
-    IL *addIL = nullptr;
-    IL *mulIL = nullptr;
+	}
+	else if (mulOp.empty() && moves.empty()) {
+		add = single(dag, addOp);
+		dag.erase(add);
+		return add;
+	}
 
-    if (addp.size() == 0) {
-        if (mulp.size() == 0) {
-            assert (movp.size() > 0);
-            addIL = movp[0].get()->third;
-            mulIL = nullptr;
-        } else {
-            if (movp.size() > 0) {
-                addIL = movp[0].get()->third;
-            }
-            mulIL = mulp[0].get()->third;
-        }
-    } else {
-        if (mulp.size() == 0) {
-            if (movp.size() == 0) {
-                addIL = addp[0].get()->third;
-            } else {
-                addIL = addp[0].get()->third;
-                mulIL = movp[0].get()->third;
-            }
-        } else {
-            if (movp.size() == 0) {
-                addIL = addp[0].get()->third;
-                mulIL = mulp[0].get()->third;
-            } else {
-                bool x = compare(*addp.begin(), *mulp.begin(), *addp.begin(), *movp.begin());
-                bool y = compare(*addp.begin(), *movp.begin(), *mulp.begin(), *movp.begin());
+	else {
+		auto addps = properties();
+		std::transform(addOp.begin(), addOp.end(), std::back_inserter(addps),
+									 [&](IL * il){ return SchedulingProperty::create_shared(dag, il); });
+		auto mulps = properties();
+		std::transform(mulOp.begin(), mulOp.end(), std::back_inserter(mulps),
+									 [&](IL * il){ return SchedulingProperty::create_shared(dag, il); });
+		auto movps = properties();
+		std::transform(moves.begin(), moves.end(), std::back_inserter(movps),
+									 [&](IL * il){ return SchedulingProperty::create_shared(dag, il); });
 
-                if (x) {
-                    if (y) {
-                        addIL = (*movp.begin()).get()->third;
-                        mulIL = (*mulp.begin()).get()->third;
-                    } else {
-                        addIL = (*addp.begin()).get()->third;
-                        mulIL = (*movp.begin()).get()->third;
-                    }
-                } else if (y) {
-                    addIL = (*addp.begin()).get()->third;
-                    mulIL = (*movp.begin()).get()->third;
-                } else {
-                    addIL = (*addp.begin()).get()->third;
-                    mulIL = (*mulp.begin()).get()->third;
-                }
-            }
-        }
-    }
+		property addp = nullptr;
+		property mulp = nullptr;
 
-    dag.erase(addIL);
-    dag.erase(mulIL);
+		auto compare = [](property &x1, property &x2, property &y1, property &y2) {
+				int xNum = 0;
+				int yNum = 0;
 
-    if (auto mov = dynamic_cast<intermediate::MoveOperation *>(addIL)) {
-        addIL = mov->convertToOperation(true);
-    }
+				if (x1->stepNumberForTMU.has_value())
+					xNum++;
+				if (x2->stepNumberForTMU.has_value())
+					xNum++;
 
-    if (auto mov = dynamic_cast<intermediate::MoveOperation *>(mulIL)) {
-        mulIL = mov->convertToOperation(false);
-    }
+				if (y1->stepNumberForTMU.has_value())
+					yNum++;
+				if (y2->stepNumberForTMU.has_value())
+					yNum++;
 
-    if (addIL == nullptr)
-      return mulIL;
-    else if (mulIL == nullptr)
-      return addIL;
+				if (xNum > yNum)
+					return true;
+				else if (xNum < yNum)
+					return false;
+				/* xNum == yNum */
 
-	auto add = dynamic_cast<intermediate::Operation *>(addIL);
-	auto mul = dynamic_cast<intermediate::Operation *>(mulIL);
-	assert (add != nullptr);
-	assert (mul != nullptr);
-	return new intermediate::CombinedOperation(add, mul);
+				int sumX = x1->neighborsNumber + x2->neighborsNumber;
+				int sumY = y1->neighborsNumber + y2->neighborsNumber;
+				return sumX > sumY;
+		};
+
+// XXX this function is defined as macro, because this must be closure (capture variables)
+// and for type safety
+#define search(X, Y) \
+		[&](properties & ps1, properties & ps2, std::vector<X *> & ils1, std::vector<Y *> & ils2) { \
+      for (int ip1 = 0; ip1 < ps1.size(); ip1++) { \
+        for (int ip2 = 0; ip2 < ps2.size(); ip2++) { \
+					if (addp == nullptr && mulp == nullptr) { \
+						add = ils1[ip1]; mul = ils2[ip2]; \
+						addp = ps1[ip1]; mulp = ps2[ip2]; \
+					} else if (compare (addp, mulp, ps1[ip1], ps2[ip2]) && canCombined(ils1[ip1], ils2[ip2])) { \
+						add = ils1[ip1]; mul = ils2[ip2]; \
+						addp = ps1[ip1]; mulp = ps2[ip2]; \
+					} \
+				} \
+			} \
+		} \
+
+		search(intermediate::Operation, intermediate::Operation) (addps, mulps, addOp, mulOp);
+		search(intermediate::Operation, intermediate::MoveOperation) (addps, movps, addOp, moves);
+		search(intermediate::MoveOperation, intermediate::Operation) (movps, mulps, moves, mulOp);
+	}
+
+	if (add)
+		dag.erase(add);
+	if (mul)
+		dag.erase(mul);
+
+	if (auto mov = dynamic_cast<intermediate::MoveOperation *>(add)) {
+		add = mov->convertToOperation(true);
+	}
+
+	if (auto mov = dynamic_cast<intermediate::MoveOperation *>(mul)) {
+		mul = mov->convertToOperation(false);
+	}
+
+	if (add == nullptr)
+		return mul;
+	else if (mul == nullptr)
+		return add;
+
+	auto addIL = dynamic_cast<intermediate::Operation *>(add);
+	auto mulIL = dynamic_cast<intermediate::Operation *>(mul);
+	assert (addIL != nullptr);
+	assert (mulIL != nullptr);
+	return new intermediate::CombinedOperation(addIL, mulIL);
 }
 
 
@@ -277,10 +316,10 @@ IL * InstructionSelector::choose() {
 	auto & ils = * dag.getRoots();
 	assert(ils.size() > 0);
 
-	auto addOp = std::vector<intermediate::Operation *>(std::vector<intermediate::Operation *>());
-	auto mulOp = std::vector<intermediate::Operation *>(std::vector<intermediate::Operation *>());
-	auto moves = std::vector<intermediate::MoveOperation *>(std::vector<intermediate::MoveOperation *>());
-	auto others = std::vector<intermediate::IntermediateInstruction *>(std::vector<intermediate::IntermediateInstruction *>());
+	auto addOp = std::vector<intermediate::Operation *>();
+	auto mulOp = std::vector<intermediate::Operation *>();
+	auto moves = std::vector<intermediate::MoveOperation *>();
+	auto others = std::vector<intermediate::IntermediateInstruction *>();
 	auto memorySignal = std::vector<intermediate::Operation *>(std::vector<intermediate::Operation *>());
 
 	std::for_each(ils.begin(), ils.end(), [&](IL *il) {

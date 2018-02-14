@@ -48,12 +48,15 @@ namespace vc4c
 		}
 
 		void eraseNeighbors(K k) {
-			for (auto it = neighbors.begin(); it != neighbors.end(); ){
+			for (auto it = neighbors.begin(); it != neighbors.end(); ++it){
 				auto pair = *it;
-				if (pair.first->key == k)
-					it = neighbors.erase(it);
-				else
-					++it;
+				for (auto it2 = pair.first->neighbors.begin(); it2 != pair.first->neighbors.end();) {
+					auto pair2 = *it2;
+					if (pair2.first->key == k)
+						it2 = pair.first->neighbors.erase(it2);
+					else
+						++it2;
+				}
 			}
 		}
 
@@ -97,7 +100,7 @@ namespace vc4c
 			return key->to_string();
 		}
 
-	// protected:
+	protected:
 		//TODO find better way, so the map is to the actual (child) type
 		FastMap<Node*, R> neighbors;
 	};

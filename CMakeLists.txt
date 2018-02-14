@@ -11,7 +11,7 @@ option(BUILD_DEBUG "Build with debugging symbols. Otherwise build for performanc
 # Option to enable/disable multi-threaded compilation
 option(MULTI_THREADED "Runs the optimization steps multi-threaded" ON)
 # Option whether to verify the output (using vc4asm)
-option(VERIFY_OUTPUT "uses the external library vc4asm to verify the output" ON)
+option(VERIFY_OUTPUT "uses the external library vc4asm to verify the output" OFF)
 # Option whether to include the LLVM-IR front-end
 option(LLVMIR_FRONTEND "Enables the standard front-end for the LLVM intermediate language" ON)
 # Option to enable/disable cross compilation
@@ -212,7 +212,7 @@ if(LLVMLIB_FRONTEND)
 		execute_process(COMMAND ${LLVM_CONFIG_PATH} --cppflags OUTPUT_VARIABLE LLVM_LIB_FLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
 		execute_process(COMMAND ${LLVM_CONFIG_PATH} --version OUTPUT_VARIABLE LLVM_LIB_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE)
 		execute_process(COMMAND ${LLVM_CONFIG_PATH} --libs core irreader bitreader OUTPUT_VARIABLE LLVM_LIB_NAMES OUTPUT_STRIP_TRAILING_WHITESPACE)
-		
+
 		#Depending on the LLVM library version used, we need to use some other functions/headers in the LLVM library front-end
 		if(LLVM_LIB_VERSION)
 			string(REPLACE "." ";" LLVM_VERSION_ELEMENTS ${LLVM_LIB_VERSION})
@@ -222,7 +222,7 @@ if(LLVMLIB_FRONTEND)
 		else()
 			message(WARNING "Failed to determine LLVM library version")
 		endif()
-		
+
 		if(LLVM_LIBS_PATH AND LLVM_INCLUDE_PATH AND LLVM_LIB_FLAGS AND LLVM_LIB_NAMES)
 			message(STATUS "Compiling LLVM library front-end with LLVM in version ${LLVM_LIB_VERSION} located in '${LLVM_LIBS_PATH}'")
 			set(ENABLE_LLVM_LIB_FRONTEND ON)
@@ -252,6 +252,7 @@ if(VERIFY_OUTPUT)
   		  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
   		  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
   		  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
+                  -DCMAKE_BUILD_TYPE=Debug
 	)
 
 	add_definitions(-DVERIFIER_HEADER="${PROJECT_SOURCE_DIR}/lib/vc4asm/src/Validator.h")

@@ -10,31 +10,41 @@
 #include "../Graph.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../analysis/DebugGraph.h"
+#include "log.h"
 
 namespace vc4c
 {
-  enum class DAGDependType { Depend, AntiDepend };
+		using IL = vc4c::intermediate::IntermediateInstruction;
 
-  using IL = vc4c::intermediate::IntermediateInstruction;
-  using DagType = Graph<IL*, Node <IL*, DAGDependType>>;
+		enum class DAGDependType { Depend, AntiDepend };
 
-  class DAG {
-	  /* dependency graph */
-	  DagType * graph = new Graph<IL*, Node <IL*, DAGDependType>>;
-	  const intermediate::BranchLabel* label;
-	  std::vector<IL*> * roots = new std::vector<IL*>();
+		class DagNode : public Node< IL *, DAGDependType > {
+		public:
+				using Base = Node< IL *, DAGDependType >;
 
-  public:
-	  DAG(Method & method, BasicBlock &bb);
-	  Method & method;
-	  std::vector<IL*> * getRoots();
-	  void erase(IL *);
-	  Optional<int> stepForTMULoad(IL * il);
-	  int getNeighborsNumber(IL *);
-	  void dumpGraph();
-	  const intermediate::BranchLabel* getLabel() const;
-	  void addDependency (IL *, IL *);
-	  bool empty();
+				explicit DagNode(IL * il) : Base(il) {}
+				~DagNode() = default;
+		};
+
+		using DagType = Graph< IL *, DagNode > ;
+
+		class DAG {
+				/* dependency graph */
+				Graph< IL*, DagNode > * graph;
+				const intermediate::BranchLabel* label;
+				std::vector<IL*> * roots = new std::vector<IL*>();
+
+		public:
+				DAG(Method & method, BasicBlock &bb);
+				Method & method;
+				std::vector<IL*> * getRoots();
+				void erase(IL *);
+				Optional<int> stepForTMULoad(IL * il);
+				int getNeighborsNumber(IL *);
+				void dumpGraph();
+				const intermediate::BranchLabel* getLabel() const;
+				void addDependency (IL *, IL *);
+				bool empty();
   };
 }
 

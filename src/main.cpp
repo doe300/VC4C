@@ -79,7 +79,11 @@ int main(int argc, char** argv)
         	config.frontend = Frontend::LLVM_IR;
         else if(strcmp("--disassemble", argv[i]) == 0)
         	runDisassembler = true;
-        else if(strcmp("-o", argv[i]) == 0)
+				else if(strcmp("--fscheduling", argv[i]) == 0)
+					config.enableScheduling = true;
+				else if(strcmp("--fnoscheduling", argv[i]) == 0)
+					config.enableScheduling = false;
+				else if(strcmp("-o", argv[i]) == 0)
         {
         	outputFile = argv[i+1];
         	//any further parameter is an input-file

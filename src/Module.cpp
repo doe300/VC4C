@@ -212,7 +212,13 @@ bool BasicBlock::isStartOfMethod() const
 }
 
 void BasicBlock::removeAll() {
-	instructions.clear();
+	auto it = std::remove_if(instructions.begin(), instructions.end(), [](std::unique_ptr<intermediate::IntermediateInstruction> & il){
+			if (dynamic_cast<intermediate::BranchLabel *>(&(*il)))
+				return false;
+			return true;
+	});
+
+	instructions.erase(it, instructions.end());
 }
 
 

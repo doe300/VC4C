@@ -136,9 +136,9 @@ namespace vc4c
 	{
 	public:
 	    Optional() : hasValue(false)
-		{
-	    	static_assert(std::is_default_constructible<T>::value, "Cannot use default constructor on non default-constructible type!");
-		}
+			{
+				static_assert(std::is_default_constructible<T>::value, "Cannot use default constructor on non default-constructible type!");
+			}
 	    Optional(const T& value) : hasValue(true), val(value)
 	    {
 	    	static_assert(std::is_copy_constructible<T>::value, "Cannot use copy constructor on non copy-constructible type!");
@@ -152,9 +152,9 @@ namespace vc4c
 	    	static_assert(std::is_copy_constructible<T>::value, "Cannot use copy constructor on non copy-constructible type!");
 	    }
 	    Optional(Optional<T>&& other) : hasValue(other.hasValue), val(std::forward<T>(other.val))  /* matches C++17 std::optional */
-		{
+			{
 	    	static_assert(std::is_move_constructible<T>::value, "Cannot use move constructor on non move-constructible type!");
-		}
+			}
 
 	    Optional(bool hasValue, const T& dummyValue = {}) : hasValue(hasValue), val(dummyValue) { }
 

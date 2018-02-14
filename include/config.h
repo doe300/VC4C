@@ -97,6 +97,10 @@ namespace vc4c
 	     * Whether to turn on auto-vectorization of loops
 	     */
 	    bool autoVectorization = false;
+			/*
+			 * Whether to enable instruction sheduling
+			 */
+			bool enableScheduling = true;
 	};
 
 	/*

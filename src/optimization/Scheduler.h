@@ -13,6 +13,7 @@
 namespace vc4c {
 
 using Ops = std::vector<intermediate::Operation *>;
+using Moves = std::vector<intermediate::MoveOperation *>;
 
 class Scheduler {
 public:
@@ -35,12 +36,11 @@ private:
 
 
 public:
-	InstructionSelector (DAG & dag);
-	IL * choose();
-	bool empty();
-	IL *combineOperation(intermediate::Operation *op, Ops & addOp, Ops & mulOp);
-
-    IL * issueCombined (Ops & addOp, Ops & mulOp, std::vector<intermediate::MoveOperation *> & moves);
+		InstructionSelector (DAG & dag);
+		IL * choose();
+		bool empty();
+		IL *combineOperation(intermediate::Operation *op, Ops & addOp, Ops & mulOp);
+		IL * issueCombined (Ops & addOp, Ops & mulOp, Moves & moves);
 };
 
 }

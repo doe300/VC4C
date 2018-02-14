@@ -746,8 +746,10 @@ InstructionWalker optimizations::combineSameFlags(const Module& module, Method& 
 }
 
 void optimizations::instructionScheduling(const Module &module, Method &method, const Configuration &config){
-	for (auto &bb : method.getBasicBlocks()) {
-		auto dag = DAG(method, bb);
-		Scheduler::doScheduling(bb, dag);
+	if (config.enableScheduling) {
+		for (auto &bb : method.getBasicBlocks()) {
+			auto dag = DAG(method, bb);
+			Scheduler::doScheduling(bb, dag);
+		}
 	}
 }
