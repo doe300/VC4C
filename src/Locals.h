@@ -175,7 +175,7 @@ namespace vc4c
 		 *
 		 * Locals referring to each other is used for calculation of indices, where the index (or pointer to an element) refers to the original object for easier tracking of memory accessed.
 		 */
-		const std::pair<Local*, int> reference;
+		std::pair<Local*, int> reference;
 	protected:
 		Local(const DataType& type, const std::string& name);
 	private:

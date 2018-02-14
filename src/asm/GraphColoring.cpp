@@ -423,7 +423,7 @@ GraphColoring::GraphColoring(Method& method, InstructionWalker it) : method(meth
 		auto it = localUses.find(&arg);
 		if (it != localUses.end())
 		{
-			it->second.firstOccurrence = const_cast<Method&>(method).walkAllInstructions();
+			it->second.firstOccurrence = method.walkAllInstructions();
 			if(!isFixed(it->second.possibleFiles))
 				//make sure, parameters are not mapped to accumulators
 				it->second.possibleFiles = remove_flag(it->second.possibleFiles, RegisterFile::ACCUMULATOR);

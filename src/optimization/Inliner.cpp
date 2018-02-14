@@ -66,7 +66,7 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
 					{
 						it.emplace(new intermediate::MoveOperation(ref, call->getArgument(i).value()));
 						if(ref.hasType(ValueType::LOCAL) && call->getArgument(i)->hasType(ValueType::LOCAL))
-							const_cast<std::pair<Local*, int>&>(it->getOutput()->local->reference) = std::make_pair(call->getArgument(i)->local, 0);
+							const_cast<Local*>(it->getOutput()->local)->reference = std::make_pair(call->getArgument(i)->local, 0);
 						it.nextInMethod();
 					}
                 }

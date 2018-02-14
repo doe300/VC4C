@@ -127,11 +127,11 @@ namespace vc4c
 		/*
 		 * Returns the InstructionWalker for the given instruction, if any
 		 */
-		Optional<InstructionWalker> findWalkerForInstruction(const intermediate::IntermediateInstruction* instr, InstructionWalker start);
+		Optional<InstructionWalker> findWalkerForInstruction(const intermediate::IntermediateInstruction* instr, InstructionWalker start) const;
 		/*
 		 * Returns the InstructionWalker for the last (as in prior to the given instruction) instruction setting flags within this basic block
 		 */
-		Optional<InstructionWalker> findLastSettingOfFlags(InstructionWalker start);
+		Optional<InstructionWalker> findLastSettingOfFlags(InstructionWalker start) const;
 		/*
 		 * Returns whether this basic-block is the start of the method body
 		 */

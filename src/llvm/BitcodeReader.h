@@ -47,7 +47,7 @@ namespace vc4c
 			llvm::LLVMContext context;
 			std::unique_ptr<llvm::Module> llvmModule;
 			FastMap<const llvm::Function*, std::pair<Method*, LLVMInstructionList>> parsedFunctions;
-			FastMap<const llvm::Value*, Local*> localMap;
+			FastMap<const llvm::Value*, const Local*> localMap;
 			//required to support recursive types
 			FastMap<const llvm::Type*, DataType> typesMap;
 

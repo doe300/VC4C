@@ -99,7 +99,7 @@ Value IRParser::toValue(const Token& token, const DataType& type)
     		return Value::createZeroInitializer(type);
     	else if(currentMethod != nullptr)
     		//FIXME somehow, parameters are not found, but they are there (at least at a later point!)
-    		val.local = const_cast<Local*>(currentMethod->findOrCreateLocal(type, token.getText().value()));
+    		val = currentMethod->findOrCreateLocal(type, token.getText().value())->createReference();
     	else
     	{
     		module->globalData.emplace_back(Global(token.getText().value(), type.toPointerType(), type, false));
@@ -904,11 +904,11 @@ void IRParser::parseAssignment(LLVMMethod& method, FastModificationList<std::uni
 
         const DataType destType(parseType());
         const Value src = method.method->findOrCreateLocal(type, source)->createReference();
-        const Value dest = method.method->findOrCreateLocal(destType, destination)->createReference();
+        Value dest = method.method->findOrCreateLocal(destType, destination)->createReference();
 
         if(dest.hasType(ValueType::LOCAL) && src.hasType(ValueType::LOCAL) && dest.type.isPointerType() && src.type.isPointerType())
         	//this helps recognizing lifetime-starts of bit-cast stack-allocations
-        	const_cast<std::pair<Local*, int>&>(dest.local->reference) = std::make_pair(src.local, ANY_ELEMENT);
+        	dest.local->reference = std::make_pair(src.local, ANY_ELEMENT);
 
         logging::debug() << "Making reference from bitcast from " << src.to_string() << " to " << dest.to_string() << logging::endl;
         //simply associate new and original

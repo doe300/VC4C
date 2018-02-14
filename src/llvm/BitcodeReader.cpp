@@ -859,7 +859,7 @@ Value BitcodeReader::toValue(Method& method, const llvm::Value* val)
 		loc = method.findOrCreateLocal(type, valueName);
 	else
 		loc = method.addNewLocal(type).local;
-	localMap.emplace(val, const_cast<Local*>(loc));
+	localMap.emplace(val, loc);
 	return loc->createReference();
 }
 

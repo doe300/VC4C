@@ -21,7 +21,7 @@ namespace vc4c
 	{
 		struct LLVMMethod
 		{
-			explicit LLVMMethod(const Module& module) : method(new Method(module)), module(const_cast<Module*>(&module)) { }
+			explicit LLVMMethod(Module& module) : method(new Method(module)), module(&module) { }
 			LLVMMethod(LLVMMethod&& old) = default;
 			LLVMMethod& operator=(LLVMMethod&& old) = default;
 			std::unique_ptr<Method> method;

@@ -569,7 +569,7 @@ static InstructionWalker accessStackAllocations(const Module& module, Method& me
 				const Value qpuOffset = method.addNewLocal(TYPE_INT32, "%stack_offset");
 				const Value addrTemp = method.addNewLocal(arg.type, "%stack_addr");
 				Value finalAddr = method.addNewLocal(arg.type, "%stack_addr");
-				const_cast<std::pair<Local*, int>&>(finalAddr.local->reference) = std::make_pair(arg.local, ANY_ELEMENT);
+				finalAddr.local->reference = std::make_pair(arg.local, ANY_ELEMENT);
 
 				it.emplace(new Operation(OP_MUL24, qpuOffset, Value(REG_QPU_NUMBER, TYPE_INT8), Value(Literal(static_cast<uint32_t>(maximumStackSize)), TYPE_INT32)));
 				it.nextInBlock();

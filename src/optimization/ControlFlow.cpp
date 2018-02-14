@@ -465,17 +465,16 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const LoopContr
 	return benefits - costs;
 }
 
-static void scheduleForVectorization(const Local* local, FastSet<intermediate::IntermediateInstruction*>& openInstructions, ControlFlowLoop& loop)
+static void scheduleForVectorization(const Local* local, FastSet<const intermediate::IntermediateInstruction*>& openInstructions, ControlFlowLoop& loop)
 {
 	local->forUsers(LocalUse::Type::READER, [&openInstructions, &loop](const LocalUser* user) -> void
 	{
-		intermediate::IntermediateInstruction* inst = const_cast<intermediate::IntermediateInstruction*>(user);
-		if(!inst->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
-			openInstructions.emplace(inst);
-		if(inst->getOutput().ifPresent([](const Value& out) -> bool { return out.hasType(ValueType::REGISTER) && (out.reg.isSpecialFunctionsUnit() || out.reg.isTextureMemoryUnit());}))
+		if(!user->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
+			openInstructions.emplace(user);
+		if(user->getOutput().ifPresent([](const Value& out) -> bool { return out.hasType(ValueType::REGISTER) && (out.reg.isSpecialFunctionsUnit() || out.reg.isTextureMemoryUnit());}))
 		{
 			//need to add the reading of SFU/TMU too
-			auto optIt = loop.findInLoop(inst);
+			auto optIt = loop.findInLoop(user);
 			if(optIt)
 			{
 				InstructionWalker it = optIt.value().nextInBlock();
@@ -494,7 +493,7 @@ static void scheduleForVectorization(const Local* local, FastSet<intermediate::I
 	});
 }
 
-static void vectorizeInstruction(InstructionWalker it, FastSet<intermediate::IntermediateInstruction*>& openInstructions, unsigned vectorizationFactor, ControlFlowLoop& loop)
+static void vectorizeInstruction(InstructionWalker it, FastSet<const intermediate::IntermediateInstruction*>& openInstructions, unsigned vectorizationFactor, ControlFlowLoop& loop)
 {
 	logging::debug() << "Vectorizing instruction: " << it->to_string() << logging::endl;
 
@@ -649,7 +648,7 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
  */
 static void vectorize(ControlFlowLoop& loop, LoopControl& loopControl, const DataDependencyGraph& dependencyGraph)
 {
-	FastSet<intermediate::IntermediateInstruction*> openInstructions;
+	FastSet<const intermediate::IntermediateInstruction*> openInstructions;
 
 	const_cast<DataType&>(loopControl.iterationVariable->type).num *= static_cast<unsigned char>(loopControl.vectorizationFactor);
 	scheduleForVectorization(loopControl.iterationVariable, openInstructions, loop);

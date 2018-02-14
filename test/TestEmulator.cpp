@@ -40,21 +40,20 @@ TestEmulator::TestEmulator()
 	}
 }
 
-static std::stringstream compileFile(const std::string& fileName, const std::string& options = "")
+static void compileFile(std::stringstream& buffer, const std::string& fileName, const std::string& options = "")
 {
 	Configuration config;
 	config.outputMode = OutputMode::BINARY;
 	config.writeKernelInfo = true;
-	std::stringstream buffer;
 	std::ifstream input(fileName);
 	Compiler::compile(input, buffer, config, "", fileName);
-	return buffer;
 }
 
 
 void TestEmulator::testHelloWorld()
 {
-	std::stringstream buffer(std::move(compileFile("./example/hello_world.cl")));
+	std::stringstream buffer;
+	compileFile(buffer, "./example/hello_world.cl");
 
 	EmulationData data;
 	data.kernelName = "hello_world";
@@ -84,7 +83,8 @@ void TestEmulator::testHelloWorld()
 
 void TestEmulator::testHelloWorldVector()
 {
-	std::stringstream buffer(std::move(compileFile("./example/hello_world_vector.cl")));
+	std::stringstream buffer;
+	compileFile(buffer, "./example/hello_world_vector.cl");
 
 	EmulationData data;
 	data.kernelName = "hello_world";
@@ -109,13 +109,44 @@ void TestEmulator::testHelloWorldVector()
 
 void TestEmulator::testPrime()
 {
-	std::stringstream buffer(std::move(compileFile("./example/test_prime.cl")));
-	//TODO needs v8adds with arbitrary value to be implemented
+	std::stringstream buffer;
+	compileFile(buffer, "./example/test_prime.cl");
+
+	EmulationData data;
+	data.kernelName = "test_prime";
+	data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+	data.module = std::make_pair("", &buffer);
+
+	{
+		data.parameter.emplace_back(17u, Optional<std::vector<uint32_t>>{});
+		data.parameter.emplace_back(0u, std::vector<uint32_t>(1));
+
+		const auto result = emulate(data);
+		TEST_ASSERT(result.executionSuccessful);
+		TEST_ASSERT_EQUALS(2u, result.results.size());
+
+		const auto& out = *result.results.back().second;
+		TEST_ASSERT(*reinterpret_cast<const bool*>(out.data()));
+
+	}
+	{
+		data.parameter.emplace_back(18u, Optional<std::vector<uint32_t>>{});
+		data.parameter.emplace_back(0u, std::vector<uint32_t>(1));
+
+		const auto result = emulate(data);
+		TEST_ASSERT(result.executionSuccessful);
+		TEST_ASSERT_EQUALS(2u, result.results.size());
+
+		const auto& out = *result.results.back().second;
+		TEST_ASSERT(!*reinterpret_cast<const bool*>(out.data()));
+
+	}
 }
 
 void TestEmulator::testBarrier()
 {
-	std::stringstream buffer(std::move(compileFile("./testing/test_barrier.cl")));
+	std::stringstream buffer;
+	compileFile(buffer, "./testing/test_barrier.cl");
 
 	EmulationData data;
 	data.kernelName = "test_barrier";
@@ -150,7 +181,8 @@ void TestEmulator::testBarrier()
 
 void TestEmulator::testBranches()
 {
-	std::stringstream buffer(std::move(compileFile("./testing/test_branches.cl")));
+	std::stringstream buffer;
+	compileFile(buffer, "./testing/test_branches.cl");
 
 	EmulationData data;
 	data.kernelName = "test_branches";
@@ -180,7 +212,8 @@ void TestEmulator::testBranches()
 
 void TestEmulator::testWorkItem()
 {
-	std::stringstream buffer(std::move(compileFile("./testing/test_work_item.cl")));
+	std::stringstream buffer;
+	compileFile(buffer, "./testing/test_work_item.cl");
 
 	EmulationData data;
 	data.kernelName = "test_work_item";
@@ -193,7 +226,8 @@ void TestEmulator::testWorkItem()
 	//output buffer: 24 * work-items
 	data.parameter.emplace_back(0, std::vector<uint32_t>(24 * data.calcNumWorkItems()));
 
-	//FIXME test with global offset != 0
+	//FIXME sometimes succeeds, sometimes fails
+	//TODO test with global offset != 0
 
 	const auto result = emulate(data);
 	TEST_ASSERT(result.executionSuccessful);
@@ -238,7 +272,8 @@ void TestEmulator::testWorkItem()
 
 void TestEmulator::testBug30()
 {
-	std::stringstream buffer(std::move(compileFile("./testing/bugs/30_local_memory.cl")));
+	std::stringstream buffer;
+	compileFile(buffer, "./testing/bugs/30_local_memory.cl");
 
 	EmulationData data;
 	data.kernelName = "dot3";
@@ -276,7 +311,8 @@ void TestEmulator::testIntegerEmulations(std::size_t index, std::string name)
 {
 	auto& data = vc4c::test::integerTests.at(index).first;
 
-	std::stringstream buffer(std::move(compileFile(data.module.first)));
+	std::stringstream buffer;
+	compileFile(buffer, data.module.first);
 	data.module.second = &buffer;
 
 	const auto result = emulate(data);
@@ -309,7 +345,8 @@ void TestEmulator::testFloatEmulations(std::size_t index, std::string name)
 {
 	auto& data = vc4c::test::floatTests.at(index).first;
 
-	std::stringstream buffer(std::move(compileFile(data.module.first)));
+	std::stringstream buffer;
+	compileFile(buffer, data.module.first);
 	data.module.second = &buffer;
 
 	const auto result = emulate(data);

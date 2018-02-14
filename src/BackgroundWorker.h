@@ -74,11 +74,11 @@ namespace threading
 #endif
 		}
 
-		std::exception_ptr waitFor() const
+		std::exception_ptr waitFor()
 		{
 #ifdef MULTI_THREADED
 			if(runner.joinable())
-				const_cast<std::thread&>(runner).join();
+				runner.join();
 #endif
 			return err;
 		}
@@ -89,10 +89,10 @@ namespace threading
 		std::thread runner;
 #endif
 
-		static void waitForAll(const std::vector<BackgroundWorker>& worker)
+		static void waitForAll(std::vector<BackgroundWorker>& worker)
 		{
 			std::exception_ptr err = nullptr;
-			for(const BackgroundWorker& w : worker)
+			for(BackgroundWorker& w : worker)
 			{
 				std::exception_ptr tmp = w.waitFor();
 				if(tmp)

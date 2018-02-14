@@ -174,7 +174,7 @@ bool BasicBlock::fallsThroughToNextBlock() const
 	return true;
 }
 
-Optional<InstructionWalker> BasicBlock::findWalkerForInstruction(const intermediate::IntermediateInstruction* instr, InstructionWalker start)
+Optional<InstructionWalker> BasicBlock::findWalkerForInstruction(const intermediate::IntermediateInstruction* instr, InstructionWalker start) const
 {
 	while(!start.isStartOfBlock())
 	{
@@ -187,7 +187,7 @@ Optional<InstructionWalker> BasicBlock::findWalkerForInstruction(const intermedi
 	return {};
 }
 
-Optional<InstructionWalker> BasicBlock::findLastSettingOfFlags(const InstructionWalker start)
+Optional<InstructionWalker> BasicBlock::findLastSettingOfFlags(const InstructionWalker start) const
 {
 	InstructionWalker it = start.copy().previousInBlock();
 	while(!it.isStartOfBlock())
