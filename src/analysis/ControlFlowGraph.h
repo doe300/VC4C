@@ -57,7 +57,7 @@ namespace vc4c
 	 *
 	 * NOTE: A control-flow loop can only be used within the life-time of the ControlFlowGraph it is created from!
 	 */
-	struct ControlFlowLoop : public FastAccessList<CFGNode*>
+	struct ControlFlowLoop : public FastAccessList<const CFGNode*>
 	{
 		/*
 		 * Returns the basic-block in the CFG preceding the first node in the loop, the node from which the loop is entered.
@@ -107,7 +107,7 @@ namespace vc4c
 		 * lowestReachable --> earliest visited node (the node with minimum discovery time) that can be reached from subtree rooted with current node
 		 * stack --> To store all the connected ancestors (could be part of SCC)
 		 */
-		ControlFlowLoop findLoopsHelper(CFGNode* node, FastMap<CFGNode*, int>& discoveryTimes, FastMap<CFGNode*, int>& lowestReachable, RandomModificationList<CFGNode*>& stack, int& time);
+		ControlFlowLoop findLoopsHelper(const CFGNode* node, FastMap<const CFGNode*, int>& discoveryTimes, FastMap<const CFGNode*, int>& lowestReachable, RandomModificationList<const CFGNode*>& stack, int& time);
 	};
 
 	enum class DataDependencyType

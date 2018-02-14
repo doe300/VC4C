@@ -1079,7 +1079,7 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
 		if(aluInst->getAddMutexB() == InputMutex::REGA)
 			addIn1 = aluInst->getUnpack().unpack(addIn1).value();
 
-		Value result = addCode.calculate(addIn0, addIn1, [](const Value&) -> Optional<Value> { return NO_VALUE;}).value();
+		Value result = addCode.calculate(addIn0, addIn1).value();
 		if(aluInst->getWriteSwap() == WriteSwap::DONT_SWAP)
 			result = aluInst->getPack().pack(result).value();
 
@@ -1100,7 +1100,7 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
 		if(aluInst->getMulMutexB() == InputMutex::REGA)
 			mulIn1 = aluInst->getUnpack().unpack(mulIn1).value();
 
-		Value result = mulCode.calculate(mulIn0, mulIn1, [](const Value&) -> Optional<Value> { return NO_VALUE;}).value();
+		Value result = mulCode.calculate(mulIn0, mulIn1).value();
 		if(aluInst->getWriteSwap() == WriteSwap::SWAP)
 			result = aluInst->getPack().pack(result).value();
 

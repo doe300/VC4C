@@ -1065,9 +1065,9 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
 
 	Optional<Value> result = NO_VALUE;
 	if(opCode.numOperands == 1)
-		result = opCode.calculate(toConstant(module, expr->getOperand(0)), NO_VALUE, [](const Value&) -> Optional<Value>{return NO_VALUE;});
+		result = opCode.calculate(toConstant(module, expr->getOperand(0)), NO_VALUE);
 	else if (opCode.numOperands == 2)
-		result = opCode.calculate(toConstant(module, expr->getOperand(0)), toConstant(module, expr->getOperand(1)), [](const Value&) -> Optional<Value>{return NO_VALUE;});
+		result = opCode.calculate(toConstant(module, expr->getOperand(0)), toConstant(module, expr->getOperand(1)));
 
 	if(result)
 		return result.value();

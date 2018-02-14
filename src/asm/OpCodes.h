@@ -459,7 +459,7 @@ namespace vc4c
 		 *
 		 * The valueSupplier can be specified to look-up additional values for e.g. resolving locals
 		 */
-		Optional<Value> calculate(Optional<Value> firstOperand, Optional<Value> secondOperand, const std::function<Optional<Value>(const Value&)>& valueSupplier) const;
+		Optional<Value> calculate(Optional<Value> firstOperand, Optional<Value> secondOperand) const;
 
 		/*
 		 * Returns the op-code for the given op-code name.

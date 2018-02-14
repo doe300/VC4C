@@ -390,13 +390,13 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 						secondMax = Value(Literal(saturate<uint32_t>(secondRange.getIntRange()->maxValue)), arg1.type);
 					}
 
-					minVal = op->op.calculate(firstMin, secondMin, [](const Value& val) -> Optional<Value>{ return NO_VALUE;});
-					maxVal = op->op.calculate(firstMax, secondMax, [](const Value& val) -> Optional<Value>{ return NO_VALUE;});
+					minVal = op->op.calculate(firstMin, secondMin);
+					maxVal = op->op.calculate(firstMax, secondMax);
 				}
 				else
 				{
-					minVal = op->op.calculate(firstMin, NO_VALUE, [](const Value& val) -> Optional<Value>{ return NO_VALUE;});
-					maxVal = op->op.calculate(firstMax, NO_VALUE, [](const Value& val) -> Optional<Value>{ return NO_VALUE;});
+					minVal = op->op.calculate(firstMin, NO_VALUE);
+					maxVal = op->op.calculate(firstMax, NO_VALUE);
 				}
 
 				if(minVal.ifPresent(toFunction(&Value::isLiteralValue)) && maxVal.ifPresent(toFunction(&Value::isLiteralValue)))
@@ -431,6 +431,8 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 
 void ValueRange::extendBoundaries(double newMin, double newMax)
 {
+	if(newMax < newMin)
+		std::swap(newMax, newMin);
 	switch(type)
 	{
 		case RangeType::FLOAT:
@@ -464,6 +466,8 @@ void ValueRange::extendBoundaries(double newMin, double newMax)
 
 void ValueRange::extendBoundaries(int64_t newMin, int64_t newMax)
 {
+	if(newMax < newMin)
+		std::swap(newMax, newMin);
 	switch(type)
 	{
 		case RangeType::FLOAT:

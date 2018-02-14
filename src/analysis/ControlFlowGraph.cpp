@@ -97,7 +97,7 @@ Optional<InstructionWalker> ControlFlowLoop::findInLoop(const intermediate::Inte
 {
 	for(const CFGNode* node : *this)
 	{
-		auto it = const_cast<BasicBlock*>(node->key)->findWalkerForInstruction(inst, node->key->end());
+		auto it = node->key->findWalkerForInstruction(inst, node->key->end());
 		if(it)
 			return it;
 	}
@@ -122,9 +122,9 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops()
 	FastAccessList<ControlFlowLoop> loops;
 	loops.reserve(8);
 
-	FastMap<CFGNode*, int> discoveryTimes;
-	FastMap<CFGNode*, int> lowestReachable;
-	RandomModificationList<CFGNode*> stack;
+	FastMap<const CFGNode*, int> discoveryTimes;
+	FastMap<const CFGNode*, int> lowestReachable;
+	RandomModificationList<const CFGNode*> stack;
 	//a time of 0 means not initialized yet
 	int time = 1;
 
@@ -132,11 +132,11 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops()
 	// connected components in DFS tree with node 'i'
 
 	//we need the nodes sorted by the order of the basic blocks
-	OrderedSet<CFGNode*, CFGNodeSorter> orderedNodes;
+	OrderedSet<const CFGNode*, CFGNodeSorter> orderedNodes;
 	for(auto& pair : *this)
 		orderedNodes.emplace(&pair.second);
 
-	for(auto& node : orderedNodes)
+	for(const CFGNode* node : orderedNodes)
 	{
 		if(discoveryTimes[node] == 0)
 		{
@@ -144,7 +144,7 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops()
 			if(loop.size() > 1)
 				loops.emplace_back(std::move(loop));
 		}
-		if(node->getNeighbors().find(node) != node->getNeighbors().end())
+		if(node->getNeighbors().find(const_cast<CFGNode*>(node)) != node->getNeighbors().end())
 		{
 			//extra case, loop with single block
 			ControlFlowLoop loop;
@@ -192,7 +192,7 @@ ControlFlowGraph ControlFlowGraph::createCFG(Method& method)
 	return graph;
 }
 
-ControlFlowLoop ControlFlowGraph::findLoopsHelper(CFGNode* node, FastMap<CFGNode*, int>& discoveryTimes, FastMap<CFGNode*, int>& lowestReachable, RandomModificationList<CFGNode*>& stack, int& time)
+ControlFlowLoop ControlFlowGraph::findLoopsHelper(const CFGNode* node, FastMap<const CFGNode*, int>& discoveryTimes, FastMap<const CFGNode*, int>& lowestReachable, RandomModificationList<const CFGNode*>& stack, int& time)
 {
 	// Initialize discovery time and low value
 	discoveryTimes[node] = lowestReachable[node] = ++time;
@@ -201,7 +201,7 @@ ControlFlowLoop ControlFlowGraph::findLoopsHelper(CFGNode* node, FastMap<CFGNode
 	// Go through all vertices adjacent to this
 	node->forAllNeighbors(toFunction(&CFGRelation::isForwardRelation), [this, node, &discoveryTimes, &lowestReachable, &stack, &time](const CFGNode* next, const CFGRelation& rel) -> void
 	{
-		CFGNode* v = const_cast<CFGNode*>(next);
+		const CFGNode* v = next;
 		// If v is not visited yet, then recur for it
 		if (discoveryTimes[v] == 0)
 		{

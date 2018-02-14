@@ -418,8 +418,9 @@ static unsigned int rotate_right(unsigned int value, int shift)
 	return (value >> shift) | (value << (32 - shift));
 }
 
-Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> secondOperand, const std::function<Optional<Value>(const Value&)>& valueSupplier) const
+Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> secondOperand) const
 {
+	//TODO recursively calculate constant operand value if local with single writer?
 	if(!firstOperand)
 		return NO_VALUE;
 	if(numOperands > 1 && !secondOperand)
@@ -433,8 +434,8 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 		return (acceptsFloat == returnsFloat && firstOperand->type == secondOperand->type) ? Value(firstOperand->type) : UNDEFINED_VALUE;
 
 	//extract the literal value behind the operands
-	Optional<Value> firstVal = (firstOperand->getLiteralValue() || firstOperand->hasType(ValueType::CONTAINER)) ? firstOperand.value() : valueSupplier(firstOperand.value());
-	Optional<Value> secondVal = !secondOperand || (secondOperand->getLiteralValue() || secondOperand->hasType(ValueType::CONTAINER)) ? secondOperand : valueSupplier(secondOperand.value());
+	Optional<Value> firstVal = (firstOperand->getLiteralValue() || firstOperand->hasType(ValueType::CONTAINER)) ? firstOperand.value() : NO_VALUE;
+	Optional<Value> secondVal = !secondOperand || (secondOperand->getLiteralValue() || secondOperand->hasType(ValueType::CONTAINER)) ? secondOperand : NO_VALUE;
 
 	if(!firstVal)
 		return NO_VALUE;
@@ -462,7 +463,7 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 		for(unsigned char i = 0; i < numElements; ++i)
 		{
 			auto tmp = calculate(firstVal->hasType(ValueType::CONTAINER) ? firstVal->container.elements.at(i) : firstVal.value(),
-					secondVal->hasType(ValueType::CONTAINER) ? secondVal->container.elements.at(i) : secondVal.value(), valueSupplier);
+					secondVal->hasType(ValueType::CONTAINER) ? secondVal->container.elements.at(i) : secondVal.value());
 			if(!tmp)
 				//result could not be calculated for a single component of the vector, abort
 				return NO_VALUE;

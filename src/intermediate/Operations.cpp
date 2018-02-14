@@ -296,7 +296,7 @@ Optional<Value> Operation::precalculate(const std::size_t numIterations) const
     		return NO_VALUE;
     }
 
-    return op.calculate(arg0, arg1, [](const Value& v) -> Optional<Value>{return NO_VALUE; /* is handled via the pre-calculation above*/ });
+    return op.calculate(arg0, arg1);
 }
 
 void Operation::setOpCode(const OpCode& op)
