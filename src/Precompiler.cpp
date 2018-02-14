@@ -7,6 +7,7 @@
 #include "Precompiler.h"
 
 #include "ProcessUtil.h"
+#include "Profiler.h"
 #include "log.h"
 
 #include <cerrno>
@@ -30,6 +31,25 @@
 using namespace vc4c;
 
 static const std::string TEMP_FILE_TEMPLATE = "XXXXXX";
+
+bool vc4c::isSupportedByFrontend(SourceType inputType, Frontend frontend)
+{
+	switch(inputType)
+	{
+		case SourceType::LLVM_IR_BIN: // fall-through
+		case SourceType::LLVM_IR_TEXT: // fall-through
+		case SourceType::OPENCL_C:
+			return true;
+		case SourceType::SPIRV_BIN: // fall-through
+		case SourceType::SPIRV_TEXT:
+			return frontend == Frontend::SPIR_V || frontend ==Frontend::DEFAULT;
+		case SourceType::QPUASM_BIN: // fall-through
+		case SourceType::QPUASM_HEX: // fall-through
+		case SourceType::UNKNOWN:
+		default:
+			return false;
+	}
+}
 
 TemporaryFile::TemporaryFile(const std::string& fileTemplate) : fileName(fileTemplate)
 {
@@ -100,6 +120,34 @@ void TemporaryFile::openInputStream(std::unique_ptr<std::istream>& ptr) const
 	ptr.reset( new std::ifstream(fileName, std::ios_base::in|std::ios_base::binary));
 }
 
+void Precompiler::precompile(std::istream& input, std::unique_ptr<std::istream>& output, Configuration config, const std::string& options, const Optional<std::string>& inputFile, Optional<std::string> outputFile)
+{
+	PROFILE_START(Precompile);
+	Precompiler precompiler(input, Precompiler::getSourceType(input), inputFile);
+	if(config.frontend != Frontend::DEFAULT)
+		precompiler.run(output, config.frontend == Frontend::LLVM_IR ? SourceType::LLVM_IR_TEXT : SourceType::SPIRV_BIN, options, outputFile);
+	else
+	{
+#if defined USE_LLVM_LIBRARY and defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_PARSER_HEADER
+		//we have both front-ends, select the front-end which can handle the input type
+		if(isSupportedByFrontend(precompiler.inputType, Frontend::LLVM_IR))
+			//prefer LLVM library front-end
+			precompiler.run(output, SourceType::LLVM_IR_BIN, options, outputFile);
+		else
+			precompiler.run(output, SourceType::SPIRV_BIN, options, outputFile);
+#elif defined USE_LLVM_LIBRARY
+		precompiler.run(output, SourceType::LLVM_IR_BIN, options, outputFile);
+#elif defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_PARSER_HEADER
+		precompiler.run(output, SourceType::SPIRV_BIN, options, outputFile);
+#elif defined CLANG_PATH
+		precompiler.run(output, SourceType::LLVM_IR_TEXT, options, outputFile);
+#else
+		throw CompilationError(CompilationStep::PRECOMPILATION, "No matching precompiler available!");
+#endif
+	}
+	PROFILE_END(Precompile);
+}
+
 SourceType Precompiler::getSourceType(std::istream& stream)
 {
 	//http://llvm.org/docs/BitCodeFormat.html#magic-numbers
@@ -136,8 +184,9 @@ SourceType Precompiler::getSourceType(std::istream& stream)
     return type;
 }
 
-void Precompiler::linkSourceCode(const std::unordered_map<std::istream*, Optional<std::string>>& inputs, std::ostream& output)
+SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, Optional<std::string>>& inputs, std::ostream& output)
 {
+	PROFILE_START(linkSourceCode);
 #ifndef SPIRV_HEADER
 	throw CompilationError(CompilationStep::LINKER, "SPIR-V front-end is not provided!");
 	//TODO also allow to link via llvm-link for "normal" LLVM (or generally link with (SPIR-V) LLVM?)
@@ -166,6 +215,8 @@ void Precompiler::linkSourceCode(const std::unordered_map<std::istream*, Optiona
 
 	logging::debug() << "Linking " << inputs.size() << " input modules..." << logging::endl;
 	spirv2qasm::linkSPIRVModules(convertedInputs, output);
+	PROFILE_END(linkSourceCode);
+	return SourceType::SPIRV_BIN;
 #endif
 }
 
@@ -329,8 +380,7 @@ static void compileSPIRVToSPIRV(std::istream& input, std::ostream& output, const
 #endif
 }
 
-Precompiler::Precompiler(std::istream& input, const SourceType inputType, const Optional<std::string>& inputFile) :
-		input(input), inputType(inputType), inputFile(inputFile)
+Precompiler::Precompiler(std::istream& input, const SourceType inputType, const Optional<std::string>& inputFile) : inputType(inputType), inputFile(inputFile), input(input)
 {
 	if(inputType == SourceType::QPUASM_BIN || inputType == SourceType::QPUASM_HEX || inputType == SourceType::UNKNOWN)
 		throw CompilationError(CompilationStep::PRECOMPILATION, "Invalid input-type for pre-compilation!");

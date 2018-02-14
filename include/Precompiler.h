@@ -57,6 +57,8 @@ namespace vc4c
 	    QPUASM_BIN = 7
 	};
 
+	bool isSupportedByFrontend(SourceType inputType, Frontend frontend);
+
 	/*
 	 * RAII object to manage a temporary file.
 	 *
@@ -113,6 +115,18 @@ namespace vc4c
 	#endif
 
 		/*
+		 * Helper-function to easily pre-compile a single input with the given configuration into the given output.
+		 *
+		 * \param input The input stream
+		 * \param output The output-stream
+		 * \param config The configuration to use for compilation
+		 * \param options Specify additional compiler-options to pass onto the pre-compiler
+		 * \param inputFile Can be used by the compiler to speed-up compilation (e.g. by running the pre-compiler with these files instead of needing to write input to a temporary file)
+		 * \param outputFile The optional output-file to write the pre-compiled code into. If this is specified, the code is compiled into the file, otherwise the output stream is filled with the compiled code
+		 */
+		static void precompile(std::istream& input,std::unique_ptr<std::istream>& output, Configuration config = {}, const std::string& options = "", const Optional<std::string>& inputFile = {}, Optional<std::string> outputFile = {});
+
+		/*
 		 * Determines the type of code stored in the given stream.
 		 *
 		 * NOTE: This function reads from the stream but resets the cursor back to the beginning.
@@ -120,14 +134,16 @@ namespace vc4c
 		static SourceType getSourceType(std::istream& stream);
 
 		/*
-		 * Links multiple source-code files using a linker provided by the pre-compilers
+		 * Links multiple source-code files using a linker provided by the pre-compilers.
+		 *
+		 * Returns the SourceType of the linked module
 		 */
-		static void linkSourceCode(const std::unordered_map<std::istream*, Optional<std::string>>& inputs, std::ostream& output);
+		static SourceType linkSourceCode(const std::unordered_map<std::istream*, Optional<std::string>>& inputs, std::ostream& output);
 
-	private:
-		std::istream& input;
 		const SourceType inputType;
 		const Optional<std::string> inputFile;
+	private:
+		std::istream& input;
 	};
 } // namespace vc4c
 

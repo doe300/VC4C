@@ -176,25 +176,9 @@ std::size_t Compiler::compile(std::istream& input, std::ostream& output, const C
 	try
 	{
 		//pre-compilation
-		PROFILE_START(Precompile);
-		Precompiler precompiler(input, Precompiler::getSourceType(input), inputFile);
-		std::unique_ptr<std::istream> in;
 		TemporaryFile tmpFile;
-		if(config.frontend != Frontend::DEFAULT)
-			precompiler.run(in, config.frontend == Frontend::LLVM_IR ? SourceType::LLVM_IR_TEXT : SourceType::SPIRV_BIN, options, tmpFile.fileName);
-		else
-		{
-#ifdef USE_LLVM_LIBRARY
-			precompiler.run(in, SourceType::LLVM_IR_BIN, options, tmpFile.fileName);
-#elif defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_PARSER_HEADER
-    	precompiler.run(in, SourceType::SPIRV_BIN, options, tmpFile.fileName);
-#elif defined CLANG_PATH
-    	precompiler.run(in, SourceType::LLVM_IR_TEXT, options, tmpFile.fileName);
-#else
-    	throw CompilationError(CompilationStep::PRECOMPILATION, "No matching precompiler available!");
-#endif
-		}
-		PROFILE_END(Precompile);
+		std::unique_ptr<std::istream> in;
+		Precompiler::precompile(input, in, config, options, inputFile, tmpFile.fileName);
 
 		if(in == nullptr || (dynamic_cast<std::istringstream*>(in.get()) != nullptr && dynamic_cast<std::istringstream*>(in.get())->str().empty()))
 			//replace only when pre-compiled (and not just linked output to input, e.g. if source-type is output-type)
