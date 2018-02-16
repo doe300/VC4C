@@ -268,7 +268,11 @@ static InstructionWalker findGroupOfVPMAccess(VPM& vpm, InstructionWalker start,
 static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
 {
 	if(group.genericSetups.size() != group.addressWrites.size() || group.genericSetups.size() != group.dmaSetups.size())
-			throw CompilationError(CompilationStep::OPTIMIZER, "Number of instructions do not match for combining VPR reads!");
+	{
+		logging::debug() << "Number of instructions do not match for combining VPM writes!" << logging::endl;
+		logging::debug() << group.genericSetups.size() << " generic VPM setups, " << group.addressWrites.size() << " VPR address writes and " << group.dmaSetups.size() << " DMA setups" << logging::endl;
+		return;
+	}
 	if(group.addressWrites.size() <= 1)
 		return;
 	logging::debug() << "Combining " << group.addressWrites.size() << " writes to consecutive memory into one DMA write... " << logging::endl;
@@ -328,8 +332,11 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
 static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
 {
 	if(group.genericSetups.size() != group.addressWrites.size() || group.genericSetups.size() != group.dmaSetups.size())
-		throw CompilationError(CompilationStep::OPTIMIZER, "Number of instructions do not match for combining VPR reads!");
-
+	{
+		logging::debug() << "Number of instructions do not match for combining VPM reads!" << logging::endl;
+		logging::debug() << group.genericSetups.size() << " generic VPM setups, " << group.addressWrites.size() << " VPR address writes and " << group.dmaSetups.size() << " DMA setups" << logging::endl;
+		return;
+	}
 	if(group.genericSetups.size() <= 1)
 		return;
 	logging::debug() << "Combining " << group.genericSetups.size() << " reads of consecutive memory into one DMA read... " << logging::endl;

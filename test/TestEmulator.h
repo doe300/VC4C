@@ -21,6 +21,8 @@ public:
 	void testBranches();
 	void testWorkItem();
 	void testBug30();
+	void testSHA1();
+	void testSHA256();
 	void testIntegerEmulations(std::size_t index, std::string name);
 	void testFloatEmulations(std::size_t index, std::string name);
 };

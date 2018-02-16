@@ -12,6 +12,7 @@
 
 #include "log.h"
 
+#include <cstdlib>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
@@ -130,21 +131,21 @@ int main(int argc, char** argv)
 		else if(std::string("-l") == argv[i])
 		{
 			++i;
-			config.localSizes.at(0) = static_cast<tools::Word>(std::atol(argv[i]));
+			config.localSizes.at(0) = static_cast<tools::Word>(std::strtol(argv[i], nullptr, 0));
 			++i;
-			config.localSizes.at(1) = static_cast<tools::Word>(std::atol(argv[i]));
+			config.localSizes.at(1) = static_cast<tools::Word>(std::strtol(argv[i], nullptr, 0));
 			++i;
-			config.localSizes.at(2) = static_cast<tools::Word>(std::atol(argv[i]));
+			config.localSizes.at(2) = static_cast<tools::Word>(std::strtol(argv[i], nullptr, 0));
 			config.dimensions = 3;
 		}
 		else if(std::string("-g") == argv[i])
 		{
 			++i;
-			config.numGroups.at(0) = static_cast<tools::Word>(std::atol(argv[i]));
+			config.numGroups.at(0) = static_cast<tools::Word>(std::strtol(argv[i], nullptr, 0));
 			++i;
-			config.numGroups.at(1) = static_cast<tools::Word>(std::atol(argv[i]));
+			config.numGroups.at(1) = static_cast<tools::Word>(std::strtol(argv[i], nullptr, 0));
 			++i;
-			config.numGroups.at(2) = static_cast<tools::Word>(std::atol(argv[i]));
+			config.numGroups.at(2) = static_cast<tools::Word>(std::strtol(argv[i], nullptr, 0));
 			config.dimensions = 3;
 		}
 		else if(std::string("-d") == argv[i])
@@ -172,11 +173,11 @@ int main(int argc, char** argv)
 		else if(std::string("-b") == argv[i])
 		{
 			++i;
-			parameterValues.emplace_back(std::vector<tools::Word>(std::atol(argv[i]), 0x0));
+			parameterValues.emplace_back(std::vector<tools::Word>(std::strtol(argv[i], nullptr, 0), 0x0));
 			memorySize += parameterValues.back().size();
 		}
 		else
-			parameterValues.emplace_back(std::vector<tools::Word>{static_cast<tools::Word>(std::atol(argv[i]))});
+			parameterValues.emplace_back(std::vector<tools::Word>{static_cast<tools::Word>(std::strtol(argv[i], nullptr, 0))});
 	}
 
 	std::ifstream input(argv[argc - 1]);

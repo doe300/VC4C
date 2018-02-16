@@ -122,13 +122,14 @@ namespace vc4c
 					{toScalarParameter(1.0f), toScalarParameter(1.1f), toScalarParameter(1.5f), toScalarParameter(1.9f), toParameter(std::vector<int>(32))}, {}, maxExecutionCycles),
 					addVector({}, 4, std::vector<int>{1, 1, 1, 1, -1, -1, -1, -1, 1, -1, 2, -1, 1, -1, 1, -2, 1, -1, 2, -2, 1, 1, 2, 2, -1, -1, -2, -2, 1, -1})
 				),
+				//TODO global data is not yet supported correctly
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_other.cl", "test_global_data",
 					{toScalarParameter(1), toParameter(std::vector<int32_t>(2))}, {}, maxExecutionCycles),
 					addVector({}, 1, std::vector<int32_t>{2, 21})
 				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vectorization.cl", "test4",
 					{toParameter(toRange<int>(0, 1024)), toParameter(std::vector<int>(1))}, {}, maxExecutionCycles * 2),
-					addVector({}, 1, std::vector<int>{529925})
+					addVector({}, 1, std::vector<int>{528896})
 				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vectorization.cl", "test8",
 					{toParameter(toRange<int>(0, 1024)), toParameter(toRange<int>(0, 4096))}, {}, maxExecutionCycles * 2),
@@ -144,7 +145,7 @@ namespace vc4c
 				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vectorization.cl", "test11",
 					{toParameter(toRange<int>(0, 256))}, {}, maxExecutionCycles),
-					addVector({}, 0, std::vector<int>{100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100})
+					addVector({}, 0, std::vector<int>{201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211})
 				)
 		};
 
@@ -176,7 +177,7 @@ namespace vc4c
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/NVIDIA/VectorAdd.cl", "VectorAdd",
 					{toParameter(toRange<float>(0.0f, 18.0f)), toParameter(toRange<float>(0.0f, 18.0f)), toParameter(std::vector<uint32_t>(20)), toScalarParameter(16)},
 					toConfig(12, 1, 1, 2, 1, 1), maxExecutionCycles),
-					addVector({}, 2, std::vector<float>{2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f, 14.0f, 16.0f, 18.0f, 20.0f, 22.0f, 24.0f, 26.0f, 28.0f, 30.0f, 32.0f, 0.0f})
+					addVector({}, 2, std::vector<float>{0.0f, 2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f, 14.0f, 16.0f, 18.0f, 20.0f, 22.0f, 24.0f, 26.0f, 28.0f, 30.0f, 0.0f})
 				),
 //				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vector.cl", "test_arithm",
 //					{toScalarParameter(2.0f), toParameter(std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f}), toParameter(std::vector<float>(16))}, {}, maxExecutionCycles),

@@ -26,7 +26,6 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./example/fft2_2.cl", ""},
 		Entry{PASSED, FAST, "./example/fibonacci.cl", ""},
 		Entry{PENDING_LLVM, FAST, "./example/fibonacci.spt", ""},
-		Entry{PENDING_BOTH, FAST, "./example/fibonacci_vector.ir", ""},
 		Entry{PASSED, FAST, "./example/hello_world.cl", ""},
 		Entry{PASSED, FAST, "./example/hello_world_vector.cl", ""},
 		Entry{PASSED, FAST, "./example/test.cl", ""},
@@ -359,7 +358,9 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./testing/OpenCL-CTS/work_item_functions.cl", ""},
 
 		Entry{PENDING_BOTH, FAST, "./testing/FFmpeg/overlay.cl", ""},
-		Entry{PENDING_BOTH, FAST, "./testing/FFmpeg/unsharp.cl", ""}
+		Entry{PENDING_BOTH, FAST, "./testing/FFmpeg/unsharp.cl", ""},
+
+		Entry{PENDING_BOTH, FAST, "./testing/OpenCL-caffe/caffe_gpu_memset.cl", ""}
 
 };
 

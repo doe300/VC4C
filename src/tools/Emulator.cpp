@@ -60,7 +60,7 @@ tools::Word* Memory::getWordAddress(MemoryAddress address)
 Value Memory::readWord(MemoryAddress address) const
 {
 	if(address % sizeof(Word) != 0)
-		logging::warn() << "Reading word from non-word-aligned memory location will be truncated to align with word-boundaries: " << address << logging::endl;
+		logging::debug() << "Reading word from non-word-aligned memory location will be truncated to align with word-boundaries: " << address << logging::endl;
 	return Value(Literal(data.at(address / sizeof(Word))), TYPE_INT32);
 }
 
@@ -352,6 +352,7 @@ Value UniformCache::readUniform()
 	Value val = memory.readWord(uniformAddress);
 	// do not increment UNIFORM pointer for multiple reads in same instruction
 	uniformAddress = memory.incrementAddress(uniformAddress, TYPE_INT32);
+	logging::debug() << "Reading UNIFORM value: " << val.to_string(false, true) << logging::endl;
 	return val;
 }
 
@@ -393,7 +394,7 @@ std::pair<Value, bool> TMUs::readTMU()
 	{
 		if(queue->front().second + 20 > qpu.getCurrentCycle())
 			//blocks up to 20 cycles when reading from RAM
-			logging::debug() << "Distance between triggering of TMU read and read is " << (qpu.getCurrentCycle() - queue->front().second) << ", additional stally may be introduced" << logging::endl;
+			logging::debug() << "Distance between triggering of TMU read and read is " << (qpu.getCurrentCycle() - queue->front().second) << ", additional stalls may be introduced" << logging::endl;
 		queue->pop_front();
 	}
 	return std::make_pair(val, !blocks);
@@ -1079,7 +1080,22 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
 		if(aluInst->getAddMutexB() == InputMutex::REGA)
 			addIn1 = aluInst->getUnpack().unpack(addIn1).value();
 
-		Value result = addCode.calculate(addIn0, addIn1).value();
+		//"bit-cast" to correct type for displaying and pack-modes
+		if(addCode.acceptsFloat)
+		{
+			addIn0.type = TYPE_FLOAT.toVectorType(addIn0.type.num);
+			addIn1.type = TYPE_FLOAT.toVectorType(addIn1.type.num);
+		}
+		else if(!(addCode == OP_OR && addIn0 == addIn1)) // move leaves original types
+		{
+			addIn0.type = addIn0.type.isFloatingType() ? TYPE_INT32.toVectorType(addIn0.type.num) : addIn0.type;
+			addIn1.type = addIn1.type.isFloatingType() ? TYPE_INT32.toVectorType(addIn1.type.num) : addIn1.type;
+		}
+
+		auto tmp = addCode.calculate(addIn0, addIn1);
+		if(!tmp)
+			logging::error() << "Failed to emulate ALU operation: " << addCode.name << " with " << addIn0.to_string(false, true) << " and " << addIn1.to_string(false, true) << logging::endl;
+		Value result = tmp.value();
 		if(aluInst->getWriteSwap() == WriteSwap::DONT_SWAP)
 			result = aluInst->getPack().pack(result).value();
 
@@ -1100,7 +1116,22 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
 		if(aluInst->getMulMutexB() == InputMutex::REGA)
 			mulIn1 = aluInst->getUnpack().unpack(mulIn1).value();
 
-		Value result = mulCode.calculate(mulIn0, mulIn1).value();
+		//"bit-cast" to correct type for displaying and pack-modes
+		if(mulCode.acceptsFloat)
+		{
+			mulIn0.type = TYPE_FLOAT.toVectorType(mulIn0.type.num);
+			mulIn1.type = TYPE_FLOAT.toVectorType(mulIn1.type.num);
+		}
+		else if(!((mulCode == OP_V8MIN || mulCode == OP_V8MAX) && addIn0 == addIn1)) // move leaves original types
+		{
+			mulIn0.type = mulIn0.type.isFloatingType() ? TYPE_INT32.toVectorType(mulIn0.type.num) : mulIn0.type;
+			mulIn1.type = mulIn1.type.isFloatingType() ? TYPE_INT32.toVectorType(mulIn1.type.num) : mulIn1.type;
+		}
+
+		auto tmp = mulCode.calculate(mulIn0, mulIn1);
+		if(!tmp)
+			logging::error() << "Failed to emulate ALU operation: " << mulCode.name << " with " << mulIn0.to_string(false, true) << " and " << mulIn1.to_string(false, true) << logging::endl;
+		Value result = tmp.value();
 		if(aluInst->getWriteSwap() == WriteSwap::SWAP)
 			result = aluInst->getPack().pack(result).value();
 

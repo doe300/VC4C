@@ -408,7 +408,7 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
 		calculateElementOffset(method, it, src.type, inAreaOffset, elementOffset);
 		//2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
 		//3) write setup with dynamic address
-		it.emplace(new Operation(OP_ADD, VPM_IN_SETUP_REGISTER, Value(Literal(genericSetup.value), TYPE_INT32), elementOffset));
+		it.emplace(new Operation(OP_ADD, VPM_OUT_SETUP_REGISTER, Value(Literal(genericSetup.value), TYPE_INT32), elementOffset));
 		it.nextInBlock();
 	}
 	//2. write data to VPM

@@ -44,16 +44,6 @@ static Test::Suite* newCompilationTest()
  */
 int main(int argc, char** argv)
 {
-
-    #if TEST_OUTPUT_CONSOLE == 1
-    Test::TextOutput output(Test::TextOutput::Verbose);
-    #else
-    std::ofstream file;
-    file.open("testResult.log", std::ios_base::out | std::ios_base::trunc);
-
-    Test::TextOutput output(Test::TextOutput::Verbose, file);
-    #endif
-
     //only output errors
     logging::LOGGER.reset(new logging::ConsoleLogger(logging::Level::WARNING));
 

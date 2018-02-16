@@ -30,6 +30,9 @@ TestEmulator::TestEmulator()
 	TEST_ADD(TestEmulator::testBranches);
 	TEST_ADD(TestEmulator::testWorkItem);
 	TEST_ADD(TestEmulator::testBug30);
+	//TODO requires v8muld
+	//TEST_ADD(TestEmulator::testSHA1);
+	TEST_ADD(TestEmulator::testSHA256);
 	for(std::size_t i = 0; i < vc4c::test::integerTests.size(); ++i)
 	{
 		TEST_ADD_TWO_ARGUMENTS(TestEmulator::testIntegerEmulations, i, vc4c::test::integerTests.at(i).first.kernelName);
@@ -305,6 +308,86 @@ void TestEmulator::testBug30()
 		std::cout << (reinterpret_cast<const float*>(result.results[2].second->data())[i]) << std::endl;
 
 	//TODO also test __local memory version
+}
+
+void TestEmulator::testSHA1()
+{
+	const std::string sample("Hello World!");
+	const std::vector<uint32_t> digest = {0x2ef7bde6, 0x08ce5404, 0xe97d5f04, 0x2f95f89f, 0x1c232871};
+
+	std::stringstream buffer;
+	compileFile(buffer, "./example/md5.cl");
+
+	EmulationData data;
+	data.kernelName = "sha1_crypt_kernel";
+	data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+	data.module = std::make_pair("", &buffer);
+
+	//parameter 0 is the control data
+	data.parameter.emplace_back(0, std::vector<uint32_t>{0 /* padding*/, 1 /* number of keys */});
+	//parameter 1 is the salt, set to zero
+	data.parameter.emplace_back(0, std::vector<uint32_t>(24));
+	//parameter 2 is the "plain_key", the input
+	data.parameter.emplace_back(0, std::vector<uint32_t>(sample.size() / sizeof(uint32_t)));
+	memcpy(data.parameter.back().second->data(), sample.data(), sample.size());
+	//parameter 3 is the digest
+	data.parameter.emplace_back(0, std::vector<uint32_t>(8));
+
+	const auto result = emulate(data);
+	TEST_ASSERT(result.executionSuccessful);
+	TEST_ASSERT_EQUALS(4u, result.results.size());
+
+	if(digest != result.results.at(3).second.value())
+	{
+		auto expectedIt = digest.begin();
+		auto resultIt = result.results.at(3).second->end();
+		while(expectedIt != digest.end())
+		{
+			TEST_ASSERT_EQUALS(*expectedIt, *resultIt);
+
+			++resultIt;
+			++expectedIt;
+		}
+	}
+}
+
+void TestEmulator::testSHA256()
+{
+	const std::string sample("Hello World!1111");
+	const std::vector<uint32_t> digest = {0xf90a1ef4, 0x422350ca, 0x8c448530, 0xa7d5d0b2, 0x35054803, 0xf7b2a73d, 0x86f4b639, 0x4b1329a5};
+
+	std::stringstream buffer;
+	compileFile(buffer, "./example/SHA-256.cl");
+
+	EmulationData data;
+	data.kernelName = "execute_sha256_cpu";
+	data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+	data.module = std::make_pair("", &buffer);
+
+	//parameter 0 is the input with a block-size of 16 words
+	data.parameter.emplace_back(0, std::vector<uint32_t>(16));
+	memcpy(data.parameter.back().second->data(), sample.data(), sample.size());
+	//parameter 1 is the digest
+	data.parameter.emplace_back(0, std::vector<uint32_t>(128));
+	//parameter 2 is the stride
+	data.parameter.emplace_back(0, Optional<std::vector<uint32_t>>{});
+
+	const auto result = emulate(data);
+	TEST_ASSERT(result.executionSuccessful);
+	TEST_ASSERT_EQUALS(3u, result.results.size());
+
+	if(memcmp(digest.data(), result.results.at(1).second->data(), digest.size()) != 0)
+	{
+		auto expectedIt = digest.begin();
+		auto resultIt = result.results.at(1).second->begin();
+		while(expectedIt  != digest.end())
+		{
+			TEST_ASSERT_EQUALS(*expectedIt, *resultIt);
+
+			++resultIt;
+			++expectedIt;
+		}
+	}
 }
 
 void TestEmulator::testIntegerEmulations(std::size_t index, std::string name)
