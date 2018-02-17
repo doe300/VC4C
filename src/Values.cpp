@@ -61,22 +61,42 @@ std::string Register::to_string(bool specialNames, bool readAccess) const
             if(num == 37)
                 return "rep";
             if(num == 38)
-                return file == RegisterFile::PHYSICAL_A ? "elem_num" : "qpu_num";
+            {
+            	if(file == RegisterFile::PHYSICAL_A)
+            		return "elem_num";
+            	if(file == RegisterFile::PHYSICAL_B)
+            		return "qpu_num";
+            }
             if(num == 39)
                 return "-";
             if(num == 48)
                 return "vpm";
             if(num == 49)
-                return file == RegisterFile::PHYSICAL_A ? "vpr_busy" : "vpw_busy";
+            {
+				if(file == RegisterFile::PHYSICAL_A)
+					return "vpr_busy";
+				if(file == RegisterFile::PHYSICAL_B)
+					return "vpw_busy";
+			}
             if(num == 50)
-                return file == RegisterFile::PHYSICAL_A ? "vpr_wait" : "vpw_wait";
+            {
+				if(file == RegisterFile::PHYSICAL_A)
+					return "vpr_wait";
+				if(file == RegisterFile::PHYSICAL_B)
+					return "vpw_wait";
+			}
             if(num == 51)
                 return "mutex_acq";
         }
         else
         {
             if(num == 37)
-                return file == RegisterFile::PHYSICAL_A ? "rep_quad" : "rep_all";
+            {
+				if(file == RegisterFile::PHYSICAL_A)
+					return "rep_quad";
+				if(file == RegisterFile::PHYSICAL_B)
+					return "rep_all";
+			}
             if(num == 38)
                 return "irq";
             if(num == 39)
@@ -84,9 +104,19 @@ std::string Register::to_string(bool specialNames, bool readAccess) const
             if(num == 48)
                 return "vpm";
             if(num == 49)
-                return file == RegisterFile::PHYSICAL_A ? "vpr_setup" : "vpw_setup";
+            {
+				if(file == RegisterFile::PHYSICAL_A)
+					return "vpr_setup";
+				if(file == RegisterFile::PHYSICAL_B)
+					return "vpw_setup";
+			}
             if(num == 50)
-                return file == RegisterFile::PHYSICAL_A ? "vpr_addr" : "vpw_addr";
+            {
+				if(file == RegisterFile::PHYSICAL_A)
+					return "vpr_addr";
+				if(file == RegisterFile::PHYSICAL_B)
+					return "vpw_addr";
+			}
             if(num == 51)
                 return "mutex_rel";
             if(num == 52)

@@ -109,11 +109,10 @@ namespace vc4c
 					{toParameter(std::vector<uint32_t>(20)), toParameter(std::vector<uint32_t>(20))}, {}, maxExecutionCycles),
 					addVector({}, 1, std::vector<uint32_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 42, 0})
 				),
-				//TODO requires bit-cast of different vector-sizes
-//				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vector.cl", "test_copy",
-//					{toParameter(std::vector<uint32_t>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}), std::make_pair(0, std::vector<uint32_t>(32))}, {}, maxExecutionCycles),
-//					addVector({}, 1, std::vector<uint32_t>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
-//				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vector.cl", "test_copy",
+					{toParameter(std::vector<uint32_t>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}), std::make_pair(0, std::vector<uint32_t>(32))}, {}, maxExecutionCycles),
+					addVector({}, 1, std::vector<uint32_t>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
+				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_other.cl", "test_atomics",
 					{toParameter(toRange<int32_t>(1, 12)), toParameter(toRange<int32_t>(1, 12))}, {}, maxExecutionCycles),
 					addVector({}, 1, std::vector<int32_t>{2, 0, 3, 5, 4, 6, 7, 8, 9, 10, 0})
@@ -122,7 +121,6 @@ namespace vc4c
 					{toScalarParameter(1.0f), toScalarParameter(1.1f), toScalarParameter(1.5f), toScalarParameter(1.9f), toParameter(std::vector<int>(32))}, {}, maxExecutionCycles),
 					addVector({}, 4, std::vector<int>{1, 1, 1, 1, -1, -1, -1, -1, 1, -1, 2, -1, 1, -1, 1, -2, 1, -1, 2, -2, 1, 1, 2, 2, -1, -1, -2, -2, 1, -1})
 				),
-				//TODO global data is not yet supported correctly
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_other.cl", "test_global_data",
 					{toScalarParameter(1), toParameter(std::vector<int32_t>(2))}, {}, maxExecutionCycles),
 					addVector({}, 1, std::vector<int32_t>{2, 21})
@@ -179,10 +177,10 @@ namespace vc4c
 					toConfig(12, 1, 1, 2, 1, 1), maxExecutionCycles),
 					addVector({}, 2, std::vector<float>{0.0f, 2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f, 14.0f, 16.0f, 18.0f, 20.0f, 22.0f, 24.0f, 26.0f, 28.0f, 30.0f, 0.0f})
 				),
-//				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vector.cl", "test_arithm",
-//					{toScalarParameter(2.0f), toParameter(std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f}), toParameter(std::vector<float>(16))}, {}, maxExecutionCycles),
-//					addVector({}, 2, std::vector<float>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f, 19.0f})
-//				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vector.cl", "test_arithm",
+					{toScalarParameter(2.0f), toParameter(toRange(1.0f, 17.0f)), toParameter(std::vector<float>(16))}, {}, maxExecutionCycles),
+					addVector({}, 2, toRange(3.0f, 19.0f))
+				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vectorization.cl", "test1",
 					{toParameter(std::vector<float>(1000)), toParameter(std::vector<float>(1000))}, {}, maxExecutionCycles),
 					addVector(addVector({}, 0, std::vector<float>{-0.0f, -1.0f, -2.0f, -3.0f, -4.0f, -5.0f, -6.0f, -7.0f, -8.0f, -9.0f, -10.0f, -11.0f, -12.0f, -13.0f}), 1, std::vector<float>{-0.0f, -1.0f, -2.0f, -3.0f, -4.0f, -5.0f, -6.0f, -7.0f, -8.0f, -9.0f, -10.0f, -11.0f, -12.0f, -13.0f})

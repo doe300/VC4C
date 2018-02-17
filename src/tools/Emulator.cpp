@@ -132,6 +132,9 @@ void Registers::writeRegister(Register reg, const Value& val, std::bitset<16> el
 	{
 		if(reg.num == REG_TMU_NOSWAP.num)
 			qpu.tmus.setTMUNoSwap(getActualValue(val));
+		else if(reg.num == REG_REPLICATE_ALL.num)
+			//the physical file A or B is important here!
+			writeStorageRegister(reg, val, elementMask);
 		else
 			writeStorageRegister(Register(RegisterFile::ACCUMULATOR, reg.num), val, elementMask);
 	}
@@ -311,15 +314,22 @@ void Registers::writeStorageRegister(Register reg, const Value& val, std::bitset
 		storageRegisters.at(reg) = toStorageValue(storageRegisters.at(reg), getActualValue(val), elementMask);
 	if(reg.num == REG_REPLICATE_ALL.num)
 	{
+		//is not actually stored in the physical file A or B
+		storageRegisters.erase(reg);
+		storageRegisters.emplace(REG_ACC5, val);
+
 		const Value actualValue = getActualValue(val);
 		if(actualValue.getLiteralValue() || actualValue.isUndefined())
-			//replicate same value across quads -> do nothing
+		{
+			//replicate same value across quads -> just store literal
+			storageRegisters.at(REG_ACC5) = actualValue;
 			return;
+		}
 		const auto& elements = actualValue.container.elements;
 		if(reg.file == RegisterFile::PHYSICAL_A)
 		{
 			//per-quad replication
-			storageRegisters.at(reg) = Value(ContainerValue({
+			storageRegisters.at(REG_ACC5) = Value(ContainerValue({
 				elements.at(0), elements.at(0), elements.at(0), elements.at(0),
 				elements.at(4), elements.at(4), elements.at(4), elements.at(4),
 				elements.at(8), elements.at(8), elements.at(8), elements.at(8),
@@ -329,7 +339,7 @@ void Registers::writeStorageRegister(Register reg, const Value& val, std::bitset
 		else if(reg.file == RegisterFile::PHYSICAL_B)
 		{
 			//across all elements replication
-			storageRegisters.at(reg) = Value(elements.at(0).getLiteralValue().value(), actualValue.type.toVectorType(16));
+			storageRegisters.at(REG_ACC5) = Value(elements.at(0).getLiteralValue().value(), actualValue.type.toVectorType(16));
 		}
 		else
 			throw CompilationError(CompilationStep::GENERAL, "Failed to determine register-file for replication register", reg.to_string());
