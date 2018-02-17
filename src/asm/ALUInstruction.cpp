@@ -17,7 +17,7 @@ ALUInstruction::ALUInstruction(const Signaling sig, const Unpack unpack, const P
                                const ConditionCode condAdd, const ConditionCode condMul, const SetFlag sf, const WriteSwap ws,
                                const Address addOut, const Address mulOut,
                                const OpCode& mul, const OpCode& add, const Address addInA, const Address addInB,
-                               const InputMutex muxAddA, const InputMutex muxAddB, const InputMutex muxMulA, const InputMutex muxMulB)
+                               const InputMultiplex muxAddA, const InputMultiplex muxAddB, const InputMultiplex muxMulA, const InputMultiplex muxMulB)
 {
     this->setSig(sig);
     this->setUnpack(unpack);
@@ -33,10 +33,10 @@ ALUInstruction::ALUInstruction(const Signaling sig, const Unpack unpack, const P
     this->setAddition(add.opAdd);
     this->setInputA(addInA);
     this->setInputB(addInB);
-    this->setAddMutexA(muxAddA);
-    this->setAddMutexB(muxAddB);
-    this->setMulMutexA(muxMulA);
-    this->setMulMutexB(muxMulB);
+    this->setAddMultiplexA(muxAddA);
+    this->setAddMultiplexB(muxAddB);
+    this->setMulMultiplexA(muxMulA);
+    this->setMulMultiplexB(muxMulB);
 
     if(( mul != OP_NOP && !mul.runsOnMulALU()) || (add != OP_NOP && !add.runsOnAddALU()))
     	throw CompilationError(CompilationStep::CODE_GENERATION, "Opcode specified for wrong ALU");
@@ -45,7 +45,7 @@ ALUInstruction::ALUInstruction(const Signaling sig, const Unpack unpack, const P
 ALUInstruction::ALUInstruction(const Unpack unpack, const Pack pack, 
                                const ConditionCode condAdd, const ConditionCode condMul, const SetFlag sf, const WriteSwap ws, 
                                const Address addOut, const Address mulOut, const OpCode& mul, const OpCode& add, const Address addInA, const SmallImmediate addInB,
-                               const InputMutex muxAddA, const InputMutex muxAddB, const InputMutex muxMulA, const InputMutex muxMulB)
+                               const InputMultiplex muxAddA, const InputMultiplex muxAddB, const InputMultiplex muxMulA, const InputMultiplex muxMulB)
 {
     this->setSig(SIGNAL_ALU_IMMEDIATE);
     this->setUnpack(unpack);
@@ -61,10 +61,10 @@ ALUInstruction::ALUInstruction(const Unpack unpack, const Pack pack,
     this->setAddition(add.opAdd);
     this->setInputA(addInA);
     this->setInputB(static_cast<Address>(addInB));
-    this->setAddMutexA(muxAddA);
-    this->setAddMutexB(muxAddB);
-    this->setMulMutexA(muxMulA);
-    this->setMulMutexB(muxMulB);
+    this->setAddMultiplexA(muxAddA);
+    this->setAddMultiplexB(muxAddB);
+    this->setMulMultiplexA(muxMulA);
+    this->setMulMultiplexB(muxMulB);
 
     if(( mul != OP_NOP && !mul.runsOnMulALU()) || (add != OP_NOP && !add.runsOnAddALU()))
 		throw CompilationError(CompilationStep::CODE_GENERATION, "Opcode specified for wrong ALU");
@@ -82,31 +82,31 @@ std::string ALUInstruction::toASMString() const
     bool mulCanUnpack = false;
     if(opAdd.numOperands > 0)
     {
-    	addArgs.append(", ").append(toInputRegister(getAddMutexA(), getInputA(), getInputB(), hasImmediate));
-    	addCanUnpack |= getAddMutexA() == InputMutex::REGA;
-    	addCanUnpack |= getAddMutexA() == InputMutex::ACC4;
+    	addArgs.append(", ").append(toInputRegister(getAddMultiplexA(), getInputA(), getInputB(), hasImmediate));
+    	addCanUnpack |= getAddMultiplexA() == InputMultiplex::REGA;
+    	addCanUnpack |= getAddMultiplexA() == InputMultiplex::ACC4;
     }
     if(opAdd.numOperands > 1)
     {
-		addArgs.append(", ").append(toInputRegister(getAddMutexB(), getInputA(), getInputB(), hasImmediate));
-		addCanUnpack |= getAddMutexB() == InputMutex::REGA;
-		addCanUnpack |= getAddMutexB() == InputMutex::ACC4;
+		addArgs.append(", ").append(toInputRegister(getAddMultiplexB(), getInputA(), getInputB(), hasImmediate));
+		addCanUnpack |= getAddMultiplexB() == InputMultiplex::REGA;
+		addCanUnpack |= getAddMultiplexB() == InputMultiplex::ACC4;
     }
     if(opMul.numOperands > 0)
     {
-    	mulArgs.append(", ").append(toInputRegister(getMulMutexA(), getInputA(), getInputB(), hasImmediate));
-    	mulCanUnpack |= getMulMutexA() == InputMutex::REGA;
-    	mulCanUnpack |= getMulMutexA() == InputMutex::ACC4;
+    	mulArgs.append(", ").append(toInputRegister(getMulMultiplexA(), getInputA(), getInputB(), hasImmediate));
+    	mulCanUnpack |= getMulMultiplexA() == InputMultiplex::REGA;
+    	mulCanUnpack |= getMulMultiplexA() == InputMultiplex::ACC4;
     }
     if(opMul.numOperands > 1)
     {
-		mulArgs.append(", ").append(toInputRegister(getMulMutexB(), getInputA(), getInputB(), hasImmediate));
-		mulCanUnpack |= getMulMutexB() == InputMutex::REGA;
-		mulCanUnpack |= getMulMutexB() == InputMutex::ACC4;
+		mulArgs.append(", ").append(toInputRegister(getMulMultiplexB(), getInputA(), getInputB(), hasImmediate));
+		mulCanUnpack |= getMulMultiplexB() == InputMultiplex::REGA;
+		mulCanUnpack |= getMulMultiplexB() == InputMultiplex::ACC4;
     }
     addPart = std::string(opAdd.name) + (toExtrasString(getSig(), getAddCondition(), getSetFlag(), getUnpack(), getPack(), getWriteSwap() == WriteSwap::DONT_SWAP, addCanUnpack) + " ") + (opAdd != OP_NOP ? toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) : "") + addArgs;
     mulPart = std::string(opMul.name) + (toExtrasString(getSig(), getMulCondition(), getSetFlag(), getUnpack(), getPack(), getWriteSwap() == WriteSwap::SWAP, mulCanUnpack) + " ") + (opMul != OP_NOP ? toOutputRegister(getWriteSwap() == WriteSwap::SWAP, getMulOut()) : "") + mulArgs;
-    if(getMulMutexA() != InputMutex::REGA && getMulMutexA() != InputMutex::REGB && getMulMutexB() != InputMutex::REGA && getMulMutexB() != InputMutex::REGB && getSig() == SIGNAL_ALU_IMMEDIATE && (opAdd == OP_NOP || (getAddMutexA() != InputMutex::REGB && getAddMutexB() != InputMutex::REGB)))
+    if(getMulMultiplexA() != InputMultiplex::REGA && getMulMultiplexA() != InputMultiplex::REGB && getMulMultiplexB() != InputMultiplex::REGA && getMulMultiplexB() != InputMultiplex::REGB && getSig() == SIGNAL_ALU_IMMEDIATE && (opAdd == OP_NOP || (getAddMultiplexA() != InputMultiplex::REGB && getAddMultiplexB() != InputMultiplex::REGB)))
     {
     	//both inputs for mul are accumulators, an immediate value is used
     	//and the ADD ALU executes NOP or both inputs from the ADD ALU are not on register-file B

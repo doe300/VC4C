@@ -25,12 +25,12 @@ namespace vc4c
 					ConditionCode condAdd, ConditionCode condMul, SetFlag sf, WriteSwap ws,
 					Address addOut, Address mulOut, const OpCode& mul, const OpCode& add,
 					Address addInA, Address addInB,
-					InputMutex muxAddA, InputMutex muxAddB, InputMutex muxMulA, InputMutex muxMulB);
+					InputMultiplex muxAddA, InputMultiplex muxAddB, InputMultiplex muxMulA, InputMultiplex muxMulB);
 			ALUInstruction(Unpack unpack, Pack pack,
 					ConditionCode condAdd, ConditionCode condMul, SetFlag sf, WriteSwap ws,
 					Address addOut, Address mulOut, const OpCode& mul, const OpCode& add,
 					Address addInA, SmallImmediate addInB,
-					InputMutex muxAddA, InputMutex muxAddB, InputMutex muxMulA, InputMutex muxMulB);
+					InputMultiplex muxAddA, InputMultiplex muxAddB, InputMultiplex muxMulA, InputMultiplex muxMulB);
 			~ALUInstruction() override = default;
 
 			std::string toASMString() const override;
@@ -46,10 +46,10 @@ namespace vc4c
 			BITFIELD_ENTRY(Addition, unsigned char, 24, Quintuple)
 			BITFIELD_ENTRY(InputA, Address, 18, Sextuple)
 			BITFIELD_ENTRY(InputB, Address, 12, Sextuple)
-			BITFIELD_ENTRY(AddMutexA, InputMutex, 9, Triple)
-			BITFIELD_ENTRY(AddMutexB, InputMutex, 6, Triple)
-			BITFIELD_ENTRY(MulMutexA, InputMutex, 3, Triple)
-			BITFIELD_ENTRY(MulMutexB, InputMutex, 0, Triple)
+			BITFIELD_ENTRY(AddMultiplexA, InputMultiplex, 9, Triple)
+			BITFIELD_ENTRY(AddMultiplexB, InputMultiplex, 6, Triple)
+			BITFIELD_ENTRY(MulMultiplexA, InputMultiplex, 3, Triple)
+			BITFIELD_ENTRY(MulMultiplexB, InputMultiplex, 0, Triple)
 		};
 	} // namespace qpu_asm
 } // namespace vc4c

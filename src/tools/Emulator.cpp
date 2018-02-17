@@ -476,7 +476,7 @@ Value TMUs::readMemoryAddress(const Value& address) const
 		else
 			res.container.elements.push_back(memory.readWord(element.getLiteralValue()->toImmediate()));
 	}
-	logging::debug() << "Triggered read from TMU: " << res.to_string(false, true) << logging::endl;
+	logging::debug() << "Reading via TMU from memory address " << address.to_string(false, true) << ": " << res.to_string(false, true) << logging::endl;
 	return res;
 }
 
@@ -1003,25 +1003,25 @@ const qpu_asm::Instruction* QPU::getCurrentInstruction(std::vector<std::unique_p
 	return (firstInstruction + pc)->get();
 }
 
-static std::pair<Value, bool> toInputValue(Registers& registers, InputMutex mux, Address addressA, Address addressB, bool regBIsImmediate)
+static std::pair<Value, bool> toInputValue(Registers& registers, InputMultiplex mux, Address addressA, Address addressB, bool regBIsImmediate)
 {
 	switch(mux)
 	{
-		case InputMutex::ACC0:
+		case InputMultiplex::ACC0:
 			return registers.readRegister(REG_ACC0);
-		case InputMutex::ACC1:
+		case InputMultiplex::ACC1:
 			return registers.readRegister(REG_ACC1);
-		case InputMutex::ACC2:
+		case InputMultiplex::ACC2:
 			return registers.readRegister(REG_ACC2);
-		case InputMutex::ACC3:
+		case InputMultiplex::ACC3:
 			return registers.readRegister(REG_ACC3);
-		case InputMutex::ACC4:
+		case InputMultiplex::ACC4:
 			return registers.readRegister(REG_SFU_OUT);
-		case InputMutex::ACC5:
+		case InputMultiplex::ACC5:
 			return registers.readRegister(REG_ACC5);
-		case InputMutex::REGA:
+		case InputMultiplex::REGA:
 			return registers.readRegister(Register(RegisterFile::PHYSICAL_A, addressA));
-		case InputMutex::REGB:
+		case InputMultiplex::REGB:
 			if(regBIsImmediate)
 				return std::make_pair(Value(SmallImmediate(addressB), (SmallImmediate(addressB)).getFloatingValue() ? TYPE_FLOAT : TYPE_INT32), true);
 			else
@@ -1045,9 +1045,9 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
 	{
 		bool addIn0NotStall = true;
 		bool addIn1NotStall = true;
-		std::tie(addIn0, addIn0NotStall) = toInputValue(registers, aluInst->getAddMutexA(), aluInst->getInputA(), aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE);
+		std::tie(addIn0, addIn0NotStall) = toInputValue(registers, aluInst->getAddMultiplexA(), aluInst->getInputA(), aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE);
 		if(addCode.numOperands > 1)
-			std::tie(addIn1, addIn1NotStall) = toInputValue(registers, aluInst->getAddMutexB(), aluInst->getInputA(), aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE);
+			std::tie(addIn1, addIn1NotStall) = toInputValue(registers, aluInst->getAddMultiplexB(), aluInst->getInputA(), aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE);
 
 		if(!addIn0NotStall || !addIn1NotStall)
 			//we stall on input, so do not calculate anything
@@ -1059,9 +1059,9 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
 		bool mulIn0NotStall = true;
 		bool mulIn1NotStall = true;
 
-		std::tie(mulIn0, mulIn0NotStall) = toInputValue(registers, aluInst->getMulMutexA(), aluInst->getInputA(), aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE);
+		std::tie(mulIn0, mulIn0NotStall) = toInputValue(registers, aluInst->getMulMultiplexA(), aluInst->getInputA(), aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE);
 		if(mulCode.numOperands > 1)
-			std::tie(mulIn1, mulIn1NotStall) = toInputValue(registers, aluInst->getMulMutexB(), aluInst->getInputA(), aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE);
+			std::tie(mulIn1, mulIn1NotStall) = toInputValue(registers, aluInst->getMulMultiplexB(), aluInst->getInputA(), aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE);
 
 		if(!mulIn0NotStall || !mulIn1NotStall)
 			//we stall on input, so do not calculate anything
@@ -1075,9 +1075,9 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
 		if(addIn1.hasType(ValueType::CONTAINER) && addIn1.container.isUndefined())
 			addIn1 = UNDEFINED_VALUE;
 
-		if(aluInst->getAddMutexA() == InputMutex::REGA)
+		if(aluInst->getAddMultiplexA() == InputMultiplex::REGA)
 			addIn0 = aluInst->getUnpack().unpack(addIn0).value();
-		if(aluInst->getAddMutexB() == InputMutex::REGA)
+		if(aluInst->getAddMultiplexB() == InputMultiplex::REGA)
 			addIn1 = aluInst->getUnpack().unpack(addIn1).value();
 
 		//"bit-cast" to correct type for displaying and pack-modes
@@ -1111,9 +1111,9 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
 		if(mulIn1.hasType(ValueType::CONTAINER) && mulIn1.container.isUndefined())
 			mulIn1 = UNDEFINED_VALUE;
 
-		if(aluInst->getMulMutexA() == InputMutex::REGA)
+		if(aluInst->getMulMultiplexA() == InputMultiplex::REGA)
 			mulIn0 = aluInst->getUnpack().unpack(mulIn0).value();
-		if(aluInst->getMulMutexB() == InputMutex::REGA)
+		if(aluInst->getMulMultiplexB() == InputMultiplex::REGA)
 			mulIn1 = aluInst->getUnpack().unpack(mulIn1).value();
 
 		//"bit-cast" to correct type for displaying and pack-modes
@@ -1463,6 +1463,7 @@ EmulationResult tools::emulate(const EmulationData& data)
 	if(kernelInfo == module.kernelInfos.end())
 		throw CompilationError(CompilationStep::GENERAL, "Failed to find kernel-info for kernel", data.kernelName);
 
+	//TODO handle global data
 	MemoryAddress uniformAddress;
 	std::vector<MemoryAddress> paramAddresses;
 	Memory mem(fillMemory(data, uniformAddress, paramAddresses));

@@ -71,22 +71,22 @@ Instruction* Instruction::readFromBinary(uint64_t binary)
 	return nullptr;
 }
 
-std::string Instruction::toInputRegister(const InputMutex mutex, const Address regA, const Address regB, const bool hasImmediate)
+std::string Instruction::toInputRegister(const InputMultiplex mux, const Address regA, const Address regB, const bool hasImmediate)
 {
-    if(mutex == InputMutex::ACC0)
+    if(mux == InputMultiplex::ACC0)
         return "r0";
-    if(mutex == InputMutex::ACC1)
+    if(mux == InputMultiplex::ACC1)
         return "r1";
-    if(mutex == InputMutex::ACC2)
+    if(mux == InputMultiplex::ACC2)
         return "r2";
-    if(mutex == InputMutex::ACC3)
+    if(mux == InputMultiplex::ACC3)
         return "r3";
-    if(mutex == InputMutex::ACC4)
+    if(mux == InputMultiplex::ACC4)
         return "r4";
-    if(mutex == InputMutex::ACC5)
+    if(mux == InputMultiplex::ACC5)
         return "r5";
     //general register-file
-    if(mutex == InputMutex::REGA)
+    if(mux == InputMultiplex::REGA)
     {
         const Register tmp{RegisterFile::PHYSICAL_A, regA};
         return tmp.to_string(true, true);

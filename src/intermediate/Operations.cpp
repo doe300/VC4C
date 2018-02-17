@@ -52,26 +52,26 @@ IntermediateInstruction* Operation::copyFor(Method& method, const std::string& l
     return (new Operation(opCode, renameValue(method, getOutput().value(), localPrefix), renameValue(method, getFirstArg(), localPrefix), renameValue(method, getSecondArg().value(), localPrefix), conditional, setFlags))->copyExtrasFrom(this);
 }
 
-static InputMutex getInputMux(const Register& reg, const bool isExplicitRegister, const Optional<SmallImmediate>& immediate, const bool isABlocked = false, const bool isBBlocked = false)
+static InputMultiplex getInputMux(const Register& reg, const bool isExplicitRegister, const Optional<SmallImmediate>& immediate, const bool isABlocked = false, const bool isBBlocked = false)
 {
 	if(immediate)
-		return InputMutex::REGB;
+		return InputMultiplex::REGB;
     if (!isExplicitRegister && reg.isAccumulator()) {
-        return static_cast<InputMutex> (reg.getAccumulatorNumber());
+        return static_cast<InputMultiplex> (reg.getAccumulatorNumber());
     }
     if (isExplicitRegister && reg.isAccumulator() && (reg.getAccumulatorNumber() == 5 || reg.getAccumulatorNumber() == 4)) {
         //special case: is handled as register, but need to access the accumulator
         //reason: the value is actually read from the accumulator, not from the register with the same index
-        return static_cast<InputMutex> (reg.getAccumulatorNumber());
+        return static_cast<InputMultiplex> (reg.getAccumulatorNumber());
     }
     if (reg.file == RegisterFile::PHYSICAL_A)
-        return InputMutex::REGA;
+        return InputMultiplex::REGA;
     if (reg.file == RegisterFile::PHYSICAL_B)
-        return InputMutex::REGB;
+        return InputMultiplex::REGB;
     if (!isABlocked)
-        return InputMutex::REGA;
+        return InputMultiplex::REGA;
     if (!isBBlocked)
-        return InputMutex::REGB;
+        return InputMultiplex::REGB;
     throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid input getSource()", reg.to_string(true, true));
 }
 
@@ -124,9 +124,9 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
     auto input0 = getInputValue(getFirstArg(), registerMapping, this);
     auto input1 = getSecondArg() ? getInputValue(getSecondArg().value(), registerMapping, this) : std::make_pair(REG_NOP, Optional<SmallImmediate>(false, SmallImmediate(0)));
 
-    const InputMutex inMux0 = getInputMux(input0.first, getFirstArg().hasType(ValueType::REGISTER), input0.second);
+    const InputMultiplex inMux0 = getInputMux(input0.first, getFirstArg().hasType(ValueType::REGISTER), input0.second);
     if (!input0.second) {
-        if (input0.first.isAccumulator() && inMux0 != InputMutex::REGA && inMux0 != InputMutex::REGB)
+        if (input0.first.isAccumulator() && inMux0 != InputMultiplex::REGA && inMux0 != InputMultiplex::REGB)
             input0.first.num = REG_NOP.num; //Cosmetics, so vc4asm does not print "maybe reading reg xx"
         else if (has_flag(input0.first.file, RegisterFile::PHYSICAL_ANY) && (!getSecondArg() || input1.first.file != RegisterFile::PHYSICAL_A))
         	//this is only correct, if the second value is not fixed to file A
@@ -151,7 +151,7 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
     const WriteSwap swap = writeSwap ? WriteSwap::SWAP : WriteSwap::DONT_SWAP;
 
     if (getSecondArg()) {
-        InputMutex inMux1 = getInputMux(input1.first, getSecondArg()->hasType(ValueType::REGISTER), input1.second, input0.first.file == RegisterFile::PHYSICAL_A, input0.first.file == RegisterFile::PHYSICAL_B);
+    	InputMultiplex inMux1 = getInputMux(input1.first, getSecondArg()->hasType(ValueType::REGISTER), input1.second, input0.first.file == RegisterFile::PHYSICAL_A, input0.first.file == RegisterFile::PHYSICAL_B);
 
         //one of the values is a literal immediate
         if (input0.second || input1.second) {
@@ -177,19 +177,19 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
             if (isAddALU) {
                 return new qpu_asm::ALUInstruction(unpackMode, packMode, conditional, COND_NEVER, setFlags, swap,
                                           outReg.num, REG_NOP.num, OP_NOP, op, regA.num, imm,
-                                          inMux0, inMux1, MUTEX_NONE, MUTEX_NONE);
+                                          inMux0, inMux1, MULTIPLEX_NONE, MULTIPLEX_NONE);
             }
             else if (isMulALU) {
                 return new qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap,
                                           REG_NOP.num, outReg.num, op, OP_NOP, regA.num, imm,
-                                          MUTEX_NONE, MUTEX_NONE, inMux0, inMux1);
+										  MULTIPLEX_NONE, MULTIPLEX_NONE, inMux0, inMux1);
             }
             throw CompilationError(CompilationStep::CODE_GENERATION, "No instruction set", to_string());
         }
             //both are registers
         else {
 
-            if (input1.first.isAccumulator() && inMux1 != InputMutex::REGA && inMux1 != InputMutex::REGB)
+            if (input1.first.isAccumulator() && inMux1 != InputMultiplex::REGA && inMux1 != InputMultiplex::REGB)
                 input1.first.num = REG_NOP.num; //Cosmetics, so vc4asm does not print "maybe reading reg xx"
             else if (has_flag(input1.first.file, RegisterFile::PHYSICAL_ANY))
             {
@@ -207,14 +207,14 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
                                           outReg.num, REG_NOP.num, OP_NOP, op,
                                           getRegister(RegisterFile::PHYSICAL_A, input0.first, input1.first, this).num,
                                           getRegister(RegisterFile::PHYSICAL_B, input0.first, input1.first, this).num,
-                                          inMux0, inMux1, MUTEX_NONE, MUTEX_NONE);
+                                          inMux0, inMux1, MULTIPLEX_NONE, MULTIPLEX_NONE);
             }
             else if (isMulALU) {
                 return new qpu_asm::ALUInstruction(signal, unpackMode, packMode, COND_NEVER, conditional, setFlags, swap,
                                           REG_NOP.num, outReg.num, op, OP_NOP,
                                           getRegister(RegisterFile::PHYSICAL_A, input0.first, input1.first, this).num,
                                           getRegister(RegisterFile::PHYSICAL_B, input0.first, input1.first, this).num,
-                                          MUTEX_NONE, MUTEX_NONE, inMux0, inMux1);
+										  MULTIPLEX_NONE, MULTIPLEX_NONE, inMux0, inMux1);
             }
             throw CompilationError(CompilationStep::CODE_GENERATION, "No instruction set", to_string());
         }
@@ -234,12 +234,12 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
         	if(isAddALU)
         	{
         		return new qpu_asm::ALUInstruction(unpackMode, packMode, conditional, COND_NEVER, setFlags, swap,
-        				outReg.num, REG_NOP.num, OP_NOP, op, REG_NOP.num, imm, inMux0, MUTEX_NONE, MUTEX_NONE, MUTEX_NONE);
+        				outReg.num, REG_NOP.num, OP_NOP, op, REG_NOP.num, imm, inMux0, MULTIPLEX_NONE, MULTIPLEX_NONE, MULTIPLEX_NONE);
         	}
         	else if(isMulALU)
         	{
         		return new qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap,
-						REG_NOP.num, outReg.num, op, OP_NOP, REG_NOP.num, imm, MUTEX_NONE, MUTEX_NONE, inMux0, MUTEX_NONE);
+						REG_NOP.num, outReg.num, op, OP_NOP, REG_NOP.num, imm, MULTIPLEX_NONE, MULTIPLEX_NONE, inMux0, MULTIPLEX_NONE);
         	}
         }
         else
@@ -249,14 +249,14 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
 										  outReg.num, REG_NOP.num, OP_NOP, op,
 										  getRegister(RegisterFile::PHYSICAL_A, input0.first, REG_NOP, this).num,
 										  getRegister(RegisterFile::PHYSICAL_B, input0.first, REG_NOP, this).num,
-										  inMux0, MUTEX_NONE, MUTEX_NONE, MUTEX_NONE);
+										  inMux0, MULTIPLEX_NONE, MULTIPLEX_NONE, MULTIPLEX_NONE);
 			}
 			else if (isMulALU) {
 				return new qpu_asm::ALUInstruction(signal, unpackMode, packMode, COND_NEVER, conditional, setFlags, swap,
 										  REG_NOP.num, outReg.num, op, OP_NOP,
 										  getRegister(RegisterFile::PHYSICAL_A, input0.first, REG_NOP, this).num,
 										  getRegister(RegisterFile::PHYSICAL_B, input0.first, REG_NOP, this).num,
-										  MUTEX_NONE, MUTEX_NONE, inMux0, MUTEX_NONE);
+										  MULTIPLEX_NONE, MULTIPLEX_NONE, inMux0, MULTIPLEX_NONE);
 			}
         }
         throw CompilationError(CompilationStep::CODE_GENERATION, "No instruction set", to_string());
@@ -401,8 +401,8 @@ qpu_asm::Instruction* VectorRotation::convertToAsm(const FastMap<const Local*, R
 
     auto input = getInputValue(getSource(), registerMapping, this);
     auto rotationOffset = getInputValue(getOffset(), registerMapping, this);
-    const InputMutex inMux = getInputMux(input.first, false, Optional<SmallImmediate>(false, SmallImmediate(0)));
-    if (inMux == InputMutex::REGA || inMux == InputMutex::REGB) {
+    const InputMultiplex inMux = getInputMux(input.first, false, Optional<SmallImmediate>(false, SmallImmediate(0)));
+    if (inMux == InputMultiplex::REGA || inMux == InputMultiplex::REGB) {
         throw CompilationError(CompilationStep::CODE_GENERATION, "Can't rotate from register as input", to_string());
     }
 
@@ -413,19 +413,19 @@ qpu_asm::Instruction* VectorRotation::convertToAsm(const FastMap<const Local*, R
         SmallImmediate imm(VECTOR_ROTATE_R5 + static_cast<unsigned char>(rotationOffset.second.value()));
         return new qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap,
                                   REG_NOP.num, outReg.num, OP_V8MIN, OP_NOP,
-                                  REG_NOP.num, imm, MUTEX_NONE, MUTEX_NONE, inMux, inMux);
+                                  REG_NOP.num, imm, MULTIPLEX_NONE, MULTIPLEX_NONE, inMux, inMux);
     }
     else if(getOffset().hasType(ValueType::SMALL_IMMEDIATE))
     {
     	return new qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap,
     	                                  REG_NOP.num, outReg.num, OP_V8MIN, OP_NOP,
-    	                                  REG_NOP.num, getOffset().immediate, MUTEX_NONE, MUTEX_NONE, inMux, inMux);
+    	                                  REG_NOP.num, getOffset().immediate, MULTIPLEX_NONE, MULTIPLEX_NONE, inMux, inMux);
     }
     else
         //use offset from r5
         return new qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap,
                                   REG_NOP.num, outReg.num, OP_V8MIN, OP_NOP,
-                                  REG_NOP.num, VECTOR_ROTATE_R5, MUTEX_NONE, MUTEX_NONE, inMux, inMux);
+                                  REG_NOP.num, VECTOR_ROTATE_R5, MULTIPLEX_NONE, MULTIPLEX_NONE, inMux, inMux);
 }
 
 Operation* VectorRotation::combineWith(const std::string& otherOpCode) const
@@ -464,7 +464,7 @@ IntermediateInstruction* Nop::copyFor(Method& method, const std::string& localPr
 qpu_asm::Instruction* Nop::convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
     return new qpu_asm::ALUInstruction(signal, UNPACK_NOP, PACK_NOP, COND_NEVER, COND_NEVER, SetFlag::DONT_SET, WriteSwap::DONT_SWAP,
-                              REG_NOP.num, REG_NOP.num, OP_NOP, OP_NOP, REG_NOP.num, REG_NOP.num, InputMutex::ACC0, InputMutex::ACC0, InputMutex::ACC0, InputMutex::ACC0);
+                              REG_NOP.num, REG_NOP.num, OP_NOP, OP_NOP, REG_NOP.num, REG_NOP.num, InputMultiplex::ACC0, InputMultiplex::ACC0, InputMultiplex::ACC0, InputMultiplex::ACC0);
 }
 
 Comparison::Comparison(const std::string& comp, const Value& dest, const Value& val0, const Value& val1) :
@@ -540,8 +540,8 @@ qpu_asm::Instruction* CombinedOperation::convertToAsm(const FastMap<const Local*
     std::unique_ptr<qpu_asm::ALUInstruction> mulInstr(static_cast<qpu_asm::ALUInstruction*>(mulOp->convertToAsm(registerMapping, labelMapping, instructionIndex)));
 
     addInstr->setMulCondition(mulInstr->getMulCondition());
-    addInstr->setMulMutexA(mulInstr->getMulMutexA());
-    addInstr->setMulMutexB(mulInstr->getMulMutexB());
+    addInstr->setMulMultiplexA(mulInstr->getMulMultiplexA());
+    addInstr->setMulMultiplexB(mulInstr->getMulMultiplexB());
     addInstr->setMulOut(mulInstr->getMulOut());
 	//an instruction writing to accumulator or register-file A does not set the swap, only an instruction writing to file B does
 	//so if any of the two instructions want to swap, we need to swap

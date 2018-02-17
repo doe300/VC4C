@@ -92,7 +92,7 @@ namespace vc4c
 	 *
 	 * page 28
 	 */
-	enum class InputMutex
+	enum class InputMultiplex
 		: unsigned char
 		{
 			//use accumulator r0
@@ -112,8 +112,8 @@ namespace vc4c
 		//use value from register file B
 		REGB = 7
 	};
-	constexpr InputMutex MUTEX_NONE { InputMutex::ACC0 };
-	constexpr InputMutex MUTEX_IMMEDIATE { InputMutex::REGB };
+	constexpr InputMultiplex MULTIPLEX_NONE { InputMultiplex::ACC0 };
+	constexpr InputMultiplex MULTIPLEX_IMMEDIATE { InputMultiplex::REGB };
 
 	/*!
 	 * The 4-bit signaling field signal is connected to the 3d pipeline and is set to indicate one
