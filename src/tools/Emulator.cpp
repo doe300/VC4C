@@ -1416,12 +1416,29 @@ bool tools::emulateTask(std::vector<std::unique_ptr<qpu_asm::Instruction>>::cons
 	return emulate(firstInstruction, memory, uniformAddresses, maxCycles);
 }
 
-static Memory fillMemory(const EmulationData& settings, MemoryAddress& uniformBaseAddressOut, std::vector<MemoryAddress>& parameterAddressesOut)
+static Memory fillMemory(const ReferenceRetainingList<Global>& globalData, const EmulationData& settings, MemoryAddress& uniformBaseAddressOut, MemoryAddress& globalDataAddressOut, std::vector<MemoryAddress>& parameterAddressesOut)
 {
-	auto size = settings.calcParameterSize() + settings.calcNumWorkItems() * (16 + settings.parameter.size());
+	auto globalDataSize = std::accumulate(globalData.begin(), globalData.end(), 0u, [](unsigned u, const Global& global) -> unsigned {return u + global.value.type.getPhysicalWidth() / (TYPE_INT32.getScalarBitCount() / 8);});
+	auto size = globalDataSize + settings.calcParameterSize();
+	//make sure to have enough space to align UNIFORMs
+	while((size % 8) != 0)
+		++size;
+	size += settings.calcNumWorkItems() * (16 + settings.parameter.size());
 	Memory mem(size);
 
 	MemoryAddress currentAddress = 0;
+	globalDataAddressOut = currentAddress;
+
+	for(const Global& global : globalData)
+	{
+		if(!global.value.type.getArrayType() || global.value.type.getElementType() != TYPE_INT32)
+			throw CompilationError(CompilationStep::GENERAL, "Unhandled type of global data", global.value.type.to_string());
+		for(const Value& word : global.value.container.elements)
+		{
+			*mem.getWordAddress(currentAddress) = word.getLiteralValue()->unsignedInt();
+			currentAddress += TYPE_INT32.getScalarBitCount() / 8;
+		}
+	}
 
 	for(const auto& pair : settings.parameter)
 	{
@@ -1437,9 +1454,36 @@ static Memory fillMemory(const EmulationData& settings, MemoryAddress& uniformBa
 			parameterAddressesOut.push_back(pair.first);
 	}
 
+	//align UNIFORMs to boundary of memory dump
+	if(currentAddress % (sizeof(tools::Word) * 8) != 0)
+		currentAddress += static_cast<MemoryAddress>((sizeof(tools::Word) * 8) - (currentAddress % (sizeof(tools::Word) * 8)));
+
 	uniformBaseAddressOut = currentAddress;
 
 	return mem;
+}
+
+static void dumpMemory(const Memory& memory, const std::string& fileName, MemoryAddress uniformAddress, bool before)
+{
+	std::ofstream f(fileName, !before ? std::ios::app : std::ios::trunc);
+	if(before)
+		f << "Before: " << std::endl;
+	else
+		f << std::endl << "After: " << std::endl;
+	MemoryAddress addr = 0;
+	while(addr != memory.getMaximumAddress())
+	{
+		if(uniformAddress == addr)
+			f << "Uniforms: " << std::endl;
+		if(addr % (sizeof(tools::Word) * 8) == 0)
+			f << std::hex << "0x" << addr << "\t";
+		f << " " << std::hex << std::setfill('0') << std::setw(8) << memory.readWord(addr).getLiteralValue()->unsignedInt();
+		if(addr % (sizeof(tools::Word) * 8) == (sizeof(tools::Word) * 7))
+			f << std::endl;
+		addr += sizeof(tools::Word);
+	}
+	f << std::endl;
+	logging::debug() << std::dec << "Dumped " << addr << " words of memory into " << fileName << logging::endl;
 }
 
 EmulationResult tools::emulate(const EmulationData& data)
@@ -1462,14 +1506,23 @@ EmulationResult tools::emulate(const EmulationData& data)
 	auto kernelInfo = std::find_if(module.kernelInfos.begin(), module.kernelInfos.end(), [&data](const qpu_asm::KernelInfo& info) -> bool { return info.name == data.kernelName; });
 	if(kernelInfo == module.kernelInfos.end())
 		throw CompilationError(CompilationStep::GENERAL, "Failed to find kernel-info for kernel", data.kernelName);
+	if(data.parameter.size() != kernelInfo->getParamCount())
+		throw CompilationError(CompilationStep::GENERAL, "The number of parameters specified does not match the number of kernel arguments", std::to_string(static_cast<unsigned>(kernelInfo->getParamCount())));
 
-	//TODO handle global data
 	MemoryAddress uniformAddress;
+	MemoryAddress globalDataAddress;
 	std::vector<MemoryAddress> paramAddresses;
-	Memory mem(fillMemory(data, uniformAddress, paramAddresses));
+	Memory mem(fillMemory(globals, data, uniformAddress, globalDataAddress, paramAddresses));
 
-	auto uniformAddresses = buildUniforms(mem, uniformAddress, paramAddresses, data.workGroup, 0);
+	auto uniformAddresses = buildUniforms(mem, uniformAddress, paramAddresses, data.workGroup, globalDataAddress);
+
+	if(!data.memoryDump.empty())
+		dumpMemory(mem, data.memoryDump, uniformAddress, true);
+
 	bool status = emulate(instructions.begin() + (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue(), mem, uniformAddresses, data.maxEmulationCycles);
+
+	if(!data.memoryDump.empty())
+		dumpMemory(mem, data.memoryDump, uniformAddress, false);
 
 	EmulationResult result{data};
 	result.executionSuccessful = status;

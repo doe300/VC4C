@@ -49,11 +49,6 @@ New optimization steps:
   - per basic block
   - need some kind of dependency graph/check for dependent instructions
   - additionally to removing nops, can be used to eliminate read-after-write (data hazards) as well as provide much more possibilities for instruction combiner 
-- merge instructions
-  - if single use is a move, replace move with instruction (if neither has/uses side-effects and operands are not read in between)
-  - don't if operands are written just before?? So we do not expand their local life-time??
-  - or: only merge, if operands are literals, parameters or globals?
-  - if instruction is a move, and source is not (only) locally used, replace result with source (if not using/setting side-effects)
 - add nops into VPM access (see: https://www.raspberrypi.org/forums/viewtopic.php?p=1143940#p1095422)
   - compare clpeak global_bandwidth current with (2 * nrows + 6) nops between writing vpm_load_addr and vpm_load_wait (more exact: 2 for scalar values, 5 for 16-element vectors)
   - compare clpeak global_bandwidth current with (2 * nrows + 10) nops between vpm_store_addr and vpm_store_wait (more exact: 2 for scalar values, 3.5 for 16-element vectors)
@@ -203,6 +198,6 @@ Load via TMU:
   - schedule which TMU to use:
     - every QPU can use both TMUs to load several values at once
     -> re-map e.g. every second load to TMU1
-  - queue TMu requests:
+  - queue TMU requests:
     - TMU allows a queue up to 4 requests (load_tmux signal) per QPU
     - to utilize this, move setting of TMU address and triggering of signal up as far as possible. NOTE: cannot re-order or jump over any r4 read (e.g. SFU)

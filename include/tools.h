@@ -59,6 +59,10 @@ namespace vc4c
 			 * The maximum number of cycles to execute before terminating the emulation
 			 */
 			uint32_t maxEmulationCycles = std::numeric_limits<uint32_t>::max();
+			/*
+			 * The path to dump the contents of the memory into
+			 */
+			std::string memoryDump;
 
 			explicit EmulationData() { };
 

@@ -78,7 +78,11 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Refere
 		auto& elements = globals.begin()->value.container.elements;
 		elements.reserve(tmp.size());
 		for(uint32_t t : tmp)
-			elements.emplace_back(Literal(t), TYPE_INT32);
+		{
+			//need to byte-swap to value
+			uint32_t correctVal = ((t >> 24) & 0xFF) | ((t >> 8) & 0xFF00) | ((t << 8) & 0xFF0000) | ((t << 24) & 0xFF000000);
+			elements.emplace_back(Literal(correctVal), TYPE_INT32);
+		}
 
 		logging::debug() << "Extracted " << moduleInfo.getGlobalDataSize().getValue() << " words of global data" << logging::endl;
 	}

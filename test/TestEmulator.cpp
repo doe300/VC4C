@@ -29,7 +29,6 @@ TestEmulator::TestEmulator()
 	TEST_ADD(TestEmulator::testBarrier);
 	TEST_ADD(TestEmulator::testBranches);
 	TEST_ADD(TestEmulator::testWorkItem);
-	TEST_ADD(TestEmulator::testBug30);
 	//TODO requires v8muld
 	//TEST_ADD(TestEmulator::testSHA1);
 	TEST_ADD(TestEmulator::testSHA256);
@@ -273,43 +272,6 @@ void TestEmulator::testWorkItem()
 	}
 }
 
-void TestEmulator::testBug30()
-{
-	std::stringstream buffer;
-	compileFile(buffer, "./testing/bugs/30_local_memory.cl");
-
-	EmulationData data;
-	data.kernelName = "dot3";
-	data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
-	data.module = std::make_pair("", &buffer);
-	data.workGroup.localSizes = {10, 1, 1};
-	data.workGroup.numGroups = {4, 1, 1};
-
-	//num inputs = 2 * globalSize + localSize
-	data.parameter.emplace_back(0, std::vector<uint32_t>(data.calcNumWorkItems()));
-	data.parameter.emplace_back(0, std::vector<uint32_t>(data.calcNumWorkItems()));
-	//num outputs = globalSize
-	data.parameter.emplace_back(0, std::vector<uint32_t>(data.calcNumWorkItems()));
-	data.parameter.emplace_back(0, std::vector<uint32_t>(data.calcNumWorkItems()));
-
-	//fill parameters
-	for(uint32_t i = 0; i < data.calcNumWorkItems(); ++i)
-	{
-		reinterpret_cast<float*>(data.parameter[0].second->data())[i] = static_cast<float>(i);
-		reinterpret_cast<float*>(data.parameter[1].second->data())[i] = 0.1f;
-	}
-
-	const auto result = emulate(data);
-	TEST_ASSERT(result.executionSuccessful);
-	TEST_ASSERT_EQUALS(4u, result.results.size());
-
-	//TODO local parameter as well as output are all-zero
-	for(uint32_t i = 0; i < data.calcNumWorkItems(); ++i)
-		std::cout << (reinterpret_cast<const float*>(result.results[2].second->data())[i]) << std::endl;
-
-	//TODO also test __local memory version
-}
-
 void TestEmulator::testSHA1()
 {
 	const std::string sample("Hello World!");
@@ -361,7 +323,7 @@ void TestEmulator::testSHA256()
 
 	EmulationData data;
 	data.kernelName = "execute_sha256_cpu";
-	data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+	data.maxEmulationCycles = vc4c::test::maxExecutionCycles * 4;
 	data.module = std::make_pair("", &buffer);
 
 	//parameter 0 is the input with a block-size of 16 words
@@ -452,7 +414,12 @@ void TestEmulator::testFloatEmulations(std::size_t index, std::string name)
 			{
 				float e = bit_cast<uint32_t, float>(expected.at(i));
 				float o = bit_cast<uint32_t, float>(output.at(i));
-				TEST_ASSERT_EQUALS(e, o);
+				/*
+				 * Testing for exact match is difficult, since one operand is a constant and the other is calculated.
+				 * Thus for any value, which cannot be represented exactly, the values may differ.
+				 * So we allow up to 1 ULP error
+				 */
+				TEST_ASSERT_ULP(e, o, 1);
 			}
 		}
 	}
