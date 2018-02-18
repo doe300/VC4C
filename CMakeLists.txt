@@ -243,6 +243,10 @@ if(LLVMLIB_FRONTEND)
 	endif()
 endif()
 
+if(NOT ((SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND) OR (LLVMLIB_FRONTEND AND LLVM_LIBS_PATH)))
+	message(WARNUNG "Neither SPIR-V nor LLVM library front-end are configured. Falling back to very slow and no longer maintained LLVM IR front-end!")
+endif()
+
 if(VERIFY_OUTPUT)
 	ExternalProject_Add(vc4asm-project
 		PREFIX				${CMAKE_BINARY_DIR}/build/vc4asm
@@ -322,7 +326,7 @@ if (BUILD_DEB_PACKAGE)
 	set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "armhf")
 	set(CPACK_DEBIAN_PACKAGE_DEPENDS "opencl-c-headers, clang-3.9, vc4cl-stdlib, llvm-3.9-dev")
 	set(CPACK_PACKAGE_VENDOR "doe300")
-	set(CPACK_PACKAGE_CONTACT "doe300@example.com")
+	set(CPACK_PACKAGE_CONTACT "doe300@web.de")
 	set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenCL C compiler for VC4CL (rasberrypi only)")
 	set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/doe300/VC4C")
 	set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA ${CMAKE_BINARY_DIR}/build/postinst ${CMAKE_BINARY_DIR}/build/prerem)
