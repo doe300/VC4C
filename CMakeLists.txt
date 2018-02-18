@@ -228,6 +228,10 @@ if(LLVMLIB_FRONTEND)
 		endif()
 		
 		if(LLVM_LIBS_PATH AND LLVM_INCLUDE_PATH AND LLVM_LIB_FLAGS AND LLVM_LIB_NAMES)
+			# For cross-compilation, we need to link against the correct (compiled for the target architecture) libLLVM
+			if(CROSS_COMPILE)
+				set(LLVM_LIBS_PATH "${CMAKE_FIND_ROOT_PATH}${LLVM_LIBS_PATH}")
+			endif()
 			message(STATUS "Compiling LLVM library front-end with LLVM in version ${LLVM_LIB_VERSION} located in '${LLVM_LIBS_PATH}'")
 			set(ENABLE_LLVM_LIB_FRONTEND ON)
 			add_definitions(-DUSE_LLVM_LIBRARY=1)
