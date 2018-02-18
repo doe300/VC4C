@@ -769,12 +769,10 @@ static InstructionWalker intrinsifyReadWorkItemInfo(Method& method, InstructionW
 	 * -> res = (UNIFORM >> (dim * 8)) & 0xFF
 	 */
 	const Local* itemInfo = method.findOrCreateLocal(TYPE_INT32, local);
-	Value tmp0 = method.addNewLocal(TYPE_INT32, "%local_info");
-	it.emplace(new Operation(OP_MUL24, tmp0, arg, Value(Literal(static_cast<uint32_t>(8)), TYPE_INT32)));
-	it.nextInBlock();
-	const Value tmp1 = method.addNewLocal(TYPE_INT32, "%local_info");
-	it.emplace(new Operation(OP_SHR, tmp1, itemInfo->createReference(), tmp0));
-	it.nextInBlock();
+	Value tmp0(TYPE_UNKNOWN);
+	it = insertOperation(OP_MUL24, it, method, tmp0, arg, Value(Literal(static_cast<uint32_t>(8)), TYPE_INT32));
+	Value tmp1(TYPE_UNKNOWN);
+	it = insertOperation(OP_SHR, it, method, tmp1, itemInfo->createReference(), tmp0);
 	return it.reset((new Operation(OP_AND, it->getOutput().value(), tmp1, Value(Literal(static_cast<uint32_t>(0xFF)), TYPE_INT8)))->copyExtrasFrom(it.get())->addDecorations(decoration));
 }
 

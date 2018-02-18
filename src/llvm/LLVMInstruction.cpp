@@ -354,9 +354,10 @@ bool IndexOf::mapInstruction(Method& method) const
     //a[i] of type t is at position &a + i * sizeof(t)
     logging::debug() << "Generating calculating index " << to_string<Value>(indices) << " of " << container.to_string() << " into " << dest.to_string() << logging::endl;
     
-    //TODO firstIndexIsElement is not true for all cases!! (E.g. not for pointers to pointers?)
-    //neither is it false for all cases?!
-    intermediate::insertCalculateIndices(method.appendToEnd(), method, container, dest, indices, true);
+    /*
+     * LLVM explicitely states for "getelementptr": "The first index always indexes the pointer value given as the second argument, the second index indexes a value of the type pointed to [...]"
+     */
+    intermediate::insertCalculateIndices(method.appendToEnd(), method, container, dest, indices, false);
     return true;
 }
 

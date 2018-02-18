@@ -228,7 +228,8 @@ if(LLVMLIB_FRONTEND)
 		endif()
 		
 		if(LLVM_LIBS_PATH AND LLVM_INCLUDE_PATH AND LLVM_LIB_FLAGS AND LLVM_LIB_NAMES)
-			# For cross-compilation, we need to link against the correct (compiled for the target architecture) libLLVM
+			# For cross-compilation, we need to link against the correct (compiled for the target architecture) libLLVM.
+			# Since llvm-config does not heed CMAKE_FIND_ROOT_PATH, we need to manually set it
 			if(CROSS_COMPILE)
 				set(LLVM_LIBS_PATH "${CMAKE_FIND_ROOT_PATH}${LLVM_LIBS_PATH}")
 			endif()

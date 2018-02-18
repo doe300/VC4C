@@ -41,6 +41,18 @@ namespace vc4c
 		InstructionWalker insertCalculateIndices(InstructionWalker it, Method& method, const Value& container, const Value& dest, const std::vector<Value>& indices, bool firstIndexIsElement = false);
 
 		InstructionWalker insertByteSwap(InstructionWalker it, Method& method, const Value& src, const Value& dest);
+
+		/*
+		 * Inserts the given operation at the position specified with it and the given operands.
+		 *
+		 * If the output Value is undefined, allowConstantCalculation is set and all required operands are constant, no instruction is inserted, but the output Value is set to the constant result.
+		 * In any other case, an instruction is generated
+		 *
+		 * NOTE:
+		 * The resulting InstructionWalker and Value can be extracted with std::tie()
+		 */
+		InstructionWalker insertOperation(const OpCode& opCode, InstructionWalker it, Method& method, Value& output, const Value& firstOperand, const Optional<Value>& secondOperand = NO_VALUE, bool allowConstantCalculation = true);
+		InstructionWalker insertMove(InstructionWalker it, Method& method, Value& output, const Value& source, bool allowConstantCalculation = true);
 	} // namespace intermediate
 } // namespace vc4c
 

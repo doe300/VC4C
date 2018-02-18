@@ -402,7 +402,6 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 			else
 			{
 				subOffset = method.addNewLocal(TYPE_INT32, "%index_offset");
-				//FIXME is wrong for array types? E.g. test_global_data.cl loading global data (container is pointer to array, element 0, but for second element the physical-size of the array is used as offset-factor)
 				it.emplace(new intermediate::Operation("mul", subOffset, index, Value(Literal(subContainerType.getElementType().getPhysicalWidth()), TYPE_INT32)));
 				it.nextInBlock();
 			}
@@ -410,7 +409,7 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 			//according to SPIR-V 1.2 specification, the type doesn't change if the first index is the "element":
 			//"The type of Base after being dereferenced with Element is still the same as the original type of Base."
 			if(!firstIndexIsElement || &index != &indices.front())
-				subContainerType = subContainerType.getElementType().getElementType(index.getLiteralValue().value_or(Literal(ANY_ELEMENT)).signedInt()).toPointerType();
+				subContainerType = subContainerType.getElementType();
 		}
 		else if(subContainerType.getStructType())
 		{
@@ -420,6 +419,12 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 
 			subOffset = Value(Literal(subContainerType.getStructType().value()->getStructSize(index.getLiteralValue()->signedInt())), TYPE_INT32);
 			subContainerType = subContainerType.getElementType(index.getLiteralValue()->signedInt());
+		}
+		else if(subContainerType.isVectorType())
+		{
+			//takes the address of an element of the vector
+			insertOperation(OP_MUL24, it, method, subOffset, index, Value(Literal(subContainerType.getElementType().getPhysicalWidth()), TYPE_INT8));
+			subContainerType = subContainerType.getElementType();
 		}
 		else
 			throw CompilationError(CompilationStep::LLVM_2_IR, "Invalid container-type to retrieve element via index", subContainerType.to_string());
@@ -465,8 +470,15 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
 	const int refIndex = index.getLiteralValue().value_or(Literal(ANY_ELEMENT)).signedInt();
 	const_cast<std::pair<Local*, int>&>(dest.local->reference) = std::make_pair(container.local, refIndex);
 
-	if(dest.type != subContainerType)
-		throw CompilationError(CompilationStep::LLVM_2_IR, "Types of retrieving indices do not match!", subContainerType.to_string());
+	DataType finalType = subContainerType;
+	if(subContainerType.getArrayType())
+		//convert x[num] to x*
+		finalType = subContainerType.getElementType().toPointerType();
+	else if(!(firstIndexIsElement && indices.size() == 1))
+		finalType = subContainerType.toPointerType();
+
+	if(dest.type != finalType)
+		throw CompilationError(CompilationStep::LLVM_2_IR, "Types of retrieving indices do not match!", finalType.to_string());
 
 	return it;
 }
@@ -546,5 +558,45 @@ InstructionWalker intermediate::insertByteSwap(InstructionWalker it, Method& met
 	else
 		throw CompilationError(CompilationStep::GENERAL, "Invalid number of bytes for byte-swap", std::to_string(numBytes));
 
+	return it;
+}
+
+InstructionWalker intermediate::insertOperation(const OpCode& opCode, InstructionWalker it, Method& method, Value& output, const Value& firstOperand, const Optional<Value>& secondOperand, bool allowConstantCalculation)
+{
+	if(allowConstantCalculation && output.isUndefined())
+	{
+		Optional<Value> constantResult = opCode.calculate(firstOperand, secondOperand);
+		if(constantResult)
+		{
+			output = constantResult.value();
+			return it;
+		}
+	}
+	auto vectorSize = std::max(firstOperand.type.num, secondOperand ? secondOperand->type.num : static_cast<unsigned char>(1));
+	if(output.isUndefined())
+		output = method.addNewLocal(opCode.returnsFloat ? TYPE_FLOAT.toVectorType(vectorSize) : (firstOperand.type.isFloatingType() ? TYPE_INT32.toVectorType(vectorSize) : firstOperand.type));
+	if(opCode.numOperands == 1)
+		it.emplace(new Operation(opCode, output, firstOperand));
+	else
+		it.emplace(new Operation(opCode, output, firstOperand, secondOperand.value()));
+	it.nextInBlock();
+	return it;
+}
+
+InstructionWalker intermediate::insertMove(InstructionWalker it, Method& method, Value& output, const Value& source, bool allowConstantCalculation)
+{
+	if(allowConstantCalculation && output.isUndefined())
+	{
+		if(source.getLiteralValue())
+			output = Value(source.getLiteralValue().value(), source.type);
+		else if(source.hasType(ValueType::CONTAINER))
+			output = Value(source.container, source.type);
+		if(!output.isUndefined())
+			return it;
+	}
+	if(output.isUndefined())
+		output = method.addNewLocal(source.type);
+	it.emplace(new MoveOperation(output, source));
+	it.nextInBlock();
 	return it;
 }

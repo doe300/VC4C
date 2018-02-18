@@ -221,9 +221,8 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivision(Method& method, 
     else
     {
     	//if exactly one operand was negative, invert sign of result
-		const Value eitherSign = method.addNewLocal(TYPE_INT32.toVectorType(tmpDest.type.num));
-		it.emplace(new Operation(OP_XOR, eitherSign, op1Sign, op2Sign));
-		it.nextInBlock();
+		Value eitherSign(TYPE_UNKNOWN);
+		it = insertOperation(OP_XOR, it, method, eitherSign, op1Sign, op2Sign);
 		return insertRestoreSign(it, method, tmpDest, opDest, eitherSign);
     }
 	return it;
@@ -356,9 +355,8 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivisionByConstant(Method
 	else
 	{
 		//if exactly one operand was negative, invert sign of result
-		const Value eitherSign = method.addNewLocal(TYPE_INT32.toVectorType(tmpDest.type.num));
-		it.emplace(new Operation(OP_XOR, eitherSign, op1Sign, op2Sign));
-		it.nextInBlock();
+		Value eitherSign(TYPE_UNKNOWN);
+		it = insertOperation(OP_XOR, it, method, eitherSign, op1Sign, op2Sign);
 		return insertRestoreSign(it, method, tmpDest, opDest, eitherSign);
 	}
 	return it;
