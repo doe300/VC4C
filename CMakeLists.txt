@@ -19,7 +19,7 @@ option(CROSS_COMPILE "Cross compile for Raspbian" OFF)
 # Option whether to include the SPIR-V front-end
 option(SPIRV_FRONTEND "Enables a second front-end for the SPIR-V intermediate language" ON)
 # Option whether to include the LLVM library front-end. This requires the LLVM development-headers to be available for the (SPIRV-)LLVM used
-option(LLVMLIB_FRONTEND "Enables the front-end using the LLVM library to read LLVM IR" OFF)
+option(LLVMLIB_FRONTEND "Enables the front-end using the LLVM library to read LLVM IR" ON)
 # Option whether to create deb package
 option(BUILD_DEB_PACKAGE "Enables creating .deb package" ON)
 
@@ -216,6 +216,13 @@ if(LLVMLIB_FRONTEND)
 		execute_process(COMMAND ${LLVM_CONFIG_PATH} --libs core irreader bitreader OUTPUT_VARIABLE LLVM_LIB_NAMES OUTPUT_STRIP_TRAILING_WHITESPACE)
 		# Additional system libraries, e.g. required for SPIRV-LLVM on raspberry, not for "default" LLVM on my development machine
 		execute_process(COMMAND ${LLVM_CONFIG_PATH} --system-libs OUTPUT_VARIABLE LLVM_SYSTEM_LIB_NAMES OUTPUT_STRIP_TRAILING_WHITESPACE)
+		# The --shared-mode option does not exist for e.g. SPIRV-LLVM, but we can ignore it and assume static linking
+		execute_process(COMMAND ${LLVM_CONFIG_PATH} --shared-mode OUTPUT_VARIABLE LLVM_SHARED_MODE OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+		if(LLVM_SHARED_MODE STREQUAL "shared")
+			# The system libraries are only required, if LLVM is linked statically (see https://reviews.llvm.org/rL291285)
+			# So for shared linking, clear system libraries
+			set(LLVM_SYSTEM_LIB_NAMES "")
+		endif()
 		
 		#Depending on the LLVM library version used, we need to use some other functions/headers in the LLVM library front-end
 		if(LLVM_LIB_VERSION)
@@ -230,11 +237,9 @@ if(LLVMLIB_FRONTEND)
 		if(LLVM_LIBS_PATH AND LLVM_INCLUDE_PATH AND LLVM_LIB_FLAGS AND LLVM_LIB_NAMES)
 			# For cross-compilation, we need to link against the correct (compiled for the target architecture) libLLVM.
 			# Since llvm-config does not heed CMAKE_FIND_ROOT_PATH, we need to manually set it
-			# Similar for system-libraries, include the cross-compile include path
 			if(CROSS_COMPILE)
 				# TODO this doesn't work for SPIRV-LLVM ??
 				set(LLVM_LIBS_PATH "${CMAKE_FIND_ROOT_PATH}${LLVM_LIBS_PATH}")
-				set(LLVM_SYSTEM_LIB_NAMES "-L ${CMAKE_FIND_ROOT_PATH}/lib -L ${CMAKE_FIND_ROOT_PATH}/lib/arm-linux-gnueabihf ${LLVM_SYSTEM_LIB_NAMES}")
 			endif()
 			message(STATUS "Compiling LLVM library front-end with LLVM in version ${LLVM_LIB_VERSION} located in '${LLVM_LIBS_PATH}'")
 			set(ENABLE_LLVM_LIB_FRONTEND ON)

@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iomanip>
 #include <unordered_map>
 #include <sstream>
 #include <unistd.h>
@@ -24,28 +25,85 @@ using namespace vc4c;
 
 extern void disassemble(const std::string& input, const std::string& output, const OutputMode outputMode);
 
+static void printHelp()
+{
+	std::cout << "Usage: vc4c [flags] [options] -o <destination> <sources>" << std::endl;
+	std::cout << "flags:" << std::endl;
+	std::cout << "\t-h, --help\t\tPrints this help message and exits" << std::endl;
+	std::cout << "\t-v, --version\t\tPrints version and build info and exists" << std::endl;
+	std::cout << "\t-d, --debug\t\tEnables verbose debug output" << std::endl;
+	std::cout << "\t--hex\t\t\tGenerate hex output (e.g. included in source-code)" << std::endl;
+	std::cout << "\t--bin\t\t\tGenerate binary output (as used by VC4CL run-time)" << std::endl;
+	std::cout << "\t--asm\t\t\tGenerate assembler output (for analysis only)" << std::endl;
+	std::cout << "options:" << std::endl;
+	std::cout << "\t--kernel-info\t\tWrite the kernel-info meta-data (as required by VC4CL run-time, default)" << std::endl;
+	std::cout << "\t--no-kernel-info\tDont write the kernel-info meta-data" << std::endl;
+	std::cout << "\t--spirv\t\t\tExplicitely use the SPIR-V front-end" << std::endl;
+	std::cout << "\t--llvm\t\t\tExplicitely use the LLVM-IR front-end" << std::endl;
+	std::cout << "\t--disassemble\t\tDisassembles the binary input to either hex or assembler output" << std::endl;
+	std::cout << "\tany other option is passed to the pre-compiler" << std::endl;
+}
+
+#ifndef LLVM_LIBRARY_VERSION
+#define LLVM_LIBRARY_VERSION 0
+#endif
+
+static std::string toVersionString(unsigned version)
+{
+	std::stringstream s;
+	s << std::defaultfloat << (version / 10.0f);
+	return s.str();
+}
+
+static void printInfo()
+{
+	std::cout << "Running VC4C in version: " << VC4C_VERSION << std::endl;
+	std::cout << "Build configuration:" << std::endl;
+	static const std::vector<std::string> infoString = {
+#ifdef DEBUG_MODE
+	"debug mode",
+#endif
+#ifdef MULTI_THREADED
+	"multi-threaded optimization",
+#endif
+#ifdef USE_CLANG_OPENCL
+	"clang 3.9+ OpenCL features",
+#endif
+#if defined SPIRV_CLANG_PATH
+	"SPIRV-LLVM clang in " SPIRV_CLANG_PATH,
+#if defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_PARSER_HEADER
+	"SPIR-V front-end",
+#endif
+#elif defined CLANG_PATH
+	"clang in " CLANG_PATH,
+#endif
+#ifdef USE_LLVM_LIBRARY
+	std::string("LLVM library front-end with libLLVM ") + toVersionString(LLVM_LIBRARY_VERSION),
+#endif
+#ifdef VC4CL_STDLIB_HEADER
+	"VC4CL standard-library in " VC4CL_STDLIB_HEADER,
+#endif
+#ifdef SPIRV_LINKER_HEADER
+	"SPIR-V linker",
+#endif
+#ifdef VERIFIER_HEADER
+	"vc4asm verification"
+#endif
+	};
+
+	std::cout << vc4c::to_string<std::string>(infoString, "; ") << std::endl;
+}
+
 /*
  * 
  */
 int main(int argc, char** argv)
 {
-    
-    if(argc < 3)
-    {
-        std::cerr << "Usage: vc4c [flags] [options] -o <destination> <sources>" << std::endl;
-        std::cerr << "flags:" << std::endl;
-        std::cerr << "\t--hex\t\t\tGenerate hex output (e.g. included in source-code)" << std::endl;
-        std::cerr << "\t--bin\t\t\tGenerate binary output (as used by VC4CL run-time)" << std::endl;
-        std::cerr << "\t--asm\t\t\tGenerate assembler output (for analysis only)" << std::endl;
-        std::cerr << "options:" << std::endl;
-        std::cerr << "\t--kernel-info\t\tWrite the kernel-info meta-data (as required by VC4CL run-time, default)" << std::endl;
-        std::cerr << "\t--no-kernel-info\tDont write the kernel-info meta-data" << std::endl;
-        std::cerr << "\t--spirv\t\t\tExplicitely use the SPIR-V front-end" << std::endl;
-        std::cerr << "\t--llvm\t\t\tExplicitely use the LLVM-IR front-end" << std::endl;
-        std::cerr << "\t--disassemble\t\tDisassembles the binary input to either hex or assembler output" << std::endl;
-        std::cerr << "\tany other option is passed to the pre-compiler" << std::endl;
-        return 1;
-    }
+#if DEBUG_MODE
+    setLogger(std::wcout, true, LogLevel::DEBUG);
+#else
+    setLogger(std::wcout, true, LogLevel::WARNING);
+#endif
     
     Configuration config;
     std::vector<std::string> inputFiles;
@@ -53,11 +111,43 @@ int main(int argc, char** argv)
     std::string options;
     bool runDisassembler = false;
     
+    if(argc < 3)
+	{
+    	for(int i = 1; i < argc; ++i)
+    	{
+			if(strcmp("--help", argv[i]) == 0 || strcmp("-h", argv[i]) == 0)
+			{
+				printHelp();
+				return 0;
+			}
+			else if(strcmp("--version", argv[i]) == 0 || strcmp("-v", argv[i]) == 0)
+			{
+				printInfo();
+				return 0;
+			}
+    	}
+		//needs at least <program> <output> <input>
+		printHelp();
+		return 1;
+	}
+
     int i = 1;
     for(; i < argc - 2; ++i)
     {
         //flags
-        if(strcmp("--hex", argv[i]) == 0)
+    	if(strcmp("--help", argv[i]) == 0 || strcmp("-h", argv[i]) == 0)
+    	{
+    		printHelp();
+    		return 0;
+    	}
+    	else if(strcmp("--version", argv[i]) == 0 || strcmp("-v", argv[i]) == 0)
+    	{
+    		printInfo();
+    		return 0;
+    	}
+    	else if(strcmp("--debug", argv[i]) == 0 || strcmp("-d", argv[i]) == 0)
+    		setLogger(std::wcout, true, LogLevel::DEBUG);
+    	else if(strcmp("--hex", argv[i]) == 0)
             config.outputMode = OutputMode::HEX;
         else if(strcmp("--bin", argv[i]) == 0)
             config.outputMode = OutputMode::BINARY;
@@ -106,12 +196,6 @@ int main(int argc, char** argv)
 		return 3;
     }
     
-#if DEBUG_MODE
-    setLogger(std::wcout, true, LogLevel::DEBUG);
-#else
-    setLogger(std::wcout, true, LogLevel::WARNING);
-#endif
-
     if(runDisassembler)
     {
     	if(inputFiles.size() != 1)
