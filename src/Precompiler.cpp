@@ -10,6 +10,7 @@
 #include "Profiler.h"
 #include "log.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -217,6 +218,37 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
 	spirv2qasm::linkSPIRVModules(convertedInputs, output);
 	PROFILE_END(linkSourceCode);
 	return SourceType::SPIRV_BIN;
+#endif
+}
+
+bool Precompiler::isLinkerAvailable(const std::unordered_map<std::istream*, Optional<std::string>>& inputs)
+{
+	if(!isLinkerAvailable())
+		return false;
+	return std::all_of(inputs.begin(), inputs.end(), [](const std::pair<std::istream*, Optional<std::string>>& input) -> bool
+	{
+		switch(getSourceType(*input.first))
+		{
+			case SourceType::LLVM_IR_BIN:
+			case SourceType::LLVM_IR_TEXT:
+			case SourceType::OPENCL_C:
+			case SourceType::SPIRV_BIN:
+			case SourceType::SPIRV_TEXT:
+#ifdef SPIRV_HEADER
+				return true;
+#endif
+			default:
+				return false;
+		}
+	});
+}
+
+bool Precompiler::isLinkerAvailable()
+{
+#ifdef SPIRV_HEADER
+	return true;
+#else
+	return false;
 #endif
 }
 

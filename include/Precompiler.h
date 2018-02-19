@@ -140,6 +140,15 @@ namespace vc4c
 		 */
 		static SourceType linkSourceCode(const std::unordered_map<std::istream*, Optional<std::string>>& inputs, std::ostream& output);
 
+		/*
+		 * Returns whether there is a linker available that can link the given input modules
+		 */
+		static bool isLinkerAvailable(const std::unordered_map<std::istream*, Optional<std::string>>& inputs);
+		/*
+		 * Returns whether a linker is available at all in the compiler
+		 */
+		static bool isLinkerAvailable();
+
 		const SourceType inputType;
 		const Optional<std::string> inputFile;
 	private:
