@@ -230,8 +230,11 @@ if(LLVMLIB_FRONTEND)
 		if(LLVM_LIBS_PATH AND LLVM_INCLUDE_PATH AND LLVM_LIB_FLAGS AND LLVM_LIB_NAMES)
 			# For cross-compilation, we need to link against the correct (compiled for the target architecture) libLLVM.
 			# Since llvm-config does not heed CMAKE_FIND_ROOT_PATH, we need to manually set it
+			# Similar for system-libraries, include the cross-compile include path
 			if(CROSS_COMPILE)
+				# TODO this doesn't work for SPIRV-LLVM ??
 				set(LLVM_LIBS_PATH "${CMAKE_FIND_ROOT_PATH}${LLVM_LIBS_PATH}")
+				set(LLVM_SYSTEM_LIB_NAMES "-L ${CMAKE_FIND_ROOT_PATH}/lib -L ${CMAKE_FIND_ROOT_PATH}/lib/arm-linux-gnueabihf ${LLVM_SYSTEM_LIB_NAMES}")
 			endif()
 			message(STATUS "Compiling LLVM library front-end with LLVM in version ${LLVM_LIB_VERSION} located in '${LLVM_LIBS_PATH}'")
 			set(ENABLE_LLVM_LIB_FRONTEND ON)
