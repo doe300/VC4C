@@ -9,7 +9,7 @@
 #ifndef VC4C_TOOLS_H
 #define VC4C_TOOLS_H
 
-#include "helper.h"
+#include "Optional.h"
 
 #include <array>
 #include <iostream>

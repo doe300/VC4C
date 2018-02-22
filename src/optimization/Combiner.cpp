@@ -8,7 +8,6 @@
 
 #include "../InstructionWalker.h"
 #include "../intermediate/Helper.h"
-#include "helper.h"
 #include "log.h"
 
 #include <algorithm>

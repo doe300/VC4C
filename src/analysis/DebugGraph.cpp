@@ -6,6 +6,8 @@
 
 #include "DebugGraph.h"
 
+#include "../helper.h"
+
 #ifdef DEBUG_MODE
 
 using namespace vc4c;

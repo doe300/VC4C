@@ -9,7 +9,6 @@
 #include "../intermediate/Helper.h"
 #include "../periphery/SFU.h"
 #include "Comparisons.h"
-#include "helper.h"
 #include "log.h"
 
 #include <bitset>

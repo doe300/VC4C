@@ -9,7 +9,6 @@
 
 #include "../Locals.h"
 #include "Token.h"
-#include "helper.h"
 
 #include <map>
 #include <memory>

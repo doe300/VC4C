@@ -10,7 +10,6 @@
 #define VC4C_H
 
 #include "config.h"
-#include "helper.h"
 #include "Compiler.h"
 #include "Precompiler.h"
 

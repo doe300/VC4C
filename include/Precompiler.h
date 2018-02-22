@@ -9,12 +9,13 @@
 #ifndef PRECOMPILER_H
 #define PRECOMPILER_H
 
+#include "Optional.h"
 #include "config.h"
-#include "helper.h"
 
 #include <iostream>
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 namespace vc4c
 {

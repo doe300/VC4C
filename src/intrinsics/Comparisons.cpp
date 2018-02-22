@@ -8,7 +8,6 @@
 
 #include "../intermediate/Helper.h"
 #include "../intermediate/TypeConversions.h"
-#include "helper.h"
 #include "log.h"
 
 #include <cmath>

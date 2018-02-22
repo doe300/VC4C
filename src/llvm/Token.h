@@ -8,7 +8,7 @@
 #define TOKEN_H
 
 #include "CompilationError.h"
-#include "helper.h"
+#include "Optional.h"
 
 #include <array>
 

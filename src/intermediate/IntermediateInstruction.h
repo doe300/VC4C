@@ -10,7 +10,7 @@
 #include "../Module.h"
 #include "../asm/OpCodes.h"
 #include "CompilationError.h"
-#include "helper.h"
+#include "Optional.h"
 
 namespace vc4c
 {

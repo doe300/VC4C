@@ -6,7 +6,6 @@
 
 #include "IntermediateInstruction.h"
 #include "../asm/SemaphoreInstruction.h"
-#include "helper.h"
 
 using namespace vc4c;
 using namespace vc4c::intermediate;

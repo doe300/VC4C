@@ -8,7 +8,7 @@
 #define VC4C_GRAPH_H
 
 #include "CompilationError.h"
-#include "helper.h"
+#include "Optional.h"
 #include "performance.h"
 
 #include <functional>

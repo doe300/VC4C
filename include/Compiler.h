@@ -9,8 +9,8 @@
 #ifndef COMPILER_H
 #define COMPILER_H
 
+#include "Optional.h"
 #include "config.h"
-#include "helper.h"
 
 #include <iostream>
 #include <map>

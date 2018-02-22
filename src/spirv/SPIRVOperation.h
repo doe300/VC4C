@@ -9,7 +9,7 @@
 #ifdef SPIRV_HEADER
 
 #include "../Module.h"
-#include "helper.h"
+#include "Optional.h"
 
 #include <map>
 #include <memory>

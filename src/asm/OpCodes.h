@@ -7,8 +7,8 @@
 #ifndef OPCODES_H
 #define OPCODES_H
 
+#include "Optional.h"
 #include "../Bitfield.h"
-#include "helper.h"
 
 #include <algorithm>
 #include <functional>

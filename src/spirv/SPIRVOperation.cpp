@@ -11,7 +11,6 @@
 #include "../intermediate/TypeConversions.h"
 #include "../intrinsics/Images.h"
 #include "../intrinsics/Operators.h"
-#include "helper.h"
 #include "log.h"
 
 #include <algorithm>

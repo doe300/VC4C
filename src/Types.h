@@ -7,7 +7,7 @@
 #ifndef TYPES_H
 #define TYPES_H
 
-#include "helper.h"
+#include "Optional.h"
 
 #include <memory>
 #include <string>

@@ -7,7 +7,7 @@
 #ifndef VC4C_VALUE_RANGE_H
 #define VC4C_VALUE_RANGE_H
 
-#include "helper.h"
+#include "Optional.h"
 #include "../performance.h"
 
 #include <inttypes.h>
