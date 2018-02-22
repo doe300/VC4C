@@ -196,19 +196,13 @@ endif()
 
 # If enabled, check whether the LLVM library front-end can be built
 if(LLVMLIB_FRONTEND)
-	# LLVM_CONFIG_PATH can be used to configure the path for the llvm-config program
-	if(NOT LLVM_CONFIG_PATH)
-		if(SPIRV_COMPILER_ROOT) # use the SPIRV-LLVM llvm-config
-			set(LLVM_CONFIG_PATH ${SPIRV_COMPILER_ROOT}/llvm-config)
-		else() # Use the "default" llvm-config
-			find_program(LLVM_CONFIG_PATH llvm-config NAMES llvm-config-3.9 llvm-config)
-		endif()
+	# We cannot use SPIRV-LLVM/clang with libLLVM from default clang. So if SPIRV-LLVM is configured, force to use its libLLVM
+	if(SPIRV_CLANG_FOUND)
+		set(LLVM_CONFIG_PATH ${SPIRV_COMPILER_ROOT}/llvm-config)
 	endif()
-
-	if(NOT LLVM_CONFIG_PATH)
-		execute_process(COMMAND whereis llvm-config OUTPUT_VARIABLE WHEREIS_LLVM_CONFIG OUTPUT_STRIP_TRAILING_WHITESPACE)
-		message(STATUS "llvm-config program was not found, whereis gives following output: ${WHEREIS_LLVM_CONFIG}")
-	else()
+	# LLVM_CONFIG_PATH can be used to configure the path for the llvm-config program.
+	# If it is not set, the default clang will be queried via CMake find_package
+	if(LLVM_CONFIG_PATH)
 		execute_process(COMMAND ${LLVM_CONFIG_PATH} --libdir OUTPUT_VARIABLE LLVM_LIBS_PATH OUTPUT_STRIP_TRAILING_WHITESPACE)
 		execute_process(COMMAND ${LLVM_CONFIG_PATH} --includedir OUTPUT_VARIABLE LLVM_INCLUDE_PATH OUTPUT_STRIP_TRAILING_WHITESPACE)
 		execute_process(COMMAND ${LLVM_CONFIG_PATH} --cppflags OUTPUT_VARIABLE LLVM_LIB_FLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
@@ -233,31 +227,40 @@ if(LLVMLIB_FRONTEND)
 		else()
 			message(WARNING "Failed to determine LLVM library version")
 		endif()
-
-		if(LLVM_LIBS_PATH AND LLVM_INCLUDE_PATH AND LLVM_LIB_FLAGS AND LLVM_LIB_NAMES)
-			# For cross-compilation, we need to link against the correct (compiled for the target architecture) libLLVM.
-			# Since llvm-config does not heed CMAKE_FIND_ROOT_PATH, we need to manually set it
-			if(CROSS_COMPILE)
-				# TODO this doesn't work for SPIRV-LLVM ??
-				set(LLVM_LIBS_PATH "${CMAKE_FIND_ROOT_PATH}${LLVM_LIBS_PATH}")
+	else()
+		find_package(LLVM CONFIG)
+		if(LLVM_FOUND)
+			
+			#Depending on the LLVM library version used, we need to use some other functions/headers in the LLVM library front-end
+			add_definitions(-DLLVM_LIBRARY_VERSION=${LLVM_VERSION_MAJOR}${LLVM_VERSION_MINOR})
+			
+			set(LLVM_LIBS_PATH "${LLVM_LIBRARY_DIRS}")
+			set(LLVM_INCLUDE_PATH "${LLVM_INCLUDE_DIRS}")
+			set(LLVM_LIB_FLAGS "${LLVM_DEFINITIONS}")
+			set(LLVM_LIB_VERSION "${LLVM_PACKAGE_VERSION}")
+			find_library(LLVM_SHARED_LIBRARY NAMES LLVM libLLVM PATHS "${LLVM_LIBRARY_DIRS}")
+			if(LLVM_SHARED_LIBRARY)
+				set(LLVM_LIB_NAMES ${LLVM_SHARED_LIBRARY})
+			else()
+				llvm_map_components_to_libnames(LLVM_LIB_NAMES core irreader bitreader)
 			endif()
-			message(STATUS "Compiling LLVM library front-end with LLVM in version ${LLVM_LIB_VERSION} located in '${LLVM_LIBS_PATH}'")
-			set(ENABLE_LLVM_LIB_FRONTEND ON)
-			add_definitions(-DUSE_LLVM_LIBRARY=1)
-			# Adds require macros as well as include-paths
-			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_LIB_FLAGS}")
-		else()
-			message(WARNING "LLVM library front-end enabled, but LLVM library was not found!")
-			message(STATUS "LLVM libraries: ${LLVM_LIBS_PATH}")
-			message(STATUS "LLVM headers: ${LLVM_INCLUDE_PATH}")
-			message(STATUS "LLVM flags: ${LLVM_LIB_FLAGS}")
-			message(STATUS "LLVM linker flags: ${LLVM_LIB_NAMES}")
+			set(LLVM_SYSTEM_LIB_NAMES "")
 		endif()
+	endif()
+	
+	if(LLVM_LIBS_PATH AND LLVM_INCLUDE_PATH AND LLVM_LIB_FLAGS AND LLVM_LIB_NAMES)
+		message(STATUS "Compiling LLVM library front-end with LLVM in version ${LLVM_LIB_VERSION} located in '${LLVM_LIBS_PATH}'")
+		set(ENABLE_LLVM_LIB_FRONTEND ON)
+		add_definitions(-DUSE_LLVM_LIBRARY=1)
+		# Adds require macros as well as include-paths
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_LIB_FLAGS}")
+	else()
+		message(WARNING "LLVM library front-end enabled, but LLVM library was not found!")
 	endif()
 endif()
 
 if(NOT ((SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND) OR (LLVMLIB_FRONTEND AND LLVM_LIBS_PATH)))
-	message(WARNUNG " Neither SPIR-V nor LLVM library front-end are configured. Falling back to very slow and no longer maintained LLVM IR front-end!")
+	message(WARNING " Neither SPIR-V nor LLVM library front-end are configured. Falling back to very slow and no longer maintained LLVM IR front-end!")
 endif()
 
 if(VERIFY_OUTPUT)
