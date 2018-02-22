@@ -2,7 +2,7 @@ version: 2
 jobs:
   build:
     docker:
-      - image: nomaddo/cross-rpi
+      - image: nomaddo/cross-rpi:0.1
     steps:
       - checkout
       - run:

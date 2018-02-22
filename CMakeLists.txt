@@ -42,20 +42,20 @@ endif()
 
 if(CROSS_COMPILE)
 	if(NOT CROSS_COMPILER_PATH)
-		set(CROSS_COMPILER_PATH "/opt/raspberrypi/tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64")
+		set(CROSS_COMPILER_PATH "/usr/bin")
 	endif()
 	message(STATUS "Cross compiling for Raspbian with compiler: ${CROSS_COMPILER_PATH}")
 	#Set Cross compiler
-	SET(CMAKE_SYSTEM_NAME 		    "Linux")
-	SET(CMAKE_C_COMPILER   		    "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-gcc")
-	SET(CMAKE_CXX_COMPILER 		    "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-g++")
-	SET(CMAKE_FIND_ROOT_PATH  	    "${CROSS_COMPILER_PATH}/arm-linux-gnueabihf")
-	SET(CMAKE_AR                    "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-ar")
-	SET(CMAKE_CXX_COMPILER_AR       "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-gcc-ar")
-	SET(CMAKE_CXX_COMPILER_RANLIB   "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-ranlib")
-	SET(CMAKE_C_COMPILER_AR         "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-gcc-ar")
-	SET(CMAKE_CXX_COMPILER_RANLIB   "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-ranlib")
-	SET(CMAKE_LINKER                "${CROSS_COMPILER_PATH}/bin/arm-linux-gnueabihf-ld")
+	SET(CMAKE_SYSTEM_NAME 		"Linux")
+	SET(CMAKE_C_COMPILER   		"${CROSS_COMPILER_PATH}/arm-linux-gnueabihf-gcc")
+	SET(CMAKE_CXX_COMPILER 		"${CROSS_COMPILER_PATH}/arm-linux-gnueabihf-g++")
+	SET(CMAKE_FIND_ROOT_PATH  	"${CROSS_COMPILER_PATH}/../../")
+	SET(CMAKE_AR                    "${CROSS_COMPILER_PATH}/arm-linux-gnueabihf-ar")
+	SET(CMAKE_CXX_COMPILER_AR       "${CROSS_COMPILER_PATH}/arm-linux-gnueabihf-gcc-ar")
+	SET(CMAKE_CXX_COMPILER_RANLIB   "${CROSS_COMPILER_PATH}/arm-linux-gnueabihf-ranlib")
+	SET(CMAKE_C_COMPILER_AR         "${CROSS_COMPILER_PATH}/arm-linux-gnueabihf-gcc-ar")
+	SET(CMAKE_CXX_COMPILER_RANLIB   "${CROSS_COMPILER_PATH}/arm-linux-gnueabihf-ranlib")
+	SET(CMAKE_LINKER                "${CROSS_COMPILER_PATH}/arm-linux-gnueabihf-ld")
 	# Raspbian ships CLang 3.9 in its repositories
 	set(CLANG_FOUND /usr/bin/clang-3.9)
 	add_definitions(-DCLANG_PATH="${CLANG_FOUND}")
@@ -223,7 +223,7 @@ if(LLVMLIB_FRONTEND)
 			# So for shared linking, clear system libraries
 			set(LLVM_SYSTEM_LIB_NAMES "")
 		endif()
-		
+
 		#Depending on the LLVM library version used, we need to use some other functions/headers in the LLVM library front-end
 		if(LLVM_LIB_VERSION)
 			string(REPLACE "." ";" LLVM_VERSION_ELEMENTS ${LLVM_LIB_VERSION})
@@ -233,7 +233,7 @@ if(LLVMLIB_FRONTEND)
 		else()
 			message(WARNING "Failed to determine LLVM library version")
 		endif()
-		
+
 		if(LLVM_LIBS_PATH AND LLVM_INCLUDE_PATH AND LLVM_LIB_FLAGS AND LLVM_LIB_NAMES)
 			# For cross-compilation, we need to link against the correct (compiled for the target architecture) libLLVM.
 			# Since llvm-config does not heed CMAKE_FIND_ROOT_PATH, we need to manually set it
@@ -257,7 +257,7 @@ if(LLVMLIB_FRONTEND)
 endif()
 
 if(NOT ((SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND) OR (LLVMLIB_FRONTEND AND LLVM_LIBS_PATH)))
-	message(WARNUNG "Neither SPIR-V nor LLVM library front-end are configured. Falling back to very slow and no longer maintained LLVM IR front-end!")
+	message(WARNUNG " Neither SPIR-V nor LLVM library front-end are configured. Falling back to very slow and no longer maintained LLVM IR front-end!")
 endif()
 
 if(VERIFY_OUTPUT)
