@@ -669,7 +669,10 @@ DataType spirv2qasm::getIntegerType(const uint32_t bitWidth, const uint32_t sign
     if (bitWidth > 64)
         throw CompilationError(CompilationStep::PARSER, "Unsupported bit-width for integer", std::to_string(bitWidth));
     if(bitWidth == 64)
+    {
+    	logging::warn() << "64-bit operations are not supported by the VideoCore IV architecture, further compilation may fail!" << logging::endl;
     	return TYPE_INT64;
+    }
     if (bitWidth == 32)
         return TYPE_INT32;
     if (bitWidth == 16)

@@ -47,11 +47,14 @@ static void printHelp()
 #ifndef LLVM_LIBRARY_VERSION
 #define LLVM_LIBRARY_VERSION 0
 #endif
+#ifndef VC4C_VERSION
+#define VC4C_VERSION ""
+#endif
 
 static std::string toVersionString(unsigned version)
 {
 	std::stringstream s;
-	s << std::defaultfloat << (version / 10.0f);
+	s << (version / 10.0f);
 	return s.str();
 }
 

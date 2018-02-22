@@ -144,10 +144,24 @@ namespace vc4c
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vectorization.cl", "test11",
 					{toParameter(toRange<int>(0, 256))}, {}, maxExecutionCycles),
 					addVector({}, 0, std::vector<int>{201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211})
+				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/pointer_cast.cl", "test_pointer_cast",
+					{toParameter(std::vector<unsigned>{0x01020304}), toParameter(std::vector<unsigned>(1))}, {}, maxExecutionCycles),
+					addVector({}, 1, std::vector<unsigned>{0x01020304})
+				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/sub_sat.cl", "test_sub_sat_int",
+					{toParameter(std::vector<int>{std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), std::numeric_limits<int>::min(), std::numeric_limits<int>::max()}),
+							toParameter(std::vector<int>{1, -1, std::numeric_limits<int>::max(), std::numeric_limits<int>::min()}), toParameter(std::vector<int>(4))
+					}, toConfig(4, 1, 1, 1, 1, 1), maxExecutionCycles),
+					addVector({}, 2, std::vector<int>{std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), std::numeric_limits<int>::min(), std::numeric_limits<int>::max()})
+				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/uchar_compare.cl", "test_select",
+					{toParameter(std::vector<unsigned>{0x01020304}), toParameter(std::vector<unsigned>{0x04020301}), toParameter(std::vector<unsigned>(1))}, {}, maxExecutionCycles),
+					addVector({}, 2, std::vector<unsigned>{0x04020301})
 				)
 		};
 
-		//TODO NVIDIA/matrixMul, NVIDIA/transpose, OpenCLIPP/Arithmetic, OpenCLIPP/Logic, OpenCLIPP/Thresholding, test_vector, test_signedness, test_shuffle, test_conversions, local_private_storage
+		//TODO NVIDIA/matrixMul, NVIDIA/transpose, OpenCLIPP/Arithmetic, OpenCLIPP/Logic, OpenCLIPP/Thresholding, test_signedness, test_shuffle, test_conversions, local_private_storage
 
 		std::vector<std::pair<EmulationData, std::map<uint32_t, std::vector<uint32_t>>>> floatTests = {
 //				std::make_pair(EmulationData(VC4C_ROOT_PATH "example/test_instructions.cl", "test_instructions",
@@ -196,6 +210,15 @@ namespace vc4c
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vectorization.cl", "test5",
 					{toParameter(std::vector<float>(1024))}, {}, maxExecutionCycles * 2),
 					addVector({}, 0, toRange<float>(0.0f, 1024.0f))
+				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/clamp.cl", "test_clamp",
+					{toParameter(std::vector<float>{17.0f, 0.0f, 3.0f}), toParameter(std::vector<float>{1.0f, 1.0f, 1.0f}), toParameter(std::vector<float>{5.0f, 5.0f, 5.0f}), toParameter(std::vector<float>(3))},
+					toConfig(3, 1, 1, 1, 1, 1), maxExecutionCycles),
+					addVector({}, 3, std::vector<float>{5.0f, 1.0f, 3.0f})
+				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/cross_product.cl", "test_clamp",
+					{toParameter(std::vector<float>{1.0f, 2.0f, 3.0f}), toParameter(std::vector<float>{3.0f, 4.0f, 5.0f}), toParameter(std::vector<float>(3))}, {}, maxExecutionCycles),
+					addVector({}, 2, std::vector<float>{-2.0f, 4.0f, -2.0f})
 				)
 		};
 

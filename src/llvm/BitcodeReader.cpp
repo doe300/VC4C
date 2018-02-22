@@ -368,7 +368,10 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
 	if(type->isFloatTy())
 		return TYPE_FLOAT;
 	if(type->isDoubleTy())
+	{
+		logging::warn() << "64-bit operations are not supported by the VideoCore IV architecture, further compilation may fail!" << logging::endl;
 		return TYPE_DOUBLE;
+	}
 	if(type->isLabelTy())
 		return TYPE_LABEL;
 	if(type->isIntegerTy(1))
@@ -380,7 +383,10 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
 	if(type->isIntegerTy(32))
 		return TYPE_INT32;
 	if(type->isIntegerTy(64))
+	{
+		logging::warn() << "64-bit operations are not supported by the VideoCore IV architecture, further compilation may fail!" << logging::endl;
 		return TYPE_INT64;
+	}
 	if(type->isPointerTy() && type->getPointerElementType()->isStructTy())
 	{
 		//recognize image types - taken from https://github.com/KhronosGroup/SPIRV-LLVM/blob/khronos/spirv-3.6.1/lib/SPIRV/SPIRVUtil.cpp (#isOCLImageType)

@@ -550,7 +550,10 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     	else if(getWord(parsed_instruction, 2) == 16)
     		typeMappings[getWord(parsed_instruction, 1)] = TYPE_HALF;
     	else if(getWord(parsed_instruction, 2) == 64)
+    	{
+    		logging::warn() << "64-bit operations are not supported by the VideoCore IV architecture, further compilation may fail!" << logging::endl;
     		typeMappings[getWord(parsed_instruction, 1)] = TYPE_DOUBLE;
+    	}
     	else
             throw CompilationError(CompilationStep::PARSER, "Unsupported floating-point type");
         return SPV_SUCCESS;
