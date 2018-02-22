@@ -16,7 +16,7 @@ MethodCall::MethodCall(const std::string& methodName, const std::vector<Value>& 
 }
 
 MethodCall::MethodCall(const Value& dest, const std::string& methodName, const std::vector<Value>& args) :
-IntermediateInstruction({true, dest}), methodName(methodName)
+IntermediateInstruction(dest), methodName(methodName)
 {
 	for(std::size_t i = 0; i < args.size(); ++i)
 		setArgument(i, args[i]);

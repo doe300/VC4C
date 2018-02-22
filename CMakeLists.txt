@@ -17,7 +17,7 @@ option(LLVMIR_FRONTEND "Enables the standard front-end for the LLVM intermediate
 # Option to enable/disable cross compilation
 option(CROSS_COMPILE "Cross compile for Raspbian" OFF)
 # Option whether to include the SPIR-V front-end
-option(SPIRV_FRONTEND "Enables a second front-end for the SPIR-V intermediate language" ON)
+option(SPIRV_FRONTEND "Enables a second front-end for the SPIR-V intermediate language" OFF)
 # Option whether to include the LLVM library front-end. This requires the LLVM development-headers to be available for the (SPIRV-)LLVM used
 option(LLVMLIB_FRONTEND "Enables the front-end using the LLVM library to read LLVM IR" ON)
 # Option whether to create deb package
@@ -67,17 +67,17 @@ add_definitions(-DVC4C_VERSION="${PROJECT_VERSION}")
 
 # append usage of C++ to compiler flags, also optimize for speed and enable all warnings
 if(BUILD_DEBUG)
-	LIST(APPEND CMAKE_CXX_FLAGS "-std=c++11 -g3 -rdynamic -Wall -Wextra -Wold-style-cast -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings")
+	LIST(APPEND CMAKE_CXX_FLAGS "-std=c++14 -g3 -rdynamic -Wall -Wextra -Wold-style-cast -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings")
 	SET(CMAKE_BUILD_TYPE 		Debug)
 	add_definitions(-DDEBUG_MODE=1)
 else()
-	LIST(APPEND CMAKE_CXX_FLAGS "-std=c++11 -O3 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings")
+	LIST(APPEND CMAKE_CXX_FLAGS "-std=c++14 -O3 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings")
 	SET(CMAKE_BUILD_TYPE 		Release)
 endif()
 
 # Enable additional warnings, if available
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-shadow -Wno-padded -Wno-shadow-field-in-constructor -Wno-global-constructors -Wno-exit-time-destructors -Wno-c++14-binary-literal -Wno-missing-prototypes -Wno-gnu-anonymous-struct -Wno-nested-anon-types -Wno-documentation -Wno-unused-command-line-argument -Wno-unused-member-function -Wno-gnu-zero-variadic-macro-arguments -Wno-covered-switch-default -Wno-switch-enum -Wswitch")
+	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-shadow -Wno-padded -Wno-shadow-field-in-constructor -Wno-global-constructors -Wno-exit-time-destructors -Wno-missing-prototypes -Wno-gnu-anonymous-struct -Wno-nested-anon-types -Wno-documentation -Wno-unused-command-line-argument -Wno-unused-member-function -Wno-gnu-zero-variadic-macro-arguments -Wno-covered-switch-default -Wno-switch-enum -Wswitch")
 elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER "6.0.0")
 	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wdouble-promotion -fdelete-null-pointer-checks -Wnull-dereference -Wuninitialized -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=format -Wsuggest-override -Wconversion -Wzero-as-null-pointer-constant")
 endif()

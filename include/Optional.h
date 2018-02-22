@@ -11,12 +11,14 @@
 
 #include <functional>
 #include <type_traits>
-#if __cplusplus >= 201703L
+#if __has_include(<optional>) && __cplusplus >= 201703L
 #include <optional>
-#define OPTIONAL_BASE std::optional
-#elif __cplusplus >= 201402L
+template<typename T>
+using OptionalBase = std::optional<T>;
+#elif __has_include(<experimental/optional>)
 #include <experimental/optional>
-#define OPTIONAL_BASE std::experimental::optional
+template<typename T>
+using OptionalBase = std::experimental::optional<T>;
 #endif
 
 namespace vc4c
@@ -24,153 +26,62 @@ namespace vc4c
 	/*
 	 * Implementation of an optional value.
 	 *
-	 * This class is mostly compatible with C++17 std::optional and its used should be replaced by std::optional when C++17 support is enabled
+	 * This class extends the functionality of std::(experimental::)optional
 	 */
 	template<typename T>
-	class Optional
+	class Optional : public OptionalBase<T>
 	{
+	     using Base = OptionalBase<T>;
 	public:
-	    Optional() : hasValue(false)
-		{
-	    	static_assert(std::is_default_constructible<T>::value, "Cannot use default constructor on non default-constructible type!");
-		}
-	    Optional(const T& value) : hasValue(true), val(value)
-	    {
-	    	static_assert(std::is_copy_constructible<T>::value, "Cannot use copy constructor on non copy-constructible type!");
-	    }
-	    Optional(T&& value) : hasValue(true), val(value)  /* matches C++17 std::optional */
-	    {
-	    	static_assert(std::is_move_constructible<T>::value, "Cannot use move constructor on non move-constructible type!");
-	    }
-	    Optional(const Optional<T>& other) : hasValue(other.hasValue), val(other.val)  /* matches C++17 std::optional */
-	    {
-	    	static_assert(std::is_copy_constructible<T>::value, "Cannot use copy constructor on non copy-constructible type!");
-	    }
-	    Optional(Optional<T>&& other) : hasValue(other.hasValue), val(std::forward<T>(other.val))  /* matches C++17 std::optional */
-		{
-	    	static_assert(std::is_move_constructible<T>::value, "Cannot use move constructor on non move-constructible type!");
-		}
-
-	    Optional(bool hasValue, const T& dummyValue = {}) : hasValue(hasValue), val(dummyValue) { }
-
-	    Optional<T>& operator=(const Optional<T>& other) /* matches C++17 std::optional */
-	    {
-	    	static_assert(std::is_copy_assignable<T>::value, "Cannot use copy assignment operator on non copy-assignable type!");
-	    	hasValue = other.hasValue;
-	    	val = other.val;
-	    	return *this;
-	    }
-
-	    Optional<T>& operator=(Optional<T>&& other) /* matches C++17 std::optional */
-		{
-	    	static_assert(std::is_move_assignable<T>::value, "Cannot use move assignment operator on non copy-assignable type!");
-			hasValue = other.hasValue;
-			val = other.val;
-			return *this;
-		}
-
-	    Optional<T>& operator=(const T& value) /* matches C++17 std::optional */
-	    {
-	    	static_assert(std::is_copy_assignable<T>::value, "Cannot use copy assignment operator on non copy-assignable type!");
-	        hasValue = true;
-	        this->val = value;
-	        return *this;
-	    }
-
-	    Optional<T>& operator=(T&& value) /* matches C++17 std::optional */
-	    {
-	    	static_assert(std::is_move_assignable<T>::value, "Cannot use move assignment operator on non copy-assignable type!");
-	    	hasValue = true;
-	    	this->val = std::forward<T>(value);
-	    	return *this;
-	    }
-
-	    //"contextual conversion operator"
-	    explicit operator bool() const /* matches C++17 std::optional */
-		{
-			return hasValue;
-		}
-
-	    bool has_value() const /* matches C++17 std::optional */
-	    {
-	    	return hasValue;
-	    }
-
-	    T& value() /* matches C++17 std::optional */
-	    {
-	    	if(!hasValue)
-				throw CompilationError(CompilationStep::GENERAL, "Invalid read of optional value!");
-			return val;
-	    }
-
-	    const T& value() const /* matches C++17 std::optional */
-	    {
-	    	if(!hasValue)
-				throw CompilationError(CompilationStep::GENERAL, "Invalid read of optional value!");
-			return val;
-	    }
-
-	    T value_or(T&& defaultValue) const /* matches C++17 std::optional */
-	    {
-	    	return hasValue ? val : std::forward<T>(defaultValue);
-	    }
+		
+	    constexpr Optional() : Base() { }
+	    constexpr Optional(const T& value) : Base(value) { }
+	    constexpr Optional(T&& value) : Base(value) { }
+	    constexpr Optional(const Optional<T>& other) : Base(other) { }
+	    constexpr Optional(Optional<T>&& other) : Base(other) { }
+	    
+	    Optional& operator=(const Optional&) = default;
+	    Optional& operator=(Optional&&) = default;
 
 	    T value_or(const T& defaultValue) const
 	    {
-	    	return hasValue ? val : std::forward<const T>(defaultValue);
-	    }
-
-	    const T* operator->() const /* matches C++17 std::optional */
-	    {
-	    	return &value();
-	    }
-
-	    T* operator->() /* matches C++17 std::optional */
-	    {
-	    	return &value();
-	    }
-
-	    const T& operator*() const /* matches C++17 std::optional */
-	    {
-	    	return value();
-	    }
-
-	    T& operator*() /* matches C++17 std::optional */
-	    {
-	    	return value();
+	    	return has_value() ? **this : std::forward<const T>(defaultValue);
 	    }
 
 	    bool is(const T& value) const
 	    {
-	    	return hasValue && this->val == value;
+	    	return has_value() && **this == value;
 	    }
 
 	    Optional<T> orOther(const Optional<T>& other) const
 		{
-	    	return hasValue ? *this : other;
+	    	return has_value() ? **this : other;
 		}
 
 	    std::string to_string() const
 	    {
-	        return hasValue ? val.to_string() : "-";
+	        return has_value() ? (*this)->to_string() : "-";
 	    }
 
 	    bool ifPresent(const std::function<bool(const T&)>& predicate) const
 	    {
-	    	return hasValue && predicate(val);
+	    	return has_value() && predicate(**this);
 	    }
 
 	    template<typename R>
 	    Optional<R> map(const std::function<R(const T&)>& mapper, const Optional<R>& defaultValue = {}) const
 		{
-	    	if(hasValue)
-	    		return Optional<R>(mapper(val));
+	    	if(has_value())
+	    		return Optional<R>(mapper(**this));
 	    	return defaultValue;
 		}
-
-	private:
-	    bool hasValue;
-	    T val;
+		
+#if __cplusplus < 201703L
+		bool has_value() const
+		{
+		     return static_cast<bool>(*this);
+		}
+#endif
 	};
         
 	/*

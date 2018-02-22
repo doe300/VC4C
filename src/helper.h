@@ -85,7 +85,7 @@ namespace vc4c
 	 * Returns the bit-field with the additional flag set
 	 */
 	template<typename Bitfield>
-	inline __attribute__((warn_unused_result)) Bitfield add_flag(Bitfield orig, Bitfield flag)
+	constexpr inline __attribute__((warn_unused_result)) Bitfield add_flag(Bitfield orig, Bitfield flag)
 	{
 	    return static_cast<Bitfield>(static_cast<unsigned>(orig) | static_cast<unsigned>(flag));
 	}
@@ -94,7 +94,7 @@ namespace vc4c
 	 * Returns the bit-field with the additional flag being cleared
 	 */
 	template<typename Bitfield>
-	inline __attribute__((warn_unused_result)) Bitfield remove_flag(Bitfield orig, Bitfield flag)
+	constexpr inline __attribute__((warn_unused_result)) Bitfield remove_flag(Bitfield orig, Bitfield flag)
 	{
 	    return static_cast<Bitfield>(static_cast<unsigned>(orig) & ~static_cast<unsigned>(flag));
 	}
@@ -103,7 +103,7 @@ namespace vc4c
 	 * Returns whether the given flag is set in the bit-field
 	 */
 	template<typename Bitfield>
-	inline bool has_flag(Bitfield field, Bitfield flag)
+	constexpr inline bool has_flag(Bitfield field, Bitfield flag)
 	{
 	    return (static_cast<unsigned>(field) & static_cast<unsigned>(flag)) == static_cast<unsigned>(flag);
 	}
@@ -112,7 +112,7 @@ namespace vc4c
 	 * Returns a bit-field containing only the intersecting flags of the operands
 	 */
 	template<typename Bitfield>
-	inline __attribute__((warn_unused_result)) Bitfield intersect_flags(Bitfield field0, Bitfield field1)
+	constexpr inline __attribute__((warn_unused_result)) Bitfield intersect_flags(Bitfield field0, Bitfield field1)
 	{
 		return static_cast<Bitfield>(static_cast<unsigned>(field0) & static_cast<unsigned>(field1));
 	}
@@ -121,70 +121,19 @@ namespace vc4c
 	 * Returns a bit-field containing all flags set in either of the operands
 	 */
 	template<typename Bitfield>
-	inline __attribute__((warn_unused_result)) Bitfield combine_flags(Bitfield field0, Bitfield field1)
+	constexpr inline __attribute__((warn_unused_result)) Bitfield combine_flags(Bitfield field0, Bitfield field1)
 	{
 		return static_cast<Bitfield>(static_cast<unsigned>(field0) | static_cast<unsigned>(field1));
 	}
 
-	// Variadic captures are not supported by Raspbian GCC
-//	template<typename T, typename R, typename... Args>
-//	std::function<R(const T&)> toFunction(R (T::*memberFunc)(Args...) const, Args&&... args)
-//	{
-//		return [memberFunc,args...](const T& val) -> R
-//		{
-//			return (val.*memberFunc)(std::forward<Args>(args)...);
-//		};
-//	}
-
-	/*
-	 * Converts a member-function to a "default" function, no-argument version
-	 */
-	template<typename T, typename R>
-	std::function<R(const T&)> toFunction(R (T::*memberFunc)() const)
+	template<typename T, typename R, typename... Args>
+	std::function<R(const T&)> toFunction(R (T::*memberFunc)(Args...) const, Args&&... args)
 	{
-		return [memberFunc](const T& val) -> R
+		return [memberFunc,args...](const T& val) -> R
 		{
-			return (val.*memberFunc)();
+			return (val.*memberFunc)(std::forward<Args>(args)...);
 		};
 	}
-
-	/*
-	 * Converts a member-function to a "default" function, single argument version
-	 */
-	template<typename T, typename R, typename Arg>
-	std::function<R(const T&)> toFunction(R (T::*memberFunc)(Arg) const, Arg&& arg)
-	{
-		return [memberFunc,arg](const T& val) -> R
-		{
-			return (val.*memberFunc)(std::forward<Arg>(arg));
-		};
-	}
-
-	/*
-	 * Converts a member-function to a "default" function, two argument version
-	 */
-	template<typename T, typename R, typename Arg0, typename Arg1>
-	std::function<R(const T&)> toFunction(R (T::*memberFunc)(Arg0, Arg1) const, Arg0&& arg0, Arg1&& arg1)
-	{
-		return [memberFunc,arg0, arg1](const T& val) -> R
-		{
-			return (val.*memberFunc)(std::forward<Arg0>(arg0), std::forward<Arg1>(arg1));
-		};
-	}
-
-	/*
-	 * Converts a member-function to a "default" function, three argument version
-	 */
-	template<typename T, typename R, typename Arg0, typename Arg1, typename Arg2>
-	std::function<R(const T&)> toFunction(R (T::*memberFunc)(Arg0,Arg1,Arg2) const, Arg0&& arg0, Arg1&& arg1, Arg2&& arg2)
-	{
-		return [memberFunc,arg0,arg1,arg2](const T& val) -> R
-		{
-			return (val.*memberFunc)(std::forward<Arg0>(arg0), std::forward<Arg1>(arg1), std::forward<Arg2>(arg2));
-		};
-	}
-
-
 } // namespace vc4c
 
 #endif /* HELPER_H */

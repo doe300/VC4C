@@ -105,10 +105,10 @@ static Register getRegister(const RegisterFile file, const Register reg0, const 
 static std::pair<Register, Optional<SmallImmediate>> getInputValue(const Value& val, const FastMap<const Local*, Register>& registerMapping, const IntermediateInstruction* instr)
 {
     if (val.hasType(ValueType::REGISTER))
-        return std::make_pair(val.reg, Optional<SmallImmediate>(false, SmallImmediate(0)));
+        return std::make_pair(val.reg, Optional<SmallImmediate>{});
     if (val.hasType(ValueType::LOCAL)) {
         const Register reg = registerMapping.at(val.local);
-        return std::make_pair(reg, Optional<SmallImmediate>(false, SmallImmediate(0)));
+        return std::make_pair(reg, Optional<SmallImmediate>{});
     }
     if(val.hasType(ValueType::SMALL_IMMEDIATE))
     	return std::make_pair(Register{RegisterFile::PHYSICAL_B, val.immediate.value}, val.immediate);
@@ -122,7 +122,7 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
     const Register outReg = getOutput()->hasType(ValueType::LOCAL) ? registerMapping.at(getOutput()->local) : getOutput()->reg;
 
     auto input0 = getInputValue(getFirstArg(), registerMapping, this);
-    auto input1 = getSecondArg() ? getInputValue(getSecondArg().value(), registerMapping, this) : std::make_pair(REG_NOP, Optional<SmallImmediate>(false, SmallImmediate(0)));
+    auto input1 = getSecondArg() ? getInputValue(getSecondArg().value(), registerMapping, this) : std::make_pair(REG_NOP, Optional<SmallImmediate>{});
 
     const InputMultiplex inMux0 = getInputMux(input0.first, getFirstArg().hasType(ValueType::REGISTER), input0.second);
     if (!input0.second) {
@@ -306,7 +306,7 @@ void Operation::setOpCode(const OpCode& op)
 }
 
 MoveOperation::MoveOperation(const Value& dest, const Value& arg, const ConditionCode cond, const SetFlag setFlags) :
-IntermediateInstruction({true, dest}, cond, setFlags)
+IntermediateInstruction(dest, cond, setFlags)
 {
 	setArgument(0, arg);
 }
@@ -401,7 +401,7 @@ qpu_asm::Instruction* VectorRotation::convertToAsm(const FastMap<const Local*, R
 
     auto input = getInputValue(getSource(), registerMapping, this);
     auto rotationOffset = getInputValue(getOffset(), registerMapping, this);
-    const InputMultiplex inMux = getInputMux(input.first, false, Optional<SmallImmediate>(false, SmallImmediate(0)));
+    const InputMultiplex inMux = getInputMux(input.first, false, Optional<SmallImmediate>{});
     if (inMux == InputMultiplex::REGA || inMux == InputMultiplex::REGB) {
         throw CompilationError(CompilationStep::CODE_GENERATION, "Can't rotate from register as input", to_string());
     }

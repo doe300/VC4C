@@ -225,7 +225,7 @@ static Optional<AddressSpace> readAddressSpace(Scanner& scanner)
 		scanner.pop();
 	}
 	if(addressSpace < 0)
-		return Optional<AddressSpace>(false);
+		return {};
 	return toAddressSpace(static_cast<int>(addressSpace));
 }
 

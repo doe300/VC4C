@@ -28,10 +28,10 @@ struct BaseAndOffset
 	Optional<int32_t> offset;
 	Optional<int32_t> maxOffset;
 
-	explicit BaseAndOffset() : base(NO_VALUE), offset(false, -1), maxOffset(false, -1)
+	explicit BaseAndOffset() : base(NO_VALUE), offset{}, maxOffset{}
 	{}
 
-	BaseAndOffset(Optional<Value> base, Optional<int32_t> offset, Optional<int32_t> maxOffset = Optional<int32_t>(false, -1)) : base(base), offset(offset), maxOffset(maxOffset)
+	BaseAndOffset(Optional<Value> base, Optional<int32_t> offset, Optional<int32_t> maxOffset = {}) : base(base), offset(offset), maxOffset(maxOffset)
 	{}
 };
 

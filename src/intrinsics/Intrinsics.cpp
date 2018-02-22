@@ -785,7 +785,7 @@ static InstructionWalker intrinsifyReadLocalSize(Method& method, InstructionWalk
 	if(method.metaData.isWorkGroupSizeSet())
 	{
 		const auto& workGroupSizes = method.metaData.workGroupSizes;
-		Optional<Literal> immediate(false, Literal(false));
+		Optional<Literal> immediate;
 		if(arg.isLiteralValue())
 			//the dimension is a literal value -> look this dimension up
 			immediate = arg.getLiteralValue();

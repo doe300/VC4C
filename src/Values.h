@@ -526,7 +526,7 @@ namespace vc4c
 		 * Determines whether all elements of this container have the same value.
 		 * If the parameter is set, checks if all elements have this exact value
 		 */
-		bool isAllSame(const Optional<Literal>& value = { false, Literal(false) }) const;
+		bool isAllSame(const Optional<Literal>& value = Optional<Literal>{}) const;
 
 		/*
 		 * Determines whether all element-values correspond to their element number,  e.g. i32 1, i32 2, ...
@@ -719,7 +719,7 @@ namespace vc4c
 	/*
 	 * A constant Optional value containing no value
 	 */
-	const Optional<Value> NO_VALUE(false, UNDEFINED_VALUE);
+	const Optional<Value> NO_VALUE;
 	/*
 	 * All 32 bits are set
 	 */

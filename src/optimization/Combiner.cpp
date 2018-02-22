@@ -202,7 +202,7 @@ static const std::vector<MergeCondition> mergeConditions = {
     },
     //check maximum 1 immediate value is used (both can use the same immediate value)
     [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool{
-        Optional<SmallImmediate> immediate(false, SmallImmediate(0));
+        Optional<SmallImmediate> immediate;
         if(firstOp != nullptr)
         {
             if(firstOp->getFirstArg().hasType(ValueType::SMALL_IMMEDIATE))
@@ -538,7 +538,7 @@ static Optional<Literal> getSourceLiteral(InstructionWalker it)
 		if(val)
 			return val->getLiteralValue();
 	}
-	return Optional<Literal>(false, Literal(false));
+	return {};
 }
 
 static bool canReplaceLiteralLoad(InstructionWalker it, const InstructionWalker start, const InstructionWalker match)

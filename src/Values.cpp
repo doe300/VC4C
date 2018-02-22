@@ -407,13 +407,13 @@ Optional<Literal> SmallImmediate::toLiteral() const
 		return Literal(static_cast<int32_t>(getIntegerValue().value()));
 	if(getFloatingValue())
 		return Literal(getFloatingValue().value());
-	return Optional<Literal>(false, Literal(static_cast<int32_t>(0)));
+	return {};
 }
 
 Optional<SmallImmediate> SmallImmediate::fromInteger(signed char val)
 {
 	if(val < -16 || val > 15)
-		return Optional<SmallImmediate>(false, SmallImmediate(0));
+		return {};
 	if(val < 0)
 		return SmallImmediate(static_cast<unsigned char>(32 + val));
 	return SmallImmediate(static_cast<unsigned char>(val));
@@ -623,7 +623,7 @@ Optional<Literal> Value::getLiteralValue() const
 		return literal;
 	if(hasType(ValueType::SMALL_IMMEDIATE))
 		return immediate.toLiteral();
-	return Optional<Literal>(false, Literal(false));
+	return {};
 }
 
 std::string Value::to_string(const bool writeAccess, bool withLiterals) const

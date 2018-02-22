@@ -327,7 +327,7 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
 
 static void fixLocals(const InstructionWalker it, FastMap<const Local*, LocalUsage>& localUses, Optional<const Local*>& lastWrittenLocal0, Optional<const Local*>& lastWrittenLocal1)
 {
-	static const Optional<const Local*> EMPTY(false, nullptr);
+	static const Optional<const Local*> EMPTY;
 
 	const intermediate::CombinedOperation* comp = it.get<const intermediate::CombinedOperation>();
 	if (comp != nullptr)
@@ -377,8 +377,8 @@ GraphColoring::GraphColoring(Method& method, InstructionWalker it) : method(meth
 	openSet.reserve(method.readLocals().size());
 	localUses.reserve(method.readLocals().size());
 
-	Optional<const Local*> lastWrittenLocal0(false, nullptr);
-	Optional<const Local*> lastWrittenLocal1(false, nullptr);
+	Optional<const Local*> lastWrittenLocal0;
+	Optional<const Local*> lastWrittenLocal1;
 	while(!it.isEndOfMethod())
 	{
 		if(it.get() != nullptr && !it.has<intermediate::Branch>() && !it.has<intermediate::BranchLabel>() && !it.has<intermediate::MemoryBarrier>())

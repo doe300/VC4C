@@ -122,10 +122,10 @@ struct LoopControl
 	Optional<Literal> getStep() const
 	{
 		if(!iterationStep.ifPresent([](const InstructionWalker& it) -> bool {return it.has<const intermediate::Operation>();}))
-			return Optional<Literal>(false, Literal(false));
+			return {};
 		const intermediate::Operation* op = iterationStep->get<const intermediate::Operation>();
 		if(op->getArguments().size() != 2)
-			return Optional<Literal>(false, Literal(false));
+			return {};
 		if(op->getArgument(0).ifPresent(toFunction(&Value::isLiteralValue)))
 			return op->getArgument(0)->getLiteralValue();
 		return op->getArgument(1)->getLiteralValue();

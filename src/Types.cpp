@@ -103,7 +103,7 @@ Optional<PointerType*> DataType::getPointerType() const
 	PointerType* pointerType = dynamic_cast<PointerType*>(complexType.get());
 	if(pointerType != nullptr)
 			return pointerType;
-	return Optional<PointerType*>(false, nullptr);
+	return {};
 }
 
 Optional<ArrayType*> DataType::getArrayType() const
@@ -111,7 +111,7 @@ Optional<ArrayType*> DataType::getArrayType() const
 	ArrayType* arrayType = dynamic_cast<ArrayType*>(complexType.get());
 	if(arrayType != nullptr)
 		return arrayType;
-	return Optional<ArrayType*>(false, nullptr);
+	return {};
 }
 
 Optional<StructType*> DataType::getStructType() const
@@ -119,7 +119,7 @@ Optional<StructType*> DataType::getStructType() const
 	StructType* structType = dynamic_cast<StructType*>(complexType.get());
 	if(structType != nullptr)
 		return structType;
-	return Optional<StructType*>(false, nullptr);
+	return {};
 }
 
 
@@ -128,7 +128,7 @@ Optional<ImageType*> DataType::getImageType() const
 	ImageType* imageType = dynamic_cast<ImageType*>(complexType.get());
 	if(imageType != nullptr)
 		return imageType;
-	return Optional<ImageType*>(false, nullptr);
+	return {};
 }
 
 bool DataType::isFloatingType() const
