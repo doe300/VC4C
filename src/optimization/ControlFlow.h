@@ -44,6 +44,11 @@ namespace vc4c
 		 */
 		void addStartStopSegment(const Module& module, Method& method, const Configuration& config);
 
+		/*
+		 * Remove constant load in loops
+		 */
+		void removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config);
+
 	} /* namespace optimizations */
 } /* namespace vc4c */
 

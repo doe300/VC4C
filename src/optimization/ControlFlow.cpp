@@ -971,3 +971,20 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
 
 	generateStopSegment(method);
 }
+
+// TODO: move to headers
+struct NoRelation {};
+using LoopInclusionTreeNode = Node<ControlFlowLoop*, NoRelation>;
+using LoopInclusionTree = Graph<ControlFlowLoop*, LoopInclusionTreeNode>;
+
+void optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config) {
+	logging::debug() << "===================== removeConstantLoadInLoops ============================" << logging::endl;
+
+	// 1. find loops
+	auto cfg = ControlFlowGraph::createCFG(method);
+	auto loops = cfg.findLoops();
+
+	// 2. generate inclusion relation of loops as trees
+
+	// 3. move constant load operations from leaf of trees
+}
