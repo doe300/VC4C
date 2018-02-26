@@ -71,15 +71,15 @@ jobs:
   test:
     docker:
       - image: nomaddo/cross-rpi:0.1
-    require:
-      - build
     steps:
       - checkout
-      - run:
-
+      - run: build/test/TestVC4C
 workflows:
   version: 2
   commit:
     jobs:
       - build
       - cross
+      - test:
+          require:
+            - build
