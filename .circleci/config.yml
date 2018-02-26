@@ -80,5 +80,5 @@ workflows:
       - build
       - cross
       - test:
-          require:
+          requires:
             - build
