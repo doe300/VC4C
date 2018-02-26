@@ -104,6 +104,27 @@ Optional<InstructionWalker> ControlFlowLoop::findInLoop(const intermediate::Inte
 	return {};
 }
 
+bool ControlFlowLoop::includes(const ControlFlowLoop& other) const
+{
+	auto head = std::find_if(this->begin(), this->end(), [&](const CFGNode* node) {
+		return node->key == (*other.begin())->key;
+	});
+	if (head == this->end())
+ 	{
+		return false;
+	}
+
+	auto thisItr = head;
+	auto otherItr = other.begin();
+	while ((*thisItr)->key == (*otherItr)->key && thisItr != this->end() && otherItr != other.end())
+	{
+		++thisItr;
+		++otherItr;
+	}
+
+	return otherItr == other.end();
+}
+
 CFGNode& ControlFlowGraph::getStartOfControlFlow()
 {
 	//TODO return node without any predecessors?

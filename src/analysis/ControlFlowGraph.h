@@ -73,6 +73,11 @@ namespace vc4c
 		 * Returns the InstructionWalker for the given instruction, if it is within the loop.
 		 */
 		Optional<InstructionWalker> findInLoop(const intermediate::IntermediateInstruction* inst) const;
+
+		/*
+		 * Returns whether this loop includes other loop and doesn't equal it.
+		 */
+		bool includes(const ControlFlowLoop& other) const;
 	};
 
 	/*

@@ -973,8 +973,38 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
 }
 
 // TODO: move to headers
-struct NoRelation {};
-using LoopInclusionTreeNode = Node<ControlFlowLoop*, NoRelation>;
+struct Inclusion
+{
+	bool includes;
+	Inclusion(bool _includes) : includes(_includes) {}
+};
+using LoopInclusionTreeNode = Node<ControlFlowLoop*, Inclusion>;
+FastAccessList<LoopInclusionTreeNode*> findLeaves(const LoopInclusionTreeNode *node)
+{
+	FastAccessList<LoopInclusionTreeNode*> leaves;
+	for (auto &child : node->getNeighbors())
+	{
+		if (child.second.includes) {
+			// dynamic_cast cannot be used.
+			auto grandchidlren = findLeaves(child.first);
+			leaves.insert(leaves.end(), grandchidlren.begin(), grandchidlren.end());
+		}
+	}
+	return leaves;
+}
+
+LoopInclusionTreeNode* findRoot(LoopInclusionTreeNode *node)
+{
+	for (auto &parent : node->getNeighbors())
+	{
+		if (!parent.second.includes) {
+			// The root node must be only one
+			return findRoot(parent.first);
+		}
+	}
+	// this is root
+	return node;
+}
 using LoopInclusionTree = Graph<ControlFlowLoop*, LoopInclusionTreeNode>;
 
 void optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config) {
@@ -985,6 +1015,27 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 	auto loops = cfg.findLoops();
 
 	// 2. generate inclusion relation of loops as trees
+	LoopInclusionTree inclusionTree;
+	for (auto &loop1 : loops) {
+		for (auto &loop2 : loops) {
+			if (loop1 == loop2) continue;
+
+			if (loop1.includes(loop2)) {
+				auto &node1 = inclusionTree.getOrCreateNode(&loop1);
+				auto &node2 = inclusionTree.getOrCreateNode(&loop2);
+				node1.addNeighbor(&node2, Inclusion(true));
+				node2.addNeighbor(&node1, Inclusion(false));
+			}
+		}
+	}
 
 	// 3. move constant load operations from leaf of trees
+	for (auto &loop : loops) {
+		auto &node = inclusionTree.getOrCreateNode(&loop);
+		auto leaves = findLeaves(&node);
+		for (auto &leave : leaves) {
+			auto root = findRoot(leave);
+			// move constant load operations in leave to root
+		}
+	}
 }
