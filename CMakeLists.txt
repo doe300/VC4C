@@ -67,11 +67,11 @@ add_definitions(-DVC4C_VERSION="${PROJECT_VERSION}")
 
 # append usage of C++ to compiler flags, also optimize for speed and enable all warnings
 if(BUILD_DEBUG)
-	LIST(APPEND CMAKE_CXX_FLAGS "-std=c++11 -g3 -rdynamic -Wall -Wextra -Wold-style-cast -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings")
+	LIST(APPEND CMAKE_CXX_FLAGS "-std=c++17 -g3 -rdynamic -Wall -Wextra -Wold-style-cast -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings")
 	SET(CMAKE_BUILD_TYPE 		Debug)
 	add_definitions(-DDEBUG_MODE=1)
 else()
-	LIST(APPEND CMAKE_CXX_FLAGS "-std=c++11 -O3 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings")
+	LIST(APPEND CMAKE_CXX_FLAGS "-std=c++17 -O3 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings")
 	SET(CMAKE_BUILD_TYPE 		Release)
 endif()
 
@@ -230,10 +230,10 @@ if(LLVMLIB_FRONTEND)
 	else()
 		find_package(LLVM CONFIG)
 		if(LLVM_FOUND)
-			
+
 			#Depending on the LLVM library version used, we need to use some other functions/headers in the LLVM library front-end
 			add_definitions(-DLLVM_LIBRARY_VERSION=${LLVM_VERSION_MAJOR}${LLVM_VERSION_MINOR})
-			
+
 			set(LLVM_LIBS_PATH "${LLVM_LIBRARY_DIRS}")
 			set(LLVM_INCLUDE_PATH "${LLVM_INCLUDE_DIRS}")
 			set(LLVM_LIB_FLAGS "${LLVM_DEFINITIONS}")
@@ -247,7 +247,7 @@ if(LLVMLIB_FRONTEND)
 			set(LLVM_SYSTEM_LIB_NAMES "")
 		endif()
 	endif()
-	
+
 	if(LLVM_LIBS_PATH AND LLVM_INCLUDE_PATH AND LLVM_LIB_FLAGS AND LLVM_LIB_NAMES)
 		message(STATUS "Compiling LLVM library front-end with LLVM in version ${LLVM_LIB_VERSION} located in '${LLVM_LIBS_PATH}'")
 		set(ENABLE_LLVM_LIB_FRONTEND ON)
