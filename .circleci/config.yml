@@ -1,6 +1,6 @@
 version: 2
 jobs:
-  build:
+  cross:
     docker:
       - image: nomaddo/cross-rpi:0.1
     steps:
@@ -34,3 +34,52 @@ jobs:
       - store_artifacts:
           path: vc4cl-stdlib-0.4-Linux.deb
           distination: vc4cl-stdlib-0.4-Linux.deb
+  build:
+    docker:
+      - image: nomaddo/cross-rpi:0.1
+    steps:
+      - checkout
+      - run:
+          name: download header
+          command: git clone https://github.com/doe300/VC4CLStdLib.git VC4CLStdLib && cd VC4CLStdLib && cmake . && make install && cd ..
+      - run:
+          name: configure
+          # Use the libLLVM of the default LLVM/CLang, disable search for SPIRV-LLVM
+          command: cmake . -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=OFF -DSPIRV_FRONTEND=ON
+#          command: cmake . -DCROSS_COMPILE=ON -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=OFF
+      - run:
+          name: make
+          command: make -j2
+      - run:
+          name: deb-packing
+          command: cpack -G DEB && cpack -G DEB --config ./VC4CLStdLib/CPackConfig.cmake
+      - store_artifacts:
+          path: build/libVC4CC.so.0.4
+          distination: libVC4CC.so.0.4
+      - store_artifacts:
+          path: build/VC4C
+          distination: VC4C
+      - store_artifacts:
+          path: build/test/TestVC4C
+          distination: TestVC4C
+      - store_artifacts:
+          path: vc4c-0.4-Linux.deb
+          distination: vc4c-0.4-Linux.deb
+      - store_artifacts:
+          path: vc4cl-stdlib-0.4-Linux.deb
+          distination: vc4cl-stdlib-0.4-Linux.deb
+  test:
+    docker:
+      - image: nomaddo/cross-rpi:0.1
+    require:
+      - build
+    steps:
+      - checkout
+      - run:
+
+workflows:
+  version: 2
+  commit:
+    jobs:
+      - build
+      - cross
