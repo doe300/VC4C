@@ -1,4 +1,4 @@
-/* 
+/*
  * Author: doe300
  *
  * See the file "LICENSE" for the full license governing this code.
@@ -38,8 +38,8 @@ static FastMap<const Local*, std::size_t> mapLabels(Method& method)
 		{
 			logging::debug() << "Mapping label '" << label->getLabel()->name << "' to byte-position " << index << logging::endl;
 			labelsMap[label->getLabel()] = index;
-			//we do not need the position of the label at all anymore
-			it.erase();
+
+			it.nextInMethod();
 		}
 		else if(!it.isEndOfBlock() && it.has() && !it->mapsToASMInstruction())
 		{
@@ -88,7 +88,7 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
 		logging::warn() << "Register conflict resolver has exceeded its maximum rounds, there might still be errors!" << logging::endl;
 	}
 	PROFILE_END(colorGraph);
-    
+
     //create label-map + remove labels
     const auto labelMap = mapLabels(method);
 
@@ -104,14 +104,23 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
 
     logging::debug() << "-----" << logging::endl;
     std::size_t index = 0;
-    method.forAllInstructions([&generatedInstructions, &index, &registerMapping, &labelMap](const IntermediateInstruction* instr) -> bool
+
+	IntermediateInstruction* previous = nullptr;
+    method.forAllInstructions([&generatedInstructions, &index, &registerMapping, &labelMap, &previous](const IntermediateInstruction* instr) -> bool
 	{
-    	Instruction* mapped = instr->convertToAsm(registerMapping, labelMap, index);
-		if (mapped != nullptr) {
-			generatedInstructions.emplace_back(mapped);
+		if (instr->mapsToASMInstruction()) {
+			Instruction *mapped = instr->convertToAsm(registerMapping, labelMap, index);
+			if (auto label = dynamic_cast<BranchLabel*>(previous))
+				mapped->previousComment += label->getLabel()->to_string();
+			if (mapped != nullptr) {
+				generatedInstructions.emplace_back(mapped);
+			}
+			++index;
 		}
-		++index;
+
+		previous = const_cast<IntermediateInstruction*>(instr);
 		return true;
+		// XXX: use const_cast because `forAllInstructions` is only defined for `bool(const IntermediateInstruction*)`
 	});
 
     logging::debug() << "-----" << logging::endl;

@@ -18,7 +18,7 @@ namespace vc4c
 		{
 		public:
 			explicit BranchInstruction(uint64_t code) : Instruction(code) { }
-			BranchInstruction(BranchCond cond, BranchRel relative, BranchReg addRegister, Address branchRegister, Address addOut, Address mulOut, int32_t offset);
+			BranchInstruction(BranchCond cond, BranchRel relative, BranchReg addRegister, Address branchRegister, Address addOut, Address mulOut, int32_t offset, std::string comment);
 			~BranchInstruction() override = default;
 
 			std::string toASMString() const override;
