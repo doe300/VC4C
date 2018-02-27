@@ -26,13 +26,14 @@ BranchInstruction::BranchInstruction(const BranchCond cond, const BranchRel rela
 
 std::string BranchInstruction::toASMString() const
 {
-    return std::string("br") + (getBranchRelative() == BranchRel::BRANCH_RELATIVE ? "r" : "a") + 
+    auto s =std::string("br") + (getBranchRelative() == BranchRel::BRANCH_RELATIVE ? "r" : "a") +
             ((getBranchCondition() == BranchCond::ALWAYS ? "" : std::string(".") + toString(getBranchCondition())) + " ") +
             (getAddOut() != REG_NOP.num ? Register{RegisterFile::PHYSICAL_A, getAddOut()}.to_string(true, false) + ", " : "") +
             (getMulOut() != REG_NOP.num ? Register{RegisterFile::PHYSICAL_B, getMulOut()}.to_string(true, false) + ", " : "") +
 			(getBranchRelative() == BranchRel::BRANCH_RELATIVE ? "(pc+4) + " : "") +
             std::to_string(getImmediate() / 8 /* byte-index -> instruction-index */) +
             (getAddRegister() == BranchReg::BRANCH_REG ? std::string(" + ") + Register{RegisterFile::PHYSICAL_A, getRegisterAddress()}.to_string(true, true) : "");
+    return addComment(s);
 }
 
 bool BranchInstruction::isValidInstruction() const

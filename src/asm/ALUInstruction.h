@@ -15,7 +15,6 @@ namespace vc4c
 
 	namespace qpu_asm
 	{
-
 		class ALUInstruction : public Instruction
 		{
 		public:

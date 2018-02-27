@@ -88,7 +88,9 @@ qpu_asm::Instruction* Branch::convertToAsm(const FastMap<const Local*, Register>
 		cond = conditional.toBranchCondition();
 	if(branchOffset < static_cast<int64_t>(std::numeric_limits<int32_t>::min()) || branchOffset > static_cast<int64_t>(std::numeric_limits<int32_t>::max()))
 		throw CompilationError(CompilationStep::CODE_GENERATION, "Cannot jump a distance not fitting into 32-bit integer", std::to_string(branchOffset));
-    return new qpu_asm::BranchInstruction(cond, BranchRel::BRANCH_RELATIVE, BranchReg::NONE, 0 /* only 5 bits, so REG_NOP doesn't fit */, REG_NOP.num, REG_NOP.num, static_cast<int32_t>(branchOffset));
+    auto qasm = new qpu_asm::BranchInstruction(cond, BranchRel::BRANCH_RELATIVE, BranchReg::NONE, 0 /* only 5 bits, so REG_NOP doesn't fit */, REG_NOP.num, REG_NOP.num, static_cast<int32_t>(branchOffset));
+	qasm->comment = this->getTarget()->name;
+	return qasm;
 }
 
 const Local* Branch::getTarget() const
