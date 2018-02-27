@@ -10,6 +10,8 @@
 #include "../analysis/ControlFlowGraph.h"
 #include "../analysis/DataDependencyGraph.h"
 #include "../intermediate/TypeConversions.h"
+#include "../InstructionWalker.h"
+#include "../intermediate/Helper.h"
 #include "../periphery/VPM.h"
 #include "log.h"
 
@@ -18,6 +20,7 @@
 
 using namespace vc4c;
 using namespace vc4c::optimizations;
+using namespace vc4c::intermediate;
 
 static FastSet<Local*> findLoopIterations(const ControlFlowLoop& loop, const DataDependencyGraph& dependencyGraph)
 {
@@ -979,7 +982,7 @@ struct Inclusion
 	Inclusion(bool _includes) : includes(_includes) {}
 };
 using LoopInclusionTreeNode = Node<ControlFlowLoop*, Inclusion>;
-FastAccessList<LoopInclusionTreeNode*> findLeaves(const LoopInclusionTreeNode *node)
+FastAccessList<LoopInclusionTreeNode*> findLeaves(LoopInclusionTreeNode *node)
 {
 	FastAccessList<LoopInclusionTreeNode*> leaves;
 	for (auto &child : node->getNeighbors())
@@ -989,6 +992,10 @@ FastAccessList<LoopInclusionTreeNode*> findLeaves(const LoopInclusionTreeNode *n
 			auto grandchidlren = findLeaves(child.first);
 			leaves.insert(leaves.end(), grandchidlren.begin(), grandchidlren.end());
 		}
+	}
+	// at leave
+	if (leaves.size() == 0) {
+		leaves.push_back(node);
 	}
 	return leaves;
 }
@@ -1007,7 +1014,8 @@ LoopInclusionTreeNode* findRoot(LoopInclusionTreeNode *node)
 }
 using LoopInclusionTree = Graph<ControlFlowLoop*, LoopInclusionTreeNode>;
 
-void optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config) {
+void optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
+{
 	logging::debug() << "===================== removeConstantLoadInLoops ============================" << logging::endl;
 
 	// 1. find loops
@@ -1016,11 +1024,14 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 
 	// 2. generate inclusion relation of loops as trees
 	LoopInclusionTree inclusionTree;
-	for (auto &loop1 : loops) {
-		for (auto &loop2 : loops) {
+	for (auto &loop1 : loops)
+	{
+		for (auto &loop2 : loops)
+		{
 			if (loop1 == loop2) continue;
 
-			if (loop1.includes(loop2)) {
+			if (loop1.includes(loop2))
+			{
 				auto &node1 = inclusionTree.getOrCreateNode(&loop1);
 				auto &node2 = inclusionTree.getOrCreateNode(&loop2);
 				node1.addNeighbor(&node2, Inclusion(true));
@@ -1030,12 +1041,43 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 	}
 
 	// 3. move constant load operations from leaf of trees
-	for (auto &loop : loops) {
+	for (auto &loop : loops)
+	{
 		auto &node = inclusionTree.getOrCreateNode(&loop);
 		auto leaves = findLeaves(&node);
-		for (auto &leave : leaves) {
+		for (auto &leave : leaves)
+		{
 			auto root = findRoot(leave);
-			// move constant load operations in leave to root
+
+			if (leave == root) continue;
+
+			for (auto &cfgNode : *leave->key)
+			{
+				auto block = cfgNode->key;
+				for (auto it = block->begin(); it != block->end(); it = it.nextInBlock())
+				{
+					auto loadInst = it.get<LoadImmediate>();
+					if (loadInst != nullptr)
+					{
+						// LoadImmediate must have output value
+						auto out = loadInst->getOutput().value();
+						if (out.valueType == ValueType::LOCAL) {
+							logging::debug() << "load inst!!! " << loadInst->to_string() << logging::endl;
+							it.erase();
+							// TODO: insert loadInst just before loop
+							//auto lastItr = root->key->findPredecessor()->key->end().previousInBlock();
+							InstructionWalker target;
+							(*root->key->begin())->key->forPredecessors([&](InstructionWalker it) {
+									target = it.getBasicBlock()->begin().nextInBlock();
+									logging::debug() << "insert to " << target->to_string() << logging::endl;
+									target.emplace(loadInst);
+							});
+							logging::debug() << "finish!!!" << logging::endl;
+							// lastItr.emplace(loadInst);
+						}
+					}
+				}
+			}
 		}
 	}
 }
