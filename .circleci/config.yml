@@ -67,11 +67,21 @@ jobs:
       - store_artifacts:
           path: vc4cl-stdlib-0.4-Linux.deb
           distination: vc4cl-stdlib-0.4-Linux.deb
+      - save_cache:
+          key: cache-build-{{ .Branch }}
+          paths:
+            - build/libVC4CC.so.0.4
+            - build/test/TestVC4C
+            - build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so
   test:
     docker:
       - image: nomaddo/cross-rpi:0.1
     steps:
-      - checkout
+      - restore_cache:
+          key: cache-build-{{ .Branch }}
+      - run: ln -s `pwd`/build/libVC4CC.so.0.4 /usr/lib/libVC4CC.so.1.2
+      - run: ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so /usr/lib/libcpptest-lite.so.1.1.2
+      - run: ldconfig
       - run: build/test/TestVC4C
 workflows:
   version: 2
