@@ -11,6 +11,7 @@
 #include "GraphColoring.h"
 #include "KernelInfo.h"
 #include "log.h"
+#include "CommentInstruction.h"
 
 #include <climits>
 #include <map>
@@ -105,22 +106,17 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
     logging::debug() << "-----" << logging::endl;
     std::size_t index = 0;
 
-	IntermediateInstruction* previous = nullptr;
-    method.forAllInstructions([&generatedInstructions, &index, &registerMapping, &labelMap, &previous](const IntermediateInstruction* instr) -> bool
+    method.forAllInstructions([&generatedInstructions, &index, &registerMapping, &labelMap](const IntermediateInstruction* instr) -> bool
 	{
 		if (instr->mapsToASMInstruction()) {
 			Instruction *mapped = instr->convertToAsm(registerMapping, labelMap, index);
-			if (auto label = dynamic_cast<BranchLabel*>(previous))
-				mapped->comment += label->getLabel()->to_string();
 			if (mapped != nullptr) {
 				generatedInstructions.emplace_back(mapped);
 			}
 			++index;
 		}
 
-		previous = const_cast<IntermediateInstruction*>(instr);
 		return true;
-		// XXX: use const_cast because `forAllInstructions` is only defined for `bool(const IntermediateInstruction*)`
 	});
 
     logging::debug() << "-----" << logging::endl;
@@ -182,6 +178,8 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
             break;
         case OutputMode::BINARY:
             for (const std::unique_ptr<Instruction>& instr : pair.second) {
+				if (dynamic_cast<qpu_asm::Comment*>(instr.get()))
+					continue;
                 const uint64_t binary = instr->toBinaryCode();
                 stream.write(reinterpret_cast<const char*>(&binary), 8);
                 numBytes += 8;
@@ -189,6 +187,8 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
             break;
         case OutputMode::HEX:
             for (const std::unique_ptr<Instruction>& instr : pair.second) {
+				if (dynamic_cast<qpu_asm::Comment*>(instr.get()))
+					continue;
                 stream << instr->toHexString(true) << std::endl;
                 numBytes += 8; //doesn't matter here, since the number of bytes is unused for hexadecimal output
             }

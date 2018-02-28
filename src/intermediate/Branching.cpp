@@ -7,6 +7,7 @@
 #include "IntermediateInstruction.h"
 #include "../asm/BranchInstruction.h"
 #include "log.h"
+#include "../asm/CommentInstruction.h"
 
 using namespace vc4c;
 using namespace vc4c::intermediate;
@@ -28,12 +29,12 @@ IntermediateInstruction* BranchLabel::copyFor(Method& method, const std::string&
 
 qpu_asm::Instruction* BranchLabel::convertToAsm(const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
-    throw CompilationError(CompilationStep::CODE_GENERATION, "There should be no more labels at this point", to_string());
+	return new qpu_asm::Comment(getLabel()->to_string(true));
 }
 
 bool BranchLabel::mapsToASMInstruction() const
 {
-	return false;
+	return true;
 }
 
 const Local* BranchLabel::getLabel() const
@@ -89,7 +90,7 @@ qpu_asm::Instruction* Branch::convertToAsm(const FastMap<const Local*, Register>
 	if(branchOffset < static_cast<int64_t>(std::numeric_limits<int32_t>::min()) || branchOffset > static_cast<int64_t>(std::numeric_limits<int32_t>::max()))
 		throw CompilationError(CompilationStep::CODE_GENERATION, "Cannot jump a distance not fitting into 32-bit integer", std::to_string(branchOffset));
     auto qasm = new qpu_asm::BranchInstruction(cond, BranchRel::BRANCH_RELATIVE, BranchReg::NONE, 0 /* only 5 bits, so REG_NOP doesn't fit */, REG_NOP.num, REG_NOP.num, static_cast<int32_t>(branchOffset));
-	qasm->comment = this->getTarget()->name;
+	qasm->comment = "to " + this->getTarget()->to_string();
 	return qasm;
 }
 

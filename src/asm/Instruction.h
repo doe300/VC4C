@@ -54,7 +54,11 @@ namespace vc4c
 			BITFIELD_ENTRY(WriteSwap, WriteSwap, 44, Bit)
 			BITFIELD_ENTRY(AddOut, Address, 38, Sextuple)
 			BITFIELD_ENTRY(MulOut, Address, 32, Sextuple)
-			std::string comment;
+
+			/*
+			 * Comment to debug output with `--asm`
+			 */
+			std::string comment = "";
 			std::string addComment(std::string s) const;
 		protected:
 
