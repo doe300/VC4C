@@ -1040,41 +1040,54 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 		}
 	}
 
-	// 3. move constant load operations from leaf of trees
+	logging::debug() << "loops" << logging::endl;
+	for (auto &loop : loops) {
+		logging::debug() << "  " << &loop << logging::endl;
+	}
+
+	logging::debug() << "inclusionTree" << logging::endl;
+	for (auto &loop : inclusionTree) {
+		logging::debug() << "  " << loop.first << logging::endl;
+		for (auto &node : loop.second.getNeighbors()) {
+			logging::debug() << "    " << node.first->key << ": " << node.second.includes << logging::endl;
+		}
+	}
+
+	// 3. move constant load operations from root of trees
+	FastSet<ControlFlowLoop*> processed;
 	for (auto &loop : loops)
 	{
+		logging::debug() << "loop: " << &loop << logging::endl;
 		auto &node = inclusionTree.getOrCreateNode(&loop);
-		auto leaves = findLeaves(&node);
-		for (auto &leave : leaves)
+		auto root = findRoot(&node);
+
+		if (processed.find(root->key) != processed.end()) continue;
+		processed.insert(root->key);
+
+		for (auto &cfgNode : *root->key)
 		{
-			auto root = findRoot(leave);
-
-			if (leave == root) continue;
-
-			for (auto &cfgNode : *leave->key)
+			auto block = cfgNode->key;
+			for (auto it = block->begin(); it != block->end(); it = it.nextInBlock())
 			{
-				auto block = cfgNode->key;
-				for (auto it = block->begin(); it != block->end(); it = it.nextInBlock())
+				auto loadInst = it.get<LoadImmediate>();
+				if (loadInst != nullptr)
 				{
-					auto loadInst = it.get<LoadImmediate>();
-					if (loadInst != nullptr)
-					{
-						// LoadImmediate must have output value
-						auto out = loadInst->getOutput().value();
-						if (out.valueType == ValueType::LOCAL) {
-							logging::debug() << "load inst!!! " << loadInst->to_string() << logging::endl;
-							it.erase();
-							// TODO: insert loadInst just before loop
-							//auto lastItr = root->key->findPredecessor()->key->end().previousInBlock();
-							InstructionWalker target;
-							(*root->key->begin())->key->forPredecessors([&](InstructionWalker it) {
-									target = it.getBasicBlock()->begin().nextInBlock();
-									logging::debug() << "insert to " << target->to_string() << logging::endl;
-									target.emplace(loadInst);
-							});
-							logging::debug() << "finish!!!" << logging::endl;
-							// lastItr.emplace(loadInst);
-						}
+					// LoadImmediate must have output value
+					auto out = loadInst->getOutput().value();
+					logging::debug() << "load inst " << loadInst->to_string() << logging::endl;
+					if (out.valueType == ValueType::LOCAL) {
+						logging::debug() << "move" << logging::endl;
+						// TODO: insert loadInst just before loop
+						//auto lastItr = root->key->findPredecessor()->key->end().previousInBlock();
+						// (*root->key->begin())->key->forPredecessors([&](InstructionWalker it) {
+						// 		auto target = it.getBasicBlock()->begin().nextInBlock();
+						// 		logging::debug() << "insert to " << target->to_string() << logging::endl;
+						// 		target.emplace(loadInst);
+						// });
+						(*root->key->begin())->key->begin().previousInMethod().emplace(loadInst);
+						it.erase();
+						logging::debug() << "finish" << logging::endl;
+						// lastItr.emplace(loadInst);
 					}
 				}
 			}
