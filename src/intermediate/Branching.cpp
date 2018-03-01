@@ -34,7 +34,7 @@ qpu_asm::Instruction* BranchLabel::convertToAsm(const FastMap<const Local*, Regi
 
 bool BranchLabel::mapsToASMInstruction() const
 {
-	return true;
+	return false;
 }
 
 const Local* BranchLabel::getLabel() const

@@ -25,7 +25,7 @@ CodeGenerator::CodeGenerator(const Module& module, const Configuration& config) 
 {
 }
 
-static FastMap<const Local*, std::size_t> mapLabels(Method& method)
+static FastMap<const Local*, std::size_t> mapLabels(Method& method, Configuration& config)
 {
     logging::debug() << "-----" << logging::endl;
     FastMap<const Local*, std::size_t> labelsMap;
@@ -40,7 +40,10 @@ static FastMap<const Local*, std::size_t> mapLabels(Method& method)
 			logging::debug() << "Mapping label '" << label->getLabel()->name << "' to byte-position " << index << logging::endl;
 			labelsMap[label->getLabel()] = index;
 
-			it.nextInMethod();
+			if (config.outputMode == OutputMode::ASSEMBLER)
+				it.nextInMethod();
+			else
+				it.erase();
 		}
 		else if(!it.isEndOfBlock() && it.has() && !it->mapsToASMInstruction())
 		{
@@ -91,7 +94,7 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
 	PROFILE_END(colorGraph);
 
     //create label-map + remove labels
-    const auto labelMap = mapLabels(method);
+    const auto labelMap = mapLabels(method, config);
 
     //IMPORTANT: DO NOT OPTIMIZE, RE-ORDER, COMBINE, INSERT OR REMOVE ANY INSTRUCTION AFTER THIS POINT!!!
     //otherwise, labels/branches will be wrong
@@ -108,13 +111,11 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
 
     method.forAllInstructions([&generatedInstructions, &index, &registerMapping, &labelMap](const IntermediateInstruction* instr) -> bool
 	{
-		if (instr->mapsToASMInstruction()) {
-			Instruction *mapped = instr->convertToAsm(registerMapping, labelMap, index);
-			if (mapped != nullptr) {
-				generatedInstructions.emplace_back(mapped);
-			}
-			++index;
+		Instruction *mapped = instr->convertToAsm(registerMapping, labelMap, index);
+		if (mapped != nullptr) {
+			generatedInstructions.emplace_back(mapped);
 		}
+		++index;
 
 		return true;
 	});
