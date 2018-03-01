@@ -136,6 +136,7 @@ namespace vc4c
 		 * Returns whether this basic-block is the start of the method body
 		 */
 		bool isStartOfMethod() const;
+		void dumpInstructions() const;
 	private:
 		Method& method;
 		RandomModificationList<std::unique_ptr<intermediate::IntermediateInstruction>> instructions;
@@ -370,11 +371,11 @@ namespace vc4c
 		friend class InstructionWalker;
 	};
 
-	/*
-	 * A module represents a compilation unit (e.g. a compilation of one source file).
-	 *
-	 * The module-class manages shared data, like globals and contains the list of methods
-	 */
+/*
+ * A module represents a compilation unit (e.g. a compilation of one source file).
+ *
+ * The module-class manages shared data, like globals and contains the list of methods
+ */
 	class Module : private NonCopyable
 	{
 		using MethodList = std::vector<std::unique_ptr<Method>>;
