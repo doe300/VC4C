@@ -211,6 +211,17 @@ bool BasicBlock::isStartOfMethod() const
 	return &method.basicBlocks.front() == this;
 }
 
+
+void BasicBlock::dumpInstructions() const {
+	logging::debug() << "Basic block ----" << logging::endl;
+
+	std::for_each(instructions.begin(), instructions.end(),[](const std::unique_ptr<intermediate::IntermediateInstruction>& instr){
+		if(instr)
+			logging::debug() << instr->to_string() << logging::endl;
+	});
+	logging::debug() << "Block end ----" << logging::endl;
+}
+
 Method::Method(const Module& module) : isKernel(false), name(), returnType(TYPE_UNKNOWN), vpm(new periphery::VPM(module.compilationConfig.availableVPMSize)), module(module)
 {
 
@@ -465,13 +476,7 @@ void Method::dumpInstructions() const
 {
 	for(const BasicBlock& bb : basicBlocks)
 	{
-		logging::debug() << "Basic block ----" << logging::endl;
-		for(const auto& instr : bb.instructions)
-		{
-			if(instr)
-				logging::debug() << instr->to_string() << logging::endl;
-		}
-		logging::debug() << "Block end ----" << logging::endl;
+		bb.dumpInstructions();
 	}
 }
 
