@@ -88,6 +88,9 @@ jobs:
           name: configure
           command: cmake . -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=OFF -DLLVMIR_FRONTEND=OFF -DSPIRV_FRONTEND=ON
       - run:
+          name: spirv-tools
+          command: make spirv-tools-project spirv-tools-project-build
+      - run:
           name: make
           command: make -j`nproc`
       - run:
