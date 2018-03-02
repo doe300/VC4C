@@ -334,6 +334,19 @@ endif (BUILD_TESTING)
 if (BUILD_DEB_PACKAGE)
 	message(STATUS "build deb package...")
 	message(STATUS "Debian package expects VC4CL standard library PCH to be located in: ${VC4CL_STDLIB_HEADER}")
+	
+	# We always need the vc4cl standard-library for installing the vc4c package
+	set(PACKAGE_DEPENDENCIES "vc4cl-stdlib, opencl-c-headers")
+	# TODO do we actually require opencl-c-headers. If so, for what?
+	if(NOT SPIRV_CLANG_FOUND AND CLANG_FOUND)
+		# If we build with "default" clang, require its package
+		set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, clang-3.9")
+		if(LLVMLIB_FRONTEND)
+			# If we also build with libLLVM front-end, require the LLVM library and its development headers too
+			set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, llvm-3.9, llvm-3.9-dev")
+			# TODO do we need the development headers? VC4C is already built, so we only need the library itself
+		endif()
+	endif()
 
 	set(CPACK_GENERATOR "DEB")
 	set(CPACK_PACKAGING_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
@@ -341,12 +354,13 @@ if (BUILD_DEB_PACKAGE)
 	string(TIMESTAMP BUILD_TIMESTAMP "%Y-%m-%d")
 	set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}-${BUILD_TIMESTAMP}")
 	set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "armhf")
-	set(CPACK_DEBIAN_PACKAGE_DEPENDS "opencl-c-headers, clang-3.9, vc4cl-stdlib, llvm-3.9-dev")
+	set(CPACK_DEBIAN_PACKAGE_DEPENDS ${PACKAGE_DEPENDENCIES})
 	set(CPACK_PACKAGE_VENDOR "doe300")
 	set(CPACK_PACKAGE_CONTACT "doe300@web.de")
 	set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenCL C compiler for VC4CL (rasberrypi only)")
 	set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/doe300/VC4C")
 	set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA ${CMAKE_BINARY_DIR}/build/postinst ${CMAKE_BINARY_DIR}/build/prerem)
 	set(CPACK_PACKAGE_FILE_NAME "vc4c-0.4-Linux")
+	set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 	include(CPack)
 endif (BUILD_DEB_PACKAGE)
