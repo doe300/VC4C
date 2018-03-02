@@ -6,8 +6,11 @@ cmake_uninstall.cmake
 compile_commands.json
 install_manifest.txt
 Makefile
+*.deb
+VC4CLStdLib
+_CPack_Packages
 
-# Eclipse 
+# Eclipse
 .cproject
 .project
 .csettings/

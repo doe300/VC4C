@@ -184,7 +184,7 @@ if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
   		  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
   		  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
   		  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
-	)
+	          )
 	add_definitions(-DSPIRV_LLVM_SPIRV_PATH="${SPIRV_LLVM_SPIR_FOUND}")
 	add_definitions(-DSPIRV_HEADER="${PROJECT_SOURCE_DIR}/lib/spirv-headers/include/spirv/1.2/spirv.h")
 	add_definitions(-DSPIRV_OPENCL_HEADER="${PROJECT_SOURCE_DIR}/lib/spirv-headers/include/spirv/1.2/OpenCL.std.h")
@@ -230,10 +230,10 @@ if(LLVMLIB_FRONTEND)
 	else()
 		find_package(LLVM CONFIG)
 		if(LLVM_FOUND)
-			
+
 			#Depending on the LLVM library version used, we need to use some other functions/headers in the LLVM library front-end
 			add_definitions(-DLLVM_LIBRARY_VERSION=${LLVM_VERSION_MAJOR}${LLVM_VERSION_MINOR})
-			
+
 			set(LLVM_LIBS_PATH "${LLVM_LIBRARY_DIRS}")
 			set(LLVM_INCLUDE_PATH "${LLVM_INCLUDE_DIRS}")
 			set(LLVM_LIB_FLAGS "${LLVM_DEFINITIONS}")
@@ -247,7 +247,7 @@ if(LLVMLIB_FRONTEND)
 			set(LLVM_SYSTEM_LIB_NAMES "")
 		endif()
 	endif()
-	
+
 	if(LLVM_LIBS_PATH AND LLVM_INCLUDE_PATH AND LLVM_LIB_FLAGS AND LLVM_LIB_NAMES)
 		message(STATUS "Compiling LLVM library front-end with LLVM in version ${LLVM_LIB_VERSION} located in '${LLVM_LIBS_PATH}'")
 		set(ENABLE_LLVM_LIB_FRONTEND ON)
@@ -340,7 +340,11 @@ if (BUILD_DEB_PACKAGE)
 	set(CPACK_PACKAGE_NAME "vc4c")
 	string(TIMESTAMP BUILD_TIMESTAMP "%Y-%m-%d")
 	set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}-${BUILD_TIMESTAMP}")
-	set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "armhf")
+	if (CROSS_COMPILE)
+		set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "armhf")
+        else()
+		set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
+	endif()
 	set(CPACK_DEBIAN_PACKAGE_DEPENDS "opencl-c-headers, clang-3.9, vc4cl-stdlib, llvm-3.9-dev")
 	set(CPACK_PACKAGE_VENDOR "doe300")
 	set(CPACK_PACKAGE_CONTACT "doe300@web.de")
