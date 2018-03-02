@@ -4,11 +4,11 @@ include_directories ("${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/lib/
 #Include headers in the project structure
 file( GLOB HDRS "${PROJECT_SOURCE_DIR}/include/*.h" "${PROJECT_SOURCE_DIR}/lib/cpplog/include/*.h" "${PROJECT_SOURCE_DIR}/lib/vc4asm/src/*.h")
 #Include the source files
-file( GLOB SRCS *.cpp */*.cpp )
+file( GLOB SRCS *.cpp */*.cpp *.h */*.h )
 #To allow other executables to statically link the library
 list(REMOVE_ITEM SRCS "${PROJECT_SOURCE_DIR}/src/main.cpp")
 
-## 
+##
 # Build library
 ##
 add_library( VC4CC SHARED ${SRCS} ${HDRS} )
@@ -24,23 +24,23 @@ add_dependencies(VC4CC vc4cl-stdlib)
 if(SPIRV_FRONTEND AND SPIRV_COMPILER_ROOT)
 	add_dependencies(VC4CC spirv-tools-project-build)
 	ExternalProject_Get_Property(spirv-tools-project BINARY_DIR)
-	
+
 	#This discards some symbols (spvtools::SpirvTools) while including into libVC4CC, which are required by the SPIRV-Tools linker and optimizer
 	#add_library(spirv-tools STATIC IMPORTED)
 	#set_target_properties(spirv-tools PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/source/libSPIRV-Tools.a")
 	#target_link_libraries(VC4CC spirv-tools)
-	
+
 	set(spirv-tools "-Wl,--whole-archive ${BINARY_DIR}/source/libSPIRV-Tools.a -Wl,--no-whole-archive")
 	target_link_libraries(VC4CC "${spirv-tools}")
-	
+
 	#This discards some symbols (spvtools::opt::*) while including into libVC4CC, which are somehow required by libVC4CL
 	#add_library(spirv-tools-opt STATIC IMPORTED)
 	#set_target_properties(spirv-tools-opt PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/source/opt/libSPIRV-Tools-opt.a")
 	#target_link_libraries(VC4CC spirv-tools-opt)
-	
+
 	set(spirv-tools-opt "-Wl,--whole-archive ${BINARY_DIR}/source/opt/libSPIRV-Tools-opt.a -Wl,--no-whole-archive")
 	target_link_libraries(VC4CC "${spirv-tools-opt}")
-	
+
 	add_library(spirv-tools-link STATIC IMPORTED)
 	set_target_properties(spirv-tools-link PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/source/link/libSPIRV-Tools-link.a")
 	target_link_libraries(VC4CC spirv-tools-link)
@@ -60,7 +60,7 @@ if(VERIFY_OUTPUT)
 	target_link_libraries(VC4CC vc4asm)
 endif()
 
-## 
+##
 # Build executable
 ##
 add_executable( VC4C main.cpp ${HDRS} )
