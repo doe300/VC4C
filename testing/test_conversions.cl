@@ -52,3 +52,51 @@ __kernel void test_as_type(int2 source, __global short4* out1, __global uchar8* 
 	out1[gid + 1] = custom_as_short4(source);
 	out2[gid + 1] = custom_as_uchar8(source);
 }
+
+#define CONVERT_FUNCTIONS(out, in, type) \
+	out.s0 = convert_##type(in.s0); \
+	out.s1 = convert_##type##_rte(in.s1); \
+	out.s2 = convert_##type##_rtz(in.s2); \
+	out.s3 = convert_##type##_rtp(in.s3); \
+	out.s4 = convert_##type##_rtn(in.s4); \
+	out.s5 = convert_##type##_sat(in.s5); \
+	out.s6 = convert_##type##_sat_rte(in.s6); \
+	out.s7 = convert_##type##_sat_rtz(in.s7); \
+	out.s8 = convert_##type##_sat_rtp(in.s8); \
+	out.s9 = convert_##type##_sat_rtn(in.s9);
+
+/*
+ * Tests converting through all types 
+ */
+__kernel void test_conversion_functions(const __global float16* in, __global float16* out)
+{
+	float16 f;
+	CONVERT_FUNCTIONS(f, (*in), float)
+	int16 i;
+	CONVERT_FUNCTIONS(i, f, int)
+	int16 j;
+	CONVERT_FUNCTIONS(j, i, int)
+	short16 s;
+	CONVERT_FUNCTIONS(s, j, short)
+	short16 t;
+	CONVERT_FUNCTIONS(t, s, short)
+	char16 c;
+	CONVERT_FUNCTIONS(c, t, char)
+	char16 d;
+	CONVERT_FUNCTIONS(d, c, char)
+
+	uchar16 uc;
+	CONVERT_FUNCTIONS(uc, d, uchar)
+	uchar16 ud;
+	CONVERT_FUNCTIONS(ud, uc, uchar)
+	ushort16 us;
+	CONVERT_FUNCTIONS(us, ud, ushort)
+	ushort16 ut;
+	CONVERT_FUNCTIONS(ut, us, ushort)
+	uint16 ui;
+	CONVERT_FUNCTIONS(ui, ut, uint)
+	uint16 uj;
+	CONVERT_FUNCTIONS(uj, ui, uint)
+	
+	CONVERT_FUNCTIONS((*out), uj, float)
+}

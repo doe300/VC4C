@@ -18,6 +18,7 @@ public:
 	void testConditionCodes();
 	void testConstantSaturations();
 	void testBitfields();
+	void testOpCodes();
 };
 
 #endif /* TEST_INSTRUCTIONS_H */

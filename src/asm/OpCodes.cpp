@@ -485,6 +485,7 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 	if(*this == OP_ASR)
 		return Value(intermediate::asr(resultType, firstLit, secondLit), resultType);
 	if(*this == OP_CLZ)
+		//TODO Test behavior of clz(0) on VC4 (on some architectures, clz(0) is undefined)
 		return Value(intermediate::clz(resultType, firstLit), resultType);
 	if(*this == OP_FADD)
 		return Value(Literal(firstLit.real() + secondLit.real()), resultType);
@@ -553,6 +554,11 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
 	//TODO v8muld
 
 	return NO_VALUE;
+}
+
+Optional<Value> OpCode::operator()(Optional<Value> firstOperand, Optional<Value> secondOperand) const
+{
+	return calculate(firstOperand, secondOperand);
 }
 
 const OpCode& OpCode::toOpCode(const std::string& name)

@@ -40,6 +40,10 @@ TestEmulator::TestEmulator()
 	{
 		TEST_ADD_TWO_ARGUMENTS(TestEmulator::testFloatEmulations, i, vc4c::test::floatTests.at(i).first.kernelName);
 	}
+	for(std::size_t i = 0; i < vc4c::test::mathTests.size(); ++i)
+	{
+		TEST_ADD_TWO_ARGUMENTS(TestEmulator::testMathFunction, i, vc4c::test::mathTests.at(i).first.kernelName);
+	}
 }
 
 static void compileFile(std::stringstream& buffer, const std::string& fileName, const std::string& options = "")
@@ -423,4 +427,10 @@ void TestEmulator::testFloatEmulations(std::size_t index, std::string name)
 			}
 		}
 	}
+}
+
+void TestEmulator::testMathFunction(std::size_t index, std::string name)
+{
+	//same code, just different test-case name to differentiate
+	testFloatEmulations(index, name);
 }

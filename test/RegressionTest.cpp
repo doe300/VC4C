@@ -47,6 +47,7 @@ static std::vector<Entry> allKernels =
 		Entry{PENDING_BOTH, FAST, "./testing/test_images.cl", ""},
 		Entry{PENDING_BOTH, FAST, "./testing/test_immediates.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_int.cl", ""},
+		Entry{PASSED, FAST, "./testing/test_math.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_other.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_sfu.cl", ""},
 		Entry{PENDING_LLVM, FAST, "./testing/test_shuffle.cl", ""},
@@ -102,7 +103,7 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./testing/CLTune/multiple_kernels_tiled.opencl", "-DVECTOR=16 -DWPTX=256 -DWPTY=64 -DTBX=2 -DTBY=2 -DUNROLL_FACTOR -Dfloatvec=float16 -DTS=8"},
 
 #ifdef SPIRV_CLANG_PATH	//XXX check, only if SPIRV-LLVM is located exactly here!
-		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/spir/metadata/access_qualifier/images/read_only.cl", ""},
+		Entry{PENDING_BOTH, FAST, "/opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/spir/metadata/access_qualifier/images/read_only.cl", ""},
 		//XXX object which life-time is started is passed as parameter, cannot yet determine the stack-allocated source
 		Entry{PENDING_BOTH, FAST, "/opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/addr-space-struct-arg.cl", ""},
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/astype.cl", ""},
@@ -118,7 +119,7 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/tools/clang/test/SemaOpenCL/warn-potential-abiguity.cl", ""},
 		//I think this type of operation is not supported by OpenCL anyway
 		//Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "/opt/SPIRV-LLVM/test/SPIRV/transcoding/extract_insert_value.ll", ""},
-		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/test/SPIRV/transcoding/OpConstantBool.ll", ""},
+		Entry{PENDING_BOTH, FAST, "/opt/SPIRV-LLVM/test/SPIRV/transcoding/OpConstantBool.ll", ""},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "/opt/SPIRV-LLVM/test/SPIRV/transcoding/OpPhi_ArgumentsPlaceholders.ll", ""},
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/test/SPIRV/transcoding/RecursiveType.ll", ""},
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/test/SPIRV/builtin_vars-decorate.ll", ""},
@@ -128,7 +129,7 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/test/SPIRV/group-decorate.ll", ""},
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/test/SPIRV/image_decl_func_arg.ll", ""},
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/test/SPIRV/image_dim.ll", ""},
-		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/test/SPIRV/store.ll", ""},
+		Entry{PENDING_BOTH, FAST, "/opt/SPIRV-LLVM/test/SPIRV/store.ll", ""},
 		Entry{PASSED, FAST, "/opt/SPIRV-LLVM/test/SPIRV/linked-list.ll", ""},
 		//TODO produces completely wrong machine code?! (e.g. discards all writes/reads from parameters/globals)
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "/opt/SPIRV-LLVM/test/SPIRV/simple.ll", ""},
@@ -192,8 +193,8 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./testing/HandBrake/hscale_all_opencl.cl", ""},
 		Entry{PASSED, FAST, "./testing/HandBrake/hscale_fast_opencl.cl", ""},
 		Entry{PASSED, FAST, "./testing/HandBrake/nv12toyuv.cl", ""},
-		Entry{PASSED, FAST, "./testing/HandBrake/vscale_all_dither_opencl.cl", ""},
-		Entry{PASSED, FAST, "./testing/HandBrake/vscale_all_nodither_opencl.cl", ""},
+		Entry{PENDING_BOTH, FAST, "./testing/HandBrake/vscale_all_dither_opencl.cl", ""},
+		Entry{PENDING_BOTH, FAST, "./testing/HandBrake/vscale_all_nodither_opencl.cl", ""},
 		Entry{PASSED, FAST, "./testing/HandBrake/vscale_fast_opencl.cl", ""},
 		Entry{PENDING_LLVM, FAST, "./testing/HandBrake/yaif_filter.cl", ""},
 
@@ -215,7 +216,7 @@ static std::vector<Entry> allKernels =
 		Entry{PENDING_BOTH, SLOW, "./testing/JohnTheRipper/bf_kernel.cl", "-DWORK_GROUP_SIZE=8"},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/JohnTheRipper/bitlocker_kernel.cl", ""},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/JohnTheRipper/cryptmd5_kernel.cl", "-DPLAINTEXT_LENGTH=32"},
-		Entry{PASSED, FAST, "./testing/JohnTheRipper/DES_bs_finalize_keys_kernel.cl", "-DITER_COUNT=4"},
+		Entry{PENDING_BOTH, FAST, "./testing/JohnTheRipper/DES_bs_finalize_keys_kernel.cl", "-DITER_COUNT=4"},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/JohnTheRipper/DES_bs_kernel.cl", "-DITER_COUNT=4"},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/JohnTheRipper/enpass_kernel.cl", "-DHASH_LOOPS=4 -DOUTLEN=16"},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/JohnTheRipper/gpg_kernel.cl", "-DPLAINTEXT_LENGTH=32 -DSALT_LENGTH=32"},
@@ -307,7 +308,7 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./testing/OpenCV/copyset.cl", "-Dcn=8 -DdstT=float8 -DrowsPerWI=32 -DdstT1=float4"},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/OpenCV/cvtclr_dx.cl", ""},
 		Entry{PENDING_LLVM, FAST, "./testing/OpenCV/fft.cl", "-DFT=float -DCT=float2 -DLOCAL_SIZE=32 -Dkercn=4 -DRADIX_PROCESS"},
-		Entry{PASSED, FAST, "./testing/OpenCV/flip.cl", "-DT=short16 -DPIX_PER_WI_Y=4"},
+		Entry{PENDING_BOTH, FAST, "./testing/OpenCV/flip.cl", "-DT=short16 -DPIX_PER_WI_Y=4"},
 		Entry{PASSED, FAST, "./testing/OpenCV/gemm.cl", "-DT=float8 -DLOCAL_SIZE=16 -DWT=float8 -DT1=float"},
 		Entry{PASSED, FAST, "./testing/OpenCV/inrange.cl", "-Dcn=4 -DsrcT1=uint -Dkercn=4 -DHAVE_SCALAR -DcolsPerWI=8"},
 		Entry{PASSED, FAST, "./testing/OpenCV/lut.cl", "-Dlcn=1 -Ddcn=3 -DdstT=uint8 -DsrcT=short16 -DLUT_OP"},
@@ -324,7 +325,7 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./testing/boost-compute/test_binary_search.cl", ""},
 		Entry{PASSED, FAST, "./testing/boost-compute/test_closure.cl", ""},
 		Entry{PENDING_LLVM, FAST, "./testing/boost-compute/test_count.cl", ""},
-		Entry{PASSED, FAST, "./testing/boost-compute/test_extrema.cl", ""},
+		Entry{PENDING_BOTH, FAST, "./testing/boost-compute/test_extrema.cl", ""},
 		Entry{PENDING_BOTH, FAST, "./testing/boost-compute/test_function.cl", ""},
 		Entry{PASSED, FAST, "./testing/boost-compute/test_gather.cl", ""},
 		Entry{PENDING_LLVM, FAST, "./testing/boost-compute/test_inner_product.cl", ""},
@@ -336,7 +337,7 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./testing/boost-compute/test_search.cl", ""},
 		Entry{PASSED, FAST, "./testing/boost-compute/test_transform1.cl", ""},
 		Entry{PENDING_LLVM, FAST, "./testing/boost-compute/test_transform2.cl", ""},
-		Entry{PASSED, FAST, "./testing/boost-compute/test_valarray.cl", ""},
+		Entry{PENDING_BOTH, FAST, "./testing/boost-compute/test_valarray.cl", ""},
 		Entry{PASSED, FAST, "./testing/boost-compute/test_vector.cl", ""},
 		Entry{PENDING_BOTH, FAST, "./testing/boost-compute/threefry_engine.cl", ""},
 		Entry{PENDING_BOTH, FAST, "./testing/boost-compute/user_defined_types.cl", ""},
@@ -364,11 +365,11 @@ static std::vector<Entry> allKernels =
 
 };
 
-RegressionTest::RegressionTest(const vc4c::Frontend frontend, bool onlyRegressions)
+RegressionTest::RegressionTest(const vc4c::Frontend frontend, bool onlyRegressions, bool onlyFast)
 {
     for(const auto& tuple : allKernels)
     {
-    	if(std::get<0>(tuple) == PASSED)
+    	if(std::get<0>(tuple) == PASSED && (!onlyFast || std::get<1>(tuple) == FAST))
     	{
     		TEST_ADD_THREE_ARGUMENTS(RegressionTest::testRegression, static_cast<std::string>(std::get<2>(tuple)), static_cast<std::string>(std::get<3>(tuple)), static_cast<vc4c::Frontend>(frontend));
     	}
@@ -376,7 +377,7 @@ RegressionTest::RegressionTest(const vc4c::Frontend frontend, bool onlyRegressio
     	{
     		TEST_ADD_THREE_ARGUMENTS(RegressionTest::testPending, static_cast<std::string>(std::get<2>(tuple)), static_cast<std::string>(std::get<3>(tuple)), static_cast<vc4c::Frontend>(frontend));
     	}
-    	else if(!onlyRegressions && std::get<0>(tuple) == PENDING_BOTH && std::get<1>(tuple) == SLOW)
+    	else if(!onlyRegressions && std::get<0>(tuple) == PENDING_BOTH && !onlyFast && std::get<1>(tuple) == SLOW)
     	{
 			//TEST_ADD_THREE_ARGUMENTS(RegressionTest::testSlowPending, static_cast<std::string>(std::get<2>(tuple)), static_cast<std::string>(std::get<3>(tuple)), static_cast<vc4c::Frontend>(frontend));
     	}
