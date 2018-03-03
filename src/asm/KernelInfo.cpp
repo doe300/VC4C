@@ -100,6 +100,9 @@ std::size_t KernelInfo::write(std::ostream& stream, const OutputMode mode) const
         *reinterpret_cast<uint64_t*>(buf.data()) = workGroupSize;
         writeStream(stream, buf, mode);
         ++numWords;
+        *reinterpret_cast<uint64_t*>(buf.data()) = uniformsUsed.value;
+        writeStream(stream, buf, mode);
+        ++numWords;
         numWords += copyName(stream, name, mode);
         for(const ParamInfo& info : parameters)
         {
@@ -112,7 +115,36 @@ std::size_t KernelInfo::write(std::ostream& stream, const OutputMode mode) const
 
 std::string KernelInfo::to_string() const
 {
-	return std::string("Kernel '") + (name + "' with ") + (std::to_string(getLength().getValue()) + " instructions, offset ") + (std::to_string(getOffset().getValue()) + ", with following parameters: ") + ::to_string<ParamInfo>(parameters);
+	std::vector<std::string> uniformsSet;
+	if(uniformsUsed.getWorkDimensionsUsed())
+		uniformsSet.emplace_back("dims");
+	if(uniformsUsed.getLocalSizesUsed())
+		uniformsSet.emplace_back("lSize");
+	if(uniformsUsed.getLocalIDsUsed())
+		uniformsSet.emplace_back("lids");
+	if(uniformsUsed.getNumGroupsXUsed())
+		uniformsSet.emplace_back("numX");
+	if(uniformsUsed.getNumGroupsYUsed())
+		uniformsSet.emplace_back("numY");
+	if(uniformsUsed.getNumGroupsZUsed())
+		uniformsSet.emplace_back("numZ");
+	if(uniformsUsed.getGroupIDXUsed())
+		uniformsSet.emplace_back("gidX");
+	if(uniformsUsed.getGroupIDYUsed())
+		uniformsSet.emplace_back("gidY");
+	if(uniformsUsed.getGroupIDZUsed())
+		uniformsSet.emplace_back("gidZ");
+	if(uniformsUsed.getGlobalOffsetXUsed())
+		uniformsSet.emplace_back("offX");
+	if(uniformsUsed.getGlobalOffsetYUsed())
+		uniformsSet.emplace_back("offY");
+	if(uniformsUsed.getGlobalOffsetZUsed())
+		uniformsSet.emplace_back("offZ");
+	if(uniformsUsed.getGlobalDataAddressUsed())
+		uniformsSet.emplace_back("global");
+	const std::string uniformsString = uniformsSet.empty() ? "" : (std::string(" (") + vc4c::to_string<std::string>(uniformsSet) + ")");
+	
+	return std::string("Kernel '") + (name + "' with ") + (std::to_string(getLength().getValue()) + " instructions, offset ") + (std::to_string(getOffset().getValue()) + ", with following parameters: ") + ::to_string<ParamInfo>(parameters) + uniformsString;
 }
 
 static void toBinary(const Value& val, std::vector<uint8_t>& queue)
@@ -264,6 +296,7 @@ KernelInfo qpu_asm::getKernelInfos(const Method& method, const std::size_t initi
     info.setLength(Word(numInstructions));
     info.setName(method.name[0] == '@' ? method.name.substr(1) : method.name);
     info.workGroupSize = 0;
+    info.uniformsUsed = method.metaData.uniformsUsed;
     {
         size_t requiredSize = 1;
         unsigned offset = 0;

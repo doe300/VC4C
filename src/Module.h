@@ -8,6 +8,7 @@
 #define SRC_MODULE_H_
 
 #include "config.h"
+#include "KernelMetaData.h"
 #include "Locals.h"
 #include "performance.h"
 #include "Types.h"
@@ -24,32 +25,6 @@ namespace vc4c
 	{
 		class VPM;
 	} // namespace periphery
-
-	/*
-	 * Container for additional meta-data of kernel-functions
-	 */
-	struct KernelMetaData
-	{
-		/*
-		 * The compilation-time work-group size, specified by the reqd_work_group_size attribute
-		 */
-		std::array<uint32_t, 3> workGroupSizes;
-		/*
-		 * The compilation-time preferred work-group size, specified by the work_group_size_hint attribute
-		 */
-		std::array<uint32_t, 3> workGroupSizeHints;
-
-		KernelMetaData()
-		{
-			workGroupSizes.fill(0);
-			workGroupSizeHints.fill(0);
-		}
-
-		/*
-		 * Retuns whether the explicit work-group size is set
-		 */
-		bool isWorkGroupSizeSet() const;
-	};
 
 	class InstructionWalker;
 	class BasicBlock;

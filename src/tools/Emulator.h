@@ -18,6 +18,8 @@
 
 namespace vc4c
 {
+	struct KernelUniforms;
+	
 	namespace qpu_asm
 	{
 		class Instruction;
@@ -270,9 +272,9 @@ namespace vc4c
 			void setFlags(const Value& output, ConditionCode cond);
 		};
 
-		std::vector<MemoryAddress> buildUniforms(Memory& memory, MemoryAddress baseAddress, const std::vector<MemoryAddress>& parameter, const WorkGroupConfig& config, MemoryAddress globalData);
+		std::vector<MemoryAddress> buildUniforms(Memory& memory, MemoryAddress baseAddress, const std::vector<MemoryAddress>& parameter, const WorkGroupConfig& config, MemoryAddress globalData, const KernelUniforms& uniformsUsed);
 		bool emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, Memory& memory, const std::vector<MemoryAddress>& uniformAddresses, uint32_t maxCycles = std::numeric_limits<uint32_t>::max());
-		bool emulateTask(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, const std::vector<MemoryAddress>& parameter, Memory& memory, MemoryAddress uniformBaseAddress, MemoryAddress globalData, uint32_t maxCycles = std::numeric_limits<uint32_t>::max());
+		bool emulateTask(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, const std::vector<MemoryAddress>& parameter, Memory& memory, MemoryAddress uniformBaseAddress, MemoryAddress globalData, const KernelUniforms& uniformsUsed, uint32_t maxCycles = std::numeric_limits<uint32_t>::max());
 	}
 }
 

@@ -8,6 +8,7 @@
 #define KERNELINFO_H
 
 #include "../Bitfield.h"
+#include "../KernelMetaData.h"
 #include "../Units.h"
 #include "config.h"
 #include "../performance.h"
@@ -157,6 +158,10 @@ namespace vc4c
 			 * The 3 dimensions for the work-group size specified in the source code
 			 */
 			uint64_t workGroupSize;
+			/*
+			 * Bit-field determining the implicit UNIFORMs used by this kernel. Depending on this field, the UNIFORM-values are created host-side
+			 */
+			KernelUniforms uniformsUsed;
 
 			std::size_t write(std::ostream& stream, OutputMode mode) const;
 			std::string to_string() const;

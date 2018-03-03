@@ -1303,7 +1303,7 @@ void QPU::setFlags(const Value& output, ConditionCode cond)
 	//TODO not completely correct, see http://maazl.de/project/vc4asm/doc/instructions.html
 }
 
-std::vector<MemoryAddress> tools::buildUniforms(Memory& memory, MemoryAddress baseAddress, const std::vector<MemoryAddress>& parameter, const WorkGroupConfig& config, MemoryAddress globalData)
+std::vector<MemoryAddress> tools::buildUniforms(Memory& memory, MemoryAddress baseAddress, const std::vector<MemoryAddress>& parameter, const WorkGroupConfig& config, MemoryAddress globalData, const KernelUniforms& uniformsUsed)
 {
 	std::vector<MemoryAddress> res;
 
@@ -1314,7 +1314,7 @@ std::vector<MemoryAddress> tools::buildUniforms(Memory& memory, MemoryAddress ba
 	std::array<Word, 3> groupIDs = {0, 0, 0};
 
 	std::vector<Word> qpuUniforms;
-	qpuUniforms.resize(14 + parameter.size());
+	qpuUniforms.resize(uniformsUsed.countUniforms() + 1 /* re-run flag */ + parameter.size());
 
 	for(uint8_t q = 0; q < numQPUs; ++q)
 	{
@@ -1324,24 +1324,38 @@ std::vector<MemoryAddress> tools::buildUniforms(Memory& memory, MemoryAddress ba
 		{
 			groupIDs = {g % config.numGroups.at(0), (g / config.numGroups.at(0)) % config.numGroups.at(1), (g / config.numGroups.at(0)) / config.numGroups.at(1)};
 
-			qpuUniforms[0] = config.dimensions;
-			qpuUniforms[1] = (config.localSizes.at(2) << 16) | (config.localSizes.at(1) << 8) | config.localSizes.at(0);
-			qpuUniforms[2] = (localIDs.at(2) << 16) | (localIDs.at(1) << 8) | localIDs.at(0);
-			qpuUniforms[3] = config.numGroups.at(0);
-			qpuUniforms[4] = config.numGroups.at(1);
-			qpuUniforms[5] = config.numGroups.at(2);
-			qpuUniforms[6] = groupIDs.at(0);
-			qpuUniforms[7] = groupIDs.at(1);
-			qpuUniforms[8] = groupIDs.at(2);
-			qpuUniforms[9] = config.globalOffsets.at(0);
-			qpuUniforms[10] = config.globalOffsets.at(1);
-			qpuUniforms[11] = config.globalOffsets.at(2);
-			qpuUniforms[12] = globalData;
-			for(uint8_t i = 0; i < parameter.size(); ++i)
+			std::size_t i = 0;
+			if(uniformsUsed.getWorkDimensionsUsed())
+				qpuUniforms[i++] = config.dimensions;
+			if(uniformsUsed.getLocalSizesUsed())
+				qpuUniforms[i++] = (config.localSizes.at(2) << 16) | (config.localSizes.at(1) << 8) | config.localSizes.at(0);
+			if(uniformsUsed.getLocalIDsUsed())
+				qpuUniforms[i++] = (localIDs.at(2) << 16) | (localIDs.at(1) << 8) | localIDs.at(0);
+			if(uniformsUsed.getNumGroupsXUsed())
+				qpuUniforms[i++] = config.numGroups.at(0);
+			if(uniformsUsed.getNumGroupsYUsed())
+				qpuUniforms[i++] = config.numGroups.at(1);
+			if(uniformsUsed.getNumGroupsZUsed())
+				qpuUniforms[i++] = config.numGroups.at(2);
+			if(uniformsUsed.getGroupIDXUsed())
+				qpuUniforms[i++] = groupIDs.at(0);
+			if(uniformsUsed.getGroupIDYUsed())
+				qpuUniforms[i++] = groupIDs.at(1);
+			if(uniformsUsed.getGroupIDZUsed())
+				qpuUniforms[i++] = groupIDs.at(2);
+			if(uniformsUsed.getGlobalOffsetXUsed())
+				qpuUniforms[i++] = config.globalOffsets.at(0);
+			if(uniformsUsed.getGlobalOffsetYUsed())
+				qpuUniforms[i++] = config.globalOffsets.at(1);
+			if(uniformsUsed.getGlobalOffsetZUsed())
+				qpuUniforms[i++] = config.globalOffsets.at(2);
+			if(uniformsUsed.getGlobalDataAddressUsed())
+				qpuUniforms[i++] = globalData;
+			for(auto param : parameter)
 			{
-				qpuUniforms[13 + i] = parameter.at(i);
+				qpuUniforms[i++] = param;
 			}
-			qpuUniforms[13 + parameter.size()] = (numReruns - 1) - g;
+			qpuUniforms[i++] = (numReruns - 1) - g;
 
 			memory.setUniforms(qpuUniforms, baseAddress);
 			if(g == 0)
@@ -1415,14 +1429,14 @@ bool tools::emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_it
 	return success;
 }
 
-bool tools::emulateTask(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, const std::vector<MemoryAddress>& parameter, Memory& memory, MemoryAddress uniformBaseAddress, MemoryAddress globalData, uint32_t maxCycles)
+bool tools::emulateTask(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, const std::vector<MemoryAddress>& parameter, Memory& memory, MemoryAddress uniformBaseAddress, MemoryAddress globalData, const KernelUniforms& uniformsUsed, uint32_t maxCycles)
 {
 	WorkGroupConfig config;
 	config.dimensions = 1;
 	config.globalOffsets = { 0, 0, 0};
 	config.localSizes = {1, 1, 1};
 	config.numGroups = {1, 1, 1};
-	const auto uniformAddresses = buildUniforms(memory, uniformBaseAddress, parameter, config, globalData);
+	const auto uniformAddresses = buildUniforms(memory, uniformBaseAddress, parameter, config, globalData, uniformsUsed);
 	return emulate(firstInstruction, memory, uniformAddresses, maxCycles);
 }
 
@@ -1524,7 +1538,7 @@ EmulationResult tools::emulate(const EmulationData& data)
 	std::vector<MemoryAddress> paramAddresses;
 	Memory mem(fillMemory(globals, data, uniformAddress, globalDataAddress, paramAddresses));
 
-	auto uniformAddresses = buildUniforms(mem, uniformAddress, paramAddresses, data.workGroup, globalDataAddress);
+	auto uniformAddresses = buildUniforms(mem, uniformAddress, paramAddresses, data.workGroup, globalDataAddress, kernelInfo->uniformsUsed);
 
 	if(!data.memoryDump.empty())
 		dumpMemory(mem, data.memoryDump, uniformAddress, true);

@@ -32,11 +32,6 @@ const std::string Method::GLOBAL_OFFSET_Z("%global_offset_z");
 const std::string Method::GLOBAL_DATA_ADDRESS("%global_data_address");
 const std::string Method::GROUP_LOOP_SIZE("%group_loop_size");
 
-bool KernelMetaData::isWorkGroupSizeSet() const
-{
-	return std::any_of(workGroupSizes.begin(), workGroupSizes.end(), [](uint32_t u )-> bool {return u > 0;});
-}
-
 BasicBlock::BasicBlock(Method& method, intermediate::BranchLabel* label) : method(method)
 {
 	instructions.emplace_back(label);

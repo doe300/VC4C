@@ -824,6 +824,12 @@ static void generateStopSegment(Method& method)
     method.appendToEnd(new intermediate::Nop(intermediate::DelayType::THREAD_END));
 }
 
+static bool isLocalUsed(Method& method, const std::string& name)
+{
+	auto loc = method.findLocal(name);
+	return loc != nullptr && !loc->getUsers(LocalUse::Type::READER).empty();
+}
+
 void optimizations::addStartStopSegment(const Module& module, Method& method, const Configuration& config)
 {
 	auto it = method.walkAllInstructions();
@@ -846,32 +852,86 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
 	 * - address of global data / to load the global data from
 	 *
 	 */
-	it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::WORK_DIMENSIONS)->createReference(), UNIFORM_REGISTER));
-	it.nextInBlock();
-	it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::LOCAL_SIZES)->createReference(), UNIFORM_REGISTER));
-	it.nextInBlock();
-	it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::LOCAL_IDS)->createReference(), UNIFORM_REGISTER));
-	it.nextInBlock();
-	it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_X)->createReference(), UNIFORM_REGISTER));
-	it.nextInBlock();
-	it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_Y)->createReference(), UNIFORM_REGISTER));
-	it.nextInBlock();
-	it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_Z)->createReference(), UNIFORM_REGISTER));
-	it.nextInBlock();
-	it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_X)->createReference(), UNIFORM_REGISTER));
-	it.nextInBlock();
-	it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_Y)->createReference(), UNIFORM_REGISTER));
-	it.nextInBlock();
-	it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_Z)->createReference(), UNIFORM_REGISTER));
-	it.nextInBlock();
-	it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_X)->createReference(), UNIFORM_REGISTER));
-	it.nextInBlock();
-	it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_Y)->createReference(), UNIFORM_REGISTER));
-	it.nextInBlock();
-	it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_Z)->createReference(), UNIFORM_REGISTER));
-	it.nextInBlock();
-	it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference(), UNIFORM_REGISTER));
-	it.nextInBlock();
+	//initially set all implicit UNIFORMs to unused
+	method.metaData.uniformsUsed.value = 0;
+	if(isLocalUsed(method, Method::WORK_DIMENSIONS))
+	{
+		method.metaData.uniformsUsed.setWorkDimensionsUsed(true);
+		it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::WORK_DIMENSIONS)->createReference(), UNIFORM_REGISTER));
+		it.nextInBlock();
+	}
+	if(isLocalUsed(method, Method::LOCAL_SIZES))
+	{
+		method.metaData.uniformsUsed.setLocalSizesUsed(true);
+		it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::LOCAL_SIZES)->createReference(), UNIFORM_REGISTER));
+		it.nextInBlock();
+	}
+	if(isLocalUsed(method, Method::LOCAL_IDS))
+	{
+		method.metaData.uniformsUsed.setLocalIDsUsed(true);
+		it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::LOCAL_IDS)->createReference(), UNIFORM_REGISTER));
+		it.nextInBlock();
+	}
+	if(isLocalUsed(method, Method::NUM_GROUPS_X))
+	{
+		method.metaData.uniformsUsed.setNumGroupsXUsed(true);
+		it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_X)->createReference(), UNIFORM_REGISTER));
+		it.nextInBlock();
+	}
+	if(isLocalUsed(method, Method::NUM_GROUPS_Y))
+	{
+		method.metaData.uniformsUsed.setNumGroupsYUsed(true);
+		it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_Y)->createReference(), UNIFORM_REGISTER));
+		it.nextInBlock();
+	}
+	if(isLocalUsed(method, Method::NUM_GROUPS_Z))
+	{
+		method.metaData.uniformsUsed.setNumGroupsZUsed(true);
+		it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_Z)->createReference(), UNIFORM_REGISTER));
+		it.nextInBlock();
+	}
+	if(isLocalUsed(method, Method::GROUP_ID_X))
+	{
+		method.metaData.uniformsUsed.setGroupIDXUsed(true);
+		it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_X)->createReference(), UNIFORM_REGISTER));
+		it.nextInBlock();
+	}
+	if(isLocalUsed(method, Method::GROUP_ID_Y))
+	{
+		method.metaData.uniformsUsed.setGroupIDYUsed(true);
+		it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_Y)->createReference(), UNIFORM_REGISTER));
+		it.nextInBlock();
+	}
+	if(isLocalUsed(method, Method::GROUP_ID_Z))
+	{
+		method.metaData.uniformsUsed.setGroupIDZUsed(true);
+		it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_Z)->createReference(), UNIFORM_REGISTER));
+		it.nextInBlock();
+	}
+	if(isLocalUsed(method, Method::GLOBAL_OFFSET_X))
+	{
+		method.metaData.uniformsUsed.setGlobalOffsetXUsed(true);
+		it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_X)->createReference(), UNIFORM_REGISTER));
+		it.nextInBlock();
+	}
+	if(isLocalUsed(method, Method::GLOBAL_OFFSET_Y))
+	{
+		method.metaData.uniformsUsed.setGlobalOffsetYUsed(true);
+		it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_Y)->createReference(), UNIFORM_REGISTER));
+		it.nextInBlock();
+	}
+	if(isLocalUsed(method, Method::GLOBAL_OFFSET_Z))
+	{
+		method.metaData.uniformsUsed.setGlobalOffsetZUsed(true);
+		it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_Z)->createReference(), UNIFORM_REGISTER));
+		it.nextInBlock();
+	}
+	if(isLocalUsed(method, Method::GLOBAL_DATA_ADDRESS))
+	{
+		method.metaData.uniformsUsed.setGlobalDataAddressUsed(true);
+		it.emplace(new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference(), UNIFORM_REGISTER));
+		it.nextInBlock();
+	}
 
 	//load arguments to locals (via reading from uniform)
 	for(const Parameter& param : method.parameters)

@@ -757,7 +757,7 @@ void spirv2qasm::linkSPIRVModules(const std::vector<std::istream*>& inputModules
 	options.SetCreateLibrary(false);
 	options.SetVerifyIds(true);
 	//the VC4CL intrinsics are not provided by any input module
-	//TODO options.SetAllowPartialLinkage(true);
+	options.SetAllowPartialLinkage(true);
 
 	spvtools::Context spvContext(SPV_ENV_OPENCL_EMBEDDED_1_2);
 
