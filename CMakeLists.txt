@@ -91,6 +91,17 @@ endif()
 ####
 # Dependencies
 ####
+
+# To allow off-line build, check if off-line and if so, disable updating of dependencies
+execute_process(COMMAND ping -c 1 -W 10 github.com RESULT_VARIABLE PING_ERROR)
+if(PING_ERROR)
+	# A result of != 0 is an error, so disable updating
+	set_property(DIRECTORY ${VC4C_SOURCE_DIR} PROPERTY EP_UPDATE_DISCONNECTED 1)
+	message(WARNING "Building in off-line mode, some dependencies might not be up-to-date!")
+else()
+	set_property(DIRECTORY ${VC4C_SOURCE_DIR} PROPERTY EP_UPDATE_DISCONNECTED 0)
+endif()
+
 add_definitions(-DCPPLOG_NAMESPACE=logging)
 add_definitions(-DCPPLOG_CUSTOM_LOGGER=true)
 ExternalProject_Add( cpplog-project
