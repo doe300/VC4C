@@ -229,13 +229,15 @@ namespace vc4c
 
 			bool matchesCondition(ConditionCode cond) const;
 		};
+		
+		using InstrumentationResults = std::map<const qpu_asm::Instruction*, InstrumentationResult>;
 
 		class QPU : private NonCopyable
 		{
 		public:
 
-			QPU(uint8_t id, Mutex& mutex, SFU& sfu, VPM& vpm, Semaphores& semaphores, Memory& memory, MemoryAddress uniformAddress) :
-				ID(id), mutex(mutex), registers(*this), uniforms(*this, memory, uniformAddress), tmus(*this, memory), sfu(sfu), vpm(vpm), semaphores(semaphores), currentCycle(0), pc(0)
+			QPU(uint8_t id, Mutex& mutex, SFU& sfu, VPM& vpm, Semaphores& semaphores, Memory& memory, MemoryAddress uniformAddress, InstrumentationResults& instrumentation) :
+				ID(id), mutex(mutex), registers(*this), uniforms(*this, memory, uniformAddress), tmus(*this, memory), sfu(sfu), vpm(vpm), semaphores(semaphores), currentCycle(0), pc(0), instrumentation(instrumentation)
 				{ }
 
 			const uint8_t ID;
@@ -258,6 +260,7 @@ namespace vc4c
 			uint32_t currentCycle;
 			std::array<ElementFlags, vc4c::NATIVE_VECTOR_SIZE> flags;
 			ProgramCounter pc;
+			InstrumentationResults& instrumentation;
 
 			friend class Registers;
 			friend class UniformCache;
@@ -266,15 +269,15 @@ namespace vc4c
 			friend class VPM;
 
 			bool executeALU(const qpu_asm::ALUInstruction* aluInst);
-			void writeConditional(Register dest, const Value& in, ConditionCode cond);
+			void writeConditional(Register dest, const Value& in, ConditionCode cond, const qpu_asm::ALUInstruction* addInst = nullptr, const qpu_asm::ALUInstruction* mulInst = nullptr);
 			bool isConditionMet(BranchCond cond) const;
 			bool executeSignal(Signaling signal);
 			void setFlags(const Value& output, ConditionCode cond);
 		};
 
 		std::vector<MemoryAddress> buildUniforms(Memory& memory, MemoryAddress baseAddress, const std::vector<MemoryAddress>& parameter, const WorkGroupConfig& config, MemoryAddress globalData, const KernelUniforms& uniformsUsed);
-		bool emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, Memory& memory, const std::vector<MemoryAddress>& uniformAddresses, uint32_t maxCycles = std::numeric_limits<uint32_t>::max());
-		bool emulateTask(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, const std::vector<MemoryAddress>& parameter, Memory& memory, MemoryAddress uniformBaseAddress, MemoryAddress globalData, const KernelUniforms& uniformsUsed, uint32_t maxCycles = std::numeric_limits<uint32_t>::max());
+		bool emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, Memory& memory, const std::vector<MemoryAddress>& uniformAddresses, InstrumentationResults& instrumentation, uint32_t maxCycles = std::numeric_limits<uint32_t>::max());
+		bool emulateTask(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, const std::vector<MemoryAddress>& parameter, Memory& memory, MemoryAddress uniformBaseAddress, MemoryAddress globalData, const KernelUniforms& uniformsUsed, InstrumentationResults& instrumentation, uint32_t maxCycles = std::numeric_limits<uint32_t>::max());
 	}
 }
 

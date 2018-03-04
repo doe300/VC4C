@@ -937,6 +937,7 @@ static Register toRegister(Address addr, bool isfileB)
 bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction)
 {
 	const qpu_asm::Instruction* inst = (firstInstruction + pc)->get();
+	++instrumentation[inst].numExecutions;
 	logging::info() << "QPU " << static_cast<unsigned>(ID) << " (0x" << std::hex << pc << std::dec << "): " << inst->toASMString() << logging::endl;
 	ProgramCounter nextPC = pc;
 	if(dynamic_cast<const qpu_asm::ALUInstruction*>(inst) != nullptr)
@@ -950,6 +951,7 @@ bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iter
 		const auto br = dynamic_cast<const qpu_asm::BranchInstruction*>(inst);
 		if(isConditionMet(br->getBranchCondition()))
 		{
+			++instrumentation[inst].numBranchTaken;
 			int32_t offset = 4 /* Branch starts at PC + 4 */ + static_cast<int32_t>(br->getImmediate() / sizeof(uint64_t)) /* immediate offset is in bytes */;
 			if(br->getAddRegister() == BranchReg::BRANCH_REG || br->getBranchRelative() == BranchRel::BRANCH_ABSOLUTE)
 				throw CompilationError(CompilationStep::GENERAL, "This kind of branch is not yet implemented", br->toASMString());
@@ -992,6 +994,8 @@ bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iter
 			writeConditional(toRegister(semaphore->getMulOut(), semaphore->getWriteSwap() == WriteSwap::DONT_SWAP), result, semaphore->getMulCondition());
 			++nextPC;
 		}
+		else
+			++instrumentation[inst].numStalls;
 	}
 	else
 		throw CompilationError(CompilationStep::GENERAL, "Invalid assembler instruction", inst->toASMString());
@@ -1060,8 +1064,11 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
 			std::tie(addIn1, addIn1NotStall) = toInputValue(registers, aluInst->getAddMultiplexB(), aluInst->getInputA(), aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE);
 
 		if(!addIn0NotStall || !addIn1NotStall)
+		{
 			//we stall on input, so do not calculate anything
+			++instrumentation[aluInst].numStalls;
 			return false;
+		}
 	}
 
 	if(aluInst->getMulCondition() != COND_NEVER && aluInst->getMultiplication() != OP_NOP.opMul)
@@ -1074,8 +1081,11 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
 			std::tie(mulIn1, mulIn1NotStall) = toInputValue(registers, aluInst->getMulMultiplexB(), aluInst->getInputA(), aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE);
 
 		if(!mulIn0NotStall || !mulIn1NotStall)
+		{
 			//we stall on input, so do not calculate anything
+			++instrumentation[aluInst].numStalls;
 			return false;
+		}
 	}
 
 	if(aluInst->getAddCondition() != COND_NEVER && aluInst->getAddition() != OP_NOP.opAdd)
@@ -1112,7 +1122,7 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
 		if(aluInst->getSetFlag() == SetFlag::SET_FLAGS)
 			setFlags(result, aluInst->getAddCondition());
 
-		writeConditional(toRegister(aluInst->getAddOut(), aluInst->getWriteSwap() == WriteSwap::SWAP), result, aluInst->getAddCondition());
+		writeConditional(toRegister(aluInst->getAddOut(), aluInst->getWriteSwap() == WriteSwap::SWAP), result, aluInst->getAddCondition(), aluInst, nullptr);
 	}
 	if(aluInst->getMulCondition() != COND_NEVER && aluInst->getMultiplication() != OP_NOP.opMul)
 	{
@@ -1148,21 +1158,31 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
 		if(aluInst->getSetFlag() == SetFlag::SET_FLAGS && (aluInst->getAddCondition() == COND_NEVER || aluInst->getAddition() == OP_NOP.opAdd))
 			setFlags(result, aluInst->getMulCondition());
 
-		writeConditional(toRegister(aluInst->getMulOut(), aluInst->getWriteSwap() == WriteSwap::DONT_SWAP), result, aluInst->getMulCondition());
+		writeConditional(toRegister(aluInst->getMulOut(), aluInst->getWriteSwap() == WriteSwap::DONT_SWAP), result, aluInst->getMulCondition(), nullptr, aluInst);
 	}
 
 	return true;
 }
 
-void QPU::writeConditional(Register dest, const Value& in, ConditionCode cond)
+void QPU::writeConditional(Register dest, const Value& in, ConditionCode cond, const qpu_asm::ALUInstruction* addInst, const qpu_asm::ALUInstruction* mulInst)
 {
 	if(cond == COND_ALWAYS)
 	{
 		registers.writeRegister(dest, in, std::bitset<16>(0xFFFF));
+		if(addInst)
+			++instrumentation[addInst].numAddALUExecuted;
+		if(mulInst)
+			++instrumentation[mulInst].numMulALUExecuted;
 		return;
 	}
 	else if(cond == COND_NEVER)
+	{
+		if(addInst)
+			++instrumentation[addInst].numAddALUSkipped;
+		if(mulInst)
+			++instrumentation[mulInst].numMulALUSkipped;
 		return;
+	}
 	Value result(ContainerValue(NATIVE_VECTOR_SIZE), in.type);
 
 	std::bitset<16> elementMask;
@@ -1181,6 +1201,22 @@ void QPU::writeConditional(Register dest, const Value& in, ConditionCode cond)
 	}
 
 	registers.writeRegister(dest, result, elementMask);
+	
+	if(addInst != nullptr)
+	{
+		if(elementMask.any())
+			++instrumentation[addInst].numAddALUExecuted;
+		else
+			++instrumentation[addInst].numAddALUSkipped;
+	}
+	if(mulInst != nullptr)
+	{
+		if(elementMask.any())
+			++instrumentation[mulInst].numMulALUExecuted;
+		else
+			++instrumentation[mulInst].numMulALUSkipped;
+	}
+	
 }
 
 bool QPU::isConditionMet(BranchCond cond) const
@@ -1382,7 +1418,7 @@ static void emulateStep(std::vector<std::unique_ptr<qpu_asm::Instruction>>::cons
 	}
 }
 
-bool tools::emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, Memory& memory, const std::vector<MemoryAddress>& uniformAddresses, uint32_t maxCycles)
+bool tools::emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, Memory& memory, const std::vector<MemoryAddress>& uniformAddresses, InstrumentationResults& instrumentation, uint32_t maxCycles)
 {
 	if(uniformAddresses.size() > 12)
 		throw CompilationError(CompilationStep::GENERAL, "Cannot use more than 12 QPUs!");
@@ -1397,7 +1433,7 @@ bool tools::emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_it
 	uint8_t numQPU = 0;
 	for(MemoryAddress uniformPointer : uniformAddresses)
 	{
-		qpus.emplace_back(numQPU, mutex, sfus.at(numQPU), vpm, semaphores, memory, uniformPointer);
+		qpus.emplace_back(numQPU, mutex, sfus.at(numQPU), vpm, semaphores, memory, uniformPointer, instrumentation);
 		++numQPU;
 	}
 
@@ -1429,7 +1465,7 @@ bool tools::emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_it
 	return success;
 }
 
-bool tools::emulateTask(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, const std::vector<MemoryAddress>& parameter, Memory& memory, MemoryAddress uniformBaseAddress, MemoryAddress globalData, const KernelUniforms& uniformsUsed, uint32_t maxCycles)
+bool tools::emulateTask(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, const std::vector<MemoryAddress>& parameter, Memory& memory, MemoryAddress uniformBaseAddress, MemoryAddress globalData, const KernelUniforms& uniformsUsed, InstrumentationResults& instrumentation, uint32_t maxCycles)
 {
 	WorkGroupConfig config;
 	config.dimensions = 1;
@@ -1437,7 +1473,7 @@ bool tools::emulateTask(std::vector<std::unique_ptr<qpu_asm::Instruction>>::cons
 	config.localSizes = {1, 1, 1};
 	config.numGroups = {1, 1, 1};
 	const auto uniformAddresses = buildUniforms(memory, uniformBaseAddress, parameter, config, globalData, uniformsUsed);
-	return emulate(firstInstruction, memory, uniformAddresses, maxCycles);
+	return emulate(firstInstruction, memory, uniformAddresses, instrumentation, maxCycles);
 }
 
 static Memory fillMemory(const ReferenceRetainingList<Global>& globalData, const EmulationData& settings, MemoryAddress& uniformBaseAddressOut, MemoryAddress& globalDataAddressOut, std::vector<MemoryAddress>& parameterAddressesOut)
@@ -1510,6 +1546,43 @@ static void dumpMemory(const Memory& memory, const std::string& fileName, Memory
 	logging::debug() << std::dec << "Dumped " << addr << " words of memory into " << fileName << logging::endl;
 }
 
+std::string InstrumentationResult::to_string() const
+{
+	std::vector<std::string> parts;
+	std::stringstream tmp;
+	
+	tmp << "execs: " << numExecutions;
+	parts.emplace_back(tmp.str());
+	tmp.str("");
+	
+	if(numAddALUExecuted + numAddALUSkipped > 0)
+	{
+		tmp << "add: " << numAddALUExecuted << "/" << numAddALUSkipped;
+		parts.emplace_back(tmp.str());
+		tmp.str("");
+	}
+	if(numMulALUExecuted + numMulALUSkipped > 0)
+	{
+		tmp << "mul: " << numMulALUExecuted << "/" << numMulALUSkipped;
+		parts.emplace_back(tmp.str());
+		tmp.str("");
+	}
+	if(numBranchTaken > 0)
+	{
+		tmp << "br: " << numBranchTaken;
+		parts.emplace_back(tmp.str());
+		tmp.str("");
+	}
+	if(numStalls > 0)
+	{
+		tmp << "stall: " << numStalls;
+		parts.emplace_back(tmp.str());
+		tmp.str("");
+	}
+	
+	return vc4c::to_string<std::string>(parts);
+}
+
 EmulationResult tools::emulate(const EmulationData& data)
 {
 	qpu_asm::ModuleInfo module;
@@ -1528,6 +1601,8 @@ EmulationResult tools::emulate(const EmulationData& data)
 		throw CompilationError(CompilationStep::GENERAL, "Extracted module has no kernels!");
 
 	auto kernelInfo = std::find_if(module.kernelInfos.begin(), module.kernelInfos.end(), [&data](const qpu_asm::KernelInfo& info) -> bool { return info.name == data.kernelName; });
+	if(data.kernelName.empty() && module.kernelInfos.size() == 1)
+		kernelInfo = module.kernelInfos.begin();
 	if(kernelInfo == module.kernelInfos.end())
 		throw CompilationError(CompilationStep::GENERAL, "Failed to find kernel-info for kernel", data.kernelName);
 	if(data.parameter.size() != kernelInfo->getParamCount())
@@ -1543,7 +1618,8 @@ EmulationResult tools::emulate(const EmulationData& data)
 	if(!data.memoryDump.empty())
 		dumpMemory(mem, data.memoryDump, uniformAddress, true);
 
-	bool status = emulate(instructions.begin() + (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue(), mem, uniformAddresses, data.maxEmulationCycles);
+	InstrumentationResults instrumentation;
+	bool status = emulate(instructions.begin() + (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue(), mem, uniformAddresses, instrumentation, data.maxEmulationCycles);
 
 	if(!data.memoryDump.empty())
 		dumpMemory(mem, data.memoryDump, uniformAddress, false);
@@ -1561,6 +1637,22 @@ EmulationResult tools::emulate(const EmulationData& data)
 			result.results.push_back(std::make_pair(paramAddresses[i], std::vector<uint32_t>{}));
 			std::copy_n(mem.getWordAddress(paramAddresses[i]), data.parameter[i].second->size(), std::back_inserter(*result.results[i].second));
 		}
+	}
+	
+	//Map and dump instrumentation results
+	std::unique_ptr<std::ofstream> dumpInstrumentation;
+	if(!data.instrumentationDump.empty())
+		dumpInstrumentation.reset(new std::ofstream(data.instrumentationDump));
+	auto it = instructions.begin() + (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue();
+	result.instrumentation.reserve(kernelInfo->getLength().getValue());
+	while(true)
+	{
+		result.instrumentation.emplace_back(instrumentation[it->get()]);
+		if(dumpInstrumentation)
+			*dumpInstrumentation << std::left << std::setw(80) << (*it)->toASMString() << "//" << instrumentation[it->get()].to_string() << std::endl;
+		if((*it)->getSig() == SIGNAL_END_PROGRAM)
+			break;
+		++it;
 	}
 
 	return result;

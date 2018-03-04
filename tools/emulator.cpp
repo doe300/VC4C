@@ -63,6 +63,7 @@ static void printHelp()
 	std::cout << "\t-d <dump-file>\t\tWrites the memory contents into the file specified, before and after the execution" << std::endl;
 	std::cout << "\t-l <local-sizes>\tUses the given local sizes in the format \"x y z\" (3 parameter), defaults to single execution" << std::endl;
 	std::cout << "\t-g <num-groups>\t\tUses the given number of work-groups in the format \"x y z\" (3 parameter), defaults to single execution" << std::endl;
+	std::cout << "\t-i <dump-file>\t\tWrites the result of the instrumentation into the file specified" << std::endl;
 	std::cout << "\t-h, --help\t\tPrint this help message" << std::endl;
 	std::cout << "[args] specify the values for the input parameters and can take following values:" << std::endl;
 	std::cout << "\t-f <file-name>\t\tRead <file-name> as binary file" << std::endl;
@@ -128,6 +129,11 @@ int main(int argc, char** argv)
 		{
 			++i;
 			data.kernelName = argv[i];
+		}
+		else if(std::string("-i") == argv[i])
+		{
+			++i;
+			data.instrumentationDump = argv[i];
 		}
 		else if(std::string("-f") == argv[i])
 		{

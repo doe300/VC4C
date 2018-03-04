@@ -14,6 +14,7 @@
 #include <array>
 #include <iostream>
 #include <limits>
+#include <vector>
 
 namespace vc4c
 {
@@ -63,6 +64,10 @@ namespace vc4c
 			 * The path to dump the contents of the memory into
 			 */
 			std::string memoryDump;
+			/*
+			 * The path to dump the results of the instrumentation
+			 */
+			std::string instrumentationDump;
 
 			explicit EmulationData() { };
 
@@ -74,6 +79,43 @@ namespace vc4c
 
 			std::size_t calcParameterSize() const;
 			uint32_t calcNumWorkItems() const;
+		};
+		
+		/*
+		 * Contains the result of the automatic instrumentation taking place inside the emulator for a single instruction
+		 */
+		struct InstrumentationResult
+		{
+			/*
+			 * Counts the number of executions running the operation for the add ALU
+			 */
+			unsigned numAddALUExecuted;
+			/*
+			 * Counts the number of executions skipping the operation for the add ALU (due to execution-conditions not met)
+			 */
+			unsigned numAddALUSkipped;
+			/*
+			 * Counts the number of executions running the operation for the mul ALU
+			 */
+			unsigned numMulALUExecuted;
+			/*
+			 * Counts the number of executions skipping the operation for the mul ALU (due to execution-conditions not met)
+			 */
+			unsigned numMulALUSkipped;
+			/*
+			 * Counts the number of executions, the(conditional) branch in this instruction was taken
+			 */
+			unsigned numBranchTaken;
+			/*
+			 * Counts the number of executions of this instruction which stalled (e.g. due to mutex/semaphore lock or access or periphery)
+			 */
+			unsigned numStalls;
+			/*
+			 * Counts the total number, this instruction was executed
+			 */
+			unsigned numExecutions;
+			
+			std::string to_string() const;
 		};
 
 		/*
@@ -93,6 +135,10 @@ namespace vc4c
 			 * The final contents of the parameter passed to the emulation (e.g. for output-parameter).
 			 */
 			std::vector<std::pair<uint32_t, Optional<std::vector<uint32_t>>>> results;
+			/*
+			 * The instrumentation result for the emulation run
+			 */
+			std::vector<InstrumentationResult> instrumentation;
 		};
 
 		/*
