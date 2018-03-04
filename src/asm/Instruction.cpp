@@ -125,6 +125,13 @@ std::string Instruction::toExtrasString(const Signaling sig, const ConditionCode
     return result;
 }
 
+std::string Instruction::addComment(std::string s) const {
+	if (comment == "")
+		return s;
+	else
+		return s + " // " + comment;
+}
+
 std::string qpu_asm::toHexString(const uint64_t code)
 {
 	//lower half before upper half

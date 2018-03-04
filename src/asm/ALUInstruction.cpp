@@ -113,17 +113,19 @@ std::string ALUInstruction::toASMString() const
     	// -> vector rotation
     	mulPart.append(" ").append(static_cast<SmallImmediate>(getInputB()).to_string());
     }
+	std::string s;
     if(opAdd != OP_NOP)
     {
         if(opMul != OP_NOP)
-        {
-            return (addPart + "; ") + mulPart;
-        }
-        return addPart;
-    }
-    if(opMul != OP_NOP)
-        return mulPart;
-    return addPart;
+			s = (addPart + "; ") + mulPart;
+		else
+			s = addPart;
+    } else if(opMul != OP_NOP)
+        s = mulPart;
+	else
+		s = addPart;
+
+	return addComment(s);
 }
 
 bool ALUInstruction::isValidInstruction() const
@@ -137,3 +139,4 @@ bool ALUInstruction::isValidInstruction() const
 			return true;
 	}
 }
+

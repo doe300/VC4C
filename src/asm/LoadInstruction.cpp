@@ -62,13 +62,15 @@ std::string LoadInstruction::toASMString() const
 {
 	if(getEntry<uint8_t>(57, MASK_Septuple) == static_cast<uint8_t>(OpLoad::LOAD_SIGNED))
 	{
-		return std::string("ldi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
+		auto s = std::string("ldi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
 		            ((toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + std::to_string(getImmediateSignedShort0()) + ", ") + std::to_string(getImmediateSignedShort1());
+		return addComment(s);
 	}
 	if(getEntry<uint8_t>(57, MASK_Septuple) == static_cast<uint8_t>(OpLoad::LOAD_UNSIGNED))
 	{
-		return std::string("ldi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
-				            ((toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + std::to_string(getImmediateShort0()) + ", ") + std::to_string(getImmediateShort1());
+		auto s = std::string("ldi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
+				 ((toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + std::to_string(getImmediateShort0()) + ", ") + std::to_string(getImmediateShort1());
+		return addComment(s);
 	}
 	std::string valString;
 	if(getAddOut() == REG_VPM_OUT_SETUP.num)
@@ -82,8 +84,9 @@ std::string LoadInstruction::toASMString() const
 	}
 	else
 		valString = std::to_string(getImmediateInt());
-    return std::string("ldi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
-            (toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + valString;
+    auto s = std::string("ldi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
+			 (toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + valString;
+	return addComment(s);
 }
 
 bool LoadInstruction::isValidInstruction() const

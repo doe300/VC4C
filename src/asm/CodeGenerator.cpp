@@ -1,4 +1,4 @@
-/* 
+/*
  * Author: doe300
  *
  * See the file "LICENSE" for the full license governing this code.
@@ -11,6 +11,7 @@
 #include "GraphColoring.h"
 #include "KernelInfo.h"
 #include "log.h"
+#include "CommentInstruction.h"
 
 #include <climits>
 #include <map>
@@ -24,7 +25,7 @@ CodeGenerator::CodeGenerator(const Module& module, const Configuration& config) 
 {
 }
 
-static FastMap<const Local*, std::size_t> mapLabels(Method& method)
+static FastMap<const Local*, std::size_t> mapLabels(Method& method, Configuration& config)
 {
     logging::debug() << "-----" << logging::endl;
     FastMap<const Local*, std::size_t> labelsMap;
@@ -38,8 +39,11 @@ static FastMap<const Local*, std::size_t> mapLabels(Method& method)
 		{
 			logging::debug() << "Mapping label '" << label->getLabel()->name << "' to byte-position " << index << logging::endl;
 			labelsMap[label->getLabel()] = index;
-			//we do not need the position of the label at all anymore
-			it.erase();
+
+			if (config.outputMode == OutputMode::ASSEMBLER)
+				it.nextInMethod();
+			else
+				it.erase();
 		}
 		else if(!it.isEndOfBlock() && it.has() && !it->mapsToASMInstruction())
 		{
@@ -88,9 +92,9 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
 		logging::warn() << "Register conflict resolver has exceeded its maximum rounds, there might still be errors!" << logging::endl;
 	}
 	PROFILE_END(colorGraph);
-    
+
     //create label-map + remove labels
-    const auto labelMap = mapLabels(method);
+    const auto labelMap = mapLabels(method, config);
 
     //IMPORTANT: DO NOT OPTIMIZE, RE-ORDER, COMBINE, INSERT OR REMOVE ANY INSTRUCTION AFTER THIS POINT!!!
     //otherwise, labels/branches will be wrong
@@ -104,13 +108,15 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
 
     logging::debug() << "-----" << logging::endl;
     std::size_t index = 0;
+
     method.forAllInstructions([&generatedInstructions, &index, &registerMapping, &labelMap](const IntermediateInstruction* instr) -> bool
 	{
-    	Instruction* mapped = instr->convertToAsm(registerMapping, labelMap, index);
+		Instruction *mapped = instr->convertToAsm(registerMapping, labelMap, index);
 		if (mapped != nullptr) {
 			generatedInstructions.emplace_back(mapped);
 		}
 		++index;
+
 		return true;
 	});
 
@@ -173,6 +179,8 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
             break;
         case OutputMode::BINARY:
             for (const std::unique_ptr<Instruction>& instr : pair.second) {
+				if (dynamic_cast<qpu_asm::Comment*>(instr.get()))
+					continue;
                 const uint64_t binary = instr->toBinaryCode();
                 stream.write(reinterpret_cast<const char*>(&binary), 8);
                 numBytes += 8;
@@ -180,6 +188,8 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
             break;
         case OutputMode::HEX:
             for (const std::unique_ptr<Instruction>& instr : pair.second) {
+				if (dynamic_cast<qpu_asm::Comment*>(instr.get()))
+					continue;
                 stream << instr->toHexString(true) << std::endl;
                 numBytes += 8; //doesn't matter here, since the number of bytes is unused for hexadecimal output
             }

@@ -27,7 +27,6 @@ namespace vc4c
 		class Instruction : protected Bitfield<uint64_t>
 		{
 		public:
-
 			Instruction();
 			explicit Instruction(uint64_t code);
 			virtual ~Instruction();
@@ -56,6 +55,11 @@ namespace vc4c
 			BITFIELD_ENTRY(AddOut, Address, 38, Sextuple)
 			BITFIELD_ENTRY(MulOut, Address, 32, Sextuple)
 
+			/*
+			 * Comment to debug output with `--asm`
+			 */
+			std::string comment = "";
+			std::string addComment(std::string s) const;
 		protected:
 
 			static std::string toInputRegister(InputMultiplex mux, Address regA, Address regB, bool hasImmediate = false);
