@@ -229,14 +229,17 @@ struct Intrinsic
     Intrinsic(const IntrinsicFunction& func, const BinaryInstruction binary) : func(func), binaryInstr(binary) { }
 };
 
-const static std::map<std::string, Intrinsic> nonaryInstrinsics = {
+/*
+ * NOTE: We sort intrinsics in descending order on purpose, to correctly select e.g. fmaxabs for vc4cl_fmaxabs (and not fmax)
+ */
+const static std::map<std::string, Intrinsic, std::greater<std::string>> nonaryInstrinsics = {
     {"vc4cl_mutex_lock", Intrinsic{intrinsifyMutexAccess(true)}},
     {"vc4cl_mutex_unlock", Intrinsic{intrinsifyMutexAccess(false)}},
 	{"vc4cl_element_number", Intrinsic{intrinsifyValueRead(ELEMENT_NUMBER_REGISTER)}},
 	{"vc4cl_qpu_number", Intrinsic{intrinsifyValueRead(Value(REG_QPU_NUMBER, TYPE_INT8))}}
 };
 
-const static std::map<std::string, Intrinsic> unaryIntrinsicMapping = {
+const static std::map<std::string, Intrinsic, std::greater<std::string>> unaryIntrinsicMapping = {
     {"vc4cl_ftoi", Intrinsic{intrinsifyUnaryALUInstruction(OP_FTOI.name), [](const Value& val){return Value(Literal(static_cast<int32_t>(std::round(val.literal.real()))), TYPE_INT32);}}},
     {"vc4cl_itof", Intrinsic{intrinsifyUnaryALUInstruction(OP_ITOF.name), [](const Value& val){return Value(Literal(static_cast<float>(val.literal.signedInt())), TYPE_FLOAT);}}},
     {"vc4cl_clz", Intrinsic{intrinsifyUnaryALUInstruction(OP_CLZ.name), NO_OP}},
@@ -263,7 +266,7 @@ const static std::map<std::string, Intrinsic> unaryIntrinsicMapping = {
 	{"vc4cl_saturate_lsb", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_UNSIGNED_CHAR_SATURATE)}}
 };
 
-const static std::map<std::string, Intrinsic> binaryIntrinsicMapping = {
+const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryIntrinsicMapping = {
     {"vc4cl_fmax", Intrinsic{intrinsifyBinaryALUInstruction(OP_FMAX.name), [](const Value& val0, const Value& val1){return Value(Literal(std::max(val0.literal.real(), val1.literal.real())), TYPE_FLOAT);}}},
     {"vc4cl_fmin", Intrinsic{intrinsifyBinaryALUInstruction(OP_FMIN.name), [](const Value& val0, const Value& val1){return Value(Literal(std::min(val0.literal.real(), val1.literal.real())), TYPE_FLOAT);}}},
     {"vc4cl_fmaxabs", Intrinsic{intrinsifyBinaryALUInstruction(OP_FMAXABS.name), [](const Value& val0, const Value& val1){return Value(Literal(std::max(std::abs(val0.literal.real()), std::abs(val1.literal.real()))), TYPE_FLOAT);}}},
@@ -284,11 +287,11 @@ const static std::map<std::string, Intrinsic> binaryIntrinsicMapping = {
 	{"vc4cl_saturated_sub", Intrinsic{intrinsifyBinaryALUInstruction(OP_SUB.name, false, PACK_32_32, UNPACK_NOP, true)}},
 };
 
-const static std::map<std::string, Intrinsic> ternaryIntrinsicMapping = {
+const static std::map<std::string, Intrinsic, std::greater<std::string>> ternaryIntrinsicMapping = {
 	{"vc4cl_dma_copy", Intrinsic{intrinsifyDMAAccess(DMAAccess::COPY)}}
 };
 
-const static std::map<std::string, std::pair<Intrinsic, Optional<Value>>> typeCastIntrinsics = {
+const static std::map<std::string, std::pair<Intrinsic, Optional<Value>>, std::greater<std::string>> typeCastIntrinsics = {
 	//since we run all the (not intrinsified) calculations with 32-bit, don't truncate signed conversions to smaller types
 	//TODO correct?? Since we do not discard out-of-bounds values!
     {"vc4cl_bitcast_uchar", {Intrinsic{intrinsifyBinaryALUInstruction("and", true), [](const Value& val){return Value(Literal(val.literal.unsignedInt() & 0xFF), TYPE_INT8);}}, Value(Literal(0xFFu), TYPE_INT8)}},

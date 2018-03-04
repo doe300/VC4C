@@ -365,14 +365,14 @@ std::string SmallImmediate::to_string() const
 	throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid small immediate value", std::to_string(static_cast<unsigned>(value)));
 }
 
-Optional<char> SmallImmediate::getIntegerValue() const
+Optional<int32_t> SmallImmediate::getIntegerValue() const
 {
 	if (value <= 15)
 		// 0, ..., 15
-		return static_cast<char>(value);
+		return static_cast<int32_t>(value);
 	if (value <= 31)
 		// -16, ..., -1
-		return static_cast<char>(static_cast<char>(value) - 32);
+		return static_cast<int32_t>(value) - 32;
 	return {};
 }
 
@@ -404,7 +404,7 @@ Optional<unsigned char> SmallImmediate::getRotationOffset() const
 Optional<Literal> SmallImmediate::toLiteral() const
 {
 	if(getIntegerValue())
-		return Literal(static_cast<int32_t>(getIntegerValue().value()));
+		return Literal(getIntegerValue().value());
 	if(getFloatingValue())
 		return Literal(getFloatingValue().value());
 	return {};
@@ -587,16 +587,16 @@ bool Value::hasRegister(const Register& reg) const
 bool Value::hasLiteral(const Literal& lit) const
 {
 	if(hasType(ValueType::SMALL_IMMEDIATE))
-		return (immediate.getIntegerValue().is(lit.signedInt())) ||
-				(immediate.getFloatingValue().is(static_cast<float>(lit.real())));
+		return immediate.getIntegerValue().is(lit.signedInt()) ||
+				immediate.getFloatingValue().is(lit.real());
     return hasType(ValueType::LITERAL) && this->literal == lit;
 }
 
 bool Value::hasImmediate(const SmallImmediate& immediate) const
 {
 	if(hasType(ValueType::LITERAL))
-		return (immediate.getIntegerValue().is(literal.signedInt())) ||
-				(immediate.getFloatingValue().is(static_cast<float>(literal.real())));
+		return immediate.getIntegerValue().is(literal.signedInt()) ||
+				immediate.getFloatingValue().is(literal.real());
 	return hasType(ValueType::SMALL_IMMEDIATE) && this->immediate == immediate;
 }
 

@@ -631,8 +631,6 @@ Optional<Value> OpCode::getLeftIdentity(const OpCode& code)
 		return INT_ZERO;
 	if(code == OP_FADD)
 		return FLOAT_ZERO;
-	if(code == OP_FMAXABS)
-		return FLOAT_ZERO;
 	if(code == OP_FMUL)
 		return FLOAT_ONE;
 	if(code == OP_MUL24)
@@ -659,8 +657,6 @@ Optional<Value> OpCode::getRightIdentity(const OpCode& code)
 	if(code == OP_ASR)
 		return INT_ZERO;
 	if(code == OP_FADD)
-		return FLOAT_ZERO;
-	if(code == OP_FMAXABS)
 		return FLOAT_ZERO;
 	if(code == OP_FMUL)
 		return FLOAT_ONE;

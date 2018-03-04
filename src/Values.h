@@ -444,7 +444,7 @@ namespace vc4c
 		 * the field-values 16 - 31 map to the integer values -16 to -1.
 		 * So the range [-16, 15] can be represented by SmallImmediate objects.
 		 */
-		Optional<char> getIntegerValue() const;
+		Optional<int32_t> getIntegerValue() const;
 		/*
 		 * Returns the floating-point value represented by this object, if this object represents a floating-point value.
 		 *

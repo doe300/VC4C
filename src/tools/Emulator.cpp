@@ -1388,7 +1388,8 @@ bool tools::emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_it
 		throw CompilationError(CompilationStep::GENERAL, "Cannot use more than 12 QPUs!");
 
 	Mutex mutex;
-	std::array<SFU, 3> sfus;
+	//FIXME is SFU execution per QPU or need SFUs be locked?
+	std::array<SFU, 12> sfus;
 	VPM vpm(memory);
 	Semaphores semaphores;
 
@@ -1396,7 +1397,7 @@ bool tools::emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_it
 	uint8_t numQPU = 0;
 	for(MemoryAddress uniformPointer : uniformAddresses)
 	{
-		qpus.emplace_back(numQPU, mutex, sfus.at(numQPU / 4), vpm, semaphores, memory, uniformPointer);
+		qpus.emplace_back(numQPU, mutex, sfus.at(numQPU), vpm, semaphores, memory, uniformPointer);
 		++numQPU;
 	}
 
@@ -1406,9 +1407,8 @@ bool tools::emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_it
 	{
 		logging::debug() << "Emulating cycle: " << cycle << logging::endl;
 		emulateStep(firstInstruction, qpus);
-		sfus.at(0).incrementCycle();
-		sfus.at(1).incrementCycle();
-		sfus.at(2).incrementCycle();
+		for(SFU& sfu : sfus)
+			sfu.incrementCycle();
 		vpm.incrementCycle();
 
 		++cycle;

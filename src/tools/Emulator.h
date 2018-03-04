@@ -156,7 +156,7 @@ namespace vc4c
 
 			void incrementCycle();
 		private:
-			//TODO is SFU calculation per QPU?
+			//FIXME is SFU calculation per QPU? Or do QPUs need to lock the SFU access?
 			//XXX per QPU cycle??
 			uint32_t lastSFUWrite;
 			uint32_t currentCycle;
