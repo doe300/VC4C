@@ -18,7 +18,6 @@
 		size_t gid = get_global_id(0);                                                                                 \
 		out[gid] = func(in0[gid], in1[gid]);                                                                           \
 	}
-
 TEST_KERNEL(acos)
 TEST_KERNEL(acosh)
 TEST_KERNEL(acospi)
@@ -31,6 +30,7 @@ TEST_KERNEL(atanh)
 TEST_KERNEL(atanpi)
 TEST_KERNEL2(atan2pi)
 TEST_KERNEL(cbrt)
+TEST_KERNEL(ceil)
 TEST_KERNEL2(copysign)
 TEST_KERNEL(cos)
 TEST_KERNEL(cosh)

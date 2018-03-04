@@ -42,7 +42,7 @@ TestEmulator::TestEmulator()
 	}
 	for(std::size_t i = 0; i < vc4c::test::mathTests.size(); ++i)
 	{
-		TEST_ADD_TWO_ARGUMENTS(TestEmulator::testMathFunction, i, vc4c::test::mathTests.at(i).first.kernelName);
+		TEST_ADD_TWO_ARGUMENTS(TestEmulator::testMathFunction, i, std::get<0>(vc4c::test::mathTests.at(i)).kernelName);
 	}
 }
 
@@ -392,24 +392,33 @@ void TestEmulator::testIntegerEmulations(std::size_t index, std::string name)
 
 void TestEmulator::testFloatEmulations(std::size_t index, std::string name)
 {
-	auto& data = vc4c::test::floatTests.at(index).first;
+	testFloatingEmulation(vc4c::test::floatTests.at(index).first, vc4c::test::floatTests.at(index).second);
+}
 
+void TestEmulator::testMathFunction(std::size_t index, std::string name)
+{
+	//same code, just different test-case name to differentiate
+	testFloatingEmulation(std::get<0>(vc4c::test::mathTests.at(index)), std::get<1>(vc4c::test::mathTests.at(index)), std::get<2>(vc4c::test::mathTests.at(index)));
+}
+
+void TestEmulator::testFloatingEmulation(vc4c::tools::EmulationData& data, std::map<uint32_t, std::vector<uint32_t>>& expectedResults, unsigned maxULP)
+{
 	std::stringstream buffer;
 	compileFile(buffer, data.module.first);
 	data.module.second = &buffer;
-
+	
 	const auto result = emulate(data);
 	TEST_ASSERT(result.executionSuccessful);
 	TEST_ASSERT_EQUALS(data.parameter.size(), result.results.size());
-
-	for(const auto& pair : vc4c::test::floatTests.at(index).second)
+	
+	for(const auto& pair : expectedResults)
 	{
 		const auto& output = *result.results.at(pair.first).second;
 		const auto& expected = pair.second;
-
+	
 		//we might write values we do not check
 		TEST_ASSERT(expected.size() <= output.size());
-
+	
 		//general test equality
 		if(output != expected)
 		{
@@ -423,14 +432,8 @@ void TestEmulator::testFloatEmulations(std::size_t index, std::string name)
 				 * Thus for any value, which cannot be represented exactly, the values may differ.
 				 * So we allow up to 1 ULP error
 				 */
-				TEST_ASSERT_ULP(e, o, 1);
+				TEST_ASSERT_ULP(e, o, maxULP);
 			}
 		}
 	}
-}
-
-void TestEmulator::testMathFunction(std::size_t index, std::string name)
-{
-	//same code, just different test-case name to differentiate
-	testFloatEmulations(index, name);
 }
