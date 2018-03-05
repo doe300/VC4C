@@ -136,7 +136,7 @@ namespace vc4c
 			 */
 			std::vector<std::pair<uint32_t, Optional<std::vector<uint32_t>>>> results;
 			/*
-			 * The instrumentation result for the emulation run
+			 * The instrumentation result for the emulation run. The indices of the instrumentation result correspond to the indices of the instruction in the executed kernel
 			 */
 			std::vector<InstrumentationResult> instrumentation;
 		};
