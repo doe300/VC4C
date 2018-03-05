@@ -104,6 +104,24 @@ InstructionWalker optimizations::handleContainer(const Module& module, Method& m
 	}
 	else if(op != nullptr && (op->getFirstArg().hasType(ValueType::CONTAINER) || (op->getSecondArg() && op->getSecondArg()->hasType(ValueType::CONTAINER))))
 	{
+		for(std::size_t i = 0; i < op->getArguments().size(); ++i)
+		{
+			//for special containers, rewrite to scalars/registers
+			if(op->getArgument(i)->hasType(ValueType::CONTAINER))
+			{
+				if(op->getArgument(i)->container.isAllSame())
+				{
+					Value container = op->getArgument(i).value();
+					Value tmp = container.container.elements.at(0);
+					tmp.type = container.type;
+					op->setArgument(i, tmp);
+				}
+				else if(op->getArgument(i)->container.isElementNumber())
+				{
+					op->setArgument(i, Value(REG_ELEMENT_NUMBER, op->getArgument(i)->type));
+				}
+			}
+		}
 		if(op->getFirstArg().hasType(ValueType::CONTAINER) && !op->getFirstArg().type.isPointerType())
 		{
 			logging::debug() << "Rewriting operation with container-input " << op->to_string() << logging::endl;
