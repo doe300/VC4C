@@ -110,9 +110,9 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
 	{
 		if (instr->mapsToASMInstruction()) {
 			Instruction *mapped = instr->convertToAsm(registerMapping, labelMap, index);
-			if (auto label = dynamic_cast<BranchLabel*>(previous))
-				mapped->previousComment += label->getLabel()->to_string();
 			if (mapped != nullptr) {
+				if (auto label = dynamic_cast<BranchLabel*>(previous))
+					mapped->previousComment += label->getLabel()->to_string();
 				generatedInstructions.emplace_back(mapped);
 			}
 			++index;
