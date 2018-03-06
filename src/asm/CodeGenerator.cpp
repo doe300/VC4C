@@ -1,4 +1,4 @@
-/* 
+/*
  * Author: doe300
  *
  * See the file "LICENSE" for the full license governing this code.
@@ -15,6 +15,7 @@
 #include <climits>
 #include <map>
 #include <sstream>
+#include <assert.h>
 
 using namespace vc4c;
 using namespace vc4c::qpu_asm;
@@ -38,8 +39,8 @@ static FastMap<const Local*, std::size_t> mapLabels(Method& method)
 		{
 			logging::debug() << "Mapping label '" << label->getLabel()->name << "' to byte-position " << index << logging::endl;
 			labelsMap[label->getLabel()] = index;
-			//we do not need the position of the label at all anymore
-			it.erase();
+
+			it.nextInMethod();
 		}
 		else if(!it.isEndOfBlock() && it.has() && !it->mapsToASMInstruction())
 		{
@@ -88,7 +89,7 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
 		logging::warn() << "Register conflict resolver has exceeded its maximum rounds, there might still be errors!" << logging::endl;
 	}
 	PROFILE_END(colorGraph);
-    
+
     //create label-map + remove labels
     const auto labelMap = mapLabels(method);
 
@@ -104,15 +105,49 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
 
     logging::debug() << "-----" << logging::endl;
     std::size_t index = 0;
-    method.forAllInstructions([&generatedInstructions, &index, &registerMapping, &labelMap](const IntermediateInstruction* instr) -> bool
+
+	std::string s = "";
+
+	for (auto bb_it = method.begin(); bb_it != method.end(); ++bb_it)
 	{
-    	Instruction* mapped = instr->convertToAsm(registerMapping, labelMap, index);
-		if (mapped != nullptr) {
-			generatedInstructions.emplace_back(mapped);
+		auto it = bb_it->begin();
+		if (it.getBasicBlock()->empty())
+		{
+			s = s.empty() ? bb_it->getLabel()->to_string() : s + "," + bb_it->getLabel()->to_string();
+			continue;
 		}
-		++index;
-		return true;
-	});
+
+		auto label = dynamic_cast<intermediate::BranchLabel*>(it.get());
+		assert(label != nullptr);
+		it.nextInBlock();
+
+		auto instr = it.get();
+		if (instr->mapsToASMInstruction()) {
+			Instruction *mapped = instr->convertToAsm(registerMapping, labelMap, index);
+			if (mapped != nullptr) {
+				mapped->previousComment += s.empty() ? label->to_string() : s + ", " + label->to_string();
+				s = "";
+				generatedInstructions.emplace_back(mapped);
+			}
+			++index;
+		}
+
+		it.nextInBlock();
+
+		while (! it.isEndOfBlock())
+		{
+			auto instr = it.get();
+			if (instr->mapsToASMInstruction()) {
+				Instruction *mapped = instr->convertToAsm(registerMapping, labelMap, index);
+				if (mapped != nullptr) {
+					generatedInstructions.emplace_back(mapped);
+				}
+				++index;
+			}
+
+			it.nextInBlock();
+		}
+	}
 
     logging::debug() << "-----" << logging::endl;
     index = 0;
