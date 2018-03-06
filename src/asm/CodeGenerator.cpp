@@ -15,6 +15,7 @@
 #include <climits>
 #include <map>
 #include <sstream>
+#include <assert.h>
 
 using namespace vc4c;
 using namespace vc4c::qpu_asm;
@@ -105,23 +106,48 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
     logging::debug() << "-----" << logging::endl;
     std::size_t index = 0;
 
-	IntermediateInstruction* previous = nullptr;
-    method.forAllInstructions([&generatedInstructions, &index, &registerMapping, &labelMap, &previous](const IntermediateInstruction* instr) -> bool
+	std::string s = "";
+
+	for (auto bb_it = method.begin(); bb_it != method.end(); ++bb_it)
 	{
+		auto it = bb_it->begin();
+		if (it.getBasicBlock()->empty())
+		{
+			s = s.empty() ? bb_it->getLabel()->to_string() : s + "," + bb_it->getLabel()->to_string();
+			continue;
+		}
+
+		auto label = dynamic_cast<intermediate::BranchLabel*>(it.get());
+		assert(label != nullptr);
+		it.nextInBlock();
+
+		auto instr = it.get();
 		if (instr->mapsToASMInstruction()) {
 			Instruction *mapped = instr->convertToAsm(registerMapping, labelMap, index);
 			if (mapped != nullptr) {
-				if (auto label = dynamic_cast<BranchLabel*>(previous))
-					mapped->previousComment += label->getLabel()->to_string();
+				mapped->previousComment += s.empty() ? label->to_string() : s + ", " + label->to_string();
+				s = "";
 				generatedInstructions.emplace_back(mapped);
 			}
 			++index;
 		}
 
-		previous = const_cast<IntermediateInstruction*>(instr);
-		return true;
-		// XXX: use const_cast because `forAllInstructions` is only defined for `bool(const IntermediateInstruction*)`
-	});
+		it.nextInBlock();
+
+		while (! it.isEndOfBlock())
+		{
+			auto instr = it.get();
+			if (instr->mapsToASMInstruction()) {
+				Instruction *mapped = instr->convertToAsm(registerMapping, labelMap, index);
+				if (mapped != nullptr) {
+					generatedInstructions.emplace_back(mapped);
+				}
+				++index;
+			}
+
+			it.nextInBlock();
+		}
+	}
 
     logging::debug() << "-----" << logging::endl;
     index = 0;
