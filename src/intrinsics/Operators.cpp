@@ -556,6 +556,8 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
     return it;
 }
 
+static constexpr unsigned MSB = 31;
+
 Literal intermediate::asr(const DataType& type, const Literal& left, const Literal& right)
 {
 	std::bitset<sizeof(int32_t) * 8> tmp(left.signedInt());
@@ -563,22 +565,22 @@ Literal intermediate::asr(const DataType& type, const Literal& left, const Liter
 		throw CompilationError(CompilationStep::GENERAL, "ASR with negative numbers is not implemented");
 	for(auto i = 0; i < right.signedInt(); ++i)
 	{
-
-		bool MSBSet = tmp.test(type.getScalarBitCount() - 1);
+		bool MSBSet = tmp.test(MSB);
 		tmp >>= 1;
-		tmp.set(type.getScalarBitCount() - 1, MSBSet);
+		tmp.set(MSB, MSBSet);
 	}
 	return Literal(static_cast<uint32_t>(tmp.to_ulong()));
 }
 
 Literal intermediate::clz(const DataType& type, const Literal& val)
 {
-	for(auto i = type.getScalarBitCount() - 1; i >= 0; --i)
+	for(int i = MSB; i >= 0; --i)
 	{
 		if(((val.unsignedInt() >> i) & 0x1) == 0x1)
-			return Literal(static_cast<int32_t>(type.getScalarBitCount() - 1 - i));
+			return Literal(static_cast<int32_t>(MSB - i));
 	}
-	return Literal(static_cast<int32_t>(type.getScalarBitCount()));
+	//FIXME is this correct? What does clz(0) return on VC4?
+	return Literal(32);
 }
 
 Literal intermediate::smod(const DataType& type, const Literal& numerator, const Literal& denominator)

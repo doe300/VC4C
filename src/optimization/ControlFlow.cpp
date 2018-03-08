@@ -662,9 +662,20 @@ static void vectorize(ControlFlowLoop& loop, LoopControl& loopControl, const Dat
 		{
 			//TODO what to do?? These are e.g. for accumulation-variables (like sum, maximum)
 			//FIXME depending on the operation performed on this locals, the vector-elements need to be folded into a scalar/previous vector width
-			logging::warn() << "Local is accessed outside of loop: " << (*openInstructions.begin())->to_string() << logging::endl;
-			//openInstructions.erase(openInstructions.begin());
-			throw CompilationError(CompilationStep::OPTIMIZER, "Accessing vectorized locals outside of the loop is not yet implemented", (*openInstructions.begin())->to_string());
+			logging::debug() << "Local is accessed outside of loop: " << (*openInstructions.begin())->to_string() << logging::endl;
+			
+			const intermediate::IntermediateInstruction* inst = *openInstructions.begin();
+			const Value& arg = inst->getArgument(0).value();
+			const intermediate::Operation* op = dynamic_cast<const intermediate::Operation*>(arg.getSingleWriter());
+			if(std::all_of(inst->getArguments().begin(), inst->getArguments().end(), [&arg](const Value& otherArg) -> bool { return otherArg == arg;}) &&
+			   op != nullptr && op->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED) && !op->hasSideEffects())
+			{
+				/*
+				 * There is a single writer to this local, which is vectorized and calculates the local via some operation (also has no side-effects)
+				 * -> TODO we can accept the instruction by folding the vector-elements with the operation last applied
+				 */
+			}
+				throw CompilationError(CompilationStep::OPTIMIZER, "Accessing vectorized locals outside of the loop is not yet implemented", (*openInstructions.begin())->to_string());
 		}
 		else
 		{

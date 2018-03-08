@@ -533,10 +533,8 @@ bool Value::operator==(const Value& other) const
 {
 	if(this == &other)
 		return true;
-    if(valueType != other.valueType)
-        return false;
-    if(type != other.type)
-        return false;
+	if(valueType != other.valueType)
+	    return false;
     switch(valueType)
     {
     case ValueType::CONTAINER:
@@ -544,9 +542,9 @@ bool Value::operator==(const Value& other) const
     case ValueType::LITERAL:
         return other.hasLiteral(literal);
     case ValueType::LOCAL:
-        return local == other.local;
+        return other.hasLocal(local);
     case ValueType::REGISTER:
-        return reg == other.reg;
+        return other.hasRegister(other.reg);
     case ValueType::UNDEFINED:
         return true;
     case ValueType::SMALL_IMMEDIATE:
