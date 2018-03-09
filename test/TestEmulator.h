@@ -24,6 +24,7 @@ class TestEmulator : public Test::Suite
 {
 public:
 	TestEmulator();
+	explicit TestEmulator(bool dummy);
 
 	void testHelloWorld();
 	void testHelloWorldVector();
@@ -35,9 +36,8 @@ public:
 	void testSHA256();
 	void testIntegerEmulations(std::size_t index, std::string name);
 	void testFloatEmulations(std::size_t index, std::string name);
-	void testMathFunction(std::size_t index, std::string name);
 
-private:
+protected:
 	void testFloatingEmulation(vc4c::tools::EmulationData& data, std::map<uint32_t, std::vector<uint32_t>>& expectedResults, unsigned maxULP = 1);
 };
 

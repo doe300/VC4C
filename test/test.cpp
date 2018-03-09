@@ -15,6 +15,7 @@
 #include "TestParser.h"
 #include "TestScanner.h"
 #include "TestSPIRVFrontend.h"
+#include "TestStdlib.h"
 
 #include "../lib/cpplog/include/logger.h"
 #include "RegressionTest.h"
@@ -65,6 +66,7 @@ int main(int argc, char** argv)
     Test::registerSuite(newSPIRVCompiltionTest<false>, "test-compilation-spirv", "Runs all the compilation tests using the SPIR-V front-end", false);
     Test::registerSuite(newFastRegressionTest, "fast-regressions", "Runs regression test-cases marked as fast", false);
     Test::registerSuite(Test::newInstance<TestEmulator>, "test-emulator", "Runs selected code-samples through the emulator");
+    Test::registerSuite(Test::newInstance<TestStdlib>, "test-stdlib", "Runs most of the VC4CL std-lib functions in emulator");
 
     return Test::runSuites(argc, argv);
 }

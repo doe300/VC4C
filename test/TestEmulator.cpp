@@ -40,13 +40,14 @@ TestEmulator::TestEmulator()
 	{
 		TEST_ADD_TWO_ARGUMENTS(TestEmulator::testFloatEmulations, i, vc4c::test::floatTests.at(i).first.kernelName);
 	}
-	for(std::size_t i = 0; i < vc4c::test::mathTests.size(); ++i)
-	{
-		TEST_ADD_TWO_ARGUMENTS(TestEmulator::testMathFunction, i, std::get<0>(vc4c::test::mathTests.at(i)).kernelName);
-	}
 }
 
-static void compileFile(std::stringstream& buffer, const std::string& fileName, const std::string& options = "")
+TestEmulator::TestEmulator(bool dummy)
+{
+	//Constructor just, so the tests are not added to children
+}
+
+void compileFile(std::stringstream& buffer, const std::string& fileName, const std::string& options = "")
 {
 	Configuration config;
 	config.outputMode = OutputMode::BINARY;
@@ -393,12 +394,6 @@ void TestEmulator::testIntegerEmulations(std::size_t index, std::string name)
 void TestEmulator::testFloatEmulations(std::size_t index, std::string name)
 {
 	testFloatingEmulation(vc4c::test::floatTests.at(index).first, vc4c::test::floatTests.at(index).second);
-}
-
-void TestEmulator::testMathFunction(std::size_t index, std::string name)
-{
-	//same code, just different test-case name to differentiate
-	testFloatingEmulation(std::get<0>(vc4c::test::mathTests.at(index)), std::get<1>(vc4c::test::mathTests.at(index)), std::get<2>(vc4c::test::mathTests.at(index)));
 }
 
 void TestEmulator::testFloatingEmulation(vc4c::tools::EmulationData& data, std::map<uint32_t, std::vector<uint32_t>>& expectedResults, unsigned maxULP)
