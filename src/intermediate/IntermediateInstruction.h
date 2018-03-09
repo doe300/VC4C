@@ -7,7 +7,7 @@
 #ifndef INTERMEDIATEINSTRUCTION_H
 #define INTERMEDIATEINSTRUCTION_H
 
-#include "../Module.h"
+#include "../Method.h"
 #include "../asm/OpCodes.h"
 #include "CompilationError.h"
 #include "Optional.h"

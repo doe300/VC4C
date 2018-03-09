@@ -7,7 +7,7 @@
 #ifndef INSTRUCTION_WALKER_H
 #define INSTRUCTION_WALKER_H
 
-#include "Module.h"
+#include "Method.h"
 #include "intermediate/IntermediateInstruction.h"
 
 #include <functional>

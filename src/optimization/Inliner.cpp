@@ -6,6 +6,7 @@
 
 #include "Inliner.h"
 
+#include "../Module.h"
 #include "../Profiler.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/IntermediateInstruction.h"

@@ -9,7 +9,7 @@
 
 #include "../Bitfield.h"
 #include "../InstructionWalker.h"
-#include "../Module.h"
+#include "../Method.h"
 
 namespace vc4c
 {

@@ -6,6 +6,7 @@
 
 #include "Images.h"
 
+#include "../Module.h"
 #include "../intermediate/Helper.h"
 #include "../periphery/VPM.h"
 #include "log.h"

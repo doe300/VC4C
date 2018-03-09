@@ -7,6 +7,7 @@
 #include "CodeGenerator.h"
 
 #include "../InstructionWalker.h"
+#include "../Module.h"
 #include "../Profiler.h"
 #include "GraphColoring.h"
 #include "KernelInfo.h"

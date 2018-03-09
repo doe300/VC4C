@@ -8,6 +8,7 @@
 
 #include "DebugGraph.h"
 #include "../InstructionWalker.h"
+#include "../Module.h"
 #include "../Profiler.h"
 
 #include "log.h"

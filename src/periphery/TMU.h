@@ -7,7 +7,7 @@
 #ifndef VC4C_TMU_H
 #define VC4C_TMU_H
 
-#include "../Module.h"
+#include "../Method.h"
 #include "../asm/OpCodes.h"
 
 namespace vc4c

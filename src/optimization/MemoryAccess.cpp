@@ -6,6 +6,7 @@
 
 #include "MemoryAccess.h"
 
+#include "../Module.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../periphery/TMU.h"
 #include "../periphery/VPM.h"
