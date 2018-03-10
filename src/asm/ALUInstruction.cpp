@@ -79,7 +79,7 @@ ALUInstruction::ALUInstruction(
                            "Opcode specified for wrong ALU");
 }
 
-std::string ALUInstruction::toASMString() const {
+std::string ALUInstruction::toASMString(bool addComments) const {
   const OpCode &opAdd = OpCode::toOpCode(getAddition(), false);
   const OpCode &opMul = OpCode::toOpCode(getMultiplication(), true);
   std::string addPart;
@@ -158,7 +158,7 @@ std::string ALUInstruction::toASMString() const {
   else
     s = addPart;
 
-  return addComment(s);
+  return addComments ? addComment(s) : s;
 }
 
 bool ALUInstruction::isValidInstruction() const {

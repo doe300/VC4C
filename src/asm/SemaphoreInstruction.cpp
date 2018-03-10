@@ -25,7 +25,7 @@ SemaphoreInstruction::SemaphoreInstruction(const Pack pack, const ConditionCode 
     setSemaphore(semaphore);
 }
 
-std::string SemaphoreInstruction::toASMString() const
+std::string SemaphoreInstruction::toASMString(bool addComments) const
 {
     std::string s;
     std::string result(toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag(), UNPACK_NOP, getPack()));
@@ -34,7 +34,7 @@ std::string SemaphoreInstruction::toASMString() const
     else
         s = std::string("srel") + (result + " ") + (toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + std::to_string(static_cast<unsigned char>(getSemaphore()));
 
-    return addComment(s);
+    return addComments ? addComment(s) : s;
 }
 
 bool SemaphoreInstruction::isValidInstruction() const

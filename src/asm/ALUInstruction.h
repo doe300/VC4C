@@ -32,7 +32,7 @@ namespace vc4c
 					InputMultiplex muxAddA, InputMultiplex muxAddB, InputMultiplex muxMulA, InputMultiplex muxMulB);
 			~ALUInstruction() override = default;
 
-			std::string toASMString() const override;
+			std::string toASMString(bool addComments) const override;
 			bool isValidInstruction() const override;
 
 			BITFIELD_ENTRY(Unpack, Unpack, 57, Triple)

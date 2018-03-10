@@ -43,7 +43,7 @@ std::string Instruction::toHexString(bool withAssemblerCode) const
     uint64_t binaryCode = toBinaryCode();
     if(withAssemblerCode)
     {
-        return (std::string(qpu_asm::toHexString(binaryCode)) + "//") + toASMString();
+        return addComment((std::string(qpu_asm::toHexString(binaryCode)) + "//") + toASMString(false));
     }
     return qpu_asm::toHexString(binaryCode);
 }

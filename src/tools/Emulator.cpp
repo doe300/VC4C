@@ -954,7 +954,7 @@ bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iter
 			++instrumentation[inst].numBranchTaken;
 			int32_t offset = 4 /* Branch starts at PC + 4 */ + static_cast<int32_t>(br->getImmediate() / sizeof(uint64_t)) /* immediate offset is in bytes */;
 			if(br->getAddRegister() == BranchReg::BRANCH_REG || br->getBranchRelative() == BranchRel::BRANCH_ABSOLUTE)
-				throw CompilationError(CompilationStep::GENERAL, "This kind of branch is not yet implemented", br->toASMString());
+				throw CompilationError(CompilationStep::GENERAL, "This kind of branch is not yet implemented", br->toASMString(false));
 			nextPC += offset;
 
 			//see Broadcom specification, page 34

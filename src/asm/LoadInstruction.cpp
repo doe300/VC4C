@@ -58,7 +58,7 @@ LoadInstruction::LoadInstruction(const Pack pack, const ConditionCode condAdd, c
     setImmediateShort1(value1);
 }
 
-std::string LoadInstruction::toASMString() const
+std::string LoadInstruction::toASMString(bool addComments) const
 {
 	if(getEntry<uint8_t>(57, MASK_Septuple) == static_cast<uint8_t>(OpLoad::LOAD_SIGNED))
 	{
@@ -86,7 +86,7 @@ std::string LoadInstruction::toASMString() const
 		valString = std::to_string(getImmediateInt());
     auto s = std::string("ldi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
 			 (toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + valString;
-	return addComment(s);
+	return addComments ? addComment(s) : s;
 }
 
 bool LoadInstruction::isValidInstruction() const

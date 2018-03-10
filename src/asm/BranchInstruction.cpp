@@ -25,7 +25,7 @@ BranchInstruction::BranchInstruction(const BranchCond cond, const BranchRel rela
 }
 
 
-std::string BranchInstruction::toASMString() const
+std::string BranchInstruction::toASMString(bool addComments) const
 {
     auto s =std::string("br") + (getBranchRelative() == BranchRel::BRANCH_RELATIVE ? "r" : "a") +
             ((getBranchCondition() == BranchCond::ALWAYS ? "" : std::string(".") + toString(getBranchCondition())) + " ") +
@@ -34,7 +34,7 @@ std::string BranchInstruction::toASMString() const
 			(getBranchRelative() == BranchRel::BRANCH_RELATIVE ? "(pc+4) + " : "") +
             std::to_string(getImmediate() / 8 /* byte-index -> instruction-index */) +
             (getAddRegister() == BranchReg::BRANCH_REG ? std::string(" + ") + Register{RegisterFile::PHYSICAL_A, getRegisterAddress()}.to_string(true, true) : "");
-    return addComment(s);
+    return addComments ? addComment(s) : s;
 }
 
 bool BranchInstruction::isValidInstruction() const

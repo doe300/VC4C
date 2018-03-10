@@ -23,7 +23,7 @@ namespace vc4c
 			LoadInstruction(Pack pack, ConditionCode condAdd, ConditionCode condMul, SetFlag sf, WriteSwap ws, Address addOut, Address mulOut, uint16_t value0, uint16_t value1);
 			~LoadInstruction() override = default;
 
-			std::string toASMString() const override;
+			std::string toASMString(bool addComments) const override;
 			bool isValidInstruction() const override;
 
 			BITFIELD_ENTRY(Pack, Pack, 52, Quintuple)

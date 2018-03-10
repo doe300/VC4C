@@ -21,7 +21,7 @@ namespace vc4c
 			BranchInstruction(BranchCond cond, BranchRel relative, BranchReg addRegister, Address branchRegister, Address addOut, Address mulOut, int32_t offset, std::string comment);
 			~BranchInstruction() override = default;
 
-			std::string toASMString() const override;
+			std::string toASMString(bool addComments) const override;
 			bool isValidInstruction() const override;
 
 			BITFIELD_ENTRY(BranchCondition, BranchCond, 52, Quadruple)

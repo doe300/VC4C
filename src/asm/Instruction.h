@@ -34,7 +34,7 @@ namespace vc4c
 			/*
 			 * Generates a string of custom assembler code for this instruction
 			 */
-			virtual std::string toASMString() const = 0;
+			virtual std::string toASMString(bool addComments = true) const = 0;
 			/*
 			 * Returns whether this instruction is valid.
 			 *
