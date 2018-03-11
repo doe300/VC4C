@@ -106,7 +106,33 @@ Optional<InstructionWalker> ControlFlowLoop::findInLoop(const intermediate::Inte
 
 CFGNode& ControlFlowGraph::getStartOfControlFlow()
 {
-	return assertNode(&begin()->first->method.basicBlocks.front());
+	//TODO return node without any predecessors?
+	return assertNode(&(*begin()->first->method.begin()));
+}
+
+CFGNode& ControlFlowGraph::getEndOfControlFlow()
+{
+	//return node without any successor,
+	//if there are multiple (or none), throw
+	CFGNode* candidate = nullptr;
+	for(auto& pair : *this)
+	{
+		CFGNode& node = pair.second;
+		if(std::none_of(node.getNeighbors().begin(), node.getNeighbors().end(), [](const auto& pair) -> bool { return pair.second.isForwardRelation(); }))
+		{
+			if(candidate != nullptr)
+			{
+				logging::error() << "Candidate: " << candidate->key->getLabel()->to_string() << logging::endl;
+				logging::error() << "Candidate: " << node.key->getLabel()->to_string() << logging::endl;
+				throw CompilationError(CompilationStep::GENERAL, "Found more than one CFG node without successors!");
+			}
+			candidate = &node;
+		}
+	}
+	
+	if(candidate == nullptr)
+		throw CompilationError(CompilationStep::GENERAL, "Found no CFG node without successors!");
+	return *candidate;
 }
 
 struct CFGNodeSorter : public std::less<CFGNode*>

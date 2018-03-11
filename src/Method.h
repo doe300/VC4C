@@ -16,6 +16,7 @@ namespace vc4c
 	{
 		class VPM;
 	} // namespace periphery
+	class ControlFlowGraph;
 	class Module;
 
 	/*
@@ -124,10 +125,14 @@ namespace vc4c
 
 		/*
 		 * Returns an iterator to the beginning of the first basic block
+		 *
+		 * NOTE: The order the instructions are traversed in does not reflect their final order!
 		 */
 		InstructionWalker walkAllInstructions();
 		/*
 		 * Executes the given consumer for all instructions
+		 *
+		 * NOTE: Users of this function should assume the order of traversal to be arbitrary!
 		 */
 		void forAllInstructions(
 			const std::function<void(const intermediate::IntermediateInstruction *)> &consumer) const;
@@ -161,11 +166,12 @@ namespace vc4c
 		 * Prints all instruction to the logging-stream
 		 */
 		void dumpInstructions() const;
+		
 		/*
-		 * Returns the basic-blocks within this method
+		 * The following functions are for traversal only and do not allow the basic blocks themselves to be modified.
+		 *
+		 * To modify the relations of basic blocks, use the CFG
 		 */
-		BasicBlockList &getBasicBlocks();
-
 		inline BasicBlockList::iterator begin()
 		{
 			return basicBlocks.begin();
@@ -190,6 +196,16 @@ namespace vc4c
 		 * Searches for the basic-block belonging to the given label
 		 */
 		BasicBlock *findBasicBlock(const Local *label);
+		const BasicBlock *findBasicBlock(const Local *label) const;
+		
+		/*
+		 * Clears and removes the given basic block.
+		 *
+		 * If overwriteUsages is not set, the deletion fails if this block has instructions (other than the label) or is target of an explicit jump
+		 *
+		 * Returns whether the operation was executed.
+		 */
+		bool removeBlock(BasicBlock& block, bool overwriteUsages = false);
 
 		/*
 		 * Inserts the given label at the position and returns a iterator to it.
@@ -221,6 +237,17 @@ namespace vc4c
 		 * The stack base offset is aligned to the maximum alignment of any stack-entry (alignment of first stack-entry)
 		 */
 		std::size_t getStackBaseOffset() const;
+		
+		/*
+		 * Returns the currently valid CFG for this function.
+		 *
+		 * The CFG is dropped (and needs to be re-created) if:
+		 * - a basic block is added or removed
+		 * - a branch or branch-label is released/erased/replaced/emplaced or replaces another instruction
+		 *
+		 * NOTE: Depending on the state of the function, the CFG may be (re)created in this method-call
+		 */
+		ControlFlowGraph& getCFG();
 
 		/*
 		 * The module the method belongs to
@@ -236,6 +263,12 @@ namespace vc4c
 		 * The list of locals
 		 */
 		OrderedMap<std::string, Local> locals;
+		/*
+		 * The currently valid CFG
+		 *
+		 * We cannot use unique_ptr here, since the type ControlFlowGraph is not complete here
+		 */
+		std::shared_ptr<ControlFlowGraph> cfg;
 
 		std::string createLocalName(const std::string &prefix = "", const std::string &postfix = "");
 
@@ -245,8 +278,8 @@ namespace vc4c
 		void checkAndCreateDefaultBasicBlock();
 
 		friend class BasicBlock;
-		friend class ControlFlowGraph;
 		friend class InstructionWalker;
+		friend class ConstInstructionWalker;
 	};
 	
 	using MethodIterator = ScopedInstructionWalker<Method>;

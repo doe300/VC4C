@@ -570,7 +570,7 @@ void GraphColoring::createGraph()
 	}
 	PROFILE_END(createColoredNodes);
 
-	auto blockGraph = ControlFlowGraph::createCFG(method);
+	auto& blockGraph = method.getCFG();
 
 	PROFILE_START(createUsageRanges);
 	InstructionWalker it = method.walkAllInstructions();

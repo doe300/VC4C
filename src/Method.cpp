@@ -8,6 +8,7 @@
 
 #include "Module.h"
 #include "Profiler.h"
+#include "analysis/ControlFlowGraph.h"
 #include "intermediate/IntermediateInstruction.h"
 #include "periphery/VPM.h"
 
@@ -88,16 +89,16 @@ const Local* Method::findOrCreateLocal(const DataType& type, const std::string& 
 	return &(it.first->second);
 }
 
-static bool removeUsagesInBasicBlock(Method& method, BasicBlock& bb, const Local* locale, OrderedMap<const LocalUser*, LocalUse>& remainingUsers, int& usageRangeLeft)
+static bool removeUsagesInBasicBlock(Method& method, const BasicBlock& bb, const Local* locale, OrderedMap<const LocalUser*, LocalUse>& remainingUsers, int& usageRangeLeft)
 {
-	InstructionWalker it = bb.begin();
+	auto it = bb.begin();
 	while(usageRangeLeft >= 0 && !it.isEndOfMethod())
 	{
 		remainingUsers.erase(it.get());
 		--usageRangeLeft;
 		if(it.has<intermediate::Branch>())
 		{
-			BasicBlock* successor = method.findBasicBlock(it.get<intermediate::Branch>()->getTarget());
+			const BasicBlock* successor = method.findBasicBlock(it.get<const intermediate::Branch>()->getTarget());
 			if(successor != nullptr && removeUsagesInBasicBlock(method, *successor, locale, remainingUsers, usageRangeLeft))
 				return true;
 		}
@@ -124,7 +125,7 @@ bool Method::isLocallyLimited(InstructionWalker curIt, const Local* locale, cons
 		const intermediate::Branch* branch = curIt.get<intermediate::Branch>();
 		if(branch != nullptr)
 		{
-			BasicBlock* successor = const_cast<Method*>(this)->findBasicBlock(branch->getTarget());
+			const BasicBlock* successor = const_cast<Method*>(this)->findBasicBlock(branch->getTarget());
 			if(successor != nullptr && removeUsagesInBasicBlock(*const_cast<Method*>(this), *successor, locale, remainingUsers, usageRangeLeft))
 				return true;
 			if(branch->isUnconditional())
@@ -180,12 +181,12 @@ std::string Method::createLocalName(const std::string& prefix, const std::string
 
 InstructionWalker Method::walkAllInstructions()
 {
-	return basicBlocks.front().begin();
+	return begin()->begin();
 }
 
 void Method::forAllInstructions(const std::function<void(const intermediate::IntermediateInstruction*)>& consumer) const
 {
-	for(const BasicBlock& bb : basicBlocks)
+	for(const BasicBlock& bb : *this)
 	{
 		for(const auto& instr : bb.instructions)
 		{
@@ -197,7 +198,7 @@ void Method::forAllInstructions(const std::function<void(const intermediate::Int
 std::size_t Method::countInstructions() const
 {
 	std::size_t count = 0;
-	for(const BasicBlock& bb : basicBlocks)
+	for(const BasicBlock& bb : *this)
 	{
 		count += bb.instructions.size();
 	}
@@ -231,10 +232,18 @@ void Method::appendToEnd(intermediate::IntermediateInstruction* instr)
 		checkAndCreateDefaultBasicBlock();
 		basicBlocks.back().instructions.emplace_back(instr);
 	}
+	/*
+	 * Reset CFG since it might have changed.
+	 *
+	 * This will have no effect anyway most of the time, since appendToEnd() is called in front-end where there is no CFG
+	 */
+	 if(dynamic_cast<intermediate::Branch*>(instr) != nullptr || dynamic_cast<intermediate::BranchLabel*>(instr))
+		 cfg.reset();
 }
 InstructionWalker Method::appendToEnd()
 {
 	checkAndCreateDefaultBasicBlock();
+	//Invalidation of the CFG in this case is handled in InstructionWalker
 	return basicBlocks.back().end();
 }
 
@@ -282,20 +291,15 @@ void Method::cleanLocals()
 
 void Method::dumpInstructions() const
 {
-	for(const BasicBlock& bb : basicBlocks)
+	for(const BasicBlock& bb : *this)
 	{
 		bb.dumpInstructions();
 	}
 }
 
-RandomModificationList<BasicBlock>& Method::getBasicBlocks()
-{
-	return basicBlocks;
-}
-
 BasicBlock* Method::findBasicBlock(const Local* label)
 {
-	for(BasicBlock& bb : basicBlocks)
+	for(BasicBlock& bb : *this)
 	{
 		if(bb.begin().has<intermediate::BranchLabel>() && bb.begin().get<intermediate::BranchLabel>()->getLabel() == label)
 			return &bb;
@@ -303,16 +307,59 @@ BasicBlock* Method::findBasicBlock(const Local* label)
 	return nullptr;
 }
 
+const BasicBlock *Method::findBasicBlock(const Local *label) const
+{
+	for(const BasicBlock& bb : *this)
+	{
+		if(bb.begin().has<intermediate::BranchLabel>() && bb.begin().get<const intermediate::BranchLabel>()->getLabel() == label)
+			return &bb;
+	}
+	return nullptr;
+}
+
+bool Method::removeBlock(BasicBlock& block, bool overwriteUsages)
+{
+	if(!overwriteUsages)
+	{
+		//check any usage
+		//1. check instructions inside block
+		if(!block.empty())
+			return false;
+		//2. check explicit jumps to this block
+		unsigned count = 0;
+		block.forPredecessors([&count](InstructionWalker it) -> void
+		{
+			//only check for explicit jumps to this block, implicit "jumps" will just fall-through to the next block
+			if(it.has<intermediate::Branch>())
+				++count;
+		});
+		if(count > 0)
+			return false;
+	}
+	auto it = begin();
+	while(it != end())
+	{
+		if(&(*it) == &block)
+		{
+			logging::debug() << "Removing basic block '" << block.getLabel()->to_string() << "' from function " << name << logging::endl;
+			basicBlocks.erase(it);
+			return true;
+		}
+	}
+	logging::warn() << "Basic block '" << block.getLabel()->to_string() << "' was not found in this function " << name << logging::endl;
+	return false;
+}
+
 InstructionWalker Method::emplaceLabel(InstructionWalker it, intermediate::BranchLabel* label)
 {
-	auto blockIt = basicBlocks.begin();
-	while(blockIt != basicBlocks.end())
+	auto blockIt = begin();
+	while(blockIt != end())
 	{
 		if(&(*blockIt) == it.basicBlock)
 			break;
 		++blockIt;
 	}
-	if(blockIt == basicBlocks.end())
+	if(blockIt == end())
 		throw CompilationError(CompilationStep::GENERAL, "Failed to find basic block for instruction iterator");
 	//1. insert new basic block after the current (or in front of it, if we emplace at the start of the basic block)
 	bool isStartOfBlock = blockIt->begin() == it;
@@ -386,10 +433,20 @@ std::size_t Method::getStackBaseOffset() const
 	return baseOffset;
 }
 
+ControlFlowGraph& Method::getCFG()
+{
+	if(!cfg)
+	{
+		logging::debug() << "CFG created/updated for function: " << name << logging::endl;
+		cfg = std::make_shared<ControlFlowGraph>(ControlFlowGraph::createCFG(*this));
+	}
+	return *cfg.get();
+}
+
 BasicBlock* Method::getNextBlockAfter(const BasicBlock* block)
 {
 	bool returnNext = false;
-	for(BasicBlock& bb : basicBlocks)
+	for(BasicBlock& bb : *this)
 	{
 		if(returnNext)
 			return &bb;

@@ -86,16 +86,18 @@ namespace vc4c
 		 * Returns the node which represents the first basic-block being executed by the QPU
 		 */
 		CFGNode& getStartOfControlFlow();
+		
+		/*
+		 * Returns the single node which represents the last basic-block being executed
+		 *
+		 * NOTE: For non-kernel function there may be multiple last blocks (e.g. containing return-statements) in which case this function will throw!
+		 */
+		CFGNode& getEndOfControlFlow();
 
 		/*
 		 * Finds all loops in the CFG
 		 */
 		FastAccessList<ControlFlowLoop> findLoops();
-
-		/*
-		 * Creates the CFG from the basic-blocks within the given method
-		 */
-		static ControlFlowGraph createCFG(Method& method);
 
 	private:
 		/*
@@ -108,6 +110,13 @@ namespace vc4c
 		 * stack --> To store all the connected ancestors (could be part of SCC)
 		 */
 		ControlFlowLoop findLoopsHelper(const CFGNode* node, FastMap<const CFGNode*, int>& discoveryTimes, FastMap<const CFGNode*, int>& lowestReachable, RandomModificationList<const CFGNode*>& stack, int& time);
+		
+		/*
+		 * Creates the CFG from the basic-blocks within the given method
+		 */
+		static ControlFlowGraph createCFG(Method& method);
+		
+		friend class Method;
 	};
 
 } /* namespace vc4c */

@@ -185,13 +185,12 @@ void SPIRVParser::parse(Module& module)
     //delete empty functions (e.g. declared, but not defined, externally linked, intrinsics)
     auto it = methods.begin();
     while (it != methods.end()) {
-        if ((*it).second.method->countInstructions() == 0)
+        if (it->second.method->countInstructions() == 0)
             it = methods.erase(it);
-        else if((*it).second.method->countInstructions() == 1 && (*it).second.method->getBasicBlocks().front().empty())
+        else if(it->second.method->countInstructions() == 1 && it->second.method->begin()->empty())
         {
             //only instruction is the label (which is automatically added)
-        	//need to erase the label first, so the local can be correctly removed
-        	(*it).second.method->getBasicBlocks().front().begin().erase();
+        	logging::debug() << "Dropping empty function: " << it->second.method->name << logging::endl;
             it = methods.erase(it);
         }
         else

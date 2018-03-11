@@ -68,16 +68,14 @@ LifetimeGraph LifetimeGraph::createLifetimeGraph(Method& method)
 	//mark all globals/parameters as overlapping
 	overlapLocals(graph, liveLocals);
 
-	auto it = method.walkAllInstructions();
-	while(!it.isEndOfMethod())
+	method.forAllInstructions([&liveLocals, &graph](const intermediate::IntermediateInstruction* inst) -> void
 	{
-		if(it.has<intermediate::LifetimeBoundary>())
+		const auto lifetimeInst = dynamic_cast<const intermediate::LifetimeBoundary*>(inst);
+		if(lifetimeInst != nullptr)
 		{
-			const Local* local = it.get<intermediate::LifetimeBoundary>()->getStackAllocation().local;
-			if(it.get<intermediate::LifetimeBoundary>()->isLifetimeEnd)
-			{
+			const Local* local = lifetimeInst->getStackAllocation().local;
+			if(lifetimeInst->isLifetimeEnd)
 				liveLocals.erase(local);
-			}
 			else
 			{
 				liveLocals.emplace(local);
@@ -86,8 +84,7 @@ LifetimeGraph LifetimeGraph::createLifetimeGraph(Method& method)
 			}
 		}
 		//TODO this is not completely correct, would need to follow the control-flow from start to stop(s)
-		it.nextInMethod();
-	}
+	});
 
 #ifdef DEBUG_MODE
 	auto nameFunc = [](const Local* loc) -> std::string {return loc->name;};

@@ -699,7 +699,7 @@ void optimizations::vectorizeLoops(const Module& module, Method& method, const C
 		return;
 
 	//1. find loops
-	auto cfg = ControlFlowGraph::createCFG(method);
+	auto& cfg = method.getCFG();
 	auto loops = cfg.findLoops();
 
 	//2. determine data dependencies of loop bodies
