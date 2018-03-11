@@ -359,24 +359,33 @@ void TestEmulator::testSHA256()
 
 void TestEmulator::testIntegerEmulations(std::size_t index, std::string name)
 {
-	auto& data = vc4c::test::integerTests.at(index).first;
+	auto& data = vc4c::test::integerTests.at(index);
+	testIntegerEmulation(data.first, data.second);
+}
 
+void TestEmulator::testFloatEmulations(std::size_t index, std::string name)
+{
+	testFloatingEmulation(vc4c::test::floatTests.at(index).first, vc4c::test::floatTests.at(index).second);
+}
+
+void TestEmulator::testIntegerEmulation(vc4c::tools::EmulationData& data, std::map<uint32_t, std::vector<uint32_t>>& expectedResults)
+{
 	std::stringstream buffer;
 	compileFile(buffer, data.module.first);
 	data.module.second = &buffer;
-
+	
 	const auto result = emulate(data);
 	TEST_ASSERT(result.executionSuccessful);
 	TEST_ASSERT_EQUALS(data.parameter.size(), result.results.size());
-
-	for(const auto& pair : vc4c::test::integerTests.at(index).second)
+	
+	for(const auto& pair : expectedResults)
 	{
 		const auto& output = *result.results.at(pair.first).second;
 		const auto& expected = pair.second;
-
+	
 		//we might write values we do not check
 		TEST_ASSERT(expected.size() <= output.size());
-
+	
 		//general test equality
 		if(output != expected)
 		{
@@ -389,11 +398,6 @@ void TestEmulator::testIntegerEmulations(std::size_t index, std::string name)
 			}
 		}
 	}
-}
-
-void TestEmulator::testFloatEmulations(std::size_t index, std::string name)
-{
-	testFloatingEmulation(vc4c::test::floatTests.at(index).first, vc4c::test::floatTests.at(index).second);
 }
 
 void TestEmulator::testFloatingEmulation(vc4c::tools::EmulationData& data, std::map<uint32_t, std::vector<uint32_t>>& expectedResults, unsigned maxULP)

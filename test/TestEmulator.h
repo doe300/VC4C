@@ -38,6 +38,7 @@ public:
 	void testFloatEmulations(std::size_t index, std::string name);
 
 protected:
+	void testIntegerEmulation(vc4c::tools::EmulationData& data, std::map<uint32_t, std::vector<uint32_t>>& expectedResults);
 	void testFloatingEmulation(vc4c::tools::EmulationData& data, std::map<uint32_t, std::vector<uint32_t>>& expectedResults, unsigned maxULP = 1);
 };
 

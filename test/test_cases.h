@@ -171,7 +171,7 @@ namespace vc4c
 				)
 		};
 
-		//TODO NVIDIA/matrixMul, NVIDIA/transpose, OpenCLIPP/Arithmetic, OpenCLIPP/Logic, OpenCLIPP/Thresholding, test_signedness, test_shuffle, test_conversions, local_private_storage
+		//TODO NVIDIA/matrixMul, NVIDIA/transpose, OpenCLIPP/Arithmetic, OpenCLIPP/Logic, OpenCLIPP/Thresholding, test_signedness, test_shuffle, local_private_storage
 
 		static std::vector<std::pair<EmulationData, std::map<uint32_t, std::vector<uint32_t>>>> floatTests = {
 //				std::make_pair(EmulationData(VC4C_ROOT_PATH "example/test_instructions.cl", "test_instructions",
