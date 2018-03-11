@@ -8,6 +8,7 @@
 
 #include "LiteralValues.h"
 #include "../analysis/ControlFlowGraph.h"
+#include "../analysis/DataDependencyGraph.h"
 #include "../intermediate/TypeConversions.h"
 #include "../periphery/VPM.h"
 #include "log.h"

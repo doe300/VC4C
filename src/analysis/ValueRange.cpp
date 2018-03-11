@@ -6,7 +6,7 @@
 #include "ValueRange.h"
 
 #include "../InstructionWalker.h"
-#include "../Module.h"
+#include "../Method.h"
 #include "../asm/OpCodes.h"
 
 #include "log.h"
@@ -397,6 +397,14 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 				{
 					minVal = op->op.calculate(firstMin, NO_VALUE);
 					maxVal = op->op.calculate(firstMax, NO_VALUE);
+				}
+
+				if(it->hasDecoration(InstructionDecorations::UNSIGNED_RESULT) && !it->getOutput()->type.isFloatingType())
+				{
+					if(minVal.ifPresent(toFunction(&Value::isLiteralValue)))
+						minVal = Value(Literal(std::max(minVal->getLiteralValue()->signedInt(), 0)), minVal->type);
+					if(maxVal.ifPresent(toFunction(&Value::isLiteralValue)))
+						maxVal = Value(Literal(std::max(maxVal->getLiteralValue()->signedInt(), 0)), minVal->type);
 				}
 
 				if(minVal.ifPresent(toFunction(&Value::isLiteralValue)) && maxVal.ifPresent(toFunction(&Value::isLiteralValue)))

@@ -201,15 +201,17 @@ Optional<Value> Unpack::unpack(const Value& val) const
 			return val;
 		case UNPACK_16A_32:
 		{
-			//unsigned cast required to guarantee cutting off the value
+			//signed conversion -> truncate to unsigned short, bit-cast to signed short and sign-extend
 			uint16_t lowWord = static_cast<uint16_t>(val.getLiteralValue()->unsignedInt());
-			return Value(Literal(static_cast<uint32_t>(lowWord)), val.type);
+			int16_t lowWordSigned = bit_cast<uint16_t, int16_t>(lowWord);
+			return Value(Literal(static_cast<int32_t>(lowWordSigned)), val.type);
 		}
 		case UNPACK_16B_32:
 		{
-			//unsigned cast required to guarantee cutting off the value
+			//signed conversion -> truncate to unsigned short, bit-cast to signed short and sign-extend
 			uint16_t highWord = static_cast<uint16_t>(val.getLiteralValue()->unsignedInt() >> 16);
-			return Value(Literal(static_cast<uint32_t>(highWord)), val.type);
+			int16_t highWordSigned = bit_cast<uint16_t, int16_t>(highWord);
+			return Value(Literal(static_cast<int32_t>(highWordSigned)), val.type);
 		}
 		case UNPACK_8888_32:
 		{
