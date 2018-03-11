@@ -16,6 +16,7 @@
 namespace vc4c
 {
 	class ControlFlowGraph;
+	class ConstInstructionWalker;
 
 	enum class InstructionVisitResult
 	{
@@ -249,12 +250,181 @@ namespace vc4c
 		intermediate::InstructionsIterator pos;
 
 		friend class Method;
+		friend class ConstInstructionWalker;
+	};
+	
+	/*
+	 * Constant version of InstructionWalker, which only allows read-only access to the instructions
+	 */ 
+	class ConstInstructionWalker
+	{
+	public:
+		explicit ConstInstructionWalker();
+		explicit ConstInstructionWalker(InstructionWalker it);
+		ConstInstructionWalker(const BasicBlock* basicBlock, intermediate::ConstInstructionsIterator pos);
+		ConstInstructionWalker(const ConstInstructionWalker&) = default;
+		ConstInstructionWalker(ConstInstructionWalker&&) noexcept = default;
+		~ConstInstructionWalker() = default;
+		
+		ConstInstructionWalker& operator=(const ConstInstructionWalker&) = default;
+		ConstInstructionWalker& operator=(ConstInstructionWalker&&) noexcept = default;
+	
+		/*
+		 * Returns the basic-block the current position belongs to
+		 */
+		const BasicBlock* getBasicBlock() const;
+	
+		/*
+		 * Steps forward to the next instruction within the same basic block
+		 */
+		ConstInstructionWalker& nextInBlock();
+		/*
+		 * Steps backwards to the previous instruction within the same basic block
+		 */
+		ConstInstructionWalker& previousInBlock();
+		/*
+		 * Whether this object points to the end of the basic block (one past the last instruction)
+		 */
+		bool isEndOfBlock() const;
+		/*
+		 * Whether this object points to the beginning of the basic block (the block's label)
+		 */
+		bool isStartOfBlock() const;
+	
+		/*
+		 * Steps forward to the next instruction.
+		 * If the end of the basic-block is reached, steps to the first instruction of the next basic-block
+		 */
+		ConstInstructionWalker& nextInMethod();
+		/*
+		 * Steps backward to the previous instruction.
+		 * If the step is taken before the beginning of the current block, steps to the last instruction of the previous block
+		 */
+		ConstInstructionWalker& previousInMethod();
+		/*
+		 * Whether the end of the method (end of the last basic-block) is reached
+		 */
+		bool isEndOfMethod() const;
+		/*
+		 * Whether the beginning of the method (beginning of the first basic-block) is reached
+		 */
+		bool isStartOfMethod() const;
+	
+		/*
+		 * Creates a copy of this object with the same position
+		 */
+		ConstInstructionWalker copy() const;
+	
+		bool operator==(const ConstInstructionWalker& other) const;
+		inline bool operator!=(const ConstInstructionWalker& other) const
+		{
+			return !(*this == other);
+		}
+	
+		/*
+		 * Returns the instruction stored at this position of the given type
+		 */
+		template<typename T>
+		inline const T* get() const
+		{
+			return dynamic_cast<T*>(get());
+		}
+	
+		/*
+		 * Returns whether the instruction at this position is set.
+		 *
+		 * During some optimizations, instructions may be removed without their positions being cleared
+		 */
+		inline bool has() const
+		{
+			return get() != nullptr;
+		}
+	
+		/*
+		 * Whether the current position contains an object of the given type
+		 */
+		template<typename T>
+		inline bool has() const
+		{
+			return get<const T>() != nullptr;
+		}
+	
+		inline const intermediate::IntermediateInstruction* operator->() const
+		{
+			return get();
+		}
+	
+		/*
+		 * Accesses the instruction stored at this position
+		 *
+		 * If the position points is invalid (e.g. past the end), an exception is thrown
+		 */
+		const intermediate::IntermediateInstruction* get() const;
+		
+		/*
+		 * Executes the given function for all instructions stored at this position.
+		 *
+		 * If the current instruction is a combined instruction, the function is executed for both single instructions
+		 */
+		inline void forAllInstructions(const std::function<void(const intermediate::IntermediateInstruction*)>& func) const
+		{
+			const intermediate::CombinedOperation* combined = get<const intermediate::CombinedOperation>();
+			if(combined != nullptr)
+			{
+				func(combined->getFirstOp());
+				func(combined->getSecondOP());
+			}
+			else
+				func(get());
+		}
+	
+		/*
+		 * Checks whether the given predicate matches for all instructions stored at this position.
+		 *
+		 * If the current instruction is a combined instruction, the predicate is tested for both single instructions
+		 */
+		inline bool allInstructionMatches(const std::function<bool(const intermediate::IntermediateInstruction*)>& func) const
+		{
+			const intermediate::CombinedOperation* combined = get<const intermediate::CombinedOperation>();
+			if(combined != nullptr)
+			{
+				return func(combined->getFirstOp()) && func(combined->getSecondOP());
+			}
+			return func(get());
+		}
+	
+		/*
+		 * Checks whether the given predicate matches for any instructions stored at this position.
+		 *
+		 * If the current instruction is a combined instruction, the predicate is checked for both single instructions
+		 */
+		inline bool anyInstructionMatches(const std::function<bool(const intermediate::IntermediateInstruction*)>& func) const
+		{
+			const intermediate::CombinedOperation* combined = get<const intermediate::CombinedOperation>();
+			if(combined != nullptr)
+			{
+				return func(combined->getFirstOp()) || func(combined->getSecondOP());
+			}
+			return func(get());
+		}
+	
+	private:
+		const BasicBlock* basicBlock;
+		intermediate::ConstInstructionsIterator pos;
+	
+		friend class Method;
 	};
 
 	template<>
 	struct hash<InstructionWalker>
 	{
 		size_t operator()(const InstructionWalker& ) const noexcept;
+	};
+	
+	template<>
+	struct hash<ConstInstructionWalker>
+	{
+		size_t operator()(const ConstInstructionWalker& ) const noexcept;
 	};
 
 	/*

@@ -195,12 +195,13 @@ bool InstructionWalker::operator==(const InstructionWalker& other) const
 
 bool InstructionWalker::isEndOfMethod() const
 {
-	return isEndOfBlock() && &basicBlock->method.basicBlocks.back() == basicBlock;
+	const auto& lastBlock = *(--basicBlock->method.end());
+	return isEndOfBlock() && &lastBlock == basicBlock;
 }
 
 bool InstructionWalker::isStartOfMethod() const
 {
-	return isStartOfBlock() && &basicBlock->method.basicBlocks.front() == basicBlock;
+	return isStartOfBlock() && basicBlock->isStartOfMethod();
 }
 
 bool InstructionWalker::isEndOfBlock() const
@@ -234,6 +235,8 @@ const intermediate::IntermediateInstruction* InstructionWalker::get() const
 intermediate::IntermediateInstruction* InstructionWalker::release()
 {
 	throwOnEnd(isEndOfMethod());
+	if(has<intermediate::Branch>() || has<intermediate::BranchLabel>())
+		basicBlock->method.cfg.reset();
 	return (*pos).release();
 }
 
@@ -242,6 +245,8 @@ InstructionWalker& InstructionWalker::reset(intermediate::IntermediateInstructio
 	throwOnEnd(isEndOfMethod());
 	if(dynamic_cast<intermediate::BranchLabel*>(instr) != dynamic_cast<intermediate::BranchLabel*>((*pos).get()))
 			throw CompilationError(CompilationStep::GENERAL, "Can't add labels into a basic block", instr->to_string());
+	if(has<intermediate::Branch>() || has<intermediate::BranchLabel>() || dynamic_cast<intermediate::Branch*>(instr) != nullptr)
+		basicBlock->method.cfg.reset();
 	(*pos).reset(instr);
 	return *this;
 }
@@ -249,6 +254,8 @@ InstructionWalker& InstructionWalker::reset(intermediate::IntermediateInstructio
 InstructionWalker& InstructionWalker::erase()
 {
 	throwOnEnd(isEndOfMethod());
+	if(has<intermediate::Branch>() || has<intermediate::BranchLabel>())
+		basicBlock->method.cfg.reset();
 	pos = basicBlock->instructions.erase(pos);
 	return *this;
 }
@@ -259,11 +266,117 @@ InstructionWalker& InstructionWalker::emplace(intermediate::IntermediateInstruct
 		throw CompilationError(CompilationStep::GENERAL, "Can't emplace at the start of a basic block", instr->to_string());
 	if(dynamic_cast<intermediate::BranchLabel*>(instr) != nullptr)
 		throw CompilationError(CompilationStep::GENERAL, "Can't add labels into a basic block", instr->to_string());
+	if(dynamic_cast<intermediate::Branch*>(instr) != nullptr)
+		basicBlock->method.cfg.reset();
 	pos = basicBlock->instructions.emplace(pos, instr);
 	return *this;
 }
 
+ConstInstructionWalker::ConstInstructionWalker() : basicBlock(nullptr), pos(nullptr)
+{
+
+}
+
+ConstInstructionWalker::ConstInstructionWalker(InstructionWalker it) : basicBlock(it.basicBlock), pos(it.pos)
+{
+	
+}
+
+ConstInstructionWalker::ConstInstructionWalker(const BasicBlock* basicBlock, intermediate::ConstInstructionsIterator pos) : basicBlock(basicBlock), pos(pos)
+{
+}
+
+const BasicBlock* ConstInstructionWalker::getBasicBlock() const
+{
+	return basicBlock;
+}
+
+ConstInstructionWalker& ConstInstructionWalker::nextInBlock()
+{
+	++pos;
+	return *this;
+}
+
+ConstInstructionWalker& ConstInstructionWalker::previousInBlock()
+{
+	--pos;
+	return *this;
+}
+
+ConstInstructionWalker& ConstInstructionWalker::nextInMethod()
+{
+	nextInBlock();
+	if(isEndOfBlock())
+	{
+		BasicBlock* tmp = basicBlock->method.getNextBlockAfter(basicBlock);
+		if(tmp != nullptr)
+		{
+			basicBlock = tmp;
+			pos = basicBlock->instructions.begin();
+		}
+	}
+	return *this;
+}
+ConstInstructionWalker& ConstInstructionWalker::previousInMethod()
+{
+	previousInBlock();
+	if(isStartOfBlock())
+	{
+		BasicBlock* tmp = basicBlock->method.getPreviousBlock(basicBlock);
+		if(tmp != nullptr)
+		{
+			basicBlock = tmp;
+			pos = basicBlock->instructions.end();
+			--pos;
+		}
+	}
+	return *this;
+}
+
+ConstInstructionWalker ConstInstructionWalker::copy() const
+{
+	return ConstInstructionWalker(basicBlock, pos);
+}
+
+bool ConstInstructionWalker::operator==(const ConstInstructionWalker& other) const
+{
+	return basicBlock == other.basicBlock && pos == other.pos;
+}
+
+bool ConstInstructionWalker::isEndOfMethod() const
+{
+	const auto& lastBlock = *(--basicBlock->method.end());
+	return isEndOfBlock() && &lastBlock == basicBlock;
+}
+
+bool ConstInstructionWalker::isStartOfMethod() const
+{
+	return isStartOfBlock() && basicBlock->isStartOfMethod();
+}
+
+bool ConstInstructionWalker::isEndOfBlock() const
+{
+	return pos == basicBlock->instructions.end();
+}
+
+bool ConstInstructionWalker::isStartOfBlock() const
+{
+	return pos == basicBlock->instructions.begin();
+}
+
+const intermediate::IntermediateInstruction* ConstInstructionWalker::get() const
+{
+	throwOnEnd(isEndOfMethod());
+	return (*pos).get();
+}
+
 std::size_t vc4c::hash<vc4c::InstructionWalker>::operator()(vc4c::InstructionWalker const& it) const noexcept
+{
+	std::hash<const intermediate::IntermediateInstruction*> h;
+	return h(it.get());
+}
+
+std::size_t vc4c::hash<vc4c::ConstInstructionWalker>::operator()(vc4c::ConstInstructionWalker const& it) const noexcept
 {
 	std::hash<const intermediate::IntermediateInstruction*> h;
 	return h(it.get());

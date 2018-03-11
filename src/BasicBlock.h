@@ -22,6 +22,7 @@ namespace vc4c
 	} // namespace intermediate
 
 	class InstructionWalker;
+	class ConstInstructionWalker;
 	class Method;
 
 	/*
@@ -40,7 +41,7 @@ namespace vc4c
 		BasicBlock(Method &method, intermediate::BranchLabel *label);
 		BasicBlock(const BasicBlock &) = delete;
 		BasicBlock(BasicBlock &&) = delete;
-		~BasicBlock() = default;
+		~BasicBlock();
 
 		BasicBlock &operator=(const BasicBlock &) = delete;
 		BasicBlock &operator=(BasicBlock &&) = delete;
@@ -53,10 +54,12 @@ namespace vc4c
 		 * Returns an iterator to the start of this basic block (points to the label)
 		 */
 		InstructionWalker begin();
+		ConstInstructionWalker begin() const;
 		/*
 		 * Returns an iterator to the end of the basic block (points one past the last instruction)
 		 */
 		InstructionWalker end();
+		ConstInstructionWalker end() const;
 		/*
 		 * Returns the number of instructions within this block
 		 */
@@ -112,6 +115,7 @@ namespace vc4c
 
 		friend class ControlFlowGraph;
 		friend class InstructionWalker;
+		friend class ConstInstructionWalker;
 		friend struct InstructionVisitor;
 		friend class Method;
 	};

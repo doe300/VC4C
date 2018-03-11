@@ -7,6 +7,7 @@
 #include "BasicBlock.h"
 
 #include "InstructionWalker.h"
+#include "analysis/ControlFlowGraph.h"
 #include "intermediate/IntermediateInstruction.h"
 
 #include "log.h"
@@ -20,6 +21,12 @@ BasicBlock::BasicBlock(Method &method, intermediate::BranchLabel *label)
 	: method(method)
 {
 	instructions.emplace_back(label);
+	method.cfg.reset();
+}
+
+BasicBlock::~BasicBlock()
+{
+	method.cfg.reset();
 }
 
 bool BasicBlock::empty() const
@@ -33,9 +40,19 @@ InstructionWalker BasicBlock::begin()
 	return InstructionWalker(this, instructions.begin());
 }
 
+ConstInstructionWalker BasicBlock::begin() const
+{
+	return ConstInstructionWalker(this, instructions.begin());
+}
+
 InstructionWalker BasicBlock::end()
 {
 	return InstructionWalker(this, instructions.end());
+}
+
+ConstInstructionWalker BasicBlock::end() const
+{
+	return ConstInstructionWalker(this, instructions.end());
 }
 
 std::size_t BasicBlock::size() const
@@ -74,21 +91,32 @@ const intermediate::BranchLabel *BasicBlock::getLabel() const
 
 void BasicBlock::forSuccessiveBlocks(const std::function<void(BasicBlock &)> &consumer) const
 {
-	InstructionWalker it = const_cast<BasicBlock *>(this)->begin();
-	while(!it.isEndOfBlock())
+	if(method.cfg)
 	{
-		if(it.has<intermediate::Branch>())
+		//if we have a valid CFG, use it. This saves us from iterating all instructions
+		method.cfg->assertNode(const_cast<BasicBlock*>(this)).forAllNeighbors(toFunction(&CFGRelation::isForwardRelation), [&consumer](const CFGNode* node, const CFGRelation& rel) -> void
 		{
-			BasicBlock *next = method.findBasicBlock(it.get<intermediate::Branch>()->getTarget());
-			if(next != nullptr)
-				consumer(*next);
-		}
-		it.nextInBlock();
-		if(fallsThroughToNextBlock())
+			consumer(*const_cast<BasicBlock*>(node->key));
+		});
+	}
+	else
+	{
+		InstructionWalker it = const_cast<BasicBlock *>(this)->begin();
+		while(!it.isEndOfBlock())
 		{
-			BasicBlock *next = method.getNextBlockAfter(this);
-			if(next != nullptr)
-				consumer(*next);
+			if(it.has<intermediate::Branch>())
+			{
+				BasicBlock *next = method.findBasicBlock(it.get<intermediate::Branch>()->getTarget());
+				if(next != nullptr)
+					consumer(*next);
+			}
+			it.nextInBlock();
+			if(fallsThroughToNextBlock())
+			{
+				BasicBlock *next = method.getNextBlockAfter(this);
+				if(next != nullptr)
+					consumer(*next);
+			}
 		}
 	}
 }
@@ -120,6 +148,15 @@ void BasicBlock::forPredecessors(const std::function<void(InstructionWalker)> &c
 
 bool BasicBlock::fallsThroughToNextBlock() const
 {
+	if(method.cfg)
+	{
+		//if we have a valid CFG, use it. This saves us from iterating all instructions
+		const auto& node = method.cfg->assertNode(const_cast<BasicBlock*>(this));
+		return std::any_of(node.getNeighbors().begin(), node.getNeighbors().end(), [](const std::pair<CFGNode*, CFGRelation>& neighbor) -> bool
+		{
+			return neighbor.second.isForwardRelation() && neighbor.second.isImplicit;
+		});
+	}
 	// if the last instruction of a basic block is not an unconditional branch to another block, the control-flow falls
 	// through to the next block
 	InstructionWalker it = const_cast<BasicBlock *>(this)->end();
@@ -193,7 +230,7 @@ Optional<InstructionWalker> BasicBlock::findLastSettingOfFlags(const Instruction
 
 bool BasicBlock::isStartOfMethod() const
 {
-	return &method.basicBlocks.front() == this;
+	return &(*method.begin()) == this;
 }
 
 void BasicBlock::dumpInstructions() const
