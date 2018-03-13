@@ -667,7 +667,7 @@ static void vectorize(ControlFlowLoop& loop, LoopControl& loopControl, const Dat
 			//TODO what to do?? These are e.g. for accumulation-variables (like sum, maximum)
 			//FIXME depending on the operation performed on this locals, the vector-elements need to be folded into a scalar/previous vector width
 			logging::debug() << "Local is accessed outside of loop: " << (*openInstructions.begin())->to_string() << logging::endl;
-			
+
 			const intermediate::IntermediateInstruction* inst = *openInstructions.begin();
 			const Value& arg = inst->getArgument(0).value();
 			const intermediate::Operation* op = dynamic_cast<const intermediate::Operation*>(arg.getSingleWriter());
@@ -982,23 +982,6 @@ struct Inclusion
 	Inclusion(bool _includes) : includes(_includes) {}
 };
 using LoopInclusionTreeNode = Node<ControlFlowLoop*, Inclusion>;
-FastAccessList<LoopInclusionTreeNode*> findLeaves(LoopInclusionTreeNode *node)
-{
-	FastAccessList<LoopInclusionTreeNode*> leaves;
-	for (auto &child : node->getNeighbors())
-	{
-		if (child.second.includes) {
-			// dynamic_cast cannot be used.
-			auto grandchidlren = findLeaves(child.first);
-			leaves.insert(leaves.end(), grandchidlren.begin(), grandchidlren.end());
-		}
-	}
-	// at leave
-	if (leaves.size() == 0) {
-		leaves.push_back(node);
-	}
-	return leaves;
-}
 
 LoopInclusionTreeNode* findRoot(LoopInclusionTreeNode *node)
 {
@@ -1016,8 +999,6 @@ using LoopInclusionTree = Graph<ControlFlowLoop*, LoopInclusionTreeNode>;
 
 void optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
 {
-	logging::debug() << "===================== removeConstantLoadInLoops ============================" << logging::endl;
-
 	// 1. find loops
 	auto cfg = ControlFlowGraph::createCFG(method);
 	auto loops = cfg.findLoops();
@@ -1069,25 +1050,19 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 			auto block = cfgNode->key;
 			for (auto it = block->begin(); it != block->end(); it = it.nextInBlock())
 			{
+ 				// TODO: Constants like `mul24 r1, 4, elem_num` should be also moved.
 				auto loadInst = it.get<LoadImmediate>();
 				if (loadInst != nullptr)
 				{
 					// LoadImmediate must have output value
 					auto out = loadInst->getOutput().value();
-					logging::debug() << "load inst " << loadInst->to_string() << logging::endl;
 					if (out.valueType == ValueType::LOCAL) {
-						logging::debug() << "move" << logging::endl;
-						// TODO: insert loadInst just before loop
-						//auto lastItr = root->key->findPredecessor()->key->end().previousInBlock();
-						// (*root->key->begin())->key->forPredecessors([&](InstructionWalker it) {
-						// 		auto target = it.getBasicBlock()->begin().nextInBlock();
-						// 		logging::debug() << "insert to " << target->to_string() << logging::endl;
-						// 		target.emplace(loadInst);
-						// });
-						(*root->key->begin())->key->begin().previousInMethod().emplace(loadInst);
+ 						// TODO: Fix magic number 2
+  					auto rootCFGNode = *(root->key->end() - 2);
+ 						auto rootInst = rootCFGNode->key->begin();
+ 						// TODO: Set localPrefix
+						rootInst.previousInMethod().emplace(loadInst->copyFor(method, ""));
 						it.erase();
-						logging::debug() << "finish" << logging::endl;
-						// lastItr.emplace(loadInst);
 					}
 				}
 			}
