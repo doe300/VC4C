@@ -975,14 +975,6 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
 	generateStopSegment(method);
 }
 
-// TODO: move to headers
-struct Inclusion
-{
-	bool includes;
-	Inclusion(bool _includes) : includes(_includes) {}
-};
-using LoopInclusionTreeNode = Node<ControlFlowLoop*, Inclusion>;
-
 LoopInclusionTreeNode* findRoot(LoopInclusionTreeNode *node)
 {
 	for (auto &parent : node->getNeighbors())

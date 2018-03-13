@@ -124,6 +124,16 @@ namespace vc4c
 		friend class Method;
 	};
 
+	/*
+	 * A relation in the control-flow-loop
+	 */
+	struct LoopInclusion
+	{
+		bool includes;
+		LoopInclusion(bool _includes) : includes(_includes) {}
+	};
+	using LoopInclusionTreeNode = Node<ControlFlowLoop*, LoopInclusion>;
+
 } /* namespace vc4c */
 
 #endif /* VC4C_CONTROLFLOWGRAPH_H */
