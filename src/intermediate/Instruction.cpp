@@ -380,9 +380,7 @@ void IntermediateInstruction::replaceValue(const Value oldValue, const Value new
 		return;
 	if(has_flag(type, LocalUse::Type::WRITER) && output && output == oldValue)
 	{
-		removeAsUserFromValue(output.value(), LocalUse::Type::WRITER);
-		output = newValue;
-		addAsUserToValue(output.value(), LocalUse::Type::WRITER);
+		setOutput(Optional<Value>(newValue));
 	}
 	if(has_flag(type, LocalUse::Type::READER))
 	{

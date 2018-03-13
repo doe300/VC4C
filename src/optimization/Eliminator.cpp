@@ -354,7 +354,7 @@ void optimizations::translatToMove(const Module& module, Method& method, const C
 		auto const op = it.get<intermediate::Operation>();
 		if (op && (op->op == OP_AND || op->op == OP_OR || op->op == OP_V8MAX || op->op == OP_V8MIN || op->op == OP_MAX || op->op == OP_MIN) && op->getFirstArg() == op->getSecondArg().value()){
 			auto move = new intermediate::MoveOperation(op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags);
-			it.erase().emplace(move);
+			it.reset(move);
 		}
 
 		it.nextInMethod();
@@ -368,7 +368,7 @@ void optimizations::propagateVar(const Module& module, Method& method, const Con
 	{
 		auto const op = it.get<intermediate::MoveOperation>();
 		if (op) {
-			it.replace(op->getOutput().value(), op->getSource(), true, true);
+			it.replaceValueInBlock(op->getOutput().value(), op->getSource(), LocalUse::Type::READER);
 		}
 
 		it.nextInMethod();
@@ -395,11 +395,14 @@ void optimizations::eliminateRedundantMoves(const Module& module, Method& method
 
 			if(! move->hasPackMode() && ! move->hasUnpackMode() && move->getSource() == move->getOutput().value())
 			{
-				if (move->signal != SIGNAL_NONE)
+				if (move->signal == SIGNAL_NONE)
+				{
 					it.erase();
-				else {
+				}
+				else
+				{
 					auto nop = new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER, move->signal);
-					it.erase().emplace(nop);
+					it.reset(nop);
 				}
 
 			}
@@ -458,22 +461,22 @@ void optimizations::eliminateRedundantBitOp(const Module& module, Method& method
 			if (!it->hasSideEffects() && !it->hasPackMode() && !it->hasUnpackMode()) {
 				auto op = it.get<intermediate::Operation>();
 				if (op && op->op == OP_AND && ! op->hasUnpackMode() && ! op->hasPackMode()) {
-					op->getOutput().value().getSingleWriter();
+
 					// and v1, v2, v3 => and v1, v2, v4
 					// and v4, v1, v2    mov v4, v1
 					//
 					// and v1, v2, v3 => and v1, v2, v3
 					// or  v4, v1, v2    mov v4, v2
 					auto foundAnd = [&](Local *out, Local * in, InstructionWalker walker) {
-						auto it = walker.copy().nextInMethod();
+						auto it = walker.copy().nextInBlock();
 						while (! it.isEndOfBlock()){
 							auto op2 = it.get<intermediate::Operation>();
 							if (op2 && op2->op == OP_AND && op2->readsLocal(out) && op2->readsLocal(in)){
 								auto mov = new intermediate::MoveOperation(op2->getOutput().value(), out->createReference(), op2->conditional, op2->setFlags);
-								it.erase().emplace(mov);
+								it.reset(mov);
 							} else if (op2 && op2->op == OP_OR && op2->readsLocal(out) && op2->readsLocal(in)){
 								auto mov = new intermediate::MoveOperation(op2->getOutput().value(), in->createReference(), op2->conditional, op2->setFlags);
-								it.erase().emplace(mov);
+								it.reset(mov);
 							}
 
 							it.nextInBlock();
@@ -497,17 +500,17 @@ void optimizations::eliminateRedundantBitOp(const Module& module, Method& method
 					// or  v1, v2, v3 => or  v1, v2, v3
 					// or  v4, v1, v2    mov v4, v1
 					auto foundOr = [&](Local *out, Local * in, InstructionWalker walker) {
-						auto it = walker.copy().nextInMethod();
+						auto it = walker.copy().nextInBlock();
 						while (! it.isEndOfBlock()){
 							auto op2 = it.get<intermediate::Operation>();
 							if (op2 && op2->op == OP_AND && op2->readsLocal(out) && op2->readsLocal(in)){
 								auto mov = new intermediate::MoveOperation(op2->getOutput().value(), in->createReference(), op2->conditional, op2->setFlags);
 								replaced = true;
-								it.erase().emplace(mov);
+								it.reset(mov);
 							} else if (op2 && op2->op == OP_OR && op2->readsLocal(out) && op2->readsLocal(in)){
 								auto mov = new intermediate::MoveOperation(op2->getOutput().value(), out->createReference(), op2->conditional, op2->setFlags);
 								replaced = true;
-								it.erase().emplace(mov);
+								it.reset(mov);
 							}
 
 							it.nextInBlock();
