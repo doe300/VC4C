@@ -139,31 +139,34 @@ const OptimizationPass optimizations::RUN_SINGLE_STEPS = OptimizationPass("Singl
 const OptimizationPass optimizations::SPILL_LOCALS = OptimizationPass("SpillLocals", spillLocals, 80);
 const OptimizationPass optimizations::COMBINE_LITERAL_LOADS = OptimizationPass("CombineLiteralLoads", combineLoadingLiterals, 90);
 const OptimizationPass optimizations::COMBINE_ROTATIONS = OptimizationPass("CombineRotations", combineVectorRotations, 100);
-const OptimizationPass optimizations::REMOVE_REDUNDANT_BITOP = OptimizationPass("RemoveRedundantBitOp", eliminateRedundantBitOp, 111);
-const OptimizationPass optimizations::TRANSLATE_TO_MOVE = OptimizationPass("TranslateToMove", translatToMove, 112);
-const OptimizationPass optimizations::PROPAGATE_VAR = OptimizationPass("PropagateVar", propagateVar, 113);
-const OptimizationPass optimizations::REMOVE_REDUNDANT_MOVES = OptimizationPass("RemoveRedundantMoves", eliminateRedundantMoves, 113);
-const OptimizationPass optimizations::ELIMINATE = OptimizationPass("EliminateDeadStores", eliminateDeadStore, 120);
-const OptimizationPass optimizations::VECTORIZE = OptimizationPass("VectorizeLoops", vectorizeLoops, 130);
-const OptimizationPass optimizations::SPLIT_READ_WRITES = OptimizationPass("SplitReadAfterWrites", splitReadAfterWrites, 140);
-const OptimizationPass optimizations::REORDER = OptimizationPass("ReorderInstructions", reorderWithinBasicBlocks, 150);
-const OptimizationPass optimizations::COMBINE = OptimizationPass("CombineALUIinstructions", combineOperations, 160);
-const OptimizationPass optimizations::UNROLL_WORK_GROUPS = OptimizationPass("UnrollWorkGroups", unrollWorkGroups, 170);
-const OptimizationPass optimizations::ADD_START_STOP_SEGMENT = OptimizationPass("AddStartStopSegment", addStartStopSegment, 180);
-const OptimizationPass optimizations::EXTEND_BRANCHES = OptimizationPass("ExtendBranches", extendBranches, 190);
+const OptimizationPass optimizations::TRANSLATE_TO_MOVE_1 = OptimizationPass("TranslateToMove1", translatToMove, 110);
+const OptimizationPass optimizations::PROPAGATE_VAR_1 = OptimizationPass("PropagateVar1", propagateVar, 120);
+const OptimizationPass optimizations::REMOVE_REDUNDANT_MOVES_1 = OptimizationPass("RemoveRedundantMoves1", eliminateRedundantMoves, 130);
+const OptimizationPass optimizations::REMOVE_REDUNDANT_BITOP = OptimizationPass("RemoveRedundantBitOp", eliminateRedundantBitOp, 140);
+const OptimizationPass optimizations::TRANSLATE_TO_MOVE_2 = OptimizationPass("TranslateToMove2", translatToMove, 150);
+const OptimizationPass optimizations::PROPAGATE_VAR_2 = OptimizationPass("PropagateVar2", propagateVar, 160);
+const OptimizationPass optimizations::REMOVE_REDUNDANT_MOVES_2 = OptimizationPass("RemoveRedundantMoves2", eliminateRedundantMoves, 170);
+const OptimizationPass optimizations::ELIMINATE = OptimizationPass("EliminateDeadStores", eliminateDeadStore, 180);
+const OptimizationPass optimizations::VECTORIZE = OptimizationPass("VectorizeLoops", vectorizeLoops, 190);
+const OptimizationPass optimizations::SPLIT_READ_WRITES = OptimizationPass("SplitReadAfterWrites", splitReadAfterWrites, 200);
+const OptimizationPass optimizations::REORDER = OptimizationPass("ReorderInstructions", reorderWithinBasicBlocks, 210);
+const OptimizationPass optimizations::COMBINE = OptimizationPass("CombineALUIinstructions", combineOperations, 220);
+const OptimizationPass optimizations::UNROLL_WORK_GROUPS = OptimizationPass("UnrollWorkGroups", unrollWorkGroups, 230);
+const OptimizationPass optimizations::ADD_START_STOP_SEGMENT = OptimizationPass("AddStartStopSegment", addStartStopSegment, 240);
+const OptimizationPass optimizations::EXTEND_BRANCHES = OptimizationPass("ExtendBranches", extendBranches, 250);
 
 
-const std::vector<OptimizationPass> optimizations::DEFAULT_PASSES = {
+const std::set<OptimizationPass> optimizations::DEFAULT_PASSES = {
 		MAP_MEMORY_ACCESS, RUN_SINGLE_STEPS, /* SPILL_LOCALS, */ COMBINE_LITERAL_LOADS, RESOLVE_STACK_ALLOCATIONS, COMBINE_ROTATIONS,
-		TRANSLATE_TO_MOVE, PROPAGATE_VAR, REMOVE_REDUNDANT_MOVES, REMOVE_REDUNDANT_BITOP, TRANSLATE_TO_MOVE, PROPAGATE_VAR, REMOVE_REDUNDANT_MOVES,
+		TRANSLATE_TO_MOVE_1, PROPAGATE_VAR_1, REMOVE_REDUNDANT_MOVES_1, REMOVE_REDUNDANT_BITOP, TRANSLATE_TO_MOVE_2, PROPAGATE_VAR_2, REMOVE_REDUNDANT_MOVES_2,
 		ELIMINATE, VECTORIZE, SPLIT_READ_WRITES, REORDER, COMBINE, UNROLL_WORK_GROUPS, ADD_START_STOP_SEGMENT, EXTEND_BRANCHES
 };
 
-Optimizer::Optimizer(const Configuration& config, const std::vector<OptimizationPass>& passes) : config(config), passes(passes)
+Optimizer::Optimizer(const Configuration& config, const std::set<OptimizationPass>& passes) : config(config), passes(passes)
 {
 }
 
-static void runOptimizationPasses(const Module& module, Method& method, const Configuration& config, const std::vector<OptimizationPass>& passes)
+static void runOptimizationPasses(const Module& module, Method& method, const Configuration& config, const std::set<OptimizationPass>& passes)
 {
     logging::debug() << "-----" << logging::endl;
     logging::info() << "Running optimization passes for: " << method.name << logging::endl;
@@ -222,10 +225,10 @@ void Optimizer::optimize(Module& module) const
 
 void Optimizer::addPass(const OptimizationPass& pass)
 {
-	passes.push_back(pass);
+	passes.insert(pass);
 }
 
 void Optimizer::removePass(const OptimizationPass& pass)
 {
-	passes.push_back(pass);
+	passes.erase(pass);
 }

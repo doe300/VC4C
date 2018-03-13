@@ -85,7 +85,8 @@ namespace vc4c
 		//combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation
 		extern const OptimizationPass COMBINE_ROTATIONS;
 		//removes various cases of redundant moves
-		extern const OptimizationPass REMOVE_REDUNDANT_MOVES;
+		extern const OptimizationPass REMOVE_REDUNDANT_MOVES_1;
+		extern const OptimizationPass REMOVE_REDUNDANT_MOVES_2;
 		//eliminates useless instructions (dead store, move to same, add with zero, ...)
 		extern const OptimizationPass ELIMINATE;
 		//vectorizes loops
@@ -104,21 +105,23 @@ namespace vc4c
 		extern const OptimizationPass ADD_START_STOP_SEGMENT;
 		//remove unneccesary "and" and "or"
 		extern const OptimizationPass REMOVE_REDUNDANT_BITOP;
-
-		extern const OptimizationPass PROPAGATE_VAR;
+		// propagate source value of move in a basic block
+		extern const OptimizationPass PROPAGATE_VAR_1;
+		extern const OptimizationPass PROPAGATE_VAR_2;
 		/*
 		 * The default optimization passes consist of all passes listed above.
 		 * NOTE: Some of the passes are REQUIRED and the compilation will fail, if they are removed.
 		 * Other passes are not technically required, but e.g. make register-allocation a lot easier, thus improving the chance of successful register allocation greatly.
 		 */
-		extern const std::vector<OptimizationPass> DEFAULT_PASSES;
+		extern const std::set<OptimizationPass> DEFAULT_PASSES;
 
-	    extern const OptimizationPass TRANSLATE_TO_MOVE;
+	    extern const OptimizationPass TRANSLATE_TO_MOVE_1;
+		extern const OptimizationPass TRANSLATE_TO_MOVE_2;
 
 		class Optimizer
 		{
 		public:
-			Optimizer(const Configuration& config = { }, const std::vector<OptimizationPass>& passes = DEFAULT_PASSES);
+			Optimizer(const Configuration& config = { }, const std::set<OptimizationPass>& passes = DEFAULT_PASSES);
 
 			void optimize(Module& module) const;
 
@@ -127,7 +130,7 @@ namespace vc4c
 
 		private:
 			Configuration config;
-			std::vector<OptimizationPass> passes;
+			std::set<OptimizationPass> passes;
 		};
 
 
