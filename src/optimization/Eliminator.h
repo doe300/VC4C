@@ -104,14 +104,50 @@ namespace vc4c
 		 *
 		 * becomes:
 		 *   %x = add unif, %y
+		 *
+		 * And:
+		 *  %in = move %in
+		 *
+		 * remove it
 		 */
 		void eliminateRedundantMoves(const Module& module, Method& method, const Configuration& config);
 
+		/*
+		 * Transform bit ("and" and "or") operations
+		 *
+		 * 	and v1, v2, v3 => and v1, v2, v4
+		 *	and v4, v1, v2    mov v4, v1
+		 *
+		 *	and v1, v2, v3 => and v1, v2, v3
+		 *	or  v4, v1, v2    mov v4, v2
+		 *
+		 * or  v1, v2, v3 => or  v1, v2, v4
+		 * and v4, v1, v2    mov v4, v2
+		 *
+		 * or  v1, v2, v3 => or  v1, v2, v3
+		 * or  v4, v1, v2    mov v4, v1
+		 */
 	    void eliminateRedundantBitOp(const Module& module, Method& method, const Configuration& config);
 
-	void translatToMove(const Module &module, Method &method, const Configuration &config);
+		/*
+		 * Translform operations (and, or, max, min, v8max, v8min with 1st arg == 2nd arg) which are equal to move.
+		 */
+		void translatToMove(const Module &module, Method &method, const Configuration &config);
 
-	void propagateVar(const Module &module, Method &method, const Configuration &config);
+		/*
+		 * Propagate source value of move operation in a basic block.
+		 *
+		 * Works as follows:
+		 *
+		 * mov a, b
+		 * ...
+		 * iadd x, a, y => replace a to b
+		 * ...
+		 * iadd a, ...
+		 * ...
+		 * iadd x, a, y => this `a` cannot be replaced
+		 */
+		void propagateVar(const Module &module, Method &method, const Configuration &config);
 	} // namespace optimizations
 } // namespace vc4c
 #endif /* ELIMINATOR_H */

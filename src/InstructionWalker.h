@@ -245,8 +245,17 @@ namespace vc4c
 			return func(get());
 		}
 
-		void replaceLocal(const Local *oldLocal, const Local *newLocal, bool forward=true, bool stopFlag=true);
-		void replace(const Value oldValue, const Value newValue, bool forward=true, bool stopFlag=true);
+		/*
+		 * Traverse instructions from the position and replace arguments or output to new one in the same basic block.
+		 *
+		 * If `forward` = false, traver reversely.
+		 * If `stopWhenWritten` = true, finish when it finds a instruction, which is re-assign in it.
+		 */
+		void replaceLocalInBlock(const Local *oldLocal, const Local *newLocal, LocalUse::Type type = LocalUse::Type::READER,
+								 bool forward = true, bool stopWhenWritten = true);
+
+		void replaceValueInBlock(const Value oldValue, const Value newValue, LocalUse::Type type = LocalUse::Type::READER,
+								 bool forward = true, bool stopWhenWritten = true);
 	private:
 		BasicBlock* basicBlock;
 		intermediate::InstructionsIterator pos;
