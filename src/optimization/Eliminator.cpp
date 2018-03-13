@@ -353,7 +353,7 @@ void optimizations::translatToMove(const Module& module, Method& method, const C
 	{
 		auto const op = it.get<intermediate::Operation>();
 		if (op && (op->op == OP_AND || op->op == OP_OR || op->op == OP_V8MAX || op->op == OP_V8MIN || op->op == OP_MAX || op->op == OP_MIN) && op->getFirstArg() == op->getSecondArg().value()){
-			auto move = new intermediate::MoveOperation(op->getOutput().value(), op->getFirstArg());
+			auto move = new intermediate::MoveOperation(op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags);
 			it.erase().emplace(move);
 		}
 
