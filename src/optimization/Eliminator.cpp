@@ -450,58 +450,79 @@ void optimizations::eliminateRedundantMoves(const Module& module, Method& method
 }
 
 void optimizations::eliminateRedundantBitOp(const Module& module, Method& method, const Configuration& config) {
-	bool replaced = false;
+	bool replaced;
 	do {
 		replaced = false;
 		auto it = method.walkAllInstructions();
 		while (!it.isEndOfMethod()) {
 			if (!it->hasSideEffects() && !it->hasPackMode() && !it->hasUnpackMode()) {
 				auto op = it.get<intermediate::Operation>();
-				if (op && op->op == OP_AND) {
+				if (op && op->op == OP_AND && ! op->hasUnpackMode() && ! op->hasPackMode()) {
 					op->getOutput().value().getSingleWriter();
-					// and v1, v2, v3
-					// and v4, v1, v2
+					// and v1, v2, v3 => and v1, v2, v4
+					// and v4, v1, v2    mov v4, v1
 					//
-					// => and v4, v2, v3
-					auto func = [&](Local *local, Value &v, InstructionWalker walker) {
-						while(! walker.isStartOfBlock()) {
-							if (auto op2 = walker.get<intermediate::Operation>()) {
-								if (op2 && op2->op == OP_AND && op2->writesLocal(local)) {
-									if (op2->getFirstArg() == v && it.getBasicBlock()->isLocallyLimited(walker, local)) {
-										replaced = true;
-										auto newop = new intermediate::MoveOperation(op->getOutput().value(), op2->getOutput().value());
-										it.erase().emplace(newop);
-									}
-
-									if (op2->getSecondArg() == v && it.getBasicBlock()->isLocallyLimited(walker, local)) {
-										replaced = true;
-										auto newop = new intermediate::MoveOperation(op->getOutput().value(), op2->getOutput().value());
-										it.erase().emplace(newop);
-									}
-								}
+					// and v1, v2, v3 => and v1, v2, v3
+					// or  v4, v1, v2    mov v4, v2
+					auto foundAnd = [&](Local *out, Local * in, InstructionWalker walker) {
+						auto it = walker.copy().nextInMethod();
+						while (! it.isEndOfBlock()){
+							auto op2 = it.get<intermediate::Operation>();
+							if (op2 && op2->op == OP_AND && op2->readsLocal(out) && op2->readsLocal(in)){
+								auto mov = new intermediate::MoveOperation(op2->getOutput().value(), out->createReference(), op2->conditional, op2->setFlags);
+								it.erase().emplace(mov);
+							} else if (op2 && op2->op == OP_OR && op2->readsLocal(out) && op2->readsLocal(in)){
+								auto mov = new intermediate::MoveOperation(op2->getOutput().value(), in->createReference(), op2->conditional, op2->setFlags);
+								it.erase().emplace(mov);
 							}
-							walker.previousInBlock();
+
+							it.nextInBlock();
 						}
 					};
 
 					auto arg0 = op->getArgument(0).value();
 					auto arg1 = op->getArgument(1).value();
-					auto out  = op->getOutput().value();
-
-					// and v1, v2, v2
-					// convert to move
-					if (arg0 == arg1 && op->getOutput().value().valueType == ValueType::LOCAL) {
-						replaced = true;
-						auto move = new intermediate::MoveOperation(op->getOutput().value(), arg0);
-						it.erase();
-						it.emplace(move);
-					}
+					auto out  = op->getOutput().value().local;
 
 					if (arg0.valueType == ValueType::LOCAL)
-						func(arg0.local, arg1, it);
+						foundAnd(out, arg0.local, it);
 					if (arg1.valueType == ValueType::LOCAL)
-						func(arg1.local, arg0, it);
+						foundAnd(out, arg1.local, it);
 				};
+
+				if (op && op->op == OP_OR && ! op->hasUnpackMode() && ! op->hasPackMode()) {
+					// or  v1, v2, v3 => or  v1, v2, v4
+					// and v4, v1, v2    mov v4, v2
+					//
+					// or  v1, v2, v3 => or  v1, v2, v3
+					// or  v4, v1, v2    mov v4, v1
+					auto foundOr = [&](Local *out, Local * in, InstructionWalker walker) {
+						auto it = walker.copy().nextInMethod();
+						while (! it.isEndOfBlock()){
+							auto op2 = it.get<intermediate::Operation>();
+							if (op2 && op2->op == OP_AND && op2->readsLocal(out) && op2->readsLocal(in)){
+								auto mov = new intermediate::MoveOperation(op2->getOutput().value(), in->createReference(), op2->conditional, op2->setFlags);
+								replaced = true;
+								it.erase().emplace(mov);
+							} else if (op2 && op2->op == OP_OR && op2->readsLocal(out) && op2->readsLocal(in)){
+								auto mov = new intermediate::MoveOperation(op2->getOutput().value(), out->createReference(), op2->conditional, op2->setFlags);
+								replaced = true;
+								it.erase().emplace(mov);
+							}
+
+							it.nextInBlock();
+						}
+					};
+
+					auto arg0 = op->getArgument(0).value();
+					auto arg1 = op->getArgument(1).value();
+					auto out  = op->getOutput().value().local;
+
+					if (arg0.valueType == ValueType::LOCAL)
+						foundOr(out, arg0.local, it);
+					if (arg1.valueType == ValueType::LOCAL)
+						foundOr(out, arg1.local, it);
+				}
 			}
 
 			it.nextInMethod();

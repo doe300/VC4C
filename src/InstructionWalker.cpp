@@ -323,16 +323,26 @@ ConstInstructionWalker& ConstInstructionWalker::nextInMethod() {
 }
 
 void InstructionWalker::replace(const Value oldValue, const Value newValue, bool forward, bool stopFlag) {
-	auto it = copy().nextInBlock();
-	while ((forward && !it.isEndOfBlock()) || (!forward && it.isStartOfBlock())) {
-		it->replaceValue(oldValue, newValue, LocalUse::Type::READER);
-		if (it->getOutput().has_value() && it->getOutput().value() == oldValue && stopFlag)
-			break;
+	auto it = copy();
+	if (forward){
+		it.nextInBlock();
+		while (!it.isEndOfBlock()) {
+			it->replaceValue(oldValue, newValue, LocalUse::Type::READER);
+			if (it->getOutput().has_value() && it->getOutput().value() == oldValue && stopFlag)
+				break;
 
-		if (forward)
 			it.nextInBlock();
-		else
+		}
+	} else {
+		it.previousInBlock();
+		while (! it.isStartOfBlock()) {
 			it.previousInBlock();
+
+			it->replaceValue(oldValue, newValue, LocalUse::Type::READER);
+			if (it->getOutput().has_value() && it->getOutput().value() == oldValue && stopFlag)
+				break;
+			it.previousInBlock();
+		}
 	}
 }
 
