@@ -1007,8 +1007,8 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 			{
 				auto &node1 = inclusionTree.getOrCreateNode(&loop1);
 				auto &node2 = inclusionTree.getOrCreateNode(&loop2);
-				node1.addNeighbor(&node2, Inclusion(true));
-				node2.addNeighbor(&node1, Inclusion(false));
+				node1.addNeighbor(&node2, LoopInclusion(true));
+				node2.addNeighbor(&node1, LoopInclusion(false));
 			}
 		}
 	}
