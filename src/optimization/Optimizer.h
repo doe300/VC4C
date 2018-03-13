@@ -11,6 +11,7 @@
 
 #include <functional>
 #include <set>
+#include <vector>
 
 namespace vc4c
 {
@@ -101,18 +102,23 @@ namespace vc4c
 		extern const OptimizationPass EXTEND_BRANCHES;
 		//adds the start- and stop-segments to the beginning and end of the kernel
 		extern const OptimizationPass ADD_START_STOP_SEGMENT;
+		//remove unneccesary "and" and "or"
+		extern const OptimizationPass REMOVE_REDUNDANT_BITOP;
 
+		extern const OptimizationPass PROPAGATE_VAR;
 		/*
 		 * The default optimization passes consist of all passes listed above.
 		 * NOTE: Some of the passes are REQUIRED and the compilation will fail, if they are removed.
 		 * Other passes are not technically required, but e.g. make register-allocation a lot easier, thus improving the chance of successful register allocation greatly.
 		 */
-		extern const std::set<OptimizationPass> DEFAULT_PASSES;
+		extern const std::vector<OptimizationPass> DEFAULT_PASSES;
+
+	    extern const OptimizationPass TRANSLATE_TO_MOVE;
 
 		class Optimizer
 		{
 		public:
-			Optimizer(const Configuration& config = { }, const std::set<OptimizationPass>& passes = DEFAULT_PASSES);
+			Optimizer(const Configuration& config = { }, const std::vector<OptimizationPass>& passes = DEFAULT_PASSES);
 
 			void optimize(Module& module) const;
 
@@ -121,9 +127,10 @@ namespace vc4c
 
 		private:
 			Configuration config;
-			std::set<OptimizationPass> passes;
+			std::vector<OptimizationPass> passes;
 		};
+
+
 	} // namespace optimizations
 } // namespace vc4c
 #endif /* OPTIMIZER_H */
-

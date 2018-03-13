@@ -272,6 +272,7 @@ InstructionWalker& InstructionWalker::emplace(intermediate::IntermediateInstruct
 	return *this;
 }
 
+
 ConstInstructionWalker::ConstInstructionWalker() : basicBlock(nullptr), pos(nullptr)
 {
 
@@ -279,7 +280,7 @@ ConstInstructionWalker::ConstInstructionWalker() : basicBlock(nullptr), pos(null
 
 ConstInstructionWalker::ConstInstructionWalker(InstructionWalker it) : basicBlock(it.basicBlock), pos(it.pos)
 {
-	
+
 }
 
 ConstInstructionWalker::ConstInstructionWalker(const BasicBlock* basicBlock, intermediate::ConstInstructionsIterator pos) : basicBlock(basicBlock), pos(pos)
@@ -290,6 +291,11 @@ const BasicBlock* ConstInstructionWalker::getBasicBlock() const
 {
 	return basicBlock;
 }
+void InstructionWalker::replaceLocal(const Local *oldLocal, const Local *newLocal, bool forward, bool stopFlag) {
+	replace(oldLocal->createReference(), newLocal->createReference(), forward, stopFlag);
+}
+
+
 
 ConstInstructionWalker& ConstInstructionWalker::nextInBlock()
 {
@@ -303,20 +309,33 @@ ConstInstructionWalker& ConstInstructionWalker::previousInBlock()
 	return *this;
 }
 
-ConstInstructionWalker& ConstInstructionWalker::nextInMethod()
-{
+ConstInstructionWalker& ConstInstructionWalker::nextInMethod() {
 	nextInBlock();
-	if(isEndOfBlock())
-	{
-		BasicBlock* tmp = basicBlock->method.getNextBlockAfter(basicBlock);
-		if(tmp != nullptr)
-		{
+	if (isEndOfBlock()) {
+		BasicBlock *tmp = basicBlock->method.getNextBlockAfter(basicBlock);
+		if (tmp != nullptr) {
 			basicBlock = tmp;
 			pos = basicBlock->instructions.begin();
 		}
 	}
+
 	return *this;
 }
+
+void InstructionWalker::replace(const Value oldValue, const Value newValue, bool forward, bool stopFlag) {
+	auto it = copy().nextInBlock();
+	while ((forward && !it.isEndOfBlock()) || (!forward && it.isStartOfBlock())) {
+		it->replaceValue(oldValue, newValue, LocalUse::Type::READER);
+		if (it->getOutput().has_value() && it->getOutput().value() == oldValue && stopFlag)
+			break;
+
+		if (forward)
+			it.nextInBlock();
+		else
+			it.previousInBlock();
+	}
+}
+
 ConstInstructionWalker& ConstInstructionWalker::previousInMethod()
 {
 	previousInBlock();

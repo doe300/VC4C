@@ -10,6 +10,7 @@
 #include "../InstructionWalker.h"
 #include "../Profiler.h"
 #include "log.h"
+#include "../analysis/DataDependencyGraph.h"
 
 #include <algorithm>
 #include <list>
@@ -345,6 +346,35 @@ static bool isNoReadBetween(InstructionWalker first, InstructionWalker second, R
 	return true;
 }
 
+void optimizations::translatToMove(const Module& module, Method& method, const Configuration& config)
+{
+	auto it = method.walkAllInstructions();
+	while(!it.isEndOfMethod())
+	{
+		auto const op = it.get<intermediate::Operation>();
+		if (op && (op->op == OP_AND || op->op == OP_OR || op->op == OP_V8MAX || op->op == OP_V8MIN || op->op == OP_MAX || op->op == OP_MIN) && op->getFirstArg() == op->getSecondArg().value()){
+			auto move = new intermediate::MoveOperation(op->getOutput().value(), op->getFirstArg());
+			it.erase().emplace(move);
+		}
+
+		it.nextInMethod();
+	}
+}
+
+void optimizations::propagateVar(const Module& module, Method& method, const Configuration& config)
+{
+	auto it = method.walkAllInstructions();
+	while(!it.isEndOfMethod())
+	{
+		auto const op = it.get<intermediate::MoveOperation>();
+		if (op) {
+			it.replace(op->getOutput().value(), op->getSource(), true, true);
+		}
+
+		it.nextInMethod();
+	}
+}
+
 void optimizations::eliminateRedundantMoves(const Module& module, Method& method, const Configuration& config)
 {
 	auto it = method.walkAllInstructions();
@@ -363,7 +393,18 @@ void optimizations::eliminateRedundantMoves(const Module& module, Method& method
 			auto sourceWriter = (move->getSource().getSingleWriter() != nullptr) ? it.getBasicBlock()->findWalkerForInstruction(move->getSource().getSingleWriter(), it) : Optional<InstructionWalker>{};
 			auto destinationReader = (move->hasValueType(ValueType::LOCAL) && move->getOutput()->local->getUsers(LocalUse::Type::READER).size() == 1) ? it.getBasicBlock()->findWalkerForInstruction(*move->getOutput()->local->getUsers(LocalUse::Type::READER).begin(), it.getBasicBlock()->end()) : Optional<InstructionWalker>{};
 
-			if(!it->hasSideEffects() && sourceUsedOnce && destUsedOnce && destinationReader && move->getSource().type == move->getOutput()->type)
+			if(! move->hasPackMode() && ! move->hasUnpackMode() && move->getSource() == move->getOutput().value())
+			{
+				if (move->signal != SIGNAL_NONE)
+					it.erase();
+				else {
+					auto nop = new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER, move->signal);
+					it.erase().emplace(nop);
+				}
+
+			}
+
+			else if(!it->hasSideEffects() && sourceUsedOnce && destUsedOnce && destinationReader && move->getSource().type == move->getOutput()->type)
 			{
 				//if the source is written only once and the destination is read only once, we can replace the uses of the output with the input
 				//XXX we need to check the type equality, since otherwise Reordering might re-order the reading before the writing (if the local is written as type A and read as type B)
@@ -407,3 +448,64 @@ void optimizations::eliminateRedundantMoves(const Module& module, Method& method
 		it.nextInMethod();
 	}
 }
+
+void optimizations::eliminateRedundantBitOp(const Module& module, Method& method, const Configuration& config) {
+	bool replaced = false;
+	do {
+		replaced = false;
+		auto it = method.walkAllInstructions();
+		while (!it.isEndOfMethod()) {
+			if (!it->hasSideEffects() && !it->hasPackMode() && !it->hasUnpackMode()) {
+				auto op = it.get<intermediate::Operation>();
+				if (op && op->op == OP_AND) {
+					op->getOutput().value().getSingleWriter();
+					// and v1, v2, v3
+					// and v4, v1, v2
+					//
+					// => and v4, v2, v3
+					auto func = [&](Local *local, Value &v, InstructionWalker walker) {
+						while(! walker.isStartOfBlock()) {
+							if (auto op2 = walker.get<intermediate::Operation>()) {
+								if (op2 && op2->op == OP_AND && op2->writesLocal(local)) {
+									if (op2->getFirstArg() == v && it.getBasicBlock()->isLocallyLimited(walker, local)) {
+										replaced = true;
+										auto newop = new intermediate::MoveOperation(op->getOutput().value(), op2->getOutput().value());
+										it.erase().emplace(newop);
+									}
+
+									if (op2->getSecondArg() == v && it.getBasicBlock()->isLocallyLimited(walker, local)) {
+										replaced = true;
+										auto newop = new intermediate::MoveOperation(op->getOutput().value(), op2->getOutput().value());
+										it.erase().emplace(newop);
+									}
+								}
+							}
+							walker.previousInBlock();
+						}
+					};
+
+					auto arg0 = op->getArgument(0).value();
+					auto arg1 = op->getArgument(1).value();
+					auto out  = op->getOutput().value();
+
+					// and v1, v2, v2
+					// convert to move
+					if (arg0 == arg1 && op->getOutput().value().valueType == ValueType::LOCAL) {
+						replaced = true;
+						auto move = new intermediate::MoveOperation(op->getOutput().value(), arg0);
+						it.erase();
+						it.emplace(move);
+					}
+
+					if (arg0.valueType == ValueType::LOCAL)
+						func(arg0.local, arg1, it);
+					if (arg1.valueType == ValueType::LOCAL)
+						func(arg1.local, arg0, it);
+				};
+			}
+
+			it.nextInMethod();
+		}
+	}  while (replaced);
+}
+

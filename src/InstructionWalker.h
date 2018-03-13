@@ -245,6 +245,8 @@ namespace vc4c
 			return func(get());
 		}
 
+		void replaceLocal(const Local *oldLocal, const Local *newLocal, bool forward=true, bool stopFlag=true);
+		void replace(const Value oldValue, const Value newValue, bool forward=true, bool stopFlag=true);
 	private:
 		BasicBlock* basicBlock;
 		intermediate::InstructionsIterator pos;
@@ -415,7 +417,7 @@ namespace vc4c
 		friend class Method;
 	};
 
-	template<>
+template<>
 	struct hash<InstructionWalker>
 	{
 		size_t operator()(const InstructionWalker& ) const noexcept;

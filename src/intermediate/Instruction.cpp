@@ -368,22 +368,30 @@ bool IntermediateInstruction::writesLocal(const Local* local) const
 
 void IntermediateInstruction::replaceLocal(const Local* oldLocal, const Local* newLocal, const LocalUse::Type type)
 {
-	if(oldLocal == newLocal)
+	replaceValue(oldLocal->createReference(), newLocal->createReference(), type);
+}
+
+void IntermediateInstruction::replaceLocal(const Local *oldLocal, const Value newValue, LocalUse::Type type) {
+	replaceValue(oldLocal->createReference(), newValue, type);
+}
+
+void IntermediateInstruction::replaceValue(const Value oldValue, const Value newValue, LocalUse::Type type) {
+	if(newValue == oldValue)
 		return;
-	if(has_flag(type, LocalUse::Type::WRITER) && output && output->hasLocal(oldLocal))
+	if(has_flag(type, LocalUse::Type::WRITER) && output && output == oldValue)
 	{
 		removeAsUserFromValue(output.value(), LocalUse::Type::WRITER);
-		output->local = const_cast<Local*>(newLocal);
+		output = newValue;
 		addAsUserToValue(output.value(), LocalUse::Type::WRITER);
 	}
 	if(has_flag(type, LocalUse::Type::READER))
 	{
 		for(Value& arg : arguments)
 		{
-			if(arg.hasLocal(oldLocal))
+			if(arg == oldValue)
 			{
 				removeAsUserFromValue(arg,  LocalUse::Type::READER);
-				arg.local = const_cast<Local*>(newLocal);
+				arg = newValue;
 				addAsUserToValue(arg, LocalUse::Type::READER);
 			}
 		}
@@ -427,3 +435,4 @@ void IntermediateInstruction::addAsUserToValue(const Value& value, LocalUse::Typ
 	if(value.hasType(ValueType::LOCAL))
 		const_cast<Local*>(value.local)->addUser(*this, type);
 }
+

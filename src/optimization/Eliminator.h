@@ -106,6 +106,12 @@ namespace vc4c
 		 *   %x = add unif, %y
 		 */
 		void eliminateRedundantMoves(const Module& module, Method& method, const Configuration& config);
+
+	    void eliminateRedundantBitOp(const Module& module, Method& method, const Configuration& config);
+
+	void translatToMove(const Module &module, Method &method, const Configuration &config);
+
+	void propagateVar(const Module &module, Method &method, const Configuration &config);
 	} // namespace optimizations
 } // namespace vc4c
 #endif /* ELIMINATOR_H */
