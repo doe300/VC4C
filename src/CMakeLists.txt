@@ -75,6 +75,24 @@ set_target_properties(
 	SOVERSION "1.2"
 )
 
+find_program(
+  CLANG_PATH
+  clang-format
+  )
+
+if(CLANG_PATH)
+  message (STATUS "found clang-format: ${CLANG_PATH}")
+  add_custom_target(
+    clangformat
+    COMMAND ${CLANG_PATH}
+    -style=LLVM
+    -i
+    ${SRCS}
+    )
+else()
+  message (WARNING "clang-format not found: strongly recoomend to use it before commit!")
+endif()
+
 ##
 # Installation targets
 ##

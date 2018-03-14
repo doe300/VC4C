@@ -1,5 +1,11 @@
 version: 2
 jobs:
+  check-code-style:
+    docker:
+      - image: nomaddo/native
+    steps:
+      - checkout
+      - run: .circleci/clang-format-diff.sh
   cross:
     docker:
       - image: nomaddo/cross-rpi:0.1
@@ -146,6 +152,7 @@ workflows:
   version: 2
   commit:
     jobs:
+      - check-code-style
       - build
       - build-spirv
       - cross
