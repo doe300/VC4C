@@ -1042,18 +1042,16 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 			auto block = cfgNode->key;
 			for (auto it = block->begin(); it != block->end(); it = it.nextInBlock())
 			{
- 				// TODO: Constants like `mul24 r1, 4, elem_num` should be also moved.
+				// TODO: Constants like `mul24 r1, 4, elem_num` should be also moved.
 				auto loadInst = it.get<LoadImmediate>();
 				if (loadInst != nullptr)
 				{
 					// LoadImmediate must have output value
 					auto out = loadInst->getOutput().value();
 					if (out.valueType == ValueType::LOCAL) {
- 						// TODO: Fix magic number 2
-  					auto rootCFGNode = *(root->key->end() - 2);
- 						auto rootInst = rootCFGNode->key->begin();
- 						// TODO: Set localPrefix
-						rootInst.previousInMethod().emplace(loadInst->copyFor(method, ""));
+						auto rootInst = method.begin()->end().previousInBlock();
+						// TODO: Set localPrefix
+						rootInst.emplace(loadInst->copyFor(method, ""));
 						it.erase();
 					}
 				}
