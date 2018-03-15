@@ -1050,8 +1050,7 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 					auto out = loadInst->getOutput().value();
 					if (out.valueType == ValueType::LOCAL) {
 						auto rootInst = method.begin()->end().previousInBlock();
-						// TODO: Set localPrefix
-						rootInst.emplace(loadInst->copyFor(method, ""));
+						rootInst.emplace(it.release());
 						it.erase();
 					}
 				}
