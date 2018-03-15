@@ -360,15 +360,42 @@ void optimizations::translatToMove(const Module& module, Method& method, const C
 		it.nextInMethod();
 	}
 }
-
+// TODO
+// this propagation should work among basic blocks.
+// but we need very keen to unsafe-case
+//
+//     A    Move propagation of an instruction in C may dangerous if an instruction in D is rewritten.
+//    / \   But, the propagation A to B and C should work.
+//   /   \
+//  B    C
+//  \    /
+//   \  /
+//    D
 void optimizations::propagateVar(const Module& module, Method& method, const Configuration& config)
 {
 	auto it = method.walkAllInstructions();
 	while(!it.isEndOfMethod())
 	{
 		auto const op = it.get<intermediate::MoveOperation>();
-		if (op) {
-			it.replaceValueInBlock(op->getOutput().value(), op->getSource(), LocalUse::Type::READER);
+
+		// just copy of value
+		// should not work like:
+		//
+		// - mov.setf null, r0
+		// - mov r0, r1 with pack, unpack
+		// - mov r0, r4 // TODO r4 can be propagate unless signal or the use of sfu isn't issued
+		// - mov r0, r5
+		// - mov r0, vpm
+		// - mov r0, unif
+		//
+		// very side-effects are mattered here.
+		//
+		// - mov.setf r0, r1
+		// - mov r0, r1, load_tmu0
+
+		if (op && ! op->hasConditionalExecution() && ! op->hasPackMode() && ! op->hasUnpackMode() && op->getOutput().has_value()) {
+			if (! (op->getSource().valueType == ValueType::REGISTER && op->getSource().reg.hasSideEffectsOnRead()))
+				it.replaceValueInBlock(op->getOutput().value(), op->getSource(), LocalUse::Type::READER);
 		}
 
 		it.nextInMethod();
