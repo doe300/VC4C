@@ -978,7 +978,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
 void optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
 {
 	// 1. find loops
-	auto cfg = ControlFlowGraph::createCFG(method);
+	auto cfg = method.getCFG();
 	auto loops = cfg.findLoops();
 
 	// 2. generate inclusion relation of loops as trees
