@@ -975,20 +975,6 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
 	generateStopSegment(method);
 }
 
-LoopInclusionTreeNode* findRoot(LoopInclusionTreeNode *node)
-{
-	for (auto &parent : node->getNeighbors())
-	{
-		if (!parent.second.includes) {
-			// The root node must be only one
-			return findRoot(parent.first);
-		}
-	}
-	// this is root
-	return node;
-}
-using LoopInclusionTree = Graph<ControlFlowLoop*, LoopInclusionTreeNode>;
-
 void optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
 {
 	// 1. find loops
@@ -1001,8 +987,6 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 	{
 		for (auto &loop2 : loops)
 		{
-			if (loop1 == loop2) continue;
-
 			if (loop1.includes(loop2))
 			{
 				auto &node1 = inclusionTree.getOrCreateNode(&loop1);
@@ -1013,26 +997,20 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 		}
 	}
 
-	logging::debug() << "loops" << logging::endl;
-	for (auto &loop : loops) {
-		logging::debug() << "  " << &loop << logging::endl;
-	}
-
-	logging::debug() << "inclusionTree" << logging::endl;
-	for (auto &loop : inclusionTree) {
-		logging::debug() << "  " << loop.first << logging::endl;
-		for (auto &node : loop.second.getNeighbors()) {
-			logging::debug() << "    " << node.first->key << ": " << node.second.includes << logging::endl;
-		}
-	}
+	// logging::debug() << "inclusionTree" << logging::endl;
+	// for (auto &loop : inclusionTree) {
+	// 	logging::debug() << "  " << loop.first << logging::endl;
+	// 	for (auto &node : loop.second.getNeighbors()) {
+	// 		logging::debug() << "    " << node.first->key << ": " << node.second.includes << logging::endl;
+	// 	}
+	// }
 
 	// 3. move constant load operations from root of trees
 	FastSet<ControlFlowLoop*> processed;
 	for (auto &loop : loops)
 	{
-		logging::debug() << "loop: " << &loop << logging::endl;
 		auto &node = inclusionTree.getOrCreateNode(&loop);
-		auto root = findRoot(&node);
+		auto root = node.findRoot();
 
 		if (processed.find(root->key) != processed.end()) continue;
 		processed.insert(root->key);

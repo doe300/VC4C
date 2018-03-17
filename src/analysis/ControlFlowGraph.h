@@ -132,7 +132,15 @@ namespace vc4c
 		bool includes;
 		LoopInclusion(bool _includes) : includes(_includes) {}
 	};
-	using LoopInclusionTreeNode = Node<ControlFlowLoop*, LoopInclusion>;
+	struct LoopInclusionTreeNode : public Node<ControlFlowLoop*, LoopInclusion>
+	{
+		LoopInclusionTreeNode(const KeyType key);
+		LoopInclusionTreeNode* findRoot();
+	};
+	/*
+	 * The trees represents inclusion relation of control-flow loops. This may have multiple trees.
+	 */
+	using LoopInclusionTree = Graph<ControlFlowLoop*, LoopInclusionTreeNode>;
 
 } /* namespace vc4c */
 

@@ -106,6 +106,8 @@ Optional<InstructionWalker> ControlFlowLoop::findInLoop(const intermediate::Inte
 
 bool ControlFlowLoop::includes(const ControlFlowLoop& other) const
 {
+	if (*this == other) return false;
+
 	auto head = std::find_if(this->begin(), this->end(), [&](const CFGNode* node) {
 		return node->key == (*other.begin())->key;
 	});
@@ -150,7 +152,7 @@ CFGNode& ControlFlowGraph::getEndOfControlFlow()
 			candidate = &node;
 		}
 	}
-	
+
 	if(candidate == nullptr)
 		throw CompilationError(CompilationStep::GENERAL, "Found no CFG node without successors!");
 	return *candidate;
@@ -283,4 +285,19 @@ ControlFlowLoop ControlFlowGraph::findLoopsHelper(const CFGNode* node, FastMap<c
 	}
 
 	return loop;
+}
+
+LoopInclusionTreeNode::LoopInclusionTreeNode(const KeyType key) : Node(key) {}
+
+LoopInclusionTreeNode* LoopInclusionTreeNode::findRoot()
+{
+	for (auto &parent : this->getNeighbors())
+	{
+		if (!parent.second.includes) {
+			// The root node must be only one
+			return reinterpret_cast<LoopInclusionTreeNode*>(parent.first)->findRoot();
+		}
+	}
+	// this is root
+	return this;
 }
