@@ -1027,7 +1027,7 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 					// LoadImmediate must have output value
 					auto out = loadInst->getOutput().value();
 					if (out.valueType == ValueType::LOCAL) {
-						auto rootInst = method.begin()->end().previousInBlock();
+						auto rootInst = root->key->findPredecessor()->key->end().previousInBlock();
 						rootInst.emplace(it.release());
 						it.erase();
 					}
