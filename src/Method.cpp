@@ -89,7 +89,7 @@ const Local* Method::findOrCreateLocal(const DataType& type, const std::string& 
 	return &(it.first->second);
 }
 
-static bool removeUsagesInBasicBlock(Method& method, const BasicBlock& bb, const Local* locale, OrderedMap<const LocalUser*, LocalUse>& remainingUsers, int& usageRangeLeft)
+static bool removeUsagesInBasicBlock(const Method& method, const BasicBlock& bb, const Local* locale, OrderedMap<const LocalUser*, LocalUse>& remainingUsers, int& usageRangeLeft)
 {
 	auto it = bb.begin();
 	while(usageRangeLeft >= 0 && !it.isEndOfMethod())
@@ -125,8 +125,8 @@ bool Method::isLocallyLimited(InstructionWalker curIt, const Local* locale, cons
 		const intermediate::Branch* branch = curIt.get<intermediate::Branch>();
 		if(branch != nullptr)
 		{
-			const BasicBlock* successor = const_cast<Method*>(this)->findBasicBlock(branch->getTarget());
-			if(successor != nullptr && removeUsagesInBasicBlock(*const_cast<Method*>(this), *successor, locale, remainingUsers, usageRangeLeft))
+			const BasicBlock* successor = findBasicBlock(branch->getTarget());
+			if(successor != nullptr && removeUsagesInBasicBlock(*this, *successor, locale, remainingUsers, usageRangeLeft))
 				return true;
 			if(branch->isUnconditional())
 				//this branch jumps away unconditionally and the successor does not have all remaining usages within the remaining range, so we abort

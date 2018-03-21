@@ -101,12 +101,12 @@ void BasicBlock::forSuccessiveBlocks(const std::function<void(BasicBlock &)> &co
 	}
 	else
 	{
-		InstructionWalker it = const_cast<BasicBlock *>(this)->begin();
+		ConstInstructionWalker it = begin();
 		while(!it.isEndOfBlock())
 		{
 			if(it.has<intermediate::Branch>())
 			{
-				BasicBlock *next = method.findBasicBlock(it.get<intermediate::Branch>()->getTarget());
+				BasicBlock *next = method.findBasicBlock(it.get<const intermediate::Branch>()->getTarget());
 				if(next != nullptr)
 					consumer(*next);
 			}
@@ -159,12 +159,12 @@ bool BasicBlock::fallsThroughToNextBlock() const
 	}
 	// if the last instruction of a basic block is not an unconditional branch to another block, the control-flow falls
 	// through to the next block
-	InstructionWalker it = const_cast<BasicBlock *>(this)->end();
+	ConstInstructionWalker it = end();
 	do
 	{
 		it.previousInBlock();
 	} while(it.has<intermediate::Nop>());
-	const intermediate::Branch *lastBranch = dynamic_cast<const intermediate::Branch *>(it.get());
+	const intermediate::Branch *lastBranch = it.get<const intermediate::Branch>();
 	const intermediate::Branch *secondLastBranch = nullptr;
 	if(!it.isStartOfBlock())
 	{
@@ -178,7 +178,7 @@ bool BasicBlock::fallsThroughToNextBlock() const
 				break;
 			it.previousInBlock();
 		} while(it.has<intermediate::Nop>());
-		secondLastBranch = dynamic_cast<const intermediate::Branch *>(it.get());
+		secondLastBranch = it.get<const intermediate::Branch>();
 	}
 	if(lastBranch != nullptr && lastBranch->isUnconditional())
 	{

@@ -32,9 +32,17 @@ namespace vc4c
 		 * Adds the given neighbor with the given relation.
 		 * Multiple calls to this method do not override the previous association.
 		 */
-		void addNeighbor(Node* neighbor, const R relation)
+		void addNeighbor(Node* neighbor, R relation)
 		{
 			neighbors.emplace(neighbor, relation);
+		}
+		
+		typename NeighborsType::value_type& getOrCreateNeighbor(Node* neighbor, R defaultRelation = {})
+		{
+			auto it = neighbors.find(neighbor);
+			if(it != neighbors.end())
+				return *it;
+			return *neighbors.emplace(neighbor, defaultRelation).first;
 		}
 
 		const NeighborsType& getNeighbors() const
