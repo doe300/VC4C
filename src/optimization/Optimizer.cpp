@@ -141,6 +141,7 @@ const OptimizationPass optimizations::COMBINE_LITERAL_LOADS = OptimizationPass("
 const OptimizationPass optimizations::COMBINE_ROTATIONS = OptimizationPass("CombineRotations", combineVectorRotations, 100);
 const OptimizationPass optimizations::REMOVE_REDUNDANT_MOVES = OptimizationPass("RemoveRedundantMoves", eliminateRedundantMoves, 110);
 const OptimizationPass optimizations::ELIMINATE = OptimizationPass("EliminateDeadStores", eliminateDeadStore, 120);
+const OptimizationPass optimizations::REMOVE_CONSTANT_LOAD_IN_LOOPS = OptimizationPass("RemoveConstantLoadInLoops", removeConstantLoadInLoops, 125);
 const OptimizationPass optimizations::VECTORIZE = OptimizationPass("VectorizeLoops", vectorizeLoops, 130);
 const OptimizationPass optimizations::SPLIT_READ_WRITES = OptimizationPass("SplitReadAfterWrites", splitReadAfterWrites, 140);
 const OptimizationPass optimizations::REORDER = OptimizationPass("ReorderInstructions", reorderWithinBasicBlocks, 150);
@@ -150,7 +151,7 @@ const OptimizationPass optimizations::ADD_START_STOP_SEGMENT = OptimizationPass(
 const OptimizationPass optimizations::EXTEND_BRANCHES = OptimizationPass("ExtendBranches", extendBranches, 190);
 
 const std::set<OptimizationPass> optimizations::DEFAULT_PASSES = {
-		MAP_MEMORY_ACCESS, RUN_SINGLE_STEPS, /* SPILL_LOCALS, */ COMBINE_LITERAL_LOADS, RESOLVE_STACK_ALLOCATIONS, COMBINE_ROTATIONS, REMOVE_REDUNDANT_MOVES, ELIMINATE, VECTORIZE, SPLIT_READ_WRITES, REORDER, COMBINE, UNROLL_WORK_GROUPS, ADD_START_STOP_SEGMENT, EXTEND_BRANCHES
+		MAP_MEMORY_ACCESS, RUN_SINGLE_STEPS, /* SPILL_LOCALS, */ COMBINE_LITERAL_LOADS, RESOLVE_STACK_ALLOCATIONS, COMBINE_ROTATIONS, REMOVE_REDUNDANT_MOVES, ELIMINATE, VECTORIZE, SPLIT_READ_WRITES, REORDER, COMBINE, UNROLL_WORK_GROUPS, ADD_START_STOP_SEGMENT, EXTEND_BRANCHES, REMOVE_CONSTANT_LOAD_IN_LOOPS
 };
 
 Optimizer::Optimizer(const Configuration& config, const std::set<OptimizationPass>& passes) : config(config), passes(passes)
@@ -162,7 +163,7 @@ static void runOptimizationPasses(const Module& module, Method& method, const Co
     logging::debug() << "-----" << logging::endl;
     logging::info() << "Running optimization passes for: " << method.name << logging::endl;
     std::size_t numInstructions = method.countInstructions();
-    
+
     for(const OptimizationPass& pass : passes)
     {
         logging::debug() << logging::endl;

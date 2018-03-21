@@ -44,6 +44,11 @@ namespace vc4c
 		 */
 		void addStartStopSegment(const Module& module, Method& method, const Configuration& config);
 
+		/*
+		 * Move constant load operations in (nested) loops to the block before head block of the outer-most loop.
+		 */
+		void removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config);
+
 	} /* namespace optimizations */
 } /* namespace vc4c */
 

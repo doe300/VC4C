@@ -10,6 +10,8 @@
 #include "../analysis/ControlFlowGraph.h"
 #include "../analysis/DataDependencyGraph.h"
 #include "../intermediate/TypeConversions.h"
+#include "../InstructionWalker.h"
+#include "../intermediate/Helper.h"
 #include "../periphery/VPM.h"
 #include "log.h"
 
@@ -18,6 +20,7 @@
 
 using namespace vc4c;
 using namespace vc4c::optimizations;
+using namespace vc4c::intermediate;
 
 static FastSet<Local*> findLoopIterations(const ControlFlowLoop& loop, const DataDependencyGraph& dependencyGraph)
 {
@@ -664,7 +667,7 @@ static void vectorize(ControlFlowLoop& loop, LoopControl& loopControl, const Dat
 			//TODO what to do?? These are e.g. for accumulation-variables (like sum, maximum)
 			//FIXME depending on the operation performed on this locals, the vector-elements need to be folded into a scalar/previous vector width
 			logging::debug() << "Local is accessed outside of loop: " << (*openInstructions.begin())->to_string() << logging::endl;
-			
+
 			const intermediate::IntermediateInstruction* inst = *openInstructions.begin();
 			const Value& arg = inst->getArgument(0).value();
 			const intermediate::Operation* op = dynamic_cast<const intermediate::Operation*>(arg.getSingleWriter());
@@ -970,4 +973,66 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
 	}
 
 	generateStopSegment(method);
+}
+
+void optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
+{
+	// 1. find loops
+	auto &cfg = method.getCFG();
+	auto loops = cfg.findLoops();
+
+	// 2. generate inclusion relation of loops as trees
+	LoopInclusionTree inclusionTree;
+	for (auto &loop1 : loops)
+	{
+		for (auto &loop2 : loops)
+		{
+			if (loop1.includes(loop2))
+			{
+				auto &node1 = inclusionTree.getOrCreateNode(&loop1);
+				auto &node2 = inclusionTree.getOrCreateNode(&loop2);
+				node1.addNeighbor(&node2, LoopInclusion(true));
+				node2.addNeighbor(&node1, LoopInclusion(false));
+			}
+		}
+	}
+
+	// logging::debug() << "inclusionTree" << logging::endl;
+	// for (auto &loop : inclusionTree) {
+	// 	logging::debug() << "  " << loop.first << logging::endl;
+	// 	for (auto &node : loop.second.getNeighbors()) {
+	// 		logging::debug() << "    " << node.first->key << ": " << node.second.includes << logging::endl;
+	// 	}
+	// }
+
+	// 3. move constant load operations from root of trees
+	FastSet<ControlFlowLoop*> processed;
+	for (auto &loop : loops)
+	{
+		auto &node = inclusionTree.getOrCreateNode(&loop);
+		auto root = node.findRoot();
+
+		if (processed.find(root->key) != processed.end()) continue;
+		processed.insert(root->key);
+
+		for (auto &cfgNode : *root->key)
+		{
+			auto block = cfgNode->key;
+			for (auto it = block->begin(); it != block->end(); it = it.nextInBlock())
+			{
+				// TODO: Constants like `mul24 r1, 4, elem_num` should be also moved.
+				auto loadInst = it.get<LoadImmediate>();
+				if (loadInst != nullptr)
+				{
+					// LoadImmediate must have output value
+					auto out = loadInst->getOutput().value();
+					if (out.valueType == ValueType::LOCAL) {
+						auto rootInst = root->key->findPredecessor()->key->end().previousInBlock();
+						rootInst.emplace(it.release());
+						it.erase();
+					}
+				}
+			}
+		}
+	}
 }

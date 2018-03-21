@@ -101,6 +101,8 @@ namespace vc4c
 		extern const OptimizationPass EXTEND_BRANCHES;
 		//adds the start- and stop-segments to the beginning and end of the kernel
 		extern const OptimizationPass ADD_START_STOP_SEGMENT;
+		// remove constant load in (nested) loops
+		extern const OptimizationPass REMOVE_CONSTANT_LOAD_IN_LOOPS;
 
 		/*
 		 * The default optimization passes consist of all passes listed above.
