@@ -23,6 +23,7 @@ namespace vc4c
 	struct Node : private NonCopyable
 	{
 		using NeighborsType = FastMap<Node*, R>;
+		using KeyType = K;
 
 		const K key;
 
