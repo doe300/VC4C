@@ -35,7 +35,7 @@ namespace vc4c
 		 * is replaced with:
 		 *   %3 = %2
 		 */
-		InstructionWalker eliminateUselessInstruction(const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+		bool eliminateUselessInstruction(const Module& module, Method& method, InstructionWalker& it, const Configuration& config);
 		/*
 		 * Replaces operations with their result if it can be determined at compile-time (e.g. operation with only constant operands)
 		 *
@@ -45,7 +45,7 @@ namespace vc4c
 		 * is replaced with:
 		 *   %3 = 11
 		 */
-		InstructionWalker calculateConstantInstruction(const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+		bool calculateConstantInstruction(const Module& module, Method& method, InstructionWalker& it, const Configuration& config);
 		/*
 		 * Eliminates branches to the label directly following the branch
 		 *
@@ -75,7 +75,7 @@ namespace vc4c
 		 * NOTE: Return-instructions in inlined functions are already replaced with branches (and moves for returned values) at this point.
 		 * Also, this optimization-step is required for the compilation to work correctly
 		 */
-		InstructionWalker eliminateReturn(const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+		InstructionWalker eliminateReturn(const Module &module, Method &method, InstructionWalker it, const Configuration &config);
 
 		/*
 		 * Eliminates various types of redundant moves
@@ -110,7 +110,7 @@ namespace vc4c
 		 *
 		 * remove it
 		 */
-		void eliminateRedundantMoves(const Module& module, Method& method, const Configuration& config);
+		bool eliminateRedundantMoves(const Module &module, Method &method, const Configuration &config);
 
 		/*
 		 * Transform bit ("and" and "or") operations
@@ -127,12 +127,12 @@ namespace vc4c
 		 * or  v1, v2, v3 => or  v1, v2, v3
 		 * or  v4, v1, v2    mov v4, v1
 		 */
-	    void eliminateRedundantBitOp(const Module& module, Method& method, const Configuration& config);
+		bool eliminateRedundantBitOp(const Module &module, Method &method, const Configuration &config);
 
 		/*
 		 * Translform operations (and, or, max, min, v8max, v8min with 1st arg == 2nd arg) which are equal to move.
 		 */
-		void translatToMove(const Module &module, Method &method, const Configuration &config);
+		bool translateToMove(const Module &module, Method &method, const Configuration &config);
 
 		/*
 		 * Propagate source value of move operation in a basic block.
@@ -147,8 +147,7 @@ namespace vc4c
 		 * ...
 		 * iadd x, a, y => this `a` cannot be replaced
 		 */
-		void propagateVar(const Module &module, Method &method, const Configuration &config);
+		bool propagateMoves(const Module &module, Method &method, const Configuration &config);
 	} // namespace optimizations
 } // namespace vc4c
 #endif /* ELIMINATOR_H */
-

@@ -84,11 +84,6 @@ static const std::set<OptimizationStep> SINGLE_STEPS = {
 		OptimizationStep("HandleLiteralVector", handleContainer, 40),
 		//maps access to global data to the offset in the code
 		OptimizationStep("MapGlobalDataToAddress", accessGlobalData, 50),
-		//calculates constant values where applicable
-		//TODO sometimes reverts immediate-loads which are then again converted to immediate-loads??
-		OptimizationStep("CalculateConstantValue", calculateConstantInstruction, 60),
-		//eliminates/rewrites useless instructions (e.g. y = x + 0 -> y = x)
-		OptimizationStep("EliminateUselessInstruction", eliminateUselessInstruction, 70),
 		//extracts immediate values into loads
 		OptimizationStep("LoadImmediateValues", handleImmediate, 80),
 		//prevents register-conflicts by moving long-living locals into temporaries before being used together with literal values
@@ -132,6 +127,35 @@ static void runSingleSteps(const Module& module, Method& method, const Configura
 	}
 }
 
+static void generalOptimization(const Module& module, Method& method, const Configuration& config)
+{
+	using pass = std::function<bool(const Module& module, Method& method, const Configuration& config)>;
+	using step = std::function<bool(const Module& module, Method& method, InstructionWalker& it, const Configuration& config)>;
+	static std::vector<pass> PASS   = { translateToMove, eliminateRedundantMoves, eliminateRedundantBitOp, propagateMoves };
+	static std::vector<step> SINGLE = { calculateConstantInstruction, eliminateUselessInstruction };
+	bool moved;
+
+	do {
+		moved = false;
+		auto it = method.walkAllInstructions();
+		while(! it.isEndOfMethod())
+		{
+			for (const step & s : SINGLE)
+			{
+				moved = moved || s(module, method, it, config);
+                                // logging::debug() << "step: " << moved << logging::endl;
+			}
+                        it.nextInMethod();
+		}
+
+		for (const pass & p : PASS)
+		{
+			moved = moved || p(module, method, config);
+                        // logging::debug() << "pass: " << moved << logging::endl;
+		}
+	} while(moved);
+}
+
 //need to run before mapping literals
 const OptimizationPass optimizations::MAP_MEMORY_ACCESS = OptimizationPass("MapMemoryAccess", mapMemoryAccess, 10);
 const OptimizationPass optimizations::RESOLVE_STACK_ALLOCATIONS = OptimizationPass("ResolveStackAllocations", resolveStackAllocations, 20);
@@ -139,13 +163,8 @@ const OptimizationPass optimizations::RUN_SINGLE_STEPS = OptimizationPass("Singl
 const OptimizationPass optimizations::SPILL_LOCALS = OptimizationPass("SpillLocals", spillLocals, 80);
 const OptimizationPass optimizations::COMBINE_LITERAL_LOADS = OptimizationPass("CombineLiteralLoads", combineLoadingLiterals, 90);
 const OptimizationPass optimizations::COMBINE_ROTATIONS = OptimizationPass("CombineRotations", combineVectorRotations, 100);
-const OptimizationPass optimizations::TRANSLATE_TO_MOVE_1 = OptimizationPass("TranslateToMove1", translatToMove, 110);
-const OptimizationPass optimizations::PROPAGATE_VAR_1 = OptimizationPass("PropagateVar1", propagateVar, 120);
-const OptimizationPass optimizations::REMOVE_REDUNDANT_MOVES_1 = OptimizationPass("RemoveRedundantMoves1", eliminateRedundantMoves, 130);
-const OptimizationPass optimizations::REMOVE_REDUNDANT_BITOP = OptimizationPass("RemoveRedundantBitOp", eliminateRedundantBitOp, 140);
-const OptimizationPass optimizations::TRANSLATE_TO_MOVE_2 = OptimizationPass("TranslateToMove2", translatToMove, 150);
-const OptimizationPass optimizations::PROPAGATE_VAR_2 = OptimizationPass("PropagateVar2", propagateVar, 160);
-const OptimizationPass optimizations::REMOVE_REDUNDANT_MOVES_2 = OptimizationPass("RemoveRedundantMoves2", eliminateRedundantMoves, 170);
+const OptimizationPass optimizations::GENERAL_OPTIMIZATIONS = OptimizationPass("GeneralOptimizations", generalOptimization, 110);
+const OptimizationPass optimizations::RUN_SINGLE_STEPS_2 = OptimizationPass("SingleSteps", runSingleSteps, 120);
 const OptimizationPass optimizations::ELIMINATE = OptimizationPass("EliminateDeadStores", eliminateDeadStore, 180);
 const OptimizationPass optimizations::VECTORIZE = OptimizationPass("VectorizeLoops", vectorizeLoops, 190);
 const OptimizationPass optimizations::SPLIT_READ_WRITES = OptimizationPass("SplitReadAfterWrites", splitReadAfterWrites, 200);
@@ -158,8 +177,7 @@ const OptimizationPass optimizations::EXTEND_BRANCHES = OptimizationPass("Extend
 
 const std::set<OptimizationPass> optimizations::DEFAULT_PASSES = {
 		MAP_MEMORY_ACCESS, RUN_SINGLE_STEPS, /* SPILL_LOCALS, */ COMBINE_LITERAL_LOADS, RESOLVE_STACK_ALLOCATIONS, COMBINE_ROTATIONS,
-		TRANSLATE_TO_MOVE_1, PROPAGATE_VAR_1, REMOVE_REDUNDANT_MOVES_1, REMOVE_REDUNDANT_BITOP, TRANSLATE_TO_MOVE_2, PROPAGATE_VAR_2, REMOVE_REDUNDANT_MOVES_2,
-		ELIMINATE, VECTORIZE, SPLIT_READ_WRITES, REORDER, COMBINE, UNROLL_WORK_GROUPS, ADD_START_STOP_SEGMENT, EXTEND_BRANCHES
+		GENERAL_OPTIMIZATIONS, RUN_SINGLE_STEPS_2, ELIMINATE, VECTORIZE, SPLIT_READ_WRITES, REORDER, COMBINE, UNROLL_WORK_GROUPS, ADD_START_STOP_SEGMENT, EXTEND_BRANCHES
 };
 
 Optimizer::Optimizer(const Configuration& config, const std::set<OptimizationPass>& passes) : config(config), passes(passes)

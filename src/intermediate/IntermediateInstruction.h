@@ -193,7 +193,7 @@ namespace vc4c
 			 */
 			virtual Optional<Value> precalculate(std::size_t numIterations) const;
 
-			void replaceValue(const Value oldValue, const Value newValue, LocalUse::Type type);
+			bool replaceValue(const Value oldValue, const Value newValue, LocalUse::Type type);
 
 			Signaling signal;
 			Unpack unpackMode;

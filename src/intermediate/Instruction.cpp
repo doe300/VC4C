@@ -375,25 +375,35 @@ void IntermediateInstruction::replaceLocal(const Local *oldLocal, const Value ne
 	replaceValue(oldLocal->createReference(), newValue, type);
 }
 
-void IntermediateInstruction::replaceValue(const Value oldValue, const Value newValue, LocalUse::Type type) {
+bool IntermediateInstruction::replaceValue(const Value oldValue, const Value newValue, LocalUse::Type type) {
+	bool replaced = false;
 	if(newValue == oldValue)
-		return;
+		return false;
 	if(has_flag(type, LocalUse::Type::WRITER) && output && output == oldValue)
 	{
+		logging::debug() << "replaceValue: replace " << output.to_string() << " to " << newValue.to_string(true, true)
+						 << " in " << to_string() << logging::endl;
 		setOutput(Optional<Value>(newValue));
+		replaced = true;
 	}
+
 	if(has_flag(type, LocalUse::Type::READER))
 	{
 		for(Value& arg : arguments)
 		{
 			if(arg == oldValue)
 			{
+				logging::debug() << "replaceValue: replace " << arg.to_string() << " to " << newValue.to_string(true, true)
+								 << " in " << to_string() << logging::endl;
 				removeAsUserFromValue(arg,  LocalUse::Type::READER);
 				arg = newValue;
 				addAsUserToValue(arg, LocalUse::Type::READER);
+				replaced = true;
 			}
 		}
 	}
+
+	return replaced;
 }
 
 bool IntermediateInstruction::readsRegister(const Register& reg) const

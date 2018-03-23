@@ -251,10 +251,12 @@ namespace vc4c
 		 * If `forward` = false, traver reversely.
 		 * If `stopWhenWritten` = true, finish when it finds a instruction, which is re-assign in it.
 		 */
-		void replaceLocalInBlock(const Local *oldLocal, const Local *newLocal, LocalUse::Type type = LocalUse::Type::READER,
+		bool replaceLocalInBlock(const Local *oldLocal, const Local *newLocal,
+								 LocalUse::Type type = LocalUse::Type::READER,
 								 bool forward = true, bool stopWhenWritten = true);
 
-		void replaceValueInBlock(const Value oldValue, const Value newValue, LocalUse::Type type = LocalUse::Type::READER,
+		bool replaceValueInBlock(const Value oldValue, const Value newValue,
+								 LocalUse::Type type = LocalUse::Type::READER,
 								 bool forward = true, bool stopWhenWritten = true);
 	private:
 		BasicBlock* basicBlock;

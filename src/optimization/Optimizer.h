@@ -76,6 +76,7 @@ namespace vc4c
 		extern const OptimizationPass MAP_MEMORY_ACCESS;
 		//runs all the single-step optimizations. Combining them results in fewer iterations over the instructions
 		extern const OptimizationPass RUN_SINGLE_STEPS;
+		extern const OptimizationPass RUN_SINGLE_STEPS_2;
 		//combines loadings of the same literal value within a small range of a basic block
 		extern const OptimizationPass COMBINE_LITERAL_LOADS;
 		//handles stack-allocations by calculating their offsets and indices
@@ -85,8 +86,7 @@ namespace vc4c
 		//combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation
 		extern const OptimizationPass COMBINE_ROTATIONS;
 		//removes various cases of redundant moves
-		extern const OptimizationPass REMOVE_REDUNDANT_MOVES_1;
-		extern const OptimizationPass REMOVE_REDUNDANT_MOVES_2;
+		extern const OptimizationPass REMOVE_REDUNDANT_MOVES;
 		//eliminates useless instructions (dead store, move to same, add with zero, ...)
 		extern const OptimizationPass ELIMINATE;
 		//vectorizes loops
@@ -103,11 +103,10 @@ namespace vc4c
 		extern const OptimizationPass EXTEND_BRANCHES;
 		//adds the start- and stop-segments to the beginning and end of the kernel
 		extern const OptimizationPass ADD_START_STOP_SEGMENT;
-		//remove unneccesary "and" and "or"
-		extern const OptimizationPass REMOVE_REDUNDANT_BITOP;
-		// propagate source value of move in a basic block
-		extern const OptimizationPass PROPAGATE_VAR_1;
-		extern const OptimizationPass PROPAGATE_VAR_2;
+
+
+
+		extern const OptimizationPass GENERAL_OPTIMIZATIONS;
 		/*
 		 * The default optimization passes consist of all passes listed above.
 		 * NOTE: Some of the passes are REQUIRED and the compilation will fail, if they are removed.
@@ -132,7 +131,6 @@ namespace vc4c
 			Configuration config;
 			std::set<OptimizationPass> passes;
 		};
-
 
 	} // namespace optimizations
 } // namespace vc4c

@@ -292,8 +292,9 @@ const BasicBlock* ConstInstructionWalker::getBasicBlock() const
 	return basicBlock;
 }
 
-void InstructionWalker::replaceLocalInBlock(const Local *oldLocal, const Local *newLocal, LocalUse::Type type, bool forward, bool stopFlag) {
-	replaceValueInBlock(oldLocal->createReference(), newLocal->createReference(), type, forward, stopFlag);
+bool InstructionWalker::replaceLocalInBlock(const Local *oldLocal, const Local *newLocal, LocalUse::Type type,
+											bool forward, bool stopFlag) {
+	return replaceValueInBlock(oldLocal->createReference(), newLocal->createReference(), type, forward, stopFlag);
 }
 
 ConstInstructionWalker& ConstInstructionWalker::nextInBlock()
@@ -321,15 +322,17 @@ ConstInstructionWalker& ConstInstructionWalker::nextInMethod() {
 	return *this;
 }
 
-void InstructionWalker::replaceValueInBlock(const Value oldValue, const Value newValue, LocalUse::Type type, bool forward, bool stopWhenWritten)
+bool InstructionWalker::replaceValueInBlock(const Value oldValue, const Value newValue, LocalUse::Type type,
+											bool forward, bool stopWhenWritten)
 {
+	bool replaced = false;
 	auto it = copy();
 	if (forward)
     {
 		it.nextInBlock();
 		while (! it.isEndOfBlock())
         {
-			it->replaceValue(oldValue, newValue, type);
+			replaced = it->replaceValue(oldValue, newValue, type);
 			if (it->getOutput().has_value() && it->getOutput().value() == oldValue && stopWhenWritten)
 				break;
 
@@ -341,13 +344,15 @@ void InstructionWalker::replaceValueInBlock(const Value oldValue, const Value ne
 		it.previousInBlock();
 		while (! it.isStartOfBlock())
         {
-			it->replaceValue(oldValue, newValue, type);
+			replaced = it->replaceValue(oldValue, newValue, type);
 			if (it->getOutput().has_value() && it->getOutput().value() == oldValue && stopWhenWritten)
 				break;
 
 			it.previousInBlock();
 		}
 	}
+
+	return replaced;
 }
 
 ConstInstructionWalker& ConstInstructionWalker::previousInMethod()
