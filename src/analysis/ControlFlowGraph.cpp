@@ -118,7 +118,7 @@ bool ControlFlowLoop::includes(const ControlFlowLoop& other) const
 
 	auto thisItr = head;
 	auto otherItr = other.begin();
-	while ((*thisItr)->key == (*otherItr)->key && thisItr != this->end() && otherItr != other.end())
+	while (thisItr != this->end() && otherItr != other.end() && (*thisItr)->key == (*otherItr)->key)
 	{
 		++thisItr;
 		++otherItr;
