@@ -31,6 +31,9 @@ namespace vc4c
 	 * If an instruction within a basic-block is executed, all instructions within that block are executed.
 	 * A basic-block always starts with a label, can only contain that one label and cannot have any non-branch
 	 * instructions behind the first branch.
+	 *
+	 * NOTE: This implementation does not follow the above principle exactly: Jump-here-or-there (e.g. SPIR-V OpBranchConditional) instructions are split up
+	 * into two separate branch-instructions, making it possible for the second branch to not be executed when the block is traversed.
 	 */
 	class BasicBlock : private NonCopyable
 	{

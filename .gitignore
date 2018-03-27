@@ -30,3 +30,7 @@ include/VC4CLStdLib.h.pch
 #CPack
 /CPackConfig.cmake
 /CPackSourceConfig.cmake
+
+#CTest
+/CTestTestfile.cmake
+/Testing

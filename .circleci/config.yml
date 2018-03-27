@@ -1,5 +1,11 @@
 version: 2
 jobs:
+  check-code-style:
+    docker:
+      - image: nomaddo/native
+    steps:
+      - checkout
+      - run: .circleci/clang-format-diff.sh
   cross:
     docker:
       - image: nomaddo/cross-rpi:0.1
@@ -70,11 +76,11 @@ jobs:
       - persist_to_workspace:
           root: /root/project
           paths:
-            - build/libVC4CC.so.0.4
             - build/test/TestVC4C
             - build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9
             - testing
             - example
+            - vc4c-0.4-Linux.deb
             - vc4cl-stdlib-0.4-Linux.deb
   build-spirv:
     docker:
@@ -114,11 +120,11 @@ jobs:
       - persist_to_workspace:
           root: /root/project
           paths:
-            - build/libVC4CC.so.0.4
             - build/test/TestVC4C
             - build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9
             - testing
             - example
+            - vc4c-0.4-Linux.deb
             - vc4cl-stdlib-0.4-Linux.deb
   test:
     docker:
@@ -127,7 +133,7 @@ jobs:
       - attach_workspace:
           at: /root/project
       - run: dpkg -i vc4cl-stdlib-0.4-Linux.deb
-      - run: ln -s `pwd`/build/libVC4CC.so.0.4 /usr/lib/libVC4CC.so.1.2
+      - run: dpkg -i vc4c-0.4-Linux.deb
       - run: ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
       - run: ldconfig
       - run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators
@@ -138,7 +144,7 @@ jobs:
       - attach_workspace:
           at: /root/project
       - run: dpkg -i vc4cl-stdlib-0.4-Linux.deb
-      - run: ln -s `pwd`/build/libVC4CC.so.0.4 /usr/lib/libVC4CC.so.1.2
+      - run: dpkg -i vc4c-0.4-Linux.deb
       - run: ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
       - run: ldconfig
       - run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators
@@ -146,6 +152,7 @@ workflows:
   version: 2
   commit:
     jobs:
+      - check-code-style
       - build
       - build-spirv
       - cross

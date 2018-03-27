@@ -62,16 +62,21 @@ if(CROSS_COMPILE)
 	message(STATUS "Cross compiling for Raspbian with compiler: ${CMAKE_CXX_COMPILER}")
 endif()
 
+# Set C++ standard to C++14 without any extensions (e.g. GNU)
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 project (VC4C VERSION 0.4)
 add_definitions(-DVC4C_VERSION="${PROJECT_VERSION}")
 
 # append usage of C++ to compiler flags, also optimize for speed and enable all warnings
 if(BUILD_DEBUG)
-	LIST(APPEND CMAKE_CXX_FLAGS "-std=c++14 -g3 -rdynamic -Wall -Wextra -Wold-style-cast -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings")
+	LIST(APPEND CMAKE_CXX_FLAGS " -g3 -rdynamic -Wall -Wextra -Wold-style-cast -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings")
 	SET(CMAKE_BUILD_TYPE 		Debug)
 	add_definitions(-DDEBUG_MODE=1)
 else()
-	LIST(APPEND CMAKE_CXX_FLAGS "-std=c++14 -O3 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings")
+	LIST(APPEND CMAKE_CXX_FLAGS " -O3 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings")
 	SET(CMAKE_BUILD_TYPE 		Release)
 endif()
 
@@ -328,6 +333,7 @@ add_subdirectory(./src build)
 add_subdirectory(tools build/tools)
 
 if (BUILD_TESTING)
+	enable_testing()
 	ExternalProject_Add(cpptest-lite-project
 		PREFIX 				${CMAKE_BINARY_DIR}/build/cpptest-lite
 		SOURCE_DIR 			${CMAKE_SOURCE_DIR}/lib/cpptest-lite
@@ -349,15 +355,13 @@ if (BUILD_DEB_PACKAGE)
 	message(STATUS "Debian package expects VC4CL standard library PCH to be located in: ${VC4CL_STDLIB_HEADER}")
 	
 	# We always need the vc4cl standard-library for installing the vc4c package
-	set(PACKAGE_DEPENDENCIES "vc4cl-stdlib, opencl-c-headers")
-	# TODO do we actually require opencl-c-headers. If so, for what?
+	set(PACKAGE_DEPENDENCIES "vc4cl-stdlib")
 	if(NOT SPIRV_CLANG_FOUND AND CLANG_FOUND)
 		# If we build with "default" clang, require its package
 		set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, clang-3.9")
 		if(LLVMLIB_FRONTEND)
-			# If we also build with libLLVM front-end, require the LLVM library and its development headers too
+			# If we also build with libLLVM front-end, require the LLVM library and its development files too (llvm-3.9-dev contains the libLLVM.so)
 			set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, llvm-3.9, llvm-3.9-dev")
-			# TODO do we need the development headers? VC4C is already built, so we only need the library itself
 		endif()
 	endif()
 
@@ -369,7 +373,7 @@ if (BUILD_DEB_PACKAGE)
 	set(CPACK_DEBIAN_PACKAGE_DEPENDS ${PACKAGE_DEPENDENCIES})
 	if (CROSS_COMPILE)
 		set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "armhf")
-        else()
+	else()
 		set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
 	endif()
 	set(CPACK_PACKAGE_VENDOR "doe300")

@@ -73,6 +73,11 @@ namespace vc4c
 		 * Returns the InstructionWalker for the given instruction, if it is within the loop.
 		 */
 		Optional<InstructionWalker> findInLoop(const intermediate::IntermediateInstruction* inst) const;
+
+		/*
+		 * Returns whether this loop includes other loop and doesn't equal it.
+		 */
+		bool includes(const ControlFlowLoop& other) const;
 	};
 
 	/*
@@ -118,6 +123,24 @@ namespace vc4c
 		
 		friend class Method;
 	};
+
+	/*
+	 * A relation in the control-flow-loop
+	 */
+	struct LoopInclusion
+	{
+		bool includes;
+		LoopInclusion(bool _includes) : includes(_includes) {}
+	};
+	struct LoopInclusionTreeNode : public Node<ControlFlowLoop*, LoopInclusion>
+	{
+		LoopInclusionTreeNode(const KeyType key);
+		LoopInclusionTreeNode* findRoot();
+	};
+	/*
+	 * The trees represents inclusion relation of control-flow loops. This may have multiple trees.
+	 */
+	using LoopInclusionTree = Graph<ControlFlowLoop*, LoopInclusionTreeNode>;
 
 } /* namespace vc4c */
 

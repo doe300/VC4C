@@ -32,6 +32,15 @@ using namespace vc4c::llvm2qasm;
 extern AddressSpace toAddressSpace(int num);
 extern std::string cleanMethodName(const std::string& name);
 
+static void dumpValue(const llvm::Value* val)
+{
+#if LLVM_LIBRARY_VERSION >= 50
+	val->print(llvm::errs());
+#else
+	val->dump();
+#endif
+}
+
 BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType) : context()
 {
 	//required, since LLVM cannot read from std::istreams
@@ -463,8 +472,13 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
 
 	logging::debug() << "Reading function " << method->returnType.to_string() << " " << method->name << "(...)" << logging::endl;
 
+#if LLVM_LIBRARY_VERSION >= 50
+	method->parameters.reserve(func.arg_size());
+	for(const llvm::Argument& arg : func.args())
+#else
 	method->parameters.reserve(func.getArgumentList().size());
 	for(const llvm::Argument& arg : func.getArgumentList())
+#endif
 	{
 		method->parameters.emplace_back(Parameter((std::string("%") + arg.getName()).str(), toDataType(arg.getType()), toParameterDecorations(arg)));
 		logging::debug() << "Reading parameter " << method->parameters.back().to_string() << logging::endl;
@@ -982,7 +996,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
 	}
 	else
 	{
-		val->dump();
+		dumpValue(val);
 		throw CompilationError(CompilationStep::PARSER, "Unhandled constant type", std::to_string(val->getValueID()));
 	}
 }
@@ -1011,7 +1025,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
 			{
 				if(!toConstant(module, expr->getOperand(i)).isZeroInitializer())
 				{
-					expr->dump();
+					dumpValue(expr);
 					throw CompilationError(CompilationStep::PARSER, "Only constant getelementptr without offsets are supported for now");
 				}
 			}
@@ -1077,7 +1091,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
 
 	if(result)
 		return result.value();
-	expr->dump();
+	dumpValue(expr);
 	throw CompilationError(CompilationStep::PARSER, "This type of constant expression is not supported yet", expr->getOpcodeName());
 }
 
