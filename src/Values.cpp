@@ -761,16 +761,3 @@ std::size_t vc4c::hash<vc4c::Value>::operator()(vc4c::Value const& val) const no
 	return std::hash<std::string>::operator()(val.to_string());
 }
 
-Optional<SmallImmediate> Literal::converToSmallImmediate() const
-{
-  if (type == LiteralType::INTEGER)
-  {
-    uint32_t i = toImmediate();
-    if (i >= -15 && i <= 16) {
-      auto s = SmallImmediate(i);
-      return Optional<SmallImmediate>(s);
-    }
-  }
-
-	return Optional<SmallImmediate>();
-}

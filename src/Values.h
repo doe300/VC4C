@@ -382,8 +382,6 @@ namespace vc4c
 
 		std::string to_string() const;
 
-                Optional<SmallImmediate> converToSmallImmediate() const;
-
 		/*
 		 * Whether this literal represents the boolean value true
 		 */
