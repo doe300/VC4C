@@ -178,6 +178,10 @@ namespace vc4c
 			 * Whether the execution of this instruction depends on ALU flags
 			 */
 			bool hasConditionalExecution() const;
+			/*
+			 * Whether does the instruction set flag
+			 */
+			bool doesSetFlag() const;
 
 			/*
 			 * Copies all the extras (signal, pack-modes, etc.) from the given instruction.
@@ -653,4 +657,3 @@ namespace vc4c
 
 
 #endif /* INTERMEDIATEINSTRUCTION_H */
-

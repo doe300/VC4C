@@ -444,3 +444,7 @@ void IntermediateInstruction::addAsUserToValue(const Value& value, LocalUse::Typ
 		const_cast<Local*>(value.local)->addUser(*this, type);
 }
 
+bool IntermediateInstruction::doesSetFlag() const {
+	return setFlags == SetFlag::SET_FLAGS;
+}
+

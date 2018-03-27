@@ -457,7 +457,7 @@ bool optimizations::eliminateRedundantMoves(const Module &module, Method &method
 			auto sourceWriter = (move->getSource().getSingleWriter() != nullptr) ? it.getBasicBlock()->findWalkerForInstruction(move->getSource().getSingleWriter(), it) : Optional<InstructionWalker>{};
 			auto destinationReader = (move->hasValueType(ValueType::LOCAL) && move->getOutput()->local->getUsers(LocalUse::Type::READER).size() == 1) ? it.getBasicBlock()->findWalkerForInstruction(*move->getOutput()->local->getUsers(LocalUse::Type::READER).begin(), it.getBasicBlock()->end()) : Optional<InstructionWalker>{};
 
-			if(! move->hasPackMode() && ! move->hasUnpackMode() && move->getSource() == move->getOutput().value())
+			if(! move->hasPackMode() && ! move->hasUnpackMode() && move->getSource() == move->getOutput().value() && ! move->doesSetFlag())
 			{
 				if (move->signal == SIGNAL_NONE)
 				{
