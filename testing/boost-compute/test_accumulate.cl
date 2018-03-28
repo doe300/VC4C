@@ -42,3 +42,11 @@ if(lid == 0){
 
 }
 
+__kernel void serial_accumulate(int init, uint count, __global int* _buf0)
+{
+int result = init;
+for(uint i = 0; i < count; i++)
+    result = ((result)+((0+i)));
+_buf0[0] = result;
+
+}

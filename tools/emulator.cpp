@@ -17,6 +17,7 @@
 #include <iomanip>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 
 using namespace vc4c;
 using namespace vc4c::tools;
@@ -56,6 +57,20 @@ static std::vector<tools::Word> readDirectData(std::string data)
 	return words;
 }
 
+template<typename T>
+static std::vector<tools::Word> readDirectBuffer(std::string data)
+{
+	std::vector<tools::Word> words;
+	std::stringstream ss(data);
+	T t = 0;
+	while((ss >> t))
+	{
+		words.emplace_back(bit_cast<T, uint32_t>(t));
+	}
+	
+	return words;
+}
+
 static void printHelp()
 {
 	std::cout << "Usage: emulator [-k <kernel-name>] [-d <dump-file>] [-l <local-sizes>] [-g <global-sizes>] [args] input-file" << std::endl;
@@ -68,7 +83,9 @@ static void printHelp()
 	std::cout << "[args] specify the values for the input parameters and can take following values:" << std::endl;
 	std::cout << "\t-f <file-name>\t\tRead <file-name> as binary file" << std::endl;
 	std::cout << "\t-s <string>\t\tUse <string> as input string" << std::endl;
-	std::cout << "\t-b <num>\t\tAllocate anempty buffer with <num> words of size" << std::endl;
+	std::cout << "\t-b <num>\t\tAllocate an empty buffer with <num> words of size" << std::endl;
+	std::cout << "\t-ib <values>\t\tAllocate a buffer containing the given values. The values are passed space-separated inside a string (double-quotes, e.g. \"0 1 2 3 ...\")" << std::endl;
+	std::cout << "\t-fb <values>\t\tAllocate a buffer containing the given values. The values are passed space-separated inside a string (double-quotes, e.g. \"0.0 1.0 2.0 3.0 ...\")" << std::endl;
 	std::cout << "\t<data>\t\t\tUse <data> as input word" << std::endl;
 }
 
@@ -149,6 +166,16 @@ int main(int argc, char** argv)
 		{
 			++i;
 			data.parameter.emplace_back(0u, std::vector<tools::Word>(std::strtol(argv[i], nullptr, 0), 0x0));
+		}
+		else if(std::string("-ib") == argv[i])
+		{
+			++i;
+			data.parameter.emplace_back(0u, readDirectBuffer<int>(argv[i]));
+		}
+		else if(std::string("-fb") == argv[i])
+		{
+			++i;
+			data.parameter.emplace_back(0u, readDirectBuffer<float>(argv[i]));
 		}
 		else
 			data.parameter.emplace_back(static_cast<tools::Word>(std::strtol(argv[i], nullptr, 0)), Optional<std::vector<uint32_t>>{});
