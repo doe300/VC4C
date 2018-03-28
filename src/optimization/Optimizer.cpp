@@ -98,6 +98,15 @@ static const std::set<OptimizationStep> SINGLE_STEPS = {
 		OptimizationStep("CombineSettingSameFlags", combineSameFlags, 130)
 };
 
+static void handleImmediates(const Module& module, Method& method, const Configuration& config)
+{
+	auto it = method.walkAllInstructions();
+	while(!it.isEndOfMethod()) {
+		handleImmediate(module, method, it, config);
+		it.nextInMethod();
+	}
+}
+
 static void runSingleSteps(const Module& module, Method& method, const Configuration& config)
 {
 	auto& s = (logging::debug() << "Running steps: ");
@@ -161,24 +170,23 @@ const OptimizationPass optimizations::MAP_MEMORY_ACCESS = OptimizationPass("MapM
 const OptimizationPass optimizations::RESOLVE_STACK_ALLOCATIONS = OptimizationPass("ResolveStackAllocations", resolveStackAllocations, 20);
 const OptimizationPass optimizations::RUN_SINGLE_STEPS = OptimizationPass("SingleSteps", runSingleSteps, 30);
 const OptimizationPass optimizations::SPILL_LOCALS = OptimizationPass("SpillLocals", spillLocals, 80);
-const OptimizationPass optimizations::COMBINE_LITERAL_LOADS = OptimizationPass("CombineLiteralLoads", combineLoadingLiterals, 90);
 const OptimizationPass optimizations::COMBINE_ROTATIONS = OptimizationPass("CombineRotations", combineVectorRotations, 100);
 const OptimizationPass optimizations::GENERAL_OPTIMIZATIONS = OptimizationPass("GeneralOptimizations", generalOptimization, 110);
-const OptimizationPass optimizations::RUN_SINGLE_STEPS_2 = OptimizationPass("SingleSteps", runSingleSteps, 120);
-const OptimizationPass optimizations::REMOVE_CONSTANT_LOAD_IN_LOOPS = OptimizationPass("RemoveConstantLoadInLoops", removeConstantLoadInLoops, 130);
+const OptimizationPass optimizations::HANDLE_IMMEDIATES = OptimizationPass("SingleSteps", handleImmediates, 120);
+const OptimizationPass optimizations::REMOVE_CONSTANT_LOAD_IN_LOOPS = OptimizationPass("RemoveConstantLoadInLoops", removeConstantLoadInLoops, 140);
 const OptimizationPass optimizations::ELIMINATE = OptimizationPass("EliminateDeadStores", eliminateDeadStore, 180);
 const OptimizationPass optimizations::VECTORIZE = OptimizationPass("VectorizeLoops", vectorizeLoops, 190);
 const OptimizationPass optimizations::SPLIT_READ_WRITES = OptimizationPass("SplitReadAfterWrites", splitReadAfterWrites, 200);
-const OptimizationPass optimizations::REORDER = OptimizationPass("ReorderInstructions", reorderWithinBasicBlocks, 210);
-const OptimizationPass optimizations::COMBINE = OptimizationPass("CombineALUIinstructions", combineOperations, 220);
-const OptimizationPass optimizations::UNROLL_WORK_GROUPS = OptimizationPass("UnrollWorkGroups", unrollWorkGroups, 230);
-const OptimizationPass optimizations::ADD_START_STOP_SEGMENT = OptimizationPass("AddStartStopSegment", addStartStopSegment, 240);
-const OptimizationPass optimizations::EXTEND_BRANCHES = OptimizationPass("ExtendBranches", extendBranches, 250);
-
+const OptimizationPass optimizations::COMBINE_LITERAL_LOADS = OptimizationPass("CombineLiteralLoads", combineLoadingLiterals, 210);
+const OptimizationPass optimizations::REORDER = OptimizationPass("ReorderInstructions", reorderWithinBasicBlocks, 220);
+const OptimizationPass optimizations::COMBINE = OptimizationPass("CombineALUIinstructions", combineOperations, 230);
+const OptimizationPass optimizations::UNROLL_WORK_GROUPS = OptimizationPass("UnrollWorkGroups", unrollWorkGroups, 240);
+const OptimizationPass optimizations::ADD_START_STOP_SEGMENT = OptimizationPass("AddStartStopSegment", addStartStopSegment, 250);
+const OptimizationPass optimizations::EXTEND_BRANCHES = OptimizationPass("ExtendBranches", extendBranches, 300);
 
 const std::set<OptimizationPass> optimizations::DEFAULT_PASSES = {
-		MAP_MEMORY_ACCESS, RUN_SINGLE_STEPS, /* SPILL_LOCALS, */ COMBINE_LITERAL_LOADS, RESOLVE_STACK_ALLOCATIONS, COMBINE_ROTATIONS,
-		GENERAL_OPTIMIZATIONS, RUN_SINGLE_STEPS_2, ELIMINATE, VECTORIZE, SPLIT_READ_WRITES, REORDER, COMBINE, UNROLL_WORK_GROUPS, ADD_START_STOP_SEGMENT, EXTEND_BRANCHES, REMOVE_CONSTANT_LOAD_IN_LOOPS
+		MAP_MEMORY_ACCESS, RUN_SINGLE_STEPS, /* SPILL_LOCALS, */ COMBINE_LITERAL_LOADS, HANDLE_IMMEDIATES, RESOLVE_STACK_ALLOCATIONS, COMBINE_ROTATIONS,
+		GENERAL_OPTIMIZATIONS, ELIMINATE, VECTORIZE, SPLIT_READ_WRITES, REORDER, COMBINE, UNROLL_WORK_GROUPS, ADD_START_STOP_SEGMENT, EXTEND_BRANCHES, REMOVE_CONSTANT_LOAD_IN_LOOPS
 };
 
 Optimizer::Optimizer(const Configuration& config, const std::set<OptimizationPass>& passes) : config(config), passes(passes)

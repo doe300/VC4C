@@ -76,8 +76,9 @@ namespace vc4c
 		extern const OptimizationPass MAP_MEMORY_ACCESS;
 		//runs all the single-step optimizations. Combining them results in fewer iterations over the instructions
 		extern const OptimizationPass RUN_SINGLE_STEPS;
-		extern const OptimizationPass RUN_SINGLE_STEPS_2;
-		//combines loadings of the same literal value within a small range of a basic block
+
+	    extern const OptimizationPass HANDLE_IMMEDIATES;
+	    //combines loadings of the same literal value within a small range of a basic block
 		extern const OptimizationPass COMBINE_LITERAL_LOADS;
 		//handles stack-allocations by calculating their offsets and indices
 		extern const OptimizationPass RESOLVE_STACK_ALLOCATIONS;

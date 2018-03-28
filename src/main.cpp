@@ -222,7 +222,10 @@ int main(int argc, char** argv)
     	std::unordered_map<std::istream*, Optional<std::string>> inputs;
     	for(const std::string& file : inputFiles)
     	{
-    		fileStreams.emplace_back(new std::ifstream(file));
+			auto ifs = new std::ifstream(file);
+			if (! ifs->is_open())
+				throw CompilationError(CompilationStep::PRECOMPILATION, "cannot find file: " + file);
+    		fileStreams.emplace_back(ifs);
     		inputs.emplace(fileStreams.back().get(), Optional<std::string>(file));
     	}
     	input.reset(new std::stringstream());
@@ -235,7 +238,11 @@ int main(int argc, char** argv)
     }
     else
     {
-		input.reset(new std::ifstream(inputFiles.at(0)));
+		auto file = inputFiles.at(0);
+		auto ifs = new std::ifstream(file);
+		if (! ifs->is_open())
+			throw CompilationError(CompilationStep::PRECOMPILATION, "cannot find file: " + file);
+		input.reset(ifs);
 		inputFile = inputFiles.at(0);
     }
 
