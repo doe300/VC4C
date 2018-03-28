@@ -74,6 +74,7 @@ add_definitions(-DVC4C_VERSION="${PROJECT_VERSION}")
 if(BUILD_DEBUG)
 	LIST(APPEND CMAKE_CXX_FLAGS " -g3 -rdynamic -Wall -Wextra -Wold-style-cast -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings")
 	SET(CMAKE_BUILD_TYPE 		Debug)
+	# TODO use NDEBUG instead (set automatically?)
 	add_definitions(-DDEBUG_MODE=1)
 else()
 	LIST(APPEND CMAKE_CXX_FLAGS " -O3 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings")
@@ -90,6 +91,7 @@ endif()
 if(MULTI_THREADED)
 	message(STATUS "Enabling multi-threaded optimizations")
 	add_definitions(-DMULTI_THREADED=1)
+	# TODO include (Threads) instead
 	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 endif()
 
@@ -321,9 +323,6 @@ add_custom_target(vc4cl-stdlib
     SOURCES				${VC4CL_STDLIB_HEADER_SOURCE}
 )
 add_definitions(-DVC4CL_STDLIB_HEADER="${VC4CL_STDLIB_HEADER}")
-# Generate postint-script for debian package, building the VC4CLStdLib PCH
-configure_file(cmake/deb-postint.in "${CMAKE_BINARY_DIR}/build/postinst" @ONLY NEWLINE_STYLE UNIX)
-configure_file(cmake/deb-prerem.in "${CMAKE_BINARY_DIR}/build/prerem" @ONLY NEWLINE_STYLE UNIX)
 
 ####
 # Main files
@@ -353,6 +352,10 @@ endif (BUILD_TESTING)
 if (BUILD_DEB_PACKAGE)
 	message(STATUS "build deb package...")
 	message(STATUS "Debian package expects VC4CL standard library PCH to be located in: ${VC4CL_STDLIB_HEADER}")
+	
+	# Generate postint-script for debian package, building the VC4CLStdLib PCH
+	configure_file(cmake/deb-postint.in "${CMAKE_BINARY_DIR}/build/postinst" @ONLY NEWLINE_STYLE UNIX)
+	configure_file(cmake/deb-prerem.in "${CMAKE_BINARY_DIR}/build/prerem" @ONLY NEWLINE_STYLE UNIX)
 	
 	# We always need the vc4cl standard-library for installing the vc4c package
 	set(PACKAGE_DEPENDENCIES "vc4cl-stdlib")
