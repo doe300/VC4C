@@ -103,6 +103,7 @@ static void handleImmediates(const Module& module, Method& method, const Configu
 	auto it = method.walkAllInstructions();
 	while(!it.isEndOfMethod()) {
 		handleImmediate(module, method, it, config);
+		handleUseWithImmediate(module, method, it, config);
 		it.nextInMethod();
 	}
 }

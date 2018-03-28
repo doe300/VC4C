@@ -977,6 +977,9 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
 
 void optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
 {
+	if (config.moveConstants == false)
+		return;
+
 	// 1. find loops
 	auto &cfg = method.getCFG();
 	auto loops = cfg.findLoops();

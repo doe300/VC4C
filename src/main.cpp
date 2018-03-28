@@ -172,6 +172,10 @@ int main(int argc, char** argv)
         	config.frontend = Frontend::LLVM_IR;
         else if(strcmp("--disassemble", argv[i]) == 0)
         	runDisassembler = true;
+		else if(strcmp("--fmoveconstants", argv[i]) == 0)
+			config.moveConstants = true;
+		else if(strcmp("--fnomoveconstants", argv[i]) == 0)
+			config.moveConstants = false;
         else if(strcmp("-o", argv[i]) == 0)
         {
         	outputFile = argv[i+1];

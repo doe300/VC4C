@@ -99,6 +99,10 @@ namespace vc4c
 	     * Whether to turn on auto-vectorization of loops
 	     */
 	    bool autoVectorization = false;
+		/*
+		 * Whether moving of constants to out side of loops
+		 */
+		bool moveConstants = true;
 	};
 
 	/*
