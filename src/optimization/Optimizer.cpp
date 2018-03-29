@@ -84,10 +84,6 @@ static const std::set<OptimizationStep> SINGLE_STEPS = {
 		OptimizationStep("HandleLiteralVector", handleContainer, 40),
 		//maps access to global data to the offset in the code
 		OptimizationStep("MapGlobalDataToAddress", accessGlobalData, 50),
-		//extracts immediate values into loads
-		OptimizationStep("LoadImmediateValues", handleImmediate, 80),
-		//prevents register-conflicts by moving long-living locals into temporaries before being used together with literal values
-		OptimizationStep("HandleUseWithImmediateValues", handleUseWithImmediate, 90),
 		//moves all sources of vector-rotations to accumulators (if too large usage-range)
 		OptimizationStep("MoveRotationSourcesToAccs", moveRotationSourcesToAccumulators, 100),
 		//simple fail-fast for not inlined or intrinsified method-calls
@@ -145,7 +141,7 @@ static void generalOptimization(const Module& module, Method& method, const Conf
 	static std::vector<step> SINGLE = { calculateConstantInstruction, eliminateUselessInstruction };
 	bool moved;
 
-	do {
+	for (int i = 0; i < 1000; i++) {
 		moved = false;
 		auto it = method.walkAllInstructions();
 		while(! it.isEndOfMethod())
@@ -163,7 +159,10 @@ static void generalOptimization(const Module& module, Method& method, const Conf
 			moved = moved || p(module, method, config);
                         // logging::debug() << "pass: " << moved << logging::endl;
 		}
-	} while(moved);
+
+                if (! moved)
+                  break;
+	}
 }
 
 //need to run before mapping literals
