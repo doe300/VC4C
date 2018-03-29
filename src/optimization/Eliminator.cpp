@@ -457,15 +457,17 @@ bool optimizations::eliminateRedundantMoves(const Module &module, Method &method
 			auto sourceWriter = (move->getSource().getSingleWriter() != nullptr) ? it.getBasicBlock()->findWalkerForInstruction(move->getSource().getSingleWriter(), it) : Optional<InstructionWalker>{};
 			auto destinationReader = (move->hasValueType(ValueType::LOCAL) && move->getOutput()->local->getUsers(LocalUse::Type::READER).size() == 1) ? it.getBasicBlock()->findWalkerForInstruction(*move->getOutput()->local->getUsers(LocalUse::Type::READER).begin(), it.getBasicBlock()->end()) : Optional<InstructionWalker>{};
 
-			if(! move->hasPackMode() && ! move->hasUnpackMode() && move->getSource() == move->getOutput().value() && ! move->doesSetFlag())
+			if(! move->hasPackMode() && ! move->hasUnpackMode() && move->getSource() == move->getOutput().value() && ! move->doesSetFlag() && ! move->hasSideEffects())
 			{
 				if (move->signal == SIGNAL_NONE)
 				{
+					logging::debug() << "Removing obsolete move: " << it->to_string() << logging::endl;
 					it.erase();
 					flag = true;
 				}
 				else
 				{
+					logging::debug() << "Removing obsolete move with nop: " << it->to_string() << logging::endl;
 					auto nop = new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER, move->signal);
 					it.reset(nop);
 					flag = true;
