@@ -228,12 +228,13 @@ static void runOptimizationPasses(
     {
         logging::debug() << logging::endl;
         logging::debug() << "Running pass: " << pass.name << logging::endl;
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + pass.index * 10, pass.name + " (before)", method.countInstructions());
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + pass.index * 10, pass.name + " (before)",
+            method.countInstructions());
         PROFILE_START_DYNAMIC(pass.name);
         pass(module, method, config);
         PROFILE_END_DYNAMIC(pass.name);
-        PROFILE_COUNTER_WITH_PREV(
-            vc4c::profiler::COUNTER_OPTIMIZATION + (pass.index + 1) * 10, pass.name + " (after)", method.countInstructions(), vc4c::profiler::COUNTER_OPTIMIZATION + pass.index * 10);
+        PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_OPTIMIZATION + (pass.index + 1) * 10, pass.name + " (after)",
+            method.countInstructions(), vc4c::profiler::COUNTER_OPTIMIZATION + pass.index * 10);
     }
     logging::info() << logging::endl;
     if(numInstructions != method.countInstructions())
@@ -251,16 +252,18 @@ static void runOptimizationPasses(
 
 void Optimizer::optimize(Module& module) const
 {
-    std::vector<threading::BackgroundWorker> workers;
+    std::vector<BackgroundWorker> workers;
     workers.reserve(module.getKernels().size());
     for(auto& method : module)
     {
         // PHI-nodes need to be eliminated before inlining functions
         // since otherwise the phi-node is mapped to the initial label, not to the last label added by the functions
         // (the real end of the original, but split up block)
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_NORMALIZATION + 1, "Eliminate Phi-nodes (before)", method->countInstructions());
+        PROFILE_COUNTER(
+            vc4c::profiler::COUNTER_NORMALIZATION + 1, "Eliminate Phi-nodes (before)", method->countInstructions());
         eliminatePhiNodes(module, *method.get(), config);
-        PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION + 2, "Eliminate Phi-nodes (after)", method->countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 1);
+        PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION + 2, "Eliminate Phi-nodes (after)",
+            method->countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 1);
     }
     for(Method* kernelFunc : module.getKernels())
     {
@@ -268,14 +271,15 @@ void Optimizer::optimize(Module& module) const
 
         PROFILE_COUNTER(vc4c::profiler::COUNTER_NORMALIZATION + 4, "Inline (before)", kernel.countInstructions());
         inlineMethods(module, kernel, config);
-        PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION + 5, "Inline (after)", kernel.countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 4);
+        PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION + 5, "Inline (after)",
+            kernel.countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 4);
     }
     for(Method* kernelFunc : module.getKernels())
     {
         auto f = [kernelFunc, &module, this]() -> void { runOptimizationPasses(module, *kernelFunc, config, passes); };
         workers.emplace(workers.end(), f, "Optimizer")->operator()();
     }
-    threading::BackgroundWorker::waitForAll(workers);
+    BackgroundWorker::waitForAll(workers);
 }
 
 void Optimizer::addPass(const OptimizationPass& pass)

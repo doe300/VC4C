@@ -141,14 +141,14 @@ std::size_t Compiler::convert()
     opt.optimize(module);
     PROFILE_END(Optimizer);
 
-    std::vector<threading::BackgroundWorker> workers;
+    std::vector<BackgroundWorker> workers;
     workers.reserve(module.getKernels().size());
     for(Method* kernelFunc : module.getKernels())
     {
         auto f = [&codeGen, kernelFunc]() -> void { toMachineCode(codeGen, *kernelFunc); };
         workers.emplace(workers.end(), f, "Code Generator")->operator()();
     }
-    threading::BackgroundWorker::waitForAll(workers);
+    BackgroundWorker::waitForAll(workers);
 
     // TODO could discard unused globals
     // since they are exported, they are still in the intermediate code, even if not used (e.g. optimized away)
