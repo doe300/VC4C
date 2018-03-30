@@ -12,7 +12,6 @@
 #include "Combiner.h"
 #include "ControlFlow.h"
 #include "Eliminator.h"
-#include "Inliner.h"
 #include "LiteralValues.h"
 #include "MemoryAccess.h"
 #include "Reordering.h"
@@ -62,19 +61,6 @@ bool OptimizationStep::operator==(const OptimizationStep& other) const
     return name.compare(other.name) == 0 && index == other.index;
 }
 
-/*
- * Fail-fast for unresolved function-calls
- */
-static InstructionWalker checkMethodCalls(
-    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
-{
-    if(it.has<intermediate::MethodCall>())
-    {
-        throw CompilationError(CompilationStep::OPTIMIZER, "There should be no more function-calls", it->to_string());
-    }
-    return it;
-}
-
 static const std::set<OptimizationStep> SINGLE_STEPS = {
     // replaces all remaining returns with jumps to the end of the kernel-function
     OptimizationStep("EliminateReturns", eliminateReturn, 0),
@@ -90,8 +76,6 @@ static const std::set<OptimizationStep> SINGLE_STEPS = {
     OptimizationStep("MapGlobalDataToAddress", accessGlobalData, 50),
     // moves all sources of vector-rotations to accumulators (if too large usage-range)
     OptimizationStep("MoveRotationSourcesToAccs", moveRotationSourcesToAccumulators, 100),
-    // simple fail-fast for not inlined or intrinsified method-calls
-    OptimizationStep("CheckMethodCalls", checkMethodCalls, 110),
     // combine consecutive instructions writing the same local with a value and zero depending on some flags
     OptimizationStep("CombineSelectionWithZero", combineSelectionWithZero, 120),
     // combine successive setting of the same flags
@@ -254,26 +238,6 @@ void Optimizer::optimize(Module& module) const
 {
     std::vector<BackgroundWorker> workers;
     workers.reserve(module.getKernels().size());
-    for(auto& method : module)
-    {
-        // PHI-nodes need to be eliminated before inlining functions
-        // since otherwise the phi-node is mapped to the initial label, not to the last label added by the functions
-        // (the real end of the original, but split up block)
-        PROFILE_COUNTER(
-            vc4c::profiler::COUNTER_NORMALIZATION + 1, "Eliminate Phi-nodes (before)", method->countInstructions());
-        eliminatePhiNodes(module, *method.get(), config);
-        PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION + 2, "Eliminate Phi-nodes (after)",
-            method->countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 1);
-    }
-    for(Method* kernelFunc : module.getKernels())
-    {
-        Method& kernel = *kernelFunc;
-
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_NORMALIZATION + 4, "Inline (before)", kernel.countInstructions());
-        inlineMethods(module, kernel, config);
-        PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION + 5, "Inline (after)",
-            kernel.countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 4);
-    }
     for(Method* kernelFunc : module.getKernels())
     {
         auto f = [kernelFunc, &module, this]() -> void { runOptimizationPasses(module, *kernelFunc, config, passes); };

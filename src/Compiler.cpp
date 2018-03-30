@@ -13,6 +13,7 @@
 #include "asm/CodeGenerator.h"
 #include "log.h"
 #include "logger.h"
+#include "normalization/Normalizer.h"
 #include "optimization/Optimizer.h"
 #include "spirv/SPIRVParser.h"
 #include "llvm/BitcodeReader.h"
@@ -135,8 +136,14 @@ std::size_t Compiler::convert()
     parser->parse(module);
     PROFILE_END(Parser);
 
+    normalization::Normalizer norm(config);
     optimizations::Optimizer opt(config);
     qpu_asm::CodeGenerator codeGen(module, config);
+    
+    PROFILE_START(Normalizer);
+    norm.normalize(module);
+    PROFILE_END(Normalizer);
+    
     PROFILE_START(Optimizer);
     opt.optimize(module);
     PROFILE_END(Optimizer);
