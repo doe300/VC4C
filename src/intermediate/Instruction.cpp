@@ -368,26 +368,42 @@ bool IntermediateInstruction::writesLocal(const Local* local) const
 
 void IntermediateInstruction::replaceLocal(const Local* oldLocal, const Local* newLocal, const LocalUse::Type type)
 {
-	if(oldLocal == newLocal)
-		return;
-	if(has_flag(type, LocalUse::Type::WRITER) && output && output->hasLocal(oldLocal))
+	replaceValue(oldLocal->createReference(), newLocal->createReference(), type);
+}
+
+void IntermediateInstruction::replaceLocal(const Local *oldLocal, const Value newValue, LocalUse::Type type) {
+	replaceValue(oldLocal->createReference(), newValue, type);
+}
+
+bool IntermediateInstruction::replaceValue(const Value oldValue, const Value newValue, LocalUse::Type type) {
+	bool replaced = false;
+	if(newValue == oldValue)
+		return false;
+	if(has_flag(type, LocalUse::Type::WRITER) && output && output == oldValue)
 	{
-		removeAsUserFromValue(output.value(), LocalUse::Type::WRITER);
-		output->local = const_cast<Local*>(newLocal);
-		addAsUserToValue(output.value(), LocalUse::Type::WRITER);
+		logging::debug() << "replaceValue: replace " << output.to_string() << " to " << newValue.to_string(true, true)
+						 << " in " << to_string() << logging::endl;
+		setOutput(Optional<Value>(newValue));
+		replaced = true;
 	}
+
 	if(has_flag(type, LocalUse::Type::READER))
 	{
 		for(Value& arg : arguments)
 		{
-			if(arg.hasLocal(oldLocal))
+			if(arg == oldValue)
 			{
+				logging::debug() << "replaceValue: replace " << arg.to_string() << " to " << newValue.to_string(true, true)
+								 << " in " << to_string() << logging::endl;
 				removeAsUserFromValue(arg,  LocalUse::Type::READER);
-				arg.local = const_cast<Local*>(newLocal);
+				arg = newValue;
 				addAsUserToValue(arg, LocalUse::Type::READER);
+				replaced = true;
 			}
 		}
 	}
+
+	return replaced;
 }
 
 bool IntermediateInstruction::readsRegister(const Register& reg) const
@@ -427,3 +443,8 @@ void IntermediateInstruction::addAsUserToValue(const Value& value, LocalUse::Typ
 	if(value.hasType(ValueType::LOCAL))
 		const_cast<Local*>(value.local)->addUser(*this, type);
 }
+
+bool IntermediateInstruction::doesSetFlag() const {
+	return setFlags == SetFlag::SET_FLAGS;
+}
+

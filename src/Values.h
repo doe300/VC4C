@@ -347,6 +347,8 @@ namespace vc4c
 		INTEGER, REAL, BOOL
 	};
 
+        struct SmallImmediate;
+
 	/*
 	 * A literal value (a constant), directly used as operand.
 	 *
@@ -401,7 +403,6 @@ namespace vc4c
 		 * Converts the stored value to a immediate-value which can be used in a load-immediate instruction.
 		 */
 		uint32_t toImmediate() const;
-
 	private:
 		/*
 		 * The bit-wise representation of this literal

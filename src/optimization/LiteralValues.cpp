@@ -39,7 +39,7 @@ static InstructionWalker copyVector(Method& method, InstructionWalker it, const 
     {
         throw CompilationError(CompilationStep::OPTIMIZER, "Input vector has invalid type", in.to_string(false, true));
     }
-    
+
     for(uint8_t i = 0; i < in.type.getVectorWidth(); ++i)
     {
     	//copy first element without test for flags, so the register allocator finds an unconditional write of the container
@@ -58,7 +58,7 @@ static InstructionWalker copyVector(Method& method, InstructionWalker it, const 
         it.emplace((new intermediate::MoveOperation(out, realOut))->copyExtrasFrom(it.get()));
         it.nextInBlock();
     }
-    return it;    
+    return it;
 }
 
 InstructionWalker optimizations::handleContainer(const Module& module, Method& method, InstructionWalker it, const Configuration& config)

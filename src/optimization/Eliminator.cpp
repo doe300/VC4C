@@ -10,6 +10,7 @@
 #include "../InstructionWalker.h"
 #include "../Profiler.h"
 #include "log.h"
+#include "../analysis/DataDependencyGraph.h"
 
 #include <algorithm>
 #include <list>
@@ -39,7 +40,7 @@ void optimizations::eliminateDeadStore(const Module& module, Method& method, con
             if((move != nullptr || op != nullptr || load != nullptr) && !instr->hasSideEffects())
             {
                 const Local* dest = instr->getOutput()->local;
-                //check whether local is 
+                //check whether local is
                 //a) no parameter ??
                 if(!dest->is<Parameter>())
                 {
@@ -104,8 +105,9 @@ void optimizations::eliminateDeadStore(const Module& module, Method& method, con
     method.cleanLocals();
 }
 
-InstructionWalker optimizations::eliminateUselessInstruction(const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+bool optimizations::eliminateUselessInstruction(const Module& module, Method& method, InstructionWalker& it, const Configuration& config)
 {
+	bool replaced = false;
 	intermediate::Operation* op = it.get<intermediate::Operation>();
 	intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
 	if(op != nullptr)
@@ -126,11 +128,13 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 			{
 				logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
 				it.reset(new intermediate::MoveOperation(op->getOutput().value(), leftAbsorbing.value(), op->conditional, op->setFlags));
+				replaced = true;
 			}
 			else if(rightAbsorbing && secondArg && secondArg->hasLiteral(rightAbsorbing->getLiteralValue().value()))
 			{
 				logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
 				it.reset(new intermediate::MoveOperation(op->getOutput().value(), rightAbsorbing.value(), op->conditional, op->setFlags));
+				replaced = true;
 			}
 			//writes into the input -> can be removed, if it doesn't do anything
 			else if(op->getOutput() && op->getOutput().value() == op->getFirstArg())
@@ -142,6 +146,7 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 					it.erase();
 					//don't skip next instruction
 					it.previousInBlock();
+					replaced = true;
 				}
 			}
 			else if(op->getOutput() && op->getSecondArg() && op->getOutput().value() == op->getSecondArg().value())
@@ -153,6 +158,7 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 					it.erase();
 					//don't skip next instruction
 					it.previousInBlock();
+					replaced = true;
 				}
 			}
 			else    //writes to another local -> can be replaced with move
@@ -162,12 +168,14 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 				{
 					logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
 					it.reset(new intermediate::MoveOperation(op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags));
+					replaced = true;
 				}
 				//check whether first argument does nothing
 				else if(leftIdentity && secondArg && firstArg.hasLiteral(leftIdentity->getLiteralValue().value()))
 				{
 					logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
 					it.reset(new intermediate::MoveOperation(op->getOutput().value(), op->getSecondArg().value(), op->conditional, op->setFlags));
+					replaced = true;
 				}
 			}
 		}
@@ -182,10 +190,11 @@ InstructionWalker optimizations::eliminateUselessInstruction(const Module& modul
 			it.erase();
 			//don't skip next instruction
 			it.previousInBlock();
+			replaced = true;
 		}
 	}
 
-	return it;
+	return replaced;
 }
 
 InstructionWalker optimizations::eliminateUselessBranch(const Module& module, Method& method, InstructionWalker it, const Configuration& config)
@@ -229,8 +238,9 @@ InstructionWalker optimizations::eliminateUselessBranch(const Module& module, Me
 	return it;
 }
 
-InstructionWalker optimizations::calculateConstantInstruction(const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+bool optimizations::calculateConstantInstruction(const Module& module, Method& method, InstructionWalker& it, const Configuration& config)
 {
+	bool replaced = false;
 	intermediate::Operation* op = it.get<intermediate::Operation>();
 	if(op != nullptr && !op->hasUnpackMode())
 	{
@@ -241,17 +251,19 @@ InstructionWalker optimizations::calculateConstantInstruction(const Module& modu
 			{
 				//skip "xor ?, true, true", so it can be optimized (combined with "move ?, true") afterwards
 				//also skip any "xor ?, val, val", since they are created on purpose (by combineSelectionWithZero to allow for combination with the other case)
-				return it;
+				return false;
 			}
 			const Optional<Value> value = op->precalculate(3);
 			if(value)
 			{
 				logging::debug() << "Replacing '" << op->to_string() << "' with constant value: " << value.to_string() << logging::endl;
 				it.reset((new intermediate::MoveOperation(op->getOutput().value(), value.value()))->copyExtrasFrom(op));
+				replaced = true;
 			}
 		}
 	}
-	return it;
+
+	return replaced;
 }
 
 static void mapPhi(const intermediate::PhiNode& node, Method& method, InstructionWalker it)
@@ -316,7 +328,8 @@ void optimizations::eliminatePhiNodes(const Module& module, Method& method, cons
 	}
 }
 
-InstructionWalker optimizations::eliminateReturn(const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+InstructionWalker optimizations::eliminateReturn(const Module &module, Method &method, InstructionWalker it,
+									const Configuration &config)
 {
 	if(it.has<intermediate::Return>())
 	{
@@ -341,12 +354,93 @@ static bool isNoReadBetween(InstructionWalker first, InstructionWalker second, R
 		if(first->readsRegister(reg) || first->writesRegister(reg) || first->signal.triggersReadOfR4() || first->writesRegister(REG_MUTEX))
 			return false;
 		first.nextInBlock();
+
 	}
 	return true;
 }
 
-void optimizations::eliminateRedundantMoves(const Module& module, Method& method, const Configuration& config)
+bool optimizations::translateToMove(const Module &module, Method &method, const Configuration &config)
 {
+	auto it = method.walkAllInstructions();
+	bool flag = false;
+	while(!it.isEndOfMethod())
+	{
+		auto const op = it.get<intermediate::Operation>();
+		if (op && (op->op == OP_AND || op->op == OP_OR || op->op == OP_V8MAX || op->op == OP_V8MIN || op->op == OP_MAX || op->op == OP_MIN) && op->getFirstArg() == op->getSecondArg().value()){
+			auto move = new intermediate::MoveOperation(op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags);
+			it.reset(move);
+			flag = true;
+		}
+
+		it.nextInMethod();
+	}
+
+	return flag;
+}
+
+/* TODO
+ * this propagation should work among basic blocks.
+ * but we need very keen to unsafe-case
+ *
+ *     A    Move propagation of an instruction in C may dangerous if an instruction in D is rewritten.
+ *    / \   But, the propagation A to B and C should work.
+ *   /   \
+ *  B    C
+ *  \    /
+ *   \  /
+ *    D
+ */
+bool optimizations::propagateMoves(const Module &module, Method &method, const Configuration &config)
+{
+	auto it = method.walkAllInstructions();
+        auto replaced = false;
+	while(!it.isEndOfMethod())
+	{
+		auto const op = it.get<intermediate::MoveOperation>();
+
+		// just copy of value
+		// should not work like:
+		//
+		// - mov.setf null, r0
+		// - mov r0, r1 with pack, unpack
+		// - mov r0, r4 // TODO r4 can be propagate unless signal or the use of sfu isn't issued
+		// - mov r0, r5
+		// - mov r0, vpm
+		// - mov r0, unif
+		//
+		// very side-effects are mattered here.
+		//
+		// - mov.setf r0, r1
+		// - mov r0, r1, load_tmu0
+		if (op && ! op->hasConditionalExecution() && ! op->hasPackMode() && ! op->hasUnpackMode() &&
+			op->getOutput().has_value() && (op->getSource().valueType != ValueType::REGISTER) && (op->getOutput().value().valueType != ValueType::REGISTER)) {
+			auto it2 = it.copy().nextInBlock();
+			auto oldValue = op->getOutput().value();
+			auto newValue = op->getSource();
+			while (! it2.isEndOfBlock()) {
+				for (auto arg : it2->getArguments()) {
+					if (arg == oldValue && arg.valueType != ValueType::LITERAL && arg.valueType != ValueType::SMALL_IMMEDIATE){
+						replaced = true;
+						it2->replaceValue(oldValue, newValue, LocalUse::Type::READER);
+					}
+				}
+
+				if (it2->getOutput().has_value() && it2->getOutput().value() == oldValue)
+					break;
+
+				it2.nextInBlock();
+			}
+		}
+
+		it.nextInMethod();
+	}
+
+	return replaced;
+}
+
+bool optimizations::eliminateRedundantMoves(const Module &module, Method &method, const Configuration &config)
+{
+	bool flag = false;
 	auto it = method.walkAllInstructions();
 	while(!it.isEndOfMethod())
 	{
@@ -363,7 +457,25 @@ void optimizations::eliminateRedundantMoves(const Module& module, Method& method
 			auto sourceWriter = (move->getSource().getSingleWriter() != nullptr) ? it.getBasicBlock()->findWalkerForInstruction(move->getSource().getSingleWriter(), it) : Optional<InstructionWalker>{};
 			auto destinationReader = (move->hasValueType(ValueType::LOCAL) && move->getOutput()->local->getUsers(LocalUse::Type::READER).size() == 1) ? it.getBasicBlock()->findWalkerForInstruction(*move->getOutput()->local->getUsers(LocalUse::Type::READER).begin(), it.getBasicBlock()->end()) : Optional<InstructionWalker>{};
 
-			if(!it->hasSideEffects() && sourceUsedOnce && destUsedOnce && destinationReader && move->getSource().type == move->getOutput()->type)
+			if(! move->hasPackMode() && ! move->hasUnpackMode() && move->getSource() == move->getOutput().value() && ! move->doesSetFlag() && ! move->hasSideEffects())
+			{
+				if (move->signal == SIGNAL_NONE)
+				{
+					logging::debug() << "Removing obsolete move: " << it->to_string() << logging::endl;
+					it.erase();
+					flag = true;
+				}
+				else
+				{
+					logging::debug() << "Removing obsolete move with nop: " << it->to_string() << logging::endl;
+					auto nop = new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER, move->signal);
+					it.reset(nop);
+					flag = true;
+				}
+
+			}
+
+			else if(!it->hasSideEffects() && sourceUsedOnce && destUsedOnce && destinationReader && move->getSource().type == move->getOutput()->type)
 			{
 				//if the source is written only once and the destination is read only once, we can replace the uses of the output with the input
 				//XXX we need to check the type equality, since otherwise Reordering might re-order the reading before the writing (if the local is written as type A and read as type B)
@@ -372,6 +484,7 @@ void optimizations::eliminateRedundantMoves(const Module& module, Method& method
 				it.erase();
 				//to not skip the next instruction
 				it.previousInBlock();
+				flag = true;
 			}
 			else if(it->hasValueType(ValueType::REGISTER) && sourceUsedOnce && sourceWriter && !(*sourceWriter)->hasSideEffects() && !it->signal.hasSideEffects())
 			{
@@ -385,6 +498,7 @@ void optimizations::eliminateRedundantMoves(const Module& module, Method& method
 				sourceWriter->erase();
 				it->setOutput(output);
 				it->setSetFlags(setFlags);
+				flag = true;
 			}
 			else if(move->getSource().hasType(ValueType::REGISTER) && destUsedOnce && destinationReader && !move->signal.hasSideEffects() && move->setFlags == SetFlag::DONT_SET &&
 					!(*destinationReader)->hasUnpackMode() && (*destinationReader)->conditional == COND_ALWAYS && !(*destinationReader)->readsRegister(move->getSource().reg) && isNoReadBetween(it, destinationReader.value(), move->getSource().reg))
@@ -400,10 +514,93 @@ void optimizations::eliminateRedundantMoves(const Module& module, Method& method
 						(*destinationReader)->setArgument(i, newInput);
 				}
 				it.erase();
+				flag = true;
 				//to not skip the next instruction
 				it.previousInBlock();
 			}
 		}
 		it.nextInMethod();
 	}
+
+	return flag;
+}
+
+bool optimizations::eliminateRedundantBitOp(const Module &module, Method &method, const Configuration &config) {
+	bool replaced = false;
+	auto it = method.walkAllInstructions();
+	while (!it.isEndOfMethod()) {
+		if (!it->hasSideEffects() && !it->hasPackMode() && !it->hasUnpackMode()) {
+			auto op = it.get<intermediate::Operation>();
+			if (op && op->op == OP_AND && ! op->hasUnpackMode() && ! op->hasPackMode()) {
+
+				// and v1, v2, v3 => and v1, v2, v4
+				// and v4, v1, v2    mov v4, v1
+				//
+				// and v1, v2, v3 => and v1, v2, v3
+				// or  v4, v1, v2    mov v4, v2
+				auto foundAnd = [&](Local *out, Local * in, InstructionWalker walker) {
+					auto it = walker.copy().nextInBlock();
+					while (! it.isEndOfBlock()){
+						auto op2 = it.get<intermediate::Operation>();
+						if (op2 && op2->op == OP_AND && op2->readsLocal(out) && op2->readsLocal(in)){
+							auto mov = new intermediate::MoveOperation(op2->getOutput().value(), out->createReference(), op2->conditional, op2->setFlags);
+							it.reset(mov);
+						} else if (op2 && op2->op == OP_OR && op2->readsLocal(out) && op2->readsLocal(in)){
+							auto mov = new intermediate::MoveOperation(op2->getOutput().value(), in->createReference(), op2->conditional, op2->setFlags);
+							it.reset(mov);
+						}
+
+						it.nextInBlock();
+					}
+				};
+
+				auto arg0 = op->getArgument(0).value();
+				auto arg1 = op->getArgument(1).value();
+				auto out  = op->getOutput().value().local;
+
+				if (arg0.valueType == ValueType::LOCAL)
+					foundAnd(out, arg0.local, it);
+				if (arg1.valueType == ValueType::LOCAL)
+					foundAnd(out, arg1.local, it);
+			};
+
+			if (op && op->op == OP_OR && ! op->hasUnpackMode() && ! op->hasPackMode()) {
+				// or  v1, v2, v3 => or  v1, v2, v4
+				// and v4, v1, v2    mov v4, v2
+				//
+				// or  v1, v2, v3 => or  v1, v2, v3
+				// or  v4, v1, v2    mov v4, v1
+				auto foundOr = [&](Local *out, Local * in, InstructionWalker walker) {
+					auto it = walker.copy().nextInBlock();
+					while (! it.isEndOfBlock()){
+						auto op2 = it.get<intermediate::Operation>();
+						if (op2 && op2->op == OP_AND && op2->readsLocal(out) && op2->readsLocal(in)){
+							auto mov = new intermediate::MoveOperation(op2->getOutput().value(), in->createReference(), op2->conditional, op2->setFlags);
+							replaced = true;
+							it.reset(mov);
+						} else if (op2 && op2->op == OP_OR && op2->readsLocal(out) && op2->readsLocal(in)){
+							auto mov = new intermediate::MoveOperation(op2->getOutput().value(), out->createReference(), op2->conditional, op2->setFlags);
+							replaced = true;
+							it.reset(mov);
+						}
+
+						it.nextInBlock();
+					}
+				};
+
+				auto arg0 = op->getArgument(0).value();
+				auto arg1 = op->getArgument(1).value();
+				auto out  = op->getOutput().value().local;
+
+				if (arg0.valueType == ValueType::LOCAL)
+					foundOr(out, arg0.local, it);
+				if (arg1.valueType == ValueType::LOCAL)
+					foundOr(out, arg1.local, it);
+			}
+		}
+
+		it.nextInMethod();
+	}
+
+	return replaced;
 }

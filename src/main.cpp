@@ -32,6 +32,7 @@ static void printHelp()
 	std::cout << "\t-h, --help\t\tPrints this help message and exits" << std::endl;
 	std::cout << "\t-v, --version\t\tPrints version and build info and exists" << std::endl;
 	std::cout << "\t-d, --debug\t\tEnables verbose debug output" << std::endl;
+	std::cout << "\t--quiet\t\tQuiet verbose debug output" << std::endl;
 	std::cout << "\t--hex\t\t\tGenerate hex output (e.g. included in source-code)" << std::endl;
 	std::cout << "\t--bin\t\t\tGenerate binary output (as used by VC4CL run-time)" << std::endl;
 	std::cout << "\t--asm\t\t\tGenerate assembler output (for analysis only)" << std::endl;
@@ -41,6 +42,8 @@ static void printHelp()
 	std::cout << "\t--spirv\t\t\tExplicitely use the SPIR-V front-end" << std::endl;
 	std::cout << "\t--llvm\t\t\tExplicitely use the LLVM-IR front-end" << std::endl;
 	std::cout << "\t--disassemble\t\tDisassembles the binary input to either hex or assembler output" << std::endl;
+	std::cout << "\t--fmoveconstants\t\tEnable move of constants to outer-loop (default: on)" << std::endl;
+	std::cout << "\t--fnomoveconstants\t\tDisable move of constants to outer-loop" << std::endl;
 	std::cout << "\tany other option is passed to the pre-compiler" << std::endl;
 }
 
@@ -98,7 +101,7 @@ static void printInfo()
 }
 
 /*
- * 
+ *
  */
 int main(int argc, char** argv)
 {
@@ -107,13 +110,13 @@ int main(int argc, char** argv)
 #else
     setLogger(std::wcout, true, LogLevel::WARNING);
 #endif
-    
+
     Configuration config;
     std::vector<std::string> inputFiles;
     std::string outputFile;
     std::string options;
     bool runDisassembler = false;
-    
+
     if(argc < 3)
 	{
     	for(int i = 1; i < argc; ++i)
@@ -148,7 +151,9 @@ int main(int argc, char** argv)
     		printInfo();
     		return 0;
     	}
-    	else if(strcmp("--debug", argv[i]) == 0 || strcmp("-d", argv[i]) == 0)
+        else if(strcmp("--quiet", argv[i]) == 0)
+    		setLogger(std::wcout, true, LogLevel::WARNING);
+	else if(strcmp("--debug", argv[i]) == 0 || strcmp("-d", argv[i]) == 0)
     		setLogger(std::wcout, true, LogLevel::DEBUG);
     	else if(strcmp("--hex", argv[i]) == 0)
             config.outputMode = OutputMode::HEX;
@@ -172,6 +177,10 @@ int main(int argc, char** argv)
         	config.frontend = Frontend::LLVM_IR;
         else if(strcmp("--disassemble", argv[i]) == 0)
         	runDisassembler = true;
+		else if(strcmp("--fmoveconstants", argv[i]) == 0)
+			config.moveConstants = true;
+		else if(strcmp("--fnomoveconstants", argv[i]) == 0)
+			config.moveConstants = false;
         else if(strcmp("-o", argv[i]) == 0)
         {
         	outputFile = argv[i+1];
@@ -182,7 +191,7 @@ int main(int argc, char** argv)
         else
         	options.append(argv[i]).append(" ");
     }
-    
+
     for(;i < argc; ++i)
     {
     	inputFiles.emplace_back(argv[i]);
@@ -198,7 +207,7 @@ int main(int argc, char** argv)
     	std::cerr << "No output file specified, aborting!" << std::endl;
 		return 3;
     }
-    
+
     if(runDisassembler)
     {
     	if(inputFiles.size() != 1)
@@ -222,7 +231,10 @@ int main(int argc, char** argv)
     	std::unordered_map<std::istream*, Optional<std::string>> inputs;
     	for(const std::string& file : inputFiles)
     	{
-    		fileStreams.emplace_back(new std::ifstream(file));
+			auto ifs = new std::ifstream(file);
+			if (! ifs->is_open())
+				throw CompilationError(CompilationStep::PRECOMPILATION, "cannot find file: " + file);
+    		fileStreams.emplace_back(ifs);
     		inputs.emplace(fileStreams.back().get(), Optional<std::string>(file));
     	}
     	input.reset(new std::stringstream());
@@ -235,7 +247,11 @@ int main(int argc, char** argv)
     }
     else
     {
-		input.reset(new std::ifstream(inputFiles.at(0)));
+		auto file = inputFiles.at(0);
+		auto ifs = new std::ifstream(file);
+		if (! ifs->is_open())
+			throw CompilationError(CompilationStep::PRECOMPILATION, "cannot find file: " + file);
+		input.reset(ifs);
 		inputFile = inputFiles.at(0);
     }
 

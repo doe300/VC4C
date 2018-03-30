@@ -760,3 +760,4 @@ std::size_t vc4c::hash<vc4c::Value>::operator()(vc4c::Value const& val) const no
 {
 	return std::hash<std::string>::operator()(val.to_string());
 }
+

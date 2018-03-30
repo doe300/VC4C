@@ -94,6 +94,7 @@ namespace vc4c
 			virtual bool readsLocal(const Local* local) const;
 			virtual bool writesLocal(const Local* local) const;
 			virtual void replaceLocal(const Local* oldLocal, const Local* newLocal, LocalUse::Type type = LocalUse::Type::BOTH);
+			virtual void replaceLocal(const Local* oldLocal, const Value newLocal, LocalUse::Type type = LocalUse::Type::BOTH);
 
 			/*
 			 * Whether this instructions reads the given register
@@ -177,6 +178,10 @@ namespace vc4c
 			 * Whether the execution of this instruction depends on ALU flags
 			 */
 			bool hasConditionalExecution() const;
+			/*
+			 * Whether does the instruction set flag
+			 */
+			bool doesSetFlag() const;
 
 			/*
 			 * Copies all the extras (signal, pack-modes, etc.) from the given instruction.
@@ -192,6 +197,8 @@ namespace vc4c
 			 */
 			virtual Optional<Value> precalculate(std::size_t numIterations) const;
 
+			bool replaceValue(const Value oldValue, const Value newValue, LocalUse::Type type);
+
 			Signaling signal;
 			Unpack unpackMode;
 			Pack packMode;
@@ -205,7 +212,6 @@ namespace vc4c
 			std::string createAdditionalInfoString() const;
 
 			Optional<Value> getPrecalculatedValueForArg(std::size_t argIndex, std::size_t numIterations) const;
-
 		private:
 			Optional<Value> output;
 			std::vector<Value> arguments;
@@ -651,4 +657,3 @@ namespace vc4c
 
 
 #endif /* INTERMEDIATEINSTRUCTION_H */
-

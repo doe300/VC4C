@@ -11,6 +11,7 @@
 
 #include <functional>
 #include <set>
+#include <vector>
 
 namespace vc4c
 {
@@ -75,7 +76,9 @@ namespace vc4c
 		extern const OptimizationPass MAP_MEMORY_ACCESS;
 		//runs all the single-step optimizations. Combining them results in fewer iterations over the instructions
 		extern const OptimizationPass RUN_SINGLE_STEPS;
-		//combines loadings of the same literal value within a small range of a basic block
+
+	    extern const OptimizationPass HANDLE_IMMEDIATES;
+	    //combines loadings of the same literal value within a small range of a basic block
 		extern const OptimizationPass COMBINE_LITERAL_LOADS;
 		//handles stack-allocations by calculating their offsets and indices
 		extern const OptimizationPass RESOLVE_STACK_ALLOCATIONS;
@@ -104,12 +107,18 @@ namespace vc4c
 		// remove constant load in (nested) loops
 		extern const OptimizationPass REMOVE_CONSTANT_LOAD_IN_LOOPS;
 
+
+
+		extern const OptimizationPass GENERAL_OPTIMIZATIONS;
 		/*
 		 * The default optimization passes consist of all passes listed above.
 		 * NOTE: Some of the passes are REQUIRED and the compilation will fail, if they are removed.
 		 * Other passes are not technically required, but e.g. make register-allocation a lot easier, thus improving the chance of successful register allocation greatly.
 		 */
 		extern const std::set<OptimizationPass> DEFAULT_PASSES;
+
+	    extern const OptimizationPass TRANSLATE_TO_MOVE_1;
+		extern const OptimizationPass TRANSLATE_TO_MOVE_2;
 
 		class Optimizer
 		{
@@ -125,7 +134,7 @@ namespace vc4c
 			Configuration config;
 			std::set<OptimizationPass> passes;
 		};
+
 	} // namespace optimizations
 } // namespace vc4c
 #endif /* OPTIMIZER_H */
-

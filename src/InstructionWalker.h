@@ -245,6 +245,19 @@ namespace vc4c
 			return func(get());
 		}
 
+		/*
+		 * Traverse instructions from the position and replace arguments or output to new one in the same basic block.
+		 *
+		 * If `forward` = false, traver reversely.
+		 * If `stopWhenWritten` = true, finish when it finds a instruction, which is re-assign in it.
+		 */
+		bool replaceLocalInBlock(const Local *oldLocal, const Local *newLocal,
+								 LocalUse::Type type = LocalUse::Type::READER,
+								 bool forward = true, bool stopWhenWritten = true);
+
+		bool replaceValueInBlock(const Value oldValue, const Value newValue,
+								 LocalUse::Type type = LocalUse::Type::READER,
+								 bool forward = true, bool stopWhenWritten = true);
 	private:
 		BasicBlock* basicBlock;
 		intermediate::InstructionsIterator pos;
@@ -415,7 +428,7 @@ namespace vc4c
 		friend class Method;
 	};
 
-	template<>
+template<>
 	struct hash<InstructionWalker>
 	{
 		size_t operator()(const InstructionWalker& ) const noexcept;
