@@ -136,8 +136,7 @@ void Precompiler::precompile(std::istream& input, std::unique_ptr<std::istream>&
             options, outputFile);
     else
     {
-#if defined USE_LLVM_LIBRARY and defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and                        \
-    defined SPIRV_FRONTEND
+#if defined USE_LLVM_LIBRARY and defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_FRONTEND
         // we have both front-ends, select the front-end which can handle the input type
         if(isSupportedByFrontend(precompiler.inputType, Frontend::LLVM_IR))
             // prefer LLVM library front-end

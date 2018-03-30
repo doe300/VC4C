@@ -15,8 +15,8 @@
 
 #ifdef SPIRV_FRONTEND
 
-#include "spirv/unified1/spirv.h"
 #include "spirv-tools/libspirv.hpp"
+#include "spirv/unified1/spirv.h"
 
 #include "../performance.h"
 #include "SPIRVOperation.h"

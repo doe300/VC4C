@@ -142,7 +142,9 @@ if(CLANG_FORMAT_PATH)
   add_custom_target(
     clang-format
     COMMAND ${CLANG_FORMAT_PATH}
-    -i ${VC4CC_SRCS} ${VC4C_SRCS}
+      -i ${VC4CC_SRCS} ${VC4C_SRCS}
+    WORKING_DIRECTORY
+      ${CMAKE_CURRENT_SOURCE_DIR}
   )
 else()
   message (WARNING "clang-format not found: strongly recommend to use it before commit!")

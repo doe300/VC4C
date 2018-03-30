@@ -9,9 +9,9 @@
 
 #ifdef SPIRV_FRONTEND
 
-#include "spirv/unified1/spirv.h"
-#include "spirv/unified1/OpenCL.std.h"
 #include "spirv-tools/libspirv.hpp"
+#include "spirv/unified1/OpenCL.std.h"
+#include "spirv/unified1/spirv.h"
 
 #include "../Locals.h"
 
