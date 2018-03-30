@@ -57,8 +57,7 @@ if(CROSS_COMPILE)
 	SET(CMAKE_LINKER                "${CROSS_COMPILER_PATH}/arm-linux-gnueabihf-ld")
 	# Raspbian ships CLang 3.9 in its repositories
 	set(CLANG_FOUND /usr/bin/clang-3.9)
-	add_definitions(-DCLANG_PATH="${CLANG_FOUND}")
-	add_definitions(-DUSE_CLANG_OPENCL=1)
+	set(ADVANCED_OPENCL_FEATURES ON)
 	message(STATUS "Cross compiling for Raspbian with compiler: ${CMAKE_CXX_COMPILER}")
 endif()
 
@@ -66,33 +65,20 @@ endif()
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_FLAGS_DEBUG "-g3 -rdynamic")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 project (VC4C VERSION 0.4)
-add_definitions(-DVC4C_VERSION="${PROJECT_VERSION}")
 
-# append usage of C++ to compiler flags, also optimize for speed and enable all warnings
 if(BUILD_DEBUG)
-	LIST(APPEND CMAKE_CXX_FLAGS " -g3 -rdynamic -Wall -Wextra -Wold-style-cast -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings")
-	SET(CMAKE_BUILD_TYPE 		Debug)
-	# TODO use NDEBUG instead (set automatically?)
-	add_definitions(-DDEBUG_MODE=1)
+	SET(CMAKE_BUILD_TYPE Debug)
 else()
-	LIST(APPEND CMAKE_CXX_FLAGS " -O3 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings")
-	SET(CMAKE_BUILD_TYPE 		Release)
-endif()
-
-# Enable additional warnings, if available
-if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-shadow -Wno-padded -Wno-shadow-field-in-constructor -Wno-global-constructors -Wno-exit-time-destructors -Wno-missing-prototypes -Wno-gnu-anonymous-struct -Wno-nested-anon-types -Wno-documentation -Wno-unused-command-line-argument -Wno-unused-member-function -Wno-gnu-zero-variadic-macro-arguments -Wno-covered-switch-default -Wno-switch-enum -Wswitch")
-elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER "6.0.0")
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wdouble-promotion -fdelete-null-pointer-checks -Wnull-dereference -Wuninitialized -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=format -Wsuggest-override -Wconversion -Wzero-as-null-pointer-constant")
+	SET(CMAKE_BUILD_TYPE Release)
 endif()
 
 if(MULTI_THREADED)
 	message(STATUS "Enabling multi-threaded optimizations")
-	add_definitions(-DMULTI_THREADED=1)
-	# TODO include (Threads) instead
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+	find_package(Threads)
 endif()
 
 ####
@@ -109,8 +95,6 @@ else()
 	set_property(DIRECTORY ${VC4C_SOURCE_DIR} PROPERTY EP_UPDATE_DISCONNECTED 0)
 endif()
 
-add_definitions(-DCPPLOG_NAMESPACE=logging)
-add_definitions(-DCPPLOG_CUSTOM_LOGGER=true)
 ExternalProject_Add( cpplog-project
 	PREFIX 				${CMAKE_BINARY_DIR}/build/cpplog
 	BINARY_DIR 			${CMAKE_BINARY_DIR}/build/cpplog
@@ -141,7 +125,6 @@ if(SPIRV_COMPILER_ROOT)
 	find_file(SPIRV_LLVM_SPIR_FOUND llvm-spirv PATHS ${SPIRV_COMPILER_ROOT} NO_DEFAULT_PATH)
 	if(SPIRV_CLANG_FOUND)
 		message(STATUS "Khronos OpenCL compiler: ${SPIRV_CLANG_FOUND}")
-		add_definitions(-DSPIRV_CLANG_PATH="${SPIRV_CLANG_FOUND}")
 	endif()
 elseif(SPIRV_FRONTEND)
 	message(WARNING "SPIR-V frontend configured, but no SPIR-V compiler found!")
@@ -154,7 +137,6 @@ if((LLVMIR_FRONTEND OR LLVMLIB_FRONTEND) AND NOT CROSS_COMPILE)
 	endif()
 	if(CLANG_FOUND)
 		message(STATUS "CLang compiler found: " ${CLANG_FOUND})
-		add_definitions(-DCLANG_PATH="${CLANG_FOUND}")
 		# check whether CLang is installed in the version 3.9 or greater
 		# https://stackoverflow.com/questions/16150888/cmake-branch-on-clang-version
 		EXECUTE_PROCESS( COMMAND ${CLANG_FOUND} --version OUTPUT_VARIABLE clang_full_version_string )
@@ -163,7 +145,7 @@ if((LLVMIR_FRONTEND OR LLVMLIB_FRONTEND) AND NOT CROSS_COMPILE)
 			message(SEND_ERROR "CLang version ${CLANG_VERSION_STRING} is not supported, update your CLang to version 3.9+!")
 		else()
 			message(STATUS "Using enhanced OpenCL features of Clang 3.9+!")
-			add_definitions(-DUSE_CLANG_OPENCL=1)
+			set(ADVANCED_OPENCL_FEATURES ON)
 		endif()
 	else()
 		message(WARNING "No CLang compiler found!")
@@ -202,14 +184,8 @@ if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
   		  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
   		  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
   		  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
-	          )
-	add_definitions(-DSPIRV_LLVM_SPIRV_PATH="${SPIRV_LLVM_SPIR_FOUND}")
-	add_definitions(-DSPIRV_HEADER="${PROJECT_SOURCE_DIR}/lib/spirv-headers/include/spirv/1.2/spirv.h")
-	add_definitions(-DSPIRV_OPENCL_HEADER="${PROJECT_SOURCE_DIR}/lib/spirv-headers/include/spirv/1.2/OpenCL.std.h")
-	add_definitions(-DSPIRV_PARSER_HEADER="${PROJECT_SOURCE_DIR}/lib/spirv-tools/include/spirv-tools/libspirv.hpp")
-	add_definitions(-DSPIRV_LINKER_HEADER="${PROJECT_SOURCE_DIR}/lib/spirv-tools/include/spirv-tools/linker.hpp")
-	include_directories ("${PROJECT_SOURCE_DIR}/lib/spirv-tools/include/")
-	# add_definitions(-DSPIRV_OPTIMIZER_HEADER="${PROJECT_SOURCE_DIR}/lib/spirv-tools/include/spirv-tools/optimizer.hpp")
+	)
+	set(VC4C_ENABLE_SPIRV_FRONTEND ON)
 endif()
 
 # If enabled, check whether the LLVM library front-end can be built
@@ -241,7 +217,7 @@ if(LLVMLIB_FRONTEND)
 			string(REPLACE "." ";" LLVM_VERSION_ELEMENTS ${LLVM_LIB_VERSION})
 			list(GET LLVM_VERSION_ELEMENTS 0 LLVM_LIB_VERSION_MAJOR)
 			list(GET LLVM_VERSION_ELEMENTS 1 LLVM_LIB_VERSION_MINOR)
-			add_definitions(-DLLVM_LIBRARY_VERSION=${LLVM_LIB_VERSION_MAJOR}${LLVM_LIB_VERSION_MINOR})
+			set(LLVM_LIBRARY_VERSION ${LLVM_LIB_VERSION_MAJOR}${LLVM_LIB_VERSION_MINOR})
 		else()
 			message(WARNING "Failed to determine LLVM library version")
 		endif()
@@ -250,7 +226,7 @@ if(LLVMLIB_FRONTEND)
 		if(LLVM_FOUND)
 
 			#Depending on the LLVM library version used, we need to use some other functions/headers in the LLVM library front-end
-			add_definitions(-DLLVM_LIBRARY_VERSION=${LLVM_VERSION_MAJOR}${LLVM_VERSION_MINOR})
+			set(LLVM_LIBRARY_VERSION ${LLVM_VERSION_MAJOR}${LLVM_VERSION_MINOR})
 
 			set(LLVM_LIBS_PATH "${LLVM_LIBRARY_DIRS}")
 			set(LLVM_INCLUDE_PATH "${LLVM_INCLUDE_DIRS}")
@@ -268,11 +244,7 @@ if(LLVMLIB_FRONTEND)
 
 	if(LLVM_LIBS_PATH AND LLVM_INCLUDE_PATH AND LLVM_LIB_FLAGS AND LLVM_LIB_NAMES)
 		message(STATUS "Compiling LLVM library front-end with LLVM in version ${LLVM_LIB_VERSION} located in '${LLVM_LIBS_PATH}'")
-		set(ENABLE_LLVM_LIB_FRONTEND ON)
-		add_definitions(-DUSE_LLVM_LIBRARY=1)
-		# Adds require macros as well as include-paths
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_LIB_FLAGS}")
-		include_directories("${LLVM_INCLUDE_PATH}")
+		set(VC4C_ENABLE_LLVM_LIB_FRONTEND ON)
 	else()
 		message(WARNING "LLVM library front-end enabled, but LLVM library was not found!")
 	endif()
@@ -298,8 +270,6 @@ if(VERIFY_OUTPUT)
   		  -DCMAKE_CXX_FLAGS="-fPIC"
   		  -DCMAKE_C_FLAGS="-fPIC"
 	)
-
-	add_definitions(-DVERIFIER_HEADER="${PROJECT_SOURCE_DIR}/lib/vc4asm/src/Validator.h")
 endif()
 
 # Pre-compile VC4CL standard-library into pre-compiled header
@@ -322,7 +292,6 @@ add_custom_target(vc4cl-stdlib
     WORKING_DIRECTORY   ${VC4CL_STDLIB_DIR}
     SOURCES				${VC4CL_STDLIB_HEADER_SOURCE}
 )
-add_definitions(-DVC4CL_STDLIB_HEADER="${VC4CL_STDLIB_HEADER}")
 
 ####
 # Main files

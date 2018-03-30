@@ -6,11 +6,12 @@
 
 #ifndef SPIRVHELPER_H
 #define SPIRVHELPER_H
-#ifdef SPIRV_HEADER
 
-#include SPIRV_OPENCL_HEADER
-#include SPIRV_HEADER
-#include SPIRV_PARSER_HEADER
+#ifdef SPIRV_FRONTEND
+
+#include "spirv/unified1/spirv.h"
+#include "spirv/unified1/OpenCL.std.h"
+#include "spirv-tools/libspirv.hpp"
 
 #include "../Locals.h"
 
