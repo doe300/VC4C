@@ -61,6 +61,11 @@ qpu_asm::Instruction* MethodCall::convertToAsm(const FastMap<const Local*, Regis
     throw CompilationError(CompilationStep::OPTIMIZER, "There should be no more function-calls", to_string());
 }
 
+bool MethodCall::isNormalized() const
+{
+    return false;
+}
+
 const DataType MethodCall::getReturnType() const
 {
     if(!getOutput())
@@ -119,6 +124,11 @@ qpu_asm::Instruction* Return::convertToAsm(const FastMap<const Local*, Register>
 }
 
 bool Return::mapsToASMInstruction() const
+{
+    return false;
+}
+
+bool Return::isNormalized() const
 {
     return false;
 }

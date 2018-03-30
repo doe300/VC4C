@@ -132,6 +132,14 @@ namespace vc4c
             virtual bool mapsToASMInstruction() const;
 
             /*
+             * Whether this instruction is normalized (e.g. can be converted to assembler instructions)
+             * Labels also count as normalized, although they do not map to assembler instructions.
+             *
+             * NOTE: Any non-normalized instruction needs to be replaced before entering the optimization-steps!
+             */
+            virtual bool isNormalized() const = 0;
+
+            /*
              * Returns the output value, if any
              */
             const Optional<Value>& getOutput() const;
@@ -249,6 +257,7 @@ namespace vc4c
             qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping,
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             bool mapsToASMInstruction() const override;
+            bool isNormalized() const override;
 
             const Value getFirstArg() const;
             const Optional<Value> getSecondArg() const;
@@ -271,6 +280,7 @@ namespace vc4c
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
             qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping,
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
+            bool isNormalized() const override;
 
             const DataType getReturnType() const;
 
@@ -290,6 +300,7 @@ namespace vc4c
             qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping,
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             bool mapsToASMInstruction() const override;
+            bool isNormalized() const override;
 
             Optional<Value> getReturnValue() const;
         };
@@ -306,6 +317,8 @@ namespace vc4c
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             Operation* combineWith(const OpCode& otherOpCode) const;
             bool mapsToASMInstruction() const override;
+            bool isNormalized() const override;
+
             Optional<Value> precalculate(std::size_t numIterations) const override;
 
             void setSource(const Value& value);
@@ -339,6 +352,7 @@ namespace vc4c
             qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping,
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             bool mapsToASMInstruction() const override;
+            bool isNormalized() const override;
 
             const Local* getLabel() const;
         };
@@ -352,6 +366,7 @@ namespace vc4c
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
             qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping,
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
+            bool isNormalized() const override;
 
             const Local* getTarget() const;
 
@@ -389,6 +404,7 @@ namespace vc4c
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
             qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping,
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
+            bool isNormalized() const override;
 
             DelayType type;
         };
@@ -432,6 +448,7 @@ namespace vc4c
             ~Comparison() override = default;
 
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
+            bool isNormalized() const override;
         };
 
         struct CombinedOperation : public IntermediateInstruction
@@ -452,6 +469,7 @@ namespace vc4c
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
             bool mapsToASMInstruction() const override;
+            bool isNormalized() const override;
 
             const Operation* getFirstOp() const;
             const Operation* getSecondOP() const;
@@ -471,6 +489,8 @@ namespace vc4c
             qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping,
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
+            bool isNormalized() const override;
+
             Optional<Value> precalculate(std::size_t numIterations) const override;
 
             Literal getImmediate() const;
@@ -488,6 +508,7 @@ namespace vc4c
             qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping,
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
+            bool isNormalized() const override;
 
             const Semaphore semaphore;
             const bool increase;
@@ -504,6 +525,7 @@ namespace vc4c
             qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping,
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
+            bool isNormalized() const override;
 
             FastMap<const Local*, Value> getValuesForLabels() const;
         };
@@ -569,6 +591,7 @@ namespace vc4c
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
             bool mapsToASMInstruction() const override;
+            bool isNormalized() const override;
 
             MemoryScope scope;
             MemorySemantics semantics;
@@ -588,6 +611,7 @@ namespace vc4c
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
             bool mapsToASMInstruction() const override;
+            bool isNormalized() const override;
 
             Value getStackAllocation() const;
 
@@ -613,6 +637,7 @@ namespace vc4c
             qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping,
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
+            bool isNormalized() const override;
 
             bool locksMutex() const;
             bool releasesMutex() const;
@@ -646,6 +671,7 @@ namespace vc4c
             qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping,
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
+            bool isNormalized() const override;
 
             const Value& getSource() const;
             const Value& getDestination() const;
