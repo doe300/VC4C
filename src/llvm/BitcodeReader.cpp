@@ -32,7 +32,8 @@ using namespace vc4c::llvm2qasm;
 extern AddressSpace toAddressSpace(int num);
 extern std::string cleanMethodName(const std::string& name);
 
-static void dumpValue(const llvm::Value* val)
+template<typename T>
+static void dumpLLVM(const T* val)
 {
 #if LLVM_LIBRARY_VERSION >= 50
 	val->print(llvm::errs());
@@ -396,6 +397,12 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
 		logging::warn() << "64-bit operations are not supported by the VideoCore IV architecture, further compilation may fail!" << logging::endl;
 		return TYPE_INT64;
 	}
+	if(type->isIntegerTy(33))
+	{
+		//i33 - some special type to not overflow on arithmetic operations. Currently only used in ./testing/boost-compute/test_accumulate.cl
+		logging::warn() << "33-bit extended integer type is not supported, falling back to 32-bit integer. Results may be inaccurate!" << logging::endl;
+		return TYPE_INT32;
+	}
 	if(type->isPointerTy() && type->getPointerElementType()->isStructTy())
 	{
 		//recognize image types - taken from https://github.com/KhronosGroup/SPIRV-LLVM/blob/khronos/spirv-3.6.1/lib/SPIRV/SPIRVUtil.cpp (#isOCLImageType)
@@ -443,6 +450,7 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
 		pointerType.getPointerType().value()->addressSpace = toAddressSpace(type->getPointerAddressSpace());
 		return pointerType;
 	}
+	dumpLLVM(type);
 	throw CompilationError(CompilationStep::PARSER, "Unknown LLVM type", std::to_string(type->getTypeID()));
 }
 
@@ -996,7 +1004,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
 	}
 	else
 	{
-		dumpValue(val);
+		dumpLLVM(val);
 		throw CompilationError(CompilationStep::PARSER, "Unhandled constant type", std::to_string(val->getValueID()));
 	}
 }
@@ -1025,7 +1033,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
 			{
 				if(!toConstant(module, expr->getOperand(i)).isZeroInitializer())
 				{
-					dumpValue(expr);
+					dumpLLVM(expr);
 					throw CompilationError(CompilationStep::PARSER, "Only constant getelementptr without offsets are supported for now");
 				}
 			}
@@ -1081,6 +1089,69 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
 		}
 		throw CompilationError(CompilationStep::PARSER, "Unhandled bit-width of type", src.to_string());
 	}
+	if(expr->getOpcode() == llvm::Instruction::OtherOps::ICmp || expr->getOpcode() == llvm::Instruction::OtherOps::FCmp)
+	{
+		const DataType destType = toDataType(expr->getType());
+		const DataType boolType = TYPE_BOOL.toVectorType(destType.num);
+		
+		const Value src0 = toConstant(module, expr->getOperand(0));
+		const Value src1 = toConstant(module, expr->getOperand(1));
+		
+		auto predicate = expr->getPredicate();
+		
+		switch(predicate)
+		{
+		case llvm::CmpInst::FCMP_FALSE:
+			return Value(BOOL_FALSE.literal, boolType);
+		case llvm::CmpInst::FCMP_OEQ:
+			return Value(Literal(src0.getLiteralValue()->real() == src1.getLiteralValue()->real()), boolType);
+		case llvm::CmpInst::FCMP_OGT:
+			return Value(Literal(src0.getLiteralValue()->real() > src1.getLiteralValue()->real()), boolType);
+		case llvm::CmpInst::FCMP_OGE:
+			return Value(Literal(src0.getLiteralValue()->real() >= src1.getLiteralValue()->real()), boolType);
+		case llvm::CmpInst::FCMP_OLT:
+			return Value(Literal(src0.getLiteralValue()->real() < src1.getLiteralValue()->real()), boolType);
+		case llvm::CmpInst::FCMP_OLE:
+			return Value(Literal(src0.getLiteralValue()->real() <= src1.getLiteralValue()->real()), boolType);
+		case llvm::CmpInst::FCMP_ONE:
+			return Value(Literal(src0.getLiteralValue()->real() != src1.getLiteralValue()->real()), boolType);
+		case llvm::CmpInst::FCMP_ORD:
+		case llvm::CmpInst::FCMP_UNO:
+		case llvm::CmpInst::FCMP_UEQ:
+		case llvm::CmpInst::FCMP_UGT:
+		case llvm::CmpInst::FCMP_UGE:
+		case llvm::CmpInst::FCMP_ULT:
+		case llvm::CmpInst::FCMP_ULE:
+		case llvm::CmpInst::FCMP_UNE:
+			break;
+		case llvm::CmpInst::FCMP_TRUE:
+			return Value(BOOL_TRUE.literal, destType);
+		case llvm::CmpInst::ICMP_EQ:
+			return Value(Literal(src0.getLiteralValue()->unsignedInt() == src1.getLiteralValue()->unsignedInt()), boolType);
+		case llvm::CmpInst::ICMP_NE:
+			return Value(Literal(src0.getLiteralValue()->unsignedInt() != src1.getLiteralValue()->unsignedInt()), boolType);
+		case llvm::CmpInst::ICMP_UGT:
+			return Value(Literal(src0.getLiteralValue()->unsignedInt() > src1.getLiteralValue()->unsignedInt()), boolType);
+		case llvm::CmpInst::ICMP_UGE:
+			return Value(Literal(src0.getLiteralValue()->unsignedInt() >= src1.getLiteralValue()->unsignedInt()), boolType);
+		case llvm::CmpInst::ICMP_ULT:
+			return Value(Literal(src0.getLiteralValue()->unsignedInt() < src1.getLiteralValue()->unsignedInt()), boolType);
+		case llvm::CmpInst::ICMP_ULE:
+			return Value(Literal(src0.getLiteralValue()->unsignedInt() <= src1.getLiteralValue()->unsignedInt()), boolType);
+		case llvm::CmpInst::ICMP_SGT:
+			return Value(Literal(src0.getLiteralValue()->signedInt() > src1.getLiteralValue()->signedInt()), boolType);
+		case llvm::CmpInst::ICMP_SGE:
+			return Value(Literal(src0.getLiteralValue()->signedInt() >= src1.getLiteralValue()->signedInt()), boolType);
+		case llvm::CmpInst::ICMP_SLT:
+			return Value(Literal(src0.getLiteralValue()->signedInt() < src1.getLiteralValue()->signedInt()), boolType);
+		case llvm::CmpInst::ICMP_SLE:
+			return Value(Literal(src0.getLiteralValue()->signedInt() <= src1.getLiteralValue()->signedInt()), boolType);
+		default:
+			break;
+		}
+	}
+	
+	
 	OpCode opCode = OpCode::findOpCode(expr->getOpcodeName());
 
 	Optional<Value> result = NO_VALUE;
@@ -1091,7 +1162,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
 
 	if(result)
 		return result.value();
-	dumpValue(expr);
+	dumpLLVM(expr);
 	throw CompilationError(CompilationStep::PARSER, "This type of constant expression is not supported yet", expr->getOpcodeName());
 }
 

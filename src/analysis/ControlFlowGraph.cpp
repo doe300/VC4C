@@ -62,6 +62,7 @@ const CFGNode* ControlFlowLoop::findPredecessor() const
 			{
 				//the relation is backwards and node is not within this loop -> predecessor
 				if(predecessor != nullptr)
+					//TODO testing/boost-compute/test_accumulator.cl throws errors here, because it has multiple predecessors (in kernel "reduce")! How to handle them?
 					throw CompilationError(CompilationStep::GENERAL, "Found multiple predecessors for CFG loop", neighbor->key->getLabel()->to_string());
 
 				logging::debug() << "Found predecessor for CFG loop: " << neighbor->key->getLabel()->to_string() << logging::endl;
