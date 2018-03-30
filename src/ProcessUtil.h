@@ -12,10 +12,12 @@
 
 namespace vc4c
 {
-	/*
-	 * Runs the command in a new child-process, passes the standard input/output/error streams, waits for the process to finish and returns it status
-	 */
-	int runProcess(const std::string& command, std::istream* stdin = nullptr, std::ostream* stdout = nullptr, std::ostream* stderr = nullptr);
+    /*
+     * Runs the command in a new child-process, passes the standard input/output/error streams, waits for the process to
+     * finish and returns it status
+     */
+    int runProcess(const std::string& command, std::istream* stdin = nullptr, std::ostream* stdout = nullptr,
+        std::ostream* stderr = nullptr);
 
 } /* namespace vc4c */
 

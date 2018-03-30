@@ -11,14 +11,13 @@
 
 namespace vc4c
 {
-	class Method;
-	class Module;
+    class Method;
+    class Module;
 
-	namespace optimizations
-	{
-		void inlineMethods(const Module& module, Method& kernel, const Configuration& config);
-	} // namespace optimizations
+    namespace optimizations
+    {
+        void inlineMethods(const Module& module, Method& kernel, const Configuration& config);
+    } // namespace optimizations
 } // namespace vc4c
 
 #endif /* INLINER_H */
-

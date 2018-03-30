@@ -12,35 +12,34 @@
 
 namespace vc4c
 {
-	namespace analysis
-	{
-		struct LifetimeRelation
-		{
+    namespace analysis
+    {
+        struct LifetimeRelation
+        {
+        };
 
-		};
+        using LifetimeNode = Node<const Local*, LifetimeRelation>;
 
-		using LifetimeNode = Node<const Local*, LifetimeRelation>;
+        /*
+         * Graph of relations of objects residing in memory and their life-time
+         *
+         * Can be used for e.g. escape analysis or lowering private/local memory into VPM
+         */
+        class LifetimeGraph : public Graph<const Local*, LifetimeNode>
+        {
+        public:
+            static LifetimeGraph createLifetimeGraph(Method& method);
 
-		/*
-		 * Graph of relations of objects residing in memory and their life-time
-		 *
-		 * Can be used for e.g. escape analysis or lowering private/local memory into VPM
-		 */
-		class LifetimeGraph : public Graph<const Local*, LifetimeNode>
-		{
-		public:
-			static LifetimeGraph createLifetimeGraph(Method& method);
+            /*
+             * Calculates the stack-size required to fit all stack-allocations.
+             * Non-overlapping stack-allocations may be placed in the same memory-area
+             *
+             * NOTE: This calculation is for one QPU!
+             */
+            unsigned calculateRequiredStackSize();
+        };
 
-			/*
-			 * Calculates the stack-size required to fit all stack-allocations.
-			 * Non-overlapping stack-allocations may be placed in the same memory-area
-			 *
-			 * NOTE: This calculation is for one QPU!
-			 */
-			unsigned calculateRequiredStackSize();
-		};
-
-	} /* namespace analysis */
+    } /* namespace analysis */
 } /* namespace vc4c */
 
 #endif /* VC4C_LIFETIME_GRAPH_H */

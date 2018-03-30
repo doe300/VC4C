@@ -1,4 +1,4 @@
-/* 
+/*
  * Header for the public C-interface
  *
  * Author: doe300
@@ -12,61 +12,59 @@
 #include <stddef.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
-    
-    #define LOG_DEBUG 'D'
-    #define LOG_INFO 'I'
-    #define LOG_WARNING 'W'
-    #define LOG_ERROR 'E'
-    #define LOG_SEVERE 'S'
-    
-    typedef struct _configuration
-    {
-        unsigned math_type;
-        unsigned output_mode;
-        char log_level;
-    } configuration;
-    
-    #define MATH_TYPE_FAST 1
-    #define MATH_TYPE_EXACT 2
-    #define MATH_TYPE_STRICT 3
 
-    #define OUTPUT_BINARY 0
-    #define OUTPUT_HEX 1
-    #define OUTPUT_ASSEMBLER 2
+#define LOG_DEBUG 'D'
+#define LOG_INFO 'I'
+#define LOG_WARNING 'W'
+#define LOG_ERROR 'E'
+#define LOG_SEVERE 'S'
 
-    extern const configuration DEFAULT_CONFIG;
-    
-    typedef struct _data_storage
-    {
-        unsigned is_file;
-        union {
-            char* data;
-            char* file_name;
-        };
-        unsigned long data_length;
-    } storage;
+typedef struct _configuration
+{
+    unsigned math_type;
+    unsigned output_mode;
+    char log_level;
+} configuration;
 
-    int convert(const storage* in, storage* out, const configuration config, const char* options);
+#define MATH_TYPE_FAST 1
+#define MATH_TYPE_EXACT 2
+#define MATH_TYPE_STRICT 3
 
-    typedef void(*CompilationErrorHandler)(const char* message, const size_t length, void* userData);
-    void setErrorHandler(CompilationErrorHandler errorHandler, void* userData);
-    
-    #define SOURCE_TYPE_UNKNOWN 0
-    #define SOURCE_TYPE_OPENCL_C 1
-    #define SOURCE_TYPE_LLVM_IR 2
-    #define SOURCE_TYPE_SPIRV_BIN 3
-    #define SOURCE_TYPE_SPIRV_TEXT 4
-    #define SOURCE_TYPE_QPUASM_HEX 5
-    #define SOURCE_TYPE_QPUASM_BIN 6
+#define OUTPUT_BINARY 0
+#define OUTPUT_HEX 1
+#define OUTPUT_ASSEMBLER 2
 
-    int determineSourceType(const storage* in);
+extern const configuration DEFAULT_CONFIG;
+
+typedef struct _data_storage
+{
+    unsigned is_file;
+    union {
+        char* data;
+        char* file_name;
+    };
+    unsigned long data_length;
+} storage;
+
+int convert(const storage* in, storage* out, const configuration config, const char* options);
+
+typedef void (*CompilationErrorHandler)(const char* message, const size_t length, void* userData);
+void setErrorHandler(CompilationErrorHandler errorHandler, void* userData);
+
+#define SOURCE_TYPE_UNKNOWN 0
+#define SOURCE_TYPE_OPENCL_C 1
+#define SOURCE_TYPE_LLVM_IR 2
+#define SOURCE_TYPE_SPIRV_BIN 3
+#define SOURCE_TYPE_SPIRV_TEXT 4
+#define SOURCE_TYPE_QPUASM_HEX 5
+#define SOURCE_TYPE_QPUASM_BIN 6
+
+int determineSourceType(const storage* in);
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif /* C_INTERFACE_H */
-

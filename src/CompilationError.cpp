@@ -26,7 +26,7 @@ static std::string to_sting(const CompilationStep step)
     case CompilationStep::PRECOMPILATION:
         return "Pre-compilation";
     case CompilationStep::LINKER:
-    	return "Linker";
+        return "Linker";
     case CompilationStep::SCANNER:
         return "Scanner";
     case CompilationStep::PARSER:
@@ -40,109 +40,102 @@ static std::string to_sting(const CompilationStep step)
     case CompilationStep::CODE_GENERATION:
         return "Code Generation";
     case CompilationStep::VERIFIER:
-    	return "Verifier";
+        return "Verifier";
     default:
         return "Other";
     }
 }
 
 CompilationError::CompilationError(const CompilationStep step, const std::string& message) :
-        std::runtime_error((to_sting(step) + ": ") + message)
+    std::runtime_error((to_sting(step) + ": ") + message)
 {
-	logBacktrace();
+    logBacktrace();
 }
 
 CompilationError::CompilationError(const CompilationStep step, const std::size_t line, const std::string& message) :
-std::runtime_error((to_sting(step) + ": In line ") + (std::to_string(line) + ": ") + message)
+    std::runtime_error((to_sting(step) + ": In line ") + (std::to_string(line) + ": ") + message)
 {
-	logBacktrace();
+    logBacktrace();
 }
 
 CompilationError::CompilationError(const CompilationStep step, const std::string& type, const std::string& message) :
-std::runtime_error((to_sting(step) + ": ") + (type + ": ") + message)
+    std::runtime_error((to_sting(step) + ": ") + (type + ": ") + message)
 {
-	logBacktrace();
+    logBacktrace();
 }
 
-
-CompilationError::~CompilationError()
-{
-}
+CompilationError::~CompilationError() {}
 
 #if defined(DEBUG_MODE) and defined(__GNUC__)
-//adapted from here: https://stackoverflow.com/a/2526298/8720655
+// adapted from here: https://stackoverflow.com/a/2526298/8720655
 static void demangleAndPrint(char* line, int i)
 {
-	char* mangled_name = nullptr;
-	char* offset_begin = nullptr;
-	char* offset_end = nullptr;
+    char* mangled_name = nullptr;
+    char* offset_begin = nullptr;
+    char* offset_end = nullptr;
 
-	// find parentheses and +address offset surrounding mangled name
-	for (char *p = line; *p != '\0'; ++p)
-	{
-		if (*p == '(')
-		{
-			mangled_name = p;
-		}
-		else if (*p == '+')
-		{
-			offset_begin = p;
-		}
-		else if (*p == ')')
-		{
-			offset_end = p;
-			break;
-		}
-	}
+    // find parentheses and +address offset surrounding mangled name
+    for(char* p = line; *p != '\0'; ++p)
+    {
+        if(*p == '(')
+        {
+            mangled_name = p;
+        }
+        else if(*p == '+')
+        {
+            offset_begin = p;
+        }
+        else if(*p == ')')
+        {
+            offset_end = p;
+            break;
+        }
+    }
 
-	// if the line could be processed, attempt to demangle the symbol
-	if (mangled_name && offset_begin && offset_end &&
-	mangled_name < offset_begin)
-	{
-		*mangled_name++ = '\0';
-		*offset_begin++ = '\0';
-		*offset_end++ = '\0';
+    // if the line could be processed, attempt to demangle the symbol
+    if(mangled_name && offset_begin && offset_end && mangled_name < offset_begin)
+    {
+        *mangled_name++ = '\0';
+        *offset_begin++ = '\0';
+        *offset_end++ = '\0';
 
-		int status;
-		char * real_name = abi::__cxa_demangle(mangled_name, nullptr, nullptr, &status);
+        int status;
+        char* real_name = abi::__cxa_demangle(mangled_name, nullptr, nullptr, &status);
 
-		// if demangling is successful, output the demangled function name
-		if (status == 0)
-		{
-			logging::error() << " (" << i << ") " << line << " : "
-					  << real_name << "+" << offset_begin << offset_end
-					  << logging::endl;
-
-		}
-		// otherwise, output the mangled function name
-		else
-		{
-			logging::error() << " (" << i << ") " << line << " : "
-					  << mangled_name << "+" << offset_begin << offset_end
-					  << logging::endl;
-		}
-		free(real_name);
-	}
-	// otherwise, print the whole line
-	else
-	{
-		logging::error() << " (" << i << ") " << line << logging::endl;
-	}
+        // if demangling is successful, output the demangled function name
+        if(status == 0)
+        {
+            logging::error() << " (" << i << ") " << line << " : " << real_name << "+" << offset_begin << offset_end
+                             << logging::endl;
+        }
+        // otherwise, output the mangled function name
+        else
+        {
+            logging::error() << " (" << i << ") " << line << " : " << mangled_name << "+" << offset_begin << offset_end
+                             << logging::endl;
+        }
+        free(real_name);
+    }
+    // otherwise, print the whole line
+    else
+    {
+        logging::error() << " (" << i << ") " << line << logging::endl;
+    }
 }
 #endif
 
 void CompilationError::logBacktrace()
 {
 #if defined(DEBUG_MODE) and defined(__GNUC__)
-	std::array<void*, 256> funcPointers;
-	int numFuncs = backtrace(funcPointers.data(), funcPointers.size());
+    std::array<void*, 256> funcPointers;
+    int numFuncs = backtrace(funcPointers.data(), funcPointers.size());
 
-	char** strings = backtrace_symbols(funcPointers.data(), numFuncs);
-	//skip first line (this function)
-	for (int i = 1; i < numFuncs; i++)
-	{
-		demangleAndPrint(strings[i], i);
-	}
-	free(strings);
+    char** strings = backtrace_symbols(funcPointers.data(), numFuncs);
+    // skip first line (this function)
+    for(int i = 1; i < numFuncs; i++)
+    {
+        demangleAndPrint(strings[i], i);
+    }
+    free(strings);
 #endif
 }

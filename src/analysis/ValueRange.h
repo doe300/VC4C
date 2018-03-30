@@ -7,78 +7,76 @@
 #ifndef VC4C_VALUE_RANGE_H
 #define VC4C_VALUE_RANGE_H
 
-#include "Optional.h"
 #include "../performance.h"
+#include "Optional.h"
 
 #include <inttypes.h>
 #include <limits>
 
 namespace vc4c
 {
-	struct DataType;
-	class Local;
-	class Method;
+    struct DataType;
+    class Local;
+    class Method;
 
-	namespace intermediate
-	{
-		struct FloatRange
-		{
-			double minValue = std::numeric_limits<float>::lowest();
-			double maxValue = std::numeric_limits<float>::max();
-		};
+    namespace intermediate
+    {
+        struct FloatRange
+        {
+            double minValue = std::numeric_limits<float>::lowest();
+            double maxValue = std::numeric_limits<float>::max();
+        };
 
-		struct IntegerRange
-		{
-			int64_t minValue = std::numeric_limits<int32_t>::lowest();
-			int64_t maxValue = std::numeric_limits<uint32_t>::max();
-		};
+        struct IntegerRange
+        {
+            int64_t minValue = std::numeric_limits<int32_t>::lowest();
+            int64_t maxValue = std::numeric_limits<uint32_t>::max();
+        };
 
-		/*
-		 * Contains a the value range for a certain local
-		 */
-		class ValueRange
-		{
-		public:
+        /*
+         * Contains a the value range for a certain local
+         */
+        class ValueRange
+        {
+        public:
+            ValueRange(bool isFloat, bool isSigned = true);
+            ValueRange(const DataType& type);
 
-			ValueRange(bool isFloat, bool isSigned = true);
-			ValueRange(const DataType& type);
+            Optional<FloatRange> getFloatRange() const;
+            Optional<IntegerRange> getIntRange() const;
 
-			Optional<FloatRange> getFloatRange() const;
-			Optional<IntegerRange> getIntRange() const;
+            /*
+             * Returns whether all possible values are positive
+             */
+            bool isUnsigned() const;
+            bool fitsIntoType(const DataType& type, bool isSigned = true) const;
 
-			/*
-			 * Returns whether all possible values are positive
-			 */
-			bool isUnsigned() const;
-			bool fitsIntoType(const DataType& type, bool isSigned = true) const;
+            std::string to_string() const;
 
-			std::string to_string() const;
+            static FastMap<const Local*, ValueRange> determineValueRanges(Method& method);
 
-			static FastMap<const Local*, ValueRange> determineValueRanges(Method& method);
+        private:
+            enum class RangeType
+            {
+                FLOAT,
+                INTEGER
+            };
 
-		private:
+            union {
+                FloatRange floatRange;
+                IntegerRange intRange;
+            };
 
-			enum class RangeType
-			{
-				FLOAT, INTEGER
-			};
+            const RangeType type;
+            bool hasDefaultBoundaries;
 
-			union
-			{
-				FloatRange floatRange;
-				IntegerRange intRange;
-			};
+            void extendBoundaries(double newMin, double newMax);
+            void extendBoundaries(int64_t newMin, int64_t newMax);
+            void extendBoundaries(const ValueRange& other);
+            void extendBoundariesToUnknown(bool isKnownToBeUnsigned = false);
+        };
 
-			const RangeType type;
-			bool hasDefaultBoundaries;
-
-			void extendBoundaries(double newMin, double newMax);
-			void extendBoundaries(int64_t newMin, int64_t newMax);
-			void extendBoundaries(const ValueRange& other);
-			void extendBoundariesToUnknown(bool isKnownToBeUnsigned = false);
-		};
-
-	} /* namespace intermediate */
+    } /* namespace intermediate */
 } /* namespace vc4c */
 
 #endif /* VC4C_VALUE_RANGE_H */

@@ -15,42 +15,38 @@
 
 namespace vc4c
 {
+    namespace llvm2qasm
+    {
+        class Scanner
+        {
+        public:
+            explicit Scanner(std::istream& input = std::cin);
+            Scanner(const Scanner& orig) = default;
+            ~Scanner() = default;
 
-	namespace llvm2qasm
-	{
+            const Token peek();
+            const Token pop();
+            const Token readLine();
 
-		class Scanner
-		{
-		public:
+            bool hasInput();
 
-			explicit Scanner(std::istream& input = std::cin);
-			Scanner(const Scanner& orig) = default;
-			~Scanner()= default;
+            std::string getErrorPosition() const;
 
-			const Token peek();
-			const Token pop();
-			const Token readLine();
+            unsigned int getLineNumber() const;
 
-			bool hasInput();
+        private:
+            unsigned int lineNumber;
+            unsigned int rowNumber;
 
-			std::string getErrorPosition() const;
+            std::istream& input;
+            std::pair<bool, Token> lookAhead;
 
-			unsigned int getLineNumber() const;
+            const Token readToken();
 
-		private:
-			unsigned int lineNumber;
-			unsigned int rowNumber;
+            const Token readNumber();
 
-			std::istream& input;
-			std::pair<bool, Token> lookAhead;
-
-			const Token readToken();
-
-			const Token readNumber();
-
-			int skipChar();
-		};
-	} // namespace llvm2qasm
+            int skipChar();
+        };
+    } // namespace llvm2qasm
 } // namespace vc4c
 #endif /* SCANNER_H */
-
