@@ -804,7 +804,7 @@ const VPMArea* VPM::addArea(const Local* local, const DataType& elementType, boo
                          << " for local: " << local->to_string(false)
                          << (isStackArea ? std::string("(") + std::to_string(numStacks) + " stacks )" : "")
                          << logging::endl;
-        PROFILE_COUNTER(9010, "VPM cache size", requestedSize);
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL + 90, "VPM cache size", requestedSize);
         return &(*it.first);
     }
 

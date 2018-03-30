@@ -228,12 +228,12 @@ static void runOptimizationPasses(
     {
         logging::debug() << logging::endl;
         logging::debug() << "Running pass: " << pass.name << logging::endl;
-        PROFILE_COUNTER(pass.index * 100, pass.name + " (before)", method.countInstructions());
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + pass.index * 10, pass.name + " (before)", method.countInstructions());
         PROFILE_START_DYNAMIC(pass.name);
         pass(module, method, config);
         PROFILE_END_DYNAMIC(pass.name);
         PROFILE_COUNTER_WITH_PREV(
-            (pass.index + 1) * 100, pass.name + " (after)", method.countInstructions(), pass.index * 100);
+            vc4c::profiler::COUNTER_OPTIMIZATION + (pass.index + 1) * 10, pass.name + " (after)", method.countInstructions(), vc4c::profiler::COUNTER_OPTIMIZATION + pass.index * 10);
     }
     logging::info() << logging::endl;
     if(numInstructions != method.countInstructions())
@@ -258,17 +258,17 @@ void Optimizer::optimize(Module& module) const
         // PHI-nodes need to be eliminated before inlining functions
         // since otherwise the phi-node is mapped to the initial label, not to the last label added by the functions
         // (the real end of the original, but split up block)
-        PROFILE_COUNTER(90, "Eliminate Phi-nodes (before)", method->countInstructions());
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_NORMALIZATION + 1, "Eliminate Phi-nodes (before)", method->countInstructions());
         eliminatePhiNodes(module, *method.get(), config);
-        PROFILE_COUNTER_WITH_PREV(95, "Eliminate Phi-nodes (after)", method->countInstructions(), 90);
+        PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION + 2, "Eliminate Phi-nodes (after)", method->countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 1);
     }
     for(Method* kernelFunc : module.getKernels())
     {
         Method& kernel = *kernelFunc;
 
-        PROFILE_COUNTER(100, "Inline (before)", kernel.countInstructions());
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_NORMALIZATION + 4, "Inline (before)", kernel.countInstructions());
         inlineMethods(module, kernel, config);
-        PROFILE_COUNTER_WITH_PREV(110, "Inline (after)", kernel.countInstructions(), 100);
+        PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION + 5, "Inline (after)", kernel.countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 4);
     }
     for(Method* kernelFunc : module.getKernels())
     {

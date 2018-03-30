@@ -261,7 +261,7 @@ const OrderedMap<std::string, Local>& Method::readLocals() const
 
 void Method::cleanLocals()
 {
-    PROFILE_COUNTER(7, "Clean locals (before)", locals.size());
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL + 7, "Clean locals (before)", locals.size());
 #ifdef DEBUG_MODE
     // check duplicate locals
     FastSet<std::string> localNames;
@@ -294,7 +294,7 @@ void Method::cleanLocals()
             ++it;
     }
     logging::debug() << "Cleaned " << numCleaned << " unused locals from method " << name << logging::endl;
-    PROFILE_COUNTER_WITH_PREV(8, "Clean locals (after)", locals.size(), 7);
+    PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_GENERAL + 8, "Clean locals (after)", locals.size(), vc4c::profiler::COUNTER_GENERAL + 7);
 }
 
 void Method::dumpInstructions() const

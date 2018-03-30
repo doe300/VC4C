@@ -71,6 +71,17 @@ namespace vc4c
 
         void increaseCounter(std::size_t index, const std::string& name, std::size_t value, const std::string& file,
             std::size_t line, std::size_t prevIndex = SIZE_MAX);
+
+        /*
+         * The following values are added to the sub counter index to get the absolute counter index.
+         *
+         * E.g. the second counter in the front-end is COUNTER_FRONTEND + 2
+         */
+        static constexpr std::size_t COUNTER_GENERAL = 0;
+        static constexpr std::size_t COUNTER_FRONTEND = 10000;
+        static constexpr std::size_t COUNTER_NORMALIZATION = 20000;
+        static constexpr std::size_t COUNTER_OPTIMIZATION = 30000;
+        static constexpr std::size_t COUNTER_BACKEND = 40000;
     } // namespace profiler
 } // namespace vc4c
 

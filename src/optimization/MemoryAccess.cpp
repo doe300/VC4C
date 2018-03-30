@@ -480,7 +480,7 @@ static void combineVPMAccess(FastSet<BasicBlock*>& blocks, Method& method)
 
     // clean up empty instructions
     method.cleanEmptyInstructions();
-    PROFILE_COUNTER(8010, "Scratch memory size (in rows)", method.vpm->getScratchArea().numRows);
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL + 80, "Scratch memory size (in rows)", method.vpm->getScratchArea().numRows);
 }
 
 InstructionWalker optimizations::accessGlobalData(
