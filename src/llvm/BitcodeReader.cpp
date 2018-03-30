@@ -32,7 +32,8 @@ using namespace vc4c::llvm2qasm;
 extern AddressSpace toAddressSpace(int num);
 extern std::string cleanMethodName(const std::string& name);
 
-static void dumpValue(const llvm::Value* val)
+template<typename T>
+static void dumpLLVM(const T* val)
 {
 #if LLVM_LIBRARY_VERSION >= 50
 	val->print(llvm::errs());
@@ -449,7 +450,7 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
 		pointerType.getPointerType().value()->addressSpace = toAddressSpace(type->getPointerAddressSpace());
 		return pointerType;
 	}
-	type->dump();
+	dumpLLVM(type);
 	throw CompilationError(CompilationStep::PARSER, "Unknown LLVM type", std::to_string(type->getTypeID()));
 }
 
@@ -1003,7 +1004,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
 	}
 	else
 	{
-		dumpValue(val);
+		dumpLLVM(val);
 		throw CompilationError(CompilationStep::PARSER, "Unhandled constant type", std::to_string(val->getValueID()));
 	}
 }
@@ -1032,7 +1033,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
 			{
 				if(!toConstant(module, expr->getOperand(i)).isZeroInitializer())
 				{
-					dumpValue(expr);
+					dumpLLVM(expr);
 					throw CompilationError(CompilationStep::PARSER, "Only constant getelementptr without offsets are supported for now");
 				}
 			}
@@ -1161,7 +1162,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
 
 	if(result)
 		return result.value();
-	dumpValue(expr);
+	dumpLLVM(expr);
 	throw CompilationError(CompilationStep::PARSER, "This type of constant expression is not supported yet", expr->getOpcodeName());
 }
 

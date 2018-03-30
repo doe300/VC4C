@@ -151,7 +151,12 @@ const OptimizationPass optimizations::ADD_START_STOP_SEGMENT = OptimizationPass(
 const OptimizationPass optimizations::EXTEND_BRANCHES = OptimizationPass("ExtendBranches", extendBranches, 190);
 
 const std::set<OptimizationPass> optimizations::DEFAULT_PASSES = {
-		MAP_MEMORY_ACCESS, RUN_SINGLE_STEPS, /* SPILL_LOCALS, */ COMBINE_LITERAL_LOADS, RESOLVE_STACK_ALLOCATIONS, COMBINE_ROTATIONS, REMOVE_REDUNDANT_MOVES, ELIMINATE, VECTORIZE, SPLIT_READ_WRITES, REORDER, COMBINE, UNROLL_WORK_GROUPS, ADD_START_STOP_SEGMENT, EXTEND_BRANCHES, REMOVE_CONSTANT_LOAD_IN_LOOPS
+		MAP_MEMORY_ACCESS, RUN_SINGLE_STEPS, /* SPILL_LOCALS, */ COMBINE_LITERAL_LOADS, RESOLVE_STACK_ALLOCATIONS, COMBINE_ROTATIONS, REMOVE_REDUNDANT_MOVES, ELIMINATE, VECTORIZE, SPLIT_READ_WRITES, REORDER, COMBINE, UNROLL_WORK_GROUPS, ADD_START_STOP_SEGMENT, EXTEND_BRANCHES
+		/* , REMOVE_CONSTANT_LOAD_IN_LOOPS
+		 * TODO in combination with a bug/missing check in register-allocation, this generates invalid code (e.g. testing/test_barrier.cl)
+		 * More exact: the load is moved outside the loop but the register is re-assigned in the loop having wrong value for successive iterations
+		 * In register-allocation, need to check for loops and reserve whole loop
+		 */
 };
 
 Optimizer::Optimizer(const Configuration& config, const std::set<OptimizationPass>& passes) : config(config), passes(passes)
