@@ -38,6 +38,11 @@ bool BranchLabel::mapsToASMInstruction() const
     return false;
 }
 
+bool BranchLabel::isNormalized() const
+{
+    return true;
+}
+
 const Local* BranchLabel::getLabel() const
 {
     return getArgument(0)->local;
@@ -109,6 +114,11 @@ qpu_asm::Instruction* Branch::convertToAsm(const FastMap<const Local*, Register>
     return qasm;
 }
 
+bool Branch::isNormalized() const
+{
+    return true;
+}
+
 const Local* Branch::getTarget() const
 {
     return getArgument(0)->local;
@@ -148,6 +158,11 @@ qpu_asm::Instruction* PhiNode::convertToAsm(const FastMap<const Local*, Register
 {
     throw CompilationError(
         CompilationStep::CODE_GENERATION, "There should be no more phi-nodes at this point", to_string());
+}
+
+bool PhiNode::isNormalized() const
+{
+    return false;
 }
 
 IntermediateInstruction* PhiNode::copyFor(Method& method, const std::string& localPrefix) const

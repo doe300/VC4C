@@ -77,6 +77,11 @@ qpu_asm::Instruction* MemoryInstruction::convertToAsm(const FastMap<const Local*
     throw CompilationError(CompilationStep::OPTIMIZER, "There should be no more memory operations", to_string());
 }
 
+bool MemoryInstruction::isNormalized() const
+{
+    return false;
+}
+
 IntermediateInstruction* MemoryInstruction::copyFor(Method& method, const std::string& localPrefix) const
 {
     return (new MemoryInstruction(op, renameValue(method, getDestination(), localPrefix),

@@ -316,6 +316,11 @@ bool Operation::mapsToASMInstruction() const
     return true;
 }
 
+bool Operation::isNormalized() const
+{
+    return op != OP_NOP;
+}
+
 const Value Operation::getFirstArg() const
 {
     return getArgument(0).value();
@@ -409,6 +414,11 @@ bool MoveOperation::mapsToASMInstruction() const
     // this instruction is not mapped to an ASM instruction, if the source is undefined, since then the result is
     // undefined too
     return !getSource().isUndefined();
+}
+
+bool MoveOperation::isNormalized() const
+{
+    return true;
 }
 
 Optional<Value> MoveOperation::precalculate(const std::size_t numIterations) const
@@ -524,6 +534,11 @@ qpu_asm::Instruction* Nop::convertToAsm(const FastMap<const Local*, Register>& r
         InputMultiplex::ACC0, InputMultiplex::ACC0, InputMultiplex::ACC0);
 }
 
+bool Nop::isNormalized() const
+{
+    return true;
+}
+
 Comparison::Comparison(const std::string& comp, const Value& dest, const Value& val0, const Value& val1) :
     Operation(comp, dest, val0, val1)
 {
@@ -535,6 +550,11 @@ IntermediateInstruction* Comparison::copyFor(Method& method, const std::string& 
         new Comparison(opCode, renameValue(method, getOutput().value(), localPrefix),
             renameValue(method, getFirstArg(), localPrefix), renameValue(method, getSecondArg().value(), localPrefix)))
         ->copyExtrasFrom(this);
+}
+
+bool Comparison::isNormalized() const
+{
+    return false;
 }
 
 CombinedOperation::CombinedOperation(Operation* op1, Operation* op2) :
@@ -631,6 +651,11 @@ qpu_asm::Instruction* CombinedOperation::convertToAsm(const FastMap<const Local*
     }
 
     return addInstr.release();
+}
+
+bool CombinedOperation::isNormalized() const
+{
+    return true;
 }
 
 IntermediateInstruction* CombinedOperation::copyFor(Method& method, const std::string& localPrefix) const
