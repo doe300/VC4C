@@ -63,7 +63,7 @@ static FastMap<const Local*, std::size_t> mapLabels(Method& method)
 
 const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator::generateInstructions(Method& method)
 {
-    PROFILE_COUNTER(100000, "CodeGeneration (before)", method.countInstructions());
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 0, "CodeGeneration (before)", method.countInstructions());
 #ifdef MULTI_THREADED
     instructionsLock.lock();
 #endif
@@ -163,7 +163,7 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
     }
     logging::debug() << "Generated " << std::dec << generatedInstructions.size() << " instructions!" << logging::endl;
 
-    PROFILE_COUNTER_WITH_PREV(1001000, "CodeGeneration (after)", generatedInstructions.size(), 100000);
+    PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_BACKEND + 1000, "CodeGeneration (after)", generatedInstructions.size(), vc4c::profiler::COUNTER_BACKEND + 0);
     return generatedInstructions;
 }
 
