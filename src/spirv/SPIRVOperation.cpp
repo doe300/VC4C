@@ -6,7 +6,7 @@
 
 #include "SPIRVOperation.h"
 
-#ifdef SPIRV_HEADER
+#ifdef SPIRV_FRONTEND
 #include "../intermediate/Helper.h"
 #include "../intermediate/TypeConversions.h"
 #include "../intrinsics/Images.h"

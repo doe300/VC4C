@@ -1,0 +1,22 @@
+target_sources(${VC4C_LIBRARY_NAME}
+  PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/ALUInstruction.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/ALUInstruction.h
+    ${CMAKE_CURRENT_LIST_DIR}/BranchInstruction.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/BranchInstruction.h
+    ${CMAKE_CURRENT_LIST_DIR}/CodeGenerator.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/CodeGenerator.h
+    ${CMAKE_CURRENT_LIST_DIR}/GraphColoring.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/GraphColoring.h
+    ${CMAKE_CURRENT_LIST_DIR}/Instruction.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/Instruction.h
+    ${CMAKE_CURRENT_LIST_DIR}/KernelInfo.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/KernelInfo.h
+    ${CMAKE_CURRENT_LIST_DIR}/LoadInstruction.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/LoadInstruction.h
+    ${CMAKE_CURRENT_LIST_DIR}/OpCodes.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/OpCodes.h
+    ${CMAKE_CURRENT_LIST_DIR}/RegisterAllocation.h
+    ${CMAKE_CURRENT_LIST_DIR}/SemaphoreInstruction.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/SemaphoreInstruction.h
+)

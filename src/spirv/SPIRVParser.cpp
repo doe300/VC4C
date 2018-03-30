@@ -14,10 +14,10 @@
 #include <cstdint>
 #include <cstring>
 
-#ifdef SPIRV_HEADER
+#ifdef SPIRV_FRONTEND
 
-#ifdef SPIRV_OPTIMIZER_HEADER
-#include SPIRV_OPTIMIZER_HEADER
+#if __has_include("spirv-tools/optimizer.hpp")
+#include "spirv-tools/optimizer.hpp"
 #endif
 
 using namespace vc4c;
@@ -50,7 +50,7 @@ static std::string getErrorPosition(spv_diagnostic diagnostics)
 
 static std::vector<uint32_t> runSPRVToolsOptimizer(const std::vector<uint32_t>& input)
 {
-#ifdef SPIRV_OPTIMIZER_HEADER
+#if 0 /* SPIRV-Tools optimizer hangs in some code */
 	logging::debug() << "Running SPIR-V Tools optimizations..." << logging::endl;
 	spvtools::Optimizer opt(SPV_ENV_OPENCL_EMBEDDED_1_2);
 	opt.SetMessageConsumer(consumeSPIRVMessage);
@@ -116,7 +116,7 @@ void SPIRVParser::parse(Module& module)
     }
 
     //run SPIR-V Tools optimizations
-#ifdef SPIRV_OPTIMIZER_HEADER
+#if 0 /* SPIRV-Tools optimizer hangs in some code */
     words = runSPRVToolsOptimizer(words);
 #endif
 
