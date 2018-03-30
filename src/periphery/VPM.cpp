@@ -479,7 +479,7 @@ InstructionWalker VPM::insertReadRAM(
     it.nextInBlock();
 
     //"the actual DMA load or store operation is initiated by writing the memory address to the VCD_LD_ADDR or
-    //VCD_ST_ADDR register" (p. 56)
+    // VCD_ST_ADDR register" (p. 56)
     //-> write output-argument base address + offset/index into VPM_ADDR
     it.emplace(new MoveOperation(VPM_IN_ADDR_REGISTER, memoryAddress));
     it.nextInBlock();
@@ -525,7 +525,7 @@ InstructionWalker VPM::insertWriteRAM(
     it.nextInBlock();
 
     //"the actual DMA load or store operation is initiated by writing the memory address to the VCD_LD_ADDR or
-    //VCD_ST_ADDR register" (p. 56)
+    // VCD_ST_ADDR register" (p. 56)
     //-> write output-argument base address + offset/index into VPM_ADDR
     it.emplace(new MoveOperation(VPM_OUT_ADDR_REGISTER, memoryAddress));
     it.nextInBlock();

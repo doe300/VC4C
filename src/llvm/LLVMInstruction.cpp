@@ -138,7 +138,7 @@ bool CallSite::mapInstruction(Method& method) const
         if(arguments.at(0).getLiteralValue() && arguments.at(0).getLiteralValue()->signedInt() > 0)
         {
             //"The first argument is a constant integer representing the size of the object, or -1 if it is variable
-            //sized"
+            // sized"
             StackAllocation* alloc = pointer.local->as<StackAllocation>();
             if(alloc == nullptr)
                 throw CompilationError(CompilationStep::LLVM_2_IR,

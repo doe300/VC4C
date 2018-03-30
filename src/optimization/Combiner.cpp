@@ -420,8 +420,8 @@ void optimizations::combineOperations(const Module& module, Method& method, cons
                     if(instr->hasValueType(ValueType::LOCAL) && nextInstr->hasValueType(ValueType::LOCAL))
                     {
                         // extra check, only combine writes to the same local, if local is only used within the next
-                        // instruction  this is required, since we cannot write to a physical register from both ALUs, so
-                        // the local needs to be on an accumulator
+                        // instruction  this is required, since we cannot write to a physical register from both ALUs,
+                        // so the local needs to be on an accumulator
                         if(instr->getOutput()->local == nextInstr->getOutput()->local &&
                             !nextIt.getBasicBlock()->isLocallyLimited(nextIt, instr->getOutput()->local))
                             conditionsMet = false;

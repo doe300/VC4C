@@ -285,7 +285,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
             if(userIt == iterationStep.local->getUsers().end())
             {
                 //"default" case, the iteration-variable is compared to something and the result of this comparison is
-                //used to branch  e.g. "- = xor <iteration-variable>, <upper-bound> (setf)"
+                // used to branch  e.g. "- = xor <iteration-variable>, <upper-bound> (setf)"
                 userIt = std::find_if(iterationStep.local->getUsers().begin(), iterationStep.local->getUsers().end(),
                     [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {
                         return pair.first->setFlags == SetFlag::SET_FLAGS;
@@ -851,8 +851,8 @@ void optimizations::extendBranches(const Module& module, Method& method, const C
                  * condition was false) or 1 (if condition was true)
                  */
                 // TODO can be skipped, if it is checked/guaranteed, that the last instruction setting flags is the
-                // boolean-selection for the given condition  but we need to check more than the last instructions, since
-                // there could be moves inserted by phi
+                // boolean-selection for the given condition  but we need to check more than the last instructions,
+                // since there could be moves inserted by phi
 
                 // skip setting of flags, if the previous setting wrote the same flags
                 if(lastSetFlags.first != branch->getCondition() ||

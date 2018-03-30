@@ -301,8 +301,8 @@ void optimizations::splitReadAfterWrites(const Module& module, Method& method, c
                         logging::debug() << "Inserting NOP to split up read-after-write before: " << it->to_string()
                                          << logging::endl;
                         // emplacing after the last instruction instead of before this one fixes errors with
-                        // wrote-label-read, which then becomes  write-nop-label-read instead of write-label-nop-read and
-                        // the combiner can find a reason for the NOP
+                        // wrote-label-read, which then becomes  write-nop-label-read instead of write-label-nop-read
+                        // and the combiner can find a reason for the NOP
                         lastInstruction.copy().nextInBlock().emplace(new Nop(DelayType::WAIT_REGISTER));
                     }
                 }

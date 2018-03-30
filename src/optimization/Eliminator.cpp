@@ -550,8 +550,8 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 !(*sourceWriter)->hasSideEffects() && !it->signal.hasSideEffects())
             {
                 // if the source is only used once (by this move) and the destination is a register, we can replace this
-                // move by the operation calculating the source  This optimization can save almost one instruction per VPM
-                // write/VPM address write
+                // move by the operation calculating the source  This optimization can save almost one instruction per
+                // VPM write/VPM address write
                 // TODO This could potentially lead to far longer usage-ranges for operands of sourceWriter and
                 // therefore to register conflicts
                 logging::debug() << "Replacing obsolete move with instruction calculating its source: "

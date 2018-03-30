@@ -532,15 +532,15 @@ namespace vc4c
         {
             NONE = 0x0,
             //"All memory operations provided in program order after this memory operation will execute after this
-            //memory operation."
+            // memory operation."
             ACQUIRE = 0x2,
             //"All memory operations provided in program order before this memory operation will execute before this
-            //memory operation."
+            // memory operation."
             RELEASE = 0x4,
             //"Has the properties of both Acquire and Release semantics. It is used for read-modify-write operations."
             ACQUIRE_RELEASE = 0x8,
             //"All observers will see this memory access in the same order with respect to other sequentially-consistent
-            //memory accesses from this invocation."
+            // memory accesses from this invocation."
             SEQUENTIALLY_CONSISTENT = 0x10,
             //"Apply the memory-ordering constraints to subgroup memory."
             SUBGROUP_MEMORY = 0x80,
@@ -551,7 +551,7 @@ namespace vc4c
             //"Apply the memory-ordering constraints to AtomicCounter Storage Class memory."
             ATOMIC_COUNTER_MEMORY = 0x400,
             //"Apply the memory-ordering constraints to image contents (types declared by OpTypeImage), or to accesses
-            //done through pointers to the Image Storage Class."
+            // done through pointers to the Image Storage Class."
             IMAGE_MEMORY = 0x800
         };
 

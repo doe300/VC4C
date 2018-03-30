@@ -315,8 +315,8 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
     if(instr.hasPackMode() && instr.hasValueType(ValueType::LOCAL))
     {
         //"[...] the a-regfile pack block allows the 32-bit ALU result to be packed back into the a-regfile as 8 or 16
-        //bit data."  logging::debug() << "Fixed local " << instr.output.get().local.to_string() << " to register-file A,
-        // because of pack-mode in " << instr.to_string() << logging::endl;
+        // bit data."  logging::debug() << "Fixed local " << instr.output.get().local.to_string() << " to register-file
+        // A, because of pack-mode in " << instr.to_string() << logging::endl;
         blockRegisterFile(
             remove_flag(RegisterFile::ANY, RegisterFile::PHYSICAL_A), instr.getOutput()->local, localUses);
     }
@@ -1059,8 +1059,8 @@ static bool fixSingleError(Method& method, ColoredGraph& graph, ColoredNode& nod
         else
         {
             // if only one file is blocked, create a copy, write it (after the local is written to) and use it as inputs
-            // for all uses of the original local  if both files are blocked, create two copies, copy the local into them
-            // and use them where their respective file is not blocked
+            // for all uses of the original local  if both files are blocked, create two copies, copy the local into
+            // them and use them where their respective file is not blocked
 
             // TODO need to make sure, temporary are written when original is written
 

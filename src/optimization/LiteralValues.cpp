@@ -81,7 +81,7 @@ InstructionWalker optimizations::handleContainer(
             rot->getOffset().getLiteralValue()->unsignedInt() :
             rot->getOffset().immediate.getRotationOffset().value();
         //"Rotates the order of the elements in the range [first,last), in such a way that the element pointed by middle
-        //becomes the new first element."
+        // becomes the new first element."
         offset = (16 - offset);
         // need to rotate all (possible non-existing) 16 elements, so use a temporary vector with 16 elements and rotate
         // it

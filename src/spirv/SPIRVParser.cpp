@@ -394,7 +394,7 @@ static Value parseConstantComposite(const spv_parsed_instruction_t* instruction,
     for(std::size_t i = 3; i < instruction->num_words; ++i)
     {
         //"Result Type must be a composite type, whose top-level members/elements/components/columns have the same type
-        //as the types of the Constituents."
+        // as the types of the Constituents."
         // -> no heterogeneous composite possible
         const Value element = constantMappings.at(instruction->words[i]);
         constants.push_back(element);
@@ -550,7 +550,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
                 getWord(parsed_instruction, 3), getWord(parsed_instruction, 4), getWord(parsed_instruction, 5)};
         else if(getWord(parsed_instruction, 2) == SpvExecutionModeLocalSizeHint)
             //"A hint to the compiler, which indicates the most likely to be used work-group size in the x, y, and z
-            //dimensions"
+            // dimensions"
             metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES_HINT] = {
                 getWord(parsed_instruction, 3), getWord(parsed_instruction, 4), getWord(parsed_instruction, 5)};
         else if(getWord(parsed_instruction, 2) == SpvExecutionModeVecTypeHint)
@@ -577,7 +577,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
                 constantMappings.at(getWord(parsed_instruction, 5)).literal.unsignedInt()};
         else if(getWord(parsed_instruction, 2) == SpvExecutionModeLocalSizeHintId)
             //"A hint to the compiler, which indicates the most likely to be used work-group size in the x, y, and z
-            //dimensions"
+            // dimensions"
             metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES_HINT] = {
                 constantMappings.at(getWord(parsed_instruction, 3)).literal.unsignedInt(),
                 constantMappings.at(getWord(parsed_instruction, 4)).literal.unsignedInt(),
@@ -789,7 +789,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case SpvOpSpecConstantTrue:
     {
         //"[...] Similarly, the "True" and "False" parts of OpSpecConstantTrue and OpSpecConstantFalse provide the
-        //default Boolean specialization constants."
+        // default Boolean specialization constants."
         const Optional<Value> spec = specializeConstant(parsed_instruction->result_id, TYPE_BOOL, decorationMappings);
         constantMappings.emplace(parsed_instruction->result_id, spec.value_or(BOOL_TRUE));
         return SPV_SUCCESS;
@@ -797,7 +797,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case SpvOpSpecConstantFalse:
     {
         //"[...] Similarly, the "True" and "False" parts of OpSpecConstantTrue and OpSpecConstantFalse provide the
-        //default Boolean specialization constants."
+        // default Boolean specialization constants."
         const Optional<Value> spec = specializeConstant(parsed_instruction->result_id, TYPE_BOOL, decorationMappings);
         constantMappings.emplace(parsed_instruction->result_id, spec.value_or(BOOL_FALSE));
         return SPV_SUCCESS;
@@ -822,7 +822,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case SpvOpSpecConstantOp:
     {
         //"The OpSpecConstantOp instruction is specialized by executing the operation and replacing the instruction with
-        //the result."
+        // the result."
         const DataType type = typeMappings.at(parsed_instruction->type_id);
         const Optional<Value> spec = specializeConstant(parsed_instruction->result_id, type, decorationMappings);
         if(spec)
@@ -952,7 +952,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case SpvOpPtrAccessChain:
         // For pointers, the "Element" field is the first (top-level) index (see SPIR-V specification,
         // OpPtrAccessChain): "Element is used to do the initial dereference of Base: Base is treated as the address of
-        //the first element of an array, and the Element element’s address is computed to be the base for the Indexes
+        // the first element of an array, and the Element element’s address is computed to be the base for the Indexes
         //[...]"
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVIndexOf(parsed_instruction->result_id, *currentMethod,
@@ -972,7 +972,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     case SpvOpModuleProcessed:
         //"Document a process that was applied to a module. This has no semantic impact and can safely be removed from a
-        //module."
+        // module."
         return SPV_SUCCESS;
     case SpvOpDecorate:
         //"Target is the <id> to decorate. It can potentially be any <id> that is a forward reference"
@@ -993,8 +993,8 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return UNSUPPORTED_INSTRUCTION("OpMemberDecorate");
     case SpvOpDecorationGroup:
         //"A collector for Decorations from OpDecorate instructions. All such OpDecorate instructions targeting this
-        //OpDecorationGroup instruction must precede it." "Subsequent OpGroupDecorate and OpGroupMemberDecorate
-        //instructions that consume this instruction�s Result <id> will apply these decorations to their targets."
+        // OpDecorationGroup instruction must precede it." "Subsequent OpGroupDecorate and OpGroupMemberDecorate
+        // instructions that consume this instruction�s Result <id> will apply these decorations to their targets."
         // nothing needs to be done, since decorations are added up independent of target and are applied with
         // "OpGroupDecorate"
         return SPV_SUCCESS;

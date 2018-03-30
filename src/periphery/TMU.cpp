@@ -151,7 +151,7 @@ InstructionWalker periphery::insertReadVectorFromTMU(
     it = insertCalculateAddressOffsets(method, it, addr, dest.type, addresses);
 
     //"General-memory lookups are performed by writing to just the s-parameter, using the absolute memory address" (page
-    //41)  1) write address to TMU_S register
+    // 41)  1) write address to TMU_S register
     it.emplace(new intermediate::MoveOperation(tmu.getAddress(addr.type), addresses));
     it.nextInBlock();
     // 2) trigger loading of TMU
@@ -186,7 +186,7 @@ InstructionWalker periphery::insertGeneralReadTMU(
     Method& method, InstructionWalker it, const Value& dest, const Value& addr, const TMU& tmu)
 {
     //"General-memory lookups are performed by writing to just the s-parameter, using the absolute memory address" (page
-    //41)  1) write address to TMU_S register
+    // 41)  1) write address to TMU_S register
     it.emplace(new intermediate::MoveOperation(tmu.getAddress(addr.type), addr));
     it.nextInBlock();
     // 2) trigger loading of TMU

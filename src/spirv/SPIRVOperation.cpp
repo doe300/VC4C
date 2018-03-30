@@ -595,7 +595,7 @@ void SPIRVShuffle::mapInstruction(TypeMapping& types, ConstantMapping& constants
         for(const uint32_t index : this->indices)
         {
             //"A Component literal may also be FFFFFFFF, which means the corresponding result component has no source
-            //and is undefined"
+            // and is undefined"
             if(index == UNDEFINED_LITERAL)
             {
                 indices.elements.emplace_back(UNDEFINED_VALUE);
