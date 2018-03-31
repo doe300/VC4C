@@ -1,18 +1,18 @@
-include_directories(../src)
-include_directories(../include)
+add_executable(TestVC4C "")
+include(sources.list)
+target_link_libraries(TestVC4C VC4CC)
 
-#Include the source files
-file( GLOB SRCS *.cpp */*.cpp *.h */*.h)
+target_include_directories (TestVC4C PRIVATE "${PROJECT_SOURCE_DIR}/src")
+target_include_directories (TestVC4C PRIVATE "${PROJECT_SOURCE_DIR}/include")
+target_compile_definitions(TestVC4C PRIVATE CPPLOG_NAMESPACE=logging CPPLOG_CUSTOM_LOGGER=true)
 
-include_directories ("${PROJECT_SOURCE_DIR}/lib/cpptest-lite/include")
-
-add_executable(TestVC4C ${SRCS})
 add_dependencies(TestVC4C cpptest-lite-project-build)
 add_library(cpptest-lite SHARED IMPORTED)
 ExternalProject_Get_Property(cpptest-lite-project BINARY_DIR)
 set_target_properties(cpptest-lite PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/libcpptest-lite.so")
 target_link_libraries(TestVC4C cpptest-lite)
-target_link_libraries(TestVC4C VC4CC)
+target_include_directories (TestVC4C PRIVATE "${PROJECT_SOURCE_DIR}/lib/cpptest-lite/include")
+
 
 add_test(NAME Regressions COMMAND ./build/test/TestVC4C --fast-regressions WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME Emulator COMMAND ./build/test/TestVC4C --test-emulator WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

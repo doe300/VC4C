@@ -13,10 +13,10 @@
 #include <array>
 #include <iostream>
 
-#ifdef SPIRV_HEADER
+#ifdef SPIRV_FRONTEND
 
-#include SPIRV_HEADER
-#include SPIRV_PARSER_HEADER
+#include "spirv-tools/libspirv.hpp"
+#include "spirv/unified1/spirv.h"
 
 #include "../performance.h"
 #include "SPIRVOperation.h"

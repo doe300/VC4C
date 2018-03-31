@@ -10,9 +10,9 @@
 #include "CompilationError.h"
 #include "log.h"
 
-#ifdef SPIRV_HEADER
-#ifdef SPIRV_LINKER_HEADER
-#include SPIRV_LINKER_HEADER
+#ifdef SPIRV_FRONTEND
+#if __has_include("spirv-tools/linker.hpp")
+#include "spirv-tools/linker.hpp"
 #endif
 
 #include <algorithm>
