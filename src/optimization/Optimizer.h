@@ -100,8 +100,6 @@ namespace vc4c
         // add (runtime-configurable) loop over the whole kernel execution, allowing for skipping some of the syscall
         // overhead for kernels with many work-groups
         extern const OptimizationPass UNROLL_WORK_GROUPS;
-        // extends the branches by adding the conditional execution and the delay-nops
-        extern const OptimizationPass EXTEND_BRANCHES;
         // remove constant load in (nested) loops
         extern const OptimizationPass REMOVE_CONSTANT_LOAD_IN_LOOPS;
 

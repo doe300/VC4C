@@ -36,13 +36,23 @@ namespace vc4c
             explicit Normalizer(const Configuration& config = {}) : config(config){};
 
             /*
-             * Runs the normalization steps on all kernels in the module
+             * Runs the normalization steps on all kernels in the module.
+             * These steps transform the instructions into a form which can be executed on the VideoCore IV hardware.
              *
              * Depending on the build configuration, the normalization steps are run in parallel
              *
              * NOTE: The normalization needs to be run BEFORE the optimizations
              */
             void normalize(Module& module) const;
+            
+            /*
+             * Runs the second batch of normalization steps, trying to fix any possible issues with hardware limitations
+             *
+             * Depending on the build configuration, the normalization steps are run in parallel
+             *
+             * NOTE: The fix-up needs to be run AFTER the optimizations
+             */
+            void adjust(Module& module) const;
 
         private:
             Configuration config;
@@ -54,6 +64,7 @@ namespace vc4c
              * normalized (e.g. return true for #isNormalized()).
              */
             void normalizeMethod(Module& module, Method& method) const;
+            void adjustMethod(Module& module, Method& method) const;
         };
     } /* namespace normalization */
 } /* namespace vc4c */

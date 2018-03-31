@@ -14,6 +14,7 @@
 #include "../intrinsics/Intrinsics.h"
 #include "../optimization/ControlFlow.h"
 #include "../optimization/Eliminator.h"
+#include "../optimization/Reordering.h"
 #include "Inliner.h"
 #include "LiteralValues.h"
 #include "MemoryAccess.h"
@@ -38,7 +39,7 @@ static void checkNormalized(Module& module, Method& method, InstructionWalker it
 }
 
 // NOTE: The order is on purpose and must not be changed!
-const static std::vector<std::pair<std::string, NormalizationStep>> allSteps = {
+const static std::vector<std::pair<std::string, NormalizationStep>> initialNormalizationSteps = {
     // handles stack-allocations by calculating their offsets and indices
     {"ResolveStackAllocations", resolveStackAllocation},
     // intrinsifies calls to built-ins and unsupported operations
@@ -54,7 +55,13 @@ const static std::vector<std::pair<std::string, NormalizationStep>> allSteps = {
     // dummy step which simply checks whether all remaining instructions are normalized
     {"CheckNormalized", checkNormalized}};
 
-// TODO handleUseWithImmediates
+const static std::vector<std::pair<std::string, NormalizationStep>> adjustmentSteps = {
+    // prevents register-conflicts by moving long-living locals into temporaries before being used together with literal
+    // values
+    {"HandleUseWithImmediate", handleUseWithImmediate},
+    // moves all sources of vector-rotations to accumulators (if too large usage-range)
+    {"MoveRotationSourcesToAccs", optimizations::moveRotationSourcesToAccumulators}};
+// TODO split read-after-writes?
 
 static void runNormalizationStep(
     const NormalizationStep& step, Module& module, Method& method, const Configuration& config)
@@ -108,6 +115,20 @@ void Normalizer::normalize(Module& module) const
     BackgroundWorker::waitForAll(workers);
 }
 
+void Normalizer::adjust(Module& module) const
+{
+    std::vector<BackgroundWorker> workers;
+    workers.reserve(module.getKernels().size());
+
+    // run adjustment steps on kernel functions
+    for(Method* kernelFunc : module.getKernels())
+    {
+        auto f = [kernelFunc, &module, this]() -> void { adjustMethod(module, *kernelFunc); };
+        workers.emplace(workers.end(), f, "Adjustment")->operator()();
+    }
+    BackgroundWorker::waitForAll(workers);
+}
+
 void Normalizer::normalizeMethod(Module& module, Method& method) const
 {
     logging::debug() << "-----" << logging::endl;
@@ -127,7 +148,7 @@ void Normalizer::normalizeMethod(Module& module, Method& method) const
     // calculate current/final stack offsets after lowering stack-accesses
     method.calculateStackOffsets();
 
-    for(const auto& step : allSteps)
+    for(const auto& step : initialNormalizationSteps)
     {
         logging::debug() << logging::endl;
         logging::debug() << "Running pass: " << step.first << logging::endl;
@@ -153,6 +174,45 @@ void Normalizer::normalizeMethod(Module& module, Method& method) const
     else
     {
         logging::info() << "Normalization done" << logging::endl;
+    }
+    logging::debug() << "-----" << logging::endl;
+}
+
+void Normalizer::adjustMethod(Module& module, Method& method) const
+{
+    logging::debug() << "-----" << logging::endl;
+    logging::info() << "Running adjustment passes for: " << method.name << logging::endl;
+    std::size_t numInstructions = method.countInstructions();
+
+    PROFILE_START(AdjustmentPasses);
+
+    for(const auto& step : adjustmentSteps)
+    {
+        logging::debug() << logging::endl;
+        logging::debug() << "Running pass: " << step.first << logging::endl;
+        PROFILE_START_DYNAMIC(step.first);
+        runNormalizationStep(step.second, module, method, config);
+        PROFILE_END_DYNAMIC(step.first);
+    }
+
+    // extends the branches by adding the conditional execution and the delay-nops
+    // this step is called extra, because it needs to be run over all instructions
+    logging::debug() << logging::endl;
+    logging::debug() << "Running pass: ExtendBranches" << logging::endl;
+    PROFILE_START(ExtendBranches);
+    optimizations::extendBranches(module, method, config);
+    PROFILE_END(ExtendBranches);
+
+    PROFILE_END(AdjustmentPasses);
+    logging::info() << logging::endl;
+    if(numInstructions != method.countInstructions())
+    {
+        logging::info() << "Adjustment done, changed number of instructions from " << numInstructions << " to "
+                        << method.countInstructions() << logging::endl;
+    }
+    else
+    {
+        logging::info() << "Adjustment done" << logging::endl;
     }
     logging::debug() << "-----" << logging::endl;
 }
