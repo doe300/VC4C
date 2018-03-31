@@ -5,7 +5,6 @@
  */
 
 #include "Eliminator.h"
-#include "LiteralValues.h"
 
 #include "../InstructionWalker.h"
 #include "../Profiler.h"

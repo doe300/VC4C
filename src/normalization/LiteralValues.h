@@ -15,7 +15,7 @@ namespace vc4c
     class Module;
     class InstructionWalker;
 
-    namespace optimizations
+    namespace normalization
     {
         /*
          * Handles the use of literal containers (e.g. literal constant vectors) by inserting the single elements at

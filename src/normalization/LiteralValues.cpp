@@ -14,7 +14,7 @@
 #include <cmath>
 
 using namespace vc4c;
-using namespace vc4c::optimizations;
+using namespace vc4c::normalization;
 
 static InstructionWalker copyVector(Method& method, InstructionWalker it, const Value& out, const Value& in)
 {
@@ -65,7 +65,7 @@ static InstructionWalker copyVector(Method& method, InstructionWalker it, const 
     return it;
 }
 
-InstructionWalker optimizations::handleContainer(
+InstructionWalker normalization::handleContainer(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     // TODO signals, flags, conditional
@@ -582,7 +582,7 @@ static ImmediateHandler mapImmediateValue(const Literal& source)
     return handler;
 }
 
-InstructionWalker optimizations::handleImmediate(
+InstructionWalker normalization::handleImmediate(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
@@ -746,7 +746,7 @@ static Optional<Value> findPreviousUseWithImmediate(InstructionWalker it, const 
     return NO_VALUE;
 }
 
-InstructionWalker optimizations::handleUseWithImmediate(
+InstructionWalker normalization::handleUseWithImmediate(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     //- for all locals used together with small immediate values

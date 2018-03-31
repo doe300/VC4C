@@ -78,18 +78,10 @@ namespace vc4c
         /*
          * List of pre-defined optimization passes
          */
-        // maps all memory-accessing instructions to instructions actually performing the hardware memory-access
-        extern const OptimizationPass MAP_MEMORY_ACCESS;
         // runs all the single-step optimizations. Combining them results in fewer iterations over the instructions
         extern const OptimizationPass RUN_SINGLE_STEPS;
-
-        extern const OptimizationPass HANDLE_IMMEDIATES;
         // combines loadings of the same literal value within a small range of a basic block
         extern const OptimizationPass COMBINE_LITERAL_LOADS;
-        // handles stack-allocations by calculating their offsets and indices
-        extern const OptimizationPass RESOLVE_STACK_ALLOCATIONS;
-        // spills long-living, rarely written locals into the VPM
-        extern const OptimizationPass SPILL_LOCALS;
         // combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation
         extern const OptimizationPass COMBINE_ROTATIONS;
         // removes various cases of redundant moves
@@ -110,8 +102,6 @@ namespace vc4c
         extern const OptimizationPass UNROLL_WORK_GROUPS;
         // extends the branches by adding the conditional execution and the delay-nops
         extern const OptimizationPass EXTEND_BRANCHES;
-        // adds the start- and stop-segments to the beginning and end of the kernel
-        extern const OptimizationPass ADD_START_STOP_SEGMENT;
         // remove constant load in (nested) loops
         extern const OptimizationPass REMOVE_CONSTANT_LOAD_IN_LOOPS;
 
