@@ -1,0 +1,34 @@
+target_sources(${VC4C_LIBRARY_NAME}
+  PRIVATE
+    BackgroundWorker.h
+    BasicBlock.cpp
+    BasicBlock.h
+    Bitfield.h
+    c_interface.cpp
+    CompilationError.cpp
+    Compiler.cpp
+    Disassembler.cpp
+    Graph.h
+    helper.h
+    InstructionWalker.cpp
+    InstructionWalker.h
+    KernelMetaData.h
+    Locals.cpp
+    Locals.h
+    Method.cpp
+    Method.h
+    Module.cpp
+    Module.h
+    Parser.h
+    performance.h
+    Precompiler.cpp
+    ProcessUtil.cpp
+    ProcessUtil.h
+    Profiler.cpp
+    Profiler.h
+    Types.cpp
+    Types.h
+    Units.h
+    Values.cpp
+    Values.h
+)

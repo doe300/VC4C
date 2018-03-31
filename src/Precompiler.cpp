@@ -25,7 +25,7 @@
 #include <sys/stat.h>
 #endif
 
-#ifdef SPIRV_HEADER
+#ifdef SPIRV_FRONTEND
 #include "spirv/SPIRVHelper.h"
 #endif
 
@@ -136,8 +136,7 @@ void Precompiler::precompile(std::istream& input, std::unique_ptr<std::istream>&
             options, outputFile);
     else
     {
-#if defined USE_LLVM_LIBRARY and defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and                        \
-    defined SPIRV_PARSER_HEADER
+#if defined USE_LLVM_LIBRARY and defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_FRONTEND
         // we have both front-ends, select the front-end which can handle the input type
         if(isSupportedByFrontend(precompiler.inputType, Frontend::LLVM_IR))
             // prefer LLVM library front-end
@@ -146,7 +145,7 @@ void Precompiler::precompile(std::istream& input, std::unique_ptr<std::istream>&
             precompiler.run(output, SourceType::SPIRV_BIN, options, outputFile);
 #elif defined USE_LLVM_LIBRARY
         precompiler.run(output, SourceType::LLVM_IR_BIN, options, outputFile);
-#elif defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_PARSER_HEADER
+#elif defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_FRONTEND
         precompiler.run(output, SourceType::SPIRV_BIN, options, outputFile);
 #elif defined CLANG_PATH
         precompiler.run(output, SourceType::LLVM_IR_TEXT, options, outputFile);
@@ -198,7 +197,7 @@ SourceType Precompiler::linkSourceCode(
     const std::unordered_map<std::istream*, Optional<std::string>>& inputs, std::ostream& output)
 {
     PROFILE_START(linkSourceCode);
-#ifndef SPIRV_HEADER
+#ifndef SPIRV_FRONTEND
     throw CompilationError(CompilationStep::LINKER, "SPIR-V front-end is not provided!");
     // TODO also allow to link via llvm-link for "normal" LLVM (or generally link with (SPIR-V) LLVM?)
     // currently fails for "arm_get_core_id" being defined twice
@@ -244,7 +243,7 @@ bool Precompiler::isLinkerAvailable(const std::unordered_map<std::istream*, Opti
             case SourceType::OPENCL_C:
             case SourceType::SPIRV_BIN:
             case SourceType::SPIRV_TEXT:
-#ifdef SPIRV_HEADER
+#ifdef SPIRV_FRONTEND
                 return true;
 #endif
             default:
@@ -255,7 +254,7 @@ bool Precompiler::isLinkerAvailable(const std::unordered_map<std::istream*, Opti
 
 bool Precompiler::isLinkerAvailable()
 {
-#ifdef SPIRV_HEADER
+#ifdef SPIRV_FRONTEND
     return true;
 #else
     return false;
@@ -372,7 +371,7 @@ static void compileLLVMIRToSPIRV(std::istream& input, std::ostream& output, cons
 {
 #if not defined SPIRV_LLVM_SPIRV_PATH
     throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-LLVM not configured, can't compile to SPIR-V!");
-#elif not defined SPIRV_PARSER_HEADER
+#elif not defined SPIRV_FRONTEND
     throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-Tools not configured, can't process SPIR-V!");
 #else
     std::string command = (std::string(SPIRV_LLVM_SPIRV_PATH) + (toText ? " -spirv-text" : "")) + " -o ";
@@ -394,7 +393,7 @@ static void compileOpenCLToSPIRV(std::istream& input, std::ostream& output, cons
 {
 #if not defined SPIRV_CLANG_PATH || not defined SPIRV_LLVM_SPIRV_PATH
     throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-LLVM not configured, can't compile to SPIR-V!");
-#elif not defined SPIRV_PARSER_HEADER
+#elif not defined SPIRV_FRONTEND
     throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-Tools not configured, can't process SPIR-V!");
 #endif
 
@@ -421,7 +420,7 @@ static void compileSPIRVToSPIRV(std::istream& input, std::ostream& output, const
 {
 #if not defined SPIRV_LLVM_SPIRV_PATH
     throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-LLVM not configured, can't compile to SPIR-V!");
-#elif not defined SPIRV_PARSER_HEADER
+#elif not defined SPIRV_FRONTEND
     throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-Tools not configured, can't process SPIR-V!");
 #else
     std::string command = (std::string(SPIRV_LLVM_SPIRV_PATH) + (toText ? " -to-text" : " -to-binary")) + " -o ";

@@ -1,0 +1,22 @@
+target_sources(TestVC4C
+  PRIVATE
+    RegressionTest.cpp
+    RegressionTest.h
+    test_cases.h
+    test.cpp
+    TestEmulator.cpp
+    TestEmulator.h
+    TestInstructions.cpp
+    TestInstructions.h
+    TestOperators.cpp
+    TestOperators.h
+    TestParser.cpp
+    TestParser.h
+    TestScanner.cpp
+    TestScanner.h
+    TestSPIRVFrontend.cpp
+    TestSPIRVFrontend.h
+    TestStdlib.cpp
+    TestStdlib.h
+    test_stdlib.h
+)

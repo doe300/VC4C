@@ -78,7 +78,7 @@ static void printInfo()
 #endif
 #if defined SPIRV_CLANG_PATH
         "SPIRV-LLVM clang in " SPIRV_CLANG_PATH,
-#if defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_PARSER_HEADER
+#if defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_FRONTEND
         "SPIR-V front-end",
 #endif
 #elif defined CLANG_PATH
@@ -90,7 +90,7 @@ static void printInfo()
 #ifdef VC4CL_STDLIB_HEADER
         "VC4CL standard-library in " VC4CL_STDLIB_HEADER,
 #endif
-#ifdef SPIRV_LINKER_HEADER
+#ifdef SPIRV_FRONTEND
         "SPIR-V linker",
 #endif
 #ifdef VERIFIER_HEADER

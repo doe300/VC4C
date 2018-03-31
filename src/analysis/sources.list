@@ -1,0 +1,15 @@
+target_sources(${VC4C_LIBRARY_NAME}
+  PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/ControlFlowGraph.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/ControlFlowGraph.h
+    ${CMAKE_CURRENT_LIST_DIR}/DataDependencyGraph.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/DataDependencyGraph.h
+    ${CMAKE_CURRENT_LIST_DIR}/DebugGraph.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/DebugGraph.h
+    ${CMAKE_CURRENT_LIST_DIR}/DependencyGraph.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/DependencyGraph.h
+    ${CMAKE_CURRENT_LIST_DIR}/LifetimeGraph.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/LifetimeGraph.h
+    ${CMAKE_CURRENT_LIST_DIR}/ValueRange.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/ValueRange.h
+)

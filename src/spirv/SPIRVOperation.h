@@ -6,7 +6,7 @@
 
 #ifndef SPIRVOPERATION_H
 #define SPIRVOPERATION_H
-#ifdef SPIRV_HEADER
+#ifdef SPIRV_FRONTEND
 
 #include "../Module.h"
 #include "Optional.h"
