@@ -39,6 +39,8 @@ namespace vc4c
              * Runs the normalization steps on all kernels in the module
              *
              * Depending on the build configuration, the normalization steps are run in parallel
+             *
+             * NOTE: The normalization needs to be run BEFORE the optimizations
              */
             void normalize(Module& module) const;
 
