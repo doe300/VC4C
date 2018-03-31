@@ -139,14 +139,18 @@ std::size_t Compiler::convert()
     normalization::Normalizer norm(config);
     optimizations::Optimizer opt(config);
     qpu_asm::CodeGenerator codeGen(module, config);
-    
+
     PROFILE_START(Normalizer);
     norm.normalize(module);
     PROFILE_END(Normalizer);
-    
+
     PROFILE_START(Optimizer);
     opt.optimize(module);
     PROFILE_END(Optimizer);
+
+    PROFILE_START(SecondNormalizer);
+    norm.adjust(module);
+    PROFILE_END(SecondNormalizer);
 
     std::vector<BackgroundWorker> workers;
     workers.reserve(module.getKernels().size());

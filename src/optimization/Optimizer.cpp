@@ -64,8 +64,6 @@ static const std::set<OptimizationStep> SINGLE_STEPS = {
     OptimizationStep("CombineDuplicateBranches", combineDuplicateBranches, 10),
     // eliminates useless branches (e.g. jumps to the next instruction)
     OptimizationStep("EliminateUselessBranch", eliminateUselessBranch, 20),
-    // moves all sources of vector-rotations to accumulators (if too large usage-range)
-    OptimizationStep("MoveRotationSourcesToAccs", moveRotationSourcesToAccumulators, 100),
     // combine consecutive instructions writing the same local with a value and zero depending on some flags
     OptimizationStep("CombineSelectionWithZero", combineSelectionWithZero, 120),
     // combine successive setting of the same flags
@@ -154,11 +152,10 @@ const OptimizationPass optimizations::COMBINE_LITERAL_LOADS =
 const OptimizationPass optimizations::REORDER = OptimizationPass("ReorderInstructions", reorderWithinBasicBlocks, 220);
 const OptimizationPass optimizations::COMBINE = OptimizationPass("CombineALUIinstructions", combineOperations, 230);
 const OptimizationPass optimizations::UNROLL_WORK_GROUPS = OptimizationPass("UnrollWorkGroups", unrollWorkGroups, 240);
-const OptimizationPass optimizations::EXTEND_BRANCHES = OptimizationPass("ExtendBranches", extendBranches, 300);
 
 const std::set<OptimizationPass> optimizations::DEFAULT_PASSES = {
     RUN_SINGLE_STEPS, /* SPILL_LOCALS, */ COMBINE_LITERAL_LOADS, COMBINE_ROTATIONS, GENERAL_OPTIMIZATIONS, ELIMINATE,
-    VECTORIZE, SPLIT_READ_WRITES, REORDER, COMBINE, UNROLL_WORK_GROUPS, EXTEND_BRANCHES
+    VECTORIZE, SPLIT_READ_WRITES, REORDER, COMBINE, UNROLL_WORK_GROUPS
     /* , REMOVE_CONSTANT_LOAD_IN_LOOPS
      * TODO in combination with a bug/missing check in register-allocation, this generates invalid code (e.g.
      * testing/test_barrier.cl) More exact: the load is moved outside the loop but the register is re-assigned in the
