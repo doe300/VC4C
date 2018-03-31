@@ -15,7 +15,7 @@ namespace vc4c
     class Module;
     class InstructionWalker;
 
-    namespace optimizations
+    namespace normalization
     {
         /*
          * Replaces the address of global data with the corresponding offset from the GLOBAL_DATA_ADDRESS value
@@ -39,7 +39,7 @@ namespace vc4c
          *
          * NOTE: This optimization-pass is required for the compiler to handle stack-allocations correctly
          */
-        void resolveStackAllocations(const Module& module, Method& method, const Configuration& config);
+        void resolveStackAllocation(const Module& module, Method& method, InstructionWalker it, const Configuration& config);
 
         /*
          * Maps the memory-instructions to instructions actually performing the memory-access (e.g. TMU, VPM access).

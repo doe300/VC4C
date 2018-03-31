@@ -12,8 +12,6 @@
 #include "Combiner.h"
 #include "ControlFlow.h"
 #include "Eliminator.h"
-#include "LiteralValues.h"
-#include "MemoryAccess.h"
 #include "Reordering.h"
 #include "log.h"
 
@@ -62,35 +60,16 @@ bool OptimizationStep::operator==(const OptimizationStep& other) const
 }
 
 static const std::set<OptimizationStep> SINGLE_STEPS = {
-    // replaces all remaining returns with jumps to the end of the kernel-function
-    OptimizationStep("EliminateReturns", eliminateReturn, 0),
     // combined successive branches to the same label (e.g. end of switch-case)
     OptimizationStep("CombineDuplicateBranches", combineDuplicateBranches, 10),
     // eliminates useless branches (e.g. jumps to the next instruction)
     OptimizationStep("EliminateUselessBranch", eliminateUselessBranch, 20),
-    // intrinsifies calls to built-ins and unsupported operations
-    OptimizationStep("IntrinsifyBuiltin", intrinsify, 30),
-    // moves vector-containers to locals and re-directs all uses to the local
-    OptimizationStep("HandleLiteralVector", handleContainer, 40),
-    // maps access to global data to the offset in the code
-    OptimizationStep("MapGlobalDataToAddress", accessGlobalData, 50),
     // moves all sources of vector-rotations to accumulators (if too large usage-range)
     OptimizationStep("MoveRotationSourcesToAccs", moveRotationSourcesToAccumulators, 100),
     // combine consecutive instructions writing the same local with a value and zero depending on some flags
     OptimizationStep("CombineSelectionWithZero", combineSelectionWithZero, 120),
     // combine successive setting of the same flags
     OptimizationStep("CombineSettingSameFlags", combineSameFlags, 130)};
-
-static void handleImmediates(const Module& module, Method& method, const Configuration& config)
-{
-    auto it = method.walkAllInstructions();
-    while(!it.isEndOfMethod())
-    {
-        handleImmediate(module, method, it, config);
-        handleUseWithImmediate(module, method, it, config);
-        it.nextInMethod();
-    }
-}
 
 static void runSingleSteps(const Module& module, Method& method, const Configuration& config)
 {
@@ -159,16 +138,11 @@ static void generalOptimization(const Module& module, Method& method, const Conf
 }
 
 // need to run before mapping literals
-const OptimizationPass optimizations::MAP_MEMORY_ACCESS = OptimizationPass("MapMemoryAccess", mapMemoryAccess, 10);
-const OptimizationPass optimizations::RESOLVE_STACK_ALLOCATIONS =
-    OptimizationPass("ResolveStackAllocations", resolveStackAllocations, 20);
 const OptimizationPass optimizations::RUN_SINGLE_STEPS = OptimizationPass("SingleSteps", runSingleSteps, 30);
-const OptimizationPass optimizations::SPILL_LOCALS = OptimizationPass("SpillLocals", spillLocals, 80);
 const OptimizationPass optimizations::COMBINE_ROTATIONS =
     OptimizationPass("CombineRotations", combineVectorRotations, 100);
 const OptimizationPass optimizations::GENERAL_OPTIMIZATIONS =
     OptimizationPass("GeneralOptimizations", generalOptimization, 110);
-const OptimizationPass optimizations::HANDLE_IMMEDIATES = OptimizationPass("SingleSteps", handleImmediates, 120);
 const OptimizationPass optimizations::REMOVE_CONSTANT_LOAD_IN_LOOPS =
     OptimizationPass("RemoveConstantLoadInLoops", removeConstantLoadInLoops, 140);
 const OptimizationPass optimizations::ELIMINATE = OptimizationPass("EliminateDeadStores", eliminateDeadStore, 180);
@@ -180,14 +154,11 @@ const OptimizationPass optimizations::COMBINE_LITERAL_LOADS =
 const OptimizationPass optimizations::REORDER = OptimizationPass("ReorderInstructions", reorderWithinBasicBlocks, 220);
 const OptimizationPass optimizations::COMBINE = OptimizationPass("CombineALUIinstructions", combineOperations, 230);
 const OptimizationPass optimizations::UNROLL_WORK_GROUPS = OptimizationPass("UnrollWorkGroups", unrollWorkGroups, 240);
-const OptimizationPass optimizations::ADD_START_STOP_SEGMENT =
-    OptimizationPass("AddStartStopSegment", addStartStopSegment, 250);
 const OptimizationPass optimizations::EXTEND_BRANCHES = OptimizationPass("ExtendBranches", extendBranches, 300);
 
 const std::set<OptimizationPass> optimizations::DEFAULT_PASSES = {
-    MAP_MEMORY_ACCESS, RUN_SINGLE_STEPS, /* SPILL_LOCALS, */ COMBINE_LITERAL_LOADS, HANDLE_IMMEDIATES,
-    RESOLVE_STACK_ALLOCATIONS, COMBINE_ROTATIONS, GENERAL_OPTIMIZATIONS, ELIMINATE, VECTORIZE, SPLIT_READ_WRITES,
-    REORDER, COMBINE, UNROLL_WORK_GROUPS, ADD_START_STOP_SEGMENT, EXTEND_BRANCHES
+    RUN_SINGLE_STEPS, /* SPILL_LOCALS, */ COMBINE_LITERAL_LOADS, COMBINE_ROTATIONS, GENERAL_OPTIMIZATIONS, ELIMINATE,
+    VECTORIZE, SPLIT_READ_WRITES, REORDER, COMBINE, UNROLL_WORK_GROUPS, EXTEND_BRANCHES
     /* , REMOVE_CONSTANT_LOAD_IN_LOOPS
      * TODO in combination with a bug/missing check in register-allocation, this generates invalid code (e.g.
      * testing/test_barrier.cl) More exact: the load is moved outside the loop but the register is re-assigned in the

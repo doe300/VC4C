@@ -19,7 +19,7 @@
 #include <numeric>
 
 using namespace vc4c;
-using namespace vc4c::optimizations;
+using namespace vc4c::normalization;
 using namespace vc4c::intermediate;
 using namespace vc4c::periphery;
 
@@ -480,10 +480,11 @@ static void combineVPMAccess(FastSet<BasicBlock*>& blocks, Method& method)
 
     // clean up empty instructions
     method.cleanEmptyInstructions();
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL + 80, "Scratch memory size (in rows)", method.vpm->getScratchArea().numRows);
+    PROFILE_COUNTER(
+        vc4c::profiler::COUNTER_GENERAL + 80, "Scratch memory size (in rows)", method.vpm->getScratchArea().numRows);
 }
 
-InstructionWalker optimizations::accessGlobalData(
+InstructionWalker normalization::accessGlobalData(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     /*
@@ -520,7 +521,7 @@ InstructionWalker optimizations::accessGlobalData(
     return it;
 }
 
-void optimizations::spillLocals(const Module& module, Method& method, const Configuration& config)
+void normalization::spillLocals(const Module& module, Method& method, const Configuration& config)
 {
     static const std::size_t MINIMUM_THRESHOLD = 128; /* TODO some better limit */
     // TODO need to know how much of the VPM is still free (need per-kernel VPM object)
@@ -592,8 +593,12 @@ void optimizations::spillLocals(const Module& module, Method& method, const Conf
     // TODO do not preemptively spill, only on register conflicts. Which case??
 }
 
-static InstructionWalker accessStackAllocations(const Module& module, Method& method, InstructionWalker it)
+void normalization::resolveStackAllocation(
+    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
+    // 1. calculate the offsets from the start of one QPU's "stack", heed alignment!
+    //This is done in Normalizer
+    
     const std::size_t stackBaseOffset = method.getStackBaseOffset();
     const std::size_t maximumStackSize = method.calculateStackSize();
 
@@ -602,6 +607,7 @@ static InstructionWalker accessStackAllocations(const Module& module, Method& me
         const Value arg = it->getArgument(i).value();
         if(arg.hasType(ValueType::LOCAL) && arg.type.isPointerType() && arg.local->is<StackAllocation>())
         {
+            // 2.remove the life-time instructions
             if(it.get<intermediate::LifetimeBoundary>() != nullptr)
             {
                 logging::debug() << "Dropping life-time instruction for stack-allocation: " << arg.to_string()
@@ -612,6 +618,7 @@ static InstructionWalker accessStackAllocations(const Module& module, Method& me
             }
             else
             {
+                // 3. map the addresses to offsets from global-data pointer (see #accessGlobalData)
                 /*
                  * Stack allocations are located in the binary data after the global data.
                  *
@@ -648,21 +655,6 @@ static InstructionWalker accessStackAllocations(const Module& module, Method& me
                 it->setArgument(i, finalAddr);
             }
         }
-    }
-    return it.nextInMethod();
-}
-
-void optimizations::resolveStackAllocations(const Module& module, Method& method, const Configuration& config)
-{
-    // 1. calculate the offsets from the start of one QPU's "stack", heed alignment!
-    method.calculateStackOffsets();
-
-    // 2.remove the life-time instructions
-    // 3. map the addresses to offsets from global-data pointer (see #accessGlobalData)
-    InstructionWalker it = method.walkAllInstructions();
-    while(!it.isEndOfMethod())
-    {
-        it = accessStackAllocations(module, method, it);
     }
 }
 
@@ -1021,7 +1013,7 @@ static void lowerGlobalsToConstants(Method& method, FastSet<InstructionWalker>& 
     }
 }
 
-void optimizations::mapMemoryAccess(const Module& module, Method& method, const Configuration& config)
+void normalization::mapMemoryAccess(const Module& module, Method& method, const Configuration& config)
 {
     /*
      * Goals:
