@@ -208,6 +208,11 @@ namespace vc4c
         bool removeBlock(BasicBlock& block, bool overwriteUsages = false);
 
         /*
+         * Create new basic block and Insert it into position.
+         */
+        BasicBlock& createAndInsertNewBlock(BasicBlockList::iterator position, const std::string& labelName);
+
+        /*
          * Inserts the given label at the position and returns a iterator to it.
          *
          * This function splits the current basic block, moving all following instructions to the newly created basic

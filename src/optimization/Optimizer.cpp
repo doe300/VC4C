@@ -192,8 +192,8 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
      * loop having wrong value for successive iterations In register-allocation, need to check for loops and reserve
      * whole loop
      */
-    //    OptimizationPass("RemoveConstantLoadInLoops", "extract-loads-from-loops", removeConstantLoadInLoops,
-    //        "move constant loads in (nested) loops outside the loops"),
+    OptimizationPass("RemoveConstantLoadInLoops", "extract-loads-from-loops", removeConstantLoadInLoops,
+        "move constant loads in (nested) loops outside the loops"),
     OptimizationPass("EliminateDeadStores", "eliminate-dead-store", eliminateDeadStore,
         "eliminates useless instructions (dead store, move to same, redundant arithmetic operations, ...)"),
     OptimizationPass("VectorizeLoops", "vectorize-loops", vectorizeLoops, "vectorizes loops"),
