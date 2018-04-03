@@ -102,6 +102,35 @@ static void printInfo()
 }
 
 /*
+ * parse options with parameter like xxx=n
+ * if invalid parameter are passed,
+ */
+Optional<int> parseIntOption(std::string name, std::string input)
+{
+    std::stringstream ss(input);
+    std::string buffer;
+    std::getline(ss, buffer, '=');
+    if (buffer == name)
+    {
+        std::getline(ss, buffer, '=');
+        if (name == buffer)
+        {
+            std::string err = "option parse error: integer required in " + name;
+            throw CompilationError(CompilationStep::PRECOMPILATION, err);
+        }
+        try {
+            auto s = std::stoi(buffer);
+            return Optional<int>(s);
+        } catch (const std::invalid_argument& e) {
+            std::string err = "option parse error: integer expected for " + name + ": " + buffer;
+            throw CompilationError(CompilationStep::PRECOMPILATION, err);
+        }
+    }
+
+    return {};
+}
+
+/*
  *
  */
 int main(int argc, char** argv)
@@ -188,6 +217,12 @@ int main(int argc, char** argv)
             // any further parameter is an input-file
             i += 2;
             break;
+        }
+        // options for development only
+        else if (auto opt = parseIntOption("--Xthreshold", argv[i]))
+        {
+            std::cout << "threshold=" << opt.value() << std::endl;;
+            config.combineLoadingLiteralsThreshold = opt.value();
         }
         else
             options.append(argv[i]).append(" ");

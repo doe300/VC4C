@@ -105,6 +105,10 @@ namespace vc4c
          * Whether moving of constants to out side of loops
          */
         bool moveConstants = true;
+        /*
+         * The threshold for combineLoadingLiterals
+         */
+        int combineLoadingLiteralsThreshold = 6;
     };
 
     /*
