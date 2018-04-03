@@ -12,7 +12,7 @@
 namespace vc4c
 {
   namespace test {
-    
+
     const static std::string atomicTestFile = VC4C_ROOT_PATH "testing/test_atomic.cl";
     std::vector<std::pair<EmulationData, std::map<uint32_t, std::vector<uint32_t>>>> atomicTests = {
       std::make_pair(EmulationData(atomicTestFile, "test_atomic_add",
@@ -56,7 +56,7 @@ namespace vc4c
         addVector({}, 0, std::vector<unsigned>{((((((((((((7 ^ 1) ^ 1) ^ 1) ^ 1) ^ 1) ^ 1) ^ 1) ^ 1) ^ 1) ^ 1) ^ 1) ^ 1)})
       )
     };
-    
+
     const static std::string commonTestsFile = VC4C_ROOT_PATH "testing/test_common.cl";
     std::vector<std::pair<EmulationData, std::map<uint32_t, std::vector<uint32_t>>>> commonTests = {
       std::make_pair(EmulationData(commonTestsFile, "test_clamp",
@@ -86,9 +86,9 @@ namespace vc4c
         addVector({}, 1, std::vector<float>{-1, 0, 1})
       )
     };
-    
+
     //TODO test conversions
-    
+
     const static std::string geometricTestsFile = VC4C_ROOT_PATH "testing/test_geometric.cl";
     std::vector<std::tuple<EmulationData, std::map<uint32_t, std::vector<uint32_t>>, unsigned>> geometricTests = {
       std::make_tuple(EmulationData(geometricTestsFile, "test_cross",
@@ -139,9 +139,9 @@ namespace vc4c
       	    toParameter(std::vector<float>(6))}, toConfig(2), maxExecutionCycles),
       	    addVector({}, 1, std::vector<float>{1.0f / sqrtf(14.0f), 2.0f / sqrtf(14.0f), 3.0f / sqrtf(14.0f), 1.0f, 0.0f, 0.0f}),
       	    8192
-      ) 
+      )
     };
-    
+
     const static std::string integerTestsFile = VC4C_ROOT_PATH "testing/test_integer.cl";
     std::vector<std::pair<EmulationData, std::map<uint32_t, std::vector<uint32_t>>>> integerFunctionTests = {
       std::make_pair(EmulationData(integerTestsFile, "test_abs",
@@ -204,7 +204,7 @@ namespace vc4c
         addVector({}, 1, std::vector<int>{16, 0, 3})
       )
     };
-    
+
     const static std::string mathTestsFile = VC4C_ROOT_PATH "testing/test_math.cl";
 		constexpr float M_PI_F = static_cast<float>(M_PI);
 		std::vector<std::tuple<EmulationData, std::map<uint32_t, std::vector<uint32_t>>, unsigned>> mathTests = {
@@ -335,7 +335,7 @@ namespace vc4c
 			),
 			std::make_tuple(EmulationData(mathTestsFile, "test_hypot",
 			    {toParameter(toRange(-6.0f, 6.0f)), toParameter(toRange(0.0f, 12.0f)), toParameter(std::vector<float>(12))}, toConfig(12), maxExecutionCycles),
-			    addVector({}, 2, std::vector<float>{sqrt(36.0f), sqrt(25.0f + 1.0f), sqrt(16.0f + 4.0f), sqrt(9.0f + 9.0f), sqrt(4.0f + 16.0f), sqrt(1.0f + 25.0f), sqrt(36.0f), sqrt(1.0f + 49.0f), sqrt(4.0f + 64.0f), sqrt(9.0f + 81.0f), sqrt(16.0f + 100.0f), sqrt(25.0f + 121.0f)}),
+			    addVector({}, 2, std::vector<float>{sqrtf(36.0f), sqrtf(25.0f + 1.0f), sqrtf(16.0f + 4.0f), sqrtf(9.0f + 9.0f), sqrtf(4.0f + 16.0f), sqrtf(1.0f + 25.0f), sqrtf(36.0f), sqrtf(1.0f + 49.0f), sqrtf(4.0f + 64.0f), sqrtf(9.0f + 81.0f), sqrtf(16.0f + 100.0f), sqrtf(25.0f + 121.0f)}),
 			    4
 			),
 			std::make_tuple(EmulationData(mathTestsFile, "test_ilogb",
@@ -418,7 +418,7 @@ namespace vc4c
 			),
 			std::make_tuple(EmulationData(mathTestsFile, "test_powr",
 			    {toParameter(toRange(0.0f, 12.0f)), toParameter(toRange(-6.0f, 6.0f)), toParameter(std::vector<float>(12))}, toConfig(12), maxExecutionCycles),
-			    addVector({}, 2, std::vector<float>{std::pow(0.0f, -6.0f), std::pow(1.0f, -5.0f), std::pow(2.0f, -4.0f), std::pow(3.0f, -3.0f), std::pow(4.0f, -2.0f), std::pow(5.0f, -1.0f), std::pow(6.0f, 0.0f), std::pow(7.0f, 1.0f), std::pow(8.0f, 2.0f), std::pow(9.0f, 3.0f), std::pow(10.0f, 4.0f), std::pow(11.0, 5.0f)}),
+			    addVector({}, 2, std::vector<float>{std::pow(0.0f, -6.0f), std::pow(1.0f, -5.0f), std::pow(2.0f, -4.0f), std::pow(3.0f, -3.0f), std::pow(4.0f, -2.0f), std::pow(5.0f, -1.0f), std::pow(6.0f, 0.0f), std::pow(7.0f, 1.0f), std::pow(8.0f, 2.0f), std::pow(9.0f, 3.0f), std::pow(10.0f, 4.0f), std::pow(11.0f, 5.0f)}),
 			    16
 			),
 			std::make_tuple(EmulationData(mathTestsFile, "test_remainder",
@@ -484,7 +484,7 @@ namespace vc4c
 			    0
 			)
 		};
-		
+
 		//TODO relational, vector
   } /* namespace test */
 } /* namespace vc4c */
