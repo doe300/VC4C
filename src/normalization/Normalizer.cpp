@@ -51,11 +51,13 @@ const static std::vector<std::pair<std::string, NormalizationStep>> initialNorma
     // maps access to global data to the offset in the code
     {"MapGlobalDataToAddress", accessGlobalData},
     // rewrites the use of literal values to either small-immediate values or loading of literals
-    {"HandleImmediates", handleImmediate},
+    //XXX ? {"HandleImmediates", handleImmediate},
     // dummy step which simply checks whether all remaining instructions are normalized
     {"CheckNormalized", checkNormalized}};
 
 const static std::vector<std::pair<std::string, NormalizationStep>> adjustmentSteps = {
+    // needs to re-run this, since optimization steps may insert literals
+    {"HandleImmediates", handleImmediate},
     // prevents register-conflicts by moving long-living locals into temporaries before being used together with literal
     // values
     {"HandleUseWithImmediate", handleUseWithImmediate},
@@ -68,11 +70,17 @@ static void runNormalizationStep(
 {
     for(auto& block : method)
     {
-        auto it = block.begin();
+        auto it = block.begin().nextInBlock();
         while(!it.isEndOfBlock())
         {
+            auto tmp = it.copy().previousInBlock();
             step(module, method, it, config);
-            it.nextInBlock();
+            // TODO make sure, steps only modify the current instruction
+            tmp.nextInBlock();
+            if(it == tmp)
+                it.nextInBlock();
+            else
+                it = tmp;
         }
     }
 }

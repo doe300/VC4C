@@ -456,15 +456,20 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
             auto newValue = op->getSource();
             while(!it2.isEndOfBlock())
             {
+                bool replacedThisInstruction = false;
                 for(auto arg : it2->getArguments())
                 {
                     if(arg == oldValue && arg.valueType != ValueType::LITERAL &&
                         arg.valueType != ValueType::SMALL_IMMEDIATE)
                     {
                         replaced = true;
+                        replacedThisInstruction = true;
                         it2->replaceValue(oldValue, newValue, LocalUse::Type::READER);
                     }
                 }
+
+                if(replacedThisInstruction)
+                    calculateConstantInstruction(module, method, it2, config);
 
                 if(it2->getOutput().has_value() && it2->getOutput().value() == oldValue)
                     break;

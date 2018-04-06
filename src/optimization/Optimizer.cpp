@@ -119,7 +119,6 @@ static void generalOptimization(const Module& module, Method& method, const Conf
             for(const step& s : SINGLE)
             {
                 moved = moved || s(module, method, it, config);
-                // logging::debug() << "step: " << moved << logging::endl;
             }
             it.nextInMethod();
         }
@@ -127,7 +126,6 @@ static void generalOptimization(const Module& module, Method& method, const Conf
         for(const pass& p : PASS)
         {
             moved = moved || p(module, method, config);
-            // logging::debug() << "pass: " << moved << logging::endl;
         }
 
         if(!moved)

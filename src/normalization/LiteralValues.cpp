@@ -582,6 +582,54 @@ static ImmediateHandler mapImmediateValue(const Literal& source)
     return handler;
 }
 
+static InstructionWalker handleImmediateInOperation(Method& method, InstructionWalker it, intermediate::Operation* op)
+{
+    for(std::size_t i = 0; i < op->getArguments().size(); ++i)
+    {
+        const Value source = op->getArgument(i).value();
+        if(source.hasType(ValueType::LITERAL))
+        {
+            PROFILE_START(mapImmediateValue);
+            ImmediateHandler mapped = mapImmediateValue(source.literal);
+            PROFILE_END(mapImmediateValue);
+            if(mapped.changeValue)
+            {
+                const Value tmp = method.addNewLocal(source.type, "%immediate");
+
+                // value was changed
+                if(mapped.loadImmediate)
+                {
+                    // requires load immediate
+                    logging::debug() << "Loading immediate value: " << source.literal.to_string() << logging::endl;
+                    it.emplace(new intermediate::LoadImmediate(tmp, source.literal, op->conditional));
+                    it.nextInBlock();
+                    op->setArgument(i, tmp);
+                }
+                else if(mapped.opCode != OP_NOP)
+                {
+                    DataType type = mapped.immediate.getFloatingValue() ? TYPE_FLOAT : TYPE_INT32;
+                    if(mapped.opCode.numOperands == 1)
+                        it.emplace(new intermediate::Operation(
+                            mapped.opCode, tmp, Value(mapped.immediate, type), op->conditional));
+                    else
+                        it.emplace(new intermediate::Operation(mapped.opCode, tmp, Value(mapped.immediate, type),
+                            Value(mapped.immediate, type), op->conditional));
+                    it.nextInBlock();
+                    op->setArgument(i, tmp);
+                }
+                else
+                {
+                    logging::debug() << "Mapping constant for immediate value " << source.literal.to_string()
+                                     << " to: " << mapped.immediate.to_string() << logging::endl;
+                    op->setArgument(i, Value(mapped.immediate, source.type));
+                }
+            }
+        }
+    }
+
+    return it;
+}
+
 InstructionWalker normalization::handleImmediate(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
@@ -629,86 +677,15 @@ InstructionWalker normalization::handleImmediate(
     if(op != nullptr)
     {
         // check for both arguments
-        Value source = op->getFirstArg();
-        if(source.hasType(ValueType::LITERAL))
-        {
-            PROFILE_START(mapImmediateValue);
-            ImmediateHandler mapped = mapImmediateValue(source.literal);
-            PROFILE_END(mapImmediateValue);
-            if(mapped.changeValue)
-            {
-                const Value tmp = method.addNewLocal(source.type, "%immediate");
-
-                // value was changed
-                if(mapped.loadImmediate)
-                {
-                    // requires load immediate
-                    logging::debug() << "Loading immediate value: " << source.literal.to_string() << logging::endl;
-                    it.emplace(new intermediate::LoadImmediate(tmp, source.literal, op->conditional));
-                    it.nextInBlock();
-                    op->setArgument(0, tmp);
-                }
-                else if(mapped.opCode != OP_NOP)
-                {
-                    DataType type = mapped.immediate.getFloatingValue() ? TYPE_FLOAT : TYPE_INT32;
-                    if(mapped.opCode.numOperands == 1)
-                        it.emplace(new intermediate::Operation(
-                            mapped.opCode, tmp, Value(mapped.immediate, type), op->conditional));
-                    else
-                        it.emplace(new intermediate::Operation(mapped.opCode, tmp, Value(mapped.immediate, type),
-                            Value(mapped.immediate, type), op->conditional));
-                    it.nextInBlock();
-                    op->setArgument(0, tmp);
-                }
-                else
-                {
-                    logging::debug() << "Mapping constant for immediate value " << source.literal.to_string()
-                                     << " to: " << mapped.immediate.to_string() << logging::endl;
-                    op->setArgument(0, Value(mapped.immediate, source.type));
-                }
-            }
-        }
-        if(op->getSecondArg())
-        {
-            source = op->getSecondArg().value();
-            if(source.hasType(ValueType::LITERAL))
-            {
-                PROFILE_START(mapImmediateValue);
-                ImmediateHandler mapped = mapImmediateValue(source.literal);
-                PROFILE_END(mapImmediateValue);
-                if(mapped.changeValue)
-                {
-                    Value tmp = method.addNewLocal(source.type, "%immediate");
-                    // value was changed
-                    if(mapped.loadImmediate)
-                    {
-                        // requires load immediate
-                        logging::debug() << "Loading immediate value: " << source.literal.to_string() << logging::endl;
-                        it.emplace(new intermediate::LoadImmediate(tmp, source.literal, op->conditional));
-                        it.nextInBlock();
-                        op->setArgument(1, tmp);
-                    }
-                    else if(mapped.opCode != OP_NOP)
-                    {
-                        DataType type = mapped.immediate.getFloatingValue() ? TYPE_FLOAT : TYPE_INT32;
-                        if(mapped.opCode.numOperands == 1)
-                            it.emplace(new intermediate::Operation(
-                                mapped.opCode, tmp, Value(mapped.immediate, type), op->conditional));
-                        else
-                            it.emplace(new intermediate::Operation(mapped.opCode, tmp, Value(mapped.immediate, type),
-                                Value(mapped.immediate, type), op->conditional));
-                        it.nextInBlock();
-                        op->setArgument(1, tmp);
-                    }
-                    else
-                    {
-                        logging::debug() << "Mapping constant for immediate value " << source.literal.to_string()
-                                         << " to: " << mapped.immediate.to_string() << logging::endl;
-                        op->setArgument(1, Value(mapped.immediate, source.type));
-                    }
-                }
-            }
-        }
+        it = handleImmediateInOperation(method, it, op);
+    }
+    intermediate::CombinedOperation* comb = it.get<intermediate::CombinedOperation>();
+    if(comb != nullptr)
+    {
+        if(comb->getFirstOp() != nullptr)
+            it = handleImmediateInOperation(method, it, const_cast<intermediate::Operation*>(comb->getFirstOp()));
+        if(comb->getSecondOP() != nullptr)
+            it = handleImmediateInOperation(method, it, const_cast<intermediate::Operation*>(comb->getSecondOP()));
     }
     return it;
 }
