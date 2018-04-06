@@ -207,9 +207,9 @@ int main(int argc, char** argv)
             config.frontend = Frontend::LLVM_IR;
         else if(strcmp("--disassemble", argv[i]) == 0)
             runDisassembler = true;
-        else if(strcmp("--fmoveconstants", argv[i]) == 0)
+        else if(strcmp("--fmove-constants", argv[i]) == 0)
             config.moveConstants = true;
-        else if(strcmp("--fnomoveconstants", argv[i]) == 0)
+        else if(strcmp("--fnomove-constants", argv[i]) == 0)
             config.moveConstants = false;
         else if(strcmp("-o", argv[i]) == 0)
         {
@@ -218,10 +218,8 @@ int main(int argc, char** argv)
             i += 2;
             break;
         }
-        // options for development only
-        else if (auto opt = parseIntOption("--Xthreshold", argv[i]))
+        else if (auto opt = parseIntOption("--fcombine-load-threshold", argv[i]))
         {
-            std::cout << "threshold=" << opt.value() << std::endl;;
             config.combineLoadingLiteralsThreshold = opt.value();
         }
         else
