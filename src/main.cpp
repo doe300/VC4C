@@ -110,18 +110,21 @@ Optional<int> parseIntOption(std::string name, std::string input)
     std::stringstream ss(input);
     std::string buffer;
     std::getline(ss, buffer, '=');
-    if (buffer == name)
+    if(buffer == name)
     {
         std::getline(ss, buffer, '=');
-        if (name == buffer)
+        if(name == buffer)
         {
             std::string err = "option parse error: integer required in " + name;
             throw CompilationError(CompilationStep::PRECOMPILATION, err);
         }
-        try {
+        try
+        {
             auto s = std::stoi(buffer);
             return Optional<int>(s);
-        } catch (const std::invalid_argument& e) {
+        }
+        catch(const std::invalid_argument& e)
+        {
             std::string err = "option parse error: integer expected for " + name + ": " + buffer;
             throw CompilationError(CompilationStep::PRECOMPILATION, err);
         }
@@ -218,7 +221,7 @@ int main(int argc, char** argv)
             i += 2;
             break;
         }
-        else if (auto opt = parseIntOption("--fcombine-load-threshold", argv[i]))
+        else if(auto opt = parseIntOption("--fcombine-load-threshold", argv[i]))
         {
             config.combineLoadingLiteralsThreshold = opt.value();
         }
