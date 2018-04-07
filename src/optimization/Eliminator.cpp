@@ -403,6 +403,7 @@ bool optimizations::translateToMove(const Module& module, Method& method, const 
         {
             auto move = new intermediate::MoveOperation(
                 op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags);
+            logging::debug() << "Replacing obsolete instruction with move: " << op->to_string() << logging::endl;
             it.reset(move);
             flag = true;
         }
@@ -544,7 +545,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 logging::debug() << "Removing obsolete move by replacing uses of the output with the input: "
                                  << it->to_string() << logging::endl;
                 (*destinationReader)
-                    ->replaceLocal(move->getOutput()->local, move->getSource().local, LocalUse::Type::READER);
+                    ->replaceValue(move->getOutput().value(), move->getSource(), LocalUse::Type::READER);
                 it.erase();
                 // to not skip the next instruction
                 it.previousInBlock();

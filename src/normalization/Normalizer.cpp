@@ -51,7 +51,9 @@ const static std::vector<std::pair<std::string, NormalizationStep>> initialNorma
     // maps access to global data to the offset in the code
     {"MapGlobalDataToAddress", accessGlobalData},
     // rewrites the use of literal values to either small-immediate values or loading of literals
-    //XXX ? {"HandleImmediates", handleImmediate},
+    // this first run here is only required, so some loading of literals can be optimized, which is no longer possible
+    // after the second run
+    {"HandleImmediates", handleImmediate},
     // dummy step which simply checks whether all remaining instructions are normalized
     {"CheckNormalized", checkNormalized}};
 

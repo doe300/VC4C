@@ -373,10 +373,10 @@ namespace vc4c
     public:
         LiteralType type;
 
-        explicit Literal(int32_t integer) noexcept;
-        explicit Literal(uint32_t integer) noexcept;
-        explicit Literal(float real) noexcept;
-        explicit Literal(bool flag) noexcept;
+        explicit constexpr Literal(int32_t integer) noexcept : type(LiteralType::INTEGER), i(integer) {}
+        explicit constexpr Literal(uint32_t integer) noexcept : type(LiteralType::INTEGER), u(integer) {}
+        explicit constexpr Literal(float real) noexcept : type(LiteralType::REAL), f(real) {}
+        explicit constexpr Literal(bool flag) noexcept : type(LiteralType::BOOL), u(flag) {}
         ~Literal() = default;
 
         Literal(const Literal&) = default;

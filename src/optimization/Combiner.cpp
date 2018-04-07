@@ -660,9 +660,14 @@ void optimizations::unrollWorkGroups(const Module& module, Method& method, const
     const Local* startLabel = method.findOrCreateLocal(TYPE_LABEL, BasicBlock::DEFAULT_BLOCK);
 
     // add conditional jump to end of kernel, to jump back to the beginning
+    auto lastBlock = method.findBasicBlock(method.findLocal(BasicBlock::LAST_BLOCK));
+    if(!lastBlock)
+        throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find the default last block!");
     const Local* loopSize = method.findOrCreateLocal(TYPE_INT32, Method::GROUP_LOOP_SIZE);
-    method.appendToEnd(new MoveOperation(loopSize->createReference(), UNIFORM_REGISTER));
-    method.appendToEnd(new Branch(startLabel, COND_ZERO_CLEAR, loopSize->createReference()));
+    InstructionWalker it = lastBlock->begin().nextInBlock();
+    it.emplace(new MoveOperation(loopSize->createReference(), UNIFORM_REGISTER));
+    it.nextInBlock();
+    it.emplace(new Branch(startLabel, COND_ZERO_CLEAR, loopSize->createReference()));
 }
 
 InstructionWalker optimizations::combineSelectionWithZero(

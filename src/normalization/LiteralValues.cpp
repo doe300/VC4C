@@ -179,12 +179,12 @@ struct ImmediateSupplier
     // insert operation on one of the ALUs
     ImmediateSupplier(const OpCode& opCode, SmallImmediate imm) : opCode(opCode), immediate(imm) {}
     // no operation required, directly use small immediate value
-    explicit ImmediateSupplier(SmallImmediate imm) : opCode(OP_NOP), immediate(imm) {}
+    explicit constexpr ImmediateSupplier(SmallImmediate imm) : opCode(OP_NOP), immediate(imm) {}
 };
 
 static Literal toLiteral(uint32_t mask, float f)
 {
-    // TODO static_assert(bit_cast<double, int64_t>(d) == i, "Values do not match!");
+    // static_assert(bit_cast<float, uint32_t>(f) == mask, "Values do not match!");
     if(bit_cast<float, uint32_t>(f) != mask)
         throw CompilationError(CompilationStep::GENERAL,
             std::string("Small immediate values do not match for ") + std::to_string(mask) + " and",

@@ -2,6 +2,10 @@ add_executable(TestVC4C "")
 include(sources.list)
 target_link_libraries(TestVC4C VC4CC)
 
+if(BUILD_DEBUG)
+	target_compile_definitions(TestVC4C PRIVATE DEBUG_MODE=1)
+endif(BUILD_DEBUG)
+
 target_include_directories (TestVC4C PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_include_directories (TestVC4C PRIVATE "${PROJECT_SOURCE_DIR}/include")
 target_compile_definitions(TestVC4C PRIVATE CPPLOG_NAMESPACE=logging CPPLOG_CUSTOM_LOGGER=true)
