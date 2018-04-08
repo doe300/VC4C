@@ -52,6 +52,26 @@ namespace vc4c
          */
         void removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config);
 
+        /*
+         * Concatenates "adjacent" basic blocks if the preceding block has only one successor and the succeeding block
+         * has only one predecessor.
+         *
+         * This occurs usually at least 2 times: for start-of function and first block, last block and end-of-function.
+         *
+         * Example:
+         *   label: %start_of_function
+         *   xxx
+         *   label: %entry
+         *   yyy
+         *
+         * is converted to:
+         *   label: %start_of_function
+         *   xxx
+         *   yyy
+         *
+         */
+        void mergeAdjacentBasicBlocks(const Module& module, Method& method, const Configuration& config);
+
     } /* namespace optimizations */
 } /* namespace vc4c */
 

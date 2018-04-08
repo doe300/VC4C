@@ -24,6 +24,9 @@ namespace vc4c
         // whether this relation represents a reverse (from label to the branch jumping to it)
         bool reverseRelation;
 
+        // whether this relation represents a forward relation (form branch to label)
+        bool forwardRelation;
+
         // the last instruction before the change of basic-block (e.g. the branch or last instruction in block)
         InstructionWalker predecessor;
 
@@ -39,7 +42,15 @@ namespace vc4c
 
         inline bool isForwardRelation() const
         {
-            return !reverseRelation;
+            return forwardRelation;
+        }
+
+        /*
+         * Returns whether this relation represents a compact loop consisting of only one label
+         */
+        inline bool isLoopRelation() const
+        {
+            return reverseRelation && forwardRelation;
         }
 
         /*

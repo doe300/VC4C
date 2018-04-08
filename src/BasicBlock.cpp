@@ -10,6 +10,8 @@
 #include "analysis/ControlFlowGraph.h"
 #include "intermediate/IntermediateInstruction.h"
 
+#include <numeric>
+
 #include "log.h"
 
 using namespace vc4c;
@@ -30,8 +32,15 @@ BasicBlock::~BasicBlock()
 
 bool BasicBlock::empty() const
 {
+    // no instructions
     return instructions.empty() ||
-        (instructions.size() == 1 && dynamic_cast<intermediate::BranchLabel*>(instructions.front().get()) != nullptr);
+        // only the label
+        (instructions.size() == 1 && dynamic_cast<intermediate::BranchLabel*>(instructions.front().get()) != nullptr) ||
+        // only the label, the remaining instructions are empty
+        (std::accumulate(instructions.begin(), instructions.end(), 0,
+             [](unsigned tmp, const std::unique_ptr<intermediate::IntermediateInstruction>& instr) -> unsigned {
+                 return tmp + (instr != nullptr);
+             }) == 1);
 }
 
 InstructionWalker BasicBlock::begin()
@@ -168,16 +177,13 @@ bool BasicBlock::fallsThroughToNextBlock() const
     const intermediate::Branch* secondLastBranch = nullptr;
     if(!it.isStartOfBlock())
     {
-        if(lastBranch != nullptr && !lastBranch->isUnconditional())
-            // skip writing/setting of condition for conditional jump
-            it.previousInBlock();
         do
         {
             if(it.isStartOfBlock())
                 // special handling for blocks with only label and branches
                 break;
             it.previousInBlock();
-        } while(it.has<intermediate::Nop>());
+        } while(!it.has<intermediate::Branch>());
         secondLastBranch = it.get<const intermediate::Branch>();
     }
     if(lastBranch != nullptr && lastBranch->isUnconditional())

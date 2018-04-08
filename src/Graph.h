@@ -77,6 +77,46 @@ namespace vc4c
                     consumer(pair.first, pair.second);
         }
 
+        /*
+         * Returns the single neighbor with the given relation.
+         * Returns nullptr otherwise, if there is no or more than one neighbor with this relation.
+         */
+        const Node* getSingleNeighbor(const R relation) const
+        {
+            const Node* singleNeighbor = nullptr;
+            for(const auto& pair : neighbors)
+            {
+                if(pair.second == relation)
+                {
+                    if(singleNeighbor != nullptr)
+                        // multiple neighbors
+                        return nullptr;
+                    singleNeighbor = pair.first;
+                }
+            }
+            return singleNeighbor;
+        }
+
+        /*
+         * Returns the single neighbor where the relation matches the given predicate.
+         * Returns nullptr otherwise, if there is no or more than one neighbor with this relation.
+         */
+        const Node* getSingleNeighbor(const std::function<bool(const R&)>& relation) const
+        {
+            const Node* singleNeighbor = nullptr;
+            for(const auto& pair : neighbors)
+            {
+                if(relation(pair.second))
+                {
+                    if(singleNeighbor != nullptr)
+                        // multiple neighbors
+                        return nullptr;
+                    singleNeighbor = pair.first;
+                }
+            }
+            return singleNeighbor;
+        }
+
         static std::string to_string(const K& key)
         {
             return key.to_string();

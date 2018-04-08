@@ -111,6 +111,8 @@ Optimizer::Optimizer(const Configuration& config) : config(config)
 {
     // runs all the single-step optimizations. Combining them results in fewer iterations over the instructions
     passes.emplace_back("SingleSteps", runSingleSteps);
+    // merges adjacent basic blocks if there are no other conflicting transitions
+    passes.emplace_back("MergeBasicBlocks", mergeAdjacentBasicBlocks);
     // combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation
     passes.emplace_back("CombineRotations", combineVectorRotations);
     passes.emplace_back("GeneralOptimizations", generalOptimization);

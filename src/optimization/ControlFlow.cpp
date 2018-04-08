@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 
 using namespace vc4c;
 using namespace vc4c::optimizations;
@@ -1153,4 +1154,69 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             }
         }
     }
+}
+
+static const Local* findSourceBlock(const Local* label, const std::map<const Local*, const Local*>& blockMap)
+{
+    auto it = blockMap.find(label);
+    if(it == blockMap.end())
+        return label;
+    return findSourceBlock(it->second, blockMap);
+}
+
+void optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& method, const Configuration& config)
+{
+    auto& graph = method.getCFG();
+
+    std::vector<std::pair<const Local*, const Local*>> blocksToMerge;
+
+    auto it = method.begin();
+    ++it;
+    while(it != method.end())
+    {
+        //XXX currently, this only merges adjacent (in list of blocks) blocks
+        auto prevIt = it;
+        --prevIt;
+
+        const auto& prevNode = graph.assertNode(&(*prevIt));
+        const auto& node = graph.assertNode(&(*it));
+        if(node.getSingleNeighbor(toFunction(&CFGRelation::isReverseRelation)) == &prevNode &&
+            prevNode.getSingleNeighbor(toFunction(&CFGRelation::isForwardRelation)) == &node &&
+            // XXX for now, we cannot merge the last block, otherwise work-group unrolling doesn't work anymore
+            it->getLabel()->getLabel()->name != BasicBlock::LAST_BLOCK)
+        {
+            logging::debug() << "Found basic block with single direct successor: " << prevIt->getLabel()->to_string()
+                             << " and " << it->getLabel()->to_string() << logging::endl;
+            blocksToMerge.emplace_back(prevIt->getLabel()->getLabel(), it->getLabel()->getLabel());
+        }
+        ++it;
+    }
+
+    // this is required to be able to merge more than 2 blocks together
+    std::map<const Local*, const Local*> blockMap;
+
+    for(auto& pair : blocksToMerge)
+    {
+        BasicBlock* sourceBlock = method.findBasicBlock(findSourceBlock(pair.second, blockMap));
+        BasicBlock* destBlock = method.findBasicBlock(findSourceBlock(pair.first, blockMap));
+
+        // remove all instructions from source block and append to destination block (skipping the source label)
+        auto sourceIt = sourceBlock->begin().nextInBlock();
+        while(!sourceIt.isEndOfBlock())
+        {
+            destBlock->end().emplace(sourceIt.release());
+            sourceIt.nextInBlock();
+        }
+        // then remove the source block
+        if(method.removeBlock(*sourceBlock))
+            logging::debug() << "Merged block " << pair.second->to_string() << " into " << pair.first->to_string()
+                             << logging::endl;
+        else
+            logging::warn() << "Failed to remove empty basic block: " << sourceBlock->getLabel()->to_string()
+                            << logging::endl;
+
+        blockMap.emplace(pair.second, pair.first);
+    }
+
+    logging::debug() << "Merged " << blocksToMerge.size() << " pair of blocks!" << logging::endl;
 }

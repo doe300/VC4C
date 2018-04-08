@@ -294,7 +294,8 @@ void Method::cleanLocals()
             ++it;
     }
     logging::debug() << "Cleaned " << numCleaned << " unused locals from method " << name << logging::endl;
-    PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_GENERAL + 8, "Clean locals (after)", locals.size(), vc4c::profiler::COUNTER_GENERAL + 7);
+    PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_GENERAL + 8, "Clean locals (after)", locals.size(),
+        vc4c::profiler::COUNTER_GENERAL + 7);
 }
 
 void Method::dumpInstructions() const
@@ -355,6 +356,7 @@ bool Method::removeBlock(BasicBlock& block, bool overwriteUsages)
             basicBlocks.erase(it);
             return true;
         }
+        ++it;
     }
     logging::warn() << "Basic block '" << block.getLabel()->to_string() << "' was not found in this function " << name
                     << logging::endl;

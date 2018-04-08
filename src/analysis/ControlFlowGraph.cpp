@@ -15,8 +15,8 @@ using namespace vc4c;
 
 bool CFGRelation::operator==(const CFGRelation& other) const
 {
-    return reverseRelation == other.reverseRelation && predecessor == other.predecessor &&
-        isImplicit == other.isImplicit;
+    return reverseRelation == other.reverseRelation && forwardRelation == other.forwardRelation &&
+        predecessor == other.predecessor && isImplicit == other.isImplicit;
 }
 
 std::pair<ConditionCode, Value> CFGRelation::getBranchConditions() const
@@ -236,22 +236,27 @@ ControlFlowGraph ControlFlowGraph::createCFG(Method& method)
                     it.get<intermediate::Branch>()->getTarget() != bb.getLabel()->getLabel());
             // forward connection
             graph.getOrCreateNode(it.getBasicBlock())
-                .addNeighbor(&graph.getOrCreateNode(&bb), CFGRelation{false, it, isImplicit});
+                .getOrCreateNeighbor(&graph.getOrCreateNode(&bb), CFGRelation{false, true, it, isImplicit})
+                .second.forwardRelation = true;
             // backward connection
-            graph.getOrCreateNode(&bb).addNeighbor(
-                &graph.getOrCreateNode(it.getBasicBlock()), CFGRelation{true, it, isImplicit});
+            graph.getOrCreateNode(&bb)
+                .getOrCreateNeighbor(
+                    &graph.getOrCreateNode(it.getBasicBlock()), CFGRelation{true, false, it, isImplicit})
+                .second.reverseRelation = true;
         });
     }
 
+    // XXX to be exact, would need bidirectional arrow [dir="both"] for compact loops
 #ifdef DEBUG_MODE
     auto nameFunc = [](const BasicBlock* bb) -> std::string { return bb->getLabel()->getLabel()->name; };
     auto edgeLabelFunc = [](const CFGRelation& r) -> std::string {
-        return r.isReverseRelation() || r.isImplicit || !r.predecessor.has<intermediate::Branch>() ?
+        return (r.isReverseRelation() && !r.isForwardRelation()) || r.isImplicit ||
+                !r.predecessor.has<intermediate::Branch>() ?
             "" :
             std::string("br ") + r.predecessor->conditional.to_string();
     };
-    DebugGraph<BasicBlock*, CFGRelation>::dumpGraph<ControlFlowGraph>(
-        graph, "/tmp/vc4c-cfg.dot", true, nameFunc, toFunction(&CFGRelation::isReverseRelation), edgeLabelFunc);
+    DebugGraph<BasicBlock*, CFGRelation>::dumpGraph<ControlFlowGraph>(graph, "/tmp/vc4c-cfg.dot", true, nameFunc,
+        [](const CFGRelation& rel) -> bool { return !rel.isForwardRelation(); }, edgeLabelFunc);
 #endif
 
     PROFILE_END(createCFG);
