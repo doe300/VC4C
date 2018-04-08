@@ -18,35 +18,14 @@
 using namespace vc4c;
 using namespace vc4c::optimizations;
 
-OptimizationPass::OptimizationPass(const std::string& name, const Pass pass, const std::size_t index) :
-    name(name), index(index), pass(pass)
-{
-}
-
-bool OptimizationPass::operator<(const OptimizationPass& other) const
-{
-    return index < other.index;
-}
+OptimizationPass::OptimizationPass(const std::string& name, const Pass pass) : name(name), pass(pass) {}
 
 void OptimizationPass::operator()(const Module& module, Method& method, const Configuration& config) const
 {
     pass(module, method, config);
 }
 
-bool OptimizationPass::operator==(const OptimizationPass& other) const
-{
-    return name == other.name && index == other.index;
-}
-
-OptimizationStep::OptimizationStep(const std::string& name, const Step step, const std::size_t index) :
-    name(name), index(index), step(step)
-{
-}
-
-bool OptimizationStep::operator<(const OptimizationStep& other) const
-{
-    return index < other.index;
-}
+OptimizationStep::OptimizationStep(const std::string& name, const Step step) : name(name), step(step) {}
 
 InstructionWalker OptimizationStep::operator()(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config) const
@@ -54,20 +33,15 @@ InstructionWalker OptimizationStep::operator()(
     return step(module, method, it, config);
 }
 
-bool OptimizationStep::operator==(const OptimizationStep& other) const
-{
-    return name.compare(other.name) == 0 && index == other.index;
-}
-
-static const std::set<OptimizationStep> SINGLE_STEPS = {
+static const std::vector<OptimizationStep> SINGLE_STEPS = {
     // combined successive branches to the same label (e.g. end of switch-case)
-    OptimizationStep("CombineDuplicateBranches", combineDuplicateBranches, 10),
+    OptimizationStep("CombineDuplicateBranches", combineDuplicateBranches),
     // eliminates useless branches (e.g. jumps to the next instruction)
-    OptimizationStep("EliminateUselessBranch", eliminateUselessBranch, 20),
+    OptimizationStep("EliminateUselessBranch", eliminateUselessBranch),
     // combine consecutive instructions writing the same local with a value and zero depending on some flags
-    OptimizationStep("CombineSelectionWithZero", combineSelectionWithZero, 120),
+    OptimizationStep("CombineSelectionWithZero", combineSelectionWithZero),
     // combine successive setting of the same flags
-    OptimizationStep("CombineSettingSameFlags", combineSameFlags, 130)};
+    OptimizationStep("CombineSettingSameFlags", combineSameFlags)};
 
 static void runSingleSteps(const Module& module, Method& method, const Configuration& config)
 {
@@ -133,58 +107,59 @@ static void generalOptimization(const Module& module, Method& method, const Conf
     }
 }
 
-// need to run before mapping literals
-const OptimizationPass optimizations::RUN_SINGLE_STEPS = OptimizationPass("SingleSteps", runSingleSteps, 30);
-const OptimizationPass optimizations::COMBINE_ROTATIONS =
-    OptimizationPass("CombineRotations", combineVectorRotations, 100);
-const OptimizationPass optimizations::GENERAL_OPTIMIZATIONS =
-    OptimizationPass("GeneralOptimizations", generalOptimization, 110);
-const OptimizationPass optimizations::REMOVE_CONSTANT_LOAD_IN_LOOPS =
-    OptimizationPass("RemoveConstantLoadInLoops", removeConstantLoadInLoops, 140);
-const OptimizationPass optimizations::ELIMINATE = OptimizationPass("EliminateDeadStores", eliminateDeadStore, 180);
-const OptimizationPass optimizations::VECTORIZE = OptimizationPass("VectorizeLoops", vectorizeLoops, 190);
-const OptimizationPass optimizations::SPLIT_READ_WRITES =
-    OptimizationPass("SplitReadAfterWrites", splitReadAfterWrites, 200);
-const OptimizationPass optimizations::COMBINE_LITERAL_LOADS =
-    OptimizationPass("CombineLiteralLoads", combineLoadingLiterals, 210);
-const OptimizationPass optimizations::REORDER = OptimizationPass("ReorderInstructions", reorderWithinBasicBlocks, 220);
-const OptimizationPass optimizations::COMBINE = OptimizationPass("CombineALUIinstructions", combineOperations, 230);
-const OptimizationPass optimizations::UNROLL_WORK_GROUPS = OptimizationPass("UnrollWorkGroups", unrollWorkGroups, 240);
-
-const std::set<OptimizationPass> optimizations::DEFAULT_PASSES = {
-    RUN_SINGLE_STEPS, /* SPILL_LOCALS, */ COMBINE_LITERAL_LOADS, COMBINE_ROTATIONS, GENERAL_OPTIMIZATIONS, ELIMINATE,
-    VECTORIZE, SPLIT_READ_WRITES, REORDER, COMBINE, UNROLL_WORK_GROUPS
-    /* , REMOVE_CONSTANT_LOAD_IN_LOOPS
+Optimizer::Optimizer(const Configuration& config) : config(config)
+{
+    // runs all the single-step optimizations. Combining them results in fewer iterations over the instructions
+    passes.emplace_back("SingleSteps", runSingleSteps);
+    // combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation
+    passes.emplace_back("CombineRotations", combineVectorRotations);
+    passes.emplace_back("GeneralOptimizations", generalOptimization);
+    /*
      * TODO in combination with a bug/missing check in register-allocation, this generates invalid code (e.g.
      * testing/test_barrier.cl) More exact: the load is moved outside the loop but the register is re-assigned in the
      * loop having wrong value for successive iterations In register-allocation, need to check for loops and reserve
      * whole loop
      */
-};
-
-Optimizer::Optimizer(const Configuration& config, const std::set<OptimizationPass>& passes) :
-    config(config), passes(passes)
-{
+    // move constant loads in (nested) loops outside the loops
+    // passes.emplace_back("RemoveConstantLoadInLoops", removeConstantLoadInLoops);
+    // eliminates useless instructions (dead store, move to same, redundant arithmetic operations, ...)
+    passes.emplace_back("EliminateDeadStores", eliminateDeadStore);
+    // vectorizes loops
+    passes.emplace_back("VectorizeLoops", vectorizeLoops);
+    // more like a de-optimization. Splits read-after-writes (except if the local is used only very locally), so the
+    // reordering and register-allocation have an easier job
+    passes.emplace_back("SplitReadAfterWrites", splitReadAfterWrites);
+    // combines loadings of the same literal value within a small range of a basic block
+    passes.emplace_back("CombineLiteralLoads", combineLoadingLiterals);
+    // re-order instructions to eliminate more NOPs and stall cycles
+    passes.emplace_back("ReorderInstructions", reorderWithinBasicBlocks);
+    // run peep-hole optimization to combine ALU-operations
+    passes.emplace_back("CombineALUIinstructions", combineOperations);
+    // add (runtime-configurable) loop over the whole kernel execution, allowing for skipping some of the syscall
+    // overhead for kernels with many work-groups
+    passes.emplace_back("UnrollWorkGroups", unrollWorkGroups);
 }
 
 static void runOptimizationPasses(
-    const Module& module, Method& method, const Configuration& config, const std::set<OptimizationPass>& passes)
+    const Module& module, Method& method, const Configuration& config, const std::vector<OptimizationPass>& passes)
 {
     logging::debug() << "-----" << logging::endl;
     logging::info() << "Running optimization passes for: " << method.name << logging::endl;
     std::size_t numInstructions = method.countInstructions();
 
+    std::size_t index = 0;
     for(const OptimizationPass& pass : passes)
     {
         logging::debug() << logging::endl;
         logging::debug() << "Running pass: " << pass.name << logging::endl;
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + pass.index * 10, pass.name + " (before)",
-            method.countInstructions());
+        PROFILE_COUNTER(
+            vc4c::profiler::COUNTER_OPTIMIZATION + index, pass.name + " (before)", method.countInstructions());
         PROFILE_START_DYNAMIC(pass.name);
         pass(module, method, config);
         PROFILE_END_DYNAMIC(pass.name);
-        PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_OPTIMIZATION + (pass.index + 1) * 10, pass.name + " (after)",
-            method.countInstructions(), vc4c::profiler::COUNTER_OPTIMIZATION + pass.index * 10);
+        PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_OPTIMIZATION + index + 10, pass.name + " (after)",
+            method.countInstructions(), vc4c::profiler::COUNTER_OPTIMIZATION + index);
+        index += 100;
     }
     logging::info() << logging::endl;
     if(numInstructions != method.countInstructions())
@@ -210,14 +185,4 @@ void Optimizer::optimize(Module& module) const
         workers.emplace(workers.end(), f, "Optimizer")->operator()();
     }
     BackgroundWorker::waitForAll(workers);
-}
-
-void Optimizer::addPass(const OptimizationPass& pass)
-{
-    passes.insert(pass);
-}
-
-void Optimizer::removePass(const OptimizationPass& pass)
-{
-    passes.erase(pass);
 }
