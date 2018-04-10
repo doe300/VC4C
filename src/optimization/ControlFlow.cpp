@@ -840,6 +840,7 @@ void optimizations::extendBranches(const Module& module, Method& method, const C
         intermediate::Branch* branch = it.get<intermediate::Branch>();
         if(branch != nullptr)
         {
+            logging::debug() << "Extending branch: " << branch->to_string() << logging::endl;
             if(branch->hasConditionalExecution() || !branch->getCondition().hasLiteral(BOOL_TRUE.literal))
             {
                 /*

@@ -608,6 +608,9 @@ static InstructionWalker handleImmediateInOperation(Method& method, InstructionW
                 else if(mapped.opCode != OP_NOP)
                 {
                     DataType type = mapped.immediate.getFloatingValue() ? TYPE_FLOAT : TYPE_INT32;
+                    logging::debug() << "Calculating immediate value " << source.literal.to_string()
+                                     << " with operation '" << mapped.opCode.name << "' and immediate value "
+                                     << mapped.immediate.to_string() << logging::endl;
                     if(mapped.opCode.numOperands == 1)
                         it.emplace(new intermediate::Operation(
                             mapped.opCode, tmp, Value(mapped.immediate, type), op->conditional));
@@ -630,48 +633,57 @@ static InstructionWalker handleImmediateInOperation(Method& method, InstructionW
     return it;
 }
 
+static InstructionWalker handleImmediateInMove(Method& method, InstructionWalker it, intermediate::MoveOperation* move)
+{
+    Value source = move->getSource();
+    if(source.hasType(ValueType::LITERAL))
+    {
+        PROFILE_START(mapImmediateValue);
+        ImmediateHandler mapped = mapImmediateValue(source.literal);
+        PROFILE_END(mapImmediateValue);
+        if(mapped.changeValue)
+        {
+            // value was changed
+            if(mapped.loadImmediate)
+            {
+                // requires load immediate
+                logging::debug() << "Loading immediate value: " << source.literal.to_string() << logging::endl;
+                it.reset(
+                    (new intermediate::LoadImmediate(move->getOutput().value(), source.literal))->copyExtrasFrom(move));
+            }
+            else if(mapped.opCode != OP_NOP)
+            {
+                logging::debug() << "Calculating immediate value " << source.literal.to_string() << " with operation '"
+                                 << mapped.opCode.name << "' and immediate value " << mapped.immediate.to_string()
+                                 << logging::endl;
+                if(mapped.opCode.numOperands == 1)
+                    it.reset((new intermediate::Operation(mapped.opCode, move->getOutput().value(),
+                                  Value(mapped.immediate, move->getSource().type)))
+                                 ->copyExtrasFrom(move));
+                else
+                    it.reset((new intermediate::Operation(mapped.opCode, move->getOutput().value(),
+                                  Value(mapped.immediate, move->getSource().type),
+                                  Value(mapped.immediate, move->getSource().type)))
+                                 ->copyExtrasFrom(move));
+            }
+            else
+            {
+                logging::debug() << "Mapping constant for immediate value " << source.literal.to_string()
+                                 << " to: " << mapped.immediate.to_string() << logging::endl;
+                move->setSource(Value(mapped.immediate, source.type));
+            }
+        }
+    }
+    return it;
+}
+
 InstructionWalker normalization::handleImmediate(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
     if(move != nullptr)
     {
-        Value source = move->getSource();
-        if(source.hasType(ValueType::LITERAL))
-        {
-            PROFILE_START(mapImmediateValue);
-            ImmediateHandler mapped = mapImmediateValue(source.literal);
-            PROFILE_END(mapImmediateValue);
-            if(mapped.changeValue)
-            {
-                // value was changed
-                if(mapped.loadImmediate)
-                {
-                    // requires load immediate
-                    logging::debug() << "Loading immediate value: " << source.literal.to_string() << logging::endl;
-                    it.reset((new intermediate::LoadImmediate(move->getOutput().value(), source.literal))
-                                 ->copyExtrasFrom(move));
-                }
-                else if(mapped.opCode != OP_NOP)
-                {
-                    if(mapped.opCode.numOperands == 1)
-                        it.reset((new intermediate::Operation(mapped.opCode, move->getOutput().value(),
-                                      Value(mapped.immediate, move->getSource().type)))
-                                     ->copyExtrasFrom(move));
-                    else
-                        it.reset((new intermediate::Operation(mapped.opCode, move->getOutput().value(),
-                                      Value(mapped.immediate, move->getSource().type),
-                                      Value(mapped.immediate, move->getSource().type)))
-                                     ->copyExtrasFrom(move));
-                }
-                else
-                {
-                    logging::debug() << "Mapping constant for immediate value " << source.literal.to_string()
-                                     << " to: " << mapped.immediate.to_string() << logging::endl;
-                    move->setSource(Value(mapped.immediate, source.type));
-                }
-            }
-        }
+        it = handleImmediateInMove(method, it, move);
     }
     intermediate::Operation* op = it.get<intermediate::Operation>();
     if(op != nullptr)

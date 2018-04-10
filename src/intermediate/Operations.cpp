@@ -318,6 +318,8 @@ bool Operation::mapsToASMInstruction() const
 
 bool Operation::isNormalized() const
 {
+    //"normalized" NOPs are handled via the NOP instruction class.
+    //If an operation has the NOP op-code, it has an op-code name which cannot be mapped to machine code -> not normalized
     return op != OP_NOP;
 }
 
@@ -655,7 +657,7 @@ qpu_asm::Instruction* CombinedOperation::convertToAsm(const FastMap<const Local*
 
 bool CombinedOperation::isNormalized() const
 {
-    return true;
+    return (!op1 || op1->isNormalized()) && (!op2 || op2->isNormalized());
 }
 
 IntermediateInstruction* CombinedOperation::copyFor(Method& method, const std::string& localPrefix) const
