@@ -135,9 +135,6 @@ Optimizer::Optimizer(const Configuration& config) : config(config)
     passes.emplace_back("ReorderInstructions", reorderWithinBasicBlocks);
     // run peep-hole optimization to combine ALU-operations
     passes.emplace_back("CombineALUIinstructions", combineOperations);
-    // add (runtime-configurable) loop over the whole kernel execution, allowing for skipping some of the syscall
-    // overhead for kernels with many work-groups
-    passes.emplace_back("UnrollWorkGroups", unrollWorkGroups);
 }
 
 static void runOptimizationPasses(

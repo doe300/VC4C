@@ -12,6 +12,7 @@
 #include "../Module.h"
 #include "../Profiler.h"
 #include "../intrinsics/Intrinsics.h"
+#include "../optimization/Combiner.h"
 #include "../optimization/ControlFlow.h"
 #include "../optimization/Eliminator.h"
 #include "../optimization/Reordering.h"
@@ -195,6 +196,14 @@ void Normalizer::adjustMethod(Module& module, Method& method) const
     std::size_t numInstructions = method.countInstructions();
 
     PROFILE_START(AdjustmentPasses);
+
+    // add (runtime-configurable) loop over the whole kernel execution, allowing for skipping some of the syscall
+    // overhead for kernels with many work-groups
+    logging::debug() << logging::endl;
+    logging::debug() << "Running pass: UnrollWorkGroups" << logging::endl;
+    PROFILE_START(UnrollWorkGroups);
+    optimizations::unrollWorkGroups(module, method, config);
+    PROFILE_END(UnrollWorkGroups);
 
     for(const auto& step : adjustmentSteps)
     {
