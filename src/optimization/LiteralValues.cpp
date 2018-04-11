@@ -791,6 +791,7 @@ InstructionWalker optimizations::handleUseWithImmediate(
                     // and with constant/unsigned, etc.)
                     if(localIt->getSingleWriter() != nullptr)
                         it->addDecorations(intermediate::forwardDecorations(localIt->getSingleWriter()->decoration));
+                    it.nextInBlock();
                     op->replaceLocal(oldLocal, tmp.local, LocalUse::Type::READER);
                 }
             }
