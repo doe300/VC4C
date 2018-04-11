@@ -588,10 +588,10 @@ static Optional<Literal> getSourceLiteral(InstructionWalker it)
     return {};
 }
 
-static bool canReplaceLiteralLoad(InstructionWalker it, const InstructionWalker start, const InstructionWalker match)
+static bool canReplaceLiteralLoad(InstructionWalker it, const InstructionWalker start, const InstructionWalker match,
+    std::size_t stepsLeft = ACCUMULATOR_THRESHOLD_HINT)
 {
-    std::size_t stepsLeft = ACCUMULATOR_THRESHOLD_HINT;
-    InstructionWalker pos = it;
+    InstructionWalker pos = it.copy();
     // check whether the instruction last loading the same literal is at most ACCUMULATOR_THRESHOLD_HINT instructions
     // before this one
     while(stepsLeft > 0 && !pos.isStartOfBlock() && pos != start)
@@ -620,7 +620,8 @@ void optimizations::combineLoadingLiterals(const Module& module, Method& method,
                 if(literal)
                 {
                     if(lastLoadImmediate.find(literal->unsignedInt()) != lastLoadImmediate.end() &&
-                        canReplaceLiteralLoad(it, block.begin(), lastLoadImmediate.at(literal->unsignedInt())))
+                        canReplaceLiteralLoad(it, block.begin(), lastLoadImmediate.at(literal->unsignedInt()),
+                            config.combineLoadingLiteralsThreshold))
                     {
                         Local* oldLocal = it->getOutput()->local;
                         Local* newLocal = lastLoadImmediate.at(literal->unsignedInt())->getOutput()->local;

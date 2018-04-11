@@ -102,6 +102,41 @@ static void printInfo()
 }
 
 /*
+ * parse options with parameter like xxx=n
+ * if invalid parameter are passed, raise an exception
+ */
+Optional<int> parseIntOption(std::string name, std::string input)
+{
+    std::stringstream ss(input);
+    std::string buffer;
+    std::getline(ss, buffer, '=');
+    if(buffer == name)
+    {
+        // XXX if input doesn't include '=', `ss` already reached the end.
+        // Then, the second `std::getline` do nothing.
+        // To detect that checking `name` == `buffer` is required.
+        std::getline(ss, buffer, '=');
+        if(name == buffer)
+        {
+            std::string err = "option parse error: parameter of integer expected in " + name;
+            throw CompilationError(CompilationStep::PRECOMPILATION, err);
+        }
+        try
+        {
+            auto s = std::stoi(buffer);
+            return Optional<int>(s);
+        }
+        catch(const std::invalid_argument& e)
+        {
+            std::string err = "option parse error: parameter of integer expected in " + name + ", but " + buffer;
+            throw CompilationError(CompilationStep::PRECOMPILATION, err);
+        }
+    }
+
+    return {};
+}
+
+/*
  *
  */
 int main(int argc, char** argv)
@@ -178,9 +213,9 @@ int main(int argc, char** argv)
             config.frontend = Frontend::LLVM_IR;
         else if(strcmp("--disassemble", argv[i]) == 0)
             runDisassembler = true;
-        else if(strcmp("--fmoveconstants", argv[i]) == 0)
+        else if(strcmp("--fmove-constants", argv[i]) == 0)
             config.moveConstants = true;
-        else if(strcmp("--fnomoveconstants", argv[i]) == 0)
+        else if(strcmp("--fnomove-constants", argv[i]) == 0)
             config.moveConstants = false;
         else if(strcmp("-o", argv[i]) == 0)
         {
@@ -188,6 +223,10 @@ int main(int argc, char** argv)
             // any further parameter is an input-file
             i += 2;
             break;
+        }
+        else if(auto opt = parseIntOption("--fcombine-load-threshold", argv[i]))
+        {
+            config.combineLoadingLiteralsThreshold = opt.value();
         }
         else
             options.append(argv[i]).append(" ");
