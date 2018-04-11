@@ -103,7 +103,7 @@ static void printInfo()
 
 /*
  * parse options with parameter like xxx=n
- * if invalid parameter are passed,
+ * if invalid parameter are passed, raise an exception
  */
 Optional<int> parseIntOption(std::string name, std::string input)
 {
@@ -112,10 +112,13 @@ Optional<int> parseIntOption(std::string name, std::string input)
     std::getline(ss, buffer, '=');
     if(buffer == name)
     {
+        // XXX if input doesn't include '=', `ss` already reached the end.
+        // Then, the second `std::getline` do nothing.
+        // To detect that checking `name` == `buffer` is required.
         std::getline(ss, buffer, '=');
         if(name == buffer)
         {
-            std::string err = "option parse error: integer required in " + name;
+            std::string err = "option parse error: parameter of integer expected in " + name;
             throw CompilationError(CompilationStep::PRECOMPILATION, err);
         }
         try
@@ -125,7 +128,7 @@ Optional<int> parseIntOption(std::string name, std::string input)
         }
         catch(const std::invalid_argument& e)
         {
-            std::string err = "option parse error: integer expected for " + name + ": " + buffer;
+            std::string err = "option parse error: parameter of integer expected in " + name + ", but " + buffer;
             throw CompilationError(CompilationStep::PRECOMPILATION, err);
         }
     }
