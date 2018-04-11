@@ -13,6 +13,7 @@
 #include "asm/CodeGenerator.h"
 #include "log.h"
 #include "logger.h"
+#include "normalization/Normalizer.h"
 #include "optimization/Optimizer.h"
 #include "spirv/SPIRVParser.h"
 #include "llvm/BitcodeReader.h"
@@ -135,20 +136,30 @@ std::size_t Compiler::convert()
     parser->parse(module);
     PROFILE_END(Parser);
 
+    normalization::Normalizer norm(config);
     optimizations::Optimizer opt(config);
     qpu_asm::CodeGenerator codeGen(module, config);
+
+    PROFILE_START(Normalizer);
+    norm.normalize(module);
+    PROFILE_END(Normalizer);
+
     PROFILE_START(Optimizer);
     opt.optimize(module);
     PROFILE_END(Optimizer);
 
-    std::vector<threading::BackgroundWorker> workers;
+    PROFILE_START(SecondNormalizer);
+    norm.adjust(module);
+    PROFILE_END(SecondNormalizer);
+
+    std::vector<BackgroundWorker> workers;
     workers.reserve(module.getKernels().size());
     for(Method* kernelFunc : module.getKernels())
     {
         auto f = [&codeGen, kernelFunc]() -> void { toMachineCode(codeGen, *kernelFunc); };
         workers.emplace(workers.end(), f, "Code Generator")->operator()();
     }
-    threading::BackgroundWorker::waitForAll(workers);
+    BackgroundWorker::waitForAll(workers);
 
     // TODO could discard unused globals
     // since they are exported, they are still in the intermediate code, even if not used (e.g. optimized away)

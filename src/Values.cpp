@@ -274,14 +274,6 @@ std::size_t vc4c::hash<vc4c::Register>::operator()(vc4c::Register const& val) co
     return hash(static_cast<unsigned char>(val.file)) ^ hash(val.num);
 }
 
-Literal::Literal(int32_t integer) noexcept : type(LiteralType::INTEGER), i(integer) {}
-
-Literal::Literal(uint32_t integer) noexcept : type(LiteralType::INTEGER), u(integer) {}
-
-Literal::Literal(float real) noexcept : type(LiteralType::REAL), f(real) {}
-
-Literal::Literal(bool flag) noexcept : type(LiteralType::BOOL), u(flag) {}
-
 bool Literal::operator==(const Literal& other) const
 {
     if(this == &other)
@@ -536,7 +528,7 @@ bool Value::operator==(const Value& other) const
     case ValueType::LOCAL:
         return other.hasLocal(local);
     case ValueType::REGISTER:
-        return other.hasRegister(other.reg);
+        return other.hasRegister(reg);
     case ValueType::UNDEFINED:
         return true;
     case ValueType::SMALL_IMMEDIATE:

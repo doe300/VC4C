@@ -6,12 +6,6 @@ target_sources(${VC4C_LIBRARY_NAME}
     ${CMAKE_CURRENT_LIST_DIR}/ControlFlow.h
     ${CMAKE_CURRENT_LIST_DIR}/Eliminator.cpp
     ${CMAKE_CURRENT_LIST_DIR}/Eliminator.h
-    ${CMAKE_CURRENT_LIST_DIR}/Inliner.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/Inliner.h
-    ${CMAKE_CURRENT_LIST_DIR}/LiteralValues.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/LiteralValues.h
-    ${CMAKE_CURRENT_LIST_DIR}/MemoryAccess.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/MemoryAccess.h
     ${CMAKE_CURRENT_LIST_DIR}/Optimizer.cpp
     ${CMAKE_CURRENT_LIST_DIR}/Optimizer.h
     ${CMAKE_CURRENT_LIST_DIR}/Reordering.cpp

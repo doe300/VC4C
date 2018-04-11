@@ -11,8 +11,8 @@
 #include "../analysis/DataDependencyGraph.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/TypeConversions.h"
+#include "../normalization/LiteralValues.h"
 #include "../periphery/VPM.h"
-#include "LiteralValues.h"
 #include "log.h"
 
 #include <algorithm>
@@ -825,7 +825,7 @@ void optimizations::vectorizeLoops(const Module& module, Method& method, const C
         // 6. run vectorization
         vectorize(loop, loopControl, dependencyGraph);
         // increasing the iteration step might create a value not fitting into small immediate
-        handleImmediate(module, method, loopControl.iterationStep.value(), config);
+        normalization::handleImmediate(module, method, loopControl.iterationStep.value(), config);
     }
 }
 
@@ -840,6 +840,7 @@ void optimizations::extendBranches(const Module& module, Method& method, const C
         intermediate::Branch* branch = it.get<intermediate::Branch>();
         if(branch != nullptr)
         {
+            logging::debug() << "Extending branch: " << branch->to_string() << logging::endl;
             if(branch->hasConditionalExecution() || !branch->getCondition().hasLiteral(BOOL_TRUE.literal))
             {
                 /*

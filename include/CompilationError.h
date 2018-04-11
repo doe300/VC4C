@@ -37,6 +37,10 @@ namespace vc4c
          */
         LLVM_2_IR,
         /*
+         * Error in one of the normalization steps
+         */
+        NORMALIZER,
+        /*
          * Error in one of the optimization/transformation steps
          */
         OPTIMIZER,

@@ -5,7 +5,6 @@
  */
 
 #include "Eliminator.h"
-#include "LiteralValues.h"
 
 #include "../InstructionWalker.h"
 #include "../Profiler.h"
@@ -404,6 +403,7 @@ bool optimizations::translateToMove(const Module& module, Method& method, const 
         {
             auto move = new intermediate::MoveOperation(
                 op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags);
+            logging::debug() << "Replacing obsolete instruction with move: " << op->to_string() << logging::endl;
             it.reset(move);
             flag = true;
         }
@@ -457,15 +457,20 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
             auto newValue = op->getSource();
             while(!it2.isEndOfBlock())
             {
+                bool replacedThisInstruction = false;
                 for(auto arg : it2->getArguments())
                 {
                     if(arg == oldValue && arg.valueType != ValueType::LITERAL &&
                         arg.valueType != ValueType::SMALL_IMMEDIATE)
                     {
                         replaced = true;
+                        replacedThisInstruction = true;
                         it2->replaceValue(oldValue, newValue, LocalUse::Type::READER);
                     }
                 }
+
+                if(replacedThisInstruction)
+                    calculateConstantInstruction(module, method, it2, config);
 
                 if(it2->getOutput().has_value() && it2->getOutput().value() == oldValue)
                     break;
@@ -540,7 +545,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 logging::debug() << "Removing obsolete move by replacing uses of the output with the input: "
                                  << it->to_string() << logging::endl;
                 (*destinationReader)
-                    ->replaceLocal(move->getOutput()->local, move->getSource().local, LocalUse::Type::READER);
+                    ->replaceValue(move->getOutput().value(), move->getSource(), LocalUse::Type::READER);
                 it.erase();
                 // to not skip the next instruction
                 it.previousInBlock();

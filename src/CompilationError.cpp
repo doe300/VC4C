@@ -33,6 +33,8 @@ static std::string to_sting(const CompilationStep step)
         return "Parser";
     case CompilationStep::LLVM_2_IR:
         return "Instruction Mapping";
+    case CompilationStep::NORMALIZER:
+        return "Normalizer";
     case CompilationStep::OPTIMIZER:
         return "Optimizer";
     case CompilationStep::LABEL_REGISTER_MAPPING:

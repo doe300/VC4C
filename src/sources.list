@@ -1,5 +1,6 @@
 target_sources(${VC4C_LIBRARY_NAME}
   PRIVATE
+    BackgroundWorker.cpp
     BackgroundWorker.h
     BasicBlock.cpp
     BasicBlock.h

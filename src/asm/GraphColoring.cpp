@@ -655,7 +655,7 @@ void GraphColoring::createGraph()
     // TODO if this method works, could here spill all locals with more than XX (64) neighbors!?!
     for(const auto& node : graph)
     {
-        PROFILE_COUNTER(1000005, "SpillCandidates", node.second.getNeighbors().size() >= 64);
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 5, "SpillCandidates", node.second.getNeighbors().size() >= 64);
     }
     // 2. iteration: associate locals used together
     PROFILE_START(addEdges);
@@ -841,7 +841,7 @@ static bool reassignNodeToRegister(ColoredGraph& graph, ColoredNode& node)
     }
     bool fixed =
         isFixed(node.possibleFiles) && node.hasFreeRegisters(node.possibleFiles) && node.fixToRegister() != SIZE_MAX;
-    PROFILE_COUNTER(1000040, "reassignNodeToRegister", fixed);
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 40, "reassignNodeToRegister", fixed);
     return fixed;
 }
 
@@ -970,7 +970,7 @@ static bool fixSingleError(Method& method, ColoredGraph& graph, ColoredNode& nod
     {
         // fix read-after-writes, so local can be on non-accumulator:
         logging::debug() << "Fixing register error case 1 for: " << node.key->to_string() << logging::endl;
-        PROFILE_COUNTER(1000010, "Register error case 1", 1);
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 10, "Register error case 1", 1);
 
         // the register-files which can be used after the fix by this local
         RegisterFile freeFiles = remove_flag(RegisterFile::ANY, localUses.at(node.key).blockedFiles);
@@ -996,7 +996,7 @@ static bool fixSingleError(Method& method, ColoredGraph& graph, ColoredNode& nod
                     logging::debug() << "Fixing register-conflict by inserting NOP before: " << it->to_string()
                                      << logging::endl;
                     it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER));
-                    PROFILE_COUNTER(1000011, "NOP insertions", 1);
+                    PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 11, "NOP insertions", 1);
                 }
             }
             else if(assertUser(users, it).readsLocal())
@@ -1022,15 +1022,15 @@ static bool fixSingleError(Method& method, ColoredGraph& graph, ColoredNode& nod
         // this local is used together with another local fixed to a physical file
         //-> or, if blocking local is in other combined instruction, split up instructions
         logging::debug() << "Fixing register error case 2 for: " << node.key->to_string() << logging::endl;
-        PROFILE_COUNTER(1000020, "Register error case 2", 1);
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 20, "Register error case 2", 1);
 
         bool fileACouldBeUsed =
             has_flag(node.initialFile, RegisterFile::PHYSICAL_A) && node.hasFreeRegisters(RegisterFile::PHYSICAL_A);
         bool fileBCouldBeUsed =
             has_flag(node.initialFile, RegisterFile::PHYSICAL_B) && node.hasFreeRegisters(RegisterFile::PHYSICAL_B);
 
-        PROFILE_COUNTER(1000021, "A blocked", !fileACouldBeUsed);
-        PROFILE_COUNTER(1000022, "B blocked", !fileBCouldBeUsed);
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 21, "A blocked", !fileACouldBeUsed);
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 22, "B blocked", !fileBCouldBeUsed);
 
         if(fileACouldBeUsed && fileBCouldBeUsed)
         {
@@ -1077,13 +1077,13 @@ static bool fixSingleError(Method& method, ColoredGraph& graph, ColoredNode& nod
         // for any of the possible files, there are no more free registers to assign
         // so we need to copy the local to a temporary before every use, so it can be mapped to the other file
         logging::debug() << "Fixing register error case 3 for: " << node.key->to_string() << logging::endl;
-        PROFILE_COUNTER(1000030, "Register error case 3", 1);
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 30, "Register error case 3", 1);
 
         bool moveToFileA = node.hasFreeRegisters(RegisterFile::PHYSICAL_A);
         bool moveToFileB = node.hasFreeRegisters(RegisterFile::PHYSICAL_B);
 
-        PROFILE_COUNTER(1000031, "move to A", moveToFileA);
-        PROFILE_COUNTER(1000032, "move to B", moveToFileB);
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 31, "move to A", moveToFileA);
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 32, "move to B", moveToFileB);
 
         if(moveToFileA && moveToFileB)
         {

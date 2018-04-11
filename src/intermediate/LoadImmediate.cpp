@@ -59,6 +59,11 @@ qpu_asm::Instruction* LoadImmediate::convertToAsm(const FastMap<const Local*, Re
         getArgument(0)->literal.toImmediate());
 }
 
+bool LoadImmediate::isNormalized() const
+{
+    return true;
+}
+
 Literal LoadImmediate::getImmediate() const
 {
     return getArgument(0)->literal;

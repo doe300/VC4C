@@ -14,7 +14,7 @@
 #include "log.h"
 
 using namespace vc4c;
-using namespace vc4c::optimizations;
+using namespace vc4c::normalization;
 
 static const Method* matchSignatures(
     const std::vector<std::unique_ptr<Method>>& methods, const intermediate::MethodCall* callSignature)
@@ -141,7 +141,7 @@ static Method& inlineMethod(
     return currentMethod;
 }
 
-void optimizations::inlineMethods(const Module& module, Method& kernel, const Configuration& config)
+void normalization::inlineMethods(const Module& module, Method& kernel, const Configuration& config)
 {
     logging::info() << "-----" << logging::endl;
     logging::info() << "Inlining functions for kernel: " << kernel.name << logging::endl;

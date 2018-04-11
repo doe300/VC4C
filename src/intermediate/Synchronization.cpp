@@ -30,6 +30,11 @@ qpu_asm::Instruction* SemaphoreAdjustment::convertToAsm(const FastMap<const Loca
         REG_NOP.num, REG_NOP.num, increase, semaphore);
 }
 
+bool SemaphoreAdjustment::isNormalized() const
+{
+    return true;
+}
+
 IntermediateInstruction* SemaphoreAdjustment::copyFor(Method& method, const std::string& localPrefix) const
 {
     return (new SemaphoreAdjustment(semaphore, increase, conditional, setFlags))->copyExtrasFrom(this);
@@ -94,6 +99,11 @@ qpu_asm::Instruction* MemoryBarrier::convertToAsm(const FastMap<const Local*, Re
         CompilationStep::CODE_GENERATION, "There should be no more memory barriers at this point", to_string());
 }
 
+bool MemoryBarrier::isNormalized() const
+{
+    return true;
+}
+
 IntermediateInstruction* MemoryBarrier::copyFor(Method& method, const std::string& localPrefix) const
 {
     return (new MemoryBarrier(scope, semantics))->copyExtrasFrom(this);
@@ -123,6 +133,11 @@ qpu_asm::Instruction* LifetimeBoundary::convertToAsm(const FastMap<const Local*,
 {
     throw CompilationError(
         CompilationStep::CODE_GENERATION, "There should be no more lifetime instructions at this point", to_string());
+}
+
+bool LifetimeBoundary::isNormalized() const
+{
+    return true;
 }
 
 IntermediateInstruction* LifetimeBoundary::copyFor(Method& method, const std::string& localPrefix) const
@@ -162,6 +177,11 @@ qpu_asm::Instruction* MutexLock::convertToAsm(const FastMap<const Local*, Regist
     MoveOperation move(locksMutex() ? NOP_REGISTER : MUTEX_REGISTER,
         locksMutex() ? MUTEX_REGISTER : Value(SmallImmediate(1), TYPE_BOOL));
     return move.convertToAsm(registerMapping, labelMapping, instructionIndex);
+}
+
+bool MutexLock::isNormalized() const
+{
+    return true;
 }
 
 IntermediateInstruction* MutexLock::copyFor(Method& method, const std::string& localPrefix) const
