@@ -12,6 +12,7 @@
 #include "Combiner.h"
 #include "ControlFlow.h"
 #include "Eliminator.h"
+#include "LocalCompression.h"
 #include "Reordering.h"
 #include "log.h"
 
@@ -113,6 +114,8 @@ Optimizer::Optimizer(const Configuration& config) : config(config)
     passes.emplace_back("SingleSteps", runSingleSteps);
     // merges adjacent basic blocks if there are no other conflicting transitions
     passes.emplace_back("MergeBasicBlocks", mergeAdjacentBasicBlocks);
+    // compresses work-group info into single local
+    // passes.emplace_back("CompressWorkGroupInfo", compressWorkGroupLocals);
     // combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation
     passes.emplace_back("CombineRotations", combineVectorRotations);
     passes.emplace_back("GeneralOptimizations", generalOptimization);
