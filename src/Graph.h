@@ -29,13 +29,20 @@ namespace vc4c
 
         explicit Node(const K key) : key(key) {}
 
+        typename NeighborsType::value_type& emplace(Node * neighbor, R relation)
+        {
+            neighbor->pointee.emplace(this);
+            return * neighbors.emplace(neighbor, relation).first;
+        }
+
         /*!
          * Adds the given neighbor with the given relation.
          * Multiple calls to this method do not override the previous association.
          */
         void addNeighbor(Node* neighbor, R relation)
         {
-            neighbors.emplace(neighbor, relation);
+            neighbor->pointee.emplace(this);
+            neighbors.emplace(neighbor, relation).first;
         }
 
         typename NeighborsType::value_type& getOrCreateNeighbor(Node* neighbor, R defaultRelation = {})
@@ -43,7 +50,7 @@ namespace vc4c
             auto it = neighbors.find(neighbor);
             if(it != neighbors.end())
                 return *it;
-            return *neighbors.emplace(neighbor, defaultRelation).first;
+            return emplace(neighbor, defaultRelation);
         }
 
         const NeighborsType& getNeighbors() const
@@ -122,9 +129,36 @@ namespace vc4c
             return key.to_string();
         }
 
+        /*
+         * erase all references to this node
+         */
+        void eraseReference()
+        {
+            for (auto it = pointee.begin(); it != pointee.end(); ++it)
+            {
+                (*it)->neighbors.erase(this);
+                (*it)->pointee.erase(this);
+            }
+        }
+
+        /*
+         * Erase edge to a node
+         */
+        void erase(Node* node)
+        {
+          node->getPointee().erase(this);
+          neighbors.erase(node);
+        }
+
+        std::set<Node*> getPointee()
+        {
+          return pointee;
+        }
+
     protected:
         // TODO find better way, so the map is to the actual (child) type
         FastMap<Node*, R> neighbors;
+        std::set<Node*> pointee;
     };
 
     /*
@@ -169,6 +203,18 @@ namespace vc4c
                 throw CompilationError(CompilationStep::GENERAL, "Failed to find graph-node for key");
             }
             return Base::at(key);
+        }
+
+        void erase(const K& key)
+        {
+            auto base = Base::find(key);
+            if (base != Base::end())
+            {
+                auto & node = base->second;
+                node.eraseReference();
+            }
+
+            Base::erase(key);
         }
     };
 } // namespace vc4c

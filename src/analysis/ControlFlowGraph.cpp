@@ -248,6 +248,15 @@ ControlFlowGraph ControlFlowGraph::createCFG(Method& method)
 
     // XXX to be exact, would need bidirectional arrow [dir="both"] for compact loops
 #ifdef DEBUG_MODE
+    graph.dumpGraph("/tmp/vc4c-cfg-" + method.name + ".dot");
+#endif
+
+    PROFILE_END(createCFG);
+    return graph;
+}
+
+void ControlFlowGraph::dumpGraph(std::string filename)
+{
     auto nameFunc = [](const BasicBlock* bb) -> std::string { return bb->getLabel()->getLabel()->name; };
     auto edgeLabelFunc = [](const CFGRelation& r) -> std::string {
         return (r.isReverseRelation() && !r.isForwardRelation()) || r.isImplicit ||
@@ -255,12 +264,14 @@ ControlFlowGraph ControlFlowGraph::createCFG(Method& method)
             "" :
             std::string("br ") + r.predecessor->conditional.to_string();
     };
-    DebugGraph<BasicBlock*, CFGRelation>::dumpGraph<ControlFlowGraph>(graph, "/tmp/vc4c-cfg.dot", true, nameFunc,
+    DebugGraph<BasicBlock*, CFGRelation>::dumpGraph<ControlFlowGraph>(*this, filename, true, nameFunc,
         [](const CFGRelation& rel) -> bool { return !rel.isForwardRelation(); }, edgeLabelFunc);
-#endif
+}
 
-    PROFILE_END(createCFG);
-    return graph;
+void ControlFlowGraph::dumpGraph(char * filename)
+{
+    std::string s(filename);
+    dumpGraph(s);
 }
 
 ControlFlowLoop ControlFlowGraph::findLoopsHelper(const CFGNode* node, FastMap<const CFGNode*, int>& discoveryTimes,

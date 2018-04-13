@@ -19,4 +19,6 @@ target_sources(TestVC4C
     TestStdlib.cpp
     TestStdlib.h
     test_stdlib.h
+    TestInternalLibs.cpp
+    TestInternalLibs.h
 )
