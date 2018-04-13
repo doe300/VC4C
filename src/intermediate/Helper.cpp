@@ -31,7 +31,8 @@ InstructionWalker intermediate::insertVectorRotation(
      */
 
     // 0. if the container is a literal, no need to rotate, simply move, since all elements have the same value
-    if(src.isLiteralValue())
+    // the same counts for any input register where all elements have the same value
+    if(src.isLiteralValue() || src.hasRegister(REG_UNIFORM) || src.hasRegister(REG_QPU_NUMBER))
     {
         it.emplace(new MoveOperation(dest, src));
         it.nextInBlock();

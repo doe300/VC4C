@@ -1174,7 +1174,7 @@ void optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
     ++it;
     while(it != method.end())
     {
-        //XXX currently, this only merges adjacent (in list of blocks) blocks
+        // XXX currently, this only merges adjacent (in list of blocks) blocks
         auto prevIt = it;
         --prevIt;
 

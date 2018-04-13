@@ -612,7 +612,7 @@ void optimizations::combineLoadingLiterals(const Module& module, Method& method,
         InstructionWalker it = block.begin();
         while(!it.isEndOfBlock())
         {
-            if(it->hasValueType(ValueType::LOCAL) &&
+            if(it.get() && it->hasValueType(ValueType::LOCAL) &&
                 it->getOutput()->local->getUsers(LocalUse::Type::WRITER).size() == 1 &&
                 block.isLocallyLimited(it, it->getOutput()->local))
             {

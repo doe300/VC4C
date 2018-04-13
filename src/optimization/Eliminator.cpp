@@ -29,7 +29,7 @@ void optimizations::eliminateDeadStore(const Module& module, Method& method, con
         intermediate::IntermediateInstruction* instr = it.get();
         // fail-fast on all not-supported instruction types
         // also skip all instructions writing to non-locals (registers)
-        if(!it.has<intermediate::Branch>() && !it.has<intermediate::BranchLabel>() &&
+        if(it.get() && !it.has<intermediate::Branch>() && !it.has<intermediate::BranchLabel>() &&
             !it.has<intermediate::SemaphoreAdjustment>() && instr->hasValueType(ValueType::LOCAL))
         {
             intermediate::Operation* op = it.get<intermediate::Operation>();
@@ -448,7 +448,7 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
         //
         // - mov.setf r0, r1
         // - mov r0, r1, load_tmu0
-        if(op && !op->hasConditionalExecution() && !op->hasPackMode() && !op->hasUnpackMode() &&
+        if(op && !it.has<intermediate::VectorRotation>() && !op->hasConditionalExecution() && !op->hasPackMode() && !op->hasUnpackMode() &&
             op->getOutput().has_value() && (op->getSource().valueType != ValueType::REGISTER) &&
             (op->getOutput().value().valueType != ValueType::REGISTER))
         {
@@ -606,7 +606,7 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
     auto it = method.walkAllInstructions();
     while(!it.isEndOfMethod())
     {
-        if(!it->hasSideEffects() && !it->hasPackMode() && !it->hasUnpackMode())
+        if(it.get() && !it->hasSideEffects() && !it->hasPackMode() && !it->hasUnpackMode())
         {
             auto op = it.get<intermediate::Operation>();
             if(op && op->op == OP_AND && !op->hasUnpackMode() && !op->hasPackMode())

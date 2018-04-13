@@ -338,9 +338,10 @@ bool Method::removeBlock(BasicBlock& block, bool overwriteUsages)
             return false;
         // 2. check explicit jumps to this block
         unsigned count = 0;
-        block.forPredecessors([&count](InstructionWalker it) -> void {
+        block.forPredecessors([&block, &count](InstructionWalker it) -> void {
             // only check for explicit jumps to this block, implicit "jumps" will just fall-through to the next block
-            if(it.has<intermediate::Branch>())
+            if(it.has<intermediate::Branch>() &&
+                it.get<intermediate::Branch>()->getTarget() == block.getLabel()->getLabel())
                 ++count;
         });
         if(count > 0)
