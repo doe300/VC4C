@@ -18,7 +18,7 @@
 using namespace vc4c;
 using namespace vc4c::optimizations;
 
-void optimizations::eliminateDeadStore(const Module& module, Method& method, const Configuration& config)
+void optimizations::eliminateDeadStore(const Module& module, Method& method, const Configuration& config, const std::string& value)
 {
     // TODO (additionally or instead of this) walk through locals, check whether they are never read and writings have
     // no side-effects  then walk through all writings of such locals and remove them (example:

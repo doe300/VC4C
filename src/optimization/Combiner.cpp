@@ -375,7 +375,8 @@ static const std::vector<MergeCondition> mergeConditions = {
         return true;
     }};
 
-void optimizations::combineOperations(const Module& module, Method& method, const Configuration& config)
+void optimizations::combineOperations(
+    const Module& module, Method& method, const Configuration& config, const std::string& value)
 {
     // TODO can combine operation x and y if y is something like (result of x & 0xFF/0xFFFF) -> pack-mode
     for(BasicBlock& bb : method)
@@ -604,8 +605,19 @@ static bool canReplaceLiteralLoad(InstructionWalker it, const InstructionWalker 
     return false;
 }
 
-void optimizations::combineLoadingLiterals(const Module& module, Method& method, const Configuration& config)
+void optimizations::combineLoadingLiterals(
+    const Module& module, Method& method, const Configuration& config, const std::string& value)
 {
+    std::size_t threshold;
+    try
+    {
+        threshold = std::stoi(value);
+    }
+    catch(const std::invalid_argument& ia)
+    {
+        logging::warn() << "Failed to read optimization parameter: " << ia.what() << logging::endl;
+        threshold = 6;
+    }
     for(BasicBlock& block : method)
     {
         FastMap<uint32_t, InstructionWalker> lastLoadImmediate;
@@ -621,7 +633,7 @@ void optimizations::combineLoadingLiterals(const Module& module, Method& method,
                 {
                     auto immIt = lastLoadImmediate.find(literal->unsignedInt());
                     if(immIt != lastLoadImmediate.end() &&
-                        canReplaceLiteralLoad(it, block.begin(), immIt->second, config.combineLoadingLiteralsThreshold))
+                        canReplaceLiteralLoad(it, block.begin(), immIt->second, threshold))
                     {
                         Local* oldLocal = it->getOutput()->local;
                         Local* newLocal = immIt->second->getOutput()->local;
@@ -654,9 +666,9 @@ void optimizations::unrollWorkGroups(const Module& module, Method& method, const
      * In a loop with a count specified in GROUP_LOOP_SIZE, the kernel is re-run.
      * This saves some of the overhead for changing the group-id and re-starting the kernel via a mailbox call.
      *
-     * In return, for every loop iteration there needs to be a UNIFORM with the count of remaining loop iterations left.
-     * Or just a non-zero value for all but the last and a zero-value for the last iteration.
-     * Additionally, all UNIFORMs need to be re-loaded!!
+     * In return, for every loop iteration there needs to be a UNIFORM with the count of remaining loop iterations
+     * left. Or just a non-zero value for all but the last and a zero-value for the last iteration. Additionally,
+     * all UNIFORMs need to be re-loaded!!
      */
     const Local* startLabel = method.findOrCreateLocal(TYPE_LABEL, BasicBlock::DEFAULT_BLOCK);
 
@@ -715,7 +727,8 @@ InstructionWalker optimizations::combineSelectionWithZero(
     return it;
 }
 
-void optimizations::combineVectorRotations(const Module& module, Method& method, const Configuration& config)
+void optimizations::combineVectorRotations(
+    const Module& module, Method& method, const Configuration& config, const std::string& value)
 {
     for(BasicBlock& block : method)
     {

@@ -7,8 +7,9 @@
 #ifndef VC4C_CONFIG_H
 #define VC4C_CONFIG_H
 
-#include <cstddef>
-#include <stdint.h>
+#include <map>
+#include <set>
+#include <string>
 
 namespace vc4c
 {
@@ -60,6 +61,33 @@ namespace vc4c
     };
 
     /*
+     * Specifies the possible basic optimization levels.
+     *
+     * The exact optimizations enabled/disabled can be specified separately.
+     *
+     * NOTE: A higher optimization level may generate more performant code, but will also increase the compilation time
+     */
+    enum class OptimizationLevel
+    {
+        /*
+         * -O0, disable all optimizations
+         */
+        NONE,
+        /*
+         * -O1, run basic optimizations with the greatest effect per additional compilation time required
+         */
+        BASIC,
+        /*
+         * -O2, run more advanced and more complex optimizations
+         */
+        MEDIUM,
+        /*
+         * -O3, run all available optimizations
+         */
+        FULL
+    };
+
+    /*
      * The maximum VPM size to be used (in bytes).
      *
      * According to tests the configured VPM size (at least for the Raspberry Pi 2) is 12 KB.
@@ -98,17 +126,17 @@ namespace vc4c
          */
         Frontend frontend = Frontend::DEFAULT;
         /*
-         * Whether to turn on auto-vectorization of loops
+         * The optimization level to use. This can be adapted to enable/disable optimizations by the fields below
          */
-        bool autoVectorization = false;
+        OptimizationLevel optimizationLevel = OptimizationLevel::MEDIUM;
         /*
-         * Whether moving of constants to out side of loops
+         * Manually activated optimizations and their optional additional parameters
          */
-        bool moveConstants = true;
+        std::map<std::string, std::string> additionalEnabledOptimizations;
         /*
-         * The threshold for combineLoadingLiterals
+         * Manually deactivated optimizations
          */
-        int combineLoadingLiteralsThreshold = 6;
+        std::set<std::string> additionalDisabledOptimizations;
     };
 
     /*

@@ -22,7 +22,7 @@ namespace vc4c
          * When an instruction is removed, the previous instruction is re-checked since it could have become obsolete
          * just now.
          */
-        void eliminateDeadStore(const Module& module, Method& method, const Configuration& config);
+        void eliminateDeadStore(const Module& module, Method& method, const Configuration& config, const std::string& value);
         void eliminatePhiNodes(const Module& module, Method& method, const Configuration& config);
 
         /*

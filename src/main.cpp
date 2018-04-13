@@ -4,6 +4,7 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
+#include "./optimization/Optimizer.h"
 #include "Compiler.h"
 #include "Precompiler.h"
 #include "Profiler.h"
@@ -32,10 +33,22 @@ static void printHelp()
     std::cout << "\t-h, --help\t\tPrints this help message and exits" << std::endl;
     std::cout << "\t-v, --version\t\tPrints version and build info and exists" << std::endl;
     std::cout << "\t-d, --debug\t\tEnables verbose debug output" << std::endl;
-    std::cout << "\t--quiet\t\tQuiet verbose debug output" << std::endl;
+    std::cout << "\t--quiet\t\t\tQuiet verbose debug output" << std::endl;
     std::cout << "\t--hex\t\t\tGenerate hex output (e.g. included in source-code)" << std::endl;
     std::cout << "\t--bin\t\t\tGenerate binary output (as used by VC4CL run-time)" << std::endl;
     std::cout << "\t--asm\t\t\tGenerate assembler output (for analysis only)" << std::endl;
+    std::cout << "optimizations:" << std::endl;
+    std::cout << "\t-O0,-O1,-O2,-O3\t\tSwitches to the specific optimization level, defaults to -O2" << std::endl;
+    for(const auto& pass : vc4c::optimizations::Optimizer::ALL_PASSES)
+    {
+        std::cout << "\t--f" << std::left << std::setw(28)
+                  << (pass.parameterName +
+                         (pass.defaultParameterValue.empty() ? "" : std::string("=") + pass.defaultParameterValue))
+                  << pass.description << std::endl;
+        //TODO print which optimization level includes optimization
+        std::cout << "\t--fno-" << std::left << std::setw(25) << pass.parameterName << "Disables the above optimization"
+                  << std::endl;
+    }
     std::cout << "options:" << std::endl;
     std::cout << "\t--kernel-info\t\tWrite the kernel-info meta-data (as required by VC4CL run-time, default)"
               << std::endl;
@@ -43,8 +56,6 @@ static void printHelp()
     std::cout << "\t--spirv\t\t\tExplicitely use the SPIR-V front-end" << std::endl;
     std::cout << "\t--llvm\t\t\tExplicitely use the LLVM-IR front-end" << std::endl;
     std::cout << "\t--disassemble\t\tDisassembles the binary input to either hex or assembler output" << std::endl;
-    std::cout << "\t--fmoveconstants\t\tEnable move of constants to outer-loop (default: on)" << std::endl;
-    std::cout << "\t--fnomoveconstants\t\tDisable move of constants to outer-loop" << std::endl;
     std::cout << "\tany other option is passed to the pre-compiler" << std::endl;
 }
 
@@ -101,39 +112,42 @@ static void printInfo()
     std::cout << vc4c::to_string<std::string>(infoString, "; ") << std::endl;
 }
 
-/*
- * parse options with parameter like xxx=n
- * if invalid parameter are passed, raise an exception
- */
-Optional<int> parseIntOption(std::string name, std::string input)
+static auto availableOptimizations = vc4c::optimizations::Optimizer::getPasses(OptimizationLevel::FULL);
+
+bool parseOptimizationFlag(const std::string& arg, Configuration& config)
 {
-    std::stringstream ss(input);
-    std::string buffer;
-    std::getline(ss, buffer, '=');
-    if(buffer == name)
+    std::string passName;
+    if(arg.find("--f") != 0)
+        return false;
+    if(arg.find("--fno-") == 0)
     {
-        // XXX if input doesn't include '=', `ss` already reached the end.
-        // Then, the second `std::getline` do nothing.
-        // To detect that checking `name` == `buffer` is required.
-        std::getline(ss, buffer, '=');
-        if(name == buffer)
+        passName = arg.substr(std::string("--f-no-").size() - 1);
+        if(availableOptimizations.find(passName) != availableOptimizations.end())
         {
-            std::string err = "option parse error: parameter of integer expected in " + name;
-            throw CompilationError(CompilationStep::PRECOMPILATION, err);
+            config.additionalDisabledOptimizations.emplace(passName);
+            logging::debug() << "Disabling optimization: " << passName << logging::endl;
+            return true;
         }
-        try
-        {
-            auto s = std::stoi(buffer);
-            return Optional<int>(s);
-        }
-        catch(const std::invalid_argument& e)
-        {
-            std::string err = "option parse error: parameter of integer expected in " + name + ", but " + buffer;
-            throw CompilationError(CompilationStep::PRECOMPILATION, err);
-        }
+
+        std::cerr << "Cannot disable unknown optimization: " << passName << std::endl;
+        return false;
     }
 
-    return {};
+    passName = arg.substr(std::string("--f").size());
+    passName = passName.substr(0, passName.find("="));
+    std::string value;
+    if(arg.find("=") != std::string::npos)
+        value = arg.substr(arg.find("=") + 1);
+
+    if(availableOptimizations.find(passName) != availableOptimizations.end())
+    {
+        config.additionalEnabledOptimizations.emplace(passName, value);
+        logging::debug() << "Enabling optimization: " << passName << " (" << value << ")" << logging::endl;
+        return true;
+    }
+
+    std::cerr << "Cannot enable unknown optimization: " << passName << std::endl;
+    return false;
 }
 
 /*
@@ -213,10 +227,6 @@ int main(int argc, char** argv)
             config.frontend = Frontend::LLVM_IR;
         else if(strcmp("--disassemble", argv[i]) == 0)
             runDisassembler = true;
-        else if(strcmp("--fmove-constants", argv[i]) == 0)
-            config.moveConstants = true;
-        else if(strcmp("--fnomove-constants", argv[i]) == 0)
-            config.moveConstants = false;
         else if(strcmp("-o", argv[i]) == 0)
         {
             outputFile = argv[i + 1];
@@ -224,11 +234,15 @@ int main(int argc, char** argv)
             i += 2;
             break;
         }
-        else if(auto opt = parseIntOption("--fcombine-load-threshold", argv[i]))
-        {
-            config.combineLoadingLiteralsThreshold = opt.value();
-        }
-        else
+        else if(strcmp("-O0", argv[i]) == 0)
+            config.optimizationLevel = OptimizationLevel::NONE;
+        else if(strcmp("-O1", argv[i]) == 0)
+            config.optimizationLevel = OptimizationLevel::BASIC;
+        else if(strcmp("-O2", argv[i]) == 0)
+            config.optimizationLevel = OptimizationLevel::MEDIUM;
+        else if(strcmp("-O3", argv[i]) == 0)
+            config.optimizationLevel = OptimizationLevel::FULL;
+        else if(!parseOptimizationFlag(argv[i], config))
             options.append(argv[i]).append(" ");
     }
 
@@ -261,7 +275,8 @@ int main(int argc, char** argv)
     }
 
     logging::debug() << "Compiling '" << to_string<std::string>(inputFiles, "', '") << "' into '" << outputFile
-                     << "' with options '" << options << "' ..." << logging::endl;
+                     << "' with optimization level " << static_cast<unsigned>(config.optimizationLevel)
+                     << " and options '" << options << "' ..." << logging::endl;
 
     Optional<std::string> inputFile;
     std::unique_ptr<std::istream> input;

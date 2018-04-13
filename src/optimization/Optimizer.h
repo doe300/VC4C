@@ -31,16 +31,20 @@ namespace vc4c
              * The optimizations are only run in parallel for different methods, so any access to the method is
              * thread-safe
              */
-            using Pass = std::function<void(const Module&, Method&, const Configuration&)>;
+            using Pass = std::function<void(const Module&, Method&, const Configuration&, const std::string&)>;
 
-            OptimizationPass(const std::string& name, const Pass pass);
+            OptimizationPass(const std::string& name, const std::string& parameterName, const Pass& pass,
+                const std::string& description, const std::string& defaultValue = "");
 
             void operator()(const Module& module, Method& method, const Configuration& config) const;
 
-            std::string name;
+            const std::string name;
+            const std::string parameterName;
+            const std::string description;
+            const std::string defaultParameterValue;
 
         private:
-            Pass pass;
+            const Pass pass;
         };
 
         /*
@@ -57,15 +61,15 @@ namespace vc4c
             using Step =
                 std::function<InstructionWalker(const Module&, Method&, InstructionWalker, const Configuration&)>;
 
-            OptimizationStep(const std::string& name, const Step step);
+            OptimizationStep(const std::string& name, const Step& step);
 
             InstructionWalker operator()(
                 const Module& module, Method& method, InstructionWalker it, const Configuration& config) const;
 
-            std::string name;
+            const std::string name;
 
         private:
-            Step step;
+            const Step step;
         };
 
         class Optimizer
@@ -75,9 +79,21 @@ namespace vc4c
 
             void optimize(Module& module) const;
 
+            /*
+             * The complete list of all optimization passes available to be used
+             *
+             * NOTE: The order of the passes is the order of execution!
+             */
+            static const std::vector<OptimizationPass> ALL_PASSES;
+
+            /*
+             * Returns the list of enabled passes when using the specific optimization level
+             */
+            static std::set<std::string> getPasses(OptimizationLevel level);
+
         private:
             Configuration config;
-            std::vector<OptimizationPass> passes;
+            std::vector<const OptimizationPass*> passes;
         };
 
     } // namespace optimizations

@@ -59,7 +59,7 @@ namespace vc4c
          * NOTE: As of this point, the instruction-type CombinedInstruction can occur within a basic block!
          * Also, only moves and ALU instructions are combined at the moment
          */
-        void combineOperations(const Module& module, Method& method, const Configuration& config);
+        void combineOperations(const Module& module, Method& method, const Configuration& config, const std::string& value);
 
         /*
          * Combines the loading of the same literal within a small range in a single basic block
@@ -77,7 +77,7 @@ namespace vc4c
          *   %8 = mul24 %3, %4
          *   %9 = add %3, %5
          */
-        void combineLoadingLiterals(const Module& module, Method& method, const Configuration& config);
+        void combineLoadingLiterals(const Module& module, Method& method, const Configuration& config, const std::string& value);
 
         /*
          * Adds a branch from the end to the start to allow for running several kernels (from several work-groups) in
@@ -117,7 +117,7 @@ namespace vc4c
          *
          * NOTE: This optimization currently only works for constant rotation offsets.
          */
-        void combineVectorRotations(const Module& module, Method& method, const Configuration& config);
+        void combineVectorRotations(const Module& module, Method& method, const Configuration& config, const std::string& value);
 
         /*
          * Combines successive setting of the same flag (e.g. introduced by PHI-nodes)

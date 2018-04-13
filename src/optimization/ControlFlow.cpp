@@ -780,11 +780,8 @@ static void vectorize(ControlFlowLoop& loop, LoopControl& loopControl, const Dat
     logging::debug() << "Vectorization done, changed " << numVectorized << " instructions!" << logging::endl;
 }
 
-void optimizations::vectorizeLoops(const Module& module, Method& method, const Configuration& config)
+void optimizations::vectorizeLoops(const Module& module, Method& method, const Configuration& config, const std::string& value)
 {
-    if(!config.autoVectorization)
-        return;
-
     // 1. find loops
     auto& cfg = method.getCFG();
     auto loops = cfg.findLoops();
@@ -1092,11 +1089,8 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     generateStopSegment(method);
 }
 
-void optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
+void optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config, const std::string& value)
 {
-    if(config.moveConstants == false)
-        return;
-
     // 1. find loops
     auto& cfg = method.getCFG();
     auto loops = cfg.findLoops();
@@ -1167,7 +1161,7 @@ static const Local* findSourceBlock(const Local* label, const FastMap<const Loca
     return findSourceBlock(it->second, blockMap);
 }
 
-void optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& method, const Configuration& config)
+void optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& method, const Configuration& config, const std::string& value)
 {
     auto& graph = method.getCFG();
 

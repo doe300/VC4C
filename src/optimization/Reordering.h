@@ -29,7 +29,7 @@ namespace vc4c
          * mapped to an accumulator by inserting nop-instructions. This optimization-pass on its own is actually an
          * de-optimization, but is required for the #reorderWithinBasicBlocks pass to work properly.
          */
-        void splitReadAfterWrites(const Module& module, Method& method, const Configuration& config);
+        void splitReadAfterWrites(const Module& module, Method& method, const Configuration& config, const std::string& value);
 
         /*
          * Removes nop-instructions inserted for various reasons (waiting on TMU, SFU, splitting up read-after-write) by
@@ -50,7 +50,7 @@ namespace vc4c
          * NOTE: This optimization is a very limited implementation of instruction-scheduling and should be replaced by
          * a more general version which can actually re-order instructions
          */
-        void reorderWithinBasicBlocks(const Module& module, Method& method, const Configuration& config);
+        void reorderWithinBasicBlocks(const Module& module, Method& method, const Configuration& config, const std::string& value);
 
         /*
          * Prevents register-mapping errors by guaranteeing the source of a vector-rotation to be mappable to an
