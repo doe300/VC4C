@@ -19,6 +19,7 @@
 
 #include "../lib/cpplog/include/logger.h"
 #include "RegressionTest.h"
+#include "TestInternalLibs.h"
 
 using namespace std;
 
@@ -67,6 +68,7 @@ int main(int argc, char** argv)
     Test::registerSuite(newFastRegressionTest, "fast-regressions", "Runs regression test-cases marked as fast", false);
     Test::registerSuite(Test::newInstance<TestEmulator>, "test-emulator", "Runs selected code-samples through the emulator");
     Test::registerSuite(Test::newInstance<TestStdlib>, "test-stdlib", "Runs most of the VC4CL std-lib functions in emulator");
+    Test::registerSuite(Test::newInstance<TestInternalLibs>, "test-internal-libs", "Test common data structure");
 
     return Test::runSuites(argc, argv);
 }
