@@ -136,7 +136,7 @@ jobs:
       - run: dpkg -i vc4c-0.4-Linux.deb
       - run: ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
       - run: ldconfig
-      - run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators --fast-regressions
+      - run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators
   test-spirv:
     docker:
       - image: nomaddo/cross-rpi:0.1
@@ -147,7 +147,7 @@ jobs:
       - run: dpkg -i vc4c-0.4-Linux.deb
       - run: ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
       - run: ldconfig
-      - run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators --fast-regressions
+      - run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators
 workflows:
   version: 2
   commit:

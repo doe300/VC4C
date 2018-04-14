@@ -234,6 +234,12 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
                     input1.first.file = input0.first.file;
                     inMux1 = inMux0;
                 }
+                else if(input0.first.file == RegisterFile::ACCUMULATOR && inMux1 == InputMultiplex::REGA)
+                    // the above instruction ( InputMultiplex inMux1 = ...) selects the input mux for register-file A
+                    // if it is not explicitly blocked by the first argument (which it is not for accumulators), so we
+                    // need to set the register-file A here too if possible (which it is for registers located on both
+                    // physical files)
+                    input1.first.file = RegisterFile::PHYSICAL_A;
                 else
                     input1.first.file = RegisterFile::PHYSICAL_B;
             }
@@ -319,7 +325,8 @@ bool Operation::mapsToASMInstruction() const
 bool Operation::isNormalized() const
 {
     //"normalized" NOPs are handled via the NOP instruction class.
-    //If an operation has the NOP op-code, it has an op-code name which cannot be mapped to machine code -> not normalized
+    // If an operation has the NOP op-code, it has an op-code name which cannot be mapped to machine code -> not
+    // normalized
     return op != OP_NOP;
 }
 
