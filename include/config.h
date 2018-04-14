@@ -10,6 +10,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include "Optional.h"
 
 namespace vc4c
 {
@@ -166,6 +167,13 @@ namespace vc4c
          * Manually activated optimizations
          */
         std::unordered_set<std::string> additionalEnabledOptimizations;
+        /*
+         * Depth of loops whose constants are moved to out side of it
+         *
+         * * If it has no value, this optimization will not performed.
+         * * If it has negative value, all constants in loops will be moved.
+         */
+        Optional<int> moveConstantsDepth = Optional<int>(-1);
         /*
          * Manually deactivated optimizations
          */
