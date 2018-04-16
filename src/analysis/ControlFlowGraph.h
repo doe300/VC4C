@@ -120,11 +120,10 @@ namespace vc4c
          */
         FastAccessList<ControlFlowLoop> findLoops();
 
-
         /*
          * Dump this graph as dot file
          */
-        void dumpGraph(const std::string &path);
+        void dumpGraph(const std::string& path) const;
 
     private:
         /*

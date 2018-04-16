@@ -221,7 +221,7 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops()
     return loops;
 }
 
-void ControlFlowGraph::dumpGraph(const std::string &path)
+void ControlFlowGraph::dumpGraph(const std::string& path) const
 {
     // XXX to be exact, would need bidirectional arrow [dir="both"] for compact loops
     auto nameFunc = [](const BasicBlock* bb) -> std::string { return bb->getLabel()->getLabel()->name; };
