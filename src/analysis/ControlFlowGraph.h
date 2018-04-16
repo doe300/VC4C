@@ -120,6 +120,11 @@ namespace vc4c
          */
         FastAccessList<ControlFlowLoop> findLoops();
 
+        /*
+         * Dump this graph as dot file
+         */
+        void dumpGraph(const std::string& path) const;
+
     private:
         /*
          * This is a modified version of the Tarjan's Algorithm to find strongly connected components taken from

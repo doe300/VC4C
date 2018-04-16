@@ -221,6 +221,20 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops()
     return loops;
 }
 
+void ControlFlowGraph::dumpGraph(const std::string& path) const
+{
+    // XXX to be exact, would need bidirectional arrow [dir="both"] for compact loops
+    auto nameFunc = [](const BasicBlock* bb) -> std::string { return bb->getLabel()->getLabel()->name; };
+    auto edgeLabelFunc = [](const CFGRelation& r) -> std::string {
+        return (r.isReverseRelation() && !r.isForwardRelation()) || r.isImplicit ||
+                !r.predecessor.has<intermediate::Branch>() ?
+            "" :
+            std::string("br ") + r.predecessor->conditional.to_string();
+    };
+    DebugGraph<BasicBlock*, CFGRelation>::dumpGraph<ControlFlowGraph>(*this, path, true, nameFunc,
+        [](const CFGRelation& rel) -> bool { return !rel.isForwardRelation(); }, edgeLabelFunc);
+}
+
 ControlFlowGraph ControlFlowGraph::createCFG(Method& method)
 {
     PROFILE_START(createCFG);
@@ -246,17 +260,8 @@ ControlFlowGraph ControlFlowGraph::createCFG(Method& method)
         });
     }
 
-    // XXX to be exact, would need bidirectional arrow [dir="both"] for compact loops
 #ifdef DEBUG_MODE
-    auto nameFunc = [](const BasicBlock* bb) -> std::string { return bb->getLabel()->getLabel()->name; };
-    auto edgeLabelFunc = [](const CFGRelation& r) -> std::string {
-        return (r.isReverseRelation() && !r.isForwardRelation()) || r.isImplicit ||
-                !r.predecessor.has<intermediate::Branch>() ?
-            "" :
-            std::string("br ") + r.predecessor->conditional.to_string();
-    };
-    DebugGraph<BasicBlock*, CFGRelation>::dumpGraph<ControlFlowGraph>(graph, "/tmp/vc4c-cfg.dot", true, nameFunc,
-        [](const CFGRelation& rel) -> bool { return !rel.isForwardRelation(); }, edgeLabelFunc);
+    graph.dumpGraph("/tmp/vc4c-cfg.dot");
 #endif
 
     PROFILE_END(createCFG);
