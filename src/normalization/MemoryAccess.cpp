@@ -597,8 +597,8 @@ void normalization::resolveStackAllocation(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     // 1. calculate the offsets from the start of one QPU's "stack", heed alignment!
-    //This is done in Normalizer
-    
+    // This is done in Normalizer
+
     const std::size_t stackBaseOffset = method.getStackBaseOffset();
     const std::size_t maximumStackSize = method.calculateStackSize();
 
@@ -708,8 +708,8 @@ static InstructionWalker calculateInAreaOffset(
     return it;
 }
 
-static InstructionWalker mapToMemoryAccessInstructions(
-    Method& method, InstructionWalker it, const VPMArea* sourceArea = nullptr, const VPMArea* destArea = nullptr)
+static InstructionWalker mapToMemoryAccessInstructions(Method& method, InstructionWalker it,
+    const VPMArea* sourceArea = nullptr, const VPMArea* destArea = nullptr, bool alwaysUseVPM = false)
 {
     const MemoryInstruction* mem = it.get<MemoryInstruction>();
     switch(mem->op)
@@ -762,6 +762,10 @@ static InstructionWalker mapToMemoryAccessInstructions(
             it = calculateInAreaOffset(method, it, mem->getSource().local->getBase(true), mem->getSource(), subIndex);
             it = method.vpm->insertReadVPM(method, it, mem->getDestination(), sourceArea, true, subIndex);
         }
+        else if(alwaysUseVPM)
+        {
+            it = periphery::insertReadDMA(method, it, mem->getDestination(), mem->getSource());
+        }
         else
             it = periphery::insertReadVectorFromTMU(method, it, mem->getDestination(), mem->getSource());
         break;
@@ -780,6 +784,26 @@ static InstructionWalker mapToMemoryAccessInstructions(
     // remove MemoryInstruction
     it.erase();
     return it;
+}
+
+/*
+ * Memory that is written before it is read needs to be loaded via VPM,
+ * since otherwise the caching results in TMU loading the old value.
+ */
+static bool checkMemoryReadIsAlsoWritten(const Value& address)
+{
+    // TODO this does not regard the same address value calculated by using different locals!
+    if(!address.hasType(ValueType::LOCAL))
+        return false;
+    for(const auto& pair : address.local->getUsers())
+    {
+        if(pair.second.readsLocal() && pair.first->writesRegister(REG_VPM_IO))
+            return true;
+        if(pair.second.writesLocal() && dynamic_cast<const intermediate::MemoryInstruction*>(pair.first) != nullptr)
+            return true;
+    }
+
+    return false;
 }
 
 static void generateStandardMemoryAccessInstructions(
@@ -803,7 +827,8 @@ static void generateStandardMemoryAccessInstructions(
                 logging::debug() << "Generating memory access which cannot be lowered into VPM: " << it->to_string()
                                  << logging::endl;
             walkerIt = memoryInstructions.erase(walkerIt);
-            it = mapToMemoryAccessInstructions(method, it);
+            it = mapToMemoryAccessInstructions(method, it, nullptr, nullptr,
+                checkMemoryReadIsAlsoWritten(it.get<const MemoryInstruction>()->getSource()));
             affectedBlocks.emplace(it.getBasicBlock());
         }
         else
