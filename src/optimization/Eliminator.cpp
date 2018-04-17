@@ -448,8 +448,8 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
         //
         // - mov.setf r0, r1
         // - mov r0, r1, load_tmu0
-        if(op && !it.has<intermediate::VectorRotation>() && !op->hasConditionalExecution() && !op->hasPackMode() && !op->hasUnpackMode() &&
-            op->getOutput().has_value() && (op->getSource().valueType != ValueType::REGISTER) &&
+        if(op && !it.has<intermediate::VectorRotation>() && !op->hasConditionalExecution() && !op->hasPackMode() &&
+            !op->hasUnpackMode() && op->getOutput().has_value() && (op->getSource().valueType != ValueType::REGISTER) &&
             (op->getOutput().value().valueType != ValueType::REGISTER))
         {
             auto it2 = it.copy().nextInBlock();
@@ -505,8 +505,9 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
             // the destination is written and read only once (and not in combination with a literal value, to not
             // introduce register conflicts)
             bool destUsedOnce = move->hasValueType(ValueType::LOCAL) && move->getOutput()->getSingleWriter() == move &&
-                move->getOutput()->local->getUsers(LocalUse::Type::READER).size() == 1 &&
-                !(*move->getOutput()->local->getUsers(LocalUse::Type::READER).begin())->readsLiteral();
+                move->getOutput()->local->getUsers(LocalUse::Type::READER).size() == 1;
+            bool destUsedOnceWithoutLiteral =
+                destUsedOnce && !(*move->getOutput()->local->getUsers(LocalUse::Type::READER).begin())->readsLiteral();
 
             auto sourceWriter = (move->getSource().getSingleWriter() != nullptr) ?
                 it.getBasicBlock()->findWalkerForInstruction(move->getSource().getSingleWriter(), it) :
@@ -535,7 +536,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 }
             }
 
-            else if(!it->hasSideEffects() && sourceUsedOnce && destUsedOnce && destinationReader &&
+            else if(!it->hasSideEffects() && sourceUsedOnce && destUsedOnceWithoutLiteral && destinationReader &&
                 move->getSource().type == move->getOutput()->type)
             {
                 // if the source is written only once and the destination is read only once, we can replace the uses of
@@ -552,7 +553,9 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 flag = true;
             }
             else if(it->hasValueType(ValueType::REGISTER) && sourceUsedOnce && sourceWriter &&
-                !(*sourceWriter)->hasSideEffects() && !it->signal.hasSideEffects())
+                (!(*sourceWriter)->hasSideEffects() ||
+                    !((*sourceWriter)->signal.hasSideEffects() || (*sourceWriter)->doesSetFlag())) &&
+                !it->signal.hasSideEffects())
             {
                 // if the source is only used once (by this move) and the destination is a register, we can replace this
                 // move by the operation calculating the source  This optimization can save almost one instruction per
@@ -569,8 +572,10 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 it->setSetFlags(setFlags);
                 flag = true;
             }
-            else if(move->getSource().hasType(ValueType::REGISTER) && destUsedOnce && destinationReader &&
-                !move->signal.hasSideEffects() && move->setFlags == SetFlag::DONT_SET &&
+            else if(move->getSource().hasType(ValueType::REGISTER) && destUsedOnce &&
+                (destUsedOnceWithoutLiteral || has_flag(move->getSource().reg.file, RegisterFile::PHYSICAL_ANY) ||
+                    has_flag(move->getSource().reg.file, RegisterFile::ACCUMULATOR)) &&
+                destinationReader && !move->signal.hasSideEffects() && move->setFlags == SetFlag::DONT_SET &&
                 !(*destinationReader)->hasUnpackMode() && (*destinationReader)->conditional == COND_ALWAYS &&
                 !(*destinationReader)->readsRegister(move->getSource().reg) &&
                 isNoReadBetween(it, destinationReader.value(), move->getSource().reg))
