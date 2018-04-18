@@ -407,8 +407,9 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
 {
     if(type == nullptr)
         return TYPE_UNKNOWN;
-    if(typesMap.find(type) != typesMap.end())
-        return typesMap.at(type);
+    auto it = typesMap.find(type);
+    if(it != typesMap.end())
+        return it->second;
     if(type->isVectorTy())
     {
         return toDataType(type->getVectorElementType())
@@ -524,8 +525,9 @@ static ParameterDecorations toParameterDecorations(const llvm::Argument& arg)
 
 Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
 {
-    if(parsedFunctions.find(&func) != parsedFunctions.end())
-        return *parsedFunctions.at(&func).first;
+    auto it = parsedFunctions.find(&func);
+    if(it != parsedFunctions.end())
+        return *it->second.first;
 
     Method* method = new Method(module);
     module.methods.emplace_back(method);
@@ -687,7 +689,7 @@ void BitcodeReader::parseInstruction(
         const llvm::SwitchInst* switchIns = llvm::cast<const llvm::SwitchInst>(&inst);
         const Value cond = toValue(method, switchIns->getCondition());
         const Value defaultLabel = toValue(method, switchIns->getDefaultDest());
-        std::map<int, std::string> caseLabels;
+        FastMap<int, std::string> caseLabels;
         for(auto& casePair : const_cast<llvm::SwitchInst*>(switchIns)->cases())
         {
             caseLabels.emplace(static_cast<int>(casePair.getCaseValue()->getSExtValue()),
@@ -956,9 +958,10 @@ Value BitcodeReader::toValue(Method& method, const llvm::Value* val)
     {
         return loc->createReference();
     }
-    if(localMap.find(val) != localMap.end())
+    auto it = localMap.find(val);
+    if(it != localMap.end())
     {
-        return localMap.at(val)->createReference();
+        return it->second->createReference();
     }
     if(llvm::dyn_cast<const llvm::BranchInst>(val) != nullptr)
     {

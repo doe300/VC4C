@@ -29,22 +29,27 @@ static Value toNewLocal(Method& method, const uint32_t id, const uint32_t typeID
 static DataType getType(const uint32_t id, const TypeMapping& types, const ConstantMapping& constants,
     const AllocationMapping& memoryAllocated, const LocalTypeMapping& localTypes)
 {
-    if(types.find(id) != types.end())
-        return types.at(id);
-    if(constants.find(id) != constants.end())
-        return constants.at(id).type;
-    if(memoryAllocated.find(id) != memoryAllocated.end())
-        return memoryAllocated.at(id)->type;
+    auto tit = types.find(id);
+    if(tit != types.end())
+        return tit->second;
+    auto cit = constants.find(id);
+    if(cit != constants.end())
+        return cit->second.type;
+    auto mit = memoryAllocated.find(id);
+    if(mit != memoryAllocated.end())
+        return mit->second->type;
     return types.at(localTypes.at(id));
 }
 
 static Value getValue(const uint32_t id, Method& method, const TypeMapping& types, const ConstantMapping& constants,
     const AllocationMapping& memoryAllocated, const LocalTypeMapping& localTypes)
 {
-    if(constants.find(id) != constants.end())
-        return constants.at(id);
-    if(memoryAllocated.find(id) != memoryAllocated.end())
-        return memoryAllocated.at(id)->createReference();
+    auto cit = constants.find(id);
+    if(cit != constants.end())
+        return cit->second;
+    auto mit = memoryAllocated.find(id);
+    if(mit != memoryAllocated.end())
+        return mit->second->createReference();
     return method
         .findOrCreateLocal(
             getType(id, types, constants, memoryAllocated, localTypes), std::string("%") + std::to_string(id))
@@ -83,7 +88,7 @@ void SPIRVInstruction::mapInstruction(TypeMapping& types, ConstantMapping& const
     }
     else if(operands.size() > 1)
     {
-        arg1 = getValue(operands.at(1), *method.method, types, constants, memoryAllocated, localTypes);
+        arg1 = getValue(operands[1], *method.method, types, constants, memoryAllocated, localTypes);
     }
     if(!arg1) // unary
     {
@@ -104,7 +109,7 @@ Optional<Value> SPIRVInstruction::precalculate(
     const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
     const Value& op1 = constants.at(operands.at(0));
-    const Value op2 = operands.size() > 1 ? constants.at(operands.at(1)) : UNDEFINED_VALUE;
+    const Value op2 = operands.size() > 1 ? constants.at(operands[1]) : UNDEFINED_VALUE;
 
     if(opcode == "fptoui")
         return Value(Literal(static_cast<uint32_t>(op1.literal.real())), TYPE_INT32);
@@ -401,9 +406,10 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
 Optional<Value> SPIRVConversion::precalculate(
     const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
-    if(constants.find(sourceID) != constants.end())
+    auto it = constants.find(sourceID);
+    if(it != constants.end())
     {
-        const Value& source = constants.at(sourceID);
+        const Value& source = it->second;
         Value dest(UNDEFINED_VALUE);
         const DataType& destType = types.at(typeID);
         switch(type)
@@ -449,9 +455,9 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
     if(typeID == UNDEFINED_ID)
     {
         // globals may have other names than their ID, so check them first
-        if(memoryAllocated.find(id) != memoryAllocated.end())
-            dest = memoryAllocated.at(id)->createReference(
-                destIndices && !destIndices->empty() ? destIndices->at(0) : ANY_ELEMENT);
+        auto it = memoryAllocated.find(sourceID);
+        if(it != memoryAllocated.end())
+            dest = it->second->createReference(destIndices && !destIndices->empty() ? destIndices->at(0) : ANY_ELEMENT);
         else
             dest =
                 method.method->findOrCreateLocal(source.type, std::string("%") + std::to_string(id))->createReference();
@@ -555,8 +561,9 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
 Optional<Value> SPIRVCopy::precalculate(
     const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
-    if(constants.find(sourceID) != constants.end())
-        return constants.at(sourceID);
+    auto it = constants.find(sourceID);
+    if(it != constants.end())
+        return it->second;
     return NO_VALUE;
 }
 
@@ -662,8 +669,9 @@ Optional<Value> SPIRVIndexOf::precalculate(
     const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
     Value container(UNDEFINED_VALUE);
-    if(constants.find(this->container) != constants.end())
-        container = constants.at(this->container);
+    auto cit = constants.find(this->container);
+    if(cit != constants.end())
+        container = cit->second;
     else if(memoryAllocated.find(this->container) != memoryAllocated.end())
         container = memoryAllocated.at(this->container)->createReference();
     else
@@ -800,13 +808,14 @@ void SPIRVSelect::mapInstruction(TypeMapping& types, ConstantMapping& constants,
 Optional<Value> SPIRVSelect::precalculate(const std::map<uint32_t, DataType>& types,
     const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
 {
-    if(constants.find(condID) != constants.end())
+    auto it = constants.find(condID);
+    if(it != constants.end())
     {
-        if(constants.at(condID).literal.isTrue() && constants.find(trueID) != constants.end())
+        if(it->second.literal.isTrue() && constants.find(trueID) != constants.end())
         {
             return constants.at(trueID);
         }
-        if(!constants.at(condID).literal.isTrue() && constants.find(falseID) != constants.end())
+        if(!it->second.literal.isTrue() && constants.find(falseID) != constants.end())
         {
             return constants.at(falseID);
         }
@@ -848,14 +857,16 @@ void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
 Optional<Value> SPIRVSwitch::precalculate(
     const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
-    if(constants.find(selectorID) != constants.end())
+    auto it = constants.find(selectorID);
+    if(it != constants.end())
     {
-        const Value& selector = constants.at(selectorID);
+        const Value& selector = it->second;
         for(const auto& pair : destinations)
         {
-            if(selector.hasLiteral(Literal(pair.first)) && constants.find(pair.second) != constants.end())
+            it = constants.find(pair.second);
+            if(selector.hasLiteral(Literal(pair.first)) && it != constants.end())
             {
-                return constants.at(pair.second);
+                return it->second;
             }
         }
     }

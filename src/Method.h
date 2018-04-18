@@ -156,7 +156,7 @@ namespace vc4c
          */
         InstructionWalker appendToEnd();
 
-        const OrderedMap<std::string, Local>& readLocals() const;
+        const UnorderedMap<std::string, Local>& readLocals() const;
         /*
          * Removes all locals without any usages left
          */
@@ -263,7 +263,7 @@ namespace vc4c
         /*
          * The list of locals
          */
-        OrderedMap<std::string, Local> locals;
+        UnorderedMap<std::string, Local> locals;
         /*
          * The currently valid CFG
          *

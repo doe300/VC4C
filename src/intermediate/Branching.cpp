@@ -45,7 +45,7 @@ bool BranchLabel::isNormalized() const
 
 const Local* BranchLabel::getLabel() const
 {
-    return getArgument(0)->local;
+    return assertArgument(0).local;
 }
 
 Branch::Branch(const Local* target, const ConditionCode condCode, const Value& cond) :
@@ -121,7 +121,7 @@ bool Branch::isNormalized() const
 
 const Local* Branch::getTarget() const
 {
-    return getArgument(0)->local;
+    return assertArgument(0).local;
 }
 
 bool Branch::isUnconditional() const
@@ -129,9 +129,9 @@ bool Branch::isUnconditional() const
     return conditional == COND_ALWAYS || getCondition() == BOOL_TRUE;
 }
 
-const Value Branch::getCondition() const
+const Value& Branch::getCondition() const
 {
-    return getArgument(1).value();
+    return assertArgument(1);
 }
 
 PhiNode::PhiNode(const Value& dest, const std::vector<std::pair<Value, const Local*>>& labelPairs,
@@ -140,8 +140,8 @@ PhiNode::PhiNode(const Value& dest, const std::vector<std::pair<Value, const Loc
 {
     for(std::size_t i = 0; i < labelPairs.size(); ++i)
     {
-        setArgument(i * 2, labelPairs.at(i).second->createReference());
-        setArgument(i * 2 + 1, labelPairs.at(i).first);
+        setArgument(i * 2, labelPairs[i].second->createReference());
+        setArgument(i * 2 + 1, labelPairs[i].first);
     }
 }
 
@@ -172,7 +172,7 @@ IntermediateInstruction* PhiNode::copyFor(Method& method, const std::string& loc
             ->copyExtrasFrom(this);
     for(std::size_t i = 0; i < getArguments().size(); ++i)
     {
-        tmp->setArgument(i, renameValue(method, getArgument(i).value(), localPrefix));
+        tmp->setArgument(i, renameValue(method, assertArgument(i), localPrefix));
     }
     return tmp;
 }
@@ -182,7 +182,7 @@ FastMap<const Local*, Value> PhiNode::getValuesForLabels() const
     FastMap<const Local*, Value> res;
     for(std::size_t i = 0; i < getArguments().size(); i += 2)
     {
-        res.emplace(getArgument(i)->local, getArgument(i + 1).value());
+        res.emplace(assertArgument(i).local, assertArgument(i + 1));
     }
     return res;
 }

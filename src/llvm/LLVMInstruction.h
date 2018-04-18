@@ -287,7 +287,7 @@ namespace vc4c
         class Switch : public LLVMInstruction
         {
         public:
-            Switch(const Value& cond, const std::string& defaultLabel, const std::map<int, std::string>& cases);
+            Switch(const Value& cond, const std::string& defaultLabel, const FastMap<int, std::string>& cases);
             ~Switch() override = default;
 
             std::vector<const Local*> getAllLocals() const override;
@@ -296,7 +296,7 @@ namespace vc4c
         private:
             const Value cond;
             const std::string defaultLabel;
-            const std::map<int, std::string> jumpLabels;
+            const FastMap<int, std::string> jumpLabels;
         };
     } // namespace llvm2qasm
 } // namespace vc4c

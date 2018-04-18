@@ -342,7 +342,7 @@ unsigned int StructType::getStructSize(const int index) const
         {
             if(i == static_cast<std::size_t>(index))
                 break;
-            size += elementTypes.at(i).getPhysicalWidth();
+            size += elementTypes[i].getPhysicalWidth();
         }
         return size;
     }
@@ -353,7 +353,7 @@ unsigned int StructType::getStructSize(const int index) const
     {
         if(i == static_cast<std::size_t>(index))
             break;
-        auto elementAlignment = elementTypes.at(i).getAlignmentInBytes();
+        auto elementAlignment = elementTypes[i].getAlignmentInBytes();
         alignment = std::max(alignment, elementAlignment);
         // OpenCL 1.2, page 203
         //"A data item declared to be a data type in memory is always aligned to the size of the data type in bytes."
@@ -362,7 +362,7 @@ unsigned int StructType::getStructSize(const int index) const
             // alignment is added before the next type, not after the last
             size += elementAlignment - (size % elementAlignment);
         }
-        size += elementTypes.at(i).getPhysicalWidth();
+        size += elementTypes[i].getPhysicalWidth();
     }
     if(index < 0)
     {

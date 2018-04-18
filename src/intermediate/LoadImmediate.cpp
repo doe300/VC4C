@@ -33,13 +33,13 @@ std::string LoadImmediate::to_string() const
     if(getOutput()->hasRegister(REG_VPM_OUT_SETUP))
         return (getOutput()->to_string(true) + " = loadi ") +
             periphery::VPWSetup::fromLiteral(getImmediate().unsignedInt()).to_string() + createAdditionalInfoString();
-    return (getOutput()->to_string(true) + " = loadi ") + getArgument(0)->to_string() + createAdditionalInfoString();
+    return (getOutput()->to_string(true) + " = loadi ") + assertArgument(0).to_string() + createAdditionalInfoString();
 }
 
 IntermediateInstruction* LoadImmediate::copyFor(Method& method, const std::string& localPrefix) const
 {
-    return (new LoadImmediate(
-                renameValue(method, getOutput().value(), localPrefix), getArgument(0)->literal, conditional, setFlags))
+    return (new LoadImmediate(renameValue(method, getOutput().value(), localPrefix), assertArgument(0).literal,
+                conditional, setFlags))
         ->copyExtrasFrom(this);
 }
 
@@ -56,7 +56,7 @@ qpu_asm::Instruction* LoadImmediate::convertToAsm(const FastMap<const Local*, Re
     const ConditionCode conditional0 = outReg.num == REG_NOP.num ? COND_NEVER : this->conditional;
     return new qpu_asm::LoadInstruction(PACK_NOP, conditional0, COND_NEVER, setFlags,
         outReg.file == RegisterFile::PHYSICAL_A ? WriteSwap::DONT_SWAP : WriteSwap::SWAP, outReg.num, REG_NOP.num,
-        getArgument(0)->literal.toImmediate());
+        assertArgument(0).literal.toImmediate());
 }
 
 bool LoadImmediate::isNormalized() const
@@ -66,7 +66,7 @@ bool LoadImmediate::isNormalized() const
 
 Literal LoadImmediate::getImmediate() const
 {
-    return getArgument(0)->literal;
+    return assertArgument(0).literal;
 }
 
 void LoadImmediate::setImmediate(const Literal& value)

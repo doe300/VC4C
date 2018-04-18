@@ -691,7 +691,7 @@ bool Branch::mapInstruction(Method& method) const
     return true;
 }
 
-Switch::Switch(const Value& cond, const std::string& defaultLabel, const std::map<int, std::string>& cases) :
+Switch::Switch(const Value& cond, const std::string& defaultLabel, const FastMap<int, std::string>& cases) :
     cond(cond), defaultLabel(defaultLabel), jumpLabels(cases)
 {
 }

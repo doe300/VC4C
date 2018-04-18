@@ -213,7 +213,7 @@ bool InstructionWalker::isStartOfBlock() const
     return pos == basicBlock->instructions.begin();
 }
 
-static void throwOnEnd(bool isEnd)
+static inline void throwOnEnd(bool isEnd)
 {
     if(isEnd)
         throw CompilationError(CompilationStep::GENERAL, "End of method reached!");

@@ -43,16 +43,16 @@ static IntrinsicFunction intrinsifyUnaryALUInstruction(const std::string& opCode
 {
     return [opCode, useSignFlag, packMode, unpackMode, setFlags](
                Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker {
-        bool isUnsigned = callSite->getArgument(1) && callSite->getArgument(1)->getLiteralValue() &&
-            callSite->getArgument(1)->getLiteralValue()->unsignedInt() == VC4CL_UNSIGNED;
+        bool isUnsigned = callSite->getArgument(1) && callSite->assertArgument(1).getLiteralValue() &&
+            callSite->assertArgument(1).getLiteralValue()->unsignedInt() == VC4CL_UNSIGNED;
 
         logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to operation " << opCode
                          << logging::endl;
         if(opCode == "mov")
-            it.reset((new MoveOperation(callSite->getOutput().value(), callSite->getArgument(0).value()))
+            it.reset((new MoveOperation(callSite->getOutput().value(), callSite->assertArgument(0)))
                          ->copyExtrasFrom(callSite));
         else
-            it.reset((new Operation(opCode, callSite->getOutput().value(), callSite->getArgument(0).value()))
+            it.reset((new Operation(opCode, callSite->getOutput().value(), callSite->assertArgument(0)))
                          ->copyExtrasFrom(callSite));
         if(packMode != PACK_NOP)
             it->setPackMode(packMode);
@@ -73,13 +73,13 @@ static IntrinsicFunction intrinsifyBinaryALUInstruction(const std::string& opCod
 {
     return [opCode, useSignFlag, packMode, unpackMode, setFlags](
                Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker {
-        bool isUnsigned = callSite->getArgument(2) && callSite->getArgument(2)->getLiteralValue() &&
-            callSite->getArgument(2)->getLiteralValue()->unsignedInt() == VC4CL_UNSIGNED;
+        bool isUnsigned = callSite->getArgument(2) && callSite->assertArgument(2).getLiteralValue() &&
+            callSite->assertArgument(2).getLiteralValue()->unsignedInt() == VC4CL_UNSIGNED;
 
         logging::debug() << "Intrinsifying binary '" << callSite->to_string() << "' to operation " << opCode
                          << logging::endl;
-        it.reset((new Operation(opCode, callSite->getOutput().value(), callSite->getArgument(0).value(),
-                      callSite->getArgument(1).value()))
+        it.reset((new Operation(
+                      opCode, callSite->getOutput().value(), callSite->assertArgument(0), callSite->assertArgument(1)))
                      ->copyExtrasFrom(callSite));
         if(packMode != PACK_NOP)
             it->setPackMode(packMode);
@@ -99,7 +99,7 @@ static IntrinsicFunction intrinsifySFUInstruction(const Register& sfuRegister)
 {
     return [sfuRegister](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker {
         logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to SFU call" << logging::endl;
-        it = periphery::insertSFUCall(sfuRegister, it, callSite->getArgument(0).value(), callSite->conditional);
+        it = periphery::insertSFUCall(sfuRegister, it, callSite->assertArgument(0), callSite->conditional);
         it.reset((new MoveOperation(callSite->getOutput().value(), Value(REG_SFU_OUT, callSite->getOutput()->type)))
                      ->copyExtrasFrom(callSite));
         return it;
@@ -119,11 +119,11 @@ static IntrinsicFunction intrinsifyValueRead(const Value& val)
 static IntrinsicFunction intrinsifySemaphoreAccess(bool increment)
 {
     return [increment](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker {
-        if(!callSite->getArgument(0)->getLiteralValue())
+        if(!callSite->assertArgument(0).getLiteralValue())
             throw CompilationError(CompilationStep::OPTIMIZER, "Semaphore-number needs to be a compile-time constant",
                 callSite->to_string());
-        if(callSite->getArgument(0)->getLiteralValue()->signedInt() < 0 ||
-            callSite->getArgument(0)->getLiteralValue()->signedInt() >= 16)
+        if(callSite->assertArgument(0).getLiteralValue()->signedInt() < 0 ||
+            callSite->assertArgument(0).getLiteralValue()->signedInt() >= 16)
             throw CompilationError(
                 CompilationStep::OPTIMIZER, "Semaphore-number needs to be between 0 and 15", callSite->to_string());
 
@@ -131,14 +131,14 @@ static IntrinsicFunction intrinsifySemaphoreAccess(bool increment)
         {
             logging::debug() << "Intrinsifying semaphore increment with instruction" << logging::endl;
             it.reset((new SemaphoreAdjustment(
-                          static_cast<Semaphore>(callSite->getArgument(0)->getLiteralValue()->unsignedInt()), true))
+                          static_cast<Semaphore>(callSite->assertArgument(0).getLiteralValue()->unsignedInt()), true))
                          ->copyExtrasFrom(callSite));
         }
         else
         {
             logging::debug() << "Intrinsifying semaphore decrement with instruction" << logging::endl;
             it.reset((new SemaphoreAdjustment(
-                          static_cast<Semaphore>(callSite->getArgument(0)->getLiteralValue()->unsignedInt()), false))
+                          static_cast<Semaphore>(callSite->assertArgument(0).getLiteralValue()->unsignedInt()), false))
                          ->copyExtrasFrom(callSite));
         }
         return it;
@@ -179,28 +179,26 @@ static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access)
         {
             logging::debug() << "Intrinsifying memory read " << callSite->to_string() << logging::endl;
             // This needs to be access via VPM for atomic-instructions to work correctly!!
-            it = periphery::insertReadDMA(
-                method, it, callSite->getOutput().value(), callSite->getArgument(0).value(), false);
+            it =
+                periphery::insertReadDMA(method, it, callSite->getOutput().value(), callSite->assertArgument(0), false);
             break;
         }
         case DMAAccess::WRITE:
         {
             logging::debug() << "Intrinsifying memory write " << callSite->to_string() << logging::endl;
-            it = periphery::insertWriteDMA(
-                method, it, callSite->getArgument(1).value(), callSite->getArgument(0).value(), false);
+            it = periphery::insertWriteDMA(method, it, callSite->assertArgument(1), callSite->assertArgument(0), false);
             break;
         }
         case DMAAccess::COPY:
         {
             logging::debug() << "Intrinsifying ternary '" << callSite->to_string() << "' to DMA copy operation "
                              << logging::endl;
-            const DataType type = callSite->getArgument(0)->type.getElementType();
-            if(!callSite->getArgument(2) || !callSite->getArgument(2)->getLiteralValue())
+            const DataType type = callSite->assertArgument(0).type.getElementType();
+            if(!callSite->getArgument(2) || !callSite->assertArgument(2).getLiteralValue())
                 throw CompilationError(CompilationStep::OPTIMIZER,
                     "Memory copy with non-constant size is not yet supported", callSite->to_string());
-            it = method.vpm->insertCopyRAM(method, it, callSite->getArgument(0).value(),
-                callSite->getArgument(1).value(),
-                callSite->getArgument(2)->getLiteralValue()->unsignedInt() * type.getPhysicalWidth(), nullptr, false);
+            it = method.vpm->insertCopyRAM(method, it, callSite->assertArgument(0), callSite->assertArgument(1),
+                callSite->assertArgument(2).getLiteralValue()->unsignedInt() * type.getPhysicalWidth(), nullptr, false);
             break;
         }
         case DMAAccess::PREFETCH:
@@ -224,8 +222,8 @@ static IntrinsicFunction intrinsifyVectorRotation()
 {
     return [](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker {
         logging::debug() << "Intrinsifying vector rotation " << callSite->to_string() << logging::endl;
-        it = insertVectorRotation(it, callSite->getArgument(0).value(), callSite->getArgument(1).value(),
-            callSite->getOutput().value(), Direction::UP);
+        it = insertVectorRotation(
+            it, callSite->assertArgument(0), callSite->assertArgument(1), callSite->getOutput().value(), Direction::UP);
         it.erase();
         // so next instruction is not skipped
         it.previousInBlock();
@@ -446,13 +444,13 @@ static InstructionWalker intrinsifyUnary(Method& method, InstructionWalker it)
     {
         if(callSite->methodName.find(pair.first) != std::string::npos)
         {
-            if(callSite->getArgument(0)->hasType(ValueType::LITERAL) && pair.second.unaryInstr &&
-                pair.second.unaryInstr.value()(callSite->getArgument(0).value()))
+            if(callSite->assertArgument(0).hasType(ValueType::LITERAL) && pair.second.unaryInstr &&
+                pair.second.unaryInstr.value()(callSite->assertArgument(0)))
             {
                 logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to pre-calculated value"
                                  << logging::endl;
                 it.reset(new MoveOperation(callSite->getOutput().value(),
-                    pair.second.unaryInstr.value()(callSite->getArgument(0).value()).value(), callSite->conditional,
+                    pair.second.unaryInstr.value()(callSite->assertArgument(0)).value(), callSite->conditional,
                     callSite->setFlags));
             }
             else
@@ -466,19 +464,19 @@ static InstructionWalker intrinsifyUnary(Method& method, InstructionWalker it)
     {
         if(callSite->methodName.find(pair.first) != std::string::npos)
         {
-            if(callSite->getArgument(0)->hasType(ValueType::LITERAL) && pair.second.first.unaryInstr &&
-                pair.second.first.unaryInstr.value()(callSite->getArgument(0).value()))
+            if(callSite->assertArgument(0).hasType(ValueType::LITERAL) && pair.second.first.unaryInstr &&
+                pair.second.first.unaryInstr.value()(callSite->assertArgument(0)))
             {
                 logging::debug() << "Intrinsifying type-cast '" << callSite->to_string() << "' to pre-calculated value"
                                  << logging::endl;
                 it.reset(new MoveOperation(callSite->getOutput().value(),
-                    pair.second.first.unaryInstr.value()(callSite->getArgument(0).value()).value(),
-                    callSite->conditional, callSite->setFlags));
+                    pair.second.first.unaryInstr.value()(callSite->assertArgument(0)).value(), callSite->conditional,
+                    callSite->setFlags));
             }
             else if(!pair.second.second) // there is no value to apply -> simple move
             {
                 logging::debug() << "Intrinsifying '" << callSite->to_string() << "' to simple move" << logging::endl;
-                it.reset(new MoveOperation(callSite->getOutput().value(), callSite->getArgument(0).value()));
+                it.reset(new MoveOperation(callSite->getOutput().value(), callSite->assertArgument(0)));
             }
             else
             {
@@ -509,15 +507,14 @@ static InstructionWalker intrinsifyBinary(Method& method, InstructionWalker it)
     {
         if(callSite->methodName.find(pair.first) != std::string::npos)
         {
-            if(callSite->getArgument(0)->hasType(ValueType::LITERAL) &&
-                callSite->getArgument(1)->hasType(ValueType::LITERAL) && pair.second.binaryInstr &&
-                pair.second.binaryInstr.value()(callSite->getArgument(0).value(), callSite->getArgument(1).value()))
+            if(callSite->assertArgument(0).hasType(ValueType::LITERAL) &&
+                callSite->assertArgument(1).hasType(ValueType::LITERAL) && pair.second.binaryInstr &&
+                pair.second.binaryInstr.value()(callSite->assertArgument(0), callSite->assertArgument(1)))
             {
                 logging::debug() << "Intrinsifying binary '" << callSite->to_string() << "' to pre-calculated value"
                                  << logging::endl;
                 it.reset(new MoveOperation(callSite->getOutput().value(),
-                    pair.second.binaryInstr.value()(callSite->getArgument(0).value(), callSite->getArgument(1).value())
-                        .value(),
+                    pair.second.binaryInstr.value()(callSite->assertArgument(0), callSite->assertArgument(1)).value(),
                     callSite->conditional, callSite->setFlags));
             }
             else
@@ -1015,33 +1012,33 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
     if(callSite->methodName == "vc4cl_num_groups" && callSite->getArguments().size() == 1)
     {
         logging::debug() << "Intrinsifying reading of the number of work-groups" << logging::endl;
-        return intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0).value(),
+        return intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {Method::NUM_GROUPS_X, Method::NUM_GROUPS_Y, Method::NUM_GROUPS_Z}, INT_ONE,
             add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT));
     }
     if(callSite->methodName == "vc4cl_group_id" && callSite->getArguments().size() == 1)
     {
         logging::debug() << "Intrinsifying reading of the work-group ids" << logging::endl;
-        return intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0).value(),
+        return intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {Method::GROUP_ID_X, Method::GROUP_ID_Y, Method::GROUP_ID_Z}, INT_ZERO,
             add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT));
     }
     if(callSite->methodName == "vc4cl_global_offset" && callSite->getArguments().size() == 1)
     {
         logging::debug() << "Intrinsifying reading of the global offsets" << logging::endl;
-        return intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0).value(),
+        return intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {Method::GLOBAL_OFFSET_X, Method::GLOBAL_OFFSET_Y, Method::GLOBAL_OFFSET_Z}, INT_ZERO,
             add_flag(InstructionDecorations::BUILTIN_GLOBAL_OFFSET, InstructionDecorations::UNSIGNED_RESULT));
     }
     if(callSite->methodName == "vc4cl_local_size" && callSite->getArguments().size() == 1)
     {
         logging::debug() << "Intrinsifying reading of local work-item sizes" << logging::endl;
-        return intrinsifyReadLocalSize(method, it, callSite->getArgument(0).value());
+        return intrinsifyReadLocalSize(method, it, callSite->assertArgument(0));
     }
     if(callSite->methodName == "vc4cl_local_id" && callSite->getArguments().size() == 1)
     {
         logging::debug() << "Intrinsifying reading of local work-item ids" << logging::endl;
-        return intrinsifyReadLocalID(method, it, callSite->getArgument(0).value());
+        return intrinsifyReadLocalID(method, it, callSite->assertArgument(0));
     }
     if(callSite->methodName == "vc4cl_global_size" && callSite->getArguments().size() == 1)
     {
@@ -1052,10 +1049,10 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
         const Value tmpNumGroups = method.addNewLocal(TYPE_INT32, "%num_groups");
         // emplace dummy instructions to be replaced
         it.emplace(new MoveOperation(tmpLocalSize, NOP_REGISTER));
-        it = intrinsifyReadLocalSize(method, it, callSite->getArgument(0).value());
+        it = intrinsifyReadLocalSize(method, it, callSite->assertArgument(0));
         it.nextInBlock();
         it.emplace(new MoveOperation(tmpNumGroups, NOP_REGISTER));
-        it = intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0).value(),
+        it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {Method::NUM_GROUPS_X, Method::NUM_GROUPS_Y, Method::NUM_GROUPS_Z}, INT_ONE,
             add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT));
         it.nextInBlock();
@@ -1078,20 +1075,20 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
         const Value tmpRes1 = method.addNewLocal(TYPE_INT32, "%group_global_id");
         // emplace dummy instructions to be replaced
         it.emplace(new MoveOperation(tmpGroupID, NOP_REGISTER));
-        it = intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0).value(),
+        it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {Method::GROUP_ID_X, Method::GROUP_ID_Y, Method::GROUP_ID_Z}, INT_ZERO,
             add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT));
         it.nextInBlock();
         it.emplace(new MoveOperation(tmpLocalSize, NOP_REGISTER));
-        it = intrinsifyReadLocalSize(method, it, callSite->getArgument(0).value());
+        it = intrinsifyReadLocalSize(method, it, callSite->assertArgument(0));
         it.nextInBlock();
         it.emplace(new MoveOperation(tmpGlobalOffset, NOP_REGISTER));
-        it = intrinsifyReadWorkGroupInfo(method, it, callSite->getArgument(0).value(),
+        it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {Method::GLOBAL_OFFSET_X, Method::GLOBAL_OFFSET_Y, Method::GLOBAL_OFFSET_Z}, INT_ZERO,
             add_flag(InstructionDecorations::BUILTIN_GLOBAL_OFFSET, InstructionDecorations::UNSIGNED_RESULT));
         it.nextInBlock();
         it.emplace(new MoveOperation(tmpLocalID, NOP_REGISTER));
-        it = intrinsifyReadLocalID(method, it, callSite->getArgument(0).value());
+        it = intrinsifyReadLocalID(method, it, callSite->assertArgument(0));
         it.nextInBlock();
         it.emplace(new Operation(OP_MUL24, tmpRes0, tmpGroupID, tmpLocalSize));
         it.nextInBlock();

@@ -89,7 +89,7 @@ bool MethodCall::matchesSignature(const Method& method) const
     }
     for(std::size_t i = 0; i < method.parameters.size(); ++i)
     {
-        if(!(method.parameters.at(i).type.containsType(getArgument(i)->type)))
+        if(!(method.parameters[i].type.containsType(assertArgument(i).type)))
         {
             return false;
         }

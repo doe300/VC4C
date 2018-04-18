@@ -53,13 +53,13 @@ InstructionWalker intrinsifyIntegerRelation(
     {
         // a == b <=> a xor b == 0 [<=> a - b == 0]
         // a != b <=> a xor b != 0
-        if(comp->getFirstArg().hasType(ValueType::LOCAL) && comp->getSecondArg()->hasLiteral(Literal(0u)))
+        if(comp->getFirstArg().hasType(ValueType::LOCAL) && comp->assertArgument(1).hasLiteral(Literal(0u)))
             // special case for a == 0
             // does not save instructions, but does not force value a to be on register-file A (since B is reserved for
             // literal 0)
             it.emplace(new MoveOperation(NOP_REGISTER, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
         else
-            it.emplace(new Operation(OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg().value(),
+            it.emplace(new Operation(OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->assertArgument(1),
                 comp->conditional, SetFlag::SET_FLAGS));
         it.nextInBlock();
         it = replaceWithSetBoolean(it, comp->getOutput().value(), invertResult ? COND_ZERO_CLEAR : COND_ZERO_SET);
@@ -97,9 +97,9 @@ InstructionWalker intrinsifyIntegerRelation(
             it.emplace(new Operation(
                 OP_AND, leftLower, comp->getFirstArg(), Value(Literal(TYPE_INT16.getScalarWidthMask()), TYPE_INT32)));
             it.nextInBlock();
-            it.emplace(new Operation(OP_SHR, rightUpper, comp->getSecondArg().value(), Value(Literal(16u), TYPE_INT8)));
+            it.emplace(new Operation(OP_SHR, rightUpper, comp->assertArgument(1), Value(Literal(16u), TYPE_INT8)));
             it.nextInBlock();
-            it.emplace(new Operation(OP_AND, rightLower, comp->getSecondArg().value(),
+            it.emplace(new Operation(OP_AND, rightLower, comp->assertArgument(1),
                 Value(Literal(TYPE_INT16.getScalarWidthMask()), TYPE_INT32)));
             it.nextInBlock();
             //(a >> 16) < (b >> 16)
@@ -125,8 +125,7 @@ InstructionWalker intrinsifyIntegerRelation(
         }
         else
         {
-            it.emplace(
-                new Operation(OP_MAX, tmp, comp->getFirstArg(), comp->getSecondArg().value(), comp->conditional));
+            it.emplace(new Operation(OP_MAX, tmp, comp->getFirstArg(), comp->assertArgument(1), comp->conditional));
             it.nextInBlock();
             it.emplace(
                 new Operation(OP_XOR, NOP_REGISTER, tmp, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
@@ -138,13 +137,13 @@ InstructionWalker intrinsifyIntegerRelation(
     {
         // a < b [<=> min(a, b) != b] <=> max(a, b) != a
         Value firstArg = comp->getFirstArg();
-        Value secondArg = comp->getSecondArg().value();
+        Value secondArg = comp->assertArgument(1);
         if(firstArg.type.getScalarBitCount() < 32)
         {
             firstArg = method.addNewLocal(TYPE_INT32.toVectorType(firstArg.type.num), "%icomp");
             secondArg = method.addNewLocal(TYPE_INT32.toVectorType(secondArg.type.num), "%icomp");
             it = insertSignExtension(it, method, comp->getFirstArg(), firstArg, true);
-            it = insertSignExtension(it, method, comp->getSecondArg().value(), secondArg, true);
+            it = insertSignExtension(it, method, comp->assertArgument(1), secondArg, true);
         }
         it.emplace(new Operation(OP_MAX, tmp, firstArg, secondArg, comp->conditional));
         it.nextInBlock();
@@ -168,7 +167,7 @@ static std::pair<InstructionWalker, Value> insertCheckForNaN(
     if(comp->getArguments().size() > 1)
     {
         const Value secondArgNaN = method.addNewLocal(TYPE_BOOL, "%nan_check");
-        it.emplace(new Operation(OP_XOR, secondArgNaN, comp->getSecondArg().value(), FLOAT_NAN, comp->conditional));
+        it.emplace(new Operation(OP_XOR, secondArgNaN, comp->assertArgument(1), FLOAT_NAN, comp->conditional));
         it.nextInBlock();
         eitherNaN = method.addNewLocal(TYPE_BOOL, "%nan_check");
         it.emplace(new Operation(OP_OR, eitherNaN, firstArgNaN, secondArgNaN, comp->conditional));
@@ -204,24 +203,24 @@ InstructionWalker intrinsifyFloatingRelation(Method& method, InstructionWalker i
     else if(COMP_ORDERED_EQ == comp->opCode || COMP_UNORDERED_EQ == comp->opCode)
     {
         // a == b <=> a xor b == 0 [<=> a - b == 0]
-        it.emplace(new Operation(OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg().value(),
-            comp->conditional, SetFlag::SET_FLAGS));
+        it.emplace(new Operation(
+            OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->assertArgument(1), comp->conditional, SetFlag::SET_FLAGS));
         it.nextInBlock();
         it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_ZERO_SET);
     }
     else if(COMP_ORDERED_NEQ == comp->opCode || COMP_UNORDERED_NEQ == comp->opCode)
     {
         // a != b <=> a xor b != 0
-        it.emplace(new Operation(OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg().value(),
-            comp->conditional, SetFlag::SET_FLAGS));
+        it.emplace(new Operation(
+            OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->assertArgument(1), comp->conditional, SetFlag::SET_FLAGS));
         it.nextInBlock();
         it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_ZERO_CLEAR);
     }
     else if(COMP_ORDERED_LT == comp->opCode || COMP_UNORDERED_LT == comp->opCode)
     {
         // a < b [<=> min(a, b) != b] [<=> max(a, b) != a] <=> a - b < 0
-        it.emplace(new Operation(OP_FSUB, NOP_REGISTER, comp->getFirstArg(), comp->getSecondArg().value(),
-            comp->conditional, SetFlag::SET_FLAGS));
+        it.emplace(new Operation(OP_FSUB, NOP_REGISTER, comp->getFirstArg(), comp->assertArgument(1), comp->conditional,
+            SetFlag::SET_FLAGS));
         it.nextInBlock();
         // true if NEGATIVE is set, otherwise false
         it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_NEGATIVE_SET);
@@ -230,7 +229,7 @@ InstructionWalker intrinsifyFloatingRelation(Method& method, InstructionWalker i
     {
         // a <= b <=> min(a, b) == a [<=> max(a, b) == b]
         it.emplace(new Operation(
-            OP_FMIN, tmp, comp->getFirstArg(), comp->getSecondArg().value(), comp->conditional, SetFlag::SET_FLAGS));
+            OP_FMIN, tmp, comp->getFirstArg(), comp->assertArgument(1), comp->conditional, SetFlag::SET_FLAGS));
         it.nextInBlock();
         it.emplace(
             new Operation(OP_XOR, NOP_REGISTER, tmp, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
@@ -246,7 +245,7 @@ InstructionWalker intrinsifyFloatingRelation(Method& method, InstructionWalker i
         it.emplace(new Operation(OP_XOR, tmp0, comp->getFirstArg(), FLOAT_NAN, comp->conditional));
         it.nextInBlock();
         // tmp1 = b != NaN
-        it.emplace(new Operation(OP_XOR, tmp1, comp->getSecondArg().value(), FLOAT_NAN, comp->conditional));
+        it.emplace(new Operation(OP_XOR, tmp1, comp->assertArgument(1), FLOAT_NAN, comp->conditional));
         it.nextInBlock();
         // tmp = tmp0 && tmp1
         it.emplace(new Operation(OP_AND, tmp, tmp0, tmp1, comp->conditional, SetFlag::SET_FLAGS));
@@ -263,7 +262,7 @@ InstructionWalker intrinsifyFloatingRelation(Method& method, InstructionWalker i
         it.emplace(new Operation(OP_XOR, tmp0, comp->getFirstArg(), FLOAT_NAN, comp->conditional));
         it.nextInBlock();
         // tmp1 = b != NaN
-        it.emplace(new Operation(OP_XOR, tmp1, comp->getSecondArg().value(), FLOAT_NAN, comp->conditional));
+        it.emplace(new Operation(OP_XOR, tmp1, comp->assertArgument(1), FLOAT_NAN, comp->conditional));
         it.nextInBlock();
         // tmp = tmp0 && tmp1
         it.emplace(new Operation(OP_AND, tmp, tmp0, tmp1, comp->conditional, SetFlag::SET_FLAGS));
@@ -280,7 +279,7 @@ InstructionWalker intrinsifyFloatingRelation(Method& method, InstructionWalker i
 static void swapComparisons(const std::string& opCode, Comparison* comp)
 {
     Value tmp = comp->getFirstArg();
-    comp->setArgument(0, comp->getSecondArg().value());
+    comp->setArgument(0, comp->assertArgument(1));
     comp->setArgument(1, tmp);
     comp->setOpCode(OP_NOP);
     const_cast<std::string&>(comp->opCode) = opCode;

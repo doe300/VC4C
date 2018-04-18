@@ -12,6 +12,7 @@
 #include <iomanip>
 #include <map>
 #include <set>
+#include <unordered_map>
 
 #ifdef MULTI_THREADED
 #include <mutex>
@@ -56,7 +57,7 @@ struct Counter
     }
 };
 
-static std::map<std::string, Entry> times;
+static std::unordered_map<std::string, Entry> times;
 static std::map<std::size_t, Counter> counters;
 #ifdef MULTI_THREADED
 static std::mutex lockTimes;

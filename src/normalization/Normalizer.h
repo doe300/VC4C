@@ -44,7 +44,7 @@ namespace vc4c
              * NOTE: The normalization needs to be run BEFORE the optimizations
              */
             void normalize(Module& module) const;
-            
+
             /*
              * Runs the second batch of normalization steps, trying to fix any possible issues with hardware limitations
              *

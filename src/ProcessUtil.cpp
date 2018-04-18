@@ -119,7 +119,7 @@ static void runChild(
     // executed"
     for(std::size_t i = 0; i < parts.size(); ++i)
     {
-        args.at(i) = const_cast<char*>(parts.at(i).data());
+        args.at(i) = const_cast<char*>(parts[i].data());
     }
 
     execvp(file.data(), args.data());

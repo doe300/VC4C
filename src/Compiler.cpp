@@ -97,7 +97,7 @@ static void toMachineCode(qpu_asm::CodeGenerator& codeGen, Method& kernel)
 #ifdef VERIFIER_HEADER
     std::vector<uint64_t> hexData;
     hexData.reserve(instructions.size());
-    for(const std::unique_ptr<qpu_asm::Instruction>& instr : instructions)
+    for(const auto& instr : instructions)
     {
         hexData.push_back(instr->toBinaryCode());
     }

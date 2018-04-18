@@ -12,6 +12,7 @@
 
 #include "Locals.h"
 #include "helper.h"
+#include "performance.h"
 
 namespace vc4c
 {
@@ -19,6 +20,11 @@ namespace vc4c
     {
         class IntermediateInstruction;
         struct BranchLabel;
+
+        using IL = std::unique_ptr<IntermediateInstruction>;
+        using InstructionsList = FastModificationList<IL>;
+        using InstructionsIterator = InstructionsList::iterator;
+        using ConstInstructionsIterator = InstructionsList::const_iterator;
     } // namespace intermediate
 
     class InstructionWalker;
@@ -115,7 +121,7 @@ namespace vc4c
 
     private:
         Method& method;
-        RandomModificationList<std::unique_ptr<intermediate::IntermediateInstruction>> instructions;
+        intermediate::InstructionsList instructions;
 
         friend class ControlFlowGraph;
         friend class InstructionWalker;

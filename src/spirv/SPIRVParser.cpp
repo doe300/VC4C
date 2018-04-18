@@ -147,18 +147,21 @@ void SPIRVParser::parse(Module& module)
     // set names, e.g. for methods, parameters
     for(auto& m : methods)
     {
-        if(names.find(m.first) != names.end())
-            m.second.method->name = names.at(m.first);
+        auto it = names.find(m.first);
+        if(it != names.end())
+            m.second.method->name = it->second;
         m.second.method->parameters.reserve(m.second.parameters.size());
         for(const auto& pair : m.second.parameters)
         {
             const DataType& type = typeMappings.at(pair.second);
             Parameter param(std::string("%") + std::to_string(pair.first), type);
-            if(decorationMappings.find(pair.first) != decorationMappings.end())
-                setParameterDecorations(param, decorationMappings.at(pair.first));
-            if(names.find(pair.first) != names.end())
+            auto it2 = decorationMappings.find(pair.first);
+            if(it2 != decorationMappings.end())
+                setParameterDecorations(param, it2->second);
+            it = names.find(pair.first);
+            if(it != names.end())
                 // parameters are referenced by their IDs, not their names, but for meta-data the names are better
-                param.parameterName = names.at(pair.first);
+                param.parameterName = it->second;
 
             if(param.type.getImageType())
                 intermediate::reserveImageConfiguration(module, param);
@@ -169,7 +172,7 @@ void SPIRVParser::parse(Module& module)
 
     // map SPIRVOperations to IntermediateInstructions
     logging::debug() << "Mapping instructions to intermediate..." << logging::endl;
-    for(const std::unique_ptr<SPIRVOperation>& op : instructions)
+    for(const auto& op : instructions)
     {
         op->mapInstruction(typeMappings, constantMappings, localTypes, methods, memoryAllocatedData);
     }
@@ -405,9 +408,10 @@ static Value parseConstantComposite(const spv_parsed_instruction_t* instruction,
 static Optional<Value> specializeConstant(const uint32_t resultID, const DataType& type,
     const FastMap<uint32_t, std::vector<std::pair<SpvDecoration, uint32_t>>>& decorations)
 {
-    if(decorations.find(resultID) != decorations.end())
+    auto it = decorations.find(resultID);
+    if(it != decorations.end())
     {
-        Optional<uint32_t> res(getDecoration(decorations.at(resultID), SpvDecorationSpecId));
+        Optional<uint32_t> res(getDecoration(it->second, SpvDecorationSpecId));
         if(res)
             return Value(Literal(res.value()), type);
     }
@@ -672,8 +676,9 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         StructType* structDef = new StructType({});
         DataType type;
         type.complexType.reset(structDef);
-        if(names.find(parsed_instruction->result_id) != names.end())
-            type.typeName = names.at(parsed_instruction->result_id);
+        auto it = names.find(parsed_instruction->result_id);
+        if(it != names.end())
+            type.typeName = it->second;
         // add reference to this struct-type to type-mappings
         typeMappings[parsed_instruction->result_id] = type;
         const auto typeIDs = parseArguments(parsed_instruction, 2);
@@ -682,9 +687,10 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             structDef->elementTypes.push_back(typeMappings.at(typeID));
         }
         // set "packed" decoration
-        if(decorationMappings.find(parsed_instruction->result_id) != decorationMappings.end())
+        auto it2 = decorationMappings.find(parsed_instruction->result_id);
+        if(it2 != decorationMappings.end())
         {
-            if(getDecoration(decorationMappings.at(parsed_instruction->result_id), SpvDecorationCPacked))
+            if(getDecoration(it2->second, SpvDecorationCPacked))
             {
                 structDef->isPacked = true;
             }
@@ -849,11 +855,9 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         // XXX maybe this is not necessary? If so, it is removed anyway
         typeMappings[0] = TYPE_LABEL;
         instructions.emplace_back(new SPIRVLabel(0, *currentMethod));
+        auto it = names.find(parsed_instruction->result_id);
         logging::debug() << "Reading function: %" << parsed_instruction->result_id << " ("
-                         << (names.find(parsed_instruction->result_id) != names.end() ?
-                                    names.at(parsed_instruction->result_id) :
-                                    currentMethod->method->name)
-                         << ")" << logging::endl;
+                         << (it != names.end() ? it->second : currentMethod->method->name) << ")" << logging::endl;
         return SPV_SUCCESS;
     }
     case SpvOpFunctionParameter:
@@ -875,25 +879,24 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         //"Allocate an object in memory, resulting in a pointer to it"
         // used for global values as well as stack-allocations
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        const std::string name = names.find(parsed_instruction->result_id) != names.end() ?
-            names.at(parsed_instruction->result_id) :
-            (std::string("%") + std::to_string(parsed_instruction->result_id));
+        auto it = names.find(parsed_instruction->result_id);
+        const std::string name =
+            it != names.end() ? it->second : (std::string("%") + std::to_string(parsed_instruction->result_id));
         const DataType& type = typeMappings.at(parsed_instruction->type_id);
         Value val(type.getElementType());
         if(parsed_instruction->num_words > 4)
             val = constantMappings.at(getWord(parsed_instruction, 4));
         unsigned alignment = 0;
         bool isConstant = false;
-        if(decorationMappings.find(parsed_instruction->type_id) != decorationMappings.end())
+        auto it2 = decorationMappings.find(parsed_instruction->type_id);
+        if(it2 != decorationMappings.end())
         {
-            alignment =
-                getDecoration(decorationMappings.at(parsed_instruction->type_id), SpvDecorationAlignment).value_or(0);
-            isConstant =
-                getDecoration(decorationMappings.at(parsed_instruction->type_id), SpvDecorationConstant).has_value();
+            alignment = getDecoration(it2->second, SpvDecorationAlignment).value_or(0);
+            isConstant = getDecoration(it2->second, SpvDecorationConstant).has_value();
         }
-        if(alignment == 0 && decorationMappings.find(parsed_instruction->result_id) != decorationMappings.end())
-            alignment =
-                getDecoration(decorationMappings.at(parsed_instruction->result_id), SpvDecorationAlignment).value_or(0);
+        it2 = decorationMappings.find(parsed_instruction->result_id);
+        if(alignment == 0 && it2 != decorationMappings.end())
+            alignment = getDecoration(it2->second, SpvDecorationAlignment).value_or(0);
 
         // the type of OpVariable is the pointer
         //... but the global data/stack allocation needs to have the real type (is re-set in #parse())
@@ -1003,9 +1006,10 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         // apply group of decorations to IDs
         const std::vector<uint32_t> targets = parseArguments(parsed_instruction, 2);
         const uint32_t decorationGroup = getWord(parsed_instruction, 1);
-        if(decorationMappings.find(decorationGroup) != decorationMappings.end())
+        auto it = decorationMappings.find(decorationGroup);
+        if(it != decorationMappings.end())
         {
-            const std::vector<Decoration>& decorations = decorationMappings.at(decorationGroup);
+            const std::vector<Decoration>& decorations = it->second;
             for(const uint32_t target : targets)
             {
                 for(const Decoration& deco : decorations)

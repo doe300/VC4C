@@ -86,14 +86,14 @@ static const std::vector<MergeCondition> mergeConditions = {
     [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
         if(firstOp != nullptr &&
             (firstOp->hasValueType(ValueType::REGISTER) || firstOp->getFirstArg().hasType(ValueType::REGISTER) ||
-                (firstOp->getSecondArg() && firstOp->getSecondArg()->hasType(ValueType::REGISTER))))
+                (firstOp->getSecondArg() && firstOp->assertArgument(1).hasType(ValueType::REGISTER))))
             return false;
         else if(firstMove != nullptr &&
             (firstMove->hasValueType(ValueType::REGISTER) || firstMove->getSource().hasType(ValueType::REGISTER)))
             return false;
         else if(secondOp != nullptr &&
             (secondOp->hasValueType(ValueType::REGISTER) || secondOp->getFirstArg().hasType(ValueType::REGISTER) ||
-                (secondOp->getSecondArg() && secondOp->getSecondArg()->hasType(ValueType::REGISTER))))
+                (secondOp->getSecondArg() && secondOp->assertArgument(1).hasType(ValueType::REGISTER))))
             return false;
         else if(secondMove != nullptr &&
             (secondMove->hasValueType(ValueType::REGISTER) || secondMove->getSource().hasType(ValueType::REGISTER)))
@@ -218,8 +218,8 @@ static const std::vector<MergeCondition> mergeConditions = {
         {
             if(firstOp->getFirstArg().hasType(ValueType::SMALL_IMMEDIATE))
                 immediate = firstOp->getFirstArg().immediate;
-            if(firstOp->getSecondArg() && firstOp->getSecondArg()->hasType(ValueType::SMALL_IMMEDIATE))
-                immediate = firstOp->getSecondArg()->immediate;
+            if(firstOp->getSecondArg() && firstOp->assertArgument(1).hasType(ValueType::SMALL_IMMEDIATE))
+                immediate = firstOp->assertArgument(1).immediate;
         }
         if(firstMove != nullptr)
         {
@@ -233,8 +233,8 @@ static const std::vector<MergeCondition> mergeConditions = {
                 if(secondOp->getFirstArg().hasType(ValueType::SMALL_IMMEDIATE) &&
                     !secondOp->getFirstArg().hasImmediate(immediate.value()))
                     return false;
-                if(secondOp->getSecondArg() && secondOp->getSecondArg()->hasType(ValueType::SMALL_IMMEDIATE) &&
-                    !secondOp->getSecondArg()->hasImmediate(immediate.value()))
+                if(secondOp->getSecondArg() && secondOp->assertArgument(1).hasType(ValueType::SMALL_IMMEDIATE) &&
+                    !secondOp->assertArgument(1).hasImmediate(immediate.value()))
                     return false;
             }
             if(secondMove != nullptr)
@@ -253,7 +253,7 @@ static const std::vector<MergeCondition> mergeConditions = {
         {
             inputs.first = firstOp->getFirstArg();
             if(firstOp->getSecondArg())
-                inputs.second = firstOp->getSecondArg().value();
+                inputs.second = firstOp->assertArgument(1);
         }
         if(firstMove != nullptr)
             inputs.first = firstMove->getSource();
@@ -266,11 +266,11 @@ static const std::vector<MergeCondition> mergeConditions = {
                 else if(secondOp->getFirstArg() != inputs.second)
                     return false;
             }
-            if(secondOp->getSecondArg() && secondOp->getSecondArg().value() != inputs.first)
+            if(secondOp->getSecondArg() && secondOp->assertArgument(1) != inputs.first)
             {
                 if(inputs.second.type == TYPE_UNKNOWN)
-                    inputs.second = secondOp->getSecondArg().value();
-                else if(secondOp->getSecondArg().value() != inputs.second)
+                    inputs.second = secondOp->assertArgument(1);
+                else if(secondOp->assertArgument(1) != inputs.second)
                     return false;
             }
         }
@@ -303,7 +303,7 @@ static const std::vector<MergeCondition> mergeConditions = {
         {
             firstSignal = firstOp->signal;
             if(firstOp->getFirstArg().getLiteralValue() ||
-                (firstOp->getSecondArg() && firstOp->getSecondArg()->getLiteralValue()))
+                (firstOp->getSecondArg() && firstOp->assertArgument(1).getLiteralValue()))
                 firstSignal = SIGNAL_ALU_IMMEDIATE;
             firstPack = firstOp->packMode;
             firstUnpack = firstOp->unpackMode;
@@ -320,7 +320,7 @@ static const std::vector<MergeCondition> mergeConditions = {
         {
             secondSignal = secondOp->signal;
             if(secondOp->getFirstArg().getLiteralValue() ||
-                (secondOp->getSecondArg() && secondOp->getSecondArg()->getLiteralValue()))
+                (secondOp->getSecondArg() && secondOp->assertArgument(1).getLiteralValue()))
                 secondSignal = SIGNAL_ALU_IMMEDIATE;
             secondPack = secondOp->packMode;
             secondUnpack = secondOp->unpackMode;
@@ -434,7 +434,7 @@ void optimizations::combineOperations(const Module& module, Method& method, cons
                         auto checkIt = nextIt.copy().nextInBlock();
                         if(!checkIt.isEndOfBlock() && checkIt.has<VectorRotation>())
                         {
-                            const Value src = checkIt.get<VectorRotation>()->getSource();
+                            const Value& src = checkIt.get<VectorRotation>()->getSource();
                             if(instr->hasValueType(ValueType::LOCAL) && instr->getOutput().is(src))
                                 conditionsMet = false;
                             if(nextInstr->hasValueType(ValueType::LOCAL) && nextInstr->getOutput().is(src))
@@ -619,12 +619,12 @@ void optimizations::combineLoadingLiterals(const Module& module, Method& method,
                 Optional<Literal> literal = getSourceLiteral(it);
                 if(literal)
                 {
-                    if(lastLoadImmediate.find(literal->unsignedInt()) != lastLoadImmediate.end() &&
-                        canReplaceLiteralLoad(it, block.begin(), lastLoadImmediate.at(literal->unsignedInt()),
-                            config.combineLoadingLiteralsThreshold))
+                    auto immIt = lastLoadImmediate.find(literal->unsignedInt());
+                    if(immIt != lastLoadImmediate.end() &&
+                        canReplaceLiteralLoad(it, block.begin(), immIt->second, config.combineLoadingLiteralsThreshold))
                     {
                         Local* oldLocal = it->getOutput()->local;
-                        Local* newLocal = lastLoadImmediate.at(literal->unsignedInt())->getOutput()->local;
+                        Local* newLocal = immIt->second->getOutput()->local;
                         logging::debug() << "Removing duplicate loading of local: " << it->to_string() << logging::endl;
                         // Local#forUsers can't be used here, since we modify the list of users via
                         // LocalUser#replaceLocal

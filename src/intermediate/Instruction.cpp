@@ -110,8 +110,15 @@ bool IntermediateInstruction::hasValueType(const ValueType type) const
 const Optional<Value> IntermediateInstruction::getArgument(const std::size_t index) const
 {
     if(arguments.size() > index)
-        return arguments.at(index);
+        return arguments[index];
     return NO_VALUE;
+}
+
+const Value& IntermediateInstruction::assertArgument(std::size_t index) const
+{
+    if(arguments.size() > index)
+        return arguments[index];
+    throw CompilationError(CompilationStep::GENERAL, "Invalid index for retrieving argument", std::to_string(index));
 }
 
 const std::vector<Value>& IntermediateInstruction::getArguments() const
@@ -296,7 +303,7 @@ Optional<Value> IntermediateInstruction::getPrecalculatedValueForArg(
         return NO_VALUE;
     if(argIndex > arguments.size())
         throw CompilationError(CompilationStep::GENERAL, "Invalid argument index", std::to_string(argIndex));
-    const Value& arg = arguments.at(argIndex);
+    const Value& arg = arguments[argIndex];
     switch(arg.valueType)
     {
     case ValueType::SMALL_IMMEDIATE:

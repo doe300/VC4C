@@ -153,6 +153,12 @@ namespace vc4c
              */
             const Optional<Value> getArgument(std::size_t index) const;
             /*
+             * Returns the argument for the given index.
+             *
+             * Throws an exception, if the index is not valid!
+             */
+            const Value& assertArgument(std::size_t index) const;
+            /*
              * Lists all arguments/operands
              */
             const std::vector<Value>& getArguments() const;
@@ -259,7 +265,7 @@ namespace vc4c
             bool mapsToASMInstruction() const override;
             bool isNormalized() const override;
 
-            const Value getFirstArg() const;
+            const Value& getFirstArg() const;
             const Optional<Value> getSecondArg() const;
             Optional<Value> precalculate(std::size_t numIterations) const override;
 
@@ -322,7 +328,7 @@ namespace vc4c
             Optional<Value> precalculate(std::size_t numIterations) const override;
 
             void setSource(const Value& value);
-            const Value getSource() const;
+            const Value& getSource() const;
         };
 
         struct VectorRotation : public MoveOperation
@@ -338,7 +344,7 @@ namespace vc4c
             Operation* combineWith(const std::string& otherOpCode) const;
             Optional<Value> precalculate(std::size_t numIterations) const override;
 
-            const Value getOffset() const;
+            const Value& getOffset() const;
         };
 
         struct BranchLabel : public IntermediateInstruction
@@ -371,7 +377,7 @@ namespace vc4c
             const Local* getTarget() const;
 
             bool isUnconditional() const;
-            const Value getCondition() const;
+            const Value& getCondition() const;
         };
 
         enum class DelayType
@@ -613,7 +619,7 @@ namespace vc4c
             bool mapsToASMInstruction() const override;
             bool isNormalized() const override;
 
-            Value getStackAllocation() const;
+            const Value& getStackAllocation() const;
 
             bool isLifetimeEnd;
         };
@@ -716,10 +722,6 @@ namespace vc4c
 
             const MemoryOperation op;
         };
-
-        using InstructionsIterator = FastModificationList<std::unique_ptr<IntermediateInstruction>>::iterator;
-        using ConstInstructionsIterator =
-            FastModificationList<std::unique_ptr<IntermediateInstruction>>::const_iterator;
     } // namespace intermediate
 } // namespace vc4c
 

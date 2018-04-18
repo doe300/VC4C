@@ -73,7 +73,7 @@ static InstructionWalker insertCombiningBitcast(
             rotatedVectors.emplace_back(method.addNewLocal(dest.type.toVectorType(src.type.num), "%bit_cast"));
             const Value& result = rotatedVectors.back();
             it = insertVectorRotation(
-                it, shiftedTruncatedVectors.at(i), Value(Literal(i), TYPE_INT8), result, Direction::DOWN);
+                it, shiftedTruncatedVectors[i], Value(Literal(i), TYPE_INT8), result, Direction::DOWN);
         }
     }
 

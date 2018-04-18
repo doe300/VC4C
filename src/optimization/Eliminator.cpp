@@ -85,7 +85,7 @@ void optimizations::eliminateDeadStore(const Module& module, Method& method, con
                             bool outLocFound = false;
                             for(std::size_t i = 0; i < instr->getArguments().size(); ++i)
                             {
-                                Value tmp = instr->getArgument(i).value();
+                                Value tmp = instr->assertArgument(i);
                                 if(tmp.hasLocal(outLoc))
                                 {
                                     tmp = Value(inLoc, tmp.type);
@@ -128,10 +128,11 @@ bool optimizations::eliminateUselessInstruction(
                 (op->getFirstArg().getSingleWriter() != nullptr ? op->getFirstArg().getSingleWriter()->precalculate(3) :
                                                                   NO_VALUE)
                     .value_or(op->getFirstArg());
-            const Optional<Value> secondArg = (op->getSecondArg() && op->getSecondArg()->getSingleWriter() != nullptr ?
-                    op->getSecondArg()->getSingleWriter()->precalculate(3) :
-                    NO_VALUE)
-                                                  .orOther(op->getSecondArg());
+            const Optional<Value> secondArg =
+                (op->getSecondArg() && op->assertArgument(1).getSingleWriter() != nullptr ?
+                        op->assertArgument(1).getSingleWriter()->precalculate(3) :
+                        NO_VALUE)
+                    .orOther(op->getSecondArg());
 
             Optional<Value> rightIdentity = OpCode::getRightIdentity(op->op);
             Optional<Value> leftIdentity = OpCode::getLeftIdentity(op->op);
@@ -166,7 +167,7 @@ bool optimizations::eliminateUselessInstruction(
                     replaced = true;
                 }
             }
-            else if(op->getOutput() && op->getSecondArg() && op->getOutput().value() == op->getSecondArg().value())
+            else if(op->getOutput() && op->getSecondArg() && op->getOutput().value() == op->assertArgument(1))
             {
                 // check whether first-arg does nothing
                 if(leftIdentity && firstArg.hasLiteral(leftIdentity->getLiteralValue().value()))
@@ -193,7 +194,7 @@ bool optimizations::eliminateUselessInstruction(
                 {
                     logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
                     it.reset(new intermediate::MoveOperation(
-                        op->getOutput().value(), op->getSecondArg().value(), op->conditional, op->setFlags));
+                        op->getOutput().value(), op->assertArgument(1), op->conditional, op->setFlags));
                     replaced = true;
                 }
             }
@@ -269,7 +270,7 @@ bool optimizations::calculateConstantInstruction(
     if(op != nullptr && !op->hasUnpackMode())
     {
         // calculations with literals can be pre-calculated
-        if(op->getFirstArg().getLiteralValue() && (!op->getSecondArg() || op->getSecondArg()->getLiteralValue()))
+        if(op->getFirstArg().getLiteralValue() && (!op->getSecondArg() || op->assertArgument(1).getLiteralValue()))
         {
             if(op->conditional != COND_ALWAYS && op->opCode == "xor" && op->getSecondArg().is(op->getFirstArg()))
             {
@@ -399,7 +400,7 @@ bool optimizations::translateToMove(const Module& module, Method& method, const 
         if(op &&
             (op->op == OP_AND || op->op == OP_OR || op->op == OP_V8MAX || op->op == OP_V8MIN || op->op == OP_MAX ||
                 op->op == OP_MIN) &&
-            op->getFirstArg() == op->getSecondArg().value())
+            op->getFirstArg() == op->assertArgument(1))
         {
             auto move = new intermediate::MoveOperation(
                 op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags);
@@ -454,7 +455,7 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
         {
             auto it2 = it.copy().nextInBlock();
             auto oldValue = op->getOutput().value();
-            auto newValue = op->getSource();
+            const auto& newValue = op->getSource();
             while(!it2.isEndOfBlock())
             {
                 bool replacedThisInstruction = false;
@@ -590,7 +591,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 const Local* oldLocal = move->getOutput()->local;
                 for(std::size_t i = 0; i < (*destinationReader)->getArguments().size(); ++i)
                 {
-                    if((*destinationReader)->getArgument(i)->hasLocal(oldLocal))
+                    if((*destinationReader)->assertArgument(i).hasLocal(oldLocal))
                         (*destinationReader)->setArgument(i, newInput);
                 }
                 it.erase();
@@ -643,8 +644,8 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                     }
                 };
 
-                auto arg0 = op->getArgument(0).value();
-                auto arg1 = op->getArgument(1).value();
+                const auto& arg0 = op->assertArgument(0);
+                const auto& arg1 = op->assertArgument(1);
                 auto out = op->getOutput().value().local;
 
                 if(arg0.valueType == ValueType::LOCAL)
@@ -684,8 +685,8 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                     }
                 };
 
-                auto arg0 = op->getArgument(0).value();
-                auto arg1 = op->getArgument(1).value();
+                const auto& arg0 = op->assertArgument(0);
+                const auto& arg1 = op->assertArgument(1);
                 auto out = op->getOutput().value().local;
 
                 if(arg0.valueType == ValueType::LOCAL)

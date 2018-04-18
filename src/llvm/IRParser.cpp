@@ -404,7 +404,7 @@ static std::vector<Value> parseStringConstant(const std::string& constant, const
     std::size_t index = 2;
     while(index < constant.size())
     {
-        if(constant.at(index) == '\\')
+        if(constant[index] == '\\')
         {
             // "\XY" is a hexadecimal representation of a character
             ++index;
@@ -413,12 +413,12 @@ static std::vector<Value> parseStringConstant(const std::string& constant, const
             elements.emplace_back(Literal(static_cast<uint32_t>(c)), TYPE_INT8);
             index += 2;
         }
-        else if(constant.at(index) == '"')
+        else if(constant[index] == '"')
             // end of string reached
             break;
         else
         {
-            elements.emplace_back(Literal(static_cast<uint32_t>(constant.at(index))), TYPE_INT8);
+            elements.emplace_back(Literal(static_cast<uint32_t>(constant[index])), TYPE_INT8);
             ++index;
         }
     }
@@ -595,7 +595,7 @@ bool IRParser::parseMethod()
     {
         method.method->parameters.emplace_back(param.first.local->name, param.first.type, param.second);
         // since with creating the Value for the parameter, a new local is allocated, we need to remove it
-        const_cast<OrderedMap<std::string, Local>&>(method.method->readLocals()).erase(param.first.local->name);
+        const_cast<UnorderedMap<std::string, Local>&>(method.method->readLocals()).erase(param.first.local->name);
     }
     if(!scanner.hasInput())
     {
@@ -1599,7 +1599,7 @@ void IRParser::parseSwitch(LLVMMethod& method, FastModificationList<std::unique_
         // skip new-line, if any
         scanner.pop();
     }
-    std::map<int, std::string> cases;
+    FastMap<int, std::string> cases;
     do
     {
         const Value matchVal(parseValue());
@@ -1738,7 +1738,7 @@ void IRParser::extractKernelInfo()
     }
     // 2. associate kernel-IDs with kernel-names and meta-data (for CLang < 3.9)
     // 2.1 extract meta-data-types from IDs
-    std::map<std::string, MetaDataType> typeMapping;
+    std::unordered_map<std::string, MetaDataType> typeMapping;
     for(auto& pair : metaData)
     {
         if(pair.second.size() > 0)
@@ -1834,7 +1834,7 @@ void IRParser::extractKernelInfo()
                 {
                     Optional<PointerType*> ptrType = method.method->parameters.at(i).type.getPointerType();
                     if(ptrType && ptrType.value()->addressSpace == AddressSpace::GENERIC)
-                        ptrType.value()->addressSpace = toAddressSpace(std::atoi(values.at(i).data()));
+                        ptrType.value()->addressSpace = toAddressSpace(std::atoi(values[i].data()));
                 }
                 break;
             }
@@ -1843,11 +1843,11 @@ void IRParser::extractKernelInfo()
                 for(std::size_t i = 0; i < values.size(); ++i)
                 {
                     Parameter& param = method.method->parameters.at(i);
-                    if(values.at(i).find("const") != std::string::npos)
+                    if(values[i].find("const") != std::string::npos)
                         param.decorations = add_flag(param.decorations, ParameterDecorations::READ_ONLY);
-                    if(values.at(i).find("restrict") != std::string::npos)
+                    if(values[i].find("restrict") != std::string::npos)
                         param.decorations = add_flag(param.decorations, ParameterDecorations::RESTRICT);
-                    if(values.at(i).find("volatile") != std::string::npos)
+                    if(values[i].find("volatile") != std::string::npos)
                         param.decorations = add_flag(param.decorations, ParameterDecorations::VOLATILE);
                 }
                 break;
@@ -1857,7 +1857,7 @@ void IRParser::extractKernelInfo()
                 for(std::size_t i = 0; i < values.size(); ++i)
                 {
                     Parameter& param = method.method->parameters.at(i);
-                    param.parameterName = values.at(i);
+                    param.parameterName = values[i];
                 }
                 break;
             }
@@ -1866,14 +1866,12 @@ void IRParser::extractKernelInfo()
                 for(std::size_t i = 0; i < values.size(); ++i)
                 {
                     Parameter& param = method.method->parameters.at(i);
-                    param.origTypeName = values.at(i);
+                    param.origTypeName = values[i];
                     if(!param.type.isPointerType() &&
-                        (values.at(i).find("uint") == 0 || values.at(i).find("ushort") == 0 ||
-                            values.at(i).find("uchar") == 0))
+                        (values[i].find("uint") == 0 || values[i].find("ushort") == 0 || values[i].find("uchar") == 0))
                         param.decorations = add_flag(param.decorations, ParameterDecorations::ZERO_EXTEND);
                     else if(!param.type.isPointerType() &&
-                        (values.at(i).find("int") == 0 || values.at(i).find("short") == 0 ||
-                            values.at(i).find("char") == 0))
+                        (values[i].find("int") == 0 || values[i].find("short") == 0 || values[i].find("char") == 0))
                         param.decorations = add_flag(param.decorations, ParameterDecorations::SIGN_EXTEND);
                 }
                 break;

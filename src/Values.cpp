@@ -419,7 +419,7 @@ bool ContainerValue::isAllSame(const Optional<Literal>& value) const
 {
     if(elements.empty())
         return true;
-    const Literal singleValue = value.value_or(elements.at(0).literal);
+    const Literal singleValue = value.value_or(elements[0].literal);
     for(const Value& element : elements)
     {
         if(element.isUndefined())
@@ -435,15 +435,15 @@ bool ContainerValue::isElementNumber(bool withOffset) const
 {
     if(elements.empty())
         return true;
-    const int32_t offset = withOffset ? elements.at(0).literal.signedInt() : 0;
+    const int32_t offset = withOffset ? elements[0].literal.signedInt() : 0;
     for(std::size_t i = 0; i < elements.size(); ++i)
     {
-        if(elements.at(i).isUndefined())
+        if(elements[i].isUndefined())
             // if items are UNDEFINED, ignore them, since maybe the remaining items correspond to the element-number
             continue;
-        if(!elements.at(i).hasType(ValueType::LITERAL))
-            throw CompilationError(CompilationStep::GENERAL, "Invalid container element", elements.at(i).to_string());
-        if(elements.at(i).literal.signedInt() != static_cast<int32_t>(i) + offset)
+        if(!elements[i].hasType(ValueType::LITERAL))
+            throw CompilationError(CompilationStep::GENERAL, "Invalid container element", elements[i].to_string());
+        if(elements[i].literal.signedInt() != static_cast<int32_t>(i) + offset)
             return false;
     }
     return true;
@@ -475,30 +475,52 @@ Value::Value(const ContainerValue& container, const DataType& type) :
 
 Value::Value(const Value& val) : local(val.local), type(val.type), valueType(val.valueType)
 {
-    if(val.hasType(ValueType::LITERAL))
-        literal = val.literal;
-    else if(val.hasType(ValueType::REGISTER))
-        reg = val.reg;
-    else if(val.hasType(ValueType::CONTAINER))
+    switch(val.valueType)
+    {
+    case ValueType::CONTAINER:
         container = val.container;
-    else if(val.hasType(ValueType::SMALL_IMMEDIATE))
+        break;
+    case ValueType::LITERAL:
+        literal = val.literal;
+        break;
+    case ValueType::LOCAL:
+        break;
+    case ValueType::REGISTER:
+        reg = val.reg;
+        break;
+    case ValueType::SMALL_IMMEDIATE:
         immediate = val.immediate;
-    else if(!val.hasType(ValueType::LOCAL) && !val.hasType(ValueType::UNDEFINED))
+        break;
+    case ValueType::UNDEFINED:
+        break;
+    default:
         throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type!");
+    }
 }
 
-Value::Value(Value&& val) : local(val.local), type(val.type), valueType(val.valueType)
+Value::Value(Value&& val) : local(val.local), type(std::move(val.type)), valueType(val.valueType)
 {
-    if(val.hasType(ValueType::LITERAL))
+    switch(val.valueType)
+    {
+    case ValueType::CONTAINER:
+        container = std::move(val.container);
+        break;
+    case ValueType::LITERAL:
         literal = val.literal;
-    else if(val.hasType(ValueType::REGISTER))
+        break;
+    case ValueType::LOCAL:
+        break;
+    case ValueType::REGISTER:
         reg = val.reg;
-    else if(val.hasType(ValueType::CONTAINER))
-        container = val.container;
-    else if(val.hasType(ValueType::SMALL_IMMEDIATE))
+        break;
+    case ValueType::SMALL_IMMEDIATE:
         immediate = val.immediate;
-    else if(!val.hasType(ValueType::LOCAL) && !val.hasType(ValueType::UNDEFINED))
+        break;
+    case ValueType::UNDEFINED:
+        break;
+    default:
         throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type!");
+    }
 }
 
 Value::Value(const Local* local, const DataType& type) noexcept :

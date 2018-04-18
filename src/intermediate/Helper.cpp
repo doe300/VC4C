@@ -182,7 +182,7 @@ InstructionWalker intermediate::insertVectorInsertion(
 static bool checkIndicesNotUndefined(const ContainerValue& container, const unsigned int startIndex)
 {
     for(auto i = startIndex; i < container.elements.size(); ++i)
-        if(container.elements.at(i).isUndefined())
+        if(container.elements[i].isUndefined())
             return false;
     return true;
 }
@@ -275,7 +275,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     // mask is container of literals, indices have arbitrary order
     for(std::size_t i = 0; i < mask.container.elements.size(); ++i)
     {
-        Value index = mask.container.elements.at(i);
+        Value index = mask.container.elements[i];
         if(index.isUndefined())
             // don't write anything at this position
             continue;
@@ -503,7 +503,7 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
      */
     Value index = UNDEFINED_VALUE;
     if(indices.size() == 1)
-        index = indices.at(0);
+        index = indices[0];
     if(firstIndexIsElement && indices.at(0).isZeroInitializer())
         index = indices.size() > 1 ? indices.at(1) : UNDEFINED_VALUE;
     const int refIndex = index.getLiteralValue().value_or(Literal(ANY_ELEMENT)).signedInt();

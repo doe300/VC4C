@@ -52,7 +52,7 @@ Operation::Operation(const std::string& opCode, const Value& dest, const Value& 
 std::string Operation::to_string() const
 {
     return (getOutput()->to_string(true) + " = ") + (opCode + " ") + getFirstArg().to_string() +
-        (getSecondArg() ? std::string(", ") + getSecondArg().to_string() : "") + createAdditionalInfoString();
+        (getSecondArg() ? std::string(", ") + assertArgument(1).to_string() : "") + createAdditionalInfoString();
 }
 
 IntermediateInstruction* Operation::copyFor(Method& method, const std::string& localPrefix) const
@@ -62,8 +62,8 @@ IntermediateInstruction* Operation::copyFor(Method& method, const std::string& l
                     renameValue(method, getFirstArg(), localPrefix), conditional, setFlags))
             ->copyExtrasFrom(this);
     return (new Operation(opCode, renameValue(method, getOutput().value(), localPrefix),
-                renameValue(method, getFirstArg(), localPrefix),
-                renameValue(method, getSecondArg().value(), localPrefix), conditional, setFlags))
+                renameValue(method, getFirstArg(), localPrefix), renameValue(method, assertArgument(1), localPrefix),
+                conditional, setFlags))
         ->copyExtrasFrom(this);
 }
 
@@ -148,7 +148,7 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
         getOutput()->hasType(ValueType::LOCAL) ? registerMapping.at(getOutput()->local) : getOutput()->reg;
 
     auto input0 = getInputValue(getFirstArg(), registerMapping, this);
-    auto input1 = getSecondArg() ? getInputValue(getSecondArg().value(), registerMapping, this) :
+    auto input1 = getSecondArg() ? getInputValue(assertArgument(1), registerMapping, this) :
                                    std::make_pair(REG_NOP, Optional<SmallImmediate>{});
 
     const InputMultiplex inMux0 = getInputMux(input0.first, getFirstArg().hasType(ValueType::REGISTER), input0.second);
@@ -181,7 +181,7 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
 
     if(getSecondArg())
     {
-        InputMultiplex inMux1 = getInputMux(input1.first, getSecondArg()->hasType(ValueType::REGISTER), input1.second,
+        InputMultiplex inMux1 = getInputMux(input1.first, assertArgument(1).hasType(ValueType::REGISTER), input1.second,
             input0.first.file == RegisterFile::PHYSICAL_A, input0.first.file == RegisterFile::PHYSICAL_B);
 
         // one of the values is a literal immediate
@@ -228,7 +228,7 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
             else if(has_flag(input1.first.file, RegisterFile::PHYSICAL_ANY))
             {
                 if(getInputValue(getFirstArg(), registerMapping, this).first ==
-                    getInputValue(getSecondArg().value(), registerMapping, this).first)
+                    getInputValue(assertArgument(1), registerMapping, this).first)
                 {
                     // same inputs - this allows e.g. vc4asm to recognize "mov x, uniform" correctly
                     input1.first.file = input0.first.file;
@@ -317,7 +317,7 @@ bool Operation::mapsToASMInstruction() const
     // result is undefined too
     if(getFirstArg().isUndefined())
         return false;
-    if(op.numOperands > 1 && getSecondArg()->isUndefined())
+    if(op.numOperands > 1 && assertArgument(1).isUndefined())
         return false;
     return true;
 }
@@ -330,9 +330,9 @@ bool Operation::isNormalized() const
     return op != OP_NOP;
 }
 
-const Value Operation::getFirstArg() const
+const Value& Operation::getFirstArg() const
 {
-    return getArgument(0).value();
+    return assertArgument(0);
 }
 
 const Optional<Value> Operation::getSecondArg() const
@@ -440,9 +440,9 @@ void MoveOperation::setSource(const Value& value)
     setArgument(0, value);
 }
 
-const Value MoveOperation::getSource() const
+const Value& MoveOperation::getSource() const
 {
-    return getArgument(0).value();
+    return assertArgument(0);
 }
 
 VectorRotation::VectorRotation(
@@ -514,9 +514,9 @@ Optional<Value> VectorRotation::precalculate(const std::size_t numIterations) co
     return NO_VALUE;
 }
 
-const Value VectorRotation::getOffset() const
+const Value& VectorRotation::getOffset() const
 {
-    return getArgument(1).value();
+    return assertArgument(1);
 }
 
 Nop::Nop(const DelayType type, const Signaling signal) : IntermediateInstruction(NO_VALUE), type(type)
@@ -555,9 +555,8 @@ Comparison::Comparison(const std::string& comp, const Value& dest, const Value& 
 
 IntermediateInstruction* Comparison::copyFor(Method& method, const std::string& localPrefix) const
 {
-    return (
-        new Comparison(opCode, renameValue(method, getOutput().value(), localPrefix),
-            renameValue(method, getFirstArg(), localPrefix), renameValue(method, getSecondArg().value(), localPrefix)))
+    return (new Comparison(opCode, renameValue(method, getOutput().value(), localPrefix),
+                renameValue(method, getFirstArg(), localPrefix), renameValue(method, assertArgument(1), localPrefix)))
         ->copyExtrasFrom(this);
 }
 

@@ -53,10 +53,11 @@ ValueRange::ValueRange(const DataType& type) : ValueRange(type.isFloatingType(),
     const DataType elemType = type.getElementType();
     if(type.isFloatingType())
     {
-        if(floatTypeLimits.find(elemType.typeName) == floatTypeLimits.end())
+        auto it = floatTypeLimits.find(elemType.typeName);
+        if(it == floatTypeLimits.end())
             throw CompilationError(CompilationStep::GENERAL, "Unhandled floating-point type", type.to_string());
-        floatRange.minValue = floatTypeLimits.at(elemType.typeName).first;
-        floatRange.maxValue = floatTypeLimits.at(elemType.typeName).second;
+        floatRange.minValue = it->second.first;
+        floatRange.maxValue = it->second.second;
     }
     else if(isUnsignedType(type))
     {
@@ -286,12 +287,12 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
             {
                 range.extendBoundaries(static_cast<int64_t>(0), static_cast<int64_t>(NATIVE_VECTOR_SIZE) - 1);
             }
-            else if(it.has<MoveOperation>() && it->getArgument(0)->hasType(ValueType::LOCAL) &&
-                ranges.find(it->getArgument(0)->local) != ranges.end())
+            else if(it.has<MoveOperation>() && it->assertArgument(0).hasType(ValueType::LOCAL) &&
+                ranges.find(it->assertArgument(0).local) != ranges.end())
             {
                 // move -> copy range from source local (TODO: would need to link the ranges e.g. if source changes
                 // afterwards!)
-                const ValueRange& sourceRange = ranges.at(it->getArgument(0)->local);
+                const ValueRange& sourceRange = ranges.at(it->assertArgument(0).local);
                 range.extendBoundaries(sourceRange);
             }
             else if(op && op->op == OP_AND && it->readsLiteral())
@@ -333,11 +334,11 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
                  *
                  * y is in range [x.min >> constant, x.max >> constant] (unsigned)
                  */
-                if(it->getArgument(0)->hasType(ValueType::LOCAL) &&
-                    ranges.find(it->getArgument(0)->local) != ranges.end() && it->getArgument(1)->isLiteralValue())
+                if(it->assertArgument(0).hasType(ValueType::LOCAL) &&
+                    ranges.find(it->assertArgument(0).local) != ranges.end() && it->assertArgument(1).isLiteralValue())
                 {
-                    const ValueRange& sourceRange = ranges.at(it->getArgument(0)->local);
-                    int64_t offset = static_cast<int64_t>(it->getArgument(1)->getLiteralValue()->signedInt());
+                    const ValueRange& sourceRange = ranges.at(it->assertArgument(0).local);
+                    int64_t offset = static_cast<int64_t>(it->assertArgument(1).getLiteralValue()->signedInt());
                     // TODO not correct if min/max is negative
                     range.extendBoundaries(
                         sourceRange.getIntRange()->minValue >> offset, sourceRange.getIntRange()->maxValue >> offset);
@@ -348,10 +349,10 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
                  *
                  * y is in range [0, constant] (unsigned)
                  */
-                if(it->getArgument(0)->isLiteralValue())
+                if(it->assertArgument(0).isLiteralValue())
                 {
                     range.extendBoundaries(
-                        0, static_cast<int64_t>(it->getArgument(0)->getLiteralValue()->unsignedInt()));
+                        0, static_cast<int64_t>(it->assertArgument(0).getLiteralValue()->unsignedInt()));
                 }
             }
             // general case for operations, only works if the used locals are only written once (otherwise, their range
@@ -369,7 +370,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
                  * We have an operation (with a valid op-code) where all operands are either constants or locals which
                  * are written only once before (and therefore have a fixed range, that is already known)
                  */
-                const Value arg0 = op->getFirstArg();
+                const Value& arg0 = op->getFirstArg();
                 ValueRange firstRange(arg0.type);
                 if(arg0.isLiteralValue())
                 {
@@ -403,7 +404,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 
                 if(it->getArguments().size() > 1)
                 {
-                    const Value arg1 = op->getSecondArg().value();
+                    const Value arg1 = op->assertArgument(1);
                     ValueRange secondRange(arg1.type);
                     if(arg1.isLiteralValue())
                     {

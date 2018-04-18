@@ -235,7 +235,7 @@ namespace vc4c
             bool matchesCondition(ConditionCode cond) const;
         };
 
-        using InstrumentationResults = std::map<const qpu_asm::Instruction*, InstrumentationResult>;
+        using InstrumentationResults = FastMap<const qpu_asm::Instruction*, InstrumentationResult>;
 
         class QPU : private NonCopyable
         {

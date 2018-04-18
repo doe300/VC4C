@@ -137,8 +137,8 @@ struct LoopControl
         if(op->getArguments().size() != 2)
             return {};
         if(op->getArgument(0).ifPresent(toFunction(&Value::isLiteralValue)))
-            return op->getArgument(0)->getLiteralValue();
-        return op->getArgument(1)->getLiteralValue();
+            return op->assertArgument(0).getLiteralValue();
+        return op->assertArgument(1).getLiteralValue();
     }
 
     int32_t countIterations(int32_t initial, int32_t limit, int32_t step) const
@@ -316,10 +316,10 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                 {
                     // TODO error
                 }
-                if(inst->getArgument(0)->hasLocal(iterationStep.local))
-                    loopControl.terminatingValue = inst->getArgument(1).value();
+                if(inst->assertArgument(0).hasLocal(iterationStep.local))
+                    loopControl.terminatingValue = inst->assertArgument(1);
                 else
-                    loopControl.terminatingValue = inst->getArgument(0).value();
+                    loopControl.terminatingValue = inst->assertArgument(0);
                 if(loopControl.terminatingValue.getSingleWriter() != nullptr)
                 {
                     auto tmp = loopControl.terminatingValue.getSingleWriter()->precalculate(4);
@@ -687,7 +687,7 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
     case OP_SUB.opAdd:
         if(stepOp->getFirstArg().hasType(ValueType::LOCAL))
         {
-            Value offset = stepOp->getSecondArg().value();
+            const Value& offset = stepOp->assertArgument(1);
             if(offset.getLiteralValue())
                 stepOp->setArgument(1,
                     Value(Literal(offset.getLiteralValue()->signedInt() * loopControl.vectorizationFactor),
@@ -698,7 +698,7 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
         }
         else
         {
-            Value offset = stepOp->getFirstArg();
+            const Value& offset = stepOp->getFirstArg();
             if(offset.getLiteralValue())
                 stepOp->setArgument(0,
                     Value(Literal(offset.getLiteralValue()->signedInt() * loopControl.vectorizationFactor),
@@ -745,7 +745,7 @@ static void vectorize(ControlFlowLoop& loop, LoopControl& loopControl, const Dat
                              << logging::endl;
 
             const intermediate::IntermediateInstruction* inst = *openInstructions.begin();
-            const Value& arg = inst->getArgument(0).value();
+            const Value& arg = inst->assertArgument(0);
             const intermediate::Operation* op = dynamic_cast<const intermediate::Operation*>(arg.getSingleWriter());
             if(std::all_of(inst->getArguments().begin(), inst->getArguments().end(),
                    [&arg](const Value& otherArg) -> bool { return otherArg == arg; }) &&
@@ -1156,7 +1156,7 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     }
 }
 
-static const Local* findSourceBlock(const Local* label, const std::map<const Local*, const Local*>& blockMap)
+static const Local* findSourceBlock(const Local* label, const FastMap<const Local*, const Local*>& blockMap)
 {
     auto it = blockMap.find(label);
     if(it == blockMap.end())
@@ -1193,7 +1193,7 @@ void optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
     }
 
     // this is required to be able to merge more than 2 blocks together
-    std::map<const Local*, const Local*> blockMap;
+    FastMap<const Local*, const Local*> blockMap;
 
     for(auto& pair : blocksToMerge)
     {

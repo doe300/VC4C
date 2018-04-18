@@ -91,7 +91,7 @@ IntermediateInstruction* MemoryInstruction::copyFor(Method& method, const std::s
 
 const Value& MemoryInstruction::getSource() const
 {
-    return getArguments().at(0);
+    return assertArgument(0);
 }
 
 const Value& MemoryInstruction::getDestination() const
@@ -101,7 +101,7 @@ const Value& MemoryInstruction::getDestination() const
 
 const Value& MemoryInstruction::getNumEntries() const
 {
-    return getArguments().at(1);
+    return assertArgument(1);
 }
 
 static bool canMoveIntoVPM(const Value& val, bool isMemoryAddress)

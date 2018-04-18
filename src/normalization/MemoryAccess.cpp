@@ -101,13 +101,13 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
     if(args.size() == 2 &&
         std::all_of(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.hasType(ValueType::LOCAL); }))
     {
-        const auto offset0 = findOffset(args.at(0));
-        const auto offset1 = findOffset(args.at(1));
-        if(offset0.offset && args.at(1).hasType(ValueType::LOCAL))
-            return BaseAndOffset(args.at(1).local->getBase(false)->createReference(),
+        const auto offset0 = findOffset(args[0]);
+        const auto offset1 = findOffset(args[1]);
+        if(offset0.offset && args[1].hasType(ValueType::LOCAL))
+            return BaseAndOffset(args[1].local->getBase(false)->createReference(),
                 static_cast<int32_t>(offset0.offset.value() / val.type.getElementType().getPhysicalWidth()));
-        if(offset1.offset && args.at(0).hasType(ValueType::LOCAL))
-            return BaseAndOffset(args.at(0).local->getBase(false)->createReference(),
+        if(offset1.offset && args[0].hasType(ValueType::LOCAL))
+            return BaseAndOffset(args[0].local->getBase(false)->createReference(),
                 static_cast<int32_t>(offset1.offset.value() / val.type.getElementType().getPhysicalWidth()));
     }
 
@@ -320,7 +320,7 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
     // 2. Remove all but the first generic and DMA setups
     for(std::size_t i = 1; i < group.genericSetups.size(); ++i)
     {
-        group.genericSetups.at(i).erase();
+        group.genericSetups[i].erase();
         const LoadImmediate* strideSetup = group.dmaSetups.at(i).copy().nextInBlock().get<LoadImmediate>();
         if(strideSetup == nullptr || !strideSetup->writesRegister(REG_VPM_OUT_SETUP) ||
             !VPWSetup::fromLiteral(strideSetup->getImmediate().unsignedInt()).isStrideSetup())
@@ -337,12 +337,12 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
         group.addressWrites.at(0).get<MoveOperation>()->getSource());
     for(std::size_t i = 0; i < group.addressWrites.size() - 1; ++i)
     {
-        if(!group.addressWrites.at(i).copy().nextInBlock()->readsRegister(
+        if(!group.addressWrites[i].copy().nextInBlock()->readsRegister(
                group.isVPMWrite ? REG_VPM_OUT_WAIT : REG_VPM_IN_WAIT))
             throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find VPW wait for address write",
-                group.addressWrites.at(i)->to_string());
-        group.addressWrites.at(i).copy().nextInBlock().erase();
-        group.addressWrites.at(i).erase();
+                group.addressWrites[i]->to_string());
+        group.addressWrites[i].copy().nextInBlock().erase();
+        group.addressWrites[i].erase();
         numRemoved += 2;
     }
 
@@ -399,7 +399,7 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
     // 2. Remove all but the first generic and DMA setups
     for(std::size_t i = 1; i < group.genericSetups.size(); ++i)
     {
-        group.genericSetups.at(i).erase();
+        group.genericSetups[i].erase();
         const LoadImmediate* strideSetup = group.dmaSetups.at(i).copy().nextInBlock().get<LoadImmediate>();
         if(strideSetup == nullptr || !strideSetup->writesRegister(REG_VPM_IN_SETUP) ||
             !VPRSetup::fromLiteral(strideSetup->getImmediate().unsignedInt()).isStrideSetup())
@@ -431,12 +431,12 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
     // 4. remove all but the first address writes (and the following DMA writes)
     for(std::size_t i = 1; i < group.addressWrites.size(); ++i)
     {
-        if(!group.addressWrites.at(i).copy().nextInBlock()->readsRegister(
+        if(!group.addressWrites[i].copy().nextInBlock()->readsRegister(
                group.isVPMWrite ? REG_VPM_OUT_WAIT : REG_VPM_IN_WAIT))
             throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find VPR wait for address write",
-                group.addressWrites.at(i)->to_string());
-        group.addressWrites.at(i).copy().nextInBlock().erase();
-        group.addressWrites.at(i).erase();
+                group.addressWrites[i]->to_string());
+        group.addressWrites[i].copy().nextInBlock().erase();
+        group.addressWrites[i].erase();
         numRemoved += 2;
     }
 
@@ -493,7 +493,7 @@ InstructionWalker normalization::accessGlobalData(
      */
     for(std::size_t i = 0; i < it->getArguments().size(); ++i)
     {
-        const auto& arg = it->getArgument(i).value();
+        const auto& arg = it->assertArgument(i);
         if(arg.hasType(ValueType::LOCAL) && arg.local->is<Global>())
         {
             const Optional<unsigned int> globalOffset = module.getGlobalDataOffset(arg.local);
@@ -572,13 +572,14 @@ void normalization::spillLocals(const Module& module, Method& method, const Conf
     {
         // TODO if at some point all Basic block have references to their used locals, remove all locals which are used
         // just in one basic block instead of this logic??
+        FastMap<const Local*, InstructionWalker>::iterator cIt;
         if(it->hasValueType(ValueType::LOCAL) &&
-            spillingCandidates.find(it->getOutput()->local) != spillingCandidates.end())
+            (cIt = spillingCandidates.find(it->getOutput()->local)) != spillingCandidates.end())
         {
             if(method.isLocallyLimited(it, it->getOutput()->local, MINIMUM_THRESHOLD))
-                spillingCandidates.erase(it->getOutput()->local);
+                spillingCandidates.erase(cIt);
             else
-                spillingCandidates.at(it->getOutput()->local) = it;
+                cIt->second = it;
         }
         it.nextInMethod();
     }
@@ -604,7 +605,7 @@ void normalization::resolveStackAllocation(
 
     for(std::size_t i = 0; i < it->getArguments().size(); ++i)
     {
-        const Value arg = it->getArgument(i).value();
+        const Value& arg = it->assertArgument(i);
         if(arg.hasType(ValueType::LOCAL) && arg.type.isPointerType() && arg.local->is<StackAllocation>())
         {
             // 2.remove the life-time instructions
@@ -682,10 +683,10 @@ static InstructionWalker calculateInAreaOffset(
         if(op != nullptr && op->op == OP_ADD)
         {
             // index = base-address + something -> offset = something
-            if(op->getArgument(0)->hasLocal(baseAddress))
-                inAreaOffset = op->getArgument(1).value();
+            if(op->assertArgument(0).hasLocal(baseAddress))
+                inAreaOffset = op->assertArgument(1);
             else
-                inAreaOffset = op->getArgument(0).value();
+                inAreaOffset = op->assertArgument(0);
         }
         else if(move != nullptr && move->getSource().hasLocal(baseAddress))
         {

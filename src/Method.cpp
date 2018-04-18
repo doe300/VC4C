@@ -14,6 +14,8 @@
 
 #include "log.h"
 
+#include <atomic>
+
 using namespace vc4c;
 
 const std::string Method::WORK_DIMENSIONS("%work_dim");
@@ -45,8 +47,9 @@ Method::~Method()
 
 const Local* Method::findLocal(const std::string& name) const
 {
-    if(locals.find(name) != locals.end())
-        return &locals.at(name);
+    auto it = locals.find(name);
+    if(it != locals.end())
+        return &(it->second);
     return nullptr;
 }
 
@@ -143,7 +146,7 @@ bool Method::isLocallyLimited(InstructionWalker curIt, const Local* locale, cons
     return remainingUsers.empty();
 }
 
-static std::size_t tmpIndex = 0;
+static std::atomic_size_t tmpIndex{0};
 
 const Value Method::addNewLocal(const DataType& type, const std::string& prefix, const std::string& postfix)
 {
@@ -168,7 +171,7 @@ std::string Method::createLocalName(const std::string& prefix, const std::string
     }
     else if((prefix.empty() || prefix == "%"))
     {
-        if(postfix.at(0) == '%')
+        if(postfix[0] == '%')
             // to prevent "%%xyz"
             localName = postfix;
         else
@@ -254,7 +257,7 @@ InstructionWalker Method::appendToEnd()
     return basicBlocks.back().end();
 }
 
-const OrderedMap<std::string, Local>& Method::readLocals() const
+const UnorderedMap<std::string, Local>& Method::readLocals() const
 {
     return locals;
 }

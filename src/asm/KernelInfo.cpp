@@ -285,13 +285,11 @@ std::size_t ModuleInfo::write(
         for(const Global& global : globalData)
             stream << "//" << global.to_string(true) << std::endl;
         for(std::size_t i = 0; i < binary.size(); i += 8)
-            stream << toHexString((static_cast<uint64_t>(binary.at(i)) << 56) |
-                          (static_cast<uint64_t>(binary.at(i + 1)) << 48) |
-                          (static_cast<uint64_t>(binary.at(i + 2)) << 40) |
-                          (static_cast<uint64_t>(binary.at(i + 3)) << 32) |
-                          (static_cast<uint64_t>(binary.at(i + 4)) << 24) |
-                          (static_cast<uint64_t>(binary.at(i + 5)) << 16) |
-                          (static_cast<uint64_t>(binary.at(i + 6)) << 8) | static_cast<uint64_t>(binary.at(i + 7)))
+            stream << toHexString((static_cast<uint64_t>(binary[i]) << 56) |
+                          (static_cast<uint64_t>(binary[i + 1]) << 48) | (static_cast<uint64_t>(binary[i + 2]) << 40) |
+                          (static_cast<uint64_t>(binary[i + 3]) << 32) | (static_cast<uint64_t>(binary[i + 4]) << 24) |
+                          (static_cast<uint64_t>(binary[i + 5]) << 16) | (static_cast<uint64_t>(binary[i + 6]) << 8) |
+                          static_cast<uint64_t>(binary[i + 7]))
                    << std::endl;
         numWords += binary.size() / sizeof(uint64_t);
         break;

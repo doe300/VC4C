@@ -16,7 +16,7 @@ namespace vc4c
     /*
      * A physical register-file
      */
-    enum class RegisterFile
+    enum class RegisterFile : unsigned char
     {
         NONE = 0,
         PHYSICAL_A = 1,

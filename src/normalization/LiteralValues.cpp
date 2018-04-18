@@ -22,7 +22,7 @@ static InstructionWalker copyVector(Method& method, InstructionWalker it, const 
     {
         // if all values within a container are the same, there is no need to extract them separately, a simple move
         // (e.g. load) will do
-        it.emplace((new intermediate::MoveOperation(out, in.container.elements.at(0)))->copyExtrasFrom(it.get()));
+        it.emplace((new intermediate::MoveOperation(out, in.container.elements[0]))->copyExtrasFrom(it.get()));
         return it.nextInBlock();
     }
     if(in.container.isElementNumber())
@@ -93,7 +93,7 @@ InstructionWalker normalization::handleContainer(
         std::rotate(tmp.begin(), tmp.begin() + offset, tmp.end());
         for(std::size_t i = 0; i < src.container.elements.size(); ++i)
         {
-            src.container.elements[i] = tmp.at(i);
+            src.container.elements[i] = tmp[i];
         }
         rot->setSource(src);
         // TODO next step could be optimized, if we used the vector-rotation to extract an element
@@ -113,23 +113,23 @@ InstructionWalker normalization::handleContainer(
     }
     else if(op != nullptr &&
         (op->getFirstArg().hasType(ValueType::CONTAINER) ||
-            (op->getSecondArg() && op->getSecondArg()->hasType(ValueType::CONTAINER))))
+            (op->getSecondArg() && op->assertArgument(1).hasType(ValueType::CONTAINER))))
     {
         for(std::size_t i = 0; i < op->getArguments().size(); ++i)
         {
             // for special containers, rewrite to scalars/registers
-            if(op->getArgument(i)->hasType(ValueType::CONTAINER))
+            if(op->assertArgument(i).hasType(ValueType::CONTAINER))
             {
-                if(op->getArgument(i)->container.isAllSame())
+                if(op->assertArgument(i).container.isAllSame())
                 {
-                    Value container = op->getArgument(i).value();
+                    const Value& container = op->assertArgument(i);
                     Value tmp = container.container.elements.at(0);
                     tmp.type = container.type;
                     op->setArgument(i, tmp);
                 }
-                else if(op->getArgument(i)->container.isElementNumber())
+                else if(op->assertArgument(i).container.isElementNumber())
                 {
-                    op->setArgument(i, Value(REG_ELEMENT_NUMBER, op->getArgument(i)->type));
+                    op->setArgument(i, Value(REG_ELEMENT_NUMBER, op->assertArgument(i).type));
                 }
             }
         }
@@ -142,12 +142,12 @@ InstructionWalker normalization::handleContainer(
             // don't skip next instruction
             it.previousInBlock();
         }
-        if(op->getSecondArg() && op->getSecondArg()->hasType(ValueType::CONTAINER) &&
-            !op->getSecondArg()->type.isPointerType())
+        if(op->getSecondArg() && op->assertArgument(1).hasType(ValueType::CONTAINER) &&
+            !op->assertArgument(1).type.isPointerType())
         {
             logging::debug() << "Rewriting operation with container-input " << op->to_string() << logging::endl;
             const Value tmpVal = method.addNewLocal(op->getOutput()->type, "%container");
-            it = copyVector(method, it, tmpVal, op->getSecondArg().value());
+            it = copyVector(method, it, tmpVal, op->assertArgument(1));
             op->setArgument(1, tmpVal);
             // don't skip next instruction
             it.previousInBlock();
@@ -586,7 +586,7 @@ static InstructionWalker handleImmediateInOperation(Method& method, InstructionW
 {
     for(std::size_t i = 0; i < op->getArguments().size(); ++i)
     {
-        const Value source = op->getArgument(i).value();
+        const Value source = op->assertArgument(i);
         if(source.hasType(ValueType::LITERAL))
         {
             PROFILE_START(mapImmediateValue);

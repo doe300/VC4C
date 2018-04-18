@@ -612,17 +612,14 @@ static const std::multimap<std::string, OpCode> opCodes = {{OP_ADD.name, OP_ADD}
     {OP_V8ADDS.name, OP_V8ADDS}, {OP_V8MAX.name, OP_V8MAX}, {OP_V8MIN.name, OP_V8MIN}, {OP_V8MULD.name, OP_V8MULD},
     {OP_V8SUBS.name, OP_V8SUBS}, {OP_XOR.name, OP_XOR}};
 
-static const std::map<unsigned char, OpCode> addCodes = {{OP_ADD.opAdd, OP_ADD}, {OP_AND.opAdd, OP_AND},
-    {OP_ASR.opAdd, OP_ASR}, {OP_CLZ.opAdd, OP_CLZ}, {OP_FADD.opAdd, OP_FADD}, {OP_FMAX.opAdd, OP_FMAX},
-    {OP_FMAXABS.opAdd, OP_FMAXABS}, {OP_FMIN.opAdd, OP_FMIN}, {OP_FMINABS.opAdd, OP_FMINABS}, {OP_FSUB.opAdd, OP_FSUB},
-    {OP_FTOI.opAdd, OP_FTOI}, {OP_ITOF.opAdd, OP_ITOF}, {OP_MAX.opAdd, OP_MAX}, {OP_MIN.opAdd, OP_MIN},
-    {OP_NOP.opAdd, OP_NOP}, {OP_NOT.opAdd, OP_NOT}, {OP_OR.opAdd, OP_OR}, {OP_ROR.opAdd, OP_ROR},
-    {OP_SHL.opAdd, OP_SHL}, {OP_SHR.opAdd, OP_SHR}, {OP_SUB.opAdd, OP_SUB}, {OP_V8ADDS.opAdd, OP_V8ADDS},
-    {OP_V8SUBS.opAdd, OP_V8SUBS}, {OP_XOR.opAdd, OP_XOR}};
+// NOTE: The indices MUST correspond to the op-codes!
+static const std::array<OpCode, 32> addCodes = {OP_NOP, OP_FADD, OP_FSUB, OP_FMIN, OP_MAX, OP_FMINABS, OP_FMAXABS,
+    OP_FTOI, OP_ITOF, OP_NOP, OP_NOP, OP_NOP, OP_ADD, OP_SUB, OP_SHR, OP_ASR, OP_ROR, OP_SHL, OP_MIN, OP_MAX, OP_AND,
+    OP_OR, OP_XOR, OP_NOT, OP_CLZ, OP_NOP, OP_NOP, OP_NOP, OP_NOP, OP_NOP, OP_V8ADDS, OP_V8SUBS};
 
-static const std::map<unsigned char, OpCode> mulCodes = {{OP_FMUL.opMul, OP_FMUL}, {OP_MUL24.opMul, OP_MUL24},
-    {OP_NOP.opMul, OP_NOP}, {OP_V8ADDS.opMul, OP_V8ADDS}, {OP_V8MAX.opMul, OP_V8MAX}, {OP_V8MIN.opMul, OP_V8MIN},
-    {OP_V8MULD.opMul, OP_V8MULD}, {OP_V8SUBS.opMul, OP_V8SUBS}};
+// NOTE: The indices MUST correspond to the op-codes!
+static const std::array<OpCode, 8> mulCodes = {
+    OP_NOP, OP_FMUL, OP_MUL24, OP_V8MULD, OP_V8MIN, OP_V8MAX, OP_V8ADDS, OP_V8SUBS};
 
 const OpCode& OpCode::toOpCode(const unsigned char opCode, const bool isMulALU)
 {
@@ -630,15 +627,11 @@ const OpCode& OpCode::toOpCode(const unsigned char opCode, const bool isMulALU)
         return OP_NOP;
     if(isMulALU)
     {
-        auto it = mulCodes.find(opCode);
-        if(it != mulCodes.end())
-            return it->second;
+        return mulCodes.at(opCode);
     }
     else
     {
-        auto it = addCodes.find(opCode);
-        if(it != addCodes.end())
-            return it->second;
+        return addCodes.at(opCode);
     }
     throw CompilationError(CompilationStep::GENERAL, "No machine code operation for this op-code",
         std::to_string(static_cast<unsigned>(opCode)));

@@ -869,9 +869,9 @@ VPMInstructions periphery::findRelatedVPMInstructions(InstructionWalker anyVPMIn
             return false;
         if(isVPMRead)
             return inst->writesRegister(REG_VPM_IN_SETUP) &&
-                VPRSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().unsignedInt()).isDMASetup();
+                VPRSetup::fromLiteral(inst->assertArgument(0).getLiteralValue().value().unsignedInt()).isDMASetup();
         return inst->writesRegister(REG_VPM_OUT_SETUP) &&
-            VPWSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().unsignedInt()).isDMASetup();
+            VPWSetup::fromLiteral(inst->assertArgument(0).getLiteralValue().value().unsignedInt()).isDMASetup();
     };
     const auto predDMAWait = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool {
         if(isVPMRead)
@@ -883,18 +883,18 @@ VPMInstructions periphery::findRelatedVPMInstructions(InstructionWalker anyVPMIn
             return false;
         if(isVPMRead)
             return inst->writesRegister(REG_VPM_IN_SETUP) &&
-                VPRSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().unsignedInt()).isGenericSetup();
+                VPRSetup::fromLiteral(inst->assertArgument(0).getLiteralValue().value().unsignedInt()).isGenericSetup();
         return inst->writesRegister(REG_VPM_OUT_SETUP) &&
-            VPWSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().unsignedInt()).isGenericSetup();
+            VPWSetup::fromLiteral(inst->assertArgument(0).getLiteralValue().value().unsignedInt()).isGenericSetup();
     };
     const auto predStrideSetup = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool {
         if(dynamic_cast<const intermediate::LoadImmediate*>(inst) == nullptr)
             return false;
         if(isVPMRead)
             return inst->writesRegister(REG_VPM_IN_SETUP) &&
-                VPRSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().unsignedInt()).isStrideSetup();
+                VPRSetup::fromLiteral(inst->assertArgument(0).getLiteralValue().value().unsignedInt()).isStrideSetup();
         return inst->writesRegister(REG_VPM_OUT_SETUP) &&
-            VPWSetup::fromLiteral(inst->getArgument(0)->getLiteralValue().value().unsignedInt()).isStrideSetup();
+            VPWSetup::fromLiteral(inst->assertArgument(0).getLiteralValue().value().unsignedInt()).isStrideSetup();
     };
     const auto predVPMAccess = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool {
         if(isVPMRead)

@@ -123,7 +123,7 @@ static std::string toRegisterWriteString(const Value& val, std::bitset<16> eleme
     std::vector<std::string> parts;
     for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
     {
-        const Value& element = val.hasType(ValueType::CONTAINER) ? val.container.elements.at(i) : val;
+        const Value& element = val.hasType(ValueType::CONTAINER) ? val.container.elements[i] : val;
         if(elementMask.test(i))
             parts.push_back(element.to_string(false, true));
         else
@@ -308,8 +308,8 @@ static Value toStorageValue(const Value& oldVal, const Value& newVal, std::bitse
 
     for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
     {
-        const Value& newElement = newVal.hasType(ValueType::CONTAINER) ? newVal.container.elements.at(i) : newVal;
-        const Value& oldElement = oldVal.hasType(ValueType::CONTAINER) ? oldVal.container.elements.at(i) : oldVal;
+        const Value& newElement = newVal.hasType(ValueType::CONTAINER) ? newVal.container.elements[i] : newVal;
+        const Value& oldElement = oldVal.hasType(ValueType::CONTAINER) ? oldVal.container.elements[i] : oldVal;
         if(elementMask.test(i))
             result.container.elements.push_back(newElement);
         else
@@ -341,17 +341,17 @@ void Registers::writeStorageRegister(Register reg, const Value& val, std::bitset
         if(reg.file == RegisterFile::PHYSICAL_A)
         {
             // per-quad replication
-            storageRegisters.at(REG_ACC5) = Value(
-                ContainerValue({elements.at(0), elements.at(0), elements.at(0), elements.at(0), elements.at(4),
-                    elements.at(4), elements.at(4), elements.at(4), elements.at(8), elements.at(8), elements.at(8),
-                    elements.at(8), elements.at(12), elements.at(12), elements.at(12), elements.at(12)}),
-                actualValue.type.toVectorType(16));
+            storageRegisters.at(REG_ACC5) =
+                Value(ContainerValue({elements[0], elements[0], elements[0], elements[0], elements[4], elements[4],
+                          elements[4], elements[4], elements[8], elements[8], elements[8], elements[8], elements[12],
+                          elements[12], elements[12], elements[12]}),
+                    actualValue.type.toVectorType(16));
         }
         else if(reg.file == RegisterFile::PHYSICAL_B)
         {
             // across all elements replication
             storageRegisters.at(REG_ACC5) =
-                Value(elements.at(0).getLiteralValue().value(), actualValue.type.toVectorType(16));
+                Value(elements[0].getLiteralValue().value(), actualValue.type.toVectorType(16));
         }
         else
             throw CompilationError(CompilationStep::GENERAL,
@@ -388,7 +388,7 @@ void UniformCache::setUniformAddress(const Value& val)
     }
     else if(val.hasType(ValueType::CONTAINER))
         // see Broadcom specification, page 22
-        setUniformAddress(val.container.elements.at(0));
+        setUniformAddress(val.container.elements[0]);
     else
         throw CompilationError(CompilationStep::GENERAL, "Invalid value to set as uniform address", val.to_string());
     lastAddressSetCycle = qpu.getCurrentCycle();
@@ -396,18 +396,18 @@ void UniformCache::setUniformAddress(const Value& val)
 
 std::pair<Value, bool> TMUs::readTMU()
 {
-    if(tmuQueues.at(0).empty() && tmuQueues.at(1).empty())
+    if(tmuQueues[0].empty() && tmuQueues[1].empty())
         throw CompilationError(CompilationStep::GENERAL, "Cannot read from empty TMU queue!");
     // need to select the first triggered read in both queues
     std::list<std::pair<Value, uint32_t>>* queue = nullptr;
-    if(!tmuQueues.at(0).empty())
-        queue = &tmuQueues.at(0);
-    if(!tmuQueues.at(1).empty())
+    if(!tmuQueues[0].empty())
+        queue = &tmuQueues[0];
+    if(!tmuQueues[1].empty())
     {
         if(queue == nullptr)
-            queue = &tmuQueues.at(1);
-        else if(tmuQueues.at(1).front().second < queue->front().second)
-            queue = &tmuQueues.at(1);
+            queue = &tmuQueues[1];
+        else if(tmuQueues[1].front().second < queue->front().second)
+            queue = &tmuQueues[1];
     }
 
     // always blocks at least 9 cycles (reading from TMU cache)
@@ -427,7 +427,7 @@ std::pair<Value, bool> TMUs::readTMU()
 
 bool TMUs::hasValueOnR4() const
 {
-    return !tmuQueues.at(0).empty() || !tmuQueues.at(1).empty();
+    return !tmuQueues[0].empty() || !tmuQueues[1].empty();
 }
 
 void TMUs::setTMUNoSwap(const Value& swapVal)
@@ -436,7 +436,7 @@ void TMUs::setTMUNoSwap(const Value& swapVal)
         tmuNoSwap = swapVal.getLiteralValue()->isTrue();
     else if(swapVal.hasType(ValueType::CONTAINER))
         // XXX or per-element?
-        setTMUNoSwap(swapVal.container.elements.at(0));
+        setTMUNoSwap(swapVal.container.elements[0]);
     else
         throw CompilationError(
             CompilationStep::GENERAL, "Invalid value to set as uniform address", swapVal.to_string());
@@ -491,7 +491,7 @@ Value TMUs::readMemoryAddress(const Value& address) const
     Value res(ContainerValue(NATIVE_VECTOR_SIZE), TYPE_INT32);
     for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
     {
-        const Value& element = address.hasType(ValueType::CONTAINER) ? address.container.elements.at(i) : address;
+        const Value& element = address.hasType(ValueType::CONTAINER) ? address.container.elements[i] : address;
         // TODO this is true for the real TMU, but we can have an offset of zero in the emulator
         //			if(element == INT_ZERO)
         //				//reading an address of zero disables TMU load for that element
@@ -693,7 +693,7 @@ void VPM::writeValue(const Value& val)
     {
         for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
         {
-            const Value& element = val.hasType(ValueType::CONTAINER) ? val.container.elements.at(i) : val;
+            const Value& element = val.hasType(ValueType::CONTAINER) ? val.container.elements[i] : val;
             dataPtr[i / 4] &= ~(0xFF << ((i % 4) * 8));
             if(element.getLiteralValue())
                 // non-literal (e.g. undefined possible, simply skip writing element)
@@ -705,7 +705,7 @@ void VPM::writeValue(const Value& val)
     {
         for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
         {
-            const Value& element = val.hasType(ValueType::CONTAINER) ? val.container.elements.at(i) : val;
+            const Value& element = val.hasType(ValueType::CONTAINER) ? val.container.elements[i] : val;
             dataPtr[i / 2] &= ~(0xFFFF << ((i % 2) * 16));
             if(element.getLiteralValue())
                 // non-literal (e.g. undefined possible, simply skip writing element)
@@ -718,7 +718,7 @@ void VPM::writeValue(const Value& val)
     {
         for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
         {
-            const Value& element = val.hasType(ValueType::CONTAINER) ? val.container.elements.at(i) : val;
+            const Value& element = val.hasType(ValueType::CONTAINER) ? val.container.elements[i] : val;
             if(element.getLiteralValue())
                 // non-literal (e.g. undefined possible, simply skip writing element)
                 dataPtr[i] = static_cast<Word>(element.getLiteralValue()->unsignedInt());
@@ -737,7 +737,7 @@ void VPM::writeValue(const Value& val)
 
 void VPM::setWriteSetup(const Value& val)
 {
-    const Value& element0 = val.hasType(ValueType::CONTAINER) ? val.container.elements.at(0) : val;
+    const Value& element0 = val.hasType(ValueType::CONTAINER) ? val.container.elements[0] : val;
     if(element0.isUndefined())
         throw CompilationError(CompilationStep::GENERAL, "Undefined VPM setup value", val.to_string());
     periphery::VPWSetup setup = periphery::VPWSetup::fromLiteral(element0.getLiteralValue()->unsignedInt());
@@ -755,7 +755,7 @@ void VPM::setWriteSetup(const Value& val)
 
 void VPM::setReadSetup(const Value& val)
 {
-    const Value& element0 = val.hasType(ValueType::CONTAINER) ? val.container.elements.at(0) : val;
+    const Value& element0 = val.hasType(ValueType::CONTAINER) ? val.container.elements[0] : val;
     if(element0.isUndefined())
         throw CompilationError(CompilationStep::GENERAL, "Undefined VPM setup value", val.to_string());
     periphery::VPRSetup setup = periphery::VPRSetup::fromLiteral(element0.getLiteralValue()->unsignedInt());
@@ -773,7 +773,7 @@ void VPM::setReadSetup(const Value& val)
 
 void VPM::setDMAWriteAddress(const Value& val)
 {
-    const Value& element0 = val.hasType(ValueType::CONTAINER) ? val.container.elements.at(0) : val;
+    const Value& element0 = val.hasType(ValueType::CONTAINER) ? val.container.elements[0] : val;
     if(element0.isUndefined())
         throw CompilationError(CompilationStep::GENERAL, "Undefined DMA setup value", val.to_string());
     periphery::VPWSetup setup = periphery::VPWSetup::fromLiteral(dmaWriteSetup);
@@ -817,7 +817,7 @@ void VPM::setDMAWriteAddress(const Value& val)
 
 void VPM::setDMAReadAddress(const Value& val)
 {
-    const Value& element0 = val.hasType(ValueType::CONTAINER) ? val.container.elements.at(0) : val;
+    const Value& element0 = val.hasType(ValueType::CONTAINER) ? val.container.elements[0] : val;
     if(element0.isUndefined())
         throw CompilationError(CompilationStep::GENERAL, "Undefined DMA setup value", val.to_string());
     periphery::VPRSetup setup = periphery::VPRSetup::fromLiteral(dmaReadSetup);
@@ -1260,11 +1260,10 @@ void QPU::writeConditional(Register dest, const Value& in, ConditionCode cond, c
 
     for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
     {
-        if((!in.hasType(ValueType::CONTAINER) || i < in.container.elements.size()) &&
-            flags.at(i).matchesCondition(cond))
+        if((!in.hasType(ValueType::CONTAINER) || i < in.container.elements.size()) && flags[i].matchesCondition(cond))
         {
             elementMask.set(i);
-            Value element = in.hasType(ValueType::CONTAINER) ? in.container.elements.at(i) : in;
+            Value element = in.hasType(ValueType::CONTAINER) ? in.container.elements[i] : in;
             element.type = element.type.toVectorType(1);
             result.container.elements.push_back(element);
         }
@@ -1388,7 +1387,7 @@ void QPU::setFlags(const Value& output, ConditionCode cond)
     std::vector<std::string> parts;
     for(uint8_t i = 0; i < flags.size(); ++i)
     {
-        if(flags.at(i).matchesCondition(cond))
+        if(flags[i].matchesCondition(cond))
         {
             // only update flags for elements we actually write (where we actually calculate a result)
             const Value& element = output.hasType(ValueType::CONTAINER) ?
@@ -1396,23 +1395,23 @@ void QPU::setFlags(const Value& output, ConditionCode cond)
                 output;
             if(element.getLiteralValue())
             {
-                flags.at(i).zero =
+                flags[i].zero =
                     element.getLiteralValue()->unsignedInt() == 0 ? ElementFlags::FLAG_SET : ElementFlags::FLAG_CLEAR;
-                flags.at(i).negative = (element.type.isFloatingType() ? element.getLiteralValue()->real() < 0.0f :
-                                                                        element.getLiteralValue()->signedInt() < 0) ?
+                flags[i].negative = (element.type.isFloatingType() ? element.getLiteralValue()->real() < 0.0f :
+                                                                     element.getLiteralValue()->signedInt() < 0) ?
                     ElementFlags::FLAG_SET :
                     ElementFlags::FLAG_CLEAR;
                 // TODO carry!!
-                flags.at(i).carry = ElementFlags::FLAG_UNDEFINED;
+                flags[i].carry = ElementFlags::FLAG_UNDEFINED;
             }
             else
             {
-                flags.at(i).zero = ElementFlags::FLAG_UNDEFINED;
-                flags.at(i).negative = ElementFlags::FLAG_UNDEFINED;
-                flags.at(i).carry = ElementFlags::FLAG_UNDEFINED;
+                flags[i].zero = ElementFlags::FLAG_UNDEFINED;
+                flags[i].negative = ElementFlags::FLAG_UNDEFINED;
+                flags[i].carry = ElementFlags::FLAG_UNDEFINED;
             }
-            parts.push_back(toFlagString(flags.at(i).zero, 'z') + toFlagString(flags.at(i).negative, 'n') +
-                toFlagString(flags.at(i).carry, 'c'));
+            parts.push_back(toFlagString(flags[i].zero, 'z') + toFlagString(flags[i].negative, 'n') +
+                toFlagString(flags[i].carry, 'c'));
         }
     }
     logging::debug() << "Setting flags: {" + to_string<std::string>(parts) << "}" << logging::endl;

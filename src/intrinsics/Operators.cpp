@@ -22,8 +22,8 @@ InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(
 {
     Value opDest = op.getOutput().value();
 
-    const Value arg0 = op.getArgument(0).value();
-    const Value arg1 = op.getArgument(1).value();
+    const Value& arg0 = op.assertArgument(0);
+    const Value& arg1 = op.assertArgument(1);
 
     // convert operands to positive
     Value op1Sign = UNDEFINED_VALUE;
@@ -192,11 +192,11 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivision(
     Value op2Sign = UNDEFINED_VALUE;
 
     // convert operands to positive
-    Value op1Pos = method.addNewLocal(op.getArgument(0)->type, "%unsigned");
-    Value op2Pos = method.addNewLocal(op.getArgument(0)->type, "%unsigned");
+    Value op1Pos = method.addNewLocal(op.assertArgument(0).type, "%unsigned");
+    Value op2Pos = method.addNewLocal(op.assertArgument(0).type, "%unsigned");
 
-    it = insertMakePositive(it, method, op.getArgument(0).value(), op1Pos, op1Sign);
-    it = insertMakePositive(it, method, op.getArgument(1).value(), op2Pos, op2Sign);
+    it = insertMakePositive(it, method, op.assertArgument(0), op1Pos, op1Sign);
+    it = insertMakePositive(it, method, op.assertArgument(1), op2Pos, op2Sign);
 
     op.setArgument(0, op1Pos);
     op.setArgument(1, op2Pos);
@@ -330,11 +330,11 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivisionByConstant(
     Value op2Sign = UNDEFINED_VALUE;
 
     // convert operands to positive
-    Value op1Pos = method.addNewLocal(op.getArgument(0)->type, "%unsigned");
-    Value op2Pos = method.addNewLocal(op.getArgument(0)->type, "%unsigned");
+    Value op1Pos = method.addNewLocal(op.assertArgument(0).type, "%unsigned");
+    Value op2Pos = method.addNewLocal(op.assertArgument(0).type, "%unsigned");
 
-    it = insertMakePositive(it, method, op.getArgument(0).value(), op1Pos, op1Sign);
-    it = insertMakePositive(it, method, op.getArgument(1).value(), op2Pos, op2Sign);
+    it = insertMakePositive(it, method, op.assertArgument(0), op1Pos, op1Sign);
+    it = insertMakePositive(it, method, op.assertArgument(1), op2Pos, op2Sign);
 
     op.setArgument(0, op1Pos);
     op.setArgument(1, op2Pos);
@@ -418,7 +418,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
         throw CompilationError(CompilationStep::OPTIMIZER, "Division by constant may overflow for argument type",
             op.getFirstArg().type.to_string());
     if(!op.getSecondArg().ifPresent(toFunction(&Value::isLiteralValue)) &&
-        !(op.getSecondArg() && op.getSecondArg()->hasType(ValueType::CONTAINER)))
+        !(op.getSecondArg() && op.assertArgument(1).hasType(ValueType::CONTAINER)))
         throw CompilationError(CompilationStep::OPTIMIZER, "Can only optimize division by constant", op.to_string());
 
     /*
@@ -427,8 +427,8 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
      * - values >= 16500 trigger overflow in multiplication with factor or shifts of >= 32 positions
      */
     static const unsigned accuracy = 16100;
-    auto constants = calculateConstant(op.getSecondArg().value(), accuracy);
-    logging::debug() << "Intrinsifying unsigned division by " << op.getSecondArg()->to_string(false, true)
+    auto constants = calculateConstant(op.assertArgument(1), accuracy);
+    logging::debug() << "Intrinsifying unsigned division by " << op.assertArgument(1).to_string(false, true)
                      << " by multiplication with " << constants.first.to_string(false, true) << " and right-shift by "
                      << constants.second.to_string(false, true) << logging::endl;
 
@@ -444,12 +444,11 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
     // next lines fix this error
     const Value tmpFix0 = method.addNewLocal(op.getFirstArg().type, "%udiv.fix");
     const Value tmpFix1 = method.addNewLocal(op.getFirstArg().type, "%udiv.fix");
-    it.emplace(new Operation(OP_MUL24, tmpFix0, divOut, op.getSecondArg().value()));
+    it.emplace(new Operation(OP_MUL24, tmpFix0, divOut, op.assertArgument(1)));
     it.nextInBlock();
     it.emplace(new Operation(OP_SUB, tmpFix1, op.getFirstArg(), tmpFix0));
     it.nextInBlock();
-    it.emplace(
-        new Operation(OP_SUB, NOP_REGISTER, op.getSecondArg().value(), tmpFix1, COND_ALWAYS, SetFlag::SET_FLAGS));
+    it.emplace(new Operation(OP_SUB, NOP_REGISTER, op.assertArgument(1), tmpFix1, COND_ALWAYS, SetFlag::SET_FLAGS));
     it.nextInBlock();
     const Value finalResult =
         useRemainder ? method.addNewLocal(op.getFirstArg().type, "%udiv.result") : op.getOutput().value();
@@ -467,7 +466,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
     {
         // x mod y = x - (x/y) * y;
         const Value tmpMul = method.addNewLocal(op.getFirstArg().type, "%udiv.remainder");
-        it.emplace(new Operation(OP_MUL24, tmpMul, finalResult, op.getSecondArg().value()));
+        it.emplace(new Operation(OP_MUL24, tmpMul, finalResult, op.assertArgument(1)));
         it.nextInBlock();
         // replace original division
         op.setArgument(1, tmpMul);
@@ -496,7 +495,7 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
     logging::debug() << "Intrinsifying floating-point division" << logging::endl;
 
     const Value nominator = op.getFirstArg();
-    const Value divisor = op.getSecondArg().value();
+    const Value& divisor = op.assertArgument(1);
 
     ////
     // Newton-Raphson

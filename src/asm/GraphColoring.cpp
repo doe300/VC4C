@@ -655,7 +655,8 @@ void GraphColoring::createGraph()
     // TODO if this method works, could here spill all locals with more than XX (64) neighbors!?!
     for(const auto& node : graph)
     {
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 5, "SpillCandidates", node.second.getNeighbors().size() >= 64);
+        PROFILE_COUNTER(
+            vc4c::profiler::COUNTER_BACKEND + 5, "SpillCandidates", node.second.getNeighbors().size() >= 64);
     }
     // 2. iteration: associate locals used together
     PROFILE_START(addEdges);
@@ -726,9 +727,10 @@ static void processClosedSet(ColoredGraph& graph, FastSet<const Local*>& closedS
                 }
                 else
                     neighbor->blockRegister(node.possibleFiles, fixedRegister);
-                if(isFixed(neighbor->possibleFiles) && openSet.find(pair.first->key) != openSet.end())
+                auto it = openSet.find(pair.first->key);
+                if(isFixed(neighbor->possibleFiles) && it != openSet.end())
                 {
-                    openSet.erase(pair.first->key);
+                    openSet.erase(it);
                     closedSet.insert(pair.first->key);
                 }
             }
@@ -803,10 +805,11 @@ static LocalUse checkUser(const OrderedMap<const LocalUser*, LocalUse>& users, c
 {
     LocalUse use;
     it.forAllInstructions([&users, &use](const intermediate::IntermediateInstruction* instr) {
-        if(users.find(instr) != users.end())
+        auto it = users.find(instr);
+        if(it != users.end())
         {
-            use.numReads += users.at(instr).numReads;
-            use.numWrites += users.at(instr).numWrites;
+            use.numReads += it->second.numReads;
+            use.numWrites += it->second.numWrites;
         }
     });
     return use;

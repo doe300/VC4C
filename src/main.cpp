@@ -255,9 +255,8 @@ int main(int argc, char** argv)
             std::cerr << "For disassembling, a single input file must be specified, aborting!" << std::endl;
             return 4;
         }
-        logging::debug() << "Disassembling '" << inputFiles.at(0) << "' into '" << outputFile << "'..."
-                         << logging::endl;
-        disassemble(inputFiles.at(0), outputFile, config.outputMode);
+        logging::debug() << "Disassembling '" << inputFiles[0] << "' into '" << outputFile << "'..." << logging::endl;
+        disassemble(inputFiles[0], outputFile, config.outputMode);
         return 0;
     }
 
@@ -290,12 +289,12 @@ int main(int argc, char** argv)
     }
     else
     {
-        auto file = inputFiles.at(0);
+        const auto& file = inputFiles[0];
         auto ifs = new std::ifstream(file);
         if(!ifs->is_open())
             throw CompilationError(CompilationStep::PRECOMPILATION, "cannot find file: " + file);
         input.reset(ifs);
-        inputFile = inputFiles.at(0);
+        inputFile = inputFiles[0];
     }
 
     std::ofstream output(outputFile, std::ios_base::out | std::ios_base::trunc | std::ios_base::binary);

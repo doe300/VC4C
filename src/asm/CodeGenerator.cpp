@@ -156,14 +156,15 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
 
     logging::debug() << "-----" << logging::endl;
     index = 0;
-    for(const std::unique_ptr<Instruction>& instr : generatedInstructions)
+    for(const auto& instr : generatedInstructions)
     {
         logging::debug() << std::hex << index << " " << instr->toHexString(true) << logging::endl;
         index += 8;
     }
     logging::debug() << "Generated " << std::dec << generatedInstructions.size() << " instructions!" << logging::endl;
 
-    PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_BACKEND + 1000, "CodeGeneration (after)", generatedInstructions.size(), vc4c::profiler::COUNTER_BACKEND + 0);
+    PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_BACKEND + 1000, "CodeGeneration (after)",
+        generatedInstructions.size(), vc4c::profiler::COUNTER_BACKEND + 0);
     return generatedInstructions;
 }
 
@@ -208,14 +209,14 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
         switch(config.outputMode)
         {
         case OutputMode::ASSEMBLER:
-            for(const std::unique_ptr<Instruction>& instr : pair.second)
+            for(const auto& instr : pair.second)
             {
                 stream << instr->toASMString() << std::endl;
                 numBytes += 0; // doesn't matter here, since the number of bytes is unused for assembler output
             }
             break;
         case OutputMode::BINARY:
-            for(const std::unique_ptr<Instruction>& instr : pair.second)
+            for(const auto& instr : pair.second)
             {
                 const uint64_t binary = instr->toBinaryCode();
                 stream.write(reinterpret_cast<const char*>(&binary), 8);
@@ -223,7 +224,7 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
             }
             break;
         case OutputMode::HEX:
-            for(const std::unique_ptr<Instruction>& instr : pair.second)
+            for(const auto& instr : pair.second)
             {
                 stream << instr->toHexString(true) << std::endl;
                 numBytes += 8; // doesn't matter here, since the number of bytes is unused for hexadecimal output
