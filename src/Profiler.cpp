@@ -69,11 +69,12 @@ void profiler::endFunctionCall(const ProfilingResult& result)
 #ifdef MULTI_THREADED
     std::lock_guard<std::mutex> guard(lockTimes);
 #endif
-    times[result.name].name = result.name;
-    times[result.name].duration += std::chrono::duration_cast<Duration>(Clock::now() - result.startTime);
-    times[result.name].invocations += 1;
-    times[result.name].fileName = result.fileName;
-    times[result.name].lineNumber = result.lineNumber;
+    auto& entry = times[result.name];
+    entry.name = result.name;
+    entry.duration += std::chrono::duration_cast<Duration>(Clock::now() - result.startTime);
+    entry.invocations += 1;
+    entry.fileName = result.fileName;
+    entry.lineNumber = result.lineNumber;
 }
 
 void profiler::dumpProfileResults(bool writeAsWarning)

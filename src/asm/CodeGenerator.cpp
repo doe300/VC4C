@@ -158,7 +158,8 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
     index = 0;
     for(const auto& instr : generatedInstructions)
     {
-        logging::debug() << std::hex << index << " " << instr->toHexString(true) << logging::endl;
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << std::hex << index << " " << instr->toHexString(true) << logging::endl);
         index += 8;
     }
     logging::debug() << "Generated " << std::dec << generatedInstructions.size() << " instructions!" << logging::endl;

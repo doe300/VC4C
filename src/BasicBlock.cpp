@@ -246,7 +246,7 @@ void BasicBlock::dumpInstructions() const
     std::for_each(instructions.begin(), instructions.end(),
         [](const std::unique_ptr<intermediate::IntermediateInstruction>& instr) {
             if(instr)
-                logging::debug() << instr->to_string() << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG, log << instr->to_string() << logging::endl);
         });
     logging::debug() << "Block end ----" << logging::endl;
 }

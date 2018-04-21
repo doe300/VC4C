@@ -261,28 +261,29 @@ bool Copy::mapInstruction(Method& method) const
 {
     if(isBitcast)
     {
-        logging::debug() << "Generating bit-cast from " << orig.to_string() << " into " << dest.to_string()
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating bit-cast from " << orig.to_string() << " into " << dest.to_string() << logging::endl);
         intermediate::insertBitcast(method.appendToEnd(), method, orig, dest);
     }
     else if(isLoadStore)
     {
         if(isRead)
         {
-            logging::debug() << "Generating reading from " << orig.to_string() << " into " << dest.to_string()
-                             << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Generating reading from " << orig.to_string() << " into " << dest.to_string() << logging::endl);
             method.appendToEnd(new intermediate::MemoryInstruction(intermediate::MemoryOperation::READ, dest, orig));
         }
         else
         {
-            logging::debug() << "Generating writing of " << orig.to_string() << " into " << dest.to_string()
-                             << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Generating writing of " << orig.to_string() << " into " << dest.to_string() << logging::endl);
             method.appendToEnd(new intermediate::MemoryInstruction(intermediate::MemoryOperation::WRITE, dest, orig));
         }
     }
     else
     {
-        logging::debug() << "Generating copy of " << orig.to_string() << " into " << dest.to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating copy of " << orig.to_string() << " into " << dest.to_string() << logging::endl);
         method.appendToEnd(new intermediate::MoveOperation(dest, orig));
     }
     return true;
@@ -314,8 +315,9 @@ std::vector<const Local*> UnaryOperator::getAllLocals() const
 
 bool UnaryOperator::mapInstruction(Method& method) const
 {
-    logging::debug() << "Generating unary operation " << opCode << " with " << arg.to_string() << " into "
-                     << dest.to_string() << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating unary operation " << opCode << " with " << arg.to_string() << " into " << dest.to_string()
+            << logging::endl);
     method.appendToEnd((new intermediate::Operation(opCode, dest, arg))->addDecorations(decorations));
     return true;
 }
@@ -337,8 +339,9 @@ std::vector<const Local*> BinaryOperator::getAllLocals() const
 
 bool BinaryOperator::mapInstruction(Method& method) const
 {
-    logging::debug() << "Generating binary operation " << opCode << " with " << arg.to_string() << " and "
-                     << arg2.to_string() << " into " << dest.to_string() << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating binary operation " << opCode << " with " << arg.to_string() << " and " << arg2.to_string()
+            << " into " << dest.to_string() << logging::endl);
     method.appendToEnd((new intermediate::Operation(opCode, dest, arg, arg2))->addDecorations(decorations));
     return true;
 }
@@ -372,8 +375,9 @@ bool IndexOf::mapInstruction(Method& method) const
 {
     // need to get pointer/address -> reference to content
     // a[i] of type t is at position &a + i * sizeof(t)
-    logging::debug() << "Generating calculating index " << to_string<Value>(indices) << " of " << container.to_string()
-                     << " into " << dest.to_string() << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating calculating index " << to_string<Value>(indices) << " of " << container.to_string()
+            << " into " << dest.to_string() << logging::endl);
 
     /*
      * LLVM explicitely states for "getelementptr": "The first index always indexes the pointer value given as the
@@ -416,8 +420,9 @@ std::vector<const Local*> Comparison::getAllLocals() const
 
 bool Comparison::mapInstruction(Method& method) const
 {
-    logging::debug() << "Generating comparison " << comp << " with " << op1.to_string() << " and " << op2.to_string()
-                     << " into " << dest->name << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating comparison " << comp << " with " << op1.to_string() << " and " << op2.to_string() << " into "
+            << dest->name << logging::endl);
     method.appendToEnd(
         (new intermediate::Comparison(comp, dest->createReference(), op1, op2))->addDecorations(decorations));
     return true;
@@ -453,8 +458,9 @@ std::vector<const Local*> ContainerInsertion::getAllLocals() const
 
 bool ContainerInsertion::mapInstruction(Method& method) const
 {
-    logging::debug() << "Generating insertion of " << newValue.to_string() << " at " << index.to_string() << " into "
-                     << container.to_string() << " into " << dest->to_string() << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating insertion of " << newValue.to_string() << " at " << index.to_string() << " into "
+            << container.to_string() << " into " << dest->to_string() << logging::endl);
     // 1. copy whole container
     method.appendToEnd(new intermediate::MoveOperation(Value(dest, container.type), container));
     // 2. insert new element
@@ -496,8 +502,9 @@ std::vector<const Local*> ContainerExtraction::getAllLocals() const
 bool ContainerExtraction::mapInstruction(Method& method) const
 {
     const DataType elementType = container.type.getElementType();
-    logging::debug() << "Generation extraction of " << elementType.to_string() << " at " << index.to_string()
-                     << " from " << container.to_string() << " into " << dest->to_string() << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generation extraction of " << elementType.to_string() << " at " << index.to_string() << " from "
+            << container.to_string() << " into " << dest->to_string() << logging::endl);
 
     if(container.type.isVectorType() || index.hasLiteral(Literal(0u)))
     {
@@ -526,12 +533,12 @@ bool ValueReturn::mapInstruction(Method& method) const
 {
     if(hasValue)
     {
-        logging::debug() << "Generating return of " << val.to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating return of " << val.to_string() << logging::endl);
         method.appendToEnd(new intermediate::Return(val));
     }
     else
     {
-        logging::debug() << "Generating return nothing" << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating return nothing" << logging::endl);
         method.appendToEnd(new intermediate::Return());
     }
     return true;
@@ -566,8 +573,9 @@ std::vector<const Local*> ShuffleVector::getAllLocals() const
 bool ShuffleVector::mapInstruction(Method& method) const
 {
     // shuffling = iteration over all elements in both vectors and re-ordering in order given
-    logging::debug() << "Generating operations mixing " << v1.to_string() << " and " << v2.to_string() << " into "
-                     << dest.to_string() << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating operations mixing " << v1.to_string() << " and " << v2.to_string() << " into "
+            << dest.to_string() << logging::endl);
     DataType destType = v1.type.toVectorType(mask.type.getVectorWidth());
     intermediate::insertVectorShuffle(method.appendToEnd(), method, dest, v1, v2, mask);
     return true;
@@ -577,7 +585,7 @@ LLVMLabel::LLVMLabel(const Local* label) : label(label) {}
 
 bool LLVMLabel::mapInstruction(Method& method) const
 {
-    logging::debug() << "Generating label " << label->to_string() << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating label " << label->to_string() << logging::endl);
     method.appendToEnd(new intermediate::BranchLabel(*label));
     return true;
 }
@@ -605,8 +613,8 @@ std::vector<const Local*> PhiNode::getAllLocals() const
 
 bool PhiNode::mapInstruction(Method& method) const
 {
-    logging::debug() << "Generating Phi-Node with " << labels.size() << " options into " << dest->to_string()
-                     << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating Phi-Node with " << labels.size() << " options into " << dest->to_string() << logging::endl);
     method.appendToEnd(new intermediate::PhiNode(dest->createReference(), labels));
     return true;
 }
@@ -635,8 +643,9 @@ std::vector<const Local*> Selection::getAllLocals() const
 
 bool Selection::mapInstruction(Method& method) const
 {
-    logging::debug() << "Generating moves for selection " << opt1.to_string() << " or " << opt2.to_string()
-                     << " according to " << cond.to_string() << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating moves for selection " << opt1.to_string() << " or " << opt2.to_string() << " according to "
+            << cond.to_string() << logging::endl);
     // if cond == 1 -> first else second
     // makes sure, the flags are set for the correction value
 
@@ -676,13 +685,14 @@ bool Branch::mapInstruction(Method& method) const
 {
     if(cond == BOOL_TRUE)
     {
-        logging::debug() << "Generating unconditional branch to " << thenLabel << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating unconditional branch to " << thenLabel << logging::endl);
         method.appendToEnd(new intermediate::Branch(thenLabel, COND_ALWAYS, BOOL_TRUE));
     }
     else
     {
-        logging::debug() << "Generating branch on condition " << cond.to_string() << " to either "
-                         << thenLabel->to_string() << " or " << elseLabel->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating branch on condition " << cond.to_string() << " to either " << thenLabel->to_string()
+                << " or " << elseLabel->to_string() << logging::endl);
         method.appendToEnd(new intermediate::Branch(thenLabel, COND_ZERO_CLEAR /* condition is true */, cond));
         method.appendToEnd(new intermediate::Branch(elseLabel, COND_ZERO_SET /* condition is false */, cond));
     }
@@ -704,8 +714,9 @@ std::vector<const Local*> Switch::getAllLocals() const
 
 bool Switch::mapInstruction(Method& method) const
 {
-    logging::debug() << "Generating branches for switch on " << cond.to_string() << " with " << jumpLabels.size()
-                     << " options and the default " << defaultLabel << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating branches for switch on " << cond.to_string() << " with " << jumpLabels.size()
+            << " options and the default " << defaultLabel << logging::endl);
     for(const auto& option : jumpLabels)
     {
         // for every case, if equal,branch to given label

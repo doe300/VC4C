@@ -216,24 +216,24 @@ bool InstructionWalker::isStartOfBlock() const
 static inline void throwOnEnd(bool isEnd)
 {
     if(isEnd)
-        throw CompilationError(CompilationStep::GENERAL, "End of method reached!");
+        throw CompilationError(CompilationStep::GENERAL, "End of method or block reached!");
 }
 
 intermediate::IntermediateInstruction* InstructionWalker::get()
 {
-    throwOnEnd(isEndOfMethod());
+    throwOnEnd(isEndOfBlock());
     return (*pos).get();
 }
 
 const intermediate::IntermediateInstruction* InstructionWalker::get() const
 {
-    throwOnEnd(isEndOfMethod());
+    throwOnEnd(isEndOfBlock());
     return (*pos).get();
 }
 
 intermediate::IntermediateInstruction* InstructionWalker::release()
 {
-    throwOnEnd(isEndOfMethod());
+    throwOnEnd(isEndOfBlock());
     if(has<intermediate::Branch>() || has<intermediate::BranchLabel>())
         basicBlock->method.cfg.reset();
     return (*pos).release();
@@ -241,7 +241,7 @@ intermediate::IntermediateInstruction* InstructionWalker::release()
 
 InstructionWalker& InstructionWalker::reset(intermediate::IntermediateInstruction* instr)
 {
-    throwOnEnd(isEndOfMethod());
+    throwOnEnd(isEndOfBlock());
     if(dynamic_cast<intermediate::BranchLabel*>(instr) != dynamic_cast<intermediate::BranchLabel*>((*pos).get()))
         throw CompilationError(CompilationStep::GENERAL, "Can't add labels into a basic block", instr->to_string());
     if(has<intermediate::Branch>() || has<intermediate::BranchLabel>() ||
@@ -253,7 +253,7 @@ InstructionWalker& InstructionWalker::reset(intermediate::IntermediateInstructio
 
 InstructionWalker& InstructionWalker::erase()
 {
-    throwOnEnd(isEndOfMethod());
+    throwOnEnd(isEndOfBlock());
     if(has<intermediate::Branch>() || has<intermediate::BranchLabel>())
         basicBlock->method.cfg.reset();
     pos = basicBlock->instructions.erase(pos);
@@ -405,7 +405,7 @@ bool ConstInstructionWalker::isStartOfBlock() const
 
 const intermediate::IntermediateInstruction* ConstInstructionWalker::get() const
 {
-    throwOnEnd(isEndOfMethod());
+    throwOnEnd(isEndOfBlock());
     return (*pos).get();
 }
 

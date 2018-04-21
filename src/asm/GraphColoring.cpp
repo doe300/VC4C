@@ -245,7 +245,7 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
     if(secondArg)
     {
         // only accumulators can be rotated
-        if(dynamic_cast<const intermediate::VectorRotation*>(&instr) != nullptr)
+        if(dynamic_cast<const intermediate::VectorRotation*>(&instr) != nullptr && firstArg->hasType(ValueType::LOCAL))
         {
             // logging::debug() << "Local " << firstArg.get().local.to_string() << " must be an accumulator, because it
             // is used in a vector-rotation in " << instr.to_string() << logging::endl;
@@ -606,7 +606,8 @@ void GraphColoring::createGraph()
         node.initialFile = pair.second.possibleFiles;
         if(pair.second.firstOccurrence.get() == pair.second.lastOccurrence.get())
         {
-            logging::debug() << "Local " << pair.first->name << " is never read!" << logging::endl;
+            CPPLOG_LAZY(
+                logging::Level::DEBUG, log << "Local " << pair.first->name << " is never read!" << logging::endl);
             node.possibleFiles = RegisterFile::NONE;
             node.initialFile = RegisterFile::NONE;
             // any local which is never used is added to the colored graph
@@ -628,7 +629,7 @@ void GraphColoring::createGraph()
         forLocalsUsedTogether(pair.first, [&node, this](const Local* l) -> void {
             node.addNeighbor(&(graph.getOrCreateNode(l)), LocalRelation::USED_TOGETHER);
         });
-        logging::debug() << "Created node: " << node.to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Created node: " << node.to_string() << logging::endl);
     }
     PROFILE_END(createColoredNodes);
 
@@ -1169,8 +1170,9 @@ FastMap<const Local*, Register> GraphColoring::toRegisterMap() const
     for(const auto& pair : graph)
     {
         result.emplace(pair.first, pair.second.getRegisterFixed());
-        logging::debug() << "Assigned local " << pair.first->name << " to register "
-                         << result.at(pair.first).to_string(true, false) << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Assigned local " << pair.first->name << " to register "
+                << result.at(pair.first).to_string(true, false) << logging::endl);
     }
 
     return result;

@@ -225,6 +225,8 @@ std::size_t Method::cleanEmptyInstructions()
         {
             it.erase();
             ++num;
+            if(it.isEndOfBlock())
+                it.nextInMethod();
         }
         else
             it.nextInMethod();

@@ -213,6 +213,14 @@ bool optimizations::eliminateUselessInstruction(
             it.previousInBlock();
             replaced = true;
         }
+        if(it.has<intermediate::VectorRotation>() && move->getSource().isLiteralValue())
+        {
+            // replace rotation of constant with move
+            logging::debug() << "Replacing obsolete " << move->to_string() << " with move" << logging::endl;
+            it.reset(new intermediate::MoveOperation(
+                move->getOutput().value(), move->getSource(), move->conditional, move->setFlags));
+            replaced = true;
+        }
     }
 
     return replaced;
