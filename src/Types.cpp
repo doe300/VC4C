@@ -17,54 +17,98 @@ using namespace vc4c;
 
 ComplexType::~ComplexType() {}
 
-DataType::DataType(const std::string& name, const unsigned char num, const std::shared_ptr<ComplexType>& complexType) :
-    typeName(name), num(num), complexType(complexType)
+DataType::DataType(std::shared_ptr<ComplexType>&& complexType) :
+    complexType(std::move(complexType)), bitWidth(DataType::COMPLEX), numElements(1), isFloatingPoint(false)
 {
+}
+
+static std::string toSignedIntegerTypeName(unsigned char bitWidth, const std::string& typeName)
+{
+    switch(bitWidth)
+    {
+    case DataType::LONG_WORD:
+        return "long";
+    case DataType::WORD:
+        return "int";
+    case DataType::HALF_WORD:
+        return "short";
+    case DataType::BYTE:
+        return "char";
+    default:
+        return typeName;
+    }
+}
+
+static std::string toUnsignedIntegerTypeName(unsigned char bitWidth, const std::string& typeName)
+{
+    switch(bitWidth)
+    {
+    case DataType::LONG_WORD:
+        return "ulong";
+    case DataType::WORD:
+        return "uint";
+    case DataType::HALF_WORD:
+        return "ushort";
+    case DataType::BYTE:
+        return "uchar";
+    default:
+        return typeName;
+    }
+}
+
+static std::string toFloatingPointTypeName(unsigned char bitWidth, const std::string& typeName)
+{
+    switch(bitWidth)
+    {
+    case DataType::LONG_WORD:
+        return "double";
+    case DataType::WORD:
+        return "float";
+    case DataType::HALF_WORD:
+        return "half";
+    default:
+        return typeName;
+    }
+}
+
+static std::string toSimpleTypeName(unsigned char bitWidth, bool isFloat)
+{
+    if(bitWidth == DataType::VOID)
+        return "void";
+    if(bitWidth == DataType::LABEL)
+        return "label";
+    if(bitWidth == DataType::UNKNOWN)
+        return "";
+    if(bitWidth == DataType::BIT)
+        return "bool";
+    if(isFloat)
+        return std::string("f") + std::to_string(bitWidth);
+    return std::string("i") + std::to_string(bitWidth);
 }
 
 std::string DataType::to_string() const
 {
-    const std::string braceLeft = isVectorType() ? "<" : "";
-    const std::string braceRight = isVectorType() ? ">" : "";
-    if(num > 1)
-        return braceLeft + (std::to_string(num) + " x ") + (typeName + braceRight);
-    return typeName;
-}
-
-static std::string toSignedTypeName(const std::string& typeName)
-{
-    if(typeName == "i64")
-        return "long";
-    if(typeName == "i32")
-        return "int";
-    if(typeName == "i16")
-        return "short";
-    if(typeName == "i8")
-        return "char";
-    return typeName;
-}
-
-static std::string toUnsignedTypeName(const std::string& typeName)
-{
-    if(typeName == "i64")
-        return "ulong";
-    if(typeName == "i32")
-        return "uint";
-    if(typeName == "i16")
-        return "ushort";
-    if(typeName == "i8")
-        return "uchar";
-    return typeName;
+    if(complexType)
+        return complexType->getTypeName();
+    const std::string braceLeft(isVectorType() ? "<" : "");
+    const std::string braceRight(isVectorType() ? ">" : "");
+    if(numElements > 1)
+        return braceLeft + (std::to_string(numElements) + " x ") +
+            (toSimpleTypeName(bitWidth, isFloatingPoint) + braceRight);
+    return toSimpleTypeName(bitWidth, isFloatingPoint);
 }
 
 std::string DataType::getTypeName(bool isSigned, bool isUnsigned) const
 {
     if(complexType != nullptr || (!isFloatingType() && !isSigned && !isUnsigned))
         return to_string();
-    const std::string tName =
-        isSigned ? toSignedTypeName(typeName) : isUnsigned ? toUnsignedTypeName(typeName) : typeName;
-    if(num > 1)
-        return tName + std::to_string(num);
+    const std::string simpleName = toSimpleTypeName(bitWidth, isFloatingPoint);
+    const std::string tName = isFloatingPoint ?
+        toFloatingPointTypeName(bitWidth, simpleName) :
+        (isSigned ? toSignedIntegerTypeName(bitWidth, simpleName) :
+                    isUnsigned ? toUnsignedIntegerTypeName(bitWidth, simpleName) : simpleName);
+    if(numElements > 1)
+        return tName + std::to_string(numElements);
     return tName;
 }
 
@@ -72,24 +116,30 @@ bool DataType::operator==(const DataType& right) const
 {
     if(this == &right)
         return true;
-    return typeName.compare(right.typeName) == 0 && num == right.num &&
+    return bitWidth == right.bitWidth && numElements == right.numElements && isFloatingPoint == right.isFloatingPoint &&
         (complexType == nullptr) == (right.complexType == nullptr) &&
         (complexType != nullptr ? (*complexType.get()) == (*right.complexType.get()) : true);
 }
 
 bool DataType::operator<(const DataType& other) const
 {
-    return complexType < other.complexType || typeName < other.typeName || num < other.num;
+    return complexType < other.complexType || bitWidth < other.bitWidth || isFloatingPoint < other.isFloatingPoint ||
+        numElements < other.numElements;
+}
+
+bool DataType::isSimpleType() const
+{
+    return !complexType;
 }
 
 bool DataType::isScalarType() const
 {
-    return !complexType && num == 1;
+    return !complexType && numElements == 1;
 }
 
 bool DataType::isVectorType() const
 {
-    return !complexType && num > 1;
+    return !complexType && numElements > 1;
 }
 
 bool DataType::isPointerType() const
@@ -133,22 +183,34 @@ bool DataType::isFloatingType() const
 {
     if(complexType)
         return false;
-    return typeName == "float" || typeName == "double" || typeName == "half";
+    return isFloatingPoint;
 }
 
 bool DataType::isIntegralType() const
 {
     if(isPointerType())
         return true;
-    return !complexType && (typeName.at(0) == 'i' || typeName == TYPE_BOOL.typeName);
+    if(complexType)
+        return false;
+    return !isFloatingPoint;
 }
 
 bool DataType::isUnknown() const
 {
-    return typeName[0] == '?';
+    return bitWidth == DataType::UNKNOWN;
 }
 
-const DataType DataType::getElementType(const int index) const
+bool DataType::isLabelType() const
+{
+    return bitWidth == DataType::LABEL;
+}
+
+bool DataType::isVoidType() const
+{
+    return bitWidth == DataType::VOID;
+}
+
+DataType DataType::getElementType(const int index) const
 {
     if(isPointerType())
         return getPointerType().value()->elementType;
@@ -159,27 +221,31 @@ const DataType DataType::getElementType(const int index) const
     if(complexType)
         throw CompilationError(
             CompilationStep::GENERAL, "Can't get element-type of heterogeneous complex type", to_string());
-    if(num == 1)
+    if(numElements == 1)
         return *this;
-    return DataType{typeName, 1};
+    return DataType{bitWidth, 1, isFloatingPoint};
 }
 
-const DataType DataType::toPointerType() const
+DataType DataType::toPointerType() const
 {
-    std::shared_ptr<ComplexType> c(new PointerType(*this));
-    return DataType(to_string() + "*", 1, c);
+    return DataType(new PointerType(*this));
 }
 
-const DataType DataType::toVectorType(unsigned char vectorWidth) const
+DataType DataType::toVectorType(unsigned char vectorWidth) const
 {
     if(complexType)
         throw CompilationError(CompilationStep::GENERAL, "Can't form vector-type of complex type", to_string());
     if(vectorWidth > 16 || vectorWidth == 0)
         throw CompilationError(CompilationStep::GENERAL, "Invalid width for SIMD vector",
             std::to_string(static_cast<unsigned>(vectorWidth)));
-    if(num == vectorWidth)
+    if(numElements == vectorWidth)
         return *this;
-    return DataType(typeName, vectorWidth, complexType);
+    return DataType(bitWidth, vectorWidth, isFloatingPoint);
+}
+
+DataType DataType::toArrayType(unsigned int numElements) const
+{
+    return DataType(new ArrayType(*this, numElements));
 }
 
 bool DataType::containsType(const DataType& other) const
@@ -188,13 +254,10 @@ bool DataType::containsType(const DataType& other) const
         return true;
     if(complexType)
         throw CompilationError(CompilationStep::GENERAL, "Can't check type hierarchy for complex type", to_string());
-    if(typeName[0] == 'i' && other.typeName[0] == 'i')
+    if(!isFloatingPoint && !other.isFloatingPoint && bitWidth <= other.bitWidth)
     {
-        if(getScalarBitCount() <= other.getScalarBitCount())
-        {
-            // FIXME correct? doesn't the comparison need to be the other way round?
-            return true;
-        }
+        // FIXME correct? doesn't the comparison need to be the other way round?
+        return true;
     }
     return false;
 }
@@ -206,10 +269,11 @@ const DataType DataType::getUnionType(const DataType& other) const
     // doesn't work for heterogeneous types
     if(complexType || other.complexType)
         throw CompilationError(CompilationStep::GENERAL, "Can't form union type of distinct complex types!");
-    if(isFloatingType() != other.isFloatingType())
+    if(isFloatingPoint != other.isFloatingPoint)
         throw CompilationError(CompilationStep::GENERAL, "Can't form union type of floating-point and integer types!");
-    return DataType(
-        getScalarBitCount() > other.getScalarBitCount() ? typeName : other.typeName, std::max(num, other.num));
+    // TODO check for special types (void, label, unknown) -> cant find union
+    return DataType(std::max(getScalarBitCount(), other.getScalarBitCount()), std::max(numElements, other.numElements),
+        isFloatingPoint);
 }
 
 unsigned char DataType::getScalarBitCount() const
@@ -222,21 +286,12 @@ unsigned char DataType::getScalarBitCount() const
         return 32;
     if(complexType)
         throw CompilationError(CompilationStep::GENERAL, "Can't get bit-width of complex type", to_string());
-    if(typeName[0] == 'i')
-    {
-        int bitCount = atoi(typeName.substr(1).data());
-        return static_cast<unsigned char>(bitCount);
-    }
-    if(typeName.compare("half") == 0)
-        // 16-bit floating point type
-        return 16;
-    if(typeName.compare("double") == 0)
-        // 64-bit floating point type
-        return 64;
-    if(typeName.compare("void") == 0)
+    if(isVoidType())
         // single byte
         return 8;
-    return 32;
+    if(isUnknown())
+        return 32;
+    return bitWidth;
 }
 
 uint32_t DataType::getScalarWidthMask() const
@@ -265,13 +320,13 @@ unsigned int DataType::getPhysicalWidth() const
 
 unsigned char DataType::getVectorWidth(bool physicalWidth) const
 {
-    if(complexType && num != 1)
+    if(complexType && numElements != 1)
         throw CompilationError(CompilationStep::GENERAL, "Can't have vectors of complex types", to_string());
-    if(physicalWidth && num == 3)
+    if(physicalWidth && numElements == 3)
         // OpenCL 1.2, page 203:
         //"For 3-component vector data types, the size of the data type is 4 * sizeof(component)"
         return 4;
-    return num;
+    return numElements;
 }
 
 unsigned DataType::getAlignmentInBytes() const
@@ -283,10 +338,10 @@ unsigned DataType::getAlignmentInBytes() const
 
 std::size_t vc4c::hash<DataType>::operator()(const DataType& type) const noexcept
 {
-    const std::hash<std::string> nameHash;
     const std::hash<std::shared_ptr<ComplexType>> complexHash;
     const std::hash<unsigned char> numHash;
-    return nameHash(type.typeName) ^ complexHash(type.complexType) ^ numHash(type.num);
+    return complexHash(type.complexType) ^ numHash(type.bitWidth) ^ numHash(type.numElements) ^
+        numHash(type.isFloatingPoint);
 }
 
 PointerType::PointerType(const DataType& elementType, const AddressSpace addressSpace, unsigned alignment) :
@@ -317,8 +372,13 @@ unsigned PointerType::getAlignmentInBytes() const
     return 4;
 }
 
-StructType::StructType(const std::vector<DataType>& elementTypes, const bool isPacked) :
-    elementTypes(elementTypes), isPacked(isPacked)
+std::string PointerType::getTypeName() const
+{
+    return elementType.to_string() + "*";
+}
+
+StructType::StructType(const std::string& name, const std::vector<DataType>& elementTypes, const bool isPacked) :
+    name(name), elementTypes(elementTypes), isPacked(isPacked)
 {
 }
 
@@ -392,6 +452,11 @@ unsigned StructType::getAlignmentInBytes() const
     return getStructSize();
 }
 
+std::string StructType::getTypeName() const
+{
+    return name;
+}
+
 ArrayType::ArrayType(const DataType& elementType, const unsigned int size) : elementType(elementType), size(size) {}
 
 bool ArrayType::operator==(const ComplexType& other) const
@@ -410,6 +475,11 @@ unsigned ArrayType::getAlignmentInBytes() const
     return elementType.getPhysicalWidth();
 }
 
+std::string ArrayType::getTypeName() const
+{
+    return (elementType.to_string() + "[") + std::to_string(size) + "]";
+}
+
 bool ImageType::operator==(const ComplexType& other) const
 {
     if(this == &other)
@@ -421,7 +491,7 @@ bool ImageType::operator==(const ComplexType& other) const
         isImageBuffer == right->isImageBuffer && isSampled == right->isSampled;
 }
 
-std::string ImageType::getImageTypeName() const
+std::string ImageType::getTypeName() const
 {
     std::string name = "image";
     name.append(std::to_string(dimensions)).append("D");

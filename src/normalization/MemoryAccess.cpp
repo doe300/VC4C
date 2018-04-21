@@ -117,7 +117,7 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 struct VPMAccessGroup
 {
     bool isVPMWrite;
-    DataType groupType;
+    DataType groupType = TYPE_UNKNOWN;
     RandomAccessList<InstructionWalker> dmaSetups;
     RandomAccessList<InstructionWalker> genericSetups;
     RandomAccessList<InstructionWalker> addressWrites;
@@ -256,7 +256,7 @@ static InstructionWalker findGroupOfVPMAccess(
             baseAndOffset.base->type.getPointerType().value()->elementType :
             baseAndOffset.base->type;
         elementType = elementType.getArrayType() ? elementType.getArrayType().value()->elementType : elementType;
-        if(elementType.complexType)
+        if(!elementType.isSimpleType())
             // XXX for now, skip combining any access to complex types (here: only struct, image)
             // don't check this read/write again
             return it.nextInBlock();

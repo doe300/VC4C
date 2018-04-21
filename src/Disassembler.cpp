@@ -77,9 +77,8 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Refere
         tmp.resize(moduleInfo.getGlobalDataSize().getValue() * 2);
         binary.read(reinterpret_cast<char*>(tmp.data()), moduleInfo.getGlobalDataSize().toBytes().getValue());
 
-        std::shared_ptr<ComplexType> elementType(
-            new ArrayType(TYPE_INT32, static_cast<unsigned>(moduleInfo.getGlobalDataSize().getValue()) * 2));
-        const DataType type("i32[]", 1, elementType);
+        const DataType type =
+            TYPE_INT32.toArrayType(static_cast<unsigned>(moduleInfo.getGlobalDataSize().getValue()) * 2);
         globals.emplace_back("globalData", type.toPointerType(), Value(ContainerValue(), type), false);
 
         auto& elements = globals.begin()->value.container.elements;

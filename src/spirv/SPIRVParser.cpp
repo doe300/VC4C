@@ -11,6 +11,7 @@
 #include "SPIRVHelper.h"
 #include "log.h"
 
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 
@@ -592,26 +593,26 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case SpvOpCapability:
         return checkCapability(static_cast<SpvCapability>(getWord(parsed_instruction, 1)));
     case SpvOpTypeVoid:
-        typeMappings[getWord(parsed_instruction, 1)] = TYPE_VOID;
+        typeMappings.emplace(getWord(parsed_instruction, 1), TYPE_VOID);
         return SPV_SUCCESS;
     case SpvOpTypeBool:
-        typeMappings[getWord(parsed_instruction, 1)] = TYPE_BOOL;
+        typeMappings.emplace(getWord(parsed_instruction, 1), TYPE_BOOL);
         return SPV_SUCCESS;
     case SpvOpTypeInt:
-        typeMappings[getWord(parsed_instruction, 1)] =
-            getIntegerType(getWord(parsed_instruction, 2), getWord(parsed_instruction, 3));
+        typeMappings.emplace(getWord(parsed_instruction, 1),
+            getIntegerType(getWord(parsed_instruction, 2), getWord(parsed_instruction, 3)));
         return SPV_SUCCESS;
     case SpvOpTypeFloat:
         if(getWord(parsed_instruction, 2) == 32)
-            typeMappings[getWord(parsed_instruction, 1)] = TYPE_FLOAT;
+            typeMappings.emplace(getWord(parsed_instruction, 1), TYPE_FLOAT);
         else if(getWord(parsed_instruction, 2) == 16)
-            typeMappings[getWord(parsed_instruction, 1)] = TYPE_HALF;
+            typeMappings.emplace(getWord(parsed_instruction, 1), TYPE_HALF);
         else if(getWord(parsed_instruction, 2) == 64)
         {
             logging::warn()
                 << "64-bit operations are not supported by the VideoCore IV architecture, further compilation may fail!"
                 << logging::endl;
-            typeMappings[getWord(parsed_instruction, 1)] = TYPE_DOUBLE;
+            typeMappings.emplace(getWord(parsed_instruction, 1), TYPE_DOUBLE);
         }
         else
             throw CompilationError(CompilationStep::PARSER, "Unsupported floating-point type");
@@ -619,8 +620,8 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case SpvOpTypeVector:
     {
         DataType type = typeMappings.at(getWord(parsed_instruction, 2));
-        type.num = static_cast<unsigned char>(getWord(parsed_instruction, 3));
-        typeMappings[getWord(parsed_instruction, 1)] = type;
+        type = type.toVectorType(static_cast<unsigned char>(getWord(parsed_instruction, 3)));
+        typeMappings.emplace(getWord(parsed_instruction, 1), type);
         return SPV_SUCCESS;
     }
     case SpvOpTypeImage:
@@ -635,15 +636,14 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             image->isImageBuffer = true;
         }
         image->isSampled = false;
-        typeMappings[parsed_instruction->result_id] = DataType(image->getImageTypeName());
-        typeMappings.at(parsed_instruction->result_id).complexType.reset(image);
-        logging::debug() << "Reading image-type '" << image->getImageTypeName() << "' with " << image->dimensions
+        typeMappings.emplace(parsed_instruction->result_id, DataType(image));
+        logging::debug() << "Reading image-type '" << image->getTypeName() << "' with " << image->dimensions
                          << " dimensions" << (image->isImageArray ? " (array)" : "")
                          << (image->isImageBuffer ? " (buffer)" : "") << logging::endl;
         return SPV_SUCCESS;
     }
     case SpvOpTypeSampler:
-        typeMappings[getWord(parsed_instruction, 1)] = TYPE_SAMPLER;
+        typeMappings.emplace(getWord(parsed_instruction, 1), TYPE_SAMPLER);
         return SPV_SUCCESS;
     case SpvOpTypeSampledImage:
     {
@@ -654,33 +654,37 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         sampledImage->isImageBuffer = image->isImageBuffer;
         sampledImage->isSampled = true;
 
-        typeMappings[parsed_instruction->result_id] = typeMappings.at(getWord(parsed_instruction, 2));
-        typeMappings.at(parsed_instruction->result_id).complexType.reset(sampledImage);
-        logging::debug() << "Reading sampled image-type '" << image->getImageTypeName() << "' with "
-                         << image->dimensions << " dimensions" << (image->isImageArray ? " (array)" : "")
+        typeMappings.emplace(parsed_instruction->result_id, DataType(sampledImage));
+        logging::debug() << "Reading sampled image-type '" << image->getTypeName() << "' with " << image->dimensions
+                         << " dimensions" << (image->isImageArray ? " (array)" : "")
                          << (image->isImageBuffer ? " (buffer)" : "") << logging::endl;
         return SPV_SUCCESS;
     }
     case SpvOpTypeArray:
     {
         const DataType elementType = typeMappings.at(getWord(parsed_instruction, 2));
-        DataType arrayType((elementType.to_string() + "[") +
-            std::to_string(constantMappings.at(getWord(parsed_instruction, 3)).literal.unsignedInt()) + "]");
-        arrayType.complexType.reset(new ArrayType(elementType,
-            static_cast<unsigned>(constantMappings.at(getWord(parsed_instruction, 3)).literal.unsignedInt())));
-        typeMappings[getWord(parsed_instruction, 1)] = arrayType;
+        typeMappings.emplace(getWord(parsed_instruction, 1),
+            elementType.toArrayType(
+                static_cast<unsigned>(constantMappings.at(getWord(parsed_instruction, 3)).literal.unsignedInt())));
         return SPV_SUCCESS;
     }
     case SpvOpTypeStruct:
     {
-        StructType* structDef = new StructType({});
-        DataType type;
-        type.complexType.reset(structDef);
         auto it = names.find(parsed_instruction->result_id);
+        std::string structName;
         if(it != names.end())
-            type.typeName = it->second;
+            structName = it->second;
+        else
+        {
+            logging::warn() << "Struct type " << parsed_instruction->result_id
+                            << " has no name, generating default name!";
+            structName =
+                std::string("%struct.") + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+        }
+        StructType* structDef = new StructType(structName, {});
+
         // add reference to this struct-type to type-mappings
-        typeMappings[parsed_instruction->result_id] = type;
+        typeMappings.emplace(parsed_instruction->result_id, DataType(structDef));
         const auto typeIDs = parseArguments(parsed_instruction, 2);
         for(const uint32_t typeID : typeIDs)
         {
@@ -698,18 +702,16 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     }
     case SpvOpTypeOpaque:
-        typeMappings[getWord(parsed_instruction, 1)] = TYPE_UNKNOWN;
-        typeMappings.at(getWord(parsed_instruction, 1)).typeName =
-            readLiteralString(parsed_instruction, &parsed_instruction->operands[1]);
         // Since there is no memory-layout to them, they can only be used as pointers
+        // TODO how to handle them better (e.g. use their name)? Own complex type for opaque types?
+        typeMappings.emplace(getWord(parsed_instruction, 1), TYPE_VOID);
         return SPV_SUCCESS;
     case SpvOpTypePointer:
     {
         DataType type = typeMappings.at(getWord(parsed_instruction, 3));
-        std::shared_ptr<ComplexType> elemType(
+        type = DataType(
             new PointerType(type, toAddressSpace(static_cast<SpvStorageClass>(getWord(parsed_instruction, 2)))));
-        type = DataType(type.to_string() + "*", 1, elemType);
-        typeMappings[getWord(parsed_instruction, 1)] = type;
+        typeMappings.emplace(getWord(parsed_instruction, 1), type);
         return SPV_SUCCESS;
     }
     case SpvOpTypeFunction:
@@ -717,7 +719,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         //-> so we can ignore this
         return SPV_SUCCESS;
     case SpvOpTypeEvent:
-        typeMappings[getWord(parsed_instruction, 1)] = TYPE_EVENT;
+        typeMappings.emplace(getWord(parsed_instruction, 1), TYPE_EVENT);
         return SPV_SUCCESS;
     case SpvOpTypeDeviceEvent:
         // OpenCL 2.x feature
@@ -853,7 +855,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         currentMethod->method->returnType = typeMappings.at(parsed_instruction->type_id);
         // add label %0 to the beginning of the method
         // XXX maybe this is not necessary? If so, it is removed anyway
-        typeMappings[0] = TYPE_LABEL;
+        typeMappings.emplace(0, TYPE_LABEL);
         instructions.emplace_back(new SPIRVLabel(0, *currentMethod));
         auto it = names.find(parsed_instruction->result_id);
         logging::debug() << "Reading function: %" << parsed_instruction->result_id << " ("
@@ -1686,7 +1688,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case SpvOpSelectionMerge:
         return UNSUPPORTED_INSTRUCTION("OpSelectionMerge");
     case SpvOpLabel:
-        typeMappings[parsed_instruction->result_id] = TYPE_LABEL;
+        typeMappings.emplace(parsed_instruction->result_id, TYPE_LABEL);
         instructions.emplace_back(new SPIRVLabel(parsed_instruction->result_id, *currentMethod));
         return SPV_SUCCESS;
     case SpvOpBranch:

@@ -632,7 +632,7 @@ Optional<Literal> Value::getLiteralValue() const
 
 std::string Value::to_string(const bool writeAccess, bool withLiterals) const
 {
-    const std::string typeName = (type.typeName.empty() ? "unknown" : type.to_string()) + ' ';
+    const std::string typeName = (type.isUnknown() ? "unknown" : type.to_string()) + ' ';
     switch(valueType)
     {
     case ValueType::LITERAL:
@@ -738,7 +738,7 @@ Value Value::createZeroInitializer(const DataType& type)
     Value val(ContainerValue(), type);
     if(type.isVectorType())
     {
-        for(unsigned i = 0; i < type.num; i++)
+        for(unsigned i = 0; i < type.getVectorWidth(); i++)
         {
             val.container.elements.push_back(INT_ZERO);
         }

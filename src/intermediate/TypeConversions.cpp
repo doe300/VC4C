@@ -42,7 +42,8 @@ static InstructionWalker insertCombiningBitcast(
     shiftedTruncatedVectors.reserve(sizeFactor);
     for(auto i = 0; i < sizeFactor; ++i)
     {
-        shiftedTruncatedVectors.emplace_back(method.addNewLocal(dest.type.toVectorType(src.type.num), "%bit_cast"));
+        shiftedTruncatedVectors.emplace_back(
+            method.addNewLocal(dest.type.toVectorType(src.type.getVectorWidth()), "%bit_cast"));
         const Value& result = shiftedTruncatedVectors.back();
         it.emplace(new Operation(
             OP_SHL, result, truncatedSource, Value(Literal(static_cast<unsigned>(shift * i)), TYPE_INT8)));
@@ -70,7 +71,8 @@ static InstructionWalker insertCombiningBitcast(
             rotatedVectors.emplace_back(shiftedTruncatedVectors.front());
         else
         {
-            rotatedVectors.emplace_back(method.addNewLocal(dest.type.toVectorType(src.type.num), "%bit_cast"));
+            rotatedVectors.emplace_back(
+                method.addNewLocal(dest.type.toVectorType(src.type.getVectorWidth()), "%bit_cast"));
             const Value& result = rotatedVectors.back();
             it = insertVectorRotation(
                 it, shiftedTruncatedVectors[i], Value(Literal(i), TYPE_INT8), result, Direction::DOWN);
@@ -91,7 +93,7 @@ static InstructionWalker insertCombiningBitcast(
     Value combinedVector = INT_ZERO;
     for(const Value& rv : rotatedVectors)
     {
-        Value newCombinedVector = method.addNewLocal(dest.type.toVectorType(src.type.num), "%bit_cast");
+        Value newCombinedVector = method.addNewLocal(dest.type.toVectorType(src.type.getVectorWidth()), "%bit_cast");
         it.emplace(new Operation(OP_OR, newCombinedVector, combinedVector, rv));
         it.nextInBlock();
         combinedVector = newCombinedVector;
@@ -114,7 +116,7 @@ static InstructionWalker insertCombiningBitcast(
     it.emplace(new MoveOperation(destination, INT_ZERO));
     it.nextInBlock();
 
-    for(unsigned i = 0; i < dest.type.num; ++i)
+    for(unsigned i = 0; i < dest.type.getVectorWidth(); ++i)
     {
         unsigned sourceIndex = i * sizeFactor;
 
@@ -181,7 +183,7 @@ static InstructionWalker insertSplittingBitcast(
     it.emplace(new MoveOperation(destination, INT_ZERO));
     it.nextInBlock();
 
-    for(unsigned i = 0; i < dest.type.num; ++i)
+    for(unsigned i = 0; i < dest.type.getVectorWidth(); ++i)
     {
         const Value& stv = shiftedTruncatedVectors.at(i % shiftedTruncatedVectors.size());
         unsigned sourceElement = static_cast<unsigned>(i / shiftedTruncatedVectors.size());
@@ -217,9 +219,9 @@ InstructionWalker intermediate::insertBitcast(
         it.emplace(new intermediate::MoveOperation(dest, UNDEFINED_VALUE));
     else if(src.isZeroInitializer())
         it.emplace(new intermediate::MoveOperation(dest, INT_ZERO));
-    else if(src.type.num > dest.type.num)
+    else if(src.type.getVectorWidth() > dest.type.getVectorWidth())
         it = insertCombiningBitcast(it, method, src, dest);
-    else if(src.type.num < dest.type.num)
+    else if(src.type.getVectorWidth() < dest.type.getVectorWidth())
         it = insertSplittingBitcast(it, method, src, dest);
     else
         // bit-casts with types of same vector-size (and therefore same element-size) are simple moves
@@ -339,7 +341,7 @@ InstructionWalker intermediate::insertSaturation(
     //-> dest = max(min(src, destType.max), destType.min)
     //-> or via pack-modes
 
-    if(dest.type.complexType || dest.type.isFloatingType())
+    if(!dest.type.isSimpleType() || dest.type.isFloatingType())
         throw CompilationError(CompilationStep::GENERAL, "Invalid target type for saturation", dest.type.to_string());
 
     if(src.getLiteralValue())

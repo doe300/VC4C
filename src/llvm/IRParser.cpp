@@ -155,10 +155,14 @@ void IRParser::parse(Module& module)
             {
                 for(DataType& childType : pair.second.getStructType().value()->elementTypes)
                 {
-                    if(childType.complexType == nullptr && complexTypes.find(childType.typeName) != complexTypes.end())
-                    {
-                        childType = complexTypes.at(childType.typeName);
-                    }
+                    if(childType.getScalarBitCount() == DataType::COMPLEX)
+                        throw CompilationError(
+                            CompilationStep::PARSER, "Unhandled case of nested complex types", pair.second.to_string());
+                    //                    if(childType.isSimpleType() && complexTypes.find(childType.typeName) !=
+                    //                    complexTypes.end())
+                    //                    {
+                    //                        childType = complexTypes.at(childType.typeName);
+                    //                    }
                 }
             }
         }
@@ -232,6 +236,21 @@ static Optional<AddressSpace> readAddressSpace(Scanner& scanner)
     return toAddressSpace(static_cast<int>(addressSpace));
 }
 
+static std::pair<unsigned char, bool> toTypeFlags(const std::string& name)
+{
+    if(name[0] == 'i')
+    {
+        return std::make_pair(std::atoi(&name[1]), false);
+    }
+    if(name == "float")
+        return std::make_pair(32, true);
+    if(name == "double")
+        return std::make_pair(64, true);
+    if(name == "half")
+        return std::make_pair(16, true);
+    throw CompilationError(CompilationStep::PARSER, "Unknown type name: ", name);
+}
+
 DataType IRParser::parseType()
 {
     // support for singular types (i64, float8, ...)
@@ -295,29 +314,24 @@ DataType IRParser::parseType()
         typeName = typeName.substr(0, typeName.size() - 1);
     }
     // correct i1 to bool
-    if(typeName.compare("i1") == 0)
-        typeName = TYPE_BOOL.typeName;
+    auto typeFlags = toTypeFlags(typeName);
     DataType type = TYPE_UNKNOWN;
     if(isArray)
     {
-        type.num = 1;
-        type.complexType.reset(new ArrayType{childType, num});
-        type.typeName = (childType.to_string() + "[") + std::to_string(num) + "]";
+        type = childType.toArrayType(num);
     }
     else if(isVector)
     {
-        type = childType;
-        type.num = static_cast<uint8_t>(num);
+        type = childType.toVectorType(static_cast<uint8_t>(num));
     }
-    else // scalar or complex type
-        type = DataType(typeName, static_cast<uint8_t>(num));
-    if(complexTypes.find(typeName) != complexTypes.end())
-        type.complexType = complexTypes.at(typeName).complexType;
+    else if(complexTypes.find(typeName) != complexTypes.end())
+        type = complexTypes.at(typeName);
+    else
+        type = DataType(typeFlags.first, static_cast<uint8_t>(num), typeFlags.second);
     for(unsigned i = 0; i < numPointerTypes; ++i)
     {
         // wrap in pointer type
-        std::shared_ptr<ComplexType> elementType(new PointerType(type, addressSpace.value_or(AddressSpace::PRIVATE)));
-        type = DataType(type.to_string() + "*", 1, elementType);
+        type = DataType(new PointerType(type, addressSpace.value_or(AddressSpace::PRIVATE)));
     }
     return type;
 }
@@ -463,9 +477,7 @@ DataType IRParser::parseStructDefinition()
     std::string name(scanner.pop().getText().value());
     expectSkipToken(scanner, '=');
     expectSkipToken(scanner, "type");
-    DataType type;
-    type.typeName = name;
-    type.complexType.reset(new StructType({}));
+    DataType type(new StructType(name, {}));
     if(skipToken(scanner, '<'))
     {
         type.getStructType().value()->isPacked = true;
@@ -952,9 +964,7 @@ void IRParser::parseAssignment(
                 throw CompilationError(CompilationStep::PARSER, "Cannot allocate a non-constant number of entries",
                     numEntries.to_string());
             const DataType childType = type;
-            type.num = 1;
-            type.complexType.reset(new ArrayType{childType, numEntries.getLiteralValue()->unsignedInt()});
-            type.typeName = (childType.to_string() + "[") + std::to_string(numEntries.literal.unsignedInt()) + "]";
+            type = childType.toArrayType(numEntries.getLiteralValue()->unsignedInt());
         }
         std::size_t alignment = 1;
         skipToken(scanner, ',');
@@ -1288,8 +1298,7 @@ void IRParser::parseAssignment(
         logging::debug() << "Shuffling vectors " << container1.to_string() << " and " << container2.to_string()
                          << " with mask " << shuffleMask.to_string() << " into " << destination << logging::endl;
 
-        DataType resultType = container1.type;
-        resultType.num = shuffleMask.type.num;
+        DataType resultType = container1.type.toVectorType(shuffleMask.type.getVectorWidth());
         instructions.emplace_back(
             new ShuffleVector(method.method->findOrCreateLocal(resultType, destination)->createReference(), container1,
                 container2, shuffleMask));

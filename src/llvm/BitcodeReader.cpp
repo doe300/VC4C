@@ -469,8 +469,7 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
             imageType->isImageBuffer = str->getName().find("buffer") != llvm::StringRef::npos;
             imageType->isSampled = false;
 
-            std::shared_ptr<ComplexType> c(imageType);
-            return addToMap(DataType(imageType->getImageTypeName(), 1, c), type, typesMap);
+            return addToMap(DataType(imageType), type, typesMap);
         }
     }
     if(type->isStructTy())
@@ -481,25 +480,21 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
             return TYPE_SAMPLER;
         }
         // need to be added to the map before iterating over the children to prevent stack-overflow
-        DataType& dataType = addToMap(DataType(type->getStructName(), 1), type, typesMap);
-        std::vector<DataType> elementTypes;
-        elementTypes.reserve(type->getStructNumElements());
+        // (since the type itself could be recursive)
+        StructType* structType =
+            new StructType(type->getStructName(), {}, llvm::cast<const llvm::StructType>(type)->isPacked());
+        DataType& dataType = addToMap(DataType(structType), type, typesMap);
+        structType->elementTypes.reserve(type->getStructNumElements());
         for(unsigned i = 0; i < type->getStructNumElements(); ++i)
         {
-            elementTypes.emplace_back(toDataType(type->getStructElementType(i)));
+            structType->elementTypes.emplace_back(toDataType(type->getStructElementType(i)));
         }
-        std::shared_ptr<ComplexType> structType(
-            new StructType(elementTypes, llvm::cast<const llvm::StructType>(type)->isPacked()));
-        dataType.complexType = structType;
         return dataType;
     }
     if(type->isArrayTy())
     {
         const DataType elementType = toDataType(type->getArrayElementType());
-        std::shared_ptr<ComplexType> c(new ArrayType(elementType, static_cast<unsigned>(type->getArrayNumElements())));
-        return addToMap(
-            DataType((elementType.to_string() + "[") + std::to_string(type->getArrayNumElements()) + "]", 1, c), type,
-            typesMap);
+        return addToMap(elementType.toArrayType(type->getArrayNumElements()), type, typesMap);
     }
     if(type->isPointerTy())
     {
@@ -1198,7 +1193,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
     if(expr->getOpcode() == llvm::Instruction::OtherOps::ICmp || expr->getOpcode() == llvm::Instruction::OtherOps::FCmp)
     {
         const DataType destType = toDataType(expr->getType());
-        const DataType boolType = TYPE_BOOL.toVectorType(destType.num);
+        const DataType boolType = TYPE_BOOL.toVectorType(destType.getVectorWidth());
 
         const Value src0 = toConstant(module, expr->getOperand(0));
         const Value src1 = toConstant(module, expr->getOperand(1));

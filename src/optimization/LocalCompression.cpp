@@ -56,7 +56,7 @@ static void compressLocalIntoRegister(Method& method, const Local& local, const 
 {
     if(index > 15)
         throw CompilationError(CompilationStep::OPTIMIZER, "Container index out of bounds", std::to_string(index));
-    if(local.type.num != 1)
+    if(local.type.getVectorWidth() != 1)
         throw CompilationError(CompilationStep::OPTIMIZER, "Can't compress local of vector-type: ", local.to_string());
 
     // TODO most efficient way of finding iterator for instruction?

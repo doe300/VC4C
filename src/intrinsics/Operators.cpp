@@ -56,7 +56,7 @@ InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(
     else
     {
         // if exactly one operand was negative, invert sign of result
-        const Value eitherSign = method.addNewLocal(TYPE_INT32.toVectorType(tmpDest.type.num));
+        const Value eitherSign = method.addNewLocal(TYPE_INT32.toVectorType(tmpDest.type.getVectorWidth()));
         it.emplace(new Operation(OP_XOR, eitherSign, op1Sign, op2Sign));
         it.nextInBlock();
         return insertRestoreSign(it, method, tmpDest, opDest, eitherSign);

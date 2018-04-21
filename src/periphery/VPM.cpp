@@ -306,7 +306,7 @@ std::pair<DataType, uint8_t> periphery::getBestVectorSize(const int64_t numBytes
             if(numBytes % (numElements * typeSize) == 0)
             {
                 DataType result = typeSize == 4 ? TYPE_INT32 : typeSize == 2 ? TYPE_INT16 : TYPE_INT8;
-                result.num = numElements;
+                result = result.toVectorType(numElements);
                 uint8_t numVectors = static_cast<uint8_t>(
                     numBytes / (static_cast<int64_t>(numElements) * static_cast<int64_t>(typeSize)));
                 return std::make_pair(result, numVectors);
@@ -653,12 +653,12 @@ uint8_t VPMArea::getElementsInRow(const DataType& elementType) const
 
 bool VPMArea::canBeAccessedViaDMA() const
 {
-    return usageType == VPMUsage::SCRATCH || getElementType().num == NATIVE_VECTOR_SIZE;
+    return usageType == VPMUsage::SCRATCH || getElementType().getVectorWidth() == NATIVE_VECTOR_SIZE;
 }
 
 bool VPMArea::canBePackedIntoRow() const
 {
-    return !canBeAccessedViaDMA() || getElementType().num == NATIVE_VECTOR_SIZE;
+    return !canBeAccessedViaDMA() || getElementType().getVectorWidth() == NATIVE_VECTOR_SIZE;
 }
 
 VPWGenericSetup VPMArea::toWriteSetup(const DataType& elementType) const
@@ -964,14 +964,12 @@ DataType VPM::getVPMStorageType(const DataType& type)
     {
         // e.g. short2[17] -> short16[17]
         // also int4[1][2] -> int16[1][2]
-        ArrayType* array = new ArrayType(getVPMStorageType(type.getElementType()), type.getArrayType().value()->size);
-        inVPMType = DataType((array->elementType.to_string() + "[") + std::to_string(array->size) + "]", 1,
-            std::shared_ptr<ComplexType>(array));
+        inVPMType = getVPMStorageType(type.getElementType()).toArrayType(type.getArrayType().value()->size);
     }
     else if(type.getPointerType())
         // e.g. int* -> int16
         inVPMType = TYPE_INT32.toVectorType(16);
-    else if(type.complexType)
+    else if(!type.isSimpleType())
         throw CompilationError(CompilationStep::GENERAL, "Unhandled element-type to cache in VPM", type.to_string());
     else
         // e.g. char3 -> char16

@@ -225,7 +225,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
             it.nextInBlock();
             // rotate the second vector with the size of the first as offset
             const Value secondRotated = method.addNewLocal(destination.type, "%vector_shuffle");
-            const Value numElementsFirst(Literal(static_cast<uint32_t>(source0.type.num)), TYPE_INT8);
+            const Value numElementsFirst(Literal(static_cast<uint32_t>(source0.type.getVectorWidth())), TYPE_INT8);
             it = insertVectorRotation(it, source1, numElementsFirst, secondRotated, Direction::UP);
             // insert the elements of the second vector with an element-number of higher or equals the size of the first
             // vector into the result
@@ -247,7 +247,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         const int32_t indexValue =
             mask.container.elements[0].literal.signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ?
             mask.container.elements[0].literal.signedInt() :
-            mask.container.elements[0].literal.signedInt() - static_cast<int32_t>(source0.type.num);
+            mask.container.elements[0].literal.signedInt() - static_cast<int32_t>(source0.type.getVectorWidth());
         const Value source =
             mask.container.elements[0].literal.signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ?
             source0 :
@@ -351,11 +351,11 @@ InstructionWalker intermediate::insertMakePositive(
         if(src.type.getScalarBitCount() < 32)
         {
             // to make sure, the leading bits are set
-            srcInt = method.addNewLocal(TYPE_INT32.toVectorType(src.type.num), "%sext");
+            srcInt = method.addNewLocal(TYPE_INT32.toVectorType(src.type.getVectorWidth()), "%sext");
             it = insertSignExtension(it, method, src, srcInt, true);
         }
         if(!writeIsNegative.hasType(ValueType::LOCAL))
-            writeIsNegative = method.addNewLocal(TYPE_INT32.toVectorType(src.type.num), "%sign");
+            writeIsNegative = method.addNewLocal(TYPE_INT32.toVectorType(src.type.getVectorWidth()), "%sign");
         it.emplace(new Operation(OP_ASR, writeIsNegative, srcInt, Value(Literal(31u), TYPE_INT8)));
         it.nextInBlock();
         //%tmp = xor %src, %sign
@@ -618,8 +618,8 @@ InstructionWalker intermediate::insertOperation(const OpCode& opCode, Instructio
             return it;
         }
     }
-    auto vectorSize =
-        std::max(firstOperand.type.num, secondOperand ? secondOperand->type.num : static_cast<unsigned char>(1));
+    auto vectorSize = std::max(firstOperand.type.getVectorWidth(),
+        secondOperand ? secondOperand->type.getVectorWidth() : static_cast<unsigned char>(1));
     if(output.isUndefined())
         output = method.addNewLocal(opCode.returnsFloat ?
                 TYPE_FLOAT.toVectorType(vectorSize) :

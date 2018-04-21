@@ -35,6 +35,7 @@ namespace vc4c
         virtual bool operator==(const ComplexType& other) const = 0;
 
         virtual unsigned getAlignmentInBytes() const = 0;
+        virtual std::string getTypeName() const = 0;
     };
 
     struct PointerType;
@@ -47,15 +48,16 @@ namespace vc4c
      *
      * Each value contains its own DataType object. Values of the same type share "equal" DataType objects.
      */
-    struct DataType
+    class DataType
     {
-        std::string typeName;
-        // the number of elements for vector-types
-        unsigned char num;
-        std::shared_ptr<ComplexType> complexType;
-
-        DataType(const std::string& name = "", unsigned char num = 1,
-            const std::shared_ptr<ComplexType>& complexType = nullptr);
+    public:
+        constexpr DataType(unsigned char scalarBitWidth, unsigned char numVectorElements, bool isFloatingPointType) :
+            complexType(), bitWidth(scalarBitWidth), numElements(numVectorElements),
+            isFloatingPoint(isFloatingPointType)
+        {
+        }
+        explicit DataType(std::shared_ptr<ComplexType>&& complexType);
+        explicit DataType(ComplexType* complexType) : DataType(std::shared_ptr<ComplexType>(complexType)) {}
 
         std::string to_string() const;
 
@@ -73,6 +75,10 @@ namespace vc4c
         bool operator<(const DataType& other) const;
 
         //"simple" types
+        /*
+         * Whether this type is not a complex type
+         */
+        bool isSimpleType() const;
         // vector can only be vector of scalars, so its counts as simple type!
         /*
          * Whether this is a non-complex type with a single element
@@ -98,11 +104,18 @@ namespace vc4c
          * Whether this is a scalar- or vector-variant of an integral type (e.g. integers, boolean, pointers)
          */
         bool isIntegralType() const;
-
         /*
          * Whether this type is the unknown-type
          */
         bool isUnknown() const;
+        /*
+         * Whether this type is a label
+         */
+        bool isLabelType() const;
+        /*
+         * Whether this type is void
+         */
+        bool isVoidType() const;
 
         /*
          * Returns the element-type for the given index.
@@ -111,17 +124,21 @@ namespace vc4c
          * For uniform types (arrays, vectors), where all elements are of the same type, ANY_ELEMENT can be passed as
          * index.
          */
-        const DataType getElementType(int index = ANY_ELEMENT) const;
+        DataType getElementType(int index = ANY_ELEMENT) const;
         /*
          * Creates a new type representing a pointer-type to this type.
          */
-        const DataType toPointerType() const;
+        DataType toPointerType() const;
         /*
          * Creates a new vector-type with the given vector-width and the same element-type as this type
          *
          * Vector-types of complex types are not supported, neither are vector-types with more than 16 elements
          */
-        const DataType toVectorType(unsigned char vectorWidth) const;
+        DataType toVectorType(unsigned char vectorWidth) const;
+        /*
+         * Creates a new array-type with this type as element type and the given array-length
+         */
+        DataType toArrayType(unsigned int numElements) const;
 
         /*
          * Whether this type contains the other type.
@@ -171,6 +188,33 @@ namespace vc4c
          * Returns the alignment of an object of this type
          */
         unsigned getAlignmentInBytes() const;
+
+        enum TypeWidths : unsigned char
+        {
+            VOID = 0,
+            BIT = 1,
+            BYTE = 8,
+            HALF_WORD = 16,
+            WORD = 32,
+            LONG_WORD = 64,
+            COMPLEX = 253,
+            LABEL = 254,
+            UNKNOWN = 255
+        };
+
+    private:
+        std::shared_ptr<ComplexType> complexType;
+        /*
+         * the number of bits a scalar value of this type used on the QPU.
+         * NOTE: This is not the physical bit-width used in memory!
+         */
+        unsigned char bitWidth;
+        // the number of elements for vector-types
+        unsigned char numElements;
+        // whether this type is a floating point type
+        bool isFloatingPoint;
+
+        friend struct hash<DataType>;
     };
 
     template <>
@@ -182,51 +226,51 @@ namespace vc4c
     /*
      * 8-bit integer type (e.g. char, uchar)
      */
-    static const DataType TYPE_INT8 = DataType{"i8", 1};
+    static const DataType TYPE_INT8 = DataType{DataType::BYTE, 1, false};
     /*
      * 16-bit integer type (e.g. short, ushort)
      */
-    static const DataType TYPE_INT16 = DataType{"i16", 1};
+    static const DataType TYPE_INT16 = DataType{DataType::HALF_WORD, 1, false};
     /*
      * 32-bit integer type (e.g. int, uint)
      */
-    static const DataType TYPE_INT32 = DataType{"i32", 1};
+    static const DataType TYPE_INT32 = DataType{DataType::WORD, 1, false};
     /*
      * 64-bit integer type (e.g. long, ulong)
      *
      * NOTE: Is only supported for constants
      */
-    static const DataType TYPE_INT64 = DataType{"i64", 1};
+    static const DataType TYPE_INT64 = DataType{DataType::LONG_WORD, 1, false};
     /*
      * 32-bit floating-point type
      */
-    static const DataType TYPE_FLOAT = DataType{"float", 1};
+    static const DataType TYPE_FLOAT = DataType{DataType::WORD, 1, true};
     /*
      * 16-bit floating-point type
      */
-    static const DataType TYPE_HALF = DataType{"half", 1};
+    static const DataType TYPE_HALF = DataType{DataType::HALF_WORD, 1, true};
     /*
      * 64-bit floating-point type
      *
      * NOTE: Is only supported for constants
      */
-    static const DataType TYPE_DOUBLE = DataType{"double", 1};
+    static const DataType TYPE_DOUBLE = DataType{DataType::LONG_WORD, 1, true};
     /*
      * 1-bit boolean type
      */
-    static const DataType TYPE_BOOL = DataType{"bool", 1};
+    static const DataType TYPE_BOOL = DataType{DataType::BIT, 1, false};
     /*
      * Void-type, only valid as pointed-to type
      */
-    static const DataType TYPE_VOID = DataType{"void", 1};
+    static const DataType TYPE_VOID = DataType{DataType::VOID, 1, false};
     /*
      * Unknown type, e.g. in unknown-values or as type of periphery-registers
      */
-    static const DataType TYPE_UNKNOWN = DataType{"?", 1};
+    static const DataType TYPE_UNKNOWN = DataType{DataType::UNKNOWN, 1, false};
     /*
      * Data-type for labels as destination for branches
      */
-    static const DataType TYPE_LABEL = DataType{"label", 1};
+    static const DataType TYPE_LABEL = DataType{DataType::LABEL, 1, false};
     /*
      * Data-type for OpenCL samplers, is equivalent to 32-bit integers
      */
@@ -286,6 +330,7 @@ namespace vc4c
         unsigned getAlignment() const;
 
         unsigned getAlignmentInBytes() const override;
+        std::string getTypeName() const override;
     };
 
     /*
@@ -293,6 +338,10 @@ namespace vc4c
      */
     struct StructType : public ComplexType
     {
+        /*
+         * The name of the struct
+         */
+        std::string name;
         /*
          * The data-types of the single elements
          */
@@ -306,7 +355,7 @@ namespace vc4c
          */
         bool isPacked;
 
-        StructType(const std::vector<DataType>& elementTypes, bool isPacked = false);
+        StructType(const std::string& name, const std::vector<DataType>& elementTypes, bool isPacked = false);
         ~StructType() override = default;
         bool operator==(const ComplexType& other) const override;
 
@@ -317,6 +366,7 @@ namespace vc4c
         unsigned int getStructSize(const int index = WHOLE_OBJECT) const;
 
         unsigned getAlignmentInBytes() const override;
+        std::string getTypeName() const override;
     };
 
     /*
@@ -338,6 +388,7 @@ namespace vc4c
         bool operator==(const ComplexType& other) const override;
 
         unsigned getAlignmentInBytes() const override;
+        std::string getTypeName() const override;
     };
 
     /*
@@ -365,12 +416,11 @@ namespace vc4c
         ~ImageType() override = default;
         bool operator==(const ComplexType& other) const override;
 
+        unsigned getAlignmentInBytes() const override;
         /*
          * Reconstructs the OpenCL C image-type name out of the image-info stored
          */
-        std::string getImageTypeName() const;
-
-        unsigned getAlignmentInBytes() const override;
+        std::string getTypeName() const override;
 
         /*
          * Creates a name for a new local storing the image-configuration

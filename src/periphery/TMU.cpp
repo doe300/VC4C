@@ -20,7 +20,7 @@ const TMU periphery::TMU1{REG_TMU1_COORD_S_U_X, REG_TMU1_COORD_T_V_Y, REG_TMU1_C
 static InstructionWalker insertCalculateAddressOffsets(
     Method& method, InstructionWalker it, const Value& baseAddress, const DataType& type, Value& outputAddress)
 {
-    if(type.num == 1)
+    if(type.getVectorWidth() == 1)
     {
         outputAddress = baseAddress;
         return it;
@@ -35,9 +35,9 @@ static InstructionWalker insertCalculateAddressOffsets(
      *
      * any element not in use (e.g. 5 to 15 for 4-element vector) needs to be set to 0
      */
-    const Value addressOffsets = method.addNewLocal(TYPE_INT32.toVectorType(type.num), "%address_offset");
+    const Value addressOffsets = method.addNewLocal(TYPE_INT32.toVectorType(type.getVectorWidth()), "%address_offset");
     // XXX actually this is baseAddr.type * type.num, but we can't have vectors of pointers
-    outputAddress = method.addNewLocal(TYPE_INT32.toVectorType(type.num), "%tmu_address");
+    outputAddress = method.addNewLocal(TYPE_INT32.toVectorType(type.getVectorWidth()), "%tmu_address");
 
     // addressOffsets = sizeof(type) * elem_num
     it.emplace(new intermediate::Operation(OP_MUL24, addressOffsets,
@@ -45,7 +45,7 @@ static InstructionWalker insertCalculateAddressOffsets(
     it.nextInBlock();
     // outputAddress = (elem_num < type.num) ? baseAddress + addressOffsets : 0
     it.emplace(new intermediate::Operation(OP_SUB, NOP_REGISTER, ELEMENT_NUMBER_REGISTER,
-        Value(Literal(static_cast<int32_t>(type.num)), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
+        Value(Literal(static_cast<int32_t>(type.getVectorWidth())), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
     it.nextInBlock();
     // XXX rewrite, so it can be combined with next instruction
     // TODO or generally check if we can rewrite "mov out, 0" in way so we can combine it with next/previous instruction
@@ -143,7 +143,7 @@ static InstructionWalker insertExtractByteElements(
 InstructionWalker periphery::insertReadVectorFromTMU(
     Method& method, InstructionWalker it, const Value& dest, const Value& addr, const TMU& tmu)
 {
-    if(dest.type.complexType && !dest.type.getPointerType())
+    if(!dest.type.isSimpleType() && !dest.type.getPointerType())
         throw CompilationError(
             CompilationStep::GENERAL, "Reading of this type via TMU is not (yet) implemented", dest.type.to_string());
 
@@ -162,14 +162,14 @@ InstructionWalker periphery::insertReadVectorFromTMU(
     // FIXME in both cases, result values are unsigned!! (Same behavior as for VPM?!)
     if(dest.type.getScalarBitCount() == 8)
     {
-        const Value tmp = method.addNewLocal(TYPE_INT32.toVectorType(dest.type.num), "%tmu_result");
+        const Value tmp = method.addNewLocal(TYPE_INT32.toVectorType(dest.type.getVectorWidth()), "%tmu_result");
         it.emplace(new intermediate::MoveOperation(tmp, TMU_READ_REGISTER));
         it.nextInBlock();
         return insertExtractByteElements(method, it, dest, tmp, addresses);
     }
     else if(dest.type.getScalarBitCount() == 16)
     {
-        const Value tmp = method.addNewLocal(TYPE_INT32.toVectorType(dest.type.num), "%tmu_result");
+        const Value tmp = method.addNewLocal(TYPE_INT32.toVectorType(dest.type.getVectorWidth()), "%tmu_result");
         it.emplace(new intermediate::MoveOperation(tmp, TMU_READ_REGISTER));
         it.nextInBlock();
         return insertExtractHalfWordElements(method, it, dest, tmp, addresses);

@@ -1166,13 +1166,15 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
         //"bit-cast" to correct type for displaying and pack-modes
         if(addCode.acceptsFloat)
         {
-            addIn0.type = TYPE_FLOAT.toVectorType(addIn0.type.num);
-            addIn1.type = TYPE_FLOAT.toVectorType(addIn1.type.num);
+            addIn0.type = TYPE_FLOAT.toVectorType(addIn0.type.getVectorWidth());
+            addIn1.type = TYPE_FLOAT.toVectorType(addIn1.type.getVectorWidth());
         }
         else if(!(addCode == OP_OR && addIn0 == addIn1)) // move leaves original types
         {
-            addIn0.type = addIn0.type.isFloatingType() ? TYPE_INT32.toVectorType(addIn0.type.num) : addIn0.type;
-            addIn1.type = addIn1.type.isFloatingType() ? TYPE_INT32.toVectorType(addIn1.type.num) : addIn1.type;
+            addIn0.type =
+                addIn0.type.isFloatingType() ? TYPE_INT32.toVectorType(addIn0.type.getVectorWidth()) : addIn0.type;
+            addIn1.type =
+                addIn1.type.isFloatingType() ? TYPE_INT32.toVectorType(addIn1.type.getVectorWidth()) : addIn1.type;
         }
 
         auto tmp = addCode.calculate(addIn0, addIn1);
@@ -1205,13 +1207,15 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
         //"bit-cast" to correct type for displaying and pack-modes
         if(mulCode.acceptsFloat)
         {
-            mulIn0.type = TYPE_FLOAT.toVectorType(mulIn0.type.num);
-            mulIn1.type = TYPE_FLOAT.toVectorType(mulIn1.type.num);
+            mulIn0.type = TYPE_FLOAT.toVectorType(mulIn0.type.getVectorWidth());
+            mulIn1.type = TYPE_FLOAT.toVectorType(mulIn1.type.getVectorWidth());
         }
         else if(!((mulCode == OP_V8MIN || mulCode == OP_V8MAX) && addIn0 == addIn1)) // move leaves original types
         {
-            mulIn0.type = mulIn0.type.isFloatingType() ? TYPE_INT32.toVectorType(mulIn0.type.num) : mulIn0.type;
-            mulIn1.type = mulIn1.type.isFloatingType() ? TYPE_INT32.toVectorType(mulIn1.type.num) : mulIn1.type;
+            mulIn0.type =
+                mulIn0.type.isFloatingType() ? TYPE_INT32.toVectorType(mulIn0.type.getVectorWidth()) : mulIn0.type;
+            mulIn1.type =
+                mulIn1.type.isFloatingType() ? TYPE_INT32.toVectorType(mulIn1.type.getVectorWidth()) : mulIn1.type;
         }
 
         auto tmp = mulCode.calculate(mulIn0, mulIn1);

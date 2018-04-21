@@ -52,7 +52,7 @@ namespace vc4c
 
             DataType parseType();
             std::vector<std::pair<Value, ParameterDecorations>> parseParameters();
-            Value toValue(const Token& token, const DataType& type = {""});
+            Value toValue(const Token& token, const DataType& type = TYPE_UNKNOWN);
             Value parseValue(bool withType = true, const DataType& typeArg = TYPE_UNKNOWN);
             DataType parseStructDefinition();
             std::vector<Value> parseIndices();

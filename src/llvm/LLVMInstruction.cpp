@@ -568,8 +568,7 @@ bool ShuffleVector::mapInstruction(Method& method) const
     // shuffling = iteration over all elements in both vectors and re-ordering in order given
     logging::debug() << "Generating operations mixing " << v1.to_string() << " and " << v2.to_string() << " into "
                      << dest.to_string() << logging::endl;
-    DataType destType = v1.type;
-    destType.num = mask.type.num;
+    DataType destType = v1.type.toVectorType(mask.type.getVectorWidth());
     intermediate::insertVectorShuffle(method.appendToEnd(), method, dest, v1, v2, mask);
     return true;
 }

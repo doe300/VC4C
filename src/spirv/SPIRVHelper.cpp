@@ -685,7 +685,7 @@ DataType spirv2qasm::getIntegerType(const uint32_t bitWidth, const uint32_t sign
     if(bitWidth == 8)
         return TYPE_INT8;
     logging::debug() << "Unrecognized integer type with " << bitWidth << " bits" << logging::endl;
-    return DataType(std::string("i") + std::to_string(bitWidth));
+    return DataType(bitWidth, 1, false);
 }
 
 AddressSpace spirv2qasm::toAddressSpace(const SpvStorageClass storageClass)

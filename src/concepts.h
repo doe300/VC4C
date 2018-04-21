@@ -78,7 +78,6 @@ namespace vc4c
      *
      * (most of this concepts are required by Value)
      */
-    static_assert(std::is_default_constructible<DataType>::value, "DataType is not default constructible!");
     static_assert(assert_assignable<DataType>::value, "DataType is not assignable!");
     static_assert(std::is_destructible<DataType>::value, "DataType is not destructible!");
     static_assert(assert_comparable<DataType>::value, "DataType is not comparable!");

@@ -381,7 +381,7 @@ static Optional<unsigned> determineVectorizationFactor(const ControlFlowLoop& lo
         if(it->getOutput())
         {
             // TODO is this check enough?
-            maxTypeWidth = std::max(maxTypeWidth, it->getOutput()->type.num);
+            maxTypeWidth = std::max(maxTypeWidth, it->getOutput()->type.getVectorWidth());
         }
         it.nextInMethod();
     }
@@ -486,7 +486,7 @@ static int calculateCostsVsBenefits(
 
     // constant cost - loading immediate for iteration-step for vector-width > 15 (no longer fitting into small
     // immediate)
-    if(loopControl.iterationStep.value()->getOutput()->type.num * loopControl.vectorizationFactor > 15)
+    if(loopControl.iterationStep.value()->getOutput()->type.getVectorWidth() * loopControl.vectorizationFactor > 15)
         ++costs;
 
     FastSet<const Local*> readAndWrittenAddresses;
@@ -564,8 +564,8 @@ static void vectorizeInstruction(InstructionWalker it,
         if(arg.hasType(ValueType::LOCAL) && arg.type != arg.local->type)
         {
             scheduleForVectorization(arg.local, openInstructions, loop);
-            const_cast<DataType&>(arg.type).num = arg.local->type.num;
-            vectorWidth = std::max(vectorWidth, arg.type.num);
+            const_cast<DataType&>(arg.type) = arg.type.toVectorType(arg.local->type.getVectorWidth());
+            vectorWidth = std::max(vectorWidth, arg.type.getVectorWidth());
         }
         else if(arg.hasType(ValueType::REGISTER))
         {
@@ -579,10 +579,10 @@ static void vectorizeInstruction(InstructionWalker it,
     {
         // TODO vector-rotations need special handling?!
         Value& out = const_cast<Value&>(it->getOutput().value());
-        out.type.num = vectorWidth;
+        out.type = out.type.toVectorType(vectorWidth);
         if(out.hasType(ValueType::LOCAL))
         {
-            const_cast<DataType&>(out.local->type).num = out.type.num;
+            const_cast<DataType&>(out.local->type) = out.local->type.toVectorType(out.type.getVectorWidth());
             scheduleForVectorization(out.local, openInstructions, loop);
         }
     }
@@ -653,7 +653,9 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
     if(stepOp == nullptr)
         throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled iteration step operation");
 
-    const_cast<DataType&>(loopControl.initialization->getOutput()->type).num = loopControl.iterationVariable->type.num;
+    const_cast<DataType&>(loopControl.initialization->getOutput()->type) =
+        loopControl.initialization->getOutput()->type.toVectorType(
+            loopControl.iterationVariable->type.getVectorWidth());
     intermediate::MoveOperation* move = dynamic_cast<intermediate::MoveOperation*>(loopControl.initialization);
     Optional<InstructionWalker> initialValueWalker;
     if(move != nullptr && move->getSource().hasLiteral(INT_ZERO.literal) &&
@@ -691,8 +693,8 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
             if(offset.getLiteralValue())
                 stepOp->setArgument(1,
                     Value(Literal(offset.getLiteralValue()->signedInt() * loopControl.vectorizationFactor),
-                        offset.type.toVectorType(
-                            static_cast<unsigned char>(offset.type.num * loopControl.vectorizationFactor))));
+                        offset.type.toVectorType(static_cast<unsigned char>(
+                            offset.type.getVectorWidth() * loopControl.vectorizationFactor))));
             else
                 throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled iteration step", stepOp->to_string());
         }
@@ -702,8 +704,8 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
             if(offset.getLiteralValue())
                 stepOp->setArgument(0,
                     Value(Literal(offset.getLiteralValue()->signedInt() * loopControl.vectorizationFactor),
-                        offset.type.toVectorType(
-                            static_cast<unsigned char>(offset.type.num * loopControl.vectorizationFactor))));
+                        offset.type.toVectorType(static_cast<unsigned char>(
+                            offset.type.getVectorWidth() * loopControl.vectorizationFactor))));
             else
                 throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled iteration step", stepOp->to_string());
         }
@@ -727,8 +729,9 @@ static void vectorize(ControlFlowLoop& loop, LoopControl& loopControl, const Dat
 {
     FastSet<const intermediate::IntermediateInstruction*> openInstructions;
 
-    const_cast<DataType&>(loopControl.iterationVariable->type).num *=
-        static_cast<unsigned char>(loopControl.vectorizationFactor);
+    const_cast<DataType&>(loopControl.iterationVariable->type) =
+        loopControl.iterationVariable->type.toVectorType(loopControl.iterationVariable->type.getVectorWidth() *
+            static_cast<unsigned char>(loopControl.vectorizationFactor));
     scheduleForVectorization(loopControl.iterationVariable, openInstructions, loop);
     std::size_t numVectorized = 0;
 
@@ -891,7 +894,7 @@ void optimizations::extendBranches(const Module& module, Method& method, const C
 static InstructionWalker loadVectorParameter(const Parameter& param, Method& method, InstructionWalker it)
 {
     // we need to load a UNIFORM per vector element into the particular vector element
-    for(uint8_t i = 0; i < param.type.num; ++i)
+    for(uint8_t i = 0; i < param.type.getVectorWidth(); ++i)
     {
         // the first write to the parameter needs to unconditional, so the register allocator can find it
         if(i > 0)
@@ -1065,7 +1068,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         // do the loading
         // we need special treatment for non-scalar parameter (e.g. vectors), since they can't be read with just 1
         // UNIFORM
-        if(!param.type.isPointerType() && param.type.num != 1)
+        if(!param.type.isPointerType() && param.type.getVectorWidth() != 1)
         {
             it = loadVectorParameter(param, method, it);
         }

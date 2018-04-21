@@ -172,7 +172,7 @@ std::string Unpack::to_string() const
 Optional<Value> Unpack::unpack(const Value& val) const
 {
     // we never can pack complex types (even pointer, there are always 32-bit)
-    if(val.type.complexType)
+    if(!val.type.isSimpleType())
         return NO_VALUE;
     // for now, we can't unpack floats
     if(val.type.isFloatingType())
@@ -262,11 +262,11 @@ bool Unpack::handlesFloat(const OpCode& opCode) const
 
 const Unpack Unpack::unpackTo32Bit(const DataType& type)
 {
-    if(type.getScalarBitCount() >= 32)
+    if(type.getScalarBitCount() >= DataType::WORD)
         return UNPACK_NOP;
-    if(type.getScalarBitCount() == 16)
+    if(type.getScalarBitCount() == DataType::HALF_WORD)
         return UNPACK_16A_32;
-    if(type.getScalarBitCount() == 8)
+    if(type.getScalarBitCount() == DataType::BYTE)
         return UNPACK_8A_32;
     throw CompilationError(CompilationStep::GENERAL, "Unhandled type-width for unpack-modes", type.to_string());
 }
@@ -316,7 +316,7 @@ std::string Pack::to_string() const
 Optional<Value> Pack::pack(const Value& val) const
 {
     // we never can pack complex types (even pointer, there are always 32-bit)
-    if(val.type.complexType)
+    if(!val.type.isSimpleType())
         return NO_VALUE;
     // for now, we can't pack floats
     if(val.type.isFloatingType())
@@ -479,7 +479,9 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
         (numOperands > 1 && secondVal->hasType(ValueType::CONTAINER) && secondVal->container.elements.size() > 1 &&
             !secondVal->container.isAllSame());
     DataType resultType = firstVal->type;
-    if(numOperands > 1 && (secondVal->type.num > resultType.num || secondVal->type.containsType(firstVal->type)))
+    if(numOperands > 1 &&
+        (secondVal->type.getVectorWidth() > resultType.getVectorWidth() ||
+            secondVal->type.containsType(firstVal->type)))
         resultType = secondVal->type;
 
     // at least one used value is a container, need to calculate component-wise
@@ -535,9 +537,11 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
     if(*this == OP_FSUB)
         return Value(Literal(firstLit.real() - secondLit.real()), resultType);
     if(*this == OP_FTOI)
-        return Value(Literal(static_cast<int32_t>(firstLit.real())), TYPE_FLOAT.toVectorType(firstVal->type.num));
+        return Value(
+            Literal(static_cast<int32_t>(firstLit.real())), TYPE_FLOAT.toVectorType(firstVal->type.getVectorWidth()));
     if(*this == OP_ITOF)
-        return Value(Literal(static_cast<float>(firstLit.signedInt())), TYPE_INT32.toVectorType(firstVal->type.num));
+        return Value(Literal(static_cast<float>(firstLit.signedInt())),
+            TYPE_INT32.toVectorType(firstVal->type.getVectorWidth()));
     if(*this == OP_MAX)
         return Value(Literal(std::max(firstLit.signedInt(), secondLit.signedInt())), resultType);
     if(*this == OP_MIN)

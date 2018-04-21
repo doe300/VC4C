@@ -42,18 +42,19 @@ ValueRange::ValueRange(bool isFloat, bool isSigned) :
     }
 }
 
-static std::map<std::string, std::pair<double, double>> floatTypeLimits = {
-    {TYPE_HALF.typeName, std::make_pair(6.103515625e-05, 65504.0)},
-    {TYPE_FLOAT.typeName,
+static vc4c::hash<DataType> h;
+static std::map<std::size_t, std::pair<double, double>> floatTypeLimits = {
+    {h(TYPE_HALF), std::make_pair(6.103515625e-05, 65504.0)},
+    {h(TYPE_FLOAT),
         std::make_pair<double, double>(std::numeric_limits<float>::min(), std::numeric_limits<float>::max())},
-    {TYPE_DOUBLE.typeName, std::make_pair(std::numeric_limits<double>::min(), std::numeric_limits<double>::max())}};
+    {h(TYPE_DOUBLE), std::make_pair(std::numeric_limits<double>::min(), std::numeric_limits<double>::max())}};
 
 ValueRange::ValueRange(const DataType& type) : ValueRange(type.isFloatingType(), !isUnsignedType(type))
 {
     const DataType elemType = type.getElementType();
     if(type.isFloatingType())
     {
-        auto it = floatTypeLimits.find(elemType.typeName);
+        auto it = floatTypeLimits.find(h(elemType));
         if(it == floatTypeLimits.end())
             throw CompilationError(CompilationStep::GENERAL, "Unhandled floating-point type", type.to_string());
         floatRange.minValue = it->second.first;
@@ -157,10 +158,10 @@ bool ValueRange::fitsIntoType(const DataType& type, bool isSigned) const
     case RangeType::FLOAT:
         if(!type.isFloatingType())
             return false;
-        if(floatTypeLimits.find(elemType.typeName) == floatTypeLimits.end())
+        if(floatTypeLimits.find(h(elemType)) == floatTypeLimits.end())
             throw CompilationError(CompilationStep::GENERAL, "Unhandled floating-point type", type.to_string());
-        return isInRange(floatRange.minValue, floatRange.maxValue, floatTypeLimits.at(elemType.typeName).first,
-            floatTypeLimits.at(elemType.typeName).second);
+        return isInRange(floatRange.minValue, floatRange.maxValue, floatTypeLimits.at(h(elemType)).first,
+            floatTypeLimits.at(h(elemType)).second);
     case RangeType::INTEGER:
         if(!type.isIntegralType())
             return false;

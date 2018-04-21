@@ -264,11 +264,7 @@ DataType MemoryInstruction::getSourceElementType(bool sizedType) const
         if(!getNumEntries().isLiteralValue())
             throw CompilationError(CompilationStep::GENERAL,
                 "Cannot calculate type-size from dynamically sized memory-operation", to_string());
-        std::shared_ptr<ComplexType> complex(
-            new ArrayType(elementType, getNumEntries().getLiteralValue()->unsignedInt()));
-        return DataType(
-            (elementType.to_string() + "[") + std::to_string(getNumEntries().getLiteralValue()->unsignedInt()) + "]", 1,
-            complex);
+        return elementType.toArrayType(getNumEntries().getLiteralValue()->unsignedInt());
     }
     case MemoryOperation::FILL:
         // local value
@@ -306,11 +302,7 @@ DataType MemoryInstruction::getDestinationElementType(bool sizedType) const
         if(!getNumEntries().isLiteralValue())
             throw CompilationError(CompilationStep::GENERAL,
                 "Cannot calculate type-size from dynamically sized memory-operation", to_string());
-        std::shared_ptr<ComplexType> complex(
-            new ArrayType(elementType, getNumEntries().getLiteralValue()->unsignedInt()));
-        return DataType(
-            (elementType.to_string() + "[") + std::to_string(getNumEntries().getLiteralValue()->unsignedInt()) + "]", 1,
-            complex);
+        return elementType.toArrayType(getNumEntries().getLiteralValue()->unsignedInt());
     }
     case MemoryOperation::READ:
         // local value

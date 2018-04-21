@@ -80,18 +80,22 @@ InstructionWalker intrinsifyIntegerRelation(
         if(comp->getFirstArg().type.getScalarBitCount() == 32)
         {
             // XXX optimize? combine both comparisons of upper half? can short-circuit on ||?
-            const Value tmp1 = method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.num), "%icomp");
-            const Value tmp2 = method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.num), "%icomp");
-            const Value tmp3 = method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.num), "%icomp");
-            const Value tmp4 = method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.num), "%icomp");
+            const Value tmp1 =
+                method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
+            const Value tmp2 =
+                method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
+            const Value tmp3 =
+                method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
+            const Value tmp4 =
+                method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
             const Value leftUpper =
-                method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.num), "%comp.left");
+                method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%comp.left");
             const Value leftLower =
-                method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.num), "%comp.left");
+                method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%comp.left");
             const Value rightUpper =
-                method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.num), "%comp.right");
+                method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%comp.right");
             const Value rightLower =
-                method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.num), "%comp.right");
+                method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%comp.right");
             it.emplace(new Operation(OP_SHR, leftUpper, comp->getFirstArg(), Value(Literal(16u), TYPE_INT8)));
             it.nextInBlock();
             it.emplace(new Operation(
@@ -140,8 +144,8 @@ InstructionWalker intrinsifyIntegerRelation(
         Value secondArg = comp->assertArgument(1);
         if(firstArg.type.getScalarBitCount() < 32)
         {
-            firstArg = method.addNewLocal(TYPE_INT32.toVectorType(firstArg.type.num), "%icomp");
-            secondArg = method.addNewLocal(TYPE_INT32.toVectorType(secondArg.type.num), "%icomp");
+            firstArg = method.addNewLocal(TYPE_INT32.toVectorType(firstArg.type.getVectorWidth()), "%icomp");
+            secondArg = method.addNewLocal(TYPE_INT32.toVectorType(secondArg.type.getVectorWidth()), "%icomp");
             it = insertSignExtension(it, method, comp->getFirstArg(), firstArg, true);
             it = insertSignExtension(it, method, comp->assertArgument(1), secondArg, true);
         }
