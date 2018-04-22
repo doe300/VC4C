@@ -10,6 +10,8 @@
 #include "config.h"
 
 #include <functional>
+#include <map>
+#include <set>
 #include <vector>
 
 namespace vc4c
@@ -31,17 +33,16 @@ namespace vc4c
              * The optimizations are only run in parallel for different methods, so any access to the method is
              * thread-safe
              */
-            using Pass = std::function<void(const Module&, Method&, const Configuration&, const std::string&)>;
+            using Pass = std::function<void(const Module&, Method&, const Configuration&)>;
 
             OptimizationPass(const std::string& name, const std::string& parameterName, const Pass& pass,
-                const std::string& description, const std::string& defaultValue = "");
+                const std::string& description);
 
             void operator()(const Module& module, Method& method, const Configuration& config) const;
 
             const std::string name;
             const std::string parameterName;
             const std::string description;
-            const std::string defaultParameterValue;
 
         private:
             const Pass pass;
@@ -95,6 +96,12 @@ namespace vc4c
             Configuration config;
             std::vector<const OptimizationPass*> passes;
         };
+
+        /*
+         * Contains the parameter-names and descriptions for all additional optimization parameters also available in
+         * vc4c::DEFAULT_OPTIMIZATION_PARAMETERS
+         */
+        extern std::map<std::string, std::string> OPTIMIZATION_PARAMETER_DESCRIPTIONS;
 
     } // namespace optimizations
 } // namespace vc4c

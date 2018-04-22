@@ -269,7 +269,7 @@ static void replaceNOPs(BasicBlock& basicBlock, Method& method)
     }
 }
 
-void optimizations::splitReadAfterWrites(const Module& module, Method& method, const Configuration& config, const std::string& value)
+void optimizations::splitReadAfterWrites(const Module& module, Method& method, const Configuration& config)
 {
     // try to split up consecutive instructions writing/reading to the same local (so less locals are forced to
     // accumulators) by inserting NOPs  the NOP then can be replaced with other instructions by the next optimization
@@ -335,7 +335,7 @@ void optimizations::splitReadAfterWrites(const Module& module, Method& method, c
     }
 }
 
-void optimizations::reorderWithinBasicBlocks(const Module& module, Method& method, const Configuration& config, const std::string& value)
+void optimizations::reorderWithinBasicBlocks(const Module& module, Method& method, const Configuration& config)
 {
     /*
      * TODO re-order instructions to:

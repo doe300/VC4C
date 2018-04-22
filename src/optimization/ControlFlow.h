@@ -19,7 +19,7 @@ namespace vc4c
          * NOTE: Currently only works with "standard" for-range loops and needs to be enabled explicitly in the
          * Configuration
          */
-        void vectorizeLoops(const Module& module, Method& method, const Configuration& config, const std::string& value);
+        void vectorizeLoops(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Extends the branches (up to now represented by a single instruction) by
@@ -50,7 +50,7 @@ namespace vc4c
         /*
          * Move constant load operations in (nested) loops to the block before head block of the outer-most loop.
          */
-        void removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config, const std::string& value);
+        void removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Concatenates "adjacent" basic blocks if the preceding block has only one successor and the succeeding block
@@ -70,7 +70,7 @@ namespace vc4c
          *   yyy
          *
          */
-        void mergeAdjacentBasicBlocks(const Module& module, Method& method, const Configuration& config, const std::string& value);
+        void mergeAdjacentBasicBlocks(const Module& module, Method& method, const Configuration& config);
 
     } /* namespace optimizations */
 } /* namespace vc4c */

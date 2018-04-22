@@ -18,6 +18,8 @@ using namespace vc4c;
 using namespace vc4c::optimizations;
 using namespace vc4c::intermediate;
 
+static const std::string combineLoadLiteralsThreshold = "combine-load-threshold";
+
 InstructionWalker optimizations::combineDuplicateBranches(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
@@ -375,8 +377,7 @@ static const std::vector<MergeCondition> mergeConditions = {
         return true;
     }};
 
-void optimizations::combineOperations(
-    const Module& module, Method& method, const Configuration& config, const std::string& value)
+void optimizations::combineOperations(const Module& module, Method& method, const Configuration& config)
 {
     // TODO can combine operation x and y if y is something like (result of x & 0xFF/0xFFFF) -> pack-mode
     for(BasicBlock& bb : method)
@@ -605,18 +606,18 @@ static bool canReplaceLiteralLoad(InstructionWalker it, const InstructionWalker 
     return false;
 }
 
-void optimizations::combineLoadingLiterals(
-    const Module& module, Method& method, const Configuration& config, const std::string& value)
+void optimizations::combineLoadingLiterals(const Module& module, Method& method, const Configuration& config)
 {
-    std::size_t threshold;
+    std::size_t threshold = 6;
     try
     {
-        threshold = std::stoi(value);
+        auto cIt = config.additionalOptimizationParameters.find(combineLoadLiteralsThreshold);
+        if(cIt != config.additionalOptimizationParameters.end())
+            threshold = std::stoi(cIt->second);
     }
     catch(const std::invalid_argument& ia)
     {
         logging::warn() << "Failed to read optimization parameter: " << ia.what() << logging::endl;
-        threshold = 6;
     }
     for(BasicBlock& block : method)
     {
@@ -727,8 +728,7 @@ InstructionWalker optimizations::combineSelectionWithZero(
     return it;
 }
 
-void optimizations::combineVectorRotations(
-    const Module& module, Method& method, const Configuration& config, const std::string& value)
+void optimizations::combineVectorRotations(const Module& module, Method& method, const Configuration& config)
 {
     for(BasicBlock& block : method)
     {

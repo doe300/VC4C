@@ -7,9 +7,9 @@
 #ifndef VC4C_CONFIG_H
 #define VC4C_CONFIG_H
 
-#include <map>
-#include <set>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace vc4c
 {
@@ -100,6 +100,11 @@ namespace vc4c
     constexpr unsigned VPM_DEFAULT_SIZE = 4 * 1024;
 
     /*
+     * Contains all available additional optimization parameters and their default values
+     */
+    extern std::unordered_map<std::string, std::string> DEFAULT_OPTIMIZATION_PARAMETERS;
+
+    /*
      * Container for user-defined configuration
      */
     struct Configuration
@@ -130,13 +135,17 @@ namespace vc4c
          */
         OptimizationLevel optimizationLevel = OptimizationLevel::MEDIUM;
         /*
-         * Manually activated optimizations and their optional additional parameters
+         * Manually activated optimizations
          */
-        std::map<std::string, std::string> additionalEnabledOptimizations;
+        std::unordered_set<std::string> additionalEnabledOptimizations;
         /*
          * Manually deactivated optimizations
          */
-        std::set<std::string> additionalDisabledOptimizations;
+        std::unordered_set<std::string> additionalDisabledOptimizations;
+        /*
+         * Manually specified additional parameters for single (or multiple) optimization steps
+         */
+        std::unordered_map<std::string, std::string> additionalOptimizationParameters = DEFAULT_OPTIMIZATION_PARAMETERS;
     };
 
     /*

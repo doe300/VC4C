@@ -19,20 +19,20 @@
 using namespace vc4c;
 using namespace vc4c::optimizations;
 
-OptimizationPass::OptimizationPass(const std::string& name, const std::string& parameterName, const Pass& pass,
-    const std::string& description, const std::string& defaultValue) :
+std::unordered_map<std::string, std::string> vc4c::DEFAULT_OPTIMIZATION_PARAMETERS = {{"combine-load-threshold", "6"}};
+std::map<std::string, std::string> optimizations::OPTIMIZATION_PARAMETER_DESCRIPTIONS = {
+    {"combine-load-threshold", "The maximum distance between two literal loads to combine"}};
+
+OptimizationPass::OptimizationPass(
+    const std::string& name, const std::string& parameterName, const Pass& pass, const std::string& description) :
     name(name),
-    parameterName(parameterName), description(description), defaultParameterValue(defaultValue), pass(pass)
+    parameterName(parameterName), description(description), pass(pass)
 {
 }
 
 void OptimizationPass::operator()(const Module& module, Method& method, const Configuration& config) const
 {
-    std::string value = defaultParameterValue;
-    auto it = config.additionalEnabledOptimizations.find(parameterName);
-    if(it != config.additionalEnabledOptimizations.end() && !it->second.empty())
-        value = it->second;
-    pass(module, method, config, value);
+    pass(module, method, config);
 }
 
 OptimizationStep::OptimizationStep(const std::string& name, const Step& step) : name(name), step(step) {}
@@ -53,7 +53,7 @@ static const std::vector<OptimizationStep> SINGLE_STEPS = {
     // combine successive setting of the same flags
     OptimizationStep("CombineSettingSameFlags", combineSameFlags)};
 
-static void runSingleSteps(const Module& module, Method& method, const Configuration& config, const std::string& value)
+static void runSingleSteps(const Module& module, Method& method, const Configuration& config)
 {
     auto& s = (logging::debug() << "Running steps: ");
     for(const OptimizationStep& step : SINGLE_STEPS)
@@ -85,8 +85,7 @@ static void runSingleSteps(const Module& module, Method& method, const Configura
     }
 }
 
-static void generalOptimization(
-    const Module& module, Method& method, const Configuration& config, const std::string& value)
+static void generalOptimization(const Module& module, Method& method, const Configuration& config)
 {
     using pass = std::function<bool(const Module& module, Method& method, const Configuration& config)>;
     using step =
@@ -206,7 +205,7 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         "splits read-after-writes (except if the local is used only very locally), so the reordering and "
         "register-allocation have an easier job"),
     OptimizationPass("CombineLiteralLoads", "combine-loads", combineLoadingLiterals,
-        "combines loadings of the same literal value within a small range of a basic block", "6"),
+        "combines loadings of the same literal value within a small range of a basic block"),
     OptimizationPass("ReorderInstructions", "reorder", reorderWithinBasicBlocks,
         "re-order instructions to eliminate more NOPs and stall cycles"),
     OptimizationPass("CombineALUIinstructions", "combine", combineOperations,

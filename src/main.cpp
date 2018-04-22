@@ -41,12 +41,16 @@ static void printHelp()
     std::cout << "\t-O0,-O1,-O2,-O3\t\tSwitches to the specific optimization level, defaults to -O2" << std::endl;
     for(const auto& pass : vc4c::optimizations::Optimizer::ALL_PASSES)
     {
-        std::cout << "\t--f" << std::left << std::setw(28)
-                  << (pass.parameterName +
-                         (pass.defaultParameterValue.empty() ? "" : std::string("=") + pass.defaultParameterValue))
-                  << pass.description << std::endl;
-        //TODO print which optimization level includes optimization
+        std::cout << "\t--f" << std::left << std::setw(28) << pass.parameterName << pass.description << std::endl;
+        // TODO print which optimization level includes optimization
         std::cout << "\t--fno-" << std::left << std::setw(25) << pass.parameterName << "Disables the above optimization"
+                  << std::endl;
+    }
+    std::cout << "optimization parameters:" << std::endl;
+    for(const auto& param : vc4c::optimizations::OPTIMIZATION_PARAMETER_DESCRIPTIONS)
+    {
+        std::cout << "\t--f" << std::left << std::setw(28)
+                  << ((param.first + "=") + vc4c::DEFAULT_OPTIMIZATION_PARAMETERS.at(param.first)) << param.second
                   << std::endl;
     }
     std::cout << "options:" << std::endl;
@@ -117,8 +121,6 @@ static auto availableOptimizations = vc4c::optimizations::Optimizer::getPasses(O
 bool parseOptimizationFlag(const std::string& arg, Configuration& config)
 {
     std::string passName;
-    if(arg.find("--f") != 0)
-        return false;
     if(arg.find("--fno-") == 0)
     {
         passName = arg.substr(std::string("--f-no-").size() - 1);
@@ -132,21 +134,32 @@ bool parseOptimizationFlag(const std::string& arg, Configuration& config)
         std::cerr << "Cannot disable unknown optimization: " << passName << std::endl;
         return false;
     }
-
-    passName = arg.substr(std::string("--f").size());
-    passName = passName.substr(0, passName.find("="));
-    std::string value;
-    if(arg.find("=") != std::string::npos)
-        value = arg.substr(arg.find("=") + 1);
-
-    if(availableOptimizations.find(passName) != availableOptimizations.end())
+    else if(arg.find("--f") == 0)
     {
-        config.additionalEnabledOptimizations.emplace(passName, value);
-        logging::debug() << "Enabling optimization: " << passName << " (" << value << ")" << logging::endl;
-        return true;
+        passName = arg.substr(std::string("--f").size());
+        if(passName.find('=') != std::string::npos)
+        {
+            // optimization parameter
+            std::string value = passName.substr(passName.find('=') + 1);
+            const std::string paramName = passName.substr(0, passName.find('='));
+            auto it = vc4c::optimizations::OPTIMIZATION_PARAMETER_DESCRIPTIONS.find(paramName);
+            if(it != vc4c::optimizations::OPTIMIZATION_PARAMETER_DESCRIPTIONS.end())
+            {
+                config.additionalOptimizationParameters[paramName] = value;
+                return true;
+            }
+            std::cerr << "Cannot set unknown optimization parameter: " << paramName << " to " << value << std::endl;
+            return false;
+        }
+        else if(availableOptimizations.find(passName) != availableOptimizations.end())
+        {
+            config.additionalEnabledOptimizations.emplace(passName);
+            logging::debug() << "Enabling optimization: " << passName << logging::endl;
+            return true;
+        }
+        std::cerr << "Cannot enable unknown optimization: " << passName << std::endl;
+        return false;
     }
-
-    std::cerr << "Cannot enable unknown optimization: " << passName << std::endl;
     return false;
 }
 
