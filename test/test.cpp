@@ -17,32 +17,35 @@
 #include "TestSPIRVFrontend.h"
 #include "TestStdlib.h"
 
+#include "tools.h"
 #include "../lib/cpplog/include/logger.h"
 #include "RegressionTest.h"
 
 using namespace std;
 
+static vc4c::Configuration config;
+
 template<bool R>
 static Test::Suite* newLLVMCompilationTest()
 {
-	return new RegressionTest(vc4c::Frontend::LLVM_IR, R);
+	return new RegressionTest(config, vc4c::Frontend::LLVM_IR, R);
 }
 
 template<bool R>
 static Test::Suite* newSPIRVCompiltionTest()
 {
-	return new RegressionTest(vc4c::Frontend::SPIR_V, R);
+	return new RegressionTest(config, vc4c::Frontend::SPIR_V, R);
 }
 
 template<bool R>
 static Test::Suite* newCompilationTest()
 {
-	return new RegressionTest(vc4c::Frontend::DEFAULT, R);
+	return new RegressionTest(config, vc4c::Frontend::DEFAULT, R);
 }
 
 static Test::Suite* newFastRegressionTest()
 {
-	return new RegressionTest(vc4c::Frontend::DEFAULT, true, true);
+	return new RegressionTest(config, vc4c::Frontend::DEFAULT, true, true);
 }
 
 /*
@@ -67,6 +70,14 @@ int main(int argc, char** argv)
     Test::registerSuite(newFastRegressionTest, "fast-regressions", "Runs regression test-cases marked as fast", false);
     Test::registerSuite(Test::newInstance<TestEmulator>, "test-emulator", "Runs selected code-samples through the emulator");
     Test::registerSuite(Test::newInstance<TestStdlib>, "test-stdlib", "Runs most of the VC4CL std-lib functions in emulator");
+    
+    for(auto i = 1; i < argc; ++i)
+    { 
+        vc4c::tools::parseConfigurationParameter(config, argv[i]);
+        //TODO rewrite, actually print same help (parts of it) as VC4C
+        if(std::string("--help") == argv[i] || std::string("-h") == argv[i])
+            std::cout << "NOTE: This only lists the options for the 'cpptest-lite' test-suite. For more options see 'VC4C --help'!" << std::endl;
+    }
 
     return Test::runSuites(argc, argv);
 }

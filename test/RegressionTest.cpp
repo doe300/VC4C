@@ -370,7 +370,7 @@ static std::vector<Entry> allKernels =
 
 };
 
-RegressionTest::RegressionTest(const vc4c::Frontend frontend, bool onlyRegressions, bool onlyFast)
+RegressionTest::RegressionTest(const vc4c::Configuration& config, const vc4c::Frontend frontend, bool onlyRegressions, bool onlyFast) : config(config)
 {
     for(const auto& tuple : allKernels)
     {
@@ -397,7 +397,6 @@ RegressionTest::~RegressionTest()
 
 void RegressionTest::testRegression(std::string clFile, std::string options, vc4c::Frontend frontend)
 {
-    Configuration config;
     config.frontend = frontend;
     std::ostringstream out;
     std::ifstream in(clFile);

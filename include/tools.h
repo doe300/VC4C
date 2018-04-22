@@ -10,10 +10,12 @@
 #define VC4C_TOOLS_H
 
 #include "Optional.h"
+#include "config.h"
 
 #include <array>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <vector>
 
 namespace vc4c
@@ -165,6 +167,13 @@ namespace vc4c
          * invalid or unsupported operation was performed)
          */
         EmulationResult emulate(const EmulationData& data);
+
+        /*
+         * Parses the given command-line parameter and stores it in the configuration
+         *
+         * @return whether the parameter was successfully parsed and applied to the configuration
+         */
+        bool parseConfigurationParameter(Configuration& config, const std::string& arg);
 
     } /* namespace tools */
 } /* namespace vc4c */

@@ -11,6 +11,7 @@
 #include "concepts.h"
 #include "config.h"
 #include "log.h"
+#include "tools.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -118,51 +119,6 @@ static void printInfo()
 
 static auto availableOptimizations = vc4c::optimizations::Optimizer::getPasses(OptimizationLevel::FULL);
 
-bool parseOptimizationFlag(const std::string& arg, Configuration& config)
-{
-    std::string passName;
-    if(arg.find("--fno-") == 0)
-    {
-        passName = arg.substr(std::string("--f-no-").size() - 1);
-        if(availableOptimizations.find(passName) != availableOptimizations.end())
-        {
-            config.additionalDisabledOptimizations.emplace(passName);
-            logging::debug() << "Disabling optimization: " << passName << logging::endl;
-            return true;
-        }
-
-        std::cerr << "Cannot disable unknown optimization: " << passName << std::endl;
-        return false;
-    }
-    else if(arg.find("--f") == 0)
-    {
-        passName = arg.substr(std::string("--f").size());
-        if(passName.find('=') != std::string::npos)
-        {
-            // optimization parameter
-            std::string value = passName.substr(passName.find('=') + 1);
-            const std::string paramName = passName.substr(0, passName.find('='));
-            auto it = vc4c::optimizations::OPTIMIZATION_PARAMETER_DESCRIPTIONS.find(paramName);
-            if(it != vc4c::optimizations::OPTIMIZATION_PARAMETER_DESCRIPTIONS.end())
-            {
-                config.additionalOptimizationParameters[paramName] = value;
-                return true;
-            }
-            std::cerr << "Cannot set unknown optimization parameter: " << paramName << " to " << value << std::endl;
-            return false;
-        }
-        else if(availableOptimizations.find(passName) != availableOptimizations.end())
-        {
-            config.additionalEnabledOptimizations.emplace(passName);
-            logging::debug() << "Enabling optimization: " << passName << logging::endl;
-            return true;
-        }
-        std::cerr << "Cannot enable unknown optimization: " << passName << std::endl;
-        return false;
-    }
-    return false;
-}
-
 /*
  *
  */
@@ -218,26 +174,6 @@ int main(int argc, char** argv)
             setLogger(std::wcout, true, LogLevel::WARNING);
         else if(strcmp("--debug", argv[i]) == 0 || strcmp("-d", argv[i]) == 0)
             setLogger(std::wcout, true, LogLevel::DEBUG);
-        else if(strcmp("--hex", argv[i]) == 0)
-            config.outputMode = OutputMode::HEX;
-        else if(strcmp("--bin", argv[i]) == 0)
-            config.outputMode = OutputMode::BINARY;
-        else if(strcmp("--asm", argv[i]) == 0)
-            config.outputMode = OutputMode::ASSEMBLER;
-        else if(strcmp("--fast-math", argv[i]) == 0)
-            config.mathType = MathType::FAST;
-        else if(strcmp("--exact-math", argv[i]) == 0)
-            config.mathType = MathType::EXACT;
-        else if(strcmp("--strict-math", argv[i]) == 0)
-            config.mathType = MathType::STRICT;
-        else if(strcmp("--kernel-info", argv[i]) == 0)
-            config.writeKernelInfo = true;
-        else if(strcmp("--no-kernel-info", argv[i]) == 0)
-            config.writeKernelInfo = false;
-        else if(strcmp("--spirv", argv[i]) == 0)
-            config.frontend = Frontend::SPIR_V;
-        else if(strcmp("--llvm", argv[i]) == 0)
-            config.frontend = Frontend::LLVM_IR;
         else if(strcmp("--disassemble", argv[i]) == 0)
             runDisassembler = true;
         else if(strcmp("-o", argv[i]) == 0)
@@ -247,15 +183,7 @@ int main(int argc, char** argv)
             i += 2;
             break;
         }
-        else if(strcmp("-O0", argv[i]) == 0)
-            config.optimizationLevel = OptimizationLevel::NONE;
-        else if(strcmp("-O1", argv[i]) == 0)
-            config.optimizationLevel = OptimizationLevel::BASIC;
-        else if(strcmp("-O2", argv[i]) == 0)
-            config.optimizationLevel = OptimizationLevel::MEDIUM;
-        else if(strcmp("-O3", argv[i]) == 0)
-            config.optimizationLevel = OptimizationLevel::FULL;
-        else if(!parseOptimizationFlag(argv[i], config))
+        else if(!vc4c::tools::parseConfigurationParameter(config, argv[i]))
             options.append(argv[i]).append(" ");
     }
 
