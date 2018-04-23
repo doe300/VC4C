@@ -79,7 +79,7 @@ InstructionWalker intermediate::insertVectorRotation(
         {
             if(direction == Direction::DOWN)
             {
-                appliedOffset.immediate.value = (16 - offset.immediate.value) % 16;
+                appliedOffset.immediate.value = static_cast<unsigned char>((16 - offset.immediate.value) % 16);
             }
             else
             {

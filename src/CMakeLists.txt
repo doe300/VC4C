@@ -104,7 +104,8 @@ if(VC4C_ENABLE_LLVM_LIB_FRONTEND)
 	target_link_libraries(${VC4C_LIBRARY_NAME} "${llvm}")
 	
 	# Adds require macros as well as include-paths
-	target_include_directories(${VC4C_LIBRARY_NAME} PRIVATE "${LLVM_INCLUDE_PATH}")
+	# SYSTEM here suppresses (at least on some compilers/systems) all warnings from the LLVM header file
+	target_include_directories(${VC4C_LIBRARY_NAME} SYSTEM PRIVATE "${LLVM_INCLUDE_PATH}")
 	target_compile_options(${VC4C_LIBRARY_NAME} PRIVATE ${LLVM_LIB_FLAGS})
 	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE USE_LLVM_LIBRARY=1 LLVM_LIBRARY_VERSION=${LLVM_LIBRARY_VERSION})
 	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE USE_LLVM_LIBRARY=1 LLVM_LIBRARY_VERSION=${LLVM_LIBRARY_VERSION})

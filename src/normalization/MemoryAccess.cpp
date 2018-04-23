@@ -31,7 +31,7 @@ struct BaseAndOffset
 
     explicit BaseAndOffset() : base(NO_VALUE), offset{}, maxOffset{} {}
 
-    BaseAndOffset(Optional<Value> base, Optional<int32_t> offset, Optional<int32_t> maxOffset = {}) :
+    BaseAndOffset(const Optional<Value>& base, Optional<int32_t> offset, Optional<int32_t> maxOffset = {}) :
         base(base), offset(offset), maxOffset(maxOffset)
     {
     }

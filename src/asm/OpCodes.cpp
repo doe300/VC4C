@@ -437,7 +437,7 @@ static unsigned int rotate_right(unsigned int value, int shift)
     return (value >> shift) | (value << (32 - shift));
 }
 
-Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> secondOperand) const
+Optional<Value> OpCode::calculate(const Optional<Value>& firstOperand, const Optional<Value>& secondOperand) const
 {
     // TODO recursively calculate constant operand value if local with single writer?
     if(!firstOperand)
@@ -594,7 +594,7 @@ Optional<Value> OpCode::calculate(Optional<Value> firstOperand, Optional<Value> 
     return NO_VALUE;
 }
 
-Optional<Value> OpCode::operator()(Optional<Value> firstOperand, Optional<Value> secondOperand) const
+Optional<Value> OpCode::operator()(const Optional<Value>& firstOperand, const Optional<Value>& secondOperand) const
 {
     return calculate(firstOperand, secondOperand);
 }

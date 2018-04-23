@@ -75,7 +75,7 @@ InstructionDecorations intermediate::forwardDecorations(InstructionDecorations d
 }
 
 IntermediateInstruction::IntermediateInstruction(
-    Optional<Value> output, ConditionCode cond, SetFlag setFlags, Pack packMode) :
+    const Optional<Value>& output, ConditionCode cond, SetFlag setFlags, Pack packMode) :
     signal(SIGNAL_NONE),
     unpackMode(UNPACK_NOP), packMode(packMode), conditional(cond), setFlags(setFlags),
     decoration(InstructionDecorations::NONE), canBeCombined(true), output(output), arguments()

@@ -82,7 +82,7 @@ namespace vc4c
         class IntermediateInstruction
         {
         public:
-            explicit IntermediateInstruction(Optional<Value> output = {}, ConditionCode cond = COND_ALWAYS,
+            explicit IntermediateInstruction(const Optional<Value>& output = {}, ConditionCode cond = COND_ALWAYS,
                 SetFlag setFlags = SetFlag::DONT_SET, Pack packMode = PACK_NOP);
             IntermediateInstruction(const IntermediateInstruction&) = delete;
             IntermediateInstruction(IntermediateInstruction&&) noexcept = delete;
