@@ -97,12 +97,6 @@ namespace vc4c
             std::vector<const OptimizationPass*> passes;
         };
 
-        /*
-         * Contains the parameter-names and descriptions for all additional optimization parameters also available in
-         * vc4c::DEFAULT_OPTIMIZATION_PARAMETERS
-         */
-        extern std::map<std::string, std::string> OPTIMIZATION_PARAMETER_DESCRIPTIONS;
-
     } // namespace optimizations
 } // namespace vc4c
 #endif /* OPTIMIZER_H */

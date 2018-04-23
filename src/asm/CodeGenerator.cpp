@@ -78,13 +78,13 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
     PROFILE_END(initializeLocalsUses);
     PROFILE_START(colorGraph);
     std::size_t round = 0;
-    while(round < REGISTER_RESOLVER_MAX_ROUNDS && !coloring.colorGraph())
+    while(round < config.additionalOptions.registerResolverMaxRounds && !coloring.colorGraph())
     {
         if(coloring.fixErrors())
             break;
         ++round;
     }
-    if(round >= REGISTER_RESOLVER_MAX_ROUNDS)
+    if(round >= config.additionalOptions.registerResolverMaxRounds)
     {
         logging::warn() << "Register conflict resolver has exceeded its maximum rounds, there might still be errors!"
                         << logging::endl;

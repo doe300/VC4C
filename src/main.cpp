@@ -29,6 +29,7 @@ extern void disassemble(const std::string& input, const std::string& output, con
 
 static void printHelp()
 {
+    vc4c::Configuration defaultConfig;
     std::cout << "Usage: vc4c [flags] [options] -o <destination> <sources>" << std::endl;
     std::cout << "flags:" << std::endl;
     std::cout << "\t-h, --help\t\tPrints this help message and exits" << std::endl;
@@ -38,8 +39,9 @@ static void printHelp()
     std::cout << "\t--hex\t\t\tGenerate hex output (e.g. included in source-code)" << std::endl;
     std::cout << "\t--bin\t\t\tGenerate binary output (as used by VC4CL run-time)" << std::endl;
     std::cout << "\t--asm\t\t\tGenerate assembler output (for analysis only)" << std::endl;
+
     std::cout << "optimizations:" << std::endl;
-    std::cout << "\t-O0,-O1,-O2,-O3\t\tSwitches to the specific optimization level, defaults to -O2" << std::endl;
+    std::cout << "\t-O0,-O1,-O2,-O3\t\t\tSwitches to the specific optimization level, defaults to -O2" << std::endl;
     for(const auto& pass : vc4c::optimizations::Optimizer::ALL_PASSES)
     {
         std::cout << "\t--f" << std::left << std::setw(28) << pass.parameterName << pass.description << std::endl;
@@ -47,13 +49,17 @@ static void printHelp()
         std::cout << "\t--fno-" << std::left << std::setw(25) << pass.parameterName << "Disables the above optimization"
                   << std::endl;
     }
+
     std::cout << "optimization parameters:" << std::endl;
-    for(const auto& param : vc4c::optimizations::OPTIMIZATION_PARAMETER_DESCRIPTIONS)
-    {
-        std::cout << "\t--f" << std::left << std::setw(28)
-                  << ((param.first + "=") + vc4c::DEFAULT_OPTIMIZATION_PARAMETERS.at(param.first)) << param.second
-                  << std::endl;
-    }
+    std::cout << "\t--fcombine-load-threshold=" << defaultConfig.additionalOptions.combineLoadThreshold
+              << "\tThe maximum distance between two literal loads to combine" << std::endl;
+    std::cout << "\t--faccumulator-threshold=" << defaultConfig.additionalOptions.accumulatorThreshold
+              << "\tThe maximum live-range of a local still considered to be mapped to an accumulator" << std::endl;
+    std::cout << "\t--freplace-nop-threshold=" << defaultConfig.additionalOptions.replaceNopThreshold
+              << "\tThe number of instructions to search for a replacement for NOPs" << std::endl;
+    std::cout << "\t--fregister-resolver-rounds=" << defaultConfig.additionalOptions.registerResolverMaxRounds
+              << "\tThe maximum number of rows for the register allocator" << std::endl;
+
     std::cout << "options:" << std::endl;
     std::cout << "\t--kernel-info\t\tWrite the kernel-info meta-data (as required by VC4CL run-time, default)"
               << std::endl;

@@ -19,10 +19,6 @@
 using namespace vc4c;
 using namespace vc4c::optimizations;
 
-std::unordered_map<std::string, std::string> vc4c::DEFAULT_OPTIMIZATION_PARAMETERS = {{"combine-load-threshold", "6"}};
-std::map<std::string, std::string> optimizations::OPTIMIZATION_PARAMETER_DESCRIPTIONS = {
-    {"combine-load-threshold", "The maximum distance between two literal loads to combine"}};
-
 OptimizationPass::OptimizationPass(
     const std::string& name, const std::string& parameterName, const Pass& pass, const std::string& description) :
     name(name),

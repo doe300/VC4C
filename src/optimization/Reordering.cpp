@@ -35,9 +35,9 @@ static InstructionWalker findPreviousInstruction(BasicBlock& basicBlock, const I
  * Finds an instruction within the basic block that does not access any of the given values
  */
 static InstructionWalker findInstructionNotAccessing(
-    BasicBlock& basicBlock, const InstructionWalker pos, FastSet<Value>& excludedValues)
+    BasicBlock& basicBlock, const InstructionWalker pos, FastSet<Value>& excludedValues, unsigned replaceNopThreshold)
 {
-    std::size_t instructionsLeft = REPLACE_NOP_MAX_INSTRUCTIONS_TO_CHECK;
+    std::size_t instructionsLeft = replaceNopThreshold;
     auto it = pos;
     while(instructionsLeft > 0 && !it.isEndOfBlock())
     {
@@ -139,7 +139,7 @@ static InstructionWalker findInstructionNotAccessing(
  * replacement-instruction
  */
 static InstructionWalker findReplacementCandidate(
-    BasicBlock& basicBlock, const InstructionWalker pos, const DelayType nopReason)
+    BasicBlock& basicBlock, const InstructionWalker pos, const DelayType nopReason, const Configuration& config)
 {
     PROFILE_START(findReplacementCandidate);
     FastSet<Value> excludedValues;
@@ -180,7 +180,8 @@ static InstructionWalker findReplacementCandidate(
             excludedValues.emplace(Value(REG_VPM_IO, TYPE_UNKNOWN));
         }
         PROFILE_START(findInstructionNotAccessing);
-        replacementIt = findInstructionNotAccessing(basicBlock, pos, excludedValues);
+        replacementIt =
+            findInstructionNotAccessing(basicBlock, pos, excludedValues, config.additionalOptions.replaceNopThreshold);
         PROFILE_END(findInstructionNotAccessing);
         break;
     }
@@ -196,7 +197,8 @@ static InstructionWalker findReplacementCandidate(
         excludedValues.emplace(Value(REG_TMU0_ADDRESS, TYPE_VOID.toPointerType()));
         excludedValues.emplace(Value(REG_TMU1_ADDRESS, TYPE_VOID.toPointerType()));
         PROFILE_START(findInstructionNotAccessing);
-        replacementIt = findInstructionNotAccessing(basicBlock, pos, excludedValues);
+        replacementIt =
+            findInstructionNotAccessing(basicBlock, pos, excludedValues, config.additionalOptions.replaceNopThreshold);
         PROFILE_END(findInstructionNotAccessing);
         break;
     }
@@ -236,7 +238,7 @@ InstructionWalker optimizations::moveInstructionUp(InstructionWalker dest, Instr
     return res;
 }
 
-static void replaceNOPs(BasicBlock& basicBlock, Method& method)
+static void replaceNOPs(BasicBlock& basicBlock, Method& method, const Configuration& config)
 {
     InstructionWalker it = basicBlock.begin();
     while(!it.isEndOfBlock())
@@ -245,7 +247,7 @@ static void replaceNOPs(BasicBlock& basicBlock, Method& method)
         // only replace NOPs without side-effects (e.g. signal)
         if(nop != nullptr && !nop->hasSideEffects())
         {
-            InstructionWalker replacementIt = findReplacementCandidate(basicBlock, it, nop->type);
+            InstructionWalker replacementIt = findReplacementCandidate(basicBlock, it, nop->type, config);
             if(!replacementIt.isEndOfBlock())
             {
                 // replace NOP with instruction, reset instruction at position (do not yet erase, otherwise iterators
@@ -296,7 +298,8 @@ void optimizations::splitReadAfterWrites(const Module& module, Method& method, c
                     // previous instruction  also vector-rotations MUST be on accumulator, but the input MUST NOT be
                     // written in the previous instruction, so they are also split up
                     if(lastInstruction->hasPackMode() || it->hasUnpackMode() || it.has<VectorRotation>() ||
-                        !lastInstruction.getBasicBlock()->isLocallyLimited(lastInstruction, lastWrittenTo))
+                        !lastInstruction.getBasicBlock()->isLocallyLimited(
+                            lastInstruction, lastWrittenTo, config.additionalOptions.accumulatorThreshold))
                     {
                         logging::debug() << "Inserting NOP to split up read-after-write before: " << it->to_string()
                                          << logging::endl;
@@ -346,7 +349,7 @@ void optimizations::reorderWithinBasicBlocks(const Module& module, Method& metho
     for(BasicBlock& block : method)
     {
         // remove NOPs by inserting instructions which do not violate the reason for the NOP
-        PROFILE(replaceNOPs, block, method);
+        PROFILE(replaceNOPs, block, method, config);
     }
 
     // after all re-orders are done, remove empty instructions
@@ -369,7 +372,8 @@ InstructionWalker optimizations::moveRotationSourcesToAccumulators(
         }
         // if the local is either written in another block or the usage-range exceeds the accumulator threshold, move to
         // temporary
-        if(writer.isStartOfBlock() || !writer.getBasicBlock()->isLocallyLimited(writer, loc))
+        if(writer.isStartOfBlock() ||
+            !writer.getBasicBlock()->isLocallyLimited(writer, loc, config.additionalOptions.accumulatorThreshold))
         {
             InstructionWalker mapper = it.copy().previousInBlock();
             // insert mapper before first NOP

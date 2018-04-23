@@ -11,6 +11,8 @@
 #include "../optimization/Optimizer.h"
 #include "log.h"
 
+#include <stdexcept>
+
 using namespace vc4c;
 using namespace vc4c::tools;
 
@@ -111,14 +113,31 @@ bool tools::parseConfigurationParameter(Configuration& config, const std::string
             // optimization parameter
             std::string value = passName.substr(passName.find('=') + 1);
             const std::string paramName = passName.substr(0, passName.find('='));
-            auto it = vc4c::optimizations::OPTIMIZATION_PARAMETER_DESCRIPTIONS.find(paramName);
-            if(it != vc4c::optimizations::OPTIMIZATION_PARAMETER_DESCRIPTIONS.end())
+            int intValue;
+            try
             {
-                config.additionalOptimizationParameters[paramName] = value;
-                return true;
+                intValue = std::stoi(value);
             }
-            std::cerr << "Cannot set unknown optimization parameter: " << paramName << " to " << value << std::endl;
-            return false;
+            catch(std::exception& e)
+            {
+                std::cerr << "Error converting optimization parameter for '" << paramName << ": " << e.what()
+                          << std::endl;
+                return false;
+            }
+            if(paramName == "combine-load-threshold")
+                config.additionalOptions.combineLoadThreshold = intValue;
+            else if(paramName == "accumulator-threshold")
+                config.additionalOptions.accumulatorThreshold = intValue;
+            else if(paramName == "replace-nop-threshold")
+                config.additionalOptions.replaceNopThreshold = intValue;
+            else if(paramName == "register-resolver-rounds")
+                config.additionalOptions.registerResolverMaxRounds = intValue;
+            else
+            {
+                std::cerr << "Cannot set unknown optimization parameter: " << paramName << " to " << value << std::endl;
+                return false;
+            }
+            return true;
         }
         else if(availableOptimizations.find(passName) != availableOptimizations.end())
         {

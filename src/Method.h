@@ -120,8 +120,7 @@ namespace vc4c
          * Checks if all usages of this local are within a certain range from the current instruction, but following
          * branches
          */
-        bool isLocallyLimited(
-            InstructionWalker curIt, const Local* locale, std::size_t threshold = ACCUMULATOR_THRESHOLD_HINT) const;
+        bool isLocallyLimited(InstructionWalker curIt, const Local* locale, std::size_t threshold) const;
 
         /*
          * Returns an iterator to the beginning of the first basic block

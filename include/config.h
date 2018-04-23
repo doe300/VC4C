@@ -100,10 +100,38 @@ namespace vc4c
     constexpr unsigned VPM_DEFAULT_SIZE = 4 * 1024;
 
     /*
-     * Contains all available additional optimization parameters and their default values
+     * Contains additional options for optimization steps configurable via the command-line interface
      */
-    extern std::unordered_map<std::string, std::string> DEFAULT_OPTIMIZATION_PARAMETERS;
-
+    struct OptimizationOptions
+    {
+        /*
+         * The maximum distance between two literal loads to combine
+         */
+        unsigned combineLoadThreshold = 6;
+        /*
+         * The instructions limit to use accumulators.
+         * This is used as a hint for optimizations and is interpreted as follows:
+         * - Any local with a usage-range lower than this limit is assumed to be mapped to an accumulator. E.g. there is no
+         * need to split writes and reads
+         * - Any local with a usage-range higher than this threshold is assumed to be on a physical register, limitations
+         * for physical register apply
+         *
+         * NOTE: This should not be less than 5, otherwise, for all conditional jumps there is a NOP inserted
+         */
+        unsigned accumulatorThreshold = 6;
+        
+        /*
+         * Maximum number of instructions to check for reordering.
+         * This prevents long runs for huge linear programs at the cost of less performant code
+         */
+        unsigned replaceNopThreshold = 64;
+        
+        /*
+         * Maximum number of rounds the register-checker tries to resolve conflicts
+         */
+        unsigned registerResolverMaxRounds = 6;
+    };
+    
     /*
      * Container for user-defined configuration
      */
@@ -145,35 +173,13 @@ namespace vc4c
         /*
          * Manually specified additional parameters for single (or multiple) optimization steps
          */
-        std::unordered_map<std::string, std::string> additionalOptimizationParameters = DEFAULT_OPTIMIZATION_PARAMETERS;
+        OptimizationOptions additionalOptions;
     };
-
-    /*
-     * The instructions limit to use accumulators.
-     * This is used as a hint for optimizations and is interpreted as follows:
-     * - Any local with a usage-range lower than this limit is assumed to be mapped to an accumulator. E.g. there is no
-     * need to split writes and reads
-     * - Any local with a usage-range higher than this threshold is assumed to be on a physical register, limitations
-     * for physical register apply
-     *
-     * NOTE: This should not be less than 5, otherwise, for all conditional jumps there is a NOP inserted
-     */
-    constexpr std::size_t ACCUMULATOR_THRESHOLD_HINT{6};
+    
     /*
      * Numbers of elements for a native SIMD vector
      */
     constexpr std::size_t NATIVE_VECTOR_SIZE{16};
-
-    /*
-     * Maximum number of instructions to check for reordering.
-     * This prevents long runs for huge linear programs at the cost of less performant code
-     */
-    constexpr std::size_t REPLACE_NOP_MAX_INSTRUCTIONS_TO_CHECK{64};
-
-    /*
-     * Maximum number of rounds the register-checker tries to resolve conflicts
-     */
-    constexpr std::size_t REGISTER_RESOLVER_MAX_ROUNDS{6};
 
     /*
      * Magic number to identify QPU assembler code (machine code)

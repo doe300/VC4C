@@ -425,7 +425,8 @@ void optimizations::combineOperations(const Module& module, Method& method, cons
                         // instruction  this is required, since we cannot write to a physical register from both ALUs,
                         // so the local needs to be on an accumulator
                         if(instr->getOutput()->local == nextInstr->getOutput()->local &&
-                            !nextIt.getBasicBlock()->isLocallyLimited(nextIt, instr->getOutput()->local))
+                            !nextIt.getBasicBlock()->isLocallyLimited(
+                                nextIt, instr->getOutput()->local, config.additionalOptions.accumulatorThreshold))
                             conditionsMet = false;
                     }
                     if(instr->hasValueType(ValueType::LOCAL) || nextInstr->hasValueType(ValueType::LOCAL))
@@ -590,8 +591,8 @@ static Optional<Literal> getSourceLiteral(InstructionWalker it)
     return {};
 }
 
-static bool canReplaceLiteralLoad(InstructionWalker it, const InstructionWalker start, const InstructionWalker match,
-    std::size_t stepsLeft = ACCUMULATOR_THRESHOLD_HINT)
+static bool canReplaceLiteralLoad(
+    InstructionWalker it, const InstructionWalker start, const InstructionWalker match, std::size_t stepsLeft)
 {
     InstructionWalker pos = it.copy();
     // check whether the instruction last loading the same literal is at most ACCUMULATOR_THRESHOLD_HINT instructions
@@ -608,17 +609,8 @@ static bool canReplaceLiteralLoad(InstructionWalker it, const InstructionWalker 
 
 void optimizations::combineLoadingLiterals(const Module& module, Method& method, const Configuration& config)
 {
-    std::size_t threshold = 6;
-    try
-    {
-        auto cIt = config.additionalOptimizationParameters.find(combineLoadLiteralsThreshold);
-        if(cIt != config.additionalOptimizationParameters.end())
-            threshold = std::stoi(cIt->second);
-    }
-    catch(const std::invalid_argument& ia)
-    {
-        logging::warn() << "Failed to read optimization parameter: " << ia.what() << logging::endl;
-    }
+    std::size_t threshold = config.additionalOptions.combineLoadThreshold;
+
     for(BasicBlock& block : method)
     {
         FastMap<uint32_t, InstructionWalker> lastLoadImmediate;
@@ -627,7 +619,7 @@ void optimizations::combineLoadingLiterals(const Module& module, Method& method,
         {
             if(it.get() && it->hasValueType(ValueType::LOCAL) &&
                 it->getOutput()->local->getUsers(LocalUse::Type::WRITER).size() == 1 &&
-                block.isLocallyLimited(it, it->getOutput()->local))
+                block.isLocallyLimited(it, it->getOutput()->local, config.additionalOptions.accumulatorThreshold))
             {
                 Optional<Literal> literal = getSourceLiteral(it);
                 if(literal)
