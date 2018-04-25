@@ -111,27 +111,27 @@ namespace vc4c
         /*
          * The instructions limit to use accumulators.
          * This is used as a hint for optimizations and is interpreted as follows:
-         * - Any local with a usage-range lower than this limit is assumed to be mapped to an accumulator. E.g. there is no
-         * need to split writes and reads
-         * - Any local with a usage-range higher than this threshold is assumed to be on a physical register, limitations
-         * for physical register apply
+         * - Any local with a usage-range lower than this limit is assumed to be mapped to an accumulator. E.g. there is
+         * no need to split writes and reads
+         * - Any local with a usage-range higher than this threshold is assumed to be on a physical register,
+         * limitations for physical register apply
          *
          * NOTE: This should not be less than 5, otherwise, for all conditional jumps there is a NOP inserted
          */
         unsigned accumulatorThreshold = 6;
-        
+
         /*
          * Maximum number of instructions to check for reordering.
          * This prevents long runs for huge linear programs at the cost of less performant code
          */
         unsigned replaceNopThreshold = 64;
-        
+
         /*
          * Maximum number of rounds the register-checker tries to resolve conflicts
          */
         unsigned registerResolverMaxRounds = 6;
     };
-    
+
     /*
      * Container for user-defined configuration
      */
@@ -175,7 +175,7 @@ namespace vc4c
          */
         OptimizationOptions additionalOptions;
     };
-    
+
     /*
      * Numbers of elements for a native SIMD vector
      */
