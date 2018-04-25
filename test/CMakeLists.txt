@@ -1,6 +1,6 @@
 add_executable(TestVC4C "")
 include(sources.list)
-target_link_libraries(TestVC4C VC4CC)
+target_link_libraries(TestVC4C VC4CC ${SYSROOT_LIBRARY_FLAGS})
 
 if(BUILD_DEBUG)
 	target_compile_definitions(TestVC4C PRIVATE DEBUG_MODE=1)

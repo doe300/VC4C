@@ -3,7 +3,7 @@
 # Emulator
 ###
 add_executable(qpu_emulator emulator.cpp)
-target_link_libraries(qpu_emulator VC4CC)
+target_link_libraries(qpu_emulator VC4CC ${SYSROOT_LIBRARY_FLAGS})
 target_include_directories(qpu_emulator PRIVATE "${PROJECT_SOURCE_DIR}/lib/cpplog/include")
 target_include_directories(qpu_emulator PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_include_directories(qpu_emulator PRIVATE "${PROJECT_SOURCE_DIR}/include")

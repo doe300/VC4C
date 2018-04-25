@@ -49,6 +49,14 @@ if(CROSS_COMPILE)
 	# Raspbian ships CLang 3.9 in its repositories
 	set(CLANG_FOUND /usr/bin/clang-3.9)
 	set(ADVANCED_OPENCL_FEATURES ON)
+        if (SYSROOT_CROSS)
+          # set(CMAKE_SYSROOT ${SYSROOT_CROSS})
+          set(CMAKE_FIND_ROOT_PATH ${SYSROOT_CROSS})
+          set(SYSROOT_LIBRARY_FLAGS "-Wl,-rpath-link,${SYSROOT_CROSS}/lib/arm-linux-gnueabihf:${SYSROOT_CROSS}/usr/lib/arm-linux-gnueabihf")
+        endif()
+
+        set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+
 	message(STATUS "Cross compiling for Raspbian with compiler: ${CMAKE_CXX_COMPILER}")
 endif()
 
@@ -213,7 +221,7 @@ if(LLVMLIB_FRONTEND)
 			message(WARNING "Failed to determine LLVM library version")
 		endif()
 	else()
-		find_package(LLVM CONFIG)
+		find_package(LLVM)
 		if(LLVM_FOUND)
 
 			#Depending on the LLVM library version used, we need to use some other functions/headers in the LLVM library front-end
@@ -312,11 +320,11 @@ endif (BUILD_TESTING)
 if (BUILD_DEB_PACKAGE)
 	message(STATUS "build deb package...")
 	message(STATUS "Debian package expects VC4CL standard library PCH to be located in: ${VC4CL_STDLIB_HEADER}")
-	
+
 	# Generate postint-script for debian package, building the VC4CLStdLib PCH
 	configure_file(cmake/deb-postint.in "${CMAKE_BINARY_DIR}/build/postinst" @ONLY NEWLINE_STYLE UNIX)
 	configure_file(cmake/deb-prerem.in "${CMAKE_BINARY_DIR}/build/prerem" @ONLY NEWLINE_STYLE UNIX)
-	
+
 	# We always need the vc4cl standard-library for installing the vc4c package
 	set(PACKAGE_DEPENDENCIES "vc4cl-stdlib")
 	if(NOT SPIRV_CLANG_FOUND AND CLANG_FOUND)
