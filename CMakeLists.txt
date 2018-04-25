@@ -44,6 +44,9 @@ if(CROSS_COMPILE)
 	if(NOT CROSS_COMPILER_PATH)
 		set(CROSS_COMPILER_PATH "/usr/bin")
 	endif()
+	if(NOT CROSS_COMPILER_PREFIX)
+		set(CROSS_COMPILER_PREFIX "arm-linux-gnueabihf-")
+	endif()
 	#Set Cross compiler
 	include(cmake/RaspberryPi.cmake)
 	# Raspbian ships CLang 3.9 in its repositories
