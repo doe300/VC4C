@@ -52,7 +52,8 @@ include(spirv/sources.list)
 include(tools/sources.list)
 
 # Add all dependencies
-target_link_libraries(VC4C VC4CC)
+target_link_libraries(${VC4C_PROGRAM_NAME} ${VC4C_LIBRARY_NAME} ${SYSROOT_LIBRARY_FLAGS})
+
 #VC4CL standard-library (build only dependency)
 add_dependencies(${VC4C_LIBRARY_NAME} vc4cl-stdlib)
 
@@ -90,7 +91,7 @@ if(VC4C_ENABLE_SPIRV_FRONTEND)
 	add_library(spirv-tools-link STATIC IMPORTED)
 	set_target_properties(spirv-tools-link PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/source/link/libSPIRV-Tools-link.a")
 	target_link_libraries(${VC4C_LIBRARY_NAME} spirv-tools-link)
-	
+
 	target_include_directories(${VC4C_LIBRARY_NAME} PRIVATE "${PROJECT_SOURCE_DIR}/lib/spirv-headers/include")
 	target_include_directories(${VC4C_LIBRARY_NAME} PRIVATE "${PROJECT_SOURCE_DIR}/lib/spirv-tools/include")
 	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE SPIRV_LLVM_SPIRV_PATH="${SPIRV_LLVM_SPIR_FOUND}" SPIRV_FRONTEND=1)
@@ -102,8 +103,8 @@ if(VC4C_ENABLE_LLVM_LIB_FRONTEND)
 	#This works with libLLVM.so as well as the single static component libraries
 	string(STRIP "-L ${LLVM_LIBS_PATH} ${LLVM_LIB_NAMES} ${LLVM_SYSTEM_LIB_NAMES}" llvm)
 	target_link_libraries(${VC4C_LIBRARY_NAME} "${llvm}")
-	
-	# Adds require macros as well as include-paths
+
+	# adds require macros as well as include-paths
 	# SYSTEM here suppresses (at least on some compilers/systems) all warnings from the LLVM header file
 	target_include_directories(${VC4C_LIBRARY_NAME} SYSTEM PRIVATE "${LLVM_INCLUDE_PATH}")
 	target_compile_options(${VC4C_LIBRARY_NAME} PRIVATE ${LLVM_LIB_FLAGS})
@@ -117,7 +118,7 @@ if(VERIFY_OUTPUT)
 	ExternalProject_Get_Property(vc4asm-project BINARY_DIR)
 	set_target_properties(vc4asm PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/libvc4asm.a")
 	target_link_libraries(${VC4C_LIBRARY_NAME} vc4asm)
-	
+
 	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE VERIFIER_HEADER="${PROJECT_SOURCE_DIR}/lib/vc4asm/src/Validator.h")
 	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE VERIFIER_HEADER="${PROJECT_SOURCE_DIR}/lib/vc4asm/src/Validator.h")
 endif()
