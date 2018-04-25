@@ -714,9 +714,10 @@ static InstructionWalker findWriteOfLocal(InstructionWalker it, const Local* loc
 
 static const std::string localPrefix = "%use_with_literal";
 
-static Optional<Value> findPreviousUseWithImmediate(InstructionWalker it, const Value& arg)
+static Optional<Value> findPreviousUseWithImmediate(
+    InstructionWalker it, const Value& arg, unsigned accumulatorThreshold)
 {
-    auto instRemaining = ACCUMULATOR_THRESHOLD_HINT;
+    auto instRemaining = accumulatorThreshold;
 
     while(instRemaining > 0 && !it.isStartOfBlock())
     {
@@ -752,12 +753,14 @@ InstructionWalker normalization::handleUseWithImmediate(
             const auto localIt = std::find_if(
                 args.begin(), args.end(), [](const Value& arg) -> bool { return arg.hasType(ValueType::LOCAL); });
             if(localIt != args.end() &&
-                !it.getBasicBlock()->isLocallyLimited(findWriteOfLocal(it, localIt->local), localIt->local))
+                !it.getBasicBlock()->isLocallyLimited(findWriteOfLocal(it, localIt->local), localIt->local,
+                    config.additionalOptions.accumulatorThreshold))
             {
                 // one other local is used and its range is greater than the accumulator threshold
                 // check if we have introduced an earlier use-with-immediate for the same value within the
                 // accumulator-range
-                Optional<Value> prefTemp = findPreviousUseWithImmediate(it, *localIt);
+                Optional<Value> prefTemp =
+                    findPreviousUseWithImmediate(it, *localIt, config.additionalOptions.accumulatorThreshold);
                 const Local* oldLocal = localIt->local;
                 if(prefTemp)
                 {

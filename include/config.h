@@ -7,8 +7,9 @@
 #ifndef VC4C_CONFIG_H
 #define VC4C_CONFIG_H
 
-#include <cstddef>
-#include <stdint.h>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace vc4c
 {
@@ -60,6 +61,33 @@ namespace vc4c
     };
 
     /*
+     * Specifies the possible basic optimization levels.
+     *
+     * The exact optimizations enabled/disabled can be specified separately.
+     *
+     * NOTE: A higher optimization level may generate more performant code, but will also increase the compilation time
+     */
+    enum class OptimizationLevel
+    {
+        /*
+         * -O0, disable all optimizations
+         */
+        NONE,
+        /*
+         * -O1, run basic optimizations with the greatest effect per additional compilation time required
+         */
+        BASIC,
+        /*
+         * -O2, run more advanced and more complex optimizations
+         */
+        MEDIUM,
+        /*
+         * -O3, run all available optimizations
+         */
+        FULL
+    };
+
+    /*
      * The maximum VPM size to be used (in bytes).
      *
      * According to tests the configured VPM size (at least for the Raspberry Pi 2) is 12 KB.
@@ -70,6 +98,39 @@ namespace vc4c
      * available VPM cache size (64 * 16 * sizeof(uint))
      */
     constexpr unsigned VPM_DEFAULT_SIZE = 4 * 1024;
+
+    /*
+     * Contains additional options for optimization steps configurable via the command-line interface
+     */
+    struct OptimizationOptions
+    {
+        /*
+         * The maximum distance between two literal loads to combine
+         */
+        unsigned combineLoadThreshold = 6;
+        /*
+         * The instructions limit to use accumulators.
+         * This is used as a hint for optimizations and is interpreted as follows:
+         * - Any local with a usage-range lower than this limit is assumed to be mapped to an accumulator. E.g. there is
+         * no need to split writes and reads
+         * - Any local with a usage-range higher than this threshold is assumed to be on a physical register,
+         * limitations for physical register apply
+         *
+         * NOTE: This should not be less than 5, otherwise, for all conditional jumps there is a NOP inserted
+         */
+        unsigned accumulatorThreshold = 6;
+
+        /*
+         * Maximum number of instructions to check for reordering.
+         * This prevents long runs for huge linear programs at the cost of less performant code
+         */
+        unsigned replaceNopThreshold = 64;
+
+        /*
+         * Maximum number of rounds the register-checker tries to resolve conflicts
+         */
+        unsigned registerResolverMaxRounds = 6;
+    };
 
     /*
      * Container for user-defined configuration
@@ -98,45 +159,27 @@ namespace vc4c
          */
         Frontend frontend = Frontend::DEFAULT;
         /*
-         * Whether to turn on auto-vectorization of loops
+         * The optimization level to use. This can be adapted to enable/disable optimizations by the fields below
          */
-        bool autoVectorization = false;
+        OptimizationLevel optimizationLevel = OptimizationLevel::MEDIUM;
         /*
-         * Whether moving of constants to out side of loops
+         * Manually activated optimizations
          */
-        bool moveConstants = true;
+        std::unordered_set<std::string> additionalEnabledOptimizations;
         /*
-         * The threshold for combineLoadingLiterals
+         * Manually deactivated optimizations
          */
-        int combineLoadingLiteralsThreshold = 6;
+        std::unordered_set<std::string> additionalDisabledOptimizations;
+        /*
+         * Manually specified additional parameters for single (or multiple) optimization steps
+         */
+        OptimizationOptions additionalOptions;
     };
 
-    /*
-     * The instructions limit to use accumulators.
-     * This is used as a hint for optimizations and is interpreted as follows:
-     * - Any local with a usage-range lower than this limit is assumed to be mapped to an accumulator. E.g. there is no
-     * need to split writes and reads
-     * - Any local with a usage-range higher than this threshold is assumed to be on a physical register, limitations
-     * for physical register apply
-     *
-     * NOTE: This should not be less than 5, otherwise, for all conditional jumps there is a NOP inserted
-     */
-    constexpr std::size_t ACCUMULATOR_THRESHOLD_HINT{6};
     /*
      * Numbers of elements for a native SIMD vector
      */
     constexpr std::size_t NATIVE_VECTOR_SIZE{16};
-
-    /*
-     * Maximum number of instructions to check for reordering.
-     * This prevents long runs for huge linear programs at the cost of less performant code
-     */
-    constexpr std::size_t REPLACE_NOP_MAX_INSTRUCTIONS_TO_CHECK{64};
-
-    /*
-     * Maximum number of rounds the register-checker tries to resolve conflicts
-     */
-    constexpr std::size_t REGISTER_RESOLVER_MAX_ROUNDS{6};
 
     /*
      * Magic number to identify QPU assembler code (machine code)

@@ -4,12 +4,14 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
+#include "./optimization/Optimizer.h"
 #include "Compiler.h"
 #include "Precompiler.h"
 #include "Profiler.h"
 #include "concepts.h"
 #include "config.h"
 #include "log.h"
+#include "tools.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -27,15 +29,37 @@ extern void disassemble(const std::string& input, const std::string& output, con
 
 static void printHelp()
 {
+    vc4c::Configuration defaultConfig;
     std::cout << "Usage: vc4c [flags] [options] -o <destination> <sources>" << std::endl;
     std::cout << "flags:" << std::endl;
     std::cout << "\t-h, --help\t\tPrints this help message and exits" << std::endl;
     std::cout << "\t-v, --version\t\tPrints version and build info and exists" << std::endl;
     std::cout << "\t-d, --debug\t\tEnables verbose debug output" << std::endl;
-    std::cout << "\t--quiet\t\tQuiet verbose debug output" << std::endl;
+    std::cout << "\t--quiet\t\t\tQuiet verbose debug output" << std::endl;
     std::cout << "\t--hex\t\t\tGenerate hex output (e.g. included in source-code)" << std::endl;
     std::cout << "\t--bin\t\t\tGenerate binary output (as used by VC4CL run-time)" << std::endl;
     std::cout << "\t--asm\t\t\tGenerate assembler output (for analysis only)" << std::endl;
+
+    std::cout << "optimizations:" << std::endl;
+    std::cout << "\t-O0,-O1,-O2,-O3\t\t\tSwitches to the specific optimization level, defaults to -O2" << std::endl;
+    for(const auto& pass : vc4c::optimizations::Optimizer::ALL_PASSES)
+    {
+        std::cout << "\t--f" << std::left << std::setw(28) << pass.parameterName << pass.description << std::endl;
+        // TODO print which optimization level includes optimization
+        std::cout << "\t--fno-" << std::left << std::setw(25) << pass.parameterName << "Disables the above optimization"
+                  << std::endl;
+    }
+
+    std::cout << "optimization parameters:" << std::endl;
+    std::cout << "\t--fcombine-load-threshold=" << defaultConfig.additionalOptions.combineLoadThreshold
+              << "\tThe maximum distance between two literal loads to combine" << std::endl;
+    std::cout << "\t--faccumulator-threshold=" << defaultConfig.additionalOptions.accumulatorThreshold
+              << "\tThe maximum live-range of a local still considered to be mapped to an accumulator" << std::endl;
+    std::cout << "\t--freplace-nop-threshold=" << defaultConfig.additionalOptions.replaceNopThreshold
+              << "\tThe number of instructions to search for a replacement for NOPs" << std::endl;
+    std::cout << "\t--fregister-resolver-rounds=" << defaultConfig.additionalOptions.registerResolverMaxRounds
+              << "\tThe maximum number of rows for the register allocator" << std::endl;
+
     std::cout << "options:" << std::endl;
     std::cout << "\t--kernel-info\t\tWrite the kernel-info meta-data (as required by VC4CL run-time, default)"
               << std::endl;
@@ -43,8 +67,6 @@ static void printHelp()
     std::cout << "\t--spirv\t\t\tExplicitely use the SPIR-V front-end" << std::endl;
     std::cout << "\t--llvm\t\t\tExplicitely use the LLVM-IR front-end" << std::endl;
     std::cout << "\t--disassemble\t\tDisassembles the binary input to either hex or assembler output" << std::endl;
-    std::cout << "\t--fmoveconstants\t\tEnable move of constants to outer-loop (default: on)" << std::endl;
-    std::cout << "\t--fnomoveconstants\t\tDisable move of constants to outer-loop" << std::endl;
     std::cout << "\tany other option is passed to the pre-compiler" << std::endl;
 }
 
@@ -101,40 +123,7 @@ static void printInfo()
     std::cout << vc4c::to_string<std::string>(infoString, "; ") << std::endl;
 }
 
-/*
- * parse options with parameter like xxx=n
- * if invalid parameter are passed, raise an exception
- */
-Optional<int> parseIntOption(std::string name, std::string input)
-{
-    std::stringstream ss(input);
-    std::string buffer;
-    std::getline(ss, buffer, '=');
-    if(buffer == name)
-    {
-        // XXX if input doesn't include '=', `ss` already reached the end.
-        // Then, the second `std::getline` do nothing.
-        // To detect that checking `name` == `buffer` is required.
-        std::getline(ss, buffer, '=');
-        if(name == buffer)
-        {
-            std::string err = "option parse error: parameter of integer expected in " + name;
-            throw CompilationError(CompilationStep::PRECOMPILATION, err);
-        }
-        try
-        {
-            auto s = std::stoi(buffer);
-            return Optional<int>(s);
-        }
-        catch(const std::invalid_argument& e)
-        {
-            std::string err = "option parse error: parameter of integer expected in " + name + ", but " + buffer;
-            throw CompilationError(CompilationStep::PRECOMPILATION, err);
-        }
-    }
-
-    return {};
-}
+static auto availableOptimizations = vc4c::optimizations::Optimizer::getPasses(OptimizationLevel::FULL);
 
 /*
  *
@@ -191,32 +180,8 @@ int main(int argc, char** argv)
             setLogger(std::wcout, true, LogLevel::WARNING);
         else if(strcmp("--debug", argv[i]) == 0 || strcmp("-d", argv[i]) == 0)
             setLogger(std::wcout, true, LogLevel::DEBUG);
-        else if(strcmp("--hex", argv[i]) == 0)
-            config.outputMode = OutputMode::HEX;
-        else if(strcmp("--bin", argv[i]) == 0)
-            config.outputMode = OutputMode::BINARY;
-        else if(strcmp("--asm", argv[i]) == 0)
-            config.outputMode = OutputMode::ASSEMBLER;
-        else if(strcmp("--fast-math", argv[i]) == 0)
-            config.mathType = MathType::FAST;
-        else if(strcmp("--exact-math", argv[i]) == 0)
-            config.mathType = MathType::EXACT;
-        else if(strcmp("--strict-math", argv[i]) == 0)
-            config.mathType = MathType::STRICT;
-        else if(strcmp("--kernel-info", argv[i]) == 0)
-            config.writeKernelInfo = true;
-        else if(strcmp("--no-kernel-info", argv[i]) == 0)
-            config.writeKernelInfo = false;
-        else if(strcmp("--spirv", argv[i]) == 0)
-            config.frontend = Frontend::SPIR_V;
-        else if(strcmp("--llvm", argv[i]) == 0)
-            config.frontend = Frontend::LLVM_IR;
         else if(strcmp("--disassemble", argv[i]) == 0)
             runDisassembler = true;
-        else if(strcmp("--fmove-constants", argv[i]) == 0)
-            config.moveConstants = true;
-        else if(strcmp("--fnomove-constants", argv[i]) == 0)
-            config.moveConstants = false;
         else if(strcmp("-o", argv[i]) == 0)
         {
             outputFile = argv[i + 1];
@@ -224,11 +189,7 @@ int main(int argc, char** argv)
             i += 2;
             break;
         }
-        else if(auto opt = parseIntOption("--fcombine-load-threshold", argv[i]))
-        {
-            config.combineLoadingLiteralsThreshold = opt.value();
-        }
-        else
+        else if(!vc4c::tools::parseConfigurationParameter(config, argv[i]))
             options.append(argv[i]).append(" ");
     }
 
@@ -261,7 +222,8 @@ int main(int argc, char** argv)
     }
 
     logging::debug() << "Compiling '" << to_string<std::string>(inputFiles, "', '") << "' into '" << outputFile
-                     << "' with options '" << options << "' ..." << logging::endl;
+                     << "' with optimization level " << static_cast<unsigned>(config.optimizationLevel)
+                     << " and options '" << options << "' ..." << logging::endl;
 
     Optional<std::string> inputFile;
     std::unique_ptr<std::istream> input;

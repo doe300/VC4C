@@ -13,7 +13,7 @@
 class RegressionTest : public Test::Suite
 {
 public:
-    RegressionTest(const vc4c::Frontend frontend, bool onlyRegressions = false, bool onlyFast = false);
+    RegressionTest(const vc4c::Configuration& config, const vc4c::Frontend frontend, bool onlyRegressions = false, bool onlyFast = false);
     ~RegressionTest() override;
     
     void testRegression(std::string clFile, std::string options, vc4c::Frontend frontend);
@@ -22,6 +22,9 @@ public:
     void testSlowPending(std::string clFile, std::string options, vc4c::Frontend frontend);
 
     void printProfilingInfo();
+    
+private:
+    vc4c::Configuration config;
 };
 
 #endif /* REGRESSIONTEST_H */

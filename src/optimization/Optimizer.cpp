@@ -19,14 +19,19 @@
 using namespace vc4c;
 using namespace vc4c::optimizations;
 
-OptimizationPass::OptimizationPass(const std::string& name, const Pass pass) : name(name), pass(pass) {}
+OptimizationPass::OptimizationPass(
+    const std::string& name, const std::string& parameterName, const Pass& pass, const std::string& description) :
+    name(name),
+    parameterName(parameterName), description(description), pass(pass)
+{
+}
 
 void OptimizationPass::operator()(const Module& module, Method& method, const Configuration& config) const
 {
     pass(module, method, config);
 }
 
-OptimizationStep::OptimizationStep(const std::string& name, const Step step) : name(name), step(step) {}
+OptimizationStep::OptimizationStep(const std::string& name, const Step& step) : name(name), step(step) {}
 
 InstructionWalker OptimizationStep::operator()(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config) const
@@ -110,56 +115,38 @@ static void generalOptimization(const Module& module, Method& method, const Conf
 
 Optimizer::Optimizer(const Configuration& config) : config(config)
 {
-    // runs all the single-step optimizations. Combining them results in fewer iterations over the instructions
-    passes.emplace_back("SingleSteps", runSingleSteps);
-    // merges adjacent basic blocks if there are no other conflicting transitions
-    passes.emplace_back("MergeBasicBlocks", mergeAdjacentBasicBlocks);
-    // compresses work-group info into single local
-    // passes.emplace_back("CompressWorkGroupInfo", compressWorkGroupLocals);
-    // combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation
-    passes.emplace_back("CombineRotations", combineVectorRotations);
-    passes.emplace_back("GeneralOptimizations", generalOptimization);
-    /*
-     * TODO in combination with a bug/missing check in register-allocation, this generates invalid code (e.g.
-     * testing/test_barrier.cl) More exact: the load is moved outside the loop but the register is re-assigned in the
-     * loop having wrong value for successive iterations In register-allocation, need to check for loops and reserve
-     * whole loop
-     */
-    // move constant loads in (nested) loops outside the loops
-    // passes.emplace_back("RemoveConstantLoadInLoops", removeConstantLoadInLoops);
-    // eliminates useless instructions (dead store, move to same, redundant arithmetic operations, ...)
-    passes.emplace_back("EliminateDeadStores", eliminateDeadStore);
-    // vectorizes loops
-    passes.emplace_back("VectorizeLoops", vectorizeLoops);
-    // more like a de-optimization. Splits read-after-writes (except if the local is used only very locally), so the
-    // reordering and register-allocation have an easier job
-    passes.emplace_back("SplitReadAfterWrites", splitReadAfterWrites);
-    // combines loadings of the same literal value within a small range of a basic block
-    passes.emplace_back("CombineLiteralLoads", combineLoadingLiterals);
-    // re-order instructions to eliminate more NOPs and stall cycles
-    passes.emplace_back("ReorderInstructions", reorderWithinBasicBlocks);
-    // run peep-hole optimization to combine ALU-operations
-    passes.emplace_back("CombineALUIinstructions", combineOperations);
+    auto enabledPasses = getPasses(config.optimizationLevel);
+    for(const OptimizationPass& pass : ALL_PASSES)
+    {
+        if(config.additionalDisabledOptimizations.find(pass.parameterName) !=
+            config.additionalDisabledOptimizations.end())
+            continue;
+        if(config.additionalEnabledOptimizations.find(pass.parameterName) !=
+            config.additionalEnabledOptimizations.end())
+            passes.emplace_back(&pass);
+        if(enabledPasses.find(pass.parameterName) != enabledPasses.end())
+            passes.emplace_back(&pass);
+    }
 }
 
-static void runOptimizationPasses(
-    const Module& module, Method& method, const Configuration& config, const std::vector<OptimizationPass>& passes)
+static void runOptimizationPasses(const Module& module, Method& method, const Configuration& config,
+    const std::vector<const OptimizationPass*>& passes)
 {
     logging::debug() << "-----" << logging::endl;
     logging::info() << "Running optimization passes for: " << method.name << logging::endl;
     std::size_t numInstructions = method.countInstructions();
 
     std::size_t index = 0;
-    for(const OptimizationPass& pass : passes)
+    for(const OptimizationPass* pass : passes)
     {
         logging::debug() << logging::endl;
-        logging::debug() << "Running pass: " << pass.name << logging::endl;
+        logging::debug() << "Running pass: " << pass->name << logging::endl;
         PROFILE_COUNTER(
-            vc4c::profiler::COUNTER_OPTIMIZATION + index, pass.name + " (before)", method.countInstructions());
-        PROFILE_START_DYNAMIC(pass.name);
-        pass(module, method, config);
-        PROFILE_END_DYNAMIC(pass.name);
-        PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_OPTIMIZATION + index + 10, pass.name + " (after)",
+            vc4c::profiler::COUNTER_OPTIMIZATION + index, pass->name + " (before)", method.countInstructions());
+        PROFILE_START_DYNAMIC(pass->name);
+        (*pass)(module, method, config);
+        PROFILE_END_DYNAMIC(pass->name);
+        PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_OPTIMIZATION + index + 10, pass->name + " (after)",
             method.countInstructions(), vc4c::profiler::COUNTER_OPTIMIZATION + index);
         index += 100;
     }
@@ -187,4 +174,65 @@ void Optimizer::optimize(Module& module) const
         workers.emplace(workers.end(), f, "Optimizer")->operator()();
     }
     BackgroundWorker::waitForAll(workers);
+}
+
+const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
+    OptimizationPass("SingleSteps", "single-steps", runSingleSteps,
+        "runs all the single-step optimizations. Combining them results in fewer iterations over the instructions"),
+    OptimizationPass("MergeBasicBlocks", "merge-blocks", mergeAdjacentBasicBlocks,
+        "merges adjacent basic blocks if there are no other conflicting transitions"),
+    // OptimizationPass("CompressWorkGroupInfo", "compress-work-group-info", compressWorkGroupLocals,
+    //    "compresses work-group info into single local"),
+    OptimizationPass("CombineRotations", "combine-rotations", combineVectorRotations,
+        "combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation"),
+    OptimizationPass("GeneralOptimizations", "general-optimizations", generalOptimization, "TODO"),
+    /*
+     * TODO in combination with a bug/missing check in register-allocation, this generates invalid code (e.g.
+     * testing/test_barrier.cl) More exact: the load is moved outside the loop but the register is re-assigned in the
+     * loop having wrong value for successive iterations In register-allocation, need to check for loops and reserve
+     * whole loop
+     */
+    //    OptimizationPass("RemoveConstantLoadInLoops", "extract-loads-from-loops", removeConstantLoadInLoops,
+    //        "move constant loads in (nested) loops outside the loops"),
+    OptimizationPass("EliminateDeadStores", "eliminate-dead-store", eliminateDeadStore,
+        "eliminates useless instructions (dead store, move to same, redundant arithmetic operations, ...)"),
+    OptimizationPass("VectorizeLoops", "vectorize-loops", vectorizeLoops, "vectorizes loops"),
+    OptimizationPass("SplitReadAfterWrites", "split-read-write", splitReadAfterWrites,
+        "splits read-after-writes (except if the local is used only very locally), so the reordering and "
+        "register-allocation have an easier job"),
+    OptimizationPass("CombineLiteralLoads", "combine-loads", combineLoadingLiterals,
+        "combines loadings of the same literal value within a small range of a basic block"),
+    OptimizationPass("ReorderInstructions", "reorder", reorderWithinBasicBlocks,
+        "re-order instructions to eliminate more NOPs and stall cycles"),
+    OptimizationPass("CombineALUIinstructions", "combine", combineOperations,
+        "run peep-hole optimization to combine ALU-operations")};
+
+std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
+{
+    std::set<std::string> passes;
+    switch(level)
+    {
+    case OptimizationLevel::FULL:
+        passes.emplace("vectorize-loops");
+        passes.emplace("extract-loads-from-loops");
+        // fall-through on purpose
+    case OptimizationLevel::MEDIUM:
+        passes.emplace("merge-blocks");
+        passes.emplace("combine-rotations");
+        passes.emplace("general-optimizations");
+        passes.emplace("split-read-write");
+        passes.emplace("combine-loads");
+        // fall-through on purpose
+    case OptimizationLevel::BASIC:
+        passes.emplace("eliminate-dead-store");
+        passes.emplace("single-steps");
+        passes.emplace("reorder");
+        passes.emplace("combine");
+        // fall-through on purpose
+    case OptimizationLevel::NONE:
+    default:
+        break;
+    }
+
+    return passes;
 }

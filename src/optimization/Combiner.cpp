@@ -18,6 +18,8 @@ using namespace vc4c;
 using namespace vc4c::optimizations;
 using namespace vc4c::intermediate;
 
+static const std::string combineLoadLiteralsThreshold = "combine-load-threshold";
+
 InstructionWalker optimizations::combineDuplicateBranches(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
@@ -423,7 +425,8 @@ void optimizations::combineOperations(const Module& module, Method& method, cons
                         // instruction  this is required, since we cannot write to a physical register from both ALUs,
                         // so the local needs to be on an accumulator
                         if(instr->getOutput()->local == nextInstr->getOutput()->local &&
-                            !nextIt.getBasicBlock()->isLocallyLimited(nextIt, instr->getOutput()->local))
+                            !nextIt.getBasicBlock()->isLocallyLimited(
+                                nextIt, instr->getOutput()->local, config.additionalOptions.accumulatorThreshold))
                             conditionsMet = false;
                     }
                     if(instr->hasValueType(ValueType::LOCAL) || nextInstr->hasValueType(ValueType::LOCAL))
@@ -588,8 +591,8 @@ static Optional<Literal> getSourceLiteral(InstructionWalker it)
     return {};
 }
 
-static bool canReplaceLiteralLoad(InstructionWalker it, const InstructionWalker start, const InstructionWalker match,
-    std::size_t stepsLeft = ACCUMULATOR_THRESHOLD_HINT)
+static bool canReplaceLiteralLoad(
+    InstructionWalker it, const InstructionWalker start, const InstructionWalker match, std::size_t stepsLeft)
 {
     InstructionWalker pos = it.copy();
     // check whether the instruction last loading the same literal is at most ACCUMULATOR_THRESHOLD_HINT instructions
@@ -606,6 +609,8 @@ static bool canReplaceLiteralLoad(InstructionWalker it, const InstructionWalker 
 
 void optimizations::combineLoadingLiterals(const Module& module, Method& method, const Configuration& config)
 {
+    std::size_t threshold = config.additionalOptions.combineLoadThreshold;
+
     for(BasicBlock& block : method)
     {
         FastMap<uint32_t, InstructionWalker> lastLoadImmediate;
@@ -614,14 +619,14 @@ void optimizations::combineLoadingLiterals(const Module& module, Method& method,
         {
             if(it.get() && it->hasValueType(ValueType::LOCAL) &&
                 it->getOutput()->local->getUsers(LocalUse::Type::WRITER).size() == 1 &&
-                block.isLocallyLimited(it, it->getOutput()->local))
+                block.isLocallyLimited(it, it->getOutput()->local, config.additionalOptions.accumulatorThreshold))
             {
                 Optional<Literal> literal = getSourceLiteral(it);
                 if(literal)
                 {
                     auto immIt = lastLoadImmediate.find(literal->unsignedInt());
                     if(immIt != lastLoadImmediate.end() &&
-                        canReplaceLiteralLoad(it, block.begin(), immIt->second, config.combineLoadingLiteralsThreshold))
+                        canReplaceLiteralLoad(it, block.begin(), immIt->second, threshold))
                     {
                         Local* oldLocal = it->getOutput()->local;
                         Local* newLocal = immIt->second->getOutput()->local;
@@ -654,9 +659,9 @@ void optimizations::unrollWorkGroups(const Module& module, Method& method, const
      * In a loop with a count specified in GROUP_LOOP_SIZE, the kernel is re-run.
      * This saves some of the overhead for changing the group-id and re-starting the kernel via a mailbox call.
      *
-     * In return, for every loop iteration there needs to be a UNIFORM with the count of remaining loop iterations left.
-     * Or just a non-zero value for all but the last and a zero-value for the last iteration.
-     * Additionally, all UNIFORMs need to be re-loaded!!
+     * In return, for every loop iteration there needs to be a UNIFORM with the count of remaining loop iterations
+     * left. Or just a non-zero value for all but the last and a zero-value for the last iteration. Additionally,
+     * all UNIFORMs need to be re-loaded!!
      */
     const Local* startLabel = method.findOrCreateLocal(TYPE_LABEL, BasicBlock::DEFAULT_BLOCK);
 
