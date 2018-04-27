@@ -172,8 +172,10 @@ namespace vc4c
          *
          * * If it has no value, this optimization will not performed.
          * * If it has negative value, all constants in loops will be moved.
+         *
+         * NOTE: This optimization is not enabled by default because it is incomplete.
          */
-        Optional<int> moveConstantsDepth = Optional<int>(-1);
+        Optional<int> moveConstantsDepth = {};
         /*
          * Manually deactivated optimizations
          */
