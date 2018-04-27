@@ -182,13 +182,6 @@ int main(int argc, char** argv)
             setLogger(std::wcout, true, LogLevel::DEBUG);
         else if(strcmp("--disassemble", argv[i]) == 0)
             runDisassembler = true;
-        else if(auto opt = parseIntOption("--fmove-constants", argv[i]))
-        {
-            // Optional of opt and moveConstantsDepth are different.
-            config.moveConstantsDepth = Optional<int>(opt.value());
-        }
-        else if(strcmp("--fnomove-constants", argv[i]) == 0)
-            config.moveConstantsDepth = {};
         else if(strcmp("-o", argv[i]) == 0)
         {
             outputFile = argv[i + 1];

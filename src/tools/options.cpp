@@ -94,7 +94,7 @@ bool tools::parseConfigurationParameter(Configuration& config, const std::string
     std::string passName;
     if(arg.find("--fno-") == 0)
     {
-        passName = arg.substr(std::string("--f-no-").size() - 1);
+        passName = arg.substr(std::string("--fno-").size());
         if(availableOptimizations.find(passName) != availableOptimizations.end())
         {
             config.additionalDisabledOptimizations.emplace(passName);
@@ -132,6 +132,8 @@ bool tools::parseConfigurationParameter(Configuration& config, const std::string
                 config.additionalOptions.replaceNopThreshold = intValue;
             else if(paramName == "register-resolver-rounds")
                 config.additionalOptions.registerResolverMaxRounds = intValue;
+            else if(paramName == "extract-loads-from-loops")
+                config.additionalOptions.moveConstantsDepth = Optional<int>(intValue);
             else
             {
                 std::cerr << "Cannot set unknown optimization parameter: " << paramName << " to " << value << std::endl;
