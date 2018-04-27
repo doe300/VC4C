@@ -175,7 +175,7 @@ namespace vc4c
         /*
          * The name of this object
          */
-        const std::string name;
+        std::string name;
         /*
          * Another local (e.g. parameter, global) referenced by this local with the index, if it is a scalar index,
          * otherwise ANY_ELEMENT.

@@ -361,6 +361,7 @@ namespace vc4c
             bool isNormalized() const override;
 
             const Local* getLabel() const;
+            Local* getLabel();
         };
 
         struct Branch : public IntermediateInstruction

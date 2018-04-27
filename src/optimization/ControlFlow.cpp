@@ -1135,6 +1135,7 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             continue;
         processed.insert(root->key);
 
+        // to prevent multiple block creation
         BasicBlock *insertedBlock = nullptr;
 
         for(auto& cfgNode : *root->key)
@@ -1165,8 +1166,17 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                             else
                             {
                                 logging::debug() << "Create a new basic block before the root of inclusion tree" << logging::endl;
+
+                                auto headBlock = method.begin();
+
                                 insertedBlock = &method.createAndInsertNewBlock(method.begin(), "%createdByRemoveConstantLoadInLoops");
                                 insertedBlock->end().emplace(it.release());
+
+                                if(headBlock->getLabel()->getLabel()->name == BasicBlock::DEFAULT_BLOCK)
+                                {
+                                    // swap labels because DEFAULT_BLOCK is treated as head block.
+                                    headBlock->getLabel()->getLabel()->name.swap(insertedBlock->getLabel()->getLabel()->name);
+                                }
                             }
                         }
                         it.erase();
