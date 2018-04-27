@@ -1091,7 +1091,8 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
 
 void optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
 {
-    if(!config.additionalOptions.moveConstantsDepth.has_value()) {
+    if(!config.additionalOptions.moveConstantsDepth.has_value())
+    {
         logging::debug() << "skipped RemoveConstantLoadInLoops" << logging::endl;
         return;
     }
@@ -1138,7 +1139,7 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
         processed.insert(root->key);
 
         // to prevent multiple block creation
-        BasicBlock *insertedBlock = nullptr;
+        BasicBlock* insertedBlock = nullptr;
 
         for(auto& cfgNode : *root->key)
         {
@@ -1167,17 +1168,20 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                             }
                             else
                             {
-                                logging::debug() << "Create a new basic block before the root of inclusion tree" << logging::endl;
+                                logging::debug()
+                                    << "Create a new basic block before the root of inclusion tree" << logging::endl;
 
                                 auto headBlock = method.begin();
 
-                                insertedBlock = &method.createAndInsertNewBlock(method.begin(), "%createdByRemoveConstantLoadInLoops");
+                                insertedBlock = &method.createAndInsertNewBlock(
+                                    method.begin(), "%createdByRemoveConstantLoadInLoops");
                                 insertedBlock->end().emplace(it.release());
 
                                 if(headBlock->getLabel()->getLabel()->name == BasicBlock::DEFAULT_BLOCK)
                                 {
                                     // swap labels because DEFAULT_BLOCK is treated as head block.
-                                    headBlock->getLabel()->getLabel()->name.swap(insertedBlock->getLabel()->getLabel()->name);
+                                    headBlock->getLabel()->getLabel()->name.swap(
+                                        insertedBlock->getLabel()->getLabel()->name);
                                 }
                             }
                         }

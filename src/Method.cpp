@@ -371,7 +371,8 @@ bool Method::removeBlock(BasicBlock& block, bool overwriteUsages)
 
 BasicBlock& Method::createAndInsertNewBlock(BasicBlockList::iterator position, const std::string& labelName)
 {
-	return *basicBlocks.emplace(position, *this, new intermediate::BranchLabel(*findOrCreateLocal(TYPE_LABEL, labelName)));
+    return *basicBlocks.emplace(
+        position, *this, new intermediate::BranchLabel(*findOrCreateLocal(TYPE_LABEL, labelName)));
 }
 
 InstructionWalker Method::emplaceLabel(InstructionWalker it, intermediate::BranchLabel* label)

@@ -7,10 +7,10 @@
 #ifndef VC4C_CONFIG_H
 #define VC4C_CONFIG_H
 
+#include "Optional.h"
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
-#include "Optional.h"
 
 namespace vc4c
 {
