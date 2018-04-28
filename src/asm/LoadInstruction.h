@@ -12,7 +12,7 @@ namespace vc4c
 {
     namespace qpu_asm
     {
-        class LoadInstruction : public Instruction
+        class LoadInstruction final : public Instruction
         {
         public:
             explicit LoadInstruction(uint64_t code) : Instruction(code) {}

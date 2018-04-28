@@ -13,7 +13,7 @@ namespace vc4c
 {
     namespace qpu_asm
     {
-        class SemaphoreInstruction : public Instruction
+        class SemaphoreInstruction final : public Instruction
         {
         public:
             explicit SemaphoreInstruction(uint64_t code) : Instruction(code) {}

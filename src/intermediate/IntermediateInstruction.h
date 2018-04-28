@@ -276,7 +276,7 @@ namespace vc4c
             CombinedOperation* parent;
         };
 
-        struct MethodCall : public IntermediateInstruction
+        struct MethodCall final : public IntermediateInstruction
         {
             explicit MethodCall(const std::string& methodName, const std::vector<Value>& args = {});
             MethodCall(const Value& dest, const std::string& methodName, const std::vector<Value>& args = {});
@@ -295,7 +295,7 @@ namespace vc4c
             std::string methodName;
         };
 
-        struct Return : public IntermediateInstruction
+        struct Return final : public IntermediateInstruction
         {
             explicit Return();
             explicit Return(const Value& val);
@@ -331,7 +331,7 @@ namespace vc4c
             const Value& getSource() const;
         };
 
-        struct VectorRotation : public MoveOperation
+        struct VectorRotation final : public MoveOperation
         {
             VectorRotation(const Value& dest, const Value& src, const Value& offset, ConditionCode cond = COND_ALWAYS,
                 SetFlag setFlags = SetFlag::DONT_SET);
@@ -347,7 +347,7 @@ namespace vc4c
             const Value& getOffset() const;
         };
 
-        struct BranchLabel : public IntermediateInstruction
+        struct BranchLabel final : public IntermediateInstruction
         {
         public:
             explicit BranchLabel(const Local& label);
@@ -363,7 +363,7 @@ namespace vc4c
             const Local* getLabel() const;
         };
 
-        struct Branch : public IntermediateInstruction
+        struct Branch final : public IntermediateInstruction
         {
             Branch(const Local* target, ConditionCode condCode, const Value& cond);
             ~Branch() override = default;
@@ -400,7 +400,7 @@ namespace vc4c
             WAIT_VPM
         };
 
-        struct Nop : public IntermediateInstruction
+        struct Nop final : public IntermediateInstruction
         {
         public:
             explicit Nop(DelayType type, Signaling signal = SIGNAL_NONE);
@@ -447,7 +447,7 @@ namespace vc4c
         static const std::string COMP_UNORDERED_LE = "ule";
         static const std::string COMP_UNORDERED = "uno";
 
-        struct Comparison : public Operation
+        struct Comparison final : public Operation
         {
         public:
             Comparison(const std::string& comp, const Value& dest, const Value& val0, const Value& val1);
@@ -457,7 +457,7 @@ namespace vc4c
             bool isNormalized() const override;
         };
 
-        struct CombinedOperation : public IntermediateInstruction
+        struct CombinedOperation final : public IntermediateInstruction
         {
         public:
             CombinedOperation(Operation* op1, Operation* op2);
@@ -484,7 +484,7 @@ namespace vc4c
             const std::unique_ptr<IntermediateInstruction> op2;
         };
 
-        struct LoadImmediate : public IntermediateInstruction
+        struct LoadImmediate final : public IntermediateInstruction
         {
         public:
             LoadImmediate(const Value& dest, const Literal& source, const ConditionCode& cond = COND_ALWAYS,
@@ -503,7 +503,7 @@ namespace vc4c
             void setImmediate(const Literal& value);
         };
 
-        struct SemaphoreAdjustment : public IntermediateInstruction
+        struct SemaphoreAdjustment final : public IntermediateInstruction
         {
         public:
             SemaphoreAdjustment(const Semaphore semaphore, bool increase, const ConditionCode& cond = COND_ALWAYS,
@@ -520,7 +520,7 @@ namespace vc4c
             const bool increase;
         };
 
-        struct PhiNode : public IntermediateInstruction
+        struct PhiNode final : public IntermediateInstruction
         {
         public:
             PhiNode(const Value& dest, const std::vector<std::pair<Value, const Local*>>& labelPairs,
@@ -586,7 +586,7 @@ namespace vc4c
         /*
          * Instruction that prohibits re-ordering (and combination) of memory-accessing instructions across it.
          */
-        struct MemoryBarrier : public IntermediateInstruction
+        struct MemoryBarrier final : public IntermediateInstruction
         {
         public:
             MemoryBarrier(MemoryScope scope, MemorySemantics semantics);
@@ -606,7 +606,7 @@ namespace vc4c
         /*
          * Instruction specifying the begin/end of the life-time of a stack allocation
          */
-        struct LifetimeBoundary : IntermediateInstruction
+        struct LifetimeBoundary final : IntermediateInstruction
         {
         public:
             LifetimeBoundary(const Value& allocation, bool lifetimeEnd);
@@ -633,7 +633,7 @@ namespace vc4c
         /*
          * Instruction accessing (locking/unlocking) the hardware-mutex
          */
-        struct MutexLock : IntermediateInstruction
+        struct MutexLock final : IntermediateInstruction
         {
         public:
             MutexLock(MutexAccess accessType);
@@ -667,7 +667,7 @@ namespace vc4c
         /*
          * Instruction operating (reading/writing/copying/filling) on memory or VPM cache
          */
-        struct MemoryInstruction : IntermediateInstruction
+        struct MemoryInstruction final : IntermediateInstruction
         {
         public:
             MemoryInstruction(

@@ -83,7 +83,7 @@ namespace vc4c
             std::vector<uint32_t> operands;
         };
 
-        class SPIRVComparison : public SPIRVInstruction
+        class SPIRVComparison final : public SPIRVInstruction
         {
         public:
             SPIRVComparison(uint32_t id, SPIRVMethod& method, const std::string& opcode, uint32_t resultType,
@@ -98,7 +98,7 @@ namespace vc4c
                 const AllocationMapping& memoryAllocated) const override;
         };
 
-        class SPIRVCallSite : public SPIRVOperation
+        class SPIRVCallSite final : public SPIRVOperation
         {
         public:
             SPIRVCallSite(uint32_t id, SPIRVMethod& method, uint32_t methodID, uint32_t resultType,
@@ -119,7 +119,7 @@ namespace vc4c
             std::vector<uint32_t> arguments;
         };
 
-        class SPIRVReturn : public SPIRVOperation
+        class SPIRVReturn final : public SPIRVOperation
         {
         public:
             explicit SPIRVReturn(SPIRVMethod& method);
@@ -135,7 +135,7 @@ namespace vc4c
             Optional<uint32_t> returnValue;
         };
 
-        class SPIRVBranch : public SPIRVOperation
+        class SPIRVBranch final : public SPIRVOperation
         {
         public:
             SPIRVBranch(SPIRVMethod& method, uint32_t labelID);
@@ -153,7 +153,7 @@ namespace vc4c
             const Optional<uint32_t> falseLabelID;
         };
 
-        class SPIRVLabel : public SPIRVOperation
+        class SPIRVLabel final : public SPIRVOperation
         {
         public:
             SPIRVLabel(uint32_t id, SPIRVMethod& method);
@@ -174,7 +174,7 @@ namespace vc4c
             BITCAST
         };
 
-        class SPIRVConversion : public SPIRVOperation
+        class SPIRVConversion final : public SPIRVOperation
         {
         public:
             SPIRVConversion(uint32_t id, SPIRVMethod& method, uint32_t resultType, uint32_t sourceID,
@@ -201,7 +201,7 @@ namespace vc4c
             READ_WRITE = 0x3
         };
 
-        class SPIRVCopy : public SPIRVOperation
+        class SPIRVCopy final : public SPIRVOperation
         {
         public:
             // copies whole object
@@ -225,7 +225,7 @@ namespace vc4c
             const Optional<std::vector<uint32_t>> sourceIndices;
         };
 
-        class SPIRVShuffle : public SPIRVOperation
+        class SPIRVShuffle final : public SPIRVOperation
         {
         public:
             SPIRVShuffle(uint32_t id, SPIRVMethod& method, uint32_t resultType, uint32_t sourceID0, uint32_t sourceID1,
@@ -247,7 +247,7 @@ namespace vc4c
             const bool compositeIndex;
         };
 
-        class SPIRVIndexOf : public SPIRVOperation
+        class SPIRVIndexOf final : public SPIRVOperation
         {
         public:
             SPIRVIndexOf(uint32_t id, SPIRVMethod& method, uint32_t resultType, uint32_t containerID,
@@ -266,7 +266,7 @@ namespace vc4c
             const bool isPtrAcessChain;
         };
 
-        class SPIRVPhi : public SPIRVOperation
+        class SPIRVPhi final : public SPIRVOperation
         {
         public:
             SPIRVPhi(uint32_t id, SPIRVMethod& method, uint32_t resultType,
@@ -283,7 +283,7 @@ namespace vc4c
             const std::vector<std::pair<uint32_t, uint32_t>> sources;
         };
 
-        class SPIRVSelect : public SPIRVOperation
+        class SPIRVSelect final : public SPIRVOperation
         {
         public:
             SPIRVSelect(uint32_t id, SPIRVMethod& method, uint32_t resultType, uint32_t conditionID, uint32_t trueObj,
@@ -302,7 +302,7 @@ namespace vc4c
             const uint32_t falseID;
         };
 
-        class SPIRVSwitch : public SPIRVOperation
+        class SPIRVSwitch final : public SPIRVOperation
         {
         public:
             SPIRVSwitch(uint32_t id, SPIRVMethod& method, uint32_t selectorID, uint32_t defaultID,
@@ -330,7 +330,7 @@ namespace vc4c
             SAMPLES_PER_TEXEL
         };
 
-        class SPIRVImageQuery : public SPIRVOperation
+        class SPIRVImageQuery final : public SPIRVOperation
         {
         public:
             SPIRVImageQuery(uint32_t id, SPIRVMethod& method, uint32_t resultType, ImageQuery value, uint32_t imageID,
@@ -349,7 +349,7 @@ namespace vc4c
             const uint32_t lodOrCoordinate;
         };
 
-        class SPIRVMemoryBarrier : public SPIRVOperation
+        class SPIRVMemoryBarrier final : public SPIRVOperation
         {
         public:
             SPIRVMemoryBarrier(SPIRVMethod& method, uint32_t scopeID, uint32_t semanticsID);
@@ -365,7 +365,7 @@ namespace vc4c
             const uint32_t semanticsID;
         };
 
-        class SPIRVLifetimeInstruction : public SPIRVOperation
+        class SPIRVLifetimeInstruction final : public SPIRVOperation
         {
         public:
             SPIRVLifetimeInstruction(uint32_t id, SPIRVMethod& method, uint32_t size, bool lifetimeEnd,

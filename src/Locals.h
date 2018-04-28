@@ -240,7 +240,7 @@ namespace vc4c
     /*
      * Specialization of a Local which is passed as parameter to a function
      */
-    struct Parameter : public Local
+    struct Parameter final : public Local
     {
         Parameter(const std::string& name, const DataType& type,
             ParameterDecorations decorations = ParameterDecorations::NONE);
@@ -289,7 +289,7 @@ namespace vc4c
      * Global data, can be accessed by all kernel-functions in a module and is consistent across kernel-invocations.
      * The global data segment is part of the module binary code and contains the initial values for all global data.
      */
-    struct Global : public Local
+    struct Global final : public Local
     {
         Global(const std::string& name, const DataType& globalType, const Value& value, bool isConstant);
         Global(Global&&) = default;
@@ -320,7 +320,7 @@ namespace vc4c
      * Contrary to global data, stack-allocated locals have a finite life-time and need to be located in separate memory
      * areas for each QPU, since their values are not shared between the kernel invocations, but private to the QPU.
      */
-    struct StackAllocation : public Local
+    struct StackAllocation final : public Local
     {
         StackAllocation(const std::string& name, const DataType& type, std::size_t size = 0, std::size_t alignment = 1);
         StackAllocation(StackAllocation&&) = default;

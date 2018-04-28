@@ -91,7 +91,7 @@ namespace vc4c
 {
     namespace spirv2qasm
     {
-        class SPIRVParser : public Parser
+        class SPIRVParser final : public Parser
         {
         public:
             explicit SPIRVParser(std::istream& input = std::cin, bool isSPIRVText = false)

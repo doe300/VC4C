@@ -13,7 +13,7 @@ namespace vc4c
 {
     namespace qpu_asm
     {
-        class BranchInstruction : public Instruction
+        class BranchInstruction final : public Instruction
         {
         public:
             explicit BranchInstruction(uint64_t code) : Instruction(code) {}

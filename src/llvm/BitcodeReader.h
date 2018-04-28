@@ -35,7 +35,7 @@ namespace vc4c
         using LLVMInstructionList = FastModificationList<std::unique_ptr<LLVMInstruction>>;
 
 #ifdef USE_LLVM_LIBRARY
-        class BitcodeReader : public Parser
+        class BitcodeReader final : public Parser
         {
         public:
             explicit BitcodeReader(std::istream& stream, SourceType sourceType);

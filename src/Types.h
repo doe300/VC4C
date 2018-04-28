@@ -302,7 +302,7 @@ namespace vc4c
      *
      * Not really "complex", but this allows e.g. pointer of pointers
      */
-    struct PointerType : public ComplexType
+    struct PointerType final : public ComplexType
     {
         /*
          * The pointed-to type
@@ -336,7 +336,7 @@ namespace vc4c
     /*
      * Additional information for structure-types
      */
-    struct StructType : public ComplexType
+    struct StructType final : public ComplexType
     {
         /*
          * The name of the struct
@@ -372,7 +372,7 @@ namespace vc4c
     /*
      * Additional data for array-types
      */
-    struct ArrayType : public ComplexType
+    struct ArrayType final : public ComplexType
     {
         /*
          * The data-type for all elements
@@ -394,7 +394,7 @@ namespace vc4c
     /*
      * Additional details for image-types
      */
-    struct ImageType : public ComplexType
+    struct ImageType final : public ComplexType
     {
         /*
          * The number of dimensions: 1D, 2D or 3D

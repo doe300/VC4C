@@ -30,7 +30,7 @@ namespace vc4c
             Module* module;
         };
 
-        class IRParser : public Parser
+        class IRParser final : public Parser
         {
         public:
             explicit IRParser(std::istream& stream = std::cin);

@@ -49,7 +49,7 @@ namespace vc4c
             intermediate::InstructionDecorations decorations;
         };
 
-        class CallSite : public LLVMInstruction
+        class CallSite final : public LLVMInstruction
         {
         public:
             CallSite(const Local* dest, const std::string& methodName, const DataType& returnType,
@@ -74,7 +74,7 @@ namespace vc4c
             const std::vector<Value> arguments;
         };
 
-        class Copy : public LLVMInstruction
+        class Copy final : public LLVMInstruction
         {
         public:
             Copy(const Value& dest, const Value& orig, bool isLoadStore = false, bool isRead = false,
@@ -109,7 +109,7 @@ namespace vc4c
             const Value arg;
         };
 
-        class BinaryOperator : public UnaryOperator
+        class BinaryOperator final : public UnaryOperator
         {
         public:
             BinaryOperator(const std::string& opCode, const Value& dest, const Value& arg0, const Value& arg1);
@@ -122,7 +122,7 @@ namespace vc4c
             const Value arg2;
         };
 
-        class IndexOf : public LLVMInstruction
+        class IndexOf final : public LLVMInstruction
         {
         public:
             IndexOf(const Value& dest, const Value& container, const std::vector<Value>& indices);
@@ -140,7 +140,7 @@ namespace vc4c
             const std::vector<Value> indices;
         };
 
-        class Comparison : public LLVMInstruction
+        class Comparison final : public LLVMInstruction
         {
         public:
             Comparison(const Local* dest, const std::string& comp, const Value& op1, const Value& op2, bool isFloat);
@@ -158,7 +158,7 @@ namespace vc4c
             const Value op2;
         };
 
-        class ContainerInsertion : public LLVMInstruction
+        class ContainerInsertion final : public LLVMInstruction
         {
         public:
             ContainerInsertion(const Local* dest, const Value& container, const Value& newValue, const Value& index);
@@ -175,7 +175,7 @@ namespace vc4c
             const Value index;
         };
 
-        class ContainerExtraction : public LLVMInstruction
+        class ContainerExtraction final : public LLVMInstruction
         {
         public:
             ContainerExtraction(const Local* dest, const Value& container, const Value& index);
@@ -191,7 +191,7 @@ namespace vc4c
             const Value index;
         };
 
-        class ValueReturn : public LLVMInstruction
+        class ValueReturn final : public LLVMInstruction
         {
         public:
             explicit ValueReturn();
@@ -206,7 +206,7 @@ namespace vc4c
             const Value val;
         };
 
-        class ShuffleVector : public LLVMInstruction
+        class ShuffleVector final : public LLVMInstruction
         {
         public:
             ShuffleVector(const Value& dest, const Value& v1, const Value& v2, const Value& mask);
@@ -223,7 +223,7 @@ namespace vc4c
             const Value mask;
         };
 
-        class LLVMLabel : public LLVMInstruction
+        class LLVMLabel final : public LLVMInstruction
         {
         public:
             explicit LLVMLabel(const Local* label);
@@ -235,7 +235,7 @@ namespace vc4c
             const Local* label;
         };
 
-        class PhiNode : public LLVMInstruction
+        class PhiNode final : public LLVMInstruction
         {
         public:
             PhiNode(const Local* dest, const std::vector<std::pair<Value, const Local*>>& labels);
@@ -250,7 +250,7 @@ namespace vc4c
             const std::vector<std::pair<Value, const Local*>> labels;
         };
 
-        class Selection : public LLVMInstruction
+        class Selection final : public LLVMInstruction
         {
         public:
             Selection(const Local* dest, const Value& cond, const Value& opt1, const Value& opt2);
@@ -268,7 +268,7 @@ namespace vc4c
             const Value opt2;
         };
 
-        class Branch : public LLVMInstruction
+        class Branch final : public LLVMInstruction
         {
         public:
             explicit Branch(const Local* label);
@@ -284,7 +284,7 @@ namespace vc4c
             const Value cond;
         };
 
-        class Switch : public LLVMInstruction
+        class Switch final : public LLVMInstruction
         {
         public:
             Switch(const Value& cond, const std::string& defaultLabel, const FastMap<int, std::string>& cases);
