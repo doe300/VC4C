@@ -16,52 +16,40 @@ using namespace vc4c::intermediate;
 
 Operation::Operation(
     const OpCode& opCode, const Value& dest, const Value& arg0, const ConditionCode cond, const SetFlag setFlags) :
-    Operation(opCode.name, dest, arg0, cond, setFlags)
+    IntermediateInstruction(dest, cond, setFlags),
+    op(opCode), parent(nullptr)
 {
     if(opCode.numOperands != 1)
         throw CompilationError(
             CompilationStep::GENERAL, "Passing a single argument to a non-unary operation", opCode.name);
+    setArgument(0, arg0);
 }
 
 Operation::Operation(const OpCode& opCode, const Value& dest, const Value& arg0, const Value& arg1,
     const ConditionCode cond, const SetFlag setFlags) :
-    Operation(opCode.name, dest, arg0, arg1, cond, setFlags)
+    IntermediateInstruction(dest, cond, setFlags),
+    op(opCode), parent(nullptr)
 {
     if(opCode.numOperands != 2)
         throw CompilationError(
             CompilationStep::GENERAL, "Passing two arguments to a non-binary operation", opCode.name);
-}
-
-Operation::Operation(
-    const std::string& opCode, const Value& dest, const Value& arg0, const ConditionCode cond, const SetFlag setFlags) :
-    IntermediateInstruction(dest, cond, setFlags),
-    op(OpCode::findOpCode(opCode)), opCode(opCode), parent(nullptr)
-{
-    setArgument(0, arg0);
-}
-
-Operation::Operation(const std::string& opCode, const Value& dest, const Value& arg0, const Value& arg1,
-    const ConditionCode cond, const SetFlag setFlags) :
-    IntermediateInstruction(dest, cond, setFlags),
-    op(OpCode::findOpCode(opCode)), opCode(opCode), parent(nullptr)
-{
     setArgument(0, arg0);
     setArgument(1, arg1);
 }
 
 std::string Operation::to_string() const
 {
-    return (getOutput()->to_string(true) + " = ") + (opCode + " ") + getFirstArg().to_string() +
+    return (getOutput()->to_string(true) + " = ") + (std::string(op.name) + " ") + getFirstArg().to_string() +
         (getSecondArg() ? std::string(", ") + assertArgument(1).to_string() : "") + createAdditionalInfoString();
 }
 
 IntermediateInstruction* Operation::copyFor(Method& method, const std::string& localPrefix) const
 {
     if(!getSecondArg())
-        return (new Operation(opCode, renameValue(method, getOutput().value(), localPrefix),
+        return (new Operation(op, renameValue(method, getOutput().value(), localPrefix),
                     renameValue(method, getFirstArg(), localPrefix), conditional, setFlags))
             ->copyExtrasFrom(this);
-    return (new Operation(opCode, renameValue(method, getOutput().value(), localPrefix),
+    return (new Operation(op, renameValue(method, getOutput().value(), localPrefix),
                 renameValue(method, getFirstArg(), localPrefix), renameValue(method, assertArgument(1), localPrefix),
                 conditional, setFlags))
         ->copyExtrasFrom(this);
@@ -356,10 +344,65 @@ Optional<Value> Operation::precalculate(const std::size_t numIterations) const
     return op.calculate(arg0, arg1);
 }
 
-void Operation::setOpCode(const OpCode& op)
+IntrinsicOperation::IntrinsicOperation(
+    const std::string& opCode, const Value& dest, const Value& arg0, const ConditionCode cond, const SetFlag setFlags) :
+    IntermediateInstruction(dest, cond, setFlags),
+    opCode(opCode)
 {
-    const_cast<OpCode&>(this->op) = op;
-    const_cast<std::string&>(this->opCode) = op.name;
+    setArgument(0, arg0);
+}
+
+IntrinsicOperation::IntrinsicOperation(const std::string& opCode, const Value& dest, const Value& arg0,
+    const Value& arg1, const ConditionCode cond, const SetFlag setFlags) :
+    IntermediateInstruction(dest, cond, setFlags),
+    opCode(opCode)
+{
+    setArgument(0, arg0);
+    setArgument(1, arg1);
+}
+
+std::string IntrinsicOperation::to_string() const
+{
+    return (getOutput()->to_string(true) + " = ") + (opCode + " ") + getFirstArg().to_string() +
+        (getSecondArg() ? std::string(", ") + assertArgument(1).to_string() : "") + createAdditionalInfoString();
+}
+
+IntermediateInstruction* IntrinsicOperation::copyFor(Method& method, const std::string& localPrefix) const
+{
+    if(!getSecondArg())
+        return (new IntrinsicOperation(opCode, renameValue(method, getOutput().value(), localPrefix),
+                    renameValue(method, getFirstArg(), localPrefix), conditional, setFlags))
+            ->copyExtrasFrom(this);
+    return (new IntrinsicOperation(opCode, renameValue(method, getOutput().value(), localPrefix),
+                renameValue(method, getFirstArg(), localPrefix), renameValue(method, assertArgument(1), localPrefix),
+                conditional, setFlags))
+        ->copyExtrasFrom(this);
+}
+
+qpu_asm::Instruction* IntrinsicOperation::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
+    const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const
+{
+    throw CompilationError(CompilationStep::OPTIMIZER, "There should be no more intrinsic operations", to_string());
+}
+
+bool IntrinsicOperation::mapsToASMInstruction() const
+{
+    return false;
+}
+
+bool IntrinsicOperation::isNormalized() const
+{
+    return false;
+}
+
+const Value& IntrinsicOperation::getFirstArg() const
+{
+    return assertArgument(0);
+}
+
+const Optional<Value> IntrinsicOperation::getSecondArg() const
+{
+    return getArgument(1);
 }
 
 MoveOperation::MoveOperation(const Value& dest, const Value& arg, const ConditionCode cond, const SetFlag setFlags) :
@@ -549,7 +592,7 @@ bool Nop::isNormalized() const
 }
 
 Comparison::Comparison(const std::string& comp, const Value& dest, const Value& val0, const Value& val1) :
-    Operation(comp, dest, val0, val1)
+    IntrinsicOperation(comp, dest, val0, val1)
 {
 }
 
@@ -558,11 +601,6 @@ IntermediateInstruction* Comparison::copyFor(Method& method, const std::string& 
     return (new Comparison(opCode, renameValue(method, getOutput().value(), localPrefix),
                 renameValue(method, getFirstArg(), localPrefix), renameValue(method, assertArgument(1), localPrefix)))
         ->copyExtrasFrom(this);
-}
-
-bool Comparison::isNormalized() const
-{
-    return false;
 }
 
 CombinedOperation::CombinedOperation(Operation* op1, Operation* op2) :

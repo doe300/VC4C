@@ -332,9 +332,8 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                 const intermediate::Operation* comparison = dynamic_cast<const intermediate::Operation*>(inst);
                 if(comparison != nullptr)
                 {
-                    bool isEqualityComparison = comparison->op == OP_XOR || comparison->opCode == OP_XOR.name;
-                    bool isLessThenComparison = comparison->op == OP_SUB || comparison->opCode == OP_SUB.name ||
-                        comparison->op == OP_FSUB || comparison->opCode == OP_FSUB.name;
+                    bool isEqualityComparison = comparison->op == OP_XOR;
+                    bool isLessThenComparison = comparison->op == OP_SUB || comparison->op == OP_FSUB;
                     // TODO distinguish ==/!=, </>/<=/>= !! The setting of flags as well as the reading (for branch) can
                     // be for positive/negative flags
                     // XXX need to distinguish between continuation condition and cancel condition

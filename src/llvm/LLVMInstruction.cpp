@@ -318,7 +318,11 @@ bool UnaryOperator::mapInstruction(Method& method) const
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating unary operation " << opCode << " with " << arg.to_string() << " into " << dest.to_string()
             << logging::endl);
-    method.appendToEnd((new intermediate::Operation(opCode, dest, arg))->addDecorations(decorations));
+    auto& op = OpCode::findOpCode(opCode);
+    if(op != OP_NOP)
+        method.appendToEnd((new intermediate::Operation(op, dest, arg))->addDecorations(decorations));
+    else
+        method.appendToEnd((new intermediate::IntrinsicOperation(opCode, dest, arg))->addDecorations(decorations));
     return true;
 }
 
@@ -342,7 +346,12 @@ bool BinaryOperator::mapInstruction(Method& method) const
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating binary operation " << opCode << " with " << arg.to_string() << " and " << arg2.to_string()
             << " into " << dest.to_string() << logging::endl);
-    method.appendToEnd((new intermediate::Operation(opCode, dest, arg, arg2))->addDecorations(decorations));
+    auto& op = OpCode::findOpCode(opCode);
+    if(op != OP_NOP)
+        method.appendToEnd((new intermediate::Operation(op, dest, arg, arg2))->addDecorations(decorations));
+    else
+        method.appendToEnd(
+            (new intermediate::IntrinsicOperation(opCode, dest, arg, arg2))->addDecorations(decorations));
     return true;
 }
 

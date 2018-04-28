@@ -280,7 +280,7 @@ bool optimizations::calculateConstantInstruction(
         // calculations with literals can be pre-calculated
         if(op->getFirstArg().getLiteralValue() && (!op->getSecondArg() || op->assertArgument(1).getLiteralValue()))
         {
-            if(op->conditional != COND_ALWAYS && op->opCode == "xor" && op->getSecondArg().is(op->getFirstArg()))
+            if(op->conditional != COND_ALWAYS && op->op == OP_XOR && op->getSecondArg().is(op->getFirstArg()))
             {
                 // skip "xor ?, true, true", so it can be optimized (combined with "move ?, true") afterwards
                 // also skip any "xor ?, val, val", since they are created on purpose (by combineSelectionWithZero to

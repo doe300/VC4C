@@ -52,8 +52,9 @@ static IntrinsicFunction intrinsifyUnaryALUInstruction(const std::string& opCode
             it.reset((new MoveOperation(callSite->getOutput().value(), callSite->assertArgument(0)))
                          ->copyExtrasFrom(callSite));
         else
-            it.reset((new Operation(opCode, callSite->getOutput().value(), callSite->assertArgument(0)))
-                         ->copyExtrasFrom(callSite));
+            it.reset(
+                (new Operation(OpCode::toOpCode(opCode), callSite->getOutput().value(), callSite->assertArgument(0)))
+                    ->copyExtrasFrom(callSite));
         if(packMode != PACK_NOP)
             it->setPackMode(packMode);
         if(unpackMode != UNPACK_NOP)
@@ -78,8 +79,8 @@ static IntrinsicFunction intrinsifyBinaryALUInstruction(const std::string& opCod
 
         logging::debug() << "Intrinsifying binary '" << callSite->to_string() << "' to operation " << opCode
                          << logging::endl;
-        it.reset((new Operation(
-                      opCode, callSite->getOutput().value(), callSite->assertArgument(0), callSite->assertArgument(1)))
+        it.reset((new Operation(OpCode::toOpCode(opCode), callSite->getOutput().value(), callSite->assertArgument(0),
+                      callSite->assertArgument(1)))
                      ->copyExtrasFrom(callSite));
         if(packMode != PACK_NOP)
             it->setPackMode(packMode);
@@ -556,7 +557,7 @@ static bool isPowerTwo(int32_t val)
 
 static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker it, const MathType& mathType)
 {
-    Operation* op = it.get<Operation>();
+    IntrinsicOperation* op = it.get<IntrinsicOperation>();
     if(op == nullptr)
     {
         return it;
@@ -579,22 +580,22 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         else if(arg0.getLiteralValue() && isPowerTwo(arg0.getLiteralValue()->signedInt()))
         {
             logging::debug() << "Intrinsifying multiplication with left-shift" << logging::endl;
-            op->setOpCode(OP_SHL);
-            op->setArgument(0, arg1);
-            op->setArgument(
-                1, Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt()))), arg0.type));
+            it.reset(new Operation(OP_SHL, op->getOutput().value(), arg1,
+                Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt()))), arg0.type),
+                op->conditional, op->setFlags));
         }
         else if(arg1.getLiteralValue() && isPowerTwo(arg1.getLiteralValue()->signedInt()))
         {
             logging::debug() << "Intrinsifying multiplication with left-shift" << logging::endl;
-            op->setOpCode(OP_SHL);
-            op->setArgument(
-                1, Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt()))), arg1.type));
+            it.reset(new Operation(OP_SHL, op->getOutput().value(), op->getFirstArg(),
+                Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt()))), arg1.type),
+                op->conditional, op->setFlags));
         }
         else if(std::max(arg0.type.getScalarBitCount(), arg1.type.getScalarBitCount()) <= 24)
         {
             logging::debug() << "Intrinsifying multiplication of small integers to mul24" << logging::endl;
-            op->setOpCode(OP_MUL24);
+            it.reset(new Operation(OP_MUL24, op->getOutput().value(), op->getFirstArg(), op->assertArgument(1),
+                op->conditional, op->setFlags));
         }
         else
         {
@@ -617,10 +618,10 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         else if(arg1.getLiteralValue() && isPowerTwo(arg1.getLiteralValue()->signedInt()))
         {
             logging::debug() << "Intrinsifying division with right-shift" << logging::endl;
-            op->setOpCode(OP_SHR);
-            op->setArgument(
-                1, Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->unsignedInt()))), arg1.type));
-            op->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+            it.reset(new Operation(OP_SHR, op->getOutput().value(), op->getFirstArg(),
+                Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->unsignedInt()))), arg1.type),
+                op->conditional, op->setFlags));
+            it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
         else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
         {
@@ -667,9 +668,9 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         else if(arg1.getLiteralValue() && isPowerTwo(arg1.getLiteralValue()->unsignedInt()))
         {
             logging::debug() << "Intrinsifying unsigned modulo by power of two" << logging::endl;
-            op->setOpCode(OP_AND);
-            op->setArgument(1, Value(Literal(arg1.getLiteralValue()->unsignedInt() - 1), arg1.type));
-            op->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+            it.reset(new Operation(OP_AND, op->getOutput().value(), op->getFirstArg(),
+                Value(Literal(arg1.getLiteralValue()->unsignedInt() - 1), arg1.type), op->conditional, op->setFlags));
+            it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
         else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
         {
@@ -713,8 +714,8 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         {
             logging::debug() << "Intrinsifying floating division with multiplication of constant inverse"
                              << logging::endl;
-            op->setOpCode(OP_FMUL);
-            op->setArgument(1, Value(Literal(1.0f / arg1.getLiteralValue()->real()), arg1.type));
+            it.reset(new Operation(OP_FMUL, op->getOutput().value(), op->getFirstArg(),
+                Value(Literal(1.0f / arg1.getLiteralValue()->real()), arg1.type), op->conditional, op->setFlags));
         }
         else if(op->hasDecoration(InstructionDecorations::ALLOW_RECIP) ||
             op->hasDecoration(InstructionDecorations::FAST_MATH))
@@ -722,8 +723,8 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             logging::debug() << "Intrinsifying floating division with multiplication of reciprocal" << logging::endl;
             it = periphery::insertSFUCall(REG_SFU_RECIP, it, arg1, op->conditional);
             it.nextInBlock();
-            op->setOpCode(OP_FMUL);
-            op->setArgument(1, Value(REG_SFU_OUT, op->getFirstArg().type));
+            it.reset(new Operation(OP_FMUL, op->getOutput().value(), op->getFirstArg(),
+                Value(REG_SFU_OUT, op->getFirstArg().type), op->conditional, op->setFlags));
         }
         else
         {
@@ -755,8 +756,8 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         else if(op->getOutput()->type.getScalarBitCount() < 32)
         {
             logging::debug() << "Intrinsifying truncate with and" << logging::endl;
-            op->setOpCode(OP_AND);
-            op->setArgument(1, Value(Literal(op->getOutput()->type.getScalarWidthMask()), TYPE_INT32));
+            it.reset(new Operation(OP_AND, op->getOutput().value(), op->getFirstArg(),
+                Value(Literal(op->getOutput()->type.getScalarWidthMask()), TYPE_INT32), op->conditional, op->setFlags));
         }
     }
     else if(op->opCode == "fptrunc")
@@ -775,14 +776,14 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     // arithmetic shift right
     else if(op->opCode == "ashr")
     {
-        // just surgical modification
-        op->setOpCode(OP_ASR);
+        it.reset(new Operation(
+            OP_ASR, op->getOutput().value(), op->getFirstArg(), op->assertArgument(1), op->conditional, op->setFlags));
     }
     else if(op->opCode == "lshr")
     {
         // TODO only if type <= i32 and/or offset <= 32
-        // just surgical modification
-        op->setOpCode(OP_SHR);
+        it.reset(new Operation(
+            OP_SHR, op->getOutput().value(), op->getFirstArg(), op->assertArgument(1), op->conditional, op->setFlags));
     }
     // integer to float
     else if(op->opCode == "sitofp")
@@ -794,10 +795,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             tmp = method.addNewLocal(TYPE_INT32, "%sitofp");
             it = insertSignExtension(it, method, op->getFirstArg(), tmp, true, op->conditional);
         }
-        // just surgical modification
-        op->setOpCode(OP_ITOF);
-        if(tmp != op->getFirstArg())
-            op->setArgument(0, tmp);
+        it.reset(new Operation(OP_ITOF, op->getOutput().value(), tmp, op->conditional, op->setFlags));
     }
     else if(op->opCode == "uitofp")
     {
@@ -809,8 +807,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             it.emplace(
                 new Operation(OP_AND, tmp, op->getFirstArg(), Value(Literal(mask), TYPE_INT32), op->conditional));
             it.nextInBlock();
-            op->setArgument(0, tmp);
-            op->setOpCode(OP_ITOF);
+            it.reset(new Operation(OP_ITOF, op->getOutput().value(), tmp, op->conditional, op->setFlags));
         }
         else if(op->getFirstArg().type.getScalarBitCount() > 32)
         {
@@ -829,22 +826,21 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             //            it.reset(new Operation("fadd", op->getOutput(), tmp, Value(Literal(std::pow(2, 31)),
             //            TYPE_FLOAT), COND_ZERO_CLEAR));
             // TODO this passed OpenCL-CTS parameter_types, but what of large values (MSB set)??
-            op->setOpCode(OP_ITOF);
+            it.reset(new Operation(OP_ITOF, op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags));
         }
     }
     // float to integer
     else if(op->opCode == "fptosi")
     {
-        // just surgical modification
-        op->setOpCode(OP_FTOI);
+        it.reset(new Operation(OP_FTOI, op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags));
     }
     // float to unsigned integer
     else if(op->opCode == "fptoui")
     {
         // TODO special treatment??
         // TODO truncate to type?
-        op->setOpCode(OP_FTOI);
-        op->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+        it.reset(new Operation(OP_FTOI, op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags));
+        it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
     }
     // sign extension
     else if(op->opCode == "sext")
@@ -1106,7 +1102,7 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
 InstructionWalker optimizations::intrinsify(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
-    if(!it.has<Operation>() && !it.has<MethodCall>())
+    if(!it.has<IntrinsicOperation>() && !it.has<MethodCall>())
         // fail fast
         return it;
     auto newIt = intrinsifyComparison(method, it);

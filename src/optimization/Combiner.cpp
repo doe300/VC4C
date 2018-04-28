@@ -546,7 +546,7 @@ void optimizations::combineOperations(const Module& module, Method& method, cons
                                     code.opAdd = 0;
                                 else // by default (e.g. both run on both ALUs), map to ADD ALU
                                     code.opMul = 0;
-                                dynamic_cast<Operation*>(comb->op1.get())->setOpCode(code);
+                                dynamic_cast<Operation*>(comb->op1.get())->op = code;
                                 logging::debug() << "Fixing operation available on both ALUs to "
                                                  << (code.opAdd == 0 ? "MUL" : "ADD")
                                                  << " ALU: " << comb->op1->to_string() << logging::endl;
@@ -558,7 +558,7 @@ void optimizations::combineOperations(const Module& module, Method& method, cons
                                     code.opMul = 0;
                                 else // by default (e.g. both run on both ALUs), map to MUL ALU
                                     code.opAdd = 0;
-                                dynamic_cast<Operation*>(comb->op2.get())->setOpCode(code);
+                                dynamic_cast<Operation*>(comb->op2.get())->op = code;
                                 logging::debug() << "Fixing operation available on both ALUs to "
                                                  << (code.opAdd == 0 ? "MUL" : "ADD")
                                                  << " ALU: " << comb->op2->to_string() << logging::endl;

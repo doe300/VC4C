@@ -285,8 +285,7 @@ static void swapComparisons(const std::string& opCode, Comparison* comp)
     Value tmp = comp->getFirstArg();
     comp->setArgument(0, comp->assertArgument(1));
     comp->setArgument(1, tmp);
-    comp->setOpCode(OP_NOP);
-    const_cast<std::string&>(comp->opCode) = opCode;
+    comp->opCode = opCode;
 }
 
 InstructionWalker intermediate::intrinsifyComparison(Method& method, InstructionWalker it)

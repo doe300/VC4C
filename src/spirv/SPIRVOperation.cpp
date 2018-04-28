@@ -94,14 +94,24 @@ void SPIRVInstruction::mapInstruction(TypeMapping& types, ConstantMapping& const
     {
         logging::debug() << "Generating intermediate unary operation '" << opcode << "' with " << arg0.to_string(false)
                          << " into " << dest.to_string(true) << logging::endl;
-        method.method->appendToEnd((new intermediate::Operation(opCode, dest, arg0))->addDecorations(decorations));
+        auto& op = OpCode::findOpCode(opCode);
+        if(op != OP_NOP)
+            method.method->appendToEnd((new intermediate::Operation(op, dest, arg0))->addDecorations(decorations));
+        else
+            method.method->appendToEnd(
+                (new intermediate::IntrinsicOperation(opCode, dest, arg0))->addDecorations(decorations));
     }
     else // binary
     {
         logging::debug() << "Generating intermediate binary operation '" << opcode << "' with " << arg0.to_string(false)
                          << " and " << arg1.to_string() << " into " << dest.to_string(true) << logging::endl;
-        method.method->appendToEnd(
-            (new intermediate::Operation(opCode, dest, arg0, arg1.value()))->addDecorations(decorations));
+        auto& op = OpCode::findOpCode(opCode);
+        if(op != OP_NOP)
+            method.method->appendToEnd(
+                (new intermediate::Operation(op, dest, arg0, arg1.value()))->addDecorations(decorations));
+        else
+            method.method->appendToEnd(
+                (new intermediate::IntrinsicOperation(opCode, dest, arg0, arg1.value()))->addDecorations(decorations));
     }
 }
 
@@ -373,14 +383,14 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
         intermediate::insertBitcast(method.method->appendToEnd(), *method.method.get(), source, dest, decorations);
         break;
     case ConversionType::FLOATING:
-        method.method->appendToEnd((new intermediate::Operation("fptrunc", dest, source))->addDecorations(decorations));
+        method.method->appendToEnd((new intermediate::IntrinsicOperation("fptrunc", dest, source))->addDecorations(decorations));
         break;
     case ConversionType::SIGNED:
         if(isSaturated)
             intermediate::insertSaturation(method.method->appendToEnd(), *method.method.get(), source, dest, true);
         if(sourceWidth < destWidth)
             method.method->appendToEnd(
-                (new intermediate::Operation("sext", dest, source))->addDecorations(decorations));
+                (new intermediate::IntrinsicOperation("sext", dest, source))->addDecorations(decorations));
         else
             // for |dest| > |source|, we do nothing (just move), since truncating would cut off the leading 1-bits for
             // negative numbers  and since the ALU only calculates 32-bit operations, we need 32-bit negative numbers
@@ -392,12 +402,12 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
             intermediate::insertSaturation(method.method->appendToEnd(), *method.method.get(), source, dest, false);
         else if(sourceWidth > destWidth)
             method.method->appendToEnd(
-                (new intermediate::Operation("trunc", dest, source))->addDecorations(decorations));
+                (new intermediate::IntrinsicOperation("trunc", dest, source))->addDecorations(decorations));
         else if(sourceWidth == destWidth)
             method.method->appendToEnd((new intermediate::MoveOperation(dest, source))->addDecorations(decorations));
         else // |source| < |dest|
             method.method->appendToEnd(
-                (new intermediate::Operation("zext", dest, source))
+                (new intermediate::IntrinsicOperation("zext", dest, source))
                     ->addDecorations(add_flag(decorations, intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         break;
     }

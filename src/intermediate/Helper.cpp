@@ -434,7 +434,7 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
             else
             {
                 subOffset = method.addNewLocal(TYPE_INT32, "%index_offset");
-                it.emplace(new intermediate::Operation("mul", subOffset, index,
+                it.emplace(new intermediate::IntrinsicOperation("mul", subOffset, index,
                     Value(Literal(subContainerType.getElementType().getPhysicalWidth()), TYPE_INT32)));
                 it.nextInBlock();
             }

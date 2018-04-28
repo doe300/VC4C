@@ -245,17 +245,13 @@ namespace vc4c
 
         struct CombinedOperation;
 
-        struct Operation : public IntermediateInstruction
+        struct Operation final : public IntermediateInstruction
         {
             Operation(const OpCode& opCode, const Value& dest, const Value& arg0, ConditionCode cond = COND_ALWAYS,
                 SetFlag setFlags = SetFlag::DONT_SET);
             Operation(const OpCode& opCode, const Value& dest, const Value& arg0, const Value& arg1,
                 ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
 
-            Operation(const std::string& opCode, const Value& dest, const Value& arg0, ConditionCode cond = COND_ALWAYS,
-                SetFlag setFlags = SetFlag::DONT_SET);
-            Operation(const std::string& opCode, const Value& dest, const Value& arg0, const Value& arg1,
-                ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
             ~Operation() override = default;
 
             std::string to_string() const override;
@@ -269,11 +265,33 @@ namespace vc4c
             const Optional<Value> getSecondArg() const;
             Optional<Value> precalculate(std::size_t numIterations) const override;
 
-            void setOpCode(const OpCode& op);
-
-            const OpCode op;
-            const std::string opCode;
+            OpCode op;
             CombinedOperation* parent;
+        };
+
+        /*
+         * Operation which cannot be mapped to VC4 machine code, but must be intrisified (e.g. integer
+         * multiplications/divisions)
+         */
+        struct IntrinsicOperation : public IntermediateInstruction
+        {
+            IntrinsicOperation(const std::string& opCode, const Value& dest, const Value& arg0,
+                ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
+            IntrinsicOperation(const std::string& opCode, const Value& dest, const Value& arg0, const Value& arg1,
+                ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
+            ~IntrinsicOperation() override = default;
+
+            std::string to_string() const override;
+            IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
+            qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping,
+                const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
+            bool mapsToASMInstruction() const override;
+            bool isNormalized() const override;
+
+            const Value& getFirstArg() const;
+            const Optional<Value> getSecondArg() const;
+
+            std::string opCode;
         };
 
         struct MethodCall final : public IntermediateInstruction
@@ -447,14 +465,13 @@ namespace vc4c
         static const std::string COMP_UNORDERED_LE = "ule";
         static const std::string COMP_UNORDERED = "uno";
 
-        struct Comparison final : public Operation
+        struct Comparison final : public IntrinsicOperation
         {
         public:
             Comparison(const std::string& comp, const Value& dest, const Value& val0, const Value& val1);
             ~Comparison() override = default;
 
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
-            bool isNormalized() const override;
         };
 
         struct CombinedOperation final : public IntermediateInstruction

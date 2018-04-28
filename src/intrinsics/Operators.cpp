@@ -18,7 +18,7 @@ using namespace vc4c;
 using namespace vc4c::intermediate;
 
 InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(
-    Method& method, InstructionWalker it, Operation& op)
+    Method& method, InstructionWalker it, IntrinsicOperation& op)
 {
     Value opDest = op.getOutput().value();
 
@@ -64,7 +64,7 @@ InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(
 }
 
 InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(
-    Method& method, InstructionWalker it, Operation& op)
+    Method& method, InstructionWalker it, IntrinsicOperation& op)
 {
     const Value& arg0 = op.getFirstArg();
     const Value& arg1 = op.getSecondArg().value_or(UNDEFINED_VALUE);
@@ -169,10 +169,8 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(
         it.emplace(new MoveOperation(out2, INT_ZERO));
         it.nextInBlock();
     }
-    op.setOpCode(OP_ADD);
-    op.setArgument(0, out1);
-    op.setArgument(1, out2);
-    op.addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+    it.reset(new Operation(OP_ADD, op.getOutput().value(), out1, out2));
+    it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
 
     return it;
 }
@@ -184,7 +182,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(
  */
 
 InstructionWalker intermediate::intrinsifySignedIntegerDivision(
-    Method& method, InstructionWalker it, Operation& op, const bool useRemainder)
+    Method& method, InstructionWalker it, IntrinsicOperation& op, const bool useRemainder)
 {
     Value opDest = op.getOutput().value();
     // check any operand is negative
@@ -231,7 +229,7 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivision(
 }
 
 InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(
-    Method& method, InstructionWalker it, Operation& op, const bool useRemainder)
+    Method& method, InstructionWalker it, IntrinsicOperation& op, const bool useRemainder)
 {
     // https://en.wikipedia.org/wiki/Division_algorithm#Integer_division_.28unsigned.29_with_remainder
     // see also: https://www.microsoft.com/en-us/research/wp-content/uploads/2008/08/tr-2008-141.pdf
@@ -300,24 +298,18 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(
     }
 
     // make move from original instruction
-    op.setOpCode(OP_OR);
-    op.addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+
     if(useRemainder)
-    {
-        op.setArgument(0, remainder);
-        op.setArgument(1, remainder);
-    }
+        it.reset(new MoveOperation(op.getOutput().value(), remainder));
     else
-    {
-        op.setArgument(0, quotient);
-        op.setArgument(1, quotient);
-    }
+        it.reset(new MoveOperation(op.getOutput().value(), quotient));
+    it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
 
     return it;
 }
 
 InstructionWalker intermediate::intrinsifySignedIntegerDivisionByConstant(
-    Method& method, InstructionWalker it, Operation& op, bool useRemainder)
+    Method& method, InstructionWalker it, IntrinsicOperation& op, bool useRemainder)
 {
     /*
      * Conversion between signedness is taken from:
@@ -403,7 +395,7 @@ static std::pair<Value, Value> calculateConstant(const Value& divisor, unsigned 
 }
 
 InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
-    Method& method, InstructionWalker it, Operation& op, bool useRemainder)
+    Method& method, InstructionWalker it, IntrinsicOperation& op, bool useRemainder)
 {
     /*
      * Taken from here:
@@ -469,9 +461,8 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
         it.emplace(new Operation(OP_MUL24, tmpMul, finalResult, op.assertArgument(1)));
         it.nextInBlock();
         // replace original division
-        op.setArgument(1, tmpMul);
-        op.setOpCode(OP_SUB);
-        op.addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+        it.reset(new Operation(OP_SUB, op.getOutput().value(), op.getFirstArg(), tmpMul));
+        it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
     }
     else
     {
@@ -483,7 +474,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
     return it;
 }
 
-InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, InstructionWalker it, Operation& op)
+InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, InstructionWalker it, IntrinsicOperation& op)
 {
     // TODO correct??
 
@@ -567,9 +558,7 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
     it.nextInBlock();
 
     // 3. final step: Q = Pn * N
-    op.setArgument(0, nominator);
-    op.setArgument(1, P5_2);
-    op.setOpCode(OP_FMUL);
+    it.reset(new Operation(OP_FMUL, op.getOutput().value(), nominator, P5_2));
 
     return it;
 }
