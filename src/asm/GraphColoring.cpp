@@ -24,6 +24,11 @@ LocalUsage::LocalUsage(InstructionWalker first, InstructionWalker last) :
     associatedInstructions.insert(last);
 }
 
+ColoredNodeBase::ColoredNodeBase(const RegisterFile possibleFiles) :
+    initialFile(possibleFiles), possibleFiles(possibleFiles)
+{
+}
+
 static void forLocalsUsedTogether(const Local* local, const std::function<void(const Local*)>& func)
 {
     for(const auto& pair : local->getUsers())
@@ -58,12 +63,7 @@ static void forLocalsUsedTogether(const Local* local, const std::function<void(c
     }
 }
 
-ColoredNode::ColoredNode(const Local* local, const RegisterFile possibleFiles) :
-    Node(local), initialFile(possibleFiles), possibleFiles(possibleFiles)
-{
-}
-
-void ColoredNode::blockRegister(RegisterFile file, const std::size_t index)
+void ColoredNodeBase::blockRegister(RegisterFile file, const std::size_t index)
 {
     if(file == RegisterFile::ACCUMULATOR)
         availableAcc.reset(index);
@@ -79,7 +79,7 @@ void ColoredNode::blockRegister(RegisterFile file, const std::size_t index)
         possibleFiles = remove_flag(possibleFiles, RegisterFile::PHYSICAL_B);
 }
 
-bool ColoredNode::hasFreeRegisters(const RegisterFile file) const
+bool ColoredNodeBase::hasFreeRegisters(const RegisterFile file) const
 {
     if(has_flag(file, RegisterFile::ACCUMULATOR) && availableAcc.any())
         return true;
@@ -90,7 +90,7 @@ bool ColoredNode::hasFreeRegisters(const RegisterFile file) const
     return false;
 }
 
-std::size_t ColoredNode::countFreeRegisters(const RegisterFile file) const
+std::size_t ColoredNodeBase::countFreeRegisters(const RegisterFile file) const
 {
     if(has_flag(file, RegisterFile::ACCUMULATOR) && availableAcc.any())
         return availableAcc.count();
@@ -101,15 +101,20 @@ std::size_t ColoredNode::countFreeRegisters(const RegisterFile file) const
     return 0;
 }
 
-void ColoredNode::takeValues(const ColoredNode& other)
+void ColoredNodeBase::takeValues(const ColoredNodeBase& other)
 {
     this->availableAcc = other.availableAcc;
     this->availableA = other.availableA;
     this->availableB = other.availableB;
-    neighbors.insert(other.neighbors.begin(), other.neighbors.end());
+    auto* self = reinterpret_cast<ColoredNode*>(this);
+    const auto* otherNode = reinterpret_cast<const ColoredNode*>(&other);
+    otherNode->forAllEdges([self](const ColoredNode& neighbor, const ColoredEdge& edge) -> bool {
+        self->getOrCreateEdge(const_cast<ColoredNode*>(&neighbor), LocalRelation{edge.data});
+        return true;
+    });
 }
 
-Register ColoredNode::getRegisterFixed() const
+Register ColoredNodeBase::getRegisterFixed() const
 {
     if(possibleFiles == RegisterFile::NONE)
     {
@@ -167,7 +172,7 @@ static std::size_t fixToRegisterFile(std::bitset<size>& set)
     throw CompilationError(CompilationStep::GENERAL, "No more free registers for previously checked file");
 }
 
-std::size_t ColoredNode::fixToRegister()
+std::size_t ColoredNodeBase::fixToRegister()
 {
     if(possibleFiles == RegisterFile::NONE)
         return SIZE_MAX;
@@ -196,9 +201,10 @@ std::size_t ColoredNode::fixToRegister()
         CompilationStep::LABEL_REGISTER_MAPPING, "Cannot fix local to file with no registers left", to_string());
 }
 
-std::string ColoredNode::to_string(bool longDescription) const
+std::string ColoredNodeBase::to_string(bool longDescription) const
 {
-    std::string res = (key->name + " init: ")
+    const auto* self = reinterpret_cast<const ColoredNode*>(this);
+    std::string res = (self->key->name + " init: ")
                           .append(toString(initialFile))
                           .append(", avail: ")
                           .append(toString(possibleFiles))
@@ -212,8 +218,10 @@ std::string ColoredNode::to_string(bool longDescription) const
     if(longDescription)
     {
         res.append(", neighbors: ");
-        for(const auto& neighbor : neighbors)
-            res.append(neighbor.first->key->name).append(", ");
+        self->forAllEdges([&res](const ColoredNode& neighbor, const ColoredEdge&) -> bool {
+            res.append(neighbor.key->name).append(", ");
+            return true;
+        });
     }
     return res;
 }
@@ -627,7 +635,8 @@ void GraphColoring::createGraph()
             continue;
         }
         forLocalsUsedTogether(pair.first, [&node, this](const Local* l) -> void {
-            node.addNeighbor(&(graph.getOrCreateNode(l)), LocalRelation::USED_TOGETHER);
+            node.getOrCreateEdge(&(graph.getOrCreateNode(l)), LocalRelation::USED_TOGETHER).data =
+                LocalRelation::USED_TOGETHER;
         });
         if(node.initialFile == RegisterFile::NONE)
         {
@@ -637,7 +646,7 @@ void GraphColoring::createGraph()
             for(const auto& it : pair.second.associatedInstructions)
                 logging::warn() << "\t\t" << it->to_string() << logging::endl;
         }
-        CPPLOG_LAZY(logging::Level::DEBUG, log << "Created node: " << node.to_string() << logging::endl);
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Created node: " << node.to_string(false) << logging::endl);
     }
     PROFILE_END(createColoredNodes);
 
@@ -662,38 +671,41 @@ void GraphColoring::createGraph()
     }
     PROFILE_END(createUsageRanges);
     // TODO if this method works, could here spill all locals with more than XX (64) neighbors!?!
-    for(const auto& node : graph)
+    for(const auto& node : graph.getNodes())
     {
-        PROFILE_COUNTER(
-            vc4c::profiler::COUNTER_BACKEND + 5, "SpillCandidates", node.second.getNeighbors().size() >= 64);
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 5, "SpillCandidates", node.second.getEdgesSize() >= 64);
     }
     // 2. iteration: associate locals used together
     PROFILE_START(addEdges);
     for(const auto& range : localRanges)
     {
-        for(const Local* loc1 : range.second)
+        auto it = range.second.begin();
+        while(it != range.second.end())
         {
-            ColoredNode& node = graph.at(loc1);
-            for(const Local* loc2 : range.second)
+            ColoredNode& node = graph.assertNode(*it);
+            auto it2 = range.second.begin();
+
+            while(it2 != it)
             {
-                if(loc1 == loc2)
-                    continue;
-                node.addNeighbor(&graph.at(loc2), LocalRelation::USED_SIMULTANEOUSLY);
+                node.getOrCreateEdge(&graph.assertNode(*it2), LocalRelation::USED_SIMULTANEOUSLY);
+                ++it2;
             }
+
+            ++it;
         }
     }
     PROFILE_END(addEdges);
 
-    logging::debug() << "Colored graph with " << graph.size() << " nodes created!" << logging::endl;
+    logging::debug() << "Colored graph with " << graph.getNodes().size() << " nodes created!" << logging::endl;
 #ifdef DEBUG_MODE
-    DebugGraph<Local*, LocalRelation> debugGraph("/tmp/vc4c-register-graph.dot");
+    DebugGraph<const Local*, LocalRelation, false> debugGraph("/tmp/vc4c-register-graph.dot");
     const std::function<std::string(const Local* const&)> nameFunc = [](const Local* const& l) -> std::string {
         return l->name;
     };
     const std::function<bool(const LocalRelation&)> weakEdgeFunc = [](const LocalRelation& r) -> bool {
         return r == LocalRelation::USED_TOGETHER;
     };
-    for(const auto& node : graph)
+    for(const auto& node : graph.getNodes())
     {
         debugGraph.addNodeWithNeighbors<ColoredNode>(node.second, nameFunc, weakEdgeFunc);
     }
@@ -708,10 +720,10 @@ static void processClosedSet(ColoredGraph& graph, FastSet<const Local*>& closedS
     {
         // for every entry in closed-set, remove fixed register from all used-together neighbors
         // and decrement register-file for all other neighbors
-        if(graph.find(*closedSet.begin()) == graph.end())
+        if(graph.getNodes().find(*closedSet.begin()) == graph.getNodes().end())
             logging::debug() << "1) Error getting local " << (*closedSet.begin())->name << " from graph"
                              << logging::endl;
-        auto& node = graph.at(*closedSet.begin());
+        auto& node = graph.assertNode(*closedSet.begin());
         if(node.possibleFiles == RegisterFile::NONE)
         {
             if(node.initialFile != RegisterFile::NONE)
@@ -726,23 +738,23 @@ static void processClosedSet(ColoredGraph& graph, FastSet<const Local*>& closedS
         else
         {
             const std::size_t fixedRegister = node.fixToRegister();
-            for(auto& pair : node.getNeighbors())
-            {
-                ColoredNode* neighbor = reinterpret_cast<ColoredNode*>(pair.first);
-                if(pair.second == LocalRelation::USED_TOGETHER &&
+            node.forAllEdges([&](ColoredNode& neighbor, ColoredEdge& edge) -> bool {
+                if(edge.data == LocalRelation::USED_TOGETHER &&
                     (node.possibleFiles == RegisterFile::PHYSICAL_A || node.possibleFiles == RegisterFile::PHYSICAL_B))
                 {
-                    neighbor->possibleFiles = remove_flag(neighbor->possibleFiles, node.possibleFiles);
+                    neighbor.possibleFiles = remove_flag(neighbor.possibleFiles, node.possibleFiles);
                 }
                 else
-                    neighbor->blockRegister(node.possibleFiles, fixedRegister);
-                auto it = openSet.find(pair.first->key);
-                if(isFixed(neighbor->possibleFiles) && it != openSet.end())
+                    neighbor.blockRegister(node.possibleFiles, fixedRegister);
+                auto it = openSet.find(neighbor.key);
+                if(isFixed(neighbor.possibleFiles) && it != openSet.end())
                 {
                     openSet.erase(it);
-                    closedSet.insert(pair.first->key);
+                    closedSet.insert(neighbor.key);
                 }
-            }
+
+                return true;
+            });
         }
         closedSet.erase(node.key);
     }
@@ -751,7 +763,7 @@ static void processClosedSet(ColoredGraph& graph, FastSet<const Local*>& closedS
 
 bool GraphColoring::colorGraph()
 {
-    if(!graph.empty())
+    if(!graph.getNodes().empty())
     {
         PROFILE(resetGraph);
     }
@@ -764,9 +776,9 @@ bool GraphColoring::colorGraph()
     {
         // for every node in the open-set, assign to accumulator if possible, assign to the first available
         // register-file otherwise  and update all neighbors
-        if(graph.find(*openSet.begin()) == graph.end())
+        if(graph.getNodes().find(*openSet.begin()) == graph.getNodes().end())
             logging::debug() << "3) Error getting local " << (*openSet.begin())->name << " from graph" << logging::endl;
-        auto& node = graph.at(*openSet.begin());
+        auto& node = graph.assertNode(*openSet.begin());
         RegisterFile currentFile = RegisterFile::NONE;
         if(has_flag(node.possibleFiles, RegisterFile::ACCUMULATOR))
             currentFile = RegisterFile::ACCUMULATOR;
@@ -798,9 +810,9 @@ static RegisterFile getBlockedInputs(
         {
             if(toSkip != nullptr && arg.hasLocal(toSkip))
                 continue;
-            if(arg.hasType(ValueType::LOCAL) && isFixed(graph.at(arg.local).possibleFiles) &&
-                graph.at(arg.local).possibleFiles != RegisterFile::ACCUMULATOR)
-                blockedFiles = add_flag(blockedFiles, graph.at(arg.local).possibleFiles);
+            if(arg.hasType(ValueType::LOCAL) && isFixed(graph.assertNode(arg.local).possibleFiles) &&
+                graph.assertNode(arg.local).possibleFiles != RegisterFile::ACCUMULATOR)
+                blockedFiles = add_flag(blockedFiles, graph.assertNode(arg.local).possibleFiles);
             else if(arg.getLiteralValue())
                 blockedFiles = add_flag(blockedFiles, RegisterFile::PHYSICAL_B);
             else if(arg.hasType(ValueType::REGISTER))
@@ -837,20 +849,20 @@ static LocalUse assertUser(const OrderedMap<const LocalUser*, LocalUse>& users, 
 
 static bool reassignNodeToRegister(ColoredGraph& graph, ColoredNode& node)
 {
-    for(const auto& pair : node.getNeighbors())
-    {
-        ColoredNode* neighbor = reinterpret_cast<ColoredNode*>(pair.first);
-        if(pair.second == LocalRelation::USED_TOGETHER &&
-            (neighbor->possibleFiles == RegisterFile::PHYSICAL_A ||
-                neighbor->possibleFiles == RegisterFile::PHYSICAL_B))
+    node.forAllEdges([&](ColoredNode& neighbor, ColoredEdge& edge) -> bool {
+        if(edge.data == LocalRelation::USED_TOGETHER &&
+            (neighbor.possibleFiles == RegisterFile::PHYSICAL_A || neighbor.possibleFiles == RegisterFile::PHYSICAL_B))
         {
-            node.possibleFiles = remove_flag(node.possibleFiles, neighbor->possibleFiles);
+            node.possibleFiles = remove_flag(node.possibleFiles, neighbor.possibleFiles);
         }
-        else if(isFixed(neighbor->possibleFiles) &&
-            neighbor->hasFreeRegisters(neighbor->possibleFiles)) // if the neighbor is a temporary introduced by this
-                                                                 // fix, it may not yet be fixed to a register-file
-            node.blockRegister(neighbor->possibleFiles, neighbor->fixToRegister());
-    }
+        else if(isFixed(neighbor.possibleFiles) &&
+            neighbor.hasFreeRegisters(neighbor.possibleFiles)) // if the neighbor is a temporary introduced by this
+                                                               // fix, it may not yet be fixed to a register-file
+            node.blockRegister(neighbor.possibleFiles, neighbor.fixToRegister());
+
+        return true;
+    });
+
     bool fixed =
         isFixed(node.possibleFiles) && node.hasFreeRegisters(node.possibleFiles) && node.fixToRegister() != SIZE_MAX;
     PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 40, "reassignNodeToRegister", fixed);
@@ -909,16 +921,16 @@ static bool moveLocalToRegisterFile(Method& method, ColoredGraph& graph, Colored
         localUse.associatedInstructions.erase(it);
         localUse.associatedInstructions.insert(tmpUse.firstOccurrence);
         // TODO or always force a re-creation of the graph ?? Could remove all setting/updating of graph-nodes
-        auto& tmpNode = graph.emplace(tmp.local, ColoredNode(tmp.local, RegisterFile::ACCUMULATOR)).first->second;
+        auto& tmpNode = graph.getOrCreateNode(tmp.local, ColoredNode(graph, tmp.local, RegisterFile::ACCUMULATOR));
         // XXX setting the neighbors of the temporary to the neighbors of the local actually is far too broad, but we
         // cannot determine the actual neighbors
         tmpNode.takeValues(node);
         // TODO need to update the local used in the current instruction as input with the new temporary
-        for(auto& pair : node.getNeighbors())
-        {
-            pair.first->addNeighbor(&tmpNode, LocalRelation::USED_SIMULTANEOUSLY);
-        }
-        if(!reassignNodeToRegister(graph, graph.at(tmp.local)))
+        node.forAllEdges([&](ColoredNode& neighbor, ColoredEdge&) -> bool {
+            neighbor.addEdge(&tmpNode, LocalRelation::USED_SIMULTANEOUSLY);
+            return true;
+        });
+        if(!reassignNodeToRegister(graph, graph.assertNode(tmp.local)))
             needNextRound = true;
     }
     // 5) update available files of local
@@ -1139,7 +1151,7 @@ static bool fixSingleError(Method& method, ColoredGraph& graph, ColoredNode& nod
 bool GraphColoring::fixErrors()
 {
     PROFILE_START(fixRegisterErrors);
-    for(const auto& node : graph)
+    for(const auto& node : graph.getNodes())
     {
         logging::debug() << node.second.to_string() << logging::endl;
     }
@@ -1147,15 +1159,14 @@ bool GraphColoring::fixErrors()
     bool allFixed = true;
     for(const Local* local : errorSet)
     {
-        ColoredNode& node = graph.at(local);
+        ColoredNode& node = graph.assertNode(local);
         logging::debug() << "Error in register-allocation for node: " << node.to_string() << logging::endl;
         auto& s = logging::debug() << "Local is blocked by: ";
-        for(const auto& pair : node.getNeighbors())
-        {
-            ColoredNode* neighbor = reinterpret_cast<ColoredNode*>(pair.first);
-            if(blocksLocal(neighbor, pair.second))
-                s << neighbor->to_string() << ", ";
-        }
+        node.forAllEdges([&](const ColoredNode& neighbor, const ColoredEdge& edge) -> bool {
+            if(blocksLocal(&neighbor, edge.data))
+                s << neighbor.to_string() << ", ";
+            return true;
+        });
         s << logging::endl;
         if(!fixSingleError(method, graph, node, localUses, localUses.at(local)))
             allFixed = false;
@@ -1175,7 +1186,7 @@ FastMap<const Local*, Register> GraphColoring::toRegisterMap() const
 
     UnorderedMap<const Local*, Register> result;
 
-    for(const auto& pair : graph)
+    for(const auto& pair : graph.getNodes())
     {
         result.emplace(pair.first, pair.second.getRegisterFixed());
         CPPLOG_LAZY(logging::Level::DEBUG,

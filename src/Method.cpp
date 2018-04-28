@@ -465,7 +465,8 @@ ControlFlowGraph& Method::getCFG()
     if(!cfg)
     {
         logging::debug() << "CFG created/updated for function: " << name << logging::endl;
-        cfg = std::make_shared<ControlFlowGraph>(ControlFlowGraph::createCFG(*this));
+        std::unique_ptr<ControlFlowGraph> tmp = ControlFlowGraph::createCFG(*this);
+        cfg.swap(tmp);
     }
     return *cfg.get();
 }

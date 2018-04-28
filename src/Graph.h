@@ -8,7 +8,6 @@
 #define VC4C_GRAPH_H
 
 #include "CompilationError.h"
-#include "Optional.h"
 #include "performance.h"
 
 #include <functional>
@@ -16,97 +15,98 @@
 
 namespace vc4c
 {
-    /*
-     * A node for in a graph, general base-class maintaining the list of neighbors and their relations
-     */
-    template <typename K, typename R>
-    struct Node : private NonCopyable
+    struct empty_base
     {
-        using NeighborsType = FastMap<Node*, R>;
-        using KeyType = K;
+    };
 
-        const K key;
+    template <typename Key, typename Relation, bool Directed, typename Base = empty_base>
+    class Node;
 
-        explicit Node(const K key) : key(key) {}
+    template <typename NodeType, typename Relation, bool Directed>
+    class Edge;
+
+    template <typename Key, typename NodeType>
+    class Graph;
+
+    /*
+     * A node in a graph, general base-class maintaining the list of edges to neighboring nodes
+     */
+    template <typename Key, typename Relation, bool Directed, typename Base>
+    class Node : public Base
+    {
+    public:
+        using RelationType = Relation;
+        using NodeType = Node<Key, Relation, Directed, Base>;
+        using EdgeType = Edge<NodeType, Relation, Directed>;
+        using GraphType = Graph<Key, NodeType>;
+
+        template <typename... Args>
+        explicit Node(GraphType& graph, const Key& key, Args&&... args) :
+            Base(std::forward<Args&&>(args)...), key(key), graph(graph)
+        {
+        }
+        template <typename... Args>
+        explicit Node(GraphType& graph, Key&& key, Args&&... args) :
+            Base(std::forward<Args&&>(args)...), key(std::move(key)), graph(graph)
+        {
+        }
+
+        Node(const Node&) = delete;
+        Node(Node&&) noexcept = delete;
+
+        Node& operator=(const Node&) = delete;
+        Node& operator=(Node&&) noexcept = delete;
+
+        void erase()
+        {
+            graph.eraseNode(key);
+        }
 
         /*!
          * Adds the given neighbor with the given relation.
          * Multiple calls to this method do not override the previous association.
          */
-        void addNeighbor(Node* neighbor, R relation)
+        EdgeType* addEdge(Node* neighbor, Relation&& relation)
         {
-            neighbors.emplace(neighbor, relation);
+            if(isAdjacent(neighbor))
+                throw CompilationError(CompilationStep::GENERAL, "Nodes are already adjacent!");
+            return graph.createEdge(this, neighbor, std::forward<Relation&&>(relation));
         }
 
-        typename NeighborsType::value_type& getOrCreateNeighbor(Node* neighbor, R defaultRelation = {})
+        EdgeType& getOrCreateEdge(Node* neighbor, Relation&& defaultRelation = {})
         {
-            auto it = neighbors.find(neighbor);
-            if(it != neighbors.end())
-                return *it;
-            return *neighbors.emplace(neighbor, defaultRelation).first;
+            auto it = edges.find(neighbor);
+            if(it != edges.end())
+                return *it->second;
+            return *addEdge(neighbor, std::forward<Relation&&>(defaultRelation));
         }
 
-        const NeighborsType& getNeighbors() const
+        void removeEdge(EdgeType& edge)
         {
-            return neighbors;
-        }
-
-        NeighborsType& getNeighbors()
-        {
-            return neighbors;
-        }
-
-        /*
-         * Executes the given consumer for all neighbors with the given relation
-         */
-        void forAllNeighbors(const R relation, const std::function<void(const Node*)>& consumer) const
-        {
-            for(const auto& pair : neighbors)
-                if(pair.second == relation)
-                    consumer(pair.first);
-        }
-
-        /*
-         * Executes the given consumer for all neighbors, where the relation to this node match the given predicate
-         */
-        void forAllNeighbors(const std::function<bool(const R&)>& relation,
-            const std::function<void(const Node*, const R&)>& consumer) const
-        {
-            for(const auto& pair : neighbors)
-                if(relation(pair.second))
-                    consumer(pair.first, pair.second);
+            graph.eraseEdge(edge);
         }
 
         /*
          * Returns the single neighbor with the given relation.
          * Returns nullptr otherwise, if there is no or more than one neighbor with this relation.
          */
-        const Node* getSingleNeighbor(const R relation) const
+        inline const Node* getSingleNeighbor(const Relation relation) const
         {
-            const Node* singleNeighbor = nullptr;
-            for(const auto& pair : neighbors)
-            {
-                if(pair.second == relation)
-                {
-                    if(singleNeighbor != nullptr)
-                        // multiple neighbors
-                        return nullptr;
-                    singleNeighbor = pair.first;
-                }
-            }
-            return singleNeighbor;
+            return getSingleNeighbor([&relation](const Relation& rel) -> bool { return rel == relation; });
         }
 
         /*
          * Returns the single neighbor where the relation matches the given predicate.
          * Returns nullptr otherwise, if there is no or more than one neighbor with this relation.
          */
-        const Node* getSingleNeighbor(const std::function<bool(const R&)>& relation) const
+        Node* getSingleNeighbor(const std::function<bool(Relation&)>& relation)
         {
-            const Node* singleNeighbor = nullptr;
-            for(const auto& pair : neighbors)
+            static_assert(
+                !Directed, "For directed graphs, incoming and outgoing edges need to be handled differently!");
+            Node* singleNeighbor = nullptr;
+            for(auto& pair : edges)
             {
-                if(relation(pair.second))
+                if(relation(pair.second->data))
                 {
                     if(singleNeighbor != nullptr)
                         // multiple neighbors
@@ -117,14 +117,264 @@ namespace vc4c
             return singleNeighbor;
         }
 
-        static std::string to_string(const K& key)
+        Node* getSinglePredecessor()
         {
-            return key.to_string();
+            static_assert(Directed, "Only directed graphs have predecessors!");
+            for(auto& edge : edges)
+            {
+                if(&edge.second->getOutput() == this)
+                {
+                    return edge.first;
+                }
+            }
+            return nullptr;
         }
 
+        const Node* getSinglePredecessor() const
+        {
+            static_assert(Directed, "Only directed graphs have predecessors!");
+            for(const auto& edge : edges)
+            {
+                if(&edge.second->getOutput() == this)
+                {
+                    return edge.first;
+                }
+            }
+            return nullptr;
+        }
+
+        Node* getSingleSuccessor()
+        {
+            static_assert(Directed, "Only directed graphs have successors!");
+            for(auto& edge : edges)
+            {
+                if(&edge.second->getInput() == this)
+                {
+                    return edge.first;
+                }
+            }
+            return nullptr;
+        }
+
+        const Node* getSingleSuccessor() const
+        {
+            static_assert(Directed, "Only directed graphs have successors!");
+            for(const auto& edge : edges)
+            {
+                if(&edge.second->getInput() == this)
+                {
+                    return edge.first;
+                }
+            }
+            return nullptr;
+        }
+
+        bool isAdjacent(NodeType* node) const
+        {
+            return edges.find(node) != edges.end();
+        }
+
+        inline bool isAdjacent(const NodeType* node) const
+        {
+            return isAdjacent(const_cast<NodeType*>(node));
+        }
+
+        /*
+         * Executes the given predicate for all neighbors until it becomes false
+         */
+        void forAllEdges(const std::function<bool(NodeType&, EdgeType&)>& predicate)
+        {
+            static_assert(
+                !Directed, "For directed graphs, incoming and outgoing edges need to be handled differently!");
+            for(auto& pair : edges)
+            {
+                if(!predicate(*pair.first, *pair.second))
+                    return;
+            }
+        }
+
+        void forAllEdges(const std::function<bool(const NodeType&, const EdgeType&)>& predicate) const
+        {
+            static_assert(
+                !Directed, "For directed graphs, incoming and outgoing edges need to be handled differently!");
+            for(const auto& pair : edges)
+            {
+                if(!predicate(*pair.first, *pair.second))
+                    return;
+            }
+        }
+
+        /*
+         * Executes the predicate for all incoming edges, until it becomes false
+         */
+        void forAllIncomingEdges(const std::function<bool(NodeType&, EdgeType&)>& predicate)
+        {
+            static_assert(Directed, "Only directed graphs have incoming edges!");
+            for(auto& edge : edges)
+            {
+                if(&edge.second->getOutput() == this)
+                {
+                    if(!predicate(*edge.first, *edge.second))
+                        return;
+                }
+            }
+        }
+
+        void forAllIncomingEdges(const std::function<bool(const NodeType&, const EdgeType&)>& predicate) const
+        {
+            static_assert(Directed, "Only directed graphs have incoming edges!");
+            for(const auto& edge : edges)
+            {
+                if(&edge.second->getOutput() == this)
+                {
+                    if(!predicate(*edge.first, *edge.second))
+                        return;
+                }
+            }
+        }
+
+        /*
+         * Executes the predicate for all outgoing edges, until it becomes false
+         */
+        void forAllOutgoingEdges(const std::function<bool(NodeType&, EdgeType&)>& predicate)
+        {
+            static_assert(Directed, "Only directed graphs have outgoing edges!");
+            for(auto& edge : edges)
+            {
+                if(&edge.second->getInput() == this)
+                {
+                    if(!predicate(*edge.first, *edge.second))
+                        return;
+                }
+            }
+        }
+
+        void forAllOutgoingEdges(const std::function<bool(const NodeType&, const EdgeType&)>& predicate) const
+        {
+            static_assert(Directed, "Only directed graphs have outgoing edges!");
+            for(const auto& edge : edges)
+            {
+                if(&edge.second->getInput() == this)
+                {
+                    if(!predicate(*edge.first, *edge.second))
+                        return;
+                }
+            }
+        }
+
+        std::size_t getEdgesSize() const
+        {
+            return edges.size();
+        }
+
+        Key key;
+
     protected:
-        // TODO find better way, so the map is to the actual (child) type
-        FastMap<Node*, R> neighbors;
+        GraphType& graph;
+        FastMap<NodeType*, EdgeType*> edges;
+
+        friend GraphType;
+    };
+
+    /*
+     * An edge represents the connection between two nodes.
+     *
+     * Edges store additional content specifying the type of relation/connection between the nodes connected by the edge
+     *
+     * If the edge is directional, then the edge points from the first node to the second node
+     *
+     */
+    template <typename Node, typename Relation, bool Directed>
+    class Edge
+    {
+    public:
+        using NodeType = Node;
+
+        Edge(NodeType& first, NodeType& second, Relation&& data) : data(std::move(data)), first(first), second(second)
+        {
+        }
+
+        Edge(const Edge&) = delete;
+        Edge(Edge&&) noexcept = delete;
+
+        Edge& operator=(const Edge&) = delete;
+        Edge& operator=(Edge&&) noexcept = delete;
+
+        bool operator==(const Edge& other) const
+        {
+            return &first == &other.first && &second == &other.second;
+        }
+
+        Node& getInput()
+        {
+            static_assert(Directed, "Input is only available for directed edges!");
+            return first;
+        }
+
+        const Node& getInput() const
+        {
+            static_assert(Directed, "Input is only available for directed edges!");
+            return first;
+        }
+
+        NodeType& getOutput()
+        {
+            static_assert(Directed, "Output is only available for directed edges!");
+            return second;
+        }
+
+        const NodeType& getOutput() const
+        {
+            static_assert(Directed, "Output is only available for directed edges!");
+            return second;
+        }
+
+        bool isInput(Node& node) const
+        {
+            static_assert(Directed, "Input is only available for directed edges!");
+            return &node == &first;
+        }
+
+        bool isOutput(Node& node) const
+        {
+            static_assert(Directed, "Output is only available for directed edges!");
+            return &node == &second;
+        }
+
+        FastSet<NodeType*> getNodes()
+        {
+            static_assert(Directed, "For directed edges, the input and output have different meaning!");
+            return FastSet<NodeType*>{&first, &second};
+        }
+
+        NodeType& getOtherNode(const NodeType& oneNode)
+        {
+            if(&first == &oneNode)
+                return second;
+            return first;
+        }
+
+        static constexpr bool isDirected = Directed;
+
+        Relation data;
+
+    protected:
+        NodeType& first;
+        NodeType& second;
+
+        friend NodeType;
+        friend struct hash<Edge<Node, Relation, Directed>>;
+    };
+
+    template <typename Node, typename Relation, bool Directed>
+    struct hash<Edge<Node, Relation, Directed>>
+    {
+        using EdgeType = Edge<Node, Relation, Directed>;
+        inline std::size_t operator()(const EdgeType& edge) const
+        {
+            std::hash<Node*> h;
+            return h(&edge.first) ^ h(&edge.second);
+        }
     };
 
     /*
@@ -137,11 +387,19 @@ namespace vc4c
      * NOTE: The fact whether the graph is directed or not must be managed by the user.
      * E.g. for an undirected graph, a relationship must be added to both nodes taking place in it.
      */
-    template <typename K, typename NodeType>
-    struct Graph : public FastMap<K, NodeType>
+    template <typename Key, typename NodeType>
+    class Graph
     {
-        using Base = FastMap<K, NodeType>;
-        using Node = typename Base::value_type;
+    public:
+        using RelationType = typename NodeType::RelationType;
+        using EdgeType = typename NodeType::EdgeType;
+
+        explicit Graph() = default;
+        Graph(const Graph&) = delete;
+        Graph(Graph&&) noexcept = delete;
+
+        Graph& operator=(const Graph&) = delete;
+        Graph& operator=(Graph&&) noexcept = delete;
 
         /*
          * Returns the node for the given key
@@ -149,27 +407,121 @@ namespace vc4c
          * If such a node does not exist yet, a new node is created with the given additional initial payload
          */
         template <typename... Args>
-        NodeType& getOrCreateNode(const K& key, const Args... initialPayload)
+        NodeType& getOrCreateNode(Key key, Args&&... initialPayload)
         {
-            if(Base::find(key) == Base::end())
+            auto it = nodes.find(key);
+            if(it == nodes.end())
             {
-                return Base::emplace(key, NodeType(key, initialPayload...)).first->second;
+                return nodes
+                    .emplace(std::piecewise_construct_t{}, std::forward_as_tuple(key),
+                        std::forward_as_tuple(*this, key, std::forward<Args&&>(initialPayload)...))
+                    .first->second;
             }
-            return Base::at(key);
+            return it->second;
         }
 
         /*
          * Guarantees a node for the given key to exist within the graph and returns it.
          * Throws a compilation-error otherwise
          */
-        NodeType& assertNode(const K& key)
+        NodeType& assertNode(const Key& key)
         {
-            if(Base::find(key) == Base::end())
+            if(nodes.find(key) == nodes.end())
             {
                 throw CompilationError(CompilationStep::GENERAL, "Failed to find graph-node for key");
             }
-            return Base::at(key);
+            return nodes.at(key);
         }
+
+        const NodeType& assertNode(const Key& key) const
+        {
+            if(nodes.find(key) == nodes.end())
+            {
+                throw CompilationError(CompilationStep::GENERAL, "Failed to find graph-node for key");
+            }
+            return nodes.at(key);
+        }
+
+        NodeType* findNode(const Key& key)
+        {
+            auto it = nodes.find(key);
+            if(it == nodes.end())
+                return nullptr;
+            return &it->second;
+        }
+
+        const NodeType* findNode(const Key& key) const
+        {
+            auto it = nodes.find(key);
+            if(it == nodes.end())
+                return nullptr;
+            return &it->second;
+        }
+
+        void eraseNode(const Key& key)
+        {
+            auto it = nodes.find(key);
+            if(it == nodes.end())
+                throw CompilationError(CompilationStep::GENERAL, "Failed to find graph-node for key");
+            for(auto& edge : it->second.edges)
+            {
+                edge->getOtherNode(it->second).edges.erase(key);
+                edges.erase(*edge);
+            }
+            nodes.erase(it);
+        }
+
+        /*
+         * Finds a sink in this graph (a node without outgoing edges)
+         */
+        NodeType* findSink()
+        {
+            static_assert(EdgeType::isDirected, "Can only find sinks in directed graphs!");
+            for(auto& pair : nodes)
+            {
+                bool hasOutgoingEdges = false;
+                pair.second.forAllOutgoingEdges([&](const NodeType&, const EdgeType&) -> bool {
+                    hasOutgoingEdges = true;
+                    return false;
+                });
+                if(!hasOutgoingEdges)
+                    return &pair.second;
+            }
+            return nullptr;
+        }
+
+        const FastMap<Key, NodeType>& getNodes() const
+        {
+            return nodes;
+        }
+
+        void clear()
+        {
+            nodes.clear();
+            edges.clear();
+        }
+
+    protected:
+        FastMap<Key, NodeType> nodes;
+        FastSet<EdgeType> edges;
+
+        EdgeType* createEdge(NodeType* first, NodeType* second, RelationType&& relation)
+        {
+            EdgeType& edge =
+                const_cast<EdgeType&>(*(edges.emplace(*first, *second, std::forward<RelationType&&>(relation)).first));
+            first->edges.emplace(second, &edge);
+            second->edges.emplace(first, &edge);
+            return &edge;
+        }
+
+        void eraseEdge(EdgeType& edge)
+        {
+            edge.first.edges.erase(edge.second);
+            edge.second.edges.erase(edge.first);
+            edges.erase(edge);
+        }
+
+        friend NodeType;
     };
 } // namespace vc4c
 

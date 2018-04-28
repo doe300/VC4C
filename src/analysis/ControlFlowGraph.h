@@ -16,17 +16,9 @@ namespace vc4c
     /*
      * A relation in the control-flow-graph represents a transition between two basic blocks.
      *
-     * Every transition is represented by two relations (one in direction of the transition and one in the reverse
-     * direction)
      */
     struct CFGRelation
     {
-        // whether this relation represents a reverse (from label to the branch jumping to it)
-        bool reverseRelation;
-
-        // whether this relation represents a forward relation (form branch to label)
-        bool forwardRelation;
-
         // the last instruction before the change of basic-block (e.g. the branch or last instruction in block)
         InstructionWalker predecessor;
 
@@ -34,24 +26,6 @@ namespace vc4c
         bool isImplicit;
 
         bool operator==(const CFGRelation& other) const;
-
-        inline bool isReverseRelation() const
-        {
-            return reverseRelation;
-        }
-
-        inline bool isForwardRelation() const
-        {
-            return forwardRelation;
-        }
-
-        /*
-         * Returns whether this relation represents a compact loop consisting of only one label
-         */
-        inline bool isLoopRelation() const
-        {
-            return reverseRelation && forwardRelation;
-        }
 
         /*
          * Returns the condition for taking this basic-block transition (e.g. the condition-code and boolean variable
@@ -62,8 +36,10 @@ namespace vc4c
         std::pair<ConditionCode, Value> getBranchConditions() const;
     };
 
-    using CFGNode = Node<BasicBlock*, CFGRelation>;
+    using CFGNode = Node<BasicBlock*, CFGRelation, true>;
     bool operator<(const CFGNode& one, const CFGNode& other);
+
+    using CFGEdge = CFGNode::EdgeType;
 
     /*
      * A loop in the control-flow represented by the basic-blocks taking part in it
@@ -142,7 +118,7 @@ namespace vc4c
         /*
          * Creates the CFG from the basic-blocks within the given method
          */
-        static ControlFlowGraph createCFG(Method& method);
+        static std::unique_ptr<ControlFlowGraph> createCFG(Method& method);
 
         friend class Method;
     };
@@ -155,11 +131,15 @@ namespace vc4c
         bool includes;
         LoopInclusion(bool _includes) : includes(_includes) {}
     };
-    struct LoopInclusionTreeNode : public Node<ControlFlowLoop*, LoopInclusion>
+
+    struct LoopInclusionTreeNodeBase
     {
-        LoopInclusionTreeNode(const KeyType key);
-        LoopInclusionTreeNode* findRoot();
+        LoopInclusionTreeNodeBase* findRoot();
     };
+
+    using LoopInclusionTreeNode = Node<ControlFlowLoop*, LoopInclusion, true, LoopInclusionTreeNodeBase>;
+    using LoopInclusionTreeEdge = LoopInclusionTreeNode::EdgeType;
+
     /*
      * The trees represents inclusion relation of control-flow loops. This may have multiple trees.
      */

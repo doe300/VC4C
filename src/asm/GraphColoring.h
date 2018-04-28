@@ -45,11 +45,10 @@ namespace vc4c
             LocalUsage(InstructionWalker first, InstructionWalker last);
         };
 
-        class ColoredNode : public Node<const Local*, LocalRelation>
+        class ColoredNodeBase
         {
         public:
-            explicit ColoredNode(const Local* local, RegisterFile possibleFiles = RegisterFile::ANY);
-
+            explicit ColoredNodeBase(RegisterFile possibleFiles = RegisterFile::ANY);
             /*!
              * Blocks a single register or a whole register-file.
              * Any blocked register (file) is no longer available to be used by this node
@@ -66,7 +65,7 @@ namespace vc4c
             /*
              * Copied the status of the other node into this
              */
-            void takeValues(const ColoredNode& other);
+            void takeValues(const ColoredNodeBase& other);
 
             /*
              * \return The fixed register, this node has
@@ -89,6 +88,9 @@ namespace vc4c
             std::bitset<32> availableB = 0xFFFFFFFFUL;
             std::bitset<4> availableAcc = 0xFUL;
         };
+
+        using ColoredNode = Node<const Local*, LocalRelation, false, ColoredNodeBase>;
+        using ColoredEdge = typename ColoredNode::EdgeType;
 
         using ColoredGraph = Graph<const Local*, ColoredNode>;
 

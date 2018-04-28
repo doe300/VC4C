@@ -30,27 +30,29 @@ static FastSet<Local*> findLoopIterations(const ControlFlowLoop& loop, const Dat
     for(auto& node : loop)
     {
         // not all basic blocks have an entry in the dependency graph (e.g. if they have no dependency)
-        auto dependencyNode = dependencyGraph.find(node->key);
-        if(dependencyNode != dependencyGraph.end())
+        auto dependencyNode = dependencyGraph.findNode(node->key);
+        if(dependencyNode != nullptr)
         {
-            for(auto& neighbor : dependencyNode->second.getNeighbors())
-            {
-                // check if this basic block has a local dependent on at least two phi-nodes
-                for(auto& dependency : neighbor.second)
-                {
-                    if(has_flag(dependency.second, add_flag(DataDependencyType::PHI, DataDependencyType::FLOW)))
+            dependencyNode->forAllIncomingEdges(
+                [&](const DataDependencyNode& neighbor, const DataDependencyEdge& edge) -> bool {
+                    // check if this basic block has a local dependent on at least two phi-nodes
+                    for(auto& dependency : edge.data)
                     {
-                        if(std::find_if(loop.begin(), loop.end(), [&neighbor](const CFGNode* node) -> bool {
-                               return node->key == neighbor.first->key;
-                           }) != loop.end())
-                            //... one of which lies within the loop
-                            innerDependencies.emplace(dependency.first);
-                        else
-                            //... and the other outside of it
-                            outerDependencies.emplace(dependency.first);
+                        if(has_flag(dependency.second, add_flag(DataDependencyType::PHI, DataDependencyType::FLOW)))
+                        {
+                            if(std::find_if(loop.begin(), loop.end(), [&neighbor](const CFGNode* node) -> bool {
+                                   return node->key == neighbor.key;
+                               }) != loop.end())
+                                //... one of which lies within the loop
+                                innerDependencies.emplace(dependency.first);
+                            else
+                                //... and the other outside of it
+                                outerDependencies.emplace(dependency.first);
+                        }
                     }
-                }
-            }
+
+                    return true;
+                });
         }
     }
 
@@ -256,18 +258,18 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
             }
         };
 
-        for(const auto& neighbor : loop.front()->getNeighbors())
-        {
-            if(neighbor.second.isForwardRelation() && !neighbor.second.isImplicit)
+        loop.front()->forAllOutgoingEdges([&](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
+            if(!edge.data.isImplicit)
             {
-                if(std::find(loop.begin(), loop.end(), neighbor.first) != loop.end())
+                if(std::find(loop.begin(), loop.end(), &neighbor) != loop.end())
                 {
-                    loopControl.repetitionJump = neighbor.second.predecessor;
+                    loopControl.repetitionJump = edge.data.predecessor;
                     logging::debug() << "Found loop repetition branch: "
                                      << loopControl.repetitionJump.value()->to_string() << logging::endl;
                 }
             }
-        }
+            return true;
+        });
 
         //"upper" bound: the value being checked against inside the loop
         if(loopControl.repetitionJump && loopControl.iterationStep)
@@ -792,7 +794,7 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
     for(auto& loop : loops)
     {
         // 3. determine operation on iteration variable and bounds
-        LoopControl loopControl = extractLoopControl(loop, dependencyGraph);
+        LoopControl loopControl = extractLoopControl(loop, *dependencyGraph.get());
         if(loopControl.iterationVariable == nullptr)
             // we could not find the iteration variable, skip this loop
             continue;
@@ -818,13 +820,13 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
         loopControl.vectorizationFactor = vectorizationFactor.value();
 
         // 5. cost-benefit calculation
-        int rating = calculateCostsVsBenefits(loop, loopControl, dependencyGraph);
+        int rating = calculateCostsVsBenefits(loop, loopControl, *dependencyGraph.get());
         if(rating < 0 /* TODO some positive factor to be required before vectorizing loops? */)
             // vectorization (probably) doesn't pay off
             continue;
 
         // 6. run vectorization
-        vectorize(loop, loopControl, dependencyGraph);
+        vectorize(loop, loopControl, *dependencyGraph.get());
         // increasing the iteration step might create a value not fitting into small immediate
         normalization::handleImmediate(module, method, loopControl.iterationStep.value(), config);
         hasChanged = true;
@@ -1111,8 +1113,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             {
                 auto& node1 = inclusionTree.getOrCreateNode(&loop1);
                 auto& node2 = inclusionTree.getOrCreateNode(&loop2);
-                node1.addNeighbor(&node2, LoopInclusion(true));
-                node2.addNeighbor(&node1, LoopInclusion(false));
+                node1.addEdge(&node2, LoopInclusion(true));
             }
         }
     }
@@ -1130,7 +1131,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     for(auto& loop : loops)
     {
         auto& node = inclusionTree.getOrCreateNode(&loop);
-        auto root = node.findRoot();
+        auto root = reinterpret_cast<LoopInclusionTreeNode*>(node.findRoot());
 
         if(processed.find(root->key) != processed.end())
             continue;
@@ -1218,8 +1219,7 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
 
         const auto& prevNode = graph.assertNode(&(*prevIt));
         const auto& node = graph.assertNode(&(*it));
-        if(node.getSingleNeighbor(toFunction(&CFGRelation::isReverseRelation)) == &prevNode &&
-            prevNode.getSingleNeighbor(toFunction(&CFGRelation::isForwardRelation)) == &node &&
+        if(node.getSinglePredecessor() == &prevNode && prevNode.getSingleSuccessor() == &node &&
             // XXX for now, we cannot merge the last block, otherwise work-group unrolling doesn't work anymore
             it->getLabel()->getLabel()->name != BasicBlock::LAST_BLOCK)
         {

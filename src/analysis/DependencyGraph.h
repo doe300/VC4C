@@ -9,6 +9,8 @@
 
 #include "../Graph.h"
 
+#include <memory>
+
 namespace vc4c
 {
     namespace intermediate
@@ -62,8 +64,6 @@ namespace vc4c
         // also could be used to go to "dependents and remove this instruction as dependency"
     };
 
-    struct DependencyNode;
-
     /*
      * A single dependency between two instructions within a basic block
      *
@@ -81,21 +81,6 @@ namespace vc4c
          * Determines whether the delay in numDelayCycles is a recommendation (for optimal performance) or a must
          */
         bool isMandatoryDelay;
-        /*
-         * Whether this is a reverse dependency (e.g. in reverse direction=
-         */
-        bool isReverse;
-
-        /*
-         * Return whether the instruction in this node depends on the neighbor associated (needs to be executed
-         * afterwards)
-         */
-        bool isIncomingDependency() const;
-        /*
-         * Returns whether the instruction on this node has the associated neighbor as dependent (needs to be executed
-         * before the neighbor)
-         */
-        bool isOutgoingDependency() const;
 
         /*
          * Rates the current distance between the two instructions and returns a value determining the acceptance of
@@ -115,14 +100,12 @@ namespace vc4c
          *
          * NOTE: This method does not check for value dependencies!
          */
-        bool canBeInserted(const DependencyNode& node) const;
+        bool canBeInserted(const intermediate::IntermediateInstruction* instr) const;
     };
 
-    struct DependencyNode : public Node<const intermediate::IntermediateInstruction*, Dependency>
+    struct DependencyNodeBase
     {
-        using Base = Node<const intermediate::IntermediateInstruction*, Dependency>;
-
-        explicit DependencyNode(const intermediate::IntermediateInstruction* key) : Base(key) {}
+        using DependencyNode = Node<const intermediate::IntermediateInstruction*, Dependency, true, DependencyNodeBase>;
 
         /*
          * Returns whether this instruction depends on any other instruction within the same basic block to be executed
@@ -158,13 +141,16 @@ namespace vc4c
         const DependencyNode* getSignalConsumer() const;
     };
 
+    using DependencyNode = Node<const intermediate::IntermediateInstruction*, Dependency, true, DependencyNodeBase>;
+    using DependencyEdge = typename DependencyNode::EdgeType;
+
     /*
      * Graph representing the dependencies between instructions within a single basic block
      */
     class DependencyGraph : public Graph<const intermediate::IntermediateInstruction*, DependencyNode>
     {
     public:
-        static DependencyGraph createGraph(const BasicBlock& block);
+        static std::unique_ptr<DependencyGraph> createGraph(const BasicBlock& block);
     };
 }
 
