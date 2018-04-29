@@ -38,7 +38,7 @@ namespace vc4c
         constexpr Optional(const T& value) : Base(value) {}
         constexpr Optional(T&& value) : Base(value) {}
         constexpr Optional(const Optional<T>& other) : Base(other) {}
-        constexpr Optional(Optional<T>&& other) : Base(other) {}
+        constexpr Optional(Optional<T>&& other) : Base(std::forward<Base>(other)) {}
 
         Optional& operator=(const Optional&) = default;
         Optional& operator=(Optional&&) = default;
@@ -97,6 +97,6 @@ namespace vc4c
         NonCopyable(const NonCopyable&) = delete;
         NonCopyable& operator=(const NonCopyable&) = delete;
     };
-}
+} /* namespace vc4c */
 
 #endif /* VC4C_OPTIONAL_H */

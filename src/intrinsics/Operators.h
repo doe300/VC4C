@@ -13,8 +13,10 @@ namespace vc4c
 {
     namespace intermediate
     {
-        InstructionWalker intrinsifySignedIntegerMultiplication(Method& method, InstructionWalker it, IntrinsicOperation& op);
-        InstructionWalker intrinsifyUnsignedIntegerMultiplication(Method& method, InstructionWalker it, IntrinsicOperation& op);
+        InstructionWalker intrinsifySignedIntegerMultiplication(
+            Method& method, InstructionWalker it, IntrinsicOperation& op);
+        InstructionWalker intrinsifyUnsignedIntegerMultiplication(
+            Method& method, InstructionWalker it, IntrinsicOperation& op);
         InstructionWalker intrinsifySignedIntegerDivision(
             Method& method, InstructionWalker it, IntrinsicOperation& op, bool useRemainder = false);
         InstructionWalker intrinsifyUnsignedIntegerDivision(

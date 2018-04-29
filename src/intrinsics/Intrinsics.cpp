@@ -759,6 +759,8 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             it.reset(new Operation(OP_AND, op->getOutput().value(), op->getFirstArg(),
                 Value(Literal(op->getOutput()->type.getScalarWidthMask()), TYPE_INT32), op->conditional, op->setFlags));
         }
+        else
+            throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled truncation", op->to_string());
     }
     else if(op->opCode == "fptrunc")
     {

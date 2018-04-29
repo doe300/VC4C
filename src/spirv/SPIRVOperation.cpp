@@ -383,7 +383,8 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
         intermediate::insertBitcast(method.method->appendToEnd(), *method.method.get(), source, dest, decorations);
         break;
     case ConversionType::FLOATING:
-        method.method->appendToEnd((new intermediate::IntrinsicOperation("fptrunc", dest, source))->addDecorations(decorations));
+        method.method->appendToEnd(
+            (new intermediate::IntrinsicOperation("fptrunc", dest, source))->addDecorations(decorations));
         break;
     case ConversionType::SIGNED:
         if(isSaturated)
