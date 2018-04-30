@@ -132,7 +132,7 @@ bool tools::parseConfigurationParameter(Configuration& config, const std::string
                 config.additionalOptions.replaceNopThreshold = intValue;
             else if(paramName == "register-resolver-rounds")
                 config.additionalOptions.registerResolverMaxRounds = intValue;
-            else if(paramName == "extract-loads-from-loops")
+            else if(paramName == "move-constants-depth")
                 config.additionalOptions.moveConstantsDepth = Optional<int>(intValue);
             else
             {
