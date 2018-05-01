@@ -1091,13 +1091,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
 
 void optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
 {
-    if(!config.additionalOptions.moveConstantsDepth.has_value())
-    {
-        logging::debug() << "skipped RemoveConstantLoadInLoops" << logging::endl;
-        return;
-    }
-
-    logging::debug() << "moveConstantsDepth = " << config.additionalOptions.moveConstantsDepth.value() << logging::endl;
+    logging::debug() << "moveConstantsDepth = " << config.additionalOptions.moveConstantsDepth << logging::endl;
 
     // 1. find loops
     auto& cfg = method.getCFG();

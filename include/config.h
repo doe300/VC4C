@@ -7,7 +7,6 @@
 #ifndef VC4C_CONFIG_H
 #define VC4C_CONFIG_H
 
-#include "Optional.h"
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -140,7 +139,7 @@ namespace vc4c
          *
          * NOTE: This optimization is not enabled by default because it is incomplete.
          */
-        Optional<int> moveConstantsDepth = {};
+        int moveConstantsDepth = -1;
     };
 
     /*
