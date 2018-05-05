@@ -720,32 +720,35 @@ static void processClosedSet(ColoredGraph& graph, FastSet<const Local*>& closedS
     {
         // for every entry in closed-set, remove fixed register from all used-together neighbors
         // and decrement register-file for all other neighbors
-        if(graph.getNodes().find(*closedSet.begin()) == graph.getNodes().end())
-            logging::debug() << "1) Error getting local " << (*closedSet.begin())->name << " from graph"
-                             << logging::endl;
-        auto& node = graph.assertNode(*closedSet.begin());
-        if(node.possibleFiles == RegisterFile::NONE)
+        auto node = graph.findNode(*closedSet.begin());
+        if(node == nullptr)
         {
-            if(node.initialFile != RegisterFile::NONE)
+            throw CompilationError(
+                CompilationStep::LABEL_REGISTER_MAPPING, "Error getting local from graph", (*closedSet.begin())->name);
+        }
+        if(node->possibleFiles == RegisterFile::NONE)
+        {
+            if(node->initialFile != RegisterFile::NONE)
                 // error
-                errorSet.insert(node.key);
+                errorSet.insert(node->key);
             // otherwise, this is on purpose, so this node is finished being processed
             else // actually, this case should never occur, since locals mapped to nop-register should never be in the
                  // closed-set
                 throw CompilationError(CompilationStep::LABEL_REGISTER_MAPPING,
-                    "Unhandled case, unused local in closed-set", node.key->name);
+                    "Unhandled case, unused local in closed-set", node->key->name);
         }
         else
         {
-            const std::size_t fixedRegister = node.fixToRegister();
-            node.forAllEdges([&](ColoredNode& neighbor, ColoredEdge& edge) -> bool {
+            const std::size_t fixedRegister = node->fixToRegister();
+            node->forAllEdges([&](ColoredNode& neighbor, ColoredEdge& edge) -> bool {
                 if(edge.data == LocalRelation::USED_TOGETHER &&
-                    (node.possibleFiles == RegisterFile::PHYSICAL_A || node.possibleFiles == RegisterFile::PHYSICAL_B))
+                    (node->possibleFiles == RegisterFile::PHYSICAL_A ||
+                        node->possibleFiles == RegisterFile::PHYSICAL_B))
                 {
-                    neighbor.possibleFiles = remove_flag(neighbor.possibleFiles, node.possibleFiles);
+                    neighbor.possibleFiles = remove_flag(neighbor.possibleFiles, node->possibleFiles);
                 }
                 else
-                    neighbor.blockRegister(node.possibleFiles, fixedRegister);
+                    neighbor.blockRegister(node->possibleFiles, fixedRegister);
                 auto it = openSet.find(neighbor.key);
                 if(isFixed(neighbor.possibleFiles) && it != openSet.end())
                 {
@@ -756,7 +759,7 @@ static void processClosedSet(ColoredGraph& graph, FastSet<const Local*>& closedS
                 return true;
             });
         }
-        closedSet.erase(node.key);
+        closedSet.erase(node->key);
     }
     PROFILE_END(processClosedSet);
 }
@@ -776,25 +779,28 @@ bool GraphColoring::colorGraph()
     {
         // for every node in the open-set, assign to accumulator if possible, assign to the first available
         // register-file otherwise  and update all neighbors
-        if(graph.getNodes().find(*openSet.begin()) == graph.getNodes().end())
-            logging::debug() << "3) Error getting local " << (*openSet.begin())->name << " from graph" << logging::endl;
-        auto& node = graph.assertNode(*openSet.begin());
+        auto node = graph.findNode(*openSet.begin());
+        if(node == nullptr)
+        {
+            throw CompilationError(
+                CompilationStep::LABEL_REGISTER_MAPPING, "Error getting local from graph", (*openSet.begin())->name);
+        }
         RegisterFile currentFile = RegisterFile::NONE;
-        if(has_flag(node.possibleFiles, RegisterFile::ACCUMULATOR))
+        if(has_flag(node->possibleFiles, RegisterFile::ACCUMULATOR))
             currentFile = RegisterFile::ACCUMULATOR;
-        else if(has_flag(node.possibleFiles, RegisterFile::PHYSICAL_A))
+        else if(has_flag(node->possibleFiles, RegisterFile::PHYSICAL_A))
             currentFile = RegisterFile::PHYSICAL_A;
-        else if(has_flag(node.possibleFiles, RegisterFile::PHYSICAL_B))
+        else if(has_flag(node->possibleFiles, RegisterFile::PHYSICAL_B))
             currentFile = RegisterFile::PHYSICAL_B;
         else
         {
-            errorSet.insert(node.key);
-            openSet.erase(node.key);
+            errorSet.insert(node->key);
+            openSet.erase(node->key);
             continue;
         }
-        node.possibleFiles = currentFile;
-        closedSet.insert(node.key);
-        openSet.erase(node.key);
+        node->possibleFiles = currentFile;
+        closedSet.insert(node->key);
+        openSet.erase(node->key);
         processClosedSet(graph, closedSet, openSet, errorSet);
     }
 
@@ -927,7 +933,7 @@ static bool moveLocalToRegisterFile(Method& method, ColoredGraph& graph, Colored
         tmpNode.takeValues(node);
         // TODO need to update the local used in the current instruction as input with the new temporary
         node.forAllEdges([&](ColoredNode& neighbor, ColoredEdge&) -> bool {
-            neighbor.addEdge(&tmpNode, LocalRelation::USED_SIMULTANEOUSLY);
+            neighbor.getOrCreateEdge(&tmpNode, LocalRelation::USED_SIMULTANEOUSLY);
             return true;
         });
         if(!reassignNodeToRegister(graph, graph.assertNode(tmp.local)))

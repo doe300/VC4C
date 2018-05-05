@@ -17,6 +17,8 @@
 #include <algorithm>
 #include <limits>
 
+// TODO are the dependency directions correct?
+
 using namespace vc4c;
 
 unsigned Dependency::rateDelay(unsigned currentDistance) const
@@ -30,18 +32,18 @@ unsigned Dependency::rateDelay(unsigned currentDistance) const
 
 bool Dependency::canBeInserted(const intermediate::IntermediateInstruction* instr) const
 {
-    if((has_flag(type, DependencyType::CONSUME_SIGNAL) || has_flag(type, DependencyType::SIGNAL_ORDER)) &&
+    if((has_flag(type, DependencyType::SIGNAL_READ_AFTER_WRITE) || has_flag(type, DependencyType::SIGNAL_WRITE_AFTER_WRITE)) &&
         instr->signal.hasSideEffects())
     {
         // valid as long as the other instruction does not trigger a signal
         return false;
     }
-    if(has_flag(type, DependencyType::OVERWRITE_SIGNAL) && instr->readsRegister(REG_SFU_OUT))
+    if(has_flag(type, DependencyType::SIGNAL_WRITE_AFTER_READ) && instr->readsRegister(REG_SFU_OUT))
     {
         // valid as long as the other instruction does not consume the signal
         return false;
     }
-    if((has_flag(type, DependencyType::CONDITIONAL) || has_flag(type, DependencyType::FLAG_ORDER)) &&
+    if((has_flag(type, DependencyType::FLAGS_READ_AFTER_WRITE) || has_flag(type, DependencyType::FLAGS_WRITE_AFTER_WRITE)) &&
         instr->setFlags == SetFlag::SET_FLAGS)
     {
         // valid as long as the other instruction does not set flags
@@ -77,7 +79,7 @@ const DependencyNode* DependencyNodeBase::getFlagsSetter() const
     const auto* self = reinterpret_cast<const DependencyNode*>(this);
     const DependencyNode* setter = nullptr;
     self->forAllIncomingEdges([&setter](const DependencyNode& neighbor, const DependencyEdge& edge) -> bool {
-        if(has_flag(edge.data.type, DependencyType::CONDITIONAL))
+        if(has_flag(edge.data.type, DependencyType::FLAGS_READ_AFTER_WRITE))
         {
             setter = &neighbor;
             return false;
@@ -92,7 +94,7 @@ const DependencyNode* DependencyNodeBase::getSignalTrigger() const
     const auto* self = reinterpret_cast<const DependencyNode*>(this);
     const DependencyNode* setter = nullptr;
     self->forAllIncomingEdges([&setter](const DependencyNode& neighbor, const DependencyEdge& edge) -> bool {
-        if(has_flag(edge.data.type, DependencyType::CONSUME_SIGNAL))
+        if(has_flag(edge.data.type, DependencyType::SIGNAL_READ_AFTER_WRITE))
         {
             setter = &neighbor;
             return false;
@@ -145,7 +147,7 @@ static void createLocalDependencies(DependencyGraph& graph, DependencyNode& node
             if(lastWrite != nullptr)
             {
                 auto& otherNode = graph.assertNode(lastWrite);
-                addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::FLOW, distance,
+                addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_READ_AFTER_WRITE, distance,
                     isVectorRotation || hasPackMode || lastWrite->hasUnpackMode());
             }
         }
@@ -155,14 +157,14 @@ static void createLocalDependencies(DependencyGraph& graph, DependencyNode& node
             {
                 // writing a local needs to preserve the order the local is written before
                 auto& otherNode = graph.assertNode(lastWrite);
-                addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::OUTPUT, distance,
+                addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_WRITE_AFTER_WRITE, distance,
                     lastWrite->hasUnpackMode());
             }
             if(lastRead != nullptr)
             {
                 // writing a local must be ordered after previous reads
                 auto& otherNode = graph.assertNode(lastRead);
-                addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::ANTI);
+                addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_WRITE_AFTER_READ);
             }
         }
     });
@@ -176,19 +178,19 @@ static void createFlagDependencies(DependencyGraph& graph, DependencyNode& node,
     {
         // any conditional execution depends on flags being set previously
         auto& otherNode = graph.assertNode(lastSettingOfFlags);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::CONDITIONAL);
+        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::FLAGS_READ_AFTER_WRITE);
     }
     if(node.key->setFlags == SetFlag::SET_FLAGS && lastSettingOfFlags != nullptr)
     {
         // any setting of flags must be ordered after the previous setting of flags
         auto& otherNode = graph.assertNode(lastSettingOfFlags);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::FLAG_ORDER);
+        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::FLAGS_WRITE_AFTER_WRITE);
     }
     if(node.key->setFlags == SetFlag::SET_FLAGS && lastConditional != nullptr)
     {
         // any setting of flags must be ordered after any previous use of these flags
         auto& otherNode = graph.assertNode(lastSettingOfFlags);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::OVERWRITE_FLAGS);
+        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::FLAGS_WRITE_AFTER_READ);
     }
 }
 
@@ -213,7 +215,7 @@ static void createR4Dependencies(DependencyGraph& graph, DependencyNode& node,
             // TODO what is the recommended delay [9, 20]
             delayCycles = 9;
         }
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::CONSUME_SIGNAL, delayCycles, fixedDelay);
+        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::SIGNAL_READ_AFTER_WRITE, delayCycles, fixedDelay);
     }
     if(node.key->signal.triggersReadOfR4() ||
         (node.key->hasValueType(ValueType::REGISTER) && node.key->getOutput()->reg.triggersReadOfR4()))
@@ -222,13 +224,13 @@ static void createR4Dependencies(DependencyGraph& graph, DependencyNode& node,
         {
             // any trigger of r4 needs to be ordered after the previous trigger of r4
             auto& otherNode = graph.assertNode(lastTriggerOfR4);
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::SIGNAL_ORDER);
+            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::SIGNAL_WRITE_AFTER_WRITE);
         }
         if(lastReadOfR4 != nullptr)
         {
             // any trigger of r4 must be ordered after the previous read of r4
             auto& otherNode = graph.assertNode(lastReadOfR4);
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::OVERWRITE_SIGNAL);
+            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::SIGNAL_WRITE_AFTER_READ);
         }
     }
 }
@@ -284,13 +286,13 @@ static void createUniformDependencies(DependencyGraph& graph, DependencyNode& no
              * uniforms can be accessed once more."
              * - Broadcom specification, page 22
              */
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::FLOW, 2, true);
+            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_READ_AFTER_WRITE, 2, true);
         }
         if(lastReadOfUniform != nullptr)
         {
             // the order UNIFORMS are read in must not change!
             auto& otherNode = graph.assertNode(lastReadOfUniform);
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::READ_ORDER);
+            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_READ_AFTER_READ);
         }
     }
     if(node.key->writesRegister(REG_UNIFORM_ADDRESS))
@@ -300,13 +302,13 @@ static void createUniformDependencies(DependencyGraph& graph, DependencyNode& no
             // any writing of UNIFORM address must be ordered after the previous write
             auto& otherNode = graph.assertNode(lastWriteOfUniformAddress);
             // just to be sure, add the mandatory distance here too
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::OUTPUT, 2, true);
+            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_READ_AFTER_WRITE, 2, true);
         }
         if(lastReadOfUniform != nullptr)
         {
             // any writing of UNIFORM address must be ordered after any previous reading of UNIFORMs
             auto& otherNode = graph.assertNode(lastReadOfUniform);
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::ANTI);
+            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_WRITE_AFTER_READ);
         }
     }
 }
@@ -321,13 +323,13 @@ static void createReplicationDependencies(DependencyGraph& graph, DependencyNode
         {
             // any writing to the replication registers need to be executed after the previous read, if any
             auto& otherNode = graph.assertNode(lastReplicationRead);
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::ANTI);
+            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_WRITE_AFTER_READ);
         }
         if(lastReplicationWrite != nullptr)
         {
             // any writing to the replication registers need to be executed after the previous write, if any
             auto& otherNode = graph.assertNode(lastReplicationWrite);
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::OUTPUT);
+            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_WRITE_AFTER_WRITE);
         }
     }
     if(node.key->readsRegister(REG_ACC5))
@@ -336,13 +338,13 @@ static void createReplicationDependencies(DependencyGraph& graph, DependencyNode
         {
             // any reading to the replication registers need to be executed after the previous read, if any
             auto& otherNode = graph.assertNode(lastReplicationRead);
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::READ_ORDER);
+            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_READ_AFTER_READ);
         }
         if(lastReplicationWrite != nullptr)
         {
             // any reading to the replication registers need to be executed after the previous write, if any
             auto& otherNode = graph.assertNode(lastReplicationWrite);
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::FLOW);
+            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_READ_AFTER_WRITE);
         }
     }
 }

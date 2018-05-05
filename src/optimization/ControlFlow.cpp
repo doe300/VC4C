@@ -33,6 +33,7 @@ static FastSet<Local*> findLoopIterations(const ControlFlowLoop& loop, const Dat
         auto dependencyNode = dependencyGraph.findNode(node->key);
         if(dependencyNode != nullptr)
         {
+            // TODO is checking for only incoming edges correct?
             dependencyNode->forAllIncomingEdges(
                 [&](const DataDependencyNode& neighbor, const DataDependencyEdge& edge) -> bool {
                     // check if this basic block has a local dependent on at least two phi-nodes
@@ -1113,7 +1114,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             {
                 auto& node1 = inclusionTree.getOrCreateNode(&loop1);
                 auto& node2 = inclusionTree.getOrCreateNode(&loop2);
-                node1.addEdge(&node2, LoopInclusion(true));
+                node1.addEdge(&node2, {});
             }
         }
     }
@@ -1220,7 +1221,7 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
         const auto& prevNode = graph.assertNode(&(*prevIt));
         const auto& node = graph.assertNode(&(*it));
         if(node.getSinglePredecessor() == &prevNode && prevNode.getSingleSuccessor() == &node &&
-            // XXX for now, we cannot merge the last block, otherwise work-group unrolling doesn't work anymore
+            // TODO for now, we cannot merge the last block, otherwise work-group unrolling doesn't work anymore
             it->getLabel()->getLabel()->name != BasicBlock::LAST_BLOCK)
         {
             logging::debug() << "Found basic block with single direct successor: " << prevIt->getLabel()->to_string()

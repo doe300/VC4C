@@ -128,8 +128,6 @@ namespace vc4c
      */
     struct LoopInclusion
     {
-        bool includes;
-        LoopInclusion(bool _includes) : includes(_includes) {}
     };
 
     struct LoopInclusionTreeNodeBase

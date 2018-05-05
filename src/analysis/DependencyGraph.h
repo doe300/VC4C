@@ -24,33 +24,33 @@ namespace vc4c
     {
         // flow (true) dependence, read-after-write. The instruction reading a value depends on the value being written
         // before
-        FLOW = 1 << 0,
+        VALUE_READ_AFTER_WRITE = 1 << 0,
         // anti dependence, write-after-read. The instruction writing a value "depends" on the value being read before
-        ANTI = 1 << 1,
+        VALUE_WRITE_AFTER_READ = 1 << 1,
         // output dependence, write-after-write. The instruction writing a value "depends" on another instruction
         // writing the same value before
-        OUTPUT = 1 << 2,
+        VALUE_WRITE_AFTER_WRITE = 1 << 2,
         // the instruction depends on the other instruction reading the same value beforehand (e.g. for some registers)
-        READ_ORDER = 1 << 3,
+        VALUE_READ_AFTER_READ = 1 << 3,
         // true signal dependence. The instruction "using" the effect of a signal depends on this signal being triggered
         // before
-        CONSUME_SIGNAL = 1 << 4,
+        SIGNAL_READ_AFTER_WRITE = 1 << 4,
         // anti signal dependence. The instruction firing a signal "depends" on any previous signal being consumed
         // before
-        OVERWRITE_SIGNAL = 1 << 5,
+        SIGNAL_WRITE_AFTER_READ = 1 << 5,
         // output signal dependence. The instruction firing a signal "depends" on the other instruction firing its
         // signal beforehand
         // XXX required?
-        SIGNAL_ORDER = 1 << 6,
+        SIGNAL_WRITE_AFTER_WRITE = 1 << 6,
         // true condition dependence. The instruction using conditional execution depends on the flags being set before
-        CONDITIONAL = 1 << 7,
+        FLAGS_READ_AFTER_WRITE = 1 << 7,
         // anti condition dependence. The instruction setting flags "depends" on any conditional execution being
         // executed before
-        OVERWRITE_FLAGS = 1 << 8,
+        FLAGS_WRITE_AFTER_READ = 1 << 8,
         // output condition dependence. The instruction setting flags "depends" on the neighboring instruction setting
         // its flags beforehand
         // XXX required?
-        FLAG_ORDER = 1 << 9,
+        FLAGS_WRITE_AFTER_WRITE = 1 << 9,
         // the semaphore needs to be changed after any previous semaphore is modified
         SEMAPHORE_ORDER = 1 << 10,
         // the instructions need to be executed in the order specified via the dependencies due to hardware periphery

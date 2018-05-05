@@ -12,14 +12,13 @@
 
 #include "log.h"
 
-// TODO edges lost direction!
-
 using namespace vc4c;
 
 bool DataDependencyNodeBase::dependsOnBlock(const BasicBlock& bb, const DataDependencyType type) const
 {
     const auto* self = reinterpret_cast<const DataDependencyNode*>(this);
     bool hasDependency = false;
+    // TODO is checking here for only incoming edges correct? Could there be dependencies in both directions?
     self->forAllIncomingEdges([&](const DataDependencyNode& neighbor, const DataDependencyEdge& edge) -> bool {
         if(neighbor.key == &bb &&
             std::any_of(
@@ -39,6 +38,7 @@ bool DataDependencyNodeBase::hasExternalDependencies(const Local* local, const D
 {
     const auto* self = reinterpret_cast<const DataDependencyNode*>(this);
     bool hasDependency = false;
+    // TODO same here, is checking here for only incoming edges correct? Could there be dependencies in both directions?
     self->forAllIncomingEdges([&](const DataDependencyNode& neighbor, const DataDependencyEdge& edge) -> bool {
         if(std::any_of(edge.data.begin(), edge.data.end(),
                [local, &type](const std::pair<Local*, DataDependencyType>& pair) -> bool {
@@ -57,7 +57,7 @@ FastSet<const Local*> DataDependencyNodeBase::getAllExternalDependencies(const D
 {
     const auto* self = reinterpret_cast<const DataDependencyNode*>(this);
     FastSet<const Local*> results;
-
+    // TODO same here, is checking here for only incoming edges correct? Could there be dependencies in both directions?
     self->forAllIncomingEdges([&](const DataDependencyNode& neighbor, const DataDependencyEdge& edge) -> bool {
         for(const auto& dependency : edge.data)
         {

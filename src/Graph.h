@@ -85,6 +85,14 @@ namespace vc4c
         {
             graph.eraseEdge(edge);
         }
+        
+        void removeAsNeighbor(Node* neighbor)
+        {
+            auto it = edges.find(neighbor);
+            if(it == edges.end())
+                throw CompilationError(CompilationStep::GENERAL, "Node was not neighbor of this node!");
+            removeEdge(*it->second);
+        }
 
         /*
          * Returns the single neighbor with the given relation.
@@ -120,53 +128,69 @@ namespace vc4c
         Node* getSinglePredecessor()
         {
             static_assert(Directed, "Only directed graphs have predecessors!");
+            Node* singlePredecessor = nullptr;
             for(auto& edge : edges)
             {
                 if(&edge.second->getOutput() == this)
                 {
-                    return edge.first;
+                    if(singlePredecessor != nullptr)
+                        // multiple predecessors
+                        return nullptr;
+                    singlePredecessor = edge.first;
                 }
             }
-            return nullptr;
+            return singlePredecessor;
         }
 
         const Node* getSinglePredecessor() const
         {
             static_assert(Directed, "Only directed graphs have predecessors!");
-            for(const auto& edge : edges)
+            const Node* singlePredecessor = nullptr;
+            for(auto& edge : edges)
             {
                 if(&edge.second->getOutput() == this)
                 {
-                    return edge.first;
+                    if(singlePredecessor != nullptr)
+                        // multiple predecessors
+                        return nullptr;
+                    singlePredecessor = edge.first;
                 }
             }
-            return nullptr;
+            return singlePredecessor;
         }
 
         Node* getSingleSuccessor()
         {
             static_assert(Directed, "Only directed graphs have successors!");
+            Node* singleSuccessor = nullptr;
             for(auto& edge : edges)
             {
                 if(&edge.second->getInput() == this)
                 {
-                    return edge.first;
+                    if(singleSuccessor != nullptr)
+                        // multiple successors
+                        return nullptr;
+                    singleSuccessor = edge.first;
                 }
             }
-            return nullptr;
+            return singleSuccessor;
         }
 
         const Node* getSingleSuccessor() const
         {
             static_assert(Directed, "Only directed graphs have successors!");
-            for(const auto& edge : edges)
+            const Node* singleSuccessor = nullptr;
+            for(auto& edge : edges)
             {
                 if(&edge.second->getInput() == this)
                 {
-                    return edge.first;
+                    if(singleSuccessor != nullptr)
+                        // multiple successors
+                        return nullptr;
+                    singleSuccessor = edge.first;
                 }
             }
-            return nullptr;
+            return singleSuccessor;
         }
 
         bool isAdjacent(NodeType* node) const
