@@ -176,6 +176,15 @@ void Normalizer::normalizeMethod(Module& module, Method& method) const
     PROFILE_END(AddStartStopSegment);
 
     PROFILE_END(NormalizationPasses);
+
+    // add (runtime-configurable) loop over the whole kernel execution, allowing for skipping some of the syscall
+    // overhead for kernels with many work-groups
+    logging::debug() << logging::endl;
+    logging::debug() << "Running pass: UnrollWorkGroups" << logging::endl;
+    PROFILE_START(UnrollWorkGroups);
+    optimizations::unrollWorkGroups(module, method, config);
+    PROFILE_END(UnrollWorkGroups);
+
     logging::info() << logging::endl;
     if(numInstructions != method.countInstructions())
     {
@@ -196,14 +205,6 @@ void Normalizer::adjustMethod(Module& module, Method& method) const
     std::size_t numInstructions = method.countInstructions();
 
     PROFILE_START(AdjustmentPasses);
-
-    // add (runtime-configurable) loop over the whole kernel execution, allowing for skipping some of the syscall
-    // overhead for kernels with many work-groups
-    logging::debug() << logging::endl;
-    logging::debug() << "Running pass: UnrollWorkGroups" << logging::endl;
-    PROFILE_START(UnrollWorkGroups);
-    optimizations::unrollWorkGroups(module, method, config);
-    PROFILE_END(UnrollWorkGroups);
 
     for(const auto& step : adjustmentSteps)
     {

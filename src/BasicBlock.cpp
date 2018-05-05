@@ -97,6 +97,14 @@ const intermediate::BranchLabel* BasicBlock::getLabel() const
     return dynamic_cast<intermediate::BranchLabel*>(instructions.front().get());
 }
 
+intermediate::BranchLabel* BasicBlock::getLabel()
+{
+    if(dynamic_cast<intermediate::BranchLabel*>(instructions.front().get()) == nullptr)
+        throw CompilationError(
+            CompilationStep::GENERAL, "Basic block does not start with a label", instructions.front()->to_string());
+    return dynamic_cast<intermediate::BranchLabel*>(instructions.front().get());
+}
+
 void BasicBlock::forSuccessiveBlocks(const std::function<void(BasicBlock&)>& consumer) const
 {
     if(method.cfg)

@@ -48,6 +48,11 @@ const Local* BranchLabel::getLabel() const
     return assertArgument(0).local;
 }
 
+Local* BranchLabel::getLabel()
+{
+    return assertArgument(0).local;
+}
+
 Branch::Branch(const Local* target, const ConditionCode condCode, const Value& cond) :
     IntermediateInstruction(NO_VALUE, condCode)
 {

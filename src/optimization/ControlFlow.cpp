@@ -1090,6 +1090,8 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
 
 void optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
 {
+    logging::debug() << "moveConstantsDepth = " << config.additionalOptions.moveConstantsDepth << logging::endl;
+
     // 1. find loops
     auto& cfg = method.getCFG();
     auto loops = cfg.findLoops();
@@ -1111,11 +1113,11 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     }
 
     // logging::debug() << "inclusionTree" << logging::endl;
-    // for (auto &loop : inclusionTree) {
-    // 	logging::debug() << "  " << loop.first << logging::endl;
-    // 	for (auto &node : loop.second.getNeighbors()) {
-    // 		logging::debug() << "    " << node.first->key << ": " << node.second.includes << logging::endl;
-    // 	}
+    // for(auto& loop : inclusionTree) {
+    //     logging::debug() << "  " << loop.first << logging::endl;
+    //     for(auto& node : loop.second.getNeighbors()) {
+    //         logging::debug() << "    " << node.first->key << ": " << node.second.includes << logging::endl;
+    //     }
     // }
 
     // 3. move constant load operations from root of trees
@@ -1128,6 +1130,9 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
         if(processed.find(root->key) != processed.end())
             continue;
         processed.insert(root->key);
+
+        // to prevent multiple block creation
+        BasicBlock* insertedBlock = nullptr;
 
         for(auto& cfgNode : *root->key)
         {
@@ -1142,8 +1147,37 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                     auto out = loadInst->getOutput().value();
                     if(out.valueType == ValueType::LOCAL)
                     {
-                        auto rootInst = root->key->findPredecessor()->key->end().previousInBlock();
-                        rootInst.emplace(it.release());
+                        if(insertedBlock != nullptr)
+                        {
+                            insertedBlock->end().emplace(it.release());
+                        }
+                        else
+                        {
+                            auto targetBlock = root->key->findPredecessor();
+                            if(targetBlock != nullptr)
+                            {
+                                auto targetInst = targetBlock->key->end();
+                                targetInst.emplace(it.release());
+                            }
+                            else
+                            {
+                                logging::debug()
+                                    << "Create a new basic block before the root of inclusion tree" << logging::endl;
+
+                                auto headBlock = method.begin();
+
+                                insertedBlock = &method.createAndInsertNewBlock(
+                                    method.begin(), "%createdByRemoveConstantLoadInLoops");
+                                insertedBlock->end().emplace(it.release());
+
+                                if(headBlock->getLabel()->getLabel()->name == BasicBlock::DEFAULT_BLOCK)
+                                {
+                                    // swap labels because DEFAULT_BLOCK is treated as head block.
+                                    headBlock->getLabel()->getLabel()->name.swap(
+                                        insertedBlock->getLabel()->getLabel()->name);
+                                }
+                            }
+                        }
                         it.erase();
                     }
                 }

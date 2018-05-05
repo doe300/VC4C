@@ -85,6 +85,8 @@ namespace vc4c
          * Returns the label for this block
          */
         const intermediate::BranchLabel* getLabel() const;
+        // for modifying label value
+        intermediate::BranchLabel* getLabel();
         /*
          * Runs the consumer function for every block directly following this
          *
