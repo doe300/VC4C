@@ -34,7 +34,7 @@ static void printHelp()
     std::cout << "flags:" << std::endl;
     std::cout << "\t-h, --help\t\tPrints this help message and exits" << std::endl;
     std::cout << "\t-v, --version\t\tPrints version and build info and exists" << std::endl;
-    std::cout << "\t-d, --debug\t\tEnables verbose debug output" << std::endl;
+    std::cout << "\t--verbose\t\t\tEnables verbose debug output" << std::endl;
     std::cout << "\t--quiet\t\t\tQuiet verbose debug output" << std::endl;
     std::cout << "\t--hex\t\t\tGenerate hex output (e.g. included in source-code)" << std::endl;
     std::cout << "\t--bin\t\t\tGenerate binary output (as used by VC4CL run-time)" << std::endl;
@@ -178,7 +178,7 @@ int main(int argc, char** argv)
         }
         else if(strcmp("--quiet", argv[i]) == 0)
             setLogger(std::wcout, true, LogLevel::WARNING);
-        else if(strcmp("--debug", argv[i]) == 0 || strcmp("-d", argv[i]) == 0)
+        else if(strcmp("--verbose", argv[i]) == 0)
             setLogger(std::wcout, true, LogLevel::DEBUG);
         else if(strcmp("--disassemble", argv[i]) == 0)
             runDisassembler = true;

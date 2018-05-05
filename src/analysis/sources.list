@@ -1,5 +1,8 @@
 target_sources(${VC4C_LIBRARY_NAME}
   PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/Analysis.h
+    ${CMAKE_CURRENT_LIST_DIR}/AvailableExpressionAnalysis.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/AvailableExpressionAnalysis.h
     ${CMAKE_CURRENT_LIST_DIR}/ControlFlowGraph.cpp
     ${CMAKE_CURRENT_LIST_DIR}/ControlFlowGraph.h
     ${CMAKE_CURRENT_LIST_DIR}/DataDependencyGraph.cpp
@@ -10,6 +13,8 @@ target_sources(${VC4C_LIBRARY_NAME}
     ${CMAKE_CURRENT_LIST_DIR}/DependencyGraph.h
     ${CMAKE_CURRENT_LIST_DIR}/LifetimeGraph.cpp
     ${CMAKE_CURRENT_LIST_DIR}/LifetimeGraph.h
+    ${CMAKE_CURRENT_LIST_DIR}/LivenessAnalysis.h
+    ${CMAKE_CURRENT_LIST_DIR}/LivenessAnalysis.cpp
     ${CMAKE_CURRENT_LIST_DIR}/ValueRange.cpp
     ${CMAKE_CURRENT_LIST_DIR}/ValueRange.h
 )
