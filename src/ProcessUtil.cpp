@@ -209,10 +209,7 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
 
     int highestFD = std::max(pipes[STD_OUT][READ], pipes[STD_ERR][READ]);
     fd_set readDescriptors{};
-    // wait 1ms
     timeval timeout{};
-    timeout.tv_sec = 0;
-    timeout.tv_usec = 1000;
 
     /*
      * While the child program has not yet finished and the output-streams are not read to the end (EOF, thus the child
@@ -226,6 +223,19 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
             FD_SET(pipes[STD_OUT][READ], &readDescriptors);
         if(stderr != nullptr)
             FD_SET(pipes[STD_ERR][READ], &readDescriptors);
+
+        /*
+         * We need to re-initialize the timeout every iteration, because the select man-page states:
+         * On Linux, select() modifies timeout to reflect the amount of time not slept; most other implementations do
+         * not do this. (POSIX.1-2001 permits either behavior.) This causes problems both when Linux code which reads
+         * timeout is ported to other operating systems, and when code is ported to Linux that reuses a struct timeval
+         * for multiple select()s in a loop without reinitializing it. Consider timeout to be undefined after select()
+         * returns.
+         */
+        timeout.tv_sec = 0;
+        // wait 1ms
+        timeout.tv_usec = 1000;
+
         /*
          * "Those listed in readfds will be watched to see if characters become available for reading
          * [...] On exit, the sets are modified in place to indicate which file descriptors actually changed status."
