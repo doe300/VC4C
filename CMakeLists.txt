@@ -51,6 +51,7 @@ if(CROSS_COMPILE)
 	include(cmake/RaspberryPi.cmake)
 	# Raspbian ships CLang 3.9 in its repositories
 	set(CLANG_FOUND /usr/bin/clang-3.9)
+	set(LLVM_LINK_FOUND /usr/bin/llvm-link-3.9)
 	set(ADVANCED_OPENCL_FEATURES ON)
         if (SYSROOT_CROSS)
           # set(CMAKE_SYSROOT ${SYSROOT_CROSS})
@@ -137,6 +138,9 @@ if((LLVMIR_FRONTEND OR LLVMLIB_FRONTEND) AND NOT CROSS_COMPILE AND NOT SPIRV_CLA
 	if(NOT CLANG_FOUND)
 		find_program(CLANG_FOUND clang NAMES clang-3.9 clang)
 	endif()
+	if(NOT LLVM_LINK_FOUND)
+		find_program(LLVM_LINK_FOUND llvm-link NAMES llvm-link-3.9 llvm-link)
+	endif()
 	if(CLANG_FOUND)
 		message(STATUS "CLang compiler found: " ${CLANG_FOUND})
 		# check whether CLang is installed in the version 3.9 or greater
@@ -151,6 +155,9 @@ if((LLVMIR_FRONTEND OR LLVMLIB_FRONTEND) AND NOT CROSS_COMPILE AND NOT SPIRV_CLA
 		endif()
 	else()
 		message(WARNING "No CLang compiler found!")
+	endif()
+	if(LLVM_LINK_FOUND)
+		message(STATUS "LLVM-link found: " ${LLVM_LINK_FOUND})
 	endif()
 endif()
 
