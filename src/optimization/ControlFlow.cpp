@@ -1157,7 +1157,7 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                             auto targetBlock = root->key->findPredecessor();
                             if(targetBlock != nullptr)
                             {
-                                auto targetInst = targetBlock->key->end().previousInBlock();
+                                auto targetInst = targetBlock->key->end();
                                 targetInst.emplace(it.release());
                             }
                             else

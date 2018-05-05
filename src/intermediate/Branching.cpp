@@ -50,7 +50,7 @@ const Local* BranchLabel::getLabel() const
 
 Local* BranchLabel::getLabel()
 {
-    return getArgument(0)->local;
+    return assertArgument(0).local;
 }
 
 Branch::Branch(const Local* target, const ConditionCode condCode, const Value& cond) :
