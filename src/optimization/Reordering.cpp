@@ -271,11 +271,12 @@ static void replaceNOPs(BasicBlock& basicBlock, Method& method, const Configurat
     }
 }
 
-void optimizations::splitReadAfterWrites(const Module& module, Method& method, const Configuration& config)
+bool optimizations::splitReadAfterWrites(const Module& module, Method& method, const Configuration& config)
 {
     // try to split up consecutive instructions writing/reading to the same local (so less locals are forced to
     // accumulators) by inserting NOPs  the NOP then can be replaced with other instructions by the next optimization
     // (#reorderWithinBasicBlocks)
+    bool hasChanged = false;
     auto it = method.walkAllInstructions();
     InstructionWalker lastInstruction = it;
     // at the beginning, the last parameter read is the last local written
@@ -307,6 +308,7 @@ void optimizations::splitReadAfterWrites(const Module& module, Method& method, c
                         // wrote-label-read, which then becomes  write-nop-label-read instead of write-label-nop-read
                         // and the combiner can find a reason for the NOP
                         lastInstruction.copy().nextInBlock().emplace(new Nop(DelayType::WAIT_REGISTER));
+                        hasChanged = true;
                     }
                 }
             }
@@ -331,14 +333,16 @@ void optimizations::splitReadAfterWrites(const Module& module, Method& method, c
                 {
                     it.emplace(new Nop(DelayType::WAIT_VPM));
                     it.nextInBlock();
+                    hasChanged = true;
                 }
             }
         }
         it.nextInMethod();
     }
+    return hasChanged;
 }
 
-void optimizations::reorderWithinBasicBlocks(const Module& module, Method& method, const Configuration& config)
+bool optimizations::reorderWithinBasicBlocks(const Module& module, Method& method, const Configuration& config)
 {
     /*
      * TODO re-order instructions to:
@@ -354,6 +358,7 @@ void optimizations::reorderWithinBasicBlocks(const Module& module, Method& metho
 
     // after all re-orders are done, remove empty instructions
     method.cleanEmptyInstructions();
+    return false;
 }
 
 InstructionWalker optimizations::moveRotationSourcesToAccumulators(

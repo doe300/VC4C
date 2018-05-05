@@ -19,7 +19,7 @@ namespace vc4c
          * NOTE: Currently only works with "standard" for-range loops and needs to be enabled explicitly in the
          * Configuration
          */
-        void vectorizeLoops(const Module& module, Method& method, const Configuration& config);
+        bool vectorizeLoops(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Extends the branches (up to now represented by a single instruction) by
@@ -70,7 +70,7 @@ namespace vc4c
          *   yyy
          *
          */
-        void mergeAdjacentBasicBlocks(const Module& module, Method& method, const Configuration& config);
+        bool mergeAdjacentBasicBlocks(const Module& module, Method& method, const Configuration& config);
 
     } /* namespace optimizations */
 } /* namespace vc4c */

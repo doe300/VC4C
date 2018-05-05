@@ -40,8 +40,7 @@ namespace vc4c
          *   label: %95
          *   br %103
          */
-        InstructionWalker combineDuplicateBranches(
-            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+        bool combineDuplicateBranches(const Module& module, Method& method, const Configuration& config);
         /*
          * Combine ALU-instructions which (can) use different ALUs into a single instruction accessing both ALUs.
          * There are two types of instruction-pairs which can be combined:
@@ -59,7 +58,7 @@ namespace vc4c
          * NOTE: As of this point, the instruction-type CombinedInstruction can occur within a basic block!
          * Also, only moves and ALU instructions are combined at the moment
          */
-        void combineOperations(const Module& module, Method& method, const Configuration& config);
+        bool combineOperations(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Combines the loading of the same literal within a small range in a single basic block
@@ -77,7 +76,7 @@ namespace vc4c
          *   %8 = mul24 %3, %4
          *   %9 = add %3, %5
          */
-        void combineLoadingLiterals(const Module& module, Method& method, const Configuration& config);
+        bool combineLoadingLiterals(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Adds a branch from the end to the start to allow for running several kernels (from several work-groups) in
@@ -87,7 +86,7 @@ namespace vc4c
          *
          * NOTE: As of this step, there is a control-flow loop around the whole kernel code
          */
-        void unrollWorkGroups(const Module& module, Method& method, const Configuration& config);
+        bool unrollWorkGroups(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Prepares selections (successive writes to same value with inverted conditions) which write to a local, have
@@ -117,7 +116,7 @@ namespace vc4c
          *
          * NOTE: This optimization currently only works for constant rotation offsets.
          */
-        void combineVectorRotations(const Module& module, Method& method, const Configuration& config);
+        bool combineVectorRotations(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Combines successive setting of the same flag (e.g. introduced by PHI-nodes)

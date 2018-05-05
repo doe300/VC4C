@@ -38,6 +38,6 @@ namespace vc4c
          *   %a = %tmp * %y
          *
          */
-        void compressWorkGroupLocals(const Module& module, Method& method, const Configuration& config);
+        bool compressWorkGroupLocals(const Module& module, Method& method, const Configuration& config);
     } /* namespace optimizations */
 } /* namespace vc4c */

@@ -77,7 +77,7 @@ static void compressLocalIntoRegister(Method& method, const Local& local, const 
     }
 }
 
-void optimizations::compressWorkGroupLocals(const Module& module, Method& method, const Configuration& config)
+bool optimizations::compressWorkGroupLocals(const Module& module, Method& method, const Configuration& config)
 {
     unsigned char index = 0;
     const Value container = method.addNewLocal(TYPE_INT32.toVectorType(16), "%work_group_info");
@@ -91,4 +91,6 @@ void optimizations::compressWorkGroupLocals(const Module& module, Method& method
             ++index;
         }
     }
+
+    return false;
 }

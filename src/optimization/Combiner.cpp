@@ -20,34 +20,38 @@ using namespace vc4c::intermediate;
 
 static const std::string combineLoadLiteralsThreshold = "combine-load-threshold";
 
-InstructionWalker optimizations::combineDuplicateBranches(
-    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+bool optimizations::combineDuplicateBranches(const Module& module, Method& method, const Configuration& config)
 {
-    Branch* thisBranch = it.get<Branch>();
-    if(thisBranch != nullptr)
+    bool hasChanged = false;
+    for(auto it = method.walkAllInstructions(); !it.isEndOfBlock(); it.nextInMethod())
     {
-        // skip all following labels
-        InstructionWalker nextIt = it.copy().nextInMethod();
-        while(!nextIt.isEndOfMethod() && nextIt.has<BranchLabel>())
-            nextIt.nextInMethod();
-        if(nextIt.isEndOfMethod())
-            return it;
-        Branch* nextBranch = nextIt.get<Branch>();
-        if(nextBranch != nullptr)
+        Branch* thisBranch = it.get<Branch>();
+        if(thisBranch != nullptr)
         {
-            if(thisBranch->getTarget() != nextBranch->getTarget())
-                return it;
-            // for now, only remove unconditional branches
-            if(!thisBranch->isUnconditional() || !nextBranch->isUnconditional())
-                return it;
-            logging::debug() << "Removing duplicate branch to same target: " << thisBranch->to_string()
-                             << logging::endl;
-            it = it.erase();
-            // don't skip next instruction
-            it.previousInMethod();
+            // skip all following labels
+            InstructionWalker nextIt = it.copy().nextInMethod();
+            while(!nextIt.isEndOfMethod() && nextIt.has<BranchLabel>())
+                nextIt.nextInMethod();
+            if(nextIt.isEndOfMethod())
+                return hasChanged;
+            Branch* nextBranch = nextIt.get<Branch>();
+            if(nextBranch != nullptr)
+            {
+                if(thisBranch->getTarget() != nextBranch->getTarget())
+                    continue;
+                // for now, only remove unconditional branches
+                if(!thisBranch->isUnconditional() || !nextBranch->isUnconditional())
+                    continue;
+                logging::debug() << "Removing duplicate branch to same target: " << thisBranch->to_string()
+                                 << logging::endl;
+                it = it.erase();
+                // don't skip next instruction
+                it.previousInMethod();
+                hasChanged = true;
+            }
         }
     }
-    return it;
+    return hasChanged;
 }
 
 using MergeCondition = std::function<bool(Operation*, Operation*, MoveOperation*, MoveOperation*)>;
@@ -377,9 +381,10 @@ static const std::vector<MergeCondition> mergeConditions = {
         return true;
     }};
 
-void optimizations::combineOperations(const Module& module, Method& method, const Configuration& config)
+bool optimizations::combineOperations(const Module& module, Method& method, const Configuration& config)
 {
     // TODO can combine operation x and y if y is something like (result of x & 0xFF/0xFFFF) -> pack-mode
+    bool hasChanged = false;
     for(BasicBlock& bb : method)
     {
         auto it = bb.begin();
@@ -485,6 +490,7 @@ void optimizations::combineOperations(const Module& module, Method& method, cons
 
                     if(conditionsMet)
                     {
+                        hasChanged = true;
                         // move supports both ADD and MUL ALU
                         // if merge, make "move" to other op-code or x x / v8max x x
                         logging::debug() << "Merging instructions " << instr->to_string() << " and "
@@ -570,6 +576,8 @@ void optimizations::combineOperations(const Module& module, Method& method, cons
             it.nextInBlock();
         }
     }
+
+    return hasChanged;
 }
 
 static Optional<Literal> getSourceLiteral(InstructionWalker it)
@@ -607,9 +615,10 @@ static bool canReplaceLiteralLoad(
     return false;
 }
 
-void optimizations::combineLoadingLiterals(const Module& module, Method& method, const Configuration& config)
+bool optimizations::combineLoadingLiterals(const Module& module, Method& method, const Configuration& config)
 {
     std::size_t threshold = config.additionalOptions.combineLoadThreshold;
+    bool hasChanged = false;
 
     for(BasicBlock& block : method)
     {
@@ -639,6 +648,7 @@ void optimizations::combineLoadingLiterals(const Module& module, Method& method,
                             const_cast<LocalUser*>(reader)->replaceLocal(oldLocal, newLocal);
                         };
                         it.erase();
+                        hasChanged = true;
                         continue;
                     }
                     else
@@ -648,9 +658,11 @@ void optimizations::combineLoadingLiterals(const Module& module, Method& method,
             it.nextInBlock();
         }
     }
+
+    return hasChanged;
 }
 
-void optimizations::unrollWorkGroups(const Module& module, Method& method, const Configuration& config)
+bool optimizations::unrollWorkGroups(const Module& module, Method& method, const Configuration& config)
 {
     /*
      * Kernel Loop Optimization:
@@ -674,6 +686,8 @@ void optimizations::unrollWorkGroups(const Module& module, Method& method, const
     it.emplace(new MoveOperation(loopSize->createReference(), UNIFORM_REGISTER));
     it.nextInBlock();
     it.emplace(new Branch(startLabel, COND_ZERO_CLEAR, loopSize->createReference()));
+
+    return true;
 }
 
 InstructionWalker optimizations::combineSelectionWithZero(
@@ -720,8 +734,9 @@ InstructionWalker optimizations::combineSelectionWithZero(
     return it;
 }
 
-void optimizations::combineVectorRotations(const Module& module, Method& method, const Configuration& config)
+bool optimizations::combineVectorRotations(const Module& module, Method& method, const Configuration& config)
 {
+    bool hasChanged = false;
     for(BasicBlock& block : method)
     {
         InstructionWalker it = block.begin();
@@ -744,6 +759,7 @@ void optimizations::combineVectorRotations(const Module& module, Method& method,
                             auto firstIt = it.getBasicBlock()->findWalkerForInstruction(firstRot, it);
                             if(firstIt)
                             {
+                                hasChanged = true;
                                 /*
                                  * Can combine the offsets of two rotations,
                                  * - if the only source of a vector rotation is only written once,
@@ -785,6 +801,7 @@ void optimizations::combineVectorRotations(const Module& module, Method& method,
             it.nextInBlock();
         }
     }
+    return hasChanged;
 }
 
 InstructionWalker optimizations::combineSameFlags(

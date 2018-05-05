@@ -18,11 +18,12 @@
 using namespace vc4c;
 using namespace vc4c::optimizations;
 
-void optimizations::eliminateDeadStore(const Module& module, Method& method, const Configuration& config)
+bool optimizations::eliminateDeadStore(const Module& module, Method& method, const Configuration& config)
 {
     // TODO (additionally or instead of this) walk through locals, check whether they are never read and writings have
     // no side-effects  then walk through all writings of such locals and remove them (example:
     // ./testing/test_vpm_write.cl)
+    bool hasChanged = false;
     auto it = method.walkAllInstructions();
     while(!it.isEndOfMethod())
     {
@@ -56,6 +57,7 @@ void optimizations::eliminateDeadStore(const Module& module, Method& method, con
                         it.erase();
                         // if we removed this instruction, maybe the previous one can be removed too??
                         it.previousInBlock();
+                        hasChanged = true;
                         continue;
                     }
                 }
@@ -101,6 +103,7 @@ void optimizations::eliminateDeadStore(const Module& module, Method& method, con
                         });
                         // skip ++it, so next instructions is looked at too
                         it.erase();
+                        hasChanged = true;
                         continue;
                     }
                 }
@@ -111,6 +114,7 @@ void optimizations::eliminateDeadStore(const Module& module, Method& method, con
     // remove unused locals. This is actually not required, but gives us some feedback about the effect of this
     // optimization
     method.cleanLocals();
+    return hasChanged;
 }
 
 bool optimizations::eliminateUselessInstruction(

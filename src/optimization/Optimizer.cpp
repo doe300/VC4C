@@ -26,9 +26,9 @@ OptimizationPass::OptimizationPass(
 {
 }
 
-void OptimizationPass::operator()(const Module& module, Method& method, const Configuration& config) const
+bool OptimizationPass::operator()(const Module& module, Method& method, const Configuration& config) const
 {
-    pass(module, method, config);
+    return pass(module, method, config);
 }
 
 OptimizationStep::OptimizationStep(const std::string& name, const Step& step) : name(name), step(step) {}
@@ -40,8 +40,6 @@ InstructionWalker OptimizationStep::operator()(
 }
 
 static const std::vector<OptimizationStep> SINGLE_STEPS = {
-    // combined successive branches to the same label (e.g. end of switch-case)
-    OptimizationStep("CombineDuplicateBranches", combineDuplicateBranches),
     // eliminates useless branches (e.g. jumps to the next instruction)
     OptimizationStep("EliminateUselessBranch", eliminateUselessBranch),
     // combine consecutive instructions writing the same local with a value and zero depending on some flags
@@ -49,7 +47,7 @@ static const std::vector<OptimizationStep> SINGLE_STEPS = {
     // combine successive setting of the same flags
     OptimizationStep("CombineSettingSameFlags", combineSameFlags)};
 
-static void runSingleSteps(const Module& module, Method& method, const Configuration& config)
+static bool runSingleSteps(const Module& module, Method& method, const Configuration& config)
 {
     auto& s = (logging::debug() << "Running steps: ");
     for(const OptimizationStep& step : SINGLE_STEPS)
@@ -79,9 +77,12 @@ static void runSingleSteps(const Module& module, Method& method, const Configura
         it.nextInMethod();
         prevIt = it.copy().previousInMethod();
     }
+
+    // XXX
+    return false;
 }
 
-static void generalOptimization(const Module& module, Method& method, const Configuration& config)
+static bool generalOptimization(const Module& module, Method& method, const Configuration& config)
 {
     using pass = std::function<bool(const Module& module, Method& method, const Configuration& config)>;
     using step =
@@ -111,6 +112,9 @@ static void generalOptimization(const Module& module, Method& method, const Conf
         if(!moved)
             break;
     }
+
+    // this is only done when there are no more optimizations to do
+    return false;
 }
 
 Optimizer::Optimizer(const Configuration& config) : config(config)
@@ -177,10 +181,19 @@ void Optimizer::optimize(Module& module) const
 }
 
 const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
-    OptimizationPass("SingleSteps", "single-steps", runSingleSteps,
-        "runs all the single-step optimizations. Combining them results in fewer iterations over the instructions"),
+    /*
+     * The first optimizations run modify the control-flow of the method.
+     * After this block of optimizations is run, the CFG of the method is stable (does not change anymore)
+     */
+    OptimizationPass("CombineDuplicateBranches", "combine-branches", combineDuplicateBranches,
+        "combines successive branches to the same label"),
     OptimizationPass("MergeBasicBlocks", "merge-blocks", mergeAdjacentBasicBlocks,
         "merges adjacent basic blocks if there are no other conflicting transitions"),
+    /*
+     * The second block executes optimizations only within a single basic block
+     */
+    OptimizationPass("SingleSteps", "single-steps", runSingleSteps,
+        "runs all the single-step optimizations. Combining them results in fewer iterations over the instructions"),
     // OptimizationPass("CompressWorkGroupInfo", "compress-work-group-info", compressWorkGroupLocals,
     //    "compresses work-group info into single local"),
     OptimizationPass("CombineRotations", "combine-rotations", combineVectorRotations,
@@ -224,6 +237,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("combine-loads");
         // fall-through on purpose
     case OptimizationLevel::BASIC:
+        passes.emplace("combine-branches");
         passes.emplace("eliminate-dead-store");
         passes.emplace("single-steps");
         passes.emplace("reorder");

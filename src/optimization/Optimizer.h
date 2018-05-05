@@ -33,12 +33,12 @@ namespace vc4c
              * The optimizations are only run in parallel for different methods, so any access to the method is
              * thread-safe
              */
-            using Pass = std::function<void(const Module&, Method&, const Configuration&)>;
+            using Pass = std::function<bool(const Module&, Method&, const Configuration&)>;
 
             OptimizationPass(const std::string& name, const std::string& parameterName, const Pass& pass,
                 const std::string& description);
 
-            void operator()(const Module& module, Method& method, const Configuration& config) const;
+            bool operator()(const Module& module, Method& method, const Configuration& config) const;
 
             const std::string name;
             const std::string parameterName;

@@ -779,11 +779,12 @@ static void vectorize(ControlFlowLoop& loop, LoopControl& loopControl, const Dat
     logging::debug() << "Vectorization done, changed " << numVectorized << " instructions!" << logging::endl;
 }
 
-void optimizations::vectorizeLoops(const Module& module, Method& method, const Configuration& config)
+bool optimizations::vectorizeLoops(const Module& module, Method& method, const Configuration& config)
 {
     // 1. find loops
     auto& cfg = method.getCFG();
     auto loops = cfg.findLoops();
+    bool hasChanged = false;
 
     // 2. determine data dependencies of loop bodies
     auto dependencyGraph = DataDependencyGraph::createDependencyGraph(method);
@@ -826,7 +827,10 @@ void optimizations::vectorizeLoops(const Module& module, Method& method, const C
         vectorize(loop, loopControl, dependencyGraph);
         // increasing the iteration step might create a value not fitting into small immediate
         normalization::handleImmediate(module, method, loopControl.iterationStep.value(), config);
+        hasChanged = true;
     }
+
+    return hasChanged;
 }
 
 void optimizations::extendBranches(const Module& module, Method& method, const Configuration& config)
@@ -1194,7 +1198,7 @@ static const Local* findSourceBlock(const Local* label, const FastMap<const Loca
     return findSourceBlock(it->second, blockMap);
 }
 
-void optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& method, const Configuration& config)
+bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& method, const Configuration& config)
 {
     auto& graph = method.getCFG();
 
@@ -1249,4 +1253,5 @@ void optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
     }
 
     logging::debug() << "Merged " << blocksToMerge.size() << " pair of blocks!" << logging::endl;
+    return !blocksToMerge.empty();
 }
