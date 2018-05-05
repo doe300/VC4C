@@ -50,7 +50,7 @@ namespace vc4c
         /*
          * Move constant load operations in (nested) loops to the block before head block of the outer-most loop.
          */
-        void removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config);
+        bool removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Concatenates "adjacent" basic blocks if the preceding block has only one successor and the succeeding block

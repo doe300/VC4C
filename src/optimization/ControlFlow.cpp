@@ -1092,9 +1092,10 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     generateStopSegment(method);
 }
 
-void optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
+bool optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
 {
     logging::debug() << "moveConstantsDepth = " << config.additionalOptions.moveConstantsDepth << logging::endl;
+    bool hasChanged = false;
 
     // 1. find loops
     auto& cfg = method.getCFG();
@@ -1183,11 +1184,14 @@ void optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                             }
                         }
                         it.erase();
+                        hasChanged = true;
                     }
                 }
             }
         }
     }
+
+    return hasChanged;
 }
 
 static const Local* findSourceBlock(const Local* label, const FastMap<const Local*, const Local*>& blockMap)

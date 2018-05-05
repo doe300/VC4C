@@ -199,12 +199,6 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
     OptimizationPass("CombineRotations", "combine-rotations", combineVectorRotations,
         "combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation"),
     OptimizationPass("GeneralOptimizations", "general-optimizations", generalOptimization, "TODO"),
-    /*
-     * TODO in combination with a bug/missing check in register-allocation, this generates invalid code (e.g.
-     * testing/test_barrier.cl) More exact: the load is moved outside the loop but the register is re-assigned in the
-     * loop having wrong value for successive iterations In register-allocation, need to check for loops and reserve
-     * whole loop
-     */
     OptimizationPass("RemoveConstantLoadInLoops", "extract-loads-from-loops", removeConstantLoadInLoops,
         "move constant loads in (nested) loops outside the loops"),
     OptimizationPass("EliminateDeadStores", "eliminate-dead-store", eliminateDeadStore,
