@@ -7,8 +7,8 @@ add_executable( VC4C main.cpp concepts.h)
 set(VC4C_LIBRARY_NAME VC4CC)
 set(VC4C_PROGRAM_NAME VC4C)
 
-target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE VC4C_VERSION="${PROJECT_VERSION}" VC4CL_STDLIB_HEADER="${VC4CL_STDLIB_HEADER}")
-target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE VC4C_VERSION="${PROJECT_VERSION}" VC4CL_STDLIB_HEADER="${VC4CL_STDLIB_HEADER}")
+target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE VC4C_VERSION="${PROJECT_VERSION}" VC4CL_STDLIB_HEADER="${VC4CL_STDLIB_HEADER}" VC4CL_STDLIB_MODULE="${VC4CL_STDLIB_MODULE}")
+target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE VC4C_VERSION="${PROJECT_VERSION}" VC4CL_STDLIB_HEADER="${VC4CL_STDLIB_HEADER}" VC4CL_STDLIB_MODULE="${VC4CL_STDLIB_MODULE}")
 
 # append usage of C++ to compiler flags, also optimize for speed and enable all warnings
 set(VC4C_ENABLED_WARNINGS -Wall -Wextra -Wold-style-cast -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings)

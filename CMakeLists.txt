@@ -295,12 +295,21 @@ else()
 endif()
 # Re-use the parameters for local and debian-package installation build
 set(VC4CL_STDLIB_PCH_ARGS -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info -cl-single-precision-constant -Wno-all -Wno-gcc-compat -x cl -emit-pch -o)
+set(VC4CL_STDLIB_MODULE_ARGS -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info -cl-single-precision-constant -Wno-all -Wno-gcc-compat -x cl -emit-llvm-bc -o)
 string(REPLACE ";" " " VC4CL_STDLIB_PCH_ARGS_LIST "${VC4CL_STDLIB_PCH_ARGS}")
+string(REPLACE ";" " " VC4CL_STDLIB_MODULE_ARGS_LIST "${VC4CL_STDLIB_MODULE_ARGS}")
 add_custom_target(vc4cl-stdlib
     COMMAND             if [ ! -e ${VC4CL_STDLIB_HEADER} ]; then ${PRECOMPILE_COMMAND} ${VC4CL_STDLIB_PCH_ARGS} ${VC4CL_STDLIB_HEADER} ${VC4CL_STDLIB_HEADER_SOURCE} && echo \"VC4CL standard library precompiled into ${VC4CL_STDLIB_HEADER}\" \; fi
     WORKING_DIRECTORY   ${VC4CL_STDLIB_DIR}
     SOURCES				${VC4CL_STDLIB_HEADER_SOURCE}
 )
+string(REPLACE "h.pch" "bc" VC4CL_STDLIB_MODULE ${VC4CL_STDLIB_HEADER})
+add_custom_target(vc4cl-stdlib-module
+	COMMAND             if [ ! -e ${VC4CL_STDLIB_MODULE} ]; then ${PRECOMPILE_COMMAND} ${VC4CL_STDLIB_MODULE_ARGS} ${VC4CL_STDLIB_MODULE} ${VC4CL_STDLIB_HEADER_SOURCE} && echo \"VC4CL standard library precompiled into module ${VC4CL_STDLIB_MODULE}\" \; fi
+	WORKING_DIRECTORY   ${VC4CL_STDLIB_DIR}
+	SOURCES				${VC4CL_STDLIB_HEADER_SOURCE}
+)
+add_dependencies(vc4cl-stdlib vc4cl-stdlib-module)
 
 ####
 # Main files
