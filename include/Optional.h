@@ -36,7 +36,7 @@ namespace vc4c
     public:
         constexpr Optional() : Base() {}
         constexpr Optional(const T& value) : Base(value) {}
-        constexpr Optional(T&& value) : Base(value) {}
+        constexpr Optional(T&& value) : Base(std::forward<T>(value)) {}
         constexpr Optional(const Optional<T>& other) : Base(other) {}
         constexpr Optional(Optional<T>&& other) : Base(std::forward<Base>(other)) {}
 

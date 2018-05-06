@@ -22,7 +22,6 @@ target_sources(${VC4C_LIBRARY_NAME}
     Module.h
     Parser.h
     performance.h
-    Precompiler.cpp
     ProcessUtil.cpp
     ProcessUtil.h
     Profiler.cpp

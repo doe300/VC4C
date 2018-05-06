@@ -48,6 +48,7 @@ include(llvm/sources.list)
 include(normalization/sources.list)
 include(optimization/sources.list)
 include(periphery/sources.list)
+include(precompilation/sources.list)
 include(spirv/sources.list)
 include(tools/sources.list)
 
