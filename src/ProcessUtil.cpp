@@ -128,8 +128,76 @@ static bool isChildFinished(pid_t pid, int* exitStatus, bool wait = false)
         CompilationStep::GENERAL, "Unhandled case in retrieving child process information", std::to_string(result));
 }
 
+static int runReadOnlySubprocess(const std::string& command, std::ostream* output)
+{
+    auto fd = popen(command.data(), "r");
+    if(fd == nullptr)
+        throw CompilationError(CompilationStep::GENERAL, "Failed to run command", strerror(errno));
+    if(output != nullptr)
+    {
+        std::array<char, 512> buffer;
+        std::size_t numRead = 0;
+        while((numRead = fread(buffer.data(), sizeof(char), buffer.size(), fd)) > 0)
+        {
+            output->write(buffer.data(), numRead);
+        }
+        if(ferror(fd))
+        {
+            auto err = ferror(fd);
+            pclose(fd);
+            throw CompilationError(CompilationStep::GENERAL, "Error reading from sub-process", strerror(err));
+        }
+    }
+    return pclose(fd);
+}
+
+static int runWriteOnlySubprocess(const std::string& command, std::istream* input)
+{
+    auto fd = popen(command.data(), "w");
+    if(fd == nullptr)
+        throw CompilationError(CompilationStep::GENERAL, "Failed to run command", strerror(errno));
+    if(input != nullptr)
+    {
+        std::array<char, 512> buffer;
+        std::size_t numRead = 0;
+        while(input->read(buffer.data(), buffer.size()))
+        {
+            fwrite(buffer.data(), sizeof(char), input->gcount(), fd);
+        }
+        if(ferror(fd))
+        {
+            auto err = ferror(fd);
+            pclose(fd);
+            throw CompilationError(CompilationStep::GENERAL, "Error writing into sub-process", strerror(err));
+        }
+    }
+    return pclose(fd);
+}
+
 int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostream* stdout, std::ostream* stderr)
 {
+    /*
+     * Simple version, only ONE of stdin, stdout or stderr is set.
+     * Now we can simplify by using popen
+     */
+    if(static_cast<unsigned>(stdin != nullptr) + static_cast<unsigned>(stdout != nullptr) +
+            static_cast<unsigned>(stderr != nullptr) <=
+        1)
+    {
+        if(stderr != nullptr)
+        {
+            // redirect stderr to stdout, so we can read it
+            // see
+            // https://stackoverflow.com/questions/876239/how-can-i-redirect-and-append-both-stdout-and-stderr-to-a-file-with-bash
+            return runReadOnlySubprocess(command + " 2>&1", stderr);
+        }
+        else if(stdout != nullptr)
+        {
+            return runReadOnlySubprocess(command, stderr);
+        }
+        return runWriteOnlySubprocess(command, stdin);
+    }
+
     /*
      * See:
      * https://jineshkj.wordpress.com/2006/12/22/how-to-capture-stdin-stdout-and-stderr-of-child-program/

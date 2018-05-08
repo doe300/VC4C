@@ -109,10 +109,7 @@ static void compileOpenCLToLLVMIR(std::istream* input, std::ostream* output, con
 
     logging::info() << "Compiling OpenCL to LLVM-IR with: " << command << logging::endl;
 
-    // NOTE: not setting a stream to put the stdout of the child-process in doesn't currently work (hangs the
-    // child-process)  so we always set an output-stream, even if we write to file. But since the stream will have no
-    // content (is not written to), it has no impact
-    runPrecompiler(command, inputFile ? nullptr : input, output);
+    runPrecompiler(command, inputFile ? nullptr : input, outputFile ? nullptr : output);
 }
 
 static void compileLLVMIRToSPIRV0(std::istream* input, std::ostream* output, const std::string& options,
@@ -130,10 +127,7 @@ static void compileLLVMIRToSPIRV0(std::istream* input, std::ostream* output, con
 
     logging::info() << "Converting LLVM-IR to SPIR-V with: " << command << logging::endl;
 
-    // NOTE: not setting a stream to put the stdout of the child-process in doesn't currently work (hangs the
-    // child-process)  so we always set an output-stream, even if we write to file. But since the stream will have no
-    // content (is not written to), it has no impact
-    runPrecompiler(command, inputFile ? nullptr : input, output);
+    runPrecompiler(command, inputFile ? nullptr : input, outputFile ? nullptr : output);
 #endif
 }
 
@@ -179,10 +173,7 @@ static void compileSPIRVToSPIRV(std::istream* input, std::ostream* output, const
 
     logging::info() << "Converting between SPIR-V text and SPIR-V binary with: " << command << logging::endl;
 
-    // NOTE: not setting a stream to put the stdout of the child-process in doesn't currently work (hangs the
-    // child-process)  so we always set an output-stream, even if we write to file. But since the stream will have no
-    // content (is not written to), it has no impact
-    runPrecompiler(command, inputFile ? nullptr : input, output);
+    runPrecompiler(command, inputFile ? nullptr : input, outputFile ? nullptr : output);
 #endif
 }
 
