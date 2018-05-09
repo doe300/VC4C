@@ -1311,6 +1311,22 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     generateStopSegment(method);
 }
 
+// Determine constant instruction, such as
+// * load immediate instruction
+// * instruction whose all arguments are immediate value and which has output without side effect (its result is
+// immediate)
+bool isConstantInstruction(const InstructionWalker& inst)
+{
+    // TODO: Constants like `mul24 r1, 4, elem_num` should be also moved.
+    if(inst.get<LoadImmediate>() != nullptr)
+    {
+        return true;
+    }
+    auto& args = inst->getArguments();
+    return std::all_of(args.begin(), args.end(), [](const Value& arg) { return !arg.isWriteable(); }) &&
+        inst->getOutput().has_value() && !inst->hasSideEffects() && !inst->hasConditionalExecution();
+}
+
 bool optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
@@ -1363,13 +1379,11 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             auto block = cfgNode->key;
             for(auto it = block->walk(); it != block->walkEnd(); it = it.nextInBlock())
             {
-                // TODO: Constants like `mul24 r1, 4, elem_num` should be also moved.
-                if(auto loadInst = it.get<LoadImmediate>())
+                if(isConstantInstruction(it))
                 {
                     // LoadImmediate must have output value
-                    auto out = loadInst->getOutput().value();
-                    if(loadInst->hasValueType(ValueType::LOCAL) && !loadInst->hasSideEffects() &&
-                        !loadInst->hasConditionalExecution())
+                    auto out = it->getOutput().value();
+                    if(out->hasValueType(ValueType::LOCAL))
                     {
                         CPPLOG_LAZY(logging::Level::DEBUG,
                             log << "Moving constant load out of loop: " << it->to_string() << logging::endl);
