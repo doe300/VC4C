@@ -1250,8 +1250,18 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
             logging::debug() << "Merged block " << pair.second->to_string() << " into " << pair.first->to_string()
                              << logging::endl;
         else
+        {
             logging::warn() << "Failed to remove empty basic block: " << sourceBlock->getLabel()->to_string()
                             << logging::endl;
+            if(!sourceBlock->empty())
+            {
+                logging::warn() << "Block was not empty: " << logging::endl;
+                sourceBlock->dumpInstructions();
+            }
+            sourceBlock->forPredecessors([sourceBlock](InstructionWalker it) {
+                logging::warn() << "Block has explicit predecessor: " << it->to_string() << logging::endl;
+            });
+        }
 
         blockMap.emplace(pair.second, pair.first);
     }

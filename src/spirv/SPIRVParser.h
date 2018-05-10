@@ -29,7 +29,7 @@ namespace vc4c
         {
         public:
             explicit SPIRVParser(std::istream& input = std::cin, bool isSPIRVText = false);
-            ~SPIRVParser() override = default;
+            ~SPIRVParser() override;
 
             void parse(Module& module) override;
 
@@ -98,7 +98,7 @@ namespace vc4c
             {
                 throw CompilationError(CompilationStep::GENERAL, "SPIR-V frontend is not active!");
             }
-            ~SPIRVParser() override = default;
+            ~SPIRVParser() override;
 
             void parse(Module& module) override
             {

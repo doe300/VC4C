@@ -537,7 +537,7 @@ namespace vc4c
         ContainerValue(std::size_t size)
         {
             elements.reserve(size);
-        };
+        }
         ContainerValue(std::vector<Value>&& values) : elements(values) {}
 
         /*

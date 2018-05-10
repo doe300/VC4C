@@ -132,7 +132,13 @@ static Method& inlineMethod(
                                  << logging::endl;
                 // replace method-call from parent with label to jump to (for returns)
                 it = it.erase();
+                auto copyIt = it.copy().previousInMethod();
                 it = currentMethod.emplaceLabel(it, new intermediate::BranchLabel(*methodEndLabel));
+
+                // fix-up to immediately remove branches from return to %end_of_function when consecutive instructions
+                if(copyIt.has<intermediate::Branch>() &&
+                    copyIt.get<intermediate::Branch>()->getTarget() == methodEndLabel)
+                    copyIt.erase();
             }
         }
         it.nextInMethod();

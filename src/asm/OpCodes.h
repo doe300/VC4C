@@ -17,7 +17,7 @@
 
 namespace vc4c
 {
-    struct DataType;
+    class DataType;
     struct Value;
     struct OpCode;
     enum class BranchCond : unsigned char;

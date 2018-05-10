@@ -23,8 +23,8 @@ namespace vc4c
     {
         struct FloatRange
         {
-            double minValue = std::numeric_limits<float>::lowest();
-            double maxValue = std::numeric_limits<float>::max();
+            double minValue = static_cast<double>(std::numeric_limits<float>::lowest());
+            double maxValue = static_cast<double>(std::numeric_limits<float>::max());
         };
 
         struct IntegerRange

@@ -15,6 +15,11 @@
 #include <cstdint>
 #include <cstring>
 
+vc4c::spirv2qasm::SPIRVParser::~SPIRVParser()
+{
+    // out-of-line destructor
+}
+
 #ifdef SPIRV_FRONTEND
 
 #if __has_include("spirv-tools/optimizer.hpp")

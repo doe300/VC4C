@@ -33,7 +33,7 @@ namespace vc4c
         class Normalizer
         {
         public:
-            explicit Normalizer(const Configuration& config = {}) : config(config){};
+            explicit Normalizer(const Configuration& config = {}) : config(config) {}
 
             /*
              * Runs the normalization steps on all kernels in the module.
