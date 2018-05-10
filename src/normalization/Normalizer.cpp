@@ -113,7 +113,9 @@ void Normalizer::normalize(Module& module) const
         Method& kernel = *kernelFunc;
 
         PROFILE_COUNTER(vc4c::profiler::COUNTER_NORMALIZATION + 4, "Inline (before)", kernel.countInstructions());
+        PROFILE_START(Inline);
         inlineMethods(module, kernel, config);
+        PROFILE_END(Inline);
         PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION + 5, "Inline (after)",
             kernel.countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 4);
     }

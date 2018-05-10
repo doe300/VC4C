@@ -1,3 +1,7 @@
+void vc4cl_mutex_lock(void);
+void vc4cl_mutex_unlock(void);
+uint8 vc4cl_dma_read(volatile __local uint8*);
+
 __constant uint8 globalData[32] = {};
 
 __kernel void test_global_data(__global const uint8* in, __global uint8* out)

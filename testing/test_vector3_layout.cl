@@ -1,3 +1,6 @@
+int3 vc4cl_extend(short3) __attribute__((overloadable));
+int3 vc4cl_extend(char3) __attribute__((overloadable));
+
 __kernel void test_vector_3(__global int3* in1, __global int3* out1, __global short3* in2, __global int3* out2, __global char3* in3, __global int3* out3)
 {
 	size_t id = get_global_id(0);

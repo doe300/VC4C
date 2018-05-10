@@ -116,7 +116,7 @@ std::vector<const Local*> CallSite::getAllLocals() const
 bool CallSite::mapInstruction(Method& method) const
 {
     // map calls to @llvm.lifetime.start / @llvm.lifetime.end to lifetime-instructions
-    if(methodName.compare("llvm.lifetime.start") == 0 || methodName.compare("llvm.lifetime.end") == 0)
+    if(methodName.find("llvm.lifetime.start") == 0 || methodName.find("llvm.lifetime.end") == 0)
     {
         Value pointer = arguments.at(1);
         if(!pointer.local->is<StackAllocation>())

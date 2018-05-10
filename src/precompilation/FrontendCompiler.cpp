@@ -65,6 +65,7 @@ static std::string buildClangCommand(const std::string& compiler, const std::str
     if(usePCH)
         command.append("-include-pch " VC4CL_STDLIB_HEADER " ");
     else
+        // TODO this uses the #defines and extensions of the default headers, not as supported by VC4CL!
         command.append("-finclude-default-header ");
     if(options.find("-x cl") == std::string::npos)
     {

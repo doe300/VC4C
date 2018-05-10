@@ -8,21 +8,66 @@
 
 #include "../periphery/VPM.h"
 
+#include "log.h"
+
 using namespace vc4c;
 using namespace vc4c::intermediate;
 
-/*
- * TODO some memory locations are not recognized:
- * - when pointer is set via PHI-node
- * - pointers loaded from stack allocations storing pointers to pointers
- */
+static bool isDerivedFromMemory(const Local* local)
+{
+    auto base = local->getBase(true);
+    if(base->residesInMemory() || base->is<Parameter>())
+        return true;
+    bool allSourcesDerivedFromMemory = true;
+
+    local->forUsers(LocalUse::Type::WRITER, [&](const LocalUser* user) {
+        if(dynamic_cast<const intermediate::MoveOperation*>(user) != nullptr &&
+            user->getArgument(0)->hasType(ValueType::LOCAL))
+        {
+            if(!isDerivedFromMemory(user->getArgument(0)->local))
+                allSourcesDerivedFromMemory = false;
+        }
+        else if(dynamic_cast<const intermediate::MemoryInstruction*>(user) != nullptr)
+            return;
+        else if(dynamic_cast<const intermediate::Operation*>(user) != nullptr)
+        {
+            const auto* op = dynamic_cast<const intermediate::Operation*>(user);
+            if(op->op != OP_ADD && op->op != OP_SUB)
+                allSourcesDerivedFromMemory = false;
+            else if(op->getFirstArg().hasType(ValueType::LOCAL) && op->getFirstArg().type.isPointerType() &&
+                !op->assertArgument(1).type.isPointerType())
+            {
+                return;
+            }
+            else if(op->assertArgument(1).hasType(ValueType::LOCAL) && !op->getFirstArg().type.isPointerType() &&
+                op->assertArgument(1).type.isPointerType())
+            {
+                return;
+            }
+            else
+                allSourcesDerivedFromMemory = false;
+        }
+        else
+        {
+            // unknown / not handled operation, assume worst
+            logging::debug() << "Unhandled source of pointer: " << user->to_string() << logging::endl;
+            allSourcesDerivedFromMemory = false;
+        }
+    });
+
+    return allSourcesDerivedFromMemory;
+}
 
 static void checkMemoryLocation(const Value& val)
 {
     if(!val.type.getPointerType())
         throw CompilationError(CompilationStep::LLVM_2_IR, "Operand needs to be a pointer", val.to_string());
-    if(!val.hasType(ValueType::LOCAL) ||
-        !(val.local->getBase(true)->residesInMemory() || val.local->getBase(true)->is<Parameter>()))
+    /*
+     * TODO some memory locations are not recognized:
+     * Pointers with a dynamically set memory location cannot be recognized at compile-time and therefore this check
+     * will always fail for them
+     */
+    if(!val.hasType(ValueType::LOCAL) || !isDerivedFromMemory(val.local))
         throw CompilationError(CompilationStep::LLVM_2_IR,
             "Operand needs to refer to a memory location or a parameter containing one", val.to_string());
 }

@@ -726,8 +726,9 @@ void BitcodeReader::parseInstruction(
         const DataType pointerType = toDataType(alloca->getType());
         unsigned alignment = alloca->getAlignment();
         // XXX need to heed the array-size?
-        method.stackAllocations.emplace(
+        auto it = method.stackAllocations.emplace(
             StackAllocation(("%" + alloca->getName()).str(), pointerType, contentType.getPhysicalWidth(), alignment));
+        logging::debug() << "Reading stack allocation: " << it.first->to_string() << logging::endl;
         break;
     }
     case MemoryOps::GetElementPtr:
