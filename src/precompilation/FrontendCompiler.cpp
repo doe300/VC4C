@@ -9,12 +9,19 @@
 #include "../ProcessUtil.h"
 #include "log.h"
 
+#ifdef SPIRV_FRONTEND
+#include "spirv/SPIRVHelper.h"
+#endif
+
+#include <fstream>
+#include <numeric>
+
 using namespace vc4c;
 using namespace vc4c::precompilation;
 
 static std::string buildClangCommand(const std::string& compiler, const std::string& defaultOptions,
     const std::string& options, const std::string& emitter, const std::string& outputFile,
-    const std::string& inputFile = "-")
+    const std::string& inputFile = "-", bool usePCH = true)
 {
     // check validity of options - we do not support all of them
     if(options.find("-create-library") != std::string::npos)
@@ -55,7 +62,10 @@ static std::string buildClangCommand(const std::string& compiler, const std::str
 #endif
     // link in our standard-functions
     command.append(" -Wno-undefined-inline -Wno-unused-parameter -Wno-unused-local-typedef -Wno-gcc-compat ");
-    command.append("-include-pch " VC4CL_STDLIB_HEADER " ");
+    if(usePCH)
+        command.append("-include-pch " VC4CL_STDLIB_HEADER " ");
+    else
+        command.append("-finclude-default-header ");
     if(options.find("-x cl") == std::string::npos)
     {
         // build OpenCL, required when input is from stdin, since clang can't determine from file-type
@@ -87,8 +97,9 @@ static void runPrecompiler(const std::string& command, std::istream* inputStream
     throw CompilationError(CompilationStep::PRECOMPILATION, "Error in precompilation", stderr.str());
 }
 
-static void compileOpenCLToLLVMIR(std::istream* input, std::ostream* output, const std::string& options,
-    const bool toText = true, const Optional<std::string>& inputFile = {}, const Optional<std::string>& outputFile = {})
+static void compileOpenCLToLLVMIR0(std::istream* input, std::ostream* output, const std::string& options,
+    bool toText = true, const Optional<std::string>& inputFile = {}, const Optional<std::string>& outputFile = {},
+    bool withPCH = true)
 {
 #if not defined SPIRV_CLANG_PATH && not defined CLANG_PATH
     throw CompilationError(CompilationStep::PRECOMPILATION, "No CLang configured for pre-compilation!");
@@ -105,7 +116,7 @@ static void compileOpenCLToLLVMIR(std::istream* input, std::ostream* output, con
     // emit LLVM IR
     const std::string command = buildClangCommand(compiler, defaultOptions, options,
         std::string("-S ").append(toText ? "-emit-llvm" : "-emit-llvm-bc"), outputFile.value_or("/dev/stdout"),
-        inputFile.value_or("-"));
+        inputFile.value_or("-"), withPCH);
 
     logging::info() << "Compiling OpenCL to LLVM-IR with: " << command << logging::endl;
 
@@ -131,33 +142,6 @@ static void compileLLVMIRToSPIRV0(std::istream* input, std::ostream* output, con
 #endif
 }
 
-static void compileOpenCLToSPIRV(std::istream* input, std::ostream* output, const std::string& options,
-    const bool toText = false, const Optional<std::string>& inputFile = {},
-    const Optional<std::string>& outputFile = {})
-{
-#if not defined SPIRV_CLANG_PATH || not defined SPIRV_LLVM_SPIRV_PATH
-    throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-LLVM not configured, can't compile to SPIR-V!");
-#elif not defined SPIRV_FRONTEND
-    throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-Tools not configured, can't process SPIR-V!");
-#endif
-
-    TemporaryFile tmp;
-    std::stringstream dummy;
-    // 1) OpenCL C -> LLVM IR BC (with Khronos CLang)
-    compileOpenCLToLLVMIR(input, &dummy, options, false, inputFile, tmp.fileName);
-    // 2) LLVM IR BC -> SPIR-V
-    try
-    {
-        compileLLVMIRToSPIRV0(&dummy, output, options, toText, tmp.fileName, outputFile);
-    }
-    catch(const CompilationError& e)
-    {
-        logging::warn() << "LLVM-IR to SPIR-V failed, trying to compile with the LLVM-IR front-end..." << logging::endl;
-        logging::warn() << e.what() << logging::endl;
-        compileOpenCLToLLVMIR(input, output, options, true, inputFile, outputFile);
-    }
-}
-
 static void compileSPIRVToSPIRV(std::istream* input, std::ostream* output, const std::string& options,
     const bool toText = false, const Optional<std::string>& inputFile = {},
     const Optional<std::string>& outputFile = {})
@@ -180,37 +164,109 @@ static void compileSPIRVToSPIRV(std::istream* input, std::ostream* output, const
 void precompilation::compileOpenCLWithPCH(OpenCLSource&& source, const std::string& userOptions, LLVMIRResult& result)
 {
     OpenCLSource src(std::forward<OpenCLSource>(source));
-    compileOpenCLToLLVMIR(src.stream, result.stream, userOptions, false, src.file, result.getFile());
+    compileOpenCLToLLVMIR0(src.stream, result.stream, userOptions, false, src.file, result.file);
+}
+
+void precompilation::compileOpenCLWithDefaultHeader(
+    OpenCLSource&& source, const std::string& userOptions, LLVMIRResult& result)
+{
+    OpenCLSource src(std::forward<OpenCLSource>(source));
+    compileOpenCLToLLVMIR0(src.stream, result.stream, userOptions, false, src.file, result.file, false);
+}
+
+void precompilation::linkInStdlibModule(LLVMIRSource&& source, const std::string& userOptions, LLVMIRResult& result)
+{
+#ifndef VC4CL_STDLIB_MODULE
+    throw CompilationError(CompilationStep::LINKER, "LLVM IR module for VC4CL std-lib is not defined!");
+#endif
+    std::vector<LLVMIRSource> sources;
+    sources.emplace_back(std::forward<LLVMIRSource>(source));
+    sources.emplace_back(VC4CL_STDLIB_MODULE "");
+    linkLLVMModules(std::move(sources), userOptions, result);
 }
 
 void precompilation::compileOpenCLToLLVMText(
     OpenCLSource&& source, const std::string& userOptions, LLVMIRTextResult& result)
 {
     OpenCLSource src(std::forward<OpenCLSource>(source));
-    compileOpenCLToLLVMIR(src.stream, result.stream, userOptions, true, src.file, result.getFile());
+    compileOpenCLToLLVMIR0(src.stream, result.stream, userOptions, true, src.file, result.file);
 }
 
 void precompilation::compileLLVMToSPIRV(LLVMIRSource&& source, const std::string& userOptions, SPIRVResult& result)
 {
     LLVMIRSource src(std::forward<LLVMIRSource>(source));
-    compileLLVMIRToSPIRV0(src.stream, result.stream, userOptions, false, src.file, result.getFile());
+    compileLLVMIRToSPIRV0(src.stream, result.stream, userOptions, false, src.file, result.file);
 }
 
 void precompilation::assembleSPIRV(SPIRVTextSource&& source, const std::string& userOptions, SPIRVResult& result)
 {
     SPIRVTextSource src(std::forward<SPIRVTextSource>(source));
-    compileSPIRVToSPIRV(src.stream, result.stream, userOptions, false, src.file, result.getFile());
+    compileSPIRVToSPIRV(src.stream, result.stream, userOptions, false, src.file, result.file);
 }
 
 void precompilation::compileLLVMToSPIRVText(
     LLVMIRSource&& source, const std::string& userOptions, SPIRVTextResult& result)
 {
     LLVMIRSource src(std::forward<LLVMIRSource>(source));
-    compileLLVMIRToSPIRV0(src.stream, result.stream, userOptions, true, src.file, result.getFile());
+    compileLLVMIRToSPIRV0(src.stream, result.stream, userOptions, true, src.file, result.file);
 }
 
 void precompilation::disassembleSPIRV(SPIRVSource&& source, const std::string& userOptions, SPIRVTextResult& result)
 {
     SPIRVSource src(std::forward<SPIRVSource>(source));
-    compileSPIRVToSPIRV(src.stream, result.stream, userOptions, true, src.file, result.getFile());
+    compileSPIRVToSPIRV(src.stream, result.stream, userOptions, true, src.file, result.file);
+}
+
+void precompilation::linkLLVMModules(
+    std::vector<LLVMIRSource>&& sources, const std::string& userOptions, LLVMIRResult& result)
+{
+#ifndef LLVM_LINK_PATH
+    throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-link is not available!");
+#endif
+
+    if(sources.empty())
+        throw CompilationError(CompilationStep::PRECOMPILATION, "Cannot link without input files!");
+
+    // only one input can be from a stream
+    std::istream* inputStream = nullptr;
+    const std::string out = result.file ? std::string("-o=") + result.file.value() : "";
+    std::string inputs = std::accumulate(
+        sources.begin(), sources.end(), std::string{}, [&](const std::string& a, const LLVMIRSource& b) -> std::string {
+            if(b.file)
+                return (a + " ") + b.file.value();
+            if(inputStream != nullptr)
+                throw CompilationError(CompilationStep::LINKER, "Cannot link with multiple stream-inputs!");
+            inputStream = b.stream;
+            return a + " -";
+        });
+
+    const std::string command = std::string(LLVM_LINK_PATH " -only-needed -internalize ") + (out + " ") + inputs;
+
+    logging::info() << "Linking LLVM-IR modules with: " << command << logging::endl;
+
+    runPrecompiler(command, inputStream, result.file ? nullptr : result.stream);
+}
+
+void precompilation::linkSPIRVModules(
+    std::vector<SPIRVSource>&& sources, const std::string& userOptions, SPIRVResult& result)
+{
+#ifndef SPIRV_FRONTEND
+    throw CompilationError(CompilationStep::LINKER, "SPIR-V front-end is not provided!");
+#else
+    std::vector<std::istream*> convertedInputs;
+    std::vector<std::unique_ptr<std::istream>> conversionBuffer;
+    for(auto& source : sources)
+    {
+        if(source.file)
+        {
+            conversionBuffer.emplace_back(new std::ifstream(source.file.value()));
+            convertedInputs.emplace_back(conversionBuffer.back().get());
+        }
+        else
+            convertedInputs.emplace_back(source.stream);
+    }
+
+    logging::debug() << "Linking " << sources.size() << " input modules..." << logging::endl;
+    spirv2qasm::linkSPIRVModules(convertedInputs, output);
+#endif
 }

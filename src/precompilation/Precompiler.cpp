@@ -17,10 +17,6 @@
 #include <libgen.h>
 #include <sstream>
 
-#ifdef SPIRV_FRONTEND
-#include "spirv/SPIRVHelper.h"
-#endif
-
 using namespace vc4c;
 using namespace vc4c::precompilation;
 
@@ -110,41 +106,143 @@ SourceType Precompiler::getSourceType(std::istream& stream)
     return type;
 }
 
+static std::pair<bool, bool> determinePossibleLinkers(
+    const std::unordered_map<std::istream*, Optional<std::string>>& inputs)
+{
+#ifdef LLVM_LINK_PATH
+    bool llvmLinkerPossible = true;
+#else
+    bool llvmLinkerPossible = false;
+#endif
+#ifdef SPIRV_FRONTEND
+    bool spirvLinkerPossible = true;
+#else
+    bool spirvLinkerPossible = false;
+#endif
+
+    for(const auto& input : inputs)
+    {
+        auto type = Precompiler::getSourceType(*input.first);
+        if(type > SourceType::LLVM_IR_BIN)
+            llvmLinkerPossible = false;
+        if(type > SourceType::SPIRV_TEXT)
+            spirvLinkerPossible = false;
+    }
+
+    return std::make_pair(llvmLinkerPossible, spirvLinkerPossible);
+}
+
+static Optional<TemporaryFile> compileToSPIRV(const std::pair<std::istream*, Optional<std::string>>& source)
+{
+    auto type = Precompiler::getSourceType(*source.first);
+    if(type == SourceType::OPENCL_C)
+    {
+        TemporaryFile f;
+        SPIRVResult res(f.fileName);
+        compileOpenCLToSPIRV(
+            source.second ? OpenCLSource(source.second.value()) : OpenCLSource(*source.first), "", res);
+        return f;
+    }
+    else if(type == SourceType::LLVM_IR_BIN)
+    {
+        TemporaryFile f;
+        SPIRVResult res(f.fileName);
+        compileLLVMToSPIRV(source.second ? LLVMIRSource(source.second.value()) : LLVMIRSource(*source.first), "", res);
+        return f;
+    }
+    else if(type == SourceType::SPIRV_TEXT)
+    {
+        TemporaryFile f;
+        SPIRVResult res(f.fileName);
+        assembleSPIRV(source.second ? SPIRVTextSource(source.second.value()) : SPIRVTextSource(*source.first), "", res);
+        return f;
+    }
+    else if(type == SourceType::SPIRV_BIN)
+    {
+        return {};
+    }
+    else
+        throw CompilationError(CompilationStep::LINKER, "No known conversion from source-code type to SPIR-V binary",
+            std::to_string(static_cast<unsigned>(type)));
+}
+
+static Optional<TemporaryFile> compileToLLVM(const std::pair<std::istream*, Optional<std::string>>& source)
+{
+    auto type = Precompiler::getSourceType(*source.first);
+    if(type == SourceType::OPENCL_C)
+    {
+        TemporaryFile f;
+        LLVMIRResult res(f.fileName);
+        compileOpenCLToLLVMIR(
+            source.second ? OpenCLSource(source.second.value()) : OpenCLSource(*source.first), "", res);
+        return f;
+    }
+    else if(type == SourceType::LLVM_IR_BIN)
+    {
+        return {};
+    }
+    else
+        throw CompilationError(CompilationStep::LINKER, "No known conversion from source-code type to LLVM IR binary",
+            std::to_string(static_cast<unsigned>(type)));
+}
+
 SourceType Precompiler::linkSourceCode(
     const std::unordered_map<std::istream*, Optional<std::string>>& inputs, std::ostream& output)
 {
+    // XXX the inputs is actually a variant of file and stream
     PROFILE_START(linkSourceCode);
-#ifndef SPIRV_FRONTEND
-    throw CompilationError(CompilationStep::LINKER, "SPIR-V front-end is not provided!");
-    // TODO also allow to link via llvm-link for "normal" LLVM (or generally link with (SPIR-V) LLVM?)
-    // currently fails for "arm_get_core_id" being defined twice
-#else
-    std::vector<std::istream*> convertedInputs;
-    std::vector<std::unique_ptr<std::istream>> conversionBuffer;
-    std::vector<TemporaryFile> tempFiles;
-    for(auto& pair : inputs)
-    {
-        const SourceType type = getSourceType(*pair.first);
-        if(type == SourceType::SPIRV_BIN)
-        {
-            convertedInputs.push_back(pair.first);
-        }
-        else
-        {
-            Precompiler comp(*pair.first, type, pair.second);
-            tempFiles.emplace_back();
-            conversionBuffer.emplace_back();
-            comp.run(conversionBuffer.back(), SourceType::SPIRV_BIN, "", tempFiles.back().fileName);
-            tempFiles.back().openInputStream(conversionBuffer.back());
-            convertedInputs.push_back(conversionBuffer.back().get());
-        }
-    }
 
-    logging::debug() << "Linking " << inputs.size() << " input modules..." << logging::endl;
-    spirv2qasm::linkSPIRVModules(convertedInputs, output);
-    PROFILE_END(linkSourceCode);
-    return SourceType::SPIRV_BIN;
-#endif
+    bool llvmLinkerPossible;
+    bool spirvLinkerPossible;
+    std::vector<std::unique_ptr<TemporaryFile>> tempFiles;
+    std::tie(llvmLinkerPossible, spirvLinkerPossible) = determinePossibleLinkers(inputs);
+
+    // prefer SPIR-V linker, since it a) does not require an extra process and b) supports more source code types
+    if(spirvLinkerPossible)
+    {
+        std::vector<SPIRVSource> sources;
+        sources.reserve(inputs.size());
+        std::transform(inputs.begin(), inputs.end(), std::back_inserter(sources),
+            [&](const std::pair<std::istream*, Optional<std::string>>& pair) -> SPIRVSource {
+                auto temp = compileToSPIRV(pair);
+
+                if(temp)
+                {
+                    tempFiles.emplace_back(new TemporaryFile(std::move(temp.value())));
+                    return SPIRVSource(tempFiles.back()->fileName);
+                }
+                if(pair.second)
+                    return SPIRVSource(pair.second.value());
+                return SPIRVSource(*pair.first);
+            });
+        SPIRVResult result(&output);
+        linkSPIRVModules(std::move(sources), "", result);
+        PROFILE_END(linkSourceCode);
+        return SourceType::SPIRV_BIN;
+    }
+    else if(llvmLinkerPossible)
+    {
+        std::vector<LLVMIRSource> sources;
+        sources.reserve(inputs.size());
+        std::transform(inputs.begin(), inputs.end(), std::back_inserter(sources),
+            [&](const std::pair<std::istream*, Optional<std::string>>& pair) -> LLVMIRSource {
+                auto temp = compileToLLVM(pair);
+
+                if(temp)
+                {
+                    tempFiles.emplace_back(new TemporaryFile(std::move(temp.value())));
+                    return LLVMIRSource(tempFiles.back()->fileName);
+                }
+                if(pair.second)
+                    return LLVMIRSource(pair.second.value());
+                return LLVMIRSource(*pair.first);
+            });
+        LLVMIRResult result(&output);
+        linkLLVMModules(std::move(sources), "", result);
+        PROFILE_END(linkSourceCode);
+        return SourceType::LLVM_IR_BIN;
+    }
+    throw CompilationError(CompilationStep::LINKER, "Cannot find a linker which can be used for all inputs!");
 }
 
 bool Precompiler::isLinkerAvailable(const std::unordered_map<std::istream*, Optional<std::string>>& inputs)
@@ -155,9 +253,12 @@ bool Precompiler::isLinkerAvailable(const std::unordered_map<std::istream*, Opti
         inputs.begin(), inputs.end(), [](const std::pair<std::istream*, Optional<std::string>>& input) -> bool {
             switch(getSourceType(*input.first))
             {
-            case SourceType::LLVM_IR_BIN:
-            case SourceType::LLVM_IR_TEXT:
             case SourceType::OPENCL_C:
+            case SourceType::LLVM_IR_BIN:
+#ifdef LLVM_LINK_PATH
+                return true;
+#endif
+            case SourceType::LLVM_IR_TEXT:
             case SourceType::SPIRV_BIN:
             case SourceType::SPIRV_TEXT:
 #ifdef SPIRV_FRONTEND
@@ -171,7 +272,7 @@ bool Precompiler::isLinkerAvailable(const std::unordered_map<std::istream*, Opti
 
 bool Precompiler::isLinkerAvailable()
 {
-#ifdef SPIRV_FRONTEND
+#if defined(SPIRV_FRONTEND) || defined(LLVM_LINK_PATH)
     return true;
 #else
     return false;
@@ -227,7 +328,7 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
         else if(outputType == SourceType::LLVM_IR_BIN)
         {
             LLVMIRResult res = outputFile ? LLVMIRResult(outputFile.value()) : LLVMIRResult(&tempStream);
-            compileOpenCLWithPCH(std::move(src), extendedOptions, res);
+            compileOpenCLToLLVMIR(std::move(src), extendedOptions, res);
         }
         else if(outputType == SourceType::SPIRV_BIN)
         {

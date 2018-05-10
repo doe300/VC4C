@@ -23,38 +23,27 @@ namespace vc4c
     namespace precompilation
     {
         template <SourceType Type>
-        struct PrecompilationResult
+        struct PrecompilationResult : private NonCopyable
         {
             // XXX this is actually a variant between the members
-            Optional<TemporaryFile> tmpFile;
             Optional<std::string> file;
             std::ostream* stream;
 
             explicit PrecompilationResult(std::ostream* s) : stream(s) {}
-            explicit PrecompilationResult(TemporaryFile&& tmp) : tmpFile(std::forward<TemporaryFile>(tmp)) {}
-            explicit PrecompilationResult(const std::string& file) : file(file) {}
-
-            Optional<std::string> getFile() const
-            {
-                if(file)
-                    return file;
-                if(tmpFile)
-                    return tmpFile->fileName;
-                return {};
-            }
+            explicit PrecompilationResult(const std::string& file) : file(file), stream(nullptr) {}
         };
 
         template <SourceType Type>
-        struct PrecompilationSource
+        struct PrecompilationSource : private NonCopyable
         {
             // XXX this is actually a variant between the members
             Optional<std::string> file;
             std::istream* stream;
 
             explicit PrecompilationSource(std::istream& s) : stream(&s) {}
-            explicit PrecompilationSource(const std::string& file) : file(file) {}
+            explicit PrecompilationSource(const std::string& file) : file(file), stream(nullptr) {}
             explicit PrecompilationSource(PrecompilationResult<Type>& res) :
-                file(res.getFile()), stream(dynamic_cast<std::istream*>(res.stream))
+                file(res.file), stream(dynamic_cast<std::istream*>(res.stream))
             {
                 if(!file && !stream)
                     throw CompilationError(
@@ -72,11 +61,13 @@ namespace vc4c
 
         template <SourceType OutType, SourceType InType, SourceType IntermediateType>
         constexpr PrecompilationStep<OutType, InType> chainSteps(
-            PrecompilationStep<IntermediateType, InType> step1, PrecompilationStep<OutType, IntermediateType> step2)
+            const PrecompilationStep<IntermediateType, InType>& step1,
+            const PrecompilationStep<OutType, IntermediateType>& step2)
         {
-            return [&](PrecompilationSource<InType>&& in, const std::string& userOptions,
+            return [step1, step2](PrecompilationSource<InType>&& in, const std::string& userOptions,
                        PrecompilationResult<OutType>& result) {
-                PrecompilationResult<IntermediateType> intermediateResult(TemporaryFile{});
+                TemporaryFile f;
+                PrecompilationResult<IntermediateType> intermediateResult(f.fileName);
                 step1(std::forward<PrecompilationSource<InType>>(in), userOptions, intermediateResult);
                 return step2(PrecompilationSource<IntermediateType>(intermediateResult), userOptions, result);
             };
@@ -112,6 +103,10 @@ namespace vc4c
         void linkLLVMModules(std::vector<LLVMIRSource>&& sources, const std::string& userOptions, LLVMIRResult& result);
         void linkSPIRVModules(std::vector<SPIRVSource>&& sources, const std::string& userOptions, SPIRVResult& result);
 
+        static const auto compileOpenCLAndLinkModule =
+            chainSteps<SourceType::LLVM_IR_BIN, SourceType::OPENCL_C, SourceType::LLVM_IR_BIN>(
+                compileOpenCLWithDefaultHeader, linkInStdlibModule);
+
         static const auto compileOpenCLToSPIRV =
             chainSteps<SourceType::SPIRV_BIN, SourceType::OPENCL_C, SourceType::LLVM_IR_BIN>(
                 compileOpenCLWithPCH, compileLLVMToSPIRV);
@@ -119,6 +114,12 @@ namespace vc4c
         static const auto compileOpenCLToSPIRVText =
             chainSteps<SourceType::SPIRV_TEXT, SourceType::OPENCL_C, SourceType::LLVM_IR_BIN>(
                 compileOpenCLWithPCH, compileLLVMToSPIRVText);
+
+#if defined(LLVM_LINK_PATH) && defined(VC4CL_STDLIB_MODULE)
+        static const auto compileOpenCLToLLVMIR = compileOpenCLAndLinkModule;
+#else
+        static const auto compileOpenCLToLLVMIR = compileOpenCLWithPCH;
+#endif
     } /* namespace precompilation */
 } /* namespace vc4c */
 
