@@ -99,7 +99,7 @@ __kernel void test_kernel(__global const float2 * x,__global float2 * y,int p)
 	uchar2 subs = sub_sat(u2, 42);
 	ushort2 upsam = upsample(u2, u2);
 	float sqr = sqrt(rad);
-	float non = nan(17);
+	float non = nan((uint)17);
 	non = rsqrt(non);
 
 	rot = shuffle(rot, convert_uint2(rot));

@@ -1,3 +1,6 @@
+void vc4cl_mutex_lock(void);
+void vc4cl_mutex_unlock(void);
+
 __attribute__((reqd_work_group_size(1,1,1)))
 __kernel void histogram_single_min_max(__global const TYPE* src, const uint num_elements, const uint num_buckets, __global uint* res, const TYPE minimum, const TYPE maximum)
 {

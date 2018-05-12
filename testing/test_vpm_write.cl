@@ -1,5 +1,5 @@
-short16 vc4cl_bitcast_short(int16);
-char16 vc4cl_bitcast_char(int16);
+short16 vc4cl_bitcast_short(int16) __attribute__((overloadable));
+char16 vc4cl_bitcast_char(int16) __attribute__((overloadable));
 
 __kernel void test_vpm_write(__global const int16* in, __global int16* out1, __global short16* out2, __global char16* out3)
 {

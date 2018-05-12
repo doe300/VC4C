@@ -223,7 +223,7 @@ void precompilation::linkLLVMModules(
 {
 #ifndef LLVM_LINK_PATH
     throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-link is not available!");
-#endif
+#else
 
     if(sources.empty())
         throw CompilationError(CompilationStep::PRECOMPILATION, "Cannot link without input files!");
@@ -246,6 +246,7 @@ void precompilation::linkLLVMModules(
     logging::info() << "Linking LLVM-IR modules with: " << command << logging::endl;
 
     runPrecompiler(command, inputStream, result.file ? nullptr : result.stream);
+#endif
 }
 
 void precompilation::linkSPIRVModules(

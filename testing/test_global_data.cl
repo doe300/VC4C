@@ -1,6 +1,6 @@
-void vc4cl_mutex_lock(void);
-void vc4cl_mutex_unlock(void);
-uint8 vc4cl_dma_read(volatile __local uint8*);
+void vc4cl_mutex_lock(void) __attribute__((overloadable));
+void vc4cl_mutex_unlock(void) __attribute__((overloadable));
+uint8 vc4cl_dma_read(volatile __local uint8*) __attribute__((overloadable));
 
 __constant uint8 globalData[32] = {};
 

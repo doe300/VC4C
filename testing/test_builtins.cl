@@ -63,7 +63,7 @@ __kernel void test_math(const float val, const float val2, const int val3, __glo
 	out[i++] = maxmag(val, val2);
 	out[i++] = minmag(val, val2);
 	out[i++] = modf(val, &out[i++]);
-	out[i++] = nan(val3);
+	out[i++] = nan((uint)val3);
 	out[i++] = nextafter(val, val2);
 	out[i++] = pow(val, val2);				//pow(0.5, -0.75) = 1.681792830507429
 	out[i++] = pown(val, val3);				//pown(0.5, 13) = 0.0001220703125

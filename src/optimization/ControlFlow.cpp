@@ -1259,7 +1259,8 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
                 sourceBlock->dumpInstructions();
             }
             sourceBlock->forPredecessors([sourceBlock](InstructionWalker it) {
-                logging::warn() << "Block has explicit predecessor: " << it->to_string() << logging::endl;
+                if(it.get())
+                    logging::warn() << "Block has explicit predecessor: " << it->to_string() << logging::endl;
             });
         }
 
