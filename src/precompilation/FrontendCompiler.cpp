@@ -10,7 +10,7 @@
 #include "log.h"
 
 #ifdef SPIRV_FRONTEND
-#include "spirv/SPIRVHelper.h"
+#include "../spirv/SPIRVHelper.h"
 #endif
 
 #include <fstream>
