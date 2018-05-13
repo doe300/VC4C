@@ -134,6 +134,8 @@ bool tools::parseConfigurationParameter(Configuration& config, const std::string
                 config.additionalOptions.registerResolverMaxRounds = intValue;
             else if(paramName == "move-constants-depth")
                 config.additionalOptions.moveConstantsDepth = intValue;
+            else if(paramName == "optimization-iterations")
+                config.additionalOptions.maxOptimizationIterations = intValue;
             else
             {
                 std::cerr << "Cannot set unknown optimization parameter: " << paramName << " to " << value << std::endl;

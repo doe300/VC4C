@@ -117,10 +117,9 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
     return hasChanged;
 }
 
-bool optimizations::simplifyOperation(
-    const Module& module, Method& method, InstructionWalker& it, const Configuration& config)
+InstructionWalker optimizations::simplifyOperation(
+    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
-    bool replaced = false;
     intermediate::Operation* op = it.get<intermediate::Operation>();
     intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
     if(op != nullptr)
@@ -149,14 +148,12 @@ bool optimizations::simplifyOperation(
                 logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
                 it.reset(new intermediate::MoveOperation(
                     op->getOutput().value(), leftAbsorbing.value(), op->conditional, op->setFlags));
-                replaced = true;
             }
             else if(rightAbsorbing && secondArg && secondArg->hasLiteral(rightAbsorbing->getLiteralValue().value()))
             {
                 logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
                 it.reset(new intermediate::MoveOperation(
                     op->getOutput().value(), rightAbsorbing.value(), op->conditional, op->setFlags));
-                replaced = true;
             }
             // writes into the input -> can be removed, if it doesn't do anything
             else if(op->getOutput() && op->getOutput().value() == op->getFirstArg())
@@ -168,7 +165,6 @@ bool optimizations::simplifyOperation(
                     it.erase();
                     // don't skip next instruction
                     it.previousInBlock();
-                    replaced = true;
                 }
                 else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg)
                 {
@@ -176,7 +172,6 @@ bool optimizations::simplifyOperation(
                     it.erase();
                     // don't skip next instruction
                     it.previousInBlock();
-                    replaced = true;
                 }
             }
             else if(op->getOutput() && op->getSecondArg() && op->getOutput().value() == op->assertArgument(1))
@@ -188,7 +183,6 @@ bool optimizations::simplifyOperation(
                     it.erase();
                     // don't skip next instruction
                     it.previousInBlock();
-                    replaced = true;
                 }
                 else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg)
                 {
@@ -196,7 +190,6 @@ bool optimizations::simplifyOperation(
                     it.erase();
                     // don't skip next instruction
                     it.previousInBlock();
-                    replaced = true;
                 }
             }
             else // writes to another local -> can be replaced with move
@@ -207,7 +200,6 @@ bool optimizations::simplifyOperation(
                     logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
                     it.reset(new intermediate::MoveOperation(
                         op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags));
-                    replaced = true;
                 }
                 // check whether first argument does nothing
                 else if(leftIdentity && secondArg && firstArg.hasLiteral(leftIdentity->getLiteralValue().value()))
@@ -215,7 +207,6 @@ bool optimizations::simplifyOperation(
                     logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
                     it.reset(new intermediate::MoveOperation(
                         op->getOutput().value(), op->assertArgument(1), op->conditional, op->setFlags));
-                    replaced = true;
                 }
                 // check whether operation does not really calculate anything
                 else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg)
@@ -223,7 +214,6 @@ bool optimizations::simplifyOperation(
                     logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
                     it.reset(new intermediate::MoveOperation(
                         op->getOutput().value(), op->assertArgument(1), op->conditional, op->setFlags));
-                    replaced = true;
                 }
             }
         }
@@ -239,7 +229,6 @@ bool optimizations::simplifyOperation(
             it.erase();
             // don't skip next instruction
             it.previousInBlock();
-            replaced = true;
         }
         if(it.has<intermediate::VectorRotation>() && move->getSource().isLiteralValue())
         {
@@ -247,11 +236,10 @@ bool optimizations::simplifyOperation(
             logging::debug() << "Replacing obsolete " << move->to_string() << " with move" << logging::endl;
             it.reset(new intermediate::MoveOperation(
                 move->getOutput().value(), move->getSource(), move->conditional, move->setFlags));
-            replaced = true;
         }
     }
 
-    return replaced;
+    return it;
 }
 
 InstructionWalker optimizations::eliminateUselessBranch(
@@ -298,10 +286,9 @@ InstructionWalker optimizations::eliminateUselessBranch(
     return it;
 }
 
-bool optimizations::foldConstants(
-    const Module& module, Method& method, InstructionWalker& it, const Configuration& config)
+InstructionWalker optimizations::foldConstants(
+    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
-    bool replaced = false;
     intermediate::Operation* op = it.get<intermediate::Operation>();
     if(op != nullptr && !op->hasUnpackMode())
     {
@@ -313,7 +300,7 @@ bool optimizations::foldConstants(
                 // skip "xor ?, true, true", so it can be optimized (combined with "move ?, true") afterwards
                 // also skip any "xor ?, val, val", since they are created on purpose (by combineSelectionWithZero to
                 // allow for combination with the other case)
-                return false;
+                return it;
             }
             const Optional<Value> value = op->precalculate(3);
             if(value)
@@ -321,12 +308,10 @@ bool optimizations::foldConstants(
                 logging::debug() << "Replacing '" << op->to_string() << "' with constant value: " << value.to_string()
                                  << logging::endl;
                 it.reset((new intermediate::MoveOperation(op->getOutput().value(), value.value()))->copyExtrasFrom(op));
-                replaced = true;
             }
         }
     }
-
-    return replaced;
+    return it;
 }
 
 static void mapPhi(const intermediate::PhiNode& node, Method& method, InstructionWalker it)
@@ -565,8 +550,10 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 flag = true;
             }
             else if(it->hasValueType(ValueType::REGISTER) && sourceUsedOnce && sourceWriter &&
-                (!(*sourceWriter)->hasSideEffects() ||
-                    !((*sourceWriter)->signal.hasSideEffects() || (*sourceWriter)->doesSetFlag())) &&
+                (!(*sourceWriter)->hasSideEffects()
+                    // FIXME this re-orders UNIFORM reads (e.g. in test_branches.cl) ||
+                    // !((*sourceWriter)->signal.hasSideEffects() || (*sourceWriter)->doesSetFlag()))
+                    ) &&
                 !it->signal.hasSideEffects())
             {
                 // if the source is only used once (by this move) and the destination is a register, we can replace this

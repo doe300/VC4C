@@ -22,6 +22,26 @@ namespace vc4c
 
     namespace optimizations
     {
+        /**
+         * Type of optimization.
+         * This determines when and how often the optimization is executed
+         */
+        enum class OptimizationType
+        {
+            /*
+             * Run this optimizations once at the beginning of the optimization passes
+             */
+            INITIAL,
+            /*
+             * Run this optimization repeated times
+             */
+            REPEAT,
+            /*
+             * Run this optimization once at the end of the optimization passes
+             */
+            FINAL
+        };
+
         /*
          * An OptimizationPass usually walks over all instructions within a single method
          */
@@ -36,13 +56,14 @@ namespace vc4c
             using Pass = std::function<bool(const Module&, Method&, const Configuration&)>;
 
             OptimizationPass(const std::string& name, const std::string& parameterName, const Pass& pass,
-                const std::string& description);
+                const std::string& description, OptimizationType type);
 
             bool operator()(const Module& module, Method& method, const Configuration& config) const;
 
             const std::string name;
             const std::string parameterName;
             const std::string description;
+            const OptimizationType type;
 
         private:
             const Pass pass;
@@ -94,7 +115,9 @@ namespace vc4c
 
         private:
             Configuration config;
-            std::vector<const OptimizationPass*> passes;
+            std::vector<const OptimizationPass*> initialPasses;
+            std::vector<const OptimizationPass*> repeatingPasses;
+            std::vector<const OptimizationPass*> finalPasses;
         };
 
     } // namespace optimizations

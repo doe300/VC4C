@@ -40,8 +40,8 @@ namespace vc4c
          *   %3 = %2
          *   %4 = %2
          */
-        bool simplifyOperation(
-            const Module& module, Method& method, InstructionWalker& it, const Configuration& config);
+        InstructionWalker simplifyOperation(
+            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
         /*
          * Replaces operations with their result if it can be determined at compile-time (e.g. operation with only
          * constant operands)
@@ -52,7 +52,8 @@ namespace vc4c
          * is replaced with:
          *   %3 = 11
          */
-        bool foldConstants(const Module& module, Method& method, InstructionWalker& it, const Configuration& config);
+        InstructionWalker foldConstants(
+            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
         /*
          * Eliminates branches to the label directly following the branch
          *

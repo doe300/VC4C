@@ -140,6 +140,14 @@ namespace vc4c
          * NOTE: This optimization is not enabled by default because it is incomplete.
          */
         int moveConstantsDepth = -1;
+
+        /*
+         * The maximum number of iterations to repeat selected optimization steps.
+         *
+         * NOTE: Setting this to a large value might lead to very long compilation times,
+         * if there are two optimizations which reverse each others changes.
+         */
+        unsigned maxOptimizationIterations = 512;
     };
 
     /*

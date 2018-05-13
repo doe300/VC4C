@@ -19,10 +19,10 @@
 using namespace vc4c;
 using namespace vc4c::optimizations;
 
-OptimizationPass::OptimizationPass(
-    const std::string& name, const std::string& parameterName, const Pass& pass, const std::string& description) :
+OptimizationPass::OptimizationPass(const std::string& name, const std::string& parameterName, const Pass& pass,
+    const std::string& description, OptimizationType type) :
     name(name),
-    parameterName(parameterName), description(description), pass(pass)
+    parameterName(parameterName), description(description), type(type), pass(pass)
 {
 }
 
@@ -45,7 +45,11 @@ static const std::vector<OptimizationStep> SINGLE_STEPS = {
     // combine consecutive instructions writing the same local with a value and zero depending on some flags
     OptimizationStep("CombineSelectionWithZero", combineSelectionWithZero),
     // combine successive setting of the same flags
-    OptimizationStep("CombineSettingSameFlags", combineSameFlags)};
+    OptimizationStep("CombineSettingSameFlags", combineSameFlags),
+    // calculates constant operations
+    OptimizationStep("FoldConstants", foldConstants),
+    // simplifies arithmetic operations into moves or into "easier" operations
+    OptimizationStep("SimplifyArithmetics", simplifyOperation)};
 
 static bool runSingleSteps(const Module& module, Method& method, const Configuration& config)
 {
@@ -79,42 +83,26 @@ static bool runSingleSteps(const Module& module, Method& method, const Configura
     }
 
     // XXX
-    return false;
+    return true;
 }
 
-static bool generalOptimization(const Module& module, Method& method, const Configuration& config)
+static void addToPasses(const OptimizationPass& pass, std::vector<const OptimizationPass*>& initialPasses,
+    std::vector<const OptimizationPass*>& repeatingPasses, std::vector<const OptimizationPass*>& finalPasses)
 {
-    using pass = std::function<bool(const Module& module, Method& method, const Configuration& config)>;
-    using step =
-        std::function<bool(const Module& module, Method& method, InstructionWalker& it, const Configuration& config)>;
-    static std::vector<pass> PASS = {eliminateRedundantMoves, eliminateRedundantBitOp, propagateMoves};
-    static std::vector<step> SINGLE = {foldConstants, simplifyOperation};
-    bool moved;
-
-    for(int i = 0; i < 1000; i++)
+    switch(pass.type)
     {
-        moved = false;
-        auto it = method.walkAllInstructions();
-        while(!it.isEndOfMethod())
-        {
-            for(const step& s : SINGLE)
-            {
-                moved = moved || s(module, method, it, config);
-            }
-            it.nextInMethod();
-        }
-
-        for(const pass& p : PASS)
-        {
-            moved = moved || p(module, method, config);
-        }
-
-        if(!moved)
-            break;
+    case OptimizationType::INITIAL:
+        initialPasses.emplace_back(&pass);
+        break;
+    case OptimizationType::REPEAT:
+        repeatingPasses.emplace_back(&pass);
+        break;
+    case OptimizationType::FINAL:
+        finalPasses.emplace_back(&pass);
+        break;
+    default:
+        throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled optimization type for pass", pass.name);
     }
-
-    // this is only done when there are no more optimizations to do
-    return false;
 }
 
 Optimizer::Optimizer(const Configuration& config) : config(config)
@@ -127,43 +115,91 @@ Optimizer::Optimizer(const Configuration& config) : config(config)
             continue;
         if(config.additionalEnabledOptimizations.find(pass.parameterName) !=
             config.additionalEnabledOptimizations.end())
-            passes.emplace_back(&pass);
+            addToPasses(pass, initialPasses, repeatingPasses, finalPasses);
         if(enabledPasses.find(pass.parameterName) != enabledPasses.end())
-            passes.emplace_back(&pass);
+            addToPasses(pass, initialPasses, repeatingPasses, finalPasses);
     }
 }
 
+static bool runPass(
+    const OptimizationPass& pass, std::size_t index, const Module& module, Method& method, const Configuration& config)
+{
+    logging::debug() << logging::endl;
+    logging::debug() << "Running pass: " << pass.name << logging::endl;
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + index, pass.name + " (before)", method.countInstructions());
+    PROFILE_START_DYNAMIC(pass.name);
+    bool changedMethod = (pass)(module, method, config);
+    PROFILE_END_DYNAMIC(pass.name);
+    PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_OPTIMIZATION + index + 10, pass.name + " (after)",
+        method.countInstructions(), vc4c::profiler::COUNTER_OPTIMIZATION + index);
+    return changedMethod;
+}
+
 static void runOptimizationPasses(const Module& module, Method& method, const Configuration& config,
-    const std::vector<const OptimizationPass*>& passes)
+    const std::vector<const OptimizationPass*>& initialPasses,
+    const std::vector<const OptimizationPass*>& repeatingPasses,
+    const std::vector<const OptimizationPass*>& finalPasses)
 {
     logging::debug() << "-----" << logging::endl;
     logging::info() << "Running optimization passes for: " << method.name << logging::endl;
     std::size_t numInstructions = method.countInstructions();
 
     std::size_t index = 0;
-    for(const OptimizationPass* pass : passes)
+    for(const OptimizationPass* pass : initialPasses)
     {
-        logging::debug() << logging::endl;
-        logging::debug() << "Running pass: " << pass->name << logging::endl;
-        PROFILE_COUNTER(
-            vc4c::profiler::COUNTER_OPTIMIZATION + index, pass->name + " (before)", method.countInstructions());
-        PROFILE_START_DYNAMIC(pass->name);
-        (*pass)(module, method, config);
-        PROFILE_END_DYNAMIC(pass->name);
-        PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_OPTIMIZATION + index + 10, pass->name + " (after)",
-            method.countInstructions(), vc4c::profiler::COUNTER_OPTIMIZATION + index);
+        runPass(*pass, index, module, method, config);
         index += 100;
     }
+
+    const OptimizationPass* lastChangingOptimization = nullptr;
+    std::size_t startIndex = index;
+    bool continueLoop = true;
+    unsigned iterationsLeft = config.additionalOptions.maxOptimizationIterations;
+    for(; continueLoop && iterationsLeft > 0; --iterationsLeft)
+    {
+        index = startIndex;
+        for(const OptimizationPass* pass : repeatingPasses)
+        {
+            if(lastChangingOptimization == pass)
+            {
+                // the last optimization that changed anything was this one, one iteration ago
+                continueLoop = false;
+                break;
+            }
+            if(runPass(*pass, index, module, method, config))
+                lastChangingOptimization = pass;
+            index += 100;
+        }
+    }
+    index = startIndex + repeatingPasses.size() * 100;
+    if(iterationsLeft == 0)
+        logging::warn()
+            << "Stopped optimizing, because the iteration limit was reached."
+            << " This indicates either an error in the optimizations or that there is more optimizations to be done!"
+            << logging::endl;
+
+    for(const OptimizationPass* pass : finalPasses)
+    {
+        runPass(*pass, index, module, method, config);
+        index += 100;
+    }
+
     logging::info() << logging::endl;
     if(numInstructions != method.countInstructions())
     {
-        logging::info() << "Optimizations done, changed number of instructions from " << numInstructions << " to "
+        logging::info() << "Optimizations done in "
+                        << (config.additionalOptions.maxOptimizationIterations - iterationsLeft - 1)
+                        << " iterations, changed number of instructions from " << numInstructions << " to "
                         << method.countInstructions() << logging::endl;
     }
     else
     {
-        logging::info() << "Optimizations done" << logging::endl;
+        logging::info() << "Optimizations done in "
+                        << (config.additionalOptions.maxOptimizationIterations - iterationsLeft - 1) << " iterations"
+                        << logging::endl;
     }
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + index, "OptimizationIterations",
+        config.additionalOptions.maxOptimizationIterations - iterationsLeft - 1);
     logging::debug() << "-----" << logging::endl;
     method.dumpInstructions();
 }
@@ -174,7 +210,9 @@ void Optimizer::optimize(Module& module) const
     workers.reserve(module.getKernels().size());
     for(Method* kernelFunc : module.getKernels())
     {
-        auto f = [kernelFunc, &module, this]() -> void { runOptimizationPasses(module, *kernelFunc, config, passes); };
+        auto f = [kernelFunc, &module, this]() -> void {
+            runOptimizationPasses(module, *kernelFunc, config, initialPasses, repeatingPasses, finalPasses);
+        };
         workers.emplace(workers.end(), f, "Optimizer")->operator()();
     }
     BackgroundWorker::waitForAll(workers);
@@ -186,33 +224,48 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
      * After this block of optimizations is run, the CFG of the method is stable (does not change anymore)
      */
     OptimizationPass("CombineDuplicateBranches", "combine-branches", combineDuplicateBranches,
-        "combines successive branches to the same label"),
+        "combines successive branches to the same label", OptimizationType::INITIAL),
     OptimizationPass("MergeBasicBlocks", "merge-blocks", mergeAdjacentBasicBlocks,
-        "merges adjacent basic blocks if there are no other conflicting transitions"),
+        "merges adjacent basic blocks if there are no other conflicting transitions", OptimizationType::INITIAL),
     /*
-     * The second block executes optimizations only within a single basic block
+     * The second block executes optimizations only within a single basic block.
+     * These optimizations may be executed in a loop until there are not more changes to the instructions
      */
+    OptimizationPass(
+        "VectorizeLoops", "vectorize-loops", vectorizeLoops, "vectorizes loops", OptimizationType::INITIAL),
     OptimizationPass("SingleSteps", "single-steps", runSingleSteps,
-        "runs all the single-step optimizations. Combining them results in fewer iterations over the instructions"),
+        "runs all the single-step optimizations. Combining them results in fewer iterations over the instructions",
+        OptimizationType::REPEAT),
     // OptimizationPass("CompressWorkGroupInfo", "compress-work-group-info", compressWorkGroupLocals,
     //    "compresses work-group info into single local"),
     OptimizationPass("CombineRotations", "combine-rotations", combineVectorRotations,
-        "combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation"),
-    OptimizationPass("GeneralOptimizations", "general-optimizations", generalOptimization, "TODO"),
+        "combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation",
+        OptimizationType::REPEAT),
+    OptimizationPass("EliminateMoves", "eliminate-moves", eliminateRedundantMoves,
+        "Replaces moves with the operation producing their source", OptimizationType::REPEAT),
+    OptimizationPass("EliminateBitOperations", "eliminate-bit-operations", eliminateRedundantBitOp,
+        "Rewrites redundant bit operations", OptimizationType::REPEAT),
+    OptimizationPass("PropagateMoves", "copy-propagation", propagateMoves,
+        "Replaces operands with their moved-from value", OptimizationType::REPEAT),
     OptimizationPass("EliminateDeadCode", "eliminate-dead-code", eliminateDeadCode,
-        "eliminates dead code (move to same, redundant arithmetic operations, ...)"),
-    OptimizationPass("VectorizeLoops", "vectorize-loops", vectorizeLoops, "vectorizes loops"),
+        "eliminates dead code (move to same, redundant arithmetic operations, ...)", OptimizationType::REPEAT),
+    /*
+     * The third block of optimizations is executed once after all the other optimizations finished and
+     * can therefore introduce instructions or constructs (e.g. combined instructions) not supported by
+     * the other optimizations.
+     */
     OptimizationPass("SplitReadAfterWrites", "split-read-write", splitReadAfterWrites,
         "splits read-after-writes (except if the local is used only very locally), so the reordering and "
-        "register-allocation have an easier job"),
+        "register-allocation have an easier job",
+        OptimizationType::FINAL),
     OptimizationPass("CombineLiteralLoads", "combine-loads", combineLoadingLiterals,
-        "combines loadings of the same literal value within a small range of a basic block"),
+        "combines loadings of the same literal value within a small range of a basic block", OptimizationType::FINAL),
     OptimizationPass("RemoveConstantLoadInLoops", "extract-loads-from-loops", removeConstantLoadInLoops,
-        "move constant loads in (nested) loops outside the loops"),
+        "move constant loads in (nested) loops outside the loops", OptimizationType::FINAL),
     OptimizationPass("ReorderInstructions", "reorder", reorderWithinBasicBlocks,
-        "re-order instructions to eliminate more NOPs and stall cycles"),
+        "re-order instructions to eliminate more NOPs and stall cycles", OptimizationType::FINAL),
     OptimizationPass("CombineALUIinstructions", "combine", combineOperations,
-        "run peep-hole optimization to combine ALU-operations")};
+        "run peep-hole optimization to combine ALU-operations", OptimizationType::FINAL)};
 
 std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
 {
@@ -226,7 +279,9 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
     case OptimizationLevel::MEDIUM:
         passes.emplace("merge-blocks");
         passes.emplace("combine-rotations");
-        passes.emplace("general-optimizations");
+        passes.emplace("eliminate-moves");
+        passes.emplace("eliminate-bit-operations");
+        passes.emplace("copy-propagation");
         passes.emplace("split-read-write");
         passes.emplace("combine-loads");
         // fall-through on purpose

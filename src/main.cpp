@@ -59,6 +59,10 @@ static void printHelp()
               << "\tThe number of instructions to search for a replacement for NOPs" << std::endl;
     std::cout << "\t--fregister-resolver-rounds=" << defaultConfig.additionalOptions.registerResolverMaxRounds
               << "\tThe maximum number of rows for the register allocator" << std::endl;
+    std::cout << "\t--fmove-constants-depth=" << defaultConfig.additionalOptions.moveConstantsDepth
+              << "\tThe maximum depth of nested loops to move constants out of" << std::endl;
+    std::cout << "\t--foptimization-iterations=" << defaultConfig.additionalOptions.maxOptimizationIterations
+              << "\tThe maximum number of iterations to repeat the optimizations in" << std::endl;
 
     std::cout << "options:" << std::endl;
     std::cout << "\t--kernel-info\t\tWrite the kernel-info meta-data (as required by VC4CL run-time, default)"
