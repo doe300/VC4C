@@ -266,6 +266,7 @@ const UnorderedMap<std::string, Local>& Method::readLocals() const
 
 void Method::cleanLocals()
 {
+    //FIXME according to valgrind, this cleans locals still in use
     PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL + 7, "Clean locals (before)", locals.size());
 #ifdef DEBUG_MODE
     // check duplicate locals

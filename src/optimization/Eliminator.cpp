@@ -18,7 +18,7 @@
 using namespace vc4c;
 using namespace vc4c::optimizations;
 
-bool optimizations::eliminateDeadStore(const Module& module, Method& method, const Configuration& config)
+bool optimizations::eliminateDeadCode(const Module& module, Method& method, const Configuration& config)
 {
     // TODO (additionally or instead of this) walk through locals, check whether they are never read and writings have
     // no side-effects  then walk through all writings of such locals and remove them (example:
@@ -117,7 +117,7 @@ bool optimizations::eliminateDeadStore(const Module& module, Method& method, con
     return hasChanged;
 }
 
-bool optimizations::eliminateUselessInstruction(
+bool optimizations::simplifyOperation(
     const Module& module, Method& method, InstructionWalker& it, const Configuration& config)
 {
     bool replaced = false;
@@ -170,11 +170,27 @@ bool optimizations::eliminateUselessInstruction(
                     it.previousInBlock();
                     replaced = true;
                 }
+                else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg)
+                {
+                    logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
+                    it.erase();
+                    // don't skip next instruction
+                    it.previousInBlock();
+                    replaced = true;
+                }
             }
             else if(op->getOutput() && op->getSecondArg() && op->getOutput().value() == op->assertArgument(1))
             {
                 // check whether first-arg does nothing
                 if(leftIdentity && firstArg.hasLiteral(leftIdentity->getLiteralValue().value()))
+                {
+                    logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
+                    it.erase();
+                    // don't skip next instruction
+                    it.previousInBlock();
+                    replaced = true;
+                }
+                else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg)
                 {
                     logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
                     it.erase();
@@ -195,6 +211,14 @@ bool optimizations::eliminateUselessInstruction(
                 }
                 // check whether first argument does nothing
                 else if(leftIdentity && secondArg && firstArg.hasLiteral(leftIdentity->getLiteralValue().value()))
+                {
+                    logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
+                    it.reset(new intermediate::MoveOperation(
+                        op->getOutput().value(), op->assertArgument(1), op->conditional, op->setFlags));
+                    replaced = true;
+                }
+                // check whether operation does not really calculate anything
+                else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg)
                 {
                     logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
                     it.reset(new intermediate::MoveOperation(
@@ -274,7 +298,7 @@ InstructionWalker optimizations::eliminateUselessBranch(
     return it;
 }
 
-bool optimizations::calculateConstantInstruction(
+bool optimizations::foldConstants(
     const Module& module, Method& method, InstructionWalker& it, const Configuration& config)
 {
     bool replaced = false;
@@ -402,31 +426,6 @@ static bool isNoReadBetween(InstructionWalker first, InstructionWalker second, R
     return true;
 }
 
-bool optimizations::translateToMove(const Module& module, Method& method, const Configuration& config)
-{
-    auto it = method.walkAllInstructions();
-    bool flag = false;
-    while(!it.isEndOfMethod())
-    {
-        auto const op = it.get<intermediate::Operation>();
-        if(op &&
-            (op->op == OP_AND || op->op == OP_OR || op->op == OP_V8MAX || op->op == OP_V8MIN || op->op == OP_MAX ||
-                op->op == OP_MIN) &&
-            op->getFirstArg() == op->assertArgument(1))
-        {
-            auto move = new intermediate::MoveOperation(
-                op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags);
-            logging::debug() << "Replacing obsolete instruction with move: " << op->to_string() << logging::endl;
-            it.reset(move);
-            flag = true;
-        }
-
-        it.nextInMethod();
-    }
-
-    return flag;
-}
-
 /* TODO
  * this propagation should work among basic blocks.
  * but we need very keen to unsafe-case
@@ -483,7 +482,7 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
                 }
 
                 if(replacedThisInstruction)
-                    calculateConstantInstruction(module, method, it2, config);
+                    foldConstants(module, method, it2, config);
 
                 if(it2->getOutput().has_value() && it2->getOutput().value() == oldValue)
                     break;

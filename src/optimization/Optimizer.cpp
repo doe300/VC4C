@@ -87,8 +87,8 @@ static bool generalOptimization(const Module& module, Method& method, const Conf
     using pass = std::function<bool(const Module& module, Method& method, const Configuration& config)>;
     using step =
         std::function<bool(const Module& module, Method& method, InstructionWalker& it, const Configuration& config)>;
-    static std::vector<pass> PASS = {translateToMove, eliminateRedundantMoves, eliminateRedundantBitOp, propagateMoves};
-    static std::vector<step> SINGLE = {calculateConstantInstruction, eliminateUselessInstruction};
+    static std::vector<pass> PASS = {eliminateRedundantMoves, eliminateRedundantBitOp, propagateMoves};
+    static std::vector<step> SINGLE = {foldConstants, simplifyOperation};
     bool moved;
 
     for(int i = 0; i < 1000; i++)
@@ -199,8 +199,8 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
     OptimizationPass("CombineRotations", "combine-rotations", combineVectorRotations,
         "combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation"),
     OptimizationPass("GeneralOptimizations", "general-optimizations", generalOptimization, "TODO"),
-    OptimizationPass("EliminateDeadStores", "eliminate-dead-store", eliminateDeadStore,
-        "eliminates useless instructions (dead store, move to same, redundant arithmetic operations, ...)"),
+    OptimizationPass("EliminateDeadCode", "eliminate-dead-code", eliminateDeadCode,
+        "eliminates dead code (move to same, redundant arithmetic operations, ...)"),
     OptimizationPass("VectorizeLoops", "vectorize-loops", vectorizeLoops, "vectorizes loops"),
     OptimizationPass("SplitReadAfterWrites", "split-read-write", splitReadAfterWrites,
         "splits read-after-writes (except if the local is used only very locally), so the reordering and "

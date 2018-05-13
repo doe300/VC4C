@@ -475,6 +475,20 @@ namespace vc4c
         Optional<Value> operator()(const Optional<Value>& firstOperand, const Optional<Value>& secondOperand) const;
 
         /*
+         * Whether the operation is idempotent.
+         *
+         * Idempotent is defined as:
+         * - for unary operations:
+         *   applying the operation multiple times yields the same result as applying it once (e.g. fabs)
+         * - for binary operations:
+         *   for any operands, if both operands are the same value, the result is this value (e.g. and, or)
+         *
+         * These definitions are taken from:
+         * https://en.wikipedia.org/wiki/Idempotence
+         */
+        bool isIdempotent() const;
+
+        /*
          * Returns the op-code for the given op-code name.
          *
          * Throws an exception if the op-code could not be found.

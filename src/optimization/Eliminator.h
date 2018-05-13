@@ -22,23 +22,25 @@ namespace vc4c
          * When an instruction is removed, the previous instruction is re-checked since it could have become obsolete
          * just now.
          */
-        bool eliminateDeadStore(const Module& module, Method& method, const Configuration& config);
+        bool eliminateDeadCode(const Module& module, Method& method, const Configuration& config);
         void eliminatePhiNodes(const Module& module, Method& method, const Configuration& config);
 
         /*
-         * Eliminates instructions which have no semantical meaning (e.g. addition with 0, xor with 0, and with all bits
+         * Simplifies instructions which have no semantical meaning (e.g. addition with 0, xor with 0, and with all bits
          * set, etc.)
          *
-         * More accurately, replaces all ALU-instructions without side-effects and where at least one operand is the
-         * corresponding identity.
+         * More accurately, replaces all ALU-instructions without side-effects and where the operation itself assigns
+         * the output to one of the operands.
          *
          * Example:
          *   %3 = add %2, 0
+         *   %4 = max %2, %2
          *
          * is replaced with:
          *   %3 = %2
+         *   %4 = %2
          */
-        bool eliminateUselessInstruction(
+        bool simplifyOperation(
             const Module& module, Method& method, InstructionWalker& it, const Configuration& config);
         /*
          * Replaces operations with their result if it can be determined at compile-time (e.g. operation with only
@@ -50,8 +52,7 @@ namespace vc4c
          * is replaced with:
          *   %3 = 11
          */
-        bool calculateConstantInstruction(
-            const Module& module, Method& method, InstructionWalker& it, const Configuration& config);
+        bool foldConstants(const Module& module, Method& method, InstructionWalker& it, const Configuration& config);
         /*
          * Eliminates branches to the label directly following the branch
          *
@@ -123,37 +124,60 @@ namespace vc4c
         /*
          * Transform bit ("and" and "or") operations
          *
-         * 	and v1, v2, v3 => and v1, v2, v4
-         *	and v4, v1, v2    mov v4, v1
+         * Example:
+         *  %1 = and %2, %3
+         *  %4 = and %1, %2
          *
-         *	and v1, v2, v3 => and v1, v2, v3
-         *	or  v4, v1, v2    mov v4, v2
+         * becomes:
+         *  %1 = and %2, %3
+         *  %4 = %1
          *
-         * or  v1, v2, v3 => or  v1, v2, v4
-         * and v4, v1, v2    mov v4, v2
+         * Also:
+         *  %1 = and %2, %3
+         *  %4 = or %1, %2
          *
-         * or  v1, v2, v3 => or  v1, v2, v3
-         * or  v4, v1, v2    mov v4, v1
+         * becomes:
+         *  %1 = and %2, %3
+         *  %4 = %2
+         *
+         * And:
+         *  %1 = or %2, %3
+         *  %4 = and %1, %2
+         *
+         * becomes:
+         *  %1 = or %2, %3
+         *  %4 = %2
+         *
+         * And:
+         *  %1 = or %2, %3
+         *  %4 = or %1, %2
+         *
+         * becomes:
+         *  %1 = or %2, %3
+         *  %4 = %1
          */
         bool eliminateRedundantBitOp(const Module& module, Method& method, const Configuration& config);
 
         /*
-         * Translform operations (and, or, max, min, v8max, v8min with 1st arg == 2nd arg) which are equal to move.
-         */
-        bool translateToMove(const Module& module, Method& method, const Configuration& config);
-
-        /*
          * Propagate source value of move operation in a basic block.
          *
-         * Works as follows:
+         * Example:
+         *  %a = %b
+         *  [...]
+         *  %x = add %a, %y
+         *  [...]
+         *  %a = xxx
+         *  [...]
+         *  %x = add %a, %y
          *
-         * mov a, b
-         * ...
-         * iadd x, a, y => replace a to b
-         * ...
-         * iadd a, ...
-         * ...
-         * iadd x, a, y => this `a` cannot be replaced
+         * becomes:
+         *  %a = %b
+         *  [...]
+         *  %x = add %b, %y
+         *  [...]
+         *  %a = xxx
+         *  [...]
+         *  %x = add %a, %y => this `a` cannot be replaced
          */
         bool propagateMoves(const Module& module, Method& method, const Configuration& config);
     } // namespace optimizations

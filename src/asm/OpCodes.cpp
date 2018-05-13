@@ -625,6 +625,16 @@ static const std::array<OpCode, 32> addCodes = {OP_NOP, OP_FADD, OP_FSUB, OP_FMI
 static const std::array<OpCode, 8> mulCodes = {
     OP_NOP, OP_FMUL, OP_MUL24, OP_V8MULD, OP_V8MIN, OP_V8MAX, OP_V8ADDS, OP_V8SUBS};
 
+bool OpCode::isIdempotent() const
+{
+    if(*this == OP_AND || *this == OP_FMAX || *this == OP_FMIN || *this == OP_MAX || *this == OP_MIN ||
+        *this == OP_OR || *this == OP_V8MAX || *this == OP_V8MIN)
+    {
+        return true;
+    }
+    return false;
+}
+
 const OpCode& OpCode::toOpCode(const unsigned char opCode, const bool isMulALU)
 {
     if(opCode == 0)
