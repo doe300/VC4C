@@ -196,7 +196,7 @@ struct CFGNodeSorter : public std::less<CFGNode*>
     }
 };
 
-FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops()
+FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(bool recursively)
 {
     FastAccessList<ControlFlowLoop> loops;
     loops.reserve(8);
@@ -219,9 +219,18 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops()
     {
         if(discoveryTimes[node] == 0)
         {
-            auto loop = findLoopsHelper(node, discoveryTimes, lowestReachable, stack, time);
-            if(loop.size() > 1)
-                loops.emplace_back(std::move(loop));
+            if (recursively)
+            {
+                auto subLoops = findLoopsHelperRecursively(node, discoveryTimes, stack, time);
+                if(subLoops.size() >= 1)
+                    loops.insert(loops.end(), subLoops.begin(), subLoops.end());
+            }
+            else
+            {
+                auto loop = findLoopsHelper(node, discoveryTimes, lowestReachable, stack, time);
+                if(loop.size() > 1)
+                    loops.emplace_back(std::move(loop));
+            }
         }
         if(node->isAdjacent(node))
         {
@@ -525,11 +534,58 @@ ControlFlowLoop ControlFlowGraph::findLoopsHelper(const CFGNode* node, FastMap<c
     return loop;
 }
 
+FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoopsHelperRecursively(const CFGNode* node, FastMap<const CFGNode*, int>& discoveryTimes,
+    RandomModificationList<const CFGNode*>& stack, int& time)
+{
+    // Initialize discovery time and low value
+    discoveryTimes[node] = ++time;
+    stack.push_back(node);
+
+    FastAccessList<ControlFlowLoop> loops;
+
+    // Go through all vertices adjacent to this
+    node->forAllNeighbors(toFunction(&CFGRelation::isForwardRelation),
+        [this, node, &discoveryTimes, &stack, &time, &loops](
+            const CFGNode* next, const CFGRelation& rel) -> void {
+            const CFGNode* v = next;
+            // If v is not visited yet, then recur for it
+            if(discoveryTimes[v] == 0)
+            {
+                auto subLoops = findLoopsHelperRecursively(v, discoveryTimes, stack, time);
+                if(subLoops.size() >= 1)
+                    loops.insert(loops.end(), subLoops.begin(), subLoops.end());
+            }
+
+            // Update low value of 'u' only of 'v' is still in stack
+            // (i.e. it's a back edge, not cross edge).
+            // Case 2 (per above discussion on Disc and Low value)
+            else if(std::find(stack.begin(), stack.end(), v) != stack.end() && node != v)
+            {
+                ControlFlowLoop loop;
+                RandomModificationList<const CFGNode*> tempStack = stack;
+
+                while (tempStack.back() != v)
+                {
+                    loop.push_back(tempStack.back());
+                    tempStack.pop_back();
+                }
+                loop.push_back(tempStack.back());
+                tempStack.pop_back();
+
+                loops.emplace_back(std::move(loop));
+            }
+        });
+
+    return loops;
+}
+
+LoopInclusionTreeNodeBase::LoopInclusionTreeNodeBase(const KeyType key) : Node(key) {}
+
 LoopInclusionTreeNodeBase* LoopInclusionTreeNodeBase::findRoot()
 {
-    auto* self = reinterpret_cast<LoopInclusionTreeNode*>(this);
+    auto* self = reinterpret_cast<LoopInclusionTreeNodeBase*>(this);
     LoopInclusionTreeNodeBase* root = this;
-    self->forAllIncomingEdges([&](LoopInclusionTreeNode& parent, LoopInclusionTreeEdge&) -> bool {
+    self->forAllIncomingEdges([&](LoopInclusionTreeNodeBase& parent, LoopInclusionTreeEdge&) -> bool {
         root = parent.findRoot();
         return true;
     });

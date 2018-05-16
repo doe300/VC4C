@@ -972,7 +972,7 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
 {
     // 1. find loops
     auto& cfg = method.getCFG();
-    auto loops = cfg.findLoops();
+    auto loops = cfg.findLoops(false);
     bool hasChanged = false;
 
     // 2. determine data dependencies of loop bodies
@@ -1335,7 +1335,8 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 
     // 1. find loops
     auto& cfg = method.getCFG();
-    auto loops = cfg.findLoops();
+    cfg.dumpGraph("a.dot");
+    auto loops = cfg.findLoops(true);
 
     // 2. generate inclusion relation of loops as trees
     LoopInclusionTree inclusionTree;
@@ -1352,13 +1353,13 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
         }
     }
 
-    // logging::debug() << "inclusionTree" << logging::endl;
-    // for(auto& loop : inclusionTree) {
-    //     logging::debug() << "  " << loop.first << logging::endl;
-    //     for(auto& node : loop.second.getNeighbors()) {
-    //         logging::debug() << "    " << node.first->key << ": " << node.second.includes << logging::endl;
-    //     }
-    // }
+    logging::debug() << "inclusionTree" << logging::endl;
+    for(auto& loop : inclusionTree) {
+        logging::debug() << "  " << loop.first << logging::endl;
+        for(auto& node : loop.second.getNeighbors()) {
+            logging::debug() << "    " << node.first->key << ": " << node.second.includes << logging::endl;
+        }
+    }
 
     // 3. move constant load operations from root of trees
     FastSet<ControlFlowLoop*> processed;
