@@ -132,8 +132,8 @@ namespace vc4c
         /*
          * This is similar to findLoopsHelper, but this finds also nested loops excluding one-block-loop.
          */
-        FastAccessList<ControlFlowLoop> findLoopsHelperRecursively(const CFGNode* node, FastMap<const CFGNode*, int>& discoveryTimes,
-            RandomModificationList<const CFGNode*>& stack, int& time);
+        FastAccessList<ControlFlowLoop> findLoopsHelperRecursively(const CFGNode* node,
+            FastMap<const CFGNode*, int>& discoveryTimes, RandomModificationList<const CFGNode*>& stack, int& time);
 
         /*
          * Creates the CFG from the basic-blocks within the given method

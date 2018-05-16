@@ -1354,9 +1354,11 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     }
 
     logging::debug() << "inclusionTree" << logging::endl;
-    for(auto& loop : inclusionTree) {
+    for(auto& loop : inclusionTree)
+    {
         logging::debug() << "  " << loop.first << logging::endl;
-        for(auto& node : loop.second.getNeighbors()) {
+        for(auto& node : loop.second.getNeighbors())
+        {
             logging::debug() << "    " << node.first->key << ": " << node.second.includes << logging::endl;
         }
     }
