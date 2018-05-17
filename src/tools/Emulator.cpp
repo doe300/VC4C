@@ -1500,12 +1500,22 @@ static void emulateStep(std::vector<std::unique_ptr<qpu_asm::Instruction>>::cons
     auto it = qpus.begin();
     while(it != qpus.end())
     {
-        const bool continueRunning = it->execute(firstInstruction);
-        if(!continueRunning)
-            // this QPU has finished
-            it = qpus.erase(it);
-        else
-            ++it;
+        try
+        {
+            const bool continueRunning = it->execute(firstInstruction);
+            if(!continueRunning)
+                // this QPU has finished
+                it = qpus.erase(it);
+            else
+                ++it;
+        }
+        catch(const std::exception&)
+        {
+            logging::error() << "Emulation threw exception execution following instruction on QPU " << it->ID << ": "
+                             << it->getCurrentInstruction(firstInstruction)->toHexString(true) << logging::endl;
+            // re-throw error
+            throw;
+        }
     }
 }
 

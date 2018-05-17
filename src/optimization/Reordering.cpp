@@ -292,6 +292,14 @@ bool optimizations::splitReadAfterWrites(const Module& module, Method& method, c
             {
                 if(it->readsLocal(lastWrittenTo))
                 {
+                    // we also need to insert an instruction, if the local is unpacked in any successive instruction,
+                    // in which case it cannot be on an accumulator. Since we have a direct read-after-write, the local
+                    // can also not be on register-file A -> we need to insert buffer
+                    bool isUnpacked = false;
+                    lastWrittenTo->forUsers(LocalUse::Type::READER, [&isUnpacked](const LocalUser* user) {
+                        if(user->hasUnpackMode())
+                            isUnpacked = true;
+                    });
                     // only insert instruction, if local is used afterwards (and not just in the next few instructions)
                     // or the pack-mode of the previous instruction is set, since in that case, the register-file A MUST
                     // be used, so it cannot be read in the next instruction  or the unpack-mode of this instruction is
@@ -300,7 +308,8 @@ bool optimizations::splitReadAfterWrites(const Module& module, Method& method, c
                     // written in the previous instruction, so they are also split up
                     if(lastInstruction->hasPackMode() || it->hasUnpackMode() || it.has<VectorRotation>() ||
                         !lastInstruction.getBasicBlock()->isLocallyLimited(
-                            lastInstruction, lastWrittenTo, config.additionalOptions.accumulatorThreshold))
+                            lastInstruction, lastWrittenTo, config.additionalOptions.accumulatorThreshold) ||
+                        isUnpacked)
                     {
                         logging::debug() << "Inserting NOP to split up read-after-write before: " << it->to_string()
                                          << logging::endl;

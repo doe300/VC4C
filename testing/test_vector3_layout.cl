@@ -1,6 +1,3 @@
-int3 vc4cl_extend(short3) __attribute__((overloadable));
-int3 vc4cl_extend(char3) __attribute__((overloadable));
-
 __kernel void test_vector_3(__global int3* in1, __global int3* out1, __global short3* in2, __global int3* out2, __global char3* in3, __global int3* out3)
 {
 	size_t id = get_global_id(0);
@@ -13,8 +10,8 @@ __kernel void test_vector_3(__global int3* in1, __global int3* out1, __global sh
 //	out2[id] = vc4cl_bitcast_short(in1[id]) + (short)id;
 //	out3[id] = vc4cl_bitcast_char(in1[id]) + (char)id;
 //	This doesn't (out2 and out3 int3*)
-	out2[id] = vc4cl_extend(in2[id]) + (int)id;
-	out3[id] = vc4cl_extend(in3[id]) + (int)id;
+	out2[id] = convert_int3(in2[id]) + (int)id;
+	out3[id] = convert_int3(in3[id]) + (int)id;
 //FIXME error reading with size != 32 bits
 	//replicates the first element 1(3) times for short(byte)
 	// ~> (32 - type-size)/8

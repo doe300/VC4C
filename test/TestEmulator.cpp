@@ -137,6 +137,7 @@ void TestEmulator::testPrime()
 
 	}
 	{
+		data.parameter.clear();
 		data.parameter.emplace_back(18u, Optional<std::vector<uint32_t>>{});
 		data.parameter.emplace_back(0u, std::vector<uint32_t>(1));
 

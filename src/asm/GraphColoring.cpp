@@ -629,6 +629,14 @@ void GraphColoring::createGraph()
         forLocalsUsedTogether(pair.first, [&node, this](const Local* l) -> void {
             node.addNeighbor(&(graph.getOrCreateNode(l)), LocalRelation::USED_TOGETHER);
         });
+        if(node.initialFile == RegisterFile::NONE)
+        {
+            logging::warn() << "Node " << node.key->name << " has no initially possible registers:" << logging::endl;
+            logging::warn() << "\tBlocked files: " << toString(pair.second.blockedFiles) << logging::endl;
+            logging::warn() << "\tInstructions: " << logging::endl;
+            for(const auto& it : pair.second.associatedInstructions)
+                logging::warn() << "\t\t" << it->to_string() << logging::endl;
+        }
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Created node: " << node.to_string() << logging::endl);
     }
     PROFILE_END(createColoredNodes);

@@ -1,6 +1,3 @@
-uint4 vc4cl_extend(uchar4) __attribute__((overloadable));
-int4 vc4cl_bitcast_int(uint4) __attribute__((overloadable));
-
 __kernel 
 __attribute__((reqd_work_group_size(1,1,1)))
 __attribute__((work_group_size_hint(1, 1, 1)))
@@ -34,7 +31,7 @@ __kernel void test_add(__global const uchar16* in0, __global const ushort16* in1
 
 __kernel void test_param(const uchar16 in1, const int4 in2, __global int4* out)
 {
-	*out = in2 + vc4cl_bitcast_int(vc4cl_extend(in1.xyzw));
+	*out = in2 + convert_int4(in1.xyzw);
 }
 
 __kernel void test_vector_load(const __global char* in, __global char3* out)

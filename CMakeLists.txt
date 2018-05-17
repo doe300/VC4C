@@ -104,7 +104,7 @@ ExternalProject_Add( cpplog-project
 	SOURCE_DIR 			${CMAKE_SOURCE_DIR}/lib/cpplog
 	GIT_REPOSITORY 		https://github.com/doe300/cpplog.git
 	UPDATE_COMMAND 		git pull -f https://github.com/doe300/cpplog.git
-	CMAKE_ARGS 			-DCPPLOG_NAMESPACE=logging -DCPPLOG_CUSTOM_LOGGER=true
+	CMAKE_ARGS 			-DCPPLOG_NAMESPACE=logging -DCPPLOG_CUSTOM_LOGGER=true -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
 	STEP_TARGETS 		build	#If we set our dependency on this, the install step is skipped
   	EXCLUDE_FROM_ALL 	TRUE	#Skip for "make all" to skip install
   	TIMEOUT 			30		#Timeout for downloads, in seconds

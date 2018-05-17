@@ -282,7 +282,6 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("eliminate-moves");
         passes.emplace("eliminate-bit-operations");
         passes.emplace("copy-propagation");
-        passes.emplace("split-read-write");
         passes.emplace("combine-loads");
         // fall-through on purpose
     case OptimizationLevel::BASIC:
@@ -293,6 +292,9 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("combine");
         // fall-through on purpose
     case OptimizationLevel::NONE:
+        // TODO this is not an optimization, more a normalization step.
+        // Move out of optimizations/remove when instruction scheduling is implemented
+        passes.emplace("split-read-write");
     default:
         break;
     }

@@ -145,13 +145,13 @@ InstructionWalker optimizations::simplifyOperation(
             // one of the operands is the absorbing element, operation can be replaced with move
             if(leftAbsorbing && firstArg.hasLiteral(leftAbsorbing->getLiteralValue().value()))
             {
-                logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
+                logging::debug() << "Replacing obsolete " << op->to_string() << " with move 1" << logging::endl;
                 it.reset(new intermediate::MoveOperation(
                     op->getOutput().value(), leftAbsorbing.value(), op->conditional, op->setFlags));
             }
             else if(rightAbsorbing && secondArg && secondArg->hasLiteral(rightAbsorbing->getLiteralValue().value()))
             {
-                logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
+                logging::debug() << "Replacing obsolete " << op->to_string() << " with move 2" << logging::endl;
                 it.reset(new intermediate::MoveOperation(
                     op->getOutput().value(), rightAbsorbing.value(), op->conditional, op->setFlags));
             }
@@ -184,7 +184,8 @@ InstructionWalker optimizations::simplifyOperation(
                     // don't skip next instruction
                     it.previousInBlock();
                 }
-                else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg)
+                else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg &&
+                    !firstArg.hasType(ValueType::REGISTER) && !firstArg.hasType(ValueType::UNDEFINED))
                 {
                     logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
                     it.erase();
@@ -197,21 +198,23 @@ InstructionWalker optimizations::simplifyOperation(
                 // check whether second argument exists and does nothing
                 if(rightIdentity && secondArg && secondArg->hasLiteral(rightIdentity->getLiteralValue().value()))
                 {
-                    logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
+                    logging::debug() << "Replacing obsolete " << op->to_string() << " with move 3" << logging::endl;
                     it.reset(new intermediate::MoveOperation(
                         op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags));
                 }
                 // check whether first argument does nothing
                 else if(leftIdentity && secondArg && firstArg.hasLiteral(leftIdentity->getLiteralValue().value()))
                 {
-                    logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
+                    logging::debug() << "Replacing obsolete " << op->to_string() << " with move 4" << logging::endl;
                     it.reset(new intermediate::MoveOperation(
                         op->getOutput().value(), op->assertArgument(1), op->conditional, op->setFlags));
                 }
                 // check whether operation does not really calculate anything
-                else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg)
+                else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg &&
+                    !firstArg.hasType(ValueType::REGISTER) && !firstArg.hasType(ValueType::UNDEFINED))
                 {
-                    logging::debug() << "Replacing obsolete " << op->to_string() << " with move" << logging::endl;
+                    logging::debug() << secondArg.value().to_string() << " - " << firstArg.to_string() << logging::endl;
+                    logging::debug() << "Replacing obsolete " << op->to_string() << " with move 5" << logging::endl;
                     it.reset(new intermediate::MoveOperation(
                         op->getOutput().value(), op->assertArgument(1), op->conditional, op->setFlags));
                 }
@@ -233,7 +236,7 @@ InstructionWalker optimizations::simplifyOperation(
         if(it.has<intermediate::VectorRotation>() && move->getSource().isLiteralValue())
         {
             // replace rotation of constant with move
-            logging::debug() << "Replacing obsolete " << move->to_string() << " with move" << logging::endl;
+            logging::debug() << "Replacing obsolete " << move->to_string() << " with move 6" << logging::endl;
             it.reset(new intermediate::MoveOperation(
                 move->getOutput().value(), move->getSource(), move->conditional, move->setFlags));
         }
