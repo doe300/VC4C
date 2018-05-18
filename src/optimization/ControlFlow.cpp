@@ -1329,8 +1329,8 @@ bool isConstantInstruction(const InstructionWalker& inst)
 
 bool optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
 {
-    CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "moveConstantsDepth = " << config.additionalOptions.moveConstantsDepth << logging::endl);
+    const int moveDepth = config.additionalOptions.moveConstantsDepth;
+    CPPLOG_LAZY(logging::debug() << "moveConstantsDepth = " << moveDepth << logging::endl);
     bool hasChanged = false;
 
     // 1. find loops
@@ -1339,6 +1339,28 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     auto loops = cfg.findLoops(true);
 
     // 2. generate inclusion relation of loops as trees
+    // e.g.
+    //
+    // loop A {
+    //     loop B {
+    //         loop C {
+    //         }
+    //     }
+    //     loop D {
+    //     }
+    // }
+    //
+    // to
+    //
+    //       +-+
+    //  +----+A+
+    //  |    +++
+    //  |     |
+    //  v     v
+    // +-+   +++   +-+
+    // |D|   |B+-->+C|
+    // +-+   +-+   +-+
+    //
     LoopInclusionTree inclusionTree;
     for(auto& loop1 : loops)
     {
@@ -1352,14 +1374,64 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             }
         }
     }
+    logging::debug() << "inclusionTree" << logging::endl;
+    for(auto& loop : inclusionTree)
+    {
+        logging::debug() << "  " << loop.second.dumpLabel() << logging::endl;
+        for(auto& node : loop.second.getNeighbors())
+        {
+            if (node.second.includes)
+                logging::debug() << "    " << reinterpret_cast<LoopInclusionTreeNode*>(node.first)->dumpLabel() << logging::endl;
+        }
+    }
+    // Remove extra relations.
+    for(auto& loop : loops)
+    {
+        auto& currentNode = inclusionTree.getOrCreateNode(&loop);
+        auto neighbors = currentNode.getNeighbors();
+
+        logging::debug() << "current node: " << currentNode.dumpLabel() << logging::endl;
+
+        // Remove parent nodes except node which has longest path to the root node.
+        LoopInclusionTreeNode *longestNode = nullptr;
+        int longestLength = -1;
+        for(auto& parent : neighbors)
+        {
+            if (!parent.second.includes) {
+                auto parentNode = reinterpret_cast<LoopInclusionTreeNode*>(parent.first);
+                int length = parentNode->longestPathLengthToRoot();
+                logging::debug() << "  parent node: " << parentNode->dumpLabel() << " length: " << length << logging::endl;
+                if (length > longestLength) {
+                    longestNode = parentNode;
+                }
+            }
+        }
+
+        if (longestNode)
+        {
+            logging::debug() << "  longest node: " << longestNode->dumpLabel() << logging::endl;
+
+            for(auto& other : neighbors)
+            {
+                if (!other.second.includes) {
+                    auto otherNode = reinterpret_cast<LoopInclusionTreeNode*>(other.first);
+                    if (longestNode != otherNode) {
+                        currentNode.removeNeighbor(otherNode);
+                        otherNode->removeNeighbor(&currentNode);
+                    }
+                }
+            }
+        }
+    }
 
     logging::debug() << "inclusionTree" << logging::endl;
     for(auto& loop : inclusionTree)
     {
-        logging::debug() << "  " << loop.first << logging::endl;
+        logging::debug() << "  " << loop.second.dumpLabel() << logging::endl;
         for(auto& node : loop.second.getNeighbors())
         {
-            logging::debug() << "    " << node.first->key << ": " << node.second.includes << logging::endl;
+            if (node.second.includes)
+                logging::debug() << "    " << reinterpret_cast<LoopInclusionTreeNode*>(node.first)->dumpLabel() << logging::endl;
         }
     }
 
@@ -1368,7 +1440,8 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     for(auto& loop : loops)
     {
         auto& node = inclusionTree.getOrCreateNode(&loop);
-        auto root = reinterpret_cast<LoopInclusionTreeNode*>(node.findRoot());
+        auto root = reinterpret_cast<LoopInclusionTreeNode*>(node.findRoot(moveDepth == -1 ? Optional<int>() : Optional<int>(moveDepth)));
+        logging::debug() << "root block : " << (*root->key->rbegin())->key->getLabel()->to_string() << logging::endl;
 
         if(processed.find(root->key) != processed.end())
             continue;
@@ -1432,6 +1505,8 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     if(hasChanged)
         // combine the newly reordered (and at one place accumulated) loading instructions
         combineLoadingConstants(module, method, config);
+
+    method.dumpInstructions();
 
     return hasChanged;
 }

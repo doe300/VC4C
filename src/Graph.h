@@ -84,6 +84,11 @@ namespace vc4c
             return graph.createEdge(this, neighbor, std::forward<Relation&&>(relation));
         }
 
+        void removeNeighbor(Node* neighbor)
+        {
+            neighbors.erase(neighbor);
+        }
+
         EdgeType& getOrCreateEdge(Node* neighbor, Relation&& defaultRelation = {})
         {
             auto it = edges.find(neighbor);

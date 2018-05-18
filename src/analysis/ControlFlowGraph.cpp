@@ -578,13 +578,47 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoopsHelperRecursively(con
 
 LoopInclusionTreeNodeBase::LoopInclusionTreeNodeBase(const KeyType key) : Node(key) {}
 
-LoopInclusionTreeNodeBase* LoopInclusionTreeNodeBase::findRoot()
+LoopInclusionTreeNodeBase* LoopInclusionTreeNodeBase::findRoot(Optional<int> depth)
 {
+    if (depth && depth.value() == 0)
+    {
+        return this;
+    }
+
     auto* self = reinterpret_cast<LoopInclusionTreeNodeBase*>(this);
     LoopInclusionTreeNodeBase* root = this;
     self->forAllIncomingEdges([&](LoopInclusionTreeNodeBase& parent, LoopInclusionTreeEdge&) -> bool {
-        root = parent.findRoot();
+        // The root node must be only one
+        std::function<int(const int&)> dec = [](const int& d) -> int { return d - 1; };
+        root = parent.findRoot(depth.map(dec));
         return true;
     });
     return root;
+}
+
+unsigned int LoopInclusionTreeNode::longestPathLengthToRoot()
+{
+    if (this->getNeighbors().size() == 0) {
+        // this is root
+        return 0;
+
+    }
+
+    int longestLength = 0;
+    for(auto& parent : this->getNeighbors())
+    {
+        if(!parent.second.includes)
+        {
+            int length = reinterpret_cast<LoopInclusionTreeNode*>(parent.first)->longestPathLengthToRoot() + 1;
+            if (length > longestLength) {
+                longestLength = length;
+            }
+        }
+    }
+    return longestLength;
+}
+
+std::string LoopInclusionTreeNode::dumpLabel() const
+{
+    return (*this->key->rbegin())->key->getLabel()->to_string();
 }
