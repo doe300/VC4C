@@ -745,7 +745,9 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             it.erase();
         }
         // if orig = i64, dest = i32 -> move
-        else if(op->getFirstArg().type.getScalarBitCount() > 32 && op->getOutput()->type.getScalarBitCount() == 32)
+        // also applies to orig = i32, dest = i32
+        // -> This can occur if original is i33 already truncated to i32 in front-end
+        else if(op->getFirstArg().type.getScalarBitCount() >= 32 && op->getOutput()->type.getScalarBitCount() == 32)
         {
             // do nothing, is just a move, since we truncate the 64-bit integers anyway
             logging::debug() << "Intrinsifying truncate from unsupported type with move" << logging::endl;

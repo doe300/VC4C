@@ -132,69 +132,92 @@ static std::string toRegisterWriteString(const Value& val, std::bitset<16> eleme
     return (val.type.to_string() + " {") + to_string<std::string>(parts) + "}";
 }
 
+LiteralType getLiteralType(const DataType& type)
+{
+    if(type.isFloatingType())
+        return LiteralType::REAL;
+    if(type == TYPE_BOOL)
+        return LiteralType::BOOL;
+    return LiteralType::INTEGER;
+}
+
 void Registers::writeRegister(Register reg, const Value& val, std::bitset<16> elementMask)
 {
+    // set the types of the elements to the type of the container
+    Value modifiedValue(val);
+    if(modifiedValue.hasType(ValueType::CONTAINER))
+    {
+        for(unsigned i = 0; i < elementMask.size(); ++i)
+        {
+            if(elementMask.test(i))
+            {
+                modifiedValue.container.elements.at(i).type = modifiedValue.type.toVectorType(1);
+                modifiedValue.container.elements.at(i).literal.type =
+                    getLiteralType(modifiedValue.type.toVectorType(1));
+            }
+        }
+    }
     logging::debug() << "Writing into register '" << reg.to_string(true, false)
-                     << "': " << toRegisterWriteString(val, elementMask) << logging::endl;
+                     << "': " << toRegisterWriteString(modifiedValue, elementMask) << logging::endl;
     if(reg.isGeneralPurpose())
-        writeStorageRegister(reg, val, elementMask);
+        writeStorageRegister(reg, modifiedValue, elementMask);
     else if(reg.isAccumulator())
     {
         if(reg.num == REG_TMU_NOSWAP.num)
-            qpu.tmus.setTMUNoSwap(getActualValue(val));
+            qpu.tmus.setTMUNoSwap(getActualValue(modifiedValue));
         else if(reg.num == REG_REPLICATE_ALL.num)
             // the physical file A or B is important here!
-            writeStorageRegister(reg, val, elementMask);
+            writeStorageRegister(reg, modifiedValue, elementMask);
         else
-            writeStorageRegister(Register(RegisterFile::ACCUMULATOR, reg.num), val, elementMask);
+            writeStorageRegister(Register(RegisterFile::ACCUMULATOR, reg.num), modifiedValue, elementMask);
     }
     else if(reg.num == REG_HOST_INTERRUPT.num)
     {
         if(hostInterrupt)
             logging::warn() << "Host interrupt was already triggered with " << hostInterrupt->to_string()
                             << logging::endl;
-        hostInterrupt = val;
+        hostInterrupt = modifiedValue;
     }
     else if(reg.num == REG_NOP.num)
         return;
     else if(reg.num == REG_UNIFORM_ADDRESS.num)
-        qpu.uniforms.setUniformAddress(getActualValue(val));
+        qpu.uniforms.setUniformAddress(getActualValue(modifiedValue));
     else if(reg.num == REG_VPM_IO.num)
-        qpu.vpm.writeValue(getActualValue(val));
+        qpu.vpm.writeValue(getActualValue(modifiedValue));
     else if(reg == REG_VPM_IN_SETUP)
-        qpu.vpm.setReadSetup(getActualValue(val));
+        qpu.vpm.setReadSetup(getActualValue(modifiedValue));
     else if(reg == REG_VPM_OUT_SETUP)
-        qpu.vpm.setWriteSetup(getActualValue(val));
+        qpu.vpm.setWriteSetup(getActualValue(modifiedValue));
     else if(reg == REG_VPM_IN_ADDR)
-        qpu.vpm.setDMAReadAddress(getActualValue(val));
+        qpu.vpm.setDMAReadAddress(getActualValue(modifiedValue));
     else if(reg == REG_VPM_OUT_ADDR)
-        qpu.vpm.setDMAWriteAddress(getActualValue(val));
+        qpu.vpm.setDMAWriteAddress(getActualValue(modifiedValue));
     else if(reg.num == REG_MUTEX.num)
         qpu.mutex.unlock(qpu.ID);
     else if(reg.num == REG_SFU_RECIP.num)
-        qpu.sfu.startRecip(getActualValue(val));
+        qpu.sfu.startRecip(getActualValue(modifiedValue));
     else if(reg.num == REG_SFU_RECIP_SQRT.num)
-        qpu.sfu.startRecipSqrt(getActualValue(val));
+        qpu.sfu.startRecipSqrt(getActualValue(modifiedValue));
     else if(reg.num == REG_SFU_EXP2.num)
-        qpu.sfu.startExp2(getActualValue(val));
+        qpu.sfu.startExp2(getActualValue(modifiedValue));
     else if(reg.num == REG_SFU_LOG2.num)
-        qpu.sfu.startLog2(getActualValue(val));
+        qpu.sfu.startLog2(getActualValue(modifiedValue));
     else if(reg.num == REG_TMU0_COORD_S_U_X.num)
-        qpu.tmus.setTMURegisterS(0, getActualValue(val));
+        qpu.tmus.setTMURegisterS(0, getActualValue(modifiedValue));
     else if(reg.num == REG_TMU0_COORD_T_V_Y.num)
-        qpu.tmus.setTMURegisterT(0, getActualValue(val));
+        qpu.tmus.setTMURegisterT(0, getActualValue(modifiedValue));
     else if(reg.num == REG_TMU0_COORD_R_BORDER_COLOR.num)
-        qpu.tmus.setTMURegisterR(0, getActualValue(val));
+        qpu.tmus.setTMURegisterR(0, getActualValue(modifiedValue));
     else if(reg.num == REG_TMU0_COORD_B_LOD_BIAS.num)
-        qpu.tmus.setTMURegisterB(0, getActualValue(val));
+        qpu.tmus.setTMURegisterB(0, getActualValue(modifiedValue));
     else if(reg.num == REG_TMU1_COORD_S_U_X.num)
-        qpu.tmus.setTMURegisterS(1, getActualValue(val));
+        qpu.tmus.setTMURegisterS(1, getActualValue(modifiedValue));
     else if(reg.num == REG_TMU1_COORD_T_V_Y.num)
-        qpu.tmus.setTMURegisterT(1, getActualValue(val));
+        qpu.tmus.setTMURegisterT(1, getActualValue(modifiedValue));
     else if(reg.num == REG_TMU1_COORD_R_BORDER_COLOR.num)
-        qpu.tmus.setTMURegisterR(1, getActualValue(val));
+        qpu.tmus.setTMURegisterR(1, getActualValue(modifiedValue));
     else if(reg.num == REG_TMU1_COORD_B_LOD_BIAS.num)
-        qpu.tmus.setTMURegisterB(1, getActualValue(val));
+        qpu.tmus.setTMURegisterB(1, getActualValue(modifiedValue));
     else
         throw CompilationError(CompilationStep::GENERAL, "Write of invalid register", reg.to_string());
 
@@ -1103,6 +1126,36 @@ static std::pair<Value, bool> toInputValue(
     throw CompilationError(CompilationStep::GENERAL, "Unhandled ALU input");
 }
 
+static std::pair<Value, bool> applyVectorRotation(
+    std::pair<Value, bool>&& input, Signaling sig, InputMultiplex mux1, InputMultiplex mux2, Address regB)
+{
+    if(!input.second)
+        // if we stall, do not rotate
+        return input;
+    if(sig != SIGNAL_ALU_IMMEDIATE)
+        // no rotation set
+        return input;
+    SmallImmediate offset(regB);
+    if(!offset.isVectorRotation())
+        return input;
+    if(mux1 == InputMultiplex::REGB || mux2 == InputMultiplex::REGB)
+        throw CompilationError(CompilationStep::GENERAL, "Cannot read vector rotation offset", input.first.to_string());
+
+    if(offset == VECTOR_ROTATE_R5)
+        throw CompilationError(CompilationStep::GENERAL, "Rotating by r5 is not implemented yet!");
+
+    if(input.first.hasType(ValueType::LITERAL) ||
+        (input.first.hasType(ValueType::CONTAINER) && input.first.container.isAllSame()))
+        return input;
+
+    Value result(std::forward<Value>(input.first));
+    auto distance = 16 - offset.getRotationOffset().value();
+    std::rotate(result.container.elements.begin(), result.container.elements.begin() + distance,
+        result.container.elements.end());
+
+    return std::make_pair(result, true);
+}
+
 bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
 {
     Value addIn0 = UNDEFINED_VALUE;
@@ -1137,11 +1190,15 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
         bool mulIn0NotStall = true;
         bool mulIn1NotStall = true;
 
-        std::tie(mulIn0, mulIn0NotStall) = toInputValue(registers, aluInst->getMulMultiplexA(), aluInst->getInputA(),
-            aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE);
+        std::tie(mulIn0, mulIn0NotStall) =
+            applyVectorRotation(toInputValue(registers, aluInst->getMulMultiplexA(), aluInst->getInputA(),
+                                    aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE),
+                aluInst->getSig(), aluInst->getMulMultiplexA(), aluInst->getMulMultiplexB(), aluInst->getInputB());
         if(mulCode.numOperands > 1)
-            std::tie(mulIn1, mulIn1NotStall) = toInputValue(registers, aluInst->getMulMultiplexB(),
-                aluInst->getInputA(), aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE);
+            std::tie(mulIn1, mulIn1NotStall) =
+                applyVectorRotation(toInputValue(registers, aluInst->getMulMultiplexB(), aluInst->getInputA(),
+                                        aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE),
+                    aluInst->getSig(), aluInst->getMulMultiplexA(), aluInst->getMulMultiplexB(), aluInst->getInputB());
 
         if(!mulIn0NotStall || !mulIn1NotStall)
         {

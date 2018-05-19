@@ -1078,7 +1078,31 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
         while(!it.isEndOfMethod())
         {
             if(it.has<MemoryInstruction>())
+            {
+                auto memInst = it.get<MemoryInstruction>();
+                if(memInst->op == MemoryOperation::READ)
+                {
+                    auto nextIt = it.copy().nextInBlock();
+                    auto nextMemInst = nextIt.get<MemoryInstruction>();
+                    if(!nextIt.isEndOfBlock() && nextMemInst != nullptr && nextMemInst->op == MemoryOperation::WRITE &&
+                        nextMemInst->getSource() == memInst->getDestination() &&
+                        nextMemInst->getNumEntries() == memInst->getNumEntries())
+                    {
+                        logging::debug()
+                            << "Found reading of memory where the sole usage writes the value back into memory: "
+                            << memInst->to_string() << logging::endl;
+                        logging::debug() << "Replacing manual copy of memory with memory copy instruction for write: "
+                                         << nextMemInst->to_string() << logging::endl;
+
+                        const Value src = memInst->getSource();
+                        it.erase();
+                        nextIt.reset(new MemoryInstruction(
+                            MemoryOperation::COPY, nextMemInst->getDestination(), src, nextMemInst->getNumEntries()));
+                        it = nextIt;
+                    }
+                }
                 memoryInstructions.emplace(it);
+            }
             it.nextInMethod();
         }
     }

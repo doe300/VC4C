@@ -35,6 +35,14 @@ static void checkNormalized(Module& module, Method& method, InstructionWalker it
 {
     if(it.has() && !it->isNormalized())
     {
+        if(it.has<intermediate::MethodCall>())
+        {
+            logging::error() << "Failed to in-line or intrinsify function-call: " << it->to_string() << logging::endl;
+            logging::warn() << "Candidates:" << logging::endl;
+            for(const auto& method : module.methods)
+                logging::warn() << method->returnType.to_string() << " " << method->name << "("
+                                << to_string<Parameter>(method->parameters) << logging::endl;
+        }
         throw CompilationError(CompilationStep::NORMALIZER, "Not normalized instruction found", it->to_string());
     }
 }

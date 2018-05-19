@@ -44,6 +44,12 @@ static InstructionWalker replaceWithSetBoolean(
     return it;
 }
 
+static bool isPowerTwo(uint32_t val)
+{
+    // https://en.wikipedia.org/wiki/Power_of_two#Fast_algorithm_to_check_if_a_positive_number_is_a_power_of_two
+    return val > 0 && (val & (val - 1)) == 0;
+}
+
 InstructionWalker intrinsifyIntegerRelation(
     Method& method, InstructionWalker it, const Comparison* comp, bool invertResult)
 {
@@ -79,53 +85,105 @@ InstructionWalker intrinsifyIntegerRelation(
          */
         if(comp->getFirstArg().type.getScalarBitCount() == 32)
         {
-            // XXX optimize? combine both comparisons of upper half? can short-circuit on ||?
-            const Value tmp1 =
-                method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
-            const Value tmp2 =
-                method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
-            const Value tmp3 =
-                method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
-            const Value tmp4 =
-                method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
-            const Value leftUpper =
-                method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%comp.left");
-            const Value leftLower =
-                method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%comp.left");
-            const Value rightUpper =
-                method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%comp.right");
-            const Value rightLower =
-                method.addNewLocal(TYPE_INT16.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%comp.right");
-            it.emplace(new Operation(OP_SHR, leftUpper, comp->getFirstArg(), Value(Literal(16u), TYPE_INT8)));
-            it.nextInBlock();
-            it.emplace(new Operation(
-                OP_AND, leftLower, comp->getFirstArg(), Value(Literal(TYPE_INT16.getScalarWidthMask()), TYPE_INT32)));
-            it.nextInBlock();
-            it.emplace(new Operation(OP_SHR, rightUpper, comp->assertArgument(1), Value(Literal(16u), TYPE_INT8)));
-            it.nextInBlock();
-            it.emplace(new Operation(OP_AND, rightLower, comp->assertArgument(1),
-                Value(Literal(TYPE_INT16.getScalarWidthMask()), TYPE_INT32)));
-            it.nextInBlock();
-            //(a >> 16) < (b >> 16)
-            // insert dummy comparison to be intrinsified
-            it.emplace(new Comparison(COMP_UNSIGNED_LT, tmp1, leftUpper, rightUpper));
-            it = intrinsifyIntegerRelation(method, it, it.get<Comparison>(), false);
-            it.nextInBlock();
-            //(a >> 16) == (b >> 16)
-            // insert dummy comparison to be intrinsified
-            it.emplace(new Comparison(COMP_EQ, tmp2, leftUpper, rightUpper));
-            it = intrinsifyIntegerRelation(method, it, it.get<Comparison>(), false);
-            it.nextInBlock();
-            //(a & 0xFFFF) < (b & 0xFFFF)
-            // insert dummy comparison to be intrinsified
-            it.emplace(new Comparison(COMP_UNSIGNED_LT, tmp3, leftLower, rightLower));
-            it = intrinsifyIntegerRelation(method, it, it.get<Comparison>(), false);
-            it.nextInBlock();
-            // upper && lower
-            it.emplace(new Operation(OP_AND, tmp4, tmp2, tmp3));
-            it.nextInBlock();
-            it.emplace(new Operation(OP_OR, NOP_REGISTER, tmp1, tmp4, comp->conditional, SetFlag::SET_FLAGS));
-            it.nextInBlock();
+            // a < b [b = 2^x] <=> (a & (b-1)) == a <=> (a & ~(b-1)) == 0
+            if(comp->assertArgument(1).hasType(ValueType::LITERAL) &&
+                isPowerTwo(comp->assertArgument(1).literal.unsignedInt()))
+            {
+                const Value mask(comp->assertArgument(1).literal.unsignedInt() - 1, comp->assertArgument(1).type);
+                const Value tmp1 =
+                    method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
+
+                it.emplace(new Operation(OP_AND, tmp1, comp->getFirstArg(), mask));
+                it.nextInBlock();
+                it.emplace(
+                    new Operation(OP_XOR, NOP_REGISTER, tmp1, comp->getFirstArg(), COND_ALWAYS, SetFlag::SET_FLAGS));
+                it.nextInBlock();
+                // we set to true, if flag is zero, false otherwise
+                invertResult = !invertResult;
+            }
+            // a < b [b = 2^x -1] <=> (a & b) == a && a != b <=> (a & ~b) == 0 && a != b (this version is used)!
+            // <=> (a >> log2(b + 1)) == 0 && a != b
+            else if(comp->assertArgument(1).hasType(ValueType::LITERAL) &&
+                isPowerTwo(comp->assertArgument(1).literal.unsignedInt() + 1))
+            {
+                const Value mask(
+                    Literal(comp->assertArgument(1).literal.unsignedInt() ^ 0xFFFFFFFFu), comp->getFirstArg().type);
+                const Value tmp1 =
+                    method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
+                const Value tmp2 =
+                    method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
+
+                it.emplace(new Operation(OP_AND, tmp1, comp->getFirstArg(), mask));
+                it.nextInBlock();
+                it.emplace(new Operation(OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->assertArgument(1),
+                    COND_ALWAYS, SetFlag::SET_FLAGS));
+                it.nextInBlock();
+                // insert dummy comparison to be replaced
+                it.emplace(new Nop(DelayType::WAIT_VPM));
+                it = replaceWithSetBoolean(it, tmp2, COND_ZERO_SET);
+                it.nextInBlock();
+                it.emplace(new Operation(OP_OR, NOP_REGISTER, tmp1, tmp2, COND_ALWAYS, SetFlag::SET_FLAGS));
+                it.nextInBlock();
+                // we set to true, if flag is zero, false otherwise
+                invertResult = !invertResult;
+            }
+            // TODO a < b [a = 2^x -1] <=> (~a & b) != 0
+            else
+            {
+                // XXX optimize? combine both comparisons of upper half? can short-circuit on ||?
+                // TODO the general case seems to be wrong
+                /*
+                 * Another way of calculating ult:
+                 * a < b <=> clz(a) > clz(b) || (clz(a) == clz(b) && max(a, b) != a)
+                 * For equal MSB, ult == slt, special case for different MSB
+                 */
+                const Value tmp1 =
+                    method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
+                const Value tmp2 =
+                    method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
+                const Value tmp3 =
+                    method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
+                const Value tmp4 =
+                    method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
+                const Value leftUpper = method.addNewLocal(
+                    TYPE_INT16.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%comp.left");
+                const Value leftLower = method.addNewLocal(
+                    TYPE_INT16.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%comp.left");
+                const Value rightUpper = method.addNewLocal(
+                    TYPE_INT16.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%comp.right");
+                const Value rightLower = method.addNewLocal(
+                    TYPE_INT16.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%comp.right");
+                it.emplace(new Operation(OP_SHR, leftUpper, comp->getFirstArg(), Value(Literal(16u), TYPE_INT8)));
+                it.nextInBlock();
+                it.emplace(new Operation(OP_AND, leftLower, comp->getFirstArg(),
+                    Value(Literal(TYPE_INT16.getScalarWidthMask()), TYPE_INT32)));
+                it.nextInBlock();
+                it.emplace(new Operation(OP_SHR, rightUpper, comp->assertArgument(1), Value(Literal(16u), TYPE_INT8)));
+                it.nextInBlock();
+                it.emplace(new Operation(OP_AND, rightLower, comp->assertArgument(1),
+                    Value(Literal(TYPE_INT16.getScalarWidthMask()), TYPE_INT32)));
+                it.nextInBlock();
+                //(a >> 16) < (b >> 16)
+                // insert dummy comparison to be intrinsified
+                it.emplace(new Comparison(COMP_UNSIGNED_LT, tmp1, leftUpper, rightUpper));
+                it = intrinsifyIntegerRelation(method, it, it.get<Comparison>(), false);
+                it.nextInBlock();
+                //(a >> 16) == (b >> 16)
+                // insert dummy comparison to be intrinsified
+                it.emplace(new Comparison(COMP_EQ, tmp2, leftUpper, rightUpper));
+                it = intrinsifyIntegerRelation(method, it, it.get<Comparison>(), false);
+                it.nextInBlock();
+                //(a & 0xFFFF) < (b & 0xFFFF)
+                // insert dummy comparison to be intrinsified
+                it.emplace(new Comparison(COMP_UNSIGNED_LT, tmp3, leftLower, rightLower));
+                it = intrinsifyIntegerRelation(method, it, it.get<Comparison>(), false);
+                it.nextInBlock();
+                // upper && lower
+                it.emplace(new Operation(OP_AND, tmp4, tmp2, tmp3));
+                it.nextInBlock();
+                it.emplace(new Operation(OP_OR, NOP_REGISTER, tmp1, tmp4, comp->conditional, SetFlag::SET_FLAGS));
+                it.nextInBlock();
+            }
         }
         else
         {

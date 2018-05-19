@@ -1,4 +1,4 @@
-__kernel void test_clamp(__global float3 *x, __global float3 *y, __global float3 *dst)
+__kernel void test_cross(__global float3 *x, __global float3 *y, __global float3 *dst)
 {
     int  tid = get_global_id(0);
 

@@ -145,7 +145,7 @@ namespace vc4c
 				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vectorization.cl", "test9",
 					{toParameter(toRange<int>(0, 4096)), toParameter(toRange<int>(0, 4096))}, {}, maxExecutionCycles * 2),
-					addVector({}, 0, std::vector<int>{0, 1, 2, 3, 5, 5, 6, 7, 9, 9, 10, 11, 13, 13, 14, 15})
+					addVector({}, 0, std::vector<int>{0, 1, 2, 3, 5, 5, 6, 7, 10, 9, 10, 11, 15, 13, 14, 15, 20})
 				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vectorization.cl", "test10",
 					{toParameter(toRange<int>(0, 1024)), toParameter(toRange<int>(0, 1024))}, {}, maxExecutionCycles * 2),
@@ -153,7 +153,7 @@ namespace vc4c
 				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vectorization.cl", "test11",
 					{toParameter(toRange<int>(0, 256))}, {}, maxExecutionCycles),
-					addVector({}, 0, toRange(201, 212))
+					addVector({}, 0, std::vector<int>{100,100,100,100,100,100,100,100,100})
 				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/pointer_cast.cl", "test_pointer_cast",
 					{toParameter(std::vector<unsigned>{0x01020304}), toParameter(std::vector<unsigned>(1))}, {}, maxExecutionCycles),
@@ -211,11 +211,11 @@ namespace vc4c
 				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vectorization.cl", "test2",
 					{toParameter(toRange<float>(1.0f, 10.0f)), toParameter(toRange<float>(1.0f, 10.0f)), toScalarParameter(7.0f), toScalarParameter(1u), toScalarParameter(6u)}, {}, maxExecutionCycles),
-					addVector({}, 0, std::vector<float>{1.0f, 18.0f, 30.0f, 44.0f, 60.0f, 98.0f, 7.0f, 8.0f, 9.0f})
+					addVector({}, 0, std::vector<float>{1.0f, 18.0f, 30.0f, 44.0f, 60.0f, 78.0f, 7.0f, 8.0f, 9.0f})
 				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vectorization.cl", "test3",
 					{toParameter(toRange<float>(1.0f, 801.0f)), toParameter(toRange<float>(1.0f, 801.0f)), toScalarParameter(7.0f)}, {}, maxExecutionCycles),
-					addVector({}, 0, std::vector<float>{8.0f, 18.0f, 30.0f, 44.0f, 60.0f, 98.0f, 7.0f, 8.0f, 9.0f})
+					addVector({}, 0, std::vector<float>{8.0f, 18.0f, 30.0f, 44.0f, 60.0f, 78.0f, 98.0f, 120.0f, 144.0f})
 				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vectorization.cl", "test5",
 					{toParameter(std::vector<float>(1024))}, {}, maxExecutionCycles * 2),
@@ -226,7 +226,7 @@ namespace vc4c
 					toConfig(3, 1, 1, 1, 1, 1), maxExecutionCycles),
 					addVector({}, 3, std::vector<float>{5.0f, 1.0f, 3.0f})
 				),
-				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/cross_product.cl", "test_clamp",
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/cross_product.cl", "test_cross",
 					{toParameter(std::vector<float>{1.0f, 2.0f, 3.0f}), toParameter(std::vector<float>{3.0f, 4.0f, 5.0f}), toParameter(std::vector<float>(3))}, {}, maxExecutionCycles),
 					addVector({}, 2, std::vector<float>{-2.0f, 4.0f, -2.0f})
 				)

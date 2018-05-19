@@ -280,8 +280,8 @@ namespace vc4c
 			    16
 			),
 			std::make_tuple(EmulationData(mathTestsFile, "test_exp",
-			    {toParameter(toRange(0.0f, 12.0f)), toParameter(std::vector<float>(12))}, toConfig(12), maxExecutionCycles),
-			    addVector({}, 1, transfer<float, float>(toRange(0.0f, 12.0f), [](float f) -> float {return std::exp(f);})),
+			    {toParameter(toRange(-50.0f, 50.0f)), toParameter(std::vector<float>(100))}, toConfig(10, 1, 1, 10), maxExecutionCycles),
+			    addVector({}, 1, transfer<float, float>(toRange(-50.0f, 50.0f), [](float f) -> float {return std::exp(f);})),
 			    4
 			),
 			std::make_tuple(EmulationData(mathTestsFile, "test_exp2",

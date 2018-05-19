@@ -269,6 +269,6 @@ void precompilation::linkSPIRVModules(
     }
 
     logging::debug() << "Linking " << sources.size() << " input modules..." << logging::endl;
-    spirv2qasm::linkSPIRVModules(convertedInputs, output);
+    spirv2qasm::linkSPIRVModules(convertedInputs, *result.stream);
 #endif
 }

@@ -70,8 +70,9 @@ __kernel void test_as_type(int2 source, __global short4* out1, __global uchar8* 
  */
 __kernel void test_conversion_functions(const __global float16* in, __global float16* out)
 {
-	float16 f;
-	CONVERT_FUNCTIONS(f, (*in), float)
+	float16 f = (*in);
+	//convert_float_sat is not in the LLVM OpenCL C headers
+//	CONVERT_FUNCTIONS(f, (*in), float)
 	int16 i;
 	CONVERT_FUNCTIONS(i, f, int)
 	int16 j;
@@ -98,5 +99,6 @@ __kernel void test_conversion_functions(const __global float16* in, __global flo
 	uint16 uj;
 	CONVERT_FUNCTIONS(uj, ui, uint)
 	
-	CONVERT_FUNCTIONS((*out), uj, float)
+//	CONVERT_FUNCTIONS((*out), uj, float)
+	*out = convert_float16(uj);
 }
