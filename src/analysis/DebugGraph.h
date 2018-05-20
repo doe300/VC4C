@@ -16,7 +16,7 @@
 
 namespace vc4c
 {
-    void printEdge(std::ofstream& file, uintptr_t id1, uintptr_t id2, bool weakEdge, bool isDirected,
+    void printEdge(std::ofstream& file, uintptr_t id1, uintptr_t id2, bool weakEdge, Direction direction,
         const std::string& edgeLabel);
     void printNode(std::ofstream& file, uintptr_t ID, const std::string& name);
 
@@ -30,14 +30,14 @@ namespace vc4c
         template <typename NodeType>
         using ForAllEdgesFunc = std::function<bool(const NodeType& neighbor, const typename NodeType::EdgeType& edge)>;
 
-        template <typename NodeType, bool Directed>
+        template <typename NodeType, Directionality Direction>
         struct ForAllEdgesFuncWrapper
         {
             void operator()(const NodeType& node, ForAllEdgesFunc<NodeType> func) const;
         };
 
         template <typename NodeType>
-        struct ForAllEdgesFuncWrapper<NodeType, true>
+        struct ForAllEdgesFuncWrapper<NodeType, Directionality::DIRECTED>
         {
             void operator()(const NodeType& node, ForAllEdgesFunc<NodeType> func) const
             {
@@ -46,7 +46,16 @@ namespace vc4c
         };
 
         template <typename NodeType>
-        struct ForAllEdgesFuncWrapper<NodeType, false>
+        struct ForAllEdgesFuncWrapper<NodeType, Directionality::BIDIRECTIONAL>
+        {
+            void operator()(const NodeType& node, ForAllEdgesFunc<NodeType> func) const
+            {
+                node.forAllOutgoingEdges(func);
+            }
+        };
+
+        template <typename NodeType>
+        struct ForAllEdgesFuncWrapper<NodeType, Directionality::UNDIRECTED>
         {
             void operator()(const NodeType& node, ForAllEdgesFunc<NodeType> func) const
             {
@@ -60,23 +69,24 @@ namespace vc4c
      *
      * Generate SVG with: "sfdp -Tsvg <input>.dot -o <output>.svg"
      */
-    template <typename Key, typename Relation, bool Directed>
+    template <typename Key, typename Relation, Directionality Direction>
     class DebugGraph
     {
     public:
         template <typename U>
         using NameFunc = std::function<std::string(const U&)>;
 
-        using DefaultNodeType = Node<Key, Relation, Directed>;
+        using DefaultNodeType = Node<Key, Relation, Direction>;
 
         explicit DebugGraph(const std::string& fileName) : file(fileName)
         {
             // strict: at most one edge can connect two nodes, multiple same connections are merged (including their
             // attributes)  graph: undirected graph, digraph: directed graph
-            if(Directed)
+            if(Direction != Directionality::UNDIRECTED)
                 file << "strict digraph {" << std::endl;
             else
                 file << "strict graph {" << std::endl;
+            file << "concentrate=true" << std::endl;
             // global graph settings: draw edges as splines and remove overlap between edges and nodes, draw nodes over
             // edges
             file << "graph [splines=true, overlap=\"prism\", outputorder=\"edgesfirst\"];" << std::endl;
@@ -97,21 +107,21 @@ namespace vc4c
             const NameFunc<Relation>& edgeLabelFunc = [](const Relation& r) -> std::string { return ""; })
         {
             printNode(file, reinterpret_cast<uintptr_t>(&node), nameFunc(node.key));
-            if(Directed)
+            if(Direction != Directionality::UNDIRECTED)
             {
-                detail::ForAllEdgesFuncWrapper<NodeType, Directed>{}(
+                detail::ForAllEdgesFuncWrapper<NodeType, Direction>{}(
                     node, [&, this](const NodeType& neighbor, const typename NodeType::EdgeType& edge) -> bool {
                         // checking for duplicate edges is not required on directed graph, since every two nodes are
                         // only connected one edge, which is only output to one of the nodes
                         printEdge(file, reinterpret_cast<uintptr_t>(&node), reinterpret_cast<uintptr_t>(&neighbor),
-                            weakEdgeFunc(edge.data), Directed, edgeLabelFunc(edge.data));
+                            weakEdgeFunc(edge.data), edge.getDirection(), edgeLabelFunc(edge.data));
                         return true;
                     });
             }
             else
             {
                 processedNodes.emplace(reinterpret_cast<const DefaultNodeType*>(&node));
-                detail::ForAllEdgesFuncWrapper<NodeType, Directed>{}(
+                detail::ForAllEdgesFuncWrapper<NodeType, Direction>{}(
                     node, [&, this](const NodeType& neighbor, const typename NodeType::EdgeType& edge) -> bool {
                         // making sure every edge is printed just once is not necessary because of the "strict"
                         // keyword, but it saves a lot of processing time in Graphviz
@@ -120,7 +130,7 @@ namespace vc4c
                             return true;
 
                         printEdge(file, reinterpret_cast<uintptr_t>(&node), reinterpret_cast<uintptr_t>(&neighbor),
-                            weakEdgeFunc(edge.data), Directed, edgeLabelFunc(edge.data));
+                            weakEdgeFunc(edge.data), Direction::NONE, edgeLabelFunc(edge.data));
                         return true;
                     });
             }
@@ -132,7 +142,7 @@ namespace vc4c
             const std::function<bool(const Relation&)>& weakEdgeFunc = [](const Relation& r) -> bool { return false; },
             const NameFunc<Relation>& edgeLabelFunc = [](const Relation& r) -> std::string { return ""; })
         {
-            DebugGraph<Key, Relation, Directed> debugGraph(fileName);
+            DebugGraph<Key, Relation, Direction> debugGraph(fileName);
             for(const auto& node : graph.getNodes())
             {
                 debugGraph.addNodeWithNeighbors(node.second, nameFunc, weakEdgeFunc, edgeLabelFunc);

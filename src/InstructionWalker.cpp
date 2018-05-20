@@ -102,7 +102,7 @@ bool InstructionVisitor::visitReverse(const InstructionWalker& start, ControlFlo
                             [&continueBranches, this, blockGraph](const CFGNode& node, const CFGEdge& edge) -> bool {
                                 // this makes sure, a STOP_ALL skips other predecessors
                                 if(continueBranches)
-                                    continueBranches = visitReverse(edge.data.predecessor, blockGraph);
+                                    continueBranches = visitReverse(edge.data.predecessors.at(node.key), blockGraph);
                                 return true;
                             });
                 }

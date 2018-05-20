@@ -16,27 +16,22 @@ namespace vc4c
     /*
      * A relation in the control-flow-graph represents a transition between two basic blocks.
      *
+     * NOTE: This transition can be bi-directional!
+     *
      */
     struct CFGRelation
     {
-        // the last instruction before the change of basic-block (e.g. the branch or last instruction in block)
-        InstructionWalker predecessor;
-
-        // whether the change of basic block is implicit (e.g. by fall-through without any branch away)
-        bool isImplicit;
+        // map of the source block and the predecessor within this block
+        std::map<BasicBlock*, InstructionWalker> predecessors;
+        // map of the source block and the implicit flags
+        std::map<BasicBlock*, bool> isImplicit;
 
         bool operator==(const CFGRelation& other) const;
 
-        /*
-         * Returns the condition for taking this basic-block transition (e.g. the condition-code and boolean variable
-         * for a conditional branch)
-         *
-         * Returns (COND_ALWAYS, UNDEFINED_VALUE) for unconditional transitions
-         */
-        std::pair<ConditionCode, Value> getBranchConditions() const;
+        std::string getLabel() const;
     };
 
-    using CFGNode = Node<BasicBlock*, CFGRelation, true>;
+    using CFGNode = Node<BasicBlock*, CFGRelation, Directionality::BIDIRECTIONAL>;
     bool operator<(const CFGNode& one, const CFGNode& other);
 
     using CFGEdge = CFGNode::EdgeType;
@@ -135,7 +130,8 @@ namespace vc4c
         LoopInclusionTreeNodeBase* findRoot();
     };
 
-    using LoopInclusionTreeNode = Node<ControlFlowLoop*, LoopInclusion, true, LoopInclusionTreeNodeBase>;
+    using LoopInclusionTreeNode =
+        Node<ControlFlowLoop*, LoopInclusion, Directionality::DIRECTED, LoopInclusionTreeNodeBase>;
     using LoopInclusionTreeEdge = LoopInclusionTreeNode::EdgeType;
 
     /*

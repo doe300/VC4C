@@ -32,7 +32,8 @@ unsigned Dependency::rateDelay(unsigned currentDistance) const
 
 bool Dependency::canBeInserted(const intermediate::IntermediateInstruction* instr) const
 {
-    if((has_flag(type, DependencyType::SIGNAL_READ_AFTER_WRITE) || has_flag(type, DependencyType::SIGNAL_WRITE_AFTER_WRITE)) &&
+    if((has_flag(type, DependencyType::SIGNAL_READ_AFTER_WRITE) ||
+           has_flag(type, DependencyType::SIGNAL_WRITE_AFTER_WRITE)) &&
         instr->signal.hasSideEffects())
     {
         // valid as long as the other instruction does not trigger a signal
@@ -43,7 +44,8 @@ bool Dependency::canBeInserted(const intermediate::IntermediateInstruction* inst
         // valid as long as the other instruction does not consume the signal
         return false;
     }
-    if((has_flag(type, DependencyType::FLAGS_READ_AFTER_WRITE) || has_flag(type, DependencyType::FLAGS_WRITE_AFTER_WRITE)) &&
+    if((has_flag(type, DependencyType::FLAGS_READ_AFTER_WRITE) ||
+           has_flag(type, DependencyType::FLAGS_WRITE_AFTER_WRITE)) &&
         instr->setFlags == SetFlag::SET_FLAGS)
     {
         // valid as long as the other instruction does not set flags
@@ -215,7 +217,8 @@ static void createR4Dependencies(DependencyGraph& graph, DependencyNode& node,
             // TODO what is the recommended delay [9, 20]
             delayCycles = 9;
         }
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::SIGNAL_READ_AFTER_WRITE, delayCycles, fixedDelay);
+        addDependency(
+            node.getOrCreateEdge(&otherNode).data, DependencyType::SIGNAL_READ_AFTER_WRITE, delayCycles, fixedDelay);
     }
     if(node.key->signal.triggersReadOfR4() ||
         (node.key->hasValueType(ValueType::REGISTER) && node.key->getOutput()->reg.triggersReadOfR4()))
@@ -597,8 +600,9 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
     auto nameFunc = [](const intermediate::IntermediateInstruction* i) -> std::string { return i->to_string(); };
     auto weakEdgeFunc = [](const Dependency& dep) -> bool { return dep.isMandatoryDelay; };
     auto edgeLabelFunc = [](const Dependency& dep) -> std::string { return std::to_string(dep.numDelayCycles); };
-    DebugGraph<const intermediate::IntermediateInstruction*, Dependency, true>::dumpGraph<DependencyGraph>(
-        *graph.get(), "/tmp/vc4c-deps.dot", nameFunc, weakEdgeFunc, edgeLabelFunc);
+    DebugGraph<const intermediate::IntermediateInstruction*, Dependency,
+        Directionality::DIRECTED>::dumpGraph<DependencyGraph>(*graph.get(), "/tmp/vc4c-deps.dot", nameFunc,
+        weakEdgeFunc, edgeLabelFunc);
 #endif
 
     PROFILE_END(createDependencyGraph);

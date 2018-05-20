@@ -173,7 +173,7 @@ std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createDependencyGraph(
             return !has_flag(pair.second, DataDependencyType::FLOW);
         });
     };
-    DebugGraph<BasicBlock*, DataDependency, DataDependencyEdge::isDirected>::dumpGraph<DataDependencyGraph>(
+    DebugGraph<BasicBlock*, DataDependency, DataDependencyEdge::Directed>::dumpGraph<DataDependencyGraph>(
         *graph.get(), "/tmp/vc4c-data-dependencies.dot", nameFunc, weakEdgeFunc, toEdgeLabel);
 #endif
 

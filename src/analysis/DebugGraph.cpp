@@ -29,27 +29,29 @@ static std::string cleanName(const std::string& name)
     return std::string("\"") + copy + "\"";
 }
 
-static std::string createEdge(bool isDirected)
+static std::string createEdge(Direction direction)
 {
-    return isDirected ? " -> " : " -- ";
+    return direction == Direction::NONE ? " -- " : " -> ";
 }
 
-static std::string toEdgeAttributes(bool weakEdge, const std::string& label)
+static std::string toEdgeAttributes(bool weakEdge, const std::string& label, Direction direction)
 {
     std::vector<std::string> attrs;
     if(weakEdge)
         attrs.emplace_back(STYLE_EDGE_WEAK);
     if(!label.empty())
         attrs.emplace_back(std::string("label=\"") + label + "\"");
+    if(direction == Direction::BOTH)
+        attrs.emplace_back("dir=\"both\"");
     if(attrs.empty())
         return "";
     return std::string("[") + to_string<std::string>(attrs) + "]";
 }
 
 void vc4c::printEdge(
-    std::ofstream& file, uintptr_t id1, uintptr_t id2, bool weakEdge, bool isDirected, const std::string& edgeLabel)
+    std::ofstream& file, uintptr_t id1, uintptr_t id2, bool weakEdge, Direction direction, const std::string& edgeLabel)
 {
-    file << id1 << createEdge(isDirected) << id2 << toEdgeAttributes(weakEdge, edgeLabel) << ";" << std::endl;
+    file << id1 << createEdge(direction) << id2 << toEdgeAttributes(weakEdge, edgeLabel, direction) << ";" << std::endl;
 }
 
 void vc4c::printNode(std::ofstream& file, uintptr_t ID, const std::string& name)

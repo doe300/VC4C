@@ -44,7 +44,7 @@ namespace vc4c
             const DataDependencyType type = DataDependencyType::FLOW) const;
     };
 
-    using DataDependencyNode = Node<BasicBlock*, DataDependency, true, DataDependencyNodeBase>;
+    using DataDependencyNode = Node<BasicBlock*, DataDependency, Directionality::DIRECTED, DataDependencyNodeBase>;
     using DataDependencyEdge = typename DataDependencyNode::EdgeType;
 
     /*

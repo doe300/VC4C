@@ -19,10 +19,20 @@ namespace vc4c
     {
     };
 
-    template <typename Key, typename Relation, bool Directed, typename Base = empty_base>
+    /*
+     * The possible directionality of the graph, whether edges can be directed or not
+     */
+    enum class Directionality
+    {
+        UNDIRECTED,
+        DIRECTED,
+        BIDIRECTIONAL
+    };
+
+    template <typename Key, typename Relation, Directionality Direction, typename Base = empty_base>
     class Node;
 
-    template <typename NodeType, typename Relation, bool Directed>
+    template <typename NodeType, typename Relation, Directionality Direction>
     class Edge;
 
     template <typename Key, typename NodeType>
@@ -31,13 +41,13 @@ namespace vc4c
     /*
      * A node in a graph, general base-class maintaining the list of edges to neighboring nodes
      */
-    template <typename Key, typename Relation, bool Directed, typename Base>
+    template <typename Key, typename Relation, Directionality Direction, typename Base>
     class Node : public Base
     {
     public:
         using RelationType = Relation;
-        using NodeType = Node<Key, Relation, Directed, Base>;
-        using EdgeType = Edge<NodeType, Relation, Directed>;
+        using NodeType = Node<Key, Relation, Direction, Base>;
+        using EdgeType = Edge<NodeType, Relation, Direction>;
         using GraphType = Graph<Key, NodeType>;
 
         template <typename... Args>
@@ -85,7 +95,7 @@ namespace vc4c
         {
             graph.eraseEdge(edge);
         }
-        
+
         void removeAsNeighbor(Node* neighbor)
         {
             auto it = edges.find(neighbor);
@@ -109,8 +119,8 @@ namespace vc4c
          */
         Node* getSingleNeighbor(const std::function<bool(Relation&)>& relation)
         {
-            static_assert(
-                !Directed, "For directed graphs, incoming and outgoing edges need to be handled differently!");
+            static_assert(Direction == Directionality::UNDIRECTED,
+                "For directed graphs, incoming and outgoing edges need to be handled differently!");
             Node* singleNeighbor = nullptr;
             for(auto& pair : edges)
             {
@@ -127,11 +137,11 @@ namespace vc4c
 
         Node* getSinglePredecessor()
         {
-            static_assert(Directed, "Only directed graphs have predecessors!");
+            static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have predecessors!");
             Node* singlePredecessor = nullptr;
             for(auto& edge : edges)
             {
-                if(&edge.second->getOutput() == this)
+                if(edge.second->isOutput(*this))
                 {
                     if(singlePredecessor != nullptr)
                         // multiple predecessors
@@ -144,11 +154,11 @@ namespace vc4c
 
         const Node* getSinglePredecessor() const
         {
-            static_assert(Directed, "Only directed graphs have predecessors!");
+            static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have predecessors!");
             const Node* singlePredecessor = nullptr;
             for(auto& edge : edges)
             {
-                if(&edge.second->getOutput() == this)
+                if(edge.second->isOutput(*this))
                 {
                     if(singlePredecessor != nullptr)
                         // multiple predecessors
@@ -161,11 +171,11 @@ namespace vc4c
 
         Node* getSingleSuccessor()
         {
-            static_assert(Directed, "Only directed graphs have successors!");
+            static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have successors!");
             Node* singleSuccessor = nullptr;
             for(auto& edge : edges)
             {
-                if(&edge.second->getInput() == this)
+                if(edge.second->isInput(*this))
                 {
                     if(singleSuccessor != nullptr)
                         // multiple successors
@@ -178,11 +188,11 @@ namespace vc4c
 
         const Node* getSingleSuccessor() const
         {
-            static_assert(Directed, "Only directed graphs have successors!");
+            static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have successors!");
             const Node* singleSuccessor = nullptr;
             for(auto& edge : edges)
             {
-                if(&edge.second->getInput() == this)
+                if(edge.second->isInput(*this))
                 {
                     if(singleSuccessor != nullptr)
                         // multiple successors
@@ -208,8 +218,8 @@ namespace vc4c
          */
         void forAllEdges(const std::function<bool(NodeType&, EdgeType&)>& predicate)
         {
-            static_assert(
-                !Directed, "For directed graphs, incoming and outgoing edges need to be handled differently!");
+            static_assert(Direction == Directionality::UNDIRECTED,
+                "For directed graphs, incoming and outgoing edges need to be handled differently!");
             for(auto& pair : edges)
             {
                 if(!predicate(*pair.first, *pair.second))
@@ -219,8 +229,8 @@ namespace vc4c
 
         void forAllEdges(const std::function<bool(const NodeType&, const EdgeType&)>& predicate) const
         {
-            static_assert(
-                !Directed, "For directed graphs, incoming and outgoing edges need to be handled differently!");
+            static_assert(Direction == Directionality::UNDIRECTED,
+                "For directed graphs, incoming and outgoing edges need to be handled differently!");
             for(const auto& pair : edges)
             {
                 if(!predicate(*pair.first, *pair.second))
@@ -233,10 +243,10 @@ namespace vc4c
          */
         void forAllIncomingEdges(const std::function<bool(NodeType&, EdgeType&)>& predicate)
         {
-            static_assert(Directed, "Only directed graphs have incoming edges!");
+            static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have incoming edges!");
             for(auto& edge : edges)
             {
-                if(&edge.second->getOutput() == this)
+                if(edge.second->isOutput(*this))
                 {
                     if(!predicate(*edge.first, *edge.second))
                         return;
@@ -246,10 +256,10 @@ namespace vc4c
 
         void forAllIncomingEdges(const std::function<bool(const NodeType&, const EdgeType&)>& predicate) const
         {
-            static_assert(Directed, "Only directed graphs have incoming edges!");
+            static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have incoming edges!");
             for(const auto& edge : edges)
             {
-                if(&edge.second->getOutput() == this)
+                if(edge.second->isOutput(*this))
                 {
                     if(!predicate(*edge.first, *edge.second))
                         return;
@@ -262,10 +272,10 @@ namespace vc4c
          */
         void forAllOutgoingEdges(const std::function<bool(NodeType&, EdgeType&)>& predicate)
         {
-            static_assert(Directed, "Only directed graphs have outgoing edges!");
+            static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have outgoing edges!");
             for(auto& edge : edges)
             {
-                if(&edge.second->getInput() == this)
+                if(edge.second->isInput(*this))
                 {
                     if(!predicate(*edge.first, *edge.second))
                         return;
@@ -275,10 +285,10 @@ namespace vc4c
 
         void forAllOutgoingEdges(const std::function<bool(const NodeType&, const EdgeType&)>& predicate) const
         {
-            static_assert(Directed, "Only directed graphs have outgoing edges!");
+            static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have outgoing edges!");
             for(const auto& edge : edges)
             {
-                if(&edge.second->getInput() == this)
+                if(edge.second->isInput(*this))
                 {
                     if(!predicate(*edge.first, *edge.second))
                         return;
@@ -301,6 +311,17 @@ namespace vc4c
     };
 
     /*
+     * The actual direction an edge is pointing.
+     */
+    enum class Direction
+    {
+        NONE = 0,
+        FIRST_TO_SECOND = 1,
+        SECOND_TO_FIRST = 2,
+        BOTH = 3
+    };
+
+    /*
      * An edge represents the connection between two nodes.
      *
      * Edges store additional content specifying the type of relation/connection between the nodes connected by the edge
@@ -308,13 +329,14 @@ namespace vc4c
      * If the edge is directional, then the edge points from the first node to the second node
      *
      */
-    template <typename Node, typename Relation, bool Directed>
+    template <typename Node, typename Relation, Directionality Direction>
     class Edge
     {
     public:
         using NodeType = Node;
 
-        Edge(NodeType& first, NodeType& second, Relation&& data) : data(std::move(data)), first(first), second(second)
+        Edge(NodeType& first, NodeType& second, Relation&& data) :
+            data(std::move(data)), first(first), second(second), firstInput(true), secondInput(false)
         {
         }
 
@@ -331,43 +353,44 @@ namespace vc4c
 
         Node& getInput()
         {
-            static_assert(Directed, "Input is only available for directed edges!");
+            static_assert(Direction == Directionality::DIRECTED, "Input is only available for directed edges!");
             return first;
         }
 
         const Node& getInput() const
         {
-            static_assert(Directed, "Input is only available for directed edges!");
+            static_assert(Direction == Directionality::DIRECTED, "Input is only available for directed edges!");
             return first;
         }
 
         NodeType& getOutput()
         {
-            static_assert(Directed, "Output is only available for directed edges!");
+            static_assert(Direction == Directionality::DIRECTED, "Output is only available for directed edges!");
             return second;
         }
 
         const NodeType& getOutput() const
         {
-            static_assert(Directed, "Output is only available for directed edges!");
+            static_assert(Direction == Directionality::DIRECTED, "Output is only available for directed edges!");
             return second;
         }
 
-        bool isInput(Node& node) const
+        bool isInput(const Node& node) const
         {
-            static_assert(Directed, "Input is only available for directed edges!");
-            return &node == &first;
+            static_assert(Direction != Directionality::UNDIRECTED, "Input is only available for directed edges!");
+            return (&node == &first && firstInput) || (&node == &second && secondInput);
         }
 
-        bool isOutput(Node& node) const
+        bool isOutput(const Node& node) const
         {
-            static_assert(Directed, "Output is only available for directed edges!");
-            return &node == &second;
+            static_assert(Direction != Directionality::UNDIRECTED, "Output is only available for directed edges!");
+            return (&node == &second && firstInput) || (&node == &first && secondInput);
         }
 
         FastSet<NodeType*> getNodes()
         {
-            static_assert(Directed, "For directed edges, the input and output have different meaning!");
+            static_assert(Direction == Directionality::UNDIRECTED,
+                "For directed edges, the input and output have different meaning!");
             return FastSet<NodeType*>{&first, &second};
         }
 
@@ -378,22 +401,49 @@ namespace vc4c
             return first;
         }
 
-        static constexpr bool isDirected = Directed;
+        Edge& addInput(const NodeType& node)
+        {
+            static_assert(Direction == Directionality::BIDIRECTIONAL, "Can only add input for bidirectional graphs!");
+            if(&node == &first)
+                firstInput = true;
+            else if(&node == &second)
+                secondInput = true;
+            else
+                throw CompilationError(CompilationStep::GENERAL, "Node is not a part of this edge!");
+            return *this;
+        }
+
+        enum Direction getDirection() const
+        {
+            if(Direction == Directionality::UNDIRECTED)
+                return Direction::NONE;
+            if(Direction == Directionality::DIRECTED)
+                return Direction::FIRST_TO_SECOND;
+            if(firstInput && secondInput)
+                return Direction::BOTH;
+            if(firstInput)
+                return Direction::FIRST_TO_SECOND;
+            return Direction::SECOND_TO_FIRST;
+        }
+
+        static constexpr Directionality Directed = Direction;
 
         Relation data;
 
     protected:
         NodeType& first;
         NodeType& second;
+        bool firstInput;
+        bool secondInput;
 
         friend NodeType;
         friend struct hash<Edge<Node, Relation, Directed>>;
     };
 
-    template <typename Node, typename Relation, bool Directed>
-    struct hash<Edge<Node, Relation, Directed>>
+    template <typename Node, typename Relation, Directionality Direction>
+    struct hash<Edge<Node, Relation, Direction>>
     {
-        using EdgeType = Edge<Node, Relation, Directed>;
+        using EdgeType = Edge<Node, Relation, Direction>;
         inline std::size_t operator()(const EdgeType& edge) const
         {
             std::hash<Node*> h;

@@ -88,7 +88,7 @@ std::unique_ptr<LifetimeGraph> LifetimeGraph::createLifetimeGraph(Method& method
 
 #ifdef DEBUG_MODE
     auto nameFunc = [](const Local* loc) -> std::string { return loc->name; };
-    DebugGraph<const Local*, LifetimeRelation, false>::dumpGraph<LifetimeGraph>(
+    DebugGraph<const Local*, LifetimeRelation, Directionality::UNDIRECTED>::dumpGraph<LifetimeGraph>(
         *graph.get(), "/tmp/vc4c-lifetimes.dot", nameFunc);
 #endif
 

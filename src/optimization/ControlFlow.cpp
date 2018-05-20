@@ -260,11 +260,12 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
         };
 
         loop.front()->forAllOutgoingEdges([&](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
-            if(!edge.data.isImplicit)
+            if(!edge.data.isImplicit.at(loop.front()->key))
             {
                 if(std::find(loop.begin(), loop.end(), &neighbor) != loop.end())
                 {
-                    loopControl.repetitionJump = edge.data.predecessor;
+                    // FIXME is this correct?
+                    loopControl.repetitionJump = edge.data.predecessors.at(loop.front()->key);
                     logging::debug() << "Found loop repetition branch: "
                                      << loopControl.repetitionJump.value()->to_string() << logging::endl;
                 }
@@ -1259,7 +1260,7 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
                 logging::warn() << "Block was not empty: " << logging::endl;
                 sourceBlock->dumpInstructions();
             }
-            sourceBlock->forPredecessors([sourceBlock](InstructionWalker it) {
+            sourceBlock->forPredecessors([](InstructionWalker it) {
                 if(it.get())
                     logging::warn() << "Block has explicit predecessor: " << it->to_string() << logging::endl;
             });

@@ -105,7 +105,8 @@ namespace vc4c
 
     struct DependencyNodeBase
     {
-        using DependencyNode = Node<const intermediate::IntermediateInstruction*, Dependency, true, DependencyNodeBase>;
+        using DependencyNode = Node<const intermediate::IntermediateInstruction*, Dependency, Directionality::DIRECTED,
+            DependencyNodeBase>;
 
         /*
          * Returns whether this instruction depends on any other instruction within the same basic block to be executed
@@ -141,7 +142,8 @@ namespace vc4c
         const DependencyNode* getSignalConsumer() const;
     };
 
-    using DependencyNode = Node<const intermediate::IntermediateInstruction*, Dependency, true, DependencyNodeBase>;
+    using DependencyNode =
+        Node<const intermediate::IntermediateInstruction*, Dependency, Directionality::DIRECTED, DependencyNodeBase>;
     using DependencyEdge = typename DependencyNode::EdgeType;
 
     /*

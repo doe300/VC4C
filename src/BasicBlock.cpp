@@ -170,8 +170,8 @@ bool BasicBlock::fallsThroughToNextBlock() const
         // if we have a valid CFG, use it. This saves us from iterating all instructions
         const auto& node = method.cfg->assertNode(const_cast<BasicBlock*>(this));
         bool fallsThrough = false;
-        node.forAllOutgoingEdges([&fallsThrough](const CFGNode&, const CFGEdge& edge) -> bool {
-            if(edge.data.isImplicit)
+        node.forAllOutgoingEdges([&node, &fallsThrough](const CFGNode& n, const CFGEdge& edge) -> bool {
+            if(edge.data.isImplicit.at(node.key))
                 fallsThrough = true;
             return !fallsThrough;
         });

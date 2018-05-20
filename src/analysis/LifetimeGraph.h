@@ -18,7 +18,7 @@ namespace vc4c
         {
         };
 
-        using LifetimeNode = Node<const Local*, LifetimeRelation, false>;
+        using LifetimeNode = Node<const Local*, LifetimeRelation, Directionality::UNDIRECTED>;
 
         /*
          * Graph of relations of objects residing in memory and their life-time

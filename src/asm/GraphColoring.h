@@ -89,7 +89,7 @@ namespace vc4c
             std::bitset<4> availableAcc = 0xFUL;
         };
 
-        using ColoredNode = Node<const Local*, LocalRelation, false, ColoredNodeBase>;
+        using ColoredNode = Node<const Local*, LocalRelation, Directionality::UNDIRECTED, ColoredNodeBase>;
         using ColoredEdge = typename ColoredNode::EdgeType;
 
         using ColoredGraph = Graph<const Local*, ColoredNode>;

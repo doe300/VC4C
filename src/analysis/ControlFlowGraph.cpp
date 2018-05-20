@@ -11,29 +11,34 @@
 
 #include "log.h"
 
+#include <numeric>
+
 using namespace vc4c;
 
 bool CFGRelation::operator==(const CFGRelation& other) const
 {
-    return predecessor == other.predecessor && isImplicit == other.isImplicit;
+    return predecessors == other.predecessors && isImplicit == other.isImplicit;
 }
 
-std::pair<ConditionCode, Value> CFGRelation::getBranchConditions() const
+std::string CFGRelation::getLabel() const
 {
-    if(predecessor.has<intermediate::Branch>())
+    if(isImplicit.size() == 2 &&
+        std::all_of(isImplicit.begin(), isImplicit.end(),
+            [](const std::pair<BasicBlock*, bool>& pair) -> bool { return pair.second; }))
     {
-        const intermediate::Branch* br = predecessor.get<const intermediate::Branch>();
-
-        if(br->conditional != COND_ALWAYS)
-        {
-            ConditionCode cond = br->conditional;
-            const Value& on = br->getCondition();
-
-            // if the transition is implicit, it happens if the previous branch is not taken
-            return std::make_pair(isImplicit ? cond.invert() : cond, on);
-        }
+        return "";
     }
-    return std::make_pair(COND_ALWAYS, UNDEFINED_VALUE);
+    if(predecessors.empty())
+        return "";
+    const auto converter = [](const std::pair<BasicBlock*, InstructionWalker>& pair) -> std::string {
+        if(pair.second.has<intermediate::Branch>())
+            return "br " + pair.second.get<const intermediate::Branch>()->conditional.to_string();
+        return "";
+    };
+    return std::accumulate(predecessors.begin(), predecessors.end(), std::string{},
+        [&](const std::string& s, const std::pair<BasicBlock*, InstructionWalker>& pair) -> std::string {
+            return (s.empty() ? s : (s + ", ")) + converter(pair);
+        });
 }
 
 bool vc4c::operator<(const CFGNode& one, const CFGNode& other)
@@ -228,13 +233,13 @@ void ControlFlowGraph::dumpGraph(const std::string& path) const
 {
     // XXX to be exact, would need bidirectional arrow [dir="both"] for compact loops
     auto nameFunc = [](const BasicBlock* bb) -> std::string { return bb->getLabel()->getLabel()->name; };
-    auto edgeLabelFunc = [](const CFGRelation& r) -> std::string {
-        return r.isImplicit || !r.predecessor.has<intermediate::Branch>() ?
-            "" :
-            std::string("br ") + r.predecessor->conditional.to_string();
-    };
-    DebugGraph<BasicBlock*, CFGRelation, CFGEdge::isDirected>::dumpGraph<ControlFlowGraph>(
-        *this, path, nameFunc, [](const CFGRelation& rel) -> bool { return false; }, edgeLabelFunc);
+    auto edgeLabelFunc = [](const CFGRelation& r) -> std::string { return r.getLabel(); };
+    DebugGraph<BasicBlock*, CFGRelation, CFGEdge::Directed>::dumpGraph<ControlFlowGraph>(*this, path, nameFunc,
+        [](const CFGRelation& rel) -> bool {
+            return std::all_of(rel.isImplicit.begin(), rel.isImplicit.end(),
+                [](const std::pair<BasicBlock*, bool>& pair) -> bool { return pair.second; });
+        },
+        edgeLabelFunc);
 }
 
 std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
@@ -247,12 +252,14 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
         bb.forPredecessors([&bb, &graph](InstructionWalker it) -> void {
             // this transition is implicit if the previous instruction is not a branch at all or a conditional branch to
             // somewhere else (then the transition happens if the condition is not met)
-            bool isImplicit = !it.has<intermediate::Branch>() ||
-                (it.get<intermediate::Branch>()->conditional != COND_ALWAYS &&
-                    it.get<intermediate::Branch>()->getTarget() != bb.getLabel()->getLabel());
+            bool isImplicit = !it.has<intermediate::Branch>();
+            //|| (it.get<intermediate::Branch>()->conditional != COND_ALWAYS &&
+            //        it.get<intermediate::Branch>()->getTarget() != bb.getLabel()->getLabel());
             // connection from it.getBasicBlock() to bb
-            graph->getOrCreateNode(it.getBasicBlock())
-                .getOrCreateEdge(&graph->getOrCreateNode(&bb), CFGRelation{it, isImplicit});
+            auto& node = graph->getOrCreateNode(it.getBasicBlock());
+            auto& edge = node.getOrCreateEdge(&graph->getOrCreateNode(&bb), CFGRelation{}).addInput(node);
+            edge.data.isImplicit.emplace(node.key, isImplicit);
+            edge.data.predecessors.emplace(node.key, it);
         });
     }
 
