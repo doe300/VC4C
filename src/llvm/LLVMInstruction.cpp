@@ -694,7 +694,8 @@ bool Branch::mapInstruction(Method& method) const
 {
     if(cond == BOOL_TRUE)
     {
-        CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating unconditional branch to " << thenLabel << logging::endl);
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating unconditional branch to " << thenLabel->to_string() << logging::endl);
         method.appendToEnd(new intermediate::Branch(thenLabel, COND_ALWAYS, BOOL_TRUE));
     }
     else

@@ -40,8 +40,6 @@ InstructionWalker OptimizationStep::operator()(
 }
 
 static const std::vector<OptimizationStep> SINGLE_STEPS = {
-    // eliminates useless branches (e.g. jumps to the next instruction)
-    OptimizationStep("EliminateUselessBranch", eliminateUselessBranch),
     // combine consecutive instructions writing the same local with a value and zero depending on some flags
     OptimizationStep("CombineSelectionWithZero", combineSelectionWithZero),
     // combine successive setting of the same flags
@@ -223,8 +221,9 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
      * The first optimizations run modify the control-flow of the method.
      * After this block of optimizations is run, the CFG of the method is stable (does not change anymore)
      */
-    OptimizationPass("CombineDuplicateBranches", "combine-branches", combineDuplicateBranches,
-        "combines successive branches to the same label", OptimizationType::INITIAL),
+    OptimizationPass("SimplifyBranches", "simplify-branches", simplifyBranches,
+        "combines successive branches to the same label and replaces unnecessary branches with fall-through",
+        OptimizationType::INITIAL),
     OptimizationPass("MergeBasicBlocks", "merge-blocks", mergeAdjacentBasicBlocks,
         "merges adjacent basic blocks if there are no other conflicting transitions", OptimizationType::INITIAL),
     /*
@@ -285,7 +284,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("combine-loads");
         // fall-through on purpose
     case OptimizationLevel::BASIC:
-        passes.emplace("combine-branches");
+        passes.emplace("simplify-branches");
         passes.emplace("eliminate-dead-store");
         passes.emplace("single-steps");
         passes.emplace("reorder");

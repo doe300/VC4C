@@ -54,20 +54,6 @@ namespace vc4c
          */
         InstructionWalker foldConstants(
             const Module& module, Method& method, InstructionWalker it, const Configuration& config);
-        /*
-         * Eliminates branches to the label directly following the branch
-         *
-         * Example:
-         *   ...
-         *   br %103
-         *   label: %103
-         *
-         * The branch is replaced with an automatic fall-through:
-         *   ...
-         *   label: %103
-         */
-        InstructionWalker eliminateUselessBranch(
-            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
 
         /*
          * Eliminates return-instructions by replacing them with a jump to the end-of-kernel label

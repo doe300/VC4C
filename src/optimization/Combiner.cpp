@@ -20,7 +20,7 @@ using namespace vc4c::intermediate;
 
 static const std::string combineLoadLiteralsThreshold = "combine-load-threshold";
 
-bool optimizations::combineDuplicateBranches(const Module& module, Method& method, const Configuration& config)
+bool optimizations::simplifyBranches(const Module& module, Method& method, const Configuration& config)
 {
     bool hasChanged = false;
     for(auto it = method.walkAllInstructions(); !it.isEndOfBlock(); it.nextInMethod())
@@ -28,8 +28,40 @@ bool optimizations::combineDuplicateBranches(const Module& module, Method& metho
         Branch* thisBranch = it.get<Branch>();
         if(thisBranch != nullptr)
         {
+            // eliminates branches to the next instruction to save up to 4 instructions (1 branch + 3 NOP)
+            // eliminate branches to the next instruction, such branches are e.g. introduced by method-inlining
+            auto nextIt = it.copy().nextInMethod();
+            // FIXME removing conditional branches to next instruction hangs QPU (e.g. because of successive PHI-writes
+            // not being skipped?)
+            //		while(!nextIt.isEndOfMethod())
+            if(!nextIt.isEndOfMethod())
+            {
+                intermediate::BranchLabel* label = nextIt.get<intermediate::BranchLabel>();
+                // intermediate::Branch* br = nextIt.get<intermediate::Branch>();
+                if(label != nullptr && label->getLabel() == thisBranch->getTarget())
+                {
+                    logging::debug() << "Removing branch to next instruction: " << thisBranch->to_string()
+                                     << logging::endl;
+                    it = it.erase();
+                    // don't skip next instruction
+                    it.previousInMethod();
+                    // skip second part below
+                    continue;
+                }
+                /*			else if(br != nullptr)
+                            {
+                                //if the following branch has the same condition with inverted flags (either-or-branch),
+                   it can be skipped if(!(br->conditional.isInversionOf(branch->conditional) && br->getCondition() ==
+                   branch->getCondition()))
+                                {
+                                    //otherwise, abort this optimization
+                                    break;
+                                }
+                            }
+                            nextIt.nextInMethod();
+                */
+            }
             // skip all following labels
-            InstructionWalker nextIt = it.copy().nextInMethod();
             while(!nextIt.isEndOfMethod() && nextIt.has<BranchLabel>())
                 nextIt.nextInMethod();
             if(nextIt.isEndOfMethod())

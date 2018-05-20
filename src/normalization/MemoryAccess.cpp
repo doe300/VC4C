@@ -240,8 +240,9 @@ static InstructionWalker findGroupOfVPMAccess(
                 // setup)
                 break;
             if(!genericSetup->has<LoadImmediate>() ||
-                genericSetup->get<LoadImmediate>()->getImmediate() !=
-                    group.genericSetups.at(0).get<LoadImmediate>()->getImmediate())
+                (!group.genericSetups.empty() &&
+                    genericSetup->get<LoadImmediate>()->getImmediate() !=
+                        group.genericSetups.at(0).get<LoadImmediate>()->getImmediate()))
                 // generic setups do not match
                 break;
             if(!dmaSetup->has<LoadImmediate>() ||

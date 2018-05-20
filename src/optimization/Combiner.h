@@ -18,7 +18,9 @@ namespace vc4c
     namespace optimizations
     {
         /*
-         * Combine successive branches to the same label into a single branch
+         * Combine successive branches to the same label into a single branch.
+         * Also eliminates branches to the label directly following the branch and replaces them with automatic
+         * fall-through.
          *
          * Example:
          *   label: %91
@@ -31,6 +33,9 @@ namespace vc4c
          *   br %103
          *   label: %95
          *   br %103
+         *   [...]
+         *   br %105
+         *   label %105
          *
          * is converted into:
          *   label: %91
@@ -39,8 +44,10 @@ namespace vc4c
          *   label: %94
          *   label: %95
          *   br %103
+         *   [...]
+         *   label %105
          */
-        bool combineDuplicateBranches(const Module& module, Method& method, const Configuration& config);
+        bool simplifyBranches(const Module& module, Method& method, const Configuration& config);
         /*
          * Combine ALU-instructions which (can) use different ALUs into a single instruction accessing both ALUs.
          * There are two types of instruction-pairs which can be combined:
