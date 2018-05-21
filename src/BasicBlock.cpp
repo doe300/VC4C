@@ -183,6 +183,8 @@ bool BasicBlock::fallsThroughToNextBlock() const
     do
     {
         it.previousInBlock();
+        if(it.get() && it->signal == SIGNAL_END_PROGRAM)
+            return false;
     } while(it.has<intermediate::Nop>());
     const intermediate::Branch* lastBranch = it.get<const intermediate::Branch>();
     const intermediate::Branch* secondLastBranch = nullptr;

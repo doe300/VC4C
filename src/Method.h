@@ -259,6 +259,13 @@ namespace vc4c
          */
         const Module& module;
 
+        /*
+         * Moves the block from origin to destination (is inserted before destination)
+         * NOTE: This function MUST NOT change the control flow of the method
+         * and therefore can only be called if the blocks predecessor does not fall-through.
+         */
+        void moveBlock(BasicBlockList::iterator origin, BasicBlockList::iterator dest);
+
     private:
         /*
          * The list of basic blocks

@@ -221,6 +221,8 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
      * The first optimizations run modify the control-flow of the method.
      * After this block of optimizations is run, the CFG of the method is stable (does not change anymore)
      */
+    OptimizationPass("ReorderBasicBlocks", "reorder-blocks", reorderBasicBlocks,
+        "reorders basic blocks to eliminate as many explicit branches as possible", OptimizationType::INITIAL),
     OptimizationPass("SimplifyBranches", "simplify-branches", simplifyBranches,
         "combines successive branches to the same label and replaces unnecessary branches with fall-through",
         OptimizationType::INITIAL),
@@ -284,6 +286,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("combine-loads");
         // fall-through on purpose
     case OptimizationLevel::BASIC:
+        passes.emplace("reorder-blocks");
         passes.emplace("simplify-branches");
         passes.emplace("eliminate-dead-store");
         passes.emplace("single-steps");
