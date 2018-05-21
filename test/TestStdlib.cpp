@@ -42,6 +42,7 @@ TestStdlib::TestStdlib()
 	{
 		TEST_ADD_TWO_ARGUMENTS(TestStdlib::testMathFunction, i, std::get<0>(vc4c::test::mathTests.at(i)).kernelName);
 	}
+	TEST_ADD(TestEmulator::printProfilingInfo);
 }
 
 void TestStdlib::testAsyncCopy()

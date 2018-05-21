@@ -36,6 +36,8 @@ public:
 	void testSHA256();
 	void testIntegerEmulations(std::size_t index, std::string name);
 	void testFloatEmulations(std::size_t index, std::string name);
+	
+	void printProfilingInfo();
 
 protected:
 	void testIntegerEmulation(vc4c::tools::EmulationData& data, std::map<uint32_t, std::vector<uint32_t>>& expectedResults);

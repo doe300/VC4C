@@ -9,6 +9,7 @@
 #include "tools/Emulator.h"
 #include "asm/Instruction.h"
 #include "asm/KernelInfo.h"
+#include "Profiler.h"
 
 #include "log.h"
 
@@ -264,6 +265,10 @@ int main(int argc, char** argv)
 			std::cout << std::endl;
 		}
 	}
+	
+#ifdef DEBUG_MODE
+	vc4c::profiler::dumpProfileResults(true);
+#endif
 
 	return 0;
 }

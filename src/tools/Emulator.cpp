@@ -6,6 +6,7 @@
 
 #include "Emulator.h"
 
+#include "../Profiler.h"
 #include "../asm/ALUInstruction.h"
 #include "../asm/BranchInstruction.h"
 #include "../asm/Instruction.h"
@@ -85,6 +86,7 @@ MemoryAddress Memory::getMaximumAddress() const
 
 void Memory::setUniforms(const std::vector<Word>& uniforms, MemoryAddress address)
 {
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 10, "setUniforms", 1);
     std::size_t offset = address / sizeof(Word);
     std::copy_n(uniforms.begin(), uniforms.size(), data.begin() + offset);
 }
@@ -100,10 +102,14 @@ bool Mutex::lock(uint8_t qpu)
         // we need to check for duplicate read in same instruction (e.g. or -, mutex_acq, mutex_acq)
         throw CompilationError(CompilationStep::GENERAL, "Double locked mutex!");
     if(locked && lockOwner != qpu)
+    {
         // locked by another QPU
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 30, "waitOnMutex", 1);
         return false;
+    }
     locked = true;
     lockOwner = qpu;
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 20, "lockMutex", 1);
     return true;
 }
 
@@ -399,6 +405,7 @@ Value UniformCache::readUniform()
     // do not increment UNIFORM pointer for multiple reads in same instruction
     uniformAddress = memory.incrementAddress(uniformAddress, TYPE_INT32);
     logging::debug() << "Reading UNIFORM value: " << val.to_string(false, true) << logging::endl;
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 40, "UNIFORM read", 1);
     return val;
 }
 
@@ -415,6 +422,7 @@ void UniformCache::setUniformAddress(const Value& val)
     else
         throw CompilationError(CompilationStep::GENERAL, "Invalid value to set as uniform address", val.to_string());
     lastAddressSetCycle = qpu.getCurrentCycle();
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 50, "write UNIFORM address", 1);
 }
 
 std::pair<Value, bool> TMUs::readTMU()
@@ -445,6 +453,7 @@ std::pair<Value, bool> TMUs::readTMU()
                              << ", additional stalls may be introduced" << logging::endl;
         queue->pop_front();
     }
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 60, "TMU read", !blocks);
     return std::make_pair(val, !blocks);
 }
 
@@ -545,6 +554,7 @@ Value SFU::readSFU()
         throw CompilationError(CompilationStep::GENERAL, "Cannot read empty SFU result!");
     const Value val = sfuResult.value();
     sfuResult = NO_VALUE;
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 70, "SFU read", 1);
     return val;
 }
 
@@ -689,6 +699,7 @@ Value VPM::readValue()
     logging::debug() << "Read value from VPM: " << result.to_string(false, true) << logging::endl;
     logging::debug() << "New read setup is now: " << setup.to_string() << logging::endl;
 
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 80, "VPM read", 1);
     return result;
 }
 
@@ -756,6 +767,7 @@ void VPM::writeValue(const Value& val)
 
     logging::debug() << "Wrote value into VPM: " << val.to_string(true, true) << logging::endl;
     logging::debug() << "New write setup is now: " << setup.to_string() << logging::endl;
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 90, "VPM written", 1);
 }
 
 void VPM::setWriteSetup(const Value& val)
@@ -836,6 +848,7 @@ void VPM::setDMAWriteAddress(const Value& val)
     }
 
     lastDMAWriteTrigger = currentCycle;
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 100, "write DMA write address", 1);
 }
 
 void VPM::setDMAReadAddress(const Value& val)
@@ -884,17 +897,20 @@ void VPM::setDMAReadAddress(const Value& val)
     }
 
     lastDMAReadTrigger = currentCycle;
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 110, "write DMA read address", 1);
 }
 
 bool VPM::waitDMAWrite() const
 {
     // XXX how many cycles?
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 120, "wait DMA write", lastDMAWriteTrigger + 12 < currentCycle);
     return lastDMAWriteTrigger + 12 < currentCycle;
 }
 
 bool VPM::waitDMARead() const
 {
     // XXX how many cycles?
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 130, "wait DMA read", lastDMAReadTrigger + 12 < currentCycle);
     return lastDMAReadTrigger + 12 < currentCycle;
 }
 
@@ -920,6 +936,7 @@ void VPM::dumpContents() const
 
 std::pair<Value, bool> Semaphores::increment(uint8_t index)
 {
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 140, "semaphore increment", counter.at(index) < 15);
     if(counter.at(index) == 15)
         return std::make_pair(Value(SmallImmediate(15), TYPE_INT8), false);
     ++counter.at(index);
@@ -928,6 +945,7 @@ std::pair<Value, bool> Semaphores::increment(uint8_t index)
 
 std::pair<Value, bool> Semaphores::decrement(uint8_t index)
 {
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 150, "semaphore decrement", counter.at(0) > 0);
     if(counter.at(index) == 0)
         return std::make_pair(INT_ZERO, false);
     --counter.at(index);
@@ -1036,6 +1054,8 @@ bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iter
         else
             // simply skip to next PC
             ++nextPC;
+        PROFILE_COUNTER(
+            vc4c::profiler::COUNTER_EMULATOR + 160, "branches taken", isConditionMet(br->getBranchCondition()) ? 1 : 0);
     }
     else if(dynamic_cast<const qpu_asm::LoadInstruction*>(inst) != nullptr)
     {
@@ -1153,6 +1173,7 @@ static std::pair<Value, bool> applyVectorRotation(
     std::rotate(result.container.elements.begin(), result.container.elements.begin() + distance,
         result.container.elements.end());
 
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 170, "vector rotations", 1);
     return std::make_pair(result, true);
 }
 
@@ -1248,6 +1269,7 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
 
         writeConditional(toRegister(aluInst->getAddOut(), aluInst->getWriteSwap() == WriteSwap::SWAP), result,
             aluInst->getAddCondition(), aluInst, nullptr);
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 180, "add instructions", 1);
     }
     if(aluInst->getMulCondition() != COND_NEVER && aluInst->getMultiplication() != OP_NOP.opMul)
     {
@@ -1290,6 +1312,7 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
 
         writeConditional(toRegister(aluInst->getMulOut(), aluInst->getWriteSwap() == WriteSwap::DONT_SWAP), result,
             aluInst->getMulCondition(), nullptr, aluInst);
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 190, "mul instructions", 1);
     }
 
     return true;
@@ -1478,6 +1501,7 @@ void QPU::setFlags(const Value& output, ConditionCode cond)
     logging::debug() << "Setting flags: {" + to_string<std::string>(parts) << "}" << logging::endl;
 
     // TODO not completely correct, see http://maazl.de/project/vc4asm/doc/instructions.html
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 200, "flags set", 1);
 }
 
 std::vector<MemoryAddress> tools::buildUniforms(Memory& memory, MemoryAddress baseAddress,
@@ -1605,6 +1629,7 @@ bool tools::emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_it
         for(SFU& sfu : sfus)
             sfu.incrementCycle();
         vpm.incrementCycle();
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 250, "emulation cycles", 1);
 
         ++cycle;
 

@@ -94,7 +94,7 @@ void profiler::dumpProfileResults(bool writeAsWarning)
         counts.emplace(count.second);
     }
 
-    (writeAsWarning ? logging::warn() : logging::info()) << logging::endl;
+    (writeAsWarning ? logging::warn() : logging::info()) << std::setfill(L' ') << logging::endl;
     (writeAsWarning ? logging::warn() : logging::info())
         << "Profiling results for " << entries.size() << " functions:" << logging::endl;
     for(const Entry& entry : entries)
@@ -127,6 +127,9 @@ void profiler::dumpProfileResults(bool writeAsWarning)
             << std::noshowpos << "%)" << std::setw(64) << counter.fileName << "#" << counter.lineNumber
             << logging::endl;
     }
+    
+    times.clear();
+    counters.clear();
 }
 
 void profiler::increaseCounter(const std::size_t index, const std::string& name, const std::size_t value,

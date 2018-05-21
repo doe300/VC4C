@@ -82,6 +82,7 @@ namespace vc4c
         static constexpr std::size_t COUNTER_NORMALIZATION = 20000;
         static constexpr std::size_t COUNTER_OPTIMIZATION = 30000;
         static constexpr std::size_t COUNTER_BACKEND = 40000;
+        static constexpr std::size_t COUNTER_EMULATOR = 100000;
     } // namespace profiler
 } // namespace vc4c
 

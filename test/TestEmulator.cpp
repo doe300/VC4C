@@ -11,6 +11,7 @@
 #include "asm/Instruction.h"
 #include "asm/KernelInfo.h"
 #include "helper.h"
+#include "../src/Profiler.h"
 
 #include "test_cases.h"
 
@@ -40,6 +41,7 @@ TestEmulator::TestEmulator()
 	{
 		TEST_ADD_TWO_ARGUMENTS(TestEmulator::testFloatEmulations, i, vc4c::test::floatTests.at(i).first.kernelName);
 	}
+	TEST_ADD(TestEmulator::printProfilingInfo);
 }
 
 TestEmulator::TestEmulator(bool dummy)
@@ -436,4 +438,11 @@ void TestEmulator::testFloatingEmulation(vc4c::tools::EmulationData& data, std::
 			}
 		}
 	}
+}
+
+void TestEmulator::printProfilingInfo()
+{
+#if DEBUG_MODE
+	vc4c::profiler::dumpProfileResults(true);
+#endif
 }
