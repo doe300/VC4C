@@ -91,6 +91,46 @@ namespace vc4c
             return *addEdge(neighbor, std::forward<Relation&&>(defaultRelation));
         }
 
+        EdgeType* findEdge(const Relation& relation)
+        {
+            for(auto& pair : edges)
+            {
+                if(pair.second->data == relation)
+                    return pair.second;
+            }
+            return nullptr;
+        }
+
+        const EdgeType* findEdge(const Relation& relation) const
+        {
+            for(const auto& pair : edges)
+            {
+                if(pair.second->data == relation)
+                    return pair.second;
+            }
+            return nullptr;
+        }
+
+        EdgeType* findEdge(const std::function<bool(const Relation&)>& predicate)
+        {
+            for(auto& pair : edges)
+            {
+                if(predicate(pair.second->data))
+                    return pair.second;
+            }
+            return nullptr;
+        }
+
+        const EdgeType* findEdge(const std::function<bool(const Relation&)>& predicate) const
+        {
+            for(const auto& pair : edges)
+            {
+                if(predicate(pair.second->data))
+                    return pair.second;
+            }
+            return nullptr;
+        }
+
         void removeEdge(EdgeType& edge)
         {
             graph.eraseEdge(edge);
@@ -113,11 +153,34 @@ namespace vc4c
             return getSingleNeighbor([&relation](const Relation& rel) -> bool { return rel == relation; });
         }
 
+        inline Node* getSingleNeighbor(const Relation relation)
+        {
+            return getSingleNeighbor([&relation](const Relation& rel) -> bool { return rel == relation; });
+        }
+
         /*
          * Returns the single neighbor where the relation matches the given predicate.
          * Returns nullptr otherwise, if there is no or more than one neighbor with this relation.
          */
-        Node* getSingleNeighbor(const std::function<bool(Relation&)>& relation)
+        const Node* getSingleNeighbor(const std::function<bool(const Relation&)>& relation) const
+        {
+            static_assert(Direction == Directionality::UNDIRECTED,
+                "For directed graphs, incoming and outgoing edges need to be handled differently!");
+            Node* singleNeighbor = nullptr;
+            for(const auto& pair : edges)
+            {
+                if(relation(pair.second->data))
+                {
+                    if(singleNeighbor != nullptr)
+                        // multiple neighbors
+                        return nullptr;
+                    singleNeighbor = pair.first;
+                }
+            }
+            return singleNeighbor;
+        }
+
+        Node* getSingleNeighbor(const std::function<bool(const Relation&)>& relation)
         {
             static_assert(Direction == Directionality::UNDIRECTED,
                 "For directed graphs, incoming and outgoing edges need to be handled differently!");
@@ -437,6 +500,7 @@ namespace vc4c
         bool secondInput;
 
         friend NodeType;
+        friend typename NodeType::GraphType;
         friend struct hash<Edge<Node, Relation, Directed>>;
     };
 
@@ -539,8 +603,8 @@ namespace vc4c
                 throw CompilationError(CompilationStep::GENERAL, "Failed to find graph-node for key");
             for(auto& edge : it->second.edges)
             {
-                edge->getOtherNode(it->second).edges.erase(key);
-                edges.erase(*edge);
+                edge.second->getOtherNode(it->second).edges.erase(&it->second);
+                edges.erase(*edge.second);
             }
             nodes.erase(it);
         }
@@ -550,7 +614,7 @@ namespace vc4c
          */
         NodeType* findSink()
         {
-            static_assert(EdgeType::isDirected, "Can only find sinks in directed graphs!");
+            static_assert(EdgeType::Directed != Directionality::UNDIRECTED, "Can only find sinks in directed graphs!");
             for(auto& pair : nodes)
             {
                 bool hasOutgoingEdges = false;
@@ -590,8 +654,8 @@ namespace vc4c
 
         void eraseEdge(EdgeType& edge)
         {
-            edge.first.edges.erase(edge.second);
-            edge.second.edges.erase(edge.first);
+            edge.first.edges.erase(&edge.second);
+            edge.second.edges.erase(&edge.first);
             edges.erase(edge);
         }
 
