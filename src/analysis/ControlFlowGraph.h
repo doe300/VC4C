@@ -153,8 +153,10 @@ namespace vc4c
     struct LoopInclusionTreeNodeBase
     {
         LoopInclusionTreeNodeBase(const KeyType key);
+
         LoopInclusionTreeNodeBase* findRoot(Optional<int> depth);
-        unsigned int longestPathLengthToRoot();
+        unsigned int longestPathLengthToRoot() const;
+        bool hasCFGNodeInChildren(const CFGNode* node) const;
 
         std::string dumpLabel() const;
     };

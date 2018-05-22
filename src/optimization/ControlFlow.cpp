@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <queue>
 
 using namespace vc4c;
 using namespace vc4c::optimizations;
@@ -1380,8 +1381,9 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
         logging::debug() << "  " << loop.second.dumpLabel() << logging::endl;
         for(auto& node : loop.second.getNeighbors())
         {
-            if (node.second.includes)
-                logging::debug() << "    " << reinterpret_cast<LoopInclusionTreeNode*>(node.first)->dumpLabel() << logging::endl;
+            if(node.second.includes)
+                logging::debug() << "    " << reinterpret_cast<LoopInclusionTreeNode*>(node.first)->dumpLabel()
+                                 << logging::endl;
         }
     }
     // Remove extra relations.
@@ -1393,29 +1395,34 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
         logging::debug() << "current node: " << currentNode.dumpLabel() << logging::endl;
 
         // Remove parent nodes except node which has longest path to the root node.
-        LoopInclusionTreeNode *longestNode = nullptr;
+        LoopInclusionTreeNode* longestNode = nullptr;
         int longestLength = -1;
         for(auto& parent : neighbors)
         {
-            if (!parent.second.includes) {
+            if(!parent.second.includes)
+            {
                 auto parentNode = reinterpret_cast<LoopInclusionTreeNode*>(parent.first);
                 int length = parentNode->longestPathLengthToRoot();
-                logging::debug() << "  parent node: " << parentNode->dumpLabel() << " length: " << length << logging::endl;
-                if (length > longestLength) {
+                logging::debug() << "  parent node: " << parentNode->dumpLabel() << " length: " << length
+                                 << logging::endl;
+                if(length > longestLength)
+                {
                     longestNode = parentNode;
                 }
             }
         }
 
-        if (longestNode)
+        if(longestNode)
         {
             logging::debug() << "  longest node: " << longestNode->dumpLabel() << logging::endl;
 
             for(auto& other : neighbors)
             {
-                if (!other.second.includes) {
+                if(!other.second.includes)
+                {
                     auto otherNode = reinterpret_cast<LoopInclusionTreeNode*>(other.first);
-                    if (longestNode != otherNode) {
+                    if(longestNode != otherNode)
+                    {
                         currentNode.removeNeighbor(otherNode);
                         otherNode->removeNeighbor(&currentNode);
                     }
@@ -1430,73 +1437,109 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
         logging::debug() << "  " << loop.second.dumpLabel() << logging::endl;
         for(auto& node : loop.second.getNeighbors())
         {
-            if (node.second.includes)
-                logging::debug() << "    " << reinterpret_cast<LoopInclusionTreeNode*>(node.first)->dumpLabel() << logging::endl;
+            if(node.second.includes)
+                logging::debug() << "    " << reinterpret_cast<LoopInclusionTreeNode*>(node.first)->dumpLabel()
+                                 << logging::endl;
         }
     }
 
     // 3. move constant load operations from root of trees
-    FastSet<ControlFlowLoop*> processed;
-    for(auto& loop : loops)
+
+    FastSet<LoopInclusionTreeNode*> processed;
+
+    for(auto& node : inclusionTree)
     {
         auto& node = inclusionTree.getOrCreateNode(&loop);
-        auto root = reinterpret_cast<LoopInclusionTreeNode*>(node.findRoot(moveDepth == -1 ? Optional<int>() : Optional<int>(moveDepth)));
+        auto root = reinterpret_cast<LoopInclusionTreeNode*>(node.findRoot({}));
         logging::debug() << "root block : " << (*root->key->rbegin())->key->getLabel()->to_string() << logging::endl;
 
-        if(processed.find(root->key) != processed.end())
+        if(processed.find(root) != processed.end())
             continue;
-        processed.insert(root->key);
+        processed.insert(root);
 
-        // to prevent multiple block creation
-        BasicBlock* insertedBlock = nullptr;
+        // process tree nodes with BFS
+        std::queue<LoopInclusionTreeNode*> que;
+        que.push(root);
 
-        for(auto& cfgNode : *root->key)
+        while(!que.empty())
         {
-            auto block = cfgNode->key;
-            for(auto it = block->walk(); it != block->walkEnd(); it = it.nextInBlock())
+            auto currentNode = que.front();
+            que.pop();
+
+            // move constants
+            logging::debug() << "current loop : " << currentNode->dumpLabel() << logging::endl;
+            auto targetNode = currentNode->findRoot(moveDepth == -1 ? Optional<int>() : Optional<int>(moveDepth));
+            logging::debug() << "target loop : " << targetNode->dumpLabel() << logging::endl;
+
+            // to prevent multiple block creation
+            BasicBlock* insertedBlock = nullptr;
+
+            for(auto& cfgNode : *currentNode->key)
             {
-                if(isConstantInstruction(it))
+                if(currentNode->hasCFGNodeInChildren(cfgNode))
                 {
-                    // LoadImmediate must have output value
-                    auto out = it->getOutput().value();
-                    if(out->hasValueType(ValueType::LOCAL))
+                    // treat this node as that it's in child nodes.
+                    logging::debug() << " skip" << logging::endl;
+                    continue;
+                }
+                // logging::debug() << "  current CFG node: " << cfgNode->key->getLabel()->to_string() << logging::endl;
+
+                auto block = cfgNode->key;
+                for(auto it = block->walk(); it != block->walkEnd(); it = it.nextInBlock())
+                {
+                    if(isConstantInstruction(it))
                     {
-                        CPPLOG_LAZY(logging::Level::DEBUG,
-                            log << "Moving constant load out of loop: " << it->to_string() << logging::endl);
-                        if(insertedBlock != nullptr)
+                        CPPLOG_LAZY(logging::debug() << "Moving constant load out of loop: " << it->to_string() << logging::endl);
+
+                        auto out = it->getOutput().value();
+                        if(out->hasValueType(ValueType::LOCAL))
                         {
-                            insertedBlock->walkEnd().emplace(it.release());
-                        }
-                        else
-                        {
-                            if(auto targetBlock = root->key->findPredecessor())
+                            // logging::debug() << "  move instruction: " << it->to_string() << logging::endl;
+
+                            if(insertedBlock != nullptr)
                             {
-                                auto targetInst = targetBlock->key->walkEnd();
-                                targetInst.emplace(it.release());
+                                insertedBlock->walkEnd().emplace(it.release());
                             }
                             else
                             {
-                                CPPLOG_LAZY(logging::Level::DEBUG,
-                                    log << "Create a new basic block before the root of inclusion tree"
-                                        << logging::endl);
-
-                                auto headBlock = method.begin();
-
-                                insertedBlock = &method.createAndInsertNewBlock(
-                                    method.begin(), "%createdByRemoveConstantLoadInLoops");
-                                insertedBlock->walkEnd().emplace(it.release());
-
-                                if(headBlock->getLabel()->getLabel()->name == BasicBlock::DEFAULT_BLOCK)
+                                // FIXME: fetch from the latest CFG including added block labeled '%createdByRemoveConstantLoadInLoops'
+                                if(auto targetBlock = root->key->findPredecessor())
                                 {
-                                    // swap labels because DEFAULT_BLOCK is treated as head block.
-                                    headBlock->getLabel()->getLabel()->name.swap(
-                                        insertedBlock->getLabel()->getLabel()->name);
+                                    auto targetInst = targetBlock->key->walkEnd();
+                                    targetInst.emplace(it.release());
+                                }
+                                else
+                                {
+                                    CPPLOG_LAZY(logging::debug()
+                                        << "Create a new basic block before the target block" << logging::endl);
+
+                                    auto headBlock = method.begin();
+
+                                    // FIXME: fix block insertion location
+                                    insertedBlock = &method.createAndInsertNewBlock(
+                                        method.begin(), "%createdByRemoveConstantLoadInLoops");
+                                    insertedBlock->walkEnd().emplace(it.release());
+
+                                    if(headBlock->getLabel()->getLabel()->name == BasicBlock::DEFAULT_BLOCK)
+                                    {
+                                        // swap labels because DEFAULT_BLOCK is treated as head block.
+                                        headBlock->getLabel()->getLabel()->name.swap(
+                                            insertedBlock->getLabel()->getLabel()->name);
+                                    }
                                 }
                             }
+                            it.erase();
+                            hasChanged = true;
                         }
-                        it.erase();
-                        hasChanged = true;
                     }
+                }
+            }
+
+            for(auto& child : currentNode->getNeighbors())
+            {
+                if(child.second.includes)
+                {
+                    que.push(reinterpret_cast<LoopInclusionTreeNode*>(child.first));
                 }
             }
         }

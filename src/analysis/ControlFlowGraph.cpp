@@ -580,7 +580,7 @@ LoopInclusionTreeNodeBase::LoopInclusionTreeNodeBase(const KeyType key) : Node(k
 
 LoopInclusionTreeNodeBase* LoopInclusionTreeNodeBase::findRoot(Optional<int> depth)
 {
-    if (depth && depth.value() == 0)
+    if(depth && depth.value() == 0)
     {
         return this;
     }
@@ -596,12 +596,12 @@ LoopInclusionTreeNodeBase* LoopInclusionTreeNodeBase::findRoot(Optional<int> dep
     return root;
 }
 
-unsigned int LoopInclusionTreeNode::longestPathLengthToRoot()
+unsigned int LoopInclusionTreeNode::longestPathLengthToRoot() const
 {
-    if (this->getNeighbors().size() == 0) {
+    if(this->getNeighbors().size() == 0)
+    {
         // this is root
         return 0;
-
     }
 
     int longestLength = 0;
@@ -610,12 +610,35 @@ unsigned int LoopInclusionTreeNode::longestPathLengthToRoot()
         if(!parent.second.includes)
         {
             int length = reinterpret_cast<LoopInclusionTreeNode*>(parent.first)->longestPathLengthToRoot() + 1;
-            if (length > longestLength) {
+            if(length > longestLength)
+            {
                 longestLength = length;
             }
         }
     }
     return longestLength;
+}
+
+bool LoopInclusionTreeNode::hasCFGNodeInChildren(const CFGNode* node) const
+{
+    for(auto& child : this->getNeighbors())
+    {
+        if(child.second.includes)
+        {
+            auto nodes = child.first->key;
+            auto found = std::find(nodes->begin(), nodes->end(), node);
+            if(found != nodes->end())
+            {
+                return true;
+            }
+            auto foundInChildren = reinterpret_cast<LoopInclusionTreeNode*>(child.first)->hasCFGNodeInChildren(node);
+            if(foundInChildren)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 std::string LoopInclusionTreeNode::dumpLabel() const
