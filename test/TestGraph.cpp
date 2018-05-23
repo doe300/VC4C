@@ -28,6 +28,7 @@ TestGraph::TestGraph()
     TEST_ADD(TestGraph::testFindNode);
     TEST_ADD(TestGraph::testEraseNode);
     TEST_ADD(TestGraph::testFindSink);
+    TEST_ADD(TestGraph::testFindSource);
 
     TEST_ADD(TestGraph::testAddEdge);
     TEST_ADD(TestGraph::testFindEdge);
@@ -86,6 +87,34 @@ void TestGraph::testFindSink()
 
     graph.eraseNode(m.key);
     TEST_ASSERT_EQUALS(&n, graph.findSink());
+
+    graph.getOrCreateNode(11).addEdge(&graph.getOrCreateNode(12), 9);
+
+    int counter = 0;
+    graph.forAllSinks([&](const DirectedNode&) -> bool {
+        ++counter;
+        return true;
+    });
+    TEST_ASSERT_EQUALS(2, counter);
+}
+
+void TestGraph::testFindSource()
+{
+    DirectedGraph graph;
+    TEST_ASSERT_EQUALS(nullptr, graph.findSource());
+
+    auto& n = graph.getOrCreateNode(42);
+    TEST_ASSERT(graph.findSource() != nullptr);
+    TEST_ASSERT_EQUALS(&n, graph.findSource());
+
+    graph.getOrCreateNode(11).addEdge(&graph.getOrCreateNode(12), 9);
+
+    int counter = 0;
+    graph.forAllSources([&](const DirectedNode&) -> bool {
+        ++counter;
+        return true;
+    });
+    TEST_ASSERT_EQUALS(2, counter);
 }
 
 void TestGraph::testAddEdge()
@@ -120,6 +149,14 @@ void TestGraph::testRemoveNeighbor()
     TEST_ASSERT_EQUALS(e, m.findEdge(7));
 
     n.removeAsNeighbor(&m);
+    TEST_ASSERT_EQUALS(nullptr, n.findEdge(7));
+    TEST_ASSERT_EQUALS(nullptr, m.findEdge(7));
+
+    e = n.addEdge(&m, 7);
+    TEST_ASSERT_EQUALS(e, n.findEdge(7));
+    TEST_ASSERT_EQUALS(e, m.findEdge(7));
+
+    n.removeEdge(*e);
     TEST_ASSERT_EQUALS(nullptr, n.findEdge(7));
     TEST_ASSERT_EQUALS(nullptr, m.findEdge(7));
 }

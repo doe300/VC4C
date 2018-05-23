@@ -18,6 +18,7 @@ public:
     void testFindNode();
     void testEraseNode();
     void testFindSink();
+    void testFindSource();
 
     void testAddEdge();
     void testFindEdge();

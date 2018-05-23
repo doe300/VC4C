@@ -10,6 +10,7 @@
 #include "CompilationError.h"
 #include "performance.h"
 
+#include <algorithm>
 #include <functional>
 #include <type_traits>
 
@@ -610,6 +611,50 @@ namespace vc4c
         }
 
         /*
+         * Finds a source in this graph (a node without incoming edges)
+         */
+        NodeType* findSource()
+        {
+            static_assert(
+                EdgeType::Directed != Directionality::UNDIRECTED, "Can only find sources in directed graphs!");
+            for(auto& pair : nodes)
+            {
+                bool hasIncomingEdges = false;
+                pair.second.forAllIncomingEdges([&](const NodeType&, const EdgeType&) -> bool {
+                    hasIncomingEdges = true;
+                    return false;
+                });
+                if(!hasIncomingEdges)
+                    return &pair.second;
+            }
+            return nullptr;
+        }
+
+        /*
+         * Executes the consumer for all sources (nodes without incoming edges) of this graph until
+         * a) there are no more sources or
+         * b) the consumer returns false
+         */
+        void forAllSources(const std::function<bool(const NodeType& source)>& consumer)
+        {
+            static_assert(
+                EdgeType::Directed != Directionality::UNDIRECTED, "Can only find sources in directed graphs!");
+            for(auto& pair : nodes)
+            {
+                bool hasIncomingEdges = false;
+                pair.second.forAllIncomingEdges([&](const NodeType&, const EdgeType&) -> bool {
+                    hasIncomingEdges = true;
+                    return false;
+                });
+                if(!hasIncomingEdges)
+                {
+                    if(!consumer(pair.second))
+                        return;
+                }
+            }
+        }
+
+        /*
          * Finds a sink in this graph (a node without outgoing edges)
          */
         NodeType* findSink()
@@ -628,9 +673,43 @@ namespace vc4c
             return nullptr;
         }
 
+        /*
+         * Executes the consumer for all sinks (nodes without outgoing edges) of this graph until
+         * a) there are no more sinks or
+         * b) the consumer returns false
+         */
+        void forAllSinks(const std::function<bool(const NodeType& source)>& consumer)
+        {
+            static_assert(EdgeType::Directed != Directionality::UNDIRECTED, "Can only find sinks in directed graphs!");
+            for(auto& pair : nodes)
+            {
+                bool hasOutgoingEdges = false;
+                pair.second.forAllOutgoingEdges([&](const NodeType&, const EdgeType&) -> bool {
+                    hasOutgoingEdges = true;
+                    return false;
+                });
+                if(!hasOutgoingEdges)
+                {
+                    if(!consumer(pair.second))
+                        return;
+                }
+            }
+        }
+
         const FastMap<Key, NodeType>& getNodes() const
         {
             return nodes;
+        }
+
+        void forAllNodes(const std::function<void(NodeType&)>& consumer)
+        {
+            std::for_each(nodes.begin(), nodes.end(), [&](std::pair<Key, NodeType>& pair) { consumer(pair.second); });
+        }
+
+        void forAllNodes(const std::function<void(const NodeType&)>& consumer) const
+        {
+            std::for_each(
+                nodes.begin(), nodes.end(), [&](const std::pair<Key, NodeType>& pair) { consumer(pair.second); });
         }
 
         void clear()
