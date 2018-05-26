@@ -149,8 +149,8 @@ namespace vc4c
          *
          * Returns the SourceType of the linked module
          */
-        static SourceType linkSourceCode(
-            const std::unordered_map<std::istream*, Optional<std::string>>& inputs, std::ostream& output);
+        static SourceType linkSourceCode(const std::unordered_map<std::istream*, Optional<std::string>>& inputs,
+            std::ostream& output, bool includeStandardLibrary = false);
 
         /*
          * Returns whether there is a linker available that can link the given input modules

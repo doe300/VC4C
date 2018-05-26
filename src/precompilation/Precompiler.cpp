@@ -186,8 +186,8 @@ static Optional<TemporaryFile> compileToLLVM(const std::pair<std::istream*, Opti
             std::to_string(static_cast<unsigned>(type)));
 }
 
-SourceType Precompiler::linkSourceCode(
-    const std::unordered_map<std::istream*, Optional<std::string>>& inputs, std::ostream& output)
+SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, Optional<std::string>>& inputs,
+    std::ostream& output, bool includeStandardLibrary)
 {
     // XXX the inputs is actually a variant of file and stream
     PROFILE_START(linkSourceCode);
@@ -215,6 +215,15 @@ SourceType Precompiler::linkSourceCode(
                     return SPIRVSource(pair.second.value());
                 return SPIRVSource(*pair.first);
             });
+
+        if(includeStandardLibrary)
+        {
+            tempFiles.emplace_back();
+            SPIRVResult stdLib(tempFiles.back()->fileName);
+            compileLLVMToSPIRV(LLVMIRSource(VC4CL_STDLIB_MODULE ""), "", stdLib);
+            sources.emplace_back(stdLib);
+        }
+
         SPIRVResult result(&output);
         linkSPIRVModules(std::move(sources), "", result);
         PROFILE_END(linkSourceCode);
@@ -237,6 +246,11 @@ SourceType Precompiler::linkSourceCode(
                     return LLVMIRSource(pair.second.value());
                 return LLVMIRSource(*pair.first);
             });
+        if(includeStandardLibrary)
+        {
+            sources.emplace_back(VC4CL_STDLIB_MODULE "");
+        }
+
         LLVMIRResult result(&output);
         linkLLVMModules(std::move(sources), "", result);
         PROFILE_END(linkSourceCode);

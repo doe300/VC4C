@@ -159,7 +159,6 @@ static int runWriteOnlySubprocess(const std::string& command, std::istream* inpu
     if(input != nullptr)
     {
         std::array<char, 512> buffer;
-        std::size_t numRead = 0;
         while(input->read(buffer.data(), buffer.size()))
         {
             fwrite(buffer.data(), sizeof(char), input->gcount(), fd);
@@ -199,6 +198,14 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
     }
 
     /*
+     * For the general case:
+     *
+     * NOTE: not setting a stream to put the stdout of the child-process in doesn't currently work (hangs the
+     * child-process)  so we always set an output-stream, even if we write to file. But since the stream will have no
+     * content (is not written to), it has no impact
+     */
+
+    /*
      * See:
      * https://jineshkj.wordpress.com/2006/12/22/how-to-capture-stdin-stdout-and-stderr-of-child-program/
      * https://stackoverflow.com/questions/6171552/popen-simultaneous-read-and-write
@@ -210,7 +217,7 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
 
     if(stdin != nullptr)
         initPipe(pipes[STD_IN]);
-    if(stdout != nullptr)
+    if(true)
         initPipe(pipes[STD_OUT]);
     if(stderr != nullptr)
         initPipe(pipes[STD_ERR]);
@@ -218,7 +225,7 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
     pid_t pid = fork();
     if(pid == 0) // child
     {
-        runChild(command, pipes, stdin != nullptr, stdout != nullptr, stderr != nullptr);
+        runChild(command, pipes, stdin != nullptr, true, stderr != nullptr);
         /*
          * Nothing below this line should be executed by child process. If so, it means that the exec function wasn't
          * successful, so lets exit:
@@ -249,7 +256,7 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
     }
     PROFILE_END(WriteToChildProcess);
 
-    bool stdOutFinished = stdout != nullptr;
+    bool stdOutFinished = true;
     bool stdErrFinished = stderr != nullptr;
 
     int highestFD = std::max(pipes[STD_OUT][READ], pipes[STD_ERR][READ]);
@@ -264,7 +271,7 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
     while(!(stdOutFinished && stdErrFinished) || !(childFinished = childFinished || isChildFinished(pid, &exitStatus)))
     {
         FD_ZERO(&readDescriptors);
-        if(stdout != nullptr)
+        if(true)
             FD_SET(pipes[STD_OUT][READ], &readDescriptors);
         if(stderr != nullptr)
             FD_SET(pipes[STD_ERR][READ], &readDescriptors);
@@ -298,10 +305,11 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
         else if(selectStatus != 0)
         {
             // something happened
-            if(stdout != nullptr && FD_ISSET(pipes[STD_OUT][READ], &readDescriptors))
+            if(FD_ISSET(pipes[STD_OUT][READ], &readDescriptors))
             {
                 numBytes = read(pipes[STD_OUT][READ], buffer.data(), buffer.size());
-                stdout->write(buffer.data(), numBytes);
+                if(stdout != nullptr)
+                    stdout->write(buffer.data(), numBytes);
                 if(numBytes == 0)
                     // EOF
                     stdOutFinished = true;
@@ -318,7 +326,7 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
     }
     PROFILE_END(ReadFromChildProcess);
 
-    if(stdout != nullptr)
+    if(true)
     {
         closePipe(pipes[STD_OUT][READ]);
         closePipe(pipes[STD_OUT][WRITE]);

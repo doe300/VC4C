@@ -241,7 +241,14 @@ void precompilation::linkLLVMModules(
             return a + " -";
         });
 
-    const std::string command = std::string(LLVM_LINK_PATH " -only-needed -internalize ") + (out + " ") + inputs;
+    std::string command = std::string(LLVM_LINK_PATH " -only-needed -internalize ") + (out + " ") + inputs;
+
+    // llvm-link does not like multiple white-spaces in the list of files (assumes file with empty name)
+    std::size_t n = 0;
+    while((n = command.find("  ", n)) != std::string::npos)
+    {
+        command.replace(n, 2, " ");
+    }
 
     logging::info() << "Linking LLVM-IR modules with: " << command << logging::endl;
 
