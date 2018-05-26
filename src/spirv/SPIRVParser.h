@@ -17,6 +17,7 @@
 
 #include "spirv-tools/libspirv.hpp"
 #include "spirv/unified1/spirv.h"
+#include "spirv/unified1/spirv.hpp11"
 
 #include "../performance.h"
 #include "SPIRVOperation.h"
@@ -40,7 +41,7 @@ namespace vc4c
             intermediate::InstructionDecorations toInstructionDecorations(uint32_t id);
 
         private:
-            using Decoration = std::pair<SpvDecoration, uint32_t>;
+            using Decoration = std::pair<spv::Decoration, uint32_t>;
 
             /*
              * Sampled images are not a run-time type,

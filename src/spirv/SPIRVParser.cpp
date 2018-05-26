@@ -239,16 +239,16 @@ spv_result_t SPIRVParser::parseHeader(
     return SPV_SUCCESS;
 }
 
-intermediate::InstructionDecorations toInstructionDecoration(const SpvFPFastMathModeMask mode)
+intermediate::InstructionDecorations toInstructionDecoration(const spv::FPFastMathModeMask mode)
 {
     intermediate::InstructionDecorations decorations = intermediate::InstructionDecorations::NONE;
-    if(mode & SpvFPFastMathModeAllowRecipMask)
+    if(has_flag(mode, spv::FPFastMathModeMask::AllowRecip))
         decorations = add_flag(decorations, intermediate::InstructionDecorations::ALLOW_RECIP);
-    if(mode & SpvFPFastMathModeFastMask)
+    if(has_flag(mode, spv::FPFastMathModeMask::Fast))
         decorations = add_flag(decorations, intermediate::InstructionDecorations::FAST_MATH);
-    if(mode & SpvFPFastMathModeNotInfMask)
+    if(has_flag(mode, spv::FPFastMathModeMask::NotInf))
         decorations = add_flag(decorations, intermediate::InstructionDecorations::NO_INF);
-    if(mode & SpvFPFastMathModeNotNaNMask)
+    if(has_flag(mode, spv::FPFastMathModeMask::NotNaN))
         decorations = add_flag(decorations, intermediate::InstructionDecorations::NO_NAN);
     return decorations;
 }
@@ -260,10 +260,10 @@ intermediate::InstructionDecorations SPIRVParser::toInstructionDecorations(const
     {
         return intermediate::InstructionDecorations::NONE;
     }
-    const auto decoration = getDecoration(decorationMappings.at(id), SpvDecorationFPFastMathMode);
+    const auto decoration = getDecoration(decorationMappings.at(id), spv::Decoration::FPFastMathMode);
     if(decoration)
-        deco = add_flag(deco, toInstructionDecoration(static_cast<SpvFPFastMathModeMask>(decoration.value())));
-    if(getDecoration(decorationMappings.at(id), SpvDecorationSaturatedConversion))
+        deco = add_flag(deco, toInstructionDecoration(static_cast<spv::FPFastMathModeMask>(decoration.value())));
+    if(getDecoration(decorationMappings.at(id), spv::Decoration::SaturatedConversion))
         deco = add_flag(deco, intermediate::InstructionDecorations::SATURATED_CONVERSION);
     return deco;
 }
@@ -287,30 +287,31 @@ static std::string readLiteralString(const spv_parsed_instruction_t* instruction
 spv_result_t SPIRVParser::parseDecoration(const spv_parsed_instruction_t* parsed_instruction, uint32_t value)
 {
     const uint32_t target = getWord(parsed_instruction, 1);
-    switch(static_cast<SpvDecoration>(getWord(parsed_instruction, 2)))
+    switch(static_cast<spv::Decoration>(getWord(parsed_instruction, 2)))
     {
-    case SpvDecorationCPacked:             // struct is "packed"
-    case SpvDecorationSaturatedConversion: // out-of range results are clamped, do not overflow
-    case SpvDecorationFuncParamAttr:
-    case SpvDecorationFPFastMathMode: // allows fast-math modes
-    case SpvDecorationSpecId:         // constant as specialization-value of OpSpecXXX
-    case SpvDecorationAlignment:      // known alignment of pointer
-    case SpvDecorationMaxByteOffset:  // known maximum offset (in bytes) from base address, this pointer is accessed at
-    case SpvDecorationConstant:       // global data is constant, is never written
-    case SpvDecorationRestrict:       // memory behind pointer is restricted, e.g. not aliased to another pointer
-    case SpvDecorationVolatile:       // data behind pointer is volatile
-        decorationMappings[target].push_back({static_cast<SpvDecoration>(getWord(parsed_instruction, 2)), value});
+    case spv::Decoration::CPacked:             // struct is "packed"
+    case spv::Decoration::SaturatedConversion: // out-of range results are clamped, do not overflow
+    case spv::Decoration::FuncParamAttr:
+    case spv::Decoration::FPFastMathMode: // allows fast-math modes
+    case spv::Decoration::SpecId:         // constant as specialization-value of OpSpecXXX
+    case spv::Decoration::Alignment:      // known alignment of pointer
+    case spv::Decoration::MaxByteOffset:  // known maximum offset (in bytes) from base address, this pointer is accessed
+                                          // at
+    case spv::Decoration::Constant:       // global data is constant, is never written
+    case spv::Decoration::Restrict:       // memory behind pointer is restricted, e.g. not aliased to another pointer
+    case spv::Decoration::Volatile:       // data behind pointer is volatile
+        decorationMappings[target].push_back({static_cast<spv::Decoration>(getWord(parsed_instruction, 2)), value});
         return SPV_SUCCESS;
-    case SpvDecorationAlignmentId: // known alignment of pointer, but as constant, not literal value
-        decorationMappings[target].push_back({SpvDecorationAlignment, value});
+    case spv::Decoration::AlignmentId: // known alignment of pointer, but as constant, not literal value
+        decorationMappings[target].push_back({spv::Decoration::Alignment, value});
         return SPV_SUCCESS;
-    case SpvDecorationMaxByteOffsetId: // known maximum offset (in bytes) from base address, this pointer is accessed
-                                       // at, but as constant, not literal value
-        decorationMappings[target].push_back({SpvDecorationMaxByteOffset, value});
+    case spv::Decoration::MaxByteOffsetId: // known maximum offset (in bytes) from base address, this pointer is
+                                           // accessed at, but as constant, not literal value
+        decorationMappings[target].push_back({spv::Decoration::MaxByteOffset, value});
         return SPV_SUCCESS;
-    case SpvDecorationBuiltIn: // entity (object, struct-member) represents given built-in
-    case SpvDecorationAliased: // pointer needs to be accessed with aliased access in mind. XXX how/is it handled?
-    case SpvDecorationFPRoundingMode: // explicit rounding mode
+    case spv::Decoration::BuiltIn: // entity (object, struct-member) represents given built-in
+    case spv::Decoration::Aliased: // pointer needs to be accessed with aliased access in mind. XXX how/is it handled?
+    case spv::Decoration::FPRoundingMode: // explicit rounding mode
         // handle unsupported decorations which can't be simply ignored
         logging::error() << "Met unsupported instruction-decoration " << getWord(parsed_instruction, 2)
                          << logging::endl;
@@ -412,12 +413,12 @@ static Value parseConstantComposite(const spv_parsed_instruction_t* instruction,
 }
 
 static Optional<Value> specializeConstant(const uint32_t resultID, const DataType& type,
-    const FastMap<uint32_t, std::vector<std::pair<SpvDecoration, uint32_t>>>& decorations)
+    const FastMap<uint32_t, std::vector<std::pair<spv::Decoration, uint32_t>>>& decorations)
 {
     auto it = decorations.find(resultID);
     if(it != decorations.end())
     {
-        Optional<uint32_t> res(getDecoration(it->second, SpvDecorationSpecId));
+        Optional<uint32_t> res(getDecoration(it->second, spv::Decoration::SpecId));
         if(res)
             return Value(Literal(res.value()), type);
     }
@@ -474,30 +475,30 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
      */
 
     // see: https://www.khronos.org/registry/spir-v/specs/1.0/SPIRV.html#_a_id_instructions_a_instructions
-    switch(static_cast<SpvOp>(parsed_instruction->opcode))
+    switch(static_cast<spv::Op>(parsed_instruction->opcode))
     {
-    case SpvOpNop:
+    case spv::Op::OpNop:
         return SPV_SUCCESS;
-    case SpvOpUndef:
+    case spv::Op::OpUndef:
         constantMappings.emplace(parsed_instruction->result_id, UNDEFINED_VALUE);
         constantMappings.at(parsed_instruction->result_id).type = typeMappings.at(parsed_instruction->type_id);
         return SPV_SUCCESS;
-    case SpvOpSourceContinued:
+    case spv::Op::OpSourceContinued:
         return SPV_SUCCESS;
-    case SpvOpSource:
+    case spv::Op::OpSource:
         return SPV_SUCCESS;
-    case SpvOpSourceExtension:
+    case spv::Op::OpSourceExtension:
         break;
-    case SpvOpName: // e.g. method-name, parameters
+    case spv::Op::OpName: // e.g. method-name, parameters
         names[getWord(parsed_instruction, 1)] = readLiteralString(parsed_instruction, &parsed_instruction->operands[1]);
         return SPV_SUCCESS;
-    case SpvOpMemberName: // name of struct-member
+    case spv::Op::OpMemberName: // name of struct-member
         return SPV_SUCCESS;
-    case SpvOpString:
+    case spv::Op::OpString:
         break;
-    case SpvOpLine: // source level debug info
+    case spv::Op::OpLine: // source level debug info
         return SPV_SUCCESS;
-    case SpvOpExtension:
+    case spv::Op::OpExtension:
     {
         const std::string extension = readLiteralString(parsed_instruction, &parsed_instruction->operands[0]);
         logging::debug() << "Using extension: " << extension << logging::endl;
@@ -505,7 +506,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         // a list of all extension: https://www.khronos.org/registry/spir-v/
         throw CompilationError(CompilationStep::PARSER, "Use of unsupported SPIR-V extension", extension);
     }
-    case SpvOpExtInstImport: // adds a new set of instructions
+    case spv::Op::OpExtInstImport: // adds a new set of instructions
     {
         const std::string instructionSet(readLiteralString(parsed_instruction, &parsed_instruction->operands[1]));
         logging::debug() << "Importing extended instruction set: " << instructionSet << logging::endl;
@@ -513,7 +514,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             throw CompilationError(CompilationStep::PARSER, "Unsupported extended instruction set", instructionSet);
         return SPV_SUCCESS;
     }
-    case SpvOpExtInst: // executes instruction from extended instruction set
+    case spv::Op::OpExtInst: // executes instruction from extended instruction set
     {
         if(parsed_instruction->ext_inst_type != SPV_EXT_INST_TYPE_OPENCL_STD)
             throw CompilationError(CompilationStep::PARSER, "Invalid extended instruction set",
@@ -530,7 +531,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         throw CompilationError(CompilationStep::PARSER, "OpenCL standard-function seems to be not implemented",
             getOpenCLMethodName(getWord(parsed_instruction, 4)));
     }
-    case SpvOpMemoryModel:
+    case spv::Op::OpMemoryModel:
         if(getWord(parsed_instruction, 1) != SpvAddressingModelLogical &&
             getWord(parsed_instruction, 1) != SpvAddressingModelPhysical32)
             throw CompilationError(CompilationStep::PARSER, "Invalid addressing-mode");
@@ -542,7 +543,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
                          << " " << (getWord(parsed_instruction, 2) == SpvMemoryModelSimple ? "simple" : "OpenCL")
                          << " memory model" << logging::endl;
         return SPV_SUCCESS;
-    case SpvOpEntryPoint: // an entry point is an OpenCL kernel
+    case spv::Op::OpEntryPoint: // an entry point is an OpenCL kernel
     {
         if(getWord(parsed_instruction, 1) != SpvExecutionModelKernel)
             throw CompilationError(CompilationStep::PARSER, "Invalid execution model");
@@ -552,7 +553,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         logging::debug() << "Kernel-method found: " << m.method->name << logging::endl;
         return SPV_SUCCESS;
     }
-    case SpvOpExecutionMode:
+    case spv::Op::OpExecutionMode:
         // only Kernel or native execution modes are supported
         if(getWord(parsed_instruction, 2) == SpvExecutionModeLocalSize)
             //"Indicates the work-group size in the x, y, and z dimensions"
@@ -577,7 +578,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         else if(getWord(parsed_instruction, 2) != SpvExecutionModeContractionOff)
             throw CompilationError(CompilationStep::PARSER, "Invalid execution mode");
         return SPV_SUCCESS;
-    case SpvOpExecutionModeId:
+    case spv::Op::OpExecutionModeId:
         // only Kernel or native execution modes are supported
         if(getWord(parsed_instruction, 2) == SpvExecutionModeLocalSizeId)
             //"Indicates the work-group size in the x, y, and z dimensions"
@@ -595,19 +596,19 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         else
             throw CompilationError(CompilationStep::PARSER, "Invalid execution mode");
         return SPV_SUCCESS;
-    case SpvOpCapability:
-        return checkCapability(static_cast<SpvCapability>(getWord(parsed_instruction, 1)));
-    case SpvOpTypeVoid:
+    case spv::Op::OpCapability:
+        return checkCapability(static_cast<spv::Capability>(getWord(parsed_instruction, 1)));
+    case spv::Op::OpTypeVoid:
         typeMappings.emplace(getWord(parsed_instruction, 1), TYPE_VOID);
         return SPV_SUCCESS;
-    case SpvOpTypeBool:
+    case spv::Op::OpTypeBool:
         typeMappings.emplace(getWord(parsed_instruction, 1), TYPE_BOOL);
         return SPV_SUCCESS;
-    case SpvOpTypeInt:
+    case spv::Op::OpTypeInt:
         typeMappings.emplace(getWord(parsed_instruction, 1),
             getIntegerType(getWord(parsed_instruction, 2), getWord(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpTypeFloat:
+    case spv::Op::OpTypeFloat:
         if(getWord(parsed_instruction, 2) == 32)
             typeMappings.emplace(getWord(parsed_instruction, 1), TYPE_FLOAT);
         else if(getWord(parsed_instruction, 2) == 16)
@@ -622,14 +623,14 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         else
             throw CompilationError(CompilationStep::PARSER, "Unsupported floating-point type");
         return SPV_SUCCESS;
-    case SpvOpTypeVector:
+    case spv::Op::OpTypeVector:
     {
         DataType type = typeMappings.at(getWord(parsed_instruction, 2));
         type = type.toVectorType(static_cast<unsigned char>(getWord(parsed_instruction, 3)));
         typeMappings.emplace(getWord(parsed_instruction, 1), type);
         return SPV_SUCCESS;
     }
-    case SpvOpTypeImage:
+    case spv::Op::OpTypeImage:
     {
         ImageType* image = new ImageType();
         image->dimensions = static_cast<uint8_t>(getWord(parsed_instruction, 3) + 1);
@@ -647,10 +648,10 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
                          << (image->isImageBuffer ? " (buffer)" : "") << logging::endl;
         return SPV_SUCCESS;
     }
-    case SpvOpTypeSampler:
+    case spv::Op::OpTypeSampler:
         typeMappings.emplace(getWord(parsed_instruction, 1), TYPE_SAMPLER);
         return SPV_SUCCESS;
-    case SpvOpTypeSampledImage:
+    case spv::Op::OpTypeSampledImage:
     {
         const ImageType* image = typeMappings.at(getWord(parsed_instruction, 2)).getImageType().value();
         ImageType* sampledImage = new ImageType();
@@ -665,7 +666,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
                          << (image->isImageBuffer ? " (buffer)" : "") << logging::endl;
         return SPV_SUCCESS;
     }
-    case SpvOpTypeArray:
+    case spv::Op::OpTypeArray:
     {
         const DataType elementType = typeMappings.at(getWord(parsed_instruction, 2));
         typeMappings.emplace(getWord(parsed_instruction, 1),
@@ -673,7 +674,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
                 static_cast<unsigned>(constantMappings.at(getWord(parsed_instruction, 3)).literal.unsignedInt())));
         return SPV_SUCCESS;
     }
-    case SpvOpTypeStruct:
+    case spv::Op::OpTypeStruct:
     {
         auto it = names.find(parsed_instruction->result_id);
         std::string structName;
@@ -699,64 +700,64 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         auto it2 = decorationMappings.find(parsed_instruction->result_id);
         if(it2 != decorationMappings.end())
         {
-            if(getDecoration(it2->second, SpvDecorationCPacked))
+            if(getDecoration(it2->second, spv::Decoration::CPacked))
             {
                 structDef->isPacked = true;
             }
         }
         return SPV_SUCCESS;
     }
-    case SpvOpTypeOpaque:
+    case spv::Op::OpTypeOpaque:
         // Since there is no memory-layout to them, they can only be used as pointers
         // TODO how to handle them better (e.g. use their name)? Own complex type for opaque types?
         typeMappings.emplace(getWord(parsed_instruction, 1), TYPE_VOID);
         return SPV_SUCCESS;
-    case SpvOpTypePointer:
+    case spv::Op::OpTypePointer:
     {
         DataType type = typeMappings.at(getWord(parsed_instruction, 3));
         type = DataType(
-            new PointerType(type, toAddressSpace(static_cast<SpvStorageClass>(getWord(parsed_instruction, 2)))));
+            new PointerType(type, toAddressSpace(static_cast<spv::StorageClass>(getWord(parsed_instruction, 2)))));
         typeMappings.emplace(getWord(parsed_instruction, 1), type);
         return SPV_SUCCESS;
     }
-    case SpvOpTypeFunction:
+    case spv::Op::OpTypeFunction:
         //"OpFunction is the only valid use of OpTypeFunction."
         //-> so we can ignore this
         return SPV_SUCCESS;
-    case SpvOpTypeEvent:
+    case spv::Op::OpTypeEvent:
         typeMappings.emplace(getWord(parsed_instruction, 1), TYPE_EVENT);
         return SPV_SUCCESS;
-    case SpvOpTypeDeviceEvent:
+    case spv::Op::OpTypeDeviceEvent:
         // OpenCL 2.x feature
         return UNSUPPORTED_INSTRUCTION("OpTypeDeviceEvent");
-    case SpvOpTypeReserveId:
+    case spv::Op::OpTypeReserveId:
         // OpenCL 2.x feature
         return UNSUPPORTED_INSTRUCTION("OpTypeReserveID");
-    case SpvOpTypeQueue:
+    case spv::Op::OpTypeQueue:
         // OpenCL 2.x feature
         return UNSUPPORTED_INSTRUCTION("OpTypeQueue");
-    case SpvOpTypePipe:
+    case spv::Op::OpTypePipe:
         // OpenCL 2.x feature
         return UNSUPPORTED_INSTRUCTION("OpTypePipe");
-    case SpvOpTypeForwardPointer:
+    case spv::Op::OpTypeForwardPointer:
         //" Declare the Storage Class for a forward reference to a pointer."
         // TODO we actually are interested, currently at least to provide it as information for clGetKernelArgInfo
         // but so far, this instruction was never encountered
-        return UNSUPPORTED_INSTRUCTION("SpvOpTypeForwardPointer");
-    case SpvOpConstantTrue:
+        return UNSUPPORTED_INSTRUCTION("spv::Op::OpTypeForwardPointer");
+    case spv::Op::OpConstantTrue:
         constantMappings.emplace(parsed_instruction->result_id, BOOL_TRUE);
         return SPV_SUCCESS;
-    case SpvOpConstantFalse:
+    case spv::Op::OpConstantFalse:
         constantMappings.emplace(parsed_instruction->result_id, BOOL_FALSE);
         return SPV_SUCCESS;
-    case SpvOpConstant: // integer or floating point scalar constant
+    case spv::Op::OpConstant: // integer or floating point scalar constant
         constantMappings.emplace(parsed_instruction->result_id, parseConstant(parsed_instruction, typeMappings));
         return SPV_SUCCESS;
-    case SpvOpConstantComposite: // constant of array, matrix or vector-type
+    case spv::Op::OpConstantComposite: // constant of array, matrix or vector-type
         constantMappings.emplace(
             parsed_instruction->result_id, parseConstantComposite(parsed_instruction, typeMappings, constantMappings));
         return SPV_SUCCESS;
-    case SpvOpConstantSampler: // convert to 32-bit integer constant
+    case spv::Op::OpConstantSampler: // convert to 32-bit integer constant
     {
         Value sampler(typeMappings.at(parsed_instruction->type_id));
         sampler.valueType = ValueType::LITERAL;
@@ -764,7 +765,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         constantMappings.emplace(parsed_instruction->result_id, sampler);
         return SPV_SUCCESS;
     }
-    case SpvOpConstantNull:
+    case spv::Op::OpConstantNull:
     {
         //"The null value is type dependent, defined as follows:
         // - Scalar Boolean: false
@@ -799,7 +800,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
      *  OpSpecConstantComposite -> OpConstantComposite
      *  OpSpecConstantOp -> result of given op
      */
-    case SpvOpSpecConstantTrue:
+    case spv::Op::OpSpecConstantTrue:
     {
         //"[...] Similarly, the "True" and "False" parts of OpSpecConstantTrue and OpSpecConstantFalse provide the
         // default Boolean specialization constants."
@@ -807,7 +808,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         constantMappings.emplace(parsed_instruction->result_id, spec.value_or(BOOL_TRUE));
         return SPV_SUCCESS;
     }
-    case SpvOpSpecConstantFalse:
+    case spv::Op::OpSpecConstantFalse:
     {
         //"[...] Similarly, the "True" and "False" parts of OpSpecConstantTrue and OpSpecConstantFalse provide the
         // default Boolean specialization constants."
@@ -815,7 +816,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         constantMappings.emplace(parsed_instruction->result_id, spec.value_or(BOOL_FALSE));
         return SPV_SUCCESS;
     }
-    case SpvOpSpecConstant:
+    case spv::Op::OpSpecConstant:
     {
         //"The literal operands to OpSpecConstant are the default numerical specialization constants."
         const Value constant = parseConstant(parsed_instruction, typeMappings);
@@ -824,7 +825,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         constantMappings.emplace(parsed_instruction->result_id, spec.value_or(constant));
         return SPV_SUCCESS;
     }
-    case SpvOpSpecConstantComposite:
+    case spv::Op::OpSpecConstantComposite:
     {
         const Value constant = parseConstantComposite(parsed_instruction, typeMappings, constantMappings);
         const Optional<Value> spec =
@@ -832,7 +833,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         constantMappings.emplace(parsed_instruction->result_id, spec.value_or(constant));
         return SPV_SUCCESS;
     }
-    case SpvOpSpecConstantOp:
+    case spv::Op::OpSpecConstantOp:
     {
         //"The OpSpecConstantOp instruction is specialized by executing the operation and replacing the instruction with
         // the result."
@@ -854,7 +855,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             return result.first;
         }
     }
-    case SpvOpFunction: // new current method -> add to list of all methods
+    case spv::Op::OpFunction: // new current method -> add to list of all methods
     {
         currentMethod = &getOrCreateMethod(*module, methods, parsed_instruction->result_id);
         currentMethod->method->returnType = typeMappings.at(parsed_instruction->type_id);
@@ -867,21 +868,21 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
                          << (it != names.end() ? it->second : currentMethod->method->name) << ")" << logging::endl;
         return SPV_SUCCESS;
     }
-    case SpvOpFunctionParameter:
+    case spv::Op::OpFunctionParameter:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         currentMethod->parameters.push_back(std::make_pair(parsed_instruction->result_id, parsed_instruction->type_id));
         logging::debug() << "Reading parameter: " << typeMappings.at(parsed_instruction->type_id).to_string() << " %"
                          << parsed_instruction->result_id << logging::endl;
         return SPV_SUCCESS;
-    case SpvOpFunctionEnd:
+    case spv::Op::OpFunctionEnd:
         currentMethod = nullptr;
         return SPV_SUCCESS;
-    case SpvOpFunctionCall:
+    case spv::Op::OpFunctionCall:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod,
             getWord(parsed_instruction, 3), parsed_instruction->type_id, parseArguments(parsed_instruction, 4)));
         return SPV_SUCCESS;
-    case SpvOpVariable:
+    case spv::Op::OpVariable:
     {
         //"Allocate an object in memory, resulting in a pointer to it"
         // used for global values as well as stack-allocations
@@ -898,17 +899,17 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         auto it2 = decorationMappings.find(parsed_instruction->type_id);
         if(it2 != decorationMappings.end())
         {
-            alignment = getDecoration(it2->second, SpvDecorationAlignment).value_or(0);
-            isConstant = getDecoration(it2->second, SpvDecorationConstant).has_value();
+            alignment = getDecoration(it2->second, spv::Decoration::Alignment).value_or(0);
+            isConstant = getDecoration(it2->second, spv::Decoration::Constant).has_value();
         }
         it2 = decorationMappings.find(parsed_instruction->result_id);
         if(alignment == 0 && it2 != decorationMappings.end())
-            alignment = getDecoration(it2->second, SpvDecorationAlignment).value_or(0);
+            alignment = getDecoration(it2->second, spv::Decoration::Alignment).value_or(0);
 
         // the type of OpVariable is the pointer
         //... but the global data/stack allocation needs to have the real type (is re-set in #parse())
         if(currentMethod != nullptr &&
-            AddressSpace::PRIVATE == toAddressSpace(static_cast<SpvStorageClass>(getWord(parsed_instruction, 3))))
+            AddressSpace::PRIVATE == toAddressSpace(static_cast<spv::StorageClass>(getWord(parsed_instruction, 3))))
         {
             // OpVariables within a function body are stack allocations
             //"All OpVariable instructions in a function must have a Storage Class of Function."
@@ -929,37 +930,37 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
                          << " with value: " << val.to_string(false, true) << logging::endl;
         return SPV_SUCCESS;
     }
-    case SpvOpImageTexelPointer:
+    case spv::Op::OpImageTexelPointer:
         //"Form a pointer to a texel of an image. Use of such a pointer is limited to atomic operations."
         return UNSUPPORTED_INSTRUCTION("OpImageTexelPointer");
-    case SpvOpLoad:
+    case spv::Op::OpLoad:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVCopy(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, getWord(parsed_instruction, 3), MemoryAccess::READ));
         return SPV_SUCCESS;
-    case SpvOpStore:
+    case spv::Op::OpStore:
         instructions.emplace_back(new SPIRVCopy(getWord(parsed_instruction, 1), *currentMethod, UNDEFINED_ID,
             getWord(parsed_instruction, 2), MemoryAccess::WRITE));
         return SPV_SUCCESS;
-    case SpvOpCopyMemory:
+    case spv::Op::OpCopyMemory:
         instructions.emplace_back(new SPIRVCopy(getWord(parsed_instruction, 1), *currentMethod, UNDEFINED_ID,
             getWord(parsed_instruction, 2), MemoryAccess::READ_WRITE));
         return SPV_SUCCESS;
-    case SpvOpCopyMemorySized:
+    case spv::Op::OpCopyMemorySized:
         instructions.emplace_back(new SPIRVCopy(getWord(parsed_instruction, 1), *currentMethod, UNDEFINED_ID,
             getWord(parsed_instruction, 2), MemoryAccess::READ_WRITE, getWord(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpAccessChain: // pointer into element(s) of composite
+    case spv::Op::OpAccessChain: // pointer into element(s) of composite
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVIndexOf(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, getWord(parsed_instruction, 3), parseArguments(parsed_instruction, 4), false));
         return SPV_SUCCESS;
-    case SpvOpInBoundsAccessChain:
+    case spv::Op::OpInBoundsAccessChain:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVIndexOf(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, getWord(parsed_instruction, 3), parseArguments(parsed_instruction, 4), false));
         return SPV_SUCCESS;
-    case SpvOpPtrAccessChain:
+    case spv::Op::OpPtrAccessChain:
         // For pointers, the "Element" field is the first (top-level) index (see SPIR-V specification,
         // OpPtrAccessChain): "Element is used to do the initial dereference of Base: Base is treated as the address of
         // the first element of an array, and the Element element’s address is computed to be the base for the Indexes
@@ -968,29 +969,29 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         instructions.emplace_back(new SPIRVIndexOf(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, getWord(parsed_instruction, 3), parseArguments(parsed_instruction, 4), true));
         return SPV_SUCCESS;
-    case SpvOpGenericPtrMemSemantics:
+    case spv::Op::OpGenericPtrMemSemantics:
         //"Result is a valid Memory Semantics which includes mask bits set for the Storage Class for the specific
         //(non-Generic) Storage Class of Pointer. "
         // not used -> ignore
         return SPV_SUCCESS;
-    case SpvOpInBoundsPtrAccessChain:
+    case spv::Op::OpInBoundsPtrAccessChain:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVIndexOf(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, getWord(parsed_instruction, 3), parseArguments(parsed_instruction, 4), true));
         return SPV_SUCCESS;
-    case SpvOpNoLine: // source level debug info -> skip
+    case spv::Op::OpNoLine: // source level debug info -> skip
         return SPV_SUCCESS;
-    case SpvOpModuleProcessed:
+    case spv::Op::OpModuleProcessed:
         //"Document a process that was applied to a module. This has no semantic impact and can safely be removed from a
         // module."
         return SPV_SUCCESS;
-    case SpvOpDecorate:
+    case spv::Op::OpDecorate:
         //"Target is the <id> to decorate. It can potentially be any <id> that is a forward reference"
         // -> decorations are always forward references
         // -> can be applied to instruction/parameter/type on parsing it
         return parseDecoration(
             parsed_instruction, parsed_instruction->num_words > 3 ? getWord(parsed_instruction, 3) : UNDEFINED_LITERAL);
-    case SpvOpDecorateId:
+    case spv::Op::OpDecorateId:
         //"Target is the <id> to decorate. It can potentially be any <id> that is a forward reference"
         // -> decorations are always forward references
         // -> can be applied to instruction/parameter/type on parsing it
@@ -999,16 +1000,16 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             parsed_instruction->num_words > 3 ?
                 constantMappings.at(getWord(parsed_instruction, 3)).getLiteralValue()->unsignedInt() :
                 UNDEFINED_LITERAL);
-    case SpvOpMemberDecorate:
+    case spv::Op::OpMemberDecorate:
         return UNSUPPORTED_INSTRUCTION("OpMemberDecorate");
-    case SpvOpDecorationGroup:
+    case spv::Op::OpDecorationGroup:
         //"A collector for Decorations from OpDecorate instructions. All such OpDecorate instructions targeting this
         // OpDecorationGroup instruction must precede it." "Subsequent OpGroupDecorate and OpGroupMemberDecorate
         // instructions that consume this instruction�s Result <id> will apply these decorations to their targets."
         // nothing needs to be done, since decorations are added up independent of target and are applied with
         // "OpGroupDecorate"
         return SPV_SUCCESS;
-    case SpvOpGroupDecorate:
+    case spv::Op::OpGroupDecorate:
     {
         // apply group of decorations to IDs
         const std::vector<uint32_t> targets = parseArguments(parsed_instruction, 2);
@@ -1027,26 +1028,26 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         }
         return SPV_SUCCESS;
     }
-    case SpvOpGroupMemberDecorate:
+    case spv::Op::OpGroupMemberDecorate:
         return UNSUPPORTED_INSTRUCTION("OpGroupMemberDecorate");
-    case SpvOpVectorExtractDynamic:
+    case spv::Op::OpVectorExtractDynamic:
         return UNSUPPORTED_INSTRUCTION("OpVectorExtractDynamic");
-    case SpvOpVectorInsertDynamic:
+    case spv::Op::OpVectorInsertDynamic:
         return UNSUPPORTED_INSTRUCTION("OpVectorInsertDynamic");
-    case SpvOpVectorShuffle:
+    case spv::Op::OpVectorShuffle:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVShuffle(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id,
                 getWord(parsed_instruction, 3), getWord(parsed_instruction, 4), parseArguments(parsed_instruction, 5)));
         return SPV_SUCCESS;
-    case SpvOpCompositeConstruct:
+    case spv::Op::OpCompositeConstruct:
         return UNSUPPORTED_INSTRUCTION("OpCompositeConstruct");
-    case SpvOpCompositeExtract:
+    case spv::Op::OpCompositeExtract:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVCopy(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, getWord(parsed_instruction, 3), {0}, parseArguments(parsed_instruction, 4)));
         return SPV_SUCCESS;
-    case SpvOpCompositeInsert:
+    case spv::Op::OpCompositeInsert:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         // 1. copy whole composite
         instructions.emplace_back(new SPIRVCopy(parsed_instruction->result_id, *currentMethod,
@@ -1055,41 +1056,41 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         instructions.emplace_back(new SPIRVCopy(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, getWord(parsed_instruction, 3), parseArguments(parsed_instruction, 5), {0}));
         return SPV_SUCCESS;
-    case SpvOpCopyObject:
+    case spv::Op::OpCopyObject:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVCopy(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, getWord(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpSampledImage:
+    case spv::Op::OpSampledImage:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         // this is not really an instruction for the runtime, but to associate images <-> sampled-image
         sampledImages[parsed_instruction->result_id] = {getWord(parsed_instruction, 3), getWord(parsed_instruction, 4)};
         return SPV_SUCCESS;
-    case SpvOpImageSampleExplicitLod:
+    case spv::Op::OpImageSampleExplicitLod:
     {
         //"Sample an image using an explicit level of detail."
         // is handled via intrinsics
         return UNSUPPORTED_INSTRUCTION("OpImageSampleExplicitLod");
     }
-    case SpvOpImageFetch:
+    case spv::Op::OpImageFetch:
     {
         //"Fetch a single texel from a sampled image."
         // is handled via intrinsics
         return UNSUPPORTED_INSTRUCTION("OpImageFetch");
     }
-    case SpvOpImageRead:
+    case spv::Op::OpImageRead:
     {
         //"Read a texel from an image without a sampler."
         // is handled via intrinsics
         return UNSUPPORTED_INSTRUCTION("OpImageRead");
     }
-    case SpvOpImageWrite:
+    case spv::Op::OpImageWrite:
     {
         //"Write a texel to an image without a sampler."
         // is handled via intrinsics
         return UNSUPPORTED_INSTRUCTION("OpImageWrite");
     }
-    case SpvOpImage:
+    case spv::Op::OpImage:
         //"Extract the image from a sampled image."
         // this is not really an instruction for the runtime, but to associate images <-> sampled-image
         localTypes[parsed_instruction->result_id] = localTypes.at(getWord(parsed_instruction, 3));
@@ -1097,97 +1098,97 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         // image in the image-accessing methods
         sampledImages[parsed_instruction->result_id] = sampledImages.at(getWord(parsed_instruction, 3));
         return SPV_SUCCESS;
-    case SpvOpImageQueryFormat:
+    case spv::Op::OpImageQueryFormat:
         //"Query the image format of an image [...]."
         //"The resulting value is an enumerant from Image Channel Data Type."
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVImageQuery(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, ImageQuery::CHANNEL_DATA_TYPE, getWord(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpImageQueryOrder:
+    case spv::Op::OpImageQueryOrder:
         //"Query the channel order of an image [...]."
         //"The resulting value is an enumerant from Image Channel Order."
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVImageQuery(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, ImageQuery::CHANNEL_ORDER, getWord(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpImageQuerySizeLod:
+    case spv::Op::OpImageQuerySizeLod:
         //"Query the dimensions of Image for mipmap level for Level of Detail."
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVImageQuery(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id,
                 ImageQuery::SIZES_LOD, getWord(parsed_instruction, 3), getWord(parsed_instruction, 4)));
         return SPV_SUCCESS;
-    case SpvOpImageQuerySize:
+    case spv::Op::OpImageQuerySize:
         //"Query the dimensions of Image, with no level of detail."
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVImageQuery(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, ImageQuery::SIZES, getWord(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpImageQueryLevels:
+    case spv::Op::OpImageQueryLevels:
         //"Query the number of mipmap levels accessible through Image."
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVImageQuery(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, ImageQuery::MIPMAP_LEVELS, getWord(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpImageQuerySamples:
+    case spv::Op::OpImageQuerySamples:
         //"Query the number of samples available per texel fetch in a multisample image."
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVImageQuery(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, ImageQuery::SAMPLES_PER_TEXEL, getWord(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpConvertFToU:
+    case spv::Op::OpConvertFToU:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "fptoui",
             parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             add_flag(toInstructionDecorations(parsed_instruction->result_id),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
-    case SpvOpConvertFToS:
+    case spv::Op::OpConvertFToS:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "fptosi", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpConvertSToF:
+    case spv::Op::OpConvertSToF:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "sitofp", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpConvertUToF:
+    case spv::Op::OpConvertUToF:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "uitofp", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpUConvert: // change bit-width (type) of value
+    case spv::Op::OpUConvert: // change bit-width (type) of value
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::UNSIGNED,
             add_flag(toInstructionDecorations(parsed_instruction->result_id),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
-    case SpvOpSConvert: // change bit-width (type) of value
+    case spv::Op::OpSConvert: // change bit-width (type) of value
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::SIGNED,
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFConvert: // change bit-width (type) of value
+    case spv::Op::OpFConvert: // change bit-width (type) of value
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::FLOATING,
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpConvertPtrToU: // pointer to unsigned -> same as OpUConvert
+    case spv::Op::OpConvertPtrToU: // pointer to unsigned -> same as OpUConvert
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::UNSIGNED,
             add_flag(toInstructionDecorations(parsed_instruction->result_id),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
-    case SpvOpSatConvertSToU: // signed to unsigned (with saturation)
+    case spv::Op::OpSatConvertSToU: // signed to unsigned (with saturation)
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::UNSIGNED,
@@ -1195,218 +1196,218 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
                 intermediate::InstructionDecorations::UNSIGNED_RESULT),
             true));
         return SPV_SUCCESS;
-    case SpvOpSatConvertUToS: // unsigned to signed (with saturation)
+    case spv::Op::OpSatConvertUToS: // unsigned to signed (with saturation)
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::SIGNED,
             toInstructionDecorations(parsed_instruction->result_id), true));
         return SPV_SUCCESS;
-    case SpvOpConvertUToPtr: // unsigned to pointer -> same as OpUConvert
+    case spv::Op::OpConvertUToPtr: // unsigned to pointer -> same as OpUConvert
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::UNSIGNED,
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpPtrCastToGeneric:
+    case spv::Op::OpPtrCastToGeneric:
         //"Convert a pointer’s Storage Class to Generic."
         // -> simply copy the pointer
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVCopy(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, getWord(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpGenericCastToPtr:
+    case spv::Op::OpGenericCastToPtr:
         //"Convert a pointer’s Storage Class to a non-Generic class."
         // -> simple copy the pointer
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVCopy(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, getWord(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpGenericCastToPtrExplicit:
+    case spv::Op::OpGenericCastToPtrExplicit:
         //"Attempts to explicitly convert Pointer to Storage storage-class pointer value."
         // -> simple copy the pointer
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVCopy(parsed_instruction->result_id, *currentMethod,
             parsed_instruction->type_id, getWord(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpBitcast:
+    case spv::Op::OpBitcast:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVConversion(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id,
                 getWord(parsed_instruction, 3), ConversionType::BITCAST, intermediate::InstructionDecorations::NONE));
         return SPV_SUCCESS;
-    case SpvOpSNegate:
+    case spv::Op::OpSNegate:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, OP_NEGATE, parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFNegate:
+    case spv::Op::OpFNegate:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, OP_NEGATE, parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpIAdd:
+    case spv::Op::OpIAdd:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "add", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFAdd:
+    case spv::Op::OpFAdd:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "fadd", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpISub:
+    case spv::Op::OpISub:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "sub", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFSub:
+    case spv::Op::OpFSub:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "fsub", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpIMul:
+    case spv::Op::OpIMul:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "mul", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFMul:
+    case spv::Op::OpFMul:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "fmul", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpUDiv:
+    case spv::Op::OpUDiv:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "udiv",
             parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             add_flag(toInstructionDecorations(parsed_instruction->result_id),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
-    case SpvOpSDiv:
+    case spv::Op::OpSDiv:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "sdiv", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFDiv:
+    case spv::Op::OpFDiv:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "fdiv", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpUMod:
+    case spv::Op::OpUMod:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "umod",
             parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             add_flag(toInstructionDecorations(parsed_instruction->result_id),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
-    case SpvOpSRem:
+    case spv::Op::OpSRem:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "srem", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpSMod:
+    case spv::Op::OpSMod:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "smod", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFRem:
+    case spv::Op::OpFRem:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "frem", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFMod:
+    case spv::Op::OpFMod:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "fmod", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpVectorTimesScalar: // type must be floating point
+    case spv::Op::OpVectorTimesScalar: // type must be floating point
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "fmul", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpDot:
+    case spv::Op::OpDot:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "dot",
             parsed_instruction->type_id, parseArguments(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpIAddCarry:
+    case spv::Op::OpIAddCarry:
         return UNSUPPORTED_INSTRUCTION("OpIAddCarry");
-    case SpvOpISubBorrow:
+    case spv::Op::OpISubBorrow:
         return UNSUPPORTED_INSTRUCTION("OpISubBorrow");
-    case SpvOpUMulExtended:
+    case spv::Op::OpUMulExtended:
         return UNSUPPORTED_INSTRUCTION("OpUMulExtended");
-    case SpvOpSMulExtended:
+    case spv::Op::OpSMulExtended:
         return UNSUPPORTED_INSTRUCTION("OpSMulExtended");
-    case SpvOpAny:
+    case spv::Op::OpAny:
         return UNSUPPORTED_INSTRUCTION("OpAny");
-    case SpvOpAll:
+    case spv::Op::OpAll:
         return UNSUPPORTED_INSTRUCTION("OpAll");
-    case SpvOpIsNan:
+    case spv::Op::OpIsNan:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "isnan",
             parsed_instruction->type_id, parseArguments(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpIsInf:
+    case spv::Op::OpIsInf:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "ifinf",
             parsed_instruction->type_id, parseArguments(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpIsFinite:
+    case spv::Op::OpIsFinite:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "isfinite",
             parsed_instruction->type_id, parseArguments(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpIsNormal:
+    case spv::Op::OpIsNormal:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "isnormal",
             parsed_instruction->type_id, parseArguments(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpSignBitSet:
+    case spv::Op::OpSignBitSet:
         return UNSUPPORTED_INSTRUCTION("OpSignBitSet");
-    case SpvOpLessOrGreater:
+    case spv::Op::OpLessOrGreater:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "islessgreater",
             parsed_instruction->type_id, parseArguments(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpOrdered:
+    case spv::Op::OpOrdered:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_ORDERED, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpUnordered:
+    case spv::Op::OpUnordered:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_UNORDERED, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpLogicalEqual:
+    case spv::Op::OpLogicalEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_EQ, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpLogicalNotEqual:
+    case spv::Op::OpLogicalNotEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_NEQ, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpLogicalOr:
+    case spv::Op::OpLogicalOr:
         //"Result Type must be a scalar or vector of Boolean type."
         // -> same as bitwise OR
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
@@ -1414,7 +1415,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "or", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpLogicalAnd:
+    case spv::Op::OpLogicalAnd:
         //"Result Type must be a scalar or vector of Boolean type."
         // -> same as bitwise AND
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
@@ -1422,7 +1423,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "and", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpLogicalNot:
+    case spv::Op::OpLogicalNot:
         //"Result Type must be a scalar or vector of Boolean type."
         // -> same as bitwise NOT
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
@@ -1430,251 +1431,251 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "not", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpSelect:
+    case spv::Op::OpSelect:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVSelect(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id,
                 getWord(parsed_instruction, 3), getWord(parsed_instruction, 4), getWord(parsed_instruction, 5)));
         return SPV_SUCCESS;
-    case SpvOpIEqual:
+    case spv::Op::OpIEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_EQ, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpINotEqual:
+    case spv::Op::OpINotEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_NEQ, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpUGreaterThan:
+    case spv::Op::OpUGreaterThan:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_UNSIGNED_GT, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             add_flag(toInstructionDecorations(parsed_instruction->result_id),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
-    case SpvOpSGreaterThan:
+    case spv::Op::OpSGreaterThan:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_SIGNED_GT, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpUGreaterThanEqual:
+    case spv::Op::OpUGreaterThanEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_UNSIGNED_GE, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             add_flag(toInstructionDecorations(parsed_instruction->result_id),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
-    case SpvOpSGreaterThanEqual:
+    case spv::Op::OpSGreaterThanEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_SIGNED_GE, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpULessThan:
+    case spv::Op::OpULessThan:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_UNSIGNED_LT, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             add_flag(toInstructionDecorations(parsed_instruction->result_id),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
-    case SpvOpSLessThan:
+    case spv::Op::OpSLessThan:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_SIGNED_LT, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpULessThanEqual:
+    case spv::Op::OpULessThanEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_UNSIGNED_LE, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             add_flag(toInstructionDecorations(parsed_instruction->result_id),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
-    case SpvOpSLessThanEqual:
+    case spv::Op::OpSLessThanEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_SIGNED_LE, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFOrdEqual:
+    case spv::Op::OpFOrdEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_ORDERED_EQ, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFUnordEqual:
+    case spv::Op::OpFUnordEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_UNORDERED_EQ, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFOrdNotEqual:
+    case spv::Op::OpFOrdNotEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_ORDERED_NEQ, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFUnordNotEqual:
+    case spv::Op::OpFUnordNotEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_UNORDERED_NEQ, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFOrdLessThan:
+    case spv::Op::OpFOrdLessThan:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_ORDERED_LT, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFUnordLessThan:
+    case spv::Op::OpFUnordLessThan:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_UNORDERED_LT, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFOrdGreaterThan:
+    case spv::Op::OpFOrdGreaterThan:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_ORDERED_GT, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFUnordGreaterThan:
+    case spv::Op::OpFUnordGreaterThan:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_UNORDERED_GT, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFOrdLessThanEqual:
+    case spv::Op::OpFOrdLessThanEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_ORDERED_LE, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFUnordLessThanEqual:
+    case spv::Op::OpFUnordLessThanEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_UNORDERED_LE, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFOrdGreaterThanEqual:
+    case spv::Op::OpFOrdGreaterThanEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_ORDERED_GE, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpFUnordGreaterThanEqual:
+    case spv::Op::OpFUnordGreaterThanEqual:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVComparison(parsed_instruction->result_id, *currentMethod,
             intermediate::COMP_UNORDERED_GE, parsed_instruction->type_id, parseArguments(parsed_instruction, 3),
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpShiftRightLogical:
+    case spv::Op::OpShiftRightLogical:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "shr", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpShiftRightArithmetic:
+    case spv::Op::OpShiftRightArithmetic:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "asr", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpShiftLeftLogical:
+    case spv::Op::OpShiftLeftLogical:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "shl", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpBitwiseOr:
+    case spv::Op::OpBitwiseOr:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "or", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpBitwiseXor:
+    case spv::Op::OpBitwiseXor:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "xor", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpBitwiseAnd:
+    case spv::Op::OpBitwiseAnd:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "and", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpNot:
+    case spv::Op::OpNot:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
             new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "not", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpBitCount:
+    case spv::Op::OpBitCount:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "popcount",
             parsed_instruction->type_id, parseArguments(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpControlBarrier:
+    case spv::Op::OpControlBarrier:
         //"barrier()" is handled via header-function
         return UNSUPPORTED_INSTRUCTION("OpControlBarrier");
-    case SpvOpMemoryBarrier:
+    case spv::Op::OpMemoryBarrier:
         instructions.emplace_back(
             new SPIRVMemoryBarrier(*currentMethod, getWord(parsed_instruction, 1), getWord(parsed_instruction, 2)));
         return SPV_SUCCESS;
-    case SpvOpAtomicLoad:
+    case spv::Op::OpAtomicLoad:
         // OpenCL 2.x feature
         return UNSUPPORTED_INSTRUCTION("OpAtomicLoad");
-    case SpvOpAtomicStore:
+    case spv::Op::OpAtomicStore:
         // OpenCL 2.x feature
         return UNSUPPORTED_INSTRUCTION("OpAtomicStore");
-    case SpvOpAtomicExchange:
+    case spv::Op::OpAtomicExchange:
         // handled via intrinsics
         return UNSUPPORTED_INSTRUCTION("OpAtomicExchange");
-    case SpvOpAtomicCompareExchange:
+    case spv::Op::OpAtomicCompareExchange:
         // handled via intrinsics
         return UNSUPPORTED_INSTRUCTION("OpAtomicCompareExchange");
-    case SpvOpAtomicCompareExchangeWeak:
+    case spv::Op::OpAtomicCompareExchangeWeak:
         // OpenCL 2.x feature
         return UNSUPPORTED_INSTRUCTION("OpAtomicCompareExchangeWeak");
-    case SpvOpAtomicIIncrement:
+    case spv::Op::OpAtomicIIncrement:
         // handled via intrinsics
         return UNSUPPORTED_INSTRUCTION("OpAtomicIIncrement");
-    case SpvOpAtomicIDecrement:
+    case spv::Op::OpAtomicIDecrement:
         // handled via intrinsics
         return UNSUPPORTED_INSTRUCTION("OpAtomicIDecrement");
-    case SpvOpAtomicIAdd:
+    case spv::Op::OpAtomicIAdd:
         // handled via intrinsics
         return UNSUPPORTED_INSTRUCTION("OpAtomicIAdd");
-    case SpvOpAtomicISub:
+    case spv::Op::OpAtomicISub:
         // handled via intrinsics
         return UNSUPPORTED_INSTRUCTION("OpAtomicISub");
-    case SpvOpAtomicSMin:
+    case spv::Op::OpAtomicSMin:
         // handled via intrinsics
         return UNSUPPORTED_INSTRUCTION("OpAtomicSMin");
-    case SpvOpAtomicUMin:
+    case spv::Op::OpAtomicUMin:
         // handled via intrinsics
         return UNSUPPORTED_INSTRUCTION("OpAtomicUMin");
-    case SpvOpAtomicSMax:
+    case spv::Op::OpAtomicSMax:
         // handled via intrinsics
         return UNSUPPORTED_INSTRUCTION("OpAtomicSMax");
-    case SpvOpAtomicUMax:
+    case spv::Op::OpAtomicUMax:
         // handled via intrinsics
         return UNSUPPORTED_INSTRUCTION("OpAtomicUMax");
-    case SpvOpAtomicAnd:
+    case spv::Op::OpAtomicAnd:
         // handled via intrinsics
         return UNSUPPORTED_INSTRUCTION("OpAtomicAnd");
-    case SpvOpAtomicOr:
+    case spv::Op::OpAtomicOr:
         // handled via intrinsics
         return UNSUPPORTED_INSTRUCTION("OpAtomicOr");
-    case SpvOpAtomicXor:
+    case spv::Op::OpAtomicXor:
         // handled via intrinsics
         return UNSUPPORTED_INSTRUCTION("OpAtomicXor");
-    case SpvOpPhi:
+    case spv::Op::OpPhi:
     {
         const std::vector<uint32_t> args = parseArguments(parsed_instruction, 3);
         std::vector<std::pair<uint32_t, uint32_t>> sources;
@@ -1688,22 +1689,22 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             new SPIRVPhi(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, sources));
         return SPV_SUCCESS;
     }
-    case SpvOpLoopMerge:
+    case spv::Op::OpLoopMerge:
         return UNSUPPORTED_INSTRUCTION("OpLoopMerge");
-    case SpvOpSelectionMerge:
+    case spv::Op::OpSelectionMerge:
         return UNSUPPORTED_INSTRUCTION("OpSelectionMerge");
-    case SpvOpLabel:
+    case spv::Op::OpLabel:
         typeMappings.emplace(parsed_instruction->result_id, TYPE_LABEL);
         instructions.emplace_back(new SPIRVLabel(parsed_instruction->result_id, *currentMethod));
         return SPV_SUCCESS;
-    case SpvOpBranch:
+    case spv::Op::OpBranch:
         instructions.emplace_back(new SPIRVBranch(*currentMethod, getWord(parsed_instruction, 1)));
         return SPV_SUCCESS;
-    case SpvOpBranchConditional:
+    case spv::Op::OpBranchConditional:
         instructions.emplace_back(new SPIRVBranch(*currentMethod, getWord(parsed_instruction, 1),
             getWord(parsed_instruction, 2), getWord(parsed_instruction, 3)));
         return SPV_SUCCESS;
-    case SpvOpSwitch:
+    case spv::Op::OpSwitch:
     {
         const std::vector<uint32_t> args = parseArguments(parsed_instruction, 3);
         std::vector<std::pair<uint32_t, uint32_t>> destinations;
@@ -1716,15 +1717,15 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             getWord(parsed_instruction, 1), getWord(parsed_instruction, 2), destinations));
         return SPV_SUCCESS;
     }
-    case SpvOpReturn:
+    case spv::Op::OpReturn:
         instructions.emplace_back(new SPIRVReturn(*currentMethod));
         return SPV_SUCCESS;
-    case SpvOpReturnValue:
+    case spv::Op::OpReturnValue:
         instructions.emplace_back(new SPIRVReturn(getWord(parsed_instruction, 1), *currentMethod));
         return SPV_SUCCESS;
-    case SpvOpUnreachable:
+    case spv::Op::OpUnreachable:
         return SPV_SUCCESS;
-    case SpvOpLifetimeStart:
+    case spv::Op::OpLifetimeStart:
     {
         // for temporary variables (e.g. Function-Scope), the size is set via the OpLifetimeStart, since the OpVariable
         // is of type void
@@ -1732,21 +1733,21 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             getWord(parsed_instruction, 2), false, toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
     }
-    case SpvOpLifetimeStop:
+    case spv::Op::OpLifetimeStop:
         instructions.emplace_back(new SPIRVLifetimeInstruction(getWord(parsed_instruction, 1), *currentMethod,
             getWord(parsed_instruction, 2), true, toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
-    case SpvOpGroupAsyncCopy:
+    case spv::Op::OpGroupAsyncCopy:
         return UNSUPPORTED_INSTRUCTION("OpGroupAsyncCopy");
-    case SpvOpGroupWaitEvents:
+    case spv::Op::OpGroupWaitEvents:
         return UNSUPPORTED_INSTRUCTION("OpGroupWaitEvents");
-    case SpvOpAtomicFlagTestAndSet:
+    case spv::Op::OpAtomicFlagTestAndSet:
         // OpenCL 2.x feature
         return UNSUPPORTED_INSTRUCTION("OpAtomicFlagTestAndSet");
-    case SpvOpAtomicFlagClear:
+    case spv::Op::OpAtomicFlagClear:
         // OpenCL 2.x feature
         return UNSUPPORTED_INSTRUCTION("OpAtomicFlagClear");
-    case SpvOpSizeOf:
+    case spv::Op::OpSizeOf:
         return UNSUPPORTED_INSTRUCTION("OpSizeOf");
     default:
         // prevents warnings

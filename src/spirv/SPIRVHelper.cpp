@@ -381,222 +381,222 @@ std::string spirv2qasm::getErrorMessage(spv_result_t error)
     }
 }
 
-static std::string getCapabilityName(const SpvCapability cap)
+static std::string getCapabilityName(const spv::Capability cap)
 {
     switch(cap)
     {
-    case SpvCapabilityMatrix:
+    case spv::Capability::Matrix:
         return "Matrix";
-    case SpvCapabilityShader:
+    case spv::Capability::Shader:
         return "Shader";
-    case SpvCapabilityGeometry:
+    case spv::Capability::Geometry:
         return "Geometry";
-    case SpvCapabilityTessellation:
+    case spv::Capability::Tessellation:
         return "Tessellation";
-    case SpvCapabilityAddresses:
+    case spv::Capability::Addresses:
         return "Addresses";
-    case SpvCapabilityLinkage:
+    case spv::Capability::Linkage:
         return "Linkage";
-    case SpvCapabilityKernel:
+    case spv::Capability::Kernel:
         return "Kernel";
-    case SpvCapabilityVector16:
+    case spv::Capability::Vector16:
         return "Vector16";
-    case SpvCapabilityFloat16Buffer:
+    case spv::Capability::Float16Buffer:
         return "Float16Buffer";
-    case SpvCapabilityFloat16:
+    case spv::Capability::Float16:
         return "Float16";
-    case SpvCapabilityFloat64:
+    case spv::Capability::Float64:
         return "Float64";
-    case SpvCapabilityInt64:
+    case spv::Capability::Int64:
         return "Int64";
-    case SpvCapabilityInt64Atomics:
+    case spv::Capability::Int64Atomics:
         return "Int64Atomics";
-    case SpvCapabilityImageBasic:
+    case spv::Capability::ImageBasic:
         return "ImageBasic";
-    case SpvCapabilityImageReadWrite:
+    case spv::Capability::ImageReadWrite:
         return "ImageReadWrite";
-    case SpvCapabilityImageMipmap:
+    case spv::Capability::ImageMipmap:
         return "ImageMipmap";
-    case SpvCapabilityPipes:
+    case spv::Capability::Pipes:
         return "Pipes";
-    case SpvCapabilityGroups:
+    case spv::Capability::Groups:
         return "Groups";
-    case SpvCapabilityDeviceEnqueue:
+    case spv::Capability::DeviceEnqueue:
         return "DeviceEnqueue";
-    case SpvCapabilityLiteralSampler:
+    case spv::Capability::LiteralSampler:
         return "LiteralSampler";
-    case SpvCapabilityAtomicStorage:
+    case spv::Capability::AtomicStorage:
         return "AtomicStorage";
-    case SpvCapabilityInt16:
+    case spv::Capability::Int16:
         return "Int16";
-    case SpvCapabilityTessellationPointSize:
+    case spv::Capability::TessellationPointSize:
         return "TessellationPointSize";
-    case SpvCapabilityGeometryPointSize:
+    case spv::Capability::GeometryPointSize:
         return "GeometryPointSize";
-    case SpvCapabilityImageGatherExtended:
+    case spv::Capability::ImageGatherExtended:
         return "ImageGatherExtended";
-    case SpvCapabilityStorageImageMultisample:
+    case spv::Capability::StorageImageMultisample:
         return "StorageOmageMultisample";
-    case SpvCapabilityUniformBufferArrayDynamicIndexing:
+    case spv::Capability::UniformBufferArrayDynamicIndexing:
         return "UniformBifferArrayDynamicIndexing";
-    case SpvCapabilitySampledImageArrayDynamicIndexing:
+    case spv::Capability::SampledImageArrayDynamicIndexing:
         return "SampledImageArrayDynamicIndexing";
-    case SpvCapabilityStorageBufferArrayDynamicIndexing:
+    case spv::Capability::StorageBufferArrayDynamicIndexing:
         return "StorageBufferArrayDynamicIndexing";
-    case SpvCapabilityStorageImageArrayDynamicIndexing:
+    case spv::Capability::StorageImageArrayDynamicIndexing:
         return "StorageImageArrayDynamicIndexing";
-    case SpvCapabilityClipDistance:
+    case spv::Capability::ClipDistance:
         return "ClipDistance";
-    case SpvCapabilityCullDistance:
+    case spv::Capability::CullDistance:
         return "CullDistance";
-    case SpvCapabilityImageCubeArray:
+    case spv::Capability::ImageCubeArray:
         return "ImageCubeArray";
-    case SpvCapabilitySampleRateShading:
+    case spv::Capability::SampleRateShading:
         return "SampleRateShading";
-    case SpvCapabilityImageRect:
+    case spv::Capability::ImageRect:
         return "ImageRect";
-    case SpvCapabilitySampledRect:
+    case spv::Capability::SampledRect:
         return "SampledRect";
-    case SpvCapabilityGenericPointer:
+    case spv::Capability::GenericPointer:
         return "GenericPointer";
-    case SpvCapabilityInt8:
+    case spv::Capability::Int8:
         return "Int8";
-    case SpvCapabilityInputAttachment:
+    case spv::Capability::InputAttachment:
         return "InputAttachment";
-    case SpvCapabilitySparseResidency:
+    case spv::Capability::SparseResidency:
         return "SparseResidency";
-    case SpvCapabilityMinLod:
+    case spv::Capability::MinLod:
         return "MinLod";
-    case SpvCapabilitySampled1D:
+    case spv::Capability::Sampled1D:
         return "Sampled1D";
-    case SpvCapabilityImage1D:
+    case spv::Capability::Image1D:
         return "Image1D";
-    case SpvCapabilitySampledCubeArray:
+    case spv::Capability::SampledCubeArray:
         return "SampledCubeArray";
-    case SpvCapabilitySampledBuffer:
+    case spv::Capability::SampledBuffer:
         return "SampledBuffer";
-    case SpvCapabilityImageBuffer:
+    case spv::Capability::ImageBuffer:
         return "ImageBuffer";
-    case SpvCapabilityImageMSArray:
+    case spv::Capability::ImageMSArray:
         return "ImageMSArray";
-    case SpvCapabilityStorageImageExtendedFormats:
+    case spv::Capability::StorageImageExtendedFormats:
         return "StorageImageExtendedFormats";
-    case SpvCapabilityImageQuery:
+    case spv::Capability::ImageQuery:
         return "ImageQuery";
-    case SpvCapabilityDerivativeControl:
+    case spv::Capability::DerivativeControl:
         return "DerivativeControl";
-    case SpvCapabilityInterpolationFunction:
+    case spv::Capability::InterpolationFunction:
         return "InterpolationFunction";
-    case SpvCapabilityTransformFeedback:
+    case spv::Capability::TransformFeedback:
         return "TransformFeedback";
-    case SpvCapabilityGeometryStreams:
+    case spv::Capability::GeometryStreams:
         return "GeometryStreams";
-    case SpvCapabilityStorageImageReadWithoutFormat:
+    case spv::Capability::StorageImageReadWithoutFormat:
         return "StorageImageReadWithoutFormat";
-    case SpvCapabilityStorageImageWriteWithoutFormat:
+    case spv::Capability::StorageImageWriteWithoutFormat:
         return "StorageImageWriteWithoutFormat";
-    case SpvCapabilityMultiViewport:
+    case spv::Capability::MultiViewport:
         return "MultiViewport";
-    case SpvCapabilitySubgroupDispatch:
+    case spv::Capability::SubgroupDispatch:
         return "SubgroupDispatch";
-    case SpvCapabilityNamedBarrier:
+    case spv::Capability::NamedBarrier:
         return "NamedBarrier";
-    case SpvCapabilityPipeStorage:
+    case spv::Capability::PipeStorage:
         return "PipeStorage";
-    case SpvCapabilitySubgroupBallotKHR:
+    case spv::Capability::SubgroupBallotKHR:
         return "SubgroupBallotKHR";
-    case SpvCapabilityDrawParameters:
+    case spv::Capability::DrawParameters:
         return "DrawParameters";
-    case SpvCapabilitySubgroupVoteKHR:
+    case spv::Capability::SubgroupVoteKHR:
         return "SubgroupVoteKHR";
-    case SpvCapabilityStorageBuffer16BitAccess:
+    case spv::Capability::StorageBuffer16BitAccess:
         return "StorageBuffer16BitAccess";
-    case SpvCapabilityStorageUniform16:
+    case spv::Capability::StorageUniform16:
         return "StorageUniform16";
-    case SpvCapabilityStoragePushConstant16:
+    case spv::Capability::StoragePushConstant16:
         return "StoragePushConstant16";
-    case SpvCapabilityStorageInputOutput16:
+    case spv::Capability::StorageInputOutput16:
         return "StorageInputOutput16";
-    case SpvCapabilityDeviceGroup:
+    case spv::Capability::DeviceGroup:
         return "DeviceGroup";
-    case SpvCapabilityMultiView:
+    case spv::Capability::MultiView:
         return "MultiView";
-    case SpvCapabilityVariablePointersStorageBuffer:
+    case spv::Capability::VariablePointersStorageBuffer:
         return "VariablePointersStorageBuffer";
-    case SpvCapabilityVariablePointers:
+    case spv::Capability::VariablePointers:
         return "VariablePointers";
-    case SpvCapabilityAtomicStorageOps:
+    case spv::Capability::AtomicStorageOps:
         return "AtomicStorageOps";
-    case SpvCapabilitySampleMaskPostDepthCoverage:
+    case spv::Capability::SampleMaskPostDepthCoverage:
         return "SampleMaskPostDepthCoverage";
-    case SpvCapabilityImageGatherBiasLodAMD:
+    case spv::Capability::ImageGatherBiasLodAMD:
         return "ImageGatherBiasLodAMD";
-    case SpvCapabilityFragmentMaskAMD:
+    case spv::Capability::FragmentMaskAMD:
         return "FragmentMaskAMD";
-    case SpvCapabilityStencilExportEXT:
+    case spv::Capability::StencilExportEXT:
         return "StencilExportEXT";
-    case SpvCapabilityImageReadWriteLodAMD:
+    case spv::Capability::ImageReadWriteLodAMD:
         return "ImageReadWriteLodAMD";
-    case SpvCapabilitySampleMaskOverrideCoverageNV:
+    case spv::Capability::SampleMaskOverrideCoverageNV:
         return "SampleMaskOverrideCoverageNV";
-    case SpvCapabilityGeometryShaderPassthroughNV:
+    case spv::Capability::GeometryShaderPassthroughNV:
         return "GeometryShaderPassthroughNV";
-    case SpvCapabilityShaderViewportIndexLayerEXT:
+    case spv::Capability::ShaderViewportIndexLayerEXT:
         return "ShaderViewportIndexLayerEXT";
-    case SpvCapabilityShaderViewportMaskNV:
+    case spv::Capability::ShaderViewportMaskNV:
         return "ShaderViewportMaskNV";
-    case SpvCapabilityShaderStereoViewNV:
+    case spv::Capability::ShaderStereoViewNV:
         return "ShaderStereoViewNV";
-    case SpvCapabilityPerViewAttributesNV:
+    case spv::Capability::PerViewAttributesNV:
         return "PerViewAttributesNV";
-    case SpvCapabilitySubgroupShuffleINTEL:
+    case spv::Capability::SubgroupShuffleINTEL:
         return "SubgroupShuffleINTEL";
-    case SpvCapabilitySubgroupBufferBlockIOINTEL:
+    case spv::Capability::SubgroupBufferBlockIOINTEL:
         return "SubgroupBufferBlockIOINTEL";
-    case SpvCapabilitySubgroupImageBlockIOINTEL:
+    case spv::Capability::SubgroupImageBlockIOINTEL:
         return "SubgroupImageBlockIOINTEL";
-    case SpvCapabilityMax:
+    default:
         throw CompilationError(CompilationStep::LLVM_2_IR, "Invalid capability constant!");
     }
     throw CompilationError(CompilationStep::LLVM_2_IR, "Invalid capability constant!");
 }
 
-static const std::set<SpvCapability> supportedCapabilites = {
+static const std::set<spv::Capability> supportedCapabilites = {
     // OpenCL kernels
-    SpvCapabilityKernel,
+    spv::Capability::Kernel,
     // support for 8-component or 16-component vectors
-    SpvCapabilityVector16,
+    spv::Capability::Vector16,
     // support for async_work_group_copy, ...
-    SpvCapabilityGroups,
+    spv::Capability::Groups,
     // support for short-type
-    SpvCapabilityInt16,
+    spv::Capability::Int16,
     // support for char-type
-    SpvCapabilityInt8,
+    spv::Capability::Int8,
     // support for physical, non-logical addressing mode
-    SpvCapabilityAddresses,
+    spv::Capability::Addresses,
     // support for linking functions in/out of the module
     // need to be supported, since vc4cl_* intrinsics are linked in
-    SpvCapabilityLinkage,
+    spv::Capability::Linkage,
     // support for image types
-    SpvCapabilityImageBasic,
+    spv::Capability::ImageBasic,
     // reading/writing images
-    SpvCapabilityImageReadWrite,
+    spv::Capability::ImageReadWrite,
     // samplers from literal constants
-    SpvCapabilityLiteralSampler,
+    spv::Capability::LiteralSampler,
     // support for sampled 1D images
-    SpvCapabilitySampled1D,
+    spv::Capability::Sampled1D,
     // support for un-sampled 1D images
-    SpvCapabilityImage1D,
+    spv::Capability::Image1D,
     // support for sampled image-buffers
-    SpvCapabilitySampledBuffer,
+    spv::Capability::SampledBuffer,
     // support for un-sampled image-buffers
-    SpvCapabilityImageBuffer,
+    spv::Capability::ImageBuffer,
     //"generic" storage class, is never actually checked, so why not
-    SpvCapabilityGenericPointer,
+    spv::Capability::GenericPointer,
     // support for half floating-point type only as pointer-type
-    SpvCapabilityFloat16Buffer};
+    spv::Capability::Float16Buffer, spv::Capability::Int64, spv::Capability::Float64};
 
-spv_result_t spirv2qasm::checkCapability(const SpvCapability cap)
+spv_result_t spirv2qasm::checkCapability(const spv::Capability cap)
 {
     // see https://www.khronos.org/registry/spir-v/specs/1.0/SPIRV.html#Capability
     /*
@@ -618,7 +618,7 @@ spv_result_t spirv2qasm::checkCapability(const SpvCapability cap)
 }
 
 Optional<uint32_t> spirv2qasm::getDecoration(
-    const std::vector<std::pair<SpvDecoration, uint32_t>>& decorations, const SpvDecoration deco)
+    const std::vector<std::pair<spv::Decoration, uint32_t>>& decorations, const spv::Decoration deco)
 {
     for(const auto& pair : decorations)
     {
@@ -628,17 +628,17 @@ Optional<uint32_t> spirv2qasm::getDecoration(
     return Optional<uint32_t>(false);
 }
 
-static ParameterDecorations toDecoration(SpvFunctionParameterAttribute attribute)
+static ParameterDecorations toDecoration(spv::FunctionParameterAttribute attribute)
 {
     switch(attribute)
     {
-    case SpvFunctionParameterAttributeNoWrite:
+    case spv::FunctionParameterAttribute::NoWrite:
         return ParameterDecorations::READ_ONLY;
-    case SpvFunctionParameterAttributeSext:
+    case spv::FunctionParameterAttribute::Sext:
         return ParameterDecorations::SIGN_EXTEND;
-    case SpvFunctionParameterAttributeZext:
+    case spv::FunctionParameterAttribute::Zext:
         return ParameterDecorations::ZERO_EXTEND;
-    case SpvFunctionParameterAttributeNoAlias:
+    case spv::FunctionParameterAttribute::NoAlias:
         return ParameterDecorations::RESTRICT;
     default:
         return ParameterDecorations::NONE;
@@ -646,23 +646,23 @@ static ParameterDecorations toDecoration(SpvFunctionParameterAttribute attribute
 }
 
 void spirv2qasm::setParameterDecorations(
-    Parameter& param, const std::vector<std::pair<SpvDecoration, uint32_t>>& decorations)
+    Parameter& param, const std::vector<std::pair<spv::Decoration, uint32_t>>& decorations)
 {
-    auto decoration = getDecoration(decorations, SpvDecorationFuncParamAttr);
+    auto decoration = getDecoration(decorations, spv::Decoration::FuncParamAttr);
     if(decoration)
         param.decorations =
-            add_flag(param.decorations, toDecoration(static_cast<SpvFunctionParameterAttribute>(decoration.value())));
-    decoration = getDecoration(decorations, SpvDecorationMaxByteOffset);
+            add_flag(param.decorations, toDecoration(static_cast<spv::FunctionParameterAttribute>(decoration.value())));
+    decoration = getDecoration(decorations, spv::Decoration::MaxByteOffset);
     if(decoration)
         param.maxByteOffset = decoration.value();
 
     for(const auto& pair : decorations)
     {
-        if(pair.first == SpvDecorationConstant)
+        if(pair.first == spv::Decoration::Constant)
             param.decorations = add_flag(param.decorations, ParameterDecorations::READ_ONLY);
-        else if(pair.first == SpvDecorationRestrict)
+        else if(pair.first == spv::Decoration::Restrict)
             param.decorations = add_flag(param.decorations, ParameterDecorations::RESTRICT);
-        else if(pair.first == SpvDecorationVolatile)
+        else if(pair.first == spv::Decoration::Volatile)
             param.decorations = add_flag(param.decorations, ParameterDecorations::VOLATILE);
     }
 }
@@ -688,23 +688,23 @@ DataType spirv2qasm::getIntegerType(const uint32_t bitWidth, const uint32_t sign
     return DataType(bitWidth, 1, false);
 }
 
-AddressSpace spirv2qasm::toAddressSpace(const SpvStorageClass storageClass)
+AddressSpace spirv2qasm::toAddressSpace(const spv::StorageClass storageClass)
 {
     switch(storageClass)
     {
-    case SpvStorageClassGeneric:
+    case spv::StorageClass::Generic:
         return AddressSpace::GENERIC;
-    case SpvStorageClassPrivate:
-    case SpvStorageClassFunction:
+    case spv::StorageClass::Private:
+    case spv::StorageClass::Function:
         return AddressSpace::PRIVATE;
-    case SpvStorageClassCrossWorkgroup:
+    case spv::StorageClass::CrossWorkgroup:
         return AddressSpace::GLOBAL;
-    case SpvStorageClassUniformConstant:
+    case spv::StorageClass::UniformConstant:
         return AddressSpace::CONSTANT;
-    case SpvStorageClassWorkgroup:
+    case spv::StorageClass::Workgroup:
         return AddressSpace::LOCAL;
     default:
-        logging::warn() << "Unrecognized storage-class " << storageClass << logging::endl;
+        logging::warn() << "Unrecognized storage-class " << static_cast<unsigned>(storageClass) << logging::endl;
     }
     // OpenCL's default address space
     return AddressSpace::PRIVATE;
