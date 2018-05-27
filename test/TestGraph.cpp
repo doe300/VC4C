@@ -4,7 +4,7 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#import "TestGraph.h"
+#include "TestGraph.h"
 
 #include "Graph.h"
 
