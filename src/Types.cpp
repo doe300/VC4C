@@ -11,6 +11,7 @@
 
 #include <cstdlib>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 
 using namespace vc4c;
@@ -455,6 +456,20 @@ unsigned StructType::getAlignmentInBytes() const
 std::string StructType::getTypeName() const
 {
     return name;
+}
+
+std::string StructType::getContent() const
+{
+    std::ostringstream s;
+    s << '{';
+    for(std::size_t i = 0; i < elementTypes.size(); ++i)
+    {
+        if(i != 0)
+            s << ", ";
+        s << elementTypes[i].to_string();
+    }
+    s << '}';
+    return s.str();
 }
 
 ArrayType::ArrayType(const DataType& elementType, const unsigned int size) : elementType(elementType), size(size) {}

@@ -1086,6 +1086,7 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
                     auto nextIt = it.copy().nextInBlock();
                     auto nextMemInst = nextIt.get<MemoryInstruction>();
                     if(!nextIt.isEndOfBlock() && nextMemInst != nullptr && nextMemInst->op == MemoryOperation::WRITE &&
+                        memInst->getDestination().getSingleWriter() == nextMemInst &&
                         nextMemInst->getSource() == memInst->getDestination() &&
                         nextMemInst->getNumEntries() == memInst->getNumEntries())
                     {

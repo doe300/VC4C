@@ -127,7 +127,7 @@ void profiler::dumpProfileResults(bool writeAsWarning)
             << std::noshowpos << "%)" << std::setw(64) << counter.fileName << "#" << counter.lineNumber
             << logging::endl;
     }
-    
+
     times.clear();
     counters.clear();
 }

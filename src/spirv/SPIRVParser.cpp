@@ -392,6 +392,10 @@ static Value parseConstant(const spv_parsed_instruction_t* instruction, const Ty
             throw CompilationError(
                 CompilationStep::PARSER, "Constant value is out of valid range", std::to_string(val));
         constant.literal = Literal(static_cast<uint32_t>(val));
+
+        if(constant.type.isFloatingType())
+            // set correct type, just for cosmetic purposes
+            constant.literal.type = LiteralType::REAL;
     }
     return constant;
 }
@@ -705,6 +709,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
                 structDef->isPacked = true;
             }
         }
+        logging::debug() << "Struct " << structName << ": " << structDef->getContent() << logging::endl;
         return SPV_SUCCESS;
     }
     case spv::Op::OpTypeOpaque:

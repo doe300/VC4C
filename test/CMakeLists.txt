@@ -17,6 +17,9 @@ set_target_properties(cpptest-lite PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/l
 target_link_libraries(TestVC4C cpptest-lite)
 target_include_directories (TestVC4C PRIVATE "${PROJECT_SOURCE_DIR}/lib/cpptest-lite/include")
 
+if(SPIRV_CLANG_FOUND)
+	target_compile_definitions(TestVC4C PRIVATE SPIRV_CLANG_PATH="${SPIRV_CLANG_FOUND}")
+endif(SPIRV_CLANG_FOUND)
 
 add_test(NAME Regressions COMMAND ./build/test/TestVC4C --fast-regressions WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME Emulator COMMAND ./build/test/TestVC4C --test-emulator WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

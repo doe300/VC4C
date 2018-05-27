@@ -489,6 +489,7 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
         {
             structType->elementTypes.emplace_back(toDataType(type->getStructElementType(i)));
         }
+        logging::debug() << "Struct " << type->getStructName() << ": " << structType->getContent() << logging::endl;
         return dataType;
     }
     if(type->isArrayTy())

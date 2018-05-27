@@ -367,6 +367,8 @@ namespace vc4c
 
         unsigned getAlignmentInBytes() const override;
         std::string getTypeName() const override;
+
+        std::string getContent() const;
     };
 
     /*

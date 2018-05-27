@@ -89,7 +89,8 @@ InstructionWalker intrinsifyIntegerRelation(
             if(comp->assertArgument(1).hasType(ValueType::LITERAL) &&
                 isPowerTwo(comp->assertArgument(1).literal.unsignedInt()))
             {
-                const Value mask(comp->assertArgument(1).literal.unsignedInt() - 1, comp->assertArgument(1).type);
+                const Value mask(
+                    Literal(comp->assertArgument(1).literal.unsignedInt() - 1), comp->assertArgument(1).type);
                 const Value tmp1 =
                     method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
 

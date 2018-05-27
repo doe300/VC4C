@@ -466,7 +466,11 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
     if(typeID == UNDEFINED_ID)
     {
         // globals may have other names than their ID, so check them first
-        auto it = memoryAllocated.find(sourceID);
+        AllocationMapping::iterator it;
+        if(memoryAccess == MemoryAccess::READ)
+            it = memoryAllocated.find(sourceID);
+        else
+            it = memoryAllocated.find(id);
         if(it != memoryAllocated.end())
             dest = it->second->createReference(destIndices && !destIndices->empty() ? destIndices->at(0) : ANY_ELEMENT);
         else

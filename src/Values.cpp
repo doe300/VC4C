@@ -649,7 +649,7 @@ std::string Value::to_string(const bool writeAccess, bool withLiterals) const
             return typeName + pre + tmp.substr(0, tmp.length() - 2) + post;
         }
         if(isZeroInitializer())
-            return typeName + "zeronitializer";
+            return typeName + "zerointializer";
         return typeName + std::string("container with ") + std::to_string(container.elements.size()) + " elements";
     }
     case ValueType::LOCAL:
