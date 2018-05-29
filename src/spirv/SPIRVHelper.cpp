@@ -754,7 +754,7 @@ std::vector<uint32_t> spirv2qasm::readStreamOfWords(std::istream* in)
 
 void spirv2qasm::linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output)
 {
-#ifndef SPIRV_LINKER_HEADER
+#ifndef SPIRV_FRONTEND
     throw CompilationError(CompilationStep::LINKER, "SPIRV-Tools linker is not available!");
 #else
     std::vector<std::vector<uint32_t>> binaries;

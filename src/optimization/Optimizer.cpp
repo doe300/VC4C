@@ -211,7 +211,7 @@ void Optimizer::optimize(Module& module) const
         auto f = [kernelFunc, &module, this]() -> void {
             runOptimizationPasses(module, *kernelFunc, config, initialPasses, repeatingPasses, finalPasses);
         };
-        workers.emplace(workers.end(), f, "Optimizer")->operator()();
+        workers.emplace(workers.end(), f, std::string("Optimizer for: ") + kernelFunc->name)->operator()();
     }
     BackgroundWorker::waitForAll(workers);
 }

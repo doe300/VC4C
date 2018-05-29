@@ -157,7 +157,7 @@ std::size_t Compiler::convert()
     for(Method* kernelFunc : module.getKernels())
     {
         auto f = [&codeGen, kernelFunc]() -> void { toMachineCode(codeGen, *kernelFunc); };
-        workers.emplace(workers.end(), f, "Code Generator")->operator()();
+        workers.emplace(workers.end(), f, std::string("Code Generator for: ") + kernelFunc->name)->operator()();
     }
     BackgroundWorker::waitForAll(workers);
 

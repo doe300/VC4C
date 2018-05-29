@@ -519,6 +519,13 @@ static ParameterDecorations toParameterDecorations(const llvm::Argument& arg)
     return deco;
 }
 
+static std::string toParameterName(const llvm::Argument& arg, unsigned& counter)
+{
+    if(arg.getName().empty())
+        return std::string("%") + std::to_string(counter++);
+    return std::string("%") + arg.getName().str();
+}
+
 Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
 {
     auto it = parsedFunctions.find(&func);
@@ -535,6 +542,9 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
     logging::debug() << "Reading function " << method->returnType.to_string() << " " << method->name << "(...)"
                      << logging::endl;
 
+    // for some functions, the parameters have no name, but are addressed with their index, so we need to give them
+    // their index as name
+    unsigned paramCounter = 0;
 #if LLVM_LIBRARY_VERSION >= 50
     method->parameters.reserve(func.arg_size());
     for(const llvm::Argument& arg : func.args())
@@ -543,11 +553,12 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
     for(const llvm::Argument& arg : func.getArgumentList())
 #endif
     {
-        method->parameters.emplace_back(Parameter(
-            (std::string("%") + arg.getName()).str(), toDataType(arg.getType()), toParameterDecorations(arg)));
+        method->parameters.emplace_back(
+            Parameter(toParameterName(arg, paramCounter), toDataType(arg.getType()), toParameterDecorations(arg)));
         logging::debug() << "Reading parameter " << method->parameters.back().to_string() << logging::endl;
         if(method->parameters.back().type.getImageType())
             intermediate::reserveImageConfiguration(module, method->parameters.back());
+        localMap[&arg] = &method->parameters.back();
     }
 
     parseFunctionBody(module, *method, parsedFunctions.at(&func).second, func);
@@ -729,6 +740,7 @@ void BitcodeReader::parseInstruction(
         // XXX need to heed the array-size?
         auto it = method.stackAllocations.emplace(
             StackAllocation(("%" + alloca->getName()).str(), pointerType, contentType.getPhysicalWidth(), alignment));
+        localMap[alloca] = &(*it.first);
         logging::debug() << "Reading stack allocation: " << it.first->to_string() << logging::endl;
         break;
     }
@@ -948,17 +960,17 @@ void BitcodeReader::parseInstruction(
 
 Value BitcodeReader::toValue(Method& method, const llvm::Value* val)
 {
+    auto it = localMap.find(val);
+    if(it != localMap.end())
+    {
+        return it->second->createReference();
+    }
     const Local* loc;
     const std::string valueName = val->getName().empty() ? "" : (std::string("%") + val->getName()).str();
     if((loc = method.findParameter(valueName)) != nullptr || (loc = method.findStackAllocation(valueName)) != nullptr ||
         (loc = method.findGlobal((std::string("@") + val->getName()).str())) != nullptr)
     {
         return loc->createReference();
-    }
-    auto it = localMap.find(val);
-    if(it != localMap.end())
-    {
-        return it->second->createReference();
     }
     if(llvm::dyn_cast<const llvm::BranchInst>(val) != nullptr)
     {
@@ -1092,6 +1104,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
             global->hasInitializer() ? toConstant(module, global->getInitializer()) : UNDEFINED_VALUE,
             global->isConstant()));
         logging::debug() << "Global read: " << module.globalData.back().to_string() << logging::endl;
+        localMap[val] = &module.globalData.back();
         return module.globalData.back().createReference();
     }
     else if(llvm::dyn_cast<const llvm::UndefValue>(val) != nullptr)

@@ -131,7 +131,7 @@ void Normalizer::normalize(Module& module) const
     for(Method* kernelFunc : module.getKernels())
     {
         auto f = [kernelFunc, &module, this]() -> void { normalizeMethod(module, *kernelFunc); };
-        workers.emplace(workers.end(), f, "Normalization")->operator()();
+        workers.emplace(workers.end(), f, std::string("Normalization for: ") + kernelFunc->name)->operator()();
     }
     BackgroundWorker::waitForAll(workers);
 }

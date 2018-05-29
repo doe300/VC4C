@@ -40,6 +40,7 @@ void BackgroundWorker::operator()()
         catch(const std::exception& e)
         {
             logging::error() << "Background worker threw error: " << e.what() << logging::endl;
+            logging::error() << "While running worker task: " << name << logging::endl;
             this->err = std::current_exception();
         }
     };
