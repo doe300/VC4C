@@ -204,16 +204,10 @@ static void runOptimizationPasses(const Module& module, Method& method, const Co
 
 void Optimizer::optimize(Module& module) const
 {
-    std::vector<BackgroundWorker> workers;
-    workers.reserve(module.getKernels().size());
-    for(Method* kernelFunc : module.getKernels())
-    {
-        auto f = [kernelFunc, &module, this]() -> void {
-            runOptimizationPasses(module, *kernelFunc, config, initialPasses, repeatingPasses, finalPasses);
-        };
-        workers.emplace(workers.end(), f, std::string("Optimizer for: ") + kernelFunc->name)->operator()();
-    }
-    BackgroundWorker::waitForAll(workers);
+    const auto f = [&](Method* kernelFunc) {
+        runOptimizationPasses(module, *kernelFunc, config, initialPasses, repeatingPasses, finalPasses);
+    };
+    BackgroundWorker::scheduleAll<Method*>(module.getKernels(), f, "Optimizer");
 }
 
 const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {

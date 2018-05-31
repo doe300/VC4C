@@ -98,9 +98,6 @@ static void runNormalizationStep(
 
 void Normalizer::normalize(Module& module) const
 {
-    std::vector<BackgroundWorker> workers;
-    workers.reserve(module.getKernels().size());
-
     // 1. eliminate phi on all methods
     for(auto& method : module)
     {
@@ -128,26 +125,15 @@ void Normalizer::normalize(Module& module) const
             kernel.countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 4);
     }
     // 3. run other normalization steps on kernel functions
-    for(Method* kernelFunc : module.getKernels())
-    {
-        auto f = [kernelFunc, &module, this]() -> void { normalizeMethod(module, *kernelFunc); };
-        workers.emplace(workers.end(), f, std::string("Normalization for: ") + kernelFunc->name)->operator()();
-    }
-    BackgroundWorker::waitForAll(workers);
+    const auto f = [&module, this](Method* kernelFunc) -> void { normalizeMethod(module, *kernelFunc); };
+    BackgroundWorker::scheduleAll<Method*>(module.getKernels(), f, "Normalization");
 }
 
 void Normalizer::adjust(Module& module) const
 {
-    std::vector<BackgroundWorker> workers;
-    workers.reserve(module.getKernels().size());
-
     // run adjustment steps on kernel functions
-    for(Method* kernelFunc : module.getKernels())
-    {
-        auto f = [kernelFunc, &module, this]() -> void { adjustMethod(module, *kernelFunc); };
-        workers.emplace(workers.end(), f, "Adjustment")->operator()();
-    }
-    BackgroundWorker::waitForAll(workers);
+    const auto f = [&module, this](Method* kernelFunc) -> void { adjustMethod(module, *kernelFunc); };
+    BackgroundWorker::scheduleAll<Method*>(module.getKernels(), f, "Adjustment");
 }
 
 void Normalizer::normalizeMethod(Module& module, Method& method) const
