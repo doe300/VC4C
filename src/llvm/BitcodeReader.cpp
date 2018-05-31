@@ -851,17 +851,32 @@ void BitcodeReader::parseInstruction(
         {
             args.emplace_back(toValue(method, call->getArgOperand(i)));
         }
-        if(call->getCalledFunction()->isDeclaration())
+        const llvm::Function* func = call->getCalledFunction();
+        if(func == nullptr)
+        {
+            // e.g. for alias - see https://stackoverflow.com/questions/22143143/
+            auto alias = llvm::dyn_cast<const llvm::GlobalAlias>(call->getCalledValue());
+            if(alias != nullptr)
+            {
+                func = llvm::dyn_cast<const llvm::Function>(alias->getAliasee());
+            }
+        }
+        if(func == nullptr)
+        {
+            dumpLLVM(call);
+            throw CompilationError(CompilationStep::PARSER, "Unhandled type of indirect function call!");
+        }
+        if(func->isDeclaration())
         {
             // functions without definitions (e.g. intrinsic functions)
-            std::string funcName = call->getCalledFunction()->getName();
+            std::string funcName = func->getName();
             instructions.emplace_back(new CallSite(toValue(method, call).local,
                 cleanMethodName(funcName.find("_Z") == 0 ? std::string("@") + funcName : funcName),
-                toDataType(call->getCalledFunction()->getReturnType()), args));
+                toDataType(func->getReturnType()), args));
         }
         else
         {
-            Method& dest = parseFunction(module, *call->getCalledFunction());
+            Method& dest = parseFunction(module, *func);
             instructions.emplace_back(new CallSite(toValue(method, call).local, dest, args));
         }
 

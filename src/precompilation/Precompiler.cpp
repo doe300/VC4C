@@ -218,7 +218,8 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
 
         if(includeStandardLibrary)
         {
-            tempFiles.emplace_back();
+            // FIXME this does not work, since the SPIRV-LLVM does not generate a correct VC4CL standard-library module
+            tempFiles.emplace_back(new TemporaryFile());
             SPIRVResult stdLib(tempFiles.back()->fileName);
             compileLLVMToSPIRV(LLVMIRSource(VC4CL_STDLIB_MODULE ""), "", stdLib);
             sources.emplace_back(stdLib);
