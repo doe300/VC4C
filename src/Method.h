@@ -273,7 +273,7 @@ namespace vc4c
          *
          * We cannot use unique_ptr here, since the type ControlFlowGraph is not complete here
          */
-        std::shared_ptr<ControlFlowGraph> cfg;
+        std::unique_ptr<ControlFlowGraph> cfg;
 
         std::string createLocalName(const std::string& prefix = "", const std::string& postfix = "");
 

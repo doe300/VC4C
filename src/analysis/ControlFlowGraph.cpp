@@ -11,30 +11,34 @@
 
 #include "log.h"
 
+#include <numeric>
+
 using namespace vc4c;
 
 bool CFGRelation::operator==(const CFGRelation& other) const
 {
-    return reverseRelation == other.reverseRelation && forwardRelation == other.forwardRelation &&
-        predecessor == other.predecessor && isImplicit == other.isImplicit;
+    return predecessors == other.predecessors && isImplicit == other.isImplicit;
 }
 
-std::pair<ConditionCode, Value> CFGRelation::getBranchConditions() const
+std::string CFGRelation::getLabel() const
 {
-    if(predecessor.has<intermediate::Branch>())
+    if(isImplicit.size() == 2 &&
+        std::all_of(isImplicit.begin(), isImplicit.end(),
+            [](const std::pair<BasicBlock*, bool>& pair) -> bool { return pair.second; }))
     {
-        const intermediate::Branch* br = predecessor.get<const intermediate::Branch>();
-
-        if(br->conditional != COND_ALWAYS)
-        {
-            ConditionCode cond = br->conditional;
-            const Value& on = br->getCondition();
-
-            // if the transition is implicit, it happens if the previous branch is not taken
-            return std::make_pair(isImplicit ? cond.invert() : cond, on);
-        }
+        return "";
     }
-    return std::make_pair(COND_ALWAYS, UNDEFINED_VALUE);
+    if(predecessors.empty())
+        return "";
+    const auto converter = [](const std::pair<BasicBlock*, InstructionWalker>& pair) -> std::string {
+        if(pair.second.has<intermediate::Branch>())
+            return "br " + pair.second.get<const intermediate::Branch>()->conditional.to_string();
+        return "";
+    };
+    return std::accumulate(predecessors.begin(), predecessors.end(), std::string{},
+        [&](const std::string& s, const std::pair<BasicBlock*, InstructionWalker>& pair) -> std::string {
+            return (s.empty() ? s : (s + ", ")) + converter(pair);
+        });
 }
 
 bool vc4c::operator<(const CFGNode& one, const CFGNode& other)
@@ -57,22 +61,22 @@ const CFGNode* ControlFlowLoop::findPredecessor() const
     const CFGNode* predecessor = nullptr;
     for(const CFGNode* node : *this)
     {
-        node->forAllNeighbors([](const CFGRelation& rel) -> bool { return rel.isReverseRelation(); },
-            [this, &predecessor](const CFGNode* neighbor, const CFGRelation& rel) -> void {
-                if(std::find(begin(), end(), neighbor) == end())
-                {
-                    // the relation is backwards and node is not within this loop -> predecessor
-                    if(predecessor != nullptr)
-                        // TODO testing/boost-compute/test_accumulator.cl throws errors here, because it has multiple
-                        // predecessors (in kernel "reduce")! How to handle them?
-                        throw CompilationError(CompilationStep::GENERAL, "Found multiple predecessors for CFG loop",
-                            neighbor->key->getLabel()->to_string());
+        node->forAllIncomingEdges([this, &predecessor](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
+            if(std::find(begin(), end(), &neighbor) == end())
+            {
+                // the relation is backwards and node is not within this loop -> predecessor
+                if(predecessor != nullptr)
+                    // TODO testing/boost-compute/test_accumulator.cl throws errors here, because it has multiple
+                    // predecessors (in kernel "reduce")! How to handle them?
+                    throw CompilationError(CompilationStep::GENERAL, "Found multiple predecessors for CFG loop",
+                        neighbor.key->getLabel()->to_string());
 
-                    logging::debug() << "Found predecessor for CFG loop: " << neighbor->key->getLabel()->to_string()
-                                     << logging::endl;
-                    predecessor = neighbor;
-                }
-            });
+                logging::debug() << "Found predecessor for CFG loop: " << neighbor.key->getLabel()->to_string()
+                                 << logging::endl;
+                predecessor = &neighbor;
+            }
+            return true;
+        });
     }
     return predecessor;
 }
@@ -82,20 +86,20 @@ const CFGNode* ControlFlowLoop::findSuccessor() const
     const CFGNode* successor = nullptr;
     for(const CFGNode* node : *this)
     {
-        node->forAllNeighbors([](const CFGRelation& rel) -> bool { return rel.isForwardRelation(); },
-            [this, &successor](const CFGNode* neighbor, const CFGRelation& rel) -> void {
-                if(std::find(begin(), end(), neighbor) == end())
-                {
-                    // the relation is forward and node is not within this loop -> successor
-                    if(successor != nullptr)
-                        throw CompilationError(CompilationStep::GENERAL, "Found multiple successors for CFG loop",
-                            neighbor->key->getLabel()->to_string());
+        node->forAllOutgoingEdges([this, &successor](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
+            if(std::find(begin(), end(), &neighbor) == end())
+            {
+                // the relation is forward and node is not within this loop -> successor
+                if(successor != nullptr)
+                    throw CompilationError(CompilationStep::GENERAL, "Found multiple successors for CFG loop",
+                        neighbor.key->getLabel()->to_string());
 
-                    logging::debug() << "Found successor for CFG loop: " << neighbor->key->getLabel()->to_string()
-                                     << logging::endl;
-                    successor = neighbor;
-                }
-            });
+                logging::debug() << "Found successor for CFG loop: " << neighbor.key->getLabel()->to_string()
+                                 << logging::endl;
+                successor = &neighbor;
+            }
+            return true;
+        });
     }
     return successor;
 }
@@ -137,7 +141,7 @@ bool ControlFlowLoop::includes(const ControlFlowLoop& other) const
 CFGNode& ControlFlowGraph::getStartOfControlFlow()
 {
     // TODO return node without any predecessors?
-    return assertNode(&(*begin()->first->method.begin()));
+    return assertNode(&(*nodes.begin()->first->method.begin()));
 }
 
 CFGNode& ControlFlowGraph::getEndOfControlFlow()
@@ -145,11 +149,15 @@ CFGNode& ControlFlowGraph::getEndOfControlFlow()
     // return node without any successor,
     // if there are multiple (or none), throw
     CFGNode* candidate = nullptr;
-    for(auto& pair : *this)
+    for(auto& pair : nodes)
     {
         CFGNode& node = pair.second;
-        if(std::none_of(node.getNeighbors().begin(), node.getNeighbors().end(),
-               [](const auto& pair) -> bool { return pair.second.isForwardRelation(); }))
+        bool anyOutgoingEdges = false;
+        node.forAllOutgoingEdges([&anyOutgoingEdges](const CFGNode&, const CFGEdge&) -> bool {
+            anyOutgoingEdges = true;
+            return false;
+        });
+        if(!anyOutgoingEdges)
         {
             if(candidate != nullptr)
             {
@@ -190,7 +198,7 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops()
 
     // we need the nodes sorted by the order of the basic blocks
     OrderedSet<const CFGNode*, CFGNodeSorter> orderedNodes;
-    for(auto& pair : *this)
+    for(auto& pair : nodes)
         orderedNodes.emplace(&pair.second);
 
     for(const CFGNode* node : orderedNodes)
@@ -201,7 +209,7 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops()
             if(loop.size() > 1)
                 loops.emplace_back(std::move(loop));
         }
-        if(node->getNeighbors().find(const_cast<CFGNode*>(node)) != node->getNeighbors().end())
+        if(node->isAdjacent(node))
         {
             // extra case, loop with single block
             ControlFlowLoop loop;
@@ -225,43 +233,38 @@ void ControlFlowGraph::dumpGraph(const std::string& path) const
 {
     // XXX to be exact, would need bidirectional arrow [dir="both"] for compact loops
     auto nameFunc = [](const BasicBlock* bb) -> std::string { return bb->getLabel()->getLabel()->name; };
-    auto edgeLabelFunc = [](const CFGRelation& r) -> std::string {
-        return (r.isReverseRelation() && !r.isForwardRelation()) || r.isImplicit ||
-                !r.predecessor.has<intermediate::Branch>() ?
-            "" :
-            std::string("br ") + r.predecessor->conditional.to_string();
-    };
-    DebugGraph<BasicBlock*, CFGRelation>::dumpGraph<ControlFlowGraph>(*this, path, true, nameFunc,
-        [](const CFGRelation& rel) -> bool { return !rel.isForwardRelation(); }, edgeLabelFunc);
+    auto edgeLabelFunc = [](const CFGRelation& r) -> std::string { return r.getLabel(); };
+    DebugGraph<BasicBlock*, CFGRelation, CFGEdge::Directed>::dumpGraph<ControlFlowGraph>(*this, path, nameFunc,
+        [](const CFGRelation& rel) -> bool {
+            return std::all_of(rel.isImplicit.begin(), rel.isImplicit.end(),
+                [](const std::pair<BasicBlock*, bool>& pair) -> bool { return pair.second; });
+        },
+        edgeLabelFunc);
 }
 
-ControlFlowGraph ControlFlowGraph::createCFG(Method& method)
+std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
 {
     PROFILE_START(createCFG);
-    ControlFlowGraph graph;
+    std::unique_ptr<ControlFlowGraph> graph(new ControlFlowGraph());
 
     for(BasicBlock& bb : method)
     {
         bb.forPredecessors([&bb, &graph](InstructionWalker it) -> void {
             // this transition is implicit if the previous instruction is not a branch at all or a conditional branch to
             // somewhere else (then the transition happens if the condition is not met)
-            bool isImplicit = !it.has<intermediate::Branch>() ||
-                (it.get<intermediate::Branch>()->conditional != COND_ALWAYS &&
-                    it.get<intermediate::Branch>()->getTarget() != bb.getLabel()->getLabel());
-            // forward connection
-            graph.getOrCreateNode(it.getBasicBlock())
-                .getOrCreateNeighbor(&graph.getOrCreateNode(&bb), CFGRelation{false, true, it, isImplicit})
-                .second.forwardRelation = true;
-            // backward connection
-            graph.getOrCreateNode(&bb)
-                .getOrCreateNeighbor(
-                    &graph.getOrCreateNode(it.getBasicBlock()), CFGRelation{true, false, it, isImplicit})
-                .second.reverseRelation = true;
+            bool isImplicit = !it.has<intermediate::Branch>();
+            //|| (it.get<intermediate::Branch>()->conditional != COND_ALWAYS &&
+            //        it.get<intermediate::Branch>()->getTarget() != bb.getLabel()->getLabel());
+            // connection from it.getBasicBlock() to bb
+            auto& node = graph->getOrCreateNode(it.getBasicBlock());
+            auto& edge = node.getOrCreateEdge(&graph->getOrCreateNode(&bb), CFGRelation{}).addInput(node);
+            edge.data.isImplicit.emplace(node.key, isImplicit);
+            edge.data.predecessors.emplace(node.key, it);
         });
     }
 
 #ifdef DEBUG_MODE
-    graph.dumpGraph("/tmp/vc4c-cfg.dot");
+    graph->dumpGraph("/tmp/vc4c-cfg.dot");
 #endif
 
     PROFILE_END(createCFG);
@@ -276,27 +279,27 @@ ControlFlowLoop ControlFlowGraph::findLoopsHelper(const CFGNode* node, FastMap<c
     stack.push_back(node);
 
     // Go through all vertices adjacent to this
-    node->forAllNeighbors(toFunction(&CFGRelation::isForwardRelation),
-        [this, node, &discoveryTimes, &lowestReachable, &stack, &time](
-            const CFGNode* next, const CFGRelation& rel) -> void {
-            const CFGNode* v = next;
-            // If v is not visited yet, then recur for it
-            if(discoveryTimes[v] == 0)
-            {
-                findLoopsHelper(v, discoveryTimes, lowestReachable, stack, time);
+    node->forAllOutgoingEdges([this, node, &discoveryTimes, &lowestReachable, &stack, &time](
+                                  const CFGNode& next, const CFGEdge& edge) -> bool {
+        const CFGNode* v = &next;
+        // If v is not visited yet, then recur for it
+        if(discoveryTimes[v] == 0)
+        {
+            findLoopsHelper(v, discoveryTimes, lowestReachable, stack, time);
 
-                // Check if the subtree rooted with 'v' has a
-                // connection to one of the ancestors of 'u'
-                // Case 1 (per above discussion on Disc and Low value)
-                lowestReachable[node] = std::min(lowestReachable[node], lowestReachable[v]);
-            }
+            // Check if the subtree rooted with 'v' has a
+            // connection to one of the ancestors of 'u'
+            // Case 1 (per above discussion on Disc and Low value)
+            lowestReachable[node] = std::min(lowestReachable[node], lowestReachable[v]);
+        }
 
-            // Update low value of 'u' only of 'v' is still in stack
-            // (i.e. it's a back edge, not cross edge).
-            // Case 2 (per above discussion on Disc and Low value)
-            else if(std::find(stack.begin(), stack.end(), v) != stack.end())
-                lowestReachable[node] = std::min(lowestReachable[node], discoveryTimes[v]);
-        });
+        // Update low value of 'u' only of 'v' is still in stack
+        // (i.e. it's a back edge, not cross edge).
+        // Case 2 (per above discussion on Disc and Low value)
+        else if(std::find(stack.begin(), stack.end(), v) != stack.end())
+            lowestReachable[node] = std::min(lowestReachable[node], discoveryTimes[v]);
+        return true;
+    });
 
     ControlFlowLoop loop;
     loop.reserve(stack.size());
@@ -316,18 +319,13 @@ ControlFlowLoop ControlFlowGraph::findLoopsHelper(const CFGNode* node, FastMap<c
     return loop;
 }
 
-LoopInclusionTreeNode::LoopInclusionTreeNode(const KeyType key) : Node(key) {}
-
-LoopInclusionTreeNode* LoopInclusionTreeNode::findRoot()
+LoopInclusionTreeNodeBase* LoopInclusionTreeNodeBase::findRoot()
 {
-    for(auto& parent : this->getNeighbors())
-    {
-        if(!parent.second.includes)
-        {
-            // The root node must be only one
-            return reinterpret_cast<LoopInclusionTreeNode*>(parent.first)->findRoot();
-        }
-    }
-    // this is root
-    return this;
+    auto* self = reinterpret_cast<LoopInclusionTreeNode*>(this);
+    LoopInclusionTreeNodeBase* root = this;
+    self->forAllIncomingEdges([&](LoopInclusionTreeNode& parent, LoopInclusionTreeEdge&) -> bool {
+        root = parent.findRoot();
+        return true;
+    });
+    return root;
 }

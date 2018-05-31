@@ -40,20 +40,19 @@ static void overlapLocals(LifetimeGraph& graph, const FastSet<const Local*>& liv
             if(l1 != l2)
             {
                 auto& node2 = graph.getOrCreateNode(l2);
-                node.addNeighbor(&node2, {});
-                node2.addNeighbor(&node, {});
+                node.addEdge(&node2, {});
             }
         }
     }
 }
 
-LifetimeGraph LifetimeGraph::createLifetimeGraph(Method& method)
+std::unique_ptr<LifetimeGraph> LifetimeGraph::createLifetimeGraph(Method& method)
 {
     PROFILE_START(createLifetimeGraph);
     // memory objects which are live (used) at this moment
     FastSet<const Local*> liveLocals;
 
-    LifetimeGraph graph;
+    std::unique_ptr<LifetimeGraph> graph(new LifetimeGraph());
 
     // add all globals and parameters (unless they are have __global address space)
     for(const Global& global : method.module.globalData)
@@ -68,7 +67,7 @@ LifetimeGraph LifetimeGraph::createLifetimeGraph(Method& method)
     }
 
     // mark all globals/parameters as overlapping
-    overlapLocals(graph, liveLocals);
+    overlapLocals(*graph.get(), liveLocals);
 
     method.forAllInstructions([&liveLocals, &graph](const intermediate::IntermediateInstruction* inst) -> void {
         const auto lifetimeInst = dynamic_cast<const intermediate::LifetimeBoundary*>(inst);
@@ -81,7 +80,7 @@ LifetimeGraph LifetimeGraph::createLifetimeGraph(Method& method)
             {
                 liveLocals.emplace(local);
                 // new local, mark all currently live locals as overlapping
-                overlapLocals(graph, liveLocals);
+                overlapLocals(*graph.get(), liveLocals);
             }
         }
         // TODO this is not completely correct, would need to follow the control-flow from start to stop(s)
@@ -89,8 +88,8 @@ LifetimeGraph LifetimeGraph::createLifetimeGraph(Method& method)
 
 #ifdef DEBUG_MODE
     auto nameFunc = [](const Local* loc) -> std::string { return loc->name; };
-    DebugGraph<const Local*, LifetimeRelation>::dumpGraph<LifetimeGraph>(
-        graph, "/tmp/vc4c-lifetimes.dot", false, nameFunc);
+    DebugGraph<const Local*, LifetimeRelation, Directionality::UNDIRECTED>::dumpGraph<LifetimeGraph>(
+        *graph.get(), "/tmp/vc4c-lifetimes.dot", nameFunc);
 #endif
 
     PROFILE_END(createLifetimeGraph);
@@ -119,7 +118,7 @@ unsigned LifetimeGraph::calculateRequiredStackSize()
 {
     OrderedSet<LifetimeNode*, StackNodeSorter> stackNodes;
 
-    for(std::pair<const Local* const, LifetimeNode>& node : *this)
+    for(std::pair<const Local* const, LifetimeNode>& node : nodes)
     {
         if(node.first->is<StackAllocation>())
             stackNodes.emplace(&node.second);
@@ -148,7 +147,7 @@ unsigned LifetimeGraph::calculateRequiredStackSize()
             if(processedNodes.find(*it2) != processedNodes.end())
                 // already processed, skip
                 continue;
-            if((*it)->getNeighbors().find(*it2) != (*it)->getNeighbors().end())
+            if((*it)->isAdjacent(*it2))
                 // life-times overlay, skip
                 continue;
             // TODO alignment?!

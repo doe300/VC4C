@@ -33,18 +33,19 @@ namespace vc4c
      */
     using DataDependency = FastMap<Local*, DataDependencyType>;
 
-    struct DataDependencyNode : public Node<BasicBlock*, DataDependency>
+    class DataDependencyGraph;
+
+    struct DataDependencyNodeBase
     {
-        using Base = Node<BasicBlock*, DataDependency>;
-
-        explicit DataDependencyNode(BasicBlock* key) : Base(key) {}
-
         bool dependsOnBlock(const BasicBlock& bb, const DataDependencyType type = DataDependencyType::FLOW) const;
         bool hasExternalDependencies(
             const Local* local, const DataDependencyType type = DataDependencyType::FLOW) const;
         FastSet<const Local*> getAllExternalDependencies(
             const DataDependencyType type = DataDependencyType::FLOW) const;
     };
+
+    using DataDependencyNode = Node<BasicBlock*, DataDependency, Directionality::DIRECTED, DataDependencyNodeBase>;
+    using DataDependencyEdge = typename DataDependencyNode::EdgeType;
 
     /*
      * The data-dependency graph represents the data-dependencies between basic-blocks.
@@ -61,7 +62,7 @@ namespace vc4c
          * - a local dependency (not necessarily basic-block local!) within the loop or
          * - a "constant" dependency which is set somewhere before the loop and never changed in the loop body
          */
-        static DataDependencyGraph createDependencyGraph(Method& method);
+        static std::unique_ptr<DataDependencyGraph> createDependencyGraph(Method& method);
     };
 }
 

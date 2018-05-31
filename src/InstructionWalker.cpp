@@ -98,11 +98,12 @@ bool InstructionVisitor::visitReverse(const InstructionWalker& start, ControlFlo
                 {
                     // use pre-calculated graph of basic blocks
                     blockGraph->assertNode(it.getBasicBlock())
-                        .forAllNeighbors(toFunction(&CFGRelation::isReverseRelation),
-                            [&continueBranches, this, blockGraph](const CFGNode* node, const CFGRelation& rel) -> void {
+                        .forAllIncomingEdges(
+                            [&continueBranches, this, blockGraph](const CFGNode& node, const CFGEdge& edge) -> bool {
                                 // this makes sure, a STOP_ALL skips other predecessors
                                 if(continueBranches)
-                                    continueBranches = visitReverse(rel.predecessor, blockGraph);
+                                    continueBranches = visitReverse(edge.data.predecessors.at(node.key), blockGraph);
+                                return true;
                             });
                 }
                 else

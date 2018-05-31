@@ -111,10 +111,10 @@ void BasicBlock::forSuccessiveBlocks(const std::function<void(BasicBlock&)>& con
     {
         // if we have a valid CFG, use it. This saves us from iterating all instructions
         method.cfg->assertNode(const_cast<BasicBlock*>(this))
-            .forAllNeighbors(toFunction(&CFGRelation::isForwardRelation),
-                [&consumer](const CFGNode* node, const CFGRelation& rel) -> void {
-                    consumer(*const_cast<BasicBlock*>(node->key));
-                });
+            .forAllOutgoingEdges([&consumer](CFGNode& node, CFGEdge& edge) -> bool {
+                consumer(*node.key);
+                return true;
+            });
     }
     else
     {
@@ -169,10 +169,13 @@ bool BasicBlock::fallsThroughToNextBlock() const
     {
         // if we have a valid CFG, use it. This saves us from iterating all instructions
         const auto& node = method.cfg->assertNode(const_cast<BasicBlock*>(this));
-        return std::any_of(node.getNeighbors().begin(), node.getNeighbors().end(),
-            [](const std::pair<CFGNode*, CFGRelation>& neighbor) -> bool {
-                return neighbor.second.isForwardRelation() && neighbor.second.isImplicit;
-            });
+        bool fallsThrough = false;
+        node.forAllOutgoingEdges([&node, &fallsThrough](const CFGNode& n, const CFGEdge& edge) -> bool {
+            if(edge.data.isImplicit.at(node.key))
+                fallsThrough = true;
+            return !fallsThrough;
+        });
+        return fallsThrough;
     }
     // if the last instruction of a basic block is not an unconditional branch to another block, the control-flow falls
     // through to the next block

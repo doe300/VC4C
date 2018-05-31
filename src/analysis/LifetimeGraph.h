@@ -18,7 +18,7 @@ namespace vc4c
         {
         };
 
-        using LifetimeNode = Node<const Local*, LifetimeRelation>;
+        using LifetimeNode = Node<const Local*, LifetimeRelation, Directionality::UNDIRECTED>;
 
         /*
          * Graph of relations of objects residing in memory and their life-time
@@ -28,7 +28,7 @@ namespace vc4c
         class LifetimeGraph : public Graph<const Local*, LifetimeNode>
         {
         public:
-            static LifetimeGraph createLifetimeGraph(Method& method);
+            static std::unique_ptr<LifetimeGraph> createLifetimeGraph(Method& method);
 
             /*
              * Calculates the stack-size required to fit all stack-allocations.

@@ -6,6 +6,8 @@ target_sources(TestVC4C
     test.cpp
     TestEmulator.cpp
     TestEmulator.h
+    TestGraph.cpp
+    TestGraph.h
     TestInstructions.cpp
     TestInstructions.h
     TestOperators.cpp

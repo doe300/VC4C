@@ -10,6 +10,7 @@
 #include "cpptest.h"
 #include "cpptest-main.h"
 #include "TestEmulator.h"
+#include "TestGraph.h"
 #include "TestInstructions.h"
 #include "TestOperators.h"
 #include "TestParser.h"
@@ -70,6 +71,7 @@ int main(int argc, char** argv)
     Test::registerSuite(newFastRegressionTest, "fast-regressions", "Runs regression test-cases marked as fast", false);
     Test::registerSuite(Test::newInstance<TestEmulator>, "test-emulator", "Runs selected code-samples through the emulator");
     Test::registerSuite(Test::newInstance<TestStdlib>, "test-stdlib", "Runs most of the VC4CL std-lib functions in emulator");
+    Test::registerSuite(Test::newInstance<TestGraph>, "test-graph", "Runs basic test for the graph data structure");
     
     for(auto i = 1; i < argc; ++i)
     { 
