@@ -7,7 +7,7 @@ kernel void if1 (global float a[]) {
 
 void kernel test(float global * a, const int n){
   float sum = 0.0;
-  for (int i = 0; i < 10; i++)
+  for (int i = 0; i < n; i++)
     sum += a[i];
   a[get_global_id(0)] = sum;
 }
