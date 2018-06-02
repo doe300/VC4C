@@ -170,7 +170,7 @@ namespace vc4c
             std::string to_string() const;
 
             // The maximum work group sizes specified in the VC4CL runtime library
-            static constexpr uint32_t MAX_WORK_GROUP_SIZES = 12;
+            static constexpr uint32_t MAX_WORK_GROUP_SIZES = NUM_QPUS;
 
             inline void setName(const std::string& name)
             {

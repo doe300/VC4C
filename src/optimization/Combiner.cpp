@@ -660,6 +660,8 @@ bool optimizations::combineLoadingLiterals(const Module& module, Method& method,
         {
             if(it.get() && it->hasValueType(ValueType::LOCAL) &&
                 it->getOutput()->local->getUsers(LocalUse::Type::WRITER).size() == 1 &&
+                // TODO also combine is both ranges are not locally limited and overlap for the most part
+                // (or at least if one range completely contains the other range)
                 block.isLocallyLimited(it, it->getOutput()->local, config.additionalOptions.accumulatorThreshold))
             {
                 Optional<Literal> literal = getSourceLiteral(it);

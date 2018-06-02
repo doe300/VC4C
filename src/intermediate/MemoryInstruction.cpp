@@ -183,7 +183,8 @@ static bool canMoveIntoVPM(const Value& val, bool isMemoryAddress)
             return false;
         if(base->is<StackAllocation>())
             // the stack can always be lowered into VPM (if it fits!)
-            return (inVPMType.getPhysicalWidth() * 12 /* number of stacks */) < VPM_DEFAULT_SIZE;
+            // TODO could be optimized by determining the actual number of work-items in work-group
+            return (inVPMType.getPhysicalWidth() * NUM_QPUS /* number of stacks */) < VPM_DEFAULT_SIZE;
         // for any other value, do not lower
         return false;
     }

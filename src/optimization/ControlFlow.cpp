@@ -13,6 +13,7 @@
 #include "../intermediate/TypeConversions.h"
 #include "../normalization/LiteralValues.h"
 #include "../periphery/VPM.h"
+#include "./Combiner.h"
 #include "log.h"
 
 #include <algorithm>
@@ -801,8 +802,8 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
             // we could not find the iteration variable, skip this loop
             continue;
 
-        if(!loopControl.initialization || loopControl.terminatingValue.isUndefined() || !loopControl.iterationStep ||
-            !loopControl.repetitionJump)
+        if(!loopControl.initialization || loopControl.terminatingValue.isUndefined() ||
+            !loopControl.terminatingValue.isLiteralValue() || !loopControl.iterationStep || !loopControl.repetitionJump)
         {
             // we need to know both bounds and the iteration step (for now)
             logging::debug() << "Failed to find all bounds and step for loop, aborting vectorization!" << logging::endl;
@@ -1153,7 +1154,8 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 {
                     // LoadImmediate must have output value
                     auto out = loadInst->getOutput().value();
-                    if(out.valueType == ValueType::LOCAL)
+                    if(loadInst->hasValueType(ValueType::LOCAL) && !loadInst->hasSideEffects() &&
+                        !loadInst->hasConditionalExecution())
                     {
                         if(insertedBlock != nullptr)
                         {
@@ -1193,6 +1195,10 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             }
         }
     }
+
+    if(hasChanged)
+        // combine the newly reordered (and at one place accumulated) loading instructions
+        combineLoadingLiterals(module, method, config);
 
     return hasChanged;
 }

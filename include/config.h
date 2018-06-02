@@ -200,6 +200,11 @@ namespace vc4c
     constexpr std::size_t NATIVE_VECTOR_SIZE{16};
 
     /*
+     * Number of QPUs on the VideoCore IV GPU
+     */
+    constexpr uint32_t NUM_QPUS{12};
+
+    /*
      * Magic number to identify QPU assembler code (machine code)
      */
     constexpr uint32_t QPUASM_MAGIC_NUMBER = 0xDEADBEAF;

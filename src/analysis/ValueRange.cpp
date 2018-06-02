@@ -233,7 +233,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
                         *std::max_element(method.metaData.workGroupSizes.begin(), method.metaData.workGroupSizes.end());
                 }
                 else
-                    maxSize = 12;
+                    maxSize = NUM_QPUS;
                 range.extendBoundaries(0l, maxSize);
             }
             else if(it->hasDecoration(InstructionDecorations::BUILTIN_WORK_DIMENSIONS))

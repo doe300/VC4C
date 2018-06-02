@@ -845,10 +845,7 @@ static void generateStandardMemoryAccessInstructions(
 static void lowerStackIntoVPM(Method& method, FastSet<InstructionWalker>& memoryInstructions,
     FastMap<const Local*, const VPMArea*>& vpmMappedLocals)
 {
-    const unsigned stackSize = method.metaData.isWorkGroupSizeSet() ?
-        std::accumulate(method.metaData.workGroupSizes.begin(), method.metaData.workGroupSizes.end(), 1u,
-            std::multiplies<uint32_t>()) :
-        12;
+    const unsigned stackSize = method.metaData.getWorkGroupSize();
     auto walkerIt = memoryInstructions.begin();
     while(walkerIt != memoryInstructions.end())
     {

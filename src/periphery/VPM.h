@@ -759,7 +759,7 @@ namespace vc4c
             const VPMArea& getScratchArea();
             const VPMArea* findArea(const Local* local);
             const VPMArea* addArea(
-                const Local* local, const DataType& elementType, bool isStackArea, unsigned numStacks = 12);
+                const Local* local, const DataType& elementType, bool isStackArea, unsigned numStacks = NUM_QPUS);
 
             /*
              * The maximum number of vectors (of the given type) which can be cached in this VPM.

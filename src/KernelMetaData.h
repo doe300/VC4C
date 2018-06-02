@@ -8,10 +8,12 @@
 #define VC4C_KERNEL_METADATA_H
 
 #include "Bitfield.h"
+#include "config.h"
 
 #include <algorithm>
 #include <array>
 #include <bitset>
+#include <numeric>
 
 namespace vc4c
 {
@@ -71,6 +73,14 @@ namespace vc4c
         inline bool isWorkGroupSizeSet() const
         {
             return std::any_of(workGroupSizes.begin(), workGroupSizes.end(), [](uint32_t u) -> bool { return u > 0; });
+        }
+
+        uint32_t getWorkGroupSize()
+        {
+            if(isWorkGroupSizeSet())
+                return std::accumulate(workGroupSizes.begin(), workGroupSizes.end(), 1u, std::multiplies<uint32_t>{});
+            // we don't know - assume "worst"
+            return NUM_QPUS;
         }
     };
 }
