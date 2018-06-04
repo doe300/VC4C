@@ -146,7 +146,7 @@ InstructionWalker intermediate::insertReplication(
 InstructionWalker intermediate::insertVectorExtraction(
     InstructionWalker it, Method& method, const Value& container, const Value& index, const Value& dest)
 {
-    if(container.isLiteralValue())
+    if(container.isLiteralValue() || container.hasRegister(REG_UNIFORM) || container.hasRegister(REG_QPU_NUMBER))
     {
         // vector extraction from literal is a simple move of the first element, since all elements of a literal are the
         // same
@@ -160,9 +160,18 @@ InstructionWalker intermediate::insertVectorExtraction(
 InstructionWalker intermediate::insertVectorInsertion(
     InstructionWalker it, Method& method, const Value& container, const Value& index, const Value& value)
 {
-    const Value tmp = method.addNewLocal(container.type.getElementType(), "%vector_insert");
-    // 1) rotate scalar value to the correct vector-position
-    it = intermediate::insertVectorRotation(it, value, index, tmp, intermediate::Direction::UP);
+    Value tmp = UNDEFINED_VALUE;
+    if(value.isLiteralValue() || value.hasRegister(REG_UNIFORM) || value.hasRegister(REG_QPU_NUMBER))
+    {
+        // simplified version, just insert into container at index (no rotation necessary)
+        tmp = value;
+    }
+    else
+    {
+        tmp = method.addNewLocal(container.type.getElementType(), "%vector_insert");
+        // 1) rotate scalar value to the correct vector-position
+        it = intermediate::insertVectorRotation(it, value, index, tmp, intermediate::Direction::UP);
+    }
     // 2) create condition only met in given index
     it.emplace(new intermediate::Operation(
         OP_XOR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, index, COND_ALWAYS, SetFlag::SET_FLAGS));

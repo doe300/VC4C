@@ -235,8 +235,6 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
     OptimizationPass("SingleSteps", "single-steps", runSingleSteps,
         "runs all the single-step optimizations. Combining them results in fewer iterations over the instructions",
         OptimizationType::REPEAT),
-    // OptimizationPass("CompressWorkGroupInfo", "compress-work-group-info", compressWorkGroupLocals,
-    //    "compresses work-group info into single local"),
     OptimizationPass("CombineRotations", "combine-rotations", combineVectorRotations,
         "combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation",
         OptimizationType::REPEAT),
@@ -253,6 +251,8 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
      * can therefore introduce instructions or constructs (e.g. combined instructions) not supported by
      * the other optimizations.
      */
+    // OptimizationPass("CompressWorkGroupInfo", "compress-work-group-info", compressWorkGroupLocals,
+    //    "compresses work-group info into single local", OptimizationType::FINAL),
     OptimizationPass("SplitReadAfterWrites", "split-read-write", splitReadAfterWrites,
         "splits read-after-writes (except if the local is used only very locally), so the reordering and "
         "register-allocation have an easier job",

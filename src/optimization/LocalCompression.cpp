@@ -29,6 +29,16 @@ static InstructionWalker compressLocalWrite(
     logging::debug() << "Compressing write of local '" << local.name << "' into container '" << container.name
                      << "' at position " << index << " at: " << it->to_string() << logging::endl;
 
+    if(it.has<intermediate::MoveOperation>())
+    {
+        // directly use the source of the assignment and insert it into vector
+        const Value& src = it.get<intermediate::MoveOperation>()->getSource();
+        it = intermediate::insertVectorInsertion(
+            it, method, container.createReference(), Value(SmallImmediate(index), TYPE_INT8), src);
+        it.erase();
+        return it;
+    }
+
     const Value tmp = method.addNewLocal(local.type);
     it->replaceLocal(&local, tmp.local, LocalUse::Type::WRITER);
     it.nextInBlock();
