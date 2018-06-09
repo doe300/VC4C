@@ -9,6 +9,7 @@
 
 #include "../BasicBlock.h"
 #include "../InstructionWalker.h"
+#include "log.h"
 
 #include <functional>
 #include <unordered_map>
@@ -23,8 +24,11 @@ namespace vc4c
             BACKWARD
         };
 
+        template <typename V, typename C>
+        using DefaultLocalTransferFunction =
+            std::function<V(const intermediate::IntermediateInstruction*, const V&, C&)>;
         template <typename V>
-        using DefaultLocalTransferFunction = std::function<V(const intermediate::IntermediateInstruction*, const V&)>;
+        using DumpFunction = std::function<std::string(const V&)>;
 
         /*
          * Template for local analyses (within a single basic block) traversing the block to create the analysis
@@ -32,12 +36,13 @@ namespace vc4c
          *
          * Adapted from here: https://web.stanford.edu/class/archive/cs/cs143/cs143.1128/lectures/15/Slides15.pdf
          */
-        template <AnalysisDirection D, typename V, typename F = DefaultLocalTransferFunction<V>>
+        template <AnalysisDirection D, typename V, typename C = void*, typename F = DefaultLocalTransferFunction<V, C>>
         class LocalAnalysis
         {
         public:
             static constexpr AnalysisDirection Direction = D;
             using Values = V;
+            using Cache = C;
             using TransferFunction = F;
 
             /*
@@ -71,14 +76,24 @@ namespace vc4c
                 return *resultAtEnd;
             }
 
+            void dumpResults(const BasicBlock& block) const
+            {
+                for(auto it = block.begin(); !it.isEndOfBlock(); it.nextInBlock())
+                {
+                    logging::debug() << it->to_string() << " : " << dumpFunction(getResult(it.get())) << logging::endl;
+                }
+            }
+
         protected:
-            LocalAnalysis(TransferFunction&& transferFunction, Values&& initialValue = {}) :
+            LocalAnalysis(
+                TransferFunction&& transferFunction, DumpFunction<Values> dumpFunction, Values&& initialValue = {}) :
                 transferFunction(std::forward<TransferFunction>(transferFunction)),
-                initialValue(std::forward<Values>(initialValue))
+                dumpFunction(dumpFunction), initialValue(std::forward<Values>(initialValue))
             {
             }
 
             const TransferFunction transferFunction;
+            const DumpFunction<Values> dumpFunction;
             std::unordered_map<const intermediate::IntermediateInstruction*, Values> results;
             const Values initialValue;
             const Values* resultAtStart = nullptr;
@@ -87,23 +102,25 @@ namespace vc4c
         private:
             void analyzeForward(const BasicBlock& block)
             {
+                Cache c;
                 const auto* prevVal = &initialValue;
                 for(auto it = block.begin(); !it.isEndOfBlock(); it.nextInBlock())
                 {
-                    auto pos = results.emplace(it.get(), std::forward<Values>(transferFunction(it.get(), *prevVal)));
+                    auto pos = results.emplace(it.get(), std::forward<Values>(transferFunction(it.get(), *prevVal, c)));
                     prevVal = &(pos.first->second);
                 }
             }
 
             void analyzeBackward(const BasicBlock& block)
             {
+                Cache c;
                 const auto* prevVal = &initialValue;
                 auto it = block.end();
                 do
                 {
                     it.previousInBlock();
 
-                    auto pos = results.emplace(it.get(), std::forward<Values>(transferFunction(it.get(), *prevVal)));
+                    auto pos = results.emplace(it.get(), std::forward<Values>(transferFunction(it.get(), *prevVal, c)));
                     prevVal = &(pos.first->second);
                 } while(!it.isStartOfBlock());
             }

@@ -113,8 +113,8 @@ static void printHelp()
 	std::cout << "Usage: emulator [-k <kernel-name>] [-d <dump-file>] [-l <local-sizes>] [-g <global-sizes>] [args] input-file" << std::endl;
 	std::cout << "\t-k <kernel-name>\tSpecifies the kernel to run, defaults to the first/only kernel in the module" << std::endl;
 	std::cout << "\t-d <dump-file>\t\tWrites the memory contents into the file specified, before and after the execution" << std::endl;
-	std::cout << "\t-l <local-sizes>\tUses the given local sizes in the format \"x y z\" (3 parameter), defaults to single execution" << std::endl;
-	std::cout << "\t-g <num-groups>\t\tUses the given number of work-groups in the format \"x y z\" (3 parameter), defaults to single execution" << std::endl;
+	std::cout << "\t-l <local-sizes>\tUses the given local sizes in the format x y z (3 parameter), defaults to single execution" << std::endl;
+	std::cout << "\t-g <num-groups>\t\tUses the given number of work-groups in the format x y z (3 parameter), defaults to single execution" << std::endl;
 	std::cout << "\t-i <dump-file>\t\tWrites the result of the instrumentation into the file specified" << std::endl;
 	std::cout << "\t-o <number>\t\tSpecifies the given parameter index as output and prints it when finished" << std::endl;
 	std::cout << "\t-h, --help\t\tPrint this help message" << std::endl;

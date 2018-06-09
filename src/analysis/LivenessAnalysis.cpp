@@ -6,18 +6,31 @@
 
 #include "LivenessAnalysis.h"
 
+#include <sstream>
+
 using namespace vc4c;
 using namespace vc4c::analysis;
 
-LivenessAnalysis::LivenessAnalysis() : LocalAnalysis(LivenessAnalysis::analyzeLiveness, {}) {}
+LivenessAnalysis::LivenessAnalysis() : LocalAnalysis(LivenessAnalysis::analyzeLiveness, LivenessAnalysis::to_string) {}
 
-FastSet<const Local*> LivenessAnalysis::analyzeLiveness(
-    const intermediate::IntermediateInstruction* instr, const FastSet<const Local*>& nextResult)
+FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::IntermediateInstruction* instr,
+    const FastSet<const Local*>& nextResult, FastSet<const Local*>& conditionalWrites)
 {
     FastSet<const Local*> result(nextResult);
 
-    if(instr->hasValueType(ValueType::LOCAL))
-        result.erase(instr->getOutput()->local);
+    if(instr->hasValueType(ValueType::LOCAL) &&
+        !instr->hasDecoration(vc4c::intermediate::InstructionDecorations::ELEMENT_INSERTION))
+    {
+        if(instr->hasConditionalExecution())
+        {
+            if(conditionalWrites.find(instr->getOutput()->local) != conditionalWrites.end())
+                result.erase(instr->getOutput()->local);
+            else
+                conditionalWrites.emplace(instr->getOutput()->local);
+        }
+        else
+            result.erase(instr->getOutput()->local);
+    }
 
     for(const Value& arg : instr->getArguments())
     {
@@ -26,6 +39,19 @@ FastSet<const Local*> LivenessAnalysis::analyzeLiveness(
     }
 
     return result;
+}
+
+std::string LivenessAnalysis::to_string(const FastSet<const Local*>& liveLocals)
+{
+    if(liveLocals.empty())
+        return "";
+    std::stringstream s;
+    auto it = liveLocals.begin();
+    s << (*it)->name;
+    ++it;
+    for(; it != liveLocals.end(); ++it)
+        s << ", " << (*it)->name;
+    return s.str();
 }
 
 LocalUsageAnalysis::LocalUsageAnalysis() : GlobalAnalysis(LocalUsageAnalysis::analyzeLocalUsage) {}

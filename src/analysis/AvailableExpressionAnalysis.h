@@ -39,8 +39,10 @@ namespace vc4c
              *
              * - the available expression for c is re-set to the current instruction
              */
-            static AvailableExpressions analyzeAvailableExpressions(
-                const intermediate::IntermediateInstruction* instr, const AvailableExpressions& previousExpressions);
+            static AvailableExpressions analyzeAvailableExpressions(const intermediate::IntermediateInstruction* instr,
+                const AvailableExpressions& previousExpressions, void* dummy);
+
+            static std::string to_string(const AvailableExpressions& expressions);
         };
     } /* namespace analysis */
 } /* namespace vc4c */

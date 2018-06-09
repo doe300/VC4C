@@ -47,6 +47,7 @@ TestStdlib::TestStdlib()
 
 void TestStdlib::testAsyncCopy()
 {
+	//TODO this does something strange (e.g. mixing copy via VPM with copy via TMU?)
 	std::stringstream buffer;
 	compileFile(buffer, "./testing/test_async_copy.cl");
 
