@@ -72,6 +72,32 @@ namespace vc4c
          */
         bool mergeAdjacentBasicBlocks(const Module& module, Method& method, const Configuration& config);
 
+        /*
+         * Reorders basic blocks so as much transitions as possible can be replaced by implicit transitions in
+         * #simplifyBranches.
+         *
+         * Example:
+         *   br %4
+         *   label: %3
+         *   [...]
+         *   br %5
+         *   label: %4
+         *   [...]
+         *   br %3
+         *   label: %5
+         *
+         * is converted to:
+         *   br %4
+         *   label: %4
+         *   [...]
+         *   br %3
+         *   label: %3
+         *   [...]
+         *   br %5
+         *   label: %5
+         */
+        bool reorderBasicBlocks(const Module& module, Method& method, const Configuration& config);
+
     } /* namespace optimizations */
 } /* namespace vc4c */
 

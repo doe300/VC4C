@@ -471,6 +471,13 @@ ControlFlowGraph& Method::getCFG()
     return *cfg.get();
 }
 
+void Method::moveBlock(BasicBlockList::iterator origin, BasicBlockList::iterator dest)
+{
+    // splice removes the element pointed to by origin from the list (second) parameter and inserts it into the list
+    // object at position dest without creating or destroying an object
+    basicBlocks.splice(dest, basicBlocks, origin);
+}
+
 BasicBlock* Method::getNextBlockAfter(const BasicBlock* block)
 {
     bool returnNext = false;

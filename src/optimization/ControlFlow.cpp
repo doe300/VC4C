@@ -1278,3 +1278,49 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
     logging::debug() << "Merged " << blocksToMerge.size() << " pair of blocks!" << logging::endl;
     return !blocksToMerge.empty();
 }
+
+bool optimizations::reorderBasicBlocks(const Module& module, Method& method, const Configuration& config)
+{
+    const auto& cfg = method.getCFG();
+    auto blockIt = method.begin();
+    auto prevIt = method.begin();
+    ++blockIt;
+    while(blockIt != method.end())
+    {
+        const auto& node = cfg.assertNode(&(*blockIt));
+        const auto predecessor = node.getSinglePredecessor();
+        // Never re-order end-of-block. Though it should work, there could be trouble anyway
+        if(blockIt->getLabel()->getLabel()->name != BasicBlock::LAST_BLOCK && predecessor != nullptr &&
+            predecessor->key != &(*prevIt) && !prevIt->fallsThroughToNextBlock())
+        {
+            logging::debug() << "Reordering block with single predecessor not being the previous block: "
+                             << blockIt->getLabel()->to_string() << logging::endl;
+
+            auto predecessorIt = method.begin();
+            while(predecessorIt != method.end())
+            {
+                if(&(*predecessorIt) == predecessor->key)
+                    break;
+                ++predecessorIt;
+            }
+
+            if(predecessorIt == method.end())
+                throw CompilationError(CompilationStep::OPTIMIZER,
+                    "Failed to find predecessor basic block: ", predecessor->key->getLabel()->to_string());
+
+            // we insert before the iteration, so we need to set the iterator after the predecessor
+            ++predecessorIt;
+            method.moveBlock(blockIt, predecessorIt);
+            // prevIt stays the same, since we removed the block and the next blockIt now follows prevIt
+            blockIt = prevIt;
+            ++blockIt;
+        }
+        else
+        {
+            ++blockIt;
+            ++prevIt;
+        }
+    }
+
+    return false;
+}
