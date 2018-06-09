@@ -285,7 +285,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         // fall-through on purpose
     case OptimizationLevel::BASIC:
         passes.emplace("simplify-branches");
-        passes.emplace("eliminate-dead-store");
+        passes.emplace("eliminate-dead-code");
         passes.emplace("single-steps");
         passes.emplace("reorder");
         passes.emplace("combine");

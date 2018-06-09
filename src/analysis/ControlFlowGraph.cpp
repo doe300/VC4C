@@ -231,6 +231,7 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops()
 
 void ControlFlowGraph::dumpGraph(const std::string& path) const
 {
+#ifdef DEBUG_MODE
     // XXX to be exact, would need bidirectional arrow [dir="both"] for compact loops
     auto nameFunc = [](const BasicBlock* bb) -> std::string { return bb->getLabel()->getLabel()->name; };
     auto edgeLabelFunc = [](const CFGRelation& r) -> std::string { return r.getLabel(); };
@@ -240,6 +241,7 @@ void ControlFlowGraph::dumpGraph(const std::string& path) const
                 [](const std::pair<BasicBlock*, bool>& pair) -> bool { return pair.second; });
         },
         edgeLabelFunc);
+#endif
 }
 
 std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)

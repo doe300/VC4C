@@ -68,6 +68,8 @@ namespace vc4c
              * block
              */
             static std::pair<FastSet<const Local*>, FastSet<const Local*>> analyzeLocalUsage(const BasicBlock& block);
+
+            static std::string to_string(const FastSet<const Local*>& locals);
         };
     } /* namespace analysis */
 } /* namespace vc4c */

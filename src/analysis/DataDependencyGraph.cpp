@@ -14,6 +14,8 @@
 
 using namespace vc4c;
 
+// TODO use LocalUsageAnalysis??!
+
 bool DataDependencyNodeBase::dependsOnBlock(const BasicBlock& bb, const DataDependencyType type) const
 {
     const auto* self = reinterpret_cast<const DataDependencyNode*>(this);
@@ -80,6 +82,14 @@ static InstructionMapping mapInstructionsToPosition(Method& method)
     while(!it.isEndOfMethod())
     {
         mapping.emplace(it.get(), it);
+        if(it.has<intermediate::CombinedOperation>())
+        {
+            auto combInstr = it.get<intermediate::CombinedOperation>();
+            if(combInstr->op1)
+                mapping.emplace(combInstr->op1.get(), it);
+            if(combInstr->op2)
+                mapping.emplace(combInstr->op2.get(), it);
+        }
         it.nextInMethod();
     }
 
@@ -92,7 +102,7 @@ static void findDependencies(BasicBlock& bb, DataDependencyGraph& graph, Instruc
     while(!it.isEndOfBlock())
     {
         it->forUsedLocals([it, &bb, &mapping, &graph](const Local* local, LocalUse::Type type) -> void {
-            if(has_flag(type, LocalUse::Type::READER))
+            if(has_flag(type, LocalUse::Type::READER) && !local->type.isLabelType())
             {
                 local->forUsers(LocalUse::Type::WRITER, [local, &bb, &mapping, &graph](const LocalUser* user) -> void {
                     auto& instIt = mapping.at(user);
@@ -119,7 +129,7 @@ static void findDependencies(BasicBlock& bb, DataDependencyGraph& graph, Instruc
                     }
                 });
             }
-            if(has_flag(type, LocalUse::Type::WRITER))
+            if(has_flag(type, LocalUse::Type::WRITER) && !local->type.isLabelType())
             {
                 local->forUsers(
                     LocalUse::Type::READER, [it, local, &bb, &mapping, &graph](const LocalUser* user) -> void {
@@ -159,6 +169,7 @@ static std::string toEdgeLabel(const DataDependency& dependency)
 
 std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createDependencyGraph(Method& method)
 {
+    PROFILE_START(createDataDependencyGraph);
     InstructionMapping mapping = mapInstructionsToPosition(method);
     std::unique_ptr<DataDependencyGraph> graph(new DataDependencyGraph());
     for(auto& block : method)
@@ -177,5 +188,6 @@ std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createDependencyGraph(
         *graph.get(), "/tmp/vc4c-data-dependencies.dot", nameFunc, weakEdgeFunc, toEdgeLabel);
 #endif
 
+    PROFILE_END(createDataDependencyGraph);
     return graph;
 }

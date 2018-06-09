@@ -80,15 +80,18 @@ namespace vc4c
             {
                 for(auto it = block.begin(); !it.isEndOfBlock(); it.nextInBlock())
                 {
-                    logging::debug() << it->to_string() << " : " << dumpFunction(getResult(it.get())) << logging::endl;
+                    if(it.get())
+                        logging::debug() << it->to_string() << " : " << dumpFunction(getResult(it.get()))
+                                         << logging::endl;
                 }
             }
 
         protected:
             LocalAnalysis(
-                TransferFunction&& transferFunction, DumpFunction<Values> dumpFunction, Values&& initialValue = {}) :
+                TransferFunction&& transferFunction, DumpFunction<Values>&& dumpFunction, Values&& initialValue = {}) :
                 transferFunction(std::forward<TransferFunction>(transferFunction)),
-                dumpFunction(dumpFunction), initialValue(std::forward<Values>(initialValue))
+                dumpFunction(std::forward<DumpFunction<Values>>(dumpFunction)),
+                initialValue(std::forward<Values>(initialValue))
             {
             }
 
@@ -156,7 +159,7 @@ namespace vc4c
             {
                 for(const BasicBlock& block : method)
                 {
-                    results.emplace(&block, std::forward<Values, Values>(transferFunction(block)));
+                    results.emplace(&block, std::forward<std::pair<Values, Values>>(transferFunction(block)));
                 }
             }
 
@@ -170,13 +173,26 @@ namespace vc4c
                 return results.at(&block).second;
             }
 
+            void dumpResults(const Method& method) const
+            {
+                for(const BasicBlock& block : method)
+                {
+                    logging::debug() << block.getLabel()->to_string()
+                                     << " (in) : " << dumpFunction(getInitialResult(block)) << logging::endl;
+                    logging::debug() << block.getLabel()->to_string()
+                                     << " (out) : " << dumpFunction(getFinalResult(block)) << logging::endl;
+                }
+            }
+
         protected:
-            GlobalAnalysis(TransferFunction&& transferFunction) :
-                transferFunction(std::forward<TransferFunction>(transferFunction))
+            GlobalAnalysis(TransferFunction&& transferFunction, DumpFunction<Values>&& dumpFunction) :
+                transferFunction(std::forward<TransferFunction>(transferFunction)),
+                dumpFunction(std::forward<DumpFunction<Values>>(dumpFunction))
             {
             }
 
             const TransferFunction transferFunction;
+            const DumpFunction<Values> dumpFunction;
             std::unordered_map<const BasicBlock*, std::pair<Values, Values>> results;
         };
     } /* namespace analysis */

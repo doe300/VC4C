@@ -31,10 +31,18 @@ FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::Inte
         else
             result.erase(instr->getOutput()->local);
     }
+    auto combInstr = dynamic_cast<const intermediate::CombinedOperation*>(instr);
+    if(combInstr)
+    {
+        if(combInstr->op1)
+            result = analyzeLiveness(combInstr->op1.get(), result, conditionalWrites);
+        if(combInstr->op2)
+            result = analyzeLiveness(combInstr->op2.get(), result, conditionalWrites);
+    }
 
     for(const Value& arg : instr->getArguments())
     {
-        if(arg.hasType(ValueType::LOCAL))
+        if(arg.hasType(ValueType::LOCAL) && !arg.local->type.isLabelType())
             result.emplace(arg.local);
     }
 
@@ -54,7 +62,10 @@ std::string LivenessAnalysis::to_string(const FastSet<const Local*>& liveLocals)
     return s.str();
 }
 
-LocalUsageAnalysis::LocalUsageAnalysis() : GlobalAnalysis(LocalUsageAnalysis::analyzeLocalUsage) {}
+LocalUsageAnalysis::LocalUsageAnalysis() :
+    GlobalAnalysis(LocalUsageAnalysis::analyzeLocalUsage, LocalUsageAnalysis::to_string)
+{
+}
 
 std::pair<FastSet<const Local*>, FastSet<const Local*>> LocalUsageAnalysis::analyzeLocalUsage(const BasicBlock& block)
 {
@@ -62,11 +73,10 @@ std::pair<FastSet<const Local*>, FastSet<const Local*>> LocalUsageAnalysis::anal
     FastSet<const Local*> importedLocals;
     FastMap<const Local*, unsigned> localsReadAfterWriting;
 
-    for(auto it = block.begin(); !it.isEndOfBlock(); it.nextInBlock())
-    {
-        for(const Value& arg : it->getArguments())
+    auto func = [&](const intermediate::IntermediateInstruction* instr) {
+        for(const Value& arg : instr->getArguments())
         {
-            if(arg.hasType(ValueType::LOCAL))
+            if(arg.hasType(ValueType::LOCAL) && !arg.local->type.isLabelType())
             {
                 if(localsWritten.find(arg.local) == localsWritten.end())
                     // read before the first write (if any)
@@ -74,9 +84,24 @@ std::pair<FastSet<const Local*>, FastSet<const Local*>> LocalUsageAnalysis::anal
                 else
                     ++localsReadAfterWriting[arg.local];
             }
-            if(it->hasValueType(ValueType::LOCAL))
-                localsWritten.emplace(it->getOutput()->local);
         }
+
+        if(instr->hasValueType(ValueType::LOCAL) && !instr->getOutput()->local->type.isLabelType())
+            localsWritten.emplace(instr->getOutput()->local);
+    };
+
+    for(auto it = block.begin(); !it.isEndOfBlock(); it.nextInBlock())
+    {
+        if(it.has<intermediate::CombinedOperation>())
+        {
+            auto combInst = it.get<const intermediate::CombinedOperation>();
+            if(combInst->op1)
+                func(combInst->op1.get());
+            if(combInst->op2)
+                func(combInst->op2.get());
+        }
+        else
+            func(it.get());
     }
 
     for(const auto& pair : localsReadAfterWriting)
@@ -86,4 +111,17 @@ std::pair<FastSet<const Local*>, FastSet<const Local*>> LocalUsageAnalysis::anal
     }
 
     return std::make_pair(std::move(importedLocals), std::move(localsWritten));
+}
+
+std::string LocalUsageAnalysis::to_string(const FastSet<const Local*>& locals)
+{
+    if(locals.empty())
+        return "";
+    std::stringstream s;
+    auto it = locals.begin();
+    s << (*it)->name;
+    ++it;
+    for(; it != locals.end(); ++it)
+        s << ", " << (*it)->name;
+    return s.str();
 }
