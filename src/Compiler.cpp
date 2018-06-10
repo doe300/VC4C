@@ -152,14 +152,8 @@ std::size_t Compiler::convert()
     norm.adjust(module);
     PROFILE_END(SecondNormalizer);
 
-    std::vector<BackgroundWorker> workers;
-    workers.reserve(module.getKernels().size());
-    for(Method* kernelFunc : module.getKernels())
-    {
-        auto f = [&codeGen, kernelFunc]() -> void { toMachineCode(codeGen, *kernelFunc); };
-        workers.emplace(workers.end(), f, std::string("Code Generator for: ") + kernelFunc->name)->operator()();
-    }
-    BackgroundWorker::waitForAll(workers);
+    const auto f = [&codeGen](Method* kernelFunc) -> void { toMachineCode(codeGen, *kernelFunc); };
+    BackgroundWorker::scheduleAll<Method*>(module.getKernels(), f, "CodeGenerator");
 
     // TODO could discard unused globals
     // since they are exported, they are still in the intermediate code, even if not used (e.g. optimized away)
