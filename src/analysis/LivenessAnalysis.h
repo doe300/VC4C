@@ -28,8 +28,8 @@ namespace vc4c
          *
          * Also called Live Variable Analysis (https://en.wikipedia.org/wiki/Live_variable_analysis)
          */
-        class LivenessAnalysis
-            : public LocalAnalysis<AnalysisDirection::BACKWARD, FastSet<const Local*>, FastSet<const Local*>>
+        class LivenessAnalysis : public LocalAnalysis<AnalysisDirection::BACKWARD, FastSet<const Local*>,
+                                     std::pair<FastSet<const Local*>, FastMap<const Local*, ConditionCode>>>
         {
         public:
             explicit LivenessAnalysis();
@@ -43,7 +43,8 @@ namespace vc4c
              * - any other live local remains live
              */
             static FastSet<const Local*> analyzeLiveness(const intermediate::IntermediateInstruction* instr,
-                const FastSet<const Local*>& nextResult, FastSet<const Local*>& conditionalWrites);
+                const FastSet<const Local*>& nextResult,
+                std::pair<FastSet<const Local*>, FastMap<const Local*, ConditionCode>>& cache);
 
             static std::string to_string(const FastSet<const Local*>& liveLocals);
         };
