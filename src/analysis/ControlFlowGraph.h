@@ -152,7 +152,7 @@ namespace vc4c
 
     struct LoopInclusionTreeNodeBase
     {
-        LoopInclusionTreeNodeBase(const KeyType key);
+        // LoopInclusionTreeNodeBase(const KeyType key);
 
         LoopInclusionTreeNodeBase* findRoot(Optional<int> depth);
         unsigned int longestPathLengthToRoot() const;

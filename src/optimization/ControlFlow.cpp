@@ -1376,80 +1376,73 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
         }
     }
     logging::debug() << "inclusionTree" << logging::endl;
-    for(auto& loop : inclusionTree)
+    for(auto& loop : inclusionTree.getNodes())
     {
         logging::debug() << "  " << loop.second.dumpLabel() << logging::endl;
-        for(auto& node : loop.second.getNeighbors())
-        {
-            if(node.second.includes)
-                logging::debug() << "    " << reinterpret_cast<LoopInclusionTreeNode*>(node.first)->dumpLabel()
-                                 << logging::endl;
-        }
+        loop.second.forAllOutgoingEdges([](const LoopInclusionTreeNode& child, const LoopInclusionTreeEdge&) -> bool {
+            logging::debug() << "    " << child.dumpLabel() << logging::endl;
+            return true;
+        });
     }
     // Remove extra relations.
     for(auto& loop : loops)
     {
         auto& currentNode = inclusionTree.getOrCreateNode(&loop);
-        auto neighbors = currentNode.getNeighbors();
 
         logging::debug() << "current node: " << currentNode.dumpLabel() << logging::endl;
 
         // Remove parent nodes except node which has longest path to the root node.
-        LoopInclusionTreeNode* longestNode = nullptr;
+        LoopInclusionTreeNodeBase* longestNode = nullptr;
         int longestLength = -1;
-        for(auto& parent : neighbors)
-        {
-            if(!parent.second.includes)
+        currentNode.forAllIncomingEdges([&](LoopInclusionTreeNode& parent, LoopInclusionTreeEdge&) -> bool {
+            auto parentNode = &parent;
+            int length = parentNode->longestPathLengthToRoot();
+
+            logging::debug() << "  parent node: " << parentNode->dumpLabel() << " length: " << length
+                             << logging::endl;
+
+            if(length > longestLength)
             {
-                auto parentNode = reinterpret_cast<LoopInclusionTreeNode*>(parent.first);
-                int length = parentNode->longestPathLengthToRoot();
-                logging::debug() << "  parent node: " << parentNode->dumpLabel() << " length: " << length
-                                 << logging::endl;
-                if(length > longestLength)
-                {
-                    longestNode = parentNode;
-                }
+                longestNode = parentNode;
             }
-        }
+
+            return true;
+        });
 
         if(longestNode)
         {
             logging::debug() << "  longest node: " << longestNode->dumpLabel() << logging::endl;
 
-            for(auto& other : neighbors)
-            {
-                if(!other.second.includes)
+            currentNode.forAllIncomingEdges([&](LoopInclusionTreeNode& other, LoopInclusionTreeEdge&) -> bool {
+                auto otherNode = &other;
+                if(longestNode != otherNode)
                 {
-                    auto otherNode = reinterpret_cast<LoopInclusionTreeNode*>(other.first);
-                    if(longestNode != otherNode)
-                    {
-                        currentNode.removeNeighbor(otherNode);
-                        otherNode->removeNeighbor(&currentNode);
-                    }
+                    currentNode.removeAsNeighbor(otherNode);
+                    otherNode->removeAsNeighbor(&currentNode);
                 }
-            }
+                return true;
+            });
         }
     }
 
     logging::debug() << "inclusionTree" << logging::endl;
-    for(auto& loop : inclusionTree)
+    for(auto& loop : inclusionTree.getNodes())
     {
         logging::debug() << "  " << loop.second.dumpLabel() << logging::endl;
-        for(auto& node : loop.second.getNeighbors())
-        {
-            if(node.second.includes)
-                logging::debug() << "    " << reinterpret_cast<LoopInclusionTreeNode*>(node.first)->dumpLabel()
-                                 << logging::endl;
-        }
+
+        loop.second.forAllOutgoingEdges([](const LoopInclusionTreeNode& child, const LoopInclusionTreeEdge&) -> bool {
+            logging::debug() << "    " << child.dumpLabel() << logging::endl;
+            return true;
+        });
     }
 
     // 3. move constant load operations from root of trees
 
     FastSet<LoopInclusionTreeNode*> processed;
 
-    for(auto& node : inclusionTree)
+    for(auto& loop : inclusionTree.getNodes())
     {
-        auto& node = inclusionTree.getOrCreateNode(&loop);
+        auto& node = inclusionTree.getOrCreateNode(loop.first);
         auto root = reinterpret_cast<LoopInclusionTreeNode*>(node.findRoot({}));
         logging::debug() << "root block : " << (*root->key->rbegin())->key->getLabel()->to_string() << logging::endl;
 
@@ -1492,7 +1485,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                         CPPLOG_LAZY(logging::debug() << "Moving constant load out of loop: " << it->to_string() << logging::endl);
 
                         auto out = it->getOutput().value();
-                        if(out->hasValueType(ValueType::LOCAL))
+                        if(out.hasType(ValueType::LOCAL))
                         {
                             // logging::debug() << "  move instruction: " << it->to_string() << logging::endl;
 
@@ -1503,7 +1496,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                             else
                             {
                                 // FIXME: fetch from the latest CFG including added block labeled '%createdByRemoveConstantLoadInLoops'
-                                if(auto targetBlock = root->key->findPredecessor())
+                                if(targetBlock != reinterpret_cast<LoopInclusionTreeNode*>(targetNode)->key->findPredecessor())
                                 {
                                     auto targetInst = targetBlock->key->walkEnd();
                                     targetInst.emplace(it.release());
@@ -1535,13 +1528,10 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 }
             }
 
-            for(auto& child : currentNode->getNeighbors())
-            {
-                if(child.second.includes)
-                {
-                    que.push(reinterpret_cast<LoopInclusionTreeNode*>(child.first));
-                }
-            }
+            loop.second.forAllOutgoingEdges([&](const LoopInclusionTreeNode& child, const LoopInclusionTreeEdge&) -> bool {
+                que.push(const_cast<LoopInclusionTreeNode*>(&child));
+                return true;
+            });
         }
     }
 

@@ -544,9 +544,9 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoopsHelperRecursively(con
     FastAccessList<ControlFlowLoop> loops;
 
     // Go through all vertices adjacent to this
-    node->forAllNeighbors(toFunction(&CFGRelation::isForwardRelation),
-        [this, node, &discoveryTimes, &stack, &time, &loops](const CFGNode* next, const CFGRelation& rel) -> void {
-            const CFGNode* v = next;
+    node->forAllOutgoingEdges([this, node, &discoveryTimes, &stack, &time, &loops](const CFGNode& next, const CFGEdge& edge) -> bool {
+            const CFGNode* v = &next;
+
             // If v is not visited yet, then recur for it
             if(discoveryTimes[v] == 0)
             {
@@ -571,12 +571,14 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoopsHelperRecursively(con
 
                 loops.emplace_back(std::move(loop));
             }
+
+            return true;
         });
 
     return loops;
 }
 
-LoopInclusionTreeNodeBase::LoopInclusionTreeNodeBase(const KeyType key) : Node(key) {}
+// LoopInclusionTreeNodeBase::LoopInclusionTreeNodeBase(const KeyType key) : Node(key) {}
 
 LoopInclusionTreeNodeBase* LoopInclusionTreeNodeBase::findRoot(Optional<int> depth)
 {
@@ -585,7 +587,7 @@ LoopInclusionTreeNodeBase* LoopInclusionTreeNodeBase::findRoot(Optional<int> dep
         return this;
     }
 
-    auto* self = reinterpret_cast<LoopInclusionTreeNodeBase*>(this);
+    auto* self = reinterpret_cast<LoopInclusionTreeNode*>(this);
     LoopInclusionTreeNodeBase* root = this;
     self->forAllIncomingEdges([&](LoopInclusionTreeNodeBase& parent, LoopInclusionTreeEdge&) -> bool {
         // The root node must be only one
@@ -596,52 +598,58 @@ LoopInclusionTreeNodeBase* LoopInclusionTreeNodeBase::findRoot(Optional<int> dep
     return root;
 }
 
-unsigned int LoopInclusionTreeNode::longestPathLengthToRoot() const
+unsigned int LoopInclusionTreeNodeBase::longestPathLengthToRoot() const
 {
-    if(this->getNeighbors().size() == 0)
+    auto* self = reinterpret_cast<const LoopInclusionTreeNode*>(this);
+
+    if(self->getEdgesSize() == 0)
     {
         // this is root
         return 0;
     }
 
-    int longestLength = 0;
-    for(auto& parent : this->getNeighbors())
-    {
-        if(!parent.second.includes)
+    unsigned int longestLength = 0;
+    self->forAllIncomingEdges([&](const LoopInclusionTreeNodeBase& parent, const LoopInclusionTreeEdge&) -> bool {
+        unsigned int length = parent.longestPathLengthToRoot() + 1;
+        if(length > longestLength)
         {
-            int length = reinterpret_cast<LoopInclusionTreeNode*>(parent.first)->longestPathLengthToRoot() + 1;
-            if(length > longestLength)
-            {
-                longestLength = length;
-            }
+            longestLength = length;
         }
-    }
+        return true;
+    });
+
     return longestLength;
 }
 
-bool LoopInclusionTreeNode::hasCFGNodeInChildren(const CFGNode* node) const
+bool LoopInclusionTreeNodeBase::hasCFGNodeInChildren(const CFGNode* node) const
 {
-    for(auto& child : this->getNeighbors())
-    {
-        if(child.second.includes)
+    auto* self = reinterpret_cast<const LoopInclusionTreeNode*>(this);
+
+    bool found = false;
+    self->forAllOutgoingEdges([&](const LoopInclusionTreeNodeBase& childBase, const LoopInclusionTreeEdge&) -> bool {
+        auto child = reinterpret_cast<const LoopInclusionTreeNode*>(&childBase);
+        auto nodes = child->key;
+
+        auto targetNode = std::find(nodes->begin(), nodes->end(), node);
+        if(targetNode != nodes->end())
         {
-            auto nodes = child.first->key;
-            auto found = std::find(nodes->begin(), nodes->end(), node);
-            if(found != nodes->end())
-            {
-                return true;
-            }
-            auto foundInChildren = reinterpret_cast<LoopInclusionTreeNode*>(child.first)->hasCFGNodeInChildren(node);
-            if(foundInChildren)
-            {
-                return true;
-            }
+            found = true;
+            return false;
         }
-    }
-    return false;
+        auto foundInChildren = child->hasCFGNodeInChildren(node);
+        if(foundInChildren)
+        {
+            found = true;
+            return false;
+        }
+        return true;
+    });
+
+    return found;
 }
 
-std::string LoopInclusionTreeNode::dumpLabel() const
+std::string LoopInclusionTreeNodeBase::dumpLabel() const
 {
-    return (*this->key->rbegin())->key->getLabel()->to_string();
+    auto* self = reinterpret_cast<const LoopInclusionTreeNode*>(this);
+    return (*self->key->rbegin())->key->getLabel()->to_string();
 }
