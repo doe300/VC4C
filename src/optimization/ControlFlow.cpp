@@ -1417,7 +1417,6 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 auto otherNode = &other;
                 if(longestNode != otherNode)
                 {
-                    currentNode.removeAsNeighbor(otherNode);
                     otherNode->removeAsNeighbor(&currentNode);
                 }
                 return true;
@@ -1444,7 +1443,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     {
         auto& node = inclusionTree.getOrCreateNode(loop.first);
         auto root = reinterpret_cast<LoopInclusionTreeNode*>(node.findRoot({}));
-        logging::debug() << "root block : " << (*root->key->rbegin())->key->getLabel()->to_string() << logging::endl;
+        // logging::debug() << "root block : " << root->dumpLabel() << logging::endl;
 
         if(processed.find(root) != processed.end())
             continue;
@@ -1453,6 +1452,8 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
         // process tree nodes with BFS
         std::queue<LoopInclusionTreeNode*> que;
         que.push(root);
+
+        auto currentLoops = loops;
 
         while(!que.empty())
         {
@@ -1496,7 +1497,16 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                             else
                             {
                                 // FIXME: fetch from the latest CFG including added block labeled '%createdByRemoveConstantLoadInLoops'
-                                if(targetBlock != reinterpret_cast<LoopInclusionTreeNode*>(targetNode)->key->findPredecessor())
+                                auto loopID = reinterpret_cast<LoopInclusionTreeNode*>(targetNode)->key->getID();
+                                auto latestLoop = std::find_if(currentLoops.begin(), currentLoops.end(), [&loopID](const ControlFlowLoop& loop) {
+                                    return loop.getID() == loopID;
+                                });
+
+                                if (latestLoop == currentLoops.end())
+                                    throw CompilationError(CompilationStep::GENERAL, "Cannot find the same loops from latest CFG.");
+
+                                auto targetBlock = latestLoop->findPredecessor();
+                                if(targetBlock != nullptr)
                                 {
                                     auto targetInst = targetBlock->key->walkEnd();
                                     targetInst.emplace(it.release());
@@ -1519,6 +1529,9 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                                         headBlock->getLabel()->getLabel()->name.swap(
                                             insertedBlock->getLabel()->getLabel()->name);
                                     }
+
+                                    // reflesh loops to avoid to insert the same block multiply
+                                    currentLoops = cfg.findLoops(true);
                                 }
                             }
                             it.erase();

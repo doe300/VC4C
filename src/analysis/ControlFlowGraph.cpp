@@ -221,13 +221,13 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(bool recursively)
         {
             if(recursively)
             {
-                auto subLoops = findLoopsHelperRecursively(node, discoveryTimes, stack, time);
+                auto subLoops = findLoopsHelperRecursively(node, discoveryTimes, stack, time, loops.size());
                 if(subLoops.size() >= 1)
                     loops.insert(loops.end(), subLoops.begin(), subLoops.end());
             }
             else
             {
-                auto loop = findLoopsHelper(node, discoveryTimes, lowestReachable, stack, time);
+                auto loop = findLoopsHelper(node, discoveryTimes, lowestReachable, stack, time, loops.size());
                 if(loop.size() > 1)
                     loops.emplace_back(std::move(loop));
             }
@@ -235,7 +235,7 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(bool recursively)
         if(node->isAdjacent(node))
         {
             // extra case, loop with single block
-            ControlFlowLoop loop;
+            ControlFlowLoop loop(loops.size());
             loop.emplace_back(node);
             loops.emplace_back(loop);
         }
@@ -487,20 +487,20 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
 }
 
 ControlFlowLoop ControlFlowGraph::findLoopsHelper(const CFGNode* node, FastMap<const CFGNode*, int>& discoveryTimes,
-    FastMap<const CFGNode*, int>& lowestReachable, FastModificationList<const CFGNode*>& stack, int& time)
+    FastMap<const CFGNode*, int>& lowestReachable, FastModificationList<const CFGNode*>& stack, int& time, unsigned idBase)
 {
     // Initialize discovery time and low value
     discoveryTimes[node] = lowestReachable[node] = ++time;
     stack.push_back(node);
 
     // Go through all vertices adjacent to this
-    node->forAllOutgoingEdges([this, node, &discoveryTimes, &lowestReachable, &stack, &time](
+    node->forAllOutgoingEdges([this, node, &discoveryTimes, &lowestReachable, &stack, &time, &idBase](
                                   const CFGNode& next, const CFGEdge& edge) -> bool {
         const CFGNode* v = &next;
         // If v is not visited yet, then recur for it
         if(discoveryTimes[v] == 0)
         {
-            findLoopsHelper(v, discoveryTimes, lowestReachable, stack, time);
+            findLoopsHelper(v, discoveryTimes, lowestReachable, stack, time, idBase);
 
             // Check if the subtree rooted with 'v' has a
             // connection to one of the ancestors of 'u'
@@ -516,7 +516,7 @@ ControlFlowLoop ControlFlowGraph::findLoopsHelper(const CFGNode* node, FastMap<c
         return true;
     });
 
-    ControlFlowLoop loop;
+    ControlFlowLoop loop(idBase);
     loop.reserve(stack.size());
 
     // head node found, pop the stack and return an SCC
@@ -535,7 +535,7 @@ ControlFlowLoop ControlFlowGraph::findLoopsHelper(const CFGNode* node, FastMap<c
 }
 
 FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoopsHelperRecursively(const CFGNode* node,
-    FastMap<const CFGNode*, int>& discoveryTimes, RandomModificationList<const CFGNode*>& stack, int& time)
+    FastMap<const CFGNode*, int>& discoveryTimes, RandomModificationList<const CFGNode*>& stack, int& time, unsigned idBase)
 {
     // Initialize discovery time
     discoveryTimes[node] = ++time;
@@ -544,13 +544,13 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoopsHelperRecursively(con
     FastAccessList<ControlFlowLoop> loops;
 
     // Go through all vertices adjacent to this
-    node->forAllOutgoingEdges([this, node, &discoveryTimes, &stack, &time, &loops](const CFGNode& next, const CFGEdge& edge) -> bool {
+    node->forAllOutgoingEdges([this, node, &discoveryTimes, &stack, &time, &loops, &idBase](const CFGNode& next, const CFGEdge& edge) -> bool {
             const CFGNode* v = &next;
 
             // If v is not visited yet, then recur for it
             if(discoveryTimes[v] == 0)
             {
-                auto subLoops = findLoopsHelperRecursively(v, discoveryTimes, stack, time);
+                auto subLoops = findLoopsHelperRecursively(v, discoveryTimes, stack, time, idBase++);
                 if(subLoops.size() >= 1)
                     loops.insert(loops.end(), subLoops.begin(), subLoops.end());
             }
@@ -558,7 +558,7 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoopsHelperRecursively(con
             // Create a loop including 'v' only of 'v' is still in stack
             else if(std::find(stack.begin(), stack.end(), v) != stack.end() && node != v)
             {
-                ControlFlowLoop loop;
+                ControlFlowLoop loop(idBase);
                 RandomModificationList<const CFGNode*> tempStack = stack;
 
                 while(tempStack.back() != v)
