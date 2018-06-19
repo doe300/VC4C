@@ -49,6 +49,16 @@ static Test::Suite* newFastRegressionTest()
 	return new RegressionTest(config, vc4c::Frontend::DEFAULT, true, true);
 }
 
+static Test::Suite* newEmulatorTest()
+{
+    return new TestEmulator(config);
+}
+
+static Test::Suite* newStdLibTest()
+{
+    return new TestStdlib(config);
+}
+
 /*
  * 
  */
@@ -69,8 +79,8 @@ int main(int argc, char** argv)
     Test::registerSuite(newLLVMCompilationTest<false>, "test-compilation-llvm", "Runs all the compilation tests using the LLVM-IR front-end", false);
     Test::registerSuite(newSPIRVCompiltionTest<false>, "test-compilation-spirv", "Runs all the compilation tests using the SPIR-V front-end", false);
     Test::registerSuite(newFastRegressionTest, "fast-regressions", "Runs regression test-cases marked as fast", false);
-    Test::registerSuite(Test::newInstance<TestEmulator>, "test-emulator", "Runs selected code-samples through the emulator");
-    Test::registerSuite(Test::newInstance<TestStdlib>, "test-stdlib", "Runs most of the VC4CL std-lib functions in emulator");
+    Test::registerSuite(newEmulatorTest, "test-emulator", "Runs selected code-samples through the emulator");
+    Test::registerSuite(newStdLibTest, "test-stdlib", "Runs most of the VC4CL std-lib functions in emulator");
     Test::registerSuite(Test::newInstance<TestGraph>, "test-graph", "Runs basic test for the graph data structure");
     
     for(auto i = 1; i < argc; ++i)

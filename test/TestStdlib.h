@@ -12,7 +12,7 @@
 class TestStdlib : public TestEmulator
 {
 public:
-  TestStdlib();
+  TestStdlib(const vc4c::Configuration& config = {});
   
   void testAsyncCopy();
   void testAtomicFunction(std::size_t index, std::string name);

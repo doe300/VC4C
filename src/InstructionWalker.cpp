@@ -69,6 +69,7 @@ bool InstructionVisitor::visit(const InstructionWalker& start) const
 
 bool InstructionVisitor::visitReverse(const InstructionWalker& start, ControlFlowGraph* blockGraph) const
 {
+    // FIXME has problems with instructionwalkers freed in Method::cleanEmptyInstructions() (e.g. TestEmulator)
     InstructionWalker it(start);
     while(true)
     {

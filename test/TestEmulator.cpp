@@ -22,7 +22,7 @@
 using namespace vc4c;
 using namespace vc4c::tools;
 
-TestEmulator::TestEmulator()
+TestEmulator::TestEmulator(const vc4c::Configuration& config) : config(config)
 {
 	TEST_ADD(TestEmulator::testHelloWorld);
 	TEST_ADD(TestEmulator::testHelloWorldVector);
@@ -44,14 +44,13 @@ TestEmulator::TestEmulator()
 	TEST_ADD(TestEmulator::printProfilingInfo);
 }
 
-TestEmulator::TestEmulator(bool dummy)
+TestEmulator::TestEmulator(bool dummy, const vc4c::Configuration& config) : config(config)
 {
 	//Constructor just, so the tests are not added to children
 }
 
-void compileFile(std::stringstream& buffer, const std::string& fileName, const std::string& options = "")
+void TestEmulator::compileFile(std::stringstream& buffer, const std::string& fileName, const std::string& options)
 {
-	Configuration config;
 	config.outputMode = OutputMode::BINARY;
 	config.writeKernelInfo = true;
 	std::ifstream input(fileName);

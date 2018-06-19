@@ -12,10 +12,8 @@
 
 using namespace vc4c::tools;
 
-extern void compileFile(std::stringstream &buffer, const std::string &fileName, const std::string &options = "");
-
-TestStdlib::TestStdlib()
-	: TestEmulator(false)
+TestStdlib::TestStdlib(const vc4c::Configuration& config)
+	: TestEmulator(false, config)
 {
 	TEST_ADD(TestStdlib::testAsyncCopy);
 	for(std::size_t i = 0; i < vc4c::test::atomicTests.size(); ++i)

@@ -17,6 +17,9 @@
 using namespace vc4c;
 using namespace vc4c::qpu_asm;
 
+// TODO rewrite, start with node with the most edges? See http://hjemmesider.diku.dk/~torbenm/Basics/basics_lulu2.pdf
+// page 199ff
+
 LocalUsage::LocalUsage(InstructionWalker first, InstructionWalker last) :
     firstOccurrence(first), lastOccurrence(last), possibleFiles(RegisterFile::ANY), blockedFiles(RegisterFile::NONE)
 {

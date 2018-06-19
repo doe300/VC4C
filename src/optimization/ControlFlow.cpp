@@ -7,6 +7,7 @@
 #include "ControlFlow.h"
 
 #include "../InstructionWalker.h"
+#include "../Profiler.h"
 #include "../analysis/ControlFlowGraph.h"
 #include "../analysis/DataDependencyGraph.h"
 #include "../intermediate/Helper.h"
@@ -519,7 +520,7 @@ static int calculateCostsVsBenefits(
     int benefits = numInstructions * static_cast<int>(loopControl.vectorizationFactor);
 
     logging::debug() << "Calculated an cost-vs-benefit rating of " << (benefits - costs)
-                     << " (estimated number of cycles saved, larger is better)" << logging::endl;
+                     << " (estimated number of clock cycles saved, larger is better)" << logging::endl;
     return benefits - costs;
 }
 
@@ -583,10 +584,22 @@ static void vectorizeInstruction(InstructionWalker it,
     {
         // TODO vector-rotations need special handling?!
         Value& out = const_cast<Value&>(it->getOutput().value());
-        out.type = out.type.toVectorType(vectorWidth);
+        if(out.type.isPointerType())
+            // TODO this is only correct if the elements are located in one block (base+0, base+1, base+2...). Is this
+            // guaranteed?
+            out.type = out.type.getPointerType().value()->elementType.toVectorType(vectorWidth).toPointerType();
+        else
+            out.type = out.type.toVectorType(vectorWidth);
         if(out.hasType(ValueType::LOCAL))
         {
-            const_cast<DataType&>(out.local->type) = out.local->type.toVectorType(out.type.getVectorWidth());
+            if(out.local->type.isPointerType())
+                // TODO see above
+                const_cast<DataType&>(out.local->type) = out.local->type.getPointerType()
+                                                             .value()
+                                                             ->elementType.toVectorType(out.type.getVectorWidth())
+                                                             .toPointerType();
+            else
+                const_cast<DataType&>(out.local->type) = out.local->type.toVectorType(out.type.getVectorWidth());
             scheduleForVectorization(out.local, openInstructions, loop);
         }
     }
@@ -798,6 +811,7 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
     {
         // 3. determine operation on iteration variable and bounds
         LoopControl loopControl = extractLoopControl(loop, *dependencyGraph.get());
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + 333, "Loops found", 1);
         if(loopControl.iterationVariable == nullptr)
             // we could not find the iteration variable, skip this loop
             continue;
@@ -833,6 +847,9 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
         // increasing the iteration step might create a value not fitting into small immediate
         normalization::handleImmediate(module, method, loopControl.iterationStep.value(), config);
         hasChanged = true;
+
+        PROFILE_COUNTER(
+            vc4c::profiler::COUNTER_OPTIMIZATION + 334, "Vectorization factors", loopControl.vectorizationFactor);
     }
 
     return hasChanged;

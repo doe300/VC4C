@@ -216,6 +216,9 @@ std::size_t Method::countInstructions() const
 
 std::size_t Method::cleanEmptyInstructions()
 {
+    // XXX find better solution?
+    // otherwise a previous instruction referenced by CFG might be erased
+    cfg.reset();
     // TODO required??
     std::size_t num = 0;
     auto it = walkAllInstructions();
