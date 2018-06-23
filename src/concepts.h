@@ -11,7 +11,6 @@
 #include "Module.h"
 #include "asm/ALUInstruction.h"
 #include "performance.h"
-#include "llvm/Token.h"
 
 #include <type_traits>
 
@@ -210,10 +209,6 @@ namespace vc4c
     static_assert(assert_assignable<InstructionPart>::value, "InstructionPart is not assignable!");
     static_assert(std::is_destructible<InstructionPart>::value, "InstructionPart is not destructible!");
     static_assert(assert_comparable<InstructionPart>::value, "InstructionPart is not comparable");
-
-    static_assert(std::is_default_constructible<llvm2qasm::Token>::value, "Token is not default constructible!");
-    static_assert(assert_assignable<llvm2qasm::Token>::value, "Token is not assignable!");
-    static_assert(std::is_destructible<llvm2qasm::Token>::value, "Token is not destructible!");
 }
 
 #endif /* VC4C_CONCEPTS_H */

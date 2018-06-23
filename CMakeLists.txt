@@ -12,14 +12,12 @@ option(BUILD_DEBUG "Build with debugging symbols. Otherwise build for performanc
 option(MULTI_THREADED "Runs the optimization steps multi-threaded" ON)
 # Option whether to verify the output (using vc4asm)
 option(VERIFY_OUTPUT "uses the external library vc4asm to verify the output" ON)
-# Option whether to include the LLVM-IR front-end
-option(LLVMIR_FRONTEND "Enables the standard front-end for the LLVM intermediate language" ON)
 # Option to enable/disable cross compilation
 option(CROSS_COMPILE "Cross compile for Raspbian" OFF)
 # Option whether to include the SPIR-V front-end
 option(SPIRV_FRONTEND "Enables a second front-end for the SPIR-V intermediate language" OFF)
 # Option whether to include the LLVM library front-end. This requires the LLVM development-headers to be available for the (SPIRV-)LLVM used
-option(LLVMLIB_FRONTEND "Enables the front-end using the LLVM library to read LLVM IR" ON)
+option(LLVMLIB_FRONTEND "Enables the front-end using the LLVM library to read LLVM modules" ON)
 # Option whether to create deb package
 option(BUILD_DEB_PACKAGE "Enables creating .deb package" ON)
 
@@ -134,7 +132,7 @@ elseif(SPIRV_FRONTEND)
 endif()
 
 # fall back to "standard" CLang
-if((LLVMIR_FRONTEND OR LLVMLIB_FRONTEND) AND NOT CROSS_COMPILE AND NOT SPIRV_CLANG_FOUND)
+if(LLVMLIB_FRONTEND AND NOT CROSS_COMPILE AND NOT SPIRV_CLANG_FOUND)
 	if(NOT CLANG_FOUND)
 		find_program(CLANG_FOUND clang NAMES clang-3.9 clang)
 	endif()
@@ -260,7 +258,7 @@ if(LLVMLIB_FRONTEND)
 endif()
 
 if(NOT ((SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND) OR (LLVMLIB_FRONTEND AND LLVM_LIBS_PATH)))
-	message(WARNING " Neither SPIR-V nor LLVM library front-end are configured. Falling back to very slow and no longer maintained LLVM IR front-end!")
+	message(WARNING " Neither SPIR-V nor LLVM library front-end are configured!")
 endif()
 
 if(VERIFY_OUTPUT)

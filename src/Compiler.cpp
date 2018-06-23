@@ -17,7 +17,6 @@
 #include "optimization/Optimizer.h"
 #include "spirv/SPIRVParser.h"
 #include "llvm/BitcodeReader.h"
-#include "llvm/IRParser.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -64,7 +63,7 @@ static std::unique_ptr<Parser> getParser(std::istream& stream)
 #ifdef USE_LLVM_LIBRARY
         return std::unique_ptr<Parser>(new llvm2qasm::BitcodeReader(stream, SourceType::LLVM_IR_TEXT));
 #else
-        return std::unique_ptr<Parser>(new llvm2qasm::IRParser(stream));
+        throw CompilationError(CompilationStep::GENERAL, "No LLVM IR text front-end available!");
 #endif
     case SourceType::LLVM_IR_BIN:
 #ifdef USE_LLVM_LIBRARY

@@ -24,13 +24,40 @@
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 
+#include <regex>
 #include <system_error>
 
 using namespace vc4c;
 using namespace vc4c::llvm2qasm;
 
-extern AddressSpace toAddressSpace(int num);
-extern std::string cleanMethodName(const std::string& name);
+static AddressSpace toAddressSpace(int num)
+{
+    // XXX this mapping is not guaranteed, mapping only determined by experiment
+    switch(num)
+    {
+    case 0:
+        // According to the documentation for 'alloca', "The object is always allocated in the generic address space
+        // (address space zero)"
+        return AddressSpace::PRIVATE;
+    case 1:
+        return AddressSpace::GLOBAL;
+    case 2:
+        return AddressSpace::CONSTANT;
+    case 3:
+        return AddressSpace::LOCAL;
+    case 4:
+        return AddressSpace::GENERIC;
+    default:
+        return AddressSpace::GENERIC;
+    }
+}
+
+static std::string cleanMethodName(const std::string& name)
+{
+    // truncate prefix and postfix added by LLVM
+    std::string tmp = std::regex_replace(name, std::regex("@(_Z\\d+)?"), std::string(""));
+    return std::regex_replace(tmp, std::regex("Dv\\d+_"), std::string(""));
+}
 
 template <typename T>
 static void dumpLLVM(const T* val)
@@ -572,7 +599,7 @@ void BitcodeReader::parseFunctionBody(
     for(const llvm::BasicBlock& block : func)
     {
         // need to extract label from basic block
-        instructions.emplace_back(new LLVMLabel(toValue(method, &block).local));
+        instructions.emplace_back(new LLVMLabel(toValue(method, &block)));
         for(const llvm::Instruction& inst : block)
         {
             parseInstruction(module, method, instructions, inst);
@@ -674,10 +701,10 @@ void BitcodeReader::parseInstruction(
     {
         const llvm::BranchInst* br = llvm::cast<const llvm::BranchInst>(&inst);
         if(br->isUnconditional())
-            instructions.emplace_back(new Branch(toValue(method, br->getSuccessor(0)).local));
+            instructions.emplace_back(new Branch(toValue(method, br->getSuccessor(0))));
         else
             instructions.emplace_back(new Branch(toValue(method, br->getCondition()),
-                toValue(method, br->getSuccessor(0)).local, toValue(method, br->getSuccessor(1)).local));
+                toValue(method, br->getSuccessor(0)), toValue(method, br->getSuccessor(1))));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -694,15 +721,15 @@ void BitcodeReader::parseInstruction(
     case TermOps::Switch:
     {
         const llvm::SwitchInst* switchIns = llvm::cast<const llvm::SwitchInst>(&inst);
-        const Value cond = toValue(method, switchIns->getCondition());
-        const Value defaultLabel = toValue(method, switchIns->getDefaultDest());
-        FastMap<int, std::string> caseLabels;
+        Value cond = toValue(method, switchIns->getCondition());
+        Value defaultLabel = toValue(method, switchIns->getDefaultDest());
+        FastMap<int, Value> caseLabels;
         for(auto& casePair : const_cast<llvm::SwitchInst*>(switchIns)->cases())
         {
             caseLabels.emplace(static_cast<int>(casePair.getCaseValue()->getSExtValue()),
-                toValue(method, casePair.getCaseSuccessor()).local->name);
+                toValue(method, casePair.getCaseSuccessor()));
         }
-        instructions.emplace_back(new Switch(cond, defaultLabel.local->name, caseLabels));
+        instructions.emplace_back(new Switch(std::move(cond), std::move(defaultLabel), std::move(caseLabels)));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -751,7 +778,7 @@ void BitcodeReader::parseInstruction(
         std::for_each(indexOf->idx_begin(), indexOf->idx_end(),
             [this, &method, &indices](const llvm::Value* val) -> void { indices.emplace_back(toValue(method, val)); });
         instructions.emplace_back(
-            new IndexOf(toValue(method, indexOf), toValue(method, indexOf->getPointerOperand()), indices));
+            new IndexOf(toValue(method, indexOf), toValue(method, indexOf->getPointerOperand()), std::move(indices)));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -778,7 +805,7 @@ void BitcodeReader::parseInstruction(
         if(load->isVolatile() && src.hasType(ValueType::LOCAL) && src.local->is<Parameter>())
             src.local->as<Parameter>()->decorations =
                 add_flag(src.local->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
-        instructions.emplace_back(new Copy(toValue(method, load), src, true, true));
+        instructions.emplace_back(new Copy(toValue(method, load), std::move(src), true, true));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -804,7 +831,7 @@ void BitcodeReader::parseInstruction(
         if(store->isVolatile() && dest.hasType(ValueType::LOCAL) && dest.local->is<Parameter>())
             dest.local->as<Parameter>()->decorations =
                 add_flag(dest.local->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
-        instructions.emplace_back(new Copy(dest, toValue(method, store->getValueOperand()), true, false));
+        instructions.emplace_back(new Copy(std::move(dest), toValue(method, store->getValueOperand()), true, false));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -870,14 +897,13 @@ void BitcodeReader::parseInstruction(
         {
             // functions without definitions (e.g. intrinsic functions)
             std::string funcName = func->getName();
-            instructions.emplace_back(new CallSite(toValue(method, call).local,
-                cleanMethodName(funcName.find("_Z") == 0 ? std::string("@") + funcName : funcName),
-                toDataType(func->getReturnType()), args));
+            instructions.emplace_back(new CallSite(toValue(method, call),
+                cleanMethodName(funcName.find("_Z") == 0 ? std::string("@") + funcName : funcName), std::move(args)));
         }
         else
         {
             Method& dest = parseFunction(module, *func);
-            instructions.emplace_back(new CallSite(toValue(method, call).local, dest, args));
+            instructions.emplace_back(new CallSite(toValue(method, call), dest, std::move(args)));
         }
 
         instructions.back()->setDecorations(deco);
@@ -886,7 +912,7 @@ void BitcodeReader::parseInstruction(
     case OtherOps::ExtractElement:
     {
         instructions.emplace_back(new ContainerExtraction(
-            toValue(method, &inst).local, toValue(method, inst.getOperand(0)), toValue(method, inst.getOperand(1))));
+            toValue(method, &inst), toValue(method, inst.getOperand(0)), toValue(method, inst.getOperand(1))));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -898,9 +924,9 @@ void BitcodeReader::parseInstruction(
             throw CompilationError(
                 CompilationStep::PARSER, "Container extraction with multi-level indices is not yet implemented!");
         }
-        instructions.emplace_back(new ContainerExtraction(toValue(method, extraction).local,
-            toValue(method, extraction->getAggregateOperand()),
-            Value(Literal(extraction->getIndices().front()), TYPE_INT32)));
+        instructions.emplace_back(
+            new ContainerExtraction(toValue(method, extraction), toValue(method, extraction->getAggregateOperand()),
+                Value(Literal(extraction->getIndices().front()), TYPE_INT32)));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -909,18 +935,17 @@ void BitcodeReader::parseInstruction(
     case OtherOps::ICmp:
     {
         const llvm::CmpInst* comp = llvm::cast<const llvm::CmpInst>(&inst);
-        const auto tmp = toComparison(comp->getPredicate());
-        instructions.emplace_back(new Comparison(toValue(method, &inst).local, tmp.first,
-            toValue(method, inst.getOperand(0)), toValue(method, inst.getOperand(1)), tmp.second));
+        auto tmp = toComparison(comp->getPredicate());
+        instructions.emplace_back(new Comparison(toValue(method, &inst), std::move(tmp.first),
+            toValue(method, inst.getOperand(0)), toValue(method, inst.getOperand(1)), std::move(tmp.second)));
         instructions.back()->setDecorations(deco);
         break;
     }
 
     case OtherOps::InsertElement:
     {
-        instructions.emplace_back(
-            new ContainerInsertion(toValue(method, &inst).local, toValue(method, inst.getOperand(0)),
-                toValue(method, inst.getOperand(1)), toValue(method, inst.getOperand(2))));
+        instructions.emplace_back(new ContainerInsertion(toValue(method, &inst), toValue(method, inst.getOperand(0)),
+            toValue(method, inst.getOperand(1)), toValue(method, inst.getOperand(2))));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -932,7 +957,7 @@ void BitcodeReader::parseInstruction(
             throw CompilationError(
                 CompilationStep::PARSER, "Container insertion with multi-level indices is not yet implemented!");
         }
-        instructions.emplace_back(new ContainerInsertion(toValue(method, insertion).local,
+        instructions.emplace_back(new ContainerInsertion(toValue(method, insertion),
             toValue(method, insertion->getAggregateOperand()), toValue(method, insertion->getInsertedValueOperand()),
             Value(Literal(insertion->getIndices().front()), TYPE_INT32)));
         instructions.back()->setDecorations(deco);
@@ -947,16 +972,15 @@ void BitcodeReader::parseInstruction(
             labels.emplace_back(std::make_pair(
                 toValue(method, phi->getIncomingValue(i)), toValue(method, phi->getIncomingBlock(i)).local));
         }
-        instructions.emplace_back(new PhiNode(toValue(method, phi).local, labels));
+        instructions.emplace_back(new PhiNode(toValue(method, phi), std::move(labels)));
         instructions.back()->setDecorations(deco);
         break;
     }
     case OtherOps::Select:
     {
         const llvm::SelectInst* selection = llvm::cast<const llvm::SelectInst>(&inst);
-        instructions.emplace_back(
-            new Selection(toValue(method, selection).local, toValue(method, selection->getCondition()),
-                toValue(method, selection->getTrueValue()), toValue(method, selection->getFalseValue())));
+        instructions.emplace_back(new Selection(toValue(method, selection), toValue(method, selection->getCondition()),
+            toValue(method, selection->getTrueValue()), toValue(method, selection->getFalseValue())));
         instructions.back()->setDecorations(deco);
         break;
     }

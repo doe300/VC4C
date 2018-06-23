@@ -13,8 +13,6 @@
 #include "TestGraph.h"
 #include "TestInstructions.h"
 #include "TestOperators.h"
-#include "TestParser.h"
-#include "TestScanner.h"
 #include "TestSPIRVFrontend.h"
 #include "TestStdlib.h"
 
@@ -68,8 +66,6 @@ int main(int argc, char** argv)
     logging::LOGGER.reset(new logging::ConsoleLogger(logging::Level::WARNING));
 
     Test::registerSuite(Test::newInstance<TestOperators>, "test-operators", "Tests the implementation of some operators");
-    Test::registerSuite(Test::newInstance<TestScanner>, "test-scanner", "Tests the LLVM IR scanner");
-    Test::registerSuite(Test::newInstance<TestParser>, "test-parser", "Tests the LLVM IR parser");
     Test::registerSuite(Test::newInstance<TestInstructions>, "test-instructions", "Tests some common instruction handling");
     Test::registerSuite(Test::newInstance<TestSPIRVFrontend>, "test-spirv", "Tests the SPIR-V front-end");
     Test::registerSuite(newLLVMCompilationTest<true>, "regressions-llvm", "Runs the regression-test using the LLVM-IR front-end", false);

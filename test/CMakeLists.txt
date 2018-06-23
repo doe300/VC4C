@@ -25,6 +25,4 @@ add_test(NAME Regressions COMMAND ./build/test/TestVC4C --fast-regressions WORKI
 add_test(NAME Emulator COMMAND ./build/test/TestVC4C --test-emulator WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME Instructions COMMAND ./build/test/TestVC4C --test-instructions WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME Operators COMMAND ./build/test/TestVC4C --test-operators WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-add_test(NAME Parser COMMAND ./build/test/TestVC4C --test-parser WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-add_test(NAME Scanner COMMAND ./build/test/TestVC4C --test-scanner WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME Stdlib COMMAND ./build/test/TestVC4C --test-stdlib WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

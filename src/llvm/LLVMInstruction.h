@@ -8,7 +8,6 @@
 #define LLVMINSTRUCTION_H
 
 #include "../Locals.h"
-#include "Token.h"
 
 #include <map>
 #include <memory>
@@ -27,8 +26,6 @@ namespace vc4c
 
     namespace llvm2qasm
     {
-        ValueType toValueType(TokenType type);
-
         /*!
          * http://llvm.org/docs/LangRef.html
          */
@@ -52,11 +49,10 @@ namespace vc4c
         class CallSite final : public LLVMInstruction
         {
         public:
-            CallSite(const Local* dest, const std::string& methodName, const DataType& returnType,
-                const std::vector<Value>& args = {});
-            CallSite(const Local* dest, const Method& method, const std::vector<Value>& args = {});
-            CallSite(const std::string& methodName, const DataType& returnType, const std::vector<Value>& args = {});
-            explicit CallSite(const Method& method, const std::vector<Value>& args = {});
+            CallSite(Value&& dest, std::string&& methodName, std::vector<Value>&& args = {});
+            CallSite(Value&& dest, const Method& method, std::vector<Value>&& args = {});
+            CallSite(std::string&& methodName, DataType&& returnType, std::vector<Value>&& args = {});
+            explicit CallSite(const Method& method, std::vector<Value>&& args = {});
             ~CallSite() override = default;
 
             const Local* getDeclaredLocal() const override;
@@ -68,17 +64,15 @@ namespace vc4c
             const std::string& getMethodName() const;
 
         private:
-            const Local* dest;
+            const Value dest;
             const std::string methodName;
-            const DataType returnType;
             const std::vector<Value> arguments;
         };
 
         class Copy final : public LLVMInstruction
         {
         public:
-            Copy(const Value& dest, const Value& orig, bool isLoadStore = false, bool isRead = false,
-                bool isBitcast = false);
+            Copy(Value&& dest, Value&& orig, bool isLoadStore = false, bool isRead = false, bool isBitcast = false);
             ~Copy() override = default;
 
             const Local* getDeclaredLocal() const override;
@@ -96,7 +90,7 @@ namespace vc4c
         class UnaryOperator : public LLVMInstruction
         {
         public:
-            UnaryOperator(const std::string& opCode, const Value& dest, const Value& arg);
+            UnaryOperator(std::string&& opCode, Value&& dest, Value&& arg);
             ~UnaryOperator() override = default;
 
             const Local* getDeclaredLocal() const override;
@@ -112,7 +106,7 @@ namespace vc4c
         class BinaryOperator final : public UnaryOperator
         {
         public:
-            BinaryOperator(const std::string& opCode, const Value& dest, const Value& arg0, const Value& arg1);
+            BinaryOperator(std::string&& opCode, Value&& dest, Value&& arg0, Value&& arg1);
             ~BinaryOperator() override = default;
 
             std::vector<const Local*> getAllLocals() const override;
@@ -125,7 +119,7 @@ namespace vc4c
         class IndexOf final : public LLVMInstruction
         {
         public:
-            IndexOf(const Value& dest, const Value& container, const std::vector<Value>& indices);
+            IndexOf(Value&& dest, Value&& container, std::vector<Value>&& indices);
             ~IndexOf() override = default;
 
             const Local* getDeclaredLocal() const override;
@@ -143,7 +137,7 @@ namespace vc4c
         class Comparison final : public LLVMInstruction
         {
         public:
-            Comparison(const Local* dest, const std::string& comp, const Value& op1, const Value& op2, bool isFloat);
+            Comparison(Value&& dest, std::string&& comp, Value&& op1, Value&& op2, bool isFloat);
             ~Comparison() override = default;
 
             const Local* getDeclaredLocal() const override;
@@ -151,7 +145,7 @@ namespace vc4c
             bool mapInstruction(Method& method) const override;
 
         private:
-            const Local* dest;
+            const Value dest;
             const std::string comp;
             const bool isFloat;
             const Value op1;
@@ -161,7 +155,7 @@ namespace vc4c
         class ContainerInsertion final : public LLVMInstruction
         {
         public:
-            ContainerInsertion(const Local* dest, const Value& container, const Value& newValue, const Value& index);
+            ContainerInsertion(Value&& dest, Value&& container, Value&& newValue, Value&& index);
             ~ContainerInsertion() override = default;
 
             const Local* getDeclaredLocal() const override;
@@ -169,7 +163,7 @@ namespace vc4c
             bool mapInstruction(Method& method) const override;
 
         private:
-            const Local* dest;
+            const Value dest;
             const Value container;
             const Value newValue;
             const Value index;
@@ -178,7 +172,7 @@ namespace vc4c
         class ContainerExtraction final : public LLVMInstruction
         {
         public:
-            ContainerExtraction(const Local* dest, const Value& container, const Value& index);
+            ContainerExtraction(Value&& dest, Value&& container, Value&& index);
             ~ContainerExtraction() override = default;
 
             const Local* getDeclaredLocal() const override;
@@ -186,7 +180,7 @@ namespace vc4c
             bool mapInstruction(Method& method) const override;
 
         private:
-            const Local* dest;
+            const Value dest;
             const Value container;
             const Value index;
         };
@@ -195,7 +189,7 @@ namespace vc4c
         {
         public:
             explicit ValueReturn();
-            explicit ValueReturn(const Value& val);
+            explicit ValueReturn(Value&& val);
             ~ValueReturn() override = default;
 
             std::vector<const Local*> getAllLocals() const override;
@@ -209,7 +203,7 @@ namespace vc4c
         class ShuffleVector final : public LLVMInstruction
         {
         public:
-            ShuffleVector(const Value& dest, const Value& v1, const Value& v2, const Value& mask);
+            ShuffleVector(Value&& dest, Value&& v1, Value&& v2, Value&& mask);
             ~ShuffleVector() override = default;
 
             std::vector<const Local*> getAllLocals() const override;
@@ -226,19 +220,19 @@ namespace vc4c
         class LLVMLabel final : public LLVMInstruction
         {
         public:
-            explicit LLVMLabel(const Local* label);
+            explicit LLVMLabel(Value&& label);
             ~LLVMLabel() override = default;
 
             bool mapInstruction(Method& method) const override;
 
         private:
-            const Local* label;
+            const Value label;
         };
 
         class PhiNode final : public LLVMInstruction
         {
         public:
-            PhiNode(const Local* dest, const std::vector<std::pair<Value, const Local*>>& labels);
+            PhiNode(Value&& dest, std::vector<std::pair<Value, const Local*>>&& labels);
             ~PhiNode() override = default;
 
             const Local* getDeclaredLocal() const override;
@@ -246,14 +240,14 @@ namespace vc4c
             bool mapInstruction(Method& method) const override;
 
         private:
-            const Local* dest;
+            const Value dest;
             const std::vector<std::pair<Value, const Local*>> labels;
         };
 
         class Selection final : public LLVMInstruction
         {
         public:
-            Selection(const Local* dest, const Value& cond, const Value& opt1, const Value& opt2);
+            Selection(Value&& dest, Value&& cond, Value&& opt1, Value&& opt2);
             ~Selection() override = default;
 
             const Local* getDeclaredLocal() const override;
@@ -262,7 +256,7 @@ namespace vc4c
             bool mapInstruction(Method& method) const override;
 
         private:
-            const Local* dest;
+            const Value dest;
             const Value cond;
             const Value opt1;
             const Value opt2;
@@ -271,23 +265,23 @@ namespace vc4c
         class Branch final : public LLVMInstruction
         {
         public:
-            explicit Branch(const Local* label);
-            Branch(const Value& cond, const Local* thenLabel, const Local* elseLabel);
+            explicit Branch(Value&& label);
+            Branch(Value&& cond, Value&& thenLabel, Value&& elseLabel);
             ~Branch() override = default;
 
             std::vector<const Local*> getAllLocals() const override;
             bool mapInstruction(Method& method) const override;
 
         private:
-            const Local* thenLabel;
-            const Local* elseLabel;
+            const Value thenLabel;
+            const Value elseLabel;
             const Value cond;
         };
 
         class Switch final : public LLVMInstruction
         {
         public:
-            Switch(const Value& cond, const std::string& defaultLabel, const FastMap<int, std::string>& cases);
+            Switch(Value&& cond, Value&& defaultLabel, FastMap<int, Value>&& cases);
             ~Switch() override = default;
 
             std::vector<const Local*> getAllLocals() const override;
@@ -295,8 +289,8 @@ namespace vc4c
 
         private:
             const Value cond;
-            const std::string defaultLabel;
-            const FastMap<int, std::string> jumpLabels;
+            const Value defaultLabel;
+            const FastMap<int, Value> jumpLabels;
         };
     } // namespace llvm2qasm
 } // namespace vc4c

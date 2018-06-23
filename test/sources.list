@@ -12,10 +12,6 @@ target_sources(TestVC4C
     TestInstructions.h
     TestOperators.cpp
     TestOperators.h
-    TestParser.cpp
-    TestParser.h
-    TestScanner.cpp
-    TestScanner.h
     TestSPIRVFrontend.cpp
     TestSPIRVFrontend.h
     TestStdlib.cpp

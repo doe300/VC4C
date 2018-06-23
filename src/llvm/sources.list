@@ -2,11 +2,6 @@ target_sources(${VC4C_LIBRARY_NAME}
   PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/BitcodeReader.cpp
     ${CMAKE_CURRENT_LIST_DIR}/BitcodeReader.h
-    ${CMAKE_CURRENT_LIST_DIR}/IRParser.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/IRParser.h
     ${CMAKE_CURRENT_LIST_DIR}/LLVMInstruction.cpp
     ${CMAKE_CURRENT_LIST_DIR}/LLVMInstruction.h
-    ${CMAKE_CURRENT_LIST_DIR}/Scanner.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/Scanner.h
-    ${CMAKE_CURRENT_LIST_DIR}/Token.h
 )
