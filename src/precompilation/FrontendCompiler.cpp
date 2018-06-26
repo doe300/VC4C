@@ -65,8 +65,12 @@ static std::string buildClangCommand(const std::string& compiler, const std::str
     if(usePCH)
         command.append("-include-pch " VC4CL_STDLIB_HEADER " ");
     else
-        // TODO this uses the #defines and extensions of the default headers, not as supported by VC4CL!
+    {
         command.append("-finclude-default-header ");
+        // The #defines (esp. for extensions) from the default headers differ from the supported #defines,
+        // so we need to include our #defines/undefines
+        command.append("-include " VC4CL_STDLIB_CONFIG_HEADER " ");
+    }
     if(options.find("-x cl") == std::string::npos)
     {
         // build OpenCL, required when input is from stdin, since clang can't determine from file-type
