@@ -1413,14 +1413,22 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
         {
             logging::debug() << "  longest node: " << longestNode->dumpLabel() << logging::endl;
 
+            std::vector<LoopInclusionTreeNode*> nonConnectedEdges;
+
             currentNode.forAllIncomingEdges([&](LoopInclusionTreeNode& other, LoopInclusionTreeEdge&) -> bool {
                 auto otherNode = &other;
                 if(longestNode != otherNode)
                 {
-                    otherNode->removeAsNeighbor(&currentNode);
+                    // To avoid finishing loop
+                    nonConnectedEdges.push_back(otherNode);
                 }
                 return true;
             });
+
+            for (auto &otherNode : nonConnectedEdges) {
+                otherNode->removeAsNeighbor(&currentNode);
+                logging::debug() << "  remove node: " << otherNode->dumpLabel() << logging::endl;
+            }
         }
     }
 
