@@ -1325,7 +1325,8 @@ bool isConstantInstruction(const InstructionWalker& inst)
     }
     auto& args = inst->getArguments();
     return std::all_of(args.begin(), args.end(), [](const Value& arg) { return !arg.isWriteable(); }) &&
-        inst->getOutput().has_value() && !inst->hasSideEffects() && !inst->hasConditionalExecution() && !inst->hasDecoration(InstructionDecorations::PHI_NODE);
+        inst->getOutput().has_value() && !inst->hasSideEffects() && !inst->hasConditionalExecution() &&
+        !inst->hasDecoration(InstructionDecorations::PHI_NODE);
 }
 
 bool optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
@@ -1398,8 +1399,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             auto parentNode = &parent;
             int length = parentNode->longestPathLengthToRoot();
 
-            logging::debug() << "  parent node: " << parentNode->dumpLabel() << " length: " << length
-                             << logging::endl;
+            logging::debug() << "  parent node: " << parentNode->dumpLabel() << " length: " << length << logging::endl;
 
             if(length > longestLength)
             {
@@ -1425,7 +1425,8 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 return true;
             });
 
-            for (auto &otherNode : nonConnectedEdges) {
+            for(auto& otherNode : nonConnectedEdges)
+            {
                 otherNode->removeAsNeighbor(&currentNode);
                 logging::debug() << "  remove node: " << otherNode->dumpLabel() << logging::endl;
             }
@@ -1507,21 +1508,23 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                                 auto loopID = reinterpret_cast<LoopInclusionTreeNode*>(targetNode)->key->getID();
 
                                 logging::debug() << "currentLoops(" << currentLoops.size() << ")" << logging::endl;
-                                for (auto &cl : currentLoops) {
+                                for(auto& cl : currentLoops)
+                                {
                                     auto& cn = inclusionTree.getOrCreateNode(&cl);
                                     logging::debug() << "  " << cn.dumpLabel() << " : " << cl.getID() << logging::endl;
                                 }
-                                auto latestLoop = std::find_if(currentLoops.begin(), currentLoops.end(), [&loopID](const ControlFlowLoop& loop) {
-                                    return loop.getID() == loopID;
-                                });
+                                auto latestLoop = std::find_if(currentLoops.begin(), currentLoops.end(),
+                                    [&loopID](const ControlFlowLoop& loop) { return loop.getID() == loopID; });
 
-                                if (latestLoop == currentLoops.end())
-                                    throw CompilationError(CompilationStep::GENERAL, "Cannot find the same loops from latest CFG.");
+                                if(latestLoop == currentLoops.end())
+                                    throw CompilationError(
+                                        CompilationStep::GENERAL, "Cannot find the same loops from latest CFG.");
 
                                 auto targetBlock = latestLoop->findPredecessor();
                                 if(targetBlock != nullptr)
                                 {
-                                    logging::debug() << "  target block: " << targetBlock->key->getLabel()->to_string() << logging::endl;
+                                    logging::debug() << "  target block: " << targetBlock->key->getLabel()->to_string()
+                                                     << logging::endl;
                                     // insert before 'br' operation
                                     auto targetInst = targetBlock->key->walkEnd().previousInBlock();
                                     targetInst.emplace(it.release());
@@ -1556,17 +1559,17 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 }
             }
 
-            currentNode->forAllOutgoingEdges([&](const LoopInclusionTreeNode& child, const LoopInclusionTreeEdge&) -> bool {
-                que.push(const_cast<LoopInclusionTreeNode*>(&child));
-                return true;
-            });
+            currentNode->forAllOutgoingEdges(
+                [&](const LoopInclusionTreeNode& child, const LoopInclusionTreeEdge&) -> bool {
+                    que.push(const_cast<LoopInclusionTreeNode*>(&child));
+                    return true;
+                });
         }
     }
 
     if(hasChanged)
         // combine the newly reordered (and at one place accumulated) loading instructions
         combineLoadingConstants(module, method, config);
-
 
     logging::debug() << "finish processing!!!" << logging::endl;
     method.dumpInstructions();
