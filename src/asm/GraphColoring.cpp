@@ -32,40 +32,6 @@ ColoredNodeBase::ColoredNodeBase(const RegisterFile possibleFiles) :
 {
 }
 
-static void forLocalsUsedTogether(const Local* local, const std::function<void(const Local*)>& func)
-{
-    for(const auto& pair : local->getUsers())
-    {
-        if(dynamic_cast<const intermediate::Branch*>(pair.first) != nullptr ||
-            dynamic_cast<const intermediate::BranchLabel*>(pair.first) != nullptr)
-            continue;
-        if(pair.second.readsLocal())
-        {
-            pair.first->forUsedLocals([local, &func](const Local* l, LocalUse::Type type) -> void {
-                if(has_flag(type, LocalUse::Type::READER) && l != local)
-                    func(l);
-            });
-        }
-        if(pair.second.writesLocal())
-        {
-            const intermediate::Operation* op = dynamic_cast<const intermediate::Operation*>(pair.first);
-            if(op != nullptr && op->parent != nullptr)
-            {
-                if(op->parent->op1 != nullptr && op->parent->op2 != nullptr &&
-                    op->parent->op1->hasValueType(ValueType::LOCAL) &&
-                    op->parent->op2->hasValueType(ValueType::LOCAL) &&
-                    op->parent->op1->getOutput()->local != op->parent->op2->getOutput()->local)
-                {
-                    if(op->parent->op1->getOutput()->hasLocal(local))
-                        func(op->parent->op2->getOutput()->local);
-                    if(op->parent->op2->getOutput()->hasLocal(local))
-                        func(op->parent->op1->getOutput()->local);
-                }
-            }
-        }
-    }
-}
-
 void ColoredNodeBase::blockRegister(RegisterFile file, const std::size_t index)
 {
     if(file == RegisterFile::ACCUMULATOR)
@@ -430,7 +396,8 @@ static void fixLocals(const InstructionWalker it, FastMap<const Local*, LocalUsa
     }
 }
 
-GraphColoring::GraphColoring(Method& method, InstructionWalker it) : method(method), closedSet(), openSet(), localUses()
+GraphColoring::GraphColoring(Method& method, InstructionWalker it) :
+    method(method), closedSet(), openSet(), interferenceGraph(), localUses()
 {
     closedSet.reserve(method.readLocals().size());
     openSet.reserve(method.readLocals().size());
@@ -491,123 +458,9 @@ GraphColoring::GraphColoring(Method& method, InstructionWalker it) : method(meth
     }
 }
 
-static void walkUsageRange(InstructionWalker start, const Local* local,
-    FastMap<intermediate::IntermediateInstruction*, FastSet<const Local*>>& localRanges,
-    ControlFlowGraph* blockGraph = nullptr)
-{
-    // to prevent infinite recursions
-    // TODO is tracking labels enough or need we track all instructions (or branches, since we jump backwards?)??
-    // FIXME this check is wrong, e.g. doesn't find reads, if <label1> ... <label2> x = a ... a = y; br <label1> (e.g.
-    // ./testing/rodinia/find_ellipse_kernel.cl, ./testing/rodinia/track_ellipse_kernel.cl,
-    // ./testing/NVIDIA/BlackScholes.cl)
-    FastSet<intermediate::IntermediateInstruction*> processedLabels;
-    ConditionCode conditionalWrite = COND_NEVER;
-    const auto consumer = [start, local, &localRanges, &processedLabels, &conditionalWrite](
-                              InstructionWalker& it) -> InstructionVisitResult {
-        intermediate::BranchLabel* label = it.get<intermediate::BranchLabel>();
-        if(label != nullptr)
-        {
-            if(processedLabels.find(label) != processedLabels.end())
-                return InstructionVisitResult::STOP_BRANCH;
-            processedLabels.emplace(label);
-        }
-        if(it != start)
-        {
-            // don't set usage-range for last read to not block the written local
-            localRanges[it.get()].insert(local);
-            if(it->readsLocal(local))
-                // another reading found, abort here and continue for the other reading
-                return InstructionVisitResult::STOP_BRANCH;
-        }
-        if(it->writesLocal(local))
-        {
-            // we found a write, stop this branch (and continue with others)
-            // only abort if we have found writes for all conditions (e.g. required for vector insertions, or selects)
-            const std::function<InstructionVisitResult(const intermediate::IntermediateInstruction*)>
-                checkWritePerInstruction =
-                    [start, &conditionalWrite, local](
-                        const intermediate::IntermediateInstruction* inst) -> InstructionVisitResult {
-                // if start is a combined instruction
-                ConditionCode realStartCondition = start.get()->conditional;
-                if(start.get<const intermediate::CombinedOperation>() != nullptr)
-                {
-                    const intermediate::CombinedOperation* comb = start.get<const intermediate::CombinedOperation>();
-                    if(comb->op1 && comb->op1->readsLocal(local) && comb->op2 && comb->op2->readsLocal(local) &&
-                        comb->op1->conditional.isInversionOf(comb->op2->conditional))
-                        realStartCondition = COND_ALWAYS;
-                    else if(comb->op1 && comb->op1->readsLocal(local))
-                        realStartCondition = comb->op1->conditional;
-                    else if(comb->op2 && comb->op2->readsLocal(local))
-                        realStartCondition = comb->op2->conditional;
-                    else // neither part reads the local
-                        throw CompilationError(CompilationStep::CODE_GENERATION,
-                            "Combined operation reads local, but none of its part do", start->to_string());
-                }
-                if(!inst->writesLocal(local) ||
-                    inst->hasDecoration(intermediate::InstructionDecorations::ELEMENT_INSERTION))
-                    return InstructionVisitResult::CONTINUE;
-                if(inst->conditional == COND_ALWAYS || inst->conditional == realStartCondition ||
-                    inst->conditional.isInversionOf(conditionalWrite))
-                    conditionalWrite = COND_ALWAYS;
-                else if(conditionalWrite == COND_NEVER)
-                    conditionalWrite = inst->conditional;
-                if(conditionalWrite == COND_ALWAYS)
-                    return InstructionVisitResult::STOP_BRANCH;
-                // TODO to be exact, we would need a check here, if the condition of the PHI-value setter is the same as
-                // the branch-condition jumping to the target label
-                if(inst->hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
-                    // we found a (conditional) instruction setting this PHI-node value
-                    return InstructionVisitResult::STOP_BRANCH;
-                return InstructionVisitResult::CONTINUE;
-            };
-            if(it.has<intermediate::CombinedOperation>())
-            {
-                intermediate::CombinedOperation* combined = it.get<intermediate::CombinedOperation>();
-                if(combined->op1 != nullptr)
-                {
-                    InstructionVisitResult tmp = checkWritePerInstruction(combined->op1.get());
-                    if(tmp == InstructionVisitResult::STOP_ALL || tmp == InstructionVisitResult::STOP_BRANCH)
-                        return tmp;
-                }
-                if(combined->op2 != nullptr)
-                {
-                    InstructionVisitResult tmp = checkWritePerInstruction(combined->op2.get());
-                    if(tmp == InstructionVisitResult::STOP_ALL || tmp == InstructionVisitResult::STOP_BRANCH)
-                        return tmp;
-                }
-            }
-            else
-            {
-                return checkWritePerInstruction(it.get());
-            }
-        }
-        if(it.isStartOfMethod() ||
-            (it.has<intermediate::BranchLabel>() &&
-                it.get<intermediate::BranchLabel>()->getLabel()->name.compare(BasicBlock::DEFAULT_BLOCK) == 0))
-        {
-            // we arrived at the beginning of the method with no write found -> abort
-            return InstructionVisitResult::STOP_ALL;
-        }
-        return InstructionVisitResult::CONTINUE;
-    };
-
-    InstructionVisitor visitor{consumer, false, true};
-    bool allFound = visitor.visitReverse(start, blockGraph);
-
-    if(!allFound)
-    {
-        logging::error() << "Found a path for local " << local->to_string()
-                         << " for which it isn't written before, starting at: " << start->to_string() << logging::endl;
-        throw CompilationError(
-            CompilationStep::CODE_GENERATION, "Not all path generate a valid value for local", local->to_string());
-    }
-}
-
 void GraphColoring::createGraph()
 {
-    FastMap<intermediate::IntermediateInstruction*, FastSet<const Local*>> localRanges;
-    localRanges.reserve(method.countInstructions());
-
+    interferenceGraph = analysis::InterferenceGraph::createGraph(method);
     // 1. iteration: set files and locals used together and map to start/end of range
     PROFILE_START(createColoredNodes);
     for(const auto& pair : localUses)
@@ -637,10 +490,6 @@ void GraphColoring::createGraph()
             openSet.erase(node.key);
             continue;
         }
-        forLocalsUsedTogether(pair.first, [&node, this](const Local* l) -> void {
-            node.getOrCreateEdge(&(graph.getOrCreateNode(l)), LocalRelation::USED_TOGETHER).data =
-                LocalRelation::USED_TOGETHER;
-        });
         if(node.initialFile == RegisterFile::NONE)
         {
             logging::warn() << "Node " << node.key->name << " has no initially possible registers:" << logging::endl;
@@ -653,51 +502,29 @@ void GraphColoring::createGraph()
     }
     PROFILE_END(createColoredNodes);
 
-    auto& blockGraph = method.getCFG();
-
-    PROFILE_START(createUsageRanges);
-    InstructionWalker it = method.walkAllInstructions();
-    while(!it.isEndOfMethod())
-    {
-        // from all reading instructions, walk up to the writes of the locals and add all instructions in between to the
-        // local usage-range
-        if(!it.has<intermediate::BranchLabel>() && !it.has<intermediate::Branch>())
-        {
-            it->forUsedLocals([it, &localRanges, &blockGraph](const Local* local, LocalUse::Type usageType) -> void {
-                if(has_flag(usageType, LocalUse::Type::READER))
-                {
-                    PROFILE(walkUsageRange, it, local, localRanges, &blockGraph);
-                }
-            });
-        }
-        it.nextInMethod();
-    }
-    PROFILE_END(createUsageRanges);
     // TODO if this method works, could here spill all locals with more than XX (64) neighbors!?!
     for(const auto& node : graph.getNodes())
     {
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 5, "SpillCandidates", node.second.getEdgesSize() >= 64);
+        if(node.second.getEdgesSize() >= 32)
+            logging::debug() << "Spill candidate: " << node.first->to_string() << logging::endl;
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 5, "SpillCandidates", node.second.getEdgesSize() >= 32);
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 6, "SpillCandidates (uses)",
+            (node.second.getEdgesSize() >= 32) * node.first->getUsers().size());
     }
     // 2. iteration: associate locals used together
-    PROFILE_START(addEdges);
-    for(const auto& range : localRanges)
+    PROFILE_START(InterferenceToColoredGraph);
+    for(const auto& interferenceNode : interferenceGraph->getNodes())
     {
-        auto it = range.second.begin();
-        while(it != range.second.end())
-        {
-            ColoredNode& node = graph.assertNode(*it);
-            auto it2 = range.second.begin();
-
-            while(it2 != it)
-            {
-                node.getOrCreateEdge(&graph.assertNode(*it2), LocalRelation::USED_SIMULTANEOUSLY);
-                ++it2;
-            }
-
-            ++it;
-        }
+        ColoredNode& node = graph.assertNode(interferenceNode.first);
+        interferenceNode.second.forAllEdges(
+            [&](const analysis::InterferenceNode& neighbor, const analysis::Interference& edge) -> bool {
+                node.getOrCreateEdge(&graph.assertNode(neighbor.key)).data =
+                    edge.data == analysis::InterferenceType::USED_TOGETHER ? LocalRelation::USED_TOGETHER :
+                                                                             LocalRelation::USED_SIMULTANEOUSLY;
+                return true;
+            });
     }
-    PROFILE_END(addEdges);
+    PROFILE_END(InterferenceToColoredGraph);
 
     logging::debug() << "Colored graph with " << graph.getNodes().size() << " nodes created!" << logging::endl;
 #ifdef DEBUG_MODE
@@ -706,7 +533,7 @@ void GraphColoring::createGraph()
         return l->name;
     };
     const std::function<bool(const LocalRelation&)> weakEdgeFunc = [](const LocalRelation& r) -> bool {
-        return r == LocalRelation::USED_TOGETHER;
+        return r != LocalRelation::USED_TOGETHER;
     };
     for(const auto& node : graph.getNodes())
     {

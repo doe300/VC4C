@@ -11,6 +11,8 @@ target_sources(${VC4C_LIBRARY_NAME}
     ${CMAKE_CURRENT_LIST_DIR}/DebugGraph.h
     ${CMAKE_CURRENT_LIST_DIR}/DependencyGraph.cpp
     ${CMAKE_CURRENT_LIST_DIR}/DependencyGraph.h
+    ${CMAKE_CURRENT_LIST_DIR}/InterferenceGraph.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/InterferenceGraph.h
     ${CMAKE_CURRENT_LIST_DIR}/LifetimeGraph.cpp
     ${CMAKE_CURRENT_LIST_DIR}/LifetimeGraph.h
     ${CMAKE_CURRENT_LIST_DIR}/LivenessAnalysis.h

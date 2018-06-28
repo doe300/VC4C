@@ -1174,6 +1174,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                     if(loadInst->hasValueType(ValueType::LOCAL) && !loadInst->hasSideEffects() &&
                         !loadInst->hasConditionalExecution())
                     {
+                        logging::debug() << "Moving constant load out of loop: " << it->to_string() << logging::endl;
                         if(insertedBlock != nullptr)
                         {
                             insertedBlock->end().emplace(it.release());

@@ -14,8 +14,12 @@ using namespace vc4c::analysis;
 LivenessAnalysis::LivenessAnalysis() : LocalAnalysis(LivenessAnalysis::analyzeLiveness, LivenessAnalysis::to_string) {}
 
 FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::IntermediateInstruction* instr,
-    const FastSet<const Local*>& nextResult, FastSet<const Local*>& conditionalWrites)
+    const FastSet<const Local*>& nextResult,
+    std::pair<FastSet<const Local*>, FastMap<const Local*, ConditionCode>>& cache)
 {
+    auto& conditionalWrites = cache.first;
+    auto& conditionalReads = cache.second;
+
     FastSet<const Local*> result(nextResult);
 
     if(instr->hasValueType(ValueType::LOCAL) &&
@@ -23,7 +27,12 @@ FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::Inte
     {
         if(instr->hasConditionalExecution())
         {
-            if(conditionalWrites.find(instr->getOutput()->local) != conditionalWrites.end())
+            auto condReadIt = conditionalReads.find(instr->getOutput()->local);
+            if(condReadIt != conditionalReads.end() && condReadIt->second == instr->conditional &&
+                condReadIt->first->getSingleWriter() == instr)
+                // the local only exists within a conditional block (e.g. temporary within the same flag)
+                result.erase(instr->getOutput()->local);
+            else if(conditionalWrites.find(instr->getOutput()->local) != conditionalWrites.end())
                 result.erase(instr->getOutput()->local);
             else
                 conditionalWrites.emplace(instr->getOutput()->local);
@@ -35,15 +44,27 @@ FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::Inte
     if(combInstr)
     {
         if(combInstr->op1)
-            result = analyzeLiveness(combInstr->op1.get(), result, conditionalWrites);
+            result = analyzeLiveness(combInstr->op1.get(), result, cache);
         if(combInstr->op2)
-            result = analyzeLiveness(combInstr->op2.get(), result, conditionalWrites);
+            result = analyzeLiveness(combInstr->op2.get(), result, cache);
     }
 
     for(const Value& arg : instr->getArguments())
     {
         if(arg.hasType(ValueType::LOCAL) && !arg.local->type.isLabelType())
+        {
             result.emplace(arg.local);
+            if(instr->hasConditionalExecution())
+            {
+                // there exist locals which only exist if a certain condition is met, so check this
+                auto condReadIt = conditionalReads.find(arg.local);
+                // if the local is read with different conditions, it must exist in any case
+                if(condReadIt != conditionalReads.end() && condReadIt->second != instr->conditional)
+                    conditionalReads.erase(condReadIt);
+                else
+                    conditionalReads.emplace(arg.local, instr->conditional);
+            }
+        }
     }
 
     return result;

@@ -9,6 +9,7 @@
 
 #include "../Graph.h"
 #include "../InstructionWalker.h"
+#include "../analysis/InterferenceGraph.h"
 #include "../performance.h"
 
 #include <bitset>
@@ -139,6 +140,7 @@ namespace vc4c
             Method& method;
             FastSet<const Local*> closedSet;
             FastSet<const Local*> openSet;
+            std::unique_ptr<analysis::InterferenceGraph> interferenceGraph;
             FastMap<const Local*, LocalUsage> localUses;
 
             ColoredGraph graph;
