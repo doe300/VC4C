@@ -411,7 +411,11 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
             auto it2 = it.copy().nextInBlock();
             auto oldValue = op->getOutput().value();
             const auto& newValue = op->getSource();
-            while(!it2.isEndOfBlock())
+            // only continue iterating as long as there is a read of the local left
+            FastSet<const LocalUser*> remainingLocalReads = oldValue.hasType(ValueType::LOCAL) ?
+                oldValue.local->getUsers(LocalUse::Type::READER) :
+                FastSet<const LocalUser*>{};
+            while(!it2.isEndOfBlock() && !remainingLocalReads.empty())
             {
                 bool replacedThisInstruction = false;
                 for(auto arg : it2->getArguments())
@@ -422,6 +426,7 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
                         replaced = true;
                         replacedThisInstruction = true;
                         it2->replaceValue(oldValue, newValue, LocalUse::Type::READER);
+                        remainingLocalReads.erase(it2.get());
                     }
                 }
 

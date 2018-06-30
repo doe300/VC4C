@@ -18,8 +18,14 @@ namespace vc4c
     struct DataType;
     class Local;
     class Method;
+    class Value;
 
     namespace intermediate
+    {
+        class IntermediateInstruction;
+    }
+
+    namespace analysis
     {
         struct FloatRange
         {
@@ -53,6 +59,7 @@ namespace vc4c
 
             std::string to_string() const;
 
+            static ValueRange getValueRange(const Value& val, Method* method = nullptr);
             static FastMap<const Local*, ValueRange> determineValueRanges(Method& method);
 
         private:
@@ -74,9 +81,11 @@ namespace vc4c
             void extendBoundaries(int64_t newMin, int64_t newMax);
             void extendBoundaries(const ValueRange& other);
             void extendBoundariesToUnknown(bool isKnownToBeUnsigned = false);
+            void update(const Optional<Value>& constant, const FastMap<const Local*, ValueRange>& ranges,
+                const intermediate::IntermediateInstruction* it = nullptr, Method* method = nullptr);
         };
 
-    } /* namespace intermediate */
+    } /* namespace analysis */
 } /* namespace vc4c */
 
 #endif /* VC4C_VALUE_RANGE_H */

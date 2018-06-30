@@ -6,6 +6,7 @@
 
 #include "Intrinsics.h"
 
+#include "../analysis/ValueRange.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/TypeConversions.h"
 #include "../periphery/SFU.h"
@@ -597,6 +598,15 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             it.reset(new Operation(OP_MUL24, op->getOutput().value(), op->getFirstArg(), op->assertArgument(1),
                 op->conditional, op->setFlags));
         }
+        else if(std::all_of(op->getArguments().begin(), op->getArguments().end(), [](const Value& arg) -> bool {
+                    return vc4c::analysis::ValueRange::getValueRange(arg).isUnsigned();
+                }))
+        {
+            logging::debug()
+                << "Intrinsifying signed multiplication of purely unsigned values to unsigned multiplication"
+                << logging::endl;
+            it = intrinsifyUnsignedIntegerMultiplication(method, it, *op);
+        }
         else
         {
             it = intrinsifySignedIntegerMultiplication(method, it, *op);
@@ -901,20 +911,24 @@ static InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, Instruction
     it.nextInBlock();
     it.emplace(new MoveOperation(
         it->getOutput().value(), method.findOrCreateLocal(TYPE_INT32, locals.at(0))->createReference(), COND_ZERO_SET));
+    it->addDecorations(InstructionDecorations::ELEMENT_INSERTION);
     it.nextInBlock();
     // dim == 1 -> return second value
     it.emplace((new Operation(OP_XOR, NOP_REGISTER, arg, INT_ONE))->setSetFlags(SetFlag::SET_FLAGS));
     it.nextInBlock();
     it.emplace(new MoveOperation(
         it->getOutput().value(), method.findOrCreateLocal(TYPE_INT32, locals.at(1))->createReference(), COND_ZERO_SET));
+    it->addDecorations(InstructionDecorations::ELEMENT_INSERTION);
     it.nextInBlock();
     // dim == 2 -> return third value
     it.emplace((new Operation(OP_XOR, NOP_REGISTER, arg, Value(Literal(static_cast<uint32_t>(2)), TYPE_INT32)))
                    ->setSetFlags(SetFlag::SET_FLAGS));
     it.nextInBlock();
-    return it.reset((new MoveOperation(it->getOutput().value(),
-                         method.findOrCreateLocal(TYPE_INT32, locals.at(2))->createReference(), COND_ZERO_SET))
-                        ->addDecorations(decoration));
+    it.reset((new MoveOperation(it->getOutput().value(),
+                  method.findOrCreateLocal(TYPE_INT32, locals.at(2))->createReference(), COND_ZERO_SET))
+                 ->addDecorations(decoration));
+    it->addDecorations(InstructionDecorations::ELEMENT_INSERTION);
+    return it;
 }
 
 static InstructionWalker intrinsifyReadWorkItemInfo(Method& method, InstructionWalker it, const Value& arg,

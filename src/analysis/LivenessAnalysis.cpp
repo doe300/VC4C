@@ -25,7 +25,8 @@ FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::Inte
     if(instr->hasValueType(ValueType::LOCAL) &&
         !instr->hasDecoration(vc4c::intermediate::InstructionDecorations::ELEMENT_INSERTION))
     {
-        if(instr->hasConditionalExecution())
+        if(instr->hasConditionalExecution() &&
+            !instr->hasDecoration(intermediate::InstructionDecorations::ELEMENT_INSERTION))
         {
             auto condReadIt = conditionalReads.find(instr->getOutput()->local);
             if(condReadIt != conditionalReads.end() && condReadIt->second == instr->conditional &&
