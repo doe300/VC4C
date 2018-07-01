@@ -12,3 +12,7 @@ target_compile_definitions(qpu_emulator PRIVATE CPPLOG_NAMESPACE=logging CPPLOG_
 if(BUILD_DEBUG)
 	target_compile_definitions(qpu_emulator PRIVATE DEBUG_MODE=1)
 endif(BUILD_DEBUG)
+if(ENABLE_COVERAGE)
+	target_compile_options(qpu_emulator PRIVATE -fprofile-arcs -ftest-coverage --coverage)
+	target_link_libraries(qpu_emulator gcov "-fprofile-arcs -ftest-coverage")
+endif(ENABLE_COVERAGE)

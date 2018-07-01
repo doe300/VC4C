@@ -41,6 +41,12 @@ if(ADVANCED_OPENCL_FEATURES)
 	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE USE_CLANG_OPENCL=1)
 	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE USE_CLANG_OPENCL=1)
 endif(ADVANCED_OPENCL_FEATURES)
+if(ENABLE_COVERAGE)
+	target_compile_options(${VC4C_LIBRARY_NAME} PRIVATE -fprofile-arcs -ftest-coverage --coverage)
+	target_compile_options(${VC4C_PROGRAM_NAME} PRIVATE -fprofile-arcs -ftest-coverage --coverage)
+	target_link_libraries(${VC4C_LIBRARY_NAME} gcov "-fprofile-arcs -ftest-coverage")
+	target_link_libraries(${VC4C_PROGRAM_NAME} gcov "-fprofile-arcs -ftest-coverage")
+endif(ENABLE_COVERAGE)
 
 # Add all sources
 include(sources.list)

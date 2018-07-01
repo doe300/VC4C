@@ -20,6 +20,13 @@ option(SPIRV_FRONTEND "Enables a second front-end for the SPIR-V intermediate la
 option(LLVMLIB_FRONTEND "Enables the front-end using the LLVM library to read LLVM modules" ON)
 # Option whether to create deb package
 option(BUILD_DEB_PACKAGE "Enables creating .deb package" ON)
+# Option whether to enable code coverage analysis via gcov
+option(ENABLE_COVERAGE "Enables collection of code coverage via gcov" OFF)
+
+# Only allow coverage for debug builds
+if(NOT BUILD_DEBUG)
+	set(ENABLE_COVERAGE OFF)
+endif()
 
 # Path to the VC4CL standard library
 if(NOT VC4CL_STDLIB_HEADER_SOURCE)
@@ -296,8 +303,8 @@ else()
 	message(FATAL_ERROR "No supported OpenCL compiler found!")
 endif()
 # Re-use the parameters for local and debian-package installation build
-set(VC4CL_STDLIB_PCH_ARGS -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info -cl-single-precision-constant -Wno-all -Wno-gcc-compat -x cl -emit-pch -o)
-set(VC4CL_STDLIB_MODULE_ARGS -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info -cl-single-precision-constant -Wno-all -Wno-gcc-compat -x cl -emit-llvm-bc -o)
+set(VC4CL_STDLIB_PCH_ARGS -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info -cl-single-precision-constant -Wno-all -Wno-gcc-compat -Wdouble-promotion -Wno-undefined-inline -x cl -emit-pch -o)
+set(VC4CL_STDLIB_MODULE_ARGS -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info -cl-single-precision-constant -Wno-all -Wno-gcc-compat -Wdouble-promotion -Wno-undefined-inline -x cl -emit-llvm-bc -o)
 string(REPLACE ";" " " VC4CL_STDLIB_PCH_ARGS_LIST "${VC4CL_STDLIB_PCH_ARGS}")
 string(REPLACE ";" " " VC4CL_STDLIB_MODULE_ARGS_LIST "${VC4CL_STDLIB_MODULE_ARGS}")
 add_custom_target(vc4cl-stdlib

@@ -110,6 +110,8 @@ std::string Local::to_string(bool withContent) const
     std::string content;
     if(withContent && reference.first != nullptr)
     {
+        // FIXME very often the Local referenced here is already freed by Method#cleanLocals(). The references need to
+        // be updated!
         content = std::string(" (ref ") + reference.first->to_string(false) +
             (reference.second == ANY_ELEMENT ? std::string("") :
                                                (std::string(" at ") + std::to_string(reference.second))) +

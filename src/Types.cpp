@@ -272,7 +272,8 @@ const DataType DataType::getUnionType(const DataType& other) const
         throw CompilationError(CompilationStep::GENERAL, "Can't form union type of distinct complex types!");
     if(isFloatingPoint != other.isFloatingPoint)
         throw CompilationError(CompilationStep::GENERAL, "Can't form union type of floating-point and integer types!");
-    // TODO check for special types (void, label, unknown) -> cant find union
+    if(isVoidType() || isUnknown() || isLabelType())
+        throw CompilationError(CompilationStep::GENERAL, "Can't form union type with this type", to_string());
     return DataType(std::max(getScalarBitCount(), other.getScalarBitCount()), std::max(numElements, other.numElements),
         isFloatingPoint);
 }
@@ -519,7 +520,6 @@ std::string ImageType::getTypeName() const
 
 unsigned ImageType::getAlignmentInBytes() const
 {
-    // TODO ??
     throw CompilationError(CompilationStep::GENERAL, "Alignment for images is not implemented yet");
 }
 
