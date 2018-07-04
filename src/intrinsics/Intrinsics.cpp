@@ -652,7 +652,31 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
                 Value(Literal(arg0.getLiteralValue()->signedInt() / arg1.getLiteralValue()->signedInt()), arg0.type),
                 op->conditional, op->setFlags));
         }
-        // a / 2^n = a >> n
+        // a / 2^n = (abs(a) >> n) * sign(a)
+        else if(arg1.isLiteralValue() && arg1.getLiteralValue()->signedInt() > 0 &&
+            isPowerTwo(arg1.getLiteralValue()->signedInt()))
+        {
+            logging::debug() << "Intrinsifying signed division with right-shift and sign-copy" << logging::endl;
+            Value tmp = method.addNewLocal(arg1.type, "%unsigned");
+            Value sign = UNDEFINED_VALUE;
+            it = insertMakePositive(it, method, arg0, tmp, sign);
+            Value tmpResult = method.addNewLocal(op->getOutput()->type);
+            it.emplace(new Operation(OP_SHR, tmpResult, tmp,
+                Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->unsignedInt()))), arg1.type),
+                op->conditional, op->setFlags));
+            it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+            it.nextInBlock();
+            Value tmpResult2 = op->getOutput().value();
+            it = insertRestoreSign(it, method, tmpResult, tmpResult2, sign);
+            if(!(tmpResult2 == op->getOutput().value()))
+                it.reset(new MoveOperation(op->getOutput().value(), tmpResult2));
+            else
+            {
+                it = it.erase();
+                // so next instruction is not skipped
+                it.previousInBlock();
+            }
+        }
         else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
         {
             it = intrinsifySignedIntegerDivisionByConstant(method, it, *op);
@@ -675,6 +699,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
                 op->conditional, op->setFlags));
             it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
+        // a % 2^n = a & 2^n-1
         else if(arg1.getLiteralValue() && isPowerTwo(arg1.getLiteralValue()->unsignedInt()))
         {
             logging::debug() << "Intrinsifying unsigned modulo by power of two" << logging::endl;
@@ -700,6 +725,30 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type),
                 Value(Literal(arg0.getLiteralValue()->signedInt() % arg1.getLiteralValue()->signedInt()), arg0.type),
                 op->conditional, op->setFlags));
+        }
+        // a % 2^n = (abs(a) & 2^n-1) * sign(a)
+        else if(arg1.isLiteralValue() && arg1.getLiteralValue()->signedInt() > 0 &&
+            isPowerTwo(arg1.getLiteralValue()->signedInt()))
+        {
+            logging::debug() << "Intrinsifying signed modulo by power of two" << logging::endl;
+            Value tmp = method.addNewLocal(arg1.type, "%unsigned");
+            Value sign = UNDEFINED_VALUE;
+            it = insertMakePositive(it, method, arg0, tmp, sign);
+            Value tmpResult = method.addNewLocal(op->getOutput()->type);
+            it.emplace(new Operation(OP_AND, tmpResult, tmp,
+                Value(Literal(arg1.getLiteralValue()->unsignedInt() - 1), arg1.type), op->conditional, op->setFlags));
+            it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+            it.nextInBlock();
+            Value tmpResult2 = op->getOutput().value();
+            it = insertRestoreSign(it, method, tmpResult, tmpResult2, sign);
+            if(!(tmpResult2 == op->getOutput().value()))
+                it.reset(new MoveOperation(op->getOutput().value(), tmpResult2));
+            else
+            {
+                it = it.erase();
+                // so next instruction is not skipped
+                it.previousInBlock();
+            }
         }
         else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
         {

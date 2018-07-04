@@ -25,10 +25,18 @@ static InstructionWalker copyVector(Method& method, InstructionWalker it, const 
         it.emplace((new intermediate::MoveOperation(out, in.container.elements[0]))->copyExtrasFrom(it.get()));
         return it.nextInBlock();
     }
-    if(in.container.isElementNumber())
+    if(in.container.isElementNumber(false))
     {
         // if the value in the container corresponds to the element-number, simply copy it
         it.emplace((new intermediate::MoveOperation(out, ELEMENT_NUMBER_REGISTER))->copyExtrasFrom(it.get()));
+        return it.nextInBlock();
+    }
+    if(in.container.isElementNumber(true))
+    {
+        // if the value in the container corresponds to the element number plus an offset (a general ascending range),
+        // convert to addition
+        auto offset = in.container.elements.at(0).getLiteralValue()->signedInt();
+        it.emplace((new intermediate::Operation(OP_ADD, out, ELEMENT_NUMBER_REGISTER, Value(Literal(offset), in.type)))->copyExtrasFrom(it.get()));
         return it.nextInBlock();
     }
     Value realOut = out;
@@ -136,7 +144,7 @@ InstructionWalker normalization::handleContainer(
         if(op->getFirstArg().hasType(ValueType::CONTAINER) && !op->getFirstArg().type.isPointerType())
         {
             logging::debug() << "Rewriting operation with container-input " << op->to_string() << logging::endl;
-            const Value tmpVal = method.addNewLocal(op->getOutput()->type, "%container");
+            const Value tmpVal = method.addNewLocal(op->getFirstArg().type, "%container");
             it = copyVector(method, it, tmpVal, op->getFirstArg());
             op->setArgument(0, tmpVal);
             // don't skip next instruction
@@ -146,7 +154,7 @@ InstructionWalker normalization::handleContainer(
             !op->assertArgument(1).type.isPointerType())
         {
             logging::debug() << "Rewriting operation with container-input " << op->to_string() << logging::endl;
-            const Value tmpVal = method.addNewLocal(op->getOutput()->type, "%container");
+            const Value tmpVal = method.addNewLocal(op->assertArgument(1).type, "%container");
             it = copyVector(method, it, tmpVal, op->assertArgument(1));
             op->setArgument(1, tmpVal);
             // don't skip next instruction
