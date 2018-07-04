@@ -1,7 +1,7 @@
 # Contributor: Oleksiy Zakharov <alexzkhr@gmail.com>
 pkgname=VC4C
 pkgver=0.4.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Compiler for the VC4CL OpenCL implementation"
 
 provides=('VC4C')
@@ -28,13 +28,13 @@ build() {
   cd ${srcdir}/VC4C
   mkdir -p ${srcdir}/build
   cd ${srcdir}/build
-  cmake -DMULTI_THREADED=OFF -DBUILD_DEBUG=OFF -DBUILD_DEB_PACKAGE=OFF ../VC4C
+  cmake -DCMAKE_INSTALL_PREFIX=/usr -DMULTI_THREADED=OFF -DBUILD_DEBUG=OFF -DBUILD_DEB_PACKAGE=OFF ../VC4C
   make || return 1
 }
 
 package() {
   cd $srcdir/build
   make DESTDIR="$pkgdir/" install
-  mkdir -p $pkgdir/usr/local/include/vc4cl-stdlib
-  install -m644 $srcdir/VC4CLStdLib/include/*.* $pkgdir/usr/local/include/vc4cl-stdlib
+  mkdir -p $pkgdir/usr/include/vc4cl-stdlib
+  install -m644 $srcdir/VC4CLStdLib/include/*.* $pkgdir/usr/include/vc4cl-stdlib
 }
