@@ -5,7 +5,7 @@ pkgrel=2
 pkgdesc="Compiler for the VC4CL OpenCL implementation"
 
 provides=('VC4C')
-arch=('i686' 'x86_64' 'arm')
+arch=('i686' 'x86_64' 'arm' 'armv6h')
 url="git://github.com/doe300/VC4C"
 
 license=('MIT')
