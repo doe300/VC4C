@@ -1,7 +1,7 @@
 # Contributor: Oleksiy Zakharov <alexzkhr@gmail.com>
 pkgname=VC4C
 pkgver=0.4.0
-pkgrel=2
+pkgrel=3
 pkgdesc="Compiler for the VC4CL OpenCL implementation"
 
 provides=('VC4C')
@@ -11,7 +11,7 @@ url="git://github.com/doe300/VC4C"
 license=('MIT')
 depends=(llvm clang)
 makedepends=(cmake)
-source=(git://github.com/doe300/VC4C
+source=(git://github.com/alexzk1/VC4C
         git://github.com/doe300/VC4CLStdLib
         isfast.patch)
         
@@ -20,8 +20,8 @@ md5sums=('SKIP'
          'SKIP')
 
 prepare() {
-  cd ${srcdir}/VC4C  
-  patch -Np1 -i "${srcdir}/isfast.patch"
+  #cd ${srcdir}/VC4C  
+  #patch -Np1 -i "${srcdir}/isfast.patch"
 }
 
 build() {

@@ -63,13 +63,15 @@ static std::string buildClangCommand(const std::string& compiler, const std::str
     // link in our standard-functions
     command.append(" -Wno-undefined-inline -Wno-unused-parameter -Wno-unused-local-typedef -Wno-gcc-compat ");
     if(usePCH)
-        command.append("-include-pch " VC4CL_STDLIB_HEADER " ");
+        //command.append("-include-pch " VC4CL_STDLIB_HEADER " ");
+        command.append("-include-pch vc4cl-stdlib/VC4CLStdLib.h.pch ");
     else
     {
         command.append("-finclude-default-header ");
         // The #defines (esp. for extensions) from the default headers differ from the supported #defines,
         // so we need to include our #defines/undefines
-        command.append("-include " VC4CL_STDLIB_CONFIG_HEADER " ");
+        //command.append("-include " VC4CL_STDLIB_CONFIG_HEADER " ");
+        command.append("-include vc4cl-stdlib/defines.h ");
     }
     if(options.find("-x cl") == std::string::npos)
     {
