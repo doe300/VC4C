@@ -617,7 +617,11 @@ static intermediate::InstructionDecorations toInstructionDecorations(const llvm:
         deco = add_flag(deco, intermediate::InstructionDecorations::NO_INF);
     if(llvm::isa<llvm::FPMathOperator>(&inst) && inst.hasAllowReciprocal())
         deco = add_flag(deco, intermediate::InstructionDecorations::ALLOW_RECIP);
+#if LLVM_LIBRARY_VERSION >= 60  
+    if(llvm::isa<llvm::FPMathOperator>(&inst) && inst.isFast())
+#else
     if(llvm::isa<llvm::FPMathOperator>(&inst) && inst.hasUnsafeAlgebra())
+#endif        
         deco = add_flag(deco, intermediate::InstructionDecorations::FAST_MATH);
     return deco;
 }

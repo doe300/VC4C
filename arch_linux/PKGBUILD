@@ -1,0 +1,32 @@
+# Contributor: Oleksiy Zakharov <alexzkhr@gmail.com>
+pkgname=VC4C
+pkgver=0.4.0
+pkgrel=3
+pkgdesc="Compiler for the VC4CL OpenCL implementation"
+
+provides=('VC4C')
+arch=('i686' 'x86_64' 'arm' 'armv6h')
+url="git://github.com/doe300/VC4C"
+
+license=('MIT')
+conflicts=('VC4C')
+depends=(llvm clang)
+makedepends=(cmake)
+source=(git://github.com/alexzk1/VC4C
+        git://github.com/doe300/VC4CLStdLib)
+        
+md5sums=('SKIP'
+         'SKIP')
+
+build() {
+  cd ${srcdir}/VC4C
+  cmake -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_DEBUG=OFF -DBUILD_DEB_PACKAGE=OFF
+  make
+}
+
+package() {
+  cd $srcdir/VC4C
+  make DESTDIR="$pkgdir/" install
+  mkdir -p $pkgdir/usr/include/vc4cl-stdlib
+  install -m644 $srcdir/VC4CLStdLib/include/*.* $pkgdir/usr/include/vc4cl-stdlib
+}
