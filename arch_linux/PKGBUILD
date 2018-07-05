@@ -9,31 +9,23 @@ arch=('i686' 'x86_64' 'arm' 'armv6h')
 url="git://github.com/doe300/VC4C"
 
 license=('MIT')
+conflicts('VC4C)
 depends=(llvm clang)
 makedepends=(cmake)
 source=(git://github.com/alexzk1/VC4C
-        git://github.com/doe300/VC4CLStdLib
-        isfast.patch)
+        git://github.com/doe300/VC4CLStdLib)
         
 md5sums=('SKIP'
-         'SKIP'
          'SKIP')
-
-prepare() {
-  #cd ${srcdir}/VC4C  
-  #patch -Np1 -i "${srcdir}/isfast.patch"
-}
 
 build() {
   cd ${srcdir}/VC4C
-  mkdir -p ${srcdir}/build
-  cd ${srcdir}/build
-  cmake -DCMAKE_INSTALL_PREFIX=/usr -DMULTI_THREADED=OFF -DBUILD_DEBUG=OFF -DBUILD_DEB_PACKAGE=OFF ../VC4C
-  make || return 1
+  cmake -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_DEBUG=OFF -DBUILD_DEB_PACKAGE=OFF
+  make
 }
 
 package() {
-  cd $srcdir/build
+  cd $srcdir/VC4C
   make DESTDIR="$pkgdir/" install
   mkdir -p $pkgdir/usr/include/vc4cl-stdlib
   install -m644 $srcdir/VC4CLStdLib/include/*.* $pkgdir/usr/include/vc4cl-stdlib
