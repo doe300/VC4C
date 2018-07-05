@@ -9,7 +9,7 @@ arch=('i686' 'x86_64' 'arm' 'armv6h')
 url="git://github.com/doe300/VC4C"
 
 license=('MIT')
-conflicts('VC4C')
+conflicts=('VC4C')
 depends=(llvm clang)
 makedepends=(cmake)
 source=(git://github.com/alexzk1/VC4C
