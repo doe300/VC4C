@@ -32,7 +32,7 @@ namespace vc4c
             const Value& source0, const Value& source1, const Value& mask);
 
         /*
-         * After this function returns, dest will contain the positive value of src (either src or it's tow's
+         * After this function returns, dest will contain the positive value of src (either src or it's two's
          * compliment) and writeIsNegative will return whether the src was negative (-1 if negative, 0 otherwise)
          */
         InstructionWalker insertMakePositive(

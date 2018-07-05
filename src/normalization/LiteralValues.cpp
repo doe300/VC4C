@@ -36,7 +36,8 @@ static InstructionWalker copyVector(Method& method, InstructionWalker it, const 
         // if the value in the container corresponds to the element number plus an offset (a general ascending range),
         // convert to addition
         auto offset = in.container.elements.at(0).getLiteralValue()->signedInt();
-        it.emplace((new intermediate::Operation(OP_ADD, out, ELEMENT_NUMBER_REGISTER, Value(Literal(offset), in.type)))->copyExtrasFrom(it.get()));
+        it.emplace((new intermediate::Operation(OP_ADD, out, ELEMENT_NUMBER_REGISTER, Value(Literal(offset), in.type)))
+                       ->copyExtrasFrom(it.get()));
         return it.nextInBlock();
     }
     Value realOut = out;
