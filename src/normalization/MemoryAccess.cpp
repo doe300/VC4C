@@ -539,6 +539,7 @@ void normalization::spillLocals(const Module& module, Method& method, const Conf
      */
     // tracks the locals and their writing instructions
     FastMap<const Local*, InstructionWalker> spillingCandidates;
+    /* TODO rewrite
     for(const auto& pair : method.readLocals())
     {
         if(pair.second.type == TYPE_LABEL)
@@ -554,6 +555,7 @@ void normalization::spillLocals(const Module& module, Method& method, const Conf
             spillingCandidates.emplace(&pair.second, InstructionWalker{});
         }
     }
+    */
 
     InstructionWalker it = method.walkAllInstructions();
     // skip all leading empty basic blocks

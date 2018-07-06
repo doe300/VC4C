@@ -399,9 +399,9 @@ static void fixLocals(const InstructionWalker it, FastMap<const Local*, LocalUsa
 GraphColoring::GraphColoring(Method& method, InstructionWalker it) :
     method(method), closedSet(), openSet(), interferenceGraph(), localUses()
 {
-    closedSet.reserve(method.readLocals().size());
-    openSet.reserve(method.readLocals().size());
-    localUses.reserve(method.readLocals().size());
+    closedSet.reserve(method.getNumLocals());
+    openSet.reserve(method.getNumLocals());
+    localUses.reserve(method.getNumLocals());
 
     Optional<const Local*> lastWrittenLocal0;
     Optional<const Local*> lastWrittenLocal1;

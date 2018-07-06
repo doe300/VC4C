@@ -33,6 +33,9 @@ const std::string Method::GLOBAL_OFFSET_Z("%global_offset_z");
 const std::string Method::GLOBAL_DATA_ADDRESS("%global_data_address");
 const std::string Method::GROUP_LOOP_SIZE("%group_loop_size");
 
+// TODO track locals via thread-not-safe shared_ptr. Method itself tracks as weak_ptr,
+// so local is erased when there is no more use. Local#reference also is shared_ptr
+
 Method::Method(const Module& module) :
     isKernel(false), name(), returnType(TYPE_UNKNOWN),
     vpm(new periphery::VPM(module.compilationConfig.availableVPMSize)), module(module)
@@ -262,14 +265,17 @@ InstructionWalker Method::appendToEnd()
     return basicBlocks.back().end();
 }
 
-const UnorderedMap<std::string, Local>& Method::readLocals() const
+std::size_t Method::getNumLocals() const
 {
-    return locals;
+    return locals.size();
 }
 
 void Method::cleanLocals()
 {
-    // FIXME according to valgrind, this cleans locals still in use
+    // FIXME deletes locals which still have Local#reference to them
+    // If locals are tracked via shared_ptr (weak_ptr in Method), walk through pointers and only remove when no more
+    // shared references
+    /*
     PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL + 7, "Clean locals (before)", locals.size());
 #ifdef DEBUG_MODE
     // check duplicate locals
@@ -305,6 +311,7 @@ void Method::cleanLocals()
     logging::debug() << "Cleaned " << numCleaned << " unused locals from method " << name << logging::endl;
     PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_GENERAL + 8, "Clean locals (after)", locals.size(),
         vc4c::profiler::COUNTER_GENERAL + 7);
+        */
 }
 
 void Method::dumpInstructions() const

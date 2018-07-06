@@ -155,7 +155,7 @@ namespace vc4c
          */
         InstructionWalker appendToEnd();
 
-        const UnorderedMap<std::string, Local>& readLocals() const;
+        std::size_t getNumLocals() const;
         /*
          * Removes all locals without any usages left
          */
