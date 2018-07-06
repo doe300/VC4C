@@ -34,8 +34,9 @@ static void printHelp()
     std::cout << "flags:" << std::endl;
     std::cout << "\t-h, --help\t\tPrints this help message and exits" << std::endl;
     std::cout << "\t-v, --version\t\tPrints version and build info and exists" << std::endl;
-    std::cout << "\t--verbose\t\t\tEnables verbose debug output" << std::endl;
-    std::cout << "\t--quiet\t\t\tQuiet verbose debug output" << std::endl;
+    std::cout << "\t--verbose\t\tEnables verbose debug logging" << std::endl;
+    std::cout << "\t--quiet\t\t\tQuiet verbose debug logging" << std::endl;
+    std::cout << "\t-l, --log <file>\tWrite log output to the given file, defaults to stdout ('-')" << std::endl;
     std::cout << "\t--hex\t\t\tGenerate hex output (e.g. included in source-code)" << std::endl;
     std::cout << "\t--bin\t\t\tGenerate binary output (as used by VC4CL run-time)" << std::endl;
     std::cout << "\t--asm\t\t\tGenerate assembler output (for analysis only)" << std::endl;
@@ -134,10 +135,13 @@ static auto availableOptimizations = vc4c::optimizations::Optimizer::getPasses(O
  */
 int main(int argc, char** argv)
 {
+    std::unique_ptr<std::wofstream> fileLog;
+    std::reference_wrapper<std::wostream> logStream = std::wcout;
+    bool colorLog = true;
 #if DEBUG_MODE
-    setLogger(std::wcout, true, LogLevel::DEBUG);
+    LogLevel minLevel = LogLevel::DEBUG;
 #else
-    setLogger(std::wcout, true, LogLevel::WARNING);
+    LogLevel minLevel = LogLevel::WARNING;
 #endif
 
     Configuration config;
@@ -181,9 +185,24 @@ int main(int argc, char** argv)
             return 0;
         }
         else if(strcmp("--quiet", argv[i]) == 0)
-            setLogger(std::wcout, true, LogLevel::WARNING);
+            minLevel = LogLevel::WARNING;
         else if(strcmp("--verbose", argv[i]) == 0)
-            setLogger(std::wcout, true, LogLevel::DEBUG);
+            minLevel = LogLevel::DEBUG;
+        else if(strcmp("--log", argv[i]) == 0 || strcmp("-l", argv[i]) == 0)
+        {
+            if(strcmp("-", argv[i + 1]) == 0)
+            {
+                colorLog = true;
+                logStream = std::wcout;
+            }
+            else
+            {
+                colorLog = false;
+                fileLog.reset(new std::wofstream(argv[i + 1]));
+                logStream = *fileLog.get();
+            }
+            ++i;
+        }
         else if(strcmp("--disassemble", argv[i]) == 0)
             runDisassembler = true;
         else if(strcmp("-o", argv[i]) == 0)
@@ -201,6 +220,13 @@ int main(int argc, char** argv)
     {
         inputFiles.emplace_back(argv[i]);
     }
+
+    if(&logStream.get() == &std::wcout && outputFile == "-")
+    {
+        std::cerr << "Cannot write both log and data to stdout, aborting" << std::endl;
+        return 6;
+    }
+    setLogger(logStream, colorLog, minLevel);
 
     if(inputFiles.empty())
     {
@@ -263,7 +289,8 @@ int main(int argc, char** argv)
         inputFile = inputFiles[0];
     }
 
-    std::ofstream output(outputFile, std::ios_base::out | std::ios_base::trunc | std::ios_base::binary);
+    std::ofstream output(outputFile == "-" ? "/dev/stdout" : outputFile,
+        std::ios_base::out | std::ios_base::trunc | std::ios_base::binary);
     PROFILE_START(Compiler);
     Compiler::compile(*input.get(), output, config, options, inputFile);
     PROFILE_END(Compiler);
