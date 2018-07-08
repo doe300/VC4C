@@ -4,6 +4,8 @@ target_sources(TestVC4C
     RegressionTest.h
     test_cases.h
     test.cpp
+    TestArithmetic.cpp
+    TestArithmetic.h
     TestEmulator.cpp
     TestEmulator.h
     TestGraph.cpp

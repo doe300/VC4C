@@ -9,6 +9,7 @@
 
 #include "cpptest.h"
 #include "cpptest-main.h"
+#include "TestArithmetic.h"
 #include "TestEmulator.h"
 #include "TestGraph.h"
 #include "TestInstructions.h"
@@ -78,6 +79,7 @@ int main(int argc, char** argv)
     Test::registerSuite(newEmulatorTest, "test-emulator", "Runs selected code-samples through the emulator");
     Test::registerSuite(newStdLibTest, "test-stdlib", "Runs most of the VC4CL std-lib functions in emulator");
     Test::registerSuite(Test::newInstance<TestGraph>, "test-graph", "Runs basic test for the graph data structure");
+    Test::registerSuite(Test::newInstance<TestArithmetic>, "test-arithmetic", "Runs emulation tests for various kind of operations");
     
     for(auto i = 1; i < argc; ++i)
     { 
