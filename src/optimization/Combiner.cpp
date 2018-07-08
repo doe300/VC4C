@@ -747,6 +747,11 @@ InstructionWalker optimizations::combineSelectionWithZero(
     if(it->conditional == COND_ALWAYS || nextIt->conditional == COND_ALWAYS ||
         !it->conditional.isInversionOf(nextIt->conditional))
         return it;
+    // For conditional moves, the source could be written conditionally
+    // TODO improve by removing the condition of the source and allow combining
+    // XXX actually would need to check if the condition is the same as the condition for the moves
+    if(it->hasConditionalExecution() || nextIt->hasConditionalExecution())
+        return it;
     // we have two consecutive moves to the same value, without side-effects and inverted conditions.
     // additionally, one of the moves writes a zero-vale
     if(move->getSource().hasLiteral(INT_ZERO.literal) && !nextMove->getSource().hasLiteral(INT_ZERO.literal))

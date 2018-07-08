@@ -265,7 +265,7 @@ InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method
         // do nothing, is just a move, since we truncate the 64-bit integers anyway
         it.emplace(new MoveOperation(dest, src, conditional, setFlags));
     }
-    else if(dest.type.getScalarBitCount() == 32 && src.hasType(ValueType::REGISTER) &&
+    else if(src.hasType(ValueType::REGISTER) &&
         (has_flag(src.reg.file, RegisterFile::PHYSICAL_A) || has_flag(src.reg.file, RegisterFile::ACCUMULATOR)) &&
         src.type.getScalarBitCount() == 8)
     {
@@ -300,7 +300,7 @@ InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method
         // do nothing, is just a move, since we truncate the 64-bit integers anyway
         it.emplace(new MoveOperation(dest, src, conditional, setFlags));
     }
-    else if(dest.type.getScalarBitCount() == 32 && src.hasType(ValueType::REGISTER) &&
+    else if(src.hasType(ValueType::REGISTER) &&
         (has_flag(src.reg.file, RegisterFile::PHYSICAL_A) || has_flag(src.reg.file, RegisterFile::ACCUMULATOR)) &&
         src.type.getScalarBitCount() == 16)
     {
@@ -312,15 +312,14 @@ InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method
     else
     {
         // out = asr(shl(in, bit_diff) bit_diff)
-        Value widthDiff(
-            Literal(static_cast<int32_t>(dest.type.getScalarBitCount() - src.type.getScalarBitCount())), TYPE_INT8);
+        // where bit_diff is the difference to full 32-bit
+        Value widthDiff(Literal(static_cast<int32_t>(32 - src.type.getScalarBitCount())), TYPE_INT8);
 
         if(!allowLiteral)
         {
             Value tmp = method.addNewLocal(TYPE_INT8, "%sext");
             it.emplace(new LoadImmediate(tmp, widthDiff.literal));
             it.nextInBlock();
-
             widthDiff = tmp;
         }
 

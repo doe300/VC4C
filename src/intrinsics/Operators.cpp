@@ -273,26 +273,23 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(
         it.nextInBlock();
         remainder = newRemainder;
         // if R >= D then
+        // R = R >= D ? R - D : R <=> R = R - D >= 0 ? R - D : R <=> R = R - D < 0 ? R : R - D
         const Value tmp = method.addNewLocal(op.getOutput()->type, "%udiv.tmp");
-        it.emplace(new Operation(OP_MAX, tmp, remainder, divisor));
+        it.emplace(new Operation(OP_SUB, tmp, remainder, divisor, COND_ALWAYS, SetFlag::SET_FLAGS));
         it.nextInBlock();
-        it.emplace(new Operation(OP_XOR, NOP_REGISTER, tmp, remainder, COND_ALWAYS, SetFlag::SET_FLAGS));
-        it.nextInBlock();
-        // R := R - D
         newRemainder = method.addNewLocal(op.getOutput()->type, "%udiv.remainder");
-        it.emplace(new Operation(OP_SUB, newRemainder, remainder, divisor, COND_ZERO_SET));
+        it.emplace(new MoveOperation(newRemainder, tmp, COND_NEGATIVE_CLEAR));
         it.nextInBlock();
-        // else R(new) := R(old)
-        it.emplace(new MoveOperation(newRemainder, remainder, COND_ZERO_CLEAR));
+        it.emplace(new MoveOperation(newRemainder, remainder, COND_NEGATIVE_SET));
         it.nextInBlock();
         remainder = newRemainder;
         // Q(i) := 1
         Value newQuotient = method.addNewLocal(op.getOutput()->type, "%udiv.quotient");
-        it.emplace(new Operation(
-            OP_OR, newQuotient, quotient, Value(Literal(static_cast<int32_t>(1) << i), TYPE_INT32), COND_ZERO_SET));
+        it.emplace(new Operation(OP_OR, newQuotient, quotient, Value(Literal(static_cast<int32_t>(1) << i), TYPE_INT32),
+            COND_NEGATIVE_CLEAR));
         it.nextInBlock();
         // else Q(new) := Q(old)
-        it.emplace(new MoveOperation(newQuotient, quotient, COND_ZERO_CLEAR));
+        it.emplace(new MoveOperation(newQuotient, quotient, COND_NEGATIVE_SET));
         it.nextInBlock();
         quotient = newQuotient;
     }
