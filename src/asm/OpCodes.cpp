@@ -671,8 +671,6 @@ Optional<Value> OpCode::getLeftIdentity(const OpCode& code)
         return INT_ZERO;
     if(code == OP_AND)
         return VALUE_ALL_BITS_SET;
-    if(code == OP_ASR)
-        return INT_ZERO;
     if(code == OP_FADD)
         return FLOAT_ZERO;
     if(code == OP_FMUL)
@@ -680,12 +678,6 @@ Optional<Value> OpCode::getLeftIdentity(const OpCode& code)
     if(code == OP_MUL24)
         return INT_ONE;
     if(code == OP_OR)
-        return INT_ZERO;
-    if(code == OP_ROR)
-        return INT_ZERO;
-    if(code == OP_SHL)
-        return INT_ZERO;
-    if(code == OP_SHR)
         return INT_ZERO;
     if(code == OP_XOR)
         return INT_ZERO;
@@ -727,6 +719,9 @@ Optional<Value> OpCode::getLeftAbsorbingElement(const OpCode code)
 {
     if(code == OP_AND)
         return INT_ZERO;
+    if(code == OP_ASR)
+        // XXX actually all bits set too
+        return INT_ZERO;
     if(code == OP_FMAX)
         return Value(Literal(std::numeric_limits<float>::infinity()), TYPE_FLOAT);
     if(code == OP_FMAXABS)
@@ -739,6 +734,13 @@ Optional<Value> OpCode::getLeftAbsorbingElement(const OpCode code)
         return INT_ZERO;
     if(code == OP_OR)
         return VALUE_ALL_BITS_SET;
+    if(code == OP_ROR)
+        // XXX actually all bits set too
+        return INT_ZERO;
+    if(code == OP_SHL)
+        return INT_ZERO;
+    if(code == OP_SHR)
+        return INT_ZERO;
     if(code == OP_V8MIN)
         return INT_ZERO;
     if(code == OP_V8MAX)

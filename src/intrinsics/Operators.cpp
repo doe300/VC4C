@@ -253,45 +253,55 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(
     it.nextInBlock();
 
     // for i := n ? 1 ... 0 do     -- where n is number of bits in N
+    // "number of bits in N" as in in the numerator, not in the type!!
+    // but since the leading bits in the numerator are all zero, including them does not modify the result
     for(int i = numerator.type.getScalarBitCount() - 1; i >= 0; --i)
     {
         // R := R << 1          -- left-shift R by 1 bit
-        Value newRemainder = method.addNewLocal(op.getOutput()->type, "%udiv.remainder");
-        it.emplace(new Operation(OP_SHL, newRemainder, remainder, INT_ONE));
-        it.nextInBlock();
-        remainder = newRemainder;
+        {
+            const Value newRemainder = method.addNewLocal(op.getOutput()->type, "%udiv.remainder");
+            it.emplace(new Operation(OP_SHL, newRemainder, remainder, INT_ONE));
+            it.nextInBlock();
+            remainder = newRemainder;
+        }
         // R(0) := N(i)         -- set the least-significant bit of R equal to bit i of the numerator
         // R = R | ((N >> i) & 1) <=> R = R | (N & (1 << i) == 1 ? 1 : 0) <=> R = R | 1, if N & (1 << i) != 0
-        newRemainder = method.addNewLocal(op.getOutput()->type, "%udiv.remainder");
-        it.emplace(new Operation(OP_AND, NOP_REGISTER, numerator,
-            Value(Literal(static_cast<int32_t>(1) << i), TYPE_INT32), COND_ALWAYS, SetFlag::SET_FLAGS));
-        it.nextInBlock();
-        it.emplace(new Operation(OP_OR, newRemainder, remainder, INT_ONE, COND_ZERO_CLEAR));
-        it.nextInBlock();
-        // else R(new) := R(old)
-        it.emplace(new MoveOperation(newRemainder, remainder, COND_ZERO_SET));
-        it.nextInBlock();
-        remainder = newRemainder;
+        {
+            const Value newRemainder = method.addNewLocal(op.getOutput()->type, "%udiv.remainder");
+            const Value tmp = method.addNewLocal(numerator.type, "%udiv.tmp");
+            it.emplace(new Operation(OP_SHR, tmp, numerator, Value(Literal(i), TYPE_INT32)));
+            it.nextInBlock();
+            it.emplace(new Operation(OP_AND, tmp, tmp, INT_ONE));
+            it.nextInBlock();
+            // XXX actually OP_OR, but it gets somehow removed/optimized away
+            it.emplace(new Operation(OP_ADD, newRemainder, remainder, tmp));
+            it.nextInBlock();
+            remainder = newRemainder;
+        }
         // if R >= D then
         // R = R >= D ? R - D : R <=> R = R - D >= 0 ? R - D : R <=> R = R - D < 0 ? R : R - D
-        const Value tmp = method.addNewLocal(op.getOutput()->type, "%udiv.tmp");
-        it.emplace(new Operation(OP_SUB, tmp, remainder, divisor, COND_ALWAYS, SetFlag::SET_FLAGS));
-        it.nextInBlock();
-        newRemainder = method.addNewLocal(op.getOutput()->type, "%udiv.remainder");
-        it.emplace(new MoveOperation(newRemainder, tmp, COND_NEGATIVE_CLEAR));
-        it.nextInBlock();
-        it.emplace(new MoveOperation(newRemainder, remainder, COND_NEGATIVE_SET));
-        it.nextInBlock();
-        remainder = newRemainder;
+        {
+            const Value tmp = method.addNewLocal(op.getOutput()->type, "%udiv.tmp");
+            it.emplace(new Operation(OP_SUB, tmp, remainder, divisor, COND_ALWAYS, SetFlag::SET_FLAGS));
+            it.nextInBlock();
+            const Value newRemainder = method.addNewLocal(op.getOutput()->type, "%udiv.remainder");
+            it.emplace(new MoveOperation(newRemainder, tmp, COND_NEGATIVE_CLEAR));
+            it.nextInBlock();
+            it.emplace(new MoveOperation(newRemainder, remainder, COND_NEGATIVE_SET));
+            it.nextInBlock();
+            remainder = newRemainder;
+        }
         // Q(i) := 1
-        Value newQuotient = method.addNewLocal(op.getOutput()->type, "%udiv.quotient");
-        it.emplace(new Operation(OP_OR, newQuotient, quotient, Value(Literal(static_cast<int32_t>(1) << i), TYPE_INT32),
-            COND_NEGATIVE_CLEAR));
-        it.nextInBlock();
-        // else Q(new) := Q(old)
-        it.emplace(new MoveOperation(newQuotient, quotient, COND_NEGATIVE_SET));
-        it.nextInBlock();
-        quotient = newQuotient;
+        {
+            const Value newQuotient = method.addNewLocal(op.getOutput()->type, "%udiv.quotient");
+            it.emplace(new Operation(OP_OR, newQuotient, quotient,
+                Value(Literal(static_cast<int32_t>(1) << i), TYPE_INT32), COND_NEGATIVE_CLEAR));
+            it.nextInBlock();
+            // else Q(new) := Q(old)
+            it.emplace(new MoveOperation(newQuotient, quotient, COND_NEGATIVE_SET));
+            it.nextInBlock();
+            quotient = newQuotient;
+        }
     }
 
     // make move from original instruction
@@ -553,6 +563,8 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
     it.nextInBlock();
     it.emplace(new Operation(OP_FMUL, P5_2, P4_2, P5_1));
     it.nextInBlock();
+
+    // TODO add a 6th step? Sometimes the float-division is too inaccurate
 
     // 3. final step: Q = Pn * N
     it.reset(new Operation(OP_FMUL, op.getOutput().value(), nominator, P5_2));
