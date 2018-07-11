@@ -10,17 +10,18 @@
 #include "VC4C.h"
 #include "tools.h"
 
+#include <cstring>
 #include <limits>
 #include <random>
 #include <sstream>
 
-template <typename T, std::size_t N>
+template <typename T, std::size_t N, T min = std::numeric_limits<T>::min(), T max = std::numeric_limits<T>::max()>
 static std::array<T, N> generateInput(bool allowNull)
 {
     std::array<T, N> arr;
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_int_distribution<T> dis(std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
+    std::uniform_int_distribution<T> dis(min, max);
 
     for(std::size_t i = 0; i < N; ++i)
     {
@@ -36,13 +37,14 @@ static std::array<T, N> generateInput(bool allowNull)
     return arr;
 }
 
-template <std::size_t N>
+template <std::size_t N, typename T = float>
 static std::array<float, N> generateInput(bool allowNull)
 {
     std::array<float, N> arr;
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_real_distribution<float> dis(std::numeric_limits<float>::min(), std::numeric_limits<float>::max());
+    std::uniform_real_distribution<float> dis(
+        static_cast<float>(std::numeric_limits<T>::min()), static_cast<float>(std::numeric_limits<T>::max()));
 
     for(std::size_t i = 0; i < N; ++i)
     {
@@ -61,6 +63,13 @@ static const std::string BINARY_OPERATION = R"(
 __kernel void test(__global TYPE* out, const __global TYPE* in0, const __global TYPE* in1) {
   size_t gid = get_global_id(0);
   out[gid] = in0[gid] OP in1[gid];
+}
+)";
+
+static const std::string SELECTION_OPERATION = R"(
+__kernel void test(__global TYPE* out, const __global TYPE* in0, const __global TYPE* in1) {
+  size_t gid = get_global_id(0);
+  out[gid] = select(in0[gid], in1[gid], in0[gid]);
 }
 )";
 
@@ -190,6 +199,12 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedCharLessEquals);
     TEST_ADD(TestArithmetic::testFloatLessEquals);
 
+    TEST_ADD(TestArithmetic::testSignedIntSelection);
+    TEST_ADD(TestArithmetic::testSignedShortSelection);
+    TEST_ADD(TestArithmetic::testSignedCharSelection);
+    TEST_ADD(TestArithmetic::testUnsignedIntSelection);
+    TEST_ADD(TestArithmetic::testUnsignedShortSelection);
+    TEST_ADD(TestArithmetic::testUnsignedCharSelection);
     TEST_ADD(TestArithmetic::testSignedIntAnd);
     TEST_ADD(TestArithmetic::testSignedShortAnd);
     TEST_ADD(TestArithmetic::testSignedCharAnd);
@@ -209,10 +224,18 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedTruncation);
     TEST_ADD(TestArithmetic::testSignExtension);
     TEST_ADD(TestArithmetic::testZeroExtension);
-    TEST_ADD(TestArithmetic::testSignedToFloat);
-    TEST_ADD(TestArithmetic::testUnsignedToFloat);
-    TEST_ADD(TestArithmetic::testFloatToSigned);
-    TEST_ADD(TestArithmetic::testFloatToUnsigned);
+    TEST_ADD(TestArithmetic::testSignedIntToFloat);
+    TEST_ADD(TestArithmetic::testSignedShortToFloat);
+    TEST_ADD(TestArithmetic::testSignedCharToFloat);
+    TEST_ADD(TestArithmetic::testUnsignedIntToFloat);
+    TEST_ADD(TestArithmetic::testUnsignedShortToFloat);
+    TEST_ADD(TestArithmetic::testUnsignedCharToFloat);
+    TEST_ADD(TestArithmetic::testFloatToSignedInt);
+    TEST_ADD(TestArithmetic::testFloatToSignedShort);
+    TEST_ADD(TestArithmetic::testFloatToSignedChar);
+    TEST_ADD(TestArithmetic::testFloatToUnsignedInt);
+    TEST_ADD(TestArithmetic::testFloatToUnsignedShort);
+    TEST_ADD(TestArithmetic::testFloatToUnsignedChar);
 }
 
 void TestArithmetic::onMismatch(const std::string& expected, const std::string& result)
@@ -332,6 +355,25 @@ void testRelationalOperation<float>(vc4c::Configuration& config, const std::stri
         in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
+template <typename T>
+static void testSelectionOperation(vc4c::Configuration& config, const std::string& options,
+    const std::function<void(const std::string&, const std::string&)>& onError)
+{
+    std::stringstream code;
+    compileBuffer(config, code, SELECTION_OPERATION, options);
+
+    auto in0 = generateInput<T, 16 * 12>(true);
+    auto in1 = generateInput<T, 16 * 12>(true);
+
+    auto out = runEmulation<T, T, 16, 12>(code, {in0, in1});
+    auto op = [](T a, T b) -> T {
+        typename std::make_signed<T>::type signedVal;
+        std::memcpy(&signedVal, &a, sizeof(T));
+        return signedVal < 0 ? b : a;
+    };
+    checkBinaryResults<T, T>(in0, in1, out, op, "select", onError);
+}
+
 template <typename I, typename O>
 static void testConversionOperation(vc4c::Configuration& config, const std::string& options,
     const std::function<O(I)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
@@ -352,7 +394,8 @@ static void testConversionOperation(vc4c::Configuration& config, const std::stri
     std::stringstream code;
     compileBuffer(config, code, CONVERSION_OPERATION, options);
 
-    auto in = generateInput<16 * 12>(true);
+    // values out of the range of O (the integer type) are implementation-defined
+    auto in = generateInput<16 * 12, O>(true);
 
     auto out = runEmulation<float, O, 16, 12>(code, {in});
     checkUnaryResults<O, float, 16 * 12>(in, out, op, "convert", onError);
@@ -719,6 +762,42 @@ void TestArithmetic::testFloatLessEquals()
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
+void TestArithmetic::testSignedIntSelection()
+{
+    testSelectionOperation<int>(config, "-DTYPE=int16",
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testSignedShortSelection()
+{
+    testSelectionOperation<short>(config, "-DTYPE=short16",
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testSignedCharSelection()
+{
+    testSelectionOperation<char>(config, "-DTYPE=char16",
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedIntSelection()
+{
+    testSelectionOperation<unsigned int>(config, "-DTYPE=uint16",
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedShortSelection()
+{
+    testSelectionOperation<unsigned short>(config, "-DTYPE=ushort16",
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedCharSelection()
+{
+    testSelectionOperation<unsigned char>(config, "-DTYPE=uchar16",
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
 void TestArithmetic::testSignedIntAnd()
 {
     testRelationalOperation<int>(config, "-DTYPE=int16 -DOP=&&", checkAnd<int>,
@@ -849,42 +928,75 @@ void TestArithmetic::testZeroExtension()
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
-void TestArithmetic::testSignedToFloat()
+void TestArithmetic::testSignedIntToFloat()
 {
     testConversionOperation<int, float>(config, "-DIN=int16 -DOUT=float16", convert<int, float>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testSignedShortToFloat()
+{
     testConversionOperation<short, float>(config, "-DIN=short16 -DOUT=float16", convert<short, float>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testSignedCharToFloat()
+{
     testConversionOperation<char, float>(config, "-DIN=char16 -DOUT=float16", convert<char, float>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
-void TestArithmetic::testUnsignedToFloat()
+void TestArithmetic::testUnsignedIntToFloat()
 {
     testConversionOperation<unsigned int, float>(config, "-DIN=uint16 -DOUT=float16", convert<unsigned int, float>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedShortToFloat()
+{
     testConversionOperation<unsigned short, float>(config, "-DIN=ushort16 -DOUT=float16",
         convert<unsigned short, float>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedCharToFloat()
+{
     testConversionOperation<unsigned char, float>(config, "-DIN=uchar16 -DOUT=float16", convert<unsigned char, float>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
-void TestArithmetic::testFloatToSigned()
+void TestArithmetic::testFloatToSignedInt()
 {
     testConversionOperation<int>(config, "-DIN=float16 -DOUT=int16", convert<float, int>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testFloatToSignedShort()
+{
     testConversionOperation<short>(config, "-DIN=float16 -DOUT=short16", convert<float, short>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testFloatToSignedChar()
+{
     testConversionOperation<char>(config, "-DIN=float16 -DOUT=char16", convert<float, char>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
-void TestArithmetic::testFloatToUnsigned()
+
+void TestArithmetic::testFloatToUnsignedInt()
 {
     testConversionOperation<unsigned int>(config, "-DIN=float16 -DOUT=uint16", convert<float, unsigned int>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testFloatToUnsignedShort()
+{
     testConversionOperation<unsigned short>(config, "-DIN=float16 -DOUT=ushort16", convert<float, unsigned short>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testFloatToUnsignedChar()
+{
     testConversionOperation<unsigned char>(config, "-DIN=float16 -DOUT=uchar16", convert<float, unsigned char>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }

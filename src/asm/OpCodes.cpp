@@ -492,9 +492,15 @@ Optional<Value> OpCode::calculate(const Optional<Value>& firstOperand, const Opt
         Value res(ContainerValue(numElements), resultType);
         for(unsigned char i = 0; i < numElements; ++i)
         {
-            auto tmp = calculate(
-                firstVal->hasType(ValueType::CONTAINER) ? firstVal->container.elements.at(i) : firstVal.value(),
-                secondVal->hasType(ValueType::CONTAINER) ? secondVal->container.elements.at(i) : secondVal.value());
+            Optional<Value> tmp = NO_VALUE;
+            if(numOperands == 1)
+                tmp = calculate(
+                    firstVal->hasType(ValueType::CONTAINER) ? firstVal->container.elements.at(i) : firstVal.value(),
+                    NO_VALUE);
+            else
+                tmp = calculate(
+                    firstVal->hasType(ValueType::CONTAINER) ? firstVal->container.elements.at(i) : firstVal.value(),
+                    secondVal->hasType(ValueType::CONTAINER) ? secondVal->container.elements.at(i) : secondVal.value());
             if(!tmp)
                 // result could not be calculated for a single component of the vector, abort
                 return NO_VALUE;

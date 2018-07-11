@@ -78,6 +78,12 @@ public:
     void testFloatLessEquals();
 
     // logical operators
+    void testSignedIntSelection();
+    void testSignedShortSelection();
+    void testSignedCharSelection();
+    void testUnsignedIntSelection();
+    void testUnsignedShortSelection();
+    void testUnsignedCharSelection();
     void testSignedIntAnd();
     void testSignedShortAnd();
     void testSignedCharAnd();
@@ -96,7 +102,6 @@ public:
     void testSignedNot();
     void testUnsignedNot();
     void testFloatNot();
-    void testSelection();
     
     //XXX vector instructions
     void testExtractElement();
@@ -108,10 +113,18 @@ public:
     void testUnsignedTruncation();
     void testSignExtension();
     void testZeroExtension();
-    void testSignedToFloat();
-    void testUnsignedToFloat();
-    void testFloatToSigned();
-    void testFloatToUnsigned();
+    void testSignedIntToFloat();
+    void testSignedShortToFloat();
+    void testSignedCharToFloat();
+    void testUnsignedIntToFloat();
+    void testUnsignedShortToFloat();
+    void testUnsignedCharToFloat();
+    void testFloatToSignedInt();
+    void testFloatToSignedShort();
+    void testFloatToSignedChar();
+    void testFloatToUnsignedInt();
+    void testFloatToUnsignedShort();
+    void testFloatToUnsignedChar();
     //XXX
     void testVectorBitcastTruncation4To1();
     void testVectorBitcastTruncation2To1();
