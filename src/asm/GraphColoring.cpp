@@ -268,7 +268,8 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
     // Broadcom Specification, page 30
     if(instr.hasUnpackMode())
     {
-        if(firstArg->hasType(ValueType::LOCAL) && (!secondArg || !secondArg->hasType(ValueType::LOCAL)))
+        if(firstArg->hasType(ValueType::LOCAL) &&
+            (!secondArg || !secondArg->hasType(ValueType::LOCAL) || secondArg.value() == firstArg))
         {
             // there is only one input local, fix to file A
             // logging::debug() << "Local " << firstArg.get().local.to_string() << " must be on register-file A, because

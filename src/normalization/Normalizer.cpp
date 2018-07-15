@@ -19,6 +19,7 @@
 #include "Inliner.h"
 #include "LiteralValues.h"
 #include "MemoryAccess.h"
+#include "Rewrite.h"
 
 #include "log.h"
 
@@ -73,7 +74,9 @@ const static std::vector<std::pair<std::string, NormalizationStep>> adjustmentSt
     // values
     {"HandleUseWithImmediate", handleUseWithImmediate},
     // moves all sources of vector-rotations to accumulators (if too large usage-range)
-    {"MoveRotationSourcesToAccs", optimizations::moveRotationSourcesToAccumulators}};
+    {"MoveRotationSourcesToAccs", optimizations::moveRotationSourcesToAccumulators},
+    // inserts moves to splits up uses of locals fixes to a register-file (e.g. Unpack/Pack) together
+    {"SplitRegisterConflicts", splitRegisterConflicts}};
 // TODO split read-after-writes?
 
 static void runNormalizationStep(
