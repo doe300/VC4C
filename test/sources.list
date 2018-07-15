@@ -6,17 +6,24 @@ target_sources(TestVC4C
     test.cpp
     TestArithmetic.cpp
     TestArithmetic.h
+    TestCommonFunctions.cpp
+    TestCommonFunctions.h
     TestEmulator.cpp
     TestEmulator.h
+    TestGeometricFunctions.cpp
+    TestGeometricFunctions.h
     TestGraph.cpp
     TestGraph.h
     TestInstructions.cpp
     TestInstructions.h
+    TestIntegerFunctions.h
+    TestIntegerFunctions.cpp
+    TestMathFunctions.cpp
+    TestMathFunctions.h
     TestOperators.cpp
     TestOperators.h
+    TestRelationalFunctions.cpp
+    TestRelationalFunctions.h
     TestSPIRVFrontend.cpp
     TestSPIRVFrontend.h
-    TestStdlib.cpp
-    TestStdlib.h
-    test_stdlib.h
 )

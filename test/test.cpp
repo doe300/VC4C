@@ -15,7 +15,11 @@
 #include "TestInstructions.h"
 #include "TestOperators.h"
 #include "TestSPIRVFrontend.h"
-#include "TestStdlib.h"
+#include "TestMathFunctions.h"
+#include "TestIntegerFunctions.h"
+#include "TestCommonFunctions.h"
+#include "TestGeometricFunctions.h"
+#include "TestRelationalFunctions.h"
 
 #include "tools.h"
 #include "../lib/cpplog/include/logger.h"
@@ -53,9 +57,34 @@ static Test::Suite* newEmulatorTest()
     return new TestEmulator(config);
 }
 
-static Test::Suite* newStdLibTest()
+static Test::Suite* newMathFunctionsTest()
 {
-    return new TestStdlib(config);
+    return new TestMathFunctions(config);
+}
+
+static Test::Suite* newArithmeticTest()
+{
+    return new TestArithmetic(config);
+}
+
+static Test::Suite* newIntegerFunctionsTest()
+{
+    return new TestIntegerFunctions(config);
+}
+
+static Test::Suite* newCommonFunctionsTest()
+{
+    return new TestCommonFunctions(config);
+}
+
+static Test::Suite* newGometricFunctionsTest()
+{
+    return new TestGeometricFunctions(config);
+}
+
+static Test::Suite* newRelationalFunctionsTest()
+{
+    return new TestRelationalFunctions(config);
 }
 
 /*
@@ -76,10 +105,15 @@ int main(int argc, char** argv)
     Test::registerSuite(newLLVMCompilationTest<false>, "test-compilation-llvm", "Runs all the compilation tests using the LLVM-IR front-end", false);
     Test::registerSuite(newSPIRVCompiltionTest<false>, "test-compilation-spirv", "Runs all the compilation tests using the SPIR-V front-end", false);
     Test::registerSuite(newFastRegressionTest, "fast-regressions", "Runs regression test-cases marked as fast", false);
+    
     Test::registerSuite(newEmulatorTest, "test-emulator", "Runs selected code-samples through the emulator");
-    Test::registerSuite(newStdLibTest, "test-stdlib", "Runs most of the VC4CL std-lib functions in emulator");
+    Test::registerSuite(newMathFunctionsTest, "emulate-math", "Runs emulation tests for the OpenCL standard-library math functions");
     Test::registerSuite(Test::newInstance<TestGraph>, "test-graph", "Runs basic test for the graph data structure");
-    Test::registerSuite(Test::newInstance<TestArithmetic>, "test-arithmetic", "Runs emulation tests for various kind of operations");
+    Test::registerSuite(newArithmeticTest, "emulate-arithmetic", "Runs emulation tests for various kind of operations");
+    Test::registerSuite(newIntegerFunctionsTest, "emulate-integer", "Runs emulation tests for the OpenCL standard-library integer functions");
+    Test::registerSuite(newCommonFunctionsTest, "emulate-common", "Runs emulation tests for the OpenCL standard-library common functions");
+    Test::registerSuite(newGometricFunctionsTest, "emulate-geometric", "Runs emulation tests for the OpenCL standard-library geometric functions");
+    Test::registerSuite(newRelationalFunctionsTest, "emulate-relational", "Runs emulation tests for the OpenCL standard-library relational functions");
     
     for(auto i = 1; i < argc; ++i)
     { 

@@ -13,8 +13,6 @@
 
 class TestArithmetic : public Test::Suite
 {
-    // TODO write tests for all relevant (e.g. not directly mapped to machine code) instructions from LLVM IR
-    // (https://llvm.org/docs/LangRef.html)
 public:
     TestArithmetic(const vc4c::Configuration& config = {});
 

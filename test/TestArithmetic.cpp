@@ -5,59 +5,7 @@
  */
 
 #include "TestArithmetic.h"
-
-#include "Compiler.h"
-#include "VC4C.h"
-#include "tools.h"
-
-#include <cstring>
-#include <limits>
-#include <random>
-#include <sstream>
-
-template <typename T, std::size_t N, T min = std::numeric_limits<T>::min(), T max = std::numeric_limits<T>::max()>
-static std::array<T, N> generateInput(bool allowNull)
-{
-    std::array<T, N> arr;
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<T> dis(min, max);
-
-    for(std::size_t i = 0; i < N; ++i)
-    {
-        T tmp;
-        do
-        {
-            // to prevent division by zero
-            tmp = dis(gen);
-        } while(!allowNull && tmp == 0);
-        arr[i] = tmp;
-    }
-
-    return arr;
-}
-
-template <std::size_t N, typename T = float>
-static std::array<float, N> generateInput(bool allowNull)
-{
-    std::array<float, N> arr;
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<float> dis(
-        static_cast<float>(std::numeric_limits<T>::min()), static_cast<float>(std::numeric_limits<T>::max()));
-
-    for(std::size_t i = 0; i < N; ++i)
-    {
-        float tmp;
-        do
-        {
-            // to prevent division by zero
-            tmp = dis(gen);
-        } while(!allowNull && tmp == 0.0f);
-        arr[i] = tmp;
-    }
-    return arr;
-}
+#include "emulation_helper.h"
 
 static const std::string BINARY_OPERATION = R"(
 __kernel void test(__global TYPE* out, const __global TYPE* in0, const __global TYPE* in1) {
@@ -104,39 +52,6 @@ __kernel void test(__global OUT* out, const __global IN* in) {
   out[gid] = as_##OUT(in[gid]);
 }
 )";
-
-template <typename T, typename I, std::size_t N>
-static void checkBinaryResults(const std::array<I, N>& input0, const std::array<I, N>& input1,
-    const std::array<T, N>& output, const std::function<T(I, I)>& op, const std::string& opName,
-    const std::function<void(const std::string&, const std::string&)>& onError)
-{
-    for(std::size_t i = 0; i < N; ++i)
-    {
-        if(output[i] != op(input0[i], input1[i]))
-        {
-            auto result = std::to_string(output[i]);
-            auto expected = std::to_string(input0[i]) + " " + opName + " " + std::to_string(input1[i]) + " = " +
-                std::to_string(op(input0[i], input1[i]));
-            onError(expected, result);
-        }
-    }
-}
-
-template <typename T, typename I, std::size_t N>
-static void checkUnaryResults(const std::array<I, N>& input, const std::array<T, N>& output,
-    const std::function<T(I)>& op, const std::string& opName,
-    const std::function<void(const std::string&, const std::string&)>& onError)
-{
-    for(std::size_t i = 0; i < N; ++i)
-    {
-        if(output[i] != op(input[i]))
-        {
-            auto result = std::to_string(output[i]);
-            auto expected = opName + " " + std::to_string(input[i]) + " = " + std::to_string(op(input[i]));
-            onError(expected, result);
-        }
-    }
-}
 
 TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(config)
 {
@@ -241,55 +156,6 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
 void TestArithmetic::onMismatch(const std::string& expected, const std::string& result)
 {
     TEST_ASSERT_EQUALS(expected, result);
-}
-
-static void compileBuffer(
-    vc4c::Configuration& config, std::stringstream& buffer, const std::string& source, const std::string& options)
-{
-    config.outputMode = vc4c::OutputMode::BINARY;
-    config.writeKernelInfo = true;
-    std::istringstream input(source);
-    vc4c::Compiler::compile(input, buffer, config, options);
-}
-
-template <std::size_t N, typename I, typename O>
-static void copyConvert(const I& in, O& out)
-{
-    if(out.size() < N)
-        throw vc4c::CompilationError(vc4c::CompilationStep::GENERAL, "Invalid container size for copy");
-    auto base = reinterpret_cast<const typename O::value_type*>(in.data());
-    std::copy(base, base + N, out.data());
-}
-
-template <typename T, typename R, std::size_t V, std::size_t L, std::size_t G = 1>
-static std::array<R, V * L * G> runEmulation(
-    std::stringstream& codeBuffer, const std::vector<std::array<T, V * L * G>>& inputs)
-{
-    using namespace vc4c::tools;
-
-    std::vector<std::pair<uint32_t, vc4c::Optional<std::vector<uint32_t>>>> parameter;
-    parameter.emplace_back(std::make_pair(0, std::vector<uint32_t>(V * L * G * sizeof(R) / sizeof(uint32_t))));
-    for(const auto& input : inputs)
-    {
-        parameter.emplace_back(std::make_pair(0, std::vector<uint32_t>(V * L * G * sizeof(T) / sizeof(uint32_t))));
-        copyConvert<V * L * G * sizeof(T) / sizeof(uint32_t)>(input, parameter.back().second.value());
-    }
-
-    WorkGroupConfig workGroups;
-    workGroups.dimensions = 1;
-    workGroups.localSizes[0] = L;
-    workGroups.numGroups[0] = G;
-
-    EmulationData data(codeBuffer, "test", parameter, workGroups);
-
-    auto result = emulate(data);
-
-    if(!result.executionSuccessful)
-        throw vc4c::CompilationError(vc4c::CompilationStep::GENERAL, "Kernel execution failed");
-
-    std::array<R, V * L * G> output;
-    copyConvert<V * L * G>(result.results[0].second.value(), output);
-    return output;
 }
 
 template <typename T>
