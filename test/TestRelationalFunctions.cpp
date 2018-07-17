@@ -132,7 +132,7 @@ static void testUnaryGroupFunction(vc4c::Configuration& config, const std::strin
 
     auto out = runEmulation<T, R, 16, 12>(code, {in});
     auto pos = options.find("-DFUNC=") + std::string("-DFUNC=").size();
-    checkUnaryGroupedResults<R, T>(in, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
+    checkUnaryReducedResults<R, T>(in, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
 template <typename C, typename T = typename C::first_argument_type>
@@ -248,7 +248,7 @@ void TestRelationalFunctions::testIsOrdered()
 void TestRelationalFunctions::testIsUnordered()
 {
     testBinaryFunction(config, "-DFUNC=isunordered",
-        [](float a, float b) -> int { return (!std::isnan(a) && !std::isnan(b)) ? -1 : 0; },
+            [](float a, float b) -> int { return (std::isnan(a) || std::isnan(b)) ? -1 : 0; },
         std::bind(&TestRelationalFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 

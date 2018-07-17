@@ -51,7 +51,6 @@ public:
     void testRHAddUnsignedShort();
     void testRHAddUnsignedChar();
     
-    //XXX
     void testClampSignedInt();
     void testClampSignedShort();
     void testClampSignedChar();

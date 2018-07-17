@@ -20,6 +20,7 @@
 #include "TestCommonFunctions.h"
 #include "TestGeometricFunctions.h"
 #include "TestRelationalFunctions.h"
+#include "TestVectorFunctions.h"
 
 #include "tools.h"
 #include "../lib/cpplog/include/logger.h"
@@ -87,6 +88,11 @@ static Test::Suite* newRelationalFunctionsTest()
     return new TestRelationalFunctions(config);
 }
 
+static Test::Suite* newVectorFunctionsTest()
+{
+    return new TestVectorFunctions(config);
+}
+
 /*
  * 
  */
@@ -114,6 +120,7 @@ int main(int argc, char** argv)
     Test::registerSuite(newCommonFunctionsTest, "emulate-common", "Runs emulation tests for the OpenCL standard-library common functions");
     Test::registerSuite(newGometricFunctionsTest, "emulate-geometric", "Runs emulation tests for the OpenCL standard-library geometric functions");
     Test::registerSuite(newRelationalFunctionsTest, "emulate-relational", "Runs emulation tests for the OpenCL standard-library relational functions");
+    Test::registerSuite(newVectorFunctionsTest, "emulate-vector", "Runs emulation tests for the OpenCL standard-library vector functions");
     
     for(auto i = 1; i < argc; ++i)
     { 

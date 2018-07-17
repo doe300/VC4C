@@ -26,4 +26,6 @@ target_sources(TestVC4C
     TestRelationalFunctions.h
     TestSPIRVFrontend.cpp
     TestSPIRVFrontend.h
+    TestVectorFunctions.cpp
+    TestVectorFunctions.h
 )

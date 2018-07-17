@@ -101,11 +101,6 @@ public:
     void testUnsignedNot();
     void testFloatNot();
     
-    //XXX vector instructions
-    void testExtractElement();
-    void testInsertElement();
-    void testShuffleVector();
-    
     //conversion instructions
     void testSignedTruncation();
     void testUnsignedTruncation();

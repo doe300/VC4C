@@ -37,7 +37,9 @@ TestCommonFunctions::TestCommonFunctions(const vc4c::Configuration& config) : co
     TEST_ADD(TestCommonFunctions::testMix);
     TEST_ADD(TestCommonFunctions::testRadians);
     TEST_ADD(TestCommonFunctions::testStep);
+    /*XXX
     TEST_ADD(TestCommonFunctions::testSmoothStep);
+    */
     TEST_ADD(TestCommonFunctions::testSign);
 }
 
@@ -132,11 +134,6 @@ void TestCommonFunctions::testStep()
 {
     testBinaryFunction(config, "-DFUNC=step", [](float a, float b) -> float { return b < a ? 0.0f : 1.0f; },
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void TestCommonFunctions::testSmoothStep()
-{
-    // TODO
 }
 
 void TestCommonFunctions::testSign()

@@ -69,14 +69,12 @@ TestIntegerFunctions::TestIntegerFunctions(const vc4c::Configuration& config) : 
     TEST_ADD(TestIntegerFunctions::testRHAddUnsignedShort);
     TEST_ADD(TestIntegerFunctions::testRHAddUnsignedChar);
 
-    /* XXX
-        TEST_ADD(TestIntegerFunctions::testClampSignedInt);
-        TEST_ADD(TestIntegerFunctions::testClampSignedShort);
-        TEST_ADD(TestIntegerFunctions::testClampSignedChar);
-        TEST_ADD(TestIntegerFunctions::testClampUnsignedInt);
-        TEST_ADD(TestIntegerFunctions::testClampUnsignedShort);
-        TEST_ADD(TestIntegerFunctions::testClampUnsignedChar);
-    */
+    TEST_ADD(TestIntegerFunctions::testClampSignedInt);
+    TEST_ADD(TestIntegerFunctions::testClampSignedShort);
+    TEST_ADD(TestIntegerFunctions::testClampSignedChar);
+    TEST_ADD(TestIntegerFunctions::testClampUnsignedInt);
+    TEST_ADD(TestIntegerFunctions::testClampUnsignedShort);
+    TEST_ADD(TestIntegerFunctions::testClampUnsignedChar);
 
     TEST_ADD(TestIntegerFunctions::testClzSignedInt);
     TEST_ADD(TestIntegerFunctions::testClzSignedShort);
@@ -193,6 +191,22 @@ static void testBinaryFunction(vc4c::Configuration& config, const std::string& o
     checkBinaryResults<R, T>(in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
+template <typename T, typename R = T>
+static void testTernaryFunction(vc4c::Configuration& config, const std::string& options,
+    const std::function<R(T, T, T)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
+{
+    std::stringstream code;
+    compileBuffer(config, code, TERNARY_FUNCTION, options);
+
+    auto in0 = generateInput<T, 16 * 12>(true);
+    auto in1 = generateInput<T, 16 * 12>(true);
+    auto in2 = generateInput<T, 16 * 12>(true);
+
+    auto out = runEmulation<T, R, 16, 12>(code, {in0, in1, in2});
+    auto pos = options.find("-DFUNC=") + std::string("-DFUNC=").size();
+    checkTernaryResults<R, T>(in0, in1, in2, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
+}
+
 template <typename T>
 static typename std::make_unsigned<T>::type checkAbs(T in)
 {
@@ -230,6 +244,12 @@ template <typename T>
 static T checkHAdd(T in1, T in2)
 {
     return (static_cast<long>(in1) + static_cast<long>(in2)) >> 1;
+}
+
+template <typename T>
+static T checkClamp(T val, T min, T max)
+{
+    return std::min(std::max(val, min), max);
 }
 
 template <typename T>
@@ -484,6 +504,48 @@ void TestIntegerFunctions::testRHAddUnsignedChar()
 {
     testBinaryFunction<unsigned char, unsigned char>(config, "-DOUT=uchar16 -DIN0=uchar16 -DIN1=uchar16 -DFUNC=rhadd",
         checkRHAdd<unsigned char>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testClampSignedInt()
+{
+    testTernaryFunction<int, int>(config, "-DOUT=int16 -DIN0=int16 -DIN1=int16 -DIN2=int16 -DFUNC=clamp",
+        checkClamp<int>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testClampSignedShort()
+{
+    testTernaryFunction<short, short>(config, "-DOUT=short16 -DIN0=short16 -DIN1=short16 -DIN2=short16 -DFUNC=clamp",
+        checkClamp<short>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testClampSignedChar()
+{
+    testTernaryFunction<char, char>(config, "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DIN2=char16 -DFUNC=clamp",
+        checkClamp<char>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testClampUnsignedInt()
+{
+    testTernaryFunction<unsigned int, unsigned int>(config,
+        "-DOUT=uint16 -DIN0=uint16 -DIN1=uint16 -DIN2=uint16 -DFUNC=clamp", checkClamp<unsigned int>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testClampUnsignedShort()
+{
+    testTernaryFunction<unsigned short, unsigned short>(config,
+        "-DOUT=ushort16 -DIN0=ushort16 -DIN1=ushort16 -DIN2=ushort16 -DFUNC=clamp", checkClamp<unsigned short>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testClampUnsignedChar()
+{
+    testTernaryFunction<unsigned char, unsigned char>(config,
+        "-DOUT=uchar16 -DIN0=uchar16 -DIN1=uchar16 -DIN2=uchar16 -DFUNC=clamp", checkClamp<unsigned char>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 

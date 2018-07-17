@@ -124,7 +124,7 @@ static std::string toString(const C& container)
 }
 
 template <typename Result, typename Input, std::size_t N, std::size_t GroupSize = 16>
-void checkUnaryGroupedResults(const std::array<Input, N>& input, const std::array<Result, N>& output,
+void checkUnaryReducedResults(const std::array<Input, N>& input, const std::array<Result, N>& output,
     const std::function<Result(const std::array<Input, GroupSize>&)>& op, const std::string& opName,
     const std::function<void(const std::string&, const std::string&)>& onError)
 {
@@ -132,9 +132,9 @@ void checkUnaryGroupedResults(const std::array<Input, N>& input, const std::arra
     for(std::size_t i = 0; i < N; i += GroupSize)
     {
         auto group = reinterpret_cast<const std::array<Input, GroupSize>*>(&input[i]);
-        if(output[i] != op(*group))
+        if(output[i / GroupSize] != op(*group))
         {
-            auto result = std::to_string(output[i]);
+            auto result = std::to_string(output[i / GroupSize]);
             auto expected = opName + " " + toString(*group) + " = " + std::to_string(op(*group));
             onError(expected, result);
         }
@@ -142,7 +142,7 @@ void checkUnaryGroupedResults(const std::array<Input, N>& input, const std::arra
 }
 
 template <typename Result, typename Input, std::size_t N, std::size_t GroupSize = 16>
-void checkBinaryGroupedResults(const std::array<Input, N>& input0, const std::array<Input, N>& input1,
+void checkBinaryReducedResults(const std::array<Input, N>& input0, const std::array<Input, N>& input1,
     const std::array<Result, N>& output,
     const std::function<Result(const std::array<Input, GroupSize>&, const std::array<Input, GroupSize>&)>& op,
     const std::string& opName, const std::function<void(const std::string&, const std::string&)>& onError)
@@ -152,11 +152,77 @@ void checkBinaryGroupedResults(const std::array<Input, N>& input0, const std::ar
     {
         auto group0 = reinterpret_cast<const std::array<Input, GroupSize>*>(&input0[i]);
         auto group1 = reinterpret_cast<const std::array<Input, GroupSize>*>(&input1[i]);
-        if(output[i] != op(*group0, *group1))
+        if(output[i / GroupSize] != op(*group0, *group1))
         {
-            auto result = std::to_string(output[i]);
+            auto result = std::to_string(output[i / GroupSize]);
             auto expected = opName + " {" + toString(*group0) + "}, {" + toString(*group1) +
                 "} = " + std::to_string(op(*group0, *group1));
+            onError(expected, result);
+        }
+    }
+}
+
+template <typename Result, typename Input, std::size_t N, std::size_t GroupSize = 16>
+void checkUnaryGroupedResults(const std::array<Input, N>& input, const std::array<Result, N>& output,
+    const std::function<std::array<Result, GroupSize>(const std::array<Input, GroupSize>&)>& op,
+    const std::string& opName, const std::function<void(const std::string&, const std::string&)>& onError)
+{
+    static_assert(N >= GroupSize && N % GroupSize == 0, "The elements are not a multiple of the group size");
+    for(std::size_t i = 0; i < N; i += GroupSize)
+    {
+        auto inputGroup = reinterpret_cast<const std::array<Input, GroupSize>*>(&input[i]);
+        auto outputGroup = reinterpret_cast<const std::array<Input, GroupSize>*>(&output[i]);
+        if(*outputGroup != op(*inputGroup))
+        {
+            auto result = toString(*outputGroup);
+            auto expected = opName + " " + toString(*inputGroup) + " = " + toString(op(*inputGroup));
+            onError(expected, result);
+        }
+    }
+}
+
+template <typename Result, typename Input, std::size_t N, std::size_t GroupSize = 16>
+void checkBinaryGroupedResults(const std::array<Input, N>& input0, const std::array<Input, N>& input1,
+    const std::array<Result, N>& output,
+    const std::function<std::array<Result, GroupSize>(
+        const std::array<Input, GroupSize>&, const std::array<Input, GroupSize>&)>& op,
+    const std::string& opName, const std::function<void(const std::string&, const std::string&)>& onError)
+{
+    static_assert(N >= GroupSize && N % GroupSize == 0, "The elements are not a multiple of the group size");
+    for(std::size_t i = 0; i < N; i += GroupSize)
+    {
+        auto inputGroup0 = reinterpret_cast<const std::array<Input, GroupSize>*>(&input0[i]);
+        auto inputGroup1 = reinterpret_cast<const std::array<Input, GroupSize>*>(&input1[i]);
+        auto outputGroup = reinterpret_cast<const std::array<Input, GroupSize>*>(&output[i]);
+        if(*outputGroup != op(*inputGroup0, *inputGroup1))
+        {
+            auto result = toString(*outputGroup);
+            auto expected = opName + " {" + toString(*inputGroup0) + "}, {" + toString(*inputGroup1) +
+                "} = " + toString(op(*inputGroup0, *inputGroup1));
+            onError(expected, result);
+        }
+    }
+}
+
+template <typename Result, typename Input, std::size_t N, std::size_t GroupSize = 16>
+void checkTrinaryGroupedResults(const std::array<Input, N>& input0, const std::array<Input, N>& input1,
+    const std::array<Input, N>& input2, const std::array<Result, N>& output,
+    const std::function<std::array<Result, GroupSize>(const std::array<Input, GroupSize>&,
+        const std::array<Input, GroupSize>&, const std::array<Input, GroupSize>&)>& op,
+    const std::string& opName, const std::function<void(const std::string&, const std::string&)>& onError)
+{
+    static_assert(N >= GroupSize && N % GroupSize == 0, "The elements are not a multiple of the group size");
+    for(std::size_t i = 0; i < N; i += GroupSize)
+    {
+        auto inputGroup0 = reinterpret_cast<const std::array<Input, GroupSize>*>(&input0[i]);
+        auto inputGroup1 = reinterpret_cast<const std::array<Input, GroupSize>*>(&input1[i]);
+        auto inputGroup2 = reinterpret_cast<const std::array<Input, GroupSize>*>(&input2[i]);
+        auto outputGroup = reinterpret_cast<const std::array<Input, GroupSize>*>(&output[i]);
+        if(*outputGroup != op(*inputGroup0, *inputGroup1, *inputGroup2))
+        {
+            auto result = toString(*outputGroup);
+            auto expected = opName + " {" + toString(*inputGroup0) + "}, {" + toString(*inputGroup1) + "}, {" +
+                toString(*inputGroup2) + "} = " + toString(op(*inputGroup0, *inputGroup1, *inputGroup2));
             onError(expected, result);
         }
     }
