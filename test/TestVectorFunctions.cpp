@@ -39,6 +39,14 @@ __kernel void test(__global TYPE* out, const __global TYPE* in0, const __global 
 }
 )";
 
+static const std::string VECTOR_REORDER_FUNCTION = R"(
+__kernel void test(__global TYPE* out, const __global TYPE* in) {
+  size_t gid = get_global_id(0);
+  TYPE tmp = in[gid];
+  out[gid] = (TYPE)(tmp.ORDER);
+}
+)";
+
 TestVectorFunctions::TestVectorFunctions(const vc4c::Configuration& config) : config(config)
 {
     TEST_ADD(TestVectorFunctions::testVectorLoad2Int);
@@ -87,6 +95,11 @@ TestVectorFunctions::TestVectorFunctions(const vc4c::Configuration& config) : co
     TEST_ADD(TestVectorFunctions::testShuffle2Vector8);
     TEST_ADD(TestVectorFunctions::testShuffle2Vector16);
 
+    TEST_ADD(TestVectorFunctions::testVectorReorder2);
+    TEST_ADD(TestVectorFunctions::testVectorReorder4);
+    TEST_ADD(TestVectorFunctions::testVectorReorder8);
+    TEST_ADD(TestVectorFunctions::testVectorReorder16);
+
     /*XXX
         TEST_ADD(TestVectorFunctions::testExtractElement);
         TEST_ADD(TestVectorFunctions::testInsertElement);
@@ -128,7 +141,12 @@ static void testVectorStoreFunction(vc4c::Configuration& config, const std::stri
 template <typename T, std::size_t N>
 std::array<T, N> checkShuffle(const std::array<T, N>& in, const std::array<T, N>& mask)
 {
-    throw std::runtime_error("TODO");
+    std::array<T, N> result;
+
+    for(std::size_t i = 0; i < N; ++i)
+        result[i] = in[mask[i]];
+
+    return result;
 }
 
 template <typename T, std::size_t N>
@@ -148,7 +166,15 @@ static void testVectorShuffleFunction(vc4c::Configuration& config, const std::st
 template <typename T, std::size_t N>
 std::array<T, N> checkShuffle2(const std::array<T, N>& in0, const std::array<T, N>& in1, const std::array<T, N>& mask)
 {
-    throw std::runtime_error("TODO");
+    std::array<T, N> result;
+
+    for(std::size_t i = 0; i < N; ++i)
+    {
+        auto index = mask[i];
+        result[i] = index >= in0.size() ? in1[index - in0.size()] : in0[index];
+    }
+
+    return result;
 }
 
 template <typename T, std::size_t N>
@@ -165,6 +191,22 @@ static void testVectorShuffle2Function(vc4c::Configuration& config, const std::s
     auto out = runEmulation<T, T, N, 12>(code, {in0, in1, mask});
     checkTrinaryGroupedResults<T, T, N * 12, N>(
         in0, in1, mask, out, checkShuffle2<T, N>, std::string("shuffle2"), onError);
+}
+
+template <typename T, std::size_t GroupSize>
+static void testVectorReorderFunction(vc4c::Configuration& config, const std::string& options,
+    const std::function<std::array<T, GroupSize>(const std::array<T, GroupSize>&)>& op,
+    const std::function<void(const std::string&, const std::string&)>& onError)
+{
+    std::stringstream code;
+    compileBuffer(config, code, VECTOR_REORDER_FUNCTION, options);
+
+    auto in = generateInput<T, GroupSize * 12>(true);
+
+    auto out = runEmulation<T, T, GroupSize, 12>(code, {in});
+    auto pos = options.find("-DORDER=") + std::string("-DORDER=").size();
+    checkUnaryGroupedResults<T, T, GroupSize * 12, GroupSize>(
+        in, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
 void TestVectorFunctions::testVectorLoad2Int()
@@ -392,5 +434,41 @@ void TestVectorFunctions::testShuffle2Vector8()
 void TestVectorFunctions::testShuffle2Vector16()
 {
     testVectorShuffle2Function<unsigned, 16>(config, "-DTYPE=uint16",
+        std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestVectorFunctions::testVectorReorder2()
+{
+    testVectorReorderFunction<short, 2>(config, "-DTYPE=short2 -DORDER=s10",
+        [](const std::array<short, 2>& in) -> std::array<short, 2> {
+            return checkShuffle(in, {1, 0});
+        },
+        std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestVectorFunctions::testVectorReorder4()
+{
+    testVectorReorderFunction<short, 4>(config, "-DTYPE=short4 -DORDER=s1302",
+        [](const std::array<short, 4>& in) -> std::array<short, 4> {
+            return checkShuffle(in, {1, 3, 0, 2});
+        },
+        std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestVectorFunctions::testVectorReorder8()
+{
+    testVectorReorderFunction<short, 8>(config, "-DTYPE=short8 -DORDER=s10671342",
+        [](const std::array<short, 8>& in) -> std::array<short, 8> {
+            return checkShuffle(in, {1, 0, 6, 7, 1, 3, 4, 2});
+        },
+        std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestVectorFunctions::testVectorReorder16()
+{
+    testVectorReorderFunction<short, 16>(config, "-DTYPE=short16 -DORDER=s1a0cf568239baf58",
+        [](const std::array<short, 16>& in) -> std::array<short, 16> {
+            return checkShuffle(in, {1, 10, 0, 12, 15, 5, 6, 8, 2, 3, 9, 11, 10, 15, 5, 8});
+        },
         std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }

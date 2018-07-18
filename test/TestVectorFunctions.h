@@ -57,6 +57,10 @@ public:
     void testShuffle2Vector8();
     void testShuffle2Vector16();
     
+    void testVectorReorder2();
+    void testVectorReorder4();
+    void testVectorReorder8();
+    void testVectorReorder16();
     void testExtractElement();
     void testInsertElement();
 

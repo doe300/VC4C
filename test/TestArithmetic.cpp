@@ -173,8 +173,8 @@ static void testBinaryOperation(vc4c::Configuration& config, const std::string& 
     checkBinaryResults<T>(in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
-template <>
-void testBinaryOperation<float>(vc4c::Configuration& config, const std::string& options,
+template <typename Comparison = std::equal_to<float>>
+void testBinaryFloatOperation(vc4c::Configuration& config, const std::string& options,
     const std::function<float(float, float)>& op,
     const std::function<void(const std::string&, const std::string&)>& onError)
 {
@@ -186,7 +186,8 @@ void testBinaryOperation<float>(vc4c::Configuration& config, const std::string& 
 
     auto out = runEmulation<float, float, 16, 12>(code, {in0, in1});
     auto pos = options.find("-DOP=") + std::string("-DOP=").size();
-    checkBinaryResults<float>(in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
+    checkBinaryResults<float, float, 16 * 12, Comparison>(
+        in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
 template <typename T>
@@ -402,7 +403,7 @@ void TestArithmetic::testUnsignedCharModulo()
 
 void TestArithmetic::testFloatingPointDivision()
 {
-    testBinaryOperation<float>(config, "-DTYPE=float16 -DOP=/", std::divides<float>{},
+    testBinaryFloatOperation<CompareULP<3>>(config, "-DTYPE=float16 -DOP=/", std::divides<float>{},
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
