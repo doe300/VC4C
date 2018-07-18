@@ -740,7 +740,7 @@ static bool moveLocalToRegisterFile(Method& method, ColoredGraph& graph, Colored
         logging::debug() << "Fixing register-conflict by using temporary as input for: " << it->to_string()
                          << logging::endl;
         it.emplace(new intermediate::MoveOperation(tmp, node.key->createReference()));
-        auto tmpUse = localUses.emplace(tmp.local, LocalUsage(it, it)).first->second;
+        auto& tmpUse = localUses.emplace(tmp.local, LocalUsage(it, it)).first->second;
         it.nextInBlock();
         it->replaceLocal(node.key, tmp.local, LocalUse::Type::READER);
         // 4) add temporary to graph (and local usage) with same blocked registers as local, but accumulator as file
