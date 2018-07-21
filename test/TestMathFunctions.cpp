@@ -36,7 +36,6 @@ __kernel void test(__global OUT* out, __global IN0* in0, __global IN1* in1, __gl
 
 TestMathFunctions::TestMathFunctions(const vc4c::Configuration& config) : TestEmulator(false, config)
 {
-    /*XXX
     TEST_ADD(TestMathFunctions::testAcos);
     TEST_ADD(TestMathFunctions::testAcosh);
     TEST_ADD(TestMathFunctions::testAcosPi);
@@ -49,16 +48,13 @@ TestMathFunctions::TestMathFunctions(const vc4c::Configuration& config) : TestEm
     TEST_ADD(TestMathFunctions::testAtanPi);
     TEST_ADD(TestMathFunctions::testAtan2Pi);
     TEST_ADD(TestMathFunctions::testCbrt);
-    */
     TEST_ADD(TestMathFunctions::testCeil);
     TEST_ADD(TestMathFunctions::testCopysign);
     TEST_ADD(TestMathFunctions::testCos);
     TEST_ADD(TestMathFunctions::testCosh);
     TEST_ADD(TestMathFunctions::testCosPi);
-    /*XXX
     TEST_ADD(TestMathFunctions::testErfc);
     TEST_ADD(TestMathFunctions::testErf);
-    */
     TEST_ADD(TestMathFunctions::testExp);
     TEST_ADD(TestMathFunctions::testExp2);
     TEST_ADD(TestMathFunctions::testExp10);
@@ -70,14 +66,14 @@ TestMathFunctions::TestMathFunctions(const vc4c::Configuration& config) : TestEm
     TEST_ADD(TestMathFunctions::testFmax);
     TEST_ADD(TestMathFunctions::testFmin);
     TEST_ADD(TestMathFunctions::testFmod);
+    /*XXX
     TEST_ADD(TestMathFunctions::testFract);
     TEST_ADD(TestMathFunctions::testFrexp);
-    /*XXX
-    TEST_ADD(TestMathFunctions::testHypot);
     */
+    TEST_ADD(TestMathFunctions::testHypot);
+    /*XXX
     TEST_ADD(TestMathFunctions::testIlogb);
     TEST_ADD(TestMathFunctions::testLdexp);
-    /*XXX
     TEST_ADD(TestMathFunctions::testLgamma);
     TEST_ADD(TestMathFunctions::testLgammaR);
     */
@@ -98,19 +94,21 @@ TestMathFunctions::TestMathFunctions(const vc4c::Configuration& config) : TestEm
     TEST_ADD(TestMathFunctions::testPowr);
     */
     TEST_ADD(TestMathFunctions::testRemainder);
+    /*XXX
     TEST_ADD(TestMathFunctions::testRemquo);
+    */
     TEST_ADD(TestMathFunctions::testRint);
     /*XXX
     TEST_ADD(TestMathFunctions::testRootn);
     */
     TEST_ADD(TestMathFunctions::testRound);
     TEST_ADD(TestMathFunctions::testRsqrt);
-    /*XXX
     TEST_ADD(TestMathFunctions::testSin);
+    /*XXX
     TEST_ADD(TestMathFunctions::testSinCos);
+    */
     TEST_ADD(TestMathFunctions::testSinh);
     TEST_ADD(TestMathFunctions::testSinPi);
-    */
     TEST_ADD(TestMathFunctions::testSqrt);
     TEST_ADD(TestMathFunctions::testTan);
     TEST_ADD(TestMathFunctions::testTanh);
@@ -158,6 +156,82 @@ static void testBinaryFunction(vc4c::Configuration& config, const std::string& o
         in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
+void TestMathFunctions::testAcos()
+{
+    testUnaryFunction<4>(config, "-DOUT=float16 -DIN=float16 -DFUNC=acos", acosf,
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -1, 1);
+}
+
+void TestMathFunctions::testAcosh()
+{
+    testUnaryFunction<4>(config, "-DOUT=float16 -DIN=float16 -DFUNC=acosh", acoshf,
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestMathFunctions::testAcosPi()
+{
+    testUnaryFunction<5>(config, "-DOUT=float16 -DIN=float16 -DFUNC=acospi",
+        [](float f) -> float { return std::acos(f) / static_cast<float>(M_PI); },
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -1, 1);
+}
+
+void TestMathFunctions::testAsin()
+{
+    testUnaryFunction<4>(config, "-DOUT=float16 -DIN=float16 -DFUNC=asin", asinf,
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -1, 1);
+}
+
+void TestMathFunctions::testAsinh()
+{
+    testUnaryFunction<4>(config, "-DOUT=float16 -DIN=float16 -DFUNC=asinh", asinhf,
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -1, 1);
+}
+
+void TestMathFunctions::testAsinPi()
+{
+    testUnaryFunction<5>(config, "-DOUT=float16 -DIN=float16 -DFUNC=asinpi",
+        [](float f) -> float { return std::asin(f) / static_cast<float>(M_PI); },
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -1, 1);
+}
+
+void TestMathFunctions::testAtan()
+{
+    testUnaryFunction<5>(config, "-DOUT=float16 -DIN=float16 -DFUNC=atan", atanf,
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -1, 1);
+}
+
+void TestMathFunctions::testAtan2()
+{
+    testBinaryFunction<6>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=atan2", atan2f,
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestMathFunctions::testAtanh()
+{
+    testUnaryFunction<5>(config, "-DOUT=float16 -DIN=float16 -DFUNC=atanh", atanhf,
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -1, 1);
+}
+
+void TestMathFunctions::testAtanPi()
+{
+    testUnaryFunction<5>(config, "-DOUT=float16 -DIN=float16 -DFUNC=atanpi",
+        [](float f) -> float { return std::atan(f) / static_cast<float>(M_PI); },
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -1, 1);
+}
+
+void TestMathFunctions::testAtan2Pi()
+{
+    testBinaryFunction<6>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=atan2pi",
+        [](float f1, float f2) -> float { return std::atan2(f1, f2) / static_cast<float>(M_PI); },
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestMathFunctions::testCbrt()
+{
+    testUnaryFunction<4>(config, "-DOUT=float16 -DIN=float16 -DFUNC=cbrt", cbrtf,
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
 void TestMathFunctions::testCeil()
 {
     testUnaryFunction<0>(config, "-DOUT=float16 -DIN=float16 -DFUNC=ceil", ceilf,
@@ -186,6 +260,18 @@ void TestMathFunctions::testCosPi()
 {
     testUnaryFunction<4>(config, "-DOUT=float16 -DIN=float16 -DFUNC=cospi",
         [](float f) -> float { return std::cos(f) * static_cast<float>(M_PI); },
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestMathFunctions::testErfc()
+{
+    testUnaryFunction<16>(config, "-DOUT=float16 -DIN=float16 -DFUNC=erfc", erfcf,
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestMathFunctions::testErf()
+{
+    testUnaryFunction<16>(config, "-DOUT=float16 -DIN=float16 -DFUNC=erf", erff,
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -325,6 +411,8 @@ void TestMathFunctions::testRint()
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
+void TestMathFunctions::testRootn() {}
+
 void TestMathFunctions::testRound()
 {
     testUnaryFunction<0>(config, "-DOUT=float16 -DIN=float16 -DFUNC=round", roundf,
@@ -335,13 +423,32 @@ void TestMathFunctions::testRsqrt()
 {
     testUnaryFunction<4>(config, "-DOUT=float16 -DIN=float16 -DFUNC=rsqrt",
         [](float a) -> float { return 1.0f / sqrtf(a); },
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), 0);
+}
+
+void TestMathFunctions::testSin()
+{
+    testUnaryFunction<4>(config, "-DOUT=float16 -DIN=float16 -DFUNC=sin", sinf,
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestMathFunctions::testSinh()
+{
+    testUnaryFunction<4>(config, "-DOUT=float16 -DIN=float16 -DFUNC=sinh", sinhf,
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -85, 85);
+}
+
+void TestMathFunctions::testSinPi()
+{
+    testUnaryFunction<4>(config, "-DOUT=float16 -DIN=float16 -DFUNC=sinpi",
+        [](float a) -> float { return std::sin(static_cast<float>(M_PI) * a); },
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestMathFunctions::testSqrt()
 {
     testUnaryFunction<4>(config, "-DOUT=float16 -DIN=float16 -DFUNC=sqrt", sqrtf,
-        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), 0);
 }
 
 void TestMathFunctions::testTan()
