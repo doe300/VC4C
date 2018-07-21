@@ -28,7 +28,7 @@ namespace vc4c
             USED_TOGETHER = 2
         };
 
-        struct LocalUsage
+        struct LocalUsage : private NonCopyable
         {
             // the first use of the local
             InstructionWalker firstOccurrence;

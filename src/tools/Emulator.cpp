@@ -1146,8 +1146,8 @@ static std::pair<Value, bool> toInputValue(
     throw CompilationError(CompilationStep::GENERAL, "Unhandled ALU input");
 }
 
-static std::pair<Value, bool> applyVectorRotation(
-    std::pair<Value, bool>&& input, Signaling sig, InputMultiplex mux1, InputMultiplex mux2, Address regB)
+static std::pair<Value, bool> applyVectorRotation(std::pair<Value, bool>&& input, Signaling sig, InputMultiplex mux1,
+    InputMultiplex mux2, Address regB, Registers& registers)
 {
     if(!input.second)
         // if we stall, do not rotate
@@ -1161,15 +1161,26 @@ static std::pair<Value, bool> applyVectorRotation(
     if(mux1 == InputMultiplex::REGB || mux2 == InputMultiplex::REGB)
         throw CompilationError(CompilationStep::GENERAL, "Cannot read vector rotation offset", input.first.to_string());
 
-    if(offset == VECTOR_ROTATE_R5)
-        throw CompilationError(CompilationStep::GENERAL, "Rotating by r5 is not implemented yet!");
-
     if(input.first.hasType(ValueType::LITERAL) ||
         (input.first.hasType(ValueType::CONTAINER) && input.first.container.isAllSame()))
         return input;
 
+    unsigned char distance;
+    if(offset == VECTOR_ROTATE_R5)
+    {
+        //"Mul output vector rotation is taken from accumulator r5, element 0, bits [3:0]"
+        // - Broadcom Specification, page 30
+        Value tmp = registers.readRegister(REG_ACC5).first;
+        if(tmp.hasType(ValueType::CONTAINER))
+            distance = 16 - static_cast<uint8_t>(tmp.container.elements.at(0).getLiteralValue()->unsignedInt() & 0xF);
+        else
+            distance = 16 - static_cast<uint8_t>(tmp.getLiteralValue()->unsignedInt() & 0xF);
+    }
+    else
+        distance = 16 - offset.getRotationOffset().value();
+
     Value result(std::forward<Value>(input.first));
-    auto distance = 16 - offset.getRotationOffset().value();
+
     std::rotate(result.container.elements.begin(), result.container.elements.begin() + distance,
         result.container.elements.end());
 
@@ -1214,12 +1225,14 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
         std::tie(mulIn0, mulIn0NotStall) =
             applyVectorRotation(toInputValue(registers, aluInst->getMulMultiplexA(), aluInst->getInputA(),
                                     aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE),
-                aluInst->getSig(), aluInst->getMulMultiplexA(), aluInst->getMulMultiplexB(), aluInst->getInputB());
+                aluInst->getSig(), aluInst->getMulMultiplexA(), aluInst->getMulMultiplexB(), aluInst->getInputB(),
+                registers);
         if(mulCode.numOperands > 1)
             std::tie(mulIn1, mulIn1NotStall) =
                 applyVectorRotation(toInputValue(registers, aluInst->getMulMultiplexB(), aluInst->getInputA(),
                                         aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE),
-                    aluInst->getSig(), aluInst->getMulMultiplexA(), aluInst->getMulMultiplexB(), aluInst->getInputB());
+                    aluInst->getSig(), aluInst->getMulMultiplexA(), aluInst->getMulMultiplexB(), aluInst->getInputB(),
+                    registers);
 
         if(!mulIn0NotStall || !mulIn1NotStall)
         {

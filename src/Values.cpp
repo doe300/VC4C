@@ -90,9 +90,9 @@ std::string Register::to_string(bool specialNames, bool readAccess) const
             if(num == 37)
             {
                 if(file == RegisterFile::PHYSICAL_A)
-                    return "rep_quad";
+                    return "rep_quad|r5";
                 if(file == RegisterFile::PHYSICAL_B)
-                    return "rep_all";
+                    return "rep_all|r5";
             }
             if(num == 38)
                 return "irq";

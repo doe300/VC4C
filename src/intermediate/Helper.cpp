@@ -196,6 +196,42 @@ static bool checkIndicesNotUndefined(const ContainerValue& container, const unsi
     return true;
 }
 
+static InstructionWalker insertDynamicVectorShuffle(
+    InstructionWalker it, Method& method, const Value& destination, const Value& source, const Value& mask)
+{
+    // for each element, write rotation offset to element 0 of r5, rotate and insert into result vector
+    for(unsigned char i = 0; i < mask.type.getVectorWidth(); ++i)
+    {
+        Value offsetTmp0 = method.addNewLocal(TYPE_INT8, "%shuffle_offset");
+        Value offsetTmp1 = method.addNewLocal(TYPE_INT8, "%shuffle_offset");
+        Value resultTmp = method.addNewLocal(source.type, "%shuffle_tmp");
+        // Rotate into temporary, because of "An instruction that does a vector rotate by r5 must not immediately follow
+        // an instruction that writes to r5." - Broadcom Specification, page 37
+        it = insertVectorRotation(it, mask, Value(Literal(i), TYPE_INT8), offsetTmp0, Direction::DOWN);
+        // pos 3 -> 1 => rotate up by -2 (14), pos 1 -> 3 => rotate up by 2
+        it.emplace(new Operation(OP_SUB, offsetTmp1, Value(Literal(i), TYPE_INT8), offsetTmp0));
+        it.nextInBlock();
+        it = insertVectorRotation(it, source, offsetTmp1, resultTmp, Direction::UP);
+
+        if(i == 0)
+        {
+            // the first write to the element needs to unconditional, so the register allocator can find it
+            // also, the setting flags does not work for the first element
+            it.emplace(new MoveOperation(destination, resultTmp));
+        }
+        else
+        {
+            it.emplace(new Operation(OP_XOR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, Value(Literal(i), TYPE_INT8),
+                COND_ALWAYS, SetFlag::SET_FLAGS));
+            it.nextInBlock();
+            it.emplace(new MoveOperation(destination, resultTmp, COND_ZERO_SET));
+            it->addDecorations(InstructionDecorations::ELEMENT_INSERTION);
+        }
+        it.nextInBlock();
+    }
+    return it;
+}
+
 InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method& method, const Value& destination,
     const Value& source0, const Value& source1, const Value& mask)
 {
@@ -213,10 +249,25 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         return intermediate::insertReplication(it, source0, destination);
     }
     else if(!mask.hasType(ValueType::CONTAINER))
-        // TODO could at least support this for one vector (e.g. second one is undefined or the same as the first) by
-        // selecting (at run-time) the vector element and rotating
-        throw CompilationError(CompilationStep::GENERAL,
-            "Shuffling vectors with non-constant mask-layout is not supported yet", mask.to_string());
+    {
+        if(source1.isUndefined())
+            return insertDynamicVectorShuffle(it, method, destination, source0, mask);
+        // if we have both vectors, build one large vector by appending them
+        Value tmpInput = method.addNewLocal(source0.type.toVectorType(mask.type.getVectorWidth()), "%shuffle_input");
+        Value tmpSource1 = method.addNewLocal(source1.type.toVectorType(16), "%shuffle_result");
+        it.emplace(new MoveOperation(tmpInput, source0));
+        it.nextInBlock();
+        it = insertVectorRotation(
+            it, source1, Value(Literal(source0.type.getVectorWidth()), TYPE_INT8), tmpSource1, Direction::UP);
+        it.emplace(new Operation(
+            OP_SUB, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, Value(Literal(source0.type.getVectorWidth()), TYPE_INT8)));
+        it->setSetFlags(SetFlag::SET_FLAGS);
+        it.nextInBlock();
+        it.emplace(new MoveOperation(tmpInput, tmpSource1, COND_NEGATIVE_CLEAR));
+        it->addDecorations(InstructionDecorations::ELEMENT_INSERTION);
+        it.nextInBlock();
+        return insertDynamicVectorShuffle(it, method, destination, tmpInput, mask);
+    }
 
     // if all indices are ascending (correspond to the elements of source 0), we can simply copy it
     // if all indices point to the same, replicate this index over the vector
@@ -468,6 +519,7 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
         else if(subContainerType.isVectorType())
         {
             // takes the address of an element of the vector
+            // FIXME this does not handle negative numbers correctly, since they are cut off after 24 bit
             insertOperation(OP_MUL24, it, method, subOffset, index,
                 Value(Literal(subContainerType.getElementType().getPhysicalWidth()), TYPE_INT8));
             subContainerType = subContainerType.getElementType();

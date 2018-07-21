@@ -473,6 +473,12 @@ void GraphColoring::createGraph()
         {
             CPPLOG_LAZY(
                 logging::Level::DEBUG, log << "Local " << pair.first->name << " is never read!" << logging::endl);
+            // sanity check
+            if(!pair.first->getUsers(LocalUse::Type::READER).empty())
+            {
+                throw CompilationError(CompilationStep::LABEL_REGISTER_MAPPING,
+                    "Local is being read, but first and last occurrence are the same", pair.first->to_string());
+            }
             node.possibleFiles = RegisterFile::NONE;
             node.initialFile = RegisterFile::NONE;
             // any local which is never used is added to the colored graph
