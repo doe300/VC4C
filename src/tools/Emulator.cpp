@@ -839,6 +839,9 @@ void VPM::setDMAWriteAddress(const Value& val)
 
     for(uint32_t i = 0; i < sizes.first; ++i)
     {
+        if(address + typeSize * sizes.second >= memory.getMaximumAddress())
+            throw CompilationError(
+                CompilationStep::GENERAL, "Memory address is out of bounds, consider using larger buffer");
         memcpy(reinterpret_cast<uint8_t*>(memory.getWordAddress(address)) + address % sizeof(Word),
             reinterpret_cast<uint8_t*>(&cache.at(vpmBaseAddress.first).at(vpmBaseAddress.second)) + byteOffset,
             typeSize * sizes.second);

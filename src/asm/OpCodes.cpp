@@ -354,6 +354,7 @@ Optional<Value> Pack::pack(const Value& val) const
     case PACK_32_16B_S:
         return NO_VALUE;
     case PACK_32_32:
+        // TODO this depends on the overflow/carry flags (to determine overflow and then saturate)
         return Value(Literal(saturate<int32_t>(val.getLiteralValue()->signedInt())), val.type);
     case PACK_32_8888:
         return Value(
@@ -553,7 +554,11 @@ Optional<Value> OpCode::calculate(const Optional<Value>& firstOperand, const Opt
     if(*this == OP_MIN)
         return Value(Literal(std::min(firstLit.signedInt(), secondLit.signedInt())), resultType);
     if(*this == OP_MUL24)
+    {
+        if(((firstLit.unsignedInt() & 0xFF000000) != 0) || ((secondLit.unsignedInt() & 0xFF000000) != 0))
+            throw CompilationError(CompilationStep::GENERAL, "Mul24 with high byte set will discard the bits");
         return Value(Literal((firstLit.unsignedInt() & 0xFFFFFF) * (secondLit.unsignedInt() & 0xFFFFFF)), resultType);
+    }
     if(*this == OP_NOT)
         return Value(Literal(~firstLit.unsignedInt()), resultType);
     if(*this == OP_OR)

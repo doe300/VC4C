@@ -519,9 +519,18 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
         else if(subContainerType.isVectorType())
         {
             // takes the address of an element of the vector
-            // FIXME this does not handle negative numbers correctly, since they are cut off after 24 bit
-            insertOperation(OP_MUL24, it, method, subOffset, index,
-                Value(Literal(subContainerType.getElementType().getPhysicalWidth()), TYPE_INT8));
+            if(index.getLiteralValue())
+            {
+                subOffset = Value(Literal(index.getLiteralValue()->signedInt() *
+                                      subContainerType.getElementType().getPhysicalWidth()),
+                    TYPE_INT32);
+            }
+            else
+            {
+                // FIXME this does not handle negative numbers correctly, since they are cut off after 24 bit
+                insertOperation(OP_MUL24, it, method, subOffset, index,
+                    Value(Literal(subContainerType.getElementType().getPhysicalWidth()), TYPE_INT8));
+            }
             subContainerType = subContainerType.getElementType();
         }
         else
