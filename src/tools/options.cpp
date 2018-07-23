@@ -8,6 +8,7 @@
 
 #include "tools.h"
 
+#include "../helper.h"
 #include "../optimization/Optimizer.h"
 #include "log.h"
 
@@ -20,6 +21,42 @@ static auto availableOptimizations = vc4c::optimizations::Optimizer::getPasses(O
 
 bool tools::parseConfigurationParameter(Configuration& config, const std::string& arg)
 {
+    if(arg == "-cl-opt-disable")
+    {
+        config.optimizationLevel = OptimizationLevel::NONE;
+        return true;
+    }
+    if(arg == "-cl-mad-enable")
+    {
+        config.mathType = add_flag(config.mathType, MathType::MAD_ENABLED);
+        return true;
+    }
+    if(arg == "-cl-no-signed-zeros")
+    {
+        config.mathType = add_flag(config.mathType, MathType::NO_SIGNED_ZEROES);
+        return true;
+    }
+    if(arg == "-cl-unsafe-math-optimizations")
+    {
+        config.mathType = add_flag(config.mathType, MathType::UNSAFE_MATH);
+        return true;
+    }
+    if(arg == "-cl-finite-math-only")
+    {
+        config.mathType = add_flag(config.mathType, MathType::FINITE_MATH);
+        return true;
+    }
+    if(arg == "-cl-fast-relaxed-math")
+    {
+        config.mathType = add_flag(config.mathType, MathType::FAST_RELAXED_MATH);
+        return true;
+    }
+    if(arg.find("-cl-std=") == 0)
+    {
+        if(arg.find("2.") != std::string::npos)
+            throw CompilationError(
+                CompilationStep::GENERAL, "Setting OpenCL standard to a value higher than 1.2 is not supported", arg);
+    }
     if(arg == "--hex")
     {
         config.outputMode = OutputMode::HEX;
@@ -33,21 +70,6 @@ bool tools::parseConfigurationParameter(Configuration& config, const std::string
     if(arg == "--asm")
     {
         config.outputMode = OutputMode::ASSEMBLER;
-        return true;
-    }
-    if(arg == "--fast-math")
-    {
-        config.mathType = MathType::FAST;
-        return true;
-    }
-    if(arg == "--exact-math")
-    {
-        config.mathType = MathType::EXACT;
-        return true;
-    }
-    if(arg == "--strict-math")
-    {
-        config.mathType = MathType::STRICT;
         return true;
     }
     if(arg == "--kernel-info")

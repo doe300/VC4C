@@ -13,11 +13,23 @@
 
 namespace vc4c
 {
+    /*
+     * Bitfield containing the enabled math optimizations
+     */
     enum class MathType
     {
-        FAST = 0,
-        EXACT = 1,
-        STRICT = 2
+        // no assumptions performing math operations
+        EXACT = 0x0,
+        // enable mad for a * b + c to allow for less accurate results
+        MAD_ENABLED = 0x1,
+        // treat +0.0 and -0.0 as same
+        NO_SIGNED_ZEROES = 0x2,
+        // assume all arguments and results to be valid, includes MAD_ENABLE and NO_SIGNED_ZEROES
+        UNSAFE_MATH = 0x7,
+        // assume neither arguments nor results can be NaN /+-Inf
+        FINITE_MATH = 0x8,
+        // enable __FAST_RELAXED_MATH__macro in program, includes UNSAFE_MATH and FINITE_MATH
+        FAST_RELAXED_MATH = 0x1F
     };
 
     /*
@@ -155,7 +167,7 @@ namespace vc4c
      */
     struct Configuration
     {
-        MathType mathType = MathType::FAST;
+        MathType mathType = MathType::EXACT;
         /*
          * The output-mode to write the generated code in
          */

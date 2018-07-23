@@ -170,7 +170,7 @@ static void runOptimizationPasses(const Module& module, Method& method, const Co
         }
     }
     index = startIndex + repeatingPasses.size() * 100;
-    if(iterationsLeft == 0)
+    if(iterationsLeft == 0 && config.additionalOptions.maxOptimizationIterations > 0)
         logging::warn()
             << "Stopped optimizing, because the iteration limit was reached."
             << " This indicates either an error in the optimizations or that there is more optimizations to be done!"
