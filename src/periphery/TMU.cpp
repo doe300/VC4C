@@ -218,7 +218,8 @@ InstructionWalker periphery::insertReadTMU(Method& method, InstructionWalker it,
 
     // 1. set the UNIFORM pointer to point to the configurations for the image about to be read
     it.emplace(new intermediate::MoveOperation(
-        Value(REG_UNIFORM_ADDRESS, TYPE_INT32.toVectorType(16).toPointerType()), imageConfig->createReference()));
+        Value(REG_UNIFORM_ADDRESS, TYPE_INT32.toVectorType(16).toPointerType(AddressSpace::GLOBAL)),
+        imageConfig->createReference()));
     it.nextInBlock();
     // 2. need to wait 2 instructions for UNIFORM-pointer to be changed
     it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_UNIFORM));

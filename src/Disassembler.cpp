@@ -79,7 +79,8 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Refere
 
         const DataType type =
             TYPE_INT32.toArrayType(static_cast<unsigned>(moduleInfo.getGlobalDataSize().getValue()) * 2);
-        globals.emplace_back("globalData", type.toPointerType(), Value(ContainerValue(), type), false);
+        globals.emplace_back(
+            "globalData", type.toPointerType(AddressSpace::GLOBAL), Value(ContainerValue(), type), false);
 
         auto& elements = globals.begin()->value.container.elements;
         elements.reserve(tmp.size());

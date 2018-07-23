@@ -38,6 +38,23 @@ namespace vc4c
         virtual std::string getTypeName() const = 0;
     };
 
+    /*
+     * The address space the memory-location of a pointer-type lies in.
+     */
+    enum class AddressSpace
+    {
+        // the generic address space (SPIR-V StorageClassGeneric)
+        GENERIC = 0,
+        // private memory, only for the single execution, OpenCL defaults to this (SPIR-V StorageClassFunction)
+        PRIVATE = 1,
+        // global memory pool, shared between all kernel executions (SPIR-V StorageClassCrossWorkgroup)
+        GLOBAL = 2,
+        // constant memory, usually as part of the binary (global data segment) (SPIR-V StorageClassUniformConstant)
+        CONSTANT = 3,
+        // local memory, shared between all work-items in the work-group (SPIR-V StorageClassWorkgroup)
+        LOCAL = 4
+    };
+
     struct PointerType;
     struct ArrayType;
     struct StructType;
@@ -128,7 +145,7 @@ namespace vc4c
         /*
          * Creates a new type representing a pointer-type to this type.
          */
-        DataType toPointerType() const;
+        DataType toPointerType(AddressSpace addressSpace = AddressSpace::PRIVATE) const;
         /*
          * Creates a new vector-type with the given vector-width and the same element-type as this type
          *
@@ -279,23 +296,6 @@ namespace vc4c
      * Data-type for OpenCL events, equivalent to 32-bit integers
      */
     static const DataType TYPE_EVENT = TYPE_INT32;
-
-    /*
-     * The address space the memory-location of a pointer-type lies in.
-     */
-    enum class AddressSpace
-    {
-        // the generic address space (SPIR-V StorageClassGeneric)
-        GENERIC = 0,
-        // private memory, only for the single execution, OpenCL defaults to this (SPIR-V StorageClassFunction)
-        PRIVATE = 1,
-        // global memory pool, shared between all kernel executions (SPIR-V StorageClassCrossWorkgroup)
-        GLOBAL = 2,
-        // constant memory, usually as part of the binary (global data segment) (SPIR-V StorageClassUniformConstant)
-        CONSTANT = 3,
-        // local memory, shared between all work-items in the work-group (SPIR-V StorageClassWorkgroup)
-        LOCAL = 4
-    };
 
     /*
      * Additional information for pointer-type

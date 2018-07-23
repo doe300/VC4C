@@ -41,7 +41,7 @@ Global* intermediate::reserveImageConfiguration(Module& module, Parameter& image
                      << " UNIFORMs for the image-configuration of " << image.to_string() << logging::endl;
     auto it = module.globalData.emplace(module.globalData.end(),
         Global(ImageType::toImageConfigurationName(image.name),
-            TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS).toPointerType(),
+            TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS).toPointerType(AddressSpace::GLOBAL),
             Value(Literal(0u), TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS)), false));
     return &(*it);
 }
@@ -52,7 +52,7 @@ static InstructionWalker insertLoadImageConfig(
     const Global* imageConfig = method.findGlobal(ImageType::toImageConfigurationName(image.local->name));
     if(imageConfig == nullptr)
         throw CompilationError(CompilationStep::GENERAL, "Image-configuration is not yet reserved", image.to_string());
-    const Value addrTemp = method.addNewLocal(TYPE_INT32.toPointerType(), "%image_config");
+    const Value addrTemp = method.addNewLocal(TYPE_INT32.toPointerType(AddressSpace::GLOBAL), "%image_config");
     it.emplace(new Operation(OP_ADD, addrTemp, imageConfig->createReference(), offset));
     it.nextInBlock();
     it = periphery::insertReadVectorFromTMU(method, it, dest, addrTemp);

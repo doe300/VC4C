@@ -227,9 +227,9 @@ DataType DataType::getElementType(const int index) const
     return DataType{bitWidth, 1, isFloatingPoint};
 }
 
-DataType DataType::toPointerType() const
+DataType DataType::toPointerType(AddressSpace addressSpace) const
 {
-    return DataType(new PointerType(*this));
+    return DataType(new PointerType(*this, addressSpace));
 }
 
 DataType DataType::toVectorType(unsigned char vectorWidth) const

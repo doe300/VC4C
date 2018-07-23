@@ -526,9 +526,7 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
     }
     if(type->isPointerTy())
     {
-        DataType pointerType = toDataType(type->getPointerElementType()).toPointerType();
-        pointerType.getPointerType().value()->addressSpace = toAddressSpace(type->getPointerAddressSpace());
-        return pointerType;
+        return toDataType(type->getPointerElementType()).toPointerType(toAddressSpace(type->getPointerAddressSpace()));
     }
     dumpLLVM(type);
     throw CompilationError(CompilationStep::PARSER, "Unknown LLVM type", std::to_string(type->getTypeID()));

@@ -587,17 +587,21 @@ static void vectorizeInstruction(InstructionWalker it,
         if(out.type.isPointerType())
             // TODO this is only correct if the elements are located in one block (base+0, base+1, base+2...). Is this
             // guaranteed?
-            out.type = out.type.getPointerType().value()->elementType.toVectorType(vectorWidth).toPointerType();
+            out.type = out.type.getPointerType()
+                           .value()
+                           ->elementType.toVectorType(vectorWidth)
+                           .toPointerType(out.type.getPointerType().value()->addressSpace);
         else
             out.type = out.type.toVectorType(vectorWidth);
         if(out.hasType(ValueType::LOCAL))
         {
             if(out.local->type.isPointerType())
                 // TODO see above
-                const_cast<DataType&>(out.local->type) = out.local->type.getPointerType()
-                                                             .value()
-                                                             ->elementType.toVectorType(out.type.getVectorWidth())
-                                                             .toPointerType();
+                const_cast<DataType&>(out.local->type) =
+                    out.local->type.getPointerType()
+                        .value()
+                        ->elementType.toVectorType(out.type.getVectorWidth())
+                        .toPointerType(out.local->type.getPointerType().value()->addressSpace);
             else
                 const_cast<DataType&>(out.local->type) = out.local->type.toVectorType(out.type.getVectorWidth());
             scheduleForVectorization(out.local, openInstructions, loop);
