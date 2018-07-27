@@ -498,8 +498,10 @@ VectorRotation::VectorRotation(
 
 std::string VectorRotation::to_string() const
 {
-    return (getOutput()->to_string(true) + " = ") + (getSource().to_string() + " ") +
-        getOffset().immediate.to_string() + createAdditionalInfoString();
+    // this is only for display purposes, the rotation register is handled correctly
+    SmallImmediate offset = getOffset().hasRegister(REG_ACC5) ? VECTOR_ROTATE_R5 : getOffset().immediate;
+    return (getOutput()->to_string(true) + " = ") + (getSource().to_string() + " ") + offset.to_string() +
+        createAdditionalInfoString();
 }
 
 IntermediateInstruction* VectorRotation::copyFor(Method& method, const std::string& localPrefix) const

@@ -9,6 +9,7 @@
 #include "../InstructionWalker.h"
 #include "../Module.h"
 #include "../Profiler.h"
+#include "../intermediate/Helper.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../periphery/TMU.h"
 #include "../periphery/VPM.h"
@@ -790,23 +791,17 @@ static InstructionWalker mapToMemoryAccessInstructions(Method& method, Instructi
     return it;
 }
 
-/*
- * Memory that is written before it is read needs to be loaded via VPM,
- * since otherwise the caching results in TMU loading the old value.
- */
-static bool checkMemoryReadIsAlsoWritten(const Value& address)
+static bool isMemoryOnlyRead(const Local* local)
 {
-    // TODO this does not regard the same address value calculated by using different locals!
-    if(!address.hasType(ValueType::LOCAL))
-        return false;
-    for(const auto& pair : address.local->getUsers())
-    {
-        if(pair.second.readsLocal() && pair.first->writesRegister(REG_VPM_IO))
-            return true;
-        if(pair.second.writesLocal() && dynamic_cast<const intermediate::MemoryInstruction*>(pair.first) != nullptr)
-            return true;
-    }
+    auto base = local->getBase(true);
+    if(base->is<Parameter>() && has_flag(base->as<const Parameter>()->decorations, ParameterDecorations::READ_ONLY))
+        return true;
+    if(base->is<Global>() && base->as<Global>()->isConstant)
+        return true;
+    if(base->type.getPointerType() && base->type.getPointerType().value()->addressSpace == AddressSpace::CONSTANT)
+        return true;
 
+    // TODO also check for no actual writes. Need to heed index-calculation from base!
     return false;
 }
 
@@ -831,8 +826,9 @@ static void generateStandardMemoryAccessInstructions(
                 logging::debug() << "Generating memory access which cannot be lowered into VPM: " << it->to_string()
                                  << logging::endl;
             walkerIt = memoryInstructions.erase(walkerIt);
-            it = mapToMemoryAccessInstructions(method, it, nullptr, nullptr,
-                checkMemoryReadIsAlsoWritten(it.get<const MemoryInstruction>()->getSource()));
+            auto memoryLocals = it.get<const MemoryInstruction>()->getMemoryAreas();
+            it = mapToMemoryAccessInstructions(
+                method, it, nullptr, nullptr, !std::all_of(memoryLocals.begin(), memoryLocals.end(), isMemoryOnlyRead));
             affectedBlocks.emplace(it.getBasicBlock());
         }
         else
@@ -874,6 +870,7 @@ static void lowerStackIntoVPM(Method& method, FastSet<InstructionWalker>& memory
             }
             if(false) // TODO doesn't heed in-stack-offset
             {
+                // TODO remove stack allocation objects, to save memory in global buffer
                 if(sourceArea == nullptr && mem->getSource().hasType(ValueType::LOCAL) &&
                     mem->getSource().local->getBase(true)->is<StackAllocation>())
                 {
@@ -994,6 +991,12 @@ static Optional<Value> getConstantValue(const MemoryInstruction* mem)
     else if(global->value.isUndefined())
         // all entries are undefined
         return Value(global->value.type.getElementType());
+    else if(global->value.hasType(ValueType::CONTAINER) && global->value.container.isElementNumber())
+        return ELEMENT_NUMBER_REGISTER;
+    // TODO enable when isAllSame() supports non-literal elements
+    // else if(global->value.hasType(ValueType::CONTAINER) && global->value.container.isAllSame())
+    // all entries are the same
+    // return global->value.container.elements.at(0);
     return NO_VALUE;
 }
 
@@ -1031,16 +1034,203 @@ static void lowerGlobalsToConstants(Method& method, FastSet<InstructionWalker>& 
                                  << logging::endl;
             }
             else
-                // generate simply access to global data residing in memory
-                mapToMemoryAccessInstructions(method, it);
+            {
+                // move constant into register, even if index is not known (as long as constant and index fit in 16
+                // elements of register)
+                const Local* constant = mem->getSource().local->getBase(true);
+                const auto& constantType = constant->type.getPointerType().value()->elementType;
+                auto arrayType = constantType.getArrayType();
+                if(arrayType && arrayType.value()->size <= NATIVE_VECTOR_SIZE &&
+                    arrayType.value()->elementType.isScalarType())
+                {
+                    logging::debug() << "Moving constant memory into register: " << constant->to_string(true)
+                                     << logging::endl;
+                    logging::debug() << "Replacing loading of constant memory with indexing of register elements: "
+                                     << it->to_string() << logging::endl;
+                    auto tmp = method.addNewLocal(
+                        arrayType.value()->elementType.toVectorType(static_cast<uint8_t>(arrayType.value()->size)));
+                    auto tmpIndex = method.addNewLocal(tmp.type.toPointerType());
+
+                    it.emplace(new MoveOperation(tmp, constant->as<const Global>()->value));
+                    it.nextInBlock();
+                    // TODO check whether index in range (guaranteed) and use index here
+                    it.emplace(new Operation(OP_SUB, tmpIndex, *mem->getArgument(0), constant->createReference()));
+                    it.nextInBlock();
+                    it = insertVectorExtraction(it, method, tmp, tmpIndex, mem->getOutput().value());
+                    it.erase();
+                }
+                else
+                    // generate simply access to global data residing in memory
+                    mapToMemoryAccessInstructions(method, it);
+            }
         }
         else
             ++walkerIt;
     }
 }
 
+enum class MemoryType
+{
+    // lower the value into a register and replace all loads/stores with moves
+    QPU_REGISTER,
+    // store in VPM in extra space per QPU!!
+    VPM_PER_QPU,
+    // keep in RAM/global data segment, read via TMU
+    RAM_LOAD_TMU,
+    // keep in RAM/global data segment, access via VPM
+    RAM_READ_WRITE_VPM,
+    // store in VPM, QPUs share access to common data
+    VPM_SHARED_ACCESS
+};
+
+// map is local -> preferred + fall-back
+static FastMap<const Local*, std::pair<MemoryType, MemoryType>> determineMemoryAccess(Method& method)
+{
+    logging::debug() << "Determining memory access for kernel: " << method.name << logging::endl;
+    FastMap<const Local*, std::pair<MemoryType, MemoryType>> mapping;
+    for(const auto& param : method.parameters)
+    {
+        if(!param.type.isPointerType())
+            continue;
+        const auto* pointerType = param.type.getPointerType().value();
+        if(pointerType->addressSpace == AddressSpace::CONSTANT)
+        {
+            logging::debug() << "Constant parameter '" << param.to_string() << "' will be read from RAM via TMU"
+                             << logging::endl;
+            mapping.emplace(&param, std::make_pair(MemoryType::RAM_LOAD_TMU, MemoryType::RAM_LOAD_TMU));
+        }
+        else if(pointerType->addressSpace == AddressSpace::GLOBAL)
+        {
+            if(isMemoryOnlyRead(&param))
+            {
+                logging::debug() << "Global parameter '" << param.to_string()
+                                 << "' without any write access will be read from RAM via TMU" << logging::endl;
+                mapping.emplace(&param, std::make_pair(MemoryType::RAM_LOAD_TMU, MemoryType::RAM_LOAD_TMU));
+            }
+            else
+            {
+                logging::debug() << "Global parameter '" << param.to_string()
+                                 << "' which is written to will be stored in RAM and accessed via VPM" << logging::endl;
+                mapping.emplace(&param, std::make_pair(MemoryType::RAM_READ_WRITE_VPM, MemoryType::RAM_READ_WRITE_VPM));
+            }
+        }
+        else if(pointerType->addressSpace == AddressSpace::LOCAL)
+        {
+            // TODO if last access index is known and fits into VPM, set for VPM-or-RAM
+            logging::debug() << "Local parameter '" << param.to_string()
+                             << "' will be stored in RAM and accessed via VPM" << logging::endl;
+            mapping.emplace(&param, std::make_pair(MemoryType::RAM_READ_WRITE_VPM, MemoryType::RAM_READ_WRITE_VPM));
+        }
+        else
+            throw CompilationError(CompilationStep::NORMALIZER, "Invalid address space for pointer parameter",
+                std::to_string(static_cast<int>(pointerType->addressSpace)));
+    }
+
+    InstructionWalker it = method.walkAllInstructions();
+    while(!it.isEndOfMethod())
+    {
+        if(it.has<MemoryInstruction>())
+        {
+            for(const auto local : it.get<MemoryInstruction>()->getMemoryAreas())
+            {
+                if(mapping.find(local) != mapping.end())
+                    // local was already processed
+                    continue;
+                if(local->is<StackAllocation>())
+                {
+                    if(local->type.isSimpleType())
+                    {
+                        logging::debug() << "Small stack value '" << local->to_string()
+                                         << "' will be stored in a register" << logging::endl;
+                        mapping.emplace(local, std::make_pair(MemoryType::QPU_REGISTER, MemoryType::QPU_REGISTER));
+                    }
+                    else
+                    {
+                        logging::debug() << "Stack value '" << local->to_string() << "' will be stored in VPM (per QPU)"
+                                         << logging::endl;
+                        mapping.emplace(local, std::make_pair(MemoryType::VPM_PER_QPU, MemoryType::VPM_PER_QPU));
+                    }
+                }
+                else if(local->is<Global>())
+                {
+                    if(isMemoryOnlyRead(local))
+                    {
+                        // global buffer
+                        const auto memInstr = it.get<const MemoryInstruction>();
+                        if(memInstr->readsLocal(local) && getConstantValue(memInstr))
+                        {
+                            logging::debug() << "Constant buffer '" << local->to_string()
+                                             << "' will be stored in a register " << logging::endl;
+                            mapping.emplace(local, std::make_pair(MemoryType::QPU_REGISTER, MemoryType::RAM_LOAD_TMU));
+                        }
+                        else
+                        {
+                            logging::debug() << "Constant buffer '" << local->to_string()
+                                             << "' will be read from RAM via TMU" << logging::endl;
+                            mapping.emplace(local, std::make_pair(MemoryType::RAM_LOAD_TMU, MemoryType::RAM_LOAD_TMU));
+                        }
+                    }
+                    else
+                    {
+                        // local buffer
+                        logging::debug() << "Local buffer '" << local->to_string()
+                                         << "' will be stored in VPM (with fall-back to RAM via VPM)" << logging::endl;
+                        mapping.emplace(
+                            local, std::make_pair(MemoryType::VPM_SHARED_ACCESS, MemoryType::RAM_READ_WRITE_VPM));
+                    }
+                }
+                else
+                    // parameters MUST be handled before and there is no other type of memory objects
+                    throw CompilationError(
+                        CompilationStep::NORMALIZER, "Invalid local type for memory area", local->to_string());
+            }
+        }
+        it.nextInMethod();
+    }
+
+    return mapping;
+}
+
 void normalization::mapMemoryAccess(const Module& module, Method& method, const Configuration& config)
 {
+    /*
+     * Matrix of memory types and storage locations:
+     *
+     *           | global | local | private | constant
+     * buffer    |   -    |VPM/GD | QPU/VPM | QPU/GD
+     * parameter |  RAM   |RAM/(*)|    -    |   RAM
+     *
+     * buffer is both inside and outside of function scope (where allowed)
+     * - : is not allowed by OpenCL
+     * (*) could lower into VPM if the highest index accessed is known and fits?
+     * GD: global data segment of kernel buffer
+     * RAM: load via TMU if possible (not written to), otherwise use VPM
+     *
+     * Sources:
+     * https://stackoverflow.com/questions/22471466/why-program-global-scope-variables-must-be-constant#22474119
+     * https://stackoverflow.com/questions/17431941/how-to-use-arrays-in-program-global-scope-in-opencl
+     */
+    /*
+     * TODO rewrite:
+     * 1. lower global constants (and effectively constant globals, when never written?) to loading constant values
+     * 1.1 lower small enough private buffer to registers
+     * 2. determine for all memory locals (local memory, global memory, stack), whether to put them in VPM or memory
+     *    priority to move into VPM: stack > local, since for local memory the host allocates a buffer
+     * 2.1 keep read-only global memory in RAM, load via TMU
+     *     keep read-write global memory in RAM, load/store via VPM
+     * 2.2 move private memory into VPM
+     * 2.3 move local memory into VPM if the size (maximum access index) fits into cache
+     *     keep read-only local memory in RAM/global data segment, load via TMU
+     *     keep read-write local memory in RAM/global data segment, load/store via VPM
+     * 2.4 keep read-only constant memory in RAM/global data segment, load via TMU
+     * 2.x log classification and reasons
+     * 3. map memory access to instructions according to location of source and destination
+     * 3.1 for memory located in RAM, try to group/queue reads/writes
+     * 3.2 also try to use VPM as cache (e.g. only write back into memory when VPM cache area full, prefetch into VPM)
+     * 4. final pass which actually converts VPM cache
+     */
+    determineMemoryAccess(method);
+    // TODO set ParameterDecorations ::INPUT and ::OUTPUT on insertion of reads/writes
     /*
      * Goals:
      * 1. map all memory-accesses correctly, so all QPUs accessing the same memory see the same/expected values
@@ -1084,10 +1274,22 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
                 {
                     auto nextIt = it.copy().nextInBlock();
                     auto nextMemInst = nextIt.get<MemoryInstruction>();
-                    if(!nextIt.isEndOfBlock() && nextMemInst != nullptr && nextMemInst->op == MemoryOperation::WRITE &&
-                        memInst->getDestination().getSingleWriter() == nextMemInst &&
+                    /*
+                     * replace read and write of value to memory copy to a) optimize for speed and b) also support types
+                     * > 32 bit, if following conditions are given
+                     * - the local is only written in the load instruction
+                     * - the local is only read in the store instruction
+                     * - the byte-size of the memory loaded and stored is the same
+                     */
+                    // FIXME this might not be correct when copying from/to stack!
+                    if(false && !nextIt.isEndOfBlock() && nextMemInst != nullptr &&
+                        nextMemInst->op == MemoryOperation::WRITE && !memInst->hasConditionalExecution() &&
+                        !nextMemInst->hasConditionalExecution() &&
                         nextMemInst->getSource() == memInst->getDestination() &&
-                        nextMemInst->getNumEntries() == memInst->getNumEntries())
+                        memInst->getDestination().getSingleWriter() == memInst &&
+                        memInst->getDestination().local->getUsers(LocalUse::Type::READER).size() == 1 &&
+                        nextMemInst->getDestinationElementType().getPhysicalWidth() ==
+                            memInst->getSourceElementType().getPhysicalWidth())
                     {
                         logging::debug()
                             << "Found reading of memory where the sole usage writes the value back into memory: "

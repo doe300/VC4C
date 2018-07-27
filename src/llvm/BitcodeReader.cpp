@@ -541,6 +541,8 @@ static ParameterDecorations toParameterDecorations(const llvm::Argument& arg)
         deco = add_flag(deco, ParameterDecorations::ZERO_EXTEND);
     if(arg.hasNoAliasAttr())
         deco = add_flag(deco, ParameterDecorations::RESTRICT);
+    if(arg.onlyReadsMemory())
+        deco = add_flag(deco, ParameterDecorations::READ_ONLY);
     return deco;
 }
 

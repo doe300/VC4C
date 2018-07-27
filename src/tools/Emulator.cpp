@@ -353,7 +353,7 @@ void Registers::writeStorageRegister(Register reg, const Value& val, std::bitset
         storageRegisters.emplace(reg, val);
     else
         storageRegisters.at(reg) = toStorageValue(storageRegisters.at(reg), getActualValue(val), elementMask);
-    if(reg.num == REG_REPLICATE_ALL.num)
+    if(reg.num == REG_REPLICATE_ALL.num && elementMask.any())
     {
         // is not actually stored in the physical file A or B
         storageRegisters.erase(reg);

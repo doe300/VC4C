@@ -12,9 +12,28 @@
 
 #include <algorithm>
 #include <cmath>
+#include <unordered_map>
 
 using namespace vc4c;
 using namespace vc4c::normalization;
+
+static Optional<Value> getMostCommonElement(const std::vector<Value>& container)
+{
+    FastMap<Value, unsigned> histogram;
+    for(const auto& val : container)
+    {
+        ++histogram[val];
+    }
+
+    auto maxVal = histogram.begin();
+    for(auto it = histogram.begin(); it != histogram.end(); ++it)
+    {
+        if(it->second > maxVal->second)
+            maxVal = it;
+    }
+    // if all are equal, default to first element
+    return maxVal->second == 1 ? NO_VALUE : Optional<Value>{maxVal->first};
+}
 
 static InstructionWalker copyVector(Method& method, InstructionWalker it, const Value& out, const Value& in)
 {
@@ -51,19 +70,35 @@ static InstructionWalker copyVector(Method& method, InstructionWalker it, const 
         throw CompilationError(CompilationStep::OPTIMIZER, "Input vector has invalid type", in.to_string(false, true));
     }
 
-    for(uint8_t i = 0; i < in.type.getVectorWidth(); ++i)
+    // the input could be an array lowered into register, so the type is not required to be a vector
+    auto typeWidth = in.type.getArrayType() ? in.type.getArrayType().value()->size : in.type.getVectorWidth();
+    // copy first element without test for flags, so the register allocator finds an unconditional write of the
+    // container
+    it.emplace(new intermediate::MoveOperation(realOut, in.getCompoundPart(0)));
+    it.nextInBlock();
+    // optimize this by looking for the most common value and initializing all (but the first) elements with this one
+    auto maxOccurrence = getMostCommonElement(in.container.elements);
+    if(maxOccurrence && maxOccurrence.value() != in.getCompoundPart(0))
     {
-        // copy first element without test for flags, so the register allocator finds an unconditional write of the
-        // container  1) set flags for element i
-        if(i > 0)
-        {
-            it.emplace(new intermediate::Operation(OP_XOR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER,
-                Value(SmallImmediate(i), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
-            it.nextInBlock();
-        }
+        it.emplace(new intermediate::Operation(
+            OP_SUB, NOP_REGISTER, INT_ZERO, ELEMENT_NUMBER_REGISTER, COND_ALWAYS, SetFlag::SET_FLAGS));
+        it.nextInBlock();
+        it.emplace(new intermediate::MoveOperation(realOut, maxOccurrence.value(), COND_NEGATIVE_SET));
+        it->addDecorations(intermediate::InstructionDecorations::ELEMENT_INSERTION);
+        it.nextInBlock();
+    }
+    for(uint8_t i = 0; i < typeWidth; ++i)
+    {
+        if(in.getCompoundPart(i) == maxOccurrence.value())
+            continue;
+        // 1) set flags for element i
+        it.emplace(new intermediate::Operation(OP_XOR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER,
+            Value(SmallImmediate(i), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
+        it.nextInBlock();
+
         // 2) copy element i of the input vector to the output
-        it.emplace(
-            new intermediate::MoveOperation(realOut, in.getCompoundPart(i), i == 0 ? COND_ALWAYS : COND_ZERO_SET));
+        it.emplace(new intermediate::MoveOperation(realOut, in.getCompoundPart(i), COND_ZERO_SET));
+        it->addDecorations(intermediate::InstructionDecorations::ELEMENT_INSERTION);
         it.nextInBlock();
     }
     if(realOut != out)
@@ -109,7 +144,16 @@ InstructionWalker normalization::handleContainer(
         // In which case, a simple copy suffices?? At least, we don't need to set the other elements
     }
     // jump from previous block to next one intended, so no "else"
-    if(move != nullptr && move->getSource().hasType(ValueType::CONTAINER))
+    // if the source is a container and the offset is a literal (already applied above), remove the rotation (see move
+    // branch) if the source is a container and the offset is no literal, extract the container, but keep rotation
+    if(rot != nullptr && rot->getSource().hasType(ValueType::CONTAINER) && !(rot->getOffset().isLiteralValue()))
+    {
+        logging::debug() << "Rewriting rotation from container " << rot->to_string() << logging::endl;
+        auto tmp = method.addNewLocal(rot->getSource().type);
+        it = copyVector(method, it, tmp, move->getSource());
+        it->setArgument(0, tmp);
+    }
+    else if(move != nullptr && move->getSource().hasType(ValueType::CONTAINER))
     {
         if(!move->getSource().type.isPointerType())
         {

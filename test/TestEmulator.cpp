@@ -41,6 +41,11 @@ TestEmulator::TestEmulator(const vc4c::Configuration& config) : config(config)
 	{
 		TEST_ADD_TWO_ARGUMENTS(TestEmulator::testFloatEmulations, i, vc4c::test::floatTests.at(i).first.kernelName);
 	}
+	//TODO move these somewhere else?
+	TEST_ADD(TestEmulator::testPrivateStorage);
+	TEST_ADD(TestEmulator::testLocalStorage);
+	TEST_ADD(TestEmulator::testConstantStorage);
+	TEST_ADD(TestEmulator::testRegisterStorage);
 	TEST_ADD(TestEmulator::printProfilingInfo);
 }
 
@@ -437,6 +442,125 @@ void TestEmulator::testFloatingEmulation(vc4c::tools::EmulationData& data, std::
 			}
 		}
 	}
+}
+
+void TestEmulator::testPrivateStorage()
+{
+	const std::vector<uint32_t> expected{
+		14, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+		14, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28
+	};
+	std::stringstream buffer;
+	compileFile(buffer, "./testing/local_private_storage.cl");
+
+	EmulationData data;
+	data.kernelName = "test_private_storage";
+	data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+	data.module = std::make_pair("", &buffer);
+	data.workGroup.dimensions = 3;
+	data.workGroup.globalOffsets = {0, 0, 0};
+	data.workGroup.localSizes = {12, 1, 1};
+	data.workGroup.numGroups = {2, 1, 1};
+
+	//parameter 0 is the input
+	data.parameter.emplace_back(0, std::vector<uint32_t>(24, 7));
+	//parameter 1 is the output
+	data.parameter.emplace_back(0, std::vector<uint32_t>(24));
+
+	const auto result = emulate(data);
+	TEST_ASSERT(result.executionSuccessful);
+	TEST_ASSERT_EQUALS(2u, result.results.size());
+
+	if(expected != result.results.at(1).second.value())
+	{
+		auto expectedIt = expected.begin();
+		auto resultIt = result.results.at(1).second->end();
+		while(expectedIt != expected.end())
+		{
+			TEST_ASSERT_EQUALS(*expectedIt, *resultIt);
+			++resultIt;
+			++expectedIt;
+		}
+	}
+}
+
+void TestEmulator::testLocalStorage()
+{
+	std::stringstream buffer;
+	compileFile(buffer, "./testing/local_private_storage.cl");
+
+	EmulationData data;
+	data.kernelName = "test_local_storage";
+	data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+	data.module = std::make_pair("", &buffer);
+	data.workGroup.dimensions = 3;
+	data.workGroup.globalOffsets = {0, 0, 0};
+	data.workGroup.localSizes = {12, 1, 1};
+	data.workGroup.numGroups = {2, 1, 1};
+
+	//parameter 0 is the input
+	data.parameter.emplace_back(0, std::vector<uint32_t>(24, 7));
+	//parameter 1 is the output
+	data.parameter.emplace_back(0, std::vector<uint32_t>(24));
+
+	const auto result = emulate(data);
+	TEST_ASSERT(result.executionSuccessful);
+	TEST_ASSERT_EQUALS(2u, result.results.size());
+
+	//actual results are indeterministic, since the order of the loads/stores across work-items is not guaranteed
+	for(auto res : result.results.at(1).second.value())
+	{
+		if(res % 7 != 0)
+		{
+			TEST_ASSERT_EQUALS(7, res);
+		}
+	}
+}
+
+void TestEmulator::testConstantStorage()
+{
+	std::stringstream buffer;
+	compileFile(buffer, "./testing/local_private_storage.cl");
+
+	EmulationData data;
+	data.kernelName = "test_constant_storage";
+	data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+	data.module = std::make_pair("", &buffer);
+	data.workGroup.dimensions = 3;
+	data.workGroup.globalOffsets = {0, 0, 0};
+	data.workGroup.localSizes = {12, 1, 1};
+	data.workGroup.numGroups = {1, 1, 1};
+
+	//parameter 0 is the output
+	data.parameter.emplace_back(0, std::vector<uint32_t>(12));
+
+	const auto result = emulate(data);
+	TEST_ASSERT(result.executionSuccessful);
+	TEST_ASSERT_EQUALS(1u, result.results.size());
+	TEST_ASSERT_EQUALS(std::string("Hello World"), std::string(reinterpret_cast<const char*>(result.results[0].second->data())));
+}
+
+void TestEmulator::testRegisterStorage()
+{
+	std::stringstream buffer;
+	compileFile(buffer, "./testing/local_private_storage.cl");
+
+	EmulationData data;
+	data.kernelName = "test_register_storage";
+	data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+	data.module = std::make_pair("", &buffer);
+	data.workGroup.dimensions = 3;
+	data.workGroup.globalOffsets = {0, 0, 0};
+	data.workGroup.localSizes = {12, 1, 1};
+	data.workGroup.numGroups = {1, 1, 1};
+
+	//parameter 0 is the output
+	data.parameter.emplace_back(0, std::vector<uint32_t>(12));
+
+	const auto result = emulate(data);
+	TEST_ASSERT(result.executionSuccessful);
+	TEST_ASSERT_EQUALS(1u, result.results.size());
+	TEST_ASSERT_EQUALS(std::string("Hello World"), std::string(reinterpret_cast<const char*>(result.results[0].second->data())));
 }
 
 void TestEmulator::printProfilingInfo()

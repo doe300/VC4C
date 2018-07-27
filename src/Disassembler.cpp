@@ -16,6 +16,41 @@
 
 using namespace vc4c;
 
+static std::string annotateRegisters(
+    const qpu_asm::Instruction& instr, uint64_t index, const qpu_asm::ModuleInfo& module)
+{
+    static FastMap<Register, std::string> currentRegisterMapping;
+    static const qpu_asm::KernelInfo* currentKernel = nullptr;
+    static unsigned currentUniformsRead = 0;
+    if(instr.getSig() == SIGNAL_END_PROGRAM)
+    {
+        // all following registers belong to new kernel
+        currentRegisterMapping.clear();
+        currentKernel = nullptr;
+        currentUniformsRead = 0;
+        return "";
+    }
+    if(currentKernel == nullptr)
+    {
+        // determine the next kernel with the largest offset smaller than the current index as current kernel
+        for(const auto& kernel : module.kernelInfos)
+        {
+            if(kernel.getOffset().getValue() <= index)
+            {
+                if(currentKernel && currentKernel->getOffset().getValue() > kernel.getOffset().getValue())
+                    continue;
+                currentKernel = &kernel;
+            }
+        }
+        if(currentKernel == nullptr)
+            return "";
+    }
+    // the first few UNIFORMs are the work-item and work-group info
+    // TODO find destinations for work-item UNIFORMs and track
+    // TODO for all instructions using the tracked registers, add annotation
+    return "";
+}
+
 static std::string readString(std::istream& binary, uint64_t stringLength)
 {
     std::array<char, 1024> buffer;
@@ -110,7 +145,7 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Refere
         if(instr == nullptr)
             throw CompilationError(CompilationStep::GENERAL, "Unrecognized instruction", std::to_string(tmp64));
         instructions.emplace_back(instr);
-        logging::debug() << instr->toASMString() << logging::endl;
+        logging::debug() << instr->toASMString() << annotateRegisters(*instr, i, moduleInfo) << logging::endl;
     }
 
     logging::debug() << "Extracted " << totalInstructions << " machine-code instructions" << logging::endl;
@@ -120,7 +155,7 @@ static std::size_t generateOutput(std::ostream& stream, qpu_asm::ModuleInfo& mod
     const ReferenceRetainingList<Global>& globals,
     const std::vector<std::unique_ptr<qpu_asm::Instruction>>& instructions, const OutputMode outputMode)
 {
-    std::size_t numBytes = moduleInfo.write(stream, outputMode, globals) * sizeof(uint64_t);
+    std::size_t numBytes = moduleInfo.write(stream, outputMode, globals, Byte(0)) * sizeof(uint64_t);
 
     for(const auto& instr : instructions)
     {

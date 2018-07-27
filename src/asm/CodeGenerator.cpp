@@ -175,7 +175,7 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
 
     std::size_t maxStackSize = 0;
     for(const auto& m : module)
-        maxStackSize = std::max(maxStackSize, m->calculateStackSize());
+        maxStackSize = std::max(maxStackSize, m->calculateStackSize() * m->metaData.getWorkGroupSize());
     if(maxStackSize / sizeof(uint64_t) > std::numeric_limits<uint16_t>::max() || maxStackSize % sizeof(uint64_t) != 0)
         throw CompilationError(
             CompilationStep::CODE_GENERATION, "Stack-frame has unsupported size of", std::to_string(maxStackSize));
@@ -195,7 +195,7 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
         }
         // add global offset (size of  header)
         std::ostringstream dummyStream;
-        offset = moduleInfo.write(dummyStream, config.outputMode, module.globalData);
+        offset = moduleInfo.write(dummyStream, config.outputMode, module.globalData, Byte(maxStackSize));
 
         for(KernelInfo& info : moduleInfo.kernelInfos)
             info.setOffset(info.getOffset() + Word(offset));
@@ -203,7 +203,7 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
     // prepend module header to output
     // also write, if writeKernelInfo is not set, since global-data is written in here too
     logging::debug() << "Writing module header..." << logging::endl;
-    numBytes += moduleInfo.write(stream, config.outputMode, module.globalData) * sizeof(uint64_t);
+    numBytes += moduleInfo.write(stream, config.outputMode, module.globalData, Byte(maxStackSize)) * sizeof(uint64_t);
 
     for(const auto& pair : allInstructions)
     {

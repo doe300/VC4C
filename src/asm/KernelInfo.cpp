@@ -202,7 +202,8 @@ static void toBinary(const Value& val, std::vector<uint8_t>& queue)
     }
 }
 
-static std::vector<uint8_t> generateDataSegment(const ReferenceRetainingList<Global>& globalData)
+static std::vector<uint8_t> generateDataSegment(
+    const ReferenceRetainingList<Global>& globalData, Byte totalStackFrameSize)
 {
     logging::debug() << "Writing data segment for " << globalData.size() << " values..." << logging::endl;
     std::vector<uint8_t> bytes;
@@ -218,6 +219,15 @@ static std::vector<uint8_t> generateDataSegment(const ReferenceRetainingList<Glo
         toBinary(global.value, bytes);
     }
 
+    // allocate space for stack
+    if(totalStackFrameSize.getValue() > 0)
+    {
+        logging::debug() << "Reserving " << totalStackFrameSize.getValue() << " bytes for stack-frames..."
+                         << logging::endl;
+        for(std::size_t s = 0; s < totalStackFrameSize.getValue(); ++s)
+            bytes.push_back(0);
+    }
+
     while((bytes.size() % 8) != 0)
     {
         bytes.push_back(0);
@@ -225,8 +235,8 @@ static std::vector<uint8_t> generateDataSegment(const ReferenceRetainingList<Glo
     return bytes;
 }
 
-std::size_t ModuleInfo::write(
-    std::ostream& stream, const OutputMode mode, const ReferenceRetainingList<Global>& globalData)
+std::size_t ModuleInfo::write(std::ostream& stream, const OutputMode mode,
+    const ReferenceRetainingList<Global>& globalData, Byte totalStackFramSize)
 {
     std::size_t numWords = 0;
     if(mode == OutputMode::HEX || mode == OutputMode::ASSEMBLER)
@@ -274,14 +284,14 @@ std::size_t ModuleInfo::write(
     }
     case OutputMode::BINARY:
     {
-        const auto binary = generateDataSegment(globalData);
+        const auto binary = generateDataSegment(globalData, totalStackFramSize);
         stream.write(reinterpret_cast<const char*>(binary.data()), binary.size());
         numWords += binary.size() / sizeof(uint64_t);
         break;
     }
     case OutputMode::HEX:
     {
-        const auto binary = generateDataSegment(globalData);
+        const auto binary = generateDataSegment(globalData, totalStackFramSize);
         for(const Global& global : globalData)
             stream << "//" << global.to_string(true) << std::endl;
         for(std::size_t i = 0; i < binary.size(); i += 8)

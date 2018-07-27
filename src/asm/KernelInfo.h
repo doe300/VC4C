@@ -227,7 +227,8 @@ namespace vc4c
             /*
              * NOTE: Writing once sets the global-data offset and size, so they are correct for the second write
              */
-            std::size_t write(std::ostream& stream, OutputMode mode, const ReferenceRetainingList<Global>& globalData);
+            std::size_t write(std::ostream& stream, OutputMode mode, const ReferenceRetainingList<Global>& globalData,
+                Byte totalStackFramSize);
 
             inline void addKernelInfo(const KernelInfo& info)
             {
