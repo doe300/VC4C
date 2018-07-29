@@ -476,6 +476,8 @@ void GraphColoring::createGraph()
             // sanity check
             if(!pair.first->getUsers(LocalUse::Type::READER).empty())
             {
+                for(const auto& user : pair.first->getUsers())
+                    logging::error() << user.first->to_string() << logging::endl;
                 throw CompilationError(CompilationStep::LABEL_REGISTER_MAPPING,
                     "Local is being read, but first and last occurrence are the same", pair.first->to_string());
             }

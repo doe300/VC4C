@@ -754,7 +754,7 @@ VPM::VPM(const unsigned totalVPMSize) :
     areas.emplace(VPMArea{VPMUsage::SCRATCH, 0, 1, nullptr});
 }
 
-const VPMArea& VPM::getScratchArea()
+const VPMArea& VPM::getScratchArea() const
 {
     return *areas.begin();
 }
@@ -774,6 +774,9 @@ const VPMArea* VPM::addArea(const Local* local, const DataType& elementType, boo
     DataType inVPMType = getVPMStorageType(elementType);
 
     unsigned requestedSize = inVPMType.getPhysicalWidth() * (isStackArea ? numStacks : 1);
+    if(requestedSize > maximumVPMSize)
+        // does not fit, independent of packing of rows
+        return nullptr;
     uint8_t numRows = static_cast<unsigned char>(
         requestedSize / (VPM_NUM_COLUMNS * VPM_WORD_WIDTH) + (requestedSize % (VPM_NUM_COLUMNS * VPM_WORD_WIDTH) != 0));
     const VPMArea* area = findArea(local);
@@ -814,6 +817,8 @@ const VPMArea* VPM::addArea(const Local* local, const DataType& elementType, boo
 
 unsigned VPM::getMaxCacheVectors(const DataType& type, bool writeAccess) const
 {
+    if(isScratchLocked)
+        return getScratchArea().numRows;
     if(writeAccess)
         return std::min(63u, (maximumVPMSize / 16) / (type.getScalarBitCount() / 8));
     return std::min(15u, (maximumVPMSize / 16) / (type.getScalarBitCount() / 8));

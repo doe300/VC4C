@@ -16,6 +16,7 @@
 #include "log.h"
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <numeric>
 
@@ -23,6 +24,13 @@ using namespace vc4c;
 using namespace vc4c::normalization;
 using namespace vc4c::intermediate;
 using namespace vc4c::periphery;
+
+/**
+ * TODO fix issues:
+ * - invalid local type for memory: NVIDIA/MedianFilter.cl, HandBrake/yaif_filter.cl, rodinia/lud_kernel.cl, ... (e.g.
+ * select between stack allocations)
+ * - too complex phi-nodes with pointers: clNN/im2col.cl
+ */
 
 struct BaseAndOffset
 {
@@ -617,7 +625,7 @@ void normalization::resolveStackAllocation(
             {
                 logging::debug() << "Dropping life-time instruction for stack-allocation: " << arg.to_string()
                                  << logging::endl;
-                it.erase();
+                it = it.erase();
                 // to not skip the next instruction
                 it.previousInBlock();
             }
@@ -663,64 +671,134 @@ void normalization::resolveStackAllocation(
     }
 }
 
-/*
- * Calculates the offset from the base-address in bytes
- */
-static InstructionWalker calculateInAreaOffset(
-    Method& method, InstructionWalker it, const Local* baseAddress, const Value& index, Value& inAreaOffset)
+enum class MemoryType
 {
-    if(index.hasLocal(baseAddress) || (index.hasType(ValueType::LOCAL) && index.local->getBase(false) == baseAddress))
-        // no offset
-        inAreaOffset = INT_ZERO;
-    else if(index.hasType(ValueType::LOCAL) && index.local->reference.first == baseAddress &&
-        index.local->reference.second >= 0)
-        // fixed element offset
-        // is offset in elements, not bytes -> so convert to byte-offset
-        inAreaOffset = Value(Literal(static_cast<int32_t>(index.local->reference.second *
-                                 baseAddress->type.getElementType().getPhysicalWidth())),
-            TYPE_INT32);
-    else if(index.getSingleWriter() != nullptr && index.getSingleWriter()->readsLocal(baseAddress))
+    // lower the value into a register and replace all loads with moves
+    QPU_REGISTER_READONLY,
+    // lower the value into a register and replace all loads/stores with moves
+    QPU_REGISTER_READWRITE,
+    // store in VPM in extra space per QPU!!
+    VPM_PER_QPU,
+    // store in VPM, QPUs share access to common data
+    VPM_SHARED_ACCESS,
+    // keep in RAM/global data segment, read via TMU
+    RAM_LOAD_TMU,
+    // keep in RAM/global data segment, access via VPM
+    RAM_READ_WRITE_VPM
+};
+
+/*
+ * Converts an address (e.g. an index chain) and the corresponding base pointer to the pointer difference
+ *
+ * NOTE: The result itself is still in "memory-address mode", meaning the offset is the number of bytes
+ *
+ * Returns (char*)address - (char*)baseAddress
+ */
+static InstructionWalker insertAddressToOffset(
+    InstructionWalker it, Method& method, Value& out, const Local* baseAddress, const MemoryInstruction* mem)
+{
+    auto ptrVal = mem->op == MemoryOperation::READ ? mem->getSource() : mem->getDestination();
+    auto indexOp = dynamic_cast<const Operation*>(ptrVal.getSingleWriter());
+    if(!indexOp)
     {
-        // index is directly calculated from base-address
-        const Operation* op = dynamic_cast<const Operation*>(index.getSingleWriter());
-        const MoveOperation* move = dynamic_cast<const MoveOperation*>(index.getSingleWriter());
-        if(op != nullptr && op->op == OP_ADD)
+        // for stores, the store itself is also a write instruction
+        auto writers = ptrVal.local->getUsers(LocalUse::Type::WRITER);
+        if(writers.size() == 2 && writers.find(mem) != writers.end())
         {
-            // index = base-address + something -> offset = something
-            if(op->assertArgument(0).hasLocal(baseAddress))
-                inAreaOffset = op->assertArgument(1);
-            else
-                inAreaOffset = op->assertArgument(0);
+            writers.erase(mem);
+            indexOp = dynamic_cast<const Operation*>(*writers.begin());
         }
-        else if(move != nullptr && move->getSource().hasLocal(baseAddress))
-        {
-            // index = base-address
-            inAreaOffset = INT_ZERO;
-        }
-        else
-            throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled case of in-area offset calculation",
-                index.getSingleWriter()->to_string());
+    }
+    if(ptrVal.hasLocal(baseAddress))
+    {
+        // trivial case, the offset is zero
+        out = INT_ZERO;
+    }
+    else if(indexOp && indexOp->readsLocal(baseAddress) && indexOp->op == OP_ADD)
+    {
+        // for simple version where the index is base address + offset, simple use the offset directly
+        out = indexOp->getFirstArg().hasLocal(baseAddress) ? indexOp->getSecondArg().value() : indexOp->getFirstArg();
     }
     else
     {
-        // need to dynamically calculate offset
-        if(!inAreaOffset.hasType(ValueType::LOCAL))
-            inAreaOffset = method.addNewLocal(TYPE_INT32, "%relative_offset");
-        // in-area offset = absolute index - start-address
-        it.emplace(new Operation(OP_SUB, inAreaOffset, index, baseAddress->createReference()));
+        // for more complex versions, calculate offset by subtracting base address from result
+        // address
+        out = method.addNewLocal(baseAddress->type, "%pointer_diff");
+        it.emplace(new Operation(OP_SUB, out, ptrVal, baseAddress->createReference()));
         it.nextInBlock();
     }
     return it;
 }
 
-static InstructionWalker mapToMemoryAccessInstructions(Method& method, InstructionWalker it,
-    const VPMArea* sourceArea = nullptr, const VPMArea* destArea = nullptr, bool alwaysUseVPM = false)
+/*
+ * Converts an address (e.g. an index-chain) and a base-address to the offset of the vector denoting the element
+ * accessed by the index-chain. In addition to #insertAddressToOffset, this function also handles multiple stack-frames.
+ *
+ * NOTE: The result is still the offset in bytes, since VPM#insertReadVPM and VPM#insertWriteVPM take the offset in
+ * bytes!
+ *
+ * Returns ((char*)address - (char*)baseAddress) + (typeSizeInBytes * stackIndex), where stackIndex is always zero (and
+ * therefore the second part omitted) for shared memory
+ */
+static InstructionWalker insertAddressToStackOffset(InstructionWalker it, Method& method, Value& out,
+    const Local* baseAddress, MemoryType type, const MemoryInstruction* mem)
 {
+    Value tmpIndex = UNDEFINED_VALUE;
+    it = insertAddressToOffset(it, method, tmpIndex, baseAddress, mem);
+    if(type == MemoryType::VPM_PER_QPU)
+    {
+        // size of one stack-frame in bytes
+        auto stackByteSize = periphery::VPM::getVPMStorageType(baseAddress->type.getElementType()).getPhysicalWidth();
+        // add offset of stack-frame
+        Value stackOffset = method.addNewLocal(TYPE_VOID.toPointerType(), "%stack_offset");
+        Value tmp = method.addNewLocal(baseAddress->type);
+        it = insertOperation(OP_MUL24, it, method, stackOffset, Value(Literal(stackByteSize), TYPE_INT16),
+            Value(REG_QPU_NUMBER, TYPE_INT8));
+        it = insertOperation(OP_ADD, it, method, out, tmpIndex, stackOffset);
+    }
+    else
+    {
+        out = tmpIndex;
+    }
+    return it;
+}
+
+/*
+ * Converts an address (e.g. index-chain) and the corresponding base-address to the element offset for an element of the
+ * type used in the container
+ *
+ * Return ((char*)address - (char*)baseAddress) / sizeof(elementType)
+ */
+static InstructionWalker insertAddressToElementOffset(InstructionWalker it, Method& method, Value& out,
+    const Local* baseAddress, const Value& container, const MemoryInstruction* mem)
+{
+    Value tmpIndex = UNDEFINED_VALUE;
+    it = insertAddressToOffset(it, method, tmpIndex, baseAddress, mem);
+    // the index (as per index calculation) is in bytes, but we need index in elements, so divide by element size
+    auto offset = static_cast<int32_t>(std::log2(container.type.getElementType().getPhysicalWidth()));
+    it = insertOperation(OP_SHR, it, method, out, tmpIndex, Value(Literal(offset), TYPE_INT8));
+    return it;
+}
+
+/*
+ * Maps a memory access instruction to an instruction accessing RAM through VPM.
+ *
+ * NOTE: At least one of the operands of the instruction to be mapped must be located in RAM
+ * NOTE: this is the least optimal mapping possible and should avoided if possible.
+ */
+static InstructionWalker mapToVPMMemoryAccessInstructions(
+    Method& method, InstructionWalker it, const VPMArea* sourceArea = nullptr, const VPMArea* destArea = nullptr)
+{
+    if(sourceArea != nullptr && destArea != nullptr)
+        throw CompilationError(CompilationStep::NORMALIZER,
+            "Memory access with both operands located in VPM should have been handled already", it->to_string());
     const MemoryInstruction* mem = it.get<MemoryInstruction>();
     switch(mem->op)
     {
     case MemoryOperation::COPY:
     {
+        // TODO copy RAM <-> RAM, RAM <-> VPM
+        // TODO heed stack offset for VPM mapped stack elements!
         if(!mem->getNumEntries().isLiteralValue())
             throw CompilationError(CompilationStep::OPTIMIZER,
                 "Copying dynamically sized memory is not yet implemented", mem->to_string());
@@ -735,6 +813,16 @@ static InstructionWalker mapToMemoryAccessInstructions(Method& method, Instructi
         }
         it = method.vpm->insertCopyRAM(
             method, it, mem->getDestination(), mem->getSource(), static_cast<unsigned>(numBytes));
+
+        auto* src = mem->getSource().hasType(ValueType::LOCAL) ? mem->getSource().local->getBase(true) : nullptr;
+        if(src && src->is<Parameter>())
+            const_cast<Parameter*>(src->as<const Parameter>())->decorations =
+                add_flag(src->as<const Parameter>()->decorations, ParameterDecorations::INPUT);
+        auto* dest =
+            mem->getDestination().hasType(ValueType::LOCAL) ? mem->getDestination().local->getBase(true) : nullptr;
+        if(dest && dest->is<Parameter>())
+            const_cast<Parameter*>(dest->as<const Parameter>())->decorations =
+                add_flag(dest->as<const Parameter>()->decorations, ParameterDecorations::OUTPUT);
         break;
     }
     case MemoryOperation::FILL:
@@ -747,6 +835,7 @@ static InstructionWalker mapToMemoryAccessInstructions(Method& method, Instructi
             throw CompilationError(CompilationStep::OPTIMIZER, "Cannot fill more than 4GB of data", mem->to_string());
         if(destArea != nullptr)
         {
+            // TODO should this also be handled already?
             throw CompilationError(
                 CompilationStep::OPTIMIZER, "Filling VPM cached data is not yet implemented", mem->to_string());
         }
@@ -758,37 +847,43 @@ static InstructionWalker mapToMemoryAccessInstructions(Method& method, Instructi
             static_cast<unsigned>(numCopies), nullptr, false);
         it.emplace(new intermediate::MutexLock(intermediate::MutexAccess::RELEASE));
         it.nextInBlock();
+        auto* dest =
+            mem->getDestination().hasType(ValueType::LOCAL) ? mem->getDestination().local->getBase(true) : nullptr;
+        if(dest && dest->is<Parameter>())
+            const_cast<Parameter*>(dest->as<const Parameter>())->decorations =
+                add_flag(dest->as<const Parameter>()->decorations, ParameterDecorations::OUTPUT);
         break;
     }
     case MemoryOperation::READ:
+    {
         if(sourceArea != nullptr)
-        {
-            Value subIndex = UNDEFINED_VALUE;
-            it = calculateInAreaOffset(method, it, mem->getSource().local->getBase(true), mem->getSource(), subIndex);
-            it = method.vpm->insertReadVPM(method, it, mem->getDestination(), sourceArea, true, subIndex);
-        }
-        else if(alwaysUseVPM)
-        {
-            it = periphery::insertReadDMA(method, it, mem->getDestination(), mem->getSource());
-        }
-        else
-            it = periphery::insertReadVectorFromTMU(method, it, mem->getDestination(), mem->getSource());
-        break;
-    case MemoryOperation::WRITE:
-        if(destArea != nullptr)
-        {
-            Value subIndex = UNDEFINED_VALUE;
-            it = calculateInAreaOffset(
-                method, it, mem->getDestination().local->getBase(true), mem->getDestination(), subIndex);
-            it = method.vpm->insertWriteVPM(method, it, mem->getSource(), destArea, true, subIndex);
-        }
-        else
-            it = periphery::insertWriteDMA(method, it, mem->getSource(), mem->getDestination());
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "Reading from VPM mapped memory should already be handled", mem->to_string());
+        it = periphery::insertReadDMA(method, it, mem->getDestination(), mem->getSource());
+        auto* src = mem->getSource().hasType(ValueType::LOCAL) ? mem->getSource().local->getBase(true) : nullptr;
+        if(src && src->is<Parameter>())
+            const_cast<Parameter*>(src->as<const Parameter>())->decorations =
+                add_flag(src->as<const Parameter>()->decorations, ParameterDecorations::INPUT);
         break;
     }
+    case MemoryOperation::WRITE:
+    {
+        if(destArea != nullptr)
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "Writing into VPM mapped memory should already be handled", mem->to_string());
+        it = periphery::insertWriteDMA(method, it, mem->getSource(), mem->getDestination());
+        auto* dest =
+            mem->getDestination().hasType(ValueType::LOCAL) ? mem->getDestination().local->getBase(true) : nullptr;
+        if(dest && dest->is<Parameter>())
+            const_cast<Parameter*>(dest->as<const Parameter>())->decorations =
+                add_flag(dest->as<const Parameter>()->decorations, ParameterDecorations::OUTPUT);
+        break;
+    }
+    }
     // remove MemoryInstruction
-    it.erase();
-    return it;
+    // since a copy may have another iterator to it, do not remove the element, just clear it
+    // the empty instruction is cleaned up in #combineVPMAccess
+    return mem->op == MemoryOperation::COPY ? (it.reset(nullptr), it) : it.erase();
 }
 
 static bool isMemoryOnlyRead(const Local* local)
@@ -805,176 +900,44 @@ static bool isMemoryOnlyRead(const Local* local)
     return false;
 }
 
-static void generateStandardMemoryAccessInstructions(
-    Method& method, FastSet<InstructionWalker>& memoryInstructions, bool checkOptimizable)
+/*
+ * Maps all memory access instructions for the given memory location by placing it in RAM and accessing it via VPM
+ *
+ * NOTE: This is the least optimal way of accessing memory and should be avoided if possible
+ */
+static bool mapReadWriteToMemoryViaVPM(Method& method, const Local* local,
+    FastSet<InstructionWalker>& memoryInstructions, FastMap<const Local*, const VPMArea*>& vpmMappedLocals,
+    FastSet<BasicBlock*>& affectedBlocks)
 {
-    // list of basic blocks where multiple VPM accesses could be combined
-    FastSet<BasicBlock*> affectedBlocks;
-    auto walkerIt = memoryInstructions.begin();
-    while(walkerIt != memoryInstructions.end())
+    for(auto it : memoryInstructions)
     {
-        if(!checkOptimizable ||
-            (!walkerIt->get<const MemoryInstruction>()->canMoveSourceIntoVPM() &&
-                !walkerIt->get<const MemoryInstruction>()->canMoveDestinationIntoVPM()))
-        {
-            // cannot be optimized (or check skipped), simply map to TMU/VPM instructions
-            InstructionWalker it = *walkerIt;
-            if(!checkOptimizable)
-                logging::debug() << "Found memory access for which none of the optimization-steps fit: "
-                                 << it->to_string() << logging::endl;
-            else
-                logging::debug() << "Generating memory access which cannot be lowered into VPM: " << it->to_string()
-                                 << logging::endl;
-            walkerIt = memoryInstructions.erase(walkerIt);
-            auto memoryLocals = it.get<const MemoryInstruction>()->getMemoryAreas();
-            it = mapToMemoryAccessInstructions(
-                method, it, nullptr, nullptr, !std::all_of(memoryLocals.begin(), memoryLocals.end(), isMemoryOnlyRead));
-            affectedBlocks.emplace(it.getBasicBlock());
-        }
-        else
-            ++walkerIt;
+        auto mem = it.get<const MemoryInstruction>();
+        if(!mem)
+            // already optimized (e.g. lowered into VPM)
+            continue;
+        logging::debug() << "Generating memory access which cannot be optimized: " << mem->to_string() << logging::endl;
+        auto srcVpmArea = mem->getSource().hasType(ValueType::LOCAL) ?
+            vpmMappedLocals[mem->getSource().local->getBase(true)] :
+            nullptr;
+        auto dstVpmArea = mem->getDestination().hasType(ValueType::LOCAL) ?
+            vpmMappedLocals[mem->getDestination().local->getBase(true)] :
+            nullptr;
+        it = mapToVPMMemoryAccessInstructions(method, it, srcVpmArea, dstVpmArea);
+        affectedBlocks.emplace(it.getBasicBlock());
     }
 
-    // combine VPM access for all modified basic blocks
-    if(checkOptimizable)
-        combineVPMAccess(affectedBlocks, method);
+    // everything else throws errors
+    return true;
 }
 
-static void lowerStackIntoVPM(Method& method, FastSet<InstructionWalker>& memoryInstructions,
-    FastMap<const Local*, const VPMArea*>& vpmMappedLocals)
-{
-    const unsigned stackSize = method.metaData.getWorkGroupSize();
-    auto walkerIt = memoryInstructions.begin();
-    while(walkerIt != memoryInstructions.end())
-    {
-        const MemoryInstruction* mem = walkerIt->get<const MemoryInstruction>();
-        if(mem->accessesStackAllocation())
-        {
-            InstructionWalker it = *walkerIt;
-            walkerIt = memoryInstructions.erase(walkerIt);
-
-            const VPMArea* sourceArea = nullptr;
-            const VPMArea* destArea = nullptr;
-
-            // mapped to VPM by previous operation
-            FastMap<const Local*, const VPMArea*>::iterator mappedIt;
-            if(mem->getSource().hasType(ValueType::LOCAL) &&
-                (mappedIt = vpmMappedLocals.find(mem->getSource().local->getBase(true))) != vpmMappedLocals.end())
-            {
-                sourceArea = mappedIt->second;
-            }
-            if(mem->getDestination().hasType(ValueType::LOCAL) &&
-                (mappedIt = vpmMappedLocals.find(mem->getDestination().local->getBase(true))) != vpmMappedLocals.end())
-            {
-                destArea = mappedIt->second;
-            }
-            if(false) // TODO doesn't heed in-stack-offset
-            {
-                // TODO remove stack allocation objects, to save memory in global buffer
-                if(sourceArea == nullptr && mem->getSource().hasType(ValueType::LOCAL) &&
-                    mem->getSource().local->getBase(true)->is<StackAllocation>())
-                {
-                    const Local* src = mem->getSource().local->getBase(true);
-                    sourceArea = method.vpm->addArea(src, src->type.getElementType(), true, stackSize);
-                    if(sourceArea != nullptr)
-                        vpmMappedLocals.emplace(src, sourceArea);
-                }
-                if(destArea == nullptr && mem->getDestination().hasType(ValueType::LOCAL) &&
-                    mem->getDestination().local->getBase(true)->is<StackAllocation>())
-                {
-                    const Local* dest = mem->getDestination().local->getBase(true);
-                    destArea = method.vpm->addArea(dest, dest->type.getElementType(), true, stackSize);
-                    if(sourceArea != nullptr)
-                        vpmMappedLocals.emplace(dest, destArea);
-                }
-                if(sourceArea != nullptr)
-                    logging::debug() << "Lowering stack-allocated data '" << sourceArea->originalAddress->to_string()
-                                     << "' into VPM" << logging::endl;
-                if(destArea != nullptr)
-                    logging::debug() << "Lowering stack-allocated data '" << destArea->originalAddress->to_string()
-                                     << "' into VPM" << logging::endl;
-                if(sourceArea != nullptr || destArea != nullptr)
-                    logging::debug() << "Optimizing access to stack allocated data by using the VPM as cache: "
-                                     << mem->to_string() << logging::endl;
-            }
-            // automatically handles both cases (lowered to VPM, not lowered to VPM)
-            // for copying stack <-> local, we assign an VPM area to the stack-object here, but delay the copying until
-            // the locals are lowered to be able to lower into copy VPM <-> VPM
-            if(mem->op != MemoryOperation::COPY || !mem->accessesLocalMemory())
-            {
-                mapToMemoryAccessInstructions(method, it, sourceArea, destArea);
-                // TODO handle offset for selecting the correct stack-frame in VPM!
-            }
-        }
-        else
-            ++walkerIt;
-    }
-}
-
-static void lowerLocalDataIntoVPM(Method& method, FastSet<InstructionWalker>& memoryInstructions,
-    FastMap<const Local*, const VPMArea*>& vpmMappedLocals)
-{
-    // TODO errors when local memory is also accessed via DMA intrinsic??
-    auto walkerIt = memoryInstructions.begin();
-    while(walkerIt != memoryInstructions.end())
-    {
-        const MemoryInstruction* mem = walkerIt->get<const MemoryInstruction>();
-        if(mem->accessesLocalMemory())
-        {
-            InstructionWalker it = *walkerIt;
-            walkerIt = memoryInstructions.erase(walkerIt);
-
-            const VPMArea* sourceArea = nullptr;
-            const VPMArea* destArea = nullptr;
-            // mapped to VPM by previous operation
-            FastMap<const Local*, const VPMArea*>::iterator mappedIt;
-            if(mem->getSource().hasType(ValueType::LOCAL) &&
-                (mappedIt = vpmMappedLocals.find(mem->getSource().local->getBase(true))) != vpmMappedLocals.end())
-            {
-                sourceArea = mappedIt->second;
-            }
-            if(mem->getDestination().hasType(ValueType::LOCAL) &&
-                (mappedIt = vpmMappedLocals.find(mem->getDestination().local->getBase(true))) != vpmMappedLocals.end())
-            {
-                destArea = mappedIt->second;
-            }
-            if(sourceArea == nullptr && mem->getSource().hasType(ValueType::LOCAL) &&
-                mem->getSource().local->getBase(true)->is<Global>() &&
-                mem->getSource().local->getBase(true)->type.getPointerType().value()->addressSpace ==
-                    AddressSpace::LOCAL)
-            {
-                const Local* src = mem->getSource().local->getBase(true);
-                sourceArea = method.vpm->addArea(src, src->type.getElementType(), false);
-                if(sourceArea != nullptr)
-                    vpmMappedLocals.emplace(src, sourceArea);
-            }
-            if(destArea == nullptr && mem->getDestination().hasType(ValueType::LOCAL) &&
-                mem->getDestination().local->getBase(true)->is<Global>() &&
-                mem->getDestination().local->getBase(true)->type.getPointerType().value()->addressSpace ==
-                    AddressSpace::LOCAL)
-            {
-                const Local* dest = mem->getDestination().local->getBase(true);
-                destArea = method.vpm->addArea(dest, dest->type.getElementType(), false);
-                if(destArea != nullptr)
-                    vpmMappedLocals.emplace(dest, destArea);
-            }
-            if(sourceArea != nullptr)
-                logging::debug() << "Lowering local '" << sourceArea->originalAddress->to_string() << "' into VPM"
-                                 << logging::endl;
-            if(destArea != nullptr)
-                logging::debug() << "Lowering local '" << destArea->originalAddress->to_string() << "' into VPM"
-                                 << logging::endl;
-            if(sourceArea != nullptr || destArea != nullptr)
-                logging::debug() << "Optimizing access to local allocated data by using the VPM as cache: "
-                                 << mem->to_string() << logging::endl;
-            // automatically handles both cases (lowered to VPM, not lowered to VPM)
-            mapToMemoryAccessInstructions(method, it, sourceArea, destArea);
-        }
-        else
-            ++walkerIt;
-    }
-}
-
+/*
+ * Returns the constant value which will be read from the given memory access instruction.
+ *
+ * The value is constant if:
+ * - the source memory location is constant
+ * - the index is constant or the value can be determined without knowing the exact index (e.g. all elements are the
+ * same)
+ */
 static Optional<Value> getConstantValue(const MemoryInstruction* mem)
 {
     // can only read from constant global data, so the global is always the source
@@ -993,101 +956,357 @@ static Optional<Value> getConstantValue(const MemoryInstruction* mem)
         return Value(global->value.type.getElementType());
     else if(global->value.hasType(ValueType::CONTAINER) && global->value.container.isElementNumber())
         return ELEMENT_NUMBER_REGISTER;
-    // TODO enable when isAllSame() supports non-literal elements
-    // else if(global->value.hasType(ValueType::CONTAINER) && global->value.container.isAllSame())
-    // all entries are the same
-    // return global->value.container.elements.at(0);
+    else if(global->value.hasType(ValueType::CONTAINER) && global->value.container.isAllSame())
+        // all entries are the same
+        return global->value.container.elements.at(0);
     return NO_VALUE;
 }
 
-static void lowerGlobalsToConstants(Method& method, FastSet<InstructionWalker>& memoryInstructions)
+/*
+ * Tries to convert the array-type pointed to by the given local to a vector-type to fit into a single register.
+ *
+ * For this conversion to succeed, the array-element type must be a scalar of bit-width <= 32-bit and the size of the
+ * array known to be less or equals to 16.
+ */
+static Optional<DataType> convertSmallArrayToRegister(const Local* local)
+{
+    const Local* base = local->getBase(true);
+    if(base->type.getPointerType())
+    {
+        const auto& baseType = base->type.getPointerType().value()->elementType;
+        auto arrayType = baseType.getArrayType();
+        if(arrayType && arrayType.value()->size <= NATIVE_VECTOR_SIZE && arrayType.value()->elementType.isScalarType())
+            return arrayType.value()->elementType.toVectorType(static_cast<uint8_t>(arrayType.value()->size));
+    }
+    return {};
+}
+
+/*
+ * Maps memory access to the given local into moves from/to the given register
+ *
+ * NOTE: This is the best optimization for memory access and should always be preferred.
+ * NOTE: This optimization cannot be applied if changes made to the lowered register need to be reflected to other QPUs.
+ */
+static InstructionWalker lowerReadWriteOfMemoryToRegister(InstructionWalker it, Method& method, const Local* local,
+    const Value& loweredRegister, const MemoryInstruction* mem)
+{
+    Value tmpIndex = UNDEFINED_VALUE;
+    it = insertAddressToElementOffset(it, method, tmpIndex, local, loweredRegister, mem);
+    // TODO need special handling for inserting/extracting multiple elements? At least for insertion
+    if(mem->op == MemoryOperation::READ)
+    {
+        // TODO check whether index is guaranteed to be in range [0, 16[
+        it = insertVectorExtraction(it, method, loweredRegister, tmpIndex, mem->getDestination());
+        return it.erase();
+    }
+    if(mem->op == MemoryOperation::WRITE)
+    {
+        it = insertVectorInsertion(it, method, loweredRegister, tmpIndex, mem->getSource());
+        return it.erase();
+    }
+    throw CompilationError(
+        CompilationStep::NORMALIZER, "Unhandled case of lowering memory access to register", mem->to_string());
+}
+
+/*
+ * Lowers access to a memory location into a register.
+ *
+ * This can be done for constant or private (stack) memory locations.
+ *
+ * NOTE: This is the best optimization for memory access and should be preferred, where applicable.
+ */
+static bool lowerMemoryToRegister(
+    Method& method, const Local* local, MemoryType type, FastSet<InstructionWalker>& memoryInstructions)
 {
     /*
-     * Tries to eliminate reading of constant global values from memory by replacing them with the load of the global's
-     * content value.
-     *
-     * The following conditions need to be fulfilled for this optimization to apply:
-     * - the source needs to be a Global with the constant-flag set
-     * - if the global is a compound value (e.g. not read completely), the index needs a literal value or the global
-     * needs to be uniform (e.g. all zeroes)
-     *
-     * Any other access to globals is simply mapped to the corresponding TMU/VPM operations
+     * There are several cases of memory lowered into registers:
+     * - constant memory with constant index (direct value determinable) -> map to direct value
+     * - constant memory which fits into register but dynamic index -> map to register, index by vector rotation
+     * - private memory which fits into register -> map to register
+     * - private memory where the type can be converted to fit into register -> map to register + index by vector
+     * rotation
      */
-    auto walkerIt = memoryInstructions.begin();
-    while(walkerIt != memoryInstructions.end())
+    auto toConvertedRegisterType = convertSmallArrayToRegister(local);
+    if(type == MemoryType::QPU_REGISTER_READONLY)
     {
-        const MemoryInstruction* mem = walkerIt->get<const MemoryInstruction>();
-        if(mem->accessesConstantGlobal())
+        // can handle extra read on its own, no check required for other accesses
+        auto it = memoryInstructions.begin();
+        while(it != memoryInstructions.end())
         {
-            logging::debug() << "Found reference to constant global: " << mem->to_string() << " ("
-                             << mem->getSource().local->getBase(true)->to_string(true) << ")" << logging::endl;
-
-            InstructionWalker it = *walkerIt;
-            walkerIt = memoryInstructions.erase(walkerIt);
-
-            // 1. find constant value read from the Global
-            Optional<Value> content = getConstantValue(mem);
-            if(content)
+            const MemoryInstruction* mem = it->get<const MemoryInstruction>();
+            if(!mem)
             {
-                it.reset(new MoveOperation(mem->getOutput().value(), content.value()));
-                logging::debug() << "Replaced loading of constant memory with constant literal: " << it->to_string()
-                                 << logging::endl;
+                // already converted (cannot happen, since this is the first round, but we don't care)
+                ++it;
+                continue;
+            }
+            if(mem->op != MemoryOperation::READ && mem->op != MemoryOperation::COPY)
+                throw CompilationError(CompilationStep::NORMALIZER,
+                    "Cannot perform a non-read operation on constant memory", mem->to_string());
+            logging::debug() << "Trying to lower access to constant memory into register: " << mem->to_string()
+                             << logging::endl;
+            auto constantValue = getConstantValue(mem);
+            auto tmpIt = *it;
+            if(constantValue)
+            {
+                it = memoryInstructions.erase(it);
+                if(mem->op == MemoryOperation::COPY)
+                {
+                    // since a copy always involves another memory object, this rewrite is picked up when the other
+                    // object is processed
+                    tmpIt.reset(
+                        new MemoryInstruction(MemoryOperation::WRITE, mem->getDestination(), constantValue.value()));
+                    logging::debug() << "Replaced memory copy from constant memory to memory write of constant value: "
+                                     << tmpIt->to_string() << logging::endl;
+                }
+                else
+                {
+                    tmpIt.reset(new MoveOperation(mem->getOutput().value(), constantValue.value()));
+                    logging::debug() << "Replaced loading of constant memory with constant literal: "
+                                     << tmpIt->to_string() << logging::endl;
+                }
+            }
+            else if(mem->op == MemoryOperation::READ && local->is<Global>() && toConvertedRegisterType)
+            {
+                it = memoryInstructions.erase(it);
+                auto tmp = method.addNewLocal(toConvertedRegisterType.value(), "%lowered_constant");
+
+                tmpIt.emplace(new MoveOperation(tmp, local->as<const Global>()->value));
+                tmpIt.nextInBlock();
+                tmpIt = lowerReadWriteOfMemoryToRegister(tmpIt, method, local, tmp, mem);
+                logging::debug() << "Replaced loading of constant memory with vector rotation of register: "
+                                 << tmpIt.copy().previousInBlock()->to_string() << logging::endl;
             }
             else
             {
-                // move constant into register, even if index is not known (as long as constant and index fit in 16
-                // elements of register)
-                const Local* constant = mem->getSource().local->getBase(true);
-                const auto& constantType = constant->type.getPointerType().value()->elementType;
-                auto arrayType = constantType.getArrayType();
-                if(arrayType && arrayType.value()->size <= NATIVE_VECTOR_SIZE &&
-                    arrayType.value()->elementType.isScalarType())
-                {
-                    logging::debug() << "Moving constant memory into register: " << constant->to_string(true)
-                                     << logging::endl;
-                    logging::debug() << "Replacing loading of constant memory with indexing of register elements: "
-                                     << it->to_string() << logging::endl;
-                    auto tmp = method.addNewLocal(
-                        arrayType.value()->elementType.toVectorType(static_cast<uint8_t>(arrayType.value()->size)));
-                    auto tmpIndex = method.addNewLocal(tmp.type.toPointerType());
-
-                    it.emplace(new MoveOperation(tmp, constant->as<const Global>()->value));
-                    it.nextInBlock();
-                    // TODO check whether index in range (guaranteed) and use index here
-                    it.emplace(new Operation(OP_SUB, tmpIndex, *mem->getArgument(0), constant->createReference()));
-                    it.nextInBlock();
-                    it = insertVectorExtraction(it, method, tmp, tmpIndex, mem->getOutput().value());
-                    it.erase();
-                }
-                else
-                    // generate simply access to global data residing in memory
-                    mapToMemoryAccessInstructions(method, it);
+                // this can happen e.g. for memory copy
+                logging::debug() << "Failed to lower access to constant memory into register: " << mem->to_string()
+                                 << logging::endl;
+                ++it;
             }
         }
-        else
-            ++walkerIt;
+        return memoryInstructions.empty();
     }
+    else if(type == MemoryType::QPU_REGISTER_READWRITE && local->is<StackAllocation>())
+    {
+        // need to heed all access to memory area
+        if(local->type.isSimpleType())
+        {
+            // fits into a single register on its own, without rewriting
+            const Value loweredRegister = method.addNewLocal(local->type);
+            for(auto it : memoryInstructions)
+            {
+                const MemoryInstruction* mem = it.get<const MemoryInstruction>();
+                if(!mem)
+                    // instruction cannot be already converted here (either all are already converted or none)
+                    throw CompilationError(CompilationStep::NORMALIZER,
+                        "Invalid instruction to be lowered into register", it->to_string());
+                logging::debug() << "Trying to lower access to stack allocation into register: " << mem->to_string()
+                                 << logging::endl;
+                bool isRead =
+                    mem->getSource().hasType(ValueType::LOCAL) && mem->getSource().local->getBase(true) == local;
+                bool isWritten = mem->getDestination().hasType(ValueType::LOCAL) &&
+                    mem->getDestination().local->getBase(true) == local;
+                switch(mem->op)
+                {
+                case MemoryOperation::COPY:
+                    if(isRead)
+                        // since a copy always involves another memory object, this rewrite is picked up when the other
+                        // object is processed
+                        it.reset(new MemoryInstruction(MemoryOperation::WRITE, mem->getDestination(), loweredRegister));
+                    else if(isWritten)
+                        it.reset(new MemoryInstruction(MemoryOperation::READ, loweredRegister, mem->getSource()));
+                    break;
+                case MemoryOperation::FILL:
+                    if(mem->getSource().type.isScalarType())
+                    {
+                        it = insertReplication(it, mem->getSource(), loweredRegister);
+                        it.erase();
+                    }
+                    else
+                        it.reset(new MoveOperation(loweredRegister, mem->getSource()));
+                    break;
+                case MemoryOperation::READ:
+                    it.reset(new MoveOperation(mem->getDestination(), loweredRegister));
+                    break;
+                case MemoryOperation::WRITE:
+                    it.reset(new MoveOperation(loweredRegister, mem->getSource()));
+                    break;
+                }
+                logging::debug() << "Replaced access to stack allocation '" << local->to_string()
+                                 << "' with: " << it->to_string() << logging::endl;
+            }
+            // the stack value always fits into a single register (is checked above) and therefore the lowering always
+            // succeeds
+            return true;
+        }
+        else if(toConvertedRegisterType)
+        {
+            if(std::any_of(memoryInstructions.begin(), memoryInstructions.end(), [](InstructionWalker it) -> bool {
+                   const MemoryInstruction* mem = it.get<const MemoryInstruction>();
+                   return mem->op == MemoryOperation::FILL || mem->op == MemoryOperation::COPY;
+               }))
+            {
+                // not supported, keep all access to use VPM/RAM
+                logging::debug()
+                    << "Lowering of memory which is filled or copied into registers is not yet implemented: "
+                    << local->to_string() << logging::endl;
+                return false;
+            }
+            Value loweredBuffer = method.addNewLocal(toConvertedRegisterType.value(), "%lowered_stack");
+            for(auto it : memoryInstructions)
+            {
+                const MemoryInstruction* mem = it.get<const MemoryInstruction>();
+                if(!mem)
+                    // instruction cannot be already converted here(either all are already converted or none)
+                    throw CompilationError(CompilationStep::NORMALIZER,
+                        "Invalid instruction to be lowered into register", it->to_string());
+                logging::debug() << "Trying to lower access to stack allocation into register: " << mem->to_string()
+                                 << logging::endl;
+                it = lowerReadWriteOfMemoryToRegister(it, method, local, loweredBuffer, mem);
+                logging::debug() << "Replaced access to stack allocation '" << local->to_string()
+                                 << "' with: " << it.copy().previousInBlock()->to_string() << logging::endl;
+            }
+            // all reads and writes (with any index) can be lowered into register, if the type fits
+            return true;
+        }
+        else
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "Unhandled case of lowering stack allocation to register", local->to_string());
+    }
+    else
+        throw CompilationError(
+            CompilationStep::NORMALIZER, "Unhandled case of lowering to register", local->to_string());
+    return false;
 }
 
-enum class MemoryType
+/*
+ * Maps a single memory read to a TMU load
+ *
+ * NOTE: Memory locations loaded via TMU MUST NOT be written to by the same kernel (even on a different QPU)!
+ */
+static bool mapReadsToTMULoad(Method& method, const Local* local, FastSet<InstructionWalker>& memoryInstructions)
 {
-    // lower the value into a register and replace all loads/stores with moves
-    QPU_REGISTER,
-    // store in VPM in extra space per QPU!!
-    VPM_PER_QPU,
-    // keep in RAM/global data segment, read via TMU
-    RAM_LOAD_TMU,
-    // keep in RAM/global data segment, access via VPM
-    RAM_READ_WRITE_VPM,
-    // store in VPM, QPUs share access to common data
-    VPM_SHARED_ACCESS
+    auto it = memoryInstructions.begin();
+    while(it != memoryInstructions.end())
+    {
+        const MemoryInstruction* mem = it->get<const MemoryInstruction>();
+        if(!mem)
+            // already converted (e.g. when constant load lowered into register)
+            continue;
+        logging::debug() << "Trying to map load from read-only memory to TMU load: " << mem->to_string()
+                         << logging::endl;
+        if(mem->op != MemoryOperation::READ)
+        {
+            ++it;
+            continue;
+        }
+        auto tmpIt = periphery::insertReadVectorFromTMU(method, *it, mem->getDestination(), mem->getSource());
+        it = memoryInstructions.erase(it);
+        tmpIt.erase();
+        logging::debug() << "Replaced loading from read-only memory with TMU load: "
+                         << tmpIt.copy().previousInBlock()->to_string() << logging::endl;
+    }
+
+    return memoryInstructions.empty();
+}
+
+/*
+ * Tries to map the given memory location into VPM
+ *
+ * This is applicable for private (stack) or local memory.
+ *
+ * NOTE: A memory location can only be lowered into VPM if all access to it can be lowered to VPM
+ * NOTE: This is to be preferred over keeping the memory location in RAM
+ */
+static bool lowerMemoryToVPM(Method& method, const Local* local, MemoryType type,
+    FastSet<InstructionWalker>& memoryInstructions, FastMap<const Local*, const VPMArea*>& vpmAreas)
+{
+    // Need to make sure addressing is still correct!
+    if(type == MemoryType::VPM_PER_QPU && !local->is<StackAllocation>())
+        throw CompilationError(
+            CompilationStep::NORMALIZER, "Unhandled case of per-QPU memory buffer", local->to_string());
+
+    // since the stack allocation is read-write, need to lower all access or none
+    auto vpmArea = method.vpm->addArea(
+        local, local->type.getElementType(), type == MemoryType::VPM_PER_QPU, method.metaData.getWorkGroupSize());
+    if(vpmArea == nullptr)
+        // did not fit into VPM
+        return false;
+    vpmAreas.emplace(local, vpmArea);
+
+    auto it = memoryInstructions.begin();
+    while(it != memoryInstructions.end())
+    {
+        const MemoryInstruction* mem = it->get<const MemoryInstruction>();
+        if(!mem)
+            // instruction cannot be already converted here (either all are already converted or none)
+            throw CompilationError(
+                CompilationStep::NORMALIZER, "Invalid instruction to be lowered into register", (*it)->to_string());
+        if(type == MemoryType::VPM_PER_QPU)
+            logging::debug() << "Trying to lower access to stack allocation into VPM: " << mem->to_string()
+                             << logging::endl;
+        else
+            logging::debug() << "Trying to lower access to shared local memory into VPM: " << mem->to_string()
+                             << logging::endl;
+        Value inAreaOffset = UNDEFINED_VALUE;
+        auto tmpIt = insertAddressToStackOffset(*it, method, inAreaOffset, local, type, mem);
+        switch(mem->op)
+        {
+        case MemoryOperation::COPY:
+        {
+            // if the other local is already mapped to VPM, insert copy instruction. Otherwise let other local handle
+            // this
+            auto memAreas = mem->getMemoryAreas();
+            if(std::all_of(memAreas.begin(), memAreas.end(),
+                   [&](const Local* l) -> bool { return vpmAreas.find(l) != vpmAreas.end(); }))
+            {
+                // TODO insert copy from/to VPM. Need to do via read/write
+                break;
+            }
+            ++it;
+            continue;
+        }
+        case MemoryOperation::FILL:
+            throw CompilationError(
+                CompilationStep::NORMALIZER, "Filling VPM area is not yet implemented", mem->to_string());
+        case MemoryOperation::READ:
+            it = memoryInstructions.erase(it);
+            tmpIt = method.vpm->insertReadVPM(method, tmpIt, mem->getDestination(), vpmArea, true, inAreaOffset);
+            tmpIt.erase();
+            break;
+        case MemoryOperation::WRITE:
+            it = memoryInstructions.erase(it);
+            tmpIt = method.vpm->insertWriteVPM(method, tmpIt, mem->getSource(), vpmArea, true, inAreaOffset);
+            tmpIt.erase();
+            break;
+        }
+        logging::debug() << "Replaced access to memory buffer with access to VPM" << logging::endl;
+    }
+
+    // even if we did not map all accesses, we fixed the local to the VPM area
+    // for e.g. copy, the other local also has a reference to this MemoryInstruction and will handle it
+    return memoryInstructions.empty();
+}
+
+struct MemoryAccess
+{
+    FastSet<InstructionWalker> accessInstructions;
+    MemoryType preferred;
+    MemoryType fallback;
 };
 
-// map is local -> preferred + fall-back
-static FastMap<const Local*, std::pair<MemoryType, MemoryType>> determineMemoryAccess(Method& method)
+/*
+ * Basic algorithm to determine the preferred and fall-back (e.g. if access-types not supported by preferred)
+ * way of
+ * a) mapping the memory regions used by this method to the available "memory" (registers, VPM, RAM) and
+ * b) mapping the memory access types (read, write, copy, fill) to the available memory access types (TMU, VPM, etc.)
+ */
+static FastMap<const Local*, MemoryAccess> determineMemoryAccess(Method& method)
 {
+    // TODO lower local/private struct-elements into VPM?! At least for single structs
     logging::debug() << "Determining memory access for kernel: " << method.name << logging::endl;
-    FastMap<const Local*, std::pair<MemoryType, MemoryType>> mapping;
+    FastMap<const Local*, MemoryAccess> mapping;
     for(const auto& param : method.parameters)
     {
         if(!param.type.isPointerType())
@@ -1097,7 +1316,9 @@ static FastMap<const Local*, std::pair<MemoryType, MemoryType>> determineMemoryA
         {
             logging::debug() << "Constant parameter '" << param.to_string() << "' will be read from RAM via TMU"
                              << logging::endl;
-            mapping.emplace(&param, std::make_pair(MemoryType::RAM_LOAD_TMU, MemoryType::RAM_LOAD_TMU));
+            mapping[&param].preferred = MemoryType::RAM_LOAD_TMU;
+            // fall-back, e.g. for memory copy
+            mapping[&param].fallback = MemoryType::RAM_READ_WRITE_VPM;
         }
         else if(pointerType->addressSpace == AddressSpace::GLOBAL)
         {
@@ -1105,13 +1326,16 @@ static FastMap<const Local*, std::pair<MemoryType, MemoryType>> determineMemoryA
             {
                 logging::debug() << "Global parameter '" << param.to_string()
                                  << "' without any write access will be read from RAM via TMU" << logging::endl;
-                mapping.emplace(&param, std::make_pair(MemoryType::RAM_LOAD_TMU, MemoryType::RAM_LOAD_TMU));
+                mapping[&param].preferred = MemoryType::RAM_LOAD_TMU;
+                // fall-back, e.g. for memory copy
+                mapping[&param].fallback = MemoryType::RAM_READ_WRITE_VPM;
             }
             else
             {
                 logging::debug() << "Global parameter '" << param.to_string()
                                  << "' which is written to will be stored in RAM and accessed via VPM" << logging::endl;
-                mapping.emplace(&param, std::make_pair(MemoryType::RAM_READ_WRITE_VPM, MemoryType::RAM_READ_WRITE_VPM));
+                mapping[&param].preferred = MemoryType::RAM_READ_WRITE_VPM;
+                mapping[&param].fallback = MemoryType::RAM_READ_WRITE_VPM;
             }
         }
         else if(pointerType->addressSpace == AddressSpace::LOCAL)
@@ -1119,11 +1343,12 @@ static FastMap<const Local*, std::pair<MemoryType, MemoryType>> determineMemoryA
             // TODO if last access index is known and fits into VPM, set for VPM-or-RAM
             logging::debug() << "Local parameter '" << param.to_string()
                              << "' will be stored in RAM and accessed via VPM" << logging::endl;
-            mapping.emplace(&param, std::make_pair(MemoryType::RAM_READ_WRITE_VPM, MemoryType::RAM_READ_WRITE_VPM));
+            mapping[&param].preferred = MemoryType::RAM_READ_WRITE_VPM;
+            mapping[&param].fallback = MemoryType::RAM_READ_WRITE_VPM;
         }
         else
-            throw CompilationError(CompilationStep::NORMALIZER, "Invalid address space for pointer parameter",
-                std::to_string(static_cast<int>(pointerType->addressSpace)));
+            throw CompilationError(
+                CompilationStep::NORMALIZER, "Invalid address space for pointer parameter", param.to_string(true));
     }
 
     InstructionWalker it = method.walkAllInstructions();
@@ -1134,21 +1359,38 @@ static FastMap<const Local*, std::pair<MemoryType, MemoryType>> determineMemoryA
             for(const auto local : it.get<MemoryInstruction>()->getMemoryAreas())
             {
                 if(mapping.find(local) != mapping.end())
+                {
                     // local was already processed
+                    mapping[local].accessInstructions.emplace(it);
                     continue;
+                }
+                mapping[local].accessInstructions.emplace(it);
                 if(local->is<StackAllocation>())
                 {
-                    if(local->type.isSimpleType())
+                    if(local->type.isSimpleType() || convertSmallArrayToRegister(local))
                     {
                         logging::debug() << "Small stack value '" << local->to_string()
                                          << "' will be stored in a register" << logging::endl;
-                        mapping.emplace(local, std::make_pair(MemoryType::QPU_REGISTER, MemoryType::QPU_REGISTER));
+                        mapping[local].preferred = MemoryType::QPU_REGISTER_READWRITE;
+                        // we cannot pack an array into a VPM cache line, since always all 16 elements are read/written
+                        // and we would overwrite the other elements
+                        mapping[local].fallback =
+                            local->type.isSimpleType() ? MemoryType::VPM_PER_QPU : MemoryType::RAM_READ_WRITE_VPM;
+                    }
+                    else if(!local->type.getElementType().getStructType())
+                    {
+                        logging::debug() << "Stack value '" << local->to_string()
+                                         << "' will be stored in VPM per QPU (with fall-back to RAM via VPM)"
+                                         << logging::endl;
+                        mapping[local].preferred = MemoryType::VPM_PER_QPU;
+                        mapping[local].fallback = MemoryType::RAM_READ_WRITE_VPM;
                     }
                     else
                     {
-                        logging::debug() << "Stack value '" << local->to_string() << "' will be stored in VPM (per QPU)"
-                                         << logging::endl;
-                        mapping.emplace(local, std::make_pair(MemoryType::VPM_PER_QPU, MemoryType::VPM_PER_QPU));
+                        logging::debug() << "Struct stack value '" << local->to_string()
+                                         << "' will be stored in RAM per QPU (via VPM)" << logging::endl;
+                        mapping[local].preferred = MemoryType::RAM_READ_WRITE_VPM;
+                        mapping[local].fallback = MemoryType::RAM_READ_WRITE_VPM;
                     }
                 }
                 else if(local->is<Global>())
@@ -1157,32 +1399,50 @@ static FastMap<const Local*, std::pair<MemoryType, MemoryType>> determineMemoryA
                     {
                         // global buffer
                         const auto memInstr = it.get<const MemoryInstruction>();
-                        if(memInstr->readsLocal(local) && getConstantValue(memInstr))
+                        if(getConstantValue(memInstr))
                         {
-                            logging::debug() << "Constant buffer '" << local->to_string()
+                            logging::debug() << "Constant element of constant buffer '" << local->to_string()
                                              << "' will be stored in a register " << logging::endl;
-                            mapping.emplace(local, std::make_pair(MemoryType::QPU_REGISTER, MemoryType::RAM_LOAD_TMU));
+                            mapping[local].preferred = MemoryType::QPU_REGISTER_READONLY;
+                            mapping[local].fallback = MemoryType::RAM_LOAD_TMU;
+                        }
+                        else if(convertSmallArrayToRegister(local))
+                        {
+                            logging::debug() << "Small constant buffer '" << local->to_string()
+                                             << "' will be stored in a register" << logging::endl;
+                            mapping[local].preferred = MemoryType::QPU_REGISTER_READONLY;
+                            mapping[local].fallback = MemoryType::RAM_LOAD_TMU;
                         }
                         else
                         {
                             logging::debug() << "Constant buffer '" << local->to_string()
                                              << "' will be read from RAM via TMU" << logging::endl;
-                            mapping.emplace(local, std::make_pair(MemoryType::RAM_LOAD_TMU, MemoryType::RAM_LOAD_TMU));
+                            mapping[local].preferred = MemoryType::RAM_LOAD_TMU;
+                            // fall-back, e.g. for memory copy
+                            mapping[local].fallback = MemoryType::RAM_READ_WRITE_VPM;
                         }
                     }
-                    else
+                    else if(!local->type.getElementType().getStructType())
                     {
                         // local buffer
                         logging::debug() << "Local buffer '" << local->to_string()
                                          << "' will be stored in VPM (with fall-back to RAM via VPM)" << logging::endl;
-                        mapping.emplace(
-                            local, std::make_pair(MemoryType::VPM_SHARED_ACCESS, MemoryType::RAM_READ_WRITE_VPM));
+                        mapping[local].preferred = MemoryType::VPM_SHARED_ACCESS;
+                        mapping[local].fallback = MemoryType::RAM_READ_WRITE_VPM;
+                    }
+                    else
+                    {
+                        // local buffer
+                        logging::debug() << "Local struct '" << local->to_string() << "' will be stored in RAM via VPM"
+                                         << logging::endl;
+                        mapping[local].preferred = MemoryType::RAM_READ_WRITE_VPM;
+                        mapping[local].fallback = MemoryType::RAM_READ_WRITE_VPM;
                     }
                 }
                 else
                     // parameters MUST be handled before and there is no other type of memory objects
                     throw CompilationError(
-                        CompilationStep::NORMALIZER, "Invalid local type for memory area", local->to_string());
+                        CompilationStep::NORMALIZER, "Invalid local type for memory area", local->to_string(true));
             }
         }
         it.nextInMethod();
@@ -1211,26 +1471,146 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
      * https://stackoverflow.com/questions/17431941/how-to-use-arrays-in-program-global-scope-in-opencl
      */
     /*
-     * TODO rewrite:
-     * 1. lower global constants (and effectively constant globals, when never written?) to loading constant values
-     * 1.1 lower small enough private buffer to registers
-     * 2. determine for all memory locals (local memory, global memory, stack), whether to put them in VPM or memory
-     *    priority to move into VPM: stack > local, since for local memory the host allocates a buffer
-     * 2.1 keep read-only global memory in RAM, load via TMU
-     *     keep read-write global memory in RAM, load/store via VPM
-     * 2.2 move private memory into VPM
-     * 2.3 move local memory into VPM if the size (maximum access index) fits into cache
-     *     keep read-only local memory in RAM/global data segment, load via TMU
-     *     keep read-write local memory in RAM/global data segment, load/store via VPM
-     * 2.4 keep read-only constant memory in RAM/global data segment, load via TMU
-     * 2.x log classification and reasons
-     * 3. map memory access to instructions according to location of source and destination
+     * 1. lower constant/private buffers into register
+     *    lower global constant buffers into registers
+     *    lower small enough private buffers to registers
+     * 2. generate TMU loads for read-only memory
+     *    keep all read-only parameters in RAM, load via TMU
+     *    also load constants via TMU, which could not be lowered into register
+     * 3. lower per-QPU (private) buffers into VPM
+     * 4. lower shared buffers (local) into VPM
+     * 5. generate remaining instructions for RAM access via VPM
+     * TODO:
      * 3.1 for memory located in RAM, try to group/queue reads/writes
      * 3.2 also try to use VPM as cache (e.g. only write back into memory when VPM cache area full, prefetch into VPM)
      * 4. final pass which actually converts VPM cache
      */
-    determineMemoryAccess(method);
-    // TODO set ParameterDecorations ::INPUT and ::OUTPUT on insertion of reads/writes
+    auto memoryMapping = determineMemoryAccess(method);
+    // stores already assigned VPM areas, e.g. for memory-copy operations
+    FastMap<const Local*, const VPMArea*> vpmMappedLocals;
+
+    // 1. lower into registers
+    auto mappingIt = memoryMapping.begin();
+    while(mappingIt != memoryMapping.end())
+    {
+        if(mappingIt->second.preferred == MemoryType::QPU_REGISTER_READONLY ||
+            mappingIt->second.preferred == MemoryType::QPU_REGISTER_READWRITE)
+        {
+            if(lowerMemoryToRegister(
+                   method, mappingIt->first, mappingIt->second.preferred, mappingIt->second.accessInstructions))
+                mappingIt = memoryMapping.erase(mappingIt);
+            else if(mappingIt->second.fallback == MemoryType::QPU_REGISTER_READONLY ||
+                mappingIt->second.fallback == MemoryType::QPU_REGISTER_READWRITE)
+                throw CompilationError(
+                    CompilationStep::NORMALIZER, "Failed to lower memory to register", mappingIt->first->to_string());
+            else
+            {
+                // could not lower to register, fall back to fall-back and try again
+                mappingIt->second.preferred = mappingIt->second.fallback;
+                ++mappingIt;
+            }
+        }
+        else
+            ++mappingIt;
+    }
+    // 2. load read-only parameter via TMU
+    mappingIt = memoryMapping.begin();
+    while(mappingIt != memoryMapping.end())
+    {
+        if(mappingIt->second.preferred == MemoryType::RAM_LOAD_TMU)
+        {
+            if(mapReadsToTMULoad(method, mappingIt->first, mappingIt->second.accessInstructions))
+            {
+                if(mappingIt->first->is<Parameter>())
+                {
+                    const_cast<Parameter*>(mappingIt->first->as<Parameter>())->decorations =
+                        add_flag(mappingIt->first->as<Parameter>()->decorations, ParameterDecorations::INPUT);
+                }
+                mappingIt = memoryMapping.erase(mappingIt);
+            }
+            else if(mappingIt->second.fallback == MemoryType::RAM_LOAD_TMU)
+                throw CompilationError(
+                    CompilationStep::NORMALIZER, "Failed to generate TMU load", mappingIt->first->to_string());
+            else
+            {
+                // could not load via TMU (e.g. copy), retry with fall-back
+                mappingIt->second.preferred = mappingIt->second.fallback;
+                ++mappingIt;
+            }
+        }
+        else
+            ++mappingIt;
+    }
+    // TODO this is a workaround to be able to use scratch afterwards
+    // TODO alternatively, remove lock, build areas from the end and see how far the scratch can expand
+    method.vpm->updateScratchSize(16);
+    // 3. lower private memory into VPM
+    mappingIt = memoryMapping.begin();
+    while(mappingIt != memoryMapping.end())
+    {
+        if(mappingIt->second.preferred == MemoryType::VPM_PER_QPU)
+        {
+            // TODO could optimize by preferring the private buffer accessed more often to be in VPM
+            if(lowerMemoryToVPM(method, mappingIt->first, MemoryType::VPM_PER_QPU, mappingIt->second.accessInstructions,
+                   vpmMappedLocals))
+                mappingIt = memoryMapping.erase(mappingIt);
+            else
+            {
+                // could not lower to VPM, fall back to fall-back and try again
+                mappingIt->second.preferred = mappingIt->second.fallback;
+                ++mappingIt;
+            }
+        }
+        else
+            ++mappingIt;
+    }
+    // 4. lower local memory into VPM
+    mappingIt = memoryMapping.begin();
+    while(mappingIt != memoryMapping.end())
+    {
+        if(mappingIt->second.preferred == MemoryType::VPM_SHARED_ACCESS)
+        {
+            // TODO could optimize by preferring the local buffer accessed more often to be in VPM
+            if(lowerMemoryToVPM(method, mappingIt->first, MemoryType::VPM_SHARED_ACCESS,
+                   mappingIt->second.accessInstructions, vpmMappedLocals))
+                mappingIt = memoryMapping.erase(mappingIt);
+            else
+            {
+                // could not lower to VPM, fall back to fall-back and try again
+                mappingIt->second.preferred = mappingIt->second.fallback;
+                ++mappingIt;
+            }
+        }
+        else
+            ++mappingIt;
+    }
+    // 5. map remaining instructions to access RAM via VPM
+    // list of basic blocks where multiple VPM accesses could be combined
+    FastSet<BasicBlock*> affectedBlocks;
+    mappingIt = memoryMapping.begin();
+    while(mappingIt != memoryMapping.end())
+    {
+        if(mappingIt->second.preferred == MemoryType::RAM_READ_WRITE_VPM)
+        {
+            if(mapReadWriteToMemoryViaVPM(
+                   method, mappingIt->first, mappingIt->second.accessInstructions, vpmMappedLocals, affectedBlocks))
+                mappingIt = memoryMapping.erase(mappingIt);
+            else
+                ++mappingIt;
+        }
+        else
+            ++mappingIt;
+    }
+
+    if(!memoryMapping.empty())
+    {
+        for(const auto& map : memoryMapping)
+            logging::error() << "Unhandled memory access type: " << map.first->to_string() << logging::endl;
+        throw CompilationError(CompilationStep::NORMALIZER, "Unhandled memory access types!");
+    }
+
+    combineVPMAccess(affectedBlocks, method);
+
     /*
      * Goals:
      * 1. map all memory-accesses correctly, so all QPUs accessing the same memory see the same/expected values
@@ -1291,6 +1671,7 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
                         nextMemInst->getDestinationElementType().getPhysicalWidth() ==
                             memInst->getSourceElementType().getPhysicalWidth())
                     {
+                        // TODO add this to somewhere up front
                         logging::debug()
                             << "Found reading of memory where the sole usage writes the value back into memory: "
                             << memInst->to_string() << logging::endl;
@@ -1310,20 +1691,7 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
         }
     }
 
-    // stores already assigned VPM areas, e.g. for memory-copy operations
-    FastMap<const Local*, const VPMArea*> vpmMappedLocals;
-
-    // Step 1
-    generateStandardMemoryAccessInstructions(method, memoryInstructions, true);
-    // Step 2
-    lowerStackIntoVPM(method, memoryInstructions, vpmMappedLocals);
-    // Step 3
-    lowerLocalDataIntoVPM(method, memoryInstructions, vpmMappedLocals);
-    // Step 4
-    lowerGlobalsToConstants(method, memoryInstructions);
-    // Step 5
-    // since we use at most 16 ints of scratch here (we don't combine anymore), the scratch-area is always large enough
-    generateStandardMemoryAccessInstructions(method, memoryInstructions, false);
-
     // TODO move calculation of stack/global indices in here too?
+
+    // TODO clean up no longer used (all kernels!) globals and stack allocations
 }

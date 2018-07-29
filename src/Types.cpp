@@ -87,6 +87,25 @@ static std::string toSimpleTypeName(unsigned char bitWidth, bool isFloat)
     return std::string("i") + std::to_string(bitWidth);
 }
 
+std::string vc4c::toString(AddressSpace space, bool shortName)
+{
+    switch(space)
+    {
+    case AddressSpace::CONSTANT:
+        return shortName ? "(c)" : "__constant";
+    case AddressSpace::GENERIC:
+        return shortName ? "(?)" : "__generic";
+    case AddressSpace::GLOBAL:
+        return shortName ? "(g)" : "__global";
+    case AddressSpace::LOCAL:
+        return shortName ? "(l)" : "__local";
+    case AddressSpace::PRIVATE:
+        return shortName ? "(p)" : "__private";
+    }
+    throw CompilationError(
+        CompilationStep::GENERAL, "Unhandled address space", std::to_string(static_cast<int>(space)));
+}
+
 std::string DataType::to_string() const
 {
     if(complexType)
@@ -376,7 +395,7 @@ unsigned PointerType::getAlignmentInBytes() const
 
 std::string PointerType::getTypeName() const
 {
-    return elementType.to_string() + "*";
+    return toString(addressSpace, true) + " " + elementType.to_string() + "*";
 }
 
 StructType::StructType(const std::string& name, const std::vector<DataType>& elementTypes, const bool isPacked) :

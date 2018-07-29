@@ -33,6 +33,8 @@ using namespace vc4c::llvm2qasm;
 static AddressSpace toAddressSpace(int num)
 {
     // XXX this mapping is not guaranteed, mapping only determined by experiment
+    // XXX somehow the values from the kernel meta data and the parameter pointer types differ?! (e.g.
+    // NVIDIA/oclSimpleTexture3D_kernel.cl)
     switch(num)
     {
     case 0:
@@ -122,8 +124,10 @@ static void extractKernelMetadata(
                 if(operand->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind)
                 {
                     const llvm::ConstantAsMetadata* constant = llvm::cast<const llvm::ConstantAsMetadata>(operand);
-                    kernel.parameters.at(i).type.getPointerType().value()->addressSpace =
-                        toAddressSpace(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getSExtValue());
+                    auto& addrSpace = kernel.parameters.at(i).type.getPointerType().value()->addressSpace;
+                    if(addrSpace == AddressSpace::GENERIC)
+                        addrSpace =
+                            toAddressSpace(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getSExtValue());
                 }
                 else
                     throw CompilationError(
@@ -271,8 +275,10 @@ static void extractKernelMetadata(
                                 {
                                     const llvm::ConstantAsMetadata* constant =
                                         llvm::cast<const llvm::ConstantAsMetadata>(operand);
-                                    kernel.parameters.at(i - 1).type.getPointerType().value()->addressSpace =
-                                        toAddressSpace(static_cast<int>(
+                                    auto& addrSpace =
+                                        kernel.parameters.at(i - 1).type.getPointerType().value()->addressSpace;
+                                    if(addrSpace == AddressSpace::GENERIC)
+                                        addrSpace = toAddressSpace(static_cast<int>(
                                             llvm::cast<const llvm::ConstantInt>(constant->getValue())->getSExtValue()));
                                 }
                                 else
@@ -543,6 +549,12 @@ static ParameterDecorations toParameterDecorations(const llvm::Argument& arg)
         deco = add_flag(deco, ParameterDecorations::RESTRICT);
     if(arg.onlyReadsMemory())
         deco = add_flag(deco, ParameterDecorations::READ_ONLY);
+    if(arg.hasByValOrInAllocaAttr())
+    {
+        dumpLLVM(&arg);
+        throw CompilationError(
+            CompilationStep::PARSER, "Non-trivial parameter passed by value are not supported", arg.getName());
+    }
     return deco;
 }
 
@@ -895,7 +907,8 @@ void BitcodeReader::parseInstruction(
         if(func == nullptr)
         {
             dumpLLVM(call);
-            throw CompilationError(CompilationStep::PARSER, "Unhandled type of indirect function call!");
+            throw CompilationError(
+                CompilationStep::PARSER, "Unhandled type of indirect function call!", call->getName());
         }
         if(func->isDeclaration())
         {
@@ -1190,8 +1203,8 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
                 if(!toConstant(module, expr->getOperand(i)).isZeroInitializer())
                 {
                     dumpLLVM(expr);
-                    throw CompilationError(
-                        CompilationStep::PARSER, "Only constant getelementptr without offsets are supported for now");
+                    throw CompilationError(CompilationStep::PARSER,
+                        "Only constant getelementptr without offsets are supported for now", expr->getName());
                 }
             }
 

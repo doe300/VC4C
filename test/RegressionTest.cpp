@@ -51,7 +51,7 @@ static std::vector<Entry> allKernels =
 		Entry{PENDING_BOTH, FAST, "./testing/test_images.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_immediates.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_int.cl", ""},
-		Entry{PASSED, FAST, "./testing/test_integer.cl", ""},
+		Entry{PENDING_BOTH, FAST, "./testing/test_integer.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_math.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_other.cl", ""},
 		Entry{PASSED, FAST, "./testing/test_sfu.cl", ""},
@@ -159,7 +159,7 @@ static std::vector<Entry> allKernels =
 		Entry{PENDING_SPIRV, FAST, "./testing/vattenoverhuvudet/calculate_voxel_grid.cl", ""},
 		//XXX indices in access chain do not match
 		Entry{PENDING_SPIRV, FAST, "./testing/vattenoverhuvudet/integrate_particle_states.cl", ""},
-		Entry{PASSED, FAST, "./testing/vattenoverhuvudet/simple_voxel_grid_move.cl", ""},
+		Entry{PENDING_LLVM, FAST, "./testing/vattenoverhuvudet/simple_voxel_grid_move.cl", ""},
 		Entry{PASSED, FAST, "./testing/vattenoverhuvudet/taskParallel.cl", ""},
 		Entry{PASSED, FAST, "./testing/vattenoverhuvudet/update_particle_positions.cl", ""},
 
@@ -191,7 +191,7 @@ static std::vector<Entry> allKernels =
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/gputools/transformations.cl", ""},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/gputools/tv_chambolle.cl", ""},
 
-		Entry{PASSED, FAST, "./testing/clNN/im2col.cl", ""},
+		Entry{PENDING_LLVM, FAST, "./testing/clNN/im2col.cl", ""},
 		Entry{PASSED, FAST, "./testing/clNN/SoftMax.cl", "-DSOFTMAX_THREADS=4"},
 		Entry{PASSED, FAST, "./testing/clNN/SpatialAveragePooling.cl", "-DDtype=float -DCOUNT_INCLUDE_PAD=true"},
 		Entry{PASSED, FAST, "./testing/clNN/SpatialMaxPooling.cl", "-DDtype=float"},
@@ -208,7 +208,7 @@ static std::vector<Entry> allKernels =
 		Entry{PENDING_LLVM, FAST, "./testing/HandBrake/vscale_all_dither_opencl.cl", ""},
 		Entry{PENDING_LLVM, FAST, "./testing/HandBrake/vscale_all_nodither_opencl.cl", ""},
 		Entry{PASSED, FAST, "./testing/HandBrake/vscale_fast_opencl.cl", ""},
-		Entry{PASSED, FAST, "./testing/HandBrake/yaif_filter.cl", ""},
+		Entry{PENDING_LLVM, FAST, "./testing/HandBrake/yaif_filter.cl", ""},
 
 		Entry{PASSED, SLOW, "./testing/bfgminer/diablo.cl", "-DWORKSIZE=8"},
 		Entry{PASSED, SLOW, "./testing/bfgminer/diakgcn.cl", "-DWORKSIZE=8"},
@@ -262,7 +262,7 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./testing/rodinia/hotspot_kernel.cl", ""},
 		Entry{PASSED, FAST, "./testing/rodinia/kmeans.cl", ""},
 		Entry{PENDING_BOTH, FAST, "./testing/rodinia/lavaMD_kernel_gpu_opencl.cl", ""},
-		Entry{PASSED, FAST, "./testing/rodinia/lud_kernel.cl", ""},
+		Entry{PENDING_LLVM, FAST, "./testing/rodinia/lud_kernel.cl", ""},
 		Entry{PENDING_LLVM|PENDING_SPIRV, SLOW, "./testing/rodinia/myocyte_kernel_gpu_opencl.cl", ""},
 		//XXX indices in access chain do not match
 		Entry{PENDING_SPIRV, FAST, "./testing/rodinia/nearestNeighbor_kernel.cl", ""},
@@ -287,7 +287,7 @@ static std::vector<Entry> allKernels =
 		Entry{PASSED, FAST, "./testing/NVIDIA/Histogram256.cl", "-DLOCAL_SIZE_LIMIT=8 -DLOG2_WARP_SIZE=2U -DWARP_COUNT=3 -DMERGE_WORKGROUP_SIZE=8"},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/NVIDIA/marchingCubes_kernel.cl", "-DLOCAL_SIZE_LIMIT=8"},
 		Entry{PASSED, FAST, "./testing/NVIDIA/matrixMul.cl", "-DLOCAL_SIZE_LIMIT=8 -DBLOCK_SIZE=8"},
-		Entry{PASSED, FAST, "./testing/NVIDIA/MedianFilter.cl", "-DLOCAL_SIZE_LIMIT=8"},
+		Entry{PENDING_LLVM, FAST, "./testing/NVIDIA/MedianFilter.cl", "-DLOCAL_SIZE_LIMIT=8"},
 		Entry{PENDING_SPIRV, FAST, "./testing/NVIDIA/MersenneTwister.cl", "-DLOCAL_SIZE_LIMIT=8"},
 		Entry{PASSED, FAST, "./testing/NVIDIA/oclMatVecMul.cl", "-DLOCAL_SIZE_LIMIT=8"},
 		Entry{PENDING_LLVM|PENDING_SPIRV, FAST, "./testing/NVIDIA/oclNbodyKernel.cl", "-DLOCAL_SIZE_LIMIT=8 -DREAL3=float3 -DREAL4=float4 -DREAL=float -DZERO3=(float3)0"},

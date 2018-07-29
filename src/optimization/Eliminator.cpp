@@ -318,6 +318,31 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
                        ->copyExtrasFrom(&node)
                        ->addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
     }
+
+    // set reference of local to original reference, if always the same for all possible sources
+    if(node.hasValueType(ValueType::LOCAL))
+    {
+        const Local* ref = nullptr;
+        for(const auto& pair : node.getValuesForLabels())
+        {
+            if(!pair.second.hasType(ValueType::LOCAL))
+                // cannot set universal reference
+                return;
+            if(pair.second.hasLocal(node.getOutput()->local) ||
+                pair.second.local->getBase(true) == node.getOutput()->local)
+                // phi node references its own result, ignore
+                continue;
+            if(ref != nullptr &&
+                !(pair.second.local->getBase(true) == ref || pair.second.local->reference.first == ref))
+                // references differ
+                return;
+            ref = pair.second.local->getBase(true);
+        }
+
+        node.getOutput()->local->reference.first = const_cast<Local*>(ref);
+        node.getOutput()->local->reference.second = ANY_ELEMENT;
+        logging::debug() << "PHI output: " << node.getOutput()->to_string(true, true) << logging::endl;
+    }
 }
 
 void optimizations::eliminatePhiNodes(const Module& module, Method& method, const Configuration& config)

@@ -55,6 +55,8 @@ namespace vc4c
         LOCAL = 4
     };
 
+    std::string toString(AddressSpace space, bool shortName = false);
+
     struct PointerType;
     struct ArrayType;
     struct StructType;

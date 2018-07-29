@@ -9,6 +9,7 @@
 #include "CompilationError.h"
 #include "TypeConversions.h"
 #include "config.h"
+#include "log.h"
 
 #include <algorithm>
 
@@ -582,13 +583,23 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
     DataType finalType = subContainerType;
     if(subContainerType.getArrayType())
         // convert x[num] to x*
-        finalType = subContainerType.getElementType().toPointerType();
+        // TODO shouldn't x[num] be converted to x[num]* ?? (e.g. for HandBrake/vscale_all_dither_opencl.cl)
+        // or distinguish between first and following indices?
+        finalType = subContainerType.getElementType().toPointerType(container.type.getPointerType() ?
+                container.type.getPointerType().value()->addressSpace :
+                AddressSpace::PRIVATE);
     else if(!(firstIndexIsElement && indices.size() == 1))
-        finalType = subContainerType.toPointerType();
+        finalType = subContainerType.toPointerType(container.type.getPointerType().value()->addressSpace);
 
     if(dest.type != finalType)
+    {
+        logging::error() << "Final index does not match expected type for source " << container.to_string()
+                         << ", destination " << dest.to_string() << ", final index type" << finalType.to_string()
+                         << " and indices: " << to_string<Value>(indices)
+                         << (firstIndexIsElement ? " (first index is element)" : "") << logging::endl;
         throw CompilationError(
             CompilationStep::LLVM_2_IR, "Types of retrieving indices do not match!", finalType.to_string());
+    }
 
     return it;
 }

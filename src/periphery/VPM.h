@@ -756,7 +756,7 @@ namespace vc4c
         public:
             explicit VPM(unsigned totalVPMSize = VPM_DEFAULT_SIZE);
 
-            const VPMArea& getScratchArea();
+            const VPMArea& getScratchArea() const;
             const VPMArea* findArea(const Local* local);
             const VPMArea* addArea(
                 const Local* local, const DataType& elementType, bool isStackArea, unsigned numStacks = NUM_QPUS);
@@ -770,11 +770,15 @@ namespace vc4c
 
             /*
              * Inserts a read from VPM into a QPU register
+             *
+             * NOTE: the inAreaOffset is the offset in bytes
              */
             InstructionWalker insertReadVPM(Method& method, InstructionWalker it, const Value& dest,
                 const VPMArea* area = nullptr, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
             /*
              * Inserts a write from a QPU register into VPM
+             *
+             * NOTE: the inAreaOffset is the offset in bytes
              */
             InstructionWalker insertWriteVPM(Method& method, InstructionWalker it, const Value& src,
                 const VPMArea* area = nullptr, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);

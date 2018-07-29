@@ -236,7 +236,7 @@ static std::vector<uint8_t> generateDataSegment(
 }
 
 std::size_t ModuleInfo::write(std::ostream& stream, const OutputMode mode,
-    const ReferenceRetainingList<Global>& globalData, Byte totalStackFramSize)
+    const ReferenceRetainingList<Global>& globalData, Byte totalStackFrameSize)
 {
     std::size_t numWords = 0;
     if(mode == OutputMode::HEX || mode == OutputMode::ASSEMBLER)
@@ -284,16 +284,18 @@ std::size_t ModuleInfo::write(std::ostream& stream, const OutputMode mode,
     }
     case OutputMode::BINARY:
     {
-        const auto binary = generateDataSegment(globalData, totalStackFramSize);
+        const auto binary = generateDataSegment(globalData, totalStackFrameSize);
         stream.write(reinterpret_cast<const char*>(binary.data()), binary.size());
         numWords += binary.size() / sizeof(uint64_t);
         break;
     }
     case OutputMode::HEX:
     {
-        const auto binary = generateDataSegment(globalData, totalStackFramSize);
+        const auto binary = generateDataSegment(globalData, totalStackFrameSize);
         for(const Global& global : globalData)
             stream << "//" << global.to_string(true) << std::endl;
+        if(totalStackFrameSize.getValue() > 0)
+            stream << "//" << totalStackFrameSize.getValue() << " bytes of stack" << std::endl;
         for(std::size_t i = 0; i < binary.size(); i += 8)
             stream << toHexString((static_cast<uint64_t>(binary[i]) << 56) |
                           (static_cast<uint64_t>(binary[i + 1]) << 48) | (static_cast<uint64_t>(binary[i + 2]) << 40) |
