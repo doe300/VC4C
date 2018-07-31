@@ -513,6 +513,7 @@ Optional<Value> OpCode::calculate(const Optional<Value>& firstOperand, const Opt
     if(firstVal->isUndefined() || (numOperands > 1 && secondVal && secondVal->isUndefined()))
         return UNDEFINED_VALUE;
 
+    // TODO throws if first element is no literal
     const Literal firstLit = firstVal->getLiteralValue() ? firstVal->getLiteralValue().value() :
                                                            firstVal->container.elements.at(0).getLiteralValue().value();
     const Literal secondLit = (!secondVal || numOperands == 1) ?

@@ -238,7 +238,7 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
                 std::max(static_cast<int64_t>(constant->getLiteralValue()->signedInt()),
                     static_cast<int64_t>(constant->getLiteralValue()->unsignedInt())));
     }
-    else if(constant && constant->hasType(ValueType::CONTAINER))
+    else if(constant && constant->hasType(ValueType::CONTAINER) && constant->container.hasOnlyScalarElements())
     {
         if(constant->type.isFloatingType())
         {

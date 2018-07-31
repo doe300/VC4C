@@ -415,17 +415,23 @@ SmallImmediate SmallImmediate::fromRotationOffset(unsigned char offset)
     return static_cast<SmallImmediate>(static_cast<unsigned char>(offset + VECTOR_ROTATE_R5));
 }
 
-bool ContainerValue::isAllSame(const Optional<Literal>& value) const
+bool ContainerValue::hasOnlyScalarElements() const
+{
+    return std::all_of(elements.begin(), elements.end(), toFunction(&Value::isLiteralValue));
+}
+
+bool ContainerValue::isAllSame() const
 {
     if(elements.empty())
         return true;
-    const Literal singleValue = value.value_or(elements[0].literal);
+
+    const Value singleValue = elements[0];
     for(const Value& element : elements)
     {
         if(element.isUndefined())
             // if items are UNDEFINED, ignore them, since maybe the remaining items all have the same value
             continue;
-        if(!element.hasLiteral(singleValue))
+        if(element != singleValue)
             return false;
     }
     return true;
@@ -442,7 +448,7 @@ bool ContainerValue::isElementNumber(bool withOffset) const
             // if items are UNDEFINED, ignore them, since maybe the remaining items correspond to the element-number
             continue;
         if(!elements[i].hasType(ValueType::LITERAL))
-            throw CompilationError(CompilationStep::GENERAL, "Invalid container element", elements[i].to_string());
+            return false;
         if(elements[i].literal.signedInt() != static_cast<int32_t>(i) + offset)
             return false;
     }
@@ -604,7 +610,7 @@ bool Value::hasImmediate(const SmallImmediate& immediate) const
 
 bool Value::isUndefined() const
 {
-    return hasType(ValueType::UNDEFINED);
+    return hasType(ValueType::UNDEFINED) || (hasType(ValueType::CONTAINER) && container.isUndefined());
 }
 
 bool Value::isZeroInitializer() const

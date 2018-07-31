@@ -525,6 +525,8 @@ namespace vc4c
 
     /*
      * Content type for Values containing several values (e.g. vector- or array- constants)
+     *
+     * NOTE: This can also contain containers of non-scalar values (e.g. array of vectors)
      */
     struct ContainerValue
     {
@@ -540,11 +542,15 @@ namespace vc4c
         }
         ContainerValue(std::vector<Value>&& values) : elements(values) {}
 
-        /*
-         * Determines whether all elements of this container have the same value.
-         * If the parameter is set, checks if all elements have this exact value
+        /**
+         * Determines if all elements of this container are scalar
          */
-        bool isAllSame(const Optional<Literal>& value = Optional<Literal>{}) const;
+        bool hasOnlyScalarElements() const;
+
+        /*
+         * Determines whether all elements of this container have the same value
+         */
+        bool isAllSame() const;
 
         /*
          * Determines whether all element-values correspond to their element number,  e.g. i32 1, i32 2, ...
