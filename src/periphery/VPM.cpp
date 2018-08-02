@@ -746,24 +746,23 @@ VPRDMASetup VPMArea::toReadDMASetup(const DataType& elementType, uint8_t numValu
     return setup;
 }
 
-VPM::VPM(const unsigned totalVPMSize) :
-    maximumVPMSize(std::min(VPM_DEFAULT_SIZE, totalVPMSize)), areas(), isScratchLocked(false)
+VPM::VPM(const unsigned totalVPMSize) : maximumVPMSize(std::min(VPM_DEFAULT_SIZE, totalVPMSize)), areas(VPM_NUM_ROWS)
 {
     // set a size of at least 1 row, so if no scratch is used, the first area has an offset of != 0 and therefore is
     // different than the scratch-area
-    areas.emplace(VPMArea{VPMUsage::SCRATCH, 0, 1, nullptr});
+    areas[0] = std::make_shared<VPMArea>(VPMArea{VPMUsage::SCRATCH, 0, 1, nullptr});
 }
 
 const VPMArea& VPM::getScratchArea() const
 {
-    return *areas.begin();
+    return **areas.begin();
 }
 
 const VPMArea* VPM::findArea(const Local* local)
 {
-    for(const VPMArea& area : areas)
-        if(area.originalAddress == local)
-            return &area;
+    for(const auto& area : areas)
+        if(area && area->originalAddress == local)
+            return area.get();
     return nullptr;
 }
 
@@ -783,45 +782,57 @@ const VPMArea* VPM::addArea(const Local* local, const DataType& elementType, boo
     if(area != nullptr && area->numRows >= numRows)
         return area;
 
-    // lock scratch area, so it cannot expand over reserved VPM areas
-    isScratchLocked = true;
-
     // find free consecutive space in VPM with the requested size and return it
-    uint8_t rowOffset = 0;
-    for(const VPMArea& area : areas)
+    // to keep the remaining space free for scratch, we start allocating space from the end of the VPM
+    Optional<unsigned> rowOffset;
+    uint8_t numFreeRows = 0;
+    for(auto i = areas.size() - 1; i > 0 /* index 0 is always reserved for scratch */; --i)
     {
-        if(rowOffset + numRows > area.rowOffset)
+        if(areas[i])
         {
-            // if the new area doesn't fit before the current one, place it after
-            rowOffset = static_cast<unsigned char>(area.rowOffset + area.numRows);
+            // row is already reserved
+            numFreeRows = 0;
+            continue;
+        }
+        else
+            ++numFreeRows;
+        if(numFreeRows >= numRows)
+        {
+            rowOffset = static_cast<unsigned>(i);
+            break;
         }
     }
+    if(!rowOffset)
+        // no more (big enough) free space on VPM
+        return nullptr;
 
-    // check if we can fit at the end
-    if(rowOffset + numRows < VPM_NUM_ROWS)
-    {
-        // for now align all new VPM areas at the beginning of a column
-        auto it =
-            areas.emplace(VPMArea{isStackArea ? VPMUsage::STACK : VPMUsage::LOCAL_MEMORY, rowOffset, numRows, local});
-        logging::debug() << "Allocating " << numRows << " rows (per 64 byte) of VPM cache starting at row " << rowOffset
-                         << " for local: " << local->to_string(false)
-                         << (isStackArea ? std::string("(") + std::to_string(numStacks) + " stacks )" : "")
-                         << logging::endl;
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL + 90, "VPM cache size", requestedSize);
-        return &(*it.first);
-    }
-
-    // no more (big enough) free space on VPM
-    return nullptr;
+    // for now align all new VPM areas at the beginning of a column
+    auto ptr = std::make_shared<VPMArea>(VPMArea{isStackArea ? VPMUsage::STACK : VPMUsage::LOCAL_MEMORY,
+        static_cast<uint8_t>(rowOffset.value()), numRows, local});
+    for(auto i = rowOffset.value(); i < (rowOffset.value() + numRows); ++i)
+        areas[i] = ptr;
+    logging::debug() << "Allocating " << numRows << " rows (per 64 byte) of VPM cache starting at row "
+                     << rowOffset.value() << " for local: " << local->to_string(false)
+                     << (isStackArea ? std::string("(") + std::to_string(numStacks) + " stacks )" : "")
+                     << logging::endl;
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL + 90, "VPM cache size", requestedSize);
+    return ptr.get();
 }
 
 unsigned VPM::getMaxCacheVectors(const DataType& type, bool writeAccess) const
 {
-    if(isScratchLocked)
-        return getScratchArea().numRows;
+    unsigned numFreeRows = 0;
+    // can possible use up all rows up to the first area
+    for(const auto& area : areas)
+    {
+        if(area && area->usageType != VPMUsage::SCRATCH)
+            break;
+        ++numFreeRows;
+    }
+
     if(writeAccess)
-        return std::min(63u, (maximumVPMSize / 16) / (type.getScalarBitCount() / 8));
-    return std::min(15u, (maximumVPMSize / 16) / (type.getScalarBitCount() / 8));
+        return std::min(std::min(63u, (maximumVPMSize / 16) / (type.getScalarBitCount() / 8)), numFreeRows);
+    return std::min(std::min(15u, (maximumVPMSize / 16) / (type.getScalarBitCount() / 8)), numFreeRows);
 }
 
 void VPM::updateScratchSize(unsigned char requestedRows)
@@ -829,14 +840,18 @@ void VPM::updateScratchSize(unsigned char requestedRows)
     if(requestedRows > VPM_NUM_ROWS)
         throw CompilationError(CompilationStep::GENERAL,
             "The requested size of the scratch area exceeds the total VPM size", std::to_string(requestedRows));
+    if(getMaxCacheVectors(TYPE_INT32, true) < requestedRows)
+        throw CompilationError(CompilationStep::GENERAL,
+            "The requested size of the scratch area exceeds the available VPM size", std::to_string(requestedRows));
 
     if(getScratchArea().numRows < requestedRows)
     {
-        if(isScratchLocked)
-            throw CompilationError(CompilationStep::GENERAL, "Size of the scratch area is already locked");
         logging::debug() << "Increased the scratch size to " << requestedRows << " rows (" << requestedRows * 64
                          << " bytes)" << logging::endl;
         const_cast<unsigned char&>(getScratchArea().numRows) = requestedRows;
+        // fill areas with scratch
+        for(unsigned i = 1; i < requestedRows; ++i)
+            areas[i] = areas[0];
     }
 }
 

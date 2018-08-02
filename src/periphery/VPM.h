@@ -819,9 +819,7 @@ namespace vc4c
 
         private:
             const unsigned maximumVPMSize;
-            std::set<VPMArea> areas;
-            // whether the scratch area is locked to a fixed size
-            bool isScratchLocked;
+            std::vector<std::shared_ptr<VPMArea>> areas;
 
             InstructionWalker insertLockMutex(InstructionWalker it, bool useMutex) const;
             InstructionWalker insertUnlockMutex(InstructionWalker it, bool useMutex) const;

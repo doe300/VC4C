@@ -992,7 +992,6 @@ static InstructionWalker lowerReadWriteOfMemoryToRegister(InstructionWalker it, 
 {
     Value tmpIndex = UNDEFINED_VALUE;
     it = insertAddressToElementOffset(it, method, tmpIndex, local, loweredRegister, mem);
-    // TODO need special handling for inserting/extracting multiple elements? At least for insertion
     if(mem->op == MemoryOperation::READ)
     {
         // TODO check whether index is guaranteed to be in range [0, 16[
@@ -1001,6 +1000,7 @@ static InstructionWalker lowerReadWriteOfMemoryToRegister(InstructionWalker it, 
     }
     if(mem->op == MemoryOperation::WRITE)
     {
+        // TODO need special handling for inserting multiple elements to set all new elements
         it = insertVectorInsertion(it, method, loweredRegister, tmpIndex, mem->getSource());
         return it.erase();
     }
@@ -1541,9 +1541,6 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
         else
             ++mappingIt;
     }
-    // TODO this is a workaround to be able to use scratch afterwards
-    // TODO alternatively, remove lock, build areas from the end and see how far the scratch can expand
-    method.vpm->updateScratchSize(16);
     // 3. lower private memory into VPM
     mappingIt = memoryMapping.begin();
     while(mappingIt != memoryMapping.end())
