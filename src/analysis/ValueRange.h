@@ -56,6 +56,7 @@ namespace vc4c
              */
             bool isUnsigned() const;
             bool fitsIntoType(const DataType& type, bool isSigned = true) const;
+            bool hasExplicitBoundaries() const;
 
             std::string to_string() const;
 

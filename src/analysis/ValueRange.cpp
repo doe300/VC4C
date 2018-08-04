@@ -52,7 +52,7 @@ static std::map<std::size_t, std::pair<double, double>> floatTypeLimits = {
 
 ValueRange::ValueRange(const DataType& type) : ValueRange(type.isFloatingType(), !isUnsignedType(type))
 {
-    const DataType elemType = type.getElementType();
+    const DataType elemType = type.getPointerType() ? type : type.getElementType();
     if(type.isFloatingType())
     {
         auto it = floatTypeLimits.find(h(elemType));
@@ -169,6 +169,11 @@ bool ValueRange::fitsIntoType(const DataType& type, bool isSigned) const
         return isInRange(intRange.minValue, intRange.maxValue, elemType.getScalarBitCount(), isSigned);
     }
     return false;
+}
+
+bool ValueRange::hasExplicitBoundaries() const
+{
+    return !hasDefaultBoundaries;
 }
 
 std::string ValueRange::to_string() const
@@ -452,9 +457,24 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
     }
     else
     {
-        // any other operation, set to min/max?
+        // some operations cannot go into negative if both inputs are positive
+        bool hasCandidateOperation = false;
+        auto op = dynamic_cast<const Operation*>(it);
+        if(op != nullptr)
+        {
+            hasCandidateOperation = op->op == OP_ADD || op->op == OP_AND || op->op == OP_ASR || op->op == OP_FADD ||
+                op->op == OP_FMAX || op->op == OP_FMAXABS || op->op == OP_FMIN || op->op == OP_FMINABS ||
+                op->op == OP_FMUL || op->op == OP_FTOI || op->op == OP_ITOF || op->op == OP_MAX || op->op == OP_MIN ||
+                op->op == OP_MUL24 || op->op == OP_OR || op->op == OP_SHR || op->op == OP_XOR;
+        }
+        // any other operation, set to min/max
         extendBoundariesToUnknown(it &&
-            (isUnsignedType(it->getOutput()->type) || it->hasDecoration(InstructionDecorations::UNSIGNED_RESULT)));
+            (isUnsignedType(it->getOutput()->type) || it->hasDecoration(InstructionDecorations::UNSIGNED_RESULT) ||
+                (hasCandidateOperation &&
+                    std::all_of(it->getArguments().begin(), it->getArguments().end(), [&](const Value& val) -> bool {
+                        return val.hasType(ValueType::LOCAL) && ranges.find(val.local) != ranges.end() &&
+                            ranges.at(val.local).isUnsigned();
+                    }))));
     }
 }
 
@@ -469,12 +489,12 @@ ValueRange ValueRange::getValueRange(const Value& val, Method* method)
         if(src.hasType(ValueType::LOCAL))
         {
             auto& tmp = ranges.emplace(src.local, src.local->type).first->second;
-            tmp.update(NO_VALUE, ranges, src.local->getSingleWriter());
+            tmp.update(NO_VALUE, ranges, src.local->getSingleWriter(), method);
         }
     }
     range.update(val.isLiteralValue() ? Optional<Value>(val) :
                                         (singleWriter ? singleWriter->precalculate(3) : Optional<Value>{}),
-        ranges, singleWriter);
+        ranges, singleWriter, method);
     return range;
 }
 
@@ -595,8 +615,16 @@ void ValueRange::extendBoundaries(const ValueRange& other)
 void ValueRange::extendBoundariesToUnknown(bool isKnownToBeUnsigned)
 {
     if(hasDefaultBoundaries)
+    {
+        if(type == RangeType::INTEGER && isKnownToBeUnsigned)
+        {
+            intRange = IntegerRange();
+            intRange.minValue = 0;
+            hasDefaultBoundaries = false;
+        }
         // the default boundaries are already the widest for the underlying type
         return;
+    }
     switch(type)
     {
     case RangeType::FLOAT:

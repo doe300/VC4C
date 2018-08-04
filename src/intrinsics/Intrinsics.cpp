@@ -681,6 +681,24 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         {
             it = intrinsifySignedIntegerDivisionByConstant(method, it, *op);
         }
+        /*        // a / b = ftoi(itof(a) / itof(b))
+                // possible for |type| < 24, since for -2^23 <= x <= 2^23 float is an exact representation
+                else if(arg0.type.getScalarBitCount() < 24 && arg1.type.getScalarBitCount() < 24)
+                {
+                    logging::debug() << "Intrinsifying signed division with floating-point division" << logging::endl;
+                    Value arg0Float = method.addNewLocal(TYPE_FLOAT.toVectorType(arg0.type.getVectorWidth()));
+                    Value arg1Float = method.addNewLocal(TYPE_FLOAT.toVectorType(arg1.type.getVectorWidth()));
+                    Value resultFloat =
+           method.addNewLocal(TYPE_FLOAT.toVectorType(op->getOutput()->type.getVectorWidth())); it.emplace(new
+           Operation(OP_ITOF, arg0Float, arg0)); it.nextInBlock(); it.emplace(new Operation(OP_ITOF, arg1Float, arg1));
+                    it.nextInBlock();
+                    //insert dummy instruction to replace
+                    it.emplace(new IntrinsicOperation("fdiv", resultFloat, arg0Float, arg1Float));
+                    it = intrinsifyFloatingDivision(method, it, *it.get<IntrinsicOperation>());
+                    it.nextInBlock();
+                    it.reset(new Operation(OP_FTOI, op->getOutput().value(), resultFloat));
+                }
+        */
         else
         {
             it = intrinsifySignedIntegerDivision(method, it, *op);
@@ -960,23 +978,22 @@ static InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, Instruction
     it.nextInBlock();
     it.emplace(new MoveOperation(
         it->getOutput().value(), method.findOrCreateLocal(TYPE_INT32, locals.at(0))->createReference(), COND_ZERO_SET));
-    it->addDecorations(InstructionDecorations::ELEMENT_INSERTION);
+    it->addDecorations(add_flag(decoration, InstructionDecorations::ELEMENT_INSERTION));
     it.nextInBlock();
     // dim == 1 -> return second value
     it.emplace((new Operation(OP_XOR, NOP_REGISTER, arg, INT_ONE))->setSetFlags(SetFlag::SET_FLAGS));
     it.nextInBlock();
     it.emplace(new MoveOperation(
         it->getOutput().value(), method.findOrCreateLocal(TYPE_INT32, locals.at(1))->createReference(), COND_ZERO_SET));
-    it->addDecorations(InstructionDecorations::ELEMENT_INSERTION);
+    it->addDecorations(add_flag(decoration, InstructionDecorations::ELEMENT_INSERTION));
     it.nextInBlock();
     // dim == 2 -> return third value
     it.emplace((new Operation(OP_XOR, NOP_REGISTER, arg, Value(Literal(static_cast<uint32_t>(2)), TYPE_INT32)))
                    ->setSetFlags(SetFlag::SET_FLAGS));
     it.nextInBlock();
     it.reset((new MoveOperation(it->getOutput().value(),
-                  method.findOrCreateLocal(TYPE_INT32, locals.at(2))->createReference(), COND_ZERO_SET))
-                 ->addDecorations(decoration));
-    it->addDecorations(InstructionDecorations::ELEMENT_INSERTION);
+        method.findOrCreateLocal(TYPE_INT32, locals.at(2))->createReference(), COND_ZERO_SET)));
+    it->addDecorations(add_flag(decoration, InstructionDecorations::ELEMENT_INSERTION));
     return it;
 }
 

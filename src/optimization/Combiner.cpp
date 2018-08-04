@@ -718,6 +718,7 @@ bool optimizations::unrollWorkGroups(const Module& module, Method& method, const
     const Local* loopSize = method.findOrCreateLocal(TYPE_INT32, Method::GROUP_LOOP_SIZE);
     InstructionWalker it = lastBlock->begin().nextInBlock();
     it.emplace(new MoveOperation(loopSize->createReference(), UNIFORM_REGISTER));
+    it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
     it.nextInBlock();
     it.emplace(new Branch(startLabel, COND_ZERO_CLEAR, loopSize->createReference()));
 
