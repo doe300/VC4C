@@ -13,6 +13,7 @@
 #include VC4C_TOOLS_HEADER
 #else
 #include "tools.h"
+#include "helper.h"
 #endif
 
 #include <algorithm>

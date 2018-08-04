@@ -20,6 +20,8 @@ target_sources(TestVC4C
     TestIntegerFunctions.cpp
     TestMathFunctions.cpp
     TestMathFunctions.h
+    TestMemoryAccess.cpp
+    TestMemoryAccess.h
     TestOperators.cpp
     TestOperators.h
     TestRelationalFunctions.cpp

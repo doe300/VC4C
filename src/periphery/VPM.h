@@ -231,12 +231,10 @@ namespace vc4c
              * Addendum to the Broadcom documentation: "Unlike the documentation suggests the STRIDE field is 16 bits
              * wide."
              *
-             * This is the distance in MEMORY between two consecutive rows (vectors) written.
-             * With a value of 0, the vectors v1, v2, v3, ... will be in consecutive addresses: | v1 | v2 | v3 | ... |
-             * With a value of 1, there will be space of the byte width of one vector (or one element??) between each
-             * vector: | v1 | xx | v2 | xx | v3 | ... |
-             *
-             * Since we write consecutive memory, this is always 0.
+             * This is the distance in MEMORY between two consecutive rows (vectors) written (the distance between end
+             * of one row and start of a new row). With a value of 0, the vectors v1, v2, v3, ... will be in consecutive
+             * addresses: | v1 | v2 | v3 | ... | With a value of 1, there will be space of 1 byte between each vector
+             * witten: | v1 | x | v2 | x | v3 | ... |
              */
             BITFIELD_ENTRY(Stride, uint16_t, 0, Short)
             /*
@@ -479,7 +477,7 @@ namespace vc4c
         public:
             explicit VPRStrideSetup(uint16_t stride = 0) : Bitfield(0)
             {
-                setStride(stride);
+                setPitch(stride);
                 setID(9);
             }
 
@@ -489,11 +487,14 @@ namespace vc4c
              * "Row-to-row pitch of 2D block in MEMORY, in bytes. Only used if MPITCH in VPM DMA Load basic setup is 0."
              *
              * This is the address distance (on the memory side) between two vectors loaded with the same instruction.
-             * Similar to VPWStrideSetup#Stride, this is currently always 0.
-             * A value of e.g. 1 would probably (untested) read the vectors in this fashion: | v1 | xx | v2 | xx | v3 |
-             * ... |, skipping every other vector (or element?)
+             *
+             * NOTE: In contrast to VPWStrideSetup#Stride, this is NOT the distance between the end of one row and the
+             * start of another row, but instead the distance between start of row to start of row.
+             *
+             * So for a stride of 0, the address is not incremented and the same row is read over and over again.
+             * A stride of the physical size of the row reads the consecutive row in the next read instruction, etc.
              */
-            BITFIELD_ENTRY(Stride, uint16_t, 0, Tredecuple)
+            BITFIELD_ENTRY(Pitch, uint16_t, 0, Tredecuple)
         private:
             //"Selects VDR DMA extended memory stride setup"
             BITFIELD_ENTRY(ID, uint8_t, 28, Quadruple)

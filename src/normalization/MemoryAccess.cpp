@@ -130,6 +130,9 @@ struct VPMAccessGroup
     RandomAccessList<InstructionWalker> dmaSetups;
     RandomAccessList<InstructionWalker> genericSetups;
     RandomAccessList<InstructionWalker> addressWrites;
+    // this is the distance/offset (start of row to start of row, 1 = consecutive) between two vectors in number of
+    // vectors that would fit in between
+    int stride = 1;
 
     /*
      * E.g. for memory-fills or -copies, the setup-instructions are re-used,
@@ -174,6 +177,8 @@ static InstructionWalker findGroupOfVPMAccess(
 {
     Optional<Value> baseAddress = NO_VALUE;
     int32_t nextOffset = -1;
+    // the number of elements between two entries in memory
+    group.stride = 0;
     group.groupType = TYPE_UNKNOWN;
     group.dmaSetups.clear();
     group.genericSetups.clear();
@@ -228,7 +233,15 @@ static InstructionWalker findGroupOfVPMAccess(
             if(baseAndOffset.base && baseAddress.value() != baseAndOffset.base.value())
                 // a group exists, but the base addresses don't match
                 break;
-            if(!baseAndOffset.offset || baseAndOffset.offset.value() != nextOffset)
+            if(group.addressWrites.size() == 1 && baseAndOffset.offset && group.stride == 0)
+            {
+                // special case for first offset - use it to determine stride
+                group.stride = baseAndOffset.offset.value() -
+                    findBaseAndOffset(group.addressWrites[0].get<MoveOperation>()->getSource()).offset.value();
+                logging::debug() << "Using a stride of " << group.stride
+                                 << " elements between consecutive access to memory" << logging::endl;
+            }
+            if(!baseAndOffset.offset || baseAndOffset.offset.value() != (nextOffset * group.stride))
                 // a group exists, but the offsets do not match
                 break;
         }
@@ -282,7 +295,7 @@ static InstructionWalker findGroupOfVPMAccess(
         if(genericSetup)
             // not always given, e.g. for copying memory without reading/writing into/from QPU
             group.genericSetups.push_back(genericSetup.value());
-        nextOffset = baseAndOffset.offset.value_or(-1) + 1;
+        nextOffset = (baseAndOffset.offset.value_or(-1) / (group.stride == 0 ? 1 : group.stride)) + 1;
 
         if(group.isVPMWrite && group.addressWrites.size() >= vpm.getMaxCacheVectors(elementType, true))
         {
@@ -323,6 +336,19 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
     {
         VPWSetupWrapper dmaSetupValue(group.dmaSetups.at(0).get<LoadImmediate>());
         dmaSetupValue.dmaSetup.setUnits(static_cast<uint8_t>(group.addressWrites.size()));
+    }
+    // 1.1 Update stride setup to the stride between rows
+    {
+        LoadImmediate* strideSetup = group.dmaSetups.at(0).copy().nextInBlock().get<LoadImmediate>();
+        if(strideSetup == nullptr || !strideSetup->writesRegister(REG_VPM_OUT_SETUP) ||
+            !VPWSetup::fromLiteral(strideSetup->getImmediate().unsignedInt()).isStrideSetup())
+            throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find VPW DMA stride setup for DMA setup",
+                group.dmaSetups.at(0)->to_string());
+        VPWSetupWrapper strideSetupValue(strideSetup);
+        // stride is the distance in bytes from end of v1 to start of v2
+        strideSetupValue.strideSetup.setStride(
+            static_cast<uint16_t>(static_cast<unsigned>(group.stride == 0 ? 0 : group.stride - 1) *
+                group.groupType.getElementType().getPhysicalWidth()));
     }
     std::size_t numRemoved = 0;
     vpm.updateScratchSize(static_cast<unsigned char>(group.addressWrites.size()));
@@ -404,6 +430,19 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
     {
         VPRSetupWrapper genericSetup(group.genericSetups.at(0).get<LoadImmediate>());
         genericSetup.genericSetup.setNumber(group.genericSetups.size() % 16);
+    }
+
+    // 1.2 Update stride setup for the stride used
+    {
+        LoadImmediate* strideSetup = group.dmaSetups.at(0).copy().nextInBlock().get<LoadImmediate>();
+        if(strideSetup == nullptr || !strideSetup->writesRegister(REG_VPM_IN_SETUP) ||
+            !VPRSetup::fromLiteral(strideSetup->getImmediate().unsignedInt()).isStrideSetup())
+            throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find VPR DMA stride setup for DMA setup",
+                group.dmaSetups.at(0)->to_string());
+        VPRSetupWrapper strideSetupValue(strideSetup);
+        // in contrast to writing memory, the pitch is the distance from start to start of successive rows
+        strideSetupValue.strideSetup.setPitch(static_cast<uint16_t>(
+            static_cast<unsigned>(group.stride) * group.groupType.getElementType().getPhysicalWidth()));
     }
 
     // 2. Remove all but the first generic and DMA setups

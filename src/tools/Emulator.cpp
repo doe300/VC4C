@@ -831,23 +831,25 @@ void VPM::setDMAWriteAddress(const Value& val)
         throw CompilationError(
             CompilationStep::GENERAL, "Accessing more than a VPM row at once is not supported", setup.to_string());
 
+    auto stride = periphery::VPWSetup::fromLiteral(writeStrideSetup).strideSetup.getStride();
+
     MemoryAddress address = static_cast<MemoryAddress>(element0.getLiteralValue()->unsignedInt());
 
     logging::debug() << "Copying " << sizes.first << " rows with " << sizes.second << " elements of " << typeSize
                      << " bytes each from VPM address " << vpmBaseAddress.first << "," << vpmBaseAddress.second
-                     << " into RAM at " << address << logging::endl;
+                     << " into RAM at " << address << " with a memory stride of " << stride << logging::endl;
 
     for(uint32_t i = 0; i < sizes.first; ++i)
     {
         if(address + typeSize * sizes.second >= memory.getMaximumAddress())
-            throw CompilationError(
-                CompilationStep::GENERAL, "Memory address is out of bounds, consider using larger buffer");
+            throw CompilationError(CompilationStep::GENERAL,
+                "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
         memcpy(reinterpret_cast<uint8_t*>(memory.getWordAddress(address)) + address % sizeof(Word),
             reinterpret_cast<uint8_t*>(&cache.at(vpmBaseAddress.first).at(vpmBaseAddress.second)) + byteOffset,
             typeSize * sizes.second);
-        // TODO stride-setup
         vpmBaseAddress.first += 1;
-        address += typeSize;
+        // write stride is end-to-start, so add size of vector
+        address += stride + (typeSize * sizes.second);
     }
 
     lastDMAWriteTrigger = currentCycle;
@@ -882,21 +884,24 @@ void VPM::setDMAReadAddress(const Value& val)
         throw CompilationError(
             CompilationStep::GENERAL, "Accessing more than a VPM row at once is not supported", setup.to_string());
 
+    auto pitch = periphery::VPRSetup::fromLiteral(readStrideSetup).strideSetup.getPitch();
+
     MemoryAddress address = static_cast<MemoryAddress>(element0.getLiteralValue()->unsignedInt());
 
     logging::debug() << "Copying " << sizes.first << " rows with " << sizes.second << " elements of " << typeSize
                      << " bytes each from RAM address " << address << " into VPM at " << vpmBaseAddress.first << ","
-                     << vpmBaseAddress.second << " with byte-offset of " << byteOffset << logging::endl;
+                     << vpmBaseAddress.second << " with byte-offset of " << byteOffset << " and a memory pitch of "
+                     << pitch << logging::endl;
 
     for(uint32_t i = 0; i < sizes.first; ++i)
     {
         memcpy(reinterpret_cast<uint8_t*>(&cache.at(vpmBaseAddress.first).at(vpmBaseAddress.second)) + byteOffset,
             reinterpret_cast<uint8_t*>(memory.getWordAddress(address)) + address % sizeof(Word),
             typeSize * sizes.second);
-        // TODO stride-setup
         vpmBaseAddress.first += static_cast<uint32_t>((vpitch * typeSize) / sizeof(Word));
         vpmBaseAddress.second += static_cast<uint32_t>((vpitch * typeSize) % sizeof(Word));
-        address += typeSize;
+        // read pitch is start-to-start, so we don't have to add anything
+        address += pitch;
     }
 
     lastDMAReadTrigger = currentCycle;

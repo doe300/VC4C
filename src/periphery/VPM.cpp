@@ -145,7 +145,7 @@ std::string VPWDMASetup::to_string() const
 
 std::string VPWStrideSetup::to_string() const
 {
-    return (std::string("vdw_setup(stride: ") + std::to_string(getStride())) + ")";
+    return (std::string("vdw_setup(memory stride: ") + std::to_string(getStride())) + " bytes)";
 }
 
 std::string VPWSetup::to_string() const
@@ -174,7 +174,7 @@ std::string VPRDMASetup::to_string() const
 
 std::string VPRStrideSetup::to_string() const
 {
-    return (std::string("vdr_setup(stride: ") + std::to_string(getStride())) + ")";
+    return (std::string("vdr_setup(memory pitch: ") + std::to_string(getPitch())) + " bytes)";
 }
 
 std::string VPRSetup::to_string() const

@@ -38,10 +38,6 @@ public:
 	void testSHA256();
 	void testIntegerEmulations(std::size_t index, std::string name);
 	void testFloatEmulations(std::size_t index, std::string name);
-	void testPrivateStorage();
-	void testLocalStorage();
-	void testConstantStorage();
-	void testRegisterStorage();
 	
 	void printProfilingInfo();
 
