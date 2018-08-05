@@ -47,7 +47,9 @@ static const std::vector<OptimizationStep> SINGLE_STEPS = {
     // calculates constant operations
     OptimizationStep("FoldConstants", foldConstants),
     // simplifies arithmetic operations into moves or into "easier" operations
-    OptimizationStep("SimplifyArithmetics", simplifyOperation)};
+    OptimizationStep("SimplifyArithmetics", simplifyOperation),
+    // combines operations according to arithmetic rules
+    OptimizationStep("CombineArithmetics", combineArithmeticOperations)};
 
 static bool runSingleSteps(const Module& module, Method& method, const Configuration& config)
 {
@@ -155,6 +157,9 @@ static void runOptimizationPasses(const Module& module, Method& method, const Co
     unsigned iterationsLeft = config.additionalOptions.maxOptimizationIterations;
     for(; continueLoop && iterationsLeft > 0; --iterationsLeft)
     {
+        logging::debug() << "Running optimization iteration "
+                         << (config.additionalOptions.maxOptimizationIterations - iterationsLeft) << "..."
+                         << logging::endl;
         index = startIndex;
         for(const OptimizationPass* pass : repeatingPasses)
         {
@@ -234,6 +239,9 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
     OptimizationPass("CombineRotations", "combine-rotations", combineVectorRotations,
         "combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation",
         OptimizationType::REPEAT),
+    OptimizationPass("CommonSubexpressionElimination", "eliminate-common-subexpressions", eliminateCommonSubexpressions,
+        "eliminates repetitive calculations of common expressions by re-using previous results",
+        OptimizationType::REPEAT),
     OptimizationPass("EliminateMoves", "eliminate-moves", eliminateRedundantMoves,
         "Replaces moves with the operation producing their source", OptimizationType::REPEAT),
     OptimizationPass("EliminateBitOperations", "eliminate-bit-operations", eliminateRedundantBitOp,
@@ -278,6 +286,8 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("eliminate-bit-operations");
         passes.emplace("copy-propagation");
         passes.emplace("combine-loads");
+        // TODO CSE is disabled, since it can result in long compilation times and very large memory consumption
+        // passes.emplace("eliminate-common-subexpressions");
         // fall-through on purpose
     case OptimizationLevel::BASIC:
         passes.emplace("reorder-blocks");

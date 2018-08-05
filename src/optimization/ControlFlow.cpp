@@ -1124,6 +1124,9 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         else
         {
             it.emplace(new intermediate::MoveOperation(param.createReference(), UNIFORM_REGISTER));
+            if(param.type.isPointerType())
+                // all pointers are unsigned
+                it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
             it.nextInBlock();
         }
     }

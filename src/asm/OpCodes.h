@@ -489,6 +489,30 @@ namespace vc4c
         bool isIdempotent() const;
 
         /*
+         * Whether the operation is associative.
+         *
+         * Associativity is defined as:
+         * - (x op y) op z = x op (y op z) = x op y op z
+         * - The order in which multiple instances of an associative operation is executed, does not change the result
+         *
+         * Taken from:
+         * https://en.wikipedia.org/wiki/Associative_property
+         */
+        bool isAssociative() const;
+
+        /*
+         * Whether the operation is commutative.
+         *
+         * Commutativity is defined as:
+         * - x op y = y op x
+         * - The order of the operands does not matter
+         *
+         * Taken from:
+         * https://en.wikipedia.org/wiki/Commutative_property
+         */
+        bool isCommutative() const;
+
+        /*
          * Returns the op-code for the given op-code name.
          *
          * Throws an exception if the op-code could not be found.

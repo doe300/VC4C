@@ -881,3 +881,73 @@ InstructionWalker optimizations::combineSameFlags(
 
     return it;
 }
+
+InstructionWalker optimizations::combineArithmeticOperations(
+    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+{
+    if(!it.has<Operation>())
+        return it;
+    if(it->getArguments().size() != 2)
+        return it;
+    if(!it->readsLiteral())
+        // even if we could combine, we cannot save an instruction (since we cannot pre-calculate anything)
+        return it;
+    if(it->hasSideEffects() || it->hasUnpackMode() || it->hasPackMode() || it->hasConditionalExecution() ||
+        it->doesSetFlag())
+        return it;
+    if(!std::any_of(it->getArguments().begin(), it->getArguments().end(),
+           [](const Value& val) -> bool { return val.hasType(ValueType::LOCAL); }))
+        return it;
+
+    // exactly one local and one literal operand
+    auto op = it.get<const Operation>()->op;
+    const auto& literalArg = it->getArguments()[0].isLiteralValue() ? it->getArguments()[0] : it->getArguments()[1];
+    const auto& localArg = it->getArguments()[0].isLiteralValue() ? it->getArguments()[1] : it->getArguments()[0];
+
+    auto singleWriter = localArg.getSingleWriter();
+    if(!singleWriter || !singleWriter->readsLiteral())
+        // same as above, we cannot pre-calculate anything
+        return it;
+
+    if(singleWriter->hasSideEffects() || singleWriter->hasUnpackMode() || singleWriter->hasPackMode() ||
+        singleWriter->hasConditionalExecution() || singleWriter->doesSetFlag())
+        return it;
+
+    if(dynamic_cast<const Operation*>(singleWriter) == nullptr ||
+        dynamic_cast<const Operation*>(singleWriter)->op != op)
+        // not the same operation
+        return it;
+
+    if(singleWriter->getOutput()->local->getUsers(LocalUse::Type::READER).size() != 1)
+        // we cannot remove or modify the writer, so abort her
+        return it;
+
+    const auto& otherLiteralArg = singleWriter->getArguments()[0].isLiteralValue() ? singleWriter->getArguments()[0] :
+                                                                                     singleWriter->getArguments()[1];
+    const auto& origArg = singleWriter->getArguments()[0].isLiteralValue() ? singleWriter->getArguments()[1] :
+                                                                             singleWriter->getArguments()[0];
+
+    if(!op.isCommutative() && (!it->getArgument(0).is(localArg) || !singleWriter->getArgument(0).is(origArg)))
+        // we cannot transform e.g. (a op b) op c to b op (a op c)
+        return it;
+
+    Optional<Value> precalc = NO_VALUE;
+    if(op.isAssociative())
+    {
+        logging::debug() << "Combining associative operations " << singleWriter->to_string() << " and "
+                         << it->to_string() << logging::endl;
+        precalc = op.calculate(literalArg, otherLiteralArg);
+    }
+    else if(op == OP_SHL || op == OP_SHR || op == OP_ASR || op == OP_ROR)
+    {
+        logging::debug() << "Combining shifts " << singleWriter->to_string() << " and " << it->to_string()
+                         << logging::endl;
+        precalc = OP_ADD.calculate(literalArg, otherLiteralArg);
+    }
+    auto lastIt = it.getBasicBlock()->findWalkerForInstruction(singleWriter, it).value();
+    lastIt.reset(new Operation(op, it->getOutput().value(), origArg, precalc.value()));
+    it.erase();
+    // don't skip next instruction
+    it.previousInBlock();
+    return it;
+}

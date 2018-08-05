@@ -15,7 +15,10 @@ namespace vc4c
     {
         InstructionWalker intrinsifySignedIntegerMultiplication(
             Method& method, InstructionWalker it, IntrinsicOperation& op);
+        bool canOptimizeMultiplicationWithBinaryMethod(const IntrinsicOperation& op);
         InstructionWalker intrinsifyUnsignedIntegerMultiplication(
+            Method& method, InstructionWalker it, IntrinsicOperation& op);
+        InstructionWalker intrinsifyIntegerMultiplicationViaBinaryMethod(
             Method& method, InstructionWalker it, IntrinsicOperation& op);
         InstructionWalker intrinsifySignedIntegerDivision(
             Method& method, InstructionWalker it, IntrinsicOperation& op, bool useRemainder = false);

@@ -176,6 +176,99 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(
 }
 
 /*
+ * "The number of elementary operations q is the number of 1’s in the binary expansion, minus 1"
+ * note: q is a shift and an addition
+ *
+ * - https://www.clear.rice.edu/comp512/Lectures/Papers/Lefevre-Multiplication.pdf, page 5
+ *
+ * Since we use a minimum of 8 operations for unsigned multiplication (without any optimization applied),
+ * we set this as the threshold for applying this optimization.
+ */
+static constexpr int BINARY_METHOD_OPERATIONS_THRESHOLD = 8;
+
+bool intermediate::canOptimizeMultiplicationWithBinaryMethod(const IntrinsicOperation& op)
+{
+    return std::any_of(op.getArguments().begin(), op.getArguments().end(), [](const Value& arg) -> bool {
+        if(arg.getLiteralValue() && arg.getLiteralValue()->signedInt() > 0)
+        {
+            std::bitset<32> tmp(arg.getLiteralValue()->unsignedInt());
+            return tmp.count() <= BINARY_METHOD_OPERATIONS_THRESHOLD;
+        }
+        return false;
+    });
+}
+
+/*
+ * Optimization of integer multiplication with binary method
+ *
+ * See: https://www.clear.rice.edu/comp512/Lectures/Papers/Lefevre-Multiplication.pdf, chapter 3
+ */
+InstructionWalker intermediate::intrinsifyIntegerMultiplicationViaBinaryMethod(
+    Method& method, InstructionWalker it, IntrinsicOperation& op)
+{
+    auto factor = op.getFirstArg().getLiteralValue() ? op.getFirstArg().getLiteralValue()->signedInt() :
+                                                       op.getSecondArg()->getLiteralValue()->signedInt();
+    const auto& src = op.getFirstArg().getLiteralValue() ? op.getSecondArg().value() : op.getFirstArg();
+
+    if(factor <= 0)
+        throw CompilationError(
+            CompilationStep::OPTIMIZER, "Invalid factor for this multiplication optimization", op.to_string());
+
+    // tracks the deconstruction of the factor into its parts
+    std::bitset<32> deconstruct(static_cast<unsigned>(factor));
+    auto highBit = [](auto u) -> unsigned {
+        for(unsigned i = 0; i < 32; ++i)
+        {
+            if((u >> i) == 0)
+                return i - 1;
+        }
+        return 32;
+    };
+    Value intermediateResult = src;
+    unsigned lastHigh = highBit(deconstruct.to_ulong());
+    deconstruct.reset(lastHigh);
+    /*
+     * 113 = 1110001 (2)
+     * x * 113:
+     * 3x = x << 1 + x
+     * 7x = 3x << 1 + 1
+     * 113x = 7x << 4 + 1
+     */
+    while(deconstruct.any())
+    {
+        unsigned nextHigh = highBit(deconstruct.to_ulong());
+
+        // shift by the difference between the high bits
+        auto tmp = method.addNewLocal(src.type, "%mul_shift");
+        it.emplace(new Operation(OP_SHL, tmp, intermediateResult, Value(Literal(lastHigh - nextHigh), TYPE_INT8)));
+        it.nextInBlock();
+
+        // add the value for this high bit
+        auto tmp2 = method.addNewLocal(src.type, "%mul_add");
+        it.emplace(new Operation(OP_ADD, tmp2, tmp, src));
+        it.nextInBlock();
+
+        intermediateResult = tmp2;
+        deconstruct.reset(nextHigh);
+        lastHigh = nextHigh;
+    }
+
+    if(lastHigh != 0)
+    {
+        // insert last shift
+        it.reset(
+            (new Operation(OP_SHL, op.getOutput().value(), intermediateResult, Value(Literal(lastHigh), TYPE_INT8)))
+                ->copyExtrasFrom(&op));
+    }
+    else
+    {
+        it.reset((new MoveOperation(op.getOutput().value(), intermediateResult))->copyExtrasFrom(&op));
+    }
+
+    return it;
+}
+
+/*
  * Sources/Info:
  * - http://ipa.ece.illinois.edu/mif/pubs/web-only/Frank-RawMemo12-1999.html
  * - http://flounder.com/multiplicative_inverse.htm

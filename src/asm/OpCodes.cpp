@@ -647,6 +647,22 @@ bool OpCode::isIdempotent() const
     return false;
 }
 
+bool OpCode::isAssociative() const
+{
+    return *this == OP_ADD || *this == OP_AND || *this == OP_FADD || *this == OP_FMAX || *this == OP_FMAXABS ||
+        *this == OP_FMIN || *this == OP_FMINABS || *this == OP_FMUL || *this == OP_FSUB || *this == OP_MAX ||
+        *this == OP_MIN || *this == OP_MUL24 || *this == OP_OR || *this == OP_SUB || *this == OP_V8MAX ||
+        *this == OP_V8MIN || *this == OP_XOR;
+}
+
+bool OpCode::isCommutative() const
+{
+    return *this == OP_ADD || *this == OP_AND || *this == OP_FADD || *this == OP_FMAX || *this == OP_FMAXABS ||
+        *this == OP_FMIN || *this == OP_FMINABS || *this == OP_FMUL || *this == OP_MAX || *this == OP_MIN ||
+        *this == OP_MUL24 || *this == OP_OR || *this == OP_V8ADDS || *this == OP_V8MAX || *this == OP_V8MIN ||
+        *this == OP_V8MULD || *this == OP_XOR;
+}
+
 const OpCode& OpCode::toOpCode(const unsigned char opCode, const bool isMulALU)
 {
     if(opCode == 0)

@@ -142,6 +142,32 @@ namespace vc4c
          */
         InstructionWalker combineSameFlags(
             const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+
+        /*
+         * Combines arithmetic operations if the result of the first operation is used as the second operation and the
+         * operations allow combining (e.g. no side-effects).
+         *
+         * Also, the combining is only done if an instruction ca be saved (e.g. intermediate result has single usage)
+         *
+         * Example:
+         *   %a = add %b, 3
+         *   [...]
+         *   %c = add %a, 4
+         *
+         * becomes:
+         *   %c = add %b, 7
+         *
+         * Also:
+         *   %a = shl %b, 4
+         *   [...]
+         *   %c = shl %a, 3
+         *
+         * becomes:
+         *   %c = shl %b, 7
+         *
+         */
+        InstructionWalker combineArithmeticOperations(
+            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
     } // namespace optimizations
 } // namespace vc4c
 #endif /* COMBINER_H */

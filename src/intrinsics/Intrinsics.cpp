@@ -570,41 +570,74 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     if(op->opCode == "mul")
     {
         // a * b = b * a
-        // a * 2^n = a << n
         if(arg0.getLiteralValue() && arg1.getLiteralValue())
         {
-            logging::debug() << "Calculating result for multiplication with constants" << logging::endl;
+            logging::debug() << "Calculating result for multiplication with constants: " << op->to_string()
+                             << logging::endl;
             it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type),
                 Value(Literal(arg0.getLiteralValue()->signedInt() * arg1.getLiteralValue()->signedInt()), arg0.type),
                 op->conditional, op->setFlags));
         }
         else if(arg0.getLiteralValue() && isPowerTwo(arg0.getLiteralValue()->signedInt()))
         {
-            logging::debug() << "Intrinsifying multiplication with left-shift" << logging::endl;
+            // a * 2^n = a << n
+            logging::debug() << "Intrinsifying multiplication with left-shift: " << op->to_string() << logging::endl;
             it.reset(new Operation(OP_SHL, op->getOutput().value(), arg1,
                 Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt()))), arg0.type),
                 op->conditional, op->setFlags));
         }
         else if(arg1.getLiteralValue() && isPowerTwo(arg1.getLiteralValue()->signedInt()))
         {
-            logging::debug() << "Intrinsifying multiplication with left-shift" << logging::endl;
+            // a * 2^n = a << n
+            logging::debug() << "Intrinsifying multiplication with left-shift: " << op->to_string() << logging::endl;
             it.reset(new Operation(OP_SHL, op->getOutput().value(), op->getFirstArg(),
                 Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt()))), arg1.type),
                 op->conditional, op->setFlags));
         }
         else if(std::max(arg0.type.getScalarBitCount(), arg1.type.getScalarBitCount()) <= 24)
         {
-            logging::debug() << "Intrinsifying multiplication of small integers to mul24" << logging::endl;
+            logging::debug() << "Intrinsifying multiplication of small integers to mul24: " << op->to_string()
+                             << logging::endl;
             it.reset(new Operation(OP_MUL24, op->getOutput().value(), op->getFirstArg(), op->assertArgument(1),
                 op->conditional, op->setFlags));
+        }
+        else if(arg0.getLiteralValue() && isPowerTwo(arg0.getLiteralValue()->signedInt() + 1))
+        {
+            // x * (2^k - 1) = x * 2^k - x = x << k - x
+            logging::debug() << "Intrinsifying multiplication with left-shift and minus: " << op->to_string()
+                             << logging::endl;
+            auto tmp = method.addNewLocal(arg1.type, "%mul_shift");
+            it.emplace(new Operation(OP_SHL, tmp, arg1,
+                Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt() + 1))), arg0.type),
+                op->conditional));
+            it.nextInBlock();
+            it.reset(new Operation(OP_SUB, op->getOutput().value(), tmp, arg1, op->conditional, op->setFlags));
+        }
+        else if(arg1.getLiteralValue() && isPowerTwo(arg1.getLiteralValue()->signedInt() + 1))
+        {
+            // x * (2^k - 1) = x * 2^k - x = x << k - x
+            logging::debug() << "Intrinsifying multiplication with left-shift and minus: " << op->to_string()
+                             << logging::endl;
+            auto tmp = method.addNewLocal(arg0.type, "%mul_shift");
+            it.emplace(new Operation(OP_SHL, tmp, arg0,
+                Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt() + 1))), arg0.type),
+                op->conditional));
+            it.nextInBlock();
+            it.reset(new Operation(OP_SUB, op->getOutput().value(), tmp, arg0, op->conditional, op->setFlags));
+        }
+        else if(canOptimizeMultiplicationWithBinaryMethod(*op))
+        {
+            // e.g. x * 3 = x << 1 + x
+            logging::debug() << "Intrinsifying multiplication via binary method: " << op->to_string() << logging::endl;
+            it = intrinsifyIntegerMultiplicationViaBinaryMethod(method, it, *op);
         }
         else if(std::all_of(op->getArguments().begin(), op->getArguments().end(), [](const Value& arg) -> bool {
                     return vc4c::analysis::ValueRange::getValueRange(arg).isUnsigned();
                 }))
         {
             logging::debug()
-                << "Intrinsifying signed multiplication of purely unsigned values to unsigned multiplication"
-                << logging::endl;
+                << "Intrinsifying signed multiplication of purely unsigned values to unsigned multiplication: "
+                << op->to_string() << logging::endl;
             it = intrinsifyUnsignedIntegerMultiplication(method, it, *op);
         }
         else
