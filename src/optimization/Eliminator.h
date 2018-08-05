@@ -167,6 +167,25 @@ namespace vc4c
          *  %x = add %a, %y => this `a` cannot be replaced
          */
         bool propagateMoves(const Module& module, Method& method, const Configuration& config);
+
+        /*
+         * Common Subexpression Elimination (CSE)
+         *
+         * Iterates over each basic block and looks for instructions calculating the same value and combines them, if
+         * possible.
+         *
+         * Example:
+         *   %a = add %b, %c
+         *   [...]
+         *   %d = add %b, %c
+         *
+         * becomes:
+         *   %a = add %b, %c
+         *   [...]
+         *   %d = %a
+         *
+         */
+        bool eliminateCommonSubexpressions(const Module& module, Method& method, const Configuration& config);
     } // namespace optimizations
 } // namespace vc4c
 #endif /* ELIMINATOR_H */

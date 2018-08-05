@@ -8,6 +8,7 @@
 
 #include "../InstructionWalker.h"
 #include "../Profiler.h"
+#include "../analysis/AvailableExpressionAnalysis.h"
 #include "../analysis/DataDependencyGraph.h"
 #include "log.h"
 
@@ -687,4 +688,37 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
     }
 
     return replaced;
+}
+
+bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& method, const Configuration& config)
+{
+    bool replacedSomething = false;
+    for(auto& block : method)
+    {
+        // FIXME leaks/uses huge amount of memory for clpeak integer test (20+ GB!!)
+        // TODO needs speed/space optimization
+        // esp. in combination with PropagateMoves and EliminateDeadCode this is very hard-core (e.g. for clpeak integer
+        // test)
+        analysis::AvailableExpressionAnalysis analysis;
+        analysis(block);
+
+        for(auto it = block.begin(); !it.isEndOfBlock(); it.nextInBlock())
+        {
+            auto expr = analysis::Expression::createExpression(*it.get());
+            if(expr)
+            {
+                // TODO add some kind of maximum number of instructions (accumulator threshold) to combine over??
+                auto exprIt = analysis.getResult(it.get()).find(expr.value());
+                if(exprIt != analysis.getResult(it.get()).end() && exprIt->second != it.get())
+                {
+                    logging::debug() << "Found common subexpression: " << it->to_string() << " is the same as "
+                                     << exprIt->second->to_string() << logging::endl;
+                    it.reset(
+                        new intermediate::MoveOperation(it->getOutput().value(), exprIt->second->getOutput().value()));
+                    replacedSomething = true;
+                }
+            }
+        }
+    }
+    return replacedSomething;
 }
