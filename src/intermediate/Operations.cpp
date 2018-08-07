@@ -564,6 +564,29 @@ const Value& VectorRotation::getOffset() const
     return assertArgument(1);
 }
 
+static std::string toTypeString(DelayType delay)
+{
+    switch(delay)
+    {
+    case DelayType::BRANCH_DELAY:
+        return "branch";
+    case DelayType::THREAD_END:
+        return "end";
+    case DelayType::WAIT_REGISTER:
+        return "register";
+    case DelayType::WAIT_SFU:
+        return "sfu";
+    case DelayType::WAIT_TMU:
+        return "tmu";
+    case DelayType::WAIT_UNIFORM:
+        return "uniform_address";
+    case DelayType::WAIT_VPM:
+        return "vpm_dma";
+    }
+    throw CompilationError(
+        CompilationStep::GENERAL, "Invalid nop delay type", std::to_string(static_cast<unsigned>(delay)));
+}
+
 Nop::Nop(const DelayType type, const Signaling signal) : IntermediateInstruction(NO_VALUE), type(type)
 {
     this->signal = signal;
@@ -572,7 +595,7 @@ Nop::Nop(const DelayType type, const Signaling signal) : IntermediateInstruction
 
 std::string Nop::to_string() const
 {
-    return std::string("nop") + createAdditionalInfoString();
+    return std::string("nop (") + toTypeString(type) + ")" + createAdditionalInfoString();
 }
 
 IntermediateInstruction* Nop::copyFor(Method& method, const std::string& localPrefix) const

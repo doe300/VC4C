@@ -20,6 +20,11 @@ namespace vc4c
         InstructionWalker insertSFUCall(Register sfuReg, InstructionWalker it, const Value& arg,
             ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
 
+        /*
+         * Tries to convert the constant result for the SFU call and the given input
+         */
+        Optional<Value> precalculateSFU(Register sfuReg, const Value& input);
+
     } /* namespace periphery */
 } /* namespace vc4c */
 
