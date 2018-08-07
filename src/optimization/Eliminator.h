@@ -186,6 +186,22 @@ namespace vc4c
          *
          */
         bool eliminateCommonSubexpressions(const Module& module, Method& method, const Configuration& config);
+
+        /*
+         * Replaces calls to the SFU registers with constant input to a move of the result
+         *
+         * Example:
+         *   sfu_recip = 2.0
+         *   nop (sfu)
+         *   nop (sfu)
+         *   %a = r4
+         *
+         * becomes:
+         *   %a = 0.5
+         *
+         */
+        InstructionWalker rewriteConstantSFUCall(
+            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
     } // namespace optimizations
 } // namespace vc4c
 #endif /* ELIMINATOR_H */

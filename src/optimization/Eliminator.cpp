@@ -10,6 +10,7 @@
 #include "../Profiler.h"
 #include "../analysis/AvailableExpressionAnalysis.h"
 #include "../analysis/DataDependencyGraph.h"
+#include "../periphery/SFU.h"
 #include "log.h"
 
 #include <algorithm>
@@ -721,4 +722,56 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
         }
     }
     return replacedSomething;
+}
+
+InstructionWalker optimizations::rewriteConstantSFUCall(
+    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+{
+    if(!it->hasValueType(ValueType::REGISTER) || !it->getOutput()->reg.isSpecialFunctionsUnit())
+        return it;
+
+    auto constantValue = it->precalculate(3);
+    auto result = constantValue ? periphery::precalculateSFU(it->getOutput()->reg, constantValue.value()) : NO_VALUE;
+    if(result)
+    {
+        logging::debug() << "Replacing SFU call with constant input '" << it->to_string()
+                         << "' to move of result: " << result->to_string() << logging::endl;
+
+        // remove this instruction, 2 NOPs (with SFU type) and rewrite the result
+        it.erase();
+        unsigned numDelays = 2;
+        while(numDelays != 0 && !it.isEndOfBlock())
+        {
+            if(it.has<intermediate::Nop>() &&
+                it.get<const intermediate::Nop>()->type == intermediate::DelayType::WAIT_SFU)
+            {
+                it.erase();
+                --numDelays;
+            }
+            else
+                it.nextInBlock();
+        }
+
+        if(it.isEndOfBlock())
+            throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find both NOPs for waiting for SFU result");
+
+        while(!it.isEndOfBlock())
+        {
+            if(it->readsRegister(REG_SFU_OUT))
+            {
+                it.reset((new intermediate::MoveOperation(it->getOutput().value(), result.value()))
+                             ->copyExtrasFrom(it.get()));
+                break;
+            }
+            else
+                it.nextInBlock();
+        }
+
+        if(it.isEndOfBlock())
+            throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find the reading of the SFU result");
+
+        // to not skip optimizing the resulting instruction
+        it.previousInBlock();
+    }
+    return it;
 }
