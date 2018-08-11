@@ -9,6 +9,8 @@ target_sources(${VC4C_LIBRARY_NAME}
     CompilationError.cpp
     Compiler.cpp
     Disassembler.cpp
+    Expression.cpp
+    Expression.h
     Graph.h
     helper.h
     InstructionWalker.cpp

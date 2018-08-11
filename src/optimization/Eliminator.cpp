@@ -705,7 +705,7 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
 
         for(auto it = block.begin(); !it.isEndOfBlock(); it.nextInBlock())
         {
-            auto expr = analysis::Expression::createExpression(*it.get());
+            auto expr = Expression::createExpression(*it.get());
             if(expr)
             {
                 // TODO add some kind of maximum number of instructions (accumulator threshold) to combine over??
