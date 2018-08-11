@@ -8,6 +8,8 @@ target_sources(TestVC4C
     TestArithmetic.h
     TestCommonFunctions.cpp
     TestCommonFunctions.h
+    TestConversionFunctions.cpp
+    TestConversionFunctions.h
     TestEmulator.cpp
     TestEmulator.h
     TestGeometricFunctions.cpp

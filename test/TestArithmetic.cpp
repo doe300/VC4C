@@ -35,24 +35,6 @@ __kernel void test(__global int16* out, const __global TYPE* in) {
 }
 )";
 
-static const std::string CONVERSION_OPERATION = R"(
-// trick to allow concatenating macro (content!!) to symbol
-#define CONCAT(A, B) CONCAT_(A, B)
-#define CONCAT_(A, B) A##B
-
-__kernel void test(__global OUT* out, const __global IN* in) {
-  size_t gid = get_global_id(0);
-  out[gid] = CONCAT(convert_,OUT)(in[gid]);
-}
-)";
-
-static const std::string CAST_OPERATION = R"(
-__kernel void test(__global OUT* out, const __global IN* in) {
-  size_t gid = get_global_id(0);
-  out[gid] = as_##OUT(in[gid]);
-}
-)";
-
 TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(config)
 {
     TEST_ADD(TestArithmetic::testSignedIntMultiplication);
@@ -134,23 +116,6 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortOr);
     TEST_ADD(TestArithmetic::testUnsignedCharOr);
     TEST_ADD(TestArithmetic::testFloatOr);
-
-    TEST_ADD(TestArithmetic::testSignedTruncation);
-    TEST_ADD(TestArithmetic::testUnsignedTruncation);
-    TEST_ADD(TestArithmetic::testSignExtension);
-    TEST_ADD(TestArithmetic::testZeroExtension);
-    TEST_ADD(TestArithmetic::testSignedIntToFloat);
-    TEST_ADD(TestArithmetic::testSignedShortToFloat);
-    TEST_ADD(TestArithmetic::testSignedCharToFloat);
-    TEST_ADD(TestArithmetic::testUnsignedIntToFloat);
-    TEST_ADD(TestArithmetic::testUnsignedShortToFloat);
-    TEST_ADD(TestArithmetic::testUnsignedCharToFloat);
-    TEST_ADD(TestArithmetic::testFloatToSignedInt);
-    TEST_ADD(TestArithmetic::testFloatToSignedShort);
-    TEST_ADD(TestArithmetic::testFloatToSignedChar);
-    TEST_ADD(TestArithmetic::testFloatToUnsignedInt);
-    TEST_ADD(TestArithmetic::testFloatToUnsignedShort);
-    TEST_ADD(TestArithmetic::testFloatToUnsignedChar);
 }
 
 void TestArithmetic::onMismatch(const std::string& expected, const std::string& result)
@@ -241,33 +206,6 @@ static void testSelectionOperation(vc4c::Configuration& config, const std::strin
     checkBinaryResults<T, T>(in0, in1, out, op, "select", onError);
 }
 
-template <typename I, typename O>
-static void testConversionOperation(vc4c::Configuration& config, const std::string& options,
-    const std::function<O(I)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
-{
-    std::stringstream code;
-    compileBuffer(config, code, CONVERSION_OPERATION, options);
-
-    auto in = generateInput<I, 16 * 12>(true);
-
-    auto out = runEmulation<I, O, 16, 12>(code, {in});
-    checkUnaryResults<O, I, 16 * 12>(in, out, op, "convert", onError);
-}
-
-template <typename O>
-static void testConversionOperation(vc4c::Configuration& config, const std::string& options,
-    const std::function<O(float)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
-{
-    std::stringstream code;
-    compileBuffer(config, code, CONVERSION_OPERATION, options);
-
-    // values out of the range of O (the integer type) are implementation-defined
-    auto in = generateInput<16 * 12, O>(true);
-
-    auto out = runEmulation<float, O, 16, 12>(code, {in});
-    checkUnaryResults<O, float, 16 * 12>(in, out, op, "convert", onError);
-}
-
 template <typename C, typename T = typename C::first_argument_type>
 static int checkRelation(T arg1, T arg2)
 {
@@ -285,12 +223,6 @@ template <typename T>
 static int checkOr(T arg1, T arg2)
 {
     return (arg1 != 0 || arg2 != 0) ? -1 : 0;
-}
-
-template <typename T, typename S>
-static T convert(S s)
-{
-    return static_cast<T>(s);
 }
 
 void TestArithmetic::testSignedIntMultiplication()
@@ -746,124 +678,5 @@ void TestArithmetic::testUnsignedCharOr()
 void TestArithmetic::testFloatOr()
 {
     testRelationalOperation<float>(config, "-DTYPE=float16 -DOP=||", checkOr<float>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void TestArithmetic::testSignedTruncation()
-{
-    testConversionOperation<int, short>(config, "-DIN=int16 -DOUT=short16", convert<short, int>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<int, char>(config, "-DIN=int16 -DOUT=char16", convert<char, int>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<short, char>(config, "-DIN=short16 -DOUT=char16", convert<char, short>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void TestArithmetic::testUnsignedTruncation()
-{
-    testConversionOperation<unsigned int, unsigned short>(config, "-DIN=uint16 -DOUT=ushort16",
-        convert<unsigned short, unsigned int>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<unsigned int, unsigned char>(config, "-DIN=uint16 -DOUT=uchar16",
-        convert<unsigned char, unsigned int>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<unsigned short, unsigned char>(config, "-DIN=ushort16 -DOUT=uchar16",
-        convert<unsigned char, unsigned short>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void TestArithmetic::testSignExtension()
-{
-    testConversionOperation<short, int>(config, "-DIN=short16 -DOUT=int16", convert<int, short>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<char, int>(config, "-DIN=char16 -DOUT=int16", convert<int, char>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<char, short>(config, "-DIN=char16 -DOUT=short16", convert<short, char>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void TestArithmetic::testZeroExtension()
-{
-    testConversionOperation<unsigned short, unsigned int>(config, "-DIN=ushort16 -DOUT=uint16",
-        convert<unsigned int, unsigned short>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<unsigned char, unsigned int>(config, "-DIN=uchar16 -DOUT=uint16",
-        convert<unsigned int, unsigned char>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<unsigned char, unsigned short>(config, "-DIN=uchar16 -DOUT=ushort16",
-        convert<unsigned short, unsigned char>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void TestArithmetic::testSignedIntToFloat()
-{
-    testConversionOperation<int, float>(config, "-DIN=int16 -DOUT=float16", convert<int, float>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void TestArithmetic::testSignedShortToFloat()
-{
-    testConversionOperation<short, float>(config, "-DIN=short16 -DOUT=float16", convert<short, float>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void TestArithmetic::testSignedCharToFloat()
-{
-    testConversionOperation<char, float>(config, "-DIN=char16 -DOUT=float16", convert<char, float>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void TestArithmetic::testUnsignedIntToFloat()
-{
-    testConversionOperation<unsigned int, float>(config, "-DIN=uint16 -DOUT=float16", convert<unsigned int, float>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void TestArithmetic::testUnsignedShortToFloat()
-{
-    testConversionOperation<unsigned short, float>(config, "-DIN=ushort16 -DOUT=float16",
-        convert<unsigned short, float>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void TestArithmetic::testUnsignedCharToFloat()
-{
-    testConversionOperation<unsigned char, float>(config, "-DIN=uchar16 -DOUT=float16", convert<unsigned char, float>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void TestArithmetic::testFloatToSignedInt()
-{
-    testConversionOperation<int>(config, "-DIN=float16 -DOUT=int16", convert<float, int>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void TestArithmetic::testFloatToSignedShort()
-{
-    testConversionOperation<short>(config, "-DIN=float16 -DOUT=short16", convert<float, short>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void TestArithmetic::testFloatToSignedChar()
-{
-    testConversionOperation<char>(config, "-DIN=float16 -DOUT=char16", convert<float, char>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void TestArithmetic::testFloatToUnsignedInt()
-{
-    testConversionOperation<unsigned int>(config, "-DIN=float16 -DOUT=uint16", convert<float, unsigned int>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void TestArithmetic::testFloatToUnsignedShort()
-{
-    testConversionOperation<unsigned short>(config, "-DIN=float16 -DOUT=ushort16", convert<float, unsigned short>,
-        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void TestArithmetic::testFloatToUnsignedChar()
-{
-    testConversionOperation<unsigned char>(config, "-DIN=float16 -DOUT=uchar16", convert<float, unsigned char>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }

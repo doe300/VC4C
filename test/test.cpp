@@ -22,6 +22,7 @@
 #include "TestRelationalFunctions.h"
 #include "TestVectorFunctions.h"
 #include "TestMemoryAccess.h"
+#include "TestConversionFunctions.h"
 
 #include "tools.h"
 #include "../lib/cpplog/include/logger.h"
@@ -99,6 +100,11 @@ static Test::Suite* newMemoryAccessTest()
     return new TestMemoryAccess(config);
 }
 
+static Test::Suite* newConversionFunctionsTest()
+{
+    return new TestConversionFuntions(config);
+}
+
 /*
  * 
  */
@@ -128,6 +134,7 @@ int main(int argc, char** argv)
     Test::registerSuite(newRelationalFunctionsTest, "emulate-relational", "Runs emulation tests for the OpenCL standard-library relational functions");
     Test::registerSuite(newVectorFunctionsTest, "emulate-vector", "Runs emulation tests for the OpenCL standard-library vector functions");
     Test::registerSuite(newMemoryAccessTest, "emulate-memory", "Runs emulation tests for various functions testing different kinds of memory access");
+    Test::registerSuite(newConversionFunctionsTest, "emulate-conversions", "Runs emulation tests for the OpenCL standard-library type conversion functions");
     
     for(auto i = 1; i < argc; ++i)
     { 

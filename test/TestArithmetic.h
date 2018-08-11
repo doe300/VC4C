@@ -101,29 +101,6 @@ public:
     void testUnsignedNot();
     void testFloatNot();
     
-    //conversion instructions
-    void testSignedTruncation();
-    void testUnsignedTruncation();
-    void testSignExtension();
-    void testZeroExtension();
-    void testSignedIntToFloat();
-    void testSignedShortToFloat();
-    void testSignedCharToFloat();
-    void testUnsignedIntToFloat();
-    void testUnsignedShortToFloat();
-    void testUnsignedCharToFloat();
-    void testFloatToSignedInt();
-    void testFloatToSignedShort();
-    void testFloatToSignedChar();
-    void testFloatToUnsignedInt();
-    void testFloatToUnsignedShort();
-    void testFloatToUnsignedChar();
-    //XXX
-    void testVectorBitcastTruncation4To1();
-    void testVectorBitcastTruncation2To1();
-    void testVectorBitcastExtension1To4();
-    void testVectorBitcastExtension1To2();
-
 private:
     vc4c::Configuration config;
     
