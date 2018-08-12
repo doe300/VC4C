@@ -54,7 +54,7 @@ static void testUnaryFunction(vc4c::Configuration& config, const std::string& op
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
 
-    auto in = generateInput<16 * 12>(true);
+    auto in = generateInput<float, 16 * 12>(true);
 
     auto out = runEmulation<float, float, 16, 12>(code, {in});
     auto pos = options.find("-DFUNC=") + std::string("-DFUNC=").size();
@@ -68,8 +68,8 @@ static void testBinaryFunction(vc4c::Configuration& config, const std::string& o
     std::stringstream code;
     compileBuffer(config, code, BINARY_FUNCTION, options);
 
-    auto in0 = generateInput<16 * 12>(true);
-    auto in1 = generateInput<16 * 12>(true);
+    auto in0 = generateInput<float, 16 * 12>(true);
+    auto in1 = generateInput<float, 16 * 12>(true);
 
     auto out = runEmulation<float, float, 16, 12>(code, {in0, in1});
     auto pos = options.find("-DFUNC=") + std::string("-DFUNC=").size();
@@ -83,9 +83,9 @@ static void testTernaryFunction(vc4c::Configuration& config, const std::string& 
     std::stringstream code;
     compileBuffer(config, code, TERNARY_FUNCTION, options);
 
-    auto in0 = generateInput<16 * 12>(true);
-    auto in1 = generateInput<16 * 12>(true);
-    auto in2 = generateInput<16 * 12>(true);
+    auto in0 = generateInput<float, 16 * 12>(true);
+    auto in1 = generateInput<float, 16 * 12>(true);
+    auto in2 = generateInput<float, 16 * 12>(true);
 
     auto out = runEmulation<float, float, 16, 12>(code, {in0, in1, in2});
     auto pos = options.find("-DFUNC=") + std::string("-DFUNC=").size();

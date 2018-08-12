@@ -57,7 +57,7 @@ static std::array<float, N> generateReasonableInput(bool withZero)
 {
     // any error occurring with number out of this range are due to fdiv/fmul errors, not the implementation of the
     // functions in test anyway
-    return generateInput<N, char>(withZero);
+    return generateInput<float, N, char>(withZero);
 }
 
 template <std::size_t GroupSize, typename Comparison = std::equal_to<float>>

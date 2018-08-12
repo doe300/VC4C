@@ -157,7 +157,7 @@ static void testVectorShuffleFunction(vc4c::Configuration& config, const std::st
     compileBuffer(config, code, VECTOR_SHUFFLE_FUNCTION, options);
 
     auto in = generateInput<T, N * 12>(true);
-    auto mask = generateInput<T, N * 12, 0, N - 1>(true);
+    auto mask = generateInput<T, N * 12>(true, 0, static_cast<int>(N - 1));
 
     auto out = runEmulation<T, T, N, 12>(code, {in, mask});
     checkBinaryGroupedResults<T, T, N * 12, N>(in, mask, out, checkShuffle<T, N>, std::string("shuffle"), onError);
@@ -186,7 +186,7 @@ static void testVectorShuffle2Function(vc4c::Configuration& config, const std::s
 
     auto in0 = generateInput<T, N * 12>(true);
     auto in1 = generateInput<T, N * 12>(true);
-    auto mask = generateInput<T, N * 12, 0, N - 1>(true);
+    auto mask = generateInput<T, N * 12>(true, 0, static_cast<int>(N - 1));
 
     auto out = runEmulation<T, T, N, 12>(code, {in0, in1, mask});
     checkTrinaryGroupedResults<T, T, N * 12, N>(

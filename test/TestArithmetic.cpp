@@ -123,7 +123,7 @@ void TestArithmetic::onMismatch(const std::string& expected, const std::string& 
     TEST_ASSERT_EQUALS(expected, result);
 }
 
-template <typename T>
+template <typename T, typename Comparison = std::equal_to<T>>
 static void testBinaryOperation(vc4c::Configuration& config, const std::string& options,
     const std::function<T(T, T)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
 {
@@ -135,23 +135,7 @@ static void testBinaryOperation(vc4c::Configuration& config, const std::string& 
 
     auto out = runEmulation<T, T, 16, 12>(code, {in0, in1});
     auto pos = options.find("-DOP=") + std::string("-DOP=").size();
-    checkBinaryResults<T>(in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
-}
-
-template <typename Comparison = std::equal_to<float>>
-void testBinaryFloatOperation(vc4c::Configuration& config, const std::string& options,
-    const std::function<float(float, float)>& op,
-    const std::function<void(const std::string&, const std::string&)>& onError)
-{
-    std::stringstream code;
-    compileBuffer(config, code, BINARY_OPERATION, options);
-
-    auto in0 = generateInput<16 * 12>(false);
-    auto in1 = generateInput<16 * 12>(false);
-
-    auto out = runEmulation<float, float, 16, 12>(code, {in0, in1});
-    auto pos = options.find("-DOP=") + std::string("-DOP=").size();
-    checkBinaryResults<float, float, 16 * 12, Comparison>(
+    checkBinaryResults<T, T, 16 * 12, Comparison>(
         in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
@@ -170,23 +154,6 @@ static void testRelationalOperation(vc4c::Configuration& config, const std::stri
     checkBinaryResults<int, T, 16 * 12>(in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
-template <>
-void testRelationalOperation<float>(vc4c::Configuration& config, const std::string& options,
-    const std::function<int(float, float)>& op,
-    const std::function<void(const std::string&, const std::string&)>& onError)
-{
-    std::stringstream code;
-    compileBuffer(config, code, RELATIONAL_OPERATION, options);
-
-    auto in0 = generateInput<16 * 12>(true);
-    auto in1 = generateInput<16 * 12>(true);
-
-    auto out = runEmulation<float, int, 16, 12>(code, {in0, in1});
-    auto pos = options.find("-DOP=") + std::string("-DOP=").size();
-    checkBinaryResults<int, float, 16 * 12>(
-        in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
-}
-
 template <typename T>
 static void testSelectionOperation(vc4c::Configuration& config, const std::string& options,
     const std::function<void(const std::string&, const std::string&)>& onError)
@@ -203,7 +170,7 @@ static void testSelectionOperation(vc4c::Configuration& config, const std::strin
         std::memcpy(&signedVal, &a, sizeof(T));
         return signedVal < 0 ? b : a;
     };
-    checkBinaryResults<T, T>(in0, in1, out, op, "select", onError);
+    checkBinaryResults<T, T, 16 * 12, std::equal_to<T>, T>(in0, in1, out, op, "select", onError);
 }
 
 template <typename C, typename T = typename C::first_argument_type>
@@ -335,7 +302,7 @@ void TestArithmetic::testUnsignedCharModulo()
 
 void TestArithmetic::testFloatingPointDivision()
 {
-    testBinaryFloatOperation<CompareULP<3>>(config, "-DTYPE=float16 -DOP=/", std::divides<float>{},
+    testBinaryOperation<float, CompareULP<3>>(config, "-DTYPE=float16 -DOP=/", std::divides<float>{},
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 

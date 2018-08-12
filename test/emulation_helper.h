@@ -21,13 +21,68 @@
 #include <random>
 #include <sstream>
 
-template <typename T, std::size_t N, T min = std::numeric_limits<T>::lowest(), T max = std::numeric_limits<T>::max()>
-std::array<T, N> generateInput(bool allowNull)
+// just to check that really the long- and double-versions are used
+template <typename T>
+struct UniformDistribution
+{
+};
+
+template <>
+struct UniformDistribution<long> : public std::uniform_int_distribution<long>
+{
+    explicit UniformDistribution(long min, long max) : std::uniform_int_distribution<long>(min, max) {}
+};
+
+template <>
+struct UniformDistribution<double> : public std::uniform_real_distribution<double>
+{
+    explicit UniformDistribution(double min, double max) : std::uniform_real_distribution<double>(min, max) {}
+};
+
+/*
+ * Normal distribution with additional limiting the values to be in a specific range
+ *
+ * NOTE: To not discard too many values, the mean and deviation should be set to match the range
+ */
+template <long Mean = 0, long Deviation = std::numeric_limits<long>::max()>
+struct NormalDistribution : public std::normal_distribution<double>
+{
+    explicit NormalDistribution(double min, double max) :
+        std::normal_distribution<double>(static_cast<double>(Mean), static_cast<double>(Deviation)), min(min), max(max)
+    {
+    }
+
+    template <typename RNG>
+    double operator()(RNG& rng)
+    {
+        // discards all values outside of the limits
+        while(true)
+        {
+            auto t = std::normal_distribution<double>::operator()(rng);
+            if(t > min && t < max)
+                return t;
+        }
+    }
+
+    double min;
+    double max;
+};
+
+template <typename T>
+using InternalType = typename std::conditional<std::is_floating_point<T>::value, double, long>::type;
+
+template <typename T, std::size_t N, typename Limits = T, typename Distribution = UniformDistribution<InternalType<T>>,
+    typename Internal = InternalType<T>>
+std::array<T, N> generateInput(bool allowNull,
+    Internal min = static_cast<Internal>(std::numeric_limits<Limits>::lowest()),
+    Internal max = static_cast<Internal>(std::numeric_limits<Limits>::max()))
 {
     std::array<T, N> arr;
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_int_distribution<T> dis(min, max);
+    // NOTE: double here allows for float::lowest() and float::max() to be used, see also
+    // https://stackoverflow.com/a/36826730/8720655
+    Distribution dis(min, max);
 
     for(std::size_t i = 0; i < N; ++i)
     {
@@ -35,35 +90,11 @@ std::array<T, N> generateInput(bool allowNull)
         do
         {
             // to prevent division by zero
-            tmp = dis(gen);
-        } while(!allowNull && tmp == 0);
+            tmp = static_cast<T>(dis(gen));
+        } while(!allowNull && tmp == static_cast<T>(0));
         arr[i] = tmp;
     }
 
-    return arr;
-}
-
-template <std::size_t N, typename T = float>
-std::array<float, N> generateInput(
-    bool allowNull, T min = std::numeric_limits<T>::lowest(), T max = std::numeric_limits<T>::max())
-{
-    std::array<float, N> arr;
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    // NOTE: double here allows for float::lowest() and float::max() to be used, see also
-    // https://stackoverflow.com/a/36826730/8720655
-    std::uniform_real_distribution<double> dis(static_cast<double>(min), static_cast<double>(max));
-
-    for(std::size_t i = 0; i < N; ++i)
-    {
-        float tmp;
-        do
-        {
-            // to prevent division by zero
-            tmp = static_cast<float>(dis(gen));
-        } while(!allowNull && tmp == 0.0f);
-        arr[i] = tmp;
-    }
     return arr;
 }
 
@@ -84,9 +115,9 @@ void checkUnaryResults(const std::array<Input, N>& input, const std::array<Resul
     }
 }
 
-template <typename Result, typename Input, std::size_t N, typename Comparison = std::equal_to<Result>>
-void checkBinaryResults(const std::array<Input, N>& input0, const std::array<Input, N>& input1,
-    const std::array<Result, N>& output, const std::function<Result(Input, Input)>& op, const std::string& opName,
+template <typename Result, typename Input, std::size_t N, typename Comparison = std::equal_to<Result>, typename Input2 = Input>
+void checkBinaryResults(const std::array<Input, N>& input0, const std::array<Input2, N>& input1,
+    const std::array<Result, N>& output, const std::function<Result(Input, Input2)>& op, const std::string& opName,
     const std::function<void(const std::string&, const std::string&)>& onError)
 {
     Comparison c;
