@@ -14,7 +14,7 @@ using namespace vc4c::qpu_asm;
 LoadInstruction::LoadInstruction(const Pack pack, const ConditionCode condAdd, const ConditionCode condMul,
     const SetFlag sf, const WriteSwap ws, const Address addOut, const Address mulOut, const uint32_t value)
 {
-    setEntry(OpLoad::LOAD_IMM_32, 57, MASK_Septuple);
+    setType(OpLoad::LOAD_IMM_32);
     setPack(pack);
     setAddCondition(condAdd);
     setMulCondition(condMul);
@@ -29,7 +29,7 @@ LoadInstruction::LoadInstruction(const Pack pack, const ConditionCode condAdd, c
     const SetFlag sf, const WriteSwap ws, const Address addOut, const Address mulOut, const int16_t value0,
     int16_t value1)
 {
-    setEntry(OpLoad::LOAD_SIGNED, 57, MASK_Septuple);
+    setType(OpLoad::LOAD_SIGNED);
     setPack(pack);
     setAddCondition(condAdd);
     setMulCondition(condMul);
@@ -45,7 +45,7 @@ LoadInstruction::LoadInstruction(const Pack pack, const ConditionCode condAdd, c
     const SetFlag sf, const WriteSwap ws, const Address addOut, const Address mulOut, const uint16_t value0,
     uint16_t value1)
 {
-    setEntry(OpLoad::LOAD_UNSIGNED, 57, MASK_Septuple);
+    setType(OpLoad::LOAD_UNSIGNED);
     setPack(pack);
     setAddCondition(condAdd);
     setMulCondition(condMul);
@@ -59,7 +59,7 @@ LoadInstruction::LoadInstruction(const Pack pack, const ConditionCode condAdd, c
 
 std::string LoadInstruction::toASMString(bool addComments) const
 {
-    if(getEntry<uint8_t>(57, MASK_Septuple) == static_cast<uint8_t>(OpLoad::LOAD_SIGNED))
+    if(getType() == OpLoad::LOAD_SIGNED)
     {
         auto s = std::string("ldi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
             ((toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") +
@@ -67,9 +67,17 @@ std::string LoadInstruction::toASMString(bool addComments) const
             std::to_string(getImmediateSignedShort1());
         return addComment(s);
     }
-    if(getEntry<uint8_t>(57, MASK_Septuple) == static_cast<uint8_t>(OpLoad::LOAD_UNSIGNED))
+    if(getType() == OpLoad::LOAD_UNSIGNED)
     {
-        auto s = std::string("ldi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
+        auto s = std::string("ldui") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
+            ((toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") +
+                std::to_string(getImmediateShort0()) + ", ") +
+            std::to_string(getImmediateShort1());
+        return addComment(s);
+    }
+    if(getType() == OpLoad::LOAD_SIGNED)
+    {
+        auto s = std::string("ldsi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
             ((toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") +
                 std::to_string(getImmediateShort0()) + ", ") +
             std::to_string(getImmediateShort1());
@@ -96,7 +104,5 @@ bool LoadInstruction::isValidInstruction() const
 {
     if(getSig() != SIGNAL_LOAD_IMMEDIATE)
         return false;
-    return getEntry<OpLoad>(57, MASK_Septuple) == OpLoad::LOAD_IMM_32 ||
-        getEntry<OpLoad>(57, MASK_Septuple) == OpLoad::LOAD_SIGNED ||
-        getEntry<OpLoad>(57, MASK_Septuple) == OpLoad::LOAD_UNSIGNED;
+    return getType() == OpLoad::LOAD_IMM_32 || getType() == OpLoad::LOAD_SIGNED || getType() == OpLoad::LOAD_UNSIGNED;
 }

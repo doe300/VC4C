@@ -502,10 +502,45 @@ namespace vc4c
             const std::unique_ptr<IntermediateInstruction> op2;
         };
 
+        /**
+         * The VideoCore IV instruction set offers 3 different types of loads
+         * (see Broadcom VideoCore IV specification, figure 5, page 33)
+         *
+         * Note: the constant values correspond with the flags specifying the type of load (bits 57/58)
+         */
+        enum class LoadType
+        {
+            /**
+             * The default load instruction, replicates the 32-bit literal value across all 16 SIMD elements of the
+             * output register(s).
+             */
+            REPLICATE_INT32 = 0,
+            /**
+             * The 32-bit literal value is split into upper and lower half. 1 bit per half is set per SIMD element. The
+             * value is sign extended. These 4 different values can be set per element (here set for 2nd element):
+             * xx0xxxxxxxxxxxxxyy0yyyyyyyyyyyyy -> 0x00000000 (0)
+             * xx0xxxxxxxxxxxxxyy1yyyyyyyyyyyyy -> 0x00000001 (1)
+             * xx1xxxxxxxxxxxxxyy0yyyyyyyyyyyyy -> 0xFFFFFFFE (-2)
+             * xx1xxxxxxxxxxxxxyy1yyyyyyyyyyyyy -> 0xFFFFFFFF (-1)
+             */
+            PER_ELEMENT_SIGNED = 1,
+            /**
+             * The 32-bit literal value is split into upper and lower half. 1 bit per half is set per SIMD element. The
+             * value is zero extended. These 4 different values can be set per element (here set for 2nd element):
+             * xx0xxxxxxxxxxxxxyy0yyyyyyyyyyyyy -> 0x00000000 (0)
+             * xx0xxxxxxxxxxxxxyy1yyyyyyyyyyyyy -> 0x00000001 (1)
+             * xx1xxxxxxxxxxxxxyy0yyyyyyyyyyyyy -> 0x00000002 (2)
+             * xx1xxxxxxxxxxxxxyy1yyyyyyyyyyyyy -> 0x00000003 (3)
+             */
+            PER_ELEMENT_UNSIGNED = 3
+        };
+
         struct LoadImmediate final : public IntermediateInstruction
         {
         public:
             LoadImmediate(const Value& dest, const Literal& source, const ConditionCode& cond = COND_ALWAYS,
+                SetFlag setFlags = SetFlag::DONT_SET);
+            LoadImmediate(const Value& dest, uint32_t mask, LoadType type, const ConditionCode& cond = COND_ALWAYS,
                 SetFlag setFlags = SetFlag::DONT_SET);
             ~LoadImmediate() override = default;
 
@@ -519,6 +554,8 @@ namespace vc4c
 
             Literal getImmediate() const;
             void setImmediate(const Literal& value);
+
+            const LoadType type;
         };
 
         struct SemaphoreAdjustment final : public IntermediateInstruction

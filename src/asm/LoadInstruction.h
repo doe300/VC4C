@@ -27,6 +27,7 @@ namespace vc4c
             std::string toASMString(bool addComments) const override;
             bool isValidInstruction() const override;
 
+            BITFIELD_ENTRY(Type, OpLoad, 57, Septuple)
             BITFIELD_ENTRY(Pack, Pack, 52, Quintuple)
             BITFIELD_ENTRY(AddCondition, ConditionCode, 49, Triple)
             BITFIELD_ENTRY(MulCondition, ConditionCode, 46, Triple)

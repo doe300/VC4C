@@ -102,6 +102,8 @@ InstructionWalker intermediate::insertVectorRotation(
         else
         {
             // to exclude the case case 16-0 = 16
+            // TODO is this require? since thew QPU uses bits [3:0] which implicitly converts 16 to 0 (see specs, table
+            // 5) would need to do the same for emulator
             it.emplace(new MoveOperation(NOP_REGISTER, offset, COND_ALWAYS, SetFlag::SET_FLAGS));
             it.nextInBlock();
             // r5 = 16 - offset
@@ -169,17 +171,38 @@ InstructionWalker intermediate::insertVectorInsertion(
     }
     else
     {
-        tmp = method.addNewLocal(container.type.getElementType(), "%vector_insert");
-        // 1) rotate scalar value to the correct vector-position
+        tmp = method.addNewLocal(value.type, "%vector_insert");
+        // 1) rotate value to the correct vector-position
         it = intermediate::insertVectorRotation(it, value, index, tmp, intermediate::Direction::UP);
     }
-    // 2) create condition only met in given index
-    it.emplace(new intermediate::Operation(
-        OP_XOR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, index, COND_ALWAYS, SetFlag::SET_FLAGS));
-    it.nextInBlock();
-    // 3) move when condition is met
-    it.emplace(new intermediate::MoveOperation(container, tmp, COND_ZERO_SET));
-    it->addDecorations(InstructionDecorations::ELEMENT_INSERTION);
+    // 2) insert element(s) into container
+    if(value.type.isScalarType())
+    {
+        // single element -> create condition only met in given index
+        it.emplace(new intermediate::Operation(
+            OP_XOR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, index, COND_ALWAYS, SetFlag::SET_FLAGS));
+        it.nextInBlock();
+        // 3) move when condition is met
+        it.emplace(new intermediate::MoveOperation(container, tmp, COND_ZERO_SET));
+        it->addDecorations(InstructionDecorations::ELEMENT_INSERTION);
+    }
+    else
+    {
+        // multiple elements -> insert range of indices
+        // preconditions: index >= 0 and we want to insert elements [insert, insert + vector-width[ while leaving the
+        // other unchanged
+        // we use the mask version of loads to set the elements we want to insert to and then use flags to insert only
+        // those
+        unsigned maskLit = (1 << value.type.getVectorWidth()) - 1;
+        auto mask = method.addNewLocal(TYPE_INT32, "%vector_mask");
+        auto shiftedMask = method.addNewLocal(TYPE_INT32, "%vector_mask");
+        it.emplace(new LoadImmediate(mask, maskLit, LoadType::PER_ELEMENT_UNSIGNED));
+        it.nextInBlock();
+        it = insertVectorRotation(it, mask, index, shiftedMask);
+        it.emplace(new MoveOperation(NOP_REGISTER, shiftedMask, COND_ALWAYS, SetFlag::SET_FLAGS));
+        it.nextInBlock();
+        it.emplace(new MoveOperation(container, value, COND_ZERO_CLEAR));
+    }
     it.nextInBlock();
     return it;
 }

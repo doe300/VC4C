@@ -28,6 +28,8 @@
 using namespace vc4c;
 using namespace vc4c::tools;
 
+extern std::vector<vc4c::Value> toLoadedValues(uint32_t mask, vc4c::intermediate::LoadType type);
+
 extern void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo,
     ReferenceRetainingList<Global>& globals, std::vector<std::unique_ptr<qpu_asm::Instruction>>& instructions);
 
@@ -1068,8 +1070,25 @@ bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iter
     else if(dynamic_cast<const qpu_asm::LoadInstruction*>(inst) != nullptr)
     {
         const auto load = dynamic_cast<const qpu_asm::LoadInstruction*>(inst);
+        auto type = load->getType();
         Value imm = Value(Literal(load->getImmediateInt()), TYPE_INT32);
-        imm = load->getPack().pack(imm).value();
+        switch(type)
+        {
+        case OpLoad::LOAD_IMM_32:
+            imm = load->getPack().pack(imm).value();
+            break;
+        case OpLoad::LOAD_SIGNED:
+            imm = Value(ContainerValue(toLoadedValues(
+                            imm.getLiteralValue()->unsignedInt(), vc4c::intermediate::LoadType::PER_ELEMENT_SIGNED)),
+                imm.type.toVectorType(16));
+            break;
+        case OpLoad::LOAD_UNSIGNED:
+            imm = Value(ContainerValue(toLoadedValues(
+                            imm.getLiteralValue()->unsignedInt(), vc4c::intermediate::LoadType::PER_ELEMENT_UNSIGNED)),
+                imm.type.toVectorType(16));
+            break;
+        }
+
         if(load->getSetFlag() == SetFlag::SET_FLAGS)
             setFlags(imm, load->getAddCondition() != COND_NEVER ? load->getAddCondition() : load->getMulCondition());
         writeConditional(

@@ -614,7 +614,7 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
 
 static Optional<Literal> getSourceLiteral(InstructionWalker it)
 {
-    if(it.has<LoadImmediate>())
+    if(it.has<LoadImmediate>() && it.get<LoadImmediate>()->type == LoadType::REPLICATE_INT32)
     {
         return it.get<LoadImmediate>()->getImmediate();
     }
