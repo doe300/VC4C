@@ -22,6 +22,17 @@ public:
     void testVPMWrites();
     void testVPMReads();
 
+    // general vload/vstore tests are in TestVectorFunctions, this is to test optimizations
+    void testVectorLoadStoreCharPrivate();
+    void testVectorLoadStoreCharLocal();
+    void testVectorLoadStoreCharGlobal();
+    void testVectorLoadStoreShortPrivate();
+    void testVectorLoadStoreShortLocal();
+    void testVectorLoadStoreShortGlobal();
+    void testVectorLoadStoreIntPrivate();
+    void testVectorLoadStoreIntLocal();
+    void testVectorLoadStoreIntGlobal();
+
 private:
     void onMismatch(const std::string& expected, const std::string& result);
 };

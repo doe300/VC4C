@@ -35,6 +35,17 @@ namespace vc4c
 
         bool isMoveExpression() const;
         Optional<Value> getConstantExpression() const;
+        bool hasConstantOperand() const;
+
+        /**
+         * Creates a combined expression given the input expressions.
+         *
+         * Expressions can be combined, e.g. if the inputs of this expression can be calculated with one of the
+         * arguments and the op-codes can be combined.
+         *
+         * Returns a copy of this expression, if no combination could be done
+         */
+        Expression combineWith(const FastMap<const Local*, Expression>& inputs) const;
     };
 
     template <>

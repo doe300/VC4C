@@ -130,8 +130,11 @@ static void extractKernelMetadata(
                             toAddressSpace(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getSExtValue());
                 }
                 else
+                {
+                    dumpLLVM(operand);
                     throw CompilationError(
                         CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+                }
             }
         }
     }
@@ -155,8 +158,11 @@ static void extractKernelMetadata(
                 kernel.parameters.at(i).origTypeName = name->getString();
             }
             else
+            {
+                dumpLLVM(operand);
                 throw CompilationError(
                     CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+            }
         }
     }
     metadata = func.getMetadata("kernel_arg_base_type");
@@ -184,8 +190,11 @@ static void extractKernelMetadata(
                     param.decorations = add_flag(param.decorations, ParameterDecorations::VOLATILE);
             }
             else
+            {
+                dumpLLVM(operand);
                 throw CompilationError(
                     CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+            }
         }
     }
     metadata = func.getMetadata("kernel_arg_name");
@@ -201,8 +210,11 @@ static void extractKernelMetadata(
                 kernel.parameters.at(i).parameterName = name->getString();
             }
             else
+            {
+                dumpLLVM(operand);
                 throw CompilationError(
                     CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+            }
         }
     }
     metadata = func.getMetadata("reqd_work_group_size");
@@ -219,8 +231,11 @@ static void extractKernelMetadata(
                     static_cast<uint32_t>(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getZExtValue());
             }
             else
+            {
+                dumpLLVM(operand);
                 throw CompilationError(
                     CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+            }
         }
     }
     metadata = func.getMetadata("work_group_size_hint");
@@ -237,8 +252,11 @@ static void extractKernelMetadata(
                     static_cast<uint32_t>(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getZExtValue());
             }
             else
+            {
+                dumpLLVM(operand);
                 throw CompilationError(
                     CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+            }
         }
     }
 }
@@ -282,8 +300,11 @@ static void extractKernelMetadata(
                                             llvm::cast<const llvm::ConstantInt>(constant->getValue())->getSExtValue()));
                                 }
                                 else
+                                {
+                                    dumpLLVM(operand);
                                     throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind",
                                         std::to_string(operand->getMetadataID()));
+                                }
                             }
                         }
                     }
@@ -308,8 +329,11 @@ static void extractKernelMetadata(
                                 kernel.parameters.at(i - 1).origTypeName = name->getString();
                             }
                             else
+                            {
+                                dumpLLVM(operand);
                                 throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind",
                                     std::to_string(operand->getMetadataID()));
+                            }
                         }
                     }
                     else if(node->getOperand(0)->getMetadataID() == llvm::Metadata::MDStringKind &&
@@ -332,8 +356,11 @@ static void extractKernelMetadata(
                                     param.decorations = add_flag(param.decorations, ParameterDecorations::VOLATILE);
                             }
                             else
+                            {
+                                dumpLLVM(operand);
                                 throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind",
                                     std::to_string(operand->getMetadataID()));
+                            }
                         }
                     }
                     else if(node->getOperand(0)->getMetadataID() == llvm::Metadata::MDStringKind &&
@@ -349,8 +376,11 @@ static void extractKernelMetadata(
                                 kernel.parameters.at(i - 1).parameterName = name->getString();
                             }
                             else
+                            {
+                                dumpLLVM(operand);
                                 throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind",
                                     std::to_string(operand->getMetadataID()));
+                            }
                         }
                     }
                     else if(node->getOperand(0)->getMetadataID() == llvm::Metadata::MDStringKind &&
@@ -369,8 +399,11 @@ static void extractKernelMetadata(
                                     llvm::cast<const llvm::ConstantInt>(constant->getValue())->getZExtValue());
                             }
                             else
+                            {
+                                dumpLLVM(operand);
                                 throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind",
                                     std::to_string(operand->getMetadataID()));
+                            }
                         }
                     }
                     else if(node->getOperand(0)->getMetadataID() == llvm::Metadata::MDStringKind &&
@@ -390,8 +423,11 @@ static void extractKernelMetadata(
                                     llvm::cast<const llvm::ConstantInt>(constant->getValue())->getZExtValue());
                             }
                             else
+                            {
+                                dumpLLVM(operand);
                                 throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind",
                                     std::to_string(operand->getMetadataID()));
+                            }
                         }
                     }
                 }
@@ -808,13 +844,32 @@ void BitcodeReader::parseInstruction(
             // indices
             llvm::ConstantExpr* constExpr =
                 const_cast<llvm::ConstantExpr*>(llvm::cast<const llvm::ConstantExpr>(load->getPointerOperand()));
-            if(constExpr->getOpcode() != llvm::Instruction::MemoryOps::GetElementPtr)
-                throw CompilationError(CompilationStep::PARSER, "Invalid constant operation for load-instruction!");
-            llvm::GetElementPtrInst* indexOf = llvm::cast<llvm::GetElementPtrInst>(constExpr->getAsInstruction());
-            parseInstruction(module, method, instructions, *indexOf);
-            src = toValue(method, indexOf);
-            // required so LLVM can clean up the constant expression correctly
-            indexOf->dropAllReferences();
+            if(constExpr->getOpcode() == llvm::Instruction::CastOps::BitCast)
+            {
+                // bitcast of address can simply be replace by loading of source address
+                // the source could be a constant or a constant expression
+                if(llvm::isa<llvm::ConstantExpr>(constExpr->getOperand(0)))
+                    constExpr = llvm::cast<llvm::ConstantExpr>(constExpr->getOperand(0));
+                else
+                {
+                    src = toValue(method, constExpr->getOperand(0));
+                    // skip next step
+                    constExpr = nullptr;
+                }
+            }
+            if(constExpr != nullptr)
+            {
+                if(constExpr->getOpcode() != llvm::Instruction::MemoryOps::GetElementPtr)
+                {
+                    dumpLLVM(constExpr);
+                    throw CompilationError(CompilationStep::PARSER, "Invalid constant operation for load-instruction!");
+                }
+                llvm::GetElementPtrInst* indexOf = llvm::cast<llvm::GetElementPtrInst>(constExpr->getAsInstruction());
+                parseInstruction(module, method, instructions, *indexOf);
+                src = toValue(method, indexOf);
+                // required so LLVM can clean up the constant expression correctly
+                indexOf->dropAllReferences();
+            }
         }
         else
             src = toValue(method, load->getPointerOperand());
@@ -834,13 +889,33 @@ void BitcodeReader::parseInstruction(
             // the destination is given as an in-line getelementptr instruction, insert as extra instruction
             llvm::ConstantExpr* constExpr =
                 const_cast<llvm::ConstantExpr*>(llvm::cast<const llvm::ConstantExpr>(store->getPointerOperand()));
-            if(constExpr->getOpcode() != llvm::Instruction::MemoryOps::GetElementPtr)
-                throw CompilationError(CompilationStep::PARSER, "Invalid constant operation for store-instruction!");
-            llvm::GetElementPtrInst* indexOf = llvm::cast<llvm::GetElementPtrInst>(constExpr->getAsInstruction());
-            parseInstruction(module, method, instructions, *indexOf);
-            dest = toValue(method, indexOf);
-            // required so LLVM can clean up the constant expression correctly
-            indexOf->dropAllReferences();
+            if(constExpr->getOpcode() == llvm::Instruction::CastOps::BitCast)
+            {
+                // bitcast of address can simply be replace by storing into source address
+                // the source could be a constant or a constant expression
+                if(llvm::isa<llvm::ConstantExpr>(constExpr->getOperand(0)))
+                    constExpr = llvm::cast<llvm::ConstantExpr>(constExpr->getOperand(0));
+                else
+                {
+                    dest = toValue(method, constExpr->getOperand(0));
+                    // skip next step
+                    constExpr = nullptr;
+                }
+            }
+            if(constExpr != nullptr)
+            {
+                if(constExpr->getOpcode() != llvm::Instruction::MemoryOps::GetElementPtr)
+                {
+                    dumpLLVM(constExpr);
+                    throw CompilationError(
+                        CompilationStep::PARSER, "Invalid constant operation for store-instruction!");
+                }
+                llvm::GetElementPtrInst* indexOf = llvm::cast<llvm::GetElementPtrInst>(constExpr->getAsInstruction());
+                parseInstruction(module, method, instructions, *indexOf);
+                dest = toValue(method, indexOf);
+                // required so LLVM can clean up the constant expression correctly
+                indexOf->dropAllReferences();
+            }
         }
         else
             dest = toValue(method, store->getPointerOperand());
@@ -938,6 +1013,7 @@ void BitcodeReader::parseInstruction(
         const llvm::ExtractValueInst* extraction = llvm::cast<const llvm::ExtractValueInst>(&inst);
         if(extraction->getIndices().size() != 1)
         {
+            dumpLLVM(extraction);
             throw CompilationError(
                 CompilationStep::PARSER, "Container extraction with multi-level indices is not yet implemented!");
         }
@@ -971,6 +1047,7 @@ void BitcodeReader::parseInstruction(
         const llvm::InsertValueInst* insertion = llvm::cast<const llvm::InsertValueInst>(&inst);
         if(insertion->getIndices().size() != 1)
         {
+            dumpLLVM(insertion);
             throw CompilationError(
                 CompilationStep::PARSER, "Container insertion with multi-level indices is not yet implemented!");
         }
@@ -1010,6 +1087,7 @@ void BitcodeReader::parseInstruction(
         break;
     }
     default:
+        dumpLLVM(&inst);
         throw CompilationError(CompilationStep::PARSER, "Unhandled LLVM op-code", inst.getOpcodeName());
     }
 }
@@ -1057,8 +1135,11 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         auto constant = llvm::cast<const llvm::ConstantInt>(val);
         if(constant->getSExtValue() > std::numeric_limits<uint32_t>::max() ||
             constant->getSExtValue() < std::numeric_limits<int32_t>::min())
+        {
+            dumpLLVM(constant);
             throw CompilationError(CompilationStep::PARSER, "Constant value is out of valid range",
                 std::to_string(constant->getSExtValue()));
+        }
         if(constant->isNegative())
             return Value(Literal(static_cast<int32_t>(constant->getSExtValue())), type);
         return Value(Literal(static_cast<uint32_t>(constant->getZExtValue())), type);
@@ -1184,6 +1265,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
         Value result = toConstant(module, expr->getOperand(0));
         if(expr->getOperand(0)->getType()->getScalarSizeInBits() != expr->getType()->getScalarSizeInBits())
         {
+            dumpLLVM(expr);
             throw CompilationError(
                 CompilationStep::PARSER, "Bit-casts over different type-sizes are not yet implemented!");
         }
@@ -1259,6 +1341,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
                 return dest;
             }
         }
+        dumpLLVM(expr);
         throw CompilationError(CompilationStep::PARSER, "Unhandled bit-width of type", src.to_string());
     }
     if(expr->getOpcode() == llvm::Instruction::OtherOps::ICmp || expr->getOpcode() == llvm::Instruction::OtherOps::FCmp)

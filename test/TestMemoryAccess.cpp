@@ -6,10 +6,86 @@
 
 #include "TestMemoryAccess.h"
 
+#include "emulation_helper.h"
 #include "test_cases.h"
 
 using namespace vc4c;
 using namespace vc4c::tools;
+
+static const std::string MEMORY_FUNCTION = R"(
+#define CONCAT(a,b) a ## b
+#define CAT(a,b) CONCAT(a,b)
+__attribute__((reqd_work_group_size(1,1,1)))
+__kernel void test(__global TYPE* out, const __global TYPE* in) {
+  size_t gid = get_global_id(0);
+
+  STORAGE TYPE p11[16];
+  STORAGE CAT(TYPE,16) p12[1];
+  STORAGE TYPE p21[16];
+  STORAGE CAT(TYPE,16) p22[1];
+
+  STORAGE TYPE p31[16];
+  STORAGE CAT(TYPE,16) p32[1];
+
+  CAT(TYPE,16) t = vload16(gid, in);
+
+  // test vstore + assignment load
+  vstore16(t, 0, p11);
+  vstore16(t + (TYPE)3, 0, (STORAGE TYPE*)p12);
+
+  CAT(TYPE,16) t1 = *((STORAGE CAT(TYPE,16)*)p11);
+  CAT(TYPE,16) t2 = *p12;
+
+  // test assignment store + vload
+  *((STORAGE CAT(TYPE,16)*)p21) = t + (TYPE)7;
+  *p22 = t + (TYPE)11;
+
+  CAT(TYPE,16) t3 = vload16(0, p21);
+  CAT(TYPE,16) t4 = vload16(0, (STORAGE TYPE*)p22);
+
+  // test vstore + vload
+  vstore16(t + (TYPE)13, 0, p31);
+  vstore16(t + (TYPE)17, 0, (STORAGE TYPE*)p32);
+
+  CAT(TYPE,16) t5 = vload16(0, p31);
+  CAT(TYPE,16) t6 = vload16(0, (STORAGE TYPE*)p32);
+
+  vstore16(t1 + t2 + t3 + t4 + t5 + t6, gid, out);
+}
+)";
+
+static const std::string GLOBAL_MEMORY_FUNCTION = R"(
+#define CONCAT(a,b) a ## b
+#define CAT(a,b) CONCAT(a,b)
+__kernel void test(__global TYPE* out, const __global TYPE* in, __global TYPE* p11, __global CAT(TYPE,16)* p12, __global TYPE* p21, __global CAT(TYPE,16)* p22, __global TYPE* p31, __global CAT(TYPE,16)* p32) {
+  size_t gid = get_global_id(0);
+
+  CAT(TYPE,16) t = vload16(gid, in);
+
+  // test vstore + assignment load
+  vstore16(t, 0, p11);
+  vstore16(t + (TYPE)3, 0, (__global TYPE*)p12);
+
+  CAT(TYPE,16) t1 = *((__global CAT(TYPE,16)*)p11);
+  CAT(TYPE,16) t2 = *p12;
+
+  // test assignment store + vload
+  *((__global CAT(TYPE,16)*)p21) = t + (TYPE)7;
+  *p22 = t + (TYPE)11;
+
+  CAT(TYPE,16) t3 = vload16(0, p21);
+  CAT(TYPE,16) t4 = vload16(0, (__global TYPE*)p22);
+
+  // test vstore + vload
+  vstore16(t + (TYPE)13, 0, p31);
+  vstore16(t + (TYPE)17, 0, (__global TYPE*)p32);
+
+  CAT(TYPE,16) t5 = vload16(0, p31);
+  CAT(TYPE,16) t6 = vload16(0, (__global TYPE*)p32);
+
+  vstore16(t1 + t2 + t3 + t4 + t5 + t6, gid, out);
+}
+)";
 
 TestMemoryAccess::TestMemoryAccess(const Configuration& config) : TestEmulator(false, config)
 {
@@ -20,6 +96,62 @@ TestMemoryAccess::TestMemoryAccess(const Configuration& config) : TestEmulator(f
 
     TEST_ADD(TestMemoryAccess::testVPMWrites);
     TEST_ADD(TestMemoryAccess::testVPMReads);
+
+    TEST_ADD(TestMemoryAccess::testVectorLoadStoreCharPrivate);
+    TEST_ADD(TestMemoryAccess::testVectorLoadStoreCharLocal);
+    TEST_ADD(TestMemoryAccess::testVectorLoadStoreCharGlobal);
+    TEST_ADD(TestMemoryAccess::testVectorLoadStoreShortPrivate);
+    TEST_ADD(TestMemoryAccess::testVectorLoadStoreShortLocal);
+    TEST_ADD(TestMemoryAccess::testVectorLoadStoreShortGlobal);
+    TEST_ADD(TestMemoryAccess::testVectorLoadStoreIntPrivate);
+    TEST_ADD(TestMemoryAccess::testVectorLoadStoreIntLocal);
+    TEST_ADD(TestMemoryAccess::testVectorLoadStoreIntGlobal);
+}
+
+void TestMemoryAccess::onMismatch(const std::string& expected, const std::string& result)
+{
+    TEST_ASSERT_EQUALS(expected, result);
+}
+
+template <typename T>
+static void testPrivateLocalFunction(vc4c::Configuration& config, const std::string& options,
+    const std::function<void(const std::string&, const std::string&)>& onError)
+{
+    std::stringstream code;
+    compileBuffer(config, code, MEMORY_FUNCTION, options);
+
+    auto in = generateInput<T, 16>(true, -10, 10);
+
+    auto out = runEmulation<T, T, 16, 1>(code, {in});
+    auto storage = options.find("-DSTORAGE=") + std::string("-DSTORAGE=").size();
+    auto type = options.find("-DTYPE=") + std::string("-DTYPE=").size();
+    checkUnaryResults<T, T>(in, out,
+        [](T val) -> T { return val + (val + 3) + (val + 7) + (val + 11) + (val + 13) + (val + 17); },
+        options.substr(type, options.find(' ', type) - type) +
+            options.substr(storage, options.find(' ', storage) - storage),
+        onError);
+}
+
+template <typename T>
+static void testGlobalFunction(vc4c::Configuration& config, const std::string& options,
+    const std::function<void(const std::string&, const std::string&)>& onError)
+{
+    std::stringstream code;
+    compileBuffer(config, code, GLOBAL_MEMORY_FUNCTION, options);
+
+    auto in = generateInput<T, 16>(true, -10, 10);
+    auto p11 = generateInput<T, 16>(true);
+    auto p12 = generateInput<T, 16>(true);
+    auto p21 = generateInput<T, 16>(true);
+    auto p22 = generateInput<T, 16>(true);
+    auto p31 = generateInput<T, 16>(true);
+    auto p32 = generateInput<T, 16>(true);
+
+    auto out = runEmulation<T, T, 16, 1>(code, {in, p11, p12, p21, p22, p31, p32});
+    auto type = options.find("-DTYPE=") + std::string("-DTYPE=").size();
+    checkUnaryResults<T, T>(in, out,
+        [](T val) -> T { return val + (val + 3) + (val + 7) + (val + 11) + (val + 13) + (val + 17); },
+        options.substr(type, options.find(' ', type) - type) + "__global", onError);
 }
 
 void TestMemoryAccess::testPrivateStorage()
@@ -218,4 +350,51 @@ void TestMemoryAccess::testVPMReads()
         TEST_ASSERT_EQUALS(v1.at(i), v2.at(i));
         TEST_ASSERT_EQUALS((i / 4) * 12 /*stride * elements*/ + (i % 4), v2[i]);
     }
+}
+
+void TestMemoryAccess::testVectorLoadStoreCharPrivate()
+{
+    testPrivateLocalFunction<char>(config, "-DTYPE=char -DSTORAGE=__private",
+        std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestMemoryAccess::testVectorLoadStoreCharLocal()
+{
+    testPrivateLocalFunction<char>(config, "-DTYPE=char -DSTORAGE=__local",
+        std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestMemoryAccess::testVectorLoadStoreCharGlobal()
+{
+    testGlobalFunction<char>(config, "-DTYPE=char",
+        std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestMemoryAccess::testVectorLoadStoreShortPrivate()
+{
+    testPrivateLocalFunction<short>(config, "-DTYPE=short -DSTORAGE=__private",
+        std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestMemoryAccess::testVectorLoadStoreShortLocal()
+{
+    testPrivateLocalFunction<short>(config, "-DTYPE=short -DSTORAGE=__local",
+        std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestMemoryAccess::testVectorLoadStoreShortGlobal()
+{
+    testGlobalFunction<short>(config, "-DTYPE=short",
+        std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestMemoryAccess::testVectorLoadStoreIntPrivate()
+{
+    testPrivateLocalFunction<int>(config, "-DTYPE=int -DSTORAGE=__private",
+        std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestMemoryAccess::testVectorLoadStoreIntLocal()
+{
+    testPrivateLocalFunction<int>(config, "-DTYPE=int -DSTORAGE=__local",
+        std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestMemoryAccess::testVectorLoadStoreIntGlobal()
+{
+    testGlobalFunction<int>(config, "-DTYPE=int",
+        std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }

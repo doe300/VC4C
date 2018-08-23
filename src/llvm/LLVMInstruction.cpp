@@ -128,7 +128,7 @@ bool CallSite::mapInstruction(Method& method) const
                     "Cannot start life-time of object not located on stack", pointer.to_string());
         }
         //"The second argument is a pointer to the object."
-        method.appendToEnd(new intermediate::LifetimeBoundary(pointer, methodName.compare("llvm.lifetime.end") == 0));
+        method.appendToEnd(new intermediate::LifetimeBoundary(pointer, methodName.find("llvm.lifetime.end") == 0));
         return true;
     }
     const Value output = dest.hasType(ValueType::LOCAL) && dest.local != nullptr ? dest : NOP_REGISTER;

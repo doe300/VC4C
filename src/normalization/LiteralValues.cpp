@@ -35,6 +35,22 @@ static Optional<Value> getMostCommonElement(const std::vector<Value>& container)
     return maxVal->second == 1 ? NO_VALUE : Optional<Value>{maxVal->first};
 }
 
+static bool fitsIntoUnsignedMaskedLoad(const Value& val)
+{
+    if(!val.getLiteralValue())
+        return false;
+    return val.getLiteralValue()->unsignedInt() == 0 || val.getLiteralValue()->unsignedInt() == 1 ||
+        val.getLiteralValue()->unsignedInt() == 2 || val.getLiteralValue()->unsignedInt() == 3;
+}
+
+static bool fitsIntoSignedMaskedLoad(const Value& val)
+{
+    if(!val.getLiteralValue())
+        return false;
+    return val.getLiteralValue()->signedInt() == 0 || val.getLiteralValue()->signedInt() == 1 ||
+        val.getLiteralValue()->signedInt() == -2 || val.getLiteralValue()->signedInt() == -1;
+}
+
 static InstructionWalker copyVector(Method& method, InstructionWalker it, const Value& out, const Value& in)
 {
     if(in.container.isAllSame())
@@ -57,6 +73,36 @@ static InstructionWalker copyVector(Method& method, InstructionWalker it, const 
         auto offset = in.container.elements.at(0).getLiteralValue()->signedInt();
         it.emplace((new intermediate::Operation(OP_ADD, out, ELEMENT_NUMBER_REGISTER, Value(Literal(offset), in.type)))
                        ->copyExtrasFrom(it.get()));
+        return it.nextInBlock();
+    }
+    if(std::all_of(in.container.elements.begin(), in.container.elements.end(), fitsIntoUnsignedMaskedLoad))
+    {
+        // if the container elements all fit into the results of an unsigned bit-masked load, use such an instruction
+        std::bitset<32> mask;
+        for(std::size_t i = 0; i < in.container.elements.size(); ++i)
+        {
+            auto elemVal = in.container.elements[i].getLiteralValue()->unsignedInt();
+            mask.set(i + 16, elemVal >> 1);
+            mask.set(i, elemVal & 1);
+        }
+        it.emplace(new intermediate::LoadImmediate(
+            out, static_cast<unsigned>(mask.to_ulong()), intermediate::LoadType::PER_ELEMENT_UNSIGNED));
+        it->copyExtrasFrom(it.get());
+        return it.nextInBlock();
+    }
+    if(std::all_of(in.container.elements.begin(), in.container.elements.end(), fitsIntoSignedMaskedLoad))
+    {
+        // if the container elements all fit into the results of an signed bit-masked load, use such an instruction
+        std::bitset<32> mask;
+        for(std::size_t i = 0; i < in.container.elements.size(); ++i)
+        {
+            auto elemVal = in.container.elements[i].getLiteralValue()->signedInt();
+            mask.set(i + 16, elemVal < 0);
+            mask.set(i, elemVal & 1);
+        }
+        it.emplace(new intermediate::LoadImmediate(
+            out, static_cast<unsigned>(mask.to_ulong()), intermediate::LoadType::PER_ELEMENT_SIGNED));
+        it->copyExtrasFrom(it.get());
         return it.nextInBlock();
     }
     Value realOut = out;
