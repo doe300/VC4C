@@ -875,7 +875,8 @@ void VPM::setDMAReadAddress(const Value& val)
 
     std::pair<uint32_t, uint32_t> vpmBaseAddress =
         std::make_pair(setup.dmaSetup.getWordRow(), setup.dmaSetup.getWordColumn());
-    std::pair<uint32_t, uint32_t> sizes = std::make_pair(setup.dmaSetup.getNumberRows(), setup.dmaSetup.getRowLength());
+    std::pair<uint32_t, uint32_t> sizes = std::make_pair(setup.dmaSetup.getNumberRows(),
+        setup.dmaSetup.getRowLength() == 0 ? 16 /* 0 => 16 */ : setup.dmaSetup.getRowLength());
     uint32_t typeSize =
         setup.dmaSetup.getMode() >= 4 ? 1 /* Byte */ : setup.dmaSetup.getMode() >= 2 ? 2 /* Half-word */ : 4 /* Word */;
     uint32_t byteOffset =

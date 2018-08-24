@@ -102,6 +102,13 @@ static std::vector<tools::Word> readDirectBuffer(std::string data)
 	T t = 0;
 	while((ss >> t))
 	{
+		if(t == 0 && ss.peek() == 'x')
+		{
+			// skip x in (0x...)
+			ss.get();
+			// read number as hexadecimal
+			ss >> std::hex >> t >> std::dec;
+		}
 		words.emplace_back(bit_cast<T, uint32_t>(t));
 	}
 	
