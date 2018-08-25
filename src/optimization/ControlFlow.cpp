@@ -1000,7 +1000,8 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     {
         method.metaData.uniformsUsed.setWorkDimensionsUsed(true);
         it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::WORK_DIMENSIONS)->createReference(), UNIFORM_REGISTER));
+            method.findOrCreateLocal(TYPE_INT32, Method::WORK_DIMENSIONS)->createReference(),
+            Value(REG_UNIFORM, TYPE_INT8)));
         it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
         it.nextInBlock();
     }
@@ -1008,15 +1009,17 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     {
         method.metaData.uniformsUsed.setLocalSizesUsed(true);
         it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::LOCAL_SIZES)->createReference(), UNIFORM_REGISTER));
+            method.findOrCreateLocal(TYPE_INT32, Method::LOCAL_SIZES)->createReference(),
+            Value(REG_UNIFORM, TYPE_INT32)));
         it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
         it.nextInBlock();
     }
     if(isLocalUsed(method, Method::LOCAL_IDS))
     {
         method.metaData.uniformsUsed.setLocalIDsUsed(true);
-        it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::LOCAL_IDS)->createReference(), UNIFORM_REGISTER));
+        it.emplace(
+            new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::LOCAL_IDS)->createReference(),
+                Value(REG_UNIFORM, TYPE_INT32)));
         it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
         it.nextInBlock();
     }
@@ -1024,7 +1027,8 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     {
         method.metaData.uniformsUsed.setNumGroupsXUsed(true);
         it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_X)->createReference(), UNIFORM_REGISTER));
+            method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_X)->createReference(),
+            Value(REG_UNIFORM, TYPE_INT32)));
         it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
         it.nextInBlock();
     }
@@ -1032,7 +1036,8 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     {
         method.metaData.uniformsUsed.setNumGroupsYUsed(true);
         it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_Y)->createReference(), UNIFORM_REGISTER));
+            method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_Y)->createReference(),
+            Value(REG_UNIFORM, TYPE_INT32)));
         it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
         it.nextInBlock();
     }
@@ -1040,31 +1045,35 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     {
         method.metaData.uniformsUsed.setNumGroupsZUsed(true);
         it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_Z)->createReference(), UNIFORM_REGISTER));
+            method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_Z)->createReference(),
+            Value(REG_UNIFORM, TYPE_INT32)));
         it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
         it.nextInBlock();
     }
     if(isLocalUsed(method, Method::GROUP_ID_X))
     {
         method.metaData.uniformsUsed.setGroupIDXUsed(true);
-        it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_X)->createReference(), UNIFORM_REGISTER));
+        it.emplace(
+            new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_X)->createReference(),
+                Value(REG_UNIFORM, TYPE_INT32)));
         it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
         it.nextInBlock();
     }
     if(isLocalUsed(method, Method::GROUP_ID_Y))
     {
         method.metaData.uniformsUsed.setGroupIDYUsed(true);
-        it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_Y)->createReference(), UNIFORM_REGISTER));
+        it.emplace(
+            new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_Y)->createReference(),
+                Value(REG_UNIFORM, TYPE_INT32)));
         it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
         it.nextInBlock();
     }
     if(isLocalUsed(method, Method::GROUP_ID_Z))
     {
         method.metaData.uniformsUsed.setGroupIDZUsed(true);
-        it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_Z)->createReference(), UNIFORM_REGISTER));
+        it.emplace(
+            new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_Z)->createReference(),
+                Value(REG_UNIFORM, TYPE_INT32)));
         it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
         it.nextInBlock();
     }
@@ -1072,7 +1081,8 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     {
         method.metaData.uniformsUsed.setGlobalOffsetXUsed(true);
         it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_X)->createReference(), UNIFORM_REGISTER));
+            method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_X)->createReference(),
+            Value(REG_UNIFORM, TYPE_INT32)));
         it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
         it.nextInBlock();
     }
@@ -1080,7 +1090,8 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     {
         method.metaData.uniformsUsed.setGlobalOffsetYUsed(true);
         it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_Y)->createReference(), UNIFORM_REGISTER));
+            method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_Y)->createReference(),
+            Value(REG_UNIFORM, TYPE_INT32)));
         it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
         it.nextInBlock();
     }
@@ -1088,7 +1099,8 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     {
         method.metaData.uniformsUsed.setGlobalOffsetZUsed(true);
         it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_Z)->createReference(), UNIFORM_REGISTER));
+            method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_Z)->createReference(),
+            Value(REG_UNIFORM, TYPE_INT32)));
         it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
         it.nextInBlock();
     }
@@ -1096,7 +1108,8 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     {
         method.metaData.uniformsUsed.setGlobalDataAddressUsed(true);
         it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference(), UNIFORM_REGISTER));
+            method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference(),
+            Value(REG_UNIFORM, TYPE_INT32)));
         it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
         it.nextInBlock();
     }
@@ -1123,7 +1136,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         }
         else
         {
-            it.emplace(new intermediate::MoveOperation(param.createReference(), UNIFORM_REGISTER));
+            it.emplace(new intermediate::MoveOperation(param.createReference(), Value(REG_UNIFORM, param.type)));
             if(param.type.isPointerType())
                 // all pointers are unsigned
                 it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
