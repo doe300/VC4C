@@ -280,7 +280,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
     case OptimizationLevel::FULL:
         passes.emplace("vectorize-loops");
         passes.emplace("extract-loads-from-loops");
-        // fall-through on purpose
+        __attribute__((fallthrough));
     case OptimizationLevel::MEDIUM:
         passes.emplace("merge-blocks");
         passes.emplace("combine-rotations");
@@ -288,9 +288,9 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("eliminate-bit-operations");
         passes.emplace("copy-propagation");
         passes.emplace("combine-loads");
+        __attribute__((fallthrough));
         // TODO CSE is disabled, since it can result in long compilation times and very large memory consumption
         // passes.emplace("eliminate-common-subexpressions");
-        // fall-through on purpose
     case OptimizationLevel::BASIC:
         passes.emplace("reorder-blocks");
         passes.emplace("simplify-branches");
@@ -298,7 +298,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("single-steps");
         passes.emplace("reorder");
         passes.emplace("combine");
-        // fall-through on purpose
+        __attribute__((fallthrough));
     case OptimizationLevel::NONE:
         // TODO this is not an optimization, more a normalization step.
         // Move out of optimizations/remove when instruction scheduling is implemented
