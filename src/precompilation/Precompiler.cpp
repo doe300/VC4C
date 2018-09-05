@@ -43,7 +43,7 @@ void Precompiler::precompile(std::istream& input, std::unique_ptr<std::istream>&
     const std::string& options, const Optional<std::string>& inputFile, Optional<std::string> outputFile)
 {
     PROFILE_START(Precompile);
-    Precompiler precompiler(input, Precompiler::getSourceType(input), inputFile);
+    Precompiler precompiler(config, input, Precompiler::getSourceType(input), inputFile);
     if(config.frontend != Frontend::DEFAULT)
         precompiler.run(output, config.frontend == Frontend::LLVM_IR ? SourceType::LLVM_IR_TEXT : SourceType::SPIRV_BIN,
             options, outputFile);
@@ -294,8 +294,10 @@ bool Precompiler::isLinkerAvailable()
 #endif
 }
 
-Precompiler::Precompiler(std::istream& input, const SourceType inputType, const Optional<std::string>& inputFile) :
-    inputType(inputType), inputFile(inputFile), input(input)
+Precompiler::Precompiler(
+    Configuration& config, std::istream& input, const SourceType inputType, const Optional<std::string>& inputFile) :
+    inputType(inputType),
+    inputFile(inputFile), input(input), config(config)
 {
     if(inputType == SourceType::QPUASM_BIN || inputType == SourceType::QPUASM_HEX || inputType == SourceType::UNKNOWN)
         throw CompilationError(CompilationStep::PRECOMPILATION, "Invalid input-type for pre-compilation!");
@@ -339,11 +341,19 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
         {
             LLVMIRTextResult res = outputFile ? LLVMIRTextResult(outputFile.value()) : LLVMIRTextResult(&tempStream);
             compileOpenCLToLLVMText(std::move(src), extendedOptions, res);
+            if(config.useOpt && res.file.has_value())
+            {
+                optimizeByOpt(res.file.value());
+            }
         }
         else if(outputType == SourceType::LLVM_IR_BIN)
         {
             LLVMIRResult res = outputFile ? LLVMIRResult(outputFile.value()) : LLVMIRResult(&tempStream);
             compileOpenCLToLLVMIR(std::move(src), extendedOptions, res);
+            if(config.useOpt && res.file.has_value())
+            {
+                optimizeByOpt(res.file.value());
+            }
         }
         else if(outputType == SourceType::SPIRV_BIN)
         {
