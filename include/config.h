@@ -205,7 +205,7 @@ namespace vc4c
          */
         OptimizationOptions additionalOptions;
         /*
-         * Whether to use `opt` to apply optimizations like force-vectorization, etc...
+         * Whether to use CLang opt to apply optimizations like force-vectorization, etc...
          */
         bool useOpt = false;
     };
