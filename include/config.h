@@ -204,6 +204,10 @@ namespace vc4c
          * Manually specified additional parameters for single (or multiple) optimization steps
          */
         OptimizationOptions additionalOptions;
+        /*
+         * Whether to use CLang opt to apply optimizations like force-vectorization, etc...
+         */
+        bool useOpt = false;
     };
 
     /*

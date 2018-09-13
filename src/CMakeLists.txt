@@ -47,6 +47,10 @@ if(ENABLE_COVERAGE)
 	target_link_libraries(${VC4C_LIBRARY_NAME} gcov "-fprofile-arcs -ftest-coverage")
 	target_link_libraries(${VC4C_PROGRAM_NAME} gcov "-fprofile-arcs -ftest-coverage")
 endif(ENABLE_COVERAGE)
+if(OPT_FOUND)
+	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE OPT_PATH="${OPT_FOUND}")
+	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE OPT_PATH="${OPT_FOUND}")
+endif()
 
 # Add all sources
 include(sources.list)

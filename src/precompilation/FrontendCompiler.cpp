@@ -13,6 +13,7 @@
 #include "../spirv/SPIRVHelper.h"
 #endif
 
+#include <cstdlib>
 #include <fstream>
 #include <numeric>
 
@@ -281,5 +282,25 @@ void precompilation::linkSPIRVModules(
 
     logging::debug() << "Linking " << sources.size() << " input modules..." << logging::endl;
     spirv2qasm::linkSPIRVModules(convertedInputs, *result.stream);
+#endif
+}
+
+void precompilation::optimizeByOpt(std::string& result)
+{
+#ifndef OPT_PATH
+    throw CompilationError(CompilationStep::PRECOMPILATION, "use_opt is not configured!");
+#else
+    std::string commandOpt = OPT_PATH;
+    commandOpt.append(" -force-vector-width=16 -O3 ").append(" -o " + result).append(" " + result);
+
+    char* envValue = getenv("VC4C_OPT");
+    if(envValue)
+    {
+        commandOpt.append(" ");
+        commandOpt.append(envValue);
+    }
+
+    logging::info() << "Optimize by opt: " << commandOpt << logging::endl;
+    runPrecompiler(commandOpt, nullptr, nullptr);
 #endif
 }
