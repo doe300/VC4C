@@ -102,7 +102,8 @@ namespace vc4c
     class Precompiler
     {
     public:
-        Precompiler(Configuration& config, std::istream& input, SourceType inputType, const Optional<std::string>& inputFile = {});
+        Precompiler(Configuration& config, std::istream& input, SourceType inputType,
+            const Optional<std::string>& inputFile = {});
 
         /*
          * Runs the pre-compilation from the source-type passed to the constructor to the output-type specified.
@@ -164,6 +165,7 @@ namespace vc4c
         const SourceType inputType;
         const Optional<std::string> inputFile;
         const Configuration config;
+
     private:
         std::istream& input;
     };
