@@ -285,13 +285,16 @@ void precompilation::linkSPIRVModules(
 #endif
 }
 
-void precompilation::optimizeByOpt(std::string& result)
+void precompilation::optimizeLLVMIR(LLVMIRSource&& source, const std::string& userOptions, LLVMIRResult& result)
 {
 #ifndef OPT_PATH
     throw CompilationError(CompilationStep::PRECOMPILATION, "use_opt is not configured!");
 #else
     std::string commandOpt = OPT_PATH;
-    commandOpt.append(" -force-vector-width=16 -O3 ").append(" -o " + result).append(" " + result);
+    const std::string out = result.file ? std::string("-o=") + result.file.value() : "";
+    const std::string in = source.file ? source.file.value() : "-";
+
+    commandOpt.append(" -force-vector-width=16 -O3 ").append(out);
 
     char* envValue = getenv("VC4C_OPT");
     if(envValue)
@@ -299,8 +302,46 @@ void precompilation::optimizeByOpt(std::string& result)
         commandOpt.append(" ");
         commandOpt.append(envValue);
     }
+    if(!userOptions.empty())
+    {
+        // XXX opt does not support most of the "default" compiler options
+        // commandOpt.append(" ").append(userOptions);
+    }
 
-    logging::info() << "Optimize by opt: " << commandOpt << logging::endl;
-    runPrecompiler(commandOpt, nullptr, nullptr);
+    commandOpt.append(" ").append(in);
+
+    logging::info() << "Optimizing LLVM IR module with opt: " << commandOpt << logging::endl;
+    runPrecompiler(commandOpt, source.stream, result.stream);
+#endif
+}
+
+void precompilation::optimizeLLVMText(
+    LLVMIRTextSource&& source, const std::string& userOptions, LLVMIRTextResult& result)
+{
+#ifndef OPT_PATH
+    throw CompilationError(CompilationStep::PRECOMPILATION, "use_opt is not configured!");
+#else
+    std::string commandOpt = OPT_PATH;
+    const std::string out = result.file ? std::string("-o=") + result.file.value() : "";
+    const std::string in = source.file ? source.file.value() : "-";
+
+    commandOpt.append(" -force-vector-width=16 -O3 ").append(out);
+
+    char* envValue = getenv("VC4C_OPT");
+    if(envValue)
+    {
+        commandOpt.append(" ");
+        commandOpt.append(envValue);
+    }
+    if(!userOptions.empty())
+    {
+        // XXX opt does not support most of the "default" compiler options
+        // commandOpt.append(" ").append(userOptions);
+    }
+
+    commandOpt.append(" ").append(in);
+
+    logging::info() << "Optimizing LLVM text with opt: " << commandOpt << logging::endl;
+    runPrecompiler(commandOpt, source.stream, result.stream);
 #endif
 }

@@ -101,7 +101,8 @@ namespace vc4c
         void disassembleSPIRV(SPIRVSource&& source, const std::string& userOptions, SPIRVTextResult& result);
         void linkLLVMModules(std::vector<LLVMIRSource>&& sources, const std::string& userOptions, LLVMIRResult& result);
         void linkSPIRVModules(std::vector<SPIRVSource>&& sources, const std::string& userOptions, SPIRVResult& result);
-        void optimizeByOpt(std::string& result);
+        void optimizeLLVMIR(LLVMIRSource&& source, const std::string& userOptions, LLVMIRResult& result);
+        void optimizeLLVMText(LLVMIRTextSource&& source, const std::string& userOptions, LLVMIRTextResult& result);
 
         static const auto compileOpenCLAndLinkModule =
             chainSteps<SourceType::LLVM_IR_BIN, SourceType::OPENCL_C, SourceType::LLVM_IR_BIN>(

@@ -340,19 +340,29 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
         if(outputType == SourceType::LLVM_IR_TEXT)
         {
             LLVMIRTextResult res = outputFile ? LLVMIRTextResult(outputFile.value()) : LLVMIRTextResult(&tempStream);
-            compileOpenCLToLLVMText(std::move(src), extendedOptions, res);
-            if(config.useOpt && res.file.has_value())
+            if(config.useOpt)
             {
-                optimizeByOpt(res.file.value());
+                auto steps = chainSteps<SourceType::LLVM_IR_TEXT, SourceType::OPENCL_C, SourceType::LLVM_IR_TEXT>(
+                    compileOpenCLToLLVMText, optimizeLLVMText);
+                steps(std::move(src), extendedOptions, res);
+            }
+            else
+            {
+                compileOpenCLToLLVMText(std::move(src), extendedOptions, res);
             }
         }
         else if(outputType == SourceType::LLVM_IR_BIN)
         {
             LLVMIRResult res = outputFile ? LLVMIRResult(outputFile.value()) : LLVMIRResult(&tempStream);
-            compileOpenCLToLLVMIR(std::move(src), extendedOptions, res);
-            if(config.useOpt && res.file.has_value())
+            if(config.useOpt)
             {
-                optimizeByOpt(res.file.value());
+                auto steps = chainSteps<SourceType::LLVM_IR_BIN, SourceType::OPENCL_C, SourceType::LLVM_IR_BIN>(
+                    compileOpenCLToLLVMIR, optimizeLLVMIR);
+                steps(std::move(src), extendedOptions, res);
+            }
+            else
+            {
+                compileOpenCLToLLVMIR(std::move(src), extendedOptions, res);
             }
         }
         else if(outputType == SourceType::SPIRV_BIN)
