@@ -12,6 +12,7 @@
 #include "Combiner.h"
 #include "ControlFlow.h"
 #include "Eliminator.h"
+#include "InstructionScheduler.h"
 #include "LocalCompression.h"
 #include "Reordering.h"
 #include "log.h"
@@ -234,7 +235,7 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
      * These optimizations may be executed in a loop until there are not more changes to the instructions
      */
     OptimizationPass(
-        "VectorizeLoops", "vectorize-loops", vectorizeLoops, "vectorizes loops", OptimizationType::INITIAL),
+        "VectorizeLoops", "vectorize-loops", vectorizeLoops, "vectorizes loops (WIP)", OptimizationType::INITIAL),
     OptimizationPass("SingleSteps", "single-steps", runSingleSteps,
         "runs all the single-step optimizations. Combining them results in fewer iterations over the instructions",
         OptimizationType::REPEAT),
@@ -242,7 +243,7 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         "combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation",
         OptimizationType::REPEAT),
     OptimizationPass("CommonSubexpressionElimination", "eliminate-common-subexpressions", eliminateCommonSubexpressions,
-        "eliminates repetitive calculations of common expressions by re-using previous results",
+        "eliminates repetitive calculations of common expressions by re-using previous results (WIP, slow)",
         OptimizationType::REPEAT),
     OptimizationPass("EliminateMoves", "eliminate-moves", eliminateRedundantMoves,
         "Replaces moves with the operation producing their source", OptimizationType::REPEAT),
@@ -267,6 +268,9 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         "combines loadings of the same literal value within a small range of a basic block", OptimizationType::FINAL),
     OptimizationPass("RemoveConstantLoadInLoops", "extract-loads-from-loops", removeConstantLoadInLoops,
         "move constant loads in (nested) loops outside the loops", OptimizationType::FINAL),
+    OptimizationPass("InstructionScheduler", "schedule-instructions", reorderInstructions,
+        "schedule instructions according to their dependencies within basic blocks (WIP, slow)",
+        OptimizationType::FINAL),
     OptimizationPass("ReorderInstructions", "reorder", reorderWithinBasicBlocks,
         "re-order instructions to eliminate more NOPs and stall cycles", OptimizationType::FINAL),
     OptimizationPass("CombineALUIinstructions", "combine", combineOperations,
@@ -280,6 +284,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
     case OptimizationLevel::FULL:
         passes.emplace("vectorize-loops");
         passes.emplace("extract-loads-from-loops");
+        passes.emplace("schedule-instructions");
         // fall-through on purpose
     case OptimizationLevel::MEDIUM:
         passes.emplace("merge-blocks");

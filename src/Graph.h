@@ -703,13 +703,14 @@ namespace vc4c
 
         void forAllNodes(const std::function<void(NodeType&)>& consumer)
         {
-            std::for_each(nodes.begin(), nodes.end(), [&](std::pair<Key, NodeType>& pair) { consumer(pair.second); });
+            std::for_each(
+                nodes.begin(), nodes.end(), [&](std::pair<const Key, NodeType>& pair) { consumer(pair.second); });
         }
 
         void forAllNodes(const std::function<void(const NodeType&)>& consumer) const
         {
             std::for_each(
-                nodes.begin(), nodes.end(), [&](const std::pair<Key, NodeType>& pair) { consumer(pair.second); });
+                nodes.begin(), nodes.end(), [&](const std::pair<const Key, NodeType>& pair) { consumer(pair.second); });
         }
 
         void clear()

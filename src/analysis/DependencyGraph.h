@@ -56,7 +56,11 @@ namespace vc4c
         // the instructions need to be executed in the order specified via the dependencies due to hardware periphery
         PERIPHERY_ORDER = 1 << 11,
         // the instruction depends on the mutex being locked
-        MUTEX_LOCK = 1 << 12
+        MUTEX_LOCK = 1 << 12,
+        // the branch depends on the other instruction being executed before
+        BRANCH_ORDER = 1 << 13,
+        // thread end instructions have a fixed ordering
+        THREAD_END_ORDER = 1 << 14
 
         // TODO add reverse dependencies:
         // These can be used as "outgoing dependencies" to select the next instruction (not depending on anything),

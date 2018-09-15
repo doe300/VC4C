@@ -17,8 +17,6 @@
 #include <algorithm>
 #include <limits>
 
-// TODO are the dependency directions correct?
-
 using namespace vc4c;
 
 unsigned Dependency::rateDelay(unsigned currentDistance) const
@@ -128,8 +126,8 @@ static void createLocalDependencies(DependencyGraph& graph, DependencyNode& node
     const FastMap<const Local*, const intermediate::IntermediateInstruction*>& lastLocalReads)
 {
     bool isVectorRotation = dynamic_cast<const intermediate::VectorRotation*>(node.key) != nullptr;
-    // can only pack from register-file A which requires a read-after-write delay of at least 1 instruction
-    bool hasPackMode = node.key->hasPackMode();
+    // can only unpack from register-file A which requires a read-after-write delay of at least 1 instruction
+    bool hasUnpackMode = node.key->hasUnpackMode();
     node.key->forUsedLocals([&](const Local* loc, LocalUse::Type type) -> void {
         const intermediate::IntermediateInstruction* lastWrite = nullptr;
         const intermediate::IntermediateInstruction* lastRead = nullptr;
@@ -142,15 +140,16 @@ static void createLocalDependencies(DependencyGraph& graph, DependencyNode& node
                 lastRead = readIt->second;
         }
         unsigned distance =
-            (!isVectorRotation && !hasPackMode && isLocallyLimited(loc, node.key, lastWrite, lastRead)) ? 0 : 1;
+            (!isVectorRotation && !hasUnpackMode && isLocallyLimited(loc, node.key, lastWrite, lastRead)) ? 0 : 1;
         if(has_flag(type, LocalUse::Type::READER))
         {
             // any reading of a local depends on the previous write
             if(lastWrite != nullptr)
             {
+                distance = std::max(distance, lastWrite->hasPackMode() ? 1u : 0u);
                 auto& otherNode = graph.assertNode(lastWrite);
-                addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_READ_AFTER_WRITE, distance,
-                    isVectorRotation || hasPackMode || lastWrite->hasUnpackMode());
+                addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_READ_AFTER_WRITE, distance,
+                    isVectorRotation || hasUnpackMode || lastWrite->hasPackMode());
             }
         }
         if(has_flag(type, LocalUse::Type::WRITER))
@@ -158,15 +157,16 @@ static void createLocalDependencies(DependencyGraph& graph, DependencyNode& node
             if(lastWrite != nullptr)
             {
                 // writing a local needs to preserve the order the local is written before
+                distance = std::max(distance, lastWrite->hasPackMode() ? 1u : 0u);
                 auto& otherNode = graph.assertNode(lastWrite);
-                addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_WRITE_AFTER_WRITE, distance,
-                    lastWrite->hasUnpackMode());
+                addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_WRITE_AFTER_WRITE, distance,
+                    lastWrite->hasPackMode());
             }
             if(lastRead != nullptr)
             {
                 // writing a local must be ordered after previous reads
                 auto& otherNode = graph.assertNode(lastRead);
-                addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_WRITE_AFTER_READ);
+                addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_WRITE_AFTER_READ);
             }
         }
     });
@@ -176,23 +176,24 @@ static void createFlagDependencies(DependencyGraph& graph, DependencyNode& node,
     const intermediate::IntermediateInstruction* lastSettingOfFlags,
     const intermediate::IntermediateInstruction* lastConditional)
 {
-    if(node.key->hasConditionalExecution())
+    if(node.key->hasConditionalExecution() &&
+        (lastSettingOfFlags != nullptr || dynamic_cast<const intermediate::Branch*>(node.key) == nullptr))
     {
         // any conditional execution depends on flags being set previously
         auto& otherNode = graph.assertNode(lastSettingOfFlags);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::FLAGS_READ_AFTER_WRITE);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::FLAGS_READ_AFTER_WRITE);
     }
     if(node.key->setFlags == SetFlag::SET_FLAGS && lastSettingOfFlags != nullptr)
     {
         // any setting of flags must be ordered after the previous setting of flags
         auto& otherNode = graph.assertNode(lastSettingOfFlags);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::FLAGS_WRITE_AFTER_WRITE);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::FLAGS_WRITE_AFTER_WRITE);
     }
     if(node.key->setFlags == SetFlag::SET_FLAGS && lastConditional != nullptr)
     {
         // any setting of flags must be ordered after any previous use of these flags
-        auto& otherNode = graph.assertNode(lastSettingOfFlags);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::FLAGS_WRITE_AFTER_READ);
+        auto& otherNode = graph.assertNode(lastConditional);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::FLAGS_WRITE_AFTER_READ);
     }
 }
 
@@ -212,28 +213,31 @@ static void createR4Dependencies(DependencyGraph& graph, DependencyNode& node,
             delayCycles = 2;
             fixedDelay = true;
         }
-        else if(lastTriggerOfR4->signal == SIGNAL_LOAD_TMU0 || lastTriggerOfR4->signal == SIGNAL_LOAD_TMU1)
-        {
-            // TODO what is the recommended delay [9, 20]
-            delayCycles = 9;
-        }
+        // For reading from TMU, the actual reading of memory is done between writing the TMU address and the signals.
+        // According to experiments (https://gist.github.com/nomaddo/31aaf839f2463816beb9563173b48728), inserting
+        // instructions between triggering the signal and reading r4 immediately introduces delays, so we don't insert
+        // any
         addDependency(
-            node.getOrCreateEdge(&otherNode).data, DependencyType::SIGNAL_READ_AFTER_WRITE, delayCycles, fixedDelay);
+            otherNode.getOrCreateEdge(&node).data, DependencyType::SIGNAL_READ_AFTER_WRITE, delayCycles, fixedDelay);
     }
     if(node.key->signal.triggersReadOfR4() ||
         (node.key->hasValueType(ValueType::REGISTER) && node.key->getOutput()->reg.triggersReadOfR4()))
     {
+        // XXX Although it might not be necessary to order signals of reading from TMU and the actual reads of r4 (e.g.
+        // load_tmu0; read r4; load_tmu1; read r4), we still do so, since it has not been tested whether the QPU hsa
+        // some kind of queue. Also, at this position, it doesn't really make a different whether we enforce order or
+        // not, since there is no delay we would need to fill
         if(lastTriggerOfR4 != nullptr)
         {
             // any trigger of r4 needs to be ordered after the previous trigger of r4
             auto& otherNode = graph.assertNode(lastTriggerOfR4);
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::SIGNAL_WRITE_AFTER_WRITE);
+            addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::SIGNAL_WRITE_AFTER_WRITE);
         }
         if(lastReadOfR4 != nullptr)
         {
             // any trigger of r4 must be ordered after the previous read of r4
             auto& otherNode = graph.assertNode(lastReadOfR4);
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::SIGNAL_WRITE_AFTER_READ);
+            addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::SIGNAL_WRITE_AFTER_READ);
         }
     }
 }
@@ -252,13 +256,13 @@ static void createMutexDependencies(DependencyGraph& graph, DependencyNode& node
     {
         // any VPM operation or mutex unlock must be ordered after the corresponding mutex lock
         auto& otherNode = graph.assertNode(lastMutexLock);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::MUTEX_LOCK);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::MUTEX_LOCK);
     }
     if(node.key->readsRegister(REG_MUTEX) && lastMutexUnlock != nullptr)
     {
         // any mutex lock must be ordered after the previous unlock, if any
         auto& otherNode = graph.assertNode(lastMutexUnlock);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::PERIPHERY_ORDER);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
     }
 }
 
@@ -270,7 +274,7 @@ static void createSemaphoreDepencies(
     {
         // the order of semaphore-accesses cannot be modified!
         auto& otherNode = graph.assertNode(lastSemaphoreAccess);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::SEMAPHORE_ORDER);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::SEMAPHORE_ORDER);
     }
 }
 
@@ -289,13 +293,13 @@ static void createUniformDependencies(DependencyGraph& graph, DependencyNode& no
              * uniforms can be accessed once more."
              * - Broadcom specification, page 22
              */
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_READ_AFTER_WRITE, 2, true);
+            addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_READ_AFTER_WRITE, 2, true);
         }
         if(lastReadOfUniform != nullptr)
         {
             // the order UNIFORMS are read in must not change!
             auto& otherNode = graph.assertNode(lastReadOfUniform);
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_READ_AFTER_READ);
+            addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_READ_AFTER_READ);
         }
     }
     if(node.key->writesRegister(REG_UNIFORM_ADDRESS))
@@ -305,13 +309,13 @@ static void createUniformDependencies(DependencyGraph& graph, DependencyNode& no
             // any writing of UNIFORM address must be ordered after the previous write
             auto& otherNode = graph.assertNode(lastWriteOfUniformAddress);
             // just to be sure, add the mandatory distance here too
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_READ_AFTER_WRITE, 2, true);
+            addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_READ_AFTER_WRITE, 2, true);
         }
         if(lastReadOfUniform != nullptr)
         {
             // any writing of UNIFORM address must be ordered after any previous reading of UNIFORMs
             auto& otherNode = graph.assertNode(lastReadOfUniform);
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_WRITE_AFTER_READ);
+            addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_WRITE_AFTER_READ);
         }
     }
 }
@@ -326,13 +330,13 @@ static void createReplicationDependencies(DependencyGraph& graph, DependencyNode
         {
             // any writing to the replication registers need to be executed after the previous read, if any
             auto& otherNode = graph.assertNode(lastReplicationRead);
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_WRITE_AFTER_READ);
+            addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_WRITE_AFTER_READ);
         }
         if(lastReplicationWrite != nullptr)
         {
             // any writing to the replication registers need to be executed after the previous write, if any
             auto& otherNode = graph.assertNode(lastReplicationWrite);
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_WRITE_AFTER_WRITE);
+            addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_WRITE_AFTER_WRITE);
         }
     }
     if(node.key->readsRegister(REG_ACC5))
@@ -341,13 +345,13 @@ static void createReplicationDependencies(DependencyGraph& graph, DependencyNode
         {
             // any reading to the replication registers need to be executed after the previous read, if any
             auto& otherNode = graph.assertNode(lastReplicationRead);
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_READ_AFTER_READ);
+            addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_READ_AFTER_READ);
         }
         if(lastReplicationWrite != nullptr)
         {
             // any reading to the replication registers need to be executed after the previous write, if any
             auto& otherNode = graph.assertNode(lastReplicationWrite);
-            addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::VALUE_READ_AFTER_WRITE);
+            addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_READ_AFTER_WRITE);
         }
     }
 }
@@ -358,19 +362,19 @@ static void createVPMSetupDependencies(DependencyGraph& graph, DependencyNode& n
 {
     if(lastVPMWriteSetup != nullptr &&
         (node.key->writesRegister(REG_VPM_IO) || node.key->writesRegister(REG_VPM_OUT_SETUP) ||
-            node.key->writesRegister(REG_VPM_OUT_ADDR)))
+            node.key->writesRegister(REG_VPM_DMA_STORE_ADDR)))
     {
         // any other VPM write setup, VPM write or VPM write address setup must be ordered after the VPM write setup
         auto& otherNode = graph.assertNode(lastVPMWriteSetup);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::PERIPHERY_ORDER);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
     }
     if(lastVPMReadSetup != nullptr &&
         (node.key->readsRegister(REG_VPM_IO) || node.key->writesRegister(REG_VPM_IN_SETUP) ||
-            node.key->writesRegister(REG_VPM_IN_ADDR)))
+            node.key->writesRegister(REG_VPM_DMA_LOAD_ADDR)))
     {
         // any other VPM read setup, VPM read or VPM read address setup must be ordered after the VPM read setup
         auto& otherNode = graph.assertNode(lastVPMReadSetup);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::PERIPHERY_ORDER);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
     }
 }
 
@@ -378,18 +382,18 @@ static void createVPMIODependencies(DependencyGraph& graph, DependencyNode& node
     const intermediate::IntermediateInstruction* lastVPMWrite, const intermediate::IntermediateInstruction* lastVPMRead)
 {
     if(lastVPMWrite != nullptr &&
-        (node.key->writesRegister(REG_VPM_IO) || node.key->writesRegister(REG_VPM_OUT_ADDR) ||
+        (node.key->writesRegister(REG_VPM_IO) || node.key->writesRegister(REG_VPM_DMA_STORE_ADDR) ||
             node.key->writesRegister(REG_MUTEX)))
     {
         // any other VPM write, VPM write address setup or unlocking mutex must be executed aftre the VPM write
         auto& otherNode = graph.assertNode(lastVPMWrite);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::PERIPHERY_ORDER);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
     }
     if(lastVPMRead != nullptr && (node.key->readsRegister(REG_VPM_IO) || node.key->writesRegister(REG_MUTEX)))
     {
         // any other VPM read or unlocking mutex must be executed aftre the VPM read
         auto& otherNode = graph.assertNode(lastVPMRead);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::PERIPHERY_ORDER);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
     }
 }
 
@@ -397,19 +401,19 @@ static void createVPMAddressDependencies(DependencyGraph& graph, DependencyNode&
     const intermediate::IntermediateInstruction* lastVPMWriteAddress,
     const intermediate::IntermediateInstruction* lastVPMReadAddress)
 {
-    if(node.key->readsRegister(REG_VPM_OUT_WAIT))
+    if(node.key->readsRegister(REG_VPM_DMA_STORE_WAIT))
     {
         // the VPM write wait instruction needs to be executed after the setting of the VPM write address
         auto& otherNode = graph.assertNode(lastVPMWriteAddress);
         // XXX correct delay
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::PERIPHERY_ORDER, 10);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER, 10);
     }
-    if(node.key->readsRegister(REG_VPM_IN_WAIT))
+    if(node.key->readsRegister(REG_VPM_DMA_LOAD_WAIT))
     {
         // the VPM read wait instruction needs to be executed after the setting of the VPM read address
         auto& otherNode = graph.assertNode(lastVPMReadAddress);
         // XXX correct delay
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::PERIPHERY_ORDER, 6);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER, 6);
     }
 }
 
@@ -424,47 +428,145 @@ static void createVPMWaitDependencies(DependencyGraph& graph, DependencyNode& no
         // unlocking of the mutex as well as any following VPM accesses (within that mutex) need to be ordered after the
         // VPM write wait instruction
         auto& otherNode = graph.assertNode(lastVPMWriteWait);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::PERIPHERY_ORDER);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
     }
-    if(node.key->readsRegister(REG_VPM_IO))
+    if(lastVPMReadWait != nullptr && node.key->readsRegister(REG_VPM_IO))
     {
-        // all reading of VPM need to be ordered after the VPM read wait instruction
+        // all reading of VPM need to be ordered after the VPM read wait instruction (if any)
         auto& otherNode = graph.assertNode(lastVPMReadWait);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::PERIPHERY_ORDER);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
     }
 }
 
 static void createTMUCoordinateDependencies(DependencyGraph& graph, DependencyNode& node,
     const intermediate::IntermediateInstruction* lastTMU0CoordsWrite,
-    const intermediate::IntermediateInstruction* lastTMU1CoordsWrite)
+    const intermediate::IntermediateInstruction* lastTMU1CoordsWrite,
+    const intermediate::IntermediateInstruction* lastTMUNoswapWrite)
 {
-    if(lastTMU0CoordsWrite != nullptr && node.key->hasValueType(ValueType::REGISTER) &&
+    if(lastTMUNoswapWrite != nullptr && node.key->hasValueType(ValueType::REGISTER) &&
         node.key->getOutput()->reg.isTextureMemoryUnit())
     {
+        // do not re-order/keep minimum distance between TMU swapping configuration and writing TMU addresses
+        auto& otherNode = graph.assertNode(lastTMUNoswapWrite);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER, 3, true);
+    }
+    if(lastTMU0CoordsWrite != nullptr &&
+        (node.key->writesRegister(REG_TMU0_COORD_B_LOD_BIAS) ||
+            node.key->writesRegister(REG_TMU0_COORD_R_BORDER_COLOR) || node.key->writesRegister(REG_TMU0_COORD_S_U_X) ||
+            node.key->writesRegister(REG_TMU0_COORD_T_V_Y)))
+    {
         // do not re-order writes to same TMU (especially not writes to S coordinates, which triggers the read)
-        // TODO only check for same TMU!
         auto& otherNode = graph.assertNode(lastTMU0CoordsWrite);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::PERIPHERY_ORDER);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
     }
-    if(lastTMU1CoordsWrite != nullptr && node.key->hasValueType(ValueType::REGISTER) &&
-        node.key->getOutput()->reg.isTextureMemoryUnit())
+    if(lastTMU1CoordsWrite != nullptr &&
+        (node.key->writesRegister(REG_TMU1_COORD_B_LOD_BIAS) ||
+            node.key->writesRegister(REG_TMU1_COORD_R_BORDER_COLOR) || node.key->writesRegister(REG_TMU1_COORD_S_U_X) ||
+            node.key->writesRegister(REG_TMU1_COORD_T_V_Y)))
     {
         // do not re-order writes to same TMU (especially not writes to S coordinates, which triggers the read)
-        // TODO only check for same TMU!
         auto& otherNode = graph.assertNode(lastTMU1CoordsWrite);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::PERIPHERY_ORDER);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
     }
+    // TMU seems to need 9 cycles to load from cache and (additional?) 20 to load from memory
+    // Tests show a delay of 8 instructions in between (total of 9 cycles) to be the most efficient:
+    // 8 instructions inserted increase execution time almost not at all (a bit due to instruction fetching), 9+ do
+    // noticeably
+    const unsigned tmuLoadDelay = 8;
     if(node.key->signal == SIGNAL_LOAD_TMU0)
     {
-        // triggering of read depends on the memory address being set previously
+        // triggering of read from the FIFO depends on the memory address being set previously which fills the FIFO from
+        // memory (thus taking longer)
         auto& otherNode = graph.assertNode(lastTMU0CoordsWrite);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::PERIPHERY_ORDER);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER, tmuLoadDelay);
     }
     if(node.key->signal == SIGNAL_LOAD_TMU1)
     {
-        // triggering of read depends on the memory address being set previously
+        // triggering of read from the FIFO depends on the memory address being set previously which fills the FIFO from
+        // memory (thus taking longer)
         auto& otherNode = graph.assertNode(lastTMU1CoordsWrite);
-        addDependency(node.getOrCreateEdge(&otherNode).data, DependencyType::PERIPHERY_ORDER);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER, tmuLoadDelay);
+    }
+    if(node.key->writesRegister(REG_TMU_NOSWAP))
+    {
+        if(lastTMU0CoordsWrite != nullptr)
+        {
+            auto& otherNode = graph.assertNode(lastTMU0CoordsWrite);
+            addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
+        }
+        if(lastTMU1CoordsWrite != nullptr)
+        {
+            auto& otherNode = graph.assertNode(lastTMU1CoordsWrite);
+            addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
+        }
+    }
+}
+
+static void createR5Dependencies(DependencyGraph& graph, DependencyNode& node,
+    const intermediate::IntermediateInstruction* lastWriteOfR5,
+    const intermediate::IntermediateInstruction* lastReadOfR5)
+{
+    // TODO write more general for any (non-periphery) register?
+    if(lastWriteOfR5 && dynamic_cast<const intermediate::VectorRotation*>(node.key) &&
+        (node.key->readsRegister(REG_ACC5)))
+    {
+        // enforce distance of 1 from writing r5 to reading r5 for vector rotations
+        addDependency(graph.assertNode(lastWriteOfR5).getOrCreateEdge(&node).data,
+            DependencyType::VALUE_READ_AFTER_WRITE, 1, true);
+    }
+    if(lastWriteOfR5 &&
+        (node.key->writesRegister(REG_ACC5) || node.key->writesRegister(REG_REPLICATE_ALL) ||
+            node.key->writesRegister(REG_REPLICATE_QUAD)))
+    {
+        // enforce order of writing r5
+        addDependency(
+            graph.assertNode(lastWriteOfR5).getOrCreateEdge(&node).data, DependencyType::VALUE_WRITE_AFTER_WRITE);
+    }
+    if(lastWriteOfR5 &&
+        (node.key->readsRegister(REG_ACC5) || node.key->readsRegister(REG_REPLICATE_ALL) ||
+            node.key->readsRegister(REG_REPLICATE_QUAD)))
+    {
+        // enforce read-after-write for r5
+        addDependency(
+            graph.assertNode(lastWriteOfR5).getOrCreateEdge(&node).data, DependencyType::VALUE_READ_AFTER_WRITE);
+    }
+    if(lastReadOfR5 &&
+        (node.key->writesRegister(REG_ACC5) || node.key->writesRegister(REG_REPLICATE_ALL) ||
+            node.key->writesRegister(REG_REPLICATE_QUAD)))
+    {
+        // enforce write-after-read for r5
+        addDependency(
+            graph.assertNode(lastReadOfR5).getOrCreateEdge(&node).data, DependencyType::VALUE_WRITE_AFTER_READ);
+    }
+}
+
+static void createThreadEndDependencies(DependencyGraph& graph, DependencyNode& node,
+    const intermediate::IntermediateInstruction* lastHostInterrupt,
+    const intermediate::IntermediateInstruction* lastProgramEnd)
+{
+    if(node.key->writesRegister(REG_HOST_INTERRUPT))
+    {
+        // host interrupt depends on any preceding instruction
+        graph.forAllNodes([&](DependencyNode& otherNode) {
+            if(&node != &otherNode && otherNode.key)
+            {
+                addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::THREAD_END_ORDER);
+            }
+        });
+    }
+
+    // program end depends on host interrupt
+    if(node.key->signal == SIGNAL_END_PROGRAM)
+    {
+        addDependency(
+            graph.assertNode(lastHostInterrupt).getOrCreateEdge(&node).data, DependencyType::THREAD_END_ORDER);
+    }
+
+    // program end nops depend on program end signal
+    if(node.key->signal != SIGNAL_END_PROGRAM && dynamic_cast<const intermediate::Nop*>(node.key) &&
+        dynamic_cast<const intermediate::Nop*>(node.key)->type == intermediate::DelayType::THREAD_END)
+    {
+        addDependency(graph.assertNode(lastProgramEnd).getOrCreateEdge(&node).data, DependencyType::THREAD_END_ORDER);
     }
 }
 
@@ -502,15 +604,23 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
     const intermediate::IntermediateInstruction* lastVPMReadWait = nullptr;
     const intermediate::IntermediateInstruction* lastTMU0CoordsWrite = nullptr;
     const intermediate::IntermediateInstruction* lastTMU1CoordsWrite = nullptr;
+    const intermediate::IntermediateInstruction* lastTMUNoswapWrite = nullptr;
     const intermediate::IntermediateInstruction* lastInstruction = nullptr;
+    const intermediate::IntermediateInstruction* lastWriteOfR5 = nullptr;
+    const intermediate::IntermediateInstruction* lastReadOfR5 = nullptr;
+    const intermediate::IntermediateInstruction* lastHostInterrupt = nullptr;
+    const intermediate::IntermediateInstruction* lastProgramEnd = nullptr;
     FastMap<const Local*, const intermediate::IntermediateInstruction*> lastLocalWrites;
     FastMap<const Local*, const intermediate::IntermediateInstruction*> lastLocalReads;
     // TODO "normal" register dependencies?
+    // TODO check also limitations/barriers from Reordering
+    // TODO any memory access depends on semaphores and memory barriers, and the other way round (no reordering)
 
     auto it = block.begin();
     while(!it.isEndOfBlock())
     {
-        if(it.has<intermediate::Nop>())
+        if(it.has<intermediate::Nop>() && !it->hasSideEffects() &&
+            it.get<const intermediate::Nop>()->type != intermediate::DelayType::THREAD_END)
         {
             it.nextInBlock();
             continue;
@@ -520,6 +630,7 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
         createLocalDependencies(*graph.get(), node, lastLocalWrites, lastLocalReads);
         createFlagDependencies(*graph.get(), node, lastSettingOfFlags, lastConditional);
         createR4Dependencies(*graph.get(), node, lastTriggerOfR4, lastReadOfR4);
+        createR5Dependencies(*graph.get(), node, lastWriteOfR5, lastReadOfR5);
         createMutexDependencies(*graph.get(), node, lastMutexLock, lastMutexUnlock, lastInstruction);
         createSemaphoreDepencies(*graph.get(), node, lastSemaphoreAccess);
         createUniformDependencies(*graph.get(), node, lastWriteOfUniformAddress, lastReadOfUniform);
@@ -528,12 +639,28 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
         createVPMIODependencies(*graph.get(), node, lastVPMWrite, lastVPMRead);
         createVPMAddressDependencies(*graph.get(), node, lastVPMWriteAddress, lastVPMReadAddress);
         createVPMWaitDependencies(*graph.get(), node, lastVPMWriteWait, lastVPMReadWait);
-        createTMUCoordinateDependencies(*graph.get(), node, lastTMU0CoordsWrite, lastTMU1CoordsWrite);
+        createTMUCoordinateDependencies(
+            *graph.get(), node, lastTMU0CoordsWrite, lastTMU1CoordsWrite, lastTMUNoswapWrite);
+        createThreadEndDependencies(*graph.get(), node, lastHostInterrupt, lastProgramEnd);
+        if(it.has<intermediate::Branch>())
+        {
+            // branches depend on everything before to make sure they come after everything
+            // XXX this disables reordering of conditional branches for now
+            graph->forAllNodes([&](DependencyNode& otherNode) {
+                if(&node != &otherNode && otherNode.key)
+                {
+                    addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::BRANCH_ORDER);
+                }
+            });
+        }
 
         // update the cached values
-        if(it->setFlags == SetFlag::SET_FLAGS)
+        if(it->setFlags == SetFlag::SET_FLAGS ||
+            (it.has<intermediate::Branch>() && !it.get<const intermediate::Branch>()->isUnconditional()))
+            // conditional branches may introduce setting of flags
             lastSettingOfFlags = it.get();
-        if(it->hasConditionalExecution())
+        if(it->hasConditionalExecution() ||
+            (it.has<intermediate::Branch>() && !it.get<const intermediate::Branch>()->isUnconditional()))
             lastConditional = it.get();
         if(it->signal.triggersReadOfR4() ||
             (it->hasValueType(ValueType::REGISTER) && it->getOutput()->reg.triggersReadOfR4()))
@@ -571,20 +698,22 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
             lastVPMWrite = it.get();
         if(it->readsRegister(REG_VPM_IO))
             lastVPMRead = it.get();
-        if(it->writesRegister(REG_VPM_OUT_ADDR))
+        if(it->writesRegister(REG_VPM_DMA_STORE_ADDR))
             lastVPMWriteAddress = it.get();
-        if(it->writesRegister(REG_VPM_IN_ADDR))
+        if(it->writesRegister(REG_VPM_DMA_LOAD_ADDR))
             lastVPMReadAddress = it.get();
-        if(it->readsRegister(REG_VPM_OUT_WAIT))
+        if(it->readsRegister(REG_VPM_DMA_STORE_WAIT))
             lastVPMWriteWait = it.get();
-        if(it->readsRegister(REG_VPM_IN_WAIT))
+        if(it->readsRegister(REG_VPM_DMA_LOAD_WAIT))
             lastVPMReadWait = it.get();
         if(it->writesRegister(REG_TMU0_COORD_T_V_Y) || it->writesRegister(REG_TMU0_COORD_R_BORDER_COLOR) ||
-            it->writesRegister(REG_TMU0_COORD_B_LOD_BIAS))
+            it->writesRegister(REG_TMU0_COORD_B_LOD_BIAS) || it->writesRegister(REG_TMU0_COORD_S_U_X))
             lastTMU0CoordsWrite = it.get();
         if(it->writesRegister(REG_TMU1_COORD_T_V_Y) || it->writesRegister(REG_TMU1_COORD_R_BORDER_COLOR) ||
-            it->writesRegister(REG_TMU1_COORD_B_LOD_BIAS))
+            it->writesRegister(REG_TMU1_COORD_B_LOD_BIAS) || it->writesRegister(REG_TMU1_COORD_S_U_X))
             lastTMU1CoordsWrite = it.get();
+        if(it->writesRegister(REG_TMU_NOSWAP))
+            lastTMUNoswapWrite = it.get();
         if(it->hasValueType(ValueType::LOCAL))
             lastLocalWrites[it->getOutput()->local] = it.get();
         for(const Value& arg : it->getArguments())
@@ -592,17 +721,29 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
             if(arg.hasType(ValueType::LOCAL))
                 lastLocalReads[arg.local] = it.get();
         }
+        if(it->writesRegister(REG_ACC5) || it->writesRegister(REG_REPLICATE_ALL) ||
+            it->writesRegister(REG_REPLICATE_QUAD))
+            lastWriteOfR5 = it.get();
+        if(it->readsRegister(REG_ACC5) || it->readsRegister(REG_REPLICATE_ALL) || it->readsRegister(REG_REPLICATE_QUAD))
+            lastReadOfR5 = it.get();
+        if(it->writesRegister(REG_HOST_INTERRUPT))
+            lastHostInterrupt = it.get();
+        if(it->signal == SIGNAL_END_PROGRAM)
+            lastProgramEnd = it.get();
         lastInstruction = it.get();
         it.nextInBlock();
     }
 
 #ifdef DEBUG_MODE
-    auto nameFunc = [](const intermediate::IntermediateInstruction* i) -> std::string { return i->to_string(); };
-    auto weakEdgeFunc = [](const Dependency& dep) -> bool { return dep.isMandatoryDelay; };
-    auto edgeLabelFunc = [](const Dependency& dep) -> std::string { return std::to_string(dep.numDelayCycles); };
-    DebugGraph<const intermediate::IntermediateInstruction*, Dependency,
-        Directionality::DIRECTED>::dumpGraph<DependencyGraph>(*graph.get(), "/tmp/vc4c-deps.dot", nameFunc,
-        weakEdgeFunc, edgeLabelFunc);
+    if(block.size() > 12)
+    {
+        auto nameFunc = [](const intermediate::IntermediateInstruction* i) -> std::string { return i->to_string(); };
+        auto weakEdgeFunc = [](const Dependency& dep) -> bool { return !dep.isMandatoryDelay; };
+        auto edgeLabelFunc = [](const Dependency& dep) -> std::string { return std::to_string(dep.numDelayCycles); };
+        DebugGraph<const intermediate::IntermediateInstruction*, Dependency,
+            Directionality::DIRECTED>::dumpGraph<DependencyGraph>(*graph.get(), "/tmp/vc4c-deps.dot", nameFunc,
+            weakEdgeFunc, edgeLabelFunc);
+    }
 #endif
 
     PROFILE_END(createDependencyGraph);
