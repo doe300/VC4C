@@ -438,7 +438,7 @@ static int calculateCostsVsBenefits(
         if(it.has())
         {
             if(it->getOutput().ifPresent([](const Value& out) -> bool {
-                   return out.hasRegister(REG_VPM_IN_ADDR) || out.hasRegister(REG_TMU0_ADDRESS) ||
+                   return out.hasRegister(REG_VPM_DMA_LOAD_ADDR) || out.hasRegister(REG_TMU0_ADDRESS) ||
                        out.hasRegister(REG_TMU1_ADDRESS);
                }))
             {
@@ -451,7 +451,7 @@ static int calculateCostsVsBenefits(
                     }
                 }
             }
-            else if(it->getOutput().ifPresent(toFunction(&Value::hasRegister, REG_VPM_OUT_ADDR)))
+            else if(it->getOutput().ifPresent(toFunction(&Value::hasRegister, REG_VPM_DMA_STORE_ADDR)))
             {
                 for(const Value& arg : it->getArguments())
                 {

@@ -265,7 +265,10 @@ bool Register::isWriteable() const
 
 bool Register::triggersReadOfR4() const
 {
-    return isSpecialFunctionsUnit() || (num == 56 || num == 60) /* TMU S coordinates */;
+    return isSpecialFunctionsUnit()
+        // TODO TMU S coordinates trigger the loading/processing of the (texture) value, but the signal  is needed to
+        // load it into r4
+        || (num == 56 || num == 60) /* TMU S coordinates */;
 }
 
 std::size_t vc4c::hash<vc4c::Register>::operator()(vc4c::Register const& val) const noexcept

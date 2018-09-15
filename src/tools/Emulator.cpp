@@ -196,9 +196,9 @@ void Registers::writeRegister(Register reg, const Value& val, std::bitset<16> el
         qpu.vpm.setReadSetup(getActualValue(modifiedValue));
     else if(reg == REG_VPM_OUT_SETUP)
         qpu.vpm.setWriteSetup(getActualValue(modifiedValue));
-    else if(reg == REG_VPM_IN_ADDR)
+    else if(reg == REG_VPM_DMA_LOAD_ADDR)
         qpu.vpm.setDMAReadAddress(getActualValue(modifiedValue));
-    else if(reg == REG_VPM_OUT_ADDR)
+    else if(reg == REG_VPM_DMA_STORE_ADDR)
         qpu.vpm.setDMAWriteAddress(getActualValue(modifiedValue));
     else if(reg.num == REG_MUTEX.num)
         qpu.mutex.unlock(qpu.ID);
@@ -269,9 +269,9 @@ std::pair<Value, bool> Registers::readRegister(Register reg)
             setReadCache(REG_VPM_IO, qpu.vpm.readValue());
         return std::make_pair(readCache.at(REG_VPM_IO), true);
     }
-    if(reg == REG_VPM_IN_WAIT)
+    if(reg == REG_VPM_DMA_LOAD_WAIT)
         return std::make_pair(UNDEFINED_VALUE, qpu.vpm.waitDMARead());
-    if(reg == REG_VPM_OUT_WAIT)
+    if(reg == REG_VPM_DMA_STORE_WAIT)
         return std::make_pair(UNDEFINED_VALUE, qpu.vpm.waitDMAWrite());
     if(reg.num == REG_MUTEX.num)
     {

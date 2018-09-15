@@ -221,16 +221,44 @@ namespace vc4c
     // VPM I/O, see specification section 7
     /*
      * Accesses the VPM (read and write)
+     *
+     * For VPM reads:
+     * "After the read setup register is written, read data is available to read after a minimum latency of three QPU
+     * instructions"
+     * - Bradcom specification, page 56
+     * "VPM read generates 5 clock stalls between "VPM generic block read setup" and the first VPM_READ read."
+     * - see https://www.raspberrypi.org/forums/viewtopic.php?p=1143940#p1144081 and http://imrc.noip.me/blog/vc4/QV56/
+     *
+     * -> so this blocks always for at least 3/5 instructions (if no other instructions are inserted in between)
+     *
+     * "[...], but reads made too early or extra reads made beyond the number setup will return immediately with
+     * undefined data."
+     * - Bradcom specification, page 56
+     * "VPM reads seem to block immediately if the FIFO is empty. No undefined data is returned when the reads are made
+     * too early."
+     * - http://maazl.de/project/vc4asm/doc/VideoCoreIV-addendum.html, section 7
+     *
+     * -> no need to insert delay, since reads will block, also the number of reads must match exactly
+     *
+     * For VPM writes:
+     * "When writing vector data to the VPM, the contents of the write setup register are used for an indefinite number
+     * of subsequent writes. The write address will wrap when incremented beyond a Y of 63, and writes to addresses
+     * outside of the window of allocated VPM space will be masked. Up to two writes are queued in a FIFO, and writes
+     * will stall the QPU when the FIFO is full."
+     * - Bradcom specification, page 56
+     *
+     * -> QPU will stall automatically when FIFO full, no need for manual stalling
+     * -> an "infinite" number of rows can be written with a single configuration
      */
     static constexpr Register REG_VPM_IO{RegisterFile::PHYSICAL_ANY, 48};
     /*
      * Reading this registers returns whether a DMA load operation is currently being executed by the VPM
      */
-    static constexpr Register REG_VPM_IN_BUSY{RegisterFile::PHYSICAL_A, 49};
+    static constexpr Register REG_VPM_DMA_LOAD_BUSY{RegisterFile::PHYSICAL_A, 49};
     /*
      * Reading this registers returns whether a DMA write operation is currently being executed by the VPM
      */
-    static constexpr Register REG_VPM_OUT_BUSY{RegisterFile::PHYSICAL_B, 49};
+    static constexpr Register REG_VPM_DMA_STORE_BUSY{RegisterFile::PHYSICAL_B, 49};
     /*
      * Writing this register changes the VPM configuration to read values from memory/VPM
      */
@@ -241,25 +269,20 @@ namespace vc4c
     static constexpr Register REG_VPM_OUT_SETUP{RegisterFile::PHYSICAL_B, 49};
     /*
      * Reading this register stalls until the currently running DMA read operation has finished
-     *
-     * "VPM read generates 5 clock stalls between "VPM generic block read setup" and the first VPM_READ read."
-     * - see https://www.raspberrypi.org/forums/viewtopic.php?p=1143940#p1144081 and http://imrc.noip.me/blog/vc4/QV56/
-     *
-     * -> so this blocks always for at least 5 instructions (if no other instructions are inserted in between)
      */
-    static constexpr Register REG_VPM_IN_WAIT{RegisterFile::PHYSICAL_A, 50};
+    static constexpr Register REG_VPM_DMA_LOAD_WAIT{RegisterFile::PHYSICAL_A, 50};
     /*
      * Reading this register stalls until the currently running DMA write operation has finished
      */
-    static constexpr Register REG_VPM_OUT_WAIT{RegisterFile::PHYSICAL_B, 50};
+    static constexpr Register REG_VPM_DMA_STORE_WAIT{RegisterFile::PHYSICAL_B, 50};
     /*
      * Writes the memory-address to read data from, triggers a DMA read operation
      */
-    static constexpr Register REG_VPM_IN_ADDR{RegisterFile::PHYSICAL_A, 50};
+    static constexpr Register REG_VPM_DMA_LOAD_ADDR{RegisterFile::PHYSICAL_A, 50};
     /*
      * Writes the memory-address to write data into, triggers a DMA write operation
      */
-    static constexpr Register REG_VPM_OUT_ADDR{RegisterFile::PHYSICAL_B, 50};
+    static constexpr Register REG_VPM_DMA_STORE_ADDR{RegisterFile::PHYSICAL_B, 50};
 
     /*
      * Reading this register locks the hardware-mutex (and blocks, if the mutex is already locked).

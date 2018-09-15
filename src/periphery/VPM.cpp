@@ -481,10 +481,10 @@ InstructionWalker VPM::insertReadRAM(
     //"the actual DMA load or store operation is initiated by writing the memory address to the VCD_LD_ADDR or
     // VCD_ST_ADDR register" (p. 56)
     //-> write output-argument base address + offset/index into VPM_ADDR
-    it.emplace(new MoveOperation(VPM_IN_ADDR_REGISTER, memoryAddress));
+    it.emplace(new MoveOperation(VPM_DMA_LOAD_ADDR_REGISTER, memoryAddress));
     it.nextInBlock();
     //"A new DMA load or store operation cannot be started until the previous one is complete" (p. 56)
-    it.emplace(new MoveOperation(NOP_REGISTER, VPM_IN_WAIT_REGISTER));
+    it.emplace(new MoveOperation(NOP_REGISTER, VPM_DMA_LOAD_WAIT_REGISTER));
     it.nextInBlock();
 
     it = insertUnlockMutex(it, useMutex);
@@ -527,10 +527,10 @@ InstructionWalker VPM::insertWriteRAM(
     //"the actual DMA load or store operation is initiated by writing the memory address to the VCD_LD_ADDR or
     // VCD_ST_ADDR register" (p. 56)
     //-> write output-argument base address + offset/index into VPM_ADDR
-    it.emplace(new MoveOperation(VPM_OUT_ADDR_REGISTER, memoryAddress));
+    it.emplace(new MoveOperation(VPM_DMA_STORE_ADDR_REGISTER, memoryAddress));
     it.nextInBlock();
     //"A new DMA load or store operation cannot be started until the previous one is complete" (p. 56)
-    it.emplace(new MoveOperation(NOP_REGISTER, VPM_OUT_WAIT_REGISTER));
+    it.emplace(new MoveOperation(NOP_REGISTER, VPM_DMA_STORE_WAIT_REGISTER));
     it.nextInBlock();
 
     it = insertUnlockMutex(it, useMutex);
@@ -881,8 +881,8 @@ VPMInstructions periphery::findRelatedVPMInstructions(InstructionWalker anyVPMIn
 {
     const auto predAddressWrite = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool {
         if(isVPMRead)
-            return inst->writesRegister(REG_VPM_IN_ADDR);
-        return inst->writesRegister(REG_VPM_OUT_ADDR);
+            return inst->writesRegister(REG_VPM_DMA_LOAD_ADDR);
+        return inst->writesRegister(REG_VPM_DMA_STORE_ADDR);
     };
     const auto predDMASetup = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool {
         if(dynamic_cast<const intermediate::LoadImmediate*>(inst) == nullptr)
@@ -895,8 +895,8 @@ VPMInstructions periphery::findRelatedVPMInstructions(InstructionWalker anyVPMIn
     };
     const auto predDMAWait = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool {
         if(isVPMRead)
-            return inst->readsRegister(REG_VPM_IN_WAIT);
-        return inst->readsRegister(REG_VPM_OUT_WAIT);
+            return inst->readsRegister(REG_VPM_DMA_LOAD_WAIT);
+        return inst->readsRegister(REG_VPM_DMA_STORE_WAIT);
     };
     const auto predGenericSetup = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool {
         if(dynamic_cast<const intermediate::LoadImmediate*>(inst) == nullptr)

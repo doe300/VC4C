@@ -169,14 +169,14 @@ static InstructionWalker findReplacementCandidate(
             return basicBlock.end();
         }
         excludedValues.insert(lastInstruction->getOutput().value());
-        if(lastInstruction->writesRegister(REG_VPM_IN_ADDR))
+        if(lastInstruction->writesRegister(REG_VPM_DMA_LOAD_ADDR))
         {
-            excludedValues.emplace(Value(REG_VPM_IN_BUSY, TYPE_UNKNOWN));
+            excludedValues.emplace(Value(REG_VPM_DMA_LOAD_BUSY, TYPE_UNKNOWN));
             excludedValues.emplace(Value(REG_VPM_IO, TYPE_UNKNOWN));
         }
-        if(lastInstruction->writesRegister(REG_VPM_OUT_ADDR))
+        if(lastInstruction->writesRegister(REG_VPM_DMA_STORE_ADDR))
         {
-            excludedValues.emplace(Value(REG_VPM_OUT_BUSY, TYPE_UNKNOWN));
+            excludedValues.emplace(Value(REG_VPM_DMA_STORE_BUSY, TYPE_UNKNOWN));
             excludedValues.emplace(Value(REG_VPM_IO, TYPE_UNKNOWN));
         }
         PROFILE_START(findInstructionNotAccessing);
@@ -328,14 +328,14 @@ bool optimizations::splitReadAfterWrites(const Module& module, Method& method, c
                 lastInstruction = it;
             }
 
-            if(it->readsRegister(REG_VPM_IN_WAIT) || it->readsRegister(REG_VPM_OUT_WAIT) ||
+            if(it->readsRegister(REG_VPM_DMA_LOAD_WAIT) || it->readsRegister(REG_VPM_DMA_STORE_WAIT) ||
                 it->readsRegister(REG_VPM_IO))
             {
                 // TODO constant + x * nrows
                 unsigned numDelays = 0;
-                if(it->readsRegister(REG_VPM_IN_WAIT))
+                if(it->readsRegister(REG_VPM_DMA_LOAD_WAIT))
                     numDelays = 6; // XXX 8
-                else if(it->readsRegister(REG_VPM_OUT_WAIT))
+                else if(it->readsRegister(REG_VPM_DMA_STORE_WAIT))
                     numDelays = 10; // XXX 12
                 // TODO else insert delay only before first read!
                 for(unsigned i = 0; i < numDelays; ++i)

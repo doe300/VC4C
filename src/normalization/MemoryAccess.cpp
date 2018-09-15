@@ -6,9 +6,11 @@
 
 #include "MemoryAccess.h"
 
+#include "../Expression.h"
 #include "../InstructionWalker.h"
 #include "../Module.h"
 #include "../Profiler.h"
+#include "../analysis/ValueRange.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../periphery/TMU.h"
@@ -36,14 +38,10 @@ struct BaseAndOffset
 {
     Optional<Value> base;
     Optional<int32_t> offset;
-    Optional<int32_t> maxOffset;
 
-    explicit BaseAndOffset() : base(NO_VALUE), offset{}, maxOffset{} {}
+    explicit BaseAndOffset() : base(NO_VALUE), offset{} {}
 
-    BaseAndOffset(const Optional<Value>& base, Optional<int32_t> offset, Optional<int32_t> maxOffset = {}) :
-        base(base), offset(offset), maxOffset(maxOffset)
-    {
-    }
+    BaseAndOffset(const Optional<Value>& base, Optional<int32_t> offset) : base(base), offset(offset) {}
 };
 
 static BaseAndOffset findOffset(const Value& val)
@@ -56,8 +54,7 @@ static BaseAndOffset findOffset(const Value& val)
         const Optional<Value> offset = writer->precalculate(8);
         if(offset.ifPresent(toFunction(&Value::isLiteralValue)))
         {
-            return BaseAndOffset(
-                NO_VALUE, offset->getLiteralValue()->signedInt(), offset->getLiteralValue()->signedInt());
+            return BaseAndOffset(NO_VALUE, offset->getLiteralValue()->signedInt());
         }
     }
     return BaseAndOffset();
@@ -89,8 +86,9 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
     if(dynamic_cast<const MoveOperation*>(*writers.begin()) != nullptr)
         return findBaseAndOffset(dynamic_cast<const MoveOperation*>(*writers.begin())->getSource());
     const auto& args = (*writers.begin())->getArguments();
-    // 2. an arithmetic operation with a local and a literal -> the local is the base, the literal the offset
-    if(args.size() == 2 &&
+    // 2. an addition with a local and a literal -> the local is the base, the literal the offset
+    if(dynamic_cast<const Operation*>((*writers.begin())) != nullptr &&
+        dynamic_cast<const Operation*>((*writers.begin()))->op == OP_ADD && args.size() == 2 &&
         std::any_of(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.hasType(ValueType::LOCAL); }) &&
         std::any_of(
             args.begin(), args.end(), [](const Value& arg) -> bool { return arg.getLiteralValue().has_value(); }))
@@ -106,8 +104,9 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
                 val.type.getElementType().getPhysicalWidth()));
     }
 
-    // 3. an arithmetic operation with two locals -> one is the base, the other the calculation of the literal
-    if(args.size() == 2 &&
+    // 3. an addition with two locals -> one is the base, the other the calculation of the literal
+    if(dynamic_cast<const Operation*>((*writers.begin())) != nullptr &&
+        dynamic_cast<const Operation*>((*writers.begin()))->op == OP_ADD && args.size() == 2 &&
         std::all_of(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.hasType(ValueType::LOCAL); }))
     {
         const auto offset0 = findOffset(args[0]);
@@ -119,6 +118,36 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
             return BaseAndOffset(args[0].local->getBase(false)->createReference(),
                 static_cast<int32_t>(offset1.offset.value() / val.type.getElementType().getPhysicalWidth()));
     }
+    /*
+        if(writers.size() == 1)
+        {
+            // couldn't find literal offset for any direct base, try with arbitrary values
+            ref = val.local->getBase(true);
+            Optional<Value> offset = NO_VALUE;
+            for(const auto& arg : (*writers.begin())->getArguments())
+            {
+                if(ref != nullptr && arg.hasType(ValueType::LOCAL) && arg.local->getBase(false) == ref)
+                    // skip finding the same base again
+                    continue;
+                auto tmp = findBaseAndOffset(arg);
+                if(tmp.base && tmp.base->local->getBase(true) == ref && tmp.offset.is(0))
+                    // this parameter is the base itself, is already handled
+                    continue;
+                // TODO how to combine the offsets?
+                // TODO also need to handle non-addition of offsets (e.g. ptr = base + (offset + size * i))
+                logging::debug() << "Found offset of " << tmp.base.to_string() << " + "
+                                 << (tmp.offset ? tmp.offset.value() : -1) << logging::endl;
+                logging::debug() << "Found offset of " << tmp.base.to_string() << " with expression: "
+                                 << vc4c::Expression::createExpression(*(*writers.begin())).to_string() <<
+       logging::endl;
+            }
+            // TODO why is this called twice? The whole function, from outside
+            logging::debug() << "Found base and non-literal offset: " << ref->to_string() << " - " << offset.to_string()
+                             << logging::endl;
+            if(ref && (ref->residesInMemory() || (ref->is<Parameter>() && ref->type.isPointerType())))
+                return BaseAndOffset(ref->createReference(), {});
+        }
+    */
 
     return BaseAndOffset();
 }
@@ -204,14 +233,14 @@ static InstructionWalker findGroupOfVPMAccess(
             // semaphore accesses end groups, also don't check this instruction again
             return it.nextInBlock();
 
-        if(!(it->writesRegister(REG_VPM_IN_ADDR) || it->writesRegister(REG_VPM_OUT_ADDR)))
+        if(!(it->writesRegister(REG_VPM_DMA_LOAD_ADDR) || it->writesRegister(REG_VPM_DMA_STORE_ADDR)))
             // for simplicity, we only check for VPM addresses and find all other instructions relative to it
             continue;
         if(!it.has<MoveOperation>())
             throw CompilationError(
                 CompilationStep::OPTIMIZER, "Setting VPM address with non-move is not supported", it->to_string());
         const auto baseAndOffset = findBaseAndOffset(it.get<MoveOperation>()->getSource());
-        const bool isVPMWrite = it->writesRegister(REG_VPM_OUT_ADDR);
+        const bool isVPMWrite = it->writesRegister(REG_VPM_DMA_STORE_ADDR);
         logging::debug() << "Found base address " << baseAndOffset.base.to_string() << " with offset "
                          << std::to_string(baseAndOffset.offset.value_or(-1L)) << " for "
                          << (isVPMWrite ? "writing into" : "reading from") << " memory" << logging::endl;
@@ -374,7 +403,7 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
     for(std::size_t i = 0; i < group.addressWrites.size() - 1; ++i)
     {
         if(!group.addressWrites[i].copy().nextInBlock()->readsRegister(
-               group.isVPMWrite ? REG_VPM_OUT_WAIT : REG_VPM_IN_WAIT))
+               group.isVPMWrite ? REG_VPM_DMA_STORE_WAIT : REG_VPM_DMA_LOAD_WAIT))
             throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find VPW wait for address write",
                 group.addressWrites[i]->to_string());
         group.addressWrites[i].copy().nextInBlock().erase();
@@ -481,7 +510,7 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
     for(std::size_t i = 1; i < group.addressWrites.size(); ++i)
     {
         if(!group.addressWrites[i].copy().nextInBlock()->readsRegister(
-               group.isVPMWrite ? REG_VPM_OUT_WAIT : REG_VPM_IN_WAIT))
+               group.isVPMWrite ? REG_VPM_DMA_STORE_WAIT : REG_VPM_DMA_LOAD_WAIT))
             throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find VPR wait for address write",
                 group.addressWrites[i]->to_string());
         group.addressWrites[i].copy().nextInBlock().erase();
