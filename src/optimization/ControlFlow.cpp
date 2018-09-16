@@ -1451,7 +1451,11 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     for(auto& loop : inclusionTree.getNodes())
     {
         auto& node = inclusionTree.getOrCreateNode(loop.first);
-        auto root = reinterpret_cast<LoopInclusionTreeNode*>(node.findRoot({}));
+        auto root = dynamic_cast<LoopInclusionTreeNode*>(node.findRoot({}));
+        if (root == nullptr) {
+            throw CompilationError(
+                    CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
+        }
         // logging::debug() << "root block : " << root->dumpLabel() << logging::endl;
 
         if(processed.find(root) != processed.end())

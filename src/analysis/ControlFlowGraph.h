@@ -166,6 +166,7 @@ namespace vc4c
     struct LoopInclusionTreeNodeBase
     {
         // LoopInclusionTreeNodeBase(const KeyType key);
+        virtual ~LoopInclusionTreeNodeBase() = default;
 
         LoopInclusionTreeNodeBase* findRoot(Optional<int> depth);
         unsigned int longestPathLengthToRoot() const;
@@ -177,6 +178,10 @@ namespace vc4c
     using LoopInclusionTreeNode =
         Node<ControlFlowLoop*, LoopInclusion, Directionality::DIRECTED, LoopInclusionTreeNodeBase>;
     using LoopInclusionTreeEdge = LoopInclusionTreeNode::EdgeType;
+
+    // Cannot expose these functions due to link error.(?)
+    // LoopInclusionTreeNode* castToTreeNode(LoopInclusionTreeNodeBase *base);
+    // const LoopInclusionTreeNode* castToTreeNode(const LoopInclusionTreeNodeBase *base);
 
     /*
      * The trees represents inclusion relation of control-flow loops. This may have multiple trees.
