@@ -172,6 +172,9 @@ namespace vc4c
      * Writing to "accumulator 4" toggles the automatic swapping of TMUs (using TMU0 for QPUs 0/1 and TMU1 for QPUs 2/3
      * within a slice). Writing any value different from zero disables the TMU swapping and allows all QPUs to access
      * both TMUs by writing in their corresponding registers.
+     *
+     * "If TMU_NOSWAP is written, the write must be three instructions before the first TMU write instruction"
+     * - Broadcom specification, page 37
      */
     static constexpr Register REG_TMU_NOSWAP{RegisterFile::PHYSICAL_ANY, 36};
     /*

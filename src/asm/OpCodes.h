@@ -182,10 +182,16 @@ namespace vc4c
     constexpr Signaling SIGNAL_LOAD_COLOR_END{9};
     /*
      * Trigger read data from TMU0 to r4
+     *
+     * This only tells the QPU to pop the head of the TMU0 "receive" FIFO and provide it in r4.
+     * The actual reading from memory into the "receive" FIFO is done by writing the TMU0 S-coordinate.
      */
     constexpr Signaling SIGNAL_LOAD_TMU0{10};
     /*
      * Trigger read data from TMU1 to r4
+     *
+     * This only tells the QPU to pop the head of the TMU1 "receive" FIFO and provide it in r4.
+     * The actual reading from memory into the "receive" FIFO is done by writing the TMU1 S-coordinate.
      */
     constexpr Signaling SIGNAL_LOAD_TMU1{11};
     /*

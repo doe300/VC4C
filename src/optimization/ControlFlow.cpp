@@ -981,6 +981,27 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     }
     it.nextInBlock();
 
+    // if the second TMU was used explicitly at some point, we disable TMU_SWAP
+    {
+        bool tmu1Used = false;
+        auto checkIt = method.walkAllInstructions();
+        while(!checkIt.isEndOfMethod())
+        {
+            if(checkIt->writesRegister(REG_TMU1_ADDRESS))
+            {
+                tmu1Used = true;
+                break;
+            }
+            checkIt.nextInMethod();
+        }
+        if(tmu1Used)
+        {
+            logging::debug() << "Using both TMUs explicitly, disable automatic swapping!" << logging::endl;
+            it.emplace(new MoveOperation(Value(REG_TMU_NOSWAP, TYPE_BOOL), BOOL_TRUE));
+            it.nextInBlock();
+        }
+    }
+
     /*
      * The first UNIFORMs are reserved for relaying information about the work-item and work-group
      * - work_dim: number of dimensions

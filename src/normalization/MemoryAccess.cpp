@@ -1253,7 +1253,8 @@ static bool lowerMemoryToRegister(
  *
  * NOTE: Memory locations loaded via TMU MUST NOT be written to by the same kernel (even on a different QPU)!
  */
-static bool mapReadsToTMULoad(Method& method, const Local* local, FastSet<InstructionWalker>& memoryInstructions)
+static bool mapReadsToTMULoad(
+    Method& method, const Local* local, FastSet<InstructionWalker>& memoryInstructions, bool tmuFlag)
 {
     auto it = memoryInstructions.begin();
     while(it != memoryInstructions.end())
@@ -1269,7 +1270,8 @@ static bool mapReadsToTMULoad(Method& method, const Local* local, FastSet<Instru
             ++it;
             continue;
         }
-        auto tmpIt = periphery::insertReadVectorFromTMU(method, *it, mem->getDestination(), mem->getSource());
+        auto tmpIt = periphery::insertReadVectorFromTMU(
+            method, *it, mem->getDestination(), mem->getSource(), tmuFlag ? periphery::TMU1 : periphery::TMU0);
         it = memoryInstructions.erase(it);
         tmpIt.erase();
         logging::debug() << "Replaced loading from read-only memory with TMU load: "
@@ -1583,12 +1585,18 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
     }
     // 2. load read-only parameter via TMU
     mappingIt = memoryMapping.begin();
+    // the flag as to which TMU to use
+    // TODO for better performance, this should alternate in according to the order of usage (first read use TMU0,
+    // second read use TMU1, ...)
+    bool tmuFlag = false;
+    // The insertion of the TMU_NOSWAP configuration is inserted in #addStartStopSegment to the start of the kernel
     while(mappingIt != memoryMapping.end())
     {
         if(mappingIt->second.preferred == MemoryType::RAM_LOAD_TMU)
         {
-            if(mapReadsToTMULoad(method, mappingIt->first, mappingIt->second.accessInstructions))
+            if(mapReadsToTMULoad(method, mappingIt->first, mappingIt->second.accessInstructions, tmuFlag))
             {
+                tmuFlag = !tmuFlag;
                 if(mappingIt->first->is<Parameter>())
                 {
                     const_cast<Parameter*>(mappingIt->first->as<Parameter>())->decorations =

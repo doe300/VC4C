@@ -87,6 +87,8 @@ std::string Register::to_string(bool specialNames, bool readAccess) const
         }
         else
         {
+            if(num == 36 && file != RegisterFile::ACCUMULATOR)
+                return "tmu_noswap";
             if(num == 37)
             {
                 if(file == RegisterFile::PHYSICAL_A)
@@ -212,7 +214,7 @@ bool Register::isSpecialFunctionsUnit() const
 
 bool Register::isTextureMemoryUnit() const
 {
-    return num <= 56;
+    return num >= 56;
 }
 
 bool Register::hasSideEffectsOnRead() const
@@ -265,10 +267,10 @@ bool Register::isWriteable() const
 
 bool Register::triggersReadOfR4() const
 {
-    return isSpecialFunctionsUnit()
-        // TODO TMU S coordinates trigger the loading/processing of the (texture) value, but the signal  is needed to
-        // load it into r4
-        || (num == 56 || num == 60) /* TMU S coordinates */;
+    return isSpecialFunctionsUnit();
+    // TODO TMU S coordinates trigger the loading/processing of the (texture) value, but the signal  is needed to
+    // load it into r4
+    // || (num == 56 || num == 60) /* TMU S coordinates */;
 }
 
 std::size_t vc4c::hash<vc4c::Register>::operator()(vc4c::Register const& val) const noexcept

@@ -644,7 +644,7 @@ struct NodeSorter : public std::less<intermediate::IntermediateInstruction*>
     }
 };
 
-//TODO OpenSet leaks all pending instructions if exception is thrown
+// TODO OpenSet leaks all pending instructions if exception is thrown
 using OpenSet = OrderedSet<intermediate::IntermediateInstruction*, NodeSorter>;
 
 static const int DEFAULT_PRIORITY = 1000;
