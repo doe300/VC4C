@@ -1446,7 +1446,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 
     // 3. move constant load operations from root of trees
 
-    std::map<LoopInclusionTreeNode*, std::vector<InstructionWalker*>> instMapper;
+    std::map<LoopInclusionTreeNode*, std::vector<InstructionWalker>> instMapper;
     {
     std::set<LoopInclusionTreeNode*> processed;
 
@@ -1499,14 +1499,12 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 {
                     if(isConstantInstruction(it))
                     {
-                        CPPLOG_LAZY(logging::debug() << "Moving constant load out of loop: " << it->to_string() << logging::endl);
-
                         auto out = it->getOutput().value();
                         if(out.hasType(ValueType::LOCAL))
                         {
-                            logging::debug() << "  move instruction: " << it->to_string() << logging::endl;
+                            logging::debug() << "  move instruction: " << it.get() << " : " << it->to_string() << logging::endl;
 
-                            instMapper[currentNode].push_back(&it);
+                            instMapper[currentNode].push_back(it);
 
                             // if(insertedBlock != nullptr)
                             // {
@@ -1581,7 +1579,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     for (auto &kv : instMapper) {
         logging::debug() << kv.first->dumpLabel() << logging::endl;
         if (kv.second.size() > 0) {
-            // logging::debug() << "\t" << (*kv.second[0])->to_string() << logging::endl;
+            logging::debug() << "\t" << kv.second[0].get() << logging::endl;
         }
     }
 
@@ -1617,7 +1615,12 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             }
             logging::debug() << "target loop : " << targetNode->dumpLabel() << logging::endl;
             auto targetLoop = targetNode->key;
-            auto insts = instMapper[targetNode];
+
+
+            auto insts = instMapper.find(targetNode);
+            if (insts == instMapper.end()) {
+              continue;
+            }
 
             auto targetBlock = targetLoop->findPredecessor();
             if(targetBlock != nullptr)
@@ -1625,10 +1628,10 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 logging::debug() << "  target block: " << targetBlock->key->getLabel()->to_string()
                     << logging::endl;
                 // insert before 'br' operation
-                auto targetInst = targetBlock->key->end().previousInBlock();
-                for (auto it : insts) {
-                    it->erase();
-                    targetInst.emplace(it->release());
+                auto &targetInst = targetBlock->key->end().previousInBlock();
+                for (auto it : insts->second) {
+                    targetInst.emplace(it.release());
+                    it.erase();
                 }
             }
             else
@@ -1641,9 +1644,9 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 // FIXME: fix block insertion location
                 auto insertedBlock = &method.createAndInsertNewBlock(
                         method.begin(), "%createdByRemoveConstantLoadInLoops");
-                for (auto it : insts) {
-                    it->erase();
-                    // insertedBlock->end().emplace(it->release());
+                for (auto it : insts->second) {
+                    insertedBlock->end().emplace(it.release());
+                    it.erase();
                 }
 
                 if(headBlock->getLabel()->getLabel()->name == BasicBlock::DEFAULT_BLOCK)
