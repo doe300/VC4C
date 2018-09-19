@@ -429,39 +429,36 @@ void UniformCache::setUniformAddress(const Value& val)
 
 std::pair<Value, bool> TMUs::readTMU()
 {
-    if(tmuQueues[0].empty() && tmuQueues[1].empty())
+    if(tmu0ResponseQueue.empty() && tmu1ResponseQueue.empty())
         throw CompilationError(CompilationStep::GENERAL, "Cannot read from empty TMU queue!");
+    if(!tmu0ResponseQueue.empty() && !tmu1ResponseQueue.empty())
+        // TODO or is there only one response queue? This would be more understandable from hardware point of view (for
+        // ordering)
+        logging::warn()
+            << "Reading from r4 when both TMUs have queued responses is not yet tested and might give in wrong results"
+            << logging::endl;
+
     // need to select the first triggered read in both queues
-    std::list<std::pair<Value, uint32_t>>* queue = nullptr;
-    if(!tmuQueues[0].empty())
-        queue = &tmuQueues[0];
-    if(!tmuQueues[1].empty())
+    std::queue<std::pair<Value, uint32_t>>* queue = nullptr;
+    if(!tmu0ResponseQueue.empty())
+        queue = &tmu0ResponseQueue;
+    if(!tmu1ResponseQueue.empty())
     {
         if(queue == nullptr)
-            queue = &tmuQueues[1];
-        else if(tmuQueues[1].front().second < queue->front().second)
-            queue = &tmuQueues[1];
+            queue = &tmu1ResponseQueue;
+        else if(tmu1ResponseQueue.front().second < queue->front().second)
+            queue = &tmu1ResponseQueue;
     }
 
-    // always blocks at least 9 cycles (reading from TMU cache)
-    bool blocks = queue->front().second + 9 > qpu.getCurrentCycle();
-    const Value val = queue->front().first;
-    if(!blocks)
-    {
-        if(queue->front().second + 20 > qpu.getCurrentCycle())
-            // blocks up to 20 cycles when reading from RAM
-            logging::debug() << "Distance between triggering of TMU read and read is "
-                             << (qpu.getCurrentCycle() - queue->front().second)
-                             << ", additional stalls may be introduced" << logging::endl;
-        queue->pop_front();
-    }
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 60, "TMU read", !blocks);
-    return std::make_pair(val, !blocks);
+    auto front = queue->front();
+    queue->pop();
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 60, "TMU read", 1);
+    return std::make_pair(front.first, true);
 }
 
 bool TMUs::hasValueOnR4() const
 {
-    return !tmuQueues[0].empty() || !tmuQueues[1].empty();
+    return !tmu0ResponseQueue.empty() || !tmu1ResponseQueue.empty();
 }
 
 void TMUs::setTMUNoSwap(const Value& swapVal)
@@ -482,7 +479,11 @@ void TMUs::setTMURegisterS(uint8_t tmu, const Value& val)
     checkTMUWriteCycle();
 
     tmu = toRealTMU(tmu);
-    tmuAddresses.at(tmu) = val;
+    auto& requestQueue = tmu == 1 ? tmu1RequestQueue : tmu0RequestQueue;
+
+    if(requestQueue.size() >= 8)
+        throw CompilationError(CompilationStep::GENERAL, "TMU request queue is full!");
+    requestQueue.push(std::make_pair(readMemoryAddress(val), qpu.getCurrentCycle()));
 }
 
 void TMUs::setTMURegisterT(uint8_t tmu, const Value& val)
@@ -507,10 +508,26 @@ void TMUs::triggerTMURead(uint8_t tmu)
 {
     tmu = toRealTMU(tmu);
 
-    if(tmuQueues.at(tmu).size() == 2)
-        throw CompilationError(CompilationStep::GENERAL, "TMU queue overrun!");
+    auto& requestQueue = tmu == 1 ? tmu1RequestQueue : tmu0RequestQueue;
+    auto& responseQueue = tmu == 1 ? tmu1ResponseQueue : tmu0ResponseQueue;
 
-    tmuQueues.at(tmu).push_back(std::make_pair(readMemoryAddress(tmuAddresses.at(tmu)), qpu.getCurrentCycle()));
+    if(requestQueue.empty())
+        throw CompilationError(CompilationStep::GENERAL, "No data in TMU request queue to be read!");
+    if(responseQueue.size() >= 8)
+        throw CompilationError(CompilationStep::GENERAL, "TMU response queue is full!");
+
+    auto val = requestQueue.front();
+    // TODO check for delays
+    if(val.second + 9 > qpu.getCurrentCycle())
+        logging::debug() << "Reading from TMU needs at least 9 instructions, delays will be introduced"
+                         << logging::endl;
+    else if(val.second + 20 > qpu.getCurrentCycle())
+        // blocks up to 20 cycles when reading from RAM
+        logging::debug() << "Distance between triggering of TMU read and read is "
+                         << (qpu.getCurrentCycle() - val.second) << ", additional stalls may be introduced"
+                         << logging::endl;
+    requestQueue.pop();
+    responseQueue.push(std::make_pair(val.first, qpu.getCurrentCycle()));
 }
 
 void TMUs::checkTMUWriteCycle() const
@@ -1487,6 +1504,7 @@ bool QPU::executeSignal(Signaling signal)
         // ignore
         return true;
     if(signal == SIGNAL_LOAD_TMU0)
+        // TODO insert delays here!
         tmus.triggerTMURead(0);
     else if(signal == SIGNAL_LOAD_TMU1)
         tmus.triggerTMURead(1);

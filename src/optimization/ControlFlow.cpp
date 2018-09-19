@@ -933,16 +933,19 @@ static InstructionWalker loadVectorParameter(const Parameter& param, Method& met
         {
             it = intermediate::insertSignExtension(it, method, Value(REG_UNIFORM, param.type),
                 Value(&param, TYPE_INT32), false, i == 0 ? COND_ALWAYS : COND_ZERO_SET);
+            it.copy().previousInBlock()->addDecorations(intermediate::InstructionDecorations::ELEMENT_INSERTION);
         }
         else if(has_flag(param.decorations, ParameterDecorations::ZERO_EXTEND))
         {
             it = intermediate::insertZeroExtension(it, method, Value(REG_UNIFORM, param.type),
                 Value(&param, TYPE_INT32), false, i == 0 ? COND_ALWAYS : COND_ZERO_SET);
+            it.copy().previousInBlock()->addDecorations(intermediate::InstructionDecorations::ELEMENT_INSERTION);
         }
         else
         {
             it.emplace(new intermediate::MoveOperation(
                 param.createReference(), UNIFORM_REGISTER, i == 0 ? COND_ALWAYS : COND_ZERO_SET));
+            it->addDecorations(intermediate::InstructionDecorations::ELEMENT_INSERTION);
             it.nextInBlock();
         }
         // TODO improve performance by first putting together the vector, then zero/sign extending all elements?

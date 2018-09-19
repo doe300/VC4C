@@ -430,6 +430,9 @@ GraphColoring::GraphColoring(Method& method, InstructionWalker it) :
                 range.lastOccurrence = it;
                 if(isFixed(range.possibleFiles))
                 {
+                    // XXX this block is called every time after local is fixed instead of just once per local
+                    // but from a performance point of view, it makes no difference whether to check existence in
+                    // open/closed set or not
                     // local is fixed to a certain register-file, move to closed set
                     closedSet.insert(l);
                     openSet.erase(l);

@@ -576,6 +576,9 @@ struct NodeSorter : public std::less<intermediate::IntermediateInstruction*>
         // prioritize setting of TMU_NO_SWAP to make the best of the delays required before loading
         if(inst->writesRegister(REG_TMU_NOSWAP))
             priority += 100;
+        // prioritize unlocking mutex to keep critical section as small as possible
+        if(inst->writesRegister(REG_MUTEX))
+            priority += 80;
         // XXX give reading of work-item info (as well as parameters) a high priority (minimizes their local's
         // life-time)
         if(std::any_of(inst->getArguments().begin(), inst->getArguments().end(),
@@ -614,7 +617,7 @@ struct NodeSorter : public std::less<intermediate::IntermediateInstruction*>
         // for conditional instructions setting flags themselves not preceding the other instructions depending on same
         // flags
         if(inst->setFlags == SetFlag::SET_FLAGS)
-            priority -= 70;
+            priority -= 60;
 
         // loading/calculation of literals get smaller priority, since they are used mostly locally
         if(std::all_of(inst->getArguments().begin(), inst->getArguments().end(), [](const Value& val) -> bool {
@@ -627,8 +630,7 @@ struct NodeSorter : public std::less<intermediate::IntermediateInstruction*>
             priority -= 90;
 
         // mutex_acquire gets the lowest priority to not extend the critical section
-        if(std::any_of(inst->getArguments().begin(), inst->getArguments().end(),
-               [](const Value& val) -> bool { return val.hasType(ValueType::REGISTER) && val.reg == REG_MUTEX; }))
+        if(inst->readsRegister(REG_MUTEX))
             priority -= 100;
 
         return -priority;
@@ -646,6 +648,7 @@ struct NodeSorter : public std::less<intermediate::IntermediateInstruction*>
 
 // TODO OpenSet leaks all pending instructions if exception is thrown
 using OpenSet = OrderedSet<intermediate::IntermediateInstruction*, NodeSorter>;
+using DelaysMap = FastMap<const intermediate::IntermediateInstruction*, std::size_t>;
 
 static const int DEFAULT_PRIORITY = 1000;
 // needs to be larger then the default priority to disregard in any case
@@ -696,6 +699,10 @@ static int calculateSchedulingPriority(DependencyEdge& dependency, BasicBlock& b
     return (latencyLeft > 0 && dependency.data.isMandatoryDelay) ? MIN_PRIORITY : latencyLeft;
     // TODO also look into the future and keep some instructions (e.g. vector rotations/arithmetics) close to their
     // use?? (would need to calculate priority of uses and deduct distance)
+    // or look into the future and calculate the maximum mandatory (+preferred) delay between this instruction and the
+    // end of block (e.g. maximum path for all dependent delays) -> prefer maximum mandatory delay > maximum preferred
+    // delay > any other. Or directly calculate remaining delay into priority mandatory/preferred. Delay "behind"
+    // instruction can be calculated once per instruction?!
 }
 
 static int checkDependenciesMet(DependencyNode& entry, BasicBlock& block, OpenSet& openNodes)
@@ -731,17 +738,23 @@ static int checkDependenciesMet(DependencyNode& entry, BasicBlock& block, OpenSe
     return schedulingPriority;
 }
 
-static OpenSet::iterator selectInstruction(OpenSet& openNodes, DependencyGraph& graph, BasicBlock& block)
+static OpenSet::iterator selectInstruction(OpenSet& openNodes, DependencyGraph& graph, BasicBlock& block,
+    const DelaysMap& successiveMandatoryDelays, const DelaysMap& successiveDelays)
 {
     // iterate open-set until entry with no more dependencies
     auto it = openNodes.begin();
     std::pair<OpenSet::iterator, int> selected = std::make_pair(openNodes.end(), DEFAULT_PRIORITY);
     auto lastInstruction = block.end().previousInBlock();
-    PROFILE_START(SelectLoop);
+    PROFILE_START(SelectInstruction);
     while(it != openNodes.end())
     {
         // select first entry (with highest priority) for which all dependencies are fulfilled (with latency)
         int priority = checkDependenciesMet(graph.assertNode(*it), block, openNodes);
+        if(priority < MIN_PRIORITY)
+            priority -= successiveMandatoryDelays.at(*it);
+        // TODO use preferred delays?
+        // TODO remove adding/removing priorities in calculateSchedulingPriority?
+        // TODO remove extra cases here?
         if(priority < std::get<1>(selected) ||
             // keep instructions writing the same local together to be combined more easily
             // TODO make better/check result
@@ -751,7 +764,10 @@ static OpenSet::iterator selectInstruction(OpenSet& openNodes, DependencyGraph& 
             (priority == std::get<1>(selected) && lastInstruction.has<intermediate::VectorRotation>() &&
                 dynamic_cast<const intermediate::VectorRotation*>(*it) == nullptr) ||
             // prefer reading of r4 to free up space in TMU queue/allow other triggers to write to r4
-            (priority == std::get<1>(selected) && (*it)->readsRegister(REG_TMU_OUT)))
+            (priority == std::get<1>(selected) && (*it)->readsRegister(REG_TMU_OUT)) ||
+            // prefer anything over locking mutex
+            (priority == std::get<1>(selected) && std::get<0>(selected) != openNodes.end() &&
+                (*std::get<0>(selected))->readsRegister(REG_MUTEX)))
         {
             std::get<0>(selected) = it;
             std::get<1>(selected) = priority;
@@ -759,7 +775,7 @@ static OpenSet::iterator selectInstruction(OpenSet& openNodes, DependencyGraph& 
         // TODO some more efficient version? E.g. caching priorities, check from lowest, update, take new lowest
         ++it;
     }
-    PROFILE_END(SelectLoop);
+    PROFILE_END(SelectInstruction);
 
     if(std::get<0>(selected) != openNodes.end())
     {
@@ -783,7 +799,8 @@ static OpenSet::iterator selectInstruction(OpenSet& openNodes, DependencyGraph& 
  * Select an instruction which does not depend on any instruction (not yet scheduled) anymore and insert it into the
  * basic block
  */
-static void selectInstructions(DependencyGraph& graph, BasicBlock& block)
+static void selectInstructions(DependencyGraph& graph, BasicBlock& block, const DelaysMap& successiveMandatoryDelays,
+    const DelaysMap& successiveDelays)
 {
     // 1. "empty" basic block without deleting the instructions, skipping the label
     auto it = block.begin().nextInBlock();
@@ -800,7 +817,7 @@ static void selectInstructions(DependencyGraph& graph, BasicBlock& block)
     // 2. fill again with reordered instructions
     while(!openNodes.empty())
     {
-        auto inst = selectInstruction(openNodes, graph, block);
+        auto inst = selectInstruction(openNodes, graph, block, successiveMandatoryDelays, successiveDelays);
         if(inst == openNodes.end())
         {
             // no instruction could be scheduled not violating the fixed latency, insert NOPs
@@ -820,7 +837,18 @@ bool optimizations::reorderInstructions(const Module& module, Method& kernel, co
     for(BasicBlock& bb : kernel)
     {
         auto dependencies = DependencyGraph::createGraph(bb);
-        selectInstructions(*dependencies, bb);
+        // calculate required and recommended successive delays for all instructions
+        DelaysMap successiveMandatoryDelays;
+        DelaysMap successiveDelays;
+        PROFILE_START(CalculateCriticalPath);
+        for(const auto& node : dependencies->getNodes())
+        {
+            // since we cache all delays (also for all intermediate results), it is only calculated once per node
+            node.second.calculateSucceedingCriticalPathLength(true, &successiveMandatoryDelays);
+            node.second.calculateSucceedingCriticalPathLength(false, &successiveDelays);
+        }
+        PROFILE_END(CalculateCriticalPath);
+        selectInstructions(*dependencies, bb, successiveMandatoryDelays, successiveDelays);
     }
     return false;
 }

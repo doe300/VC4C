@@ -144,6 +144,40 @@ namespace vc4c
          * Returns nullptr if this instruction does not trigger a consumable signal.
          */
         const DependencyNode* getSignalConsumer() const;
+
+        /**
+         * Calculates the length of the critical path before this instruction.
+         *
+         * The critical path is the longer path of dependencies (and their distances) and therefore its length for the
+         * part before this instruction is the number of instructions which MUST be inserted before this instruction can
+         * be inserted.
+         *
+         * @param onlyMandatoryDelay whether to assume a delay of 0 additional instructions for non-mandatory delays (if
+         * set to true) or also count preferred delay
+         * @param cache the optional cache to read already calculated delays from and to insert all (intermediate and
+         * final) calculated values into
+         *
+         * NOTE: This function calculates the length by traversing all dependencies which takes some time. Therefore the
+         * result should be cached.
+         */
+        std::size_t calculatePrecedingCriticalPathLength(bool onlyMandatoryDelay,
+            FastMap<const intermediate::IntermediateInstruction*, std::size_t>* cache = nullptr) const;
+
+        /**
+         * Calculates the length of the critical path after this instruction
+         *
+         * See #calculatePrecedingCriticalPathLength() for the meaning of the return value
+         *
+         * @param onlyMandatoryDelay whether to assume a delay of 0 additional instructions for non-mandatory delays (if
+         * set to true) or also count preferred delay
+         * @param cache the optional cache to read already calculated delays from and to insert all (intermediate and
+         * final) calculated values into
+         *
+         * NOTE: This function calculates the length by traversing all dependencies which takes some time. Therefore the
+         * result should be cached.
+         */
+        std::size_t calculateSucceedingCriticalPathLength(bool onlyMandatoryDelay,
+            FastMap<const intermediate::IntermediateInstruction*, std::size_t>* cache = nullptr) const;
     };
 
     using DependencyNode =

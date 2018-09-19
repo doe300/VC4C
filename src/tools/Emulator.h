@@ -15,6 +15,7 @@
 
 #include <bitset>
 #include <limits>
+#include <queue>
 
 namespace vc4c
 {
@@ -112,11 +113,7 @@ namespace vc4c
         class TMUs : private NonCopyable
         {
         public:
-            TMUs(QPU& qpu, Memory& memory) :
-                qpu(qpu), tmuNoSwap(false), lastTMUNoSwap(0),
-                memory(memory), tmuAddresses{UNDEFINED_VALUE, UNDEFINED_VALUE}
-            {
-            }
+            TMUs(QPU& qpu, Memory& memory) : qpu(qpu), tmuNoSwap(false), lastTMUNoSwap(0), memory(memory) {}
 
             std::pair<Value, bool> readTMU();
             bool hasValueOnR4() const;
@@ -134,8 +131,10 @@ namespace vc4c
             bool tmuNoSwap;
             uint32_t lastTMUNoSwap;
             Memory& memory;
-            std::array<Value, 2> tmuAddresses;
-            std::array<std::list<std::pair<Value, uint32_t>>, 2> tmuQueues;
+            std::queue<std::pair<Value, uint32_t>> tmu0RequestQueue;
+            std::queue<std::pair<Value, uint32_t>> tmu0ResponseQueue;
+            std::queue<std::pair<Value, uint32_t>> tmu1RequestQueue;
+            std::queue<std::pair<Value, uint32_t>> tmu1ResponseQueue;
 
             void checkTMUWriteCycle() const;
             Value readMemoryAddress(const Value& address) const;

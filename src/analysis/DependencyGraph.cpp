@@ -104,6 +104,60 @@ const DependencyNode* DependencyNodeBase::getSignalTrigger() const
     return setter;
 }
 
+std::size_t DependencyNodeBase::calculatePrecedingCriticalPathLength(
+    bool onlyMandatoryDelay, FastMap<const intermediate::IntermediateInstruction*, std::size_t>* cache) const
+{
+    const auto* self = reinterpret_cast<const DependencyNode*>(this);
+
+    if(cache)
+    {
+        auto cacheIt = cache->find(self->key);
+        if(cacheIt != cache->end())
+        {
+            return cacheIt->second;
+        }
+    }
+
+    std::size_t maxLength = 0;
+    self->forAllIncomingEdges([&](const DependencyNode& predecessor, const DependencyEdge& edge) -> bool {
+        std::size_t transitiveDelay = predecessor.calculatePrecedingCriticalPathLength(onlyMandatoryDelay, cache);
+        auto pathLength = 1 /* the predecessor itself */ +
+            (edge.data.isMandatoryDelay || !onlyMandatoryDelay ? edge.data.numDelayCycles : 0) + transitiveDelay;
+        maxLength = std::max(maxLength, pathLength);
+        return true;
+    });
+    if(cache)
+        cache->emplace(self->key, maxLength);
+    return maxLength;
+}
+
+std::size_t DependencyNodeBase::calculateSucceedingCriticalPathLength(
+    bool onlyMandatoryDelay, FastMap<const intermediate::IntermediateInstruction*, std::size_t>* cache) const
+{
+    const auto* self = reinterpret_cast<const DependencyNode*>(this);
+
+    if(cache)
+    {
+        auto cacheIt = cache->find(self->key);
+        if(cacheIt != cache->end())
+        {
+            return cacheIt->second;
+        }
+    }
+
+    std::size_t maxLength = 0;
+    self->forAllOutgoingEdges([&](const DependencyNode& successor, const DependencyEdge& edge) -> bool {
+        std::size_t transitiveDelay = successor.calculateSucceedingCriticalPathLength(onlyMandatoryDelay, cache);
+        auto pathLength = 1 /* the successor itself */ +
+            (edge.data.isMandatoryDelay || !onlyMandatoryDelay ? edge.data.numDelayCycles : 0) + transitiveDelay;
+        maxLength = std::max(maxLength, pathLength);
+        return true;
+    });
+    if(cache)
+        cache->emplace(self->key, maxLength);
+    return maxLength;
+}
+
 static void addDependency(Dependency& dependency, DependencyType type, unsigned numCycles = 0, bool fixedDelay = false)
 {
     dependency.type = add_flag(dependency.type, type);
@@ -430,7 +484,10 @@ static void createVPMWaitDependencies(DependencyGraph& graph, DependencyNode& no
         auto& otherNode = graph.assertNode(lastVPMWriteWait);
         addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
     }
-    if(lastVPMReadWait != nullptr && node.key->readsRegister(REG_VPM_IO))
+    if(lastVPMReadWait != nullptr &&
+        (node.key->readsRegister(REG_VPM_IO) ||
+            /* this check is for writing following reads, e.g. for memory copies */
+            (node.key->hasValueType(ValueType::REGISTER) && node.key->getOutput()->reg.isVertexPipelineMemory())))
     {
         // all reading of VPM need to be ordered after the VPM read wait instruction (if any)
         auto& otherNode = graph.assertNode(lastVPMReadWait);
