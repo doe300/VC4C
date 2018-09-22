@@ -45,6 +45,7 @@ static FastMap<const Local*, std::size_t> mapLabels(Method& method)
         else if(!it.isEndOfBlock() && it.has() && !it->mapsToASMInstruction())
         {
             // an instruction which has no equivalent in machine code -> drop
+            logging::debug() << "Dropping instruction not mapped to assembler: " << it->to_string() << logging::endl;
             it.erase();
         }
         else

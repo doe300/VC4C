@@ -13,6 +13,7 @@
 #include "log.h"
 
 #include <algorithm>
+#include <regex>
 
 using namespace vc4c;
 using namespace vc4c::llvm2qasm;
@@ -191,10 +192,19 @@ bool CallSite::mapInstruction(Method& method) const
             method.appendToEnd(), method, output, arguments.at(0), arguments.at(1), arguments.at(2));
         return true;
     }
+    static std::regex readFencePattern("_Z\\d*read_mem_fence.*");
+    static std::regex writeFencePattern("_Z\\d*write_mem_fence.*");
     if(methodName.find("mem_fence") == 0 || methodName.find("read_mem_fence") == 0 ||
-        methodName.find("write_mem_fence") == 0)
+        methodName.find("write_mem_fence") == 0 || std::regex_match(methodName, readFencePattern) ||
+        std::regex_match(methodName, writeFencePattern))
     {
-        logging::debug() << "Intrinsifying 'mem_fence' with memory barrier" << logging::endl;
+        /*
+         * NOTE: vc4cl-stdlib implements read_mem_fence() and write_mem_fence() as calls to mem_fence().
+         * Since this is a function call passing the parameter as local, the memory scope is not a constant value.
+         * Directly mapping the function call to read_mem_fence() and write_mem_fence() to a memory fence instruction
+         * still created the methods for these calls, but they will never be executed.
+         */
+        logging::debug() << "Intrinsifying '" << methodName << "' with memory barrier" << logging::endl;
         method.appendToEnd(new intermediate::MemoryBarrier(
             static_cast<intermediate::MemoryScope>(arguments.at(0).getLiteralValue()->unsignedInt()),
             intermediate::MemorySemantics::ACQUIRE_RELEASE));

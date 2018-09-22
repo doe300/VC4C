@@ -299,7 +299,9 @@ static void createR4Dependencies(DependencyGraph& graph, DependencyNode& node,
 static void createMutexDependencies(DependencyGraph& graph, DependencyNode& node,
     const intermediate::IntermediateInstruction* lastMutexLock,
     const intermediate::IntermediateInstruction* lastMutexUnlock,
-    const intermediate::IntermediateInstruction* lastInstruction)
+    const intermediate::IntermediateInstruction* lastInstruction,
+    const intermediate::IntermediateInstruction* lastSemaphoreAccess,
+    const intermediate::IntermediateInstruction* lastMemFence)
 {
     if((node.key->hasValueType(ValueType::REGISTER) && node.key->getOutput()->reg.isVertexPipelineMemory()) ||
         std::any_of(node.key->getArguments().begin(), node.key->getArguments().end(),
@@ -318,16 +320,74 @@ static void createMutexDependencies(DependencyGraph& graph, DependencyNode& node
         auto& otherNode = graph.assertNode(lastMutexUnlock);
         addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
     }
+    if(node.key->readsRegister(REG_MUTEX) && lastSemaphoreAccess != nullptr)
+    {
+        // any mutex lock must be ordered after the previous semaphore access, if any
+        auto& otherNode = graph.assertNode(lastSemaphoreAccess);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
+    }
+    if(node.key->readsRegister(REG_MUTEX) && lastMemFence != nullptr)
+    {
+        // any mutex lock must be ordered after the previous memory fence, if any
+        auto& otherNode = graph.assertNode(lastMemFence);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
+    }
 }
 
-static void createSemaphoreDepencies(
-    DependencyGraph& graph, DependencyNode& node, const intermediate::IntermediateInstruction* lastSemaphoreAccess)
+static void createSemaphoreDepencies(DependencyGraph& graph, DependencyNode& node,
+    const intermediate::IntermediateInstruction* lastSemaphoreAccess,
+    const intermediate::IntermediateInstruction* lastMemFence,
+    const intermediate::IntermediateInstruction* lastMutexUnlock,
+    const intermediate::IntermediateInstruction* lastReadOfR4)
 {
     const auto semaphoreAccess = dynamic_cast<const intermediate::SemaphoreAdjustment*>(node.key);
+    const auto memoryFence = dynamic_cast<const intermediate::MemoryBarrier*>(node.key);
     if(semaphoreAccess != nullptr && lastSemaphoreAccess != nullptr)
     {
         // the order of semaphore-accesses cannot be modified!
         auto& otherNode = graph.assertNode(lastSemaphoreAccess);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::SEMAPHORE_ORDER);
+    }
+    if(semaphoreAccess != nullptr && lastMemFence != nullptr)
+    {
+        // the order of semaphore-accesses and memory fences cannot be modified!
+        auto& otherNode = graph.assertNode(lastMemFence);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::SEMAPHORE_ORDER);
+    }
+    if(semaphoreAccess != nullptr && lastMutexUnlock != nullptr)
+    {
+        // the order of semaphore-accesses and mutex unlocks cannot be modified!
+        auto& otherNode = graph.assertNode(lastMutexUnlock);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::SEMAPHORE_ORDER);
+    }
+    if(semaphoreAccess != nullptr && lastReadOfR4 != nullptr)
+    {
+        // the order of semaphore-accesses and reading from TMU cannot be modified!
+        auto& otherNode = graph.assertNode(lastReadOfR4);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::SEMAPHORE_ORDER);
+    }
+    if(memoryFence != nullptr && lastSemaphoreAccess != nullptr)
+    {
+        // the order of memory fences cannot be modified!
+        auto& otherNode = graph.assertNode(lastSemaphoreAccess);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::SEMAPHORE_ORDER);
+    }
+    if(memoryFence != nullptr && lastMemFence != nullptr)
+    {
+        // the order of semaphore-accesses and memory fences cannot be modified!
+        auto& otherNode = graph.assertNode(lastMemFence);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::SEMAPHORE_ORDER);
+    }
+    if(memoryFence != nullptr && lastMutexUnlock != nullptr)
+    {
+        // the order of memory fences and mutex unlocks cannot be modified!
+        auto& otherNode = graph.assertNode(lastMutexUnlock);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::SEMAPHORE_ORDER);
+    }
+    if(memoryFence != nullptr && lastReadOfR4 != nullptr)
+    {
+        // the order of memory fences and reading from TMU cannot be modified!
+        auto& otherNode = graph.assertNode(lastReadOfR4);
         addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::SEMAPHORE_ORDER);
     }
 }
@@ -498,7 +558,9 @@ static void createVPMWaitDependencies(DependencyGraph& graph, DependencyNode& no
 static void createTMUCoordinateDependencies(DependencyGraph& graph, DependencyNode& node,
     const intermediate::IntermediateInstruction* lastTMU0CoordsWrite,
     const intermediate::IntermediateInstruction* lastTMU1CoordsWrite,
-    const intermediate::IntermediateInstruction* lastTMUNoswapWrite)
+    const intermediate::IntermediateInstruction* lastTMUNoswapWrite,
+    const intermediate::IntermediateInstruction* lastSemaphoreAccess,
+    const intermediate::IntermediateInstruction* lastMemFence)
 {
     if(lastTMUNoswapWrite != nullptr && node.key->hasValueType(ValueType::REGISTER) &&
         node.key->getOutput()->reg.isTextureMemoryUnit())
@@ -523,6 +585,19 @@ static void createTMUCoordinateDependencies(DependencyGraph& graph, DependencyNo
     {
         // do not re-order writes to same TMU (especially not writes to S coordinates, which triggers the read)
         auto& otherNode = graph.assertNode(lastTMU1CoordsWrite);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
+    }
+    if(lastSemaphoreAccess && node.key->hasValueType(ValueType::REGISTER) &&
+        node.key->getOutput()->reg.isTextureMemoryUnit())
+    {
+        // do not re-order setting of TMU registers (addresses) before semaphore access
+        auto& otherNode = graph.assertNode(lastSemaphoreAccess);
+        addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
+    }
+    if(lastMemFence && node.key->hasValueType(ValueType::REGISTER) && node.key->getOutput()->reg.isTextureMemoryUnit())
+    {
+        // do not re-order setting of TMU registers (addresses) before memory locks
+        auto& otherNode = graph.assertNode(lastMemFence);
         addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
     }
     // TMU seems to need 9 cycles to load from cache and (additional?) 20 to load from memory
@@ -632,14 +707,6 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
     PROFILE_START(createDependencyGraph);
     std::unique_ptr<DependencyGraph> graph(new DependencyGraph());
 
-    /*
-     * TODO do we really need these types of dependencies??
-     *
-     * conditional <- set-flags (setting of flags depends on previous conditional, if any)
-     * mutex unlock <- mutex lock
-     *
-     * These prevent the whole mutex-blocks to be re-ordered
-     */
     const intermediate::IntermediateInstruction* lastSettingOfFlags = nullptr;
     const intermediate::IntermediateInstruction* lastConditional = nullptr;
     const intermediate::IntermediateInstruction* lastTriggerOfR4 = nullptr;
@@ -667,11 +734,11 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
     const intermediate::IntermediateInstruction* lastReadOfR5 = nullptr;
     const intermediate::IntermediateInstruction* lastHostInterrupt = nullptr;
     const intermediate::IntermediateInstruction* lastProgramEnd = nullptr;
+    const intermediate::IntermediateInstruction* lastMemFence = nullptr;
     FastMap<const Local*, const intermediate::IntermediateInstruction*> lastLocalWrites;
     FastMap<const Local*, const intermediate::IntermediateInstruction*> lastLocalReads;
     // TODO "normal" register dependencies?
-    // TODO check also limitations/barriers from Reordering
-    // TODO any memory access depends on semaphores and memory barriers, and the other way round (no reordering)
+    // TODO check also limitations/barriers from Reordering and nomaddo's PR
 
     auto it = block.begin();
     while(!it.isEndOfBlock())
@@ -688,16 +755,17 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
         createFlagDependencies(*graph.get(), node, lastSettingOfFlags, lastConditional);
         createR4Dependencies(*graph.get(), node, lastTriggerOfR4, lastReadOfR4);
         createR5Dependencies(*graph.get(), node, lastWriteOfR5, lastReadOfR5);
-        createMutexDependencies(*graph.get(), node, lastMutexLock, lastMutexUnlock, lastInstruction);
-        createSemaphoreDepencies(*graph.get(), node, lastSemaphoreAccess);
+        createMutexDependencies(
+            *graph.get(), node, lastMutexLock, lastMutexUnlock, lastInstruction, lastSemaphoreAccess, lastMemFence);
+        createSemaphoreDepencies(*graph.get(), node, lastSemaphoreAccess, lastMemFence, lastMutexUnlock, lastReadOfR4);
         createUniformDependencies(*graph.get(), node, lastWriteOfUniformAddress, lastReadOfUniform);
         createReplicationDependencies(*graph.get(), node, lastReplicationWrite, lastReplicationRead);
         createVPMSetupDependencies(*graph.get(), node, lastVPMWriteSetup, lastVPMReadSetup);
         createVPMIODependencies(*graph.get(), node, lastVPMWrite, lastVPMRead);
         createVPMAddressDependencies(*graph.get(), node, lastVPMWriteAddress, lastVPMReadAddress);
         createVPMWaitDependencies(*graph.get(), node, lastVPMWriteWait, lastVPMReadWait);
-        createTMUCoordinateDependencies(
-            *graph.get(), node, lastTMU0CoordsWrite, lastTMU1CoordsWrite, lastTMUNoswapWrite);
+        createTMUCoordinateDependencies(*graph.get(), node, lastTMU0CoordsWrite, lastTMU1CoordsWrite,
+            lastTMUNoswapWrite, lastSemaphoreAccess, lastMemFence);
         createThreadEndDependencies(*graph.get(), node, lastHostInterrupt, lastProgramEnd);
         if(it.has<intermediate::Branch>())
         {
@@ -787,6 +855,8 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
             lastHostInterrupt = it.get();
         if(it->signal == SIGNAL_END_PROGRAM)
             lastProgramEnd = it.get();
+        if(it.has<intermediate::MemoryBarrier>())
+            lastMemFence = it.get();
         lastInstruction = it.get();
         it.nextInBlock();
     }

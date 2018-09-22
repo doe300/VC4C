@@ -124,7 +124,7 @@ namespace vc4c
             void setTMURegisterR(uint8_t tmu, const Value& val);
             void setTMURegisterB(uint8_t tmu, const Value& val);
 
-            void triggerTMURead(uint8_t tmu);
+            bool triggerTMURead(uint8_t tmu);
 
         private:
             QPU& qpu;

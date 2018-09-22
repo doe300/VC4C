@@ -393,6 +393,7 @@ InstructionWalker optimizations::moveRotationSourcesToAccumulators(
             // insert mapper before first NOP
             while(mapper.copy().previousInBlock().has<Nop>())
                 mapper.previousInBlock();
+            // TODO no need for the nop if there is another instruction before the rotation not writing the local
             logging::debug() << "Moving source of vector-rotation to temporary for: " << it->to_string()
                              << logging::endl;
             const Value tmp = method.addNewLocal(loc->type, "%vector_rotation");

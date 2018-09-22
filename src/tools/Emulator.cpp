@@ -452,7 +452,7 @@ std::pair<Value, bool> TMUs::readTMU()
 
     auto front = queue->front();
     queue->pop();
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 60, "TMU read", 1);
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 68, "TMU read", 1);
     return std::make_pair(front.first, true);
 }
 
@@ -504,7 +504,7 @@ void TMUs::setTMURegisterB(uint8_t tmu, const Value& val)
     throw CompilationError(CompilationStep::GENERAL, "Image reads via TMU are currently not supported!");
 }
 
-void TMUs::triggerTMURead(uint8_t tmu)
+bool TMUs::triggerTMURead(uint8_t tmu)
 {
     tmu = toRealTMU(tmu);
 
@@ -517,10 +517,10 @@ void TMUs::triggerTMURead(uint8_t tmu)
         throw CompilationError(CompilationStep::GENERAL, "TMU response queue is full!");
 
     auto val = requestQueue.front();
-    // TODO check for delays
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 65, "TMU read trigger", val.second + 9 <= qpu.getCurrentCycle());
     if(val.second + 9 > qpu.getCurrentCycle())
-        logging::debug() << "Reading from TMU needs at least 9 instructions, delays will be introduced"
-                         << logging::endl;
+        // block for at least 9 cycles
+        return false;
     else if(val.second + 20 > qpu.getCurrentCycle())
         // blocks up to 20 cycles when reading from RAM
         logging::debug() << "Distance between triggering of TMU read and read is "
@@ -528,6 +528,7 @@ void TMUs::triggerTMURead(uint8_t tmu)
                          << logging::endl;
     requestQueue.pop();
     responseQueue.push(std::make_pair(val.first, qpu.getCurrentCycle()));
+    return true;
 }
 
 void TMUs::checkTMUWriteCycle() const
@@ -1054,101 +1055,105 @@ bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iter
     logging::info() << "QPU " << static_cast<unsigned>(ID) << " (0x" << std::hex << pc << std::dec
                     << "): " << inst->toASMString() << logging::endl;
     ProgramCounter nextPC = pc;
-    if(dynamic_cast<const qpu_asm::ALUInstruction*>(inst) != nullptr)
+    if(inst->getSig() == SIGNAL_END_PROGRAM)
+        // end program
+        return false;
+    if(inst->getSig() == SIGNAL_NONE || executeSignal(inst->getSig()))
     {
-        if(executeALU(dynamic_cast<const qpu_asm::ALUInstruction*>(inst)))
-            ++nextPC;
-        // otherwise the execution stalled and the PC stays the same
-    }
-    else if(dynamic_cast<const qpu_asm::BranchInstruction*>(inst) != nullptr)
-    {
-        const auto br = dynamic_cast<const qpu_asm::BranchInstruction*>(inst);
-        if(isConditionMet(br->getBranchCondition()))
+        if(dynamic_cast<const qpu_asm::ALUInstruction*>(inst) != nullptr)
         {
-            ++instrumentation[inst].numBranchTaken;
-            int32_t offset = 4 /* Branch starts at PC + 4 */ +
-                static_cast<int32_t>(br->getImmediate() / sizeof(uint64_t)) /* immediate offset is in bytes */;
-            if(br->getAddRegister() == BranchReg::BRANCH_REG || br->getBranchRelative() == BranchRel::BRANCH_ABSOLUTE)
-                throw CompilationError(
-                    CompilationStep::GENERAL, "This kind of branch is not yet implemented", br->toASMString(false));
-            nextPC += offset;
+            if(executeALU(dynamic_cast<const qpu_asm::ALUInstruction*>(inst)))
+                ++nextPC;
+            // otherwise the execution stalled and the PC stays the same
+        }
+        else if(dynamic_cast<const qpu_asm::BranchInstruction*>(inst) != nullptr)
+        {
+            const auto br = dynamic_cast<const qpu_asm::BranchInstruction*>(inst);
+            if(isConditionMet(br->getBranchCondition()))
+            {
+                ++instrumentation[inst].numBranchTaken;
+                int32_t offset = 4 /* Branch starts at PC + 4 */ +
+                    static_cast<int32_t>(br->getImmediate() / sizeof(uint64_t)) /* immediate offset is in bytes */;
+                if(br->getAddRegister() == BranchReg::BRANCH_REG ||
+                    br->getBranchRelative() == BranchRel::BRANCH_ABSOLUTE)
+                    throw CompilationError(
+                        CompilationStep::GENERAL, "This kind of branch is not yet implemented", br->toASMString(false));
+                nextPC += offset;
 
-            // see Broadcom specification, page 34
-            registers.writeRegister(toRegister(br->getAddOut(), br->getWriteSwap() == WriteSwap::SWAP),
-                Value(Literal(pc + 4), TYPE_INT32), std::bitset<16>(0xFFFF));
-            registers.writeRegister(toRegister(br->getMulOut(), br->getWriteSwap() == WriteSwap::DONT_SWAP),
-                Value(Literal(pc + 4), TYPE_INT32), std::bitset<16>(0xFFFF));
+                // see Broadcom specification, page 34
+                registers.writeRegister(toRegister(br->getAddOut(), br->getWriteSwap() == WriteSwap::SWAP),
+                    Value(Literal(pc + 4), TYPE_INT32), std::bitset<16>(0xFFFF));
+                registers.writeRegister(toRegister(br->getMulOut(), br->getWriteSwap() == WriteSwap::DONT_SWAP),
+                    Value(Literal(pc + 4), TYPE_INT32), std::bitset<16>(0xFFFF));
+            }
+            else
+                // simply skip to next PC
+                ++nextPC;
+            PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 160, "branches taken",
+                isConditionMet(br->getBranchCondition()) ? 1 : 0);
         }
-        else
-            // simply skip to next PC
-            ++nextPC;
-        PROFILE_COUNTER(
-            vc4c::profiler::COUNTER_EMULATOR + 160, "branches taken", isConditionMet(br->getBranchCondition()) ? 1 : 0);
-    }
-    else if(dynamic_cast<const qpu_asm::LoadInstruction*>(inst) != nullptr)
-    {
-        const auto load = dynamic_cast<const qpu_asm::LoadInstruction*>(inst);
-        auto type = load->getType();
-        Value imm = Value(Literal(load->getImmediateInt()), TYPE_INT32);
-        switch(type)
+        else if(dynamic_cast<const qpu_asm::LoadInstruction*>(inst) != nullptr)
         {
-        case OpLoad::LOAD_IMM_32:
-            imm = load->getPack().pack(imm).value();
-            break;
-        case OpLoad::LOAD_SIGNED:
-            imm = Value(ContainerValue(toLoadedValues(
-                            imm.getLiteralValue()->unsignedInt(), vc4c::intermediate::LoadType::PER_ELEMENT_SIGNED)),
-                imm.type.toVectorType(16));
-            break;
-        case OpLoad::LOAD_UNSIGNED:
-            imm = Value(ContainerValue(toLoadedValues(
-                            imm.getLiteralValue()->unsignedInt(), vc4c::intermediate::LoadType::PER_ELEMENT_UNSIGNED)),
-                imm.type.toVectorType(16));
-            break;
-        }
+            const auto load = dynamic_cast<const qpu_asm::LoadInstruction*>(inst);
+            auto type = load->getType();
+            Value imm = Value(Literal(load->getImmediateInt()), TYPE_INT32);
+            switch(type)
+            {
+            case OpLoad::LOAD_IMM_32:
+                imm = load->getPack().pack(imm).value();
+                break;
+            case OpLoad::LOAD_SIGNED:
+                imm = Value(ContainerValue(toLoadedValues(imm.getLiteralValue()->unsignedInt(),
+                                vc4c::intermediate::LoadType::PER_ELEMENT_SIGNED)),
+                    imm.type.toVectorType(16));
+                break;
+            case OpLoad::LOAD_UNSIGNED:
+                imm = Value(ContainerValue(toLoadedValues(imm.getLiteralValue()->unsignedInt(),
+                                vc4c::intermediate::LoadType::PER_ELEMENT_UNSIGNED)),
+                    imm.type.toVectorType(16));
+                break;
+            }
 
-        if(load->getSetFlag() == SetFlag::SET_FLAGS)
-            setFlags(imm, load->getAddCondition() != COND_NEVER ? load->getAddCondition() : load->getMulCondition());
-        writeConditional(
-            toRegister(load->getAddOut(), load->getWriteSwap() == WriteSwap::SWAP), imm, load->getAddCondition());
-        writeConditional(
-            toRegister(load->getMulOut(), load->getWriteSwap() == WriteSwap::DONT_SWAP), imm, load->getMulCondition());
-        ++nextPC;
-    }
-    else if(dynamic_cast<const qpu_asm::SemaphoreInstruction*>(inst) != nullptr)
-    {
-        const auto semaphore = dynamic_cast<const qpu_asm::SemaphoreInstruction*>(inst);
-        bool dontStall = true;
-        Value result = UNDEFINED_VALUE;
-        if(semaphore->getIncrementSemaphore())
-            std::tie(result, dontStall) = semaphores.increment(static_cast<uint8_t>(semaphore->getSemaphore()));
-        else
-            std::tie(result, dontStall) = semaphores.decrement(static_cast<uint8_t>(semaphore->getSemaphore()));
-        if(dontStall)
-        {
-            result = semaphore->getPack().pack(result).value();
-            if(semaphore->getSetFlag() == SetFlag::SET_FLAGS)
-                setFlags(result,
-                    semaphore->getAddCondition() != COND_NEVER ? semaphore->getAddCondition() :
-                                                                 semaphore->getMulCondition());
-            writeConditional(toRegister(semaphore->getAddOut(), semaphore->getWriteSwap() == WriteSwap::SWAP), result,
-                semaphore->getAddCondition());
-            writeConditional(toRegister(semaphore->getMulOut(), semaphore->getWriteSwap() == WriteSwap::DONT_SWAP),
-                result, semaphore->getMulCondition());
+            if(load->getSetFlag() == SetFlag::SET_FLAGS)
+                setFlags(
+                    imm, load->getAddCondition() != COND_NEVER ? load->getAddCondition() : load->getMulCondition());
+            writeConditional(
+                toRegister(load->getAddOut(), load->getWriteSwap() == WriteSwap::SWAP), imm, load->getAddCondition());
+            writeConditional(toRegister(load->getMulOut(), load->getWriteSwap() == WriteSwap::DONT_SWAP), imm,
+                load->getMulCondition());
             ++nextPC;
         }
+        else if(dynamic_cast<const qpu_asm::SemaphoreInstruction*>(inst) != nullptr)
+        {
+            const auto semaphore = dynamic_cast<const qpu_asm::SemaphoreInstruction*>(inst);
+            bool dontStall = true;
+            Value result = UNDEFINED_VALUE;
+            if(semaphore->getIncrementSemaphore())
+                std::tie(result, dontStall) = semaphores.increment(static_cast<uint8_t>(semaphore->getSemaphore()));
+            else
+                std::tie(result, dontStall) = semaphores.decrement(static_cast<uint8_t>(semaphore->getSemaphore()));
+            if(dontStall)
+            {
+                result = semaphore->getPack().pack(result).value();
+                if(semaphore->getSetFlag() == SetFlag::SET_FLAGS)
+                    setFlags(result,
+                        semaphore->getAddCondition() != COND_NEVER ? semaphore->getAddCondition() :
+                                                                     semaphore->getMulCondition());
+                writeConditional(toRegister(semaphore->getAddOut(), semaphore->getWriteSwap() == WriteSwap::SWAP),
+                    result, semaphore->getAddCondition());
+                writeConditional(toRegister(semaphore->getMulOut(), semaphore->getWriteSwap() == WriteSwap::DONT_SWAP),
+                    result, semaphore->getMulCondition());
+                ++nextPC;
+            }
+            else
+                ++instrumentation[inst].numStalls;
+        }
         else
-            ++instrumentation[inst].numStalls;
+            throw CompilationError(CompilationStep::GENERAL, "Invalid assembler instruction", inst->toASMString());
     }
-    else
-        throw CompilationError(CompilationStep::GENERAL, "Invalid assembler instruction", inst->toASMString());
 
     // clear cache for registers already read this instruction
     registers.clearReadCache();
-
-    if(!executeSignal(inst->getSig()))
-        // end program
-        return false;
 
     ++currentCycle;
     pc = nextPC;
@@ -1504,12 +1509,9 @@ bool QPU::executeSignal(Signaling signal)
         // ignore
         return true;
     if(signal == SIGNAL_LOAD_TMU0)
-        // TODO insert delays here!
-        tmus.triggerTMURead(0);
+        return tmus.triggerTMURead(0);
     else if(signal == SIGNAL_LOAD_TMU1)
-        tmus.triggerTMURead(1);
-    else if(signal == SIGNAL_END_PROGRAM)
-        return false;
+        return tmus.triggerTMURead(1);
     else
         throw CompilationError(CompilationStep::GENERAL, "Unhandled signal", signal.to_string());
 

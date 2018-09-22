@@ -865,8 +865,6 @@ static InstructionWalker mapToVPMMemoryAccessInstructions(
     {
     case MemoryOperation::COPY:
     {
-        // TODO copy RAM <-> RAM, RAM <-> VPM
-        // TODO heed stack offset for VPM mapped stack elements!
         if(!mem->getNumEntries().isLiteralValue())
             throw CompilationError(CompilationStep::OPTIMIZER,
                 "Copying dynamically sized memory is not yet implemented", mem->to_string());
@@ -876,6 +874,7 @@ static InstructionWalker mapToVPMMemoryAccessInstructions(
             throw CompilationError(CompilationStep::OPTIMIZER, "Cannot copy more than 4GB of data", mem->to_string());
         if(sourceArea != nullptr || destArea != nullptr)
         {
+            // TODO heed stack offset for VPM mapped stack elements!
             throw CompilationError(
                 CompilationStep::OPTIMIZER, "Copying from/to VPM cached data is not yet implemented", mem->to_string());
         }
