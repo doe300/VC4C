@@ -213,6 +213,14 @@ namespace vc4c
         BasicBlock& createAndInsertNewBlock(BasicBlockList::iterator position, const std::string& labelName);
 
         /*
+         * Returns the number of blocks in this method
+         */
+        std::size_t size() const
+        {
+            return basicBlocks.size();
+        }
+
+        /*
          * Inserts the given label at the position and returns a iterator to it.
          *
          * This function splits the current basic block, moving all following instructions to the newly created basic

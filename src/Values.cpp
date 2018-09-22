@@ -596,7 +596,7 @@ bool Value::hasLocal(const Local* local) const
 
 bool Value::hasRegister(const Register& reg) const
 {
-    return hasType(ValueType::REGISTER) && this->reg == reg;
+    return valueType == ValueType::REGISTER && this->reg == reg;
 }
 
 bool Value::hasLiteral(const Literal& lit) const

@@ -233,7 +233,7 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
         extendBoundaries(static_cast<int64_t>(1), static_cast<int64_t>(3));
     }
     // loading of immediates/literals
-    else if(constant.ifPresent(toFunction(&Value::isLiteralValue)))
+    else if(constant && constant->isLiteralValue())
     {
         if(constant->type.isFloatingType())
             extendBoundaries(constant->getLiteralValue()->real(), constant->getLiteralValue()->real());
@@ -434,13 +434,13 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
 
         if(it->hasDecoration(InstructionDecorations::UNSIGNED_RESULT) && !it->getOutput()->type.isFloatingType())
         {
-            if(minVal.ifPresent(toFunction(&Value::isLiteralValue)))
+            if(minVal && minVal->isLiteralValue())
                 minVal = Value(Literal(std::max(minVal->getLiteralValue()->signedInt(), 0)), minVal->type);
-            if(maxVal.ifPresent(toFunction(&Value::isLiteralValue)))
+            if(maxVal && maxVal->isLiteralValue())
                 maxVal = Value(Literal(std::max(maxVal->getLiteralValue()->signedInt(), 0)), minVal->type);
         }
 
-        if(minVal.ifPresent(toFunction(&Value::isLiteralValue)) && maxVal.ifPresent(toFunction(&Value::isLiteralValue)))
+        if(minVal && minVal->isLiteralValue() && maxVal && maxVal->isLiteralValue())
         {
             if(it->getOutput()->type.isFloatingType())
                 extendBoundaries(minVal->getLiteralValue()->real(), maxVal->getLiteralValue()->real());

@@ -191,6 +191,9 @@ namespace vc4c
     {
     public:
         static std::unique_ptr<DependencyGraph> createGraph(const BasicBlock& block);
+
+    private:
+        explicit DependencyGraph(std::size_t numInstructions) : Graph(numInstructions) {}
     };
 }
 

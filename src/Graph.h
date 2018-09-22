@@ -533,7 +533,12 @@ namespace vc4c
         using RelationType = typename NodeType::RelationType;
         using EdgeType = typename NodeType::EdgeType;
 
-        explicit Graph() = default;
+        explicit Graph(std::size_t numNodes = 0)
+        {
+            nodes.reserve(numNodes);
+            // it is safe to assume we have at least 1 edge per node
+            edges.reserve(numNodes);
+        };
         Graph(const Graph&) = delete;
         Graph(Graph&&) noexcept = delete;
 

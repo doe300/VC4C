@@ -97,6 +97,7 @@ namespace vc4c
         void dumpGraph(const std::string& path) const;
 
     private:
+        explicit ControlFlowGraph(std::size_t numBlocks) : Graph(numBlocks) {}
         /*
          * This is a modified version of the Tarjan's Algorithm to find strongly connected components taken from
          * https://www.geeksforgeeks.org/tarjan-algorithm-find-strongly-connected-components/

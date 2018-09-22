@@ -60,6 +60,8 @@ namespace vc4c
     template <typename T>
     class PerformanceList<T, AccessType::RANDOM_ACCESS, InsertRemoveType::END> : public std::vector<T>
     {
+    public:
+        explicit PerformanceList(std::size_t numEntries = 0) : std::vector<T>(numEntries) {}
     };
     template <typename T>
     class PerformanceList<T, AccessType::SEQUENTIAL, InsertRemoveType::ARBITRARY_POSITION> : public std::list<T>
@@ -73,6 +75,8 @@ namespace vc4c
     template <typename T, typename H>
     class PerformanceSet<T, OrderType::ORDERED, H> : public std::set<T, H>
     {
+    public:
+        explicit PerformanceSet(const H& comparison = {}) : std::set<T, H>(comparison) {}
     };
 
     template <typename K, typename V, typename C>
@@ -83,6 +87,8 @@ namespace vc4c
     template <typename K, typename V, typename C>
     class PerformanceMap<K, V, OrderType::ORDERED, C> : public std::map<K, V, C>
     {
+    public:
+        explicit PerformanceMap(const C& comparison = {}) : std::map<K, V, C>(comparison) {}
     };
 
     ////

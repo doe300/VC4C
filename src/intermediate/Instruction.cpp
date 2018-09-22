@@ -431,7 +431,7 @@ bool IntermediateInstruction::readsRegister(const Register& reg) const
 
 bool IntermediateInstruction::writesRegister(const Register& reg) const
 {
-    return output.ifPresent(toFunction(&Value::hasRegister, reg));
+    return output && output->hasRegister(reg);
 }
 
 bool IntermediateInstruction::readsLiteral() const

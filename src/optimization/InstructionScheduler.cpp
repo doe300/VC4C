@@ -48,9 +48,9 @@ struct NodeSorter : public std::less<intermediate::IntermediateInstruction*>
             priority += 30;
 
         // Increasing semaphores gets higher priority, decreasing it lower to reduce stall time
-        if(dynamic_cast<const intermediate::SemaphoreAdjustment*>(inst))
+        auto semaphore = dynamic_cast<const intermediate::SemaphoreAdjustment*>(inst);
+        if(semaphore)
         {
-            auto semaphore = dynamic_cast<const intermediate::SemaphoreAdjustment*>(inst);
             if(semaphore->increase)
                 priority += 20;
             else
@@ -88,13 +88,31 @@ struct NodeSorter : public std::less<intermediate::IntermediateInstruction*>
         return -priority;
     }
 
-    bool operator()(intermediate::IntermediateInstruction* x, intermediate::IntermediateInstruction* y) const
+    bool operator()(intermediate::IntermediateInstruction* x, intermediate::IntermediateInstruction* y)
     {
-        int prioX = ratePriority(x);
-        int prioY = ratePriority(y);
+        int prioX;
+        auto it = priorities.find(x);
+        if(it != priorities.end())
+            prioX = it->second;
+        else
+            prioX = priorities[x] = ratePriority(x);
+        int prioY;
+        it = priorities.find(y);
+        if(it != priorities.end())
+            prioY = it->second;
+        else
+            prioY = priorities[y] = ratePriority(y);
         if(prioX == prioY)
             return x < y;
         return prioX < prioY;
+    }
+
+    // caches priorities per instruction, so we do not have to re-calculate them
+    FastMap<intermediate::IntermediateInstruction*, int> priorities;
+
+    explicit NodeSorter(std::size_t numEntries)
+    {
+        priorities.reserve(numEntries);
     }
 };
 
@@ -260,7 +278,7 @@ static void selectInstructions(DependencyGraph& graph, BasicBlock& block, const 
 {
     // 1. "empty" basic block without deleting the instructions, skipping the label
     auto it = block.begin().nextInBlock();
-    OpenSet openNodes;
+    OpenSet openNodes(NodeSorter(block.size()));
     while(!it.isEndOfBlock())
     {
         if(!(it.has<intermediate::Nop>() && !it->hasSideEffects() &&

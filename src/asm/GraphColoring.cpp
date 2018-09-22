@@ -1033,6 +1033,7 @@ FastMap<const Local*, Register> GraphColoring::toRegisterMap() const
     }
 
     UnorderedMap<const Local*, Register> result;
+    result.reserve(graph.getNodes().size());
 
     for(const auto& pair : graph.getNodes())
     {

@@ -52,7 +52,7 @@ static BaseAndOffset findOffset(const Value& val)
     if(writer != nullptr)
     {
         const Optional<Value> offset = writer->precalculate(8);
-        if(offset.ifPresent(toFunction(&Value::isLiteralValue)))
+        if(offset && offset->isLiteralValue())
         {
             return BaseAndOffset(NO_VALUE, offset->getLiteralValue()->signedInt());
         }

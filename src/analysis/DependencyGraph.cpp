@@ -705,7 +705,7 @@ static void createThreadEndDependencies(DependencyGraph& graph, DependencyNode& 
 std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& block)
 {
     PROFILE_START(createDependencyGraph);
-    std::unique_ptr<DependencyGraph> graph(new DependencyGraph());
+    std::unique_ptr<DependencyGraph> graph(new DependencyGraph(block.size()));
 
     const intermediate::IntermediateInstruction* lastSettingOfFlags = nullptr;
     const intermediate::IntermediateInstruction* lastConditional = nullptr;

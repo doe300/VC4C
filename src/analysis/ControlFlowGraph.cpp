@@ -247,7 +247,7 @@ void ControlFlowGraph::dumpGraph(const std::string& path) const
 std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
 {
     PROFILE_START(createCFG);
-    std::unique_ptr<ControlFlowGraph> graph(new ControlFlowGraph());
+    std::unique_ptr<ControlFlowGraph> graph(new ControlFlowGraph(method.size()));
 
     for(BasicBlock& bb : method)
     {

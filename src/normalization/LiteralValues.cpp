@@ -20,6 +20,7 @@ using namespace vc4c::normalization;
 static Optional<Value> getMostCommonElement(const std::vector<Value>& container)
 {
     FastMap<Value, unsigned> histogram;
+    histogram.reserve(container.size());
     for(const auto& val : container)
     {
         ++histogram[val];

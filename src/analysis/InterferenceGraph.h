@@ -52,6 +52,9 @@ namespace vc4c
             FastSet<InterferenceNode*> findOverfullNodes(std::size_t numNeighbors);
 
             static std::unique_ptr<InterferenceGraph> createGraph(Method& method);
+
+        private:
+            explicit InterferenceGraph(std::size_t numLocals) : Graph(numLocals) {}
         };
     } /* namespace analysis */
 } /* namespace vc4c */

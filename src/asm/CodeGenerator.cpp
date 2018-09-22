@@ -28,6 +28,7 @@ static FastMap<const Local*, std::size_t> mapLabels(Method& method)
 {
     logging::debug() << "-----" << logging::endl;
     FastMap<const Local*, std::size_t> labelsMap;
+    labelsMap.reserve(method.size());
     // index is in bytes, so an increment of 1 instructions, increments by 8 bytes
     std::size_t index = 0;
     auto it = method.walkAllInstructions();

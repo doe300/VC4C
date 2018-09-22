@@ -31,7 +31,7 @@ FastSet<InterferenceNode*> InterferenceGraph::findOverfullNodes(std::size_t numN
 std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(Method& method)
 {
     PROFILE_START(createInterferenceGraph);
-    std::unique_ptr<InterferenceGraph> graph(new InterferenceGraph());
+    std::unique_ptr<InterferenceGraph> graph(new InterferenceGraph(method.getNumLocals()));
 
     FastMap<BasicBlock*, LivenessAnalysis> livenesses;
     livenesses.reserve(method.getCFG().getNodes().size());

@@ -141,7 +141,7 @@ struct LoopControl
         const intermediate::Operation* op = iterationStep->get<const intermediate::Operation>();
         if(op->getArguments().size() != 2)
             return {};
-        if(op->getArgument(0).ifPresent(toFunction(&Value::isLiteralValue)))
+        if(op->getArgument(0) && op->assertArgument(0).isLiteralValue())
             return op->assertArgument(0).getLiteralValue();
         return op->assertArgument(1).getLiteralValue();
     }
@@ -200,7 +200,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
             if(pair.second.writesLocal() && inst->hasDecoration(intermediate::InstructionDecorations::PHI_NODE) && !it)
             {
                 auto tmp = inst->precalculate(4);
-                if(tmp.ifPresent(toFunction(&Value::isLiteralValue)))
+                if(tmp && tmp->isLiteralValue())
                 {
                     logging::debug() << "Found lower bound: " << tmp->to_string() << logging::endl;
                     loopControl.initialization = const_cast<intermediate::IntermediateInstruction*>(inst);
@@ -329,7 +329,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                 if(loopControl.terminatingValue.getSingleWriter() != nullptr)
                 {
                     auto tmp = loopControl.terminatingValue.getSingleWriter()->precalculate(4);
-                    if(tmp.ifPresent(toFunction(&Value::isLiteralValue)))
+                    if(tmp && tmp->isLiteralValue())
                         loopControl.terminatingValue = tmp.value();
                 }
                 logging::debug() << "Found upper bound: " << loopControl.terminatingValue.to_string() << logging::endl;
