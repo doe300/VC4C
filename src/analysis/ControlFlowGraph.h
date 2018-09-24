@@ -56,7 +56,7 @@ namespace vc4c
      */
     struct ControlFlowLoop : public FastAccessList<const CFGNode*>
     {
-        ControlFlowLoop(unsigned id) : id(id) {}
+        ControlFlowLoop() {}
 
         /*
          * Returns the basic-block in the CFG preceding the first node in the loop, the node from which the loop is
@@ -79,15 +79,6 @@ namespace vc4c
          * Returns whether this loop includes other loop and doesn't equal it.
          */
         bool includes(const ControlFlowLoop& other) const;
-
-        unsigned getID() const
-        {
-            return id;
-        }
-
-    private:
-        // to identify loop at optimizations::removeConstantLoadInLoops
-        unsigned id;
     };
 
     /*
@@ -118,7 +109,7 @@ namespace vc4c
         /*
          * Dump this graph as dot file
          */
-        void dumpGraph(const std::string& path) const;
+        void dumpGraph(const std::string& path, bool dumpInstructions) const;
 
         void updateOnBlockInsertion(Method& method, BasicBlock& newBlock);
         void updateOnBlockRemoval(Method& method, BasicBlock& oldBlock);
@@ -138,15 +129,13 @@ namespace vc4c
          * subtree rooted with current node stack --> To store all the connected ancestors (could be part of SCC)
          */
         ControlFlowLoop findLoopsHelper(const CFGNode* node, FastMap<const CFGNode*, int>& discoveryTimes,
-            FastMap<const CFGNode*, int>& lowestReachable, FastModificationList<const CFGNode*>& stack, int& time,
-            unsigned idBase);
+            FastMap<const CFGNode*, int>& lowestReachable, FastModificationList<const CFGNode*>& stack, int& time);
 
         /*
          * This is similar to findLoopsHelper, but this finds also nested loops excluding one-block-loop.
          */
         FastAccessList<ControlFlowLoop> findLoopsHelperRecursively(const CFGNode* node,
-            FastMap<const CFGNode*, int>& discoveryTimes, RandomModificationList<const CFGNode*>& stack, int& time,
-            unsigned idBase);
+            FastMap<const CFGNode*, int>& discoveryTimes, RandomModificationList<const CFGNode*>& stack, int& time);
 
         /*
          * Creates the CFG from the basic-blocks within the given method

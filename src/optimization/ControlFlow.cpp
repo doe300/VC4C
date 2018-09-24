@@ -1312,23 +1312,6 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     generateStopSegment(method);
 }
 
-// Determine constant instruction, such as
-// * load immediate instruction
-// * instruction whose all arguments are immediate value and which has output without side effect (its result is
-// immediate)
-bool isConstantInstruction(const InstructionWalker& inst)
-{
-    // TODO: Constants like `mul24 r1, 4, elem_num` should be also moved.
-    if(inst.get<LoadImmediate>() != nullptr)
-    {
-        return true;
-    }
-    auto& args = inst->getArguments();
-    return std::all_of(args.begin(), args.end(), [](const Value& arg) { return !arg.isWriteable(); }) &&
-        inst->getOutput().has_value() && !inst->hasSideEffects() && !inst->hasConditionalExecution() &&
-        !inst->hasDecoration(InstructionDecorations::PHI_NODE);
-}
-
 bool optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
 {
     const int moveDepth = config.additionalOptions.moveConstantsDepth;
@@ -1337,7 +1320,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 
     // 1. find loops
     auto& cfg = method.getCFG();
-    cfg.dumpGraph("a.dot");
+    cfg.dumpGraph("before-cfg.dot", true);
     auto loops = cfg.findLoops(true);
 
     // 2. generate inclusion relation of loops as trees
@@ -1476,14 +1459,6 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             auto currentNode = que.front();
             que.pop();
 
-            // move constants
-            // logging::debug() << "current loop : " << currentNode->dumpLabel() << logging::endl;
-            auto targetNode = currentNode->findRoot(moveDepth == -1 ? Optional<int>() : Optional<int>(moveDepth));
-            // logging::debug() << "target loop : " << targetNode->dumpLabel() << logging::endl;
-
-            // to prevent multiple block creation
-            BasicBlock* insertedBlock = nullptr;
-
             for(auto& cfgNode : *currentNode->key)
             {
                 if(currentNode->hasCFGNodeInChildren(cfgNode))
@@ -1497,7 +1472,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 auto block = cfgNode->key;
                 for(auto it = block->walk(); it != block->walkEnd(); it = it.nextInBlock())
                 {
-                    if(isConstantInstruction(it))
+                    if(it->isConstantInstruction())
                     {
                         auto out = it->getOutput().value();
                         if(out.hasType(ValueType::LOCAL))
@@ -1630,6 +1605,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 // insert before 'br' operation
                 auto &targetInst = targetBlock->key->end().previousInBlock();
                 for (auto it : insts->second) {
+
                     targetInst.emplace(it.release());
                     it.erase();
                 }
@@ -1656,9 +1632,6 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                             insertedBlock->getLabel()->getLabel()->name);
                 }
 
-
-                logging::debug()
-                    << "oppaimomimomi====================" << logging::endl;
                 method.dumpInstructions();
             }
 
@@ -1670,12 +1643,15 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
         }
     }
 
+    logging::debug() << "finish processing!!!" << logging::endl;
+    method.dumpInstructions();
+
+    auto& cfg2 = method.getCFG();
+    cfg2.dumpGraph("after-cfg.dot", true);
+
     if(hasChanged)
         // combine the newly reordered (and at one place accumulated) loading instructions
         combineLoadingConstants(module, method, config);
-
-    logging::debug() << "finish processing!!!" << logging::endl;
-    method.dumpInstructions();
 
     return hasChanged;
 }

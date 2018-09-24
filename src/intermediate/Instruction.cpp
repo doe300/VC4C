@@ -458,7 +458,19 @@ bool IntermediateInstruction::replaceValue(const Value& oldValue, const Value& n
     return replaced;
 }
 
-bool IntermediateInstruction::readsRegister(Register reg) const
+bool IntermediateInstruction::isConstantInstruction() const
+{
+    if(dynamic_cast<const LoadImmediate*>(this) != nullptr)
+    {
+        return true;
+    }
+    auto& args = getArguments();
+    return std::all_of(args.begin(), args.end(), [](const Value& arg) { return !arg.isWriteable(); }) &&
+        getOutput().has_value() && !hasSideEffects() && !hasConditionalExecution() &&
+        !hasDecoration(InstructionDecorations::PHI_NODE);
+}
+
+bool IntermediateInstruction::readsRegister(Register& reg) const
 {
     for(const Value& arg : arguments)
         if(arg.hasRegister(reg))
