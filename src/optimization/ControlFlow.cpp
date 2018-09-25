@@ -1319,7 +1319,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 
     // 1. find loops
     auto& cfg = method.getCFG();
-    cfg.dumpGraph("before-removeConstantLoadInLoops.dot", true);
+    // cfg.dumpGraph("before-removeConstantLoadInLoops.dot", true);
     auto loops = cfg.findLoops(true);
 
     // 2. generate inclusion relation of loops as trees
@@ -1512,8 +1512,8 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
         }
     }
 
-    auto& cfg2 = method.getCFG();
-    cfg2.dumpGraph("after-removeConstantLoadInLoops.dot", true);
+    // auto& cfg2 = method.getCFG();
+    // cfg2.dumpGraph("after-removeConstantLoadInLoops.dot", true);
 
     if(hasChanged)
         // combine the newly reordered (and at one place accumulated) loading instructions

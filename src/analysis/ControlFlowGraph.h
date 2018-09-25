@@ -154,7 +154,6 @@ namespace vc4c
 
     struct LoopInclusionTreeNodeBase
     {
-        // LoopInclusionTreeNodeBase(const KeyType key);
         virtual ~LoopInclusionTreeNodeBase() = default;
 
         LoopInclusionTreeNodeBase* findRoot(Optional<int> depth);
