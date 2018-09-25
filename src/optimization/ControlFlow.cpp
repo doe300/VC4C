@@ -1315,12 +1315,11 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
 bool optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
 {
     const int moveDepth = config.additionalOptions.moveConstantsDepth;
-    CPPLOG_LAZY(logging::debug() << "moveConstantsDepth = " << moveDepth << logging::endl);
     bool hasChanged = false;
 
     // 1. find loops
     auto& cfg = method.getCFG();
-    cfg.dumpGraph("before-cfg.dot", true);
+    cfg.dumpGraph("before-removeConstantLoadInLoops.dot", true);
     auto loops = cfg.findLoops(true);
 
     // 2. generate inclusion relation of loops as trees
@@ -1355,26 +1354,14 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             {
                 auto& node1 = inclusionTree.getOrCreateNode(&loop1);
                 auto& node2 = inclusionTree.getOrCreateNode(&loop2);
-                // node1.addEdge(&node2, {});
-                node2.addEdge(&node1, {});
+                node1.addEdge(&node2, {});
             }
         }
-    }
-    logging::debug() << "inclusionTree" << logging::endl;
-    for(auto& loop : inclusionTree.getNodes())
-    {
-        logging::debug() << "  " << loop.second.dumpLabel() << logging::endl;
-        loop.second.forAllOutgoingEdges([](const LoopInclusionTreeNode& child, const LoopInclusionTreeEdge&) -> bool {
-            logging::debug() << "    " << child.dumpLabel() << logging::endl;
-            return true;
-        });
     }
     // Remove extra relations.
     for(auto& loop : loops)
     {
         auto& currentNode = inclusionTree.getOrCreateNode(&loop);
-
-        logging::debug() << "current node: " << currentNode.dumpLabel() << logging::endl;
 
         // Remove parent nodes except node which has longest path to the root node.
         LoopInclusionTreeNodeBase* longestNode = nullptr;
@@ -1382,8 +1369,6 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
         currentNode.forAllIncomingEdges([&](LoopInclusionTreeNode& parent, LoopInclusionTreeEdge&) -> bool {
             auto parentNode = &parent;
             int length = parentNode->longestPathLengthToRoot();
-
-            logging::debug() << "  parent node: " << parentNode->dumpLabel() << " length: " << length << logging::endl;
 
             if(length > longestLength)
             {
@@ -1396,8 +1381,6 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 
         if(longestNode)
         {
-            logging::debug() << "  longest node: " << longestNode->dumpLabel() << logging::endl;
-
             std::vector<LoopInclusionTreeNode*> nonConnectedEdges;
 
             currentNode.forAllIncomingEdges([&](LoopInclusionTreeNode& other, LoopInclusionTreeEdge&) -> bool {
@@ -1413,150 +1396,39 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             for(auto& otherNode : nonConnectedEdges)
             {
                 otherNode->removeAsNeighbor(&currentNode);
-                logging::debug() << "  remove node: " << otherNode->dumpLabel() << logging::endl;
             }
         }
-    }
-
-    logging::debug() << "inclusionTree" << logging::endl;
-    for(auto& loop : inclusionTree.getNodes())
-    {
-        logging::debug() << "  " << loop.second.dumpLabel() << logging::endl;
-
-        loop.second.forAllOutgoingEdges([](const LoopInclusionTreeNode& child, const LoopInclusionTreeEdge&) -> bool {
-            logging::debug() << "    " << child.dumpLabel() << logging::endl;
-            return true;
-        });
     }
 
     // 3. move constant load operations from root of trees
 
     std::map<LoopInclusionTreeNode*, std::vector<InstructionWalker>> instMapper;
-    {
-    std::set<LoopInclusionTreeNode*> processed;
 
     for(auto& loop : inclusionTree.getNodes())
     {
         auto& node = inclusionTree.getOrCreateNode(loop.first);
-        auto root = dynamic_cast<LoopInclusionTreeNode*>(node.findRoot({}));
-        if (root == nullptr) {
-            throw CompilationError(
-                    CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
-        }
-        // logging::debug() << "root block : " << root->dumpLabel() << logging::endl;
-
-        if(processed.find(root) != processed.end())
-            continue;
-        processed.insert(root);
-
-        // BFSで処理するコードは消しておく(処理する順番は関係なくなるので)
-        // process tree nodes with BFS
-        std::queue<LoopInclusionTreeNode*> que;
-        que.push(root);
-
-        auto currentLoops = loops;
-
-        while(!que.empty())
+        for(auto& cfgNode : *node.key)
         {
-            auto currentNode = que.front();
-            que.pop();
-
-            for(auto& cfgNode : *currentNode->key)
+            if(node.hasCFGNodeInChildren(cfgNode))
             {
-                if(currentNode->hasCFGNodeInChildren(cfgNode))
-                {
-                    // treat this node as that it's in child nodes.
-                    logging::debug() << " skip" << logging::endl;
-                    continue;
-                }
-                // logging::debug() << "  current CFG node: " << cfgNode->key->getLabel()->to_string() << logging::endl;
+                // treat this node as that it's in child nodes.
+                continue;
+            }
 
-                auto block = cfgNode->key;
-                for(auto it = block->walk(); it != block->walkEnd(); it = it.nextInBlock())
+            auto block = cfgNode->key;
+            for(auto it = block->walk(); it != block->walkEnd(); it = it.nextInBlock())
+            {
+                if(it->isConstantInstruction())
                 {
-                    if(it->isConstantInstruction())
+                    auto out = it->getOutput().value();
+                    if(out.hasType(ValueType::LOCAL))
                     {
-                        auto out = it->getOutput().value();
-                        if(out.hasType(ValueType::LOCAL))
-                        {
-                            logging::debug() << "  move instruction: " << it.get() << " : " << it->to_string() << logging::endl;
+                        instMapper[&node].push_back(it);
 
-                            instMapper[currentNode].push_back(it);
-
-                            // if(insertedBlock != nullptr)
-                            // {
-                            //     insertedBlock->end().emplace(it.release());
-                            // }
-                            // else
-                            // {
-                            //     auto loopID = reinterpret_cast<LoopInclusionTreeNode*>(targetNode)->key->getID();
-                            //
-                            //     logging::debug() << "currentLoops(" << currentLoops.size() << ")" << logging::endl;
-                            //     for(auto& cl : currentLoops)
-                            //     {
-                            //         auto& cn = inclusionTree.getOrCreateNode(&cl);
-                            //         logging::debug() << "  " << cn.dumpLabel() << " : " << cl.getID() << logging::endl;
-                            //     }
-                            //     auto latestLoop = std::find_if(currentLoops.begin(), currentLoops.end(),
-                            //         [&loopID](const ControlFlowLoop& loop) { return loop.getID() == loopID; });
-                            //
-                            //     if(latestLoop == currentLoops.end())
-                            //         throw CompilationError(
-                            //             CompilationStep::GENERAL, "Cannot find the same loops from latest CFG.");
-                            //
-                            //     auto targetBlock = latestLoop->findPredecessor();
-                            //     if(targetBlock != nullptr)
-                            //     {
-                            //         logging::debug() << "  target block: " << targetBlock->key->getLabel()->to_string()
-                            //                          << logging::endl;
-                            //         // insert before 'br' operation
-                            //         auto targetInst = targetBlock->key->end().previousInBlock();
-                            //         targetInst.emplace(it.release());
-                            //     }
-                            //     else
-                            //     {
-                            //         logging::debug()
-                            //             << "Create a new basic block before the target block" << logging::endl;
-                            //
-                            //         auto headBlock = method.begin();
-                            //
-                            //         // FIXME: fix block insertion location
-                            //         insertedBlock = &method.createAndInsertNewBlock(
-                            //             method.begin(), "%createdByRemoveConstantLoadInLoops");
-                            //         insertedBlock->end().emplace(it.release());
-                            //
-                            //         if(headBlock->getLabel()->getLabel()->name == BasicBlock::DEFAULT_BLOCK)
-                            //         {
-                            //             // swap labels because DEFAULT_BLOCK is treated as head block.
-                            //             headBlock->getLabel()->getLabel()->name.swap(
-                            //                 insertedBlock->getLabel()->getLabel()->name);
-                            //         }
-                            //
-                            //         // reflesh loops to avoid to insert the same block multiply
-                            //         currentLoops = method.getCFG().findLoops(true);
-                            //     }
-                            // }
-                            // it.erase();
-                            hasChanged = true;
-                        }
+                        hasChanged = true;
                     }
                 }
             }
-
-            currentNode->forAllOutgoingEdges(
-                [&](const LoopInclusionTreeNode& child, const LoopInclusionTreeEdge&) -> bool {
-                    que.push(const_cast<LoopInclusionTreeNode*>(&child));
-                    return true;
-                });
-        }
-    }
-    }
-
-    logging::debug() << "instMapper" << logging::endl;
-    for (auto &kv : instMapper) {
-        logging::debug() << kv.first->dumpLabel() << logging::endl;
-        if (kv.second.size() > 0) {
-            logging::debug() << "\t" << kv.second[0].get() << logging::endl;
         }
     }
 
@@ -1585,25 +1457,16 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             auto currentNode = que.front();
             que.pop();
 
-            logging::debug() << "current loop : " << currentNode->dumpLabel() << logging::endl;
             auto targetTreeNode = dynamic_cast<LoopInclusionTreeNode*>(currentNode->findRoot(moveDepth == -1 ? Optional<int>() : Optional<int>(moveDepth - 1)));
             if (targetTreeNode == nullptr) {
                 throw CompilationError(
                         CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
             }
-            logging::debug() << "target loop : " << targetTreeNode->dumpLabel() << logging::endl;
             auto targetLoop = targetTreeNode->key;
-            // {
-            // logging::debug() << "target loop : ";
-            //     for(auto it = targetLoop->rbegin(); it != targetLoop->rend(); ++it)
-            //         logging::debug() << "  " << (*it)->key->getLabel()->to_string() << " -> ";
-            //     logging::debug() << logging::endl;
-            // }
 
             currentNode->forAllOutgoingEdges(
                     [&](const LoopInclusionTreeNode& child, const LoopInclusionTreeEdge&) -> bool {
                     que.push(const_cast<LoopInclusionTreeNode*>(&child));
-                    logging::debug() << "  next loop : " << child.dumpLabel() << logging::endl;
                     return true;
                     });
 
@@ -1617,8 +1480,6 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 
             if(targetBlock != nullptr)
             {
-                logging::debug() << "  target block: " << targetBlock->getLabel()->to_string()
-                    << logging::endl;
                 // insert before 'br' operation
                 auto &targetInst = targetBlock->end().previousInBlock();
                 for (auto it : insts->second) {
@@ -1634,7 +1495,6 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 
                 auto headBlock = method.begin();
 
-                // FIXME: fix block insertion location
                 insertedBlock = &method.createAndInsertNewBlock(
                         method.begin(), "%createdByRemoveConstantLoadInLoops");
                 for (auto it : insts->second) {
@@ -1652,11 +1512,8 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
         }
     }
 
-    logging::debug() << "finish processing!!!" << logging::endl;
-    method.dumpInstructions();
-
     auto& cfg2 = method.getCFG();
-    cfg2.dumpGraph("after-cfg.dot", true);
+    cfg2.dumpGraph("after-removeConstantLoadInLoops.dot", true);
 
     if(hasChanged)
         // combine the newly reordered (and at one place accumulated) loading instructions

@@ -137,30 +137,11 @@ bool ControlFlowLoop::includes(const ControlFlowLoop& other) const
         auto thisItr = std::find_if(
             begin(), end(), [&](const CFGNode* node) { return node->key == otherItr->key; });
         if (thisItr == end()) {
-            return true;
+            return false;
         }
     }
 
-    return false;
-
-    /*
-    auto head = std::find_if(
-        this->begin(), this->end(), [&](const CFGNode* node) { return node->key == (*other.begin())->key; });
-    if(head == this->end())
-    {
-        return false;
-    }
-
-    auto thisItr = head;
-    auto otherItr = other.begin();
-    while(thisItr != this->end() && otherItr != other.end() && (*thisItr)->key == (*otherItr)->key)
-    {
-        ++thisItr;
-        ++otherItr;
-    }
-
-    return otherItr == other.end();
-    */
+    return true;
 }
 
 CFGNode& ControlFlowGraph::getStartOfControlFlow()
@@ -564,8 +545,6 @@ ControlFlowLoop ControlFlowGraph::findLoopsHelper(const CFGNode* node, FastMap<c
 FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoopsHelperRecursively(const CFGNode* node,
     FastMap<const CFGNode*, int>& discoveryTimes, RandomModificationList<const CFGNode*>& stack, int& time)
 {
-    logging::debug() << "node = " << node->key->getLabel()->getLabel()->to_string() << logging::endl;
-
     // Initialize discovery time
     discoveryTimes[node] = ++time;
     stack.push_back(node);
@@ -593,8 +572,7 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoopsHelperRecursively(con
 
             loops.emplace_back(std::move(loop));
         }
-        // If v is not visited yet, then recur for it
-        else if (node != v) /*if(discoveryTimes[v] < discoveryTimes[node])*/
+        else if (node != v)
         {
             auto subLoops = findLoopsHelperRecursively(v, discoveryTimes, stack, time);
             if(subLoops.size() >= 1)
@@ -605,8 +583,6 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoopsHelperRecursively(con
     });
 
     stack.pop_back();
-
-    logging::debug() << "pop: " << node->key->getLabel()->getLabel()->to_string() << logging::endl;
 
     return loops;
 }
@@ -702,9 +678,7 @@ bool LoopInclusionTreeNodeBase::hasCFGNodeInChildren(const CFGNode* node) const
 std::string LoopInclusionTreeNodeBase::dumpLabel() const
 {
     auto* self = castToTreeNode(this);
-    std::stringstream ss;
-    ss << this;
-    return (*self->key->rbegin())->key->getLabel()->to_string() + " @ " + ss.str();
+    return (*self->key->rbegin())->key->getLabel()->to_string();
 }
 
 
