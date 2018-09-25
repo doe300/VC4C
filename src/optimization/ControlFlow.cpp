@@ -1355,7 +1355,8 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             {
                 auto& node1 = inclusionTree.getOrCreateNode(&loop1);
                 auto& node2 = inclusionTree.getOrCreateNode(&loop2);
-                node1.addEdge(&node2, {});
+                // node1.addEdge(&node2, {});
+                node2.addEdge(&node1, {});
             }
         }
     }
@@ -1387,6 +1388,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             if(length > longestLength)
             {
                 longestNode = parentNode;
+                longestLength = length;
             }
 
             return true;
@@ -1590,9 +1592,21 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             }
             logging::debug() << "target loop : " << targetNode->dumpLabel() << logging::endl;
             auto targetLoop = targetNode->key;
+            // {
+            // logging::debug() << "target loop : ";
+            //     for(auto it = targetLoop->rbegin(); it != targetLoop->rend(); ++it)
+            //         logging::debug() << "  " << (*it)->key->getLabel()->to_string() << " -> ";
+            //     logging::debug() << logging::endl;
+            // }
 
+            currentNode->forAllOutgoingEdges(
+                    [&](const LoopInclusionTreeNode& child, const LoopInclusionTreeEdge&) -> bool {
+                    que.push(const_cast<LoopInclusionTreeNode*>(&child));
+                    logging::debug() << "  next loop : " << child.dumpLabel() << logging::endl;
+                    return true;
+                    });
 
-            auto insts = instMapper.find(targetNode);
+            auto insts = instMapper.find(currentNode);
             if (insts == instMapper.end()) {
               continue;
             }
@@ -1631,15 +1645,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                     headBlock->getLabel()->getLabel()->name.swap(
                             insertedBlock->getLabel()->getLabel()->name);
                 }
-
-                method.dumpInstructions();
             }
-
-            currentNode->forAllOutgoingEdges(
-                    [&](const LoopInclusionTreeNode& child, const LoopInclusionTreeEdge&) -> bool {
-                    que.push(const_cast<LoopInclusionTreeNode*>(&child));
-                    return true;
-                    });
         }
     }
 
