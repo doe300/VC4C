@@ -1561,6 +1561,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     }
 
     std::set<LoopInclusionTreeNode*> processed;
+    BasicBlock* insertedBlock = nullptr;
 
     for(auto& loop : inclusionTree.getNodes())
     {
@@ -1585,13 +1586,13 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             que.pop();
 
             logging::debug() << "current loop : " << currentNode->dumpLabel() << logging::endl;
-            auto targetNode = dynamic_cast<LoopInclusionTreeNode*>(currentNode->findRoot(moveDepth == -1 ? Optional<int>() : Optional<int>(moveDepth - 1)));
-            if (targetNode == nullptr) {
+            auto targetTreeNode = dynamic_cast<LoopInclusionTreeNode*>(currentNode->findRoot(moveDepth == -1 ? Optional<int>() : Optional<int>(moveDepth - 1)));
+            if (targetTreeNode == nullptr) {
                 throw CompilationError(
                         CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
             }
-            logging::debug() << "target loop : " << targetNode->dumpLabel() << logging::endl;
-            auto targetLoop = targetNode->key;
+            logging::debug() << "target loop : " << targetTreeNode->dumpLabel() << logging::endl;
+            auto targetLoop = targetTreeNode->key;
             // {
             // logging::debug() << "target loop : ";
             //     for(auto it = targetLoop->rbegin(); it != targetLoop->rend(); ++it)
@@ -1611,13 +1612,15 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
               continue;
             }
 
-            auto targetBlock = targetLoop->findPredecessor();
+            auto targetCFGNode = targetLoop->findPredecessor();
+            auto targetBlock = targetCFGNode != nullptr ? targetCFGNode->key : insertedBlock;
+
             if(targetBlock != nullptr)
             {
-                logging::debug() << "  target block: " << targetBlock->key->getLabel()->to_string()
+                logging::debug() << "  target block: " << targetBlock->getLabel()->to_string()
                     << logging::endl;
                 // insert before 'br' operation
-                auto &targetInst = targetBlock->key->end().previousInBlock();
+                auto &targetInst = targetBlock->end().previousInBlock();
                 for (auto it : insts->second) {
 
                     targetInst.emplace(it.release());
@@ -1632,7 +1635,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 auto headBlock = method.begin();
 
                 // FIXME: fix block insertion location
-                auto insertedBlock = &method.createAndInsertNewBlock(
+                insertedBlock = &method.createAndInsertNewBlock(
                         method.begin(), "%createdByRemoveConstantLoadInLoops");
                 for (auto it : insts->second) {
                     insertedBlock->end().emplace(it.release());
