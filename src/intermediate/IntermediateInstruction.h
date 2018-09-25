@@ -241,7 +241,8 @@ namespace vc4c
 
             /* Determine constant instruction, such as
              * - load immediate instruction
-             * - instruction whose all arguments are immediate value and which has output without side effect (its result is immediate)
+             * - instruction whose all arguments are immediate value and which has output without side effect (its
+             * result is immediate)
              */
             bool isConstantInstruction() const;
 

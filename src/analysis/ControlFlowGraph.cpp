@@ -133,10 +133,11 @@ bool ControlFlowLoop::includes(const ControlFlowLoop& other) const
     if(*this == other)
         return false;
 
-    for (auto otherItr : other) {
-        auto thisItr = std::find_if(
-            begin(), end(), [&](const CFGNode* node) { return node->key == otherItr->key; });
-        if (thisItr == end()) {
+    for(auto otherItr : other)
+    {
+        auto thisItr = std::find_if(begin(), end(), [&](const CFGNode* node) { return node->key == otherItr->key; });
+        if(thisItr == end())
+        {
             return false;
         }
     }
@@ -256,17 +257,19 @@ void ControlFlowGraph::dumpGraph(const std::string& path, bool dumpInstructions)
 #ifdef DEBUG_MODE
     // XXX to be exact, would need bidirectional arrow [dir="both"] for compact loops
     auto nameFunc = [&dumpInstructions](const BasicBlock* bb) -> std::string {
-        if (dumpInstructions) {
+        if(dumpInstructions)
+        {
             std::stringstream ss;
             ss << bb->getLabel()->getLabel()->name << "\\n";
             std::for_each(bb->instructions.begin(), bb->instructions.end(),
-                    [&ss](const std::unique_ptr<intermediate::IntermediateInstruction>& instr) {
+                [&ss](const std::unique_ptr<intermediate::IntermediateInstruction>& instr) {
                     if(instr && instr->isConstantInstruction())
-                    ss << instr->to_string() << "\\l";
-                    });
+                        ss << instr->to_string() << "\\l";
+                });
             return ss.str();
         }
-        else {
+        else
+        {
             return bb->getLabel()->getLabel()->name;
         }
     };
@@ -552,35 +555,35 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoopsHelperRecursively(con
     FastAccessList<ControlFlowLoop> loops;
 
     // Go through all vertices adjacent to this
-    node->forAllOutgoingEdges([this, node, &discoveryTimes, &stack, &time, &loops](
-                                  const CFGNode& next, const CFGEdge& edge) -> bool {
-        const CFGNode* v = &next;
+    node->forAllOutgoingEdges(
+        [this, node, &discoveryTimes, &stack, &time, &loops](const CFGNode& next, const CFGEdge& edge) -> bool {
+            const CFGNode* v = &next;
 
-        // Create a loop including 'v' only of 'v' is still in stack
-        if(std::find(stack.begin(), stack.end(), v) != stack.end() && node != v)
-        {
-            ControlFlowLoop loop;
-            RandomModificationList<const CFGNode*> tempStack = stack;
-
-            while(tempStack.back() != v)
+            // Create a loop including 'v' only of 'v' is still in stack
+            if(std::find(stack.begin(), stack.end(), v) != stack.end() && node != v)
             {
+                ControlFlowLoop loop;
+                RandomModificationList<const CFGNode*> tempStack = stack;
+
+                while(tempStack.back() != v)
+                {
+                    loop.push_back(tempStack.back());
+                    tempStack.pop_back();
+                }
                 loop.push_back(tempStack.back());
                 tempStack.pop_back();
+
+                loops.emplace_back(std::move(loop));
             }
-            loop.push_back(tempStack.back());
-            tempStack.pop_back();
+            else if(node != v)
+            {
+                auto subLoops = findLoopsHelperRecursively(v, discoveryTimes, stack, time);
+                if(subLoops.size() >= 1)
+                    loops.insert(loops.end(), subLoops.begin(), subLoops.end());
+            }
 
-            loops.emplace_back(std::move(loop));
-        }
-        else if (node != v)
-        {
-            auto subLoops = findLoopsHelperRecursively(v, discoveryTimes, stack, time);
-            if(subLoops.size() >= 1)
-                loops.insert(loops.end(), subLoops.begin(), subLoops.end());
-        }
-
-        return true;
-    });
+            return true;
+        });
 
     stack.pop_back();
 
@@ -589,20 +592,22 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoopsHelperRecursively(con
 
 // LoopInclusionTreeNodeBase::LoopInclusionTreeNodeBase(const KeyType key) : Node(key) {}
 
-LoopInclusionTreeNode* castToTreeNode(LoopInclusionTreeNodeBase *base) {
+LoopInclusionTreeNode* castToTreeNode(LoopInclusionTreeNodeBase* base)
+{
     auto* node = dynamic_cast<LoopInclusionTreeNode*>(base);
-    if (node == nullptr) {
-        throw CompilationError(
-                CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
+    if(node == nullptr)
+    {
+        throw CompilationError(CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
     }
     return node;
 }
 
-const LoopInclusionTreeNode* castToTreeNode(const LoopInclusionTreeNodeBase *base) {
+const LoopInclusionTreeNode* castToTreeNode(const LoopInclusionTreeNodeBase* base)
+{
     auto* node = dynamic_cast<const LoopInclusionTreeNode*>(base);
-    if (node == nullptr) {
-        throw CompilationError(
-                CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
+    if(node == nullptr)
+    {
+        throw CompilationError(CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
     }
     return node;
 }
@@ -680,5 +685,3 @@ std::string LoopInclusionTreeNodeBase::dumpLabel() const
     auto* self = castToTreeNode(this);
     return (*self->key->rbegin())->key->getLabel()->to_string();
 }
-
-

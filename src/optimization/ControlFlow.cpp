@@ -1439,9 +1439,9 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     {
         auto& node = inclusionTree.getOrCreateNode(loop.first);
         auto root = dynamic_cast<LoopInclusionTreeNode*>(node.findRoot({}));
-        if (root == nullptr) {
-            throw CompilationError(
-                    CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
+        if(root == nullptr)
+        {
+            throw CompilationError(CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
         }
 
         if(processed.find(root) != processed.end())
@@ -1457,22 +1457,24 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             auto currentNode = que.front();
             que.pop();
 
-            auto targetTreeNode = dynamic_cast<LoopInclusionTreeNode*>(currentNode->findRoot(moveDepth == -1 ? Optional<int>() : Optional<int>(moveDepth - 1)));
-            if (targetTreeNode == nullptr) {
-                throw CompilationError(
-                        CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
+            auto targetTreeNode = dynamic_cast<LoopInclusionTreeNode*>(
+                currentNode->findRoot(moveDepth == -1 ? Optional<int>() : Optional<int>(moveDepth - 1)));
+            if(targetTreeNode == nullptr)
+            {
+                throw CompilationError(CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
             }
             auto targetLoop = targetTreeNode->key;
 
             currentNode->forAllOutgoingEdges(
-                    [&](const LoopInclusionTreeNode& child, const LoopInclusionTreeEdge&) -> bool {
+                [&](const LoopInclusionTreeNode& child, const LoopInclusionTreeEdge&) -> bool {
                     que.push(const_cast<LoopInclusionTreeNode*>(&child));
                     return true;
-                    });
+                });
 
             auto insts = instMapper.find(currentNode);
-            if (insts == instMapper.end()) {
-              continue;
+            if(insts == instMapper.end())
+            {
+                continue;
             }
 
             auto targetCFGNode = targetLoop->findPredecessor();
@@ -1481,23 +1483,22 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             if(targetBlock != nullptr)
             {
                 // insert before 'br' operation
-                auto &targetInst = targetBlock->end().previousInBlock();
-                for (auto it : insts->second) {
-
+                auto& targetInst = targetBlock->end().previousInBlock();
+                for(auto it : insts->second)
+                {
                     targetInst.emplace(it.release());
                     it.erase();
                 }
             }
             else
             {
-                logging::debug()
-                    << "Create a new basic block before the target block" << logging::endl;
+                logging::debug() << "Create a new basic block before the target block" << logging::endl;
 
                 auto headBlock = method.begin();
 
-                insertedBlock = &method.createAndInsertNewBlock(
-                        method.begin(), "%createdByRemoveConstantLoadInLoops");
-                for (auto it : insts->second) {
+                insertedBlock = &method.createAndInsertNewBlock(method.begin(), "%createdByRemoveConstantLoadInLoops");
+                for(auto it : insts->second)
+                {
                     insertedBlock->end().emplace(it.release());
                     it.erase();
                 }
@@ -1505,8 +1506,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 if(headBlock->getLabel()->getLabel()->name == BasicBlock::DEFAULT_BLOCK)
                 {
                     // swap labels because DEFAULT_BLOCK is treated as head block.
-                    headBlock->getLabel()->getLabel()->name.swap(
-                            insertedBlock->getLabel()->getLabel()->name);
+                    headBlock->getLabel()->getLabel()->name.swap(insertedBlock->getLabel()->getLabel()->name);
                 }
             }
         }
