@@ -574,7 +574,7 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
     throw CompilationError(CompilationStep::PARSER, "Unknown LLVM type", std::to_string(type->getTypeID()));
 }
 
-static ParameterDecorations toParameterDecorations(const llvm::Argument& arg)
+static ParameterDecorations toParameterDecorations(const llvm::Argument& arg, const DataType& type)
 {
     ParameterDecorations deco = ParameterDecorations::NONE;
     if(arg.hasSExtAttr())
@@ -585,6 +585,14 @@ static ParameterDecorations toParameterDecorations(const llvm::Argument& arg)
         deco = add_flag(deco, ParameterDecorations::RESTRICT);
     if(arg.onlyReadsMemory())
         deco = add_flag(deco, ParameterDecorations::READ_ONLY);
+    if(type.getImageType())
+    {
+        const llvm::StructType* str = llvm::cast<const llvm::StructType>(arg.getType()->getPointerElementType());
+        if(str->getName().find("ro_t") != std::string::npos)
+            deco = add_flag(add_flag(deco, ParameterDecorations::READ_ONLY), ParameterDecorations::INPUT);
+        else if(str->getName().find("wo_t") != std::string::npos)
+            deco = add_flag(deco, ParameterDecorations::OUTPUT);
+    }
     if(arg.hasByValOrInAllocaAttr())
     {
         dumpLLVM(&arg);
@@ -628,10 +636,11 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
     for(const llvm::Argument& arg : func.getArgumentList())
 #endif
     {
+        auto type = toDataType(arg.getType());
         method->parameters.emplace_back(
-            Parameter(toParameterName(arg, paramCounter), toDataType(arg.getType()), toParameterDecorations(arg)));
+            Parameter(toParameterName(arg, paramCounter), type, toParameterDecorations(arg, type)));
         logging::debug() << "Reading parameter " << method->parameters.back().to_string() << logging::endl;
-        if(method->parameters.back().type.getImageType())
+        if(method->parameters.back().type.getImageType() && func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)
             intermediate::reserveImageConfiguration(module, method->parameters.back());
         localMap[&arg] = &method->parameters.back();
     }

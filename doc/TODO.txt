@@ -45,18 +45,12 @@ New optimization steps:
   -> can improve register-assignment
   (- place copy in a way, that it can be (most likely) combined with another instruction, so it doesn't require any additional instructions)
   - add before reordering
-- add instruction scheduling (reordering, https://en.wikipedia.org/wiki/Instruction_scheduling)
-  - per basic block
-  - need some kind of dependency graph/check for dependent instructions
-  - additionally to removing nops, can be used to eliminate read-after-write (data hazards) as well as provide much more possibilities for instruction combiner 
 - add nops into VPM access (see: https://www.raspberrypi.org/forums/viewtopic.php?p=1143940#p1095422)
   - compare clpeak global_bandwidth current with (2 * nrows + 6) nops between writing vpm_load_addr and vpm_load_wait (more exact: 2 for scalar values, 5 for 16-element vectors)
   - compare clpeak global_bandwidth current with (2 * nrows + 10) nops between vpm_store_addr and vpm_store_wait (more exact: 2 for scalar values, 3.5 for 16-element vectors)
   - compare clpeak global_bandwidth current with (5) nops between vpm_load_setup and first vpm_read
   - writing vpm does not add any additional stall
   - compare clpeak global_bandwidth current with all of the added nops 
-- simplify copies:
-  - for memory loads where the only use is a memory store, remove all instructions copying the data between VPM and QPU, simple load RAM -> VPM and store VPM -> RAM 
 
 VPM:
 - add handling of local/global offset/size to optimization combining VPM access. how? (e.g. ./testing/test_work_item.cl)
@@ -74,9 +68,6 @@ VPM:
 - move global/local data into VPM??
   pros: faster loading
   cons: fill up VPM, what to do if doesn't fit
-- move private memory (stack) into VPM
-  pros: no need to reserve memory host-side
-  cons: might exceed limit, see global data
 - if memory access optimization can handle RAM <-> VPM and VPM <-> QPU separately, implement prefetch() by loading into VPM
   need to heed VPM areas as well as synchronization
   only useful if optimizer detects, that this specific area is currently cached in VPM
@@ -175,13 +166,6 @@ calculation:
   - need to make sure, results are correct, e.g. sub (short) 0xFBCD, 0x0010 yields different results when signed/unsigned?!
   - need to make sure, flags are set correctly (esp. negative, since it probably checks for 31th bit, not the MSB of the real type, which the ALU doesn't know!)
   
-Instructions:
-- rewrite Operation to only contain valid (as in mappable to ALU-instruction) op-codes ??
-  - need to resolve unsupported op-codes in front-end (e.g. via shared function)
-  - more complex replacing comparisons/unsupported arithmetic operations
-  + cleans-up Intrinsics-handling
-  + can remove string op-code from Operation, resulting in earlier check for support op-codes among other things
-  
 Signedness:
 - for arithmetic 32-bit calculations, the signedness is handled correctly (+, - execute the same for un/signed, * too? / and % have separate op-codes (both LLVM-IR and SPIR-V))
 - problematic:
@@ -191,13 +175,3 @@ Signedness:
   - kernel-parameter (scalar, vector), scalar are correctly for non 32-bit types
   - loading from VPM (currently always zero-extended)
 - how to know signedness (other than from signext/zeroext decoration)?
-
-Load via TMU:
-- allows for/requires new optimizations:
-  - use VPM for private memory (if it fits), see above. NOTE: would need extra code to load private memory from VPM (instead of everything else from TMU)
-  - schedule which TMU to use:
-    - every QPU can use both TMUs to load several values at once
-    -> re-map e.g. every second load to TMU1
-  - queue TMU requests:
-    - TMU allows a queue up to 4 requests (load_tmux signal) per QPU
-    - to utilize this, move setting of TMU address and triggering of signal up as far as possible. NOTE: cannot re-order or jump over any r4 read (e.g. SFU)

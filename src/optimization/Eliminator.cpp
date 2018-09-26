@@ -290,7 +290,6 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
             logging::error() << "Cannot map phi-node to label: " << pair.first->name << logging::endl;
             throw CompilationError(CompilationStep::OPTIMIZER, "Failed to map all phi-options to valid basic-blocks");
         }
-        logging::debug() << "Inserting 'move' into end of basic-block: " << pair.first->name << logging::endl;
         // make sure, moves are inserted before the outgoing branches
         InstructionWalker it = bb->end();
         ConditionCode jumpCondition = COND_ALWAYS;
@@ -319,6 +318,7 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
         it.emplace((new intermediate::MoveOperation(node.getOutput().value(), pair.second, jumpCondition))
                        ->copyExtrasFrom(&node)
                        ->addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
+        logging::debug() << "Inserting into end of basic-block '" << pair.first->name << "': " << it->to_string() << logging::endl;
     }
 
     // set reference of local to original reference, if always the same for all possible sources

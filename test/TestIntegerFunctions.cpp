@@ -280,7 +280,7 @@ template <typename T>
 static T checkRotate(T v, T shift)
 {
     // auto s = shift >= 0 ? shift % (sizeof(T) * 8) : -((-shift) % (sizeof(T) * 8));
-    auto s = (static_cast<long>(shift) + (1l << 32)) % (sizeof(T) * 8);
+    auto s = (static_cast<int64_t>(shift) + (static_cast<int64_t>(1) << 32)) % (sizeof(T) * 8);
     auto tmp = vc4c::bit_cast<T, typename std::make_unsigned<T>::type>(v);
     tmp = (tmp << s) | (tmp >> ((sizeof(T) * 8) - s));
     return vc4c::bit_cast<typename std::make_unsigned<T>::type, T>(tmp);

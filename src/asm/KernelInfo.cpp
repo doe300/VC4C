@@ -368,8 +368,9 @@ KernelInfo qpu_asm::getKernelInfos(
         paramInfo.setVolatile(has_flag(param.decorations, ParameterDecorations::VOLATILE));
         paramInfo.setName(paramName[0] == '%' ? paramName.substr(1) : paramName);
         paramInfo.setElements((paramType.isPointerType() ? static_cast<uint8_t>(1) : paramType.getVectorWidth()));
-        paramInfo.setAddressSpace(
-            paramType.isPointerType() ? paramType.getPointerType().value()->addressSpace : AddressSpace::PRIVATE);
+        paramInfo.setAddressSpace(paramType.isPointerType() ?
+                paramType.getPointerType().value()->addressSpace :
+                paramType.getImageType() ? AddressSpace::GLOBAL : AddressSpace::PRIVATE);
         paramInfo.setFloatingType(paramType.isFloatingType());
         // FIXME signedness is only recognized correctly for non-32 bit scalar types (e.g. (u)char, (u)short), not for
         // pointers or even vector-types

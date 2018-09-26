@@ -49,7 +49,8 @@ Global* intermediate::reserveImageConfiguration(Module& module, Parameter& image
 static InstructionWalker insertLoadImageConfig(
     InstructionWalker it, Method& method, const Value& image, const Value& dest, const Value& offset)
 {
-    const Global* imageConfig = method.findGlobal(ImageType::toImageConfigurationName(image.local->name));
+    const Global* imageConfig =
+        method.findGlobal(ImageType::toImageConfigurationName(image.local->getBase(false)->name));
     if(imageConfig == nullptr)
         throw CompilationError(CompilationStep::GENERAL, "Image-configuration is not yet reserved", image.to_string());
     const Value addrTemp = method.addNewLocal(TYPE_INT32.toPointerType(AddressSpace::GLOBAL), "%image_config");
@@ -152,6 +153,32 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
                              << callSite->assertArgument(0).to_string() << logging::endl;
             it =
                 insertLoadArraySizeOrImageDepth(it, method, callSite->assertArgument(0), callSite->getOutput().value());
+            it.erase();
+            // to not skip next instruction
+            it.previousInBlock();
+        }
+        else if(callSite->methodName.find("__translate_sampler_initializer") == 0)
+        {
+            // new (LLVM 5.0+) way of converting sampler integer constants to sampler object
+            // see: https://github.com/llvm-mirror/clang/commit/427517d1008ec4d8bae42449617edd7d7ee75852
+            // for us, the sampler is the integer, so we need to copy the value
+            logging::debug() << "Generating conversion of integer constant to sampler object: "
+                             << callSite->assertArgument(0).to_string() << logging::endl;
+            // TODO could use this to build a "smarter" sampler object?
+            // NOTE: LLVM uses sampler*. To not confuse reader of our IR, we use sampler values
+            auto out = it->getOutput().value();
+            out.type = TYPE_SAMPLER;
+            it.reset(new MoveOperation(out, it->assertArgument(0)));
+        }
+        else if(callSite->methodName.find("vc4cl_set_image_access_setup") != std::string::npos)
+        {
+            //TODO
+            it.erase();
+        }
+        else if(callSite->methodName.find("vc4cl_image_read") != std::string::npos)
+        {
+            //TODO other coordinates, other data
+            it = periphery::insertReadTMU(method, it, callSite->assertArgument(0), callSite->getOutput().value(), callSite->assertArgument(1));
             it.erase();
             // to not skip next instruction
             it.previousInBlock();
