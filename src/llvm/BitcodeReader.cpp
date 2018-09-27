@@ -574,7 +574,7 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
     throw CompilationError(CompilationStep::PARSER, "Unknown LLVM type", std::to_string(type->getTypeID()));
 }
 
-static ParameterDecorations toParameterDecorations(const llvm::Argument& arg, const DataType& type)
+static ParameterDecorations toParameterDecorations(const llvm::Argument& arg, const DataType& type, bool isKernel)
 {
     ParameterDecorations deco = ParameterDecorations::NONE;
     if(arg.hasSExtAttr())
@@ -595,9 +595,19 @@ static ParameterDecorations toParameterDecorations(const llvm::Argument& arg, co
     }
     if(arg.hasByValOrInAllocaAttr())
     {
-        dumpLLVM(&arg);
-        throw CompilationError(
-            CompilationStep::PARSER, "Non-trivial parameter passed by value are not supported", arg.getName());
+        if(isKernel)
+        {
+            dumpLLVM(&arg);
+            throw CompilationError(
+                CompilationStep::PARSER, "Non-trivial parameter passed by value are not supported", arg.getName());
+        }
+        else if(arg.hasByValAttr())
+        {
+            //"This indicates that the pointer parameter should really be passed by value to the function. The attribute
+            //implies that a hidden copy of the pointee is made between the caller and the callee, so the callee is
+            //unable to modify the value in the caller."
+            deco = add_flag(deco, ParameterDecorations::READ_ONLY);
+        }
     }
     return deco;
 }
@@ -637,8 +647,8 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
 #endif
     {
         auto type = toDataType(arg.getType());
-        method->parameters.emplace_back(
-            Parameter(toParameterName(arg, paramCounter), type, toParameterDecorations(arg, type)));
+        method->parameters.emplace_back(Parameter(toParameterName(arg, paramCounter), type,
+            toParameterDecorations(arg, type, func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)));
         logging::debug() << "Reading parameter " << method->parameters.back().to_string() << logging::endl;
         if(method->parameters.back().type.getImageType() && func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)
             intermediate::reserveImageConfiguration(module, method->parameters.back());

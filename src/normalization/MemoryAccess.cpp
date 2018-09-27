@@ -872,14 +872,32 @@ static InstructionWalker mapToVPMMemoryAccessInstructions(
             mem->getNumEntries().getLiteralValue()->unsignedInt() * mem->getSourceElementType().getScalarBitCount() / 8;
         if(numBytes > std::numeric_limits<unsigned>::max())
             throw CompilationError(CompilationStep::OPTIMIZER, "Cannot copy more than 4GB of data", mem->to_string());
-        if(sourceArea != nullptr || destArea != nullptr)
+        // TODO can the case occur, where the other value is not located in RAM??
+        if((sourceArea || destArea) && mem->getNumEntries() != INT_ONE)
+            throw CompilationError(CompilationStep::OPTIMIZER,
+                "This version of copying from/to VPM cached data is not yet implemented", mem->to_string());
+        //TODO are the following two blocks correct?
+        if(sourceArea)
         {
-            // TODO heed stack offset for VPM mapped stack elements!
-            throw CompilationError(
-                CompilationStep::OPTIMIZER, "Copying from/to VPM cached data is not yet implemented", mem->to_string());
+            Value inAreaOffset = UNDEFINED_VALUE;
+            it = insertAddressToStackOffset(
+                it, method, inAreaOffset, sourceArea->originalAddress, MemoryType::VPM_PER_QPU, mem);
+            it = method.vpm->insertWriteRAM(
+                method, it, mem->getDestination(), mem->getSourceElementType(), sourceArea, true, inAreaOffset);
         }
-        it = method.vpm->insertCopyRAM(
-            method, it, mem->getDestination(), mem->getSource(), static_cast<unsigned>(numBytes));
+        else if(destArea)
+        {
+            Value inAreaOffset = UNDEFINED_VALUE;
+            it = insertAddressToStackOffset(
+                it, method, inAreaOffset, destArea->originalAddress, MemoryType::VPM_PER_QPU, mem);
+            it = method.vpm->insertReadRAM(
+                method, it, mem->getSource(), mem->getDestinationElementType(), destArea, true, inAreaOffset);
+        }
+        else
+        {
+            it = method.vpm->insertCopyRAM(
+                method, it, mem->getDestination(), mem->getSource(), static_cast<unsigned>(numBytes));
+        }
 
         auto* src = mem->getSource().hasType(ValueType::LOCAL) ? mem->getSource().local->getBase(true) : nullptr;
         if(src && src->is<Parameter>())
@@ -1365,6 +1383,24 @@ struct MemoryAccess
     MemoryType fallback;
 };
 
+// Finds the next instruction writing the given value into memory
+static InstructionWalker findNextValueStore(InstructionWalker it, const Value& src, std::size_t limit)
+{
+    while(!it.isEndOfBlock() && limit > 0)
+    {
+        auto memInstr = it.get<MemoryInstruction>();
+        if(memInstr != nullptr && memInstr->op == MemoryOperation::WRITE && memInstr->getSource() == src)
+        {
+            return it;
+        }
+        if(it.has<MemoryBarrier>() || it.has<Branch>() || it.has<MutexLock>() || it.has<SemaphoreAdjustment>())
+            break;
+        it.nextInBlock();
+        --limit;
+    }
+    return it.getBasicBlock()->end();
+}
+
 /*
  * Basic algorithm to determine the preferred and fall-back (e.g. if access-types not supported by preferred)
  * way of
@@ -1425,7 +1461,36 @@ static FastMap<const Local*, MemoryAccess> determineMemoryAccess(Method& method)
     {
         if(it.has<MemoryInstruction>())
         {
-            for(const auto local : it.get<MemoryInstruction>()->getMemoryAreas())
+            // convert read-then-write to copy
+            auto memInstr = it.get<const MemoryInstruction>();
+            if(memInstr->op == MemoryOperation::READ && !memInstr->hasConditionalExecution() &&
+                memInstr->getDestination().local->getUsers(LocalUse::Type::READER).size() == 1)
+            {
+                auto nextIt = findNextValueStore(it, memInstr->getDestination(), 16 /* TODO */);
+                auto nextMemInstr = nextIt.isEndOfBlock() ? nullptr : nextIt.get<const MemoryInstruction>();
+                if(nextMemInstr != nullptr && !nextIt->hasConditionalExecution() &&
+                    nextMemInstr->op == MemoryOperation::WRITE &&
+                    nextMemInstr->getSource().getSingleWriter() == memInstr &&
+                    nextMemInstr->getSourceElementType().getPhysicalWidth() ==
+                        memInstr->getDestinationElementType().getPhysicalWidth())
+                {
+                    // TODO also extend so value read, not modified and stored (if used otherwise) is replaced with load
+                    // (for other uses) and copy -> supports other type sizes
+                    logging::debug()
+                        << "Found reading of memory where the sole usage writes the value back into memory: "
+                        << memInstr->to_string() << logging::endl;
+                    logging::debug() << "Replacing manual copy of memory with memory copy instruction for write: "
+                                     << nextMemInstr->to_string() << logging::endl;
+
+                    const Value src = memInstr->getSource();
+                    it.erase();
+                    nextIt.reset(new MemoryInstruction(
+                        MemoryOperation::COPY, nextMemInstr->getDestination(), src, nextMemInstr->getNumEntries()));
+                    it = nextIt;
+                    memInstr = it.get<const MemoryInstruction>();
+                }
+            }
+            for(const auto local : memInstr->getMemoryAreas())
             {
                 if(mapping.find(local) != mapping.end())
                 {
@@ -1467,7 +1532,6 @@ static FastMap<const Local*, MemoryAccess> determineMemoryAccess(Method& method)
                     if(isMemoryOnlyRead(local))
                     {
                         // global buffer
-                        const auto memInstr = it.get<const MemoryInstruction>();
                         if(getConstantValue(memInstr))
                         {
                             logging::debug() << "Constant element of constant buffer '" << local->to_string()
@@ -1682,86 +1746,6 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
     }
 
     combineVPMAccess(affectedBlocks, method);
-
-    /*
-     * Goals:
-     * 1. map all memory-accesses correctly, so all QPUs accessing the same memory see the same/expected values
-     * 2. lower/lift as many memory-accesses as possible into VPM to save unnecessary instructions accessing QPU/RAM
-     *
-     * Steps:
-     * 1. map all "standard" memory accesses
-     *  - map memory accesses which cannot be optimized into VPM to TMU/VPM instructions
-     *  - combine successive accesses (use/replace #combineVPMAccess)
-     *  -> determine VPM scratch size
-     * 2. try to lower all stack-allocations into VPM
-     *  - reserve enough space (for 12 stacks unless specified in compile-time work-group size!)
-     *  - map accesses to stack to use the correct area in VPM
-     *  - calculate offsets in VPM for every stack entry (see/replace #resolveStackAllocations)
-     *  - rewrite indices to match offsets in VPM
-     *  - generate TMU/VPM instructions for stack-allocations not fitting into VPM
-     *  - update total stack-size (the buffer-size required to be reserved) for the method
-     * 3. try to lower local memory into VPM
-     *  - check sizes, reserve VPM area
-     *  - map accesses using correct VPM area
-     *  - rewrite indices to match offsets in VPM
-     *  - generate TMU/VPM instructions for local memory areas not fitting into VPM
-     *  - update globals, remove local memory areas located in VPM from buffer-size to be reserved
-     * 4. try to lower constant globals into constant values
-     *  - update globals, remove global memory for which all usages are rewritten from buffer-size to be reserved
-     *  - generate TMU/VPM instructions for other globals
-     *  - rewrite indices to remaining globals (see #accessGlobalData)
-     * 5. map all remaining memory access to default TMU/VPM access
-     */
-
-    // contains all the positions of MemoryInstructions for easier/faster iteration in the next steps
-    FastSet<InstructionWalker> memoryInstructions;
-    {
-        InstructionWalker it = method.walkAllInstructions();
-        while(!it.isEndOfMethod())
-        {
-            if(it.has<MemoryInstruction>())
-            {
-                auto memInst = it.get<MemoryInstruction>();
-                if(memInst->op == MemoryOperation::READ)
-                {
-                    auto nextIt = it.copy().nextInBlock();
-                    auto nextMemInst = nextIt.get<MemoryInstruction>();
-                    /*
-                     * replace read and write of value to memory copy to a) optimize for speed and b) also support types
-                     * > 32 bit, if following conditions are given
-                     * - the local is only written in the load instruction
-                     * - the local is only read in the store instruction
-                     * - the byte-size of the memory loaded and stored is the same
-                     */
-                    // FIXME this might not be correct when copying from/to stack!
-                    if(false && !nextIt.isEndOfBlock() && nextMemInst != nullptr &&
-                        nextMemInst->op == MemoryOperation::WRITE && !memInst->hasConditionalExecution() &&
-                        !nextMemInst->hasConditionalExecution() &&
-                        nextMemInst->getSource() == memInst->getDestination() &&
-                        memInst->getDestination().getSingleWriter() == memInst &&
-                        memInst->getDestination().local->getUsers(LocalUse::Type::READER).size() == 1 &&
-                        nextMemInst->getDestinationElementType().getPhysicalWidth() ==
-                            memInst->getSourceElementType().getPhysicalWidth())
-                    {
-                        // TODO add this to somewhere up front
-                        logging::debug()
-                            << "Found reading of memory where the sole usage writes the value back into memory: "
-                            << memInst->to_string() << logging::endl;
-                        logging::debug() << "Replacing manual copy of memory with memory copy instruction for write: "
-                                         << nextMemInst->to_string() << logging::endl;
-
-                        const Value src = memInst->getSource();
-                        it.erase();
-                        nextIt.reset(new MemoryInstruction(
-                            MemoryOperation::COPY, nextMemInst->getDestination(), src, nextMemInst->getNumEntries()));
-                        it = nextIt;
-                    }
-                }
-                memoryInstructions.emplace(it);
-            }
-            it.nextInMethod();
-        }
-    }
 
     // TODO move calculation of stack/global indices in here too?
 

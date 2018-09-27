@@ -22,8 +22,8 @@ vector_convert-test-opencl		compilation error
 Boost Compute:
 test_accumulate					result mismatch
 test_adjacent_difference		PASSED
-test_adjacent_find				result mismatch ("adjacent_find_int2")
-test_amd_cpp_kernel_language	PASSED
+test_adjacent_find				PASSED
+test_amd_cpp_kernel_language	SKIPPED
 test_any_all_none_of			PASSED
 test_array						PASSED
 test_async_wait					PASSED
@@ -35,34 +35,34 @@ test_buffer_allocator			PASSED
 test_buffer_iterator			PASSED
 test_clamp_range				PASSED
 test_closure					result mismatch (ULP, "add_two_and_pi": difference{6.49642e-06%} between results[1]{7.33999968} and 7.34f{7.34000015} exceeds 1e-06%)
-test_command_queue				FAILED ("fatal error [...]: Profiling Information Not Available")
+test_command_queue				error ("device does not support EXEC_NATIVE_KERNEL")
 test_complex					PASSED
 test_constant_iterator			PASSED
 test_context					PASSED
 test_context_error				PASSED
 test_copy						PASSED
 test_copy_if					FAILED
-test_copy_type_mismatch			PASSED
-test_count						compilation error (ulong), result mismatch (count_int4)
+test_copy_type_mismatch			Invalid Value error, hangs
+test_count						compilation error(long), bad optional access
 test_counting_iterator			PASSED
-test_device						FAILED (memory address violation, access to nullptr, OpenCL 2.1 test!)
+test_device						error (memory access violation)
 test_discard_iterator			PASSED
 test_discrete_distribution		compilation error (ulong)
-test_dynamic_bitset				compilation error (long)
+test_dynamic_bitset				compilation error (long), result mismatch
 test_equal						PASSED
 test_equal_range				PASSED
 test_event						PASSED
 test_extents					PASSED
 test_extrema					result mismatch ("int_min_max", "int2_min_max_custom_comparision_function", "iota_min_max", "max_vector_length"), compilation error, hangs GPU??
 test_fill						PASSED
-test_find						result value mismatch ("find_int2")
+test_find						PASSED
 test_find_end					PASSED
 test_flat_map					PASSED
 test_flat_set					PASSED
 test_for_each					PASSED
-test_function					compilation error (struct, is converted to long by LLVM), result mismatch
+test_function					compilation error (struct, is converted to long by LLVM)
 test_function_input_iterator	PASSED
-test_functional_as				PASSED
+test_functional_as				compilation error (not normalized instruction as_float, but works on host machine! LLVM version?!)
 test_functional_bind			result mismatch (ULP, "transform_pow_two")
 test_functional_convert			PASSED
 test_functional_get				PASSED
@@ -70,7 +70,7 @@ test_functional_hash			compilation error (ulong)
 test_functional_identity		PASSED
 test_functional_popcount		compilation error (ulong)
 test_functional_unpack			PASSED
-test_gather						result mismatch ("copy_index_then_gather")
+test_gather						PASSED
 test_generate					PASSED
 test_image1d					SKIPPED
 test_image2d					SKIPPED
@@ -92,19 +92,19 @@ test_linear_congruential_engine	PASSED
 test_literal_conversion			PASSED
 test_local_buffer				SKIPPED ("device does not support local memory")
 test_malloc						PASSED
-test_mapped_view				result value mismatch ("mapped_view_reduce_doctest")
-test_merge						compilation error (struct, is converted to long by LLVM)
+test_mapped_view				PASSED
+test_merge						PASSED
 test_merge_sort_gpu				exception: "Invalid Value" in boost/compute/detail/get_object_info.hpp(94), compilation error (ulong), double test skipped
 test_mersenne_twister_engine	PASSED
 test_mismatch					PASSED
 test_next_permutation			PASSED
 test_no_device_found			PASSED
 test_normal_distribution		result value mismatch ("normal_distribution_statistics", got inf/nan, expected 10/2)
-test_nth_element				assertion failure
+test_nth_element				PASSED
 test_opencl_error				PASSED
 test_pair						PASSED
-test_partial_sum				result mismatch
-test_partition					assertion failed
+test_partial_sum				PASSED
+test_partition					PASSED
 test_partition_point			PASSED
 test_permutation_iterator		PASSED/SKIPPED
 test_pinned_allocator			PASSED/SKIPPED
@@ -113,13 +113,13 @@ test_platform					PASSED/SKIPPED
 test_prev_permutation			FAILED
 test_program					FAILED
 test_program_cache				PASSED/SKIPPED
-test_radix_sort					result mismatches, compilation errors
+test_radix_sort					result mismatches, compilation errors (long kernels)
 test_radix_sort_by_key			result mismatches
-test_random_fill				result mismatch ("random_fill_float", 6 != 0), illegal opcode
+test_random_fill				PASSED
 test_random_shuffle				PASSED
 test_reduce						result mismatches (0 != x), SIGABRT (std::out_of_range in vector)
-test_reduce_by_key				compilation error (ulong)
-test_remove						FAILED
+test_reduce_by_key				PASSED
+test_remove						PASSED
 test_replace					PASSED
 test_result_of					PASSED
 test_reverse					PASSED
@@ -132,13 +132,14 @@ test_search						PASSED
 test_search_n					PASSED
 test_set_difference				PASSED
 test_set_intersection			PASSED
-test_set_union					FAILED
-test_sort						result mismatch; compilation error (packed struct, converted to long by LLVM)
+test_set_symmetric_difference   register allocation error
+test_set_union					register allocation error
+test_sort						result mismatch; compilation error (long)
 test_sort_by_key				result mismatch, exception: "Invalid Value" in boost/compute/detail/get_object_info.hpp(94)
-test_sort_by_transform			result mismatch (all test-cases)
+test_sort_by_transform			PASSED
 test_stable_partition			PASSED
 test_stable_sort				result mismatch ("sort_int_vector", "sort_int2")
-test_stable_sort_by_key			result mismatch (all test-cases)
+test_stable_sort_by_key			PASSED
 test_stack						PASSED
 test_strided_iterator			PASSED
 test_string						PASSED
@@ -146,23 +147,23 @@ test_struct						PASSED
 test_svm_ptr					PASSED
 test_system						PASSED
 test_tabulate					PASSED
-test_threefry_engine			compilation error (struct, converted to long by LLVM)
+test_threefry_engine			compilation error (struct parameter converted to 64 bit)
 test_transform					result mismatch (ULP pow/sqrt and 0 != x), compilation error (locals not initialized)
-test_transform_if				FAILED
+test_transform_if				PASSED
 test_transform_iterator			PASSED
 test_transform_reduce			result mismatch (ULP, "multiply_vector_length", "mean_and_std_dev")
 test_tuple						PASSED
 test_type_traits				PASSED
 test_types						PASSED
-test_uniform_int_distribution	FAILED ("Invalid Global Work Size"), hangs
+test_uniform_int_distribution	FAILED ("Invalid Global Work Size"), compilation error (long)
 test_uniform_real_distribution	compilation error (long)
 test_unique						assertion failure (test_unique.cpp:47 and 66)
 test_unique_copy				PASSED
 test_unsupported_extension		PASSED
 test_user_defined_types			compilation error (packed struct, converted to ulong by LLVM)
 test_user_event					PASSED
-test_valarray					compilation error (kernel "serial_find_extrema")
-test_vector						result mismatch ("vector_erase_remove")
+test_valarray					result mismatch ("sum")
+test_vector						PASSED
 test_wait_list					PASSED
 test_zip_iterator				PASSED
 

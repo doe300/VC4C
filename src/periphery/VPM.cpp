@@ -261,7 +261,7 @@ InstructionWalker periphery::insertReadDMA(
         it.nextInBlock();
     }
 
-    it = method.vpm->insertReadRAM(it, addr, dest.type, nullptr, false);
+    it = method.vpm->insertReadRAM(method, it, addr, dest.type, nullptr, false);
     it = method.vpm->insertReadVPM(method, it, dest, nullptr, false);
 
     if(useMutex)
@@ -284,7 +284,7 @@ InstructionWalker periphery::insertWriteDMA(
     }
 
     it = method.vpm->insertWriteVPM(method, it, src, nullptr, false);
-    it = method.vpm->insertWriteRAM(it, addr, src.type, nullptr, false);
+    it = method.vpm->insertWriteRAM(method, it, addr, src.type, nullptr, false);
 
     if(useMutex)
     {
@@ -444,8 +444,8 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
     return it;
 }
 
-InstructionWalker VPM::insertReadRAM(
-    InstructionWalker it, const Value& memoryAddress, const DataType& type, const VPMArea* area, bool useMutex)
+InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
+    const DataType& type, const VPMArea* area, bool useMutex, const Value& inAreaOffset)
 {
     if(area != nullptr)
         area->checkAreaSize(getVPMStorageType(type).getPhysicalWidth());
@@ -472,8 +472,24 @@ InstructionWalker VPM::insertReadRAM(
     // initialize VPM DMA for reading from host
     const VPMArea& realArea = area != nullptr ? *area : getScratchArea();
     const VPRSetup dmaSetup(realArea.toReadDMASetup(type));
-    it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(dmaSetup.value)));
-    it.nextInBlock();
+    if(inAreaOffset == INT_ZERO)
+    {
+        it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(dmaSetup.value)));
+        it.nextInBlock();
+    }
+    else
+    {
+        // this is the offset in byte -> calculate the offset in elements of destination-type
+
+        // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
+        Value elementOffset = UNDEFINED_VALUE;
+        calculateElementOffset(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset);
+        // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
+        // 3) write setup with dynamic address
+        it.emplace(
+            new Operation(OP_ADD, VPM_IN_SETUP_REGISTER, Value(Literal(dmaSetup.value), TYPE_INT32), elementOffset));
+        it.nextInBlock();
+    }
     const VPRSetup strideSetup(VPRStrideSetup(0));
     it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(strideSetup.value)));
     it.nextInBlock();
@@ -491,8 +507,8 @@ InstructionWalker VPM::insertReadRAM(
     return it;
 }
 
-InstructionWalker VPM::insertWriteRAM(
-    InstructionWalker it, const Value& memoryAddress, const DataType& type, const VPMArea* area, bool useMutex)
+InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
+    const DataType& type, const VPMArea* area, bool useMutex, const Value& inAreaOffset)
 {
     if(area != nullptr)
         area->checkAreaSize(getVPMStorageType(type).getPhysicalWidth());
@@ -517,8 +533,27 @@ InstructionWalker VPM::insertWriteRAM(
     // initialize VPM DMA for writing to host
     const VPMArea& realArea = area != nullptr ? *area : getScratchArea();
     const VPWSetup dmaSetup(realArea.toWriteDMASetup(type));
-    it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(dmaSetup.value)));
-    it.nextInBlock();
+    if(inAreaOffset == INT_ZERO)
+    {
+        it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(dmaSetup.value)));
+        it.nextInBlock();
+    }
+    else
+    {
+        // this is the offset in byte -> calculate the offset in elements of destination-type
+
+        // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
+        Value elementOffset = UNDEFINED_VALUE;
+        calculateElementOffset(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset);
+        // 2) dynamically calculate new VPM address from base and offset (shift and add offset to setup-value)
+        Value shiftedOffset = method.addNewLocal(TYPE_INT32);
+        it.emplace(new Operation(OP_SHL, shiftedOffset, elementOffset, Value(Literal(3), TYPE_INT8)));
+        it.nextInBlock();
+        // 3) write setup with dynamic address
+        it.emplace(
+            new Operation(OP_ADD, VPM_OUT_SETUP_REGISTER, Value(Literal(dmaSetup.value), TYPE_INT32), shiftedOffset));
+        it.nextInBlock();
+    }
     // set stride to zero
     const VPWSetup strideSetup(VPWStrideSetup(0));
     it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(strideSetup.value)));
@@ -548,8 +583,8 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
 
     it = insertLockMutex(it, useMutex);
 
-    it = insertReadRAM(it, srcAddress, size.first, area, false);
-    it = insertWriteRAM(it, destAddress, size.first, area, false);
+    it = insertReadRAM(method, it, srcAddress, size.first, area, false);
+    it = insertWriteRAM(method, it, destAddress, size.first, area, false);
 
     for(unsigned i = 1; i < size.second; ++i)
     {
@@ -564,8 +599,8 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
             new Operation(OP_ADD, tmpDest, destAddress, Value(Literal(i * size.first.getPhysicalWidth()), TYPE_INT8)));
         it.nextInBlock();
 
-        it = insertReadRAM(it, tmpSource, size.first, area, false);
-        it = insertWriteRAM(it, tmpDest, size.first, area, false);
+        it = insertReadRAM(method, it, tmpSource, size.first, area, false);
+        it = insertWriteRAM(method, it, tmpDest, size.first, area, false);
     }
     it = insertUnlockMutex(it, useMutex);
 
@@ -584,7 +619,7 @@ InstructionWalker VPM::insertFillRAM(Method& method, InstructionWalker it, const
         updateScratchSize(1);
 
     it = insertLockMutex(it, useMutex);
-    it = insertWriteRAM(it, memoryAddress, type, area, false);
+    it = insertWriteRAM(method, it, memoryAddress, type, area, false);
     for(unsigned i = 1; i < numCopies; ++i)
     {
         const Value tmpDest = method.addNewLocal(memoryAddress.type, "%mem_fill_addr");
@@ -594,7 +629,7 @@ InstructionWalker VPM::insertFillRAM(Method& method, InstructionWalker it, const
             new Operation(OP_ADD, tmpDest, memoryAddress, Value(Literal(i * type.getPhysicalWidth()), TYPE_INT8)));
         it.nextInBlock();
 
-        it = insertWriteRAM(it, tmpDest, type, area, false);
+        it = insertWriteRAM(method, it, tmpDest, type, area, false);
     }
     it = insertUnlockMutex(it, useMutex);
 
@@ -679,6 +714,9 @@ VPWGenericSetup VPMArea::toWriteSetup(const DataType& elementType) const
 VPWDMASetup VPMArea::toWriteDMASetup(const DataType& elementType, uint8_t numValues) const
 {
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
+    if(type.getScalarBitCount() > 32)
+        // converts e.g. 64.bit integer to 2x 32.bit integer
+        type = DataType(32, type.getVectorWidth() * type.getScalarBitCount() / 32, type.isFloatingType());
     if(type.isUnknown())
         throw CompilationError(CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type");
 
@@ -731,6 +769,9 @@ VPRGenericSetup VPMArea::toReadSetup(const DataType& elementType, uint8_t numVal
 VPRDMASetup VPMArea::toReadDMASetup(const DataType& elementType, uint8_t numValues) const
 {
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
+    if(type.getScalarBitCount() > 32)
+        // converts e.g. 64.bit integer to 2x 32.bit integer
+        type = DataType(32, type.getVectorWidth() * type.getScalarBitCount() / 32, type.isFloatingType());
     if(type.isUnknown())
         throw CompilationError(CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type");
     if(numValues > 16)
@@ -744,6 +785,29 @@ VPRDMASetup VPMArea::toReadDMASetup(const DataType& elementType, uint8_t numValu
     setup.setWordRow(rowOffset);
     setup.setVertical(!IS_HORIZONTAL);
     return setup;
+}
+
+static std::string toUsageString(VPMUsage usage, const Local* local)
+{
+    switch(usage)
+    {
+    case VPMUsage::LOCAL_MEMORY:
+        return (local ? local->to_string() : "(nullptr)");
+    case VPMUsage::REGISTER_SPILLING:
+        return "register spilling";
+    case VPMUsage::SCRATCH:
+        return "scratch area";
+    case VPMUsage::STACK:
+        return "stack" + (local ? " " + local->to_string() : "");
+    }
+    throw CompilationError(
+        CompilationStep::GENERAL, "Unhandled VPM usage type", std::to_string(static_cast<unsigned>(usage)));
+}
+
+std::string VPMArea::to_string() const
+{
+    return toUsageString(usageType, originalAddress) + ", rows[" + std::to_string(static_cast<unsigned>(rowOffset)) +
+        ", " + std::to_string(static_cast<unsigned>(rowOffset + numRows)) + "[";
 }
 
 VPM::VPM(const unsigned totalVPMSize) : maximumVPMSize(std::min(VPM_DEFAULT_SIZE, totalVPMSize)), areas(VPM_NUM_ROWS)

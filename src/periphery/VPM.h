@@ -735,6 +735,8 @@ namespace vc4c
              * If the data-type is set to unknown, the default element-type of this area is used
              */
             VPRDMASetup toReadDMASetup(const DataType& elementType, uint8_t numValues = 1) const;
+
+            std::string to_string() const;
         };
 
         /*
@@ -787,13 +789,15 @@ namespace vc4c
             /*
              * Inserts a read from RAM into VPM via DMA
              */
-            InstructionWalker insertReadRAM(InstructionWalker it, const Value& memoryAddress, const DataType& type,
-                const VPMArea* area = nullptr, bool useMutex = true);
+            InstructionWalker insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
+                const DataType& type, const VPMArea* area = nullptr, bool useMutex = true,
+                const Value& inAreaOffset = INT_ZERO);
             /*
              * Inserts a write from VPM into RAM via DMA
              */
-            InstructionWalker insertWriteRAM(InstructionWalker it, const Value& memoryAddress, const DataType& type,
-                const VPMArea* area = nullptr, bool useMutex = true);
+            InstructionWalker insertWriteRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
+                const DataType& type, const VPMArea* area = nullptr, bool useMutex = true,
+                const Value& inAreaOffset = INT_ZERO);
             /*
              * Inserts a copy from RAM via DMA and VPM into RAM
              */
