@@ -88,18 +88,20 @@ namespace vc4c
      *
      * (most of this concepts are required by Value)
      */
-    static_assert(std::is_default_constructible<Register>::value, "Register is not default constructible!");
+    static_assert(!std::is_default_constructible<Register>::value, "Register is default constructible!");
     static_assert(assert_assignable<Register>::value, "Register is not assignable!");
     static_assert(std::is_destructible<Register>::value, "Register is not destructible!");
     static_assert(assert_comparable<Register>::value, "Register is not comparable");
     static_assert(assert_hashable<Register>::value, "Register is not hashable!");
     static_assert(assert_stringifyable<Register>::value, "Register is not stringify-able!");
 
+    static_assert(!std::is_default_constructible<Literal>::value, "Literal is default constructible!");
     static_assert(assert_assignable<Literal>::value, "Literal is not assignable!");
     static_assert(std::is_destructible<Literal>::value, "Literal is not destructible!");
     static_assert(assert_comparable<Literal>::value, "Literal is not comparable");
     static_assert(assert_stringifyable<Literal>::value, "Literal is not stringify-able!");
 
+    static_assert(!std::is_default_constructible<SmallImmediate>::value, "SmallImmediate is default constructible!");
     static_assert(assert_assignable<SmallImmediate>::value, "SmallImmediate is not assignable!");
     static_assert(std::is_destructible<SmallImmediate>::value, "SmallImmediate is not destructible!");
     static_assert(assert_comparable<SmallImmediate>::value, "SmallImmediate is not comparable");
@@ -109,6 +111,7 @@ namespace vc4c
     static_assert(assert_assignable<ContainerValue>::value, "ContainerValue is not assignable!");
     static_assert(std::is_destructible<ContainerValue>::value, "ContainerValue is not destructible!");
 
+    static_assert(!std::is_default_constructible<Value>::value, "Value is default constructible!");
     static_assert(assert_assignable<Value>::value, "Value is not assignable!");
     static_assert(std::is_destructible<Value>::value, "Value is not destructible!");
     // XXX static_assert(assert_comparable<Value>::value, "Value is not comparable!");

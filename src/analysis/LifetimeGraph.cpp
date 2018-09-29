@@ -73,7 +73,7 @@ std::unique_ptr<LifetimeGraph> LifetimeGraph::createLifetimeGraph(Method& method
         const auto lifetimeInst = dynamic_cast<const intermediate::LifetimeBoundary*>(inst);
         if(lifetimeInst != nullptr)
         {
-            const Local* local = lifetimeInst->getStackAllocation().local;
+            const Local* local = lifetimeInst->getStackAllocation().local();
             if(lifetimeInst->isLifetimeEnd)
                 liveLocals.erase(local);
             else

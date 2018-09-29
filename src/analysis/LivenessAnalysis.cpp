@@ -28,18 +28,18 @@ FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::Inte
         if(instr->hasConditionalExecution() &&
             !instr->hasDecoration(intermediate::InstructionDecorations::ELEMENT_INSERTION))
         {
-            auto condReadIt = conditionalReads.find(instr->getOutput()->local);
+            auto condReadIt = conditionalReads.find(instr->getOutput()->local());
             if(condReadIt != conditionalReads.end() && condReadIt->second == instr->conditional &&
                 condReadIt->first->getSingleWriter() == instr)
                 // the local only exists within a conditional block (e.g. temporary within the same flag)
-                result.erase(instr->getOutput()->local);
-            else if(conditionalWrites.find(instr->getOutput()->local) != conditionalWrites.end())
-                result.erase(instr->getOutput()->local);
+                result.erase(instr->getOutput()->local());
+            else if(conditionalWrites.find(instr->getOutput()->local()) != conditionalWrites.end())
+                result.erase(instr->getOutput()->local());
             else
-                conditionalWrites.emplace(instr->getOutput()->local);
+                conditionalWrites.emplace(instr->getOutput()->local());
         }
         else
-            result.erase(instr->getOutput()->local);
+            result.erase(instr->getOutput()->local());
     }
     auto combInstr = dynamic_cast<const intermediate::CombinedOperation*>(instr);
     if(combInstr)
@@ -52,18 +52,18 @@ FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::Inte
 
     for(const Value& arg : instr->getArguments())
     {
-        if(arg.hasType(ValueType::LOCAL) && !arg.local->type.isLabelType())
+        if(arg.hasLocal() && !arg.local()->type.isLabelType())
         {
-            result.emplace(arg.local);
+            result.emplace(arg.local());
             if(instr->hasConditionalExecution())
             {
                 // there exist locals which only exist if a certain condition is met, so check this
-                auto condReadIt = conditionalReads.find(arg.local);
+                auto condReadIt = conditionalReads.find(arg.local());
                 // if the local is read with different conditions, it must exist in any case
                 if(condReadIt != conditionalReads.end() && condReadIt->second != instr->conditional)
                     conditionalReads.erase(condReadIt);
                 else
-                    conditionalReads.emplace(arg.local, instr->conditional);
+                    conditionalReads.emplace(arg.local(), instr->conditional);
             }
         }
     }
@@ -98,18 +98,18 @@ std::pair<FastSet<const Local*>, FastSet<const Local*>> LocalUsageAnalysis::anal
     auto func = [&](const intermediate::IntermediateInstruction* instr) {
         for(const Value& arg : instr->getArguments())
         {
-            if(arg.hasType(ValueType::LOCAL) && !arg.local->type.isLabelType())
+            if(arg.hasLocal() && !arg.local()->type.isLabelType())
             {
-                if(localsWritten.find(arg.local) == localsWritten.end())
+                if(localsWritten.find(arg.local()) == localsWritten.end())
                     // read before the first write (if any)
-                    importedLocals.emplace(arg.local);
+                    importedLocals.emplace(arg.local());
                 else
-                    ++localsReadAfterWriting[arg.local];
+                    ++localsReadAfterWriting[arg.local()];
             }
         }
 
-        if(instr->hasValueType(ValueType::LOCAL) && !instr->getOutput()->local->type.isLabelType())
-            localsWritten.emplace(instr->getOutput()->local);
+        if(instr->hasValueType(ValueType::LOCAL) && !instr->getOutput()->local()->type.isLabelType())
+            localsWritten.emplace(instr->getOutput()->local());
     };
 
     for(auto it = block.begin(); !it.isEndOfBlock(); it.nextInBlock())

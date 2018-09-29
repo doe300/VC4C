@@ -54,35 +54,35 @@ static bool fitsIntoSignedMaskedLoad(const Value& val)
 
 static InstructionWalker copyVector(Method& method, InstructionWalker it, const Value& out, const Value& in)
 {
-    if(in.container.isAllSame())
+    if(in.container().isAllSame())
     {
         // if all values within a container are the same, there is no need to extract them separately, a simple move
         // (e.g. load) will do
-        it.emplace((new intermediate::MoveOperation(out, in.container.elements[0]))->copyExtrasFrom(it.get()));
+        it.emplace((new intermediate::MoveOperation(out, in.container().elements[0]))->copyExtrasFrom(it.get()));
         return it.nextInBlock();
     }
-    if(in.container.isElementNumber(false))
+    if(in.container().isElementNumber(false))
     {
         // if the value in the container corresponds to the element-number, simply copy it
         it.emplace((new intermediate::MoveOperation(out, ELEMENT_NUMBER_REGISTER))->copyExtrasFrom(it.get()));
         return it.nextInBlock();
     }
-    if(in.container.isElementNumber(true))
+    if(in.container().isElementNumber(true))
     {
         // if the value in the container corresponds to the element number plus an offset (a general ascending range),
         // convert to addition
-        auto offset = in.container.elements.at(0).getLiteralValue()->signedInt();
+        auto offset = in.container().elements.at(0).getLiteralValue()->signedInt();
         it.emplace((new intermediate::Operation(OP_ADD, out, ELEMENT_NUMBER_REGISTER, Value(Literal(offset), in.type)))
                        ->copyExtrasFrom(it.get()));
         return it.nextInBlock();
     }
-    if(std::all_of(in.container.elements.begin(), in.container.elements.end(), fitsIntoUnsignedMaskedLoad))
+    if(std::all_of(in.container().elements.begin(), in.container().elements.end(), fitsIntoUnsignedMaskedLoad))
     {
         // if the container elements all fit into the results of an unsigned bit-masked load, use such an instruction
         std::bitset<32> mask;
-        for(std::size_t i = 0; i < in.container.elements.size(); ++i)
+        for(std::size_t i = 0; i < in.container().elements.size(); ++i)
         {
-            auto elemVal = in.container.elements[i].getLiteralValue()->unsignedInt();
+            auto elemVal = in.container().elements[i].getLiteralValue()->unsignedInt();
             mask.set(i + 16, elemVal >> 1);
             mask.set(i, elemVal & 1);
         }
@@ -91,13 +91,13 @@ static InstructionWalker copyVector(Method& method, InstructionWalker it, const 
         it->copyExtrasFrom(it.get());
         return it.nextInBlock();
     }
-    if(std::all_of(in.container.elements.begin(), in.container.elements.end(), fitsIntoSignedMaskedLoad))
+    if(std::all_of(in.container().elements.begin(), in.container().elements.end(), fitsIntoSignedMaskedLoad))
     {
         // if the container elements all fit into the results of an signed bit-masked load, use such an instruction
         std::bitset<32> mask;
-        for(std::size_t i = 0; i < in.container.elements.size(); ++i)
+        for(std::size_t i = 0; i < in.container().elements.size(); ++i)
         {
-            auto elemVal = in.container.elements[i].getLiteralValue()->signedInt();
+            auto elemVal = in.container().elements[i].getLiteralValue()->signedInt();
             mask.set(i + 16, elemVal < 0);
             mask.set(i, elemVal & 1);
         }
@@ -107,12 +107,11 @@ static InstructionWalker copyVector(Method& method, InstructionWalker it, const 
         return it.nextInBlock();
     }
     Value realOut = out;
-    if(!out.hasType(ValueType::LOCAL))
+    if(!out.hasLocal())
     {
         realOut = method.addNewLocal(TYPE_UNKNOWN, "%container");
     }
-    if(!out.hasType(ValueType::REGISTER) && !out.type.isUnknown() &&
-        in.type.getVectorWidth() > out.type.getVectorWidth())
+    if(!out.hasRegister() && !out.type.isUnknown() && in.type.getVectorWidth() > out.type.getVectorWidth())
     {
         throw CompilationError(CompilationStep::OPTIMIZER, "Input vector has invalid type", in.to_string(false, true));
     }
@@ -124,7 +123,7 @@ static InstructionWalker copyVector(Method& method, InstructionWalker it, const 
     it.emplace(new intermediate::MoveOperation(realOut, in.getCompoundPart(0)));
     it.nextInBlock();
     // optimize this by looking for the most common value and initializing all (but the first) elements with this one
-    auto maxOccurrence = getMostCommonElement(in.container.elements);
+    auto maxOccurrence = getMostCommonElement(in.container().elements);
     if(maxOccurrence && maxOccurrence.value() != in.getCompoundPart(0))
     {
         it.emplace(new intermediate::Operation(
@@ -136,7 +135,7 @@ static InstructionWalker copyVector(Method& method, InstructionWalker it, const 
     }
     for(uint8_t i = 0; i < typeWidth; ++i)
     {
-        if(in.getCompoundPart(i) == maxOccurrence.value())
+        if(maxOccurrence && in.getCompoundPart(i) == maxOccurrence.value())
             continue;
         // 1) set flags for element i
         it.emplace(new intermediate::Operation(OP_XOR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER,
@@ -163,14 +162,14 @@ InstructionWalker normalization::handleContainer(
     intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
     intermediate::Operation* op = it.get<intermediate::Operation>();
     intermediate::VectorRotation* rot = it.get<intermediate::VectorRotation>();
-    if(rot != nullptr && rot->getSource().hasType(ValueType::CONTAINER) && (rot->getOffset().isLiteralValue()))
+    if(rot != nullptr && rot->getSource().hasContainer() && (rot->getOffset().isLiteralValue()))
     {
         Value src = rot->getSource();
         // vector rotation -> rotate container (if static offset)
         // TODO negative offset possible?
         std::size_t offset = rot->getOffset().getLiteralValue() ?
             rot->getOffset().getLiteralValue()->unsignedInt() :
-            rot->getOffset().immediate.getRotationOffset().value();
+            rot->getOffset().immediate().getRotationOffset().value();
         //"Rotates the order of the elements in the range [first,last), in such a way that the element pointed by middle
         // becomes the new first element."
         offset = (16 - offset);
@@ -178,13 +177,13 @@ InstructionWalker normalization::handleContainer(
         // it
         std::vector<Value> tmp;
         tmp.reserve(16);
-        tmp.insert(tmp.begin(), src.container.elements.begin(), src.container.elements.end());
+        tmp.insert(tmp.begin(), src.container().elements.begin(), src.container().elements.end());
         while(tmp.size() != 16)
             tmp.push_back(UNDEFINED_VALUE);
         std::rotate(tmp.begin(), tmp.begin() + offset, tmp.end());
-        for(std::size_t i = 0; i < src.container.elements.size(); ++i)
+        for(std::size_t i = 0; i < src.container().elements.size(); ++i)
         {
-            src.container.elements[i] = tmp[i];
+            src.container().elements[i] = tmp[i];
         }
         rot->setSource(src);
         // TODO next step could be optimized, if we used the vector-rotation to extract an element
@@ -193,14 +192,14 @@ InstructionWalker normalization::handleContainer(
     // jump from previous block to next one intended, so no "else"
     // if the source is a container and the offset is a literal (already applied above), remove the rotation (see move
     // branch) if the source is a container and the offset is no literal, extract the container, but keep rotation
-    if(rot != nullptr && rot->getSource().hasType(ValueType::CONTAINER) && !(rot->getOffset().isLiteralValue()))
+    if(rot != nullptr && rot->getSource().hasContainer() && !(rot->getOffset().isLiteralValue()))
     {
         logging::debug() << "Rewriting rotation from container " << rot->to_string() << logging::endl;
         auto tmp = method.addNewLocal(rot->getSource().type);
         it = copyVector(method, it, tmp, move->getSource());
         it->setArgument(0, tmp);
     }
-    else if(move != nullptr && move->getSource().hasType(ValueType::CONTAINER))
+    else if(move != nullptr && move->getSource().hasContainer())
     {
         if(!move->getSource().type.isPointerType())
         {
@@ -212,28 +211,27 @@ InstructionWalker normalization::handleContainer(
         }
     }
     else if(op != nullptr &&
-        (op->getFirstArg().hasType(ValueType::CONTAINER) ||
-            (op->getSecondArg() && op->assertArgument(1).hasType(ValueType::CONTAINER))))
+        (op->getFirstArg().hasContainer() || (op->getSecondArg() && op->assertArgument(1).hasContainer())))
     {
         for(std::size_t i = 0; i < op->getArguments().size(); ++i)
         {
             // for special containers, rewrite to scalars/registers
-            if(op->assertArgument(i).hasType(ValueType::CONTAINER))
+            if(op->assertArgument(i).hasContainer())
             {
-                if(op->assertArgument(i).container.isAllSame())
+                if(op->assertArgument(i).container().isAllSame())
                 {
                     const Value& container = op->assertArgument(i);
-                    Value tmp = container.container.elements.at(0);
+                    Value tmp = container.container().elements.at(0);
                     tmp.type = container.type;
                     op->setArgument(i, tmp);
                 }
-                else if(op->assertArgument(i).container.isElementNumber())
+                else if(op->assertArgument(i).container().isElementNumber())
                 {
                     op->setArgument(i, Value(REG_ELEMENT_NUMBER, op->assertArgument(i).type));
                 }
             }
         }
-        if(op->getFirstArg().hasType(ValueType::CONTAINER) && !op->getFirstArg().type.isPointerType())
+        if(op->getFirstArg().hasContainer() && !op->getFirstArg().type.isPointerType())
         {
             logging::debug() << "Rewriting operation with container-input " << op->to_string() << logging::endl;
             const Value tmpVal = method.addNewLocal(op->getFirstArg().type, "%container");
@@ -242,8 +240,7 @@ InstructionWalker normalization::handleContainer(
             // don't skip next instruction
             it.previousInBlock();
         }
-        if(op->getSecondArg() && op->assertArgument(1).hasType(ValueType::CONTAINER) &&
-            !op->assertArgument(1).type.isPointerType())
+        if(op->getSecondArg() && op->assertArgument(1).hasContainer() && !op->assertArgument(1).type.isPointerType())
         {
             logging::debug() << "Rewriting operation with container-input " << op->to_string() << logging::endl;
             const Value tmpVal = method.addNewLocal(op->assertArgument(1).type, "%container");
@@ -687,10 +684,10 @@ static InstructionWalker handleImmediateInOperation(Method& method, InstructionW
     for(std::size_t i = 0; i < op->getArguments().size(); ++i)
     {
         const Value source = op->assertArgument(i);
-        if(source.hasType(ValueType::LITERAL))
+        if(source.hasLiteral())
         {
             PROFILE_START(mapImmediateValue);
-            ImmediateHandler mapped = mapImmediateValue(source.literal);
+            ImmediateHandler mapped = mapImmediateValue(source.literal());
             PROFILE_END(mapImmediateValue);
             if(mapped.changeValue)
             {
@@ -700,15 +697,15 @@ static InstructionWalker handleImmediateInOperation(Method& method, InstructionW
                 if(mapped.loadImmediate)
                 {
                     // requires load immediate
-                    logging::debug() << "Loading immediate value: " << source.literal.to_string() << logging::endl;
-                    it.emplace(new intermediate::LoadImmediate(tmp, source.literal, op->conditional));
+                    logging::debug() << "Loading immediate value: " << source.literal().to_string() << logging::endl;
+                    it.emplace(new intermediate::LoadImmediate(tmp, source.literal(), op->conditional));
                     it.nextInBlock();
                     op->setArgument(i, tmp);
                 }
                 else if(mapped.opCode != OP_NOP)
                 {
                     DataType type = mapped.immediate.getFloatingValue() ? TYPE_FLOAT : TYPE_INT32;
-                    logging::debug() << "Calculating immediate value " << source.literal.to_string()
+                    logging::debug() << "Calculating immediate value " << source.literal().to_string()
                                      << " with operation '" << mapped.opCode.name << "' and immediate value "
                                      << mapped.immediate.to_string() << logging::endl;
                     if(mapped.opCode.numOperands == 1)
@@ -722,7 +719,7 @@ static InstructionWalker handleImmediateInOperation(Method& method, InstructionW
                 }
                 else
                 {
-                    logging::debug() << "Mapping constant for immediate value " << source.literal.to_string()
+                    logging::debug() << "Mapping constant for immediate value " << source.literal().to_string()
                                      << " to: " << mapped.immediate.to_string() << logging::endl;
                     op->setArgument(i, Value(mapped.immediate, source.type));
                 }
@@ -736,10 +733,10 @@ static InstructionWalker handleImmediateInOperation(Method& method, InstructionW
 static InstructionWalker handleImmediateInMove(Method& method, InstructionWalker it, intermediate::MoveOperation* move)
 {
     Value source = move->getSource();
-    if(source.hasType(ValueType::LITERAL))
+    if(source.hasLiteral())
     {
         PROFILE_START(mapImmediateValue);
-        ImmediateHandler mapped = mapImmediateValue(source.literal);
+        ImmediateHandler mapped = mapImmediateValue(source.literal());
         PROFILE_END(mapImmediateValue);
         if(mapped.changeValue)
         {
@@ -747,15 +744,15 @@ static InstructionWalker handleImmediateInMove(Method& method, InstructionWalker
             if(mapped.loadImmediate)
             {
                 // requires load immediate
-                logging::debug() << "Loading immediate value: " << source.literal.to_string() << logging::endl;
-                it.reset(
-                    (new intermediate::LoadImmediate(move->getOutput().value(), source.literal))->copyExtrasFrom(move));
+                logging::debug() << "Loading immediate value: " << source.literal().to_string() << logging::endl;
+                it.reset((new intermediate::LoadImmediate(move->getOutput().value(), source.literal()))
+                             ->copyExtrasFrom(move));
             }
             else if(mapped.opCode != OP_NOP)
             {
-                logging::debug() << "Calculating immediate value " << source.literal.to_string() << " with operation '"
-                                 << mapped.opCode.name << "' and immediate value " << mapped.immediate.to_string()
-                                 << logging::endl;
+                logging::debug() << "Calculating immediate value " << source.literal().to_string()
+                                 << " with operation '" << mapped.opCode.name << "' and immediate value "
+                                 << mapped.immediate.to_string() << logging::endl;
                 if(mapped.opCode.numOperands == 1)
                     it.reset((new intermediate::Operation(mapped.opCode, move->getOutput().value(),
                                   Value(mapped.immediate, move->getSource().type)))
@@ -768,7 +765,7 @@ static InstructionWalker handleImmediateInMove(Method& method, InstructionWalker
             }
             else
             {
-                logging::debug() << "Mapping constant for immediate value " << source.literal.to_string()
+                logging::debug() << "Mapping constant for immediate value " << source.literal().to_string()
                                  << " to: " << mapped.immediate.to_string() << logging::endl;
                 move->setSource(Value(mapped.immediate, source.type));
             }
@@ -822,9 +819,8 @@ static Optional<Value> findPreviousUseWithImmediate(
     while(instRemaining > 0 && !it.isStartOfBlock())
     {
         if(it.has<intermediate::MoveOperation>() && it->getArgument(0).is(arg) && it->conditional == COND_ALWAYS &&
-            it->getOutput().ifPresent([](const Value& val) -> bool {
-                return val.hasType(ValueType::LOCAL) && val.local->name.find(localPrefix) == 0;
-            }))
+            it->getOutput().ifPresent(
+                [](const Value& val) -> bool { return val.hasLocal() && val.local()->name.find(localPrefix) == 0; }))
         {
             return it->getOutput();
         }
@@ -850,10 +846,10 @@ InstructionWalker normalization::handleUseWithImmediate(
         {
             // at least one immediate value is used
             const auto& args = op->getArguments();
-            const auto localIt = std::find_if(
-                args.begin(), args.end(), [](const Value& arg) -> bool { return arg.hasType(ValueType::LOCAL); });
+            const auto localIt =
+                std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.hasLocal(); });
             if(localIt != args.end() &&
-                !it.getBasicBlock()->isLocallyLimited(findWriteOfLocal(it, localIt->local), localIt->local,
+                !it.getBasicBlock()->isLocallyLimited(findWriteOfLocal(it, localIt->local()), localIt->local(),
                     config.additionalOptions.accumulatorThreshold))
             {
                 // one other local is used and its range is greater than the accumulator threshold
@@ -861,12 +857,12 @@ InstructionWalker normalization::handleUseWithImmediate(
                 // accumulator-range
                 Optional<Value> prefTemp =
                     findPreviousUseWithImmediate(it, *localIt, config.additionalOptions.accumulatorThreshold);
-                const Local* oldLocal = localIt->local;
+                const Local* oldLocal = localIt->local();
                 if(prefTemp)
                 {
                     logging::debug() << "Re-using temporary to split up use of long-living local with immediate value: "
                                      << op->to_string() << logging::endl;
-                    op->replaceLocal(oldLocal, prefTemp->local, LocalUse::Type::READER);
+                    op->replaceLocal(oldLocal, prefTemp->local(), LocalUse::Type::READER);
                 }
                 else
                 {
@@ -874,9 +870,9 @@ InstructionWalker normalization::handleUseWithImmediate(
                         << "Inserting temporary to split up use of long-living local with immediate value: "
                         << op->to_string() << logging::endl;
                     Value tmp = method.addNewLocal(localIt->type, localPrefix);
-                    if(localIt->local->reference.first != nullptr)
+                    if(localIt->local()->reference.first != nullptr)
                         // the use-with literal also references the value referenced by the original local
-                        tmp.local->reference = localIt->local->reference;
+                        tmp.local()->reference = localIt->local()->reference;
                     it.emplace(new intermediate::MoveOperation(tmp, *localIt));
                     // since we simply move the source, some decorations for the writing of the source still apply
                     // TODO or more generally propagate (unsigned) decoration for every moves and some operations (e.g.
@@ -884,7 +880,7 @@ InstructionWalker normalization::handleUseWithImmediate(
                     if(localIt->getSingleWriter() != nullptr)
                         it->addDecorations(intermediate::forwardDecorations(localIt->getSingleWriter()->decoration));
                     it.nextInBlock();
-                    op->replaceLocal(oldLocal, tmp.local, LocalUse::Type::READER);
+                    op->replaceLocal(oldLocal, tmp.local(), LocalUse::Type::READER);
                 }
             }
         }

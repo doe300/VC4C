@@ -22,21 +22,6 @@ LLVMInstruction::LLVMInstruction() : decorations(intermediate::InstructionDecora
 
 LLVMInstruction::~LLVMInstruction() {}
 
-const Local* LLVMInstruction::getDeclaredLocal() const
-{
-    return nullptr;
-}
-
-std::vector<const Local*> LLVMInstruction::getAllLocals() const
-{
-    const auto tmp = getDeclaredLocal();
-    if(tmp != nullptr)
-    {
-        return {tmp};
-    }
-    return {};
-}
-
 LLVMInstruction* LLVMInstruction::setDecorations(const intermediate::InstructionDecorations decorations)
 {
     this->decorations = decorations;
@@ -75,35 +60,13 @@ CallSite::CallSite(const Method& method, std::vector<Value>&& args) :
     }
 }
 
-const Local* CallSite::getDeclaredLocal() const
-{
-    return dest.local;
-}
-
-std::vector<const Local*> CallSite::getAllLocals() const
-{
-    std::vector<const Local*> res;
-    if(dest.hasType(ValueType::LOCAL) && dest.local != nullptr && !dest.local->name.empty())
-    {
-        res.push_back(dest.local);
-    }
-    for(const Value& val : arguments)
-    {
-        if(val.hasType(ValueType::LOCAL))
-        {
-            res.push_back(val.local);
-        }
-    }
-    return res;
-}
-
 bool CallSite::mapInstruction(Method& method) const
 {
     // map calls to @llvm.lifetime.start / @llvm.lifetime.end to lifetime-instructions
     if(methodName.find("llvm.lifetime.start") == 0 || methodName.find("llvm.lifetime.end") == 0)
     {
         Value pointer = arguments.at(1);
-        if(!pointer.local->is<StackAllocation>())
+        if(!pointer.local()->is<StackAllocation>())
         {
             // the source of the life-time intrinsic could be bit-cast from an alloca-instruction
             if(dynamic_cast<const intermediate::MoveOperation*>(pointer.getSingleWriter()) != nullptr)
@@ -111,9 +74,10 @@ bool CallSite::mapInstruction(Method& method) const
                 pointer = dynamic_cast<const intermediate::MoveOperation*>(pointer.getSingleWriter())->getSource();
             }
             // it also could be a getelementptr (to the index 0)
-            else if(pointer.local->reference.first != nullptr && pointer.local->reference.first->is<StackAllocation>())
+            else if(pointer.local()->reference.first != nullptr &&
+                pointer.local()->reference.first->is<StackAllocation>())
             {
-                pointer = pointer.local->reference.first->createReference();
+                pointer = pointer.local()->reference.first->createReference();
             }
             // TODO still fails for values passed as parameter (e.g. in
             // /opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/addr-space-struct-arg.cl)
@@ -123,7 +87,7 @@ bool CallSite::mapInstruction(Method& method) const
         {
             //"The first argument is a constant integer representing the size of the object, or -1 if it is variable
             // sized"
-            StackAllocation* alloc = pointer.local->as<StackAllocation>();
+            StackAllocation* alloc = pointer.local()->as<StackAllocation>();
             if(alloc == nullptr)
                 throw CompilationError(CompilationStep::LLVM_2_IR,
                     "Cannot start life-time of object not located on stack", pointer.to_string());
@@ -132,7 +96,7 @@ bool CallSite::mapInstruction(Method& method) const
         method.appendToEnd(new intermediate::LifetimeBoundary(pointer, methodName.find("llvm.lifetime.end") == 0));
         return true;
     }
-    const Value output = dest.hasType(ValueType::LOCAL) && dest.local != nullptr ? dest : NOP_REGISTER;
+    const Value output = dest.hasLocal() && dest.local() != nullptr ? dest : NOP_REGISTER;
     // handle other llvm.* intrinsics
     if(methodName.find("llvm.fmuladd") == 0)
     {
@@ -162,12 +126,12 @@ bool CallSite::mapInstruction(Method& method) const
         const Value& fillByte = arguments.at(1);
         const Value& numBytes = arguments.at(2);
         const Value& volatileAccess = arguments.at(4);
-        if(volatileAccess.getLiteralValue() && volatileAccess.getLiteralValue()->isTrue() &&
-            memAddr.hasType(ValueType::LOCAL) && memAddr.local->getBase(true)->is<Parameter>())
+        if(volatileAccess.getLiteralValue() && volatileAccess.getLiteralValue()->isTrue() && memAddr.hasLocal() &&
+            memAddr.local()->getBase(true)->is<Parameter>())
         {
             // set parameter to volatile
-            const_cast<Local*>(memAddr.local->getBase(true))->as<Parameter>()->decorations =
-                add_flag(memAddr.local->getBase(true)->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
+            const_cast<Local*>(memAddr.local()->getBase(true))->as<Parameter>()->decorations =
+                add_flag(memAddr.local()->getBase(true)->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
         }
         method.appendToEnd(
             new intermediate::MemoryInstruction(intermediate::MemoryOperation::FILL, memAddr, fillByte, numBytes));
@@ -212,7 +176,7 @@ bool CallSite::mapInstruction(Method& method) const
     }
     logging::debug() << "Generating immediate call to " << methodName << " -> " << dest.type.to_string()
                      << logging::endl;
-    if(dest.hasType(ValueType::LOCAL) && dest.local != nullptr)
+    if(dest.hasLocal() && dest.local() != nullptr)
         method.appendToEnd((new intermediate::MethodCall(output, methodName, arguments))->addDecorations(decorations));
     else
         method.appendToEnd((new intermediate::MethodCall(methodName, arguments))->addDecorations(decorations));
@@ -232,22 +196,6 @@ const std::string& CallSite::getMethodName() const
 Copy::Copy(Value&& dest, Value&& orig, const bool isLoadStore, const bool isRead, bool isBitcast) :
     dest(dest), orig(orig), isLoadStore(isLoadStore), isRead(isRead), isBitcast(isBitcast)
 {
-}
-
-const Local* Copy::getDeclaredLocal() const
-{
-    return dest.hasType(ValueType::LOCAL) ? dest.local : nullptr;
-}
-
-std::vector<const Local*> Copy::getAllLocals() const
-{
-    if(dest.hasType(ValueType::LOCAL) && orig.hasType(ValueType::LOCAL))
-    {
-        return {dest.local, orig.local};
-    }
-    if(dest.hasType(ValueType::LOCAL))
-        return {dest.local};
-    return {};
 }
 
 bool Copy::mapInstruction(Method& method) const
@@ -284,25 +232,6 @@ bool Copy::mapInstruction(Method& method) const
 
 UnaryOperator::UnaryOperator(std::string&& opCode, Value&& dest, Value&& arg) : dest(dest), opCode(opCode), arg(arg) {}
 
-const Local* UnaryOperator::getDeclaredLocal() const
-{
-    if(dest.hasType(ValueType::LOCAL))
-        return dest.local;
-    return nullptr;
-}
-
-std::vector<const Local*> UnaryOperator::getAllLocals() const
-{
-    std::vector<const Local*> locals;
-    if(dest.hasType(ValueType::LOCAL))
-        locals.push_back(dest.local);
-    if(arg.hasType(ValueType::LOCAL))
-    {
-        locals.push_back(arg.local);
-    }
-    return locals;
-}
-
 bool UnaryOperator::mapInstruction(Method& method) const
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
@@ -319,16 +248,6 @@ bool UnaryOperator::mapInstruction(Method& method) const
 BinaryOperator::BinaryOperator(std::string&& opCode, Value&& dest, Value&& arg0, Value&& arg1) :
     UnaryOperator(std::forward<std::string>(opCode), std::forward<Value>(dest), std::forward<Value>(arg0)), arg2(arg1)
 {
-}
-
-std::vector<const Local*> BinaryOperator::getAllLocals() const
-{
-    auto tmp = UnaryOperator::getAllLocals();
-    if(arg2.hasType(ValueType::LOCAL))
-    {
-        tmp.push_back(arg2.local);
-    }
-    return tmp;
 }
 
 bool BinaryOperator::mapInstruction(Method& method) const
@@ -348,26 +267,6 @@ bool BinaryOperator::mapInstruction(Method& method) const
 IndexOf::IndexOf(Value&& dest, Value&& container, std::vector<Value>&& indices) :
     dest(dest), container(container), indices(indices)
 {
-}
-
-const Local* IndexOf::getDeclaredLocal() const
-{
-    return dest.local;
-}
-
-std::vector<const Local*> IndexOf::getAllLocals() const
-{
-    std::vector<const Local*> res;
-    if(dest.hasType(ValueType::LOCAL))
-        res.push_back(dest.local);
-    if(container.hasType(ValueType::LOCAL))
-        res.push_back(container.local);
-    for(const Value& index : indices)
-    {
-        if(index.hasType(ValueType::LOCAL))
-            res.push_back(index.local);
-    }
-    return res;
 }
 
 bool IndexOf::mapInstruction(Method& method) const
@@ -396,27 +295,6 @@ Comparison::Comparison(Value&& dest, std::string&& comp, Value&& op1, Value&& op
 {
 }
 
-const Local* Comparison::getDeclaredLocal() const
-{
-    return dest.hasType(ValueType::LOCAL) ? dest.local : nullptr;
-}
-
-std::vector<const Local*> Comparison::getAllLocals() const
-{
-    std::vector<const Local*> tmp;
-    if(dest.hasType(ValueType::LOCAL))
-        tmp.push_back(dest.local);
-    if(op1.hasType(ValueType::LOCAL))
-    {
-        tmp.push_back(op1.local);
-    }
-    if(op2.hasType(ValueType::LOCAL))
-    {
-        tmp.push_back(op2.local);
-    }
-    return tmp;
-}
-
 bool Comparison::mapInstruction(Method& method) const
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
@@ -429,29 +307,6 @@ bool Comparison::mapInstruction(Method& method) const
 ContainerInsertion::ContainerInsertion(Value&& dest, Value&& container, Value&& newValue, Value&& index) :
     dest(dest), container(container), newValue(newValue), index(index)
 {
-}
-
-const Local* ContainerInsertion::getDeclaredLocal() const
-{
-    return dest.hasType(ValueType::LOCAL) ? dest.local : nullptr;
-}
-
-std::vector<const Local*> ContainerInsertion::getAllLocals() const
-{
-    std::vector<const Local*> tmp;
-    if(dest.hasType(ValueType::LOCAL))
-        tmp.push_back(dest.local);
-    if(container.hasType(ValueType::LOCAL))
-        tmp.push_back(container.local);
-    if(newValue.hasType(ValueType::LOCAL))
-    {
-        tmp.push_back(newValue.local);
-    }
-    if(index.hasType(ValueType::LOCAL))
-    {
-        tmp.push_back(index.local);
-    }
-    return tmp;
 }
 
 bool ContainerInsertion::mapInstruction(Method& method) const
@@ -480,25 +335,6 @@ ContainerExtraction::ContainerExtraction(Value&& dest, Value&& container, Value&
 {
 }
 
-const Local* ContainerExtraction::getDeclaredLocal() const
-{
-    return dest.hasType(ValueType::LOCAL) ? dest.local : nullptr;
-}
-
-std::vector<const Local*> ContainerExtraction::getAllLocals() const
-{
-    std::vector<const Local*> tmp;
-    if(dest.hasType(ValueType::LOCAL))
-        tmp.push_back(dest.local);
-    if(container.hasType(ValueType::LOCAL))
-        tmp.push_back(container.local);
-    if(index.hasType(ValueType::LOCAL))
-    {
-        tmp.push_back(index.local);
-    }
-    return tmp;
-}
-
 bool ContainerExtraction::mapInstruction(Method& method) const
 {
     const DataType elementType = container.type.getElementType();
@@ -522,13 +358,6 @@ ValueReturn::ValueReturn() : hasValue(false), val(Literal(false), TYPE_VOID) {}
 
 ValueReturn::ValueReturn(Value&& val) : hasValue(true), val(val) {}
 
-std::vector<const Local*> ValueReturn::getAllLocals() const
-{
-    if(hasValue && val.hasType(ValueType::LOCAL))
-        return {val.local};
-    return {};
-}
-
 bool ValueReturn::mapInstruction(Method& method) const
 {
     if(hasValue)
@@ -549,27 +378,6 @@ ShuffleVector::ShuffleVector(Value&& dest, Value&& v1, Value&& v2, Value&& mask)
 {
 }
 
-const Local* ShuffleVector::getDeclaredLocal() const
-{
-    return dest.hasType(ValueType::LOCAL) ? dest.local : nullptr;
-}
-
-std::vector<const Local*> ShuffleVector::getAllLocals() const
-{
-    std::vector<const Local*> tmp = {};
-    if(dest.hasType(ValueType::LOCAL))
-        tmp.push_back(dest.local);
-    if(v1.hasType(ValueType::LOCAL))
-        tmp.push_back(v1.local);
-    if(v2.hasType(ValueType::LOCAL))
-        tmp.push_back(v2.local);
-    if(mask.hasType(ValueType::LOCAL))
-    {
-        tmp.push_back(mask.local);
-    }
-    return tmp;
-}
-
 bool ShuffleVector::mapInstruction(Method& method) const
 {
     // shuffling = iteration over all elements in both vectors and re-ordering in order given
@@ -586,29 +394,11 @@ LLVMLabel::LLVMLabel(Value&& label) : label(label) {}
 bool LLVMLabel::mapInstruction(Method& method) const
 {
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating label " << label.to_string() << logging::endl);
-    method.appendToEnd(new intermediate::BranchLabel(*label.local));
+    method.appendToEnd(new intermediate::BranchLabel(*label.local()));
     return true;
 }
 
 PhiNode::PhiNode(Value&& dest, std::vector<std::pair<Value, const Local*>>&& labels) : dest(dest), labels(labels) {}
-
-const Local* PhiNode::getDeclaredLocal() const
-{
-    return dest.hasType(ValueType::LOCAL) ? dest.local : nullptr;
-}
-
-std::vector<const Local*> PhiNode::getAllLocals() const
-{
-    std::vector<const Local*> refs;
-    if(dest.hasType(ValueType::LOCAL))
-        refs.push_back(dest.local);
-    for(const auto& pair : labels)
-    {
-        if(pair.first.hasType(ValueType::LOCAL))
-            refs.push_back(pair.first.local);
-    }
-    return refs;
-}
 
 bool PhiNode::mapInstruction(Method& method) const
 {
@@ -621,25 +411,6 @@ bool PhiNode::mapInstruction(Method& method) const
 Selection::Selection(Value&& dest, Value&& cond, Value&& opt1, Value&& opt2) :
     dest(dest), cond(cond), opt1(opt1), opt2(opt2)
 {
-}
-
-const Local* Selection::getDeclaredLocal() const
-{
-    return dest.hasType(ValueType::LOCAL) ? dest.local : nullptr;
-}
-
-std::vector<const Local*> Selection::getAllLocals() const
-{
-    std::vector<const Local*> refs;
-    if(dest.hasType(ValueType::LOCAL))
-        refs.push_back(dest.local);
-    if(cond.hasType(ValueType::LOCAL))
-        refs.push_back(cond.local);
-    if(opt1.hasType(ValueType::LOCAL))
-        refs.push_back(opt1.local);
-    if(opt2.hasType(ValueType::LOCAL))
-        refs.push_back(opt2.local);
-    return refs;
 }
 
 bool Selection::mapInstruction(Method& method) const
@@ -675,28 +446,21 @@ Branch::Branch(Value&& cond, Value&& thenLabel, Value&& elseLabel) :
 {
 }
 
-std::vector<const Local*> Branch::getAllLocals() const
-{
-    if(cond.hasType(ValueType::LOCAL))
-        return {cond.local};
-    return {};
-}
-
 bool Branch::mapInstruction(Method& method) const
 {
     if(cond == BOOL_TRUE)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating unconditional branch to " << thenLabel.to_string() << logging::endl);
-        method.appendToEnd(new intermediate::Branch(thenLabel.local, COND_ALWAYS, BOOL_TRUE));
+        method.appendToEnd(new intermediate::Branch(thenLabel.local(), COND_ALWAYS, BOOL_TRUE));
     }
     else
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating branch on condition " << cond.to_string() << " to either " << thenLabel.to_string()
                 << " or " << elseLabel.to_string() << logging::endl);
-        method.appendToEnd(new intermediate::Branch(thenLabel.local, COND_ZERO_CLEAR /* condition is true */, cond));
-        method.appendToEnd(new intermediate::Branch(elseLabel.local, COND_ZERO_SET /* condition is false */, cond));
+        method.appendToEnd(new intermediate::Branch(thenLabel.local(), COND_ZERO_CLEAR /* condition is true */, cond));
+        method.appendToEnd(new intermediate::Branch(elseLabel.local(), COND_ZERO_SET /* condition is false */, cond));
     }
 
     return true;
@@ -705,13 +469,6 @@ bool Branch::mapInstruction(Method& method) const
 Switch::Switch(Value&& cond, Value&& defaultLabel, FastMap<int, Value>&& cases) :
     cond(cond), defaultLabel(defaultLabel), jumpLabels(cases)
 {
-}
-
-std::vector<const Local*> Switch::getAllLocals() const
-{
-    if(cond.hasType(ValueType::LOCAL))
-        return {cond.local};
-    return {};
 }
 
 bool Switch::mapInstruction(Method& method) const
@@ -725,10 +482,10 @@ bool Switch::mapInstruction(Method& method) const
         const Value tmp = method.addNewLocal(TYPE_BOOL, "%switch");
         method.appendToEnd(
             new intermediate::Comparison(intermediate::COMP_EQ, tmp, cond, Value(Literal(option.first), TYPE_INT32)));
-        method.appendToEnd(new intermediate::Branch(option.second.local, COND_ZERO_CLEAR, tmp));
+        method.appendToEnd(new intermediate::Branch(option.second.local(), COND_ZERO_CLEAR, tmp));
     }
     // branch default label
-    method.appendToEnd(new intermediate::Branch(defaultLabel.local, COND_ALWAYS, BOOL_TRUE));
+    method.appendToEnd(new intermediate::Branch(defaultLabel.local(), COND_ALWAYS, BOOL_TRUE));
 
     return true;
 }

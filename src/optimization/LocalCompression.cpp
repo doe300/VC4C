@@ -40,7 +40,7 @@ static InstructionWalker compressLocalWrite(
     }
 
     const Value tmp = method.addNewLocal(local.type);
-    it->replaceLocal(&local, tmp.local, LocalUse::Type::WRITER);
+    it->replaceLocal(&local, tmp.local(), LocalUse::Type::WRITER);
     it.nextInBlock();
 
     return intermediate::insertVectorInsertion(
@@ -58,7 +58,7 @@ static InstructionWalker compressLocalRead(
     it = intermediate::insertVectorExtraction(
         it, method, container.createReference(), Value(SmallImmediate(index), TYPE_INT8), tmp);
 
-    it->replaceLocal(&local, tmp.local, LocalUse::Type::READER);
+    it->replaceLocal(&local, tmp.local(), LocalUse::Type::READER);
     return it;
 }
 
@@ -97,7 +97,7 @@ bool optimizations::compressWorkGroupLocals(const Module& module, Method& method
         const Local* local = method.findLocal(name);
         if(local != nullptr)
         {
-            compressLocalIntoRegister(method, *local, *container.local, index);
+            compressLocalIntoRegister(method, *local, *container.local(), index);
             ++index;
         }
     }

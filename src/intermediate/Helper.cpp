@@ -42,7 +42,7 @@ InstructionWalker intermediate::insertVectorRotation(
 
     // 1. set amount of rotation
     Value appliedOffset(UNDEFINED_VALUE);
-    if(offset.hasType(ValueType::LITERAL))
+    if(offset.hasLiteral())
     {
         // if the offset is a literal, set it as small immediate
         /*
@@ -52,8 +52,8 @@ InstructionWalker intermediate::insertVectorRotation(
          * negative offset, rotate downwards -> rotate upwards with absolute value
          * positive offset, rotate downwards -> rotate downwards with absolute value
          */
-        int32_t offsetValue = offset.literal.signedInt();
-        const Direction actualDirection = offset.literal.signedInt() >= 0 ?
+        int32_t offsetValue = offset.literal().signedInt();
+        const Direction actualDirection = offset.literal().signedInt() >= 0 ?
             direction :
             (direction == Direction::DOWN ? Direction::UP : Direction::DOWN);
         offsetValue = actualDirection != direction ? -offsetValue : offsetValue;
@@ -72,24 +72,24 @@ InstructionWalker intermediate::insertVectorRotation(
         else
             appliedOffset = Value(SmallImmediate::fromRotationOffset(static_cast<uint8_t>(offsetValue)), offset.type);
     }
-    else if(offset.hasType(ValueType::SMALL_IMMEDIATE))
+    else if(offset.hasImmediate())
     {
         appliedOffset = offset;
         // vector is rotated by offset-constant not by rotation constant -> convert to rotation constant
-        if(offset.immediate.getIntegerValue())
+        if(offset.immediate().getIntegerValue())
         {
             if(direction == Direction::DOWN)
             {
-                appliedOffset.immediate.value = static_cast<unsigned char>((16 - offset.immediate.value) % 16);
+                appliedOffset.immediate().value = static_cast<unsigned char>((16 - offset.immediate().value) % 16);
             }
             else
             {
-                appliedOffset.immediate.value = offset.immediate.value % 16;
+                appliedOffset.immediate().value = offset.immediate().value % 16;
             }
-            if(appliedOffset.immediate.value == 0)
+            if(appliedOffset.immediate().value == 0)
                 appliedOffset = INT_ZERO;
             else
-                appliedOffset.immediate = SmallImmediate::fromRotationOffset(appliedOffset.immediate);
+                appliedOffset.immediate() = SmallImmediate::fromRotationOffset(appliedOffset.immediate());
         }
     }
     else
@@ -116,7 +116,7 @@ InstructionWalker intermediate::insertVectorRotation(
     }
 
     // 2. create rotation instruction
-    if(appliedOffset.hasLiteral(INT_ZERO.literal))
+    if(appliedOffset.hasLiteral(INT_ZERO.literal()))
         // a rotation by 0 is a simple move
         it.emplace(new MoveOperation(dest, src));
     else
@@ -272,7 +272,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         // initialize all values with the first index
         return intermediate::insertReplication(it, source0, destination);
     }
-    else if(!mask.hasType(ValueType::CONTAINER))
+    else if(!mask.hasContainer())
     {
         if(source1.isUndefined())
             return insertDynamicVectorShuffle(it, method, destination, source0, mask);
@@ -295,13 +295,13 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
 
     // if all indices are ascending (correspond to the elements of source 0), we can simply copy it
     // if all indices point to the same, replicate this index over the vector
-    bool indicesCorrespond = mask.container.isElementNumber();
-    bool allIndicesSame = mask.container.isAllSame();
+    bool indicesCorrespond = mask.container().isElementNumber();
+    bool allIndicesSame = mask.container().isAllSame();
     if(indicesCorrespond)
     {
         // the vector is copied in-order
-        if(mask.container.elements.size() > source0.type.getVectorWidth() &&
-            checkIndicesNotUndefined(mask.container, source0.type.getVectorWidth()))
+        if(mask.container().elements.size() > source0.type.getVectorWidth() &&
+            checkIndicesNotUndefined(mask.container(), source0.type.getVectorWidth()))
         {
             // The second vector participates in the shuffling
             // move the first vector in-order
@@ -329,11 +329,11 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     if(allIndicesSame)
     {
         const int32_t indexValue =
-            mask.container.elements[0].literal.signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ?
-            mask.container.elements[0].literal.signedInt() :
-            mask.container.elements[0].literal.signedInt() - static_cast<int32_t>(source0.type.getVectorWidth());
+            mask.container().elements[0].literal().signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ?
+            mask.container().elements[0].literal().signedInt() :
+            mask.container().elements[0].literal().signedInt() - static_cast<int32_t>(source0.type.getVectorWidth());
         const Value source =
-            mask.container.elements[0].literal.signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ?
+            mask.container().elements[0].literal().signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ?
             source0 :
             source1;
         // if all indices same, replicate
@@ -350,25 +350,25 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     }
 
     // zero out destination first, also required so register allocator finds unconditional write to destination
-    if(destination.hasType(ValueType::LOCAL) && destination.local->getUsers(LocalUse::Type::WRITER).empty())
+    if(destination.hasLocal() && destination.local()->getUsers(LocalUse::Type::WRITER).empty())
     {
         it.emplace(new intermediate::MoveOperation(destination, INT_ZERO));
         it.nextInBlock();
     }
 
     // mask is container of literals, indices have arbitrary order
-    for(std::size_t i = 0; i < mask.container.elements.size(); ++i)
+    for(std::size_t i = 0; i < mask.container().elements.size(); ++i)
     {
-        Value index = mask.container.elements[i];
+        Value index = mask.container().elements[i];
         if(index.isUndefined())
             // don't write anything at this position
             continue;
-        if(!index.hasType(ValueType::LITERAL))
+        if(!index.hasLiteral())
             throw CompilationError(CompilationStep::GENERAL, "Invalid mask value", mask.to_string(false, true));
         const Value& container =
-            index.literal.signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ? source0 : source1;
-        if(index.literal.signedInt() >= static_cast<int32_t>(source0.type.getVectorWidth()))
-            index.literal = Literal(index.literal.signedInt() - source0.type.getVectorWidth());
+            index.literal().signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ? source0 : source1;
+        if(index.literal().signedInt() >= static_cast<int32_t>(source0.type.getVectorWidth()))
+            index.literal() = Literal(index.literal().signedInt() - source0.type.getVectorWidth());
         index.type = TYPE_INT8;
         const Value tmp = method.addNewLocal(container.type.getElementType(), "%vector_shuffle");
         it = insertVectorExtraction(it, method, container, index, tmp);
@@ -386,19 +386,19 @@ InstructionWalker intermediate::insertMakePositive(
         dest = isNegative ? Value(Literal(-src.getLiteralValue()->signedInt()), src.type) : src;
         writeIsNegative = isNegative ? INT_MINUS_ONE : INT_ZERO;
     }
-    else if(src.hasType(ValueType::CONTAINER))
+    else if(src.hasContainer())
     {
-        dest = Value(ContainerValue(src.container.elements.size()), src.type);
-        writeIsNegative = Value(ContainerValue(src.container.elements.size()), src.type);
-        for(const auto& elem : src.container.elements)
+        dest = Value(ContainerValue(src.container().elements.size()), src.type);
+        writeIsNegative = Value(ContainerValue(src.container().elements.size()), src.type);
+        for(const auto& elem : src.container().elements)
         {
             if(!elem.getLiteralValue())
                 throw CompilationError(CompilationStep::OPTIMIZER, "Can't handle container with non-literal values",
                     src.to_string(false, true));
             bool isNegative = elem.getLiteralValue()->signedInt() < 0;
-            dest.container.elements.push_back(
+            dest.container().elements.push_back(
                 isNegative ? Value(Literal(-elem.getLiteralValue()->signedInt()), elem.type) : elem);
-            writeIsNegative.container.elements.push_back(isNegative ? INT_MINUS_ONE : INT_ZERO);
+            writeIsNegative.container().elements.push_back(isNegative ? INT_MINUS_ONE : INT_ZERO);
         }
     }
     else if(src.getSingleWriter() != nullptr &&
@@ -438,7 +438,7 @@ InstructionWalker intermediate::insertMakePositive(
             srcInt = method.addNewLocal(TYPE_INT32.toVectorType(src.type.getVectorWidth()), "%sext");
             it = insertSignExtension(it, method, src, srcInt, true);
         }
-        if(!writeIsNegative.hasType(ValueType::LOCAL))
+        if(!writeIsNegative.hasLocal())
             writeIsNegative = method.addNewLocal(TYPE_INT32.toVectorType(src.type.getVectorWidth()), "%sign");
         it.emplace(new Operation(OP_ASR, writeIsNegative, srcInt, Value(Literal(31u), TYPE_INT8)));
         it.nextInBlock();
@@ -461,7 +461,7 @@ InstructionWalker intermediate::insertRestoreSign(
 {
     if(src.getLiteralValue() && sign.getLiteralValue())
     {
-        dest = sign.isZeroInitializer() ? src : Value(Literal(-src.literal.signedInt()), src.type);
+        dest = sign.isZeroInitializer() ? src : Value(Literal(-src.literal().signedInt()), src.type);
     }
     else
     {
@@ -601,7 +601,7 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
     if(firstIndexIsElement && indices.at(0).isZeroInitializer())
         index = indices.size() > 1 ? indices.at(1) : UNDEFINED_VALUE;
     const int refIndex = index.getLiteralValue().value_or(Literal(ANY_ELEMENT)).signedInt();
-    const_cast<std::pair<Local*, int>&>(dest.local->reference) = std::make_pair(container.local, refIndex);
+    const_cast<std::pair<Local*, int>&>(dest.local()->reference) = std::make_pair(container.local(), refIndex);
 
     DataType finalType = subContainerType;
     if(subContainerType.getArrayType())
@@ -743,8 +743,8 @@ InstructionWalker intermediate::insertMove(
     {
         if(source.getLiteralValue())
             output = Value(source.getLiteralValue().value(), source.type);
-        else if(source.hasType(ValueType::CONTAINER))
-            output = Value(source.container, source.type);
+        else if(source.hasContainer())
+            output = Value(source.container(), source.type);
         if(!output.isUndefined())
             return it;
     }

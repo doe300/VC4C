@@ -36,8 +36,6 @@ bool vc4c::isFixed(const RegisterFile file)
     return file == RegisterFile::ACCUMULATOR || file == RegisterFile::PHYSICAL_A || file == RegisterFile::PHYSICAL_B;
 }
 
-Register::Register() noexcept : file(RegisterFile::NONE), num(std::numeric_limits<unsigned char>::max()) {}
-
 bool Register::isGeneralPurpose() const
 {
     return num < 32;
@@ -333,6 +331,12 @@ uint32_t Literal::toImmediate() const
     return u;
 }
 
+std::size_t vc4c::hash<vc4c::Literal>::operator()(vc4c::Literal const& val) const noexcept
+{
+    static const std::hash<unsigned> hash;
+    return hash(val.unsignedInt());
+}
+
 std::string SmallImmediate::to_string() const
 {
     if(value <= 15)
@@ -420,6 +424,12 @@ SmallImmediate SmallImmediate::fromRotationOffset(unsigned char offset)
     return static_cast<SmallImmediate>(static_cast<unsigned char>(offset + VECTOR_ROTATE_R5));
 }
 
+std::size_t vc4c::hash<vc4c::SmallImmediate>::operator()(vc4c::SmallImmediate const& val) const noexcept
+{
+    static const std::hash<unsigned char> hash;
+    return hash(val.value);
+}
+
 bool ContainerValue::hasOnlyScalarElements() const
 {
     return std::all_of(elements.begin(), elements.end(), toFunction(&Value::isLiteralValue));
@@ -446,15 +456,15 @@ bool ContainerValue::isElementNumber(bool withOffset) const
 {
     if(elements.empty())
         return true;
-    const int32_t offset = withOffset ? elements[0].literal.signedInt() : 0;
+    if(std::any_of(elements.begin(), elements.end(), [](const Value& val) -> bool { return !val.getLiteralValue(); }))
+        return false;
+    const int32_t offset = withOffset ? elements[0].getLiteralValue()->signedInt() : 0;
     for(std::size_t i = 0; i < elements.size(); ++i)
     {
         if(elements[i].isUndefined())
             // if items are UNDEFINED, ignore them, since maybe the remaining items correspond to the element-number
             continue;
-        if(!elements[i].hasType(ValueType::LITERAL))
-            return false;
-        if(elements[i].literal.signedInt() != static_cast<int32_t>(i) + offset)
+        if(elements[i].getLiteralValue()->signedInt() != static_cast<int32_t>(i) + offset)
             return false;
     }
     return true;
@@ -470,242 +480,177 @@ bool ContainerValue::isUndefined() const
     return true;
 }
 
-Value::Value(const Literal& lit, const DataType& type) noexcept :
-    literal(lit), type(type), valueType(ValueType::LITERAL)
+std::size_t vc4c::hash<vc4c::ContainerValue>::operator()(vc4c::ContainerValue const& val) const noexcept
 {
+    static const vc4c::hash<Value> elementHash;
+    return std::accumulate(val.elements.begin(), val.elements.end(), static_cast<std::size_t>(0),
+        [&](std::size_t s, const Value& val) -> std::size_t { return s + elementHash(val); });
 }
 
-Value::Value(const Register& reg, const DataType& type) noexcept : reg(reg), type(type), valueType(ValueType::REGISTER)
-{
-}
+Value::Value(const Literal& lit, const DataType& type) noexcept : data(lit), type(type) {}
 
-Value::Value(const ContainerValue& container, const DataType& type) :
-    local(), type(type), container(container), valueType(ValueType::CONTAINER)
-{
-}
+Value::Value(const Register& reg, const DataType& type) noexcept : data(reg), type(type) {}
 
-Value::Value(const Value& val) : local(val.local), type(val.type), valueType(val.valueType)
-{
-    switch(val.valueType)
-    {
-    case ValueType::CONTAINER:
-        container = val.container;
-        break;
-    case ValueType::LITERAL:
-        literal = val.literal;
-        break;
-    case ValueType::LOCAL:
-        break;
-    case ValueType::REGISTER:
-        reg = val.reg;
-        break;
-    case ValueType::SMALL_IMMEDIATE:
-        immediate = val.immediate;
-        break;
-    case ValueType::UNDEFINED:
-        break;
-    default:
-        throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type!");
-    }
-}
+Value::Value(const ContainerValue& container, const DataType& type) : data(container), type(type) {}
 
-Value::Value(Value&& val) : local(val.local), type(std::move(val.type)), valueType(val.valueType)
-{
-    switch(val.valueType)
-    {
-    case ValueType::CONTAINER:
-        container = std::move(val.container);
-        break;
-    case ValueType::LITERAL:
-        literal = val.literal;
-        break;
-    case ValueType::LOCAL:
-        break;
-    case ValueType::REGISTER:
-        reg = val.reg;
-        break;
-    case ValueType::SMALL_IMMEDIATE:
-        immediate = val.immediate;
-        break;
-    case ValueType::UNDEFINED:
-        break;
-    default:
-        throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type!");
-    }
-}
+Value::Value(const Value& val) : data(val.data), type(val.type) {}
 
-Value::Value(const Local* local, const DataType& type) noexcept :
-    local(const_cast<Local*>(local)), type(type), valueType(ValueType::LOCAL)
-{
-}
+Value::Value(Value&& val) : data(std::move(val.data)), type(std::move(val.type)) {}
 
-Value::Value(const DataType& type) noexcept : local(), type(type), valueType(ValueType::UNDEFINED) {}
+Value::Value(const Local* local, const DataType& type) noexcept : data(const_cast<Local*>(local)), type(type) {}
 
-Value::Value(const SmallImmediate& immediate, const DataType& type) noexcept :
-    immediate(immediate), type(type), valueType(ValueType::SMALL_IMMEDIATE)
-{
-}
+Value::Value(const DataType& type) noexcept : data(VariantNamespace::monostate{}), type(type) {}
+
+Value::Value(const SmallImmediate& immediate, const DataType& type) noexcept : data(immediate), type(type) {}
 
 bool Value::operator==(const Value& other) const
 {
     if(this == &other)
         return true;
-    if(valueType != other.valueType)
+    if(data.index() != other.data.index())
         return false;
-    switch(valueType)
-    {
-    case ValueType::CONTAINER:
-        return container.elements == other.container.elements;
-    case ValueType::LITERAL:
-        return other.hasLiteral(literal);
-    case ValueType::LOCAL:
-        return other.hasLocal(local);
-    case ValueType::REGISTER:
-        return other.hasRegister(reg);
-    case ValueType::UNDEFINED:
-        return true;
-    case ValueType::SMALL_IMMEDIATE:
-        return other.hasImmediate(immediate);
-    }
+    if(hasRegister())
+        return other.hasRegister(reg());
+    if(hasLiteral())
+        return other.hasLiteral(literal());
+    if(hasLocal())
+        return other.hasLocal(local());
+    if(hasContainer())
+        return other.container().elements == container().elements;
+    if(hasImmediate())
+        return other.hasImmediate(immediate());
+    if(isUndefined())
+        return other.isUndefined();
     throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type!");
 }
 
 Value Value::getCompoundPart(std::size_t index) const
 {
-    if(hasType(ValueType::CONTAINER))
-        return container.elements.at(index);
-    if(hasType(ValueType::LOCAL))
-        return Value(local, type.getElementType());
-    if(hasType(ValueType::UNDEFINED))
-        return UNDEFINED_VALUE;
-    if(hasType(ValueType::REGISTER))
+    if(hasContainer())
+        return container().elements.at(index);
+    if(hasLocal())
+        return Value(local(), type.getElementType());
+    if(hasRegister())
         // would only be valid for IO-registers, writing all values sequentially??
-        return Value(reg, type.getElementType());
+        return Value(reg(), type.getElementType());
+    if(isUndefined())
+        return UNDEFINED_VALUE;
     throw CompilationError(CompilationStep::GENERAL, "Can't get part of non-compound value", to_string(false));
 }
 
-bool Value::hasType(const ValueType type) const
+bool Value::hasRegister() const
 {
-    return valueType == type;
+    return VariantNamespace::holds_alternative<Register>(data);
+}
+bool Value::hasLiteral() const
+{
+    return VariantNamespace::holds_alternative<Literal>(data);
+}
+bool Value::hasImmediate() const
+{
+    return VariantNamespace::holds_alternative<SmallImmediate>(data);
+}
+bool Value::hasLocal() const
+{
+    return VariantNamespace::holds_alternative<Local*>(data);
+}
+bool Value::hasContainer() const
+{
+    return VariantNamespace::holds_alternative<ContainerValue>(data);
 }
 
 bool Value::hasLocal(const Local* local) const
 {
-    return hasType(ValueType::LOCAL) && checkPointer(this->local) == checkPointer(local);
+    return hasLocal() && checkPointer(this->local()) == checkPointer(local);
 }
 
 bool Value::hasRegister(const Register& reg) const
 {
-    return valueType == ValueType::REGISTER && this->reg == reg;
+    return hasRegister() && this->reg() == reg;
 }
 
 bool Value::hasLiteral(const Literal& lit) const
 {
-    if(hasType(ValueType::SMALL_IMMEDIATE))
-        return immediate.getIntegerValue().is(lit.signedInt()) || immediate.getFloatingValue().is(lit.real());
-    return hasType(ValueType::LITERAL) && this->literal == lit;
+    if(hasImmediate())
+        return immediate().getIntegerValue().is(lit.signedInt()) || immediate().getFloatingValue().is(lit.real());
+    return hasLiteral() && this->literal() == lit;
 }
 
 bool Value::hasImmediate(const SmallImmediate& immediate) const
 {
-    if(hasType(ValueType::LITERAL))
-        return immediate.getIntegerValue().is(literal.signedInt()) || immediate.getFloatingValue().is(literal.real());
-    return hasType(ValueType::SMALL_IMMEDIATE) && this->immediate == immediate;
+    if(hasLiteral())
+        return immediate.getIntegerValue().is(literal().signedInt()) ||
+            immediate.getFloatingValue().is(literal().real());
+    return hasImmediate() && this->immediate() == immediate;
 }
 
 bool Value::isUndefined() const
 {
-    return hasType(ValueType::UNDEFINED) || (hasType(ValueType::CONTAINER) && container.isUndefined());
+    return VariantNamespace::holds_alternative<VariantNamespace::monostate>(data) ||
+        (hasContainer() && container().isUndefined()) || (hasLocal() && local() == nullptr);
 }
 
 bool Value::isZeroInitializer() const
 {
-    return (hasType(ValueType::LITERAL) && literal.unsignedInt() == 0) ||
-        (hasType(ValueType::SMALL_IMMEDIATE) && immediate.value == 0) ||
-        (hasType(ValueType::CONTAINER) &&
-            std::all_of(container.elements.begin(), container.elements.end(),
+    return (hasLiteral() && literal().unsignedInt() == 0) || (hasImmediate() && immediate().value == 0) ||
+        (hasContainer() &&
+            std::all_of(container().elements.begin(), container().elements.end(),
                 [](const Value& val) -> bool { return val.isZeroInitializer(); }));
 }
 
 bool Value::isLiteralValue() const
 {
-    return hasType(ValueType::LITERAL) || hasType(ValueType::SMALL_IMMEDIATE);
+    return hasLiteral() || hasImmediate();
 }
 
 Optional<Literal> Value::getLiteralValue() const
 {
-    if(hasType(ValueType::LITERAL))
-        return literal;
-    if(hasType(ValueType::SMALL_IMMEDIATE))
-        return immediate.toLiteral();
+    if(hasLiteral())
+        return literal();
+    if(hasImmediate())
+        return immediate().toLiteral();
     return {};
 }
 
 std::string Value::to_string(const bool writeAccess, bool withLiterals) const
 {
     const std::string typeName = (type.isUnknown() ? "unknown" : type.to_string()) + ' ';
-    switch(valueType)
-    {
-    case ValueType::LITERAL:
-        return typeName + literal.to_string();
-    case ValueType::CONTAINER:
+    if(hasLiteral())
+        return typeName + literal().to_string();
+    if(hasContainer())
     {
         if(withLiterals)
         {
             std::string tmp;
             const std::string pre = type.isVectorType() ? "<" : type.getArrayType() ? "[" : "{";
             const std::string post = type.isVectorType() ? ">" : type.getArrayType() ? "]" : "}";
-            for(const Value& element : container.elements)
+            for(const Value& element : container().elements)
                 tmp.append(element.to_string(writeAccess, withLiterals)).append(", ");
             return typeName + pre + tmp.substr(0, tmp.length() - 2) + post;
         }
         if(isZeroInitializer())
             return typeName + "zerointializer";
-        return typeName + std::string("container with ") + std::to_string(container.elements.size()) + " elements";
+        return typeName + std::string("container with ") + std::to_string(container().elements.size()) + " elements";
     }
-    case ValueType::LOCAL:
-        return withLiterals ? local->to_string(true) : (typeName + local->name);
-    case ValueType::REGISTER:
-        return std::string("register ") + reg.to_string(true, !writeAccess);
-    case ValueType::UNDEFINED:
+    if(hasLocal())
+        return withLiterals ? local()->to_string(true) : (typeName + local()->name);
+    if(hasRegister())
+        return std::string("register ") + reg().to_string(true, !writeAccess);
+    if(hasImmediate())
+        return typeName + immediate().to_string();
+    if(isUndefined())
         return typeName + "undefined";
-    case ValueType::SMALL_IMMEDIATE:
-        return typeName + immediate.to_string();
-    }
     throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type!");
 }
 
 bool Value::isWriteable() const
 {
-    switch(valueType)
-    {
-    case ValueType::CONTAINER:
-    case ValueType::LITERAL:
-    case ValueType::UNDEFINED:
-    case ValueType::SMALL_IMMEDIATE:
-        return false;
-    case ValueType::LOCAL:
-        return true;
-    case ValueType::REGISTER:
-        return reg.isWriteable();
-    }
-    throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type!");
+    return hasLocal() || (hasRegister() && reg().isWriteable());
 }
 
 bool Value::isReadable() const
 {
-    switch(valueType)
-    {
-    case ValueType::CONTAINER:
-    case ValueType::LITERAL:
-    case ValueType::UNDEFINED:
-    case ValueType::LOCAL:
-    case ValueType::SMALL_IMMEDIATE:
-        return true;
-    case ValueType::REGISTER:
-        return reg.isReadable();
-    }
-    throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type!");
+    return !(hasRegister() && !reg().isReadable());
 }
 const Value& Value::assertWriteable() const
 {
@@ -737,8 +682,8 @@ Value& Value::assertReadable()
 
 const LocalUser* Value::getSingleWriter() const
 {
-    if(valueType == ValueType::LOCAL)
-        return local->getSingleWriter();
+    if(hasLocal())
+        return local()->getSingleWriter();
     return nullptr;
 }
 
@@ -751,21 +696,21 @@ Value Value::createZeroInitializer(const DataType& type)
     {
         for(unsigned i = 0; i < type.getVectorWidth(); i++)
         {
-            val.container.elements.push_back(INT_ZERO);
+            val.container().elements.push_back(INT_ZERO);
         }
     }
     else if(type.getArrayType())
     {
         for(unsigned i = 0; i < type.getArrayType().value()->size; i++)
         {
-            val.container.elements.push_back(createZeroInitializer(type.getElementType()));
+            val.container().elements.push_back(createZeroInitializer(type.getElementType()));
         }
     }
     else if(type.getStructType())
     {
         for(unsigned i = 0; i < type.getStructType().value()->elementTypes.size(); i++)
         {
-            val.container.elements.push_back(createZeroInitializer(type.getElementType(i)));
+            val.container().elements.push_back(createZeroInitializer(type.getElementType(i)));
         }
     }
     else
@@ -775,5 +720,8 @@ Value Value::createZeroInitializer(const DataType& type)
 
 std::size_t vc4c::hash<vc4c::Value>::operator()(vc4c::Value const& val) const noexcept
 {
-    return std::hash<std::string>::operator()(val.to_string());
+    vc4c::hash<DataType> typeHash;
+    // std::hash<Variant<VariantNamespace::monostate, Literal, Register, Local*, SmallImmediate, ContainerValue>>
+    // dataHash; return typeHash(val.type) ^ dataHash(val.data);
+    return 1; // FIXME rewrite all hashes to std::hash
 }

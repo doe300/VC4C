@@ -117,7 +117,7 @@ bool MemoryBarrier::mapsToASMInstruction() const
 LifetimeBoundary::LifetimeBoundary(const Value& allocation, const bool lifetimeEnd) :
     IntermediateInstruction(NO_VALUE), isLifetimeEnd(lifetimeEnd)
 {
-    if(!allocation.hasType(ValueType::LOCAL) || !allocation.local->is<StackAllocation>())
+    if(!allocation.hasLocal() || !allocation.local()->is<StackAllocation>())
         throw CompilationError(CompilationStep::LLVM_2_IR, "Cannot control life-time of object not located on stack",
             allocation.to_string());
 

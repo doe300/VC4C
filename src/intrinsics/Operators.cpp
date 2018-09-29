@@ -46,7 +46,7 @@ InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(
     // skip the original instruction
     it.nextInBlock();
 
-    if(op1Sign.hasLiteral(INT_ZERO.literal) && op2Sign.hasLiteral(INT_ZERO.literal))
+    if(op1Sign.hasLiteral(INT_ZERO.literal()) && op2Sign.hasLiteral(INT_ZERO.literal()))
     {
         // if both operands are marked with (unsigned), we don't need to invert the result
         it.emplace(new MoveOperation(opDest, tmpDest));
@@ -300,7 +300,7 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivision(
     it = intrinsifyUnsignedIntegerDivision(method, it, op, useRemainder);
     it.nextInBlock();
 
-    if(op1Sign.hasLiteral(INT_ZERO.literal) && op2Sign.hasLiteral(INT_ZERO.literal))
+    if(op1Sign.hasLiteral(INT_ZERO.literal()) && op2Sign.hasLiteral(INT_ZERO.literal()))
     {
         // if both operands are marked with (unsigned), we don't need to invert the result
         it.emplace(new MoveOperation(opDest, tmpDest));
@@ -439,7 +439,7 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivisionByConstant(
     it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, op, useRemainder);
     it.nextInBlock();
 
-    if(op1Sign.hasLiteral(INT_ZERO.literal) && op2Sign.hasLiteral(INT_ZERO.literal))
+    if(op1Sign.hasLiteral(INT_ZERO.literal()) && op2Sign.hasLiteral(INT_ZERO.literal()))
     {
         // if both operands are marked with (unsigned), we don't need to invert the result
         it.emplace(new MoveOperation(opDest, tmpDest));
@@ -476,15 +476,15 @@ static std::pair<Literal, Literal> calculateConstant(Literal divisor, unsigned a
 
 static std::pair<Value, Value> calculateConstant(const Value& divisor, unsigned accuracy)
 {
-    if(divisor.hasType(ValueType::CONTAINER))
+    if(divisor.hasContainer())
     {
-        Value factors(ContainerValue(divisor.container.elements.size()), divisor.type);
-        Value shifts(ContainerValue(divisor.container.elements.size()), divisor.type);
-        for(const auto& element : divisor.container.elements)
+        Value factors(ContainerValue(divisor.container().elements.size()), divisor.type);
+        Value shifts(ContainerValue(divisor.container().elements.size()), divisor.type);
+        for(const auto& element : divisor.container().elements)
         {
-            auto tmp = calculateConstant(element.literal, accuracy);
-            factors.container.elements.push_back(Value(tmp.first, factors.type.toVectorType(1)));
-            shifts.container.elements.push_back(Value(tmp.second, shifts.type.toVectorType(1)));
+            auto tmp = calculateConstant(element.literal(), accuracy);
+            factors.container().elements.push_back(Value(tmp.first, factors.type.toVectorType(1)));
+            shifts.container().elements.push_back(Value(tmp.second, shifts.type.toVectorType(1)));
         }
         return std::make_pair(factors, shifts);
     }
@@ -510,7 +510,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
         throw CompilationError(CompilationStep::OPTIMIZER, "Division by constant may overflow for argument type",
             op.getFirstArg().type.to_string());
     if(!op.getSecondArg().ifPresent(toFunction(&Value::isLiteralValue)) &&
-        !(op.getSecondArg() && op.assertArgument(1).hasType(ValueType::CONTAINER)))
+        !(op.getSecondArg() && op.assertArgument(1).hasContainer()))
         throw CompilationError(CompilationStep::OPTIMIZER, "Can only optimize division by constant", op.to_string());
 
     /*

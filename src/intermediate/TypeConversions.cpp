@@ -228,10 +228,9 @@ InstructionWalker intermediate::insertBitcast(
         it.emplace((new intermediate::MoveOperation(dest, src))->addDecorations(deco));
 
     // last step: map destination to source (if bit-cast of pointers)
-    if(dest.hasType(ValueType::LOCAL) && src.hasType(ValueType::LOCAL) && dest.type.isPointerType() &&
-        src.type.isPointerType())
+    if(dest.hasLocal() && src.hasLocal() && dest.type.isPointerType() && src.type.isPointerType())
         // this helps recognizing lifetime-starts of bit-cast stack-allocations
-        const_cast<std::pair<Local*, int>&>(dest.local->reference) = std::make_pair(src.local, 0);
+        const_cast<std::pair<Local*, int>&>(dest.local()->reference) = std::make_pair(src.local(), 0);
     it->addDecorations(deco);
     it.nextInBlock();
     return it;
@@ -265,8 +264,8 @@ InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method
         // do nothing, is just a move, since we truncate the 64-bit integers anyway
         it.emplace(new MoveOperation(dest, src, conditional, setFlags));
     }
-    else if(src.hasType(ValueType::REGISTER) &&
-        (has_flag(src.reg.file, RegisterFile::PHYSICAL_A) || has_flag(src.reg.file, RegisterFile::ACCUMULATOR)) &&
+    else if(src.hasRegister() &&
+        (has_flag(src.reg().file, RegisterFile::PHYSICAL_A) || has_flag(src.reg().file, RegisterFile::ACCUMULATOR)) &&
         src.type.getScalarBitCount() == 8)
     {
         // if we zero-extend from register-file A, use unpack-modes
@@ -300,8 +299,8 @@ InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method
         // do nothing, is just a move, since we truncate the 64-bit integers anyway
         it.emplace(new MoveOperation(dest, src, conditional, setFlags));
     }
-    else if(src.hasType(ValueType::REGISTER) &&
-        (has_flag(src.reg.file, RegisterFile::PHYSICAL_A) || has_flag(src.reg.file, RegisterFile::ACCUMULATOR)) &&
+    else if(src.hasRegister() &&
+        (has_flag(src.reg().file, RegisterFile::PHYSICAL_A) || has_flag(src.reg().file, RegisterFile::ACCUMULATOR)) &&
         src.type.getScalarBitCount() == 16)
     {
         // if we sign-extend from register-file A, use unpack-modes
@@ -318,7 +317,7 @@ InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method
         if(!allowLiteral)
         {
             Value tmp = method.addNewLocal(TYPE_INT8, "%sext");
-            it.emplace(new LoadImmediate(tmp, widthDiff.literal));
+            it.emplace(new LoadImmediate(tmp, widthDiff.literal()));
             it.nextInBlock();
             widthDiff = tmp;
         }

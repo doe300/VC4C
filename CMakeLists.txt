@@ -327,6 +327,23 @@ add_custom_target(vc4cl-stdlib-module
 )
 add_dependencies(vc4cl-stdlib vc4cl-stdlib-module)
 
+# Variant backport for C++ < 17
+ExternalProject_Add( variant-project
+	PREFIX 				${CMAKE_BINARY_DIR}/build/variant
+	BINARY_DIR 			${CMAKE_BINARY_DIR}/build/variant
+	SOURCE_DIR 			${CMAKE_SOURCE_DIR}/lib/variant
+	GIT_REPOSITORY 		https://github.com/mpark/variant.git
+	UPDATE_COMMAND 		git pull -f https://github.com/mpark/variant.git
+	CMAKE_ARGS 			-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+	STEP_TARGETS 		build	#If we set our dependency on this, the install step is skipped
+  	EXCLUDE_FROM_ALL 	TRUE	#Skip for "make all" to skip install
+  	TIMEOUT 			30		#Timeout for downloads, in seconds
+  	CMAKE_ARGS
+  	  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+	  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+	  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
+)
+
 ####
 # Main files
 ####

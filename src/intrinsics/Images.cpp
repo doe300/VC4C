@@ -50,7 +50,7 @@ static InstructionWalker insertLoadImageConfig(
     InstructionWalker it, Method& method, const Value& image, const Value& dest, const Value& offset)
 {
     const Global* imageConfig =
-        method.findGlobal(ImageType::toImageConfigurationName(image.local->getBase(false)->name));
+        method.findGlobal(ImageType::toImageConfigurationName(image.local()->getBase(false)->name));
     if(imageConfig == nullptr)
         throw CompilationError(CompilationStep::GENERAL, "Image-configuration is not yet reserved", image.to_string());
     const Value addrTemp = method.addNewLocal(TYPE_INT32.toPointerType(AddressSpace::GLOBAL), "%image_config");
@@ -172,13 +172,14 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
         }
         else if(callSite->methodName.find("vc4cl_set_image_access_setup") != std::string::npos)
         {
-            //TODO
+            // TODO
             it.erase();
         }
         else if(callSite->methodName.find("vc4cl_image_read") != std::string::npos)
         {
-            //TODO other coordinates, other data
-            it = periphery::insertReadTMU(method, it, callSite->assertArgument(0), callSite->getOutput().value(), callSite->assertArgument(1));
+            // TODO other coordinates, other data
+            it = periphery::insertReadTMU(
+                method, it, callSite->assertArgument(0), callSite->getOutput().value(), callSite->assertArgument(1));
             it.erase();
             // to not skip next instruction
             it.previousInBlock();

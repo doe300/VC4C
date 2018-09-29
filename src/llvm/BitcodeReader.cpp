@@ -604,8 +604,8 @@ static ParameterDecorations toParameterDecorations(const llvm::Argument& arg, co
         else if(arg.hasByValAttr())
         {
             //"This indicates that the pointer parameter should really be passed by value to the function. The attribute
-            //implies that a hidden copy of the pointee is made between the caller and the callee, so the callee is
-            //unable to modify the value in the caller."
+            // implies that a hidden copy of the pointee is made between the caller and the callee, so the callee is
+            // unable to modify the value in the caller."
             deco = add_flag(deco, ParameterDecorations::READ_ONLY);
         }
     }
@@ -892,9 +892,9 @@ void BitcodeReader::parseInstruction(
         }
         else
             src = toValue(method, load->getPointerOperand());
-        if(load->isVolatile() && src.hasType(ValueType::LOCAL) && src.local->is<Parameter>())
-            src.local->as<Parameter>()->decorations =
-                add_flag(src.local->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
+        if(load->isVolatile() && src.hasLocal() && src.local()->is<Parameter>())
+            src.local()->as<Parameter>()->decorations =
+                add_flag(src.local()->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
         instructions.emplace_back(new Copy(toValue(method, load), std::move(src), true, true));
         instructions.back()->setDecorations(deco);
         break;
@@ -938,9 +938,9 @@ void BitcodeReader::parseInstruction(
         }
         else
             dest = toValue(method, store->getPointerOperand());
-        if(store->isVolatile() && dest.hasType(ValueType::LOCAL) && dest.local->is<Parameter>())
-            dest.local->as<Parameter>()->decorations =
-                add_flag(dest.local->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
+        if(store->isVolatile() && dest.hasLocal() && dest.local()->is<Parameter>())
+            dest.local()->as<Parameter>()->decorations =
+                add_flag(dest.local()->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
         instructions.emplace_back(new Copy(std::move(dest), toValue(method, store->getValueOperand()), true, false));
         instructions.back()->setDecorations(deco);
         break;
@@ -1083,7 +1083,7 @@ void BitcodeReader::parseInstruction(
         for(unsigned i = 0; i < phi->getNumIncomingValues(); ++i)
         {
             labels.emplace_back(std::make_pair(
-                toValue(method, phi->getIncomingValue(i)), toValue(method, phi->getIncomingBlock(i)).local));
+                toValue(method, phi->getIncomingValue(i)), toValue(method, phi->getIncomingBlock(i)).local()));
         }
         instructions.emplace_back(new PhiNode(toValue(method, phi), std::move(labels)));
         instructions.back()->setDecorations(deco);
@@ -1128,7 +1128,7 @@ Value BitcodeReader::toValue(Method& method, const llvm::Value* val)
     if(llvm::dyn_cast<const llvm::BranchInst>(val) != nullptr)
     {
         // label
-        Local* loc = method.addNewLocal(TYPE_LABEL, "%label").local;
+        Local* loc = method.addNewLocal(TYPE_LABEL, "%label").local();
         localMap[val] = loc;
         return loc->createReference();
     }
@@ -1141,7 +1141,7 @@ Value BitcodeReader::toValue(Method& method, const llvm::Value* val)
     if(!val->getName().empty())
         loc = method.findOrCreateLocal(type, valueName);
     else
-        loc = method.addNewLocal(type).local;
+        loc = method.addNewLocal(type).local();
     localMap.emplace(val, loc);
     return loc->createReference();
 }
@@ -1176,7 +1176,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         Value aggregate(ContainerValue(constant->getNumOperands()), type);
         for(unsigned i = 0; i < constant->getNumOperands(); ++i)
         {
-            aggregate.container.elements.push_back(toConstant(module, constant->getOperand(i)));
+            aggregate.container().elements.push_back(toConstant(module, constant->getOperand(i)));
         }
         return aggregate;
     }
@@ -1187,7 +1187,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         Value aggregate(ContainerValue(constant->getNumOperands()), type);
         for(unsigned i = 0; i < constant->getNumOperands(); ++i)
         {
-            aggregate.container.elements.push_back(toConstant(module, constant->getOperand(i)));
+            aggregate.container().elements.push_back(toConstant(module, constant->getOperand(i)));
         }
         return aggregate;
     }
@@ -1210,7 +1210,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         Value aggregate(ContainerValue(constant->getNumOperands()), type);
         for(unsigned i = 0; i < constant->getNumOperands(); ++i)
         {
-            aggregate.container.elements.push_back(toConstant(module, constant->getOperand(i)));
+            aggregate.container().elements.push_back(toConstant(module, constant->getOperand(i)));
         }
         return aggregate;
     }
@@ -1221,7 +1221,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         Value aggregate(ContainerValue(constant->getNumElements()), type);
         for(unsigned i = 0; i < constant->getNumElements(); ++i)
         {
-            aggregate.container.elements.push_back(toConstant(module, constant->getElementAsConstant(i)));
+            aggregate.container().elements.push_back(toConstant(module, constant->getElementAsConstant(i)));
         }
         return aggregate;
     }
@@ -1231,7 +1231,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         Value aggregate(ContainerValue(constant->getNumElements()), type);
         for(unsigned i = 0; i < constant->getNumElements(); ++i)
         {
-            aggregate.container.elements.push_back(toConstant(module, constant->getElementValue(i)));
+            aggregate.container().elements.push_back(toConstant(module, constant->getElementValue(i)));
         }
         return aggregate;
     }
@@ -1241,7 +1241,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
     }
     else if(llvm::dyn_cast<const llvm::ConstantPointerNull>(val) != nullptr)
     {
-        return Value(INT_ZERO.literal, type);
+        return Value(INT_ZERO.literal(), type);
     }
     else if(llvm::dyn_cast<const llvm::ConstantExpr>(val) != nullptr)
     {
@@ -1376,7 +1376,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
         switch(predicate)
         {
         case llvm::CmpInst::FCMP_FALSE:
-            return Value(BOOL_FALSE.literal, boolType);
+            return Value(BOOL_FALSE.literal(), boolType);
         case llvm::CmpInst::FCMP_OEQ:
             return Value(Literal(src0.getLiteralValue()->real() == src1.getLiteralValue()->real()), boolType);
         case llvm::CmpInst::FCMP_OGT:
@@ -1399,7 +1399,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
         case llvm::CmpInst::FCMP_UNE:
             break;
         case llvm::CmpInst::FCMP_TRUE:
-            return Value(BOOL_TRUE.literal, destType);
+            return Value(BOOL_TRUE.literal(), destType);
         case llvm::CmpInst::ICMP_EQ:
             return Value(
                 Literal(src0.getLiteralValue()->unsignedInt() == src1.getLiteralValue()->unsignedInt()), boolType);

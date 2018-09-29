@@ -202,10 +202,11 @@ InstructionWalker periphery::insertGeneralReadTMU(
 InstructionWalker periphery::insertReadTMU(Method& method, InstructionWalker it, const Value& image, const Value& dest,
     const Value& xCoord, const Optional<Value>& yCoord, const TMU& tmu)
 {
-    if(!image.hasType(ValueType::LOCAL))
+    if(!image.hasLocal())
         throw CompilationError(
             CompilationStep::GENERAL, "Cannot access image-configuration for non-local image", image.to_string());
-    const Global* imageConfig = method.findGlobal(ImageType::toImageConfigurationName(image.local->getBase(false)->name));
+    const Global* imageConfig =
+        method.findGlobal(ImageType::toImageConfigurationName(image.local()->getBase(false)->name));
     if(imageConfig == nullptr)
         throw CompilationError(
             CompilationStep::GENERAL, "Failed to find the image-configuration for", image.to_string());

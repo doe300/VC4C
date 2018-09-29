@@ -34,7 +34,7 @@ struct NodeSorter : public std::less<intermediate::IntermediateInstruction*>
         // XXX give reading of work-item info (as well as parameters) a high priority (minimizes their local's
         // life-time)
         if(std::any_of(inst->getArguments().begin(), inst->getArguments().end(),
-               [](const Value& val) -> bool { return val.hasType(ValueType::LOCAL) && val.local->is<Parameter>(); }))
+               [](const Value& val) -> bool { return val.hasLocal() && val.local()->is<Parameter>(); }))
             priority += 50;
 
         // writing TMU address gets higher priority, to leave enough space for utilizing the delay to actually read the
@@ -154,7 +154,7 @@ static int calculateSchedulingPriority(DependencyEdge& dependency, BasicBlock& b
             instr->readsRegister(REG_MUTEX))
             latencyLeft += 2;
         if(std::any_of(instr->getArguments().begin(), instr->getArguments().end(), [&](const Value& arg) -> bool {
-               return arg.hasType(ValueType::LOCAL) && arg.local->getUsers(LocalUse::Type::READER).size() == 1;
+               return arg.hasLocal() && arg.local()->getUsers(LocalUse::Type::READER).size() == 1;
            }))
             --latencyLeft;
         if(instr->hasValueType(ValueType::LOCAL) && instr->getOutput()->getSingleWriter() == instr)
@@ -233,7 +233,7 @@ static OpenSet::iterator selectInstruction(OpenSet& openNodes, DependencyGraph& 
             // keep instructions writing the same local together to be combined more easily
             // TODO make better/check result
             (priority == std::get<1>(selected) && lastInstruction->hasValueType(ValueType::LOCAL) &&
-                (*it)->writesLocal(lastInstruction->getOutput()->local)) ||
+                (*it)->writesLocal(lastInstruction->getOutput()->local())) ||
             // keep vector rotations close to their use by devaluing them after all other equal-priority instructions
             (priority == std::get<1>(selected) && lastInstruction.has<intermediate::VectorRotation>() &&
                 dynamic_cast<const intermediate::VectorRotation*>(*it) == nullptr) ||

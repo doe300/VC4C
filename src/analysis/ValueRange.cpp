@@ -243,13 +243,13 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
                 std::max(static_cast<int64_t>(constant->getLiteralValue()->signedInt()),
                     static_cast<int64_t>(constant->getLiteralValue()->unsignedInt())));
     }
-    else if(constant && constant->hasType(ValueType::CONTAINER) && constant->container.hasOnlyScalarElements())
+    else if(constant && constant->hasContainer() && constant->container().hasOnlyScalarElements())
     {
         if(constant->type.isFloatingType())
         {
             double min = std::numeric_limits<double>::max();
             double max = std::numeric_limits<double>::min();
-            for(const Value& element : constant->container.elements)
+            for(const Value& element : constant->container().elements)
             {
                 min = std::min(min, static_cast<double>(element.getLiteralValue()->real()));
                 max = std::max(max, static_cast<double>(element.getLiteralValue()->real()));
@@ -260,7 +260,7 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
         {
             int64_t min = std::numeric_limits<int64_t>::max();
             int64_t max = std::numeric_limits<int64_t>::min();
-            for(const Value& element : constant->container.elements)
+            for(const Value& element : constant->container().elements)
             {
                 min = std::min(min,
                     std::min(static_cast<int64_t>(element.getLiteralValue()->signedInt()),
@@ -280,12 +280,12 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
     {
         extendBoundaries(static_cast<int64_t>(0), static_cast<int64_t>(NATIVE_VECTOR_SIZE) - 1);
     }
-    else if(dynamic_cast<const MoveOperation*>(it) && it->assertArgument(0).hasType(ValueType::LOCAL) &&
-        ranges.find(it->assertArgument(0).local) != ranges.end())
+    else if(dynamic_cast<const MoveOperation*>(it) && it->assertArgument(0).hasLocal() &&
+        ranges.find(it->assertArgument(0).local()) != ranges.end())
     {
         // move -> copy range from source local (TODO: would need to link the ranges e.g. if source changes
         // afterwards!)
-        const ValueRange& sourceRange = ranges.at(it->assertArgument(0).local);
+        const ValueRange& sourceRange = ranges.at(it->assertArgument(0).local());
         extendBoundaries(sourceRange);
     }
     else if(op && op->op == OP_AND && it->readsLiteral())
@@ -327,10 +327,10 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
          *
          * y is in range [x.min >> constant, x.max >> constant] (unsigned)
          */
-        if(it->assertArgument(0).hasType(ValueType::LOCAL) &&
-            ranges.find(it->assertArgument(0).local) != ranges.end() && it->assertArgument(1).isLiteralValue())
+        if(it->assertArgument(0).hasLocal() && ranges.find(it->assertArgument(0).local()) != ranges.end() &&
+            it->assertArgument(1).isLiteralValue())
         {
-            const ValueRange& sourceRange = ranges.at(it->assertArgument(0).local);
+            const ValueRange& sourceRange = ranges.at(it->assertArgument(0).local());
             int64_t offset = static_cast<int64_t>(it->assertArgument(1).getLiteralValue()->signedInt());
             // TODO not correct if min/max is negative
             extendBoundaries(
@@ -372,8 +372,8 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
                     std::min(static_cast<int64_t>(arg0.getLiteralValue()->signedInt()),
                         static_cast<int64_t>(arg0.getLiteralValue()->unsignedInt())));
         }
-        else if(arg0.hasType(ValueType::LOCAL) && ranges.find(arg0.local) != ranges.end())
-            firstRange.extendBoundaries(ranges.at(arg0.local));
+        else if(arg0.hasLocal() && ranges.find(arg0.local()) != ranges.end())
+            firstRange.extendBoundaries(ranges.at(arg0.local()));
 
         Value firstMin(TYPE_UNKNOWN);
         Value firstMax(TYPE_UNKNOWN);
@@ -406,8 +406,8 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
                         std::min(static_cast<int64_t>(arg1.getLiteralValue()->signedInt()),
                             static_cast<int64_t>(arg1.getLiteralValue()->unsignedInt())));
             }
-            else if(arg1.hasType(ValueType::LOCAL) && ranges.find(arg1.local) != ranges.end())
-                secondRange.extendBoundaries(ranges.at(arg1.local));
+            else if(arg1.hasLocal() && ranges.find(arg1.local()) != ranges.end())
+                secondRange.extendBoundaries(ranges.at(arg1.local()));
 
             Value secondMin(TYPE_UNKNOWN);
             Value secondMax(TYPE_UNKNOWN);
@@ -472,8 +472,8 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
             (isUnsignedType(it->getOutput()->type) || it->hasDecoration(InstructionDecorations::UNSIGNED_RESULT) ||
                 (hasCandidateOperation &&
                     std::all_of(it->getArguments().begin(), it->getArguments().end(), [&](const Value& val) -> bool {
-                        return val.hasType(ValueType::LOCAL) && ranges.find(val.local) != ranges.end() &&
-                            ranges.at(val.local).isUnsigned();
+                        return val.hasLocal() && ranges.find(val.local()) != ranges.end() &&
+                            ranges.at(val.local()).isUnsigned();
                     }))));
     }
 }
@@ -481,15 +481,15 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
 ValueRange ValueRange::getValueRange(const Value& val, Method* method)
 {
     ValueRange range(val.type.isFloatingType(), true);
-    auto singleWriter = val.hasType(ValueType::LOCAL) ? val.local->getSingleWriter() : nullptr;
+    auto singleWriter = val.hasLocal() ? val.local()->getSingleWriter() : nullptr;
     FastMap<const Local*, ValueRange> ranges;
     if(singleWriter && dynamic_cast<const MoveOperation*>(singleWriter))
     {
         const Value& src = dynamic_cast<const MoveOperation*>(singleWriter)->getSource();
-        if(src.hasType(ValueType::LOCAL))
+        if(src.hasLocal())
         {
-            auto& tmp = ranges.emplace(src.local, src.local->type).first->second;
-            tmp.update(NO_VALUE, ranges, src.local->getSingleWriter(), method);
+            auto& tmp = ranges.emplace(src.local(), src.local()->type).first->second;
+            tmp.update(NO_VALUE, ranges, src.local()->getSingleWriter(), method);
         }
     }
     range.update(val.isLiteralValue() ? Optional<Value>(val) :
@@ -512,7 +512,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
     {
         if(it.has() && !it.has<BranchLabel>() && it->hasValueType(ValueType::LOCAL))
         {
-            ValueRange& range = ranges.emplace(it->getOutput()->local, it->getOutput()->local->type).first->second;
+            ValueRange& range = ranges.emplace(it->getOutput()->local(), it->getOutput()->local()->type).first->second;
             range.update(it->precalculate(3), ranges, it.get(), &method);
         }
 

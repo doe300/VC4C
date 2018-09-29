@@ -324,7 +324,7 @@ bool optimizations::splitReadAfterWrites(const Module& module, Method& method, c
             if(it->mapsToASMInstruction())
             {
                 // ignoring instructions not mapped to machine code, e.g. labels will also check for write-label-read
-                lastWrittenTo = it->hasValueType(ValueType::LOCAL) ? it->getOutput()->local : nullptr;
+                lastWrittenTo = it->hasValueType(ValueType::LOCAL) ? it->getOutput()->local() : nullptr;
                 lastInstruction = it;
             }
 
@@ -374,9 +374,9 @@ InstructionWalker optimizations::moveRotationSourcesToAccumulators(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     // makes sure, all sources for vector-rotations have a usage-range small enough to be on an accumulator
-    if(it.has<VectorRotation>() && it.get<VectorRotation>()->getSource().hasType(ValueType::LOCAL))
+    if(it.has<VectorRotation>() && it.get<VectorRotation>()->getSource().hasLocal())
     {
-        const Local* loc = it.get<VectorRotation>()->getSource().local;
+        const Local* loc = it.get<VectorRotation>()->getSource().local();
         InstructionWalker writer = it.copy().previousInBlock();
         while(!writer.isStartOfBlock())
         {
@@ -398,7 +398,7 @@ InstructionWalker optimizations::moveRotationSourcesToAccumulators(
                              << logging::endl;
             const Value tmp = method.addNewLocal(loc->type, "%vector_rotation");
             mapper.emplace(new MoveOperation(tmp, loc->createReference()));
-            it->replaceLocal(loc, tmp.local, LocalUse::Type::READER);
+            it->replaceLocal(loc, tmp.local(), LocalUse::Type::READER);
             return writer;
         }
     }

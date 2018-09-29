@@ -45,12 +45,12 @@ bool BranchLabel::isNormalized() const
 
 const Local* BranchLabel::getLabel() const
 {
-    return assertArgument(0).local;
+    return assertArgument(0).local();
 }
 
 Local* BranchLabel::getLabel()
 {
-    return assertArgument(0).local;
+    return assertArgument(0).local();
 }
 
 Branch::Branch(const Local* target, const ConditionCode condCode, const Value& cond) :
@@ -126,7 +126,7 @@ bool Branch::isNormalized() const
 
 const Local* Branch::getTarget() const
 {
-    return assertArgument(0).local;
+    return assertArgument(0).local();
 }
 
 bool Branch::isUnconditional() const
@@ -187,7 +187,7 @@ FastMap<const Local*, Value> PhiNode::getValuesForLabels() const
     FastMap<const Local*, Value> res;
     for(std::size_t i = 0; i < getArguments().size(); i += 2)
     {
-        res.emplace(assertArgument(i).local, assertArgument(i + 1));
+        res.emplace(assertArgument(i).local(), assertArgument(i + 1));
     }
     return res;
 }

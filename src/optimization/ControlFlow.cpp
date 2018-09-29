@@ -215,8 +215,8 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                     // TODO could here more simply check against output being the local the iteration variable is set to
                     // (in the phi-node inside the loop)
                     it.value()->getOutput().ifPresent([](const Value& val) -> bool {
-                        return val.hasType(ValueType::LOCAL) &&
-                            std::any_of(val.local->getUsers().begin(), val.local->getUsers().end(),
+                        return val.hasLocal() &&
+                            std::any_of(val.local()->getUsers().begin(), val.local()->getUsers().end(),
                                 [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {
                                     return pair.first->hasDecoration(intermediate::InstructionDecorations::PHI_NODE);
                                 });
@@ -231,7 +231,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                 {
                     // second-level checking for loop iteration step (e.g. if loop variable is copied for
                     // use-with-immediate)
-                    const Local* stepLocal = it.value()->getOutput()->local;
+                    const Local* stepLocal = it.value()->getOutput()->local();
                     for(const auto& pair : stepLocal->getUsers())
                     {
                         const intermediate::IntermediateInstruction* inst = pair.first;
@@ -242,8 +242,8 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                             if(it->has<intermediate::Operation>() && it.value()->getArguments().size() == 2 &&
                                 it.value()->readsLiteral() &&
                                 it.value()->getOutput().ifPresent([](const Value& val) -> bool {
-                                    return val.hasType(ValueType::LOCAL) &&
-                                        std::any_of(val.local->getUsers().begin(), val.local->getUsers().end(),
+                                    return val.hasLocal() &&
+                                        std::any_of(val.local()->getUsers().begin(), val.local()->getUsers().end(),
                                             [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {
                                                 return pair.first->hasDecoration(
                                                     intermediate::InstructionDecorations::PHI_NODE);
@@ -285,19 +285,21 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
             // condition on which the loop is repeated  and select the literal used together with in this condition
 
             // simple case, there exists an instruction, directly mapping the values
-            auto userIt = std::find_if(iterationStep.local->getUsers().begin(), iterationStep.local->getUsers().end(),
-                [&repeatCond](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {
-                    return pair.first->writesLocal(repeatCond.local);
-                });
-            if(userIt == iterationStep.local->getUsers().end())
+            auto userIt =
+                std::find_if(iterationStep.local()->getUsers().begin(), iterationStep.local()->getUsers().end(),
+                    [&repeatCond](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {
+                        return pair.first->writesLocal(repeatCond.local());
+                    });
+            if(userIt == iterationStep.local()->getUsers().end())
             {
                 //"default" case, the iteration-variable is compared to something and the result of this comparison is
                 // used to branch  e.g. "- = xor <iteration-variable>, <upper-bound> (setf)"
-                userIt = std::find_if(iterationStep.local->getUsers().begin(), iterationStep.local->getUsers().end(),
-                    [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {
-                        return pair.first->setFlags == SetFlag::SET_FLAGS;
-                    });
-                if(userIt != iterationStep.local->getUsers().end())
+                userIt =
+                    std::find_if(iterationStep.local()->getUsers().begin(), iterationStep.local()->getUsers().end(),
+                        [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {
+                            return pair.first->setFlags == SetFlag::SET_FLAGS;
+                        });
+                if(userIt != iterationStep.local()->getUsers().end())
                 {
                     // TODO need to check, whether the comparison result is the one used for branching
                     // if not, set userIt to loop.end()
@@ -314,7 +316,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                 }
             }
 
-            if(userIt != iterationStep.local->getUsers().end())
+            if(userIt != iterationStep.local()->getUsers().end())
             {
                 // userIt converts the loop-variable to the condition. The comparison value is the upper bound
                 const intermediate::IntermediateInstruction* inst = userIt->first;
@@ -322,7 +324,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                 {
                     // TODO error
                 }
-                if(inst->assertArgument(0).hasLocal(iterationStep.local))
+                if(inst->assertArgument(0).hasLocal(iterationStep.local()))
                     loopControl.terminatingValue = inst->assertArgument(1);
                 else
                     loopControl.terminatingValue = inst->assertArgument(0);
@@ -444,21 +446,21 @@ static int calculateCostsVsBenefits(
             {
                 for(const Value& arg : it->getArguments())
                 {
-                    if(arg.hasType(ValueType::LOCAL))
+                    if(arg.hasLocal())
                     {
-                        readAddresses.emplace(arg.local);
-                        readAddresses.emplace(arg.local->reference.first);
+                        readAddresses.emplace(arg.local());
+                        readAddresses.emplace(arg.local()->reference.first);
                     }
                 }
             }
-            else if(it->getOutput().ifPresent(toFunction(&Value::hasRegister, REG_VPM_DMA_STORE_ADDR)))
+            else if(it->getOutput() && it->getOutput()->hasRegister(REG_VPM_DMA_STORE_ADDR))
             {
                 for(const Value& arg : it->getArguments())
                 {
-                    if(arg.hasType(ValueType::LOCAL))
+                    if(arg.hasLocal())
                     {
-                        writtenAddresses.emplace(arg.local);
-                        writtenAddresses.emplace(arg.local->reference.first);
+                        writtenAddresses.emplace(arg.local());
+                        writtenAddresses.emplace(arg.local()->reference.first);
                     }
                 }
             }
@@ -531,8 +533,7 @@ static void scheduleForVectorization(
         if(!user->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
             openInstructions.emplace(user);
         if(user->getOutput().ifPresent([](const Value& out) -> bool {
-               return out.hasType(ValueType::REGISTER) &&
-                   (out.reg.isSpecialFunctionsUnit() || out.reg.isTextureMemoryUnit());
+               return out.hasRegister() && (out.reg().isSpecialFunctionsUnit() || out.reg().isTextureMemoryUnit());
            }))
         {
             // need to add the reading of SFU/TMU too
@@ -566,13 +567,13 @@ static void vectorizeInstruction(InstructionWalker it,
     unsigned char vectorWidth = 1;
     for(auto& arg : it->getArguments())
     {
-        if(arg.hasType(ValueType::LOCAL) && arg.type != arg.local->type)
+        if(arg.hasLocal() && arg.type != arg.local()->type)
         {
-            scheduleForVectorization(arg.local, openInstructions, loop);
-            const_cast<DataType&>(arg.type) = arg.type.toVectorType(arg.local->type.getVectorWidth());
+            scheduleForVectorization(arg.local(), openInstructions, loop);
+            const_cast<DataType&>(arg.type) = arg.type.toVectorType(arg.local()->type.getVectorWidth());
             vectorWidth = std::max(vectorWidth, arg.type.getVectorWidth());
         }
-        else if(arg.hasType(ValueType::REGISTER))
+        else if(arg.hasRegister())
         {
             // TODO correct?? This is at least required for reading from TMU
             vectorWidth = static_cast<unsigned char>(vectorizationFactor);
@@ -593,18 +594,19 @@ static void vectorizeInstruction(InstructionWalker it,
                            .toPointerType(out.type.getPointerType().value()->addressSpace);
         else
             out.type = out.type.toVectorType(vectorWidth);
-        if(out.hasType(ValueType::LOCAL))
+        if(out.hasLocal())
         {
-            if(out.local->type.isPointerType())
+            if(out.local()->type.isPointerType())
                 // TODO see above
-                const_cast<DataType&>(out.local->type) =
-                    out.local->type.getPointerType()
+                const_cast<DataType&>(out.local()->type) =
+                    out.local()
+                        ->type.getPointerType()
                         .value()
                         ->elementType.toVectorType(out.type.getVectorWidth())
-                        .toPointerType(out.local->type.getPointerType().value()->addressSpace);
+                        .toPointerType(out.local()->type.getPointerType().value()->addressSpace);
             else
-                const_cast<DataType&>(out.local->type) = out.local->type.toVectorType(out.type.getVectorWidth());
-            scheduleForVectorization(out.local, openInstructions, loop);
+                const_cast<DataType&>(out.local()->type) = out.local()->type.toVectorType(out.type.getVectorWidth());
+            scheduleForVectorization(out.local(), openInstructions, loop);
         }
     }
 
@@ -679,8 +681,8 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
             loopControl.iterationVariable->type.getVectorWidth());
     intermediate::MoveOperation* move = dynamic_cast<intermediate::MoveOperation*>(loopControl.initialization);
     Optional<InstructionWalker> initialValueWalker;
-    if(move != nullptr && move->getSource().hasLiteral(INT_ZERO.literal) &&
-        loopControl.stepKind == StepKind::ADD_CONSTANT && loopControl.getStep().is(INT_ONE.literal))
+    if(move != nullptr && move->getSource().hasLiteral(INT_ZERO.literal()) &&
+        loopControl.stepKind == StepKind::ADD_CONSTANT && loopControl.getStep().is(INT_ONE.literal()))
     {
         // special/default case: initial value is zero and step is +1
         move->setSource(ELEMENT_NUMBER_REGISTER);
@@ -688,7 +690,7 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
         logging::debug() << "Changed initial value: " << loopControl.initialization->to_string() << logging::endl;
     }
     else if(move != nullptr && move->getSource().getLiteralValue() && loopControl.stepKind == StepKind::ADD_CONSTANT &&
-        loopControl.getStep().is(INT_ONE.literal) &&
+        loopControl.getStep().is(INT_ONE.literal()) &&
         (initialValueWalker = findWalker(loop.findPredecessor(), move)).has_value())
     {
         // more general case: initial value is a literal and step is +1
@@ -708,7 +710,7 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
     {
     case OP_ADD.opAdd:
     case OP_SUB.opAdd:
-        if(stepOp->getFirstArg().hasType(ValueType::LOCAL))
+        if(stepOp->getFirstArg().hasLocal())
         {
             const Value& offset = stepOp->assertArgument(1);
             if(offset.getLiteralValue())
@@ -871,7 +873,7 @@ void optimizations::extendBranches(const Module& module, Method& method, const C
         if(branch != nullptr)
         {
             logging::debug() << "Extending branch: " << branch->to_string() << logging::endl;
-            if(branch->hasConditionalExecution() || !branch->getCondition().hasLiteral(BOOL_TRUE.literal))
+            if(branch->hasConditionalExecution() || !branch->getCondition().hasLiteral(BOOL_TRUE.literal()))
             {
                 /*
                  * branch can only depend on scalar value

@@ -104,7 +104,26 @@ const Optional<Value>& IntermediateInstruction::getOutput() const
 
 bool IntermediateInstruction::hasValueType(const ValueType type) const
 {
-    return output && output->hasType(type);
+    if(!output)
+        return false;
+    switch(type)
+    {
+    case ValueType::CONTAINER:
+        return output->hasContainer();
+    case ValueType::LITERAL:
+        return output->hasLiteral();
+    case ValueType::LOCAL:
+        return output->hasLocal();
+    case ValueType::REGISTER:
+        return output->hasRegister();
+    case ValueType::SMALL_IMMEDIATE:
+        return output->hasImmediate();
+    case ValueType::UNDEFINED:
+        return output->isUndefined();
+    default:
+        throw CompilationError(
+            CompilationStep::GENERAL, "Unhandled value type", std::to_string(static_cast<int>(type)));
+    }
 }
 
 const Optional<Value> IntermediateInstruction::getArgument(const std::size_t index) const
@@ -197,11 +216,11 @@ bool IntermediateInstruction::hasSideEffects() const
         return true;
     if(dynamic_cast<const SemaphoreAdjustment*>(this) != nullptr)
         return true;
-    if(hasValueType(ValueType::REGISTER) && output->reg.hasSideEffectsOnWrite())
+    if(hasValueType(ValueType::REGISTER) && output->reg().hasSideEffectsOnWrite())
         return true;
     for(const Value& arg : arguments)
     {
-        if(arg.hasType(ValueType::REGISTER) && arg.reg.hasSideEffectsOnRead())
+        if(arg.hasRegister() && arg.reg().hasSideEffectsOnRead())
             return true;
     }
     return signal.hasSideEffects() || setFlags == SetFlag::SET_FLAGS;
@@ -253,25 +272,25 @@ Optional<Value> IntermediateInstruction::precalculate(const std::size_t numItera
 
 const Value IntermediateInstruction::renameValue(Method& method, const Value& orig, const std::string& prefix) const
 {
-    if(!orig.hasType(ValueType::LOCAL))
+    if(!orig.hasLocal())
         return orig;
-    if(orig.local->is<Global>())
+    if(orig.local()->is<Global>())
         return orig;
-    if(orig.local->is<StackAllocation>())
+    if(orig.local()->is<StackAllocation>())
     {
-        const StackAllocation* alloc = orig.local->as<StackAllocation>();
+        const StackAllocation* alloc = orig.local()->as<StackAllocation>();
         if(method.findStackAllocation(prefix + alloc->name) != nullptr)
             return method.findStackAllocation(prefix + alloc->name)->createReference();
         auto pos = method.stackAllocations.emplace(
             StackAllocation(prefix + alloc->name, alloc->type, alloc->size, alloc->alignment));
         return pos.first->createReference();
     }
-    const Local* copy = method.findOrCreateLocal(orig.type, prefix + orig.local->name);
-    if(orig.local->reference.first != nullptr)
+    const Local* copy = method.findOrCreateLocal(orig.type, prefix + orig.local()->name);
+    if(orig.local()->reference.first != nullptr)
         // re-reference the copied local to the (original) source
         const_cast<std::pair<Local*, int>&>(copy->reference) =
-            std::make_pair(renameValue(method, orig.local->reference.first->createReference(), prefix).local,
-                orig.local->reference.second);
+            std::make_pair(renameValue(method, orig.local()->reference.first->createReference(), prefix).local(),
+                orig.local()->reference.second);
     return copy->createReference();
 }
 
@@ -304,63 +323,55 @@ Optional<Value> IntermediateInstruction::getPrecalculatedValueForArg(
     if(argIndex > arguments.size())
         throw CompilationError(CompilationStep::GENERAL, "Invalid argument index", std::to_string(argIndex));
     const Value& arg = arguments[argIndex];
-    switch(arg.valueType)
-    {
-    case ValueType::SMALL_IMMEDIATE:
-        if(arg.immediate.toLiteral())
-            return Value(arg.immediate.toLiteral().value(), arg.type);
-        break;
-    case ValueType::LITERAL:
+    if(arg.hasImmediate() && arg.immediate().toLiteral())
+        return Value(arg.immediate().toLiteral().value(), arg.type);
+    else if(arg.hasLiteral())
         return arg;
-    case ValueType::LOCAL:
+    else if(arg.hasLocal())
     {
-        auto writer = arg.local->getSingleWriter();
+        auto writer = arg.local()->getSingleWriter();
         if(writer != nullptr)
             return writer->precalculate(numIterations - 1);
-        break;
     }
-    case ValueType::REGISTER:
+    else if(arg.hasRegister())
     {
         if(arg.hasRegister(REG_ELEMENT_NUMBER))
         {
             Value elementIndices(ContainerValue(16), arg.type);
             for(unsigned i = 0; i < NATIVE_VECTOR_SIZE; ++i)
             {
-                elementIndices.container.elements.emplace_back(Literal(i), TYPE_INT8);
+                elementIndices.container().elements.emplace_back(Literal(i), TYPE_INT8);
             }
             return elementIndices;
         }
         return arg;
     }
-    case ValueType::CONTAINER:
+    else if(arg.hasContainer())
         return arg;
-    default:
-        return NO_VALUE;
-    }
     return NO_VALUE;
 }
 
 FastMap<const Local*, LocalUse::Type> IntermediateInstruction::getUsedLocals() const
 {
     FastMap<const Local*, LocalUse::Type> locals;
-    if(output && output->hasType(ValueType::LOCAL))
-        locals.emplace(output->local, LocalUse::Type::WRITER);
+    if(output && output->hasLocal())
+        locals.emplace(output->local(), LocalUse::Type::WRITER);
     for(const Value& arg : arguments)
     {
-        if(arg.hasType(ValueType::LOCAL))
-            locals.emplace(arg.local, LocalUse::Type::READER);
+        if(arg.hasLocal())
+            locals.emplace(arg.local(), LocalUse::Type::READER);
     }
     return locals;
 }
 
 void IntermediateInstruction::forUsedLocals(const std::function<void(const Local*, LocalUse::Type)>& consumer) const
 {
-    if(output && output->hasType(ValueType::LOCAL))
-        consumer(output->local, LocalUse::Type::WRITER);
+    if(output && output->hasLocal())
+        consumer(output->local(), LocalUse::Type::WRITER);
     for(const Value& arg : arguments)
     {
-        if(arg.hasType(ValueType::LOCAL))
-            consumer(arg.local, LocalUse::Type::READER);
+        if(arg.hasLocal())
+            consumer(arg.local(), LocalUse::Type::READER);
     }
 }
 
@@ -444,8 +455,8 @@ bool IntermediateInstruction::readsLiteral() const
 
 void IntermediateInstruction::removeAsUserFromValue(const Value& value, const LocalUse::Type type)
 {
-    if(value.hasType(ValueType::LOCAL))
-        const_cast<Local*>(value.local)->removeUser(*this, type);
+    if(value.hasLocal())
+        const_cast<Local*>(value.local())->removeUser(*this, type);
 }
 
 void IntermediateInstruction::addAsUserToValue(const Value& value, LocalUse::Type type)
@@ -455,8 +466,8 @@ void IntermediateInstruction::addAsUserToValue(const Value& value, LocalUse::Typ
     if(has_flag(type, LocalUse::Type::WRITER))
         value.assertWriteable();
 
-    if(value.hasType(ValueType::LOCAL))
-        const_cast<Local*>(value.local)->addUser(*this, type);
+    if(value.hasLocal())
+        const_cast<Local*>(value.local())->addUser(*this, type);
 }
 
 bool IntermediateInstruction::doesSetFlag() const

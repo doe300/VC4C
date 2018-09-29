@@ -43,7 +43,7 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
             // only check for ALU-operations and loads, if no flags are set and no special signals are sent
             if((move != nullptr || op != nullptr || load != nullptr) && !instr->hasSideEffects())
             {
-                const Local* dest = instr->getOutput()->local;
+                const Local* dest = instr->getOutput()->local();
                 // check whether local is
                 // a) no parameter ??
                 if(!dest->is<Parameter>())
@@ -66,16 +66,16 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
             }
             if(move != nullptr)
             {
-                if(move->getSource().hasType(ValueType::LOCAL) && move->getOutput()->hasType(ValueType::LOCAL) &&
-                    !move->hasConditionalExecution() && !move->hasPackMode() && !move->hasSideEffects() &&
+                if(move->getSource().hasLocal() && move->getOutput()->hasLocal() && !move->hasConditionalExecution() &&
+                    !move->hasPackMode() && !move->hasSideEffects() &&
                     dynamic_cast<intermediate::VectorRotation*>(move) == nullptr)
                 {
                     // if for a move, neither the input-local nor the output-local are written to afterwards,
                     // XXX or the input -local is only written after the last use of the output-local
                     // both locals can be the same and the move can be removed
 
-                    const Local* inLoc = move->getSource().local;
-                    const Local* outLoc = move->getOutput()->local;
+                    const Local* inLoc = move->getSource().local();
+                    const Local* outLoc = move->getOutput()->local();
                     // for instruction added by phi-elimination, the result could have been written to (with a different
                     // source) previously, so check
                     bool isWrittenTo = !outLoc->getUsers(LocalUse::Type::WRITER).empty();
@@ -187,7 +187,7 @@ InstructionWalker optimizations::simplifyOperation(
                     it.previousInBlock();
                 }
                 else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg &&
-                    !firstArg.hasType(ValueType::REGISTER) && !firstArg.hasType(ValueType::UNDEFINED))
+                    !firstArg.hasRegister() && !firstArg.isUndefined())
                 {
                     logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
                     it.erase();
@@ -213,7 +213,7 @@ InstructionWalker optimizations::simplifyOperation(
                 }
                 // check whether operation does not really calculate anything
                 else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg &&
-                    !firstArg.hasType(ValueType::REGISTER) && !firstArg.hasType(ValueType::UNDEFINED))
+                    !firstArg.hasRegister() && !firstArg.isUndefined())
                 {
                     logging::debug() << secondArg.value().to_string() << " - " << firstArg.to_string() << logging::endl;
                     logging::debug() << "Replacing obsolete " << op->to_string() << " with move 5" << logging::endl;
@@ -318,7 +318,8 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
         it.emplace((new intermediate::MoveOperation(node.getOutput().value(), pair.second, jumpCondition))
                        ->copyExtrasFrom(&node)
                        ->addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
-        logging::debug() << "Inserting into end of basic-block '" << pair.first->name << "': " << it->to_string() << logging::endl;
+        logging::debug() << "Inserting into end of basic-block '" << pair.first->name << "': " << it->to_string()
+                         << logging::endl;
     }
 
     // set reference of local to original reference, if always the same for all possible sources
@@ -327,22 +328,22 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
         const Local* ref = nullptr;
         for(const auto& pair : node.getValuesForLabels())
         {
-            if(!pair.second.hasType(ValueType::LOCAL))
+            if(!pair.second.hasLocal())
                 // cannot set universal reference
                 return;
-            if(pair.second.hasLocal(node.getOutput()->local) ||
-                pair.second.local->getBase(true) == node.getOutput()->local)
+            if(pair.second.hasLocal(node.getOutput()->local()) ||
+                pair.second.local()->getBase(true) == node.getOutput()->local())
                 // phi node references its own result, ignore
                 continue;
             if(ref != nullptr &&
-                !(pair.second.local->getBase(true) == ref || pair.second.local->reference.first == ref))
+                !(pair.second.local()->getBase(true) == ref || pair.second.local()->reference.first == ref))
                 // references differ
                 return;
-            ref = pair.second.local->getBase(true);
+            ref = pair.second.local()->getBase(true);
         }
 
-        node.getOutput()->local->reference.first = const_cast<Local*>(ref);
-        node.getOutput()->local->reference.second = ANY_ELEMENT;
+        node.getOutput()->local()->reference.first = const_cast<Local*>(ref);
+        node.getOutput()->local()->reference.second = ANY_ELEMENT;
         logging::debug() << "PHI output: " << node.getOutput()->to_string(true, true) << logging::endl;
     }
 }
@@ -432,23 +433,21 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
         // - mov.setf r0, r1
         // - mov r0, r1, load_tmu0
         if(op && !it.has<intermediate::VectorRotation>() && !op->hasConditionalExecution() && !op->hasPackMode() &&
-            !op->hasUnpackMode() && op->getOutput().has_value() && (op->getSource().valueType != ValueType::REGISTER) &&
-            (op->getOutput().value().valueType != ValueType::REGISTER))
+            !op->hasUnpackMode() && op->getOutput().has_value() && (!op->getSource().hasRegister()) &&
+            (!op->getOutput().value().hasRegister()))
         {
             auto it2 = it.copy().nextInBlock();
             auto oldValue = op->getOutput().value();
             const auto& newValue = op->getSource();
             // only continue iterating as long as there is a read of the local left
-            FastSet<const LocalUser*> remainingLocalReads = oldValue.hasType(ValueType::LOCAL) ?
-                oldValue.local->getUsers(LocalUse::Type::READER) :
-                FastSet<const LocalUser*>{};
+            FastSet<const LocalUser*> remainingLocalReads =
+                oldValue.hasLocal() ? oldValue.local()->getUsers(LocalUse::Type::READER) : FastSet<const LocalUser*>{};
             while(!it2.isEndOfBlock() && !remainingLocalReads.empty())
             {
                 bool replacedThisInstruction = false;
                 for(auto arg : it2->getArguments())
                 {
-                    if(arg == oldValue && arg.valueType != ValueType::LITERAL &&
-                        arg.valueType != ValueType::SMALL_IMMEDIATE)
+                    if(arg == oldValue && !arg.hasLiteral() && !arg.hasImmediate())
                     {
                         replaced = true;
                         replacedThisInstruction = true;
@@ -489,21 +488,21 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
 
             // the source is written and read only once
             bool sourceUsedOnce = move->getSource().getSingleWriter() != nullptr &&
-                move->getSource().local->getUsers(LocalUse::Type::READER).size() == 1;
+                move->getSource().local()->getUsers(LocalUse::Type::READER).size() == 1;
             // the destination is written and read only once (and not in combination with a literal value, to not
             // introduce register conflicts)
             bool destUsedOnce = move->hasValueType(ValueType::LOCAL) && move->getOutput()->getSingleWriter() == move &&
-                move->getOutput()->local->getUsers(LocalUse::Type::READER).size() == 1;
-            bool destUsedOnceWithoutLiteral =
-                destUsedOnce && !(*move->getOutput()->local->getUsers(LocalUse::Type::READER).begin())->readsLiteral();
+                move->getOutput()->local()->getUsers(LocalUse::Type::READER).size() == 1;
+            bool destUsedOnceWithoutLiteral = destUsedOnce &&
+                !(*move->getOutput()->local()->getUsers(LocalUse::Type::READER).begin())->readsLiteral();
 
             auto sourceWriter = (move->getSource().getSingleWriter() != nullptr) ?
                 it.getBasicBlock()->findWalkerForInstruction(move->getSource().getSingleWriter(), it) :
                 Optional<InstructionWalker>{};
             auto destinationReader = (move->hasValueType(ValueType::LOCAL) &&
-                                         move->getOutput()->local->getUsers(LocalUse::Type::READER).size() == 1) ?
+                                         move->getOutput()->local()->getUsers(LocalUse::Type::READER).size() == 1) ?
                 it.getBasicBlock()->findWalkerForInstruction(
-                    *move->getOutput()->local->getUsers(LocalUse::Type::READER).begin(), it.getBasicBlock()->end()) :
+                    *move->getOutput()->local()->getUsers(LocalUse::Type::READER).begin(), it.getBasicBlock()->end()) :
                 Optional<InstructionWalker>{};
 
             if(!move->hasPackMode() && !move->hasUnpackMode() && move->getSource() == move->getOutput().value() &&
@@ -562,13 +561,13 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 it->setSetFlags(setFlags);
                 flag = true;
             }
-            else if(move->getSource().hasType(ValueType::REGISTER) && destUsedOnce &&
-                (destUsedOnceWithoutLiteral || has_flag(move->getSource().reg.file, RegisterFile::PHYSICAL_ANY) ||
-                    has_flag(move->getSource().reg.file, RegisterFile::ACCUMULATOR)) &&
+            else if(move->getSource().hasRegister() && destUsedOnce &&
+                (destUsedOnceWithoutLiteral || has_flag(move->getSource().reg().file, RegisterFile::PHYSICAL_ANY) ||
+                    has_flag(move->getSource().reg().file, RegisterFile::ACCUMULATOR)) &&
                 destinationReader && !move->signal.hasSideEffects() && move->setFlags == SetFlag::DONT_SET &&
                 !(*destinationReader)->hasUnpackMode() && (*destinationReader)->conditional == COND_ALWAYS &&
-                !(*destinationReader)->readsRegister(move->getSource().reg) &&
-                isNoReadBetween(it, destinationReader.value(), move->getSource().reg))
+                !(*destinationReader)->readsRegister(move->getSource().reg()) &&
+                isNoReadBetween(it, destinationReader.value(), move->getSource().reg()))
             {
                 // if the source is a register, the output is only used once, this instruction has no signals/sets no
                 // flags, the output consumer does not also read this move's source and there is no read of the source
@@ -576,8 +575,8 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 logging::debug()
                     << "Replacing obsolete move by inserting the source into the instruction consuming its result: "
                     << it->to_string() << logging::endl;
-                const Value newInput(move->getSource().reg, move->getOutput()->type);
-                const Local* oldLocal = move->getOutput()->local;
+                const Value newInput(move->getSource().reg(), move->getOutput()->type);
+                const Local* oldLocal = move->getOutput()->local();
                 for(std::size_t i = 0; i < (*destinationReader)->getArguments().size(); ++i)
                 {
                     if((*destinationReader)->assertArgument(i).hasLocal(oldLocal))
@@ -635,12 +634,12 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
 
                 const auto& arg0 = op->assertArgument(0);
                 const auto& arg1 = op->assertArgument(1);
-                auto out = op->getOutput().value().local;
+                auto out = op->getOutput().value().local();
 
-                if(arg0.valueType == ValueType::LOCAL)
-                    foundAnd(out, arg0.local, it);
-                if(arg1.valueType == ValueType::LOCAL)
-                    foundAnd(out, arg1.local, it);
+                if(arg0.hasLocal())
+                    foundAnd(out, arg0.local(), it);
+                if(arg1.hasLocal())
+                    foundAnd(out, arg1.local(), it);
             };
 
             if(op && op->op == OP_OR && !op->hasUnpackMode() && !op->hasPackMode())
@@ -676,12 +675,12 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
 
                 const auto& arg0 = op->assertArgument(0);
                 const auto& arg1 = op->assertArgument(1);
-                auto out = op->getOutput().value().local;
+                auto out = op->getOutput().value().local();
 
-                if(arg0.valueType == ValueType::LOCAL)
-                    foundOr(out, arg0.local, it);
-                if(arg1.valueType == ValueType::LOCAL)
-                    foundOr(out, arg1.local, it);
+                if(arg0.hasLocal())
+                    foundOr(out, arg0.local(), it);
+                if(arg1.hasLocal())
+                    foundOr(out, arg1.local(), it);
             }
         }
 
@@ -727,11 +726,11 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
 InstructionWalker optimizations::rewriteConstantSFUCall(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
-    if(!it->hasValueType(ValueType::REGISTER) || !it->getOutput()->reg.isSpecialFunctionsUnit())
+    if(!it->hasValueType(ValueType::REGISTER) || !it->getOutput()->reg().isSpecialFunctionsUnit())
         return it;
 
     auto constantValue = it->precalculate(3);
-    auto result = constantValue ? periphery::precalculateSFU(it->getOutput()->reg, constantValue.value()) : NO_VALUE;
+    auto result = constantValue ? periphery::precalculateSFU(it->getOutput()->reg(), constantValue.value()) : NO_VALUE;
     if(result)
     {
         logging::debug() << "Replacing SFU call with constant input '" << it->to_string()

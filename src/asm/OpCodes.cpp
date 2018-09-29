@@ -181,16 +181,16 @@ Optional<Value> Unpack::unpack(const Value& val) const
             return val;
         return NO_VALUE;
     }
-    if(val.hasType(ValueType::CONTAINER))
+    if(val.hasContainer())
     {
         // unpack vectors per element
-        Value result(ContainerValue(val.container.elements.size()), val.type);
-        for(const Value& elem : val.container.elements)
+        Value result(ContainerValue(val.container().elements.size()), val.type);
+        for(const Value& elem : val.container().elements)
         {
             auto tmp = unpack(elem);
             if(!tmp)
                 return NO_VALUE;
-            result.container.elements.push_back(tmp.value());
+            result.container().elements.push_back(tmp.value());
         }
         return result;
     }
@@ -325,16 +325,16 @@ Optional<Value> Pack::pack(const Value& val) const
             return val;
         return NO_VALUE;
     }
-    if(val.hasType(ValueType::CONTAINER))
+    if(val.hasContainer())
     {
         // pack vectors per element
-        Value result(ContainerValue(val.container.elements.size()), val.type);
-        for(const Value& elem : val.container.elements)
+        Value result(ContainerValue(val.container().elements.size()), val.type);
+        for(const Value& elem : val.container().elements)
         {
             auto tmp = pack(elem);
             if(!tmp)
                 return NO_VALUE;
-            result.container.elements.push_back(tmp.value());
+            result.container().elements.push_back(tmp.value());
         }
         return result;
     }
@@ -455,11 +455,9 @@ Optional<Value> OpCode::calculate(const Optional<Value>& firstOperand, const Opt
                                                                                              UNDEFINED_VALUE;
 
     // extract the literal value behind the operands
-    Optional<Value> firstVal = (firstOperand->getLiteralValue() || firstOperand->hasType(ValueType::CONTAINER)) ?
-        firstOperand.value() :
-        NO_VALUE;
-    Optional<Value> secondVal =
-        !secondOperand || (secondOperand->getLiteralValue() || secondOperand->hasType(ValueType::CONTAINER)) ?
+    Optional<Value> firstVal =
+        (firstOperand->getLiteralValue() || firstOperand->hasContainer()) ? firstOperand.value() : NO_VALUE;
+    Optional<Value> secondVal = !secondOperand || (secondOperand->getLiteralValue() || secondOperand->hasContainer()) ?
         secondOperand :
         NO_VALUE;
 
@@ -468,17 +466,17 @@ Optional<Value> OpCode::calculate(const Optional<Value>& firstOperand, const Opt
     if(numOperands > 1 && !secondVal)
         return NO_VALUE;
 
-    if(firstVal->hasType(ValueType::SMALL_IMMEDIATE) && firstVal->immediate.isVectorRotation())
+    if(firstVal->hasImmediate() && firstVal->immediate().isVectorRotation())
         return NO_VALUE;
-    if(numOperands > 1 && secondVal->hasType(ValueType::SMALL_IMMEDIATE) && secondVal->immediate.isVectorRotation())
+    if(numOperands > 1 && secondVal->hasImmediate() && secondVal->immediate().isVectorRotation())
         return NO_VALUE;
 
     // both (used) values are literals (or literal containers)
 
-    bool calcPerComponent = (firstVal->hasType(ValueType::CONTAINER) && firstVal->container.elements.size() > 1 &&
-                                !firstVal->container.isAllSame()) ||
-        (numOperands > 1 && secondVal->hasType(ValueType::CONTAINER) && secondVal->container.elements.size() > 1 &&
-            !secondVal->container.isAllSame());
+    bool calcPerComponent =
+        (firstVal->hasContainer() && firstVal->container().elements.size() > 1 && !firstVal->container().isAllSame()) ||
+        (numOperands > 1 && secondVal->hasContainer() && secondVal->container().elements.size() > 1 &&
+            !secondVal->container().isAllSame());
     DataType resultType = firstVal->type;
     if(numOperands > 1 &&
         (secondVal->type.getVectorWidth() > resultType.getVectorWidth() ||
@@ -488,24 +486,22 @@ Optional<Value> OpCode::calculate(const Optional<Value>& firstOperand, const Opt
     // at least one used value is a container, need to calculate component-wise
     if(calcPerComponent)
     {
-        auto numElements = std::max(firstVal->hasType(ValueType::CONTAINER) ? firstVal->container.elements.size() : 1,
-            secondVal ? (secondVal->hasType(ValueType::CONTAINER) ? secondVal->container.elements.size() : 1) : 0);
+        auto numElements = std::max(firstVal->hasContainer() ? firstVal->container().elements.size() : 1,
+            secondVal ? (secondVal->hasContainer() ? secondVal->container().elements.size() : 1) : 0);
         Value res(ContainerValue(numElements), resultType);
         for(unsigned char i = 0; i < numElements; ++i)
         {
             Optional<Value> tmp = NO_VALUE;
             if(numOperands == 1)
                 tmp = calculate(
-                    firstVal->hasType(ValueType::CONTAINER) ? firstVal->container.elements.at(i) : firstVal.value(),
-                    NO_VALUE);
+                    firstVal->hasContainer() ? firstVal->container().elements.at(i) : firstVal.value(), NO_VALUE);
             else
-                tmp = calculate(
-                    firstVal->hasType(ValueType::CONTAINER) ? firstVal->container.elements.at(i) : firstVal.value(),
-                    secondVal->hasType(ValueType::CONTAINER) ? secondVal->container.elements.at(i) : secondVal.value());
+                tmp = calculate(firstVal->hasContainer() ? firstVal->container().elements.at(i) : firstVal.value(),
+                    secondVal->hasContainer() ? secondVal->container().elements.at(i) : secondVal.value());
             if(!tmp)
                 // result could not be calculated for a single component of the vector, abort
                 return NO_VALUE;
-            res.container.elements.push_back(tmp.value());
+            res.container().elements.push_back(tmp.value());
         }
         return res;
     }
@@ -514,12 +510,13 @@ Optional<Value> OpCode::calculate(const Optional<Value>& firstOperand, const Opt
         return UNDEFINED_VALUE;
 
     // TODO throws if first element is no literal
-    const Literal firstLit = firstVal->getLiteralValue() ? firstVal->getLiteralValue().value() :
-                                                           firstVal->container.elements.at(0).getLiteralValue().value();
+    const Literal firstLit = firstVal->getLiteralValue() ?
+        firstVal->getLiteralValue().value() :
+        firstVal->container().elements.at(0).getLiteralValue().value();
     const Literal secondLit = (!secondVal || numOperands == 1) ?
-        INT_ZERO.literal :
+        INT_ZERO.literal() :
         secondVal->getLiteralValue() ? secondVal->getLiteralValue().value() :
-                                       secondVal->container.elements.at(0).getLiteralValue().value();
+                                       secondVal->container().elements.at(0).getLiteralValue().value();
 
     if(*this == OP_ADD)
         return Value(Literal(firstLit.signedInt() + secondLit.signedInt()), resultType);

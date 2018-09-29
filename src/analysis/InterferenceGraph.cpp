@@ -94,11 +94,11 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(Method& method
             const auto combInstr = it.get<const intermediate::CombinedOperation>();
             if(combInstr && combInstr->op1 && combInstr->op1->hasValueType(ValueType::LOCAL) && combInstr->op2 &&
                 combInstr->op2->hasValueType(ValueType::LOCAL) &&
-                combInstr->op1->getOutput()->local != combInstr->op2->getOutput()->local)
+                combInstr->op1->getOutput()->local() != combInstr->op2->getOutput()->local())
             {
-                graph->getOrCreateNode(combInstr->op1->getOutput()->local)
+                graph->getOrCreateNode(combInstr->op1->getOutput()->local())
                     .getOrCreateEdge(
-                        &graph->getOrCreateNode(combInstr->op2->getOutput()->local), InterferenceType::USED_TOGETHER)
+                        &graph->getOrCreateNode(combInstr->op2->getOutput()->local()), InterferenceType::USED_TOGETHER)
                     .data = InterferenceType::USED_TOGETHER;
             }
             // instructions in general can read multiple locals

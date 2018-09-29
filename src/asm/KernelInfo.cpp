@@ -160,18 +160,18 @@ std::string KernelInfo::to_string() const
 
 static void toBinary(const Value& val, std::vector<uint8_t>& queue)
 {
-    switch(val.valueType)
+    if(val.hasContainer())
     {
-    case ValueType::CONTAINER:
-        for(const Value& element : val.container.elements)
+        for(const Value& element : val.container().elements)
             toBinary(element, queue);
-        break;
-    case ValueType::LITERAL:
-        switch(val.literal.type)
+    }
+    else if(val.hasLiteral())
+    {
+        switch(val.literal().type)
         {
         case LiteralType::BOOL:
             for(std::size_t i = 0; i < val.type.getVectorWidth(true); ++i)
-                queue.push_back(static_cast<uint8_t>(val.literal.isTrue()));
+                queue.push_back(static_cast<uint8_t>(val.literal().isTrue()));
             break;
         case LiteralType::INTEGER:
         case LiteralType::REAL:
@@ -179,27 +179,27 @@ static void toBinary(const Value& val, std::vector<uint8_t>& queue)
             {
                 // little endian
                 if(val.type.getElementType().getPhysicalWidth() > 3)
-                    queue.push_back(static_cast<uint8_t>((val.literal.toImmediate() & 0xFF000000) >> 24));
+                    queue.push_back(static_cast<uint8_t>((val.literal().toImmediate() & 0xFF000000) >> 24));
                 if(val.type.getElementType().getPhysicalWidth() > 2)
-                    queue.push_back(static_cast<uint8_t>((val.literal.toImmediate() & 0xFF0000) >> 16));
+                    queue.push_back(static_cast<uint8_t>((val.literal().toImmediate() & 0xFF0000) >> 16));
                 if(val.type.getElementType().getPhysicalWidth() > 1)
-                    queue.push_back(static_cast<uint8_t>((val.literal.toImmediate() & 0xFF00) >> 8));
-                queue.push_back(static_cast<uint8_t>(val.literal.toImmediate() & 0xFF));
+                    queue.push_back(static_cast<uint8_t>((val.literal().toImmediate() & 0xFF00) >> 8));
+                queue.push_back(static_cast<uint8_t>(val.literal().toImmediate() & 0xFF));
             }
             break;
         default:
             throw CompilationError(CompilationStep::CODE_GENERATION, "Unrecognized literal-type!");
         }
-        break;
-    case ValueType::UNDEFINED:
+    }
+    else if(val.isUndefined())
+    {
         // e.g. for array <type> undefined, need to reserve enough bytes
         for(std::size_t s = 0; s < val.type.getPhysicalWidth(); ++s)
             queue.push_back(0);
-        break;
-    default:
+    }
+    else
         throw CompilationError(
             CompilationStep::CODE_GENERATION, "Can't map value-type to binary literal", val.to_string());
-    }
 }
 
 static std::vector<uint8_t> generateDataSegment(

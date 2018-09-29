@@ -8,6 +8,7 @@ target_include_directories(qpu_emulator PRIVATE "${PROJECT_SOURCE_DIR}/lib/cpplo
 target_include_directories(qpu_emulator PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_include_directories(qpu_emulator PRIVATE "${PROJECT_SOURCE_DIR}/include")
 target_compile_definitions(qpu_emulator PRIVATE CPPLOG_NAMESPACE=logging CPPLOG_CUSTOM_LOGGER=true)
+target_include_directories(qpu_emulator PRIVATE "${PROJECT_SOURCE_DIR}/lib/variant/include")
 
 if(BUILD_DEBUG)
 	target_compile_definitions(qpu_emulator PRIVATE DEBUG_MODE=1)

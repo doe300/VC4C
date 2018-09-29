@@ -59,7 +59,7 @@ InstructionWalker intrinsifyIntegerRelation(
     {
         // a == b <=> a xor b == 0 [<=> a - b == 0]
         // a != b <=> a xor b != 0
-        if(comp->getFirstArg().hasType(ValueType::LOCAL) && comp->assertArgument(1).hasLiteral(Literal(0u)))
+        if(comp->getFirstArg().hasLocal() && comp->assertArgument(1).hasLiteral(Literal(0u)))
             // special case for a == 0
             // does not save instructions, but does not force value a to be on register-file A (since B is reserved for
             // literal 0)
@@ -86,11 +86,10 @@ InstructionWalker intrinsifyIntegerRelation(
         if(comp->getFirstArg().type.getScalarBitCount() == 32)
         {
             // a < b [b = 2^x] <=> (a & (b-1)) == a <=> (a & ~(b-1)) == 0
-            if(comp->assertArgument(1).hasType(ValueType::LITERAL) &&
-                isPowerTwo(comp->assertArgument(1).literal.unsignedInt()))
+            if(comp->assertArgument(1).hasLiteral() && isPowerTwo(comp->assertArgument(1).literal().unsignedInt()))
             {
                 const Value mask(
-                    Literal(comp->assertArgument(1).literal.unsignedInt() - 1), comp->assertArgument(1).type);
+                    Literal(comp->assertArgument(1).literal().unsignedInt() - 1), comp->assertArgument(1).type);
                 const Value tmp1 =
                     method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
 
@@ -104,11 +103,11 @@ InstructionWalker intrinsifyIntegerRelation(
             }
             // a < b [b = 2^x -1] <=> (a & b) == a && a != b <=> (a & ~b) == 0 && a != b (this version is used)!
             // <=> (a >> log2(b + 1)) == 0 && a != b
-            else if(comp->assertArgument(1).hasType(ValueType::LITERAL) &&
-                isPowerTwo(comp->assertArgument(1).literal.unsignedInt() + 1))
+            else if(comp->assertArgument(1).hasLiteral() &&
+                isPowerTwo(comp->assertArgument(1).literal().unsignedInt() + 1))
             {
                 const Value mask(
-                    Literal(comp->assertArgument(1).literal.unsignedInt() ^ 0xFFFFFFFFu), comp->getFirstArg().type);
+                    Literal(comp->assertArgument(1).literal().unsignedInt() ^ 0xFFFFFFFFu), comp->getFirstArg().type);
                 const Value tmp1 =
                     method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
                 const Value tmp2 =
@@ -252,7 +251,7 @@ InstructionWalker intrinsifyFloatingRelation(Method& method, InstructionWalker i
      */
 
     // http://llvm.org/docs/LangRef.html#fcmp-instruction
-    const Value tmp = method.addNewLocal(comp->getFirstArg().type, comp->getOutput()->local->name);
+    const Value tmp = method.addNewLocal(comp->getFirstArg().type, comp->getOutput()->local()->name);
     if(COMP_TRUE == comp->opCode)
     {
         // true
@@ -437,13 +436,13 @@ InstructionWalker intermediate::insertIsNegative(InstructionWalker it, const Val
     {
         dest = src.getLiteralValue()->signedInt() < 0 ? INT_MINUS_ONE : INT_ZERO;
     }
-    else if(src.hasType(ValueType::CONTAINER))
+    else if(src.hasContainer())
     {
-        dest = Value(ContainerValue(src.container.elements.size()), TYPE_BOOL);
-        for(const auto& elem : src.container.elements)
+        dest = Value(ContainerValue(src.container().elements.size()), TYPE_BOOL);
+        for(const auto& elem : src.container().elements)
         {
             if(elem.getLiteralValue())
-                dest.container.elements.push_back(elem.getLiteralValue()->signedInt() < 0 ? INT_MINUS_ONE : INT_ZERO);
+                dest.container().elements.push_back(elem.getLiteralValue()->signedInt() < 0 ? INT_MINUS_ONE : INT_ZERO);
             else
                 throw CompilationError(CompilationStep::OPTIMIZER, "Can't handle container with non-literal values",
                     src.to_string(false, true));

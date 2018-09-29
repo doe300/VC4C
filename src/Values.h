@@ -9,6 +9,7 @@
 
 #include "Bitfield.h"
 #include "Types.h"
+#include "Variant.h"
 #include "performance.h"
 
 namespace vc4c
@@ -46,7 +47,6 @@ namespace vc4c
          */
         unsigned char num;
 
-        explicit Register() noexcept;
         constexpr Register(RegisterFile file, unsigned char num) noexcept : file(file), num(num) {}
 
         std::string to_string(bool specialNames = true, bool readAccess = true) const;
@@ -456,6 +456,12 @@ namespace vc4c
             "Sizes of literal types do not match!");
     };
 
+    template <>
+    struct hash<Literal> : public std::hash<int32_t>
+    {
+        size_t operator()(const Literal& lit) const noexcept;
+    };
+
     /*!
      * A SmallImmediate value is a literal (constant) value which can be loaded directly into an ALU instruction.
      *
@@ -533,6 +539,12 @@ namespace vc4c
 
     constexpr SmallImmediate VECTOR_ROTATE_R5{48};
 
+    template <>
+    struct hash<SmallImmediate> : public std::hash<std::string>
+    {
+        size_t operator()(const SmallImmediate& val) const noexcept;
+    };
+
     /*
      * The tag-type for the tagged union containing the actual content of a Value
      */
@@ -590,6 +602,12 @@ namespace vc4c
         bool isUndefined() const;
     };
 
+    template <>
+    struct hash<ContainerValue> : public std::hash<std::string>
+    {
+        size_t operator()(const ContainerValue& val) const noexcept;
+    };
+
     class Local;
     namespace intermediate
     {
@@ -605,18 +623,11 @@ namespace vc4c
         /*
          * Contains the data actually stored in this Value
          */
-        union {
-            Literal literal;
-            Register reg;
-            Local* local;
-            SmallImmediate immediate;
-        };
+        Variant<Literal, Register, Local*, SmallImmediate, ContainerValue, VariantNamespace::monostate> data;
         /*
          * The data-type of the Value
          */
         DataType type;
-        ContainerValue container;
-        ValueType valueType;
 
         Value(const Literal& lit, const DataType& type) noexcept;
         Value(const Register& reg, const DataType& type) noexcept;
@@ -646,7 +657,11 @@ namespace vc4c
         /*
          * Whether this object has the given type
          */
-        bool hasType(ValueType type) const;
+        bool hasRegister() const;
+        bool hasLiteral() const;
+        bool hasImmediate() const;
+        bool hasLocal() const;
+        bool hasContainer() const;
         /*
          * Whether this object has the given local
          */
@@ -726,6 +741,60 @@ namespace vc4c
          * amount of zero-elements is created
          */
         static Value createZeroInitializer(const DataType& type);
+
+        /*
+         * Returns the stored data of the given type, if it matches the stored type.
+         * Throws error otherwise
+         */
+        Literal& literal()
+        {
+            return VariantNamespace::get<Literal>(data);
+        }
+
+        const Literal& literal() const
+        {
+            return VariantNamespace::get<Literal>(data);
+        }
+
+        Register& reg()
+        {
+            return VariantNamespace::get<Register>(data);
+        }
+
+        const Register& reg() const
+        {
+            return VariantNamespace::get<Register>(data);
+        }
+
+        Local*& local()
+        {
+            return VariantNamespace::get<Local*>(data);
+        }
+
+        Local* const& local() const
+        {
+            return VariantNamespace::get<Local*>(data);
+        }
+
+        SmallImmediate& immediate()
+        {
+            return VariantNamespace::get<SmallImmediate>(data);
+        }
+
+        const SmallImmediate& immediate() const
+        {
+            return VariantNamespace::get<SmallImmediate>(data);
+        }
+
+        ContainerValue& container()
+        {
+            return VariantNamespace::get<ContainerValue>(data);
+        }
+
+        const ContainerValue& container() const
+        {
+            return VariantNamespace::get<ContainerValue>(data);
+        }
     };
 
     /*

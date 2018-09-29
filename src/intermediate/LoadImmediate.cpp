@@ -82,12 +82,12 @@ std::string LoadImmediate::to_string() const
 
         return (getOutput()->to_string(true) + " = loadsi ") +
             vc4c::to_string<Value>(
-                toLoadedValues(assertArgument(0).literal.unsignedInt(), LoadType::PER_ELEMENT_SIGNED)) +
+                toLoadedValues(assertArgument(0).literal().unsignedInt(), LoadType::PER_ELEMENT_SIGNED)) +
             createAdditionalInfoString();
     case LoadType::PER_ELEMENT_UNSIGNED:
         return (getOutput()->to_string(true) + " = loadui ") +
             vc4c::to_string<Value>(
-                toLoadedValues(assertArgument(0).literal.unsignedInt(), LoadType::PER_ELEMENT_UNSIGNED)) +
+                toLoadedValues(assertArgument(0).literal().unsignedInt(), LoadType::PER_ELEMENT_UNSIGNED)) +
             createAdditionalInfoString();
     }
     throw CompilationError(CompilationStep::GENERAL, "Unhandled type of load");
@@ -98,13 +98,13 @@ IntermediateInstruction* LoadImmediate::copyFor(Method& method, const std::strin
     switch(type)
     {
     case LoadType::REPLICATE_INT32:
-        return (new LoadImmediate(renameValue(method, getOutput().value(), localPrefix), assertArgument(0).literal,
+        return (new LoadImmediate(renameValue(method, getOutput().value(), localPrefix), assertArgument(0).literal(),
                     conditional, setFlags))
             ->copyExtrasFrom(this);
     case LoadType::PER_ELEMENT_SIGNED:
     case LoadType::PER_ELEMENT_UNSIGNED:
         return (new LoadImmediate(renameValue(method, getOutput().value(), localPrefix),
-                    assertArgument(0).literal.unsignedInt(), type, conditional, setFlags))
+                    assertArgument(0).literal().unsignedInt(), type, conditional, setFlags))
             ->copyExtrasFrom(this);
     }
     throw CompilationError(CompilationStep::GENERAL, "Unhandled type of load");
@@ -117,11 +117,11 @@ Optional<Value> LoadImmediate::precalculate(const std::size_t numIterations) con
     case LoadType::REPLICATE_INT32:
         return getArgument(0);
     case LoadType::PER_ELEMENT_SIGNED:
-        return Value(
-            ContainerValue(toLoadedValues(assertArgument(0).literal.unsignedInt(), type)), TYPE_INT32.toVectorType(16));
+        return Value(ContainerValue(toLoadedValues(assertArgument(0).literal().unsignedInt(), type)),
+            TYPE_INT32.toVectorType(16));
     case LoadType::PER_ELEMENT_UNSIGNED:
-        return Value(
-            ContainerValue(toLoadedValues(assertArgument(0).literal.unsignedInt(), type)), TYPE_INT8.toVectorType(16));
+        return Value(ContainerValue(toLoadedValues(assertArgument(0).literal().unsignedInt(), type)),
+            TYPE_INT8.toVectorType(16));
     }
     throw CompilationError(CompilationStep::GENERAL, "Unhandled type of load");
 }
@@ -129,12 +129,11 @@ Optional<Value> LoadImmediate::precalculate(const std::size_t numIterations) con
 qpu_asm::Instruction* LoadImmediate::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
-    const Register outReg =
-        getOutput()->hasType(ValueType::REGISTER) ? getOutput()->reg : registerMapping.at(getOutput()->local);
+    const Register outReg = getOutput()->hasRegister() ? getOutput()->reg() : registerMapping.at(getOutput()->local());
     const ConditionCode conditional0 = outReg.num == REG_NOP.num ? COND_NEVER : this->conditional;
     auto res = new qpu_asm::LoadInstruction(PACK_NOP, conditional0, COND_NEVER, setFlags,
         outReg.file == RegisterFile::PHYSICAL_A ? WriteSwap::DONT_SWAP : WriteSwap::SWAP, outReg.num, REG_NOP.num,
-        assertArgument(0).literal.toImmediate());
+        assertArgument(0).literal().toImmediate());
     switch(type)
     {
     case LoadType::REPLICATE_INT32:
@@ -162,7 +161,7 @@ Literal LoadImmediate::getImmediate() const
 {
     if(type != LoadType::REPLICATE_INT32)
         throw CompilationError(CompilationStep::GENERAL, "Cannot query immediate value from masked load", to_string());
-    return assertArgument(0).literal;
+    return assertArgument(0).literal();
 }
 
 void LoadImmediate::setImmediate(const Literal& value)

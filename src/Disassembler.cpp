@@ -117,7 +117,7 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Refere
         globals.emplace_back(
             "globalData", type.toPointerType(AddressSpace::GLOBAL), Value(ContainerValue(), type), false);
 
-        auto& elements = globals.begin()->value.container.elements;
+        auto& elements = globals.begin()->value.container().elements;
         elements.reserve(tmp.size());
         for(uint32_t t : tmp)
         {

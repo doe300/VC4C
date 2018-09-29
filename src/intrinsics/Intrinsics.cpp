@@ -353,31 +353,31 @@ const static std::map<std::string, std::pair<Intrinsic, Optional<Value>>, std::g
         // TODO correct?? Since we do not discard out-of-bounds values!
         {"vc4cl_bitcast_uchar",
             {Intrinsic{intrinsifyBinaryALUInstruction("and", true),
-                 [](const Value& val) { return Value(Literal(val.literal.unsignedInt() & 0xFF), TYPE_INT8); }},
+                 [](const Value& val) { return Value(Literal(val.literal().unsignedInt() & 0xFF), TYPE_INT8); }},
                 Value(Literal(0xFFu), TYPE_INT8)}},
         {"vc4cl_bitcast_char",
-            {Intrinsic{
-                 intrinsifyBinaryALUInstruction("mov"), [](const Value& val) { return Value(val.literal, TYPE_INT8); }},
+            {Intrinsic{intrinsifyBinaryALUInstruction("mov"),
+                 [](const Value& val) { return Value(val.literal(), TYPE_INT8); }},
                 NO_VALUE}},
         {"vc4cl_bitcast_ushort",
             {Intrinsic{intrinsifyBinaryALUInstruction("and", true),
-                 [](const Value& val) { return Value(Literal(val.literal.unsignedInt() & 0xFFFF), TYPE_INT16); }},
+                 [](const Value& val) { return Value(Literal(val.literal().unsignedInt() & 0xFFFF), TYPE_INT16); }},
                 Value(Literal(0xFFFFu), TYPE_INT16)}},
         {"vc4cl_bitcast_short",
             {Intrinsic{intrinsifyBinaryALUInstruction("mov"),
-                 [](const Value& val) { return Value(val.literal, TYPE_INT16); }},
+                 [](const Value& val) { return Value(val.literal(), TYPE_INT16); }},
                 NO_VALUE}},
         {"vc4cl_bitcast_uint",
             {Intrinsic{intrinsifyBinaryALUInstruction("mov", true),
-                 [](const Value& val) { return Value(Literal(val.literal), TYPE_INT32); }},
+                 [](const Value& val) { return Value(Literal(val.literal()), TYPE_INT32); }},
                 NO_VALUE}},
         {"vc4cl_bitcast_int",
             {Intrinsic{intrinsifyBinaryALUInstruction("mov"),
-                 [](const Value& val) { return Value(val.literal, TYPE_INT32); }},
+                 [](const Value& val) { return Value(val.literal(), TYPE_INT32); }},
                 NO_VALUE}},
         {"vc4cl_bitcast_float",
             {Intrinsic{intrinsifyBinaryALUInstruction("mov"),
-                 [](const Value& val) { return Value(Literal(val.literal), TYPE_INT32); }},
+                 [](const Value& val) { return Value(Literal(val.literal()), TYPE_INT32); }},
                 NO_VALUE}}};
 
 static InstructionWalker intrinsifyNoArgs(Method& method, InstructionWalker it)
@@ -418,7 +418,7 @@ static InstructionWalker intrinsifyUnary(Method& method, InstructionWalker it)
     {
         if(callSite->methodName.find(pair.first) != std::string::npos)
         {
-            if((arg.getLiteralValue() || arg.hasType(ValueType::CONTAINER)) && pair.second.unaryInstr &&
+            if((arg.getLiteralValue() || arg.hasContainer()) && pair.second.unaryInstr &&
                 (result = pair.second.unaryInstr.value()(arg)))
             {
                 logging::debug() << "Intrinsifying unary '" << callSite->to_string()
@@ -438,8 +438,7 @@ static InstructionWalker intrinsifyUnary(Method& method, InstructionWalker it)
         if(callSite->methodName.find(pair.first) != std::string::npos)
         {
             // TODO support constant type-cast for constant containers
-            if(arg.hasType(ValueType::LITERAL) && pair.second.first.unaryInstr &&
-                (result = pair.second.first.unaryInstr.value()(arg)))
+            if(arg.hasLiteral() && pair.second.first.unaryInstr && (result = pair.second.first.unaryInstr.value()(arg)))
             {
                 logging::debug() << "Intrinsifying type-cast '" << callSite->to_string()
                                  << "' to pre-calculated value: " << result->to_string() << logging::endl;
@@ -480,8 +479,8 @@ static InstructionWalker intrinsifyBinary(Method& method, InstructionWalker it)
     {
         if(callSite->methodName.find(pair.first) != std::string::npos)
         {
-            if(callSite->assertArgument(0).hasType(ValueType::LITERAL) &&
-                callSite->assertArgument(1).hasType(ValueType::LITERAL) && pair.second.binaryInstr &&
+            if(callSite->assertArgument(0).hasLiteral() && callSite->assertArgument(1).hasLiteral() &&
+                pair.second.binaryInstr &&
                 pair.second.binaryInstr.value()(callSite->assertArgument(0), callSite->assertArgument(1)))
             {
                 logging::debug() << "Intrinsifying binary '" << callSite->to_string() << "' to pre-calculated value"
@@ -545,7 +544,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         {
             logging::debug() << "Calculating result for multiplication with constants: " << op->to_string()
                              << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type),
+            it.reset(new MoveOperation(Value(op->getOutput()->local(), arg0.type),
                 Value(Literal(arg0.getLiteralValue()->signedInt() * arg1.getLiteralValue()->signedInt()), arg0.type),
                 op->conditional, op->setFlags));
         }
@@ -622,7 +621,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(arg0.getLiteralValue() && arg1.getLiteralValue())
         {
             logging::debug() << "Calculating result for division with constants: " << op->to_string() << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type),
+            it.reset(new MoveOperation(Value(op->getOutput()->local(), arg0.type),
                 Value(
                     Literal(arg0.getLiteralValue()->unsignedInt() / arg1.getLiteralValue()->unsignedInt()), arg0.type),
                 op->conditional, op->setFlags));
@@ -637,7 +636,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
                 op->conditional, op->setFlags));
             it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
-        else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
+        else if((arg1.isLiteralValue() || arg1.hasContainer()) && arg0.type.getScalarBitCount() <= 16)
         {
             it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, *op);
         }
@@ -653,7 +652,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         {
             logging::debug() << "Calculating result for signed division with constants: " << op->to_string()
                              << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type),
+            it.reset(new MoveOperation(Value(op->getOutput()->local(), arg0.type),
                 Value(Literal(arg0.getLiteralValue()->signedInt() / arg1.getLiteralValue()->signedInt()), arg0.type),
                 op->conditional, op->setFlags));
         }
@@ -683,7 +682,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
                 it.previousInBlock();
             }
         }
-        else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
+        else if((arg1.isLiteralValue() || arg1.hasContainer()) && arg0.type.getScalarBitCount() <= 16)
         {
             it = intrinsifySignedIntegerDivisionByConstant(method, it, *op);
         }
@@ -717,7 +716,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         if(arg0.getLiteralValue() && arg1.getLiteralValue())
         {
             logging::debug() << "Calculating result for modulo with constants: " << op->to_string() << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type),
+            it.reset(new MoveOperation(Value(op->getOutput()->local(), arg0.type),
                 Value(
                     Literal(arg0.getLiteralValue()->unsignedInt() % arg1.getLiteralValue()->unsignedInt()), arg0.type),
                 op->conditional, op->setFlags));
@@ -731,7 +730,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
                 Value(Literal(arg1.getLiteralValue()->unsignedInt() - 1), arg1.type), op->conditional, op->setFlags));
             it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
-        else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
+        else if((arg1.isLiteralValue() || arg1.hasContainer()) && arg0.type.getScalarBitCount() <= 16)
         {
             it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, *op, true);
         }
@@ -747,7 +746,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         {
             logging::debug() << "Calculating result for signed modulo with constants: " << op->to_string()
                              << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type),
+            it.reset(new MoveOperation(Value(op->getOutput()->local(), arg0.type),
                 Value(Literal(arg0.getLiteralValue()->signedInt() % arg1.getLiteralValue()->signedInt()), arg0.type),
                 op->conditional, op->setFlags));
         }
@@ -775,7 +774,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
                 it.previousInBlock();
             }
         }
-        else if((arg1.isLiteralValue() || arg1.hasType(ValueType::CONTAINER)) && arg0.type.getScalarBitCount() <= 16)
+        else if((arg1.isLiteralValue() || arg1.hasContainer()) && arg0.type.getScalarBitCount() <= 16)
         {
             it = intrinsifySignedIntegerDivisionByConstant(method, it, *op, true);
         }
@@ -791,11 +790,11 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         {
             logging::debug() << "Calculating result for signed division with constants: " << op->to_string()
                              << logging::endl;
-            it.reset(new MoveOperation(Value(op->getOutput()->local, arg0.type),
+            it.reset(new MoveOperation(Value(op->getOutput()->local(), arg0.type),
                 Value(Literal(arg0.getLiteralValue()->real() / arg1.getLiteralValue()->real()), arg0.type),
                 op->conditional, op->setFlags));
         }
-        else if(arg1.getLiteralValue() || arg1.hasType(ValueType::CONTAINER))
+        else if(arg1.getLiteralValue() || arg1.hasContainer())
         {
             logging::debug() << "Intrinsifying floating division with multiplication of constant inverse: "
                              << op->to_string() << logging::endl;

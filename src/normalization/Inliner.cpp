@@ -49,7 +49,7 @@ static Method& inlineMethod(
                 // recursively search for used methods
                 const std::string newLocalPrefix = localPrefix +
                     (!(call->getReturnType() == TYPE_VOID) ?
-                            call->getOutput()->local->name :
+                            call->getOutput()->local()->name :
                             std::string("%") + (calledMethod->name + ".") + std::to_string(rand())) +
                     '.';
                 const Local* methodEndLabel = currentMethod.findOrCreateLocal(TYPE_LABEL, newLocalPrefix + "after");
@@ -76,9 +76,9 @@ static Method& inlineMethod(
                     else
                     {
                         it.emplace(new intermediate::MoveOperation(ref, call->getArgument(i).value()));
-                        if(ref.hasType(ValueType::LOCAL) && call->getArgument(i)->hasType(ValueType::LOCAL))
-                            const_cast<Local*>(it->getOutput()->local)->reference =
-                                std::make_pair(call->getArgument(i)->local, 0);
+                        if(ref.hasLocal() && call->getArgument(i)->hasLocal())
+                            const_cast<Local*>(it->getOutput()->local())->reference =
+                                std::make_pair(call->getArgument(i)->local(), 0);
                         it.nextInMethod();
                     }
                 }
@@ -98,10 +98,10 @@ static Method& inlineMethod(
                             // prefix locals with destination of call
                             // map return-value to destination
                             Value retVal(ret->getReturnValue().value());
-                            if(retVal.hasType(ValueType::LOCAL))
+                            if(retVal.hasLocal())
                             {
-                                retVal.local = const_cast<Local*>(
-                                    currentMethod.findOrCreateLocal(retVal.type, newLocalPrefix + retVal.local->name));
+                                retVal.local() = const_cast<Local*>(currentMethod.findOrCreateLocal(
+                                    retVal.type, newLocalPrefix + retVal.local()->name));
                             }
                             it.emplace(new intermediate::MoveOperation(call->getOutput().value(), retVal));
                             it.nextInMethod();

@@ -11,7 +11,7 @@ target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE VC4C_VERSION="${PROJECT_
 target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE VC4C_VERSION="${PROJECT_VERSION}" VC4CL_STDLIB_HEADER="${VC4CL_STDLIB_HEADER}" VC4CL_STDLIB_CONFIG_HEADER="${VC4CL_STDLIB_CONFIG_HEADER}" VC4CL_STDLIB_MODULE="${VC4CL_STDLIB_MODULE}")
 
 # append usage of C++ to compiler flags, also optimize for speed and enable all warnings
-set(VC4C_ENABLED_WARNINGS -Wall -Wextra -Wold-style-cast -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings)
+set(VC4C_ENABLED_WARNINGS -Wall -Wextra -Wold-style-cast -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings -Werror=return-type)
 # Enable additional warnings, if available
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
 	SET(VC4C_ENABLED_WARNINGS ${VC4C_ENABLED_WARNINGS} -Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-shadow -Wno-padded -Wno-shadow-field-in-constructor -Wno-global-constructors -Wno-exit-time-destructors -Wno-missing-prototypes -Wno-gnu-anonymous-struct -Wno-nested-anon-types -Wno-documentation -Wno-unused-command-line-argument -Wno-unused-member-function -Wno-gnu-zero-variadic-macro-arguments -Wno-covered-switch-default -Wno-switch-enum -Wswitch)
@@ -137,6 +137,11 @@ if(VERIFY_OUTPUT)
 	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE VERIFIER_HEADER="${PROJECT_SOURCE_DIR}/lib/vc4asm/src/Validator.h")
 	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE VERIFIER_HEADER="${PROJECT_SOURCE_DIR}/lib/vc4asm/src/Validator.h")
 endif()
+
+# Download mpark/variant library as dependency
+add_dependencies(${VC4C_LIBRARY_NAME} variant-project-build)
+target_include_directories(${VC4C_LIBRARY_NAME} PRIVATE "${PROJECT_SOURCE_DIR}/lib/variant/include")
+target_include_directories(${VC4C_PROGRAM_NAME} PRIVATE "${PROJECT_SOURCE_DIR}/lib/variant/include")
 
 # "For shared libraries VERSION and SOVERSION can be used to specify the build version and API version respectively."
 set_target_properties(

@@ -25,7 +25,7 @@ AvailableExpressions AvailableExpressionAnalysis::analyzeAvailableExpressions(
     if(instr->hasValueType(ValueType::LOCAL))
     {
         // re-set all expressions using the local written to as input
-        auto cacheIt = cache.find(instr->getOutput()->local);
+        auto cacheIt = cache.find(instr->getOutput()->local());
         if(cacheIt != cache.end())
         {
             for(const auto& expr : cacheIt->second)

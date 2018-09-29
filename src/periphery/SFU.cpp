@@ -58,11 +58,11 @@ Optional<Value> periphery::precalculateSFU(Register sfuReg, const Value& input)
 
     if(input.getLiteralValue())
         return elemFunc(input);
-    if(input.hasType(ValueType::CONTAINER))
+    if(input.hasContainer())
     {
         Value result(ContainerValue(input.type.getVectorWidth()), input.type);
-        for(const auto& elem : input.container.elements)
-            result.container.elements.emplace_back(elemFunc(elem));
+        for(const auto& elem : input.container().elements)
+            result.container().elements.emplace_back(elemFunc(elem));
         return result;
     }
     return NO_VALUE;

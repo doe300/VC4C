@@ -21,10 +21,9 @@ static bool isDerivedFromMemory(const Local* local)
     bool allSourcesDerivedFromMemory = true;
 
     local->forUsers(LocalUse::Type::WRITER, [&](const LocalUser* user) {
-        if(dynamic_cast<const intermediate::MoveOperation*>(user) != nullptr &&
-            user->getArgument(0)->hasType(ValueType::LOCAL))
+        if(dynamic_cast<const intermediate::MoveOperation*>(user) != nullptr && user->getArgument(0)->hasLocal())
         {
-            if(!isDerivedFromMemory(user->getArgument(0)->local))
+            if(!isDerivedFromMemory(user->getArgument(0)->local()))
                 allSourcesDerivedFromMemory = false;
         }
         else if(dynamic_cast<const intermediate::MemoryInstruction*>(user) != nullptr)
@@ -34,12 +33,12 @@ static bool isDerivedFromMemory(const Local* local)
             const auto* op = dynamic_cast<const intermediate::Operation*>(user);
             if(op->op != OP_ADD && op->op != OP_SUB)
                 allSourcesDerivedFromMemory = false;
-            else if(op->getFirstArg().hasType(ValueType::LOCAL) && op->getFirstArg().type.isPointerType() &&
+            else if(op->getFirstArg().hasLocal() && op->getFirstArg().type.isPointerType() &&
                 !op->assertArgument(1).type.isPointerType())
             {
                 return;
             }
-            else if(op->assertArgument(1).hasType(ValueType::LOCAL) && !op->getFirstArg().type.isPointerType() &&
+            else if(op->assertArgument(1).hasLocal() && !op->getFirstArg().type.isPointerType() &&
                 op->assertArgument(1).type.isPointerType())
             {
                 return;
@@ -67,16 +66,16 @@ static void checkMemoryLocation(const Value& val)
      * Pointers with a dynamically set memory location cannot be recognized at compile-time and therefore this check
      * will always fail for them
      */
-    if(!val.hasType(ValueType::LOCAL) || !isDerivedFromMemory(val.local))
+    if(!val.hasLocal() || !isDerivedFromMemory(val.local()))
         throw CompilationError(CompilationStep::LLVM_2_IR,
             "Operand needs to refer to a memory location or a parameter containing one", val.to_string());
 }
 
 static void checkLocalValue(const Value& val)
 {
-    if(val.hasType(ValueType::LOCAL) &&
-        (val.local->residesInMemory() ||
-            (val.local->is<Parameter>() && (val.local->type.getPointerType() || val.local->type.getArrayType()))))
+    if(val.hasLocal() &&
+        (val.local()->residesInMemory() ||
+            (val.local()->is<Parameter>() && (val.local()->type.getPointerType() || val.local()->type.getArrayType()))))
         throw CompilationError(
             CompilationStep::LLVM_2_IR, "Operand needs to be a local value (local, register)", val.to_string());
 }
@@ -155,7 +154,7 @@ static bool canMoveIntoVPM(const Value& val, bool isMemoryAddress)
     {
         checkMemoryLocation(val);
         // Checks whether the memory-address can be lowered into VPM
-        const Local* base = val.local->getBase(true);
+        const Local* base = val.local()->getBase(true);
         if(base->type.getElementType().getStructType() ||
             (base->type.getElementType().getArrayType() &&
                 base->type.getElementType().getArrayType().value()->elementType.getStructType()))
@@ -194,11 +193,11 @@ static bool canMoveIntoVPM(const Value& val, bool isMemoryAddress)
      * This can be useful for operations performing memory-copy without QPU-side access to skip the steps of loading
      * into QPU and writing back to VPM.
      */
-    if(!val.hasType(ValueType::LOCAL))
+    if(!val.hasLocal())
         // any non-local cannot be moved to VPM
         return false;
 
-    return std::all_of(val.local->getUsers().begin(), val.local->getUsers().end(),
+    return std::all_of(val.local()->getUsers().begin(), val.local()->getUsers().end(),
         [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {
             // TODO enable if handled correctly by optimizations (e.g. combination of read/write into copy)
             return false; // return dynamic_cast<const MemoryInstruction*>(pair.first) != nullptr;
@@ -226,22 +225,22 @@ bool MemoryInstruction::accessesConstantGlobal() const
     case MemoryOperation::COPY:
         checkMemoryLocation(getSource());
         checkMemoryLocation(getDestination());
-        return (getSource().local->getBase(true)->is<Global>() &&
-                   getSource().local->getBase(true)->as<Global>()->isConstant) ||
-            (getDestination().local->getBase(true)->is<Global>() &&
-                getDestination().local->getBase(true)->as<Global>()->isConstant);
+        return (getSource().local()->getBase(true)->is<Global>() &&
+                   getSource().local()->getBase(true)->as<Global>()->isConstant) ||
+            (getDestination().local()->getBase(true)->is<Global>() &&
+                getDestination().local()->getBase(true)->as<Global>()->isConstant);
     case MemoryOperation::FILL:
         checkMemoryLocation(getDestination());
-        return getDestination().local->getBase(true)->is<Global>() &&
-            getDestination().local->getBase(true)->as<Global>()->isConstant;
+        return getDestination().local()->getBase(true)->is<Global>() &&
+            getDestination().local()->getBase(true)->as<Global>()->isConstant;
     case MemoryOperation::READ:
         checkMemoryLocation(getSource());
-        return getSource().local->getBase(true)->is<Global>() &&
-            getSource().local->getBase(true)->as<Global>()->isConstant;
+        return getSource().local()->getBase(true)->is<Global>() &&
+            getSource().local()->getBase(true)->as<Global>()->isConstant;
     case MemoryOperation::WRITE:
         checkMemoryLocation(getDestination());
-        return getDestination().local->getBase(true)->is<Global>() &&
-            getDestination().local->getBase(true)->as<Global>()->isConstant;
+        return getDestination().local()->getBase(true)->is<Global>() &&
+            getDestination().local()->getBase(true)->as<Global>()->isConstant;
     }
     return false;
 }
@@ -253,17 +252,17 @@ bool MemoryInstruction::accessesStackAllocation() const
     case MemoryOperation::COPY:
         checkMemoryLocation(getSource());
         checkMemoryLocation(getDestination());
-        return getSource().local->getBase(true)->is<StackAllocation>() ||
-            getDestination().local->getBase(true)->is<StackAllocation>();
+        return getSource().local()->getBase(true)->is<StackAllocation>() ||
+            getDestination().local()->getBase(true)->is<StackAllocation>();
     case MemoryOperation::FILL:
         checkMemoryLocation(getDestination());
-        return getDestination().local->getBase(true)->is<StackAllocation>();
+        return getDestination().local()->getBase(true)->is<StackAllocation>();
     case MemoryOperation::READ:
         checkMemoryLocation(getSource());
-        return getSource().local->getBase(true)->is<StackAllocation>();
+        return getSource().local()->getBase(true)->is<StackAllocation>();
     case MemoryOperation::WRITE:
         checkMemoryLocation(getDestination());
-        return getDestination().local->getBase(true)->is<StackAllocation>();
+        return getDestination().local()->getBase(true)->is<StackAllocation>();
     }
     return false;
 }
@@ -280,17 +279,17 @@ bool MemoryInstruction::accessesLocalMemory() const
     case MemoryOperation::COPY:
         checkMemoryLocation(getSource());
         checkMemoryLocation(getDestination());
-        return isGlobalWithLocalAddressSpace(getSource().local->getBase(true)) ||
-            isGlobalWithLocalAddressSpace(getDestination().local->getBase(true));
+        return isGlobalWithLocalAddressSpace(getSource().local()->getBase(true)) ||
+            isGlobalWithLocalAddressSpace(getDestination().local()->getBase(true));
     case MemoryOperation::FILL:
         checkMemoryLocation(getDestination());
-        return isGlobalWithLocalAddressSpace(getDestination().local->getBase(true));
+        return isGlobalWithLocalAddressSpace(getDestination().local()->getBase(true));
     case MemoryOperation::READ:
         checkMemoryLocation(getSource());
-        return isGlobalWithLocalAddressSpace(getSource().local->getBase(true));
+        return isGlobalWithLocalAddressSpace(getSource().local()->getBase(true));
     case MemoryOperation::WRITE:
         checkMemoryLocation(getDestination());
-        return isGlobalWithLocalAddressSpace(getDestination().local->getBase(true));
+        return isGlobalWithLocalAddressSpace(getDestination().local()->getBase(true));
     }
     return false;
 }
@@ -373,20 +372,20 @@ FastSet<const Local*> MemoryInstruction::getMemoryAreas() const
     case MemoryOperation::COPY:
         checkMemoryLocation(getSource());
         checkMemoryLocation(getDestination());
-        res.emplace(getSource().local->getBase(true));
-        res.emplace(getDestination().local->getBase(true));
+        res.emplace(getSource().local()->getBase(true));
+        res.emplace(getDestination().local()->getBase(true));
         break;
     case MemoryOperation::FILL:
         checkMemoryLocation(getDestination());
-        res.emplace(getDestination().local->getBase(true));
+        res.emplace(getDestination().local()->getBase(true));
         break;
     case MemoryOperation::READ:
         checkMemoryLocation(getSource());
-        res.emplace(getSource().local->getBase(true));
+        res.emplace(getSource().local()->getBase(true));
         break;
     case MemoryOperation::WRITE:
         checkMemoryLocation(getDestination());
-        res.emplace(getDestination().local->getBase(true));
+        res.emplace(getDestination().local()->getBase(true));
         break;
     }
     return res;
