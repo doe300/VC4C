@@ -122,59 +122,64 @@ Optional<Value> SPIRVInstruction::precalculate(
     const Value op2 = operands.size() > 1 ? constants.at(operands[1]) : UNDEFINED_VALUE;
 
     if(opcode == "fptoui")
-        return Value(Literal(static_cast<uint32_t>(op1.literal.real())), TYPE_INT32);
+        return Value(Literal(static_cast<uint32_t>(op1.literal().real())), TYPE_INT32);
     if(opcode == "fptosi")
-        return Value(Literal(static_cast<int32_t>(op1.literal.real())), TYPE_INT32);
+        return Value(Literal(static_cast<int32_t>(op1.literal().real())), TYPE_INT32);
     if(opcode == "sitofp")
-        return Value(Literal(static_cast<float>(op1.literal.signedInt())), TYPE_FLOAT);
+        return Value(Literal(static_cast<float>(op1.literal().signedInt())), TYPE_FLOAT);
     if(opcode == "uitofp")
-        return Value(Literal(static_cast<float>(op1.literal.unsignedInt())), TYPE_FLOAT);
+        return Value(Literal(static_cast<float>(op1.literal().unsignedInt())), TYPE_FLOAT);
     if(opcode == OP_NEGATE)
-        return op1.type.isFloatingType() ? Value(Literal(-op1.literal.real()), TYPE_FLOAT) :
-                                           Value(Literal(-op1.literal.signedInt()), TYPE_INT32);
+        return op1.type.isFloatingType() ? Value(Literal(-op1.literal().real()), TYPE_FLOAT) :
+                                           Value(Literal(-op1.literal().signedInt()), TYPE_INT32);
     if(opcode == "add")
-        return Value(Literal(op1.literal.signedInt() + op2.literal.signedInt()), op1.type.getUnionType(op2.type));
+        return Value(Literal(op1.literal().signedInt() + op2.literal().signedInt()), op1.type.getUnionType(op2.type));
     if(opcode == "fadd")
-        return Value(Literal(op1.literal.real() + op2.literal.real()), op1.type.getUnionType(op2.type));
+        return Value(Literal(op1.literal().real() + op2.literal().real()), op1.type.getUnionType(op2.type));
     if(opcode == "sub")
-        return Value(Literal(op1.literal.signedInt() - op2.literal.signedInt()), op1.type.getUnionType(op2.type));
+        return Value(Literal(op1.literal().signedInt() - op2.literal().signedInt()), op1.type.getUnionType(op2.type));
     if(opcode == "fsub")
-        return Value(Literal(op1.literal.real() - op2.literal.real()), op1.type.getUnionType(op2.type));
+        return Value(Literal(op1.literal().real() - op2.literal().real()), op1.type.getUnionType(op2.type));
     if(opcode == "mul")
-        return Value(Literal(op1.literal.signedInt() * op2.literal.signedInt()), op1.type.getUnionType(op2.type));
+        return Value(Literal(op1.literal().signedInt() * op2.literal().signedInt()), op1.type.getUnionType(op2.type));
     if(opcode == "fmul")
-        return Value(Literal(op1.literal.real() * op2.literal.real()), op1.type.getUnionType(op2.type));
+        return Value(Literal(op1.literal().real() * op2.literal().real()), op1.type.getUnionType(op2.type));
     if(opcode == "udiv")
-        return Value(Literal(op1.literal.unsignedInt() / op2.literal.unsignedInt()), op1.type.getUnionType(op2.type));
+        return Value(
+            Literal(op1.literal().unsignedInt() / op2.literal().unsignedInt()), op1.type.getUnionType(op2.type));
     if(opcode == "sdiv")
-        return Value(Literal(op1.literal.signedInt() / op2.literal.signedInt()), op1.type.getUnionType(op2.type));
+        return Value(Literal(op1.literal().signedInt() / op2.literal().signedInt()), op1.type.getUnionType(op2.type));
     if(opcode == "fdiv")
-        return Value(Literal(op1.literal.real() / op2.literal.real()), op1.type.getUnionType(op2.type));
+        return Value(Literal(op1.literal().real() / op2.literal().real()), op1.type.getUnionType(op2.type));
     if(opcode == "umod")
-        return Value(Literal(op1.literal.unsignedInt() % op2.literal.unsignedInt()), op1.type.getUnionType(op2.type));
+        return Value(
+            Literal(op1.literal().unsignedInt() % op2.literal().unsignedInt()), op1.type.getUnionType(op2.type));
     if(opcode == "srem")
-        return Value(intermediate::srem(op1.type, op1.literal, op2.literal), op1.type);
+        return Value(intermediate::srem(op1.type, op1.literal(), op2.literal()), op1.type);
     if(opcode == "smod")
-        return Value(intermediate::smod(op1.type, op1.literal, op2.literal), op1.type);
+        return Value(intermediate::smod(op1.type, op1.literal(), op2.literal()), op1.type);
     if(opcode == "frem")
-        return Value(intermediate::frem(op1.type, op1.literal, op2.literal), op1.type);
+        return Value(intermediate::frem(op1.type, op1.literal(), op2.literal()), op1.type);
     if(opcode == "fmod")
-        return Value(intermediate::fmod(op1.type, op1.literal, op2.literal), op1.type);
+        return Value(intermediate::fmod(op1.type, op1.literal(), op2.literal()), op1.type);
     if(opcode == "or")
-        return Value(Literal(op1.literal.unsignedInt() | op2.literal.unsignedInt()), op1.type.getUnionType(op2.type));
+        return Value(
+            Literal(op1.literal().unsignedInt() | op2.literal().unsignedInt()), op1.type.getUnionType(op2.type));
     if(opcode == "and")
-        return Value(Literal(op1.literal.unsignedInt() & op2.literal.unsignedInt()), op1.type.getUnionType(op2.type));
+        return Value(
+            Literal(op1.literal().unsignedInt() & op2.literal().unsignedInt()), op1.type.getUnionType(op2.type));
     if(opcode == "xor")
-        return Value(Literal(op1.literal.unsignedInt() ^ op2.literal.unsignedInt()), op1.type.getUnionType(op2.type));
+        return Value(
+            Literal(op1.literal().unsignedInt() ^ op2.literal().unsignedInt()), op1.type.getUnionType(op2.type));
     if(opcode == "not")
-        return Value(Literal(~op1.literal.unsignedInt()), op1.type);
+        return Value(Literal(~op1.literal().unsignedInt()), op1.type);
     if(opcode == "shr")
         // in C++, unsigned right shift is logical (fills with zeroes)
-        return Value(Literal(op1.literal.unsignedInt() >> op2.literal.signedInt()), op1.type);
+        return Value(Literal(op1.literal().unsignedInt() >> op2.literal().signedInt()), op1.type);
     if(opcode == "asr")
-        return Value(intermediate::asr(op1.type, op1.literal, op2.literal), op1.type);
+        return Value(intermediate::asr(op1.type, op1.literal(), op2.literal()), op1.type);
     if(opcode == "shl")
-        return Value(Literal(op1.literal.unsignedInt() << op2.literal.signedInt()), op1.type);
+        return Value(Literal(op1.literal().unsignedInt() << op2.literal().signedInt()), op1.type);
 
     return NO_VALUE;
 }
@@ -212,21 +217,21 @@ Optional<Value> SPIRVComparison::precalculate(
     if(intermediate::COMP_TRUE == opcode)
         return BOOL_TRUE;
     if(intermediate::COMP_SIGNED_GE == opcode)
-        return op1.literal.signedInt() >= op2.literal.signedInt() ? BOOL_TRUE : BOOL_FALSE;
+        return op1.literal().signedInt() >= op2.literal().signedInt() ? BOOL_TRUE : BOOL_FALSE;
     if(intermediate::COMP_SIGNED_GT == opcode)
-        return op1.literal.signedInt() > op2.literal.signedInt() ? BOOL_TRUE : BOOL_FALSE;
+        return op1.literal().signedInt() > op2.literal().signedInt() ? BOOL_TRUE : BOOL_FALSE;
     if(intermediate::COMP_SIGNED_LE == opcode)
-        return op1.literal.signedInt() <= op2.literal.signedInt() ? BOOL_TRUE : BOOL_FALSE;
+        return op1.literal().signedInt() <= op2.literal().signedInt() ? BOOL_TRUE : BOOL_FALSE;
     if(intermediate::COMP_SIGNED_LT == opcode)
-        return op1.literal.signedInt() < op2.literal.signedInt() ? BOOL_TRUE : BOOL_FALSE;
+        return op1.literal().signedInt() < op2.literal().signedInt() ? BOOL_TRUE : BOOL_FALSE;
     if(intermediate::COMP_UNSIGNED_GE == opcode)
-        return op1.literal.unsignedInt() >= op2.literal.unsignedInt() ? BOOL_TRUE : BOOL_FALSE;
+        return op1.literal().unsignedInt() >= op2.literal().unsignedInt() ? BOOL_TRUE : BOOL_FALSE;
     if(intermediate::COMP_UNSIGNED_GT == opcode)
-        return op1.literal.unsignedInt() > op2.literal.unsignedInt() ? BOOL_TRUE : BOOL_FALSE;
+        return op1.literal().unsignedInt() > op2.literal().unsignedInt() ? BOOL_TRUE : BOOL_FALSE;
     if(intermediate::COMP_UNSIGNED_LE == opcode)
-        return op1.literal.unsignedInt() <= op2.literal.unsignedInt() ? BOOL_TRUE : BOOL_FALSE;
+        return op1.literal().unsignedInt() <= op2.literal().unsignedInt() ? BOOL_TRUE : BOOL_FALSE;
     if(intermediate::COMP_UNSIGNED_LT == opcode)
-        return op1.literal.unsignedInt() < op2.literal.unsignedInt() ? BOOL_TRUE : BOOL_FALSE;
+        return op1.literal().unsignedInt() < op2.literal().unsignedInt() ? BOOL_TRUE : BOOL_FALSE;
 
     return NO_VALUE;
 }
@@ -743,8 +748,8 @@ Optional<Value> SPIRVIndexOf::precalculate(
             throw CompilationError(CompilationStep::LLVM_2_IR, "Invalid container-type to retrieve element via index",
                 subContainerType.to_string());
 
-        if(offset.hasType(ValueType::LITERAL) && subOffset.getLiteralValue())
-            offset.literal = Literal(offset.literal.signedInt() + subOffset.getLiteralValue()->signedInt());
+        if(offset.hasLiteral() && subOffset.getLiteralValue())
+            offset.literal() = Literal(offset.literal().signedInt() + subOffset.getLiteralValue()->signedInt());
         else
             throw CompilationError(
                 CompilationStep::LLVM_2_IR, "Invalid index for constant expression", offset.to_string());
@@ -775,7 +780,7 @@ void SPIRVPhi::mapInstruction(TypeMapping& types, ConstantMapping& constants, Lo
     {
         const Value source = getValue(option.second, *method.method, types, constants, memoryAllocated, localTypes);
         const Value val = getValue(option.first, *method.method, types, constants, memoryAllocated, localTypes);
-        labelPairs.emplace_back(val, source.local);
+        labelPairs.emplace_back(val, source.local());
     }
     method.method->appendToEnd(new intermediate::PhiNode(dest, labelPairs));
 }
@@ -826,11 +831,11 @@ Optional<Value> SPIRVSelect::precalculate(const std::map<uint32_t, DataType>& ty
     auto it = constants.find(condID);
     if(it != constants.end())
     {
-        if(it->second.literal.isTrue() && constants.find(trueID) != constants.end())
+        if(it->second.literal().isTrue() && constants.find(trueID) != constants.end())
         {
             return constants.at(trueID);
         }
-        if(!it->second.literal.isTrue() && constants.find(falseID) != constants.end())
+        if(!it->second.literal().isTrue() && constants.find(falseID) != constants.end())
         {
             return constants.at(falseID);
         }
@@ -863,10 +868,10 @@ void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
         // for every case, if equal,branch to given label
         const Value tmp = method.method->addNewLocal(TYPE_BOOL, "%switch");
         method.method->appendToEnd(new intermediate::Comparison(intermediate::COMP_EQ, tmp, selector, comparison));
-        method.method->appendToEnd(new intermediate::Branch(destination.local, COND_ZERO_CLEAR, tmp));
+        method.method->appendToEnd(new intermediate::Branch(destination.local(), COND_ZERO_CLEAR, tmp));
     }
     // branch default label
-    method.method->appendToEnd(new intermediate::Branch(defaultLabel.local, COND_ALWAYS, BOOL_TRUE));
+    method.method->appendToEnd(new intermediate::Branch(defaultLabel.local(), COND_ALWAYS, BOOL_TRUE));
 }
 
 Optional<Value> SPIRVSwitch::precalculate(
@@ -926,7 +931,7 @@ void SPIRVImageQuery::mapInstruction(TypeMapping& types, ConstantMapping& consta
     case ImageQuery::SIZES_LOD:
         logging::debug() << "Generating query of image's measurements for image with LOD: " << image.to_string()
                          << logging::endl;
-        if(param.hasLiteral(INT_ZERO.literal))
+        if(param.hasLiteral(INT_ZERO.literal()))
         {
             // same as above
             intermediate::insertQueryMeasurements(method.method->appendToEnd(), *method.method, image, dest);
@@ -992,7 +997,7 @@ void SPIRVLifetimeInstruction::mapInstruction(TypeMapping& types, ConstantMappin
 
     //"If Size is non-zero, it is the number of bytes of memory whose lifetime is starting"
     if(sizeInBytes != 0)
-        pointer.local->as<StackAllocation>()->size = sizeInBytes;
+        pointer.local()->as<StackAllocation>()->size = sizeInBytes;
 
     logging::debug() << "Generating life-time " << (isLifetimeEnd ? "end" : "start") << " for " << pointer.to_string()
                      << logging::endl;

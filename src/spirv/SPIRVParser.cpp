@@ -381,7 +381,7 @@ static Value parseConstant(const spv_parsed_instruction_t* instruction, const Ty
     Value constant(typeMappings.at(instruction->type_id));
     if(instruction->num_words > 3)
     {
-        constant.valueType = ValueType::LITERAL;
+        constant = Value(Literal(0u), typeMappings.at(instruction->type_id));
         //"Types 32 bits wide or smaller take one word."
         uint64_t val = getWord(instruction, 3);
         if(instruction->num_words > 4)
@@ -391,11 +391,11 @@ static Value parseConstant(const spv_parsed_instruction_t* instruction, const Ty
         if((val >> 32) != 0)
             throw CompilationError(
                 CompilationStep::PARSER, "Constant value is out of valid range", std::to_string(val));
-        constant.literal = Literal(static_cast<uint32_t>(val));
+        constant.literal() = Literal(static_cast<uint32_t>(val));
 
         if(constant.type.isFloatingType())
             // set correct type, just for cosmetic purposes
-            constant.literal.type = LiteralType::REAL;
+            constant.literal().type = LiteralType::REAL;
     }
     return constant;
 }
@@ -587,16 +587,16 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         if(getWord(parsed_instruction, 2) == SpvExecutionModeLocalSizeId)
             //"Indicates the work-group size in the x, y, and z dimensions"
             metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES] = {
-                constantMappings.at(getWord(parsed_instruction, 3)).literal.unsignedInt(),
-                constantMappings.at(getWord(parsed_instruction, 4)).literal.unsignedInt(),
-                constantMappings.at(getWord(parsed_instruction, 5)).literal.unsignedInt()};
+                constantMappings.at(getWord(parsed_instruction, 3)).literal().unsignedInt(),
+                constantMappings.at(getWord(parsed_instruction, 4)).literal().unsignedInt(),
+                constantMappings.at(getWord(parsed_instruction, 5)).literal().unsignedInt()};
         else if(getWord(parsed_instruction, 2) == SpvExecutionModeLocalSizeHintId)
             //"A hint to the compiler, which indicates the most likely to be used work-group size in the x, y, and z
             // dimensions"
             metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES_HINT] = {
-                constantMappings.at(getWord(parsed_instruction, 3)).literal.unsignedInt(),
-                constantMappings.at(getWord(parsed_instruction, 4)).literal.unsignedInt(),
-                constantMappings.at(getWord(parsed_instruction, 5)).literal.unsignedInt()};
+                constantMappings.at(getWord(parsed_instruction, 3)).literal().unsignedInt(),
+                constantMappings.at(getWord(parsed_instruction, 4)).literal().unsignedInt(),
+                constantMappings.at(getWord(parsed_instruction, 5)).literal().unsignedInt()};
         else
             throw CompilationError(CompilationStep::PARSER, "Invalid execution mode");
         return SPV_SUCCESS;
@@ -675,7 +675,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         const DataType elementType = typeMappings.at(getWord(parsed_instruction, 2));
         typeMappings.emplace(getWord(parsed_instruction, 1),
             elementType.toArrayType(
-                static_cast<unsigned>(constantMappings.at(getWord(parsed_instruction, 3)).literal.unsignedInt())));
+                static_cast<unsigned>(constantMappings.at(getWord(parsed_instruction, 3)).literal().unsignedInt())));
         return SPV_SUCCESS;
     }
     case spv::Op::OpTypeStruct:
@@ -764,9 +764,8 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     case spv::Op::OpConstantSampler: // convert to 32-bit integer constant
     {
-        Value sampler(typeMappings.at(parsed_instruction->type_id));
-        sampler.valueType = ValueType::LITERAL;
-        sampler.literal = Literal(static_cast<uint32_t>(parseSampler(parsed_instruction)));
+        Value sampler(Literal(static_cast<uint32_t>(parseSampler(parsed_instruction))),
+            typeMappings.at(parsed_instruction->type_id));
         constantMappings.emplace(parsed_instruction->result_id, sampler);
         return SPV_SUCCESS;
     }
@@ -781,7 +780,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         // constituent types."
         const DataType& type = typeMappings.at(parsed_instruction->type_id);
         if(type.isScalarType() || type.isVectorType() || type.isPointerType())
-            constantMappings.emplace(parsed_instruction->result_id, Value(INT_ZERO.literal, type));
+            constantMappings.emplace(parsed_instruction->result_id, Value(INT_ZERO.literal(), type));
         else if(type.getArrayType())
             constantMappings.emplace(parsed_instruction->result_id, INT_ZERO);
         else
