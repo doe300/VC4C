@@ -357,7 +357,7 @@ unsigned DataType::getAlignmentInBytes() const
     return getPhysicalWidth();
 }
 
-std::size_t vc4c::hash<DataType>::operator()(const DataType& type) const noexcept
+std::size_t std::hash<DataType>::operator()(const DataType& type) const noexcept
 {
     const std::hash<std::shared_ptr<ComplexType>> complexHash;
     const std::hash<unsigned char> numHash;

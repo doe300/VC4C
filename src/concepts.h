@@ -63,7 +63,7 @@ namespace vc4c
     struct assert_hashable
     {
         constexpr static bool value =
-            std::is_same<size_t, decltype(std::declval<vc4c::hash<T>>().operator()(std::declval<T>()))>::value;
+            std::is_same<size_t, decltype(std::declval<std::hash<T>>().operator()(std::declval<T>()))>::value;
     };
 
     template <typename T>

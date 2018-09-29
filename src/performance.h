@@ -16,11 +16,6 @@
 
 namespace vc4c
 {
-    template <typename T>
-    struct hash : public std::hash<T>
-    {
-    };
-
     enum class AccessType
     {
         RANDOM_ACCESS = 1,
@@ -47,7 +42,7 @@ namespace vc4c
     template <typename T, AccessType A, InsertRemoveType IR>
     class PerformanceList;
 
-    template <typename T, OrderType O, typename H = vc4c::hash<T>>
+    template <typename T, OrderType O, typename H = std::hash<T>>
     class PerformanceSet;
 
     template <typename K, typename V, OrderType O, typename C = std::less<K>>
@@ -110,14 +105,14 @@ namespace vc4c
     template <typename T>
     using ReferenceRetainingList = RandomModificationList<T>;
 
-    template <typename T, typename H = vc4c::hash<T>>
+    template <typename T, typename H = std::hash<T>>
     using UnorderedSet = PerformanceSet<T, OrderType::UNORDERED, H>;
     template <typename T, typename C = std::less<T>>
     using OrderedSet = PerformanceSet<T, OrderType::ORDERED, C>;
-    template <typename T, typename H = vc4c::hash<T>>
+    template <typename T, typename H = std::hash<T>>
     using FastSet = UnorderedSet<T, H>;
 
-    template <typename K, typename V, typename H = vc4c::hash<K>>
+    template <typename K, typename V, typename H = std::hash<K>>
     using UnorderedMap = PerformanceMap<K, V, OrderType::UNORDERED, H>;
     template <typename K, typename V, typename C = std::less<K>>
     using OrderedMap = PerformanceMap<K, V, OrderType::ORDERED, C>;

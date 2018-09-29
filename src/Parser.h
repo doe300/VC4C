@@ -22,15 +22,6 @@ namespace vc4c
         WORK_GROUP_SIZES_HINT
     };
 
-    template <>
-    struct hash<MetaDataType> : public std::hash<uint8_t>
-    {
-        size_t operator()(const MetaDataType& val) const noexcept
-        {
-            return std::hash<uint8_t>::operator()(static_cast<uint8_t>(val));
-        }
-    };
-
     /*
      * Base class for any front-end implementation converting an input to a module in internal representation
      */
@@ -45,5 +36,17 @@ namespace vc4c
         virtual void parse(Module& module) = 0;
     };
 } // namespace vc4c
+
+namespace std
+{
+    template <>
+    struct hash<vc4c::MetaDataType> : public std::hash<uint8_t>
+    {
+        size_t operator()(const vc4c::MetaDataType& val) const noexcept
+        {
+            return std::hash<uint8_t>::operator()(static_cast<uint8_t>(val));
+        }
+    };
+} /* namespace std */
 
 #endif /* PARSER_H */

@@ -115,7 +115,7 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
     return *this;
 }
 
-size_t hash<Expression>::operator()(const Expression& expr) const noexcept
+size_t std::hash<vc4c::Expression>::operator()(const vc4c::Expression& expr) const noexcept
 {
     hash<const char*> nameHash;
     hash<Value> valHash;

@@ -502,18 +502,7 @@ namespace vc4c
 
         friend NodeType;
         friend typename NodeType::GraphType;
-        friend struct hash<Edge<Node, Relation, Directed>>;
-    };
-
-    template <typename Node, typename Relation, Directionality Direction>
-    struct hash<Edge<Node, Relation, Direction>>
-    {
-        using EdgeType = Edge<Node, Relation, Direction>;
-        inline std::size_t operator()(const EdgeType& edge) const
-        {
-            std::hash<Node*> h;
-            return h(&edge.first) ^ h(&edge.second);
-        }
+        friend struct std::hash<Edge<Node, Relation, Directed>>;
     };
 
     /*
@@ -747,5 +736,19 @@ namespace vc4c
         friend NodeType;
     };
 } // namespace vc4c
+
+namespace std
+{
+    template <typename Node, typename Relation, vc4c::Directionality Direction>
+    struct hash<vc4c::Edge<Node, Relation, Direction>>
+    {
+        using EdgeType = vc4c::Edge<Node, Relation, Direction>;
+        inline std::size_t operator()(const EdgeType& edge) const
+        {
+            std::hash<Node*> h;
+            return h(&edge.first) ^ h(&edge.second);
+        }
+    };
+} /* namespace std */
 
 #endif /* VC4C_GRAPH_H */

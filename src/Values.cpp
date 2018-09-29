@@ -271,12 +271,6 @@ bool Register::triggersReadOfR4() const
     // || (num == 56 || num == 60) /* TMU S coordinates */;
 }
 
-std::size_t vc4c::hash<vc4c::Register>::operator()(vc4c::Register const& val) const noexcept
-{
-    static const std::hash<unsigned char> hash;
-    return hash(static_cast<unsigned char>(val.file)) ^ hash(val.num);
-}
-
 bool Literal::operator==(const Literal& other) const
 {
     if(this == &other)
@@ -329,12 +323,6 @@ uint32_t Literal::unsignedInt() const
 uint32_t Literal::toImmediate() const
 {
     return u;
-}
-
-std::size_t vc4c::hash<vc4c::Literal>::operator()(vc4c::Literal const& val) const noexcept
-{
-    static const std::hash<unsigned> hash;
-    return hash(val.unsignedInt());
 }
 
 std::string SmallImmediate::to_string() const
@@ -424,12 +412,6 @@ SmallImmediate SmallImmediate::fromRotationOffset(unsigned char offset)
     return static_cast<SmallImmediate>(static_cast<unsigned char>(offset + VECTOR_ROTATE_R5));
 }
 
-std::size_t vc4c::hash<vc4c::SmallImmediate>::operator()(vc4c::SmallImmediate const& val) const noexcept
-{
-    static const std::hash<unsigned char> hash;
-    return hash(val.value);
-}
-
 bool ContainerValue::hasOnlyScalarElements() const
 {
     return std::all_of(elements.begin(), elements.end(), toFunction(&Value::isLiteralValue));
@@ -478,13 +460,6 @@ bool ContainerValue::isUndefined() const
             return false;
     }
     return true;
-}
-
-std::size_t vc4c::hash<vc4c::ContainerValue>::operator()(vc4c::ContainerValue const& val) const noexcept
-{
-    static const vc4c::hash<Value> elementHash;
-    return std::accumulate(val.elements.begin(), val.elements.end(), static_cast<std::size_t>(0),
-        [&](std::size_t s, const Value& val) -> std::size_t { return s + elementHash(val); });
 }
 
 Value::Value(const Literal& lit, const DataType& type) noexcept : data(lit), type(type) {}
@@ -718,10 +693,16 @@ Value Value::createZeroInitializer(const DataType& type)
     return val;
 }
 
-std::size_t vc4c::hash<vc4c::Value>::operator()(vc4c::Value const& val) const noexcept
+std::size_t std::hash<vc4c::ContainerValue>::operator()(vc4c::ContainerValue const& val) const noexcept
 {
-    vc4c::hash<DataType> typeHash;
-    // std::hash<Variant<VariantNamespace::monostate, Literal, Register, Local*, SmallImmediate, ContainerValue>>
-    // dataHash; return typeHash(val.type) ^ dataHash(val.data);
-    return 1; // FIXME rewrite all hashes to std::hash
+    static const std::hash<Value> elementHash;
+    return std::accumulate(val.elements.begin(), val.elements.end(), static_cast<std::size_t>(0),
+        [&](std::size_t s, const Value& val) -> std::size_t { return s + elementHash(val); });
+}
+
+std::size_t std::hash<vc4c::Value>::operator()(vc4c::Value const& val) const noexcept
+{
+    std::hash<DataType> typeHash;
+    std::hash<Variant<Literal, Register, Local*, SmallImmediate, ContainerValue, VariantNamespace::monostate>> dataHash;
+    return typeHash(val.type) ^ dataHash(val.data);
 }

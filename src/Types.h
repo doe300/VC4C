@@ -18,9 +18,6 @@ namespace vc4c
     static constexpr int WHOLE_OBJECT{-1};
     static constexpr int ANY_ELEMENT{-1};
 
-    template <typename T>
-    struct hash;
-
     /*
      * Base class for "complex" data types. A ComplexType contains additional information not contained in the standard
      * DataType object.
@@ -233,13 +230,7 @@ namespace vc4c
         // whether this type is a floating point type
         bool isFloatingPoint;
 
-        friend struct hash<DataType>;
-    };
-
-    template <>
-    struct hash<DataType>
-    {
-        std::size_t operator()(const DataType& type) const noexcept;
+        friend struct std::hash<DataType>;
     };
 
     /*
@@ -432,5 +423,14 @@ namespace vc4c
         static std::string toImageConfigurationName(const std::string& localName);
     };
 } // namespace vc4c
+
+namespace std
+{
+    template <>
+    struct hash<vc4c::DataType>
+    {
+        std::size_t operator()(const vc4c::DataType& type) const noexcept;
+    };
+} /* namespace std */
 
 #endif /* TYPES_H */

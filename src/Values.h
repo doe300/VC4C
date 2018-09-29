@@ -369,12 +369,6 @@ namespace vc4c
      */
     static constexpr Register REG_TMU1_COORD_B_LOD_BIAS{RegisterFile::PHYSICAL_ANY, 63};
 
-    template <>
-    struct hash<Register>
-    {
-        size_t operator()(const Register& val) const noexcept;
-    };
-
     /*
      * The arithmetic type of a literal value
      */
@@ -456,12 +450,6 @@ namespace vc4c
             "Sizes of literal types do not match!");
     };
 
-    template <>
-    struct hash<Literal> : public std::hash<int32_t>
-    {
-        size_t operator()(const Literal& lit) const noexcept;
-    };
-
     /*!
      * A SmallImmediate value is a literal (constant) value which can be loaded directly into an ALU instruction.
      *
@@ -539,12 +527,6 @@ namespace vc4c
 
     constexpr SmallImmediate VECTOR_ROTATE_R5{48};
 
-    template <>
-    struct hash<SmallImmediate> : public std::hash<std::string>
-    {
-        size_t operator()(const SmallImmediate& val) const noexcept;
-    };
-
     /*
      * The tag-type for the tagged union containing the actual content of a Value
      */
@@ -600,12 +582,6 @@ namespace vc4c
          * Returns whether all elements contained are undefined
          */
         bool isUndefined() const;
-    };
-
-    template <>
-    struct hash<ContainerValue> : public std::hash<std::string>
-    {
-        size_t operator()(const ContainerValue& val) const noexcept;
     };
 
     class Local;
@@ -863,11 +839,49 @@ namespace vc4c
      */
     const Value ROTATION_REGISTER(REG_ACC5, TYPE_INT8);
 
-    template <>
-    struct hash<Value> : public std::hash<std::string>
-    {
-        size_t operator()(const Value& val) const noexcept;
-    };
 } /* namespace vc4c */
+
+namespace std
+{
+    template <>
+    struct hash<vc4c::Register> : public std::hash<unsigned char>
+    {
+        inline size_t operator()(const vc4c::Register& val) const noexcept
+        {
+            return std::hash<unsigned char>::operator()(static_cast<unsigned char>(val.file)) ^
+                std::hash<unsigned char>::operator()(val.num);
+        }
+    };
+
+    template <>
+    struct hash<vc4c::Literal> : public std::hash<int32_t>
+    {
+        inline size_t operator()(const vc4c::Literal& lit) const noexcept
+        {
+            return std::hash<int32_t>::operator()(lit.signedInt());
+        }
+    };
+
+    template <>
+    struct hash<vc4c::SmallImmediate> : public std::hash<unsigned char>
+    {
+        inline size_t operator()(const vc4c::SmallImmediate& val) const noexcept
+        {
+            return std::hash<unsigned char>::operator()(val.value);
+        }
+    };
+
+    template <>
+    struct hash<vc4c::ContainerValue>
+    {
+        size_t operator()(const vc4c::ContainerValue& val) const noexcept;
+    };
+
+    template <>
+    struct hash<vc4c::Value>
+    {
+        size_t operator()(const vc4c::Value& val) const noexcept;
+    };
+} /* namespace std */
 
 #endif /* VALUES_H */

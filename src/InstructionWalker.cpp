@@ -411,18 +411,6 @@ const intermediate::IntermediateInstruction* ConstInstructionWalker::get() const
     return (*pos).get();
 }
 
-std::size_t vc4c::hash<vc4c::InstructionWalker>::operator()(vc4c::InstructionWalker const& it) const noexcept
-{
-    std::hash<const intermediate::IntermediateInstruction*> h;
-    return h(it.get());
-}
-
-std::size_t vc4c::hash<vc4c::ConstInstructionWalker>::operator()(vc4c::ConstInstructionWalker const& it) const noexcept
-{
-    std::hash<const intermediate::IntermediateInstruction*> h;
-    return h(it.get());
-}
-
 void vc4c::swap(BlockIterator& a, BlockIterator& b)
 {
     BlockIterator tmp = b;

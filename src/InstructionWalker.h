@@ -441,18 +441,6 @@ namespace vc4c
         friend class Method;
     };
 
-    template <>
-    struct hash<InstructionWalker>
-    {
-        size_t operator()(const InstructionWalker&) const noexcept;
-    };
-
-    template <>
-    struct hash<ConstInstructionWalker>
-    {
-        size_t operator()(const ConstInstructionWalker&) const noexcept;
-    };
-
     /*
      * Extends the instruction-walker type to be used as an iterator within the given scope
      *
@@ -585,5 +573,26 @@ namespace vc4c
     void swap(MethodIterator& a, MethodIterator& b);
 
 } /* namespace vc4c */
+
+namespace std
+{
+    template <>
+    struct hash<vc4c::InstructionWalker> : public std::hash<const vc4c::intermediate::IntermediateInstruction*>
+    {
+        inline size_t operator()(const vc4c::InstructionWalker& it) const noexcept
+        {
+            return std::hash<const vc4c::intermediate::IntermediateInstruction*>::operator()(it.get());
+        }
+    };
+
+    template <>
+    struct hash<vc4c::ConstInstructionWalker> : public std::hash<const vc4c::intermediate::IntermediateInstruction*>
+    {
+        inline size_t operator()(const vc4c::ConstInstructionWalker& it) const noexcept
+        {
+            return std::hash<const vc4c::intermediate::IntermediateInstruction*>::operator()(it.get());
+        }
+    };
+} /* namespace std */
 
 #endif /* INSTRUCTION_WALKER_H */

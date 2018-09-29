@@ -43,7 +43,7 @@ ValueRange::ValueRange(bool isFloat, bool isSigned) :
     }
 }
 
-static vc4c::hash<DataType> h;
+static std::hash<DataType> h;
 static std::map<std::size_t, std::pair<double, double>> floatTypeLimits = {
     {h(TYPE_HALF), std::make_pair(6.103515625e-05, 65504.0)},
     {h(TYPE_FLOAT),

@@ -47,11 +47,14 @@ namespace vc4c
          */
         Expression combineWith(const FastMap<const Local*, Expression>& inputs) const;
     };
+} /* namespace vc4c */
 
+namespace std
+{
     template <>
-    struct hash<Expression>
+    struct hash<vc4c::Expression>
     {
-        size_t operator()(const Expression& expr) const noexcept;
+        size_t operator()(const vc4c::Expression& expr) const noexcept;
     };
-}
+} /* namespace std */
 #endif /* VC4C_EXPRESSION_H */
