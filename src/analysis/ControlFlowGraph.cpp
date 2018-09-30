@@ -252,12 +252,12 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(bool recursively)
 }
 
 LCOV_EXCL_START
-void ControlFlowGraph::dumpGraph(const std::string& path, bool dumpInstructions) const
+void ControlFlowGraph::dumpGraph(const std::string& path, bool dumpConstantLoadInstructions) const
 {
 #ifdef DEBUG_MODE
     // XXX to be exact, would need bidirectional arrow [dir="both"] for compact loops
-    auto nameFunc = [&dumpInstructions](const BasicBlock* bb) -> std::string {
-        if(dumpInstructions)
+    auto nameFunc = [&dumpConstantLoadInstructions](const BasicBlock* bb) -> std::string {
+        if(dumpConstantLoadInstructions)
         {
             std::stringstream ss;
             ss << bb->getLabel()->getLabel()->name << "\\n";

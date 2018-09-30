@@ -109,7 +109,7 @@ namespace vc4c
         /*
          * Dump this graph as dot file
          */
-        void dumpGraph(const std::string& path, bool dumpInstructions) const;
+        void dumpGraph(const std::string& path, bool dumpConstantLoadInstructions) const;
 
         void updateOnBlockInsertion(Method& method, BasicBlock& newBlock);
         void updateOnBlockRemoval(Method& method, BasicBlock& oldBlock);
