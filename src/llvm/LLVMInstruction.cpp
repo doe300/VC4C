@@ -109,6 +109,8 @@ bool CallSite::mapInstruction(Method& method) const
     if(methodName.find("llvm.memcpy") == 0)
     {
         //@llvm.memcpy.p0i8.p0i8.i32(i8* <dest>, i8* <src>, i32 <len>, i32 <align>, i1 <isvolatile>)
+        // the type of llvm.memcpy is always i8*, so the number of bytes (<len>) always matches the number of entries
+        // (as expected for MemoryInstruction())
         logging::debug() << "Intrinsifying llvm.memcpy function-call" << logging::endl;
         method.appendToEnd(new intermediate::MemoryInstruction(
             intermediate::MemoryOperation::COPY, arguments.at(0), arguments.at(1), arguments.at(2)));
@@ -121,6 +123,8 @@ bool CallSite::mapInstruction(Method& method) const
          * XXX for later LLVM versions, this syntax changes!!
          * declare void @llvm.memset.p0i8.i32|i64(i8* <dest>, i8 <val>, i32 <len>, i1 <isvolatile>)
          */
+        // the type of llvm.memset is always i8*, so the number of bytes (<len>) always matches the number of entries
+        // (as expected for MemoryInstruction())
         logging::debug() << "Intrinsifying llvm.memset with DMA writes" << logging::endl;
         const Value& memAddr = arguments.at(0);
         const Value& fillByte = arguments.at(1);

@@ -543,10 +543,10 @@ Optional<Value> OpCode::calculate(const Optional<Value>& firstOperand, const Opt
         return Value(Literal(firstLit.real() - secondLit.real()), resultType);
     if(*this == OP_FTOI)
         return Value(
-            Literal(static_cast<int32_t>(firstLit.real())), TYPE_FLOAT.toVectorType(firstVal->type.getVectorWidth()));
+            Literal(static_cast<int32_t>(firstLit.real())), TYPE_INT32.toVectorType(firstVal->type.getVectorWidth()));
     if(*this == OP_ITOF)
         return Value(Literal(static_cast<float>(firstLit.signedInt())),
-            TYPE_INT32.toVectorType(firstVal->type.getVectorWidth()));
+            TYPE_FLOAT.toVectorType(firstVal->type.getVectorWidth()));
     if(*this == OP_MAX)
         return Value(Literal(std::max(firstLit.signedInt(), secondLit.signedInt())), resultType);
     if(*this == OP_MIN)

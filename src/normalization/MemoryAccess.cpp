@@ -868,8 +868,8 @@ static InstructionWalker mapToVPMMemoryAccessInstructions(
         if(!mem->getNumEntries().isLiteralValue())
             throw CompilationError(CompilationStep::OPTIMIZER,
                 "Copying dynamically sized memory is not yet implemented", mem->to_string());
-        uint64_t numBytes =
-            mem->getNumEntries().getLiteralValue()->unsignedInt() * mem->getSourceElementType().getScalarBitCount() / 8;
+        uint64_t numBytes = mem->getNumEntries().getLiteralValue()->unsignedInt() *
+            (mem->getSourceElementType().getScalarBitCount() * mem->getSourceElementType().getVectorWidth()) / 8;
         if(numBytes > std::numeric_limits<unsigned>::max())
             throw CompilationError(CompilationStep::OPTIMIZER, "Cannot copy more than 4GB of data", mem->to_string());
         // TODO can the case occur, where the other value is not located in RAM??
@@ -1480,8 +1480,8 @@ static FastMap<const Local*, MemoryAccess> determineMemoryAccess(Method& method)
                     it.erase();
                     nextIt.reset(new MemoryInstruction(
                         MemoryOperation::COPY, nextMemInstr->getDestination(), src, nextMemInstr->getNumEntries()));
-                    it = nextIt;
-                    memInstr = it.get<const MemoryInstruction>();
+                    // continue with the next instruction after the read in the next iteration
+                    continue;
                 }
             }
             for(const auto local : memInstr->getMemoryAreas())

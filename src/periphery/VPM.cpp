@@ -128,18 +128,27 @@ static std::string toStride(uint8_t stride, uint8_t size)
     }
 }
 
+/*
+ * Reverts the common pattern of having a value of 0 meaning the limit by replacing zero with the limit
+ */
+template <typename T>
+static constexpr T demodulo(T val, T limit)
+{
+    return val == 0 ? limit : val;
+}
+
 std::string VPWGenericSetup::to_string() const
 {
     return std::string("vpm_setup(size: ") + (getVPMSizeName(getSize()) + ", stride: ") +
-        (toStride(getStride(), getSize()) + ", address: ") +
+        (toStride(demodulo(getStride(), uint8_t{64}), getSize()) + ", address: ") +
         toAddressAndModeString(getSize(), getAddress(), getHorizontal(), !getLaned()) + ")";
 }
 
 std::string VPWDMASetup::to_string() const
 {
     // TODO byte/half-word offset (VPR too)
-    return std::string("vdw_setup(rows: ") + (std::to_string(getUnits()) + ", elements: ") +
-        std::to_string(getDepth()) + (getVPMModeName(getMode()) + ", address: ") +
+    return std::string("vdw_setup(rows: ") + (std::to_string(demodulo(getUnits(), uint8_t{128})) + ", elements: ") +
+        std::to_string(demodulo(getDepth(), uint8_t{128})) + (getVPMModeName(getMode()) + ", address: ") +
         toAddressAndModeString(getVPMSize(TYPE_INT32), getVPMBase(), getHorizontal(), true) + ")";
 }
 
@@ -159,16 +168,17 @@ std::string VPWSetup::to_string() const
 
 std::string VPRGenericSetup::to_string() const
 {
-    return std::string("vpm_setup(num: ") + (std::to_string(getNumber()) + ", size: ") +
-        (getVPMSizeName(getSize()) + ", stride: ") + (toStride(getStride(), getSize()) + ", address: ") +
+    return std::string("vpm_setup(num: ") + (std::to_string(demodulo(getNumber(), uint8_t{16})) + ", size: ") +
+        (getVPMSizeName(demodulo(getSize(), uint8_t{64})) + ", stride: ") +
+        (toStride(getStride(), getSize()) + ", address: ") +
         toAddressAndModeString(getSize(), getAddress(), getHorizontal(), !getLaned()) + ")";
 }
 
 std::string VPRDMASetup::to_string() const
 {
     // TODO VPM/memory pitch
-    return std::string("vdr_setup(rows: ") + (std::to_string(getNumberRows()) + ", elements: ") +
-        std::to_string(getRowLength()) + (getVPMModeName(getMode()) + ", address: ") +
+    return std::string("vdr_setup(rows: ") + (std::to_string(demodulo(getNumberRows(), uint8_t{16})) + ", elements: ") +
+        std::to_string(demodulo(getRowLength(), uint8_t{16})) + (getVPMModeName(getMode()) + ", address: ") +
         toAddressAndModeString(getVPMSize(TYPE_INT32), getAddress(), !getVertical(), true) + ")";
 }
 

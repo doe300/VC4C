@@ -387,6 +387,7 @@ namespace vc4c
                 setNumberRows(numRows);
                 setRowLength(rowLength);
                 setMPitch(0);
+                setMode(mode);
                 setID(1);
             }
 
@@ -528,7 +529,7 @@ namespace vc4c
 
             bool isDMASetup() const
             {
-                return ((value & 0xC0000000) == 0x80000000) && ((value & 0x70000000) != 0x10000000);
+                return ((value & 0x80000000) == 0x80000000) && ((value & 0x70000000) != 0x10000000);
             }
 
             bool isStrideSetup() const
