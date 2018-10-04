@@ -30,8 +30,7 @@ TestEmulator::TestEmulator(const vc4c::Configuration& config) : config(config)
 	TEST_ADD(TestEmulator::testBarrier);
 	TEST_ADD(TestEmulator::testBranches);
 	TEST_ADD(TestEmulator::testWorkItem);
-	//TODO requires v8muld
-	//TEST_ADD(TestEmulator::testSHA1);
+	TEST_ADD(TestEmulator::testSHA1);
 	TEST_ADD(TestEmulator::testSHA256);
 	for(std::size_t i = 0; i < vc4c::test::integerTests.size(); ++i)
 	{

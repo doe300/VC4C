@@ -150,7 +150,7 @@ namespace vc4c
 				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vectorization.cl", "test10",
 					{toParameter(toRange<int>(0, 1024)), toParameter(toRange<int>(0, 1024))}, {}, maxExecutionCycles * 2),
-					addVector({}, 0, std::vector<int>{0, 5, 10, 15, 20, 25, 30, 35, 40})
+					addVector({}, 0, std::vector<int>{0, 1, 2, 3, 8, 5, 6, 7, 16, 9, 10, 11, 24})
 				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vectorization.cl", "test11",
 					{toParameter(toRange<int>(0, 256))}, {}, maxExecutionCycles),

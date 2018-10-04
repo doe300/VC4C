@@ -571,7 +571,7 @@ Optional<Value> OpCode::calculate(const Optional<Value>& firstOperand, const Opt
         return Value(Literal(firstLit.signedInt() - secondLit.signedInt()), resultType);
     if(*this == OP_XOR)
         return Value(Literal(firstLit.unsignedInt() ^ secondLit.unsignedInt()), resultType);
-    if(*this == OP_V8ADDS || *this == OP_V8SUBS || *this == OP_V8MAX || *this == OP_V8MIN)
+    if(*this == OP_V8ADDS || *this == OP_V8SUBS || *this == OP_V8MAX || *this == OP_V8MIN || *this == OP_V8MULD)
     {
         std::array<uint32_t, 4> bytesA, bytesB, bytesOut;
         bytesA[0] = firstLit.unsignedInt() & 0xFF;
@@ -592,13 +592,14 @@ Optional<Value> OpCode::calculate(const Optional<Value>& firstOperand, const Opt
                     return std::max(a, b);
                 if(*this == OP_V8MIN)
                     return std::min(a, b);
+                if(*this == OP_V8MULD)
+                    return (a * b * 127) / 255;
                 throw CompilationError(CompilationStep::GENERAL, "Unhandled op-code", this->name);
             });
         uint32_t result = ((bytesOut[3] & 0xFF) << 24) | ((bytesOut[2] & 0xFF) << 16) | ((bytesOut[1] & 0xFF) << 8) |
             (bytesOut[0] & 0xFF);
         return Value(Literal(result), resultType);
     }
-    // TODO v8muld
 
     return NO_VALUE;
 }
