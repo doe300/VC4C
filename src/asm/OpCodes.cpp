@@ -593,7 +593,7 @@ Optional<Value> OpCode::calculate(const Optional<Value>& firstOperand, const Opt
                 if(*this == OP_V8MIN)
                     return std::min(a, b);
                 if(*this == OP_V8MULD)
-                    return (a * b * 127) / 255;
+                    return (a * b + 127) / 255;
                 throw CompilationError(CompilationStep::GENERAL, "Unhandled op-code", this->name);
             });
         uint32_t result = ((bytesOut[3] & 0xFF) << 24) | ((bytesOut[2] & 0xFF) << 16) | ((bytesOut[1] & 0xFF) << 8) |
