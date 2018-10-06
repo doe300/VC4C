@@ -1420,13 +1420,9 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             {
                 if(it->isConstantInstruction())
                 {
-                    auto out = it->getOutput().value();
-                    if(out.hasType(ValueType::LOCAL))
-                    {
-                        instMapper[&node].push_back(it);
+                    instMapper[&node].push_back(it);
 
-                        hasChanged = true;
-                    }
+                    hasChanged = true;
                 }
             }
         }

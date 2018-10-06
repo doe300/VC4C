@@ -460,13 +460,7 @@ bool IntermediateInstruction::replaceValue(const Value& oldValue, const Value& n
 
 bool IntermediateInstruction::isConstantInstruction() const
 {
-    if(dynamic_cast<const LoadImmediate*>(this) != nullptr)
-    {
-        return true;
-    }
-    auto& args = getArguments();
-    return std::all_of(args.begin(), args.end(), [](const Value& arg) { return !arg.isWriteable(); }) &&
-        getOutput().has_value() && !hasSideEffects() && !hasConditionalExecution() &&
+    return precalculate(1).has_value() && !hasSideEffects() && !hasConditionalExecution() &&
         !hasDecoration(InstructionDecorations::PHI_NODE);
 }
 
