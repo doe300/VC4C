@@ -960,7 +960,8 @@ static void generateStopSegment(Method& method)
     // write interrupt for host
     // write QPU number finished (value must be NON-NULL, so we invert it -> the first 28 bits are always 1)
     method.appendToEnd(
-        new intermediate::Operation(OP_NOT, Value(REG_HOST_INTERRUPT, TYPE_INT8), Value(REG_QPU_NUMBER, TYPE_INT8)));
+        (new intermediate::Operation(OP_NOT, Value(REG_HOST_INTERRUPT, TYPE_INT8), Value(REG_QPU_NUMBER, TYPE_INT8)))
+            ->addDecorations(InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
     intermediate::IntermediateInstruction* nop = new intermediate::Nop(intermediate::DelayType::THREAD_END);
     // set signals to stop thread/program
     nop->setSignaling(SIGNAL_END_PROGRAM);
@@ -1022,13 +1023,15 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
      */
     // initially set all implicit UNIFORMs to unused
     method.metaData.uniformsUsed.value = 0;
+    auto workInfoDecorations =
+        add_flag(InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
     if(isLocalUsed(method, Method::WORK_DIMENSIONS))
     {
         method.metaData.uniformsUsed.setWorkDimensionsUsed(true);
         it.emplace(new intermediate::MoveOperation(
             method.findOrCreateLocal(TYPE_INT32, Method::WORK_DIMENSIONS)->createReference(),
             Value(REG_UNIFORM, TYPE_INT8)));
-        it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
+        it->addDecorations(workInfoDecorations);
         it.nextInBlock();
     }
     if(isLocalUsed(method, Method::LOCAL_SIZES))
@@ -1037,7 +1040,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         it.emplace(new intermediate::MoveOperation(
             method.findOrCreateLocal(TYPE_INT32, Method::LOCAL_SIZES)->createReference(),
             Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
+        it->addDecorations(workInfoDecorations);
         it.nextInBlock();
     }
     if(isLocalUsed(method, Method::LOCAL_IDS))
@@ -1046,7 +1049,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         it.emplace(
             new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::LOCAL_IDS)->createReference(),
                 Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
+        it->addDecorations(remove_flag(workInfoDecorations, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
         it.nextInBlock();
     }
     if(isLocalUsed(method, Method::NUM_GROUPS_X))
@@ -1055,7 +1058,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         it.emplace(new intermediate::MoveOperation(
             method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_X)->createReference(),
             Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
+        it->addDecorations(workInfoDecorations);
         it.nextInBlock();
     }
     if(isLocalUsed(method, Method::NUM_GROUPS_Y))
@@ -1064,7 +1067,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         it.emplace(new intermediate::MoveOperation(
             method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_Y)->createReference(),
             Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
+        it->addDecorations(workInfoDecorations);
         it.nextInBlock();
     }
     if(isLocalUsed(method, Method::NUM_GROUPS_Z))
@@ -1073,7 +1076,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         it.emplace(new intermediate::MoveOperation(
             method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_Z)->createReference(),
             Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
+        it->addDecorations(workInfoDecorations);
         it.nextInBlock();
     }
     if(isLocalUsed(method, Method::GROUP_ID_X))
@@ -1082,7 +1085,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         it.emplace(
             new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_X)->createReference(),
                 Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
+        it->addDecorations(workInfoDecorations);
         it.nextInBlock();
     }
     if(isLocalUsed(method, Method::GROUP_ID_Y))
@@ -1091,7 +1094,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         it.emplace(
             new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_Y)->createReference(),
                 Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
+        it->addDecorations(workInfoDecorations);
         it.nextInBlock();
     }
     if(isLocalUsed(method, Method::GROUP_ID_Z))
@@ -1100,7 +1103,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         it.emplace(
             new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_Z)->createReference(),
                 Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
+        it->addDecorations(workInfoDecorations);
         it.nextInBlock();
     }
     if(isLocalUsed(method, Method::GLOBAL_OFFSET_X))
@@ -1109,7 +1112,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         it.emplace(new intermediate::MoveOperation(
             method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_X)->createReference(),
             Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
+        it->addDecorations(workInfoDecorations);
         it.nextInBlock();
     }
     if(isLocalUsed(method, Method::GLOBAL_OFFSET_Y))
@@ -1118,7 +1121,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         it.emplace(new intermediate::MoveOperation(
             method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_Y)->createReference(),
             Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
+        it->addDecorations(workInfoDecorations);
         it.nextInBlock();
     }
     if(isLocalUsed(method, Method::GLOBAL_OFFSET_Z))
@@ -1127,7 +1130,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         it.emplace(new intermediate::MoveOperation(
             method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_Z)->createReference(),
             Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
+        it->addDecorations(workInfoDecorations);
         it.nextInBlock();
     }
     if(isLocalUsed(method, Method::GLOBAL_DATA_ADDRESS))
@@ -1136,7 +1139,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         it.emplace(new intermediate::MoveOperation(
             method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference(),
             Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
+        it->addDecorations(workInfoDecorations);
         it.nextInBlock();
     }
 
@@ -1166,6 +1169,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
             if(param.type.isPointerType())
                 // all pointers are unsigned
                 it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+            it->addDecorations(InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
             it.nextInBlock();
         }
     }

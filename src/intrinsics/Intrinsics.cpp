@@ -1030,11 +1030,15 @@ static InstructionWalker intrinsifyReadWorkItemInfo(Method& method, InstructionW
 
 static InstructionWalker intrinsifyReadLocalSize(Method& method, InstructionWalker it, const Value& arg)
 {
+    auto decorations =
+        add_flag(add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::UNSIGNED_RESULT),
+            InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
     /*
      * Use the value set via reqd_work_group_size(x, y, z) - if set - and return here.
      * This is valid, since the OpenCL standard states: "is the work-group size that must be used as the local_work_size
      * argument to clEnqueueNDRangeKernel." (page 231)
      */
+
     if(method.metaData.isWorkGroupSizeSet())
     {
         const auto& workGroupSizes = method.metaData.workGroupSizes;
@@ -1049,19 +1053,15 @@ static InstructionWalker intrinsifyReadLocalSize(Method& method, InstructionWalk
         {
             if(immediate->unsignedInt() > workGroupSizes.size() || workGroupSizes.at(immediate->unsignedInt()) == 0)
             {
-                return it.reset((new MoveOperation(it->getOutput().value(), INT_ONE))
-                                    ->addDecorations(add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE,
-                                        InstructionDecorations::UNSIGNED_RESULT)));
+                return it.reset((new MoveOperation(it->getOutput().value(), INT_ONE))->addDecorations(decorations));
             }
             return it.reset((new MoveOperation(it->getOutput().value(),
                                  Value(Literal(workGroupSizes.at(immediate->unsignedInt())), TYPE_INT8)))
-                                ->addDecorations(add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE,
-                                    InstructionDecorations::UNSIGNED_RESULT)));
+                                ->addDecorations(decorations));
         }
     }
     // TODO needs to have a size of 1 for all higher dimensions (instead of currently implicit 0)
-    return intrinsifyReadWorkItemInfo(method, it, arg, Method::LOCAL_SIZES,
-        add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::UNSIGNED_RESULT));
+    return intrinsifyReadWorkItemInfo(method, it, arg, Method::LOCAL_SIZES, decorations);
 }
 
 static InstructionWalker intrinsifyReadLocalID(Method& method, InstructionWalker it, const Value& arg)
@@ -1097,29 +1097,33 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
             (new MoveOperation(out, method.findOrCreateLocal(TYPE_INT32, Method::WORK_DIMENSIONS)->createReference()))
                 ->copyExtrasFrom(callSite)
                 ->addDecorations(add_flag(callSite->decoration,
-                    add_flag(
-                        InstructionDecorations::BUILTIN_WORK_DIMENSIONS, InstructionDecorations::UNSIGNED_RESULT))));
+                    add_flag(add_flag(InstructionDecorations::BUILTIN_WORK_DIMENSIONS,
+                                 InstructionDecorations::UNSIGNED_RESULT),
+                        InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))));
     }
     if(callSite->methodName == "vc4cl_num_groups" && callSite->getArguments().size() == 1)
     {
         logging::debug() << "Intrinsifying reading of the number of work-groups" << logging::endl;
         return intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {Method::NUM_GROUPS_X, Method::NUM_GROUPS_Y, Method::NUM_GROUPS_Z}, INT_ONE,
-            add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT));
+            add_flag(add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT),
+                InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
     }
     if(callSite->methodName == "vc4cl_group_id" && callSite->getArguments().size() == 1)
     {
         logging::debug() << "Intrinsifying reading of the work-group ids" << logging::endl;
         return intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {Method::GROUP_ID_X, Method::GROUP_ID_Y, Method::GROUP_ID_Z}, INT_ZERO,
-            add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT));
+            add_flag(add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT),
+                InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
     }
     if(callSite->methodName == "vc4cl_global_offset" && callSite->getArguments().size() == 1)
     {
         logging::debug() << "Intrinsifying reading of the global offsets" << logging::endl;
         return intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {Method::GLOBAL_OFFSET_X, Method::GLOBAL_OFFSET_Y, Method::GLOBAL_OFFSET_Z}, INT_ZERO,
-            add_flag(InstructionDecorations::BUILTIN_GLOBAL_OFFSET, InstructionDecorations::UNSIGNED_RESULT));
+            add_flag(add_flag(InstructionDecorations::BUILTIN_GLOBAL_OFFSET, InstructionDecorations::UNSIGNED_RESULT),
+                InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
     }
     if(callSite->methodName == "vc4cl_local_size" && callSite->getArguments().size() == 1)
     {
@@ -1147,11 +1151,12 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
             {Method::NUM_GROUPS_X, Method::NUM_GROUPS_Y, Method::NUM_GROUPS_Z}, INT_ONE,
             add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT));
         it.nextInBlock();
-        return it.reset(
-            (new Operation(OP_MUL24, callSite->getOutput().value(), tmpLocalSize, tmpNumGroups))
-                ->copyExtrasFrom(callSite)
-                ->addDecorations(add_flag(callSite->decoration,
-                    add_flag(InstructionDecorations::BUILTIN_GLOBAL_SIZE, InstructionDecorations::UNSIGNED_RESULT))));
+        return it.reset((new Operation(OP_MUL24, callSite->getOutput().value(), tmpLocalSize, tmpNumGroups))
+                            ->copyExtrasFrom(callSite)
+                            ->addDecorations(add_flag(callSite->decoration,
+                                add_flag(add_flag(InstructionDecorations::BUILTIN_GLOBAL_SIZE,
+                                             InstructionDecorations::UNSIGNED_RESULT),
+                                    InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))));
     }
     if(callSite->methodName == "vc4cl_global_id" && callSite->getArguments().size() == 1)
     {

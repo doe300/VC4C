@@ -144,11 +144,12 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(
     if(hasA1Part && hasB0Part)
     {
         const Value tmp = method.addNewLocal(op.getOutput()->type);
+        const Value tmp2 = method.addNewLocal(op.getOutput()->type);
         it.emplace(new Operation(OP_MUL24, tmp, a1, b0));
         it.nextInBlock();
-        it.emplace(new Operation(OP_SHL, tmp, tmp, Value(Literal(16u), TYPE_INT8)));
+        it.emplace(new Operation(OP_SHL, tmp2, tmp, Value(Literal(16u), TYPE_INT8)));
         it.nextInBlock();
-        it.emplace(new Operation(OP_ADD, out1, out0, tmp));
+        it.emplace(new Operation(OP_ADD, out1, out0, tmp2));
         it.nextInBlock();
     }
     else

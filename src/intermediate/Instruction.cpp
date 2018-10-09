@@ -49,6 +49,8 @@ std::string intermediate::toString(const InstructionDecorations decoration)
         res.append("single_element ");
     if(has_flag(decoration, InstructionDecorations::AUTO_VECTORIZED))
         res.append("vectorized ");
+    if(has_flag(decoration, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))
+        res.append("group_uniform ");
     return res.substr(0, res.empty() ? 0 : res.size() - 1);
 }
 

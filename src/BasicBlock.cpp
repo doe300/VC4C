@@ -243,6 +243,7 @@ Optional<InstructionWalker> BasicBlock::findLastSettingOfFlags(const Instruction
             if(comb->op2 && comb->op2->setFlags == SetFlag::SET_FLAGS)
                 return it;
         }
+        it.previousInBlock();
     }
     return {};
 }

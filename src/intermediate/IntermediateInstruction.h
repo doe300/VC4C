@@ -63,7 +63,9 @@ namespace vc4c
             // The instructions inserts a single element into a vector
             ELEMENT_INSERTION = 1 << 16,
             // The instruction was already processed by auto-vectorization
-            AUTO_VECTORIZED = 1 << 17
+            AUTO_VECTORIZED = 1 << 17,
+            // The result of the instruction is the same for all work-items within a single work-group
+            WORK_GROUP_UNIFORM_VALUE = 1 << 18
         };
 
         std::string toString(InstructionDecorations decoration);

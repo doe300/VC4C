@@ -30,6 +30,49 @@ using namespace vc4c;
 using namespace vc4c::normalization;
 
 /*
+ * Propagate WORK_GROUP_UNIFORM_VALUE decoration through the kernel code
+ */
+static void propagateGroupUniforms(Module& module, Method& method, InstructionWalker it, const Configuration& config)
+{
+    // XXX does not propagate decoration via phi-nodes of back jumps
+    static const auto check = [](const Value& arg) -> bool {
+        if(arg.hasRegister())
+            return arg.hasRegister(REG_UNIFORM) || arg.hasRegister(REG_ELEMENT_NUMBER);
+        if(arg.hasImmediate() || arg.hasLiteral())
+            return true;
+        if(arg.hasLocal())
+        {
+            auto local = arg.local();
+            auto writes = local->getUsers(LocalUse::Type::WRITER);
+            return local->is<Parameter>() || local->is<Global>() ||
+                std::all_of(
+                    writes.begin(), writes.end(), [](const intermediate::IntermediateInstruction* instr) -> bool {
+                        return instr->hasDecoration(
+                            vc4c::intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+                    });
+        }
+        return false;
+    };
+    if(it.has<intermediate::Nop>() || it.has<intermediate::BranchLabel>() || it.has<intermediate::MutexLock>() ||
+        it.has<intermediate::SemaphoreAdjustment>() || it.has<intermediate::MemoryBarrier>())
+        return;
+    if(it->hasDecoration(intermediate::InstructionDecorations::BUILTIN_GLOBAL_ID) ||
+        it->hasDecoration(intermediate::InstructionDecorations::BUILTIN_LOCAL_ID))
+        return;
+    if(it->hasConditionalExecution())
+    {
+        auto flagsIt = it.getBasicBlock()->findLastSettingOfFlags(it);
+        if(!(flagsIt && (*flagsIt)->hasDecoration(intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE)))
+        {
+            // for conditional writes need to check whether condition is met by all work-items (e.g. element insertion)
+            return;
+        }
+    }
+    if(std::all_of(it->getArguments().begin(), it->getArguments().end(), check))
+        it->addDecorations(intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+}
+
+/*
  * Dummy normalization step which asserts all remaining instructions are normalized
  */
 static void checkNormalized(Module& module, Method& method, InstructionWalker it, const Configuration& config)
@@ -64,6 +107,8 @@ const static std::vector<std::pair<std::string, NormalizationStep>> initialNorma
     // this first run here is only required, so some loading of literals can be optimized, which is no longer possible
     // after the second run
     {"HandleImmediates", handleImmediate},
+    // propagates the instruction decoration whether values are work-group uniform
+    {"PropagateGroupUniformValues", propagateGroupUniforms},
     // dummy step which simply checks whether all remaining instructions are normalized
     {"CheckNormalized", checkNormalized}};
 

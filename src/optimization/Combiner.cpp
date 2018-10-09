@@ -716,6 +716,7 @@ bool optimizations::unrollWorkGroups(const Module& module, Method& method, const
     InstructionWalker it = lastBlock->begin().nextInBlock();
     it.emplace(new MoveOperation(loopSize->createReference(), UNIFORM_REGISTER));
     it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+    it->addDecorations(InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
     it.nextInBlock();
     it.emplace(new Branch(startLabel, COND_ZERO_CLEAR, loopSize->createReference()));
 
