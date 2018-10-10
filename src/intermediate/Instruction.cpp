@@ -71,8 +71,12 @@ InstructionDecorations intermediate::forwardDecorations(InstructionDecorations d
         res = add_flag(res, InstructionDecorations::BUILTIN_NUM_GROUPS);
     if(has_flag(decorations, InstructionDecorations::BUILTIN_WORK_DIMENSIONS))
         res = add_flag(res, InstructionDecorations::BUILTIN_WORK_DIMENSIONS);
+    if(has_flag(decorations, InstructionDecorations::BUILTIN_GROUP_ID))
+        res = add_flag(res, InstructionDecorations::BUILTIN_GROUP_ID);
     if(has_flag(decorations, InstructionDecorations::UNSIGNED_RESULT))
         res = add_flag(res, InstructionDecorations::UNSIGNED_RESULT);
+    if(has_flag(decorations, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))
+        res = add_flag(res, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
     return res;
 }
 

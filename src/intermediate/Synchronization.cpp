@@ -10,10 +10,8 @@
 using namespace vc4c;
 using namespace vc4c::intermediate;
 
-SemaphoreAdjustment::SemaphoreAdjustment(
-    const Semaphore semaphore, const bool increase, const ConditionCode& cond, const SetFlag setFlags) :
-    IntermediateInstruction(NO_VALUE, cond, setFlags),
-    semaphore(semaphore), increase(increase)
+SemaphoreAdjustment::SemaphoreAdjustment(const Semaphore semaphore, const bool increase) :
+    IntermediateInstruction(NO_VALUE), semaphore(semaphore), increase(increase)
 {
 }
 
@@ -26,8 +24,16 @@ std::string SemaphoreAdjustment::to_string() const
 qpu_asm::Instruction* SemaphoreAdjustment::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
-    return new qpu_asm::SemaphoreInstruction(PACK_NOP, conditional, conditional, setFlags, WriteSwap::DONT_SWAP,
-        REG_NOP.num, REG_NOP.num, increase, semaphore);
+    if(conditional != COND_ALWAYS)
+        throw CompilationError(CompilationStep::CODE_GENERATION,
+            "Condition codes have no effect on whether the semaphore is adjusted", to_string());
+
+    const Register outReg = getOutput() ?
+        (getOutput()->hasLocal() ? registerMapping.at(getOutput()->local()) : getOutput()->reg()) :
+        REG_NOP;
+    return new qpu_asm::SemaphoreInstruction(PACK_NOP, COND_ALWAYS, COND_ALWAYS, setFlags,
+        outReg.file == RegisterFile::PHYSICAL_B ? WriteSwap::SWAP : WriteSwap::DONT_SWAP, outReg.num, outReg.num,
+        increase, semaphore);
 }
 
 bool SemaphoreAdjustment::isNormalized() const
@@ -37,7 +43,7 @@ bool SemaphoreAdjustment::isNormalized() const
 
 IntermediateInstruction* SemaphoreAdjustment::copyFor(Method& method, const std::string& localPrefix) const
 {
-    return (new SemaphoreAdjustment(semaphore, increase, conditional, setFlags))->copyExtrasFrom(this);
+    return (new SemaphoreAdjustment(semaphore, increase))->copyExtrasFrom(this)->setOutput(getOutput());
 }
 
 MemoryBarrier::MemoryBarrier(const MemoryScope scope, const MemorySemantics semantics) :

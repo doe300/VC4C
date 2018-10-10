@@ -287,6 +287,8 @@ InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method
     }
 
     it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+    auto writer = src.getSingleWriter();
+    it->addDecorations(intermediate::forwardDecorations(writer->decoration));
     it.nextInBlock();
     return it;
 }

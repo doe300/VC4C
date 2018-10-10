@@ -665,6 +665,9 @@ void spirv2qasm::setParameterDecorations(
         else if(pair.first == spv::Decoration::Volatile)
             param.decorations = add_flag(param.decorations, ParameterDecorations::VOLATILE);
     }
+
+    // TODO according to the SPIR-V specification 1.3 revision 5, 2.18.2: "The OpenCL memory model must, unless
+    // otherwise proven, assume that memory object declarations might alias each other."
 }
 
 DataType spirv2qasm::getIntegerType(const uint32_t bitWidth, const uint32_t signedness)

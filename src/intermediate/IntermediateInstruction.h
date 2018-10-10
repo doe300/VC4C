@@ -560,11 +560,28 @@ namespace vc4c
             const LoadType type;
         };
 
+        /*
+         * Increments or decrements one of the 15 hardware semaphores
+         *
+         * Semaphore values are initially set to zero (i.e. decreasing the counter immediately stalls) and are reset
+         * when the GPU is reset (e.g. shut-down and started again via the Mailbox interface). This means, that a kernel
+         * has to make sure, all semaphores are reset to 0 at the end of its execution!
+         *
+         * Even the constructor does not suggest it, semaphore instructions can write up to two registers.
+         * The value written to the registers is the lower word (similar to load immediate for 32-bit immediate
+         * version).
+         *
+         * This means, that the value loaded consists of 27 unused bits (set to zero), the semaphore increment/decrement
+         * flag as well as the semaphore index. So incrementing semaphore 7 will return 7, decrementing it will
+         * return 23.
+         *
+         * Semaphore instruction MUST NOT write to any hardware register which can stall (e.g. TMU, SFU)
+         *
+         */
         struct SemaphoreAdjustment final : public IntermediateInstruction
         {
         public:
-            SemaphoreAdjustment(const Semaphore semaphore, bool increase, const ConditionCode& cond = COND_ALWAYS,
-                SetFlag setFlags = SetFlag::DONT_SET);
+            SemaphoreAdjustment(const Semaphore semaphore, bool increase);
             ~SemaphoreAdjustment() override = default;
 
             std::string to_string() const override;

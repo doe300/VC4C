@@ -256,10 +256,16 @@ namespace vc4c
     static constexpr Register REG_VPM_IO{RegisterFile::PHYSICAL_ANY, 48};
     /*
      * Reading this registers returns whether a DMA load operation is currently being executed by the VPM
+     *
+     * The value read from this register seems to be always the "unmapped I/O" (REG_NOP), independent of
+     * the current status of any DMA process.
      */
     static constexpr Register REG_VPM_DMA_LOAD_BUSY{RegisterFile::PHYSICAL_A, 49};
     /*
      * Reading this registers returns whether a DMA write operation is currently being executed by the VPM
+     *
+     * The value read from this register seems to be always the "unmapped I/O" (REG_NOP), independent of
+     * the current status of any DMA process.
      */
     static constexpr Register REG_VPM_DMA_STORE_BUSY{RegisterFile::PHYSICAL_B, 49};
     /*
@@ -272,10 +278,14 @@ namespace vc4c
     static constexpr Register REG_VPM_OUT_SETUP{RegisterFile::PHYSICAL_B, 49};
     /*
      * Reading this register stalls until the currently running DMA read operation has finished
+     *
+     * The value read from this register seems to be always the "unmapped I/O" (REG_NOP)
      */
     static constexpr Register REG_VPM_DMA_LOAD_WAIT{RegisterFile::PHYSICAL_A, 50};
     /*
      * Reading this register stalls until the currently running DMA write operation has finished
+     *
+     * The value read from this register seems to be always the "unmapped I/O" (REG_NOP)
      */
     static constexpr Register REG_VPM_DMA_STORE_WAIT{RegisterFile::PHYSICAL_B, 50};
     /*
@@ -290,6 +300,8 @@ namespace vc4c
     /*
      * Reading this register locks the hardware-mutex (and blocks, if the mutex is already locked).
      * Writing this register releases a previously blocked hardware-mutex
+     *
+     * The value read from the register seems to be the constant value 0xFC2FF000
      */
     static constexpr Register REG_MUTEX{RegisterFile::PHYSICAL_ANY, 51};
 

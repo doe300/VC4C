@@ -7,6 +7,7 @@
 #ifndef VC4C_VALUE_RANGE_H
 #define VC4C_VALUE_RANGE_H
 
+#include "../Variant.h"
 #include "../performance.h"
 #include "Optional.h"
 
@@ -64,18 +65,7 @@ namespace vc4c
             static FastMap<const Local*, ValueRange> determineValueRanges(Method& method);
 
         private:
-            enum class RangeType
-            {
-                FLOAT,
-                INTEGER
-            };
-
-            union {
-                FloatRange floatRange;
-                IntegerRange intRange;
-            };
-
-            const RangeType type;
+            Variant<FloatRange, IntegerRange> range;
             bool hasDefaultBoundaries;
 
             void extendBoundaries(double newMin, double newMax);

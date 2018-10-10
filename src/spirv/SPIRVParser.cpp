@@ -1645,6 +1645,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return UNSUPPORTED_INSTRUCTION("OpAtomicCompareExchange");
     case spv::Op::OpAtomicCompareExchangeWeak:
         // OpenCL 2.x feature
+        // since SPIR-V 1.3 deprecated in favor of OpAtomicCompareExchange (identical behavior)
         return UNSUPPORTED_INSTRUCTION("OpAtomicCompareExchangeWeak");
     case spv::Op::OpAtomicIIncrement:
         // handled via intrinsics

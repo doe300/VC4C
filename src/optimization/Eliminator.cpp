@@ -148,14 +148,16 @@ InstructionWalker optimizations::simplifyOperation(
             if(leftAbsorbing && firstArg.hasLiteral(leftAbsorbing->getLiteralValue().value()))
             {
                 logging::debug() << "Replacing obsolete " << op->to_string() << " with move 1" << logging::endl;
-                it.reset(new intermediate::MoveOperation(
-                    op->getOutput().value(), leftAbsorbing.value(), op->conditional, op->setFlags));
+                it.reset((new intermediate::MoveOperation(
+                              op->getOutput().value(), leftAbsorbing.value(), op->conditional, op->setFlags))
+                             ->addDecorations(it->decoration));
             }
             else if(rightAbsorbing && secondArg && secondArg->hasLiteral(rightAbsorbing->getLiteralValue().value()))
             {
                 logging::debug() << "Replacing obsolete " << op->to_string() << " with move 2" << logging::endl;
-                it.reset(new intermediate::MoveOperation(
-                    op->getOutput().value(), rightAbsorbing.value(), op->conditional, op->setFlags));
+                it.reset((new intermediate::MoveOperation(
+                              op->getOutput().value(), rightAbsorbing.value(), op->conditional, op->setFlags))
+                             ->addDecorations(it->decoration));
             }
             // writes into the input -> can be removed, if it doesn't do anything
             else if(op->getOutput() && op->getOutput().value() == op->getFirstArg())
@@ -201,15 +203,17 @@ InstructionWalker optimizations::simplifyOperation(
                 if(rightIdentity && secondArg && secondArg->hasLiteral(rightIdentity->getLiteralValue().value()))
                 {
                     logging::debug() << "Replacing obsolete " << op->to_string() << " with move 3" << logging::endl;
-                    it.reset(new intermediate::MoveOperation(
-                        op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags));
+                    it.reset((new intermediate::MoveOperation(
+                                  op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags))
+                                 ->addDecorations(it->decoration));
                 }
                 // check whether first argument does nothing
                 else if(leftIdentity && secondArg && firstArg.hasLiteral(leftIdentity->getLiteralValue().value()))
                 {
                     logging::debug() << "Replacing obsolete " << op->to_string() << " with move 4" << logging::endl;
-                    it.reset(new intermediate::MoveOperation(
-                        op->getOutput().value(), op->assertArgument(1), op->conditional, op->setFlags));
+                    it.reset((new intermediate::MoveOperation(
+                                  op->getOutput().value(), op->assertArgument(1), op->conditional, op->setFlags))
+                                 ->addDecorations(it->decoration));
                 }
                 // check whether operation does not really calculate anything
                 else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg &&
@@ -217,8 +221,9 @@ InstructionWalker optimizations::simplifyOperation(
                 {
                     logging::debug() << secondArg.value().to_string() << " - " << firstArg.to_string() << logging::endl;
                     logging::debug() << "Replacing obsolete " << op->to_string() << " with move 5" << logging::endl;
-                    it.reset(new intermediate::MoveOperation(
-                        op->getOutput().value(), op->assertArgument(1), op->conditional, op->setFlags));
+                    it.reset((new intermediate::MoveOperation(
+                                  op->getOutput().value(), op->assertArgument(1), op->conditional, op->setFlags))
+                                 ->addDecorations(it->decoration));
                 }
             }
         }
@@ -239,8 +244,9 @@ InstructionWalker optimizations::simplifyOperation(
         {
             // replace rotation of constant with move
             logging::debug() << "Replacing obsolete " << move->to_string() << " with move 6" << logging::endl;
-            it.reset(new intermediate::MoveOperation(
-                move->getOutput().value(), move->getSource(), move->conditional, move->setFlags));
+            it.reset((new intermediate::MoveOperation(
+                          move->getOutput().value(), move->getSource(), move->conditional, move->setFlags))
+                         ->addDecorations(it->decoration));
         }
     }
 
@@ -534,6 +540,8 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                                  << it->to_string() << logging::endl;
                 (*destinationReader)
                     ->replaceValue(move->getOutput().value(), move->getSource(), LocalUse::Type::READER);
+                if((*destinationReader).has<intermediate::MoveOperation>())
+                    (*destinationReader)->addDecorations(intermediate::forwardDecorations(it->decoration));
                 it.erase();
                 // to not skip the next instruction
                 it.previousInBlock();
@@ -555,10 +563,12 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                                  << it->to_string() << logging::endl;
                 auto output = it->getOutput();
                 auto setFlags = it->setFlags;
+                auto sourceDecorations = intermediate::forwardDecorations((*sourceWriter)->decoration);
                 it.reset(sourceWriter->release());
                 sourceWriter->erase();
                 it->setOutput(output);
                 it->setSetFlags(setFlags);
+                it->addDecorations(sourceDecorations);
                 flag = true;
             }
             else if(move->getSource().hasRegister() && destUsedOnce &&
@@ -582,6 +592,11 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                     if((*destinationReader)->assertArgument(i).hasLocal(oldLocal))
                         (*destinationReader)->setArgument(i, newInput);
                 }
+                if(oldLocal->residesInMemory() && (*destinationReader)->hasValueType(ValueType::LOCAL) &&
+                    (*destinationReader)->getOutput()->local()->getBase(true) ==
+                        (*destinationReader)->getOutput()->local())
+                    (*destinationReader)->getOutput()->local()->reference =
+                        std::make_pair(const_cast<Local*>(oldLocal), ANY_ELEMENT);
                 it.erase();
                 flag = true;
                 // to not skip the next instruction
