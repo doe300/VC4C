@@ -268,6 +268,9 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         "combines loadings of the same literal value within a small range of a basic block", OptimizationType::FINAL),
     OptimizationPass("RemoveConstantLoadInLoops", "extract-loads-from-loops", removeConstantLoadInLoops,
         "move constant loads in (nested) loops outside the loops", OptimizationType::FINAL),
+    OptimizationPass("CacheAcrossWorkGroup", "work-group-cache", cacheWorkGroupDMAAccess,
+        "finds memory access across the work-group which can be cached in VPM to combine the DMA operation (WIP)",
+        OptimizationType::FINAL),
     OptimizationPass("InstructionScheduler", "schedule-instructions", reorderInstructions,
         "schedule instructions according to their dependencies within basic blocks (WIP, slow)",
         OptimizationType::FINAL),
@@ -285,6 +288,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("vectorize-loops");
         passes.emplace("extract-loads-from-loops");
         passes.emplace("schedule-instructions");
+        passes.emplace("work-group-cache");
         // fall-through on purpose
     case OptimizationLevel::MEDIUM:
         passes.emplace("merge-blocks");
