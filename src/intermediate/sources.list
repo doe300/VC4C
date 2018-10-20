@@ -9,6 +9,7 @@ target_sources(${VC4C_LIBRARY_NAME}
     ${CMAKE_CURRENT_LIST_DIR}/MemoryInstruction.cpp
     ${CMAKE_CURRENT_LIST_DIR}/MethodCall.cpp
     ${CMAKE_CURRENT_LIST_DIR}/Operations.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/operators.h
     ${CMAKE_CURRENT_LIST_DIR}/Synchronization.cpp
     ${CMAKE_CURRENT_LIST_DIR}/TypeConversions.cpp
     ${CMAKE_CURRENT_LIST_DIR}/TypeConversions.h

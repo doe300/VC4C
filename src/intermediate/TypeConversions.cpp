@@ -7,9 +7,11 @@
 #include "TypeConversions.h"
 
 #include "Helper.h"
+#include "operators.h"
 
 using namespace vc4c;
 using namespace vc4c::intermediate;
+using namespace vc4c::operators;
 
 /*
  * Inserts a bit-cast where the destination element-type is larger than the source element-type, combining multiple
@@ -34,9 +36,8 @@ static InstructionWalker insertCombiningBitcast(
      * -> we only need 2 shifts and 2 ANDs instead of 4 (per element)
      */
 
-    const Value truncatedSource = method.addNewLocal(src.type, "%bit_cast");
-    it.emplace(new Operation(OP_AND, truncatedSource, src, Value(Literal(src.type.getScalarWidthMask()), TYPE_INT32)));
-    it.nextInBlock();
+    Value truncatedSource = assign(it, src.type, "%bit_cast") =
+        src & Value(Literal(src.type.getScalarWidthMask()), TYPE_INT32);
 
     std::vector<Value> shiftedTruncatedVectors;
     shiftedTruncatedVectors.reserve(sizeFactor);
@@ -45,9 +46,7 @@ static InstructionWalker insertCombiningBitcast(
         shiftedTruncatedVectors.emplace_back(
             method.addNewLocal(dest.type.toVectorType(src.type.getVectorWidth()), "%bit_cast"));
         const Value& result = shiftedTruncatedVectors.back();
-        it.emplace(new Operation(
-            OP_SHL, result, truncatedSource, Value(Literal(static_cast<unsigned>(shift * i)), TYPE_INT8)));
-        it.nextInBlock();
+        assign(it, result) = truncatedSource << Value(Literal(static_cast<unsigned>(shift * i)), TYPE_INT8);
     }
 
     /*
@@ -93,9 +92,8 @@ static InstructionWalker insertCombiningBitcast(
     Value combinedVector = INT_ZERO;
     for(const Value& rv : rotatedVectors)
     {
-        Value newCombinedVector = method.addNewLocal(dest.type.toVectorType(src.type.getVectorWidth()), "%bit_cast");
-        it.emplace(new Operation(OP_OR, newCombinedVector, combinedVector, rv));
-        it.nextInBlock();
+        Value newCombinedVector = assign(it, dest.type.toVectorType(src.type.getVectorWidth()), "%bit_cast") =
+            combinedVector | rv;
         combinedVector = newCombinedVector;
     }
 
@@ -159,11 +157,9 @@ static InstructionWalker insertSplittingBitcast(
     {
         shiftedTruncatedVectors.emplace_back(method.addNewLocal(dest.type, "%bit_cast"));
         const Value& result = shiftedTruncatedVectors.back();
-        const Value tmp = method.addNewLocal(dest.type, "%bit_cast");
-        it.emplace(new Operation(OP_SHR, tmp, src, Value(Literal(static_cast<unsigned>(shift * i)), TYPE_INT8)));
-        it.nextInBlock();
-        it.emplace(new Operation(OP_AND, result, tmp, Value(Literal(dest.type.getScalarWidthMask()), TYPE_INT32)));
-        it.nextInBlock();
+        Value tmp = assign(it, dest.type, "%bit_cast") =
+            src >> Value(Literal(static_cast<unsigned>(shift * i)), TYPE_INT8);
+        assign(it, result) = tmp & Value(Literal(dest.type.getScalarWidthMask()), TYPE_INT32);
     }
 
     /*
@@ -288,7 +284,8 @@ InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method
 
     it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
     auto writer = src.getSingleWriter();
-    it->addDecorations(intermediate::forwardDecorations(writer->decoration));
+    if(writer)
+        it->addDecorations(intermediate::forwardDecorations(writer->decoration));
     it.nextInBlock();
     return it;
 }
@@ -324,9 +321,7 @@ InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method
             widthDiff = tmp;
         }
 
-        const Value tmp = method.addNewLocal(TYPE_INT32, "%sext");
-        it.emplace(new Operation(OP_SHL, tmp, src, widthDiff, conditional));
-        it.nextInBlock();
+        Value tmp = assign(it, TYPE_INT32, "%sext") = (src << widthDiff, conditional);
         it.emplace(new Operation(OP_ASR, dest, tmp, widthDiff, conditional, setFlags));
     }
 
@@ -395,11 +390,11 @@ InstructionWalker intermediate::insertTruncate(
 {
     if(dest.type.getScalarBitCount() >= src.type.getScalarBitCount())
         //"truncate" to larger type, simply move
-        it.emplace(new MoveOperation(dest, src));
+        assign(it, dest) = src;
     else
-        it.emplace(new Operation(OP_AND, dest, src, Value(Literal(dest.type.getScalarWidthMask()), TYPE_INT32)));
+        assign(it, dest) = src & Value(Literal(dest.type.getScalarWidthMask()), TYPE_INT32);
 
-    return it.nextInBlock();
+    return it;
 }
 
 InstructionWalker intermediate::insertFloatingPointConversion(

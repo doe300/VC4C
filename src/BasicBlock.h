@@ -120,6 +120,15 @@ namespace vc4c
         bool isStartOfMethod() const;
         void dumpInstructions() const;
 
+        Method& getMethod()
+        {
+            return method;
+        }
+        const Method& getMethod() const
+        {
+            return method;
+        }
+
     private:
         Method& method;
         intermediate::InstructionsList instructions;

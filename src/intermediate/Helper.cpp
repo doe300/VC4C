@@ -10,11 +10,13 @@
 #include "TypeConversions.h"
 #include "config.h"
 #include "log.h"
+#include "operators.h"
 
 #include <algorithm>
 
 using namespace vc4c;
 using namespace vc4c::intermediate;
+using namespace vc4c::operators;
 
 InstructionWalker intermediate::insertVectorRotation(
     InstructionWalker it, const Value& src, const Value& offset, const Value& dest, const Direction direction)
@@ -35,8 +37,7 @@ InstructionWalker intermediate::insertVectorRotation(
     // the same counts for any input register where all elements have the same value
     if(src.isLiteralValue() || src.hasRegister(REG_UNIFORM) || src.hasRegister(REG_QPU_NUMBER))
     {
-        it.emplace(new MoveOperation(dest, src));
-        it.nextInBlock();
+        assign(it, dest) = src;
         return it;
     }
 
@@ -98,36 +99,31 @@ InstructionWalker intermediate::insertVectorRotation(
         appliedOffset = ROTATION_REGISTER;
         if(direction == Direction::UP)
             // r5 = offset
-            it.emplace(new MoveOperation(ROTATION_REGISTER, offset));
+            assign(it, ROTATION_REGISTER) = offset;
         else
         {
             // to exclude the case case 16-0 = 16
             // TODO is this require? since thew QPU uses bits [3:0] which implicitly converts 16 to 0 (see specs, table
             // 5) would need to do the same for emulator
-            it.emplace(new MoveOperation(NOP_REGISTER, offset, COND_ALWAYS, SetFlag::SET_FLAGS));
-            it.nextInBlock();
+            assign(it, NOP_REGISTER) = (offset, SetFlag::SET_FLAGS);
             // r5 = 16 - offset
-            it.emplace(
-                new Operation(OP_SUB, ROTATION_REGISTER, Value(Literal(16u), TYPE_INT8), offset, COND_ZERO_CLEAR));
-            it.nextInBlock();
-            it.emplace(new MoveOperation(ROTATION_REGISTER, INT_ZERO, COND_ZERO_SET));
+            assign(it, ROTATION_REGISTER) = (16_val - offset, COND_ZERO_CLEAR);
+            assign(it, ROTATION_REGISTER) = (0_val, COND_ZERO_SET);
         }
-        it.nextInBlock();
     }
 
     // 2. create rotation instruction
     if(appliedOffset.hasLiteral(INT_ZERO.literal()))
         // a rotation by 0 is a simple move
-        it.emplace(new MoveOperation(dest, src));
+        assign(it, dest) = src;
     else
     {
         // we insert a delay before every vector rotation, since the rotated value can't be written in the previous
         // instruction and a NOP guarantees it. Also, it should be removed by reordering in most cases
-        it.emplace(new Nop(DelayType::WAIT_REGISTER));
-        it.nextInBlock();
+        nop(it, DelayType::WAIT_REGISTER);
         it.emplace(new VectorRotation(dest, src, appliedOffset));
+        it.nextInBlock();
     }
-    it.nextInBlock();
     return it;
 }
 
@@ -135,14 +131,10 @@ InstructionWalker intermediate::insertReplication(
     InstructionWalker it, const Value& src, const Value& dest, const bool useDestionation)
 {
     // distribute value 0 to all positions in the vector
-    it.emplace(new intermediate::MoveOperation(Value(REG_REPLICATE_ALL, src.type), src));
-    it.nextInBlock();
+    assign(it, Value(REG_REPLICATE_ALL, src.type)) = src;
     if(useDestionation)
-    {
         //"Reading r5 returns the per-quad 32-bit value replicated across the four elements of that quad" (p. 18)
-        it.emplace(new intermediate::MoveOperation(dest, Value(REG_REPLICATE_ALL, src.type)));
-        it.nextInBlock();
-    }
+        assign(it, dest) = Value(REG_REPLICATE_ALL, src.type);
     return it;
 }
 
@@ -153,8 +145,7 @@ InstructionWalker intermediate::insertVectorExtraction(
     {
         // vector extraction from literal is a simple move of the first element, since all elements of a literal are the
         // same
-        it.emplace(new MoveOperation(dest, container));
-        it.nextInBlock();
+        assign(it, dest) = container;
         return it;
     }
     return insertVectorRotation(it, container, index, dest, Direction::DOWN);
@@ -179,12 +170,9 @@ InstructionWalker intermediate::insertVectorInsertion(
     if(value.type.isScalarType())
     {
         // single element -> create condition only met in given index
-        it.emplace(new intermediate::Operation(
-            OP_XOR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, index, COND_ALWAYS, SetFlag::SET_FLAGS));
-        it.nextInBlock();
+        assign(it, NOP_REGISTER) = (ELEMENT_NUMBER_REGISTER ^ index, SetFlag::SET_FLAGS);
         // 3) move when condition is met
-        it.emplace(new intermediate::MoveOperation(container, tmp, COND_ZERO_SET));
-        it->addDecorations(InstructionDecorations::ELEMENT_INSERTION);
+        assign(it, container) = (tmp, COND_ZERO_SET, InstructionDecorations::ELEMENT_INSERTION);
     }
     else
     {
@@ -199,11 +187,9 @@ InstructionWalker intermediate::insertVectorInsertion(
         it.emplace(new LoadImmediate(mask, maskLit, LoadType::PER_ELEMENT_UNSIGNED));
         it.nextInBlock();
         it = insertVectorRotation(it, mask, index, shiftedMask);
-        it.emplace(new MoveOperation(NOP_REGISTER, shiftedMask, COND_ALWAYS, SetFlag::SET_FLAGS));
-        it.nextInBlock();
-        it.emplace(new MoveOperation(container, value, COND_ZERO_CLEAR));
+        assign(it, NOP_REGISTER) = (shiftedMask, SetFlag::SET_FLAGS);
+        assign(it, container) = (value, COND_ZERO_CLEAR);
     }
-    it.nextInBlock();
     return it;
 }
 
@@ -227,31 +213,25 @@ static InstructionWalker insertDynamicVectorShuffle(
     for(unsigned char i = 0; i < mask.type.getVectorWidth(); ++i)
     {
         Value offsetTmp0 = method.addNewLocal(TYPE_INT8, "%shuffle_offset");
-        Value offsetTmp1 = method.addNewLocal(TYPE_INT8, "%shuffle_offset");
         Value resultTmp = method.addNewLocal(source.type, "%shuffle_tmp");
         // Rotate into temporary, because of "An instruction that does a vector rotate by r5 must not immediately follow
         // an instruction that writes to r5." - Broadcom Specification, page 37
         it = insertVectorRotation(it, mask, Value(Literal(i), TYPE_INT8), offsetTmp0, Direction::DOWN);
         // pos 3 -> 1 => rotate up by -2 (14), pos 1 -> 3 => rotate up by 2
-        it.emplace(new Operation(OP_SUB, offsetTmp1, Value(Literal(i), TYPE_INT8), offsetTmp0));
-        it.nextInBlock();
+        Value offsetTmp1 = assign(it, TYPE_INT8, "%shuffle_offset") = Value(Literal(i), TYPE_INT8) - offsetTmp0;
         it = insertVectorRotation(it, source, offsetTmp1, resultTmp, Direction::UP);
 
         if(i == 0)
         {
             // the first write to the element needs to unconditional, so the register allocator can find it
             // also, the setting flags does not work for the first element
-            it.emplace(new MoveOperation(destination, resultTmp));
+            assign(it, destination) = resultTmp;
         }
         else
         {
-            it.emplace(new Operation(OP_XOR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, Value(Literal(i), TYPE_INT8),
-                COND_ALWAYS, SetFlag::SET_FLAGS));
-            it.nextInBlock();
-            it.emplace(new MoveOperation(destination, resultTmp, COND_ZERO_SET));
-            it->addDecorations(InstructionDecorations::ELEMENT_INSERTION);
+            assign(it, NOP_REGISTER) = (ELEMENT_NUMBER_REGISTER ^ Value(Literal(i), TYPE_INT8), SetFlag::SET_FLAGS);
+            assign(it, destination) = (resultTmp, COND_ZERO_SET, InstructionDecorations::ELEMENT_INSERTION);
         }
-        it.nextInBlock();
     }
     return it;
 }
@@ -283,13 +263,9 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         it.nextInBlock();
         it = insertVectorRotation(
             it, source1, Value(Literal(source0.type.getVectorWidth()), TYPE_INT8), tmpSource1, Direction::UP);
-        it.emplace(new Operation(
-            OP_SUB, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, Value(Literal(source0.type.getVectorWidth()), TYPE_INT8)));
-        it->setSetFlags(SetFlag::SET_FLAGS);
-        it.nextInBlock();
-        it.emplace(new MoveOperation(tmpInput, tmpSource1, COND_NEGATIVE_CLEAR));
-        it->addDecorations(InstructionDecorations::ELEMENT_INSERTION);
-        it.nextInBlock();
+        assign(it, NOP_REGISTER) =
+            (ELEMENT_NUMBER_REGISTER - Value(Literal(source0.type.getVectorWidth()), TYPE_INT8), SetFlag::SET_FLAGS);
+        assign(it, tmpInput) = (tmpSource1, COND_NEGATIVE_CLEAR, InstructionDecorations::ELEMENT_INSERTION);
         return insertDynamicVectorShuffle(it, method, destination, tmpInput, mask);
     }
 
@@ -305,25 +281,21 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         {
             // The second vector participates in the shuffling
             // move the first vector in-order
-            it.emplace(new intermediate::MoveOperation(destination, source0));
-            it.nextInBlock();
+            assign(it, destination) = source0;
             // rotate the second vector with the size of the first as offset
             const Value secondRotated = method.addNewLocal(destination.type, "%vector_shuffle");
             const Value numElementsFirst(Literal(static_cast<uint32_t>(source0.type.getVectorWidth())), TYPE_INT8);
             it = insertVectorRotation(it, source1, numElementsFirst, secondRotated, Direction::UP);
             // insert the elements of the second vector with an element-number of higher or equals the size of the first
             // vector into the result
-            it.emplace(new intermediate::Operation(
-                OP_SUB, NOP_REGISTER, ELEMENT_NUMBER_REGISTER, numElementsFirst, COND_ALWAYS, SetFlag::SET_FLAGS));
-            it.nextInBlock();
-            it.emplace(new intermediate::MoveOperation(destination, secondRotated, COND_NEGATIVE_CLEAR));
+            assign(it, NOP_REGISTER) = (ELEMENT_NUMBER_REGISTER - numElementsFirst, SetFlag::SET_FLAGS);
+            assign(it, destination) = (secondRotated, COND_NEGATIVE_CLEAR);
         }
         else
         {
             // only one vector participates in the shuffling and the elements are inserted in-order -> simply move
-            it.emplace(new MoveOperation(destination, source0));
+            assign(it, destination) = source0;
         }
-        it.nextInBlock();
         return it;
     }
     if(allIndicesSame)
@@ -352,8 +324,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     // zero out destination first, also required so register allocator finds unconditional write to destination
     if(destination.hasLocal() && destination.local()->getUsers(LocalUse::Type::WRITER).empty())
     {
-        it.emplace(new intermediate::MoveOperation(destination, INT_ZERO));
-        it.nextInBlock();
+        assign(it, destination) = 0_val;
     }
 
     // mask is container of literals, indices have arbitrary order
@@ -443,15 +414,11 @@ InstructionWalker intermediate::insertMakePositive(
         it.emplace(new Operation(OP_ASR, writeIsNegative, srcInt, Value(Literal(31u), TYPE_INT8)));
         it.nextInBlock();
         //%tmp = xor %src, %sign
-        const Value tmp = method.addNewLocal(src.type, "%twos_complement");
-        it.emplace(new Operation(OP_XOR, tmp, srcInt, writeIsNegative));
-        it.nextInBlock();
+        Value tmp = assign(it, src.type, "%twos_complement") = srcInt ^ writeIsNegative;
         //%unsigned = sub %tmp, %sign
         if(!dest.isWriteable())
             dest = method.addNewLocal(src.type, "%unsigned");
-        it.emplace(new Operation(OP_SUB, dest, tmp, writeIsNegative));
-        it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
-        it.nextInBlock();
+        assign(it, dest) = (tmp - writeIsNegative, InstructionDecorations::UNSIGNED_RESULT);
     }
     return it;
 }
@@ -484,14 +451,11 @@ InstructionWalker intermediate::insertRestoreSign(
          */
 
         //%tmp = xor %src, %sign
-        const Value tmp = method.addNewLocal(src.type, "%twos_complement");
-        it.emplace(new Operation(OP_XOR, tmp, src, sign));
-        it.nextInBlock();
+        Value tmp = assign(it, src.type, "%twos_complement") = src ^ sign;
         //%dest = sub %tmp, %sign
         if(!dest.isWriteable())
             dest = method.addNewLocal(src.type, "%twos_complement");
-        it.emplace(new Operation(OP_SUB, dest, tmp, sign));
-        it.nextInBlock();
+        assign(it, dest) = tmp - sign;
     }
     return it;
 }
@@ -552,8 +516,8 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
             else
             {
                 // FIXME this does not handle negative numbers correctly, since they are cut off after 24 bit
-                insertOperation(OP_MUL24, it, method, subOffset, index,
-                    Value(Literal(subContainerType.getElementType().getPhysicalWidth()), TYPE_INT8));
+                assign(it, subOffset) =
+                    mul24(index, Value(Literal(subContainerType.getElementType().getPhysicalWidth()), TYPE_INT8));
             }
             subContainerType = subContainerType.getElementType();
         }
@@ -578,15 +542,12 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
         }
         else
         {
-            Value tmp = method.addNewLocal(TYPE_INT32, "%index_offset");
-            it.emplace(new intermediate::Operation(OP_ADD, tmp, offset, subOffset));
-            it.nextInBlock();
+            Value tmp = assign(it, TYPE_INT32, "%index_offset") = offset + subOffset;
             offset = tmp;
         }
     }
     // add last offset to container
-    it.emplace(new intermediate::Operation(OP_ADD, dest, container, offset));
-    it.nextInBlock();
+    assign(it, dest) = container + offset;
 
     /*
      * associates the index with the local/parameter it refers to.
@@ -644,24 +605,15 @@ InstructionWalker intermediate::insertByteSwap(
         // TODO shorts lose signedness!
 
         // ? ? A B -> 0 ? ? A
-        const Value tmpA0 = method.addNewLocal(src.type, "byte_swap");
-        it.emplace(new Operation(OP_SHR, tmpA0, src, Value(SmallImmediate::fromInteger(8).value(), TYPE_INT8)));
-        it.nextInBlock();
+        Value tmpA0 = assign(it, src.type, "byte_swap") = src >> 8_val;
         // ? ? A B -> ? A B 0
-        const Value tmpB0 = method.addNewLocal(src.type, "byte_swap");
-        it.emplace(new Operation(OP_SHL, tmpB0, src, Value(SmallImmediate::fromInteger(8).value(), TYPE_INT8)));
-        it.nextInBlock();
+        Value tmpB0 = assign(it, src.type, "byte_swap") = src << 8_val;
         // 0 ? ? A -> 0 0 0 A
-        const Value tmpA1 = method.addNewLocal(src.type, "byte_swap");
-        it.emplace(new Operation(OP_AND, tmpA1, tmpA0, Value(Literal(TYPE_INT8.getScalarWidthMask()), src.type)));
-        it.nextInBlock();
+        Value tmpA1 = assign(it, src.type, "byte_swap") = tmpA0 & 0x000000FF_val;
         // ? A B 0 -> 0 0 B 0
-        const Value tmpB1 = method.addNewLocal(src.type, "byte_swap");
-        it.emplace(new Operation(OP_AND, tmpB1, tmpB0, Value(Literal(TYPE_INT8.getScalarWidthMask() << 8), src.type)));
-        it.nextInBlock();
+        Value tmpB1 = assign(it, src.type, "byte_swap") = tmpB0 & 0x0000FF00_val;
         // 0 0 0 A | 0 0 B 0 -> 0 0 A B
-        it.emplace(new Operation(OP_OR, dest, tmpA1, tmpB1));
-        it.nextInBlock();
+        assign(it, dest) = tmpA1 | tmpB1;
     }
     else if(numBytes == 4)
     {
@@ -674,83 +626,23 @@ InstructionWalker intermediate::insertByteSwap(
         it.emplace(new Operation(OP_ROR, tmpBD0, src, Value(Literal(16u), TYPE_INT8)));
         it.nextInBlock();
         // B C D A -> 0 0 0 A
-        const Value tmpA1 = method.addNewLocal(src.type, "byte_swap");
-        it.emplace(new Operation(OP_AND, tmpA1, tmpAC0, Value(Literal(TYPE_INT8.getScalarWidthMask()), src.type)));
-        it.nextInBlock();
+        Value tmpA1 = assign(it, src.type, "byte_swap") = tmpAC0 & 0x000000FF_val;
         // D A B C -> 0 0 B 0
-        const Value tmpB1 = method.addNewLocal(src.type, "byte_swap");
-        it.emplace(new Operation(OP_AND, tmpB1, tmpBD0, Value(Literal(TYPE_INT8.getScalarWidthMask() << 8), src.type)));
-        it.nextInBlock();
+        Value tmpB1 = assign(it, src.type, "byte_swap") = tmpBD0 & 0x0000FF00_val;
         // B C D A -> 0 C 0 0
-        const Value tmpC1 = method.addNewLocal(src.type, "byte_swap");
-        it.emplace(
-            new Operation(OP_AND, tmpC1, tmpAC0, Value(Literal(TYPE_INT8.getScalarWidthMask() << 16), src.type)));
-        it.nextInBlock();
+        Value tmpC1 = assign(it, src.type, "byte_swap") = tmpAC0 & 0x00FF0000_val;
         // D A B C -> D 0 0 0
-        const Value tmpD1 = method.addNewLocal(src.type, "byte_swap");
-        it.emplace(
-            new Operation(OP_AND, tmpD1, tmpBD0, Value(Literal(TYPE_INT8.getScalarWidthMask() << 24), src.type)));
-        it.nextInBlock();
+        Value tmpD1 = assign(it, src.type, "byte_swap") = tmpBD0 & 0xFF000000_val;
         // 0 0 0 A | 0 0 B 0 -> 0 0 B A
-        const Value tmpAB2 = method.addNewLocal(src.type, "byte_swap");
-        it.emplace(new Operation(OP_OR, tmpAB2, tmpA1, tmpB1));
-        it.nextInBlock();
+        Value tmpAB2 = assign(it, src.type, "byte_swap") = tmpA1 | tmpB1;
         // 0 C 0 0 | D 0 0 0 -> D C 0 0
-        const Value tmpCD2 = method.addNewLocal(src.type, "byte_swap");
-        it.emplace(new Operation(OP_OR, tmpCD2, tmpC1, tmpD1));
-        it.nextInBlock();
+        Value tmpCD2 = assign(it, src.type, "byte_swap") = tmpC1 | tmpD1;
         // 0 0 B A | D C 0 0 -> D C B A
-        it.emplace(new Operation(OP_OR, dest, tmpAB2, tmpCD2));
-        it.nextInBlock();
+        assign(it, dest) = tmpAB2 | tmpCD2;
     }
     else
         throw CompilationError(
             CompilationStep::GENERAL, "Invalid number of bytes for byte-swap", std::to_string(numBytes));
 
-    return it;
-}
-
-InstructionWalker intermediate::insertOperation(const OpCode& opCode, InstructionWalker it, Method& method,
-    Value& output, const Value& firstOperand, const Optional<Value>& secondOperand, bool allowConstantCalculation)
-{
-    if(allowConstantCalculation && output.isUndefined())
-    {
-        Optional<Value> constantResult = opCode.calculate(firstOperand, secondOperand);
-        if(constantResult)
-        {
-            output = constantResult.value();
-            return it;
-        }
-    }
-    auto vectorSize = std::max(firstOperand.type.getVectorWidth(),
-        secondOperand ? secondOperand->type.getVectorWidth() : static_cast<unsigned char>(1));
-    if(output.isUndefined())
-        output = method.addNewLocal(opCode.returnsFloat ?
-                TYPE_FLOAT.toVectorType(vectorSize) :
-                (firstOperand.type.isFloatingType() ? TYPE_INT32.toVectorType(vectorSize) : firstOperand.type));
-    if(opCode.numOperands == 1)
-        it.emplace(new Operation(opCode, output, firstOperand));
-    else
-        it.emplace(new Operation(opCode, output, firstOperand, secondOperand.value()));
-    it.nextInBlock();
-    return it;
-}
-
-InstructionWalker intermediate::insertMove(
-    InstructionWalker it, Method& method, Value& output, const Value& source, bool allowConstantCalculation)
-{
-    if(allowConstantCalculation && output.isUndefined())
-    {
-        if(source.getLiteralValue())
-            output = Value(source.getLiteralValue().value(), source.type);
-        else if(source.hasContainer())
-            output = Value(source.container(), source.type);
-        if(!output.isUndefined())
-            return it;
-    }
-    if(output.isUndefined())
-        output = method.addNewLocal(source.type);
-    it.emplace(new MoveOperation(output, source));
-    it.nextInBlock();
     return it;
 }

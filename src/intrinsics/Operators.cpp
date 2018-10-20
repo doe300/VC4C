@@ -7,6 +7,7 @@
 #include "Operators.h"
 
 #include "../intermediate/Helper.h"
+#include "../intermediate/operators.h"
 #include "../periphery/SFU.h"
 #include "Comparisons.h"
 #include "log.h"
@@ -16,6 +17,7 @@
 
 using namespace vc4c;
 using namespace vc4c::intermediate;
+using namespace vc4c::operators;
 
 InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(
     Method& method, InstructionWalker it, IntrinsicOperation& op)
@@ -74,103 +76,33 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(
     // NOTE: the instructions are ordered in a way, that the insertion of NOPs to split read-after-write is minimal
     logging::debug() << "Intrinsifying unsigned multiplication of integers" << logging::endl;
 
-    const Value a0 = method.addNewLocal(op.getOutput()->type, "%mul.a0");
-    const Value a1 = method.addNewLocal(op.getOutput()->type, "%mul.a1");
-    const Value b0 = method.addNewLocal(op.getOutput()->type, "%mul.b0");
-    const Value b1 = method.addNewLocal(op.getOutput()->type, "%mul.b1");
-    const Value out0 = method.addNewLocal(op.getOutput()->type, "%mul.out0");
-    const Value out1 = method.addNewLocal(op.getOutput()->type, "%mul.out1");
-    const Value out2 = method.addNewLocal(op.getOutput()->type, "%mul.out2");
     /*
-     *                             |     a[0]    .    a[1]     |
-     *  *                          |     b[0]    .    b[1]     |
+     *                             | a[0] .        a[1]        |
+     *  *                          | b[0] .        b[1]        |
      * ---------------------------------------------------------
      * |xxxxxx.xxxxxx.xxxxxx.xxxxxx|      .      .      .      |
      *
      *                             |        a[1] * b[1]        |
-     *   +           |        a[1] * b[0]        |
-     *   +           |        a[0] * b[1]        |
+     *   +    |        a[1] * b[0]        |
+     *   +    |        a[0] * b[1]        |
      *
      */
+    // the following code is shamelessly taken from mesa3D
+    // original: https://gitlab.freedesktop.org/mesa/mesa/blob/master/src/gallium/drivers/vc4/vc4_program.c (function
+    // ntq_umul), created by Eric Anholt
+
     // split arguments into parts
-    bool hasA0Part, hasA1Part, hasB0Part, hasB1Part;
-    if(arg0.getLiteralValue())
-    {
-        hasA1Part = (arg0.getLiteralValue()->unsignedInt() & 0xFFFF) != 0;
-        it.emplace(new MoveOperation(a1, Value(Literal(arg0.getLiteralValue()->unsignedInt() & 0xFFFF), TYPE_INT16)));
-        it.nextInBlock();
-        hasA0Part = (arg0.getLiteralValue()->unsignedInt() >> 16) != 0;
-        it.emplace(new MoveOperation(a0, Value(Literal(arg0.getLiteralValue()->unsignedInt() >> 16), TYPE_INT16)));
-        it.nextInBlock();
-    }
-    else
-    {
-        hasA0Part = true; // not known
-        hasA1Part = true;
-        it.emplace(new Operation(OP_AND, a1, arg0, Value(Literal(0xFFFFu), TYPE_INT16)));
-        it.nextInBlock();
-        it.emplace(new Operation(OP_SHR, a0, arg0, Value(Literal(16u), TYPE_INT16)));
-        it.nextInBlock();
-    }
-    if(arg1.getLiteralValue())
-    {
-        hasB1Part = (arg1.getLiteralValue()->unsignedInt() & 0xFFFF) != 0;
-        it.emplace(new MoveOperation(b1, Value(Literal(arg1.getLiteralValue()->unsignedInt() & 0xFFFF), TYPE_INT8)));
-        it.nextInBlock();
-        hasB0Part = (arg1.getLiteralValue()->unsignedInt() >> 16) != 0;
-        it.emplace(new MoveOperation(b0, Value(Literal(arg1.getLiteralValue()->unsignedInt() >> 16), TYPE_INT8)));
-        it.nextInBlock();
-    }
-    else
-    {
-        // not known
-        hasB0Part = true;
-        hasB1Part = true;
-        it.emplace(new Operation(OP_AND, b1, arg1, Value(Literal(0xFFFFu), TYPE_INT8)));
-        it.nextInBlock();
-        it.emplace(new Operation(OP_SHR, b0, arg1, Value(Literal(16u), TYPE_INT8)));
-        it.nextInBlock();
-    }
-    if(hasA1Part && hasB1Part)
-    {
-        it.emplace(new Operation(OP_MUL24, out0, a1, b1));
-        it.nextInBlock();
-    }
-    else
-    {
-        it.emplace(new MoveOperation(out0, INT_ZERO));
-        it.nextInBlock();
-    }
-    if(hasA1Part && hasB0Part)
-    {
-        const Value tmp = method.addNewLocal(op.getOutput()->type);
-        const Value tmp2 = method.addNewLocal(op.getOutput()->type);
-        it.emplace(new Operation(OP_MUL24, tmp, a1, b0));
-        it.nextInBlock();
-        it.emplace(new Operation(OP_SHL, tmp2, tmp, Value(Literal(16u), TYPE_INT8)));
-        it.nextInBlock();
-        it.emplace(new Operation(OP_ADD, out1, out0, tmp2));
-        it.nextInBlock();
-    }
-    else
-    {
-        it.emplace(new MoveOperation(out1, out0));
-        it.nextInBlock();
-    }
-    if(hasA0Part && hasB1Part)
-    {
-        const Value tmp = method.addNewLocal(op.getOutput()->type);
-        it.emplace(new Operation(OP_MUL24, tmp, a0, b1));
-        it.nextInBlock();
-        it.emplace(new Operation(OP_SHL, out2, tmp, Value(Literal(16u), TYPE_INT8)));
-        it.nextInBlock();
-    }
-    else
-    {
-        it.emplace(new MoveOperation(out2, INT_ZERO));
-        it.nextInBlock();
-    }
-    it.reset(new Operation(OP_ADD, op.getOutput().value(), out1, out2));
+    auto outputType = op.getOutput()->type;
+    Value arg0Hi = assign(it, outputType, "%mul.arg0Hi") = arg0 >> 24_val;
+    Value arg1Hi = assign(it, outputType, "%mul.arg1Hi") = arg1 >> 24_val;
+
+    Value resHiLo = assign(it, outputType, "%mul.resHiLo") = mul24(arg0Hi, arg1);
+    Value resLoHi = assign(it, outputType, "%mul.resLoHi") = mul24(arg0, arg1Hi);
+    Value resLo = assign(it, outputType, "%mul.resLo") = mul24(arg0, arg1);
+    Value resTmp = assign(it, outputType) = resHiLo + resLoHi;
+    Value resHi = assign(it, outputType, "%mul.resHi") = resTmp << 24_val;
+
+    it.reset(new Operation(OP_ADD, op.getOutput().value(), resLo, resHi));
     it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
 
     return it;
@@ -240,14 +172,10 @@ InstructionWalker intermediate::intrinsifyIntegerMultiplicationViaBinaryMethod(
         unsigned nextHigh = highBit(deconstruct.to_ulong());
 
         // shift by the difference between the high bits
-        auto tmp = method.addNewLocal(src.type, "%mul_shift");
-        it.emplace(new Operation(OP_SHL, tmp, intermediateResult, Value(Literal(lastHigh - nextHigh), TYPE_INT8)));
-        it.nextInBlock();
-
+        auto tmp = assign(it, src.type, "%mul_shift") = intermediateResult
+            << Value(Literal(lastHigh - nextHigh), TYPE_INT8);
         // add the value for this high bit
-        auto tmp2 = method.addNewLocal(src.type, "%mul_add");
-        it.emplace(new Operation(OP_ADD, tmp2, tmp, src));
-        it.nextInBlock();
+        auto tmp2 = assign(it, src.type, "%mul_add") = tmp + src;
 
         intermediateResult = tmp2;
         deconstruct.reset(nextHigh);
@@ -315,8 +243,7 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivision(
     else
     {
         // if exactly one operand was negative, invert sign of result
-        Value eitherSign(TYPE_UNKNOWN);
-        it = insertOperation(OP_XOR, it, method, eitherSign, op1Sign, op2Sign);
+        Value eitherSign = assign(it, op1Sign.type) = op1Sign ^ op2Sign;
         return insertRestoreSign(it, method, tmpDest, opDest, eitherSign);
     }
     return it;
@@ -338,13 +265,9 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(
 
     // Q := 0                 -- initialize quotient and remainder to zero
     // R := 0
-    Value quotient = method.addNewLocal(op.getOutput()->type, "%udiv.quotient");
-    Value remainder = method.addNewLocal(op.getOutput()->type, "%udiv.remainder");
     // set explicitly to zero
-    it.emplace(new MoveOperation(remainder, INT_ZERO));
-    it.nextInBlock();
-    it.emplace(new MoveOperation(quotient, INT_ZERO));
-    it.nextInBlock();
+    Value quotient = 0_val;
+    Value remainder = 0_val;
 
     // for i := n ? 1 ... 0 do     -- where n is number of bits in N
     // "number of bits in N" as in in the numerator, not in the type!!
@@ -352,48 +275,31 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(
     for(int i = numerator.type.getScalarBitCount() - 1; i >= 0; --i)
     {
         // R := R << 1          -- left-shift R by 1 bit
-        {
-            const Value newRemainder = method.addNewLocal(op.getOutput()->type, "%udiv.remainder");
-            it.emplace(new Operation(OP_SHL, newRemainder, remainder, INT_ONE));
-            it.nextInBlock();
-            remainder = newRemainder;
-        }
+        remainder = assign(it, op.getOutput()->type, "%udiv.remainder") = remainder << 1_val;
         // R(0) := N(i)         -- set the least-significant bit of R equal to bit i of the numerator
         // R = R | ((N >> i) & 1) <=> R = R | (N & (1 << i) == 1 ? 1 : 0) <=> R = R | 1, if N & (1 << i) != 0
         {
-            const Value newRemainder = method.addNewLocal(op.getOutput()->type, "%udiv.remainder");
-            const Value tmp = method.addNewLocal(numerator.type, "%udiv.tmp");
-            it.emplace(new Operation(OP_SHR, tmp, numerator, Value(Literal(i), TYPE_INT32)));
-            it.nextInBlock();
-            it.emplace(new Operation(OP_AND, tmp, tmp, INT_ONE));
-            it.nextInBlock();
+            Value tmp = assign(it, numerator.type, "%udiv.tmp") = numerator >> Value(Literal(i), TYPE_INT32);
+            Value tmp2 = assign(it, tmp.type, "%udiv.tmp") = tmp & 1_val;
             // XXX actually OP_OR, but it gets somehow removed/optimized away
-            it.emplace(new Operation(OP_ADD, newRemainder, remainder, tmp));
-            it.nextInBlock();
-            remainder = newRemainder;
+            remainder = assign(it, op.getOutput()->type, "%udiv.remainder") = remainder + tmp2;
         }
         // if R >= D then
         // R = R >= D ? R - D : R <=> R = R - D >= 0 ? R - D : R <=> R = R - D < 0 ? R : R - D
         {
-            const Value tmp = method.addNewLocal(op.getOutput()->type, "%udiv.tmp");
-            it.emplace(new Operation(OP_SUB, tmp, remainder, divisor, COND_ALWAYS, SetFlag::SET_FLAGS));
-            it.nextInBlock();
-            const Value newRemainder = method.addNewLocal(op.getOutput()->type, "%udiv.remainder");
-            it.emplace(new MoveOperation(newRemainder, tmp, COND_NEGATIVE_CLEAR));
-            it.nextInBlock();
-            it.emplace(new MoveOperation(newRemainder, remainder, COND_NEGATIVE_SET));
-            it.nextInBlock();
+            Value tmp = assign(it, op.getOutput()->type, "%udiv.tmp") = (remainder - divisor, SetFlag::SET_FLAGS);
+            Value newRemainder = method.addNewLocal(op.getOutput()->type, "%udiv.remainder");
+            assign(it, newRemainder) = (tmp, COND_NEGATIVE_CLEAR);
+            assign(it, newRemainder) = (remainder, COND_NEGATIVE_SET);
             remainder = newRemainder;
         }
         // Q(i) := 1
         {
-            const Value newQuotient = method.addNewLocal(op.getOutput()->type, "%udiv.quotient");
-            it.emplace(new Operation(OP_OR, newQuotient, quotient,
-                Value(Literal(static_cast<int32_t>(1) << i), TYPE_INT32), COND_NEGATIVE_CLEAR));
-            it.nextInBlock();
+            Value newQuotient = method.addNewLocal(op.getOutput()->type, "%udiv.quotient");
+            assign(it, newQuotient) =
+                (quotient | Value(Literal(static_cast<int32_t>(1) << i), TYPE_INT32), COND_NEGATIVE_CLEAR);
             // else Q(new) := Q(old)
-            it.emplace(new MoveOperation(newQuotient, quotient, COND_NEGATIVE_SET));
-            it.nextInBlock();
+            assign(it, newQuotient) = (quotient, COND_NEGATIVE_SET);
             quotient = newQuotient;
         }
     }
@@ -443,8 +349,7 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivisionByConstant(
     if(op1Sign.hasLiteral(INT_ZERO.literal()) && op2Sign.hasLiteral(INT_ZERO.literal()))
     {
         // if both operands are marked with (unsigned), we don't need to invert the result
-        it.emplace(new MoveOperation(opDest, tmpDest));
-        it.nextInBlock();
+        assign(it, opDest) = tmpDest;
     }
     else if(useRemainder)
     {
@@ -454,8 +359,7 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivisionByConstant(
     else
     {
         // if exactly one operand was negative, invert sign of result
-        Value eitherSign(TYPE_UNKNOWN);
-        it = insertOperation(OP_XOR, it, method, eitherSign, op1Sign, op2Sign);
+        Value eitherSign = assign(it, op1Sign.type) = op1Sign ^ op2Sign;
         return insertRestoreSign(it, method, tmpDest, opDest, eitherSign);
     }
     return it;
@@ -525,9 +429,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
                      << " by multiplication with " << constants.first.to_string(false, true) << " and right-shift by "
                      << constants.second.to_string(false, true) << logging::endl;
 
-    const Value tmp = method.addNewLocal(op.getFirstArg().type, "%udiv");
-    it.emplace(new Operation(OP_MUL24, tmp, op.getFirstArg(), constants.first));
-    it.nextInBlock();
+    Value tmp = assign(it, op.getFirstArg().type, "%udiv") = mul24(op.getFirstArg(), constants.first);
     const Value divOut = method.addNewLocal(op.getFirstArg().type, "%udiv");
     it.emplace(new Operation(OP_SHR, divOut, tmp, constants.second));
     it->copyExtrasFrom(&op);
@@ -535,32 +437,19 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
     it.nextInBlock();
     // the original version has an error, which returns a too small value for exact multiples of the denominator, the
     // next lines fix this error
-    const Value tmpFix0 = method.addNewLocal(op.getFirstArg().type, "%udiv.fix");
-    const Value tmpFix1 = method.addNewLocal(op.getFirstArg().type, "%udiv.fix");
-    it.emplace(new Operation(OP_MUL24, tmpFix0, divOut, op.assertArgument(1)));
-    it.nextInBlock();
-    it.emplace(new Operation(OP_SUB, tmpFix1, op.getFirstArg(), tmpFix0));
-    it.nextInBlock();
-    it.emplace(new Operation(OP_SUB, NOP_REGISTER, op.assertArgument(1), tmpFix1, COND_ALWAYS, SetFlag::SET_FLAGS));
-    it.nextInBlock();
+    Value tmpFix0 = assign(it, op.getFirstArg().type, "%udiv.fix") = mul24(divOut, op.assertArgument(1));
+    Value tmpFix1 = assign(it, op.getFirstArg().type, "%udiv.fix") = op.getFirstArg() - tmpFix0;
+    assign(it, NOP_REGISTER) = (op.assertArgument(1) - tmpFix1, SetFlag::SET_FLAGS);
     const Value finalResult =
         useRemainder ? method.addNewLocal(op.getFirstArg().type, "%udiv.result") : op.getOutput().value();
-    it.emplace(new MoveOperation(finalResult, divOut));
-    it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
-    it.nextInBlock();
-    it.emplace(new Operation(OP_ADD, finalResult, divOut, INT_ONE, COND_NEGATIVE_SET));
-    it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
-    it.nextInBlock();
-    it.emplace(new Operation(OP_ADD, finalResult, divOut, INT_ONE, COND_ZERO_SET));
-    it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
-    it.nextInBlock();
+    assign(it, finalResult) = (divOut, InstructionDecorations::UNSIGNED_RESULT);
+    assign(it, finalResult) = (divOut + 1_val, COND_NEGATIVE_SET, InstructionDecorations::UNSIGNED_RESULT);
+    assign(it, finalResult) = (divOut + 1_val, COND_ZERO_SET, InstructionDecorations::UNSIGNED_RESULT);
 
     if(useRemainder)
     {
         // x mod y = x - (x/y) * y;
-        const Value tmpMul = method.addNewLocal(op.getFirstArg().type, "%udiv.remainder");
-        it.emplace(new Operation(OP_MUL24, tmpMul, finalResult, op.assertArgument(1)));
-        it.nextInBlock();
+        Value tmpMul = assign(it, op.getFirstArg().type, "%udiv.remainder") = mul24(finalResult, op.assertArgument(1));
         // replace original division
         it.reset(new Operation(OP_SUB, op.getOutput().value(), op.getFirstArg(), tmpMul));
         it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
@@ -588,6 +477,7 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
 
     const Value nominator = op.getFirstArg();
     const Value& divisor = op.assertArgument(1);
+    auto outputType = op.getOutput()->type;
 
     ////
     // Newton-Raphson
@@ -600,63 +490,30 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
      * The GLSL shader uses the SFU_RECIP with a Newton-Raphson step "to improve our approximation",
      * see http://anholt.livejournal.com/49474.html
      */
-    const Value P0 = method.addNewLocal(op.getOutput()->type, "%fdiv_recip");
     periphery::insertSFUCall(REG_SFU_RECIP, it, divisor);
-    it.emplace(new MoveOperation(P0, Value(REG_SFU_OUT, TYPE_FLOAT)));
-    it.nextInBlock();
-    const Value const2(Literal(2.0f), TYPE_FLOAT);
+    Value P0 = assign(it, outputType, "%fdiv_recip") = Value(REG_SFU_OUT, TYPE_FLOAT);
 
     // 2. iteration step: Pi+1 = Pi(2 - D * Pi)
     // run 5 iterations
-    const Value P1 = method.addNewLocal(op.getOutput()->type, "%fdiv_p1");
-    const Value P1_1 = method.addNewLocal(op.getOutput()->type, "%fdiv_p1");
-    const Value P1_2 = method.addNewLocal(op.getOutput()->type, "%fdiv_p1");
-    it.emplace(new Operation(OP_FMUL, P1, divisor, P0));
-    it.nextInBlock();
-    it.emplace(new Operation(OP_FSUB, P1_1, const2, P1));
-    it.nextInBlock();
-    it.emplace(new Operation(OP_FMUL, P1_2, P0, P1_1));
-    it.nextInBlock();
+    Value P1 = assign(it, outputType, "%fdiv_p1") = divisor * P0;
+    Value P1_1 = assign(it, outputType, "%fdiv_p1") = 2.0_val - P1;
+    Value P1_2 = assign(it, outputType, "%fdiv_p1") = P0 * P1_1;
 
-    const Value P2 = method.addNewLocal(op.getOutput()->type, "%fdiv_p2");
-    const Value P2_1 = method.addNewLocal(op.getOutput()->type, "%fdiv_p2");
-    const Value P2_2 = method.addNewLocal(op.getOutput()->type, "%fdiv_p2");
-    it.emplace(new Operation(OP_FMUL, P2, divisor, P1_2));
-    it.nextInBlock();
-    it.emplace(new Operation(OP_FSUB, P2_1, const2, P2));
-    it.nextInBlock();
-    it.emplace(new Operation(OP_FMUL, P2_2, P1_2, P2_1));
-    it.nextInBlock();
+    Value P2 = assign(it, outputType, "%fdiv_p2") = divisor * P1_2;
+    Value P2_1 = assign(it, outputType, "%fdiv_p2") = 2.0_val - P2;
+    Value P2_2 = assign(it, outputType, "%fdiv_p2") = P1_2 * P2_1;
 
-    const Value P3 = method.addNewLocal(op.getOutput()->type, "%fdiv_p3");
-    const Value P3_1 = method.addNewLocal(op.getOutput()->type, "%fdiv_p3");
-    const Value P3_2 = method.addNewLocal(op.getOutput()->type, "%fdiv_p3");
-    it.emplace(new Operation(OP_FMUL, P3, divisor, P2_2));
-    it.nextInBlock();
-    it.emplace(new Operation(OP_FSUB, P3_1, const2, P3));
-    it.nextInBlock();
-    it.emplace(new Operation(OP_FMUL, P3_2, P2_2, P3_1));
-    it.nextInBlock();
+    Value P3 = assign(it, outputType, "%fdiv_p3") = divisor * P2_2;
+    Value P3_1 = assign(it, outputType, "%fdiv_p3") = 2.0_val - P3;
+    Value P3_2 = assign(it, outputType, "%fdiv_p3") = P2_2 * P3_1;
 
-    const Value P4 = method.addNewLocal(op.getOutput()->type, "%fdiv_p4");
-    const Value P4_1 = method.addNewLocal(op.getOutput()->type, "%fdiv_p4");
-    const Value P4_2 = method.addNewLocal(op.getOutput()->type, "%fdiv_p4");
-    it.emplace(new Operation(OP_FMUL, P4, divisor, P3_2));
-    it.nextInBlock();
-    it.emplace(new Operation(OP_FSUB, P4_1, const2, P4));
-    it.nextInBlock();
-    it.emplace(new Operation(OP_FMUL, P4_2, P3_2, P4_1));
-    it.nextInBlock();
+    Value P4 = assign(it, outputType, "%fdiv_p4") = divisor * P3_2;
+    Value P4_1 = assign(it, outputType, "%fdiv_p4") = 2.0_val - P4;
+    Value P4_2 = assign(it, outputType, "%fdiv_p4") = P3_2 * P4_1;
 
-    const Value P5 = method.addNewLocal(op.getOutput()->type, "%fdiv_p5");
-    const Value P5_1 = method.addNewLocal(op.getOutput()->type, "%fdiv_p5");
-    const Value P5_2 = method.addNewLocal(op.getOutput()->type, "%fdiv_p5");
-    it.emplace(new Operation(OP_FMUL, P5, divisor, P4_2));
-    it.nextInBlock();
-    it.emplace(new Operation(OP_FSUB, P5_1, const2, P5));
-    it.nextInBlock();
-    it.emplace(new Operation(OP_FMUL, P5_2, P4_2, P5_1));
-    it.nextInBlock();
+    Value P5 = assign(it, outputType, "%fdiv_p5") = divisor * P4_2;
+    Value P5_1 = assign(it, outputType, "%fdiv_p5") = 2.0_val - P5;
+    Value P5_2 = assign(it, outputType, "%fdiv_p5") = P4_2 * P5_1;
 
     // TODO add a 6th step? Sometimes the float-division is too inaccurate
 

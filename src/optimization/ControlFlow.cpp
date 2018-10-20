@@ -12,6 +12,7 @@
 #include "../analysis/DataDependencyGraph.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/TypeConversions.h"
+#include "../intermediate/operators.h"
 #include "../normalization/LiteralValues.h"
 #include "../periphery/VPM.h"
 #include "./Combiner.h"
@@ -24,6 +25,7 @@
 using namespace vc4c;
 using namespace vc4c::optimizations;
 using namespace vc4c::intermediate;
+using namespace vc4c::operators;
 
 static FastSet<Local*> findLoopIterations(const ControlFlowLoop& loop, const DataDependencyGraph& dependencyGraph)
 {
@@ -893,12 +895,11 @@ void optimizations::extendBranches(const Module& module, Method& method, const C
                         has_flag(lastSetFlags.second, intermediate::InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
                 {
                     if(branch->hasDecoration(intermediate::InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
-                        it.emplace(new intermediate::Operation(OP_OR, NOP_REGISTER, branch->getCondition(),
-                            branch->getCondition(), COND_ALWAYS, SetFlag::SET_FLAGS));
+                        assign(it, NOP_REGISTER) =
+                            (branch->getCondition() | branch->getCondition(), SetFlag::SET_FLAGS);
                     else
-                        it.emplace(new intermediate::Operation(OP_OR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER,
-                            branch->getCondition(), COND_ALWAYS, SetFlag::SET_FLAGS));
-                    it.nextInBlock();
+                        assign(it, NOP_REGISTER) =
+                            (ELEMENT_NUMBER_REGISTER | branch->getCondition(), SetFlag::SET_FLAGS);
                 }
                 lastSetFlags.first = branch->getCondition();
                 lastSetFlags.second = branch->decoration;
@@ -927,9 +928,8 @@ static InstructionWalker loadVectorParameter(const Parameter& param, Method& met
         // the first write to the parameter needs to unconditional, so the register allocator can find it
         if(i > 0)
         {
-            it.emplace(new intermediate::Operation(OP_XOR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER,
-                Value(SmallImmediate(i), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
-            it.nextInBlock();
+            assign(it, NOP_REGISTER) =
+                (ELEMENT_NUMBER_REGISTER ^ Value(SmallImmediate(i), TYPE_INT8), SetFlag::SET_FLAGS);
         }
         if(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND))
         {
@@ -945,10 +945,8 @@ static InstructionWalker loadVectorParameter(const Parameter& param, Method& met
         }
         else
         {
-            it.emplace(new intermediate::MoveOperation(
-                param.createReference(), UNIFORM_REGISTER, i == 0 ? COND_ALWAYS : COND_ZERO_SET));
-            it->addDecorations(intermediate::InstructionDecorations::ELEMENT_INSERTION);
-            it.nextInBlock();
+            assign(it, param.createReference()) =
+                (UNIFORM_REGISTER, i == 0 ? COND_ALWAYS : COND_ZERO_SET, InstructionDecorations::ELEMENT_INSERTION);
         }
         // TODO improve performance by first putting together the vector, then zero/sign extending all elements?
     }
@@ -1003,8 +1001,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         if(tmu1Used)
         {
             logging::debug() << "Using both TMUs explicitly, disable automatic swapping!" << logging::endl;
-            it.emplace(new MoveOperation(Value(REG_TMU_NOSWAP, TYPE_BOOL), BOOL_TRUE));
-            it.nextInBlock();
+            assign(it, Value(REG_TMU_NOSWAP, TYPE_BOOL)) = BOOL_TRUE;
         }
     }
 
@@ -1028,119 +1025,81 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     if(isLocalUsed(method, Method::WORK_DIMENSIONS))
     {
         method.metaData.uniformsUsed.setWorkDimensionsUsed(true);
-        it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::WORK_DIMENSIONS)->createReference(),
-            Value(REG_UNIFORM, TYPE_INT8)));
-        it->addDecorations(workInfoDecorations);
-        it.nextInBlock();
+        assign(it, method.findOrCreateLocal(TYPE_INT8, Method::WORK_DIMENSIONS)->createReference()) =
+            (Value(REG_UNIFORM, TYPE_INT8), workInfoDecorations);
     }
     if(isLocalUsed(method, Method::LOCAL_SIZES))
     {
         method.metaData.uniformsUsed.setLocalSizesUsed(true);
-        it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::LOCAL_SIZES)->createReference(),
-            Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(workInfoDecorations);
-        it.nextInBlock();
+        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::LOCAL_SIZES)->createReference()) =
+            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
     if(isLocalUsed(method, Method::LOCAL_IDS))
     {
         method.metaData.uniformsUsed.setLocalIDsUsed(true);
-        it.emplace(
-            new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::LOCAL_IDS)->createReference(),
-                Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(remove_flag(workInfoDecorations, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
-        it.nextInBlock();
+        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::LOCAL_IDS)->createReference()) =
+            (Value(REG_UNIFORM, TYPE_INT32),
+                remove_flag(workInfoDecorations, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
     }
     if(isLocalUsed(method, Method::NUM_GROUPS_X))
     {
         method.metaData.uniformsUsed.setNumGroupsXUsed(true);
-        it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_X)->createReference(),
-            Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(workInfoDecorations);
-        it.nextInBlock();
+        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_X)->createReference()) =
+            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
     if(isLocalUsed(method, Method::NUM_GROUPS_Y))
     {
         method.metaData.uniformsUsed.setNumGroupsYUsed(true);
-        it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_Y)->createReference(),
-            Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(workInfoDecorations);
-        it.nextInBlock();
+        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_Y)->createReference()) =
+            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
     if(isLocalUsed(method, Method::NUM_GROUPS_Z))
     {
         method.metaData.uniformsUsed.setNumGroupsZUsed(true);
-        it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_Z)->createReference(),
-            Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(workInfoDecorations);
-        it.nextInBlock();
+        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_Z)->createReference()) =
+            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
     if(isLocalUsed(method, Method::GROUP_ID_X))
     {
         method.metaData.uniformsUsed.setGroupIDXUsed(true);
-        it.emplace(
-            new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_X)->createReference(),
-                Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(workInfoDecorations);
-        it.nextInBlock();
+        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_X)->createReference()) =
+            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
     if(isLocalUsed(method, Method::GROUP_ID_Y))
     {
         method.metaData.uniformsUsed.setGroupIDYUsed(true);
-        it.emplace(
-            new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_Y)->createReference(),
-                Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(workInfoDecorations);
-        it.nextInBlock();
+        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_Y)->createReference()) =
+            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
     if(isLocalUsed(method, Method::GROUP_ID_Z))
     {
         method.metaData.uniformsUsed.setGroupIDZUsed(true);
-        it.emplace(
-            new intermediate::MoveOperation(method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_Z)->createReference(),
-                Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(workInfoDecorations);
-        it.nextInBlock();
+        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_Z)->createReference()) =
+            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
     if(isLocalUsed(method, Method::GLOBAL_OFFSET_X))
     {
         method.metaData.uniformsUsed.setGlobalOffsetXUsed(true);
-        it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_X)->createReference(),
-            Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(workInfoDecorations);
-        it.nextInBlock();
+        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_X)->createReference()) =
+            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
     if(isLocalUsed(method, Method::GLOBAL_OFFSET_Y))
     {
         method.metaData.uniformsUsed.setGlobalOffsetYUsed(true);
-        it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_Y)->createReference(),
-            Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(workInfoDecorations);
-        it.nextInBlock();
+        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_Y)->createReference()) =
+            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
     if(isLocalUsed(method, Method::GLOBAL_OFFSET_Z))
     {
         method.metaData.uniformsUsed.setGlobalOffsetZUsed(true);
-        it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_Z)->createReference(),
-            Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(workInfoDecorations);
-        it.nextInBlock();
+        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_Z)->createReference()) =
+            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
     if(isLocalUsed(method, Method::GLOBAL_DATA_ADDRESS))
     {
         method.metaData.uniformsUsed.setGlobalDataAddressUsed(true);
-        it.emplace(new intermediate::MoveOperation(
-            method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference(),
-            Value(REG_UNIFORM, TYPE_INT32)));
-        it->addDecorations(workInfoDecorations);
-        it.nextInBlock();
+        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference()) =
+            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
 
     // load arguments to locals (via reading from uniform)
@@ -1165,12 +1124,10 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         }
         else
         {
-            it.emplace(new intermediate::MoveOperation(param.createReference(), Value(REG_UNIFORM, param.type)));
-            if(param.type.isPointerType())
+            assign(it, param.createReference()) = (Value(REG_UNIFORM, param.type),
+                InstructionDecorations::WORK_GROUP_UNIFORM_VALUE,
                 // all pointers are unsigned
-                it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
-            it->addDecorations(InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
-            it.nextInBlock();
+                param.type.isPointerType() ? InstructionDecorations::UNSIGNED_RESULT : InstructionDecorations::NONE);
         }
     }
 

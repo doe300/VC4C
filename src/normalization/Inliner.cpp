@@ -21,7 +21,7 @@ static const Method* matchSignatures(
 {
     for(const auto& m : methods)
     {
-        if(callSignature->matchesSignature(*m.get()))
+        if(callSignature->matchesSignature(*m))
         {
             logging::debug() << "Found method matching " << m->returnType.to_string() << ' ' << m->name << " with "
                              << m->parameters.size() << " arguments" << logging::endl;

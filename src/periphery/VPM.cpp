@@ -7,6 +7,7 @@
 #include "VPM.h"
 
 #include "../Profiler.h"
+#include "../intermediate/operators.h"
 #include "log.h"
 
 #include <cmath>
@@ -14,6 +15,7 @@
 using namespace vc4c;
 using namespace vc4c::periphery;
 using namespace vc4c::intermediate;
+using namespace vc4c::operators;
 
 //"[...] of 32-bit words,  [...]"
 static constexpr unsigned VPM_WORD_WIDTH = sizeof(unsigned);
@@ -368,10 +370,8 @@ static InstructionWalker calculateElementOffset(
     else
     {
         // e.g. 32-bit type, 4 byte offset -> shr by 2 (= division by 4)
-        elementOffset = method.addNewLocal(TYPE_INT32, "%vpm_element_offset");
-        it.emplace(new Operation(OP_SHR, elementOffset, inAreaOffset,
-            Value(Literal(static_cast<int32_t>(std::log2(elementType.getPhysicalWidth()))), TYPE_INT8)));
-        it.nextInBlock();
+        elementOffset = assign(it, TYPE_INT32, "%vpm_element_offset") =
+            inAreaOffset >> Value(Literal(static_cast<int32_t>(std::log2(elementType.getPhysicalWidth()))), TYPE_INT8);
     }
     return it;
 }
@@ -404,13 +404,10 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
         calculateElementOffset(method, it, dest.type, inAreaOffset, elementOffset);
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // 3) write setup with dynamic address
-        it.emplace(new Operation(
-            OP_ADD, VPM_IN_SETUP_REGISTER, Value(Literal(genericSetup.value), TYPE_INT32), elementOffset));
-        it.nextInBlock();
+        assign(it, VPM_IN_SETUP_REGISTER) = Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset;
     }
     // 2) read value from VPM
-    it.emplace(new MoveOperation(dest, VPM_IO_REGISTER));
-    it.nextInBlock();
+    assign(it, dest) = VPM_IO_REGISTER;
     it = insertUnlockMutex(it, useMutex);
     return it;
 }
@@ -443,13 +440,10 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
         calculateElementOffset(method, it, src.type, inAreaOffset, elementOffset);
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // 3) write setup with dynamic address
-        it.emplace(new Operation(
-            OP_ADD, VPM_OUT_SETUP_REGISTER, Value(Literal(genericSetup.value), TYPE_INT32), elementOffset));
-        it.nextInBlock();
+        assign(it, VPM_OUT_SETUP_REGISTER) = Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset;
     }
     // 2. write data to VPM
-    it.emplace(new MoveOperation(VPM_IO_REGISTER, src));
-    it.nextInBlock();
+    assign(it, VPM_IO_REGISTER) = src;
     it = insertUnlockMutex(it, useMutex);
     return it;
 }
@@ -496,9 +490,7 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
         calculateElementOffset(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset);
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // 3) write setup with dynamic address
-        it.emplace(
-            new Operation(OP_ADD, VPM_IN_SETUP_REGISTER, Value(Literal(dmaSetup.value), TYPE_INT32), elementOffset));
-        it.nextInBlock();
+        assign(it, VPM_IN_SETUP_REGISTER) = Value(Literal(dmaSetup.value), TYPE_INT32) + elementOffset;
     }
     const VPRSetup strideSetup(VPRStrideSetup(0));
     it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(strideSetup.value)));
@@ -507,11 +499,9 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
     //"the actual DMA load or store operation is initiated by writing the memory address to the VCD_LD_ADDR or
     // VCD_ST_ADDR register" (p. 56)
     //-> write output-argument base address + offset/index into VPM_ADDR
-    it.emplace(new MoveOperation(VPM_DMA_LOAD_ADDR_REGISTER, memoryAddress));
-    it.nextInBlock();
+    assign(it, VPM_DMA_LOAD_ADDR_REGISTER) = memoryAddress;
     //"A new DMA load or store operation cannot be started until the previous one is complete" (p. 56)
-    it.emplace(new MoveOperation(NOP_REGISTER, VPM_DMA_LOAD_WAIT_REGISTER));
-    it.nextInBlock();
+    assign(it, NOP_REGISTER) = VPM_DMA_LOAD_WAIT_REGISTER;
 
     it = insertUnlockMutex(it, useMutex);
     return it;
@@ -556,13 +546,9 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
         Value elementOffset = UNDEFINED_VALUE;
         calculateElementOffset(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset);
         // 2) dynamically calculate new VPM address from base and offset (shift and add offset to setup-value)
-        Value shiftedOffset = method.addNewLocal(TYPE_INT32);
-        it.emplace(new Operation(OP_SHL, shiftedOffset, elementOffset, Value(Literal(3), TYPE_INT8)));
-        it.nextInBlock();
+        Value shiftedOffset = assign(it, TYPE_INT32) = elementOffset << 3_val;
         // 3) write setup with dynamic address
-        it.emplace(
-            new Operation(OP_ADD, VPM_OUT_SETUP_REGISTER, Value(Literal(dmaSetup.value), TYPE_INT32), shiftedOffset));
-        it.nextInBlock();
+        assign(it, VPM_OUT_SETUP_REGISTER) = Value(Literal(dmaSetup.value), TYPE_INT32) + shiftedOffset;
     }
     // set stride to zero
     const VPWSetup strideSetup(VPWStrideSetup(0));
@@ -572,11 +558,9 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
     //"the actual DMA load or store operation is initiated by writing the memory address to the VCD_LD_ADDR or
     // VCD_ST_ADDR register" (p. 56)
     //-> write output-argument base address + offset/index into VPM_ADDR
-    it.emplace(new MoveOperation(VPM_DMA_STORE_ADDR_REGISTER, memoryAddress));
-    it.nextInBlock();
+    assign(it, VPM_DMA_STORE_ADDR_REGISTER) = memoryAddress;
     //"A new DMA load or store operation cannot be started until the previous one is complete" (p. 56)
-    it.emplace(new MoveOperation(NOP_REGISTER, VPM_DMA_STORE_WAIT_REGISTER));
-    it.nextInBlock();
+    assign(it, NOP_REGISTER) = VPM_DMA_STORE_WAIT_REGISTER;
 
     it = insertUnlockMutex(it, useMutex);
     return it;
@@ -598,16 +582,11 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
 
     for(unsigned i = 1; i < size.second; ++i)
     {
-        const Value tmpSource = method.addNewLocal(srcAddress.type, "%mem_copy_addr");
-        const Value tmpDest = method.addNewLocal(destAddress.type, "%mem_copy_addr");
-
         // increment offset from base address
-        it.emplace(
-            new Operation(OP_ADD, tmpSource, srcAddress, Value(Literal(i * size.first.getPhysicalWidth()), TYPE_INT8)));
-        it.nextInBlock();
-        it.emplace(
-            new Operation(OP_ADD, tmpDest, destAddress, Value(Literal(i * size.first.getPhysicalWidth()), TYPE_INT8)));
-        it.nextInBlock();
+        Value tmpSource = assign(it, srcAddress.type, "%mem_copy_addr") =
+            srcAddress + Value(Literal(i * size.first.getPhysicalWidth()), TYPE_INT8);
+        Value tmpDest = assign(it, destAddress.type, "%mem_copy_addr") =
+            destAddress + Value(Literal(i * size.first.getPhysicalWidth()), TYPE_INT8);
 
         it = insertReadRAM(method, it, tmpSource, size.first, area, false);
         it = insertWriteRAM(method, it, tmpDest, size.first, area, false);
@@ -632,13 +611,9 @@ InstructionWalker VPM::insertFillRAM(Method& method, InstructionWalker it, const
     it = insertWriteRAM(method, it, memoryAddress, type, area, false);
     for(unsigned i = 1; i < numCopies; ++i)
     {
-        const Value tmpDest = method.addNewLocal(memoryAddress.type, "%mem_fill_addr");
-
         // increment offset from base address
-        it.emplace(
-            new Operation(OP_ADD, tmpDest, memoryAddress, Value(Literal(i * type.getPhysicalWidth()), TYPE_INT8)));
-        it.nextInBlock();
-
+        Value tmpDest = assign(it, memoryAddress.type, "%mem_fill_addr") =
+            memoryAddress + Value(Literal(i * type.getPhysicalWidth()), TYPE_INT8);
         it = insertWriteRAM(method, it, tmpDest, type, area, false);
     }
     it = insertUnlockMutex(it, useMutex);

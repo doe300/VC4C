@@ -7,10 +7,12 @@
 #include "TMU.h"
 
 #include "../InstructionWalker.h"
+#include "../intermediate/operators.h"
 #include "log.h"
 
 using namespace vc4c;
 using namespace vc4c::periphery;
+using namespace vc4c::operators;
 
 const TMU periphery::TMU0{REG_TMU0_COORD_S_U_X, REG_TMU0_COORD_T_V_Y, REG_TMU0_COORD_R_BORDER_COLOR,
     REG_TMU0_COORD_B_LOD_BIAS, SIGNAL_LOAD_TMU0};
@@ -40,20 +42,17 @@ static InstructionWalker insertCalculateAddressOffsets(
     outputAddress = method.addNewLocal(TYPE_INT32.toVectorType(type.getVectorWidth()), "%tmu_address");
 
     // addressOffsets = sizeof(type) * elem_num
-    it.emplace(new intermediate::Operation(OP_MUL24, addressOffsets,
-        Value(Literal(static_cast<uint32_t>(type.getScalarBitCount()) / 8), TYPE_INT8), ELEMENT_NUMBER_REGISTER));
-    it.nextInBlock();
+    assign(it, addressOffsets) =
+        mul24(Value(Literal(static_cast<uint32_t>(type.getScalarBitCount()) / 8), TYPE_INT8), ELEMENT_NUMBER_REGISTER);
     // outputAddress = (elem_num < type.num) ? baseAddress + addressOffsets : 0
-    it.emplace(new intermediate::Operation(OP_SUB, NOP_REGISTER, ELEMENT_NUMBER_REGISTER,
-        Value(Literal(static_cast<int32_t>(type.getVectorWidth())), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
-    it.nextInBlock();
+    assign(it, NOP_REGISTER) =
+        (ELEMENT_NUMBER_REGISTER - Value(Literal(static_cast<int32_t>(type.getVectorWidth())), TYPE_INT8),
+            SetFlag::SET_FLAGS);
     // XXX rewrite, so it can be combined with next instruction
     // TODO or generally check if we can rewrite "mov out, 0" in way so we can combine it with next/previous instruction
     // (e.g. by using "xor out, x, x" or "v8subs out, x, x")
-    it.emplace(new intermediate::MoveOperation(outputAddress, INT_ZERO, COND_NEGATIVE_CLEAR));
-    it.nextInBlock();
-    it.emplace(new intermediate::Operation(OP_ADD, outputAddress, baseAddress, addressOffsets, COND_NEGATIVE_SET));
-    it.nextInBlock();
+    assign(it, outputAddress) = (0_val, COND_NEGATIVE_CLEAR);
+    assign(it, outputAddress) = (baseAddress + addressOffsets, COND_NEGATIVE_SET);
     return it;
 }
 
@@ -84,24 +83,18 @@ static InstructionWalker insertExtractHalfWordElements(
     Method& method, InstructionWalker it, const Value& dest, const Value& src, const Value& addressVector)
 {
     // 1) for every address, check if it is aligned to 4 Byte <-> address & 0b11 == 0
-    it.emplace(new intermediate::Operation(
-        OP_AND, NOP_REGISTER, addressVector, Value(Literal(3u), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
-    it.nextInBlock();
+    assign(it, NOP_REGISTER) = (addressVector & 3_val, SetFlag::SET_FLAGS);
     // 2) extract short values
     // 2.1) if the element address is aligned correctly, use lower half-word, otherwise use upper-half word
     // 2.2) otherwise, use lower half-word from odd elements and upper half-word from even elements
 
     // tmp = address & 0b11 ? src >> 16 : src
     const Value tmp = method.addNewLocal(dest.type, "%tmp_result");
-    it.emplace(new intermediate::Operation(OP_SHR, tmp, src, Value(Literal(16u), TYPE_INT8), COND_ZERO_CLEAR));
-    it.nextInBlock();
-    it.emplace(new intermediate::MoveOperation(tmp, src, COND_ZERO_SET));
-    it.nextInBlock();
+    assign(it, tmp) = (src >> 16_val, COND_ZERO_CLEAR);
+    assign(it, tmp) = (src, COND_ZERO_SET);
 
     // dest = tmp & 0xFFFF
-    it.emplace(
-        new intermediate::Operation(OP_AND, dest, tmp, Value(Literal(TYPE_INT16.getScalarWidthMask()), TYPE_INT32)));
-    it.nextInBlock();
+    assign(it, dest) = tmp & Value(Literal(TYPE_INT16.getScalarWidthMask()), TYPE_INT32);
     return it;
 }
 
@@ -119,24 +112,16 @@ static InstructionWalker insertExtractByteElements(
     Method& method, InstructionWalker it, const Value& dest, const Value& src, const Value& addressVector)
 {
     // alignmentOffset = address & 0b11
-    const Value alignmentOffset = method.addNewLocal(dest.type, "%alignment_offset");
-    it.emplace(new intermediate::Operation(OP_AND, alignmentOffset, addressVector, Value(Literal(3u), TYPE_INT8)));
-    it.nextInBlock();
+    Value alignmentOffset = assign(it, dest.type, "%alignment_offset") = addressVector & 3_val;
 
     // shiftOffset = alignmentOffset * 8
-    const Value shiftOffset = method.addNewLocal(dest.type, "%shift_offset");
-    it.emplace(new intermediate::Operation(OP_MUL24, shiftOffset, alignmentOffset, Value(Literal(8u), TYPE_INT8)));
-    it.nextInBlock();
+    Value shiftOffset = assign(it, dest.type, "%shift_offset") = mul24(alignmentOffset, 8_val);
 
     // tmp = src >> shiftOffset
-    const Value tmp = method.addNewLocal(dest.type, "%tmp_result");
-    it.emplace(new intermediate::Operation(OP_SHR, tmp, src, shiftOffset));
-    it.nextInBlock();
+    Value tmp = assign(it, dest.type, "%tmp_result") = src >> shiftOffset;
 
     // dest = tmp & 0xFF
-    it.emplace(
-        new intermediate::Operation(OP_AND, dest, tmp, Value(Literal(TYPE_INT8.getScalarWidthMask()), TYPE_INT32)));
-    it.nextInBlock();
+    assign(it, dest) = tmp & Value(Literal(TYPE_INT8.getScalarWidthMask()), TYPE_INT32);
     return it;
 }
 
@@ -152,32 +137,24 @@ InstructionWalker periphery::insertReadVectorFromTMU(
 
     //"General-memory lookups are performed by writing to just the s-parameter, using the absolute memory address" (page
     // 41)  1) write address to TMU_S register
-    it.emplace(new intermediate::MoveOperation(tmu.getAddress(addr.type), addresses));
-    it.nextInBlock();
+    assign(it, tmu.getAddress(addr.type)) = addresses;
     // 2) trigger loading of TMU
-    it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_TMU));
-    it->setSignaling(tmu.signal);
-    it.nextInBlock();
+    nop(it, intermediate::DelayType::WAIT_TMU, tmu.signal);
     // 3) read value from R4
     // FIXME in both cases, result values are unsigned!! (Same behavior as for VPM?!)
     if(dest.type.getScalarBitCount() == 8)
     {
-        const Value tmp = method.addNewLocal(TYPE_INT32.toVectorType(dest.type.getVectorWidth()), "%tmu_result");
-        it.emplace(new intermediate::MoveOperation(tmp, TMU_READ_REGISTER));
-        it.nextInBlock();
+        Value tmp = assign(it, TYPE_INT32.toVectorType(dest.type.getVectorWidth()), "%tmu_result") = TMU_READ_REGISTER;
         return insertExtractByteElements(method, it, dest, tmp, addresses);
     }
     else if(dest.type.getScalarBitCount() == 16)
     {
-        const Value tmp = method.addNewLocal(TYPE_INT32.toVectorType(dest.type.getVectorWidth()), "%tmu_result");
-        it.emplace(new intermediate::MoveOperation(tmp, TMU_READ_REGISTER));
-        it.nextInBlock();
+        Value tmp = assign(it, TYPE_INT32.toVectorType(dest.type.getVectorWidth()), "%tmu_result") = TMU_READ_REGISTER;
         return insertExtractHalfWordElements(method, it, dest, tmp, addresses);
     }
     else
     {
-        it.emplace(new intermediate::MoveOperation(dest, TMU_READ_REGISTER));
-        it.nextInBlock();
+        assign(it, dest) = TMU_READ_REGISTER;
     }
     return it;
 }
@@ -187,15 +164,11 @@ InstructionWalker periphery::insertGeneralReadTMU(
 {
     //"General-memory lookups are performed by writing to just the s-parameter, using the absolute memory address" (page
     // 41)  1) write address to TMU_S register
-    it.emplace(new intermediate::MoveOperation(tmu.getAddress(addr.type), addr));
-    it.nextInBlock();
+    assign(it, tmu.getAddress(addr.type)) = addr;
     // 2) trigger loading of TMU
-    it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_TMU));
-    it->setSignaling(tmu.signal);
-    it.nextInBlock();
+    nop(it, intermediate::DelayType::WAIT_TMU, tmu.signal);
     // 3) read value from R4
-    it.emplace(new intermediate::MoveOperation(dest, TMU_READ_REGISTER));
-    it.nextInBlock();
+    assign(it, dest) = TMU_READ_REGISTER;
     return it;
 }
 
@@ -218,38 +191,27 @@ InstructionWalker periphery::insertReadTMU(Method& method, InstructionWalker it,
             yCoord.to_string());
 
     // 1. set the UNIFORM pointer to point to the configurations for the image about to be read
-    it.emplace(new intermediate::MoveOperation(
-        Value(REG_UNIFORM_ADDRESS, TYPE_INT32.toVectorType(16).toPointerType(AddressSpace::GLOBAL)),
-        imageConfig->createReference()));
-    it.nextInBlock();
+    assign(it, Value(REG_UNIFORM_ADDRESS, TYPE_INT32.toVectorType(16).toPointerType(AddressSpace::GLOBAL))) =
+        imageConfig->createReference();
     // 2. need to wait 2 instructions for UNIFORM-pointer to be changed
-    it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_UNIFORM));
-    it.nextInBlock();
-    it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_UNIFORM));
-    it.nextInBlock();
+    nop(it, intermediate::DelayType::WAIT_UNIFORM);
+    nop(it, intermediate::DelayType::WAIT_UNIFORM);
     // 3. write the TMU addresses
     if(yCoord)
     {
-        it.emplace(new intermediate::MoveOperation(tmu.getYCoord(yCoord->type), yCoord.value()));
-        it.nextInBlock();
+        assign(it, tmu.getYCoord(yCoord->type)) = yCoord.value();
     }
     else
     {
         // for 1D-images, we only have an x-coordinate, but if we only write the TMU_S register, general TMU lookup is
         // used!  so we write a dummy y-coordinate with a value of zero, to select the first row
-        it.emplace(new intermediate::MoveOperation(tmu.getYCoord(), INT_ZERO));
-        it.nextInBlock();
+        assign(it, tmu.getYCoord()) = 0_val;
     }
-    it.emplace(new intermediate::MoveOperation(tmu.getXCoord(xCoord.type), xCoord));
-    it.nextInBlock();
+    assign(it, tmu.getXCoord(xCoord.type)) = xCoord;
     // 4. trigger loadtmu
-    it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_TMU));
-    it->setSignaling(tmu.signal);
-    it.nextInBlock();
+    nop(it, intermediate::DelayType::WAIT_TMU, tmu.signal);
     // 5. read from r4 (stalls 9 to 20 cycles)
-    it.emplace(new intermediate::MoveOperation(dest, TMU_READ_REGISTER));
-    it.nextInBlock();
+    assign(it, dest) = TMU_READ_REGISTER;
     // 6. TODO reset UNIFORM pointer? for next work-group iteration, or disable when used with images?
-
     return it;
 }

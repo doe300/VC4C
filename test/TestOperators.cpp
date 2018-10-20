@@ -8,9 +8,12 @@
 
 #include "Values.h"
 #include "intrinsics/Operators.h"
+#include "intermediate/operators.h"
+#include "Module.h"
 
 using namespace vc4c;
 using namespace vc4c::intermediate;
+using namespace vc4c::operators;
 
 TestOperators::TestOperators()
 {
@@ -20,6 +23,7 @@ TestOperators::TestOperators()
 	TEST_ADD(TestOperators::testSREM);
 	TEST_ADD(TestOperators::testFMOD);
 	TEST_ADD(TestOperators::testFREM);
+	TEST_ADD(TestOperators::testOperatorSyntax);
 }
 
 TestOperators::~TestOperators()
@@ -82,4 +86,15 @@ void TestOperators::testFMOD()
 void TestOperators::testFREM()
 {
 
+}
+
+
+void TestOperators::testOperatorSyntax()
+{
+	Module mod({});
+	Method method(mod);
+	method.appendToEnd(new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL).local()));
+	auto it = method.walkAllInstructions();
+
+	TEST_ASSERT_EQUALS(42_val, assign(it, TYPE_INT8) = 21_val + 21_val);
 }

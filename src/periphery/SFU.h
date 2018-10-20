@@ -17,8 +17,7 @@ namespace vc4c
          * Inserts a SFU call to the given SFU register at the position specified.
          * Also inserts the nop-instructions required to wait for the result being available.
          */
-        InstructionWalker insertSFUCall(Register sfuReg, InstructionWalker it, const Value& arg,
-            ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
+        InstructionWalker insertSFUCall(Register sfuReg, InstructionWalker it, const Value& arg);
 
         /*
          * Tries to convert the constant result for the SFU call and the given input

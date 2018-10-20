@@ -6,24 +6,23 @@
 
 #include "SFU.h"
 
+#include "../intermediate/operators.h"
+
 #include <cmath>
 
 using namespace vc4c;
 using namespace vc4c::periphery;
+using namespace vc4c::operators;
 
-InstructionWalker periphery::insertSFUCall(
-    const Register sfuReg, InstructionWalker it, const Value& arg, const ConditionCode cond, const SetFlag setFlags)
+InstructionWalker periphery::insertSFUCall(const Register sfuReg, InstructionWalker it, const Value& arg)
 {
     // TODO need to synchronize SFU ?? (per slice!)
     // Also need to include the reading of r4. And if this is enclosed in mutex, the NOPs are no longer replaced?
     // 1. move argument to SFU register
-    it.emplace(new intermediate::MoveOperation(Value(sfuReg, TYPE_FLOAT), arg, cond, setFlags));
-    it.nextInBlock();
+    assign(it, Value(sfuReg, TYPE_FLOAT)) = arg;
     // 2. wait 2 instructions / don't touch r4
-    it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_SFU));
-    it.nextInBlock();
-    it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_SFU));
-    it.nextInBlock();
+    nop(it, intermediate::DelayType::WAIT_SFU);
+    nop(it, intermediate::DelayType::WAIT_SFU);
     return it;
 }
 

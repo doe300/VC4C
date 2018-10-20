@@ -13,6 +13,7 @@
 #include "../analysis/ValueRange.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/IntermediateInstruction.h"
+#include "../intermediate/operators.h"
 #include "../periphery/TMU.h"
 #include "../periphery/VPM.h"
 #include "log.h"
@@ -26,6 +27,7 @@ using namespace vc4c;
 using namespace vc4c::normalization;
 using namespace vc4c::intermediate;
 using namespace vc4c::periphery;
+using namespace vc4c::operators;
 
 /**
  * TODO fix issues:
@@ -586,11 +588,9 @@ InstructionWalker normalization::accessGlobalData(
                 else
                 {
                     // emplace calculation of global-data pointer and replace argument
-                    tmp = method.addNewLocal(TYPE_INT32, "%global_data_offset");
-                    it.emplace(new intermediate::Operation(OP_ADD, tmp,
-                        method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference(),
-                        Value(Literal(globalOffset.value()), TYPE_INT32)));
-                    it.nextInBlock();
+                    tmp = assign(it, TYPE_INT32, "%global_data_offset") =
+                        method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference() +
+                        Value(Literal(globalOffset.value()), TYPE_INT32);
                 }
                 it->setArgument(i, tmp);
             }
@@ -723,16 +723,13 @@ void normalization::resolveStackAllocation(
                 Value finalAddr = method.addNewLocal(arg.type, "%stack_addr");
                 finalAddr.local()->reference = std::make_pair(arg.local(), ANY_ELEMENT);
 
-                it.emplace(new Operation(OP_MUL24, qpuOffset, Value(REG_QPU_NUMBER, TYPE_INT8),
-                    Value(Literal(static_cast<uint32_t>(maximumStackSize)), TYPE_INT32)));
-                it.nextInBlock();
-                it.emplace(new Operation(OP_ADD, addrTemp, qpuOffset,
-                    method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference()));
-                it.nextInBlock();
-                it.emplace(new Operation(OP_ADD, finalAddr, addrTemp,
+                assign(it, qpuOffset) = mul24(Value(REG_QPU_NUMBER, TYPE_INT8),
+                    Value(Literal(static_cast<uint32_t>(maximumStackSize)), TYPE_INT32));
+                assign(it, addrTemp) =
+                    qpuOffset + method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference();
+                assign(it, finalAddr) = addrTemp +
                     Value(Literal(static_cast<uint32_t>(arg.local()->as<StackAllocation>()->offset + stackBaseOffset)),
-                        TYPE_INT32)));
-                it.nextInBlock();
+                        TYPE_INT32);
                 it->setArgument(i, finalAddr);
             }
         }
@@ -791,9 +788,7 @@ static InstructionWalker insertAddressToOffset(
     {
         // for more complex versions, calculate offset by subtracting base address from result
         // address
-        out = method.addNewLocal(baseAddress->type, "%pointer_diff");
-        it.emplace(new Operation(OP_SUB, out, ptrVal, baseAddress->createReference()));
-        it.nextInBlock();
+        out = assign(it, baseAddress->type, "%pointer_diff") = ptrVal - baseAddress->createReference();
     }
     return it;
 }
@@ -820,9 +815,8 @@ static InstructionWalker insertAddressToStackOffset(InstructionWalker it, Method
         // add offset of stack-frame
         Value stackOffset = method.addNewLocal(TYPE_VOID.toPointerType(), "%stack_offset");
         Value tmp = method.addNewLocal(baseAddress->type);
-        it = insertOperation(OP_MUL24, it, method, stackOffset, Value(Literal(stackByteSize), TYPE_INT16),
-            Value(REG_QPU_NUMBER, TYPE_INT8));
-        it = insertOperation(OP_ADD, it, method, out, tmpIndex, stackOffset);
+        assign(it, stackOffset) = mul24(Value(Literal(stackByteSize), TYPE_INT16), Value(REG_QPU_NUMBER, TYPE_INT8));
+        assign(it, out) = tmpIndex + stackOffset;
     }
     else
     {
@@ -844,7 +838,7 @@ static InstructionWalker insertAddressToElementOffset(InstructionWalker it, Meth
     it = insertAddressToOffset(it, method, tmpIndex, baseAddress, mem);
     // the index (as per index calculation) is in bytes, but we need index in elements, so divide by element size
     auto offset = static_cast<int32_t>(std::log2(container.type.getElementType().getPhysicalWidth()));
-    it = insertOperation(OP_SHR, it, method, out, tmpIndex, Value(Literal(offset), TYPE_INT8));
+    assign(it, out) = tmpIndex >> Value(Literal(offset), TYPE_INT8);
     return it;
 }
 
@@ -1151,8 +1145,7 @@ static bool lowerMemoryToRegister(
                 it = memoryInstructions.erase(it);
                 auto tmp = method.addNewLocal(toConvertedRegisterType.value(), "%lowered_constant");
 
-                tmpIt.emplace(new MoveOperation(tmp, local->as<const Global>()->value));
-                tmpIt.nextInBlock();
+                assign(tmpIt, tmp) = local->as<const Global>()->value;
                 tmpIt = lowerReadWriteOfMemoryToRegister(tmpIt, method, local, tmp, mem);
                 logging::debug() << "Replaced loading of constant memory with vector rotation of register: "
                                  << tmpIt.copy().previousInBlock()->to_string() << logging::endl;

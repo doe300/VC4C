@@ -8,12 +8,14 @@
 
 #include "../intermediate/Helper.h"
 #include "../intermediate/TypeConversions.h"
+#include "../intermediate/operators.h"
 #include "log.h"
 
 #include <cmath>
 
 using namespace vc4c;
 using namespace vc4c::intermediate;
+using namespace vc4c::operators;
 
 static InstructionWalker replaceWithSetBoolean(
     InstructionWalker it, const Value& dest, const ConditionCode& trueCode, const Value& value = BOOL_TRUE)
@@ -37,8 +39,7 @@ static InstructionWalker replaceWithSetBoolean(
     }
     else
     {
-        it.emplace(new MoveOperation(dest, value, trueCode));
-        it.nextInBlock();
+        assign(it, dest) = (value, trueCode);
         it.reset(new Operation(OP_XOR, dest, value, value, trueCode.invert()));
     }
     return it;
@@ -55,6 +56,7 @@ InstructionWalker intrinsifyIntegerRelation(
 {
     // http://llvm.org/docs/LangRef.html#icmp-instruction
     const Value tmp = method.addNewLocal(comp->getFirstArg().type, "%icomp");
+    auto boolType = TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth());
     if(COMP_EQ == comp->opCode)
     {
         // a == b <=> a xor b == 0 [<=> a - b == 0]
@@ -63,11 +65,9 @@ InstructionWalker intrinsifyIntegerRelation(
             // special case for a == 0
             // does not save instructions, but does not force value a to be on register-file A (since B is reserved for
             // literal 0)
-            it.emplace(new MoveOperation(NOP_REGISTER, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
+            assign(it, NOP_REGISTER) = (comp->getFirstArg(), SetFlag::SET_FLAGS);
         else
-            it.emplace(new Operation(OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->assertArgument(1),
-                comp->conditional, SetFlag::SET_FLAGS));
-        it.nextInBlock();
+            assign(it, NOP_REGISTER) = (comp->getFirstArg() ^ comp->assertArgument(1), SetFlag::SET_FLAGS);
         it = replaceWithSetBoolean(it, comp->getOutput().value(), invertResult ? COND_ZERO_CLEAR : COND_ZERO_SET);
     }
     else if(COMP_UNSIGNED_LT == comp->opCode)
@@ -88,16 +88,11 @@ InstructionWalker intrinsifyIntegerRelation(
             // a < b [b = 2^x] <=> (a & (b-1)) == a <=> (a & ~(b-1)) == 0
             if(comp->assertArgument(1).hasLiteral() && isPowerTwo(comp->assertArgument(1).literal().unsignedInt()))
             {
-                const Value mask(
-                    Literal(comp->assertArgument(1).literal().unsignedInt() - 1), comp->assertArgument(1).type);
-                const Value tmp1 =
-                    method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
+                // this is actually pre-calculated, so no insertion is performed
+                Value mask = assign(it, comp->assertArgument(1).type) = comp->assertArgument(1) - 1_val;
+                Value tmp1 = assign(it, boolType, "%icomp") = comp->getFirstArg() & mask;
 
-                it.emplace(new Operation(OP_AND, tmp1, comp->getFirstArg(), mask));
-                it.nextInBlock();
-                it.emplace(
-                    new Operation(OP_XOR, NOP_REGISTER, tmp1, comp->getFirstArg(), COND_ALWAYS, SetFlag::SET_FLAGS));
-                it.nextInBlock();
+                assign(it, NOP_REGISTER) = (tmp1 ^ comp->getFirstArg(), SetFlag::SET_FLAGS);
                 // we set to true, if flag is zero, false otherwise
                 invertResult = !invertResult;
             }
@@ -106,24 +101,17 @@ InstructionWalker intrinsifyIntegerRelation(
             else if(comp->assertArgument(1).hasLiteral() &&
                 isPowerTwo(comp->assertArgument(1).literal().unsignedInt() + 1))
             {
-                const Value mask(
-                    Literal(comp->assertArgument(1).literal().unsignedInt() ^ 0xFFFFFFFFu), comp->getFirstArg().type);
-                const Value tmp1 =
-                    method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
-                const Value tmp2 =
-                    method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
+                // this is actually pre-calculated, so no insertion is performed
+                Value mask = assign(it, comp->assertArgument(1).type) = comp->assertArgument(1) ^ 0xFFFFFFFF_val;
+                Value tmp1 = assign(it, boolType, "%icomp") = comp->getFirstArg() & mask;
+                const Value tmp2 = method.addNewLocal(boolType, "%icomp");
 
-                it.emplace(new Operation(OP_AND, tmp1, comp->getFirstArg(), mask));
-                it.nextInBlock();
-                it.emplace(new Operation(OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->assertArgument(1),
-                    COND_ALWAYS, SetFlag::SET_FLAGS));
-                it.nextInBlock();
+                assign(it, NOP_REGISTER) = (comp->getFirstArg() ^ comp->assertArgument(1), SetFlag::SET_FLAGS);
                 // insert dummy comparison to be replaced
                 it.emplace(new Nop(DelayType::WAIT_VPM));
                 it = replaceWithSetBoolean(it, tmp2, COND_ZERO_SET);
                 it.nextInBlock();
-                it.emplace(new Operation(OP_OR, NOP_REGISTER, tmp1, tmp2, COND_ALWAYS, SetFlag::SET_FLAGS));
-                it.nextInBlock();
+                assign(it, NOP_REGISTER) = (tmp1 | tmp2, SetFlag::SET_FLAGS);
                 // we set to true, if flag is zero, false otherwise
                 invertResult = !invertResult;
             }
@@ -137,32 +125,15 @@ InstructionWalker intrinsifyIntegerRelation(
                  * a < b <=> clz(a) > clz(b) || (clz(a) == clz(b) && max(a, b) != a)
                  * For equal MSB, ult == slt, special case for different MSB
                  */
-                const Value tmp1 =
-                    method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
-                const Value tmp2 =
-                    method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
-                const Value tmp3 =
-                    method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
-                const Value tmp4 =
-                    method.addNewLocal(TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%icomp");
-                const Value leftUpper = method.addNewLocal(
-                    TYPE_INT16.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%comp.left");
-                const Value leftLower = method.addNewLocal(
-                    TYPE_INT16.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%comp.left");
-                const Value rightUpper = method.addNewLocal(
-                    TYPE_INT16.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%comp.right");
-                const Value rightLower = method.addNewLocal(
-                    TYPE_INT16.toVectorType(comp->getFirstArg().type.getVectorWidth()), "%comp.right");
-                it.emplace(new Operation(OP_SHR, leftUpper, comp->getFirstArg(), Value(Literal(16u), TYPE_INT8)));
-                it.nextInBlock();
-                it.emplace(new Operation(OP_AND, leftLower, comp->getFirstArg(),
-                    Value(Literal(TYPE_INT16.getScalarWidthMask()), TYPE_INT32)));
-                it.nextInBlock();
-                it.emplace(new Operation(OP_SHR, rightUpper, comp->assertArgument(1), Value(Literal(16u), TYPE_INT8)));
-                it.nextInBlock();
-                it.emplace(new Operation(OP_AND, rightLower, comp->assertArgument(1),
-                    Value(Literal(TYPE_INT16.getScalarWidthMask()), TYPE_INT32)));
-                it.nextInBlock();
+                auto partType = TYPE_INT16.toVectorType(comp->getFirstArg().type.getVectorWidth());
+                const Value tmp1 = method.addNewLocal(boolType, "%icomp");
+                const Value tmp2 = method.addNewLocal(boolType, "%icomp");
+                const Value tmp3 = method.addNewLocal(boolType, "%icomp");
+                const Value tmp4 = method.addNewLocal(boolType, "%icomp");
+                Value leftUpper = assign(it, partType, "%comp.left") = comp->getFirstArg() >> 16_val;
+                Value leftLower = assign(it, partType, "%comp.left") = comp->getFirstArg() & 0xFFFF_val;
+                Value rightUpper = assign(it, partType, "%comp.right") = comp->assertArgument(1) >> 16_val;
+                Value rightLower = assign(it, partType, "%comp.right") = comp->assertArgument(1) & 0xFFFF_val;
                 //(a >> 16) < (b >> 16)
                 // insert dummy comparison to be intrinsified
                 it.emplace(new Comparison(COMP_UNSIGNED_LT, tmp1, leftUpper, rightUpper));
@@ -179,19 +150,14 @@ InstructionWalker intrinsifyIntegerRelation(
                 it = intrinsifyIntegerRelation(method, it, it.get<Comparison>(), false);
                 it.nextInBlock();
                 // upper && lower
-                it.emplace(new Operation(OP_AND, tmp4, tmp2, tmp3));
-                it.nextInBlock();
-                it.emplace(new Operation(OP_OR, NOP_REGISTER, tmp1, tmp4, comp->conditional, SetFlag::SET_FLAGS));
-                it.nextInBlock();
+                assign(it, tmp4) = tmp2 & tmp3;
+                assign(it, NOP_REGISTER) = (tmp1 | tmp4, SetFlag::SET_FLAGS);
             }
         }
         else
         {
-            it.emplace(new Operation(OP_MAX, tmp, comp->getFirstArg(), comp->assertArgument(1), comp->conditional));
-            it.nextInBlock();
-            it.emplace(
-                new Operation(OP_XOR, NOP_REGISTER, tmp, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
-            it.nextInBlock();
+            assign(it, tmp) = (max(comp->getFirstArg(), comp->assertArgument(1)));
+            assign(it, NOP_REGISTER) = (tmp ^ comp->getFirstArg(), SetFlag::SET_FLAGS);
         }
         it = replaceWithSetBoolean(it, comp->getOutput().value(), invertResult ? COND_ZERO_SET : COND_ZERO_CLEAR);
     }
@@ -207,10 +173,8 @@ InstructionWalker intrinsifyIntegerRelation(
             it = insertSignExtension(it, method, comp->getFirstArg(), firstArg, true);
             it = insertSignExtension(it, method, comp->assertArgument(1), secondArg, true);
         }
-        it.emplace(new Operation(OP_MAX, tmp, firstArg, secondArg, comp->conditional));
-        it.nextInBlock();
-        it.emplace(new Operation(OP_XOR, NOP_REGISTER, tmp, firstArg, comp->conditional, SetFlag::SET_FLAGS));
-        it.nextInBlock();
+        assign(it, tmp) = (max(firstArg, secondArg));
+        assign(it, NOP_REGISTER) = (tmp ^ firstArg, SetFlag::SET_FLAGS);
         it = replaceWithSetBoolean(it, comp->getOutput().value(), invertResult ? COND_ZERO_SET : COND_ZERO_CLEAR);
     }
     else
@@ -223,17 +187,13 @@ static std::pair<InstructionWalker, Value> insertCheckForNaN(
     Method& method, InstructionWalker it, const Comparison* comp)
 {
     const Value firstArgNaN = method.addNewLocal(TYPE_BOOL, "%nan_check");
-    it.emplace(new Operation(OP_XOR, firstArgNaN, comp->getFirstArg(), FLOAT_NAN, comp->conditional));
+    it.emplace(new Operation(OP_XOR, firstArgNaN, comp->getFirstArg(), FLOAT_NAN));
     it.nextInBlock();
     Value eitherNaN = firstArgNaN;
     if(comp->getArguments().size() > 1)
     {
-        const Value secondArgNaN = method.addNewLocal(TYPE_BOOL, "%nan_check");
-        it.emplace(new Operation(OP_XOR, secondArgNaN, comp->assertArgument(1), FLOAT_NAN, comp->conditional));
-        it.nextInBlock();
-        eitherNaN = method.addNewLocal(TYPE_BOOL, "%nan_check");
-        it.emplace(new Operation(OP_OR, eitherNaN, firstArgNaN, secondArgNaN, comp->conditional));
-        it.nextInBlock();
+        Value secondArgNaN = assign(it, TYPE_BOOL, "%nan_check") = (comp->assertArgument(1) ^ FLOAT_NAN);
+        eitherNaN = assign(it, TYPE_BOOL, "%nan_check") = (firstArgNaN || secondArgNaN);
     }
     return std::make_pair(it, eitherNaN);
 }
@@ -255,80 +215,60 @@ InstructionWalker intrinsifyFloatingRelation(Method& method, InstructionWalker i
     if(COMP_TRUE == comp->opCode)
     {
         // true
-        it.reset(new MoveOperation(comp->getOutput().value(), BOOL_TRUE, comp->conditional, SetFlag::SET_FLAGS));
+        it.reset(new MoveOperation(comp->getOutput().value(), BOOL_TRUE, COND_ALWAYS, SetFlag::SET_FLAGS));
     }
     else if(COMP_FALSE == comp->opCode)
     {
         // false
-        it.reset(new MoveOperation(comp->getOutput().value(), BOOL_FALSE, comp->conditional, SetFlag::SET_FLAGS));
+        it.reset(new MoveOperation(comp->getOutput().value(), BOOL_FALSE, COND_ALWAYS, SetFlag::SET_FLAGS));
     }
     else if(COMP_ORDERED_EQ == comp->opCode || COMP_UNORDERED_EQ == comp->opCode)
     {
         // a == b <=> a xor b == 0 [<=> a - b == 0]
-        it.emplace(new Operation(
-            OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->assertArgument(1), comp->conditional, SetFlag::SET_FLAGS));
-        it.nextInBlock();
+        assign(it, NOP_REGISTER) = (comp->getFirstArg() ^ comp->assertArgument(1), COND_ALWAYS, SetFlag::SET_FLAGS);
         it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_ZERO_SET);
     }
     else if(COMP_ORDERED_NEQ == comp->opCode || COMP_UNORDERED_NEQ == comp->opCode)
     {
         // a != b <=> a xor b != 0
-        it.emplace(new Operation(
-            OP_XOR, NOP_REGISTER, comp->getFirstArg(), comp->assertArgument(1), comp->conditional, SetFlag::SET_FLAGS));
-        it.nextInBlock();
+        assign(it, NOP_REGISTER) = (comp->getFirstArg() ^ comp->assertArgument(1), COND_ALWAYS, SetFlag::SET_FLAGS);
         it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_ZERO_CLEAR);
     }
     else if(COMP_ORDERED_LT == comp->opCode || COMP_UNORDERED_LT == comp->opCode)
     {
         // a < b [<=> min(a, b) != b] [<=> max(a, b) != a] <=> a - b < 0
-        it.emplace(new Operation(OP_FSUB, NOP_REGISTER, comp->getFirstArg(), comp->assertArgument(1), comp->conditional,
-            SetFlag::SET_FLAGS));
-        it.nextInBlock();
+        assign(it, NOP_REGISTER) = (comp->getFirstArg() - comp->assertArgument(1), COND_ALWAYS, SetFlag::SET_FLAGS);
         // true if NEGATIVE is set, otherwise false
         it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_NEGATIVE_SET);
     }
     else if(COMP_ORDERED_LE == comp->opCode || COMP_UNORDERED_LE == comp->opCode)
     {
         // a <= b <=> min(a, b) == a [<=> max(a, b) == b]
-        it.emplace(new Operation(
-            OP_FMIN, tmp, comp->getFirstArg(), comp->assertArgument(1), comp->conditional, SetFlag::SET_FLAGS));
-        it.nextInBlock();
-        it.emplace(
-            new Operation(OP_XOR, NOP_REGISTER, tmp, comp->getFirstArg(), comp->conditional, SetFlag::SET_FLAGS));
-        it.nextInBlock();
+        assign(it, tmp) = (min(comp->getFirstArg(), comp->assertArgument(1)), COND_ALWAYS, SetFlag::SET_FLAGS);
+        assign(it, NOP_REGISTER) = (tmp ^ comp->getFirstArg(), COND_ALWAYS, SetFlag::SET_FLAGS);
         it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_ZERO_SET);
     }
     else if(COMP_ORDERED == comp->opCode)
     {
         // ord(a, b) <=> a != NaN && b != NaN
-        const Value tmp0 = method.addNewLocal(TYPE_BOOL, "%ordered");
-        const Value tmp1 = method.addNewLocal(TYPE_BOOL, "%ordered");
         // tmp0 = a != NaN
-        it.emplace(new Operation(OP_XOR, tmp0, comp->getFirstArg(), FLOAT_NAN, comp->conditional));
-        it.nextInBlock();
+        Value tmp0 = assign(it, TYPE_BOOL, "%ordered") = (comp->getFirstArg() ^ FLOAT_NAN);
         // tmp1 = b != NaN
-        it.emplace(new Operation(OP_XOR, tmp1, comp->assertArgument(1), FLOAT_NAN, comp->conditional));
-        it.nextInBlock();
+        Value tmp1 = assign(it, TYPE_BOOL, "%ordered") = (comp->assertArgument(1) ^ FLOAT_NAN);
         // tmp = tmp0 && tmp1
-        it.emplace(new Operation(OP_AND, tmp, tmp0, tmp1, comp->conditional, SetFlag::SET_FLAGS));
-        it.nextInBlock();
+        assign(it, tmp) = (tmp0 && tmp1, SetFlag::SET_FLAGS);
         // res = tmp != 0 <=> (tmp0 && tmp1) == 0 <=> (a != NaN) && (b != NaN)
         it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_ZERO_CLEAR);
     }
     else if(COMP_UNORDERED == comp->opCode)
     {
         // uno(a, b) <=> a == NaN || b == NaN
-        const Value tmp0 = method.addNewLocal(TYPE_BOOL, "%ordered");
-        const Value tmp1 = method.addNewLocal(TYPE_BOOL, "%ordered");
         // tmp0 = a != NaN
-        it.emplace(new Operation(OP_XOR, tmp0, comp->getFirstArg(), FLOAT_NAN, comp->conditional));
-        it.nextInBlock();
+        Value tmp0 = assign(it, TYPE_BOOL, "%ordered") = (comp->getFirstArg() ^ FLOAT_NAN);
         // tmp1 = b != NaN
-        it.emplace(new Operation(OP_XOR, tmp1, comp->assertArgument(1), FLOAT_NAN, comp->conditional));
-        it.nextInBlock();
+        Value tmp1 = assign(it, TYPE_BOOL, "%ordered") = (comp->assertArgument(1) ^ FLOAT_NAN);
         // tmp = tmp0 && tmp1
-        it.emplace(new Operation(OP_AND, tmp, tmp0, tmp1, comp->conditional, SetFlag::SET_FLAGS));
-        it.nextInBlock();
+        assign(it, tmp) = (tmp0 && tmp1, SetFlag::SET_FLAGS);
         // res = tmp == 0 <=> (tmp0 || tmp1) == 0 <=> (a != NaN) || (b != NaN) == 0 <=> (a == NaN) || (b == NaN)
         it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_ZERO_SET);
     }
@@ -353,6 +293,9 @@ InstructionWalker intermediate::intrinsifyComparison(Method& method, Instruction
     {
         return it;
     }
+    if(comp->hasConditionalExecution())
+        throw CompilationError(
+            CompilationStep::OPTIMIZER, "Comparisons cannot have conditional execution", comp->to_string());
     logging::debug() << "Intrinsifying comparison '" << comp->opCode << "' to arithmetic operations" << logging::endl;
     bool isFloating = comp->getFirstArg().type.isFloatingType();
     bool negateResult = false;

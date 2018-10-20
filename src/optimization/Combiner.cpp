@@ -9,6 +9,7 @@
 #include "../InstructionWalker.h"
 #include "../analysis/ValueRange.h"
 #include "../intermediate/Helper.h"
+#include "../intermediate/operators.h"
 #include "../periphery/VPM.h"
 #include "Eliminator.h"
 #include "log.h"
@@ -20,6 +21,7 @@
 using namespace vc4c;
 using namespace vc4c::optimizations;
 using namespace vc4c::intermediate;
+using namespace vc4c::operators;
 
 static const std::string combineLoadLiteralsThreshold = "combine-load-threshold";
 
@@ -717,10 +719,8 @@ bool optimizations::unrollWorkGroups(const Module& module, Method& method, const
         throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find the default last block!");
     const Local* loopSize = method.findOrCreateLocal(TYPE_INT32, Method::GROUP_LOOP_SIZE);
     InstructionWalker it = lastBlock->begin().nextInBlock();
-    it.emplace(new MoveOperation(loopSize->createReference(), UNIFORM_REGISTER));
-    it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
-    it->addDecorations(InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
-    it.nextInBlock();
+    assign(it, loopSize->createReference()) =
+        (UNIFORM_REGISTER, InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
     it.emplace(new Branch(startLabel, COND_ZERO_CLEAR, loopSize->createReference()));
 
     return true;
@@ -1372,7 +1372,8 @@ bool optimizations::cacheWorkGroupDMAAccess(const Module& module, Method& method
             continue;
         }
 
-        // TODO insert load memory area into VPM at start of kernel
+        // TODO insert load memory area into VPM at start of kernel (after all the required offsets/indices are
+        // calculated)
         // TODO calculate address from base address and work-group uniform parts
         // TODO insert store VPM into memory area at end of kernel
         // TODO rewrite memory accesses to only access the correct VPM area

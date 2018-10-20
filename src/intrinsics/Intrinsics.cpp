@@ -9,6 +9,7 @@
 #include "../analysis/ValueRange.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/TypeConversions.h"
+#include "../intermediate/operators.h"
 #include "../periphery/SFU.h"
 #include "../periphery/TMU.h"
 #include "../periphery/VPM.h"
@@ -25,6 +26,7 @@
 
 using namespace vc4c;
 using namespace vc4c::intermediate;
+using namespace vc4c::operators;
 
 // The function to apply for pre-calculation
 using UnaryInstruction = std::function<Optional<Value>(const Value&)>;
@@ -101,7 +103,7 @@ static IntrinsicFunction intrinsifySFUInstruction(const Register& sfuRegister)
 {
     return [sfuRegister](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker {
         logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to SFU call" << logging::endl;
-        it = periphery::insertSFUCall(sfuRegister, it, callSite->assertArgument(0), callSite->conditional);
+        it = periphery::insertSFUCall(sfuRegister, it, callSite->assertArgument(0));
         it.reset((new MoveOperation(callSite->getOutput().value(), Value(REG_SFU_OUT, callSite->getOutput()->type)))
                      ->copyExtrasFrom(callSite));
         return it;
@@ -576,11 +578,10 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             // x * (2^k - 1) = x * 2^k - x = x << k - x
             logging::debug() << "Intrinsifying multiplication with left-shift and minus: " << op->to_string()
                              << logging::endl;
-            auto tmp = method.addNewLocal(arg1.type, "%mul_shift");
-            it.emplace(new Operation(OP_SHL, tmp, arg1,
-                Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt() + 1))), arg0.type),
-                op->conditional));
-            it.nextInBlock();
+            auto tmp = assign(it, arg1.type, "%mul_shift") =
+                (arg1 << Value(
+                     Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt() + 1))), arg0.type),
+                    op->conditional);
             it.reset(new Operation(OP_SUB, op->getOutput().value(), tmp, arg1, op->conditional, op->setFlags));
         }
         else if(arg1.getLiteralValue() && isPowerTwo(arg1.getLiteralValue()->signedInt() + 1))
@@ -588,11 +589,10 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             // x * (2^k - 1) = x * 2^k - x = x << k - x
             logging::debug() << "Intrinsifying multiplication with left-shift and minus: " << op->to_string()
                              << logging::endl;
-            auto tmp = method.addNewLocal(arg0.type, "%mul_shift");
-            it.emplace(new Operation(OP_SHL, tmp, arg0,
-                Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt() + 1))), arg0.type),
-                op->conditional));
-            it.nextInBlock();
+            auto tmp = assign(it, arg0.type, "%mul_shift") =
+                (arg0 << Value(
+                     Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt() + 1))), arg0.type),
+                    op->conditional);
             it.reset(new Operation(OP_SUB, op->getOutput().value(), tmp, arg0, op->conditional, op->setFlags));
         }
         else if(canOptimizeMultiplicationWithBinaryMethod(*op))
@@ -665,12 +665,9 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             Value tmp = method.addNewLocal(arg1.type, "%unsigned");
             Value sign = UNDEFINED_VALUE;
             it = insertMakePositive(it, method, arg0, tmp, sign);
-            Value tmpResult = method.addNewLocal(op->getOutput()->type);
-            it.emplace(new Operation(OP_SHR, tmpResult, tmp,
-                Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->unsignedInt()))), arg1.type),
-                op->conditional, op->setFlags));
-            it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
-            it.nextInBlock();
+            Value tmpResult = assign(it, op->getOutput()->type) = (tmp >>
+                    Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->unsignedInt()))), arg1.type),
+                op->conditional, op->setFlags, InstructionDecorations::UNSIGNED_RESULT);
             Value tmpResult2 = op->getOutput().value();
             it = insertRestoreSign(it, method, tmpResult, tmpResult2, sign);
             if(!(tmpResult2 == op->getOutput().value()))
@@ -758,11 +755,9 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
             Value tmp = method.addNewLocal(arg1.type, "%unsigned");
             Value sign = UNDEFINED_VALUE;
             it = insertMakePositive(it, method, arg0, tmp, sign);
-            Value tmpResult = method.addNewLocal(op->getOutput()->type);
-            it.emplace(new Operation(OP_AND, tmpResult, tmp,
-                Value(Literal(arg1.getLiteralValue()->unsignedInt() - 1), arg1.type), op->conditional, op->setFlags));
-            it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
-            it.nextInBlock();
+            Value tmpResult = assign(it, op->getOutput()->type) =
+                (tmp & Value(Literal(arg1.getLiteralValue()->unsignedInt() - 1), arg1.type), op->conditional,
+                    op->setFlags, InstructionDecorations::UNSIGNED_RESULT);
             Value tmpResult2 = op->getOutput().value();
             it = insertRestoreSign(it, method, tmpResult, tmpResult2, sign);
             if(!(tmpResult2 == op->getOutput().value()))
@@ -806,8 +801,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         {
             logging::debug() << "Intrinsifying floating division with multiplication of reciprocal: " << op->to_string()
                              << logging::endl;
-            it = periphery::insertSFUCall(REG_SFU_RECIP, it, arg1, op->conditional);
-            it.nextInBlock();
+            it = periphery::insertSFUCall(REG_SFU_RECIP, it, arg1);
             it.reset(new Operation(OP_FMUL, op->getOutput().value(), op->getFirstArg(),
                 Value(REG_SFU_OUT, op->getFirstArg().type), op->conditional, op->setFlags));
         }
@@ -896,9 +890,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
         {
             // make sure, leading bits are zeroes
             const uint32_t mask = op->getFirstArg().type.getScalarWidthMask();
-            it.emplace(
-                new Operation(OP_AND, tmp, op->getFirstArg(), Value(Literal(mask), TYPE_INT32), op->conditional));
-            it.nextInBlock();
+            assign(it, tmp) = (op->getFirstArg() & Value(Literal(mask), TYPE_INT32), op->conditional);
             it.reset(new Operation(OP_ITOF, op->getOutput().value(), tmp, op->conditional, op->setFlags));
         }
         else if(op->getFirstArg().type.getScalarBitCount() > 32)
@@ -982,26 +974,21 @@ static InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, Instruction
         return it.reset((new MoveOperation(it->getOutput().value(), src))->copyExtrasFrom(it.get()));
     }
     // set default value first and always, so a path for the destination local is guaranteed
-    it.emplace(new MoveOperation(it->getOutput().value(), defaultValue));
-    it.nextInBlock();
+    assign(it, it->getOutput().value()) = defaultValue;
     // dim == 0 -> return first value
-    it.emplace((new Operation(OP_XOR, NOP_REGISTER, arg, INT_ZERO))->setSetFlags(SetFlag::SET_FLAGS));
-    it.nextInBlock();
+    assign(it, NOP_REGISTER) = (arg ^ 0_val, SetFlag::SET_FLAGS);
     it.emplace(new MoveOperation(
         it->getOutput().value(), method.findOrCreateLocal(TYPE_INT32, locals.at(0))->createReference(), COND_ZERO_SET));
     it->addDecorations(add_flag(decoration, InstructionDecorations::ELEMENT_INSERTION));
     it.nextInBlock();
     // dim == 1 -> return second value
-    it.emplace((new Operation(OP_XOR, NOP_REGISTER, arg, INT_ONE))->setSetFlags(SetFlag::SET_FLAGS));
-    it.nextInBlock();
+    assign(it, NOP_REGISTER) = (arg ^ 1_val, SetFlag::SET_FLAGS);
     it.emplace(new MoveOperation(
         it->getOutput().value(), method.findOrCreateLocal(TYPE_INT32, locals.at(1))->createReference(), COND_ZERO_SET));
     it->addDecorations(add_flag(decoration, InstructionDecorations::ELEMENT_INSERTION));
     it.nextInBlock();
     // dim == 2 -> return third value
-    it.emplace((new Operation(OP_XOR, NOP_REGISTER, arg, Value(Literal(static_cast<uint32_t>(2)), TYPE_INT32)))
-                   ->setSetFlags(SetFlag::SET_FLAGS));
-    it.nextInBlock();
+    assign(it, NOP_REGISTER) = (arg ^ 2_val, SetFlag::SET_FLAGS);
     it.reset((new MoveOperation(it->getOutput().value(),
         method.findOrCreateLocal(TYPE_INT32, locals.at(2))->createReference(), COND_ZERO_SET)));
     it->addDecorations(add_flag(decoration, InstructionDecorations::ELEMENT_INSERTION));
@@ -1018,10 +1005,8 @@ static InstructionWalker intrinsifyReadWorkItemInfo(Method& method, InstructionW
      * -> res = (UNIFORM >> (dim * 8)) & 0xFF
      */
     const Local* itemInfo = method.findOrCreateLocal(TYPE_INT32, local);
-    Value tmp0(TYPE_UNKNOWN);
-    it = insertOperation(OP_MUL24, it, method, tmp0, arg, Value(Literal(static_cast<uint32_t>(8)), TYPE_INT32));
-    Value tmp1(TYPE_UNKNOWN);
-    it = insertOperation(OP_SHR, it, method, tmp1, itemInfo->createReference(), tmp0);
+    Value tmp0 = assign(it, TYPE_INT8) = mul24(arg, 8_val);
+    Value tmp1 = assign(it, TYPE_INT8) = itemInfo->createReference() >> tmp0;
     return it.reset(
         (new Operation(OP_AND, it->getOutput().value(), tmp1, Value(Literal(static_cast<uint32_t>(0xFF)), TYPE_INT8)))
             ->copyExtrasFrom(it.get())
@@ -1186,10 +1171,8 @@ static InstructionWalker intrinsifyWorkItemFunctions(Method& method, Instruction
         it.emplace(new MoveOperation(tmpLocalID, NOP_REGISTER));
         it = intrinsifyReadLocalID(method, it, callSite->assertArgument(0));
         it.nextInBlock();
-        it.emplace(new Operation(OP_MUL24, tmpRes0, tmpGroupID, tmpLocalSize));
-        it.nextInBlock();
-        it.emplace(new Operation(OP_ADD, tmpRes1, tmpGlobalOffset, tmpRes0));
-        it.nextInBlock();
+        assign(it, tmpRes0) = mul24(tmpGroupID, tmpLocalSize);
+        assign(it, tmpRes1) = tmpGlobalOffset + tmpRes0;
         return it.reset(
             (new Operation(OP_ADD, callSite->getOutput().value(), tmpRes1, tmpLocalID))
                 ->copyExtrasFrom(callSite)

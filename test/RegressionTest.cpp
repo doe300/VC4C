@@ -268,7 +268,8 @@ static std::vector<Entry> allKernels =
 		Entry{PENDING_SPIRV, FAST, "./testing/rodinia/nearestNeighbor_kernel.cl", ""},
 		Entry{PASSED, FAST, "./testing/rodinia/nw.cl", ""},
 		Entry{PENDING_SPIRV, FAST, "./testing/rodinia/particle_single.cl", ""},
-		Entry{PASSED, FAST, "./testing/rodinia/pathfinder_kernels.cl", ""},
+		//XXX hang/runs very long
+		Entry{PENDING_LLVM, SLOW, "./testing/rodinia/pathfinder_kernels.cl", ""},
 		Entry{PENDING_SPIRV, FAST, "./testing/rodinia/srad_kernel_gpu_opencl.cl", ""},
 		//Entry{PENDING_BOTH, FAST, "./testing/rodinia/streamcluster-Kernels.cl", ""}, // 64-bit integer
 		Entry{PENDING_LLVM, FAST, "./testing/rodinia/track_ellipse_kernel.cl", ""},

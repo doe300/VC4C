@@ -21,6 +21,8 @@ public:
 	void testSREM();
 	void testFMOD();
 	void testFREM();
+
+	void testOperatorSyntax();
 };
 
 #endif /* TEST_OPERATORS_H */

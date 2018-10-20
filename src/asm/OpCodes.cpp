@@ -553,8 +553,9 @@ Optional<Value> OpCode::calculate(const Optional<Value>& firstOperand, const Opt
         return Value(Literal(std::min(firstLit.signedInt(), secondLit.signedInt())), resultType);
     if(*this == OP_MUL24)
     {
-        if(((firstLit.unsignedInt() & 0xFF000000) != 0) || ((secondLit.unsignedInt() & 0xFF000000) != 0))
-            throw CompilationError(CompilationStep::GENERAL, "Mul24 with high byte set will discard the bits");
+        // this check is disabled on purpose
+        // if(((firstLit.unsignedInt() & 0xFF000000) != 0) || ((secondLit.unsignedInt() & 0xFF000000) != 0))
+        //    throw CompilationError(CompilationStep::GENERAL, "Mul24 with high byte set will discard the bits");
         return Value(Literal((firstLit.unsignedInt() & 0xFFFFFF) * (secondLit.unsignedInt() & 0xFFFFFF)), resultType);
     }
     if(*this == OP_NOT)
