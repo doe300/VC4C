@@ -73,6 +73,9 @@ Value Memory::readWord(MemoryAddress address) const
         logging::debug()
             << "Reading word from non-word-aligned memory location will be truncated to align with word-boundaries: "
             << address << logging::endl;
+    if(address >= data.size() * sizeof(Word))
+        throw CompilationError(
+            CompilationStep::GENERAL, "Memory address is out of bounds, consider using larger buffer");
     return Value(Literal(data.at(address / sizeof(Word))), TYPE_INT32);
 }
 
@@ -859,6 +862,10 @@ void VPM::setDMAWriteAddress(const Value& val)
                      << " bytes each from VPM address " << vpmBaseAddress.first << "," << vpmBaseAddress.second
                      << " into RAM at " << address << " with a memory stride of " << stride << logging::endl;
 
+    if(vpmBaseAddress.first >= 64)
+        throw CompilationError(
+            CompilationStep::GENERAL, "VPM row address is out of range: ", std::to_string(vpmBaseAddress.first));
+
     for(uint32_t i = 0; i < sizes.first; ++i)
     {
         if(address + typeSize * sizes.second >= memory.getMaximumAddress())
@@ -913,6 +920,10 @@ void VPM::setDMAReadAddress(const Value& val)
                      << " bytes each from RAM address " << address << " into VPM at " << vpmBaseAddress.first << ","
                      << vpmBaseAddress.second << " with byte-offset of " << byteOffset << " and a memory pitch of "
                      << pitch << logging::endl;
+
+    if(vpmBaseAddress.first >= 64)
+        throw CompilationError(
+            CompilationStep::GENERAL, "VPM row address is out of range: ", std::to_string(vpmBaseAddress.first));
 
     for(uint32_t i = 0; i < sizes.first; ++i)
     {

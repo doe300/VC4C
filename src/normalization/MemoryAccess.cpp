@@ -752,6 +752,21 @@ enum class MemoryType
     RAM_READ_WRITE_VPM
 };
 
+static MemoryType toMemoryType(periphery::VPMUsage usage)
+{
+    switch(usage)
+    {
+    case periphery::VPMUsage::SCRATCH:
+    case periphery::VPMUsage::LOCAL_MEMORY:
+        return MemoryType::VPM_SHARED_ACCESS;
+    case periphery::VPMUsage::REGISTER_SPILLING:
+    case periphery::VPMUsage::STACK:
+        return MemoryType::VPM_PER_QPU;
+    }
+    throw CompilationError(CompilationStep::NORMALIZER,
+        "Unknown VPM usage type to map to memory type: ", std::to_string(static_cast<int>(usage)));
+}
+
 /*
  * Converts an address (e.g. an index chain) and the corresponding base pointer to the pointer difference
  *
@@ -816,7 +831,7 @@ static InstructionWalker insertAddressToStackOffset(InstructionWalker it, Method
         Value stackOffset = method.addNewLocal(TYPE_VOID.toPointerType(), "%stack_offset");
         Value tmp = method.addNewLocal(baseAddress->type);
         assign(it, stackOffset) = mul24(Value(Literal(stackByteSize), TYPE_INT16), Value(REG_QPU_NUMBER, TYPE_INT8));
-        assign(it, out) = tmpIndex + stackOffset;
+        out = assign(it, TYPE_VOID.toPointerType(), "%stack_offset") = tmpIndex + stackOffset;
     }
     else
     {
@@ -838,7 +853,7 @@ static InstructionWalker insertAddressToElementOffset(InstructionWalker it, Meth
     it = insertAddressToOffset(it, method, tmpIndex, baseAddress, mem);
     // the index (as per index calculation) is in bytes, but we need index in elements, so divide by element size
     auto offset = static_cast<int32_t>(std::log2(container.type.getElementType().getPhysicalWidth()));
-    assign(it, out) = tmpIndex >> Value(Literal(offset), TYPE_INT8);
+    out = assign(it, TYPE_VOID.toPointerType(), "%element_offset") = tmpIndex >> Value(Literal(offset), TYPE_INT8);
     return it;
 }
 
@@ -875,7 +890,10 @@ static InstructionWalker mapToVPMMemoryAccessInstructions(
         {
             Value inAreaOffset = UNDEFINED_VALUE;
             it = insertAddressToStackOffset(
-                it, method, inAreaOffset, sourceArea->originalAddress, MemoryType::VPM_PER_QPU, mem);
+                it, method, inAreaOffset, sourceArea->originalAddress, toMemoryType(sourceArea->usageType), mem);
+            // the VPM addressing for DMA access contains row and column offset. We only have row offset, so we need to
+            // shift the result to the correct position
+            inAreaOffset = assign(it, TYPE_VOID.toPointerType(), "%vpm_row_offset") = inAreaOffset << 4_val;
             it = method.vpm->insertWriteRAM(
                 method, it, mem->getDestination(), mem->getSourceElementType(), sourceArea, true, inAreaOffset);
         }
@@ -883,7 +901,10 @@ static InstructionWalker mapToVPMMemoryAccessInstructions(
         {
             Value inAreaOffset = UNDEFINED_VALUE;
             it = insertAddressToStackOffset(
-                it, method, inAreaOffset, destArea->originalAddress, MemoryType::VPM_PER_QPU, mem);
+                it, method, inAreaOffset, destArea->originalAddress, toMemoryType(destArea->usageType), mem);
+            // the VPM addressing for DMA access contains row and column offset. We only have row offset, so we need to
+            // shift the result to the correct position
+            inAreaOffset = assign(it, TYPE_VOID.toPointerType(), "%vpm_row_offset") = inAreaOffset << 4_val;
             it = method.vpm->insertReadRAM(
                 method, it, mem->getSource(), mem->getDestinationElementType(), destArea, true, inAreaOffset);
         }
@@ -1078,6 +1099,30 @@ static InstructionWalker lowerReadWriteOfMemoryToRegister(InstructionWalker it, 
         it = insertVectorInsertion(it, method, loweredRegister, tmpIndex, mem->getSource());
         return it.erase();
     }
+    if(mem->op == MemoryOperation::COPY)
+    {
+        if(mem->getSource().hasLocal() && mem->getSource().local()->getBase(true) == local &&
+            mem->getDestination().hasLocal() && mem->getDestination().local()->getBase(true) == local)
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "Copy from and to same register lowered memory area is not supported", mem->to_string());
+        if(mem->getSource().hasLocal() && mem->getSource().local()->getBase(true) == local)
+        {
+            // TODO check whether index is guaranteed to be in range [0, 16[
+            auto tmp = method.addNewLocal(mem->getSourceElementType());
+            it = insertVectorExtraction(it, method, loweredRegister, tmpIndex, tmp);
+            it.reset(new MemoryInstruction(MemoryOperation::WRITE, mem->getDestination(), tmp));
+            return it;
+        }
+        if(mem->getDestination().hasLocal() && mem->getDestination().local()->getBase(true) == local)
+        {
+            // TODO need special handling for inserting multiple elements to set all new elements
+            auto tmp = method.addNewLocal(mem->getDestinationElementType());
+            it.emplace(new MemoryInstruction(MemoryOperation::READ, tmp, mem->getSource()));
+            it.nextInBlock();
+            it = insertVectorInsertion(it, method, loweredRegister, tmpIndex, mem->getSource());
+            return it.erase();
+        }
+    }
     throw CompilationError(
         CompilationStep::NORMALIZER, "Unhandled case of lowering memory access to register", mem->to_string());
 }
@@ -1148,6 +1193,16 @@ static bool lowerMemoryToRegister(
                 assign(tmpIt, tmp) = local->as<const Global>()->value;
                 tmpIt = lowerReadWriteOfMemoryToRegister(tmpIt, method, local, tmp, mem);
                 logging::debug() << "Replaced loading of constant memory with vector rotation of register: "
+                                 << tmpIt.copy().previousInBlock()->to_string() << logging::endl;
+            }
+            else if(mem->op == MemoryOperation::COPY && local->is<Global>() && toConvertedRegisterType)
+            {
+                it = memoryInstructions.erase(it);
+                auto tmp = method.addNewLocal(toConvertedRegisterType.value(), "%lowered_constant");
+
+                assign(tmpIt, tmp) = local->as<const Global>()->value;
+                tmpIt = lowerReadWriteOfMemoryToRegister(tmpIt, method, local, tmp, mem);
+                logging::debug() << "Replaced copying from constant memory with vector rotation and writing of memory: "
                                  << tmpIt.copy().previousInBlock()->to_string() << logging::endl;
             }
             else

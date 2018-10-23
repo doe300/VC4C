@@ -51,6 +51,10 @@ std::string intermediate::toString(const InstructionDecorations decoration)
         res.append("vectorized ");
     if(has_flag(decoration, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))
         res.append("group_uniform ");
+    if(has_flag(decoration, InstructionDecorations::VPM_READ_CONFIGURATION))
+        res.append("vpr_config ");
+    if(has_flag(decoration, InstructionDecorations::VPM_WRITE_CONFIGURATION))
+        res.append("vpw_config ");
     return res.substr(0, res.empty() ? 0 : res.size() - 1);
 }
 
@@ -77,6 +81,10 @@ InstructionDecorations intermediate::forwardDecorations(InstructionDecorations d
         res = add_flag(res, InstructionDecorations::UNSIGNED_RESULT);
     if(has_flag(decorations, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))
         res = add_flag(res, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+    if(has_flag(decorations, InstructionDecorations::VPM_READ_CONFIGURATION))
+        res = add_flag(res, InstructionDecorations::VPM_READ_CONFIGURATION);
+    if(has_flag(decorations, InstructionDecorations::VPM_WRITE_CONFIGURATION))
+        res = add_flag(res, InstructionDecorations::VPM_WRITE_CONFIGURATION);
     return res;
 }
 

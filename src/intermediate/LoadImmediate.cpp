@@ -68,11 +68,13 @@ std::string LoadImmediate::to_string() const
     switch(type)
     {
     case LoadType::REPLICATE_INT32:
-        if(getOutput()->hasRegister(REG_VPM_IN_SETUP))
+        if(getOutput()->hasRegister(REG_VPM_IN_SETUP) ||
+            has_flag(decoration, InstructionDecorations::VPM_READ_CONFIGURATION))
             return (getOutput()->to_string(true) + " = loadi ") +
                 periphery::VPRSetup::fromLiteral(getImmediate().unsignedInt()).to_string() +
                 createAdditionalInfoString();
-        if(getOutput()->hasRegister(REG_VPM_OUT_SETUP))
+        if(getOutput()->hasRegister(REG_VPM_OUT_SETUP) ||
+            has_flag(decoration, InstructionDecorations::VPM_WRITE_CONFIGURATION))
             return (getOutput()->to_string(true) + " = loadi ") +
                 periphery::VPWSetup::fromLiteral(getImmediate().unsignedInt()).to_string() +
                 createAdditionalInfoString();

@@ -699,6 +699,11 @@ static InstructionWalker handleImmediateInOperation(Method& method, InstructionW
                     // requires load immediate
                     logging::debug() << "Loading immediate value: " << source.literal().to_string() << logging::endl;
                     it.emplace(new intermediate::LoadImmediate(tmp, source.literal(), op->conditional));
+                    // propagate the decorations so the loads are displayed as setups, not value loads
+                    if(op->hasDecoration(intermediate::InstructionDecorations::VPM_READ_CONFIGURATION))
+                        it->addDecorations(intermediate::InstructionDecorations::VPM_READ_CONFIGURATION);
+                    if(op->hasDecoration(intermediate::InstructionDecorations::VPM_WRITE_CONFIGURATION))
+                        it->addDecorations(intermediate::InstructionDecorations::VPM_WRITE_CONFIGURATION);
                     it.nextInBlock();
                     op->setArgument(i, tmp);
                 }

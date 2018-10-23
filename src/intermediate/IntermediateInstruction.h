@@ -65,7 +65,11 @@ namespace vc4c
             // The instruction was already processed by auto-vectorization
             AUTO_VECTORIZED = 1 << 17,
             // The result of the instruction is the same for all work-items within a single work-group
-            WORK_GROUP_UNIFORM_VALUE = 1 << 18
+            WORK_GROUP_UNIFORM_VALUE = 1 << 18,
+            // The instruction calculates VPM read configuration
+            VPM_READ_CONFIGURATION = 1 << 19,
+            // The instruction calculates VPM write configuration
+            VPM_WRITE_CONFIGURATION = 1 << 20
         };
 
         std::string toString(InstructionDecorations decoration);

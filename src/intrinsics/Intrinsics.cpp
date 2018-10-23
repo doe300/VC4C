@@ -522,12 +522,6 @@ static InstructionWalker intrinsifyTernary(Method& method, InstructionWalker it)
     return it;
 }
 
-static bool isPowerTwo(int32_t val)
-{
-    // https://en.wikipedia.org/wiki/Power_of_two#Fast_algorithm_to_check_if_a_positive_number_is_a_power_of_two
-    return val > 0 && (val & (val - 1)) == 0;
-}
-
 static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker it, const MathType& mathType)
 {
     IntrinsicOperation* op = it.get<IntrinsicOperation>();

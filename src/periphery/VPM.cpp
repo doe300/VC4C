@@ -114,6 +114,23 @@ static std::string toAddressAndModeString(uint8_t size, uint16_t address, bool i
     return res;
 }
 
+static std::string toDMAAddressAndModeString(uint16_t address, bool isHorizontal)
+{
+    std::string res;
+
+    res.append(isHorizontal ? "h" : "v");
+    unsigned typeSize = 32;
+    unsigned xCoord = address & 0xF;
+    unsigned yCoord = address >> 4;
+
+    res.append(std::to_string(typeSize));
+    res.append("(").append(std::to_string(yCoord));
+    res.append(",").append(std::to_string(xCoord));
+    res.append(")");
+
+    return res;
+}
+
 static std::string toStride(uint8_t stride, uint8_t size)
 {
     switch(size)
@@ -151,7 +168,7 @@ std::string VPWDMASetup::to_string() const
     // TODO byte/half-word offset (VPR too)
     return std::string("vdw_setup(rows: ") + (std::to_string(demodulo(getUnits(), uint8_t{128})) + ", elements: ") +
         std::to_string(demodulo(getDepth(), uint8_t{128})) + (getVPMModeName(getMode()) + ", address: ") +
-        toAddressAndModeString(getVPMSize(TYPE_INT32), getVPMBase(), getHorizontal(), true) + ")";
+        toDMAAddressAndModeString(getVPMBase(), getHorizontal()) + ")";
 }
 
 std::string VPWStrideSetup::to_string() const
@@ -171,8 +188,8 @@ std::string VPWSetup::to_string() const
 std::string VPRGenericSetup::to_string() const
 {
     return std::string("vpm_setup(num: ") + (std::to_string(demodulo(getNumber(), uint8_t{16})) + ", size: ") +
-        (getVPMSizeName(demodulo(getSize(), uint8_t{64})) + ", stride: ") +
-        (toStride(getStride(), getSize()) + ", address: ") +
+        (getVPMSizeName(getSize()) + ", stride: ") +
+        (toStride(demodulo(getStride(), uint8_t{64}), getSize()) + ", address: ") +
         toAddressAndModeString(getSize(), getAddress(), getHorizontal(), !getLaned()) + ")";
 }
 
@@ -181,7 +198,7 @@ std::string VPRDMASetup::to_string() const
     // TODO VPM/memory pitch
     return std::string("vdr_setup(rows: ") + (std::to_string(demodulo(getNumberRows(), uint8_t{16})) + ", elements: ") +
         std::to_string(demodulo(getRowLength(), uint8_t{16})) + (getVPMModeName(getMode()) + ", address: ") +
-        toAddressAndModeString(getVPMSize(TYPE_INT32), getAddress(), !getVertical(), true) + ")";
+        toDMAAddressAndModeString(getAddress(), !getVertical()) + ")";
 }
 
 std::string VPRStrideSetup::to_string() const
@@ -233,8 +250,6 @@ static unsigned char getColumnDivisor(const DataType& type)
 static bool checkIndices(const DataType& type, unsigned char rowIndex, unsigned char columnIndex, unsigned char numRows,
     unsigned char numColumns)
 {
-    logging::debug() << static_cast<unsigned>(columnIndex) << " " << static_cast<unsigned>(numColumns) << " "
-                     << static_cast<unsigned>(rowIndex) << " " << static_cast<unsigned>(numRows) << logging::endl;
     if((columnIndex + numColumns) > VPM_NUM_COLUMNS)
         return false;
     if((rowIndex + numRows) > VPM_NUM_ROWS)
@@ -393,6 +408,7 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
     if(inAreaOffset == INT_ZERO)
     {
         it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(genericSetup.value)));
+        it->addDecorations(InstructionDecorations::VPM_READ_CONFIGURATION);
         it.nextInBlock();
     }
     else
@@ -401,10 +417,11 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        calculateElementOffset(method, it, dest.type, inAreaOffset, elementOffset);
+        it = calculateElementOffset(method, it, dest.type, inAreaOffset, elementOffset);
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // 3) write setup with dynamic address
-        assign(it, VPM_IN_SETUP_REGISTER) = Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset;
+        assign(it, VPM_IN_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
+            InstructionDecorations::VPM_READ_CONFIGURATION);
     }
     // 2) read value from VPM
     assign(it, dest) = VPM_IO_REGISTER;
@@ -429,6 +446,7 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
     if(inAreaOffset == INT_ZERO)
     {
         it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(genericSetup.value)));
+        it->addDecorations(InstructionDecorations::VPM_WRITE_CONFIGURATION);
         it.nextInBlock();
     }
     else
@@ -437,10 +455,11 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        calculateElementOffset(method, it, src.type, inAreaOffset, elementOffset);
+        it = calculateElementOffset(method, it, src.type, inAreaOffset, elementOffset);
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // 3) write setup with dynamic address
-        assign(it, VPM_OUT_SETUP_REGISTER) = Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset;
+        assign(it, VPM_OUT_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
+            InstructionDecorations::VPM_WRITE_CONFIGURATION);
     }
     // 2. write data to VPM
     assign(it, VPM_IO_REGISTER) = src;
@@ -479,6 +498,7 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
     if(inAreaOffset == INT_ZERO)
     {
         it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(dmaSetup.value)));
+        it->addDecorations(InstructionDecorations::VPM_READ_CONFIGURATION);
         it.nextInBlock();
     }
     else
@@ -487,13 +507,15 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        calculateElementOffset(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset);
+        it = calculateElementOffset(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset);
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // 3) write setup with dynamic address
-        assign(it, VPM_IN_SETUP_REGISTER) = Value(Literal(dmaSetup.value), TYPE_INT32) + elementOffset;
+        assign(it, VPM_IN_SETUP_REGISTER) = (Value(Literal(dmaSetup.value), TYPE_INT32) + elementOffset,
+            InstructionDecorations::VPM_READ_CONFIGURATION);
     }
     const VPRSetup strideSetup(VPRStrideSetup(0));
     it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(strideSetup.value)));
+    it->addDecorations(InstructionDecorations::VPM_READ_CONFIGURATION);
     it.nextInBlock();
 
     //"the actual DMA load or store operation is initiated by writing the memory address to the VCD_LD_ADDR or
@@ -536,6 +558,7 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
     if(inAreaOffset == INT_ZERO)
     {
         it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(dmaSetup.value)));
+        it->addDecorations(InstructionDecorations::VPM_WRITE_CONFIGURATION);
         it.nextInBlock();
     }
     else
@@ -544,15 +567,17 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        calculateElementOffset(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset);
+        it = calculateElementOffset(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset);
         // 2) dynamically calculate new VPM address from base and offset (shift and add offset to setup-value)
         Value shiftedOffset = assign(it, TYPE_INT32) = elementOffset << 3_val;
         // 3) write setup with dynamic address
-        assign(it, VPM_OUT_SETUP_REGISTER) = Value(Literal(dmaSetup.value), TYPE_INT32) + shiftedOffset;
+        assign(it, VPM_OUT_SETUP_REGISTER) = (Value(Literal(dmaSetup.value), TYPE_INT32) + shiftedOffset,
+            InstructionDecorations::VPM_WRITE_CONFIGURATION);
     }
     // set stride to zero
     const VPWSetup strideSetup(VPWStrideSetup(0));
     it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(strideSetup.value)));
+    it->addDecorations(InstructionDecorations::VPM_WRITE_CONFIGURATION);
     it.nextInBlock();
 
     //"the actual DMA load or store operation is initiated by writing the memory address to the VCD_LD_ADDR or

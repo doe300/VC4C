@@ -132,6 +132,12 @@ namespace vc4c
     {
         return [memberFunc, args...](const T& val) -> R { return (val.*memberFunc)(std::forward<Args>(args)...); };
     }
+
+    constexpr inline bool isPowerTwo(uint32_t val)
+    {
+        // https://en.wikipedia.org/wiki/Power_of_two#Fast_algorithm_to_check_if_a_positive_number_is_a_power_of_two
+        return val > 0 && (val & (val - 1)) == 0;
+    }
 } // namespace vc4c
 
 #endif /* HELPER_H */
