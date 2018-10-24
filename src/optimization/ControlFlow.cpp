@@ -906,10 +906,28 @@ void optimizations::extendBranches(const Module& module, Method& method, const C
             }
             // go to next instruction
             it.nextInBlock();
-            // insert 3 NOPs before
-            it.emplace(new intermediate::Nop(intermediate::DelayType::BRANCH_DELAY));
-            it.emplace(new intermediate::Nop(intermediate::DelayType::BRANCH_DELAY));
-            it.emplace(new intermediate::Nop(intermediate::DelayType::BRANCH_DELAY));
+
+            // insert nops if neccesary
+            // to do that, we need to check the next instruction and the next
+            auto walker = it;
+            auto counter = 3;
+            while(!walker.isEndOfBlock() && counter != 0)
+            {
+                // if we find a branch, insert all required nops
+                if(dynamic_cast<intermediate::Branch*>(walker.get()))
+                {
+                    for(; counter > 0; counter--)
+                        it.emplace(new intermediate::Nop(intermediate::DelayType::BRANCH_DELAY));
+                    break;
+                }
+
+                counter--;
+                walker.nextInBlock();
+            }
+
+            // if walker reaches the end of the block and nop is less then 3, insert here
+            for(; counter > 0; counter--)
+                it.emplace(new intermediate::Nop(intermediate::DelayType::BRANCH_DELAY));
         }
         else if(it.get() != nullptr && it->setFlags == SetFlag::SET_FLAGS)
         {
