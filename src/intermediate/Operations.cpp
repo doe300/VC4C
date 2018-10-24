@@ -174,7 +174,7 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
         // one of the values is a literal immediate
         if(input0.second || input1.second)
         {
-            SmallImmediate imm = input0.second.orOther(input1.second).value();
+            SmallImmediate imm = (input0.second ? input0.second : input1.second).value();
             Register regA = input0.second ? input1.first : input0.first;
             if(input0.second && input1.second)
             {

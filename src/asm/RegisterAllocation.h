@@ -68,8 +68,9 @@ namespace vc4c
             {RegisterFile::ACCUMULATOR, 32}, // ACC0
             {RegisterFile::ACCUMULATOR, 33}, // ACC1
             {RegisterFile::ACCUMULATOR, 34}, // ACC2
-            {RegisterFile::ACCUMULATOR, 35}  // ACC3
-            // ACC4 and ACC5 have special meanings
+            {RegisterFile::ACCUMULATOR, 35}, // ACC3
+            {RegisterFile::NONE, 255},       // ACC4 - NEVER USE!
+            {RegisterFile::ACCUMULATOR, 37}, // ACC5 - can be used is special circumstances
         };
     } // namespace qpu_asm
 } // namespace vc4c

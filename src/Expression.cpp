@@ -42,7 +42,7 @@ std::string Expression::to_string() const
 
 bool Expression::isMoveExpression() const
 {
-    return (code == OP_OR || code == OP_V8MAX || code == OP_V8MIN) && arg1.is(arg0);
+    return (code == OP_OR || code == OP_V8MAX || code == OP_V8MIN) && arg1 == arg0;
 }
 
 Optional<Value> Expression::getConstantExpression() const

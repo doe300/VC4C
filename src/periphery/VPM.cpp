@@ -384,9 +384,8 @@ static InstructionWalker calculateElementOffset(
     }
     else
     {
-        // e.g. 32-bit type, 4 byte offset -> shr by 2 (= division by 4)
-        elementOffset = assign(it, TYPE_INT32, "%vpm_element_offset") =
-            inAreaOffset >> Value(Literal(static_cast<int32_t>(std::log2(elementType.getPhysicalWidth()))), TYPE_INT8);
+        // e.g. 32-bit type, 4 byte offset -> division by 4
+        elementOffset = assign(it, TYPE_INT32, "%vpm_element_offset") = inAreaOffset / 4_lit;
     }
     return it;
 }

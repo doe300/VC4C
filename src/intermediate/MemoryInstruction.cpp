@@ -82,7 +82,7 @@ static void checkLocalValue(const Value& val)
 
 static void checkSingleValue(const Value& val)
 {
-    if(val.getLiteralValue().is(Literal(1u)))
+    if(val.getLiteralValue() == Literal(1u))
         return;
     throw CompilationError(CompilationStep::LLVM_2_IR, "Operand needs to the constant one", val.to_string());
 }

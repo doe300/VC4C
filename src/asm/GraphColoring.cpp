@@ -9,6 +9,7 @@
 #include "../Profiler.h"
 #include "../analysis/ControlFlowGraph.h"
 #include "../analysis/DebugGraph.h"
+#include "../intermediate/IntermediateInstruction.h"
 #include "RegisterAllocation.h"
 #include "log.h"
 
@@ -129,6 +130,13 @@ Register ColoredNodeBase::getRegisterFixed() const
 template <std::size_t size>
 static std::size_t fixToRegisterFile(std::bitset<size>& set)
 {
+    if(size == 6 /* accumulators */ && set.test(5))
+    {
+        // if possible, prefer the use of r5, to keep the other registers free for locals which cannot use r5
+        set.reset();
+        set.set(5);
+        return 5;
+    }
     for(std::size_t i = 0; i < set.size(); ++i)
     {
         if(set.test(i))
@@ -444,6 +452,11 @@ GraphColoring::GraphColoring(Method& method, InstructionWalker it) :
                 }
             });
         }
+        if(it.has() &&
+            (it->writesRegister(REG_REPLICATE_QUAD) || it->writesRegister(REG_REPLICATE_ALL) ||
+                it->writesRegister(REG_ACC5) || it->readsRegister(REG_REPLICATE_QUAD) ||
+                it->readsRegister(REG_REPLICATE_ALL) || it->readsRegister(REG_ACC5)))
+            isReplicationUsed = true;
         it.nextInMethod();
     }
 
@@ -472,6 +485,15 @@ void GraphColoring::createGraph()
         auto& node = graph.getOrCreateNode(pair.first);
         node.possibleFiles = pair.second.possibleFiles;
         node.initialFile = pair.second.possibleFiles;
+        if(isReplicationUsed ||
+            dynamic_cast<const intermediate::LoadImmediate*>(pair.first->getSingleWriter()) == nullptr ||
+            dynamic_cast<const intermediate::LoadImmediate*>(pair.first->getSingleWriter())->type !=
+                intermediate::LoadType::REPLICATE_INT32)
+            // XXX we could optimize on the check whether r5 is used anywhere and check whether it is used in the
+            // usage-range of the local, but this would require tracking all usage-ranges of r5 for replications.
+            // Since writing to r5 automatically replicates, we only use it for value we know to be the same across all
+            // SIMD elements
+            node.blockR5();
         if(pair.second.firstOccurrence.get() == pair.second.lastOccurrence.get())
         {
             CPPLOG_LAZY(

@@ -8,9 +8,10 @@
 #define VC4C_INSTRUCTION_OPERATORS_H
 
 #include "../asm/OpCodes.h"
+#include "../helper.h"
 #include "IntermediateInstruction.h"
 
-// TODO optimize for constant calculations
+#include <cmath>
 
 namespace vc4c
 {
@@ -163,6 +164,27 @@ namespace vc4c
                 arg2.type.getScalarBitCount() <= 24)
                 return OperationWrapper{OP_MUL24, arg1, arg2};
             throw CompilationError(CompilationStep::GENERAL, "Invalid operand types for multiplication");
+        }
+
+        inline OperationWrapper operator/(const Value& arg1, const Literal& arg2)
+        {
+            if(!arg1.type.isIntegralType())
+                throw CompilationError(CompilationStep::GENERAL, "Invalid operand type for division", arg1.to_string());
+            if(!isPowerTwo(arg2.unsignedInt()))
+                throw CompilationError(
+                    CompilationStep::GENERAL, "Can only insert division by constant powers of two", arg2.to_string());
+            return OperationWrapper{
+                OP_SHR, arg1, Value(Literal(static_cast<int32_t>(std::log2(arg2.unsignedInt()))), TYPE_INT8)};
+        }
+
+        inline OperationWrapper operator%(const Value& arg1, const Literal& arg2)
+        {
+            if(!arg1.type.isIntegralType())
+                throw CompilationError(CompilationStep::GENERAL, "Invalid operand type for division", arg1.to_string());
+            if(!isPowerTwo(arg2.unsignedInt()))
+                throw CompilationError(
+                    CompilationStep::GENERAL, "Can only insert division by constant powers of two", arg2.to_string());
+            return OperationWrapper{OP_AND, arg1, Value(Literal(arg2.unsignedInt() - 1), TYPE_INT8)};
         }
 
         inline OperationWrapper operator!(const Value& arg)

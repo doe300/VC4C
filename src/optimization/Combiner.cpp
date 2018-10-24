@@ -156,7 +156,7 @@ static const std::vector<MergeCondition> mergeConditions = {
             {
                 if(secondOp->getFirstArg() == outFirst)
                     return false;
-                else if(secondOp->getSecondArg().is(outFirst))
+                else if(secondOp->getSecondArg() == outFirst)
                     return false;
             }
             if(secondMove != nullptr)
@@ -477,9 +477,9 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                         if(!checkIt.isEndOfBlock() && checkIt.has<VectorRotation>())
                         {
                             const Value& src = checkIt.get<VectorRotation>()->getSource();
-                            if(instr->hasValueType(ValueType::LOCAL) && instr->getOutput().is(src))
+                            if(instr->hasValueType(ValueType::LOCAL) && instr->getOutput() == src)
                                 conditionsMet = false;
-                            if(nextInstr->hasValueType(ValueType::LOCAL) && nextInstr->getOutput().is(src))
+                            if(nextInstr->hasValueType(ValueType::LOCAL) && nextInstr->getOutput() == src)
                                 conditionsMet = false;
                         }
                         // the next instruction MUST NOT unpack a value written to in one of the combined instructions
@@ -927,7 +927,7 @@ InstructionWalker optimizations::combineArithmeticOperations(
     const auto& origArg = singleWriter->getArguments()[0].isLiteralValue() ? singleWriter->getArguments()[1] :
                                                                              singleWriter->getArguments()[0];
 
-    if(!op.isCommutative() && (!it->getArgument(0).is(localArg) || !singleWriter->getArgument(0).is(origArg)))
+    if(!op.isCommutative() && (it->getArgument(0) != localArg || singleWriter->getArgument(0) != origArg))
         // we cannot transform e.g. (a op b) op c to b op (a op c)
         return it;
 

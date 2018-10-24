@@ -48,16 +48,6 @@ namespace vc4c
             return has_value() ? **this : std::forward<const T>(defaultValue);
         }
 
-        bool is(const T& value) const
-        {
-            return has_value() && **this == value;
-        }
-
-        Optional<T> orOther(const Optional<T>& other) const
-        {
-            return has_value() ? **this : other;
-        }
-
         std::string to_string() const
         {
             return has_value() ? (*this)->to_string() : "-";
@@ -66,14 +56,6 @@ namespace vc4c
         bool ifPresent(const std::function<bool(const T&)>& predicate) const
         {
             return has_value() && predicate(**this);
-        }
-
-        template <typename R>
-        Optional<R> map(const std::function<R(const T&)>& mapper, const Optional<R>& defaultValue = {}) const
-        {
-            if(has_value())
-                return Optional<R>(mapper(**this));
-            return defaultValue;
         }
 
 #if __cplusplus < 201703L

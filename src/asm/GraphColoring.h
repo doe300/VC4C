@@ -81,13 +81,19 @@ namespace vc4c
 
             std::string to_string(bool longDescription = false) const;
 
+            inline void blockR5()
+            {
+                availableAcc.reset(5);
+            }
+
             RegisterFile initialFile;
             RegisterFile possibleFiles;
 
         private:
             std::bitset<32> availableA = 0xFFFFFFFFUL;
             std::bitset<32> availableB = 0xFFFFFFFFUL;
-            std::bitset<4> availableAcc = 0xFUL;
+            // r0 - r3 are GP accumulators, r5 is also available for uniform (across all SIMD elements) values
+            std::bitset<6> availableAcc = 0x02FUL;
         };
 
         using ColoredNode = Node<const Local*, LocalRelation, Directionality::UNDIRECTED, ColoredNodeBase>;
@@ -142,6 +148,7 @@ namespace vc4c
             FastSet<const Local*> openSet;
             std::unique_ptr<analysis::InterferenceGraph> interferenceGraph;
             FastMap<const Local*, LocalUsage> localUses;
+            bool isReplicationUsed = false;
 
             ColoredGraph graph;
             FastSet<const Local*> errorSet;

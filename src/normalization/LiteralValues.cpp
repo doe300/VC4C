@@ -823,7 +823,7 @@ static Optional<Value> findPreviousUseWithImmediate(
 
     while(instRemaining > 0 && !it.isStartOfBlock())
     {
-        if(it.has<intermediate::MoveOperation>() && it->getArgument(0).is(arg) && it->conditional == COND_ALWAYS &&
+        if(it.has<intermediate::MoveOperation>() && it->getArgument(0) == arg && it->conditional == COND_ALWAYS &&
             it->getOutput().ifPresent(
                 [](const Value& val) -> bool { return val.hasLocal() && val.local()->name.find(localPrefix) == 0; }))
         {

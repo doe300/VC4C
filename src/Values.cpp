@@ -547,15 +547,14 @@ bool Value::hasRegister(const Register& reg) const
 bool Value::hasLiteral(const Literal& lit) const
 {
     if(hasImmediate())
-        return immediate().getIntegerValue().is(lit.signedInt()) || immediate().getFloatingValue().is(lit.real());
+        return immediate().getIntegerValue() == lit.signedInt() || immediate().getFloatingValue() == lit.real();
     return hasLiteral() && this->literal() == lit;
 }
 
 bool Value::hasImmediate(const SmallImmediate& immediate) const
 {
     if(hasLiteral())
-        return immediate.getIntegerValue().is(literal().signedInt()) ||
-            immediate.getFloatingValue().is(literal().real());
+        return immediate.getIntegerValue() == literal().signedInt() || immediate.getFloatingValue() == literal().real();
     return hasImmediate() && this->immediate() == immediate;
 }
 

@@ -852,8 +852,8 @@ static InstructionWalker insertAddressToElementOffset(InstructionWalker it, Meth
     Value tmpIndex = UNDEFINED_VALUE;
     it = insertAddressToOffset(it, method, tmpIndex, baseAddress, mem);
     // the index (as per index calculation) is in bytes, but we need index in elements, so divide by element size
-    auto offset = static_cast<int32_t>(std::log2(container.type.getElementType().getPhysicalWidth()));
-    out = assign(it, TYPE_VOID.toPointerType(), "%element_offset") = tmpIndex >> Value(Literal(offset), TYPE_INT8);
+    out = assign(it, TYPE_VOID.toPointerType(), "%element_offset") =
+        tmpIndex / Literal(container.type.getElementType().getPhysicalWidth());
     return it;
 }
 

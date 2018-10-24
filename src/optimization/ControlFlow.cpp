@@ -684,7 +684,7 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
     intermediate::MoveOperation* move = dynamic_cast<intermediate::MoveOperation*>(loopControl.initialization);
     Optional<InstructionWalker> initialValueWalker;
     if(move != nullptr && move->getSource().hasLiteral(INT_ZERO.literal()) &&
-        loopControl.stepKind == StepKind::ADD_CONSTANT && loopControl.getStep().is(INT_ONE.literal()))
+        loopControl.stepKind == StepKind::ADD_CONSTANT && loopControl.getStep() == INT_ONE.literal())
     {
         // special/default case: initial value is zero and step is +1
         move->setSource(ELEMENT_NUMBER_REGISTER);
@@ -692,7 +692,7 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
         logging::debug() << "Changed initial value: " << loopControl.initialization->to_string() << logging::endl;
     }
     else if(move != nullptr && move->getSource().getLiteralValue() && loopControl.stepKind == StepKind::ADD_CONSTANT &&
-        loopControl.getStep().is(INT_ONE.literal()) &&
+        loopControl.getStep() == INT_ONE.literal() &&
         (initialValueWalker = findWalker(loop.findPredecessor(), move)).has_value())
     {
         // more general case: initial value is a literal and step is +1

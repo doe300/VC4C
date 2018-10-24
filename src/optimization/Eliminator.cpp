@@ -136,8 +136,7 @@ InstructionWalker optimizations::simplifyOperation(
             const Optional<Value> secondArg =
                 (op->getSecondArg() && op->assertArgument(1).getSingleWriter() != nullptr ?
                         op->assertArgument(1).getSingleWriter()->precalculate(3) :
-                        NO_VALUE)
-                    .orOther(op->getSecondArg());
+                        op->getSecondArg());
 
             Optional<Value> rightIdentity = OpCode::getRightIdentity(op->op);
             Optional<Value> leftIdentity = OpCode::getLeftIdentity(op->op);
@@ -262,7 +261,7 @@ InstructionWalker optimizations::foldConstants(
         // calculations with literals can be pre-calculated
         if(op->getFirstArg().getLiteralValue() && (!op->getSecondArg() || op->assertArgument(1).getLiteralValue()))
         {
-            if(op->conditional != COND_ALWAYS && op->op == OP_XOR && op->getSecondArg().is(op->getFirstArg()))
+            if(op->conditional != COND_ALWAYS && op->op == OP_XOR && op->getSecondArg() == op->getFirstArg())
             {
                 // skip "xor ?, true, true", so it can be optimized (combined with "move ?, true") afterwards
                 // also skip any "xor ?, val, val", since they are created on purpose (by combineSelectionWithZero to
