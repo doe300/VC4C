@@ -84,6 +84,12 @@ namespace vc4c
 #endif
     };
 
+    template <typename R>
+    Optional<R> make_optional(const R& value)
+    {
+        return Optional<R>(value);
+    }
+
     /*
      * Helper basis type to assert a type not being copyable
      */
