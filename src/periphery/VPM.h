@@ -589,12 +589,12 @@ namespace vc4c
          * Inserts a read from the memory located at addr into the value dest
          */
         NODISCARD InstructionWalker insertReadDMA(
-            Method& method, InstructionWalker it, const Value& dest, const Value& addr, const bool useMutex = true);
+            Method& method, InstructionWalker it, const Value& dest, const Value& addr, const bool useMutex = false);
         /*
          * Inserts write from the value src into the memory located at addr
          */
         NODISCARD InstructionWalker insertWriteDMA(
-            Method& method, InstructionWalker it, const Value& src, const Value& addr, const bool useMutex = true);
+            Method& method, InstructionWalker it, const Value& src, const Value& addr, const bool useMutex = false);
 
         /*
          * Tries to find a combination of a vector of an integer-type and a number of vectors to match the given size in
@@ -660,6 +660,14 @@ namespace vc4c
              * is lowered into VPM).
              */
             const Local* originalAddress;
+            /*
+             * Whether data in this area is packed.
+             *
+             * If this flag is set, all space in this VPM area is assumed to be used, making it a "continuous" cache
+             * space. This applies e.g. for memory of vector-types with 16 elements (filling the whole row) as well as
+             * any memory location not accessed by the QPU at all (no need to pad up to 16-element vectors).
+             */
+            const bool isContinuous;
 
             void checkAreaSize(unsigned requestedSize) const;
 
@@ -694,6 +702,8 @@ namespace vc4c
              * When writing into VPM, a QPU always writes vectors of 16 elements. Since the DMA configuration cannot set
              * a stride of less than a row, we would not be able to transfer the second, third, etc. value without
              * copying all the junk of the remaining (unset) vector-elements of the previous values.
+             *
+             * TODO is this true at all? What about DMA write stride setup "Blockmode" bit? And DAM read setup "VPitch"?
              */
             bool canBeAccessedViaDMA() const;
 
@@ -715,27 +725,27 @@ namespace vc4c
 
             /*
              * Generates a VPM-to-RAM DMA write setup for storing the contents of the VPM area into RAM with the given
-             * element-type and number of values of the given type.
+             * element-type and number of rows of the given type.
              *
              * If the data-type is set to unknown, the element-type of the local associated with this area is used
              */
-            VPWDMASetup toWriteDMASetup(const DataType& elementType, uint8_t numValues = 1) const;
+            VPWDMASetup toWriteDMASetup(const DataType& elementType, uint8_t numRows = 1) const;
 
             /*
              * Generates a VPM-to-QPU read setup for accessing the base-address of this VPM area for the given number of
-             * elements of the given data-type.
+             * rows of the given data-type.
              *
              * If the data-type is set to unknown, the default element-type of this area is used
              */
-            VPRGenericSetup toReadSetup(const DataType& elementType, uint8_t numValues = 1) const;
+            VPRGenericSetup toReadSetup(const DataType& elementType, uint8_t numRows = 1) const;
 
             /*
              * Generates a RAM-to-VPM DMA read setup for loading the contents of a memory address into this VPM area
-             * given the element-type and numbr of values of the given type.
+             * given the element-type and number of rows of the given type.
              *
              * If the data-type is set to unknown, the default element-type of this area is used
              */
-            VPRDMASetup toReadDMASetup(const DataType& elementType, uint8_t numValues = 1) const;
+            VPRDMASetup toReadDMASetup(const DataType& elementType, uint8_t numRows = 1) const;
 
             std::string to_string() const;
         };
@@ -778,37 +788,38 @@ namespace vc4c
              * NOTE: the inAreaOffset is the offset in bytes
              */
             NODISCARD InstructionWalker insertReadVPM(Method& method, InstructionWalker it, const Value& dest,
-                const VPMArea* area = nullptr, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
+                const VPMArea* area = nullptr, bool useMutex = false, const Value& inAreaOffset = INT_ZERO);
+
             /*
              * Inserts a write from a QPU register into VPM
              *
              * NOTE: the inAreaOffset is the offset in bytes
              */
             NODISCARD InstructionWalker insertWriteVPM(Method& method, InstructionWalker it, const Value& src,
-                const VPMArea* area = nullptr, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
+                const VPMArea* area = nullptr, bool useMutex = false, const Value& inAreaOffset = INT_ZERO);
 
             /*
              * Inserts a read from RAM into VPM via DMA
              */
             NODISCARD InstructionWalker insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
-                const DataType& type, const VPMArea* area = nullptr, bool useMutex = true,
-                const Value& inAreaOffset = INT_ZERO);
+                const DataType& type, const VPMArea* area = nullptr, bool useMutex = false,
+                const Value& inAreaOffset = INT_ZERO, const Value& numEntries = INT_ONE);
             /*
              * Inserts a write from VPM into RAM via DMA
              */
             NODISCARD InstructionWalker insertWriteRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
-                const DataType& type, const VPMArea* area = nullptr, bool useMutex = true,
-                const Value& inAreaOffset = INT_ZERO);
+                const DataType& type, const VPMArea* area = nullptr, bool useMutex = false,
+                const Value& inAreaOffset = INT_ZERO, const Value& numEntries = INT_ONE);
             /*
              * Inserts a copy from RAM via DMA and VPM into RAM
              */
             NODISCARD InstructionWalker insertCopyRAM(Method& method, InstructionWalker it, const Value& destAddress,
-                const Value& srcAddress, unsigned numBytes, const VPMArea* area = nullptr, bool useMutex = true);
+                const Value& srcAddress, unsigned numBytes, const VPMArea* area = nullptr, bool useMutex = false);
             /*
              * Inserts a filling of a memory-area with a single value from VPM
              */
             NODISCARD InstructionWalker insertFillRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
-                const DataType& type, unsigned numCopies, const VPMArea* area = nullptr, bool useMutex = true);
+                const DataType& type, unsigned numCopies, const VPMArea* area = nullptr, bool useMutex = false);
 
             /*
              * Updates the maximum size used by the scratch area.
@@ -822,6 +833,11 @@ namespace vc4c
              * to correctly determine the amount of VPM cache required to store the data.
              */
             static DataType getVPMStorageType(const DataType& type);
+
+            /*
+             * Prints the currently configured usage of the VPM (areas and types) to the log output
+             */
+            void dumpUsage() const;
 
         private:
             const unsigned maximumVPMSize;
@@ -877,8 +893,8 @@ namespace vc4c
         /*
          * Returns the instruction related to the current VPM access of the instruction given.
          *
-         * This function looks within the same mutex-lock block at the preceding and following instructions to find
-         * the instructions required for the given VPM access.
+         * This function looks within the same mutex-lock block (if any) at the preceding and following instructions to
+         * find the instructions required for the given VPM access.
          */
         VPMInstructions findRelatedVPMInstructions(InstructionWalker anyVPMInstruction, bool isVPMRead);
     } // namespace periphery

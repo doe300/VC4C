@@ -10,7 +10,9 @@
 #include "../intermediate/operators.h"
 #include "log.h"
 
+#include <algorithm>
 #include <cmath>
+#include <iomanip>
 
 using namespace vc4c;
 using namespace vc4c::periphery;
@@ -374,19 +376,11 @@ static uint8_t calculateQPUSideAddress(const DataType& type, unsigned char rowIn
 static NODISCARD InstructionWalker calculateElementOffset(
     Method& method, InstructionWalker it, const DataType& elementType, const Value& inAreaOffset, Value& elementOffset)
 {
-    if(inAreaOffset.getLiteralValue())
-    {
-        // e.g. 32-bit type, 4 byte offset -> 1 32-bit vector offset
-        // e.g. byte4 type, 4 byte offset -> 1 byte-vector offset
-        // e.g. half-word8 type, 32 byte offset -> 2 half-word vector offset
-        elementOffset = Value(
-            Literal(inAreaOffset.getLiteralValue()->signedInt() / elementType.getPhysicalWidth()), inAreaOffset.type);
-    }
-    else
-    {
-        // e.g. 32-bit type, 4 byte offset -> division by 4
-        elementOffset = assign(it, TYPE_INT32, "%vpm_element_offset") = inAreaOffset / 4_lit;
-    }
+    // e.g. 32-bit type, 4 byte offset -> 1 32-bit element offset
+    // e.g. byte4 type, 4 byte offset -> 1 byte element offset
+    // e.g. half-word8 type, 32 byte offset -> 2 half-word element offset
+    elementOffset = assign(it, TYPE_INT16, "%vpm_element_offset") =
+        inAreaOffset / Literal(elementType.getPhysicalWidth());
     return it;
 }
 
@@ -467,7 +461,7 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
 }
 
 InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
-    const DataType& type, const VPMArea* area, bool useMutex, const Value& inAreaOffset)
+    const DataType& type, const VPMArea* area, bool useMutex, const Value& inAreaOffset, const Value& numEntries)
 {
     if(area != nullptr)
         area->checkAreaSize(getVPMStorageType(type).getPhysicalWidth());
@@ -487,20 +481,20 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
                 memoryAddress.local()->reference.first->as<Parameter>()->decorations, ParameterDecorations::INPUT);
     }
 
+    auto rowCount = numEntries.getLiteralValue() ? numEntries.getLiteralValue()->unsignedInt() : 0;
+    if(rowCount > std::numeric_limits<uint8_t>::max())
+        throw CompilationError(CompilationStep::GENERAL, "Cannot read more than 16 entries at a time from RAM via DMA",
+            numEntries.to_string());
+
     it = insertLockMutex(it, useMutex);
     // for some additional information, see
     // http://maazl.de/project/vc4asm/doc/VideoCoreIV-addendum.html
 
     // initialize VPM DMA for reading from host
     const VPMArea& realArea = area != nullptr ? *area : getScratchArea();
-    const VPRSetup dmaSetup(realArea.toReadDMASetup(type));
-    if(inAreaOffset == INT_ZERO)
-    {
-        it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(dmaSetup.value)));
-        it->addDecorations(InstructionDecorations::VPM_READ_CONFIGURATION);
-        it.nextInBlock();
-    }
-    else
+    const VPRSetup dmaSetup(realArea.toReadDMASetup(type, static_cast<uint8_t>(rowCount)));
+    Value dmaSetupBits(Literal(dmaSetup.value), TYPE_INT32);
+    if(inAreaOffset != INT_ZERO)
     {
         // this is the offset in byte -> calculate the offset in elements of destination-type
 
@@ -508,10 +502,29 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
         Value elementOffset = UNDEFINED_VALUE;
         it = calculateElementOffset(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset);
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
+        if(!realArea.canBePackedIntoRow())
+            // need to modify offset to point to next row, not next element in same row
+            elementOffset = assign(it, TYPE_INT32, "%vpm_row_offset") = elementOffset << 4_val;
         // 3) write setup with dynamic address
-        assign(it, VPM_IN_SETUP_REGISTER) = (Value(Literal(dmaSetup.value), TYPE_INT32) + elementOffset,
-            InstructionDecorations::VPM_READ_CONFIGURATION);
+        dmaSetupBits = assign(it, TYPE_INT32, "%vpr_setup") =
+            (dmaSetupBits + elementOffset, InstructionDecorations::VPM_READ_CONFIGURATION);
     }
+
+    if(!numEntries.getLiteralValue())
+    {
+        // we need to dynamically set the number of elements to be read
+
+        // TODO this assumes 1 row = 1 entry, is this always correct?
+
+        // only 0-15 is supported, where value of 0 means 16 rows
+        // TODO this calculation treats a source of 0 or any multiple of 16 as 16 (and truncates all the higher counts)
+        auto numRows = assign(it, TYPE_INT8, "%vpr_setup_rows") = numEntries & 0xF_val;
+        auto numRowsShifted = assign(it, TYPE_INT8, "%vpr_setup_rows") = numRows << 16_val;
+        dmaSetupBits = assign(it, TYPE_INT32, "%vpr_setup") = dmaSetupBits + numRowsShifted;
+    }
+
+    assign(it, VPM_IN_SETUP_REGISTER) = (dmaSetupBits, InstructionDecorations::VPM_READ_CONFIGURATION);
+
     const VPRSetup strideSetup(VPRStrideSetup(0));
     it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(strideSetup.value)));
     it->addDecorations(InstructionDecorations::VPM_READ_CONFIGURATION);
@@ -529,13 +542,22 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
 }
 
 InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
-    const DataType& type, const VPMArea* area, bool useMutex, const Value& inAreaOffset)
+    const DataType& type, const VPMArea* area, bool useMutex, const Value& inAreaOffset, const Value& numEntries)
 {
     if(area != nullptr)
         area->checkAreaSize(getVPMStorageType(type).getPhysicalWidth());
     else
         // a single vector can only use a maximum of 1 row
         updateScratchSize(1);
+
+    // TODO is the calculation of the size to copy correct? We are mixing different types (e.g. byte from memory
+    // instruction, consecutive memory area) with type for VPM area (rows which might not be filled completely). Same
+    // for reading RAM!
+
+    auto rowCount = numEntries.getLiteralValue() ? numEntries.getLiteralValue()->unsignedInt() : 0;
+    if(rowCount > std::numeric_limits<uint8_t>::max())
+        throw CompilationError(CompilationStep::GENERAL,
+            "Cannot write more than 128 entries at a time into RAM via DMA", numEntries.to_string());
 
     if(memoryAddress.hasLocal() && memoryAddress.local() != nullptr)
     {
@@ -553,26 +575,42 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
 
     // initialize VPM DMA for writing to host
     const VPMArea& realArea = area != nullptr ? *area : getScratchArea();
-    const VPWSetup dmaSetup(realArea.toWriteDMASetup(type));
-    if(inAreaOffset == INT_ZERO)
-    {
-        it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(dmaSetup.value)));
-        it->addDecorations(InstructionDecorations::VPM_WRITE_CONFIGURATION);
-        it.nextInBlock();
-    }
-    else
+    const VPWSetup dmaSetup(realArea.toWriteDMASetup(type, static_cast<uint8_t>(rowCount)));
+    Value dmaSetupBits(Literal(dmaSetup.value), TYPE_INT32);
+    if(inAreaOffset != INT_ZERO)
     {
         // this is the offset in byte -> calculate the offset in elements of destination-type
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffset(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset);
+        it = calculateElementOffset(
+            method, it, memoryAddress.type.getElementType().getElementType(), inAreaOffset, elementOffset);
         // 2) dynamically calculate new VPM address from base and offset (shift and add offset to setup-value)
+        if(!realArea.canBePackedIntoRow())
+            // need to modify offset to point to next row, not next element in same row
+            elementOffset = assign(it, TYPE_INT32, "%vpm_row_offset") = elementOffset << 4_val;
         Value shiftedOffset = assign(it, TYPE_INT32) = elementOffset << 3_val;
         // 3) write setup with dynamic address
-        assign(it, VPM_OUT_SETUP_REGISTER) = (Value(Literal(dmaSetup.value), TYPE_INT32) + shiftedOffset,
-            InstructionDecorations::VPM_WRITE_CONFIGURATION);
+        dmaSetupBits = assign(it, TYPE_INT32, "%vpw_setup") =
+            (Value(Literal(dmaSetup.value), TYPE_INT32) + shiftedOffset,
+                InstructionDecorations::VPM_WRITE_CONFIGURATION);
     }
+
+    if(!numEntries.getLiteralValue())
+    {
+        // we need to dynamically set the number of elements to be written
+
+        // TODO this assumes 1 row = 1 entry, is this always correct?
+
+        // only 0-128 is supported, where value of 0 means 128 rows
+        // TODO this calculation treats a source of 0 or any multiple of 128 as 128 (and truncates all the higher
+        // counts)
+        auto numRows = assign(it, TYPE_INT8, "%vpw_setup_rows") = numEntries & 0x7F_val;
+        auto numRowsShifted = assign(it, TYPE_INT8, "%vpw_setup_rows") = numRows << 23_val;
+        dmaSetupBits = assign(it, TYPE_INT32, "%vpw_setup") = dmaSetupBits + numRowsShifted;
+    }
+
+    assign(it, VPM_OUT_SETUP_REGISTER) = (dmaSetupBits, InstructionDecorations::VPM_WRITE_CONFIGURATION);
     // set stride to zero
     const VPWSetup strideSetup(VPWStrideSetup(0));
     it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(strideSetup.value)));
@@ -593,6 +631,10 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
 InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const Value& destAddress,
     const Value& srcAddress, const unsigned numBytes, const VPMArea* area, bool useMutex)
 {
+    // TODO copying from/to RAM can use VPM area not accessible from QPU!!
+    // With area per QPU, so they can copy unsynchronized
+    // TODO test on py-videocore beforehand that access of upper VPM area works!
+
     const auto size = getBestVectorSize(numBytes);
     if(area != nullptr)
         area->checkAreaSize(size.first.getPhysicalWidth());
@@ -703,7 +745,8 @@ bool VPMArea::canBeAccessedViaDMA() const
 
 bool VPMArea::canBePackedIntoRow() const
 {
-    return !canBeAccessedViaDMA() || getElementType().getVectorWidth() == NATIVE_VECTOR_SIZE;
+    // TODO proper calculation (or pass in constructor!)
+    return /*!canBeAccessedViaDMA() ||*/ getElementType().getVectorWidth() == NATIVE_VECTOR_SIZE;
 }
 
 VPWGenericSetup VPMArea::toWriteSetup(const DataType& elementType) const
@@ -722,7 +765,7 @@ VPWGenericSetup VPMArea::toWriteSetup(const DataType& elementType) const
     return setup;
 }
 
-VPWDMASetup VPMArea::toWriteDMASetup(const DataType& elementType, uint8_t numValues) const
+VPWDMASetup VPMArea::toWriteDMASetup(const DataType& elementType, uint8_t numRows) const
 {
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.getScalarBitCount() > 32)
@@ -731,15 +774,18 @@ VPWDMASetup VPMArea::toWriteDMASetup(const DataType& elementType, uint8_t numVal
     if(type.isUnknown())
         throw CompilationError(
             CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
+    if(numRows > 128)
+        throw CompilationError(CompilationStep::GENERAL, "Cannot write more than 128 rows via DMA from VPW at a time");
 
     // by "default", one value per row, so we need to store the number of values as number of rows
     uint8_t rowDepth = type.getVectorWidth(true);
-    uint8_t numRows = numValues;
+
     if(canBePackedIntoRow())
     {
+        // TODO is this still valid?
         // if we have the row packed, we need to calculate the row-width from the maximum row-width and the number of
         // elements
-        const unsigned totalNumElements = type.getVectorWidth(true) * numValues;
+        const unsigned totalNumElements = type.getVectorWidth(true) * numRows;
         const uint8_t elementsPerRow = getElementsInRow(type);
         if((totalNumElements > elementsPerRow) && (totalNumElements % elementsPerRow != 0))
             throw CompilationError(CompilationStep::GENERAL,
@@ -763,7 +809,7 @@ VPWDMASetup VPMArea::toWriteDMASetup(const DataType& elementType, uint8_t numVal
     return setup;
 }
 
-VPRGenericSetup VPMArea::toReadSetup(const DataType& elementType, uint8_t numValues) const
+VPRGenericSetup VPMArea::toReadSetup(const DataType& elementType, uint8_t numRows) const
 {
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.isUnknown())
@@ -773,13 +819,13 @@ VPRGenericSetup VPMArea::toReadSetup(const DataType& elementType, uint8_t numVal
     // if we can pack into a single row, do so. Otherwise set stride to beginning of next row
     const uint8_t stride =
         canBePackedIntoRow() ? 1 : static_cast<uint8_t>(TYPE_INT32.getScalarBitCount() / type.getScalarBitCount());
-    VPRGenericSetup setup(getVPMSize(type), stride, numValues, calculateQPUSideAddress(type, rowOffset, 0));
+    VPRGenericSetup setup(getVPMSize(type), stride, numRows, calculateQPUSideAddress(type, rowOffset, 0));
     setup.setHorizontal(IS_HORIZONTAL);
     setup.setLaned(!IS_PACKED);
     return setup;
 }
 
-VPRDMASetup VPMArea::toReadDMASetup(const DataType& elementType, uint8_t numValues) const
+VPRDMASetup VPMArea::toReadDMASetup(const DataType& elementType, uint8_t numRows) const
 {
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.getScalarBitCount() > 32)
@@ -788,14 +834,14 @@ VPRDMASetup VPMArea::toReadDMASetup(const DataType& elementType, uint8_t numValu
     if(type.isUnknown())
         throw CompilationError(
             CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
-    if(numValues > 16)
+    if(numRows > 16)
         throw CompilationError(CompilationStep::GENERAL, "Cannot read more than 16 rows via DMA into VPW at a time",
-            std::to_string(numValues));
+            std::to_string(numRows));
 
     // If the data is packed, have a pitch of 1 unit (e.g. 1 byte/half-word/word offset depending on type)
     // otherwise, always jump to the next row
     const uint8_t vpmPitch = canBePackedIntoRow() ? 1 : TYPE_INT32.getScalarBitCount() / type.getScalarBitCount();
-    VPRDMASetup setup(getVPMDMAMode(type), type.getVectorWidth(true) % 16 /* 0 => 16 */, numValues % 16 /* 0 => 16 */,
+    VPRDMASetup setup(getVPMDMAMode(type), type.getVectorWidth(true) % 16 /* 0 => 16 */, numRows % 16 /* 0 => 16 */,
         vpmPitch % 16 /* 0 => 16 */);
     setup.setWordRow(rowOffset);
     setup.setVertical(!IS_HORIZONTAL);
@@ -1074,4 +1120,62 @@ DataType VPM::getVPMStorageType(const DataType& type)
         // e.g. char3 -> char16
         inVPMType = type.toVectorType(16);
     return inVPMType;
+}
+
+static void writeArea(std::wostream& s, const std::string& name, unsigned width)
+{
+    auto sub = name.substr(0, width - 1) + "|";
+    s << std::setw(width) << sub;
+}
+
+void VPM::dumpUsage() const
+{
+    static const unsigned outputWidth = 128;
+
+    logging::debug() << "VPM usage: "
+                     << std::accumulate(areas.begin(), areas.end(), 0u,
+                            [](unsigned sum, const std::shared_ptr<VPMArea>& area) -> unsigned {
+                                return sum + (area != nullptr);
+                            })
+                     << " of " << VPM_NUM_ROWS << " rows:" << logging::endl;
+
+    std::shared_ptr<VPMArea> lastArea;
+    unsigned numEmpty = 0;
+    auto& stream = logging::debug() << "|";
+    for(const auto& area : areas)
+    {
+        if(area == lastArea)
+            continue;
+        if(!area)
+        {
+            ++numEmpty;
+            continue;
+        }
+        if(numEmpty > 0)
+        {
+            writeArea(stream, "", (numEmpty * outputWidth) / VPM_NUM_ROWS);
+            numEmpty = 0;
+        }
+        lastArea = area;
+        std::string name;
+        switch(area->usageType)
+        {
+        case VPMUsage::SCRATCH:
+            name = "scratch";
+            break;
+        case VPMUsage::LOCAL_MEMORY:
+            name = area->originalAddress ? area->originalAddress->name : "local";
+            break;
+        case VPMUsage::REGISTER_SPILLING:
+            name = "spilling";
+            break;
+        case VPMUsage::STACK:
+            name = "stack";
+            break;
+        }
+        writeArea(stream, name, (area->numRows * outputWidth) / VPM_NUM_ROWS);
+    }
+    if(numEmpty > 0)
+        writeArea(stream, "", (numEmpty * outputWidth) / VPM_NUM_ROWS);
+    stream << logging::endl;
 }

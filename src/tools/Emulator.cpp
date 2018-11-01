@@ -194,15 +194,15 @@ void Registers::writeRegister(Register reg, const Value& val, std::bitset<16> el
     else if(reg.num == REG_UNIFORM_ADDRESS.num)
         qpu.uniforms.setUniformAddress(getActualValue(modifiedValue));
     else if(reg.num == REG_VPM_IO.num)
-        qpu.vpm.writeValue(getActualValue(modifiedValue));
+        qpu.vpm.writeValue(qpu.ID, getActualValue(modifiedValue));
     else if(reg == REG_VPM_IN_SETUP)
-        qpu.vpm.setReadSetup(getActualValue(modifiedValue));
+        qpu.vpm.setReadSetup(qpu.ID, getActualValue(modifiedValue));
     else if(reg == REG_VPM_OUT_SETUP)
-        qpu.vpm.setWriteSetup(getActualValue(modifiedValue));
+        qpu.vpm.setWriteSetup(qpu.ID, getActualValue(modifiedValue));
     else if(reg == REG_VPM_DMA_LOAD_ADDR)
-        qpu.vpm.setDMAReadAddress(getActualValue(modifiedValue));
+        qpu.vpm.setDMAReadAddress(qpu.ID, getActualValue(modifiedValue));
     else if(reg == REG_VPM_DMA_STORE_ADDR)
-        qpu.vpm.setDMAWriteAddress(getActualValue(modifiedValue));
+        qpu.vpm.setDMAWriteAddress(qpu.ID, getActualValue(modifiedValue));
     else if(reg.num == REG_MUTEX.num)
         qpu.mutex.unlock(qpu.ID);
     else if(reg.num == REG_SFU_RECIP.num)
@@ -270,13 +270,13 @@ std::pair<Value, bool> Registers::readRegister(Register reg)
     if(reg.num == REG_VPM_IO.num)
     {
         if(readCache.find(REG_VPM_IO) == readCache.end())
-            setReadCache(REG_VPM_IO, qpu.vpm.readValue());
+            setReadCache(REG_VPM_IO, qpu.vpm.readValue(qpu.ID));
         return std::make_pair(readCache.at(REG_VPM_IO), true);
     }
     if(reg == REG_VPM_DMA_LOAD_WAIT)
-        return std::make_pair(UNDEFINED_VALUE, qpu.vpm.waitDMARead());
+        return std::make_pair(UNDEFINED_VALUE, qpu.vpm.waitDMARead(qpu.ID));
     if(reg == REG_VPM_DMA_STORE_WAIT)
-        return std::make_pair(UNDEFINED_VALUE, qpu.vpm.waitDMAWrite());
+        return std::make_pair(UNDEFINED_VALUE, qpu.vpm.waitDMAWrite(qpu.ID));
     if(reg.num == REG_MUTEX.num)
     {
         if(readCache.find(REG_MUTEX) == readCache.end())
@@ -444,19 +444,36 @@ std::pair<Value, bool> TMUs::readTMU()
 
     // need to select the first triggered read in both queues
     std::queue<std::pair<Value, uint32_t>>* queue = nullptr;
+    bool tmuFlag = false;
     if(!tmu0ResponseQueue.empty())
+    {
         queue = &tmu0ResponseQueue;
+        tmuFlag = false;
+    }
     if(!tmu1ResponseQueue.empty())
     {
         if(queue == nullptr)
+        {
             queue = &tmu1ResponseQueue;
+            tmuFlag = true;
+        }
         else if(tmu1ResponseQueue.front().second < queue->front().second)
+        {
             queue = &tmu1ResponseQueue;
+            tmuFlag = true;
+        }
     }
 
     auto front = queue->front();
     queue->pop();
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 68, "TMU read", 1);
+    if(!tmuFlag)
+    {
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 68, "TMU0 read", 1);
+    }
+    else
+    {
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 69, "TMU1 read", 1);
+    }
     return std::make_pair(front.first, true);
 }
 
@@ -521,7 +538,16 @@ bool TMUs::triggerTMURead(uint8_t tmu)
         throw CompilationError(CompilationStep::GENERAL, "TMU response queue is full!");
 
     auto val = requestQueue.front();
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 65, "TMU read trigger", val.second + 9 <= qpu.getCurrentCycle());
+    if(tmu == 0)
+    {
+        PROFILE_COUNTER(
+            vc4c::profiler::COUNTER_EMULATOR + 65, "TMU0 read trigger", val.second + 9 <= qpu.getCurrentCycle());
+    }
+    else
+    {
+        PROFILE_COUNTER(
+            vc4c::profiler::COUNTER_EMULATOR + 66, "TMU1 read trigger", val.second + 9 <= qpu.getCurrentCycle());
+    }
     if(val.second + 9 > qpu.getCurrentCycle())
         // block for at least 9 cycles
         return false;
@@ -664,9 +690,9 @@ static std::pair<uint32_t, uint32_t> toStride(T setup)
     throw CompilationError(CompilationStep::GENERAL, "Unhandled VPM type-size", std::to_string(setup.getSize()));
 }
 
-Value VPM::readValue()
+Value VPM::readValue(unsigned char qpu)
 {
-    periphery::VPRSetup setup = periphery::VPRSetup::fromLiteral(vpmReadSetup);
+    periphery::VPRSetup setup = periphery::VPRSetup::fromLiteral(vpmReadSetup[qpu]);
 
     if(setup.value == 0)
         logging::warn() << "VPM generic setup was not previously set: " << setup.to_string() << logging::endl;
@@ -718,7 +744,7 @@ Value VPM::readValue()
     setup.genericSetup.setAddress(
         static_cast<uint8_t>(setup.genericSetup.getAddress() + setup.genericSetup.getStride()));
     setup.genericSetup.setNumber(static_cast<uint8_t>((16 + setup.genericSetup.getNumber() - 1) % 16));
-    vpmReadSetup = setup.value;
+    vpmReadSetup[qpu] = setup.value;
 
     logging::debug() << "Read value from VPM: " << result.to_string(false, true) << logging::endl;
     logging::debug() << "New read setup is now: " << setup.to_string() << logging::endl;
@@ -727,9 +753,9 @@ Value VPM::readValue()
     return result;
 }
 
-void VPM::writeValue(const Value& val)
+void VPM::writeValue(unsigned char qpu, const Value& val)
 {
-    periphery::VPWSetup setup = periphery::VPWSetup::fromLiteral(vpmWriteSetup);
+    periphery::VPWSetup setup = periphery::VPWSetup::fromLiteral(vpmWriteSetup[qpu]);
 
     if(setup.value == 0)
         logging::warn() << "VPM generic setup was not previously set: " << setup.to_string() << logging::endl;
@@ -787,55 +813,55 @@ void VPM::writeValue(const Value& val)
 
     setup.genericSetup.setAddress(
         static_cast<uint8_t>(setup.genericSetup.getAddress() + setup.genericSetup.getStride()));
-    vpmWriteSetup = setup.value;
+    vpmWriteSetup[qpu] = setup.value;
 
     logging::debug() << "Wrote value into VPM: " << val.to_string(true, true) << logging::endl;
     logging::debug() << "New write setup is now: " << setup.to_string() << logging::endl;
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 90, "VPM written", 1);
 }
 
-void VPM::setWriteSetup(const Value& val)
+void VPM::setWriteSetup(unsigned char qpu, const Value& val)
 {
     const Value& element0 = val.hasContainer() ? val.container().elements[0] : val;
     if(element0.isUndefined())
         throw CompilationError(CompilationStep::GENERAL, "Undefined VPM setup value", val.to_string());
     periphery::VPWSetup setup = periphery::VPWSetup::fromLiteral(element0.getLiteralValue()->unsignedInt());
     if(setup.isDMASetup())
-        dmaWriteSetup = setup.value;
+        dmaWriteSetup[qpu] = setup.value;
     else if(setup.isGenericSetup())
-        vpmWriteSetup = setup.value;
+        vpmWriteSetup[qpu] = setup.value;
     else if(setup.isStrideSetup())
-        writeStrideSetup = setup.value;
+        writeStrideSetup[qpu] = setup.value;
     else
         logging::warn() << "Writing unknown VPM write setup: " << element0.getLiteralValue()->unsignedInt()
                         << logging::endl;
     logging::debug() << "Set VPM write setup: " << setup.to_string() << logging::endl;
 }
 
-void VPM::setReadSetup(const Value& val)
+void VPM::setReadSetup(unsigned char qpu, const Value& val)
 {
     const Value& element0 = val.hasContainer() ? val.container().elements[0] : val;
     if(element0.isUndefined())
         throw CompilationError(CompilationStep::GENERAL, "Undefined VPM setup value", val.to_string());
     periphery::VPRSetup setup = periphery::VPRSetup::fromLiteral(element0.getLiteralValue()->unsignedInt());
     if(setup.isDMASetup())
-        dmaReadSetup = setup.value;
+        dmaReadSetup[qpu] = setup.value;
     else if(setup.isGenericSetup())
-        vpmReadSetup = setup.value;
+        vpmReadSetup[qpu] = setup.value;
     else if(setup.isStrideSetup())
-        readStrideSetup = setup.value;
+        readStrideSetup[qpu] = setup.value;
     else
         logging::warn() << "Writing unknown VPM read setup: " << element0.getLiteralValue()->unsignedInt()
                         << logging::endl;
     logging::debug() << "Set VPM read setup: " << setup.to_string() << logging::endl;
 }
 
-void VPM::setDMAWriteAddress(const Value& val)
+void VPM::setDMAWriteAddress(unsigned char qpu, const Value& val)
 {
     const Value& element0 = val.hasContainer() ? val.container().elements[0] : val;
     if(element0.isUndefined())
         throw CompilationError(CompilationStep::GENERAL, "Undefined DMA setup value", val.to_string());
-    periphery::VPWSetup setup = periphery::VPWSetup::fromLiteral(dmaWriteSetup);
+    periphery::VPWSetup setup = periphery::VPWSetup::fromLiteral(dmaWriteSetup[qpu]);
 
     if(setup.value == 0)
         logging::warn() << "VPM DMA write setup was not previously set: " << setup.to_string() << logging::endl;
@@ -855,7 +881,7 @@ void VPM::setDMAWriteAddress(const Value& val)
         throw CompilationError(
             CompilationStep::GENERAL, "Accessing more than a VPM row at once is not supported", setup.to_string());
 
-    auto stride = periphery::VPWSetup::fromLiteral(writeStrideSetup).strideSetup.getStride();
+    auto stride = periphery::VPWSetup::fromLiteral(writeStrideSetup[qpu]).strideSetup.getStride();
 
     MemoryAddress address = static_cast<MemoryAddress>(element0.getLiteralValue()->unsignedInt());
 
@@ -880,16 +906,16 @@ void VPM::setDMAWriteAddress(const Value& val)
         address += stride + (typeSize * sizes.second);
     }
 
-    lastDMAWriteTrigger = currentCycle;
+    lastDMAWriteTrigger[qpu] = currentCycle;
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 100, "write DMA write address", 1);
 }
 
-void VPM::setDMAReadAddress(const Value& val)
+void VPM::setDMAReadAddress(unsigned char qpu, const Value& val)
 {
     const Value& element0 = val.hasContainer() ? val.container().elements[0] : val;
     if(element0.isUndefined())
         throw CompilationError(CompilationStep::GENERAL, "Undefined DMA setup value", val.to_string());
-    periphery::VPRSetup setup = periphery::VPRSetup::fromLiteral(dmaReadSetup);
+    periphery::VPRSetup setup = periphery::VPRSetup::fromLiteral(dmaReadSetup[qpu]);
 
     if(setup.value == 0)
         logging::warn() << "VPM DMA read setup was not previously set: " << setup.to_string() << logging::endl;
@@ -913,7 +939,7 @@ void VPM::setDMAReadAddress(const Value& val)
         throw CompilationError(
             CompilationStep::GENERAL, "Accessing more than a VPM row at once is not supported", setup.to_string());
 
-    auto pitch = periphery::VPRSetup::fromLiteral(readStrideSetup).strideSetup.getPitch();
+    auto pitch = periphery::VPRSetup::fromLiteral(readStrideSetup[qpu]).strideSetup.getPitch();
 
     MemoryAddress address = static_cast<MemoryAddress>(element0.getLiteralValue()->unsignedInt());
 
@@ -937,22 +963,24 @@ void VPM::setDMAReadAddress(const Value& val)
         address += pitch;
     }
 
-    lastDMAReadTrigger = currentCycle;
+    lastDMAReadTrigger[qpu] = currentCycle;
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 110, "write DMA read address", 1);
 }
 
-bool VPM::waitDMAWrite() const
+bool VPM::waitDMAWrite(unsigned char qpu) const
 {
     // XXX how many cycles?
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 120, "wait DMA write", lastDMAWriteTrigger + 12 < currentCycle);
-    return lastDMAWriteTrigger + 12 < currentCycle;
+    PROFILE_COUNTER(
+        vc4c::profiler::COUNTER_EMULATOR + 120, "wait DMA write", lastDMAWriteTrigger[qpu] + 12 < currentCycle);
+    return lastDMAWriteTrigger[qpu] + 12 < currentCycle;
 }
 
-bool VPM::waitDMARead() const
+bool VPM::waitDMARead(unsigned char qpu) const
 {
     // XXX how many cycles?
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 130, "wait DMA read", lastDMAReadTrigger + 12 < currentCycle);
-    return lastDMAReadTrigger + 12 < currentCycle;
+    PROFILE_COUNTER(
+        vc4c::profiler::COUNTER_EMULATOR + 130, "wait DMA read", lastDMAReadTrigger[qpu] + 12 < currentCycle);
+    return lastDMAReadTrigger[qpu] + 12 < currentCycle;
 }
 
 void VPM::incrementCycle()
@@ -1767,7 +1795,6 @@ bool tools::emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_it
         throw CompilationError(CompilationStep::GENERAL, "Cannot use more than 12 QPUs!");
 
     Mutex mutex;
-    // FIXME is SFU execution per QPU or need SFUs be locked?
     std::array<SFU, NUM_QPUS> sfus;
     VPM vpm(memory);
     Semaphores semaphores;

@@ -167,23 +167,29 @@ namespace vc4c
         class VPM : private NonCopyable
         {
         public:
-            VPM(Memory& memory) :
-                memory(memory), vpmReadSetup(0), vpmWriteSetup(0), dmaReadSetup(0), dmaWriteSetup(0),
-                readStrideSetup(0), writeStrideSetup(0), lastDMAReadTrigger(0), lastDMAWriteTrigger(0), currentCycle(0)
+            VPM(Memory& memory) : memory(memory), currentCycle(0)
             {
+                vpmReadSetup.fill(0);
+                vpmWriteSetup.fill(0);
+                dmaReadSetup.fill(0);
+                dmaWriteSetup.fill(0);
+                readStrideSetup.fill(0);
+                writeStrideSetup.fill(0);
+                lastDMAReadTrigger.fill(0);
+                lastDMAWriteTrigger.fill(0);
             }
 
-            Value readValue();
-            void writeValue(const Value& val);
+            Value readValue(unsigned char qpu);
+            void writeValue(unsigned char qpu, const Value& val);
 
-            void setWriteSetup(const Value& val);
-            void setReadSetup(const Value& val);
+            void setWriteSetup(unsigned char qpu, const Value& val);
+            void setReadSetup(unsigned char qpu, const Value& val);
 
-            void setDMAWriteAddress(const Value& val);
-            void setDMAReadAddress(const Value& val);
+            void setDMAWriteAddress(unsigned char qpu, const Value& val);
+            void setDMAReadAddress(unsigned char qpu, const Value& val);
 
-            NODISCARD bool waitDMAWrite() const;
-            NODISCARD bool waitDMARead() const;
+            NODISCARD bool waitDMAWrite(unsigned char qpu) const;
+            NODISCARD bool waitDMARead(unsigned char qpu) const;
 
             void incrementCycle();
 
@@ -191,14 +197,14 @@ namespace vc4c
 
         private:
             Memory& memory;
-            uint32_t vpmReadSetup;
-            uint32_t vpmWriteSetup;
-            uint32_t dmaReadSetup;
-            uint32_t dmaWriteSetup;
-            uint32_t readStrideSetup;
-            uint32_t writeStrideSetup;
-            uint32_t lastDMAReadTrigger;
-            uint32_t lastDMAWriteTrigger;
+            std::array<uint32_t, NUM_QPUS> vpmReadSetup;
+            std::array<uint32_t, NUM_QPUS> vpmWriteSetup;
+            std::array<uint32_t, NUM_QPUS> dmaReadSetup;
+            std::array<uint32_t, NUM_QPUS> dmaWriteSetup;
+            std::array<uint32_t, NUM_QPUS> readStrideSetup;
+            std::array<uint32_t, NUM_QPUS> writeStrideSetup;
+            std::array<uint32_t, NUM_QPUS> lastDMAReadTrigger;
+            std::array<uint32_t, NUM_QPUS> lastDMAWriteTrigger;
             uint32_t currentCycle;
 
             std::array<std::array<Word, 16>, 64> cache;
