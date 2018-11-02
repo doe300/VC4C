@@ -42,6 +42,7 @@ __constant uchar message[12] = "Hello World";
 __kernel void test_constant_storage(__global uchar* out)
 {
 	size_t gid = get_global_id(0);
+	// every kernel writes 1 single character
 	out[gid] = message[gid];
 }
 
@@ -50,5 +51,6 @@ __kernel void test_register_storage(__global uchar* out)
 	size_t gid = get_global_id(0);
 	uchar4 pad = (uchar4)'\0';
 	uchar16 a = (uchar16)('H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd', '\0', pad);
+	// every kernel writes 1 single character
 	out[gid] = a[gid];
 }

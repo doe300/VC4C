@@ -360,6 +360,7 @@ void TestMemoryAccess::testVectorLoadStoreCharPrivate()
 
 void TestMemoryAccess::testVectorLoadStoreCharLocal()
 {
+    //FIXME manual test is correct!
     testPrivateLocalFunction<char>(config, "-DTYPE=char -DSTORAGE=__local",
         std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
@@ -375,6 +376,7 @@ void TestMemoryAccess::testVectorLoadStoreShortPrivate()
 }
 void TestMemoryAccess::testVectorLoadStoreShortLocal()
 {
+    //FIXME manual test is correct!
     testPrivateLocalFunction<short>(config, "-DTYPE=short -DSTORAGE=__local",
         std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }

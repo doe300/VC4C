@@ -93,22 +93,25 @@ static void checkNormalized(Module& module, Method& method, InstructionWalker it
 
 // NOTE: The order is on purpose and must not be changed!
 const static std::vector<std::pair<std::string, NormalizationStep>> initialNormalizationSteps = {
-    // handles stack-allocations by calculating their offsets and indices
-    {"ResolveStackAllocations", resolveStackAllocation},
     // intrinsifies calls to built-ins and unsupported operations
     {"Intrinsics", optimizations::intrinsify},
     // replaces all remaining returns with jumps to the end of the kernel-function
     {"EliminateReturns", optimizations::eliminateReturn},
-    // moves vector-containers to locals and re-directs all uses to the local
-    {"HandleLiteralVector", handleContainer},
-    // maps access to global data to the offset in the code
-    {"MapGlobalDataToAddress", accessGlobalData},
     // rewrites the use of literal values to either small-immediate values or loading of literals
     // this first run here is only required, so some loading of literals can be optimized, which is no longer possible
     // after the second run
     {"HandleImmediates", handleImmediate},
     // propagates the instruction decoration whether values are work-group uniform
-    {"PropagateGroupUniformValues", propagateGroupUniforms},
+    {"PropagateGroupUniformValues", propagateGroupUniforms}};
+
+// these normalization steps are run after the memory access is converted
+const static std::vector<std::pair<std::string, NormalizationStep>> initialNormalizationSteps2 = {
+    // handles stack-allocations by calculating their offsets and indices
+    {"ResolveStackAllocations", resolveStackAllocation},
+    // maps access to global data to the offset in the code
+    {"MapGlobalDataToAddress", accessGlobalData},
+    // moves vector-containers to locals and re-directs all uses to the local
+    {"HandleLiteralVector", handleContainer},
     // dummy step which simply checks whether all remaining instructions are normalized
     {"CheckNormalized", checkNormalized}};
 
@@ -192,6 +195,15 @@ void Normalizer::normalizeMethod(Module& module, Method& method) const
 
     PROFILE_START(NormalizationPasses);
 
+    for(const auto& step : initialNormalizationSteps)
+    {
+        logging::debug() << logging::endl;
+        logging::debug() << "Running pass: " << step.first << logging::endl;
+        PROFILE_START_DYNAMIC(step.first);
+        runNormalizationStep(step.second, module, method, config);
+        PROFILE_END_DYNAMIC(step.first);
+    }
+
     // maps all memory-accessing instructions to instructions actually performing the hardware memory-access
     // this step is called extra, because it needs to be run over all instructions
     logging::debug() << logging::endl;
@@ -203,7 +215,7 @@ void Normalizer::normalizeMethod(Module& module, Method& method) const
     // calculate current/final stack offsets after lowering stack-accesses
     method.calculateStackOffsets();
 
-    for(const auto& step : initialNormalizationSteps)
+    for(const auto& step : initialNormalizationSteps2)
     {
         logging::debug() << logging::endl;
         logging::debug() << "Running pass: " << step.first << logging::endl;
