@@ -474,6 +474,7 @@ std::pair<Value, bool> TMUs::readTMU()
     {
         PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 69, "TMU1 read", 1);
     }
+    logging::debug() << "Reading from TMU: " << front.first.to_string(true, true) << logging::endl;
     return std::make_pair(front.first, true);
 }
 
@@ -585,6 +586,7 @@ Value TMUs::readMemoryAddress(const Value& address) const
         else
             res.container().elements.push_back(memory.readWord(element.getLiteralValue()->toImmediate()));
     }
+    // XXX for cosmetic/correctness, this should print the rounded-down (to word boundaries) addresses
     logging::debug() << "Reading via TMU from memory address " << address.to_string(false, true) << ": "
                      << res.to_string(false, true) << logging::endl;
     return res;
@@ -605,6 +607,7 @@ Value SFU::readSFU()
     const Value val = sfuResult.value();
     sfuResult = NO_VALUE;
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 70, "SFU read", 1);
+    logging::debug() << "Reading from SFU: " << val.to_string(true, true) << logging::endl;
     return val;
 }
 

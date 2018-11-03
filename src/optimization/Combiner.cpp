@@ -670,6 +670,8 @@ static bool canReplaceConstantLoad(
 
 bool optimizations::combineLoadingConstants(const Module& module, Method& method, const Configuration& config)
 {
+    // TODO extend/add new optimization combining constant registers (e.g. element number, qpu number, e.g. for
+    // TestMemoryAccess#GLOBAL_MEMORY_FUNCTION) or leave for common subexpression elimination?
     std::size_t threshold = config.additionalOptions.combineLoadThreshold;
     bool hasChanged = false;
 

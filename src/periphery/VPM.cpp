@@ -393,8 +393,14 @@ static InstructionWalker addScratchOffset(
     // -> 8-bit element: add #QPU << 2
     // -> 16-bit element: add #QPU << 1
     // -> 32-bit element: add #QPU
+    // we introduce a temporary here, since REG_QPU_NUMBER cannot be combined with shifting by literal anyway. This way,
+    // we allow other optimizations to process the instructions. Otherwise, the adjustment would split them after all
+    // optimization have run
+    auto elemNum = method.addNewLocal(TYPE_INT8, "%qpu_number");
+    it.emplace(new MoveOperation(elemNum, Value(REG_QPU_NUMBER, TYPE_INT8)));
+    it.nextInBlock();
     auto tmp = assign(it, TYPE_INT8, "%scratch_offset") =
-        Value(REG_QPU_NUMBER, TYPE_INT8) * Literal(TYPE_INT32.getScalarBitCount() / elementType.getScalarBitCount());
+        elemNum * Literal(TYPE_INT32.getScalarBitCount() / elementType.getScalarBitCount());
     scratchOffset = assign(it, TYPE_INT32, "%scratch_offset") = inAreaOffset + tmp;
     return it;
 }
