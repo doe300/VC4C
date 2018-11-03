@@ -256,7 +256,9 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
                 group.groupType.getElementType().getPhysicalWidth()));
     }
     std::size_t numRemoved = 0;
-    vpm.updateScratchSize(static_cast<unsigned char>(group.addressWrites.size()));
+    // TODO don't actually combine reads and writes, only setups
+    // vpm.updateScratchSize(static_cast<unsigned char>(group.addressWrites.size()));
+    throw CompilationError(CompilationStep::OPTIMIZER, "Has been broken by recent changes");
 
     // 2. Remove all but the first generic and DMA setups
     for(std::size_t i = 1; i < group.genericSetups.size(); ++i)
@@ -326,7 +328,9 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
     {
         VPRSetupWrapper dmaSetupValue(group.dmaSetups.at(0).get<LoadImmediate>());
         dmaSetupValue.dmaSetup.setNumberRows(group.genericSetups.size() % 16);
-        vpm.updateScratchSize(static_cast<unsigned char>(group.genericSetups.size()));
+        // TODO don't actually combine reads and writes, only setups
+        // vpm.updateScratchSize(static_cast<unsigned char>(group.genericSetups.size()));
+        throw CompilationError(CompilationStep::OPTIMIZER, "Has been broken by recent changes");
         // TODO can be space-optimized, half-words and bytes can be packed into single row (VPM writes too)
     }
     std::size_t numRemoved = 0;
@@ -677,11 +681,6 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
 
     for(auto& mapping : memoryMapping)
         infos.emplace(mapping.first, checkMemoryMapping(method, mapping.first, mapping.second));
-
-    // After we fixed all the VPM areas used for specific purposes, we can check how big of a scratch size we need
-    // TODO rewrite scratch area to per-QPU? To not need mutex lock!
-    // Would need size of per QPU scratch are before mapping any instruction, should be possible with new
-    // check-all-first-map-then flow
 
     // TODO sort locals by where to put them and then call 1. check of mapping and 2. mapping on all
     for(auto& memIt : memoryInstructions)

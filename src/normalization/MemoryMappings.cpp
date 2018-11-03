@@ -403,8 +403,7 @@ static InstructionWalker accessMemoryInRAMViaVPM(
     }
     case MemoryOperation::READ:
     {
-        it = periphery::insertReadDMA(
-            method, it, mem->getDestination(), mem->getSource(), true /* need to lock mutex for shared scratch area */);
+        it = periphery::insertReadDMA(method, it, mem->getDestination(), mem->getSource());
         auto* src = mem->getSource().hasLocal() ? mem->getSource().local()->getBase(true) : nullptr;
         if(src && src->is<Parameter>())
             const_cast<Parameter*>(src->as<const Parameter>())->decorations =
@@ -413,8 +412,7 @@ static InstructionWalker accessMemoryInRAMViaVPM(
     }
     case MemoryOperation::WRITE:
     {
-        it = periphery::insertWriteDMA(
-            method, it, mem->getSource(), mem->getDestination(), true /* need to lock mutex for shared scratch area */);
+        it = periphery::insertWriteDMA(method, it, mem->getSource(), mem->getDestination());
         auto* dest = mem->getDestination().hasLocal() ? mem->getDestination().local()->getBase(true) : nullptr;
         if(dest && dest->is<Parameter>())
             const_cast<Parameter*>(dest->as<const Parameter>())->decorations =
@@ -506,7 +504,7 @@ static InstructionWalker mapMemoryCopy(
         logging::debug() << "Mapping copy from RAM into RAM to DMA read and DMA write: " << mem->to_string()
                          << logging::endl;
         it = method.vpm->insertCopyRAM(
-            method, it, mem->getDestination(), mem->getSource(), static_cast<unsigned>(numBytes));
+            method, it, mem->getDestination(), mem->getSource(), static_cast<unsigned>(numBytes), nullptr);
         return it.erase();
     }
     else if(destInRegister && destInfo.convertedRegisterType)

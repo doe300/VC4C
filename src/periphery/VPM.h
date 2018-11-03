@@ -610,13 +610,22 @@ namespace vc4c
              * The area of the VPM to be used as cache for general DMA access.
              *
              * NOTE:
-             * This area needs to always be at offset 0, its size is calculated to match the required scratch size
+             * This area needs to always be at offset 0, its size is calculated to match the required scratch size.
+             *
+             * NOTE:
+             * Every QPU has its own scratch area
              */
             SCRATCH,
             /*
              * This area is used as storage for local memory areas which fit into VPM.
              */
             LOCAL_MEMORY,
+            /*
+             * This area is used to cache a memory area in RAM. This is behavior similar to L1/L2/etc. caches for CPUs.
+             * The memory will be initially loaded into the cache area and written back at the end of the kernel
+             * execution.
+             */
+            MEMORY_CACHE,
             /*
              * This area is used to spill registers into.
              *
@@ -630,7 +639,14 @@ namespace vc4c
              * NOTE:
              * Its size needs include the spilled locals for all available QPUs!
              */
-            STACK
+            STACK,
+            /*
+             * This area is used for storing temporary data for copying from and to RAM.
+             *
+             * NOTE:
+             * These VPM areas CANNOT be accessed from QPU!!
+             */
+            COPY_CACHE
         };
 
         /*
@@ -820,12 +836,6 @@ namespace vc4c
              */
             NODISCARD InstructionWalker insertFillRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
                 const DataType& type, unsigned numCopies, const VPMArea* area = nullptr, bool useMutex = false);
-
-            /*
-             * Updates the maximum size used by the scratch area.
-             * This can only be called until the scratch-area is locked!
-             */
-            void updateScratchSize(unsigned char requestedRows);
 
             /*
              * Since we can only access the VPM from QPU-side in vectors of 16 elements,

@@ -131,6 +131,7 @@ MemoryType normalization::toMemoryType(periphery::VPMUsage usage)
     {
     case periphery::VPMUsage::SCRATCH:
     case periphery::VPMUsage::LOCAL_MEMORY:
+    case periphery::VPMUsage::MEMORY_CACHE:
         return MemoryType::VPM_SHARED_ACCESS;
     case periphery::VPMUsage::REGISTER_SPILLING:
     case periphery::VPMUsage::STACK:
