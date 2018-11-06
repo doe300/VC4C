@@ -9,6 +9,7 @@
 #include "../InstructionWalker.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/operators.h"
+#include "../periphery/VPM.h"
 #include "log.h"
 
 #include <algorithm>
@@ -670,8 +671,6 @@ static bool canReplaceConstantLoad(
 
 bool optimizations::combineLoadingConstants(const Module& module, Method& method, const Configuration& config)
 {
-    // TODO extend/add new optimization combining constant registers (e.g. element number, qpu number, e.g. for
-    // TestMemoryAccess#GLOBAL_MEMORY_FUNCTION) or leave for common subexpression elimination?
     std::size_t threshold = config.additionalOptions.combineLoadThreshold;
     bool hasChanged = false;
 
@@ -1071,4 +1070,118 @@ InstructionWalker optimizations::combineFlagWithOutput(
         it.previousInBlock();
     }
     return it;
+}
+
+bool optimizations::combineVPMSetupWrites(const Module& module, Method& method, const Configuration& config)
+{
+    bool changedInstructions = false;
+    for(auto& bb : method)
+    {
+        Optional<periphery::VPRDMASetup> lastDMAReadSetup;
+        Optional<periphery::VPRStrideSetup> lastReadStrideSetup;
+        Optional<periphery::VPWDMASetup> lastDMAWriteSetup;
+        Optional<periphery::VPWStrideSetup> lastWriteStrideSetup;
+        // NOTE: cannot simply remove successive VPM read/write setup, since a) the VPM address is auto-incremented and
+        // b) the read setup specifies the exact number of rows to read
+
+        auto it = bb.walk();
+        while(!it.isEndOfBlock())
+        {
+            if(it.has() && (it->writesRegister(REG_VPM_IN_SETUP) || it->writesRegister(REG_VPM_OUT_SETUP)))
+            {
+                bool readSetup = it->writesRegister(REG_VPM_IN_SETUP);
+                // this can for now only optimize constant setups
+                auto setupBits = it->getArgument(0) ? it->assertArgument(0).getLiteralValue() : Optional<Literal>{};
+                if(setupBits && (it.has<MoveOperation>() || it.has<LoadImmediate>()))
+                {
+                    if(readSetup)
+                    {
+                        auto setup = periphery::VPRSetup::fromLiteral(setupBits->unsignedInt());
+                        if(setup.isDMASetup())
+                        {
+                            if(lastDMAReadSetup == setup.dmaSetup)
+                            {
+                                logging::debug()
+                                    << "Removing duplicate writing of same DMA read setup: " << it->to_string()
+                                    << logging::endl;
+                                it = it.erase();
+                                changedInstructions = true;
+                                continue;
+                            }
+                            lastDMAReadSetup = setup.dmaSetup;
+                        }
+                        else if(setup.isStrideSetup())
+                        {
+                            if(lastReadStrideSetup == setup.strideSetup)
+                            {
+                                logging::debug()
+                                    << "Removing duplicate writing of same DMA read stride setup: " << it->to_string()
+                                    << logging::endl;
+                                it = it.erase();
+                                changedInstructions = true;
+                                continue;
+                            }
+                            lastReadStrideSetup = setup.strideSetup;
+                        }
+                    }
+                    else
+                    {
+                        auto setup = periphery::VPWSetup::fromLiteral(setupBits->unsignedInt());
+                        if(setup.isDMASetup())
+                        {
+                            if(lastDMAWriteSetup == setup.dmaSetup)
+                            {
+                                logging::debug()
+                                    << "Removing duplicate writing of same DMA write setup: " << it->to_string()
+                                    << logging::endl;
+                                it = it.erase();
+                                changedInstructions = true;
+                                continue;
+                            }
+                            lastDMAWriteSetup = setup.dmaSetup;
+                        }
+                        else if(setup.isStrideSetup())
+                        {
+                            if(lastWriteStrideSetup == setup.strideSetup)
+                            {
+                                logging::debug()
+                                    << "Removing duplicate writing of same DMA write stride setup: " << it->to_string()
+                                    << logging::endl;
+                                it = it.erase();
+                                changedInstructions = true;
+                                continue;
+                            }
+                            lastWriteStrideSetup = setup.strideSetup;
+                        }
+                    }
+                }
+                else if(it.has<Operation>() &&
+                    std::none_of(
+                        it->getArguments().begin(), it->getArguments().end(), [readSetup](const Value& arg) -> bool {
+                            auto writer = arg.getSingleWriter();
+                            auto val = writer ? writer->precalculate(1) : arg;
+                            if(val && val->getLiteralValue())
+                                if(readSetup &&
+                                    periphery::VPRSetup::fromLiteral(val->getLiteralValue()->unsignedInt())
+                                        .isGenericSetup())
+                                    return true;
+                            if(!readSetup &&
+                                periphery::VPWSetup::fromLiteral(val->getLiteralValue()->unsignedInt())
+                                    .isGenericSetup())
+                                return true;
+                            return false;
+                        }))
+                {
+                    // we have a VPM IO setup write which we do not know to be a generic setup.
+                    // to be on the safe side, clear last setups
+                    lastDMAReadSetup = {};
+                    lastDMAWriteSetup = {};
+                    lastReadStrideSetup = {};
+                    lastWriteStrideSetup = {};
+                }
+            }
+            it.nextInBlock();
+        }
+    }
+    return changedInstructions;
 }

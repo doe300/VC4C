@@ -28,7 +28,7 @@ namespace vc4c
          *
          * see Broadcom spec, table 32
          */
-        class VPWGenericSetup : private Bitfield<uint32_t>
+        class VPWGenericSetup : public Bitfield<uint32_t>
         {
         public:
             VPWGenericSetup(uint8_t size, uint8_t stride, uint8_t address = 0) : Bitfield(0)
@@ -117,7 +117,7 @@ namespace vc4c
          *
          * see Broadcom spec, table 34
          */
-        class VPWDMASetup : private Bitfield<uint32_t>
+        class VPWDMASetup : public Bitfield<uint32_t>
         {
         public:
             VPWDMASetup(uint8_t mode, uint8_t depth, uint8_t units = 1) : Bitfield(0)
@@ -214,7 +214,7 @@ namespace vc4c
          *
          * see Broadcom spec, table 35
          */
-        class VPWStrideSetup : private Bitfield<uint32_t>
+        class VPWStrideSetup : public Bitfield<uint32_t>
         {
         public:
             explicit VPWStrideSetup(uint16_t stride = 0) : Bitfield(0)
@@ -296,7 +296,7 @@ namespace vc4c
          *
          * see Broadcom spec, table 33
          */
-        class VPRGenericSetup : private Bitfield<uint32_t>
+        class VPRGenericSetup : public Bitfield<uint32_t>
         {
         public:
             VPRGenericSetup(uint8_t size, uint8_t stride, uint8_t numVectors = 1, uint8_t address = 0) : Bitfield(0)
@@ -374,7 +374,7 @@ namespace vc4c
          *
          * see Broadcom spec, table 36
          */
-        class VPRDMASetup : private Bitfield<uint32_t>
+        class VPRDMASetup : public Bitfield<uint32_t>
         {
         public:
             VPRDMASetup(
@@ -473,7 +473,7 @@ namespace vc4c
          *
          * see Broadcom spec, table 37
          */
-        class VPRStrideSetup : private Bitfield<uint32_t>
+        class VPRStrideSetup : public Bitfield<uint32_t>
         {
         public:
             explicit VPRStrideSetup(uint16_t stride = 0) : Bitfield(0)

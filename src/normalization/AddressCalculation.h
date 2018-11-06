@@ -16,21 +16,6 @@ namespace vc4c
 {
     namespace normalization
     {
-        struct BaseAndOffset
-        {
-            Optional<Value> base;
-            Optional<int32_t> offset;
-
-            explicit BaseAndOffset() : base(NO_VALUE), offset{} {}
-
-            BaseAndOffset(const Optional<Value>& base, Optional<int32_t> offset) : base(base), offset(offset) {}
-        };
-
-        /*
-         * Returns the base memory address for the given value as well as the offset the value has to this location
-         */
-        BaseAndOffset findBaseAndOffset(const Value& val);
-
         enum class MemoryType
         {
             // lower the value into a register and replace all loads with moves

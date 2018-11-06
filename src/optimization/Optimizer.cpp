@@ -233,6 +233,8 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         OptimizationType::INITIAL),
     OptimizationPass("MergeBasicBlocks", "merge-blocks", mergeAdjacentBasicBlocks,
         "merges adjacent basic blocks if there are no other conflicting transitions", OptimizationType::INITIAL),
+    OptimizationPass("CombineVPMSetups", "combine-vpm-setups", combineVPMSetupWrites,
+        "combines duplicate VPM setup writes", OptimizationType::INITIAL),
     /*
      * The second block executes optimizations only within a single basic block.
      * These optimizations may be executed in a loop until there are not more changes to the instructions
@@ -307,6 +309,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("single-steps");
         passes.emplace("reorder");
         passes.emplace("combine");
+        passes.emplace("combine-vpm-setups");
         FALL_THROUGH
     case OptimizationLevel::NONE:
         // TODO this is not an optimization, more a normalization step.

@@ -206,6 +206,15 @@ namespace vc4c
          */
         InstructionWalker combineFlagWithOutput(
             const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+
+        /*
+         * Combines writing of same VPM configurations within a basic block.
+         *
+         * Since VPM (and DMA) configurations are persistent (except VPM read/write config), there is no need to write
+         * the same configuration several times.
+         */
+        bool combineVPMSetupWrites(const Module& module, Method& method, const Configuration& config);
+
     } // namespace optimizations
 } // namespace vc4c
 #endif /* COMBINER_H */
