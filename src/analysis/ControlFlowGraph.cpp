@@ -95,6 +95,22 @@ const CFGNode* ControlFlowLoop::findPredecessor() const
     return predecessor;
 }
 
+FastAccessList<const CFGNode*> ControlFlowLoop::findPredecessors() const
+{
+    FastAccessList<const CFGNode*> predecessors;
+    for(const CFGNode* node : *this)
+    {
+        node->forAllIncomingEdges([this, &predecessors](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
+            if(std::find(begin(), end(), &neighbor) == end())
+            {
+                predecessors.push_back(&neighbor);
+            }
+            return true;
+        });
+    }
+    return predecessors;
+}
+
 const CFGNode* ControlFlowLoop::findSuccessor() const
 {
     const CFGNode* successor = nullptr;

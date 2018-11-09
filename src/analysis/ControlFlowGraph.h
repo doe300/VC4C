@@ -59,10 +59,11 @@ namespace vc4c
         ControlFlowLoop() {}
 
         /*
-         * Returns the basic-block in the CFG preceding the first node in the loop, the node from which the loop is
+         * Returns the basic-block(s) in the CFG preceding the first node in the loop, the node from which the loop is
          * entered.
          */
         const CFGNode* findPredecessor() const;
+        FastAccessList<const CFGNode*> findPredecessors() const;
 
         /*
          * Returns the basic-block in the CFG following the last node in the loop, the node into which this loop exits

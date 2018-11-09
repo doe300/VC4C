@@ -1475,7 +1475,33 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 continue;
             }
 
-            auto targetCFGNode = targetLoop->findPredecessor();
+            const CFGNode* targetCFGNode = nullptr;
+            // Find the predecessor block of targetLoop.
+            {
+                FastAccessList<const CFGNode*> predecessors = targetLoop->findPredecessors();
+                if(predecessors.size() > 0)
+                {
+                    for(auto& block : method)
+                    {
+                        auto loopBB = std::find_if(targetLoop->begin(), targetLoop->end(),
+                            [&block](const CFGNode* node) { return node->key == &block; });
+                        if(loopBB != targetLoop->end())
+                        {
+                            // the predecessor block must exist before targetLoop.
+                            break;
+                        }
+
+                        auto bb = std::find_if(predecessors.begin(), predecessors.end(),
+                            [&block](const CFGNode* node) { return node->key == &block; });
+                        if(bb != predecessors.end())
+                        {
+                            targetCFGNode = *bb;
+                            break;
+                        }
+                    }
+                }
+            }
+
             auto targetBlock = targetCFGNode != nullptr ? targetCFGNode->key : insertedBlock;
 
             if(targetBlock != nullptr)
@@ -1485,7 +1511,6 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 for(auto it : insts->second)
                 {
                     targetInst.emplace(it.release());
-                    it.erase();
                 }
             }
             else
