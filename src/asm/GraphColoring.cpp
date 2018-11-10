@@ -128,7 +128,7 @@ Register ColoredNodeBase::getRegisterFixed() const
 }
 
 template <std::size_t size>
-static std::size_t fixToRegisterFile(std::bitset<size>& set)
+static NODISCARD std::size_t fixToRegisterFile(std::bitset<size>& set)
 {
     if(size == 6 /* accumulators */ && set.test(5))
     {
@@ -692,7 +692,7 @@ static RegisterFile getBlockedInputs(
     return blockedFiles;
 }
 
-static LocalUse checkUser(const OrderedMap<const LocalUser*, LocalUse>& users, const InstructionWalker it)
+static NODISCARD LocalUse checkUser(const OrderedMap<const LocalUser*, LocalUse>& users, const InstructionWalker it)
 {
     LocalUse use;
     it.forAllInstructions([&users, &use](const intermediate::IntermediateInstruction* instr) {
@@ -706,7 +706,7 @@ static LocalUse checkUser(const OrderedMap<const LocalUser*, LocalUse>& users, c
     return use;
 }
 
-static LocalUse assertUser(const OrderedMap<const LocalUser*, LocalUse>& users, const InstructionWalker it)
+static NODISCARD LocalUse assertUser(const OrderedMap<const LocalUser*, LocalUse>& users, const InstructionWalker it)
 {
     auto use = checkUser(users, it);
     if(!use.readsLocal() && !use.writesLocal())
@@ -717,7 +717,7 @@ static LocalUse assertUser(const OrderedMap<const LocalUser*, LocalUse>& users, 
     return use;
 }
 
-static bool reassignNodeToRegister(ColoredGraph& graph, ColoredNode& node)
+static NODISCARD bool reassignNodeToRegister(ColoredGraph& graph, ColoredNode& node)
 {
     node.forAllEdges([&](ColoredNode& neighbor, ColoredEdge& edge) -> bool {
         if(edge.data == LocalRelation::USED_TOGETHER &&
@@ -739,7 +739,7 @@ static bool reassignNodeToRegister(ColoredGraph& graph, ColoredNode& node)
     return fixed;
 }
 
-static bool moveLocalToRegisterFile(Method& method, ColoredGraph& graph, ColoredNode& node,
+static NODISCARD bool moveLocalToRegisterFile(Method& method, ColoredGraph& graph, ColoredNode& node,
     FastMap<const Local*, LocalUsage>& localUses, LocalUsage& localUse, const RegisterFile file)
 {
     bool needNextRound = false;
@@ -816,7 +816,7 @@ static bool blocksLocal(const ColoredNode* neighbor, LocalRelation relation)
         !has_flag(neighbor->possibleFiles, RegisterFile::ACCUMULATOR);
 }
 
-static bool fixSingleError(Method& method, ColoredGraph& graph, ColoredNode& node,
+static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, ColoredNode& node,
     FastMap<const Local*, LocalUsage>& localUses, LocalUsage& localUse)
 {
     /*

@@ -124,7 +124,7 @@ namespace vc4c
         /*
          * Creates a copy of this object with the same position
          */
-        InstructionWalker copy() const;
+        NODISCARD InstructionWalker copy() const;
 
         bool operator==(const InstructionWalker& other) const;
         inline bool operator!=(const InstructionWalker& other) const
@@ -187,7 +187,7 @@ namespace vc4c
          * Releases the instruction-object pointed to (see std::unique_ptr::release) without removing this position from
          * the list of instructions
          */
-        intermediate::IntermediateInstruction* release();
+        NODISCARD intermediate::IntermediateInstruction* release();
 
         /*
          * Replaces the instruction pointed to with the given object
@@ -261,10 +261,10 @@ namespace vc4c
          * If `forward` = false, traver reversely.
          * If `stopWhenWritten` = true, finish when it finds a instruction, which is re-assign in it.
          */
-        bool replaceLocalInBlock(const Local* oldLocal, const Local* newLocal,
+        NODISCARD bool replaceLocalInBlock(const Local* oldLocal, const Local* newLocal,
             LocalUse::Type type = LocalUse::Type::READER, bool forward = true, bool stopWhenWritten = true);
 
-        bool replaceValueInBlock(const Value oldValue, const Value newValue,
+        NODISCARD bool replaceValueInBlock(const Value oldValue, const Value newValue,
             LocalUse::Type type = LocalUse::Type::READER, bool forward = true, bool stopWhenWritten = true);
 
     private:
@@ -336,7 +336,7 @@ namespace vc4c
         /*
          * Creates a copy of this object with the same position
          */
-        ConstInstructionWalker copy() const;
+        NODISCARD ConstInstructionWalker copy() const;
 
         bool operator==(const ConstInstructionWalker& other) const;
         inline bool operator!=(const ConstInstructionWalker& other) const

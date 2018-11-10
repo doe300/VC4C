@@ -58,7 +58,7 @@ namespace vc4c
          * Reads the required number of 32-bit vectors from the given address via the TMU and performs the necessary
          * type conversions and vector rotations (for non 32-bit types).
          */
-        InstructionWalker insertReadVectorFromTMU(
+        NODISCARD InstructionWalker insertReadVectorFromTMU(
             Method& method, InstructionWalker it, const Value& dest, const Value& addr, const TMU& tmu = TMU0);
 
         /*
@@ -66,15 +66,15 @@ namespace vc4c
          *
          * Actually, 16 separate 32-bit memory loads are performed for the 16 elements of the address-vector.
          */
-        InstructionWalker insertGeneralReadTMU(
+        NODISCARD InstructionWalker insertGeneralReadTMU(
             Method& method, InstructionWalker it, const Value& dest, const Value& addr, const TMU& tmu = TMU0);
 
         /*
          * Inserts a read via TMU from the given image-parameter at the coordinates x, y (y optional), which need to be
          * converted to [0, 1] prior to this call and stores the result in dest.
          */
-        InstructionWalker insertReadTMU(Method& method, InstructionWalker it, const Value& image, const Value& dest,
-            const Value& xCoord, const Optional<Value>& yCoord = NO_VALUE, const TMU& tmu = TMU0);
+        NODISCARD InstructionWalker insertReadTMU(Method& method, InstructionWalker it, const Value& image,
+            const Value& dest, const Value& xCoord, const Optional<Value>& yCoord = NO_VALUE, const TMU& tmu = TMU0);
 
     } /* namespace periphery */
 } /* namespace vc4c */

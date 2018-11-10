@@ -13,23 +13,24 @@ namespace vc4c
 {
     namespace intermediate
     {
-        InstructionWalker intrinsifySignedIntegerMultiplication(
+        NODISCARD InstructionWalker intrinsifySignedIntegerMultiplication(
             Method& method, InstructionWalker it, IntrinsicOperation& op);
         bool canOptimizeMultiplicationWithBinaryMethod(const IntrinsicOperation& op);
-        InstructionWalker intrinsifyUnsignedIntegerMultiplication(
+        NODISCARD InstructionWalker intrinsifyUnsignedIntegerMultiplication(
             Method& method, InstructionWalker it, IntrinsicOperation& op);
-        InstructionWalker intrinsifyIntegerMultiplicationViaBinaryMethod(
+        NODISCARD InstructionWalker intrinsifyIntegerMultiplicationViaBinaryMethod(
             Method& method, InstructionWalker it, IntrinsicOperation& op);
-        InstructionWalker intrinsifySignedIntegerDivision(
+        NODISCARD InstructionWalker intrinsifySignedIntegerDivision(
             Method& method, InstructionWalker it, IntrinsicOperation& op, bool useRemainder = false);
-        InstructionWalker intrinsifyUnsignedIntegerDivision(
+        NODISCARD InstructionWalker intrinsifyUnsignedIntegerDivision(
             Method& method, InstructionWalker it, IntrinsicOperation& op, bool useRemainder = false);
-        InstructionWalker intrinsifySignedIntegerDivisionByConstant(
+        NODISCARD InstructionWalker intrinsifySignedIntegerDivisionByConstant(
             Method& method, InstructionWalker it, IntrinsicOperation& op, bool useRemainder = false);
-        InstructionWalker intrinsifyUnsignedIntegerDivisionByConstant(
+        NODISCARD InstructionWalker intrinsifyUnsignedIntegerDivisionByConstant(
             Method& method, InstructionWalker it, IntrinsicOperation& op, bool useRemainder = false);
 
-        InstructionWalker intrinsifyFloatingDivision(Method& method, InstructionWalker it, IntrinsicOperation& op);
+        NODISCARD InstructionWalker intrinsifyFloatingDivision(
+            Method& method, InstructionWalker it, IntrinsicOperation& op);
 
         /*
          * Implementations for on-host calculations

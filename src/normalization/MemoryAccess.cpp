@@ -941,7 +941,7 @@ static InstructionWalker mapToVPMMemoryAccessInstructions(
         it.emplace(new intermediate::MutexLock(intermediate::MutexAccess::LOCK));
         it.nextInBlock();
         // TODO could optimize (e.g. for zero-initializers) by writing several bytes at once
-        method.vpm->insertWriteVPM(method, it, mem->getSource(), nullptr, false);
+        it = method.vpm->insertWriteVPM(method, it, mem->getSource(), nullptr, false);
         it = method.vpm->insertFillRAM(method, it, mem->getDestination(), mem->getSourceElementType(),
             static_cast<unsigned>(numCopies), nullptr, false);
         it.emplace(new intermediate::MutexLock(intermediate::MutexAccess::RELEASE));

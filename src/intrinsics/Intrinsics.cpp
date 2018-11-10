@@ -382,7 +382,7 @@ const static std::map<std::string, std::pair<Intrinsic, Optional<Value>>, std::g
                  [](const Value& val) { return Value(Literal(val.literal()), TYPE_INT32); }},
                 NO_VALUE}}};
 
-static InstructionWalker intrinsifyNoArgs(Method& method, InstructionWalker it)
+static NODISCARD InstructionWalker intrinsifyNoArgs(Method& method, InstructionWalker it)
 {
     MethodCall* callSite = it.get<MethodCall>();
     if(callSite == nullptr)
@@ -403,7 +403,7 @@ static InstructionWalker intrinsifyNoArgs(Method& method, InstructionWalker it)
     return it;
 }
 
-static InstructionWalker intrinsifyUnary(Method& method, InstructionWalker it)
+static NODISCARD InstructionWalker intrinsifyUnary(Method& method, InstructionWalker it)
 {
     MethodCall* callSite = it.get<MethodCall>();
     if(callSite == nullptr)
@@ -466,7 +466,7 @@ static InstructionWalker intrinsifyUnary(Method& method, InstructionWalker it)
     return it;
 }
 
-static InstructionWalker intrinsifyBinary(Method& method, InstructionWalker it)
+static NODISCARD InstructionWalker intrinsifyBinary(Method& method, InstructionWalker it)
 {
     MethodCall* callSite = it.get<MethodCall>();
     if(callSite == nullptr)
@@ -501,7 +501,7 @@ static InstructionWalker intrinsifyBinary(Method& method, InstructionWalker it)
     return it;
 }
 
-static InstructionWalker intrinsifyTernary(Method& method, InstructionWalker it)
+static NODISCARD InstructionWalker intrinsifyTernary(Method& method, InstructionWalker it)
 {
     MethodCall* callSite = it.get<MethodCall>();
     if(callSite == nullptr)
@@ -522,7 +522,7 @@ static InstructionWalker intrinsifyTernary(Method& method, InstructionWalker it)
     return it;
 }
 
-static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker it, const MathType& mathType)
+static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker it, const MathType& mathType)
 {
     IntrinsicOperation* op = it.get<IntrinsicOperation>();
     if(op == nullptr)
@@ -945,7 +945,7 @@ static InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker 
     return it;
 }
 
-static InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, InstructionWalker it, const Value& arg,
+static NODISCARD InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, InstructionWalker it, const Value& arg,
     const std::vector<std::string>& locals, const Value& defaultValue, const InstructionDecorations decoration)
 {
     if(arg.getLiteralValue())
@@ -989,7 +989,7 @@ static InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, Instruction
     return it;
 }
 
-static InstructionWalker intrinsifyReadWorkItemInfo(Method& method, InstructionWalker it, const Value& arg,
+static NODISCARD InstructionWalker intrinsifyReadWorkItemInfo(Method& method, InstructionWalker it, const Value& arg,
     const std::string& local, const InstructionDecorations decoration)
 {
     /*
@@ -1007,7 +1007,7 @@ static InstructionWalker intrinsifyReadWorkItemInfo(Method& method, InstructionW
             ->addDecorations(decoration));
 }
 
-static InstructionWalker intrinsifyReadLocalSize(Method& method, InstructionWalker it, const Value& arg)
+static NODISCARD InstructionWalker intrinsifyReadLocalSize(Method& method, InstructionWalker it, const Value& arg)
 {
     auto decorations =
         add_flag(add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::UNSIGNED_RESULT),
@@ -1043,7 +1043,7 @@ static InstructionWalker intrinsifyReadLocalSize(Method& method, InstructionWalk
     return intrinsifyReadWorkItemInfo(method, it, arg, Method::LOCAL_SIZES, decorations);
 }
 
-static InstructionWalker intrinsifyReadLocalID(Method& method, InstructionWalker it, const Value& arg)
+static NODISCARD InstructionWalker intrinsifyReadLocalID(Method& method, InstructionWalker it, const Value& arg)
 {
     if(method.metaData.isWorkGroupSizeSet() &&
         std::all_of(method.metaData.workGroupSizes.begin(), method.metaData.workGroupSizes.end(),
@@ -1058,7 +1058,7 @@ static InstructionWalker intrinsifyReadLocalID(Method& method, InstructionWalker
         add_flag(InstructionDecorations::BUILTIN_LOCAL_ID, InstructionDecorations::UNSIGNED_RESULT));
 }
 
-static InstructionWalker intrinsifyWorkItemFunctions(Method& method, InstructionWalker it)
+static NODISCARD InstructionWalker intrinsifyWorkItemFunctions(Method& method, InstructionWalker it)
 {
     MethodCall* callSite = it.get<MethodCall>();
     if(callSite == nullptr)

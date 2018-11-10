@@ -19,7 +19,7 @@ using namespace vc4c::operators;
  *
  * This also means, the source vector has more elements (of smaller type-size) than the destination vector
  */
-static InstructionWalker insertCombiningBitcast(
+static NODISCARD InstructionWalker insertCombiningBitcast(
     InstructionWalker it, Method& method, const Value& src, const Value& dest)
 {
     // the number of source elements to combine in a single destination element
@@ -135,7 +135,7 @@ static InstructionWalker insertCombiningBitcast(
  *
  * This also means, the source vector has less elements (of larger type-size) than the destination vector
  */
-static InstructionWalker insertSplittingBitcast(
+static NODISCARD InstructionWalker insertSplittingBitcast(
     InstructionWalker it, Method& method, const Value& src, const Value& dest)
 {
     // the number of destination elements to extract from a single source element

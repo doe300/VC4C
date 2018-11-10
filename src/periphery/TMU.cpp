@@ -19,7 +19,7 @@ const TMU periphery::TMU0{REG_TMU0_COORD_S_U_X, REG_TMU0_COORD_T_V_Y, REG_TMU0_C
 const TMU periphery::TMU1{REG_TMU1_COORD_S_U_X, REG_TMU1_COORD_T_V_Y, REG_TMU1_COORD_R_BORDER_COLOR,
     REG_TMU1_COORD_B_LOD_BIAS, SIGNAL_LOAD_TMU1};
 
-static InstructionWalker insertCalculateAddressOffsets(
+static NODISCARD InstructionWalker insertCalculateAddressOffsets(
     Method& method, InstructionWalker it, const Value& baseAddress, const DataType& type, Value& outputAddress)
 {
     if(type.getVectorWidth() == 1)
@@ -79,7 +79,7 @@ static InstructionWalker insertCalculateAddressOffsets(
  * NOTE: out-of-bounds words cannot lie outside of reserved memory (if data does), since memory is always 4 Byte aligned
  * and multiples of 4 Byte
  */
-static InstructionWalker insertExtractHalfWordElements(
+static NODISCARD InstructionWalker insertExtractHalfWordElements(
     Method& method, InstructionWalker it, const Value& dest, const Value& src, const Value& addressVector)
 {
     // 1) for every address, check if it is aligned to 4 Byte <-> address & 0b11 == 0
@@ -108,7 +108,7 @@ static InstructionWalker insertExtractHalfWordElements(
  * The offset to shift by is calculated as following:
  * element address has offset of x to alignment of 4 Byte: elem = src >> (8 * x)
  */
-static InstructionWalker insertExtractByteElements(
+static NODISCARD InstructionWalker insertExtractByteElements(
     Method& method, InstructionWalker it, const Value& dest, const Value& src, const Value& addressVector)
 {
     // alignmentOffset = address & 0b11

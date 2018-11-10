@@ -371,7 +371,7 @@ static uint8_t calculateQPUSideAddress(const DataType& type, unsigned char rowIn
         throw CompilationError(CompilationStep::GENERAL, "Invalid bit-width to store in VPM", type.to_string());
 }
 
-static InstructionWalker calculateElementOffset(
+static NODISCARD InstructionWalker calculateElementOffset(
     Method& method, InstructionWalker it, const DataType& elementType, const Value& inAreaOffset, Value& elementOffset)
 {
     if(inAreaOffset.getLiteralValue())

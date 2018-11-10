@@ -148,7 +148,7 @@ bool CallSite::mapInstruction(Method& method) const
          * declare i32 @llvm.bswap.i32(i32 <id>)
          */
         logging::debug() << "Intrinsifying llvm.bswap with manual byte-swapping" << logging::endl;
-        intermediate::insertByteSwap(method.appendToEnd(), method, arguments.at(0), output);
+        ignoreReturnValue(intermediate::insertByteSwap(method.appendToEnd(), method, arguments.at(0), output));
         return true;
     }
     if(methodName.find("shuffle2") == 0)
@@ -156,8 +156,8 @@ bool CallSite::mapInstruction(Method& method) const
         logging::debug() << "Intrinsifying OpenCL shuffle2 function with " << arguments.at(0).to_string() << ", "
                          << arguments.at(1).to_string() << " and mask " << arguments.at(2).to_string(false, true)
                          << logging::endl;
-        intermediate::insertVectorShuffle(
-            method.appendToEnd(), method, output, arguments.at(0), arguments.at(1), arguments.at(2));
+        ignoreReturnValue(intermediate::insertVectorShuffle(
+            method.appendToEnd(), method, output, arguments.at(0), arguments.at(1), arguments.at(2)));
         return true;
     }
     static std::regex readFencePattern("_Z\\d*read_mem_fence.*");
@@ -208,7 +208,7 @@ bool Copy::mapInstruction(Method& method) const
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating bit-cast from " << orig.to_string() << " into " << dest.to_string() << logging::endl);
-        intermediate::insertBitcast(method.appendToEnd(), method, orig, dest);
+        ignoreReturnValue(intermediate::insertBitcast(method.appendToEnd(), method, orig, dest));
     }
     else if(isLoadStore)
     {
@@ -285,7 +285,8 @@ bool IndexOf::mapInstruction(Method& method) const
      * LLVM explicitely states for "getelementptr": "The first index always indexes the pointer value given as the
      * second argument, the second index indexes a value of the type pointed to [...]"
      */
-    intermediate::insertCalculateIndices(method.appendToEnd(), method, container, dest, indices, false);
+    ignoreReturnValue(
+        intermediate::insertCalculateIndices(method.appendToEnd(), method, container, dest, indices, false));
     return true;
 }
 
@@ -325,7 +326,7 @@ bool ContainerInsertion::mapInstruction(Method& method) const
     if(container.type.isVectorType() || index.hasLiteral(Literal(0u)))
     {
         // insert element at given index into vector
-        intermediate::insertVectorInsertion(method.appendToEnd(), method, dest, index, newValue);
+        ignoreReturnValue(intermediate::insertVectorInsertion(method.appendToEnd(), method, dest, index, newValue));
     }
     else
     {
@@ -348,7 +349,7 @@ bool ContainerExtraction::mapInstruction(Method& method) const
 
     if(container.type.isVectorType() || index.hasLiteral(Literal(0u)))
     {
-        intermediate::insertVectorExtraction(method.appendToEnd(), method, container, index, dest);
+        ignoreReturnValue(intermediate::insertVectorExtraction(method.appendToEnd(), method, container, index, dest));
     }
     else
     {
@@ -389,7 +390,7 @@ bool ShuffleVector::mapInstruction(Method& method) const
         log << "Generating operations mixing " << v1.to_string() << " and " << v2.to_string() << " into "
             << dest.to_string() << logging::endl);
     DataType destType = v1.type.toVectorType(mask.type.getVectorWidth());
-    intermediate::insertVectorShuffle(method.appendToEnd(), method, dest, v1, v2, mask);
+    ignoreReturnValue(intermediate::insertVectorShuffle(method.appendToEnd(), method, dest, v1, v2, mask));
     return true;
 }
 

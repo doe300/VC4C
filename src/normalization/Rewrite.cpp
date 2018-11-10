@@ -35,7 +35,8 @@ static RegisterFile getFixedRegisterFile(const Value& val)
     return RegisterFile::ANY;
 }
 
-static InstructionWalker resolveRegisterConflicts(Method& method, InstructionWalker it, FastSet<Value>& fixedArgs)
+static NODISCARD InstructionWalker resolveRegisterConflicts(
+    Method& method, InstructionWalker it, FastSet<Value>& fixedArgs)
 {
     logging::debug() << "Found instruction with conflicting fixed registers: " << it->to_string() << logging::endl;
 

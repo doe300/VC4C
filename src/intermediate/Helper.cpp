@@ -206,7 +206,7 @@ static bool checkIndicesNotUndefined(const ContainerValue& container, const unsi
     return true;
 }
 
-static InstructionWalker insertDynamicVectorShuffle(
+static NODISCARD InstructionWalker insertDynamicVectorShuffle(
     InstructionWalker it, Method& method, const Value& destination, const Value& source, const Value& mask)
 {
     // for each element, write rotation offset to element 0 of r5, rotate and insert into result vector

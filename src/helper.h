@@ -12,6 +12,12 @@
 
 #include "CompilationError.h"
 
+#if __cplusplus > 201402L
+#define NODISCARD [[nodiscard]]
+#else
+#define NODISCARD __attribute__((warn_unused_result))
+#endif
+
 namespace vc4c
 {
     /*
@@ -86,7 +92,7 @@ namespace vc4c
      * Returns the bit-field with the additional flag set
      */
     template <typename Bitfield>
-    constexpr inline __attribute__((warn_unused_result)) Bitfield add_flag(Bitfield orig, Bitfield flag)
+    constexpr inline NODISCARD Bitfield add_flag(Bitfield orig, Bitfield flag)
     {
         return static_cast<Bitfield>(static_cast<unsigned>(orig) | static_cast<unsigned>(flag));
     }
@@ -95,7 +101,7 @@ namespace vc4c
      * Returns the bit-field with the additional flag being cleared
      */
     template <typename Bitfield>
-    constexpr inline __attribute__((warn_unused_result)) Bitfield remove_flag(Bitfield orig, Bitfield flag)
+    constexpr inline NODISCARD Bitfield remove_flag(Bitfield orig, Bitfield flag)
     {
         return static_cast<Bitfield>(static_cast<unsigned>(orig) & ~static_cast<unsigned>(flag));
     }
@@ -113,7 +119,7 @@ namespace vc4c
      * Returns a bit-field containing only the intersecting flags of the operands
      */
     template <typename Bitfield>
-    constexpr inline __attribute__((warn_unused_result)) Bitfield intersect_flags(Bitfield field0, Bitfield field1)
+    constexpr inline NODISCARD Bitfield intersect_flags(Bitfield field0, Bitfield field1)
     {
         return static_cast<Bitfield>(static_cast<unsigned>(field0) & static_cast<unsigned>(field1));
     }
@@ -122,7 +128,7 @@ namespace vc4c
      * Returns a bit-field containing all flags set in either of the operands
      */
     template <typename Bitfield>
-    constexpr inline __attribute__((warn_unused_result)) Bitfield combine_flags(Bitfield field0, Bitfield field1)
+    constexpr inline NODISCARD Bitfield combine_flags(Bitfield field0, Bitfield field1)
     {
         return static_cast<Bitfield>(static_cast<unsigned>(field0) | static_cast<unsigned>(field1));
     }
@@ -137,6 +143,14 @@ namespace vc4c
     {
         // https://en.wikipedia.org/wiki/Power_of_two#Fast_algorithm_to_check_if_a_positive_number_is_a_power_of_two
         return val > 0 && (val & (val - 1)) == 0;
+    }
+
+    /*
+     * To explicitly ignore return values of NODISCARD functions
+     */
+    template <typename T>
+    inline void ignoreReturnValue(T&& val)
+    {
     }
 } // namespace vc4c
 

@@ -77,43 +77,43 @@ namespace vc4c
             SetFlag setFlags = SetFlag::DONT_SET;
             intermediate::InstructionDecorations decoration = intermediate::InstructionDecorations::NONE;
 
-            OperationWrapper operator,(Signaling sig) &&
+            NODISCARD OperationWrapper operator,(Signaling sig) &&
             {
                 signal = sig;
                 return std::move(*this);
             }
 
-            OperationWrapper operator,(Unpack unpack) &&
+            NODISCARD OperationWrapper operator,(Unpack unpack) &&
             {
                 unpackMode = unpack;
                 return std::move(*this);
             }
 
-            OperationWrapper operator,(Pack pack) &&
+            NODISCARD OperationWrapper operator,(Pack pack) &&
             {
                 packMode = pack;
                 return std::move(*this);
             }
 
-            OperationWrapper operator,(ConditionCode cond) &&
+            NODISCARD OperationWrapper operator,(ConditionCode cond) &&
             {
                 conditional = cond;
                 return std::move(*this);
             }
 
-            OperationWrapper operator,(SetFlag flags) &&
+            NODISCARD OperationWrapper operator,(SetFlag flags) &&
             {
                 setFlags = flags;
                 return std::move(*this);
             }
 
-            OperationWrapper operator,(intermediate::InstructionDecorations deco) &&
+            NODISCARD OperationWrapper operator,(intermediate::InstructionDecorations deco) &&
             {
                 decoration = add_flag(decoration, deco);
                 return std::move(*this);
             }
 
-            intermediate::IntermediateInstruction* toInstruction(const Value& result)
+            NODISCARD intermediate::IntermediateInstruction* toInstruction(const Value& result)
             {
                 intermediate::IntermediateInstruction* res = nullptr;
                 if(op == OP_V8MIN)
@@ -131,14 +131,14 @@ namespace vc4c
             }
         };
 
-        inline OperationWrapper operator-(const Value& arg)
+        NODISCARD inline OperationWrapper operator-(const Value& arg)
         {
             if(arg.type.isFloatingType())
                 return OperationWrapper{OP_FSUB, FLOAT_ZERO, arg};
             return OperationWrapper{OP_SUB, INT_ZERO, arg};
         }
 
-        inline OperationWrapper operator+(const Value& arg1, const Value& arg2)
+        NODISCARD inline OperationWrapper operator+(const Value& arg1, const Value& arg2)
         {
             if(arg1.type.isFloatingType() != arg2.type.isFloatingType())
                 throw CompilationError(CompilationStep::GENERAL, "Cannot add floating-point and integer values");
@@ -147,7 +147,7 @@ namespace vc4c
             return OperationWrapper{OP_ADD, arg1, arg2};
         }
 
-        inline OperationWrapper operator-(const Value& arg1, const Value& arg2)
+        NODISCARD inline OperationWrapper operator-(const Value& arg1, const Value& arg2)
         {
             if(arg1.type.isFloatingType() != arg2.type.isFloatingType())
                 throw CompilationError(CompilationStep::GENERAL, "Cannot subtract floating-point and integer values");
@@ -156,7 +156,7 @@ namespace vc4c
             return OperationWrapper{OP_SUB, arg1, arg2};
         }
 
-        inline OperationWrapper operator*(const Value& arg1, const Value& arg2)
+        NODISCARD inline OperationWrapper operator*(const Value& arg1, const Value& arg2)
         {
             if(arg1.type.isFloatingType() && arg2.type.isFloatingType())
                 return OperationWrapper{OP_FMUL, arg1, arg2};
@@ -166,7 +166,7 @@ namespace vc4c
             throw CompilationError(CompilationStep::GENERAL, "Invalid operand types for multiplication");
         }
 
-        inline OperationWrapper operator/(const Value& arg1, const Literal& arg2)
+        NODISCARD inline OperationWrapper operator/(const Value& arg1, const Literal& arg2)
         {
             if(!arg1.type.isIntegralType())
                 throw CompilationError(CompilationStep::GENERAL, "Invalid operand type for division", arg1.to_string());
@@ -177,7 +177,7 @@ namespace vc4c
                 OP_SHR, arg1, Value(Literal(static_cast<int32_t>(std::log2(arg2.unsignedInt()))), TYPE_INT8)};
         }
 
-        inline OperationWrapper operator%(const Value& arg1, const Literal& arg2)
+        NODISCARD inline OperationWrapper operator%(const Value& arg1, const Literal& arg2)
         {
             if(!arg1.type.isIntegralType())
                 throw CompilationError(CompilationStep::GENERAL, "Invalid operand type for division", arg1.to_string());
@@ -187,7 +187,7 @@ namespace vc4c
             return OperationWrapper{OP_AND, arg1, Value(Literal(arg2.unsignedInt() - 1), TYPE_INT8)};
         }
 
-        inline OperationWrapper operator!(const Value& arg)
+        NODISCARD inline OperationWrapper operator!(const Value& arg)
         {
             if(!arg.type.isIntegralType() || arg.type.getElementType() != TYPE_BOOL)
                 throw CompilationError(
@@ -195,7 +195,7 @@ namespace vc4c
             return OperationWrapper{OP_XOR, arg, BOOL_TRUE};
         }
 
-        inline OperationWrapper operator&&(const Value& arg1, const Value& arg2)
+        NODISCARD inline OperationWrapper operator&&(const Value& arg1, const Value& arg2)
         {
             if(!arg1.type.isIntegralType() || arg1.type.getElementType() != TYPE_BOOL)
                 throw CompilationError(
@@ -206,7 +206,7 @@ namespace vc4c
             return OperationWrapper{OP_AND, arg1, arg2};
         }
 
-        inline OperationWrapper operator||(const Value& arg1, const Value& arg2)
+        NODISCARD inline OperationWrapper operator||(const Value& arg1, const Value& arg2)
         {
             if(!arg1.type.isIntegralType() || arg1.type.getElementType() != TYPE_BOOL)
                 throw CompilationError(
@@ -217,70 +217,70 @@ namespace vc4c
             return OperationWrapper{OP_OR, arg1, arg2};
         }
 
-        inline OperationWrapper operator~(const Value& arg)
+        NODISCARD inline OperationWrapper operator~(const Value& arg)
         {
             return OperationWrapper{OP_NOT, arg};
         }
 
-        inline OperationWrapper operator&(const Value& arg1, const Value& arg2)
+        NODISCARD inline OperationWrapper operator&(const Value& arg1, const Value& arg2)
         {
             return OperationWrapper{OP_AND, arg1, arg2};
         }
 
-        inline OperationWrapper operator|(const Value& arg1, const Value& arg2)
+        NODISCARD inline OperationWrapper operator|(const Value& arg1, const Value& arg2)
         {
             return OperationWrapper{OP_OR, arg1, arg2};
         }
 
-        inline OperationWrapper operator^(const Value& arg1, const Value& arg2)
+        NODISCARD inline OperationWrapper operator^(const Value& arg1, const Value& arg2)
         {
             return OperationWrapper{OP_XOR, arg1, arg2};
         }
 
-        inline OperationWrapper operator<<(const Value& arg1, const Value& arg2)
+        NODISCARD inline OperationWrapper operator<<(const Value& arg1, const Value& arg2)
         {
             return OperationWrapper{OP_SHL, arg1, arg2};
         }
 
-        inline OperationWrapper operator>>(const Value& arg1, const Value& arg2)
+        NODISCARD inline OperationWrapper operator>>(const Value& arg1, const Value& arg2)
         {
             // TODO could also be ASR for signed numbers!
             return OperationWrapper{OP_SHR, arg1, arg2};
         }
 
-        inline OperationWrapper operator,(const Value& src, Signaling sig)
+        NODISCARD inline OperationWrapper operator,(const Value& src, Signaling sig)
         {
             return OperationWrapper{OP_V8MIN, src}, sig;
         }
 
-        inline OperationWrapper operator,(const Value& src, Unpack unpack)
+        NODISCARD inline OperationWrapper operator,(const Value& src, Unpack unpack)
         {
             return OperationWrapper{OP_V8MIN, src}, unpack;
         }
 
-        inline OperationWrapper operator,(const Value& src, Pack pack)
+        NODISCARD inline OperationWrapper operator,(const Value& src, Pack pack)
         {
             return OperationWrapper{OP_V8MIN, src}, pack;
         }
 
-        inline OperationWrapper operator,(const Value& src, ConditionCode cond)
+        NODISCARD inline OperationWrapper operator,(const Value& src, ConditionCode cond)
         {
             return OperationWrapper{OP_V8MIN, src}, cond;
         }
 
-        inline OperationWrapper operator,(const Value& src, SetFlag flags)
+        NODISCARD inline OperationWrapper operator,(const Value& src, SetFlag flags)
         {
             return OperationWrapper{OP_V8MIN, src}, flags;
         }
 
-        inline OperationWrapper operator,(const Value& src, intermediate::InstructionDecorations deco)
+        NODISCARD inline OperationWrapper operator,(const Value& src, intermediate::InstructionDecorations deco)
         {
             return OperationWrapper{OP_V8MIN, src}, deco;
         }
 
         // TODO equality operators? Generates multiple instructions
 
-        inline OperationWrapper max(const Value& arg1, const Value& arg2)
+        NODISCARD inline OperationWrapper max(const Value& arg1, const Value& arg2)
         {
             if(arg1.type.isFloatingType() && arg2.type.isFloatingType())
                 return OperationWrapper{OP_FMAX, arg1, arg2};
@@ -289,7 +289,7 @@ namespace vc4c
             throw CompilationError(CompilationStep::GENERAL, "Invalid operand types for max operator");
         }
 
-        inline OperationWrapper min(const Value& arg1, const Value& arg2)
+        NODISCARD inline OperationWrapper min(const Value& arg1, const Value& arg2)
         {
             if(arg1.type.isFloatingType() && arg2.type.isFloatingType())
                 return OperationWrapper{OP_FMIN, arg1, arg2};
@@ -298,7 +298,7 @@ namespace vc4c
             throw CompilationError(CompilationStep::GENERAL, "Invalid operand types for min operator");
         }
 
-        inline OperationWrapper mul24(const Value& arg1, const Value& arg2)
+        NODISCARD inline OperationWrapper mul24(const Value& arg1, const Value& arg2)
         {
             if(arg1.type.isFloatingType())
                 throw CompilationError(
@@ -341,7 +341,7 @@ namespace vc4c
             {
             }
 
-            Value operator=(OperationWrapper&& op) &&
+            NODISCARD Value operator=(OperationWrapper&& op) &&
             {
                 if(op.setFlags != SetFlag::SET_FLAGS && !op.signal.hasSideEffects() &&
                     (!op.arg0.hasRegister() || !op.arg0.reg().hasSideEffectsOnRead()) &&
@@ -362,7 +362,7 @@ namespace vc4c
                 return result;
             }
 
-            Value operator=(const Value& src) &&
+            NODISCARD Value operator=(const Value& src) &&
             {
                 auto result = method.addNewLocal(type, name);
                 it.emplace(new intermediate::MoveOperation(result, src));
@@ -371,14 +371,14 @@ namespace vc4c
             }
         };
 
-        inline AssignmentWrapper assign(InstructionWalker& it, const Value& out)
+        NODISCARD inline AssignmentWrapper assign(InstructionWalker& it, const Value& out)
         {
             // TODO document that iterator is incremented (opposite to everywhere else)!
             // TODO document this version always inserts, beneath version precalculates
             return AssignmentWrapper{it, out};
         }
 
-        inline ValueWrapper assign(InstructionWalker& it, const DataType& type, std::string&& name = "")
+        NODISCARD inline ValueWrapper assign(InstructionWalker& it, const DataType& type, std::string&& name = "")
         {
             // TODO document that iterator is incremented (opposite to everywhere else)!
             return ValueWrapper{it.getBasicBlock()->getMethod(), it, type, std::forward<std::string>(name)};

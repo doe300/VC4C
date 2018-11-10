@@ -109,13 +109,13 @@ namespace vc4c
          */
         Global* reserveImageConfiguration(Module& module, Parameter& image);
 
-        InstructionWalker intrinsifyImageFunction(InstructionWalker it, Method& method);
+        NODISCARD InstructionWalker intrinsifyImageFunction(InstructionWalker it, Method& method);
 
-        InstructionWalker insertQueryChannelDataType(
+        NODISCARD InstructionWalker insertQueryChannelDataType(
             InstructionWalker it, Method& method, const Value& image, const Value& dest);
-        InstructionWalker insertQueryChannelOrder(
+        NODISCARD InstructionWalker insertQueryChannelOrder(
             InstructionWalker it, Method& method, const Value& image, const Value& dest);
-        InstructionWalker insertQueryMeasurements(
+        NODISCARD InstructionWalker insertQueryMeasurements(
             InstructionWalker it, Method& method, const Value& image, const Value& dest);
     } // namespace intermediate
 } // namespace vc4c

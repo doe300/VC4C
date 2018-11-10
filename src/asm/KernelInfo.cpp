@@ -33,7 +33,7 @@ static void writeStream(std::ostream& stream, const std::array<uint8_t, 8>& buf,
     }
 }
 
-static std::size_t copyName(
+static NODISCARD std::size_t copyName(
     std::ostream& stream, const std::string& name, const OutputMode mode, std::size_t bytesInFirstBlock = 8)
 {
     std::array<uint8_t, 8> buf{};

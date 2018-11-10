@@ -46,7 +46,7 @@ Global* intermediate::reserveImageConfiguration(Module& module, Parameter& image
     return &(*it);
 }
 
-static InstructionWalker insertLoadImageConfig(
+static NODISCARD InstructionWalker insertLoadImageConfig(
     InstructionWalker it, Method& method, const Value& image, const Value& dest, const Value& offset)
 {
     const Global* imageConfig =
@@ -60,7 +60,7 @@ static InstructionWalker insertLoadImageConfig(
     return it;
 }
 
-static InstructionWalker insertLoadArraySizeOrImageDepth(
+static NODISCARD InstructionWalker insertLoadArraySizeOrImageDepth(
     InstructionWalker it, Method& method, const Value& image, const Value& dest)
 {
     return insertLoadImageConfig(it, method, image, dest, IMAGE_CONFIG_ARRAY_SIZE_OFFSET);
@@ -210,7 +210,7 @@ InstructionWalker intermediate::insertQueryChannelOrder(
     return it;
 }
 
-static InstructionWalker insertLoadImageWidth(
+static NODISCARD InstructionWalker insertLoadImageWidth(
     InstructionWalker it, Method& method, const Value& image, const Value& dest)
 {
     const Value valTemp = method.addNewLocal(TYPE_INT32, "%image_config");
@@ -227,7 +227,7 @@ static InstructionWalker insertLoadImageWidth(
     return it;
 }
 
-static InstructionWalker insertLoadImageHeight(
+static NODISCARD InstructionWalker insertLoadImageHeight(
     InstructionWalker it, Method& method, const Value& image, const Value& dest)
 {
     const Value valTemp = method.addNewLocal(TYPE_INT32, "%image_config");

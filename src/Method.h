@@ -90,7 +90,8 @@ namespace vc4c
          *
          * NOTE: The name of a local must be unique within a method (for parameter, globals, stack-allocations too)
          */
-        const Value addNewLocal(const DataType& type, const std::string& prefix = "", const std::string& postfix = "");
+        NODISCARD const Value addNewLocal(
+            const DataType& type, const std::string& prefix = "", const std::string& postfix = "");
 
         /*
          * Looks for a local with the given name and returns it.
@@ -205,7 +206,7 @@ namespace vc4c
          *
          * Returns whether the operation was executed.
          */
-        bool removeBlock(BasicBlock& block, bool overwriteUsages = false);
+        NODISCARD bool removeBlock(BasicBlock& block, bool overwriteUsages = false);
 
         /*
          * Create new basic block and Insert it into position.
@@ -226,7 +227,7 @@ namespace vc4c
          * This function splits the current basic block, moving all following instructions to the newly created basic
          * block
          */
-        InstructionWalker emplaceLabel(InstructionWalker it, intermediate::BranchLabel* label);
+        NODISCARD InstructionWalker emplaceLabel(InstructionWalker it, intermediate::BranchLabel* label);
 
         /*
          * Calculates the offsets (within a stack-frame) of the single stack-items

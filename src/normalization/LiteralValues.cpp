@@ -52,7 +52,7 @@ static bool fitsIntoSignedMaskedLoad(const Value& val)
         val.getLiteralValue()->signedInt() == -2 || val.getLiteralValue()->signedInt() == -1;
 }
 
-static InstructionWalker copyVector(Method& method, InstructionWalker it, const Value& out, const Value& in)
+static NODISCARD InstructionWalker copyVector(Method& method, InstructionWalker it, const Value& out, const Value& in)
 {
     if(in.container().isAllSame())
     {
@@ -679,7 +679,8 @@ static ImmediateHandler mapImmediateValue(const Literal& source)
     return handler;
 }
 
-static InstructionWalker handleImmediateInOperation(Method& method, InstructionWalker it, intermediate::Operation* op)
+static NODISCARD InstructionWalker handleImmediateInOperation(
+    Method& method, InstructionWalker it, intermediate::Operation* op)
 {
     for(std::size_t i = 0; i < op->getArguments().size(); ++i)
     {
@@ -735,7 +736,8 @@ static InstructionWalker handleImmediateInOperation(Method& method, InstructionW
     return it;
 }
 
-static InstructionWalker handleImmediateInMove(Method& method, InstructionWalker it, intermediate::MoveOperation* move)
+static NODISCARD InstructionWalker handleImmediateInMove(
+    Method& method, InstructionWalker it, intermediate::MoveOperation* move)
 {
     Value source = move->getSource();
     if(source.hasLiteral())
@@ -804,7 +806,7 @@ InstructionWalker normalization::handleImmediate(
     return it;
 }
 
-static InstructionWalker findWriteOfLocal(InstructionWalker it, const Local* loc)
+static NODISCARD InstructionWalker findWriteOfLocal(InstructionWalker it, const Local* loc)
 {
     // TODO could already abort after X steps (X being the accumulator threshold)
     while(!it.isStartOfBlock() && !(it->hasValueType(ValueType::LOCAL) && it->getOutput()->hasLocal(loc)))

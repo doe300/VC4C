@@ -385,7 +385,8 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
     switch(type)
     {
     case ConversionType::BITCAST:
-        intermediate::insertBitcast(method.method->appendToEnd(), *method.method.get(), source, dest, decorations);
+        ignoreReturnValue(
+            intermediate::insertBitcast(method.method->appendToEnd(), *method.method.get(), source, dest, decorations));
         break;
     case ConversionType::FLOATING:
         method.method->appendToEnd(
@@ -393,7 +394,8 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
         break;
     case ConversionType::SIGNED:
         if(isSaturated)
-            intermediate::insertSaturation(method.method->appendToEnd(), *method.method.get(), source, dest, true);
+            ignoreReturnValue(
+                intermediate::insertSaturation(method.method->appendToEnd(), *method.method.get(), source, dest, true));
         if(sourceWidth < destWidth)
             method.method->appendToEnd(
                 (new intermediate::IntrinsicOperation("sext", dest, source))->addDecorations(decorations));
@@ -405,7 +407,8 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
         break;
     case ConversionType::UNSIGNED:
         if(isSaturated)
-            intermediate::insertSaturation(method.method->appendToEnd(), *method.method.get(), source, dest, false);
+            ignoreReturnValue(intermediate::insertSaturation(
+                method.method->appendToEnd(), *method.method.get(), source, dest, false));
         else if(sourceWidth > destWidth)
             method.method->appendToEnd(
                 (new intermediate::IntrinsicOperation("trunc", dest, source))->addDecorations(decorations));
@@ -557,8 +560,8 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
         // index is literal
         logging::debug() << "Generating intermediate extraction of index " << sourceIndices->at(0) << " from "
                          << source.to_string() << " into " << dest.to_string(true) << logging::endl;
-        intermediate::insertVectorExtraction(method.method->appendToEnd(), *method.method, source,
-            Value(Literal(sourceIndices->at(0)), TYPE_INT8), dest);
+        ignoreReturnValue(intermediate::insertVectorExtraction(method.method->appendToEnd(), *method.method, source,
+            Value(Literal(sourceIndices->at(0)), TYPE_INT8), dest));
     }
     else if((!sourceIndices || (sourceIndices->at(0) == 0)) && destIndices)
     {
@@ -568,8 +571,8 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
         // index is literal
         logging::debug() << "Generating intermediate insertion of " << source.to_string() << " into element "
                          << destIndices->at(0) << " of " << dest.to_string(true) << logging::endl;
-        intermediate::insertVectorInsertion(
-            method.method->appendToEnd(), *method.method, dest, Value(Literal(destIndices->at(0)), TYPE_INT8), source);
+        ignoreReturnValue(intermediate::insertVectorInsertion(
+            method.method->appendToEnd(), *method.method, dest, Value(Literal(destIndices->at(0)), TYPE_INT8), source));
     }
     else
     {
@@ -648,7 +651,8 @@ void SPIRVShuffle::mapInstruction(TypeMapping& types, ConstantMapping& constants
                      << src1.to_string() << " into " << dest.to_string() << " with mask "
                      << index.to_string(false, true) << logging::endl;
 
-    intermediate::insertVectorShuffle(method.method->appendToEnd(), *method.method, dest, src0, src1, index);
+    ignoreReturnValue(
+        intermediate::insertVectorShuffle(method.method->appendToEnd(), *method.method, dest, src0, src1, index));
 }
 
 Optional<Value> SPIRVShuffle::precalculate(const std::map<uint32_t, DataType>& types,
@@ -681,8 +685,8 @@ void SPIRVIndexOf::mapInstruction(TypeMapping& types, ConstantMapping& constants
         indexValues.push_back(getValue(indexID, *method.method, types, constants, memoryAllocated, localTypes));
     }
 
-    intermediate::insertCalculateIndices(
-        method.method->appendToEnd(), *method.method.get(), container, dest, indexValues, isPtrAcessChain);
+    ignoreReturnValue(intermediate::insertCalculateIndices(
+        method.method->appendToEnd(), *method.method.get(), container, dest, indexValues, isPtrAcessChain));
 }
 
 Optional<Value> SPIRVIndexOf::precalculate(
@@ -916,17 +920,20 @@ void SPIRVImageQuery::mapInstruction(TypeMapping& types, ConstantMapping& consta
     case ImageQuery::CHANNEL_DATA_TYPE:
         logging::debug() << "Generating query of image's channel data-type for image: " << image.to_string()
                          << logging::endl;
-        intermediate::insertQueryChannelDataType(method.method->appendToEnd(), *method.method, image, dest);
+        ignoreReturnValue(
+            intermediate::insertQueryChannelDataType(method.method->appendToEnd(), *method.method, image, dest));
         return;
     case ImageQuery::CHANNEL_ORDER:
         logging::debug() << "Generating query of image's channel order for image: " << image.to_string()
                          << logging::endl;
-        intermediate::insertQueryChannelOrder(method.method->appendToEnd(), *method.method, image, dest);
+        ignoreReturnValue(
+            intermediate::insertQueryChannelOrder(method.method->appendToEnd(), *method.method, image, dest));
         return;
     case ImageQuery::SIZES:
         logging::debug() << "Generating query of image's measurements for image: " << image.to_string()
                          << logging::endl;
-        intermediate::insertQueryMeasurements(method.method->appendToEnd(), *method.method, image, dest);
+        ignoreReturnValue(
+            intermediate::insertQueryMeasurements(method.method->appendToEnd(), *method.method, image, dest));
         return;
     case ImageQuery::SIZES_LOD:
         logging::debug() << "Generating query of image's measurements for image with LOD: " << image.to_string()
@@ -934,7 +941,8 @@ void SPIRVImageQuery::mapInstruction(TypeMapping& types, ConstantMapping& consta
         if(param.hasLiteral(INT_ZERO.literal()))
         {
             // same as above
-            intermediate::insertQueryMeasurements(method.method->appendToEnd(), *method.method, image, dest);
+            ignoreReturnValue(
+                intermediate::insertQueryMeasurements(method.method->appendToEnd(), *method.method, image, dest));
         }
         else
             throw CompilationError(CompilationStep::LLVM_2_IR, "Images with LOD are not supported", image.to_string());

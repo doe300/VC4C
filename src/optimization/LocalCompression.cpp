@@ -23,7 +23,7 @@ static const std::vector<std::string> workGroupLocalNames = {Method::LOCAL_IDS, 
     Method::GLOBAL_OFFSET_X, Method::GLOBAL_OFFSET_Y, Method::GLOBAL_OFFSET_Z, Method::WORK_DIMENSIONS,
     Method::GLOBAL_DATA_ADDRESS, Method::GROUP_LOOP_SIZE};
 
-static InstructionWalker compressLocalWrite(
+static NODISCARD InstructionWalker compressLocalWrite(
     Method& method, InstructionWalker it, const Local& local, const Local& container, unsigned char index)
 {
     logging::debug() << "Compressing write of local '" << local.name << "' into container '" << container.name
@@ -47,7 +47,7 @@ static InstructionWalker compressLocalWrite(
         it, method, container.createReference(), Value(SmallImmediate(index), TYPE_INT8), tmp);
 }
 
-static InstructionWalker compressLocalRead(
+static NODISCARD InstructionWalker compressLocalRead(
     Method& method, InstructionWalker it, const Local& local, const Local& container, unsigned char index)
 {
     logging::debug() << "Compressing read of local '" << local.name << "' from container '" << container.name

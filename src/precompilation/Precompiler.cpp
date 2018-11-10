@@ -7,6 +7,7 @@
 #include "Precompiler.h"
 
 #include "../Profiler.h"
+#include "../helper.h"
 #include "FrontendCompiler.h"
 #include "log.h"
 
@@ -132,7 +133,7 @@ static std::pair<bool, bool> determinePossibleLinkers(
     return std::make_pair(llvmLinkerPossible, spirvLinkerPossible);
 }
 
-static Optional<TemporaryFile> compileToSPIRV(const std::pair<std::istream*, Optional<std::string>>& source)
+static NODISCARD Optional<TemporaryFile> compileToSPIRV(const std::pair<std::istream*, Optional<std::string>>& source)
 {
     auto type = Precompiler::getSourceType(*source.first);
     if(type == SourceType::OPENCL_C)
@@ -166,7 +167,7 @@ static Optional<TemporaryFile> compileToSPIRV(const std::pair<std::istream*, Opt
             std::to_string(static_cast<unsigned>(type)));
 }
 
-static Optional<TemporaryFile> compileToLLVM(const std::pair<std::istream*, Optional<std::string>>& source)
+static NODISCARD Optional<TemporaryFile> compileToLLVM(const std::pair<std::istream*, Optional<std::string>>& source)
 {
     auto type = Precompiler::getSourceType(*source.first);
     if(type == SourceType::OPENCL_C)

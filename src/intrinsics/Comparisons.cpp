@@ -17,7 +17,7 @@ using namespace vc4c;
 using namespace vc4c::intermediate;
 using namespace vc4c::operators;
 
-static InstructionWalker replaceWithSetBoolean(
+static NODISCARD InstructionWalker replaceWithSetBoolean(
     InstructionWalker it, const Value& dest, const ConditionCode& trueCode, const Value& value = BOOL_TRUE)
 {
     /*
@@ -177,7 +177,7 @@ InstructionWalker intrinsifyIntegerRelation(
     return it;
 }
 
-static std::pair<InstructionWalker, Value> insertCheckForNaN(
+static NODISCARD std::pair<InstructionWalker, Value> insertCheckForNaN(
     Method& method, InstructionWalker it, const Comparison* comp)
 {
     const Value firstArgNaN = method.addNewLocal(TYPE_BOOL, "%nan_check");

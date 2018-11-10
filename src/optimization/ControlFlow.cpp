@@ -920,7 +920,7 @@ void optimizations::extendBranches(const Module& module, Method& method, const C
     }
 }
 
-static InstructionWalker loadVectorParameter(const Parameter& param, Method& method, InstructionWalker it)
+static NODISCARD InstructionWalker loadVectorParameter(const Parameter& param, Method& method, InstructionWalker it)
 {
     // we need to load a UNIFORM per vector element into the particular vector element
     for(uint8_t i = 0; i < param.type.getVectorWidth(); ++i)

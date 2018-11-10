@@ -59,7 +59,7 @@ namespace vc4c
             explicit Mutex() : locked(false), lockOwner(255) {}
 
             bool isLocked() const;
-            bool lock(uint8_t qpu);
+            NODISCARD bool lock(uint8_t qpu);
             void unlock(uint8_t qpu);
 
         private:
@@ -124,7 +124,7 @@ namespace vc4c
             void setTMURegisterR(uint8_t tmu, const Value& val);
             void setTMURegisterB(uint8_t tmu, const Value& val);
 
-            bool triggerTMURead(uint8_t tmu);
+            NODISCARD bool triggerTMURead(uint8_t tmu);
 
         private:
             QPU& qpu;
@@ -182,8 +182,8 @@ namespace vc4c
             void setDMAWriteAddress(const Value& val);
             void setDMAReadAddress(const Value& val);
 
-            bool waitDMAWrite() const;
-            bool waitDMARead() const;
+            NODISCARD bool waitDMAWrite() const;
+            NODISCARD bool waitDMARead() const;
 
             void incrementCycle();
 
@@ -252,7 +252,7 @@ namespace vc4c
             uint32_t getCurrentCycle() const;
             std::pair<Value, bool> readR4();
 
-            bool execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction);
+            NODISCARD bool execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction);
 
             const qpu_asm::Instruction* getCurrentInstruction(
                 std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction) const;
@@ -276,11 +276,11 @@ namespace vc4c
             friend class SFU;
             friend class VPM;
 
-            bool executeALU(const qpu_asm::ALUInstruction* aluInst);
+            NODISCARD bool executeALU(const qpu_asm::ALUInstruction* aluInst);
             void writeConditional(Register dest, const Value& in, ConditionCode cond,
                 const qpu_asm::ALUInstruction* addInst = nullptr, const qpu_asm::ALUInstruction* mulInst = nullptr);
             bool isConditionMet(BranchCond cond) const;
-            bool executeSignal(Signaling signal);
+            NODISCARD bool executeSignal(Signaling signal);
             void setFlags(const Value& output, ConditionCode cond);
         };
 

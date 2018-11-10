@@ -490,7 +490,7 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
      * The GLSL shader uses the SFU_RECIP with a Newton-Raphson step "to improve our approximation",
      * see http://anholt.livejournal.com/49474.html
      */
-    periphery::insertSFUCall(REG_SFU_RECIP, it, divisor);
+    it = periphery::insertSFUCall(REG_SFU_RECIP, it, divisor);
     Value P0 = assign(it, outputType, "%fdiv_recip") = Value(REG_SFU_OUT, TYPE_FLOAT);
 
     // 2. iteration step: Pi+1 = Pi(2 - D * Pi)

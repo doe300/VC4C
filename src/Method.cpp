@@ -96,7 +96,7 @@ const Local* Method::findOrCreateLocal(const DataType& type, const std::string& 
     return &(it.first->second);
 }
 
-static bool removeUsagesInBasicBlock(const Method& method, const BasicBlock& bb, const Local* locale,
+static NODISCARD bool removeUsagesInBasicBlock(const Method& method, const BasicBlock& bb, const Local* locale,
     OrderedMap<const LocalUser*, LocalUse>& remainingUsers, int& usageRangeLeft)
 {
     auto it = bb.begin();

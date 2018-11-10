@@ -588,12 +588,12 @@ namespace vc4c
         /*
          * Inserts a read from the memory located at addr into the value dest
          */
-        InstructionWalker insertReadDMA(
+        NODISCARD InstructionWalker insertReadDMA(
             Method& method, InstructionWalker it, const Value& dest, const Value& addr, const bool useMutex = true);
         /*
          * Inserts write from the value src into the memory located at addr
          */
-        InstructionWalker insertWriteDMA(
+        NODISCARD InstructionWalker insertWriteDMA(
             Method& method, InstructionWalker it, const Value& src, const Value& addr, const bool useMutex = true);
 
         /*
@@ -777,37 +777,37 @@ namespace vc4c
              *
              * NOTE: the inAreaOffset is the offset in bytes
              */
-            InstructionWalker insertReadVPM(Method& method, InstructionWalker it, const Value& dest,
+            NODISCARD InstructionWalker insertReadVPM(Method& method, InstructionWalker it, const Value& dest,
                 const VPMArea* area = nullptr, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
             /*
              * Inserts a write from a QPU register into VPM
              *
              * NOTE: the inAreaOffset is the offset in bytes
              */
-            InstructionWalker insertWriteVPM(Method& method, InstructionWalker it, const Value& src,
+            NODISCARD InstructionWalker insertWriteVPM(Method& method, InstructionWalker it, const Value& src,
                 const VPMArea* area = nullptr, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
 
             /*
              * Inserts a read from RAM into VPM via DMA
              */
-            InstructionWalker insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
+            NODISCARD InstructionWalker insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
                 const DataType& type, const VPMArea* area = nullptr, bool useMutex = true,
                 const Value& inAreaOffset = INT_ZERO);
             /*
              * Inserts a write from VPM into RAM via DMA
              */
-            InstructionWalker insertWriteRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
+            NODISCARD InstructionWalker insertWriteRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
                 const DataType& type, const VPMArea* area = nullptr, bool useMutex = true,
                 const Value& inAreaOffset = INT_ZERO);
             /*
              * Inserts a copy from RAM via DMA and VPM into RAM
              */
-            InstructionWalker insertCopyRAM(Method& method, InstructionWalker it, const Value& destAddress,
+            NODISCARD InstructionWalker insertCopyRAM(Method& method, InstructionWalker it, const Value& destAddress,
                 const Value& srcAddress, unsigned numBytes, const VPMArea* area = nullptr, bool useMutex = true);
             /*
              * Inserts a filling of a memory-area with a single value from VPM
              */
-            InstructionWalker insertFillRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
+            NODISCARD InstructionWalker insertFillRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
                 const DataType& type, unsigned numCopies, const VPMArea* area = nullptr, bool useMutex = true);
 
             /*

@@ -77,7 +77,7 @@ namespace vc4c
              * Fixes this node to a specific register by discarding all other possibilities.
              * \return the register-index in the corresponding bit-set
              */
-            std::size_t fixToRegister();
+            NODISCARD std::size_t fixToRegister();
 
             std::string to_string(bool longDescription = false) const;
 
@@ -133,12 +133,12 @@ namespace vc4c
              */
             GraphColoring(Method& method, InstructionWalker it);
 
-            bool colorGraph();
+            NODISCARD bool colorGraph();
 
             /*!
              * \return Whether all errors have been fixed
              */
-            bool fixErrors();
+            NODISCARD bool fixErrors();
 
             FastMap<const Local*, Register> toRegisterMap() const;
 
