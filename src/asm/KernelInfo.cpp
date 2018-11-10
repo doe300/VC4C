@@ -361,6 +361,7 @@ KernelInfo qpu_asm::getKernelInfos(
         ParamInfo paramInfo;
         paramInfo.setSize(static_cast<uint8_t>(paramType.getPhysicalWidth()));
         paramInfo.setPointer(paramType.isPointerType() || paramType.getImageType());
+        paramInfo.setImage(!!paramType.getImageType());
         paramInfo.setOutput(param.isOutputParameter());
         paramInfo.setInput(param.isInputParameter());
         paramInfo.setConstant(has_flag(param.decorations, ParameterDecorations::READ_ONLY));

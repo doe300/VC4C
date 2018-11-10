@@ -71,13 +71,17 @@ namespace vc4c
              */
             BITFIELD_ENTRY(AddressSpace, AddressSpace, 52, Quadruple)
             /*
-             * Whether the parameter is read, only valid for pointers
+             * Whether the parameter is read, only valid for pointers and images
              */
             BITFIELD_ENTRY(Input, bool, 56, Bit)
             /*
-             * Whether the parameter is written into, only valid for pointers
+             * Whether the parameter is written into, only valid for pointers and images
              */
             BITFIELD_ENTRY(Output, bool, 57, Bit)
+            /*
+             * Whether this parameter is an image
+             */
+            BITFIELD_ENTRY(Image, bool, 59, Bit)
             /*
              * Whether the parameter is a pointer-type
              */

@@ -248,11 +248,11 @@ namespace vc4c
         ~Parameter() override;
 
         /*
-         * Whether this parameter is read from, only meaningful for pointer-types
+         * Whether this parameter is read from, only meaningful for pointer-types and images
          */
         bool isInputParameter() const;
         /*
-         * Whether this parameter is written to, only meaningful for pointer-types
+         * Whether this parameter is written to, only meaningful for pointer-types and images
          */
         bool isOutputParameter() const;
 
