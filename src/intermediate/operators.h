@@ -166,6 +166,18 @@ namespace vc4c
             throw CompilationError(CompilationStep::GENERAL, "Invalid operand types for multiplication");
         }
 
+        NODISCARD inline OperationWrapper operator*(const Value& arg1, const Literal& arg2)
+        {
+            if(!arg1.type.isIntegralType())
+                throw CompilationError(
+                    CompilationStep::GENERAL, "Invalid operand type for multiplication", arg1.to_string());
+            if(!isPowerTwo(arg2.unsignedInt()))
+                throw CompilationError(CompilationStep::GENERAL,
+                    "Can only insert multiplication by constant powers of two", arg2.to_string());
+            return OperationWrapper{
+                OP_SHL, arg1, Value(Literal(static_cast<int32_t>(std::log2(arg2.unsignedInt()))), TYPE_INT8)};
+        }
+
         NODISCARD inline OperationWrapper operator/(const Value& arg1, const Literal& arg2)
         {
             if(!arg1.type.isIntegralType())

@@ -1426,7 +1426,8 @@ struct MemoryAccess
 };
 
 // Finds the next instruction writing the given value into memory
-static InstructionWalker findNextValueStore(InstructionWalker it, const Value& src, std::size_t limit)
+static InstructionWalker findNextValueStore(
+    InstructionWalker it, const Value& src, std::size_t limit, const Local* sourceLocation)
 {
     while(!it.isEndOfBlock() && limit > 0)
     {
@@ -1434,6 +1435,12 @@ static InstructionWalker findNextValueStore(InstructionWalker it, const Value& s
         if(memInstr != nullptr && memInstr->op == MemoryOperation::WRITE && memInstr->getSource() == src)
         {
             return it;
+        }
+        if(memInstr != nullptr && memInstr->getDestination().local()->getBase(true) == sourceLocation)
+        {
+            // there is some other instruction writing into the memory we read, it could have been changed -> abort
+            // TODO can we be more precise and abort only if the same index is written?? How to determine??
+            return it.getBasicBlock()->end();
         }
         if(it.has<MemoryBarrier>() || it.has<Branch>() || it.has<MutexLock>() || it.has<SemaphoreAdjustment>())
             break;
@@ -1508,7 +1515,8 @@ static FastMap<const Local*, MemoryAccess> determineMemoryAccess(Method& method)
             if(memInstr->op == MemoryOperation::READ && !memInstr->hasConditionalExecution() &&
                 memInstr->getDestination().local()->getUsers(LocalUse::Type::READER).size() == 1)
             {
-                auto nextIt = findNextValueStore(it, memInstr->getDestination(), 16 /* TODO */);
+                auto nextIt = findNextValueStore(
+                    it, memInstr->getDestination(), 16 /* TODO */, memInstr->getSource().local()->getBase(true));
                 auto nextMemInstr = nextIt.isEndOfBlock() ? nullptr : nextIt.get<const MemoryInstruction>();
                 if(nextMemInstr != nullptr && !nextIt->hasConditionalExecution() &&
                     nextMemInstr->op == MemoryOperation::WRITE &&

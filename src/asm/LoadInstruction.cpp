@@ -59,14 +59,6 @@ LoadInstruction::LoadInstruction(const Pack pack, const ConditionCode condAdd, c
 
 std::string LoadInstruction::toASMString(bool addComments) const
 {
-    if(getType() == OpLoad::LOAD_SIGNED)
-    {
-        auto s = std::string("ldi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
-            ((toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") +
-                std::to_string(getImmediateSignedShort0()) + ", ") +
-            std::to_string(getImmediateSignedShort1());
-        return addComment(s);
-    }
     if(getType() == OpLoad::LOAD_UNSIGNED)
     {
         auto s = std::string("ldui") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +

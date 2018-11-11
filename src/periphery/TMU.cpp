@@ -7,6 +7,7 @@
 #include "TMU.h"
 
 #include "../InstructionWalker.h"
+#include "../intermediate/Helper.h"
 #include "../intermediate/operators.h"
 #include "log.h"
 
@@ -22,11 +23,6 @@ const TMU periphery::TMU1{REG_TMU1_COORD_S_U_X, REG_TMU1_COORD_T_V_Y, REG_TMU1_C
 static NODISCARD InstructionWalker insertCalculateAddressOffsets(
     Method& method, InstructionWalker it, const Value& baseAddress, const DataType& type, Value& outputAddress)
 {
-    if(type.getVectorWidth() == 1)
-    {
-        outputAddress = baseAddress;
-        return it;
-    }
     /*
      * we need to set the addresses in this way:
      *
@@ -41,6 +37,16 @@ static NODISCARD InstructionWalker insertCalculateAddressOffsets(
     // XXX actually this is baseAddr.type * type.num, but we can't have vectors of pointers
     outputAddress = method.addNewLocal(TYPE_INT32.toVectorType(type.getVectorWidth()), "%tmu_address");
 
+    // since the base address might be a single pointer, we need to replicate it for the upper vector elements to read
+    // the correct address (if there are upper elements)
+    Value replicatedAddress = baseAddress;
+    if(type.getVectorWidth() > 1)
+    {
+        replicatedAddress = method.addNewLocal(
+            type.getElementType().toVectorType(type.getVectorWidth()).toPointerType(), "%replicated_address");
+        it = intermediate::insertReplication(it, baseAddress, replicatedAddress);
+    }
+
     // addressOffsets = sizeof(type) * elem_num
     assign(it, addressOffsets) =
         mul24(Value(Literal(static_cast<uint32_t>(type.getScalarBitCount()) / 8), TYPE_INT8), ELEMENT_NUMBER_REGISTER);
@@ -52,7 +58,7 @@ static NODISCARD InstructionWalker insertCalculateAddressOffsets(
     // TODO or generally check if we can rewrite "mov out, 0" in way so we can combine it with next/previous instruction
     // (e.g. by using "xor out, x, x" or "v8subs out, x, x")
     assign(it, outputAddress) = (0_val, COND_NEGATIVE_CLEAR);
-    assign(it, outputAddress) = (baseAddress + addressOffsets, COND_NEGATIVE_SET);
+    assign(it, outputAddress) = (replicatedAddress + addressOffsets, COND_NEGATIVE_SET);
     return it;
 }
 
