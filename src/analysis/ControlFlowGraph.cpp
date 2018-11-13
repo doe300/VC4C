@@ -513,6 +513,23 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
     return graph;
 }
 
+std::unique_ptr<ControlFlowGraph> ControlFlowGraph::clone() {
+    std::unique_ptr<ControlFlowGraph> graph(new ControlFlowGraph());
+
+    for(auto &node : nodes) {
+        auto &newNode = graph->getOrCreateNode(node.first);
+        node.second.forAllIncomingEdges([&newNode, &graph](const CFGNode& source, const CFGEdge& edge) -> bool {
+                auto &newSource = graph->getOrCreateNode(source.key);
+                auto &newEdge = newSource.getOrCreateEdge(&newNode, CFGRelation{}).addInput(newSource);
+                newEdge.data.isImplicit.emplace(source.key, edge.data.isImplicit.at(source.key));
+                newEdge.data.predecessors.emplace(source.key, edge.data.predecessors.at(source.key));
+                return true;
+            });
+    }
+
+    return graph;
+}
+
 ControlFlowLoop ControlFlowGraph::findLoopsHelper(const CFGNode* node, FastMap<const CFGNode*, int>& discoveryTimes,
     FastMap<const CFGNode*, int>& lowestReachable, FastModificationList<const CFGNode*>& stack, int& time)
 {

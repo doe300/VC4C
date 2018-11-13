@@ -695,6 +695,11 @@ namespace vc4c
             return nodes;
         }
 
+        FastMap<Key, NodeType>& getNodes()
+        {
+            return nodes;
+        }
+
         void forAllNodes(const std::function<void(NodeType&)>& consumer)
         {
             std::for_each(nodes.begin(), nodes.end(), [&](auto& pair) { consumer(pair.second); });

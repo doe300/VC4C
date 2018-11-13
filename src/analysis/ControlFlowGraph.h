@@ -22,6 +22,9 @@ namespace vc4c
     class CFGRelation
     {
     public:
+        // map of the source block and the implicit flags
+        // std::map<BasicBlock*, bool> isImplicit;
+
         bool operator==(const CFGRelation& other) const;
 
         std::string getLabel() const;
@@ -40,6 +43,9 @@ namespace vc4c
     private:
         // map of the source block and the predecessor within this block (empty for fall-through)
         std::map<BasicBlock*, Optional<InstructionWalker>> predecessors;
+
+        // this is used for only optimizations::removeConstantLoadInLoops
+        bool isBackEdge = false;
 
         friend class ControlFlowGraph;
     };
@@ -117,6 +123,15 @@ namespace vc4c
         void updateOnBranchInsertion(Method& method, InstructionWalker it);
         void updateOnBranchRemoval(Method& method, BasicBlock& affectedBlock, const Local* branchTarget);
 
+        /*
+         * Creates the CFG from the basic-blocks within the given method
+         */
+        static std::unique_ptr<ControlFlowGraph> createCFG(Method& method);
+
+        /*
+         * Clone the CFG
+         */
+        std::unique_ptr<ControlFlowGraph> clone();
     private:
         explicit ControlFlowGraph(std::size_t numBlocks) : Graph(numBlocks) {}
         /*
@@ -137,11 +152,6 @@ namespace vc4c
          */
         FastAccessList<ControlFlowLoop> findLoopsHelperRecursively(const CFGNode* node,
             FastMap<const CFGNode*, int>& discoveryTimes, RandomModificationList<const CFGNode*>& stack, int& time);
-
-        /*
-         * Creates the CFG from the basic-blocks within the given method
-         */
-        static std::unique_ptr<ControlFlowGraph> createCFG(Method& method);
 
         friend class Method;
     };
