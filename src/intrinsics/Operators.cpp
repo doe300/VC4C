@@ -546,7 +546,7 @@ Literal intermediate::clz(const DataType& type, const Literal& val)
         if(((val.unsignedInt() >> i) & 0x1) == 0x1)
             return Literal(static_cast<int32_t>(MSB - i));
     }
-    // FIXME is this correct? What does clz(0) return on VC4?
+    // Tests show that VC4 returns 32 for clz(0)
     return Literal(32);
 }
 

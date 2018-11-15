@@ -153,3 +153,63 @@ bool ALUInstruction::isValidInstruction() const
         return true;
     }
 }
+
+static Register getInputRegister(InputMultiplex mux, Address regA, Address regB)
+{
+    switch(mux)
+    {
+    case InputMultiplex::ACC0:
+        return REG_ACC0;
+    case InputMultiplex::ACC1:
+        return REG_ACC1;
+    case InputMultiplex::ACC2:
+        return REG_ACC2;
+    case InputMultiplex::ACC3:
+        return REG_ACC3;
+    case InputMultiplex::ACC4:
+        return REG_TMU_OUT;
+    case InputMultiplex::ACC5:
+        return REG_ACC5;
+    case InputMultiplex::REGA:
+        return Register{RegisterFile::PHYSICAL_A, regA};
+    case InputMultiplex::REGB:
+        return Register{RegisterFile::PHYSICAL_B, regB};
+    }
+    throw CompilationError(CompilationStep::CODE_GENERATION, "Unknown input register");
+}
+
+Register ALUInstruction::getAddFirstOperand() const
+{
+    if(getSig() == SIGNAL_ALU_IMMEDIATE && getAddMultiplexA() == InputMultiplex::REGB)
+        return REG_NOP;
+    if(getAddition() == OP_NOP.opAdd)
+        return REG_NOP;
+    return getInputRegister(getAddMultiplexA(), getInputA(), getInputB());
+}
+
+Register ALUInstruction::getAddSecondOperand() const
+{
+    if(getSig() == SIGNAL_ALU_IMMEDIATE && getAddMultiplexB() == InputMultiplex::REGB)
+        return REG_NOP;
+    if(getAddition() == OP_NOP.opAdd)
+        return REG_NOP;
+    return getInputRegister(getAddMultiplexB(), getInputA(), getInputB());
+}
+
+Register ALUInstruction::getMulFirstOperand() const
+{
+    if(getSig() == SIGNAL_ALU_IMMEDIATE && getMulMultiplexA() == InputMultiplex::REGB)
+        return REG_NOP;
+    if(getMultiplication() == OP_NOP.opMul)
+        return REG_NOP;
+    return getInputRegister(getMulMultiplexA(), getInputA(), getInputB());
+}
+
+Register ALUInstruction::getMulSecondOperand() const
+{
+    if(getSig() == SIGNAL_ALU_IMMEDIATE && getMulMultiplexB() == InputMultiplex::REGB)
+        return REG_NOP;
+    if(getMultiplication() == OP_NOP.opMul)
+        return REG_NOP;
+    return getInputRegister(getMulMultiplexB(), getInputA(), getInputB());
+}

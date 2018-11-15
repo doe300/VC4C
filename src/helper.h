@@ -8,6 +8,7 @@
 #define HELPER_H
 
 #include <functional>
+#include <set>
 #include <vector>
 
 #include "CompilationError.h"
@@ -26,7 +27,7 @@ namespace vc4c
      * NOTE: To use this function, the objects stored in the container need to support the to_string() method
      */
     template <typename T, typename VT = std::vector<T>>
-    inline const std::string to_string(const VT& values, const std::string& separator = ", ")
+    inline std::string to_string(const VT& values, const std::string& separator = ", ")
     {
         std::string tmp;
         for(const T& val : values)
@@ -40,8 +41,18 @@ namespace vc4c
      * Specialization of above function to print containers of std::strings
      */
     template <>
-    inline const std::string to_string<std::string>(
-        const std::vector<std::string>& values, const std::string& separator)
+    inline std::string to_string<std::string>(const std::vector<std::string>& values, const std::string& separator)
+    {
+        std::string tmp;
+        for(const std::string& val : values)
+        {
+            tmp.append(val).append(separator);
+        }
+        return tmp.substr(0, tmp.size() - separator.size());
+    }
+
+    template <>
+    inline std::string to_string<std::string>(const std::set<std::string>& values, const std::string& separator)
     {
         std::string tmp;
         for(const std::string& val : values)

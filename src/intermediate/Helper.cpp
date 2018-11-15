@@ -101,15 +101,9 @@ InstructionWalker intermediate::insertVectorRotation(
             // r5 = offset
             assign(it, ROTATION_REGISTER) = offset;
         else
-        {
-            // to exclude the case case 16-0 = 16
-            // TODO is this require? since thew QPU uses bits [3:0] which implicitly converts 16 to 0 (see specs, table
-            // 5) would need to do the same for emulator
-            assign(it, NOP_REGISTER) = (offset, SetFlag::SET_FLAGS);
+            // QPU uses bits [3:0] which implicitly converts 16 to 0 (see specs, table 5)
             // r5 = 16 - offset
-            assign(it, ROTATION_REGISTER) = (16_val - offset, COND_ZERO_CLEAR);
-            assign(it, ROTATION_REGISTER) = (0_val, COND_ZERO_SET);
-        }
+            assign(it, ROTATION_REGISTER) = 16_val - offset;
     }
 
     // 2. create rotation instruction

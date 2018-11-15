@@ -143,6 +143,6 @@ namespace vc4c
     template <typename Scope>
     struct ScopedInstructionWalker;
     using BlockIterator = ScopedInstructionWalker<BasicBlock>;
-}
+} // namespace vc4c
 
 #endif /* VC4C_BASIC_BLOCK */

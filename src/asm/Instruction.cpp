@@ -62,6 +62,20 @@ Instruction* Instruction::readFromBinary(uint64_t binary)
     return nullptr;
 }
 
+Register Instruction::getAddOutput() const
+{
+    if(getWriteSwap() == WriteSwap::SWAP)
+        return Register{RegisterFile::PHYSICAL_B, getAddOut()};
+    return Register{RegisterFile::PHYSICAL_A, getAddOut()};
+}
+
+Register Instruction::getMulOutput() const
+{
+    if(getWriteSwap() == WriteSwap::DONT_SWAP)
+        return Register{RegisterFile::PHYSICAL_B, getAddOut()};
+    return Register{RegisterFile::PHYSICAL_A, getAddOut()};
+}
+
 std::string Instruction::toInputRegister(
     const InputMultiplex mux, const Address regA, const Address regB, const bool hasImmediate)
 {

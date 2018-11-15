@@ -223,7 +223,7 @@ namespace vc4c
              *
              * NOTE: The constant value returned can be of value-type REGISTER, LITERAL, SMALL_IMMEDIATE or CONTAINER
              */
-            virtual Optional<Value> precalculate(std::size_t numIterations) const;
+            virtual Optional<Value> precalculate(std::size_t numIterations = 1) const;
 
             bool replaceValue(const Value oldValue, const Value newValue, LocalUse::Type type);
 

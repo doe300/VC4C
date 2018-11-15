@@ -304,6 +304,6 @@ namespace vc4c
     };
 
     using MethodIterator = ScopedInstructionWalker<Method>;
-}
+} // namespace vc4c
 
 #endif /* VC4C_METHOD_H */

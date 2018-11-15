@@ -64,6 +64,6 @@ namespace vc4c
          */
         static std::unique_ptr<DataDependencyGraph> createDependencyGraph(Method& method);
     };
-}
+} // namespace vc4c
 
 #endif /* VC4C_DATA_DEPENDENCY_GRAPH_H */

@@ -525,7 +525,6 @@ Optional<Value> OpCode::calculate(const Optional<Value>& firstOperand, const Opt
     if(*this == OP_ASR)
         return Value(intermediate::asr(resultType, firstLit, secondLit), resultType);
     if(*this == OP_CLZ)
-        // TODO Test behavior of clz(0) on VC4 (on some architectures, clz(0) is undefined)
         return Value(intermediate::clz(resultType, firstLit), resultType);
     if(*this == OP_FADD)
         return Value(Literal(firstLit.real() + secondLit.real()), resultType);

@@ -212,6 +212,6 @@ namespace vc4c
     static_assert(assert_assignable<InstructionPart>::value, "InstructionPart is not assignable!");
     static_assert(std::is_destructible<InstructionPart>::value, "InstructionPart is not destructible!");
     static_assert(assert_comparable<InstructionPart>::value, "InstructionPart is not comparable");
-}
+} // namespace vc4c
 
 #endif /* VC4C_CONCEPTS_H */

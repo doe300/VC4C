@@ -58,7 +58,7 @@ namespace vc4c
          */
         InstructionWalker handleUseWithImmediate(
             const Module& module, Method& method, InstructionWalker it, const Configuration& config);
-    } // namespace optimizations
+    } // namespace normalization
 } // namespace vc4c
 
 #endif /* LITERALVALUES_H */

@@ -25,7 +25,7 @@ namespace vc4c
     {
         class Instruction;
         class ALUInstruction;
-    }
+    } // namespace qpu_asm
 
     namespace tools
     {
@@ -294,7 +294,7 @@ namespace vc4c
             const std::vector<MemoryAddress>& parameter, Memory& memory, MemoryAddress uniformBaseAddress,
             MemoryAddress globalData, const KernelUniforms& uniformsUsed, InstrumentationResults& instrumentation,
             uint32_t maxCycles = std::numeric_limits<uint32_t>::max());
-    }
-}
+    } // namespace tools
+} // namespace vc4c
 
 #endif /* VC4C_TOOLS_EMULATOR_H */

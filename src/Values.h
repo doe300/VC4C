@@ -179,6 +179,8 @@ namespace vc4c
     static constexpr Register REG_TMU_NOSWAP{RegisterFile::PHYSICAL_ANY, 36};
     /*
      * "Accumulator 5", contains a dynamically set offset for vector-rotations
+     *
+     * The offset are the bits [0:3], truncating any upper bits
      */
     static constexpr Register REG_ACC5{RegisterFile::ACCUMULATOR, 37};
     /*

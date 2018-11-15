@@ -17,7 +17,7 @@ namespace vc4c
     namespace normalization
     {
         void inlineMethods(const Module& module, Method& kernel, const Configuration& config);
-    } // namespace optimizations
+    } // namespace normalization
 } // namespace vc4c
 
 #endif /* INLINER_H */

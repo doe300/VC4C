@@ -15,6 +15,8 @@
 
 namespace vc4c
 {
+    struct Register;
+
     namespace qpu_asm
     {
         /*
@@ -57,6 +59,9 @@ namespace vc4c
             std::string comment;
             std::string previousComment;
             std::string addComment(std::string s) const;
+
+            Register getAddOutput() const;
+            Register getMulOutput() const;
 
         protected:
             static std::string toInputRegister(

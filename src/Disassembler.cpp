@@ -7,8 +7,10 @@
 #include "VC4C.h"
 
 #include "Locals.h"
+#include "asm/ALUInstruction.h"
 #include "asm/Instruction.h"
 #include "asm/KernelInfo.h"
+#include "asm/LoadInstruction.h"
 #include "log.h"
 
 #include <fstream>
@@ -16,18 +18,84 @@
 
 using namespace vc4c;
 
+static std::vector<std::string> createUniformValues(const qpu_asm::KernelInfo& kernel)
+{
+    /* the order of implicit/explicit parameters needs to match the order of parameters in
+     * optimizations::addStartStopSegment:
+     * - work_dim: number of dimensions
+     * - local_sizes: local number of work-items in its work-group per dimension
+     * - local_ids: local id of this work-item within its work-group
+     * - num_groups (x,y,z): global number of work-groups per dimension
+     * - group_id (x, y, z): id of this work-group
+     * - global_offset (x, y, z): global initial offset per dimension
+     * - address of global data / to load the global data from
+     * - parameters
+     * - re-run counter
+     */
+    const KernelUniforms& uniformsUsed = kernel.uniformsUsed;
+    std::vector<std::string> values;
+    if(uniformsUsed.getWorkDimensionsUsed())
+        values.emplace_back("work dimensions");
+    if(uniformsUsed.getLocalSizesUsed())
+        values.emplace_back("local sizes");
+    if(uniformsUsed.getLocalIDsUsed())
+        values.emplace_back("local IDs");
+    if(uniformsUsed.getNumGroupsXUsed())
+        values.emplace_back("number of groups X");
+    if(uniformsUsed.getNumGroupsYUsed())
+        values.emplace_back("number of groups Y");
+    if(uniformsUsed.getNumGroupsZUsed())
+        values.emplace_back("number of groups Z");
+    if(uniformsUsed.getGroupIDXUsed())
+        values.emplace_back("group ID X");
+    if(uniformsUsed.getGroupIDYUsed())
+        values.emplace_back("group ID Y");
+    if(uniformsUsed.getGroupIDZUsed())
+        values.emplace_back("group ID Z");
+    if(uniformsUsed.getGlobalOffsetXUsed())
+        values.emplace_back("global offset X");
+    if(uniformsUsed.getGlobalOffsetYUsed())
+        values.emplace_back("global offset Y");
+    if(uniformsUsed.getGlobalOffsetZUsed())
+        values.emplace_back("global offset Z");
+    if(uniformsUsed.getGlobalDataAddressUsed())
+        values.emplace_back("global data address");
+    for(const auto& param : kernel.parameters)
+        values.emplace_back(param.typeName + " " + param.name);
+    values.emplace_back("re-run flag");
+
+    return values;
+}
+
+static bool readsUniform(Register reg)
+{
+    return reg.file != RegisterFile::ACCUMULATOR && reg.num == REG_UNIFORM.num;
+}
+
+static std::string getUniform(unsigned index, const std::vector<std::string>& values)
+{
+    if(index >= values.size())
+    {
+        logging::warn() << "Reading UNIFORM out of bounds" << logging::endl;
+        return "";
+    }
+    return values[index];
+}
+
 static std::string annotateRegisters(
     const qpu_asm::Instruction& instr, uint64_t index, const qpu_asm::ModuleInfo& module)
 {
     static FastMap<Register, std::string> currentRegisterMapping;
     static const qpu_asm::KernelInfo* currentKernel = nullptr;
     static unsigned currentUniformsRead = 0;
+    static std::vector<std::string> currentUniformValues;
     if(instr.getSig() == SIGNAL_END_PROGRAM)
     {
         // all following registers belong to new kernel
         currentRegisterMapping.clear();
         currentKernel = nullptr;
         currentUniformsRead = 0;
+        currentUniformValues.clear();
         return "";
     }
     if(currentKernel == nullptr)
@@ -44,11 +112,91 @@ static std::string annotateRegisters(
         }
         if(currentKernel == nullptr)
             return "";
+        else
+            currentUniformValues = createUniformValues(*currentKernel);
     }
+
+    std::set<std::string> annotations;
     // the first few UNIFORMs are the work-item and work-group info
-    // TODO find destinations for work-item UNIFORMs and track
-    // TODO for all instructions using the tracked registers, add annotation
-    return "";
+    auto op = dynamic_cast<const vc4c::qpu_asm::ALUInstruction*>(&instr);
+    if(op)
+    {
+        if(readsUniform(op->getAddFirstOperand()) || readsUniform(op->getAddSecondOperand()))
+            annotations.emplace("uniform read: " + getUniform(currentUniformsRead, currentUniformValues));
+
+        if(readsUniform(op->getMulFirstOperand()) || readsUniform(op->getMulSecondOperand()))
+            annotations.emplace("uniform read: " + getUniform(currentUniformsRead, currentUniformValues));
+
+        FastMap<Register, std::string>::const_iterator regIt;
+        if((regIt = currentRegisterMapping.find(op->getAddFirstOperand())) != currentRegisterMapping.end())
+            annotations.emplace("read " + regIt->second);
+        if((regIt = currentRegisterMapping.find(op->getAddSecondOperand())) != currentRegisterMapping.end())
+            annotations.emplace("read " + regIt->second);
+        if((regIt = currentRegisterMapping.find(op->getMulFirstOperand())) != currentRegisterMapping.end())
+            annotations.emplace("read " + regIt->second);
+        if((regIt = currentRegisterMapping.find(op->getMulSecondOperand())) != currentRegisterMapping.end())
+            annotations.emplace("read " + regIt->second);
+
+        // TODO handle both writing the same register
+        if(op->getAddition() == OP_OR.opAdd && op->getAddFirstOperand() == op->getAddSecondOperand() &&
+            op->getAddCondition() == COND_ALWAYS)
+        {
+            // propagate moves
+            if(readsUniform(op->getAddFirstOperand()))
+                currentRegisterMapping[op->getAddOutput()] = getUniform(currentUniformsRead, currentUniformValues);
+            else if((regIt = currentRegisterMapping.find(op->getAddFirstOperand())) != currentRegisterMapping.end())
+                currentRegisterMapping[op->getAddOutput()] = regIt->second;
+        }
+        else
+            currentRegisterMapping.erase(op->getAddOutput());
+        if(op->getMultiplication() == OP_V8MIN.opMul && op->getMulFirstOperand() == op->getMulSecondOperand() &&
+            op->getMulCondition() == COND_ALWAYS)
+        {
+            if(readsUniform(op->getMulFirstOperand()))
+                currentRegisterMapping[op->getMulOutput()] = getUniform(currentUniformsRead, currentUniformValues);
+            else if((regIt = currentRegisterMapping.find(op->getMulFirstOperand())) != currentRegisterMapping.end())
+                currentRegisterMapping[op->getMulOutput()] = regIt->second;
+        }
+        else
+            currentRegisterMapping.erase(op->getMulOutput());
+
+        if(readsUniform(op->getAddFirstOperand()) || readsUniform(op->getAddSecondOperand()) ||
+            readsUniform(op->getMulFirstOperand()) || readsUniform(op->getMulSecondOperand()))
+            ++currentUniformsRead;
+    }
+    auto load = dynamic_cast<const qpu_asm::LoadInstruction*>(&instr);
+    if(load)
+    {
+        switch(load->getType())
+        {
+        case OpLoad::LOAD_IMM_32:
+            if(load->getAddCondition() == COND_ALWAYS)
+                currentRegisterMapping[load->getAddOutput()] = std::to_string(load->getImmediateInt());
+            if(load->getMulCondition() == COND_ALWAYS)
+                currentRegisterMapping[load->getMulOutput()] = std::to_string(load->getImmediateInt());
+            break;
+        case OpLoad::LOAD_SIGNED:
+            if(load->getAddCondition() == COND_ALWAYS)
+                currentRegisterMapping[load->getAddOutput()] = "(" + std::to_string(load->getImmediateSignedShort0()) +
+                    "," + std::to_string(load->getImmediateSignedShort1()) + ")";
+            if(load->getMulCondition() == COND_ALWAYS)
+                currentRegisterMapping[load->getMulOutput()] = "(" + std::to_string(load->getImmediateSignedShort0()) +
+                    "," + std::to_string(load->getImmediateSignedShort1()) + ")";
+            break;
+        case OpLoad::LOAD_UNSIGNED:
+            if(load->getAddCondition() == COND_ALWAYS)
+                currentRegisterMapping[load->getAddOutput()] = "(" + std::to_string(load->getImmediateShort0()) + "," +
+                    std::to_string(load->getImmediateShort1()) + ")";
+            if(load->getMulCondition() == COND_ALWAYS)
+                currentRegisterMapping[load->getMulOutput()] = "(" + std::to_string(load->getImmediateShort0()) + "," +
+                    std::to_string(load->getImmediateShort1()) + ")";
+            break;
+        }
+    }
+    // TODO some more annotations, e.g. mark parameters, annotate all offsets accordingly (e.g. "%in + 72" or "%in +
+    // offset"). Do same for global data, determine global referenced by offset?
+
+    return annotations.empty() ? "" : (" // " + vc4c::to_string<std::string, std::set<std::string>>(annotations));
 }
 
 static std::string readString(std::istream& binary, uint64_t stringLength)
@@ -67,11 +215,10 @@ static std::string readString(std::istream& binary, uint64_t stringLength)
 void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, ReferenceRetainingList<Global>& globals,
     std::vector<std::unique_ptr<qpu_asm::Instruction>>& instructions)
 {
-    uint64_t tmp64;
-
     // skip magic number
     binary.seekg(8);
 
+    uint64_t initialInstructionOffset = std::numeric_limits<uint64_t>::max();
     uint64_t totalInstructions = 0;
     binary.read(reinterpret_cast<char*>(&moduleInfo.value), sizeof(moduleInfo.value));
     logging::debug() << "Extracted module with " << moduleInfo.getInfoCount() << " kernels, "
@@ -99,6 +246,7 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Refere
             kernelInfo.parameters.push_back(paramInfo);
         }
         moduleInfo.kernelInfos.push_back(kernelInfo);
+        initialInstructionOffset = std::min(initialInstructionOffset, kernelInfo.getOffset().getValue());
     }
 
     // skip zero-word between kernels and globals
@@ -138,14 +286,17 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Refere
     // we don't need to associate it to any particular kernel
     instructions.reserve(totalInstructions);
 
-    for(uint64_t i = 0; i < totalInstructions; ++i)
+    for(uint64_t i = initialInstructionOffset; i < totalInstructions + initialInstructionOffset; ++i)
     {
+        uint64_t tmp64;
         binary.read(reinterpret_cast<char*>(&tmp64), sizeof(tmp64));
         qpu_asm::Instruction* instr = qpu_asm::Instruction::readFromBinary(tmp64);
         if(instr == nullptr)
             throw CompilationError(CompilationStep::GENERAL, "Unrecognized instruction", std::to_string(tmp64));
         instructions.emplace_back(instr);
-        logging::debug() << instr->toASMString() << annotateRegisters(*instr, i, moduleInfo) << logging::endl;
+        logging::logLazy(logging::Level::DEBUG, [&](std::wostream& os) {
+            os << instr->toASMString() << annotateRegisters(*instr, i, moduleInfo) << logging::endl;
+        });
     }
 
     logging::debug() << "Extracted " << totalInstructions << " machine-code instructions" << logging::endl;
@@ -199,10 +350,10 @@ std::size_t vc4c::disassembleModule(std::istream& binary, std::ostream& output, 
 std::size_t vc4c::disassembleCodeOnly(
     std::istream& binary, std::ostream& output, std::size_t numInstructions, const OutputMode outputMode)
 {
-    uint64_t tmp64;
     std::size_t numBytes = 0;
     for(std::size_t i = 0; i < numInstructions; ++i)
     {
+        uint64_t tmp64;
         binary.read(reinterpret_cast<char*>(&tmp64), sizeof(tmp64));
         qpu_asm::Instruction* instr = qpu_asm::Instruction::readFromBinary(tmp64);
         if(instr == nullptr)

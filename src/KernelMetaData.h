@@ -83,6 +83,6 @@ namespace vc4c
             return NUM_QPUS;
         }
     };
-}
+} // namespace vc4c
 
 #endif /* VC4C_KERNEL_METADATA_H */

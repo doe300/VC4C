@@ -46,6 +46,11 @@ namespace vc4c
             BITFIELD_ENTRY(AddMultiplexB, InputMultiplex, 6, Triple)
             BITFIELD_ENTRY(MulMultiplexA, InputMultiplex, 3, Triple)
             BITFIELD_ENTRY(MulMultiplexB, InputMultiplex, 0, Triple)
+
+            Register getAddFirstOperand() const;
+            Register getAddSecondOperand() const;
+            Register getMulFirstOperand() const;
+            Register getMulSecondOperand() const;
         };
     } // namespace qpu_asm
 } // namespace vc4c

@@ -501,18 +501,27 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
         return TYPE_LABEL;
     if(type->isIntegerTy(1))
         return TYPE_BOOL;
-    if(type->isIntegerTy(8))
-        return TYPE_INT8;
-    if(type->isIntegerTy(16))
-        return TYPE_INT16;
-    if(type->isIntegerTy(32))
-        return TYPE_INT32;
-    if(type->isIntegerTy(64))
+    if(type->isIntegerTy() && type->getIntegerBitWidth() <= 8)
     {
-        logging::warn()
-            << "64-bit operations are not supported by the VideoCore IV architecture, further compilation may fail!"
-            << logging::endl;
-        return TYPE_INT64;
+        // ./example/md5.cl uses i2 (with LLVM 6.0+) for 4-element selects
+        if(type->getIntegerBitWidth() != 8)
+            logging::warn() << "Irregular integer type will be extended to next larger regular integer type: i"
+                            << type->getIntegerBitWidth() << logging::endl;
+        return TYPE_INT8;
+    }
+    if(type->isIntegerTy() && type->getIntegerBitWidth() <= 16)
+    {
+        if(type->getIntegerBitWidth() != 16)
+            logging::warn() << "Irregular integer type will be extended to next larger regular integer type: i"
+                            << type->getIntegerBitWidth() << logging::endl;
+        return TYPE_INT16;
+    }
+    if(type->isIntegerTy() && type->getIntegerBitWidth() <= 32)
+    {
+        if(type->getIntegerBitWidth() != 32)
+            logging::warn() << "Irregular integer type will be extended to next larger regular integer type: i"
+                            << type->getIntegerBitWidth() << logging::endl;
+        return TYPE_INT32;
     }
     if(type->isIntegerTy(33))
     {
@@ -522,6 +531,16 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
                            "be inaccurate!"
                         << logging::endl;
         return TYPE_INT32;
+    }
+    if(type->isIntegerTy() && type->getIntegerBitWidth() <= 64)
+    {
+        logging::warn()
+            << "64-bit operations are not supported by the VideoCore IV architecture, further compilation may fail!"
+            << logging::endl;
+        if(type->getIntegerBitWidth() != 64)
+            logging::warn() << "Irregular integer type will be extended to next larger regular integer type: i"
+                            << type->getIntegerBitWidth() << logging::endl;
+        return TYPE_INT64;
     }
     if(type->isPointerTy() && type->getPointerElementType()->isStructTy())
     {
@@ -1103,6 +1122,12 @@ void BitcodeReader::parseInstruction(
         instructions.emplace_back(new ShuffleVector(toValue(method, shuffle), toValue(method, shuffle->getOperand(0)),
             toValue(method, shuffle->getOperand(1)), toValue(method, shuffle->getMask())));
         instructions.back()->setDecorations(deco);
+        break;
+    }
+    case TermOps::Unreachable:
+    {
+        // since this instruction can never be reached, we do not need to emit it. If it every gets reached, this is UB
+        // anyway
         break;
     }
     default:

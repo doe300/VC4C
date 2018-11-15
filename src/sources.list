@@ -5,7 +5,6 @@ target_sources(${VC4C_LIBRARY_NAME}
     BasicBlock.cpp
     BasicBlock.h
     Bitfield.h
-    c_interface.cpp
     CompilationError.cpp
     Compiler.cpp
     Disassembler.cpp

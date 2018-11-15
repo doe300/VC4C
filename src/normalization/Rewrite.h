@@ -34,7 +34,7 @@ namespace vc4c
          */
         InstructionWalker splitRegisterConflicts(
             const Module& module, Method& method, InstructionWalker it, const Configuration& config);
-    }
-}
+    } // namespace normalization
+} // namespace vc4c
 
 #endif /* VC4C_REWRITE_H */

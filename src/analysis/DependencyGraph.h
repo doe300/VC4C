@@ -195,6 +195,6 @@ namespace vc4c
     private:
         explicit DependencyGraph(std::size_t numInstructions) : Graph(numInstructions) {}
     };
-}
+} // namespace vc4c
 
 #endif /* VC4C_DEPENDENCY_GRAPH_H */

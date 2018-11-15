@@ -1008,13 +1008,11 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     /*
      * The first UNIFORMs are reserved for relaying information about the work-item and work-group
      * - work_dim: number of dimensions
-     * - global_size: global number of work-items per dimension
-     * - global_id: global id of this work-item per dimension
-     * - local_size: local number of work-items in its work-group per dimension
-     * - local_id: local id of this work-item within its work-group
-     * - num_groups: global number of work-groups per dimension
-     * - group_id: id of this work-group
-     * - global_offset: global initial offset per dimension
+     * - local_sizes: local number of work-items in its work-group per dimension
+     * - local_ids: local id of this work-item within its work-group
+     * - num_groups (x,y,z): global number of work-groups per dimension
+     * - group_id (x, y, z): id of this work-group
+     * - global_offset (x, y, z): global initial offset per dimension
      * - address of global data / to load the global data from
      *
      */
