@@ -71,7 +71,7 @@ namespace vc4c
          */
         InstructionWalker mapMemoryAccess(Method& method, InstructionWalker it, intermediate::MemoryInstruction* mem,
             const MemoryInfo& srcInfo, const MemoryInfo& destInfo);
-    }
-}
+    } // namespace normalization
+} // namespace vc4c
 
 #endif /* VC4C_NORMALIZATION_MEMORY_MAPPING_H */
