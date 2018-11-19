@@ -188,7 +188,7 @@ static void toBinary(const Value& val, std::vector<uint8_t>& queue)
             }
             break;
         default:
-            throw CompilationError(CompilationStep::CODE_GENERATION, "Unrecognized literal-type!");
+            throw CompilationError(CompilationStep::CODE_GENERATION, "Unrecognized literal-type!", val.to_string());
         }
     }
     else if(val.isUndefined())

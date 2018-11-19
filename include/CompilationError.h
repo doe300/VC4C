@@ -69,8 +69,7 @@ namespace vc4c
     {
     public:
         CompilationError(CompilationStep step, const std::string& message);
-        CompilationError(CompilationStep step, std::size_t line, const std::string& message);
-        CompilationError(CompilationStep step, const std::string& type, const std::string& message);
+        CompilationError(CompilationStep step, const std::string& message, const std::string& object);
         CompilationError(const CompilationError&) = default;
         CompilationError(CompilationError&&) = default; // RPi cross-compiler throws on noexcept
         ~CompilationError() override;

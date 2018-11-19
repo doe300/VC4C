@@ -1321,7 +1321,7 @@ static void rewriteIndexCalculation(Method& method, MemoryAccessRange& range)
         (*range.typeSizeShift)->setArgument(0, resultVal->first);
     else
         // TODO replace index variable with new index variable
-        throw CompilationError(CompilationStep::OPTIMIZER, "Not yet implemented, no shift in address calculation");
+        throw CompilationError(CompilationStep::OPTIMIZER, "Not yet implemented, no shift in address calculation", range.to_string());
 
     logging::debug() << "Rewrote address-calculation with indices "
                      << (firstVal ? (firstVal->first.to_string() + " (" + toString(firstVal->second) + ")") : "")

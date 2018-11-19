@@ -68,7 +68,7 @@ ALUInstruction::ALUInstruction(const Unpack unpack, const Pack pack, const Condi
     this->setMulMultiplexB(muxMulB);
 
     if((mul != OP_NOP && !mul.runsOnMulALU()) || (add != OP_NOP && !add.runsOnAddALU()))
-        throw CompilationError(CompilationStep::CODE_GENERATION, "Opcode specified for wrong ALU");
+        throw CompilationError(CompilationStep::CODE_GENERATION, "Opcode specified for wrong ALU", toASMString(false));
 }
 
 std::string ALUInstruction::toASMString(bool addComments) const

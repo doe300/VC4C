@@ -54,14 +54,8 @@ CompilationError::CompilationError(const CompilationStep step, const std::string
     logBacktrace();
 }
 
-CompilationError::CompilationError(const CompilationStep step, const std::size_t line, const std::string& message) :
-    std::runtime_error((to_sting(step) + ": In line ") + (std::to_string(line) + ": ") + message)
-{
-    logBacktrace();
-}
-
-CompilationError::CompilationError(const CompilationStep step, const std::string& type, const std::string& message) :
-    std::runtime_error((to_sting(step) + ": ") + (type + ": ") + message)
+CompilationError::CompilationError(const CompilationStep step, const std::string& message, const std::string& object) :
+    std::runtime_error((to_sting(step) + ": ") + (message + ": ") + object)
 {
     logBacktrace();
 }

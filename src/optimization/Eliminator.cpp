@@ -293,7 +293,7 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
         if(bb == nullptr)
         {
             logging::error() << "Cannot map phi-node to label: " << pair.first->name << logging::endl;
-            throw CompilationError(CompilationStep::OPTIMIZER, "Failed to map all phi-options to valid basic-blocks");
+            throw CompilationError(CompilationStep::OPTIMIZER, "Failed to map all phi-options to valid basic-blocks", pair.first->to_string());
         }
         // make sure, moves are inserted before the outgoing branches
         InstructionWalker it = bb->end();

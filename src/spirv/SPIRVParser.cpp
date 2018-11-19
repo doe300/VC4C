@@ -127,7 +127,7 @@ void SPIRVParser::parse(Module& module)
         logging::debug() << "Read SPIR-V binary with " << words.size() << " words" << logging::endl;
     }
 
-    // run SPIR-V Tools optimizations
+        // run SPIR-V Tools optimizations
 #if 0 /* SPIRV-Tools optimizer hangs in some code */
     words = runSPRVToolsOptimizer(words);
 #endif

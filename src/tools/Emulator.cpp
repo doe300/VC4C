@@ -63,7 +63,7 @@ tools::Word* Memory::getWordAddress(MemoryAddress address)
 {
     if(address >= data.size() * sizeof(Word))
         throw CompilationError(
-            CompilationStep::GENERAL, "Memory address is out of bounds, consider using larger buffer");
+            CompilationStep::GENERAL, "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
     return data.data() + (address / sizeof(Word));
 }
 
@@ -75,7 +75,7 @@ Value Memory::readWord(MemoryAddress address) const
             << address << logging::endl;
     if(address >= data.size() * sizeof(Word))
         throw CompilationError(
-            CompilationStep::GENERAL, "Memory address is out of bounds, consider using larger buffer");
+            CompilationStep::GENERAL, "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
     return Value(Literal(data.at(address / sizeof(Word))), TYPE_INT32);
 }
 
@@ -234,7 +234,7 @@ void Registers::writeRegister(Register reg, const Value& val, std::bitset<16> el
 
     // conditional write to periphery registers is not allowed
     if(!reg.isGeneralPurpose() && !reg.isAccumulator() && !elementMask.all())
-        throw CompilationError(CompilationStep::GENERAL, "Conditional write to periphery registers is not allowed!");
+        throw CompilationError(CompilationStep::GENERAL, "Conditional write to periphery registers is not allowed", reg.to_string());
 }
 
 std::pair<Value, bool> Registers::readRegister(Register reg)

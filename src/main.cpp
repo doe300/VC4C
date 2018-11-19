@@ -267,7 +267,7 @@ int main(int argc, char** argv)
         {
             auto ifs = new std::ifstream(file);
             if(!ifs->is_open())
-                throw CompilationError(CompilationStep::PRECOMPILATION, "cannot find file: " + file);
+                throw CompilationError(CompilationStep::PRECOMPILATION, "cannot find file", file);
             fileStreams.emplace_back(ifs);
             inputs.emplace(fileStreams.back().get(), Optional<std::string>(file));
         }
@@ -285,7 +285,7 @@ int main(int argc, char** argv)
         const auto& file = inputFiles[0];
         auto ifs = new std::ifstream(file);
         if(!ifs->is_open())
-            throw CompilationError(CompilationStep::PRECOMPILATION, "cannot find file: " + file);
+            throw CompilationError(CompilationStep::PRECOMPILATION, "cannot find file", file);
         input.reset(ifs);
         inputFile = inputFiles[0];
     }

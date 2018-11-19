@@ -61,7 +61,7 @@ ConditionCode ConditionCode::invert() const
     case COND_ZERO_SET:
         return COND_ZERO_CLEAR;
     }
-    throw CompilationError(CompilationStep::CODE_GENERATION, "Unsupported conditions!");
+    throw CompilationError(CompilationStep::CODE_GENERATION, "Unsupported conditions", to_string());
 }
 
 bool ConditionCode::isInversionOf(const ConditionCode other) const
@@ -826,5 +826,5 @@ std::string vc4c::toString(const BranchCond cond)
     case BranchCond::ANY_Z_SET:
         return "ifanyz";
     }
-    throw CompilationError(CompilationStep::GENERAL, "Invalid branch-condition!");
+    throw CompilationError(CompilationStep::GENERAL, "Invalid branch-condition", std::to_string(static_cast<int>(cond)));
 }

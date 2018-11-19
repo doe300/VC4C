@@ -890,7 +890,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
         else if(op->getFirstArg().type.getScalarBitCount() > 32)
         {
             throw CompilationError(
-                CompilationStep::OPTIMIZER, "Can't convert long to floating value, since long is not supported!");
+                CompilationStep::OPTIMIZER, "Can't convert long to floating value, since long is not supported", op->to_string());
         }
         else // 32-bits
         {

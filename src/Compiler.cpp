@@ -117,7 +117,7 @@ static void toMachineCode(qpu_asm::CodeGenerator& codeGen, Method& kernel)
                 logging::error() << "With reference to instruction: " << (*it)->toASMString() << logging::endl;
             }
         }
-        throw CompilationError(CompilationStep::VERIFIER, msg.toString());
+        throw CompilationError(CompilationStep::VERIFIER, "vc4asm verification error", msg.toString());
     };
     v.Instructions = &hexData;
     logging::info() << "Validation-output: " << logging::endl;
