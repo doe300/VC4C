@@ -195,15 +195,15 @@ namespace vc4c
         /*
          * Manually activated optimizations
          */
-        std::unordered_set<std::string> additionalEnabledOptimizations;
+        std::unordered_set<std::string> additionalEnabledOptimizations = {};
         /*
          * Manually deactivated optimizations
          */
-        std::unordered_set<std::string> additionalDisabledOptimizations;
+        std::unordered_set<std::string> additionalDisabledOptimizations= {};
         /*
          * Manually specified additional parameters for single (or multiple) optimization steps
          */
-        OptimizationOptions additionalOptions;
+        OptimizationOptions additionalOptions= {};
         /*
          * Whether to use CLang opt to apply optimizations like force-vectorization, etc...
          */

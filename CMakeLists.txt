@@ -70,14 +70,15 @@ if(CROSS_COMPILE)
 	message(STATUS "Cross compiling for Raspbian with compiler: ${CMAKE_CXX_COMPILER}")
 endif()
 
+project (VC4C VERSION 0.4)
+
 # Set C++ standard to C++14 without any extensions (e.g. GNU)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_FLAGS_DEBUG "-g3 -rdynamic")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
-
-project (VC4C VERSION 0.4)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(BUILD_DEBUG)
 	SET(CMAKE_BUILD_TYPE Debug)
@@ -105,8 +106,8 @@ else()
 endif()
 
 ExternalProject_Add( cpplog-project
-	PREFIX 				${CMAKE_BINARY_DIR}/build/cpplog
-	BINARY_DIR 			${CMAKE_BINARY_DIR}/build/cpplog
+	PREFIX 				${CMAKE_BINARY_DIR}/cpplog
+	BINARY_DIR 			${CMAKE_BINARY_DIR}/cpplog
 	SOURCE_DIR 			${CMAKE_SOURCE_DIR}/lib/cpplog
 	GIT_REPOSITORY 		https://github.com/doe300/cpplog.git
 	UPDATE_COMMAND 		git pull -f https://github.com/doe300/cpplog.git
@@ -178,7 +179,7 @@ if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
 	message(STATUS "Compiling SPIR-V front-end...")
 	#Add SPIR-V headers project
 	ExternalProject_Add(SPIRV-Headers
-		PREFIX 				${CMAKE_BINARY_DIR}/build/spirv-headers
+		PREFIX 				${CMAKE_BINARY_DIR}/spirv-headers
 		SOURCE_DIR 			${CMAKE_SOURCE_DIR}/lib/spirv-headers
 		GIT_REPOSITORY 		https://github.com/KhronosGroup/SPIRV-Headers.git
 		UPDATE_COMMAND 		git pull -f https://github.com/KhronosGroup/SPIRV-Headers.git
@@ -193,7 +194,7 @@ if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
 	# skip executables and tests for the SPIR-V parser
 	ExternalProject_Add(spirv-tools-project
 		DEPENDS 			SPIRV-Headers-build
-		PREFIX 				${CMAKE_BINARY_DIR}/build/spirv-tools
+		PREFIX 				${CMAKE_BINARY_DIR}/spirv-tools
 		SOURCE_DIR 			${CMAKE_SOURCE_DIR}/lib/spirv-tools
 		GIT_REPOSITORY 		https://github.com/KhronosGroup/SPIRV-Tools.git
 		UPDATE_COMMAND 		git pull -f https://github.com/KhronosGroup/SPIRV-Tools.git
@@ -277,7 +278,7 @@ endif()
 
 if(VERIFY_OUTPUT)
 	ExternalProject_Add(vc4asm-project
-		PREFIX				${CMAKE_BINARY_DIR}/build/vc4asm
+		PREFIX				${CMAKE_BINARY_DIR}/vc4asm
 		SOURCE_DIR 			${CMAKE_SOURCE_DIR}/lib/vc4asm
 		GIT_REPOSITORY 		https://github.com/maazl/vc4asm.git
 		UPDATE_COMMAND 		git pull -f https://github.com/maazl/vc4asm.git
@@ -329,8 +330,8 @@ add_dependencies(vc4cl-stdlib vc4cl-stdlib-module)
 
 # Variant backport for C++ < 17
 ExternalProject_Add( variant-project
-	PREFIX 				${CMAKE_BINARY_DIR}/build/variant
-	BINARY_DIR 			${CMAKE_BINARY_DIR}/build/variant
+	PREFIX 				${CMAKE_BINARY_DIR}/variant
+	BINARY_DIR 			${CMAKE_BINARY_DIR}/variant
 	SOURCE_DIR 			${CMAKE_SOURCE_DIR}/lib/variant
 	GIT_REPOSITORY 		https://github.com/mpark/variant.git
 	UPDATE_COMMAND 		git pull -f https://github.com/mpark/variant.git
@@ -348,13 +349,13 @@ ExternalProject_Add( variant-project
 # Main files
 ####
 #build all from ./src into ./build
-add_subdirectory(./src build)
-add_subdirectory(tools build/tools)
+add_subdirectory(src)
+add_subdirectory(tools)
 
 if (BUILD_TESTING)
 	enable_testing()
 	ExternalProject_Add(cpptest-lite-project
-		PREFIX 				${CMAKE_BINARY_DIR}/build/cpptest-lite
+		PREFIX 				${CMAKE_BINARY_DIR}/cpptest-lite
 		SOURCE_DIR 			${CMAKE_SOURCE_DIR}/lib/cpptest-lite
 		GIT_REPOSITORY		https://github.com/doe300/cpptest-lite.git
 		UPDATE_COMMAND 		git pull -f https://github.com/doe300/cpptest-lite.git
@@ -366,7 +367,7 @@ if (BUILD_TESTING)
   		  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
   		  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
 	)
-    add_subdirectory(test build/test)
+    add_subdirectory(test)
 endif (BUILD_TESTING)
 
 if (BUILD_DEB_PACKAGE)
@@ -374,8 +375,8 @@ if (BUILD_DEB_PACKAGE)
 	message(STATUS "Debian package expects VC4CL standard library PCH to be located in: ${VC4CL_STDLIB_HEADER}")
 
 	# Generate postint-script for debian package, building the VC4CLStdLib PCH
-	configure_file(cmake/deb-postint.in "${CMAKE_BINARY_DIR}/build/postinst" @ONLY NEWLINE_STYLE UNIX)
-	configure_file(cmake/deb-prerem.in "${CMAKE_BINARY_DIR}/build/prerem" @ONLY NEWLINE_STYLE UNIX)
+	configure_file(cmake/deb-postint.in "${CMAKE_BINARY_DIR}/postinst" @ONLY NEWLINE_STYLE UNIX)
+	configure_file(cmake/deb-prerem.in "${CMAKE_BINARY_DIR}/prerem" @ONLY NEWLINE_STYLE UNIX)
 
 	# We always need the vc4cl standard-library for installing the vc4c package
 	set(PACKAGE_DEPENDENCIES "vc4cl-stdlib")
@@ -403,7 +404,7 @@ if (BUILD_DEB_PACKAGE)
 	set(CPACK_PACKAGE_CONTACT "doe300@web.de")
 	set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenCL C compiler for VC4CL (rasberrypi only)")
 	set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/doe300/VC4C")
-	set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA ${CMAKE_BINARY_DIR}/build/postinst ${CMAKE_BINARY_DIR}/build/prerem)
+	set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA ${CMAKE_BINARY_DIR}/postinst ${CMAKE_BINARY_DIR}/prerem)
 	set(CPACK_PACKAGE_FILE_NAME "vc4c-0.4-Linux")
 	set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 	include(CPack)

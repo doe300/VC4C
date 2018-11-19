@@ -53,12 +53,12 @@ namespace vc4c
 
         template <typename... Args>
         explicit Node(GraphType& graph, const Key& key, Args&&... args) :
-            Base(std::forward<Args&&>(args)...), key(key), graph(graph)
+            Base(std::forward<Args&&>(args)...), key(key), graph(graph), edges()
         {
         }
         template <typename... Args>
         explicit Node(GraphType& graph, Key&& key, Args&&... args) :
-            Base(std::forward<Args&&>(args)...), key(std::move(key)), graph(graph)
+            Base(std::forward<Args&&>(args)...), key(std::move(key)), graph(graph), edges()
         {
         }
 
@@ -522,7 +522,7 @@ namespace vc4c
         using RelationType = typename NodeType::RelationType;
         using EdgeType = typename NodeType::EdgeType;
 
-        explicit Graph(std::size_t numNodes = 0)
+        explicit Graph(std::size_t numNodes = 0) : nodes(), edges()
         {
             nodes.reserve(numNodes);
             // it is safe to assume we have at least 1 edge per node

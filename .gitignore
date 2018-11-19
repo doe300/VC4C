@@ -1,14 +1,5 @@
+# Default build folder
 build/
-CMakeFiles/
-/CMakeCache.txt
-cmake_install.cmake
-cmake_uninstall.cmake
-compile_commands.json
-install_manifest.txt
-Makefile
-*.deb
-VC4CLStdLib
-_CPack_Packages
 
 # Eclipse
 .cproject
@@ -20,17 +11,10 @@ _CPack_Packages
 dist/
 nbproject/
 
+# JetBrains
+.idea
+
 # Other
 testResult.log
-.dep.inc
 /valgrind.supp
 lib/
-include/VC4CLStdLib.h.pch
-
-#CPack
-/CPackConfig.cmake
-/CPackSourceConfig.cmake
-
-#CTest
-/CTestTestfile.cmake
-/Testing

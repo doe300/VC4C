@@ -17,18 +17,18 @@ jobs:
       - run:
           name: configure
           # Use the libLLVM of the default LLVM/CLang, disable search for SPIRV-LLVM
-          command: cmake .  -DCROSS_COMPILE=ON -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=ON -DSPIRV_FRONTEND=OFF -DSPIRV_COMPILER_ROOT=/tmp/skip-searching -DSYSROOT_CROSS=/home/idein/cross -DCROSS_COMPILER_PATH=${HOME}/x-tools/armv6-rpi-linux-gnueabihf/bin -DCROSS_COMPILER_PREFIX="armv6-rpi-linux-gnueabihf-"
+          command: mkdir build && cd build && cmake ../ -DCROSS_COMPILE=ON -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=ON -DSPIRV_FRONTEND=OFF -DSPIRV_COMPILER_ROOT=/tmp/skip-searching -DSYSROOT_CROSS=/home/idein/cross -DCROSS_COMPILER_PATH=${HOME}/x-tools/armv6-rpi-linux-gnueabihf/bin -DCROSS_COMPILER_PREFIX="armv6-rpi-linux-gnueabihf-"
       - run:
           name: make
-          command: sudo make -j`nproc`
+          command: cd build && sudo make -j`nproc`
       - run:
           name: deb-packing
-          command: sudo cpack -G DEB && sudo cpack -G DEB --config ./VC4CLStdLib/CPackConfig.cmake
+          command: cd build && sudo cpack -G DEB && sudo cpack -G DEB --config ./VC4CLStdLib/CPackConfig.cmake
       - store_artifacts:
-          path: build/libVC4CC.so.0.4
+          path: build/src/libVC4CC.so.0.4
           distination: libVC4CC.so.0.4
       - store_artifacts:
-          path: build/VC4C
+          path: build/src/VC4C
           distination: VC4C
       - store_artifacts:
           path: build/test/TestVC4C
@@ -50,27 +50,27 @@ jobs:
       - run:
           name: configure
           # Use SPIRV-LLVM
-          command: cmake . -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=ON -DLLVMIR_FRONTEND=OFF -DSPIRV_FRONTEND=OFF
+          command: mkdir build && cd build && cmake ../ -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=ON -DLLVMIR_FRONTEND=OFF -DSPIRV_FRONTEND=OFF
       - run:
           name: make
-          command: make -j`nproc`
+          command: cd build && make -j`nproc`
       - run:
           name: deb-packing
-          command: cpack -G DEB && cpack -G DEB --config ./VC4CLStdLib/CPackConfig.cmake
+          command: cd build && cpack -G DEB && cpack -G DEB --config ./VC4CLStdLib/CPackConfig.cmake
       - store_artifacts:
-          path: build/libVC4CC.so.0.4
+          path: build/src/libVC4CC.so.0.4
           distination: libVC4CC.so.0.4
       - store_artifacts:
-          path: build/VC4C
+          path: build/src/VC4C
           distination: VC4C
       - store_artifacts:
           path: build/test/TestVC4C
           distination: TestVC4C
       - store_artifacts:
-          path: vc4c-0.4-Linux.deb
+          path: build/vc4c-0.4-Linux.deb
           distination: vc4c-0.4-Linux.deb
       - store_artifacts:
-          path: vc4cl-stdlib-0.4-Linux.deb
+          path: build/vc4cl-stdlib-0.4-Linux.deb
           distination: vc4cl-stdlib-0.4-Linux.deb
       - persist_to_workspace:
           root: /root/project
@@ -79,8 +79,8 @@ jobs:
             - build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9
             - testing
             - example
-            - vc4c-0.4-Linux.deb
-            - vc4cl-stdlib-0.4-Linux.deb
+            - build/vc4c-0.4-Linux.deb
+            - build/vc4cl-stdlib-0.4-Linux.deb
   build-spirv:
     docker:
       - image: nomaddo/cross-rpi:0.1
@@ -91,30 +91,30 @@ jobs:
           command: git clone https://github.com/doe300/VC4CLStdLib.git VC4CLStdLib && cd VC4CLStdLib && cmake . -DCROSS_COMPILE=OFF && make install && cd ..
       - run:
           name: configure
-          command: cmake . -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=OFF -DLLVMIR_FRONTEND=OFF -DSPIRV_FRONTEND=ON
+          command: mkdir build && cd build && cmake ../ -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=OFF -DLLVMIR_FRONTEND=OFF -DSPIRV_FRONTEND=ON
       - run:
           name: spirv-tools
-          command: make spirv-tools-project spirv-tools-project-build
+          command: cd build && make spirv-tools-project spirv-tools-project-build
       - run:
           name: make
-          command: make -j`nproc`
+          command: cd build && make -j`nproc`
       - run:
           name: deb-packing
-          command: cpack -G DEB && cpack -G DEB --config ./VC4CLStdLib/CPackConfig.cmake
+          command: cd build && cpack -G DEB && cpack -G DEB --config ./VC4CLStdLib/CPackConfig.cmake
       - store_artifacts:
-          path: build/libVC4CC.so.0.4
+          path: build/src/libVC4CC.so.0.4
           distination: libVC4CC.so.0.4
       - store_artifacts:
-          path: build/VC4C
+          path: build/src/VC4C
           distination: VC4C
       - store_artifacts:
           path: build/test/TestVC4C
           distination: TestVC4C
       - store_artifacts:
-          path: vc4c-0.4-Linux.deb
+          path: build/vc4c-0.4-Linux.deb
           distination: vc4c-0.4-Linux.deb
       - store_artifacts:
-          path: vc4cl-stdlib-0.4-Linux.deb
+          path: build/vc4cl-stdlib-0.4-Linux.deb
           distination: vc4cl-stdlib-0.4-Linux.deb
       - persist_to_workspace:
           root: /root/project
@@ -123,16 +123,16 @@ jobs:
             - build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9
             - testing
             - example
-            - vc4c-0.4-Linux.deb
-            - vc4cl-stdlib-0.4-Linux.deb
+            - build/vc4c-0.4-Linux.deb
+            - build/vc4cl-stdlib-0.4-Linux.deb
   test:
     docker:
       - image: nomaddo/native
     steps:
       - attach_workspace:
           at: /root/project
-      - run: dpkg -i vc4cl-stdlib-0.4-Linux.deb
-      - run: dpkg -i vc4c-0.4-Linux.deb
+      - run: dpkg -i build/vc4cl-stdlib-0.4-Linux.deb
+      - run: dpkg -i build/vc4c-0.4-Linux.deb
       - run: ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
       - run: ldconfig
       - run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators --emulate-conversions --emulate-geometric --emulate-memory --emulate-vector
@@ -142,8 +142,8 @@ jobs:
     steps:
       - attach_workspace:
           at: /root/project
-      - run: dpkg -i vc4cl-stdlib-0.4-Linux.deb
-      - run: dpkg -i vc4c-0.4-Linux.deb
+      - run: dpkg -i build/vc4cl-stdlib-0.4-Linux.deb
+      - run: dpkg -i build/vc4c-0.4-Linux.deb
       - run: ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
       - run: ldconfig
       - run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators --emulate-conversions --emulate-geometric --emulate-vector

@@ -570,7 +570,7 @@ namespace vc4c
         std::vector<Value> elements;
 
         ContainerValue() = default;
-        explicit ContainerValue(std::size_t size)
+        explicit ContainerValue(std::size_t size) : elements()
         {
             elements.reserve(size);
         }

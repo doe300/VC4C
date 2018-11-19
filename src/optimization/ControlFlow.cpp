@@ -92,19 +92,19 @@ struct LoopControl
     // the value compared with to terminate the loop
     Value terminatingValue = UNDEFINED_VALUE;
     // the local containing the current iteration-variable
-    Local* iterationVariable;
+    Local* iterationVariable = nullptr;
     // the operation to change the iteration-variable
-    Optional<InstructionWalker> iterationStep;
+    Optional<InstructionWalker> iterationStep{};
     // the kind of step performed
     StepKind stepKind = StepKind::UNKNOWN;
     // the comparison to check for continue/end loop
-    Optional<InstructionWalker> comparisonInstruction;
+    Optional<InstructionWalker> comparisonInstruction{};
     // the branch-instruction to continue the loop
-    Optional<InstructionWalker> repetitionJump;
+    Optional<InstructionWalker> repetitionJump{};
     // the comparison function to abort the loop
-    std::string comparison;
+    std::string comparison{};
     // the vectorization-factor used
-    unsigned vectorizationFactor;
+    unsigned vectorizationFactor = 0;
 
     void determineStepKind(const OpCode& code)
     {

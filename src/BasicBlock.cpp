@@ -19,7 +19,7 @@ using namespace vc4c;
 const std::string BasicBlock::DEFAULT_BLOCK("%start_of_function");
 const std::string BasicBlock::LAST_BLOCK("%end_of_function");
 
-BasicBlock::BasicBlock(Method& method, intermediate::BranchLabel* label) : method(method)
+BasicBlock::BasicBlock(Method& method, intermediate::BranchLabel* label) : method(method), instructions()
 {
     instructions.emplace_back(label);
     method.cfg.reset();

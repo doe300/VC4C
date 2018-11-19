@@ -298,7 +298,7 @@ bool Precompiler::isLinkerAvailable()
 Precompiler::Precompiler(
     Configuration& config, std::istream& input, const SourceType inputType, const Optional<std::string>& inputFile) :
     inputType(inputType),
-    inputFile(inputFile), input(input), config(config)
+    inputFile(inputFile), config(config), input(input)
 {
     if(inputType == SourceType::QPUASM_BIN || inputType == SourceType::QPUASM_HEX || inputType == SourceType::UNKNOWN)
         throw CompilationError(CompilationStep::PRECOMPILATION, "Invalid input-type for pre-compilation!");

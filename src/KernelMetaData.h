@@ -61,7 +61,7 @@ namespace vc4c
          */
         std::array<uint32_t, 3> workGroupSizeHints;
 
-        KernelMetaData()
+        KernelMetaData() : uniformsUsed(), workGroupSizes(), workGroupSizeHints()
         {
             workGroupSizes.fill(0);
             workGroupSizeHints.fill(0);

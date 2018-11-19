@@ -1015,17 +1015,17 @@ static FastMap<Value, InstructionDecorations> findDirectLevelAdditionInputs(cons
 // represents analysis data for the range of memory accessed per memory object
 struct MemoryAccessRange
 {
-    const Local* memoryObject;
+    const Local* memoryObject = nullptr;
     // the instruction writing the address to VPR_ADDR or VPW_ADDR
-    InstructionWalker addressWrite;
+    InstructionWalker addressWrite{};
     // the instruction adding the offset to the base pointer, could be the same as addressWrite
-    InstructionWalker baseAddressAdd;
+    InstructionWalker baseAddressAdd{};
     // the instruction converting the address offset from element offset to byte offset
-    Optional<InstructionWalker> typeSizeShift;
+    Optional<InstructionWalker> typeSizeShift{};
     // the work-group uniform parts of which the address offset is calculated from
-    FastMap<Value, InstructionDecorations> groupUniformAddressParts;
+    FastMap<Value, InstructionDecorations> groupUniformAddressParts{};
     // the dynamic parts of which the address offset is calculated from
-    FastMap<Value, InstructionDecorations> dynamicAddressParts;
+    FastMap<Value, InstructionDecorations> dynamicAddressParts{};
     // the maximum range (in elements!) the memory is accessed in
     analysis::IntegerRange offsetRange{0, 0};
 

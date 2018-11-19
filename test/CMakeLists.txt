@@ -7,9 +7,7 @@ if(BUILD_DEBUG)
 endif(BUILD_DEBUG)
 
 target_include_directories (TestVC4C PRIVATE "${PROJECT_SOURCE_DIR}/src")
-target_include_directories (TestVC4C PRIVATE "${PROJECT_SOURCE_DIR}/include")
 target_include_directories(TestVC4C PRIVATE "${PROJECT_SOURCE_DIR}/lib/variant/include")
-target_compile_definitions(TestVC4C PRIVATE CPPLOG_NAMESPACE=logging CPPLOG_CUSTOM_LOGGER=true)
 
 add_dependencies(TestVC4C cpptest-lite-project-build)
 add_library(cpptest-lite SHARED IMPORTED)
