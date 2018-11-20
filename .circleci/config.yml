@@ -34,10 +34,10 @@ jobs:
           path: build/test/TestVC4C
           distination: TestVC4C
       - store_artifacts:
-          path: vc4c-0.4-Linux.deb
+          path: build/vc4c-0.4-Linux.deb
           distination: vc4c-0.4-Linux.deb
       - store_artifacts:
-          path: vc4cl-stdlib-0.4-Linux.deb
+          path: build/vc4cl-stdlib-0.4-Linux.deb
           distination: vc4cl-stdlib-0.4-Linux.deb
   build:
     docker:
