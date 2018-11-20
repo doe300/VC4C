@@ -686,7 +686,8 @@ uint8_t VPMArea::getElementsInRow(const DataType& elementType) const
 {
     DataType type = (elementType.isUnknown() ? getElementType() : elementType).toVectorType(1);
     if(type.isUnknown())
-        throw CompilationError(CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
+        throw CompilationError(
+            CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
 
     if(!canBePackedIntoRow())
         // if we cannot pack multiple vectors into one row, a row holds 1 vector (16 elements)
@@ -709,7 +710,8 @@ VPWGenericSetup VPMArea::toWriteSetup(const DataType& elementType) const
 {
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.isUnknown())
-        throw CompilationError(CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
+        throw CompilationError(
+            CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
 
     // if we can pack into a single row, do so. Otherwise set stride to beginning of next row
     const uint8_t stride =
@@ -727,7 +729,8 @@ VPWDMASetup VPMArea::toWriteDMASetup(const DataType& elementType, uint8_t numVal
         // converts e.g. 64.bit integer to 2x 32.bit integer
         type = DataType(32, type.getVectorWidth() * type.getScalarBitCount() / 32, type.isFloatingType());
     if(type.isUnknown())
-        throw CompilationError(CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
+        throw CompilationError(
+            CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
 
     // by "default", one value per row, so we need to store the number of values as number of rows
     uint8_t rowDepth = type.getVectorWidth(true);
@@ -739,8 +742,8 @@ VPWDMASetup VPMArea::toWriteDMASetup(const DataType& elementType, uint8_t numVal
         const unsigned totalNumElements = type.getVectorWidth(true) * numValues;
         const uint8_t elementsPerRow = getElementsInRow(type);
         if((totalNumElements > elementsPerRow) && (totalNumElements % elementsPerRow != 0))
-            throw CompilationError(
-                CompilationStep::GENERAL, "Cannot store a number of values which is not a multiple of the row-length ", elementType.to_string());
+            throw CompilationError(CompilationStep::GENERAL,
+                "Cannot store a number of values which is not a multiple of the row-length ", elementType.to_string());
         if(totalNumElements > elementsPerRow)
         {
             rowDepth = elementsPerRow;
@@ -764,7 +767,8 @@ VPRGenericSetup VPMArea::toReadSetup(const DataType& elementType, uint8_t numVal
 {
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.isUnknown())
-        throw CompilationError(CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
+        throw CompilationError(
+            CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
 
     // if we can pack into a single row, do so. Otherwise set stride to beginning of next row
     const uint8_t stride =
@@ -782,9 +786,11 @@ VPRDMASetup VPMArea::toReadDMASetup(const DataType& elementType, uint8_t numValu
         // converts e.g. 64.bit integer to 2x 32.bit integer
         type = DataType(32, type.getVectorWidth() * type.getScalarBitCount() / 32, type.isFloatingType());
     if(type.isUnknown())
-        throw CompilationError(CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
+        throw CompilationError(
+            CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
     if(numValues > 16)
-        throw CompilationError(CompilationStep::GENERAL, "Cannot read more than 16 rows via DMA into VPW at a time", std::to_string(numValues));
+        throw CompilationError(CompilationStep::GENERAL, "Cannot read more than 16 rows via DMA into VPW at a time",
+            std::to_string(numValues));
 
     // If the data is packed, have a pitch of 1 unit (e.g. 1 byte/half-word/word offset depending on type)
     // otherwise, always jump to the next row

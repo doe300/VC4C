@@ -396,7 +396,8 @@ InstructionWalker Method::emplaceLabel(InstructionWalker it, intermediate::Branc
         ++blockIt;
     }
     if(blockIt == end())
-        throw CompilationError(CompilationStep::GENERAL, "Failed to find basic block for instruction iterator", (it.has() ? it->to_string() : ""));
+        throw CompilationError(CompilationStep::GENERAL, "Failed to find basic block for instruction iterator",
+            (it.has() ? it->to_string() : ""));
     // 1. insert new basic block after the current (or in front of it, if we emplace at the start of the basic block)
     bool isStartOfBlock = blockIt->begin() == it;
     if(!isStartOfBlock)

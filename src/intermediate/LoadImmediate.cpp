@@ -59,7 +59,8 @@ std::vector<vc4c::Value> toLoadedValues(uint32_t mask, vc4c::intermediate::LoadT
         }
     }
     else
-        throw CompilationError(CompilationStep::GENERAL, "Unhandled type of masked load", std::to_string(static_cast<unsigned>(type)));
+        throw CompilationError(
+            CompilationStep::GENERAL, "Unhandled type of masked load", std::to_string(static_cast<unsigned>(type)));
     return values;
 }
 
@@ -92,7 +93,8 @@ std::string LoadImmediate::to_string() const
                 toLoadedValues(assertArgument(0).literal().unsignedInt(), LoadType::PER_ELEMENT_UNSIGNED)) +
             createAdditionalInfoString();
     }
-    throw CompilationError(CompilationStep::GENERAL, "Unhandled type of load", std::to_string(static_cast<unsigned>(type)));
+    throw CompilationError(
+        CompilationStep::GENERAL, "Unhandled type of load", std::to_string(static_cast<unsigned>(type)));
 }
 
 IntermediateInstruction* LoadImmediate::copyFor(Method& method, const std::string& localPrefix) const
@@ -109,7 +111,8 @@ IntermediateInstruction* LoadImmediate::copyFor(Method& method, const std::strin
                     assertArgument(0).literal().unsignedInt(), type, conditional, setFlags))
             ->copyExtrasFrom(this);
     }
-    throw CompilationError(CompilationStep::GENERAL, "Unhandled type of load", std::to_string(static_cast<unsigned>(type)));
+    throw CompilationError(
+        CompilationStep::GENERAL, "Unhandled type of load", std::to_string(static_cast<unsigned>(type)));
 }
 
 Optional<Value> LoadImmediate::precalculate(const std::size_t numIterations) const
@@ -125,7 +128,8 @@ Optional<Value> LoadImmediate::precalculate(const std::size_t numIterations) con
         return Value(ContainerValue(toLoadedValues(assertArgument(0).literal().unsignedInt(), type)),
             TYPE_INT8.toVectorType(16));
     }
-    throw CompilationError(CompilationStep::GENERAL, "Unhandled type of load", std::to_string(static_cast<unsigned>(type)));
+    throw CompilationError(
+        CompilationStep::GENERAL, "Unhandled type of load", std::to_string(static_cast<unsigned>(type)));
 }
 
 qpu_asm::Instruction* LoadImmediate::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
@@ -148,7 +152,8 @@ qpu_asm::Instruction* LoadImmediate::convertToAsm(const FastMap<const Local*, Re
         res->setType(OpLoad::LOAD_UNSIGNED);
         break;
     default:
-        throw CompilationError(CompilationStep::GENERAL, "Unhandled type of load", std::to_string(static_cast<unsigned>(type)));
+        throw CompilationError(
+            CompilationStep::GENERAL, "Unhandled type of load", std::to_string(static_cast<unsigned>(type)));
     }
 
     return res;

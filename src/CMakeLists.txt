@@ -79,7 +79,7 @@ add_library(cpplog-static STATIC IMPORTED)
 ExternalProject_Get_Property(cpplog-project BINARY_DIR)
 set_target_properties(cpplog-static PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/libcpplog-static.a")
 target_link_libraries(${VC4C_LIBRARY_NAME} cpplog-static)
-target_include_directories(${VC4C_LIBRARY_NAME} PUBLIC "${PROJECT_SOURCE_DIR}/lib/cpplog/include")
+target_include_directories(${VC4C_LIBRARY_NAME} PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/lib/cpplog/include>)
 target_compile_definitions(${VC4C_LIBRARY_NAME} PUBLIC CPPLOG_NAMESPACE=logging CPPLOG_CUSTOM_LOGGER=true)
 
 # threading library

@@ -13,7 +13,7 @@ jobs:
       - checkout
       - run:
           name: download header
-          command: git clone https://github.com/doe300/VC4CLStdLib.git VC4CLStdLib && cd VC4CLStdLib && cmake . && make && make install && cd ../
+          command: git clone https://github.com/doe300/VC4CLStdLib.git VC4CLStdLib && cd VC4CLStdLib && cmake . && make && sudo make install && cd ../
       - run:
           name: configure
           # Use the libLLVM of the default LLVM/CLang, disable search for SPIRV-LLVM

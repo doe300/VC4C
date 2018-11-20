@@ -436,8 +436,8 @@ qpu_asm::Instruction* MoveOperation::convertToAsm(const FastMap<const Local*, Re
 Operation* MoveOperation::combineWith(const OpCode& otherOpCode) const
 {
     if(otherOpCode == OP_NOP)
-        throw CompilationError(
-            CompilationStep::GENERAL, "Cannot combine move-operation with operation without a valid ALU instruction", to_string());
+        throw CompilationError(CompilationStep::GENERAL,
+            "Cannot combine move-operation with operation without a valid ALU instruction", to_string());
     Operation* op = nullptr;
     if(otherOpCode.runsOnMulALU())
     {

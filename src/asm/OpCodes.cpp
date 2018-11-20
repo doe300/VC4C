@@ -826,5 +826,6 @@ std::string vc4c::toString(const BranchCond cond)
     case BranchCond::ANY_Z_SET:
         return "ifanyz";
     }
-    throw CompilationError(CompilationStep::GENERAL, "Invalid branch-condition", std::to_string(static_cast<int>(cond)));
+    throw CompilationError(
+        CompilationStep::GENERAL, "Invalid branch-condition", std::to_string(static_cast<int>(cond)));
 }
