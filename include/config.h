@@ -199,11 +199,11 @@ namespace vc4c
         /*
          * Manually deactivated optimizations
          */
-        std::unordered_set<std::string> additionalDisabledOptimizations= {};
+        std::unordered_set<std::string> additionalDisabledOptimizations = {};
         /*
          * Manually specified additional parameters for single (or multiple) optimization steps
          */
-        OptimizationOptions additionalOptions= {};
+        OptimizationOptions additionalOptions = {};
         /*
          * Whether to use CLang opt to apply optimizations like force-vectorization, etc...
          */
@@ -225,6 +225,6 @@ namespace vc4c
      */
     constexpr uint32_t QPUASM_MAGIC_NUMBER = 0xDEADBEAF;
     constexpr uint32_t QPUASM_NUMBER_MAGIC = 0xAFBEADDE;
-}
+} // namespace vc4c
 
 #endif /* VC4C_CONFIG_H */
