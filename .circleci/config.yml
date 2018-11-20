@@ -20,10 +20,10 @@ jobs:
           command: mkdir build && cd build && sudo cmake ../ -DCROSS_COMPILE=ON -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=ON -DSPIRV_FRONTEND=OFF -DSPIRV_COMPILER_ROOT=/tmp/skip-searching -DSYSROOT_CROSS=/home/idein/cross -DCROSS_COMPILER_PATH=${HOME}/x-tools/armv6-rpi-linux-gnueabihf/bin -DCROSS_COMPILER_PREFIX="armv6-rpi-linux-gnueabihf-"
       - run:
           name: make
-          command: cd build && make -j`nproc`
+          command: cd build && sudo make -j`nproc`
       - run:
           name: deb-packing
-          command: cd build && cpack -G DEB && cpack -G DEB --config ./VC4CLStdLib/CPackConfig.cmake
+          command: cd build && sudo cpack -G DEB && sudo cpack -G DEB --config ./VC4CLStdLib/CPackConfig.cmake
       - store_artifacts:
           path: build/src/libVC4CC.so.0.4
           distination: libVC4CC.so.0.4
