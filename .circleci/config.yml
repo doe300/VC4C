@@ -23,7 +23,7 @@ jobs:
           command: cd build && sudo make -j`nproc`
       - run:
           name: deb-packing
-          command: cd build && sudo cpack -G DEB && sudo cpack -G DEB --config ./VC4CLStdLib/CPackConfig.cmake
+          command: cd build && sudo cpack -G DEB && sudo cpack -G DEB --config ../VC4CLStdLib/CPackConfig.cmake
       - store_artifacts:
           path: build/src/libVC4CC.so.0.4
           distination: libVC4CC.so.0.4
