@@ -132,6 +132,7 @@ namespace vc4c
          * Clone the CFG
          */
         std::unique_ptr<ControlFlowGraph> clone();
+
     private:
         explicit ControlFlowGraph(std::size_t numBlocks) : Graph(numBlocks) {}
         /*

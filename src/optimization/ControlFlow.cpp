@@ -1329,103 +1329,115 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     // - c. predecessor nodes of the node which has back edge
 
     // FIXME: fix the simplifying count (to finding the fixed point?)
-    for (int i = 0; i < 2; i++) {
+    for(int i = 0; i < 2; i++)
+    {
         // set isBackEdge flag
         {
-          std::set<CFGNode*> visited;
+            std::set<CFGNode*> visited;
 
-          std::queue<CFGNode*> que;
-          que.push(&cfg->getStartOfControlFlow());
-          while (!que.empty()) {
-            auto cur = que.front();
-            que.pop();
+            std::queue<CFGNode*> que;
+            que.push(&cfg->getStartOfControlFlow());
+            while(!que.empty())
+            {
+                auto cur = que.front();
+                que.pop();
 
-            visited.insert(cur);
+                visited.insert(cur);
 
-            cur->forAllOutgoingEdges([&que, &visited, &cur](CFGNode& next, CFGEdge& edge) -> bool {
-                if (visited.find(cur) != visited.end()) {
-                  edge.data.isBackEdge = true;
-                }
-                else {
-                  que.push(&next);
-                }
-                return true;
-              });
-          }
+                cur->forAllOutgoingEdges([&que, &visited, &cur](CFGNode& next, CFGEdge& edge) -> bool {
+                    if(visited.find(cur) != visited.end())
+                    {
+                        edge.data.isBackEdge = true;
+                    }
+                    else
+                    {
+                        que.push(&next);
+                    }
+                    return true;
+                });
+            }
         }
 
         std::vector<CFGNode*> unnecessaryNodes;
 
-        for (auto& pair : cfg->getNodes()) {
-          // a.
-          bool hasConstantInstruction = false;
-          auto block = pair.first;
-          for(auto it = block->begin(); it != block->end(); it = it.nextInBlock())
-          {
-            if(it->isConstantInstruction())
+        for(auto& pair : cfg->getNodes())
+        {
+            // a.
+            bool hasConstantInstruction = false;
+            auto block = pair.first;
+            for(auto it = block->begin(); it != block->end(); it = it.nextInBlock())
             {
-              hasConstantInstruction = true;
-              break;
+                if(it->isConstantInstruction())
+                {
+                    hasConstantInstruction = true;
+                    break;
+                }
             }
-          }
-          if (hasConstantInstruction) {
-            continue;
-          }
+            if(hasConstantInstruction)
+            {
+                continue;
+            }
 
-          int incomingEdgesCount = 0;
-          pair.second.forAllIncomingEdges([&incomingEdgesCount](const CFGNode& next, const CFGEdge& edge) -> bool {
-              incomingEdgesCount++;
-              return true;
-              });
-          int outgoingEdgesCount = 0;
-          pair.second.forAllOutgoingEdges([&outgoingEdgesCount](const CFGNode& next, const CFGEdge& edge) -> bool {
-              outgoingEdgesCount++;
-              return true;
-              });
+            int incomingEdgesCount = 0;
+            pair.second.forAllIncomingEdges([&incomingEdgesCount](const CFGNode& next, const CFGEdge& edge) -> bool {
+                incomingEdgesCount++;
+                return true;
+            });
+            int outgoingEdgesCount = 0;
+            pair.second.forAllOutgoingEdges([&outgoingEdgesCount](const CFGNode& next, const CFGEdge& edge) -> bool {
+                outgoingEdgesCount++;
+                return true;
+            });
 
-          // b.
-          if (incomingEdgesCount >= 2 || outgoingEdgesCount >= 2) {
-            continue;
-          }
+            // b.
+            if(incomingEdgesCount >= 2 || outgoingEdgesCount >= 2)
+            {
+                continue;
+            }
 
-          // c.
-          bool hasBackEdge = false;
-          pair.second.forAllOutgoingEdges([&hasBackEdge](const CFGNode& next, const CFGEdge& edge) -> bool {
-              next.forAllIncomingEdges([&hasBackEdge](const CFGNode& nnext, const CFGEdge& nedge) -> bool {
-                  if (nedge.data.isBackEdge) {
-                    hasBackEdge = true;
+            // c.
+            bool hasBackEdge = false;
+            pair.second.forAllOutgoingEdges([&hasBackEdge](const CFGNode& next, const CFGEdge& edge) -> bool {
+                next.forAllIncomingEdges([&hasBackEdge](const CFGNode& nnext, const CFGEdge& nedge) -> bool {
+                    if(nedge.data.isBackEdge)
+                    {
+                        hasBackEdge = true;
+                        return false;
+                    }
+                    return true;
+                });
+                if(hasBackEdge)
+                {
                     return false;
-                  }
-                  return true;
-              });
-              if (hasBackEdge) {
-                return false;
-              }
-              return true;
-          });
-          if (hasBackEdge) {
-            continue;
-          }
+                }
+                return true;
+            });
+            if(hasBackEdge)
+            {
+                continue;
+            }
 
-          unnecessaryNodes.push_back(&pair.second);
+            unnecessaryNodes.push_back(&pair.second);
         }
 
-        for (auto &node : unnecessaryNodes) {
-          CFGNode *prev = nullptr, *next = nullptr;
-          // A unnecessary node must has just one previous node and one next node.
-          node->forAllIncomingEdges([&prev](CFGNode& node, CFGEdge&) -> bool {
-            prev = &node;
-            return false;
+        for(auto& node : unnecessaryNodes)
+        {
+            CFGNode *prev = nullptr, *next = nullptr;
+            // A unnecessary node must has just one previous node and one next node.
+            node->forAllIncomingEdges([&prev](CFGNode& node, CFGEdge&) -> bool {
+                prev = &node;
+                return false;
             });
-          node->forAllOutgoingEdges([&next](CFGNode& node, CFGEdge&) -> bool {
-            next = &node;
-            return false;
-              });
+            node->forAllOutgoingEdges([&next](CFGNode& node, CFGEdge&) -> bool {
+                next = &node;
+                return false;
+            });
 
-          cfg->eraseNode(node->key);
-          if (!prev->isAdjacent(next)) {
-              prev->addEdge(next, {});
-          }
+            cfg->eraseNode(node->key);
+            if(!prev->isAdjacent(next))
+            {
+                prev->addEdge(next, {});
+            }
         }
     }
 
