@@ -290,8 +290,6 @@ namespace vc4c
             return OperationWrapper{OP_V8MIN, src}, deco;
         }
 
-        // TODO equality operators? Generates multiple instructions
-
         NODISCARD inline OperationWrapper max(const Value& arg1, const Value& arg2)
         {
             if(arg1.type.isFloatingType() && arg2.type.isFloatingType())
@@ -383,26 +381,40 @@ namespace vc4c
             }
         };
 
+        /**
+         * Inserts an instruction that assigns the output of the given calculation to the given Value.
+         *
+         * NOTE: The InstructionWalker is automatically incremented
+         */
         NODISCARD inline AssignmentWrapper assign(InstructionWalker& it, const Value& out)
         {
-            // TODO document that iterator is incremented (opposite to everywhere else)!
-            // TODO document this version always inserts, beneath version precalculates
             return AssignmentWrapper{it, out};
         }
 
+        /**
+         * Inserts an instruction that assigns the output of the given calculation to the Value returned.
+         * If the operation can be calculated on compile-time, the direct result will be returned and no instruction
+         * will be inserted.
+         *
+         * NOTE: The InstructionWalker is automatically incremented (iff an instruction is generated)
+         */
         NODISCARD inline ValueWrapper assign(InstructionWalker& it, const DataType& type, std::string&& name = "")
         {
-            // TODO document that iterator is incremented (opposite to everywhere else)!
             return ValueWrapper{it.getBasicBlock()->getMethod(), it, type, std::forward<std::string>(name)};
         }
 
+        /**
+         * Inserts a nop instruction optionally triggering the given signal
+         *
+         * NOTE: The InstructionWalker is automatically incremented
+         */
         inline void nop(InstructionWalker& it, intermediate::DelayType type, Signaling signal = SIGNAL_NONE)
         {
             it.emplace(new intermediate::Nop(type));
             it->signal = signal;
             it.nextInBlock();
         }
-    }
-}
+    } // namespace operators
+} // namespace vc4c
 
 #endif /* VC4C_INSTRUCTION_OPERATORS_H */

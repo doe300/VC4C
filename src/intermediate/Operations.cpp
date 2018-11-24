@@ -630,6 +630,8 @@ CombinedOperation::CombinedOperation(Operation* op1, Operation* op2) :
     IntermediateInstruction(NO_VALUE), op1((op1 && op1->op.runsOnAddALU()) ? op1 : op2),
     op2((op1 && op1->op.runsOnAddALU()) ? op2 : op1)
 {
+    if(!op1 || !op2)
+        throw CompilationError(CompilationStep::GENERAL, "Cannot combine NULL operation!");
     op1->parent = this;
     op2->parent = this;
 }

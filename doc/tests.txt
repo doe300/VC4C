@@ -20,7 +20,7 @@ self_assign-test-opencl			local size (128) exceeds device maximum
 vector_convert-test-opencl		compilation error
 
 Boost Compute:
-test_accumulate					result mismatch
+test_accumulate					result mismatch (error in test! Buffer is already freed when kernel is executed, test does not wait for kernel to execute!)
 test_adjacent_difference		PASSED
 test_adjacent_find				PASSED
 test_amd_cpp_kernel_language	SKIPPED
@@ -35,17 +35,17 @@ test_buffer_allocator			PASSED
 test_buffer_iterator			PASSED
 test_clamp_range				PASSED
 test_closure					result mismatch (ULP, "add_two_and_pi": difference{6.49642e-06%} between results[1]{7.33999968} and 7.34f{7.34000015} exceeds 1e-06%)
-test_command_queue				error ("device does not support EXEC_NATIVE_KERNEL")
+test_command_queue				error ("Profiling information not available")
 test_complex					PASSED
 test_constant_iterator			PASSED
 test_context					PASSED
 test_context_error				PASSED
 test_copy						PASSED
-test_copy_if					FAILED
+test_copy_if					PASSED
 test_copy_type_mismatch			Invalid Value error, hangs
 test_count						compilation error(long), bad optional access
 test_counting_iterator			PASSED
-test_device						error (memory access violation)
+test_device						PASSED (skips some OpenCL 2.0+ tests)
 test_discard_iterator			PASSED
 test_discrete_distribution		compilation error (ulong)
 test_dynamic_bitset				compilation error (long), result mismatch
@@ -110,14 +110,14 @@ test_permutation_iterator		PASSED/SKIPPED
 test_pinned_allocator			PASSED/SKIPPED
 test_pipe						SKIPPED
 test_platform					PASSED/SKIPPED
-test_prev_permutation			FAILED
-test_program					FAILED
+test_prev_permutation			PASSED
+test_program					FAILED (fails for creating "library" (non-kernel functions) to be linked into kernel later)
 test_program_cache				PASSED/SKIPPED
 test_radix_sort					result mismatches, compilation errors (long kernels)
 test_radix_sort_by_key			result mismatches
 test_random_fill				PASSED
 test_random_shuffle				PASSED
-test_reduce						result mismatches (0 != x), SIGABRT (std::out_of_range in vector)
+test_reduce						result mismatches (0 != x), SIGABRT (std::out_of_range in vector), kills all succeeding tests
 test_reduce_by_key				PASSED
 test_remove						PASSED
 test_replace					PASSED
@@ -125,7 +125,7 @@ test_result_of					PASSED
 test_reverse					PASSED
 test_rotate						PASSED
 test_rotate_copy				PASSED
-test_scan						result mismatch
+test_scan						result mismatch, hang QPU?
 test_scatter					PASSED
 test_scatter_if					PASSED
 test_search						PASSED
@@ -162,7 +162,7 @@ test_unique_copy				PASSED
 test_unsupported_extension		PASSED
 test_user_defined_types			compilation error (packed struct, converted to ulong by LLVM)
 test_user_event					PASSED
-test_valarray					result mismatch ("sum")
+test_valarray					PASSED (but thread termination)
 test_vector						PASSED
 test_wait_list					PASSED
 test_zip_iterator				PASSED

@@ -1172,6 +1172,7 @@ static AccessRanges determineAccessRanges(Method& method)
                             }
                             range.typeSizeShift = trackIt.getBasicBlock()->findWalkerForInstruction(writer, trackIt);
                             varArg = writer->assertArgument(0);
+                            //TODO is never read. Remove or use?
                             writer = varArg.getSingleWriter();
                         }
                         // 2.3 collect all directly neighboring (and directly referenced) additions

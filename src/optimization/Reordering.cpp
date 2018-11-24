@@ -72,7 +72,6 @@ static NODISCARD InstructionWalker findInstructionNotAccessing(
         if(validReplacement && it->readsRegister(REG_MUTEX))
         {
             // Re-ordering MUTEX_ACQUIRE would extend the critical section (maybe a lot!), so don't move it
-            validReplacement = false;
             // Also, never move anything out of (or over) the critical section
             return basicBlock.end();
         }

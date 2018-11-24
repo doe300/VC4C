@@ -77,13 +77,13 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
     {
         if(code == OP_FTOI && expr0->code == OP_ITOF)
             // ftoi(itof(i)) = i
-            return Expression{OP_V8MIN, expr0->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, expr1->deco)};
+            return Expression{OP_V8MIN, expr0->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
         if(code == OP_ITOF && expr0->code == OP_FTOI)
             // itof(ftoi(f)) = f
-            return Expression{OP_V8MIN, expr0->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, expr1->deco)};
+            return Expression{OP_V8MIN, expr0->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
         if(code == OP_NOT && expr0->code == OP_NOT)
             // not(not(a)) = a
-            return Expression{OP_V8MIN, expr0->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, expr1->deco)};
+            return Expression{OP_V8MIN, expr0->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
     }
 
     auto firstArgConstant = arg0.getLiteralValue() || arg0.hasContainer() ?

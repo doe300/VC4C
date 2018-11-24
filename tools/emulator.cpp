@@ -77,7 +77,7 @@ static std::vector<tools::Word> readDirectData(std::string data)
 {
 	std::vector<tools::Word> words;
 
-	tools::Word currentWord;
+	tools::Word currentWord{};
 	for(std::size_t i = 0; i < data.size(); ++i)
 	{
 		currentWord |= static_cast<tools::Word>(data.at(i)) << ((i % 4) * 8);
@@ -246,6 +246,7 @@ int main(int argc, char** argv)
 			setLogger(std::wcout, true, LogLevel::DEBUG);
 		}
 		else
+			//TODO hexadecimal support
 			data.parameter.emplace_back(static_cast<tools::Word>(std::strtol(argv[i], nullptr, 0)), Optional<std::vector<uint32_t>>{});
 	}
 
