@@ -742,8 +742,9 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
     auto it = block.begin();
     while(!it.isEndOfBlock())
     {
-        if(it.has<intermediate::Nop>() && !it->hasSideEffects() &&
-            it.get<const intermediate::Nop>()->type != intermediate::DelayType::THREAD_END)
+        if(!it.has() ||
+            (it.has<intermediate::Nop>() && !it->hasSideEffects() &&
+                it.get<const intermediate::Nop>()->type != intermediate::DelayType::THREAD_END))
         {
             it.nextInBlock();
             continue;

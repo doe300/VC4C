@@ -101,6 +101,11 @@ static void findDependencies(BasicBlock& bb, DataDependencyGraph& graph, Instruc
     auto it = bb.begin();
     while(!it.isEndOfBlock())
     {
+        if(!it.has())
+        {
+            it.nextInBlock();
+            continue;
+        }
         it->forUsedLocals([it, &bb, &mapping, &graph](const Local* local, LocalUse::Type type) -> void {
             if(has_flag(type, LocalUse::Type::READER) && !local->type.isLabelType())
             {

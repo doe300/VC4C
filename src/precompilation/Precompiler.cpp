@@ -301,7 +301,8 @@ Precompiler::Precompiler(
     inputFile(inputFile), config(config), input(input)
 {
     if(inputType == SourceType::QPUASM_BIN || inputType == SourceType::QPUASM_HEX || inputType == SourceType::UNKNOWN)
-        throw CompilationError(CompilationStep::PRECOMPILATION, "Invalid input-type for pre-compilation!");
+        throw CompilationError(CompilationStep::PRECOMPILATION, "Invalid input-type for pre-compilation",
+            std::to_string(static_cast<unsigned>(inputType)));
 }
 
 void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType outputType, const std::string& options,
@@ -309,7 +310,8 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
 {
     if(outputType == SourceType::QPUASM_BIN || outputType == SourceType::QPUASM_HEX ||
         outputType == SourceType::UNKNOWN)
-        throw CompilationError(CompilationStep::PRECOMPILATION, "Invalid output-type for pre-compilation!");
+        throw CompilationError(CompilationStep::PRECOMPILATION, "Invalid output-type for pre-compilation",
+            std::to_string(static_cast<unsigned>(outputType)));
 
     if(!outputFile)
         logging::warn() << "When running the pre-compiler with root rights and writing to /dev/stdout, the compiler "

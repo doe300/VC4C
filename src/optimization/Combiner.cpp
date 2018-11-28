@@ -1061,7 +1061,7 @@ static AccessRanges determineAccessRanges(Method& method)
         InstructionWalker it = block.begin();
         while(!it.isEndOfBlock())
         {
-            if(it->writesRegister(REG_VPM_DMA_LOAD_ADDR) || it->writesRegister(REG_VPM_DMA_STORE_ADDR))
+            if(it.has() && (it->writesRegister(REG_VPM_DMA_LOAD_ADDR) || it->writesRegister(REG_VPM_DMA_STORE_ADDR)))
             {
                 // 1. find writes to VPM DMA addresses with work-group uniform part in address values
                 if(std::any_of(it->getArguments().begin(), it->getArguments().end(), isWorkGroupUniform) ||
@@ -1172,7 +1172,7 @@ static AccessRanges determineAccessRanges(Method& method)
                             }
                             range.typeSizeShift = trackIt.getBasicBlock()->findWalkerForInstruction(writer, trackIt);
                             varArg = writer->assertArgument(0);
-                            //TODO is never read. Remove or use?
+                            // TODO is never read. Remove or use?
                             writer = varArg.getSingleWriter();
                         }
                         // 2.3 collect all directly neighboring (and directly referenced) additions

@@ -58,7 +58,7 @@ namespace vc4c
         }
         template <typename... Args>
         explicit Node(GraphType& graph, Key&& key, Args&&... args) :
-            Base(std::forward<Args&&>(args)...), key(std::move(key)), graph(graph), edges()
+            Base(std::forward<Args&&>(args)...), key(key), graph(graph), edges()
         {
         }
 
@@ -400,7 +400,7 @@ namespace vc4c
         using NodeType = Node;
 
         Edge(NodeType& first, NodeType& second, Relation&& data) :
-            data(std::move(data)), first(first), second(second), firstInput(true), secondInput(false)
+            data(data), first(first), second(second), firstInput(true), secondInput(false)
         {
         }
 

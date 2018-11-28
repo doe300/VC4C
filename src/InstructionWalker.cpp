@@ -196,8 +196,12 @@ bool InstructionWalker::operator==(const InstructionWalker& other) const
 
 bool InstructionWalker::isEndOfMethod() const
 {
+    if(basicBlock == nullptr)
+        return true;
+    if(!isEndOfBlock())
+        return false;
     const auto& lastBlock = *(--basicBlock->method.end());
-    return isEndOfBlock() && &lastBlock == basicBlock;
+    return &lastBlock == basicBlock;
 }
 
 bool InstructionWalker::isStartOfMethod() const
@@ -207,11 +211,15 @@ bool InstructionWalker::isStartOfMethod() const
 
 bool InstructionWalker::isEndOfBlock() const
 {
+    if(basicBlock == nullptr)
+        return true;
     return pos == basicBlock->instructions.end();
 }
 
 bool InstructionWalker::isStartOfBlock() const
 {
+    if(basicBlock == nullptr)
+        return false;
     return pos == basicBlock->instructions.begin();
 }
 
@@ -267,6 +275,9 @@ InstructionWalker& InstructionWalker::emplace(intermediate::IntermediateInstruct
     if(isStartOfBlock())
         throw CompilationError(
             CompilationStep::GENERAL, "Can't emplace at the start of a basic block", instr->to_string());
+    if(basicBlock == nullptr)
+        throw CompilationError(
+            CompilationStep::GENERAL, "Can't emplace into an iterator which is not associated with a basic block");
     if(dynamic_cast<intermediate::BranchLabel*>(instr) != nullptr)
         throw CompilationError(CompilationStep::GENERAL, "Can't add labels into a basic block", instr->to_string());
     if(dynamic_cast<intermediate::Branch*>(instr) != nullptr)
@@ -386,6 +397,8 @@ bool ConstInstructionWalker::operator==(const ConstInstructionWalker& other) con
 
 bool ConstInstructionWalker::isEndOfMethod() const
 {
+    if(basicBlock == nullptr)
+        return true;
     const auto& lastBlock = *(--basicBlock->method.end());
     return isEndOfBlock() && &lastBlock == basicBlock;
 }
@@ -397,11 +410,15 @@ bool ConstInstructionWalker::isStartOfMethod() const
 
 bool ConstInstructionWalker::isEndOfBlock() const
 {
+    if(basicBlock == nullptr)
+        return true;
     return pos == basicBlock->instructions.end();
 }
 
 bool ConstInstructionWalker::isStartOfBlock() const
 {
+    if(basicBlock == nullptr)
+        return false;
     return pos == basicBlock->instructions.begin();
 }
 

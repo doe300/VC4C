@@ -19,7 +19,7 @@ using namespace vc4c;
 ComplexType::~ComplexType() {}
 
 DataType::DataType(std::shared_ptr<ComplexType>&& complexType) :
-    complexType(std::move(complexType)), bitWidth(DataType::COMPLEX), numElements(1), isFloatingPoint(false)
+    complexType(complexType), bitWidth(DataType::COMPLEX), numElements(1), isFloatingPoint(false)
 {
 }
 

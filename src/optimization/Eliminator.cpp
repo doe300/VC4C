@@ -719,6 +719,8 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
 
         for(auto it = block.begin(); !it.isEndOfBlock(); it.nextInBlock())
         {
+            if(!it.has())
+                continue;
             auto expr = Expression::createExpression(*it.get());
             if(expr)
             {
@@ -741,7 +743,7 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
 InstructionWalker optimizations::rewriteConstantSFUCall(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
-    if(!it->hasValueType(ValueType::REGISTER) || !it->getOutput()->reg().isSpecialFunctionsUnit())
+    if(!it.has() || !it->hasValueType(ValueType::REGISTER) || !it->getOutput()->reg().isSpecialFunctionsUnit())
         return it;
 
     auto constantValue = it->precalculate(3);

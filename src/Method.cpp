@@ -193,6 +193,8 @@ std::string Method::createLocalName(const std::string& prefix, const std::string
 
 InstructionWalker Method::walkAllInstructions()
 {
+    if(basicBlocks.empty())
+        return InstructionWalker{};
     return begin()->begin();
 }
 

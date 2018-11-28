@@ -470,7 +470,7 @@ Value::Value(const ContainerValue& container, const DataType& type) : data(conta
 
 Value::Value(const Value& val) : data(val.data), type(val.type) {}
 
-Value::Value(Value&& val) : data(std::move(val.data)), type(std::move(val.type)) {}
+Value::Value(Value&& val) : data(val.data), type(val.type) {}
 
 Value::Value(const Local* local, const DataType& type) noexcept : data(const_cast<Local*>(local)), type(type) {}
 

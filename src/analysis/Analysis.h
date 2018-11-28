@@ -58,7 +58,8 @@ namespace vc4c
                     analyzeBackward(block);
 
                 resultAtStart = &results.at(block.begin().get());
-                resultAtEnd = &results.at(block.end().previousInBlock().get());
+                if(!block.empty())
+                    resultAtEnd = &results.at(block.end().previousInBlock().get());
             }
 
             const Values& getResult(const intermediate::IntermediateInstruction* instr) const
@@ -109,8 +110,12 @@ namespace vc4c
                 const auto* prevVal = &initialValue;
                 for(auto it = block.begin(); !it.isEndOfBlock(); it.nextInBlock())
                 {
-                    auto pos = results.emplace(it.get(), std::forward<Values>(transferFunction(it.get(), *prevVal, c)));
-                    prevVal = &(pos.first->second);
+                    if(it.has())
+                    {
+                        auto pos =
+                            results.emplace(it.get(), std::forward<Values>(transferFunction(it.get(), *prevVal, c)));
+                        prevVal = &(pos.first->second);
+                    }
                 }
             }
 
@@ -123,8 +128,12 @@ namespace vc4c
                 {
                     it.previousInBlock();
 
-                    auto pos = results.emplace(it.get(), std::forward<Values>(transferFunction(it.get(), *prevVal, c)));
-                    prevVal = &(pos.first->second);
+                    if(it.has())
+                    {
+                        auto pos =
+                            results.emplace(it.get(), std::forward<Values>(transferFunction(it.get(), *prevVal, c)));
+                        prevVal = &(pos.first->second);
+                    }
                 } while(!it.isStartOfBlock());
             }
         };

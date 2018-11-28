@@ -281,7 +281,8 @@ bool optimizations::splitReadAfterWrites(const Module& module, Method& method, c
     // at the beginning, the last parameter read is the last local written
     const Local* lastWrittenTo = method.parameters.empty() ? nullptr : &method.parameters.back();
     // skip the first instruction, since we start the check at the read (and need to look back at the write)
-    it.nextInMethod();
+    if(!it.isEndOfMethod())
+        it.nextInMethod();
     while(!it.isEndOfMethod())
     {
         // skip already replaced instructions
