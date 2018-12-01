@@ -23,6 +23,7 @@
 #include "TestVectorFunctions.h"
 #include "TestMemoryAccess.h"
 #include "TestConversionFunctions.h"
+#include "TestOptimizations.h"
 
 #include "tools.h"
 #include "../lib/cpplog/include/logger.h"
@@ -113,6 +114,7 @@ int main(int argc, char** argv)
     //only output errors
     logging::LOGGER.reset(new logging::ConsoleLogger(logging::Level::WARNING));
 
+    Test::registerSuite(Test::newInstance<TestOptimizations>, "test-optimizations", "Runs smoke tests on the single optimization steps");
     Test::registerSuite(Test::newInstance<TestOperators>, "test-operators", "Tests the implementation of some operators");
     Test::registerSuite(Test::newInstance<TestInstructions>, "test-instructions", "Tests some common instruction handling");
     Test::registerSuite(Test::newInstance<TestSPIRVFrontend>, "test-spirv", "Tests the SPIR-V front-end");

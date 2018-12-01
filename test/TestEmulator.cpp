@@ -7,6 +7,7 @@
 #include "TestEmulator.h"
 
 #include "Compiler.h"
+#include "Precompiler.h"
 #include "Locals.h"
 #include "asm/Instruction.h"
 #include "asm/KernelInfo.h"
@@ -22,7 +23,7 @@
 using namespace vc4c;
 using namespace vc4c::tools;
 
-TestEmulator::TestEmulator(const vc4c::Configuration& config) : config(config)
+TestEmulator::TestEmulator(const vc4c::Configuration& config) : config(config), cachePrecompilation(false)
 {
 	TEST_ADD(TestEmulator::testHelloWorld);
 	TEST_ADD(TestEmulator::testHelloWorldVector);
@@ -43,24 +44,36 @@ TestEmulator::TestEmulator(const vc4c::Configuration& config) : config(config)
 	TEST_ADD(TestEmulator::printProfilingInfo);
 }
 
-TestEmulator::TestEmulator(bool dummy, const vc4c::Configuration& config) : config(config)
+TestEmulator::TestEmulator(bool cachePrecompilation, const vc4c::Configuration& config) : config(config), cachePrecompilation(cachePrecompilation)
 {
 	//Constructor just, so the tests are not added to children
 }
 
-void TestEmulator::compileFile(std::stringstream& buffer, const std::string& fileName, const std::string& options)
+void TestEmulator::compileFile(
+    std::stringstream& buffer, const std::string& fileName, const std::string& options, bool cachePrecompilation)
 {
+	static std::map<std::string, TemporaryFile> cachedPrecompilations;
 	config.outputMode = OutputMode::BINARY;
 	config.writeKernelInfo = true;
 	std::ifstream input(fileName);
-	Compiler::compile(input, buffer, config, "", fileName);
+	std::unique_ptr<std::istream> precompiled;
+	std::string precompiledFile;
+	auto tmpIt = cachedPrecompilations.find(fileName);
+	if(tmpIt == cachedPrecompilations.end()) {
+		tmpIt = cachedPrecompilations.emplace(std::make_pair(fileName, TemporaryFile{})).first;
+		Precompiler::precompile(input, precompiled, config, options, fileName, tmpIt->second.fileName);
+	}
+	tmpIt->second.openInputStream(precompiled);
+	Compiler::compile(*precompiled, buffer, config, "", tmpIt->second.fileName);
+	if(!cachePrecompilation)
+		cachedPrecompilations.clear();
 }
 
 
 void TestEmulator::testHelloWorld()
 {
 	std::stringstream buffer;
-	compileFile(buffer, "./example/hello_world.cl");
+	compileFile(buffer, "./example/hello_world.cl", "", cachePrecompilation);
 
 	EmulationData data;
 	data.kernelName = "hello_world";
@@ -91,7 +104,7 @@ void TestEmulator::testHelloWorld()
 void TestEmulator::testHelloWorldVector()
 {
 	std::stringstream buffer;
-	compileFile(buffer, "./example/hello_world_vector.cl");
+	compileFile(buffer, "./example/hello_world_vector.cl", "", cachePrecompilation);
 
 	EmulationData data;
 	data.kernelName = "hello_world";
@@ -117,7 +130,7 @@ void TestEmulator::testHelloWorldVector()
 void TestEmulator::testPrime()
 {
 	std::stringstream buffer;
-	compileFile(buffer, "./example/test_prime.cl");
+	compileFile(buffer, "./example/test_prime.cl", "", cachePrecompilation);
 
 	EmulationData data;
 	data.kernelName = "test_prime";
@@ -154,7 +167,7 @@ void TestEmulator::testPrime()
 void TestEmulator::testBarrier()
 {
 	std::stringstream buffer;
-	compileFile(buffer, "./testing/test_barrier.cl");
+	compileFile(buffer, "./testing/test_barrier.cl", "", cachePrecompilation);
 
 	EmulationData data;
 	data.kernelName = "test_barrier";
@@ -190,7 +203,7 @@ void TestEmulator::testBarrier()
 void TestEmulator::testBranches()
 {
 	std::stringstream buffer;
-	compileFile(buffer, "./testing/test_branches.cl");
+	compileFile(buffer, "./testing/test_branches.cl", "", cachePrecompilation);
 
 	EmulationData data;
 	data.kernelName = "test_branches";
@@ -221,7 +234,7 @@ void TestEmulator::testBranches()
 void TestEmulator::testWorkItem()
 {
 	std::stringstream buffer;
-	compileFile(buffer, "./testing/test_work_item.cl");
+	compileFile(buffer, "./testing/test_work_item.cl", "", cachePrecompilation);
 
 	EmulationData data;
 	data.kernelName = "test_work_item";
@@ -284,7 +297,7 @@ void TestEmulator::testSHA1()
 	const std::vector<uint32_t> digest = {0x2ef7bde6, 0x08ce5404, 0xe97d5f04, 0x2f95f89f, 0x1c232871};
 
 	std::stringstream buffer;
-	compileFile(buffer, "./example/md5.cl");
+	compileFile(buffer, "./example/md5.cl", "", cachePrecompilation);
 
 	EmulationData data;
 	data.kernelName = "sha1_crypt_kernel";
@@ -325,7 +338,7 @@ void TestEmulator::testSHA256()
 	const std::vector<uint32_t> digest = {0xf90a1ef4, 0x422350ca, 0x8c448530, 0xa7d5d0b2, 0x35054803, 0xf7b2a73d, 0x86f4b639, 0x4b1329a5};
 
 	std::stringstream buffer;
-	compileFile(buffer, "./example/SHA-256.cl");
+	compileFile(buffer, "./example/SHA-256.cl", "", cachePrecompilation);
 
 	EmulationData data;
 	data.kernelName = "execute_sha256_cpu";
@@ -372,7 +385,7 @@ void TestEmulator::testFloatEmulations(std::size_t index, std::string name)
 void TestEmulator::testIntegerEmulation(vc4c::tools::EmulationData& data, std::map<uint32_t, std::vector<uint32_t>>& expectedResults)
 {
 	std::stringstream buffer;
-	compileFile(buffer, data.module.first);
+	compileFile(buffer, data.module.first, "", cachePrecompilation);
 	data.module.second = &buffer;
 	
 	const auto result = emulate(data);
@@ -404,7 +417,7 @@ void TestEmulator::testIntegerEmulation(vc4c::tools::EmulationData& data, std::m
 void TestEmulator::testFloatingEmulation(vc4c::tools::EmulationData& data, std::map<uint32_t, std::vector<uint32_t>>& expectedResults, unsigned maxULP)
 {
 	std::stringstream buffer;
-	compileFile(buffer, data.module.first);
+	compileFile(buffer, data.module.first, "", cachePrecompilation);
 	data.module.second = &buffer;
 	
 	const auto result = emulate(data);

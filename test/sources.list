@@ -26,6 +26,8 @@ target_sources(TestVC4C
     TestMemoryAccess.h
     TestOperators.cpp
     TestOperators.h
+    TestOptimizations.cpp
+    TestOptimizations.h
     TestRelationalFunctions.cpp
     TestRelationalFunctions.h
     TestSPIRVFrontend.cpp
