@@ -6,6 +6,8 @@
 
 #include "AvailableExpressionAnalysis.h"
 
+#include "../Profiler.h"
+
 #include <sstream>
 
 using namespace vc4c;
@@ -20,6 +22,7 @@ AvailableExpressions AvailableExpressionAnalysis::analyzeAvailableExpressions(
     const intermediate::IntermediateInstruction* instr, const AvailableExpressions& previousExpressions,
     FastMap<const Local*, FastSet<const Expression*>>& cache)
 {
+    PROFILE_START(AvailableExpressionAnalysis);
     AvailableExpressions newExpressions(previousExpressions);
 
     if(instr->hasValueType(ValueType::LOCAL))
@@ -47,7 +50,7 @@ AvailableExpressions AvailableExpressionAnalysis::analyzeAvailableExpressions(
             }
         }
     }
-
+    PROFILE_END(AvailableExpressionAnalysis);
     return newExpressions;
 }
 

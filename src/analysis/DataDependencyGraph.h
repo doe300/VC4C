@@ -63,6 +63,9 @@ namespace vc4c
          * - a "constant" dependency which is set somewhere before the loop and never changed in the loop body
          */
         static std::unique_ptr<DataDependencyGraph> createDependencyGraph(Method& method);
+
+    private:
+        explicit DataDependencyGraph(std::size_t numBlocks) : Graph(numBlocks) {}
     };
 } // namespace vc4c
 

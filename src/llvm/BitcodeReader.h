@@ -32,7 +32,8 @@ namespace vc4c
 {
     namespace llvm2qasm
     {
-        using LLVMInstructionList = FastModificationList<std::unique_ptr<LLVMInstruction>>;
+        // This list is only ever appended to the end and the size can be pre-calculated, so use a vector
+        using LLVMInstructionList = FastAccessList<std::unique_ptr<LLVMInstruction>>;
 
 #ifdef USE_LLVM_LIBRARY
         class BitcodeReader final : public Parser
@@ -59,6 +60,8 @@ namespace vc4c
                 Module& module, Method& method, LLVMInstructionList& instructions, const llvm::Instruction& inst);
 
             DataType toDataType(const llvm::Type* type);
+            Value parseInlineGetElementPtr(
+                Module& module, Method& method, LLVMInstructionList& instructions, const llvm::Value* pointerOperand);
             Value toValue(Method& method, const llvm::Value* val);
             Value toConstant(Module& module, const llvm::Value* val);
             Value precalculateConstantExpression(Module& module, const llvm::ConstantExpr* expr);

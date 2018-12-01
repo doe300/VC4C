@@ -442,36 +442,36 @@ namespace vc4c
         };
 
         // names are according to LLVM names
-        static const std::string COMP_EQ = "eq";
-        static const std::string COMP_NEQ = "ne";
-        static const std::string COMP_UNSIGNED_GT = "ugt";
-        static const std::string COMP_UNSIGNED_GE = "uge";
-        static const std::string COMP_UNSIGNED_LT = "ult";
-        static const std::string COMP_UNSIGNED_LE = "ule";
-        static const std::string COMP_SIGNED_GT = "sgt";
-        static const std::string COMP_SIGNED_GE = "sge";
-        static const std::string COMP_SIGNED_LT = "slt";
-        static const std::string COMP_SIGNED_LE = "sle";
+        static constexpr const char* COMP_EQ = "eq";
+        static constexpr const char* COMP_NEQ = "ne";
+        static constexpr const char* COMP_UNSIGNED_GT = "ugt";
+        static constexpr const char* COMP_UNSIGNED_GE = "uge";
+        static constexpr const char* COMP_UNSIGNED_LT = "ult";
+        static constexpr const char* COMP_UNSIGNED_LE = "ule";
+        static constexpr const char* COMP_SIGNED_GT = "sgt";
+        static constexpr const char* COMP_SIGNED_GE = "sge";
+        static constexpr const char* COMP_SIGNED_LT = "slt";
+        static constexpr const char* COMP_SIGNED_LE = "sle";
 
         //"ordered" -> no NaNs, "unordered", NaNs allowed
-        static const std::string COMP_FALSE = "false";
-        static const std::string COMP_TRUE = "true";
+        static constexpr const char* COMP_FALSE = "false";
+        static constexpr const char* COMP_TRUE = "true";
 
-        static const std::string COMP_ORDERED_EQ = "oeq";
-        static const std::string COMP_ORDERED_NEQ = "one";
-        static const std::string COMP_ORDERED_GT = "ogt";
-        static const std::string COMP_ORDERED_GE = "oge";
-        static const std::string COMP_ORDERED_LT = "olt";
-        static const std::string COMP_ORDERED_LE = "ole";
-        static const std::string COMP_ORDERED = "ord";
+        static constexpr const char* COMP_ORDERED_EQ = "oeq";
+        static constexpr const char* COMP_ORDERED_NEQ = "one";
+        static constexpr const char* COMP_ORDERED_GT = "ogt";
+        static constexpr const char* COMP_ORDERED_GE = "oge";
+        static constexpr const char* COMP_ORDERED_LT = "olt";
+        static constexpr const char* COMP_ORDERED_LE = "ole";
+        static constexpr const char* COMP_ORDERED = "ord";
 
-        static const std::string COMP_UNORDERED_EQ = "ueq";
-        static const std::string COMP_UNORDERED_NEQ = "une";
-        static const std::string COMP_UNORDERED_GT = "ugt";
-        static const std::string COMP_UNORDERED_GE = "uge";
-        static const std::string COMP_UNORDERED_LT = "ult";
-        static const std::string COMP_UNORDERED_LE = "ule";
-        static const std::string COMP_UNORDERED = "uno";
+        static constexpr const char* COMP_UNORDERED_EQ = "ueq";
+        static constexpr const char* COMP_UNORDERED_NEQ = "une";
+        static constexpr const char* COMP_UNORDERED_GT = "ugt";
+        static constexpr const char* COMP_UNORDERED_GE = "uge";
+        static constexpr const char* COMP_UNORDERED_LT = "ult";
+        static constexpr const char* COMP_UNORDERED_LE = "ule";
+        static constexpr const char* COMP_UNORDERED = "uno";
 
         struct Comparison final : public IntrinsicOperation
         {

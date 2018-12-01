@@ -78,8 +78,9 @@ namespace vc4c
 
         using DefaultNodeType = Node<Key, Relation, Direction>;
 
-        explicit DebugGraph(const std::string& fileName) : file(fileName)
+        explicit DebugGraph(const std::string& fileName, std::size_t numNodes) : file(fileName)
         {
+            processedNodes.reserve(numNodes);
             // strict: at most one edge can connect two nodes, multiple same connections are merged (including their
             // attributes)  graph: undirected graph, digraph: directed graph
             if(Direction != Directionality::UNDIRECTED)
@@ -142,7 +143,7 @@ namespace vc4c
             const std::function<bool(const Relation&)>& weakEdgeFunc = [](const Relation& r) -> bool { return false; },
             const NameFunc<Relation>& edgeLabelFunc = [](const Relation& r) -> std::string { return ""; })
         {
-            DebugGraph<Key, Relation, Direction> debugGraph(fileName);
+            DebugGraph<Key, Relation, Direction> debugGraph(fileName, graph.getNodes().size());
             for(const auto& node : graph.getNodes())
             {
                 debugGraph.addNodeWithNeighbors(node.second, nameFunc, weakEdgeFunc, edgeLabelFunc);

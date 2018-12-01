@@ -7,6 +7,7 @@
 
 #include "../InstructionWalker.h"
 #include "../Method.h"
+#include "../Profiler.h"
 #include "../asm/OpCodes.h"
 
 #include "log.h"
@@ -512,7 +513,9 @@ ValueRange ValueRange::getValueRange(const Value& val, Method* method)
 
 FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& method)
 {
+    PROFILE_START(DetermineValueRanges);
     FastMap<const Local*, ValueRange> ranges;
+    ranges.reserve(method.getNumLocals());
 
     for(const Parameter& param : method.parameters)
     {
@@ -537,7 +540,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
                          << logging::endl;
     });
 #endif
-
+    PROFILE_END(DetermineValueRanges);
     return ranges;
 }
 

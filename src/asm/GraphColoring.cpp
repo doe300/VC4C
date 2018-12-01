@@ -562,7 +562,8 @@ void GraphColoring::createGraph()
 
     logging::debug() << "Colored graph with " << graph.getNodes().size() << " nodes created!" << logging::endl;
 #ifdef DEBUG_MODE
-    DebugGraph<const Local*, LocalRelation, ColoredEdge::Directed> debugGraph("/tmp/vc4c-register-graph.dot");
+    DebugGraph<const Local*, LocalRelation, ColoredEdge::Directed> debugGraph(
+        "/tmp/vc4c-register-graph.dot", graph.getNodes().size());
     const std::function<std::string(const Local* const&)> nameFunc = [](const Local* const& l) -> std::string {
         return l->name;
     };

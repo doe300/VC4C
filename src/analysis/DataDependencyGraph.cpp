@@ -176,7 +176,7 @@ std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createDependencyGraph(
 {
     PROFILE_START(createDataDependencyGraph);
     InstructionMapping mapping = mapInstructionsToPosition(method);
-    std::unique_ptr<DataDependencyGraph> graph(new DataDependencyGraph());
+    std::unique_ptr<DataDependencyGraph> graph(new DataDependencyGraph(method.size()));
     for(auto& block : method)
     {
         findDependencies(block, *graph.get(), mapping);

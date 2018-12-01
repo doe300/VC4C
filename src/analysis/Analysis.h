@@ -52,6 +52,7 @@ namespace vc4c
              */
             void operator()(const BasicBlock& block)
             {
+                results.reserve(block.size());
                 if(Direction == AnalysisDirection::FORWARD)
                     analyzeForward(block);
                 else
@@ -166,6 +167,7 @@ namespace vc4c
              */
             void operator()(const Method& method)
             {
+                results.reserve(method.size());
                 for(const BasicBlock& block : method)
                 {
                     results.emplace(&block, std::forward<std::pair<Values, Values>>(transferFunction(block)));

@@ -56,9 +56,11 @@ static AddressSpace toAddressSpace(int num)
 
 static std::string cleanMethodName(const std::string& name)
 {
+    static const std::regex leadingRegex("@(_Z\\d+)?");
+    static const std::regex trailingRegex("Dv\\d+_");
     // truncate prefix and postfix added by LLVM
-    std::string tmp = std::regex_replace(name, std::regex("@(_Z\\d+)?"), std::string(""));
-    return std::regex_replace(tmp, std::regex("Dv\\d+_"), std::string(""));
+    std::string tmp = std::regex_replace(name, leadingRegex, "");
+    return std::regex_replace(tmp, trailingRegex, "");
 }
 
 template <typename T>
@@ -74,7 +76,13 @@ static void dumpLLVM(const T* val)
 BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType) : context()
 {
     // required, since LLVM cannot read from std::istreams
-    const std::string tmp((std::istreambuf_iterator<char>(stream)), (std::istreambuf_iterator<char>()));
+    std::string tmp;
+    if(dynamic_cast<std::istringstream*>(&stream) != nullptr)
+        tmp = dynamic_cast<std::istringstream*>(&stream)->str();
+    else if(dynamic_cast<std::stringstream*>(&stream) != nullptr)
+        tmp = dynamic_cast<std::stringstream*>(&stream)->str();
+    else
+        tmp.insert(tmp.end(), std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
     std::unique_ptr<llvm::MemoryBuffer> buf(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(tmp)));
     if(sourceType == SourceType::LLVM_IR_BIN)
     {
@@ -682,6 +690,12 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
 void BitcodeReader::parseFunctionBody(
     Module& module, Method& method, LLVMInstructionList& instructions, const llvm::Function& func)
 {
+    auto numInstructions = std::accumulate(
+        func.begin(), func.end(), 0u, [](const std::size_t subtotal, const llvm::BasicBlock& block) -> std::size_t {
+            return subtotal + 1 /* label */ + block.size();
+        });
+    instructions.reserve(
+        numInstructions + 32 /* some space for additional inserted instructions, e.g. in-line getelementptr */);
     for(const llvm::BasicBlock& block : func)
     {
         // need to extract label from basic block
@@ -715,63 +729,62 @@ static intermediate::InstructionDecorations toInstructionDecorations(const llvm:
 static std::pair<std::string, bool> toComparison(llvm::CmpInst::Predicate pred)
 {
     using P = llvm::CmpInst::Predicate;
-    switch(pred)
-    {
-    case P::FCMP_FALSE:
-        return std::make_pair(intermediate::COMP_FALSE, true);
-    case P::FCMP_OEQ:
-        return std::make_pair(intermediate::COMP_ORDERED_EQ, true);
-    case P::FCMP_OGE:
-        return std::make_pair(intermediate::COMP_ORDERED_GE, true);
-    case P::FCMP_OGT:
-        return std::make_pair(intermediate::COMP_ORDERED_GT, true);
-    case P::FCMP_OLE:
-        return std::make_pair(intermediate::COMP_ORDERED_LE, true);
-    case P::FCMP_OLT:
-        return std::make_pair(intermediate::COMP_ORDERED_LT, true);
-    case P::FCMP_ONE:
-        return std::make_pair(intermediate::COMP_ORDERED_NEQ, true);
-    case P::FCMP_ORD:
-        return std::make_pair(intermediate::COMP_ORDERED, true);
-    case P::FCMP_TRUE:
-        return std::make_pair(intermediate::COMP_TRUE, true);
-    case P::FCMP_UEQ:
-        return std::make_pair(intermediate::COMP_UNORDERED_EQ, true);
-    case P::FCMP_UGE:
-        return std::make_pair(intermediate::COMP_UNORDERED_GE, true);
-    case P::FCMP_UGT:
-        return std::make_pair(intermediate::COMP_UNORDERED_GT, true);
-    case P::FCMP_ULE:
-        return std::make_pair(intermediate::COMP_UNORDERED_LE, true);
-    case P::FCMP_ULT:
-        return std::make_pair(intermediate::COMP_UNORDERED_LT, true);
-    case P::FCMP_UNE:
-        return std::make_pair(intermediate::COMP_UNORDERED_NEQ, true);
-    case P::FCMP_UNO:
-        return std::make_pair(intermediate::COMP_UNORDERED, true);
-    case P::ICMP_EQ:
-        return std::make_pair(intermediate::COMP_EQ, false);
-    case P::ICMP_NE:
-        return std::make_pair(intermediate::COMP_NEQ, false);
-    case P::ICMP_SGE:
-        return std::make_pair(intermediate::COMP_SIGNED_GE, false);
-    case P::ICMP_SGT:
-        return std::make_pair(intermediate::COMP_SIGNED_GT, false);
-    case P::ICMP_SLE:
-        return std::make_pair(intermediate::COMP_SIGNED_LE, false);
-    case P::ICMP_SLT:
-        return std::make_pair(intermediate::COMP_SIGNED_LT, false);
-    case P::ICMP_UGE:
-        return std::make_pair(intermediate::COMP_UNSIGNED_GE, false);
-    case P::ICMP_UGT:
-        return std::make_pair(intermediate::COMP_UNSIGNED_GT, false);
-    case P::ICMP_ULE:
-        return std::make_pair(intermediate::COMP_UNSIGNED_LE, false);
-    case P::ICMP_ULT:
-        return std::make_pair(intermediate::COMP_UNSIGNED_LT, false);
-    default:
-        throw CompilationError(CompilationStep::PARSER, "Unhandled comparison predicate", std::to_string(pred));
-    }
+    static constexpr std::array<const char*, P::LAST_FCMP_PREDICATE + 1> floatComparisons{
+        intermediate::COMP_FALSE,
+        intermediate::COMP_ORDERED_EQ,
+        intermediate::COMP_ORDERED_GT,
+        intermediate::COMP_ORDERED_GE,
+        intermediate::COMP_ORDERED_LT,
+        intermediate::COMP_ORDERED_LE,
+        intermediate::COMP_ORDERED_NEQ,
+        intermediate::COMP_ORDERED,
+        intermediate::COMP_UNORDERED,
+        intermediate::COMP_UNORDERED_EQ,
+        intermediate::COMP_UNORDERED_GT,
+        intermediate::COMP_UNORDERED_GE,
+        intermediate::COMP_UNORDERED_LT,
+        intermediate::COMP_UNORDERED_LE,
+        intermediate::COMP_UNORDERED_NEQ,
+        intermediate::COMP_TRUE,
+    };
+    static constexpr std::array<const char*, P::LAST_ICMP_PREDICATE - P::FIRST_ICMP_PREDICATE + 1> intComparisons{
+        intermediate::COMP_EQ, intermediate::COMP_NEQ, intermediate::COMP_UNSIGNED_GT, intermediate::COMP_UNSIGNED_GE,
+        intermediate::COMP_UNSIGNED_LT, intermediate::COMP_UNSIGNED_LE, intermediate::COMP_SIGNED_GT,
+        intermediate::COMP_SIGNED_GE, intermediate::COMP_SIGNED_LT, intermediate::COMP_SIGNED_LE};
+    static_assert(floatComparisons[P::FCMP_FALSE] == intermediate::COMP_FALSE, "");
+    static_assert(floatComparisons[P::FCMP_OEQ] == intermediate::COMP_ORDERED_EQ, "");
+    static_assert(floatComparisons[P::FCMP_OGT] == intermediate::COMP_ORDERED_GT, "");
+    static_assert(floatComparisons[P::FCMP_OGE] == intermediate::COMP_ORDERED_GE, "");
+    static_assert(floatComparisons[P::FCMP_OLT] == intermediate::COMP_ORDERED_LT, "");
+    static_assert(floatComparisons[P::FCMP_OLE] == intermediate::COMP_ORDERED_LE, "");
+    static_assert(floatComparisons[P::FCMP_ONE] == intermediate::COMP_ORDERED_NEQ, "");
+    static_assert(floatComparisons[P::FCMP_ORD] == intermediate::COMP_ORDERED, "");
+    static_assert(floatComparisons[P::FCMP_UNO] == intermediate::COMP_UNORDERED, "");
+    static_assert(floatComparisons[P::FCMP_UEQ] == intermediate::COMP_UNORDERED_EQ, "");
+    static_assert(floatComparisons[P::FCMP_UGT] == intermediate::COMP_UNORDERED_GT, "");
+    static_assert(floatComparisons[P::FCMP_UGE] == intermediate::COMP_UNORDERED_GE, "");
+    static_assert(floatComparisons[P::FCMP_ULT] == intermediate::COMP_UNORDERED_LT, "");
+    static_assert(floatComparisons[P::FCMP_ULE] == intermediate::COMP_UNORDERED_LE, "");
+    static_assert(floatComparisons[P::FCMP_UNE] == intermediate::COMP_UNORDERED_NEQ, "");
+    static_assert(floatComparisons[P::FCMP_TRUE] == intermediate::COMP_TRUE, "");
+
+    static_assert(intComparisons[P::ICMP_EQ ^ 32] == intermediate::COMP_EQ, "");
+    static_assert(intComparisons[P::ICMP_NE ^ 32] == intermediate::COMP_NEQ, "");
+    static_assert(intComparisons[P::ICMP_UGT ^ 32] == intermediate::COMP_UNSIGNED_GT, "");
+    static_assert(intComparisons[P::ICMP_UGE ^ 32] == intermediate::COMP_UNSIGNED_GE, "");
+    static_assert(intComparisons[P::ICMP_ULT ^ 32] == intermediate::COMP_UNSIGNED_LT, "");
+    static_assert(intComparisons[P::ICMP_ULE ^ 32] == intermediate::COMP_UNSIGNED_LE, "");
+    static_assert(intComparisons[P::ICMP_SGT ^ 32] == intermediate::COMP_SIGNED_GT, "");
+    static_assert(intComparisons[P::ICMP_SGE ^ 32] == intermediate::COMP_SIGNED_GE, "");
+    static_assert(intComparisons[P::ICMP_SLT ^ 32] == intermediate::COMP_SIGNED_LT, "");
+    static_assert(intComparisons[P::ICMP_SLE ^ 32] == intermediate::COMP_SIGNED_LE, "");
+
+    if(pred <= P::LAST_FCMP_PREDICATE)
+        return std::make_pair(floatComparisons[pred], true);
+    if(pred >= P::FIRST_ICMP_PREDICATE && pred <= P::LAST_ICMP_PREDICATE)
+        return std::make_pair(intComparisons[pred ^ 32], false);
+
+    throw CompilationError(CompilationStep::PARSER, "Unhandled comparison predicate", std::to_string(pred));
 }
 
 void BitcodeReader::parseInstruction(
@@ -877,38 +890,7 @@ void BitcodeReader::parseInstruction(
         const llvm::LoadInst* load = llvm::cast<const llvm::LoadInst>(&inst);
         Value src = UNDEFINED_VALUE;
         if(load->getPointerOperand()->getValueID() == llvm::Constant::ConstantExprVal)
-        {
-            // the source is given as an in-line getelementptr instruction, insert as extra instruction calculating
-            // indices
-            llvm::ConstantExpr* constExpr =
-                const_cast<llvm::ConstantExpr*>(llvm::cast<const llvm::ConstantExpr>(load->getPointerOperand()));
-            if(constExpr->getOpcode() == llvm::Instruction::CastOps::BitCast)
-            {
-                // bitcast of address can simply be replace by loading of source address
-                // the source could be a constant or a constant expression
-                if(llvm::isa<llvm::ConstantExpr>(constExpr->getOperand(0)))
-                    constExpr = llvm::cast<llvm::ConstantExpr>(constExpr->getOperand(0));
-                else
-                {
-                    src = toValue(method, constExpr->getOperand(0));
-                    // skip next step
-                    constExpr = nullptr;
-                }
-            }
-            if(constExpr != nullptr)
-            {
-                if(constExpr->getOpcode() != llvm::Instruction::MemoryOps::GetElementPtr)
-                {
-                    dumpLLVM(constExpr);
-                    throw CompilationError(CompilationStep::PARSER, "Invalid constant operation for load-instruction!");
-                }
-                llvm::GetElementPtrInst* indexOf = llvm::cast<llvm::GetElementPtrInst>(constExpr->getAsInstruction());
-                parseInstruction(module, method, instructions, *indexOf);
-                src = toValue(method, indexOf);
-                // required so LLVM can clean up the constant expression correctly
-                indexOf->dropAllReferences();
-            }
-        }
+            src = parseInlineGetElementPtr(module, method, instructions, load->getPointerOperand());
         else
             src = toValue(method, load->getPointerOperand());
         if(load->isVolatile() && src.hasLocal() && src.local()->is<Parameter>())
@@ -923,38 +905,7 @@ void BitcodeReader::parseInstruction(
         const llvm::StoreInst* store = llvm::cast<const llvm::StoreInst>(&inst);
         Value dest = UNDEFINED_VALUE;
         if(store->getPointerOperand()->getValueID() == llvm::Constant::ConstantExprVal)
-        {
-            // the destination is given as an in-line getelementptr instruction, insert as extra instruction
-            llvm::ConstantExpr* constExpr =
-                const_cast<llvm::ConstantExpr*>(llvm::cast<const llvm::ConstantExpr>(store->getPointerOperand()));
-            if(constExpr->getOpcode() == llvm::Instruction::CastOps::BitCast)
-            {
-                // bitcast of address can simply be replace by storing into source address
-                // the source could be a constant or a constant expression
-                if(llvm::isa<llvm::ConstantExpr>(constExpr->getOperand(0)))
-                    constExpr = llvm::cast<llvm::ConstantExpr>(constExpr->getOperand(0));
-                else
-                {
-                    dest = toValue(method, constExpr->getOperand(0));
-                    // skip next step
-                    constExpr = nullptr;
-                }
-            }
-            if(constExpr != nullptr)
-            {
-                if(constExpr->getOpcode() != llvm::Instruction::MemoryOps::GetElementPtr)
-                {
-                    dumpLLVM(constExpr);
-                    throw CompilationError(
-                        CompilationStep::PARSER, "Invalid constant operation for store-instruction!");
-                }
-                llvm::GetElementPtrInst* indexOf = llvm::cast<llvm::GetElementPtrInst>(constExpr->getAsInstruction());
-                parseInstruction(module, method, instructions, *indexOf);
-                dest = toValue(method, indexOf);
-                // required so LLVM can clean up the constant expression correctly
-                indexOf->dropAllReferences();
-            }
-        }
+            dest = parseInlineGetElementPtr(module, method, instructions, store->getPointerOperand());
         else
             dest = toValue(method, store->getPointerOperand());
         if(store->isVolatile() && dest.hasLocal() && dest.local()->is<Parameter>())
@@ -1126,14 +1077,51 @@ void BitcodeReader::parseInstruction(
     }
     case TermOps::Unreachable:
     {
-        // since this instruction can never be reached, we do not need to emit it. If it every gets reached, this is UB
-        // anyway
+        // since this instruction can never be reached, we do not need to emit it. If it every gets reached, this is
+        // UB anyway
         break;
     }
     default:
         dumpLLVM(&inst);
         throw CompilationError(CompilationStep::PARSER, "Unhandled LLVM op-code", inst.getOpcodeName());
     }
+}
+
+Value BitcodeReader::parseInlineGetElementPtr(
+    Module& module, Method& method, LLVMInstructionList& instructions, const llvm::Value* pointerOperand)
+{
+    // the value is given as an in-line getelementptr instruction, insert as extra instruction calculating
+    // indices
+    llvm::ConstantExpr* constExpr =
+        const_cast<llvm::ConstantExpr*>(llvm::cast<const llvm::ConstantExpr>(pointerOperand));
+    if(constExpr->getOpcode() == llvm::Instruction::CastOps::BitCast)
+    {
+        // bitcast of address can simply be replace by loading of source address
+        // the source could be a constant or a constant expression
+        if(llvm::isa<llvm::ConstantExpr>(constExpr->getOperand(0)))
+            constExpr = llvm::cast<llvm::ConstantExpr>(constExpr->getOperand(0));
+        else
+        {
+            return toValue(method, constExpr->getOperand(0));
+            // skip next step
+            constExpr = nullptr;
+        }
+    }
+    if(constExpr != nullptr)
+    {
+        if(constExpr->getOpcode() != llvm::Instruction::MemoryOps::GetElementPtr)
+        {
+            dumpLLVM(constExpr);
+            throw CompilationError(CompilationStep::PARSER, "Invalid constant operation for load-instruction!");
+        }
+        llvm::GetElementPtrInst* indexOf = llvm::cast<llvm::GetElementPtrInst>(constExpr->getAsInstruction());
+        parseInstruction(module, method, instructions, *indexOf);
+        auto tmp = toValue(method, indexOf);
+        // required so LLVM can clean up the constant expression correctly
+        indexOf->dropAllReferences();
+        return tmp;
+    }
+    return UNDEFINED_VALUE;
 }
 
 Value BitcodeReader::toValue(Method& method, const llvm::Value* val)

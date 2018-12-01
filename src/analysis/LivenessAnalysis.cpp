@@ -6,6 +6,8 @@
 
 #include "LivenessAnalysis.h"
 
+#include "../Profiler.h"
+
 #include <sstream>
 
 using namespace vc4c;
@@ -17,6 +19,7 @@ FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::Inte
     const FastSet<const Local*>& nextResult,
     std::pair<FastSet<const Local*>, FastMap<const Local*, ConditionCode>>& cache)
 {
+    PROFILE_START(LivenessAnalysis);
     auto& conditionalWrites = cache.first;
     auto& conditionalReads = cache.second;
 
@@ -67,7 +70,7 @@ FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::Inte
             }
         }
     }
-
+    PROFILE_END(LivenessAnalysis);
     return result;
 }
 
