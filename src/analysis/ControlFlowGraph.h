@@ -19,16 +19,29 @@ namespace vc4c
      * NOTE: This transition can be bi-directional!
      *
      */
-    struct CFGRelation
+    class CFGRelation
     {
-        // map of the source block and the predecessor within this block
-        std::map<BasicBlock*, InstructionWalker> predecessors;
-        // map of the source block and the implicit flags
-        std::map<BasicBlock*, bool> isImplicit;
-
+    public:
         bool operator==(const CFGRelation& other) const;
 
         std::string getLabel() const;
+
+        /**
+         * Returns the last instruction executed in the source block (e.g. the branch) before the control flow switches
+         * to the destination block.
+         */
+        InstructionWalker getPredecessor(BasicBlock* source) const;
+
+        /**
+         * Returns whether the branch in the given direction (source to destination) is implicit.
+         */
+        bool isImplicit(BasicBlock* source) const;
+
+    private:
+        // map of the source block and the predecessor within this block (empty for fall-through)
+        std::map<BasicBlock*, Optional<InstructionWalker>> predecessors;
+
+        friend class ControlFlowGraph;
     };
 
     using CFGNode = Node<BasicBlock*, CFGRelation, Directionality::BIDIRECTIONAL>;
@@ -95,6 +108,11 @@ namespace vc4c
          * Dump this graph as dot file
          */
         void dumpGraph(const std::string& path) const;
+
+        void updateOnBlockInsertion(Method& method, BasicBlock& newBlock);
+        void updateOnBlockRemoval(Method& method, BasicBlock& oldBlock);
+        void updateOnBranchInsertion(Method& method, InstructionWalker it);
+        void updateOnBranchRemoval(Method& method, InstructionWalker it);
 
     private:
         explicit ControlFlowGraph(std::size_t numBlocks) : Graph(numBlocks) {}

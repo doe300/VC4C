@@ -103,7 +103,7 @@ namespace vc4c
          * Returns whether the control-flow falls through to the next basic block, e.g. there are no unconditional
          * branches away
          */
-        bool fallsThroughToNextBlock() const;
+        bool fallsThroughToNextBlock(bool useCFGIfAvailable = true) const;
         /*
          * Returns the InstructionWalker for the given instruction, if any
          */

@@ -221,9 +221,6 @@ std::size_t Method::countInstructions() const
 
 std::size_t Method::cleanEmptyInstructions()
 {
-    // XXX find better solution?
-    // otherwise a previous instruction referenced by CFG might be erased
-    cfg.reset();
     // TODO required??
     std::size_t num = 0;
     auto it = walkAllInstructions();
@@ -245,20 +242,17 @@ std::size_t Method::cleanEmptyInstructions()
 void Method::appendToEnd(intermediate::IntermediateInstruction* instr)
 {
     if(dynamic_cast<intermediate::BranchLabel*>(instr) != nullptr)
+    {
         basicBlocks.emplace_back(*this, dynamic_cast<intermediate::BranchLabel*>(instr));
+        updateCFGOnBlockInsertion(&basicBlocks.back());
+    }
     else
     {
         checkAndCreateDefaultBasicBlock();
         basicBlocks.back().instructions.emplace_back(instr);
+        if(cfg && dynamic_cast<intermediate::Branch*>(instr))
+            updateCFGOnBranchInsertion(basicBlocks.back().end().previousInBlock());
     }
-    /*
-     * Reset CFG since it might have changed.
-     *
-     * This will have no effect anyway most of the time, since appendToEnd() is called in front-end where there is no
-     * CFG
-     */
-    if(dynamic_cast<intermediate::Branch*>(instr) != nullptr || dynamic_cast<intermediate::BranchLabel*>(instr))
-        cfg.reset();
 }
 InstructionWalker Method::appendToEnd()
 {
@@ -372,6 +366,7 @@ bool Method::removeBlock(BasicBlock& block, bool overwriteUsages)
         {
             logging::debug() << "Removing basic block '" << block.getLabel()->to_string() << "' from function " << name
                              << logging::endl;
+            updateCFGOnBlockRemoval(&(*it));
             basicBlocks.erase(it);
             return true;
         }
@@ -385,7 +380,9 @@ bool Method::removeBlock(BasicBlock& block, bool overwriteUsages)
 BasicBlock& Method::createAndInsertNewBlock(BasicBlockList::iterator position, const std::string& labelName)
 {
     auto newLabel = locals.emplace(labelName, Local(TYPE_LABEL, labelName));
-    return *basicBlocks.emplace(position, *this, new intermediate::BranchLabel(newLabel.first->second));
+    auto& block = *basicBlocks.emplace(position, *this, new intermediate::BranchLabel(newLabel.first->second));
+    updateCFGOnBlockInsertion(&block);
+    return block;
 }
 
 InstructionWalker Method::emplaceLabel(InstructionWalker it, intermediate::BranchLabel* label)
@@ -405,10 +402,12 @@ InstructionWalker Method::emplaceLabel(InstructionWalker it, intermediate::Branc
     if(!isStartOfBlock)
         ++blockIt;
     BasicBlock& newBlock = *basicBlocks.emplace(blockIt, *this, label);
+    updateCFGOnBlockInsertion(&newBlock);
     // 2. move all instructions beginning with it (inclusive) to the new basic block
     while(!isStartOfBlock && !it.isEndOfBlock())
     {
-        newBlock.instructions.emplace_back(it.release());
+        // using InstructionWalker here triggers updates of the CFG on moving branches
+        newBlock.end().emplace(it.release());
         it.erase();
     }
     // 3. return the begin() of the new basic block
@@ -526,5 +525,34 @@ void Method::checkAndCreateDefaultBasicBlock()
         // in case the input code does not always add a label to the start of a function
         basicBlocks.emplace_back(
             *this, new intermediate::BranchLabel(*findOrCreateLocal(TYPE_LABEL, BasicBlock::DEFAULT_BLOCK)));
+        updateCFGOnBlockInsertion(&basicBlocks.back());
     }
+}
+
+void Method::updateCFGOnBlockInsertion(BasicBlock* block)
+{
+    if(!cfg)
+        return;
+    cfg->updateOnBlockInsertion(*this, *block);
+}
+
+void Method::updateCFGOnBlockRemoval(BasicBlock* block)
+{
+    if(!cfg)
+        return;
+    cfg->updateOnBlockRemoval(*this, *block);
+}
+
+void Method::updateCFGOnBranchInsertion(InstructionWalker it)
+{
+    if(!cfg)
+        return;
+    cfg->updateOnBranchInsertion(*this, it);
+}
+
+void Method::updateCFGOnBranchRemoval(InstructionWalker it)
+{
+    if(!cfg)
+        return;
+    cfg->updateOnBranchRemoval(*this, it);
 }

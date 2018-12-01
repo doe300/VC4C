@@ -264,12 +264,12 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
         };
 
         loop.front()->forAllOutgoingEdges([&](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
-            if(!edge.data.isImplicit.at(loop.front()->key))
+            if(!edge.data.isImplicit(loop.front()->key))
             {
                 if(std::find(loop.begin(), loop.end(), &neighbor) != loop.end())
                 {
                     // FIXME is this correct?
-                    loopControl.repetitionJump = edge.data.predecessors.at(loop.front()->key);
+                    loopControl.repetitionJump = edge.data.getPredecessor(loop.front()->key);
                     logging::debug() << "Found loop repetition branch: "
                                      << loopControl.repetitionJump.value()->to_string() << logging::endl;
                 }

@@ -22,13 +22,9 @@ const std::string BasicBlock::LAST_BLOCK("%end_of_function");
 BasicBlock::BasicBlock(Method& method, intermediate::BranchLabel* label) : method(method), instructions()
 {
     instructions.emplace_back(label);
-    method.cfg.reset();
 }
 
-BasicBlock::~BasicBlock()
-{
-    method.cfg.reset();
-}
+BasicBlock::~BasicBlock() {}
 
 bool BasicBlock::empty() const
 {
@@ -140,38 +136,53 @@ void BasicBlock::forSuccessiveBlocks(const std::function<void(BasicBlock&)>& con
 
 void BasicBlock::forPredecessors(const std::function<void(InstructionWalker)>& consumer) const
 {
-    // TODO some more efficient way of doing this??!
-    const Local* label = getLabel()->getLabel();
-    BasicBlock* prevBlock = nullptr;
-    bool prevBlockFound = false;
-    for(BasicBlock& bb : method)
+    if(method.cfg)
     {
-        for(auto it = bb.begin(); !it.isEndOfBlock(); it.nextInBlock())
-        {
-            intermediate::Branch* br = it.get<intermediate::Branch>();
-            if(br != nullptr && br->getTarget() == label)
-                consumer(it);
-        }
-        if(&bb == this)
-            prevBlockFound = true;
-        if(!prevBlockFound)
-            prevBlock = &bb;
+        // if we have a valid CFG, use it. This saves us from iterating all instructions
+        auto& thisNode = method.cfg->assertNode(const_cast<BasicBlock*>(this));
+        thisNode.forAllIncomingEdges([&](CFGNode& node, CFGEdge& edge) -> bool {
+            consumer(edge.data.getPredecessor(edge.getOtherNode(thisNode).key));
+            return true;
+        });
     }
-    if(prevBlockFound && prevBlock != nullptr && prevBlock->fallsThroughToNextBlock())
+    else
     {
-        consumer(prevBlock->end().previousInBlock());
+        // TODO some more efficient way of doing this??!
+        // this function alone (including children) takes 30% of time for large basic blocks (according to perf on
+        // clpeak/compute_sp_kernels). A large part of that the dynamic_cast to Branch (ca. 7%)
+        // TODO don't check all instructions, but from the end only until all branch possibilities are found?!
+        const Local* label = getLabel()->getLabel();
+        BasicBlock* prevBlock = nullptr;
+        bool prevBlockFound = false;
+        for(BasicBlock& bb : method)
+        {
+            for(auto it = bb.begin(); !it.isEndOfBlock(); it.nextInBlock())
+            {
+                intermediate::Branch* br = it.get<intermediate::Branch>();
+                if(br != nullptr && br->getTarget() == label)
+                    consumer(it);
+            }
+            if(&bb == this)
+                prevBlockFound = true;
+            if(!prevBlockFound)
+                prevBlock = &bb;
+        }
+        if(prevBlockFound && prevBlock != nullptr && prevBlock->fallsThroughToNextBlock())
+        {
+            consumer(prevBlock->end().previousInBlock());
+        }
     }
 }
 
-bool BasicBlock::fallsThroughToNextBlock() const
+bool BasicBlock::fallsThroughToNextBlock(bool useCFGIfAvailable) const
 {
-    if(method.cfg)
+    if(useCFGIfAvailable && method.cfg)
     {
         // if we have a valid CFG, use it. This saves us from iterating all instructions
         const auto& node = method.cfg->assertNode(const_cast<BasicBlock*>(this));
         bool fallsThrough = false;
         node.forAllOutgoingEdges([&node, &fallsThrough](const CFGNode& n, const CFGEdge& edge) -> bool {
-            if(edge.data.isImplicit.at(node.key))
+            if(edge.data.isImplicit(node.key))
                 fallsThrough = true;
             return !fallsThrough;
         });

@@ -103,7 +103,7 @@ bool InstructionVisitor::visitReverse(const InstructionWalker& start, ControlFlo
                             [&continueBranches, this, blockGraph](const CFGNode& node, const CFGEdge& edge) -> bool {
                                 // this makes sure, a STOP_ALL skips other predecessors
                                 if(continueBranches)
-                                    continueBranches = visitReverse(edge.data.predecessors.at(node.key), blockGraph);
+                                    continueBranches = visitReverse(edge.data.getPredecessor(node.key), blockGraph);
                                 return true;
                             });
                 }
@@ -244,8 +244,10 @@ const intermediate::IntermediateInstruction* InstructionWalker::get() const
 intermediate::IntermediateInstruction* InstructionWalker::release()
 {
     throwOnEnd(isEndOfBlock());
-    if(has<intermediate::Branch>() || has<intermediate::BranchLabel>())
-        basicBlock->method.cfg.reset();
+    if(has<intermediate::BranchLabel>())
+        basicBlock->method.updateCFGOnBlockRemoval(basicBlock);
+    if(has<intermediate::Branch>())
+        basicBlock->method.updateCFGOnBranchRemoval(*this);
     return (*pos).release();
 }
 
@@ -254,18 +256,22 @@ InstructionWalker& InstructionWalker::reset(intermediate::IntermediateInstructio
     throwOnEnd(isEndOfBlock());
     if(dynamic_cast<intermediate::BranchLabel*>(instr) != dynamic_cast<intermediate::BranchLabel*>((*pos).get()))
         throw CompilationError(CompilationStep::GENERAL, "Can't add labels into a basic block", instr->to_string());
-    if(has<intermediate::Branch>() || has<intermediate::BranchLabel>() ||
-        dynamic_cast<intermediate::Branch*>(instr) != nullptr)
-        basicBlock->method.cfg.reset();
+    // if we reset the label with another label, the CFG dos not change
+    if(has<intermediate::Branch>())
+        basicBlock->method.updateCFGOnBranchRemoval(*this);
     (*pos).reset(instr);
+    if(dynamic_cast<intermediate::Branch*>(instr))
+        basicBlock->method.updateCFGOnBranchInsertion(*this);
     return *this;
 }
 
 InstructionWalker& InstructionWalker::erase()
 {
     throwOnEnd(isEndOfBlock());
-    if(has<intermediate::Branch>() || has<intermediate::BranchLabel>())
-        basicBlock->method.cfg.reset();
+    if(has<intermediate::BranchLabel>())
+        basicBlock->method.updateCFGOnBlockRemoval(basicBlock);
+    if(has<intermediate::Branch>())
+        basicBlock->method.updateCFGOnBranchRemoval(*this);
     pos = basicBlock->instructions.erase(pos);
     return *this;
 }
@@ -280,9 +286,9 @@ InstructionWalker& InstructionWalker::emplace(intermediate::IntermediateInstruct
             CompilationStep::GENERAL, "Can't emplace into an iterator which is not associated with a basic block");
     if(dynamic_cast<intermediate::BranchLabel*>(instr) != nullptr)
         throw CompilationError(CompilationStep::GENERAL, "Can't add labels into a basic block", instr->to_string());
-    if(dynamic_cast<intermediate::Branch*>(instr) != nullptr)
-        basicBlock->method.cfg.reset();
     pos = basicBlock->instructions.emplace(pos, instr);
+    if(dynamic_cast<intermediate::Branch*>(instr))
+        basicBlock->method.updateCFGOnBranchInsertion(*this);
     return *this;
 }
 

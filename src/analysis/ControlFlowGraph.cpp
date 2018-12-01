@@ -17,28 +17,42 @@ using namespace vc4c;
 
 bool CFGRelation::operator==(const CFGRelation& other) const
 {
-    return predecessors == other.predecessors && isImplicit == other.isImplicit;
+    return predecessors == other.predecessors;
 }
 
 std::string CFGRelation::getLabel() const
 {
-    if(isImplicit.size() == 2 &&
-        std::all_of(isImplicit.begin(), isImplicit.end(),
-            [](const std::pair<BasicBlock*, bool>& pair) -> bool { return pair.second; }))
+    if(std::all_of(predecessors.begin(), predecessors.end(),
+           [](const std::pair<BasicBlock*, Optional<InstructionWalker>>& pair) -> bool { return !pair.second; }))
     {
         return "";
     }
     if(predecessors.empty())
         return "";
-    const auto converter = [](const std::pair<BasicBlock*, InstructionWalker>& pair) -> std::string {
-        if(pair.second.has<intermediate::Branch>())
-            return "br " + pair.second.get<const intermediate::Branch>()->conditional.to_string();
+    const auto converter = [](const std::pair<BasicBlock*, Optional<InstructionWalker>>& pair) -> std::string {
+        if(pair.second && pair.second->has<intermediate::Branch>())
+            return "br " + pair.second->get<const intermediate::Branch>()->conditional.to_string();
         return "";
     };
     return std::accumulate(predecessors.begin(), predecessors.end(), std::string{},
-        [&](const std::string& s, const std::pair<BasicBlock*, InstructionWalker>& pair) -> std::string {
+        [&](const std::string& s, const std::pair<BasicBlock*, Optional<InstructionWalker>>& pair) -> std::string {
             return (s.empty() ? s : (s + ", ")) + converter(pair);
         });
+}
+
+InstructionWalker CFGRelation::getPredecessor(BasicBlock* source) const
+{
+    const auto& pred = predecessors.at(source);
+    if(pred.has_value())
+        return pred.value();
+    return source->end().previousInBlock();
+}
+
+bool CFGRelation::isImplicit(BasicBlock* source) const
+{
+    const auto& pred = predecessors.at(source);
+    ;
+    return !pred.has_value();
 }
 
 bool vc4c::operator<(const CFGNode& one, const CFGNode& other)
@@ -237,11 +251,185 @@ void ControlFlowGraph::dumpGraph(const std::string& path) const
     auto edgeLabelFunc = [](const CFGRelation& r) -> std::string { return r.getLabel(); };
     DebugGraph<BasicBlock*, CFGRelation, CFGEdge::Directed>::dumpGraph<ControlFlowGraph>(*this, path, nameFunc,
         [](const CFGRelation& rel) -> bool {
-            return std::all_of(rel.isImplicit.begin(), rel.isImplicit.end(),
-                [](const std::pair<BasicBlock*, bool>& pair) -> bool { return pair.second; });
+            return std::all_of(rel.predecessors.begin(), rel.predecessors.end(),
+                [](const std::pair<BasicBlock*, Optional<InstructionWalker>>& pair) -> bool { return !pair.second; });
         },
         edgeLabelFunc);
 #endif
+}
+
+void ControlFlowGraph::updateOnBlockInsertion(Method& method, BasicBlock& newBlock)
+{
+    /*
+     * 1. insert new node
+     * 2. remove fall-through edge from previous to next block
+     * 3. add fall-through edge to next block
+     * 4. check and add fall-through edge from previous block
+     */
+    auto nodePtr = findNode(&newBlock);
+    if(nodePtr)
+        // node is already in, so we do not need to insert it
+        return;
+    auto& node = getOrCreateNode(&newBlock);
+    auto blockIt = std::find_if(
+        method.begin(), method.end(), [&](const BasicBlock& block) -> bool { return &block == &newBlock; });
+    auto prevBlockIt = blockIt;
+    auto nextBlockIt = blockIt;
+    ++nextBlockIt;
+    if(blockIt != method.begin())
+    {
+        auto& prevNode = assertNode(&(*(--prevBlockIt)));
+        CFGEdge* fallThroughEdge = nullptr;
+        prevNode.forAllOutgoingEdges([&](CFGNode& successor, CFGEdge& edge) -> bool {
+            if(edge.data.isImplicit(prevNode.key))
+            {
+                if(fallThroughEdge)
+                {
+                    logging::error() << fallThroughEdge->data.getPredecessor(prevNode.key)->to_string()
+                                     << logging::endl;
+                    logging::error() << edge.data.getPredecessor(prevNode.key)->to_string() << logging::endl;
+
+                    throw CompilationError(CompilationStep::GENERAL, "Multiple implicit branches from basic block",
+                        prevNode.key->getLabel()->to_string());
+                }
+                fallThroughEdge = &edge;
+            }
+            return true;
+        });
+        if(fallThroughEdge)
+        {
+            prevNode.removeEdge(*fallThroughEdge);
+            auto& edge = prevNode.getOrCreateEdge(&node, CFGRelation{}).addInput(prevNode);
+            edge.data.predecessors.emplace(prevNode.key, Optional<InstructionWalker>{});
+        }
+    }
+    if((nextBlockIt) != method.end())
+    {
+        auto& nextNode = assertNode(&(*(nextBlockIt)));
+        auto& edge = node.getOrCreateEdge(&nextNode, CFGRelation{}).addInput(node);
+        edge.data.predecessors.emplace(node.key, Optional<InstructionWalker>{});
+    }
+}
+
+void ControlFlowGraph::updateOnBlockRemoval(Method& method, BasicBlock& oldBlock)
+{
+    /*
+     * 1. assert on explicit edges to node
+     * 2. remove node (if exists)
+     * 3. check and add fall-though edge from previous to next node
+     */
+    auto nodePtr = findNode(&oldBlock);
+    if(!nodePtr)
+        // node is already removed
+        return;
+    CFGEdge* fallThroughEdge = nullptr;
+    nodePtr->forAllIncomingEdges([&](CFGNode& predecessor, CFGEdge& edge) -> bool {
+        if(!edge.data.isImplicit(predecessor.key))
+            throw CompilationError(CompilationStep::GENERAL, "Explicit jump to basic block, cannot remove basic block",
+                oldBlock.getLabel()->to_string());
+        else if(fallThroughEdge)
+        {
+            logging::error()
+                << fallThroughEdge->data.getPredecessor(fallThroughEdge->getOtherNode(*nodePtr).key)->to_string()
+                << logging::endl;
+            logging::error() << edge.data.getPredecessor(predecessor.key)->to_string() << logging::endl;
+            throw CompilationError(CompilationStep::GENERAL, "Multiple implicit branches to basic block",
+                oldBlock.getLabel()->to_string());
+        }
+        else
+            fallThroughEdge = &edge;
+        return true;
+    });
+    if(fallThroughEdge)
+    {
+        auto blockIt = std::find_if(
+            method.begin(), method.end(), [&](const BasicBlock& block) -> bool { return &block == &oldBlock; });
+        auto nextBlockIt = blockIt;
+        if((++nextBlockIt) != method.end())
+        {
+            auto& nextNode = assertNode(&(*nextBlockIt));
+            // TODO if the nodes are already adjacent, (e.g. conditional jump), what prevails (fall-through or jump?)
+            auto& prevNode = fallThroughEdge->getOtherNode(*nodePtr);
+            auto& edge = prevNode.getOrCreateEdge(&nextNode).addInput(prevNode);
+            edge.data.predecessors.emplace(prevNode.key, Optional<InstructionWalker>{});
+        }
+    }
+    eraseNode(&oldBlock);
+}
+
+void ControlFlowGraph::updateOnBranchInsertion(Method& method, InstructionWalker it)
+{
+    /*
+     * 1. insert edge from block to destination label
+     * 2. check whether branches cover all in this block and remove fall-through edge to next block
+     */
+    auto& node = assertNode(it.getBasicBlock());
+    // may not yet exist, e.g. for forward branches
+    auto& nextNode = getOrCreateNode(method.findBasicBlock(it.get<intermediate::Branch>()->getTarget()));
+
+    auto& edge = node.getOrCreateEdge(&nextNode).addInput(node);
+    // overwrite possible fall-through edge
+    edge.data.predecessors[node.key] = it;
+
+    CFGEdge* fallThroughEdge = nullptr;
+    node.forAllOutgoingEdges([&](CFGNode& successor, CFGEdge& edge) -> bool {
+        if(edge.data.isImplicit(node.key))
+        {
+            if(fallThroughEdge)
+            {
+                logging::error() << fallThroughEdge->data.getPredecessor(node.key)->to_string() << logging::endl;
+                logging::error() << edge.data.getPredecessor(node.key)->to_string() << logging::endl;
+
+                throw CompilationError(CompilationStep::GENERAL, "Multiple implicit branches from basic block",
+                    node.key->getLabel()->to_string());
+            }
+            fallThroughEdge = &edge;
+        }
+        return true;
+    });
+
+    if(fallThroughEdge && !node.key->fallsThroughToNextBlock(false))
+        // we have a fall-through edge left but the block no longer falls through
+        node.removeEdge(*fallThroughEdge);
+}
+
+void ControlFlowGraph::updateOnBranchRemoval(Method& method, InstructionWalker it)
+{
+    /*
+     * 1. remove edge from block to destination label
+     * 2. check whether branches cover all in this block and add fall-through edge to next block
+     */
+    auto& node = assertNode(it.getBasicBlock());
+    auto& destNode = assertNode(method.findBasicBlock(it.get<intermediate::Branch>()->getTarget()));
+
+    CFGEdge* branchEdge = nullptr;
+    node.forAllOutgoingEdges([&](CFGNode& successor, CFGEdge& edge) -> bool {
+        if(successor.key == destNode.key)
+        {
+            if(branchEdge)
+                throw CompilationError(
+                    CompilationStep::GENERAL, "Multiple edges between two basic blocks", branchEdge->data.getLabel());
+            branchEdge = &edge;
+        }
+        return true;
+    });
+
+    if(!branchEdge)
+        throw CompilationError(CompilationStep::GENERAL, "No CFG edge found for branch", it->to_string());
+    node.removeEdge(*branchEdge);
+
+    if(node.key->fallsThroughToNextBlock(true))
+    {
+        auto blockIt = std::find_if(
+            method.begin(), method.end(), [&](const BasicBlock& block) -> bool { return &block == node.key; });
+        auto nextBlockIt = blockIt;
+        if((++nextBlockIt) != method.end())
+        {
+            auto& nextNode = assertNode(&(*nextBlockIt));
+            auto& edge = node.getOrCreateEdge(&nextNode, CFGRelation{}).addInput(node);
+            edge.data.predecessors.emplace(node.key, Optional<InstructionWalker>{});
+        }
+    }
 }
 
 std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
@@ -260,8 +448,7 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
             // connection from it.getBasicBlock() to bb
             auto& node = graph->getOrCreateNode(it.getBasicBlock());
             auto& edge = node.getOrCreateEdge(&graph->getOrCreateNode(&bb), CFGRelation{}).addInput(node);
-            edge.data.isImplicit.emplace(node.key, isImplicit);
-            edge.data.predecessors.emplace(node.key, it);
+            edge.data.predecessors.emplace(node.key, isImplicit ? Optional<InstructionWalker>{} : it);
         });
     }
 

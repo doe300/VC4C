@@ -255,10 +255,6 @@ namespace vc4c
         /*
          * Returns the currently valid CFG for this function.
          *
-         * The CFG is dropped (and needs to be re-created) if:
-         * - a basic block is added or removed
-         * - a branch or branch-label is released/erased/replaced/emplaced or replaces another instruction
-         *
          * NOTE: Depending on the state of the function, the CFG may be (re)created in this method-call
          */
         ControlFlowGraph& getCFG();
@@ -297,6 +293,11 @@ namespace vc4c
         BasicBlock* getPreviousBlock(const BasicBlock* block);
 
         void checkAndCreateDefaultBasicBlock();
+
+        void updateCFGOnBlockInsertion(BasicBlock* block);
+        void updateCFGOnBlockRemoval(BasicBlock* block);
+        void updateCFGOnBranchInsertion(InstructionWalker it);
+        void updateCFGOnBranchRemoval(InstructionWalker it);
 
         friend class BasicBlock;
         friend class InstructionWalker;
