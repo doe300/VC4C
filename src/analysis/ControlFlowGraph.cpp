@@ -515,7 +515,7 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
 
 std::unique_ptr<ControlFlowGraph> ControlFlowGraph::clone()
 {
-    std::unique_ptr<ControlFlowGraph> graph(new ControlFlowGraph());
+    std::unique_ptr<ControlFlowGraph> graph(new ControlFlowGraph(nodes.size()));
 
     for(auto& node : nodes)
     {
@@ -659,7 +659,7 @@ LoopInclusionTreeNodeBase* LoopInclusionTreeNodeBase::findRoot(Optional<int> dep
     self->forAllIncomingEdges([&](LoopInclusionTreeNodeBase& parent, LoopInclusionTreeEdge&) -> bool {
         // The root node must be only one
         std::function<int(const int&)> dec = [](const int& d) -> int { return d - 1; };
-        root = parent.findRoot(depth.map(dec));
+        root = parent.findRoot(depth.ifPresent(dec));
         return true;
     });
     return root;
