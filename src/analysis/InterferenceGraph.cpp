@@ -30,6 +30,7 @@ FastSet<InterferenceNode*> InterferenceGraph::findOverfullNodes(std::size_t numN
 
 std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(Method& method)
 {
+    // TODO try to optimize
     PROFILE_START(createInterferenceGraph);
     std::unique_ptr<InterferenceGraph> graph(new InterferenceGraph(method.getNumLocals()));
 

@@ -18,15 +18,7 @@ namespace vc4c
 {
     namespace qpu_asm
     {
-        enum class LocalRelation
-        {
-            // tow locals are in use at the same time, but do not block each other's register-file (only the specific
-            // register)
-            USED_SIMULTANEOUSLY = 1,
-            // two locals are in use (as inputs or outputs) by the same instructions, so they block each other's
-            // register-file (at least for physical files A and B)
-            USED_TOGETHER = 2
-        };
+        using LocalRelation = analysis::InterferenceType;
 
         struct LocalUsage : private NonCopyable
         {

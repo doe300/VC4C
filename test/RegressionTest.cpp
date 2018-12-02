@@ -266,7 +266,8 @@ static std::vector<Entry> allKernels =
 		Entry{PENDING_LLVM|PENDING_SPIRV, SLOW, "./testing/rodinia/myocyte_kernel_gpu_opencl.cl", ""},
 		//XXX indices in access chain do not match
 		Entry{PENDING_SPIRV, FAST, "./testing/rodinia/nearestNeighbor_kernel.cl", ""},
-		Entry{PASSED, FAST, "./testing/rodinia/nw.cl", ""},
+		//XXX seems to hang/take very very long
+		Entry{PENDING_LLVM, SLOW, "./testing/rodinia/nw.cl", ""},
 		Entry{PENDING_SPIRV, FAST, "./testing/rodinia/particle_single.cl", ""},
 		//XXX hang/runs very long
 		Entry{PENDING_LLVM, SLOW, "./testing/rodinia/pathfinder_kernels.cl", ""},

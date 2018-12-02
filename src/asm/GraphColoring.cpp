@@ -552,9 +552,7 @@ void GraphColoring::createGraph()
         ColoredNode& node = graph.assertNode(interferenceNode.first);
         interferenceNode.second.forAllEdges(
             [&](const analysis::InterferenceNode& neighbor, const analysis::Interference& edge) -> bool {
-                node.getOrCreateEdge(&graph.assertNode(neighbor.key)).data =
-                    edge.data == analysis::InterferenceType::USED_TOGETHER ? LocalRelation::USED_TOGETHER :
-                                                                             LocalRelation::USED_SIMULTANEOUSLY;
+                node.getOrCreateEdge(&graph.assertNode(neighbor.key)).data = edge.data;
                 return true;
             });
     }
