@@ -72,7 +72,7 @@ static void compressLocalIntoRegister(Method& method, const Local& local, const 
     // TODO most efficient way of finding iterator for instruction?
     for(BasicBlock& bb : method)
     {
-        auto it = bb.begin();
+        auto it = bb.walk();
         while(!it.isEndOfBlock())
         {
             if(it.get() && it->writesLocal(&local))
@@ -91,7 +91,7 @@ bool optimizations::compressWorkGroupLocals(const Module& module, Method& method
 {
     unsigned char index = 0;
     const Value container = method.addNewLocal(TYPE_INT32.toVectorType(16), "%work_group_info");
-    method.begin()->begin().nextInBlock().emplace(new intermediate::MoveOperation(container, INT_ZERO));
+    method.begin()->walk().nextInBlock().emplace(new intermediate::MoveOperation(container, INT_ZERO));
     for(const std::string& name : workGroupLocalNames)
     {
         const Local* local = method.findLocal(name);

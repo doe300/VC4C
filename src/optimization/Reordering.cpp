@@ -73,7 +73,7 @@ static NODISCARD InstructionWalker findInstructionNotAccessing(
         {
             // Re-ordering MUTEX_ACQUIRE would extend the critical section (maybe a lot!), so don't move it
             // Also, never move anything out of (or over) the critical section
-            return basicBlock.end();
+            return basicBlock.walkEnd();
         }
         // for now, skip everything setting and using flags/signals
         if(validReplacement && (it->hasConditionalExecution() || it->hasSideEffects()))
@@ -128,7 +128,7 @@ static NODISCARD InstructionWalker findInstructionNotAccessing(
         it.nextInBlock();
     }
     if(instructionsLeft == 0)
-        it = basicBlock.end();
+        it = basicBlock.walkEnd();
     return it;
 }
 
@@ -142,17 +142,17 @@ static NODISCARD InstructionWalker findReplacementCandidate(
 {
     PROFILE_START(findReplacementCandidate);
     FastSet<Value> excludedValues;
-    InstructionWalker replacementIt = basicBlock.end();
+    InstructionWalker replacementIt = basicBlock.walkEnd();
     switch(nopReason)
     {
     case DelayType::BRANCH_DELAY:
         // This type of NOPs do not yet exist (they are created in CodeGenerator)
         PROFILE_END(findReplacementCandidate);
-        return basicBlock.end();
+        return basicBlock.walkEnd();
     case DelayType::THREAD_END:
         // there are no more instructions after THREND
         PROFILE_END(findReplacementCandidate);
-        return basicBlock.end();
+        return basicBlock.walkEnd();
     case DelayType::WAIT_VPM:
     case DelayType::WAIT_REGISTER:
     {
@@ -163,9 +163,9 @@ static NODISCARD InstructionWalker findReplacementCandidate(
             // this can e.g. happen, if the vector rotation is the first instruction in a basic block
             // TODO for now, we can't handle this case, since there may be several writing instructions jumping to the
             // block
-            logging::debug() << "Can't find reason for NOP in block: " << basicBlock.begin()->to_string()
+            logging::debug() << "Can't find reason for NOP in block: " << basicBlock.getLabel()->to_string()
                              << logging::endl;
-            return basicBlock.end();
+            return basicBlock.walkEnd();
         }
         excludedValues.insert(lastInstruction->getOutput().value());
         if(lastInstruction->writesRegister(REG_VPM_DMA_LOAD_ADDR))
@@ -204,7 +204,7 @@ static NODISCARD InstructionWalker findReplacementCandidate(
     case DelayType::WAIT_UNIFORM:
         // TODO could reorder, as long as we do not access uniforms ??
         PROFILE_END(findReplacementCandidate);
-        return basicBlock.end();
+        return basicBlock.walkEnd();
     }
     PROFILE_END(findReplacementCandidate);
     return replacementIt;
@@ -239,7 +239,7 @@ InstructionWalker optimizations::moveInstructionUp(InstructionWalker dest, Instr
 
 static void replaceNOPs(BasicBlock& basicBlock, Method& method, const Configuration& config)
 {
-    InstructionWalker it = basicBlock.begin();
+    InstructionWalker it = basicBlock.walk();
     while(!it.isEndOfBlock())
     {
         const Nop* nop = it.get<Nop>();

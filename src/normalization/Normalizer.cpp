@@ -129,7 +129,7 @@ static void runNormalizationStep(
 {
     for(auto& block : method)
     {
-        auto it = block.begin().nextInBlock();
+        auto it = block.walk().nextInBlock();
         while(!it.isEndOfBlock())
         {
             auto tmp = it.copy().previousInBlock();

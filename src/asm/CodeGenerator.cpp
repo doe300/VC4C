@@ -111,20 +111,21 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
 
     std::string s = "";
 
-    for(auto bb_it = method.begin(); bb_it != method.end(); ++bb_it)
+    for(const auto& bb : method)
     {
-        auto it = bb_it->begin();
-        if(it.getBasicBlock()->empty())
+        if(bb.empty())
         {
-            s = s.empty() ? bb_it->getLabel()->to_string() : s + "," + bb_it->getLabel()->to_string();
+            // show label comment for empty block with label comment for next block
+            s = s.empty() ? bb.getLabel()->to_string() : s + "," + bb.getLabel()->to_string();
             continue;
         }
 
-        auto label = dynamic_cast<intermediate::BranchLabel*>(it.get());
+        auto it = bb.begin();
+        auto label = dynamic_cast<const intermediate::BranchLabel*>(it->get());
         assert(label != nullptr);
-        it.nextInBlock();
+        ++it;
 
-        auto instr = it.get();
+        auto instr = it->get();
         if(instr->mapsToASMInstruction())
         {
             Instruction* mapped = instr->convertToAsm(registerMapping, labelMap, index);
@@ -136,12 +137,11 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
             }
             ++index;
         }
+        ++it;
 
-        it.nextInBlock();
-
-        while(!it.isEndOfBlock())
+        while(it != bb.end())
         {
-            auto instr = it.get();
+            auto instr = it->get();
             if(instr->mapsToASMInstruction())
             {
                 Instruction* mapped = instr->convertToAsm(registerMapping, labelMap, index);
@@ -151,8 +151,7 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
                 }
                 ++index;
             }
-
-            it.nextInBlock();
+            ++it;
         }
     }
 

@@ -45,7 +45,7 @@ InstructionWalker CFGRelation::getPredecessor(BasicBlock* source) const
     const auto& pred = predecessors.at(source);
     if(pred.has_value())
         return pred.value();
-    return source->end().previousInBlock();
+    return source->walkEnd().previousInBlock();
 }
 
 bool CFGRelation::isImplicit(BasicBlock* source) const
@@ -122,7 +122,7 @@ Optional<InstructionWalker> ControlFlowLoop::findInLoop(const intermediate::Inte
 {
     for(const CFGNode* node : *this)
     {
-        auto it = node->key->findWalkerForInstruction(inst, node->key->end());
+        auto it = node->key->findWalkerForInstruction(inst, node->key->walkEnd());
         if(it)
             return it;
     }

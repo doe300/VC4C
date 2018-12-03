@@ -27,7 +27,7 @@ bool InstructionVisitor::visit(const InstructionWalker& start) const
                 BasicBlock* nextBlock = it.getBasicBlock()->method.findBasicBlock(jump->getTarget());
                 if(nextBlock != nullptr)
                 {
-                    bool cont = visit(nextBlock->begin());
+                    bool cont = visit(nextBlock->walk());
                     if(!cont)
                         return false;
                 }
@@ -432,18 +432,4 @@ const intermediate::IntermediateInstruction* ConstInstructionWalker::get() const
 {
     throwOnEnd(isEndOfBlock());
     return (*pos).get();
-}
-
-void vc4c::swap(BlockIterator& a, BlockIterator& b)
-{
-    BlockIterator tmp = b;
-    b = a;
-    a = tmp;
-}
-
-void vc4c::swap(MethodIterator& a, MethodIterator& b)
-{
-    MethodIterator tmp = b;
-    b = a;
-    a = tmp;
 }

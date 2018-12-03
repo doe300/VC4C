@@ -421,7 +421,7 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
     bool hasChanged = false;
     for(BasicBlock& bb : method)
     {
-        auto it = bb.begin();
+        auto it = bb.walk();
         while(!it.isEndOfBlock() && !it.copy().nextInBlock().isEndOfBlock())
         {
             MoveOperation* move = it.get<MoveOperation>();
@@ -657,7 +657,7 @@ bool optimizations::combineLoadingLiterals(const Module& module, Method& method,
     for(BasicBlock& block : method)
     {
         FastMap<uint32_t, InstructionWalker> lastLoadImmediate;
-        InstructionWalker it = block.begin();
+        InstructionWalker it = block.walk();
         while(!it.isEndOfBlock())
         {
             if(it.get() && it->hasValueType(ValueType::LOCAL) &&
@@ -671,7 +671,7 @@ bool optimizations::combineLoadingLiterals(const Module& module, Method& method,
                 {
                     auto immIt = lastLoadImmediate.find(literal->unsignedInt());
                     if(immIt != lastLoadImmediate.end() &&
-                        canReplaceLiteralLoad(it, block.begin(), immIt->second, threshold))
+                        canReplaceLiteralLoad(it, block.walk(), immIt->second, threshold))
                     {
                         Local* oldLocal = it->getOutput()->local();
                         Local* newLocal = immIt->second->getOutput()->local();
@@ -718,7 +718,7 @@ bool optimizations::unrollWorkGroups(const Module& module, Method& method, const
     if(!lastBlock)
         throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find the default last block!");
     const Local* loopSize = method.findOrCreateLocal(TYPE_INT32, Method::GROUP_LOOP_SIZE);
-    InstructionWalker it = lastBlock->begin().nextInBlock();
+    InstructionWalker it = lastBlock->walk().nextInBlock();
     assign(it, loopSize->createReference()) =
         (UNIFORM_REGISTER, InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
     it.emplace(new Branch(startLabel, COND_ZERO_CLEAR, loopSize->createReference()));
@@ -780,7 +780,7 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
     bool hasChanged = false;
     for(BasicBlock& block : method)
     {
-        InstructionWalker it = block.begin();
+        InstructionWalker it = block.walk();
         while(!it.isEndOfBlock())
         {
             if(it.has<VectorRotation>() && !it->hasSideEffects())
@@ -1058,7 +1058,7 @@ static AccessRanges determineAccessRanges(Method& method)
     AccessRanges result;
     for(BasicBlock& block : method)
     {
-        InstructionWalker it = block.begin();
+        InstructionWalker it = block.walk();
         while(!it.isEndOfBlock())
         {
             if(it.has() && (it->writesRegister(REG_VPM_DMA_LOAD_ADDR) || it->writesRegister(REG_VPM_DMA_STORE_ADDR)))

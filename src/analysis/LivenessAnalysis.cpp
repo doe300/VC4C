@@ -115,18 +115,18 @@ std::pair<FastSet<const Local*>, FastSet<const Local*>> LocalUsageAnalysis::anal
             localsWritten.emplace(instr->getOutput()->local());
     };
 
-    for(auto it = block.begin(); !it.isEndOfBlock(); it.nextInBlock())
+    for(const auto& inst : block)
     {
-        if(it.has<intermediate::CombinedOperation>())
+        auto combInst = dynamic_cast<const intermediate::CombinedOperation*>(inst.get());
+        if(combInst)
         {
-            auto combInst = it.get<const intermediate::CombinedOperation>();
             if(combInst->op1)
                 func(combInst->op1.get());
             if(combInst->op2)
                 func(combInst->op2.get());
         }
         else
-            func(it.get());
+            func(inst.get());
     }
 
     for(const auto& pair : localsReadAfterWriting)

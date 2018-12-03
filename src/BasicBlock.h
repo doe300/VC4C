@@ -63,13 +63,29 @@ namespace vc4c
         /*
          * Returns an iterator to the start of this basic block (points to the label)
          */
-        InstructionWalker begin();
-        ConstInstructionWalker begin() const;
+        inline intermediate::InstructionsList::iterator begin()
+        {
+            return instructions.begin();
+        }
+        inline intermediate::InstructionsList::const_iterator begin() const
+        {
+            return instructions.begin();
+        }
+        InstructionWalker walk();
+        ConstInstructionWalker walk() const;
         /*
          * Returns an iterator to the end of the basic block (points one past the last instruction)
          */
-        InstructionWalker end();
-        ConstInstructionWalker end() const;
+        inline intermediate::InstructionsList::iterator end()
+        {
+            return instructions.end();
+        }
+        inline intermediate::InstructionsList::const_iterator end() const
+        {
+            return instructions.end();
+        }
+        InstructionWalker walkEnd();
+        ConstInstructionWalker walkEnd() const;
         /*
          * Returns the number of instructions within this block
          */

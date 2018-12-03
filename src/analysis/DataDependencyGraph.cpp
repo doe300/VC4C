@@ -98,15 +98,11 @@ static InstructionMapping mapInstructionsToPosition(Method& method)
 
 static void findDependencies(BasicBlock& bb, DataDependencyGraph& graph, InstructionMapping& mapping)
 {
-    auto it = bb.begin();
-    while(!it.isEndOfBlock())
+    for(const auto& inst : bb)
     {
-        if(!it.has())
-        {
-            it.nextInBlock();
+        if(!inst)
             continue;
-        }
-        it->forUsedLocals([it, &bb, &mapping, &graph](const Local* local, LocalUse::Type type) -> void {
+        inst->forUsedLocals([&inst, &bb, &mapping, &graph](const Local* local, LocalUse::Type type) -> void {
             if(has_flag(type, LocalUse::Type::READER) && !local->type.isLabelType())
             {
                 local->forUsers(LocalUse::Type::WRITER, [local, &bb, &mapping, &graph](const LocalUser* user) -> void {
@@ -137,12 +133,12 @@ static void findDependencies(BasicBlock& bb, DataDependencyGraph& graph, Instruc
             if(has_flag(type, LocalUse::Type::WRITER) && !local->type.isLabelType())
             {
                 local->forUsers(
-                    LocalUse::Type::READER, [it, local, &bb, &mapping, &graph](const LocalUser* user) -> void {
+                    LocalUse::Type::READER, [&inst, local, &bb, &mapping, &graph](const LocalUser* user) -> void {
                         auto& instIt = mapping.at(user);
 
                         // add local to relation (may not yet exist)
                         if(instIt.getBasicBlock() != &bb ||
-                            it->hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
+                            inst->hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
                         {
                             auto& neighborDependencies =
                                 graph.getOrCreateNode(&bb)
@@ -154,7 +150,6 @@ static void findDependencies(BasicBlock& bb, DataDependencyGraph& graph, Instruc
                     });
             }
         });
-        it.nextInBlock();
     }
 }
 

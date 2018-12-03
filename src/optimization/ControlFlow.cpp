@@ -384,8 +384,8 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
 static Optional<unsigned> determineVectorizationFactor(const ControlFlowLoop& loop, const LoopControl& loopControl)
 {
     unsigned char maxTypeWidth = 1;
-    InstructionWalker it = loop.front()->key->begin();
-    while(!it.isEndOfMethod() && it != loop.back()->key->end())
+    InstructionWalker it = loop.front()->key->walk();
+    while(!it.isEndOfMethod() && it != loop.back()->key->walkEnd())
     {
         if(it->getOutput())
         {
@@ -436,8 +436,8 @@ static int calculateCostsVsBenefits(
     FastSet<const Local*> readAddresses;
     FastSet<const Local*> writtenAddresses;
 
-    InstructionWalker it = loop.front()->key->begin();
-    while(!it.isEndOfMethod() && it != loop.back()->key->end())
+    InstructionWalker it = loop.front()->key->walk();
+    while(!it.isEndOfMethod() && it != loop.back()->key->walkEnd())
     {
         if(it.has())
         {
@@ -623,10 +623,10 @@ static void vectorizeInstruction(InstructionWalker it,
 
 static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
 {
-    InstructionWalker it = loop.front()->key->begin();
+    InstructionWalker it = loop.front()->key->walk();
     std::size_t numVectorized = 0;
 
-    while(!it.isEndOfMethod() && it != loop.back()->key->end())
+    while(!it.isEndOfMethod() && it != loop.back()->key->walkEnd())
     {
         if(it->writesRegister(REG_VPM_OUT_SETUP))
         {
@@ -668,7 +668,7 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
  */
 static Optional<InstructionWalker> findWalker(const CFGNode* node, const intermediate::IntermediateInstruction* inst)
 {
-    return node != nullptr ? node->key->findWalkerForInstruction(inst, node->key->end()) :
+    return node != nullptr ? node->key->findWalkerForInstruction(inst, node->key->walkEnd()) :
                              Optional<InstructionWalker>{};
 }
 
@@ -1181,7 +1181,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
         for(auto& cfgNode : *root->key)
         {
             auto block = cfgNode->key;
-            for(auto it = block->begin(); it != block->end(); it = it.nextInBlock())
+            for(auto it = block->walk(); it != block->walkEnd(); it = it.nextInBlock())
             {
                 // TODO: Constants like `mul24 r1, 4, elem_num` should be also moved.
                 auto loadInst = it.get<LoadImmediate>();
@@ -1195,14 +1195,14 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                         logging::debug() << "Moving constant load out of loop: " << it->to_string() << logging::endl;
                         if(insertedBlock != nullptr)
                         {
-                            insertedBlock->end().emplace(it.release());
+                            insertedBlock->walkEnd().emplace(it.release());
                         }
                         else
                         {
                             auto targetBlock = root->key->findPredecessor();
                             if(targetBlock != nullptr)
                             {
-                                auto targetInst = targetBlock->key->end();
+                                auto targetInst = targetBlock->key->walkEnd();
                                 targetInst.emplace(it.release());
                             }
                             else
@@ -1214,7 +1214,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 
                                 insertedBlock = &method.createAndInsertNewBlock(
                                     method.begin(), "%createdByRemoveConstantLoadInLoops");
-                                insertedBlock->end().emplace(it.release());
+                                insertedBlock->walkEnd().emplace(it.release());
 
                                 if(headBlock->getLabel()->getLabel()->name == BasicBlock::DEFAULT_BLOCK)
                                 {
@@ -1283,10 +1283,10 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
         BasicBlock* destBlock = method.findBasicBlock(findSourceBlock(pair.first, blockMap));
 
         // remove all instructions from source block and append to destination block (skipping the source label)
-        auto sourceIt = sourceBlock->begin().nextInBlock();
+        auto sourceIt = sourceBlock->walk().nextInBlock();
         while(!sourceIt.isEndOfBlock())
         {
-            destBlock->end().emplace(sourceIt.release());
+            destBlock->walkEnd().emplace(sourceIt.release());
             sourceIt.nextInBlock();
         }
         // then remove the source block

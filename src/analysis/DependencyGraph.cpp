@@ -739,17 +739,13 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
     // TODO "normal" register dependencies?
     // TODO check also limitations/barriers from Reordering and nomaddo's PR
 
-    auto it = block.begin();
-    while(!it.isEndOfBlock())
+    for(const auto& inst : block)
     {
-        if(!it.has() ||
-            (it.has<intermediate::Nop>() && !it->hasSideEffects() &&
-                it.get<const intermediate::Nop>()->type != intermediate::DelayType::THREAD_END))
-        {
-            it.nextInBlock();
+        if(!inst ||
+            (dynamic_cast<const intermediate::Nop*>(inst.get()) && !inst->hasSideEffects() &&
+                dynamic_cast<const intermediate::Nop*>(inst.get())->type != intermediate::DelayType::THREAD_END))
             continue;
-        }
-        auto& node = graph->getOrCreateNode(it.get());
+        auto& node = graph->getOrCreateNode(inst.get());
 
         createLocalDependencies(*graph.get(), node, lastLocalWrites, lastLocalReads);
         createFlagDependencies(*graph.get(), node, lastSettingOfFlags, lastConditional);
@@ -767,7 +763,8 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
         createTMUCoordinateDependencies(*graph.get(), node, lastTMU0CoordsWrite, lastTMU1CoordsWrite,
             lastTMUNoswapWrite, lastSemaphoreAccess, lastMemFence);
         createThreadEndDependencies(*graph.get(), node, lastHostInterrupt, lastProgramEnd);
-        if(it.has<intermediate::Branch>())
+        auto branch = dynamic_cast<const intermediate::Branch*>(inst.get());
+        if(branch)
         {
             // branches depend on everything before to make sure they come after everything
             // XXX this disables reordering of conditional branches for now
@@ -780,85 +777,84 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
         }
 
         // update the cached values
-        if(it->setFlags == SetFlag::SET_FLAGS ||
-            (it.has<intermediate::Branch>() && !it.get<const intermediate::Branch>()->isUnconditional()))
+        if(inst->setFlags == SetFlag::SET_FLAGS || (branch && !branch->isUnconditional()))
             // conditional branches may introduce setting of flags
-            lastSettingOfFlags = it.get();
-        if(it->hasConditionalExecution() ||
-            (it.has<intermediate::Branch>() && !it.get<const intermediate::Branch>()->isUnconditional()))
-            lastConditional = it.get();
-        if(it->signal.triggersReadOfR4() ||
-            (it->hasValueType(ValueType::REGISTER) && it->getOutput()->reg().triggersReadOfR4()))
-            lastTriggerOfR4 = it.get();
-        if(it->readsRegister(REG_SFU_OUT))
-            lastReadOfR4 = it.get();
-        if(it.has<intermediate::MutexLock>() && it.get<const intermediate::MutexLock>()->locksMutex())
+            lastSettingOfFlags = inst.get();
+        if(inst->hasConditionalExecution() || (branch && !branch->isUnconditional()))
+            lastConditional = inst.get();
+        if(inst->signal.triggersReadOfR4() ||
+            (inst->hasValueType(ValueType::REGISTER) && inst->getOutput()->reg().triggersReadOfR4()))
+            lastTriggerOfR4 = inst.get();
+        if(inst->readsRegister(REG_SFU_OUT))
+            lastReadOfR4 = inst.get();
+        auto mutex = dynamic_cast<const intermediate::MutexLock*>(inst.get());
+        if(mutex && mutex->locksMutex())
         {
-            lastMutexLock = it.get();
+            lastMutexLock = inst.get();
             lastMutexUnlock = nullptr;
         }
-        if(it.has<intermediate::MutexLock>() && it.get<const intermediate::MutexLock>()->releasesMutex())
+        if(mutex && mutex->releasesMutex())
         {
             lastMutexLock = nullptr;
-            lastMutexUnlock = it.get();
+            lastMutexUnlock = inst.get();
             // to not wrongly depend on VPM access of previous mutex block
             lastVPMRead = lastVPMReadAddress = lastVPMReadSetup = lastVPMReadWait = nullptr;
             lastVPMWrite = lastVPMWriteAddress = lastVPMWriteSetup = lastVPMWriteWait = nullptr;
         }
-        if(it.has<intermediate::SemaphoreAdjustment>())
-            lastSemaphoreAccess = it.get();
-        if(it->readsRegister(REG_UNIFORM))
-            lastReadOfUniform = it.get();
-        if(it->writesRegister(REG_UNIFORM_ADDRESS))
-            lastWriteOfUniformAddress = it.get();
-        if(it->writesRegister(REG_REPLICATE_QUAD) || it->writesRegister(REG_REPLICATE_ALL))
-            lastReplicationWrite = it.get();
-        if(it->readsRegister(REG_ACC5))
-            lastReplicationRead = it.get();
-        if(it->writesRegister(REG_VPM_OUT_SETUP))
-            lastVPMWriteSetup = it.get();
-        if(it->writesRegister(REG_VPM_IN_SETUP))
-            lastVPMReadSetup = it.get();
-        if(it->writesRegister(REG_VPM_IO))
-            lastVPMWrite = it.get();
-        if(it->readsRegister(REG_VPM_IO))
-            lastVPMRead = it.get();
-        if(it->writesRegister(REG_VPM_DMA_STORE_ADDR))
-            lastVPMWriteAddress = it.get();
-        if(it->writesRegister(REG_VPM_DMA_LOAD_ADDR))
-            lastVPMReadAddress = it.get();
-        if(it->readsRegister(REG_VPM_DMA_STORE_WAIT))
-            lastVPMWriteWait = it.get();
-        if(it->readsRegister(REG_VPM_DMA_LOAD_WAIT))
-            lastVPMReadWait = it.get();
-        if(it->writesRegister(REG_TMU0_COORD_T_V_Y) || it->writesRegister(REG_TMU0_COORD_R_BORDER_COLOR) ||
-            it->writesRegister(REG_TMU0_COORD_B_LOD_BIAS) || it->writesRegister(REG_TMU0_COORD_S_U_X))
-            lastTMU0CoordsWrite = it.get();
-        if(it->writesRegister(REG_TMU1_COORD_T_V_Y) || it->writesRegister(REG_TMU1_COORD_R_BORDER_COLOR) ||
-            it->writesRegister(REG_TMU1_COORD_B_LOD_BIAS) || it->writesRegister(REG_TMU1_COORD_S_U_X))
-            lastTMU1CoordsWrite = it.get();
-        if(it->writesRegister(REG_TMU_NOSWAP))
-            lastTMUNoswapWrite = it.get();
-        if(it->hasValueType(ValueType::LOCAL))
-            lastLocalWrites[it->getOutput()->local()] = it.get();
-        for(const Value& arg : it->getArguments())
+        if(dynamic_cast<const intermediate::SemaphoreAdjustment*>(inst.get()))
+            lastSemaphoreAccess = inst.get();
+        if(inst->readsRegister(REG_UNIFORM))
+            lastReadOfUniform = inst.get();
+        if(inst->writesRegister(REG_UNIFORM_ADDRESS))
+            lastWriteOfUniformAddress = inst.get();
+        if(inst->writesRegister(REG_REPLICATE_QUAD) || inst->writesRegister(REG_REPLICATE_ALL))
+            lastReplicationWrite = inst.get();
+        if(inst->readsRegister(REG_ACC5))
+            lastReplicationRead = inst.get();
+        if(inst->writesRegister(REG_VPM_OUT_SETUP))
+            lastVPMWriteSetup = inst.get();
+        if(inst->writesRegister(REG_VPM_IN_SETUP))
+            lastVPMReadSetup = inst.get();
+        if(inst->writesRegister(REG_VPM_IO))
+            lastVPMWrite = inst.get();
+        if(inst->readsRegister(REG_VPM_IO))
+            lastVPMRead = inst.get();
+        if(inst->writesRegister(REG_VPM_DMA_STORE_ADDR))
+            lastVPMWriteAddress = inst.get();
+        if(inst->writesRegister(REG_VPM_DMA_LOAD_ADDR))
+            lastVPMReadAddress = inst.get();
+        if(inst->readsRegister(REG_VPM_DMA_STORE_WAIT))
+            lastVPMWriteWait = inst.get();
+        if(inst->readsRegister(REG_VPM_DMA_LOAD_WAIT))
+            lastVPMReadWait = inst.get();
+        if(inst->writesRegister(REG_TMU0_COORD_T_V_Y) || inst->writesRegister(REG_TMU0_COORD_R_BORDER_COLOR) ||
+            inst->writesRegister(REG_TMU0_COORD_B_LOD_BIAS) || inst->writesRegister(REG_TMU0_COORD_S_U_X))
+            lastTMU0CoordsWrite = inst.get();
+        if(inst->writesRegister(REG_TMU1_COORD_T_V_Y) || inst->writesRegister(REG_TMU1_COORD_R_BORDER_COLOR) ||
+            inst->writesRegister(REG_TMU1_COORD_B_LOD_BIAS) || inst->writesRegister(REG_TMU1_COORD_S_U_X))
+            lastTMU1CoordsWrite = inst.get();
+        if(inst->writesRegister(REG_TMU_NOSWAP))
+            lastTMUNoswapWrite = inst.get();
+        if(inst->hasValueType(ValueType::LOCAL))
+            lastLocalWrites[inst->getOutput()->local()] = inst.get();
+        for(const Value& arg : inst->getArguments())
         {
             if(arg.hasLocal())
-                lastLocalReads[arg.local()] = it.get();
+                lastLocalReads[arg.local()] = inst.get();
         }
-        if(it->writesRegister(REG_ACC5) || it->writesRegister(REG_REPLICATE_ALL) ||
-            it->writesRegister(REG_REPLICATE_QUAD))
-            lastWriteOfR5 = it.get();
-        if(it->readsRegister(REG_ACC5) || it->readsRegister(REG_REPLICATE_ALL) || it->readsRegister(REG_REPLICATE_QUAD))
-            lastReadOfR5 = it.get();
-        if(it->writesRegister(REG_HOST_INTERRUPT))
-            lastHostInterrupt = it.get();
-        if(it->signal == SIGNAL_END_PROGRAM)
-            lastProgramEnd = it.get();
-        if(it.has<intermediate::MemoryBarrier>())
-            lastMemFence = it.get();
-        lastInstruction = it.get();
-        it.nextInBlock();
+        if(inst->writesRegister(REG_ACC5) || inst->writesRegister(REG_REPLICATE_ALL) ||
+            inst->writesRegister(REG_REPLICATE_QUAD))
+            lastWriteOfR5 = inst.get();
+        if(inst->readsRegister(REG_ACC5) || inst->readsRegister(REG_REPLICATE_ALL) ||
+            inst->readsRegister(REG_REPLICATE_QUAD))
+            lastReadOfR5 = inst.get();
+        if(inst->writesRegister(REG_HOST_INTERRUPT))
+            lastHostInterrupt = inst.get();
+        if(inst->signal == SIGNAL_END_PROGRAM)
+            lastProgramEnd = inst.get();
+        if(dynamic_cast<const intermediate::MemoryBarrier*>(inst.get()))
+            lastMemFence = inst.get();
+        lastInstruction = inst.get();
     }
 
 #ifdef DEBUG_MODE

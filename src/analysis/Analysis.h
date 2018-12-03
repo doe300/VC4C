@@ -58,9 +58,9 @@ namespace vc4c
                 else
                     analyzeBackward(block);
 
-                resultAtStart = &results.at(block.begin().get());
+                resultAtStart = &results.at(block.begin()->get());
                 if(!block.empty())
-                    resultAtEnd = &results.at(block.end().previousInBlock().get());
+                    resultAtEnd = &results.at((--block.end())->get());
             }
 
             const Values& getResult(const intermediate::IntermediateInstruction* instr) const
@@ -80,10 +80,10 @@ namespace vc4c
 
             void dumpResults(const BasicBlock& block) const
             {
-                for(auto it = block.begin(); !it.isEndOfBlock(); it.nextInBlock())
+                for(const auto& inst : block)
                 {
-                    if(it.get())
-                        logging::debug() << it->to_string() << " : " << dumpFunction(getResult(it.get()))
+                    if(inst)
+                        logging::debug() << inst->to_string() << " : " << dumpFunction(getResult(inst.get()))
                                          << logging::endl;
                 }
             }
@@ -109,12 +109,12 @@ namespace vc4c
             {
                 Cache c;
                 const auto* prevVal = &initialValue;
-                for(auto it = block.begin(); !it.isEndOfBlock(); it.nextInBlock())
+                for(const auto& inst : block)
                 {
-                    if(it.has())
+                    if(inst)
                     {
-                        auto pos =
-                            results.emplace(it.get(), std::forward<Values>(transferFunction(it.get(), *prevVal, c)));
+                        auto pos = results.emplace(
+                            inst.get(), std::forward<Values>(transferFunction(inst.get(), *prevVal, c)));
                         prevVal = &(pos.first->second);
                     }
                 }
@@ -127,15 +127,14 @@ namespace vc4c
                 auto it = block.end();
                 do
                 {
-                    it.previousInBlock();
-
-                    if(it.has())
+                    --it;
+                    if(*it)
                     {
                         auto pos =
-                            results.emplace(it.get(), std::forward<Values>(transferFunction(it.get(), *prevVal, c)));
+                            results.emplace(it->get(), std::forward<Values>(transferFunction(it->get(), *prevVal, c)));
                         prevVal = &(pos.first->second);
                     }
-                } while(!it.isStartOfBlock());
+                } while(it != block.begin());
             }
         };
 

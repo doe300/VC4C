@@ -128,15 +128,15 @@ static int calculateSchedulingPriority(DependencyEdge& dependency, BasicBlock& b
 {
     PROFILE_START(calculateSchedulingPriority);
     int latencyLeft = static_cast<int>(dependency.data.numDelayCycles);
-    auto it = block.end().previousInBlock();
-    while(!it.isStartOfBlock() && latencyLeft > 0)
+    auto it = --block.end();
+    while(it != block.begin() && latencyLeft > 0)
     {
-        if(it.get() == dependency.getInput().key)
+        if(it->get() == dependency.getInput().key)
             // we found the dependent instruction
             break;
-        if(it.get() && it->mapsToASMInstruction())
+        if(*it && (*it)->mapsToASMInstruction())
             --latencyLeft;
-        it.previousInBlock();
+        --it;
     }
     if(latencyLeft <= 0 && !dependency.data.isMandatoryDelay)
     {
@@ -215,7 +215,7 @@ static OpenSet::iterator selectInstruction(OpenSet& openNodes, DependencyGraph& 
     // iterate open-set until entry with no more dependencies
     auto it = openNodes.begin();
     std::pair<OpenSet::iterator, int> selected = std::make_pair(openNodes.end(), DEFAULT_PRIORITY);
-    auto lastInstruction = block.end().previousInBlock();
+    auto lastInstruction = block.walkEnd().previousInBlock();
     PROFILE_START(SelectInstruction);
     while(it != openNodes.end())
     {
@@ -277,7 +277,7 @@ static void selectInstructions(DependencyGraph& graph, BasicBlock& block, const 
     const DelaysMap& successiveDelays)
 {
     // 1. "empty" basic block without deleting the instructions, skipping the label
-    auto it = block.begin().nextInBlock();
+    auto it = block.walk().nextInBlock();
     OpenSet openNodes(NodeSorter(block.size()));
     while(!it.isEndOfBlock())
     {
@@ -297,11 +297,11 @@ static void selectInstructions(DependencyGraph& graph, BasicBlock& block, const 
         {
             // no instruction could be scheduled not violating the fixed latency, insert NOPs
             logging::debug() << "Failed to schedule an instruction, falling back to inserting NOP" << logging::endl;
-            block.end().emplace(new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER));
+            block.walkEnd().emplace(new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER));
         }
         else
         {
-            block.end().emplace(*inst);
+            block.walkEnd().emplace(*inst);
             openNodes.erase(inst);
         }
     }

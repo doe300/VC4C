@@ -297,7 +297,7 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
                 pair.first->to_string());
         }
         // make sure, moves are inserted before the outgoing branches
-        InstructionWalker it = bb->end();
+        InstructionWalker it = bb->walkEnd();
         ConditionCode jumpCondition = COND_ALWAYS;
         Value condition(UNDEFINED_VALUE);
         while(it.copy().previousInBlock().has<intermediate::Branch>())
@@ -508,7 +508,8 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
             auto destinationReader = (move->hasValueType(ValueType::LOCAL) &&
                                          move->getOutput()->local()->getUsers(LocalUse::Type::READER).size() == 1) ?
                 it.getBasicBlock()->findWalkerForInstruction(
-                    *move->getOutput()->local()->getUsers(LocalUse::Type::READER).begin(), it.getBasicBlock()->end()) :
+                    *move->getOutput()->local()->getUsers(LocalUse::Type::READER).begin(),
+                    it.getBasicBlock()->walkEnd()) :
                 Optional<InstructionWalker>{};
 
             if(!move->hasPackMode() && !move->hasUnpackMode() && move->getSource() == move->getOutput().value() &&
@@ -717,7 +718,7 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
         analysis::AvailableExpressionAnalysis analysis;
         analysis(block);
 
-        for(auto it = block.begin(); !it.isEndOfBlock(); it.nextInBlock())
+        for(auto it = block.walk(); !it.isEndOfBlock(); it.nextInBlock())
         {
             if(!it.has())
                 continue;

@@ -81,7 +81,7 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(Method& method
                         return InstructionVisitResult::CONTINUE;
                     },
                     false, true};
-                v.visitReverse(pair.first->begin(), &method.getCFG());
+                v.visitReverse(pair.first->walk(), &method.getCFG());
             }
         }
     }
@@ -89,10 +89,10 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(Method& method
     for(auto& block : method)
     {
         auto& blockAnalysis = livenesses[&block];
-        for(auto it = block.begin(); !it.isEndOfBlock(); it.nextInBlock())
+        for(const auto& inst : block)
         {
             // combined operations can write multiple locals
-            const auto combInstr = it.get<const intermediate::CombinedOperation>();
+            const auto combInstr = dynamic_cast<const intermediate::CombinedOperation*>(inst.get());
             if(combInstr && combInstr->op1 && combInstr->op1->hasValueType(ValueType::LOCAL) && combInstr->op2 &&
                 combInstr->op2->hasValueType(ValueType::LOCAL) &&
                 combInstr->op1->getOutput()->local() != combInstr->op2->getOutput()->local())
@@ -106,7 +106,7 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(Method& method
             FastSet<Local*> localsRead;
             // we have a maximum of 4 locals per (combined) instruction
             localsRead.reserve(4);
-            it->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
+            inst->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
                 if(has_flag(type, LocalUse::Type::READER) && !loc->type.isLabelType())
                     localsRead.emplace(const_cast<Local*>(loc));
             });
@@ -124,8 +124,8 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(Method& method
                 }
             }
 
-            auto blockResults = blockAnalysis.getResult(it.get());
-            auto addIt = additionalLocals.find(it.get());
+            auto blockResults = blockAnalysis.getResult(inst.get());
+            auto addIt = additionalLocals.find(inst.get());
             if(addIt != additionalLocals.end())
                 blockResults.insert(addIt->second.begin(), addIt->second.end());
 

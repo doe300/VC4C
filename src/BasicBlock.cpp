@@ -39,22 +39,22 @@ bool BasicBlock::empty() const
              }) == 1);
 }
 
-InstructionWalker BasicBlock::begin()
+InstructionWalker BasicBlock::walk()
 {
     return InstructionWalker(this, instructions.begin());
 }
 
-ConstInstructionWalker BasicBlock::begin() const
+ConstInstructionWalker BasicBlock::walk() const
 {
     return ConstInstructionWalker(this, instructions.begin());
 }
 
-InstructionWalker BasicBlock::end()
+InstructionWalker BasicBlock::walkEnd()
 {
     return InstructionWalker(this, instructions.end());
 }
 
-ConstInstructionWalker BasicBlock::end() const
+ConstInstructionWalker BasicBlock::walkEnd() const
 {
     return ConstInstructionWalker(this, instructions.end());
 }
@@ -114,16 +114,16 @@ void BasicBlock::forSuccessiveBlocks(const std::function<void(BasicBlock&)>& con
     }
     else
     {
-        ConstInstructionWalker it = begin();
-        while(!it.isEndOfBlock())
+        for(const auto& inst : *this)
         {
-            if(it.has<intermediate::Branch>())
+            auto branch = dynamic_cast<const intermediate::Branch*>(inst.get());
+            if(branch)
             {
-                BasicBlock* next = method.findBasicBlock(it.get<const intermediate::Branch>()->getTarget());
+                BasicBlock* next = method.findBasicBlock(branch->getTarget());
                 if(next != nullptr)
                     consumer(*next);
             }
-            it.nextInBlock();
+            // TODO shouldn't this be outside of the loop?!
             if(fallsThroughToNextBlock())
             {
                 BasicBlock* next = method.getNextBlockAfter(this);
@@ -156,7 +156,7 @@ void BasicBlock::forPredecessors(const std::function<void(InstructionWalker)>& c
         bool prevBlockFound = false;
         for(BasicBlock& bb : method)
         {
-            for(auto it = bb.begin(); !it.isEndOfBlock(); it.nextInBlock())
+            for(auto it = bb.walk(); !it.isEndOfBlock(); it.nextInBlock())
             {
                 intermediate::Branch* br = it.get<intermediate::Branch>();
                 if(br != nullptr && br->getTarget() == label)
@@ -169,7 +169,7 @@ void BasicBlock::forPredecessors(const std::function<void(InstructionWalker)>& c
         }
         if(prevBlockFound && prevBlock != nullptr && prevBlock->fallsThroughToNextBlock())
         {
-            consumer(prevBlock->end().previousInBlock());
+            consumer(prevBlock->walkEnd().previousInBlock());
         }
     }
 }
@@ -190,7 +190,7 @@ bool BasicBlock::fallsThroughToNextBlock(bool useCFGIfAvailable) const
     }
     // if the last instruction of a basic block is not an unconditional branch to another block, the control-flow falls
     // through to the next block
-    ConstInstructionWalker it = end();
+    ConstInstructionWalker it = walkEnd();
     do
     {
         it.previousInBlock();

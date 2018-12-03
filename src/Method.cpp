@@ -99,14 +99,15 @@ const Local* Method::findOrCreateLocal(const DataType& type, const std::string& 
 static NODISCARD bool removeUsagesInBasicBlock(const Method& method, const BasicBlock& bb, const Local* locale,
     OrderedMap<const LocalUser*, LocalUse>& remainingUsers, int& usageRangeLeft)
 {
-    auto it = bb.begin();
+    auto it = bb.walk();
     while(usageRangeLeft >= 0 && !it.isEndOfMethod())
     {
         remainingUsers.erase(it.get());
         --usageRangeLeft;
-        if(it.has<intermediate::Branch>())
+        auto branch = dynamic_cast<const intermediate::Branch*>(it.get());
+        if(branch)
         {
-            const BasicBlock* successor = method.findBasicBlock(it.get<const intermediate::Branch>()->getTarget());
+            const BasicBlock* successor = method.findBasicBlock(branch->getTarget());
             if(successor != nullptr &&
                 removeUsagesInBasicBlock(method, *successor, locale, remainingUsers, usageRangeLeft))
                 return true;
@@ -195,7 +196,7 @@ InstructionWalker Method::walkAllInstructions()
 {
     if(basicBlocks.empty())
         return InstructionWalker{};
-    return begin()->begin();
+    return begin()->walk();
 }
 
 void Method::forAllInstructions(const std::function<void(const intermediate::IntermediateInstruction*)>& consumer) const
@@ -251,14 +252,14 @@ void Method::appendToEnd(intermediate::IntermediateInstruction* instr)
         checkAndCreateDefaultBasicBlock();
         basicBlocks.back().instructions.emplace_back(instr);
         if(cfg && dynamic_cast<intermediate::Branch*>(instr))
-            updateCFGOnBranchInsertion(basicBlocks.back().end().previousInBlock());
+            updateCFGOnBranchInsertion(basicBlocks.back().walkEnd().previousInBlock());
     }
 }
 InstructionWalker Method::appendToEnd()
 {
     checkAndCreateDefaultBasicBlock();
     // Invalidation of the CFG in this case is handled in InstructionWalker
-    return basicBlocks.back().end();
+    return basicBlocks.back().walkEnd();
 }
 
 std::size_t Method::getNumLocals() const
@@ -322,8 +323,8 @@ BasicBlock* Method::findBasicBlock(const Local* label)
 {
     for(BasicBlock& bb : *this)
     {
-        if(bb.begin().has<intermediate::BranchLabel>() &&
-            bb.begin().get<intermediate::BranchLabel>()->getLabel() == label)
+        auto branchLabel = dynamic_cast<const intermediate::BranchLabel*>(bb.begin()->get());
+        if(branchLabel && branchLabel->getLabel() == label)
             return &bb;
     }
     return nullptr;
@@ -333,8 +334,8 @@ const BasicBlock* Method::findBasicBlock(const Local* label) const
 {
     for(const BasicBlock& bb : *this)
     {
-        if(bb.begin().has<intermediate::BranchLabel>() &&
-            bb.begin().get<const intermediate::BranchLabel>()->getLabel() == label)
+        auto branchLabel = dynamic_cast<const intermediate::BranchLabel*>(bb.begin()->get());
+        if(branchLabel && branchLabel->getLabel() == label)
             return &bb;
     }
     return nullptr;
@@ -398,7 +399,7 @@ InstructionWalker Method::emplaceLabel(InstructionWalker it, intermediate::Branc
         throw CompilationError(CompilationStep::GENERAL, "Failed to find basic block for instruction iterator",
             (it.has() ? it->to_string() : ""));
     // 1. insert new basic block after the current (or in front of it, if we emplace at the start of the basic block)
-    bool isStartOfBlock = blockIt->begin() == it;
+    bool isStartOfBlock = blockIt->walk() == it;
     if(!isStartOfBlock)
         ++blockIt;
     BasicBlock& newBlock = *basicBlocks.emplace(blockIt, *this, label);
@@ -407,11 +408,11 @@ InstructionWalker Method::emplaceLabel(InstructionWalker it, intermediate::Branc
     while(!isStartOfBlock && !it.isEndOfBlock())
     {
         // using InstructionWalker here triggers updates of the CFG on moving branches
-        newBlock.end().emplace(it.release());
+        newBlock.walkEnd().emplace(it.release());
         it.erase();
     }
     // 3. return the begin() of the new basic block
-    return newBlock.begin();
+    return newBlock.walk();
 }
 
 void Method::calculateStackOffsets()

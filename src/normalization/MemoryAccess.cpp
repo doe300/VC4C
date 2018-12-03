@@ -542,11 +542,11 @@ static void combineVPMAccess(FastSet<BasicBlock*>& blocks, Method& method)
     // run within all basic blocks
     for(BasicBlock* block : blocks)
     {
-        auto it = block->begin();
+        auto it = block->walk();
         while(!it.isEndOfBlock())
         {
             VPMAccessGroup group;
-            it = findGroupOfVPMAccess(*method.vpm.get(), it, block->end(), group);
+            it = findGroupOfVPMAccess(*method.vpm.get(), it, block->walkEnd(), group);
             if(group.addressWrites.size() > 1)
             {
                 group.cleanDuplicateInstructions();
@@ -1440,14 +1440,14 @@ static InstructionWalker findNextValueStore(
         {
             // there is some other instruction writing into the memory we read, it could have been changed -> abort
             // TODO can we be more precise and abort only if the same index is written?? How to determine??
-            return it.getBasicBlock()->end();
+            return it.getBasicBlock()->walkEnd();
         }
         if(it.has<MemoryBarrier>() || it.has<Branch>() || it.has<MutexLock>() || it.has<SemaphoreAdjustment>())
             break;
         it.nextInBlock();
         --limit;
     }
-    return it.getBasicBlock()->end();
+    return it.getBasicBlock()->walkEnd();
 }
 
 /*
