@@ -6,6 +6,7 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <vector>
 
 #include "cpptest.h"
 #include "cpptest-main.h"
@@ -137,15 +138,19 @@ int main(int argc, char** argv)
     Test::registerSuite(newVectorFunctionsTest, "emulate-vector", "Runs emulation tests for the OpenCL standard-library vector functions");
     Test::registerSuite(newMemoryAccessTest, "emulate-memory", "Runs emulation tests for various functions testing different kinds of memory access");
     Test::registerSuite(newConversionFunctionsTest, "emulate-conversions", "Runs emulation tests for the OpenCL standard-library type conversion functions");
-    
+
+    auto args = std::vector<char*>();
+
     for(auto i = 1; i < argc; ++i)
     { 
-        vc4c::tools::parseConfigurationParameter(config, argv[i]);
+        if (!vc4c::tools::parseConfigurationParameter(config, argv[i]))
+            args.push_back(argv[i]);
+
         //TODO rewrite, actually print same help (parts of it) as VC4C
         if(std::string("--help") == argv[i] || std::string("-h") == argv[i])
             std::cout << "NOTE: This only lists the options for the 'cpptest-lite' test-suite. For more options see 'VC4C --help'!" << std::endl;
     }
 
-    return Test::runSuites(argc, argv);
+    return Test::runSuites(int(args.size()), args.data());
 }
 
