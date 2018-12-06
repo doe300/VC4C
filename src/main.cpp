@@ -150,6 +150,12 @@ int main(int argc, char** argv)
     std::string options;
     bool runDisassembler = false;
 
+    if (argc == 1)
+    {
+        printHelp();
+        return 0;
+    }
+
     int i = 1;
     for(; i < argc; ++i)
     {
