@@ -14,6 +14,29 @@ nbproject/
 # JetBrains
 .idea
 
+# CMake
+CMakeCache.txt
+CMakeFiles
+CPackConfig.cmake
+CPackSourceConfig.cmake
+CTestTestfile.cmake
+cmake_install.cmake
+Makefile
+src/vc4cc-exports.cmake
+
+# libs (why do these exist in root directory?)
+cpptest-lite
+variant
+vc4asm
+cpplog
+
+# build artifacts
+# TODO: dont create artifacts here except build directory
+src/VC4C
+src/libVC4CC.so*
+test/TestVC4C
+tools/qpu_emulator
+
 # Other
 testResult.log
 /valgrind.supp
