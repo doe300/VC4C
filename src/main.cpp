@@ -72,6 +72,9 @@ static void printHelp()
     std::cout << "\t--spirv\t\t\tExplicitely use the SPIR-V front-end" << std::endl;
     std::cout << "\t--llvm\t\t\tExplicitely use the LLVM-IR front-end" << std::endl;
     std::cout << "\t--disassemble\t\tDisassembles the binary input to either hex or assembler output" << std::endl;
+    std::cout << "\t--verification-error\t\t\tAbort if instruction verification failed" << std::endl;
+    std::cout << "\t--no-verification-error\t\t\tContinue if instruction verification failed" << std::endl;
+
     std::cout << "\tany other option is passed to the pre-compiler" << std::endl;
 }
 
