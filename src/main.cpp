@@ -185,7 +185,7 @@ int main(int argc, char** argv)
             {
                 colorLog = false;
                 fileLog.reset(new std::wofstream(argv[i + 1]));
-                logStream = *fileLog.get();
+                logStream = *fileLog;
             }
             ++i;
         }
@@ -295,7 +295,7 @@ int main(int argc, char** argv)
     std::ofstream output(outputFile == "-" ? "/dev/stdout" : outputFile,
         std::ios_base::out | std::ios_base::trunc | std::ios_base::binary);
     PROFILE_START(Compiler);
-    Compiler::compile(*input.get(), output, config, options, inputFile);
+    Compiler::compile(*input, output, config, options, inputFile);
     PROFILE_END(Compiler);
 
     PROFILE_RESULTS();
