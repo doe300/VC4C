@@ -198,10 +198,15 @@ int main(int argc, char** argv)
             runDisassembler = true;
         else if(strcmp("-o", argv[i]) == 0)
         {
+            if (i + 1 == argc) {
+                std::cerr << "No output file specified after -o, aborting!" << std::endl;
+                return 7;
+            }
+
             outputFile = argv[i + 1];
-            // any further parameter is an input-file
-            i += 2;
-            break;
+
+            // increment `i` more than usual, because argv[i + 1] is already consumed
+            i += 1;
         }
         else if(!vc4c::tools::parseConfigurationParameter(config, argv[i]) || strstr(argv[i], "-cl") == argv[i])
             // pass every not understood option to the pre-compiler, as well as every OpenCL compiler option
