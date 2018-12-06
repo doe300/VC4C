@@ -208,6 +208,10 @@ namespace vc4c
          * Whether to use CLang opt to apply optimizations like force-vectorization, etc...
          */
         bool useOpt = false;
+        /*
+         * Whether to stop compilation when instruction verification failed
+         */
+        bool stopWhenVerificationFailed = true;
     };
 
     /*

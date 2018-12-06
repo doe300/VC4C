@@ -122,6 +122,16 @@ bool tools::parseConfigurationParameter(Configuration& config, const std::string
         config.useOpt = false;
         return true;
     }
+    if(arg == "--safe-stop")
+    {
+        config.stopWhenVerificationFailed = true;
+        return true;
+    }
+    if(arg == "--no-safe-stop")
+    {
+        config.stopWhenVerificationFailed = false;
+        return true;
+    }
 
     std::string passName;
     if(arg.find("--fno-") == 0)
