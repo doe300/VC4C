@@ -6,13 +6,13 @@
 
 #include "CodeGenerator.h"
 
+#include "../../lib/vc4asm/src/Validator.h"
 #include "../InstructionWalker.h"
 #include "../Module.h"
 #include "../Profiler.h"
 #include "GraphColoring.h"
 #include "KernelInfo.h"
 #include "log.h"
-#include "../../lib/vc4asm/src/Validator.h"
 
 #include <assert.h>
 #include <climits>
@@ -254,7 +254,7 @@ void CodeGenerator::toMachineCode(Method& kernel)
 
     Validator v;
     v.OnMessage = [&instructions, this](const Message& msg) -> void {
-        const auto & validatorMessage = dynamic_cast<const Validator::Message&>(msg);
+        const auto& validatorMessage = dynamic_cast<const Validator::Message&>(msg);
         if(validatorMessage.Loc >= 0)
         {
             auto it = instructions.begin();
@@ -268,7 +268,7 @@ void CodeGenerator::toMachineCode(Method& kernel)
                 logging::error() << "With reference to instruction: " << (*it)->toASMString() << logging::endl;
             }
         }
-        if (config.stopWhenVerificationFailed)
+        if(config.stopWhenVerificationFailed)
             throw CompilationError(CompilationStep::VERIFIER, "vc4asm verification error", msg.toString());
     };
     v.Instructions = &hexData;
