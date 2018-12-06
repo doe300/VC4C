@@ -150,31 +150,17 @@ int main(int argc, char** argv)
     std::string options;
     bool runDisassembler = false;
 
-    if(argc < 3)
-    {
-        for(int i = 1; i < argc; ++i)
-        {
-            if(strcmp("--help", argv[i]) == 0 || strcmp("-h", argv[i]) == 0)
-            {
-                printHelp();
-                return 0;
-            }
-            else if(strcmp("--version", argv[i]) == 0 || strcmp("-v", argv[i]) == 0)
-            {
-                printInfo();
-                return 0;
-            }
-        }
-        // needs at least <program> <output> <input>
-        printHelp();
-        return 1;
-    }
-
     int i = 1;
-    for(; i < argc - 2; ++i)
+    for(; i < argc; ++i)
     {
+        // treat an argument, which first character isnt "-", as an input file
+        if(argv[i][0] != '-')
+        {
+            inputFiles.emplace_back(argv[i]);
+        }
+
         // flags
-        if(strcmp("--help", argv[i]) == 0 || strcmp("-h", argv[i]) == 0)
+        else if(strcmp("--help", argv[i]) == 0 || strcmp("-h", argv[i]) == 0)
         {
             printHelp();
             return 0;
@@ -217,11 +203,6 @@ int main(int argc, char** argv)
             options.append(argv[i]).append(" ");
     }
 
-    for(; i < argc; ++i)
-    {
-        inputFiles.emplace_back(argv[i]);
-    }
-
     if(&logStream.get() == &std::wcout && outputFile == "-")
     {
         std::cerr << "Cannot write both log and data to stdout, aborting" << std::endl;
@@ -236,8 +217,29 @@ int main(int argc, char** argv)
     }
     if(outputFile.empty())
     {
-        std::cerr << "No output file specified, aborting!" << std::endl;
-        return 3;
+        // special case: if input files is just one, we specify the implicit output file.
+        std::string postfix;
+        if(inputFiles.size() == 1)
+        {
+            switch(config.outputMode)
+            {
+            case OutputMode::BINARY:
+                postfix = ".bin";
+                break;
+            case OutputMode::HEX:
+                postfix = ".hex";
+                break;
+            case OutputMode::ASSEMBLER:
+                postfix = ".s";
+                break;
+            }
+            outputFile = inputFiles[0] + postfix;
+        }
+        else
+        {
+            std::cerr << "No output file specified, aborting!" << std::endl;
+            return 3;
+        }
     }
 
     if(runDisassembler)
