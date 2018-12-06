@@ -281,8 +281,9 @@ static void selectInstructions(DependencyGraph& graph, BasicBlock& block, const 
     OpenSet openNodes(NodeSorter(block.size()));
     while(!it.isEndOfBlock())
     {
-        if(it.has() && !(it.has<intermediate::Nop>() && !it->hasSideEffects() &&
-               it.get<const intermediate::Nop>()->type != intermediate::DelayType::THREAD_END))
+        if(it.has() &&
+            !(it.has<intermediate::Nop>() && !it->hasSideEffects() &&
+                it.get<const intermediate::Nop>()->type != intermediate::DelayType::THREAD_END))
             // remove all non side-effect NOPs
             openNodes.emplace(it.release());
         it.erase();
