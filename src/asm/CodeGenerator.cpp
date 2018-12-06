@@ -253,7 +253,7 @@ void CodeGenerator::toMachineCode(Method& kernel)
     }
 
     Validator v;
-    v.OnMessage = [&instructions](const Message& msg) -> void {
+    v.OnMessage = [&instructions, this](const Message& msg) -> void {
         const auto & validatorMessage = dynamic_cast<const Validator::Message&>(msg);
         if(validatorMessage.Loc >= 0)
         {
@@ -268,8 +268,8 @@ void CodeGenerator::toMachineCode(Method& kernel)
                 logging::error() << "With reference to instruction: " << (*it)->toASMString() << logging::endl;
             }
         }
-
-        throw CompilationError(CompilationStep::VERIFIER, "vc4asm verification error", msg.toString());
+        if (config.stopWhenVerificationFailed)
+            throw CompilationError(CompilationStep::VERIFIER, "vc4asm verification error", msg.toString());
     };
     v.Instructions = &hexData;
     logging::info() << "Validation-output: " << logging::endl;
