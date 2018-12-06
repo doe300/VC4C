@@ -122,12 +122,12 @@ bool tools::parseConfigurationParameter(Configuration& config, const std::string
         config.useOpt = false;
         return true;
     }
-    if(arg == "--safe-stop")
+    if(arg == "--verification-error")
     {
         config.stopWhenVerificationFailed = true;
         return true;
     }
-    if(arg == "--no-safe-stop")
+    if(arg == "--no-verification-error")
     {
         config.stopWhenVerificationFailed = false;
         return true;
