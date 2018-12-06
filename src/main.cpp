@@ -156,8 +156,7 @@ int main(int argc, char** argv)
         return 0;
     }
 
-    int i = 1;
-    for(; i < argc; ++i)
+    for (int i = 1; i < argc; ++i)
     {
         // treat an argument, which first character isnt "-", as an input file
         if(argv[i][0] != '-')
