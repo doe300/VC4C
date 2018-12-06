@@ -248,6 +248,7 @@ int main(int argc, char** argv)
         else
         {
             std::cerr << "No output file specified, aborting!" << std::endl;
+            std::cerr << "NOTE: If multiple files are inputed, specifying output file is MUST." << std::endl;
             return 3;
         }
     }
