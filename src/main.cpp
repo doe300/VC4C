@@ -72,6 +72,9 @@ static void printHelp()
     std::cout << "\t--spirv\t\t\tExplicitely use the SPIR-V front-end" << std::endl;
     std::cout << "\t--llvm\t\t\tExplicitely use the LLVM-IR front-end" << std::endl;
     std::cout << "\t--disassemble\t\tDisassembles the binary input to either hex or assembler output" << std::endl;
+    std::cout << "\t--verification-error\t\t\tAbort if instruction verification failed" << std::endl;
+    std::cout << "\t--no-verification-error\t\t\tContinue if instruction verification failed" << std::endl;
+
     std::cout << "\tany other option is passed to the pre-compiler" << std::endl;
 }
 
@@ -150,31 +153,22 @@ int main(int argc, char** argv)
     std::string options;
     bool runDisassembler = false;
 
-    if(argc < 3)
+    if (argc == 1)
     {
-        for(int i = 1; i < argc; ++i)
-        {
-            if(strcmp("--help", argv[i]) == 0 || strcmp("-h", argv[i]) == 0)
-            {
-                printHelp();
-                return 0;
-            }
-            else if(strcmp("--version", argv[i]) == 0 || strcmp("-v", argv[i]) == 0)
-            {
-                printInfo();
-                return 0;
-            }
-        }
-        // needs at least <program> <output> <input>
         printHelp();
-        return 1;
+        return 0;
     }
 
-    int i = 1;
-    for(; i < argc - 2; ++i)
+    for (int i = 1; i < argc; ++i)
     {
+        // treat an argument, which first character isnt "-", as an input file
+        if(argv[i][0] != '-')
+        {
+            inputFiles.emplace_back(argv[i]);
+        }
+
         // flags
-        if(strcmp("--help", argv[i]) == 0 || strcmp("-h", argv[i]) == 0)
+        else if(strcmp("--help", argv[i]) == 0 || strcmp("-h", argv[i]) == 0)
         {
             printHelp();
             return 0;
@@ -199,7 +193,7 @@ int main(int argc, char** argv)
             {
                 colorLog = false;
                 fileLog.reset(new std::wofstream(argv[i + 1]));
-                logStream = *fileLog.get();
+                logStream = *fileLog;
             }
             ++i;
         }
@@ -207,19 +201,19 @@ int main(int argc, char** argv)
             runDisassembler = true;
         else if(strcmp("-o", argv[i]) == 0)
         {
+            if (i + 1 == argc) {
+                std::cerr << "No output file specified after -o, aborting!" << std::endl;
+                return 7;
+            }
+
             outputFile = argv[i + 1];
-            // any further parameter is an input-file
-            i += 2;
-            break;
+
+            // increment `i` more than usual, because argv[i + 1] is already consumed
+            i += 1;
         }
         else if(!vc4c::tools::parseConfigurationParameter(config, argv[i]) || strstr(argv[i], "-cl") == argv[i])
             // pass every not understood option to the pre-compiler, as well as every OpenCL compiler option
             options.append(argv[i]).append(" ");
-    }
-
-    for(; i < argc; ++i)
-    {
-        inputFiles.emplace_back(argv[i]);
     }
 
     if(&logStream.get() == &std::wcout && outputFile == "-")
@@ -236,8 +230,30 @@ int main(int argc, char** argv)
     }
     if(outputFile.empty())
     {
-        std::cerr << "No output file specified, aborting!" << std::endl;
-        return 3;
+        // special case: if input files is just one, we specify the implicit output file.
+        std::string postfix;
+        if(inputFiles.size() == 1)
+        {
+            switch(config.outputMode)
+            {
+            case OutputMode::BINARY:
+                postfix = ".bin";
+                break;
+            case OutputMode::HEX:
+                postfix = ".hex";
+                break;
+            case OutputMode::ASSEMBLER:
+                postfix = ".s";
+                break;
+            }
+            outputFile = inputFiles[0] + postfix;
+        }
+        else
+        {
+            std::cerr << "No output file specified, aborting!" << std::endl;
+            std::cerr << "NOTE: If multiple files are inputed, specifying output file is MUST." << std::endl;
+            return 3;
+        }
     }
 
     if(runDisassembler)
@@ -293,7 +309,7 @@ int main(int argc, char** argv)
     std::ofstream output(outputFile == "-" ? "/dev/stdout" : outputFile,
         std::ios_base::out | std::ios_base::trunc | std::ios_base::binary);
     PROFILE_START(Compiler);
-    Compiler::compile(*input.get(), output, config, options, inputFile);
+    Compiler::compile(*input, output, config, options, inputFile);
     PROFILE_END(Compiler);
 
     PROFILE_RESULTS();

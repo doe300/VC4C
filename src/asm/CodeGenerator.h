@@ -38,6 +38,7 @@ namespace vc4c
             const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& generateInstructions(Method& method);
 
             std::size_t writeOutput(std::ostream& stream);
+            void toMachineCode(Method& kernel);
 
         private:
             Configuration config;

@@ -88,44 +88,6 @@ static std::unique_ptr<Parser> getParser(std::istream& stream)
     return nullptr;
 }
 
-// register/instruction mapping
-static void toMachineCode(qpu_asm::CodeGenerator& codeGen, Method& kernel)
-{
-    kernel.cleanLocals();
-    const auto& instructions = codeGen.generateInstructions(kernel);
-#ifdef VERIFIER_HEADER
-    std::vector<uint64_t> hexData;
-    hexData.reserve(instructions.size());
-    for(const auto& instr : instructions)
-    {
-        hexData.push_back(instr->toBinaryCode());
-    }
-
-    Validator v;
-    v.OnMessage = [&instructions](const Message& msg) -> void {
-        const Validator::Message& validatorMessage = dynamic_cast<const Validator::Message&>(msg);
-        if(validatorMessage.Loc >= 0)
-        {
-            auto it = instructions.begin();
-            std::advance(it, validatorMessage.Loc);
-            logging::error() << "Validation-error '" << validatorMessage.Text << "' in: " << (*it)->toASMString()
-                             << logging::endl;
-            if(validatorMessage.RefLoc >= 0)
-            {
-                it = instructions.begin();
-                std::advance(it, validatorMessage.RefLoc);
-                logging::error() << "With reference to instruction: " << (*it)->toASMString() << logging::endl;
-            }
-        }
-        throw CompilationError(CompilationStep::VERIFIER, "vc4asm verification error", msg.toString());
-    };
-    v.Instructions = &hexData;
-    logging::info() << "Validation-output: " << logging::endl;
-    v.Validate();
-    fflush(stderr);
-#endif
-}
-
 std::size_t Compiler::convert()
 {
     Module module(config);
@@ -151,7 +113,7 @@ std::size_t Compiler::convert()
     norm.adjust(module);
     PROFILE_END(SecondNormalizer);
 
-    const auto f = [&codeGen](Method* kernelFunc) -> void { toMachineCode(codeGen, *kernelFunc); };
+    const auto f = [&codeGen](Method* kernelFunc) -> void { codeGen.toMachineCode(*kernelFunc); };
     BackgroundWorker::scheduleAll<Method*>(module.getKernels(), f, "CodeGenerator");
 
     // TODO could discard unused globals

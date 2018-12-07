@@ -6,6 +6,7 @@
 
 #include "CodeGenerator.h"
 
+#include "../../lib/vc4asm/src/Validator.h"
 #include "../InstructionWalker.h"
 #include "../Module.h"
 #include "../Profiler.h"
@@ -235,4 +236,43 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
     }
     stream.flush();
     return numBytes;
+}
+
+// register/instruction mapping
+void CodeGenerator::toMachineCode(Method& kernel)
+{
+    kernel.cleanLocals();
+    const auto& instructions = generateInstructions(kernel);
+#ifdef VERIFIER_HEADER
+    std::vector<uint64_t> hexData;
+    hexData.reserve(instructions.size());
+    for(const auto& instr : instructions)
+    {
+        hexData.push_back(instr->toBinaryCode());
+    }
+
+    Validator v;
+    v.OnMessage = [&instructions, this](const Message& msg) -> void {
+        const auto& validatorMessage = dynamic_cast<const Validator::Message&>(msg);
+        if(validatorMessage.Loc >= 0)
+        {
+            auto it = instructions.begin();
+            std::advance(it, validatorMessage.Loc);
+            logging::error() << "Validation-error '" << validatorMessage.Text << "' in: " << (*it)->toASMString()
+                             << logging::endl;
+            if(validatorMessage.RefLoc >= 0)
+            {
+                it = instructions.begin();
+                std::advance(it, validatorMessage.RefLoc);
+                logging::error() << "With reference to instruction: " << (*it)->toASMString() << logging::endl;
+            }
+        }
+        if(config.stopWhenVerificationFailed)
+            throw CompilationError(CompilationStep::VERIFIER, "vc4asm verification error", msg.toString());
+    };
+    v.Instructions = &hexData;
+    logging::info() << "Validation-output: " << logging::endl;
+    v.Validate();
+    fflush(stderr);
+#endif
 }
