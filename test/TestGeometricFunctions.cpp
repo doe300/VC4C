@@ -7,43 +7,51 @@
 #include "TestGeometricFunctions.h"
 #include "emulation_helper.h"
 
-// TODO use vload/vstore for memory access to fix alignment/padding
-
 static const std::string UNARY_GROUPED_FUNCTION = R"(
 __kernel void test(__global OUT* out, __global IN* in) {
   size_t gid = get_global_id(0);
+#if defined(TRIPLE) && TRIPLE == 3
+  vstore3(FUNC(vload3(gid, (__global TYPE*)in)), gid, (__global TYPE*)out);
+#elif defined(TRIPLE)
+  out[gid] = FUNC(vload3(gid, (__global TYPE*)in));
+#else
   out[gid] = FUNC(in[gid]);
+#endif
 }
 )";
 
 static const std::string BINARY_GROUPED_FUNCTION = R"(
 __kernel void test(__global OUT* out, __global IN0* in0, __global IN1* in1) {
   size_t gid = get_global_id(0);
+#if defined(TRIPLE) && TRIPLE == 3
+  vstore3(FUNC(vload3(gid, (__global TYPE*)in0), vload3(gid, (__global TYPE*)in1)), gid, (__global TYPE*)out);
+#elif defined(TRIPLE)
+  out[gid] = FUNC(vload3(gid, (__global TYPE*)in0), vload3(gid, (__global TYPE*)in1));
+#else
   out[gid] = FUNC(in0[gid], in1[gid]);
+#endif
 }
 )";
 
 TestGeometricFunctions::TestGeometricFunctions(const vc4c::Configuration& config) : config(config)
 {
-    /*XXX comparisons for all 3-element vectors are wrong, since they are stored/loaded as 4-element vectors per
-    standard TEST_ADD(TestGeometricFunctions::testCross3);
-    */
+    TEST_ADD(TestGeometricFunctions::testCross3);
     TEST_ADD(TestGeometricFunctions::testCross4);
     TEST_ADD(TestGeometricFunctions::testDotScalar);
     TEST_ADD(TestGeometricFunctions::testDot2);
-    // TEST_ADD(TestGeometricFunctions::testDot3);
+    TEST_ADD(TestGeometricFunctions::testDot3);
     TEST_ADD(TestGeometricFunctions::testDot4);
     TEST_ADD(TestGeometricFunctions::testDistanceScalar);
     TEST_ADD(TestGeometricFunctions::testDistance2);
-    // TEST_ADD(TestGeometricFunctions::testDistance3);
+    TEST_ADD(TestGeometricFunctions::testDistance3);
     TEST_ADD(TestGeometricFunctions::testDistance4);
     TEST_ADD(TestGeometricFunctions::testLengthScalar);
     TEST_ADD(TestGeometricFunctions::testLength2);
-    // TEST_ADD(TestGeometricFunctions::testLength3);
+    TEST_ADD(TestGeometricFunctions::testLength3);
     TEST_ADD(TestGeometricFunctions::testLength4);
     TEST_ADD(TestGeometricFunctions::testNormalizeScalar);
     TEST_ADD(TestGeometricFunctions::testNormalize2);
-    // TEST_ADD(TestGeometricFunctions::testNormalize3);
+    TEST_ADD(TestGeometricFunctions::testNormalize3);
     TEST_ADD(TestGeometricFunctions::testNormalize4);
 }
 
@@ -175,7 +183,8 @@ static std::array<float, 4> checkCross4(const std::array<float, 4>& in0, const s
 
 void TestGeometricFunctions::testCross3()
 {
-    testBinaryGroupFunction<3>(config, "-DOUT=float3 -DIN0=float3 -DIN1=float3 -DFUNC=cross", checkCross3,
+    testBinaryGroupFunction<3>(config, "-DOUT=float3 -DIN0=float3 -DIN1=float3 -DFUNC=cross -DTRIPLE=3 -DTYPE=float",
+        checkCross3,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -199,7 +208,8 @@ void TestGeometricFunctions::testDot2()
 
 void TestGeometricFunctions::testDot3()
 {
-    testBinaryReducedFunction<3>(config, "-DOUT=float -DIN0=float3 -DIN1=float3 -DFUNC=dot", checkDot<3>,
+    testBinaryReducedFunction<3>(config, "-DOUT=float -DIN0=float3 -DIN1=float3 -DFUNC=dot -DTRIPLE=1 -DTYPE=float",
+        checkDot<3>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -226,7 +236,7 @@ void TestGeometricFunctions::testDistance2()
 void TestGeometricFunctions::testDistance3()
 {
     testBinaryReducedFunction<3, CompareULP<4 /* sqrt */>>(config,
-        "-DOUT=float -DIN0=float3 -DIN1=float3 -DFUNC=distance", checkDistance<3>,
+        "-DOUT=float -DIN0=float3 -DIN1=float3 -DFUNC=distance -DTRIPLE=1 -DTYPE=float", checkDistance<3>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -253,8 +263,8 @@ void TestGeometricFunctions::testLength2()
 
 void TestGeometricFunctions::testLength3()
 {
-    testUnaryReducedFunction<3, CompareULP<4 /* sqrt */>>(config, "-DOUT=float -DIN=float3 -DFUNC=length",
-        checkLength<3>,
+    testUnaryReducedFunction<3, CompareULP<4 /* sqrt */>>(config,
+        "-DOUT=float -DIN=float3 -DFUNC=length -DTRIPLE=1 -DTYPE=float", checkLength<3>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -282,7 +292,7 @@ void TestGeometricFunctions::testNormalize2()
 void TestGeometricFunctions::testNormalize3()
 {
     testUnaryGroupFunction<3, CompareArrayULP<3, 7 /* sqrt + fdiv */>>(config,
-        "-DOUT=float3 -DIN=float3 -DFUNC=normalize", checkNormalize<3>,
+        "-DOUT=float3 -DIN=float3 -DFUNC=normalize -DTRIPLE=3 -DTYPE=float", checkNormalize<3>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 

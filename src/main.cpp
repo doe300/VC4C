@@ -153,13 +153,13 @@ int main(int argc, char** argv)
     std::string options;
     bool runDisassembler = false;
 
-    if (argc == 1)
+    if(argc == 1)
     {
         printHelp();
         return 0;
     }
 
-    for (int i = 1; i < argc; ++i)
+    for(int i = 1; i < argc; ++i)
     {
         // treat an argument, which first character isnt "-", as an input file
         if(argv[i][0] != '-')
@@ -201,7 +201,8 @@ int main(int argc, char** argv)
             runDisassembler = true;
         else if(strcmp("-o", argv[i]) == 0)
         {
-            if (i + 1 == argc) {
+            if(i + 1 == argc)
+            {
                 std::cerr << "No output file specified after -o, aborting!" << std::endl;
                 return 7;
             }

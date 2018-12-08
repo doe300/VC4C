@@ -340,7 +340,7 @@ Optional<Value> Operation::precalculate(const std::size_t numIterations) const
             return NO_VALUE;
     }
 
-    return op.calculate(arg0, arg1);
+    return op(arg0, arg1);
 }
 
 IntrinsicOperation::IntrinsicOperation(

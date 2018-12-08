@@ -10,7 +10,6 @@
 
 #include <algorithm>
 
-//XXX all tests pass with -O0, but some fail as of -O1
 //TODO all and any may both not work, but the probability for all MSBs set is very low
 
 static const std::string UNARY_FUNCTION = R"(

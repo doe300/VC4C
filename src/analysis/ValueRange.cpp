@@ -436,13 +436,13 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
                 secondMax = Value(Literal(saturate<uint32_t>(secondRange.getIntRange()->maxValue)), arg1.type);
             }
 
-            minVal = op->op.calculate(firstMin, secondMin);
-            maxVal = op->op.calculate(firstMax, secondMax);
+            minVal = op->op(firstMin, secondMin);
+            maxVal = op->op(firstMax, secondMax);
         }
         else
         {
-            minVal = op->op.calculate(firstMin, NO_VALUE);
-            maxVal = op->op.calculate(firstMax, NO_VALUE);
+            minVal = op->op(firstMin, NO_VALUE);
+            maxVal = op->op(firstMax, NO_VALUE);
         }
 
         if(it->hasDecoration(InstructionDecorations::UNSIGNED_RESULT) && !it->getOutput()->type.isFloatingType())

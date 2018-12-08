@@ -936,13 +936,13 @@ InstructionWalker optimizations::combineArithmeticOperations(
     {
         logging::debug() << "Combining associative operations " << singleWriter->to_string() << " and "
                          << it->to_string() << logging::endl;
-        precalc = op.calculate(literalArg, otherLiteralArg);
+        precalc = op(literalArg, otherLiteralArg);
     }
     else if(op == OP_SHL || op == OP_SHR || op == OP_ASR || op == OP_ROR)
     {
         logging::debug() << "Combining shifts " << singleWriter->to_string() << " and " << it->to_string()
                          << logging::endl;
-        precalc = OP_ADD.calculate(literalArg, otherLiteralArg);
+        precalc = OP_ADD(literalArg, otherLiteralArg);
     }
     auto lastIt = it.getBasicBlock()->findWalkerForInstruction(singleWriter, it).value();
     lastIt.reset(new Operation(op, it->getOutput().value(), origArg, precalc.value()));

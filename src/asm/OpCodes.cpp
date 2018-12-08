@@ -348,14 +348,14 @@ Optional<Value> Pack::pack(const Value& val) const
     case PACK_32_16A:
         return Value(Literal(val.getLiteralValue()->unsignedInt() & 0xFFFF), val.type);
     case PACK_32_16A_S:
-        return Value(Literal(saturate<int16_t>(val.getLiteralValue()->signedInt())), val.type);
+        return Value(Literal(saturate<int16_t>(val.getLiteralValue()->signedInt()) & 0xFFFF), val.type);
     case PACK_32_16B:
         return Value(Literal((val.getLiteralValue()->unsignedInt() & 0xFFFF) << 16), val.type);
     case PACK_32_16B_S:
-        return NO_VALUE;
+        return Value(Literal(saturate<int16_t>(val.getLiteralValue()->signedInt()) << 16), val.type);
     case PACK_32_32:
-        // TODO this depends on the overflow/carry flags (to determine overflow and then saturate)
-        return Value(Literal(saturate<int32_t>(val.getLiteralValue()->signedInt())), val.type);
+        // this depends on the overflow/carry flags (to determine overflow and then saturate)
+        throw CompilationError(CompilationStep::GENERAL, "32-bit saturation is not implemented", val.to_string());
     case PACK_32_8888:
         return Value(
             Literal(((val.getLiteralValue()->unsignedInt() & 0xFF) << 24) |
@@ -440,7 +440,6 @@ static unsigned int rotate_right(unsigned int value, int shift)
 
 Optional<Value> OpCode::calculate(const Optional<Value>& firstOperand, const Optional<Value>& secondOperand) const
 {
-    // TODO recursively calculate constant operand value if local with single writer?
     if(!firstOperand)
         return NO_VALUE;
     if(numOperands > 1 && !secondOperand)
@@ -648,9 +647,8 @@ bool OpCode::isIdempotent() const
 bool OpCode::isAssociative() const
 {
     return *this == OP_ADD || *this == OP_AND || *this == OP_FADD || *this == OP_FMAX || *this == OP_FMAXABS ||
-        *this == OP_FMIN || *this == OP_FMINABS || *this == OP_FMUL || *this == OP_FSUB || *this == OP_MAX ||
-        *this == OP_MIN || *this == OP_MUL24 || *this == OP_OR || *this == OP_SUB || *this == OP_V8MAX ||
-        *this == OP_V8MIN || *this == OP_XOR;
+        *this == OP_FMIN || *this == OP_FMINABS || *this == OP_FMUL || *this == OP_MAX || *this == OP_MIN ||
+        *this == OP_MUL24 || *this == OP_OR || *this == OP_V8MAX || *this == OP_V8MIN || *this == OP_XOR;
 }
 
 bool OpCode::isCommutative() const
