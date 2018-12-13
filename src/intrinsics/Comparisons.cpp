@@ -219,27 +219,27 @@ InstructionWalker intrinsifyFloatingRelation(Method& method, InstructionWalker i
     else if(COMP_ORDERED_EQ == comp->opCode || COMP_UNORDERED_EQ == comp->opCode)
     {
         // a == b <=> a xor b == 0 [<=> a - b == 0]
-        assign(it, NOP_REGISTER) = (comp->getFirstArg() ^ comp->assertArgument(1), COND_ALWAYS, SetFlag::SET_FLAGS);
+        assign(it, NOP_REGISTER) = (comp->getFirstArg() ^ comp->assertArgument(1), SetFlag::SET_FLAGS);
         it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_ZERO_SET);
     }
     else if(COMP_ORDERED_NEQ == comp->opCode || COMP_UNORDERED_NEQ == comp->opCode)
     {
         // a != b <=> a xor b != 0
-        assign(it, NOP_REGISTER) = (comp->getFirstArg() ^ comp->assertArgument(1), COND_ALWAYS, SetFlag::SET_FLAGS);
+        assign(it, NOP_REGISTER) = (comp->getFirstArg() ^ comp->assertArgument(1), SetFlag::SET_FLAGS);
         it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_ZERO_CLEAR);
     }
     else if(COMP_ORDERED_LT == comp->opCode || COMP_UNORDERED_LT == comp->opCode)
     {
         // a < b [<=> min(a, b) != b] [<=> max(a, b) != a] <=> a - b < 0
-        assign(it, NOP_REGISTER) = (comp->getFirstArg() - comp->assertArgument(1), COND_ALWAYS, SetFlag::SET_FLAGS);
+        assign(it, NOP_REGISTER) = (comp->getFirstArg() - comp->assertArgument(1), SetFlag::SET_FLAGS);
         // true if NEGATIVE is set, otherwise false
         it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_NEGATIVE_SET);
     }
     else if(COMP_ORDERED_LE == comp->opCode || COMP_UNORDERED_LE == comp->opCode)
     {
         // a <= b <=> min(a, b) == a [<=> max(a, b) == b]
-        assign(it, tmp) = (min(comp->getFirstArg(), comp->assertArgument(1)), COND_ALWAYS, SetFlag::SET_FLAGS);
-        assign(it, NOP_REGISTER) = (tmp ^ comp->getFirstArg(), COND_ALWAYS, SetFlag::SET_FLAGS);
+        assign(it, tmp) = (min(comp->getFirstArg(), comp->assertArgument(1)), SetFlag::SET_FLAGS);
+        assign(it, NOP_REGISTER) = (tmp ^ comp->getFirstArg(), SetFlag::SET_FLAGS);
         it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_ZERO_SET);
     }
     else if(COMP_ORDERED == comp->opCode)

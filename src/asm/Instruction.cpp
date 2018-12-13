@@ -125,9 +125,9 @@ std::string Instruction::toExtrasString(const Signaling sig, const ConditionCode
         result += std::string(".") + cond.to_string();
     if(flags == SetFlag::SET_FLAGS)
         result += std::string(".") + toString(flags);
-    if(usesInputAOrR4 && unpack != UNPACK_NOP)
+    if(usesInputAOrR4 && unpack.hasEffect())
         result += std::string(".") + unpack.to_string();
-    if(usesOutputA && pack != PACK_NOP)
+    if(usesOutputA && pack.hasEffect())
         result += std::string(".") + pack.to_string();
     return result;
 }

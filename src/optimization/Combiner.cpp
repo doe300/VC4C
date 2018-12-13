@@ -381,11 +381,17 @@ static const std::vector<MergeCondition> mergeConditions = {
             return false;
         // if both have a pack-mode set (excluding NOP), it must be the same, since we can only set one pack-mode per
         // (combined) instruction
-        if(firstPack != PACK_NOP && secondPack != PACK_NOP && firstPack != secondPack)
+        if(firstPack.hasEffect() && secondPack.hasEffect() && firstPack != secondPack)
             return false;
         // if both have an unpack-mode set (excluding NOP), it must be the same, since we can only set one unpack-mode
         // per (combined) instruction
-        if(firstUnpack != UNPACK_NOP && secondUnpack != UNPACK_NOP && firstUnpack != secondUnpack)
+        if(firstUnpack.hasEffect() && secondUnpack.hasEffect() && firstUnpack != secondUnpack)
+            return false;
+        // the pack-mode must match the ALU, can only apply mul pack modes if the other operation can execute on add ALU
+        // and vice versa
+        if(firstPack.hasEffect() && firstPack.supportsMulALU() != (secondMove || secondOp->op.runsOnAddALU()))
+            return false;
+        if(secondPack.hasEffect() && secondPack.supportsMulALU() != (firstMove || firstOp->op.runsOnAddALU()))
             return false;
         // can only unpack from reg-file A -> 1 input
         // TODO check if both use same input, then allow (or have inverted conditions)
@@ -487,7 +493,7 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                         // following instructions
                         if(!checkIt.isEndOfBlock())
                         {
-                            if(checkIt->unpackMode != UNPACK_NOP)
+                            if(checkIt->unpackMode.hasEffect())
                             {
                                 if(std::any_of(checkIt->getArguments().begin(), checkIt->getArguments().end(),
                                        [instr, nextInstr](const Value& val) -> bool {
@@ -498,10 +504,10 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                                     conditionsMet = false;
                                 }
                             }
-                            if(instr->packMode != PACK_NOP && instr->hasValueType(ValueType::LOCAL) &&
+                            if(instr->packMode.hasEffect() && instr->hasValueType(ValueType::LOCAL) &&
                                 checkIt->readsLocal(instr->getOutput()->local()))
                                 conditionsMet = false;
-                            if(nextInstr->packMode != PACK_NOP && nextInstr->hasValueType(ValueType::LOCAL) &&
+                            if(nextInstr->packMode.hasEffect() && nextInstr->hasValueType(ValueType::LOCAL) &&
                                 checkIt->readsLocal(nextInstr->getOutput()->local()))
                                 conditionsMet = false;
                         }
@@ -510,13 +516,13 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                         checkIt = it.copy().previousInBlock();
                         if(!checkIt.isStartOfBlock() && checkIt->hasValueType(ValueType::LOCAL))
                         {
-                            if(checkIt->packMode != PACK_NOP &&
+                            if(checkIt->packMode.hasEffect() &&
                                 (instr->readsLocal(checkIt->getOutput()->local()) ||
                                     nextInstr->readsLocal(checkIt->getOutput()->local())))
                                 conditionsMet = false;
-                            if(instr->unpackMode != UNPACK_NOP && instr->readsLocal(checkIt->getOutput()->local()))
+                            if(instr->unpackMode.hasEffect() && instr->readsLocal(checkIt->getOutput()->local()))
                                 conditionsMet = false;
-                            if(nextInstr->unpackMode != UNPACK_NOP &&
+                            if(nextInstr->unpackMode.hasEffect() &&
                                 nextInstr->readsLocal(checkIt->getOutput()->local()))
                                 conditionsMet = false;
                         }
@@ -561,8 +567,10 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                         }
                         else if(move != nullptr && nextMove != nullptr)
                         {
-                            Operation* newMove0 = move->combineWith(OP_MUL24);
-                            Operation* newMove1 = nextMove->combineWith(OP_ADD);
+                            bool firstOnMul = (move->packMode.hasEffect() && move->packMode.supportsMulALU()) ||
+                                (nextMove->packMode.hasEffect() && !nextMove->packMode.supportsMulALU());
+                            Operation* newMove0 = move->combineWith(firstOnMul ? OP_ADD : OP_MUL24);
+                            Operation* newMove1 = nextMove->combineWith(firstOnMul ? OP_MUL24 : OP_ADD);
                             if(newMove0 != nullptr && newMove1 != nullptr)
                             {
                                 it.reset(new CombinedOperation(newMove0, newMove1));

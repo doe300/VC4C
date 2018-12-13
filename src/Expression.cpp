@@ -67,9 +67,9 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
         // no expression can be combined
         return *this;
 
-    if(unpackMode != UNPACK_NOP || packMode != PACK_NOP ||
-        (expr0 != nullptr && (expr0->unpackMode != UNPACK_NOP || expr0->packMode != PACK_NOP)) ||
-        ((expr1 != nullptr && (expr1->unpackMode != UNPACK_NOP || expr1->packMode != PACK_NOP))))
+    if(unpackMode.hasEffect() || packMode.hasEffect() ||
+        (expr0 != nullptr && (expr0->unpackMode.hasEffect() || expr0->packMode.hasEffect())) ||
+        ((expr1 != nullptr && (expr1->unpackMode.hasEffect() || expr1->packMode.hasEffect()))))
         // cannot combine pack modes
         return *this;
 

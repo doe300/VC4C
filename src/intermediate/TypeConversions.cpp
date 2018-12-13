@@ -377,8 +377,8 @@ InstructionWalker intermediate::insertSaturation(
                                   ->addDecorations(InstructionDecorations::UNSIGNED_RESULT));
         else if(dest.type.getScalarBitCount() == 16 && isSigned)
             return it.emplace((new MoveOperation(dest, src))->setPackMode(PACK_INT_TO_SIGNED_SHORT_SATURATE));
-        else if(dest.type.getScalarBitCount() == 32)
-            return it.emplace((new MoveOperation(dest, src))->setPackMode(PACK_32_32));
+        // TODO 32-bit saturation cannot be applied as an extra instruction, has to be done in the instruction
+        // calculating the overflowing value
         // TODO need to saturate manually
         throw CompilationError(
             CompilationStep::GENERAL, "Saturation to this type is not yet supported", dest.type.to_string());

@@ -134,9 +134,29 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
 {
     const Register outReg = getOutput()->hasLocal() ? registerMapping.at(getOutput()->local()) : getOutput()->reg();
 
+    // TODO make sure, only mul pack modes are used for mul ALU writing to register file A
+    Unpack unpack = unpackMode;
+    Pack pack = packMode;
+    if(pack.isPMBitSet() != unpack.isPMBitSet())
+    {
+        if(pack.hasEffect() && unpack.hasEffect())
+            throw CompilationError(
+                CompilationStep::CODE_GENERATION, "PM bit of pack and unpack modes do not match", to_string());
+        // align pm bit for not-set mode to the set one (so thy don't re-set the pm bit)
+        if(pack.hasEffect())
+            unpack = pack.isPMBitSet() ? UNPACK_NOP_PM : UNPACK_NOP;
+        else if(unpack.hasEffect())
+            pack = unpack.isPMBitSet() ? PACK_NOP_PM : PACK_NOP;
+    }
+
     auto input0 = getInputValue(getFirstArg(), registerMapping, this);
     auto input1 = getSecondArg() ? getInputValue(assertArgument(1), registerMapping, this) :
                                    std::make_pair(REG_NOP, Optional<SmallImmediate>{});
+
+    if(unpack.hasEffect() && unpack.isUnpackFromR4() && !getFirstArg().hasRegister(REG_SFU_OUT) &&
+        !(getSecondArg() && assertArgument(1).hasRegister(REG_SFU_OUT)))
+        throw CompilationError(
+            CompilationStep::CODE_GENERATION, "Can only apply r4 unpack mode when reading r4", to_string());
 
     const InputMultiplex inMux0 = getInputMux(input0.first, getFirstArg().hasRegister(), input0.second);
     if(!input0.second)
@@ -197,13 +217,13 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
 
             if(isAddALU)
             {
-                return new qpu_asm::ALUInstruction(unpackMode, packMode, conditional, COND_NEVER, setFlags, swap,
-                    outReg.num, REG_NOP.num, OP_NOP, op, regA.num, imm, inMux0, inMux1, MULTIPLEX_NONE, MULTIPLEX_NONE);
+                return new qpu_asm::ALUInstruction(unpack, pack, conditional, COND_NEVER, setFlags, swap, outReg.num,
+                    REG_NOP.num, OP_NOP, op, regA.num, imm, inMux0, inMux1, MULTIPLEX_NONE, MULTIPLEX_NONE);
             }
             else if(isMulALU)
             {
-                return new qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap,
-                    REG_NOP.num, outReg.num, op, OP_NOP, regA.num, imm, MULTIPLEX_NONE, MULTIPLEX_NONE, inMux0, inMux1);
+                return new qpu_asm::ALUInstruction(unpack, pack, COND_NEVER, conditional, setFlags, swap, REG_NOP.num,
+                    outReg.num, op, OP_NOP, regA.num, imm, MULTIPLEX_NONE, MULTIPLEX_NONE, inMux0, inMux1);
             }
             throw CompilationError(CompilationStep::CODE_GENERATION, "No instruction set", to_string());
         }
@@ -232,16 +252,16 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
             }
             if(isAddALU)
             {
-                return new qpu_asm::ALUInstruction(signal, unpackMode, packMode, conditional, COND_NEVER, setFlags,
-                    swap, outReg.num, REG_NOP.num, OP_NOP, op,
+                return new qpu_asm::ALUInstruction(signal, unpack, pack, conditional, COND_NEVER, setFlags, swap,
+                    outReg.num, REG_NOP.num, OP_NOP, op,
                     getRegister(RegisterFile::PHYSICAL_A, input0.first, input1.first, this).num,
                     getRegister(RegisterFile::PHYSICAL_B, input0.first, input1.first, this).num, inMux0, inMux1,
                     MULTIPLEX_NONE, MULTIPLEX_NONE);
             }
             else if(isMulALU)
             {
-                return new qpu_asm::ALUInstruction(signal, unpackMode, packMode, COND_NEVER, conditional, setFlags,
-                    swap, REG_NOP.num, outReg.num, op, OP_NOP,
+                return new qpu_asm::ALUInstruction(signal, unpack, pack, COND_NEVER, conditional, setFlags, swap,
+                    REG_NOP.num, outReg.num, op, OP_NOP,
                     getRegister(RegisterFile::PHYSICAL_A, input0.first, input1.first, this).num,
                     getRegister(RegisterFile::PHYSICAL_B, input0.first, input1.first, this).num, MULTIPLEX_NONE,
                     MULTIPLEX_NONE, inMux0, inMux1);
@@ -264,31 +284,29 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
 
             if(isAddALU)
             {
-                return new qpu_asm::ALUInstruction(unpackMode, packMode, conditional, COND_NEVER, setFlags, swap,
-                    outReg.num, REG_NOP.num, OP_NOP, op, REG_NOP.num, imm, inMux0, MULTIPLEX_NONE, MULTIPLEX_NONE,
-                    MULTIPLEX_NONE);
+                return new qpu_asm::ALUInstruction(unpack, pack, conditional, COND_NEVER, setFlags, swap, outReg.num,
+                    REG_NOP.num, OP_NOP, op, REG_NOP.num, imm, inMux0, MULTIPLEX_NONE, MULTIPLEX_NONE, MULTIPLEX_NONE);
             }
             else if(isMulALU)
             {
-                return new qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap,
-                    REG_NOP.num, outReg.num, op, OP_NOP, REG_NOP.num, imm, MULTIPLEX_NONE, MULTIPLEX_NONE, inMux0,
-                    MULTIPLEX_NONE);
+                return new qpu_asm::ALUInstruction(unpack, pack, COND_NEVER, conditional, setFlags, swap, REG_NOP.num,
+                    outReg.num, op, OP_NOP, REG_NOP.num, imm, MULTIPLEX_NONE, MULTIPLEX_NONE, inMux0, MULTIPLEX_NONE);
             }
         }
         else
         {
             if(isAddALU)
             {
-                return new qpu_asm::ALUInstruction(signal, unpackMode, packMode, conditional, COND_NEVER, setFlags,
-                    swap, outReg.num, REG_NOP.num, OP_NOP, op,
+                return new qpu_asm::ALUInstruction(signal, unpack, pack, conditional, COND_NEVER, setFlags, swap,
+                    outReg.num, REG_NOP.num, OP_NOP, op,
                     getRegister(RegisterFile::PHYSICAL_A, input0.first, REG_NOP, this).num,
                     getRegister(RegisterFile::PHYSICAL_B, input0.first, REG_NOP, this).num, inMux0, MULTIPLEX_NONE,
                     MULTIPLEX_NONE, MULTIPLEX_NONE);
             }
             else if(isMulALU)
             {
-                return new qpu_asm::ALUInstruction(signal, unpackMode, packMode, COND_NEVER, conditional, setFlags,
-                    swap, REG_NOP.num, outReg.num, op, OP_NOP,
+                return new qpu_asm::ALUInstruction(signal, unpack, pack, COND_NEVER, conditional, setFlags, swap,
+                    REG_NOP.num, outReg.num, op, OP_NOP,
                     getRegister(RegisterFile::PHYSICAL_A, input0.first, REG_NOP, this).num,
                     getRegister(RegisterFile::PHYSICAL_B, input0.first, REG_NOP, this).num, MULTIPLEX_NONE,
                     MULTIPLEX_NONE, inMux0, MULTIPLEX_NONE);
@@ -439,12 +457,12 @@ Operation* MoveOperation::combineWith(const OpCode& otherOpCode) const
         throw CompilationError(CompilationStep::GENERAL,
             "Cannot combine move-operation with operation without a valid ALU instruction", to_string());
     Operation* op = nullptr;
-    if(otherOpCode.runsOnMulALU())
+    if(otherOpCode.runsOnMulALU() && (!packMode.hasEffect() || !packMode.supportsMulALU()))
     {
         // use ADD ALU
         op = new Operation(OP_OR, getOutput().value(), getSource(), getSource(), conditional, setFlags);
     }
-    else if(otherOpCode.runsOnAddALU())
+    else if(otherOpCode.runsOnAddALU() && (!packMode.hasEffect() || packMode.supportsMulALU()))
     {
         // use MUL ALU
         op = new Operation(OP_V8MIN, getOutput().value(), getSource(), getSource(), conditional, setFlags);
@@ -719,6 +737,22 @@ qpu_asm::Instruction* CombinedOperation::convertToAsm(const FastMap<const Local*
         if(addInstr->getSig() == SIGNAL_NONE)
             addInstr->setSig(mulInstr->getSig());
     }
+    if(addInstr->getUnpack().hasEffect() && mulInstr->getUnpack().hasEffect() &&
+        addInstr->getUnpack() != mulInstr->getUnpack())
+        throw CompilationError(
+            CompilationStep::CODE_GENERATION, "Cannot combine two different unpack modes", to_string());
+    if(!addInstr->getUnpack().hasEffect() && mulInstr->getUnpack().hasEffect())
+        addInstr->setUnpack(mulInstr->getUnpack());
+
+    if(addInstr->getPack().hasEffect() && mulInstr->getPack().hasEffect() && addInstr->getPack() != mulInstr->getPack())
+        throw CompilationError(
+            CompilationStep::CODE_GENERATION, "Cannot combine two different pack modes", to_string());
+    if(!addInstr->getPack().hasEffect() && mulInstr->getPack().hasEffect())
+        addInstr->setPack(mulInstr->getPack());
+
+    if(mulInstr->getSetFlag() == SetFlag::SET_FLAGS && addInstr->getAddition() != OP_NOP.opAdd)
+        throw CompilationError(CompilationStep::CODE_GENERATION,
+            "Cannot set flag on multiplication ALU if addition ALU executes non-nop", to_string());
 
     return addInstr.release();
 }

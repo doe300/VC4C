@@ -242,12 +242,12 @@ bool IntermediateInstruction::hasSideEffects() const
 
 bool IntermediateInstruction::hasUnpackMode() const
 {
-    return unpackMode != UNPACK_NOP;
+    return unpackMode.hasEffect();
 }
 
 bool IntermediateInstruction::hasPackMode() const
 {
-    return packMode != PACK_NOP;
+    return packMode.hasEffect();
 }
 
 bool IntermediateInstruction::hasConditionalExecution() const
@@ -262,9 +262,9 @@ IntermediateInstruction* IntermediateInstruction::copyExtrasFrom(const Intermedi
     if(conditional == COND_ALWAYS)
         this->setCondition(src->conditional);
     this->addDecorations(add_flag(this->decoration, src->decoration));
-    if(packMode != PACK_NOP && src->packMode != PACK_NOP && packMode != src->packMode)
+    if(packMode.hasEffect() && src->packMode.hasEffect() && packMode != src->packMode)
         throw CompilationError(CompilationStep::GENERAL, "Failed to merge two distinct pack-modes", to_string());
-    if(packMode == PACK_NOP)
+    if(!packMode.hasEffect())
         this->setPackMode(src->packMode);
     if(setFlags == SetFlag::DONT_SET)
         this->setSetFlags(src->setFlags);
@@ -272,9 +272,9 @@ IntermediateInstruction* IntermediateInstruction::copyExtrasFrom(const Intermedi
         throw CompilationError(CompilationStep::GENERAL, "Failed to merge two distinct signals", to_string());
     if(signal == SIGNAL_NONE)
         this->setSignaling(src->signal);
-    if(unpackMode != UNPACK_NOP && src->unpackMode != UNPACK_NOP && unpackMode != src->unpackMode)
+    if(unpackMode.hasEffect() && src->unpackMode.hasEffect() && unpackMode != src->unpackMode)
         throw CompilationError(CompilationStep::GENERAL, "Failed to merge two distinct unpack-modes", to_string());
-    if(unpackMode == UNPACK_NOP)
+    if(!unpackMode.hasEffect())
         this->setUnpackMode(src->unpackMode);
     return this;
 }

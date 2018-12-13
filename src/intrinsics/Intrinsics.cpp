@@ -58,9 +58,9 @@ static IntrinsicFunction intrinsifyUnaryALUInstruction(const std::string& opCode
             it.reset(
                 (new Operation(OpCode::toOpCode(opCode), callSite->getOutput().value(), callSite->assertArgument(0)))
                     ->copyExtrasFrom(callSite));
-        if(packMode != PACK_NOP)
+        if(packMode.hasEffect())
             it->setPackMode(packMode);
-        if(unpackMode != UNPACK_NOP)
+        if(unpackMode.hasEffect())
             it->setUnpackMode(unpackMode);
         if(setFlags)
             it->setSetFlags(SetFlag::SET_FLAGS);
@@ -85,9 +85,9 @@ static IntrinsicFunction intrinsifyBinaryALUInstruction(const std::string& opCod
         it.reset((new Operation(OpCode::toOpCode(opCode), callSite->getOutput().value(), callSite->assertArgument(0),
                       callSite->assertArgument(1)))
                      ->copyExtrasFrom(callSite));
-        if(packMode != PACK_NOP)
+        if(packMode.hasEffect())
             it->setPackMode(packMode);
-        if(unpackMode != UNPACK_NOP)
+        if(unpackMode.hasEffect())
             it->setUnpackMode(unpackMode);
         if(setFlags)
             it->setSetFlags(SetFlag::SET_FLAGS);
@@ -236,6 +236,38 @@ static IntrinsicFunction intrinsifyVectorRotation()
     };
 }
 
+static ConditionCode toCondition(int c)
+{
+    // for mapping, see _flags.h in VC4CLStdLib
+    switch(c)
+    {
+    case 'z':
+        return COND_ZERO_SET;
+    case 'Z':
+        return COND_ZERO_CLEAR;
+    case 'n':
+        return COND_NEGATIVE_SET;
+    case 'N':
+        return COND_NEGATIVE_CLEAR;
+    case 'c':
+        return COND_CARRY_SET;
+    case 'C':
+        return COND_CARRY_CLEAR;
+    }
+    throw CompilationError(CompilationStep::NORMALIZER, "Unknown key to map to condition code", std::to_string(c));
+}
+
+static InstructionWalker intrinsifyFlagCondition(Method& method, InstructionWalker it, const MethodCall* callSite)
+{
+    auto cond = toCondition(callSite->assertArgument(2).getLiteralValue()->signedInt());
+    assign(it, callSite->getOutput().value()) = (callSite->assertArgument(0), cond);
+    assign(it, callSite->getOutput().value()) = (callSite->assertArgument(1), cond.invert());
+    it.erase();
+    // so next instruction is not skipped
+    it.previousInBlock();
+    return it;
+}
+
 struct Intrinsic
 {
     const IntrinsicFunction func;
@@ -338,15 +370,20 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryI
             [](const Value& val0, const Value& val1) { return OP_MUL24(val0, val1).value(); }}},
     {"vc4cl_dma_write", Intrinsic{intrinsifyDMAAccess(DMAAccess::WRITE)}},
     {"vc4cl_vector_rotate", Intrinsic{intrinsifyVectorRotation()}},
-    // XXX correct, can use the flags emitted by the very same instruction?
-    {"vc4cl_saturated_add",
-        Intrinsic{intrinsifyBinaryALUInstruction(OP_ADD.name, false, PACK_32_32, UNPACK_NOP, true)}},
-    {"vc4cl_saturated_sub",
-        Intrinsic{intrinsifyBinaryALUInstruction(OP_SUB.name, false, PACK_32_32, UNPACK_NOP, true)}},
+    // the 32-bit saturation MUST BE applied to the over-/underflowing operation
+    {"vc4cl_saturated_add", Intrinsic{intrinsifyBinaryALUInstruction(OP_ADD.name, false, PACK_32_32)}},
+    {"vc4cl_saturated_sub", Intrinsic{intrinsifyBinaryALUInstruction(OP_SUB.name, false, PACK_32_32)}},
+    {"vc4cl_add_flags",
+        Intrinsic{intrinsifyBinaryALUInstruction(OP_ADD.name, false, PACK_NOP, UNPACK_NOP, true),
+            /* can't set flags for pre-calculation, so don't */}},
+    {"vc4cl_sub_flags",
+        Intrinsic{intrinsifyBinaryALUInstruction(OP_SUB.name, false, PACK_NOP, UNPACK_NOP, true),
+            /* can't set flags for pre-calculation, so don't */}},
 };
 
 const static std::map<std::string, Intrinsic, std::greater<std::string>> ternaryIntrinsicMapping = {
-    {"vc4cl_dma_copy", Intrinsic{intrinsifyDMAAccess(DMAAccess::COPY)}}};
+    {"vc4cl_dma_copy", Intrinsic{intrinsifyDMAAccess(DMAAccess::COPY)}},
+    {"vc4cl_flag_cond", Intrinsic{intrinsifyFlagCondition}}};
 
 const static std::map<std::string, std::pair<Intrinsic, Optional<Value>>, std::greater<std::string>>
     typeCastIntrinsics = {

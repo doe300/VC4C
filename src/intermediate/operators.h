@@ -359,11 +359,11 @@ namespace vc4c
                     /* to not override either-or where either is dynamic and or is constant */
                     op.conditional == COND_ALWAYS &&
                     /* XXX this is not necessary, but we don't known which inputs to unpack */
-                    op.unpackMode == UNPACK_NOP)
+                    !op.unpackMode.hasEffect())
                 {
                     auto precalc = op.op(op.arg0, op.arg1);
                     if(precalc)
-                        return op.packMode.pack(precalc.value()).value();
+                        return op.packMode(precalc.value()).value();
                 }
                 auto result = method.addNewLocal(type, name);
                 it.emplace(op.toInstruction(result));

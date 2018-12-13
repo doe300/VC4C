@@ -64,14 +64,20 @@ namespace vc4c
     constexpr ConditionCode COND_ALWAYS{1};
     /*
      * Execute instruction iff zero (Z) flag is set
+     *
+     * The zero flag is equivalent to all bits set to zero (for floating-point and integer).
      */
     constexpr ConditionCode COND_ZERO_SET{2};
     /*
      * Execute instruction iff zero (Z) flag is not set
+     *
+     * The zero flag is equivalent to all bits set to zero (for floating-point and integer).
      */
     constexpr ConditionCode COND_ZERO_CLEAR{3};
     /*
      * Execute instruction iff negative (N) flag is set
+     *
+     * The negative flag is equivalent to the highest bit set (for floating-point and integer).
      *
      * NOTE: checks for negative flag set only work correctly on 32-bit values! Since for other values, the 31th bit may
      * not be set!
@@ -80,16 +86,24 @@ namespace vc4c
     /*
      * Execute instruction iff negative (N) flag is not set
      *
+     * The negative flag is equivalent to the highest bit set (for floating-point and integer).
+     *
      * NOTE: checks for negative flag set only work correctly on 32-bit values! Since for other values, the 31th bit may
      * not be set!
      */
     constexpr ConditionCode COND_NEGATIVE_CLEAR{5};
     /*
      * Execute instruction iff carry (C) flag is set
+     *
+     * NOTE: The carry flag is the 32-bit overflow (e.g. a 33th bit would be set by some operation), and not the int32
+     * signed over-/underflow flag!
      */
     constexpr ConditionCode COND_CARRY_SET{6};
     /*
      * Execute instruction iff carry (C) flag is not set
+     *
+     * NOTE: The carry flag is the 32-bit overflow (e.g. a 33th bit would be set by some operation), and not the int32
+     * signed over-/underflow flag!
      */
     constexpr ConditionCode COND_CARRY_CLEAR{7};
 
@@ -232,8 +246,13 @@ namespace vc4c
 
         std::string to_string() const;
 
-        Optional<Value> unpack(const Value& val) const;
-        bool handlesFloat(const OpCode& opCode) const;
+        Optional<Value> operator()(const Value& val) const;
+        bool isPMBitSet() const;
+        inline bool isUnpackFromR4() const
+        {
+            return isPMBitSet();
+        }
+        bool hasEffect() const;
 
         static const Unpack unpackTo32Bit(const DataType& type);
     };
@@ -242,51 +261,82 @@ namespace vc4c
      * Do not unpack data
      */
     constexpr Unpack UNPACK_NOP{0};
+    constexpr Unpack UNPACK_NOP_PM{1};
     /*
      * Float16 (lower half) -> float32 if any ALU consuming data executes float instruction, else signed int16 -> signed
      * int32
+     *
+     * NOTE: The pm bit is part of the unpack value, so the "real" unpack value is shifted to the left by 1 bit
      */
-    constexpr Unpack UNPACK_16A_32{1};
+    constexpr Unpack UNPACK_16A_32{2};
     /*
      * Float16 (upper half) -> float32 if any ALU consuming data executes float instruction, else signed int16 -> signed
      * int32
+     *
+     * NOTE: The pm bit is part of the unpack value, so the "real" unpack value is shifted to the left by 1 bit
      */
-    constexpr Unpack UNPACK_16B_32{2};
+    constexpr Unpack UNPACK_16B_32{4};
     /*
      * Replicate MSB (alpha) across word: result = {8d, 8d, 8d, 8d}
+     *
+     * NOTE: The pm bit is part of the unpack value, so the "real" unpack value is shifted to the left by 1 bit
      */
-    constexpr Unpack UNPACK_8888_32{3};
+    constexpr Unpack UNPACK_8888_32{6};
     /*
      * 8-bit color value (in range [0, 1.0]) from byte 0 (LSB) to 32 bit float if any ALU consuming data executes float
      * instruction, else unsigned int8 -> int32
+     *
+     * NOTE: The pm bit is part of the unpack value, so the "real" unpack value is shifted to the left by 1 bit
      */
-    constexpr Unpack UNPACK_8A_32{4};
+    constexpr Unpack UNPACK_8A_32{8};
     /*
      * 8-bit color value (in range [0, 1.0]) from byte 1 to 32 bit float if any ALU consuming data executes float
      * instruction, else unsigned int8 -> int32
+     *
+     * NOTE: The pm bit is part of the unpack value, so the "real" unpack value is shifted to the left by 1 bit
      */
-    constexpr Unpack UNPACK_8B_32{5};
+    constexpr Unpack UNPACK_8B_32{10};
     /*
      * 8-bit color value (in range [0, 1.0]) from byte 2 to 32 bit float if any ALU consuming data executes float
      * instruction, else unsigned int8 -> int32
+     *
+     * NOTE: The pm bit is part of the unpack value, so the "real" unpack value is shifted to the left by 1 bit
      */
-    constexpr Unpack UNPACK_8C_32{6};
+    constexpr Unpack UNPACK_8C_32{12};
     /*
      * 8-bit color value (in range [0, 1.0]) from byte 3 (MSB) to 32 bit float if any ALU consuming data executes float
      * instruction, else unsigned int8 -> int32
+     *
+     * NOTE: The pm bit is part of the unpack value, so the "real" unpack value is shifted to the left by 1 bit
      */
-    constexpr Unpack UNPACK_8D_32{7};
+    constexpr Unpack UNPACK_8D_32{14};
     constexpr Unpack UNPACK_SHORT_TO_INT_SEXT = UNPACK_16A_32;
     constexpr Unpack UNPACK_HALF_TO_FLOAT = UNPACK_16A_32;
     constexpr Unpack UNPACK_CHAR_TO_INT_ZEXT = UNPACK_8A_32;
 
     /*
-     * 8-bit color value (in range [0, 1.0]) to 32 bit float
+     * Float16 (lower half) -> float32
+     *
+     * NOTE: The pm bit is part of the unpack value, so the "real" unpack value is shifted to the left by 1 bit
      */
-    constexpr Unpack UNPACK_R4_COLOR0 = UNPACK_8A_32;
-    constexpr Unpack UNPACK_R4_COLOR1 = UNPACK_8B_32;
-    constexpr Unpack UNPACK_R4_COLOR2 = UNPACK_8C_32;
-    constexpr Unpack UNPACK_R4_COLOR3 = UNPACK_8D_32;
+    constexpr Unpack UNPACK_R4_16A_32{3};
+    /*
+     * Float16 (upper half) -> float32
+     *
+     * NOTE: The pm bit is part of the unpack value, so the "real" unpack value is shifted to the left by 1 bit
+     */
+    constexpr Unpack UNPACK_R4_16B_32{5};
+    /*
+     * 8-bit color value (in range [0, 1.0]) to 32 bit float
+     *
+     * NOTE: R4 unpack operations have PM bit set!
+     * NOTE: The pm bit is part of the unpack value, so the "real" unpack value is shifted to the left by 1 bit
+     */
+    constexpr Unpack UNPACK_R4_ALPHA_REPLICATE{7};
+    constexpr Unpack UNPACK_R4_COLOR0{9};
+    constexpr Unpack UNPACK_R4_COLOR1{11};
+    constexpr Unpack UNPACK_R4_COLOR2{13};
+    constexpr Unpack UNPACK_R4_COLOR3{15};
 
     /*
      * ALU instructions can also pack their results back into packed storage-formats.
@@ -297,76 +347,132 @@ namespace vc4c
 
         std::string to_string() const;
 
-        Optional<Value> pack(const Value& val) const;
-        bool handlesFloat(const OpCode& opCode) const;
+        Optional<Value> operator()(const Value& val) const;
+        bool isPMBitSet() const;
+        inline bool supportsMulALU() const
+        {
+            return isPMBitSet();
+        }
+        bool hasEffect() const;
     };
 
     /*
      * Do not pack data
      */
     constexpr Pack PACK_NOP{0};
+    constexpr Pack PACK_NOP_PM{16};
     /*
      * Convert to 16 bit float if input was float result, else convert to int16 (no saturation, just take ls 16 bits)
      * and copy into lower half
+     *
+     * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_16A{1};
     /*
      * Convert to 16 bit float if input was float result, else convert to int16 (no saturation, just take ls 16 bits)
      * and copy into higher half
+     *
+     * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_16B{2};
     /*
      * Convert to 8-bit unsigned int (no saturation, just take LSB) and replicate across all bytes of 32-bit word
+     *
+     * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_8888{3};
     /*
      * Convert to 8-bit unsigned int (no saturation, just take LSB) and copy into byte 0 (LSB)
+     *
+     * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_8A{4};
     /*
      * Convert to 8-bit unsigned int (no saturation, just take LSB) and copy into byte 1
+     *
+     * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_8B{5};
     /*
      * Convert to 8-bit unsigned int (no saturation, just take LSB) and copy into byte 2
+     *
+     * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_8C{6};
     /*
      * Convert to 8-bit unsigned int (no saturation, just take LSB) and copy into byte 3 (MSB)
+     *
+     * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_8D{7};
     /*
      * Saturate (signed) 32-bit number (given overflow/carry flags)
+     *
+     * Saturates any result exceeding int32 maximum value (2147483647) to 0x7FFFFFFF and any result exceeding int32
+     * minimum value (-2147483648) to 0x80000000.
+     * NOTE: This saturation MUST be applied to the operation which executes the over-/underflowing operation.
+     * NOTE: The saturation is based on int32 minimum/maximum values and independent of the carry-flag!
+     * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_32{8};
     /*
      * Convert to 16 bit float if input was float result, else convert to signed 16 bit integer (with saturation) and
      * copy into lower half
+     *
+     * On a non-float instruction, this converts any negative int32 value (high bit set) lower than the int16 minimum
+     * value (-32768) to 0x00008000 and any value exceeding the int16 maximum value (32767) to 0x00007FFF.
+     *
+     * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_16A_S{9};
     /*
      * Convert to 16 bit float if input was float result, else convert to signed 16 bit integer (with saturation) and
      * copy into higher half
+     *
+     * On a non-float instruction, this converts any negative int32 value (high bit set) lower than the int16 minimum
+     * value (-32768) to 0x80000000 and any value exceeding the int16 maximum value (32767) to 0x7FFF0000.
+     *
+     * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_16B_S{10};
     /*
      * Saturate to 8-bit unsigned int and replicate across all bytes of 32-bit word
+     *
+     * Converts any value which exceeds the uint8 range (0-255) to 0xFFFFFFFF.
+     *
+     * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_8888_S{11};
     /*
      * Saturate to 8-bit unsigned int and copy into byte 0 (LSB)
+     *
+     * Converts any value which exceeds the uint8 range (0-255) to 0x000000FF.
+     *
+     * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_8A_S{12};
     /*
      * Saturate to 8-bit unsigned int and copy into byte 1
+     *
+     * Converts any value which exceeds the uint8 range (0-255) to 0x0000FF00.
+     *
+     * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_8B_S{13};
     /*
      * Saturate to 8-bit unsigned int and copy into byte 2
+     *
+     * Converts any value which exceeds the uint8 range (0-255) to 0x00FF0000.
+     *
+     * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_8C_S{14};
     /*
      * Saturate to 8-bit unsigned int and copy into byte 3(MSB)
+     *
+     * Converts any value which exceeds the uint8 range (0-255) to 0xFF000000.
+     *
+     * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_8D_S{15};
 
@@ -379,17 +485,26 @@ namespace vc4c
 
     /*
      * Convert mul float result to 8-bit color in range [0, 1.0]
+     *
+     * NOTE: mul pack operations have PM bit set!
+     * NOTE: The pm bit is part of the pack value and set as high bit
      */
-    constexpr Pack PACK_MUL_COLOR0 = PACK_32_8A;
-    constexpr Pack PACK_MUL_COLOR1 = PACK_32_8B;
-    constexpr Pack PACK_MUL_COLOR2 = PACK_32_8C;
-    constexpr Pack PACK_MUL_COLOR3 = PACK_32_8D;
+    constexpr Pack PACK_MUL_GRAY_REPLICATE{19};
+    constexpr Pack PACK_MUL_COLOR0{20};
+    constexpr Pack PACK_MUL_COLOR1{21};
+    constexpr Pack PACK_MUL_COLOR2{22};
+    constexpr Pack PACK_MUL_COLOR3{23};
 
     /*!
-     * Flags are updated from the add ALU unless the add ALU performed a NOP
-     * (or its condition code was NEVER) in which case flags are updated from the mul ALU
+     * "Flags are updated from the add ALU unless the add ALU performed a NOP
+     * (or its condition code was NEVER) in which case flags are updated from the mul ALU"
+     * - Broadcom specification, page 27
      *
-     * page 27
+     * NOTE: Despite the wording of the specification, flags are only set from the mul ALU if the add ALU executes a
+     * NOP!
+     * NOTE: Conditionally executed instructions can set flags. If so, the flags are only updated for the elements
+     * where the condition applies! This means, for the other elements, the previous set flags remain in effect!
+     *
      */
     enum class SetFlag : unsigned char
     {
@@ -397,6 +512,7 @@ namespace vc4c
         SET_FLAGS = 1
     };
     std::string toString(SetFlag flag);
+    bool isFlagSetByMulALU(unsigned char opAdd, unsigned char opMul);
 
     /*!
      * Write swap for add and multiply unit outputs

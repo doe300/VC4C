@@ -32,7 +32,9 @@ namespace vc4c
             std::string toASMString(bool addComments) const override;
             bool isValidInstruction() const override;
 
-            BITFIELD_ENTRY(Unpack, Unpack, 57, Triple)
+            // NOTE: The overlap of Unpack and Pack is on purpose!
+            BITFIELD_ENTRY(Unpack, Unpack, 56, Quadruple)
+            // NOTE: The pack value includes the pm bit!
             BITFIELD_ENTRY(Pack, Pack, 52, Quintuple)
             BITFIELD_ENTRY(AddCondition, ConditionCode, 49, Triple)
             BITFIELD_ENTRY(MulCondition, ConditionCode, 46, Triple)

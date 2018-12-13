@@ -1348,9 +1348,9 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
             case 32:
                 return dest;
             case 16:
-                return PACK_INT_TO_SHORT_TRUNCATE.pack(dest).value();
+                return PACK_INT_TO_SHORT_TRUNCATE(dest).value();
             case 8:
-                return PACK_INT_TO_CHAR_TRUNCATE.pack(dest).value();
+                return PACK_INT_TO_CHAR_TRUNCATE(dest).value();
             }
             break;
         }
@@ -1360,7 +1360,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
             case 16:
                 return dest;
             case 8:
-                return UNPACK_CHAR_TO_INT_ZEXT.unpack(dest).value();
+                return UNPACK_CHAR_TO_INT_ZEXT(dest).value();
             }
             break;
         case 8:
@@ -1368,7 +1368,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
             {
             case 32: // fall-through
             case 16:
-                return UNPACK_CHAR_TO_INT_ZEXT.unpack(dest).value();
+                return UNPACK_CHAR_TO_INT_ZEXT(dest).value();
             case 8:
                 return dest;
             }

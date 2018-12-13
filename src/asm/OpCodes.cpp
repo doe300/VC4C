@@ -149,6 +149,7 @@ std::string Unpack::to_string() const
     switch(*this)
     {
     case UNPACK_NOP:
+    case UNPACK_NOP_PM:
         return "";
     case UNPACK_16A_32:
         return "sextLow16to32";
@@ -164,30 +165,40 @@ std::string Unpack::to_string() const
         return "zextByte2To32";
     case UNPACK_8D_32:
         return "zextByte3To32";
+    case UNPACK_R4_16A_32:
+        return "r4HalfLowToFloat";
+    case UNPACK_R4_16B_32:
+        return "r4HalfHighToFloat";
+    case UNPACK_R4_ALPHA_REPLICATE:
+        return "r4ReplAlpha";
+    case UNPACK_R4_COLOR0:
+        return "r4Byte0ToFloat";
+    case UNPACK_R4_COLOR1:
+        return "r4Byte1ToFloat";
+    case UNPACK_R4_COLOR2:
+        return "r4Byte2ToFloat";
+    case UNPACK_R4_COLOR3:
+        return "r4Byte3ToFloat";
     }
     throw CompilationError(
         CompilationStep::CODE_GENERATION, "Unsupported unpack-mode", std::to_string(static_cast<unsigned>(value)));
 }
 
-Optional<Value> Unpack::unpack(const Value& val) const
+Optional<Value> Unpack::operator()(const Value& val) const
 {
+    // TODO are the r4 unpack values additional or instead-of the "normal" ones?
+    if(!hasEffect())
+        return val;
     // we never can pack complex types (even pointer, there are always 32-bit)
     if(!val.type.isSimpleType())
         return NO_VALUE;
-    // for now, we can't unpack floats
-    if(val.type.isFloatingType())
-    {
-        if(*this == PACK_NOP)
-            return val;
-        return NO_VALUE;
-    }
     if(val.hasContainer())
     {
         // unpack vectors per element
         Value result(ContainerValue(val.container().elements.size()), val.type);
         for(const Value& elem : val.container().elements)
         {
-            auto tmp = unpack(elem);
+            auto tmp = operator()(elem);
             if(!tmp)
                 return NO_VALUE;
             result.container().elements.push_back(tmp.value());
@@ -195,7 +206,7 @@ Optional<Value> Unpack::unpack(const Value& val) const
         return result;
     }
     // can only unpack literals
-    if(!val.getLiteralValue() && *this != UNPACK_NOP)
+    if(!val.getLiteralValue())
         return NO_VALUE;
     switch(*this)
     {
@@ -203,6 +214,8 @@ Optional<Value> Unpack::unpack(const Value& val) const
         return val;
     case UNPACK_16A_32:
     {
+        if(val.type.isFloatingType())
+            return NO_VALUE;
         // signed conversion -> truncate to unsigned short, bit-cast to signed short and sign-extend
         uint16_t lowWord = static_cast<uint16_t>(val.getLiteralValue()->unsignedInt());
         int16_t lowWordSigned = bit_cast<uint16_t, int16_t>(lowWord);
@@ -210,11 +223,15 @@ Optional<Value> Unpack::unpack(const Value& val) const
     }
     case UNPACK_16B_32:
     {
+        if(val.type.isFloatingType())
+            return NO_VALUE;
         // signed conversion -> truncate to unsigned short, bit-cast to signed short and sign-extend
         uint16_t highWord = static_cast<uint16_t>(val.getLiteralValue()->unsignedInt() >> 16);
         int16_t highWordSigned = bit_cast<uint16_t, int16_t>(highWord);
         return Value(Literal(static_cast<int32_t>(highWordSigned)), val.type);
     }
+    case UNPACK_R4_ALPHA_REPLICATE:
+        // fall-through on purpose
     case UNPACK_8888_32:
     {
         // unsigned cast required to guarantee cutting off the value
@@ -225,39 +242,63 @@ Optional<Value> Unpack::unpack(const Value& val) const
     }
     case UNPACK_8A_32:
     {
+        if(val.type.isFloatingType())
+            return UNPACK_R4_COLOR0(val);
         // unsigned cast required to guarantee cutting off the value
         uint8_t byte0 = static_cast<uint8_t>(val.getLiteralValue()->unsignedInt());
         return Value(Literal(static_cast<uint32_t>(byte0)), val.type);
     }
     case UNPACK_8B_32:
     {
+        if(val.type.isFloatingType())
+            return UNPACK_R4_COLOR1(val);
         // unsigned cast required to guarantee cutting off the value
         uint8_t byte1 = static_cast<uint8_t>(val.getLiteralValue()->unsignedInt() >> 8);
         return Value(Literal(static_cast<uint32_t>(byte1)), val.type);
     }
     case UNPACK_8C_32:
     {
+        if(val.type.isFloatingType())
+            return UNPACK_R4_COLOR2(val);
         // unsigned cast required to guarantee cutting off the value
         uint8_t byte2 = static_cast<uint8_t>(val.getLiteralValue()->unsignedInt() >> 16);
         return Value(Literal(static_cast<uint32_t>(byte2)), val.type);
     }
     case UNPACK_8D_32:
     {
+        if(val.type.isFloatingType())
+            return UNPACK_R4_COLOR3(val);
         // unsigned cast required to guarantee cutting off the value
         uint8_t byte3 = static_cast<uint8_t>(val.getLiteralValue()->unsignedInt() >> 24);
         return Value(Literal(static_cast<uint32_t>(byte3)), val.type);
     }
+    case UNPACK_R4_COLOR0:
+    {
+        // unsigned cast required to guarantee cutting off the value
+        uint8_t byte0 = static_cast<uint8_t>(val.getLiteralValue()->unsignedInt());
+        return Value(Literal(static_cast<float>(byte0) / 255.0f), val.type);
+    }
+    case UNPACK_R4_COLOR1:
+    {
+        // unsigned cast required to guarantee cutting off the value
+        uint8_t byte1 = static_cast<uint8_t>(val.getLiteralValue()->unsignedInt() >> 8);
+        return Value(Literal(static_cast<float>(byte1) / 255.0f), val.type);
+    }
+    case UNPACK_R4_COLOR2:
+    {
+        // unsigned cast required to guarantee cutting off the value
+        uint8_t byte2 = static_cast<uint8_t>(val.getLiteralValue()->unsignedInt() >> 16);
+        return Value(Literal(static_cast<float>(byte2) / 255.0f), val.type);
+    }
+    case UNPACK_R4_COLOR3:
+    {
+        // unsigned cast required to guarantee cutting off the value
+        uint8_t byte3 = static_cast<uint8_t>(val.getLiteralValue()->unsignedInt() >> 24);
+        return Value(Literal(static_cast<float>(byte3) / 255.0f), val.type);
+    }
     }
     throw CompilationError(
         CompilationStep::GENERAL, "Unsupported unpack-mode", std::to_string(static_cast<unsigned>(value)));
-}
-
-bool Unpack::handlesFloat(const OpCode& opCode) const
-{
-    if(*this == UNPACK_16A_32 || *this == UNPACK_16B_32 || *this == UNPACK_8A_32 || *this == UNPACK_8B_32 ||
-        *this == UNPACK_8C_32 || *this == UNPACK_8D_32)
-        return opCode.acceptsFloat;
-    return false;
 }
 
 const Unpack Unpack::unpackTo32Bit(const DataType& type)
@@ -271,12 +312,25 @@ const Unpack Unpack::unpackTo32Bit(const DataType& type)
     throw CompilationError(CompilationStep::GENERAL, "Unhandled type-width for unpack-modes", type.to_string());
 }
 
+bool Unpack::isPMBitSet() const
+{
+    // check whether pm bit set
+    return value & 0x1;
+}
+
+bool Unpack::hasEffect() const
+{
+    // exclude "normal" NOP and NOP with pm bit set
+    return value != 0 && value != 1;
+}
+
 std::string Pack::to_string() const
 {
     // http://maazl.de/project/vc4asm/doc/extensions.html#pack
     switch(*this)
     {
     case PACK_NOP:
+    case PACK_NOP_PM:
         return "";
     case PACK_32_16A:
         return "trunc32toLow16";
@@ -308,30 +362,36 @@ std::string Pack::to_string() const
         return "truncLSBToByte3";
     case PACK_32_8D_S:
         return "satLSBToByte3";
+    case PACK_MUL_GRAY_REPLICATE:
+        return "mulFloatToReplLSB";
+    case PACK_MUL_COLOR0:
+        return "mulFloatToByte0";
+    case PACK_MUL_COLOR1:
+        return "mulFloatToByte1";
+    case PACK_MUL_COLOR2:
+        return "mulFloatToByte2";
+    case PACK_MUL_COLOR3:
+        return "mulFloatToByte3";
     }
     throw CompilationError(
         CompilationStep::CODE_GENERATION, "Unsupported pack-mode", std::to_string(static_cast<unsigned>(value)));
 }
 
-Optional<Value> Pack::pack(const Value& val) const
+Optional<Value> Pack::operator()(const Value& val) const
 {
+    // TODO are the mul pack modes additional or instead-of the "normal" ones? Can mul ALU also use"normal" pack mode?
+    if(!hasEffect())
+        return val;
     // we never can pack complex types (even pointer, there are always 32-bit)
     if(!val.type.isSimpleType())
         return NO_VALUE;
-    // for now, we can't pack floats
-    if(val.type.isFloatingType())
-    {
-        if(*this == PACK_NOP)
-            return val;
-        return NO_VALUE;
-    }
     if(val.hasContainer())
     {
         // pack vectors per element
         Value result(ContainerValue(val.container().elements.size()), val.type);
         for(const Value& elem : val.container().elements)
         {
-            auto tmp = pack(elem);
+            auto tmp = operator()(elem);
             if(!tmp)
                 return NO_VALUE;
             result.container().elements.push_back(tmp.value());
@@ -339,22 +399,30 @@ Optional<Value> Pack::pack(const Value& val) const
         return result;
     }
     // can only pack literals
-    if(!val.getLiteralValue() && *this != PACK_NOP)
+    if(!val.getLiteralValue())
         return NO_VALUE;
     switch(*this)
     {
     case PACK_NOP:
         return val;
     case PACK_32_16A:
+        if(val.type.isFloatingType())
+            return NO_VALUE;
         return Value(Literal(val.getLiteralValue()->unsignedInt() & 0xFFFF), val.type);
     case PACK_32_16A_S:
+        if(val.type.isFloatingType())
+            return NO_VALUE;
         return Value(Literal(saturate<int16_t>(val.getLiteralValue()->signedInt()) & 0xFFFF), val.type);
     case PACK_32_16B:
+        if(val.type.isFloatingType())
+            return NO_VALUE;
         return Value(Literal((val.getLiteralValue()->unsignedInt() & 0xFFFF) << 16), val.type);
     case PACK_32_16B_S:
+        if(val.type.isFloatingType())
+            return NO_VALUE;
         return Value(Literal(saturate<int16_t>(val.getLiteralValue()->signedInt()) << 16), val.type);
     case PACK_32_32:
-        // this depends on the overflow/carry flags (to determine overflow and then saturate)
+        // this depends on signed integer overflow (to determine overflow and then saturate)
         throw CompilationError(CompilationStep::GENERAL, "32-bit saturation is not implemented", val.to_string());
     case PACK_32_8888:
         return Value(
@@ -384,16 +452,46 @@ Optional<Value> Pack::pack(const Value& val) const
         return Value(Literal((val.getLiteralValue()->unsignedInt() & 0xFF) << 24), val.type);
     case PACK_32_8D_S:
         return Value(Literal(saturate<uint8_t>(val.getLiteralValue()->unsignedInt()) << 24), val.type);
+    case PACK_MUL_GRAY_REPLICATE:
+    {
+        auto tmp = static_cast<uint32_t>(val.getLiteralValue()->real() / 255.0f) & 0xFF;
+        return Value(Literal(tmp << 24 | tmp << 16 | tmp << 8 | tmp), val.type);
+    }
+    case PACK_MUL_COLOR0:
+    {
+        auto tmp = static_cast<uint32_t>(val.getLiteralValue()->real() * 255.0f) & 0xFF;
+        return Value(Literal(tmp), val.type);
+    }
+    case PACK_MUL_COLOR1:
+    {
+        auto tmp = static_cast<uint32_t>(val.getLiteralValue()->real() * 255.0f) & 0xFF;
+        return Value(Literal(tmp << 8), val.type);
+    }
+    case PACK_MUL_COLOR2:
+    {
+        auto tmp = static_cast<uint32_t>(val.getLiteralValue()->real() * 255.0f) & 0xFF;
+        return Value(Literal(tmp << 16), val.type);
+    }
+    case PACK_MUL_COLOR3:
+    {
+        auto tmp = static_cast<uint32_t>(val.getLiteralValue()->real() * 255.0f) & 0xFF;
+        return Value(Literal(tmp << 24), val.type);
+    }
     }
     throw CompilationError(
         CompilationStep::GENERAL, "Unsupported pack-mode", std::to_string(static_cast<unsigned>(value)));
 }
 
-bool Pack::handlesFloat(const OpCode& opCode) const
+bool Pack::isPMBitSet() const
 {
-    if(*this == PACK_32_16A || *this == PACK_32_16B || *this == PACK_32_16A_S || *this == PACK_32_16B_S)
-        return opCode.returnsFloat;
-    return false;
+    // check for pm bit set
+    return value & 0x10;
+}
+
+bool Pack::hasEffect() const
+{
+    // exclude "normal" NOP and NOP with pm bit set
+    return value != 0 && value != 0x10;
 }
 
 std::string vc4c::toString(const SetFlag flag)
@@ -407,6 +505,12 @@ std::string vc4c::toString(const SetFlag flag)
     }
     throw CompilationError(
         CompilationStep::CODE_GENERATION, "Unsupported set-flags flag", std::to_string(static_cast<unsigned>(flag)));
+}
+
+bool vc4c::isFlagSetByMulALU(unsigned char opAdd, unsigned char opMul)
+{
+    // despite what the Broadcom specification states, only using mul ALU if add ALU executes nop.
+    return opAdd == OP_NOP.opAdd && opMul != OP_NOP.opMul;
 }
 
 bool OpCode::operator==(const OpCode& right) const

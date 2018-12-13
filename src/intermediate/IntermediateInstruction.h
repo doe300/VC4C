@@ -542,6 +542,13 @@ namespace vc4c
             PER_ELEMENT_UNSIGNED = 3
         };
 
+        /**
+         * NOTE: Load instructions can set flags per element (like any ALU instruction). This means, for the per-element
+         * variants, the resulting flags can differ.
+         *
+         * NOTE: Conditional loads also apply per element (like any ALU instruction). This allows for some elements to
+         * be overridden in the load, while other stay unchanged.
+         */
         struct LoadImmediate final : public IntermediateInstruction
         {
         public:
