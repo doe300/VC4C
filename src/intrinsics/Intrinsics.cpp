@@ -1036,6 +1036,40 @@ static NODISCARD InstructionWalker intrinsifyReadWorkItemInfo(Method& method, In
      * -> res = (UNIFORM >> (dim * 8)) & 0xFF
      */
     const Local* itemInfo = method.findOrCreateLocal(TYPE_INT32, local);
+    auto literalDim =
+        arg.getLiteralValue() ? arg : arg.getSingleWriter() ? arg.getSingleWriter()->precalculate() : NO_VALUE;
+    if(literalDim && literalDim->getLiteralValue())
+    {
+        // NOTE: This forces the local_ids/local_sizes values to be on register-file A, but safes an instruction per
+        // read
+        switch(literalDim->getLiteralValue()->unsignedInt())
+        {
+        case 0:
+            return it.reset((new MoveOperation(it->getOutput().value(), itemInfo->createReference()))
+                                ->setUnpackMode(UNPACK_8A_32)
+                                ->copyExtrasFrom(it.get())
+                                ->addDecorations(decoration));
+        case 1:
+            return it.reset((new MoveOperation(it->getOutput().value(), itemInfo->createReference()))
+                                ->setUnpackMode(UNPACK_8B_32)
+                                ->copyExtrasFrom(it.get())
+                                ->addDecorations(decoration));
+        case 2:
+            return it.reset((new MoveOperation(it->getOutput().value(), itemInfo->createReference()))
+                                ->setUnpackMode(UNPACK_8C_32)
+                                ->copyExtrasFrom(it.get())
+                                ->addDecorations(decoration));
+        case 3:
+            return it.reset((new MoveOperation(it->getOutput().value(), itemInfo->createReference()))
+                                ->setUnpackMode(UNPACK_8D_32)
+                                ->copyExtrasFrom(it.get())
+                                ->addDecorations(decoration));
+        default:
+            return it.reset((new MoveOperation(it->getOutput().value(), INT_ZERO))
+                                ->copyExtrasFrom(it.get())
+                                ->addDecorations(decoration));
+        }
+    }
     Value tmp0 = assign(it, TYPE_INT8) = mul24(arg, 8_val);
     Value tmp1 = assign(it, TYPE_INT8) = itemInfo->createReference() >> tmp0;
     return it.reset(

@@ -243,6 +243,7 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
     OptimizationPass("CombineRotations", "combine-rotations", combineVectorRotations,
         "combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation",
         OptimizationType::REPEAT),
+    // XXX not enabled with any optimization level for now
     OptimizationPass("CommonSubexpressionElimination", "eliminate-common-subexpressions", eliminateCommonSubexpressions,
         "eliminates repetitive calculations of common expressions by re-using previous results (WIP, slow)",
         OptimizationType::REPEAT),
@@ -259,8 +260,9 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
      * can therefore introduce instructions or constructs (e.g. combined instructions) not supported by
      * the other optimizations.
      */
-    // OptimizationPass("CompressWorkGroupInfo", "compress-work-group-info", compressWorkGroupLocals,
-    //    "compresses work-group info into single local", OptimizationType::FINAL),
+    // XXX not enabled with any optimization level for now
+    OptimizationPass("CompressWorkGroupInfo", "compress-work-group-info", compressWorkGroupLocals,
+        "compresses work-group info into single local", OptimizationType::FINAL),
     OptimizationPass("SplitReadAfterWrites", "split-read-write", splitReadAfterWrites,
         "splits read-after-writes (except if the local is used only very locally), so the reordering and "
         "register-allocation have an easier job",

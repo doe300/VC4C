@@ -542,7 +542,7 @@ static unsigned int rotate_right(unsigned int value, int shift)
     return (value >> shift) | (value << (32 - shift));
 }
 
-Optional<Value> OpCode::calculate(const Optional<Value>& firstOperand, const Optional<Value>& secondOperand) const
+Optional<Value> OpCode::operator()(const Optional<Value>& firstOperand, const Optional<Value>& secondOperand) const
 {
     if(!firstOperand)
         return NO_VALUE;
@@ -596,10 +596,10 @@ Optional<Value> OpCode::calculate(const Optional<Value>& firstOperand, const Opt
         {
             Optional<Value> tmp = NO_VALUE;
             if(numOperands == 1)
-                tmp = calculate(
+                tmp = operator()(
                     firstVal->hasContainer() ? firstVal->container().elements.at(i) : firstVal.value(), NO_VALUE);
             else
-                tmp = calculate(firstVal->hasContainer() ? firstVal->container().elements.at(i) : firstVal.value(),
+                tmp = operator()(firstVal->hasContainer() ? firstVal->container().elements.at(i) : firstVal.value(),
                     secondVal->hasContainer() ? secondVal->container().elements.at(i) : secondVal.value());
             if(!tmp)
                 // result could not be calculated for a single component of the vector, abort
@@ -705,11 +705,6 @@ Optional<Value> OpCode::calculate(const Optional<Value>& firstOperand, const Opt
     }
 
     return NO_VALUE;
-}
-
-Optional<Value> OpCode::operator()(const Optional<Value>& firstOperand, const Optional<Value>& secondOperand) const
-{
-    return calculate(firstOperand, secondOperand);
 }
 
 const OpCode& OpCode::toOpCode(const std::string& name)

@@ -1391,7 +1391,8 @@ static bool lowerMemoryToVPM(Method& method, const Local* local, MemoryType type
                    [&](const Local* l) -> bool { return vpmAreas.find(l) != vpmAreas.end(); }))
             {
                 // TODO insert copy from/to VPM. Need to do via read/write
-                break;
+                throw CompilationError(
+                    CompilationStep::NORMALIZER, "Copying from/to VPM is not yet implemented", mem->to_string());
             }
             ++it;
             continue;

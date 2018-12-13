@@ -593,7 +593,6 @@ namespace vc4c
         /*
          * Tries to calculate the operation for this op-code with the operands given
          */
-        Optional<Value> calculate(const Optional<Value>& firstOperand, const Optional<Value>& secondOperand) const;
         Optional<Value> operator()(const Optional<Value>& firstOperand, const Optional<Value>& secondOperand) const;
 
         /*

@@ -17,10 +17,17 @@
 using namespace vc4c;
 using namespace vc4c::tools;
 
-static auto availableOptimizations = vc4c::optimizations::Optimizer::getPasses(OptimizationLevel::FULL);
+static std::set<std::string> createAvailableOptimizations()
+{
+    std::set<std::string> opts;
+    for(const auto& op : vc4c::optimizations::Optimizer::ALL_PASSES)
+        opts.emplace(op.parameterName);
+    return opts;
+}
 
 bool tools::parseConfigurationParameter(Configuration& config, const std::string& arg)
 {
+    static auto availableOptimizations = createAvailableOptimizations();
     if(arg == "-cl-opt-disable")
     {
         config.optimizationLevel = OptimizationLevel::NONE;

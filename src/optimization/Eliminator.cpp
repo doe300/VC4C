@@ -691,12 +691,15 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
 
                 const auto& arg0 = op->assertArgument(0);
                 const auto& arg1 = op->assertArgument(1);
-                auto out = op->getOutput().value().local();
+                if(op->getOutput()->hasLocal())
+                {
+                    auto out = op->getOutput()->local();
 
-                if(arg0.hasLocal())
-                    foundOr(out, arg0.local(), it);
-                if(arg1.hasLocal())
-                    foundOr(out, arg1.local(), it);
+                    if(arg0.hasLocal())
+                        foundOr(out, arg0.local(), it);
+                    if(arg1.hasLocal())
+                        foundOr(out, arg1.local(), it);
+                }
             }
         }
 

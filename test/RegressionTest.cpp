@@ -275,7 +275,7 @@ static std::vector<Entry> allKernels =
 		//Entry{PENDING_BOTH, FAST, "./testing/rodinia/streamcluster-Kernels.cl", ""}, // 64-bit integer
 		Entry{PENDING_LLVM, FAST, "./testing/rodinia/track_ellipse_kernel.cl", ""},
 
-		Entry{PASSED, FAST, "./testing/NVIDIA/BitonicSort.cl", "-DLOCAL_SIZE_LIMIT=8"},
+		Entry{PENDING_BOTH, FAST, "./testing/NVIDIA/BitonicSort.cl", "-DLOCAL_SIZE_LIMIT=8"},
 		Entry{PASSED, FAST, "./testing/NVIDIA/BitonicSort_b.cl", ""},
 		Entry{PASSED, FAST, "./testing/NVIDIA/BlackScholes.cl", "-DLOCAL_SIZE_LIMIT=8"},
 		Entry{PASSED, FAST, "./testing/NVIDIA/BoxFilter.cl", "-DLOCAL_SIZE_LIMIT=8"},

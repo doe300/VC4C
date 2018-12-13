@@ -462,7 +462,8 @@ Operation* MoveOperation::combineWith(const OpCode& otherOpCode) const
         // use ADD ALU
         op = new Operation(OP_OR, getOutput().value(), getSource(), getSource(), conditional, setFlags);
     }
-    else if(otherOpCode.runsOnAddALU() && (!packMode.hasEffect() || packMode.supportsMulALU()))
+    else if(otherOpCode.runsOnAddALU() && (!packMode.hasEffect() || packMode.supportsMulALU()) &&
+        setFlags == SetFlag::DONT_SET)
     {
         // use MUL ALU
         op = new Operation(OP_V8MIN, getOutput().value(), getSource(), getSource(), conditional, setFlags);

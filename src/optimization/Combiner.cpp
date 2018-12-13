@@ -568,7 +568,8 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                         else if(move != nullptr && nextMove != nullptr)
                         {
                             bool firstOnMul = (move->packMode.hasEffect() && move->packMode.supportsMulALU()) ||
-                                (nextMove->packMode.hasEffect() && !nextMove->packMode.supportsMulALU());
+                                (nextMove->packMode.hasEffect() && !nextMove->packMode.supportsMulALU()) ||
+                                nextMove->doesSetFlag();
                             Operation* newMove0 = move->combineWith(firstOnMul ? OP_ADD : OP_MUL24);
                             Operation* newMove1 = nextMove->combineWith(firstOnMul ? OP_MUL24 : OP_ADD);
                             if(newMove0 != nullptr && newMove1 != nullptr)
