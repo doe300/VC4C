@@ -15,8 +15,10 @@
 
 #if __cplusplus > 201402L
 #define NODISCARD [[nodiscard]]
+#define FALL_THROUGH [[fallthrough]]
 #else
 #define NODISCARD __attribute__((warn_unused_result))
+#define FALL_THROUGH /* fall through */
 #endif
 
 namespace vc4c

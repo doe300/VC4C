@@ -231,7 +231,7 @@ Optional<Value> Unpack::operator()(const Value& val) const
         return Value(Literal(static_cast<int32_t>(highWordSigned)), val.type);
     }
     case UNPACK_R4_ALPHA_REPLICATE:
-        // fall-through on purpose
+        FALL_THROUGH
     case UNPACK_8888_32:
     {
         // unsigned cast required to guarantee cutting off the value

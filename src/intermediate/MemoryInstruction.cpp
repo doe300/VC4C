@@ -340,7 +340,7 @@ DataType MemoryInstruction::getDestinationElementType(bool sizedType) const
     switch(op)
     {
     case MemoryOperation::COPY:
-        // fall-through on purpose
+        FALL_THROUGH
     case MemoryOperation::FILL:
     {
         checkMemoryLocation(getDestination());

@@ -292,7 +292,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("schedule-instructions");
         passes.emplace("work-group-cache");
         passes.emplace("eliminate-common-subexpressions");
-        // fall-through on purpose
+        FALL_THROUGH
     case OptimizationLevel::MEDIUM:
         passes.emplace("merge-blocks");
         passes.emplace("combine-rotations");
@@ -300,7 +300,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("eliminate-bit-operations");
         passes.emplace("copy-propagation");
         passes.emplace("combine-loads");
-        // fall-through on purpose
+        FALL_THROUGH
     case OptimizationLevel::BASIC:
         passes.emplace("reorder-blocks");
         passes.emplace("simplify-branches");
@@ -308,7 +308,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("single-steps");
         passes.emplace("reorder");
         passes.emplace("combine");
-        // fall-through on purpose
+        FALL_THROUGH
     case OptimizationLevel::NONE:
         // TODO this is not an optimization, more a normalization step.
         // Move out of optimizations/remove when instruction scheduling is implemented

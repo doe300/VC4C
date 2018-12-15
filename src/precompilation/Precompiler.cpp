@@ -25,15 +25,20 @@ bool vc4c::isSupportedByFrontend(SourceType inputType, Frontend frontend)
 {
     switch(inputType)
     {
-    case SourceType::LLVM_IR_BIN:  // fall-through
-    case SourceType::LLVM_IR_TEXT: // fall-through
+    case SourceType::LLVM_IR_BIN:
+        FALL_THROUGH
+    case SourceType::LLVM_IR_TEXT:
+        FALL_THROUGH
     case SourceType::OPENCL_C:
         return true;
-    case SourceType::SPIRV_BIN: // fall-through
+    case SourceType::SPIRV_BIN:
+        FALL_THROUGH
     case SourceType::SPIRV_TEXT:
         return frontend == Frontend::SPIR_V || frontend == Frontend::DEFAULT;
-    case SourceType::QPUASM_BIN: // fall-through
-    case SourceType::QPUASM_HEX: // fall-through
+    case SourceType::QPUASM_BIN:
+        FALL_THROUGH
+    case SourceType::QPUASM_HEX:
+        FALL_THROUGH
     case SourceType::UNKNOWN:
     default:
         return false;

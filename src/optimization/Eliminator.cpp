@@ -712,8 +712,8 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
     {
         // we do not run the whole analysis in front, but only the next step to save on memory usage
         // For that purpose, we also override the previous expressions on every step
-        analysis::AvailableExpressionAnalysis::Cache cache;
-        analysis::AvailableExpressions expressions;
+        analysis::AvailableExpressionAnalysis::Cache cache{};
+        analysis::AvailableExpressions expressions{};
 
         for(auto it = block.walk(); !it.isEndOfBlock(); it.nextInBlock())
         {

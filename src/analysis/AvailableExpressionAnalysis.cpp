@@ -21,7 +21,7 @@ AvailableExpressionAnalysis::AvailableExpressionAnalysis() :
 
 std::pair<AvailableExpressions, Optional<Expression>> AvailableExpressionAnalysis::analyzeAvailableExpressions(
     const intermediate::IntermediateInstruction* instr, const AvailableExpressions& previousExpressions,
-    FastMap<const Local*, FastSet<const Expression*>>& cache, unsigned maxExpressionDistance)
+    FastMap<const Local*, FastSet<Expression>>& cache, unsigned maxExpressionDistance)
 {
     PROFILE_START(AvailableExpressionAnalysis);
     AvailableExpressions newExpressions(previousExpressions);
@@ -48,7 +48,7 @@ std::pair<AvailableExpressions, Optional<Expression>> AvailableExpressionAnalysi
         if(cacheIt != cache.end())
         {
             for(const auto& expr : cacheIt->second)
-                newExpressions.erase(*expr);
+                newExpressions.erase(expr);
         }
         expr = Expression::createExpression(*instr);
         if(expr)
@@ -61,7 +61,7 @@ std::pair<AvailableExpressions, Optional<Expression>> AvailableExpressionAnalysi
                 for(const auto loc : instr->getUsedLocals())
                 {
                     if(has_flag(loc.second, LocalUse::Type::READER))
-                        cache[loc.first].emplace(&it.first->first);
+                        cache[loc.first].emplace(it.first->first);
                 }
             }
         }
@@ -72,7 +72,7 @@ std::pair<AvailableExpressions, Optional<Expression>> AvailableExpressionAnalysi
 
 AvailableExpressions AvailableExpressionAnalysis::analyzeAvailableExpressionsWrapper(
     const intermediate::IntermediateInstruction* instr, const AvailableExpressions& previousExpressions,
-    FastMap<const Local*, FastSet<const Expression*>>& cache)
+    FastMap<const Local*, FastSet<Expression>>& cache)
 {
     return analyzeAvailableExpressions(instr, previousExpressions, cache, std::numeric_limits<unsigned>::max()).first;
 }

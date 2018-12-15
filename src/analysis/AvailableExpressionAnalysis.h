@@ -32,7 +32,7 @@ namespace vc4c
          *
          */
         class AvailableExpressionAnalysis : public LocalAnalysis<AnalysisDirection::FORWARD, AvailableExpressions,
-                                                FastMap<const Local*, FastSet<const Expression*>>>
+                                                FastMap<const Local*, FastSet<Expression>>>
         {
         public:
             explicit AvailableExpressionAnalysis();
@@ -50,7 +50,7 @@ namespace vc4c
              */
             static std::pair<AvailableExpressions, Optional<Expression>> analyzeAvailableExpressions(
                 const intermediate::IntermediateInstruction* instr, const AvailableExpressions& previousExpressions,
-                FastMap<const Local*, FastSet<const Expression*>>& cache, unsigned maxExpressionDistance);
+                FastMap<const Local*, FastSet<Expression>>& cache, unsigned maxExpressionDistance);
 
             static std::string to_string(const AvailableExpressions& expressions);
 
@@ -62,7 +62,7 @@ namespace vc4c
              */
             static AvailableExpressions analyzeAvailableExpressionsWrapper(
                 const intermediate::IntermediateInstruction* instr, const AvailableExpressions& previousExpressions,
-                FastMap<const Local*, FastSet<const Expression*>>& cache);
+                FastMap<const Local*, FastSet<Expression>>& cache);
         };
     } /* namespace analysis */
 } /* namespace vc4c */

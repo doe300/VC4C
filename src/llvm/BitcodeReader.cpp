@@ -836,24 +836,41 @@ void BitcodeReader::parseInstruction(
         instructions.back()->setDecorations(deco);
         break;
     }
-    case BinaryOps::AShr: // fall-through
-    case BinaryOps::Add:  // fall-through
-    case BinaryOps::And:  // fall-through
-    case BinaryOps::FAdd: // fall-through
-    case BinaryOps::FDiv: // fall-through
-    case BinaryOps::FMul: // fall-through
-    case BinaryOps::FRem: // fall-through
-    case BinaryOps::FSub: // fall-through
-    case BinaryOps::LShr: // fall-through
-    case BinaryOps::Mul:  // fall-through
-    case BinaryOps::Or:   // fall-through
-    case BinaryOps::SDiv: // fall-through
-    case BinaryOps::SRem: // fall-through
-    case BinaryOps::Shl:  // fall-through
-    case BinaryOps::Sub:  // fall-through
-    case BinaryOps::UDiv: // fall-through
-    case BinaryOps::URem: // fall-through
-    case BinaryOps::Xor:  // fall-through
+    case BinaryOps::AShr:
+        FALL_THROUGH
+    case BinaryOps::Add:
+        FALL_THROUGH
+    case BinaryOps::And:
+        FALL_THROUGH
+    case BinaryOps::FAdd:
+        FALL_THROUGH
+    case BinaryOps::FDiv:
+        FALL_THROUGH
+    case BinaryOps::FMul:
+        FALL_THROUGH
+    case BinaryOps::FRem:
+        FALL_THROUGH
+    case BinaryOps::FSub:
+        FALL_THROUGH
+    case BinaryOps::LShr:
+        FALL_THROUGH
+    case BinaryOps::Mul:
+        FALL_THROUGH
+    case BinaryOps::Or:
+        FALL_THROUGH
+    case BinaryOps::SDiv:
+        FALL_THROUGH
+    case BinaryOps::SRem:
+        FALL_THROUGH
+    case BinaryOps::Shl:
+        FALL_THROUGH
+    case BinaryOps::Sub:
+        FALL_THROUGH
+    case BinaryOps::UDiv:
+        FALL_THROUGH
+    case BinaryOps::URem:
+        FALL_THROUGH
+    case BinaryOps::Xor:
     {
         const llvm::BinaryOperator* binOp = llvm::cast<const llvm::BinaryOperator>(&inst);
         instructions.emplace_back(new BinaryOperator(binOp->getOpcodeName(), toValue(method, binOp),
@@ -915,7 +932,8 @@ void BitcodeReader::parseInstruction(
         instructions.back()->setDecorations(deco);
         break;
     }
-    case CastOps::AddrSpaceCast: // fall-through
+    case CastOps::AddrSpaceCast:
+        FALL_THROUGH
     case CastOps::BitCast:
     {
         instructions.emplace_back(
@@ -923,13 +941,20 @@ void BitcodeReader::parseInstruction(
         instructions.back()->setDecorations(deco);
         break;
     }
-    case CastOps::FPExt:   // fall-through
-    case CastOps::FPToSI:  // fall-through
-    case CastOps::FPToUI:  // fall-through
-    case CastOps::FPTrunc: // fall-through
-    case CastOps::SExt:    // fall-through
-    case CastOps::SIToFP:  // fall-through
-    case CastOps::Trunc:   // fall-through
+    case CastOps::FPExt:
+        FALL_THROUGH
+    case CastOps::FPToSI:
+        FALL_THROUGH
+    case CastOps::FPToUI:
+        FALL_THROUGH
+    case CastOps::FPTrunc:
+        FALL_THROUGH
+    case CastOps::SExt:
+        FALL_THROUGH
+    case CastOps::SIToFP:
+        FALL_THROUGH
+    case CastOps::Trunc:
+        FALL_THROUGH
     case CastOps::UIToFP:
     {
         instructions.emplace_back(
@@ -937,8 +962,10 @@ void BitcodeReader::parseInstruction(
         instructions.back()->setDecorations(deco);
         break;
     }
-    case CastOps::IntToPtr: // fall-through
-    case CastOps::PtrToInt: // fall-through
+    case CastOps::IntToPtr:
+        FALL_THROUGH
+    case CastOps::PtrToInt:
+        FALL_THROUGH
     case CastOps::ZExt:
     {
         /*
@@ -1013,7 +1040,8 @@ void BitcodeReader::parseInstruction(
         break;
     }
     break;
-    case OtherOps::FCmp: // fall-through
+    case OtherOps::FCmp:
+        FALL_THROUGH
     case OtherOps::ICmp:
     {
         const llvm::CmpInst* comp = llvm::cast<const llvm::CmpInst>(&inst);
@@ -1366,7 +1394,8 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
         case 8:
             switch(destType.getScalarBitCount())
             {
-            case 32: // fall-through
+            case 32:
+                FALL_THROUGH
             case 16:
                 return UNPACK_CHAR_TO_INT_ZEXT(dest).value();
             case 8:
