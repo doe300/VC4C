@@ -41,6 +41,11 @@ bool SemaphoreAdjustment::isNormalized() const
     return true;
 }
 
+bool SemaphoreAdjustment::hasSideEffects() const
+{
+    return true;
+}
+
 IntermediateInstruction* SemaphoreAdjustment::copyFor(Method& method, const std::string& localPrefix) const
 {
     return (new SemaphoreAdjustment(semaphore, increase))->copyExtrasFrom(this)->setOutput(getOutput());
@@ -186,6 +191,11 @@ qpu_asm::Instruction* MutexLock::convertToAsm(const FastMap<const Local*, Regist
 }
 
 bool MutexLock::isNormalized() const
+{
+    return true;
+}
+
+bool MutexLock::hasSideEffects() const
 {
     return true;
 }

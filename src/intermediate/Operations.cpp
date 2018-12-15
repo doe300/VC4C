@@ -361,6 +361,11 @@ Optional<Value> Operation::precalculate(const std::size_t numIterations) const
     return op(arg0, arg1);
 }
 
+bool Operation::isSimpleOperation() const
+{
+    return !hasSideEffects() && !unpackMode.hasEffect() && !packMode.hasEffect();
+}
+
 IntrinsicOperation::IntrinsicOperation(
     const std::string& opCode, const Value& dest, const Value& arg0, const ConditionCode cond, const SetFlag setFlags) :
     IntermediateInstruction(dest, cond, setFlags),
@@ -506,6 +511,11 @@ const Value& MoveOperation::getSource() const
     return assertArgument(0);
 }
 
+bool MoveOperation::isSimpleMove() const
+{
+    return !hasSideEffects() && !unpackMode.hasEffect() && !packMode.hasEffect();
+}
+
 VectorRotation::VectorRotation(
     const Value& dest, const Value& src, const Value& offset, const ConditionCode cond, const SetFlag setFlags) :
     MoveOperation(dest, src, cond, setFlags)
@@ -579,6 +589,11 @@ Optional<Value> VectorRotation::precalculate(const std::size_t numIterations) co
 const Value& VectorRotation::getOffset() const
 {
     return assertArgument(1);
+}
+
+bool VectorRotation::isSimpleMove() const
+{
+    return false;
 }
 
 static std::string toTypeString(DelayType delay)
@@ -761,6 +776,11 @@ qpu_asm::Instruction* CombinedOperation::convertToAsm(const FastMap<const Local*
 bool CombinedOperation::isNormalized() const
 {
     return (!op1 || op1->isNormalized()) && (!op2 || op2->isNormalized());
+}
+
+bool CombinedOperation::hasSideEffects() const
+{
+    return (op1 && op1->hasSideEffects()) || (op2 && op2->hasSideEffects());
 }
 
 IntermediateInstruction* CombinedOperation::copyFor(Method& method, const std::string& localPrefix) const

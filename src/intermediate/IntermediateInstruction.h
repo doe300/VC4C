@@ -192,7 +192,7 @@ namespace vc4c
              * - branches, semaphores
              * - setting of ALU flags
              */
-            bool hasSideEffects() const;
+            virtual bool hasSideEffects() const;
             /*
              * Whether an unpack-mode is set
              */
@@ -271,6 +271,12 @@ namespace vc4c
             const Value& getFirstArg() const;
             const Optional<Value> getSecondArg() const;
             Optional<Value> precalculate(std::size_t numIterations) const override;
+
+            /**
+             * Returns whether the operation "simply" calculates the arithmetic operation specified, without
+             * side-effects or unpack or pack modes applied
+             */
+            bool isSimpleOperation() const;
 
             OpCode op;
             CombinedOperation* parent;
@@ -354,6 +360,12 @@ namespace vc4c
 
             void setSource(const Value& value);
             const Value& getSource() const;
+
+            /**
+             * Returns whether this move is "simple", i.e. copying the bits from the source to the destination without
+             * triggering any side-effects, unpacking or packing any values.
+             */
+            virtual bool isSimpleMove() const;
         };
 
         struct VectorRotation final : public MoveOperation
@@ -370,6 +382,8 @@ namespace vc4c
             Optional<Value> precalculate(std::size_t numIterations) const override;
 
             const Value& getOffset() const;
+
+            bool isSimpleMove() const override;
         };
 
         struct BranchLabel final : public IntermediateInstruction
@@ -399,6 +413,7 @@ namespace vc4c
             qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping,
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             bool isNormalized() const override;
+            bool hasSideEffects() const override;
 
             const Local* getTarget() const;
 
@@ -501,6 +516,7 @@ namespace vc4c
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
             bool mapsToASMInstruction() const override;
             bool isNormalized() const override;
+            bool hasSideEffects() const override;
 
             const Operation* getFirstOp() const;
             const Operation* getSecondOP() const;
@@ -601,6 +617,7 @@ namespace vc4c
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
             bool isNormalized() const override;
+            bool hasSideEffects() const override;
 
             const Semaphore semaphore;
             const bool increase;
@@ -730,6 +747,7 @@ namespace vc4c
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
             bool isNormalized() const override;
+            bool hasSideEffects() const override;
 
             bool locksMutex() const;
             bool releasesMutex() const;
@@ -764,6 +782,7 @@ namespace vc4c
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
             bool isNormalized() const override;
+            bool hasSideEffects() const override;
 
             const Value& getSource() const;
             const Value& getDestination() const;

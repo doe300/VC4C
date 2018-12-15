@@ -124,6 +124,11 @@ bool Branch::isNormalized() const
     return true;
 }
 
+bool Branch::hasSideEffects() const
+{
+    return true;
+}
+
 const Local* Branch::getTarget() const
 {
     return assertArgument(0).local();

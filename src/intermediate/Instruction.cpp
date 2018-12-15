@@ -226,10 +226,6 @@ bool IntermediateInstruction::hasDecoration(InstructionDecorations deco) const
 
 bool IntermediateInstruction::hasSideEffects() const
 {
-    if(dynamic_cast<const Branch*>(this) != nullptr)
-        return true;
-    if(dynamic_cast<const SemaphoreAdjustment*>(this) != nullptr)
-        return true;
     if(hasValueType(ValueType::REGISTER) && output->reg().hasSideEffectsOnWrite())
         return true;
     for(const Value& arg : arguments)

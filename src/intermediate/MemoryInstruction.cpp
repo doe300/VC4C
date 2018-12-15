@@ -126,6 +126,11 @@ bool MemoryInstruction::isNormalized() const
     return false;
 }
 
+bool MemoryInstruction::hasSideEffects() const
+{
+    return true;
+}
+
 IntermediateInstruction* MemoryInstruction::copyFor(Method& method, const std::string& localPrefix) const
 {
     return (new MemoryInstruction(op, renameValue(method, getDestination(), localPrefix),
