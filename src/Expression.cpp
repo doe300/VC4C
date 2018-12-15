@@ -75,6 +75,9 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
 
     if(code.numOperands == 1 && expr0 != nullptr)
     {
+        if(code.isIdempotent() && expr0->code == code)
+            // f(f(a)) = f(a)
+            return Expression{code, expr0->arg0, expr1->arg1, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
         if(code == OP_FTOI && expr0->code == OP_ITOF)
             // ftoi(itof(i)) = i
             return Expression{OP_V8MIN, expr0->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
@@ -104,12 +107,20 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
 
     if(code.numOperands == 2)
     {
-        if(code == OP_FADD && ((expr0 && expr0->code == OP_FADD) || (expr1 && expr1->code == OP_FADD)))
-        {
-            // TODO
-        }
+        if(code.isIdempotent() && arg0 == arg1)
+            // f(a, a) = a
+            return Expression{OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco};
+        if(OpCode::getLeftIdentity(code) == arg0)
+            return Expression{OP_V8MIN, arg1.value(), arg1, UNPACK_NOP, PACK_NOP, deco};
+        if(OpCode::getRightIdentity(code) == arg1)
+            return Expression{OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco};
+        if(OpCode::getLeftAbsorbingElement(code) == arg0)
+            return Expression{OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco};
+        if(OpCode::getRightAbsorbingElement(code) == arg1)
+            return Expression{OP_V8MIN, arg1.value(), arg1, UNPACK_NOP, PACK_NOP, deco};
 
         // TODO also combine things like (a * 4) + a = a * 5 or (a * 4) - a = a * 3
+        // TODO can use associative, commutative properties?
     }
 
     return *this;

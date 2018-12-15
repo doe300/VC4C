@@ -243,7 +243,6 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
     OptimizationPass("CombineRotations", "combine-rotations", combineVectorRotations,
         "combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation",
         OptimizationType::REPEAT),
-    // XXX not enabled with any optimization level for now
     OptimizationPass("CommonSubexpressionElimination", "eliminate-common-subexpressions", eliminateCommonSubexpressions,
         "eliminates repetitive calculations of common expressions by re-using previous results (WIP, slow)",
         OptimizationType::REPEAT),
@@ -292,6 +291,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("extract-loads-from-loops");
         passes.emplace("schedule-instructions");
         passes.emplace("work-group-cache");
+        passes.emplace("eliminate-common-subexpressions");
         // fall-through on purpose
     case OptimizationLevel::MEDIUM:
         passes.emplace("merge-blocks");
@@ -300,8 +300,6 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("eliminate-bit-operations");
         passes.emplace("copy-propagation");
         passes.emplace("combine-loads");
-        // TODO CSE is disabled, since it can result in long compilation times and very large memory consumption
-        // passes.emplace("eliminate-common-subexpressions");
         // fall-through on purpose
     case OptimizationLevel::BASIC:
         passes.emplace("reorder-blocks");

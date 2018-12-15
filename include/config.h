@@ -160,6 +160,13 @@ namespace vc4c
          * if there are two optimizations which reverse each others changes.
          */
         unsigned maxOptimizationIterations = 512;
+
+        /*
+         * Maximum distance between two instructions to be combined for the common subexpression optimization.
+         *
+         * NOTE: Setting this to a large value might lead to very long compilation times.
+         */
+        unsigned maxCommonExpressionDinstance = 64;
     };
 
     /*

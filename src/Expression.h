@@ -20,12 +20,12 @@ namespace vc4c
      */
     struct Expression
     {
-        const OpCode code;
-        const Value arg0;
-        const Optional<Value> arg1;
-        const Unpack unpackMode = UNPACK_NOP;
-        const Pack packMode = PACK_NOP;
-        const intermediate::InstructionDecorations deco;
+        OpCode code;
+        Value arg0;
+        Optional<Value> arg1;
+        Unpack unpackMode = UNPACK_NOP;
+        Pack packMode = PACK_NOP;
+        intermediate::InstructionDecorations deco;
 
         static Optional<Expression> createExpression(const intermediate::IntermediateInstruction& instr);
 

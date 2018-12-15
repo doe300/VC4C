@@ -57,6 +57,7 @@ TestOptimizations::TestOptimizations() : TestEmulator(true)
         TEST_ADD_WITH_STRING(TestOptimizations::testClamp, pass.parameterName);
         TEST_ADD_WITH_STRING(TestOptimizations::testCross, pass.parameterName);
     }
+    //TODO the profiling info is wrong, since all optimization counters get merged!
     TEST_ADD(TestEmulator::printProfilingInfo);
 }
 

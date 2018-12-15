@@ -14,17 +14,33 @@ using namespace vc4c;
 using namespace vc4c::analysis;
 
 AvailableExpressionAnalysis::AvailableExpressionAnalysis() :
-    LocalAnalysis(AvailableExpressionAnalysis::analyzeAvailableExpressions, AvailableExpressionAnalysis::to_string)
+    LocalAnalysis(
+        AvailableExpressionAnalysis::analyzeAvailableExpressionsWrapper, AvailableExpressionAnalysis::to_string)
 {
 }
 
-AvailableExpressions AvailableExpressionAnalysis::analyzeAvailableExpressions(
+std::pair<AvailableExpressions, Optional<Expression>> AvailableExpressionAnalysis::analyzeAvailableExpressions(
     const intermediate::IntermediateInstruction* instr, const AvailableExpressions& previousExpressions,
-    FastMap<const Local*, FastSet<const Expression*>>& cache)
+    FastMap<const Local*, FastSet<const Expression*>>& cache, unsigned maxExpressionDistance)
 {
     PROFILE_START(AvailableExpressionAnalysis);
     AvailableExpressions newExpressions(previousExpressions);
+    auto it = newExpressions.begin();
+    while(it != newExpressions.end())
+    {
+        if(it->second.second >= maxExpressionDistance)
+        {
+            // remove all "older" expressions, since we do not care for them anymore
+            it = newExpressions.erase(it);
+        }
+        else
+        {
+            ++it->second.second;
+            ++it;
+        }
+    }
 
+    Optional<Expression> expr;
     if(instr->hasValueType(ValueType::LOCAL))
     {
         // re-set all expressions using the local written to as input
@@ -34,11 +50,11 @@ AvailableExpressions AvailableExpressionAnalysis::analyzeAvailableExpressions(
             for(const auto& expr : cacheIt->second)
                 newExpressions.erase(*expr);
         }
-        auto expr = Expression::createExpression(*instr);
+        expr = Expression::createExpression(*instr);
         if(expr)
         {
             // only adds if expression is not already in there
-            auto it = newExpressions.emplace(expr.value(), instr);
+            auto it = newExpressions.emplace(expr.value(), std::make_pair(instr, 0));
             if(it.second)
             {
                 // add map from input locals to expression (if we really inserted an expression)
@@ -51,7 +67,14 @@ AvailableExpressions AvailableExpressionAnalysis::analyzeAvailableExpressions(
         }
     }
     PROFILE_END(AvailableExpressionAnalysis);
-    return newExpressions;
+    return std::make_pair(std::move(newExpressions), std::move(expr));
+}
+
+AvailableExpressions AvailableExpressionAnalysis::analyzeAvailableExpressionsWrapper(
+    const intermediate::IntermediateInstruction* instr, const AvailableExpressions& previousExpressions,
+    FastMap<const Local*, FastSet<const Expression*>>& cache)
+{
+    return analyzeAvailableExpressions(instr, previousExpressions, cache, std::numeric_limits<unsigned>::max()).first;
 }
 
 std::string AvailableExpressionAnalysis::to_string(const AvailableExpressions& expressions)

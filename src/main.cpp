@@ -64,6 +64,8 @@ static void printHelp()
               << "\tThe maximum depth of nested loops to move constants out of" << std::endl;
     std::cout << "\t--foptimization-iterations=" << defaultConfig.additionalOptions.maxOptimizationIterations
               << "\tThe maximum number of iterations to repeat the optimizations in" << std::endl;
+    std::cout << "\t--fcommon-subexpression-threshold=" << defaultConfig.additionalOptions.maxCommonExpressionDinstance
+              << "\tThe maximum distance for two common subexpressions to be combined" << std::endl;
 
     std::cout << "options:" << std::endl;
     std::cout << "\t--kernel-info\t\tWrite the kernel-info meta-data (as required by VC4CL run-time, default)"

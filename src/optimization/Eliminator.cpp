@@ -66,9 +66,7 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
             }
             if(move != nullptr)
             {
-                if(move->getSource().hasLocal() && move->getOutput()->hasLocal() && !move->hasConditionalExecution() &&
-                    !move->hasPackMode() && !move->hasSideEffects() &&
-                    dynamic_cast<intermediate::VectorRotation*>(move) == nullptr)
+                if(move->getSource().hasLocal() && move->getOutput()->hasLocal() && move->isSimpleMove())
                 {
                     // if for a move, neither the input-local nor the output-local are written to afterwards,
                     // XXX or the input -local is only written after the last use of the output-local
@@ -126,7 +124,7 @@ InstructionWalker optimizations::simplifyOperation(
     intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
     if(op != nullptr)
     {
-        if(!op->hasSideEffects() && !op->hasPackMode() && !op->hasUnpackMode())
+        if(op->isSimpleOperation())
         {
             // improve by pre-calculating first and second arguments
             const Value firstArg =
@@ -230,8 +228,7 @@ InstructionWalker optimizations::simplifyOperation(
     }
     else if(move != nullptr)
     {
-        if(move->getSource() == move->getOutput().value() && !move->hasSideEffects() && !move->hasPackMode() &&
-            !move->hasUnpackMode() && !it.has<intermediate::VectorRotation>())
+        if(move->getSource() == move->getOutput().value() && move->isSimpleMove())
         {
             // skip copying to same, if no flags/signals/pack and unpack-modes are set
             logging::debug() << "Removing obsolete " << move->to_string() << logging::endl;
@@ -512,8 +509,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                     it.getBasicBlock()->walkEnd()) :
                 Optional<InstructionWalker>{};
 
-            if(!move->hasPackMode() && !move->hasUnpackMode() && move->getSource() == move->getOutput().value() &&
-                !move->doesSetFlag() && !move->hasSideEffects())
+            if(move->getSource() == move->getOutput().value() && move->isSimpleMove())
             {
                 if(move->signal == SIGNAL_NONE)
                 {
@@ -616,10 +612,10 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
     auto it = method.walkAllInstructions();
     while(!it.isEndOfMethod())
     {
-        if(it.get() && !it->hasSideEffects() && !it->hasPackMode() && !it->hasUnpackMode())
+        auto op = it.get<intermediate::Operation>();
+        if(op && op->isSimpleOperation())
         {
-            auto op = it.get<intermediate::Operation>();
-            if(op && op->op == OP_AND && !op->hasUnpackMode() && !op->hasPackMode())
+            if(op->op == OP_AND)
             {
                 // and v1, v2, v3 => and v1, v2, v4
                 // and v4, v1, v2    mov v4, v1
@@ -658,7 +654,7 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                     foundAnd(out, arg1.local(), it);
             };
 
-            if(op && op->op == OP_OR && !op->hasUnpackMode() && !op->hasPackMode())
+            if(op->op == OP_OR)
             {
                 // or  v1, v2, v3 => or  v1, v2, v4
                 // and v4, v1, v2    mov v4, v2
@@ -714,28 +710,27 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
     bool replacedSomething = false;
     for(auto& block : method)
     {
-        // FIXME leaks/uses huge amount of memory for clpeak integer test (20+ GB!!)
-        // TODO needs speed/space optimization
-        // esp. in combination with PropagateMoves and EliminateDeadCode this is very hard-core (e.g. for clpeak integer
-        // test)
-        analysis::AvailableExpressionAnalysis analysis;
-        analysis(block);
+        // we do not run the whole analysis in front, but only the next step to save on memory usage
+        // For that purpose, we also override the previous expressions on every step
+        analysis::AvailableExpressionAnalysis::Cache cache;
+        analysis::AvailableExpressions expressions;
 
         for(auto it = block.walk(); !it.isEndOfBlock(); it.nextInBlock())
         {
             if(!it.has())
                 continue;
-            auto expr = Expression::createExpression(*it.get());
+            Optional<Expression> expr;
+            std::tie(expressions, expr) = analysis::AvailableExpressionAnalysis::analyzeAvailableExpressions(
+                it.get(), expressions, cache, config.additionalOptions.maxCommonExpressionDinstance);
             if(expr)
             {
-                // TODO add some kind of maximum number of instructions (accumulator threshold) to combine over??
-                auto exprIt = analysis.getResult(it.get()).find(expr.value());
-                if(exprIt != analysis.getResult(it.get()).end() && exprIt->second != it.get())
+                auto exprIt = expressions.find(expr.value());
+                if(exprIt != expressions.end() && exprIt->second.first != it.get())
                 {
                     logging::debug() << "Found common subexpression: " << it->to_string() << " is the same as "
-                                     << exprIt->second->to_string() << logging::endl;
-                    it.reset(
-                        new intermediate::MoveOperation(it->getOutput().value(), exprIt->second->getOutput().value()));
+                                     << exprIt->second.first->to_string() << logging::endl;
+                    it.reset(new intermediate::MoveOperation(
+                        it->getOutput().value(), exprIt->second.first->getOutput().value()));
                     replacedSomething = true;
                 }
             }

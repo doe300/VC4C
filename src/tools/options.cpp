@@ -174,17 +174,19 @@ bool tools::parseConfigurationParameter(Configuration& config, const std::string
                 return false;
             }
             if(paramName == "combine-load-threshold")
-                config.additionalOptions.combineLoadThreshold = intValue;
+                config.additionalOptions.combineLoadThreshold = static_cast<unsigned>(intValue);
             else if(paramName == "accumulator-threshold")
-                config.additionalOptions.accumulatorThreshold = intValue;
+                config.additionalOptions.accumulatorThreshold = static_cast<unsigned>(intValue);
             else if(paramName == "replace-nop-threshold")
-                config.additionalOptions.replaceNopThreshold = intValue;
+                config.additionalOptions.replaceNopThreshold = static_cast<unsigned>(intValue);
             else if(paramName == "register-resolver-rounds")
-                config.additionalOptions.registerResolverMaxRounds = intValue;
+                config.additionalOptions.registerResolverMaxRounds = static_cast<unsigned>(intValue);
             else if(paramName == "move-constants-depth")
                 config.additionalOptions.moveConstantsDepth = intValue;
             else if(paramName == "optimization-iterations")
-                config.additionalOptions.maxOptimizationIterations = intValue;
+                config.additionalOptions.maxOptimizationIterations = static_cast<unsigned>(intValue);
+            else if(paramName == "common-subexpression-threshold")
+                config.additionalOptions.maxCommonExpressionDinstance = static_cast<unsigned>(intValue);
             else
             {
                 std::cerr << "Cannot set unknown optimization parameter: " << paramName << " to " << value << std::endl;
