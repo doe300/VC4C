@@ -1367,7 +1367,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             auto block = pair.first;
             for(auto it = block->begin(); it != block->end(); it = it.nextInBlock())
             {
-                if(it->isConstantInstruction())
+                if(it.has() && it->isConstantInstruction())
                 {
                     hasConstantInstruction = true;
                     break;
@@ -1555,7 +1555,8 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
         }
     }
 
-    std::set<LoopInclusionTreeNode*> processed;
+    std::set<LoopInclusionTreeNode*> processedNodes;
+    std::set<IntermediateInstruction*> processedInsts;
     BasicBlock* insertedBlock = nullptr;
 
     // move instructions
@@ -1568,9 +1569,9 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             throw CompilationError(CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
         }
 
-        if(processed.find(root) != processed.end())
+        if(processedNodes.find(root) != processedNodes.end())
             continue;
-        processed.insert(root);
+        processedNodes.insert(root);
 
         // process tree nodes with BFS
         std::queue<LoopInclusionTreeNode*> que;
@@ -1636,7 +1637,13 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 auto& targetInst = targetBlock->end().previousInBlock();
                 for(auto it : insts->second)
                 {
+                    auto inst = it.get();
+                    if(processedInsts.find(inst) != processedInsts.end())
+                        continue;
+                    processedInsts.insert(inst);
+
                     targetInst.emplace(it.release());
+                    it.erase();
                 }
             }
             else
@@ -1648,6 +1655,11 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 insertedBlock = &method.createAndInsertNewBlock(method.begin(), "%createdByRemoveConstantLoadInLoops");
                 for(auto it : insts->second)
                 {
+                    auto inst = it.get();
+                    if(processedInsts.find(inst) != processedInsts.end())
+                        continue;
+                    processedInsts.insert(inst);
+
                     insertedBlock->end().emplace(it.release());
                     it.erase();
                 }

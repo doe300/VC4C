@@ -460,8 +460,8 @@ bool IntermediateInstruction::replaceValue(const Value& oldValue, const Value& n
 
 bool IntermediateInstruction::isConstantInstruction() const
 {
-    return precalculate(1).has_value() && !hasSideEffects() && !hasConditionalExecution() &&
-        !hasDecoration(InstructionDecorations::PHI_NODE);
+    return dynamic_cast<const intermediate::BranchLabel*>(this) == nullptr && precalculate(1).has_value() &&
+        !hasSideEffects() && !hasConditionalExecution() && !hasDecoration(InstructionDecorations::PHI_NODE);
 }
 
 bool IntermediateInstruction::readsRegister(Register& reg) const

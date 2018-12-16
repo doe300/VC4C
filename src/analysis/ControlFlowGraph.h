@@ -62,7 +62,7 @@ namespace vc4c
      */
     struct ControlFlowLoop : public FastAccessList<const CFGNode*>
     {
-        ControlFlowLoop() {}
+        ControlFlowLoop() = default;
 
         /*
          * Returns the basic-block(s) in the CFG preceding the first node in the loop, the node from which the loop is
