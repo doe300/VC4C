@@ -8,6 +8,9 @@ Optional<Expression> Expression::createExpression(const intermediate::Intermedia
         return {};
     if(instr.hasConditionalExecution())
         return {};
+    if(instr.readsRegister(REG_REPLICATE_ALL) || instr.readsRegister(REG_REPLICATE_QUAD))
+        // not actually a side-effect, but cannot be combined with any other expression
+        return {};
     if(dynamic_cast<const intermediate::Operation*>(&instr) == nullptr &&
         dynamic_cast<const intermediate::MoveOperation*>(&instr) == nullptr &&
         dynamic_cast<const intermediate::LoadImmediate*>(&instr) == nullptr)
@@ -24,14 +27,17 @@ Optional<Expression> Expression::createExpression(const intermediate::Intermedia
     auto code = dynamic_cast<const intermediate::Operation*>(&instr) != nullptr ?
         dynamic_cast<const intermediate::Operation&>(instr).op :
         OP_V8MIN;
-    return Expression{
-        code, instr.getArgument(0).value(), instr.getArgument(1), instr.unpackMode, instr.packMode, instr.decoration};
+    return Expression{code, instr.getArgument(0).value(),
+        instr.getArgument(1) ? instr.getArgument(1) : code == OP_V8MIN ? instr.getArgument(0) : NO_VALUE,
+        instr.unpackMode, instr.packMode, instr.decoration};
 }
 
 bool Expression::operator==(const Expression& other) const
 {
-    return code == other.code && arg0 == other.arg0 && arg1 == other.arg1 && unpackMode == other.unpackMode &&
-        packMode == other.packMode && deco == other.deco;
+    return code == other.code &&
+        ((arg0 == other.arg0 && arg1 == other.arg1) ||
+            (code.isCommutative() && arg0 == other.arg1 && arg1 == other.arg0)) &&
+        unpackMode == other.unpackMode && packMode == other.packMode && deco == other.deco;
 }
 
 std::string Expression::to_string() const
@@ -78,12 +84,7 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
         if(code.isIdempotent() && expr0->code == code)
             // f(f(a)) = f(a)
             return Expression{code, expr0->arg0, expr1->arg1, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
-        if(code == OP_FTOI && expr0->code == OP_ITOF)
-            // ftoi(itof(i)) = i
-            return Expression{OP_V8MIN, expr0->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
-        if(code == OP_ITOF && expr0->code == OP_FTOI)
-            // itof(ftoi(f)) = f
-            return Expression{OP_V8MIN, expr0->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
+        // NOTE: ftoi(itof(i)) != i, itof(ftoi(f)) != f, since the truncation/rounding would get lost!
         if(code == OP_NOT && expr0->code == OP_NOT)
             // not(not(a)) = a
             return Expression{OP_V8MIN, expr0->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
@@ -97,30 +98,65 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
         arg1 :
         expr1 ? expr1->getConstantExpression() : NO_VALUE;
 
-    if(static_cast<int>(firstArgConstant || (expr0 && expr0->hasConstantOperand())) +
-                static_cast<int>(secondArgConstant || (expr1 && expr1->hasConstantOperand())) <
-            2 ||
-        !(firstArgConstant || secondArgConstant))
-        // we can only combine expressions if there are multiple literal/constant parts to combine (one of them directly
-        // in this expression)
-        return *this;
-
     if(code.numOperands == 2)
     {
         if(code.isIdempotent() && arg0 == arg1)
             // f(a, a) = a
             return Expression{OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco};
         if(OpCode::getLeftIdentity(code) == arg0)
+            // f(id, a) = a
             return Expression{OP_V8MIN, arg1.value(), arg1, UNPACK_NOP, PACK_NOP, deco};
         if(OpCode::getRightIdentity(code) == arg1)
+            // f(a, id) = a
             return Expression{OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco};
         if(OpCode::getLeftAbsorbingElement(code) == arg0)
+            // f(absorb, a) = absorb
             return Expression{OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco};
         if(OpCode::getRightAbsorbingElement(code) == arg1)
+            // f(a, absorb) = absorb
             return Expression{OP_V8MIN, arg1.value(), arg1, UNPACK_NOP, PACK_NOP, deco};
 
-        // TODO also combine things like (a * 4) + a = a * 5 or (a * 4) - a = a * 3
         // TODO can use associative, commutative properties?
+        // f(constA, f(constB, a)) = f(f(constA, constB), a), if associative
+        // f(constA, f(a, constB)) = f(f(constA, constB), a), if associative and commutative
+        // f(a, f(a, b)) = f(a, b), if associative and idempotent
+        // f(a, f(b, a)) = f(a, b), if associative, commutative and idempotent
+        // g(f(a, b), f(a, c)) = f(a, g(b, c)), if left distributive
+        // g(f(a, b), f(c, b)) = f(g(a, c), b), if right distributive
+
+        if(code == OP_FADD && arg0 == arg1)
+        {
+            // doesn't save any instruction, but utilizes mul ALU
+            return Expression{OP_FMUL, arg0, Value(Literal(2.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP, deco};
+        }
+
+        // TODO generalize! E.g. for fsub
+        if(code == OP_FADD && expr0 && expr0->code == OP_FMUL)
+        {
+            if(expr0->arg0 == arg1 && expr0->arg1->getLiteralValue())
+                // fadd(fmul(a, constB), a) = fmul(a, constB+1)
+                return Expression{OP_FMUL, arg1.value(),
+                    Value(Literal(expr0->arg1->getLiteralValue()->real() + 1.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP,
+                    add_flag(deco, expr0->deco)};
+            if(expr0->arg1 == arg1 && expr0->arg0.getLiteralValue())
+                // fadd(fmul(constB, a), a) = fmul(a, constB+1)
+                return Expression{OP_FMUL, arg1.value(),
+                    Value(Literal(expr0->arg0.getLiteralValue()->real() + 1.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP,
+                    add_flag(deco, expr0->deco)};
+        }
+        if(code == OP_FADD && expr1 && expr1->code == OP_FMUL)
+        {
+            if(expr1->arg0 == arg0 && expr1->arg1->getLiteralValue())
+                // fadd(a, fmul(a, constB)) = fmul(a, constB+1)
+                return Expression{OP_FMUL, arg0,
+                    Value(Literal(expr1->arg1->getLiteralValue()->real() + 1.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP,
+                    add_flag(deco, expr1->deco)};
+            if(expr1->arg1 == arg0 && expr1->arg0.getLiteralValue())
+                // fadd(a, fmul(constB, a)) = fmul(a, constB+1)
+                return Expression{OP_FMUL, arg0,
+                    Value(Literal(expr1->arg0.getLiteralValue()->real() + 1.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP,
+                    add_flag(deco, expr1->deco)};
+        }
     }
 
     return *this;

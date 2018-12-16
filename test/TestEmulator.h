@@ -10,6 +10,7 @@
 #include "cpptest.h"
 
 #include "config.h"
+#include "Precompiler.h"
 
 #include <map>
 #include <vector>
@@ -49,6 +50,7 @@ protected:
 	
 	vc4c::Configuration config;
 	bool cachePrecompilation;
+	std::map<std::string, vc4c::TemporaryFile> cachedPrecompilations;
 };
 
 #endif /* TEST_EMULATOR_H */

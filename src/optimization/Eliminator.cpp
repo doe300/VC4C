@@ -714,6 +714,7 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
         // For that purpose, we also override the previous expressions on every step
         analysis::AvailableExpressionAnalysis::Cache cache{};
         analysis::AvailableExpressions expressions{};
+        FastMap<const Local*, Expression> calculatingExpressions{};
 
         for(auto it = block.walk(); !it.isEndOfBlock(); it.nextInBlock())
         {
@@ -724,6 +725,12 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
                 it.get(), expressions, cache, config.additionalOptions.maxCommonExpressionDinstance);
             if(expr)
             {
+                Expression newExpr = expr.value();
+                if(it->hasValueType(ValueType::LOCAL))
+                {
+                    calculatingExpressions.erase(it->getOutput()->local());
+                    calculatingExpressions.emplace(it->getOutput()->local(), expr.value());
+                }
                 auto exprIt = expressions.find(expr.value());
                 if(exprIt != expressions.end() && exprIt->second.first != it.get())
                 {
@@ -731,6 +738,23 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
                                      << exprIt->second.first->to_string() << logging::endl;
                     it.reset(new intermediate::MoveOperation(
                         it->getOutput().value(), exprIt->second.first->getOutput().value()));
+                    replacedSomething = true;
+                }
+                else if((newExpr = expr->combineWith(calculatingExpressions)) != expr)
+                {
+                    logging::debug() << "Rewriting expression '" << expr->to_string() << "' to '" << newExpr.to_string()
+                                     << "'" << logging::endl;
+                    if(newExpr.code.numOperands == 1)
+                        it.reset(new intermediate::Operation(newExpr.code, it->getOutput().value(), newExpr.arg0));
+                    else
+                        it.reset(new intermediate::Operation(
+                            newExpr.code, it->getOutput().value(), newExpr.arg0, newExpr.arg1.value()));
+                    it->setUnpackMode(newExpr.unpackMode);
+                    it->setPackMode(newExpr.packMode);
+                    it->addDecorations(newExpr.deco);
+
+                    if(it->hasValueType(ValueType::LOCAL))
+                        calculatingExpressions.at(it->getOutput()->local()) = newExpr;
                     replacedSomething = true;
                 }
             }

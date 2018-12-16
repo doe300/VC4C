@@ -654,12 +654,7 @@ Optional<Value> OpCode::operator()(const Optional<Value>& firstOperand, const Op
     if(*this == OP_MIN)
         return Value(Literal(std::min(firstLit.signedInt(), secondLit.signedInt())), resultType);
     if(*this == OP_MUL24)
-    {
-        // this check is disabled on purpose
-        // if(((firstLit.unsignedInt() & 0xFF000000) != 0) || ((secondLit.unsignedInt() & 0xFF000000) != 0))
-        //    throw CompilationError(CompilationStep::GENERAL, "Mul24 with high byte set will discard the bits");
         return Value(Literal((firstLit.unsignedInt() & 0xFFFFFF) * (secondLit.unsignedInt() & 0xFFFFFF)), resultType);
-    }
     if(*this == OP_NOT)
         return Value(Literal(~firstLit.unsignedInt()), resultType);
     if(*this == OP_OR)
@@ -747,7 +742,7 @@ bool OpCode::isAssociative() const
 {
     return *this == OP_ADD || *this == OP_AND || *this == OP_FADD || *this == OP_FMAX || *this == OP_FMAXABS ||
         *this == OP_FMIN || *this == OP_FMINABS || *this == OP_FMUL || *this == OP_MAX || *this == OP_MIN ||
-        *this == OP_MUL24 || *this == OP_OR || *this == OP_V8MAX || *this == OP_V8MIN || *this == OP_XOR;
+        *this == OP_OR || *this == OP_V8MAX || *this == OP_V8MIN || *this == OP_XOR;
 }
 
 bool OpCode::isCommutative() const
@@ -756,6 +751,32 @@ bool OpCode::isCommutative() const
         *this == OP_FMIN || *this == OP_FMINABS || *this == OP_FMUL || *this == OP_MAX || *this == OP_MIN ||
         *this == OP_MUL24 || *this == OP_OR || *this == OP_V8ADDS || *this == OP_V8MAX || *this == OP_V8MIN ||
         *this == OP_V8MULD || *this == OP_XOR;
+}
+
+bool OpCode::isLeftDistributiveOver(const OpCode& other) const
+{
+    if(*this == OP_FMUL)
+        return other == OP_FADD || other == OP_FSUB;
+    if(*this == OP_FADD)
+        return other == OP_FMIN || other == OP_FMAX;
+    if(*this == OP_ADD)
+        return other == OP_MIN || other == OP_MAX;
+    if(*this == OP_AND)
+        return other == OP_OR || other == OP_XOR;
+    return false;
+}
+
+bool OpCode::isRightDistributiveOver(const OpCode& other) const
+{
+    if(*this == OP_FMUL)
+        return other == OP_FADD || other == OP_FSUB;
+    if(*this == OP_FADD)
+        return other == OP_FMIN || other == OP_FMAX;
+    if(*this == OP_ADD)
+        return other == OP_MIN || other == OP_MAX;
+    if(*this == OP_AND)
+        return other == OP_OR || other == OP_XOR;
+    return false;
 }
 
 const OpCode& OpCode::toOpCode(const unsigned char opCode, const bool isMulALU)

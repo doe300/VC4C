@@ -314,7 +314,7 @@ void TestInstructions::testOpCodeProperties()
 
     for(const auto& op : opCodes)
     {
-        Value arg = op.acceptsFloat ? FLOAT_ONE : INT_ONE;
+        Value arg = op.acceptsFloat ? Value(Literal(-10.0f), TYPE_FLOAT) : Value(Literal(-10), TYPE_INT32);
         Value arg2 = op.acceptsFloat ? Value(Literal(2.0f), TYPE_FLOAT) : Value(Literal(2u), TYPE_INT32);
         if(op.isIdempotent())
         {
@@ -322,14 +322,16 @@ void TestInstructions::testOpCodeProperties()
             {
                 if(op(op(op(arg2, NO_VALUE), NO_VALUE), NO_VALUE) != op(arg2, NO_VALUE))
                 {
-                    TEST_ASSERT_EQUALS("", op.name);
+                    TEST_ASSERT_EQUALS(op(op(op(arg2, NO_VALUE), NO_VALUE), NO_VALUE), op(arg2, NO_VALUE));
+                    TEST_ASSERT_EQUALS("idempotent", op.name);
                 }
             }
             else
             {
                 if(arg2 != op(arg2, arg2))
                 {
-                    TEST_ASSERT_EQUALS("", op.name);
+                    TEST_ASSERT_EQUALS(arg2, op(arg2, arg2));
+                    TEST_ASSERT_EQUALS("idempotent", op.name);
                 }
             }
         }
@@ -337,36 +339,62 @@ void TestInstructions::testOpCodeProperties()
         {
             if(op(arg, op(arg, arg2)) != op(op(arg, arg), arg2))
             {
-                TEST_ASSERT_EQUALS("", op.name);
+                TEST_ASSERT_EQUALS(op(arg, op(arg, arg2)), op(op(arg, arg), arg2));
+                TEST_ASSERT_EQUALS("associative", op.name);
             }
         }
         if(op.isCommutative())
         {
             if(op(arg, arg2) != op(arg2, arg))
             {
-                TEST_ASSERT_EQUALS("", op.name);
+                TEST_ASSERT_EQUALS(op(arg, arg2), op(arg2, arg));
+                TEST_ASSERT_EQUALS("commutative", op.name);
             }
         }
 
         auto special = OpCode::getLeftIdentity(op);
         if(special && (op(special, arg2) != arg2))
         {
-            TEST_ASSERT_EQUALS("", op.name);
+            TEST_ASSERT_EQUALS(op(special, arg2), arg2);
+            TEST_ASSERT_EQUALS("left identity", op.name);
         }
         special = OpCode::getRightIdentity(op);
         if(special && (op(arg2, special) != arg2))
         {
-            TEST_ASSERT_EQUALS("", op.name);
+            TEST_ASSERT_EQUALS(op(arg2, special), arg2);
+            TEST_ASSERT_EQUALS("right identity", op.name);
         }
         special = OpCode::getLeftAbsorbingElement(op);
         if(special && (op(special, arg2) != special))
         {
-            TEST_ASSERT_EQUALS("", op.name);
+            TEST_ASSERT_EQUALS(op(special, arg2), special);
+            TEST_ASSERT_EQUALS("left absorbing element", op.name);
         }
         special = OpCode::getRightAbsorbingElement(op);
         if(special && (op(arg2, special) != special))
         {
-            TEST_ASSERT_EQUALS("", op.name);
+            TEST_ASSERT_EQUALS(op(arg2, special), special);
+            TEST_ASSERT_EQUALS("right absorbing element", op.name);
+        }
+
+        for(const auto& op2 : opCodes)
+        {
+            if(op.isLeftDistributiveOver(op2))
+            {
+                if(op(arg, op2(arg, arg2)) != op2(op(arg, arg), op(arg, arg2)))
+                {
+                    TEST_ASSERT_EQUALS(op(arg, op2(arg, arg2)), op2(op(arg, arg), op(arg, arg2)));
+                    TEST_ASSERT_EQUALS(std::string("left distributive over ") + op2.name, op.name);
+                }
+            }
+            if(op.isRightDistributiveOver(op2))
+            {
+                if(op(op2(arg, arg2), arg) != op2(op(arg, arg), op(arg2, arg)))
+                {
+                    TEST_ASSERT_EQUALS(op(op2(arg, arg2), arg), op2(op(arg, arg), op(arg2, arg)));
+                    TEST_ASSERT_EQUALS(std::string("right distributive over ") + op2.name, op.name);
+                }
+            }
         }
     }
 }

@@ -34,7 +34,7 @@ TestOptimizations::TestOptimizations() : TestEmulator(true)
     TEST_ADD_WITH_STRING(TestOptimizations::testArithmetic, "");
     TEST_ADD_WITH_STRING(TestOptimizations::testClamp, "");
     TEST_ADD_WITH_STRING(TestOptimizations::testCross, "");
-    
+
     for(const auto& pass : optimizations::Optimizer::ALL_PASSES)
     {
         TEST_ADD_WITH_STRING(TestOptimizations::testEmptyIterator, pass.parameterName);
@@ -57,8 +57,10 @@ TestOptimizations::TestOptimizations() : TestEmulator(true)
         TEST_ADD_WITH_STRING(TestOptimizations::testClamp, pass.parameterName);
         TEST_ADD_WITH_STRING(TestOptimizations::testCross, pass.parameterName);
     }
-    //TODO the profiling info is wrong, since all optimization counters get merged!
-    TEST_ADD(TestEmulator::printProfilingInfo);
+    // TODO the profiling info is wrong, since all optimization counters get merged!
+    // TEST_ADD(TestEmulator::printProfilingInfo);
+    // TODO the test failures are not printed anymore for some reason (neither is the summary line), iff no other test
+    // suites fail
 }
 
 static const optimizations::OptimizationPass& getPass(const std::string& paramName)

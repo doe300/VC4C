@@ -634,6 +634,35 @@ namespace vc4c
         bool isCommutative() const;
 
         /*
+         * Whether the operation ins left distributive over the given operation.
+         *
+         * Left-distributivity is defined as:
+         * - a op (b op2 c) = (a op b) op2 (a op c)
+         * - The operation applied on the result of the previous operation can be applied on the operands separately
+         * (e.g. multiplication over addition)
+         *
+         * Taken from:
+         * https://en.wikipedia.org/wiki/Distributive_property
+         *
+         * NOTE: The distributivity does not hold for overflow!
+         */
+        bool isLeftDistributiveOver(const OpCode& other) const;
+        /*
+         * Whether the operation ins right distributive over the given operation.
+         *
+         * Right-distributivity is defined as:
+         * - (b op2 c) op a = (b op a) op2 (c op a)
+         * - The operation applied on the result of the previous operation can be applied on the operands separately
+         * (e.g. division over addition)
+         *
+         * Taken from:
+         * https://en.wikipedia.org/wiki/Distributive_property
+         *
+         * NOTE: The distributivity does not hold for overflow!
+         */
+        bool isRightDistributiveOver(const OpCode& other) const;
+
+        /*
          * Returns the op-code for the given op-code name.
          *
          * Throws an exception if the op-code could not be found.
