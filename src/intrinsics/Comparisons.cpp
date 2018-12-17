@@ -69,7 +69,7 @@ InstructionWalker intrinsifyIntegerRelation(
         // a < b [<=> umin(a, b) != b] <=> umax(a, b) != a
         /*
          * 32-bit:
-         * a < b <=> (a >> 16 < b >> 16) || ((a >> 16 == b >> 16) && a & 0xFFFF < b & 0xFFFF)
+         * a < b <=> ((a ^ b) < 0 ? min(a, b) : max(a, b)) != a
          *
          * 16-bit:
          * a < b [<=> max(a & 0xFFFF, b & 0xFFFF) != a] <=> max(a, b) != a (since MSB is never set -> always positive)
@@ -112,44 +112,31 @@ InstructionWalker intrinsifyIntegerRelation(
             // TODO a < b [a = 2^x -1] <=> (~a & b) != 0
             else
             {
-                // XXX optimize? combine both comparisons of upper half? can short-circuit on ||?
-                // TODO the general case seems to be wrong
                 /*
-                 * Another way of calculating ult:
-                 * a < b <=> clz(a) > clz(b) || (clz(a) == clz(b) && max(a, b) != a)
-                 * For equal MSB, ult == slt, special case for different MSB
+                 * a < b (unsigned)
+                 *
+                 * "positive": MSB = 0
+                 * "negative": MSB = 1
+                 * a < b  |      b pos     |      b neg     | b zero |
+                 * a pos  | max(a, b) != a |        1       |    0   |
+                 * a neg  |        0       | max(a, b) != a |    0   |
+                 * a zero |        1       |        1       |    0   |
+                 * simplified:
+                 * a < b  |      b pos     |      b neg     | b zero = b pos |
+                 * a pos  | max(a, b) != a | min(a, b) != a | max(a, b) != a |
+                 * a neg  | min(a, b) != a | max(a, b) != a | min(a, b) != a |
+                 * a zero | max(a, b) != a | min(a, b) != a | max(a, b) != a |
                  */
-                auto partType = TYPE_INT16.toVectorType(comp->getFirstArg().type.getVectorWidth());
-                const Value tmp1 = method.addNewLocal(boolType, "%icomp");
-                const Value tmp2 = method.addNewLocal(boolType, "%icomp");
-                const Value tmp3 = method.addNewLocal(boolType, "%icomp");
-                const Value tmp4 = method.addNewLocal(boolType, "%icomp");
-                Value leftUpper = assign(it, partType, "%comp.left") = comp->getFirstArg() >> 16_val;
-                Value leftLower = assign(it, partType, "%comp.left") = comp->getFirstArg() & 0xFFFF_val;
-                Value rightUpper = assign(it, partType, "%comp.right") = comp->assertArgument(1) >> 16_val;
-                Value rightLower = assign(it, partType, "%comp.right") = comp->assertArgument(1) & 0xFFFF_val;
-                //(a >> 16) < (b >> 16)
-                // insert dummy comparison to be intrinsified
-                it.emplace(new Comparison(COMP_UNSIGNED_LT, tmp1, leftUpper, rightUpper));
-                it = intrinsifyIntegerRelation(method, it, it.get<Comparison>(), false);
-                it.nextInBlock();
-                //(a >> 16) == (b >> 16)
-                // insert dummy comparison to be intrinsified
-                it.emplace(new Comparison(COMP_EQ, tmp2, leftUpper, rightUpper));
-                it = intrinsifyIntegerRelation(method, it, it.get<Comparison>(), false);
-                it.nextInBlock();
-                //(a & 0xFFFF) < (b & 0xFFFF)
-                // insert dummy comparison to be intrinsified
-                it.emplace(new Comparison(COMP_UNSIGNED_LT, tmp3, leftLower, rightLower));
-                it = intrinsifyIntegerRelation(method, it, it.get<Comparison>(), false);
-                it.nextInBlock();
-                // upper && lower
-                assign(it, tmp4) = tmp2 & tmp3;
-                assign(it, NOP_REGISTER) = (tmp1 | tmp4, SetFlag::SET_FLAGS);
+                assign(it, NOP_REGISTER) = (comp->getFirstArg() ^ comp->assertArgument(1), SetFlag::SET_FLAGS);
+                Value unsignedMax = method.addNewLocal(comp->getFirstArg().type, "%icomp");
+                assign(it, unsignedMax) = (min(comp->getFirstArg(), comp->assertArgument(1)), COND_NEGATIVE_SET);
+                assign(it, unsignedMax) = (max(comp->getFirstArg(), comp->assertArgument(1)), COND_NEGATIVE_CLEAR);
+                assign(it, NOP_REGISTER) = (unsignedMax ^ comp->getFirstArg(), SetFlag::SET_FLAGS);
             }
         }
         else
         {
+            // for non 32-bit types, high-bit is not set and therefore signed max == unsigned max
             assign(it, tmp) = (max(comp->getFirstArg(), comp->assertArgument(1)));
             assign(it, NOP_REGISTER) = (tmp ^ comp->getFirstArg(), SetFlag::SET_FLAGS);
         }

@@ -156,7 +156,7 @@ static void runOptimizationPasses(const Module& module, Method& method, const Co
 
     const OptimizationPass* lastChangingOptimization = nullptr;
     std::size_t startIndex = index;
-    bool continueLoop = true;
+    bool continueLoop = !repeatingPasses.empty();
     unsigned iterationsLeft = config.additionalOptions.maxOptimizationIterations;
     for(; continueLoop && iterationsLeft > 0; --iterationsLeft)
     {

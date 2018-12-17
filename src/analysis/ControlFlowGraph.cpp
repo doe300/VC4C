@@ -393,14 +393,14 @@ void ControlFlowGraph::updateOnBranchInsertion(Method& method, InstructionWalker
         node.removeEdge(*fallThroughEdge);
 }
 
-void ControlFlowGraph::updateOnBranchRemoval(Method& method, InstructionWalker it)
+void ControlFlowGraph::updateOnBranchRemoval(Method& method, BasicBlock& affectedBlock, const Local* branchTarget)
 {
     /*
      * 1. remove edge from block to destination label
      * 2. check whether branches cover all in this block and add fall-through edge to next block
      */
-    auto& node = assertNode(it.getBasicBlock());
-    auto& destNode = assertNode(method.findBasicBlock(it.get<intermediate::Branch>()->getTarget()));
+    auto& node = assertNode(&affectedBlock);
+    auto& destNode = assertNode(method.findBasicBlock(branchTarget));
 
     CFGEdge* branchEdge = nullptr;
     node.forAllOutgoingEdges([&](CFGNode& successor, CFGEdge& edge) -> bool {
@@ -415,10 +415,20 @@ void ControlFlowGraph::updateOnBranchRemoval(Method& method, InstructionWalker i
     });
 
     if(!branchEdge)
-        throw CompilationError(CompilationStep::GENERAL, "No CFG edge found for branch", it->to_string());
-    node.removeEdge(*branchEdge);
+        throw CompilationError(
+            CompilationStep::GENERAL, "No CFG edge found for branch to targer", branchTarget->to_string());
 
-    if(node.key->fallsThroughToNextBlock(true))
+    if(branchEdge->getDirection() == Direction::BOTH)
+    {
+        // we only want to remove the one direction, the jump-back needs to remain
+        auto reversePred = branchEdge->data.getPredecessor(destNode.key);
+        node.removeEdge(*branchEdge);
+        destNode.addEdge(&node, CFGRelation{})->data.predecessors.emplace(destNode.key, reversePred);
+    }
+    else
+        node.removeEdge(*branchEdge);
+
+    if(node.key->fallsThroughToNextBlock(false))
     {
         auto blockIt = std::find_if(
             method.begin(), method.end(), [&](const BasicBlock& block) -> bool { return &block == node.key; });

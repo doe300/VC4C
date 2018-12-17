@@ -574,7 +574,10 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 destinationReader && !move->signal.hasSideEffects() && move->setFlags == SetFlag::DONT_SET &&
                 !(*destinationReader)->hasUnpackMode() && (*destinationReader)->conditional == COND_ALWAYS &&
                 !(*destinationReader)->readsRegister(move->getSource().reg()) &&
-                isNoReadBetween(it, destinationReader.value(), move->getSource().reg()))
+                isNoReadBetween(it, destinationReader.value(), move->getSource().reg()) &&
+                /* Tests have shown that an instruction cannot read and write VPM at the same time */
+                (!move->getSource().hasRegister(REG_VPM_IO) ||
+                    !(*destinationReader)->getOutput()->hasRegister(REG_VPM_IO)))
             {
                 // if the source is a register, the output is only used once, this instruction has no signals/sets no
                 // flags, the output consumer does not also read this move's source and there is no read of the source
@@ -646,12 +649,15 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
 
                 const auto& arg0 = op->assertArgument(0);
                 const auto& arg1 = op->assertArgument(1);
-                auto out = op->getOutput().value().local();
+                if(op->getOutput()->hasLocal())
+                {
+                    auto out = op->getOutput().value().local();
 
-                if(arg0.hasLocal())
-                    foundAnd(out, arg0.local(), it);
-                if(arg1.hasLocal())
-                    foundAnd(out, arg1.local(), it);
+                    if(arg0.hasLocal())
+                        foundAnd(out, arg0.local(), it);
+                    if(arg1.hasLocal())
+                        foundAnd(out, arg1.local(), it);
+                }
             };
 
             if(op->op == OP_OR)

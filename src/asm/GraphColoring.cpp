@@ -463,6 +463,13 @@ GraphColoring::GraphColoring(Method& method, InstructionWalker it) :
     // parameters are used from the beginning
     for(const Parameter& arg : method.parameters)
     {
+        if(arg.getUsers().size() <= 1)
+            // parameter is never read
+            // we need to check this here, since beneath we always make start the start of kernel and therefore unequal
+            // to the end, which is checked
+            // TODO can't we instead just not set the start to the start of the kernel and leave it with the first write
+            // of the parameter?
+            continue;
         auto it = localUses.find(&arg);
         if(it != localUses.end())
         {

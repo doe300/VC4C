@@ -110,7 +110,7 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
     logging::debug() << "-----" << logging::endl;
     std::size_t index = 0;
 
-    std::string s = "";
+    std::string s = "kernel " + method.name;
 
     for(const auto& bb : method)
     {

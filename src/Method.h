@@ -297,7 +297,7 @@ namespace vc4c
         void updateCFGOnBlockInsertion(BasicBlock* block);
         void updateCFGOnBlockRemoval(BasicBlock* block);
         void updateCFGOnBranchInsertion(InstructionWalker it);
-        void updateCFGOnBranchRemoval(InstructionWalker it);
+        void updateCFGOnBranchRemoval(BasicBlock& affectedBlock, const Local* branchTarget);
 
         friend class BasicBlock;
         friend class InstructionWalker;

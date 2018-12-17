@@ -383,9 +383,12 @@ static const std::vector<MergeCondition> mergeConditions = {
         // (combined) instruction
         if(firstPack.hasEffect() && secondPack.hasEffect() && firstPack != secondPack)
             return false;
-        // if both have an unpack-mode set (excluding NOP), it must be the same, since we can only set one unpack-mode
-        // per (combined) instruction
-        if(firstUnpack.hasEffect() && secondUnpack.hasEffect() && firstUnpack != secondUnpack)
+        // can only unpack from reg-file A -> 1 input
+        // XXX since we cannot know which input is on register-file A, for now we don't combine unpack modes, unless
+        // there is only one input and both use the same unpack mode
+        if((firstUnpack.hasEffect() || secondUnpack.hasEffect()) &&
+            !(firstUnpack == secondUnpack && firstMove && secondMove &&
+                firstMove->getSource() == secondMove->getSource()))
             return false;
         // the pack-mode must match the ALU, can only apply mul pack modes if the other operation can execute on add ALU
         // and vice versa
@@ -393,8 +396,6 @@ static const std::vector<MergeCondition> mergeConditions = {
             return false;
         if(secondPack.hasEffect() && secondPack.supportsMulALU() != (firstMove || firstOp->op.runsOnAddALU()))
             return false;
-        // can only unpack from reg-file A -> 1 input
-        // TODO check if both use same input, then allow (or have inverted conditions)
         return true;
     },
     // check not two different boolean values which both are used in conditional jump
@@ -669,7 +670,7 @@ bool optimizations::combineLoadingLiterals(const Module& module, Method& method,
         InstructionWalker it = block.walk();
         while(!it.isEndOfBlock())
         {
-            if(it.get() && it->hasValueType(ValueType::LOCAL) &&
+            if(it.get() && it->hasValueType(ValueType::LOCAL) && !it->hasConditionalExecution() &&
                 it->getOutput()->local()->getUsers(LocalUse::Type::WRITER).size() == 1 &&
                 // TODO also combine is both ranges are not locally limited and overlap for the most part
                 // (or at least if one range completely contains the other range)

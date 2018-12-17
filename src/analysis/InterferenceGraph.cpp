@@ -44,14 +44,15 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(Method& method
 
     // tracks local life-ranges stemming from local being used in succeeding blocks (and written in this block or
     // before)
-    FastMap<const intermediate::IntermediateInstruction*, FastSet<Local*>> additionalLocals;
+    FastMap<const intermediate::IntermediateInstruction*, FastSet<const Local*>> additionalLocals;
     for(auto& pair : livenesses)
     {
         if(!pair.second.getStartResult().empty())
         {
             // there are dependencies from other blocks. For each local, walk the CFG back until we meet the write or
             // until we meet another liveness-range of the local
-            // TODO is there a better/more efficient way?
+            // TODO is there a better/more efficient way? Can't we combine the walking for all locals from start? Since
+            // predecessor blocks are the same
             for(auto& local : pair.second.getStartResult())
             {
                 FastSet<BasicBlock*> blocksVisited;
@@ -75,9 +76,9 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(Method& method
                         auto& lives = livenesses.at(it.getBasicBlock()).getResult(it.get());
                         if(it->writesLocal(local) || lives.find(local) != lives.end() ||
                             (addLocalsIt != additionalLocals.end() &&
-                                addLocalsIt->second.find(const_cast<Local*>(local)) != addLocalsIt->second.end()))
+                                addLocalsIt->second.find(local) != addLocalsIt->second.end()))
                             return InstructionVisitResult::STOP_BRANCH;
-                        additionalLocals[it.get()].emplace(const_cast<Local*>(local));
+                        additionalLocals[it.get()].emplace(local);
                         return InstructionVisitResult::CONTINUE;
                     },
                     false, true};

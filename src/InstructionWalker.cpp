@@ -247,7 +247,13 @@ intermediate::IntermediateInstruction* InstructionWalker::release()
     if(has<intermediate::BranchLabel>())
         basicBlock->method.updateCFGOnBlockRemoval(basicBlock);
     if(has<intermediate::Branch>())
-        basicBlock->method.updateCFGOnBranchRemoval(*this);
+    {
+        // need to remove the branch from the block before triggering the CFG update
+        std::unique_ptr<intermediate::IntermediateInstruction> tmp(pos->release());
+        basicBlock->method.updateCFGOnBranchRemoval(
+            *basicBlock, dynamic_cast<intermediate::Branch*>(tmp.get())->getTarget());
+        return tmp.release();
+    }
     return (*pos).release();
 }
 
@@ -258,7 +264,12 @@ InstructionWalker& InstructionWalker::reset(intermediate::IntermediateInstructio
         throw CompilationError(CompilationStep::GENERAL, "Can't add labels into a basic block", instr->to_string());
     // if we reset the label with another label, the CFG dos not change
     if(has<intermediate::Branch>())
-        basicBlock->method.updateCFGOnBranchRemoval(*this);
+    {
+        // need to remove the branch from the block before triggering the CFG update
+        std::unique_ptr<intermediate::IntermediateInstruction> tmp(pos->release());
+        basicBlock->method.updateCFGOnBranchRemoval(
+            *basicBlock, dynamic_cast<intermediate::Branch*>(tmp.get())->getTarget());
+    }
     (*pos).reset(instr);
     if(dynamic_cast<intermediate::Branch*>(instr))
         basicBlock->method.updateCFGOnBranchInsertion(*this);
@@ -271,7 +282,12 @@ InstructionWalker& InstructionWalker::erase()
     if(has<intermediate::BranchLabel>())
         basicBlock->method.updateCFGOnBlockRemoval(basicBlock);
     if(has<intermediate::Branch>())
-        basicBlock->method.updateCFGOnBranchRemoval(*this);
+    {
+        // need to remove the branch from the block before triggering the CFG update
+        std::unique_ptr<intermediate::IntermediateInstruction> tmp(pos->release());
+        basicBlock->method.updateCFGOnBranchRemoval(
+            *basicBlock, dynamic_cast<intermediate::Branch*>(tmp.get())->getTarget());
+    }
     pos = basicBlock->instructions.erase(pos);
     return *this;
 }

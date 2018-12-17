@@ -551,9 +551,9 @@ void Method::updateCFGOnBranchInsertion(InstructionWalker it)
     cfg->updateOnBranchInsertion(*this, it);
 }
 
-void Method::updateCFGOnBranchRemoval(InstructionWalker it)
+void Method::updateCFGOnBranchRemoval(BasicBlock& affectedBlock, const Local* branchTarget)
 {
     if(!cfg)
         return;
-    cfg->updateOnBranchRemoval(*this, it);
+    cfg->updateOnBranchRemoval(*this, affectedBlock, branchTarget);
 }

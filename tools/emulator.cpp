@@ -19,6 +19,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <type_traits>
 
 using namespace vc4c;
 using namespace vc4c::tools;
@@ -95,6 +96,14 @@ static std::vector<tools::Word> readDirectData(std::string data)
 }
 
 template<typename T>
+struct HexHelper : public std::make_unsigned<T> {};
+
+template<>
+struct HexHelper<float> {
+	using type = float;
+};
+
+template<typename T>
 static std::vector<tools::Word> readDirectBuffer(std::string data)
 {
 	std::vector<tools::Word> words;
@@ -106,8 +115,11 @@ static std::vector<tools::Word> readDirectBuffer(std::string data)
 		{
 			// skip x in (0x...)
 			ss.get();
-			// read number as hexadecimal
-			ss >> std::hex >> t >> std::dec;
+			using HexType = typename HexHelper<T>::type;
+			HexType tmp = 0;
+			// read number as hexadecimal unsigned
+			ss >> std::hex >> tmp >> std::dec;
+			t = bit_cast<HexType, T>(tmp);
 		}
 		words.emplace_back(bit_cast<T, uint32_t>(t));
 	}

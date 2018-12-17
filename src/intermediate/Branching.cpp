@@ -93,7 +93,11 @@ qpu_asm::Instruction* Branch::convertToAsm(const FastMap<const Local*, Register>
      * Broadcom specification, page 34:
      * "branch target is relative to PC+4 (add PC+4 to target)"
      */
-    const int64_t branchOffset = static_cast<int64_t>(labelMapping.at(getTarget())) -
+    auto labelPos = labelMapping.find(getTarget());
+    if(labelPos == labelMapping.end())
+        throw CompilationError(
+            CompilationStep::CODE_GENERATION, "Target label not mapped to any position", to_string());
+    const int64_t branchOffset = static_cast<int64_t>(labelPos->second) -
         static_cast<int64_t>(
             (instructionIndex + 4 /*  NOPs */) * sizeof(uint64_t)) /* convert instruction-index to byte-index */;
     BranchCond cond = BranchCond::ALWAYS;

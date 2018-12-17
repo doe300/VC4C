@@ -112,7 +112,7 @@ namespace vc4c
         void updateOnBlockInsertion(Method& method, BasicBlock& newBlock);
         void updateOnBlockRemoval(Method& method, BasicBlock& oldBlock);
         void updateOnBranchInsertion(Method& method, InstructionWalker it);
-        void updateOnBranchRemoval(Method& method, InstructionWalker it);
+        void updateOnBranchRemoval(Method& method, BasicBlock& affectedBlock, const Local* branchTarget);
 
     private:
         explicit ControlFlowGraph(std::size_t numBlocks) : Graph(numBlocks) {}

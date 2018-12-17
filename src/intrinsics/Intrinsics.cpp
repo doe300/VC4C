@@ -379,7 +379,13 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryI
     {"vc4cl_sub_flags",
         Intrinsic{intrinsifyBinaryALUInstruction(OP_SUB.name, false, PACK_NOP, UNPACK_NOP, true),
             /* can't set flags for pre-calculation, so don't */}},
-};
+    {
+        "vc4cl_prefetch", Intrinsic{[](Method& m, InstructionWalker it, const MethodCall* call) -> InstructionWalker {
+            /* for now do nothing, TODO make use of this! */
+            logging::debug() << "Dropping intrinsic function: " << it->to_string() << logging::endl;
+            return it.erase();
+        }}
+    }};
 
 const static std::map<std::string, Intrinsic, std::greater<std::string>> ternaryIntrinsicMapping = {
     {"vc4cl_dma_copy", Intrinsic{intrinsifyDMAAccess(DMAAccess::COPY)}},

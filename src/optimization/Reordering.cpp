@@ -41,7 +41,7 @@ static NODISCARD InstructionWalker findInstructionNotAccessing(
     auto it = pos;
     while(instructionsLeft > 0 && !it.isEndOfBlock())
     {
-        if(it.get() == nullptr)
+        if(!it.has())
         {
             // skip already replaced instructions
             it.nextInBlock();
@@ -54,12 +54,15 @@ static NODISCARD InstructionWalker findInstructionNotAccessing(
         {
             validReplacement = false;
         }
-        for(const Value& arg : it->getArguments())
+        if(validReplacement)
         {
-            if(excludedValues.find(arg) != excludedValues.end())
+            for(const Value& arg : it->getArguments())
             {
-                validReplacement = false;
-                break;
+                if(excludedValues.find(arg) != excludedValues.end())
+                {
+                    validReplacement = false;
+                    break;
+                }
             }
         }
         PROFILE_END(checkExcludedValues);
@@ -374,32 +377,49 @@ InstructionWalker optimizations::moveRotationSourcesToAccumulators(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     // makes sure, all sources for vector-rotations have a usage-range small enough to be on an accumulator
-    if(it.has<VectorRotation>() && it.get<VectorRotation>()->getSource().hasLocal())
+    auto rot = it.get<VectorRotation>();
+    if(rot)
     {
-        const Local* loc = it.get<VectorRotation>()->getSource().local();
-        InstructionWalker writer = it.copy().previousInBlock();
-        while(!writer.isStartOfBlock())
+        if(rot->getSource().hasLocal())
         {
-            if(writer.has() && writer->hasValueType(ValueType::LOCAL) && writer->getOutput()->hasLocal(loc))
-                break;
-            writer.previousInBlock();
+            const Local* loc = rot->getSource().local();
+            InstructionWalker writer = it.copy().previousInBlock();
+            while(!writer.isStartOfBlock())
+            {
+                if(writer.has() && writer->hasValueType(ValueType::LOCAL) && writer->getOutput()->hasLocal(loc))
+                    break;
+                writer.previousInBlock();
+            }
+            // if the local is either written in another block or the usage-range exceeds the accumulator threshold,
+            // move to temporary
+            if(writer.isStartOfBlock() ||
+                !writer.getBasicBlock()->isLocallyLimited(writer, loc, config.additionalOptions.accumulatorThreshold))
+            {
+                InstructionWalker mapper = it.copy().previousInBlock();
+                // insert mapper before first NOP
+                while(!mapper.isStartOfBlock() && mapper.copy().previousInBlock().has<Nop>())
+                    mapper.previousInBlock();
+                if(mapper.isStartOfBlock())
+                    mapper.nextInBlock();
+                // TODO no need for the nop if there is another instruction before the rotation not writing the local
+                logging::debug() << "Moving source of vector-rotation to temporary for: " << it->to_string()
+                                 << logging::endl;
+                const Value tmp = method.addNewLocal(loc->type, "%vector_rotation");
+                mapper.emplace(new MoveOperation(tmp, loc->createReference()));
+                it->replaceLocal(loc, tmp.local(), LocalUse::Type::READER);
+                return writer;
+            }
         }
-        // if the local is either written in another block or the usage-range exceeds the accumulator threshold, move to
-        // temporary
-        if(writer.isStartOfBlock() ||
-            !writer.getBasicBlock()->isLocallyLimited(writer, loc, config.additionalOptions.accumulatorThreshold))
+        else if(rot->getSource().hasRegister() && !rot->getSource().reg().isAccumulator())
         {
-            InstructionWalker mapper = it.copy().previousInBlock();
-            // insert mapper before first NOP
-            while(mapper.copy().previousInBlock().has<Nop>())
-                mapper.previousInBlock();
-            // TODO no need for the nop if there is another instruction before the rotation not writing the local
-            logging::debug() << "Moving source of vector-rotation to temporary for: " << it->to_string()
-                             << logging::endl;
-            const Value tmp = method.addNewLocal(loc->type, "%vector_rotation");
-            mapper.emplace(new MoveOperation(tmp, loc->createReference()));
-            it->replaceLocal(loc, tmp.local(), LocalUse::Type::READER);
-            return writer;
+            // e.g. inserting into vector from reading VPM
+            // insert temporary local to be read into, rotate local and NOP, since it is required
+            auto tmp = method.addNewLocal(rot->getSource().type, "%vector_rotation");
+            it.emplace(new MoveOperation(tmp, rot->getSource()));
+            it.nextInBlock();
+            it.emplace(new Nop(DelayType::WAIT_REGISTER));
+            it.nextInBlock();
+            rot->setSource(tmp);
         }
     }
     return it;
