@@ -108,7 +108,7 @@ static Test::Suite* newConversionFunctionsTest()
 }
 
 /*
- * 
+ *
  */
 int main(int argc, char** argv)
 {
@@ -126,7 +126,7 @@ int main(int argc, char** argv)
     Test::registerSuite(newLLVMCompilationTest<false>, "test-compilation-llvm", "Runs all the compilation tests using the LLVM-IR front-end", false);
     Test::registerSuite(newSPIRVCompiltionTest<false>, "test-compilation-spirv", "Runs all the compilation tests using the SPIR-V front-end", false);
     Test::registerSuite(newFastRegressionTest, "fast-regressions", "Runs regression test-cases marked as fast", false);
-    
+
     Test::registerSuite(newEmulatorTest, "test-emulator", "Runs selected code-samples through the emulator");
     Test::registerSuite(newMathFunctionsTest, "emulate-math", "Runs emulation tests for the OpenCL standard-library math functions");
     Test::registerSuite(Test::newInstance<TestGraph>, "test-graph", "Runs basic test for the graph data structure");
@@ -142,8 +142,8 @@ int main(int argc, char** argv)
     auto args = std::vector<char*>();
 
     for(auto i = 1; i < argc; ++i)
-    { 
-        if (!vc4c::tools::parseConfigurationParameter(config, argv[i]))
+    {
+        if (!vc4c::tools::parseConfigurationParameter(config, false, argv[i]))
             args.push_back(argv[i]);
 
         //TODO rewrite, actually print same help (parts of it) as VC4C
@@ -153,4 +153,3 @@ int main(int argc, char** argv)
 
     return Test::runSuites(int(args.size()), args.data());
 }
-
