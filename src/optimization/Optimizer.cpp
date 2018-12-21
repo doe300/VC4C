@@ -45,6 +45,8 @@ static const std::vector<OptimizationStep> SINGLE_STEPS = {
     OptimizationStep("CombineSelectionWithZero", combineSelectionWithZero),
     // combine successive setting of the same flags
     OptimizationStep("CombineSettingSameFlags", combineSameFlags),
+    // combine writing of value to set flags with writing of same value into output
+    OptimizationStep("CombineSettingFlagsWithOutput", combineFlagWithOutput),
     // calculates constant operations
     OptimizationStep("FoldConstants", foldConstants),
     // simplifies arithmetic operations into moves or into "easier" operations

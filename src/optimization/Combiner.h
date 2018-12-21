@@ -183,6 +183,30 @@ namespace vc4c
         InstructionWalker combineArithmeticOperations(
             const Module& module, Method& method, InstructionWalker it, const Configuration& config);
 
+        /*
+         * Combines moves setting flags with move of the same value into output registers.
+         *
+         * Example:
+         *   - = %b (setf)
+         *   ...
+         *   %a = %b
+         *
+         * becomes:
+         *   ...
+         *   %a = %b (setf)
+         *
+         * Also:
+         *   %a = %b
+         *   ...
+         *   - = %b (setf)
+         *
+         * becomes:
+         *   %a = %b (setf)
+         *   ...
+         */
+        InstructionWalker combineFlagWithOutput(
+            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+
         // TODO documentation, TODO move somewhere else?!
         bool cacheWorkGroupDMAAccess(const Module& module, Method& method, const Configuration& config);
     } // namespace optimizations

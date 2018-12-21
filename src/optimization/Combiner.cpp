@@ -999,6 +999,78 @@ InstructionWalker optimizations::combineArithmeticOperations(
     return it;
 }
 
+InstructionWalker optimizations::combineFlagWithOutput(
+    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+{
+    if(!it.has() || !it->doesSetFlag())
+        // does not set flags
+        return it;
+    if(!it->writesRegister(REG_NOP))
+        // already has output
+        return it;
+    if(!it.has<intermediate::MoveOperation>())
+        // only combine setting flags from moves (e.g. for PHI-nodes) for now
+        return it;
+    const auto& in = it->assertArgument(0);
+    if(it->signal.hasSideEffects() || it->hasConditionalExecution() ||
+        (in.hasRegister() && in.reg().hasSideEffectsOnRead()))
+        // only remove this setting of flags, if we have no other side effects and don't execute conditionally
+        return it;
+    const auto checkFunc = [&](InstructionWalker checkIt) -> bool {
+        return checkIt.has() && !checkIt->doesSetFlag() && !checkIt->hasSideEffects() && checkIt.has<MoveOperation>() &&
+            (checkIt->assertArgument(0) == in ||
+                (in.getLiteralValue() && checkIt->assertArgument(0).hasLiteral(*in.getLiteralValue())));
+    };
+
+    // look into the future until we hit the instruction requiring the flag
+    InstructionWalker resultIt = it.getBasicBlock()->walkEnd();
+    auto checkIt = it.copy().nextInBlock();
+    while(!checkIt.isEndOfBlock())
+    {
+        // this is usually only executed few times, since setting of flags and usage thereof are close to each other
+        if(checkIt.has() && (checkIt->hasConditionalExecution() || checkIt->doesSetFlag()))
+            break;
+        if(checkFunc(checkIt))
+        {
+            resultIt = checkIt;
+            break;
+        }
+        checkIt.nextInBlock();
+    }
+
+    // look back only a few instructions
+    if(resultIt.isEndOfBlock())
+    {
+        checkIt = it.copy().previousInBlock();
+        while(!checkIt.isStartOfBlock())
+        {
+            // TODO limit number of steps?
+
+            if(checkIt.has() &&
+                (checkIt->hasConditionalExecution() || checkIt->doesSetFlag() || checkIt->getOutput() == in))
+                break;
+            if(checkFunc(checkIt))
+            {
+                resultIt = checkIt;
+                break;
+            }
+            checkIt.previousInBlock();
+        }
+    }
+    if(!resultIt.isEndOfBlock())
+    {
+        logging::debug() << "Combining move to set flags '" << it->to_string()
+                         << "' with move to output: " << resultIt->to_string() << logging::endl;
+        resultIt->setSetFlags(SetFlag::SET_FLAGS);
+        // TODO decorations? If input is the same, most decorations are also the same?! Also, setflags usually don't
+        // have that many!?
+        it.erase();
+        // don't skip next instruction
+        it.previousInBlock();
+    }
+    return it;
+}
+
 static bool isGroupUniform(const Local* local)
 {
     auto writers = local->getUsers(LocalUse::Type::WRITER);
