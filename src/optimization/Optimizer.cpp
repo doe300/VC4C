@@ -266,8 +266,8 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         "splits read-after-writes (except if the local is used only very locally), so the reordering and "
         "register-allocation have an easier job",
         OptimizationType::FINAL),
-    OptimizationPass("CombineLiteralLoads", "combine-loads", combineLoadingLiterals,
-        "combines loadings of the same literal value within a small range of a basic block", OptimizationType::FINAL),
+    OptimizationPass("CombineConstantLoads", "combine-loads", combineLoadingConstants,
+        "combines loadings of the same constant value within a small range of a basic block", OptimizationType::FINAL),
     OptimizationPass("RemoveConstantLoadInLoops", "extract-loads-from-loops", removeConstantLoadInLoops,
         "move constant loads in (nested) loops outside the loops", OptimizationType::FINAL),
     OptimizationPass("CacheAcrossWorkGroup", "work-group-cache", cacheWorkGroupDMAAccess,

@@ -68,7 +68,8 @@ namespace vc4c
         bool combineOperations(const Module& module, Method& method, const Configuration& config);
 
         /*
-         * Combines the loading of the same literal within a small range in a single basic block
+         * Combines the loading of the same constant value (e.g. literal or constant register) within a small range in a
+         * single basic block
          *
          * Example:
          *   %3 = loadi 123456
@@ -82,8 +83,21 @@ namespace vc4c
          *   ...
          *   %8 = mul24 %3, %4
          *   %9 = add %3, %5
+         *
+         * Also:
+         *   %5 = qpu_num
+         *   %6 = add %5, %4
+         *   ...
+         *   %7 = qpu_num
+         *   %8 = and %7, %6
+         *
+         * is converted to:
+         *   %5 = qpu_num
+         *   %6 = add %5, %4
+         *   ...
+         *   %8 = and %5, %6
          */
-        bool combineLoadingLiterals(const Module& module, Method& method, const Configuration& config);
+        bool combineLoadingConstants(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Adds a branch from the end to the start to allow for running several kernels (from several work-groups) in

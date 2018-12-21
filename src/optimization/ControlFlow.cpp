@@ -1234,7 +1234,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 
     if(hasChanged)
         // combine the newly reordered (and at one place accumulated) loading instructions
-        combineLoadingLiterals(module, method, config);
+        combineLoadingConstants(module, method, config);
 
     return hasChanged;
 }

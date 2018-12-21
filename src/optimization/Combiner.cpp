@@ -18,6 +18,9 @@
 #include <cstdlib>
 #include <memory>
 
+// TODO combine y = (x >> n) << n with and
+// same for y = (x << n) >> n (at least of n constant)
+
 using namespace vc4c;
 using namespace vc4c::optimizations;
 using namespace vc4c::intermediate;
@@ -643,7 +646,16 @@ static Optional<Literal> getSourceLiteral(InstructionWalker it)
     return {};
 }
 
-static bool canReplaceLiteralLoad(
+static Optional<Register> getSourceConstantRegister(InstructionWalker it)
+{
+    if(it.has<MoveOperation>() && (it->readsRegister(REG_ELEMENT_NUMBER) || it->readsRegister(REG_QPU_NUMBER)))
+    {
+        return it.get<MoveOperation>()->getSource().reg();
+    }
+    return {};
+}
+
+static bool canReplaceConstantLoad(
     InstructionWalker it, const InstructionWalker start, const InstructionWalker match, std::size_t stepsLeft)
 {
     InstructionWalker pos = it.copy();
@@ -659,7 +671,7 @@ static bool canReplaceLiteralLoad(
     return false;
 }
 
-bool optimizations::combineLoadingLiterals(const Module& module, Method& method, const Configuration& config)
+bool optimizations::combineLoadingConstants(const Module& module, Method& method, const Configuration& config)
 {
     std::size_t threshold = config.additionalOptions.combineLoadThreshold;
     bool hasChanged = false;
@@ -667,6 +679,7 @@ bool optimizations::combineLoadingLiterals(const Module& module, Method& method,
     for(BasicBlock& block : method)
     {
         FastMap<uint32_t, InstructionWalker> lastLoadImmediate;
+        FastMap<Register, InstructionWalker> lastLoadRegister;
         InstructionWalker it = block.walk();
         while(!it.isEndOfBlock())
         {
@@ -681,11 +694,12 @@ bool optimizations::combineLoadingLiterals(const Module& module, Method& method,
                 {
                     auto immIt = lastLoadImmediate.find(literal->unsignedInt());
                     if(immIt != lastLoadImmediate.end() &&
-                        canReplaceLiteralLoad(it, block.walk(), immIt->second, threshold))
+                        canReplaceConstantLoad(it, block.walk(), immIt->second, threshold))
                     {
                         Local* oldLocal = it->getOutput()->local();
                         Local* newLocal = immIt->second->getOutput()->local();
-                        logging::debug() << "Removing duplicate loading of local: " << it->to_string() << logging::endl;
+                        logging::debug() << "Removing duplicate loading of literal: " << it->to_string()
+                                         << logging::endl;
                         // Local#forUsers can't be used here, since we modify the list of users via
                         // LocalUser#replaceLocal
                         FastSet<const LocalUser*> readers = oldLocal->getUsers(LocalUse::Type::READER);
@@ -699,6 +713,31 @@ bool optimizations::combineLoadingLiterals(const Module& module, Method& method,
                     }
                     else
                         lastLoadImmediate[literal->unsignedInt()] = it;
+                }
+                auto reg = getSourceConstantRegister(it);
+                if(reg)
+                {
+                    auto regIt = lastLoadRegister.find(*reg);
+                    if(regIt != lastLoadRegister.end() &&
+                        canReplaceConstantLoad(it, block.walk(), regIt->second, threshold))
+                    {
+                        Local* oldLocal = it->getOutput()->local();
+                        Local* newLocal = regIt->second->getOutput()->local();
+                        logging::debug() << "Removing duplicate loading of register: " << it->to_string()
+                                         << logging::endl;
+                        // Local#forUsers can't be used here, since we modify the list of users via
+                        // LocalUser#replaceLocal
+                        FastSet<const LocalUser*> readers = oldLocal->getUsers(LocalUse::Type::READER);
+                        for(const LocalUser* reader : readers)
+                        {
+                            const_cast<LocalUser*>(reader)->replaceLocal(oldLocal, newLocal);
+                        };
+                        it.erase();
+                        hasChanged = true;
+                        continue;
+                    }
+                    else
+                        lastLoadRegister[*reg] = it;
                 }
             }
             it.nextInBlock();
