@@ -7,6 +7,7 @@
 #include "IntermediateInstruction.h"
 
 #include "../asm/ALUInstruction.h"
+#include "../periphery/VPM.h"
 #include "log.h"
 
 #include <cmath>
@@ -158,7 +159,7 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
         throw CompilationError(
             CompilationStep::CODE_GENERATION, "Can only apply r4 unpack mode when reading r4", to_string());
 
-    const InputMultiplex inMux0 = getInputMux(input0.first, getFirstArg().hasRegister(), input0.second);
+    InputMultiplex inMux0 = getInputMux(input0.first, getFirstArg().hasRegister(), input0.second);
     if(!input0.second)
     {
         if(input0.first.isAccumulator() && inMux0 != InputMultiplex::REGA && inMux0 != InputMultiplex::REGB)
@@ -247,8 +248,23 @@ qpu_asm::Instruction* Operation::convertToAsm(const FastMap<const Local*, Regist
                     // need to set the register-file A here too if possible (which it is for registers located on both
                     // physical files)
                     input1.first.file = RegisterFile::PHYSICAL_A;
+                else if(input0.first.file == RegisterFile::PHYSICAL_B)
+                    input1.first.file = RegisterFile::PHYSICAL_A;
                 else
                     input1.first.file = RegisterFile::PHYSICAL_B;
+            }
+            if(inMux0 == inMux1 && input0.first != input1.first)
+            {
+                // "any physical file" for second argument is handled above. Since the first argument for "any physical
+                // file" defaults to file A, we need to explicitly select it from B if the second argument is fixed to
+                // A.
+                if(has_flag(input0.first.file, RegisterFile::PHYSICAL_ANY))
+                {
+                    inMux0 = inMux1 == InputMultiplex::REGA ? InputMultiplex::REGB : InputMultiplex::REGA;
+                }
+                else
+                    throw CompilationError(CompilationStep::CODE_GENERATION,
+                        "Two distinct inputs use the same input multiplex", to_string());
             }
             if(isAddALU)
             {
@@ -435,6 +451,18 @@ MoveOperation::MoveOperation(const Value& dest, const Value& arg, const Conditio
 
 std::string MoveOperation::to_string() const
 {
+    if(getSource().getLiteralValue() &&
+        (getOutput()->hasRegister(REG_VPM_IN_SETUP) ||
+            has_flag(decoration, InstructionDecorations::VPM_READ_CONFIGURATION)))
+        return (getOutput()->to_string(true) + " = ") +
+            periphery::VPRSetup::fromLiteral(getSource().getLiteralValue()->unsignedInt()).to_string() +
+            createAdditionalInfoString();
+    if(getSource().getLiteralValue() &&
+        (getOutput()->hasRegister(REG_VPM_OUT_SETUP) ||
+            has_flag(decoration, InstructionDecorations::VPM_WRITE_CONFIGURATION)))
+        return (getOutput()->to_string(true) + " = ") +
+            periphery::VPWSetup::fromLiteral(getSource().getLiteralValue()->unsignedInt()).to_string() +
+            createAdditionalInfoString();
     return (getOutput()->to_string(true) + " = ") + getSource().to_string() + createAdditionalInfoString();
 }
 

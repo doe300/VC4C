@@ -396,6 +396,10 @@ static bool isNoReadBetween(InstructionWalker first, InstructionWalker second, R
         if(first->readsRegister(reg) || first->writesRegister(reg) || first->signal.triggersReadOfR4() ||
             first->writesRegister(REG_MUTEX))
             return false;
+        // for reading VPM, check also VPM read setup
+        if(reg.isVertexPipelineMemory() && first->hasValueType(ValueType::REGISTER) &&
+            first->getOutput()->reg().isVertexPipelineMemory())
+            return false;
         first.nextInBlock();
     }
     return true;
@@ -436,7 +440,8 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
         // - mov.setf r0, r1
         // - mov r0, r1, load_tmu0
         if(op && !it.has<intermediate::VectorRotation>() && !op->hasConditionalExecution() && !op->hasPackMode() &&
-            !op->hasUnpackMode() && op->getOutput().has_value() && (!op->getSource().hasRegister()) &&
+            !op->hasUnpackMode() && op->getOutput().has_value() &&
+            (!op->getSource().hasRegister() || !op->getSource().reg().hasSideEffectsOnRead()) &&
             (!op->getOutput().value().hasRegister()))
         {
             auto it2 = it.copy().nextInBlock();
@@ -445,17 +450,22 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
             // only continue iterating as long as there is a read of the local left
             FastSet<const LocalUser*> remainingLocalReads =
                 oldValue.hasLocal() ? oldValue.local()->getUsers(LocalUse::Type::READER) : FastSet<const LocalUser*>{};
+            // registers fixed to physical file B cannot be combined with literal
+            bool skipLiteralReads = newValue.hasRegister() && newValue.reg().file == RegisterFile::PHYSICAL_B;
             while(!it2.isEndOfBlock() && !remainingLocalReads.empty())
             {
                 bool replacedThisInstruction = false;
-                for(auto arg : it2->getArguments())
+                if(!skipLiteralReads || !it2->readsLiteral())
                 {
-                    if(arg == oldValue && !arg.hasLiteral() && !arg.hasImmediate())
+                    for(auto arg : it2->getArguments())
                     {
-                        replaced = true;
-                        replacedThisInstruction = true;
-                        it2->replaceValue(oldValue, newValue, LocalUse::Type::READER);
-                        remainingLocalReads.erase(it2.get());
+                        if(arg == oldValue && !arg.hasLiteral() && !arg.hasImmediate())
+                        {
+                            replaced = true;
+                            replacedThisInstruction = true;
+                            it2->replaceValue(oldValue, newValue, LocalUse::Type::READER);
+                            remainingLocalReads.erase(it2.get());
+                        }
                     }
                 }
 
@@ -649,7 +659,8 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
 
                 const auto& arg0 = op->assertArgument(0);
                 const auto& arg1 = op->assertArgument(1);
-                if(op->getOutput()->hasLocal())
+
+                if(op->getOutput() && op->getOutput()->hasLocal())
                 {
                     auto out = op->getOutput().value().local();
 
@@ -693,7 +704,8 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
 
                 const auto& arg0 = op->assertArgument(0);
                 const auto& arg1 = op->assertArgument(1);
-                if(op->getOutput()->hasLocal())
+
+                if(op->getOutput() && op->getOutput()->hasLocal())
                 {
                     auto out = op->getOutput()->local();
 

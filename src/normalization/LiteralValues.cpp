@@ -890,6 +890,18 @@ InstructionWalker normalization::handleUseWithImmediate(
                     op->replaceLocal(oldLocal, tmp.local(), LocalUse::Type::READER);
                 }
             }
+            const auto registerIt =
+                std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.hasRegister(); });
+            if(registerIt != args.end() && registerIt->reg().file == RegisterFile::PHYSICAL_B)
+            {
+                logging::debug()
+                    << "Inserting temporary to split up use of physical register on file B with immediate value: "
+                    << op->to_string() << logging::endl;
+                auto tmp = method.addNewLocal(registerIt->type);
+                it.emplace(new intermediate::MoveOperation(tmp, *registerIt));
+                it.nextInBlock();
+                op->replaceValue(*registerIt, tmp, LocalUse::Type::READER);
+            }
         }
     }
 

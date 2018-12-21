@@ -234,7 +234,7 @@ namespace vc4c
          * Parameter points to volatile memory, accesses to this parameter cannot be reordered/eliminated/duplicated or
          * combined. Only valid for pointers.
          */
-        VOLATILE = 0x30
+        VOLATILE = 0x40
     };
 
     /*

@@ -430,7 +430,7 @@ bool IntermediateInstruction::replaceValue(const Value oldValue, const Value new
             if(arg == oldValue)
             {
                 logging::debug() << "replaceValue: replace " << arg.to_string() << " to "
-                                 << newValue.to_string(true, true) << " in " << to_string() << logging::endl;
+                                 << newValue.to_string(false, true) << " in " << to_string() << logging::endl;
                 removeAsUserFromValue(arg, LocalUse::Type::READER);
                 arg = newValue;
                 addAsUserToValue(arg, LocalUse::Type::READER);

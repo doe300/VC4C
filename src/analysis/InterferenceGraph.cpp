@@ -56,31 +56,30 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(Method& method
             for(auto& local : pair.second.getStartResult())
             {
                 FastSet<BasicBlock*> blocksVisited;
-                InstructionVisitor v{
-                    [&](InstructionWalker& it) -> InstructionVisitResult {
-                        // skip the own label itself
-                        if(it.get() == pair.first->getLabel())
-                            return InstructionVisitResult::CONTINUE;
-                        if(it.has<intermediate::BranchLabel>())
-                        {
-                            if(it.getBasicBlock()->isStartOfMethod())
-                                // do not repeat work-group loop
-                                return InstructionVisitResult::STOP_BRANCH;
-                            if(blocksVisited.find(it.getBasicBlock()) != blocksVisited.end())
-                                // loop, abort after one iteration
-                                return InstructionVisitResult::STOP_BRANCH;
-                            blocksVisited.emplace(it.getBasicBlock());
-                        }
+                InstructionVisitor v{[&](InstructionWalker& it) -> InstructionVisitResult {
+                                         // skip the own label itself
+                                         if(it.get() == pair.first->getLabel())
+                                             return InstructionVisitResult::CONTINUE;
+                                         if(it.has<intermediate::BranchLabel>())
+                                         {
+                                             if(it.getBasicBlock()->isStartOfMethod())
+                                                 // do not repeat work-group loop
+                                                 return InstructionVisitResult::STOP_BRANCH;
+                                             if(blocksVisited.find(it.getBasicBlock()) != blocksVisited.end())
+                                                 // loop, abort after one iteration
+                                                 return InstructionVisitResult::STOP_BRANCH;
+                                             blocksVisited.emplace(it.getBasicBlock());
+                                         }
 
-                        auto addLocalsIt = additionalLocals.find(it.get());
-                        auto& lives = livenesses.at(it.getBasicBlock()).getResult(it.get());
-                        if(it->writesLocal(local) || lives.find(local) != lives.end() ||
-                            (addLocalsIt != additionalLocals.end() &&
-                                addLocalsIt->second.find(local) != addLocalsIt->second.end()))
-                            return InstructionVisitResult::STOP_BRANCH;
-                        additionalLocals[it.get()].emplace(local);
-                        return InstructionVisitResult::CONTINUE;
-                    },
+                                         auto addLocalsIt = additionalLocals.find(it.get());
+                                         auto& lives = livenesses.at(it.getBasicBlock()).getResult(it.get());
+                                         if(it->writesLocal(local) || lives.find(local) != lives.end() ||
+                                             (addLocalsIt != additionalLocals.end() &&
+                                                 addLocalsIt->second.find(local) != addLocalsIt->second.end()))
+                                             return InstructionVisitResult::STOP_BRANCH;
+                                         additionalLocals[it.get()].emplace(local);
+                                         return InstructionVisitResult::CONTINUE;
+                                     },
                     false, true};
                 v.visitReverse(pair.first->walk(), &method.getCFG());
             }

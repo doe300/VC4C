@@ -1506,9 +1506,10 @@ void QPU::writeConditional(Register dest, const Value& in, ConditionCode cond, c
 
     for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
     {
-        if((!in.hasContainer() || i < in.container().elements.size()) && flags[i].matchesCondition(cond))
+        if((!in.hasContainer() || i < in.container().elements.size()))
         {
-            elementMask.set(i);
+            if(flags[i].matchesCondition(cond))
+                elementMask.set(i);
             Value element = in.hasContainer() ? in.container().elements[i] : in;
             element.type = element.type.toVectorType(1);
             result.container().elements.push_back(element);

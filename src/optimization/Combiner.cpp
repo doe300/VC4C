@@ -991,11 +991,14 @@ InstructionWalker optimizations::combineArithmeticOperations(
                          << logging::endl;
         precalc = OP_ADD(literalArg, otherLiteralArg);
     }
-    auto lastIt = it.getBasicBlock()->findWalkerForInstruction(singleWriter, it).value();
-    lastIt.reset(new Operation(op->op, it->getOutput().value(), origArg, precalc.value()));
-    it.erase();
-    // don't skip next instruction
-    it.previousInBlock();
+    auto lastIt = it.getBasicBlock()->findWalkerForInstruction(singleWriter, it);
+    if(lastIt)
+    {
+        lastIt->reset(new Operation(op->op, it->getOutput().value(), origArg, precalc.value()));
+        it.erase();
+        // don't skip next instruction
+        it.previousInBlock();
+    }
     return it;
 }
 
