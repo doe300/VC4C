@@ -11,6 +11,8 @@ target_sources(${VC4C_LIBRARY_NAME}
     Expression.cpp
     Expression.h
     Graph.h
+    HalfType.cpp
+    HalfType.h
     helper.h
     InstructionWalker.cpp
     InstructionWalker.h

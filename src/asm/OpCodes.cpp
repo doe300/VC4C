@@ -6,6 +6,7 @@
 
 #include "OpCodes.h"
 
+#include "../HalfType.h"
 #include "../Values.h"
 #include "../intrinsics/Operators.h"
 #include "CompilationError.h"
@@ -214,19 +215,19 @@ Optional<Value> Unpack::operator()(const Value& val) const
         return val;
     case UNPACK_16A_32:
     {
-        if(val.type.isFloatingType())
-            return NO_VALUE;
         // signed conversion -> truncate to unsigned short, bit-cast to signed short and sign-extend
         uint16_t lowWord = static_cast<uint16_t>(val.getLiteralValue()->unsignedInt());
+        if(val.type.isFloatingType())
+            return Value(Literal(static_cast<float>(half_t(lowWord))), val.type);
         int16_t lowWordSigned = bit_cast<uint16_t, int16_t>(lowWord);
         return Value(Literal(static_cast<int32_t>(lowWordSigned)), val.type);
     }
     case UNPACK_16B_32:
     {
-        if(val.type.isFloatingType())
-            return NO_VALUE;
         // signed conversion -> truncate to unsigned short, bit-cast to signed short and sign-extend
         uint16_t highWord = static_cast<uint16_t>(val.getLiteralValue()->unsignedInt() >> 16);
+        if(val.type.isFloatingType())
+            return Value(Literal(static_cast<float>(half_t(highWord))), val.type);
         int16_t highWordSigned = bit_cast<uint16_t, int16_t>(highWord);
         return Value(Literal(static_cast<int32_t>(highWordSigned)), val.type);
     }
@@ -271,6 +272,16 @@ Optional<Value> Unpack::operator()(const Value& val) const
         // unsigned cast required to guarantee cutting off the value
         uint8_t byte3 = static_cast<uint8_t>(val.getLiteralValue()->unsignedInt() >> 24);
         return Value(Literal(static_cast<uint32_t>(byte3)), val.type);
+    }
+    case UNPACK_R4_16A_32:
+    {
+        uint16_t lowWord = static_cast<uint16_t>(val.getLiteralValue()->unsignedInt());
+        return Value(Literal(static_cast<float>(half_t(lowWord))), val.type);
+    }
+    case UNPACK_R4_16B_32:
+    {
+        uint16_t highWord = static_cast<uint16_t>(val.getLiteralValue()->unsignedInt() >> 16);
+        return Value(Literal(static_cast<float>(half_t(highWord))), val.type);
     }
     case UNPACK_R4_COLOR0:
     {
@@ -407,19 +418,21 @@ Optional<Value> Pack::operator()(const Value& val) const
         return val;
     case PACK_32_16A:
         if(val.type.isFloatingType())
-            return NO_VALUE;
+            return Value(Literal(static_cast<uint16_t>(half_t(val.getLiteralValue()->real()))), val.type);
         return Value(Literal(val.getLiteralValue()->unsignedInt() & 0xFFFF), val.type);
     case PACK_32_16A_S:
         if(val.type.isFloatingType())
-            return NO_VALUE;
+            // TODO no saturation?
+            return Value(Literal(static_cast<uint16_t>(half_t(val.getLiteralValue()->real()))), val.type);
         return Value(Literal(saturate<int16_t>(val.getLiteralValue()->signedInt()) & 0xFFFF), val.type);
     case PACK_32_16B:
         if(val.type.isFloatingType())
-            return NO_VALUE;
+            return Value(Literal(static_cast<uint16_t>(half_t(val.getLiteralValue()->real())) << 16), val.type);
         return Value(Literal((val.getLiteralValue()->unsignedInt() & 0xFFFF) << 16), val.type);
     case PACK_32_16B_S:
         if(val.type.isFloatingType())
-            return NO_VALUE;
+            // TODO no saturation?
+            return Value(Literal(static_cast<uint16_t>(half_t(val.getLiteralValue()->real())) << 16), val.type);
         return Value(Literal(saturate<int16_t>(val.getLiteralValue()->signedInt()) << 16), val.type);
     case PACK_32_32:
         // this depends on signed integer overflow (to determine overflow and then saturate)

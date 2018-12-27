@@ -363,7 +363,12 @@ namespace vc4c
                 {
                     auto precalc = op.op(op.arg0, op.arg1);
                     if(precalc)
-                        return op.packMode(precalc.value()).value();
+                    {
+                        auto tmp = op.packMode(precalc.value()).value();
+                        // so the result type matches the expected type
+                        tmp.type = type;
+                        return tmp;
+                    }
                 }
                 auto result = method.addNewLocal(type, name);
                 it.emplace(op.toInstruction(result));

@@ -7,6 +7,7 @@
 #include "TestInstructions.h"
 
 #include "Bitfield.h"
+#include "HalfType.h"
 #include "Values.h"
 #include "asm/OpCodes.h"
 
@@ -21,6 +22,7 @@ TestInstructions::TestInstructions()
     TEST_ADD(TestInstructions::testBitfields);
     TEST_ADD(TestInstructions::testOpCodes);
     TEST_ADD(TestInstructions::testOpCodeProperties);
+    TEST_ADD(TestInstructions::testHalfFloat);
 }
 
 TestInstructions::~TestInstructions()
@@ -395,6 +397,30 @@ void TestInstructions::testOpCodeProperties()
                     TEST_ASSERT_EQUALS(std::string("right distributive over ") + op2.name, op.name);
                 }
             }
+        }
+    }
+}
+
+void TestInstructions::testHalfFloat()
+{
+    TEST_ASSERT_EQUALS(0.0f, static_cast<float>(HALF_ZERO));
+    TEST_ASSERT_EQUALS(1.0f, static_cast<float>(HALF_ONE));
+    TEST_ASSERT_EQUALS(1.0f, static_cast<float>(half_t(1.0f)));
+    TEST_ASSERT_EQUALS(0.0f, static_cast<float>(half_t(0.0f)));
+    TEST_ASSERT_EQUALS(1000.0f, static_cast<float>(half_t(1000.0f)));
+
+    for(uint32_t i = 0; i <= std::numeric_limits<uint16_t>::max(); ++i)
+    {
+        // TODO test half with float constructor (e.g. for float subnormals)
+        half_t h(static_cast<uint16_t>(i));
+        if(h.isNaN())
+            TEST_ASSERT(std::isnan(static_cast<float>(h)))
+        else
+        {
+            TEST_ASSERT_EQUALS(static_cast<float>(h),
+                UNPACK_16A_32(Value(Literal(static_cast<uint32_t>(i)), TYPE_HALF))->getLiteralValue()->real());
+            TEST_ASSERT_EQUALS(
+                i, PACK_32_16A(Value(Literal(static_cast<float>(h)), TYPE_FLOAT))->getLiteralValue()->unsignedInt());
         }
     }
 }

@@ -22,6 +22,7 @@ public:
 	void testBitfields();
 	void testOpCodes();
 	void testOpCodeProperties();
+	void testHalfFloat();
 };
 
 #endif /* TEST_INSTRUCTIONS_H */
