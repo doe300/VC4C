@@ -10,18 +10,34 @@
 static const std::string VECTOR_LOAD_FUNCTION = R"(
 #define CONCAT(a,b) a ## b
 #define CAT(a,b) CONCAT(a,b)
+#if N == 3
+__kernel void test(__global TYPE* out, const __global TYPE* in) {
+#else
 __kernel void test(__global CAT(TYPE,N)* out, const __global TYPE* in) {
+#endif
   size_t gid = get_global_id(0);
+#if N == 3
+  CAT(vstore,N)(CAT(vload,N)(gid, in), gid, out);
+#else
   out[gid] = CAT(vload,N)(gid, in);
+#endif
 }
 )";
 
 static const std::string VECTOR_STORE_FUNCTION = R"(
 #define CONCAT(a,b) a ## b
 #define CAT(a,b) CONCAT(a,b)
+#if N == 3
+__kernel void test(__global TYPE* out, const __global TYPE* in) {
+#else
 __kernel void test(__global TYPE* out, const __global CAT(TYPE,N)* in) {
+#endif
   size_t gid = get_global_id(0);
+#if N == 3
+  CAT(vstore,N)(CAT(vload,N)(gid, in), gid, out);
+#else
   CAT(vstore,N)(in[gid], gid, out);
+#endif
 }
 )";
 
@@ -52,11 +68,9 @@ TestVectorFunctions::TestVectorFunctions(const vc4c::Configuration& config) : co
     TEST_ADD(TestVectorFunctions::testVectorLoad2Int);
     TEST_ADD(TestVectorFunctions::testVectorLoad2Short);
     TEST_ADD(TestVectorFunctions::testVectorLoad2Char);
-    /*XXX comparison is not right for width of 3, because "normal" load/store uses width of 4 per standard
     TEST_ADD(TestVectorFunctions::testVectorLoad3Int);
     TEST_ADD(TestVectorFunctions::testVectorLoad3Short);
     TEST_ADD(TestVectorFunctions::testVectorLoad3Char);
-    */
     TEST_ADD(TestVectorFunctions::testVectorLoad4Int);
     TEST_ADD(TestVectorFunctions::testVectorLoad4Short);
     TEST_ADD(TestVectorFunctions::testVectorLoad4Char);
@@ -70,11 +84,9 @@ TestVectorFunctions::TestVectorFunctions(const vc4c::Configuration& config) : co
     TEST_ADD(TestVectorFunctions::testVectorStore2Int);
     TEST_ADD(TestVectorFunctions::testVectorStore2Short);
     TEST_ADD(TestVectorFunctions::testVectorStore2Char);
-    /*XXX comparison is not right for width of 3, because "normal" load/store uses width of 4 per standard
     TEST_ADD(TestVectorFunctions::testVectorStore3Int);
     TEST_ADD(TestVectorFunctions::testVectorStore3Short);
     TEST_ADD(TestVectorFunctions::testVectorStore3Char);
-    */
     TEST_ADD(TestVectorFunctions::testVectorStore4Int);
     TEST_ADD(TestVectorFunctions::testVectorStore4Short);
     TEST_ADD(TestVectorFunctions::testVectorStore4Char);

@@ -37,9 +37,7 @@ TestCommonFunctions::TestCommonFunctions(const vc4c::Configuration& config) : co
     TEST_ADD(TestCommonFunctions::testMix);
     TEST_ADD(TestCommonFunctions::testRadians);
     TEST_ADD(TestCommonFunctions::testStep);
-    /*XXX
     TEST_ADD(TestCommonFunctions::testSmoothStep);
-    */
     TEST_ADD(TestCommonFunctions::testSign);
 }
 
@@ -48,6 +46,7 @@ void TestCommonFunctions::onMismatch(const std::string& expected, const std::str
     TEST_ASSERT_EQUALS(expected, result);
 }
 
+template <std::size_t ULP>
 static void testUnaryFunction(vc4c::Configuration& config, const std::string& options,
     const std::function<float(float)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
 {
@@ -58,9 +57,11 @@ static void testUnaryFunction(vc4c::Configuration& config, const std::string& op
 
     auto out = runEmulation<float, float, 16, 12>(code, {in});
     auto pos = options.find("-DFUNC=") + std::string("-DFUNC=").size();
-    checkUnaryResults<float, float>(in, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
+    checkUnaryResults<float, float, 16 * 12, CompareULP<ULP>>(
+        in, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
+template <std::size_t ULP>
 static void testBinaryFunction(vc4c::Configuration& config, const std::string& options,
     const std::function<float(float, float)>& op,
     const std::function<void(const std::string&, const std::string&)>& onError)
@@ -73,9 +74,11 @@ static void testBinaryFunction(vc4c::Configuration& config, const std::string& o
 
     auto out = runEmulation<float, float, 16, 12>(code, {in0, in1});
     auto pos = options.find("-DFUNC=") + std::string("-DFUNC=").size();
-    checkBinaryResults<float, float>(in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
+    checkBinaryResults<float, float, 16 * 12, CompareULP<ULP>>(
+        in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
+template <std::size_t ULP>
 static void testTernaryFunction(vc4c::Configuration& config, const std::string& options,
     const std::function<float(float, float, float)>& op,
     const std::function<void(const std::string&, const std::string&)>& onError)
@@ -89,56 +92,82 @@ static void testTernaryFunction(vc4c::Configuration& config, const std::string& 
 
     auto out = runEmulation<float, float, 16, 12>(code, {in0, in1, in2});
     auto pos = options.find("-DFUNC=") + std::string("-DFUNC=").size();
-    checkTernaryResults<float, float>(
+    checkTernaryResults<float, float, 16 * 12, CompareULP<ULP>>(
         in0, in1, in2, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
+}
+
+static float checkClamp(float x, float min, float max)
+{
+    return std::min(std::max(x, min), max);
 }
 
 void TestCommonFunctions::testClamp()
 {
-    testTernaryFunction(config, "-DFUNC=clamp",
-        [](float a, float b, float c) -> float { return std::min(std::max(a, b), c); },
+    testTernaryFunction<0>(config, "-DFUNC=clamp", checkClamp,
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestCommonFunctions::testDegrees()
 {
-    testUnaryFunction(config, "-DFUNC=degrees", [](float a) -> float { return a * (180.f / static_cast<float>(M_PI)); },
+    // maximum error not in standard, but see here: https://github.com/KhronosGroup/OpenCL-Docs/issues/33
+    testUnaryFunction<2>(config, "-DFUNC=degrees",
+        [](float a) -> float { return a * (180.f / static_cast<float>(M_PI)); },
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestCommonFunctions::testMax()
 {
-    testBinaryFunction(config, "-DFUNC=max", [](float a, float b) -> float { return std::max(a, b); },
+    // maximum error not in standard, but see here: https://github.com/KhronosGroup/OpenCL-Docs/issues/33
+    testBinaryFunction<0>(config, "-DFUNC=max", [](float a, float b) -> float { return std::max(a, b); },
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestCommonFunctions::testMin()
 {
-    testBinaryFunction(config, "-DFUNC=min", [](float a, float b) -> float { return std::min(a, b); },
+    // maximum error not in standard, but see here: https://github.com/KhronosGroup/OpenCL-Docs/issues/33
+    testBinaryFunction<0>(config, "-DFUNC=min", [](float a, float b) -> float { return std::min(a, b); },
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestCommonFunctions::testMix()
 {
-    testTernaryFunction(config, "-DFUNC=mix", [](float a, float b, float c) -> float { return a + (b - a) * c; },
+    // maximum error not in standard, but see here: https://github.com/KhronosGroup/OpenCL-Docs/issues/33
+    // technically implementation defined, but we derive the maximum ULP from the ULPs of the used functions
+    testTernaryFunction<0>(config, "-DFUNC=mix", [](float a, float b, float c) -> float { return a + (b - a) * c; },
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestCommonFunctions::testRadians()
 {
-    testUnaryFunction(config, "-DFUNC=radians", [](float a) -> float { return a * (static_cast<float>(M_PI) / 180.f); },
+    // maximum error not in standard, but see here: https://github.com/KhronosGroup/OpenCL-Docs/issues/33
+    testUnaryFunction<2>(config, "-DFUNC=radians",
+        [](float a) -> float { return a * (static_cast<float>(M_PI) / 180.f); },
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestCommonFunctions::testStep()
 {
-    testBinaryFunction(config, "-DFUNC=step", [](float a, float b) -> float { return b < a ? 0.0f : 1.0f; },
+    // maximum error not in standard, but see here: https://github.com/KhronosGroup/OpenCL-Docs/issues/33
+    testBinaryFunction<0>(config, "-DFUNC=step", [](float a, float b) -> float { return b < a ? 0.0f : 1.0f; },
+        std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestCommonFunctions::testSmoothStep()
+{
+    // maximum error not in standard, but see here: https://github.com/KhronosGroup/OpenCL-Docs/issues/33
+    auto smoothstep = [](float edge0, float edge1, float val) -> float {
+        float t = checkClamp((val - edge0) / (edge1 - edge0), 0, 1);
+        return t * t * (3 - 2 * t);
+    };
+    // technically implementation defined, but we derive the maximum ULP from the ULPs of the used functions
+    testTernaryFunction<3>(config, "-DFUNC=smoothstep", smoothstep,
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestCommonFunctions::testSign()
 {
-    testUnaryFunction(config, "-DFUNC=sign",
+    // maximum error not in standard, but see here: https://github.com/KhronosGroup/OpenCL-Docs/issues/33
+    testUnaryFunction<0>(config, "-DFUNC=sign",
         [](float a) -> float { return (std::signbit(a) ? -1.0f : 1.0f) * (std::abs(a) > 0 ? 1.0f : 0.0f); },
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }

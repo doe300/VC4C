@@ -83,21 +83,19 @@ TestIntegerFunctions::TestIntegerFunctions(const vc4c::Configuration& config) : 
     TEST_ADD(TestIntegerFunctions::testClzUnsignedShort);
     TEST_ADD(TestIntegerFunctions::testClzUnsignedChar);
 
-    /* XXX
-        TEST_ADD(TestIntegerFunctions::testMadHiSignedInt);
-        TEST_ADD(TestIntegerFunctions::testMadHiSignedShort);
-        TEST_ADD(TestIntegerFunctions::testMadHiSignedChar);
-        TEST_ADD(TestIntegerFunctions::testMadHiUnsignedInt);
-        TEST_ADD(TestIntegerFunctions::testMadHiUnsignedShort);
-        TEST_ADD(TestIntegerFunctions::testMadHiUnsignedChar);
+    TEST_ADD(TestIntegerFunctions::testMadHiSignedInt);
+    TEST_ADD(TestIntegerFunctions::testMadHiSignedShort);
+    TEST_ADD(TestIntegerFunctions::testMadHiSignedChar);
+    TEST_ADD(TestIntegerFunctions::testMadHiUnsignedInt);
+    TEST_ADD(TestIntegerFunctions::testMadHiUnsignedShort);
+    TEST_ADD(TestIntegerFunctions::testMadHiUnsignedChar);
 
-        TEST_ADD(TestIntegerFunctions::testMadSatSignedInt);
-        TEST_ADD(TestIntegerFunctions::testMadSatSignedShort);
-        TEST_ADD(TestIntegerFunctions::testMadSatSignedChar);
-        TEST_ADD(TestIntegerFunctions::testMadSatUnsignedInt);
-        TEST_ADD(TestIntegerFunctions::testMadSatUnsignedShort);
-        TEST_ADD(TestIntegerFunctions::testMadSatUnsignedChar);
-*/
+    TEST_ADD(TestIntegerFunctions::testMadSatSignedInt);
+    TEST_ADD(TestIntegerFunctions::testMadSatSignedShort);
+    TEST_ADD(TestIntegerFunctions::testMadSatSignedChar);
+    TEST_ADD(TestIntegerFunctions::testMadSatUnsignedInt);
+    TEST_ADD(TestIntegerFunctions::testMadSatUnsignedShort);
+    TEST_ADD(TestIntegerFunctions::testMadSatUnsignedChar);
 
     TEST_ADD(TestIntegerFunctions::testMaxSignedInt);
     TEST_ADD(TestIntegerFunctions::testMaxSignedShort);
@@ -113,14 +111,12 @@ TestIntegerFunctions::TestIntegerFunctions(const vc4c::Configuration& config) : 
     TEST_ADD(TestIntegerFunctions::testMinUnsignedShort);
     TEST_ADD(TestIntegerFunctions::testMinUnsignedChar);
 
-    /*XXX
-        TEST_ADD(TestIntegerFunctions::testMulHiSignedInt);
-        TEST_ADD(TestIntegerFunctions::testMulHiSignedShort);
-        TEST_ADD(TestIntegerFunctions::testMulHiSignedChar);
-        TEST_ADD(TestIntegerFunctions::testMulHiUnsignedInt);
-        TEST_ADD(TestIntegerFunctions::testMulHiUnsignedShort);
-        TEST_ADD(TestIntegerFunctions::testMulHiUnsignedChar);
-    */
+    TEST_ADD(TestIntegerFunctions::testMulHiSignedInt);
+    TEST_ADD(TestIntegerFunctions::testMulHiSignedShort);
+    TEST_ADD(TestIntegerFunctions::testMulHiSignedChar);
+    TEST_ADD(TestIntegerFunctions::testMulHiUnsignedInt);
+    TEST_ADD(TestIntegerFunctions::testMulHiUnsignedShort);
+    TEST_ADD(TestIntegerFunctions::testMulHiUnsignedChar);
 
     TEST_ADD(TestIntegerFunctions::testRotateSignedInt);
     TEST_ADD(TestIntegerFunctions::testRotateSignedShort);
@@ -148,13 +144,10 @@ TestIntegerFunctions::TestIntegerFunctions(const vc4c::Configuration& config) : 
     TEST_ADD(TestIntegerFunctions::testPopcountUnsignedShort);
     TEST_ADD(TestIntegerFunctions::testPopcountUnsignedChar);
 
-    /* XXX
     TEST_ADD(TestIntegerFunctions::testMad24SignedInt);
     TEST_ADD(TestIntegerFunctions::testMad24UnsignedInt);
-
     TEST_ADD(TestIntegerFunctions::testMul24SignedInt);
     TEST_ADD(TestIntegerFunctions::testMul24UnsignedInt);
-    */
 }
 
 void TestIntegerFunctions::onMismatch(const std::string& expected, const std::string& result)
@@ -222,8 +215,8 @@ static T checkIdentity(T in)
 template <typename T>
 static typename std::make_unsigned<T>::type checkAbsDiff(T in1, T in2)
 {
-    return std::abs((in1 > in2) ? (static_cast<long>(in1) - static_cast<long>(in2)) :
-                                  (static_cast<long>(in2) - static_cast<long>(in1)));
+    return std::abs((in1 > in2) ? (static_cast<int64_t>(in1) - static_cast<int64_t>(in2)) :
+                                  (static_cast<int64_t>(in2) - static_cast<int64_t>(in1)));
 }
 
 template <typename T>
@@ -235,15 +228,15 @@ static T checkDiff(T in1, T in2)
 template <typename T>
 static T checkAddSat(T in1, T in2)
 {
-    return std::max(
-        std::min(static_cast<long>(in1) + static_cast<long>(in2), static_cast<long>(std::numeric_limits<T>::max())),
-        static_cast<long>(std::numeric_limits<T>::min()));
+    return std::max(std::min(static_cast<int64_t>(in1) + static_cast<int64_t>(in2),
+                        static_cast<int64_t>(std::numeric_limits<T>::max())),
+        static_cast<int64_t>(std::numeric_limits<T>::min()));
 }
 
 template <typename T>
 static T checkHAdd(T in1, T in2)
 {
-    return (static_cast<long>(in1) + static_cast<long>(in2)) >> 1;
+    return (static_cast<int64_t>(in1) + static_cast<int64_t>(in2)) >> 1;
 }
 
 template <typename T>
@@ -255,7 +248,7 @@ static T checkClamp(T val, T min, T max)
 template <typename T>
 static T checkRHAdd(T in1, T in2)
 {
-    return (static_cast<long>(in1) + static_cast<long>(in2) + 1) >> 1;
+    return (static_cast<int64_t>(in1) + static_cast<int64_t>(in2) + 1) >> 1;
 }
 
 template <typename T>
@@ -263,7 +256,7 @@ static T checkClz(T in)
 {
     for(int i = sizeof(T) * 8 - 1; i >= 0; --i)
     {
-        if(((static_cast<unsigned long>(in) >> i) & 0x1) == 0x1)
+        if(((static_cast<uint64_t>(in) >> i) & 0x1) == 0x1)
             return sizeof(T) * 8 - 1 - i;
     }
     return sizeof(T) * 8;
@@ -272,7 +265,22 @@ static T checkClz(T in)
 template <typename T>
 static T checkMulHi(T in1, T in2)
 {
-    return (static_cast<long>(in1) * static_cast<long>(in2)) >> sizeof(T) * 8;
+    return (static_cast<int64_t>(in1) * static_cast<int64_t>(in2)) >> sizeof(T) * 8;
+}
+
+template <typename T>
+static T checkMadHi(T in1, T in2, T in3)
+{
+    return checkMulHi(in1, in2) + in3;
+}
+
+template <typename T>
+static T checkMadSat(T in1, T in2, T in3)
+{
+    return static_cast<T>(
+        std::min(std::max(static_cast<int64_t>(in1) * static_cast<int64_t>(in2) + static_cast<int64_t>(in3),
+                     static_cast<int64_t>(std::numeric_limits<T>::min())),
+            static_cast<int64_t>(std::numeric_limits<T>::max())));
 }
 
 // taken from: https://stackoverflow.com/questions/25799215/bitwise-rotation-circular-shift
@@ -289,9 +297,9 @@ static T checkRotate(T v, T shift)
 template <typename T>
 static T checkSubSat(T in1, T in2)
 {
-    return std::max(
-        std::min(static_cast<long>(in1) - static_cast<long>(in2), static_cast<long>(std::numeric_limits<T>::max())),
-        static_cast<long>(std::numeric_limits<T>::min()));
+    return std::max(std::min(static_cast<int64_t>(in1) - static_cast<int64_t>(in2),
+                        static_cast<int64_t>(std::numeric_limits<T>::max())),
+        static_cast<int64_t>(std::numeric_limits<T>::min()));
 }
 
 template <typename R, typename T, typename U = typename std::make_unsigned<T>::type>
@@ -305,6 +313,20 @@ static T checkPopcount(T val)
 {
     std::bitset<sizeof(T) * 8> set(val);
     return set.count();
+}
+
+template <typename T>
+static T checkMul24(T in1, T in2)
+{
+    auto tmp1 = static_cast<int64_t>(in1) & 0xFFFFFF;
+    auto tmp2 = static_cast<int64_t>(in2) & 0xFFFFFF;
+    return static_cast<T>(tmp1 * tmp2);
+}
+
+template <typename T>
+static T checkMad24(T in1, T in2, T in3)
+{
+    return checkMul24(in1, in2) + in3;
 }
 
 void TestIntegerFunctions::testAbsSignedInt()
@@ -321,7 +343,7 @@ void TestIntegerFunctions::testAbsSignedShort()
 
 void TestIntegerFunctions::testAbsSignedChar()
 {
-    testUnaryFunction<char, unsigned char>(config, "-DOUT=uchar16 -DIN=char16 -DFUNC=abs", checkAbs<char>,
+    testUnaryFunction<signed char, unsigned char>(config, "-DOUT=uchar16 -DIN=char16 -DFUNC=abs", checkAbs<signed char>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -362,8 +384,8 @@ void TestIntegerFunctions::testAbsDiffSignedShort()
 
 void TestIntegerFunctions::testAbsDiffSignedChar()
 {
-    testBinaryFunction<char, unsigned char>(config, "-DOUT=uchar16 -DIN0=char16 -DIN1=char16 -DFUNC=abs_diff",
-        checkAbsDiff<char>,
+    testBinaryFunction<signed char, unsigned char>(config, "-DOUT=uchar16 -DIN0=char16 -DIN1=char16 -DFUNC=abs_diff",
+        checkAbsDiff<signed char>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -403,7 +425,8 @@ void TestIntegerFunctions::testAddSatSignedShort()
 
 void TestIntegerFunctions::testAddSatSignedChar()
 {
-    testBinaryFunction<char, char>(config, "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DFUNC=add_sat", checkAddSat<char>,
+    testBinaryFunction<signed char, signed char>(config, "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DFUNC=add_sat",
+        checkAddSat<signed char>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -442,7 +465,8 @@ void TestIntegerFunctions::testHAddSignedShort()
 
 void TestIntegerFunctions::testHAddSignedChar()
 {
-    testBinaryFunction<char, char>(config, "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DFUNC=hadd", checkHAdd<char>,
+    testBinaryFunction<signed char, signed char>(config, "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DFUNC=hadd",
+        checkHAdd<signed char>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -482,7 +506,8 @@ void TestIntegerFunctions::testRHAddSignedShort()
 
 void TestIntegerFunctions::testRHAddSignedChar()
 {
-    testBinaryFunction<char, char>(config, "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DFUNC=rhadd", checkRHAdd<char>,
+    testBinaryFunction<signed char, signed char>(config, "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DFUNC=rhadd",
+        checkRHAdd<signed char>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -523,8 +548,8 @@ void TestIntegerFunctions::testClampSignedShort()
 
 void TestIntegerFunctions::testClampSignedChar()
 {
-    testTernaryFunction<char, char>(config, "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DIN2=char16 -DFUNC=clamp",
-        checkClamp<char>,
+    testTernaryFunction<signed char, signed char>(config,
+        "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DIN2=char16 -DFUNC=clamp", checkClamp<signed char>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -563,7 +588,7 @@ void TestIntegerFunctions::testClzSignedShort()
 
 void TestIntegerFunctions::testClzSignedChar()
 {
-    testUnaryFunction<char, char>(config, "-DOUT=char16 -DIN=char16 -DFUNC=clz", checkClz<char>,
+    testUnaryFunction<signed char, signed char>(config, "-DOUT=char16 -DIN=char16 -DFUNC=clz", checkClz<signed char>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -587,6 +612,90 @@ void TestIntegerFunctions::testClzUnsignedChar()
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
+void TestIntegerFunctions::testMadHiSignedInt()
+{
+    testTernaryFunction<int, int>(config, "-DOUT=int16 -DIN0=int16 -DIN1=int16 -DIN2=int16 -DFUNC=mad_hi",
+        checkMadHi<int>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testMadHiSignedShort()
+{
+    testTernaryFunction<short, short>(config, "-DOUT=short16 -DIN0=short16 -DIN1=short16 -DIN2=short16 -DFUNC=mad_hi",
+        checkMadHi<short>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testMadHiSignedChar()
+{
+    testTernaryFunction<signed char, signed char>(config,
+        "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DIN2=char16 -DFUNC=mad_hi", checkMadHi<signed char>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testMadHiUnsignedInt()
+{
+    testTernaryFunction<unsigned, unsigned>(config, "-DOUT=uint16 -DIN0=uint16 -DIN1=uint16 -DIN2=uint16 -DFUNC=mad_hi",
+        checkMadHi<unsigned>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testMadHiUnsignedShort()
+{
+    testTernaryFunction<unsigned short, unsigned short>(config,
+        "-DOUT=ushort16 -DIN0=ushort16 -DIN1=ushort16 -DIN2=ushort16 -DFUNC=mad_hi", checkMadHi<unsigned short>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testMadHiUnsignedChar()
+{
+    testTernaryFunction<unsigned char, unsigned char>(config,
+        "-DOUT=uchar16 -DIN0=uchar16 -DIN1=uchar16 -DIN2=uchar16 -DFUNC=mad_hi", checkMadHi<unsigned char>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testMadSatSignedInt()
+{
+    testTernaryFunction<int, int>(config, "-DOUT=int16 -DIN0=int16 -DIN1=int16 -DIN2=int16 -DFUNC=mad_sat",
+        checkMadSat<int>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testMadSatSignedShort()
+{
+    testTernaryFunction<short, short>(config, "-DOUT=short16 -DIN0=short16 -DIN1=short16 -DIN2=short16 -DFUNC=mad_sat",
+        checkMadSat<short>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testMadSatSignedChar()
+{
+    testTernaryFunction<signed char, signed char>(config,
+        "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DIN2=char16 -DFUNC=mad_sat", checkMadSat<signed char>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testMadSatUnsignedInt()
+{
+    testTernaryFunction<unsigned, unsigned>(config,
+        "-DOUT=uint16 -DIN0=uint16 -DIN1=uint16 -DIN2=uint16 -DFUNC=mad_sat", checkMadSat<unsigned>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testMadSatUnsignedShort()
+{
+    testTernaryFunction<unsigned short, unsigned short>(config,
+        "-DOUT=ushort16 -DIN0=ushort16 -DIN1=ushort16 -DIN2=ushort16 -DFUNC=mad_sat", checkMadSat<unsigned short>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testMadSatUnsignedChar()
+{
+    testTernaryFunction<unsigned char, unsigned char>(config,
+        "-DOUT=uchar16 -DIN0=uchar16 -DIN1=uchar16 -DIN2=uchar16 -DFUNC=mad_sat", checkMadSat<unsigned char>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
 void TestIntegerFunctions::testMaxSignedInt()
 {
     testBinaryFunction<int, int>(config, "-DOUT=int16 -DIN0=int16 -DIN1=int16 -DFUNC=max", std::max<int>,
@@ -601,7 +710,8 @@ void TestIntegerFunctions::testMaxSignedShort()
 
 void TestIntegerFunctions::testMaxSignedChar()
 {
-    testBinaryFunction<char, char>(config, "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DFUNC=max", std::max<char>,
+    testBinaryFunction<signed char, signed char>(config, "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DFUNC=max",
+        std::max<signed char>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -640,7 +750,8 @@ void TestIntegerFunctions::testMinSignedShort()
 
 void TestIntegerFunctions::testMinSignedChar()
 {
-    testBinaryFunction<char, char>(config, "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DFUNC=min", std::min<char>,
+    testBinaryFunction<signed char, signed char>(config, "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DFUNC=min",
+        std::min<signed char>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -680,7 +791,8 @@ void TestIntegerFunctions::testMulHiSignedShort()
 
 void TestIntegerFunctions::testMulHiSignedChar()
 {
-    testBinaryFunction<char, char>(config, "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DFUNC=mul_hi", checkMulHi<char>,
+    testBinaryFunction<signed char, signed char>(config, "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DFUNC=mul_hi",
+        checkMulHi<signed char>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -720,7 +832,8 @@ void TestIntegerFunctions::testRotateSignedShort()
 
 void TestIntegerFunctions::testRotateSignedChar()
 {
-    testBinaryFunction<char, char>(config, "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DFUNC=rotate", checkRotate<char>,
+    testBinaryFunction<signed char, signed char>(config, "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DFUNC=rotate",
+        checkRotate<signed char>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -760,7 +873,8 @@ void TestIntegerFunctions::testSubSatSignedShort()
 
 void TestIntegerFunctions::testSubSatSignedChar()
 {
-    testBinaryFunction<char, char>(config, "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DFUNC=sub_sat", checkSubSat<char>,
+    testBinaryFunction<signed char, signed char>(config, "-DOUT=char16 -DIN0=char16 -DIN1=char16 -DFUNC=sub_sat",
+        checkSubSat<signed char>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -794,8 +908,8 @@ void TestIntegerFunctions::testUpsampleSignedShortToInt()
 
 void TestIntegerFunctions::testUpsampleSignedCharToShort()
 {
-    testBinaryFunction<char, short>(config, "-DOUT=short16 -DIN0=char16 -DIN1=uchar16 -DFUNC=upsample",
-        checkUpsample<short, char, unsigned char>,
+    testBinaryFunction<signed char, short>(config, "-DOUT=short16 -DIN0=char16 -DIN1=uchar16 -DFUNC=upsample",
+        checkUpsample<short, signed char, unsigned char>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -829,7 +943,8 @@ void TestIntegerFunctions::testPopcountSignedShort()
 
 void TestIntegerFunctions::testPopcountSignedChar()
 {
-    testUnaryFunction<char, char>(config, "-DOUT=char16 -DIN=char16 -DFUNC=popcount", checkPopcount<char>,
+    testUnaryFunction<signed char, signed char>(config, "-DOUT=char16 -DIN=char16 -DFUNC=popcount",
+        checkPopcount<signed char>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -851,5 +966,32 @@ void TestIntegerFunctions::testPopcountUnsignedChar()
 {
     testUnaryFunction<unsigned char, unsigned char>(config, "-DOUT=uchar16 -DIN=uchar16 -DFUNC=popcount",
         checkPopcount<unsigned char>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testMad24SignedInt()
+{
+    testTernaryFunction<int, int>(config, "-DOUT=int16 -DIN0=int16 -DIN1=int16 -DIN2=int16 -DFUNC=mad24",
+        checkMad24<int>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testMad24UnsignedInt()
+{
+    testTernaryFunction<unsigned, unsigned>(config, "-DOUT=uint16 -DIN0=uint16 -DIN1=uint16 -DIN2=uint16 -DFUNC=mad24",
+        checkMad24<unsigned>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testMul24SignedInt()
+{
+    testBinaryFunction<int, int>(config, "-DOUT=int16 -DIN0=int16 -DIN1=int16 -DFUNC=mul24", checkMul24<int>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testMul24UnsignedInt()
+{
+    testBinaryFunction<unsigned, unsigned>(config, "-DOUT=uint16 -DIN0=uint16 -DIN1=uint16 -DFUNC=mul24",
+        checkMul24<unsigned>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }

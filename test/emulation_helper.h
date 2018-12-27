@@ -115,7 +115,8 @@ void checkUnaryResults(const std::array<Input, N>& input, const std::array<Resul
     }
 }
 
-template <typename Result, typename Input, std::size_t N, typename Comparison = std::equal_to<Result>, typename Input2 = Input>
+template <typename Result, typename Input, std::size_t N, typename Comparison = std::equal_to<Result>,
+    typename Input2 = Input>
 void checkBinaryResults(const std::array<Input, N>& input0, const std::array<Input2, N>& input1,
     const std::array<Result, N>& output, const std::function<Result(Input, Input2)>& op, const std::string& opName,
     const std::function<void(const std::string&, const std::string&)>& onError)
@@ -334,6 +335,10 @@ struct CompareULP
 {
     bool operator()(float a, float b) const
     {
+        if(std::isinf(a) && std::isinf(b) && std::signbit(a) == std::signbit(b))
+            return true;
+        if(std::isnan(a) && std::isnan(b))
+            return true;
         auto delta = a * ULP * std::numeric_limits<float>::epsilon();
         return Test::Comparisons::inMaxDistance(a, b, delta);
     }
@@ -346,6 +351,10 @@ struct CompareArrayULP
     {
         for(std::size_t i = 0; i < N; ++i)
         {
+            if(std::isinf(a[i]) && std::isinf(b[i]) && std::signbit(a[i]) == std::signbit(b[i]))
+                continue;
+            if(std::isnan(a[i]) && std::isnan(b[i]))
+                continue;
             auto delta = a[i] * ULP * std::numeric_limits<float>::epsilon();
             if(!Test::Comparisons::inMaxDistance(a[i], b[i], delta))
                 return false;

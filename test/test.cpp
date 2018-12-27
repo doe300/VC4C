@@ -140,6 +140,8 @@ int main(int argc, char** argv)
     Test::registerSuite(newConversionFunctionsTest, "emulate-conversions", "Runs emulation tests for the OpenCL standard-library type conversion functions");
 
     auto args = std::vector<char*>();
+    // we need this first argument, since the  cpptest-lite helper expects the first argument to be skipped (as if passed directly the main arguments)
+    args.push_back(argv[0]);
 
     for(auto i = 1; i < argc; ++i)
     { 
