@@ -98,9 +98,7 @@ TestMathFunctions::TestMathFunctions(const vc4c::Configuration& config) : TestEm
     TEST_ADD(TestMathFunctions::testRemquo);
     */
     TEST_ADD(TestMathFunctions::testRint);
-    /*XXX
     TEST_ADD(TestMathFunctions::testRootn);
-    */
     TEST_ADD(TestMathFunctions::testRound);
     TEST_ADD(TestMathFunctions::testRsqrt);
     TEST_ADD(TestMathFunctions::testSin);
@@ -159,6 +157,31 @@ static void testBinaryFunction(vc4c::Configuration& config, const std::string& o
     auto pos = options.find("-DFUNC=") + std::string("-DFUNC=").size();
     checkBinaryResults<float, float, 16 * 12, CompareULP<ULP>, SecondType>(
         in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
+}
+
+template <std::size_t ULP, typename Distribution = UniformDistribution<double>, typename SecondType = float,
+    typename SecondDistribution = Distribution, typename ThirdType = float, typename ThirdDistribution = Distribution>
+static void testTernaryFunction(vc4c::Configuration& config, const std::string& options,
+    const std::function<float(float, float, float)>& op,
+    const std::function<void(const std::string&, const std::string&)>& onError,
+    float min = std::numeric_limits<float>::lowest(), float max = std::numeric_limits<float>::max())
+{
+    std::stringstream code;
+    compileBuffer(config, code, TERNARY_FUNCTION, options);
+
+    auto in0 = generateInput<float, 16 * 12, float, Distribution>(true, min, max);
+    auto in1 = generateInput<SecondType, 16 * 12, float, SecondDistribution>(true, min, max);
+    auto in2 = generateInput<ThirdType, 16 * 12, float, ThirdDistribution>(true, min, max);
+    // work-around to allow integer second/third arguments
+    std::array<float, 16 * 12> tmpIn1;
+    std::memcpy(tmpIn1.data(), in1.data(), 16 * 12 * sizeof(float));
+    std::array<float, 16 * 12> tmpIn2;
+    std::memcpy(tmpIn2.data(), in2.data(), 16 * 12 * sizeof(float));
+
+    auto out = runEmulation<float, float, 16, 12>(code, {in0, tmpIn1, tmpIn2});
+    auto pos = options.find("-DFUNC=") + std::string("-DFUNC=").size();
+    checkTernaryResults<float, float, 16 * 12, CompareULP<ULP>, SecondType, ThirdType>(
+        in0, in1, in2, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
 void TestMathFunctions::testAcos()
@@ -322,7 +345,11 @@ void TestMathFunctions::testFloor()
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
-void TestMathFunctions::testFma() {}
+void TestMathFunctions::testFma()
+{
+    testTernaryFunction<0>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DIN2=float16 -DFUNC=fma", fmaf,
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
 
 void TestMathFunctions::testFmax()
 {
@@ -403,15 +430,40 @@ void TestMathFunctions::testLogb()
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
-void TestMathFunctions::testMad() {}
+void TestMathFunctions::testMad()
+{
+    testTernaryFunction<4096 /* infinite ULP */>(config,
+        "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DIN2=float16 -DFUNC=mad",
+        [](float a, float b, float c) -> float { return a * b + c; },
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
 
-void TestMathFunctions::testMaxMag() {}
+void TestMathFunctions::testMaxMag()
+{
+    testBinaryFunction<0>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=maxmag",
+        [](float a, float b) -> float {
+            return std::abs(a) > std::abs(b) ? a : std::abs(b) > std::abs(a) ? b : std::max(a, b);
+        },
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
 
-void TestMathFunctions::testMinMag() {}
+void TestMathFunctions::testMinMag()
+{
+    testBinaryFunction<0>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=minmag",
+        [](float a, float b) -> float {
+            return std::abs(a) < std::abs(b) ? a : std::abs(b) < std::abs(a) ? b : std::min(a, b);
+        },
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
 
 void TestMathFunctions::testModf() {}
 
-void TestMathFunctions::testNan() {}
+void TestMathFunctions::testNan()
+{
+    testUnaryFunction<0>(config, "-DOUT=float16 -DIN=uint16 -DFUNC=nan",
+        [](unsigned code) -> float { return std::numeric_limits<float>::quiet_NaN(); },
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
 
 void TestMathFunctions::testNextafter()
 {
@@ -432,6 +484,8 @@ void TestMathFunctions::testPown()
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
+void TestMathFunctions::testPowr() {}
+
 void TestMathFunctions::testRemainder()
 {
     testBinaryFunction<0>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=remainder", remainderf,
@@ -446,7 +500,12 @@ void TestMathFunctions::testRint()
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
-void TestMathFunctions::testRootn() {}
+void TestMathFunctions::testRootn()
+{
+    testBinaryFunction<16>(config, "-DOUT=float16 -DIN0=float16 -DIN1=int16 -DFUNC=rootn",
+        [](float a, int b) -> float { return std::pow(a, 1.0f / b); },
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
 
 void TestMathFunctions::testRound()
 {

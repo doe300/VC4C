@@ -234,8 +234,18 @@ namespace vc4c
          * Parameter points to volatile memory, accesses to this parameter cannot be reordered/eliminated/duplicated or
          * combined. Only valid for pointers.
          */
-        VOLATILE = 0x40
+        VOLATILE = 0x40,
+        /*
+         * Equivalent of LLVM byval attribute. This is intended to indicate that a pointer parameter to be passed "by
+         * value" and a copy should be created by the callee. This also implies the memory to be read-only and constant.
+         *
+         * We keep the parameter as a pointer to the source to not have to rewrite all accesses to it. Therefore, the
+         * VC4CL run-time needs to convert the direct data (e.g. a struct) passed to the clSetKernelArg to a
+         * pointer-to-data parameter.
+         */
+        BY_VALUE = 0x80
     };
+    std::string toString(ParameterDecorations deco);
 
     /*
      * Specialization of a Local which is passed as parameter to a function
@@ -246,6 +256,8 @@ namespace vc4c
             ParameterDecorations decorations = ParameterDecorations::NONE);
         Parameter(Parameter&&) = default;
         ~Parameter() override;
+
+        std::string to_string(bool withContent = false) const override;
 
         /*
          * Whether this parameter is read from, only meaningful for pointer-types and images

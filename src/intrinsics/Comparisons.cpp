@@ -231,6 +231,7 @@ InstructionWalker intrinsifyFloatingRelation(Method& method, InstructionWalker i
     }
     else if(COMP_ORDERED == comp->opCode)
     {
+        // TODO the code is wrong, so is the COMP_UNORDERED. The != to xor is not correct??!
         // ord(a, b) <=> a != NaN && b != NaN
         // tmp0 = a != NaN
         Value tmp0 = assign(it, TYPE_BOOL, "%ordered") = (comp->getFirstArg() ^ FLOAT_NAN);

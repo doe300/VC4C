@@ -148,8 +148,17 @@ struct LoopControl
         return op->assertArgument(1).getLiteralValue();
     }
 
-    int32_t countIterations(int32_t initial, int32_t limit, int32_t step) const
+    int32_t countIterations(int32_t initial, int32_t limit, int32_t step, const std::string& comparisonType) const
     {
+        // TODO this is not always true (e.g. true for test_vectorization.cl#test5, not true for #test11
+        if(comparisonType == intermediate::COMP_EQ)
+            // we compare up to including the limit
+            limit += 1;
+        else if(comparisonType == "lt")
+            // we compare up to excluding the limit
+            limit += 0;
+        else
+            throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled comparison type", comparisonType);
         switch(stepKind)
         {
         case StepKind::ADD_CONSTANT:
@@ -313,8 +322,10 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                 else
                 {
                     // TODO more complex case, the iteration-variable is used in an operation, whose result is compared
-                    // to something and that result is used to branch  e.g "<tmp> = max <iteration-variable>,
-                    // <upper-bound>; - = xor <tmp>, <upper-bound> (setf)"
+                    // to something and that result is used to branch, e.g:
+                    // <tmp> = max <iteration-variable>, <upper-bound>
+                    // - = xor <tmp>, <upper-bound> (setf)
+                    // this also applies for unsigned less than for 32-bit integers
                 }
             }
 
@@ -333,8 +344,25 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                 if(loopControl.terminatingValue.getSingleWriter() != nullptr)
                 {
                     auto tmp = loopControl.terminatingValue.getSingleWriter()->precalculate(4);
-                    if(tmp && tmp->isLiteralValue())
+                    if(tmp)
                         loopControl.terminatingValue = tmp.value();
+                    else
+                    {
+                        auto writer = loopControl.terminatingValue.getSingleWriter();
+                        if(writer->readsLocal(iterationStep.local()))
+                        {
+                            for(const auto& arg : writer->getArguments())
+                            {
+                                if(!arg.hasLocal(iterationStep.local()))
+                                {
+                                    auto precalc =
+                                        arg.getSingleWriter() ? arg.getSingleWriter()->precalculate(4) : NO_VALUE;
+                                    loopControl.terminatingValue = precalc ? precalc.value() : arg;
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
                 logging::debug() << "Found upper bound: " << loopControl.terminatingValue.to_string() << logging::endl;
 
@@ -399,10 +427,11 @@ static Optional<unsigned> determineVectorizationFactor(const ControlFlowLoop& lo
                      << logging::endl;
 
     const Literal initial = loopControl.initialization->precalculate(4)->getLiteralValue().value();
+    // TODO for test_vectorization.cl#test5 this calculates an iteration count of 1023 (instead of 1024)
     const Literal end = loopControl.terminatingValue.getLiteralValue().value();
     // the number of iterations from the bounds depends on the iteration operation
-    auto iterations =
-        loopControl.countIterations(initial.signedInt(), end.signedInt(), loopControl.getStep()->signedInt());
+    auto iterations = loopControl.countIterations(
+        initial.signedInt(), end.signedInt(), loopControl.getStep()->signedInt(), loopControl.comparison);
     logging::debug() << "Determined iteration count of " << iterations << logging::endl;
 
     // find the biggest factor fitting into 16 SIMD-elements
@@ -1109,6 +1138,20 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         if(!param.type.isPointerType() && param.type.getVectorWidth() != 1)
         {
             it = loadVectorParameter(param, method, it);
+        }
+        else if(has_flag(param.decorations, ParameterDecorations::BY_VALUE))
+        {
+            // TODO need to load from UNIFORMS and write into VPM, where it is accessed from, also needs to re-write
+            // loading to load from VPM
+            // TODO or load from the UNIFORM storage, would need its address and update the UNIFORM pointer for all
+            // successive parameter
+            // TODO or "ignore" byvalue attribute, load as "normal" pointer and in the run-time allocate memory and set
+            // pointer to this memory? Similar like local parameters, but with initial content
+            // TODO or split struct up in parts (e.g. vectors), load them as "normal" parameters, replace index-chain
+            // and loads with read. Does not support arrays/structs in structs
+            // -> document how it is done and why (on both runtime and compiler)
+            throw CompilationError(CompilationStep::NORMALIZER, "Kernel parameter taken by value are not supported yet",
+                param.to_string(true));
         }
         else if(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND))
         {

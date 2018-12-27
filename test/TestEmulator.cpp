@@ -19,6 +19,12 @@
 #include <fstream>
 #include <sstream>
 
+#define __kernel static
+#define __constant static const
+#define __global
+#define __private
+#include "../testing/test_partial_md5.cl"
+
 using namespace vc4c;
 using namespace vc4c::tools;
 
@@ -40,6 +46,7 @@ TestEmulator::TestEmulator(const vc4c::Configuration& config) : config(config), 
     {
         TEST_ADD_TWO_ARGUMENTS(TestEmulator::testFloatEmulations, i, vc4c::test::floatTests.at(i).first.kernelName);
     }
+    TEST_ADD(TestEmulator::testPartialMD5);
     TEST_ADD(TestEmulator::printProfilingInfo);
 }
 
@@ -318,7 +325,7 @@ void TestEmulator::testSHA1()
     if(digest != result.results.at(3).second.value())
     {
         auto expectedIt = digest.begin();
-        auto resultIt = result.results.at(3).second->end();
+        auto resultIt = result.results.at(3).second->begin();
         while(expectedIt != digest.end())
         {
             TEST_ASSERT_EQUALS(*expectedIt, *resultIt);
@@ -448,6 +455,48 @@ void TestEmulator::testFloatingEmulation(
                 TEST_ASSERT_ULP(e, o, maxULP);
             }
         }
+    }
+}
+
+void TestEmulator::testPartialMD5()
+{
+    const std::string sample("Hello World!");
+
+    std::stringstream buffer;
+    compileFile(buffer, "./testing/test_partial_md5.cl", "", cachePrecompilation);
+
+    EmulationData data;
+    data.kernelName = "calculate_md5";
+    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.module = std::make_pair("", &buffer);
+
+    data.parameter.emplace_back(0, std::vector<uint32_t>(64));
+    memcpy(data.parameter.back().second->data(), sample.data(), sample.size());
+    data.parameter.emplace_back(sample.size(), Optional<std::vector<uint32_t>>{});
+    data.parameter.emplace_back(0, std::vector<uint32_t>(8));
+
+    const auto result = emulate(data);
+    TEST_ASSERT(result.executionSuccessful);
+    TEST_ASSERT_EQUALS(3u, result.results.size());
+
+    // host-side calculation
+    std::array<unsigned, 4> hostResult{};
+    {
+        std::array<char, 4096> in{};
+        std::copy(sample.begin(), sample.end(), in.begin());
+        
+        hostResult.fill(0);
+        calculate_md5(in.data(), sample.size(), reinterpret_cast<char*>(hostResult.data()));
+    }
+
+    auto expectedIt = hostResult.begin();
+    auto resultIt = result.results.at(2).second->begin();
+    while(expectedIt != hostResult.end())
+    {
+        TEST_ASSERT_EQUALS(*expectedIt, *resultIt);
+
+        ++resultIt;
+        ++expectedIt;
     }
 }
 

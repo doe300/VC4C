@@ -39,6 +39,7 @@ public:
 	void testSHA256();
 	void testIntegerEmulations(std::size_t index, std::string name);
 	void testFloatEmulations(std::size_t index, std::string name);
+	void testPartialMD5();
 	
 	void printProfilingInfo();
 

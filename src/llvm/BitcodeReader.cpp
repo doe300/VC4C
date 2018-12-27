@@ -620,21 +620,20 @@ static ParameterDecorations toParameterDecorations(const llvm::Argument& arg, co
         else if(str->getName().find("wo_t") != std::string::npos)
             deco = add_flag(deco, ParameterDecorations::OUTPUT);
     }
-    if(arg.hasByValOrInAllocaAttr())
+    if(arg.hasInAllocaAttr() && isKernel)
     {
-        if(isKernel)
-        {
-            dumpLLVM(&arg);
-            throw CompilationError(
-                CompilationStep::PARSER, "Non-trivial parameter passed by value are not supported", arg.getName());
-        }
-        else if(arg.hasByValAttr())
-        {
-            //"This indicates that the pointer parameter should really be passed by value to the function. The attribute
-            // implies that a hidden copy of the pointee is made between the caller and the callee, so the callee is
-            // unable to modify the value in the caller."
-            deco = add_flag(deco, ParameterDecorations::READ_ONLY);
-        }
+        dumpLLVM(&arg);
+        throw CompilationError(
+            CompilationStep::PARSER, "Kernel parameter decorated with inalloca are not supported", arg.getName());
+    }
+    if(arg.hasByValAttr())
+    {
+        //"This indicates that the pointer parameter should really be passed by value to the function. The attribute
+        // implies that a hidden copy of the pointee is made between the caller and the callee, so the callee is
+        // unable to modify the value in the caller."
+        // This is e.g. used direct struct parameters passed to kernels
+        deco = add_flag(deco, ParameterDecorations::READ_ONLY);
+        deco = add_flag(deco, ParameterDecorations::BY_VALUE);
     }
     return deco;
 }
@@ -674,9 +673,13 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
 #endif
     {
         auto type = toDataType(arg.getType());
+        if(arg.hasByValAttr())
+            // is always read-only, and the address-space initially set is __private, which we cannot have for pointer
+            // Parameters
+            (*type.getPointerType())->addressSpace = AddressSpace::CONSTANT;
         method->parameters.emplace_back(Parameter(toParameterName(arg, paramCounter), type,
             toParameterDecorations(arg, type, func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)));
-        logging::debug() << "Reading parameter " << method->parameters.back().to_string() << logging::endl;
+        logging::debug() << "Reading parameter " << method->parameters.back().to_string(true) << logging::endl;
         if(method->parameters.back().type.getImageType() && func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)
             intermediate::reserveImageConfiguration(module, method->parameters.back());
         localMap[&arg] = &method->parameters.back();

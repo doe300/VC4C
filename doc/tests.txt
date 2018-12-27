@@ -35,7 +35,7 @@ test_buffer_allocator			PASSED
 test_buffer_iterator			PASSED
 test_clamp_range				PASSED
 test_closure					result mismatch (ULP, "add_two_and_pi": difference{6.49642e-06%} between results[1]{7.33999968} and 7.34f{7.34000015} exceeds 1e-06%)
-test_command_queue				error ("Profiling information not available")
+test_command_queue				PASSED
 test_complex					PASSED
 test_constant_iterator			PASSED
 test_context					PASSED
@@ -77,7 +77,7 @@ test_image2d					SKIPPED
 test_image3d					SKIPPED
 test_image_sampler				SKIPPED
 test_includes					PASSED
-test_inner_product				PASSED
+test_inner_product				result mismatch
 test_inplace_merge				PASSED
 test_inplace_reduce				result mismatch ("reduce_iota")
 test_insertion_sort				compilation error (long)
@@ -92,15 +92,15 @@ test_linear_congruential_engine	PASSED
 test_literal_conversion			PASSED
 test_local_buffer				SKIPPED ("device does not support local memory")
 test_malloc						PASSED
-test_mapped_view				PASSED
-test_merge						PASSED
-test_merge_sort_gpu				exception: "Invalid Value" in boost/compute/detail/get_object_info.hpp(94), compilation error (ulong), double test skipped
+test_mapped_view				result mismatch
+test_merge						compilation error (register association)
+test_merge_sort_gpu				compilation error (register association), double test skipped
 test_mersenne_twister_engine	PASSED
 test_mismatch					PASSED
 test_next_permutation			PASSED
 test_no_device_found			PASSED
 test_normal_distribution		result value mismatch ("normal_distribution_statistics", got inf/nan, expected 10/2)
-test_nth_element				PASSED
+test_nth_element				assertion failure
 test_opencl_error				PASSED
 test_pair						PASSED
 test_partial_sum				PASSED
@@ -118,7 +118,7 @@ test_radix_sort_by_key			result mismatches
 test_random_fill				PASSED
 test_random_shuffle				PASSED
 test_reduce						result mismatches (0 != x), SIGABRT (std::out_of_range in vector), kills all succeeding tests
-test_reduce_by_key				PASSED
+test_reduce_by_key				hangs QPU?
 test_remove						PASSED
 test_replace					PASSED
 test_result_of					PASSED
@@ -132,17 +132,17 @@ test_search						PASSED
 test_search_n					PASSED
 test_set_difference				PASSED
 test_set_intersection			PASSED
-test_set_symmetric_difference   register allocation error
-test_set_union					register allocation error
+test_set_symmetric_difference   PASSED
+test_set_union					kills desktop environment, freezes RPI!
 test_sort						result mismatch; compilation error (long)
 test_sort_by_key				result mismatch, exception: "Invalid Value" in boost/compute/detail/get_object_info.hpp(94)
-test_sort_by_transform			PASSED
+test_sort_by_transform			result mismatch
 test_stable_partition			PASSED
 test_stable_sort				result mismatch ("sort_int_vector", "sort_int2")
 test_stable_sort_by_key			PASSED
 test_stack						PASSED
 test_strided_iterator			PASSED
-test_string						PASSED
+test_string						hangs, cannot be killed!
 test_struct						PASSED
 test_svm_ptr					PASSED
 test_system						PASSED
@@ -152,20 +152,20 @@ test_transform					result mismatch (ULP pow/sqrt and 0 != x), compilation error 
 test_transform_if				PASSED
 test_transform_iterator			PASSED
 test_transform_reduce			result mismatch (ULP, "multiply_vector_length", "mean_and_std_dev")
-test_tuple						PASSED
+test_tuple						compilation error (lowering copy with multiple entries into VPM not yet implemented)
 test_type_traits				PASSED
 test_types						PASSED
-test_uniform_int_distribution	FAILED ("Invalid Global Work Size"), compilation error (long)
+test_uniform_int_distribution	compilation error (long)
 test_uniform_real_distribution	compilation error (long)
-test_unique						assertion failure (test_unique.cpp:47 and 66)
+test_unique						assertion failure (test_unique.cpp:47 and 66), hangs QPU
 test_unique_copy				PASSED
 test_unsupported_extension		PASSED
 test_user_defined_types			compilation error (packed struct, converted to ulong by LLVM)
 test_user_event					PASSED
-test_valarray					PASSED (but thread termination)
+test_valarray					result mismatch
 test_vector						PASSED
 test_wait_list					PASSED
-test_zip_iterator				PASSED
+test_zip_iterator				compilation error (lowering copy with multiple entries into VPM not yet implemented)
 
 clRNG:
 Inventory						invalid buffer size

@@ -141,6 +141,49 @@ Parameter::Parameter(const std::string& name, const DataType& type, const Parame
 
 Parameter::~Parameter() {}
 
+std::string vc4c::toString(ParameterDecorations deco)
+{
+    std::string res;
+    if(has_flag(deco, ParameterDecorations::BY_VALUE))
+        res.append("byval ");
+    if(has_flag(deco, ParameterDecorations::INPUT))
+        res.append("in ");
+    if(has_flag(deco, ParameterDecorations::OUTPUT))
+        res.append("out ");
+    if(has_flag(deco, ParameterDecorations::READ_ONLY))
+        res.append("const ");
+    if(has_flag(deco, ParameterDecorations::RESTRICT))
+        res.append("restrict ");
+    if(has_flag(deco, ParameterDecorations::SIGN_EXTEND))
+        res.append("sext ");
+    if(has_flag(deco, ParameterDecorations::VOLATILE))
+        res.append("volatile ");
+    if(has_flag(deco, ParameterDecorations::ZERO_EXTEND))
+        res.append("zext ");
+    return res.substr(0, res.empty() ? 0 : res.size() - 1);
+}
+
+std::string Parameter::to_string(bool withContent) const
+{
+    auto tmp = Local::to_string(withContent);
+    if(withContent)
+    {
+        std::vector<std::string> extras;
+        if(!parameterName.empty())
+            extras.emplace_back("name: " + parameterName);
+        if(!origTypeName.empty())
+            extras.emplace_back("type: " + origTypeName);
+        if(maxByteOffset != SIZE_MAX)
+            extras.emplace_back("used bytes: " + std::to_string(maxByteOffset));
+        if(decorations != ParameterDecorations::NONE)
+            extras.emplace_back(toString(decorations));
+
+        if(!extras.empty())
+            tmp.append(" (").append(vc4c::to_string<std::string>(extras)).append(")");
+    }
+    return tmp;
+}
+
 bool Parameter::isInputParameter() const
 {
     return has_flag(decorations, ParameterDecorations::INPUT);

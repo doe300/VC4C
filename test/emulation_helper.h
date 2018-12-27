@@ -134,10 +134,11 @@ void checkBinaryResults(const std::array<Input, N>& input0, const std::array<Inp
     }
 }
 
-template <typename Result, typename Input, std::size_t N, typename Comparison = std::equal_to<Result>>
-void checkTernaryResults(const std::array<Input, N>& input0, const std::array<Input, N>& input1,
-    const std::array<Input, N>& input2, const std::array<Result, N>& output,
-    const std::function<Result(Input, Input, Input)>& op, const std::string& opName,
+template <typename Result, typename Input, std::size_t N, typename Comparison = std::equal_to<Result>,
+    typename Input2 = Input, typename Input3 = Input>
+void checkTernaryResults(const std::array<Input, N>& input0, const std::array<Input2, N>& input1,
+    const std::array<Input3, N>& input2, const std::array<Result, N>& output,
+    const std::function<Result(Input, Input2, Input3)>& op, const std::string& opName,
     const std::function<void(const std::string&, const std::string&)>& onError)
 {
     Comparison c;

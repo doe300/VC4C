@@ -567,7 +567,7 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
     if(dest.type != finalType)
     {
         logging::error() << "Final index does not match expected type for source " << container.to_string()
-                         << ", destination " << dest.to_string() << ", final index type" << finalType.to_string()
+                         << ", destination " << dest.to_string() << ", final index type " << finalType.to_string()
                          << " and indices: " << to_string<Value>(indices)
                          << (firstIndexIsElement ? " (first index is element)" : "") << logging::endl;
         throw CompilationError(

@@ -487,6 +487,15 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
 
 bool optimizations::eliminateRedundantMoves(const Module& module, Method& method, const Configuration& config)
 {
+    /*
+     * XXX can be improved to move UNIFORM reads,
+     * iff in same/first block and no reorder of UNIFORM values/UNIFORM pointer is not re-set.
+     * Problem: initially there are reads of UNIFORM between write and usage, even if they could also be removed
+     * -> would need to run this optimization from end-to-front (additionally to front-to-end?)
+     *
+     * behavior can be tested on CTS: api/test_api min_max_constant_args
+     */
+
     bool flag = false;
     auto it = method.walkAllInstructions();
     while(!it.isEndOfMethod())
