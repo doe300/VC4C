@@ -60,14 +60,10 @@ std::string ParamInfo::to_string() const
         std::string((getPointer() && getAddressSpace() == AddressSpace::LOCAL) ? "__local " : "") +
         std::string((getPointer() && getAddressSpace() == AddressSpace::PRIVATE) ? "__private " : "") +
         // access qualifier
-        std::string((getPointer() && getConstant()) ? "const " : "") +
-        std::string((getPointer() && getRestricted()) ? "restrict " : "") +
-        std::string((getPointer() && getVolatile()) ? "volatile " : "") +
-        // input/output
-        ((getPointer() && getInput()) ? "in " : "") + ((getPointer() && getOutput()) ? "out " : "") +
+        (getDecorations() != ParameterDecorations::NONE ? toString(getDecorations()) + " " : "") +
         // type + name
-        ((typeName) + " ") + (name + " (") + (std::to_string(getSize()) + " B, ") + std::to_string(getElements()) +
-        " items)";
+        ((typeName) + " ") + (name + " (") + (std::to_string(getSize()) + " B, ") +
+        std::to_string(getVectorElements()) + " items)";
 }
 
 std::size_t ParamInfo::write(std::ostream& stream, const OutputMode mode) const
@@ -359,16 +355,17 @@ KernelInfo qpu_asm::getKernelInfos(
         const DataType& paramType = param.type;
         std::string typeName = param.origTypeName;
         ParamInfo paramInfo;
-        paramInfo.setSize(static_cast<uint8_t>(paramType.getPhysicalWidth()));
+        if(paramType.getPointerType() && has_flag(param.decorations, ParameterDecorations::BY_VALUE))
+            // since the client passes the actual (struct) type to as argument, the VC4CL run-time needs to know that
+            // size
+            paramInfo.setSize(static_cast<uint16_t>((*paramType.getPointerType())->elementType.getPhysicalWidth()));
+        else
+            paramInfo.setSize(static_cast<uint16_t>(paramType.getPhysicalWidth()));
         paramInfo.setPointer(paramType.isPointerType() || paramType.getImageType());
         paramInfo.setImage(!!paramType.getImageType());
-        paramInfo.setOutput(param.isOutputParameter());
-        paramInfo.setInput(param.isInputParameter());
-        paramInfo.setConstant(has_flag(param.decorations, ParameterDecorations::READ_ONLY));
-        paramInfo.setRestricted(has_flag(param.decorations, ParameterDecorations::RESTRICT));
-        paramInfo.setVolatile(has_flag(param.decorations, ParameterDecorations::VOLATILE));
+        paramInfo.setDecorations(param.decorations);
         paramInfo.setName(paramName[0] == '%' ? paramName.substr(1) : paramName);
-        paramInfo.setElements((paramType.isPointerType() ? static_cast<uint8_t>(1) : paramType.getVectorWidth()));
+        paramInfo.setVectorElements((paramType.isPointerType() ? static_cast<uint8_t>(1) : paramType.getVectorWidth()));
         paramInfo.setAddressSpace(paramType.isPointerType() ?
                 paramType.getPointerType().value()->addressSpace :
                 paramType.getImageType() ? AddressSpace::GLOBAL : AddressSpace::PRIVATE);

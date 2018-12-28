@@ -21,6 +21,7 @@ namespace vc4c
     enum class AddressSpace;
     class Method;
     struct Global;
+    enum class ParameterDecorations;
 
     namespace qpu_asm
     {
@@ -30,54 +31,41 @@ namespace vc4c
             /*
              * The size of the parameter in bytes
              *
-             * Type considerations: The maximum type-size is int16 (long16), which has 64(128) bytes, minimum a size of
-             * 1 byte (char)
+             * Type considerations: The maximum vector type-size is int16 (long16), which has 64(128) bytes, minimum a
+             * size of 1 byte (char). 13 bits fit also structure parameters up to 8 KB.
              */
-            BITFIELD_ENTRY(Size, uint8_t, 0, Byte)
+            BITFIELD_ENTRY(Size, uint16_t, 0, Tredecuple)
             /*
              * The number of vector-elements for the parameter
              *
-             * Type considerations: 1 to 16 elements are supported
+             * Type considerations: 1 to 16 elements are supported, fits in 5 bits
              */
-            BITFIELD_ENTRY(Elements, uint8_t, 8, Byte)
+            BITFIELD_ENTRY(VectorElements, uint8_t, 13, Quintuple)
             /*
              * The length of the parameter name in characters
              *
-             * Type considerations: byte can contain 255 characters, ushort 64k
+             * Type considerations: byte can contain 255 characters, ushort 64k, 2^12 4096
              */
-            BITFIELD_ENTRY(NameLength, Byte, 16, Short)
+            BITFIELD_ENTRY(NameLength, Byte, 18, Duodecuple)
             /*
              * The length of the parameter type-name in characters
              *
-             * Type considerations: byte can contain 255 characters, ushort 64k
+             * Type considerations: byte can contain 255 characters, ushort 64k, 2^12 4096
              */
-            BITFIELD_ENTRY(TypeNameLength, Byte, 32, Short)
+            BITFIELD_ENTRY(TypeNameLength, Byte, 30, Duodecuple)
             /*
              * Whether this parameter is constant (read-only), only useful for pointers/images
              */
-            BITFIELD_ENTRY(Constant, bool, 48, Bit)
-            /*
-             * Whether this parameter is restricted (no aliasing is allowed), only valid for pointers
-             */
-            BITFIELD_ENTRY(Restricted, bool, 49, Bit)
-            /*
-             * Whether the memory behind this parameter is volatile
-             */
-            BITFIELD_ENTRY(Volatile, bool, 50, Bit)
+            BITFIELD_ENTRY(Decorations, ParameterDecorations, 42, Decuple)
+
+            //// 3 Bits unused
+
             /*
              * The address space for this parameter
              *
              * Type considerations: There are 5 address-spaces, fit into 4 bits
              */
-            BITFIELD_ENTRY(AddressSpace, AddressSpace, 52, Quadruple)
-            /*
-             * Whether the parameter is read, only valid for pointers and images
-             */
-            BITFIELD_ENTRY(Input, bool, 56, Bit)
-            /*
-             * Whether the parameter is written into, only valid for pointers and images
-             */
-            BITFIELD_ENTRY(Output, bool, 57, Bit)
+            BITFIELD_ENTRY(AddressSpace, AddressSpace, 55, Quadruple)
             /*
              * Whether this parameter is an image
              */

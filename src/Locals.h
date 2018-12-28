@@ -198,6 +198,9 @@ namespace vc4c
 
     /*
      * Additional information which can be present on a parameter
+     *
+     * NOTE: The positions of the decorations MUST not be re-ordered or removed, since the bit-mask is directly
+     * propagated to the VC4CL run-time. (Adding new entries at the end is allowed)
      */
     enum class ParameterDecorations
     {

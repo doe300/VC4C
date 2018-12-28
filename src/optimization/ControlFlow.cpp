@@ -1139,20 +1139,6 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         {
             it = loadVectorParameter(param, method, it);
         }
-        else if(has_flag(param.decorations, ParameterDecorations::BY_VALUE))
-        {
-            // TODO need to load from UNIFORMS and write into VPM, where it is accessed from, also needs to re-write
-            // loading to load from VPM
-            // TODO or load from the UNIFORM storage, would need its address and update the UNIFORM pointer for all
-            // successive parameter
-            // TODO or "ignore" byvalue attribute, load as "normal" pointer and in the run-time allocate memory and set
-            // pointer to this memory? Similar like local parameters, but with initial content
-            // TODO or split struct up in parts (e.g. vectors), load them as "normal" parameters, replace index-chain
-            // and loads with read. Does not support arrays/structs in structs
-            // -> document how it is done and why (on both runtime and compiler)
-            throw CompilationError(CompilationStep::NORMALIZER, "Kernel parameter taken by value are not supported yet",
-                param.to_string(true));
-        }
         else if(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND))
         {
             it = intermediate::insertSignExtension(
@@ -1165,6 +1151,19 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         }
         else
         {
+            /*
+             * NOTE: Pointers with the byval decoration are treated as simple pointers, saving us from having to
+             * re-write all instructions accessing them. In return, the VC4CL run-time needs to convert the direct
+             * kernel argument (e.g. a struct) to a pointer-to-data argument by allocating a buffer (similar to local
+             * arguments).
+             *
+             * Alternative ways of solving this:
+             * - Read parameter from UNIFORMs and write to VPM, where it can be accessed like "normal" pointed-to data
+             * - Read directly from UNIFORM storage, needs pointer to UNIFORM and re-set UNIFORM pointer for successive
+             * parameter
+             * - Load the single parts separately via UNIFORMs like any other vector/scalar, replace index-chain and
+             * access functions.
+             */
             assign(it, param.createReference()) = (Value(REG_UNIFORM, param.type),
                 InstructionDecorations::WORK_GROUP_UNIFORM_VALUE,
                 // all pointers are unsigned
