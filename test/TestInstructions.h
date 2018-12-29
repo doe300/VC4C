@@ -23,6 +23,7 @@ public:
 	void testOpCodes();
 	void testOpCodeProperties();
 	void testHalfFloat();
+	void testOpCodeFlags();
 };
 
 #endif /* TEST_INSTRUCTIONS_H */

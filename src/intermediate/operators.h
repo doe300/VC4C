@@ -362,9 +362,9 @@ namespace vc4c
                     !op.unpackMode.hasEffect())
                 {
                     auto precalc = op.op(op.arg0, op.arg1);
-                    if(precalc)
+                    if(precalc.first)
                     {
-                        auto tmp = op.packMode(precalc.value()).value();
+                        auto tmp = op.packMode(precalc.first.value(), precalc.second).value();
                         // so the result type matches the expected type
                         tmp.type = type;
                         return tmp;

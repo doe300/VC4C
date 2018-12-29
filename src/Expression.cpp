@@ -53,7 +53,7 @@ bool Expression::isMoveExpression() const
 
 Optional<Value> Expression::getConstantExpression() const
 {
-    return code(arg0, arg1);
+    return code(arg0, arg1).first;
 }
 
 bool Expression::hasConstantOperand() const

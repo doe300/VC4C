@@ -1060,6 +1060,16 @@ static Register toRegister(Address addr, bool isfileB)
     return Register(isfileB ? RegisterFile::PHYSICAL_B : RegisterFile::PHYSICAL_A, addr);
 }
 
+static ElementFlags generateImmediateFlags(Literal lit)
+{
+    ElementFlags flags;
+    flags.carry = FlagStatus::CLEAR;
+    flags.negative = lit.signedInt() < 0 ? FlagStatus::SET : FlagStatus::CLEAR;
+    flags.overflow = FlagStatus::CLEAR;
+    flags.zero = lit.unsignedInt() == 0 ? FlagStatus::SET : FlagStatus::CLEAR;
+    return flags;
+}
+
 bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction)
 {
     const qpu_asm::Instruction* inst = (firstInstruction + pc)->get();
@@ -1114,7 +1124,7 @@ bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iter
             case OpLoad::LOAD_IMM_32:
                 if(load->getPack().hasEffect())
                     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 210, "values packed", 1);
-                imm = load->getPack()(imm).value();
+                imm = load->getPack()(imm, generateImmediateFlags(Literal(load->getImmediateInt()))).value();
                 break;
             case OpLoad::LOAD_SIGNED:
                 imm = Value(ContainerValue(toLoadedValues(imm.getLiteralValue()->unsignedInt(),
@@ -1133,8 +1143,8 @@ bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iter
             writeConditional(toRegister(load->getMulOut(), load->getWriteSwap() == WriteSwap::DONT_SWAP), imm,
                 load->getMulCondition());
             if(load->getSetFlag() == SetFlag::SET_FLAGS)
-                setFlags(
-                    imm, load->getAddCondition() != COND_NEVER ? load->getAddCondition() : load->getMulCondition());
+                setFlags(imm, load->getAddCondition() != COND_NEVER ? load->getAddCondition() : load->getMulCondition(),
+                    generateImmediateFlags(Literal(load->getImmediateInt())));
             ++nextPC;
         }
         else if(dynamic_cast<const qpu_asm::SemaphoreInstruction*>(inst) != nullptr)
@@ -1150,7 +1160,7 @@ bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iter
             {
                 if(semaphore->getPack().hasEffect())
                     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 210, "values packed", 1);
-                result = semaphore->getPack()(result).value();
+                result = semaphore->getPack()(result, {}).value();
                 writeConditional(toRegister(semaphore->getAddOut(), semaphore->getWriteSwap() == WriteSwap::SWAP),
                     result, semaphore->getAddCondition());
                 writeConditional(toRegister(semaphore->getMulOut(), semaphore->getWriteSwap() == WriteSwap::DONT_SWAP),
@@ -1158,7 +1168,8 @@ bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iter
                 if(semaphore->getSetFlag() == SetFlag::SET_FLAGS)
                     setFlags(result,
                         semaphore->getAddCondition() != COND_NEVER ? semaphore->getAddCondition() :
-                                                                     semaphore->getMulCondition());
+                                                                     semaphore->getMulCondition(),
+                        {});
                 ++nextPC;
             }
             else
@@ -1251,53 +1262,6 @@ static std::pair<Value, bool> applyVectorRotation(std::pair<Value, bool>&& input
 
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 170, "vector rotations", 1);
     return std::make_pair(result, true);
-}
-
-static std::array<FlagStatus, vc4c::NATIVE_VECTOR_SIZE> setCarryFlags(OpCode op, const Value& arg0, const Value& arg1)
-{
-    std::array<FlagStatus, vc4c::NATIVE_VECTOR_SIZE> flags{};
-    flags.fill(FlagStatus::UNDEFINED);
-
-    // Sets flags for selected supported operations
-    // carry flag is set for 32-bit overflow (not signed over-/underflow!), only of 33th bit would be needed!
-
-    auto extractElement = [](const Value& val, uint8_t i) -> Literal {
-        return val.hasContainer() ? val.container().elements.at(i).getLiteralValue().value() :
-                                    val.getLiteralValue().value();
-    };
-
-    if(op == OP_ADD)
-    {
-        for(uint8_t i = 0; i < vc4c::NATIVE_VECTOR_SIZE; ++i)
-        {
-            auto leftOp = extractElement(arg0, i);
-            auto rightOp = extractElement(arg1, i);
-            auto val = static_cast<uint64_t>(leftOp.unsignedInt()) + static_cast<uint64_t>(rightOp.unsignedInt());
-            flags[i] = val > static_cast<uint64_t>(0xFFFFFFFFul) ? FlagStatus::SET : FlagStatus::CLEAR;
-        }
-    }
-    else if(op == OP_SUB)
-    {
-        for(uint8_t i = 0; i < vc4c::NATIVE_VECTOR_SIZE; ++i)
-        {
-            auto leftOp = extractElement(arg0, i);
-            auto rightOp = extractElement(arg1, i);
-            auto val = static_cast<int64_t>(leftOp.signedInt()) - static_cast<int64_t>(rightOp.signedInt());
-            flags[i] = val < 0 ? FlagStatus::SET : FlagStatus::CLEAR;
-        }
-    }
-    else if(op == OP_MUL24)
-    {
-        for(uint8_t i = 0; i < vc4c::NATIVE_VECTOR_SIZE; ++i)
-        {
-            auto leftOp = extractElement(arg0, i);
-            auto rightOp = extractElement(arg1, i);
-            auto val = static_cast<uint64_t>(leftOp.unsignedInt() & 0xFFFFFFu) *
-                static_cast<uint64_t>(rightOp.unsignedInt() & 0xFFFFFFu);
-            flags[i] = val > static_cast<uint64_t>(0xFFFFFFFFul) ? FlagStatus::SET : FlagStatus::CLEAR;
-        }
-    }
-    return flags;
 }
 
 bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
@@ -1393,23 +1357,23 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
         }
 
         auto tmp = addCode(addIn0, addIn1);
-        if(!tmp)
+        if(!tmp.first)
             logging::error() << "Failed to emulate ALU operation: " << addCode.name << " with "
                              << addIn0.to_string(false, true) << " and " << addIn1.to_string(false, true)
                              << logging::endl;
-        Value result = tmp.value();
+        Value result = tmp.first.value();
         if(aluInst->getWriteSwap() == WriteSwap::DONT_SWAP && aluInst->getPack().hasEffect())
         {
             PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 210, "values packed", 1);
             if(aluInst->getPack().supportsMulALU())
                 throw CompilationError(CompilationStep::GENERAL, "Cannot apply mul pack mode on add result!");
-            result = aluInst->getPack()(result).value();
+            result = aluInst->getPack()(result, tmp.second).value();
         }
 
         writeConditional(toRegister(aluInst->getAddOut(), aluInst->getWriteSwap() == WriteSwap::SWAP), result,
             aluInst->getAddCondition(), aluInst, nullptr);
         if(aluInst->getSetFlag() == SetFlag::SET_FLAGS)
-            setFlags(result, aluInst->getAddCondition(), setCarryFlags(addCode, addIn0, addIn1));
+            setFlags(result, aluInst->getAddCondition(), tmp.second);
         PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 180, "add instructions", 1);
     }
     if(aluInst->getMulCondition() != COND_NEVER && aluInst->getMultiplication() != OP_NOP.opMul)
@@ -1452,17 +1416,17 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
         }
 
         auto tmp = mulCode(mulIn0, mulIn1);
-        if(!tmp)
+        if(!tmp.first)
             logging::error() << "Failed to emulate ALU operation: " << mulCode.name << " with "
                              << mulIn0.to_string(false, true) << " and " << mulIn1.to_string(false, true)
                              << logging::endl;
-        Value result = tmp.value();
+        Value result = tmp.first.value();
         if(aluInst->getWriteSwap() == WriteSwap::SWAP && aluInst->getPack().hasEffect())
         {
             PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 210, "values packed", 1);
             if(!aluInst->getPack().supportsMulALU())
                 throw CompilationError(CompilationStep::GENERAL, "Cannot apply add pack mode on mul result!");
-            result = aluInst->getPack()(result).value();
+            result = aluInst->getPack()(result, tmp.second).value();
         }
 
         // FIXME these might depend on flags of add ALU set in same instruction (which is wrong)
@@ -1470,7 +1434,7 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
             aluInst->getMulCondition(), nullptr, aluInst);
         if(aluInst->getSetFlag() == SetFlag::SET_FLAGS &&
             isFlagSetByMulALU(aluInst->getAddition(), aluInst->getMultiplication()))
-            setFlags(result, aluInst->getMulCondition(), setCarryFlags(mulCode, mulIn0, mulIn1));
+            setFlags(result, aluInst->getMulCondition(), tmp.second);
         PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 190, "mul instructions", 1);
     }
 
@@ -1627,8 +1591,7 @@ static std::string toFlagString(FlagStatus flag, char flagChar)
     return "?";
 }
 
-void QPU::setFlags(
-    const Value& output, ConditionCode cond, const std::array<FlagStatus, vc4c::NATIVE_VECTOR_SIZE>& carryFlags)
+void QPU::setFlags(const Value& output, ConditionCode cond, const VectorFlags& newFlags)
 {
     std::vector<std::string> parts;
     for(uint8_t i = 0; i < flags.size(); ++i)
@@ -1636,24 +1599,7 @@ void QPU::setFlags(
         if(flags[i].matchesCondition(cond))
         {
             // only update flags for elements we actually write (where we actually calculate a result)
-            const Value& element = output.hasContainer() ?
-                (i < output.container().elements.size() ? output.container().elements.at(i) : UNDEFINED_VALUE) :
-                output;
-            if(element.getLiteralValue())
-            {
-                flags[i].zero = element.getLiteralValue()->unsignedInt() == 0 ? FlagStatus::SET : FlagStatus::CLEAR;
-                flags[i].negative = (element.type.isFloatingType() ? element.getLiteralValue()->real() < 0.0f :
-                                                                     element.getLiteralValue()->signedInt() < 0) ?
-                    FlagStatus::SET :
-                    FlagStatus::CLEAR;
-                flags[i].carry = carryFlags[i];
-            }
-            else
-            {
-                flags[i].zero = FlagStatus::UNDEFINED;
-                flags[i].negative = FlagStatus::UNDEFINED;
-                flags[i].carry = FlagStatus::UNDEFINED;
-            }
+            flags[i] = newFlags[i];
             parts.push_back(toFlagString(flags[i].zero, 'z') + toFlagString(flags[i].negative, 'n') +
                 toFlagString(flags[i].carry, 'c'));
         }

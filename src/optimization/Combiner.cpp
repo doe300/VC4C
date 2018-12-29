@@ -983,13 +983,13 @@ InstructionWalker optimizations::combineArithmeticOperations(
     {
         logging::debug() << "Combining associative operations " << singleWriter->to_string() << " and "
                          << it->to_string() << logging::endl;
-        precalc = op->op(literalArg, otherLiteralArg);
+        precalc = op->op(literalArg, otherLiteralArg).first;
     }
     else if(op->op == OP_SHL || op->op == OP_SHR || op->op == OP_ASR || op->op == OP_ROR)
     {
         logging::debug() << "Combining shifts " << singleWriter->to_string() << " and " << it->to_string()
                          << logging::endl;
-        precalc = OP_ADD(literalArg, otherLiteralArg);
+        precalc = OP_ADD(literalArg, otherLiteralArg).first;
     }
     auto lastIt = it.getBasicBlock()->findWalkerForInstruction(singleWriter, it);
     if(lastIt)

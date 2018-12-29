@@ -9,8 +9,10 @@
 
 #include "../Bitfield.h"
 #include "Optional.h"
+#include "config.h"
 
 #include <algorithm>
+#include <array>
 #include <functional>
 #include <limits>
 #include <string>
@@ -19,6 +21,7 @@ namespace vc4c
 {
     class DataType;
     struct Value;
+    struct VectorFlags;
     struct OpCode;
     enum class BranchCond : unsigned char;
 
@@ -347,7 +350,7 @@ namespace vc4c
 
         std::string to_string() const;
 
-        Optional<Value> operator()(const Value& val) const;
+        Optional<Value> operator()(const Value& val, const VectorFlags& flags) const;
         bool isPMBitSet() const;
         inline bool supportsMulALU() const
         {
@@ -531,6 +534,50 @@ namespace vc4c
         SWAP = 1
     };
 
+    /*!
+     * The status a flag can have
+     */
+    enum class FlagStatus : uint8_t
+    {
+        UNDEFINED = 0,
+        CLEAR = 1,
+        SET = 2
+    };
+
+    /*!
+     * Represents the flags set for a single vector-element of the SIMD vector
+     */
+    struct ElementFlags
+    {
+        // result is bit-wise zero
+        FlagStatus zero = FlagStatus::UNDEFINED;
+        // signed integer/float result is negative
+        FlagStatus negative = FlagStatus::UNDEFINED;
+        // operation overflowed 32-bit (see COND_CARRY_SET for details)
+        FlagStatus carry = FlagStatus::UNDEFINED;
+        // operation overflowed signed bounds (see PACK_32_32 for details)
+        FlagStatus overflow = FlagStatus::UNDEFINED;
+
+        bool matchesCondition(ConditionCode cond) const;
+
+        inline bool operator==(const ElementFlags& other) const
+        {
+            return zero == other.zero && negative == other.negative && carry == other.carry &&
+                overflow == other.overflow;
+        }
+    };
+
+    /*!
+     * Convenience wrapper for the element flags of all SIMD elements
+     */
+    struct VectorFlags : public std::array<ElementFlags, NATIVE_VECTOR_SIZE>
+    {
+        VectorFlags(ElementFlags allElements = {})
+        {
+            fill(allElements);
+        }
+    };
+
     /*
      * The operation-code being executed by ALU instructions.
      *
@@ -593,7 +640,8 @@ namespace vc4c
         /*
          * Tries to calculate the operation for this op-code with the operands given
          */
-        Optional<Value> operator()(const Optional<Value>& firstOperand, const Optional<Value>& secondOperand) const;
+        std::pair<Optional<Value>, VectorFlags> operator()(
+            const Optional<Value>& firstOperand, const Optional<Value>& secondOperand) const;
 
         /*
          * Whether the operation is idempotent.

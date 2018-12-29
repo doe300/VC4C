@@ -221,22 +221,6 @@ namespace vc4c
 
         using ProgramCounter = uint32_t;
 
-        enum class FlagStatus : uint8_t
-        {
-            UNDEFINED = 0,
-            CLEAR = 1,
-            SET = 2
-        };
-
-        struct ElementFlags : private NonCopyable
-        {
-            FlagStatus zero = FlagStatus::UNDEFINED;
-            FlagStatus negative = FlagStatus::UNDEFINED;
-            FlagStatus carry = FlagStatus::UNDEFINED;
-
-            bool matchesCondition(ConditionCode cond) const;
-        };
-
         using InstrumentationResults = FastMap<const qpu_asm::Instruction*, InstrumentationResult>;
 
         class QPU : private NonCopyable
@@ -284,8 +268,7 @@ namespace vc4c
                 const qpu_asm::ALUInstruction* addInst = nullptr, const qpu_asm::ALUInstruction* mulInst = nullptr);
             bool isConditionMet(BranchCond cond) const;
             NODISCARD bool executeSignal(Signaling signal);
-            void setFlags(const Value& output, ConditionCode cond,
-                const std::array<FlagStatus, vc4c::NATIVE_VECTOR_SIZE>& carryFlags = {});
+            void setFlags(const Value& output, ConditionCode cond, const VectorFlags& newFlags);
         };
 
         std::vector<MemoryAddress> buildUniforms(Memory& memory, MemoryAddress baseAddress,

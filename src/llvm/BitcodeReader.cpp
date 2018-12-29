@@ -1378,9 +1378,9 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
             case 32:
                 return dest;
             case 16:
-                return PACK_INT_TO_SHORT_TRUNCATE(dest).value();
+                return PACK_INT_TO_SHORT_TRUNCATE(dest, {}).value();
             case 8:
-                return PACK_INT_TO_CHAR_TRUNCATE(dest).value();
+                return PACK_INT_TO_CHAR_TRUNCATE(dest, {}).value();
             }
             break;
         }
@@ -1479,9 +1479,9 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
 
     Optional<Value> result = NO_VALUE;
     if(opCode.numOperands == 1)
-        result = opCode(toConstant(module, expr->getOperand(0)), NO_VALUE);
+        result = opCode(toConstant(module, expr->getOperand(0)), NO_VALUE).first;
     else if(opCode.numOperands == 2)
-        result = opCode(toConstant(module, expr->getOperand(0)), toConstant(module, expr->getOperand(1)));
+        result = opCode(toConstant(module, expr->getOperand(0)), toConstant(module, expr->getOperand(1))).first;
 
     if(result)
         return result.value();
