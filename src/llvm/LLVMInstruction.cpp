@@ -109,6 +109,11 @@ bool CallSite::mapInstruction(Method& method) const
     if(methodName.find("llvm.memcpy") == 0)
     {
         //@llvm.memcpy.p0i8.p0i8.i32(i8* <dest>, i8* <src>, i32 <len>, i32 <align>, i1 <isvolatile>)
+        /*
+         * For later LLVM versions (7.0+), this syntax changes, see
+         * https://releases.llvm.org/7.0.0/docs/ReleaseNotes.html#changes-to-the-llvm-ir
+         * declare void @llvm.memcpy.p0i8.p0i8.i32(i8* <dest>, i8* <src>, i32 <len>, i1 <isvolatile>)
+         */
         // the type of llvm.memcpy is always i8*, so the number of bytes (<len>) always matches the number of entries
         // (as expected for MemoryInstruction())
         logging::debug() << "Intrinsifying llvm.memcpy function-call" << logging::endl;
@@ -120,7 +125,8 @@ bool CallSite::mapInstruction(Method& method) const
     {
         // declare void @llvm.memset.p0i8.i32|i.64(i8* <dest>, i8 <val>, i32|i64 <len>, i32 <align>, i1 <isvolatile>)
         /*
-         * XXX for later LLVM versions, this syntax changes!!
+         * For later LLVM versions(7.0+), this syntax changes, see
+         * https://releases.llvm.org/7.0.0/docs/ReleaseNotes.html#changes-to-the-llvm-ir
          * declare void @llvm.memset.p0i8.i32|i64(i8* <dest>, i8 <val>, i32 <len>, i1 <isvolatile>)
          */
         // the type of llvm.memset is always i8*, so the number of bytes (<len>) always matches the number of entries
@@ -129,7 +135,7 @@ bool CallSite::mapInstruction(Method& method) const
         const Value& memAddr = arguments.at(0);
         const Value& fillByte = arguments.at(1);
         const Value& numBytes = arguments.at(2);
-        const Value& volatileAccess = arguments.at(4);
+        const Value& volatileAccess = arguments.back();
         if(volatileAccess.getLiteralValue() && volatileAccess.getLiteralValue()->isTrue() && memAddr.hasLocal() &&
             memAddr.local()->getBase(true)->is<Parameter>())
         {

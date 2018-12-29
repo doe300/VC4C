@@ -355,12 +355,7 @@ KernelInfo qpu_asm::getKernelInfos(
         const DataType& paramType = param.type;
         std::string typeName = param.origTypeName;
         ParamInfo paramInfo;
-        if(paramType.getPointerType() && has_flag(param.decorations, ParameterDecorations::BY_VALUE))
-            // since the client passes the actual (struct) type to as argument, the VC4CL run-time needs to know that
-            // size
-            paramInfo.setSize(static_cast<uint16_t>((*paramType.getPointerType())->elementType.getPhysicalWidth()));
-        else
-            paramInfo.setSize(static_cast<uint16_t>(paramType.getPhysicalWidth()));
+        paramInfo.setSize(static_cast<uint16_t>(paramType.getPhysicalWidth()));
         paramInfo.setPointer(paramType.isPointerType() || paramType.getImageType());
         paramInfo.setImage(!!paramType.getImageType());
         paramInfo.setDecorations(param.decorations);
@@ -376,6 +371,18 @@ KernelInfo qpu_asm::getKernelInfos(
         paramInfo.setUnsigned(has_flag(param.decorations, ParameterDecorations::ZERO_EXTEND));
         paramInfo.setTypeName(
             typeName.empty() ? paramType.getTypeName(paramInfo.getSigned(), paramInfo.getUnsigned()) : typeName);
+
+        if(paramType.getPointerType() && has_flag(param.decorations, ParameterDecorations::BY_VALUE))
+        {
+            // since the client passes the actual (struct) type to as argument, the VC4CL run-time needs to know that
+            // size
+            paramInfo.setSize(static_cast<uint16_t>((*paramType.getPointerType())->elementType.getPhysicalWidth()));
+            // we also need to fix-up the other decorations and qualifiers we modified:
+            // direct struct parameters are always in the __private address space (since they are function-local
+            // values), we just "moved" them to the __constant address space for a) better optimization and b) kernels
+            // do not allow __private parameters
+            paramInfo.setAddressSpace(AddressSpace::PRIVATE);
+        }
         info.addParameter(paramInfo);
     }
 

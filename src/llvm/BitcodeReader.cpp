@@ -632,7 +632,6 @@ static ParameterDecorations toParameterDecorations(const llvm::Argument& arg, co
         // implies that a hidden copy of the pointee is made between the caller and the callee, so the callee is
         // unable to modify the value in the caller."
         // This is e.g. used direct struct parameters passed to kernels
-        deco = add_flag(deco, ParameterDecorations::READ_ONLY);
         deco = add_flag(deco, ParameterDecorations::BY_VALUE);
     }
     return deco;

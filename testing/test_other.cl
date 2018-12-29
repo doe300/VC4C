@@ -49,7 +49,7 @@ __kernel void test_f2i(const float val_exact, const float val_down, const float 
  * - see, how we have to handle the IR
  *
  */
-__kernel void test_vector_param(const float2 vec2, const float4 vec4, const float16 vec16, __global float16* out)
+__kernel void test_vector_param(float2 vec2, float4 vec4, float16 vec16, __global float16* out)
 {
 	vec4.x += vec2.x;
 	vec4.y += vec2.y;
