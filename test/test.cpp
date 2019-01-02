@@ -15,7 +15,7 @@
 #include "TestGraph.h"
 #include "TestInstructions.h"
 #include "TestOperators.h"
-#include "TestSPIRVFrontend.h"
+#include "TestFrontends.h"
 #include "TestMathFunctions.h"
 #include "TestIntegerFunctions.h"
 #include "TestCommonFunctions.h"
@@ -118,7 +118,7 @@ int main(int argc, char** argv)
     Test::registerSuite(Test::newInstance<TestOptimizations>, "test-optimizations", "Runs smoke tests on the single optimization steps");
     Test::registerSuite(Test::newInstance<TestOperators>, "test-operators", "Tests the implementation of some operators");
     Test::registerSuite(Test::newInstance<TestInstructions>, "test-instructions", "Tests some common instruction handling");
-    Test::registerSuite(Test::newInstance<TestSPIRVFrontend>, "test-spirv", "Tests the SPIR-V front-end");
+    Test::registerSuite(Test::newInstance<TestFrontends>, "test-frontend", "Tests various functions of the default front-end");
     Test::registerSuite(newLLVMCompilationTest<true>, "regressions-llvm", "Runs the regression-test using the LLVM-IR front-end", false);
     Test::registerSuite(newSPIRVCompiltionTest<true>, "regressions-spirv", "Runs the regression-test using the SPIR-V front-end", false);
     Test::registerSuite(newCompilationTest<true>, "regressions", "Runs the regression-test using the default front-end", false);

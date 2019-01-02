@@ -18,13 +18,6 @@ namespace vc4c
     namespace optimizations
     {
         /*
-         * Moves an instruction up (to the front, dest) in the sequence of instructions by swapping all instructions in
-         * between. We can't just simply insert the instruction at the original destination, since the iterators might
-         * get invalidated!
-         */
-        InstructionWalker moveInstructionUp(InstructionWalker dest, InstructionWalker it);
-
-        /*
          * Splits up writing of a local directly followed by an instruction reading it if the local is unlikely to be
          * mapped to an accumulator by inserting nop-instructions. This optimization-pass on its own is actually an
          * de-optimization, but is required for the #reorderWithinBasicBlocks pass to work properly.

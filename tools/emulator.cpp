@@ -18,6 +18,7 @@
 #include <iomanip>
 #include <iostream>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <type_traits>
 
@@ -109,9 +110,19 @@ static std::vector<tools::Word> readDirectBuffer(std::string data)
 	std::vector<tools::Word> words;
 	std::stringstream ss(data);
 	T t = 0;
-	while((ss >> t))
+	while((ss.peek() == 'i') || (ss.peek() == 'n') || (ss >> t))
 	{
-		if(t == 0 && ss.peek() == 'x')
+		if(ss.peek() == 'i' || ss.peek() == 'n')
+		{
+			// inf / nan
+			std::string tmp;
+			ss >> tmp;
+			if(tmp == "inf")
+				t = std::numeric_limits<T>::infinity();
+			else if(tmp == "nan")
+				t = std::numeric_limits<T>::quiet_NaN();
+		}
+		else if(t == 0 && ss.peek() == 'x')
 		{
 			// skip x in (0x...)
 			ss.get();
@@ -122,6 +133,8 @@ static std::vector<tools::Word> readDirectBuffer(std::string data)
 			t = bit_cast<HexType, T>(tmp);
 		}
 		words.emplace_back(bit_cast<T, uint32_t>(t));
+		while(ss.peek() == ' ')
+			ss.get();
 	}
 	
 	return words;

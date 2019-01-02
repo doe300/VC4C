@@ -165,19 +165,6 @@ InstructionWalker periphery::insertReadVectorFromTMU(
     return it;
 }
 
-InstructionWalker periphery::insertGeneralReadTMU(
-    Method& method, InstructionWalker it, const Value& dest, const Value& addr, const TMU& tmu)
-{
-    //"General-memory lookups are performed by writing to just the s-parameter, using the absolute memory address" (page
-    // 41)  1) write address to TMU_S register
-    assign(it, tmu.getAddress(addr.type)) = addr;
-    // 2) trigger loading of TMU
-    nop(it, intermediate::DelayType::WAIT_TMU, tmu.signal);
-    // 3) read value from R4
-    assign(it, dest) = TMU_READ_REGISTER;
-    return it;
-}
-
 InstructionWalker periphery::insertReadTMU(Method& method, InstructionWalker it, const Value& image, const Value& dest,
     const Value& xCoord, const Optional<Value>& yCoord, const TMU& tmu)
 {

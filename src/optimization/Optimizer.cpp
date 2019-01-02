@@ -315,6 +315,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         // TODO this is not an optimization, more a normalization step.
         // Move out of optimizations/remove when instruction scheduling is implemented
         passes.emplace("split-read-write");
+        FALL_THROUGH
     default:
         break;
     }

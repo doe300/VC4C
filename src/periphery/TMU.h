@@ -62,14 +62,6 @@ namespace vc4c
             Method& method, InstructionWalker it, const Value& dest, const Value& addr, const TMU& tmu = TMU0);
 
         /*
-         * Perform a general 32-bit memory lookup via the TMU.
-         *
-         * Actually, 16 separate 32-bit memory loads are performed for the 16 elements of the address-vector.
-         */
-        NODISCARD InstructionWalker insertGeneralReadTMU(
-            Method& method, InstructionWalker it, const Value& dest, const Value& addr, const TMU& tmu = TMU0);
-
-        /*
          * Inserts a read via TMU from the given image-parameter at the coordinates x, y (y optional), which need to be
          * converted to [0, 1] prior to this call and stores the result in dest.
          */

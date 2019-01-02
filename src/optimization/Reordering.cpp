@@ -213,33 +213,6 @@ static NODISCARD InstructionWalker findReplacementCandidate(
     return replacementIt;
 }
 
-InstructionWalker optimizations::moveInstructionUp(InstructionWalker dest, InstructionWalker it)
-{
-    /*
-     * a b c d e f
-     * f b c d e a
-     * f a c d e b
-     * f a b d e c
-     * f a b c e d
-     * f a b c d e
-     */
-    //	InstructionsIterator next = dest;
-    //	while(next != it)
-    //	{
-    //		std::iter_swap(next, it);
-    //		++next;
-    //	}
-
-    /*!
-     * a b c d e f
-     * f a b c d e nil
-     * f a b c d e
-     */
-    auto res = dest.emplace(it.release());
-    it.erase();
-    return res;
-}
-
 static void replaceNOPs(BasicBlock& basicBlock, Method& method, const Configuration& config)
 {
     InstructionWalker it = basicBlock.walk();

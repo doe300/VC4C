@@ -9,13 +9,14 @@
 
 #include "cpptest.h"
 
-class TestSPIRVFrontend : public Test::Suite
+class TestFrontends : public Test::Suite
 {
 public:
-	TestSPIRVFrontend();
-	~TestSPIRVFrontend() override;
+	TestFrontends();
+	~TestFrontends() override;
 
-	void testCapabilitiesSupport();
+	void testSPIRVCapabilitiesSupport();
+	void testLinking();
 };
 
 #endif /* TEST_SPIRVFRONTEND_H */

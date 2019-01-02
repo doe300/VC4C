@@ -185,8 +185,8 @@ void Registers::writeRegister(Register reg, const Value& val, std::bitset<16> el
     else if(reg.num == REG_HOST_INTERRUPT.num)
     {
         if(hostInterrupt)
-            logging::warn() << "Host interrupt was already triggered with " << hostInterrupt->to_string()
-                            << logging::endl;
+            throw CompilationError(
+                CompilationStep::GENERAL, "Host interrupt was already triggered with", hostInterrupt->to_string());
         hostInterrupt = modifiedValue;
     }
     else if(reg.num == REG_NOP.num)
@@ -406,7 +406,7 @@ Value UniformCache::readUniform()
 {
     if(lastAddressSetCycle != 0 && lastAddressSetCycle + 2 > qpu.getCurrentCycle())
         // see Broadcom specification, page 22
-        logging::warn() << "Reading UNIFORM within 2 cycles of last UNIFORM reset" << logging::endl;
+        throw CompilationError(CompilationStep::GENERAL, "Reading UNIFORM within 2 cycles of last UNIFORM reset!");
     Value val = memory.readWord(uniformAddress);
     // do not increment UNIFORM pointer for multiple reads in same instruction
     uniformAddress = memory.incrementAddress(uniformAddress, TYPE_INT32);
@@ -539,7 +539,7 @@ void TMUs::checkTMUWriteCycle() const
 {
     // Broadcom specification, page 37
     if(lastTMUNoSwap + 3 > qpu.getCurrentCycle())
-        logging::warn() << "Writing to TMU within 3 cycles of last TMU no-swap change" << logging::endl;
+        throw CompilationError(CompilationStep::GENERAL, "Writing to TMU within 3 cycles of last TMU no-swap change!");
 }
 
 Value TMUs::readMemoryAddress(const Value& address) const
@@ -573,7 +573,8 @@ uint8_t TMUs::toRealTMU(uint8_t tmu) const
 Value SFU::readSFU()
 {
     if(lastSFUWrite + 2 > currentCycle)
-        logging::warn() << "Reading of SFU result within 2 cycles of triggering SFU calculation" << logging::endl;
+        throw CompilationError(
+            CompilationStep::GENERAL, "Reading of SFU result within 2 cycles of triggering SFU calculation!");
     if(!sfuResult)
         throw CompilationError(CompilationStep::GENERAL, "Cannot read empty SFU result!");
     const Value val = sfuResult.value();
@@ -669,7 +670,7 @@ Value VPM::readValue()
     periphery::VPRSetup setup = periphery::VPRSetup::fromLiteral(vpmReadSetup);
 
     if(setup.value == 0)
-        logging::warn() << "VPM generic setup was not previously set: " << setup.to_string() << logging::endl;
+        throw CompilationError(CompilationStep::GENERAL, "VPM generic setup was not previously set", setup.to_string());
     if(setup.genericSetup.getLaned())
         throw CompilationError(CompilationStep::GENERAL, "Laned access to VPM is not yet supported", setup.to_string());
     if(!setup.genericSetup.getHorizontal())
@@ -732,7 +733,7 @@ void VPM::writeValue(const Value& val)
     periphery::VPWSetup setup = periphery::VPWSetup::fromLiteral(vpmWriteSetup);
 
     if(setup.value == 0)
-        logging::warn() << "VPM generic setup was not previously set: " << setup.to_string() << logging::endl;
+        throw CompilationError(CompilationStep::GENERAL, "VPM generic setup was not previously set", setup.to_string());
     if(setup.genericSetup.getLaned())
         throw CompilationError(CompilationStep::GENERAL, "Laned access to VPM is not yet supported", setup.to_string());
     if(!setup.genericSetup.getHorizontal())
@@ -807,8 +808,8 @@ void VPM::setWriteSetup(const Value& val)
     else if(setup.isStrideSetup())
         writeStrideSetup = setup.value;
     else
-        logging::warn() << "Writing unknown VPM write setup: " << element0.getLiteralValue()->unsignedInt()
-                        << logging::endl;
+        throw CompilationError(CompilationStep::GENERAL, "Writing unknown VPM write setup",
+            std::to_string(element0.getLiteralValue()->unsignedInt()));
     logging::debug() << "Set VPM write setup: " << setup.to_string() << logging::endl;
 }
 
@@ -825,8 +826,8 @@ void VPM::setReadSetup(const Value& val)
     else if(setup.isStrideSetup())
         readStrideSetup = setup.value;
     else
-        logging::warn() << "Writing unknown VPM read setup: " << element0.getLiteralValue()->unsignedInt()
-                        << logging::endl;
+        throw CompilationError(CompilationStep::GENERAL, "Writing unknown VPM read setup",
+            std::to_string(element0.getLiteralValue()->unsignedInt()));
     logging::debug() << "Set VPM read setup: " << setup.to_string() << logging::endl;
 }
 
@@ -838,7 +839,8 @@ void VPM::setDMAWriteAddress(const Value& val)
     periphery::VPWSetup setup = periphery::VPWSetup::fromLiteral(dmaWriteSetup);
 
     if(setup.value == 0)
-        logging::warn() << "VPM DMA write setup was not previously set: " << setup.to_string() << logging::endl;
+        throw CompilationError(
+            CompilationStep::GENERAL, "VPM DMA write setup was not previously set", setup.to_string());
     if(!setup.dmaSetup.getHorizontal())
         throw CompilationError(
             CompilationStep::GENERAL, "Vertical access to VPM is not yet supported", setup.to_string());
@@ -892,7 +894,8 @@ void VPM::setDMAReadAddress(const Value& val)
     periphery::VPRSetup setup = periphery::VPRSetup::fromLiteral(dmaReadSetup);
 
     if(setup.value == 0)
-        logging::warn() << "VPM DMA read setup was not previously set: " << setup.to_string() << logging::endl;
+        throw CompilationError(
+            CompilationStep::GENERAL, "VPM DMA read setup was not previously set", setup.to_string());
     if(setup.dmaSetup.getVertical())
         throw CompilationError(
             CompilationStep::GENERAL, "Vertical access to VPM is not yet supported", setup.to_string());
@@ -1002,25 +1005,25 @@ bool ElementFlags::matchesCondition(ConditionCode cond) const
     case COND_CARRY_CLEAR.value:
     {
         if(carry == FlagStatus::UNDEFINED)
-            logging::warn() << "Reading undefined flags" << logging::endl;
+            throw CompilationError(CompilationStep::GENERAL, "Reading undefined carry flags");
         return carry == FlagStatus::CLEAR;
     }
     case COND_CARRY_SET.value:
     {
         if(carry == FlagStatus::UNDEFINED)
-            logging::warn() << "Reading undefined flags" << logging::endl;
+            throw CompilationError(CompilationStep::GENERAL, "Reading undefined carry flags");
         return carry == FlagStatus::SET;
     }
     case COND_NEGATIVE_CLEAR.value:
     {
         if(negative == FlagStatus::UNDEFINED)
-            logging::warn() << "Reading undefined flags" << logging::endl;
+            throw CompilationError(CompilationStep::GENERAL, "Reading undefined negative flags");
         return negative == FlagStatus::CLEAR;
     }
     case COND_NEGATIVE_SET.value:
     {
         if(negative == FlagStatus::UNDEFINED)
-            logging::warn() << "Reading undefined flags" << logging::endl;
+            throw CompilationError(CompilationStep::GENERAL, "Reading undefined negative flags");
         return negative == FlagStatus::SET;
     }
     case COND_NEVER.value:
@@ -1028,13 +1031,13 @@ bool ElementFlags::matchesCondition(ConditionCode cond) const
     case COND_ZERO_CLEAR.value:
     {
         if(zero == FlagStatus::UNDEFINED)
-            logging::warn() << "Reading undefined flags" << logging::endl;
+            throw CompilationError(CompilationStep::GENERAL, "Reading undefined zero flags");
         return zero == FlagStatus::CLEAR;
     }
     case COND_ZERO_SET.value:
     {
         if(zero == FlagStatus::UNDEFINED)
-            logging::warn() << "Reading undefined flags" << logging::endl;
+            throw CompilationError(CompilationStep::GENERAL, "Reading undefined zero flags");
         return zero == FlagStatus::SET;
     }
     }
