@@ -705,39 +705,48 @@ std::pair<Optional<Value>, VectorFlags> OpCode::operator()(
         return setFlags(
             Value(Literal(firstLit.unsignedInt() & secondLit.unsignedInt()), resultType), false, false, false);
     if(*this == OP_ASR)
-        return setFlags(Value(intermediate::asr(resultType, firstLit, secondLit), resultType), false, false, false);
+    {
+        // carry is set if bits set are shifted out of the register: val & (2^shift-offset-1) != 0
+        auto shiftLoss = firstLit.unsignedInt() & ((1 << secondLit.signedInt()) - 1);
+        return setFlags(
+            Value(intermediate::asr(resultType, firstLit, secondLit), resultType), false, shiftLoss != 0, false);
+    }
     if(*this == OP_CLZ)
         return setFlags(Value(intermediate::clz(resultType, firstLit), resultType), false, false, false);
     if(*this == OP_FADD)
-        return setFlags(Value(Literal(firstLit.real() + secondLit.real()), resultType), true);
+        return setFlags(Value(Literal(firstLit.real() + secondLit.real()), resultType), true,
+            (firstLit.real() + secondLit.real()) > 0.0f);
     if(*this == OP_FMAX)
-        return setFlags(Value(Literal(std::max(firstLit.real(), secondLit.real())), resultType), true, false, false);
+        return setFlags(Value(Literal(std::max(firstLit.real(), secondLit.real())), resultType), true,
+            firstLit.real() > secondLit.real(), false);
     if(*this == OP_FMAXABS)
-        return setFlags(
-            Value(Literal(std::max(std::fabs(firstLit.real()), std::fabs(secondLit.real()))), resultType), true, false);
+        return setFlags(Value(Literal(std::max(std::fabs(firstLit.real()), std::fabs(secondLit.real()))), resultType),
+            true, std::fabs(firstLit.real()) > std::fabs(secondLit.real()), false);
     if(*this == OP_FMIN)
-        return setFlags(Value(Literal(std::min(firstLit.real(), secondLit.real())), resultType), true, false, false);
+        return setFlags(Value(Literal(std::min(firstLit.real(), secondLit.real())), resultType), true,
+            firstLit.real() > secondLit.real(), false);
     if(*this == OP_FMINABS)
         return setFlags(Value(Literal(std::min(std::fabs(firstLit.real()), std::fabs(secondLit.real()))), resultType),
-            true, false, false);
+            true, std::fabs(firstLit.real()) > std::fabs(secondLit.real()), false);
     if(*this == OP_FMUL)
         return setFlags(Value(Literal(firstLit.real() * secondLit.real()), resultType), true);
     if(*this == OP_FSUB)
-        return setFlags(Value(Literal(firstLit.real() - secondLit.real()), resultType), true);
+        return setFlags(Value(Literal(firstLit.real() - secondLit.real()), resultType), true,
+            (firstLit.real() - secondLit.real()) > 0.0f);
     if(*this == OP_FTOI)
         return setFlags(Value(Literal(static_cast<int32_t>(firstLit.real())),
                             TYPE_INT32.toVectorType(firstVal->type.getVectorWidth())),
-            false);
+            false, false);
     if(*this == OP_ITOF)
         return setFlags(Value(Literal(static_cast<float>(firstLit.signedInt())),
                             TYPE_FLOAT.toVectorType(firstVal->type.getVectorWidth())),
-            true);
+            true, false);
     if(*this == OP_MAX)
-        return setFlags(
-            Value(Literal(std::max(firstLit.signedInt(), secondLit.signedInt())), resultType), false, false, false);
+        return setFlags(Value(Literal(std::max(firstLit.signedInt(), secondLit.signedInt())), resultType), false,
+            firstLit.signedInt() > secondLit.signedInt(), false);
     if(*this == OP_MIN)
-        return setFlags(
-            Value(Literal(std::min(firstLit.signedInt(), secondLit.signedInt())), resultType), false, false, false);
+        return setFlags(Value(Literal(std::min(firstLit.signedInt(), secondLit.signedInt())), resultType), false,
+            firstLit.signedInt() > secondLit.signedInt(), false);
     if(*this == OP_MUL24)
     {
         auto extendedVal = static_cast<uint64_t>(firstLit.unsignedInt() & 0xFFFFFFu) *
@@ -749,9 +758,11 @@ std::pair<Optional<Value>, VectorFlags> OpCode::operator()(
     if(*this == OP_NOT)
         return setFlags(Value(Literal(~firstLit.unsignedInt()), resultType), false, false);
     if(*this == OP_OR)
-        return setFlags(Value(Literal(firstLit.unsignedInt() | secondLit.unsignedInt()), resultType), false, false);
+        return setFlags(
+            Value(Literal(firstLit.unsignedInt() | secondLit.unsignedInt()), resultType), false, false, false);
     if(*this == OP_ROR)
-        return setFlags(Value(Literal(rotate_right(firstLit.unsignedInt(), secondLit.signedInt())), resultType), false);
+        return setFlags(
+            Value(Literal(rotate_right(firstLit.unsignedInt(), secondLit.signedInt())), resultType), false, false);
     if(*this == OP_SHL)
     {
         auto extendedVal = static_cast<uint64_t>(firstLit.unsignedInt())
@@ -760,7 +771,12 @@ std::pair<Optional<Value>, VectorFlags> OpCode::operator()(
             extendedVal > static_cast<uint64_t>(0xFFFFFFFFul));
     }
     if(*this == OP_SHR)
-        return setFlags(Value(Literal(firstLit.unsignedInt() >> secondLit.signedInt()), resultType), false, false);
+    {
+        // carry is set if bits set are shifted out of the register: val & (2^shift-offset-1) != 0
+        auto shiftLoss = firstLit.unsignedInt() & ((1 << secondLit.signedInt()) - 1);
+        return setFlags(
+            Value(Literal(firstLit.unsignedInt() >> secondLit.signedInt()), resultType), false, shiftLoss != 0);
+    }
     if(*this == OP_SUB)
     {
         auto extendedVal = static_cast<int64_t>(firstLit.signedInt()) - static_cast<int64_t>(secondLit.signedInt());
@@ -769,7 +785,8 @@ std::pair<Optional<Value>, VectorFlags> OpCode::operator()(
                 extendedVal < static_cast<int64_t>(std::numeric_limits<int32_t>::min()));
     }
     if(*this == OP_XOR)
-        return setFlags(Value(Literal(firstLit.unsignedInt() ^ secondLit.unsignedInt()), resultType), false, false);
+        return setFlags(
+            Value(Literal(firstLit.unsignedInt() ^ secondLit.unsignedInt()), resultType), false, false, false);
     if(*this == OP_V8ADDS || *this == OP_V8SUBS || *this == OP_V8MAX || *this == OP_V8MIN || *this == OP_V8MULD)
     {
         std::array<uint32_t, 4> bytesA, bytesB, bytesOut;

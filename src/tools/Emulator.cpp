@@ -1600,6 +1600,9 @@ void QPU::setFlags(const Value& output, ConditionCode cond, const VectorFlags& n
         {
             // only update flags for elements we actually write (where we actually calculate a result)
             flags[i] = newFlags[i];
+            // do not set overflow flag, it is only valid for the one instruction
+            flags[i].overflow = FlagStatus::UNDEFINED;
+
             parts.push_back(toFlagString(flags[i].zero, 'z') + toFlagString(flags[i].negative, 'n') +
                 toFlagString(flags[i].carry, 'c'));
         }

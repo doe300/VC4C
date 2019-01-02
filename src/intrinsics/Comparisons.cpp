@@ -154,9 +154,9 @@ InstructionWalker intrinsifyIntegerRelation(
             it = insertSignExtension(it, method, comp->getFirstArg(), firstArg, true);
             it = insertSignExtension(it, method, comp->assertArgument(1), secondArg, true);
         }
-        assign(it, tmp) = (max(firstArg, secondArg));
-        assign(it, NOP_REGISTER) = (tmp ^ firstArg, SetFlag::SET_FLAGS);
-        it = replaceWithSetBoolean(it, comp->getOutput().value(), invertResult ? COND_ZERO_SET : COND_ZERO_CLEAR);
+        // min/max(a, b) set flag carry if a > b => min/max(b, a) set carry if a < b
+        assign(it, tmp) = (max(secondArg, firstArg), SetFlag::SET_FLAGS);
+        it = replaceWithSetBoolean(it, comp->getOutput().value(), invertResult ? COND_CARRY_CLEAR : COND_CARRY_SET);
     }
     else
         throw CompilationError(CompilationStep::OPTIMIZER, "Unrecognized integer comparison", comp->opCode);
@@ -217,17 +217,18 @@ InstructionWalker intrinsifyFloatingRelation(Method& method, InstructionWalker i
     }
     else if(COMP_ORDERED_LT == comp->opCode || COMP_UNORDERED_LT == comp->opCode)
     {
-        // a < b [<=> min(a, b) != b] [<=> max(a, b) != a] <=> a - b < 0
-        assign(it, NOP_REGISTER) = (comp->getFirstArg() - comp->assertArgument(1), SetFlag::SET_FLAGS);
-        // true if NEGATIVE is set, otherwise false
-        it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_NEGATIVE_SET);
+        // a < b <=> min(a, b) != b [<=> max(a, b) != a] [<=> a - b < 0]
+        // fmin/fmax(a, b) set carry if a > b => fmin/fmax(b, a) set carry if a < b
+        assign(it, NOP_REGISTER) = (min(comp->assertArgument(1), comp->getFirstArg()), SetFlag::SET_FLAGS);
+        // true if CARRY is set, otherwise false
+        it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_CARRY_SET);
     }
     else if(COMP_ORDERED_LE == comp->opCode || COMP_UNORDERED_LE == comp->opCode)
     {
         // a <= b <=> min(a, b) == a [<=> max(a, b) == b]
-        assign(it, tmp) = (min(comp->getFirstArg(), comp->assertArgument(1)), SetFlag::SET_FLAGS);
-        assign(it, NOP_REGISTER) = (tmp ^ comp->getFirstArg(), SetFlag::SET_FLAGS);
-        it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_ZERO_SET);
+        // fmin/fmax(a, b) set carry if a > b => (a <= b) == carry not set
+        assign(it, NOP_REGISTER) = (min(comp->getFirstArg(), comp->assertArgument(1)), SetFlag::SET_FLAGS);
+        it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_CARRY_CLEAR);
     }
     else if(COMP_ORDERED == comp->opCode)
     {

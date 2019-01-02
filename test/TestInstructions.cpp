@@ -437,109 +437,193 @@ enum class FlagsMask
     ZERO,
     NEGATIVE,
     CARRY,
-    OVERFLOW
+    SIGNED_OVERFLOW
 };
 
 void TestInstructions::testOpCodeFlags()
 {
-    const auto checkFlagsSet = [](VectorFlags&& flags, FlagsMask mask) -> bool {
+    const auto checkFlagSet = [](VectorFlags&& flags, FlagsMask mask) -> bool {
         switch(mask)
         {
         case FlagsMask::ZERO:
-            return flags[0].zero != FlagStatus::UNDEFINED;
+            return flags[0].zero == FlagStatus::SET;
         case FlagsMask::NEGATIVE:
-            return flags[0].negative != FlagStatus::UNDEFINED;
+            return flags[0].negative == FlagStatus::SET;
         case FlagsMask::CARRY:
-            return flags[0].carry != FlagStatus::UNDEFINED;
-        case FlagsMask::OVERFLOW:
-            return flags[0].overflow != FlagStatus::UNDEFINED;
+            return flags[0].carry == FlagStatus::SET;
+        case FlagsMask::SIGNED_OVERFLOW:
+            return flags[0].overflow == FlagStatus::SET;
         }
         return false;
     };
 
-    TEST_ASSERT(checkFlagsSet(OP_ADD(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_ADD(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
-    TEST_ASSERT(checkFlagsSet(OP_ADD(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
-    TEST_ASSERT(checkFlagsSet(OP_ADD(INT_ONE, INT_ONE).second, FlagsMask::OVERFLOW));
+    const auto checkFlagClear = [](VectorFlags&& flags, FlagsMask mask) -> bool {
+        switch(mask)
+        {
+        case FlagsMask::ZERO:
+            return flags[0].zero == FlagStatus::CLEAR;
+        case FlagsMask::NEGATIVE:
+            return flags[0].negative == FlagStatus::CLEAR;
+        case FlagsMask::CARRY:
+            return flags[0].carry == FlagStatus::CLEAR;
+        case FlagsMask::SIGNED_OVERFLOW:
+            return flags[0].overflow == FlagStatus::CLEAR;
+        }
+        return false;
+    };
 
-    TEST_ASSERT(checkFlagsSet(OP_AND(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_AND(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
-    TEST_ASSERT(checkFlagsSet(OP_AND(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    auto INT_MAX = Value(Literal(0x7FFFFFFFu), TYPE_INT32);
+    auto FLOAT_MINUS_ONE = Value(Literal(-1.0f), TYPE_FLOAT);
 
-    TEST_ASSERT(checkFlagsSet(OP_ASR(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_ASR(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_ADD(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_ADD(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_ADD(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagClear(OP_ADD(INT_ONE, INT_ONE).second, FlagsMask::SIGNED_OVERFLOW));
+    TEST_ASSERT(checkFlagSet(OP_ADD(INT_ONE, INT_MINUS_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_ADD(INT_MINUS_ONE, INT_MINUS_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagSet(OP_ADD(INT_MINUS_ONE, INT_MINUS_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_ADD(INT_MAX, INT_MAX).second, FlagsMask::SIGNED_OVERFLOW));
 
-    TEST_ASSERT(checkFlagsSet(OP_CLZ(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_CLZ(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
-    TEST_ASSERT(checkFlagsSet(OP_CLZ(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
-    TEST_ASSERT(checkFlagsSet(OP_CLZ(INT_ONE, INT_ONE).second, FlagsMask::OVERFLOW));
+    TEST_ASSERT(checkFlagClear(OP_AND(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_AND(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_AND(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_AND(INT_ZERO, INT_ZERO).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_AND(INT_MINUS_ONE, INT_MINUS_ONE).second, FlagsMask::NEGATIVE));
 
-    TEST_ASSERT(checkFlagsSet(OP_FADD(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_FADD(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_ASR(INT_ONE, INT_ZERO).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_ASR(INT_ONE, INT_ZERO).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_ASR(INT_ONE, INT_ZERO).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_ASR(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_ASR(INT_MINUS_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagSet(OP_ASR(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
 
-    TEST_ASSERT(checkFlagsSet(OP_FMAX(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_FMAX(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_CLZ(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_CLZ(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_CLZ(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagClear(OP_CLZ(INT_ONE, INT_ONE).second, FlagsMask::SIGNED_OVERFLOW));
+    TEST_ASSERT(checkFlagSet(OP_CLZ(INT_MINUS_ONE, INT_MINUS_ONE).second, FlagsMask::ZERO));
 
-    TEST_ASSERT(checkFlagsSet(OP_FMAXABS(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_FMAXABS(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_FADD(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_FADD(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_FADD(FLOAT_ZERO, FLOAT_ZERO).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_FADD(FLOAT_ZERO, FLOAT_ZERO).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_FADD(FLOAT_MINUS_ONE, FLOAT_MINUS_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagSet(OP_FADD(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::CARRY));
 
-    TEST_ASSERT(checkFlagsSet(OP_FMIN(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_FMIN(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_FMAX(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_FMAX(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_FMAX(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_FMAX(FLOAT_ZERO, FLOAT_MINUS_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_FMAX(FLOAT_MINUS_ONE, FLOAT_MINUS_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagSet(OP_FMAX(FLOAT_ONE, FLOAT_ZERO).second, FlagsMask::CARRY));
 
-    TEST_ASSERT(checkFlagsSet(OP_FMINABS(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_FMINABS(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_FMAXABS(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_FMAXABS(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_FMAXABS(FLOAT_ZERO, FLOAT_ZERO).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_FMAXABS(FLOAT_ZERO, FLOAT_ZERO).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_FMAXABS(FLOAT_ONE, FLOAT_ZERO).second, FlagsMask::CARRY));
 
-    TEST_ASSERT(checkFlagsSet(OP_FMUL(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_FMUL(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_FMIN(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_FMIN(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_FMIN(FLOAT_ZERO, FLOAT_ZERO).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_FMIN(FLOAT_ONE, FLOAT_ZERO).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_FMIN(FLOAT_MINUS_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagSet(OP_FMIN(FLOAT_ONE, FLOAT_MINUS_ONE).second, FlagsMask::CARRY));
 
-    TEST_ASSERT(checkFlagsSet(OP_FSUB(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_FSUB(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_FMINABS(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_FMINABS(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_FMINABS(FLOAT_ZERO, FLOAT_ZERO).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_FMINABS(FLOAT_ZERO, FLOAT_ZERO).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_FMINABS(FLOAT_ONE, FLOAT_ZERO).second, FlagsMask::CARRY));
 
-    TEST_ASSERT(checkFlagsSet(OP_FTOI(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_FTOI(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_FMUL(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_FMUL(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
+    // TODO
 
-    TEST_ASSERT(checkFlagsSet(OP_ITOF(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_ITOF(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_FSUB(FLOAT_ONE, FLOAT_ZERO).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_FSUB(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_FSUB(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_FSUB(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_FSUB(FLOAT_MINUS_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagSet(OP_FSUB(FLOAT_ONE, FLOAT_MINUS_ONE).second, FlagsMask::CARRY));
 
-    TEST_ASSERT(checkFlagsSet(OP_MAX(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_MAX(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
-    TEST_ASSERT(checkFlagsSet(OP_MAX(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
-    TEST_ASSERT(checkFlagsSet(OP_MAX(INT_ONE, INT_ONE).second, FlagsMask::OVERFLOW));
+    TEST_ASSERT(checkFlagClear(OP_FTOI(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_FTOI(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_FTOI(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_FTOI(FLOAT_ZERO, FLOAT_ZERO).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_FTOI(FLOAT_MINUS_ONE, FLOAT_MINUS_ONE).second, FlagsMask::NEGATIVE));
 
-    TEST_ASSERT(checkFlagsSet(OP_MIN(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_MIN(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
-    TEST_ASSERT(checkFlagsSet(OP_MIN(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
-    TEST_ASSERT(checkFlagsSet(OP_MIN(INT_ONE, INT_ONE).second, FlagsMask::OVERFLOW));
+    TEST_ASSERT(checkFlagClear(OP_ITOF(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_ITOF(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_ITOF(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_ITOF(INT_ZERO, INT_ZERO).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_ITOF(INT_MINUS_ONE, INT_MINUS_ONE).second, FlagsMask::NEGATIVE));
 
-    TEST_ASSERT(checkFlagsSet(OP_MUL24(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_MUL24(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
-    TEST_ASSERT(checkFlagsSet(OP_MUL24(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagClear(OP_MAX(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_MAX(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_MAX(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_MAX(INT_MINUS_ONE, INT_ZERO).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_MAX(INT_MINUS_ONE, INT_MINUS_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagSet(OP_MAX(INT_ONE, INT_ZERO).second, FlagsMask::CARRY));
 
-    TEST_ASSERT(checkFlagsSet(OP_NOT(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_NOT(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
-    TEST_ASSERT(checkFlagsSet(OP_NOT(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagClear(OP_MIN(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_MIN(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_MIN(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_MIN(INT_ONE, INT_ZERO).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_MIN(INT_ONE, INT_MINUS_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagSet(OP_MIN(INT_ONE, INT_ZERO).second, FlagsMask::CARRY));
 
-    TEST_ASSERT(checkFlagsSet(OP_OR(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_OR(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
-    TEST_ASSERT(checkFlagsSet(OP_OR(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagClear(OP_MUL24(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_MUL24(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_MUL24(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    // TODO
 
-    TEST_ASSERT(checkFlagsSet(OP_ROR(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_ROR(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_NOT(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_NOT(INT_MINUS_ONE, INT_MINUS_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_NOT(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_NOT(INT_MINUS_ONE, INT_MINUS_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_NOT(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
 
-    TEST_ASSERT(checkFlagsSet(OP_SHL(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_SHL(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
-    TEST_ASSERT(checkFlagsSet(OP_SHL(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagClear(OP_OR(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_OR(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_OR(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_OR(INT_ZERO, INT_ZERO).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_OR(INT_MINUS_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
 
-    TEST_ASSERT(checkFlagsSet(OP_SHR(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_SHR(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
-    TEST_ASSERT(checkFlagsSet(OP_SHR(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagClear(OP_ROR(INT_MINUS_ONE, INT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_ROR(INT_ZERO, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_ROR(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_ROR(INT_ZERO, INT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_ROR(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
 
-    TEST_ASSERT(checkFlagsSet(OP_SUB(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_SUB(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
-    TEST_ASSERT(checkFlagsSet(OP_SUB(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
-    TEST_ASSERT(checkFlagsSet(OP_SUB(INT_ONE, INT_ONE).second, FlagsMask::OVERFLOW));
+    TEST_ASSERT(checkFlagClear(OP_SHL(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_SHL(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_SHL(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_SHL(INT_ZERO, INT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_SHL(INT_MINUS_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagSet(OP_SHL(INT_MINUS_ONE, INT_ONE).second, FlagsMask::CARRY));
 
-    TEST_ASSERT(checkFlagsSet(OP_XOR(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
-    TEST_ASSERT(checkFlagsSet(OP_XOR(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
-    TEST_ASSERT(checkFlagsSet(OP_XOR(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagClear(OP_SHR(INT_MINUS_ONE, INT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_SHR(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_SHR(INT_ONE, INT_ZERO).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_SHR(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
+    // XXX negative?
+    TEST_ASSERT(checkFlagSet(OP_SHR(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+
+    TEST_ASSERT(checkFlagClear(OP_SUB(INT_ONE, INT_MINUS_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_SUB(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_SUB(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagClear(OP_SUB(INT_ONE, INT_ONE).second, FlagsMask::SIGNED_OVERFLOW));
+    TEST_ASSERT(checkFlagSet(OP_SUB(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_SUB(INT_MINUS_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagSet(OP_SUB(INT_MINUS_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_SUB(INT_MAX, INT_MINUS_ONE).second, FlagsMask::SIGNED_OVERFLOW));
+
+    TEST_ASSERT(checkFlagClear(OP_XOR(INT_ONE, INT_MINUS_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagClear(OP_XOR(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE));
+    TEST_ASSERT(checkFlagClear(OP_XOR(INT_ONE, INT_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_XOR(INT_ONE, INT_ONE).second, FlagsMask::ZERO));
+    TEST_ASSERT(checkFlagSet(OP_XOR(INT_ONE, INT_MINUS_ONE).second, FlagsMask::NEGATIVE));
+
+    // TODO v8ops
 }

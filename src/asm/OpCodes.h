@@ -556,6 +556,7 @@ namespace vc4c
         // operation overflowed 32-bit (see COND_CARRY_SET for details)
         FlagStatus carry = FlagStatus::UNDEFINED;
         // operation overflowed signed bounds (see PACK_32_32 for details)
+        // NOTE: In contrast to the other flags is the overflow flag only valid for the current instruction
         FlagStatus overflow = FlagStatus::UNDEFINED;
 
         bool matchesCondition(ConditionCode cond) const;
