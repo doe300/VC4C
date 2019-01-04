@@ -244,13 +244,17 @@ void TestInstructions::testOpCodes()
 
     TEST_ASSERT_EQUALS(FLOAT_ONE, OP_FMAX(FLOAT_ONE, FLOAT_ZERO).first.value());
     TEST_ASSERT_EQUALS(FLOAT_INF, OP_FMAX(FLOAT_INF, FLOAT_ONE).first.value());
+    TEST_ASSERT_EQUALS(FLOAT_NAN, OP_FMAX(FLOAT_INF, FLOAT_NAN).first.value());
 
     TEST_ASSERT_EQUALS(FLOAT_ONE, OP_FMAXABS(FLOAT_ZERO, FLOAT_MINUS_ONE).first.value());
+    TEST_ASSERT_EQUALS(FLOAT_NAN, OP_FMAXABS(FLOAT_INF, FLOAT_NAN).first.value());
 
     TEST_ASSERT_EQUALS(FLOAT_ZERO, OP_FMIN(FLOAT_ONE, FLOAT_ZERO).first.value());
     TEST_ASSERT_EQUALS(FLOAT_ONE, OP_FMIN(FLOAT_INF, FLOAT_ONE).first.value());
+    TEST_ASSERT_EQUALS(FLOAT_INF, OP_FMIN(FLOAT_INF, FLOAT_NAN).first.value());
 
     TEST_ASSERT_EQUALS(FLOAT_ZERO, OP_FMINABS(FLOAT_ZERO, FLOAT_MINUS_ONE).first.value());
+    TEST_ASSERT_EQUALS(FLOAT_INF, OP_FMINABS(FLOAT_INF, FLOAT_NAN).first.value());
 
     TEST_ASSERT_EQUALS(FLOAT_ONE, OP_FMUL(FLOAT_ONE, FLOAT_ONE).first.value());
     TEST_ASSERT_EQUALS(FLOAT_ZERO, OP_FMUL(FLOAT_ONE, FLOAT_ZERO).first.value());
@@ -262,6 +266,8 @@ void TestInstructions::testOpCodes()
     TEST_ASSERT_EQUALS(INT_ZERO, OP_FTOI(FLOAT_ZERO, NO_VALUE).first.value());
     TEST_ASSERT_EQUALS(INT_ONE, OP_FTOI(FLOAT_ONE, NO_VALUE).first.value());
     TEST_ASSERT_EQUALS(INT_MINUS_ONE, OP_FTOI(FLOAT_MINUS_ONE, NO_VALUE).first.value());
+    TEST_ASSERT_EQUALS(INT_ZERO, OP_FTOI(FLOAT_INF, NO_VALUE).first.value());
+    TEST_ASSERT_EQUALS(INT_ZERO, OP_FTOI(FLOAT_NAN, NO_VALUE).first.value());
 
     TEST_ASSERT_EQUALS(FLOAT_ZERO, OP_ITOF(INT_ZERO, NO_VALUE).first.value());
     TEST_ASSERT_EQUALS(FLOAT_ONE, OP_ITOF(INT_ONE, NO_VALUE).first.value());
@@ -516,12 +522,16 @@ void TestInstructions::testOpCodeFlags()
     TEST_ASSERT(checkFlagSet(OP_FMAX(FLOAT_ZERO, FLOAT_MINUS_ONE).second, FlagsMask::ZERO));
     TEST_ASSERT(checkFlagSet(OP_FMAX(FLOAT_MINUS_ONE, FLOAT_MINUS_ONE).second, FlagsMask::NEGATIVE));
     TEST_ASSERT(checkFlagSet(OP_FMAX(FLOAT_ONE, FLOAT_ZERO).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_FMAX(FLOAT_NAN, FLOAT_INF).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagClear(OP_FMAX(FLOAT_NAN, FLOAT_NAN).second, FlagsMask::CARRY));
 
     TEST_ASSERT(checkFlagClear(OP_FMAXABS(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
     TEST_ASSERT(checkFlagClear(OP_FMAXABS(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
     TEST_ASSERT(checkFlagClear(OP_FMAXABS(FLOAT_ZERO, FLOAT_ZERO).second, FlagsMask::CARRY));
     TEST_ASSERT(checkFlagSet(OP_FMAXABS(FLOAT_ZERO, FLOAT_ZERO).second, FlagsMask::ZERO));
     TEST_ASSERT(checkFlagSet(OP_FMAXABS(FLOAT_ONE, FLOAT_ZERO).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_FMAXABS(FLOAT_NAN, FLOAT_INF).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagClear(OP_FMAXABS(FLOAT_NAN, FLOAT_NAN).second, FlagsMask::CARRY));
 
     TEST_ASSERT(checkFlagClear(OP_FMIN(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
     TEST_ASSERT(checkFlagClear(OP_FMIN(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
@@ -529,12 +539,16 @@ void TestInstructions::testOpCodeFlags()
     TEST_ASSERT(checkFlagSet(OP_FMIN(FLOAT_ONE, FLOAT_ZERO).second, FlagsMask::ZERO));
     TEST_ASSERT(checkFlagSet(OP_FMIN(FLOAT_MINUS_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
     TEST_ASSERT(checkFlagSet(OP_FMIN(FLOAT_ONE, FLOAT_MINUS_ONE).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_FMIN(FLOAT_NAN, FLOAT_INF).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagClear(OP_FMIN(FLOAT_NAN, FLOAT_NAN).second, FlagsMask::CARRY));
 
     TEST_ASSERT(checkFlagClear(OP_FMINABS(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
     TEST_ASSERT(checkFlagClear(OP_FMINABS(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));
     TEST_ASSERT(checkFlagClear(OP_FMINABS(FLOAT_ZERO, FLOAT_ZERO).second, FlagsMask::CARRY));
     TEST_ASSERT(checkFlagSet(OP_FMINABS(FLOAT_ZERO, FLOAT_ZERO).second, FlagsMask::ZERO));
     TEST_ASSERT(checkFlagSet(OP_FMINABS(FLOAT_ONE, FLOAT_ZERO).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagSet(OP_FMINABS(FLOAT_NAN, FLOAT_INF).second, FlagsMask::CARRY));
+    TEST_ASSERT(checkFlagClear(OP_FMINABS(FLOAT_NAN, FLOAT_NAN).second, FlagsMask::CARRY));
 
     TEST_ASSERT(checkFlagClear(OP_FMUL(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::ZERO));
     TEST_ASSERT(checkFlagClear(OP_FMUL(FLOAT_ONE, FLOAT_ONE).second, FlagsMask::NEGATIVE));

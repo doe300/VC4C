@@ -763,30 +763,99 @@ namespace vc4c
     static constexpr OpCode OP_NOP{"nop", 0, 0, 0, false, false};
     /*
      * Floating-point addition
+     *
+     * VideoCore IV edge-case behavior:
+     * - NaN + NaN = Inf
+     * - NaN + Inf = Inf
+     * - Inf + Inf = NaN
+     * - NaN + -Inf = -Inf
+     * - Inf + -Inf = -Inf
+     * - -Inf + -Inf = -Inf
+     * -> TODO simply does "normal" float add?! So different NaN codes result in different result NaN vs. Inf?
      */
     static constexpr OpCode OP_FADD{"fadd", 1, 0, 2, true, true};
     /*
      * Floating-point subtraction
+     *
+     * VideoCore IV edge-case behavior:
+     * - NaN - NaN = -Inf
+     * - NaN - Inf = -Inf
+     * - Inf - Inf = -Inf
+     * - NaN - -Inf = Inf
+     * - Inf - -Inf = Inf
+     * - -Inf - -Inf = Inf
      */
     static constexpr OpCode OP_FSUB{"fsub", 2, 0, 2, true, true};
     /*
      * Floating-point minimum function
+     *
+     * Sets carry bit if the first argument is greater than the second
+     *
+     * VideoCore IV edge-case behavior:
+     * - fmin(NaN, NaN) = NaN
+     * - fmin(NaN, Inf) = Inf
+     * - fmin(Inf, Inf) = Inf
+     * - fmin(NaN, -Inf) = -Inf
+     * - fmin(Inf, -Inf) = -Inf
+     * - fmin(-Inf, -Inf) = -Inf
+     * -> -Inf < Inf < NaN
+     * -> Simple "normal" fmin/fmax: NaN (0x7F8xxxxx) > Inf (0x7F800000)
      */
     static constexpr OpCode OP_FMIN{"fmin", 3, 0, 2, true, true};
     /*
      * Floating-point maximum
+     *
+     * Sets carry bit if the first argument is greater than the second
+     *
+     * VideoCore IV edge-case behavior:
+     * - fmax(NaN, NaN) = NaN
+     * - fmax(NaN, Inf) = NaN
+     * - fmax(Inf, Inf) = Inf
+     * - fmax(NaN, -Inf) = NaN
+     * - fmax(Inf, -Inf) = Inf
+     * - fmax(-Inf, -Inf) = -Inf
+     * -> -Inf < Inf < NaN
+     * -> Simple "normal" fmin/fmax: NaN (0x7F8xxxxx) > Inf (0x7F800000)
      */
     static constexpr OpCode OP_FMAX{"fmax", 4, 0, 2, true, true};
     /*
      * Floating-point minimum of absolute values
+     *
+     * Sets carry bit if the first argument is greater than the second
+     *
+     * VideoCore IV edge-case behavior:
+     * - fminabs(NaN, NaN) = NaN
+     * - fminabs(NaN, Inf) = Inf
+     * - fminabs(Inf, Inf) = Inf
+     * - fminabs(NaN, -Inf) = Inf
+     * - fminabs(Inf, -Inf) = Inf
+     * - fminabs(-Inf, -Inf) = Inf
+     * -> Simple "normal" fminabs/fmaxabs: NaN (0x7F8xxxxx) > Inf (0x7F800000)
      */
     static constexpr OpCode OP_FMINABS{"fminabs", 5, 0, 2, true, true};
     /*
      * Floating-point maximum of absolute values
+     *
+     * Sets carry bit if the first argument is greater than the second
+     *
+     * VideoCore IV edge-case behavior:
+     * - fmaxabs(NaN, NaN) = NaN
+     * - fmaxabs(NaN, Inf) = NaN
+     * - fmaxabs(Inf, Inf) = Inf
+     * - fmaxabs(NaN, -Inf) = NaN
+     * - fmaxabs(Inf, -Inf) = Inf
+     * - fmaxabs(-Inf, -Inf) = Inf
+     * -> Simple "normal" fminabs/fmaxabs: NaN (0x7F8xxxxx) > Inf (0x7F800000)
      */
     static constexpr OpCode OP_FMAXABS{"fmaxabs", 6, 0, 2, true, true};
     /*
      * Converts floating-point to signed integer
+     *
+     * VideoCore IV edge-case behavior:
+     * - ftoi(NaN) = 0
+     * - ftoi(Inf) = 0
+     * - ftoi(-Inf) = 0
+     * -> any out-of-bounds value is flushed to zero
      */
     static constexpr OpCode OP_FTOI{"ftoi", 7, 0, 1, true, false};
     /*
@@ -855,6 +924,14 @@ namespace vc4c
     static constexpr OpCode OP_V8SUBS{"v8subs", 31, 7, 2, false, false};
     /*
      * Floating-point multiplication
+     *
+     * VideoCore IV edge-case behavior:
+     * - fmul(NaN, NaN) = Inf
+     * - fmul(NaN, Inf) = Inf
+     * - fmul(Inf, Inf) = Inf
+     * - fmul(NaN, -Inf) = -Inf
+     * - fmul(Inf, -Inf) = -Inf
+     * - fmul(-Inf, -Inf) = Inf
      */
     static constexpr OpCode OP_FMUL{"fmul", 0, 1, 2, true, true};
     /*

@@ -606,6 +606,21 @@ static std::pair<Optional<Value>, VectorFlags> setFlags(
     return std::make_pair(std::move(tmp.first), flags);
 }
 
+static bool checkMinMaxCarry(const Literal& arg0, const Literal& arg1, bool useAbs = false)
+{
+    // VideoCore IV sets carry flag for fmin/fmax/fminabs/fmaxabs(a, b) if a > b
+    // VideoCore IV considers NaN > Inf for min/fmax/fminabs/fmaxabs
+
+    if(std::isnan(arg0.real()) && std::isnan(arg1.real()))
+        // works, since the bit-representation is ordered same as integers
+        return arg0.signedInt() > arg1.signedInt();
+    if(std::isnan(arg0.real()))
+        return true;
+    if(std::isnan(arg1.real()))
+        return false;
+    return useAbs ? (std::abs(arg0.real()) > std::abs(arg1.real())) : (arg0.real() > arg1.real());
+}
+
 std::pair<Optional<Value>, VectorFlags> OpCode::operator()(
     const Optional<Value>& firstOperand, const Optional<Value>& secondOperand) const
 {
@@ -717,26 +732,63 @@ std::pair<Optional<Value>, VectorFlags> OpCode::operator()(
         return setFlags(Value(Literal(firstLit.real() + secondLit.real()), resultType), true,
             (firstLit.real() + secondLit.real()) > 0.0f);
     if(*this == OP_FMAX)
+    {
+        if(std::isnan(firstLit.real()))
+            return setFlags(Value(firstLit, resultType), true, checkMinMaxCarry(firstLit, secondLit));
+        if(std::isnan(secondLit.real()))
+            return setFlags(Value(secondLit, resultType), true, checkMinMaxCarry(firstLit, secondLit));
+        static_assert(std::max(std::numeric_limits<float>::infinity(), 0.0f) != 0.0f, "");
+        static_assert(std::max(-std::numeric_limits<float>::infinity(), 0.0f) == 0.0f, "");
         return setFlags(Value(Literal(std::max(firstLit.real(), secondLit.real())), resultType), true,
             firstLit.real() > secondLit.real(), false);
+    }
     if(*this == OP_FMAXABS)
+    {
+        if(std::isnan(firstLit.real()))
+            return setFlags(Value(firstLit, resultType), true, checkMinMaxCarry(firstLit, secondLit, true));
+        if(std::isnan(secondLit.real()))
+            return setFlags(Value(secondLit, resultType), true, checkMinMaxCarry(firstLit, secondLit, true));
+        if(std::isinf(firstLit.real()))
+            return setFlags(Value(firstLit, resultType), true, checkMinMaxCarry(firstLit, secondLit, true));
+        if(std::isinf(secondLit.real()))
+            return setFlags(Value(secondLit, resultType), true, checkMinMaxCarry(firstLit, secondLit, true));
         return setFlags(Value(Literal(std::max(std::fabs(firstLit.real()), std::fabs(secondLit.real()))), resultType),
             true, std::fabs(firstLit.real()) > std::fabs(secondLit.real()), false);
+    }
     if(*this == OP_FMIN)
+    {
+        if(std::isnan(firstLit.real()))
+            return setFlags(Value(secondLit, resultType), true, checkMinMaxCarry(firstLit, secondLit));
+        if(std::isnan(secondLit.real()))
+            return setFlags(Value(firstLit, resultType), true, checkMinMaxCarry(firstLit, secondLit));
+        static_assert(std::min(std::numeric_limits<float>::infinity(), 0.0f) == 0.0f, "");
+        static_assert(std::min(-std::numeric_limits<float>::infinity(), 0.0f) != 0.0f, "");
         return setFlags(Value(Literal(std::min(firstLit.real(), secondLit.real())), resultType), true,
             firstLit.real() > secondLit.real(), false);
+    }
     if(*this == OP_FMINABS)
+    {
+        if(std::isnan(firstLit.real()))
+            return setFlags(Value(secondLit, resultType), true, checkMinMaxCarry(firstLit, secondLit, true));
+        if(std::isnan(secondLit.real()))
+            return setFlags(Value(firstLit, resultType), true, checkMinMaxCarry(firstLit, secondLit, true));
         return setFlags(Value(Literal(std::min(std::fabs(firstLit.real()), std::fabs(secondLit.real()))), resultType),
             true, std::fabs(firstLit.real()) > std::fabs(secondLit.real()), false);
+    }
     if(*this == OP_FMUL)
         return setFlags(Value(Literal(firstLit.real() * secondLit.real()), resultType), true);
     if(*this == OP_FSUB)
         return setFlags(Value(Literal(firstLit.real() - secondLit.real()), resultType), true,
             (firstLit.real() - secondLit.real()) > 0.0f);
     if(*this == OP_FTOI)
+    {
+        if(std::isnan(firstLit.real()) || std::isinf(firstLit.real()) ||
+            std::abs(static_cast<int64_t>(firstLit.real())) > std::numeric_limits<int32_t>::max())
+            return setFlags(Value(Literal(0u), TYPE_INT32.toVectorType(firstVal->type.getVectorWidth())), false);
         return setFlags(Value(Literal(static_cast<int32_t>(firstLit.real())),
                             TYPE_INT32.toVectorType(firstVal->type.getVectorWidth())),
             false, false);
+    }
     if(*this == OP_ITOF)
         return setFlags(Value(Literal(static_cast<float>(firstLit.signedInt())),
                             TYPE_FLOAT.toVectorType(firstVal->type.getVectorWidth())),
@@ -838,7 +890,7 @@ static const std::multimap<std::string, OpCode> opCodes = {{OP_ADD.name, OP_ADD}
     {OP_V8SUBS.name, OP_V8SUBS}, {OP_XOR.name, OP_XOR}};
 
 // NOTE: The indices MUST correspond to the op-codes!
-static const std::array<OpCode, 32> addCodes = {OP_NOP, OP_FADD, OP_FSUB, OP_FMIN, OP_MAX, OP_FMINABS, OP_FMAXABS,
+static const std::array<OpCode, 32> addCodes = {OP_NOP, OP_FADD, OP_FSUB, OP_FMIN, OP_FMAX, OP_FMINABS, OP_FMAXABS,
     OP_FTOI, OP_ITOF, OP_NOP, OP_NOP, OP_NOP, OP_ADD, OP_SUB, OP_SHR, OP_ASR, OP_ROR, OP_SHL, OP_MIN, OP_MAX, OP_AND,
     OP_OR, OP_XOR, OP_NOT, OP_CLZ, OP_NOP, OP_NOP, OP_NOP, OP_NOP, OP_NOP, OP_V8ADDS, OP_V8SUBS};
 
@@ -978,10 +1030,6 @@ Optional<Value> OpCode::getLeftAbsorbingElement(const OpCode code)
     if(code == OP_ASR)
         // XXX actually all bits set too
         return INT_ZERO;
-    if(code == OP_FMAX)
-        return Value(Literal(std::numeric_limits<float>::infinity()), TYPE_FLOAT);
-    if(code == OP_FMAXABS)
-        return Value(Literal(std::numeric_limits<float>::infinity()), TYPE_FLOAT);
     if(code == OP_FMINABS)
         return FLOAT_ZERO;
     if(code == OP_FMUL)
@@ -1010,10 +1058,6 @@ Optional<Value> OpCode::getRightAbsorbingElement(const OpCode code)
 {
     if(code == OP_AND)
         return INT_ZERO;
-    if(code == OP_FMAX)
-        return Value(Literal(std::numeric_limits<float>::infinity()), TYPE_FLOAT);
-    if(code == OP_FMAXABS)
-        return Value(Literal(std::numeric_limits<float>::infinity()), TYPE_FLOAT);
     if(code == OP_FMINABS)
         return FLOAT_ZERO;
     if(code == OP_FMUL)

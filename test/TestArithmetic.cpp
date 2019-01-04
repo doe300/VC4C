@@ -7,6 +7,8 @@
 #include "TestArithmetic.h"
 #include "emulation_helper.h"
 
+// TODO for floating point checks, add Inf/NaN values
+
 static const std::string UNARY_OPERATION = R"(
 __kernel void test(__global TYPE* out, const __global TYPE* in) {
   size_t gid = get_global_id(0);
