@@ -469,23 +469,39 @@ namespace vc4c
         static constexpr const char* COMP_SIGNED_LE = "sle";
 
         //"ordered" -> no NaNs, "unordered", NaNs allowed
+        // LLVM: "false: always yields false, regardless of operands."
         static constexpr const char* COMP_FALSE = "false";
+        // LLVM: "true: always yields true, regardless of operands."
         static constexpr const char* COMP_TRUE = "true";
 
+        // LLVM: "oeq: yields true if both operands are not a QNAN and op1 is equal to op2."
         static constexpr const char* COMP_ORDERED_EQ = "oeq";
+        // LLVM: "one: yields true if both operands are not a QNAN and op1 is not equal to op2."
         static constexpr const char* COMP_ORDERED_NEQ = "one";
+        // LLVM: "ogt: yields true if both operands are not a QNAN and op1 is greater than op2."
         static constexpr const char* COMP_ORDERED_GT = "ogt";
+        // LLVM: "oge: yields true if both operands are not a QNAN and op1 is greater than or equal to op2."
         static constexpr const char* COMP_ORDERED_GE = "oge";
+        // LLVM: "olt: yields true if both operands are not a QNAN and op1 is less than op2."
         static constexpr const char* COMP_ORDERED_LT = "olt";
+        // LLVM: "ole: yields true if both operands are not a QNAN and op1 is less than or equal to op2."
         static constexpr const char* COMP_ORDERED_LE = "ole";
+        // LLVM: "ord: yields true if both operands are not a QNAN."
         static constexpr const char* COMP_ORDERED = "ord";
 
+        // LLVM: "ueq: yields true if either operand is a QNAN or op1 is equal to op2."
         static constexpr const char* COMP_UNORDERED_EQ = "ueq";
+        // LLVM: "une: yields true if either operand is a QNAN or op1 is not equal to op2."
         static constexpr const char* COMP_UNORDERED_NEQ = "une";
+        // LLVM: "ugt: yields true if either operand is a QNAN or op1 is greater than op2."
         static constexpr const char* COMP_UNORDERED_GT = "ugt";
+        // LLVM: "uge: yields true if either operand is a QNAN or op1 is greater than or equal to op2."
         static constexpr const char* COMP_UNORDERED_GE = "uge";
+        // LLVM: "ult: yields true if either operand is a QNAN or op1 is less than op2."
         static constexpr const char* COMP_UNORDERED_LT = "ult";
+        // LLVM: "ule: yields true if either operand is a QNAN or op1 is less than or equal to op2."
         static constexpr const char* COMP_UNORDERED_LE = "ule";
+        // LLVM: "uno: yields true if either operand is a QNAN."
         static constexpr const char* COMP_UNORDERED = "uno";
 
         struct Comparison final : public IntrinsicOperation

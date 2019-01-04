@@ -818,11 +818,13 @@ namespace vc4c
     /*
      * The floating-point constant representing INF
      */
-    const Value FLOAT_INF(Literal(static_cast<uint32_t>(0x7F700000)), TYPE_FLOAT);
+    const Value FLOAT_INF(Literal(static_cast<uint32_t>(0x7F800000)), TYPE_FLOAT);
     /*
      * The floating-point constant representing NAN
+     *
+     * NOTE: There are different representations of a NaN!
      */
-    const Value FLOAT_NAN(Literal(static_cast<uint32_t>(0x7FC00000)), TYPE_FLOAT);
+    const Value FLOAT_NAN(Literal(static_cast<uint32_t>(0x7FFFFFFF)), TYPE_FLOAT);
     /*
      * A undefined value
      */

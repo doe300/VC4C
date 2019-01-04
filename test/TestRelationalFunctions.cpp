@@ -108,21 +108,21 @@ void TestRelationalFunctions::onMismatch(const std::string& expected, const std:
     TEST_ASSERT_EQUALS(expected, result);
 }
 
-template <unsigned N>
+template <unsigned N, typename Distribution = InfNaNUniformDistribution>
 static void testUnaryFunction(vc4c::Configuration& config, const std::string& options,
     const std::function<int(float)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
 {
     std::stringstream code;
     compileBuffer(config, code, N == 1 ? UNARY_FUNCTION_SCALAR : UNARY_FUNCTION, options);
 
-    auto in = generateInput<float, N * 12>(true);
+    auto in = generateInput<float, N * 12, float, Distribution>(true);
 
     auto out = runEmulation<float, int, N, 12>(code, {in});
     auto pos = options.find("-DFUNC=") + std::string("-DFUNC=").size();
     checkUnaryResults<int, float>(in, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
-template <unsigned N>
+template <unsigned N, typename Distribution = InfNaNUniformDistribution>
 static void testBinaryFunction(vc4c::Configuration& config, const std::string& options,
     const std::function<int(float, float)>& op,
     const std::function<void(const std::string&, const std::string&)>& onError)
@@ -130,24 +130,24 @@ static void testBinaryFunction(vc4c::Configuration& config, const std::string& o
     std::stringstream code;
     compileBuffer(config, code, N == 1 ? BINARY_FUNCTION_SCALAR : BINARY_FUNCTION, options);
 
-    auto in0 = generateInput<float, N * 12>(true);
-    auto in1 = generateInput<float, N * 12>(true);
+    auto in0 = generateInput<float, N * 12, float, Distribution>(true);
+    auto in1 = generateInput<float, N * 12, float, Distribution>(true);
 
     auto out = runEmulation<float, int, N, 12>(code, {in0, in1});
     auto pos = options.find("-DFUNC=") + std::string("-DFUNC=").size();
     checkBinaryResults<int, float>(in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
-template <typename T, unsigned N>
+template <typename T, unsigned N, typename Distribution = UniformDistribution<InternalType<T>>>
 static void testTernaryFunction(vc4c::Configuration& config, const std::string& options,
     const std::function<T(T, T, T)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
 {
     std::stringstream code;
     compileBuffer(config, code, TERNARY_FUNCTION, options);
 
-    auto in0 = generateInput<T, N * 12>(true);
-    auto in1 = generateInput<T, N * 12>(true);
-    auto in2 = generateInput<T, N * 12>(true);
+    auto in0 = generateInput<T, N * 12, float, Distribution>(true);
+    auto in1 = generateInput<T, N * 12, float, Distribution>(true);
+    auto in2 = generateInput<T, N * 12, float, Distribution>(true);
 
     auto out = runEmulation<T, T, N, 12>(code, {in0, in1, in2});
     auto pos = options.find("-DFUNC=") + std::string("-DFUNC=").size();
@@ -221,99 +221,113 @@ static int checkAny(const std::array<T, 16>& val)
 
 void TestRelationalFunctions::testIsEqual()
 {
-    testBinaryFunction<16>(config, "-DFUNC=isequal", checkRelation<std::equal_to<float>>,
+    testBinaryFunction<16>(config, "-DFUNC=isequal",
+        [](float a, float b) -> int { return (!std::isnan(a) && !std::isnan(b) && a == b) ? -1 : 0; },
         std::bind(&TestRelationalFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestRelationalFunctions::testIsEqualScalar()
 {
-    testBinaryFunction<1>(config, "-DFUNC=isequal", checkScalarRelation<std::equal_to<float>>,
+    testBinaryFunction<1>(config, "-DFUNC=isequal",
+        [](float a, float b) -> int { return (!std::isnan(a) && !std::isnan(b) && a == b) ? 1 : 0; },
         std::bind(&TestRelationalFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestRelationalFunctions::testIsNotEqual()
 {
-    testBinaryFunction<16>(config, "-DFUNC=isnotequal", checkRelation<std::not_equal_to<float>>,
+    testBinaryFunction<16>(config, "-DFUNC=isnotequal",
+        [](float a, float b) -> int { return (std::isnan(a) || std::isnan(b) || a != b) ? -1 : 0; },
         std::bind(&TestRelationalFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestRelationalFunctions::testIsNotEqualScalar()
 {
-    testBinaryFunction<1>(config, "-DFUNC=isnotequal", checkScalarRelation<std::not_equal_to<float>>,
+    testBinaryFunction<1>(config, "-DFUNC=isnotequal",
+        [](float a, float b) -> int { return (std::isnan(a) || std::isnan(b) || a != b) ? 1 : 0; },
         std::bind(&TestRelationalFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestRelationalFunctions::testIsGreater()
 {
-    testBinaryFunction<16>(config, "-DFUNC=isgreater", checkRelation<std::greater<float>>,
+    testBinaryFunction<16>(config, "-DFUNC=isgreater",
+        [](float a, float b) -> int { return (!std::isnan(a) && !std::isnan(b) && a > b) ? -1 : 0; },
         std::bind(&TestRelationalFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestRelationalFunctions::testIsGreaterScalar()
 {
-    testBinaryFunction<1>(config, "-DFUNC=isgreater", checkScalarRelation<std::greater<float>>,
+    testBinaryFunction<1>(config, "-DFUNC=isgreater",
+        [](float a, float b) -> int { return (!std::isnan(a) && !std::isnan(b) && a > b) ? 1 : 0; },
         std::bind(&TestRelationalFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestRelationalFunctions::testIsGreaterEqual()
 {
-    testBinaryFunction<16>(config, "-DFUNC=isgreater", checkRelation<std::greater_equal<float>>,
+    testBinaryFunction<16>(config, "-DFUNC=isgreaterequal",
+        [](float a, float b) -> int { return (!std::isnan(a) && !std::isnan(b) && a >= b) ? -1 : 0; },
         std::bind(&TestRelationalFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestRelationalFunctions::testIsGreaterEqualScalar()
 {
-    testBinaryFunction<1>(config, "-DFUNC=isgreater", checkScalarRelation<std::greater_equal<float>>,
+    testBinaryFunction<1>(config, "-DFUNC=isgreaterequal",
+        [](float a, float b) -> int { return (!std::isnan(a) && !std::isnan(b) && a >= b) ? 1 : 0; },
         std::bind(&TestRelationalFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestRelationalFunctions::testIsLess()
 {
-    testBinaryFunction<16>(config, "-DFUNC=isless", checkRelation<std::less<float>>,
+    testBinaryFunction<16>(config, "-DFUNC=isless",
+        [](float a, float b) -> int { return (!std::isnan(a) && !std::isnan(b) && a < b) ? -1 : 0; },
         std::bind(&TestRelationalFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestRelationalFunctions::testIsLessScalar()
 {
-    testBinaryFunction<1>(config, "-DFUNC=isless", checkScalarRelation<std::less<float>>,
+    testBinaryFunction<1>(config, "-DFUNC=isless",
+        [](float a, float b) -> int { return (!std::isnan(a) && !std::isnan(b) && a < b) ? 1 : 0; },
         std::bind(&TestRelationalFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestRelationalFunctions::testIsLessEqual()
 {
-    testBinaryFunction<16>(config, "-DFUNC=islessequal", checkRelation<std::less_equal<float>>,
+    testBinaryFunction<16>(config, "-DFUNC=islessequal",
+        [](float a, float b) -> int { return (!std::isnan(a) && !std::isnan(b) && a <= b) ? -1 : 0; },
         std::bind(&TestRelationalFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestRelationalFunctions::testIsLessEqualScalar()
 {
-    testBinaryFunction<1>(config, "-DFUNC=islessequal", checkScalarRelation<std::less_equal<float>>,
+    testBinaryFunction<1>(config, "-DFUNC=islessequal",
+        [](float a, float b) -> int { return (!std::isnan(a) && !std::isnan(b) && a <= b) ? 1 : 0; },
         std::bind(&TestRelationalFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestRelationalFunctions::testIsLessGreater()
 {
     testBinaryFunction<16>(config, "-DFUNC=islessgreater",
-        [](float a, float b) -> int { return ((a > b) || (a < b)) ? -1 : 0; },
+        [](float a, float b) -> int { return (!std::isnan(a) && !std::isnan(b) && ((a > b) || (a < b))) ? -1 : 0; },
         std::bind(&TestRelationalFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestRelationalFunctions::testIsLessGreaterScalar()
 {
     testBinaryFunction<1>(config, "-DFUNC=islessgreater",
-        [](float a, float b) -> int { return ((a > b) || (a < b)) ? 1 : 0; },
+        [](float a, float b) -> int { return (!std::isnan(a) && !std::isnan(b) && ((a > b) || (a < b))) ? 1 : 0; },
         std::bind(&TestRelationalFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestRelationalFunctions::testIsFinite()
 {
-    testUnaryFunction<16>(config, "-DFUNC=isfinite", [](float a) -> int { return std::isinf(a) ? 0 : -1; },
+    testUnaryFunction<16>(config, "-DFUNC=isfinite",
+        [](float a) -> int { return std::isinf(a) || std::isnan(a) ? 0 : -1; },
         std::bind(&TestRelationalFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestRelationalFunctions::testIsFiniteScalar()
 {
-    testUnaryFunction<1>(config, "-DFUNC=isfinite", [](float a) -> int { return std::isinf(a) ? 0 : 1; },
+    testUnaryFunction<1>(config, "-DFUNC=isfinite",
+        [](float a) -> int { return std::isinf(a) || std::isnan(a) ? 0 : 1; },
         std::bind(&TestRelationalFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 

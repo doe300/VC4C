@@ -45,24 +45,15 @@ static NODISCARD InstructionWalker replaceWithSetBoolean(
     return it;
 }
 
-InstructionWalker intrinsifyIntegerRelation(
+static InstructionWalker intrinsifyIntegerRelation(
     Method& method, InstructionWalker it, const Comparison* comp, bool invertResult)
 {
     // http://llvm.org/docs/LangRef.html#icmp-instruction
-    const Value tmp = method.addNewLocal(comp->getFirstArg().type, "%icomp");
     auto boolType = TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth());
     if(COMP_EQ == comp->opCode)
     {
-        // a == b <=> a xor b == 0 [<=> a - b == 0]
-        // a != b <=> a xor b != 0
-        if(comp->getFirstArg().hasLocal() && comp->assertArgument(1).hasLiteral(Literal(0u)))
-            // special case for a == 0
-            // does not save instructions, but does not force value a to be on register-file A (since B is reserved for
-            // literal 0)
-            assign(it, NOP_REGISTER) = (comp->getFirstArg(), SetFlag::SET_FLAGS);
-        else
-            assign(it, NOP_REGISTER) = (comp->getFirstArg() ^ comp->assertArgument(1), SetFlag::SET_FLAGS);
-        it = replaceWithSetBoolean(it, comp->getOutput().value(), invertResult ? COND_ZERO_CLEAR : COND_ZERO_SET);
+        auto cond = assignNop(it) = (as_unsigned{comp->getFirstArg()} == as_unsigned{comp->assertArgument(1)});
+        it = replaceWithSetBoolean(it, comp->getOutput().value(), invertResult ? cond.invert() : cond);
     }
     else if(COMP_UNSIGNED_LT == comp->opCode)
     {
@@ -137,6 +128,7 @@ InstructionWalker intrinsifyIntegerRelation(
         else
         {
             // for non 32-bit types, high-bit is not set and therefore signed max == unsigned max
+            const Value tmp = method.addNewLocal(comp->getFirstArg().type, "%icomp");
             assign(it, tmp) = (max(comp->getFirstArg(), comp->assertArgument(1)));
             assign(it, NOP_REGISTER) = (tmp ^ comp->getFirstArg(), SetFlag::SET_FLAGS);
         }
@@ -144,19 +136,18 @@ InstructionWalker intrinsifyIntegerRelation(
     }
     else if(COMP_SIGNED_LT == comp->opCode)
     {
-        // a < b [<=> min(a, b) != b] <=> max(a, b) != a
         Value firstArg = comp->getFirstArg();
         Value secondArg = comp->assertArgument(1);
         if(firstArg.type.getScalarBitCount() < 32)
         {
+            // TODO is this required?
             firstArg = method.addNewLocal(TYPE_INT32.toVectorType(firstArg.type.getVectorWidth()), "%icomp");
             secondArg = method.addNewLocal(TYPE_INT32.toVectorType(secondArg.type.getVectorWidth()), "%icomp");
             it = insertSignExtension(it, method, comp->getFirstArg(), firstArg, true);
             it = insertSignExtension(it, method, comp->assertArgument(1), secondArg, true);
         }
-        // min/max(a, b) set flag carry if a > b => min/max(b, a) set carry if a < b
-        assign(it, tmp) = (max(secondArg, firstArg), SetFlag::SET_FLAGS);
-        it = replaceWithSetBoolean(it, comp->getOutput().value(), invertResult ? COND_CARRY_CLEAR : COND_CARRY_SET);
+        auto cond = assignNop(it) = (as_signed{firstArg} < as_signed{secondArg});
+        it = replaceWithSetBoolean(it, comp->getOutput().value(), invertResult ? cond.invert() : cond);
     }
     else
         throw CompilationError(CompilationStep::OPTIMIZER, "Unrecognized integer comparison", comp->opCode);
@@ -164,22 +155,21 @@ InstructionWalker intrinsifyIntegerRelation(
     return it;
 }
 
-static NODISCARD std::pair<InstructionWalker, Value> insertCheckForNaN(
-    Method& method, InstructionWalker it, const Comparison* comp)
+static NODISCARD InstructionWalker insertCheckForNaN(
+    InstructionWalker it, const Value& result, const Comparison* comp, bool invertResult)
 {
-    const Value firstArgNaN = method.addNewLocal(TYPE_BOOL, "%nan_check");
-    it.emplace(new Operation(OP_XOR, firstArgNaN, comp->getFirstArg(), FLOAT_NAN));
-    it.nextInBlock();
-    Value eitherNaN = firstArgNaN;
-    if(comp->getArguments().size() > 1)
+    assign(it, result) = invertResult ? BOOL_TRUE : BOOL_FALSE;
+    auto nanCond = assignNop(it) = isnan(as_float{comp->getFirstArg()});
+    assign(it, result) = (invertResult ? BOOL_FALSE : BOOL_TRUE, nanCond);
+    if(comp->getSecondArg())
     {
-        Value secondArgNaN = assign(it, TYPE_BOOL, "%nan_check") = (comp->assertArgument(1) ^ FLOAT_NAN);
-        eitherNaN = assign(it, TYPE_BOOL, "%nan_check") = (firstArgNaN || secondArgNaN);
+        nanCond = assignNop(it) = isnan(as_float{comp->assertArgument(1)});
+        assign(it, result) = (invertResult ? BOOL_FALSE : BOOL_TRUE, nanCond);
     }
-    return std::make_pair(it, eitherNaN);
+    return it;
 }
 
-InstructionWalker intrinsifyFloatingRelation(Method& method, InstructionWalker it, const Comparison* comp)
+static InstructionWalker intrinsifyFloatingRelation(Method& method, InstructionWalker it, const Comparison* comp)
 {
     // since we do not support NaNs/Inf and denormals, all ordered comparisons are treated as unordered
     // -> "don't care if value could be Nan/Inf"
@@ -203,57 +193,89 @@ InstructionWalker intrinsifyFloatingRelation(Method& method, InstructionWalker i
         // false
         it.reset(new MoveOperation(comp->getOutput().value(), BOOL_FALSE, COND_ALWAYS, SetFlag::SET_FLAGS));
     }
-    else if(COMP_ORDERED_EQ == comp->opCode || COMP_UNORDERED_EQ == comp->opCode)
+    else if(COMP_ORDERED_EQ == comp->opCode)
     {
-        // a == b <=> a xor b == 0 [<=> a - b == 0]
-        assign(it, NOP_REGISTER) = (comp->getFirstArg() ^ comp->assertArgument(1), SetFlag::SET_FLAGS);
-        it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_ZERO_SET);
+        // !isnan(a) && !isnan(b) && a == b <=> !(isnan(a) || isnan(b) || a != b)
+        const auto& res = comp->getOutput().value();
+        it = insertCheckForNaN(it, res, comp, true);
+        auto cond = assignNop(it) = (as_float{comp->getFirstArg()} != as_float{comp->assertArgument(1)});
+        assign(it, res) = (BOOL_FALSE, cond);
+        it.erase();
     }
-    else if(COMP_ORDERED_NEQ == comp->opCode || COMP_UNORDERED_NEQ == comp->opCode)
+    else if(COMP_ORDERED_NEQ == comp->opCode)
     {
-        // a != b <=> a xor b != 0
-        assign(it, NOP_REGISTER) = (comp->getFirstArg() ^ comp->assertArgument(1), SetFlag::SET_FLAGS);
-        it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_ZERO_CLEAR);
+        // !isnan(a) && !isnan(b) && a != b <=> !(isnan(a) || isnan(b) || a == b)
+        const auto& res = comp->getOutput().value();
+        it = insertCheckForNaN(it, res, comp, true);
+        auto cond = assignNop(it) = (as_float{comp->getFirstArg()} == as_float{comp->assertArgument(1)});
+        assign(it, res) = (BOOL_FALSE, cond);
+        it.erase();
     }
-    else if(COMP_ORDERED_LT == comp->opCode || COMP_UNORDERED_LT == comp->opCode)
+    else if(COMP_ORDERED_LT == comp->opCode)
     {
-        // a < b <=> min(a, b) != b [<=> max(a, b) != a] [<=> a - b < 0]
-        // fmin/fmax(a, b) set carry if a > b => fmin/fmax(b, a) set carry if a < b
-        assign(it, NOP_REGISTER) = (min(comp->assertArgument(1), comp->getFirstArg()), SetFlag::SET_FLAGS);
-        // true if CARRY is set, otherwise false
-        it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_CARRY_SET);
+        // !isnan(a) && !isnan(b) && a < b <=> !(isnan(a) || isnan(b) || a >= b)
+        const auto& res = comp->getOutput().value();
+        it = insertCheckForNaN(it, res, comp, true);
+        auto cond = assignNop(it) = (as_float{comp->getFirstArg()} >= as_float{comp->assertArgument(1)});
+        assign(it, res) = (BOOL_FALSE, cond);
+        it.erase();
     }
-    else if(COMP_ORDERED_LE == comp->opCode || COMP_UNORDERED_LE == comp->opCode)
+    else if(COMP_ORDERED_LE == comp->opCode)
     {
-        // a <= b <=> min(a, b) == a [<=> max(a, b) == b]
-        // fmin/fmax(a, b) set carry if a > b => (a <= b) == carry not set
-        assign(it, NOP_REGISTER) = (min(comp->getFirstArg(), comp->assertArgument(1)), SetFlag::SET_FLAGS);
-        it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_CARRY_CLEAR);
+        // !isnan(a) && !isnan(b) && a <= b <=> !(isnan(a) || isnan(b) || a > b)
+        const auto& res = comp->getOutput().value();
+        it = insertCheckForNaN(it, res, comp, true);
+        auto cond = assignNop(it) = (as_float{comp->getFirstArg()} > as_float{comp->assertArgument(1)});
+        assign(it, res) = (BOOL_FALSE, cond);
+        it.erase();
     }
     else if(COMP_ORDERED == comp->opCode)
     {
-        // TODO the code is wrong, so is the COMP_UNORDERED. The != to xor is not correct??!
-        // ord(a, b) <=> a != NaN && b != NaN
-        // tmp0 = a != NaN
-        Value tmp0 = assign(it, TYPE_BOOL, "%ordered") = (comp->getFirstArg() ^ FLOAT_NAN);
-        // tmp1 = b != NaN
-        Value tmp1 = assign(it, TYPE_BOOL, "%ordered") = (comp->assertArgument(1) ^ FLOAT_NAN);
-        // tmp = tmp0 && tmp1
-        assign(it, tmp) = (tmp0 && tmp1, SetFlag::SET_FLAGS);
-        // res = tmp != 0 <=> (tmp0 && tmp1) == 0 <=> (a != NaN) && (b != NaN)
-        it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_ZERO_CLEAR);
+        // !isnan(a) && !isnan(b) <=> !(isnan(a) || isnan(b))
+        it = insertCheckForNaN(it, comp->getOutput().value(), comp, true);
+        it.erase();
+    }
+    else if(COMP_UNORDERED_EQ == comp->opCode)
+    {
+        // isnan(a) || isnan(b) || a == b
+        const auto& res = comp->getOutput().value();
+        it = insertCheckForNaN(it, res, comp, false);
+        auto cond = assignNop(it) = (as_float{comp->getFirstArg()} == as_float{comp->assertArgument(1)});
+        assign(it, res) = (BOOL_TRUE, cond);
+        it.erase();
+    }
+    else if(COMP_UNORDERED_NEQ == comp->opCode)
+    {
+        // isnan(a) || isnan(b) || a != b
+        const auto& res = comp->getOutput().value();
+        it = insertCheckForNaN(it, res, comp, false);
+        auto cond = assignNop(it) = (as_float{comp->getFirstArg()} != as_float{comp->assertArgument(1)});
+        assign(it, res) = (BOOL_TRUE, cond);
+        it.erase();
+    }
+    else if(COMP_UNORDERED_LT == comp->opCode)
+    {
+        // isnan(a) || isnan(b) || a < b
+        const auto& res = comp->getOutput().value();
+        it = insertCheckForNaN(it, res, comp, false);
+        auto cond = assignNop(it) = (as_float{comp->getFirstArg()} < as_float{comp->assertArgument(1)});
+        assign(it, res) = (BOOL_TRUE, cond);
+        it.erase();
+    }
+    else if(COMP_UNORDERED_LE == comp->opCode)
+    {
+        // isnan(a) || isnan(b) || a <= b
+        const auto& res = comp->getOutput().value();
+        it = insertCheckForNaN(it, res, comp, false);
+        auto cond = assignNop(it) = (as_float{comp->getFirstArg()} <= as_float{comp->assertArgument(1)});
+        assign(it, res) = (BOOL_TRUE, cond);
+        it.erase();
     }
     else if(COMP_UNORDERED == comp->opCode)
     {
-        // uno(a, b) <=> a == NaN || b == NaN
-        // tmp0 = a != NaN
-        Value tmp0 = assign(it, TYPE_BOOL, "%ordered") = (comp->getFirstArg() ^ FLOAT_NAN);
-        // tmp1 = b != NaN
-        Value tmp1 = assign(it, TYPE_BOOL, "%ordered") = (comp->assertArgument(1) ^ FLOAT_NAN);
-        // tmp = tmp0 && tmp1
-        assign(it, tmp) = (tmp0 && tmp1, SetFlag::SET_FLAGS);
-        // res = tmp == 0 <=> (tmp0 || tmp1) == 0 <=> (a != NaN) || (b != NaN) == 0 <=> (a == NaN) || (b == NaN)
-        it = replaceWithSetBoolean(it, comp->getOutput().value(), COND_ZERO_SET);
+        // isnan(a) || isnan(b)
+        it = insertCheckForNaN(it, comp->getOutput().value(), comp, false);
+        it.erase();
     }
     else
         throw CompilationError(CompilationStep::OPTIMIZER, "Unrecognized floating-point comparison", comp->opCode);

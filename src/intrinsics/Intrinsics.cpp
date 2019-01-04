@@ -236,6 +236,29 @@ static IntrinsicFunction intrinsifyVectorRotation()
     };
 }
 
+static IntrinsicFunction intrinsifyCheckNaN(bool checkInfinite)
+{
+    return [=](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker {
+        logging::debug() << "Intrinsifying floating point check: " << callSite->to_string() << logging::endl;
+        ConditionCode cond = COND_ALWAYS;
+        // Return -1 if value is Inf/NaN, 0 otherwise
+        // NOTE: Needs to be -1, since LLVM expects it that way ?!
+        if(checkInfinite)
+            cond = assignNop(it) = isnaninf(as_float{callSite->assertArgument(0)});
+        else
+            cond = assignNop(it) = isnan(as_float{callSite->assertArgument(0)});
+
+        assign(it, callSite->getOutput().value()) = (INT_MINUS_ONE, cond);
+        assign(it, callSite->getOutput().value()) = (INT_ZERO, cond.invert());
+
+        it.erase();
+        // so next instruction is not skipped
+        it.previousInBlock();
+
+        return it;
+    };
+}
+
 static ConditionCode toCondition(int c)
 {
     // for mapping, see _flags.h in VC4CLStdLib
@@ -329,7 +352,15 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> unaryIn
     {"vc4cl_replicate_lsb", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_32_8888)}},
     {"vc4cl_pack_lsb", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_CHAR_TRUNCATE)}},
     {"vc4cl_saturate_short", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_SIGNED_SHORT_SATURATE)}},
-    {"vc4cl_saturate_lsb", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_UNSIGNED_CHAR_SATURATE)}}};
+    {"vc4cl_saturate_lsb", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_UNSIGNED_CHAR_SATURATE)}},
+    {"vc4cl_is_nan",
+        Intrinsic{intrinsifyCheckNaN(false),
+            [](const Value& val) { return std::isnan(val.literal().real()) ? INT_MINUS_ONE : INT_ZERO; }}},
+    {"vc4cl_is_inf_nan", Intrinsic{intrinsifyCheckNaN(true), [](const Value& val) {
+                                       return std::isnan(val.literal().real()) || std::isinf(val.literal().real()) ?
+                                           INT_MINUS_ONE :
+                                           INT_ZERO;
+                                   }}}};
 
 const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryIntrinsicMapping = {
     {"vc4cl_fmax",
@@ -673,6 +704,8 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
         }
         else if((arg1.isLiteralValue() || arg1.hasContainer()) && arg0.type.getScalarBitCount() <= 16)
         {
+            logging::debug() << "Intrinsifying unsigned division by constant: " << op->to_string() << logging::endl;
+            // TODO is never used, LLVM always uses i32 for division
             it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, *op);
         }
         else
@@ -716,6 +749,8 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
         }
         else if((arg1.isLiteralValue() || arg1.hasContainer()) && arg0.type.getScalarBitCount() <= 16)
         {
+            logging::debug() << "Intrinsifying signed division by constant: " << op->to_string() << logging::endl;
+            // TODO is never used, LLVM always uses i32 for division
             it = intrinsifySignedIntegerDivisionByConstant(method, it, *op);
         }
         /*        // a / b = ftoi(itof(a) / itof(b))

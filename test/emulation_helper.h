@@ -68,8 +68,37 @@ struct NormalDistribution : public std::normal_distribution<double>
     double max;
 };
 
+template <typename Distribution, unsigned InfPercentage = 10, unsigned NaNPercentage = 10>
+struct InfNaNWrapper : private Distribution
+{
+    explicit InfNaNWrapper(double min, double max) : Distribution(min, max), infNaNDistribution(0.0, 1.0) {}
+
+    static_assert(
+        static_cast<float>(std::numeric_limits<double>::infinity()) == std::numeric_limits<float>::infinity(), "");
+    static_assert(
+        static_cast<float>(-std::numeric_limits<double>::infinity()) == -std::numeric_limits<float>::infinity(), "");
+
+    template <typename RNG>
+    double operator()(RNG& rng)
+    {
+        auto check = infNaNDistribution(rng);
+        if(check < (static_cast<double>(InfPercentage / 2) / 100.0))
+            return -std::numeric_limits<double>::infinity();
+        if(check < (static_cast<double>(InfPercentage) / 100.0))
+            return std::numeric_limits<double>::infinity();
+        if(check < (static_cast<double>(InfPercentage + NaNPercentage) / 100.0))
+            return std::numeric_limits<double>::quiet_NaN();
+        return Distribution::operator()(rng);
+    }
+
+    std::uniform_real_distribution<double> infNaNDistribution;
+};
+
 template <typename T>
 using InternalType = typename std::conditional<std::is_floating_point<T>::value, double, long>::type;
+
+using InfNaNNormalDistribution = InfNaNWrapper<NormalDistribution<>>;
+using InfNaNUniformDistribution = InfNaNWrapper<UniformDistribution<InternalType<float>>>;
 
 template <typename T, std::size_t N, typename Limits = T, typename Distribution = UniformDistribution<InternalType<T>>,
     typename Internal = InternalType<T>>
