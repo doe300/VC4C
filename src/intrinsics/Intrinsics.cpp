@@ -414,7 +414,19 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryI
          /* for now do nothing, TODO make use of this! */
          logging::debug() << "Dropping intrinsic function: " << it->to_string() << logging::endl;
          return it.erase();
-     }}}};
+     }}},
+    {"vc4cl_v8adds",
+        Intrinsic{intrinsifyBinaryALUInstruction(OP_V8ADDS.name, false),
+            [](const Value& val0, const Value& val1) { return OP_V8ADDS(val0, val1).first.value(); }}},
+    {"vc4cl_v8subs",
+        Intrinsic{intrinsifyBinaryALUInstruction(OP_V8SUBS.name, false),
+            [](const Value& val0, const Value& val1) { return OP_V8SUBS(val0, val1).first.value(); }}},
+    {"vc4cl_v8min",
+        Intrinsic{intrinsifyBinaryALUInstruction(OP_V8MIN.name, false),
+            [](const Value& val0, const Value& val1) { return OP_V8MIN(val0, val1).first.value(); }}},
+    {"vc4cl_v8max",
+        Intrinsic{intrinsifyBinaryALUInstruction(OP_V8MAX.name, false),
+            [](const Value& val0, const Value& val1) { return OP_V8MAX(val0, val1).first.value(); }}}};
 
 const static std::map<std::string, Intrinsic, std::greater<std::string>> ternaryIntrinsicMapping = {
     {"vc4cl_dma_copy", Intrinsic{intrinsifyDMAAccess(DMAAccess::COPY)}},

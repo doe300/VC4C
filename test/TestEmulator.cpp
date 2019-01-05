@@ -415,6 +415,10 @@ void TestEmulator::testIntegerEmulation(
                 int e = bit_cast<uint32_t, int>(expected.at(i));
                 int o = bit_cast<uint32_t, int>(output.at(i));
                 TEST_ASSERT_EQUALS(e, o);
+                if(e != o)
+                {
+                    TEST_ASSERT_EQUALS("", "element " + std::to_string(i));
+                }
             }
         }
     }
@@ -453,6 +457,11 @@ void TestEmulator::testFloatingEmulation(
                  * So we allow up to 1 ULP error
                  */
                 TEST_ASSERT_ULP(e, o, maxULP);
+                auto delta = e * maxULP * std::numeric_limits<float>::epsilon();
+                if(!Test::Comparisons::inMaxDistance(e, o, delta))
+                {
+                    TEST_ASSERT_EQUALS("", "element " + std::to_string(i));
+                }
             }
         }
     }
@@ -484,7 +493,7 @@ void TestEmulator::testPartialMD5()
     {
         std::array<char, 4096> in{};
         std::copy(sample.begin(), sample.end(), in.begin());
-        
+
         hostResult.fill(0);
         calculate_md5(in.data(), sample.size(), reinterpret_cast<char*>(hostResult.data()));
     }

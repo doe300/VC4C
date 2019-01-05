@@ -916,10 +916,14 @@ namespace vc4c
     static constexpr OpCode OP_CLZ{"clz", 24, 0, 1, false, false};
     /*
      * Integer addition with saturation per 8-bit element
+     *
+     * The addition is saturated unsigned char, i.e. clamp(a + b, 0, 255)
      */
     static constexpr OpCode OP_V8ADDS{"v8adds", 30, 6, 2, false, false};
     /*
      * Integer subtraction with saturation per 8-bit element
+     *
+     * The subtraction is saturated unsigned char, i.e. clamp(a - b, 0, 255)
      */
     static constexpr OpCode OP_V8SUBS{"v8subs", 31, 7, 2, false, false};
     /*
@@ -939,15 +943,19 @@ namespace vc4c
      */
     static constexpr OpCode OP_MUL24{"mul24", 0, 2, 2, false, false};
     /*
-     * Multiply two vectors of 8-bit values in the range [1.0, 0]
+     * Multiply two vectors of 8-bit values in the range [0, 1.0]
      */
     static constexpr OpCode OP_V8MULD{"v8muld", 0, 3, 2, false, false};
     /*
      * Integer minimum value per 8-bit element
+     *
+     * This is the unsigned char minimum
      */
     static constexpr OpCode OP_V8MIN{"v8min", 0, 4, 2, false, false};
     /*
      * Integer maximum value per 8-bit element
+     *
+     * This is the unsigned char maximum
      */
     static constexpr OpCode OP_V8MAX{"v8max", 0, 5, 2, false, false};
 

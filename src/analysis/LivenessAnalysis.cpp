@@ -15,6 +15,12 @@ using namespace vc4c::analysis;
 
 LivenessAnalysis::LivenessAnalysis() : LocalAnalysis(LivenessAnalysis::analyzeLiveness, LivenessAnalysis::to_string) {}
 
+static bool isIfElseWrite(const FastSet<const LocalUser*>& users)
+{
+    // TODO be exact, would need to check whether the SetFlags instruction is the same for both instructions
+    return users.size() == 2 && (*users.begin())->conditional.isInversionOf((*(++users.begin()))->conditional);
+}
+
 FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::IntermediateInstruction* instr,
     const FastSet<const Local*>& nextResult,
     std::pair<FastSet<const Local*>, FastMap<const Local*, ConditionCode>>& cache)
@@ -28,21 +34,26 @@ FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::Inte
     if(instr->hasValueType(ValueType::LOCAL) &&
         !instr->hasDecoration(vc4c::intermediate::InstructionDecorations::ELEMENT_INSERTION))
     {
+        auto out = instr->getOutput()->local();
         if(instr->hasConditionalExecution() &&
             !instr->hasDecoration(intermediate::InstructionDecorations::ELEMENT_INSERTION))
         {
-            auto condReadIt = conditionalReads.find(instr->getOutput()->local());
+            auto condReadIt = conditionalReads.find(out);
             if(condReadIt != conditionalReads.end() && condReadIt->second == instr->conditional &&
                 condReadIt->first->getSingleWriter() == instr)
                 // the local only exists within a conditional block (e.g. temporary within the same flag)
-                result.erase(instr->getOutput()->local());
-            else if(conditionalWrites.find(instr->getOutput()->local()) != conditionalWrites.end())
-                result.erase(instr->getOutput()->local());
+                result.erase(out);
+            else if(conditionalWrites.find(out) != conditionalWrites.end() &&
+                isIfElseWrite(out->getUsers(LocalUse::Type::WRITER)))
+                // the local is written in a select statement (if a then write b otherwise c), which is now complete
+                // (since the other write is already added to conditionalWrites)
+                // NOTE: For conditions (if there are several conditional writes, we need to keep the local)
+                result.erase(out);
             else
-                conditionalWrites.emplace(instr->getOutput()->local());
+                conditionalWrites.emplace(out);
         }
         else
-            result.erase(instr->getOutput()->local());
+            result.erase(out);
     }
     auto combInstr = dynamic_cast<const intermediate::CombinedOperation*>(instr);
     if(combInstr)
@@ -63,6 +74,7 @@ FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::Inte
                 // there exist locals which only exist if a certain condition is met, so check this
                 auto condReadIt = conditionalReads.find(arg.local());
                 // if the local is read with different conditions, it must exist in any case
+                // TODO be exact, would need to check whether the SetFlags instruction is the same for both instructions
                 if(condReadIt != conditionalReads.end() && condReadIt->second != instr->conditional)
                     conditionalReads.erase(condReadIt);
                 else

@@ -855,7 +855,7 @@ std::pair<Optional<Value>, VectorFlags> OpCode::operator()(
                 if(*this == OP_V8ADDS)
                     return std::min(a + b, 255u);
                 if(*this == OP_V8SUBS)
-                    return std::max(std::min(a - b, 255u), 0u);
+                    return static_cast<uint32_t>(std::max(std::min(static_cast<int32_t>(a - b), 255), 0));
                 if(*this == OP_V8MAX)
                     return std::max(a, b);
                 if(*this == OP_V8MIN)
