@@ -544,6 +544,68 @@ bool vc4c::isFlagSetByMulALU(unsigned char opAdd, unsigned char opMul)
     return opAdd == OP_NOP.opAdd && opMul != OP_NOP.opMul;
 }
 
+bool ElementFlags::matchesCondition(ConditionCode cond) const
+{
+    switch(cond.value)
+    {
+    case COND_ALWAYS.value:
+        return true;
+    case COND_CARRY_CLEAR.value:
+    {
+        if(carry == FlagStatus::UNDEFINED)
+            throw CompilationError(CompilationStep::GENERAL, "Reading undefined carry flags");
+        return carry == FlagStatus::CLEAR;
+    }
+    case COND_CARRY_SET.value:
+    {
+        if(carry == FlagStatus::UNDEFINED)
+            throw CompilationError(CompilationStep::GENERAL, "Reading undefined carry flags");
+        return carry == FlagStatus::SET;
+    }
+    case COND_NEGATIVE_CLEAR.value:
+    {
+        if(negative == FlagStatus::UNDEFINED)
+            throw CompilationError(CompilationStep::GENERAL, "Reading undefined negative flags");
+        return negative == FlagStatus::CLEAR;
+    }
+    case COND_NEGATIVE_SET.value:
+    {
+        if(negative == FlagStatus::UNDEFINED)
+            throw CompilationError(CompilationStep::GENERAL, "Reading undefined negative flags");
+        return negative == FlagStatus::SET;
+    }
+    case COND_NEVER.value:
+        return false;
+    case COND_ZERO_CLEAR.value:
+    {
+        if(zero == FlagStatus::UNDEFINED)
+            throw CompilationError(CompilationStep::GENERAL, "Reading undefined zero flags");
+        return zero == FlagStatus::CLEAR;
+    }
+    case COND_ZERO_SET.value:
+    {
+        if(zero == FlagStatus::UNDEFINED)
+            throw CompilationError(CompilationStep::GENERAL, "Reading undefined zero flags");
+        return zero == FlagStatus::SET;
+    }
+    }
+    throw CompilationError(CompilationStep::GENERAL, "Unhandled condition code", cond.to_string());
+}
+
+static std::string toFlagString(FlagStatus flag, char flagChar)
+{
+    if(flag == FlagStatus::CLEAR)
+        return "-";
+    if(flag == FlagStatus::SET)
+        return std::string(&flagChar, 1);
+    return "?";
+}
+
+std::string ElementFlags::to_string() const
+{
+    return toFlagString(zero, 'z') + toFlagString(negative, 'n') + toFlagString(carry, 'c');
+}
+
 bool OpCode::operator==(const OpCode& right) const
 {
     if(opAdd > 0 && opAdd == right.opAdd)

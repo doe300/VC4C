@@ -107,6 +107,55 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                         continue;
                     }
                 }
+                else if(move->getSource().hasRegister(REG_UNIFORM) && !move->signal.hasSideEffects())
+                {
+                    // if the added work-group info UNIFORMs are never read, we can remove then (and their flag)
+                    const Local* dest = instr->getOutput()->local();
+                    bool isRead = !dest->getUsers(LocalUse::Type::READER).empty();
+                    if(!isRead)
+                    {
+                        using FuncType = decltype(&KernelUniforms::setGlobalDataAddressUsed);
+                        FuncType disableFunc = nullptr;
+                        if(dest->name == Method::WORK_DIMENSIONS)
+                            disableFunc = &KernelUniforms::setWorkDimensionsUsed;
+                        else if(dest->name == Method::GLOBAL_DATA_ADDRESS)
+                            disableFunc = &KernelUniforms::setGlobalDataAddressUsed;
+                        else if(dest->name == Method::GLOBAL_OFFSET_X)
+                            disableFunc = &KernelUniforms::setGlobalOffsetXUsed;
+                        else if(dest->name == Method::GLOBAL_OFFSET_Y)
+                            disableFunc = &KernelUniforms::setGlobalOffsetYUsed;
+                        else if(dest->name == Method::GLOBAL_OFFSET_Z)
+                            disableFunc = &KernelUniforms::setGlobalOffsetZUsed;
+                        else if(dest->name == Method::GROUP_ID_X)
+                            disableFunc = &KernelUniforms::setGroupIDXUsed;
+                        else if(dest->name == Method::GROUP_ID_Y)
+                            disableFunc = &KernelUniforms::setGroupIDYUsed;
+                        else if(dest->name == Method::GROUP_ID_Z)
+                            disableFunc = &KernelUniforms::setGroupIDZUsed;
+                        else if(dest->name == Method::LOCAL_IDS)
+                            disableFunc = &KernelUniforms::setLocalIDsUsed;
+                        else if(dest->name == Method::LOCAL_SIZES)
+                            disableFunc = &KernelUniforms::setLocalSizesUsed;
+                        else if(dest->name == Method::NUM_GROUPS_X)
+                            disableFunc = &KernelUniforms::setNumGroupsXUsed;
+                        else if(dest->name == Method::NUM_GROUPS_Y)
+                            disableFunc = &KernelUniforms::setNumGroupsYUsed;
+                        else if(dest->name == Method::NUM_GROUPS_Z)
+                            disableFunc = &KernelUniforms::setNumGroupsZUsed;
+
+                        if(disableFunc)
+                        {
+                            logging::debug()
+                                << "Removing read of work-group UNIFORM, since it is never used: " << move->to_string()
+                                << logging::endl;
+                            // disable work-group UNIFORM from method
+                            (method.metaData.uniformsUsed.*disableFunc)(false);
+                            it.erase();
+                            hasChanged = true;
+                            continue;
+                        }
+                    }
+                }
             }
         }
         it.nextInMethod();
@@ -126,6 +175,7 @@ InstructionWalker optimizations::simplifyOperation(
     {
         if(op->isSimpleOperation())
         {
+            // TODO could actually allow for setflags! At least replacing, not removing
             // improve by pre-calculating first and second arguments
             const Value firstArg =
                 (op->getFirstArg().getSingleWriter() != nullptr ? op->getFirstArg().getSingleWriter()->precalculate(3) :

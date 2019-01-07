@@ -6,6 +6,8 @@ target_sources(${VC4C_LIBRARY_NAME}
     ${CMAKE_CURRENT_LIST_DIR}/ControlFlow.h
     ${CMAKE_CURRENT_LIST_DIR}/Eliminator.cpp
     ${CMAKE_CURRENT_LIST_DIR}/Eliminator.h
+    ${CMAKE_CURRENT_LIST_DIR}/Flags.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/Flags.h
     ${CMAKE_CURRENT_LIST_DIR}/LocalCompression.cpp
     ${CMAKE_CURRENT_LIST_DIR}/LocalCompression.h
     ${CMAKE_CURRENT_LIST_DIR}/Optimizer.cpp

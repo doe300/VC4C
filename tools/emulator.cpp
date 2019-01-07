@@ -271,7 +271,7 @@ int main(int argc, char** argv)
 			setLogger(std::wcout, true, LogLevel::DEBUG);
 		}
 		else
-			//TODO hexadecimal support
+			//TODO hexadecimal support, float support
 			data.parameter.emplace_back(static_cast<tools::Word>(std::strtol(argv[i], nullptr, 0)), Optional<std::vector<uint32_t>>{});
 	}
 

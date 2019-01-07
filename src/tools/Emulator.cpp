@@ -996,54 +996,6 @@ std::pair<Value, bool> Semaphores::decrement(uint8_t index)
     return std::make_pair(Value(SmallImmediate(counter.at(index)), TYPE_INT8), true);
 }
 
-bool ElementFlags::matchesCondition(ConditionCode cond) const
-{
-    switch(cond.value)
-    {
-    case COND_ALWAYS.value:
-        return true;
-    case COND_CARRY_CLEAR.value:
-    {
-        if(carry == FlagStatus::UNDEFINED)
-            throw CompilationError(CompilationStep::GENERAL, "Reading undefined carry flags");
-        return carry == FlagStatus::CLEAR;
-    }
-    case COND_CARRY_SET.value:
-    {
-        if(carry == FlagStatus::UNDEFINED)
-            throw CompilationError(CompilationStep::GENERAL, "Reading undefined carry flags");
-        return carry == FlagStatus::SET;
-    }
-    case COND_NEGATIVE_CLEAR.value:
-    {
-        if(negative == FlagStatus::UNDEFINED)
-            throw CompilationError(CompilationStep::GENERAL, "Reading undefined negative flags");
-        return negative == FlagStatus::CLEAR;
-    }
-    case COND_NEGATIVE_SET.value:
-    {
-        if(negative == FlagStatus::UNDEFINED)
-            throw CompilationError(CompilationStep::GENERAL, "Reading undefined negative flags");
-        return negative == FlagStatus::SET;
-    }
-    case COND_NEVER.value:
-        return false;
-    case COND_ZERO_CLEAR.value:
-    {
-        if(zero == FlagStatus::UNDEFINED)
-            throw CompilationError(CompilationStep::GENERAL, "Reading undefined zero flags");
-        return zero == FlagStatus::CLEAR;
-    }
-    case COND_ZERO_SET.value:
-    {
-        if(zero == FlagStatus::UNDEFINED)
-            throw CompilationError(CompilationStep::GENERAL, "Reading undefined zero flags");
-        return zero == FlagStatus::SET;
-    }
-    }
-    throw CompilationError(CompilationStep::GENERAL, "Unhandled condition code", cond.to_string());
-}
-
 uint32_t QPU::getCurrentCycle() const
 {
     return currentCycle;
@@ -1585,15 +1537,6 @@ bool QPU::executeSignal(Signaling signal)
     return true;
 }
 
-static std::string toFlagString(FlagStatus flag, char flagChar)
-{
-    if(flag == FlagStatus::CLEAR)
-        return "-";
-    if(flag == FlagStatus::SET)
-        return std::string(&flagChar, 1);
-    return "?";
-}
-
 void QPU::setFlags(const Value& output, ConditionCode cond, const VectorFlags& newFlags)
 {
     std::vector<std::string> parts;
@@ -1606,8 +1549,7 @@ void QPU::setFlags(const Value& output, ConditionCode cond, const VectorFlags& n
             // do not set overflow flag, it is only valid for the one instruction
             flags[i].overflow = FlagStatus::UNDEFINED;
 
-            parts.push_back(toFlagString(flags[i].zero, 'z') + toFlagString(flags[i].negative, 'n') +
-                toFlagString(flags[i].carry, 'c'));
+            parts.push_back(flags[i].to_string());
         }
     }
     logging::debug() << "Setting flags: {" + to_string<std::string>(parts) << "}" << logging::endl;

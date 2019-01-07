@@ -12,6 +12,7 @@
 #include "Combiner.h"
 #include "ControlFlow.h"
 #include "Eliminator.h"
+#include "Flags.h"
 #include "InstructionScheduler.h"
 #include "LocalCompression.h"
 #include "Reordering.h"
@@ -254,6 +255,8 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         "Rewrites redundant bit operations", OptimizationType::REPEAT),
     OptimizationPass("PropagateMoves", "copy-propagation", propagateMoves,
         "Replaces operands with their moved-from value", OptimizationType::REPEAT),
+    OptimizationPass("RemoveFlags", "remove-unused-flags", removeUselessFlags,
+        "rewrites and removes all flags with constant conditions", OptimizationType::REPEAT),
     OptimizationPass("EliminateDeadCode", "eliminate-dead-code", eliminateDeadCode,
         "eliminates dead code (move to same, redundant arithmetic operations, ...)", OptimizationType::REPEAT),
     /*
@@ -310,6 +313,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("single-steps");
         passes.emplace("reorder");
         passes.emplace("combine");
+        passes.emplace("remove-unused-flags");
         FALL_THROUGH
     case OptimizationLevel::NONE:
         // TODO this is not an optimization, more a normalization step.

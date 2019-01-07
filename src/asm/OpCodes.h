@@ -566,6 +566,8 @@ namespace vc4c
             return zero == other.zero && negative == other.negative && carry == other.carry &&
                 overflow == other.overflow;
         }
+
+        std::string to_string() const;
     };
 
     /*!
