@@ -7,11 +7,9 @@
 #include "Combiner.h"
 
 #include "../InstructionWalker.h"
-#include "../analysis/ValueRange.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/operators.h"
 #include "../periphery/VPM.h"
-#include "Eliminator.h"
 #include "log.h"
 
 #include <algorithm>
@@ -1074,452 +1072,116 @@ InstructionWalker optimizations::combineFlagWithOutput(
     return it;
 }
 
-static bool isGroupUniform(const Local* local)
+bool optimizations::combineVPMSetupWrites(const Module& module, Method& method, const Configuration& config)
 {
-    auto writers = local->getUsers(LocalUse::Type::WRITER);
-    return std::all_of(writers.begin(), writers.end(), [](const LocalUser* instr) -> bool {
-        return instr->hasDecoration(InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
-    });
-}
-
-static bool isWorkGroupUniform(const Value& val)
-{
-    return val.hasImmediate() || val.hasLiteral() ||
-        (val.hasLocal() && isGroupUniform(val.local()))
-        // XXX this is not true for the local ID UNIFORM
-        || (val.hasRegister(REG_UNIFORM));
-}
-
-static FastMap<Value, InstructionDecorations> findDirectLevelAdditionInputs(const Value& val)
-{
-    FastMap<Value, InstructionDecorations> result;
-    auto writer = val.getSingleWriter();
-    if(writer == nullptr || writer->hasDecoration(InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))
+    bool changedInstructions = false;
+    for(auto& bb : method)
     {
-        // we have no need to split up work-group uniform values any more detailed
-        auto deco = writer ? writer->decoration : InstructionDecorations::NONE;
-        result.emplace(val,
-            add_flag(deco,
-                val.hasImmediate() || val.hasLiteral() ? InstructionDecorations::WORK_GROUP_UNIFORM_VALUE :
-                                                         InstructionDecorations::NONE));
-        if(val.hasImmediate() && val.immediate().getIntegerValue() >= 0)
-            result[val] = add_flag(result[val], InstructionDecorations::UNSIGNED_RESULT);
-        else if(val.hasLiteral() && val.literal().signedInt() >= 0)
-            result[val] = add_flag(result[val], InstructionDecorations::UNSIGNED_RESULT);
-        else if(val.hasRegister() && val.reg() == REG_UNIFORM)
-            // XXX this is not true for the local ID UNIFORM, which should never be checked here (since the actual ID
-            // needs always be extracted via non-adds)
-            result[val] = add_flag(result[val], InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
-        return result;
-    }
-    auto op = dynamic_cast<const Operation*>(writer);
-    bool onlySideEffectIsReadingUniform = op && op->hasSideEffects() && !op->doesSetFlag() &&
-        !op->signal.hasSideEffects() &&
-        !(op->hasValueType(ValueType::REGISTER) && op->getOutput()->reg().hasSideEffectsOnWrite()) &&
-        std::all_of(op->getArguments().begin(), op->getArguments().end(), [](const Value& arg) -> bool {
-            return !arg.hasRegister() || arg.reg() == REG_UNIFORM || !arg.reg().hasSideEffectsOnRead();
-        });
-    if(op && op->op == OP_ADD && !op->hasConditionalExecution() &&
-        (!op->hasSideEffects() || onlySideEffectIsReadingUniform) && !op->hasPackMode() && !op->hasUnpackMode())
-    {
-        FastMap<Value, InstructionDecorations> args;
-        for(const auto& arg : op->getArguments())
-        {
-            auto tmp = findDirectLevelAdditionInputs(arg);
-            args.insert(tmp.begin(), tmp.end());
-        }
-        return args;
-    }
-    result.emplace(val, writer->decoration);
-    return result;
-}
+        Optional<periphery::VPRDMASetup> lastDMAReadSetup;
+        Optional<periphery::VPRStrideSetup> lastReadStrideSetup;
+        Optional<periphery::VPWDMASetup> lastDMAWriteSetup;
+        Optional<periphery::VPWStrideSetup> lastWriteStrideSetup;
+        // NOTE: cannot simply remove successive VPM read/write setup, since a) the VPM address is auto-incremented and
+        // b) the read setup specifies the exact number of rows to read
 
-// represents analysis data for the range of memory accessed per memory object
-struct MemoryAccessRange
-{
-    const Local* memoryObject = nullptr;
-    // the instruction writing the address to VPR_ADDR or VPW_ADDR
-    InstructionWalker addressWrite{};
-    // the instruction adding the offset to the base pointer, could be the same as addressWrite
-    InstructionWalker baseAddressAdd{};
-    // the instruction converting the address offset from element offset to byte offset
-    Optional<InstructionWalker> typeSizeShift{};
-    // the work-group uniform parts of which the address offset is calculated from
-    FastMap<Value, InstructionDecorations> groupUniformAddressParts{};
-    // the dynamic parts of which the address offset is calculated from
-    FastMap<Value, InstructionDecorations> dynamicAddressParts{};
-    // the maximum range (in elements!) the memory is accessed in
-    analysis::IntegerRange offsetRange{0, 0};
-
-    std::string to_string() const
-    {
-        return (addressWrite->to_string() +
-                   (addressWrite->writesRegister(REG_VPM_DMA_LOAD_ADDR) ? " - read " : " - write ")) +
-            (memoryObject->to_string() +
-                (groupUniformAddressParts.empty() ? " with" : " with work-group uniform offset and") +
-                " dynamic element range [") +
-            (std::to_string(offsetRange.minValue) + ", ") + (std::to_string(offsetRange.maxValue) + "]");
-    }
-};
-
-struct LocalUsageOrdering
-{
-    bool operator()(const Local* l1, const Local* l2) const
-    {
-        // prefer more usages over less usages
-        // TODO is this the correct way to do this? E.g. is there one usage per memory access?
-        return l1->getUsers(LocalUse::Type::READER).size() > l2->getUsers(LocalUse::Type::READER).size() || l1 < l2;
-    }
-};
-
-using AccessRanges = OrderedMap<const Local*, FastAccessList<MemoryAccessRange>, LocalUsageOrdering>;
-
-static AccessRanges determineAccessRanges(Method& method)
-{
-    // TODO if we cannot find an access range for a local, we cannot combine any other access ranges for this global!
-    AccessRanges result;
-    for(BasicBlock& block : method)
-    {
-        InstructionWalker it = block.walk();
+        auto it = bb.walk();
         while(!it.isEndOfBlock())
         {
-            if(it.has() && (it->writesRegister(REG_VPM_DMA_LOAD_ADDR) || it->writesRegister(REG_VPM_DMA_STORE_ADDR)))
+            if(it.has() && (it->writesRegister(REG_VPM_IN_SETUP) || it->writesRegister(REG_VPM_OUT_SETUP)))
             {
-                // 1. find writes to VPM DMA addresses with work-group uniform part in address values
-                if(std::any_of(it->getArguments().begin(), it->getArguments().end(), isWorkGroupUniform) ||
-                    it.has<MoveOperation>())
+                bool readSetup = it->writesRegister(REG_VPM_IN_SETUP);
+                // this can for now only optimize constant setups
+                auto setupBits = it->getArgument(0) ? it->assertArgument(0).getLiteralValue() : Optional<Literal>{};
+                if(setupBits && (it.has<MoveOperation>() || it.has<LoadImmediate>()))
                 {
-                    if(it.has<MoveOperation>() && it->assertArgument(0).hasLocal() &&
-                        (it->assertArgument(0).local()->is<Parameter>() || it->assertArgument(0).local()->is<Global>()))
+                    if(readSetup)
                     {
-                        // direct write of address (e.g. all work items write to the same location
-                        logging::debug() << "DMA address is directly set to a parameter/global address, cannot be "
-                                            "optimized by caching multiple accesses: "
-                                         << it->to_string() << logging::endl;
-                        it.nextInBlock();
-                        continue;
-                    }
-                    MemoryAccessRange range;
-                    range.addressWrite = it;
-                    // if the instruction is a move, handle/skip it here, so the add with the shifted offset +
-                    // base-pointer is found correctly
-                    auto trackIt = it;
-                    if(it.has<MoveOperation>() && it->assertArgument(0).getSingleWriter())
-                    {
-                        auto walker =
-                            it.getBasicBlock()->findWalkerForInstruction(it->assertArgument(0).getSingleWriter(), it);
-                        if(!walker)
+                        auto setup = periphery::VPRSetup::fromLiteral(setupBits->unsignedInt());
+                        if(setup.isDMASetup())
                         {
-                            logging::debug() << "Unhandled case, address is calculated in a different basic-block: "
-                                             << it->to_string() << logging::endl;
-                            it.nextInBlock();
-                            continue;
-                        }
-                        else
-                            trackIt = walker.value();
-                    }
-
-                    auto variableArg = std::find_if_not(
-                        trackIt->getArguments().begin(), trackIt->getArguments().end(), isWorkGroupUniform);
-                    if(variableArg != trackIt->getArguments().end() && variableArg->getSingleWriter() != nullptr)
-                    {
-                        // 2. rewrite address so all work-group uniform parts are combined and all variable parts and
-                        // added in the end
-                        // TODO is this the correct criteria? We could also handle only base-pointer + local_id, for
-                        // example
-                        logging::debug() << "Found VPM DMA address write with work-group uniform operand: "
-                                         << it->to_string() << logging::endl;
-                        Value varArg = *variableArg;
-                        // 2.1 jump over final addition of base address if it is a parameter
-                        if(trackIt.has<Operation>() && trackIt.get<const Operation>()->op == OP_ADD)
-                        {
-                            const auto& arg0 = trackIt->assertArgument(0);
-                            const auto& arg1 = trackIt->assertArgument(1);
-                            if(arg0.hasLocal() &&
-                                (arg0.local()->is<Parameter>() || arg0.local()->is<Global>() ||
-                                    arg0.local()->name == Method::GLOBAL_DATA_ADDRESS))
+                            if(lastDMAReadSetup == setup.dmaSetup)
                             {
-                                range.memoryObject = arg0.local();
-                                varArg = arg1;
-                            }
-                            else if(arg1.hasLocal() &&
-                                (arg1.local()->is<Parameter>() || arg1.local()->is<Global>() ||
-                                    arg1.local()->name == Method::GLOBAL_DATA_ADDRESS))
-                            {
-                                range.memoryObject = arg1.local();
-                                varArg = arg0;
-                            }
-                            else if(arg0.hasRegister(REG_UNIFORM))
-                            {
-                                // e.g. reading of uniform for parameter is replaced by reading uniform here (if
-                                // parameter only used once)
-                                range.memoryObject = trackIt->getOutput()->local()->getBase(true);
-                                varArg = arg1;
-                            }
-                            else if(arg1.hasRegister(REG_UNIFORM))
-                            {
-                                range.memoryObject = trackIt->getOutput()->local()->getBase(true);
-                                varArg = arg0;
-                            }
-                            else
-                            {
-                                throw CompilationError(CompilationStep::OPTIMIZER,
-                                    "Unhandled case of memory access: ", trackIt->to_string());
-                            }
-                            range.baseAddressAdd = trackIt;
-                        }
-                        else
-                        {
-                            logging::debug()
-                                << "Cannot optimize further, since add of base-address and pointer was not found: "
-                                << it->to_string() << logging::endl;
-                            it.nextInBlock();
-                            continue;
-                        }
-                        auto writer = varArg.getSingleWriter();
-                        // 2.2 jump over shl (if any) and remember offset
-                        if(dynamic_cast<const Operation*>(writer) &&
-                            dynamic_cast<const Operation*>(writer)->op == OP_SHL)
-                        {
-                            if(!writer->assertArgument(1).getLiteralValue() ||
-                                (1u << writer->assertArgument(1).getLiteralValue()->unsignedInt()) !=
-                                    it->assertArgument(0).type.getElementType().getPhysicalWidth())
-                            {
-                                // Abort, since the offset shifted does not match the type-width of the element type
                                 logging::debug()
-                                    << "Cannot optimize further, since shift-offset does not match type size: "
-                                    << it->to_string() << " and " << writer->to_string() << logging::endl;
-                                it.nextInBlock();
+                                    << "Removing duplicate writing of same DMA read setup: " << it->to_string()
+                                    << logging::endl;
+                                it = it.erase();
+                                changedInstructions = true;
                                 continue;
                             }
-                            range.typeSizeShift = trackIt.getBasicBlock()->findWalkerForInstruction(writer, trackIt);
-                            varArg = writer->assertArgument(0);
-                            // TODO is never read. Remove or use?
-                            writer = varArg.getSingleWriter();
+                            lastDMAReadSetup = setup.dmaSetup;
                         }
-                        // 2.3 collect all directly neighboring (and directly referenced) additions
-                        // result is now: finalAdd + (sum(addedValues) << shiftFactor)
-                        auto addressParts = findDirectLevelAdditionInputs(varArg);
-                        if(addressParts.size() < 2)
+                        else if(setup.isStrideSetup())
                         {
-                            // could not determine multiple inputs to add, abort
-                            it.nextInBlock();
-                            continue;
-                        }
-                        // 2.4 calculate the maximum dynamic offset
-                        for(const auto& val : addressParts)
-                        {
-                            if(!has_flag(val.second, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))
+                            if(lastReadStrideSetup == setup.strideSetup)
                             {
-                                range.dynamicAddressParts.emplace(val);
-                                if(val.first.hasLocal())
-                                {
-                                    auto singleRange = analysis::ValueRange::getValueRange(val.first, &method);
-                                    range.offsetRange.minValue += singleRange.getIntRange()->minValue;
-                                    range.offsetRange.maxValue += singleRange.getIntRange()->maxValue;
-                                }
-                                else
-                                    throw CompilationError(CompilationStep::OPTIMIZER,
-                                        "Unhandled value for memory access offset", val.first.to_string());
+                                logging::debug()
+                                    << "Removing duplicate writing of same DMA read stride setup: " << it->to_string()
+                                    << logging::endl;
+                                it = it.erase();
+                                changedInstructions = true;
+                                continue;
                             }
-                            else
-                                range.groupUniformAddressParts.emplace(val);
+                            lastReadStrideSetup = setup.strideSetup;
                         }
-                        logging::debug() << range.to_string() << logging::endl;
-                        result[range.memoryObject].emplace_back(range);
                     }
+                    else
+                    {
+                        auto setup = periphery::VPWSetup::fromLiteral(setupBits->unsignedInt());
+                        if(setup.isDMASetup())
+                        {
+                            if(lastDMAWriteSetup == setup.dmaSetup)
+                            {
+                                logging::debug()
+                                    << "Removing duplicate writing of same DMA write setup: " << it->to_string()
+                                    << logging::endl;
+                                it = it.erase();
+                                changedInstructions = true;
+                                continue;
+                            }
+                            lastDMAWriteSetup = setup.dmaSetup;
+                        }
+                        else if(setup.isStrideSetup())
+                        {
+                            if(lastWriteStrideSetup == setup.strideSetup)
+                            {
+                                logging::debug()
+                                    << "Removing duplicate writing of same DMA write stride setup: " << it->to_string()
+                                    << logging::endl;
+                                it = it.erase();
+                                changedInstructions = true;
+                                continue;
+                            }
+                            lastWriteStrideSetup = setup.strideSetup;
+                        }
+                    }
+                }
+                else if(it.has<Operation>() &&
+                    std::none_of(
+                        it->getArguments().begin(), it->getArguments().end(), [readSetup](const Value& arg) -> bool {
+                            auto writer = arg.getSingleWriter();
+                            auto val = writer ? writer->precalculate(1) : arg;
+                            if(val && val->getLiteralValue())
+                                if(readSetup &&
+                                    periphery::VPRSetup::fromLiteral(val->getLiteralValue()->unsignedInt())
+                                        .isGenericSetup())
+                                    return true;
+                            if(!readSetup &&
+                                periphery::VPWSetup::fromLiteral(val->getLiteralValue()->unsignedInt())
+                                    .isGenericSetup())
+                                return true;
+                            return false;
+                        }))
+                {
+                    // we have a VPM IO setup write which we do not know to be a generic setup.
+                    // to be on the safe side, clear last setups
+                    lastDMAReadSetup = {};
+                    lastDMAWriteSetup = {};
+                    lastReadStrideSetup = {};
+                    lastWriteStrideSetup = {};
                 }
             }
             it.nextInBlock();
         }
     }
-    return result;
-}
-
-static Optional<std::pair<Value, InstructionDecorations>> combineAdditions(
-    Method& method, InstructionWalker referenceIt, FastMap<Value, InstructionDecorations>& addedValues)
-{
-    Optional<std::pair<Value, InstructionDecorations>> prevResult;
-    auto valIt = addedValues.begin();
-    while(valIt != addedValues.end())
-    {
-        if(prevResult)
-        {
-            auto newResult = method.addNewLocal(prevResult->first.type);
-            auto newFlags = intersect_flags(prevResult->second, valIt->second);
-            referenceIt.emplace(new Operation(OP_ADD, newResult, prevResult->first, valIt->first));
-            referenceIt->addDecorations(newFlags);
-            referenceIt.nextInBlock();
-            prevResult = std::make_pair(newResult, newFlags);
-        }
-        else
-            prevResult = std::make_pair(valIt->first, valIt->second);
-        valIt = addedValues.erase(valIt);
-    }
-    return prevResult;
-}
-
-static std::pair<bool, analysis::IntegerRange> checkWorkGroupUniformParts(
-    FastAccessList<MemoryAccessRange>& accessRanges)
-{
-    analysis::IntegerRange offsetRange{std::numeric_limits<int>::max(), std::numeric_limits<int>::min()};
-    const auto& firstUniformAddresses = accessRanges.front().groupUniformAddressParts;
-    FastMap<Value, InstructionDecorations> differingUniformParts;
-    bool allUniformPartsEqual = true;
-    for(auto& entry : accessRanges)
-    {
-        if(entry.groupUniformAddressParts != firstUniformAddresses)
-        {
-            allUniformPartsEqual = false;
-            for(const auto& pair : entry.groupUniformAddressParts)
-            {
-                if(firstUniformAddresses.find(pair.first) == firstUniformAddresses.end())
-                    differingUniformParts.emplace(pair);
-            }
-            for(const auto& pair : firstUniformAddresses)
-                if(entry.groupUniformAddressParts.find(pair.first) == entry.groupUniformAddressParts.end())
-                    differingUniformParts.emplace(pair);
-        }
-        offsetRange.minValue = std::min(offsetRange.minValue, entry.offsetRange.minValue);
-        offsetRange.maxValue = std::max(offsetRange.maxValue, entry.offsetRange.maxValue);
-    }
-    if(!allUniformPartsEqual)
-    {
-        if(std::all_of(differingUniformParts.begin(), differingUniformParts.end(),
-               [](const std::pair<Value, InstructionDecorations>& part) -> bool {
-                   return part.first.getLiteralValue().has_value();
-               }))
-        {
-            // all work-group uniform values which differ between various accesses of the same local are literal
-            // values. We can use this knowledge to still allow caching the local, by converting the literals to
-            // dynamic offsets
-            for(auto& entry : accessRanges)
-            {
-                auto it = entry.groupUniformAddressParts.begin();
-                while(it != entry.groupUniformAddressParts.end())
-                {
-                    if(differingUniformParts.find(it->first) != differingUniformParts.end())
-                    {
-                        entry.offsetRange.minValue += it->first.getLiteralValue()->signedInt();
-                        entry.offsetRange.maxValue += it->first.getLiteralValue()->signedInt();
-                        entry.dynamicAddressParts.emplace(*it);
-                        it = entry.groupUniformAddressParts.erase(it);
-                    }
-                    else
-                        ++it;
-                }
-            }
-            return checkWorkGroupUniformParts(accessRanges);
-        }
-        else
-            return std::make_pair(false, analysis::IntegerRange{});
-    }
-    return std::make_pair(true, offsetRange);
-}
-
-static void rewriteIndexCalculation(Method& method, MemoryAccessRange& range)
-{
-    // 3. combine the additions so work-group uniform and non-uniform values are added
-    // separately
-    auto insertIt = range.typeSizeShift ? range.typeSizeShift.value() : range.baseAddressAdd;
-    auto firstVal = combineAdditions(method, insertIt, range.groupUniformAddressParts);
-    auto secondVal = combineAdditions(method, insertIt, range.dynamicAddressParts);
-    Optional<std::pair<Value, InstructionDecorations>> resultVal;
-    if(!range.groupUniformAddressParts.empty() || !range.dynamicAddressParts.empty())
-        throw CompilationError(CompilationStep::OPTIMIZER, "Too many values remaining",
-            std::to_string(range.groupUniformAddressParts.size() + range.dynamicAddressParts.size()));
-    if(firstVal && secondVal)
-    {
-        // add work-group uniform and variable part
-        resultVal = std::make_pair(
-            method.addNewLocal(range.memoryObject->type), intersect_flags(firstVal->second, secondVal->second));
-        insertIt.emplace(new Operation(OP_ADD, resultVal->first, firstVal->first, secondVal->first));
-        insertIt->addDecorations(resultVal->second);
-    }
-    else if(firstVal)
-        resultVal = firstVal;
-    else if(secondVal)
-        resultVal = secondVal;
-    if(range.typeSizeShift)
-        (*range.typeSizeShift)->setArgument(0, resultVal->first);
-    else
-        // TODO replace index variable with new index variable
-        throw CompilationError(
-            CompilationStep::OPTIMIZER, "Not yet implemented, no shift in address calculation", range.to_string());
-
-    logging::debug() << "Rewrote address-calculation with indices "
-                     << (firstVal ? (firstVal->first.to_string() + " (" + toString(firstVal->second) + ")") : "")
-                     << " and "
-                     << (secondVal ? (secondVal->first.to_string() + " (" + toString(secondVal->second) + ")") : "")
-                     << logging::endl;
-}
-
-bool optimizations::cacheWorkGroupDMAAccess(const Module& module, Method& method, const Configuration& config)
-{
-    auto memoryAccessRanges = determineAccessRanges(method);
-    for(auto& pair : memoryAccessRanges)
-    {
-        bool allUniformPartsEqual;
-        analysis::IntegerRange offsetRange;
-        std::tie(allUniformPartsEqual, offsetRange) = checkWorkGroupUniformParts(pair.second);
-        if(!allUniformPartsEqual)
-        {
-            logging::debug() << "Cannot cache memory location " << pair.first->to_string()
-                             << " in VPM, since the work-group uniform parts of the address calculations differ, which "
-                                "is not yet supported!"
-                             << logging::endl;
-            continue;
-        }
-        if((offsetRange.maxValue - offsetRange.minValue) >= config.availableVPMSize ||
-            (offsetRange.maxValue < offsetRange.minValue))
-        {
-            // this also checks for any over/underflow when converting the range to unsigned int in the next steps
-            logging::debug() << "Cannot cache memory location " << pair.first->to_string()
-                             << " in VPM, the accessed range is too big: [" << offsetRange.minValue << ", "
-                             << offsetRange.maxValue << "]" << logging::endl;
-            continue;
-        }
-        logging::debug() << "Memory location " << pair.first->to_string()
-                         << " is accessed via DMA in the dynamic range [" << offsetRange.minValue << ", "
-                         << offsetRange.maxValue << "]" << logging::endl;
-
-        auto accessedType = pair.first->type.toArrayType(static_cast<unsigned>(
-            offsetRange.maxValue - offsetRange.minValue + 1 /* bounds of range are inclusive! */));
-
-        // TODO the local is not correct, at least not if there is a work-group uniform offset
-        auto vpmArea = method.vpm->addArea(pair.first, accessedType, false);
-        if(vpmArea == nullptr)
-        {
-            logging::debug() << "Memory location " << pair.first->to_string() << " with dynamic access range ["
-                             << offsetRange.minValue << ", " << offsetRange.maxValue
-                             << "] cannot be cached in VPM, since it does not fit" << logging::endl;
-            continue;
-        }
-
-        // TODO insert load memory area into VPM at start of kernel (after all the required offsets/indices are
-        // calculated)
-        // TODO calculate address from base address and work-group uniform parts
-        // TODO insert store VPM into memory area at end of kernel
-        // TODO rewrite memory accesses to only access the correct VPM area
-
-        for(auto& entry : pair.second)
-            rewriteIndexCalculation(method, entry);
-
-        // TODO now, combine access to memory with VPM access
-        // need to make sure, only 1 kernel accesses RAM/writes the configuration, how?
-        // -> need some lightweight synchronization (e.g. status value in VPM?? One kernel would need to
-        // poll!!)
-        // TODO if minValue  != 0, need then to deduct it from the group-uniform address too!
-        // use base pointer as memory pointer (for read/write-back) and offset as VPM offset. maximum
-        // offset is the number of elements to copy/cache
-
-        // TODO insert initial read from DMA, final write to DMA
-        // even for writes, need to read, since memory in between might be untouched?
-
-        // TODO if it can be proven that all values in the range are guaranteed to be written (and not read before),
-        // we can skip the initial loading. This guarantee needs to hold across all work-items in a group!
-    }
-
-    // XXX
-    return eliminateDeadCode(module, method, config);
+    return changedInstructions;
 }

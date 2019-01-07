@@ -142,14 +142,18 @@ InstructionWalker optimizations::simplifyOperation(
             Optional<Value> leftAbsorbing = OpCode::getLeftAbsorbingElement(op->op);
 
             // one of the operands is the absorbing element, operation can be replaced with move
-            if(leftAbsorbing && firstArg.hasLiteral(leftAbsorbing->getLiteralValue().value()))
+            // TODO the hasLiteral() checks seem to sometimes not pass while the simple comparisons do. Check for "all"
+            // cases then remove them
+            if(leftAbsorbing &&
+                (firstArg.hasLiteral(leftAbsorbing->getLiteralValue().value()) || firstArg == leftAbsorbing))
             {
                 logging::debug() << "Replacing obsolete " << op->to_string() << " with move 1" << logging::endl;
                 it.reset((new intermediate::MoveOperation(
                               op->getOutput().value(), leftAbsorbing.value(), op->conditional, op->setFlags))
                              ->addDecorations(it->decoration));
             }
-            else if(rightAbsorbing && secondArg && secondArg->hasLiteral(rightAbsorbing->getLiteralValue().value()))
+            else if(rightAbsorbing && secondArg &&
+                (secondArg->hasLiteral(rightAbsorbing->getLiteralValue().value()) || *secondArg == rightAbsorbing))
             {
                 logging::debug() << "Replacing obsolete " << op->to_string() << " with move 2" << logging::endl;
                 it.reset((new intermediate::MoveOperation(
@@ -160,7 +164,8 @@ InstructionWalker optimizations::simplifyOperation(
             else if(op->getOutput() && op->getOutput().value() == op->getFirstArg())
             {
                 // check whether second-arg exists and does nothing
-                if(rightIdentity && secondArg && secondArg->hasLiteral(rightIdentity->getLiteralValue().value()))
+                if(rightIdentity && secondArg &&
+                    (secondArg->hasLiteral(rightIdentity->getLiteralValue().value()) || *secondArg == rightIdentity))
                 {
                     logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
                     it.erase();
@@ -178,7 +183,8 @@ InstructionWalker optimizations::simplifyOperation(
             else if(op->getOutput() && op->getSecondArg() && op->getOutput().value() == op->assertArgument(1))
             {
                 // check whether first-arg does nothing
-                if(leftIdentity && firstArg.hasLiteral(leftIdentity->getLiteralValue().value()))
+                if(leftIdentity &&
+                    (firstArg.hasLiteral(leftIdentity->getLiteralValue().value()) || firstArg == leftIdentity))
                 {
                     logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
                     it.erase();
@@ -197,7 +203,8 @@ InstructionWalker optimizations::simplifyOperation(
             else // writes to another local -> can be replaced with move
             {
                 // check whether second argument exists and does nothing
-                if(rightIdentity && secondArg && secondArg->hasLiteral(rightIdentity->getLiteralValue().value()))
+                if(rightIdentity && secondArg &&
+                    (secondArg->hasLiteral(rightIdentity->getLiteralValue().value()) || *secondArg == rightIdentity))
                 {
                     logging::debug() << "Replacing obsolete " << op->to_string() << " with move 3" << logging::endl;
                     it.reset((new intermediate::MoveOperation(
@@ -205,7 +212,8 @@ InstructionWalker optimizations::simplifyOperation(
                                  ->addDecorations(it->decoration));
                 }
                 // check whether first argument does nothing
-                else if(leftIdentity && secondArg && firstArg.hasLiteral(leftIdentity->getLiteralValue().value()))
+                else if(leftIdentity && op->getArgument(1) &&
+                    (firstArg.hasLiteral(leftIdentity->getLiteralValue().value()) || firstArg == leftIdentity))
                 {
                     logging::debug() << "Replacing obsolete " << op->to_string() << " with move 4" << logging::endl;
                     it.reset((new intermediate::MoveOperation(
@@ -216,7 +224,6 @@ InstructionWalker optimizations::simplifyOperation(
                 else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg &&
                     !firstArg.hasRegister() && !firstArg.isUndefined())
                 {
-                    logging::debug() << secondArg.value().to_string() << " - " << firstArg.to_string() << logging::endl;
                     logging::debug() << "Replacing obsolete " << op->to_string() << " with move 5" << logging::endl;
                     it.reset((new intermediate::MoveOperation(
                                   op->getOutput().value(), op->assertArgument(1), op->conditional, op->setFlags))

@@ -94,6 +94,13 @@ MemoryInstruction::MemoryInstruction(
 {
     setArgument(0, src);
     setArgument(1, numEntries);
+
+    if(numEntries != INT_ONE)
+    {
+        if(op != MemoryOperation::COPY && op != MemoryOperation::FILL)
+            throw CompilationError(
+                CompilationStep::LLVM_2_IR, "Can only use the entry count for copying of filling memory", to_string());
+    }
 }
 
 std::string MemoryInstruction::to_string() const
