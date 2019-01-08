@@ -275,9 +275,9 @@ IntermediateInstruction* IntermediateInstruction::copyExtrasFrom(const Intermedi
     return this;
 }
 
-Optional<Value> IntermediateInstruction::precalculate(const std::size_t numIterations) const
+PrecalculatedValue IntermediateInstruction::precalculate(const std::size_t numIterations) const
 {
-    return NO_VALUE;
+    return PrecalculatedValue{NO_VALUE, {}};
 }
 
 const Value IntermediateInstruction::renameValue(Method& method, const Value& orig, const std::string& prefix) const
@@ -341,7 +341,7 @@ Optional<Value> IntermediateInstruction::getPrecalculatedValueForArg(
     {
         auto writer = arg.local()->getSingleWriter();
         if(writer != nullptr)
-            return writer->precalculate(numIterations - 1);
+            return writer->precalculate(numIterations - 1).first;
     }
     else if(arg.hasRegister())
     {

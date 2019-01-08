@@ -115,18 +115,24 @@ IntermediateInstruction* LoadImmediate::copyFor(Method& method, const std::strin
         CompilationStep::GENERAL, "Unhandled type of load", std::to_string(static_cast<unsigned>(type)));
 }
 
-Optional<Value> LoadImmediate::precalculate(const std::size_t numIterations) const
+PrecalculatedValue LoadImmediate::precalculate(const std::size_t numIterations) const
 {
     switch(type)
     {
     case LoadType::REPLICATE_INT32:
-        return getArgument(0);
+        return PrecalculatedValue{getArgument(0), ElementFlags::fromValue(assertArgument(0))};
     case LoadType::PER_ELEMENT_SIGNED:
-        return Value(ContainerValue(toLoadedValues(assertArgument(0).literal().unsignedInt(), type)),
+    {
+        auto val = Value(ContainerValue(toLoadedValues(assertArgument(0).literal().unsignedInt(), type)),
             TYPE_INT32.toVectorType(16));
+        return PrecalculatedValue{val, VectorFlags::fromValue(val)};
+    }
     case LoadType::PER_ELEMENT_UNSIGNED:
-        return Value(ContainerValue(toLoadedValues(assertArgument(0).literal().unsignedInt(), type)),
+    {
+        auto val = Value(ContainerValue(toLoadedValues(assertArgument(0).literal().unsignedInt(), type)),
             TYPE_INT8.toVectorType(16));
+        return PrecalculatedValue{val, VectorFlags::fromValue(val)};
+    }
     }
     throw CompilationError(
         CompilationStep::GENERAL, "Unhandled type of load", std::to_string(static_cast<unsigned>(type)));

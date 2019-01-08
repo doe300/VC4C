@@ -159,6 +159,10 @@ static NODISCARD InstructionWalker insertCheckForNaN(
     InstructionWalker it, const Value& result, const Comparison* comp, bool invertResult)
 {
     assign(it, result) = invertResult ? BOOL_TRUE : BOOL_FALSE;
+    if(has_flag(comp->decoration, InstructionDecorations::NO_NAN) ||
+        has_flag(comp->decoration, InstructionDecorations::FAST_MATH))
+        // we are allowed to assume the operands to be non-nan, so we don't need to check this
+        return it;
     auto nanCond = assignNop(it) = isnan(as_float{comp->getFirstArg()});
     assign(it, result) = (invertResult ? BOOL_FALSE : BOOL_TRUE, nanCond);
     if(comp->getSecondArg())

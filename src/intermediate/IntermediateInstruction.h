@@ -223,7 +223,7 @@ namespace vc4c
              *
              * NOTE: The constant value returned can be of value-type REGISTER, LITERAL, SMALL_IMMEDIATE or CONTAINER
              */
-            virtual Optional<Value> precalculate(std::size_t numIterations = 1) const;
+            virtual PrecalculatedValue precalculate(std::size_t numIterations = 1) const;
 
             bool replaceValue(const Value oldValue, const Value newValue, LocalUse::Type type);
 
@@ -270,7 +270,7 @@ namespace vc4c
 
             const Value& getFirstArg() const;
             const Optional<Value> getSecondArg() const;
-            Optional<Value> precalculate(std::size_t numIterations) const override;
+            PrecalculatedValue precalculate(std::size_t numIterations) const override;
 
             /**
              * Returns whether the operation "simply" calculates the arithmetic operation specified, without
@@ -356,7 +356,7 @@ namespace vc4c
             bool mapsToASMInstruction() const override;
             bool isNormalized() const override;
 
-            Optional<Value> precalculate(std::size_t numIterations) const override;
+            PrecalculatedValue precalculate(std::size_t numIterations) const override;
 
             void setSource(const Value& value);
             const Value& getSource() const;
@@ -379,7 +379,7 @@ namespace vc4c
             qpu_asm::Instruction* convertToAsm(const FastMap<const Local*, Register>& registerMapping,
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             Operation* combineWith(const std::string& otherOpCode) const;
-            Optional<Value> precalculate(std::size_t numIterations) const override;
+            PrecalculatedValue precalculate(std::size_t numIterations) const override;
 
             const Value& getOffset() const;
 
@@ -596,7 +596,7 @@ namespace vc4c
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
             bool isNormalized() const override;
 
-            Optional<Value> precalculate(std::size_t numIterations) const override;
+            PrecalculatedValue precalculate(std::size_t numIterations) const override;
 
             Literal getImmediate() const;
             void setImmediate(const Literal& value);

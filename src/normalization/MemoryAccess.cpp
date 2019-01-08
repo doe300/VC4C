@@ -53,7 +53,7 @@ static BaseAndOffset findOffset(const Value& val)
     const LocalUser* writer = val.getSingleWriter();
     if(writer != nullptr)
     {
-        const Optional<Value> offset = writer->precalculate(8);
+        const Optional<Value> offset = writer->precalculate(8).first;
         if(offset && offset->isLiteralValue())
         {
             return BaseAndOffset(NO_VALUE, offset->getLiteralValue()->signedInt());

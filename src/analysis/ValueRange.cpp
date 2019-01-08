@@ -506,7 +506,7 @@ ValueRange ValueRange::getValueRange(const Value& val, Method* method)
         }
     }
     range.update(val.isLiteralValue() ? Optional<Value>(val) :
-                                        (singleWriter ? singleWriter->precalculate(3) : Optional<Value>{}),
+                                        (singleWriter ? singleWriter->precalculate(3).first : Optional<Value>{}),
         ranges, singleWriter, method);
     return range;
 }
@@ -528,7 +528,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
         if(it.has() && !it.has<BranchLabel>() && it->hasValueType(ValueType::LOCAL))
         {
             ValueRange& range = ranges.emplace(it->getOutput()->local(), it->getOutput()->local()->type).first->second;
-            range.update(it->precalculate(3), ranges, it.get(), &method);
+            range.update(it->precalculate(3).first, ranges, it.get(), &method);
         }
 
         it.nextInMethod();

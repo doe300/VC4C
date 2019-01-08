@@ -210,7 +210,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
             //"lower" bound: the initial setting of the value outside of the loop
             if(pair.second.writesLocal() && inst->hasDecoration(intermediate::InstructionDecorations::PHI_NODE) && !it)
             {
-                auto tmp = inst->precalculate(4);
+                auto tmp = inst->precalculate(4).first;
                 if(tmp && tmp->isLiteralValue())
                 {
                     logging::debug() << "Found lower bound: " << tmp->to_string() << logging::endl;
@@ -343,7 +343,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                     loopControl.terminatingValue = inst->assertArgument(0);
                 if(loopControl.terminatingValue.getSingleWriter() != nullptr)
                 {
-                    auto tmp = loopControl.terminatingValue.getSingleWriter()->precalculate(4);
+                    auto tmp = loopControl.terminatingValue.getSingleWriter()->precalculate(4).first;
                     if(tmp)
                         loopControl.terminatingValue = tmp.value();
                     else
@@ -356,7 +356,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                                 if(!arg.hasLocal(iterationStep.local()))
                                 {
                                     auto precalc =
-                                        arg.getSingleWriter() ? arg.getSingleWriter()->precalculate(4) : NO_VALUE;
+                                        arg.getSingleWriter() ? arg.getSingleWriter()->precalculate(4).first : NO_VALUE;
                                     loopControl.terminatingValue = precalc ? precalc.value() : arg;
                                     break;
                                 }
@@ -426,7 +426,7 @@ static Optional<unsigned> determineVectorizationFactor(const ControlFlowLoop& lo
     logging::debug() << "Found maximum used vector-width of " << static_cast<unsigned>(maxTypeWidth) << " elements"
                      << logging::endl;
 
-    const Literal initial = loopControl.initialization->precalculate(4)->getLiteralValue().value();
+    const Literal initial = loopControl.initialization->precalculate(4).first->getLiteralValue().value();
     // TODO for test_vectorization.cl#test5 this calculates an iteration count of 1023 (instead of 1024)
     const Literal end = loopControl.terminatingValue.getLiteralValue().value();
     // the number of iterations from the bounds depends on the iteration operation

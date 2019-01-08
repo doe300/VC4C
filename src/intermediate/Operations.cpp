@@ -361,20 +361,20 @@ const Optional<Value> Operation::getSecondArg() const
     return getArgument(1);
 }
 
-Optional<Value> Operation::precalculate(const std::size_t numIterations) const
+PrecalculatedValue Operation::precalculate(const std::size_t numIterations) const
 {
     Optional<Value> arg0 = getPrecalculatedValueForArg(0, numIterations);
     if(!arg0)
-        return NO_VALUE;
+        return PrecalculatedValue{NO_VALUE, {}};
     Optional<Value> arg1 = NO_VALUE;
     if(getSecondArg())
     {
         arg1 = getPrecalculatedValueForArg(1, numIterations);
         if(!arg1)
-            return NO_VALUE;
+            return PrecalculatedValue{NO_VALUE, {}};
     }
 
-    return op(arg0, arg1).first;
+    return op(arg0, arg1);
 }
 
 bool Operation::isSimpleOperation() const
@@ -524,9 +524,10 @@ bool MoveOperation::isNormalized() const
     return true;
 }
 
-Optional<Value> MoveOperation::precalculate(const std::size_t numIterations) const
+PrecalculatedValue MoveOperation::precalculate(const std::size_t numIterations) const
 {
-    return getPrecalculatedValueForArg(0, numIterations);
+    auto val = getPrecalculatedValueForArg(0, numIterations);
+    return PrecalculatedValue{val, val ? VectorFlags::fromValue(*val) : VectorFlags{}};
 }
 
 void MoveOperation::setSource(const Value& value)
@@ -608,10 +609,10 @@ Operation* VectorRotation::combineWith(const std::string& otherOpCode) const
     return nullptr;
 }
 
-Optional<Value> VectorRotation::precalculate(const std::size_t numIterations) const
+PrecalculatedValue VectorRotation::precalculate(const std::size_t numIterations) const
 {
     // for now, don't precalculate
-    return NO_VALUE;
+    return PrecalculatedValue{NO_VALUE, {}};
 }
 
 const Value& VectorRotation::getOffset() const

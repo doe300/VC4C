@@ -45,21 +45,7 @@ static bool rewriteSettingOfFlags(
     }
     Optional<Value> precalc;
     VectorFlags allFlags;
-    auto op = setFlags.get<const intermediate::Operation>();
-    if(op)
-        std::tie(precalc, allFlags) = op->op(op->getFirstArg(), op->getSecondArg());
-    else
-    {
-        precalc = setFlags->precalculate();
-        if(precalc && precalc->getLiteralValue())
-        {
-            auto resultLit = precalc->getLiteralValue().value();
-            ElementFlags flags;
-            flags.zero = resultLit.unsignedInt() == 0 ? FlagStatus::SET : FlagStatus::CLEAR;
-            flags.negative = resultLit.signedInt() < 0 ? FlagStatus::SET : FlagStatus::CLEAR;
-            allFlags = flags;
-        }
-    }
+    std::tie(precalc, allFlags) = setFlags->precalculate();
     if(precalc && precalc->getLiteralValue() &&
         std::all_of(
             allFlags.begin(), allFlags.end(), [&](const ElementFlags& flags) -> bool { return flags == allFlags[0]; }))
@@ -144,4 +130,115 @@ bool optimizations::removeUselessFlags(const Module& module, Method& method, con
         }
     }
     return changedSomething;
+}
+
+InstructionWalker optimizations::combineSameFlags(
+    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+{
+    if(it.get() == nullptr || it->setFlags != SetFlag::SET_FLAGS)
+        return it;
+    // only combine writing into NOP-register for now
+    if(it->getOutput() && it->getOutput().value() != NOP_REGISTER)
+        return it;
+    // only remove this setting of flags, if we have no other side effects and don't execute conditionally
+    if(it->signal.hasSideEffects() || it->conditional != COND_ALWAYS)
+        return it;
+    // only combine setting flags from moves (e.g. for PHI-nodes) for now
+    if(it.get<intermediate::MoveOperation>() == nullptr)
+        return it;
+    const Value src = it.get<intermediate::MoveOperation>()->getSource();
+
+    InstructionWalker checkIt = it.copy().previousInBlock();
+    while(!checkIt.isStartOfBlock())
+    {
+        if(checkIt.get() && checkIt->setFlags == SetFlag::SET_FLAGS)
+        {
+            if(checkIt.get<intermediate::MoveOperation>() != nullptr &&
+                checkIt.get<intermediate::MoveOperation>()->getSource() == src && checkIt->conditional == COND_ALWAYS)
+            {
+                logging::debug() << "Removing duplicate setting of same flags: " << it->to_string() << logging::endl;
+                it.erase();
+                // don't skip next instruction
+                it.previousInBlock();
+            }
+            // otherwise some other flags are set -> cancel
+            return it;
+        }
+        checkIt.previousInBlock();
+    }
+
+    return it;
+}
+
+InstructionWalker optimizations::combineFlagWithOutput(
+    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+{
+    if(!it.has() || !it->doesSetFlag())
+        // does not set flags
+        return it;
+    if(!it->writesRegister(REG_NOP))
+        // already has output
+        return it;
+    if(!it.has<intermediate::MoveOperation>())
+        // only combine setting flags from moves (e.g. for PHI-nodes) for now
+        return it;
+    const auto& in = it->assertArgument(0);
+    if(it->signal.hasSideEffects() || it->hasConditionalExecution() ||
+        (in.hasRegister() && in.reg().hasSideEffectsOnRead()))
+        // only remove this setting of flags, if we have no other side effects and don't execute conditionally
+        return it;
+    const auto checkFunc = [&](InstructionWalker checkIt) -> bool {
+        return checkIt.has() && !checkIt->doesSetFlag() && !checkIt->hasSideEffects() &&
+            checkIt.has<intermediate::MoveOperation>() &&
+            (checkIt->assertArgument(0) == in ||
+                (in.getLiteralValue() && checkIt->assertArgument(0).hasLiteral(*in.getLiteralValue())));
+    };
+
+    // look into the future until we hit the instruction requiring the flag
+    InstructionWalker resultIt = it.getBasicBlock()->walkEnd();
+    auto checkIt = it.copy().nextInBlock();
+    while(!checkIt.isEndOfBlock())
+    {
+        // this is usually only executed few times, since setting of flags and usage thereof are close to each other
+        if(checkIt.has() && (checkIt->hasConditionalExecution() || checkIt->doesSetFlag()))
+            break;
+        if(checkFunc(checkIt))
+        {
+            resultIt = checkIt;
+            break;
+        }
+        checkIt.nextInBlock();
+    }
+
+    // look back only a few instructions
+    if(resultIt.isEndOfBlock())
+    {
+        checkIt = it.copy().previousInBlock();
+        while(!checkIt.isStartOfBlock())
+        {
+            // TODO limit number of steps?
+
+            if(checkIt.has() &&
+                (checkIt->hasConditionalExecution() || checkIt->doesSetFlag() || checkIt->getOutput() == in))
+                break;
+            if(checkFunc(checkIt))
+            {
+                resultIt = checkIt;
+                break;
+            }
+            checkIt.previousInBlock();
+        }
+    }
+    if(!resultIt.isEndOfBlock())
+    {
+        logging::debug() << "Combining move to set flags '" << it->to_string()
+                         << "' with move to output: " << resultIt->to_string() << logging::endl;
+        resultIt->setSetFlags(SetFlag::SET_FLAGS);
+        // TODO decorations? If input is the same, most decorations are also the same?! Also, setflags usually don't
+        // have that many!?
+        it.erase();
+        // don't skip next instruction
+        it.previousInBlock();
+    }
+    return it;
 }

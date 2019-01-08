@@ -568,6 +568,13 @@ namespace vc4c
         }
 
         std::string to_string() const;
+
+        /*
+         * Extracts the zero and negative flags from the given Value.
+         *
+         * NOTE: The carry and overflow flags are set to UNDEFINED
+         */
+        static ElementFlags fromValue(const Value& val);
     };
 
     /*!
@@ -579,7 +586,19 @@ namespace vc4c
         {
             fill(allElements);
         }
+
+        /*
+         * Extracts the zero and negative flags from the given Value.
+         *
+         * NOTE: The carry and overflow flags are set to UNDEFINED
+         */
+        static VectorFlags fromValue(const Value& val);
     };
+
+    /*
+     * NOTE: The flags are only of meaning if the value is set
+     */
+    using PrecalculatedValue = std::pair<Optional<Value>, VectorFlags>;
 
     /*
      * The operation-code being executed by ALU instructions.
@@ -643,8 +662,7 @@ namespace vc4c
         /*
          * Tries to calculate the operation for this op-code with the operands given
          */
-        std::pair<Optional<Value>, VectorFlags> operator()(
-            const Optional<Value>& firstOperand, const Optional<Value>& secondOperand) const;
+        PrecalculatedValue operator()(const Optional<Value>& firstOperand, const Optional<Value>& secondOperand) const;
 
         /*
          * Whether the operation is idempotent.

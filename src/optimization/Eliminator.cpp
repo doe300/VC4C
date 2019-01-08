@@ -177,13 +177,13 @@ InstructionWalker optimizations::simplifyOperation(
         {
             // TODO could actually allow for setflags! At least replacing, not removing
             // improve by pre-calculating first and second arguments
-            const Value firstArg =
-                (op->getFirstArg().getSingleWriter() != nullptr ? op->getFirstArg().getSingleWriter()->precalculate(3) :
-                                                                  NO_VALUE)
-                    .value_or(op->getFirstArg());
+            const Value firstArg = (op->getFirstArg().getSingleWriter() != nullptr ?
+                    op->getFirstArg().getSingleWriter()->precalculate(3).first :
+                    NO_VALUE)
+                                       .value_or(op->getFirstArg());
             const Optional<Value> secondArg =
                 (op->getSecondArg() && op->assertArgument(1).getSingleWriter() != nullptr ?
-                        op->assertArgument(1).getSingleWriter()->precalculate(3) :
+                        op->assertArgument(1).getSingleWriter()->precalculate(3).first :
                         op->getSecondArg());
 
             Optional<Value> rightIdentity = OpCode::getRightIdentity(op->op);
@@ -315,7 +315,7 @@ InstructionWalker optimizations::foldConstants(
                 // allow for combination with the other case)
                 return it;
             }
-            const Optional<Value> value = op->precalculate(3);
+            const Optional<Value> value = op->precalculate(3).first;
             if(value)
             {
                 logging::debug() << "Replacing '" << op->to_string() << "' with constant value: " << value.to_string()
@@ -846,7 +846,7 @@ InstructionWalker optimizations::rewriteConstantSFUCall(
     if(!it.has() || !it->hasValueType(ValueType::REGISTER) || !it->getOutput()->reg().isSpecialFunctionsUnit())
         return it;
 
-    auto constantValue = it->precalculate(3);
+    auto constantValue = it->precalculate(3).first;
     auto result = constantValue ? periphery::precalculateSFU(it->getOutput()->reg(), constantValue.value()) : NO_VALUE;
     if(result)
     {

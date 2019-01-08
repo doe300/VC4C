@@ -272,7 +272,7 @@ bool DataType::containsType(const DataType& other) const
 {
     if(*this == other)
         return true;
-    if(complexType)
+    if(complexType && !getPointerType())
         throw CompilationError(CompilationStep::GENERAL, "Can't check type hierarchy for complex type", to_string());
     if(!isFloatingPoint && !other.isFloatingPoint && bitWidth <= other.bitWidth)
     {

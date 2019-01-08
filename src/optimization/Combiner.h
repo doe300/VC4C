@@ -140,24 +140,6 @@ namespace vc4c
         bool combineVectorRotations(const Module& module, Method& method, const Configuration& config);
 
         /*
-         * Combines successive setting of the same flag (e.g. introduced by PHI-nodes)
-         *
-         * Example:
-         *   - = %3 (setf)
-         *   ...
-         *   - = %3 (setf)
-         *
-         * is converted to:
-         *   - = %3 (setf)
-         *   ...
-         *
-         * NOTE: Currently, only moves into nop-register are combined, but in an extended optimization-step any two
-         * instructions setting flags for the same value and with at most one output could be combined.
-         */
-        InstructionWalker combineSameFlags(
-            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
-
-        /*
          * Combines arithmetic operations if the result of the first operation is used as the second operation and the
          * operations allow combining (e.g. no side-effects).
          *
@@ -181,30 +163,6 @@ namespace vc4c
          *
          */
         InstructionWalker combineArithmeticOperations(
-            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
-
-        /*
-         * Combines moves setting flags with move of the same value into output registers.
-         *
-         * Example:
-         *   - = %b (setf)
-         *   ...
-         *   %a = %b
-         *
-         * becomes:
-         *   ...
-         *   %a = %b (setf)
-         *
-         * Also:
-         *   %a = %b
-         *   ...
-         *   - = %b (setf)
-         *
-         * becomes:
-         *   %a = %b (setf)
-         *   ...
-         */
-        InstructionWalker combineFlagWithOutput(
             const Module& module, Method& method, InstructionWalker it, const Configuration& config);
 
         // TODO documentation, TODO move somewhere else?!

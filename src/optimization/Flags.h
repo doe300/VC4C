@@ -51,6 +51,48 @@ namespace vc4c
          *   - = xor 0, %4 (setf)
          */
         bool removeUselessFlags(const Module& module, Method& method, const Configuration& config);
+
+        /*
+         * Combines successive setting of the same flag (e.g. introduced by PHI-nodes)
+         *
+         * Example:
+         *   - = %3 (setf)
+         *   ...
+         *   - = %3 (setf)
+         *
+         * is converted to:
+         *   - = %3 (setf)
+         *   ...
+         *
+         * NOTE: Currently, only moves into nop-register are combined, but in an extended optimization-step any two
+         * instructions setting flags for the same value and with at most one output could be combined.
+         */
+        InstructionWalker combineSameFlags(
+            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+
+        /*
+         * Combines moves setting flags with move of the same value into output registers.
+         *
+         * Example:
+         *   - = %b (setf)
+         *   ...
+         *   %a = %b
+         *
+         * becomes:
+         *   ...
+         *   %a = %b (setf)
+         *
+         * Also:
+         *   %a = %b
+         *   ...
+         *   - = %b (setf)
+         *
+         * becomes:
+         *   %a = %b (setf)
+         *   ...
+         */
+        InstructionWalker combineFlagWithOutput(
+            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
     } /* namespace optimizations */
 } /* namespace vc4c */
 

@@ -8,7 +8,7 @@
 #define VC4C_LOCAL_ANALYSIS
 
 #include "../BasicBlock.h"
-#include "../InstructionWalker.h"
+#include "../intermediate/IntermediateInstruction.h"
 #include "log.h"
 
 #include <functional>
