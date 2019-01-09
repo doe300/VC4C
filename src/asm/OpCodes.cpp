@@ -1050,7 +1050,7 @@ Optional<Value> OpCode::getLeftIdentity(const OpCode& code)
         return FLOAT_NAN;
     if(code == OP_FMAX)
         // -Inf
-        return Value(Literal(0xFFFFFFFF), TYPE_FLOAT);
+        return Value(Literal(0xFF800000), TYPE_FLOAT);
     if(code == OP_FMUL)
         return FLOAT_ONE;
     if(code == OP_MUL24)
