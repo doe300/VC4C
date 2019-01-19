@@ -51,7 +51,6 @@ InstructionWalker CFGRelation::getPredecessor(BasicBlock* source) const
 bool CFGRelation::isImplicit(BasicBlock* source) const
 {
     const auto& pred = predecessors.at(source);
-    ;
     return !pred.has_value();
 }
 
@@ -348,9 +347,9 @@ void ControlFlowGraph::updateOnBlockRemoval(Method& method, BasicBlock& oldBlock
         if((++nextBlockIt) != method.end())
         {
             auto& nextNode = assertNode(&(*nextBlockIt));
-            // TODO if the nodes are already adjacent, (e.g. conditional jump), what prevails (fall-through or jump?)
             auto& prevNode = fallThroughEdge->getOtherNode(*nodePtr);
             auto& edge = prevNode.getOrCreateEdge(&nextNode).addInput(prevNode);
+            // if there is already an edge (e.g. conditional jump), don't overwrite with fall-through
             edge.data.predecessors.emplace(prevNode.key, Optional<InstructionWalker>{});
         }
     }
@@ -421,7 +420,8 @@ void ControlFlowGraph::updateOnBranchRemoval(Method& method, BasicBlock& affecte
     if(branchEdge->getDirection() == Direction::BOTH)
     {
         // we only want to remove the one direction, the jump-back needs to remain
-        auto reversePred = branchEdge->data.getPredecessor(destNode.key);
+        // also if reverse direction is implicit, copy as such
+        auto reversePred = branchEdge->data.predecessors.at(destNode.key);
         node.removeEdge(*branchEdge);
         destNode.addEdge(&node, CFGRelation{})->data.predecessors.emplace(destNode.key, reversePred);
     }

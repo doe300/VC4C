@@ -12,6 +12,7 @@
 #include "Compiler.h"
 #include "Precompiler.h"
 #include "config.h"
+#include "tools.h"
 
 #include <iostream>
 

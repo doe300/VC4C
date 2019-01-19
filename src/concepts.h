@@ -90,22 +90,29 @@ namespace vc4c
      */
     static_assert(!std::is_default_constructible<Register>::value, "Register is default constructible!");
     static_assert(assert_assignable<Register>::value, "Register is not assignable!");
-    static_assert(std::is_destructible<Register>::value, "Register is not destructible!");
+    static_assert(std::is_trivially_destructible<Register>::value, "Register is not trivially destructible!");
     static_assert(assert_comparable<Register>::value, "Register is not comparable");
     static_assert(assert_hashable<Register>::value, "Register is not hashable!");
     static_assert(assert_stringifyable<Register>::value, "Register is not stringify-able!");
+    static_assert(std::is_literal_type<Register>::value, "Register is not literal");
+    static_assert(std::is_trivially_copyable<Register>::value, "Register is not trivial");
 
     static_assert(!std::is_default_constructible<Literal>::value, "Literal is default constructible!");
     static_assert(assert_assignable<Literal>::value, "Literal is not assignable!");
-    static_assert(std::is_destructible<Literal>::value, "Literal is not destructible!");
+    static_assert(std::is_trivially_destructible<Literal>::value, "Literal is not trivially destructible!");
     static_assert(assert_comparable<Literal>::value, "Literal is not comparable");
     static_assert(assert_stringifyable<Literal>::value, "Literal is not stringify-able!");
+    static_assert(std::is_literal_type<Literal>::value, "Literal is not literal");
+    static_assert(std::is_trivially_copyable<Literal>::value, "Literal is not trivial");
 
     static_assert(!std::is_default_constructible<SmallImmediate>::value, "SmallImmediate is default constructible!");
     static_assert(assert_assignable<SmallImmediate>::value, "SmallImmediate is not assignable!");
-    static_assert(std::is_destructible<SmallImmediate>::value, "SmallImmediate is not destructible!");
+    static_assert(
+        std::is_trivially_destructible<SmallImmediate>::value, "SmallImmediate is not trivially destructible!");
     static_assert(assert_comparable<SmallImmediate>::value, "SmallImmediate is not comparable");
     static_assert(assert_stringifyable<SmallImmediate>::value, "SmallImmediate is not stringify-able!");
+    static_assert(std::is_literal_type<SmallImmediate>::value, "SmallImmediate is not literal");
+    static_assert(std::is_trivially_copyable<SmallImmediate>::value, "SmallImmediate is not trivial");
 
     static_assert(std::is_default_constructible<ContainerValue>::value, "ContainerValue is not default constructible!");
     static_assert(assert_assignable<ContainerValue>::value, "ContainerValue is not assignable!");
@@ -122,6 +129,7 @@ namespace vc4c
     static_assert(std::is_move_constructible<Local>::value, "Local is not move constructible!");
     static_assert(std::is_destructible<Local>::value, "Local is not destructible!");
     static_assert(assert_stringifyable<Local>::value, "Local is not stringify-able!");
+    static_assert(std::has_virtual_destructor<Local>::value, "Local has no virtual destructor!");
 
     /*
      * Method/Module types
@@ -154,6 +162,8 @@ namespace vc4c
         "IntermediateInstruction is not destructible!");
     static_assert(assert_stringifyable<intermediate::IntermediateInstruction>::value,
         "IntermediateInstruction is not stringify-able!");
+    static_assert(std::has_virtual_destructor<intermediate::IntermediateInstruction>::value,
+        "IntermediateInstruction has no virtual destructor!");
 
     /*
      * Backend instructions and types
@@ -161,35 +171,48 @@ namespace vc4c
      * (Try to keep fully assignable, if possible)
      */
     static_assert(assert_assignable<ConditionCode>::value, "ConditionCode is not assignable!");
-    static_assert(std::is_destructible<ConditionCode>::value, "ConditionCode is not destructible!");
+    static_assert(std::is_trivially_destructible<ConditionCode>::value, "ConditionCode is not trivially destructible!");
     static_assert(assert_comparable<ConditionCode>::value, "ConditionCode is not comparable");
     static_assert(assert_stringifyable<ConditionCode>::value, "ConditionCode is not stringify-able!");
+    static_assert(std::is_literal_type<ConditionCode>::value, "ConditionCode is not literal");
+    static_assert(std::is_trivially_copyable<ConditionCode>::value, "ConditionCode is not trivial");
 
     static_assert(assert_assignable<Signaling>::value, "Signaling is not assignable!");
-    static_assert(std::is_destructible<Signaling>::value, "Signaling is not destructible!");
+    static_assert(std::is_trivially_destructible<Signaling>::value, "Signaling is not trivially destructible!");
     static_assert(assert_comparable<Signaling>::value, "Signaling is not comparable");
     static_assert(assert_stringifyable<Signaling>::value, "Signaling is not stringify-able!");
+    static_assert(std::is_literal_type<Signaling>::value, "Signaling is not literal");
+    static_assert(std::is_trivially_copyable<Signaling>::value, "Signaling is not trivial");
 
     static_assert(assert_assignable<Unpack>::value, "Unpack is not assignable!");
-    static_assert(std::is_destructible<Unpack>::value, "Unpack is not destructible!");
+    static_assert(std::is_trivially_destructible<Unpack>::value, "Unpack is not trivially destructible!");
     static_assert(assert_comparable<Unpack>::value, "Unpack is not comparable");
     static_assert(assert_stringifyable<Unpack>::value, "Unpack is not stringify-able!");
+    static_assert(std::is_literal_type<Unpack>::value, "Unpack is not literal");
+    static_assert(std::is_trivially_copyable<Unpack>::value, "Unpack is not trivial");
 
     static_assert(assert_assignable<Pack>::value, "Pack is not assignable!");
-    static_assert(std::is_destructible<Pack>::value, "Pack is not destructible!");
+    static_assert(std::is_trivially_destructible<Pack>::value, "Pack is not trivially destructible!");
     static_assert(assert_comparable<Pack>::value, "Pack is not comparable");
     static_assert(assert_stringifyable<Pack>::value, "Pack is not stringify-able!");
+    static_assert(std::is_literal_type<Pack>::value, "Pack is not literal");
+    static_assert(std::is_trivially_copyable<Pack>::value, "Pack is not trivial");
 
     static_assert(assert_assignable<SetFlag>::value, "SetFlag is not assignable!");
-    static_assert(std::is_destructible<SetFlag>::value, "SetFlag is not destructible!");
+    static_assert(std::is_trivially_destructible<SetFlag>::value, "SetFlag is not trivially destructible!");
     static_assert(assert_comparable<SetFlag>::value, "SetFlag is not comparable");
+    static_assert(std::is_literal_type<SetFlag>::value, "SetFlag is not literal");
+    static_assert(std::is_trivially_copyable<SetFlag>::value, "SetFlag is not trivial");
 
     static_assert(assert_assignable<OpCode>::value, "OpCode is not assignable!");
-    static_assert(std::is_destructible<OpCode>::value, "OpCode is not destructible!");
+    static_assert(std::is_trivially_destructible<OpCode>::value, "OpCode is not trivially destructible!");
     static_assert(assert_comparable<OpCode>::value, "OpCode is not comparable");
+    static_assert(std::is_literal_type<OpCode>::value, "OpCode is not literal");
+    static_assert(std::is_trivially_copyable<OpCode>::value, "OpCode is not trivial");
 
     static_assert(assert_assignable<qpu_asm::ALUInstruction>::value, "ALUInstruction is not assignable!");
     static_assert(std::is_destructible<qpu_asm::ALUInstruction>::value, "ALUInstruction is not destructible!");
+    static_assert(std::has_virtual_destructor<qpu_asm::Instruction>::value, "Instruction has no virtual destructor!");
 
     /*
      * Some helper types
@@ -206,12 +229,16 @@ namespace vc4c
 
     static_assert(std::is_default_constructible<Bitfield<uint64_t>>::value, "Bitfield is not default constructible!");
     static_assert(assert_assignable<Bitfield<uint64_t>>::value, "Bitfield is not assignable!");
-    static_assert(std::is_destructible<Bitfield<uint64_t>>::value, "Bitfield is not destructible!");
+    static_assert(std::is_trivially_destructible<Bitfield<uint64_t>>::value, "Bitfield is not trivially destructible!");
     static_assert(assert_comparable<Bitfield<uint64_t>>::value, "Bitfield is not comparable");
+    static_assert(std::is_literal_type<Bitfield<uint64_t>>::value, "Bitfield is not literal");
+    static_assert(std::is_trivially_copyable<Bitfield<uint64_t>>::value, "Bitfield is not trivial");
 
     static_assert(assert_assignable<InstructionPart>::value, "InstructionPart is not assignable!");
-    static_assert(std::is_destructible<InstructionPart>::value, "InstructionPart is not destructible!");
+    static_assert(std::is_trivially_destructible<InstructionPart>::value, "InstructionPart is not trivially destructible!");
     static_assert(assert_comparable<InstructionPart>::value, "InstructionPart is not comparable");
+    static_assert(std::is_literal_type<InstructionPart>::value, "InstructionPart is not literal");
+    static_assert(std::is_trivially_copyable<InstructionPart>::value, "InstructionPart is not trivial");
 } // namespace vc4c
 
 #endif /* VC4C_CONCEPTS_H */

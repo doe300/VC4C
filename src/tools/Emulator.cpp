@@ -61,10 +61,58 @@ tools::Word EmulationData::calcNumWorkItems() const
 
 tools::Word* Memory::getWordAddress(MemoryAddress address)
 {
-    if(address >= data.size() * sizeof(Word))
+    if(VariantNamespace::holds_alternative<DirectBuffer>(data))
+    {
+        if(address >= VariantNamespace::get<DirectBuffer>(data).size() * sizeof(Word))
+            throw CompilationError(CompilationStep::GENERAL,
+                "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
+        return VariantNamespace::get<DirectBuffer>(data).data() + (address / sizeof(Word));
+    }
+    if(address >= (VariantNamespace::get<MappedBuffers>(data).rbegin()->first +
+                      VariantNamespace::get<MappedBuffers>(data).rbegin()->second.get().size()))
         throw CompilationError(CompilationStep::GENERAL,
             "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
-    return data.data() + (address / sizeof(Word));
+    auto& buffers = VariantNamespace::get<MappedBuffers>(data);
+    for(auto it = buffers.begin(); it != buffers.end(); ++it)
+    {
+        if(it->first <= address && (it->first + it->second.get().size()) > address)
+        {
+            auto wordBoundsAddress = (address / sizeof(Word)) * sizeof(Word);
+            return reinterpret_cast<Word*>(it->second.get().data() + wordBoundsAddress - it->first);
+        }
+    }
+    for(const auto& buffer : buffers)
+        logging::warn() << "Buffer: [" << std::hex << buffer.first << ", "
+                        << (buffer.first + buffer.second.get().size()) << std::dec << ")" << logging::endl;
+    throw CompilationError(CompilationStep::GENERAL, "Address is not part of any buffer", std::to_string(address));
+}
+
+const tools::Word* Memory::getWordAddress(MemoryAddress address) const
+{
+    if(VariantNamespace::holds_alternative<DirectBuffer>(data))
+    {
+        if(address >= VariantNamespace::get<DirectBuffer>(data).size() * sizeof(Word))
+            throw CompilationError(CompilationStep::GENERAL,
+                "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
+        return VariantNamespace::get<DirectBuffer>(data).data() + (address / sizeof(Word));
+    }
+    if(address >= (VariantNamespace::get<MappedBuffers>(data).rbegin()->first +
+                      VariantNamespace::get<MappedBuffers>(data).rbegin()->second.get().size()))
+        throw CompilationError(CompilationStep::GENERAL,
+            "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
+    auto& buffers = VariantNamespace::get<MappedBuffers>(data);
+    for(auto it = buffers.begin(); it != buffers.end(); ++it)
+    {
+        if(it->first <= address && (it->first + it->second.get().size()) > address)
+        {
+            auto wordBoundsAddress = (address / sizeof(Word)) * sizeof(Word);
+            return reinterpret_cast<const Word*>(it->second.get().data() + wordBoundsAddress - it->first);
+        }
+    }
+    for(const auto& buffer : buffers)
+        logging::warn() << "Buffer: [" << std::hex << buffer.first << ", "
+                        << (buffer.first + buffer.second.get().size()) << std::dec << ")" << logging::endl;
+    throw CompilationError(CompilationStep::GENERAL, "Address is not part of any buffer", std::to_string(address));
 }
 
 Value Memory::readWord(MemoryAddress address) const
@@ -73,10 +121,7 @@ Value Memory::readWord(MemoryAddress address) const
         logging::debug()
             << "Reading word from non-word-aligned memory location will be truncated to align with word-boundaries: "
             << address << logging::endl;
-    if(address >= data.size() * sizeof(Word))
-        throw CompilationError(CompilationStep::GENERAL,
-            "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
-    return Value(Literal(data.at(address / sizeof(Word))), TYPE_INT32);
+    return Value(Literal(*getWordAddress(address)), TYPE_INT32);
 }
 
 MemoryAddress Memory::incrementAddress(MemoryAddress address, const DataType& typeSize) const
@@ -86,14 +131,17 @@ MemoryAddress Memory::incrementAddress(MemoryAddress address, const DataType& ty
 
 MemoryAddress Memory::getMaximumAddress() const
 {
-    return static_cast<MemoryAddress>(data.size() * sizeof(Word));
+    if(VariantNamespace::holds_alternative<DirectBuffer>(data))
+        return static_cast<MemoryAddress>(VariantNamespace::get<DirectBuffer>(data).size() * sizeof(Word));
+    return VariantNamespace::get<MappedBuffers>(data).rbegin()->first +
+        static_cast<Word>(VariantNamespace::get<MappedBuffers>(data).begin()->second.get().size());
 }
 
 void Memory::setUniforms(const std::vector<Word>& uniforms, MemoryAddress address)
 {
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 10, "setUniforms", 1);
     std::size_t offset = address / sizeof(Word);
-    std::copy_n(uniforms.begin(), uniforms.size(), data.begin() + offset);
+    std::copy_n(uniforms.begin(), uniforms.size(), VariantNamespace::get<DirectBuffer>(data).begin() + offset);
 }
 
 bool Mutex::isLocked() const
@@ -180,7 +228,7 @@ void Registers::writeRegister(Register reg, const Value& val, std::bitset<16> el
             // the physical file A or B is important here!
             writeStorageRegister(reg, modifiedValue, elementMask);
         else
-            writeStorageRegister(Register(RegisterFile::ACCUMULATOR, reg.num), modifiedValue, elementMask);
+            writeStorageRegister(Register{RegisterFile::ACCUMULATOR, reg.num}, modifiedValue, elementMask);
     }
     else if(reg.num == REG_HOST_INTERRUPT.num)
     {
@@ -1012,7 +1060,7 @@ std::pair<Value, bool> QPU::readR4()
 
 static Register toRegister(Address addr, bool isfileB)
 {
-    return Register(isfileB ? RegisterFile::PHYSICAL_B : RegisterFile::PHYSICAL_A, addr);
+    return Register{isfileB ? RegisterFile::PHYSICAL_B : RegisterFile::PHYSICAL_A, addr};
 }
 
 static ElementFlags generateImmediateFlags(Literal lit)
@@ -1166,14 +1214,14 @@ static std::pair<Value, bool> toInputValue(
     case InputMultiplex::ACC5:
         return registers.readRegister(REG_ACC5);
     case InputMultiplex::REGA:
-        return registers.readRegister(Register(RegisterFile::PHYSICAL_A, addressA));
+        return registers.readRegister(Register{RegisterFile::PHYSICAL_A, addressA});
     case InputMultiplex::REGB:
         if(regBIsImmediate)
             return std::make_pair(Value(SmallImmediate(addressB),
                                       (SmallImmediate(addressB)).getFloatingValue() ? TYPE_FLOAT : TYPE_INT32),
                 true);
         else
-            return registers.readRegister(Register(RegisterFile::PHYSICAL_B, addressB));
+            return registers.readRegister(Register{RegisterFile::PHYSICAL_B, addressB});
     }
     throw CompilationError(CompilationStep::GENERAL, "Unhandled ALU input");
 }
@@ -1183,18 +1231,18 @@ static std::pair<Value, bool> applyVectorRotation(std::pair<Value, bool>&& input
 {
     if(!input.second)
         // if we stall, do not rotate
-        return input;
+        return std::move(input);
     if(sig != SIGNAL_ALU_IMMEDIATE)
         // no rotation set
-        return input;
+        return std::move(input);
     SmallImmediate offset(regB);
     if(!offset.isVectorRotation())
-        return input;
+        return std::move(input);
     if(mux1 == InputMultiplex::REGB || mux2 == InputMultiplex::REGB)
         throw CompilationError(CompilationStep::GENERAL, "Cannot read vector rotation offset", input.first.to_string());
 
     if(input.first.hasLiteral() || (input.first.hasContainer() && input.first.container().isAllSame()))
-        return input;
+        return std::move(input);
 
     unsigned char distance;
     if(offset == VECTOR_ROTATE_R5)
@@ -1905,6 +1953,52 @@ EmulationResult tools::emulate(const EmulationData& data)
         dumpInstrumentation.reset(new std::ofstream(data.instrumentationDump));
     auto it = instructions.begin() + (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue();
     result.instrumentation.reserve(kernelInfo->getLength().getValue());
+    while(true)
+    {
+        result.instrumentation.emplace_back(instrumentation[it->get()]);
+        if(dumpInstrumentation)
+            *dumpInstrumentation << std::left << std::setw(80) << (*it)->toASMString() << "//"
+                                 << instrumentation[it->get()].to_string() << std::endl;
+        if((*it)->getSig() == SIGNAL_END_PROGRAM)
+            break;
+        ++it;
+    }
+
+    return result;
+}
+
+static std::vector<std::unique_ptr<qpu_asm::Instruction>> extractInstructions(
+    const uint64_t* start, uint32_t numInstructions)
+{
+    std::vector<std::unique_ptr<qpu_asm::Instruction>> res;
+    res.reserve(numInstructions);
+    for(std::size_t i = 0; i < numInstructions; ++i)
+    {
+        qpu_asm::Instruction* instr = qpu_asm::Instruction::readFromBinary(start[i]);
+        if(instr == nullptr)
+            throw CompilationError(CompilationStep::GENERAL, "Unrecognized instruction", std::to_string(start[i]));
+        res.emplace_back(instr);
+    }
+    return res;
+}
+
+LowLevelEmulationResult tools::emulate(const LowLevelEmulationData& data)
+{
+    auto instructions = extractInstructions(data.kernelAddress, data.numInstructions);
+    Memory mem(data.buffers);
+
+    InstrumentationResults instrumentation;
+    bool status = emulate(instructions.begin(), mem, data.uniformAddresses, instrumentation, data.maxEmulationCycles);
+
+    LowLevelEmulationResult result{data};
+    result.executionSuccessful = status;
+
+    // Map and dump instrumentation results
+    std::unique_ptr<std::ofstream> dumpInstrumentation;
+    if(!data.instrumentationDump.empty())
+        dumpInstrumentation.reset(new std::ofstream(data.instrumentationDump));
+    auto it = instructions.begin();
+    result.instrumentation.reserve(data.numInstructions);
     while(true)
     {
         result.instrumentation.emplace_back(instrumentation[it->get()]);

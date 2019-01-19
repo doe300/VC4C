@@ -33,15 +33,27 @@ namespace vc4c
 
         using MemoryAddress = uint32_t;
         using Word = uint32_t;
+
         class Memory : private NonCopyable
         {
         public:
-            explicit Memory(std::size_t size) : data(size)
+            /*
+             * Use a direct buffer
+             */
+            explicit Memory(std::size_t size) : data(DirectBuffer(size, 0)) {}
+            /*
+             * Use a mapping of existing buffers
+             *
+             * The first element is the start "device address", the second element the buffer mapped for the part
+             * [start "device address", start "device address"+ buffer.size())
+             */
+            explicit Memory(const std::map<uint32_t, std::reference_wrapper<std::vector<uint8_t>>>& buffers) :
+                data(MappedBuffers(buffers))
             {
-                data.resize(size, 0);
             }
 
             Word* getWordAddress(MemoryAddress address);
+            const Word* getWordAddress(MemoryAddress address) const;
 
             Value readWord(MemoryAddress address) const;
             MemoryAddress incrementAddress(MemoryAddress address, const DataType& typeSize) const;
@@ -50,7 +62,9 @@ namespace vc4c
             void setUniforms(const std::vector<Word>& uniforms, MemoryAddress address);
 
         private:
-            std::vector<Word> data;
+            using DirectBuffer = std::vector<Word>;
+            using MappedBuffers = std::map<uint32_t, std::reference_wrapper<std::vector<uint8_t>>>;
+            Variant<DirectBuffer, MappedBuffers> data;
         };
 
         class Mutex : private NonCopyable

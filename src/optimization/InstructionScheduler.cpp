@@ -209,12 +209,12 @@ static int checkDependenciesMet(DependencyNode& entry, BasicBlock& block, OpenSe
     return schedulingPriority;
 }
 
-static OpenSet::iterator selectInstruction(OpenSet& openNodes, DependencyGraph& graph, BasicBlock& block,
+static OpenSet::const_iterator selectInstruction(OpenSet& openNodes, DependencyGraph& graph, BasicBlock& block,
     const DelaysMap& successiveMandatoryDelays, const DelaysMap& successiveDelays)
 {
     // iterate open-set until entry with no more dependencies
     auto it = openNodes.begin();
-    std::pair<OpenSet::iterator, int> selected = std::make_pair(openNodes.end(), DEFAULT_PRIORITY);
+    std::pair<OpenSet::const_iterator, int> selected = std::make_pair(openNodes.end(), DEFAULT_PRIORITY);
     auto lastInstruction = block.walkEnd().previousInBlock();
     PROFILE_START(SelectInstruction);
     while(it != openNodes.end())

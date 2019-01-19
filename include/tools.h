@@ -72,7 +72,7 @@ namespace vc4c
              */
             std::string instrumentationDump;
 
-            explicit EmulationData(){};
+            explicit EmulationData() {}
 
             EmulationData(const std::string& moduleFile, const std::string& kernelName,
                 const std::vector<std::pair<uint32_t, Optional<std::vector<uint32_t>>>>& parameter,
@@ -92,6 +92,59 @@ namespace vc4c
 
             std::size_t calcParameterSize() const;
             uint32_t calcNumWorkItems() const;
+        };
+
+        /*
+         * Container for all the information required for emulating an execution.
+         *
+         * This approach is more low-level, meaning the data passed here is closer to the data actually passed to the
+         * hardware.
+         */
+        struct LowLevelEmulationData
+        {
+            /*
+             * A list of buffers and the offsets they use.
+             *
+             * E.g. an entry (100, 0x12345678) means that the buffer located at 0x12345678 will be "mapped" into the
+             * "emulation address space" at location 100. In other words: All access to memory in the range [100, 100 +
+             * buffer size( will be an access to the buffer mapped for the location 100.
+             */
+            std::map<uint32_t, std::reference_wrapper<std::vector<uint8_t>>> buffers;
+
+            /*
+             * The base address where the kernel starts executing from (the address of the first instruction)
+             */
+            uint64_t* kernelAddress;
+
+            /*
+             * The number of instructions within the kernel that is executed
+             */
+            uint32_t numInstructions;
+
+            /*
+             * The initial addresses to the UNIFORM data for each kernel execution
+             *
+             * NOTE: The size of this list determines the number of QPUs to emulate!
+             */
+            std::vector<uint32_t> uniformAddresses;
+
+            /*
+             * The maximum number of cycles to execute before terminating the emulation
+             */
+            uint32_t maxEmulationCycles = std::numeric_limits<uint32_t>::max();
+            /*
+             * The path to dump the results of the instrumentation
+             */
+            std::string instrumentationDump;
+
+            LowLevelEmulationData(const std::map<uint32_t, std::reference_wrapper<std::vector<uint8_t>>>& buffers,
+                uint64_t* startAddress, uint32_t numInstructions, const std::vector<uint32_t>& uniformAddresses,
+                uint32_t maxCycles = std::numeric_limits<uint32_t>::max()) :
+                buffers(buffers),
+                kernelAddress(startAddress), numInstructions(numInstructions), uniformAddresses(uniformAddresses),
+                maxEmulationCycles(maxCycles)
+            {
+            }
         };
 
         /*
@@ -161,12 +214,34 @@ namespace vc4c
         };
 
         /*
+         * Result container for low-level emulation approach
+         */
+        struct LowLevelEmulationResult
+        {
+            /*
+             * The input data for this emulation. This is the data passed to the emulator
+             */
+            const LowLevelEmulationData& input;
+            /*
+             * Whether the emulation terminated by successfully completing the execution (true) or by exceeding the
+             * execution limit (false)
+             */
+            bool executionSuccessful;
+            /*
+             * The instrumentation result for the emulation run. The indices of the instrumentation result correspond to
+             * the indices of the instruction in the executed kernel
+             */
+            std::vector<InstrumentationResult> instrumentation;
+        };
+
+        /*
          * Runs the emulation and returns the result.
          *
-         * NOTE: This function may throw a CompilationError if anything in the emulation goes horrible wrong (e.g. an
+         * NOTE: This functions may throw a CompilationError if anything in the emulation goes horrible wrong (e.g. an
          * invalid or unsupported operation was performed)
          */
         EmulationResult emulate(const EmulationData& data);
+        LowLevelEmulationResult emulate(const LowLevelEmulationData& data);
 
         /*
          * Parses the given command-line parameter and stores it in the configuration
