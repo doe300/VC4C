@@ -118,9 +118,9 @@ static std::string annotateRegisters(
 
     std::set<std::string> annotations;
     // the first few UNIFORMs are the work-item and work-group info
-    auto op = dynamic_cast<const vc4c::qpu_asm::ALUInstruction*>(&instr);
-    if(op)
+    if(instr.is<qpu_asm::ALUInstruction>())
     {
+        auto op = instr.as<qpu_asm::ALUInstruction>();
         if(readsUniform(op->getAddFirstOperand()) || readsUniform(op->getAddSecondOperand()))
             annotations.emplace("uniform read: " + getUniform(currentUniformsRead, currentUniformValues));
 
@@ -164,9 +164,9 @@ static std::string annotateRegisters(
             readsUniform(op->getMulFirstOperand()) || readsUniform(op->getMulSecondOperand()))
             ++currentUniformsRead;
     }
-    auto load = dynamic_cast<const qpu_asm::LoadInstruction*>(&instr);
-    if(load)
+    else if(instr.is<qpu_asm::LoadInstruction>())
     {
+        auto load = instr.as<qpu_asm::LoadInstruction>();
         switch(load->getType())
         {
         case OpLoad::LOAD_IMM_32:
@@ -213,7 +213,7 @@ static std::string readString(std::istream& binary, uint64_t stringLength)
 }
 
 void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, ReferenceRetainingList<Global>& globals,
-    std::vector<std::unique_ptr<qpu_asm::Instruction>>& instructions)
+    std::vector<qpu_asm::Instruction>& instructions)
 {
     // skip magic number
     binary.seekg(8);
@@ -290,12 +290,12 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Refere
     {
         uint64_t tmp64;
         binary.read(reinterpret_cast<char*>(&tmp64), sizeof(tmp64));
-        qpu_asm::Instruction* instr = qpu_asm::Instruction::readFromBinary(tmp64);
-        if(instr == nullptr)
+        qpu_asm::Instruction instr(tmp64);
+        if(!instr.isValidInstruction())
             throw CompilationError(CompilationStep::GENERAL, "Unrecognized instruction", std::to_string(tmp64));
         instructions.emplace_back(instr);
         logging::logLazy(logging::Level::DEBUG, [&](std::wostream& os) {
-            os << instr->toASMString() << annotateRegisters(*instr, i, moduleInfo) << logging::endl;
+            os << instr.toASMString() << annotateRegisters(instr, i, moduleInfo) << logging::endl;
         });
     }
 
@@ -303,8 +303,8 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Refere
 }
 
 static std::size_t generateOutput(std::ostream& stream, qpu_asm::ModuleInfo& moduleInfo,
-    const ReferenceRetainingList<Global>& globals,
-    const std::vector<std::unique_ptr<qpu_asm::Instruction>>& instructions, const OutputMode outputMode)
+    const ReferenceRetainingList<Global>& globals, const std::vector<qpu_asm::Instruction>& instructions,
+    const OutputMode outputMode)
 {
     std::size_t numBytes = moduleInfo.write(stream, outputMode, globals, Byte(0)) * sizeof(uint64_t);
 
@@ -313,11 +313,11 @@ static std::size_t generateOutput(std::ostream& stream, qpu_asm::ModuleInfo& mod
         switch(outputMode)
         {
         case OutputMode::ASSEMBLER:
-            stream << instr->toASMString() << std::endl;
+            stream << instr.toASMString() << std::endl;
             numBytes += 0; // doesn't matter here, since the number of bytes is unused for assembler output
             break;
         case OutputMode::HEX:
-            stream << instr->toHexString(true) << std::endl;
+            stream << instr.toHexString(true) << std::endl;
             numBytes += 8; // doesn't matter here, since the number of bytes is unused for hexadecimal output
             break;
         default:
@@ -341,7 +341,7 @@ std::size_t vc4c::disassembleModule(std::istream& binary, std::ostream& output, 
 
     qpu_asm::ModuleInfo moduleInfo;
     ReferenceRetainingList<Global> globals;
-    std::vector<std::unique_ptr<qpu_asm::Instruction>> instructions;
+    std::vector<qpu_asm::Instruction> instructions;
     extractBinary(binary, moduleInfo, globals, instructions);
 
     return generateOutput(output, moduleInfo, globals, instructions, outputMode);
@@ -355,17 +355,17 @@ std::size_t vc4c::disassembleCodeOnly(
     {
         uint64_t tmp64;
         binary.read(reinterpret_cast<char*>(&tmp64), sizeof(tmp64));
-        qpu_asm::Instruction* instr = qpu_asm::Instruction::readFromBinary(tmp64);
-        if(instr == nullptr)
+        qpu_asm::Instruction instr(tmp64);
+        if(!instr.isValidInstruction())
             throw CompilationError(CompilationStep::GENERAL, "Unrecognized instruction", std::to_string(tmp64));
         switch(outputMode)
         {
         case OutputMode::ASSEMBLER:
-            output << instr->toASMString() << std::endl;
+            output << instr.toASMString() << std::endl;
             numBytes += 0; // doesn't matter here, since the number of bytes is unused for assembler output
             break;
         case OutputMode::HEX:
-            output << instr->toHexString(true) << std::endl;
+            output << instr.toHexString(true) << std::endl;
             numBytes += 8; // doesn't matter here, since the number of bytes is unused for hexadecimal output
             break;
         default:

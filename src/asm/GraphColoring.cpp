@@ -215,9 +215,8 @@ static void blockRegisterFile(const RegisterFile file, const Local* local, FastM
 }
 
 static void updateFixedLocals(const intermediate::IntermediateInstruction& instr,
-    const Optional<const Local*>& writtenInPreviousInstruction0,
-    const Optional<const Local*>& writtenInPreviousInstruction1, const RegisterFile blockedFiles,
-    FastMap<const Local*, LocalUsage>& localUses)
+    const Local* writtenInPreviousInstruction0, const Local* writtenInPreviousInstruction1,
+    const RegisterFile blockedFiles, FastMap<const Local*, LocalUsage>& localUses)
 {
     const Optional<Value> firstArg = instr.getArgument(0);
     const Optional<Value> secondArg = instr.getArgument(1);
@@ -308,13 +307,13 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
     if(writtenInPreviousInstruction0)
     {
         // if the first argument was written in the previous instruction, it MUST be on accumulator
-        if(firstArg->hasLocal(writtenInPreviousInstruction0.value()))
+        if(firstArg->hasLocal(writtenInPreviousInstruction0))
         {
             // logging::debug() << "Local " << firstArg.get().local.to_string() << " must be an accumulator, because it
             // is written in the previous instruction before " << instr.to_string() << logging::endl;
             fixToRegisterFile(RegisterFile::ACCUMULATOR, firstArg->local(), localUses);
         }
-        else if(secondArg && secondArg->hasLocal(writtenInPreviousInstruction0.value()))
+        else if(secondArg && secondArg->hasLocal(writtenInPreviousInstruction0))
         {
             // logging::debug() << "Local " << secondArg.get().local.to_string() << " must be an accumulator, because it
             // is written in the previous instruction before " << instr.to_string() << logging::endl;
@@ -325,13 +324,13 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
     if(writtenInPreviousInstruction1)
     {
         // if the first argument was written in the previous instruction, it MUST be on accumulator
-        if(firstArg->hasLocal(writtenInPreviousInstruction1.value()))
+        if(firstArg->hasLocal(writtenInPreviousInstruction1))
         {
             // logging::debug() << "Local " << firstArg.get().local.to_string() << " must be an accumulator, because it
             // is written in the previous instruction before " << instr.to_string() << logging::endl;
             fixToRegisterFile(RegisterFile::ACCUMULATOR, firstArg->local(), localUses);
         }
-        else if(secondArg && secondArg->hasLocal(writtenInPreviousInstruction1.value()))
+        else if(secondArg && secondArg->hasLocal(writtenInPreviousInstruction1))
         {
             // logging::debug() << "Local " << secondArg.get().local.to_string() << " must be an accumulator, because it
             // is written in the previous instruction before " << instr.to_string() << logging::endl;
@@ -351,10 +350,8 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
 }
 
 static void fixLocals(const InstructionWalker it, FastMap<const Local*, LocalUsage>& localUses,
-    Optional<const Local*>& lastWrittenLocal0, Optional<const Local*>& lastWrittenLocal1)
+    const Local*& lastWrittenLocal0, const Local*& lastWrittenLocal1)
 {
-    static const Optional<const Local*> EMPTY;
-
     const intermediate::CombinedOperation* comp = it.get<const intermediate::CombinedOperation>();
     if(comp != nullptr)
     {
@@ -389,19 +386,16 @@ static void fixLocals(const InstructionWalker it, FastMap<const Local*, LocalUsa
             fixToRegisterFile(RegisterFile::ACCUMULATOR, comp->op1->getOutput()->local(), localUses);
         }
         // FIXME handling of forcing local to register-file A because of unpack-mode (unpack + combined even possible??)
-        lastWrittenLocal0 = comp->op1 && comp->op1->hasValueType(ValueType::LOCAL) ?
-            Optional<const Local*>(comp->op1->getOutput()->local()) :
-            EMPTY;
-        lastWrittenLocal1 = comp->op2 && comp->op2->hasValueType(ValueType::LOCAL) ?
-            Optional<const Local*>(comp->op2->getOutput()->local()) :
-            EMPTY;
+        lastWrittenLocal0 =
+            comp->op1 && comp->op1->hasValueType(ValueType::LOCAL) ? comp->op1->getOutput()->local() : nullptr;
+        lastWrittenLocal1 =
+            comp->op2 && comp->op2->hasValueType(ValueType::LOCAL) ? comp->op2->getOutput()->local() : nullptr;
     }
     else
     {
         PROFILE(updateFixedLocals, *it.get(), lastWrittenLocal0, lastWrittenLocal1, RegisterFile::NONE, localUses);
-        lastWrittenLocal0 =
-            it->hasValueType(ValueType::LOCAL) ? Optional<const Local*>(it->getOutput()->local()) : EMPTY;
-        lastWrittenLocal1 = EMPTY;
+        lastWrittenLocal0 = it->hasValueType(ValueType::LOCAL) ? it->getOutput()->local() : nullptr;
+        lastWrittenLocal1 = nullptr;
     }
 }
 
@@ -412,8 +406,8 @@ GraphColoring::GraphColoring(Method& method, InstructionWalker it) :
     openSet.reserve(method.getNumLocals());
     localUses.reserve(method.getNumLocals());
 
-    Optional<const Local*> lastWrittenLocal0;
-    Optional<const Local*> lastWrittenLocal1;
+    const Local* lastWrittenLocal0;
+    const Local* lastWrittenLocal1;
     while(!it.isEndOfMethod())
     {
         if(it.get() != nullptr && !it.has<intermediate::Branch>() && !it.has<intermediate::BranchLabel>() &&

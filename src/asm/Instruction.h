@@ -30,35 +30,47 @@ namespace vc4c
         public:
             Instruction();
             explicit Instruction(uint64_t code);
-            virtual ~Instruction();
 
             /*
              * Generates a string of custom assembler code for this instruction
              */
-            virtual std::string toASMString(bool addComments = true) const = 0;
-            /*
-             * Returns whether this instruction is valid.
-             *
-             * NOTE: The checking here is very basic and only used to determine the correct instruction-type for
-             * #readFromBinary
-             */
-            virtual bool isValidInstruction() const = 0;
-
+            std::string toASMString() const;
             uint64_t toBinaryCode() const;
             std::string toHexString(bool withAssemblerCode) const;
 
             /*
-             * Creates an instruction of the correct type representing the binary code specified
+             * Returns whether this instruction is valid.
+             *
+             * NOTE: The checking here is very basic and only used to determine the correct instruction-type.
              */
-            static Instruction* readFromBinary(uint64_t binary);
+            bool isValidInstruction() const;
+
+            /*
+             * Reinterprets this Instruction as the given type
+             */
+            template <typename T>
+            const T* as() const
+            {
+                static_assert(std::is_convertible<T, Instruction>::value, "");
+                auto ptr = reinterpret_cast<const T*>(this);
+                if(!ptr->isValidInstruction())
+                    throw CompilationError(
+                        CompilationStep::CODE_GENERATION, "Invalid assembler instruction", ptr->toASMString());
+                return ptr;
+            }
+
+            template <typename T>
+            bool is() const
+            {
+                static_assert(std::is_convertible<T, Instruction>::value, "");
+                auto ptr = reinterpret_cast<const T*>(this);
+                return ptr->isValidInstruction();
+            }
 
             BITFIELD_ENTRY(Sig, Signaling, 60, Quadruple)
             BITFIELD_ENTRY(WriteSwap, WriteSwap, 44, Bit)
             BITFIELD_ENTRY(AddOut, Address, 38, Sextuple)
             BITFIELD_ENTRY(MulOut, Address, 32, Sextuple)
-            std::string comment;
-            std::string previousComment;
-            std::string addComment(std::string s) const;
 
             Register getAddOutput() const;
             Register getMulOutput() const;
@@ -73,6 +85,34 @@ namespace vc4c
         };
 
         std::string toHexString(uint64_t code);
+
+        /**
+         * Wrapper around an Instruction which contains additional information to display
+         */
+        struct DecoratedInstruction
+        {
+            Instruction instruction;
+            std::string comment;
+            std::string previousComment;
+
+            DecoratedInstruction(Instruction instr, std::string&& comment = "") :
+                instruction(instr), comment(std::move(comment))
+            {
+            }
+
+            /*
+             * Generates a string of custom assembler code for this instruction
+             */
+            std::string toASMString(bool addComments = true) const;
+            inline uint64_t toBinaryCode() const
+            {
+                return instruction.toBinaryCode();
+            }
+            std::string toHexString(bool withAssemblerCode) const;
+
+        private:
+            std::string addComment(std::string s) const;
+        };
     } // namespace qpu_asm
 } // namespace vc4c
 

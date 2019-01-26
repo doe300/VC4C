@@ -6,6 +6,7 @@
 
 #include "IntermediateInstruction.h"
 
+#include "../asm/Instruction.h"
 #include "../periphery/VPM.h"
 
 #include "log.h"
@@ -115,7 +116,7 @@ std::string MemoryInstruction::to_string() const
         CompilationStep::GENERAL, "Unknown memory operation type", std::to_string(static_cast<unsigned>(op)));
 }
 
-qpu_asm::Instruction* MemoryInstruction::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
+qpu_asm::DecoratedInstruction MemoryInstruction::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const
 {
     throw CompilationError(CompilationStep::OPTIMIZER, "There should be no more memory operations", to_string());
@@ -162,7 +163,7 @@ static bool canMoveIntoVPM(const Value& val, bool isMemoryAddress)
         const Local* base = val.local()->getBase(true);
         if(base->type.getElementType().getStructType() ||
             (base->type.getElementType().getArrayType() &&
-                base->type.getElementType().getArrayType().value()->elementType.getStructType()))
+                base->type.getElementType().getArrayType()->elementType.getStructType()))
             // cannot lower structs/arrays of structs into VPM
             return false;
         const DataType inVPMType = periphery::VPM::getVPMStorageType(base->type.getElementType());
@@ -176,8 +177,7 @@ static bool canMoveIntoVPM(const Value& val, bool isMemoryAddress)
              * but can be lowered to VPM, since it is only used within one work-group
              */
             return base->as<Global>()->isConstant ||
-                base->type.getPointerType().ifPresent(
-                    [](const PointerType* ptr) -> bool { return ptr->addressSpace == AddressSpace::LOCAL; });
+                (base->type.getPointerType() && base->type.getPointerType()->addressSpace == AddressSpace::LOCAL);
         if(base->is<Parameter>())
             /*
              * Since parameter are used outside of the kernel execution (host-side), they cannot be lowered into VPM.
@@ -274,7 +274,7 @@ bool MemoryInstruction::accessesStackAllocation() const
 
 static bool isGlobalWithLocalAddressSpace(const Local* local)
 {
-    return local->is<Global>() && local->type.getPointerType().value()->addressSpace == AddressSpace::LOCAL;
+    return local->is<Global>() && local->type.getPointerType()->addressSpace == AddressSpace::LOCAL;
 }
 
 bool MemoryInstruction::accessesLocalMemory() const

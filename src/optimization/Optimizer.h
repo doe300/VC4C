@@ -26,7 +26,7 @@ namespace vc4c
          * Type of optimization.
          * This determines when and how often the optimization is executed
          */
-        enum class OptimizationType
+        enum class OptimizationType : unsigned char
         {
             /*
              * Run this optimizations once at the beginning of the optimization passes

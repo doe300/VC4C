@@ -14,6 +14,9 @@
 
 using namespace vc4c;
 
+constexpr Literal tombstone_traits<Literal>::tombstone;
+constexpr SmallImmediate tombstone_traits<SmallImmediate>::tombstone;
+
 std::string vc4c::toString(const RegisterFile file)
 {
     std::string fileName;
@@ -675,14 +678,14 @@ Value Value::createZeroInitializer(const DataType& type)
     }
     else if(type.getArrayType())
     {
-        for(unsigned i = 0; i < type.getArrayType().value()->size; i++)
+        for(unsigned i = 0; i < type.getArrayType()->size; i++)
         {
             val.container().elements.push_back(createZeroInitializer(type.getElementType()));
         }
     }
     else if(type.getStructType())
     {
-        for(unsigned i = 0; i < type.getStructType().value()->elementTypes.size(); i++)
+        for(unsigned i = 0; i < type.getStructType()->elementTypes.size(); i++)
         {
             val.container().elements.push_back(createZeroInitializer(type.getElementType(i)));
         }

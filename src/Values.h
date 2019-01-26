@@ -386,11 +386,13 @@ namespace vc4c
     /*
      * The arithmetic type of a literal value
      */
-    enum class LiteralType
+    enum class LiteralType : unsigned char
     {
         INTEGER,
         REAL,
-        BOOL
+        BOOL,
+        // "literal type" indicating no literal present
+        TOMBSTONE
     };
 
     struct SmallImmediate;
@@ -407,6 +409,7 @@ namespace vc4c
     public:
         LiteralType type;
 
+        constexpr Literal(optional_tombstone_tag) noexcept : type(LiteralType::TOMBSTONE), u() {}
         explicit constexpr Literal(int32_t integer) noexcept : type(LiteralType::INTEGER), i(integer) {}
         explicit constexpr Literal(uint32_t integer) noexcept : type(LiteralType::INTEGER), u(integer) {}
         explicit constexpr Literal(float real) noexcept : type(LiteralType::REAL), f(real) {}
@@ -462,6 +465,18 @@ namespace vc4c
 
         static_assert(sizeof(int32_t) == sizeof(uint32_t) && sizeof(uint32_t) == sizeof(float),
             "Sizes of literal types do not match!");
+    };
+
+    template <>
+    struct tombstone_traits<Literal>
+    {
+        static constexpr bool is_specialized = true;
+        static constexpr Literal tombstone = Literal(optional_tombstone_tag{});
+
+        static constexpr bool isTombstone(const Literal& val)
+        {
+            return val.type == LiteralType::TOMBSTONE;
+        }
     };
 
     /*!
@@ -539,12 +554,24 @@ namespace vc4c
         static SmallImmediate fromRotationOffset(unsigned char offset);
     };
 
+    template <>
+    struct tombstone_traits<SmallImmediate>
+    {
+        static constexpr bool is_specialized = true;
+        static constexpr SmallImmediate tombstone = SmallImmediate(255);
+
+        static constexpr bool isTombstone(const SmallImmediate& val)
+        {
+            return val.value == 255;
+        }
+    };
+
     constexpr SmallImmediate VECTOR_ROTATE_R5{48};
 
     /*
      * The tag-type for the tagged union containing the actual content of a Value
      */
-    enum class ValueType
+    enum class ValueType : unsigned char
     {
         LITERAL,
         LOCAL, // also contains labels

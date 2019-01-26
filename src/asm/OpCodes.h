@@ -1030,7 +1030,7 @@ namespace vc4c
     /*
      * The semaphore values and their usages
      */
-    enum class Semaphore
+    enum class Semaphore : unsigned char
     {
         BARRIER_WORK_ITEM_0 = 0,
         BARRIER_WORK_ITEM_1 = 1,

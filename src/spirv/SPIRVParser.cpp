@@ -657,7 +657,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     case spv::Op::OpTypeSampledImage:
     {
-        const ImageType* image = typeMappings.at(getWord(parsed_instruction, 2)).getImageType().value();
+        const ImageType* image = typeMappings.at(getWord(parsed_instruction, 2)).getImageType();
         ImageType* sampledImage = new ImageType();
         sampledImage->dimensions = image->dimensions;
         sampledImage->isImageArray = image->isImageArray;
@@ -927,7 +927,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             isConstant = isConstant ||
                 static_cast<SpvStorageClass>(getWord(parsed_instruction, 3)) == SpvStorageClassUniformConstant;
             module->globalData.emplace_back(Global(name, type, val, isConstant));
-            module->globalData.back().type.getPointerType().value()->alignment = alignment;
+            module->globalData.back().type.getPointerType()->alignment = alignment;
             memoryAllocatedData.emplace(parsed_instruction->result_id, &module->globalData.back());
         }
         logging::debug() << "Reading variable: " << type.to_string() << " " << name

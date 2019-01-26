@@ -743,9 +743,9 @@ Optional<Value> SPIRVIndexOf::precalculate(
                 throw CompilationError(CompilationStep::LLVM_2_IR, "Can't access struct-element with non-literal index",
                     index.to_string());
 
-            subOffset = Value(
-                Literal(container.type.getStructType().value()->getStructSize(index.getLiteralValue()->unsignedInt())),
-                TYPE_INT32);
+            subOffset =
+                Value(Literal(container.type.getStructType()->getStructSize(index.getLiteralValue()->unsignedInt())),
+                    TYPE_INT32);
             subContainerType = subContainerType.getElementType(index.getLiteralValue()->signedInt());
         }
         else

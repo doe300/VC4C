@@ -21,7 +21,7 @@ std::string SemaphoreAdjustment::to_string() const
         (increase ? "increase" : "decrease") + createAdditionalInfoString();
 }
 
-qpu_asm::Instruction* SemaphoreAdjustment::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
+qpu_asm::DecoratedInstruction SemaphoreAdjustment::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
     if(conditional != COND_ALWAYS)
@@ -31,7 +31,7 @@ qpu_asm::Instruction* SemaphoreAdjustment::convertToAsm(const FastMap<const Loca
     const Register outReg = getOutput() ?
         (getOutput()->hasLocal() ? registerMapping.at(getOutput()->local()) : getOutput()->reg()) :
         REG_NOP;
-    return new qpu_asm::SemaphoreInstruction(PACK_NOP, COND_ALWAYS, COND_ALWAYS, setFlags,
+    return qpu_asm::SemaphoreInstruction(PACK_NOP, COND_ALWAYS, COND_ALWAYS, setFlags,
         outReg.file == RegisterFile::PHYSICAL_B ? WriteSwap::SWAP : WriteSwap::DONT_SWAP, outReg.num, outReg.num,
         increase, semaphore);
 }
@@ -103,7 +103,7 @@ std::string MemoryBarrier::to_string() const
         createAdditionalInfoString();
 }
 
-qpu_asm::Instruction* MemoryBarrier::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
+qpu_asm::DecoratedInstruction MemoryBarrier::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
     throw CompilationError(
@@ -139,7 +139,7 @@ std::string LifetimeBoundary::to_string() const
 {
     return std::string("life-time for ") + getStackAllocation().to_string() + (isLifetimeEnd ? " ends" : " starts");
 }
-qpu_asm::Instruction* LifetimeBoundary::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
+qpu_asm::DecoratedInstruction LifetimeBoundary::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
     throw CompilationError(
@@ -182,7 +182,7 @@ std::string MutexLock::to_string() const
     return REG_MUTEX.to_string(true, locksMutex());
 }
 
-qpu_asm::Instruction* MutexLock::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
+qpu_asm::DecoratedInstruction MutexLock::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const
 {
     MoveOperation move(locksMutex() ? NOP_REGISTER : MUTEX_REGISTER,

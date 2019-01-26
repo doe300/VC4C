@@ -307,9 +307,9 @@ static InstructionWalker findGroupOfVPMAccess(
 
         // check for complex types
         DataType elementType = baseAndOffset.base->type.isPointerType() ?
-            baseAndOffset.base->type.getPointerType().value()->elementType :
+            baseAndOffset.base->type.getPointerType()->elementType :
             baseAndOffset.base->type;
-        elementType = elementType.getArrayType() ? elementType.getArrayType().value()->elementType : elementType;
+        elementType = elementType.getArrayType() ? elementType.getArrayType()->elementType : elementType;
         if(!elementType.isSimpleType())
             // XXX for now, skip combining any access to complex types (here: only struct, image)
             // don't check this read/write again
@@ -736,7 +736,7 @@ void normalization::resolveStackAllocation(
     }
 }
 
-enum class MemoryType
+enum class MemoryType : unsigned char
 {
     // lower the value into a register and replace all loads with moves
     QPU_REGISTER_READONLY,
@@ -774,22 +774,21 @@ static MemoryType toMemoryType(periphery::VPMUsage usage)
  *
  * Returns (char*)address - (char*)baseAddress
  */
-static InstructionWalker insertAddressToOffset(
-    InstructionWalker it, Method& method, Value& out, const Local* baseAddress, const MemoryInstruction* mem)
+static InstructionWalker insertAddressToOffset(InstructionWalker it, Method& method, Value& out,
+    const Local* baseAddress, const MemoryInstruction* mem, const Value& ptrValue)
 {
-    auto ptrVal = mem->op == MemoryOperation::READ ? mem->getSource() : mem->getDestination();
-    auto indexOp = dynamic_cast<const Operation*>(ptrVal.getSingleWriter());
+    auto indexOp = dynamic_cast<const Operation*>(ptrValue.getSingleWriter());
     if(!indexOp)
     {
         // for stores, the store itself is also a write instruction
-        auto writers = ptrVal.local()->getUsers(LocalUse::Type::WRITER);
+        auto writers = ptrValue.local()->getUsers(LocalUse::Type::WRITER);
         if(writers.size() == 2 && writers.find(mem) != writers.end())
         {
             writers.erase(mem);
             indexOp = dynamic_cast<const Operation*>(*writers.begin());
         }
     }
-    if(ptrVal.hasLocal(baseAddress))
+    if(ptrValue.hasLocal(baseAddress))
     {
         // trivial case, the offset is zero
         out = INT_ZERO;
@@ -803,7 +802,7 @@ static InstructionWalker insertAddressToOffset(
     {
         // for more complex versions, calculate offset by subtracting base address from result
         // address
-        out = assign(it, baseAddress->type, "%pointer_diff") = ptrVal - baseAddress->createReference();
+        out = assign(it, baseAddress->type, "%pointer_diff") = ptrValue - baseAddress->createReference();
     }
     return it;
 }
@@ -819,10 +818,10 @@ static InstructionWalker insertAddressToOffset(
  * therefore the second part omitted) for shared memory
  */
 static InstructionWalker insertAddressToStackOffset(InstructionWalker it, Method& method, Value& out,
-    const Local* baseAddress, MemoryType type, const MemoryInstruction* mem)
+    const Local* baseAddress, MemoryType type, const MemoryInstruction* mem, const Value& ptrValue)
 {
     Value tmpIndex = UNDEFINED_VALUE;
-    it = insertAddressToOffset(it, method, tmpIndex, baseAddress, mem);
+    it = insertAddressToOffset(it, method, tmpIndex, baseAddress, mem, ptrValue);
     if(type == MemoryType::VPM_PER_QPU)
     {
         // size of one stack-frame in bytes
@@ -847,10 +846,10 @@ static InstructionWalker insertAddressToStackOffset(InstructionWalker it, Method
  * Return ((char*)address - (char*)baseAddress) / sizeof(elementType)
  */
 static InstructionWalker insertAddressToElementOffset(InstructionWalker it, Method& method, Value& out,
-    const Local* baseAddress, const Value& container, const MemoryInstruction* mem)
+    const Local* baseAddress, const Value& container, const MemoryInstruction* mem, const Value& ptrValue)
 {
     Value tmpIndex = UNDEFINED_VALUE;
-    it = insertAddressToOffset(it, method, tmpIndex, baseAddress, mem);
+    it = insertAddressToOffset(it, method, tmpIndex, baseAddress, mem, ptrValue);
     // the index (as per index calculation) is in bytes, but we need index in elements, so divide by element size
     out = assign(it, TYPE_VOID.toPointerType(), "%element_offset") =
         tmpIndex / Literal(container.type.getElementType().getPhysicalWidth());
@@ -889,8 +888,8 @@ static InstructionWalker mapToVPMMemoryAccessInstructions(
         if(sourceArea)
         {
             Value inAreaOffset = UNDEFINED_VALUE;
-            it = insertAddressToStackOffset(
-                it, method, inAreaOffset, sourceArea->originalAddress, toMemoryType(sourceArea->usageType), mem);
+            it = insertAddressToStackOffset(it, method, inAreaOffset, sourceArea->originalAddress,
+                toMemoryType(sourceArea->usageType), mem, mem->getSource());
             // the VPM addressing for DMA access contains row and column offset. We only have row offset, so we need to
             // shift the result to the correct position
             inAreaOffset = assign(it, TYPE_VOID.toPointerType(), "%vpm_row_offset") = inAreaOffset << 4_val;
@@ -900,8 +899,8 @@ static InstructionWalker mapToVPMMemoryAccessInstructions(
         else if(destArea)
         {
             Value inAreaOffset = UNDEFINED_VALUE;
-            it = insertAddressToStackOffset(
-                it, method, inAreaOffset, destArea->originalAddress, toMemoryType(destArea->usageType), mem);
+            it = insertAddressToStackOffset(it, method, inAreaOffset, destArea->originalAddress,
+                toMemoryType(destArea->usageType), mem, mem->getDestination());
             // the VPM addressing for DMA access contains row and column offset. We only have row offset, so we need to
             // shift the result to the correct position
             inAreaOffset = assign(it, TYPE_VOID.toPointerType(), "%vpm_row_offset") = inAreaOffset << 4_val;
@@ -990,7 +989,7 @@ static bool isMemoryOnlyRead(const Local* local)
         return true;
     if(base->is<Global>() && base->as<Global>()->isConstant)
         return true;
-    if(base->type.getPointerType() && base->type.getPointerType().value()->addressSpace == AddressSpace::CONSTANT)
+    if(base->type.getPointerType() && base->type.getPointerType()->addressSpace == AddressSpace::CONSTANT)
         return true;
 
     // TODO also check for no actual writes. Need to heed index-calculation from base!
@@ -1068,10 +1067,10 @@ static Optional<DataType> convertSmallArrayToRegister(const Local* local)
     const Local* base = local->getBase(true);
     if(base->type.getPointerType())
     {
-        const auto& baseType = base->type.getPointerType().value()->elementType;
+        const auto& baseType = base->type.getPointerType()->elementType;
         auto arrayType = baseType.getArrayType();
-        if(arrayType && arrayType.value()->size <= NATIVE_VECTOR_SIZE && arrayType.value()->elementType.isScalarType())
-            return arrayType.value()->elementType.toVectorType(static_cast<uint8_t>(arrayType.value()->size));
+        if(arrayType && arrayType->size <= NATIVE_VECTOR_SIZE && arrayType->elementType.isScalarType())
+            return arrayType->elementType.toVectorType(static_cast<uint8_t>(arrayType->size));
     }
     return {};
 }
@@ -1085,16 +1084,18 @@ static Optional<DataType> convertSmallArrayToRegister(const Local* local)
 static InstructionWalker lowerReadWriteOfMemoryToRegister(InstructionWalker it, Method& method, const Local* local,
     const Value& loweredRegister, const MemoryInstruction* mem)
 {
-    Value tmpIndex = UNDEFINED_VALUE;
-    it = insertAddressToElementOffset(it, method, tmpIndex, local, loweredRegister, mem);
     if(mem->op == MemoryOperation::READ)
     {
+        Value tmpIndex = UNDEFINED_VALUE;
+        it = insertAddressToElementOffset(it, method, tmpIndex, local, loweredRegister, mem, mem->getSource());
         // TODO check whether index is guaranteed to be in range [0, 16[
         it = insertVectorExtraction(it, method, loweredRegister, tmpIndex, mem->getDestination());
         return it.erase();
     }
     if(mem->op == MemoryOperation::WRITE)
     {
+        Value tmpIndex = UNDEFINED_VALUE;
+        it = insertAddressToElementOffset(it, method, tmpIndex, local, loweredRegister, mem, mem->getDestination());
         // TODO need special handling for inserting multiple elements to set all new elements
         it = insertVectorInsertion(it, method, loweredRegister, tmpIndex, mem->getSource());
         return it.erase();
@@ -1107,6 +1108,8 @@ static InstructionWalker lowerReadWriteOfMemoryToRegister(InstructionWalker it, 
                 "Copy from and to same register lowered memory area is not supported", mem->to_string());
         if(mem->getSource().hasLocal() && mem->getSource().local()->getBase(true) == local)
         {
+            Value tmpIndex = UNDEFINED_VALUE;
+            it = insertAddressToElementOffset(it, method, tmpIndex, local, loweredRegister, mem, mem->getSource());
             // TODO check whether index is guaranteed to be in range [0, 16[
             auto tmp = method.addNewLocal(mem->getSourceElementType());
             it = insertVectorExtraction(it, method, loweredRegister, tmpIndex, tmp);
@@ -1115,6 +1118,8 @@ static InstructionWalker lowerReadWriteOfMemoryToRegister(InstructionWalker it, 
         }
         if(mem->getDestination().hasLocal() && mem->getDestination().local()->getBase(true) == local)
         {
+            Value tmpIndex = UNDEFINED_VALUE;
+            it = insertAddressToElementOffset(it, method, tmpIndex, local, loweredRegister, mem, mem->getDestination());
             // TODO need special handling for inserting multiple elements to set all new elements
             auto tmp = method.addNewLocal(mem->getDestinationElementType());
             it.emplace(new MemoryInstruction(MemoryOperation::READ, tmp, mem->getSource()));
@@ -1378,8 +1383,6 @@ static bool lowerMemoryToVPM(Method& method, const Local* local, MemoryType type
         else
             logging::debug() << "Trying to lower access to shared local memory into VPM: " << mem->to_string()
                              << logging::endl;
-        Value inAreaOffset = UNDEFINED_VALUE;
-        auto tmpIt = insertAddressToStackOffset(*it, method, inAreaOffset, local, type, mem);
         switch(mem->op)
         {
         case MemoryOperation::COPY:
@@ -1401,15 +1404,23 @@ static bool lowerMemoryToVPM(Method& method, const Local* local, MemoryType type
             throw CompilationError(
                 CompilationStep::NORMALIZER, "Filling VPM area is not yet implemented", mem->to_string());
         case MemoryOperation::READ:
+        {
+            Value inAreaOffset = UNDEFINED_VALUE;
+            auto tmpIt = insertAddressToStackOffset(*it, method, inAreaOffset, local, type, mem, mem->getSource());
             it = memoryInstructions.erase(it);
             tmpIt = method.vpm->insertReadVPM(method, tmpIt, mem->getDestination(), vpmArea, true, inAreaOffset);
             tmpIt.erase();
             break;
+        }
         case MemoryOperation::WRITE:
+        {
+            Value inAreaOffset = UNDEFINED_VALUE;
+            auto tmpIt = insertAddressToStackOffset(*it, method, inAreaOffset, local, type, mem, mem->getDestination());
             it = memoryInstructions.erase(it);
             tmpIt = method.vpm->insertWriteVPM(method, tmpIt, mem->getSource(), vpmArea, true, inAreaOffset);
             tmpIt.erase();
             break;
+        }
         }
         logging::debug() << "Replaced access to memory buffer with access to VPM" << logging::endl;
     }
@@ -1466,7 +1477,7 @@ static FastMap<const Local*, MemoryAccess> determineMemoryAccess(Method& method)
     {
         if(!param.type.isPointerType())
             continue;
-        const auto* pointerType = param.type.getPointerType().value();
+        const auto* pointerType = param.type.getPointerType();
         if(pointerType->addressSpace == AddressSpace::CONSTANT)
         {
             logging::debug() << "Constant parameter '" << param.to_string() << "' will be read from RAM via TMU"

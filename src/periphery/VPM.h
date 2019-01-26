@@ -63,8 +63,10 @@ namespace vc4c
              * wide granularity, allowing to address only blocks of 4 words (16 byte-sized elements)
              */
             BITFIELD_ENTRY(Address, uint8_t, 0, Byte)
-            BITFIELD_ENTRY(WordRow, uint8_t, 0, Byte)
-            BITFIELD_ENTRY(HalfWordRow, uint8_t, 1, Septuple)
+            // NOTE: address is 1 full byte wide, but is not used completely for word and half-word addressing,
+            // since only the first 64 rows can be addressed (2^6)
+            BITFIELD_ENTRY(WordRow, uint8_t, 0, Sextuple)
+            BITFIELD_ENTRY(HalfWordRow, uint8_t, 1, Sextuple)
             BITFIELD_ENTRY(HalfWordOffset, bool, 0, Bit)
             BITFIELD_ENTRY(ByteRow, uint8_t, 2, Sextuple)
             BITFIELD_ENTRY(ByteOffset, uint8_t, 0, Tuple)
@@ -162,7 +164,9 @@ namespace vc4c
              * the first row
              */
             BITFIELD_ENTRY(VPMBase, uint16_t, 3, Undecuple)
-            BITFIELD_ENTRY(WordRow, uint8_t, 7, Septuple)
+            // NOTE: The specification says this field is 7 bits wide, but any other VPM access can only access the
+            // first 64 rows (6 bits), so we make this 6 bits too
+            BITFIELD_ENTRY(WordRow, uint8_t, 7, Sextuple)
             BITFIELD_ENTRY(WordColumn, uint8_t, 3, Quadruple)
             /*
              * "0,1 = Vertical, Horizontal"
@@ -320,8 +324,10 @@ namespace vc4c
              * See VPWGenericSetup#Address for more detailed description
              */
             BITFIELD_ENTRY(Address, uint8_t, 0, Byte)
-            BITFIELD_ENTRY(WordRow, uint8_t, 0, Byte)
-            BITFIELD_ENTRY(HalfWordRow, uint8_t, 1, Septuple)
+            // NOTE: address is 1 full byte wide, but is not used completely for word and half-word addressing,
+            // since only the first 64 rows can be addressed (2^6)
+            BITFIELD_ENTRY(WordRow, uint8_t, 0, Sextuple)
+            BITFIELD_ENTRY(HalfWordRow, uint8_t, 1, Sextuple)
             BITFIELD_ENTRY(HalfWordOffset, bool, 0, Bit)
             BITFIELD_ENTRY(ByteRow, uint8_t, 2, Sextuple)
             BITFIELD_ENTRY(ByteOffset, uint8_t, 0, Tuple)
@@ -401,7 +407,7 @@ namespace vc4c
              * See VPWDMASetup#Address for more details
              */
             BITFIELD_ENTRY(Address, uint16_t, 0, Undecuple)
-            BITFIELD_ENTRY(WordRow, uint8_t, 4, Septuple)
+            BITFIELD_ENTRY(WordRow, uint8_t, 4, Sextuple)
             BITFIELD_ENTRY(WordColumn, uint8_t, 0, Quadruple)
             /*
              * "0,1 = Horizontal, Vertical"
@@ -604,7 +610,7 @@ namespace vc4c
          */
         std::pair<DataType, uint8_t> getBestVectorSize(const int64_t numBytes);
 
-        enum class VPMUsage
+        enum class VPMUsage : unsigned char
         {
             /*
              * The area of the VPM to be used as cache for general DMA access.

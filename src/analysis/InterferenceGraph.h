@@ -21,7 +21,7 @@ namespace vc4c
         /*
          * The type of interference between two locals
          */
-        enum class InterferenceType
+        enum class InterferenceType : unsigned char
         {
             /*
              * Two locals are in use at the same time, but do not block each other's register-file (only the specific

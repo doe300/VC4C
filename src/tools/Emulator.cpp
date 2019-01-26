@@ -31,7 +31,7 @@ using namespace vc4c::tools;
 extern std::vector<vc4c::Value> toLoadedValues(uint32_t mask, vc4c::intermediate::LoadType type);
 
 extern void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo,
-    ReferenceRetainingList<Global>& globals, std::vector<std::unique_ptr<qpu_asm::Instruction>>& instructions);
+    ReferenceRetainingList<Global>& globals, std::vector<qpu_asm::Instruction>& instructions);
 
 static Value ELEMENT_NUMBER(
     ContainerValue({Value(SmallImmediate(0), TYPE_INT8), Value(SmallImmediate(1), TYPE_INT8),
@@ -64,15 +64,24 @@ tools::Word* Memory::getWordAddress(MemoryAddress address)
     if(VariantNamespace::holds_alternative<DirectBuffer>(data))
     {
         if(address >= VariantNamespace::get<DirectBuffer>(data).size() * sizeof(Word))
+        {
+            logging::warn() << "Buffer: [0, " << std::hex << VariantNamespace::get<DirectBuffer>(data).size()
+                            << std::dec << ")" << logging::endl;
             throw CompilationError(CompilationStep::GENERAL,
                 "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
+        }
         return VariantNamespace::get<DirectBuffer>(data).data() + (address / sizeof(Word));
     }
+    auto& buffers = VariantNamespace::get<MappedBuffers>(data);
     if(address >= (VariantNamespace::get<MappedBuffers>(data).rbegin()->first +
                       VariantNamespace::get<MappedBuffers>(data).rbegin()->second.get().size()))
+    {
+        for(const auto& buffer : buffers)
+            logging::warn() << "Buffer: [" << std::hex << buffer.first << ", "
+                            << (buffer.first + buffer.second.get().size()) << std::dec << ")" << logging::endl;
         throw CompilationError(CompilationStep::GENERAL,
             "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
-    auto& buffers = VariantNamespace::get<MappedBuffers>(data);
+    }
     for(auto it = buffers.begin(); it != buffers.end(); ++it)
     {
         if(it->first <= address && (it->first + it->second.get().size()) > address)
@@ -92,15 +101,24 @@ const tools::Word* Memory::getWordAddress(MemoryAddress address) const
     if(VariantNamespace::holds_alternative<DirectBuffer>(data))
     {
         if(address >= VariantNamespace::get<DirectBuffer>(data).size() * sizeof(Word))
+        {
+            logging::warn() << "Buffer: [0, " << std::hex << VariantNamespace::get<DirectBuffer>(data).size()
+                            << std::dec << ")" << logging::endl;
             throw CompilationError(CompilationStep::GENERAL,
                 "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
+        }
         return VariantNamespace::get<DirectBuffer>(data).data() + (address / sizeof(Word));
     }
+    auto& buffers = VariantNamespace::get<MappedBuffers>(data);
     if(address >= (VariantNamespace::get<MappedBuffers>(data).rbegin()->first +
                       VariantNamespace::get<MappedBuffers>(data).rbegin()->second.get().size()))
+    {
+        for(const auto& buffer : buffers)
+            logging::warn() << "Buffer: [" << std::hex << buffer.first << ", "
+                            << (buffer.first + buffer.second.get().size()) << std::dec << ")" << logging::endl;
         throw CompilationError(CompilationStep::GENERAL,
             "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
-    auto& buffers = VariantNamespace::get<MappedBuffers>(data);
+    }
     for(auto it = buffers.begin(); it != buffers.end(); ++it)
     {
         if(it->first <= address && (it->first + it->second.get().size()) > address)
@@ -1073,9 +1091,9 @@ static ElementFlags generateImmediateFlags(Literal lit)
     return flags;
 }
 
-bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction)
+bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction)
 {
-    const qpu_asm::Instruction* inst = (firstInstruction + pc)->get();
+    const qpu_asm::Instruction* inst = &(*(firstInstruction + pc));
     ++instrumentation[inst].numExecutions;
     logging::info() << "QPU " << static_cast<unsigned>(ID) << " (0x" << std::hex << pc << std::dec
                     << "): " << inst->toASMString() << logging::endl;
@@ -1085,15 +1103,15 @@ bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iter
         return false;
     if(inst->getSig() == SIGNAL_NONE || executeSignal(inst->getSig()))
     {
-        if(dynamic_cast<const qpu_asm::ALUInstruction*>(inst) != nullptr)
+        if(inst->is<qpu_asm::ALUInstruction>())
         {
-            if(executeALU(dynamic_cast<const qpu_asm::ALUInstruction*>(inst)))
+            if(executeALU(inst->as<qpu_asm::ALUInstruction>()))
                 ++nextPC;
             // otherwise the execution stalled and the PC stays the same
         }
-        else if(dynamic_cast<const qpu_asm::BranchInstruction*>(inst) != nullptr)
+        else if(inst->is<qpu_asm::BranchInstruction>())
         {
-            const auto br = dynamic_cast<const qpu_asm::BranchInstruction*>(inst);
+            const auto br = inst->as<qpu_asm::BranchInstruction>();
             if(isConditionMet(br->getBranchCondition()))
             {
                 ++instrumentation[inst].numBranchTaken;
@@ -1102,7 +1120,7 @@ bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iter
                 if(br->getAddRegister() == BranchReg::BRANCH_REG ||
                     br->getBranchRelative() == BranchRel::BRANCH_ABSOLUTE)
                     throw CompilationError(
-                        CompilationStep::GENERAL, "This kind of branch is not yet implemented", br->toASMString(false));
+                        CompilationStep::GENERAL, "This kind of branch is not yet implemented", br->toASMString());
                 nextPC += offset;
 
                 // see Broadcom specification, page 34
@@ -1117,9 +1135,9 @@ bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iter
             PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 160, "branches taken",
                 isConditionMet(br->getBranchCondition()) ? 1 : 0);
         }
-        else if(dynamic_cast<const qpu_asm::LoadInstruction*>(inst) != nullptr)
+        else if(inst->is<qpu_asm::LoadInstruction>())
         {
-            const auto load = dynamic_cast<const qpu_asm::LoadInstruction*>(inst);
+            const auto load = inst->as<qpu_asm::LoadInstruction>();
             auto type = load->getType();
             Value imm = Value(Literal(load->getImmediateInt()), TYPE_INT32);
             switch(type)
@@ -1150,9 +1168,9 @@ bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iter
                     generateImmediateFlags(Literal(load->getImmediateInt())));
             ++nextPC;
         }
-        else if(dynamic_cast<const qpu_asm::SemaphoreInstruction*>(inst) != nullptr)
+        else if(inst->is<qpu_asm::SemaphoreInstruction>())
         {
-            const auto semaphore = dynamic_cast<const qpu_asm::SemaphoreInstruction*>(inst);
+            const auto semaphore = inst->as<qpu_asm::SemaphoreInstruction>();
             bool dontStall = true;
             Value result = UNDEFINED_VALUE;
             if(semaphore->getIncrementSemaphore())
@@ -1191,9 +1209,9 @@ bool QPU::execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iter
 }
 
 const qpu_asm::Instruction* QPU::getCurrentInstruction(
-    std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction) const
+    std::vector<qpu_asm::Instruction>::const_iterator firstInstruction) const
 {
-    return (firstInstruction + pc)->get();
+    return &(*(firstInstruction + pc));
 }
 
 static std::pair<Value, bool> toInputValue(
@@ -1677,8 +1695,8 @@ std::vector<MemoryAddress> tools::buildUniforms(Memory& memory, MemoryAddress ba
     return res;
 }
 
-static void emulateStep(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction,
-    ReferenceRetainingList<QPU>& qpus)
+static void emulateStep(
+    std::vector<qpu_asm::Instruction>::const_iterator firstInstruction, ReferenceRetainingList<QPU>& qpus)
 {
     auto it = qpus.begin();
     while(it != qpus.end())
@@ -1702,7 +1720,7 @@ static void emulateStep(std::vector<std::unique_ptr<qpu_asm::Instruction>>::cons
     }
 }
 
-bool tools::emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction, Memory& memory,
+bool tools::emulate(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction, Memory& memory,
     const std::vector<MemoryAddress>& uniformAddresses, InstrumentationResults& instrumentation, uint32_t maxCycles)
 {
     if(uniformAddresses.size() > NUM_QPUS)
@@ -1754,7 +1772,7 @@ bool tools::emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_it
     return success;
 }
 
-bool tools::emulateTask(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction,
+bool tools::emulateTask(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction,
     const std::vector<MemoryAddress>& parameter, Memory& memory, MemoryAddress uniformBaseAddress,
     MemoryAddress globalData, const KernelUniforms& uniformsUsed, InstrumentationResults& instrumentation,
     uint32_t maxCycles)
@@ -1888,7 +1906,7 @@ EmulationResult tools::emulate(const EmulationData& data)
 {
     qpu_asm::ModuleInfo module;
     ReferenceRetainingList<Global> globals;
-    std::vector<std::unique_ptr<qpu_asm::Instruction>> instructions;
+    std::vector<qpu_asm::Instruction> instructions;
     if(data.module.second != nullptr)
         extractBinary(*data.module.second, module, globals, instructions);
     else
@@ -1955,11 +1973,11 @@ EmulationResult tools::emulate(const EmulationData& data)
     result.instrumentation.reserve(kernelInfo->getLength().getValue());
     while(true)
     {
-        result.instrumentation.emplace_back(instrumentation[it->get()]);
+        result.instrumentation.emplace_back(instrumentation[&(*it)]);
         if(dumpInstrumentation)
-            *dumpInstrumentation << std::left << std::setw(80) << (*it)->toASMString() << "//"
-                                 << instrumentation[it->get()].to_string() << std::endl;
-        if((*it)->getSig() == SIGNAL_END_PROGRAM)
+            *dumpInstrumentation << std::left << std::setw(80) << it->toASMString() << "//"
+                                 << instrumentation[&(*it)].to_string() << std::endl;
+        if(it->getSig() == SIGNAL_END_PROGRAM)
             break;
         ++it;
     }
@@ -1967,18 +1985,22 @@ EmulationResult tools::emulate(const EmulationData& data)
     return result;
 }
 
-static std::vector<std::unique_ptr<qpu_asm::Instruction>> extractInstructions(
-    const uint64_t* start, uint32_t numInstructions)
+static std::vector<qpu_asm::Instruction> extractInstructions(const uint64_t* start, uint32_t numInstructions)
 {
-    std::vector<std::unique_ptr<qpu_asm::Instruction>> res;
+    std::vector<qpu_asm::Instruction> res;
     res.reserve(numInstructions);
+    bool threadEndFound = false;
     for(std::size_t i = 0; i < numInstructions; ++i)
     {
-        qpu_asm::Instruction* instr = qpu_asm::Instruction::readFromBinary(start[i]);
-        if(instr == nullptr)
+        qpu_asm::Instruction instr(start[i]);
+        if(!instr.isValidInstruction())
             throw CompilationError(CompilationStep::GENERAL, "Unrecognized instruction", std::to_string(start[i]));
         res.emplace_back(instr);
+        if(instr.getSig() == SIGNAL_END_PROGRAM)
+            threadEndFound = true;
     }
+    if(!threadEndFound)
+        throw CompilationError(CompilationStep::GENERAL, "Thread end instruction not found in code");
     return res;
 }
 
@@ -2001,11 +2023,11 @@ LowLevelEmulationResult tools::emulate(const LowLevelEmulationData& data)
     result.instrumentation.reserve(data.numInstructions);
     while(true)
     {
-        result.instrumentation.emplace_back(instrumentation[it->get()]);
+        result.instrumentation.emplace_back(instrumentation[&(*it)]);
         if(dumpInstrumentation)
-            *dumpInstrumentation << std::left << std::setw(80) << (*it)->toASMString() << "//"
-                                 << instrumentation[it->get()].to_string() << std::endl;
-        if((*it)->getSig() == SIGNAL_END_PROGRAM)
+            *dumpInstrumentation << std::left << std::setw(80) << it->toASMString() << "//"
+                                 << instrumentation[&(*it)].to_string() << std::endl;
+        if(it->getSig() == SIGNAL_END_PROGRAM)
             break;
         ++it;
     }

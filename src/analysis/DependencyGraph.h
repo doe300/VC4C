@@ -20,7 +20,7 @@ namespace vc4c
 
     class BasicBlock;
 
-    enum class DependencyType
+    enum class DependencyType : unsigned short
     {
         // flow (true) dependence, read-after-write. The instruction reading a value depends on the value being written
         // before

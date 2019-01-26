@@ -166,7 +166,7 @@ static IntrinsicFunction intrinsifyMutexAccess(bool lock)
     };
 }
 
-enum class DMAAccess
+enum class DMAAccess : unsigned char
 {
     READ,
     WRITE,

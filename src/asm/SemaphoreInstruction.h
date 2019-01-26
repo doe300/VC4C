@@ -19,10 +19,9 @@ namespace vc4c
             explicit SemaphoreInstruction(uint64_t code) : Instruction(code) {}
             SemaphoreInstruction(Pack pack, ConditionCode condAdd, ConditionCode condMul, SetFlag sf, WriteSwap ws,
                 Address addOut, Address mulOut, bool increment, Semaphore semaphore);
-            ~SemaphoreInstruction() override = default;
 
-            std::string toASMString(bool addComments) const override;
-            bool isValidInstruction() const override;
+            std::string toASMString() const;
+            bool isValidInstruction() const;
 
             // NOTE: The pack value includes the pm bit!
             BITFIELD_ENTRY(Pack, Pack, 52, Quintuple)

@@ -64,7 +64,7 @@ static FastMap<const Local*, std::size_t> mapLabels(Method& method)
     return labelsMap;
 }
 
-const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator::generateInstructions(Method& method)
+const FastModificationList<DecoratedInstruction>& CodeGenerator::generateInstructions(Method& method)
 {
     PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 0, "CodeGeneration (before)", method.countInstructions());
 #ifdef MULTI_THREADED
@@ -129,13 +129,10 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
         auto instr = it->get();
         if(instr->mapsToASMInstruction())
         {
-            Instruction* mapped = instr->convertToAsm(registerMapping, labelMap, index);
-            if(mapped != nullptr)
-            {
-                mapped->previousComment += s.empty() ? label->to_string() : s + ", " + label->to_string();
-                s = "";
-                generatedInstructions.emplace_back(mapped);
-            }
+            DecoratedInstruction mapped(instr->convertToAsm(registerMapping, labelMap, index));
+            mapped.previousComment += s.empty() ? label->to_string() : s + ", " + label->to_string();
+            s = "";
+            generatedInstructions.emplace_back(mapped);
             ++index;
         }
         ++it;
@@ -145,11 +142,8 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
             auto instr = it->get();
             if(instr->mapsToASMInstruction())
             {
-                Instruction* mapped = instr->convertToAsm(registerMapping, labelMap, index);
-                if(mapped != nullptr)
-                {
-                    generatedInstructions.emplace_back(mapped);
-                }
+                DecoratedInstruction mapped(instr->convertToAsm(registerMapping, labelMap, index));
+                generatedInstructions.emplace_back(mapped);
                 ++index;
             }
             ++it;
@@ -160,8 +154,7 @@ const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& CodeGenerator
     index = 0;
     for(const auto& instr : generatedInstructions)
     {
-        CPPLOG_LAZY(
-            logging::Level::DEBUG, log << std::hex << index << " " << instr->toHexString(true) << logging::endl);
+        CPPLOG_LAZY(logging::Level::DEBUG, log << std::hex << index << " " << instr.toHexString(true) << logging::endl);
         index += 8;
     }
     logging::debug() << "Generated " << std::dec << generatedInstructions.size() << " instructions!" << logging::endl;
@@ -214,14 +207,14 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
         case OutputMode::ASSEMBLER:
             for(const auto& instr : pair.second)
             {
-                stream << instr->toASMString() << std::endl;
+                stream << instr.toASMString() << std::endl;
                 numBytes += 0; // doesn't matter here, since the number of bytes is unused for assembler output
             }
             break;
         case OutputMode::BINARY:
             for(const auto& instr : pair.second)
             {
-                const uint64_t binary = instr->toBinaryCode();
+                const uint64_t binary = instr.toBinaryCode();
                 stream.write(reinterpret_cast<const char*>(&binary), 8);
                 numBytes += 8;
             }
@@ -229,7 +222,7 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
         case OutputMode::HEX:
             for(const auto& instr : pair.second)
             {
-                stream << instr->toHexString(true) << std::endl;
+                stream << instr.toHexString(true) << std::endl;
                 numBytes += 8; // doesn't matter here, since the number of bytes is unused for hexadecimal output
             }
         }
@@ -248,7 +241,7 @@ void CodeGenerator::toMachineCode(Method& kernel)
     hexData.reserve(instructions.size());
     for(const auto& instr : instructions)
     {
-        hexData.push_back(instr->toBinaryCode());
+        hexData.push_back(instr.toBinaryCode());
     }
 
     Validator v;
@@ -258,13 +251,13 @@ void CodeGenerator::toMachineCode(Method& kernel)
         {
             auto it = instructions.begin();
             std::advance(it, validatorMessage.Loc);
-            logging::error() << "Validation-error '" << validatorMessage.Text << "' in: " << (*it)->toASMString()
+            logging::error() << "Validation-error '" << validatorMessage.Text << "' in: " << it->toASMString()
                              << logging::endl;
             if(validatorMessage.RefLoc >= 0)
             {
                 it = instructions.begin();
                 std::advance(it, validatorMessage.RefLoc);
-                logging::error() << "With reference to instruction: " << (*it)->toASMString() << logging::endl;
+                logging::error() << "With reference to instruction: " << it->toASMString() << logging::endl;
             }
         }
         if(config.stopWhenVerificationFailed)

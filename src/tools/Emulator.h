@@ -253,10 +253,10 @@ namespace vc4c
             uint32_t getCurrentCycle() const;
             std::pair<Value, bool> readR4();
 
-            NODISCARD bool execute(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction);
+            NODISCARD bool execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction);
 
             const qpu_asm::Instruction* getCurrentInstruction(
-                std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction) const;
+                std::vector<qpu_asm::Instruction>::const_iterator firstInstruction) const;
 
         private:
             Mutex& mutex;
@@ -288,10 +288,10 @@ namespace vc4c
         std::vector<MemoryAddress> buildUniforms(Memory& memory, MemoryAddress baseAddress,
             const std::vector<MemoryAddress>& parameter, const WorkGroupConfig& config, MemoryAddress globalData,
             const KernelUniforms& uniformsUsed);
-        bool emulate(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction,
-            Memory& memory, const std::vector<MemoryAddress>& uniformAddresses, InstrumentationResults& instrumentation,
+        bool emulate(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction, Memory& memory,
+            const std::vector<MemoryAddress>& uniformAddresses, InstrumentationResults& instrumentation,
             uint32_t maxCycles = std::numeric_limits<uint32_t>::max());
-        bool emulateTask(std::vector<std::unique_ptr<qpu_asm::Instruction>>::const_iterator firstInstruction,
+        bool emulateTask(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction,
             const std::vector<MemoryAddress>& parameter, Memory& memory, MemoryAddress uniformBaseAddress,
             MemoryAddress globalData, const KernelUniforms& uniformsUsed, InstrumentationResults& instrumentation,
             uint32_t maxCycles = std::numeric_limits<uint32_t>::max());

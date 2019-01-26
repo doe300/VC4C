@@ -73,7 +73,7 @@ static FastSet<Local*> findLoopIterations(const ControlFlowLoop& loop, const Dat
     return intersection;
 }
 
-enum class StepKind
+enum class StepKind : unsigned char
 {
     // step-kind is not known
     UNKNOWN,
@@ -620,9 +620,8 @@ static void vectorizeInstruction(InstructionWalker it,
             // TODO this is only correct if the elements are located in one block (base+0, base+1, base+2...). Is this
             // guaranteed?
             out.type = out.type.getPointerType()
-                           .value()
                            ->elementType.toVectorType(vectorWidth)
-                           .toPointerType(out.type.getPointerType().value()->addressSpace);
+                           .toPointerType(out.type.getPointerType()->addressSpace);
         else
             out.type = out.type.toVectorType(vectorWidth);
         if(out.hasLocal())
@@ -632,9 +631,8 @@ static void vectorizeInstruction(InstructionWalker it,
                 const_cast<DataType&>(out.local()->type) =
                     out.local()
                         ->type.getPointerType()
-                        .value()
                         ->elementType.toVectorType(out.type.getVectorWidth())
-                        .toPointerType(out.local()->type.getPointerType().value()->addressSpace);
+                        .toPointerType(out.local()->type.getPointerType()->addressSpace);
             else
                 const_cast<DataType&>(out.local()->type) = out.local()->type.toVectorType(out.type.getVectorWidth());
             scheduleForVectorization(out.local(), openInstructions, loop);

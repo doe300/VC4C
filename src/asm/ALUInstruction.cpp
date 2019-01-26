@@ -68,10 +68,10 @@ ALUInstruction::ALUInstruction(const Unpack unpack, const Pack pack, const Condi
     this->setMulMultiplexB(muxMulB);
 
     if((mul != OP_NOP && !mul.runsOnMulALU()) || (add != OP_NOP && !add.runsOnAddALU()))
-        throw CompilationError(CompilationStep::CODE_GENERATION, "Opcode specified for wrong ALU", toASMString(false));
+        throw CompilationError(CompilationStep::CODE_GENERATION, "Opcode specified for wrong ALU", toASMString());
 }
 
-std::string ALUInstruction::toASMString(bool addComments) const
+std::string ALUInstruction::toASMString() const
 {
     const OpCode& opAdd = OpCode::toOpCode(getAddition(), false);
     const OpCode& opMul = OpCode::toOpCode(getMultiplication(), true);
@@ -139,7 +139,7 @@ std::string ALUInstruction::toASMString(bool addComments) const
     else
         s = addPart;
 
-    return addComments ? addComment(s) : s;
+    return s;
 }
 
 bool ALUInstruction::isValidInstruction() const

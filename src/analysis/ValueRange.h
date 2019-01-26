@@ -16,10 +16,10 @@
 
 namespace vc4c
 {
-    struct DataType;
+    class DataType;
     class Local;
     class Method;
-    class Value;
+    struct Value;
 
     namespace intermediate
     {

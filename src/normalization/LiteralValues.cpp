@@ -117,7 +117,7 @@ static NODISCARD InstructionWalker copyVector(Method& method, InstructionWalker 
     }
 
     // the input could be an array lowered into register, so the type is not required to be a vector
-    auto typeWidth = in.type.getArrayType() ? in.type.getArrayType().value()->size : in.type.getVectorWidth();
+    auto typeWidth = in.type.getArrayType() ? in.type.getArrayType()->size : in.type.getVectorWidth();
     // copy first element without test for flags, so the register allocator finds an unconditional write of the
     // container
     it.emplace(new intermediate::MoveOperation(realOut, in.getCompoundPart(0)));

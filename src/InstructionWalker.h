@@ -18,7 +18,7 @@ namespace vc4c
     class ControlFlowGraph;
     class ConstInstructionWalker;
 
-    enum class InstructionVisitResult
+    enum class InstructionVisitResult : unsigned char
     {
         // continue to visit the next instruction
         CONTINUE,
@@ -273,6 +273,19 @@ namespace vc4c
 
         friend class Method;
         friend class ConstInstructionWalker;
+        friend struct tombstone_traits<InstructionWalker>;
+    };
+
+    template <>
+    struct tombstone_traits<InstructionWalker>
+    {
+        static constexpr bool is_specialized = true;
+        static const InstructionWalker tombstone;
+
+        static constexpr bool isTombstone(const InstructionWalker& val)
+        {
+            return val.basicBlock == nullptr && val.pos == intermediate::InstructionsIterator{};
+        }
     };
 
     /*

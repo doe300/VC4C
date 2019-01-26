@@ -23,7 +23,7 @@ namespace vc4c
          *
          * See OpenCL 1.2 specification, table 6.22
          */
-        enum class AddressingMode
+        enum class AddressingMode : unsigned char
         {
             /*
              * "for this addressing mode the programmer guarantees that the image coordinates used to sample elements of
@@ -59,7 +59,7 @@ namespace vc4c
          *
          * See OpenCL 1.2 specification, pages 329+
          */
-        enum class FilterMode
+        enum class FilterMode : unsigned char
         {
             /*
              * "When filter mode is CLK_FILTER_NEAREST , the image element in the image that is nearest (in Manhattan

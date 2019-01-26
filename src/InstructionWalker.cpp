@@ -11,6 +11,8 @@
 
 using namespace vc4c;
 
+const InstructionWalker tombstone_traits<InstructionWalker>::tombstone;
+
 bool InstructionVisitor::visit(const InstructionWalker& start) const
 {
     InstructionWalker it(start);

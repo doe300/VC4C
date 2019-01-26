@@ -26,7 +26,7 @@ Optional<unsigned int> Module::getGlobalDataOffset(const Local* local) const
     unsigned int offset = 0;
     for(const Global& global : globalData)
     {
-        const unsigned alignment = global.type.getPointerType().value()->getAlignment();
+        const unsigned alignment = global.type.getPointerType()->getAlignment();
         if(offset % alignment != 0)
         {
             offset += alignment - (offset % alignment);

@@ -13,7 +13,7 @@ namespace vc4c
 {
     namespace intermediate
     {
-        enum class Direction
+        enum class Direction : unsigned char
         {
             UP,
             DOWN

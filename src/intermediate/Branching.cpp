@@ -26,7 +26,7 @@ IntermediateInstruction* BranchLabel::copyFor(Method& method, const std::string&
     return new BranchLabel(*method.findOrCreateLocal(TYPE_LABEL, localPrefix + getLabel()->name));
 }
 
-qpu_asm::Instruction* BranchLabel::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
+qpu_asm::DecoratedInstruction BranchLabel::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
     throw CompilationError(
@@ -82,7 +82,7 @@ IntermediateInstruction* Branch::copyFor(Method& method, const std::string& loca
         ->copyExtrasFrom(this);
 }
 
-qpu_asm::Instruction* Branch::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
+qpu_asm::DecoratedInstruction Branch::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
     /*
@@ -117,10 +117,10 @@ qpu_asm::Instruction* Branch::convertToAsm(const FastMap<const Local*, Register>
         branchOffset > static_cast<int64_t>(std::numeric_limits<int32_t>::max()))
         throw CompilationError(CompilationStep::CODE_GENERATION,
             "Cannot jump a distance not fitting into 32-bit integer", std::to_string(branchOffset));
-    auto qasm = new qpu_asm::BranchInstruction(cond, BranchRel::BRANCH_RELATIVE, BranchReg::NONE,
-        0 /* only 5 bits, so REG_NOP doesn't fit */, REG_NOP.num, REG_NOP.num, static_cast<int32_t>(branchOffset),
+    return qpu_asm::DecoratedInstruction(
+        qpu_asm::BranchInstruction(cond, BranchRel::BRANCH_RELATIVE, BranchReg::NONE,
+            0 /* only 5 bits, so REG_NOP doesn't fit */, REG_NOP.num, REG_NOP.num, static_cast<int32_t>(branchOffset)),
         "to " + this->getTarget()->name);
-    return qasm;
 }
 
 bool Branch::isNormalized() const
@@ -167,7 +167,7 @@ std::string PhiNode::to_string() const
     return (getOutput().to_string() + " = phi") + args.substr(1) + createAdditionalInfoString();
 }
 
-qpu_asm::Instruction* PhiNode::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
+qpu_asm::DecoratedInstruction PhiNode::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
     throw CompilationError(

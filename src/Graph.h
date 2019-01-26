@@ -377,7 +377,7 @@ namespace vc4c
     /*
      * The actual direction an edge is pointing.
      */
-    enum class Direction
+    enum class Direction : unsigned char
     {
         NONE = 0,
         FIRST_TO_SECOND = 1,
@@ -527,7 +527,7 @@ namespace vc4c
             nodes.reserve(numNodes);
             // it is safe to assume we have at least 1 edge per node
             edges.reserve(numNodes);
-        };
+        }
         Graph(const Graph&) = delete;
         Graph(Graph&&) noexcept = delete;
 

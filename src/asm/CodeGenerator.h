@@ -35,7 +35,7 @@ namespace vc4c
              * NOTE: Instruction to Assembler mapping can be run in parallel for different methods,
              * so no static or non-constant global data can be used
              */
-            const FastModificationList<std::unique_ptr<qpu_asm::Instruction>>& generateInstructions(Method& method);
+            const FastModificationList<qpu_asm::DecoratedInstruction>& generateInstructions(Method& method);
 
             std::size_t writeOutput(std::ostream& stream);
             void toMachineCode(Method& kernel);
@@ -43,7 +43,7 @@ namespace vc4c
         private:
             Configuration config;
             const Module& module;
-            std::map<Method*, FastModificationList<std::unique_ptr<qpu_asm::Instruction>>> allInstructions;
+            std::map<Method*, FastModificationList<qpu_asm::DecoratedInstruction>> allInstructions;
 #ifdef MULTI_THREADED
             std::mutex instructionsLock;
 #endif

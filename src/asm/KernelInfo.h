@@ -18,10 +18,10 @@
 
 namespace vc4c
 {
-    enum class AddressSpace;
+    enum class AddressSpace : unsigned char;
     class Method;
     struct Global;
-    enum class ParameterDecorations;
+    enum class ParameterDecorations : unsigned char;
 
     namespace qpu_asm
     {

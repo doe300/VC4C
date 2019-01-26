@@ -132,7 +132,8 @@ static void extractKernelMetadata(
                 if(operand->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind)
                 {
                     const llvm::ConstantAsMetadata* constant = llvm::cast<const llvm::ConstantAsMetadata>(operand);
-                    auto& addrSpace = kernel.parameters.at(i).type.getPointerType().value()->addressSpace;
+                    auto& addrSpace =
+                        const_cast<AddressSpace&>(kernel.parameters.at(i).type.getPointerType()->addressSpace);
                     if(addrSpace == AddressSpace::GENERIC)
                         addrSpace =
                             toAddressSpace(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getSExtValue());
@@ -301,8 +302,7 @@ static void extractKernelMetadata(
                                 {
                                     const llvm::ConstantAsMetadata* constant =
                                         llvm::cast<const llvm::ConstantAsMetadata>(operand);
-                                    auto& addrSpace =
-                                        kernel.parameters.at(i - 1).type.getPointerType().value()->addressSpace;
+                                    auto& addrSpace = kernel.parameters.at(i - 1).type.getPointerType()->addressSpace;
                                     if(addrSpace == AddressSpace::GENERIC)
                                         addrSpace = toAddressSpace(static_cast<int>(
                                             llvm::cast<const llvm::ConstantInt>(constant->getValue())->getSExtValue()));
@@ -675,7 +675,7 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
         if(arg.hasByValAttr())
             // is always read-only, and the address-space initially set is __private, which we cannot have for pointer
             // Parameters
-            (*type.getPointerType())->addressSpace = AddressSpace::CONSTANT;
+            type.getPointerType()->addressSpace = AddressSpace::CONSTANT;
         method->parameters.emplace_back(Parameter(toParameterName(arg, paramCounter), type,
             toParameterDecorations(arg, type, func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)));
         logging::debug() << "Reading parameter " << method->parameters.back().to_string(true) << logging::endl;

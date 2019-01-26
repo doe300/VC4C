@@ -13,7 +13,7 @@
 
 namespace vc4c
 {
-    enum class DataDependencyType
+    enum class DataDependencyType : unsigned char
     {
         // flow (true) dependence, read-after-write. The instruction reading a value depends on the value being written
         // before

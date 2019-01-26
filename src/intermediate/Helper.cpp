@@ -494,9 +494,9 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
                 throw CompilationError(CompilationStep::LLVM_2_IR, "Can't access struct-element with non-literal index",
                     index.to_string());
 
-            subOffset = Value(
-                Literal(subContainerType.getStructType().value()->getStructSize(index.getLiteralValue()->signedInt())),
-                TYPE_INT32);
+            subOffset =
+                Value(Literal(subContainerType.getStructType()->getStructSize(index.getLiteralValue()->signedInt())),
+                    TYPE_INT32);
             subContainerType = subContainerType.getElementType(index.getLiteralValue()->signedInt());
         }
         else if(subContainerType.isVectorType())
@@ -559,11 +559,10 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
         // convert x[num] to x*
         // TODO shouldn't x[num] be converted to x[num]* ?? (e.g. for HandBrake/vscale_all_dither_opencl.cl)
         // or distinguish between first and following indices?
-        finalType = subContainerType.getElementType().toPointerType(container.type.getPointerType() ?
-                container.type.getPointerType().value()->addressSpace :
-                AddressSpace::PRIVATE);
+        finalType = subContainerType.getElementType().toPointerType(
+            container.type.getPointerType() ? container.type.getPointerType()->addressSpace : AddressSpace::PRIVATE);
     else if(!(firstIndexIsElement && indices.size() == 1))
-        finalType = subContainerType.toPointerType(container.type.getPointerType().value()->addressSpace);
+        finalType = subContainerType.toPointerType(container.type.getPointerType()->addressSpace);
 
     if(dest.type != finalType)
     {

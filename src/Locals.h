@@ -27,7 +27,7 @@ namespace vc4c
         /*
          * The type of the local-use
          */
-        enum class Type
+        enum class Type : unsigned char
         {
             NONE = 0,
             /*
@@ -202,7 +202,7 @@ namespace vc4c
      * NOTE: The positions of the decorations MUST not be re-ordered or removed, since the bit-mask is directly
      * propagated to the VC4CL run-time. (Adding new entries at the end is allowed)
      */
-    enum class ParameterDecorations
+    enum class ParameterDecorations : unsigned char
     {
         /*
          * Absence of any other flag

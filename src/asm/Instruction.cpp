@@ -22,11 +22,22 @@ Instruction::Instruction() : Bitfield(0) {}
 
 Instruction::Instruction(uint64_t code) : Bitfield(code) {}
 
-Instruction::~Instruction() {}
-
 uint64_t Instruction::toBinaryCode() const
 {
     return value;
+}
+
+std::string Instruction::toASMString() const
+{
+    if(is<ALUInstruction>())
+        return as<ALUInstruction>()->toASMString();
+    if(is<BranchInstruction>())
+        return as<BranchInstruction>()->toASMString();
+    if(is<LoadInstruction>())
+        return as<LoadInstruction>()->toASMString();
+    if(is<SemaphoreInstruction>())
+        return as<SemaphoreInstruction>()->toASMString();
+    throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid instruction type", std::to_string(value));
 }
 
 std::string Instruction::toHexString(bool withAssemblerCode) const
@@ -34,32 +45,14 @@ std::string Instruction::toHexString(bool withAssemblerCode) const
     uint64_t binaryCode = toBinaryCode();
     if(withAssemblerCode)
     {
-        return addComment((std::string(qpu_asm::toHexString(binaryCode)) + "//") + toASMString(false));
+        return qpu_asm::toHexString(binaryCode) + "//" + toASMString();
     }
     return qpu_asm::toHexString(binaryCode);
 }
 
-Instruction* Instruction::readFromBinary(uint64_t binary)
+bool Instruction::isValidInstruction() const
 {
-    std::unique_ptr<Instruction> inst;
-
-    inst.reset(new ALUInstruction(binary));
-    if(inst->isValidInstruction())
-        return inst.release();
-
-    inst.reset(new BranchInstruction(binary));
-    if(inst->isValidInstruction())
-        return inst.release();
-
-    inst.reset(new LoadInstruction(binary));
-    if(inst->isValidInstruction())
-        return inst.release();
-
-    inst.reset(new SemaphoreInstruction(binary));
-    if(inst->isValidInstruction())
-        return inst.release();
-
-    return nullptr;
+    return is<ALUInstruction>() || is<BranchInstruction>() || is<LoadInstruction>() || is<SemaphoreInstruction>();
 }
 
 Register Instruction::getAddOutput() const
@@ -132,7 +125,32 @@ std::string Instruction::toExtrasString(const Signaling sig, const ConditionCode
     return result;
 }
 
-std::string Instruction::addComment(std::string s) const
+std::string qpu_asm::toHexString(const uint64_t code)
+{
+    // lower half before upper half
+    char buffer[64];
+    snprintf(buffer, sizeof(buffer), "0x%08x, 0x%08x, ", static_cast<uint32_t>(code & 0xFFFFFFFFLL),
+        static_cast<uint32_t>((code & 0xFFFFFFFF00000000LL) >> 32));
+    return buffer;
+}
+
+std::string DecoratedInstruction::toASMString(bool addComments) const
+{
+    auto tmp = instruction.toASMString();
+    return addComments ? addComment(tmp) : tmp;
+}
+
+std::string DecoratedInstruction::toHexString(bool withAssemblerCode) const
+{
+    auto tmp = instruction.toHexString(withAssemblerCode);
+    if(withAssemblerCode)
+    {
+        return addComment(tmp);
+    }
+    return tmp;
+}
+
+std::string DecoratedInstruction::addComment(std::string s) const
 {
     std::string r;
     if(!comment.empty())
@@ -143,13 +161,4 @@ std::string Instruction::addComment(std::string s) const
     if(!previousComment.empty())
         r = "// " + previousComment + "\n" + r;
     return r;
-}
-
-std::string qpu_asm::toHexString(const uint64_t code)
-{
-    // lower half before upper half
-    char buffer[64];
-    snprintf(buffer, sizeof(buffer), "0x%08x, 0x%08x, ", static_cast<uint32_t>(code & 0xFFFFFFFFLL),
-        static_cast<uint32_t>((code & 0xFFFFFFFF00000000LL) >> 32));
-    return buffer;
 }

@@ -10,6 +10,9 @@
 #include "InstructionWalker.h"
 #include "Module.h"
 #include "asm/ALUInstruction.h"
+#include "asm/BranchInstruction.h"
+#include "asm/LoadInstruction.h"
+#include "asm/SemaphoreInstruction.h"
 #include "performance.h"
 
 #include <type_traits>
@@ -96,6 +99,7 @@ namespace vc4c
     static_assert(assert_stringifyable<Register>::value, "Register is not stringify-able!");
     static_assert(std::is_literal_type<Register>::value, "Register is not literal");
     static_assert(std::is_trivially_copyable<Register>::value, "Register is not trivial");
+    static_assert(sizeof(Register) == 2 * sizeof(uint8_t), "");
 
     static_assert(!std::is_default_constructible<Literal>::value, "Literal is default constructible!");
     static_assert(assert_assignable<Literal>::value, "Literal is not assignable!");
@@ -104,6 +108,8 @@ namespace vc4c
     static_assert(assert_stringifyable<Literal>::value, "Literal is not stringify-able!");
     static_assert(std::is_literal_type<Literal>::value, "Literal is not literal");
     static_assert(std::is_trivially_copyable<Literal>::value, "Literal is not trivial");
+    static_assert(sizeof(Literal) <= 2 * sizeof(uint32_t), "");
+    static_assert(sizeof(Optional<Literal>) == sizeof(Literal), "");
 
     static_assert(!std::is_default_constructible<SmallImmediate>::value, "SmallImmediate is default constructible!");
     static_assert(assert_assignable<SmallImmediate>::value, "SmallImmediate is not assignable!");
@@ -113,6 +119,8 @@ namespace vc4c
     static_assert(assert_stringifyable<SmallImmediate>::value, "SmallImmediate is not stringify-able!");
     static_assert(std::is_literal_type<SmallImmediate>::value, "SmallImmediate is not literal");
     static_assert(std::is_trivially_copyable<SmallImmediate>::value, "SmallImmediate is not trivial");
+    static_assert(sizeof(SmallImmediate) == sizeof(uint8_t), "");
+    static_assert(sizeof(Optional<SmallImmediate>) == sizeof(SmallImmediate), "");
 
     static_assert(std::is_default_constructible<ContainerValue>::value, "ContainerValue is not default constructible!");
     static_assert(assert_assignable<ContainerValue>::value, "ContainerValue is not assignable!");
@@ -150,6 +158,7 @@ namespace vc4c
     static_assert(assert_assignable<InstructionWalker>::value, "InstructionWalker is not assignable!");
     static_assert(std::is_destructible<InstructionWalker>::value, "InstructionWalker is not destructible!");
     static_assert(assert_hashable<InstructionWalker>::value, "InstructionWalker is not hashable!");
+    static_assert(sizeof(Optional<InstructionWalker>) == sizeof(InstructionWalker), "");
 
     /*
      * Intermediate instructions
@@ -210,9 +219,25 @@ namespace vc4c
     static_assert(std::is_literal_type<OpCode>::value, "OpCode is not literal");
     static_assert(std::is_trivially_copyable<OpCode>::value, "OpCode is not trivial");
 
-    static_assert(assert_assignable<qpu_asm::ALUInstruction>::value, "ALUInstruction is not assignable!");
-    static_assert(std::is_destructible<qpu_asm::ALUInstruction>::value, "ALUInstruction is not destructible!");
-    static_assert(std::has_virtual_destructor<qpu_asm::Instruction>::value, "Instruction has no virtual destructor!");
+    static_assert(std::is_trivially_destructible<qpu_asm::Instruction>::value,
+        "Assembler instructions are not trivially destructible!");
+    static_assert(std::is_trivially_destructible<qpu_asm::ALUInstruction>::value,
+        "Assembler instructions are not trivially destructible!");
+    static_assert(std::is_trivially_destructible<qpu_asm::BranchInstruction>::value,
+        "Assembler instructions are not trivially destructible!");
+    static_assert(std::is_trivially_destructible<qpu_asm::LoadInstruction>::value,
+        "Assembler instructions are not trivially destructible!");
+    static_assert(std::is_trivially_destructible<qpu_asm::SemaphoreInstruction>::value,
+        "Assembler instructions are not trivially destructible!");
+    static_assert(sizeof(qpu_asm::Instruction) == sizeof(uint64_t), "Assembler instructions contain additional data!");
+    static_assert(
+        sizeof(qpu_asm::ALUInstruction) == sizeof(uint64_t), "Assembler instructions contain additional data!");
+    static_assert(
+        sizeof(qpu_asm::BranchInstruction) == sizeof(uint64_t), "Assembler instructions contain additional data!");
+    static_assert(
+        sizeof(qpu_asm::LoadInstruction) == sizeof(uint64_t), "Assembler instructions contain additional data!");
+    static_assert(
+        sizeof(qpu_asm::SemaphoreInstruction) == sizeof(uint64_t), "Assembler instructions contain additional data!");
 
     /*
      * Some helper types
@@ -235,7 +260,8 @@ namespace vc4c
     static_assert(std::is_trivially_copyable<Bitfield<uint64_t>>::value, "Bitfield is not trivial");
 
     static_assert(assert_assignable<InstructionPart>::value, "InstructionPart is not assignable!");
-    static_assert(std::is_trivially_destructible<InstructionPart>::value, "InstructionPart is not trivially destructible!");
+    static_assert(
+        std::is_trivially_destructible<InstructionPart>::value, "InstructionPart is not trivially destructible!");
     static_assert(assert_comparable<InstructionPart>::value, "InstructionPart is not comparable");
     static_assert(std::is_literal_type<InstructionPart>::value, "InstructionPart is not literal");
     static_assert(std::is_trivially_copyable<InstructionPart>::value, "InstructionPart is not trivial");

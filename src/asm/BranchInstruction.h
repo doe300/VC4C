@@ -18,11 +18,10 @@ namespace vc4c
         public:
             explicit BranchInstruction(uint64_t code) : Instruction(code) {}
             BranchInstruction(BranchCond cond, BranchRel relative, BranchReg addRegister, Address branchRegister,
-                Address addOut, Address mulOut, int32_t offset, std::string comment);
-            ~BranchInstruction() override = default;
+                Address addOut, Address mulOut, int32_t offset);
 
-            std::string toASMString(bool addComments) const override;
-            bool isValidInstruction() const override;
+            std::string toASMString() const;
+            bool isValidInstruction() const;
 
             BITFIELD_ENTRY(BranchCondition, BranchCond, 52, Quadruple)
             BITFIELD_ENTRY(BranchRelative, BranchRel, 51, Bit)

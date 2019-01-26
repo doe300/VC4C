@@ -11,7 +11,7 @@
 
 namespace vc4c
 {
-    enum class MetaDataType
+    enum class MetaDataType : unsigned char
     {
         ARG_ADDR_SPACES,
         ARG_ACCESS_QUALIFIERS,

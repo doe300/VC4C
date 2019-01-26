@@ -57,7 +57,7 @@ LoadInstruction::LoadInstruction(const Pack pack, const ConditionCode condAdd, c
     setImmediateShort1(value1);
 }
 
-std::string LoadInstruction::toASMString(bool addComments) const
+std::string LoadInstruction::toASMString() const
 {
     if(getType() == OpLoad::LOAD_UNSIGNED)
     {
@@ -65,7 +65,7 @@ std::string LoadInstruction::toASMString(bool addComments) const
             ((toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") +
                 std::to_string(getImmediateShort0()) + ", ") +
             std::to_string(getImmediateShort1());
-        return addComment(s);
+        return s;
     }
     if(getType() == OpLoad::LOAD_SIGNED)
     {
@@ -73,7 +73,7 @@ std::string LoadInstruction::toASMString(bool addComments) const
             ((toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") +
                 std::to_string(getImmediateShort0()) + ", ") +
             std::to_string(getImmediateShort1());
-        return addComment(s);
+        return s;
     }
     std::string valString;
     if(getAddOut() == REG_VPM_OUT_SETUP.num)
@@ -89,7 +89,7 @@ std::string LoadInstruction::toASMString(bool addComments) const
         valString = std::to_string(getImmediateInt());
     auto s = std::string("ldi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
         (toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + valString;
-    return addComments ? addComment(s) : s;
+    return s;
 }
 
 bool LoadInstruction::isValidInstruction() const

@@ -38,7 +38,7 @@ namespace vc4c
     /*
      * The address space the memory-location of a pointer-type lies in.
      */
-    enum class AddressSpace
+    enum class AddressSpace : unsigned char
     {
         // the generic address space (SPIR-V StorageClassGeneric)
         GENERIC = 0,
@@ -107,10 +107,14 @@ namespace vc4c
 
         //"complex" types
         bool isPointerType() const;
-        Optional<PointerType*> getPointerType() const;
-        Optional<ArrayType*> getArrayType() const;
-        Optional<StructType*> getStructType() const;
-        Optional<ImageType*> getImageType() const;
+        PointerType* getPointerType();
+        const PointerType* getPointerType() const;
+        ArrayType* getArrayType();
+        const ArrayType* getArrayType() const;
+        StructType* getStructType();
+        const StructType* getStructType() const;
+        ImageType* getImageType();
+        const ImageType* getImageType() const;
 
         /*
          * Whether this is a scalar- or vector-variant of a floating-point type

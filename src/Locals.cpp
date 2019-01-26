@@ -199,7 +199,7 @@ Global::Global(const std::string& name, const DataType& globalType, const Value&
 {
     if(!globalType.isPointerType())
         throw CompilationError(CompilationStep::GENERAL, "Global value needs to have a pointer type", to_string());
-    if(isConstant != (globalType.getPointerType().value()->addressSpace == AddressSpace::CONSTANT))
+    if(isConstant != (globalType.getPointerType()->addressSpace == AddressSpace::CONSTANT))
         throw CompilationError(
             CompilationStep::GENERAL, "Constness attributes of global and pointer to global do not match", to_string());
 }
@@ -222,7 +222,7 @@ StackAllocation::StackAllocation(
 {
     if(!type.isPointerType())
         throw CompilationError(CompilationStep::GENERAL, "Stack allocation needs to have a pointer type!", to_string());
-    if(type.getPointerType().value()->addressSpace != AddressSpace::PRIVATE)
+    if(type.getPointerType()->addressSpace != AddressSpace::PRIVATE)
         throw CompilationError(
             CompilationStep::GENERAL, "Stack allocations must have private address space", to_string());
 }

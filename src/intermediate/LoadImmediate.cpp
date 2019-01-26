@@ -138,24 +138,24 @@ PrecalculatedValue LoadImmediate::precalculate(const std::size_t numIterations) 
         CompilationStep::GENERAL, "Unhandled type of load", std::to_string(static_cast<unsigned>(type)));
 }
 
-qpu_asm::Instruction* LoadImmediate::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
+qpu_asm::DecoratedInstruction LoadImmediate::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
     const Register outReg = getOutput()->hasRegister() ? getOutput()->reg() : registerMapping.at(getOutput()->local());
     const ConditionCode conditional0 = outReg.num == REG_NOP.num ? COND_NEVER : this->conditional;
-    auto res = new qpu_asm::LoadInstruction(PACK_NOP, conditional0, COND_NEVER, setFlags,
+    qpu_asm::LoadInstruction res(PACK_NOP, conditional0, COND_NEVER, setFlags,
         outReg.file == RegisterFile::PHYSICAL_A ? WriteSwap::DONT_SWAP : WriteSwap::SWAP, outReg.num, REG_NOP.num,
         assertArgument(0).literal().toImmediate());
     switch(type)
     {
     case LoadType::REPLICATE_INT32:
-        res->setType(OpLoad::LOAD_IMM_32);
+        res.setType(OpLoad::LOAD_IMM_32);
         break;
     case LoadType::PER_ELEMENT_SIGNED:
-        res->setType(OpLoad::LOAD_SIGNED);
+        res.setType(OpLoad::LOAD_SIGNED);
         break;
     case LoadType::PER_ELEMENT_UNSIGNED:
-        res->setType(OpLoad::LOAD_UNSIGNED);
+        res.setType(OpLoad::LOAD_UNSIGNED);
         break;
     default:
         throw CompilationError(

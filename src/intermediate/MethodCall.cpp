@@ -6,6 +6,8 @@
 
 #include "IntermediateInstruction.h"
 
+#include "../asm/Instruction.h"
+
 using namespace vc4c;
 using namespace vc4c::intermediate;
 
@@ -55,7 +57,7 @@ IntermediateInstruction* MethodCall::copyFor(Method& method, const std::string& 
         return (new MethodCall(methodName, newArgs))->copyExtrasFrom(this);
 }
 
-qpu_asm::Instruction* MethodCall::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
+qpu_asm::DecoratedInstruction MethodCall::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
     throw CompilationError(CompilationStep::OPTIMIZER, "There should be no more function-calls", to_string());
@@ -116,7 +118,7 @@ IntermediateInstruction* Return::copyFor(Method& method, const std::string& loca
     throw CompilationError(CompilationStep::OPTIMIZER, "Return should never be inlined in calling method", to_string());
 }
 
-qpu_asm::Instruction* Return::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
+qpu_asm::DecoratedInstruction Return::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
     throw CompilationError(

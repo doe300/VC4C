@@ -27,10 +27,9 @@ namespace vc4c
                 WriteSwap ws, Address addOut, Address mulOut, const OpCode& mul, const OpCode& add, Address addInA,
                 SmallImmediate addInB, InputMultiplex muxAddA, InputMultiplex muxAddB, InputMultiplex muxMulA,
                 InputMultiplex muxMulB);
-            ~ALUInstruction() override = default;
 
-            std::string toASMString(bool addComments) const override;
-            bool isValidInstruction() const override;
+            std::string toASMString() const;
+            bool isValidInstruction() const;
 
             // NOTE: The overlap of Unpack and Pack is on purpose!
             BITFIELD_ENTRY(Unpack, Unpack, 56, Quadruple)

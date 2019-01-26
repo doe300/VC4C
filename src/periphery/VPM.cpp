@@ -79,6 +79,7 @@ static std::string toAddressAndModeString(uint8_t size, uint16_t address, bool i
     std::string res;
 
     res.append(isHorizontal ? "h" : "v");
+    // TODO vertical address is wrong, has y, x and word-part components
     unsigned typeSize = 0;
     unsigned xCoord = 0;
     unsigned yCoord = 0;
@@ -87,16 +88,16 @@ static std::string toAddressAndModeString(uint8_t size, uint16_t address, bool i
     case 0: // 8 bit
         typeSize = 8;
         xCoord = address & 0x3;
-        yCoord = address >> 2;
+        yCoord = (address >> 2) & 0x3F;
         break;
     case 1: // 16 bit
         typeSize = 16;
         xCoord = address & 0x1;
-        yCoord = address >> 1;
+        yCoord = (address >> 1) & 0x3F;
         break;
     case 2: // 32 bit
         typeSize = 32;
-        yCoord = address;
+        yCoord = address & 0x3F;
         break;
     default:
         throw CompilationError(
@@ -121,7 +122,7 @@ static std::string toDMAAddressAndModeString(uint16_t address, bool isHorizontal
     res.append(isHorizontal ? "h" : "v");
     unsigned typeSize = 32;
     unsigned xCoord = address & 0xF;
-    unsigned yCoord = address >> 4;
+    unsigned yCoord = (address >> 4) & 0x3F;
 
     res.append(std::to_string(typeSize));
     res.append("(").append(std::to_string(yCoord));
@@ -1063,7 +1064,7 @@ DataType VPM::getVPMStorageType(const DataType& type)
     {
         // e.g. short2[17] -> short16[17]
         // also int4[1][2] -> int16[1][2]
-        inVPMType = getVPMStorageType(type.getElementType()).toArrayType(type.getArrayType().value()->size);
+        inVPMType = getVPMStorageType(type.getElementType()).toArrayType(type.getArrayType()->size);
     }
     else if(type.getPointerType())
         // e.g. int* -> int16

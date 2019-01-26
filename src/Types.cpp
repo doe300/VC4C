@@ -164,39 +164,47 @@ bool DataType::isVectorType() const
 
 bool DataType::isPointerType() const
 {
-    return getPointerType().has_value();
+    return getPointerType() != nullptr;
 }
 
-Optional<PointerType*> DataType::getPointerType() const
+PointerType* DataType::getPointerType()
 {
-    PointerType* pointerType = dynamic_cast<PointerType*>(complexType.get());
-    if(pointerType != nullptr)
-        return pointerType;
-    return {};
+    return dynamic_cast<PointerType*>(complexType.get());
 }
 
-Optional<ArrayType*> DataType::getArrayType() const
+const PointerType* DataType::getPointerType() const
 {
-    ArrayType* arrayType = dynamic_cast<ArrayType*>(complexType.get());
-    if(arrayType != nullptr)
-        return arrayType;
-    return {};
+    return dynamic_cast<const PointerType*>(complexType.get());
 }
 
-Optional<StructType*> DataType::getStructType() const
+ArrayType* DataType::getArrayType()
 {
-    StructType* structType = dynamic_cast<StructType*>(complexType.get());
-    if(structType != nullptr)
-        return structType;
-    return {};
+    return dynamic_cast<ArrayType*>(complexType.get());
 }
 
-Optional<ImageType*> DataType::getImageType() const
+const ArrayType* DataType::getArrayType() const
 {
-    ImageType* imageType = dynamic_cast<ImageType*>(complexType.get());
-    if(imageType != nullptr)
-        return imageType;
-    return {};
+    return dynamic_cast<const ArrayType*>(complexType.get());
+}
+
+StructType* DataType::getStructType()
+{
+    return dynamic_cast<StructType*>(complexType.get());
+}
+
+const StructType* DataType::getStructType() const
+{
+    return dynamic_cast<const StructType*>(complexType.get());
+}
+
+ImageType* DataType::getImageType()
+{
+    return dynamic_cast<ImageType*>(complexType.get());
+}
+
+const ImageType* DataType::getImageType() const
+{
+    return dynamic_cast<const ImageType*>(complexType.get());
 }
 
 bool DataType::isFloatingType() const
@@ -233,11 +241,11 @@ bool DataType::isVoidType() const
 DataType DataType::getElementType(const int index) const
 {
     if(isPointerType())
-        return getPointerType().value()->elementType;
+        return getPointerType()->elementType;
     if(getArrayType())
-        return getArrayType().value()->elementType;
+        return getArrayType()->elementType;
     if(getStructType() && index >= 0)
-        return getStructType().value()->elementTypes.at(static_cast<std::size_t>(index));
+        return getStructType()->elementTypes.at(static_cast<std::size_t>(index));
     if(complexType)
         throw CompilationError(
             CompilationStep::GENERAL, "Can't get element-type of heterogeneous complex type", to_string());
@@ -326,9 +334,9 @@ unsigned int DataType::getPhysicalWidth() const
         // 32-bit pointer
         return 4;
     if(getArrayType())
-        return getArrayType().value()->elementType.getPhysicalWidth() * getArrayType().value()->size;
+        return getArrayType()->elementType.getPhysicalWidth() * getArrayType()->size;
     if(getStructType())
-        return getStructType().value()->getStructSize();
+        return getStructType()->getStructSize();
     if(getImageType())
         // images are just pointers to data
         // 32-bit pointer

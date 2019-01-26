@@ -251,7 +251,7 @@ InstructionWalker intermediate::insertQueryMeasurements(
         throw CompilationError(
             CompilationStep::GENERAL, "Can't query image measurements from non-image object", image.to_string());
     // available types: 1D, 1D array, 2D, 2D array, 3D
-    const ImageType* imageType = image.type.getImageType().value();
+    const ImageType* imageType = image.type.getImageType();
     if(imageType->dimensions == 1)
     {
         if(imageType->isImageArray)

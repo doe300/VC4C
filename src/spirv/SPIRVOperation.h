@@ -166,7 +166,7 @@ namespace vc4c
                 const AllocationMapping& memoryAllocated) const override;
         };
 
-        enum class ConversionType
+        enum class ConversionType : unsigned char
         {
             SIGNED,
             UNSIGNED,
@@ -193,7 +193,7 @@ namespace vc4c
             const bool isSaturated;
         };
 
-        enum class MemoryAccess
+        enum class MemoryAccess : unsigned char
         {
             NONE = 0x0,
             READ = 0x1,
@@ -320,7 +320,7 @@ namespace vc4c
             const std::vector<std::pair<uint32_t, uint32_t>> destinations;
         };
 
-        enum class ImageQuery
+        enum class ImageQuery : unsigned char
         {
             CHANNEL_DATA_TYPE,
             CHANNEL_ORDER,

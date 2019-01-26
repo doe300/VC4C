@@ -7,7 +7,6 @@
 #ifndef VC4C_INSTRUCTION_SCHEDULER_H
 #define VC4C_INSTRUCTION_SCHEDULER_H
 
-#include "../analysis/DependencyGraph.h"
 #include "config.h"
 
 namespace vc4c

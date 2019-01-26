@@ -11,7 +11,7 @@ using namespace vc4c;
 using namespace vc4c::qpu_asm;
 
 BranchInstruction::BranchInstruction(const BranchCond cond, const BranchRel relative, const BranchReg addRegister,
-    const Address branchRegister, const Address addOut, const Address mulOut, const int32_t offset, std::string s)
+    const Address branchRegister, const Address addOut, const Address mulOut, const int32_t offset)
 {
     setEntry(OpBranch::BRANCH, 60, MASK_Quadruple);
     setBranchCondition(cond);
@@ -21,10 +21,9 @@ BranchInstruction::BranchInstruction(const BranchCond cond, const BranchRel rela
     setAddOut(addOut);
     setMulOut(mulOut);
     setImmediate(offset);
-    comment = std::move(s);
 }
 
-std::string BranchInstruction::toASMString(bool addComments) const
+std::string BranchInstruction::toASMString() const
 {
     auto s = std::string("br") + (getBranchRelative() == BranchRel::BRANCH_RELATIVE ? "r" : "a") +
         ((getBranchCondition() == BranchCond::ALWAYS ? "" : std::string(".") + toString(getBranchCondition())) + " ") +
@@ -37,7 +36,7 @@ std::string BranchInstruction::toASMString(bool addComments) const
         (getAddRegister() == BranchReg::BRANCH_REG ?
                 std::string(" + ") + Register{RegisterFile::PHYSICAL_A, getRegisterAddress()}.to_string(true, true) :
                 "");
-    return addComments ? addComment(s) : s;
+    return s;
 }
 
 bool BranchInstruction::isValidInstruction() const

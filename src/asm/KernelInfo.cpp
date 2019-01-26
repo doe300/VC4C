@@ -207,7 +207,7 @@ static std::vector<uint8_t> generateDataSegment(
     for(const Global& global : globalData)
     {
         // add alignment per element
-        const unsigned alignment = global.type.getPointerType().value()->getAlignment();
+        const unsigned alignment = global.type.getPointerType()->getAlignment();
         while(bytes.size() % alignment != 0)
         {
             bytes.push_back(0);
@@ -362,7 +362,7 @@ KernelInfo qpu_asm::getKernelInfos(
         paramInfo.setName(paramName[0] == '%' ? paramName.substr(1) : paramName);
         paramInfo.setVectorElements((paramType.isPointerType() ? static_cast<uint8_t>(1) : paramType.getVectorWidth()));
         paramInfo.setAddressSpace(paramType.isPointerType() ?
-                paramType.getPointerType().value()->addressSpace :
+                paramType.getPointerType()->addressSpace :
                 paramType.getImageType() ? AddressSpace::GLOBAL : AddressSpace::PRIVATE);
         paramInfo.setFloatingType(paramType.isFloatingType());
         // FIXME signedness is only recognized correctly for non-32 bit scalar types (e.g. (u)char, (u)short), not for
@@ -376,7 +376,7 @@ KernelInfo qpu_asm::getKernelInfos(
         {
             // since the client passes the actual (struct) type to as argument, the VC4CL run-time needs to know that
             // size
-            paramInfo.setSize(static_cast<uint16_t>((*paramType.getPointerType())->elementType.getPhysicalWidth()));
+            paramInfo.setSize(static_cast<uint16_t>(paramType.getPointerType()->elementType.getPhysicalWidth()));
             // we also need to fix-up the other decorations and qualifiers we modified:
             // direct struct parameters are always in the __private address space (since they are function-local
             // values), we just "moved" them to the __constant address space for a) better optimization and b) kernels

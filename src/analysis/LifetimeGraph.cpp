@@ -22,9 +22,8 @@ using namespace vc4c::analysis;
 static bool isRelevant(const Local& local)
 {
     if(local.is<Global>() || local.is<Parameter>())
-        return local.type.getPointerType() &&
-            local.type.getPointerType().value()->addressSpace != AddressSpace::GENERIC &&
-            local.type.getPointerType().value()->addressSpace != AddressSpace::GLOBAL;
+        return local.type.getPointerType() && local.type.getPointerType()->addressSpace != AddressSpace::GENERIC &&
+            local.type.getPointerType()->addressSpace != AddressSpace::GLOBAL;
     if(local.is<StackAllocation>())
         return true;
     return false;

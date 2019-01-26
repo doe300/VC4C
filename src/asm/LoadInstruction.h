@@ -22,10 +22,9 @@ namespace vc4c
                 Address addOut, Address mulOut, int16_t value0, int16_t value1);
             LoadInstruction(Pack pack, ConditionCode condAdd, ConditionCode condMul, SetFlag sf, WriteSwap ws,
                 Address addOut, Address mulOut, uint16_t value0, uint16_t value1);
-            ~LoadInstruction() override = default;
 
-            std::string toASMString(bool addComments) const override;
-            bool isValidInstruction() const override;
+            std::string toASMString() const;
+            bool isValidInstruction() const;
 
             BITFIELD_ENTRY(Type, OpLoad, 57, Septuple)
             // NOTE: The pack value includes the pm bit!
