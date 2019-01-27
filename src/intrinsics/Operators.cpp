@@ -36,8 +36,8 @@ InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(
     it = insertMakePositive(it, method, arg0, op1Pos, op1Sign);
     it = insertMakePositive(it, method, arg1, op2Pos, op2Sign);
 
-    op.setArgument(0, op1Pos);
-    op.setArgument(1, op2Pos);
+    op.setArgument(0, std::move(op1Pos));
+    op.setArgument(1, std::move(op2Pos));
 
     // use new temporary result, so we can store the final result in the correct value
     const Value tmpDest = method.addNewLocal(opDest.type, "%result");
@@ -218,8 +218,8 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivision(
     it = insertMakePositive(it, method, op.assertArgument(0), op1Pos, op1Sign);
     it = insertMakePositive(it, method, op.assertArgument(1), op2Pos, op2Sign);
 
-    op.setArgument(0, op1Pos);
-    op.setArgument(1, op2Pos);
+    op.setArgument(0, std::move(op1Pos));
+    op.setArgument(1, std::move(op2Pos));
 
     // use new temporary result, so we can store the final result in the correct value
     const Value tmpDest = method.addNewLocal(opDest.type, "%result");
@@ -335,8 +335,8 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivisionByConstant(
     it = insertMakePositive(it, method, op.assertArgument(0), op1Pos, op1Sign);
     it = insertMakePositive(it, method, op.assertArgument(1), op2Pos, op2Sign);
 
-    op.setArgument(0, op1Pos);
-    op.setArgument(1, op2Pos);
+    op.setArgument(0, std::move(op1Pos));
+    op.setArgument(1, std::move(op2Pos));
 
     // use new temporary result, so we can store the final result in the correct value
     const Value tmpDest = method.addNewLocal(opDest.type, "%result");

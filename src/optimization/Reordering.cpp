@@ -392,7 +392,7 @@ InstructionWalker optimizations::moveRotationSourcesToAccumulators(
             it.nextInBlock();
             it.emplace(new Nop(DelayType::WAIT_REGISTER));
             it.nextInBlock();
-            rot->setSource(tmp);
+            rot->setSource(std::move(tmp));
         }
     }
     return it;

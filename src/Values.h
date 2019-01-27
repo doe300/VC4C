@@ -57,10 +57,10 @@ namespace vc4c
          */
         int getAccumulatorNumber() const;
 
-        bool operator<(const Register& right) const;
-        bool operator>(const Register& right) const;
-        bool operator==(const Register& right) const;
-        bool operator!=(const Register& right) const
+        bool operator<(Register right) const;
+        bool operator>(Register right) const;
+        bool operator==(Register right) const;
+        bool operator!=(Register right) const
         {
             return !(*this == right);
         }
@@ -560,7 +560,7 @@ namespace vc4c
         static constexpr bool is_specialized = true;
         static constexpr SmallImmediate tombstone = SmallImmediate(255);
 
-        static constexpr bool isTombstone(const SmallImmediate& val)
+        static constexpr bool isTombstone(SmallImmediate val)
         {
             return val.value == 255;
         }
@@ -647,13 +647,13 @@ namespace vc4c
         DataType type;
 
         Value(const Literal& lit, const DataType& type) noexcept;
-        Value(const Register& reg, const DataType& type) noexcept;
+        Value(Register reg, const DataType& type) noexcept;
         Value(const ContainerValue& container, const DataType& type);
-        Value(const Value& val);
-        Value(Value&& val);
+        Value(const Value& val) = default;
+        Value(Value&& val) noexcept = default;
         Value(const Local* local, const DataType& type) noexcept;
         Value(const DataType& type) noexcept;
-        Value(const SmallImmediate& immediate, const DataType& type) noexcept;
+        Value(SmallImmediate immediate, const DataType& type) noexcept;
         ~Value() = default;
 
         Value& operator=(const Value& right) = default;
@@ -686,7 +686,7 @@ namespace vc4c
         /*
          * Whether this object has the given register
          */
-        bool hasRegister(const Register& reg) const;
+        bool hasRegister(Register reg) const;
         /*
          * Whether this object has the given literal value.
          *
@@ -700,7 +700,7 @@ namespace vc4c
          * This function also accepts, if this object contains a Literal with the same integer- or floating-point-value
          * (depending on the data-type) as the parameter
          */
-        bool hasImmediate(const SmallImmediate& immediate) const;
+        bool hasImmediate(SmallImmediate immediate) const;
 
         /*
          * Whether this Value is undefined, e.g. by having the TYPE_UNDEFINED data-type

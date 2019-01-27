@@ -18,20 +18,16 @@
 using namespace vc4c;
 using namespace vc4c::intermediate;
 
-LoadImmediate::LoadImmediate(
-    const Value& dest, const Literal& source, const ConditionCode& cond, const SetFlag setFlags) :
-    IntermediateInstruction(dest, cond, setFlags),
-    type(LoadType::REPLICATE_INT32)
+LoadImmediate::LoadImmediate(const Value& dest, const Literal& source, ConditionCode cond, const SetFlag setFlags) :
+    IntermediateInstruction(dest, cond, setFlags), type(LoadType::REPLICATE_INT32)
 {
     // 32-bit integers are loaded through all SIMD-elements!
     // "[...] write either a 32-bit immediate across the entire SIMD array" (p. 33)
     setImmediate(source);
 }
 
-LoadImmediate::LoadImmediate(
-    const Value& dest, uint32_t mask, LoadType type, const ConditionCode& cond, SetFlag setFlags) :
-    IntermediateInstruction(dest, cond, setFlags),
-    type(type)
+LoadImmediate::LoadImmediate(const Value& dest, uint32_t mask, LoadType type, ConditionCode cond, SetFlag setFlags) :
+    IntermediateInstruction(dest, cond, setFlags), type(type)
 {
     setArgument(0, Value(Literal(mask), TYPE_INT32));
 }
@@ -40,7 +36,7 @@ std::vector<vc4c::Value> toLoadedValues(uint32_t mask, vc4c::intermediate::LoadT
 {
     std::bitset<32> bits(mask);
     std::vector<Value> values;
-    values.reserve(16);
+    values.reserve(NATIVE_VECTOR_SIZE);
     if(type == LoadType::PER_ELEMENT_UNSIGNED)
     {
         for(std::size_t i = 0; i < 16; ++i)

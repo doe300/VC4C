@@ -198,6 +198,7 @@ static std::string toRegisterWriteString(const Value& val, std::bitset<16> eleme
     if(elementMask.all())
         return val.to_string(true, true);
     std::vector<std::string> parts;
+    parts.reserve(NATIVE_VECTOR_SIZE);
     for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
     {
         const Value& element = val.hasContainer() ? val.container().elements[i] : val;
@@ -237,16 +238,16 @@ void Registers::writeRegister(Register reg, const Value& val, std::bitset<16> el
     logging::debug() << "Writing into register '" << reg.to_string(true, false)
                      << "': " << toRegisterWriteString(modifiedValue, elementMask) << logging::endl;
     if(reg.isGeneralPurpose())
-        writeStorageRegister(reg, modifiedValue, elementMask);
+        writeStorageRegister(reg, std::move(modifiedValue), elementMask);
     else if(reg.isAccumulator())
     {
         if(reg.num == REG_TMU_NOSWAP.num)
             qpu.tmus.setTMUNoSwap(getActualValue(modifiedValue));
         else if(reg.num == REG_REPLICATE_ALL.num)
             // the physical file A or B is important here!
-            writeStorageRegister(reg, modifiedValue, elementMask);
+            writeStorageRegister(reg, std::move(modifiedValue), elementMask);
         else
-            writeStorageRegister(Register{RegisterFile::ACCUMULATOR, reg.num}, modifiedValue, elementMask);
+            writeStorageRegister(Register{RegisterFile::ACCUMULATOR, reg.num}, std::move(modifiedValue), elementMask);
     }
     else if(reg.num == REG_HOST_INTERRUPT.num)
     {
@@ -419,7 +420,7 @@ static Value toStorageValue(const Value& oldVal, const Value& newVal, std::bitse
     return result;
 }
 
-void Registers::writeStorageRegister(Register reg, const Value& val, std::bitset<16> elementMask)
+void Registers::writeStorageRegister(Register reg, Value&& val, std::bitset<16> elementMask)
 {
     if(storageRegisters.find(reg) == storageRegisters.end())
         storageRegisters.emplace(reg, val);
@@ -531,20 +532,20 @@ bool TMUs::hasValueOnR4() const
     return !tmu0ResponseQueue.empty() || !tmu1ResponseQueue.empty();
 }
 
-void TMUs::setTMUNoSwap(const Value& swapVal)
+void TMUs::setTMUNoSwap(Value&& swapVal)
 {
     if(swapVal.getLiteralValue())
         tmuNoSwap = swapVal.getLiteralValue()->isTrue();
     else if(swapVal.hasContainer())
         // XXX or per-element?
-        setTMUNoSwap(swapVal.container().elements[0]);
+        setTMUNoSwap(std::move(swapVal.container().elements[0]));
     else
         throw CompilationError(
             CompilationStep::GENERAL, "Invalid value to set as uniform address", swapVal.to_string());
     lastTMUNoSwap = qpu.getCurrentCycle();
 }
 
-void TMUs::setTMURegisterS(uint8_t tmu, const Value& val)
+void TMUs::setTMURegisterS(uint8_t tmu, Value&& val)
 {
     checkTMUWriteCycle();
 
@@ -556,19 +557,19 @@ void TMUs::setTMURegisterS(uint8_t tmu, const Value& val)
     requestQueue.push(std::make_pair(readMemoryAddress(val), qpu.getCurrentCycle()));
 }
 
-void TMUs::setTMURegisterT(uint8_t tmu, const Value& val)
+void TMUs::setTMURegisterT(uint8_t tmu, Value&& val)
 {
     checkTMUWriteCycle();
     throw CompilationError(CompilationStep::GENERAL, "Image reads via TMU are currently not supported!");
 }
 
-void TMUs::setTMURegisterR(uint8_t tmu, const Value& val)
+void TMUs::setTMURegisterR(uint8_t tmu, Value&& val)
 {
     checkTMUWriteCycle();
     throw CompilationError(CompilationStep::GENERAL, "Image reads via TMU are currently not supported!");
 }
 
-void TMUs::setTMURegisterB(uint8_t tmu, const Value& val)
+void TMUs::setTMURegisterB(uint8_t tmu, Value&& val)
 {
     checkTMUWriteCycle();
     throw CompilationError(CompilationStep::GENERAL, "Image reads via TMU are currently not supported!");
@@ -654,7 +655,7 @@ bool SFU::hasValueOnR4() const
     return sfuResult.has_value();
 }
 
-static Value calcSFU(const Value& in, const std::function<float(float)>& func)
+static Value calcSFU(Value&& in, const std::function<float(float)>& func)
 {
     if(in.getLiteralValue())
         return Value(Literal(func(static_cast<float>(in.getLiteralValue()->real()))), TYPE_FLOAT);
@@ -663,36 +664,36 @@ static Value calcSFU(const Value& in, const std::function<float(float)>& func)
     if(in.hasContainer())
     {
         Value res(ContainerValue(in.container().elements.size()), in.type);
-        for(const Value& val : in.container().elements)
+        for(Value& val : in.container().elements)
         {
-            res.container().elements.push_back(calcSFU(val, func));
+            res.container().elements.push_back(calcSFU(std::move(val), func));
         }
         return res;
     }
     throw CompilationError(CompilationStep::GENERAL, "Invalid value to use as SFU-parameter", in.to_string());
 }
 
-void SFU::startRecip(const Value& val)
+void SFU::startRecip(Value&& val)
 {
-    sfuResult = calcSFU(val, [](float f) -> float { return 1.0f / f; });
+    sfuResult = calcSFU(std::move(val), [](float f) -> float { return 1.0f / f; });
     lastSFUWrite = currentCycle;
 }
 
-void SFU::startRecipSqrt(const Value& val)
+void SFU::startRecipSqrt(Value&& val)
 {
-    sfuResult = calcSFU(val, [](float f) -> float { return 1.0f / std::sqrt(f); });
+    sfuResult = calcSFU(std::move(val), [](float f) -> float { return 1.0f / std::sqrt(f); });
     lastSFUWrite = currentCycle;
 }
 
-void SFU::startExp2(const Value& val)
+void SFU::startExp2(Value&& val)
 {
-    sfuResult = calcSFU(val, [](float f) -> float { return std::exp2(f); });
+    sfuResult = calcSFU(std::move(val), [](float f) -> float { return std::exp2(f); });
     lastSFUWrite = currentCycle;
 }
 
-void SFU::startLog2(const Value& val)
+void SFU::startLog2(Value&& val)
 {
-    sfuResult = calcSFU(val, [](float f) -> float { return std::log2(f); });
+    sfuResult = calcSFU(std::move(val), [](float f) -> float { return std::log2(f); });
     lastSFUWrite = currentCycle;
 }
 
@@ -794,7 +795,7 @@ Value VPM::readValue()
     return result;
 }
 
-void VPM::writeValue(const Value& val)
+void VPM::writeValue(Value&& val)
 {
     periphery::VPWSetup setup = periphery::VPWSetup::fromLiteral(vpmWriteSetup);
 
@@ -861,7 +862,7 @@ void VPM::writeValue(const Value& val)
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 90, "VPM written", 1);
 }
 
-void VPM::setWriteSetup(const Value& val)
+void VPM::setWriteSetup(Value&& val)
 {
     const Value& element0 = val.hasContainer() ? val.container().elements[0] : val;
     if(element0.isUndefined())
@@ -879,7 +880,7 @@ void VPM::setWriteSetup(const Value& val)
     logging::debug() << "Set VPM write setup: " << setup.to_string() << logging::endl;
 }
 
-void VPM::setReadSetup(const Value& val)
+void VPM::setReadSetup(Value&& val)
 {
     const Value& element0 = val.hasContainer() ? val.container().elements[0] : val;
     if(element0.isUndefined())
@@ -897,7 +898,7 @@ void VPM::setReadSetup(const Value& val)
     logging::debug() << "Set VPM read setup: " << setup.to_string() << logging::endl;
 }
 
-void VPM::setDMAWriteAddress(const Value& val)
+void VPM::setDMAWriteAddress(Value&& val)
 {
     const Value& element0 = val.hasContainer() ? val.container().elements[0] : val;
     if(element0.isUndefined())
@@ -952,7 +953,7 @@ void VPM::setDMAWriteAddress(const Value& val)
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 100, "write DMA write address", 1);
 }
 
-void VPM::setDMAReadAddress(const Value& val)
+void VPM::setDMAReadAddress(Value&& val)
 {
     const Value& element0 = val.hasContainer() ? val.container().elements[0] : val;
     if(element0.isUndefined())
@@ -1582,9 +1583,9 @@ bool QPU::isConditionMet(BranchCond cond) const
     }
     if(checkAll)
         return std::all_of(flags.begin(), flags.end(),
-            [singleCond](const ElementFlags& flags) -> bool { return flags.matchesCondition(singleCond); });
+            [singleCond](ElementFlags flags) -> bool { return flags.matchesCondition(singleCond); });
     return std::any_of(flags.begin(), flags.end(),
-        [singleCond](const ElementFlags& flags) -> bool { return flags.matchesCondition(singleCond); });
+        [singleCond](ElementFlags flags) -> bool { return flags.matchesCondition(singleCond); });
 }
 
 bool QPU::executeSignal(Signaling signal)
@@ -1606,6 +1607,7 @@ bool QPU::executeSignal(Signaling signal)
 void QPU::setFlags(const Value& output, ConditionCode cond, const VectorFlags& newFlags)
 {
     std::vector<std::string> parts;
+    parts.reserve(flags.size());
     for(uint8_t i = 0; i < flags.size(); ++i)
     {
         if(flags[i].matchesCondition(cond))
@@ -1817,6 +1819,7 @@ static Memory fillMemory(const ReferenceRetainingList<Global>& globalData, const
         }
     }
 
+    parameterAddressesOut.reserve(settings.parameter.size());
     for(const auto& pair : settings.parameter)
     {
         tools::Word* addr = mem.getWordAddress(currentAddress);

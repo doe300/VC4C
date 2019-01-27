@@ -42,7 +42,7 @@ using IntrinsicFunction = std::function<InstructionWalker(Method&, InstructionWa
 // NOTE: copying the captures is on purpose, since the sources do not exist anymore!
 
 static IntrinsicFunction intrinsifyUnaryALUInstruction(const std::string& opCode, const bool useSignFlag = false,
-    const Pack& packMode = PACK_NOP, const Unpack& unpackMode = UNPACK_NOP, bool setFlags = false)
+    Pack packMode = PACK_NOP, Unpack unpackMode = UNPACK_NOP, bool setFlags = false)
 {
     return [opCode, useSignFlag, packMode, unpackMode, setFlags](
                Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker {
@@ -73,7 +73,7 @@ static IntrinsicFunction intrinsifyUnaryALUInstruction(const std::string& opCode
 }
 
 static IntrinsicFunction intrinsifyBinaryALUInstruction(const std::string& opCode, const bool useSignFlag = false,
-    const Pack& packMode = PACK_NOP, const Unpack& unpackMode = UNPACK_NOP, bool setFlags = false)
+    Pack packMode = PACK_NOP, Unpack unpackMode = UNPACK_NOP, bool setFlags = false)
 {
     return [opCode, useSignFlag, packMode, unpackMode, setFlags](
                Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker {
@@ -99,7 +99,7 @@ static IntrinsicFunction intrinsifyBinaryALUInstruction(const std::string& opCod
     };
 }
 
-static IntrinsicFunction intrinsifySFUInstruction(const Register& sfuRegister)
+static IntrinsicFunction intrinsifySFUInstruction(const Register sfuRegister)
 {
     return [sfuRegister](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker {
         logging::debug() << "Intrinsifying unary '" << callSite->to_string() << "' to SFU call" << logging::endl;

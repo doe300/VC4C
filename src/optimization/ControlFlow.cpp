@@ -714,7 +714,7 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
         loopControl.stepKind == StepKind::ADD_CONSTANT && loopControl.getStep() == INT_ONE.literal())
     {
         // special/default case: initial value is zero and step is +1
-        move->setSource(ELEMENT_NUMBER_REGISTER);
+        move->setSource(Value(ELEMENT_NUMBER_REGISTER));
         move->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
         logging::debug() << "Changed initial value: " << loopControl.initialization->to_string() << logging::endl;
     }

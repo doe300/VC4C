@@ -54,7 +54,7 @@ Local* BranchLabel::getLabel()
 }
 
 Branch::Branch(const Local* target, const ConditionCode condCode, const Value& cond) :
-    IntermediateInstruction(NO_VALUE, condCode)
+    IntermediateInstruction({}, condCode)
 {
     if(condCode != COND_ALWAYS && condCode != COND_ZERO_CLEAR && condCode != COND_ZERO_SET)
         // only allow always and comparison for zero, since branches only work on boolean values (0, 1)
@@ -148,14 +148,14 @@ const Value& Branch::getCondition() const
     return assertArgument(1);
 }
 
-PhiNode::PhiNode(const Value& dest, const std::vector<std::pair<Value, const Local*>>& labelPairs,
-    const ConditionCode& cond, const SetFlag setFlags) :
-    IntermediateInstruction(dest, cond, setFlags)
+PhiNode::PhiNode(Value&& dest, std::vector<std::pair<Value, const Local*>>&& labelPairs, ConditionCode cond,
+    const SetFlag setFlags) :
+    IntermediateInstruction(std::move(dest), cond, setFlags)
 {
     for(std::size_t i = 0; i < labelPairs.size(); ++i)
     {
         setArgument(i * 2, labelPairs[i].second->createReference());
-        setArgument(i * 2 + 1, labelPairs[i].first);
+        setArgument(i * 2 + 1, std::move(labelPairs[i].first));
     }
 }
 

@@ -51,7 +51,7 @@ static spv_result_t parsedInstructionCallback(void* user_data, const spv_parsed_
 
 static std::string getErrorPosition(spv_diagnostic diagnostics)
 {
-    if(diagnostics == NULL)
+    if(diagnostics == nullptr)
         return "?";
     return std::to_string(diagnostics->position.line).append(":") + std::to_string(diagnostics->position.column);
 }
@@ -100,9 +100,9 @@ static thread_local std::string errorExtra;
 void SPIRVParser::parse(Module& module)
 {
     this->module = &module;
-    spv_diagnostic diagnostics = NULL;
+    spv_diagnostic diagnostics = nullptr;
     spv_context context = spvContextCreate(SPV_ENV_OPENCL_EMBEDDED_1_2);
-    if(context == NULL)
+    if(context == nullptr)
     {
         throw CompilationError(CompilationStep::PARSER, "Failed to create SPIR-V context");
     }
@@ -140,11 +140,12 @@ void SPIRVParser::parse(Module& module)
 
     if(result != SPV_SUCCESS)
     {
-        logging::error() << getErrorMessage(result) << ": " << (diagnostics != NULL ? diagnostics->error : errorExtra)
-                         << " at " << getErrorPosition(diagnostics) << logging::endl;
+        logging::error() << getErrorMessage(result) << ": "
+                         << (diagnostics != nullptr ? diagnostics->error : errorExtra) << " at "
+                         << getErrorPosition(diagnostics) << logging::endl;
         spvContextDestroy(context);
-        throw CompilationError(
-            CompilationStep::PARSER, getErrorMessage(result), (diagnostics != NULL ? diagnostics->error : errorExtra));
+        throw CompilationError(CompilationStep::PARSER, getErrorMessage(result),
+            (diagnostics != nullptr ? diagnostics->error : errorExtra));
     }
     logging::debug() << "SPIR-V binary successfully parsed" << logging::endl;
     spvContextDestroy(context);
@@ -465,7 +466,7 @@ static std::string toScalarType(uint16_t vectorType)
 
 spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parsed_instruction)
 {
-    if(parsed_instruction == NULL)
+    if(parsed_instruction == nullptr)
         return SPV_ERROR_INTERNAL;
 
     /*
@@ -927,7 +928,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             isConstant = isConstant ||
                 static_cast<SpvStorageClass>(getWord(parsed_instruction, 3)) == SpvStorageClassUniformConstant;
             module->globalData.emplace_back(Global(name, type, val, isConstant));
-            module->globalData.back().type.getPointerType()->alignment = alignment;
+            const_cast<unsigned&>(module->globalData.back().type.getPointerType()->alignment) = alignment;
             memoryAllocatedData.emplace(parsed_instruction->result_id, &module->globalData.back());
         }
         logging::debug() << "Reading variable: " << type.to_string() << " " << name
@@ -1690,8 +1691,8 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             sources.emplace_back(args[i], args[i + 1]);
         }
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(
-            new SPIRVPhi(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, sources));
+        instructions.emplace_back(new SPIRVPhi(
+            parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, std::move(sources)));
         return SPV_SUCCESS;
     }
     case spv::Op::OpLoopMerge:
@@ -1719,7 +1720,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             destinations.emplace_back(args[i], args[i + 1]);
         }
         instructions.emplace_back(new SPIRVSwitch(parsed_instruction->result_id, *currentMethod,
-            getWord(parsed_instruction, 1), getWord(parsed_instruction, 2), destinations));
+            getWord(parsed_instruction, 1), getWord(parsed_instruction, 2), std::move(destinations)));
         return SPV_SUCCESS;
     }
     case spv::Op::OpReturn:
@@ -1793,7 +1794,7 @@ std::pair<spv_result_t, Optional<Value>> SPIRVParser::calculateConstantOperation
     dummyInstruction.ext_inst_type = SPV_EXT_INST_TYPE_NONE;
     dummyInstruction.num_operands = 0;
     dummyInstruction.opcode = static_cast<uint16_t>(getWord(instruction, 3));
-    dummyInstruction.operands = NULL;
+    dummyInstruction.operands = nullptr;
     dummyInstruction.result_id = instruction->result_id;
     dummyInstruction.type_id = instruction->type_id;
 

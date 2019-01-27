@@ -64,7 +64,7 @@ static FastMap<const Local*, std::size_t> mapLabels(Method& method)
     return labelsMap;
 }
 
-const FastModificationList<DecoratedInstruction>& CodeGenerator::generateInstructions(Method& method)
+const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(Method& method)
 {
     PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 0, "CodeGeneration (before)", method.countInstructions());
 #ifdef MULTI_THREADED
@@ -112,6 +112,7 @@ const FastModificationList<DecoratedInstruction>& CodeGenerator::generateInstruc
 
     std::string s = "kernel " + method.name;
 
+    generatedInstructions.reserve(method.countInstructions());
     for(const auto& bb : method)
     {
         if(bb.empty())

@@ -91,7 +91,7 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                                 if(tmp.hasLocal(outLoc))
                                 {
                                     tmp = Value(inLoc, tmp.type);
-                                    const_cast<LocalUser*>(instr)->setArgument(i, tmp);
+                                    const_cast<LocalUser*>(instr)->setArgument(i, std::move(tmp));
                                     outLocFound = true;
                                 }
                             }
@@ -632,7 +632,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 auto sourceDecorations = intermediate::forwardDecorations((*sourceWriter)->decoration);
                 it.reset(sourceWriter->release());
                 sourceWriter->erase();
-                it->setOutput(output);
+                it->setOutput(std::move(output));
                 it->setSetFlags(setFlags);
                 it->addDecorations(sourceDecorations);
                 flag = true;
@@ -659,7 +659,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 for(std::size_t i = 0; i < (*destinationReader)->getArguments().size(); ++i)
                 {
                     if((*destinationReader)->assertArgument(i).hasLocal(oldLocal))
-                        (*destinationReader)->setArgument(i, newInput);
+                        (*destinationReader)->setArgument(i, std::move(newInput));
                 }
                 if(oldLocal->residesInMemory() && (*destinationReader)->hasValueType(ValueType::LOCAL) &&
                     (*destinationReader)->getOutput()->local()->getBase(true) ==

@@ -74,6 +74,11 @@ namespace vc4c
         }
         explicit DataType(std::shared_ptr<ComplexType>&& complexType);
         explicit DataType(ComplexType* complexType) : DataType(std::shared_ptr<ComplexType>(complexType)) {}
+        DataType(const DataType&) = default;
+        DataType(DataType&&) noexcept = default;
+
+        DataType& operator=(const DataType&) = default;
+        DataType& operator=(DataType&&) noexcept = default;
 
         std::string to_string() const;
 

@@ -401,7 +401,7 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
     // 3. remove all but the last address writes (and the following DMA waits), update the last write to write the first
     // address written to
     group.addressWrites.back().get<MoveOperation>()->setSource(
-        group.addressWrites.at(0).get<MoveOperation>()->getSource());
+        Value(group.addressWrites.at(0).get<MoveOperation>()->getSource()));
     for(std::size_t i = 0; i < group.addressWrites.size() - 1; ++i)
     {
         if(!group.addressWrites[i].copy().nextInBlock()->readsRegister(
@@ -592,7 +592,7 @@ InstructionWalker normalization::accessGlobalData(
                         method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference() +
                         Value(Literal(globalOffset.value()), TYPE_INT32);
                 }
-                it->setArgument(i, tmp);
+                it->setArgument(i, std::move(tmp));
             }
         }
     }
@@ -730,7 +730,7 @@ void normalization::resolveStackAllocation(
                 assign(it, finalAddr) = addrTemp +
                     Value(Literal(static_cast<uint32_t>(arg.local()->as<StackAllocation>()->offset + stackBaseOffset)),
                         TYPE_INT32);
-                it->setArgument(i, finalAddr);
+                it->setArgument(i, std::move(finalAddr));
             }
         }
     }
@@ -1113,7 +1113,7 @@ static InstructionWalker lowerReadWriteOfMemoryToRegister(InstructionWalker it, 
             // TODO check whether index is guaranteed to be in range [0, 16[
             auto tmp = method.addNewLocal(mem->getSourceElementType());
             it = insertVectorExtraction(it, method, loweredRegister, tmpIndex, tmp);
-            it.reset(new MemoryInstruction(MemoryOperation::WRITE, mem->getDestination(), tmp));
+            it.reset(new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmp)));
             return it;
         }
         if(mem->getDestination().hasLocal() && mem->getDestination().local()->getBase(true) == local)
@@ -1122,7 +1122,7 @@ static InstructionWalker lowerReadWriteOfMemoryToRegister(InstructionWalker it, 
             it = insertAddressToElementOffset(it, method, tmpIndex, local, loweredRegister, mem, mem->getDestination());
             // TODO need special handling for inserting multiple elements to set all new elements
             auto tmp = method.addNewLocal(mem->getDestinationElementType());
-            it.emplace(new MemoryInstruction(MemoryOperation::READ, tmp, mem->getSource()));
+            it.emplace(new MemoryInstruction(MemoryOperation::READ, std::move(tmp), Value(mem->getSource())));
             it.nextInBlock();
             it = insertVectorInsertion(it, method, loweredRegister, tmpIndex, mem->getSource());
             return it.erase();
@@ -1178,8 +1178,8 @@ static bool lowerMemoryToRegister(
                 {
                     // since a copy always involves another memory object, this rewrite is picked up when the other
                     // object is processed
-                    tmpIt.reset(
-                        new MemoryInstruction(MemoryOperation::WRITE, mem->getDestination(), constantValue.value()));
+                    tmpIt.reset(new MemoryInstruction(
+                        MemoryOperation::WRITE, Value(mem->getDestination()), Value(constantValue.value())));
                     logging::debug() << "Replaced memory copy from constant memory to memory write of constant value: "
                                      << tmpIt->to_string() << logging::endl;
                 }
@@ -1245,9 +1245,11 @@ static bool lowerMemoryToRegister(
                     if(isRead)
                         // since a copy always involves another memory object, this rewrite is picked up when the other
                         // object is processed
-                        it.reset(new MemoryInstruction(MemoryOperation::WRITE, mem->getDestination(), loweredRegister));
+                        it.reset(new MemoryInstruction(
+                            MemoryOperation::WRITE, Value(mem->getDestination()), Value(loweredRegister)));
                     else if(isWritten)
-                        it.reset(new MemoryInstruction(MemoryOperation::READ, loweredRegister, mem->getSource()));
+                        it.reset(new MemoryInstruction(
+                            MemoryOperation::READ, Value(loweredRegister), Value(mem->getSource())));
                     break;
                 case MemoryOperation::FILL:
                     if(mem->getSource().type.isScalarType())
@@ -1544,10 +1546,10 @@ static FastMap<const Local*, MemoryAccess> determineMemoryAccess(Method& method)
                     logging::debug() << "Replacing manual copy of memory with memory copy instruction for write: "
                                      << nextMemInstr->to_string() << logging::endl;
 
-                    const Value src = memInstr->getSource();
+                    Value src = memInstr->getSource();
                     it.erase();
-                    nextIt.reset(new MemoryInstruction(
-                        MemoryOperation::COPY, nextMemInstr->getDestination(), src, nextMemInstr->getNumEntries()));
+                    nextIt.reset(new MemoryInstruction(MemoryOperation::COPY, Value(nextMemInstr->getDestination()),
+                        std::move(src), Value(nextMemInstr->getNumEntries())));
                     // continue with the next instruction after the read in the next iteration
                     continue;
                 }

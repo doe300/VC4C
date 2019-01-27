@@ -17,8 +17,10 @@ using namespace vc4c;
 using namespace vc4c::intermediate;
 using namespace vc4c::operators;
 
+// TODO optimize unsigned comparison, unsigned min/max
+
 static NODISCARD InstructionWalker replaceWithSetBoolean(
-    InstructionWalker it, const Value& dest, const ConditionCode& trueCode, const Value& value = BOOL_TRUE)
+    InstructionWalker it, const Value& dest, ConditionCode trueCode, const Value& value = BOOL_TRUE)
 {
     /*
      * This code allows us to combine all "mov.ifz x, true" and "mov.ifnz x, false", since only 1 literal value is used
@@ -291,7 +293,7 @@ static void swapComparisons(const std::string& opCode, Comparison* comp)
 {
     Value tmp = comp->getFirstArg();
     comp->setArgument(0, comp->assertArgument(1));
-    comp->setArgument(1, tmp);
+    comp->setArgument(1, std::move(tmp));
     comp->opCode = opCode;
 }
 

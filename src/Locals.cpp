@@ -22,7 +22,7 @@ bool Local::operator==(const Local& other) const
     return this == &other || name == other.name;
 }
 
-const Value Local::createReference(int index) const
+Value Local::createReference(int index) const
 {
     if(index != WHOLE_OBJECT)
     {

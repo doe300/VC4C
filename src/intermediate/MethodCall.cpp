@@ -11,18 +11,18 @@
 using namespace vc4c;
 using namespace vc4c::intermediate;
 
-MethodCall::MethodCall(const std::string& methodName, const std::vector<Value>& args) :
-    IntermediateInstruction(NO_VALUE), methodName(methodName)
+MethodCall::MethodCall(std::string&& methodName, std::vector<Value>&& args) :
+    IntermediateInstruction(Optional<Value>{}), methodName(std::move(methodName))
 {
     for(std::size_t i = 0; i < args.size(); ++i)
-        setArgument(i, args[i]);
+        setArgument(i, std::move(args[i]));
 }
 
-MethodCall::MethodCall(const Value& dest, const std::string& methodName, const std::vector<Value>& args) :
-    IntermediateInstruction(dest), methodName(methodName)
+MethodCall::MethodCall(Value&& dest, std::string&& methodName, std::vector<Value>&& args) :
+    IntermediateInstruction(std::move(dest)), methodName(std::move(methodName))
 {
     for(std::size_t i = 0; i < args.size(); ++i)
-        setArgument(i, args[i]);
+        setArgument(i, std::move(args[i]));
 }
 
 std::string MethodCall::to_string() const
@@ -51,10 +51,11 @@ IntermediateInstruction* MethodCall::copyFor(Method& method, const std::string& 
         newArgs.push_back(renameValue(method, arg, localPrefix));
     }
     if(getOutput())
-        return (new MethodCall(renameValue(method, getOutput().value(), localPrefix), methodName, newArgs))
+        return (new MethodCall(
+                    renameValue(method, getOutput().value(), localPrefix), std::string(methodName), std::move(newArgs)))
             ->copyExtrasFrom(this);
     else
-        return (new MethodCall(methodName, newArgs))->copyExtrasFrom(this);
+        return (new MethodCall(std::string(methodName), std::move(newArgs)))->copyExtrasFrom(this);
 }
 
 qpu_asm::DecoratedInstruction MethodCall::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
@@ -100,12 +101,12 @@ bool MethodCall::matchesSignature(const Method& method) const
     return true;
 }
 
-Return::Return(const Value& val) : IntermediateInstruction(NO_VALUE)
+Return::Return(Value&& val) : IntermediateInstruction(Optional<Value>{})
 {
-    setArgument(0, val);
+    setArgument(0, std::move(val));
 }
 
-Return::Return() : IntermediateInstruction(NO_VALUE) {}
+Return::Return() : IntermediateInstruction(Optional<Value>{}) {}
 
 std::string Return::to_string() const
 {

@@ -26,6 +26,15 @@ Operation::Operation(
     setArgument(0, arg0);
 }
 
+Operation::Operation(OpCode opCode, Value&& dest, Value&& arg0, ConditionCode cond, SetFlag setFlags) :
+    IntermediateInstruction(std::move(dest), cond, setFlags), op(std::move(opCode)), parent(nullptr)
+{
+    if(opCode.numOperands != 1)
+        throw CompilationError(
+            CompilationStep::GENERAL, "Passing a single argument to a non-unary operation", opCode.name);
+    setArgument(0, std::move(arg0));
+}
+
 Operation::Operation(const OpCode& opCode, const Value& dest, const Value& arg0, const Value& arg1,
     const ConditionCode cond, const SetFlag setFlags) :
     IntermediateInstruction(dest, cond, setFlags),
@@ -36,6 +45,16 @@ Operation::Operation(const OpCode& opCode, const Value& dest, const Value& arg0,
             CompilationStep::GENERAL, "Passing two arguments to a non-binary operation", opCode.name);
     setArgument(0, arg0);
     setArgument(1, arg1);
+}
+
+Operation::Operation(OpCode opCode, Value&& dest, Value&& arg0, Value&& arg1, ConditionCode cond, SetFlag setFlags) :
+    IntermediateInstruction(std::move(dest), cond, setFlags), op(opCode), parent(nullptr)
+{
+    if(opCode.numOperands != 2)
+        throw CompilationError(
+            CompilationStep::GENERAL, "Passing two arguments to a non-binary operation", opCode.name);
+    setArgument(0, std::move(arg0));
+    setArgument(1, std::move(arg1));
 }
 
 std::string Operation::to_string() const
@@ -56,7 +75,7 @@ IntermediateInstruction* Operation::copyFor(Method& method, const std::string& l
         ->copyExtrasFrom(this);
 }
 
-static InputMultiplex getInputMux(const Register& reg, const bool isExplicitRegister,
+static InputMultiplex getInputMux(Register reg, const bool isExplicitRegister,
     const Optional<SmallImmediate>& immediate, const bool isABlocked = false, const bool isBBlocked = false)
 {
     if(immediate)
@@ -383,20 +402,20 @@ bool Operation::isSimpleOperation() const
 }
 
 IntrinsicOperation::IntrinsicOperation(
-    const std::string& opCode, const Value& dest, const Value& arg0, const ConditionCode cond, const SetFlag setFlags) :
-    IntermediateInstruction(dest, cond, setFlags),
+    std::string&& opCode, Value&& dest, Value&& arg0, const ConditionCode cond, const SetFlag setFlags) :
+    IntermediateInstruction(std::move(dest), cond, setFlags),
     opCode(opCode)
 {
-    setArgument(0, arg0);
+    setArgument(0, std::move(arg0));
 }
 
-IntrinsicOperation::IntrinsicOperation(const std::string& opCode, const Value& dest, const Value& arg0,
-    const Value& arg1, const ConditionCode cond, const SetFlag setFlags) :
-    IntermediateInstruction(dest, cond, setFlags),
+IntrinsicOperation::IntrinsicOperation(
+    std::string&& opCode, Value&& dest, Value&& arg0, Value&& arg1, const ConditionCode cond, const SetFlag setFlags) :
+    IntermediateInstruction(std::move(dest), cond, setFlags),
     opCode(opCode)
 {
-    setArgument(0, arg0);
-    setArgument(1, arg1);
+    setArgument(0, std::move(arg0));
+    setArgument(1, std::move(arg1));
 }
 
 std::string IntrinsicOperation::to_string() const
@@ -408,10 +427,10 @@ std::string IntrinsicOperation::to_string() const
 IntermediateInstruction* IntrinsicOperation::copyFor(Method& method, const std::string& localPrefix) const
 {
     if(!getSecondArg())
-        return (new IntrinsicOperation(opCode, renameValue(method, getOutput().value(), localPrefix),
+        return (new IntrinsicOperation(std::string(opCode), renameValue(method, getOutput().value(), localPrefix),
                     renameValue(method, getFirstArg(), localPrefix), conditional, setFlags))
             ->copyExtrasFrom(this);
-    return (new IntrinsicOperation(opCode, renameValue(method, getOutput().value(), localPrefix),
+    return (new IntrinsicOperation(std::string(opCode), renameValue(method, getOutput().value(), localPrefix),
                 renameValue(method, getFirstArg(), localPrefix), renameValue(method, assertArgument(1), localPrefix),
                 conditional, setFlags))
         ->copyExtrasFrom(this);
@@ -447,6 +466,12 @@ MoveOperation::MoveOperation(const Value& dest, const Value& arg, const Conditio
     IntermediateInstruction(dest, cond, setFlags)
 {
     setArgument(0, arg);
+}
+
+MoveOperation::MoveOperation(Value&& dest, Value&& arg, const ConditionCode cond, const SetFlag setFlags) :
+    IntermediateInstruction(std::move(dest), cond, setFlags)
+{
+    setArgument(0, std::move(arg));
 }
 
 std::string MoveOperation::to_string() const
@@ -530,9 +555,9 @@ PrecalculatedValue MoveOperation::precalculate(const std::size_t numIterations) 
     return PrecalculatedValue{val, val ? VectorFlags::fromValue(*val) : VectorFlags{}};
 }
 
-void MoveOperation::setSource(const Value& value)
+void MoveOperation::setSource(Value&& value)
 {
-    setArgument(0, value);
+    setArgument(0, std::move(value));
 }
 
 const Value& MoveOperation::getSource() const
@@ -551,6 +576,14 @@ VectorRotation::VectorRotation(
 {
     signal = SIGNAL_ALU_IMMEDIATE;
     setArgument(1, offset);
+}
+
+VectorRotation::VectorRotation(
+    Value&& dest, Value&& src, Value&& offset, const ConditionCode cond, const SetFlag setFlags) :
+    MoveOperation(std::move(dest), std::move(src), cond, setFlags)
+{
+    signal = SIGNAL_ALU_IMMEDIATE;
+    setArgument(1, std::move(offset));
 }
 
 std::string VectorRotation::to_string() const
@@ -648,7 +681,7 @@ static std::string toTypeString(DelayType delay)
         CompilationStep::GENERAL, "Invalid nop delay type", std::to_string(static_cast<unsigned>(delay)));
 }
 
-Nop::Nop(const DelayType type, const Signaling signal) : IntermediateInstruction(NO_VALUE), type(type)
+Nop::Nop(const DelayType type, const Signaling signal) : IntermediateInstruction(Optional<Value>{}), type(type)
 {
     this->signal = signal;
     this->canBeCombined = false;
@@ -677,20 +710,20 @@ bool Nop::isNormalized() const
     return true;
 }
 
-Comparison::Comparison(const std::string& comp, const Value& dest, const Value& val0, const Value& val1) :
-    IntrinsicOperation(comp, dest, val0, val1)
+Comparison::Comparison(std::string&& comp, Value&& dest, Value&& val0, Value&& val1) :
+    IntrinsicOperation(std::move(comp), std::move(dest), std::move(val0), std::move(val1))
 {
 }
 
 IntermediateInstruction* Comparison::copyFor(Method& method, const std::string& localPrefix) const
 {
-    return (new Comparison(opCode, renameValue(method, getOutput().value(), localPrefix),
+    return (new Comparison(std::string(opCode), renameValue(method, getOutput().value(), localPrefix),
                 renameValue(method, getFirstArg(), localPrefix), renameValue(method, assertArgument(1), localPrefix)))
         ->copyExtrasFrom(this);
 }
 
 CombinedOperation::CombinedOperation(Operation* op1, Operation* op2) :
-    IntermediateInstruction(NO_VALUE), op1((op1 && op1->op.runsOnAddALU()) ? op1 : op2),
+    IntermediateInstruction(Optional<Value>{}), op1((op1 && op1->op.runsOnAddALU()) ? op1 : op2),
     op2((op1 && op1->op.runsOnAddALU()) ? op2 : op1)
 {
     if(!op1 || !op2)

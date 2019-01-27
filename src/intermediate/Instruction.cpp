@@ -89,13 +89,13 @@ InstructionDecorations intermediate::forwardDecorations(InstructionDecorations d
 }
 
 IntermediateInstruction::IntermediateInstruction(
-    const Optional<Value>& output, ConditionCode cond, SetFlag setFlags, Pack packMode) :
+    Optional<Value>&& output, ConditionCode cond, SetFlag setFlags, Pack packMode) :
     signal(SIGNAL_NONE),
     unpackMode(UNPACK_NOP), packMode(packMode), conditional(cond), setFlags(setFlags),
-    decoration(InstructionDecorations::NONE), canBeCombined(true), output(output), arguments()
+    decoration(InstructionDecorations::NONE), canBeCombined(true), output(std::move(output)), arguments()
 {
-    if(output)
-        addAsUserToValue(output.value(), LocalUse::Type::WRITER);
+    if(this->output)
+        addAsUserToValue(this->output.value(), LocalUse::Type::WRITER);
 }
 
 IntermediateInstruction::~IntermediateInstruction()
@@ -161,25 +161,35 @@ const std::vector<Value>& IntermediateInstruction::getArguments() const
 
 void IntermediateInstruction::setArgument(const std::size_t index, const Value& arg)
 {
+    setArgument(index, Value(arg));
+}
+
+void IntermediateInstruction::setArgument(std::size_t index, Value&& arg)
+{
     if(index < arguments.size())
     {
         removeAsUserFromValue(arguments[index], LocalUse::Type::READER);
-        arguments[index] = arg;
+        arguments[index] = std::move(arg);
     }
     else
         // this is somehow required, since it crashes, when an uninitialized Value is assigned a value
-        arguments.insert(arguments.begin() + index, arg);
+        arguments.insert(arguments.begin() + index, std::move(arg));
 
-    addAsUserToValue(arg, LocalUse::Type::READER);
+    addAsUserToValue(arguments[index], LocalUse::Type::READER);
 }
 
 IntermediateInstruction* IntermediateInstruction::setOutput(const Optional<Value>& output)
 {
+    return setOutput(Optional<Value>(output));
+}
+
+IntermediateInstruction* IntermediateInstruction::setOutput(Optional<Value>&& output)
+{
     if(this->output)
         removeAsUserFromValue(this->output.value(), LocalUse::Type::WRITER);
-    this->output = output;
-    if(output)
-        addAsUserToValue(output.value(), LocalUse::Type::WRITER);
+    this->output = std::move(output);
+    if(this->output)
+        addAsUserToValue(this->output.value(), LocalUse::Type::WRITER);
     return this;
 }
 
@@ -280,7 +290,7 @@ PrecalculatedValue IntermediateInstruction::precalculate(const std::size_t numIt
     return PrecalculatedValue{NO_VALUE, {}};
 }
 
-const Value IntermediateInstruction::renameValue(Method& method, const Value& orig, const std::string& prefix) const
+Value IntermediateInstruction::renameValue(Method& method, const Value& orig, const std::string& prefix) const
 {
     if(!orig.hasLocal())
         return orig;
@@ -442,7 +452,7 @@ bool IntermediateInstruction::replaceValue(const Value oldValue, const Value new
     return replaced;
 }
 
-bool IntermediateInstruction::readsRegister(const Register& reg) const
+bool IntermediateInstruction::readsRegister(Register reg) const
 {
     for(const Value& arg : arguments)
         if(arg.hasRegister(reg))
@@ -450,7 +460,7 @@ bool IntermediateInstruction::readsRegister(const Register& reg) const
     return false;
 }
 
-bool IntermediateInstruction::writesRegister(const Register& reg) const
+bool IntermediateInstruction::writesRegister(Register reg) const
 {
     return output && output->hasRegister(reg);
 }

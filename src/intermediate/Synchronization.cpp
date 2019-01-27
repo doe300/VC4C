@@ -11,7 +11,7 @@ using namespace vc4c;
 using namespace vc4c::intermediate;
 
 SemaphoreAdjustment::SemaphoreAdjustment(const Semaphore semaphore, const bool increase) :
-    IntermediateInstruction(NO_VALUE), semaphore(semaphore), increase(increase)
+    IntermediateInstruction(Optional<Value>{}), semaphore(semaphore), increase(increase)
 {
 }
 
@@ -52,7 +52,7 @@ IntermediateInstruction* SemaphoreAdjustment::copyFor(Method& method, const std:
 }
 
 MemoryBarrier::MemoryBarrier(const MemoryScope scope, const MemorySemantics semantics) :
-    IntermediateInstruction(NO_VALUE), scope(scope), semantics(semantics)
+    IntermediateInstruction(Optional<Value>{}), scope(scope), semantics(semantics)
 {
 }
 
@@ -126,7 +126,7 @@ bool MemoryBarrier::mapsToASMInstruction() const
 }
 
 LifetimeBoundary::LifetimeBoundary(const Value& allocation, const bool lifetimeEnd) :
-    IntermediateInstruction(NO_VALUE), isLifetimeEnd(lifetimeEnd)
+    IntermediateInstruction(Optional<Value>{}), isLifetimeEnd(lifetimeEnd)
 {
     if(!allocation.hasLocal() || !allocation.local()->is<StackAllocation>())
         throw CompilationError(CompilationStep::LLVM_2_IR, "Cannot control life-time of object not located on stack",
@@ -169,7 +169,7 @@ const Value& LifetimeBoundary::getStackAllocation() const
 
 static const Value MUTEX_REGISTER(REG_MUTEX, TYPE_BOOL);
 
-MutexLock::MutexLock(MutexAccess accessType) : IntermediateInstruction(NO_VALUE), accessType(accessType)
+MutexLock::MutexLock(MutexAccess accessType) : IntermediateInstruction(Optional<Value>{}), accessType(accessType)
 {
     if(locksMutex())
         setArgument(0, MUTEX_REGISTER);

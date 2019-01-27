@@ -60,7 +60,7 @@ CallSite::CallSite(const Method& method, std::vector<Value>&& args) :
     }
 }
 
-bool CallSite::mapInstruction(Method& method) const
+bool CallSite::mapInstruction(Method& method)
 {
     // map calls to @llvm.lifetime.start / @llvm.lifetime.end to lifetime-instructions
     if(methodName.find("llvm.lifetime.start") == 0 || methodName.find("llvm.lifetime.end") == 0)
@@ -96,7 +96,7 @@ bool CallSite::mapInstruction(Method& method) const
         method.appendToEnd(new intermediate::LifetimeBoundary(pointer, methodName.find("llvm.lifetime.end") == 0));
         return true;
     }
-    const Value output = dest.hasLocal() && dest.local() != nullptr ? dest : NOP_REGISTER;
+    Value output = dest.hasLocal() && dest.local() != nullptr ? dest : NOP_REGISTER;
     // handle other llvm.* intrinsics
     if(methodName.find("llvm.fmuladd") == 0)
     {
@@ -117,8 +117,8 @@ bool CallSite::mapInstruction(Method& method) const
         // the type of llvm.memcpy is always i8*, so the number of bytes (<len>) always matches the number of entries
         // (as expected for MemoryInstruction())
         logging::debug() << "Intrinsifying llvm.memcpy function-call" << logging::endl;
-        method.appendToEnd(new intermediate::MemoryInstruction(
-            intermediate::MemoryOperation::COPY, arguments.at(0), arguments.at(1), arguments.at(2)));
+        method.appendToEnd(new intermediate::MemoryInstruction(intermediate::MemoryOperation::COPY,
+            std::move(arguments.at(0)), std::move(arguments.at(1)), std::move(arguments.at(2))));
         return true;
     }
     if(methodName.find("llvm.memset") == 0)
@@ -132,9 +132,9 @@ bool CallSite::mapInstruction(Method& method) const
         // the type of llvm.memset is always i8*, so the number of bytes (<len>) always matches the number of entries
         // (as expected for MemoryInstruction())
         logging::debug() << "Intrinsifying llvm.memset with DMA writes" << logging::endl;
-        const Value& memAddr = arguments.at(0);
-        const Value& fillByte = arguments.at(1);
-        const Value& numBytes = arguments.at(2);
+        Value& memAddr = arguments.at(0);
+        Value& fillByte = arguments.at(1);
+        Value& numBytes = arguments.at(2);
         const Value& volatileAccess = arguments.back();
         if(volatileAccess.getLiteralValue() && volatileAccess.getLiteralValue()->isTrue() && memAddr.hasLocal() &&
             memAddr.local()->getBase(true)->is<Parameter>())
@@ -143,8 +143,8 @@ bool CallSite::mapInstruction(Method& method) const
             const_cast<Local*>(memAddr.local()->getBase(true))->as<Parameter>()->decorations =
                 add_flag(memAddr.local()->getBase(true)->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
         }
-        method.appendToEnd(
-            new intermediate::MemoryInstruction(intermediate::MemoryOperation::FILL, memAddr, fillByte, numBytes));
+        method.appendToEnd(new intermediate::MemoryInstruction(
+            intermediate::MemoryOperation::FILL, std::move(memAddr), std::move(fillByte), std::move(numBytes)));
         return true;
     }
     if(methodName.find("llvm.bswap") == 0)
@@ -187,20 +187,13 @@ bool CallSite::mapInstruction(Method& method) const
     logging::debug() << "Generating immediate call to " << methodName << " -> " << dest.type.to_string()
                      << logging::endl;
     if(dest.hasLocal() && dest.local() != nullptr)
-        method.appendToEnd((new intermediate::MethodCall(output, methodName, arguments))->addDecorations(decorations));
+        method.appendToEnd(
+            (new intermediate::MethodCall(std::move(output), std::move(methodName), std::move(arguments)))
+                ->addDecorations(decorations));
     else
-        method.appendToEnd((new intermediate::MethodCall(methodName, arguments))->addDecorations(decorations));
+        method.appendToEnd(
+            (new intermediate::MethodCall(std::move(methodName), std::move(arguments)))->addDecorations(decorations));
     return true;
-}
-
-const std::vector<Value>& CallSite::getArguments() const
-{
-    return arguments;
-}
-
-const std::string& CallSite::getMethodName() const
-{
-    return methodName;
 }
 
 Copy::Copy(Value&& dest, Value&& orig, const bool isLoadStore, const bool isRead, bool isBitcast) :
@@ -208,7 +201,7 @@ Copy::Copy(Value&& dest, Value&& orig, const bool isLoadStore, const bool isRead
 {
 }
 
-bool Copy::mapInstruction(Method& method) const
+bool Copy::mapInstruction(Method& method)
 {
     if(isBitcast)
     {
@@ -222,36 +215,40 @@ bool Copy::mapInstruction(Method& method) const
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Generating reading from " << orig.to_string() << " into " << dest.to_string() << logging::endl);
-            method.appendToEnd(new intermediate::MemoryInstruction(intermediate::MemoryOperation::READ, dest, orig));
+            method.appendToEnd(new intermediate::MemoryInstruction(
+                intermediate::MemoryOperation::READ, std::move(dest), std::move(orig)));
         }
         else
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Generating writing of " << orig.to_string() << " into " << dest.to_string() << logging::endl);
-            method.appendToEnd(new intermediate::MemoryInstruction(intermediate::MemoryOperation::WRITE, dest, orig));
+            method.appendToEnd(new intermediate::MemoryInstruction(
+                intermediate::MemoryOperation::WRITE, std::move(dest), std::move(orig)));
         }
     }
     else
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating copy of " << orig.to_string() << " into " << dest.to_string() << logging::endl);
-        method.appendToEnd(new intermediate::MoveOperation(dest, orig));
+        method.appendToEnd(new intermediate::MoveOperation(std::move(dest), std::move(orig)));
     }
     return true;
 }
 
 UnaryOperator::UnaryOperator(std::string&& opCode, Value&& dest, Value&& arg) : dest(dest), opCode(opCode), arg(arg) {}
 
-bool UnaryOperator::mapInstruction(Method& method) const
+bool UnaryOperator::mapInstruction(Method& method)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating unary operation " << opCode << " with " << arg.to_string() << " into " << dest.to_string()
             << logging::endl);
     auto& op = OpCode::findOpCode(opCode);
     if(op != OP_NOP)
-        method.appendToEnd((new intermediate::Operation(op, dest, arg))->addDecorations(decorations));
+        method.appendToEnd(
+            (new intermediate::Operation(op, std::move(dest), std::move(arg)))->addDecorations(decorations));
     else
-        method.appendToEnd((new intermediate::IntrinsicOperation(opCode, dest, arg))->addDecorations(decorations));
+        method.appendToEnd((new intermediate::IntrinsicOperation(std::move(opCode), std::move(dest), std::move(arg)))
+                               ->addDecorations(decorations));
     return true;
 }
 
@@ -260,17 +257,19 @@ BinaryOperator::BinaryOperator(std::string&& opCode, Value&& dest, Value&& arg0,
 {
 }
 
-bool BinaryOperator::mapInstruction(Method& method) const
+bool BinaryOperator::mapInstruction(Method& method)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating binary operation " << opCode << " with " << arg.to_string() << " and " << arg2.to_string()
             << " into " << dest.to_string() << logging::endl);
     auto& op = OpCode::findOpCode(opCode);
     if(op != OP_NOP)
-        method.appendToEnd((new intermediate::Operation(op, dest, arg, arg2))->addDecorations(decorations));
+        method.appendToEnd((new intermediate::Operation(op, std::move(dest), std::move(arg), std::move(arg2)))
+                               ->addDecorations(decorations));
     else
         method.appendToEnd(
-            (new intermediate::IntrinsicOperation(opCode, dest, arg, arg2))->addDecorations(decorations));
+            (new intermediate::IntrinsicOperation(std::move(opCode), std::move(dest), std::move(arg), std::move(arg2)))
+                ->addDecorations(decorations));
     return true;
 }
 
@@ -279,7 +278,7 @@ IndexOf::IndexOf(Value&& dest, Value&& container, std::vector<Value>&& indices) 
 {
 }
 
-bool IndexOf::mapInstruction(Method& method) const
+bool IndexOf::mapInstruction(Method& method)
 {
     // need to get pointer/address -> reference to content
     // a[i] of type t is at position &a + i * sizeof(t)
@@ -296,22 +295,18 @@ bool IndexOf::mapInstruction(Method& method) const
     return true;
 }
 
-const Value IndexOf::getContainer() const
-{
-    return container;
-}
-
 Comparison::Comparison(Value&& dest, std::string&& comp, Value&& op1, Value&& op2, const bool isFloat) :
     dest(dest), comp(comp), isFloat(isFloat), op1(op1), op2(op2)
 {
 }
 
-bool Comparison::mapInstruction(Method& method) const
+bool Comparison::mapInstruction(Method& method)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating comparison " << comp << " with " << op1.to_string() << " and " << op2.to_string() << " into "
             << dest.to_string() << logging::endl);
-    method.appendToEnd((new intermediate::Comparison(comp, dest, op1, op2))->addDecorations(decorations));
+    method.appendToEnd((new intermediate::Comparison(std::move(comp), std::move(dest), std::move(op1), std::move(op2)))
+                           ->addDecorations(decorations));
     return true;
 }
 
@@ -320,13 +315,13 @@ ContainerInsertion::ContainerInsertion(Value&& dest, Value&& container, Value&& 
 {
 }
 
-bool ContainerInsertion::mapInstruction(Method& method) const
+bool ContainerInsertion::mapInstruction(Method& method)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating insertion of " << newValue.to_string() << " at " << index.to_string() << " into "
             << container.to_string() << " into " << dest.to_string() << logging::endl);
     // 1. copy whole container
-    method.appendToEnd(new intermediate::MoveOperation(dest, container));
+    method.appendToEnd(new intermediate::MoveOperation(std::move(dest), std::move(container)));
     // 2. insert new element
     // either into vector or into scalar at "element 0"
     if(container.type.isVectorType() || index.hasLiteral(Literal(0u)))
@@ -347,7 +342,7 @@ ContainerExtraction::ContainerExtraction(Value&& dest, Value&& container, Value&
 {
 }
 
-bool ContainerExtraction::mapInstruction(Method& method) const
+bool ContainerExtraction::mapInstruction(Method& method)
 {
     const DataType elementType = container.type.getElementType();
     CPPLOG_LAZY(logging::Level::DEBUG,
@@ -371,12 +366,12 @@ ValueReturn::ValueReturn() : hasValue(false), val(Literal(false), TYPE_VOID) {}
 
 ValueReturn::ValueReturn(Value&& val) : hasValue(true), val(val) {}
 
-bool ValueReturn::mapInstruction(Method& method) const
+bool ValueReturn::mapInstruction(Method& method)
 {
     if(hasValue)
     {
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating return of " << val.to_string() << logging::endl);
-        method.appendToEnd(new intermediate::Return(val));
+        method.appendToEnd(new intermediate::Return(std::move(val)));
     }
     else
     {
@@ -391,7 +386,7 @@ ShuffleVector::ShuffleVector(Value&& dest, Value&& v1, Value&& v2, Value&& mask)
 {
 }
 
-bool ShuffleVector::mapInstruction(Method& method) const
+bool ShuffleVector::mapInstruction(Method& method)
 {
     // shuffling = iteration over all elements in both vectors and re-ordering in order given
     CPPLOG_LAZY(logging::Level::DEBUG,
@@ -404,7 +399,7 @@ bool ShuffleVector::mapInstruction(Method& method) const
 
 LLVMLabel::LLVMLabel(Value&& label) : label(label) {}
 
-bool LLVMLabel::mapInstruction(Method& method) const
+bool LLVMLabel::mapInstruction(Method& method)
 {
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating label " << label.to_string() << logging::endl);
     method.appendToEnd(new intermediate::BranchLabel(*label.local()));
@@ -413,11 +408,11 @@ bool LLVMLabel::mapInstruction(Method& method) const
 
 PhiNode::PhiNode(Value&& dest, std::vector<std::pair<Value, const Local*>>&& labels) : dest(dest), labels(labels) {}
 
-bool PhiNode::mapInstruction(Method& method) const
+bool PhiNode::mapInstruction(Method& method)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating Phi-Node with " << labels.size() << " options into " << dest.to_string() << logging::endl);
-    method.appendToEnd(new intermediate::PhiNode(dest, labels));
+    method.appendToEnd(new intermediate::PhiNode(std::move(dest), std::move(labels)));
     return true;
 }
 
@@ -426,7 +421,7 @@ Selection::Selection(Value&& dest, Value&& cond, Value&& opt1, Value&& opt2) :
 {
 }
 
-bool Selection::mapInstruction(Method& method) const
+bool Selection::mapInstruction(Method& method)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating moves for selection " << opt1.to_string() << " or " << opt2.to_string() << " according to "
@@ -447,8 +442,8 @@ bool Selection::mapInstruction(Method& method) const
     else
         method.appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, cond, COND_ALWAYS, SetFlag::SET_FLAGS));
 
-    method.appendToEnd(new intermediate::MoveOperation(dest, opt1, COND_ZERO_CLEAR));
-    method.appendToEnd(new intermediate::MoveOperation(dest, opt2, COND_ZERO_SET));
+    method.appendToEnd(new intermediate::MoveOperation(std::move(dest), std::move(opt1), COND_ZERO_CLEAR));
+    method.appendToEnd(new intermediate::MoveOperation(std::move(dest), std::move(opt2), COND_ZERO_SET));
     return true;
 }
 
@@ -459,7 +454,7 @@ Branch::Branch(Value&& cond, Value&& thenLabel, Value&& elseLabel) :
 {
 }
 
-bool Branch::mapInstruction(Method& method) const
+bool Branch::mapInstruction(Method& method)
 {
     if(cond == BOOL_TRUE)
     {
@@ -484,7 +479,7 @@ Switch::Switch(Value&& cond, Value&& defaultLabel, FastMap<int, Value>&& cases) 
 {
 }
 
-bool Switch::mapInstruction(Method& method) const
+bool Switch::mapInstruction(Method& method)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating branches for switch on " << cond.to_string() << " with " << jumpLabels.size()
@@ -492,9 +487,9 @@ bool Switch::mapInstruction(Method& method) const
     for(const auto& option : jumpLabels)
     {
         // for every case, if equal,branch to given label
-        const Value tmp = method.addNewLocal(TYPE_BOOL, "%switch");
-        method.appendToEnd(
-            new intermediate::Comparison(intermediate::COMP_EQ, tmp, cond, Value(Literal(option.first), TYPE_INT32)));
+        Value tmp = method.addNewLocal(TYPE_BOOL, "%switch");
+        method.appendToEnd(new intermediate::Comparison(
+            intermediate::COMP_EQ, std::move(tmp), std::move(cond), Value(Literal(option.first), TYPE_INT32)));
         method.appendToEnd(new intermediate::Branch(option.second.local(), COND_ZERO_CLEAR, tmp));
     }
     // branch default label

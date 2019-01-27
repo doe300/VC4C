@@ -35,7 +35,7 @@ namespace vc4c
             explicit LLVMInstruction();
             virtual ~LLVMInstruction();
 
-            virtual bool mapInstruction(Method& method) const = 0;
+            virtual bool mapInstruction(Method& method) = 0;
 
             LLVMInstruction* setDecorations(intermediate::InstructionDecorations decorations);
 
@@ -52,16 +52,12 @@ namespace vc4c
             explicit CallSite(const Method& method, std::vector<Value>&& args = {});
             ~CallSite() override = default;
 
-            bool mapInstruction(Method& method) const override;
-
-            const std::vector<Value>& getArguments() const;
-
-            const std::string& getMethodName() const;
+            bool mapInstruction(Method& method) override;
 
         private:
-            const Value dest;
-            const std::string methodName;
-            const std::vector<Value> arguments;
+            Value dest;
+            std::string methodName;
+            std::vector<Value> arguments;
         };
 
         class Copy final : public LLVMInstruction
@@ -70,14 +66,14 @@ namespace vc4c
             Copy(Value&& dest, Value&& orig, bool isLoadStore = false, bool isRead = false, bool isBitcast = false);
             ~Copy() override = default;
 
-            bool mapInstruction(Method& method) const override;
+            bool mapInstruction(Method& method) override;
 
         private:
-            const Value dest;
-            const Value orig;
-            const bool isLoadStore;
-            const bool isRead;
-            const bool isBitcast;
+            Value dest;
+            Value orig;
+            bool isLoadStore;
+            bool isRead;
+            bool isBitcast;
         };
 
         class UnaryOperator : public LLVMInstruction
@@ -86,12 +82,12 @@ namespace vc4c
             UnaryOperator(std::string&& opCode, Value&& dest, Value&& arg);
             ~UnaryOperator() override = default;
 
-            bool mapInstruction(Method& method) const override;
+            bool mapInstruction(Method& method) override;
 
         protected:
-            const Value dest;
-            const std::string opCode;
-            const Value arg;
+            Value dest;
+            std::string opCode;
+            Value arg;
         };
 
         class BinaryOperator final : public UnaryOperator
@@ -100,10 +96,10 @@ namespace vc4c
             BinaryOperator(std::string&& opCode, Value&& dest, Value&& arg0, Value&& arg1);
             ~BinaryOperator() override = default;
 
-            bool mapInstruction(Method& method) const override;
+            bool mapInstruction(Method& method) override;
 
         private:
-            const Value arg2;
+            Value arg2;
         };
 
         class IndexOf final : public LLVMInstruction
@@ -112,14 +108,12 @@ namespace vc4c
             IndexOf(Value&& dest, Value&& container, std::vector<Value>&& indices);
             ~IndexOf() override = default;
 
-            bool mapInstruction(Method& method) const override;
-
-            const Value getContainer() const;
+            bool mapInstruction(Method& method) override;
 
         private:
-            const Value dest;
-            const Value container;
-            const std::vector<Value> indices;
+            Value dest;
+            Value container;
+            std::vector<Value> indices;
         };
 
         class Comparison final : public LLVMInstruction
@@ -128,14 +122,14 @@ namespace vc4c
             Comparison(Value&& dest, std::string&& comp, Value&& op1, Value&& op2, bool isFloat);
             ~Comparison() override = default;
 
-            bool mapInstruction(Method& method) const override;
+            bool mapInstruction(Method& method) override;
 
         private:
-            const Value dest;
-            const std::string comp;
-            const bool isFloat;
-            const Value op1;
-            const Value op2;
+            Value dest;
+            std::string comp;
+            bool isFloat;
+            Value op1;
+            Value op2;
         };
 
         class ContainerInsertion final : public LLVMInstruction
@@ -144,13 +138,13 @@ namespace vc4c
             ContainerInsertion(Value&& dest, Value&& container, Value&& newValue, Value&& index);
             ~ContainerInsertion() override = default;
 
-            bool mapInstruction(Method& method) const override;
+            bool mapInstruction(Method& method) override;
 
         private:
-            const Value dest;
-            const Value container;
-            const Value newValue;
-            const Value index;
+            Value dest;
+            Value container;
+            Value newValue;
+            Value index;
         };
 
         class ContainerExtraction final : public LLVMInstruction
@@ -159,12 +153,12 @@ namespace vc4c
             ContainerExtraction(Value&& dest, Value&& container, Value&& index);
             ~ContainerExtraction() override = default;
 
-            bool mapInstruction(Method& method) const override;
+            bool mapInstruction(Method& method) override;
 
         private:
-            const Value dest;
-            const Value container;
-            const Value index;
+            Value dest;
+            Value container;
+            Value index;
         };
 
         class ValueReturn final : public LLVMInstruction
@@ -174,11 +168,11 @@ namespace vc4c
             explicit ValueReturn(Value&& val);
             ~ValueReturn() override = default;
 
-            bool mapInstruction(Method& method) const override;
+            bool mapInstruction(Method& method) override;
 
         private:
-            const bool hasValue;
-            const Value val;
+            bool hasValue;
+            Value val;
         };
 
         class ShuffleVector final : public LLVMInstruction
@@ -187,13 +181,13 @@ namespace vc4c
             ShuffleVector(Value&& dest, Value&& v1, Value&& v2, Value&& mask);
             ~ShuffleVector() override = default;
 
-            bool mapInstruction(Method& method) const override;
+            bool mapInstruction(Method& method) override;
 
         private:
-            const Value dest;
-            const Value v1;
-            const Value v2;
-            const Value mask;
+            Value dest;
+            Value v1;
+            Value v2;
+            Value mask;
         };
 
         class LLVMLabel final : public LLVMInstruction
@@ -202,10 +196,10 @@ namespace vc4c
             explicit LLVMLabel(Value&& label);
             ~LLVMLabel() override = default;
 
-            bool mapInstruction(Method& method) const override;
+            bool mapInstruction(Method& method) override;
 
         private:
-            const Value label;
+            Value label;
         };
 
         class PhiNode final : public LLVMInstruction
@@ -214,11 +208,11 @@ namespace vc4c
             PhiNode(Value&& dest, std::vector<std::pair<Value, const Local*>>&& labels);
             ~PhiNode() override = default;
 
-            bool mapInstruction(Method& method) const override;
+            bool mapInstruction(Method& method) override;
 
         private:
-            const Value dest;
-            const std::vector<std::pair<Value, const Local*>> labels;
+            Value dest;
+            std::vector<std::pair<Value, const Local*>> labels;
         };
 
         class Selection final : public LLVMInstruction
@@ -227,13 +221,13 @@ namespace vc4c
             Selection(Value&& dest, Value&& cond, Value&& opt1, Value&& opt2);
             ~Selection() override = default;
 
-            bool mapInstruction(Method& method) const override;
+            bool mapInstruction(Method& method) override;
 
         private:
-            const Value dest;
-            const Value cond;
-            const Value opt1;
-            const Value opt2;
+            Value dest;
+            Value cond;
+            Value opt1;
+            Value opt2;
         };
 
         class Branch final : public LLVMInstruction
@@ -243,12 +237,12 @@ namespace vc4c
             Branch(Value&& cond, Value&& thenLabel, Value&& elseLabel);
             ~Branch() override = default;
 
-            bool mapInstruction(Method& method) const override;
+            bool mapInstruction(Method& method) override;
 
         private:
-            const Value thenLabel;
-            const Value elseLabel;
-            const Value cond;
+            Value thenLabel;
+            Value elseLabel;
+            Value cond;
         };
 
         class Switch final : public LLVMInstruction
@@ -257,12 +251,12 @@ namespace vc4c
             Switch(Value&& cond, Value&& defaultLabel, FastMap<int, Value>&& cases);
             ~Switch() override = default;
 
-            bool mapInstruction(Method& method) const override;
+            bool mapInstruction(Method& method) override;
 
         private:
-            const Value cond;
-            const Value defaultLabel;
-            const FastMap<int, Value> jumpLabels;
+            Value cond;
+            Value defaultLabel;
+            FastMap<int, Value> jumpLabels;
         };
     } // namespace llvm2qasm
 } // namespace vc4c

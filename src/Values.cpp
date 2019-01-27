@@ -174,19 +174,19 @@ int Register::getAccumulatorNumber() const
     }
 }
 
-bool Register::operator<(const Register& right) const
+bool Register::operator<(Register right) const
 {
     const auto tmp = static_cast<unsigned char>(file) < static_cast<unsigned char>(right.file);
     return tmp || num < right.num;
 }
 
-bool Register::operator>(const Register& right) const
+bool Register::operator>(Register right) const
 {
     const auto tmp = static_cast<unsigned char>(file) > static_cast<unsigned char>(right.file);
     return tmp || num > right.num;
 }
 
-bool Register::operator==(const Register& right) const
+bool Register::operator==(Register right) const
 {
     if(this == &right)
         return true;
@@ -467,19 +467,15 @@ bool ContainerValue::isUndefined() const
 
 Value::Value(const Literal& lit, const DataType& type) noexcept : data(lit), type(type) {}
 
-Value::Value(const Register& reg, const DataType& type) noexcept : data(reg), type(type) {}
+Value::Value(Register reg, const DataType& type) noexcept : data(reg), type(type) {}
 
 Value::Value(const ContainerValue& container, const DataType& type) : data(container), type(type) {}
-
-Value::Value(const Value& val) : data(val.data), type(val.type) {}
-
-Value::Value(Value&& val) : data(val.data), type(val.type) {}
 
 Value::Value(const Local* local, const DataType& type) noexcept : data(const_cast<Local*>(local)), type(type) {}
 
 Value::Value(const DataType& type) noexcept : data(VariantNamespace::monostate{}), type(type) {}
 
-Value::Value(const SmallImmediate& immediate, const DataType& type) noexcept : data(immediate), type(type) {}
+Value::Value(SmallImmediate immediate, const DataType& type) noexcept : data(immediate), type(type) {}
 
 bool Value::operator==(const Value& other) const
 {
@@ -542,7 +538,7 @@ bool Value::hasLocal(const Local* local) const
     return hasLocal() && checkPointer(this->local()) == checkPointer(local);
 }
 
-bool Value::hasRegister(const Register& reg) const
+bool Value::hasRegister(Register reg) const
 {
     return hasRegister() && this->reg() == reg;
 }
@@ -554,7 +550,7 @@ bool Value::hasLiteral(const Literal& lit) const
     return hasLiteral() && this->literal() == lit;
 }
 
-bool Value::hasImmediate(const SmallImmediate& immediate) const
+bool Value::hasImmediate(SmallImmediate immediate) const
 {
     if(hasLiteral())
         return immediate.getIntegerValue() == literal().signedInt() || immediate.getFloatingValue() == literal().real();

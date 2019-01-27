@@ -185,7 +185,7 @@ InstructionWalker normalization::handleContainer(
         {
             src.container().elements[i] = tmp[i];
         }
-        rot->setSource(src);
+        rot->setSource(std::move(src));
         // TODO next step could be optimized, if we used the vector-rotation to extract an element
         // In which case, a simple copy suffices?? At least, we don't need to set the other elements
     }
@@ -197,7 +197,7 @@ InstructionWalker normalization::handleContainer(
         logging::debug() << "Rewriting rotation from container " << rot->to_string() << logging::endl;
         auto tmp = method.addNewLocal(rot->getSource().type);
         it = copyVector(method, it, tmp, move->getSource());
-        it->setArgument(0, tmp);
+        it->setArgument(0, std::move(tmp));
     }
     else if(move != nullptr && move->getSource().hasContainer())
     {
@@ -223,7 +223,7 @@ InstructionWalker normalization::handleContainer(
                     const Value& container = op->assertArgument(i);
                     Value tmp = container.container().elements.at(0);
                     tmp.type = container.type;
-                    op->setArgument(i, tmp);
+                    op->setArgument(i, std::move(tmp));
                 }
                 else if(op->assertArgument(i).container().isElementNumber())
                 {
@@ -236,7 +236,7 @@ InstructionWalker normalization::handleContainer(
             logging::debug() << "Rewriting operation with container-input " << op->to_string() << logging::endl;
             const Value tmpVal = method.addNewLocal(op->getFirstArg().type, "%container");
             it = copyVector(method, it, tmpVal, op->getFirstArg());
-            op->setArgument(0, tmpVal);
+            op->setArgument(0, std::move(tmpVal));
             // don't skip next instruction
             it.previousInBlock();
         }
@@ -245,7 +245,7 @@ InstructionWalker normalization::handleContainer(
             logging::debug() << "Rewriting operation with container-input " << op->to_string() << logging::endl;
             const Value tmpVal = method.addNewLocal(op->assertArgument(1).type, "%container");
             it = copyVector(method, it, tmpVal, op->assertArgument(1));
-            op->setArgument(1, tmpVal);
+            op->setArgument(1, std::move(tmpVal));
             // don't skip next instruction
             it.previousInBlock();
         }
@@ -706,7 +706,7 @@ static NODISCARD InstructionWalker handleImmediateInOperation(
                     if(op->hasDecoration(intermediate::InstructionDecorations::VPM_WRITE_CONFIGURATION))
                         it->addDecorations(intermediate::InstructionDecorations::VPM_WRITE_CONFIGURATION);
                     it.nextInBlock();
-                    op->setArgument(i, tmp);
+                    op->setArgument(i, std::move(tmp));
                 }
                 else if(mapped.opCode != OP_NOP)
                 {
@@ -721,7 +721,7 @@ static NODISCARD InstructionWalker handleImmediateInOperation(
                         it.emplace(new intermediate::Operation(mapped.opCode, tmp, Value(mapped.immediate, type),
                             Value(mapped.immediate, type), op->conditional));
                     it.nextInBlock();
-                    op->setArgument(i, tmp);
+                    op->setArgument(i, std::move(tmp));
                 }
                 else
                 {

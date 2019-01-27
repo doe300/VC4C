@@ -185,6 +185,7 @@ namespace vc4c
     static_assert(assert_stringifyable<ConditionCode>::value, "ConditionCode is not stringify-able!");
     static_assert(std::is_literal_type<ConditionCode>::value, "ConditionCode is not literal");
     static_assert(std::is_trivially_copyable<ConditionCode>::value, "ConditionCode is not trivial");
+    static_assert(sizeof(ConditionCode) == sizeof(uint8_t), "");
 
     static_assert(assert_assignable<Signaling>::value, "Signaling is not assignable!");
     static_assert(std::is_trivially_destructible<Signaling>::value, "Signaling is not trivially destructible!");
@@ -192,6 +193,7 @@ namespace vc4c
     static_assert(assert_stringifyable<Signaling>::value, "Signaling is not stringify-able!");
     static_assert(std::is_literal_type<Signaling>::value, "Signaling is not literal");
     static_assert(std::is_trivially_copyable<Signaling>::value, "Signaling is not trivial");
+    static_assert(sizeof(Signaling) == sizeof(uint8_t), "");
 
     static_assert(assert_assignable<Unpack>::value, "Unpack is not assignable!");
     static_assert(std::is_trivially_destructible<Unpack>::value, "Unpack is not trivially destructible!");
@@ -199,6 +201,7 @@ namespace vc4c
     static_assert(assert_stringifyable<Unpack>::value, "Unpack is not stringify-able!");
     static_assert(std::is_literal_type<Unpack>::value, "Unpack is not literal");
     static_assert(std::is_trivially_copyable<Unpack>::value, "Unpack is not trivial");
+    static_assert(sizeof(Unpack) == sizeof(uint8_t), "");
 
     static_assert(assert_assignable<Pack>::value, "Pack is not assignable!");
     static_assert(std::is_trivially_destructible<Pack>::value, "Pack is not trivially destructible!");
@@ -206,12 +209,14 @@ namespace vc4c
     static_assert(assert_stringifyable<Pack>::value, "Pack is not stringify-able!");
     static_assert(std::is_literal_type<Pack>::value, "Pack is not literal");
     static_assert(std::is_trivially_copyable<Pack>::value, "Pack is not trivial");
+    static_assert(sizeof(Pack) == sizeof(uint8_t), "");
 
     static_assert(assert_assignable<SetFlag>::value, "SetFlag is not assignable!");
     static_assert(std::is_trivially_destructible<SetFlag>::value, "SetFlag is not trivially destructible!");
     static_assert(assert_comparable<SetFlag>::value, "SetFlag is not comparable");
     static_assert(std::is_literal_type<SetFlag>::value, "SetFlag is not literal");
     static_assert(std::is_trivially_copyable<SetFlag>::value, "SetFlag is not trivial");
+    static_assert(sizeof(SetFlag) == sizeof(uint8_t), "");
 
     static_assert(assert_assignable<OpCode>::value, "OpCode is not assignable!");
     static_assert(std::is_trivially_destructible<OpCode>::value, "OpCode is not trivially destructible!");
@@ -265,6 +270,7 @@ namespace vc4c
     static_assert(assert_comparable<InstructionPart>::value, "InstructionPart is not comparable");
     static_assert(std::is_literal_type<InstructionPart>::value, "InstructionPart is not literal");
     static_assert(std::is_trivially_copyable<InstructionPart>::value, "InstructionPart is not trivial");
+    static_assert(sizeof(InstructionPart) == sizeof(uint8_t), "");
 } // namespace vc4c
 
 #endif /* VC4C_CONCEPTS_H */

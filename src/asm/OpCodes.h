@@ -561,7 +561,7 @@ namespace vc4c
 
         bool matchesCondition(ConditionCode cond) const;
 
-        inline bool operator==(const ElementFlags& other) const
+        inline bool operator==(ElementFlags other) const
         {
             return zero == other.zero && negative == other.negative && carry == other.carry &&
                 overflow == other.overflow;

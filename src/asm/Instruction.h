@@ -95,6 +95,7 @@ namespace vc4c
             std::string comment;
             std::string previousComment;
 
+            explicit DecoratedInstruction() = default;
             DecoratedInstruction(Instruction instr, std::string&& comment = "") :
                 instruction(instr), comment(std::move(comment))
             {

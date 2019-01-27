@@ -304,7 +304,7 @@ static void extractKernelMetadata(
                                         llvm::cast<const llvm::ConstantAsMetadata>(operand);
                                     auto& addrSpace = kernel.parameters.at(i - 1).type.getPointerType()->addressSpace;
                                     if(addrSpace == AddressSpace::GENERIC)
-                                        addrSpace = toAddressSpace(static_cast<int>(
+                                        const_cast<AddressSpace&>(addrSpace) = toAddressSpace(static_cast<int>(
                                             llvm::cast<const llvm::ConstantInt>(constant->getValue())->getSExtValue()));
                                 }
                                 else

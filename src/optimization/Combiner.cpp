@@ -1331,7 +1331,7 @@ static void rewriteIndexCalculation(Method& method, MemoryAccessRange& range)
     else if(secondVal)
         resultVal = secondVal;
     if(range.typeSizeShift)
-        (*range.typeSizeShift)->setArgument(0, resultVal->first);
+        (*range.typeSizeShift)->setArgument(0, std::move(resultVal->first));
     else
         // TODO replace index variable with new index variable
         throw CompilationError(

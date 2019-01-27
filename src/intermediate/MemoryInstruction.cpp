@@ -88,13 +88,11 @@ static void checkSingleValue(const Value& val)
     throw CompilationError(CompilationStep::LLVM_2_IR, "Operand needs to the constant one", val.to_string());
 }
 
-MemoryInstruction::MemoryInstruction(
-    const MemoryOperation op, const Value dest, const Value src, const Value numEntries) :
-    IntermediateInstruction(dest),
-    op(op)
+MemoryInstruction::MemoryInstruction(const MemoryOperation op, Value&& dest, Value&& src, Value&& numEntries) :
+    IntermediateInstruction(std::move(dest)), op(op)
 {
-    setArgument(0, src);
-    setArgument(1, numEntries);
+    setArgument(0, std::move(src));
+    setArgument(1, std::move(numEntries));
 }
 
 std::string MemoryInstruction::to_string() const

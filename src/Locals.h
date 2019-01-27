@@ -91,7 +91,7 @@ namespace vc4c
          *
          * An index of WHOLE_OBJECT creates a reference to the whole Local
          */
-        const Value createReference(int index = WHOLE_OBJECT) const;
+        Value createReference(int index = WHOLE_OBJECT) const;
 
         /*
          * Returns all the LocalUsers accessing this object

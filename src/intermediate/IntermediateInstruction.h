@@ -88,7 +88,7 @@ namespace vc4c
         class IntermediateInstruction
         {
         public:
-            explicit IntermediateInstruction(const Optional<Value>& output = {}, ConditionCode cond = COND_ALWAYS,
+            explicit IntermediateInstruction(Optional<Value>&& output = {}, ConditionCode cond = COND_ALWAYS,
                 SetFlag setFlags = SetFlag::DONT_SET, Pack packMode = PACK_NOP);
             IntermediateInstruction(const IntermediateInstruction&) = delete;
             IntermediateInstruction(IntermediateInstruction&&) noexcept = delete;
@@ -109,11 +109,11 @@ namespace vc4c
             /*
              * Whether this instructions reads the given register
              */
-            bool readsRegister(const Register& reg) const;
+            bool readsRegister(Register reg) const;
             /*
              * Whether this instructions writes into the given register
              */
-            bool writesRegister(const Register& reg) const;
+            bool writesRegister(Register reg) const;
             /*
              * Whether at least one of the operands of this instruction is a constant
              */
@@ -174,8 +174,10 @@ namespace vc4c
              * Sets the argument for the given index to the value specified
              */
             void setArgument(std::size_t index, const Value& arg);
+            void setArgument(std::size_t index, Value&& arg);
 
             IntermediateInstruction* setOutput(const Optional<Value>& output);
+            IntermediateInstruction* setOutput(Optional<Value>&& output);
             IntermediateInstruction* setSignaling(Signaling signal);
             IntermediateInstruction* setPackMode(Pack packMode);
             IntermediateInstruction* setCondition(ConditionCode condition);
@@ -237,7 +239,7 @@ namespace vc4c
             InstructionDecorations decoration;
 
         protected:
-            const Value renameValue(Method& method, const Value& orig, const std::string& prefix) const;
+            Value renameValue(Method& method, const Value& orig, const std::string& prefix) const;
 
             std::string createAdditionalInfoString() const;
 
@@ -257,8 +259,12 @@ namespace vc4c
         {
             Operation(const OpCode& opCode, const Value& dest, const Value& arg0, ConditionCode cond = COND_ALWAYS,
                 SetFlag setFlags = SetFlag::DONT_SET);
+            Operation(OpCode opCode, Value&& dest, Value&& arg0, ConditionCode cond = COND_ALWAYS,
+                SetFlag setFlags = SetFlag::DONT_SET);
             Operation(const OpCode& opCode, const Value& dest, const Value& arg0, const Value& arg1,
                 ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
+            Operation(OpCode opCode, Value&& dest, Value&& arg0, Value&& arg1, ConditionCode cond = COND_ALWAYS,
+                SetFlag setFlags = SetFlag::DONT_SET);
 
             ~Operation() override = default;
 
@@ -289,9 +295,9 @@ namespace vc4c
          */
         struct IntrinsicOperation : public IntermediateInstruction
         {
-            IntrinsicOperation(const std::string& opCode, const Value& dest, const Value& arg0,
-                ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
-            IntrinsicOperation(const std::string& opCode, const Value& dest, const Value& arg0, const Value& arg1,
+            IntrinsicOperation(std::string&& opCode, Value&& dest, Value&& arg0, ConditionCode cond = COND_ALWAYS,
+                SetFlag setFlags = SetFlag::DONT_SET);
+            IntrinsicOperation(std::string&& opCode, Value&& dest, Value&& arg0, Value&& arg1,
                 ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
             ~IntrinsicOperation() override = default;
 
@@ -310,8 +316,8 @@ namespace vc4c
 
         struct MethodCall final : public IntermediateInstruction
         {
-            explicit MethodCall(const std::string& methodName, const std::vector<Value>& args = {});
-            MethodCall(const Value& dest, const std::string& methodName, const std::vector<Value>& args = {});
+            explicit MethodCall(std::string&& methodName, std::vector<Value>&& args = {});
+            MethodCall(Value&& dest, std::string&& methodName, std::vector<Value>&& args = {});
             ~MethodCall() override = default;
 
             std::string to_string() const override;
@@ -330,7 +336,7 @@ namespace vc4c
         struct Return final : public IntermediateInstruction
         {
             explicit Return();
-            explicit Return(const Value& val);
+            explicit Return(Value&& val);
             ~Return() override = default;
 
             std::string to_string() const override;
@@ -347,6 +353,8 @@ namespace vc4c
         {
             MoveOperation(const Value& dest, const Value& arg, ConditionCode cond = COND_ALWAYS,
                 SetFlag setFlags = SetFlag::DONT_SET);
+            MoveOperation(
+                Value&& dest, Value&& arg, ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
             ~MoveOperation() override = default;
 
             std::string to_string() const override;
@@ -359,7 +367,7 @@ namespace vc4c
 
             PrecalculatedValue precalculate(std::size_t numIterations) const override;
 
-            void setSource(const Value& value);
+            void setSource(Value&& value);
             const Value& getSource() const;
 
             /**
@@ -372,6 +380,8 @@ namespace vc4c
         struct VectorRotation final : public MoveOperation
         {
             VectorRotation(const Value& dest, const Value& src, const Value& offset, ConditionCode cond = COND_ALWAYS,
+                SetFlag setFlags = SetFlag::DONT_SET);
+            VectorRotation(Value&& dest, Value&& src, Value&& offset, ConditionCode cond = COND_ALWAYS,
                 SetFlag setFlags = SetFlag::DONT_SET);
             ~VectorRotation() override = default;
 
@@ -508,7 +518,7 @@ namespace vc4c
         struct Comparison final : public IntrinsicOperation
         {
         public:
-            Comparison(const std::string& comp, const Value& dest, const Value& val0, const Value& val1);
+            Comparison(std::string&& comp, Value&& dest, Value&& val0, Value&& val1);
             ~Comparison() override = default;
 
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
@@ -585,9 +595,9 @@ namespace vc4c
         struct LoadImmediate final : public IntermediateInstruction
         {
         public:
-            LoadImmediate(const Value& dest, const Literal& source, const ConditionCode& cond = COND_ALWAYS,
+            LoadImmediate(const Value& dest, const Literal& source, ConditionCode cond = COND_ALWAYS,
                 SetFlag setFlags = SetFlag::DONT_SET);
-            LoadImmediate(const Value& dest, uint32_t mask, LoadType type, const ConditionCode& cond = COND_ALWAYS,
+            LoadImmediate(const Value& dest, uint32_t mask, LoadType type, ConditionCode cond = COND_ALWAYS,
                 SetFlag setFlags = SetFlag::DONT_SET);
             ~LoadImmediate() override = default;
 
@@ -626,7 +636,7 @@ namespace vc4c
         struct SemaphoreAdjustment final : public IntermediateInstruction
         {
         public:
-            SemaphoreAdjustment(const Semaphore semaphore, bool increase);
+            SemaphoreAdjustment(Semaphore semaphore, bool increase);
             ~SemaphoreAdjustment() override = default;
 
             std::string to_string() const override;
@@ -643,8 +653,8 @@ namespace vc4c
         struct PhiNode final : public IntermediateInstruction
         {
         public:
-            PhiNode(const Value& dest, const std::vector<std::pair<Value, const Local*>>& labelPairs,
-                const ConditionCode& cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
+            PhiNode(Value&& dest, std::vector<std::pair<Value, const Local*>>&& labelPairs,
+                ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
             ~PhiNode() override = default;
 
             std::string to_string() const override;
@@ -791,8 +801,7 @@ namespace vc4c
         struct MemoryInstruction final : IntermediateInstruction
         {
         public:
-            MemoryInstruction(
-                const MemoryOperation op, const Value dest, const Value src, const Value numEntries = INT_ONE);
+            MemoryInstruction(MemoryOperation op, Value&& dest, Value&& src, Value&& numEntries = Value(INT_ONE));
 
             std::string to_string() const override;
             qpu_asm::DecoratedInstruction convertToAsm(const FastMap<const Local*, Register>& registerMapping,

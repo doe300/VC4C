@@ -102,7 +102,7 @@ namespace vc4c
             Value getActualValue(const Value& val);
 
             Value readStorageRegister(Register reg);
-            void writeStorageRegister(Register reg, const Value& val, std::bitset<16> elementMask);
+            void writeStorageRegister(Register reg, Value&& val, std::bitset<16> elementMask);
             void setReadCache(Register reg, const Value& val);
         };
 
@@ -132,11 +132,11 @@ namespace vc4c
             std::pair<Value, bool> readTMU();
             bool hasValueOnR4() const;
 
-            void setTMUNoSwap(const Value& swapVal);
-            void setTMURegisterS(uint8_t tmu, const Value& val);
-            void setTMURegisterT(uint8_t tmu, const Value& val);
-            void setTMURegisterR(uint8_t tmu, const Value& val);
-            void setTMURegisterB(uint8_t tmu, const Value& val);
+            void setTMUNoSwap(Value&& swapVal);
+            void setTMURegisterS(uint8_t tmu, Value&& val);
+            void setTMURegisterT(uint8_t tmu, Value&& val);
+            void setTMURegisterR(uint8_t tmu, Value&& val);
+            void setTMURegisterB(uint8_t tmu, Value&& val);
 
             NODISCARD bool triggerTMURead(uint8_t tmu);
 
@@ -163,10 +163,10 @@ namespace vc4c
             Value readSFU();
             bool hasValueOnR4() const;
 
-            void startRecip(const Value& val);
-            void startRecipSqrt(const Value& val);
-            void startExp2(const Value& val);
-            void startLog2(const Value& val);
+            void startRecip(Value&& val);
+            void startRecipSqrt(Value&& val);
+            void startExp2(Value&& val);
+            void startLog2(Value&& val);
 
             void incrementCycle();
 
@@ -188,13 +188,13 @@ namespace vc4c
             }
 
             Value readValue();
-            void writeValue(const Value& val);
+            void writeValue(Value&& val);
 
-            void setWriteSetup(const Value& val);
-            void setReadSetup(const Value& val);
+            void setWriteSetup(Value&& val);
+            void setReadSetup(Value&& val);
 
-            void setDMAWriteAddress(const Value& val);
-            void setDMAReadAddress(const Value& val);
+            void setDMAWriteAddress(Value&& val);
+            void setDMAReadAddress(Value&& val);
 
             NODISCARD bool waitDMAWrite() const;
             NODISCARD bool waitDMARead() const;

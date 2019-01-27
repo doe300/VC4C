@@ -34,6 +34,7 @@ static std::vector<std::string> createUniformValues(const qpu_asm::KernelInfo& k
      */
     const KernelUniforms& uniformsUsed = kernel.uniformsUsed;
     std::vector<std::string> values;
+    values.reserve(uniformsUsed.countUniforms() + kernel.getParamCount());
     if(uniformsUsed.getWorkDimensionsUsed())
         values.emplace_back("work dimensions");
     if(uniformsUsed.getLocalSizesUsed())

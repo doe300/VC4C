@@ -14,7 +14,7 @@
 using namespace vc4c;
 using namespace vc4c::optimizations;
 
-static bool isFlagDefined(ConditionCode cond, const ElementFlags& flags)
+static bool isFlagDefined(ConditionCode cond, ElementFlags flags)
 {
     if(cond == COND_ALWAYS || cond == COND_NEVER)
         return true;
@@ -47,8 +47,7 @@ static bool rewriteSettingOfFlags(
     VectorFlags allFlags;
     std::tie(precalc, allFlags) = setFlags->precalculate();
     if(precalc && precalc->getLiteralValue() &&
-        std::all_of(
-            allFlags.begin(), allFlags.end(), [&](const ElementFlags& flags) -> bool { return flags == allFlags[0]; }))
+        std::all_of(allFlags.begin(), allFlags.end(), [&](ElementFlags flags) -> bool { return flags == allFlags[0]; }))
     {
         // flags are compile-time static
         // TODO improve to also handle container constant flags

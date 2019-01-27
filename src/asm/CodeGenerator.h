@@ -31,22 +31,22 @@ namespace vc4c
         public:
             explicit CodeGenerator(const Module& module, const Configuration& config = {});
 
-            /*
-             * NOTE: Instruction to Assembler mapping can be run in parallel for different methods,
-             * so no static or non-constant global data can be used
-             */
-            const FastModificationList<qpu_asm::DecoratedInstruction>& generateInstructions(Method& method);
-
             std::size_t writeOutput(std::ostream& stream);
             void toMachineCode(Method& kernel);
 
         private:
             Configuration config;
             const Module& module;
-            std::map<Method*, FastModificationList<qpu_asm::DecoratedInstruction>> allInstructions;
+            std::map<Method*, FastAccessList<qpu_asm::DecoratedInstruction>> allInstructions;
 #ifdef MULTI_THREADED
             std::mutex instructionsLock;
 #endif
+
+            /*
+             * NOTE: Instruction to Assembler mapping can be run in parallel for different methods,
+             * so no static or non-constant global data can be used
+             */
+            const FastAccessList<qpu_asm::DecoratedInstruction>& generateInstructions(Method& method);
         };
     } // namespace qpu_asm
 } // namespace vc4c
