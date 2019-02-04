@@ -50,7 +50,8 @@ static bool isDerivedFromMemory(const Local* local)
         else
         {
             // unknown / not handled operation, assume worst
-            logging::debug() << "Unhandled source of pointer: " << user->to_string() << logging::endl;
+            CPPLOG_LAZY(
+                logging::Level::DEBUG, log << "Unhandled source of pointer: " << user->to_string() << logging::endl);
             allSourcesDerivedFromMemory = false;
         }
     });

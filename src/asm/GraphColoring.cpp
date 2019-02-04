@@ -406,8 +406,8 @@ GraphColoring::GraphColoring(Method& method, InstructionWalker it) :
     openSet.reserve(method.getNumLocals());
     localUses.reserve(method.getNumLocals());
 
-    const Local* lastWrittenLocal0;
-    const Local* lastWrittenLocal1;
+    const Local* lastWrittenLocal0 = nullptr;
+    const Local* lastWrittenLocal1 = nullptr;
     while(!it.isEndOfMethod())
     {
         if(it.get() != nullptr && !it.has<intermediate::Branch>() && !it.has<intermediate::BranchLabel>() &&
@@ -506,11 +506,14 @@ void GraphColoring::createGraph()
         }
         if(node.initialFile == RegisterFile::NONE)
         {
-            logging::warn() << "Node " << node.key->name << " has no initially possible registers:" << logging::endl;
-            logging::warn() << "\tBlocked files: " << toString(pair.second.blockedFiles) << logging::endl;
-            logging::warn() << "\tInstructions: " << logging::endl;
-            for(const auto& it : pair.second.associatedInstructions)
-                logging::warn() << "\t\t" << it->to_string() << logging::endl;
+            logging::logLazy(logging::Level::WARNING, [&]() {
+                logging::warn() << "Node " << node.key->name
+                                << " has no initially possible registers:" << logging::endl;
+                logging::warn() << "\tBlocked files: " << toString(pair.second.blockedFiles) << logging::endl;
+                logging::warn() << "\tInstructions: " << logging::endl;
+                for(const auto& it : pair.second.associatedInstructions)
+                    logging::warn() << "\t\t" << it->to_string() << logging::endl;
+            });
         }
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Created node: " << node.to_string(false) << logging::endl);
     }
@@ -520,7 +523,7 @@ void GraphColoring::createGraph()
     for(const auto& node : graph.getNodes())
     {
         if(node.second.getEdgesSize() >= 32)
-            logging::debug() << "Spill candidate: " << node.first->to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG, log << "Spill candidate: " << node.first->to_string() << logging::endl);
         PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 5, "SpillCandidates", node.second.getEdgesSize() >= 32);
         PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 6, "SpillCandidates (uses)",
             (node.second.getEdgesSize() >= 32) * node.first->getUsers().size());
@@ -538,7 +541,8 @@ void GraphColoring::createGraph()
     }
     PROFILE_END(InterferenceToColoredGraph);
 
-    logging::debug() << "Colored graph with " << graph.getNodes().size() << " nodes created!" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Colored graph with " << graph.getNodes().size() << " nodes created!" << logging::endl);
 #ifdef DEBUG_MODE
     DebugGraph<const Local*, LocalRelation, ColoredEdge::Directed> debugGraph(
         "/tmp/vc4c-register-graph.dot", graph.getNodes().size());
@@ -749,8 +753,8 @@ static NODISCARD bool moveLocalToRegisterFile(Method& method, ColoredGraph& grap
         }
         // 3) insert move to temporary and use temporary as input to instruction
         const Value tmp = method.addNewLocal(node.key->type, "%register_fix");
-        logging::debug() << "Fixing register-conflict by using temporary as input for: " << it->to_string()
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Fixing register-conflict by using temporary as input for: " << it->to_string() << logging::endl);
         it.emplace(new intermediate::MoveOperation(tmp, node.key->createReference()));
         auto& tmpUse = localUses.emplace(tmp.local(), LocalUsage(it, it)).first->second;
         it.nextInBlock();
@@ -842,7 +846,8 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
     if(node.initialFile == RegisterFile::ACCUMULATOR && !node.hasFreeRegisters(RegisterFile::ACCUMULATOR))
     {
         // fix read-after-writes, so local can be on non-accumulator:
-        logging::debug() << "Fixing register error case 1 for: " << node.key->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Fixing register error case 1 for: " << node.key->to_string() << logging::endl);
         PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 10, "Register error case 1", 1);
 
         // the register-files which can be used after the fix by this local
@@ -866,8 +871,9 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
                 // 3) if so, insert nop
                 if(localRead)
                 {
-                    logging::debug() << "Fixing register-conflict by inserting NOP before: " << it->to_string()
-                                     << logging::endl;
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Fixing register-conflict by inserting NOP before: " << it->to_string()
+                            << logging::endl);
                     it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER));
                     PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 11, "NOP insertions", 1);
                 }
@@ -894,7 +900,8 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
         //-> insert a new temporary to be used instead of this local as parameter for all instructions,
         // this local is used together with another local fixed to a physical file
         //-> or, if blocking local is in other combined instruction, split up instructions
-        logging::debug() << "Fixing register error case 2 for: " << node.key->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Fixing register error case 2 for: " << node.key->to_string() << logging::endl);
         PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 20, "Register error case 2", 1);
 
         bool fileACouldBeUsed =
@@ -917,10 +924,11 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
 
         // TODO need to update blocked files for split combinations
 
-        logging::debug() << "Trying to fix local to register-file "
-                         << toString(add_flag(fileACouldBeUsed ? RegisterFile::PHYSICAL_A : RegisterFile::NONE,
-                                fileBCouldBeUsed ? RegisterFile::PHYSICAL_B : RegisterFile::NONE))
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Trying to fix local to register-file "
+                << toString(add_flag(fileACouldBeUsed ? RegisterFile::PHYSICAL_A : RegisterFile::NONE,
+                       fileBCouldBeUsed ? RegisterFile::PHYSICAL_B : RegisterFile::NONE))
+                << logging::endl);
 
         if(!has_flag(localUses.at(node.key).blockedFiles, RegisterFile::ACCUMULATOR))
         {
@@ -949,7 +957,8 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
     {
         // for any of the possible files, there are no more free registers to assign
         // so we need to copy the local to a temporary before every use, so it can be mapped to the other file
-        logging::debug() << "Fixing register error case 3 for: " << node.key->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Fixing register error case 3 for: " << node.key->to_string() << logging::endl);
         PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 30, "Register error case 3", 1);
 
         bool moveToFileA = node.hasFreeRegisters(RegisterFile::PHYSICAL_A);
@@ -975,10 +984,11 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
                 node.key->to_string());
         }
 
-        logging::debug() << "Trying to fix local to register-file "
-                         << toString(add_flag(moveToFileA ? RegisterFile::PHYSICAL_A : RegisterFile::NONE,
-                                moveToFileB ? RegisterFile::PHYSICAL_B : RegisterFile::NONE))
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Trying to fix local to register-file "
+                << toString(add_flag(moveToFileA ? RegisterFile::PHYSICAL_A : RegisterFile::NONE,
+                       moveToFileB ? RegisterFile::PHYSICAL_B : RegisterFile::NONE))
+                << logging::endl);
 
         if(has_flag(localUses.at(node.key).blockedFiles, RegisterFile::ACCUMULATOR))
         {
@@ -1000,23 +1010,25 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
 bool GraphColoring::fixErrors()
 {
     PROFILE_START(fixRegisterErrors);
-    for(const auto& node : graph.getNodes())
-    {
-        logging::debug() << node.second.to_string() << logging::endl;
-    }
+    logging::logLazy(logging::Level::DEBUG, [&]() {
+        for(const auto& node : graph.getNodes())
+            logging::debug() << node.second.to_string() << logging::endl;
+    });
 
     bool allFixed = true;
     for(const Local* local : errorSet)
     {
         ColoredNode& node = graph.assertNode(local);
-        logging::debug() << "Error in register-allocation for node: " << node.to_string() << logging::endl;
-        auto& s = logging::debug() << "Local is blocked by: ";
-        node.forAllEdges([&](const ColoredNode& neighbor, const ColoredEdge& edge) -> bool {
-            if(blocksLocal(&neighbor, edge.data))
-                s << neighbor.to_string() << ", ";
-            return true;
+        logging::logLazy(logging::Level::DEBUG, [&]() {
+            logging::debug() << "Error in register-allocation for node: " << node.to_string() << logging::endl;
+            auto& s = logging::debug() << "Local is blocked by: ";
+            node.forAllEdges([&](const ColoredNode& neighbor, const ColoredEdge& edge) -> bool {
+                if(blocksLocal(&neighbor, edge.data))
+                    s << neighbor.to_string() << ", ";
+                return true;
+            });
+            s << logging::endl;
         });
-        s << logging::endl;
         if(!fixSingleError(method, graph, node, localUses, localUses.at(local)))
             allFixed = false;
     }

@@ -23,8 +23,9 @@ static const Method* matchSignatures(
     {
         if(callSignature->matchesSignature(*m))
         {
-            logging::debug() << "Found method matching " << m->returnType.to_string() << ' ' << m->name << " with "
-                             << m->parameters.size() << " arguments" << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Found method matching " << m->returnType.to_string() << ' ' << m->name << " with "
+                    << m->parameters.size() << " arguments" << logging::endl);
             return m.get();
         }
     }
@@ -127,9 +128,10 @@ static Method& inlineMethod(
                 {
                     throw CompilationError(CompilationStep::OPTIMIZER, "Method call expected, got", it->to_string());
                 }
-                logging::debug() << "Function body for " << call->to_string() << " inlined, added "
-                                 << (currentMethod.countInstructions() - 1 - numInstructions) << " instructions"
-                                 << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Function body for " << call->to_string() << " inlined, added "
+                        << (currentMethod.countInstructions() - 1 - numInstructions) << " instructions"
+                        << logging::endl);
                 // replace method-call from parent with label to jump to (for returns)
                 it = it.erase();
                 auto copyIt = it.copy().previousInMethod();
@@ -149,9 +151,9 @@ static Method& inlineMethod(
 
 void normalization::inlineMethods(const Module& module, Method& kernel, const Configuration& config)
 {
-    logging::info() << "-----" << logging::endl;
-    logging::info() << "Inlining functions for kernel: " << kernel.name << logging::endl;
+    CPPLOG_LAZY(logging::Level::INFO, log << "-----" << logging::endl);
+    CPPLOG_LAZY(logging::Level::INFO, log << "Inlining functions for kernel: " << kernel.name << logging::endl);
     // Starting at kernel
     inlineMethod("", module.methods, kernel);
-    logging::info() << "-----" << logging::endl;
+    CPPLOG_LAZY(logging::Level::INFO, log << "-----" << logging::endl);
 }

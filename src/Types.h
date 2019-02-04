@@ -7,8 +7,6 @@
 #ifndef TYPES_H
 #define TYPES_H
 
-#include "Optional.h"
-
 #include <memory>
 #include <string>
 #include <vector>

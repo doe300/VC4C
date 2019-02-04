@@ -9,6 +9,7 @@
 
 #include "BasicBlock.h"
 #include "KernelMetaData.h"
+#include "Optional.h"
 
 namespace vc4c
 {

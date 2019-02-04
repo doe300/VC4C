@@ -109,8 +109,8 @@ static void assignOffset(StackAllocation* s, FastSet<LifetimeNode*>& processedNo
 {
     s->offset = offset;
     processedNodes.emplace(*it);
-    logging::debug() << "Assigned stack-allocated object " << s->to_string() << " to stack offset " << offset
-                     << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Assigned stack-allocated object " << s->to_string() << " to stack offset " << offset << logging::endl);
 }
 
 unsigned LifetimeGraph::calculateRequiredStackSize()

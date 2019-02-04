@@ -307,7 +307,8 @@ InstructionWalker intermediate::intrinsifyComparison(Method& method, Instruction
     if(comp->hasConditionalExecution())
         throw CompilationError(
             CompilationStep::OPTIMIZER, "Comparisons cannot have conditional execution", comp->to_string());
-    logging::debug() << "Intrinsifying comparison '" << comp->opCode << "' to arithmetic operations" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Intrinsifying comparison '" << comp->opCode << "' to arithmetic operations" << logging::endl);
     bool isFloating = comp->getFirstArg().type.isFloatingType();
     bool negateResult = false;
     if(!isFloating)

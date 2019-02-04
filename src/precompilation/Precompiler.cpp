@@ -418,7 +418,7 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
     else
         throw CompilationError(CompilationStep::PRECOMPILATION, "Unhandled pre-compilation");
 
-    logging::info() << "Compilation complete!" << logging::endl;
+    CPPLOG_LAZY(logging::Level::INFO, log << "Compilation complete!" << logging::endl);
 
     output.reset(new std::istringstream(tempStream.str()));
 }

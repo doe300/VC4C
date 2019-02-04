@@ -534,12 +534,12 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
         it.nextInMethod();
     }
 
-#ifdef DEBUG_MODE
-    std::for_each(ranges.begin(), ranges.end(), [](const std::pair<const Local*, ValueRange>& pair) -> void {
-        logging::debug() << "Local " << pair.first->to_string() << " with range " << pair.second.to_string()
-                         << logging::endl;
+    logging::logLazy(logging::Level::DEBUG, [&]() {
+        std::for_each(ranges.begin(), ranges.end(), [](const std::pair<const Local*, ValueRange>& pair) -> void {
+            logging::debug() << "Local " << pair.first->to_string() << " with range " << pair.second.to_string()
+                             << logging::endl;
+        });
     });
-#endif
     PROFILE_END(DetermineValueRanges);
     return ranges;
 }

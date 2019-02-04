@@ -891,10 +891,10 @@ const VPMArea* VPM::addArea(const Local* local, const DataType& elementType, boo
         static_cast<uint8_t>(rowOffset.value()), numRows, local});
     for(auto i = rowOffset.value(); i < (rowOffset.value() + numRows); ++i)
         areas[i] = ptr;
-    logging::debug() << "Allocating " << numRows << " rows (per 64 byte) of VPM cache starting at row "
-                     << rowOffset.value() << " for local: " << local->to_string(false)
-                     << (isStackArea ? std::string("(") + std::to_string(numStacks) + " stacks )" : "")
-                     << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Allocating " << numRows << " rows (per 64 byte) of VPM cache starting at row " << rowOffset.value()
+            << " for local: " << local->to_string(false)
+            << (isStackArea ? std::string("(") + std::to_string(numStacks) + " stacks )" : "") << logging::endl);
     PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL + 90, "VPM cache size", requestedSize);
     return ptr.get();
 }
@@ -926,8 +926,9 @@ void VPM::updateScratchSize(unsigned char requestedRows)
 
     if(getScratchArea().numRows < requestedRows)
     {
-        logging::debug() << "Increased the scratch size to " << requestedRows << " rows (" << requestedRows * 64
-                         << " bytes)" << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Increased the scratch size to " << requestedRows << " rows (" << requestedRows * 64 << " bytes)"
+                << logging::endl);
         const_cast<unsigned char&>(getScratchArea().numRows) = requestedRows;
         // fill areas with scratch
         for(unsigned i = 1; i < requestedRows; ++i)

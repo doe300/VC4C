@@ -7,7 +7,6 @@
 #ifndef INSTRUCTION_WALKER_H
 #define INSTRUCTION_WALKER_H
 
-#include "Method.h"
 #include "intermediate/IntermediateInstruction.h"
 
 #include <functional>
@@ -15,8 +14,8 @@
 
 namespace vc4c
 {
+    class BasicBlock;
     class ControlFlowGraph;
-    class ConstInstructionWalker;
 
     enum class InstructionVisitResult : unsigned char
     {

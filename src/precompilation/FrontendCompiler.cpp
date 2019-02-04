@@ -88,11 +88,13 @@ static void runPrecompiler(const std::string& command, std::istream* inputStream
     int status = runProcess(command, inputStream, outputStream, &stderr);
     if(status == 0) // success
     {
-        if(!stderr.str().empty())
-        {
-            logging::warn() << "Warnings in precompilation:" << logging::endl;
-            logging::warn() << stderr.str() << logging::endl;
-        }
+        logging::logLazy(logging::Level::WARNING, [&]() {
+            if(!stderr.str().empty())
+            {
+                logging::warn() << "Warnings in precompilation:" << logging::endl;
+                logging::warn() << stderr.str() << logging::endl;
+            }
+        });
         return;
     }
     if(!stderr.str().empty())
@@ -124,7 +126,7 @@ static void compileOpenCLToLLVMIR0(std::istream* input, std::ostream* output, co
         std::string("-S ").append(toText ? "-emit-llvm" : "-emit-llvm-bc"), outputFile.value_or("/dev/stdout"),
         inputFile.value_or("-"), withPCH);
 
-    logging::info() << "Compiling OpenCL to LLVM-IR with: " << command << logging::endl;
+    CPPLOG_LAZY(logging::Level::INFO, log << "Compiling OpenCL to LLVM-IR with: " << command << logging::endl);
 
     runPrecompiler(command, inputFile ? nullptr : input, outputFile ? nullptr : output);
 }
@@ -142,7 +144,7 @@ static void compileLLVMIRToSPIRV0(std::istream* input, std::ostream* output, con
     command.append(outputFile.value_or("/dev/stdout")).append(" ");
     command.append(inputFile.value_or("/dev/stdin"));
 
-    logging::info() << "Converting LLVM-IR to SPIR-V with: " << command << logging::endl;
+    CPPLOG_LAZY(logging::Level::INFO, log << "Converting LLVM-IR to SPIR-V with: " << command << logging::endl);
 
     runPrecompiler(command, inputFile ? nullptr : input, outputFile ? nullptr : output);
 #endif
@@ -161,7 +163,8 @@ static void compileSPIRVToSPIRV(std::istream* input, std::ostream* output, const
     command.append(outputFile.value_or("/dev/stdout")).append(" ");
     command.append(inputFile.value_or("/dev/stdin"));
 
-    logging::info() << "Converting between SPIR-V text and SPIR-V binary with: " << command << logging::endl;
+    CPPLOG_LAZY(logging::Level::INFO,
+        log << "Converting between SPIR-V text and SPIR-V binary with: " << command << logging::endl);
 
     runPrecompiler(command, inputFile ? nullptr : input, outputFile ? nullptr : output);
 #endif
@@ -255,7 +258,7 @@ void precompilation::linkLLVMModules(
         command.replace(n, 2, " ");
     }
 
-    logging::info() << "Linking LLVM-IR modules with: " << command << logging::endl;
+    CPPLOG_LAZY(logging::Level::INFO, log << "Linking LLVM-IR modules with: " << command << logging::endl);
 
     runPrecompiler(command, inputStream, result.file ? nullptr : result.stream);
 #endif
@@ -280,7 +283,7 @@ void precompilation::linkSPIRVModules(
             convertedInputs.emplace_back(source.stream);
     }
 
-    logging::debug() << "Linking " << sources.size() << " input modules..." << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Linking " << sources.size() << " input modules..." << logging::endl);
     spirv2qasm::linkSPIRVModules(convertedInputs, *result.stream);
 #endif
 }
@@ -310,7 +313,7 @@ void precompilation::optimizeLLVMIR(LLVMIRSource&& source, const std::string& us
 
     commandOpt.append(" ").append(in);
 
-    logging::info() << "Optimizing LLVM IR module with opt: " << commandOpt << logging::endl;
+    CPPLOG_LAZY(logging::Level::INFO, log << "Optimizing LLVM IR module with opt: " << commandOpt << logging::endl);
     runPrecompiler(commandOpt, source.stream, result.stream);
 #endif
 }
@@ -341,7 +344,7 @@ void precompilation::optimizeLLVMText(
 
     commandOpt.append(" ").append(in);
 
-    logging::info() << "Optimizing LLVM text with opt: " << commandOpt << logging::endl;
+    CPPLOG_LAZY(logging::Level::INFO, log << "Optimizing LLVM text with opt: " << commandOpt << logging::endl);
     runPrecompiler(commandOpt, source.stream, result.stream);
 #endif
 }

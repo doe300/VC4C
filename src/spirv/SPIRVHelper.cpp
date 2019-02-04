@@ -610,10 +610,10 @@ spv_result_t spirv2qasm::checkCapability(const spv::Capability cap)
     const std::string name = getCapabilityName(cap);
     if(supportedCapabilites.find(cap) != supportedCapabilites.end())
     {
-        logging::debug() << "Using supported capability: " << name << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Using supported capability: " << name << logging::endl);
         return SPV_SUCCESS;
     }
-    logging::debug() << "Using unsupported capability: " << name << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Using unsupported capability: " << name << logging::endl);
     return SPV_UNSUPPORTED;
 }
 
@@ -687,7 +687,8 @@ DataType spirv2qasm::getIntegerType(const uint32_t bitWidth, const uint32_t sign
         return TYPE_INT16;
     if(bitWidth == 8)
         return TYPE_INT8;
-    logging::debug() << "Unrecognized integer type with " << bitWidth << " bits" << logging::endl;
+    CPPLOG_LAZY(
+        logging::Level::DEBUG, log << "Unrecognized integer type with " << bitWidth << " bits" << logging::endl);
     return DataType(bitWidth, 1, false);
 }
 
@@ -738,8 +739,9 @@ void spirv2qasm::consumeSPIRVMessage(
         levelText = "Warning";
         break;
     }
-    logging::info() << "SPIR-V Tools: " << levelText << " message in '" << source << "' at position " << position.line
-                    << ":" << position.column << ": " << message << logging::endl;
+    CPPLOG_LAZY(logging::Level::INFO,
+        log << "SPIR-V Tools: " << levelText << " message in '" << source << "' at position " << position.line << ":"
+            << position.column << ": " << message << logging::endl);
 }
 
 std::vector<uint32_t> spirv2qasm::readStreamOfWords(std::istream* in)
@@ -782,8 +784,9 @@ void spirv2qasm::linkSPIRVModules(const std::vector<std::istream*>& inputModules
     {
         output.write(reinterpret_cast<const char*>(&u), sizeof(uint32_t));
     }
-    logging::debug() << "Linked " << inputModules.size() << " modules into a single module with "
-                     << linkedModules.size() << " words of data." << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Linked " << inputModules.size() << " modules into a single module with " << linkedModules.size()
+            << " words of data." << logging::endl);
 #endif
 }
 

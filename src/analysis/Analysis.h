@@ -80,12 +80,14 @@ namespace vc4c
 
             void dumpResults(const BasicBlock& block) const
             {
-                for(const auto& inst : block)
-                {
-                    if(inst)
-                        logging::debug() << inst->to_string() << " : " << dumpFunction(getResult(inst.get()))
-                                         << logging::endl;
-                }
+                logging::logLazy(logging::Level::DEBUG, [&]() {
+                    for(const auto& inst : block)
+                    {
+                        if(inst)
+                            logging::debug()
+                                << inst->to_string() << " : " << dumpFunction(getResult(inst.get())) << logging::endl;
+                    }
+                });
             }
 
         protected:
@@ -185,13 +187,15 @@ namespace vc4c
 
             void dumpResults(const Method& method) const
             {
-                for(const BasicBlock& block : method)
-                {
-                    logging::debug() << block.getLabel()->to_string()
-                                     << " (in) : " << dumpFunction(getInitialResult(block)) << logging::endl;
-                    logging::debug() << block.getLabel()->to_string()
-                                     << " (out) : " << dumpFunction(getFinalResult(block)) << logging::endl;
-                }
+                logging::logLazy(logging::Level::DEBUG, [&]() {
+                    for(const BasicBlock& block : method)
+                    {
+                        logging::debug() << block.getLabel()->to_string()
+                                         << " (in) : " << dumpFunction(getInitialResult(block)) << logging::endl;
+                        logging::debug() << block.getLabel()->to_string()
+                                         << " (out) : " << dumpFunction(getFinalResult(block)) << logging::endl;
+                    }
+                });
             }
 
         protected:

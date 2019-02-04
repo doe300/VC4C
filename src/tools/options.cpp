@@ -147,7 +147,7 @@ bool tools::parseConfigurationParameter(Configuration& config, const std::string
         if(availableOptimizations.find(passName) != availableOptimizations.end())
         {
             config.additionalDisabledOptimizations.emplace(passName);
-            logging::debug() << "Disabling optimization: " << passName << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG, log << "Disabling optimization: " << passName << logging::endl);
             return true;
         }
 
@@ -197,7 +197,7 @@ bool tools::parseConfigurationParameter(Configuration& config, const std::string
         else if(availableOptimizations.find(passName) != availableOptimizations.end())
         {
             config.additionalEnabledOptimizations.emplace(passName);
-            logging::debug() << "Enabling optimization: " << passName << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG, log << "Enabling optimization: " << passName << logging::endl);
             return true;
         }
         std::cerr << "Cannot enable unknown optimization: " << passName << std::endl;

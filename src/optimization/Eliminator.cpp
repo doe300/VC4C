@@ -54,8 +54,9 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                     bool isRead = !dest->getUsers(LocalUse::Type::READER).empty();
                     if(!isRead)
                     {
-                        logging::debug() << "Removing instruction " << instr->to_string()
-                                         << ", since its output is never read" << logging::endl;
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Removing instruction " << instr->to_string() << ", since its output is never read"
+                                << logging::endl);
                         it.erase();
                         // if we removed this instruction, maybe the previous one can be removed too??
                         it.previousInBlock();
@@ -80,8 +81,9 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                     if(!isWrittenTo && inLoc->type == outLoc->type)
                     {
                         // TODO what if both locals are written before (and used differently), possible??
-                        logging::debug() << "Merging locals " << inLoc->to_string() << " and " << outLoc->to_string()
-                                         << " since they contain the same value" << logging::endl;
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Merging locals " << inLoc->to_string() << " and " << outLoc->to_string()
+                                << " since they contain the same value" << logging::endl);
                         outLoc->forUsers(LocalUse::Type::READER, [inLoc, outLoc](const LocalUser* instr) -> void {
                             // change outLoc to inLoc
                             bool outLocFound = false;
@@ -145,9 +147,9 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
 
                         if(disableFunc)
                         {
-                            logging::debug()
-                                << "Removing read of work-group UNIFORM, since it is never used: " << move->to_string()
-                                << logging::endl;
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Removing read of work-group UNIFORM, since it is never used: "
+                                    << move->to_string() << logging::endl);
                             // disable work-group UNIFORM from method
                             (method.metaData.uniformsUsed.*disableFunc)(false);
                             it.erase();
@@ -194,14 +196,16 @@ InstructionWalker optimizations::simplifyOperation(
             // one of the operands is the absorbing element, operation can be replaced with move
             if(leftAbsorbing && firstArg.hasLiteral(leftAbsorbing->getLiteralValue().value()))
             {
-                logging::debug() << "Replacing obsolete " << op->to_string() << " with move 1" << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Replacing obsolete " << op->to_string() << " with move 1" << logging::endl);
                 it.reset((new intermediate::MoveOperation(
                               op->getOutput().value(), leftAbsorbing.value(), op->conditional, op->setFlags))
                              ->addDecorations(it->decoration));
             }
             else if(rightAbsorbing && secondArg && secondArg->hasLiteral(rightAbsorbing->getLiteralValue().value()))
             {
-                logging::debug() << "Replacing obsolete " << op->to_string() << " with move 2" << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Replacing obsolete " << op->to_string() << " with move 2" << logging::endl);
                 it.reset((new intermediate::MoveOperation(
                               op->getOutput().value(), rightAbsorbing.value(), op->conditional, op->setFlags))
                              ->addDecorations(it->decoration));
@@ -212,14 +216,14 @@ InstructionWalker optimizations::simplifyOperation(
                 // check whether second-arg exists and does nothing
                 if(rightIdentity && secondArg && secondArg->hasLiteral(rightIdentity->getLiteralValue().value()))
                 {
-                    logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
+                    CPPLOG_LAZY(logging::Level::DEBUG, log << "Removing obsolete " << op->to_string() << logging::endl);
                     it.erase();
                     // don't skip next instruction
                     it.previousInBlock();
                 }
                 else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg)
                 {
-                    logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
+                    CPPLOG_LAZY(logging::Level::DEBUG, log << "Removing obsolete " << op->to_string() << logging::endl);
                     it.erase();
                     // don't skip next instruction
                     it.previousInBlock();
@@ -230,7 +234,7 @@ InstructionWalker optimizations::simplifyOperation(
                 // check whether first-arg does nothing
                 if(leftIdentity && firstArg.hasLiteral(leftIdentity->getLiteralValue().value()))
                 {
-                    logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
+                    CPPLOG_LAZY(logging::Level::DEBUG, log << "Removing obsolete " << op->to_string() << logging::endl);
                     it.erase();
                     // don't skip next instruction
                     it.previousInBlock();
@@ -238,7 +242,7 @@ InstructionWalker optimizations::simplifyOperation(
                 else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg &&
                     !firstArg.hasRegister() && !firstArg.isUndefined())
                 {
-                    logging::debug() << "Removing obsolete " << op->to_string() << logging::endl;
+                    CPPLOG_LAZY(logging::Level::DEBUG, log << "Removing obsolete " << op->to_string() << logging::endl);
                     it.erase();
                     // don't skip next instruction
                     it.previousInBlock();
@@ -249,7 +253,8 @@ InstructionWalker optimizations::simplifyOperation(
                 // check whether second argument exists and does nothing
                 if(rightIdentity && secondArg && secondArg->hasLiteral(rightIdentity->getLiteralValue().value()))
                 {
-                    logging::debug() << "Replacing obsolete " << op->to_string() << " with move 3" << logging::endl;
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Replacing obsolete " << op->to_string() << " with move 3" << logging::endl);
                     it.reset((new intermediate::MoveOperation(
                                   op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags))
                                  ->addDecorations(it->decoration));
@@ -257,7 +262,8 @@ InstructionWalker optimizations::simplifyOperation(
                 // check whether first argument does nothing
                 else if(leftIdentity && secondArg && firstArg.hasLiteral(leftIdentity->getLiteralValue().value()))
                 {
-                    logging::debug() << "Replacing obsolete " << op->to_string() << " with move 4" << logging::endl;
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Replacing obsolete " << op->to_string() << " with move 4" << logging::endl);
                     it.reset((new intermediate::MoveOperation(
                                   op->getOutput().value(), op->assertArgument(1), op->conditional, op->setFlags))
                                  ->addDecorations(it->decoration));
@@ -266,8 +272,11 @@ InstructionWalker optimizations::simplifyOperation(
                 else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg &&
                     !firstArg.hasRegister() && !firstArg.isUndefined())
                 {
-                    logging::debug() << secondArg.value().to_string() << " - " << firstArg.to_string() << logging::endl;
-                    logging::debug() << "Replacing obsolete " << op->to_string() << " with move 5" << logging::endl;
+                    logging::logLazy(logging::Level::DEBUG, [&]() {
+                        logging::debug() << secondArg.value().to_string() << " - " << firstArg.to_string()
+                                         << logging::endl;
+                        logging::debug() << "Replacing obsolete " << op->to_string() << " with move 5" << logging::endl;
+                    });
                     it.reset((new intermediate::MoveOperation(
                                   op->getOutput().value(), op->assertArgument(1), op->conditional, op->setFlags))
                                  ->addDecorations(it->decoration));
@@ -281,7 +290,7 @@ InstructionWalker optimizations::simplifyOperation(
         if(move->getSource() == move->getOutput().value() && move->isSimpleMove())
         {
             // skip copying to same, if no flags/signals/pack and unpack-modes are set
-            logging::debug() << "Removing obsolete " << move->to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG, log << "Removing obsolete " << move->to_string() << logging::endl);
             it.erase();
             // don't skip next instruction
             it.previousInBlock();
@@ -289,7 +298,8 @@ InstructionWalker optimizations::simplifyOperation(
         if(it.has<intermediate::VectorRotation>() && move->getSource().isLiteralValue())
         {
             // replace rotation of constant with move
-            logging::debug() << "Replacing obsolete " << move->to_string() << " with move 6" << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Replacing obsolete " << move->to_string() << " with move 6" << logging::endl);
             it.reset((new intermediate::MoveOperation(
                           move->getOutput().value(), move->getSource(), move->conditional, move->setFlags))
                          ->addDecorations(it->decoration));
@@ -318,8 +328,9 @@ InstructionWalker optimizations::foldConstants(
             const Optional<Value> value = op->precalculate(3).first;
             if(value)
             {
-                logging::debug() << "Replacing '" << op->to_string() << "' with constant value: " << value.to_string()
-                                 << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Replacing '" << op->to_string() << "' with constant value: " << value.to_string()
+                        << logging::endl);
                 it.reset((new intermediate::MoveOperation(op->getOutput().value(), value.value()))->copyExtrasFrom(op));
             }
         }
@@ -371,8 +382,9 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
         it.emplace((new intermediate::MoveOperation(node.getOutput().value(), pair.second, jumpCondition))
                        ->copyExtrasFrom(&node)
                        ->addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
-        logging::debug() << "Inserting into end of basic-block '" << pair.first->name << "': " << it->to_string()
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Inserting into end of basic-block '" << pair.first->name << "': " << it->to_string()
+                << logging::endl);
     }
 
     // set reference of local to original reference, if always the same for all possible sources
@@ -397,7 +409,8 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
 
         node.getOutput()->local()->reference.first = const_cast<Local*>(ref);
         node.getOutput()->local()->reference.second = ANY_ELEMENT;
-        logging::debug() << "PHI output: " << node.getOutput()->to_string(true, true) << logging::endl;
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "PHI output: " << node.getOutput()->to_string(true, true) << logging::endl);
     }
 }
 
@@ -411,7 +424,8 @@ void optimizations::eliminatePhiNodes(const Module& module, Method& method, cons
         if(phiNode != nullptr)
         {
             // 2) map the phi-node to the move-operations per predecessor-label
-            logging::debug() << "Eliminating phi-node by inserting moves: " << it->to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Eliminating phi-node by inserting moves: " << it->to_string() << logging::endl);
             mapPhi(*phiNode, method, it);
             it.erase();
         }
@@ -431,7 +445,8 @@ InstructionWalker optimizations::eliminateReturn(
             target = method.findOrCreateLocal(TYPE_LABEL, BasicBlock::LAST_BLOCK);
             method.appendToEnd(new intermediate::BranchLabel(*target));
         }
-        logging::debug() << "Replacing return in kernel-function with branch to end-label" << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Replacing return in kernel-function with branch to end-label" << logging::endl);
         it.reset(new intermediate::Branch(target, COND_ALWAYS, BOOL_TRUE));
     }
     return it;
@@ -582,13 +597,15 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
             {
                 if(move->signal == SIGNAL_NONE)
                 {
-                    logging::debug() << "Removing obsolete move: " << it->to_string() << logging::endl;
+                    CPPLOG_LAZY(
+                        logging::Level::DEBUG, log << "Removing obsolete move: " << it->to_string() << logging::endl);
                     it.erase();
                     flag = true;
                 }
                 else
                 {
-                    logging::debug() << "Removing obsolete move with nop: " << it->to_string() << logging::endl;
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Removing obsolete move with nop: " << it->to_string() << logging::endl);
                     auto nop = new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER, move->signal);
                     it.reset(nop);
                     flag = true;
@@ -602,8 +619,9 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 // the output with the input
                 // XXX we need to check the type equality, since otherwise Reordering might re-order the reading before
                 // the writing (if the local is written as type A and read as type B)
-                logging::debug() << "Removing obsolete move by replacing uses of the output with the input: "
-                                 << it->to_string() << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Removing obsolete move by replacing uses of the output with the input: " << it->to_string()
+                        << logging::endl);
                 (*destinationReader)
                     ->replaceValue(move->getOutput().value(), move->getSource(), LocalUse::Type::READER);
                 if((*destinationReader).has<intermediate::MoveOperation>())
@@ -625,8 +643,9 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 // VPM write/VPM address write
                 // TODO This could potentially lead to far longer usage-ranges for operands of sourceWriter and
                 // therefore to register conflicts
-                logging::debug() << "Replacing obsolete move with instruction calculating its source: "
-                                 << it->to_string() << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Replacing obsolete move with instruction calculating its source: " << it->to_string()
+                        << logging::endl);
                 auto output = it->getOutput();
                 auto setFlags = it->setFlags;
                 auto sourceDecorations = intermediate::forwardDecorations((*sourceWriter)->decoration);
@@ -651,9 +670,9 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 // if the source is a register, the output is only used once, this instruction has no signals/sets no
                 // flags, the output consumer does not also read this move's source and there is no read of the source
                 // between the move and the consumer, the consumer can directly use the register moved here
-                logging::debug()
-                    << "Replacing obsolete move by inserting the source into the instruction consuming its result: "
-                    << it->to_string() << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Replacing obsolete move by inserting the source into the instruction consuming its result: "
+                        << it->to_string() << logging::endl);
                 const Value newInput(move->getSource().reg(), move->getOutput()->type);
                 const Local* oldLocal = move->getOutput()->local();
                 for(std::size_t i = 0; i < (*destinationReader)->getArguments().size(); ++i)
@@ -811,16 +830,18 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
                 auto exprIt = expressions.find(expr.value());
                 if(exprIt != expressions.end() && exprIt->second.first != it.get())
                 {
-                    logging::debug() << "Found common subexpression: " << it->to_string() << " is the same as "
-                                     << exprIt->second.first->to_string() << logging::endl;
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Found common subexpression: " << it->to_string() << " is the same as "
+                            << exprIt->second.first->to_string() << logging::endl);
                     it.reset(new intermediate::MoveOperation(
                         it->getOutput().value(), exprIt->second.first->getOutput().value()));
                     replacedSomething = true;
                 }
                 else if((newExpr = expr->combineWith(calculatingExpressions)) != expr)
                 {
-                    logging::debug() << "Rewriting expression '" << expr->to_string() << "' to '" << newExpr.to_string()
-                                     << "'" << logging::endl;
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Rewriting expression '" << expr->to_string() << "' to '" << newExpr.to_string() << "'"
+                            << logging::endl);
                     if(newExpr.code.numOperands == 1)
                         it.reset(new intermediate::Operation(newExpr.code, it->getOutput().value(), newExpr.arg0));
                     else
@@ -850,8 +871,9 @@ InstructionWalker optimizations::rewriteConstantSFUCall(
     auto result = constantValue ? periphery::precalculateSFU(it->getOutput()->reg(), constantValue.value()) : NO_VALUE;
     if(result)
     {
-        logging::debug() << "Replacing SFU call with constant input '" << it->to_string()
-                         << "' to move of result: " << result->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Replacing SFU call with constant input '" << it->to_string()
+                << "' to move of result: " << result->to_string() << logging::endl);
 
         // remove this instruction, 2 NOPs (with SFU type) and rewrite the result
         it.erase();

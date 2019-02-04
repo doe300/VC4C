@@ -67,7 +67,7 @@ static FastSet<Local*> findLoopIterations(const ControlFlowLoop& loop, const Dat
 
     if(intersection.empty())
     {
-        logging::debug() << "Failed to find loop iteration variable for loop" << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Failed to find loop iteration variable for loop" << logging::endl);
     }
 
     return intersection;
@@ -198,7 +198,8 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
         if(local == nullptr)
             continue;
 
-        logging::debug() << "Loop iteration variable candidate: " << local->to_string(false) << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Loop iteration variable candidate: " << local->to_string(false) << logging::endl);
 
         LoopControl loopControl;
         loopControl.iterationVariable = local;
@@ -213,7 +214,8 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                 auto tmp = inst->precalculate(4).first;
                 if(tmp && tmp->isLiteralValue())
                 {
-                    logging::debug() << "Found lower bound: " << tmp->to_string() << logging::endl;
+                    CPPLOG_LAZY(
+                        logging::Level::DEBUG, log << "Found lower bound: " << tmp->to_string() << logging::endl);
                     loopControl.initialization = const_cast<intermediate::IntermediateInstruction*>(inst);
                 }
             }
@@ -233,7 +235,8 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                                 });
                     }))
                 {
-                    logging::debug() << "Found iteration instruction: " << it.value()->to_string() << logging::endl;
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Found iteration instruction: " << it.value()->to_string() << logging::endl);
                     loopControl.iterationStep = it;
                     loopControl.determineStepKind(it->get<intermediate::Operation>()->op);
                 }
@@ -261,8 +264,8 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                                             });
                                 }))
                             {
-                                logging::debug()
-                                    << "Found iteration instruction: " << it.value()->to_string() << logging::endl;
+                                CPPLOG_LAZY(logging::Level::DEBUG,
+                                    log << "Found iteration instruction: " << it.value()->to_string() << logging::endl);
                                 loopControl.iterationStep = it;
                                 loopControl.determineStepKind(it->get<intermediate::Operation>()->op);
                             }
@@ -279,8 +282,9 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                 {
                     // FIXME is this correct?
                     loopControl.repetitionJump = edge.data.getPredecessor(loop.front()->key);
-                    logging::debug() << "Found loop repetition branch: "
-                                     << loopControl.repetitionJump.value()->to_string() << logging::endl;
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Found loop repetition branch: " << loopControl.repetitionJump.value()->to_string()
+                            << logging::endl);
                 }
             }
             return true;
@@ -316,8 +320,9 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                     // if not, set userIt to loop.end()
                     auto instIt = loop.findInLoop(userIt->first);
                     loopControl.comparisonInstruction = instIt;
-                    logging::debug() << "Found loop continue condition: "
-                                     << loopControl.comparisonInstruction.value()->to_string() << logging::endl;
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Found loop continue condition: "
+                            << loopControl.comparisonInstruction.value()->to_string() << logging::endl);
                 }
                 else
                 {
@@ -364,7 +369,8 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                         }
                     }
                 }
-                logging::debug() << "Found upper bound: " << loopControl.terminatingValue.to_string() << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Found upper bound: " << loopControl.terminatingValue.to_string() << logging::endl);
 
                 // determine type of comparison
                 const intermediate::Operation* comparison = dynamic_cast<const intermediate::Operation*>(inst);
@@ -380,7 +386,8 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                     if(isLessThenComparison)
                         loopControl.comparison = "lt";
                     if(!loopControl.comparison.empty())
-                        logging::debug() << "Found comparison type: " << loopControl.comparison << logging::endl;
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Found comparison type: " << loopControl.comparison << logging::endl);
                 }
             }
         }
@@ -391,8 +398,9 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
             availableLoopControls.emplace(loopControl);
         }
         else
-            logging::debug() << "Failed to find all bounds and step for iteration variable, skipping: "
-                             << loopControl.iterationVariable->name << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Failed to find all bounds and step for iteration variable, skipping: "
+                    << loopControl.iterationVariable->name << logging::endl);
     }
 
     if(availableLoopControls.empty())
@@ -423,8 +431,9 @@ static Optional<unsigned> determineVectorizationFactor(const ControlFlowLoop& lo
         it.nextInMethod();
     }
 
-    logging::debug() << "Found maximum used vector-width of " << static_cast<unsigned>(maxTypeWidth) << " elements"
-                     << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Found maximum used vector-width of " << static_cast<unsigned>(maxTypeWidth) << " elements"
+            << logging::endl);
 
     const Literal initial = loopControl.initialization->precalculate(4).first->getLiteralValue().value();
     // TODO for test_vectorization.cl#test5 this calculates an iteration count of 1023 (instead of 1024)
@@ -432,7 +441,7 @@ static Optional<unsigned> determineVectorizationFactor(const ControlFlowLoop& lo
     // the number of iterations from the bounds depends on the iteration operation
     auto iterations = loopControl.countIterations(
         initial.signedInt(), end.signedInt(), loopControl.getStep()->signedInt(), loopControl.comparison);
-    logging::debug() << "Determined iteration count of " << iterations << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Determined iteration count of " << iterations << logging::endl);
 
     // find the biggest factor fitting into 16 SIMD-elements
     unsigned factor = 16 / maxTypeWidth;
@@ -443,7 +452,8 @@ static Optional<unsigned> determineVectorizationFactor(const ControlFlowLoop& lo
             break;
         --factor;
     }
-    logging::debug() << "Determined possible vectorization-factor of " << factor << logging::endl;
+    CPPLOG_LAZY(
+        logging::Level::DEBUG, log << "Determined possible vectorization-factor of " << factor << logging::endl);
     return factor;
 }
 
@@ -498,22 +508,22 @@ static int calculateCostsVsBenefits(
             else if(it.has<intermediate::VectorRotation>())
             {
                 // abort
-                logging::debug() << "Cannot vectorize loops containing vector rotations: " << it->to_string()
-                                 << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Cannot vectorize loops containing vector rotations: " << it->to_string() << logging::endl);
                 return std::numeric_limits<int>::min();
             }
             else if(it.has<intermediate::MemoryBarrier>())
             {
                 // abort
-                logging::debug() << "Cannot vectorize loops containing memory barriers: " << it->to_string()
-                                 << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Cannot vectorize loops containing memory barriers: " << it->to_string() << logging::endl);
                 return std::numeric_limits<int>::min();
             }
             else if(it.has<intermediate::SemaphoreAdjustment>())
             {
                 // abort
-                logging::debug() << "Cannot vectorize loops containing semaphore calls: " << it->to_string()
-                                 << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Cannot vectorize loops containing semaphore calls: " << it->to_string() << logging::endl);
                 return std::numeric_limits<int>::min();
             }
         }
@@ -536,8 +546,9 @@ static int calculateCostsVsBenefits(
     {
         for(const Local* local : readAndWrittenAddresses)
         {
-            logging::debug() << "Cannot vectorize loops reading and writing the same memory addresses: "
-                             << local->to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Cannot vectorize loops reading and writing the same memory addresses: " << local->to_string()
+                    << logging::endl);
         }
         // abort
         return std::numeric_limits<int>::min();
@@ -552,8 +563,9 @@ static int calculateCostsVsBenefits(
     // the number of instructions/cycles saved
     int benefits = numInstructions * static_cast<int>(loopControl.vectorizationFactor);
 
-    logging::debug() << "Calculated an cost-vs-benefit rating of " << (benefits - costs)
-                     << " (estimated number of clock cycles saved, larger is better)" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Calculated an cost-vs-benefit rating of " << (benefits - costs)
+            << " (estimated number of clock cycles saved, larger is better)" << logging::endl);
     return benefits - costs;
 }
 
@@ -592,7 +604,7 @@ static void vectorizeInstruction(InstructionWalker it,
     FastSet<const intermediate::IntermediateInstruction*>& openInstructions, unsigned vectorizationFactor,
     ControlFlowLoop& loop)
 {
-    logging::debug() << "Vectorizing instruction: " << it->to_string() << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Vectorizing instruction: " << it->to_string() << logging::endl);
 
     // 1. update types of values matching the types of their locals
     unsigned char vectorWidth = 1;
@@ -716,7 +728,8 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
         // special/default case: initial value is zero and step is +1
         move->setSource(Value(ELEMENT_NUMBER_REGISTER));
         move->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
-        logging::debug() << "Changed initial value: " << loopControl.initialization->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Changed initial value: " << loopControl.initialization->to_string() << logging::endl);
     }
     else if(move != nullptr && move->getSource().getLiteralValue() && loopControl.stepKind == StepKind::ADD_CONSTANT &&
         loopControl.getStep() == INT_ONE.literal() &&
@@ -728,7 +741,8 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
                 ->copyExtrasFrom(move));
         initialValueWalker.value()->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
         loopControl.initialization = initialValueWalker->get();
-        logging::debug() << "Changed initial value: " << loopControl.initialization->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Changed initial value: " << loopControl.initialization->to_string() << logging::endl);
     }
     else
         throw CompilationError(
@@ -761,7 +775,7 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
             else
                 throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled iteration step", stepOp->to_string());
         }
-        logging::debug() << "Changed iteration step: " << stepOp->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Changed iteration step: " << stepOp->to_string() << logging::endl);
         stepChanged = true;
     }
 
@@ -796,8 +810,9 @@ static void vectorize(ControlFlowLoop& loop, LoopControl& loopControl, const Dat
             // TODO what to do?? These are e.g. for accumulation-variables (like sum, maximum)
             // FIXME depending on the operation performed on this locals, the vector-elements need to be folded into a
             // scalar/previous vector width
-            logging::debug() << "Local is accessed outside of loop: " << (*openInstructions.begin())->to_string()
-                             << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Local is accessed outside of loop: " << (*openInstructions.begin())->to_string()
+                    << logging::endl);
 
             const intermediate::IntermediateInstruction* inst = *openInstructions.begin();
             const Value& arg = inst->assertArgument(0);
@@ -829,7 +844,8 @@ static void vectorize(ControlFlowLoop& loop, LoopControl& loopControl, const Dat
     fixInitialValueAndStep(loop, loopControl);
     numVectorized += 2;
 
-    logging::debug() << "Vectorization done, changed " << numVectorized << " instructions!" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Vectorization done, changed " << numVectorized << " instructions!" << logging::endl);
 }
 
 bool optimizations::vectorizeLoops(const Module& module, Method& method, const Configuration& config)
@@ -855,7 +871,8 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
             !loopControl.terminatingValue.isLiteralValue() || !loopControl.iterationStep || !loopControl.repetitionJump)
         {
             // we need to know both bounds and the iteration step (for now)
-            logging::debug() << "Failed to find all bounds and step for loop, aborting vectorization!" << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Failed to find all bounds and step for loop, aborting vectorization!" << logging::endl);
             continue;
         }
 
@@ -863,7 +880,8 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
         Optional<unsigned> vectorizationFactor = determineVectorizationFactor(loop, loopControl);
         if(!vectorizationFactor)
         {
-            logging::debug() << "Failed to determine a vectorization factor for the loop, aborting!" << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Failed to determine a vectorization factor for the loop, aborting!" << logging::endl);
             continue;
         }
         if(vectorizationFactor.value() == 1)
@@ -901,7 +919,7 @@ void optimizations::extendBranches(const Module& module, Method& method, const C
         intermediate::Branch* branch = it.get<intermediate::Branch>();
         if(branch != nullptr)
         {
-            logging::debug() << "Extending branch: " << branch->to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG, log << "Extending branch: " << branch->to_string() << logging::endl);
             if(branch->hasConditionalExecution() || !branch->getCondition().hasLiteral(BOOL_TRUE.literal()))
             {
                 /*
@@ -1027,7 +1045,8 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         }
         if(tmu1Used)
         {
-            logging::debug() << "Using both TMUs explicitly, disable automatic swapping!" << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Using both TMUs explicitly, disable automatic swapping!" << logging::endl);
             assign(it, Value(REG_TMU_NOSWAP, TYPE_BOOL)) = BOOL_TRUE;
         }
     }
@@ -1174,7 +1193,8 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
 
 bool optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
 {
-    logging::debug() << "moveConstantsDepth = " << config.additionalOptions.moveConstantsDepth << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "moveConstantsDepth = " << config.additionalOptions.moveConstantsDepth << logging::endl);
     bool hasChanged = false;
 
     // 1. find loops
@@ -1232,7 +1252,8 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                     if(loadInst->hasValueType(ValueType::LOCAL) && !loadInst->hasSideEffects() &&
                         !loadInst->hasConditionalExecution())
                     {
-                        logging::debug() << "Moving constant load out of loop: " << it->to_string() << logging::endl;
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Moving constant load out of loop: " << it->to_string() << logging::endl);
                         if(insertedBlock != nullptr)
                         {
                             insertedBlock->walkEnd().emplace(it.release());
@@ -1247,8 +1268,9 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                             }
                             else
                             {
-                                logging::debug()
-                                    << "Create a new basic block before the root of inclusion tree" << logging::endl;
+                                CPPLOG_LAZY(logging::Level::DEBUG,
+                                    log << "Create a new basic block before the root of inclusion tree"
+                                        << logging::endl);
 
                                 auto headBlock = method.begin();
 
@@ -1307,8 +1329,9 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
             // TODO for now, we cannot merge the last block, otherwise work-group unrolling doesn't work anymore
             it->getLabel()->getLabel()->name != BasicBlock::LAST_BLOCK)
         {
-            logging::debug() << "Found basic block with single direct successor: " << prevIt->getLabel()->to_string()
-                             << " and " << it->getLabel()->to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Found basic block with single direct successor: " << prevIt->getLabel()->to_string() << " and "
+                    << it->getLabel()->to_string() << logging::endl);
             blocksToMerge.emplace_back(prevIt->getLabel()->getLabel(), it->getLabel()->getLabel());
         }
         ++it;
@@ -1331,8 +1354,9 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
         }
         // then remove the source block
         if(method.removeBlock(*sourceBlock))
-            logging::debug() << "Merged block " << pair.second->to_string() << " into " << pair.first->to_string()
-                             << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Merged block " << pair.second->to_string() << " into " << pair.first->to_string()
+                    << logging::endl);
         else
         {
             logging::warn() << "Failed to remove empty basic block: " << sourceBlock->getLabel()->to_string()
@@ -1351,7 +1375,7 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
         blockMap.emplace(pair.second, pair.first);
     }
 
-    logging::debug() << "Merged " << blocksToMerge.size() << " pair of blocks!" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Merged " << blocksToMerge.size() << " pair of blocks!" << logging::endl);
     return !blocksToMerge.empty();
 }
 
@@ -1369,8 +1393,9 @@ bool optimizations::reorderBasicBlocks(const Module& module, Method& method, con
         if(blockIt->getLabel()->getLabel()->name != BasicBlock::LAST_BLOCK && predecessor != nullptr &&
             predecessor->key != &(*prevIt) && !prevIt->fallsThroughToNextBlock())
         {
-            logging::debug() << "Reordering block with single predecessor not being the previous block: "
-                             << blockIt->getLabel()->to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Reordering block with single predecessor not being the previous block: "
+                    << blockIt->getLabel()->to_string() << logging::endl);
 
             auto predecessorIt = method.begin();
             while(predecessorIt != method.end())

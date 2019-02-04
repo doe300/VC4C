@@ -365,8 +365,10 @@ bool Method::removeBlock(BasicBlock& block, bool overwriteUsages)
     {
         if(&(*it) == &block)
         {
-            logging::debug() << "Removing basic block '" << block.getLabel()->to_string() << "' from function " << name
-                             << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Removing basic block '" << block.getLabel()->to_string() << "' from function " << name
+                    << logging::endl);
+            ;
             updateCFGOnBlockRemoval(&(*it));
             basicBlocks.erase(it);
             return true;
@@ -477,7 +479,7 @@ ControlFlowGraph& Method::getCFG()
 {
     if(!cfg)
     {
-        logging::debug() << "CFG created/updated for function: " << name << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "CFG created/updated for function: " << name << logging::endl);
         std::unique_ptr<ControlFlowGraph> tmp = ControlFlowGraph::createCFG(*this);
         cfg.swap(tmp);
     }

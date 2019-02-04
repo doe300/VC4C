@@ -201,7 +201,8 @@ static void toBinary(const Value& val, std::vector<uint8_t>& queue)
 static std::vector<uint8_t> generateDataSegment(
     const ReferenceRetainingList<Global>& globalData, Byte totalStackFrameSize)
 {
-    logging::debug() << "Writing data segment for " << globalData.size() << " values..." << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Writing data segment for " << globalData.size() << " values..." << logging::endl);
     std::vector<uint8_t> bytes;
     bytes.reserve(2048);
     for(const Global& global : globalData)
@@ -218,8 +219,8 @@ static std::vector<uint8_t> generateDataSegment(
     // allocate space for stack
     if(totalStackFrameSize.getValue() > 0)
     {
-        logging::debug() << "Reserving " << totalStackFrameSize.getValue() << " bytes for stack-frames..."
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Reserving " << totalStackFrameSize.getValue() << " bytes for stack-frames..." << logging::endl);
         for(std::size_t s = 0; s < totalStackFrameSize.getValue(); ++s)
             bytes.push_back(0);
     }
@@ -258,7 +259,7 @@ std::size_t ModuleInfo::write(std::ostream& stream, const OutputMode mode,
     // write kernel-infos
     for(const KernelInfo& info : kernelInfos)
     {
-        logging::debug() << info.to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG, log << info.to_string() << logging::endl);
         numWords += info.write(stream, mode);
     }
     // write kernel-info-to-global-data delimiter
@@ -386,15 +387,15 @@ KernelInfo qpu_asm::getKernelInfos(
         info.addParameter(paramInfo);
     }
 
-#ifdef DEBUG_MODE
     if(!method.stackAllocations.empty())
     {
-        logging::debug() << "Kernel " << method.name << ":" << logging::endl;
-        for(const auto& s : method.stackAllocations)
-            logging::debug() << "Stack-Entry: " << s.to_string() << ", size: " << s.size
-                             << ", alignment: " << s.alignment << ", offset: " << s.offset << logging::endl;
+        logging::logLazy(logging::Level::DEBUG, [&]() {
+            logging::debug() << "Kernel " << method.name << ":" << logging::endl;
+            for(const auto& s : method.stackAllocations)
+                logging::debug() << "Stack-Entry: " << s.to_string() << ", size: " << s.size
+                                 << ", alignment: " << s.alignment << ", offset: " << s.offset << logging::endl;
+        });
     }
-#endif
 
     return info;
 }

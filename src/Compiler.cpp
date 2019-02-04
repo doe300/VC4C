@@ -7,6 +7,7 @@
 #include "Compiler.h"
 
 #include "BackgroundWorker.h"
+#include "CompilationError.h"
 #include "Parser.h"
 #include "Precompiler.h"
 #include "Profiler.h"
@@ -163,7 +164,8 @@ std::size_t Compiler::compile(std::istream& input, std::ostream& output, const C
         std::wcerr.flush();
         output.flush();
 
-        logging::debug() << "Compilation complete: " << result << " bytes written" << logging::endl;
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Compilation complete: " << result << " bytes written" << logging::endl);
 
         return result;
     }

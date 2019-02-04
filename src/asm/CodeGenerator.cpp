@@ -27,7 +27,7 @@ CodeGenerator::CodeGenerator(const Module& module, const Configuration& config) 
 
 static FastMap<const Local*, std::size_t> mapLabels(Method& method)
 {
-    logging::debug() << "-----" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "-----" << logging::endl);
     FastMap<const Local*, std::size_t> labelsMap;
     labelsMap.reserve(method.size());
     // index is in bytes, so an increment of 1 instructions, increments by 8 bytes
@@ -38,8 +38,8 @@ static FastMap<const Local*, std::size_t> mapLabels(Method& method)
         BranchLabel* label = it.isEndOfBlock() ? nullptr : it.get<BranchLabel>();
         if(label != nullptr)
         {
-            logging::debug() << "Mapping label '" << label->getLabel()->name << "' to byte-position " << index
-                             << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Mapping label '" << label->getLabel()->name << "' to byte-position " << index << logging::endl);
             labelsMap[label->getLabel()] = index;
 
             it.nextInMethod();
@@ -47,7 +47,8 @@ static FastMap<const Local*, std::size_t> mapLabels(Method& method)
         else if(!it.isEndOfBlock() && it.has() && !it->mapsToASMInstruction())
         {
             // an instruction which has no equivalent in machine code -> drop
-            logging::debug() << "Dropping instruction not mapped to assembler: " << it->to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Dropping instruction not mapped to assembler: " << it->to_string() << logging::endl);
             it.erase();
         }
         else
@@ -59,7 +60,7 @@ static FastMap<const Local*, std::size_t> mapLabels(Method& method)
             // this handles empty basic blocks, so the index is not incremented in the next iteration
             it.nextInMethod();
     }
-    logging::debug() << "Mapped " << labelsMap.size() << " labels to positions" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Mapped " << labelsMap.size() << " labels to positions" << logging::endl);
 
     return labelsMap;
 }
@@ -107,7 +108,7 @@ const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(
     PROFILE_END(toRegisterMapGraph);
     PROFILE_END(toRegisterMap);
 
-    logging::debug() << "-----" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "-----" << logging::endl);
     std::size_t index = 0;
 
     std::string s = "kernel " + method.name;
@@ -151,14 +152,15 @@ const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(
         }
     }
 
-    logging::debug() << "-----" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "-----" << logging::endl);
     index = 0;
     for(const auto& instr : generatedInstructions)
     {
         CPPLOG_LAZY(logging::Level::DEBUG, log << std::hex << index << " " << instr.toHexString(true) << logging::endl);
         index += 8;
     }
-    logging::debug() << "Generated " << std::dec << generatedInstructions.size() << " instructions!" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generated " << std::dec << generatedInstructions.size() << " instructions!" << logging::endl);
 
     PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_BACKEND + 1000, "CodeGeneration (after)",
         generatedInstructions.size(), vc4c::profiler::COUNTER_BACKEND + 0);
@@ -198,7 +200,7 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
     }
     // prepend module header to output
     // also write, if writeKernelInfo is not set, since global-data is written in here too
-    logging::debug() << "Writing module header..." << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Writing module header..." << logging::endl);
     numBytes += moduleInfo.write(stream, config.outputMode, module.globalData, Byte(maxStackSize)) * sizeof(uint64_t);
 
     for(const auto& pair : allInstructions)
@@ -265,7 +267,7 @@ void CodeGenerator::toMachineCode(Method& kernel)
             throw CompilationError(CompilationStep::VERIFIER, "vc4asm verification error", msg.toString());
     };
     v.Instructions = &hexData;
-    logging::info() << "Validation-output: " << logging::endl;
+    CPPLOG_LAZY(logging::Level::INFO, log << "Validation-output: " << logging::endl);
     v.Validate();
     fflush(stderr);
 #endif

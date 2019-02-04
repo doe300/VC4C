@@ -7,12 +7,11 @@
 #ifndef INLINER_H
 #define INLINER_H
 
-#include "config.h"
-
 namespace vc4c
 {
     class Method;
     class Module;
+    struct Configuration;
 
     namespace normalization
     {

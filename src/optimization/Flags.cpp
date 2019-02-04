@@ -35,11 +35,13 @@ static bool rewriteSettingOfFlags(
         // flags are set but never used
         if(setFlags->writesRegister(REG_NOP) && !setFlags->signal.hasSideEffects())
         {
-            logging::debug() << "Removing unused setting of flags: " << setFlags->to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Removing unused setting of flags: " << setFlags->to_string() << logging::endl);
             setFlags.erase();
             return true;
         }
-        logging::debug() << "Removing unused SetFlags bit from instruction: " << setFlags->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Removing unused SetFlags bit from instruction: " << setFlags->to_string() << logging::endl);
         setFlags->setSetFlags(SetFlag::DONT_SET);
         return true;
     }
@@ -61,8 +63,9 @@ static bool rewriteSettingOfFlags(
                 if(flags.matchesCondition((*condIt)->conditional))
                 {
                     // condition is statically matched, remove conditional
-                    logging::debug() << "Making instruction with constant condition unconditional: "
-                                     << (*condIt)->to_string() << logging::endl;
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Making instruction with constant condition unconditional: " << (*condIt)->to_string()
+                            << logging::endl);
                     (*condIt)->conditional = COND_ALWAYS;
                     changedInstructions = true;
                     ++condIt;
@@ -70,8 +73,9 @@ static bool rewriteSettingOfFlags(
                 else
                 {
                     // condition is statically not matched, remove instruction
-                    logging::debug() << "Removing conditional instruction which will never be executed: "
-                                     << (*condIt)->to_string() << logging::endl;
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Removing conditional instruction which will never be executed: "
+                            << (*condIt)->to_string() << logging::endl);
                     condIt->erase();
                     condIt = conditionalInstructions.erase(condIt);
                     changedInstructions = true;
@@ -155,7 +159,8 @@ InstructionWalker optimizations::combineSameFlags(
             if(checkIt.get<intermediate::MoveOperation>() != nullptr &&
                 checkIt.get<intermediate::MoveOperation>()->getSource() == src && checkIt->conditional == COND_ALWAYS)
             {
-                logging::debug() << "Removing duplicate setting of same flags: " << it->to_string() << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Removing duplicate setting of same flags: " << it->to_string() << logging::endl);
                 it.erase();
                 // don't skip next instruction
                 it.previousInBlock();
@@ -230,8 +235,9 @@ InstructionWalker optimizations::combineFlagWithOutput(
     }
     if(!resultIt.isEndOfBlock())
     {
-        logging::debug() << "Combining move to set flags '" << it->to_string()
-                         << "' with move to output: " << resultIt->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Combining move to set flags '" << it->to_string()
+                << "' with move to output: " << resultIt->to_string() << logging::endl);
         resultIt->setSetFlags(SetFlag::SET_FLAGS);
         // TODO decorations? If input is the same, most decorations are also the same?! Also, setflags usually don't
         // have that many!?

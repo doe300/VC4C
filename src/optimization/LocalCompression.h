@@ -3,13 +3,12 @@
  *
  * See the file "LICENSE" for the full license governing this code.
  */
-#include "config.h"
-
 namespace vc4c
 {
     class Method;
     class Module;
-    class InstructionWalker;
+    struct Configuration;
+
     namespace optimizations
     {
         /*

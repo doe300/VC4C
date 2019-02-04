@@ -26,8 +26,9 @@ static const std::vector<std::string> workGroupLocalNames = {Method::LOCAL_IDS, 
 static NODISCARD InstructionWalker compressLocalWrite(
     Method& method, InstructionWalker it, const Local& local, const Local& container, unsigned char index)
 {
-    logging::debug() << "Compressing write of local '" << local.name << "' into container '" << container.name
-                     << "' at position " << index << " at: " << it->to_string() << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Compressing write of local '" << local.name << "' into container '" << container.name
+            << "' at position " << index << " at: " << it->to_string() << logging::endl);
 
     if(it.has<intermediate::MoveOperation>())
     {
@@ -50,8 +51,9 @@ static NODISCARD InstructionWalker compressLocalWrite(
 static NODISCARD InstructionWalker compressLocalRead(
     Method& method, InstructionWalker it, const Local& local, const Local& container, unsigned char index)
 {
-    logging::debug() << "Compressing read of local '" << local.name << "' from container '" << container.name
-                     << "' at position " << index << " at: " << it->to_string() << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Compressing read of local '" << local.name << "' from container '" << container.name << "' at position "
+            << index << " at: " << it->to_string() << logging::endl);
 
     const Value tmp = method.addNewLocal(local.type);
 

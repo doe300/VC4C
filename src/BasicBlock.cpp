@@ -266,12 +266,13 @@ bool BasicBlock::isStartOfMethod() const
 
 void BasicBlock::dumpInstructions() const
 {
-    logging::debug() << "Basic block ----" << logging::endl;
-
-    std::for_each(instructions.begin(), instructions.end(),
-        [](const std::unique_ptr<intermediate::IntermediateInstruction>& instr) {
-            if(instr)
-                CPPLOG_LAZY(logging::Level::DEBUG, log << instr->to_string() << logging::endl);
-        });
-    logging::debug() << "Block end ----" << logging::endl;
+    logging::logLazy(logging::Level::DEBUG, [&]() {
+        logging::debug() << "Basic block ----" << logging::endl;
+        std::for_each(instructions.begin(), instructions.end(),
+            [](const std::unique_ptr<intermediate::IntermediateInstruction>& instr) {
+                if(instr)
+                    logging::debug() << instr->to_string() << logging::endl;
+            });
+        logging::debug() << "Block end ----" << logging::endl;
+    });
 }

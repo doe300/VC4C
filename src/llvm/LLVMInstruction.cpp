@@ -82,7 +82,8 @@ bool CallSite::mapInstruction(Method& method)
             // TODO still fails for values passed as parameter (e.g. in
             // /opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/addr-space-struct-arg.cl)
         }
-        logging::debug() << "Converting life-time instrinsic to life-time instruction" << logging::endl;
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Converting life-time instrinsic to life-time instruction" << logging::endl);
         if(arguments.at(0).getLiteralValue() && arguments.at(0).getLiteralValue()->signedInt() > 0)
         {
             //"The first argument is a constant integer representing the size of the object, or -1 if it is variable
@@ -100,7 +101,8 @@ bool CallSite::mapInstruction(Method& method)
     // handle other llvm.* intrinsics
     if(methodName.find("llvm.fmuladd") == 0)
     {
-        logging::debug() << "Converting intrinsic method call '" << methodName << "' to operations" << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Converting intrinsic method call '" << methodName << "' to operations" << logging::endl);
         const Value tmp = method.addNewLocal(dest.type, "%fmuladd");
         method.appendToEnd(new intermediate::Operation(OP_FMUL, tmp, arguments.at(0), arguments.at(1)));
         method.appendToEnd(new intermediate::Operation(OP_FADD, output, tmp, arguments.at(2)));
@@ -116,7 +118,7 @@ bool CallSite::mapInstruction(Method& method)
          */
         // the type of llvm.memcpy is always i8*, so the number of bytes (<len>) always matches the number of entries
         // (as expected for MemoryInstruction())
-        logging::debug() << "Intrinsifying llvm.memcpy function-call" << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying llvm.memcpy function-call" << logging::endl);
         method.appendToEnd(new intermediate::MemoryInstruction(intermediate::MemoryOperation::COPY,
             std::move(arguments.at(0)), std::move(arguments.at(1)), std::move(arguments.at(2))));
         return true;
@@ -131,7 +133,7 @@ bool CallSite::mapInstruction(Method& method)
          */
         // the type of llvm.memset is always i8*, so the number of bytes (<len>) always matches the number of entries
         // (as expected for MemoryInstruction())
-        logging::debug() << "Intrinsifying llvm.memset with DMA writes" << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying llvm.memset with DMA writes" << logging::endl);
         Value& memAddr = arguments.at(0);
         Value& fillByte = arguments.at(1);
         Value& numBytes = arguments.at(2);
@@ -153,15 +155,17 @@ bool CallSite::mapInstruction(Method& method)
          * declare i16 @llvm.bswap.i16(i16 <id>)
          * declare i32 @llvm.bswap.i32(i32 <id>)
          */
-        logging::debug() << "Intrinsifying llvm.bswap with manual byte-swapping" << logging::endl;
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Intrinsifying llvm.bswap with manual byte-swapping" << logging::endl);
         ignoreReturnValue(intermediate::insertByteSwap(method.appendToEnd(), method, arguments.at(0), output));
         return true;
     }
     if(methodName.find("shuffle2") == 0)
     {
-        logging::debug() << "Intrinsifying OpenCL shuffle2 function with " << arguments.at(0).to_string() << ", "
-                         << arguments.at(1).to_string() << " and mask " << arguments.at(2).to_string(false, true)
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying OpenCL shuffle2 function with " << arguments.at(0).to_string() << ", "
+                << arguments.at(1).to_string() << " and mask " << arguments.at(2).to_string(false, true)
+                << logging::endl);
         ignoreReturnValue(intermediate::insertVectorShuffle(
             method.appendToEnd(), method, output, arguments.at(0), arguments.at(1), arguments.at(2)));
         return true;
@@ -178,14 +182,15 @@ bool CallSite::mapInstruction(Method& method)
          * Directly mapping the function call to read_mem_fence() and write_mem_fence() to a memory fence instruction
          * still created the methods for these calls, but they will never be executed.
          */
-        logging::debug() << "Intrinsifying '" << methodName << "' with memory barrier" << logging::endl;
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Intrinsifying '" << methodName << "' with memory barrier" << logging::endl);
         method.appendToEnd(new intermediate::MemoryBarrier(
             static_cast<intermediate::MemoryScope>(arguments.at(0).getLiteralValue()->unsignedInt()),
             intermediate::MemorySemantics::ACQUIRE_RELEASE));
         return true;
     }
-    logging::debug() << "Generating immediate call to " << methodName << " -> " << dest.type.to_string()
-                     << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating immediate call to " << methodName << " -> " << dest.type.to_string() << logging::endl);
     if(dest.hasLocal() && dest.local() != nullptr)
         method.appendToEnd(
             (new intermediate::MethodCall(std::move(output), std::move(methodName), std::move(arguments)))

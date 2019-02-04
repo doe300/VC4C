@@ -76,9 +76,11 @@ tools::Word* Memory::getWordAddress(MemoryAddress address)
     if(address >= (VariantNamespace::get<MappedBuffers>(data).rbegin()->first +
                       VariantNamespace::get<MappedBuffers>(data).rbegin()->second.get().size()))
     {
-        for(const auto& buffer : buffers)
-            logging::warn() << "Buffer: [" << std::hex << buffer.first << ", "
-                            << (buffer.first + buffer.second.get().size()) << std::dec << ")" << logging::endl;
+        logging::logLazy(logging::Level::WARNING, [&]() {
+            for(const auto& buffer : buffers)
+                logging::warn() << "Buffer: [" << std::hex << buffer.first << ", "
+                                << (buffer.first + buffer.second.get().size()) << std::dec << ")" << logging::endl;
+        });
         throw CompilationError(CompilationStep::GENERAL,
             "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
     }
@@ -90,9 +92,11 @@ tools::Word* Memory::getWordAddress(MemoryAddress address)
             return reinterpret_cast<Word*>(it->second.get().data() + wordBoundsAddress - it->first);
         }
     }
-    for(const auto& buffer : buffers)
-        logging::warn() << "Buffer: [" << std::hex << buffer.first << ", "
-                        << (buffer.first + buffer.second.get().size()) << std::dec << ")" << logging::endl;
+    logging::logLazy(logging::Level::WARNING, [&]() {
+        for(const auto& buffer : buffers)
+            logging::warn() << "Buffer: [" << std::hex << buffer.first << ", "
+                            << (buffer.first + buffer.second.get().size()) << std::dec << ")" << logging::endl;
+    });
     throw CompilationError(CompilationStep::GENERAL, "Address is not part of any buffer", std::to_string(address));
 }
 
@@ -113,9 +117,11 @@ const tools::Word* Memory::getWordAddress(MemoryAddress address) const
     if(address >= (VariantNamespace::get<MappedBuffers>(data).rbegin()->first +
                       VariantNamespace::get<MappedBuffers>(data).rbegin()->second.get().size()))
     {
-        for(const auto& buffer : buffers)
-            logging::warn() << "Buffer: [" << std::hex << buffer.first << ", "
-                            << (buffer.first + buffer.second.get().size()) << std::dec << ")" << logging::endl;
+        logging::logLazy(logging::Level::WARNING, [&]() {
+            for(const auto& buffer : buffers)
+                logging::warn() << "Buffer: [" << std::hex << buffer.first << ", "
+                                << (buffer.first + buffer.second.get().size()) << std::dec << ")" << logging::endl;
+        });
         throw CompilationError(CompilationStep::GENERAL,
             "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
     }
@@ -127,18 +133,21 @@ const tools::Word* Memory::getWordAddress(MemoryAddress address) const
             return reinterpret_cast<const Word*>(it->second.get().data() + wordBoundsAddress - it->first);
         }
     }
-    for(const auto& buffer : buffers)
-        logging::warn() << "Buffer: [" << std::hex << buffer.first << ", "
-                        << (buffer.first + buffer.second.get().size()) << std::dec << ")" << logging::endl;
+    logging::logLazy(logging::Level::WARNING, [&]() {
+        for(const auto& buffer : buffers)
+            logging::warn() << "Buffer: [" << std::hex << buffer.first << ", "
+                            << (buffer.first + buffer.second.get().size()) << std::dec << ")" << logging::endl;
+    });
     throw CompilationError(CompilationStep::GENERAL, "Address is not part of any buffer", std::to_string(address));
 }
 
 Value Memory::readWord(MemoryAddress address) const
 {
     if(address % sizeof(Word) != 0)
-        logging::debug()
-            << "Reading word from non-word-aligned memory location will be truncated to align with word-boundaries: "
-            << address << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Reading word from non-word-aligned memory location will be truncated to align with "
+                   "word-boundaries: "
+                << address << logging::endl);
     return Value(Literal(*getWordAddress(address)), TYPE_INT32);
 }
 
@@ -235,8 +244,9 @@ void Registers::writeRegister(Register reg, const Value& val, std::bitset<16> el
             }
         }
     }
-    logging::debug() << "Writing into register '" << reg.to_string(true, false)
-                     << "': " << toRegisterWriteString(modifiedValue, elementMask) << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Writing into register '" << reg.to_string(true, false)
+            << "': " << toRegisterWriteString(modifiedValue, elementMask) << logging::endl);
     if(reg.isGeneralPurpose())
         writeStorageRegister(reg, std::move(modifiedValue), elementMask);
     else if(reg.isAccumulator())
@@ -395,8 +405,9 @@ Value Registers::readStorageRegister(Register reg)
         logging::warn() << "Reading from register not previously defined: " << reg.to_string() << logging::endl;
         return UNDEFINED_VALUE;
     }
-    logging::debug() << "Reading from register '" << reg.to_string(true, true)
-                     << "': " << storageRegisters.at(reg).to_string(true, true) << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Reading from register '" << reg.to_string(true, true)
+            << "': " << storageRegisters.at(reg).to_string(true, true) << logging::endl);
     return storageRegisters.at(reg);
 }
 
@@ -477,7 +488,7 @@ Value UniformCache::readUniform()
     Value val = memory.readWord(uniformAddress);
     // do not increment UNIFORM pointer for multiple reads in same instruction
     uniformAddress = memory.incrementAddress(uniformAddress, TYPE_INT32);
-    logging::debug() << "Reading UNIFORM value: " << val.to_string(false, true) << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Reading UNIFORM value: " << val.to_string(false, true) << logging::endl);
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 40, "UNIFORM read", 1);
     return val;
 }
@@ -487,7 +498,7 @@ void UniformCache::setUniformAddress(const Value& val)
     if(val.getLiteralValue())
     {
         uniformAddress = val.getLiteralValue()->toImmediate();
-        logging::debug() << "Reset UNIFORM address to: " << uniformAddress << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Reset UNIFORM address to: " << uniformAddress << logging::endl);
     }
     else if(val.hasContainer())
         // see Broadcom specification, page 22
@@ -594,9 +605,9 @@ bool TMUs::triggerTMURead(uint8_t tmu)
         return false;
     else if(val.second + 20 > qpu.getCurrentCycle())
         // blocks up to 20 cycles when reading from RAM
-        logging::debug() << "Distance between triggering of TMU read and read is "
-                         << (qpu.getCurrentCycle() - val.second) << ", additional stalls may be introduced"
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Distance between triggering of TMU read and read is " << (qpu.getCurrentCycle() - val.second)
+                << ", additional stalls may be introduced" << logging::endl);
     requestQueue.pop();
     responseQueue.push(std::make_pair(val.first, qpu.getCurrentCycle()));
     return true;
@@ -626,8 +637,9 @@ Value TMUs::readMemoryAddress(const Value& address) const
         else
             res.container().elements.push_back(memory.readWord(element.getLiteralValue()->toImmediate()));
     }
-    logging::debug() << "Reading via TMU from memory address " << address.to_string(false, true) << ": "
-                     << res.to_string(false, true) << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Reading via TMU from memory address " << address.to_string(false, true) << ": "
+            << res.to_string(false, true) << logging::endl);
     return res;
 }
 
@@ -788,8 +800,10 @@ Value VPM::readValue()
     setup.genericSetup.setNumber(static_cast<uint8_t>((16 + setup.genericSetup.getNumber() - 1) % 16));
     vpmReadSetup = setup.value;
 
-    logging::debug() << "Read value from VPM: " << result.to_string(false, true) << logging::endl;
-    logging::debug() << "New read setup is now: " << setup.to_string() << logging::endl;
+    logging::logLazy(logging::Level::DEBUG, [&]() {
+        logging::debug() << "Read value from VPM: " << result.to_string(false, true) << logging::endl;
+        logging::debug() << "New read setup is now: " << setup.to_string() << logging::endl;
+    });
 
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 80, "VPM read", 1);
     return result;
@@ -857,8 +871,10 @@ void VPM::writeValue(Value&& val)
         static_cast<uint8_t>(setup.genericSetup.getAddress() + setup.genericSetup.getStride()));
     vpmWriteSetup = setup.value;
 
-    logging::debug() << "Wrote value into VPM: " << val.to_string(true, true) << logging::endl;
-    logging::debug() << "New write setup is now: " << setup.to_string() << logging::endl;
+    logging::logLazy(logging::Level::DEBUG, [&]() {
+        logging::debug() << "Wrote value into VPM: " << val.to_string(true, true) << logging::endl;
+        logging::debug() << "New write setup is now: " << setup.to_string() << logging::endl;
+    });
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 90, "VPM written", 1);
 }
 
@@ -877,7 +893,7 @@ void VPM::setWriteSetup(Value&& val)
     else
         throw CompilationError(CompilationStep::GENERAL, "Writing unknown VPM write setup",
             std::to_string(element0.getLiteralValue()->unsignedInt()));
-    logging::debug() << "Set VPM write setup: " << setup.to_string() << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Set VPM write setup: " << setup.to_string() << logging::endl);
 }
 
 void VPM::setReadSetup(Value&& val)
@@ -895,7 +911,7 @@ void VPM::setReadSetup(Value&& val)
     else
         throw CompilationError(CompilationStep::GENERAL, "Writing unknown VPM read setup",
             std::to_string(element0.getLiteralValue()->unsignedInt()));
-    logging::debug() << "Set VPM read setup: " << setup.to_string() << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Set VPM read setup: " << setup.to_string() << logging::endl);
 }
 
 void VPM::setDMAWriteAddress(Value&& val)
@@ -928,9 +944,10 @@ void VPM::setDMAWriteAddress(Value&& val)
 
     MemoryAddress address = static_cast<MemoryAddress>(element0.getLiteralValue()->unsignedInt());
 
-    logging::debug() << "Copying " << sizes.first << " rows with " << sizes.second << " elements of " << typeSize
-                     << " bytes each from VPM address " << vpmBaseAddress.first << "," << vpmBaseAddress.second
-                     << " into RAM at " << address << " with a memory stride of " << stride << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Copying " << sizes.first << " rows with " << sizes.second << " elements of " << typeSize
+            << " bytes each from VPM address " << vpmBaseAddress.first << "," << vpmBaseAddress.second
+            << " into RAM at " << address << " with a memory stride of " << stride << logging::endl);
 
     if(vpmBaseAddress.first >= 64)
         throw CompilationError(
@@ -987,10 +1004,11 @@ void VPM::setDMAReadAddress(Value&& val)
 
     MemoryAddress address = static_cast<MemoryAddress>(element0.getLiteralValue()->unsignedInt());
 
-    logging::debug() << "Copying " << sizes.first << " rows with " << sizes.second << " elements of " << typeSize
-                     << " bytes each from RAM address " << address << " into VPM at " << vpmBaseAddress.first << ","
-                     << vpmBaseAddress.second << " with byte-offset of " << byteOffset << " and a memory pitch of "
-                     << pitch << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Copying " << sizes.first << " rows with " << sizes.second << " elements of " << typeSize
+            << " bytes each from RAM address " << address << " into VPM at " << vpmBaseAddress.first << ","
+            << vpmBaseAddress.second << " with byte-offset of " << byteOffset << " and a memory pitch of " << pitch
+            << logging::endl);
 
     if(vpmBaseAddress.first >= 64)
         throw CompilationError(
@@ -1032,17 +1050,19 @@ void VPM::incrementCycle()
 
 void VPM::dumpContents() const
 {
-    logging::debug() << "VPM contents:" << logging::endl;
-    for(const auto& row : cache)
-    {
-        auto& s = logging::debug();
-        for(auto word : row)
+    logging::logLazy(logging::Level::DEBUG, [&]() {
+        logging::debug() << "VPM contents:" << logging::endl;
+        for(const auto& row : cache)
         {
-            s << std::hex << std::setfill(L'0') << std::setw(8) << word << " ";
+            auto& s = logging::debug();
+            for(auto word : row)
+            {
+                s << std::hex << std::setfill(L'0') << std::setw(8) << word << " ";
+            }
+            s << std::dec << logging::endl;
         }
-        s << std::dec << logging::endl;
-    }
-    logging::debug() << logging::endl;
+        logging::debug() << logging::endl;
+    });
 }
 
 std::pair<Value, bool> Semaphores::increment(uint8_t index)
@@ -1096,8 +1116,9 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
 {
     const qpu_asm::Instruction* inst = &(*(firstInstruction + pc));
     ++instrumentation[inst].numExecutions;
-    logging::info() << "QPU " << static_cast<unsigned>(ID) << " (0x" << std::hex << pc << std::dec
-                    << "): " << inst->toASMString() << logging::endl;
+    CPPLOG_LAZY(logging::Level::INFO,
+        log << "QPU " << static_cast<unsigned>(ID) << " (0x" << std::hex << pc << std::dec
+            << "): " << inst->toASMString() << logging::endl);
     ProgramCounter nextPC = pc;
     if(inst->getSig() == SIGNAL_END_PROGRAM)
         // end program
@@ -1620,7 +1641,8 @@ void QPU::setFlags(const Value& output, ConditionCode cond, const VectorFlags& n
             parts.push_back(flags[i].to_string());
         }
     }
-    logging::debug() << "Setting flags: {" + to_string<std::string>(parts) << "}" << logging::endl;
+    CPPLOG_LAZY(
+        logging::Level::DEBUG, log << "Setting flags: {" + to_string<std::string>(parts) << "}" << logging::endl);
 
     // TODO not completely correct, see http://maazl.de/project/vc4asm/doc/instructions.html
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 200, "flags set", 1);
@@ -1746,7 +1768,7 @@ bool tools::emulate(std::vector<qpu_asm::Instruction>::const_iterator firstInstr
     bool success = true;
     while(!qpus.empty())
     {
-        logging::debug() << "Emulating cycle: " << cycle << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Emulating cycle: " << cycle << logging::endl);
         emulateStep(firstInstruction, qpus);
         for(SFU& sfu : sfus)
             sfu.incrementCycle();
@@ -1767,8 +1789,9 @@ bool tools::emulate(std::vector<qpu_asm::Instruction>::const_iterator firstInstr
         }
     }
 
-    logging::info() << "Emulation " << (success ? "finished" : "timed out") << " for " << uniformAddresses.size()
-                    << " QPUs after " << cycle << " cycles" << logging::endl;
+    CPPLOG_LAZY(logging::Level::INFO,
+        log << "Emulation " << (success ? "finished" : "timed out") << " for " << uniformAddresses.size()
+            << " QPUs after " << cycle << " cycles" << logging::endl);
 
     vpm.dumpContents();
     return success;
@@ -1865,7 +1888,8 @@ static void dumpMemory(const Memory& memory, const std::string& fileName, Memory
         addr += sizeof(tools::Word);
     }
     f << std::endl;
-    logging::debug() << std::dec << "Dumped " << addr << " words of memory into " << fileName << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << std::dec << "Dumped " << addr << " words of memory into " << fileName << logging::endl);
 }
 
 std::string InstrumentationResult::to_string() const

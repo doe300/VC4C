@@ -84,8 +84,9 @@ const CFGNode* ControlFlowLoop::findPredecessor() const
                     throw CompilationError(CompilationStep::GENERAL, "Found multiple predecessors for CFG loop",
                         neighbor.key->getLabel()->to_string());
 
-                logging::debug() << "Found predecessor for CFG loop: " << neighbor.key->getLabel()->to_string()
-                                 << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Found predecessor for CFG loop: " << neighbor.key->getLabel()->to_string()
+                        << logging::endl);
                 predecessor = &neighbor;
             }
             return true;
@@ -107,8 +108,8 @@ const CFGNode* ControlFlowLoop::findSuccessor() const
                     throw CompilationError(CompilationStep::GENERAL, "Found multiple successors for CFG loop",
                         neighbor.key->getLabel()->to_string());
 
-                logging::debug() << "Found successor for CFG loop: " << neighbor.key->getLabel()->to_string()
-                                 << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Found successor for CFG loop: " << neighbor.key->getLabel()->to_string() << logging::endl);
                 successor = &neighbor;
             }
             return true;
@@ -233,10 +234,12 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops()
 
     for(const auto& loop : loops)
     {
-        logging::debug() << "Found a control-flow loop: ";
-        for(auto it = loop.rbegin(); it != loop.rend(); ++it)
-            logging::debug() << (*it)->key->getLabel()->to_string() << " -> ";
-        logging::debug() << logging::endl;
+        logging::logLazy(logging::Level::DEBUG, [&]() {
+            logging::debug() << "Found a control-flow loop: ";
+            for(auto it = loop.rbegin(); it != loop.rend(); ++it)
+                logging::debug() << (*it)->key->getLabel()->to_string() << " -> ";
+            logging::debug() << logging::endl;
+        });
     }
 
     return loops;

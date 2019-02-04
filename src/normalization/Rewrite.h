@@ -7,13 +7,12 @@
 #ifndef VC4C_REWRITE_H
 #define VC4C_REWRITE_H
 
-#include "config.h"
-
 namespace vc4c
 {
     class Method;
     class Module;
     class InstructionWalker;
+    struct Configuration;
 
     namespace normalization
     {

@@ -37,8 +37,9 @@ Global* intermediate::reserveImageConfiguration(Module& module, Parameter& image
     if(!image.type.getImageType())
         throw CompilationError(CompilationStep::GENERAL,
             "Can't reserve global data for image-configuration of non-image type", image.type.to_string());
-    logging::debug() << "Reserving a buffer of " << IMAGE_CONFIG_NUM_UNIFORMS
-                     << " UNIFORMs for the image-configuration of " << image.to_string() << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Reserving a buffer of " << IMAGE_CONFIG_NUM_UNIFORMS << " UNIFORMs for the image-configuration of "
+            << image.to_string() << logging::endl);
     auto it = module.globalData.emplace(module.globalData.end(),
         Global(ImageType::toImageConfigurationName(image.name),
             TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS).toPointerType(AddressSpace::GLOBAL),
@@ -73,26 +74,30 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
     {
         if(callSite->methodName.find("vc4cl_sampler_get_normalized_coords") != std::string::npos)
         {
-            logging::debug() << "Intrinsifying getting normalized-coordinates flag from sampler" << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Intrinsifying getting normalized-coordinates flag from sampler" << logging::endl);
             it.reset(new Operation(OP_AND, callSite->getOutput().value(), callSite->assertArgument(0),
                 Value(Literal(Sampler::MASK_NORMALIZED_COORDS), TYPE_INT8)));
         }
         else if(callSite->methodName.find("vc4cl_sampler_get_addressing_mode") != std::string::npos)
         {
-            logging::debug() << "Intrinsifying getting addressing-mode flag from sampler" << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Intrinsifying getting addressing-mode flag from sampler" << logging::endl);
             it.reset(new Operation(OP_AND, callSite->getOutput().value(), callSite->assertArgument(0),
                 Value(Literal(Sampler::MASK_ADDRESSING_MODE), TYPE_INT8)));
         }
         else if(callSite->methodName.find("vc4cl_sampler_get_filter_mode") != std::string::npos)
         {
-            logging::debug() << "Intrinsifying getting filter-mode flag from sampler" << logging::endl;
+            CPPLOG_LAZY(
+                logging::Level::DEBUG, log << "Intrinsifying getting filter-mode flag from sampler" << logging::endl);
             it.reset(new Operation(OP_AND, callSite->getOutput().value(), callSite->assertArgument(0),
                 Value(Literal(Sampler::MASK_FILTER_MODE), TYPE_INT8)));
         }
         else if(callSite->methodName.find("vc4cl_image_basic_setup") != std::string::npos)
         {
-            logging::debug() << "Intrinsifying getting image basic setup: " << callSite->assertArgument(0).to_string()
-                             << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Intrinsifying getting image basic setup: " << callSite->assertArgument(0).to_string()
+                    << logging::endl);
             it = insertLoadImageConfig(
                 it, method, callSite->assertArgument(0), callSite->getOutput().value(), IMAGE_CONFIG_BASE_OFFSET);
             it.erase();
@@ -101,8 +106,9 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
         }
         else if(callSite->methodName.find("vc4cl_image_access_setup") != std::string::npos)
         {
-            logging::debug() << "Intrinsifying getting image access setup: " << callSite->assertArgument(0).to_string()
-                             << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Intrinsifying getting image access setup: " << callSite->assertArgument(0).to_string()
+                    << logging::endl);
             it = insertLoadImageConfig(
                 it, method, callSite->assertArgument(0), callSite->getOutput().value(), IMAGE_CONFIG_ACCESS_OFFSET);
             it.erase();
@@ -111,8 +117,9 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
         }
         else if(callSite->methodName.find("vc4cl_image_extended_setup") != std::string::npos)
         {
-            logging::debug() << "Intrinsifying getting image extended setup: "
-                             << callSite->assertArgument(0).to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Intrinsifying getting image extended setup: " << callSite->assertArgument(0).to_string()
+                    << logging::endl);
             it = insertLoadImageConfig(it, method, callSite->assertArgument(0), callSite->getOutput().value(),
                 IMAGE_CONFIG_CHILD_OFFSET_OFFSET);
             it.erase();
@@ -121,8 +128,9 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
         }
         else if(callSite->methodName.find("get_image_channel_data_type") != std::string::npos)
         {
-            logging::debug() << "Generating query of image's channel data-type for image: "
-                             << callSite->assertArgument(0).to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Generating query of image's channel data-type for image: "
+                    << callSite->assertArgument(0).to_string() << logging::endl);
             it = insertQueryChannelDataType(it, method, callSite->assertArgument(0), callSite->getOutput().value());
             it.erase();
             // to not skip next instruction
@@ -130,8 +138,9 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
         }
         else if(callSite->methodName.find("get_image_channel_order") != std::string::npos)
         {
-            logging::debug() << "Generating query of image's channel order for image: "
-                             << callSite->assertArgument(0).to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Generating query of image's channel order for image: "
+                    << callSite->assertArgument(0).to_string() << logging::endl);
             it = insertQueryChannelOrder(it, method, callSite->assertArgument(0), callSite->getOutput().value());
             it.erase();
             // to not skip next instruction
@@ -139,8 +148,9 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
         }
         else if(callSite->methodName.find("get_image_depth") != std::string::npos)
         {
-            logging::debug() << "Generating query of image's depth for image: "
-                             << callSite->assertArgument(0).to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Generating query of image's depth for image: " << callSite->assertArgument(0).to_string()
+                    << logging::endl);
             it =
                 insertLoadArraySizeOrImageDepth(it, method, callSite->assertArgument(0), callSite->getOutput().value());
             it.erase();
@@ -149,8 +159,9 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
         }
         else if(callSite->methodName.find("get_image_array_size") != std::string::npos)
         {
-            logging::debug() << "Generating query of image-array's size for image: "
-                             << callSite->assertArgument(0).to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Generating query of image-array's size for image: " << callSite->assertArgument(0).to_string()
+                    << logging::endl);
             it =
                 insertLoadArraySizeOrImageDepth(it, method, callSite->assertArgument(0), callSite->getOutput().value());
             it.erase();
@@ -162,8 +173,9 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
             // new (LLVM 5.0+) way of converting sampler integer constants to sampler object
             // see: https://github.com/llvm-mirror/clang/commit/427517d1008ec4d8bae42449617edd7d7ee75852
             // for us, the sampler is the integer, so we need to copy the value
-            logging::debug() << "Generating conversion of integer constant to sampler object: "
-                             << callSite->assertArgument(0).to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Generating conversion of integer constant to sampler object: "
+                    << callSite->assertArgument(0).to_string() << logging::endl);
             // TODO could use this to build a "smarter" sampler object?
             // NOTE: LLVM uses sampler*. To not confuse reader of our IR, we use sampler values
             auto out = it->getOutput().value();

@@ -8,6 +8,7 @@
 #define VALUES_H
 
 #include "Bitfield.h"
+#include "Optional.h"
 #include "Types.h"
 #include "Variant.h"
 #include "performance.h"

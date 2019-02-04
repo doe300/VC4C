@@ -222,9 +222,10 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Refere
     uint64_t initialInstructionOffset = std::numeric_limits<uint64_t>::max();
     uint64_t totalInstructions = 0;
     binary.read(reinterpret_cast<char*>(&moduleInfo.value), sizeof(moduleInfo.value));
-    logging::debug() << "Extracted module with " << moduleInfo.getInfoCount() << " kernels, "
-                     << moduleInfo.getGlobalDataSize().getValue() << " words of global data and "
-                     << moduleInfo.getStackFrameSize().getValue() << " words of stack-frames" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Extracted module with " << moduleInfo.getInfoCount() << " kernels, "
+            << moduleInfo.getGlobalDataSize().getValue() << " words of global data and "
+            << moduleInfo.getStackFrameSize().getValue() << " words of stack-frames" << logging::endl);
 
     for(uint16_t k = 0; k < moduleInfo.getInfoCount(); ++k)
     {
@@ -234,8 +235,9 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Refere
         binary.read(reinterpret_cast<char*>(&kernelInfo.uniformsUsed.value), sizeof(kernelInfo.uniformsUsed.value));
         kernelInfo.name = readString(binary, kernelInfo.getNameLength().getValue());
         totalInstructions += kernelInfo.getLength().getValue();
-        logging::debug() << "Extracted kernel '" << kernelInfo.name << "' with " << kernelInfo.getParamCount()
-                         << " parameters" << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Extracted kernel '" << kernelInfo.name << "' with " << kernelInfo.getParamCount() << " parameters"
+                << logging::endl);
 
         for(uint16_t p = 0; p < kernelInfo.getParamCount(); ++p)
         {
@@ -243,7 +245,8 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Refere
             binary.read(reinterpret_cast<char*>(&paramInfo.value), sizeof(paramInfo.value));
             paramInfo.name = readString(binary, paramInfo.getNameLength().getValue());
             paramInfo.typeName = readString(binary, paramInfo.getTypeNameLength().getValue());
-            logging::debug() << "Extracted parameter '" << paramInfo.typeName << " " << paramInfo.name << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Extracted parameter '" << paramInfo.typeName << " " << paramInfo.name << logging::endl);
             kernelInfo.parameters.push_back(paramInfo);
         }
         moduleInfo.kernelInfos.push_back(kernelInfo);
@@ -276,8 +279,9 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Refere
             elements.emplace_back(Literal(correctVal), TYPE_INT32);
         }
 
-        logging::debug() << "Extracted " << moduleInfo.getGlobalDataSize().getValue() << " words of global data"
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Extracted " << moduleInfo.getGlobalDataSize().getValue() << " words of global data"
+                << logging::endl);
     }
 
     // skip zero-word between globals and kernel-code
@@ -300,7 +304,8 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Refere
         });
     }
 
-    logging::debug() << "Extracted " << totalInstructions << " machine-code instructions" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Extracted " << totalInstructions << " machine-code instructions" << logging::endl);
 }
 
 static std::size_t generateOutput(std::ostream& stream, qpu_asm::ModuleInfo& moduleInfo,

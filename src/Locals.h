@@ -14,8 +14,6 @@
 
 namespace vc4c
 {
-    class Method;
-
     /*
      * Represents a edge between a Local and a LocalUser.
      *

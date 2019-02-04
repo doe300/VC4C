@@ -7,7 +7,6 @@
 #ifndef BACKGROUND_WORKER_H
 #define BACKGROUND_WORKER_H
 
-#include <atomic>
 #include <exception>
 #include <functional>
 #include <list>

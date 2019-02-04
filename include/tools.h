@@ -201,16 +201,16 @@ namespace vc4c
              * Whether the emulation terminated by successfully completing the execution (true) or by exceeding the
              * execution limit (false)
              */
-            bool executionSuccessful;
+            bool executionSuccessful = false;
             /*
              * The final contents of the parameter passed to the emulation (e.g. for output-parameter).
              */
-            std::vector<std::pair<uint32_t, Optional<std::vector<uint32_t>>>> results;
+            std::vector<std::pair<uint32_t, Optional<std::vector<uint32_t>>>> results{};
             /*
              * The instrumentation result for the emulation run. The indices of the instrumentation result correspond to
              * the indices of the instruction in the executed kernel
              */
-            std::vector<InstrumentationResult> instrumentation;
+            std::vector<InstrumentationResult> instrumentation{};
         };
 
         /*
@@ -226,12 +226,12 @@ namespace vc4c
              * Whether the emulation terminated by successfully completing the execution (true) or by exceeding the
              * execution limit (false)
              */
-            bool executionSuccessful;
+            bool executionSuccessful = false;
             /*
              * The instrumentation result for the emulation run. The indices of the instrumentation result correspond to
              * the indices of the instruction in the executed kernel
              */
-            std::vector<InstrumentationResult> instrumentation;
+            std::vector<InstrumentationResult> instrumentation{};
         };
 
         /*

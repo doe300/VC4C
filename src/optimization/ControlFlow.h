@@ -7,10 +7,12 @@
 #ifndef VC4C_OPTIMIZATION_CONTROLFLOW_H
 #define VC4C_OPTIMIZATION_CONTROLFLOW_H
 
-#include "../Module.h"
-
 namespace vc4c
 {
+    class Method;
+    class Module;
+    struct Configuration;
+
     namespace optimizations
     {
         /*

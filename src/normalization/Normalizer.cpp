@@ -81,11 +81,14 @@ static void checkNormalized(Module& module, Method& method, InstructionWalker it
     {
         if(it.has<intermediate::MethodCall>())
         {
-            logging::error() << "Failed to in-line or intrinsify function-call: " << it->to_string() << logging::endl;
-            logging::warn() << "Candidates:" << logging::endl;
-            for(const auto& method : module.methods)
-                logging::warn() << method->returnType.to_string() << " " << method->name << "("
-                                << to_string<Parameter>(method->parameters) << logging::endl;
+            logging::logLazy(logging::Level::WARNING, [&]() {
+                logging::error() << "Failed to in-line or intrinsify function-call: " << it->to_string()
+                                 << logging::endl;
+                logging::warn() << "Candidates:" << logging::endl;
+                for(const auto& method : module.methods)
+                    logging::warn() << method->returnType.to_string() << " " << method->name << "("
+                                    << to_string<Parameter>(method->parameters) << logging::endl;
+            });
         }
         throw CompilationError(CompilationStep::NORMALIZER, "Not normalized instruction found", it->to_string());
     }
@@ -152,8 +155,10 @@ void Normalizer::normalize(Module& module) const
         // PHI-nodes need to be eliminated before inlining functions
         // since otherwise the phi-node is mapped to the initial label, not to the last label added by the functions
         // (the real end of the original, but split up block)
-        logging::debug() << logging::endl;
-        logging::debug() << "Running pass: EliminatePhiNodes" << logging::endl;
+        logging::logLazy(logging::Level::DEBUG, []() {
+            logging::debug() << logging::endl;
+            logging::debug() << "Running pass: EliminatePhiNodes" << logging::endl;
+        });
         PROFILE_COUNTER(
             vc4c::profiler::COUNTER_NORMALIZATION + 1, "Eliminate Phi-nodes (before)", method->countInstructions());
         optimizations::eliminatePhiNodes(module, *method.get(), config);
@@ -186,16 +191,18 @@ void Normalizer::adjust(Module& module) const
 
 void Normalizer::normalizeMethod(Module& module, Method& method) const
 {
-    logging::debug() << "-----" << logging::endl;
-    logging::info() << "Running normalization passes for: " << method.name << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "-----" << logging::endl);
+    CPPLOG_LAZY(logging::Level::INFO, log << "Running normalization passes for: " << method.name << logging::endl);
     std::size_t numInstructions = method.countInstructions();
 
     PROFILE_START(NormalizationPasses);
 
     // maps all memory-accessing instructions to instructions actually performing the hardware memory-access
     // this step is called extra, because it needs to be run over all instructions
-    logging::debug() << logging::endl;
-    logging::debug() << "Running pass: MapMemoryAccess" << logging::endl;
+    logging::logLazy(logging::Level::DEBUG, []() {
+        logging::debug() << logging::endl;
+        logging::debug() << "Running pass: MapMemoryAccess" << logging::endl;
+    });
     PROFILE_START(MapMemoryAccess);
     mapMemoryAccess(module, method, config);
     PROFILE_END(MapMemoryAccess);
@@ -205,16 +212,20 @@ void Normalizer::normalizeMethod(Module& module, Method& method) const
 
     for(const auto& step : initialNormalizationSteps)
     {
-        logging::debug() << logging::endl;
-        logging::debug() << "Running pass: " << step.first << logging::endl;
+        logging::logLazy(logging::Level::DEBUG, [&]() {
+            logging::debug() << logging::endl;
+            logging::debug() << "Running pass: " << step.first << logging::endl;
+        });
         PROFILE_START_DYNAMIC(step.first);
         runNormalizationStep(step.second, module, method, config);
         PROFILE_END_DYNAMIC(step.first);
     }
 
     // adds the start- and stop-segments to the beginning and end of the kernel
-    logging::debug() << logging::endl;
-    logging::debug() << "Running pass: AddStartStopSegment" << logging::endl;
+    logging::logLazy(logging::Level::DEBUG, []() {
+        logging::debug() << logging::endl;
+        logging::debug() << "Running pass: AddStartStopSegment" << logging::endl;
+    });
     PROFILE_START(AddStartStopSegment);
     optimizations::addStartStopSegment(module, method, config);
     PROFILE_END(AddStartStopSegment);
@@ -223,37 +234,43 @@ void Normalizer::normalizeMethod(Module& module, Method& method) const
 
     // add (runtime-configurable) loop over the whole kernel execution, allowing for skipping some of the syscall
     // overhead for kernels with many work-groups
-    logging::debug() << logging::endl;
-    logging::debug() << "Running pass: UnrollWorkGroups" << logging::endl;
+    logging::logLazy(logging::Level::DEBUG, []() {
+        logging::debug() << logging::endl;
+        logging::debug() << "Running pass: UnrollWorkGroups" << logging::endl;
+    });
     PROFILE_START(UnrollWorkGroups);
     optimizations::unrollWorkGroups(module, method, config);
     PROFILE_END(UnrollWorkGroups);
 
-    logging::info() << logging::endl;
-    if(numInstructions != method.countInstructions())
-    {
-        logging::info() << "Normalization done, changed number of instructions from " << numInstructions << " to "
-                        << method.countInstructions() << logging::endl;
-    }
-    else
-    {
-        logging::info() << "Normalization done" << logging::endl;
-    }
-    logging::debug() << "-----" << logging::endl;
+    logging::logLazy(logging::Level::INFO, [&]() {
+        logging::info() << logging::endl;
+        if(numInstructions != method.countInstructions())
+        {
+            logging::info() << "Normalization done, changed number of instructions from " << numInstructions << " to "
+                            << method.countInstructions() << logging::endl;
+        }
+        else
+        {
+            logging::info() << "Normalization done" << logging::endl;
+        }
+        logging::debug() << "-----" << logging::endl;
+    });
 }
 
 void Normalizer::adjustMethod(Module& module, Method& method) const
 {
-    logging::debug() << "-----" << logging::endl;
-    logging::info() << "Running adjustment passes for: " << method.name << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "-----" << logging::endl);
+    CPPLOG_LAZY(logging::Level::INFO, log << "Running adjustment passes for: " << method.name << logging::endl);
     std::size_t numInstructions = method.countInstructions();
 
     PROFILE_START(AdjustmentPasses);
 
     for(const auto& step : adjustmentSteps)
     {
-        logging::debug() << logging::endl;
-        logging::debug() << "Running pass: " << step.first << logging::endl;
+        logging::logLazy(logging::Level::DEBUG, [&]() {
+            logging::debug() << logging::endl;
+            logging::debug() << "Running pass: " << step.first << logging::endl;
+        });
         PROFILE_START_DYNAMIC(step.first);
         runNormalizationStep(step.second, module, method, config);
         PROFILE_END_DYNAMIC(step.first);
@@ -261,22 +278,26 @@ void Normalizer::adjustMethod(Module& module, Method& method) const
 
     // extends the branches by adding the conditional execution and the delay-nops
     // this step is called extra, because it needs to be run over all instructions
-    logging::debug() << logging::endl;
-    logging::debug() << "Running pass: ExtendBranches" << logging::endl;
+    logging::logLazy(logging::Level::DEBUG, []() {
+        logging::debug() << logging::endl;
+        logging::debug() << "Running pass: ExtendBranches" << logging::endl;
+    });
     PROFILE_START(ExtendBranches);
     optimizations::extendBranches(module, method, config);
     PROFILE_END(ExtendBranches);
 
     PROFILE_END(AdjustmentPasses);
-    logging::info() << logging::endl;
-    if(numInstructions != method.countInstructions())
-    {
-        logging::info() << "Adjustment done, changed number of instructions from " << numInstructions << " to "
-                        << method.countInstructions() << logging::endl;
-    }
-    else
-    {
-        logging::info() << "Adjustment done" << logging::endl;
-    }
-    logging::debug() << "-----" << logging::endl;
+    logging::logLazy(logging::Level::INFO, [&]() {
+        logging::info() << logging::endl;
+        if(numInstructions != method.countInstructions())
+        {
+            logging::info() << "Adjustment done, changed number of instructions from " << numInstructions << " to "
+                            << method.countInstructions() << logging::endl;
+        }
+        else
+        {
+            logging::info() << "Adjustment done" << logging::endl;
+        }
+        logging::debug() << "-----" << logging::endl;
+    });
 }

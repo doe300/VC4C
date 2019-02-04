@@ -79,55 +79,55 @@ void profiler::endFunctionCall(const ProfilingResult& result)
 
 void profiler::dumpProfileResults(bool writeAsWarning)
 {
+    logging::logLazy(writeAsWarning ? logging::Level::WARNING : logging::Level::DEBUG, [&]() {
 #ifdef MULTI_THREADED
-    std::lock_guard<std::mutex> guard(lockTimes);
+        std::lock_guard<std::mutex> guard(lockTimes);
 #endif
-    std::set<Entry> entries;
-    std::set<Counter> counts;
-    for(auto& entry : times)
-    {
-        entry.second.name = entry.first;
-        entries.emplace(entry.second);
-    }
-    for(const auto& count : counters)
-    {
-        counts.emplace(count.second);
-    }
+        std::set<Entry> entries;
+        std::set<Counter> counts;
+        for(auto& entry : times)
+        {
+            entry.second.name = entry.first;
+            entries.emplace(entry.second);
+        }
+        for(const auto& count : counters)
+        {
+            counts.emplace(count.second);
+        }
 
-    (writeAsWarning ? logging::warn() : logging::info()) << std::setfill(L' ') << logging::endl;
-    (writeAsWarning ? logging::warn() : logging::info())
-        << "Profiling results for " << entries.size() << " functions:" << logging::endl;
-    for(const Entry& entry : entries)
-    {
-        (writeAsWarning ? logging::warn() : logging::info())
-            << std::setw(40) << entry.name << std::setw(7)
-            << std::chrono::duration_cast<std::chrono::milliseconds>(entry.duration).count() << " ms" << std::setw(12)
-            << entry.duration.count() << " us" << std::setw(10) << entry.invocations << " calls" << std::setw(12)
-            << entry.duration.count() / entry.invocations << " us/call" << std::setw(64) << entry.fileName << "#"
-            << entry.lineNumber << logging::endl;
-    }
+        auto logFunc = writeAsWarning ? logging::warn : logging::info;
 
-    (writeAsWarning ? logging::warn() : logging::info()) << logging::endl;
-    (writeAsWarning ? logging::warn() : logging::info())
-        << "Profiling results for " << counts.size() << " counters:" << logging::endl;
-    for(const Counter& counter : counts)
-    {
-        (writeAsWarning ? logging::warn() : logging::info())
-            << std::setw(40) << counter.name << std::setw(7) << counter.count << " counts" << std::setw(5)
-            << counter.invocations << " calls" << std::setw(6) << counter.count / counter.invocations << " avg./call"
-            << std::setw(8) << (counter.prevCounter == SIZE_MAX ? "" : "diff") << std::setw(7) << std::showpos
-            << (counter.prevCounter == SIZE_MAX ? 0 : counter.count - counters[counter.prevCounter].count) << " ("
-            << std::setw(5) << std::showpos
-            << (counter.prevCounter == SIZE_MAX ?
-                       0 :
-                       static_cast<int>(100 *
-                           (-1.0 +
-                               static_cast<double>(counter.count) /
-                                   static_cast<double>(counters[counter.prevCounter].count))))
-            << std::noshowpos << "%)" << std::setw(64) << counter.fileName << "#" << counter.lineNumber
-            << logging::endl;
-    }
+        logFunc() << std::setfill(L' ') << logging::endl;
+        logFunc() << "Profiling results for " << entries.size() << " functions:" << logging::endl;
+        for(const Entry& entry : entries)
+        {
+            logFunc() << std::setw(40) << entry.name << std::setw(7)
+                      << std::chrono::duration_cast<std::chrono::milliseconds>(entry.duration).count() << " ms"
+                      << std::setw(12) << entry.duration.count() << " us" << std::setw(10) << entry.invocations
+                      << " calls" << std::setw(12) << entry.duration.count() / entry.invocations << " us/call"
+                      << std::setw(64) << entry.fileName << "#" << entry.lineNumber << logging::endl;
+        }
 
+        logFunc() << logging::endl;
+        logFunc() << "Profiling results for " << counts.size() << " counters:" << logging::endl;
+        for(const Counter& counter : counts)
+        {
+            logFunc() << std::setw(40) << counter.name << std::setw(7) << counter.count << " counts" << std::setw(5)
+                      << counter.invocations << " calls" << std::setw(6) << counter.count / counter.invocations
+                      << " avg./call" << std::setw(8) << (counter.prevCounter == SIZE_MAX ? "" : "diff") << std::setw(7)
+                      << std::showpos
+                      << (counter.prevCounter == SIZE_MAX ? 0 : counter.count - counters[counter.prevCounter].count)
+                      << " (" << std::setw(5) << std::showpos
+                      << (counter.prevCounter == SIZE_MAX ?
+                                 0 :
+                                 static_cast<int>(100 *
+                                     (-1.0 +
+                                         static_cast<double>(counter.count) /
+                                             static_cast<double>(counters[counter.prevCounter].count))))
+                      << std::noshowpos << "%)" << std::setw(64) << counter.fileName << "#" << counter.lineNumber
+                      << logging::endl;
+        }
+    });
     times.clear();
     counters.clear();
 }

@@ -7,7 +7,7 @@
 #ifndef LLVMINSTRUCTION_H
 #define LLVMINSTRUCTION_H
 
-#include "../Locals.h"
+#include "../Values.h"
 
 #include <map>
 #include <memory>

@@ -9,6 +9,7 @@
 
 #include "../Graph.h"
 #include "../Locals.h"
+#include "../Method.h"
 
 namespace vc4c
 {

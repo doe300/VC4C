@@ -91,8 +91,8 @@ InstructionDecorations intermediate::forwardDecorations(InstructionDecorations d
 IntermediateInstruction::IntermediateInstruction(
     Optional<Value>&& output, ConditionCode cond, SetFlag setFlags, Pack packMode) :
     signal(SIGNAL_NONE),
-    unpackMode(UNPACK_NOP), packMode(packMode), conditional(cond), setFlags(setFlags),
-    decoration(InstructionDecorations::NONE), canBeCombined(true), output(std::move(output)), arguments()
+    unpackMode(UNPACK_NOP), packMode(packMode), conditional(cond), setFlags(setFlags), canBeCombined(true),
+    decoration(InstructionDecorations::NONE), output(std::move(output)), arguments()
 {
     if(this->output)
         addAsUserToValue(this->output.value(), LocalUse::Type::WRITER);
@@ -427,8 +427,9 @@ bool IntermediateInstruction::replaceValue(const Value oldValue, const Value new
         return false;
     if(has_flag(type, LocalUse::Type::WRITER) && output && output == oldValue)
     {
-        logging::debug() << "replaceValue: replace " << output.to_string() << " to " << newValue.to_string(true, true)
-                         << " in " << to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "replaceValue: replace " << output.to_string() << " to " << newValue.to_string(true, true) << " in "
+                << to_string() << logging::endl);
         setOutput(Optional<Value>(newValue));
         replaced = true;
     }
@@ -439,8 +440,9 @@ bool IntermediateInstruction::replaceValue(const Value oldValue, const Value new
         {
             if(arg == oldValue)
             {
-                logging::debug() << "replaceValue: replace " << arg.to_string() << " to "
-                                 << newValue.to_string(false, true) << " in " << to_string() << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "replaceValue: replace " << arg.to_string() << " to " << newValue.to_string(false, true)
+                        << " in " << to_string() << logging::endl);
                 removeAsUserFromValue(arg, LocalUse::Type::READER);
                 arg = newValue;
                 addAsUserToValue(arg, LocalUse::Type::READER);

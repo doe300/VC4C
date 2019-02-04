@@ -101,9 +101,10 @@ static NODISCARD InstructionWalker findInstructionNotAccessing(
         }
         if(validReplacement)
         {
-            logging::debug() << "Found instruction not using any of the excluded values ("
-                             << to_string<Value, FastSet<Value>>(excludedValues) << "): " << it->to_string()
-                             << logging::endl;
+            logging::logLazy(logging::Level::DEBUG, [&](std::wostream& log) {
+                log << "Found instruction not using any of the excluded values ("
+                    << to_string<Value, FastSet<Value>>(excludedValues) << "): " << it->to_string() << logging::endl;
+            });
             break;
         }
 
@@ -166,8 +167,8 @@ static NODISCARD InstructionWalker findReplacementCandidate(
             // this can e.g. happen, if the vector rotation is the first instruction in a basic block
             // TODO for now, we can't handle this case, since there may be several writing instructions jumping to the
             // block
-            logging::debug() << "Can't find reason for NOP in block: " << basicBlock.getLabel()->to_string()
-                             << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Can't find reason for NOP in block: " << basicBlock.getLabel()->to_string() << logging::endl);
             return basicBlock.walkEnd();
         }
         excludedValues.insert(lastInstruction->getOutput().value());
@@ -227,7 +228,8 @@ static void replaceNOPs(BasicBlock& basicBlock, Method& method, const Configurat
             {
                 // replace NOP with instruction, reset instruction at position (do not yet erase, otherwise iterators
                 // are wrong!)
-                logging::debug() << "Replacing NOP with: " << replacementIt->to_string() << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Replacing NOP with: " << replacementIt->to_string() << logging::endl);
                 bool cannotBeCombined = !it->canBeCombined;
                 it.reset(replacementIt.release());
                 if(cannotBeCombined)
@@ -287,8 +289,9 @@ bool optimizations::splitReadAfterWrites(const Module& module, Method& method, c
                             lastInstruction, lastWrittenTo, config.additionalOptions.accumulatorThreshold) ||
                         isUnpacked)
                     {
-                        logging::debug() << "Inserting NOP to split up read-after-write before: " << it->to_string()
-                                         << logging::endl;
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Inserting NOP to split up read-after-write before: " << it->to_string()
+                                << logging::endl);
                         // emplacing after the last instruction instead of before this one fixes errors with
                         // wrote-label-read, which then becomes  write-nop-label-read instead of write-label-nop-read
                         // and the combiner can find a reason for the NOP
@@ -375,8 +378,8 @@ InstructionWalker optimizations::moveRotationSourcesToAccumulators(
                 if(mapper.isStartOfBlock())
                     mapper.nextInBlock();
                 // TODO no need for the nop if there is another instruction before the rotation not writing the local
-                logging::debug() << "Moving source of vector-rotation to temporary for: " << it->to_string()
-                                 << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Moving source of vector-rotation to temporary for: " << it->to_string() << logging::endl);
                 const Value tmp = method.addNewLocal(loc->type, "%vector_rotation");
                 mapper.emplace(new MoveOperation(tmp, loc->createReference()));
                 it->replaceLocal(loc, tmp.local(), LocalUse::Type::READER);

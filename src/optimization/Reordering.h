@@ -7,13 +7,12 @@
 #ifndef REORDERING_H
 #define REORDERING_H
 
-#include "config.h"
-
 namespace vc4c
 {
     class Method;
     class Module;
     class InstructionWalker;
+    struct Configuration;
 
     namespace optimizations
     {

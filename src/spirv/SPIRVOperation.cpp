@@ -92,8 +92,9 @@ void SPIRVInstruction::mapInstruction(TypeMapping& types, ConstantMapping& const
     }
     if(!arg1) // unary
     {
-        logging::debug() << "Generating intermediate unary operation '" << opcode << "' with " << arg0.to_string(false)
-                         << " into " << dest.to_string(true) << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating intermediate unary operation '" << opcode << "' with " << arg0.to_string(false)
+                << " into " << dest.to_string(true) << logging::endl);
         auto& op = OpCode::findOpCode(opCode);
         if(op != OP_NOP)
             method.method->appendToEnd(
@@ -105,8 +106,9 @@ void SPIRVInstruction::mapInstruction(TypeMapping& types, ConstantMapping& const
     }
     else // binary
     {
-        logging::debug() << "Generating intermediate binary operation '" << opcode << "' with " << arg0.to_string(false)
-                         << " and " << arg1.to_string() << " into " << dest.to_string(true) << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating intermediate binary operation '" << opcode << "' with " << arg0.to_string(false)
+                << " and " << arg1.to_string() << " into " << dest.to_string(true) << logging::endl);
         auto& op = OpCode::findOpCode(opCode);
         if(op != OP_NOP)
             method.method->appendToEnd(
@@ -201,8 +203,9 @@ void SPIRVComparison::mapInstruction(TypeMapping& types, ConstantMapping& consta
     Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
     Value arg0 = getValue(operands.at(0), *method.method, types, constants, memoryAllocated, localTypes);
     Value arg1 = getValue(operands.at(1), *method.method, types, constants, memoryAllocated, localTypes);
-    logging::debug() << "Generating intermediate comparison '" << opcode << "' of " << arg0.to_string(false) << " and "
-                     << arg1.to_string(false) << " into " << dest.to_string(true) << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating intermediate comparison '" << opcode << "' of " << arg0.to_string(false) << " and "
+            << arg1.to_string(false) << " into " << dest.to_string(true) << logging::endl);
     method.method->appendToEnd(
         (new intermediate::Comparison(std::move(opcode), std::move(dest), std::move(arg0), std::move(arg1)))
             ->addDecorations(decorations));
@@ -268,8 +271,9 @@ void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constant
     {
         args.push_back(getValue(op, *method.method, types, constants, memoryAllocated, localTypes));
     }
-    logging::debug() << "Generating intermediate call-site to '" << calledFunction << "' with " << args.size()
-                     << " parameters into " << dest.to_string(true) << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating intermediate call-site to '" << calledFunction << "' with " << args.size()
+            << " parameters into " << dest.to_string(true) << logging::endl);
     method.method->appendToEnd(
         (new intermediate::MethodCall(std::move(dest), std::move(calledFunction), std::move(args)))
             ->addDecorations(decorations));
@@ -297,12 +301,13 @@ void SPIRVReturn::mapInstruction(TypeMapping& types, ConstantMapping& constants,
     if(returnValue)
     {
         Value value = getValue(returnValue.value(), *method.method, types, constants, memoryAllocated, localTypes);
-        logging::debug() << "Generating intermediate return of value: " << value.to_string(false) << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating intermediate return of value: " << value.to_string(false) << logging::endl);
         method.method->appendToEnd(new intermediate::Return(std::move(value)));
     }
     else
     {
-        logging::debug() << "Generating intermediate return" << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating intermediate return" << logging::endl);
         method.method->appendToEnd(new intermediate::Return());
     }
 }
@@ -332,8 +337,9 @@ void SPIRVBranch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
 {
     if(conditionID)
     {
-        logging::debug() << "Generating intermediate conditional branch on %" << conditionID.value() << " to either %"
-                         << defaultLabelID << " or %" << falseLabelID.value() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating intermediate conditional branch on %" << conditionID.value() << " to either %"
+                << defaultLabelID << " or %" << falseLabelID.value() << logging::endl);
         const Value cond = getValue(conditionID.value(), *method.method, types, constants, memoryAllocated, localTypes);
         const Local* trueLabel =
             method.method->findOrCreateLocal(TYPE_LABEL, std::string("%") + std::to_string(defaultLabelID));
@@ -344,7 +350,8 @@ void SPIRVBranch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
     }
     else
     {
-        logging::debug() << "Generating intermediate branch to %" << defaultLabelID << logging::endl;
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Generating intermediate branch to %" << defaultLabelID << logging::endl);
         const Local* label =
             method.method->findOrCreateLocal(TYPE_LABEL, std::string("%") + std::to_string(defaultLabelID));
         method.method->appendToEnd(new intermediate::Branch(label, COND_ALWAYS, BOOL_TRUE));
@@ -366,7 +373,7 @@ void SPIRVLabel::mapInstruction(std::map<uint32_t, DataType>& types, std::map<ui
     std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods,
     std::map<uint32_t, Local*>& memoryAllocated)
 {
-    logging::debug() << "Generating intermediate label %" << id << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating intermediate label %" << id << logging::endl);
     method.method->appendToEnd(new intermediate::BranchLabel(
         *method.method->findOrCreateLocal(TYPE_LABEL, std::string("%") + std::to_string(id))));
 }
@@ -393,8 +400,9 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
     const uint8_t sourceWidth = source.type.getScalarBitCount();
     const uint8_t destWidth = dest.type.getScalarBitCount();
 
-    logging::debug() << "Generating intermediate conversion from " << source.to_string(false) << " to "
-                     << dest.to_string(true) << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating intermediate conversion from " << source.to_string(false) << " to " << dest.to_string(true)
+            << logging::endl);
     switch(type)
     {
     case ConversionType::BITCAST:
@@ -509,16 +517,16 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
         // JohnTheRipper/DES_bs_kernel.cl  need to split in I/O of scalar type (use VPM cache, multi-line VPM)
         if(memoryAccess == MemoryAccess::READ)
         {
-            logging::debug() << "Generating reading of " << source.to_string() << " into " << dest.to_string()
-                             << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Generating reading of " << source.to_string() << " into " << dest.to_string() << logging::endl);
             method.method->appendToEnd((new intermediate::MemoryInstruction(
                                             intermediate::MemoryOperation::READ, std::move(dest), std::move(source)))
                                            ->addDecorations(decorations));
         }
         else if(memoryAccess == MemoryAccess::WRITE)
         {
-            logging::debug() << "Generating writing of " << source.to_string() << " into " << dest.to_string()
-                             << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Generating writing of " << source.to_string() << " into " << dest.to_string() << logging::endl);
             method.method->appendToEnd((new intermediate::MemoryInstruction(
                                             intermediate::MemoryOperation::WRITE, std::move(dest), std::move(source)))
                                            ->addDecorations(decorations));
@@ -528,8 +536,9 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
             if(sizeID.value() == UNDEFINED_ID)
             {
                 // copy single object
-                logging::debug() << "Generating copying of " << source.to_string() << " into " << dest.to_string()
-                                 << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Generating copying of " << source.to_string() << " into " << dest.to_string()
+                        << logging::endl);
                 method.method->appendToEnd((new intermediate::MemoryInstruction(intermediate::MemoryOperation::COPY,
                                                 std::move(dest), std::move(source)))
                                                ->addDecorations(decorations));
@@ -538,8 +547,9 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
             {
                 // copy area of memory
                 Value size = getValue(sizeID.value(), *method.method, types, constants, memoryAllocated, localTypes);
-                logging::debug() << "Generating copying of " << size.to_string() << " bytes from " << source.to_string()
-                                 << " into " << dest.to_string() << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Generating copying of " << size.to_string() << " bytes from " << source.to_string()
+                        << " into " << dest.to_string() << logging::endl);
                 if(size.getLiteralValue())
                 {
                     method.method->appendToEnd((new intermediate::MemoryInstruction(intermediate::MemoryOperation::COPY,
@@ -564,8 +574,9 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
     else if(!destIndices && !sourceIndices)
     {
         // simple move
-        logging::debug() << "Generating intermediate move from " << source.to_string() << " into "
-                         << dest.to_string(true) << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating intermediate move from " << source.to_string() << " into " << dest.to_string(true)
+                << logging::endl);
         method.method->appendToEnd(
             (new intermediate::MoveOperation(std::move(dest), std::move(source)))->addDecorations(decorations));
     }
@@ -574,8 +585,9 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
         if(sourceIndices->size() > 1)
             throw CompilationError(CompilationStep::LLVM_2_IR, "Multi level indices are not implemented yet");
         // index is literal
-        logging::debug() << "Generating intermediate extraction of index " << sourceIndices->at(0) << " from "
-                         << source.to_string() << " into " << dest.to_string(true) << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating intermediate extraction of index " << sourceIndices->at(0) << " from "
+                << source.to_string() << " into " << dest.to_string(true) << logging::endl);
         ignoreReturnValue(intermediate::insertVectorExtraction(method.method->appendToEnd(), *method.method, source,
             Value(Literal(sourceIndices->at(0)), TYPE_INT8), dest));
     }
@@ -585,8 +597,9 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
             throw CompilationError(CompilationStep::LLVM_2_IR, "Multi level indices are not implemented yet");
         // add element to vector to element
         // index is literal
-        logging::debug() << "Generating intermediate insertion of " << source.to_string() << " into element "
-                         << destIndices->at(0) << " of " << dest.to_string(true) << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating intermediate insertion of " << source.to_string() << " into element "
+                << destIndices->at(0) << " of " << dest.to_string(true) << logging::endl);
         ignoreReturnValue(intermediate::insertVectorInsertion(
             method.method->appendToEnd(), *method.method, dest, Value(Literal(destIndices->at(0)), TYPE_INT8), source));
     }
@@ -663,9 +676,9 @@ void SPIRVShuffle::mapInstruction(TypeMapping& types, ConstantMapping& constants
             index = Value(indices, TYPE_INT8);
         }
     }
-    logging::debug() << "Generating intermediate operations for mixing " << src0.to_string() << " and "
-                     << src1.to_string() << " into " << dest.to_string() << " with mask "
-                     << index.to_string(false, true) << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating intermediate operations for mixing " << src0.to_string() << " and " << src1.to_string()
+            << " into " << dest.to_string() << " with mask " << index.to_string(false, true) << logging::endl);
 
     ignoreReturnValue(
         intermediate::insertVectorShuffle(method.method->appendToEnd(), *method.method, dest, src0, src1, index));
@@ -692,8 +705,9 @@ void SPIRVIndexOf::mapInstruction(TypeMapping& types, ConstantMapping& constants
     Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
     Value container = getValue(this->container, *method.method, types, constants, memoryAllocated, localTypes);
 
-    logging::debug() << "Generating calculating indices of " << container.to_string() << " into " << dest.to_string()
-                     << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating calculating indices of " << container.to_string() << " into " << dest.to_string()
+            << logging::endl);
     std::vector<Value> indexValues;
     indexValues.reserve(indices.size());
     for(const uint32_t indexID : indices)
@@ -725,7 +739,7 @@ Optional<Value> SPIRVIndexOf::precalculate(
     std::for_each(indices.begin(), indices.end(),
         [&indexValues, &constants](uint32_t index) { indexValues.push_back(constants.at(index)); });
 
-    logging::debug() << "Pre-calculating indices of " << container.to_string() << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Pre-calculating indices of " << container.to_string() << logging::endl);
 
     // TODO regard isPtrAcessChain, if set, type of first index is original type
 
@@ -790,8 +804,8 @@ void SPIRVPhi::mapInstruction(TypeMapping& types, ConstantMapping& constants, Lo
 {
     Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
 
-    logging::debug() << "Generating Phi-Node with " << sources.size() << " options into " << dest.to_string()
-                     << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating Phi-Node with " << sources.size() << " options into " << dest.to_string() << logging::endl);
     // https://stackoverflow.com/questions/11485531/what-exactly-phi-instruction-does-and-how-to-use-it-in-llvm#11485946
     // sets the output value according to where from this instructions is executed/jumped from
     std::vector<std::pair<Value, const Local*>> labelPairs;
@@ -826,9 +840,10 @@ void SPIRVSelect::mapInstruction(TypeMapping& types, ConstantMapping& constants,
     const Value condition = getValue(condID, *method.method, types, constants, memoryAllocated, localTypes);
     const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
 
-    logging::debug() << "Generating intermediate select on " << condition.to_string() << " whether to write "
-                     << sourceTrue.to_string() << " or " << sourceFalse.to_string() << " into " << dest.to_string(true)
-                     << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating intermediate select on " << condition.to_string() << " whether to write "
+            << sourceTrue.to_string() << " or " << sourceFalse.to_string() << " into " << dest.to_string(true)
+            << logging::endl);
 
     if(condition.type.isScalarType() && (!sourceTrue.type.isScalarType() || !sourceFalse.type.isScalarType()))
     {
@@ -876,9 +891,9 @@ void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
     const Value selector = getValue(selectorID, *method.method, types, constants, memoryAllocated, localTypes);
     const Value defaultLabel = getValue(defaultID, *method.method, types, constants, memoryAllocated, localTypes);
 
-    logging::debug() << "Generating intermediate switched jump on " << selector.to_string() << " to "
-                     << destinations.size() << " destinations with default " << defaultLabel.to_string()
-                     << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating intermediate switched jump on " << selector.to_string() << " to " << destinations.size()
+            << " destinations with default " << defaultLabel.to_string() << logging::endl);
 
     for(const auto& pair : destinations)
     {
@@ -935,26 +950,27 @@ void SPIRVImageQuery::mapInstruction(TypeMapping& types, ConstantMapping& consta
     switch(valueID)
     {
     case ImageQuery::CHANNEL_DATA_TYPE:
-        logging::debug() << "Generating query of image's channel data-type for image: " << image.to_string()
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating query of image's channel data-type for image: " << image.to_string() << logging::endl);
         ignoreReturnValue(
             intermediate::insertQueryChannelDataType(method.method->appendToEnd(), *method.method, image, dest));
         return;
     case ImageQuery::CHANNEL_ORDER:
-        logging::debug() << "Generating query of image's channel order for image: " << image.to_string()
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating query of image's channel order for image: " << image.to_string() << logging::endl);
         ignoreReturnValue(
             intermediate::insertQueryChannelOrder(method.method->appendToEnd(), *method.method, image, dest));
         return;
     case ImageQuery::SIZES:
-        logging::debug() << "Generating query of image's measurements for image: " << image.to_string()
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating query of image's measurements for image: " << image.to_string() << logging::endl);
         ignoreReturnValue(
             intermediate::insertQueryMeasurements(method.method->appendToEnd(), *method.method, image, dest));
         return;
     case ImageQuery::SIZES_LOD:
-        logging::debug() << "Generating query of image's measurements for image with LOD: " << image.to_string()
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating query of image's measurements for image with LOD: " << image.to_string()
+                << logging::endl);
         if(param.hasLiteral(INT_ZERO.literal()))
         {
             // same as above
@@ -996,7 +1012,7 @@ void vc4c::spirv2qasm::SPIRVMemoryBarrier::mapInstruction(TypeMapping& types, Co
         throw CompilationError(CompilationStep::LLVM_2_IR,
             "Memory barriers with non-constant scope or memory semantics are not supported!");
 
-    logging::debug() << "Generating memory barrier" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating memory barrier" << logging::endl);
     method.method->appendToEnd(
         new intermediate::MemoryBarrier(static_cast<intermediate::MemoryScope>(scope.getLiteralValue()->unsignedInt()),
             static_cast<intermediate::MemorySemantics>(semantics.getLiteralValue()->unsignedInt())));
@@ -1024,8 +1040,9 @@ void SPIRVLifetimeInstruction::mapInstruction(TypeMapping& types, ConstantMappin
     if(sizeInBytes != 0)
         pointer.local()->as<StackAllocation>()->size = sizeInBytes;
 
-    logging::debug() << "Generating life-time " << (isLifetimeEnd ? "end" : "start") << " for " << pointer.to_string()
-                     << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating life-time " << (isLifetimeEnd ? "end" : "start") << " for " << pointer.to_string()
+            << logging::endl);
     method.method->appendToEnd(new intermediate::LifetimeBoundary(pointer, isLifetimeEnd));
 }
 

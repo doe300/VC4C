@@ -38,7 +38,8 @@ static RegisterFile getFixedRegisterFile(const Value& val)
 static NODISCARD InstructionWalker resolveRegisterConflicts(
     Method& method, InstructionWalker it, FastSet<Value>& fixedArgs)
 {
-    logging::debug() << "Found instruction with conflicting fixed registers: " << it->to_string() << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Found instruction with conflicting fixed registers: " << it->to_string() << logging::endl);
 
     if(it->hasUnpackMode())
         // TODO if this instruction unpacks, then we need to insert the copy somewhere else

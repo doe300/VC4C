@@ -74,7 +74,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(
     // mul24 can multiply 24-bits * 24-bits into 32-bits
     // default case, full multiplication
     // NOTE: the instructions are ordered in a way, that the insertion of NOPs to split read-after-write is minimal
-    logging::debug() << "Intrinsifying unsigned multiplication of integers" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying unsigned multiplication of integers" << logging::endl);
 
     /*
      *                             | a[0] .        a[1]        |
@@ -259,7 +259,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(
     const Value& numerator = op.getFirstArg();
     const Value& divisor = op.getSecondArg().value_or(UNDEFINED_VALUE);
 
-    logging::debug() << "Intrinsifying division of unsigned integers" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying division of unsigned integers" << logging::endl);
 
     // TODO divisor = 0 handling!
 
@@ -425,9 +425,10 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
      */
     static const unsigned accuracy = 16100;
     auto constants = calculateConstant(op.assertArgument(1), accuracy);
-    logging::debug() << "Intrinsifying unsigned division by " << op.assertArgument(1).to_string(false, true)
-                     << " by multiplication with " << constants.first.to_string(false, true) << " and right-shift by "
-                     << constants.second.to_string(false, true) << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Intrinsifying unsigned division by " << op.assertArgument(1).to_string(false, true)
+            << " by multiplication with " << constants.first.to_string(false, true) << " and right-shift by "
+            << constants.second.to_string(false, true) << logging::endl);
 
     Value tmp = assign(it, op.getFirstArg().type, "%udiv") = mul24(op.getFirstArg(), constants.first);
     const Value divOut = method.addNewLocal(op.getFirstArg().type, "%udiv");
@@ -473,7 +474,7 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
      * https://en.wikipedia.org/wiki/Division_algorithm#Newton.E2.80.93Raphson_division
      * http://www.rfwireless-world.com/Tutorials/floating-point-tutorial.html
      */
-    logging::debug() << "Intrinsifying floating-point division" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying floating-point division" << logging::endl);
 
     const Value nominator = op.getFirstArg();
     const Value& divisor = op.assertArgument(1);

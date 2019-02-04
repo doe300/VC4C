@@ -7,6 +7,7 @@
 #include "Optimizer.h"
 
 #include "../BackgroundWorker.h"
+#include "../Module.h"
 #include "../Profiler.h"
 #include "../intrinsics/Intrinsics.h"
 #include "Combiner.h"
@@ -59,10 +60,12 @@ static const std::vector<OptimizationStep> SINGLE_STEPS = {
 
 static bool runSingleSteps(const Module& module, Method& method, const Configuration& config)
 {
-    auto& s = (logging::debug() << "Running steps: ");
-    for(const OptimizationStep& step : SINGLE_STEPS)
-        s << step.name << ", ";
-    s << logging::endl;
+    logging::logLazy(logging::Level::DEBUG, [&](std::wostream& log) {
+        log << "Running steps: ";
+        for(const OptimizationStep& step : SINGLE_STEPS)
+            log << step.name << ", ";
+        log << logging::endl;
+    });
 
     // since an optimization-step can be run on the result of the previous step,
     // we can't just pass the resulting iterator (pointing behind the optimization result) into the next
@@ -130,8 +133,10 @@ Optimizer::Optimizer(const Configuration& config) : config(config)
 static bool runPass(
     const OptimizationPass& pass, std::size_t index, const Module& module, Method& method, const Configuration& config)
 {
-    logging::debug() << logging::endl;
-    logging::debug() << "Running pass: " << pass.name << logging::endl;
+    logging::logLazy(logging::Level::DEBUG, [&]() {
+        logging::debug() << logging::endl;
+        logging::debug() << "Running pass: " << pass.name << logging::endl;
+    });
     PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + index, pass.name + " (before)", method.countInstructions());
     PROFILE_START_DYNAMIC(pass.name);
     bool changedMethod = (pass)(module, method, config);
@@ -146,8 +151,8 @@ static void runOptimizationPasses(const Module& module, Method& method, const Co
     const std::vector<const OptimizationPass*>& repeatingPasses,
     const std::vector<const OptimizationPass*>& finalPasses)
 {
-    logging::debug() << "-----" << logging::endl;
-    logging::info() << "Running optimization passes for: " << method.name << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "-----" << logging::endl);
+    CPPLOG_LAZY(logging::Level::INFO, log << "Running optimization passes for: " << method.name << logging::endl);
     std::size_t numInstructions = method.countInstructions();
 
     std::size_t index = 0;
@@ -163,9 +168,9 @@ static void runOptimizationPasses(const Module& module, Method& method, const Co
     unsigned iterationsLeft = config.additionalOptions.maxOptimizationIterations;
     for(; continueLoop && iterationsLeft > 0; --iterationsLeft)
     {
-        logging::debug() << "Running optimization iteration "
-                         << (config.additionalOptions.maxOptimizationIterations - iterationsLeft) << "..."
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Running optimization iteration "
+                << (config.additionalOptions.maxOptimizationIterations - iterationsLeft) << "..." << logging::endl);
         index = startIndex;
         for(const OptimizationPass* pass : repeatingPasses)
         {
@@ -194,23 +199,25 @@ static void runOptimizationPasses(const Module& module, Method& method, const Co
         index += 100;
     }
 
-    logging::info() << logging::endl;
-    if(numInstructions != method.countInstructions())
-    {
-        logging::info() << "Optimizations done in "
-                        << (config.additionalOptions.maxOptimizationIterations - iterationsLeft - 1)
-                        << " iterations, changed number of instructions from " << numInstructions << " to "
-                        << method.countInstructions() << logging::endl;
-    }
-    else
-    {
-        logging::info() << "Optimizations done in "
-                        << (config.additionalOptions.maxOptimizationIterations - iterationsLeft - 1) << " iterations"
-                        << logging::endl;
-    }
+    logging::logLazy(logging::Level::INFO, [&]() {
+        logging::info() << logging::endl;
+        if(numInstructions != method.countInstructions())
+        {
+            logging::info() << "Optimizations done in "
+                            << (config.additionalOptions.maxOptimizationIterations - iterationsLeft - 1)
+                            << " iterations, changed number of instructions from " << numInstructions << " to "
+                            << method.countInstructions() << logging::endl;
+        }
+        else
+        {
+            logging::info() << "Optimizations done in "
+                            << (config.additionalOptions.maxOptimizationIterations - iterationsLeft - 1)
+                            << " iterations" << logging::endl;
+        }
+    });
     PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + index, "OptimizationIterations",
         config.additionalOptions.maxOptimizationIterations - iterationsLeft - 1);
-    logging::debug() << "-----" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "-----" << logging::endl);
     method.dumpInstructions();
 }
 

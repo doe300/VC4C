@@ -37,8 +37,9 @@ SPIRVParser::SPIRVParser(std::istream& input, const bool isSPIRVText) :
 static spv_result_t parsedHeaderCallback(void* user_data, spv_endianness_t endian, uint32_t magic, uint32_t version,
     uint32_t generator, uint32_t id_bound, uint32_t reserved)
 {
-    logging::debug() << "SPIR-V header parsed: magic-number 0x" << std::hex << magic << ", version 0x" << version
-                     << ", generator " << generator << ", max-ID " << std::dec << id_bound << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "SPIR-V header parsed: magic-number 0x" << std::hex << magic << ", version 0x" << version
+            << ", generator " << generator << ", max-ID " << std::dec << id_bound << logging::endl);
     SPIRVParser* parser = static_cast<SPIRVParser*>(user_data);
     return parser->parseHeader(endian, magic, version, generator, id_bound, reserved);
 }
@@ -117,14 +118,15 @@ void SPIRVParser::parse(Module& module)
         spvtools::SpirvTools tools(SPV_ENV_OPENCL_EMBEDDED_1_2);
         tools.SetMessageConsumer(consumeSPIRVMessage);
         std::vector<uint32_t> binaryData;
-        logging::debug() << "Read SPIR-V text with " << words.size() * sizeof(uint32_t) << " characters"
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Read SPIR-V text with " << words.size() * sizeof(uint32_t) << " characters" << logging::endl);
         if(tools.Assemble(reinterpret_cast<char*>(words.data()), words.size() * sizeof(uint32_t), &binaryData))
             words.swap(binaryData);
     }
     else
     {
-        logging::debug() << "Read SPIR-V binary with " << words.size() << " words" << logging::endl;
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Read SPIR-V binary with " << words.size() << " words" << logging::endl);
     }
 
         // run SPIR-V Tools optimizations
@@ -132,7 +134,7 @@ void SPIRVParser::parse(Module& module)
     words = runSPRVToolsOptimizer(words);
 #endif
 
-    logging::debug() << "Starting parsing..." << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Starting parsing..." << logging::endl);
 
     // parse input
     result = spvBinaryParse(
@@ -147,7 +149,7 @@ void SPIRVParser::parse(Module& module)
         throw CompilationError(CompilationStep::PARSER, getErrorMessage(result),
             (diagnostics != nullptr ? diagnostics->error : errorExtra));
     }
-    logging::debug() << "SPIR-V binary successfully parsed" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "SPIR-V binary successfully parsed" << logging::endl);
     spvContextDestroy(context);
 
     // resolve method parameters
@@ -178,7 +180,7 @@ void SPIRVParser::parse(Module& module)
     }
 
     // map SPIRVOperations to IntermediateInstructions
-    logging::debug() << "Mapping instructions to intermediate..." << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Mapping instructions to intermediate..." << logging::endl);
     for(const auto& op : instructions)
     {
         op->mapInstruction(typeMappings, constantMappings, localTypes, methods, memoryAllocatedData);
@@ -214,7 +216,8 @@ void SPIRVParser::parse(Module& module)
         else if(it->second.method->countInstructions() == 1 && it->second.method->begin()->empty())
         {
             // only instruction is the label (which is automatically added)
-            logging::debug() << "Dropping empty function: " << it->second.method->name << logging::endl;
+            CPPLOG_LAZY(
+                logging::Level::DEBUG, log << "Dropping empty function: " << it->second.method->name << logging::endl);
             it = methods.erase(it);
         }
         else
@@ -506,7 +509,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case spv::Op::OpExtension:
     {
         const std::string extension = readLiteralString(parsed_instruction, &parsed_instruction->operands[0]);
-        logging::debug() << "Using extension: " << extension << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Using extension: " << extension << logging::endl);
         // there are currently no extensions supported
         // a list of all extension: https://www.khronos.org/registry/spir-v/
         throw CompilationError(CompilationStep::PARSER, "Use of unsupported SPIR-V extension", extension);
@@ -514,7 +517,8 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case spv::Op::OpExtInstImport: // adds a new set of instructions
     {
         const std::string instructionSet(readLiteralString(parsed_instruction, &parsed_instruction->operands[1]));
-        logging::debug() << "Importing extended instruction set: " << instructionSet << logging::endl;
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Importing extended instruction set: " << instructionSet << logging::endl);
         if(instructionSet.find("OpenCL") == std::string::npos)
             throw CompilationError(CompilationStep::PARSER, "Unsupported extended instruction set", instructionSet);
         return SPV_SUCCESS;
@@ -543,10 +547,10 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         if(getWord(parsed_instruction, 2) != SpvMemoryModelSimple &&
             getWord(parsed_instruction, 2) != SpvMemoryModelOpenCL)
             throw CompilationError(CompilationStep::PARSER, "Invalid memory model");
-        logging::debug() << "Using a "
-                         << (getWord(parsed_instruction, 1) == SpvAddressingModelLogical ? "logical" : "physical")
-                         << " " << (getWord(parsed_instruction, 2) == SpvMemoryModelSimple ? "simple" : "OpenCL")
-                         << " memory model" << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Using a " << (getWord(parsed_instruction, 1) == SpvAddressingModelLogical ? "logical" : "physical")
+                << " " << (getWord(parsed_instruction, 2) == SpvMemoryModelSimple ? "simple" : "OpenCL")
+                << " memory model" << logging::endl);
         return SPV_SUCCESS;
     case spv::Op::OpEntryPoint: // an entry point is an OpenCL kernel
     {
@@ -555,7 +559,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         SPIRVMethod& m = getOrCreateMethod(*module, methods, getWord(parsed_instruction, 2));
         m.method->isKernel = true;
         m.method->name = readLiteralString(parsed_instruction, &parsed_instruction->operands[2]);
-        logging::debug() << "Kernel-method found: " << m.method->name << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Kernel-method found: " << m.method->name << logging::endl);
         return SPV_SUCCESS;
     }
     case spv::Op::OpExecutionMode:
@@ -576,10 +580,10 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
              * number of components of the vector. The 16 low-order bits of Vector Type operand specify the data type of
              * the vector."
              */
-            logging::info() << "Vector type hint is currently not supported: "
-                            << static_cast<uint16_t>(getWord(parsed_instruction, 3) >> 16) << " x "
-                            << toScalarType(static_cast<uint16_t>(getWord(parsed_instruction, 3) & 0xFFFF))
-                            << logging::endl;
+            CPPLOG_LAZY(logging::Level::INFO,
+                log << "Vector type hint is currently not supported: "
+                    << static_cast<uint16_t>(getWord(parsed_instruction, 3) >> 16) << " x "
+                    << toScalarType(static_cast<uint16_t>(getWord(parsed_instruction, 3) & 0xFFFF)) << logging::endl);
         else if(getWord(parsed_instruction, 2) != SpvExecutionModeContractionOff)
             throw CompilationError(CompilationStep::PARSER, "Invalid execution mode");
         return SPV_SUCCESS;
@@ -648,9 +652,10 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         }
         image->isSampled = false;
         typeMappings.emplace(parsed_instruction->result_id, DataType(image));
-        logging::debug() << "Reading image-type '" << image->getTypeName() << "' with " << image->dimensions
-                         << " dimensions" << (image->isImageArray ? " (array)" : "")
-                         << (image->isImageBuffer ? " (buffer)" : "") << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Reading image-type '" << image->getTypeName() << "' with " << image->dimensions << " dimensions"
+                << (image->isImageArray ? " (array)" : "") << (image->isImageBuffer ? " (buffer)" : "")
+                << logging::endl);
         return SPV_SUCCESS;
     }
     case spv::Op::OpTypeSampler:
@@ -666,9 +671,10 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         sampledImage->isSampled = true;
 
         typeMappings.emplace(parsed_instruction->result_id, DataType(sampledImage));
-        logging::debug() << "Reading sampled image-type '" << image->getTypeName() << "' with " << image->dimensions
-                         << " dimensions" << (image->isImageArray ? " (array)" : "")
-                         << (image->isImageBuffer ? " (buffer)" : "") << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Reading sampled image-type '" << image->getTypeName() << "' with " << image->dimensions
+                << " dimensions" << (image->isImageArray ? " (array)" : "") << (image->isImageBuffer ? " (buffer)" : "")
+                << logging::endl);
         return SPV_SUCCESS;
     }
     case spv::Op::OpTypeArray:
@@ -710,7 +716,8 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
                 structDef->isPacked = true;
             }
         }
-        logging::debug() << "Struct " << structName << ": " << structDef->getContent() << logging::endl;
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Struct " << structName << ": " << structDef->getContent() << logging::endl);
         return SPV_SUCCESS;
     }
     case spv::Op::OpTypeOpaque:
@@ -869,15 +876,17 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         typeMappings.emplace(0, TYPE_LABEL);
         instructions.emplace_back(new SPIRVLabel(0, *currentMethod));
         auto it = names.find(parsed_instruction->result_id);
-        logging::debug() << "Reading function: %" << parsed_instruction->result_id << " ("
-                         << (it != names.end() ? it->second : currentMethod->method->name) << ")" << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Reading function: %" << parsed_instruction->result_id << " ("
+                << (it != names.end() ? it->second : currentMethod->method->name) << ")" << logging::endl);
         return SPV_SUCCESS;
     }
     case spv::Op::OpFunctionParameter:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         currentMethod->parameters.push_back(std::make_pair(parsed_instruction->result_id, parsed_instruction->type_id));
-        logging::debug() << "Reading parameter: " << typeMappings.at(parsed_instruction->type_id).to_string() << " %"
-                         << parsed_instruction->result_id << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Reading parameter: " << typeMappings.at(parsed_instruction->type_id).to_string() << " %"
+                << parsed_instruction->result_id << logging::endl);
         return SPV_SUCCESS;
     case spv::Op::OpFunctionEnd:
         currentMethod = nullptr;
@@ -931,8 +940,9 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             const_cast<unsigned&>(module->globalData.back().type.getPointerType()->alignment) = alignment;
             memoryAllocatedData.emplace(parsed_instruction->result_id, &module->globalData.back());
         }
-        logging::debug() << "Reading variable: " << type.to_string() << " " << name
-                         << " with value: " << val.to_string(false, true) << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Reading variable: " << type.to_string() << " " << name
+                << " with value: " << val.to_string(false, true) << logging::endl);
         return SPV_SUCCESS;
     }
     case spv::Op::OpImageTexelPointer:

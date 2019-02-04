@@ -86,7 +86,7 @@ BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType) : cont
     std::unique_ptr<llvm::MemoryBuffer> buf(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(tmp)));
     if(sourceType == SourceType::LLVM_IR_BIN)
     {
-        logging::debug() << "Reading LLVM module from bit-code..." << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Reading LLVM module from bit-code..." << logging::endl);
         auto expected = llvm::parseBitcodeFile(buf->getMemBufferRef(), context);
         if(!expected)
         {
@@ -105,7 +105,7 @@ BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType) : cont
     }
     else if(sourceType == SourceType::LLVM_IR_TEXT)
     {
-        logging::debug() << "Reading LLVM module from IR..." << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Reading LLVM module from IR..." << logging::endl);
         llvm::SMDiagnostic error;
         llvmModule = llvm::parseIR(buf->getMemBufferRef(), error, context);
         if(!llvmModule)
@@ -457,7 +457,8 @@ void BitcodeReader::parse(Module& module)
     {
         if(func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)
         {
-            logging::debug() << "Found SPIR kernel-function: " << func.getName() << logging::endl;
+            CPPLOG_LAZY(
+                logging::Level::DEBUG, log << "Found SPIR kernel-function: " << func.getName() << logging::endl);
             Method& kernelFunc = parseFunction(module, func);
             extractKernelMetadata(kernelFunc, func, *llvmModule.get(), context);
             kernelFunc.isKernel = true;
@@ -467,7 +468,8 @@ void BitcodeReader::parse(Module& module)
     // map instructions to intermediate representation
     for(auto& method : parsedFunctions)
     {
-        logging::debug() << "Mapping function '" << method.second.first->name << "'..." << logging::endl;
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Mapping function '" << method.second.first->name << "'..." << logging::endl);
         for(LLVMInstructionList::value_type& inst : method.second.second)
         {
             inst->mapInstruction(*method.second.first);
@@ -585,7 +587,8 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
         {
             structType->elementTypes.emplace_back(toDataType(type->getStructElementType(i)));
         }
-        logging::debug() << "Struct " << type->getStructName() << ": " << structType->getContent() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Struct " << type->getStructName() << ": " << structType->getContent() << logging::endl);
         return dataType;
     }
     if(type->isArrayTy())
@@ -657,8 +660,9 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
     method->name = cleanMethodName(func.getName());
     method->returnType = toDataType(func.getReturnType());
 
-    logging::debug() << "Reading function " << method->returnType.to_string() << " " << method->name << "(...)"
-                     << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Reading function " << method->returnType.to_string() << " " << method->name << "(...)"
+            << logging::endl);
 
     // for some functions, the parameters have no name, but are addressed with their index, so we need to give them
     // their index as name
@@ -678,7 +682,8 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
             type.getPointerType()->addressSpace = AddressSpace::CONSTANT;
         method->parameters.emplace_back(Parameter(toParameterName(arg, paramCounter), type,
             toParameterDecorations(arg, type, func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)));
-        logging::debug() << "Reading parameter " << method->parameters.back().to_string(true) << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Reading parameter " << method->parameters.back().to_string(true) << logging::endl);
         if(method->parameters.back().type.getImageType() && func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)
             intermediate::reserveImageConfiguration(module, method->parameters.back());
         localMap[&arg] = &method->parameters.back();
@@ -890,7 +895,8 @@ void BitcodeReader::parseInstruction(
         auto it = method.stackAllocations.emplace(
             StackAllocation(("%" + alloca->getName()).str(), pointerType, contentType.getPhysicalWidth(), alignment));
         localMap[alloca] = &(*it.first);
-        logging::debug() << "Reading stack allocation: " << it.first->to_string() << logging::endl;
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Reading stack allocation: " << it.first->to_string() << logging::endl);
         break;
     }
     case MemoryOps::GetElementPtr:
@@ -1302,7 +1308,8 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         module.globalData.emplace_back(Global(name, toDataType(global->getType()),
             global->hasInitializer() ? toConstant(module, global->getInitializer()) : UNDEFINED_VALUE,
             global->isConstant()));
-        logging::debug() << "Global read: " << module.globalData.back().to_string() << logging::endl;
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Global read: " << module.globalData.back().to_string() << logging::endl);
         localMap[val] = &module.globalData.back();
         return module.globalData.back().createReference();
     }

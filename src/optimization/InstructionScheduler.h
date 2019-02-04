@@ -7,17 +7,11 @@
 #ifndef VC4C_INSTRUCTION_SCHEDULER_H
 #define VC4C_INSTRUCTION_SCHEDULER_H
 
-#include "config.h"
-
 namespace vc4c
 {
     class Method;
     class Module;
-
-    namespace intermediate
-    {
-        class IntermediateInstruction;
-    }
+    struct Configuration;
 
     namespace optimizations
     {

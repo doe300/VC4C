@@ -48,8 +48,8 @@ bool optimizations::simplifyBranches(const Module& module, Method& method, const
                 // intermediate::Branch* br = nextIt.get<intermediate::Branch>();
                 if(label != nullptr && label->getLabel() == thisBranch->getTarget())
                 {
-                    logging::debug() << "Removing branch to next instruction: " << thisBranch->to_string()
-                                     << logging::endl;
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Removing branch to next instruction: " << thisBranch->to_string() << logging::endl);
                     it = it.erase();
                     // don't skip next instruction
                     it.previousInMethod();
@@ -82,8 +82,8 @@ bool optimizations::simplifyBranches(const Module& module, Method& method, const
                 // for now, only remove unconditional branches
                 if(!thisBranch->isUnconditional() || !nextBranch->isUnconditional())
                     continue;
-                logging::debug() << "Removing duplicate branch to same target: " << thisBranch->to_string()
-                                 << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Removing duplicate branch to same target: " << thisBranch->to_string() << logging::endl);
                 it = it.erase();
                 // don't skip next instruction
                 it.previousInMethod();
@@ -537,8 +537,9 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                         hasChanged = true;
                         // move supports both ADD and MUL ALU
                         // if merge, make "move" to other op-code or x x / v8max x x
-                        logging::debug() << "Merging instructions " << instr->to_string() << " and "
-                                         << nextInstr->to_string() << logging::endl;
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Merging instructions " << instr->to_string() << " and " << nextInstr->to_string()
+                                << logging::endl);
                         if(op != nullptr && nextOp != nullptr)
                         {
                             it.reset(new CombinedOperation(
@@ -600,9 +601,10 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                                 else // by default (e.g. both run on both ALUs), map to ADD ALU
                                     code.opMul = 0;
                                 dynamic_cast<Operation*>(comb->op1.get())->op = code;
-                                logging::debug() << "Fixing operation available on both ALUs to "
-                                                 << (code.opAdd == 0 ? "MUL" : "ADD")
-                                                 << " ALU: " << comb->op1->to_string() << logging::endl;
+                                CPPLOG_LAZY(logging::Level::DEBUG,
+                                    log << "Fixing operation available on both ALUs to "
+                                        << (code.opAdd == 0 ? "MUL" : "ADD") << " ALU: " << comb->op1->to_string()
+                                        << logging::endl);
                             }
                             if(comb->getSecondOP()->op.runsOnAddALU() && comb->getSecondOP()->op.runsOnMulALU())
                             {
@@ -612,9 +614,10 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                                 else // by default (e.g. both run on both ALUs), map to MUL ALU
                                     code.opAdd = 0;
                                 dynamic_cast<Operation*>(comb->op2.get())->op = code;
-                                logging::debug() << "Fixing operation available on both ALUs to "
-                                                 << (code.opAdd == 0 ? "MUL" : "ADD")
-                                                 << " ALU: " << comb->op2->to_string() << logging::endl;
+                                CPPLOG_LAZY(logging::Level::DEBUG,
+                                    log << "Fixing operation available on both ALUs to "
+                                        << (code.opAdd == 0 ? "MUL" : "ADD") << " ALU: " << comb->op2->to_string()
+                                        << logging::endl);
                             }
                         }
                     }
@@ -698,8 +701,8 @@ bool optimizations::combineLoadingConstants(const Module& module, Method& method
                     {
                         Local* oldLocal = it->getOutput()->local();
                         Local* newLocal = immIt->second->getOutput()->local();
-                        logging::debug() << "Removing duplicate loading of literal: " << it->to_string()
-                                         << logging::endl;
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Removing duplicate loading of literal: " << it->to_string() << logging::endl);
                         // Local#forUsers can't be used here, since we modify the list of users via
                         // LocalUser#replaceLocal
                         FastSet<const LocalUser*> readers = oldLocal->getUsers(LocalUse::Type::READER);
@@ -723,8 +726,8 @@ bool optimizations::combineLoadingConstants(const Module& module, Method& method
                     {
                         Local* oldLocal = it->getOutput()->local();
                         Local* newLocal = regIt->second->getOutput()->local();
-                        logging::debug() << "Removing duplicate loading of register: " << it->to_string()
-                                         << logging::endl;
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Removing duplicate loading of register: " << it->to_string() << logging::endl);
                         // Local#forUsers can't be used here, since we modify the list of users via
                         // LocalUser#replaceLocal
                         FastSet<const LocalUser*> readers = oldLocal->getUsers(LocalUse::Type::READER);
@@ -807,8 +810,9 @@ InstructionWalker optimizations::combineSelectionWithZero(
     // additionally, one of the moves writes a zero-vale
     if(move->getSource().hasLiteral(INT_ZERO.literal()) && !nextMove->getSource().hasLiteral(INT_ZERO.literal()))
     {
-        logging::debug() << "Rewriting selection of either zero or " << nextMove->getSource().to_string()
-                         << " using only one input" << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Rewriting selection of either zero or " << nextMove->getSource().to_string()
+                << " using only one input" << logging::endl);
         it.reset((new Operation(OP_XOR, move->getOutput().value(), nextMove->getSource(), nextMove->getSource()))
                      ->copyExtrasFrom(move));
         // to process this instruction again (e.g. loading literals)
@@ -816,8 +820,9 @@ InstructionWalker optimizations::combineSelectionWithZero(
     }
     else if(nextMove->getSource().hasLiteral(INT_ZERO.literal()))
     {
-        logging::debug() << "Rewriting selection of either " << move->getSource().to_string()
-                         << " or zero using only one input" << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Rewriting selection of either " << move->getSource().to_string() << " or zero using only one input"
+                << logging::endl);
         nextIt.reset((new Operation(OP_XOR, nextMove->getOutput().value(), move->getSource(), move->getSource()))
                          ->copyExtrasFrom(nextMove));
     }
@@ -862,9 +867,9 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                                     16;
                                 if(offset == 0)
                                 {
-                                    logging::debug()
-                                        << "Replacing unnecessary vector rotations " << firstRot->to_string() << " and "
-                                        << rot->to_string() << " with single move" << logging::endl;
+                                    CPPLOG_LAZY(logging::Level::DEBUG,
+                                        log << "Replacing unnecessary vector rotations " << firstRot->to_string()
+                                            << " and " << rot->to_string() << " with single move" << logging::endl);
                                     it.reset((new MoveOperation(rot->getOutput().value(), firstRot->getSource()))
                                                  ->copyExtrasFrom(rot));
                                     it->copyExtrasFrom(firstRot);
@@ -872,10 +877,10 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                                 }
                                 else
                                 {
-                                    logging::debug()
-                                        << "Combining vector rotations " << firstRot->to_string() << " and "
-                                        << rot->to_string() << " to a single rotation with offset "
-                                        << static_cast<unsigned>(offset) << logging::endl;
+                                    CPPLOG_LAZY(logging::Level::DEBUG,
+                                        log << "Combining vector rotations " << firstRot->to_string() << " and "
+                                            << rot->to_string() << " to a single rotation with offset "
+                                            << static_cast<unsigned>(offset) << logging::endl);
                                     it.reset((new VectorRotation(rot->getOutput().value(), firstRot->getSource(),
                                                   Value(SmallImmediate::fromRotationOffset(offset), TYPE_INT8)))
                                                  ->copyExtrasFrom(rot));
@@ -943,14 +948,15 @@ InstructionWalker optimizations::combineArithmeticOperations(
     Optional<Value> precalc = NO_VALUE;
     if(op->op.isAssociative())
     {
-        logging::debug() << "Combining associative operations " << singleWriter->to_string() << " and "
-                         << it->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Combining associative operations " << singleWriter->to_string() << " and " << it->to_string()
+                << logging::endl);
         precalc = op->op(literalArg, otherLiteralArg).first;
     }
     else if(op->op == OP_SHL || op->op == OP_SHR || op->op == OP_ASR || op->op == OP_ROR)
     {
-        logging::debug() << "Combining shifts " << singleWriter->to_string() << " and " << it->to_string()
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Combining shifts " << singleWriter->to_string() << " and " << it->to_string() << logging::endl);
         precalc = OP_ADD(literalArg, otherLiteralArg).first;
     }
     auto lastIt = it.getBasicBlock()->findWalkerForInstruction(singleWriter, it);
@@ -1083,9 +1089,10 @@ static AccessRanges determineAccessRanges(Method& method)
                         (it->assertArgument(0).local()->is<Parameter>() || it->assertArgument(0).local()->is<Global>()))
                     {
                         // direct write of address (e.g. all work items write to the same location
-                        logging::debug() << "DMA address is directly set to a parameter/global address, cannot be "
-                                            "optimized by caching multiple accesses: "
-                                         << it->to_string() << logging::endl;
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "DMA address is directly set to a parameter/global address, cannot be "
+                                   "optimized by caching multiple accesses: "
+                                << it->to_string() << logging::endl);
                         it.nextInBlock();
                         continue;
                     }
@@ -1100,8 +1107,9 @@ static AccessRanges determineAccessRanges(Method& method)
                             it.getBasicBlock()->findWalkerForInstruction(it->assertArgument(0).getSingleWriter(), it);
                         if(!walker)
                         {
-                            logging::debug() << "Unhandled case, address is calculated in a different basic-block: "
-                                             << it->to_string() << logging::endl;
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Unhandled case, address is calculated in a different basic-block: "
+                                    << it->to_string() << logging::endl);
                             it.nextInBlock();
                             continue;
                         }
@@ -1117,8 +1125,9 @@ static AccessRanges determineAccessRanges(Method& method)
                         // added in the end
                         // TODO is this the correct criteria? We could also handle only base-pointer + local_id, for
                         // example
-                        logging::debug() << "Found VPM DMA address write with work-group uniform operand: "
-                                         << it->to_string() << logging::endl;
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Found VPM DMA address write with work-group uniform operand: " << it->to_string()
+                                << logging::endl);
                         Value varArg = *variableArg;
                         // 2.1 jump over final addition of base address if it is a parameter
                         if(trackIt.has<Operation>() && trackIt.get<const Operation>()->op == OP_ADD)
@@ -1160,9 +1169,9 @@ static AccessRanges determineAccessRanges(Method& method)
                         }
                         else
                         {
-                            logging::debug()
-                                << "Cannot optimize further, since add of base-address and pointer was not found: "
-                                << it->to_string() << logging::endl;
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Cannot optimize further, since add of base-address and pointer was not found: "
+                                    << it->to_string() << logging::endl);
                             it.nextInBlock();
                             continue;
                         }
@@ -1176,9 +1185,9 @@ static AccessRanges determineAccessRanges(Method& method)
                                     it->assertArgument(0).type.getElementType().getPhysicalWidth())
                             {
                                 // Abort, since the offset shifted does not match the type-width of the element type
-                                logging::debug()
-                                    << "Cannot optimize further, since shift-offset does not match type size: "
-                                    << it->to_string() << " and " << writer->to_string() << logging::endl;
+                                CPPLOG_LAZY(logging::Level::DEBUG,
+                                    log << "Cannot optimize further, since shift-offset does not match type size: "
+                                        << it->to_string() << " and " << writer->to_string() << logging::endl);
                                 it.nextInBlock();
                                 continue;
                             }
@@ -1215,7 +1224,7 @@ static AccessRanges determineAccessRanges(Method& method)
                             else
                                 range.groupUniformAddressParts.emplace(val);
                         }
-                        logging::debug() << range.to_string() << logging::endl;
+                        CPPLOG_LAZY(logging::Level::DEBUG, log << range.to_string() << logging::endl);
                         result[range.memoryObject].emplace_back(range);
                     }
                 }
@@ -1337,11 +1346,11 @@ static void rewriteIndexCalculation(Method& method, MemoryAccessRange& range)
         throw CompilationError(
             CompilationStep::OPTIMIZER, "Not yet implemented, no shift in address calculation", range.to_string());
 
-    logging::debug() << "Rewrote address-calculation with indices "
-                     << (firstVal ? (firstVal->first.to_string() + " (" + toString(firstVal->second) + ")") : "")
-                     << " and "
-                     << (secondVal ? (secondVal->first.to_string() + " (" + toString(secondVal->second) + ")") : "")
-                     << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Rewrote address-calculation with indices "
+            << (firstVal ? (firstVal->first.to_string() + " (" + toString(firstVal->second) + ")") : "") << " and "
+            << (secondVal ? (secondVal->first.to_string() + " (" + toString(secondVal->second) + ")") : "")
+            << logging::endl);
 }
 
 bool optimizations::cacheWorkGroupDMAAccess(const Module& module, Method& method, const Configuration& config)
@@ -1354,24 +1363,26 @@ bool optimizations::cacheWorkGroupDMAAccess(const Module& module, Method& method
         std::tie(allUniformPartsEqual, offsetRange) = checkWorkGroupUniformParts(pair.second);
         if(!allUniformPartsEqual)
         {
-            logging::debug() << "Cannot cache memory location " << pair.first->to_string()
-                             << " in VPM, since the work-group uniform parts of the address calculations differ, which "
-                                "is not yet supported!"
-                             << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Cannot cache memory location " << pair.first->to_string()
+                    << " in VPM, since the work-group uniform parts of the address calculations differ, which "
+                       "is not yet supported!"
+                    << logging::endl);
             continue;
         }
         if((offsetRange.maxValue - offsetRange.minValue) >= config.availableVPMSize ||
             (offsetRange.maxValue < offsetRange.minValue))
         {
             // this also checks for any over/underflow when converting the range to unsigned int in the next steps
-            logging::debug() << "Cannot cache memory location " << pair.first->to_string()
-                             << " in VPM, the accessed range is too big: [" << offsetRange.minValue << ", "
-                             << offsetRange.maxValue << "]" << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Cannot cache memory location " << pair.first->to_string()
+                    << " in VPM, the accessed range is too big: [" << offsetRange.minValue << ", "
+                    << offsetRange.maxValue << "]" << logging::endl);
             continue;
         }
-        logging::debug() << "Memory location " << pair.first->to_string()
-                         << " is accessed via DMA in the dynamic range [" << offsetRange.minValue << ", "
-                         << offsetRange.maxValue << "]" << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Memory location " << pair.first->to_string() << " is accessed via DMA in the dynamic range ["
+                << offsetRange.minValue << ", " << offsetRange.maxValue << "]" << logging::endl);
 
         auto accessedType = pair.first->type.toArrayType(static_cast<unsigned>(
             offsetRange.maxValue - offsetRange.minValue + 1 /* bounds of range are inclusive! */));
@@ -1380,9 +1391,10 @@ bool optimizations::cacheWorkGroupDMAAccess(const Module& module, Method& method
         auto vpmArea = method.vpm->addArea(pair.first, accessedType, false);
         if(vpmArea == nullptr)
         {
-            logging::debug() << "Memory location " << pair.first->to_string() << " with dynamic access range ["
-                             << offsetRange.minValue << ", " << offsetRange.maxValue
-                             << "] cannot be cached in VPM, since it does not fit" << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Memory location " << pair.first->to_string() << " with dynamic access range ["
+                    << offsetRange.minValue << ", " << offsetRange.maxValue
+                    << "] cannot be cached in VPM, since it does not fit" << logging::endl);
             continue;
         }
 

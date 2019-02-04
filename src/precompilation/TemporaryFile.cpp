@@ -36,7 +36,7 @@ TemporaryFile::TemporaryFile(const std::string& fileTemplate) : fileName(fileTem
     if(close(fd) < 0)
         throw CompilationError(
             CompilationStep::PRECOMPILATION, "Failed to close file-descriptor for temporary file", strerror(errno));
-    logging::debug() << "Temporary file '" << fileName << "' created" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Temporary file '" << fileName << "' created" << logging::endl);
 }
 
 TemporaryFile::TemporaryFile(const std::string& fileName, std::istream& data) : fileName(fileName)
@@ -46,7 +46,7 @@ TemporaryFile::TemporaryFile(const std::string& fileName, std::istream& data) : 
     std::ofstream f(fileName, std::ios_base::out | std::ios_base::trunc | std::ios_base::binary);
     f << data.rdbuf();
     // XXX error-check (both streams?)
-    logging::debug() << "Temporary file '" << fileName << "' created" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Temporary file '" << fileName << "' created" << logging::endl);
 }
 
 TemporaryFile::TemporaryFile(const std::string& fileName, const std::vector<char>& data) : fileName(fileName)
@@ -56,7 +56,7 @@ TemporaryFile::TemporaryFile(const std::string& fileName, const std::vector<char
     std::ofstream f(fileName, std::ios_base::out | std::ios_base::trunc | std::ios_base::binary);
     f.write(data.data(), data.size());
     // XXX error-check stream
-    logging::debug() << "Temporary file '" << fileName << "' created" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Temporary file '" << fileName << "' created" << logging::endl);
 }
 
 TemporaryFile::TemporaryFile(TemporaryFile&& other) noexcept : fileName(other.fileName)
@@ -74,7 +74,7 @@ TemporaryFile::~TemporaryFile()
     {
         logging::error() << "Failed to remove temporary file: " << strerror(errno) << logging::endl;
     }
-    logging::debug() << "Temporary file '" << fileName << "' deleted" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Temporary file '" << fileName << "' deleted" << logging::endl);
 }
 
 void TemporaryFile::openOutputStream(std::unique_ptr<std::ostream>& ptr) const

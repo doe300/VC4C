@@ -254,9 +254,9 @@ static OpenSet::const_iterator selectInstruction(OpenSet& openNodes, DependencyG
 
     if(std::get<0>(selected) != openNodes.end())
     {
-        logging::debug() << "Selected '" << (*std::get<0>(selected))->to_string()
-                         << "' as next instruction with remaining latency of " << std::get<1>(selected)
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Selected '" << (*std::get<0>(selected))->to_string()
+                << "' as next instruction with remaining latency of " << std::get<1>(selected) << logging::endl);
         return std::get<0>(selected);
     }
 
@@ -297,7 +297,8 @@ static void selectInstructions(DependencyGraph& graph, BasicBlock& block, const 
         if(inst == openNodes.end())
         {
             // no instruction could be scheduled not violating the fixed latency, insert NOPs
-            logging::debug() << "Failed to schedule an instruction, falling back to inserting NOP" << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Failed to schedule an instruction, falling back to inserting NOP" << logging::endl);
             block.walkEnd().emplace(new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER));
         }
         else
