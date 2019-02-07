@@ -29,14 +29,14 @@ uint64_t Instruction::toBinaryCode() const
 
 std::string Instruction::toASMString() const
 {
-    if(is<ALUInstruction>())
-        return as<ALUInstruction>()->toASMString();
-    if(is<BranchInstruction>())
-        return as<BranchInstruction>()->toASMString();
-    if(is<LoadInstruction>())
-        return as<LoadInstruction>()->toASMString();
-    if(is<SemaphoreInstruction>())
-        return as<SemaphoreInstruction>()->toASMString();
+    if(auto op = as<ALUInstruction>())
+        return op->toASMString();
+    if(auto op = as<BranchInstruction>())
+        return op->toASMString();
+    if(auto op = as<LoadInstruction>())
+        return op->toASMString();
+    if(auto op = as<SemaphoreInstruction>())
+        return op->toASMString();
     throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid instruction type", std::to_string(value));
 }
 
@@ -52,7 +52,7 @@ std::string Instruction::toHexString(bool withAssemblerCode) const
 
 bool Instruction::isValidInstruction() const
 {
-    return is<ALUInstruction>() || is<BranchInstruction>() || is<LoadInstruction>() || is<SemaphoreInstruction>();
+    return as<ALUInstruction>() || as<BranchInstruction>() || as<LoadInstruction>() || as<SemaphoreInstruction>();
 }
 
 Register Instruction::getAddOutput() const

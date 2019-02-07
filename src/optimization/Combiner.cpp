@@ -33,8 +33,7 @@ bool optimizations::simplifyBranches(const Module& module, Method& method, const
     bool hasChanged = false;
     for(auto it = method.walkAllInstructions(); !it.isEndOfBlock(); it.nextInMethod())
     {
-        Branch* thisBranch = it.get<Branch>();
-        if(thisBranch != nullptr)
+        if(Branch* thisBranch = it.get<Branch>())
         {
             // eliminates branches to the next instruction to save up to 4 instructions (1 branch + 3 NOP)
             // eliminate branches to the next instruction, such branches are e.g. introduced by method-inlining
@@ -70,12 +69,11 @@ bool optimizations::simplifyBranches(const Module& module, Method& method, const
                 */
             }
             // skip all following labels
-            while(!nextIt.isEndOfMethod() && nextIt.has<BranchLabel>())
+            while(!nextIt.isEndOfMethod() && nextIt.get<BranchLabel>())
                 nextIt.nextInMethod();
             if(nextIt.isEndOfMethod())
                 return hasChanged;
-            Branch* nextBranch = nextIt.get<Branch>();
-            if(nextBranch != nullptr)
+            if(Branch* nextBranch = nextIt.get<Branch>())
             {
                 if(thisBranch->getTarget() != nextBranch->getTarget())
                     continue;
@@ -131,18 +129,18 @@ static const std::vector<MergeCondition> mergeConditions = {
     // check reads from or writes to special registers
     [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
         if(firstOp != nullptr &&
-            (firstOp->hasValueType(ValueType::REGISTER) || firstOp->getFirstArg().hasRegister() ||
-                (firstOp->getSecondArg() && firstOp->assertArgument(1).hasRegister())))
+            (firstOp->hasValueType(ValueType::REGISTER) || firstOp->getFirstArg().checkRegister() ||
+                (firstOp->getSecondArg() && firstOp->assertArgument(1).checkRegister())))
             return false;
         else if(firstMove != nullptr &&
-            (firstMove->hasValueType(ValueType::REGISTER) || firstMove->getSource().hasRegister()))
+            (firstMove->hasValueType(ValueType::REGISTER) || firstMove->getSource().checkRegister()))
             return false;
         else if(secondOp != nullptr &&
-            (secondOp->hasValueType(ValueType::REGISTER) || secondOp->getFirstArg().hasRegister() ||
-                (secondOp->getSecondArg() && secondOp->assertArgument(1).hasRegister())))
+            (secondOp->hasValueType(ValueType::REGISTER) || secondOp->getFirstArg().checkRegister() ||
+                (secondOp->getSecondArg() && secondOp->assertArgument(1).checkRegister())))
             return false;
         else if(secondMove != nullptr &&
-            (secondMove->hasValueType(ValueType::REGISTER) || secondMove->getSource().hasRegister()))
+            (secondMove->hasValueType(ValueType::REGISTER) || secondMove->getSource().checkRegister()))
             return false;
         return true;
     },
@@ -197,7 +195,7 @@ static const std::vector<MergeCondition> mergeConditions = {
             condSecond = secondMove->conditional;
         }
         if(outFirst == outSecond ||
-            (outFirst.hasLocal() && outSecond.hasLocal() && outSecond.hasLocal(outFirst.local())))
+            (outFirst.checkLocal() && outSecond.checkLocal() && outSecond.hasLocal(outFirst.local())))
         {
             if(!condSecond.isInversionOf(condFirst))
                 return false;
@@ -261,29 +259,29 @@ static const std::vector<MergeCondition> mergeConditions = {
         Optional<SmallImmediate> immediate;
         if(firstOp != nullptr)
         {
-            if(firstOp->getFirstArg().hasImmediate())
+            if(firstOp->getFirstArg().checkImmediate())
                 immediate = firstOp->getFirstArg().immediate();
-            if(firstOp->getSecondArg() && firstOp->assertArgument(1).hasImmediate())
+            if(firstOp->getSecondArg() && firstOp->assertArgument(1).checkImmediate())
                 immediate = firstOp->assertArgument(1).immediate();
         }
         if(firstMove != nullptr)
         {
-            if(firstMove->getSource().hasImmediate())
+            if(firstMove->getSource().checkImmediate())
                 immediate = firstMove->getSource().immediate();
         }
         if(immediate)
         {
             if(secondOp != nullptr)
             {
-                if(secondOp->getFirstArg().hasImmediate() && !secondOp->getFirstArg().hasImmediate(immediate.value()))
+                if(secondOp->getFirstArg().checkImmediate() && !secondOp->getFirstArg().hasImmediate(immediate.value()))
                     return false;
-                if(secondOp->getSecondArg() && secondOp->assertArgument(1).hasImmediate() &&
+                if(secondOp->getSecondArg() && secondOp->assertArgument(1).checkImmediate() &&
                     !secondOp->assertArgument(1).hasImmediate(immediate.value()))
                     return false;
             }
             if(secondMove != nullptr)
             {
-                if(secondMove->getSource().hasImmediate() && !secondMove->getSource().hasImmediate(immediate.value()))
+                if(secondMove->getSource().checkImmediate() && !secondMove->getSource().hasImmediate(immediate.value()))
                     return false;
             }
         }
@@ -484,7 +482,7 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                         // rotated there  since vector rotations can't rotate vectors which have been written in the
                         // instruction directly preceding it
                         auto checkIt = nextIt.copy().nextInBlock();
-                        if(!checkIt.isEndOfBlock() && checkIt.has<VectorRotation>())
+                        if(!checkIt.isEndOfBlock() && checkIt.get<VectorRotation>())
                         {
                             const Value& src = checkIt.get<VectorRotation>()->getSource();
                             if(instr->hasValueType(ValueType::LOCAL) && instr->getOutput() == src)
@@ -501,7 +499,7 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                             {
                                 if(std::any_of(checkIt->getArguments().begin(), checkIt->getArguments().end(),
                                        [instr, nextInstr](const Value& val) -> bool {
-                                           return val.hasLocal() &&
+                                           return val.checkLocal() &&
                                                (instr->writesLocal(val.local()) || nextInstr->writesLocal(val.local()));
                                        }))
                                 {
@@ -632,17 +630,17 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
 
 static Optional<Literal> getSourceLiteral(InstructionWalker it)
 {
-    if(it.has<LoadImmediate>() && it.get<LoadImmediate>()->type == LoadType::REPLICATE_INT32)
+    if(it.get<LoadImmediate>() && it.get<LoadImmediate>()->type == LoadType::REPLICATE_INT32)
     {
         return it.get<LoadImmediate>()->getImmediate();
     }
-    else if(it.has<MoveOperation>() && it->readsLiteral())
+    else if(it.get<MoveOperation>() && it->readsLiteral())
     {
         return it.get<MoveOperation>()->getSource().getLiteralValue();
     }
-    else if(it.has<Operation>())
+    else if(auto op = it.get<Operation>())
     {
-        const auto val = it.get<Operation>()->precalculate(2).first;
+        const auto val = op->precalculate(2).first;
         if(val)
             return val->getLiteralValue();
     }
@@ -651,7 +649,7 @@ static Optional<Literal> getSourceLiteral(InstructionWalker it)
 
 static Optional<Register> getSourceConstantRegister(InstructionWalker it)
 {
-    if(it.has<MoveOperation>() && (it->readsRegister(REG_ELEMENT_NUMBER) || it->readsRegister(REG_QPU_NUMBER)))
+    if(it.get<MoveOperation>() && (it->readsRegister(REG_ELEMENT_NUMBER) || it->readsRegister(REG_QPU_NUMBER)))
     {
         return it.get<MoveOperation>()->getSource().reg();
     }
@@ -692,8 +690,7 @@ bool optimizations::combineLoadingConstants(const Module& module, Method& method
                 // (or at least if one range completely contains the other range)
                 block.isLocallyLimited(it, it->getOutput()->local(), config.additionalOptions.accumulatorThreshold))
             {
-                Optional<Literal> literal = getSourceLiteral(it);
-                if(literal)
+                if(Optional<Literal> literal = getSourceLiteral(it))
                 {
                     auto immIt = lastLoadImmediate.find(literal->unsignedInt());
                     if(immIt != lastLoadImmediate.end() &&
@@ -717,8 +714,7 @@ bool optimizations::combineLoadingConstants(const Module& module, Method& method
                     else
                         lastLoadImmediate[literal->unsignedInt()] = it;
                 }
-                auto reg = getSourceConstantRegister(it);
-                if(reg)
+                if(auto reg = getSourceConstantRegister(it))
                 {
                     auto regIt = lastLoadRegister.find(*reg);
                     if(regIt != lastLoadRegister.end() &&
@@ -788,7 +784,7 @@ InstructionWalker optimizations::combineSelectionWithZero(
         return it;
     if(it.get() == nullptr || nextIt.get() == nullptr)
         return it;
-    if(!it.has<MoveOperation>() || !nextIt.has<MoveOperation>())
+    if(!it.get<MoveOperation>() || !nextIt.get<MoveOperation>())
         return it;
     if(!it->getOutput() || !nextIt->getOutput())
         return it;
@@ -837,17 +833,17 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
         InstructionWalker it = block.walk();
         while(!it.isEndOfBlock())
         {
-            if(it.has<VectorRotation>() && !it->hasSideEffects())
+            if(it.get<VectorRotation>() && !it->hasSideEffects())
             {
                 VectorRotation* rot = it.get<VectorRotation>();
-                if(rot->getSource().hasLocal() && rot->getOffset().hasImmediate() &&
+                if(rot->getSource().checkLocal() && rot->getOffset().checkImmediate() &&
                     rot->getOffset().immediate() != VECTOR_ROTATE_R5)
                 {
-                    const LocalUser* writer = rot->getSource().getSingleWriter();
-                    if(writer != nullptr)
+                    if(auto writer = rot->getSource().getSingleWriter())
                     {
                         const VectorRotation* firstRot = dynamic_cast<const VectorRotation*>(writer);
-                        if(firstRot != nullptr && !firstRot->hasSideEffects() && firstRot->getOffset().hasImmediate() &&
+                        if(firstRot != nullptr && !firstRot->hasSideEffects() &&
+                            firstRot->getOffset().checkImmediate() &&
                             firstRot->getOffset().immediate() != VECTOR_ROTATE_R5)
                         {
                             auto firstIt = it.getBasicBlock()->findWalkerForInstruction(firstRot, it);
@@ -912,7 +908,7 @@ InstructionWalker optimizations::combineArithmeticOperations(
     if(it->hasConditionalExecution() || !op->isSimpleOperation())
         return it;
     if(!std::any_of(it->getArguments().begin(), it->getArguments().end(),
-           [](const Value& val) -> bool { return val.hasLocal(); }))
+           [](const Value& val) -> bool { return val.checkLocal(); }))
         return it;
 
     // exactly one local and one literal operand
@@ -980,8 +976,8 @@ static bool isGroupUniform(const Local* local)
 
 static bool isWorkGroupUniform(const Value& val)
 {
-    return val.hasImmediate() || val.hasLiteral() ||
-        (val.hasLocal() && isGroupUniform(val.local()))
+    return val.checkImmediate() || val.checkLiteral() ||
+        (val.checkLocal() && isGroupUniform(val.local()))
         // XXX this is not true for the local ID UNIFORM
         || (val.hasRegister(REG_UNIFORM));
 }
@@ -996,13 +992,13 @@ static FastMap<Value, InstructionDecorations> findDirectLevelAdditionInputs(cons
         auto deco = writer ? writer->decoration : InstructionDecorations::NONE;
         result.emplace(val,
             add_flag(deco,
-                val.hasImmediate() || val.hasLiteral() ? InstructionDecorations::WORK_GROUP_UNIFORM_VALUE :
-                                                         InstructionDecorations::NONE));
-        if(val.hasImmediate() && val.immediate().getIntegerValue() >= 0)
+                val.checkImmediate() || val.checkLiteral() ? InstructionDecorations::WORK_GROUP_UNIFORM_VALUE :
+                                                             InstructionDecorations::NONE));
+        if(val.checkImmediate() && val.immediate().getIntegerValue() >= 0)
             result[val] = add_flag(result[val], InstructionDecorations::UNSIGNED_RESULT);
-        else if(val.hasLiteral() && val.literal().signedInt() >= 0)
+        else if(val.checkLiteral() && val.literal().signedInt() >= 0)
             result[val] = add_flag(result[val], InstructionDecorations::UNSIGNED_RESULT);
-        else if(val.hasRegister() && val.reg() == REG_UNIFORM)
+        else if(val.checkRegister() && val.reg() == REG_UNIFORM)
             // XXX this is not true for the local ID UNIFORM, which should never be checked here (since the actual ID
             // needs always be extracted via non-adds)
             result[val] = add_flag(result[val], InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
@@ -1013,7 +1009,7 @@ static FastMap<Value, InstructionDecorations> findDirectLevelAdditionInputs(cons
         !op->signal.hasSideEffects() &&
         !(op->hasValueType(ValueType::REGISTER) && op->getOutput()->reg().hasSideEffectsOnWrite()) &&
         std::all_of(op->getArguments().begin(), op->getArguments().end(), [](const Value& arg) -> bool {
-            return !arg.hasRegister() || arg.reg() == REG_UNIFORM || !arg.reg().hasSideEffectsOnRead();
+            return !arg.checkRegister() || arg.reg() == REG_UNIFORM || !arg.reg().hasSideEffectsOnRead();
         });
     if(op && op->op == OP_ADD && !op->hasConditionalExecution() &&
         (!op->hasSideEffects() || onlySideEffectIsReadingUniform) && !op->hasPackMode() && !op->hasUnpackMode())
@@ -1083,9 +1079,9 @@ static AccessRanges determineAccessRanges(Method& method)
             {
                 // 1. find writes to VPM DMA addresses with work-group uniform part in address values
                 if(std::any_of(it->getArguments().begin(), it->getArguments().end(), isWorkGroupUniform) ||
-                    it.has<MoveOperation>())
+                    it.get<MoveOperation>())
                 {
-                    if(it.has<MoveOperation>() && it->assertArgument(0).hasLocal() &&
+                    if(it.get<MoveOperation>() && it->assertArgument(0).checkLocal() &&
                         (it->assertArgument(0).local()->is<Parameter>() || it->assertArgument(0).local()->is<Global>()))
                     {
                         // direct write of address (e.g. all work items write to the same location
@@ -1101,7 +1097,7 @@ static AccessRanges determineAccessRanges(Method& method)
                     // if the instruction is a move, handle/skip it here, so the add with the shifted offset +
                     // base-pointer is found correctly
                     auto trackIt = it;
-                    if(it.has<MoveOperation>() && it->assertArgument(0).getSingleWriter())
+                    if(it.get<MoveOperation>() && it->assertArgument(0).getSingleWriter())
                     {
                         auto walker =
                             it.getBasicBlock()->findWalkerForInstruction(it->assertArgument(0).getSingleWriter(), it);
@@ -1130,18 +1126,18 @@ static AccessRanges determineAccessRanges(Method& method)
                                 << logging::endl);
                         Value varArg = *variableArg;
                         // 2.1 jump over final addition of base address if it is a parameter
-                        if(trackIt.has<Operation>() && trackIt.get<const Operation>()->op == OP_ADD)
+                        if(trackIt.get<Operation>() && trackIt.get<const Operation>()->op == OP_ADD)
                         {
                             const auto& arg0 = trackIt->assertArgument(0);
                             const auto& arg1 = trackIt->assertArgument(1);
-                            if(arg0.hasLocal() &&
+                            if(arg0.checkLocal() &&
                                 (arg0.local()->is<Parameter>() || arg0.local()->is<Global>() ||
                                     arg0.local()->name == Method::GLOBAL_DATA_ADDRESS))
                             {
                                 range.memoryObject = arg0.local();
                                 varArg = arg1;
                             }
-                            else if(arg1.hasLocal() &&
+                            else if(arg1.checkLocal() &&
                                 (arg1.local()->is<Parameter>() || arg1.local()->is<Global>() ||
                                     arg1.local()->name == Method::GLOBAL_DATA_ADDRESS))
                             {
@@ -1211,7 +1207,7 @@ static AccessRanges determineAccessRanges(Method& method)
                             if(!has_flag(val.second, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))
                             {
                                 range.dynamicAddressParts.emplace(val);
-                                if(val.first.hasLocal())
+                                if(val.first.checkLocal())
                                 {
                                     auto singleRange = analysis::ValueRange::getValueRange(val.first, &method);
                                     range.offsetRange.minValue += singleRange.getIntRange()->minValue;

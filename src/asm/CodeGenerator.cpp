@@ -35,8 +35,7 @@ static FastMap<const Local*, std::size_t> mapLabels(Method& method)
     auto it = method.walkAllInstructions();
     while(!it.isEndOfMethod())
     {
-        BranchLabel* label = it.isEndOfBlock() ? nullptr : it.get<BranchLabel>();
-        if(label != nullptr)
+        if(BranchLabel* label = it.isEndOfBlock() ? nullptr : it.get<BranchLabel>())
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Mapping label '" << label->getLabel()->name << "' to byte-position " << index << logging::endl);

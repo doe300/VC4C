@@ -156,18 +156,18 @@ std::string KernelInfo::to_string() const
 
 static void toBinary(const Value& val, std::vector<uint8_t>& queue)
 {
-    if(val.hasContainer())
+    if(auto container = val.checkContainer())
     {
-        for(const Value& element : val.container().elements)
+        for(const Value& element : container->elements)
             toBinary(element, queue);
     }
-    else if(val.hasLiteral())
+    else if(auto lit = val.checkLiteral())
     {
-        switch(val.literal().type)
+        switch(lit->type)
         {
         case LiteralType::BOOL:
             for(std::size_t i = 0; i < val.type.getVectorWidth(true); ++i)
-                queue.push_back(static_cast<uint8_t>(val.literal().isTrue()));
+                queue.push_back(static_cast<uint8_t>(lit->isTrue()));
             break;
         case LiteralType::INTEGER:
         case LiteralType::REAL:
@@ -175,12 +175,12 @@ static void toBinary(const Value& val, std::vector<uint8_t>& queue)
             {
                 // little endian
                 if(val.type.getElementType().getPhysicalWidth() > 3)
-                    queue.push_back(static_cast<uint8_t>((val.literal().toImmediate() & 0xFF000000) >> 24));
+                    queue.push_back(static_cast<uint8_t>((lit->toImmediate() & 0xFF000000) >> 24));
                 if(val.type.getElementType().getPhysicalWidth() > 2)
-                    queue.push_back(static_cast<uint8_t>((val.literal().toImmediate() & 0xFF0000) >> 16));
+                    queue.push_back(static_cast<uint8_t>((lit->toImmediate() & 0xFF0000) >> 16));
                 if(val.type.getElementType().getPhysicalWidth() > 1)
-                    queue.push_back(static_cast<uint8_t>((val.literal().toImmediate() & 0xFF00) >> 8));
-                queue.push_back(static_cast<uint8_t>(val.literal().toImmediate() & 0xFF));
+                    queue.push_back(static_cast<uint8_t>((lit->toImmediate() & 0xFF00) >> 8));
+                queue.push_back(static_cast<uint8_t>(lit->toImmediate() & 0xFF));
             }
             break;
         default:
@@ -357,12 +357,13 @@ KernelInfo qpu_asm::getKernelInfos(
         std::string typeName = param.origTypeName;
         ParamInfo paramInfo;
         paramInfo.setSize(static_cast<uint16_t>(paramType.getPhysicalWidth()));
-        paramInfo.setPointer(paramType.isPointerType() || paramType.getImageType());
+        paramInfo.setPointer(paramType.getPointerType() || paramType.getImageType());
         paramInfo.setImage(!!paramType.getImageType());
         paramInfo.setDecorations(param.decorations);
         paramInfo.setName(paramName[0] == '%' ? paramName.substr(1) : paramName);
-        paramInfo.setVectorElements((paramType.isPointerType() ? static_cast<uint8_t>(1) : paramType.getVectorWidth()));
-        paramInfo.setAddressSpace(paramType.isPointerType() ?
+        paramInfo.setVectorElements(
+            (paramType.getPointerType() ? static_cast<uint8_t>(1) : paramType.getVectorWidth()));
+        paramInfo.setAddressSpace(paramType.getPointerType() ?
                 paramType.getPointerType()->addressSpace :
                 paramType.getImageType() ? AddressSpace::GLOBAL : AddressSpace::PRIVATE);
         paramInfo.setFloatingType(paramType.isFloatingType());

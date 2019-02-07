@@ -47,24 +47,15 @@ namespace vc4c
 
             /*
              * Reinterprets this Instruction as the given type
+             *
+             * If this instruction is not of the given type, a nullptr is returned
              */
             template <typename T>
             const T* as() const
             {
                 static_assert(std::is_convertible<T, Instruction>::value, "");
                 auto ptr = reinterpret_cast<const T*>(this);
-                if(!ptr->isValidInstruction())
-                    throw CompilationError(
-                        CompilationStep::CODE_GENERATION, "Invalid assembler instruction", ptr->toASMString());
-                return ptr;
-            }
-
-            template <typename T>
-            bool is() const
-            {
-                static_assert(std::is_convertible<T, Instruction>::value, "");
-                auto ptr = reinterpret_cast<const T*>(this);
-                return ptr->isValidInstruction();
+                return ptr->isValidInstruction() ? ptr : nullptr;
             }
 
             BITFIELD_ENTRY(Sig, Signaling, 60, Quadruple)

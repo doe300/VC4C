@@ -30,7 +30,7 @@ std::string CFGRelation::getLabel() const
     if(predecessors.empty())
         return "";
     const auto converter = [](const std::pair<BasicBlock*, Optional<InstructionWalker>>& pair) -> std::string {
-        if(pair.second && pair.second->has<intermediate::Branch>())
+        if(pair.second && pair.second->get<const intermediate::Branch>())
             return "br " + pair.second->get<const intermediate::Branch>()->conditional.to_string();
         return "";
     };
@@ -42,8 +42,7 @@ std::string CFGRelation::getLabel() const
 
 InstructionWalker CFGRelation::getPredecessor(BasicBlock* source) const
 {
-    const auto& pred = predecessors.at(source);
-    if(pred.has_value())
+    if(const auto& pred = predecessors.at(source))
         return pred.value();
     return source->walkEnd().previousInBlock();
 }
@@ -122,8 +121,7 @@ Optional<InstructionWalker> ControlFlowLoop::findInLoop(const intermediate::Inte
 {
     for(const CFGNode* node : *this)
     {
-        auto it = node->key->findWalkerForInstruction(inst, node->key->walkEnd());
-        if(it)
+        if(auto it = node->key->findWalkerForInstruction(inst, node->key->walkEnd()))
             return it;
     }
     return {};
@@ -232,15 +230,15 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops()
         }
     }
 
-    for(const auto& loop : loops)
-    {
-        logging::logLazy(logging::Level::DEBUG, [&]() {
+    logging::logLazy(logging::Level::DEBUG, [&]() {
+        for(const auto& loop : loops)
+        {
             logging::debug() << "Found a control-flow loop: ";
             for(auto it = loop.rbegin(); it != loop.rend(); ++it)
                 logging::debug() << (*it)->key->getLabel()->to_string() << " -> ";
             logging::debug() << logging::endl;
-        });
-    }
+        }
+    });
 
     return loops;
 }
@@ -455,7 +453,7 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
         bb.forPredecessors([&bb, &graph](InstructionWalker it) -> void {
             // this transition is implicit if the previous instruction is not a branch at all or a conditional branch to
             // somewhere else (then the transition happens if the condition is not met)
-            bool isImplicit = !it.has<intermediate::Branch>();
+            bool isImplicit = !it.get<intermediate::Branch>();
             //|| (it.get<intermediate::Branch>()->conditional != COND_ALWAYS &&
             //        it.get<intermediate::Branch>()->getTarget() != bb.getLabel()->getLabel());
             // connection from it.getBasicBlock() to bb

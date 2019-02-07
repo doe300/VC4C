@@ -48,10 +48,9 @@ struct BaseAndOffset
 
 static BaseAndOffset findOffset(const Value& val)
 {
-    if(!val.hasLocal())
+    if(!val.checkLocal())
         return BaseAndOffset();
-    const LocalUser* writer = val.getSingleWriter();
-    if(writer != nullptr)
+    if(auto writer = val.getSingleWriter())
     {
         const Optional<Value> offset = writer->precalculate(8).first;
         if(offset && offset->isLiteralValue())
@@ -67,7 +66,7 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
     // TODO add support for offsets via getlocal/global_id, etc.
     // need to the set base to addr + offset and the offset to the offset of the offset (e.g. param[get_local_id(0) +
     // 7])  but how to determine?
-    if(!val.hasLocal())
+    if(!val.checkLocal())
         return BaseAndOffset();
     if(val.local()->is<Parameter>() || val.local()->is<Global>() || val.local()->is<StackAllocation>())
         return BaseAndOffset(val, 0);
@@ -85,18 +84,18 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 
     // The reader can be one of several valid cases:
     // 1. a move from another local -> need to follow the move
-    if(dynamic_cast<const MoveOperation*>(*writers.begin()) != nullptr)
-        return findBaseAndOffset(dynamic_cast<const MoveOperation*>(*writers.begin())->getSource());
+    if(auto move = dynamic_cast<const MoveOperation*>(*writers.begin()))
+        return findBaseAndOffset(move->getSource());
     const auto& args = (*writers.begin())->getArguments();
     // 2. an addition with a local and a literal -> the local is the base, the literal the offset
     if(dynamic_cast<const Operation*>((*writers.begin())) != nullptr &&
         dynamic_cast<const Operation*>((*writers.begin()))->op == OP_ADD && args.size() == 2 &&
-        std::any_of(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.hasLocal(); }) &&
+        std::any_of(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.checkLocal(); }) &&
         std::any_of(
             args.begin(), args.end(), [](const Value& arg) -> bool { return arg.getLiteralValue().has_value(); }))
     {
         return BaseAndOffset(
-            std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.hasLocal(); })
+            std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.checkLocal(); })
                 ->local()
                 ->getBase(false)
                 ->createReference(),
@@ -110,14 +109,14 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
     // 3. an addition with two locals -> one is the base, the other the calculation of the literal
     if(dynamic_cast<const Operation*>((*writers.begin())) != nullptr &&
         dynamic_cast<const Operation*>((*writers.begin()))->op == OP_ADD && args.size() == 2 &&
-        std::all_of(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.hasLocal(); }))
+        std::all_of(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.checkLocal(); }))
     {
         const auto offset0 = findOffset(args[0]);
         const auto offset1 = findOffset(args[1]);
-        if(offset0.offset && args[1].hasLocal())
+        if(offset0.offset && args[1].checkLocal())
             return BaseAndOffset(args[1].local()->getBase(false)->createReference(),
                 static_cast<int32_t>(offset0.offset.value() / val.type.getElementType().getPhysicalWidth()));
-        if(offset1.offset && args[0].hasLocal())
+        if(offset1.offset && args[0].checkLocal())
             return BaseAndOffset(args[0].local()->getBase(false)->createReference(),
                 static_cast<int32_t>(offset1.offset.value() / val.type.getElementType().getPhysicalWidth()));
     }
@@ -229,17 +228,17 @@ static InstructionWalker findGroupOfVPMAccess(
         if(it.get() == nullptr)
             continue;
 
-        if(it.has<MemoryBarrier>())
+        if(it.get<MemoryBarrier>())
             // memory barriers end groups, also don't check this barrier again
             return it.nextInBlock();
-        if(it.has<SemaphoreAdjustment>())
+        if(it.get<SemaphoreAdjustment>())
             // semaphore accesses end groups, also don't check this instruction again
             return it.nextInBlock();
 
         if(!(it->writesRegister(REG_VPM_DMA_LOAD_ADDR) || it->writesRegister(REG_VPM_DMA_STORE_ADDR)))
             // for simplicity, we only check for VPM addresses and find all other instructions relative to it
             continue;
-        if(!it.has<MoveOperation>())
+        if(!it.get<MoveOperation>())
             throw CompilationError(
                 CompilationStep::OPTIMIZER, "Setting VPM address with non-move is not supported", it->to_string());
         const auto baseAndOffset = findBaseAndOffset(it.get<MoveOperation>()->getSource());
@@ -252,7 +251,7 @@ static InstructionWalker findGroupOfVPMAccess(
             // this address-write could not be fixed to a base and an offset
             // skip this address write for the next check
             return it.nextInBlock();
-        if(baseAndOffset.base && baseAndOffset.base->hasLocal() && baseAndOffset.base->local()->is<Parameter>() &&
+        if(baseAndOffset.base && baseAndOffset.base->checkLocal() && baseAndOffset.base->local()->is<Parameter>() &&
             has_flag(baseAndOffset.base->local()->as<Parameter>()->decorations, ParameterDecorations::VOLATILE))
             // address points to a volatile parameter, which explicitly forbids combining reads/writes
             // skip this address write for the next check
@@ -292,13 +291,13 @@ static InstructionWalker findGroupOfVPMAccess(
                 // either there are no setups for this VPM access, or they are not loaded from literals (e.g. dynamic
                 // setup)
                 break;
-            if(!genericSetup->has<LoadImmediate>() ||
+            if(!genericSetup->get<LoadImmediate>() ||
                 (!group.genericSetups.empty() &&
                     genericSetup->get<LoadImmediate>()->getImmediate() !=
                         group.genericSetups.at(0).get<LoadImmediate>()->getImmediate()))
                 // generic setups do not match
                 break;
-            if(!dmaSetup->has<LoadImmediate>() ||
+            if(!dmaSetup->get<LoadImmediate>() ||
                 dmaSetup->get<LoadImmediate>()->getImmediate() !=
                     group.dmaSetups.at(0).get<LoadImmediate>()->getImmediate())
                 // DMA setups do not match
@@ -306,7 +305,7 @@ static InstructionWalker findGroupOfVPMAccess(
         }
 
         // check for complex types
-        DataType elementType = baseAndOffset.base->type.isPointerType() ?
+        DataType elementType = baseAndOffset.base->type.getPointerType() ?
             baseAndOffset.base->type.getPointerType()->elementType :
             baseAndOffset.base->type;
         elementType = elementType.getArrayType() ? elementType.getArrayType()->elementType : elementType;
@@ -574,10 +573,9 @@ InstructionWalker normalization::accessGlobalData(
     for(std::size_t i = 0; i < it->getArguments().size(); ++i)
     {
         const auto& arg = it->assertArgument(i);
-        if(arg.hasLocal() && arg.local()->is<Global>())
+        if(arg.checkLocal() && arg.local()->is<Global>())
         {
-            const Optional<unsigned int> globalOffset = module.getGlobalDataOffset(arg.local());
-            if(globalOffset)
+            if(auto globalOffset = module.getGlobalDataOffset(arg.local()))
             {
                 logging::debug() << "Replacing access to global data: " << it->to_string() << logging::endl;
                 Value tmp = UNDEFINED_VALUE;
@@ -636,7 +634,7 @@ void normalization::spillLocals(const Module& module, Method& method, const Conf
 
     InstructionWalker it = method.walkAllInstructions();
     // skip all leading empty basic blocks
-    while(!it.isEndOfMethod() && it.has<intermediate::BranchLabel>())
+    while(!it.isEndOfMethod() && it.get<intermediate::BranchLabel>())
         it.nextInMethod();
     auto candIt = spillingCandidates.begin();
     while(!it.isEndOfMethod() && candIt != spillingCandidates.end())
@@ -686,7 +684,7 @@ void normalization::resolveStackAllocation(
     for(std::size_t i = 0; i < it->getArguments().size(); ++i)
     {
         const Value& arg = it->assertArgument(i);
-        if(arg.hasLocal() && arg.type.isPointerType() && arg.local()->is<StackAllocation>())
+        if(arg.checkLocal() && arg.type.getPointerType() && arg.local()->is<StackAllocation>())
         {
             // 2.remove the life-time instructions
             if(it.get<intermediate::LifetimeBoundary>() != nullptr)
@@ -913,11 +911,11 @@ static InstructionWalker mapToVPMMemoryAccessInstructions(
                 method, it, mem->getDestination(), mem->getSource(), static_cast<unsigned>(numBytes));
         }
 
-        auto* src = mem->getSource().hasLocal() ? mem->getSource().local()->getBase(true) : nullptr;
+        auto* src = mem->getSource().checkLocal() ? mem->getSource().local()->getBase(true) : nullptr;
         if(src && src->is<Parameter>())
             const_cast<Parameter*>(src->as<const Parameter>())->decorations =
                 add_flag(src->as<const Parameter>()->decorations, ParameterDecorations::INPUT);
-        auto* dest = mem->getDestination().hasLocal() ? mem->getDestination().local()->getBase(true) : nullptr;
+        auto* dest = mem->getDestination().checkLocal() ? mem->getDestination().local()->getBase(true) : nullptr;
         if(dest && dest->is<Parameter>())
             const_cast<Parameter*>(dest->as<const Parameter>())->decorations =
                 add_flag(dest->as<const Parameter>()->decorations, ParameterDecorations::OUTPUT);
@@ -945,7 +943,7 @@ static InstructionWalker mapToVPMMemoryAccessInstructions(
             static_cast<unsigned>(numCopies), nullptr, false);
         it.emplace(new intermediate::MutexLock(intermediate::MutexAccess::RELEASE));
         it.nextInBlock();
-        auto* dest = mem->getDestination().hasLocal() ? mem->getDestination().local()->getBase(true) : nullptr;
+        auto* dest = mem->getDestination().checkLocal() ? mem->getDestination().local()->getBase(true) : nullptr;
         if(dest && dest->is<Parameter>())
             const_cast<Parameter*>(dest->as<const Parameter>())->decorations =
                 add_flag(dest->as<const Parameter>()->decorations, ParameterDecorations::OUTPUT);
@@ -957,7 +955,7 @@ static InstructionWalker mapToVPMMemoryAccessInstructions(
             throw CompilationError(CompilationStep::NORMALIZER,
                 "Reading from VPM mapped memory should already be handled", mem->to_string());
         it = periphery::insertReadDMA(method, it, mem->getDestination(), mem->getSource());
-        auto* src = mem->getSource().hasLocal() ? mem->getSource().local()->getBase(true) : nullptr;
+        auto* src = mem->getSource().checkLocal() ? mem->getSource().local()->getBase(true) : nullptr;
         if(src && src->is<Parameter>())
             const_cast<Parameter*>(src->as<const Parameter>())->decorations =
                 add_flag(src->as<const Parameter>()->decorations, ParameterDecorations::INPUT);
@@ -969,7 +967,7 @@ static InstructionWalker mapToVPMMemoryAccessInstructions(
             throw CompilationError(CompilationStep::NORMALIZER,
                 "Writing into VPM mapped memory should already be handled", mem->to_string());
         it = periphery::insertWriteDMA(method, it, mem->getSource(), mem->getDestination());
-        auto* dest = mem->getDestination().hasLocal() ? mem->getDestination().local()->getBase(true) : nullptr;
+        auto* dest = mem->getDestination().checkLocal() ? mem->getDestination().local()->getBase(true) : nullptr;
         if(dest && dest->is<Parameter>())
             const_cast<Parameter*>(dest->as<const Parameter>())->decorations =
                 add_flag(dest->as<const Parameter>()->decorations, ParameterDecorations::OUTPUT);
@@ -1013,9 +1011,10 @@ static bool mapReadWriteToMemoryViaVPM(Method& method, const Local* local,
             continue;
         logging::debug() << "Generating memory access which cannot be optimized: " << mem->to_string() << logging::endl;
         auto srcVpmArea =
-            mem->getSource().hasLocal() ? vpmMappedLocals[mem->getSource().local()->getBase(true)] : nullptr;
-        auto dstVpmArea =
-            mem->getDestination().hasLocal() ? vpmMappedLocals[mem->getDestination().local()->getBase(true)] : nullptr;
+            mem->getSource().checkLocal() ? vpmMappedLocals[mem->getSource().local()->getBase(true)] : nullptr;
+        auto dstVpmArea = mem->getDestination().checkLocal() ?
+            vpmMappedLocals[mem->getDestination().local()->getBase(true)] :
+            nullptr;
         it = mapToVPMMemoryAccessInstructions(method, it, srcVpmArea, dstVpmArea);
         affectedBlocks.emplace(it.getBasicBlock());
     }
@@ -1036,7 +1035,7 @@ static Optional<Value> getConstantValue(const MemoryInstruction* mem)
 {
     // can only read from constant global data, so the global is always the source
     const Global* global = mem->getSource().local()->getBase(true)->as<Global>();
-    if(mem->getSource().local()->reference.second >= 0 && global->value.hasContainer())
+    if(mem->getSource().local()->reference.second >= 0 && global->value.checkContainer())
         // fixed index
         return global->value.container().elements.at(mem->getSource().local()->reference.second);
     else if(global->value.isLiteralValue())
@@ -1048,9 +1047,9 @@ static Optional<Value> getConstantValue(const MemoryInstruction* mem)
     else if(global->value.isUndefined())
         // all entries are undefined
         return Value(global->value.type.getElementType());
-    else if(global->value.hasContainer() && global->value.container().isElementNumber())
+    else if(global->value.checkContainer() && global->value.container().isElementNumber())
         return ELEMENT_NUMBER_REGISTER;
-    else if(global->value.hasContainer() && global->value.container().isAllSame())
+    else if(global->value.checkContainer() && global->value.container().isAllSame())
         // all entries are the same
         return global->value.container().elements.at(0);
     return NO_VALUE;
@@ -1065,9 +1064,9 @@ static Optional<Value> getConstantValue(const MemoryInstruction* mem)
 static Optional<DataType> convertSmallArrayToRegister(const Local* local)
 {
     const Local* base = local->getBase(true);
-    if(base->type.getPointerType())
+    if(auto ptrType = base->type.getPointerType())
     {
-        const auto& baseType = base->type.getPointerType()->elementType;
+        const auto& baseType = ptrType->elementType;
         auto arrayType = baseType.getArrayType();
         if(arrayType && arrayType->size <= NATIVE_VECTOR_SIZE && arrayType->elementType.isScalarType())
             return arrayType->elementType.toVectorType(static_cast<uint8_t>(arrayType->size));
@@ -1102,11 +1101,11 @@ static InstructionWalker lowerReadWriteOfMemoryToRegister(InstructionWalker it, 
     }
     if(mem->op == MemoryOperation::COPY)
     {
-        if(mem->getSource().hasLocal() && mem->getSource().local()->getBase(true) == local &&
-            mem->getDestination().hasLocal() && mem->getDestination().local()->getBase(true) == local)
+        if(mem->getSource().checkLocal() && mem->getSource().local()->getBase(true) == local &&
+            mem->getDestination().checkLocal() && mem->getDestination().local()->getBase(true) == local)
             throw CompilationError(CompilationStep::NORMALIZER,
                 "Copy from and to same register lowered memory area is not supported", mem->to_string());
-        if(mem->getSource().hasLocal() && mem->getSource().local()->getBase(true) == local)
+        if(mem->getSource().checkLocal() && mem->getSource().local()->getBase(true) == local)
         {
             Value tmpIndex = UNDEFINED_VALUE;
             it = insertAddressToElementOffset(it, method, tmpIndex, local, loweredRegister, mem, mem->getSource());
@@ -1116,7 +1115,7 @@ static InstructionWalker lowerReadWriteOfMemoryToRegister(InstructionWalker it, 
             it.reset(new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmp)));
             return it;
         }
-        if(mem->getDestination().hasLocal() && mem->getDestination().local()->getBase(true) == local)
+        if(mem->getDestination().checkLocal() && mem->getDestination().local()->getBase(true) == local)
         {
             Value tmpIndex = UNDEFINED_VALUE;
             it = insertAddressToElementOffset(it, method, tmpIndex, local, loweredRegister, mem, mem->getDestination());
@@ -1236,9 +1235,9 @@ static bool lowerMemoryToRegister(
                         "Invalid instruction to be lowered into register", it->to_string());
                 logging::debug() << "Trying to lower access to stack allocation into register: " << mem->to_string()
                                  << logging::endl;
-                bool isRead = mem->getSource().hasLocal() && mem->getSource().local()->getBase(true) == local;
+                bool isRead = mem->getSource().checkLocal() && mem->getSource().local()->getBase(true) == local;
                 bool isWritten =
-                    mem->getDestination().hasLocal() && mem->getDestination().local()->getBase(true) == local;
+                    mem->getDestination().checkLocal() && mem->getDestination().local()->getBase(true) == local;
                 switch(mem->op)
                 {
                 case MemoryOperation::COPY:
@@ -1456,7 +1455,7 @@ static InstructionWalker findNextValueStore(
             // TODO can we be more precise and abort only if the same index is written?? How to determine??
             return it.getBasicBlock()->walkEnd();
         }
-        if(it.has<MemoryBarrier>() || it.has<Branch>() || it.has<MutexLock>() || it.has<SemaphoreAdjustment>())
+        if(it.get<MemoryBarrier>() || it.get<Branch>() || it.get<MutexLock>() || it.get<SemaphoreAdjustment>())
             break;
         it.nextInBlock();
         --limit;
@@ -1477,7 +1476,7 @@ static FastMap<const Local*, MemoryAccess> determineMemoryAccess(Method& method)
     FastMap<const Local*, MemoryAccess> mapping;
     for(const auto& param : method.parameters)
     {
-        if(!param.type.isPointerType())
+        if(!param.type.getPointerType())
             continue;
         const auto* pointerType = param.type.getPointerType();
         if(pointerType->addressSpace == AddressSpace::CONSTANT)
@@ -1522,10 +1521,9 @@ static FastMap<const Local*, MemoryAccess> determineMemoryAccess(Method& method)
     InstructionWalker it = method.walkAllInstructions();
     while(!it.isEndOfMethod())
     {
-        if(it.has<MemoryInstruction>())
+        if(auto memInstr = it.get<MemoryInstruction>())
         {
             // convert read-then-write to copy
-            auto memInstr = it.get<const MemoryInstruction>();
             if(memInstr->op == MemoryOperation::READ && !memInstr->hasConditionalExecution() &&
                 memInstr->getDestination().local()->getUsers(LocalUse::Type::READER).size() == 1)
             {

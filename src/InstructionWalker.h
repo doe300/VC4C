@@ -133,6 +133,8 @@ namespace vc4c
 
         /*
          * Returns the instruction stored at this position of the given type
+         *
+         * Returns a nullptr if there is no instruction stored or it is not of the requested type.
          */
         template <typename T>
         inline T* get()
@@ -154,15 +156,6 @@ namespace vc4c
         inline bool has() const
         {
             return get() != nullptr;
-        }
-
-        /*
-         * Whether the current position contains an object of the given type
-         */
-        template <typename T>
-        inline bool has() const
-        {
-            return get<const T>() != nullptr;
         }
 
         inline intermediate::IntermediateInstruction* operator->()

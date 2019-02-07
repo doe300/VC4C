@@ -142,18 +142,6 @@ std::string ALUInstruction::toASMString() const
     return s;
 }
 
-bool ALUInstruction::isValidInstruction() const
-{
-    switch(getSig().value)
-    {
-    case SIGNAL_BRANCH.value:
-    case SIGNAL_LOAD_IMMEDIATE.value:
-        return false;
-    default:
-        return true;
-    }
-}
-
 static Register getInputRegister(InputMultiplex mux, Address regA, Address regB)
 {
     switch(mux)

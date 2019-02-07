@@ -168,7 +168,7 @@ InstructionWalker periphery::insertReadVectorFromTMU(
 InstructionWalker periphery::insertReadTMU(Method& method, InstructionWalker it, const Value& image, const Value& dest,
     const Value& xCoord, const Optional<Value>& yCoord, const TMU& tmu)
 {
-    if(!image.hasLocal())
+    if(!image.checkLocal())
         throw CompilationError(
             CompilationStep::GENERAL, "Cannot access image-configuration for non-local image", image.to_string());
     const Global* imageConfig =

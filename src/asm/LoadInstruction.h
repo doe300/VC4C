@@ -24,7 +24,13 @@ namespace vc4c
                 Address addOut, Address mulOut, uint16_t value0, uint16_t value1);
 
             std::string toASMString() const;
-            bool isValidInstruction() const;
+            inline bool isValidInstruction() const
+            {
+                if(getSig() != SIGNAL_LOAD_IMMEDIATE)
+                    return false;
+                return getType() == OpLoad::LOAD_IMM_32 || getType() == OpLoad::LOAD_SIGNED ||
+                    getType() == OpLoad::LOAD_UNSIGNED;
+            }
 
             BITFIELD_ENTRY(Type, OpLoad, 57, Septuple)
             // NOTE: The pack value includes the pm bit!

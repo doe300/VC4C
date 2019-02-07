@@ -399,8 +399,8 @@ namespace vc4c
             NODISCARD Value operator=(OperationWrapper&& op) &&
             {
                 if(op.setFlags != SetFlag::SET_FLAGS && !op.signal.hasSideEffects() &&
-                    (!op.arg0.hasRegister() || !op.arg0.reg().hasSideEffectsOnRead()) &&
-                    (!op.arg1 || !op.arg1->hasRegister() || !op.arg1->reg().hasSideEffectsOnRead()) &&
+                    (!op.arg0.checkRegister() || !op.arg0.reg().hasSideEffectsOnRead()) &&
+                    (!op.arg1 || !op.arg1->checkRegister() || !op.arg1->reg().hasSideEffectsOnRead()) &&
                     /* to not override either-or where either is dynamic and or is constant */
                     op.conditional == COND_ALWAYS &&
                     /* XXX this is not necessary, but we don't known which inputs to unpack */

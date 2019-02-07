@@ -43,7 +43,7 @@ InstructionWalker intermediate::insertVectorRotation(
 
     // 1. set amount of rotation
     Value appliedOffset(UNDEFINED_VALUE);
-    if(offset.hasLiteral())
+    if(auto lit = offset.checkLiteral())
     {
         // if the offset is a literal, set it as small immediate
         /*
@@ -53,10 +53,9 @@ InstructionWalker intermediate::insertVectorRotation(
          * negative offset, rotate downwards -> rotate upwards with absolute value
          * positive offset, rotate downwards -> rotate downwards with absolute value
          */
-        int32_t offsetValue = offset.literal().signedInt();
-        const Direction actualDirection = offset.literal().signedInt() >= 0 ?
-            direction :
-            (direction == Direction::DOWN ? Direction::UP : Direction::DOWN);
+        int32_t offsetValue = lit->signedInt();
+        const Direction actualDirection =
+            lit->signedInt() >= 0 ? direction : (direction == Direction::DOWN ? Direction::UP : Direction::DOWN);
         offsetValue = actualDirection != direction ? -offsetValue : offsetValue;
 
         if(actualDirection == Direction::DOWN)
@@ -73,19 +72,19 @@ InstructionWalker intermediate::insertVectorRotation(
         else
             appliedOffset = Value(SmallImmediate::fromRotationOffset(static_cast<uint8_t>(offsetValue)), offset.type);
     }
-    else if(offset.hasImmediate())
+    else if(auto imm = offset.checkImmediate())
     {
         appliedOffset = offset;
         // vector is rotated by offset-constant not by rotation constant -> convert to rotation constant
-        if(offset.immediate().getIntegerValue())
+        if(imm->getIntegerValue())
         {
             if(direction == Direction::DOWN)
             {
-                appliedOffset.immediate().value = static_cast<unsigned char>((16 - offset.immediate().value) % 16);
+                appliedOffset.immediate().value = static_cast<unsigned char>((16 - imm->value) % 16);
             }
             else
             {
-                appliedOffset.immediate().value = offset.immediate().value % 16;
+                appliedOffset.immediate().value = imm->value % 16;
             }
             if(appliedOffset.immediate().value == 0)
                 appliedOffset = INT_ZERO;
@@ -247,7 +246,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         // initialize all values with the first index
         return intermediate::insertReplication(it, source0, destination);
     }
-    else if(!mask.hasContainer())
+    else if(!mask.checkContainer())
     {
         if(source1.isUndefined())
             return insertDynamicVectorShuffle(it, method, destination, source0, mask);
@@ -317,7 +316,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     }
 
     // zero out destination first, also required so register allocator finds unconditional write to destination
-    if(destination.hasLocal() && destination.local()->getUsers(LocalUse::Type::WRITER).empty())
+    if(destination.checkLocal() && destination.local()->getUsers(LocalUse::Type::WRITER).empty())
     {
         assign(it, destination) = 0_val;
     }
@@ -329,7 +328,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         if(index.isUndefined())
             // don't write anything at this position
             continue;
-        if(!index.hasLiteral())
+        if(!index.checkLiteral())
             throw CompilationError(CompilationStep::GENERAL, "Invalid mask value", mask.to_string(false, true));
         const Value& container =
             index.literal().signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ? source0 : source1;
@@ -346,17 +345,17 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
 InstructionWalker intermediate::insertMakePositive(
     InstructionWalker it, Method& method, const Value& src, Value& dest, Value& writeIsNegative)
 {
-    if(src.getLiteralValue())
+    if(auto lit = src.getLiteralValue())
     {
-        bool isNegative = src.getLiteralValue()->signedInt() < 0;
-        dest = isNegative ? Value(Literal(-src.getLiteralValue()->signedInt()), src.type) : src;
+        bool isNegative = lit->signedInt() < 0;
+        dest = isNegative ? Value(Literal(-lit->signedInt()), src.type) : src;
         writeIsNegative = isNegative ? INT_MINUS_ONE : INT_ZERO;
     }
-    else if(src.hasContainer())
+    else if(auto container = src.checkContainer())
     {
-        dest = Value(ContainerValue(src.container().elements.size()), src.type);
-        writeIsNegative = Value(ContainerValue(src.container().elements.size()), src.type);
-        for(const auto& elem : src.container().elements)
+        dest = Value(ContainerValue(container->elements.size()), src.type);
+        writeIsNegative = Value(ContainerValue(container->elements.size()), src.type);
+        for(const auto& elem : container->elements)
         {
             if(!elem.getLiteralValue())
                 throw CompilationError(CompilationStep::OPTIMIZER, "Can't handle container with non-literal values",
@@ -404,7 +403,7 @@ InstructionWalker intermediate::insertMakePositive(
             srcInt = method.addNewLocal(TYPE_INT32.toVectorType(src.type.getVectorWidth()), "%sext");
             it = insertSignExtension(it, method, src, srcInt, true);
         }
-        if(!writeIsNegative.hasLocal())
+        if(!writeIsNegative.checkLocal())
             writeIsNegative = method.addNewLocal(TYPE_INT32.toVectorType(src.type.getVectorWidth()), "%sign");
         it.emplace(new Operation(OP_ASR, writeIsNegative, srcInt, Value(Literal(31u), TYPE_INT8)));
         it.nextInBlock();
@@ -464,15 +463,14 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
     for(const Value& index : indices)
     {
         Value subOffset(UNDEFINED_VALUE);
-        if(subContainerType.isPointerType() || subContainerType.getArrayType())
+        if(subContainerType.getPointerType() || subContainerType.getArrayType())
         {
             // index is index in pointer/array
             //-> add offset of element at given index to global offset
-            if(index.getLiteralValue())
+            if(auto lit = index.getLiteralValue())
             {
-                subOffset = Value(Literal(index.getLiteralValue()->signedInt() *
-                                      subContainerType.getElementType().getPhysicalWidth()),
-                    TYPE_INT32);
+                subOffset =
+                    Value(Literal(lit->signedInt() * subContainerType.getElementType().getPhysicalWidth()), TYPE_INT32);
             }
             else
             {
@@ -487,25 +485,22 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
             if(!firstIndexIsElement || &index != &indices.front())
                 subContainerType = subContainerType.getElementType();
         }
-        else if(subContainerType.getStructType())
+        else if(auto structType = subContainerType.getStructType())
         {
             // index is element in struct -> MUST be literal
             if(!index.getLiteralValue())
                 throw CompilationError(CompilationStep::LLVM_2_IR, "Can't access struct-element with non-literal index",
                     index.to_string());
 
-            subOffset =
-                Value(Literal(subContainerType.getStructType()->getStructSize(index.getLiteralValue()->signedInt())),
-                    TYPE_INT32);
+            subOffset = Value(Literal(structType->getStructSize(index.getLiteralValue()->signedInt())), TYPE_INT32);
             subContainerType = subContainerType.getElementType(index.getLiteralValue()->signedInt());
         }
         else if(subContainerType.isVectorType())
         {
             // takes the address of an element of the vector
-            if(index.getLiteralValue())
-                subOffset = Value(Literal(index.getLiteralValue()->signedInt() *
-                                      subContainerType.getElementType().getPhysicalWidth()),
-                    TYPE_INT32);
+            if(auto lit = index.getLiteralValue())
+                subOffset =
+                    Value(Literal(lit->signedInt() * subContainerType.getElementType().getPhysicalWidth()), TYPE_INT32);
             else
                 subOffset = assign(it, TYPE_INT32, "%vector_element_offset") =
                     index * Literal(subContainerType.getElementType().getPhysicalWidth());
@@ -555,11 +550,11 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
     const_cast<std::pair<Local*, int>&>(dest.local()->reference) = std::make_pair(container.local(), refIndex);
 
     DataType finalType = subContainerType;
-    if(subContainerType.getArrayType())
+    if(auto arrayType = subContainerType.getArrayType())
         // convert x[num] to x*
         // TODO shouldn't x[num] be converted to x[num]* ?? (e.g. for HandBrake/vscale_all_dither_opencl.cl)
         // or distinguish between first and following indices?
-        finalType = subContainerType.getElementType().toPointerType(
+        finalType = arrayType->elementType.toPointerType(
             container.type.getPointerType() ? container.type.getPointerType()->addressSpace : AddressSpace::PRIVATE);
     else if(!(firstIndexIsElement && indices.size() == 1))
         finalType = subContainerType.toPointerType(container.type.getPointerType()->addressSpace);

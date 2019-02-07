@@ -40,10 +40,3 @@ std::string SemaphoreInstruction::toASMString() const
 
     return s;
 }
-
-bool SemaphoreInstruction::isValidInstruction() const
-{
-    if(getSig() != SIGNAL_LOAD_IMMEDIATE) // Semaphores and Loads have the same signal bit-mask
-        return false;
-    return getEntry<OpSemaphore>(57, MASK_Septuple) == OpSemaphore::SEMAPHORE;
-}

@@ -32,8 +32,8 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
         intermediate::IntermediateInstruction* instr = it.get();
         // fail-fast on all not-supported instruction types
         // also skip all instructions writing to non-locals (registers)
-        if(it.get() && !it.has<intermediate::Branch>() && !it.has<intermediate::BranchLabel>() &&
-            !it.has<intermediate::SemaphoreAdjustment>() && instr->hasValueType(ValueType::LOCAL))
+        if(it.get() && !it.get<intermediate::Branch>() && !it.get<intermediate::BranchLabel>() &&
+            !it.get<intermediate::SemaphoreAdjustment>() && instr->hasValueType(ValueType::LOCAL))
         {
             intermediate::Operation* op = it.get<intermediate::Operation>();
             intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
@@ -67,7 +67,7 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
             }
             if(move != nullptr)
             {
-                if(move->getSource().hasLocal() && move->getOutput()->hasLocal() && move->isSimpleMove())
+                if(move->getSource().checkLocal() && move->getOutput()->checkLocal() && move->isSimpleMove())
                 {
                     // if for a move, neither the input-local nor the output-local are written to afterwards,
                     // XXX or the input -local is only written after the last use of the output-local
@@ -171,9 +171,7 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
 InstructionWalker optimizations::simplifyOperation(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
-    intermediate::Operation* op = it.get<intermediate::Operation>();
-    intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
-    if(op != nullptr)
+    if(auto op = it.get<intermediate::Operation>())
     {
         if(op->isSimpleOperation())
         {
@@ -240,7 +238,7 @@ InstructionWalker optimizations::simplifyOperation(
                     it.previousInBlock();
                 }
                 else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg &&
-                    !firstArg.hasRegister() && !firstArg.isUndefined())
+                    !firstArg.checkRegister() && !firstArg.isUndefined())
                 {
                     CPPLOG_LAZY(logging::Level::DEBUG, log << "Removing obsolete " << op->to_string() << logging::endl);
                     it.erase();
@@ -270,7 +268,7 @@ InstructionWalker optimizations::simplifyOperation(
                 }
                 // check whether operation does not really calculate anything
                 else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg &&
-                    !firstArg.hasRegister() && !firstArg.isUndefined())
+                    !firstArg.checkRegister() && !firstArg.isUndefined())
                 {
                     logging::logLazy(logging::Level::DEBUG, [&]() {
                         logging::debug() << secondArg.value().to_string() << " - " << firstArg.to_string()
@@ -285,7 +283,7 @@ InstructionWalker optimizations::simplifyOperation(
         }
         // TODO trunc to int32/float
     }
-    else if(move != nullptr)
+    else if(auto move = it.get<intermediate::MoveOperation>())
     {
         if(move->getSource() == move->getOutput().value() && move->isSimpleMove())
         {
@@ -295,7 +293,7 @@ InstructionWalker optimizations::simplifyOperation(
             // don't skip next instruction
             it.previousInBlock();
         }
-        if(it.has<intermediate::VectorRotation>() && move->getSource().isLiteralValue())
+        if(it.get<intermediate::VectorRotation>() && move->getSource().isLiteralValue())
         {
             // replace rotation of constant with move
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -358,7 +356,7 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
         InstructionWalker it = bb->walkEnd();
         ConditionCode jumpCondition = COND_ALWAYS;
         Value condition(UNDEFINED_VALUE);
-        while(it.copy().previousInBlock().has<intermediate::Branch>())
+        while(it.copy().previousInBlock().get<intermediate::Branch>())
         {
             it.previousInBlock();
             if(it.get<intermediate::Branch>()->getTarget() == label)
@@ -393,7 +391,7 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
         const Local* ref = nullptr;
         for(const auto& pair : node.getValuesForLabels())
         {
-            if(!pair.second.hasLocal())
+            if(!pair.second.checkLocal())
                 // cannot set universal reference
                 return;
             if(pair.second.hasLocal(node.getOutput()->local()) ||
@@ -420,8 +418,7 @@ void optimizations::eliminatePhiNodes(const Module& module, Method& method, cons
     auto it = method.walkAllInstructions();
     while(!it.isEndOfMethod())
     {
-        const intermediate::PhiNode* phiNode = it.get<intermediate::PhiNode>();
-        if(phiNode != nullptr)
+        if(auto phiNode = it.get<intermediate::PhiNode>())
         {
             // 2) map the phi-node to the move-operations per predecessor-label
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -437,7 +434,7 @@ void optimizations::eliminatePhiNodes(const Module& module, Method& method, cons
 InstructionWalker optimizations::eliminateReturn(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
-    if(it.has<intermediate::Return>())
+    if(it.get<intermediate::Return>())
     {
         const Local* target = method.findLocal(BasicBlock::LAST_BLOCK);
         if(target == nullptr)
@@ -504,19 +501,20 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
         //
         // - mov.setf r0, r1
         // - mov r0, r1, load_tmu0
-        if(op && !it.has<intermediate::VectorRotation>() && !op->hasConditionalExecution() && !op->hasPackMode() &&
+        if(op && !it.get<intermediate::VectorRotation>() && !op->hasConditionalExecution() && !op->hasPackMode() &&
             !op->hasUnpackMode() && op->getOutput().has_value() &&
-            (!op->getSource().hasRegister() || !op->getSource().reg().hasSideEffectsOnRead()) &&
-            (!op->getOutput().value().hasRegister()))
+            (!op->getSource().checkRegister() || !op->getSource().reg().hasSideEffectsOnRead()) &&
+            (!op->getOutput().value().checkRegister()))
         {
             auto it2 = it.copy().nextInBlock();
             auto oldValue = op->getOutput().value();
             const auto& newValue = op->getSource();
             // only continue iterating as long as there is a read of the local left
-            FastSet<const LocalUser*> remainingLocalReads =
-                oldValue.hasLocal() ? oldValue.local()->getUsers(LocalUse::Type::READER) : FastSet<const LocalUser*>{};
+            FastSet<const LocalUser*> remainingLocalReads = oldValue.checkLocal() ?
+                oldValue.local()->getUsers(LocalUse::Type::READER) :
+                FastSet<const LocalUser*>{};
             // registers fixed to physical file B cannot be combined with literal
-            bool skipLiteralReads = newValue.hasRegister() && newValue.reg().file == RegisterFile::PHYSICAL_B;
+            bool skipLiteralReads = newValue.checkRegister() && newValue.reg().file == RegisterFile::PHYSICAL_B;
             while(!it2.isEndOfBlock() && !remainingLocalReads.empty())
             {
                 bool replacedThisInstruction = false;
@@ -524,7 +522,7 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
                 {
                     for(auto arg : it2->getArguments())
                     {
-                        if(arg == oldValue && !arg.hasLiteral() && !arg.hasImmediate())
+                        if(arg == oldValue && !arg.checkLiteral() && !arg.checkImmediate())
                         {
                             replaced = true;
                             replacedThisInstruction = true;
@@ -565,9 +563,9 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
     auto it = method.walkAllInstructions();
     while(!it.isEndOfMethod())
     {
-        if(it.has<intermediate::MoveOperation>() &&
+        if(it.get<intermediate::MoveOperation>() &&
             !it->hasDecoration(intermediate::InstructionDecorations::PHI_NODE) && !it->hasPackMode() &&
-            !it->hasUnpackMode() && it->conditional == COND_ALWAYS && !it.has<intermediate::VectorRotation>())
+            !it->hasUnpackMode() && it->conditional == COND_ALWAYS && !it.get<intermediate::VectorRotation>())
         {
             // skip PHI-nodes, since they are read in another basic block (and the output is written more than once
             // anyway) as well as modification of the value, conditional execution and vector-rotations
@@ -624,7 +622,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                         << logging::endl);
                 (*destinationReader)
                     ->replaceValue(move->getOutput().value(), move->getSource(), LocalUse::Type::READER);
-                if((*destinationReader).has<intermediate::MoveOperation>())
+                if((*destinationReader).get<intermediate::MoveOperation>())
                     (*destinationReader)->addDecorations(intermediate::forwardDecorations(it->decoration));
                 it.erase();
                 // to not skip the next instruction
@@ -656,7 +654,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 it->addDecorations(sourceDecorations);
                 flag = true;
             }
-            else if(move->getSource().hasRegister() && destUsedOnce &&
+            else if(move->getSource().checkRegister() && destUsedOnce &&
                 (destUsedOnceWithoutLiteral || has_flag(move->getSource().reg().file, RegisterFile::PHYSICAL_ANY) ||
                     has_flag(move->getSource().reg().file, RegisterFile::ACCUMULATOR)) &&
                 destinationReader && !move->signal.hasSideEffects() && move->setFlags == SetFlag::DONT_SET &&
@@ -738,13 +736,13 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                 const auto& arg0 = op->assertArgument(0);
                 const auto& arg1 = op->assertArgument(1);
 
-                if(op->getOutput() && op->getOutput()->hasLocal())
+                if(op->getOutput() && op->getOutput()->checkLocal())
                 {
                     auto out = op->getOutput().value().local();
 
-                    if(arg0.hasLocal())
+                    if(arg0.checkLocal())
                         foundAnd(out, arg0.local(), it);
-                    if(arg1.hasLocal())
+                    if(arg1.checkLocal())
                         foundAnd(out, arg1.local(), it);
                 }
             };
@@ -783,13 +781,13 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                 const auto& arg0 = op->assertArgument(0);
                 const auto& arg1 = op->assertArgument(1);
 
-                if(op->getOutput() && op->getOutput()->hasLocal())
+                if(op->getOutput() && op->getOutput()->checkLocal())
                 {
                     auto out = op->getOutput()->local();
 
-                    if(arg0.hasLocal())
+                    if(arg0.checkLocal())
                         foundOr(out, arg0.local(), it);
-                    if(arg1.hasLocal())
+                    if(arg1.checkLocal())
                         foundOr(out, arg1.local(), it);
                 }
             }
@@ -880,7 +878,7 @@ InstructionWalker optimizations::rewriteConstantSFUCall(
         unsigned numDelays = 2;
         while(numDelays != 0 && !it.isEndOfBlock())
         {
-            if(it.has<intermediate::Nop>() &&
+            if(it.get<intermediate::Nop>() &&
                 it.get<const intermediate::Nop>()->type == intermediate::DelayType::WAIT_SFU)
             {
                 it.erase();

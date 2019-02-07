@@ -381,11 +381,11 @@ static std::pair<Literal, Literal> calculateConstant(Literal divisor, unsigned a
 
 static std::pair<Value, Value> calculateConstant(const Value& divisor, unsigned accuracy)
 {
-    if(divisor.hasContainer())
+    if(auto container = divisor.checkContainer())
     {
-        Value factors(ContainerValue(divisor.container().elements.size()), divisor.type);
-        Value shifts(ContainerValue(divisor.container().elements.size()), divisor.type);
-        for(const auto& element : divisor.container().elements)
+        Value factors(ContainerValue(container->elements.size()), divisor.type);
+        Value shifts(ContainerValue(container->elements.size()), divisor.type);
+        for(const auto& element : container->elements)
         {
             auto tmp = calculateConstant(element.literal(), accuracy);
             factors.container().elements.push_back(Value(tmp.first, factors.type.toVectorType(1)));
@@ -415,7 +415,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
         throw CompilationError(CompilationStep::OPTIMIZER, "Division by constant may overflow for argument type",
             op.getFirstArg().type.to_string());
     if(!op.getSecondArg().ifPresent(toFunction(&Value::isLiteralValue)) &&
-        !(op.getSecondArg() && op.assertArgument(1).hasContainer()))
+        !(op.getSecondArg() && op.assertArgument(1).checkContainer()))
         throw CompilationError(CompilationStep::OPTIMIZER, "Can only optimize division by constant", op.to_string());
 
     /*

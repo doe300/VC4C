@@ -21,7 +21,10 @@ namespace vc4c
                 Address addOut, Address mulOut, int32_t offset);
 
             std::string toASMString() const;
-            bool isValidInstruction() const;
+            inline bool isValidInstruction() const
+            {
+                return getSig() == SIGNAL_BRANCH;
+            }
 
             BITFIELD_ENTRY(BranchCondition, BranchCond, 52, Quadruple)
             BITFIELD_ENTRY(BranchRelative, BranchRel, 51, Bit)

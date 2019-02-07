@@ -30,10 +30,10 @@ static NODISCARD InstructionWalker compressLocalWrite(
         log << "Compressing write of local '" << local.name << "' into container '" << container.name
             << "' at position " << index << " at: " << it->to_string() << logging::endl);
 
-    if(it.has<intermediate::MoveOperation>())
+    if(auto move = it.get<intermediate::MoveOperation>())
     {
         // directly use the source of the assignment and insert it into vector
-        const Value& src = it.get<intermediate::MoveOperation>()->getSource();
+        const Value& src = move->getSource();
         it = intermediate::insertVectorInsertion(
             it, method, container.createReference(), Value(SmallImmediate(index), TYPE_INT8), src);
         it.erase();
@@ -98,8 +98,7 @@ bool optimizations::compressWorkGroupLocals(const Module& module, Method& method
     method.begin()->walk().nextInBlock().emplace(new intermediate::MoveOperation(container, INT_ZERO));
     for(const std::string& name : workGroupLocalNames)
     {
-        const Local* local = method.findLocal(name);
-        if(local != nullptr)
+        if(auto local = method.findLocal(name))
         {
             compressLocalIntoRegister(method, *local, *container.local(), index);
             ++index;

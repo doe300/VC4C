@@ -34,8 +34,7 @@ static FastSet<Local*> findLoopIterations(const ControlFlowLoop& loop, const Dat
     for(auto& node : loop)
     {
         // not all basic blocks have an entry in the dependency graph (e.g. if they have no dependency)
-        auto dependencyNode = dependencyGraph.findNode(node->key);
-        if(dependencyNode != nullptr)
+        if(auto dependencyNode = dependencyGraph.findNode(node->key))
         {
             // TODO is checking for only incoming edges correct?
             dependencyNode->forAllIncomingEdges(
@@ -130,7 +129,7 @@ struct LoopControl
             throw CompilationError(CompilationStep::OPTIMIZER, "Operation for this step-kind is not yet mapped!");
         }
         if(!iterationStep.ifPresent(
-               [](const InstructionWalker& it) -> bool { return it.has<const intermediate::Operation>(); }))
+               [](const InstructionWalker& it) -> bool { return it.get<const intermediate::Operation>(); }))
             return OP_NOP;
         return iterationStep->get<const intermediate::Operation>()->op;
     }
@@ -138,7 +137,7 @@ struct LoopControl
     Optional<Literal> getStep() const
     {
         if(!iterationStep.ifPresent(
-               [](const InstructionWalker& it) -> bool { return it.has<const intermediate::Operation>(); }))
+               [](const InstructionWalker& it) -> bool { return it.get<const intermediate::Operation>(); }))
             return {};
         const intermediate::Operation* op = iterationStep->get<const intermediate::Operation>();
         if(op->getArguments().size() != 2)
@@ -223,12 +222,12 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
             // XXX this currently only looks for single operations with immediate values (e.g. +1,-1)
             else if(pair.second.readsLocal() && it)
             {
-                if(it->has<intermediate::Operation>() && it.value()->getArguments().size() == 2 &&
+                if(it->get<intermediate::Operation>() && it.value()->getArguments().size() == 2 &&
                     it.value()->readsLiteral() &&
                     // TODO could here more simply check against output being the local the iteration variable is set to
                     // (in the phi-node inside the loop)
                     it.value()->getOutput().ifPresent([](const Value& val) -> bool {
-                        return val.hasLocal() &&
+                        return val.checkLocal() &&
                             std::any_of(val.local()->getUsers().begin(), val.local()->getUsers().end(),
                                 [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {
                                     return pair.first->hasDecoration(intermediate::InstructionDecorations::PHI_NODE);
@@ -241,7 +240,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                     loopControl.determineStepKind(it->get<intermediate::Operation>()->op);
                 }
                 // for use-with immediate local, TODO need better checking
-                else if(it->has<intermediate::MoveOperation>() && it.value()->hasValueType(ValueType::LOCAL))
+                else if(it->get<intermediate::MoveOperation>() && it.value()->hasValueType(ValueType::LOCAL))
                 {
                     // second-level checking for loop iteration step (e.g. if loop variable is copied for
                     // use-with-immediate)
@@ -253,10 +252,10 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                         // iteration step: the instruction inside the loop where the iteration variable is changed
                         if(pair.second.readsLocal() && it)
                         {
-                            if(it->has<intermediate::Operation>() && it.value()->getArguments().size() == 2 &&
+                            if(it->get<intermediate::Operation>() && it.value()->getArguments().size() == 2 &&
                                 it.value()->readsLiteral() &&
                                 it.value()->getOutput().ifPresent([](const Value& val) -> bool {
-                                    return val.hasLocal() &&
+                                    return val.checkLocal() &&
                                         std::any_of(val.local()->getUsers().begin(), val.local()->getUsers().end(),
                                             [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {
                                                 return pair.first->hasDecoration(
@@ -348,8 +347,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                     loopControl.terminatingValue = inst->assertArgument(0);
                 if(loopControl.terminatingValue.getSingleWriter() != nullptr)
                 {
-                    auto tmp = loopControl.terminatingValue.getSingleWriter()->precalculate(4).first;
-                    if(tmp)
+                    if(auto tmp = loopControl.terminatingValue.getSingleWriter()->precalculate(4).first)
                         loopControl.terminatingValue = tmp.value();
                     else
                     {
@@ -373,8 +371,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                     log << "Found upper bound: " << loopControl.terminatingValue.to_string() << logging::endl);
 
                 // determine type of comparison
-                const intermediate::Operation* comparison = dynamic_cast<const intermediate::Operation*>(inst);
-                if(comparison != nullptr)
+                if(auto comparison = dynamic_cast<const intermediate::Operation*>(inst))
                 {
                     bool isEqualityComparison = comparison->op == OP_XOR;
                     bool isLessThenComparison = comparison->op == OP_SUB || comparison->op == OP_FSUB;
@@ -487,10 +484,10 @@ static int calculateCostsVsBenefits(
             {
                 for(const Value& arg : it->getArguments())
                 {
-                    if(arg.hasLocal())
+                    if(auto loc = arg.checkLocal())
                     {
-                        readAddresses.emplace(arg.local());
-                        readAddresses.emplace(arg.local()->reference.first);
+                        readAddresses.emplace(loc);
+                        readAddresses.emplace(loc->reference.first);
                     }
                 }
             }
@@ -498,28 +495,28 @@ static int calculateCostsVsBenefits(
             {
                 for(const Value& arg : it->getArguments())
                 {
-                    if(arg.hasLocal())
+                    if(auto loc = arg.checkLocal())
                     {
-                        writtenAddresses.emplace(arg.local());
-                        writtenAddresses.emplace(arg.local()->reference.first);
+                        writtenAddresses.emplace(loc);
+                        writtenAddresses.emplace(loc->reference.first);
                     }
                 }
             }
-            else if(it.has<intermediate::VectorRotation>())
+            else if(it.get<intermediate::VectorRotation>())
             {
                 // abort
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Cannot vectorize loops containing vector rotations: " << it->to_string() << logging::endl);
                 return std::numeric_limits<int>::min();
             }
-            else if(it.has<intermediate::MemoryBarrier>())
+            else if(it.get<intermediate::MemoryBarrier>())
             {
                 // abort
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Cannot vectorize loops containing memory barriers: " << it->to_string() << logging::endl);
                 return std::numeric_limits<int>::min();
             }
-            else if(it.has<intermediate::SemaphoreAdjustment>())
+            else if(it.get<intermediate::SemaphoreAdjustment>())
             {
                 // abort
                 CPPLOG_LAZY(logging::Level::DEBUG,
@@ -576,12 +573,11 @@ static void scheduleForVectorization(
         if(!user->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
             openInstructions.emplace(user);
         if(user->getOutput().ifPresent([](const Value& out) -> bool {
-               return out.hasRegister() && (out.reg().isSpecialFunctionsUnit() || out.reg().isTextureMemoryUnit());
+               return out.checkRegister() && (out.reg().isSpecialFunctionsUnit() || out.reg().isTextureMemoryUnit());
            }))
         {
             // need to add the reading of SFU/TMU too
-            auto optIt = loop.findInLoop(user);
-            if(optIt)
+            if(auto optIt = loop.findInLoop(user))
             {
                 InstructionWalker it = optIt.value().nextInBlock();
                 while(!it.isEndOfBlock())
@@ -610,13 +606,13 @@ static void vectorizeInstruction(InstructionWalker it,
     unsigned char vectorWidth = 1;
     for(auto& arg : it->getArguments())
     {
-        if(arg.hasLocal() && arg.type != arg.local()->type)
+        if(arg.checkLocal() && arg.type != arg.local()->type)
         {
             scheduleForVectorization(arg.local(), openInstructions, loop);
             const_cast<DataType&>(arg.type) = arg.type.toVectorType(arg.local()->type.getVectorWidth());
             vectorWidth = std::max(vectorWidth, arg.type.getVectorWidth());
         }
-        else if(arg.hasRegister())
+        else if(arg.checkRegister())
         {
             // TODO correct?? This is at least required for reading from TMU
             vectorWidth = static_cast<unsigned char>(vectorizationFactor);
@@ -624,30 +620,26 @@ static void vectorizeInstruction(InstructionWalker it,
     }
 
     // 2. depending on operation performed, update type of output
-    if(it->getOutput() && (it.has<intermediate::Operation>() || it.has<intermediate::MoveOperation>()))
+    if(it->getOutput() && (it.get<intermediate::Operation>() || it.get<intermediate::MoveOperation>()))
     {
         // TODO vector-rotations need special handling?!
         Value& out = const_cast<Value&>(it->getOutput().value());
-        if(out.type.isPointerType())
+        if(auto ptrType = out.type.getPointerType())
             // TODO this is only correct if the elements are located in one block (base+0, base+1, base+2...). Is this
             // guaranteed?
-            out.type = out.type.getPointerType()
-                           ->elementType.toVectorType(vectorWidth)
-                           .toPointerType(out.type.getPointerType()->addressSpace);
+            out.type = ptrType->elementType.toVectorType(vectorWidth).toPointerType(ptrType->addressSpace);
         else
             out.type = out.type.toVectorType(vectorWidth);
-        if(out.hasLocal())
+        if(auto loc = out.checkLocal())
         {
-            if(out.local()->type.isPointerType())
+            if(auto ptrType = loc->type.getPointerType())
                 // TODO see above
-                const_cast<DataType&>(out.local()->type) =
-                    out.local()
-                        ->type.getPointerType()
-                        ->elementType.toVectorType(out.type.getVectorWidth())
-                        .toPointerType(out.local()->type.getPointerType()->addressSpace);
+                const_cast<DataType&>(loc->type) = loc->type.getPointerType()
+                                                       ->elementType.toVectorType(out.type.getVectorWidth())
+                                                       .toPointerType(ptrType->addressSpace);
             else
-                const_cast<DataType&>(out.local()->type) = out.local()->type.toVectorType(out.type.getVectorWidth());
-            scheduleForVectorization(out.local(), openInstructions, loop);
+                const_cast<DataType&>(loc->type) = loc->type.toVectorType(out.type.getVectorWidth());
+            scheduleForVectorization(loc, openInstructions, loop);
         }
     }
 
@@ -753,7 +745,7 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
     {
     case OP_ADD.opAdd:
     case OP_SUB.opAdd:
-        if(stepOp->getFirstArg().hasLocal())
+        if(stepOp->getFirstArg().checkLocal())
         {
             const Value& offset = stepOp->assertArgument(1);
             if(offset.getLiteralValue())
@@ -916,8 +908,7 @@ void optimizations::extendBranches(const Module& module, Method& method, const C
         std::make_pair(UNDEFINED_VALUE, intermediate::InstructionDecorations::NONE);
     while(!it.isEndOfMethod())
     {
-        intermediate::Branch* branch = it.get<intermediate::Branch>();
-        if(branch != nullptr)
+        if(auto branch = it.get<intermediate::Branch>())
         {
             CPPLOG_LAZY(logging::Level::DEBUG, log << "Extending branch: " << branch->to_string() << logging::endl);
             if(branch->hasConditionalExecution() || !branch->getCondition().hasLiteral(BOOL_TRUE.literal()))
@@ -1022,7 +1013,7 @@ static bool isLocalUsed(Method& method, const std::string& name)
 void optimizations::addStartStopSegment(const Module& module, Method& method, const Configuration& config)
 {
     auto it = method.walkAllInstructions();
-    if(!it.has<intermediate::BranchLabel>() ||
+    if(!it.get<intermediate::BranchLabel>() ||
         BasicBlock::DEFAULT_BLOCK.compare(it.get<intermediate::BranchLabel>()->getLabel()->name) != 0)
     {
         it = method.emplaceLabel(
@@ -1152,7 +1143,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         // do the loading
         // we need special treatment for non-scalar parameter (e.g. vectors), since they can't be read with just 1
         // UNIFORM
-        if(!param.type.isPointerType() && param.type.getVectorWidth() != 1)
+        if(!param.type.getPointerType() && param.type.getVectorWidth() != 1)
         {
             it = loadVectorParameter(param, method, it);
         }
@@ -1184,7 +1175,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
             assign(it, param.createReference()) = (Value(REG_UNIFORM, param.type),
                 InstructionDecorations::WORK_GROUP_UNIFORM_VALUE,
                 // all pointers are unsigned
-                param.type.isPointerType() ? InstructionDecorations::UNSIGNED_RESULT : InstructionDecorations::NONE);
+                param.type.getPointerType() ? InstructionDecorations::UNSIGNED_RESULT : InstructionDecorations::NONE);
         }
     }
 
@@ -1244,8 +1235,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             for(auto it = block->walk(); it != block->walkEnd(); it = it.nextInBlock())
             {
                 // TODO: Constants like `mul24 r1, 4, elem_num` should be also moved.
-                auto loadInst = it.get<LoadImmediate>();
-                if(loadInst != nullptr)
+                if(auto loadInst = it.get<LoadImmediate>())
                 {
                     // LoadImmediate must have output value
                     auto out = loadInst->getOutput().value();
@@ -1260,8 +1250,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                         }
                         else
                         {
-                            auto targetBlock = root->key->findPredecessor();
-                            if(targetBlock != nullptr)
+                            if(auto targetBlock = root->key->findPredecessor())
                             {
                                 auto targetInst = targetBlock->key->walkEnd();
                                 targetInst.emplace(it.release());

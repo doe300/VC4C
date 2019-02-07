@@ -38,8 +38,3 @@ std::string BranchInstruction::toASMString() const
                 "");
     return s;
 }
-
-bool BranchInstruction::isValidInstruction() const
-{
-    return getSig() == SIGNAL_BRANCH;
-}

@@ -748,7 +748,7 @@ Optional<Value> SPIRVIndexOf::precalculate(
     for(const Value& index : indexValues)
     {
         Value subOffset(UNDEFINED_VALUE);
-        if(subContainerType.isPointerType() || subContainerType.getArrayType())
+        if(subContainerType.getPointerType() || subContainerType.getArrayType())
         {
             // index is index in pointer/array
             //-> add offset of element at given index to global offset

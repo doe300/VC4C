@@ -50,15 +50,14 @@ std::pair<AvailableExpressions, Optional<Expression>> AvailableExpressionAnalysi
             for(const auto& expr : cacheIt->second)
                 newExpressions.erase(expr);
         }
-        expr = Expression::createExpression(*instr);
-        if(expr)
+        if(auto expr = Expression::createExpression(*instr))
         {
             // only adds if expression is not already in there
             auto it = newExpressions.emplace(expr.value(), std::make_pair(instr, 0));
             if(it.second)
             {
                 // add map from input locals to expression (if we really inserted an expression)
-                for(const auto loc : instr->getUsedLocals())
+                for(const auto& loc : instr->getUsedLocals())
                 {
                     if(has_flag(loc.second, LocalUse::Type::READER))
                         cache[loc.first].emplace(it.first->first);

@@ -375,13 +375,12 @@ static uint8_t calculateQPUSideAddress(const DataType& type, unsigned char rowIn
 static NODISCARD InstructionWalker calculateElementOffset(
     Method& method, InstructionWalker it, const DataType& elementType, const Value& inAreaOffset, Value& elementOffset)
 {
-    if(inAreaOffset.getLiteralValue())
+    if(auto lit = inAreaOffset.getLiteralValue())
     {
         // e.g. 32-bit type, 4 byte offset -> 1 32-bit vector offset
         // e.g. byte4 type, 4 byte offset -> 1 byte-vector offset
         // e.g. half-word8 type, 32 byte offset -> 2 half-word vector offset
-        elementOffset = Value(
-            Literal(inAreaOffset.getLiteralValue()->signedInt() / elementType.getPhysicalWidth()), inAreaOffset.type);
+        elementOffset = Value(Literal(lit->signedInt() / elementType.getPhysicalWidth()), inAreaOffset.type);
     }
     else
     {
@@ -476,7 +475,7 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
         // a single vector can only use a maximum of 1 row
         updateScratchSize(1);
 
-    if(memoryAddress.hasLocal() && memoryAddress.local() != nullptr)
+    if(memoryAddress.checkLocal())
     {
         // set the type of the parameter, if we can determine it
         if(memoryAddress.local()->as<Parameter>() != nullptr)
@@ -538,7 +537,7 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
         // a single vector can only use a maximum of 1 row
         updateScratchSize(1);
 
-    if(memoryAddress.hasLocal() && memoryAddress.local() != nullptr)
+    if(memoryAddress.checkLocal() && memoryAddress.local() != nullptr)
     {
         // set the type of the parameter, if we can determine it
         if(memoryAddress.local()->as<Parameter>() != nullptr)
@@ -1011,7 +1010,7 @@ VPMInstructions periphery::findRelatedVPMInstructions(InstructionWalker anyVPMIn
     while(!it.isStartOfBlock())
     {
         // only look up to the next mutex (un)lock
-        if(it.has<intermediate::MutexLock>())
+        if(it.get<intermediate::MutexLock>())
             break;
         if(it.has())
         {
@@ -1035,7 +1034,7 @@ VPMInstructions periphery::findRelatedVPMInstructions(InstructionWalker anyVPMIn
     while(!it.isEndOfBlock())
     {
         // only look up to the next mutex (un)lock
-        if(it.has<intermediate::MutexLock>())
+        if(it.get<intermediate::MutexLock>())
             break;
         if(it.has())
         {
@@ -1061,11 +1060,11 @@ VPMInstructions periphery::findRelatedVPMInstructions(InstructionWalker anyVPMIn
 DataType VPM::getVPMStorageType(const DataType& type)
 {
     DataType inVPMType = TYPE_UNKNOWN;
-    if(type.getArrayType())
+    if(auto arrayType = type.getArrayType())
     {
         // e.g. short2[17] -> short16[17]
         // also int4[1][2] -> int16[1][2]
-        inVPMType = getVPMStorageType(type.getElementType()).toArrayType(type.getArrayType()->size);
+        inVPMType = getVPMStorageType(arrayType->elementType).toArrayType(arrayType->size);
     }
     else if(type.getPointerType())
         // e.g. int* -> int16

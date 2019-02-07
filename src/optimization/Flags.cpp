@@ -183,17 +183,17 @@ InstructionWalker optimizations::combineFlagWithOutput(
     if(!it->writesRegister(REG_NOP))
         // already has output
         return it;
-    if(!it.has<intermediate::MoveOperation>())
+    if(!it.get<intermediate::MoveOperation>())
         // only combine setting flags from moves (e.g. for PHI-nodes) for now
         return it;
     const auto& in = it->assertArgument(0);
     if(it->signal.hasSideEffects() || it->hasConditionalExecution() ||
-        (in.hasRegister() && in.reg().hasSideEffectsOnRead()))
+        (in.checkRegister() && in.reg().hasSideEffectsOnRead()))
         // only remove this setting of flags, if we have no other side effects and don't execute conditionally
         return it;
     const auto checkFunc = [&](InstructionWalker checkIt) -> bool {
         return checkIt.has() && !checkIt->doesSetFlag() && !checkIt->hasSideEffects() &&
-            checkIt.has<intermediate::MoveOperation>() &&
+            checkIt.get<intermediate::MoveOperation>() &&
             (checkIt->assertArgument(0) == in ||
                 (in.getLiteralValue() && checkIt->assertArgument(0).hasLiteral(*in.getLiteralValue())));
     };

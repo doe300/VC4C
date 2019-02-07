@@ -390,10 +390,10 @@ Optional<unsigned char> SmallImmediate::getRotationOffset() const
 
 Optional<Literal> SmallImmediate::toLiteral() const
 {
-    if(getIntegerValue())
-        return Literal(getIntegerValue().value());
-    if(getFloatingValue())
-        return Literal(getFloatingValue().value());
+    if(auto intVal = getIntegerValue())
+        return Literal(*intVal);
+    if(auto floatVal = getFloatingValue())
+        return Literal(*floatVal);
     return {};
 }
 
@@ -483,16 +483,16 @@ bool Value::operator==(const Value& other) const
         return true;
     if(data.index() != other.data.index())
         return false;
-    if(hasRegister())
-        return other.hasRegister(reg());
-    if(hasLiteral())
-        return other.hasLiteral(literal());
-    if(hasLocal())
-        return other.hasLocal(local());
-    if(hasContainer())
-        return other.container().elements == container().elements;
-    if(hasImmediate())
-        return other.hasImmediate(immediate());
+    if(auto reg = checkRegister())
+        return other.hasRegister(*reg);
+    if(auto lit = checkLiteral())
+        return other.hasLiteral(*lit);
+    if(auto loc = checkLocal())
+        return other.hasLocal(loc);
+    if(auto container = checkContainer())
+        return other.container().elements == container->elements;
+    if(auto imm = checkImmediate())
+        return other.hasImmediate(*imm);
     if(isUndefined())
         return other.isUndefined();
     throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type!");
@@ -500,117 +500,96 @@ bool Value::operator==(const Value& other) const
 
 Value Value::getCompoundPart(std::size_t index) const
 {
-    if(hasContainer())
-        return container().elements.at(index);
-    if(hasLocal())
-        return Value(local(), type.getElementType());
-    if(hasRegister())
+    if(auto container = checkContainer())
+        return container->elements.at(index);
+    if(auto loc = checkLocal())
+        return Value(loc, type.getElementType());
+    if(auto reg = checkRegister())
         // would only be valid for IO-registers, writing all values sequentially??
-        return Value(reg(), type.getElementType());
+        return Value(*reg, type.getElementType());
     if(isUndefined())
         return UNDEFINED_VALUE;
     throw CompilationError(CompilationStep::GENERAL, "Can't get part of non-compound value", to_string(false));
 }
 
-bool Value::hasRegister() const
-{
-    return VariantNamespace::holds_alternative<Register>(data);
-}
-bool Value::hasLiteral() const
-{
-    return VariantNamespace::holds_alternative<Literal>(data);
-}
-bool Value::hasImmediate() const
-{
-    return VariantNamespace::holds_alternative<SmallImmediate>(data);
-}
-bool Value::hasLocal() const
-{
-    return VariantNamespace::holds_alternative<Local*>(data);
-}
-bool Value::hasContainer() const
-{
-    return VariantNamespace::holds_alternative<ContainerValue>(data);
-}
-
 bool Value::hasLocal(const Local* local) const
 {
-    return hasLocal() && checkPointer(this->local()) == checkPointer(local);
+    return checkLocal() && checkPointer(this->local()) == checkPointer(local);
 }
 
 bool Value::hasRegister(Register reg) const
 {
-    return hasRegister() && this->reg() == reg;
+    return checkRegister() && this->reg() == reg;
 }
 
 bool Value::hasLiteral(const Literal& lit) const
 {
-    if(hasImmediate())
-        return immediate().getIntegerValue() == lit.signedInt() || immediate().getFloatingValue() == lit.real();
-    return hasLiteral() && this->literal() == lit;
+    if(auto imm = checkImmediate())
+        return imm->getIntegerValue() == lit.signedInt() || imm->getFloatingValue() == lit.real();
+    return checkLiteral() && this->literal() == lit;
 }
 
 bool Value::hasImmediate(SmallImmediate immediate) const
 {
-    if(hasLiteral())
-        return immediate.getIntegerValue() == literal().signedInt() || immediate.getFloatingValue() == literal().real();
-    return hasImmediate() && this->immediate() == immediate;
+    if(auto lit = checkLiteral())
+        return immediate.getIntegerValue() == lit->signedInt() || immediate.getFloatingValue() == lit->real();
+    return checkImmediate() && this->immediate() == immediate;
 }
 
 bool Value::isUndefined() const
 {
     return VariantNamespace::holds_alternative<VariantNamespace::monostate>(data) ||
-        (hasContainer() && container().isUndefined()) || (hasLocal() && local() == nullptr);
+        (checkContainer() && container().isUndefined()) || (checkLocal() && local() == nullptr);
 }
 
 bool Value::isZeroInitializer() const
 {
-    return (hasLiteral() && literal().unsignedInt() == 0) || (hasImmediate() && immediate().value == 0) ||
-        (hasContainer() &&
+    return (checkLiteral() && literal().unsignedInt() == 0) || (checkImmediate() && immediate().value == 0) ||
+        (checkContainer() &&
             std::all_of(container().elements.begin(), container().elements.end(),
                 [](const Value& val) -> bool { return val.isZeroInitializer(); }));
 }
 
 bool Value::isLiteralValue() const
 {
-    return hasLiteral() || hasImmediate();
+    return checkLiteral() || checkImmediate();
 }
 
 Optional<Literal> Value::getLiteralValue() const
 {
-    if(hasLiteral())
-        return literal();
-    if(hasImmediate())
-        return immediate().toLiteral();
+    if(auto lit = checkLiteral())
+        return *lit;
+    if(auto imm = checkImmediate())
+        return imm->toLiteral();
     return {};
 }
 
 std::string Value::to_string(const bool writeAccess, bool withLiterals) const
 {
     const std::string typeName = (type.isUnknown() ? "unknown" : type.to_string()) + ' ';
-    if(hasLiteral())
-        return typeName + literal().to_string();
-    if(hasContainer())
+    if(auto lit = checkLiteral())
+        return typeName + lit->to_string();
+    if(auto container = checkContainer())
     {
         if(withLiterals)
         {
             std::string tmp;
             const std::string pre = type.isVectorType() ? "<" : type.getArrayType() ? "[" : "{";
             const std::string post = type.isVectorType() ? ">" : type.getArrayType() ? "]" : "}";
-            for(const Value& element : container().elements)
+            for(const Value& element : container->elements)
                 tmp.append(element.to_string(writeAccess, withLiterals)).append(", ");
             return typeName + pre + tmp.substr(0, tmp.length() - 2) + post;
         }
         if(isZeroInitializer())
             return typeName + "zerointializer";
-        return typeName + std::string("container with ") + std::to_string(container().elements.size()) + " elements";
+        return typeName + std::string("container with ") + std::to_string(container->elements.size()) + " elements";
     }
-    if(hasLocal())
-        return withLiterals ? local()->to_string(true) : (typeName + local()->name);
-    if(hasRegister())
-        return std::string("register ") + reg().to_string(true, !writeAccess);
-    if(hasImmediate())
-        return typeName + immediate().to_string();
+    if(auto loc = checkLocal())
+        return withLiterals ? loc->to_string(true) : (typeName + loc->name);
+    if(auto reg = checkRegister())
+        return std::string("register ") + reg->to_string(true, !writeAccess);
+    if(auto imm = checkImmediate())
+        return typeName + imm->to_string();
     if(isUndefined())
         return typeName + "undefined";
     throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type!");
@@ -618,12 +597,12 @@ std::string Value::to_string(const bool writeAccess, bool withLiterals) const
 
 bool Value::isWriteable() const
 {
-    return hasLocal() || (hasRegister() && reg().isWriteable());
+    return checkLocal() || (checkRegister() && reg().isWriteable());
 }
 
 bool Value::isReadable() const
 {
-    return !(hasRegister() && !reg().isReadable());
+    return !(checkRegister() && !reg().isReadable());
 }
 const Value& Value::assertWriteable() const
 {
@@ -655,8 +634,8 @@ Value& Value::assertReadable()
 
 const LocalUser* Value::getSingleWriter() const
 {
-    if(hasLocal())
-        return local()->getSingleWriter();
+    if(auto loc = checkLocal())
+        return loc->getSingleWriter();
     return nullptr;
 }
 
@@ -672,16 +651,16 @@ Value Value::createZeroInitializer(const DataType& type)
             val.container().elements.push_back(INT_ZERO);
         }
     }
-    else if(type.getArrayType())
+    else if(auto arrayType = type.getArrayType())
     {
-        for(unsigned i = 0; i < type.getArrayType()->size; i++)
+        for(unsigned i = 0; i < arrayType->size; i++)
         {
-            val.container().elements.push_back(createZeroInitializer(type.getElementType()));
+            val.container().elements.push_back(createZeroInitializer(arrayType->elementType));
         }
     }
-    else if(type.getStructType())
+    else if(auto structType = type.getStructType())
     {
-        for(unsigned i = 0; i < type.getStructType()->elementTypes.size(); i++)
+        for(unsigned i = 0; i < structType->elementTypes.size(); i++)
         {
             val.container().elements.push_back(createZeroInitializer(type.getElementType(i)));
         }

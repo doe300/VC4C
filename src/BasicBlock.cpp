@@ -116,18 +116,15 @@ void BasicBlock::forSuccessiveBlocks(const std::function<void(BasicBlock&)>& con
     {
         for(const auto& inst : *this)
         {
-            auto branch = dynamic_cast<const intermediate::Branch*>(inst.get());
-            if(branch)
+            if(auto branch = dynamic_cast<const intermediate::Branch*>(inst.get()))
             {
-                BasicBlock* next = method.findBasicBlock(branch->getTarget());
-                if(next != nullptr)
+                if(auto next = method.findBasicBlock(branch->getTarget()))
                     consumer(*next);
             }
             // TODO shouldn't this be outside of the loop?!
             if(fallsThroughToNextBlock())
             {
-                BasicBlock* next = method.getNextBlockAfter(this);
-                if(next != nullptr)
+                if(auto next = method.getNextBlockAfter(this))
                     consumer(*next);
             }
         }
@@ -196,7 +193,7 @@ bool BasicBlock::fallsThroughToNextBlock(bool useCFGIfAvailable) const
         it.previousInBlock();
         if(it.get() && it->signal == SIGNAL_END_PROGRAM)
             return false;
-    } while(it.has<intermediate::Nop>());
+    } while(it.get<const intermediate::Nop>());
     const intermediate::Branch* lastBranch = it.get<const intermediate::Branch>();
     const intermediate::Branch* secondLastBranch = nullptr;
     if(!it.isStartOfBlock())
@@ -207,7 +204,7 @@ bool BasicBlock::fallsThroughToNextBlock(bool useCFGIfAvailable) const
                 // special handling for blocks with only label and branches
                 break;
             it.previousInBlock();
-        } while(!it.has<intermediate::Branch>());
+        } while(!it.get<const intermediate::Branch>());
         secondLastBranch = it.get<const intermediate::Branch>();
     }
     if(lastBranch != nullptr && lastBranch->isUnconditional())
@@ -246,8 +243,7 @@ Optional<InstructionWalker> BasicBlock::findLastSettingOfFlags(const Instruction
     {
         if(it->setFlags == SetFlag::SET_FLAGS)
             return it;
-        const intermediate::CombinedOperation* comb = it.get<intermediate::CombinedOperation>();
-        if(comb != nullptr)
+        if(auto comb = it.get<intermediate::CombinedOperation>())
         {
             if(comb->op1 && comb->op1->setFlags == SetFlag::SET_FLAGS)
                 return it;

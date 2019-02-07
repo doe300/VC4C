@@ -69,8 +69,7 @@ static NODISCARD InstructionWalker insertLoadArraySizeOrImageDepth(
 
 InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Method& method)
 {
-    MethodCall* callSite = it.get<MethodCall>();
-    if(callSite != nullptr)
+    if(auto callSite = it.get<MethodCall>())
     {
         if(callSite->methodName.find("vc4cl_sampler_get_normalized_coords") != std::string::npos)
         {

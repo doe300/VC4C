@@ -25,11 +25,10 @@ bool InstructionVisitor::visit(const InstructionWalker& start) const
         {
         case InstructionVisitResult::CONTINUE:
         {
-            if(followJumps && it.has<intermediate::Branch>())
+            if(followJumps && it.get<intermediate::Branch>())
             {
                 intermediate::Branch* jump = it.get<intermediate::Branch>();
-                BasicBlock* nextBlock = it.getBasicBlock()->method.findBasicBlock(jump->getTarget());
-                if(nextBlock != nullptr)
+                if(auto nextBlock = it.getBasicBlock()->method.findBasicBlock(jump->getTarget()))
                 {
                     bool cont = visit(nextBlock->walk());
                     if(!cont)
@@ -163,8 +162,7 @@ InstructionWalker& InstructionWalker::nextInMethod()
     nextInBlock();
     if(isEndOfBlock())
     {
-        BasicBlock* tmp = basicBlock->method.getNextBlockAfter(basicBlock);
-        if(tmp != nullptr)
+        if(auto tmp = basicBlock->method.getNextBlockAfter(basicBlock))
         {
             basicBlock = tmp;
             pos = basicBlock->instructions.begin();
@@ -177,8 +175,7 @@ InstructionWalker& InstructionWalker::previousInMethod()
     previousInBlock();
     if(isStartOfBlock())
     {
-        BasicBlock* tmp = basicBlock->method.getPreviousBlock(basicBlock);
-        if(tmp != nullptr)
+        if(auto tmp = basicBlock->method.getPreviousBlock(basicBlock))
         {
             basicBlock = tmp;
             pos = basicBlock->instructions.end();
@@ -248,9 +245,9 @@ const intermediate::IntermediateInstruction* InstructionWalker::get() const
 intermediate::IntermediateInstruction* InstructionWalker::release()
 {
     throwOnEnd(isEndOfBlock());
-    if(has<intermediate::BranchLabel>())
+    if(get<intermediate::BranchLabel>())
         basicBlock->method.updateCFGOnBlockRemoval(basicBlock);
-    if(has<intermediate::Branch>())
+    if(get<intermediate::Branch>())
     {
         // need to remove the branch from the block before triggering the CFG update
         std::unique_ptr<intermediate::IntermediateInstruction> tmp(pos->release());
@@ -267,7 +264,7 @@ InstructionWalker& InstructionWalker::reset(intermediate::IntermediateInstructio
     if(dynamic_cast<intermediate::BranchLabel*>(instr) != dynamic_cast<intermediate::BranchLabel*>((*pos).get()))
         throw CompilationError(CompilationStep::GENERAL, "Can't add labels into a basic block", instr->to_string());
     // if we reset the label with another label, the CFG dos not change
-    if(has<intermediate::Branch>())
+    if(get<intermediate::Branch>())
     {
         // need to remove the branch from the block before triggering the CFG update
         std::unique_ptr<intermediate::IntermediateInstruction> tmp(pos->release());
@@ -283,9 +280,9 @@ InstructionWalker& InstructionWalker::reset(intermediate::IntermediateInstructio
 InstructionWalker& InstructionWalker::erase()
 {
     throwOnEnd(isEndOfBlock());
-    if(has<intermediate::BranchLabel>())
+    if(get<intermediate::BranchLabel>())
         basicBlock->method.updateCFGOnBlockRemoval(basicBlock);
-    if(has<intermediate::Branch>())
+    if(get<intermediate::Branch>())
     {
         // need to remove the branch from the block before triggering the CFG update
         std::unique_ptr<intermediate::IntermediateInstruction> tmp(pos->release());
@@ -351,8 +348,7 @@ ConstInstructionWalker& ConstInstructionWalker::nextInMethod()
     nextInBlock();
     if(isEndOfBlock())
     {
-        BasicBlock* tmp = basicBlock->method.getNextBlockAfter(basicBlock);
-        if(tmp != nullptr)
+        if(auto tmp = basicBlock->method.getNextBlockAfter(basicBlock))
         {
             basicBlock = tmp;
             pos = basicBlock->instructions.begin();
@@ -400,8 +396,7 @@ ConstInstructionWalker& ConstInstructionWalker::previousInMethod()
     previousInBlock();
     if(isStartOfBlock())
     {
-        BasicBlock* tmp = basicBlock->method.getPreviousBlock(basicBlock);
-        if(tmp != nullptr)
+        if(auto tmp = basicBlock->method.getPreviousBlock(basicBlock))
         {
             basicBlock = tmp;
             pos = basicBlock->instructions.end();

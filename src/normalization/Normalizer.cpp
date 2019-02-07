@@ -36,13 +36,12 @@ static void propagateGroupUniforms(Module& module, Method& method, InstructionWa
 {
     // XXX does not propagate decoration via phi-nodes of back jumps
     static const auto check = [](const Value& arg) -> bool {
-        if(arg.hasRegister())
+        if(arg.checkRegister())
             return arg.hasRegister(REG_UNIFORM) || arg.hasRegister(REG_ELEMENT_NUMBER);
-        if(arg.hasImmediate() || arg.hasLiteral())
+        if(arg.checkImmediate() || arg.checkLiteral())
             return true;
-        if(arg.hasLocal())
+        if(auto local = arg.checkLocal())
         {
-            auto local = arg.local();
             auto writes = local->getUsers(LocalUse::Type::WRITER);
             return local->is<Parameter>() || local->is<Global>() ||
                 std::all_of(
@@ -53,8 +52,8 @@ static void propagateGroupUniforms(Module& module, Method& method, InstructionWa
         }
         return false;
     };
-    if(it.has<intermediate::Nop>() || it.has<intermediate::BranchLabel>() || it.has<intermediate::MutexLock>() ||
-        it.has<intermediate::SemaphoreAdjustment>() || it.has<intermediate::MemoryBarrier>())
+    if(it.get<intermediate::Nop>() || it.get<intermediate::BranchLabel>() || it.get<intermediate::MutexLock>() ||
+        it.get<intermediate::SemaphoreAdjustment>() || it.get<intermediate::MemoryBarrier>())
         return;
     if(it->hasDecoration(intermediate::InstructionDecorations::BUILTIN_GLOBAL_ID) ||
         it->hasDecoration(intermediate::InstructionDecorations::BUILTIN_LOCAL_ID))
@@ -79,7 +78,7 @@ static void checkNormalized(Module& module, Method& method, InstructionWalker it
 {
     if(it.has() && !it->isNormalized())
     {
-        if(it.has<intermediate::MethodCall>())
+        if(it.get<intermediate::MethodCall>())
         {
             logging::logLazy(logging::Level::WARNING, [&]() {
                 logging::error() << "Failed to in-line or intrinsify function-call: " << it->to_string()

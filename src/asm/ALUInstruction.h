@@ -29,7 +29,10 @@ namespace vc4c
                 InputMultiplex muxMulB);
 
             std::string toASMString() const;
-            bool isValidInstruction() const;
+            inline bool isValidInstruction() const
+            {
+                return getSig() != SIGNAL_BRANCH && getSig() != SIGNAL_LOAD_IMMEDIATE;
+            }
 
             // NOTE: The overlap of Unpack and Pack is on purpose!
             BITFIELD_ENTRY(Unpack, Unpack, 56, Quadruple)

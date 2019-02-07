@@ -120,20 +120,18 @@ BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType) : cont
 static void extractKernelMetadata(
     Method& kernel, const llvm::Function& func, const llvm::Module& llvmModule, const llvm::LLVMContext& context)
 {
-    llvm::MDNode* metadata = func.getMetadata("kernel_arg_addr_space");
-    if(metadata != nullptr)
+    if(auto metadata = func.getMetadata("kernel_arg_addr_space"))
     {
         // address spaces for kernel pointer arguments, e.g. "!2 = !{i32 1, i32 1}"
         for(unsigned i = 0; i < metadata->getNumOperands(); ++i)
         {
-            if(kernel.parameters.at(i).type.getPointerType())
+            if(auto ptrType = kernel.parameters.at(i).type.getPointerType())
             {
                 const llvm::Metadata* operand = metadata->getOperand(i).get();
                 if(operand->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind)
                 {
                     const llvm::ConstantAsMetadata* constant = llvm::cast<const llvm::ConstantAsMetadata>(operand);
-                    auto& addrSpace =
-                        const_cast<AddressSpace&>(kernel.parameters.at(i).type.getPointerType()->addressSpace);
+                    auto& addrSpace = const_cast<AddressSpace&>(ptrType->addressSpace);
                     if(addrSpace == AddressSpace::GENERIC)
                         addrSpace =
                             toAddressSpace(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getSExtValue());
@@ -147,15 +145,13 @@ static void extractKernelMetadata(
             }
         }
     }
-    metadata = func.getMetadata("kernel_arg_access_qual");
-    if(metadata != nullptr)
+    if(auto metadata = func.getMetadata("kernel_arg_access_qual"))
     {
         // access qualifiers for image arguments, e.g. "!3 = !{!"none", !"none"}"
         // XXX what to do with them? Only valid for images
         // if we don't use image-config for writing images, we could e.g. don't write it for write-only images
     }
-    metadata = func.getMetadata("kernel_arg_type");
-    if(metadata != nullptr)
+    if(auto metadata = func.getMetadata("kernel_arg_type"))
     {
         // original type-names for kernel arguments, e.g. "!4 = !{!"float*", !"float*"}"
         for(unsigned i = 0; i < metadata->getNumOperands(); ++i)
@@ -174,14 +170,12 @@ static void extractKernelMetadata(
             }
         }
     }
-    metadata = func.getMetadata("kernel_arg_base_type");
-    if(metadata != nullptr)
+    if(auto metadata = func.getMetadata("kernel_arg_base_type"))
     {
         // base types, e.g. for type-defs, e.g. "!4 = !{!"float*", !"float*"}"
         // is not used
     }
-    metadata = func.getMetadata("kernel_arg_type_qual");
-    if(metadata != nullptr)
+    if(auto metadata = func.getMetadata("kernel_arg_type_qual"))
     {
         // additional type qualifiers, e.g. "!5 = !{!"", !""}"
         for(unsigned i = 0; i < metadata->getNumOperands(); ++i)
@@ -206,8 +200,7 @@ static void extractKernelMetadata(
             }
         }
     }
-    metadata = func.getMetadata("kernel_arg_name");
-    if(metadata != nullptr)
+    if(auto metadata = func.getMetadata("kernel_arg_name"))
     {
         // the original argument names, e.g. "!6 = !{!"a", !"b"}"
         for(unsigned i = 0; i < metadata->getNumOperands(); ++i)
@@ -226,8 +219,7 @@ static void extractKernelMetadata(
             }
         }
     }
-    metadata = func.getMetadata("reqd_work_group_size");
-    if(metadata != nullptr)
+    if(auto metadata = func.getMetadata("reqd_work_group_size"))
     {
         // compile time work-group size, e.g. "!2 = !{i32 1, i32 1, i32 1}"
         for(unsigned i = 0; i < metadata->getNumOperands(); ++i)
@@ -247,8 +239,7 @@ static void extractKernelMetadata(
             }
         }
     }
-    metadata = func.getMetadata("work_group_size_hint");
-    if(metadata != nullptr)
+    if(auto metadata = func.getMetadata("work_group_size_hint"))
     {
         // compile time work-group size hint, e.g. "!2 = !{i32 1, i32 1, i32 1}"
         for(unsigned i = 0; i < metadata->getNumOperands(); ++i)
@@ -295,14 +286,14 @@ static void extractKernelMetadata(
                         // i32 1}"
                         for(unsigned i = 1; i < node->getNumOperands(); ++i)
                         {
-                            if(kernel.parameters.at(i - 1).type.getPointerType())
+                            if(auto ptrType = kernel.parameters.at(i - 1).type.getPointerType())
                             {
                                 const llvm::Metadata* operand = node->getOperand(i).get();
                                 if(operand->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind)
                                 {
                                     const llvm::ConstantAsMetadata* constant =
                                         llvm::cast<const llvm::ConstantAsMetadata>(operand);
-                                    auto& addrSpace = kernel.parameters.at(i - 1).type.getPointerType()->addressSpace;
+                                    auto& addrSpace = ptrType->addressSpace;
                                     if(addrSpace == AddressSpace::GENERIC)
                                         const_cast<AddressSpace&>(addrSpace) = toAddressSpace(static_cast<int>(
                                             llvm::cast<const llvm::ConstantInt>(constant->getValue())->getSExtValue()));
@@ -918,7 +909,7 @@ void BitcodeReader::parseInstruction(
             src = parseInlineGetElementPtr(module, method, instructions, load->getPointerOperand());
         else
             src = toValue(method, load->getPointerOperand());
-        if(load->isVolatile() && src.hasLocal() && src.local()->is<Parameter>())
+        if(load->isVolatile() && src.checkLocal() && src.local()->is<Parameter>())
             src.local()->as<Parameter>()->decorations =
                 add_flag(src.local()->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
         instructions.emplace_back(new Copy(toValue(method, load), std::move(src), true, true));
@@ -933,7 +924,7 @@ void BitcodeReader::parseInstruction(
             dest = parseInlineGetElementPtr(module, method, instructions, store->getPointerOperand());
         else
             dest = toValue(method, store->getPointerOperand());
-        if(store->isVolatile() && dest.hasLocal() && dest.local()->is<Parameter>())
+        if(store->isVolatile() && dest.checkLocal() && dest.local()->is<Parameter>())
             dest.local()->as<Parameter>()->decorations =
                 add_flag(dest.local()->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
         instructions.emplace_back(new Copy(std::move(dest), toValue(method, store->getValueOperand()), true, false));
@@ -997,8 +988,7 @@ void BitcodeReader::parseInstruction(
         if(func == nullptr)
         {
             // e.g. for alias - see https://stackoverflow.com/questions/22143143/
-            auto alias = llvm::dyn_cast<const llvm::GlobalAlias>(call->getCalledValue());
-            if(alias != nullptr)
+            if(auto alias = llvm::dyn_cast<const llvm::GlobalAlias>(call->getCalledValue()))
             {
                 func = llvm::dyn_cast<const llvm::Function>(alias->getAliasee());
             }
@@ -1198,9 +1188,8 @@ Value BitcodeReader::toValue(Method& method, const llvm::Value* val)
 Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
 {
     const DataType type = toDataType(val->getType());
-    if(llvm::dyn_cast<const llvm::ConstantInt>(val) != nullptr)
+    if(auto constant = llvm::dyn_cast<const llvm::ConstantInt>(val))
     {
-        auto constant = llvm::cast<const llvm::ConstantInt>(val);
         if(constant->getSExtValue() > std::numeric_limits<uint32_t>::max() ||
             constant->getSExtValue() < std::numeric_limits<int32_t>::min())
         {
@@ -1218,10 +1207,9 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
      * For "standard" LLVM (4.0+), ConstantVector, ConstantArray and ConstantStruct have a common super-type
      * ConstantAggregate, but not yet for SPIRV-LLVM (~3.6)
      */
-    else if(llvm::dyn_cast<const llvm::ConstantVector>(val) != nullptr)
+    else if(auto constant = llvm::dyn_cast<const llvm::ConstantVector>(val))
     {
         // element types are stored as operands
-        const llvm::ConstantVector* constant = llvm::cast<const llvm::ConstantVector>(val);
         Value aggregate(ContainerValue(constant->getNumOperands()), type);
         for(unsigned i = 0; i < constant->getNumOperands(); ++i)
         {
@@ -1229,10 +1217,9 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         }
         return aggregate;
     }
-    else if(llvm::dyn_cast<const llvm::ConstantArray>(val) != nullptr)
+    else if(auto constant = llvm::dyn_cast<const llvm::ConstantArray>(val))
     {
         // element types are stored as operands
-        const llvm::ConstantArray* constant = llvm::cast<const llvm::ConstantArray>(val);
         Value aggregate(ContainerValue(constant->getNumOperands()), type);
         for(unsigned i = 0; i < constant->getNumOperands(); ++i)
         {
@@ -1240,10 +1227,8 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         }
         return aggregate;
     }
-    else if(llvm::dyn_cast<const llvm::ConstantStruct>(val) != nullptr)
+    else if(auto constant = llvm::dyn_cast<const llvm::ConstantStruct>(val))
     {
-        const llvm::ConstantStruct* constant = llvm::cast<const llvm::ConstantStruct>(val);
-
         // special treatment for spirv.ConstantSampler type
         if(type == TYPE_SAMPLER)
         {
@@ -1263,10 +1248,9 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         }
         return aggregate;
     }
-    else if(llvm::dyn_cast<const llvm::ConstantDataSequential>(val) != nullptr)
+    else if(auto constant = llvm::dyn_cast<const llvm::ConstantDataSequential>(val))
     {
         // vector/array constant, but packed in storage
-        const llvm::ConstantDataSequential* constant = llvm::cast<const llvm::ConstantDataSequential>(val);
         Value aggregate(ContainerValue(constant->getNumElements()), type);
         for(unsigned i = 0; i < constant->getNumElements(); ++i)
         {
@@ -1274,9 +1258,8 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         }
         return aggregate;
     }
-    else if(llvm::dyn_cast<const llvm::ConstantAggregateZero>(val) != nullptr)
+    else if(auto constant = llvm::dyn_cast<const llvm::ConstantAggregateZero>(val))
     {
-        const llvm::ConstantAggregateZero* constant = llvm::cast<const llvm::ConstantAggregateZero>(val);
         Value aggregate(ContainerValue(constant->getNumElements()), type);
         for(unsigned i = 0; i < constant->getNumElements(); ++i)
         {
@@ -1284,19 +1267,19 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         }
         return aggregate;
     }
-    else if(llvm::dyn_cast<const llvm::ConstantFP>(val) != nullptr)
+    else if(auto constant = llvm::dyn_cast<const llvm::ConstantFP>(val))
     {
-        return Value(Literal(llvm::cast<const llvm::ConstantFP>(val)->getValueAPF().convertToFloat()), type);
+        return Value(Literal(constant->getValueAPF().convertToFloat()), type);
     }
     else if(llvm::dyn_cast<const llvm::ConstantPointerNull>(val) != nullptr)
     {
         return Value(INT_ZERO.literal(), type);
     }
-    else if(llvm::dyn_cast<const llvm::ConstantExpr>(val) != nullptr)
+    else if(auto constant = llvm::dyn_cast<const llvm::ConstantExpr>(val))
     {
-        return precalculateConstantExpression(module, llvm::cast<const llvm::ConstantExpr>(val));
+        return precalculateConstantExpression(module, constant);
     }
-    else if(llvm::dyn_cast<const llvm::GlobalVariable>(val) != nullptr)
+    else if(auto global = llvm::dyn_cast<const llvm::GlobalVariable>(val))
     {
         const std::string name = ("@" + val->getName()).str();
         auto globalIt = std::find_if(module.globalData.begin(), module.globalData.end(),
@@ -1304,7 +1287,6 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         if(globalIt != module.globalData.end())
             return globalIt->createReference();
 
-        const llvm::GlobalVariable* global = llvm::cast<const llvm::GlobalVariable>(val);
         module.globalData.emplace_back(Global(name, toDataType(global->getType()),
             global->hasInitializer() ? toConstant(module, global->getInitializer()) : UNDEFINED_VALUE,
             global->isConstant()));

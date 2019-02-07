@@ -29,7 +29,7 @@ qpu_asm::DecoratedInstruction SemaphoreAdjustment::convertToAsm(const FastMap<co
             "Condition codes have no effect on whether the semaphore is adjusted", to_string());
 
     const Register outReg = getOutput() ?
-        (getOutput()->hasLocal() ? registerMapping.at(getOutput()->local()) : getOutput()->reg()) :
+        (getOutput()->checkLocal() ? registerMapping.at(getOutput()->local()) : getOutput()->reg()) :
         REG_NOP;
     return qpu_asm::SemaphoreInstruction(PACK_NOP, COND_ALWAYS, COND_ALWAYS, setFlags,
         outReg.file == RegisterFile::PHYSICAL_B ? WriteSwap::SWAP : WriteSwap::DONT_SWAP, outReg.num, outReg.num,
@@ -128,7 +128,7 @@ bool MemoryBarrier::mapsToASMInstruction() const
 LifetimeBoundary::LifetimeBoundary(const Value& allocation, const bool lifetimeEnd) :
     IntermediateInstruction(Optional<Value>{}), isLifetimeEnd(lifetimeEnd)
 {
-    if(!allocation.hasLocal() || !allocation.local()->is<StackAllocation>())
+    if(!allocation.checkLocal() || !allocation.local()->is<StackAllocation>())
         throw CompilationError(CompilationStep::LLVM_2_IR, "Cannot control life-time of object not located on stack",
             allocation.to_string());
 

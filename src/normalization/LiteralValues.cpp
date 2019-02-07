@@ -107,11 +107,11 @@ static NODISCARD InstructionWalker copyVector(Method& method, InstructionWalker 
         return it.nextInBlock();
     }
     Value realOut = out;
-    if(!out.hasLocal())
+    if(!out.checkLocal())
     {
         realOut = method.addNewLocal(TYPE_UNKNOWN, "%container");
     }
-    if(!out.hasRegister() && !out.type.isUnknown() && in.type.getVectorWidth() > out.type.getVectorWidth())
+    if(!out.checkRegister() && !out.type.isUnknown() && in.type.getVectorWidth() > out.type.getVectorWidth())
     {
         throw CompilationError(CompilationStep::OPTIMIZER, "Input vector has invalid type", in.to_string(false, true));
     }
@@ -162,7 +162,7 @@ InstructionWalker normalization::handleContainer(
     intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
     intermediate::Operation* op = it.get<intermediate::Operation>();
     intermediate::VectorRotation* rot = it.get<intermediate::VectorRotation>();
-    if(rot != nullptr && rot->getSource().hasContainer() && (rot->getOffset().isLiteralValue()))
+    if(rot != nullptr && rot->getSource().checkContainer() && (rot->getOffset().isLiteralValue()))
     {
         Value src = rot->getSource();
         // vector rotation -> rotate container (if static offset)
@@ -192,7 +192,7 @@ InstructionWalker normalization::handleContainer(
     // jump from previous block to next one intended, so no "else"
     // if the source is a container and the offset is a literal (already applied above), remove the rotation (see move
     // branch) if the source is a container and the offset is no literal, extract the container, but keep rotation
-    if(rot != nullptr && rot->getSource().hasContainer() && !(rot->getOffset().isLiteralValue()))
+    if(rot != nullptr && rot->getSource().checkContainer() && !(rot->getOffset().isLiteralValue()))
     {
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Rewriting rotation from container " << rot->to_string() << logging::endl);
@@ -200,9 +200,9 @@ InstructionWalker normalization::handleContainer(
         it = copyVector(method, it, tmp, move->getSource());
         it->setArgument(0, std::move(tmp));
     }
-    else if(move != nullptr && move->getSource().hasContainer())
+    else if(move != nullptr && move->getSource().checkContainer())
     {
-        if(!move->getSource().type.isPointerType())
+        if(!move->getSource().type.getPointerType())
         {
             CPPLOG_LAZY(
                 logging::Level::DEBUG, log << "Rewriting move from container " << move->to_string() << logging::endl);
@@ -213,17 +213,17 @@ InstructionWalker normalization::handleContainer(
         }
     }
     else if(op != nullptr &&
-        (op->getFirstArg().hasContainer() || (op->getSecondArg() && op->assertArgument(1).hasContainer())))
+        (op->getFirstArg().checkContainer() || (op->getSecondArg() && op->assertArgument(1).checkContainer())))
     {
         for(std::size_t i = 0; i < op->getArguments().size(); ++i)
         {
             // for special containers, rewrite to scalars/registers
-            if(op->assertArgument(i).hasContainer())
+            if(auto con = op->assertArgument(i).checkContainer())
             {
-                if(op->assertArgument(i).container().isAllSame())
+                if(con->isAllSame())
                 {
                     const Value& container = op->assertArgument(i);
-                    Value tmp = container.container().elements.at(0);
+                    Value tmp = con->elements.at(0);
                     tmp.type = container.type;
                     op->setArgument(i, std::move(tmp));
                 }
@@ -233,7 +233,7 @@ InstructionWalker normalization::handleContainer(
                 }
             }
         }
-        if(op->getFirstArg().hasContainer() && !op->getFirstArg().type.isPointerType())
+        if(op->getFirstArg().checkContainer() && !op->getFirstArg().type.getPointerType())
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Rewriting operation with container-input " << op->to_string() << logging::endl);
@@ -243,7 +243,7 @@ InstructionWalker normalization::handleContainer(
             // don't skip next instruction
             it.previousInBlock();
         }
-        if(op->getSecondArg() && op->assertArgument(1).hasContainer() && !op->assertArgument(1).type.isPointerType())
+        if(op->getSecondArg() && op->assertArgument(1).checkContainer() && !op->assertArgument(1).type.getPointerType())
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Rewriting operation with container-input " << op->to_string() << logging::endl);
@@ -689,10 +689,10 @@ static NODISCARD InstructionWalker handleImmediateInOperation(
     for(std::size_t i = 0; i < op->getArguments().size(); ++i)
     {
         const Value source = op->assertArgument(i);
-        if(source.hasLiteral())
+        if(auto lit = source.checkLiteral())
         {
             PROFILE_START(mapImmediateValue);
-            ImmediateHandler mapped = mapImmediateValue(source.literal());
+            ImmediateHandler mapped = mapImmediateValue(*lit);
             PROFILE_END(mapImmediateValue);
             if(mapped.changeValue)
             {
@@ -702,9 +702,9 @@ static NODISCARD InstructionWalker handleImmediateInOperation(
                 if(mapped.loadImmediate)
                 {
                     // requires load immediate
-                    CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Loading immediate value: " << source.literal().to_string() << logging::endl);
-                    it.emplace(new intermediate::LoadImmediate(tmp, source.literal(), op->conditional));
+                    CPPLOG_LAZY(
+                        logging::Level::DEBUG, log << "Loading immediate value: " << lit->to_string() << logging::endl);
+                    it.emplace(new intermediate::LoadImmediate(tmp, *lit, op->conditional));
                     // propagate the decorations so the loads are displayed as setups, not value loads
                     if(op->hasDecoration(intermediate::InstructionDecorations::VPM_READ_CONFIGURATION))
                         it->addDecorations(intermediate::InstructionDecorations::VPM_READ_CONFIGURATION);
@@ -717,7 +717,7 @@ static NODISCARD InstructionWalker handleImmediateInOperation(
                 {
                     DataType type = mapped.immediate.getFloatingValue() ? TYPE_FLOAT : TYPE_INT32;
                     CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Calculating immediate value " << source.literal().to_string() << " with operation '"
+                        log << "Calculating immediate value " << lit->to_string() << " with operation '"
                             << mapped.opCode.name << "' and immediate value " << mapped.immediate.to_string()
                             << logging::endl);
                     if(mapped.opCode.numOperands == 1)
@@ -732,7 +732,7 @@ static NODISCARD InstructionWalker handleImmediateInOperation(
                 else
                 {
                     CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Mapping constant for immediate value " << source.literal().to_string()
+                        log << "Mapping constant for immediate value " << lit->to_string()
                             << " to: " << mapped.immediate.to_string() << logging::endl);
                     op->setArgument(i, Value(mapped.immediate, source.type));
                 }
@@ -747,10 +747,10 @@ static NODISCARD InstructionWalker handleImmediateInMove(
     Method& method, InstructionWalker it, intermediate::MoveOperation* move)
 {
     Value source = move->getSource();
-    if(source.hasLiteral())
+    if(auto lit = source.checkLiteral())
     {
         PROFILE_START(mapImmediateValue);
-        ImmediateHandler mapped = mapImmediateValue(source.literal());
+        ImmediateHandler mapped = mapImmediateValue(*lit);
         PROFILE_END(mapImmediateValue);
         if(mapped.changeValue)
         {
@@ -758,15 +758,14 @@ static NODISCARD InstructionWalker handleImmediateInMove(
             if(mapped.loadImmediate)
             {
                 // requires load immediate
-                CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Loading immediate value: " << source.literal().to_string() << logging::endl);
-                it.reset((new intermediate::LoadImmediate(move->getOutput().value(), source.literal()))
-                             ->copyExtrasFrom(move));
+                CPPLOG_LAZY(
+                    logging::Level::DEBUG, log << "Loading immediate value: " << lit->to_string() << logging::endl);
+                it.reset((new intermediate::LoadImmediate(move->getOutput().value(), *lit))->copyExtrasFrom(move));
             }
             else if(mapped.opCode != OP_NOP)
             {
                 CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Calculating immediate value " << source.literal().to_string() << " with operation '"
+                    log << "Calculating immediate value " << lit->to_string() << " with operation '"
                         << mapped.opCode.name << "' and immediate value " << mapped.immediate.to_string()
                         << logging::endl);
                 if(mapped.opCode.numOperands == 1)
@@ -782,7 +781,7 @@ static NODISCARD InstructionWalker handleImmediateInMove(
             else
             {
                 CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Mapping constant for immediate value " << source.literal().to_string()
+                    log << "Mapping constant for immediate value " << lit->to_string()
                         << " to: " << mapped.immediate.to_string() << logging::endl);
                 move->setSource(Value(mapped.immediate, source.type));
             }
@@ -794,19 +793,16 @@ static NODISCARD InstructionWalker handleImmediateInMove(
 InstructionWalker normalization::handleImmediate(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
-    intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
-    if(move != nullptr)
+    if(auto move = it.get<intermediate::MoveOperation>())
     {
         it = handleImmediateInMove(method, it, move);
     }
-    intermediate::Operation* op = it.get<intermediate::Operation>();
-    if(op != nullptr)
+    if(auto op = it.get<intermediate::Operation>())
     {
         // check for both arguments
         it = handleImmediateInOperation(method, it, op);
     }
-    intermediate::CombinedOperation* comb = it.get<intermediate::CombinedOperation>();
-    if(comb != nullptr)
+    if(auto comb = it.get<intermediate::CombinedOperation>())
     {
         if(comb->getFirstOp() != nullptr)
             it = handleImmediateInOperation(method, it, const_cast<intermediate::Operation*>(comb->getFirstOp()));
@@ -835,9 +831,9 @@ static Optional<Value> findPreviousUseWithImmediate(
 
     while(instRemaining > 0 && !it.isStartOfBlock())
     {
-        if(it.has<intermediate::MoveOperation>() && it->getArgument(0) == arg && it->conditional == COND_ALWAYS &&
+        if(it.get<intermediate::MoveOperation>() && it->getArgument(0) == arg && it->conditional == COND_ALWAYS &&
             it->getOutput().ifPresent(
-                [](const Value& val) -> bool { return val.hasLocal() && val.local()->name.find(localPrefix) == 0; }))
+                [](const Value& val) -> bool { return val.checkLocal() && val.local()->name.find(localPrefix) == 0; }))
         {
             return it->getOutput();
         }
@@ -856,15 +852,14 @@ InstructionWalker normalization::handleUseWithImmediate(
     //- if the range of the local exceeds the accumulator threshold
     //-> copy the local before the use into a new temporary, which is used with the immediate instead
     //-> fixes blocked register-file B for long-living locals
-    intermediate::Operation* op = it.get<intermediate::Operation>();
-    if(op != nullptr)
+    if(auto op = it.get<intermediate::Operation>())
     {
         if(op->readsLiteral())
         {
             // at least one immediate value is used
             const auto& args = op->getArguments();
             const auto localIt =
-                std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.hasLocal(); });
+                std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.checkLocal(); });
             if(localIt != args.end() &&
                 !it.getBasicBlock()->isLocallyLimited(findWriteOfLocal(it, localIt->local()), localIt->local(),
                     config.additionalOptions.accumulatorThreshold))
@@ -902,7 +897,7 @@ InstructionWalker normalization::handleUseWithImmediate(
                 }
             }
             const auto registerIt =
-                std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.hasRegister(); });
+                std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.checkRegister(); });
             if(registerIt != args.end() && registerIt->reg().file == RegisterFile::PHYSICAL_B)
             {
                 CPPLOG_LAZY(logging::Level::DEBUG,

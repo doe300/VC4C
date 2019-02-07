@@ -39,12 +39,10 @@ static Method& inlineMethod(
     while(!it.isEndOfMethod())
     {
         // Find all method calls
-        intermediate::MethodCall* call = it.get<intermediate::MethodCall>();
-        if(call != nullptr)
+        if(auto call = it.get<intermediate::MethodCall>())
         {
             // search for method with matching signature
-            const Method* calledMethod = matchSignatures(methods, call);
-            if(calledMethod != nullptr)
+            if(auto calledMethod = matchSignatures(methods, call))
             {
                 const std::size_t numInstructions = currentMethod.countInstructions();
                 // recursively search for used methods
@@ -77,7 +75,7 @@ static Method& inlineMethod(
                     else
                     {
                         it.emplace(new intermediate::MoveOperation(ref, call->getArgument(i).value()));
-                        if(ref.hasLocal() && call->getArgument(i)->hasLocal())
+                        if(ref.checkLocal() && call->getArgument(i)->checkLocal())
                             const_cast<Local*>(it->getOutput()->local())->reference =
                                 std::make_pair(call->getArgument(i)->local(), 0);
                         it.nextInMethod();
@@ -91,20 +89,18 @@ static Method& inlineMethod(
                 // insert instructions
                 calledMethod->forAllInstructions([&it, &currentMethod, &methodEndLabel, &newLocalPrefix, &call](
                                                      const intermediate::IntermediateInstruction* instr) -> void {
-                    const intermediate::Return* ret = dynamic_cast<const intermediate::Return*>(instr);
-                    if(ret != nullptr)
+                    if(auto ret = dynamic_cast<const intermediate::Return*>(instr))
                     {
-                        if(ret->getReturnValue())
+                        if(auto retVal = ret->getReturnValue())
                         {
                             // prefix locals with destination of call
                             // map return-value to destination
-                            Value retVal(ret->getReturnValue().value());
-                            if(retVal.hasLocal())
+                            if(retVal->checkLocal())
                             {
-                                retVal.local() = const_cast<Local*>(currentMethod.findOrCreateLocal(
-                                    retVal.type, newLocalPrefix + retVal.local()->name));
+                                retVal->local() = const_cast<Local*>(currentMethod.findOrCreateLocal(
+                                    retVal->type, newLocalPrefix + retVal->local()->name));
                             }
-                            it.emplace(new intermediate::MoveOperation(call->getOutput().value(), retVal));
+                            it.emplace(new intermediate::MoveOperation(call->getOutput().value(), *retVal));
                             it.nextInMethod();
                         }
                         // after each return, jump to label after call-site (since there may be several return
@@ -138,7 +134,7 @@ static Method& inlineMethod(
                 it = currentMethod.emplaceLabel(it, new intermediate::BranchLabel(*methodEndLabel));
 
                 // fix-up to immediately remove branches from return to %end_of_function when consecutive instructions
-                if(copyIt.has<intermediate::Branch>() &&
+                if(copyIt.get<intermediate::Branch>() &&
                     copyIt.get<intermediate::Branch>()->getTarget() == methodEndLabel)
                     copyIt.erase();
             }

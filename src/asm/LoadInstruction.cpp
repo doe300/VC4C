@@ -91,10 +91,3 @@ std::string LoadInstruction::toASMString() const
         (toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + valString;
     return s;
 }
-
-bool LoadInstruction::isValidInstruction() const
-{
-    if(getSig() != SIGNAL_LOAD_IMMEDIATE)
-        return false;
-    return getType() == OpLoad::LOAD_IMM_32 || getType() == OpLoad::LOAD_SIGNED || getType() == OpLoad::LOAD_UNSIGNED;
-}

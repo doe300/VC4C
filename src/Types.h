@@ -109,7 +109,8 @@ namespace vc4c
         bool isVectorType() const;
 
         //"complex" types
-        bool isPointerType() const;
+        // These functions return nullptr if this DataType is not of the requested type and can therefore be used to
+        // check for the complex type.
         PointerType* getPointerType();
         const PointerType* getPointerType() const;
         ArrayType* getArrayType();

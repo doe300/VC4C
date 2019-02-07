@@ -134,15 +134,15 @@ static Register getRegister(const RegisterFile file, const Register reg0, const 
 static std::pair<Register, Optional<SmallImmediate>> getInputValue(
     const Value& val, const FastMap<const Local*, Register>& registerMapping, const IntermediateInstruction* instr)
 {
-    if(val.hasRegister())
-        return std::make_pair(val.reg(), Optional<SmallImmediate>{});
-    if(val.hasLocal())
+    if(auto reg = val.checkRegister())
+        return std::make_pair(*reg, Optional<SmallImmediate>{});
+    if(auto loc = val.checkLocal())
     {
-        const Register reg = registerMapping.at(val.local());
+        const Register reg = registerMapping.at(loc);
         return std::make_pair(reg, Optional<SmallImmediate>{});
     }
-    if(val.hasImmediate())
-        return std::make_pair(Register{RegisterFile::PHYSICAL_B, val.immediate().value}, val.immediate());
+    if(auto imm = val.checkImmediate())
+        return std::make_pair(Register{RegisterFile::PHYSICAL_B, imm->value}, *imm);
     //    if (val.hasType(ValueType::LITERAL))
     //        return std::make_pair(Register{RegisterFile::PHYSICAL_B, val.literal.toImmediate()},
     //        static_cast<SmallImmediate> (val.literal.toImmediate()));
@@ -152,7 +152,7 @@ static std::pair<Register, Optional<SmallImmediate>> getInputValue(
 qpu_asm::DecoratedInstruction Operation::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
-    const Register outReg = getOutput()->hasLocal() ? registerMapping.at(getOutput()->local()) : getOutput()->reg();
+    const Register outReg = getOutput()->checkLocal() ? registerMapping.at(getOutput()->local()) : getOutput()->reg();
 
     // TODO make sure, only mul pack modes are used for mul ALU writing to register file A
     Unpack unpack = unpackMode;
@@ -178,7 +178,7 @@ qpu_asm::DecoratedInstruction Operation::convertToAsm(const FastMap<const Local*
         throw CompilationError(
             CompilationStep::CODE_GENERATION, "Can only apply r4 unpack mode when reading r4", to_string());
 
-    InputMultiplex inMux0 = getInputMux(input0.first, getFirstArg().hasRegister(), input0.second);
+    InputMultiplex inMux0 = getInputMux(input0.first, getFirstArg().checkRegister(), input0.second);
     if(!input0.second)
     {
         if(input0.first.isAccumulator() && inMux0 != InputMultiplex::REGA && inMux0 != InputMultiplex::REGB)
@@ -208,7 +208,7 @@ qpu_asm::DecoratedInstruction Operation::convertToAsm(const FastMap<const Local*
 
     if(getSecondArg())
     {
-        InputMultiplex inMux1 = getInputMux(input1.first, assertArgument(1).hasRegister(), input1.second,
+        InputMultiplex inMux1 = getInputMux(input1.first, assertArgument(1).checkRegister(), input1.second,
             input0.first.file == RegisterFile::PHYSICAL_A, input0.first.file == RegisterFile::PHYSICAL_B);
 
         // one of the values is a literal immediate
@@ -605,7 +605,7 @@ IntermediateInstruction* VectorRotation::copyFor(Method& method, const std::stri
 qpu_asm::DecoratedInstruction VectorRotation::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
-    const Register outReg = getOutput()->hasLocal() ? registerMapping.at(getOutput()->local()) : getOutput()->reg();
+    const Register outReg = getOutput()->checkLocal() ? registerMapping.at(getOutput()->local()) : getOutput()->reg();
 
     auto input = getInputValue(getSource(), registerMapping, this);
     auto rotationOffset = getInputValue(getOffset(), registerMapping, this);
@@ -618,17 +618,16 @@ qpu_asm::DecoratedInstruction VectorRotation::convertToAsm(const FastMap<const L
     const bool writeSwap = outReg.file == RegisterFile::PHYSICAL_A;
     const WriteSwap swap = writeSwap ? WriteSwap::SWAP : WriteSwap::DONT_SWAP;
 
-    if(getOffset().hasLiteral())
+    if(getOffset().checkLiteral())
     {
         SmallImmediate imm(VECTOR_ROTATE_R5 + static_cast<unsigned char>(rotationOffset.second.value()));
         return qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap, REG_NOP.num,
             outReg.num, OP_V8MIN, OP_NOP, REG_NOP.num, imm, MULTIPLEX_NONE, MULTIPLEX_NONE, inMux, inMux);
     }
-    else if(getOffset().hasImmediate())
+    else if(auto imm = getOffset().checkImmediate())
     {
         return qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap, REG_NOP.num,
-            outReg.num, OP_V8MIN, OP_NOP, REG_NOP.num, getOffset().immediate(), MULTIPLEX_NONE, MULTIPLEX_NONE, inMux,
-            inMux);
+            outReg.num, OP_V8MIN, OP_NOP, REG_NOP.num, *imm, MULTIPLEX_NONE, MULTIPLEX_NONE, inMux, inMux);
     }
     else
         // use offset from r5
@@ -784,10 +783,10 @@ qpu_asm::DecoratedInstruction CombinedOperation::convertToAsm(const FastMap<cons
     if(addOp != nullptr && mulOp != nullptr && addOp->getOutput() && mulOp->getOutput() &&
         addOp->getOutput().value() != mulOp->getOutput().value())
     {
-        const Register addOut = addOp->getOutput()->hasLocal() ? registerMapping.at(addOp->getOutput()->local()) :
-                                                                 addOp->getOutput()->reg();
-        const Register mulOut = mulOp->getOutput()->hasLocal() ? registerMapping.at(mulOp->getOutput()->local()) :
-                                                                 mulOp->getOutput()->reg();
+        const Register addOut = addOp->getOutput()->checkLocal() ? registerMapping.at(addOp->getOutput()->local()) :
+                                                                   addOp->getOutput()->reg();
+        const Register mulOut = mulOp->getOutput()->checkLocal() ? registerMapping.at(mulOp->getOutput()->local()) :
+                                                                   mulOp->getOutput()->reg();
         if(addOut != mulOut && !addOut.isAccumulator() && addOut.file == mulOut.file)
             throw CompilationError(CompilationStep::CODE_GENERATION,
                 "Can't map outputs of a combined instruction to two distinct registers in the same file", to_string());

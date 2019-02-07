@@ -69,8 +69,7 @@ std::unique_ptr<LifetimeGraph> LifetimeGraph::createLifetimeGraph(Method& method
     overlapLocals(*graph.get(), liveLocals);
 
     method.forAllInstructions([&liveLocals, &graph](const intermediate::IntermediateInstruction* inst) -> void {
-        const auto lifetimeInst = dynamic_cast<const intermediate::LifetimeBoundary*>(inst);
-        if(lifetimeInst != nullptr)
+        if(auto lifetimeInst = dynamic_cast<const intermediate::LifetimeBoundary*>(inst))
         {
             const Local* local = lifetimeInst->getStackAllocation().local();
             if(lifetimeInst->isLifetimeEnd)

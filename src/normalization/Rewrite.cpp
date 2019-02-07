@@ -14,16 +14,16 @@ using namespace vc4c::normalization;
 
 static RegisterFile getFixedRegisterFile(const Value& val)
 {
-    if(val.hasRegister())
+    if(auto reg = val.checkRegister())
     {
-        if(val.reg().file == RegisterFile::PHYSICAL_A || val.reg().file == RegisterFile::PHYSICAL_B)
-            return val.reg().file;
+        if(reg->file == RegisterFile::PHYSICAL_A || reg->file == RegisterFile::PHYSICAL_B)
+            return reg->file;
     }
     else if(val.isLiteralValue())
         return RegisterFile::PHYSICAL_B;
-    else if(val.hasLocal())
+    else if(auto local = val.checkLocal())
     {
-        for(const auto& user : val.local()->getUsers())
+        for(const auto& user : local->getUsers())
         {
             if(user.second.readsLocal() && user.first->hasUnpackMode())
                 return RegisterFile::PHYSICAL_A;
@@ -48,7 +48,7 @@ static NODISCARD InstructionWalker resolveRegisterConflicts(
 
     // otherwise, we can copy one of the arguments into a temporary
     auto& fixedArg =
-        *std::find_if(fixedArgs.begin(), fixedArgs.end(), [](const Value& val) -> bool { return val.hasLocal(); });
+        *std::find_if(fixedArgs.begin(), fixedArgs.end(), [](const Value& val) -> bool { return val.checkLocal(); });
     auto tmp = method.addNewLocal(fixedArg.type);
     it.emplace(new intermediate::MoveOperation(tmp, fixedArg, it->conditional));
     it.nextInBlock();
@@ -73,7 +73,7 @@ InstructionWalker normalization::splitRegisterConflicts(
             fixedArgs.emplace(arg);
             fixedFiles = add_flag(fixedFiles, file);
         }
-        if(arg.hasLocal())
+        if(arg.checkLocal())
             anyLocalArgument = true;
     }
     if(hasRegisterConflict && fixedArgs.size() > 1 && anyLocalArgument)

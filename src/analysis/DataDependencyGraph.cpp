@@ -82,9 +82,8 @@ static InstructionMapping mapInstructionsToPosition(Method& method)
     while(!it.isEndOfMethod())
     {
         mapping.emplace(it.get(), it);
-        if(it.has<intermediate::CombinedOperation>())
+        if(auto combInstr = it.get<intermediate::CombinedOperation>())
         {
-            auto combInstr = it.get<intermediate::CombinedOperation>();
             if(combInstr->op1)
                 mapping.emplace(combInstr->op1.get(), it);
             if(combInstr->op2)

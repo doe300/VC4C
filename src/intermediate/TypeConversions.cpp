@@ -224,7 +224,7 @@ InstructionWalker intermediate::insertBitcast(
         it.emplace((new intermediate::MoveOperation(dest, src))->addDecorations(deco));
 
     // last step: map destination to source (if bit-cast of pointers)
-    if(dest.hasLocal() && src.hasLocal() && dest.type.isPointerType() && src.type.isPointerType())
+    if(dest.checkLocal() && src.checkLocal() && dest.type.getPointerType() && src.type.getPointerType())
         // this helps recognizing lifetime-starts of bit-cast stack-allocations
         const_cast<std::pair<Local*, int>&>(dest.local()->reference) = std::make_pair(src.local(), 0);
     it->addDecorations(deco);
@@ -260,7 +260,7 @@ InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method
         // do nothing, is just a move, since we truncate the 64-bit integers anyway
         it.emplace(new MoveOperation(dest, src, conditional, setFlags));
     }
-    else if(src.hasRegister() &&
+    else if(src.checkRegister() &&
         (has_flag(src.reg().file, RegisterFile::PHYSICAL_A) || has_flag(src.reg().file, RegisterFile::ACCUMULATOR)) &&
         src.type.getScalarBitCount() == 8)
     {
@@ -298,7 +298,7 @@ InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method
         // do nothing, is just a move, since we truncate the 64-bit integers anyway
         it.emplace(new MoveOperation(dest, src, conditional, setFlags));
     }
-    else if(src.hasRegister() &&
+    else if(src.checkRegister() &&
         (has_flag(src.reg().file, RegisterFile::PHYSICAL_A) || has_flag(src.reg().file, RegisterFile::ACCUMULATOR)) &&
         src.type.getScalarBitCount() == 16)
     {
@@ -339,28 +339,28 @@ InstructionWalker intermediate::insertSaturation(
     if(!dest.type.isSimpleType() || dest.type.isFloatingType())
         throw CompilationError(CompilationStep::GENERAL, "Invalid target type for saturation", dest.type.to_string());
 
-    if(src.getLiteralValue())
+    if(auto lit = src.getLiteralValue())
     {
         switch(dest.type.getScalarBitCount())
         {
         case 8:
             return it.emplace((new MoveOperation(dest,
-                                   Value(Literal(isSigned ? saturate<int8_t>(src.getLiteralValue()->signedInt()) :
-                                                            saturate<uint8_t>(src.getLiteralValue()->unsignedInt())),
+                                   Value(Literal(isSigned ? saturate<int8_t>(lit->signedInt()) :
+                                                            saturate<uint8_t>(lit->unsignedInt())),
                                        dest.type)))
                                   ->addDecorations(isSigned ? InstructionDecorations::NONE :
                                                               InstructionDecorations::UNSIGNED_RESULT));
         case 16:
             return it.emplace((new MoveOperation(dest,
-                                   Value(Literal(isSigned ? saturate<int16_t>(src.getLiteralValue()->signedInt()) :
-                                                            saturate<uint16_t>(src.getLiteralValue()->unsignedInt())),
+                                   Value(Literal(isSigned ? saturate<int16_t>(lit->signedInt()) :
+                                                            saturate<uint16_t>(lit->unsignedInt())),
                                        dest.type)))
                                   ->addDecorations(isSigned ? InstructionDecorations::NONE :
                                                               InstructionDecorations::UNSIGNED_RESULT));
         case 32:
             return it.emplace((new MoveOperation(dest,
-                                   Value(Literal(isSigned ? saturate<int32_t>(src.getLiteralValue()->signedInt()) :
-                                                            saturate<uint32_t>(src.getLiteralValue()->unsignedInt())),
+                                   Value(Literal(isSigned ? saturate<int32_t>(lit->signedInt()) :
+                                                            saturate<uint32_t>(lit->unsignedInt())),
                                        dest.type)))
                                   ->addDecorations(isSigned ? InstructionDecorations::NONE :
                                                               InstructionDecorations::UNSIGNED_RESULT));

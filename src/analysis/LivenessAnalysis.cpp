@@ -55,8 +55,7 @@ FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::Inte
         else
             result.erase(out);
     }
-    auto combInstr = dynamic_cast<const intermediate::CombinedOperation*>(instr);
-    if(combInstr)
+    if(auto combInstr = dynamic_cast<const intermediate::CombinedOperation*>(instr))
     {
         if(combInstr->op1)
             result = analyzeLiveness(combInstr->op1.get(), result, cache);
@@ -66,7 +65,7 @@ FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::Inte
 
     for(const Value& arg : instr->getArguments())
     {
-        if(arg.hasLocal() && !arg.local()->type.isLabelType())
+        if(arg.checkLocal() && !arg.local()->type.isLabelType())
         {
             result.emplace(arg.local());
             if(instr->hasConditionalExecution())
@@ -113,7 +112,7 @@ std::pair<FastSet<const Local*>, FastSet<const Local*>> LocalUsageAnalysis::anal
     auto func = [&](const intermediate::IntermediateInstruction* instr) {
         for(const Value& arg : instr->getArguments())
         {
-            if(arg.hasLocal() && !arg.local()->type.isLabelType())
+            if(arg.checkLocal() && !arg.local()->type.isLabelType())
             {
                 if(localsWritten.find(arg.local()) == localsWritten.end())
                     // read before the first write (if any)
@@ -129,8 +128,7 @@ std::pair<FastSet<const Local*>, FastSet<const Local*>> LocalUsageAnalysis::anal
 
     for(const auto& inst : block)
     {
-        auto combInst = dynamic_cast<const intermediate::CombinedOperation*>(inst.get());
-        if(combInst)
+        if(auto combInst = dynamic_cast<const intermediate::CombinedOperation*>(inst.get()))
         {
             if(combInst->op1)
                 func(combInst->op1.get());

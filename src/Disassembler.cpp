@@ -119,9 +119,8 @@ static std::string annotateRegisters(
 
     std::set<std::string> annotations;
     // the first few UNIFORMs are the work-item and work-group info
-    if(instr.is<qpu_asm::ALUInstruction>())
+    if(auto op = instr.as<qpu_asm::ALUInstruction>())
     {
-        auto op = instr.as<qpu_asm::ALUInstruction>();
         if(readsUniform(op->getAddFirstOperand()) || readsUniform(op->getAddSecondOperand()))
             annotations.emplace("uniform read: " + getUniform(currentUniformsRead, currentUniformValues));
 
@@ -165,9 +164,8 @@ static std::string annotateRegisters(
             readsUniform(op->getMulFirstOperand()) || readsUniform(op->getMulSecondOperand()))
             ++currentUniformsRead;
     }
-    else if(instr.is<qpu_asm::LoadInstruction>())
+    else if(auto load = instr.as<qpu_asm::LoadInstruction>())
     {
-        auto load = instr.as<qpu_asm::LoadInstruction>();
         switch(load->getType())
         {
         case OpLoad::LOAD_IMM_32:

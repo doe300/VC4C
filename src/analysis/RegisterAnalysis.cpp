@@ -18,7 +18,7 @@ UsedElementsAnalysis::UsedElementsAnalysis() :
 
 // Taken from https://stackoverflow.com/questions/25249929/how-to-rotate-the-bits-of-given-number
 template <typename T>
-static T rotate_left(T value, int count)
+static constexpr T rotate_left(T value, unsigned char count)
 {
     return (value << count) | (value >> (sizeof(T) * 8 - count));
 }
@@ -29,8 +29,7 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
     UsedElements values(nextValues);
     if(inst && !dynamic_cast<const intermediate::BranchLabel*>(inst))
     {
-        auto combined = dynamic_cast<const intermediate::CombinedOperation*>(inst);
-        if(combined)
+        if(auto combined = dynamic_cast<const intermediate::CombinedOperation*>(inst))
         {
             auto first =
                 combined->op1 ? analyzeUsedSIMDElements(combined->op1.get(), nextValues, cache) : UsedElements{};
@@ -101,11 +100,10 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
                 }
             });
         }
-        else if(dynamic_cast<const intermediate::Branch*>(inst))
+        else if(auto branch = dynamic_cast<const intermediate::Branch*>(inst))
         {
             // XXX branch target input (currently not used), is only set by SIMD element 15
-            auto branch = dynamic_cast<const intermediate::Branch*>(inst);
-            if(branch->hasConditionalExecution() && branch->getCondition().hasLocal())
+            if(branch->hasConditionalExecution() && branch->getCondition().checkLocal())
             {
                 auto it = cache.find(branch->getCondition().local());
                 if(it != cache.end() && it->second.isInversionOf(branch->conditional))
@@ -137,8 +135,7 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
                 }
             });
         }
-        auto rot = dynamic_cast<const intermediate::VectorRotation*>(inst);
-        if(rot)
+        if(auto rot = dynamic_cast<const intermediate::VectorRotation*>(inst))
         {
             if(rot->getOffset().hasRegister(REG_ACC5))
             {

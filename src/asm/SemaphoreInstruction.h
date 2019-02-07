@@ -21,7 +21,12 @@ namespace vc4c
                 Address addOut, Address mulOut, bool increment, Semaphore semaphore);
 
             std::string toASMString() const;
-            bool isValidInstruction() const;
+            inline bool isValidInstruction() const
+            {
+                if(getSig() != SIGNAL_LOAD_IMMEDIATE) // Semaphores and Loads have the same signal bit-mask
+                    return false;
+                return getEntry<OpSemaphore>(57, MASK_Septuple) == OpSemaphore::SEMAPHORE;
+            }
 
             // NOTE: The pack value includes the pm bit!
             BITFIELD_ENTRY(Pack, Pack, 52, Quintuple)

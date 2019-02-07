@@ -58,16 +58,17 @@ Optional<Value> Expression::getConstantExpression() const
 
 bool Expression::hasConstantOperand() const
 {
-    return arg0.getLiteralValue() || arg0.hasContainer() || (arg1 && (arg1->getLiteralValue() || arg1->hasContainer()));
+    return arg0.getLiteralValue() || arg0.checkContainer() ||
+        (arg1 && (arg1->getLiteralValue() || arg1->checkContainer()));
 }
 
 Expression Expression::combineWith(const FastMap<const Local*, Expression>& inputs) const
 {
     const Expression* expr0 = nullptr;
     const Expression* expr1 = nullptr;
-    if(arg0.hasLocal() && inputs.find(arg0.local()) != inputs.end())
+    if(arg0.checkLocal() && inputs.find(arg0.local()) != inputs.end())
         expr0 = &inputs.at(arg0.local());
-    if(arg1 && arg1->hasLocal() && inputs.find(arg1->local()) != inputs.end())
+    if(arg1 && arg1->checkLocal() && inputs.find(arg1->local()) != inputs.end())
         expr1 = &inputs.at(arg1->local());
     if(expr0 == nullptr && expr1 == nullptr)
         // no expression can be combined
@@ -90,11 +91,11 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
             return Expression{OP_V8MIN, expr0->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
     }
 
-    auto firstArgConstant = arg0.getLiteralValue() || arg0.hasContainer() ?
+    auto firstArgConstant = arg0.getLiteralValue() || arg0.checkContainer() ?
         Optional<Value>(arg0) :
         expr0 ? expr0->getConstantExpression() : NO_VALUE;
 
-    auto secondArgConstant = arg1 && (arg1->getLiteralValue() || arg1->hasContainer()) ?
+    auto secondArgConstant = arg1 && (arg1->getLiteralValue() || arg1->checkContainer()) ?
         arg1 :
         expr1 ? expr1->getConstantExpression() : NO_VALUE;
 

@@ -104,8 +104,7 @@ static NODISCARD bool removeUsagesInBasicBlock(const Method& method, const Basic
     {
         remainingUsers.erase(it.get());
         --usageRangeLeft;
-        auto branch = dynamic_cast<const intermediate::Branch*>(it.get());
-        if(branch)
+        if(auto branch = dynamic_cast<const intermediate::Branch*>(it.get()))
         {
             const BasicBlock* successor = method.findBasicBlock(branch->getTarget());
             if(successor != nullptr &&
@@ -132,8 +131,7 @@ bool Method::isLocallyLimited(InstructionWalker curIt, const Local* locale, cons
     {
         remainingUsers.erase(curIt.get());
         --usageRangeLeft;
-        const intermediate::Branch* branch = curIt.get<intermediate::Branch>();
-        if(branch != nullptr)
+        if(auto branch = curIt.get<intermediate::Branch>())
         {
             const BasicBlock* successor = findBasicBlock(branch->getTarget());
             if(successor != nullptr &&
@@ -353,7 +351,7 @@ bool Method::removeBlock(BasicBlock& block, bool overwriteUsages)
         unsigned count = 0;
         block.forPredecessors([&block, &count](InstructionWalker it) -> void {
             // only check for explicit jumps to this block, implicit "jumps" will just fall-through to the next block
-            if(it.has<intermediate::Branch>() &&
+            if(it.get<intermediate::Branch>() &&
                 it.get<intermediate::Branch>()->getTarget() == block.getLabel()->getLabel())
                 ++count;
         });

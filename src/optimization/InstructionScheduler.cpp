@@ -35,7 +35,7 @@ struct NodeSorter : public std::less<intermediate::IntermediateInstruction*>
         // XXX give reading of work-item info (as well as parameters) a high priority (minimizes their local's
         // life-time)
         if(std::any_of(inst->getArguments().begin(), inst->getArguments().end(),
-               [](const Value& val) -> bool { return val.hasLocal() && val.local()->is<Parameter>(); }))
+               [](const Value& val) -> bool { return val.checkLocal() && val.local()->is<Parameter>(); }))
             priority += 50;
 
         // writing TMU address gets higher priority, to leave enough space for utilizing the delay to actually read the
@@ -155,7 +155,7 @@ static int calculateSchedulingPriority(DependencyEdge& dependency, BasicBlock& b
             instr->readsRegister(REG_MUTEX))
             latencyLeft += 2;
         if(std::any_of(instr->getArguments().begin(), instr->getArguments().end(), [&](const Value& arg) -> bool {
-               return arg.hasLocal() && arg.local()->getUsers(LocalUse::Type::READER).size() == 1;
+               return arg.checkLocal() && arg.local()->getUsers(LocalUse::Type::READER).size() == 1;
            }))
             --latencyLeft;
         if(instr->hasValueType(ValueType::LOCAL) && instr->getOutput()->getSingleWriter() == instr)
@@ -236,7 +236,7 @@ static OpenSet::const_iterator selectInstruction(OpenSet& openNodes, DependencyG
             (priority == std::get<1>(selected) && lastInstruction->hasValueType(ValueType::LOCAL) &&
                 (*it)->writesLocal(lastInstruction->getOutput()->local())) ||
             // keep vector rotations close to their use by devaluing them after all other equal-priority instructions
-            (priority == std::get<1>(selected) && lastInstruction.has<intermediate::VectorRotation>() &&
+            (priority == std::get<1>(selected) && lastInstruction.get<intermediate::VectorRotation>() &&
                 dynamic_cast<const intermediate::VectorRotation*>(*it) == nullptr) ||
             // prefer reading of r4 to free up space in TMU queue/allow other triggers to write to r4
             (priority == std::get<1>(selected) && (*it)->readsRegister(REG_TMU_OUT)) ||
@@ -283,7 +283,7 @@ static void selectInstructions(DependencyGraph& graph, BasicBlock& block, const 
     while(!it.isEndOfBlock())
     {
         if(it.has() &&
-            !(it.has<intermediate::Nop>() && !it->hasSideEffects() &&
+            !(it.get<intermediate::Nop>() && !it->hasSideEffects() &&
                 it.get<const intermediate::Nop>()->type != intermediate::DelayType::THREAD_END))
             // remove all non side-effect NOPs
             openNodes.emplace(it.release());

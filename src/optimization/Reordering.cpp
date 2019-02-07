@@ -83,12 +83,12 @@ static NODISCARD InstructionWalker findInstructionNotAccessing(
         {
             validReplacement = false;
         }
-        if(validReplacement && (it.has<Branch>() || it.has<BranchLabel>() || it.has<MemoryBarrier>()))
+        if(validReplacement && (it.get<Branch>() || it.get<BranchLabel>() || it.get<MemoryBarrier>()))
         {
             // NEVER RE-ORDER BRANCHES, LABELS OR BARRIERS!
             validReplacement = false;
         }
-        if(validReplacement && it.has<Nop>())
+        if(validReplacement && it.get<Nop>())
         {
             // replacing NOP with NOP will violate the delay (e.g. for branches, SFU)
             validReplacement = false;
@@ -284,7 +284,7 @@ bool optimizations::splitReadAfterWrites(const Module& module, Method& method, c
                     // set, since in that case, the register-file A MUST be used, so it cannot be written to in the
                     // previous instruction  also vector-rotations MUST be on accumulator, but the input MUST NOT be
                     // written in the previous instruction, so they are also split up
-                    if(lastInstruction->hasPackMode() || it->hasUnpackMode() || it.has<VectorRotation>() ||
+                    if(lastInstruction->hasPackMode() || it->hasUnpackMode() || it.get<VectorRotation>() ||
                         !lastInstruction.getBasicBlock()->isLocallyLimited(
                             lastInstruction, lastWrittenTo, config.additionalOptions.accumulatorThreshold) ||
                         isUnpacked)
@@ -356,9 +356,8 @@ InstructionWalker optimizations::moveRotationSourcesToAccumulators(
     auto rot = it.get<VectorRotation>();
     if(rot)
     {
-        if(rot->getSource().hasLocal())
+        if(auto loc = rot->getSource().checkLocal())
         {
-            const Local* loc = rot->getSource().local();
             InstructionWalker writer = it.copy().previousInBlock();
             while(!writer.isStartOfBlock())
             {
@@ -373,7 +372,7 @@ InstructionWalker optimizations::moveRotationSourcesToAccumulators(
             {
                 InstructionWalker mapper = it.copy().previousInBlock();
                 // insert mapper before first NOP
-                while(!mapper.isStartOfBlock() && mapper.copy().previousInBlock().has<Nop>())
+                while(!mapper.isStartOfBlock() && mapper.copy().previousInBlock().get<Nop>())
                     mapper.previousInBlock();
                 if(mapper.isStartOfBlock())
                     mapper.nextInBlock();
@@ -386,7 +385,7 @@ InstructionWalker optimizations::moveRotationSourcesToAccumulators(
                 return writer;
             }
         }
-        else if(rot->getSource().hasRegister() && !rot->getSource().reg().isAccumulator())
+        else if(rot->getSource().checkRegister() && !rot->getSource().reg().isAccumulator())
         {
             // e.g. inserting into vector from reading VPM
             // insert temporary local to be read into, rotate local and NOP, since it is required

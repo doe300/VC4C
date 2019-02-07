@@ -60,7 +60,7 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(Method& method
                                          // skip the own label itself
                                          if(it.get() == pair.first->getLabel())
                                              return InstructionVisitResult::CONTINUE;
-                                         if(it.has<intermediate::BranchLabel>())
+                                         if(it.get<intermediate::BranchLabel>())
                                          {
                                              if(it.getBasicBlock()->isStartOfMethod())
                                                  // do not repeat work-group loop

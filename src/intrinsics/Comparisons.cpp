@@ -73,7 +73,7 @@ static InstructionWalker intrinsifyIntegerRelation(
         if(comp->getFirstArg().type.getScalarBitCount() == 32)
         {
             // a < b [b = 2^x] <=> (a & (b-1)) == a <=> (a & ~(b-1)) == 0
-            if(comp->assertArgument(1).hasLiteral() && isPowerTwo(comp->assertArgument(1).literal().unsignedInt()))
+            if(comp->assertArgument(1).checkLiteral() && isPowerTwo(comp->assertArgument(1).literal().unsignedInt()))
             {
                 // this is actually pre-calculated, so no insertion is performed
                 Value mask = assign(it, comp->assertArgument(1).type) = comp->assertArgument(1) - 1_val;
@@ -85,7 +85,7 @@ static InstructionWalker intrinsifyIntegerRelation(
             }
             // a < b [b = 2^x -1] <=> (a & b) == a && a != b <=> (a & ~b) == 0 && a != b (this version is used)!
             // <=> (a >> log2(b + 1)) == 0 && a != b
-            else if(comp->assertArgument(1).hasLiteral() &&
+            else if(comp->assertArgument(1).checkLiteral() &&
                 isPowerTwo(comp->assertArgument(1).literal().unsignedInt() + 1))
             {
                 // this is actually pre-calculated, so no insertion is performed
@@ -387,17 +387,17 @@ InstructionWalker intermediate::intrinsifyComparison(Method& method, Instruction
 
 InstructionWalker intermediate::insertIsNegative(InstructionWalker it, const Value& src, Value& dest)
 {
-    if(src.getLiteralValue())
+    if(auto lit = src.getLiteralValue())
     {
-        dest = src.getLiteralValue()->signedInt() < 0 ? INT_MINUS_ONE : INT_ZERO;
+        dest = lit->signedInt() < 0 ? INT_MINUS_ONE : INT_ZERO;
     }
-    else if(src.hasContainer())
+    else if(auto container = src.checkContainer())
     {
-        dest = Value(ContainerValue(src.container().elements.size()), TYPE_BOOL);
-        for(const auto& elem : src.container().elements)
+        dest = Value(ContainerValue(container->elements.size()), TYPE_BOOL);
+        for(const auto& elem : container->elements)
         {
-            if(elem.getLiteralValue())
-                dest.container().elements.push_back(elem.getLiteralValue()->signedInt() < 0 ? INT_MINUS_ONE : INT_ZERO);
+            if(auto lit = elem.getLiteralValue())
+                dest.container().elements.push_back(lit->signedInt() < 0 ? INT_MINUS_ONE : INT_ZERO);
             else
                 throw CompilationError(CompilationStep::OPTIMIZER, "Can't handle container with non-literal values",
                     src.to_string(false, true));

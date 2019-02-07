@@ -787,7 +787,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         // - Composites: Members are set recursively to the null constant according to the null value of their
         // constituent types."
         const DataType& type = typeMappings.at(parsed_instruction->type_id);
-        if(type.isScalarType() || type.isVectorType() || type.isPointerType())
+        if(type.isScalarType() || type.isVectorType() || type.getPointerType())
             constantMappings.emplace(parsed_instruction->result_id, Value(INT_ZERO.literal(), type));
         else if(type.getArrayType())
             constantMappings.emplace(parsed_instruction->result_id, INT_ZERO);

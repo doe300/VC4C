@@ -513,7 +513,7 @@ static NODISCARD InstructionWalker intrinsifyUnary(Method& method, InstructionWa
     {
         if(callSite->methodName.find(pair.first) != std::string::npos)
         {
-            if((arg.getLiteralValue() || arg.hasContainer()) && pair.second.unaryInstr &&
+            if((arg.getLiteralValue() || arg.checkContainer()) && pair.second.unaryInstr &&
                 (result = pair.second.unaryInstr.value()(arg)))
             {
                 CPPLOG_LAZY(logging::Level::DEBUG,
@@ -534,7 +534,8 @@ static NODISCARD InstructionWalker intrinsifyUnary(Method& method, InstructionWa
         if(callSite->methodName.find(pair.first) != std::string::npos)
         {
             // TODO support constant type-cast for constant containers
-            if(arg.hasLiteral() && pair.second.first.unaryInstr && (result = pair.second.first.unaryInstr.value()(arg)))
+            if(arg.checkLiteral() && pair.second.first.unaryInstr &&
+                (result = pair.second.first.unaryInstr.value()(arg)))
             {
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Intrinsifying type-cast '" << callSite->to_string()
@@ -578,7 +579,7 @@ static NODISCARD InstructionWalker intrinsifyBinary(Method& method, InstructionW
     {
         if(callSite->methodName.find(pair.first) != std::string::npos)
         {
-            if(callSite->assertArgument(0).hasLiteral() && callSite->assertArgument(1).hasLiteral() &&
+            if(callSite->assertArgument(0).checkLiteral() && callSite->assertArgument(1).checkLiteral() &&
                 pair.second.binaryInstr &&
                 pair.second.binaryInstr.value()(callSite->assertArgument(0), callSite->assertArgument(1)))
             {
@@ -733,7 +734,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
                 op->conditional, op->setFlags));
             it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
-        else if((arg1.isLiteralValue() || arg1.hasContainer()) && arg0.type.getScalarBitCount() <= 16)
+        else if((arg1.isLiteralValue() || arg1.checkContainer()) && arg0.type.getScalarBitCount() <= 16)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying unsigned division by constant: " << op->to_string() << logging::endl);
@@ -780,7 +781,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
                 it.previousInBlock();
             }
         }
-        else if((arg1.isLiteralValue() || arg1.hasContainer()) && arg0.type.getScalarBitCount() <= 16)
+        else if((arg1.isLiteralValue() || arg1.checkContainer()) && arg0.type.getScalarBitCount() <= 16)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying signed division by constant: " << op->to_string() << logging::endl);
@@ -833,7 +834,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
                 Value(Literal(arg1.getLiteralValue()->unsignedInt() - 1), arg1.type), op->conditional, op->setFlags));
             it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
-        else if((arg1.isLiteralValue() || arg1.hasContainer()) && arg0.type.getScalarBitCount() <= 16)
+        else if((arg1.isLiteralValue() || arg1.checkContainer()) && arg0.type.getScalarBitCount() <= 16)
         {
             it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, *op, true);
         }
@@ -876,7 +877,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
                 it.previousInBlock();
             }
         }
-        else if((arg1.isLiteralValue() || arg1.hasContainer()) && arg0.type.getScalarBitCount() <= 16)
+        else if((arg1.isLiteralValue() || arg1.checkContainer()) && arg0.type.getScalarBitCount() <= 16)
         {
             it = intrinsifySignedIntegerDivisionByConstant(method, it, *op, true);
         }
@@ -896,7 +897,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
                 Value(Literal(arg0.getLiteralValue()->real() / arg1.getLiteralValue()->real()), arg0.type),
                 op->conditional, op->setFlags));
         }
-        else if(arg1.getLiteralValue() || arg1.hasContainer())
+        else if(arg1.getLiteralValue() || arg1.checkContainer())
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying floating division with multiplication of constant inverse: " << op->to_string()
@@ -1067,10 +1068,10 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
 static NODISCARD InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, InstructionWalker it, const Value& arg,
     const std::vector<std::string>& locals, const Value& defaultValue, const InstructionDecorations decoration)
 {
-    if(arg.getLiteralValue())
+    if(auto lit = arg.getLiteralValue())
     {
         Value src = UNDEFINED_VALUE;
-        switch(arg.getLiteralValue()->unsignedInt())
+        switch(lit->unsignedInt())
         {
         case 0:
             src = method.findOrCreateLocal(TYPE_INT32, locals.at(0))->createReference();
@@ -1333,7 +1334,7 @@ static NODISCARD InstructionWalker intrinsifyWorkItemFunctions(Method& method, I
 InstructionWalker optimizations::intrinsify(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
-    if(!it.has<IntrinsicOperation>() && !it.has<MethodCall>())
+    if(!it.get<IntrinsicOperation>() && !it.get<MethodCall>())
         // fail fast
         return it;
     auto newIt = intrinsifyComparison(method, it);

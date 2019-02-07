@@ -162,11 +162,6 @@ bool DataType::isVectorType() const
     return !complexType && numElements > 1;
 }
 
-bool DataType::isPointerType() const
-{
-    return getPointerType() != nullptr;
-}
-
 PointerType* DataType::getPointerType()
 {
     return dynamic_cast<PointerType*>(complexType.get());
@@ -216,7 +211,7 @@ bool DataType::isFloatingType() const
 
 bool DataType::isIntegralType() const
 {
-    if(isPointerType())
+    if(getPointerType())
         return true;
     if(complexType)
         return false;
@@ -240,10 +235,10 @@ bool DataType::isVoidType() const
 
 DataType DataType::getElementType(const int index) const
 {
-    if(isPointerType())
-        return getPointerType()->elementType;
-    if(getArrayType())
-        return getArrayType()->elementType;
+    if(auto ptrType = getPointerType())
+        return ptrType->elementType;
+    if(auto arrayType = getArrayType())
+        return arrayType->elementType;
     if(getStructType() && index >= 0)
         return getStructType()->elementTypes.at(static_cast<std::size_t>(index));
     if(complexType)
@@ -307,7 +302,7 @@ const DataType DataType::getUnionType(const DataType& other) const
 
 unsigned char DataType::getScalarBitCount() const
 {
-    if(isPointerType())
+    if(getPointerType())
         // 32-bit pointer
         return 32;
     if(getImageType())
@@ -330,13 +325,13 @@ uint32_t DataType::getScalarWidthMask() const
 
 unsigned int DataType::getPhysicalWidth() const
 {
-    if(isPointerType())
+    if(getPointerType())
         // 32-bit pointer
         return 4;
-    if(getArrayType())
-        return getArrayType()->elementType.getPhysicalWidth() * getArrayType()->size;
-    if(getStructType())
-        return getStructType()->getStructSize();
+    if(auto arrayType = getArrayType())
+        return arrayType->elementType.getPhysicalWidth() * arrayType->size;
+    if(auto structType = getStructType())
+        return structType->getStructSize();
     if(getImageType())
         // images are just pointers to data
         // 32-bit pointer

@@ -97,7 +97,7 @@ bool CallSite::mapInstruction(Method& method)
         method.appendToEnd(new intermediate::LifetimeBoundary(pointer, methodName.find("llvm.lifetime.end") == 0));
         return true;
     }
-    Value output = dest.hasLocal() && dest.local() != nullptr ? dest : NOP_REGISTER;
+    Value output = dest.checkLocal() ? dest : NOP_REGISTER;
     // handle other llvm.* intrinsics
     if(methodName.find("llvm.fmuladd") == 0)
     {
@@ -138,7 +138,7 @@ bool CallSite::mapInstruction(Method& method)
         Value& fillByte = arguments.at(1);
         Value& numBytes = arguments.at(2);
         const Value& volatileAccess = arguments.back();
-        if(volatileAccess.getLiteralValue() && volatileAccess.getLiteralValue()->isTrue() && memAddr.hasLocal() &&
+        if(volatileAccess.getLiteralValue() && volatileAccess.getLiteralValue()->isTrue() && memAddr.checkLocal() &&
             memAddr.local()->getBase(true)->is<Parameter>())
         {
             // set parameter to volatile
@@ -191,7 +191,7 @@ bool CallSite::mapInstruction(Method& method)
     }
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating immediate call to " << methodName << " -> " << dest.type.to_string() << logging::endl);
-    if(dest.hasLocal() && dest.local() != nullptr)
+    if(dest.checkLocal())
         method.appendToEnd(
             (new intermediate::MethodCall(std::move(output), std::move(methodName), std::move(arguments)))
                 ->addDecorations(decorations));

@@ -137,7 +137,8 @@ PrecalculatedValue LoadImmediate::precalculate(const std::size_t numIterations) 
 qpu_asm::DecoratedInstruction LoadImmediate::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
-    const Register outReg = getOutput()->hasRegister() ? getOutput()->reg() : registerMapping.at(getOutput()->local());
+    const Register outReg =
+        getOutput()->checkRegister() ? getOutput()->reg() : registerMapping.at(getOutput()->local());
     const ConditionCode conditional0 = outReg.num == REG_NOP.num ? COND_NEVER : this->conditional;
     qpu_asm::LoadInstruction res(PACK_NOP, conditional0, COND_NEVER, setFlags,
         outReg.file == RegisterFile::PHYSICAL_A ? WriteSwap::DONT_SWAP : WriteSwap::SWAP, outReg.num, REG_NOP.num,

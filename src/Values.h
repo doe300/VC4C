@@ -673,13 +673,60 @@ namespace vc4c
          */
         Value getCompoundPart(std::size_t index) const;
         /*
-         * Whether this object has the given type
+         * Returns a pointer to the data of the given type or nullptr if the data is not of the requested type.
          */
-        bool hasRegister() const;
-        bool hasLiteral() const;
-        bool hasImmediate() const;
-        bool hasLocal() const;
-        bool hasContainer() const;
+        Register* checkRegister()
+        {
+            return VariantNamespace::get_if<Register>(&data);
+        }
+
+        const Register* checkRegister() const
+        {
+            return VariantNamespace::get_if<Register>(&data);
+        }
+
+        Literal* checkLiteral()
+        {
+            return VariantNamespace::get_if<Literal>(&data);
+        }
+
+        const Literal* checkLiteral() const
+        {
+            return VariantNamespace::get_if<Literal>(&data);
+        }
+
+        SmallImmediate* checkImmediate()
+        {
+            return VariantNamespace::get_if<SmallImmediate>(&data);
+        }
+
+        const SmallImmediate* checkImmediate() const
+        {
+            return VariantNamespace::get_if<SmallImmediate>(&data);
+        }
+
+        Local* checkLocal()
+        {
+            auto loc = VariantNamespace::get_if<Local*>(&data);
+            return loc ? *loc : nullptr;
+        }
+
+        const Local* checkLocal() const
+        {
+            auto loc = VariantNamespace::get_if<Local*>(&data);
+            return loc ? *loc : nullptr;
+        }
+
+        ContainerValue* checkContainer()
+        {
+            return VariantNamespace::get_if<ContainerValue>(&data);
+        }
+
+        const ContainerValue* checkContainer() const
+        {
+            return VariantNamespace::get_if<ContainerValue>(&data);
+        }
+
         /*
          * Whether this object has the given local
          */

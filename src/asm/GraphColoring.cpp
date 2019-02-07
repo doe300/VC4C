@@ -229,28 +229,28 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
     if(secondArg)
     {
         // only accumulators can be rotated
-        if(dynamic_cast<const intermediate::VectorRotation*>(&instr) != nullptr && firstArg->hasLocal())
+        if(dynamic_cast<const intermediate::VectorRotation*>(&instr) != nullptr && firstArg->checkLocal())
         {
             // logging::debug() << "Local " << firstArg.get().local.to_string() << " must be an accumulator, because it
             // is used in a vector-rotation in " << instr.to_string() << logging::endl;
             blockRegisterFile(RegisterFile::PHYSICAL_ANY, firstArg->local(), localUses);
         } // the else here skip all the other checks, since they are useless for vector-rotations (already limits to
           // accumulator-only)
-        else if(firstArg->hasLocal() && secondArg->hasImmediate())
+        else if(firstArg->checkLocal() && secondArg->checkImmediate())
         {
             // B is reserved ->other input must be on A or accumulator
             // logging::debug() << "Local " << firstArg.get().local.to_string() << " can't be on register-file B,
             // because of " << instr.to_string() << logging::endl;
             blockRegisterFile(RegisterFile::PHYSICAL_B, firstArg->local(), localUses);
         }
-        else if(firstArg->hasImmediate() && secondArg->hasLocal())
+        else if(firstArg->checkImmediate() && secondArg->checkLocal())
         {
             // B is reserved ->other input must be on A or accumulator
             // logging::debug() << "Local " << secondArg.get().local.to_string() << " can't be on register-file B,
             // because of " << instr.to_string() << logging::endl;
             blockRegisterFile(RegisterFile::PHYSICAL_B, secondArg->local(), localUses);
         }
-        else if(firstArg->hasLocal() && secondArg->hasRegister() &&
+        else if(firstArg->checkLocal() && secondArg->checkRegister() &&
             (secondArg->reg().file == RegisterFile::PHYSICAL_A || secondArg->reg().file == RegisterFile::PHYSICAL_B))
         {
             const RegisterFile file = secondArg->reg().file;
@@ -259,7 +259,7 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
             // (file == RegisterFile::PHYSICAL_A ? 'A' : 'B') << ", because of " << instr.to_string() << logging::endl;
             blockRegisterFile(file, firstArg->local(), localUses);
         }
-        else if(firstArg->hasRegister() && secondArg->hasLocal() &&
+        else if(firstArg->checkRegister() && secondArg->checkLocal() &&
             (firstArg->reg().file == RegisterFile::PHYSICAL_A || firstArg->reg().file == RegisterFile::PHYSICAL_B))
         {
             const RegisterFile file = firstArg->reg().file;
@@ -275,21 +275,21 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
     // Broadcom Specification, page 30
     if(instr.hasUnpackMode())
     {
-        if(firstArg->hasLocal() && (!secondArg || !secondArg->hasLocal() || secondArg.value() == firstArg))
+        if(firstArg->checkLocal() && (!secondArg || !secondArg->checkLocal() || secondArg.value() == firstArg))
         {
             // there is only one input local, fix to file A
             // logging::debug() << "Local " << firstArg.get().local.to_string() << " must be on register-file A, because
             // of unpack-mode in " << instr.to_string() << logging::endl;
             blockRegisterFile(remove_flag(RegisterFile::ANY, RegisterFile::PHYSICAL_A), firstArg->local(), localUses);
         }
-        else if(!firstArg->hasLocal() && secondArg && secondArg->hasLocal())
+        else if(!firstArg->checkLocal() && secondArg && secondArg->checkLocal())
         {
             // there is only one input local, fix to file A
             // logging::debug() << "Local " << secondArg.get().local.to_string() << " must be on register-file A,
             // because of unpack-mode in " << instr.to_string() << logging::endl;
             blockRegisterFile(remove_flag(RegisterFile::ANY, RegisterFile::PHYSICAL_A), secondArg->local(), localUses);
         }
-        else if(firstArg->hasLocal() && secondArg && secondArg->hasLocal() && firstArg.value() != secondArg.value())
+        else if(firstArg->checkLocal() && secondArg && secondArg->checkLocal() && firstArg.value() != secondArg.value())
         {
             throw CompilationError(CompilationStep::LABEL_REGISTER_MAPPING,
                 "Can't unpack two inputs in one instruction", instr.to_string());
@@ -341,10 +341,10 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
     // remove all blocked files from all locals
     if(blockedFiles != RegisterFile::NONE)
     {
-        if(firstArg && firstArg->hasLocal())
+        if(firstArg && firstArg->checkLocal())
             blockRegisterFile(blockedFiles, firstArg->local(), localUses);
 
-        if(secondArg && secondArg->hasLocal())
+        if(secondArg && secondArg->checkLocal())
             blockRegisterFile(blockedFiles, secondArg->local(), localUses);
     }
 }
@@ -352,8 +352,7 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
 static void fixLocals(const InstructionWalker it, FastMap<const Local*, LocalUsage>& localUses,
     const Local*& lastWrittenLocal0, const Local*& lastWrittenLocal1)
 {
-    const intermediate::CombinedOperation* comp = it.get<const intermediate::CombinedOperation>();
-    if(comp != nullptr)
+    if(auto comp = it.get<const intermediate::CombinedOperation>())
     {
         // this duplicate check is required to map the influence combined operations have on each other (blocking each
         // others physical files)
@@ -410,8 +409,8 @@ GraphColoring::GraphColoring(Method& method, InstructionWalker it) :
     const Local* lastWrittenLocal1 = nullptr;
     while(!it.isEndOfMethod())
     {
-        if(it.get() != nullptr && !it.has<intermediate::Branch>() && !it.has<intermediate::BranchLabel>() &&
-            !it.has<intermediate::MemoryBarrier>())
+        if(it.get() != nullptr && !it.get<intermediate::Branch>() && !it.get<intermediate::BranchLabel>() &&
+            !it.get<intermediate::MemoryBarrier>())
         {
             // 1) create entry per local
             it->forUsedLocals([this, it](const Local* l, const LocalUse::Type type) -> void {
@@ -663,13 +662,13 @@ static RegisterFile getBlockedInputs(
         {
             if(toSkip != nullptr && arg.hasLocal(toSkip))
                 continue;
-            if(arg.hasLocal() && isFixed(graph.assertNode(arg.local()).possibleFiles) &&
+            if(arg.checkLocal() && isFixed(graph.assertNode(arg.local()).possibleFiles) &&
                 graph.assertNode(arg.local()).possibleFiles != RegisterFile::ACCUMULATOR)
                 blockedFiles = add_flag(blockedFiles, graph.assertNode(arg.local()).possibleFiles);
             else if(arg.getLiteralValue())
                 blockedFiles = add_flag(blockedFiles, RegisterFile::PHYSICAL_B);
-            else if(arg.hasRegister())
-                blockedFiles = add_flag(blockedFiles, arg.reg().file);
+            else if(auto reg = arg.checkRegister())
+                blockedFiles = add_flag(blockedFiles, reg->file);
         }
     });
     return blockedFiles;
@@ -861,7 +860,7 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
                 // 2) check if next instruction reads this local
                 it.nextInMethod();
                 bool localRead = checkUser(users, it).readsLocal();
-                if(localRead && it.has<intermediate::VectorRotation>())
+                if(localRead && it.get<intermediate::VectorRotation>())
                 {
                     // TODO for locals used in vector rotations, this fix is wrong
                     throw CompilationError(CompilationStep::LABEL_REGISTER_MAPPING,

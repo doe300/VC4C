@@ -22,25 +22,24 @@ static bool isDerivedFromMemory(const Local* local)
     bool allSourcesDerivedFromMemory = true;
 
     local->forUsers(LocalUse::Type::WRITER, [&](const LocalUser* user) {
-        if(dynamic_cast<const intermediate::MoveOperation*>(user) != nullptr && user->getArgument(0)->hasLocal())
+        if(dynamic_cast<const intermediate::MoveOperation*>(user) != nullptr && user->getArgument(0)->checkLocal())
         {
             if(!isDerivedFromMemory(user->getArgument(0)->local()))
                 allSourcesDerivedFromMemory = false;
         }
         else if(dynamic_cast<const intermediate::MemoryInstruction*>(user) != nullptr)
             return;
-        else if(dynamic_cast<const intermediate::Operation*>(user) != nullptr)
+        else if(auto op = dynamic_cast<const intermediate::Operation*>(user))
         {
-            const auto* op = dynamic_cast<const intermediate::Operation*>(user);
             if(op->op != OP_ADD && op->op != OP_SUB)
                 allSourcesDerivedFromMemory = false;
-            else if(op->getFirstArg().hasLocal() && op->getFirstArg().type.isPointerType() &&
-                !op->assertArgument(1).type.isPointerType())
+            else if(op->getFirstArg().checkLocal() && op->getFirstArg().type.getPointerType() &&
+                !op->assertArgument(1).type.getPointerType())
             {
                 return;
             }
-            else if(op->assertArgument(1).hasLocal() && !op->getFirstArg().type.isPointerType() &&
-                op->assertArgument(1).type.isPointerType())
+            else if(op->assertArgument(1).checkLocal() && !op->getFirstArg().type.getPointerType() &&
+                op->assertArgument(1).type.getPointerType())
             {
                 return;
             }
@@ -68,14 +67,14 @@ static void checkMemoryLocation(const Value& val)
      * Pointers with a dynamically set memory location cannot be recognized at compile-time and therefore this check
      * will always fail for them
      */
-    if(!val.hasLocal() || !isDerivedFromMemory(val.local()))
+    if(!val.checkLocal() || !isDerivedFromMemory(val.local()))
         throw CompilationError(CompilationStep::LLVM_2_IR,
             "Operand needs to refer to a memory location or a parameter containing one", val.to_string());
 }
 
 static void checkLocalValue(const Value& val)
 {
-    if(val.hasLocal() &&
+    if(val.checkLocal() &&
         (val.local()->residesInMemory() ||
             (val.local()->is<Parameter>() && (val.local()->type.getPointerType() || val.local()->type.getArrayType()))))
         throw CompilationError(
@@ -168,14 +167,14 @@ static bool canMoveIntoVPM(const Value& val, bool isMemoryAddress)
         const DataType inVPMType = periphery::VPM::getVPMStorageType(base->type.getElementType());
         if(inVPMType.getPhysicalWidth() > VPM_DEFAULT_SIZE)
             return false;
-        if(base->is<Global>())
+        if(auto global = base->as<Global>())
             /*
              * Constant globals can be moved into VPM (actually completely into constant values), since they do not
              * change. Non-constant globals on the other side cannot be moved to the VPM, since they might lose their
              * values in the next work-group. Local memory is mapped by LLVM into globals with __local address space,
              * but can be lowered to VPM, since it is only used within one work-group
              */
-            return base->as<Global>()->isConstant ||
+            return global->isConstant ||
                 (base->type.getPointerType() && base->type.getPointerType()->addressSpace == AddressSpace::LOCAL);
         if(base->is<Parameter>())
             /*
@@ -197,7 +196,7 @@ static bool canMoveIntoVPM(const Value& val, bool isMemoryAddress)
      * This can be useful for operations performing memory-copy without QPU-side access to skip the steps of loading
      * into QPU and writing back to VPM.
      */
-    if(!val.hasLocal())
+    if(!val.checkLocal())
         // any non-local cannot be moved to VPM
         return false;
 

@@ -305,7 +305,7 @@ static void createMutexDependencies(DependencyGraph& graph, DependencyNode& node
 {
     if((node.key->hasValueType(ValueType::REGISTER) && node.key->getOutput()->reg().isVertexPipelineMemory()) ||
         std::any_of(node.key->getArguments().begin(), node.key->getArguments().end(),
-            [](const Value& arg) -> bool { return arg.hasRegister() && arg.reg().isVertexPipelineMemory(); }) ||
+            [](const Value& arg) -> bool { return arg.checkRegister() && arg.reg().isVertexPipelineMemory(); }) ||
         node.key->writesRegister(REG_MUTEX))
     {
         // any VPM operation or mutex unlock must be ordered after the corresponding mutex lock
@@ -839,8 +839,8 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
             lastLocalWrites[inst->getOutput()->local()] = inst.get();
         for(const Value& arg : inst->getArguments())
         {
-            if(arg.hasLocal())
-                lastLocalReads[arg.local()] = inst.get();
+            if(auto loc = arg.checkLocal())
+                lastLocalReads[loc] = inst.get();
         }
         if(inst->writesRegister(REG_ACC5) || inst->writesRegister(REG_REPLICATE_ALL) ||
             inst->writesRegister(REG_REPLICATE_QUAD))
