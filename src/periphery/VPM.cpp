@@ -475,16 +475,15 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
         // a single vector can only use a maximum of 1 row
         updateScratchSize(1);
 
-    if(memoryAddress.checkLocal())
+    if(auto local = memoryAddress.checkLocal())
     {
         // set the type of the parameter, if we can determine it
-        if(memoryAddress.local()->as<Parameter>() != nullptr)
+        if(auto param = local->as<Parameter>())
             memoryAddress.local()->as<Parameter>()->decorations =
-                add_flag(memoryAddress.local()->as<Parameter>()->decorations, ParameterDecorations::INPUT);
-        if(memoryAddress.local()->reference.first != nullptr &&
-            memoryAddress.local()->reference.first->as<Parameter>() != nullptr)
-            memoryAddress.local()->reference.first->as<Parameter>()->decorations = add_flag(
-                memoryAddress.local()->reference.first->as<Parameter>()->decorations, ParameterDecorations::INPUT);
+                add_flag(param->decorations, ParameterDecorations::INPUT);
+        if(local->reference.first != nullptr && local->reference.first->as<Parameter>() != nullptr)
+            local->reference.first->as<Parameter>()->decorations =
+                add_flag(local->reference.first->as<Parameter>()->decorations, ParameterDecorations::INPUT);
     }
 
     it = insertLockMutex(it, useMutex);
@@ -537,16 +536,15 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
         // a single vector can only use a maximum of 1 row
         updateScratchSize(1);
 
-    if(memoryAddress.checkLocal() && memoryAddress.local() != nullptr)
+    if(auto local = memoryAddress.checkLocal())
     {
         // set the type of the parameter, if we can determine it
-        if(memoryAddress.local()->as<Parameter>() != nullptr)
+        if(auto param = local->as<Parameter>())
             memoryAddress.local()->as<Parameter>()->decorations =
-                add_flag(memoryAddress.local()->as<Parameter>()->decorations, ParameterDecorations::OUTPUT);
-        if(memoryAddress.local()->reference.first != nullptr &&
-            memoryAddress.local()->reference.first->as<Parameter>() != nullptr)
-            memoryAddress.local()->reference.first->as<Parameter>()->decorations = add_flag(
-                memoryAddress.local()->reference.first->as<Parameter>()->decorations, ParameterDecorations::OUTPUT);
+                add_flag(param->decorations, ParameterDecorations::OUTPUT);
+        if(local->reference.first != nullptr && local->reference.first->as<Parameter>() != nullptr)
+            local->reference.first->as<Parameter>()->decorations =
+                add_flag(local->reference.first->as<Parameter>()->decorations, ParameterDecorations::OUTPUT);
     }
 
     it = insertLockMutex(it, useMutex);

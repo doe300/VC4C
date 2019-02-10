@@ -78,10 +78,10 @@ void Precompiler::precompile(std::istream& input, std::unique_ptr<std::istream>&
 SourceType Precompiler::getSourceType(std::istream& stream)
 {
     // http://llvm.org/docs/BitCodeFormat.html#magic-numbers
-    static const char LLVM_BITCODE_MAGIC_NUMBER[2] = {0x42, 0x43};
-    static const uint32_t SPIRV_MAGIC_NUMBER = 0x07230203;
-    static const char SPIRV_MAGIC_NUMBER_LITTLE_ENDIAN[4] = {0x07, 0x23, 0x02, 0x03};
-    static const char SPIRV_MAGIC_NUMBER_BIG_ENDIAN[4] = {0x03, 0x02, 0x23, 0x07};
+    static constexpr char LLVM_BITCODE_MAGIC_NUMBER[2] = {0x42, 0x43};
+    static constexpr uint32_t SPIRV_MAGIC_NUMBER = 0x07230203;
+    static constexpr char SPIRV_MAGIC_NUMBER_LITTLE_ENDIAN[4] = {0x07, 0x23, 0x02, 0x03};
+    static constexpr char SPIRV_MAGIC_NUMBER_BIG_ENDIAN[4] = {0x03, 0x02, 0x23, 0x07};
     std::array<char, 1024> buffer;
     stream.read(buffer.data(), 1000);
     const std::string s(buffer.data(), stream.gcount());
@@ -208,19 +208,16 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
     {
         std::vector<SPIRVSource> sources;
         sources.reserve(inputs.size());
-        std::transform(inputs.begin(), inputs.end(), std::back_inserter(sources),
-            [&](const std::pair<std::istream*, Optional<std::string>>& pair) -> SPIRVSource {
-                auto temp = compileToSPIRV(pair);
-
-                if(temp)
-                {
-                    tempFiles.emplace_back(new TemporaryFile(std::move(temp.value())));
-                    return SPIRVSource(tempFiles.back()->fileName);
-                }
-                if(pair.second)
-                    return SPIRVSource(pair.second.value());
-                return SPIRVSource(*pair.first);
-            });
+        std::transform(inputs.begin(), inputs.end(), std::back_inserter(sources), [&](const auto& pair) -> SPIRVSource {
+            if(auto temp = compileToSPIRV(pair))
+            {
+                tempFiles.emplace_back(new TemporaryFile(std::move(temp.value())));
+                return SPIRVSource(tempFiles.back()->fileName);
+            }
+            if(pair.second)
+                return SPIRVSource(pair.second.value());
+            return SPIRVSource(*pair.first);
+        });
 
         if(includeStandardLibrary)
         {
@@ -240,11 +237,9 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
     {
         std::vector<LLVMIRSource> sources;
         sources.reserve(inputs.size());
-        std::transform(inputs.begin(), inputs.end(), std::back_inserter(sources),
-            [&](const std::pair<std::istream*, Optional<std::string>>& pair) -> LLVMIRSource {
-                auto temp = compileToLLVM(pair);
-
-                if(temp)
+        std::transform(
+            inputs.begin(), inputs.end(), std::back_inserter(sources), [&](const auto& pair) -> LLVMIRSource {
+                if(auto temp = compileToLLVM(pair))
                 {
                     tempFiles.emplace_back(new TemporaryFile(std::move(temp.value())));
                     return LLVMIRSource(tempFiles.back()->fileName);
@@ -270,25 +265,24 @@ bool Precompiler::isLinkerAvailable(const std::unordered_map<std::istream*, Opti
 {
     if(!isLinkerAvailable())
         return false;
-    return std::all_of(
-        inputs.begin(), inputs.end(), [](const std::pair<std::istream*, Optional<std::string>>& input) -> bool {
-            switch(getSourceType(*input.first))
-            {
-            case SourceType::OPENCL_C:
-            case SourceType::LLVM_IR_BIN:
+    return std::all_of(inputs.begin(), inputs.end(), [](const auto& input) -> bool {
+        switch(getSourceType(*input.first))
+        {
+        case SourceType::OPENCL_C:
+        case SourceType::LLVM_IR_BIN:
 #ifdef LLVM_LINK_PATH
-                return true;
+            return true;
 #endif
-            case SourceType::LLVM_IR_TEXT:
-            case SourceType::SPIRV_BIN:
-            case SourceType::SPIRV_TEXT:
+        case SourceType::LLVM_IR_TEXT:
+        case SourceType::SPIRV_BIN:
+        case SourceType::SPIRV_TEXT:
 #ifdef SPIRV_FRONTEND
-                return true;
+            return true;
 #endif
-            default:
-                return false;
-            }
-        });
+        default:
+            return false;
+        }
+    });
 }
 
 bool Precompiler::isLinkerAvailable()

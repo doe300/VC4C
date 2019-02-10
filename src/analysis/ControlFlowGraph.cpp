@@ -22,8 +22,7 @@ bool CFGRelation::operator==(const CFGRelation& other) const
 
 std::string CFGRelation::getLabel() const
 {
-    if(std::all_of(predecessors.begin(), predecessors.end(),
-           [](const std::pair<BasicBlock*, Optional<InstructionWalker>>& pair) -> bool { return !pair.second; }))
+    if(std::all_of(predecessors.begin(), predecessors.end(), [](const auto& pair) -> bool { return !pair.second; }))
     {
         return "";
     }
@@ -35,7 +34,7 @@ std::string CFGRelation::getLabel() const
         return "";
     };
     return std::accumulate(predecessors.begin(), predecessors.end(), std::string{},
-        [&](const std::string& s, const std::pair<BasicBlock*, Optional<InstructionWalker>>& pair) -> std::string {
+        [&](const std::string& s, const auto& pair) -> std::string {
             return (s.empty() ? s : (s + ", ")) + converter(pair);
         });
 }
@@ -252,7 +251,7 @@ void ControlFlowGraph::dumpGraph(const std::string& path) const
     DebugGraph<BasicBlock*, CFGRelation, CFGEdge::Directed>::dumpGraph<ControlFlowGraph>(*this, path, nameFunc,
         [](const CFGRelation& rel) -> bool {
             return std::all_of(rel.predecessors.begin(), rel.predecessors.end(),
-                [](const std::pair<BasicBlock*, Optional<InstructionWalker>>& pair) -> bool { return !pair.second; });
+                [](const auto& pair) -> bool { return !pair.second; });
         },
         edgeLabelFunc);
 #endif

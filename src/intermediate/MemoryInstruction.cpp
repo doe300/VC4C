@@ -200,11 +200,10 @@ static bool canMoveIntoVPM(const Value& val, bool isMemoryAddress)
         // any non-local cannot be moved to VPM
         return false;
 
-    return std::all_of(val.local()->getUsers().begin(), val.local()->getUsers().end(),
-        [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {
-            // TODO enable if handled correctly by optimizations (e.g. combination of read/write into copy)
-            return false; // return dynamic_cast<const MemoryInstruction*>(pair.first) != nullptr;
-        });
+    return std::all_of(val.local()->getUsers().begin(), val.local()->getUsers().end(), [](const auto& pair) -> bool {
+        // TODO enable if handled correctly by optimizations (e.g. combination of read/write into copy)
+        return false; // return dynamic_cast<const MemoryInstruction*>(pair.first) != nullptr;
+    });
 }
 
 bool MemoryInstruction::canMoveSourceIntoVPM() const

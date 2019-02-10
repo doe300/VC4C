@@ -153,11 +153,12 @@ workflows:
     jobs:
       - check-code-style
       - build
-      - build-spirv
+      # TODO Disables, since it takes to much resources and Circle CI aborts the compilation
+      # - build-spirv
       - cross
       - test:
           requires:
             - build
-      - test-spirv:
-          requires:
-            - build-spirv
+      # - test-spirv:
+      #     requires:
+      #       - build-spirv

@@ -22,11 +22,9 @@ bool DataDependencyNodeBase::dependsOnBlock(const BasicBlock& bb, const DataDepe
     bool hasDependency = false;
     // TODO is checking here for only incoming edges correct? Could there be dependencies in both directions?
     self->forAllIncomingEdges([&](const DataDependencyNode& neighbor, const DataDependencyEdge& edge) -> bool {
-        if(neighbor.key == &bb &&
-            std::any_of(
-                edge.data.begin(), edge.data.end(), [&type](const std::pair<Local*, DataDependencyType>& pair) -> bool {
-                    return has_flag(pair.second, type);
-                }))
+        if(neighbor.key == &bb && std::any_of(edge.data.begin(), edge.data.end(), [&type](const auto& pair) -> bool {
+               return has_flag(pair.second, type);
+           }))
         {
             hasDependency = true;
             return false;
@@ -43,9 +41,7 @@ bool DataDependencyNodeBase::hasExternalDependencies(const Local* local, const D
     // TODO same here, is checking here for only incoming edges correct? Could there be dependencies in both directions?
     self->forAllIncomingEdges([&](const DataDependencyNode& neighbor, const DataDependencyEdge& edge) -> bool {
         if(std::any_of(edge.data.begin(), edge.data.end(),
-               [local, &type](const std::pair<Local*, DataDependencyType>& pair) -> bool {
-                   return pair.first == local && has_flag(pair.second, type);
-               }))
+               [local, &type](const auto& pair) -> bool { return pair.first == local && has_flag(pair.second, type); }))
         {
             hasDependency = true;
             return false;
@@ -179,9 +175,8 @@ std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createDependencyGraph(
 #ifdef DEBUG_MODE
     auto nameFunc = [](const BasicBlock* bb) -> std::string { return bb->getLabel()->getLabel()->name; };
     auto weakEdgeFunc = [](const DataDependency& dep) -> bool {
-        return std::all_of(dep.begin(), dep.end(), [](const std::pair<Local*, DataDependencyType>& pair) -> bool {
-            return !has_flag(pair.second, DataDependencyType::FLOW);
-        });
+        return std::all_of(dep.begin(), dep.end(),
+            [](const auto& pair) -> bool { return !has_flag(pair.second, DataDependencyType::FLOW); });
     };
     DebugGraph<BasicBlock*, DataDependency, DataDependencyEdge::Directed>::dumpGraph<DataDependencyGraph>(
         *graph.get(), "/tmp/vc4c-data-dependencies.dot", nameFunc, weakEdgeFunc, toEdgeLabel);

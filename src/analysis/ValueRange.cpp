@@ -460,8 +460,7 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
     {
         // some operations cannot go into negative if both inputs are positive
         bool hasCandidateOperation = false;
-        auto op = dynamic_cast<const Operation*>(it);
-        if(op != nullptr)
+        if(auto op = dynamic_cast<const Operation*>(it))
         {
             hasCandidateOperation = op->op == OP_ADD || op->op == OP_AND || op->op == OP_ASR || op->op == OP_FADD ||
                 op->op == OP_FMAX || op->op == OP_FMAXABS || op->op == OP_FMIN || op->op == OP_FMINABS ||

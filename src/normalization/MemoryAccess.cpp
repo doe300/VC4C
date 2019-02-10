@@ -599,7 +599,7 @@ InstructionWalker normalization::accessGlobalData(
 
 void normalization::spillLocals(const Module& module, Method& method, const Configuration& config)
 {
-    static const std::size_t MINIMUM_THRESHOLD = 128; /* TODO some better limit */
+    static constexpr std::size_t MINIMUM_THRESHOLD = 128; /* TODO some better limit */
     // TODO need to know how much of the VPM is still free (need per-kernel VPM object)
     // also need to heed not to write/read into/from VPM from within a block of DMA reads/writes
     // XXX or revert: run this before #combineVPMAccess and reserve as much VPM as required (dynamically, how? or first

@@ -197,12 +197,13 @@ Optional<Value> Unpack::operator()(const Value& val) const
     {
         // unpack vectors per element
         Value result(ContainerValue(container->elements.size()), val.type);
+        auto& resultElements = result.container().elements;
         for(const Value& elem : container->elements)
         {
             auto tmp = operator()(elem);
             if(!tmp)
                 return NO_VALUE;
-            result.container().elements.push_back(tmp.value());
+            resultElements.emplace_back(std::move(tmp).value());
         }
         return result;
     }
@@ -400,12 +401,13 @@ Optional<Value> Pack::operator()(const Value& val, const VectorFlags& flags) con
     {
         // pack vectors per element
         Value result(ContainerValue(container->elements.size()), val.type);
+        auto& resultElements = result.container().elements;
         for(std::size_t i = 0; i < container->elements.size(); ++i)
         {
             auto tmp = operator()(container->elements[i], flags[i]);
             if(!tmp)
                 return NO_VALUE;
-            result.container().elements.push_back(tmp.value());
+            resultElements.emplace_back(std::move(tmp).value());
         }
         return result;
     }
@@ -723,6 +725,9 @@ PrecalculatedValue OpCode::operator()(const Optional<Value>& firstOperand, const
     if(numOperands > 1 && !secondVal)
         return std::make_pair(NO_VALUE, VectorFlags{});
 
+    auto firstContainer = firstVal->checkContainer();
+    auto secondContainer = secondVal ? secondVal->checkContainer() : nullptr;
+
     if(firstVal->checkImmediate() && firstVal->immediate().isVectorRotation())
         return std::make_pair(NO_VALUE, VectorFlags{});
     if(numOperands > 1 && secondVal->checkImmediate() && secondVal->immediate().isVectorRotation())
@@ -730,10 +735,8 @@ PrecalculatedValue OpCode::operator()(const Optional<Value>& firstOperand, const
 
     // both (used) values are literals (or literal containers)
 
-    bool calcPerComponent = (firstVal->checkContainer() && firstVal->container().elements.size() > 1 &&
-                                !firstVal->container().isAllSame()) ||
-        (numOperands > 1 && secondVal->checkContainer() && secondVal->container().elements.size() > 1 &&
-            !secondVal->container().isAllSame());
+    bool calcPerComponent = (firstContainer && firstContainer->elements.size() > 1 && !firstContainer->isAllSame()) ||
+        (numOperands > 1 && secondContainer && secondContainer->elements.size() > 1 && !secondContainer->isAllSame());
     DataType resultType = firstVal->type;
     if(numOperands > 1 &&
         (secondVal->type.getVectorWidth() > resultType.getVectorWidth() ||
@@ -743,39 +746,38 @@ PrecalculatedValue OpCode::operator()(const Optional<Value>& firstOperand, const
     // at least one used value is a container, need to calculate component-wise
     if(calcPerComponent)
     {
-        auto numElements = std::max(firstVal->checkContainer() ? firstVal->container().elements.size() : 1,
-            secondVal ? (secondVal->checkContainer() ? secondVal->container().elements.size() : 1) : 0);
+        auto numElements = std::max(firstContainer ? firstContainer->elements.size() : 1,
+            secondVal ? (secondContainer ? secondContainer->elements.size() : 1) : 0);
         Value res(ContainerValue(numElements), resultType);
         VectorFlags flags;
+        auto& resElements = res.container().elements;
         for(unsigned char i = 0; i < numElements; ++i)
         {
             std::pair<Optional<Value>, VectorFlags> tmp{NO_VALUE, {}};
             if(numOperands == 1)
-                tmp = operator()(
-                    firstVal->checkContainer() ? firstVal->container().elements.at(i) : firstVal.value(), NO_VALUE);
+                tmp = operator()(firstContainer ? firstContainer->elements.at(i) : firstVal.value(), NO_VALUE);
             else
-                tmp = operator()(firstVal->checkContainer() ? firstVal->container().elements.at(i) : firstVal.value(),
-                    secondVal->checkContainer() ? secondVal->container().elements.at(i) : secondVal.value());
+                tmp = operator()(firstContainer ? firstContainer->elements.at(i) : firstVal.value(),
+                    secondContainer ? secondContainer->elements.at(i) : secondVal.value());
             if(!tmp.first)
                 // result could not be calculated for a single component of the vector, abort
                 return std::make_pair(NO_VALUE, VectorFlags{});
-            res.container().elements.push_back(tmp.first.value());
+            resElements.emplace_back(std::move(tmp.first).value());
             flags[i] = tmp.second[0];
         }
-        return std::make_pair(res, flags);
+        return std::make_pair(std::move(res), flags);
     }
 
     if(firstVal->isUndefined() || (numOperands > 1 && secondVal && secondVal->isUndefined()))
         return std::make_pair(UNDEFINED_VALUE, VectorFlags{});
 
     // TODO throws if first element is no literal
-    const Literal firstLit = firstVal->getLiteralValue() ?
-        firstVal->getLiteralValue().value() :
-        firstVal->container().elements.at(0).getLiteralValue().value();
+    const Literal firstLit = firstVal->getLiteralValue() ? firstVal->getLiteralValue().value() :
+                                                           firstContainer->elements.at(0).getLiteralValue().value();
     const Literal secondLit = (!secondVal || numOperands == 1) ?
         INT_ZERO.literal() :
         secondVal->getLiteralValue() ? secondVal->getLiteralValue().value() :
-                                       secondVal->container().elements.at(0).getLiteralValue().value();
+                                       secondContainer->elements.at(0).getLiteralValue().value();
 
     if(*this == OP_ADD)
     {

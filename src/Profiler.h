@@ -16,21 +16,21 @@ namespace vc4c
 #define PROFILE(func, ...)                                                                                             \
     profiler::ProfilingResult profile##func{#func, __FILE__, __LINE__, profiler::Clock::now()};                        \
     func(__VA_ARGS__);                                                                                                 \
-    profiler::endFunctionCall(profile##func)
+    profiler::endFunctionCall(std::move(profile##func))
 
 #define PROFILE_START(name)                                                                                            \
     profiler::ProfilingResult profile##name                                                                            \
     {                                                                                                                  \
         #name, __FILE__, __LINE__, profiler::Clock::now()                                                              \
     }
-#define PROFILE_END(name) profiler::endFunctionCall(profile##name)
+#define PROFILE_END(name) profiler::endFunctionCall(std::move(profile##name))
 
 #define PROFILE_START_DYNAMIC(name)                                                                                    \
     profiler::ProfilingResult profile                                                                                  \
     {                                                                                                                  \
         name, __FILE__, __LINE__, profiler::Clock::now()                                                               \
     }
-#define PROFILE_END_DYNAMIC(name) profiler::endFunctionCall(profile)
+#define PROFILE_END_DYNAMIC(name) profiler::endFunctionCall(std::move(profile))
 
 #define PROFILE_COUNTER(index, name, value) profiler::increaseCounter(index, name, value, __FILE__, __LINE__)
 #define PROFILE_COUNTER_WITH_PREV(index, name, value, prevIndex)                                                       \
@@ -65,12 +65,12 @@ namespace vc4c
             Clock::time_point startTime;
         };
 
-        void endFunctionCall(const ProfilingResult& result);
+        void endFunctionCall(ProfilingResult&& result);
 
         void dumpProfileResults(bool writeAsWarning = false);
 
-        void increaseCounter(std::size_t index, const std::string& name, std::size_t value, const std::string& file,
-            std::size_t line, std::size_t prevIndex = SIZE_MAX);
+        void increaseCounter(std::size_t index, std::string name, std::size_t value, std::string file, std::size_t line,
+            std::size_t prevIndex = SIZE_MAX);
 
         /*
          * The following values are added to the sub counter index to get the absolute counter index.

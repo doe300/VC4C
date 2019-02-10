@@ -64,16 +64,16 @@ static std::mutex lockTimes;
 static std::mutex lockCounters;
 #endif
 
-void profiler::endFunctionCall(const ProfilingResult& result)
+void profiler::endFunctionCall(ProfilingResult&& result)
 {
 #ifdef MULTI_THREADED
     std::lock_guard<std::mutex> guard(lockTimes);
 #endif
     auto& entry = times[result.name];
-    entry.name = result.name;
+    entry.name = std::move(result.name);
     entry.duration += std::chrono::duration_cast<Duration>(Clock::now() - result.startTime);
     entry.invocations += 1;
-    entry.fileName = result.fileName;
+    entry.fileName = std::move(result.fileName);
     entry.lineNumber = result.lineNumber;
 }
 
@@ -132,17 +132,17 @@ void profiler::dumpProfileResults(bool writeAsWarning)
     counters.clear();
 }
 
-void profiler::increaseCounter(const std::size_t index, const std::string& name, const std::size_t value,
-    const std::string& file, const std::size_t line, const std::size_t prevIndex)
+void profiler::increaseCounter(const std::size_t index, std::string name, const std::size_t value, std::string file,
+    const std::size_t line, const std::size_t prevIndex)
 {
 #ifdef MULTI_THREADED
     std::lock_guard<std::mutex> guard(lockCounters);
 #endif
     counters[index].index = index;
-    counters[index].name = name;
+    counters[index].name = std::move(name);
     counters[index].count += value;
     counters[index].invocations += 1;
     counters[index].prevCounter = prevIndex;
-    counters[index].fileName = file;
+    counters[index].fileName = std::move(file);
     counters[index].lineNumber = line;
 }

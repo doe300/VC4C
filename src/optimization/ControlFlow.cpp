@@ -229,7 +229,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                     it.value()->getOutput().ifPresent([](const Value& val) -> bool {
                         return val.checkLocal() &&
                             std::any_of(val.local()->getUsers().begin(), val.local()->getUsers().end(),
-                                [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {
+                                [](const auto& pair) -> bool {
                                     return pair.first->hasDecoration(intermediate::InstructionDecorations::PHI_NODE);
                                 });
                     }))
@@ -257,7 +257,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                                 it.value()->getOutput().ifPresent([](const Value& val) -> bool {
                                     return val.checkLocal() &&
                                         std::any_of(val.local()->getUsers().begin(), val.local()->getUsers().end(),
-                                            [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {
+                                            [](const auto& pair) -> bool {
                                                 return pair.first->hasDecoration(
                                                     intermediate::InstructionDecorations::PHI_NODE);
                                             });
@@ -301,18 +301,14 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
             // simple case, there exists an instruction, directly mapping the values
             auto userIt =
                 std::find_if(iterationStep.local()->getUsers().begin(), iterationStep.local()->getUsers().end(),
-                    [&repeatCond](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {
-                        return pair.first->writesLocal(repeatCond.local());
-                    });
+                    [&repeatCond](const auto& pair) -> bool { return pair.first->writesLocal(repeatCond.local()); });
             if(userIt == iterationStep.local()->getUsers().end())
             {
                 //"default" case, the iteration-variable is compared to something and the result of this comparison is
                 // used to branch  e.g. "- = xor <iteration-variable>, <upper-bound> (setf)"
                 userIt =
                     std::find_if(iterationStep.local()->getUsers().begin(), iterationStep.local()->getUsers().end(),
-                        [](const std::pair<const LocalUser*, LocalUse>& pair) -> bool {
-                            return pair.first->setFlags == SetFlag::SET_FLAGS;
-                        });
+                        [](const auto& pair) -> bool { return pair.first->setFlags == SetFlag::SET_FLAGS; });
                 if(userIt != iterationStep.local()->getUsers().end())
                 {
                     // TODO need to check, whether the comparison result is the one used for branching

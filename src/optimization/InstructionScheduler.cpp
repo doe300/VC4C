@@ -121,9 +121,9 @@ struct NodeSorter : public std::less<intermediate::IntermediateInstruction*>
 using OpenSet = OrderedSet<intermediate::IntermediateInstruction*, NodeSorter>;
 using DelaysMap = FastMap<const intermediate::IntermediateInstruction*, std::size_t>;
 
-static const int DEFAULT_PRIORITY = 1000;
+static constexpr int DEFAULT_PRIORITY = 1000;
 // needs to be larger then the default priority to disregard in any case
-static const int MIN_PRIORITY = 2000;
+static constexpr int MIN_PRIORITY = 2000;
 
 static int calculateSchedulingPriority(DependencyEdge& dependency, BasicBlock& block)
 {

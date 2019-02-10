@@ -1281,9 +1281,7 @@ static std::pair<bool, analysis::IntegerRange> checkWorkGroupUniformParts(
     if(!allUniformPartsEqual)
     {
         if(std::all_of(differingUniformParts.begin(), differingUniformParts.end(),
-               [](const std::pair<Value, InstructionDecorations>& part) -> bool {
-                   return part.first.getLiteralValue().has_value();
-               }))
+               [](const auto& part) -> bool { return part.first.getLiteralValue().has_value(); }))
         {
             // all work-group uniform values which differ between various accesses of the same local are literal
             // values. We can use this knowledge to still allow caching the local, by converting the literals to

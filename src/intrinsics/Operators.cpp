@@ -423,7 +423,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
      * - values <= 16000 trigger value mismatch to "exact" division
      * - values >= 16500 trigger overflow in multiplication with factor or shifts of >= 32 positions
      */
-    static const unsigned accuracy = 16100;
+    static constexpr unsigned accuracy = 16100;
     auto constants = calculateConstant(op.assertArgument(1), accuracy);
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Intrinsifying unsigned division by " << op.assertArgument(1).to_string(false, true)

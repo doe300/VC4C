@@ -77,10 +77,10 @@ BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType) : cont
 {
     // required, since LLVM cannot read from std::istreams
     std::string tmp;
-    if(dynamic_cast<std::istringstream*>(&stream) != nullptr)
-        tmp = dynamic_cast<std::istringstream*>(&stream)->str();
-    else if(dynamic_cast<std::stringstream*>(&stream) != nullptr)
-        tmp = dynamic_cast<std::stringstream*>(&stream)->str();
+    if(auto sstream = dynamic_cast<std::istringstream*>(&stream))
+        tmp = sstream->str();
+    else if(auto sstream = dynamic_cast<std::stringstream*>(&stream))
+        tmp = sstream->str();
     else
         tmp.insert(tmp.end(), std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
     std::unique_ptr<llvm::MemoryBuffer> buf(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(tmp)));

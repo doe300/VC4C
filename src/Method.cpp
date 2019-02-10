@@ -240,9 +240,9 @@ std::size_t Method::cleanEmptyInstructions()
 
 void Method::appendToEnd(intermediate::IntermediateInstruction* instr)
 {
-    if(dynamic_cast<intermediate::BranchLabel*>(instr) != nullptr)
+    if(auto label = dynamic_cast<intermediate::BranchLabel*>(instr))
     {
-        basicBlocks.emplace_back(*this, dynamic_cast<intermediate::BranchLabel*>(instr));
+        basicBlocks.emplace_back(*this, label);
         updateCFGOnBlockInsertion(&basicBlocks.back());
     }
     else
