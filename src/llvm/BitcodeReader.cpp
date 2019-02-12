@@ -133,8 +133,8 @@ static void extractKernelMetadata(
                     const llvm::ConstantAsMetadata* constant = llvm::cast<const llvm::ConstantAsMetadata>(operand);
                     auto& addrSpace = const_cast<AddressSpace&>(ptrType->addressSpace);
                     if(addrSpace == AddressSpace::GENERIC)
-                        addrSpace =
-                            toAddressSpace(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getSExtValue());
+                        addrSpace = toAddressSpace(static_cast<int32_t>(
+                            llvm::cast<const llvm::ConstantInt>(constant->getValue())->getSExtValue()));
                 }
                 else
                 {
@@ -585,11 +585,12 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
     if(type->isArrayTy())
     {
         const DataType elementType = toDataType(type->getArrayElementType());
-        return addToMap(elementType.toArrayType(type->getArrayNumElements()), type, typesMap);
+        return addToMap(elementType.toArrayType(static_cast<uint32_t>(type->getArrayNumElements())), type, typesMap);
     }
     if(type->isPointerTy())
     {
-        return toDataType(type->getPointerElementType()).toPointerType(toAddressSpace(type->getPointerAddressSpace()));
+        return toDataType(type->getPointerElementType())
+            .toPointerType(toAddressSpace(static_cast<int32_t>(type->getPointerAddressSpace())));
     }
     dumpLLVM(type);
     throw CompilationError(CompilationStep::PARSER, "Unknown LLVM type", std::to_string(type->getTypeID()));
@@ -1037,7 +1038,6 @@ void BitcodeReader::parseInstruction(
         instructions.back()->setDecorations(deco);
         break;
     }
-    break;
     case OtherOps::FCmp:
         FALL_THROUGH
     case OtherOps::ICmp:
@@ -1129,8 +1129,6 @@ Value BitcodeReader::parseInlineGetElementPtr(
         else
         {
             return toValue(method, constExpr->getOperand(0));
-            // skip next step
-            constExpr = nullptr;
         }
     }
     if(constExpr != nullptr)

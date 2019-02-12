@@ -319,8 +319,9 @@ std::pair<Value, bool> Registers::readRegister(Register reg)
         return std::make_pair(readStorageRegister(reg), true);
     if(reg.num == REG_SFU_OUT.num)
     {
-        if(readCache.find(REG_SFU_OUT) != readCache.end())
-            return std::make_pair(readCache.at(REG_SFU_OUT), true);
+        auto it = readCache.find(REG_SFU_OUT);
+        if(it != readCache.end())
+            return std::make_pair(it->second, true);
         auto pair = qpu.readR4();
         setReadCache(REG_SFU_OUT, pair.first);
         return pair;
@@ -329,6 +330,7 @@ std::pair<Value, bool> Registers::readRegister(Register reg)
     {
         if(readCache.find(REG_UNIFORM) == readCache.end())
             setReadCache(REG_UNIFORM, qpu.uniforms.readUniform());
+        // cannot optimize to use iterator here, since we modify the element in cache!
         return std::make_pair(readCache.at(REG_UNIFORM), true);
     }
     if(reg == REG_ELEMENT_NUMBER)
@@ -344,6 +346,7 @@ std::pair<Value, bool> Registers::readRegister(Register reg)
     {
         if(readCache.find(REG_VPM_IO) == readCache.end())
             setReadCache(REG_VPM_IO, qpu.vpm.readValue());
+        // cannot optimize to use iterator here, since we modify the element in cache!
         return std::make_pair(readCache.at(REG_VPM_IO), true);
     }
     if(reg == REG_VPM_DMA_LOAD_WAIT)
@@ -354,6 +357,7 @@ std::pair<Value, bool> Registers::readRegister(Register reg)
     {
         if(readCache.find(REG_MUTEX) == readCache.end())
             setReadCache(REG_MUTEX, qpu.mutex.lock(qpu.ID) ? BOOL_TRUE : BOOL_FALSE);
+        // cannot optimize to use iterator here, since we modify the element in cache!
         return std::make_pair(readCache.at(REG_MUTEX), readCache.at(REG_MUTEX).getLiteralValue()->isTrue());
     }
 
@@ -1524,7 +1528,7 @@ void QPU::writeConditional(Register dest, const Value& in, ConditionCode cond, c
     }
     Value result(ContainerValue(NATIVE_VECTOR_SIZE), in.type);
 
-    std::bitset<16> elementMask;
+    std::bitset<16> elementMask{};
 
     auto& outElements = result.container().elements;
     auto inContainer = in.checkContainer();
@@ -1736,25 +1740,25 @@ std::vector<MemoryAddress> tools::buildUniforms(Memory& memory, MemoryAddress ba
     return res;
 }
 
-static void emulateStep(
-    std::vector<qpu_asm::Instruction>::const_iterator firstInstruction, ReferenceRetainingList<QPU>& qpus)
+static void emulateStep(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction, std::vector<QPU>& qpus,
+    std::bitset<NATIVE_VECTOR_SIZE>& activeQPUs)
 {
-    auto it = qpus.begin();
-    while(it != qpus.end())
+    for(unsigned i = 0; i < qpus.size(); ++i)
     {
+        if(!activeQPUs.test(i))
+            continue;
         try
         {
-            bool continueRunning = it->execute(firstInstruction);
+            bool continueRunning = qpus[i].execute(firstInstruction);
             if(!continueRunning)
                 // this QPU has finished
-                it = qpus.erase(it);
-            else
-                ++it;
+                activeQPUs.reset(i);
         }
         catch(const std::exception&)
         {
-            logging::error() << "Emulation threw exception execution following instruction on QPU " << it->ID << ": "
-                             << it->getCurrentInstruction(firstInstruction)->toHexString(true) << logging::endl;
+            logging::error() << "Emulation threw exception execution following instruction on QPU " << qpus[i].ID
+                             << ": " << qpus[i].getCurrentInstruction(firstInstruction)->toHexString(true)
+                             << logging::endl;
             // re-throw error
             throw;
         }
@@ -1773,7 +1777,9 @@ bool tools::emulate(std::vector<qpu_asm::Instruction>::const_iterator firstInstr
     VPM vpm(memory);
     Semaphores semaphores;
 
-    ReferenceRetainingList<QPU> qpus;
+    std::vector<QPU> qpus;
+    qpus.reserve(uniformAddresses.size());
+    std::bitset<NATIVE_VECTOR_SIZE> activeQPUs = (1 << uniformAddresses.size()) - 1;
     uint8_t numQPU = 0;
     for(MemoryAddress uniformPointer : uniformAddresses)
     {
@@ -1784,11 +1790,11 @@ bool tools::emulate(std::vector<qpu_asm::Instruction>::const_iterator firstInstr
     uint32_t cycle = 0;
     bool success = true;
     PROFILE_START(Emulation);
-    while(!qpus.empty())
+    while(activeQPUs.any())
     {
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Emulating cycle: " << cycle << logging::endl);
         PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 250, "emulation cycles (utilization)", qpus.size());
-        emulateStep(firstInstruction, qpus);
+        emulateStep(firstInstruction, qpus, activeQPUs);
         for(SFU& sfu : sfus)
             sfu.incrementCycle();
         vpm.incrementCycle();

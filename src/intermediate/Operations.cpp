@@ -393,7 +393,7 @@ PrecalculatedValue Operation::precalculate(const std::size_t numIterations) cons
             return PrecalculatedValue{NO_VALUE, {}};
     }
 
-    return op(arg0, arg1);
+    return op(*arg0, arg1);
 }
 
 bool Operation::isSimpleOperation() const
