@@ -184,7 +184,7 @@ namespace vc4c
         std::pair<Local*, int> reference;
 
     protected:
-        Local(const DataType& type, const std::string& name);
+        Local(DataType type, const std::string& name);
 
     private:
         // FIXME unordered_map randomly throws SEGFAULT somewhere in stdlib in #removeUser called by
@@ -253,8 +253,8 @@ namespace vc4c
      */
     struct Parameter final : public Local
     {
-        Parameter(const std::string& name, const DataType& type,
-            ParameterDecorations decorations = ParameterDecorations::NONE);
+        Parameter(
+            const std::string& name, DataType type, ParameterDecorations decorations = ParameterDecorations::NONE);
         Parameter(Parameter&&) = default;
         ~Parameter() override;
 
@@ -304,7 +304,7 @@ namespace vc4c
      */
     struct Global final : public Local
     {
-        Global(const std::string& name, const DataType& globalType, const Value& value, bool isConstant);
+        Global(const std::string& name, DataType globalType, const Value& value, bool isConstant);
         Global(Global&&) = default;
         ~Global() override = default;
 
@@ -335,7 +335,7 @@ namespace vc4c
      */
     struct StackAllocation final : public Local
     {
-        StackAllocation(const std::string& name, const DataType& type, std::size_t size = 0, std::size_t alignment = 1);
+        StackAllocation(const std::string& name, DataType type, std::size_t size = 0, std::size_t alignment = 1);
         StackAllocation(StackAllocation&&) = default;
         ~StackAllocation() override = default;
 

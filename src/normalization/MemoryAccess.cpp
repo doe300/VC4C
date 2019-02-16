@@ -825,10 +825,10 @@ static InstructionWalker insertAddressToStackOffset(InstructionWalker it, Method
         // size of one stack-frame in bytes
         auto stackByteSize = periphery::VPM::getVPMStorageType(baseAddress->type.getElementType()).getPhysicalWidth();
         // add offset of stack-frame
-        Value stackOffset = method.addNewLocal(TYPE_VOID.toPointerType(), "%stack_offset");
+        Value stackOffset = method.addNewLocal(TYPE_VOID_POINTER, "%stack_offset");
         Value tmp = method.addNewLocal(baseAddress->type);
         assign(it, stackOffset) = mul24(Value(Literal(stackByteSize), TYPE_INT16), Value(REG_QPU_NUMBER, TYPE_INT8));
-        out = assign(it, TYPE_VOID.toPointerType(), "%stack_offset") = tmpIndex + stackOffset;
+        out = assign(it, TYPE_VOID_POINTER, "%stack_offset") = tmpIndex + stackOffset;
     }
     else
     {
@@ -849,7 +849,7 @@ static InstructionWalker insertAddressToElementOffset(InstructionWalker it, Meth
     Value tmpIndex = UNDEFINED_VALUE;
     it = insertAddressToOffset(it, method, tmpIndex, baseAddress, mem, ptrValue);
     // the index (as per index calculation) is in bytes, but we need index in elements, so divide by element size
-    out = assign(it, TYPE_VOID.toPointerType(), "%element_offset") =
+    out = assign(it, TYPE_VOID_POINTER, "%element_offset") =
         tmpIndex / Literal(container.type.getElementType().getPhysicalWidth());
     return it;
 }
@@ -890,7 +890,7 @@ static InstructionWalker mapToVPMMemoryAccessInstructions(
                 toMemoryType(sourceArea->usageType), mem, mem->getSource());
             // the VPM addressing for DMA access contains row and column offset. We only have row offset, so we need to
             // shift the result to the correct position
-            inAreaOffset = assign(it, TYPE_VOID.toPointerType(), "%vpm_row_offset") = inAreaOffset << 4_val;
+            inAreaOffset = assign(it, TYPE_VOID_POINTER, "%vpm_row_offset") = inAreaOffset << 4_val;
             it = method.vpm->insertWriteRAM(
                 method, it, mem->getDestination(), mem->getSourceElementType(), sourceArea, true, inAreaOffset);
         }
@@ -901,7 +901,7 @@ static InstructionWalker mapToVPMMemoryAccessInstructions(
                 toMemoryType(destArea->usageType), mem, mem->getDestination());
             // the VPM addressing for DMA access contains row and column offset. We only have row offset, so we need to
             // shift the result to the correct position
-            inAreaOffset = assign(it, TYPE_VOID.toPointerType(), "%vpm_row_offset") = inAreaOffset << 4_val;
+            inAreaOffset = assign(it, TYPE_VOID_POINTER, "%vpm_row_offset") = inAreaOffset << 4_val;
             it = method.vpm->insertReadRAM(
                 method, it, mem->getSource(), mem->getDestinationElementType(), destArea, true, inAreaOffset);
         }

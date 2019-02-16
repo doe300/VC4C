@@ -21,7 +21,7 @@ const TMU periphery::TMU1{REG_TMU1_COORD_S_U_X, REG_TMU1_COORD_T_V_Y, REG_TMU1_C
     REG_TMU1_COORD_B_LOD_BIAS, SIGNAL_LOAD_TMU1};
 
 static NODISCARD InstructionWalker insertCalculateAddressOffsets(
-    Method& method, InstructionWalker it, const Value& baseAddress, const DataType& type, Value& outputAddress)
+    Method& method, InstructionWalker it, const Value& baseAddress, DataType type, Value& outputAddress)
 {
     /*
      * we need to set the addresses in this way:
@@ -43,7 +43,7 @@ static NODISCARD InstructionWalker insertCalculateAddressOffsets(
     if(type.getVectorWidth() > 1)
     {
         replicatedAddress = method.addNewLocal(
-            type.getElementType().toVectorType(type.getVectorWidth()).toPointerType(), "%replicated_address");
+            method.createPointerType(type.getElementType().toVectorType(type.getVectorWidth())), "%replicated_address");
         it = intermediate::insertReplication(it, baseAddress, replicatedAddress);
     }
 
@@ -184,7 +184,8 @@ InstructionWalker periphery::insertReadTMU(Method& method, InstructionWalker it,
             yCoord.to_string());
 
     // 1. set the UNIFORM pointer to point to the configurations for the image about to be read
-    assign(it, Value(REG_UNIFORM_ADDRESS, TYPE_INT32.toVectorType(16).toPointerType(AddressSpace::GLOBAL))) =
+    assign(
+        it, Value(REG_UNIFORM_ADDRESS, method.createPointerType(TYPE_INT32.toVectorType(16), AddressSpace::GLOBAL))) =
         imageConfig->createReference();
     // 2. need to wait 2 instructions for UNIFORM-pointer to be changed
     nop(it, intermediate::DelayType::WAIT_UNIFORM);

@@ -185,7 +185,7 @@ std::string Unpack::to_string() const
         CompilationStep::CODE_GENERATION, "Unsupported unpack-mode", std::to_string(static_cast<unsigned>(value)));
 }
 
-static Value unpackLiteral(Unpack mode, Literal literal, const DataType& type)
+static Value unpackLiteral(Unpack mode, Literal literal, DataType type)
 {
     switch(mode)
     {
@@ -318,7 +318,7 @@ Optional<Value> Unpack::operator()(const Value& val) const
     return NO_VALUE;
 }
 
-const Unpack Unpack::unpackTo32Bit(const DataType& type)
+const Unpack Unpack::unpackTo32Bit(DataType type)
 {
     if(type.getScalarBitCount() >= DataType::WORD)
         return UNPACK_NOP;
@@ -394,7 +394,7 @@ std::string Pack::to_string() const
         CompilationStep::CODE_GENERATION, "Unsupported pack-mode", std::to_string(static_cast<unsigned>(value)));
 }
 
-Value packLiteral(Pack mode, Literal literal, const DataType& type, const ElementFlags& flags)
+Value packLiteral(Pack mode, Literal literal, DataType type, const ElementFlags& flags)
 {
     switch(mode)
     {
@@ -704,7 +704,7 @@ static bool checkMinMaxCarry(const Literal& arg0, const Literal& arg1, bool useA
 }
 
 static PrecalculatedValue calcLiteral(
-    const OpCode& code, Literal firstLit, Literal secondLit, const DataType& resultType, const DataType& firstType)
+    const OpCode& code, Literal firstLit, Literal secondLit, DataType resultType, DataType firstType)
 {
     if(code == OP_ADD)
     {

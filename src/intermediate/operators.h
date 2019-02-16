@@ -391,7 +391,7 @@ namespace vc4c
             DataType type;
             std::string name;
 
-            ValueWrapper(Method& method, InstructionWalker& it, const DataType& type, std::string&& name) :
+            ValueWrapper(Method& method, InstructionWalker& it, DataType type, std::string&& name) :
                 method(method), it(it), type(type), name(std::forward<std::string>(name))
             {
             }
@@ -448,7 +448,7 @@ namespace vc4c
          *
          * NOTE: The InstructionWalker is automatically incremented (iff an instruction is generated)
          */
-        NODISCARD inline ValueWrapper assign(InstructionWalker& it, const DataType& type, std::string&& name = "")
+        NODISCARD inline ValueWrapper assign(InstructionWalker& it, DataType type, std::string&& name = "")
         {
             return ValueWrapper{it.getBasicBlock()->getMethod(), it, type, std::forward<std::string>(name)};
         }

@@ -18,6 +18,9 @@
 
 using namespace vc4c;
 
+// Is located in Types.cpp
+extern TypeHolder GLOBAL_TYPE_HOLDER;
+
 static std::vector<std::string> createUniformValues(const qpu_asm::KernelInfo& kernel)
 {
     /* the order of implicit/explicit parameters needs to match the order of parameters in
@@ -262,10 +265,10 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Refere
         tmp.resize(moduleInfo.getGlobalDataSize().getValue() * 2);
         binary.read(reinterpret_cast<char*>(tmp.data()), moduleInfo.getGlobalDataSize().toBytes().getValue());
 
-        const DataType type =
-            TYPE_INT32.toArrayType(static_cast<unsigned>(moduleInfo.getGlobalDataSize().getValue()) * 2);
-        globals.emplace_back(
-            "globalData", type.toPointerType(AddressSpace::GLOBAL), Value(ContainerValue(), type), false);
+        const DataType type = DataType(GLOBAL_TYPE_HOLDER.createArrayType(
+            TYPE_INT32, static_cast<unsigned>(moduleInfo.getGlobalDataSize().getValue()) * 2));
+        globals.emplace_back("globalData", DataType(GLOBAL_TYPE_HOLDER.createPointerType(type, AddressSpace::GLOBAL)),
+            Value(ContainerValue(), type), false);
 
         auto& elements = globals.begin()->value.container().elements;
         elements.reserve(tmp.size());

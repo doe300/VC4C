@@ -3,11 +3,13 @@
  *
  * See the file "LICENSE" for the full license governing this code.
  */
-
 #ifndef TYPES_H
 #define TYPES_H
 
+#include "Bitfield.h"
+
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -25,7 +27,13 @@ namespace vc4c
      */
     struct ComplexType
     {
+        ComplexType() = default;
+        ComplexType(const ComplexType&) = delete;
+        ComplexType(ComplexType&&) noexcept = delete;
         virtual ~ComplexType();
+
+        ComplexType& operator=(const ComplexType&) = delete;
+        ComplexType& operator=(ComplexType&&) noexcept = delete;
 
         virtual bool operator==(const ComplexType& other) const = 0;
 
@@ -62,16 +70,18 @@ namespace vc4c
      *
      * Each value contains its own DataType object. Values of the same type share "equal" DataType objects.
      */
-    class DataType
+    class DataType : private Bitfield<uintptr_t>
     {
     public:
         constexpr DataType(unsigned char scalarBitWidth, unsigned char numVectorElements, bool isFloatingPointType) :
-            complexType(), bitWidth(scalarBitWidth), numElements(numVectorElements),
-            isFloatingPoint(isFloatingPointType)
+            Bitfield(0)
         {
+            setSimpleFlag(true);
+            setBitWidth(scalarBitWidth);
+            setNumElements(numVectorElements);
+            setFloatingPoint(isFloatingPointType);
         }
-        explicit DataType(std::shared_ptr<ComplexType>&& complexType);
-        explicit DataType(ComplexType* complexType) : DataType(std::shared_ptr<ComplexType>(complexType)) {}
+        explicit DataType(const ComplexType* complexType);
         DataType(const DataType&) = default;
         DataType(DataType&&) noexcept = default;
 
@@ -86,12 +96,16 @@ namespace vc4c
          */
         std::string getTypeName(bool isSigned = false, bool isUnsigned = false) const;
 
-        bool operator==(const DataType& right) const;
-        inline bool operator!=(const DataType& right) const
+        bool operator==(DataType right) const noexcept;
+        bool operator!=(DataType right) const noexcept
         {
             return !(*this == right);
         }
-        bool operator<(const DataType& other) const;
+
+        constexpr bool operator<(DataType right) const noexcept
+        {
+            return value < right.value;
+        }
 
         //"simple" types
         /*
@@ -111,13 +125,9 @@ namespace vc4c
         //"complex" types
         // These functions return nullptr if this DataType is not of the requested type and can therefore be used to
         // check for the complex type.
-        PointerType* getPointerType();
         const PointerType* getPointerType() const;
-        ArrayType* getArrayType();
         const ArrayType* getArrayType() const;
-        StructType* getStructType();
         const StructType* getStructType() const;
-        ImageType* getImageType();
         const ImageType* getImageType() const;
 
         /*
@@ -150,10 +160,6 @@ namespace vc4c
          */
         DataType getElementType(int index = ANY_ELEMENT) const;
         /*
-         * Creates a new type representing a pointer-type to this type.
-         */
-        DataType toPointerType(AddressSpace addressSpace = AddressSpace::PRIVATE) const;
-        /*
          * Creates a new vector-type with the given vector-width and the same element-type as this type
          *
          * Vector-types of complex types are not supported, neither are vector-types with more than 16 elements
@@ -162,21 +168,21 @@ namespace vc4c
         /*
          * Creates a new array-type with this type as element type and the given array-length
          */
-        DataType toArrayType(unsigned int numElements) const;
+        [[deprecated]] DataType toArrayType(unsigned int numElements) const;
 
         /*
          * Whether this type contains the other type.
          *
          * A type always contains itself and an integral type contains all integral types of lesser bit-width.
          */
-        bool containsType(const DataType& other) const;
+        bool containsType(DataType other) const;
         /*
          * Returns the union type of the both types.
          *
          * The union type of two arithmetic types is the type with the largest bit- and vector-width.
          * Union-types are only supported for two integral types or two floating-point types.
          */
-        const DataType getUnionType(const DataType& other) const;
+        DataType getUnionType(DataType other) const;
 
         /*
          * The number of bits in a scalar version of this type.
@@ -221,22 +227,34 @@ namespace vc4c
             HALF_WORD = 16,
             WORD = 32,
             LONG_WORD = 64,
-            COMPLEX = 253,
             LABEL = 254,
             UNKNOWN = 255
         };
 
     private:
-        std::shared_ptr<ComplexType> complexType;
+        /*
+         * The value is an union of the pointer to a complex type and the fields for the "simple" types.
+         */
+
+        // the pointer to the complex type object
+        BITFIELD_ENTRY(ComplexType, uintptr_t, 0, Pointer)
+
+        /*
+         * Whether the type is simple or complex
+         *
+         * The value lies within the alignment of the ComplexType pointer on purpose, since the LSB bit can never be set
+         * for complex pointers.
+         */
+        BITFIELD_ENTRY(SimpleFlag, bool, 0, Bit)
+        // whether this type is a floating point type
+        BITFIELD_ENTRY(FloatingPoint, bool, 4, Bit)
         /*
          * the number of bits a scalar value of this type used on the QPU.
          * NOTE: This is not the physical bit-width used in memory!
          */
-        unsigned char bitWidth;
+        BITFIELD_ENTRY(BitWidth, uint8_t, 8, Byte)
         // the number of elements for vector-types
-        unsigned char numElements;
-        // whether this type is a floating point type
-        bool isFloatingPoint;
+        BITFIELD_ENTRY(NumElements, uint8_t, 16, Byte)
 
         friend struct std::hash<DataType>;
     };
@@ -244,59 +262,59 @@ namespace vc4c
     /*
      * 8-bit integer type (e.g. char, uchar)
      */
-    static const DataType TYPE_INT8 = DataType{DataType::BYTE, 1, false};
+    static constexpr DataType TYPE_INT8 = DataType{DataType::BYTE, 1, false};
     /*
      * 16-bit integer type (e.g. short, ushort)
      */
-    static const DataType TYPE_INT16 = DataType{DataType::HALF_WORD, 1, false};
+    static constexpr DataType TYPE_INT16 = DataType{DataType::HALF_WORD, 1, false};
     /*
      * 32-bit integer type (e.g. int, uint)
      */
-    static const DataType TYPE_INT32 = DataType{DataType::WORD, 1, false};
+    static constexpr DataType TYPE_INT32 = DataType{DataType::WORD, 1, false};
     /*
      * 64-bit integer type (e.g. long, ulong)
      *
      * NOTE: Is only supported for constants
      */
-    static const DataType TYPE_INT64 = DataType{DataType::LONG_WORD, 1, false};
+    static constexpr DataType TYPE_INT64 = DataType{DataType::LONG_WORD, 1, false};
     /*
      * 32-bit floating-point type
      */
-    static const DataType TYPE_FLOAT = DataType{DataType::WORD, 1, true};
+    static constexpr DataType TYPE_FLOAT = DataType{DataType::WORD, 1, true};
     /*
      * 16-bit floating-point type
      */
-    static const DataType TYPE_HALF = DataType{DataType::HALF_WORD, 1, true};
+    static constexpr DataType TYPE_HALF = DataType{DataType::HALF_WORD, 1, true};
     /*
      * 64-bit floating-point type
      *
      * NOTE: Is only supported for constants
      */
-    static const DataType TYPE_DOUBLE = DataType{DataType::LONG_WORD, 1, true};
+    static constexpr DataType TYPE_DOUBLE = DataType{DataType::LONG_WORD, 1, true};
     /*
      * 1-bit boolean type
      */
-    static const DataType TYPE_BOOL = DataType{DataType::BIT, 1, false};
+    static constexpr DataType TYPE_BOOL = DataType{DataType::BIT, 1, false};
     /*
      * Void-type, only valid as pointed-to type
      */
-    static const DataType TYPE_VOID = DataType{DataType::VOID, 1, false};
+    static constexpr DataType TYPE_VOID = DataType{DataType::VOID, 1, false};
     /*
      * Unknown type, e.g. in unknown-values or as type of periphery-registers
      */
-    static const DataType TYPE_UNKNOWN = DataType{DataType::UNKNOWN, 1, false};
+    static constexpr DataType TYPE_UNKNOWN = DataType{DataType::UNKNOWN, 1, false};
     /*
      * Data-type for labels as destination for branches
      */
-    static const DataType TYPE_LABEL = DataType{DataType::LABEL, 1, false};
+    static constexpr DataType TYPE_LABEL = DataType{DataType::LABEL, 1, false};
     /*
      * Data-type for OpenCL samplers, is equivalent to 32-bit integers
      */
-    static const DataType TYPE_SAMPLER = TYPE_INT32;
+    static constexpr DataType TYPE_SAMPLER = TYPE_INT32;
     /*
      * Data-type for OpenCL events, equivalent to 32-bit integers
      */
-    static const DataType TYPE_EVENT = TYPE_INT32;
+    static constexpr DataType TYPE_EVENT = TYPE_INT32;
 
     /*
      * Additional information for pointer-type
@@ -305,6 +323,7 @@ namespace vc4c
      */
     struct PointerType final : public ComplexType
     {
+    public:
         /*
          * The pointed-to type
          */
@@ -318,8 +337,6 @@ namespace vc4c
          */
         unsigned alignment;
 
-        PointerType(
-            const DataType& elementType, AddressSpace addressSpace = AddressSpace::PRIVATE, unsigned alignment = 0);
         ~PointerType() override = default;
         bool operator==(const ComplexType& other) const override;
 
@@ -332,6 +349,14 @@ namespace vc4c
 
         unsigned getAlignmentInBytes() const override;
         std::string getTypeName() const override;
+
+    private:
+        PointerType(DataType type, AddressSpace addrSpace = AddressSpace::PRIVATE, unsigned align = 0) :
+            elementType(type), addressSpace(addrSpace), alignment(align)
+        {
+        }
+
+        friend struct TypeHolder;
     };
 
     /*
@@ -339,6 +364,7 @@ namespace vc4c
      */
     struct StructType final : public ComplexType
     {
+    public:
         /*
          * The name of the struct
          */
@@ -356,7 +382,6 @@ namespace vc4c
          */
         bool isPacked;
 
-        StructType(const std::string& name, const std::vector<DataType>& elementTypes, bool isPacked = false);
         ~StructType() override = default;
         bool operator==(const ComplexType& other) const override;
 
@@ -370,6 +395,14 @@ namespace vc4c
         std::string getTypeName() const override;
 
         std::string getContent() const;
+
+    private:
+        StructType(const std::string& name, const std::vector<DataType>& elementTypes, bool isPacked = false) :
+            name(name), elementTypes(elementTypes), isPacked(isPacked)
+        {
+        }
+
+        friend struct TypeHolder;
     };
 
     /*
@@ -377,6 +410,7 @@ namespace vc4c
      */
     struct ArrayType final : public ComplexType
     {
+    public:
         /*
          * The data-type for all elements
          */
@@ -386,12 +420,16 @@ namespace vc4c
          */
         unsigned int size;
 
-        ArrayType(const DataType& elementType, unsigned int size);
         ~ArrayType() override = default;
         bool operator==(const ComplexType& other) const override;
 
         unsigned getAlignmentInBytes() const override;
         std::string getTypeName() const override;
+
+    private:
+        ArrayType(DataType elementType, unsigned int size) : elementType(elementType), size(size) {}
+
+        friend struct TypeHolder;
     };
 
     /*
@@ -399,6 +437,7 @@ namespace vc4c
      */
     struct ImageType final : public ComplexType
     {
+    public:
         /*
          * The number of dimensions: 1D, 2D or 3D
          */
@@ -429,7 +468,46 @@ namespace vc4c
          * Creates a name for a new local storing the image-configuration
          */
         static std::string toImageConfigurationName(const std::string& localName);
+
+    private:
+        ImageType(uint8_t dimensions, bool isImageArray = false, bool isImageBuffer = false, bool isSampled = false) :
+            dimensions(dimensions), isImageArray(isImageArray), isImageBuffer(isImageBuffer), isSampled(isSampled)
+        {
+        }
+
+        friend struct TypeHolder;
     };
+
+    /*
+     * Container which holds and manages complex types
+     *
+     * NOTE: a type-holder object MUST live longer than all complex types generated from it!
+     */
+    struct TypeHolder
+    {
+    public:
+        // These pointers are non-const on purpose, so a creator can modify the complex types
+        // All access via DataType is then constant
+
+        PointerType* createPointerType(
+            DataType elementType, AddressSpace addressSpace = AddressSpace::PRIVATE, unsigned alignment = 0);
+        StructType* createStructType(
+            const std::string& name, const std::vector<DataType>& elementTypes, bool isPacked = false);
+        ArrayType* createArrayType(DataType elementType, unsigned int size);
+        ImageType* createImageType(
+            uint8_t dimensions, bool isImageArray = false, bool isImageBuffer = false, bool isSampled = false);
+
+        static std::unique_ptr<ComplexType> voidPtr;
+
+    private:
+        std::vector<std::unique_ptr<ComplexType>> complexTypes;
+        std::mutex accessMutex;
+    };
+
+    /*
+     * Void pointer type in the default address space
+     */
+    static const DataType TYPE_VOID_POINTER = DataType{TypeHolder::voidPtr.get()};
 } // namespace vc4c
 
 namespace std
@@ -437,8 +515,10 @@ namespace std
     template <>
     struct hash<vc4c::DataType>
     {
-        std::size_t operator()(const vc4c::DataType& type) const noexcept;
+        inline std::size_t operator()(vc4c::DataType type) const noexcept
+        {
+            return static_cast<size_t>(type.value);
+        }
     };
 } /* namespace std */
-
 #endif /* TYPES_H */

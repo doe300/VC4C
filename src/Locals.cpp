@@ -10,7 +10,7 @@
 
 using namespace vc4c;
 
-Local::Local(const DataType& type, const std::string& name) : type(type), name(name), reference(nullptr, ANY_ELEMENT) {}
+Local::Local(DataType type, const std::string& name) : type(type), name(name), reference(nullptr, ANY_ELEMENT) {}
 
 bool Local::operator<(const Local& other) const
 {
@@ -134,7 +134,7 @@ const Local* Local::getBase(bool includeOffsets) const
     return this;
 }
 
-Parameter::Parameter(const std::string& name, const DataType& type, const ParameterDecorations decorations) :
+Parameter::Parameter(const std::string& name, DataType type, const ParameterDecorations decorations) :
     Local(type, name), decorations(decorations)
 {
 }
@@ -194,7 +194,7 @@ bool Parameter::isOutputParameter() const
     return has_flag(decorations, ParameterDecorations::OUTPUT);
 }
 
-Global::Global(const std::string& name, const DataType& globalType, const Value& value, bool isConstant) :
+Global::Global(const std::string& name, DataType globalType, const Value& value, bool isConstant) :
     Local(globalType, name), value(value), isConstant(isConstant)
 {
     if(!globalType.getPointerType())
@@ -214,10 +214,8 @@ bool Global::residesInMemory() const
     return true;
 }
 
-StackAllocation::StackAllocation(
-    const std::string& name, const DataType& type, std::size_t size, std::size_t alignment) :
-    Local(type, name),
-    offset(0), alignment(alignment == 0 ? 1 : alignment),
+StackAllocation::StackAllocation(const std::string& name, DataType type, std::size_t size, std::size_t alignment) :
+    Local(type, name), offset(0), alignment(alignment == 0 ? 1 : alignment),
     size(size > 0 ? size : type.getElementType().getPhysicalWidth())
 {
     if(!type.getPointerType())

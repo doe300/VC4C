@@ -19,7 +19,7 @@ using namespace vc4c;
 using namespace vc4c::analysis;
 using namespace vc4c::intermediate;
 
-static bool isUnsignedType(const DataType& type)
+static bool isUnsignedType(DataType type)
 {
     /* bool and pointer types are unsigned, everything else could be signed */
     return type.getElementType() == TYPE_BOOL || type.getPointerType();
@@ -57,7 +57,7 @@ static std::map<std::size_t, std::pair<double, double>> floatTypeLimits = {
         std::make_pair<double, double>(std::numeric_limits<float>::min(), std::numeric_limits<float>::max())},
     {h(TYPE_DOUBLE), std::make_pair(std::numeric_limits<double>::min(), std::numeric_limits<double>::max())}};
 
-ValueRange::ValueRange(const DataType& type) : ValueRange(type.isFloatingType(), !isUnsignedType(type))
+ValueRange::ValueRange(DataType type) : ValueRange(type.isFloatingType(), !isUnsignedType(type))
 {
     const DataType elemType = type.getPointerType() ? type : type.getElementType();
     if(type.isFloatingType())
@@ -153,7 +153,7 @@ bool isInRange(int64_t valMin, int64_t valMax, uint64_t numBits, bool isSigned)
     return valMin >= min && valMin <= max && valMax >= min && valMax <= max;
 }
 
-bool ValueRange::fitsIntoType(const DataType& type, bool isSigned) const
+bool ValueRange::fitsIntoType(DataType type, bool isSigned) const
 {
     const DataType elemType = type.getElementType();
     if(auto floatRange = VariantNamespace::get_if<FloatRange>(&range))

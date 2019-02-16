@@ -162,7 +162,7 @@ void SPIRVParser::parse(Module& module)
         m.second.method->parameters.reserve(m.second.parameters.size());
         for(const auto& pair : m.second.parameters)
         {
-            const DataType& type = typeMappings.at(pair.second);
+            auto type = typeMappings.at(pair.second);
             Parameter param(std::string("%") + std::to_string(pair.first), type);
             auto it2 = decorationMappings.find(pair.first);
             if(it2 != decorationMappings.end())
@@ -420,7 +420,7 @@ static Value parseConstantComposite(const spv_parsed_instruction_t* instruction,
     return Value(ContainerValue{std::move(constants)}, containerType);
 }
 
-static Optional<Value> specializeConstant(const uint32_t resultID, const DataType& type,
+static Optional<Value> specializeConstant(const uint32_t resultID, DataType type,
     const FastMap<uint32_t, std::vector<std::pair<spv::Decoration, uint32_t>>>& decorations)
 {
     auto it = decorations.find(resultID);
@@ -641,21 +641,21 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     }
     case spv::Op::OpTypeImage:
     {
-        ImageType* image = new ImageType();
-        image->dimensions = static_cast<uint8_t>(getWord(parsed_instruction, 3) + 1);
-        image->isImageArray = getWord(parsed_instruction, 5);
-        if(image->dimensions == 6 /* buffered */)
+        auto dimensions = static_cast<uint8_t>(getWord(parsed_instruction, 3) + 1);
+        bool isImageArray = getWord(parsed_instruction, 5);
+        bool isImageBuffer = false;
+        if(dimensions == 6 /* buffered */)
         {
             // there are only buffered 1D images
-            image->dimensions = 1;
-            image->isImageBuffer = true;
+            dimensions = 1;
+            isImageBuffer = true;
         }
-        image->isSampled = false;
+        bool isSampled = false;
+        auto image = module->createImageType(dimensions, isImageArray, isImageBuffer, isSampled);
         typeMappings.emplace(parsed_instruction->result_id, DataType(image));
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Reading image-type '" << image->getTypeName() << "' with " << image->dimensions << " dimensions"
-                << (image->isImageArray ? " (array)" : "") << (image->isImageBuffer ? " (buffer)" : "")
-                << logging::endl);
+                << (isImageArray ? " (array)" : "") << (image->isImageBuffer ? " (buffer)" : "") << logging::endl);
         return SPV_SUCCESS;
     }
     case spv::Op::OpTypeSampler:
@@ -664,11 +664,11 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case spv::Op::OpTypeSampledImage:
     {
         const ImageType* image = typeMappings.at(getWord(parsed_instruction, 2)).getImageType();
-        ImageType* sampledImage = new ImageType();
-        sampledImage->dimensions = image->dimensions;
-        sampledImage->isImageArray = image->isImageArray;
-        sampledImage->isImageBuffer = image->isImageBuffer;
-        sampledImage->isSampled = true;
+        auto dimensions = image->dimensions;
+        auto isImageArray = image->isImageArray;
+        auto isImageBuffer = image->isImageBuffer;
+        auto isSampled = true;
+        auto sampledImage = module->createImageType(dimensions, isImageArray, isImageBuffer, isSampled);
 
         typeMappings.emplace(parsed_instruction->result_id, DataType(sampledImage));
         CPPLOG_LAZY(logging::Level::DEBUG,
@@ -679,9 +679,9 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     }
     case spv::Op::OpTypeArray:
     {
-        const DataType elementType = typeMappings.at(getWord(parsed_instruction, 2));
+        DataType elementType = typeMappings.at(getWord(parsed_instruction, 2));
         typeMappings.emplace(getWord(parsed_instruction, 1),
-            elementType.toArrayType(
+            module->createArrayType(elementType,
                 static_cast<unsigned>(constantMappings.at(getWord(parsed_instruction, 3)).literal().unsignedInt())));
         return SPV_SUCCESS;
     }
@@ -698,7 +698,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             structName =
                 std::string("%struct.") + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         }
-        StructType* structDef = new StructType(structName, {});
+        auto structDef = module->createStructType(structName, {});
 
         // add reference to this struct-type to type-mappings
         typeMappings.emplace(parsed_instruction->result_id, DataType(structDef));
@@ -728,8 +728,8 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case spv::Op::OpTypePointer:
     {
         DataType type = typeMappings.at(getWord(parsed_instruction, 3));
-        type = DataType(
-            new PointerType(type, toAddressSpace(static_cast<spv::StorageClass>(getWord(parsed_instruction, 2)))));
+        type = DataType(module->createPointerType(
+            type, toAddressSpace(static_cast<spv::StorageClass>(getWord(parsed_instruction, 2)))));
         typeMappings.emplace(getWord(parsed_instruction, 1), type);
         return SPV_SUCCESS;
     }
@@ -786,7 +786,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         // - All other scalars: Abstract
         // - Composites: Members are set recursively to the null constant according to the null value of their
         // constituent types."
-        const DataType& type = typeMappings.at(parsed_instruction->type_id);
+        auto type = typeMappings.at(parsed_instruction->type_id);
         if(type.isScalarType() || type.isVectorType() || type.getPointerType())
             constantMappings.emplace(parsed_instruction->result_id, Value(INT_ZERO.literal(), type));
         else if(type.getArrayType())
@@ -904,7 +904,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         auto it = names.find(parsed_instruction->result_id);
         const std::string name =
             it != names.end() ? it->second : (std::string("%") + std::to_string(parsed_instruction->result_id));
-        const DataType& type = typeMappings.at(parsed_instruction->type_id);
+        auto type = typeMappings.at(parsed_instruction->type_id);
         Value val(type.getElementType());
         if(parsed_instruction->num_words > 4)
             val = constantMappings.at(getWord(parsed_instruction, 4));

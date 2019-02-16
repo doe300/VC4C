@@ -454,7 +454,7 @@ Optional<Value> SPIRVConversion::precalculate(
     {
         const Value& source = it->second;
         Value dest(UNDEFINED_VALUE);
-        const DataType& destType = types.at(typeID);
+        auto destType = types.at(typeID);
         switch(type)
         {
         case ConversionType::BITCAST:
@@ -782,7 +782,7 @@ Optional<Value> SPIRVIndexOf::precalculate(
             throw CompilationError(CompilationStep::LLVM_2_IR, "Invalid container-type to retrieve element via index",
                 subContainerType.to_string());
 
-        if(offset.hasLiteral() && subOffset.getLiteralValue())
+        if(offset.checkLiteral() && subOffset.getLiteralValue())
             offset.literal() = Literal(offset.literal().signedInt() + subOffset.getLiteralValue()->signedInt());
         else
             throw CompilationError(

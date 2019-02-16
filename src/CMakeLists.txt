@@ -12,12 +12,12 @@ target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE VC4CL_STDLIB_HEADER="${V
 target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE VC4C_VERSION="${PROJECT_VERSION}" VC4CL_STDLIB_HEADER="${VC4CL_STDLIB_HEADER}" VC4CL_STDLIB_CONFIG_HEADER="${VC4CL_STDLIB_CONFIG_HEADER}" VC4CL_STDLIB_MODULE="${VC4CL_STDLIB_MODULE}")
 
 # append usage of C++ to compiler flags, also optimize for speed and enable all warnings
-set(VC4C_ENABLED_WARNINGS -Wall -Wextra -Wold-style-cast -Wnon-virtual-dtor -Wmisleading-indentation -Wduplicated-cond -Wlogical-op -Wnull-dereference -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings -Werror=return-type -Werror=unused-result)
+set(VC4C_ENABLED_WARNINGS -Wall -Wextra -Wold-style-cast -Wnon-virtual-dtor -Wnull-dereference -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings -Werror=return-type -Werror=unused-result -Werror=shift-count-overflow -Werror=missing-field-initializers -Werror=reorder)
 # Enable additional warnings, if available
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-	SET(VC4C_ENABLED_WARNINGS ${VC4C_ENABLED_WARNINGS} -Weverything -Wlifetime -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-shadow -Wno-padded -Wno-shadow-field-in-constructor -Wno-global-constructors -Wno-exit-time-destructors -Wno-missing-prototypes -Wno-gnu-anonymous-struct -Wno-nested-anon-types -Wno-documentation -Wno-unused-command-line-argument -Wno-unused-member-function -Wno-gnu-zero-variadic-macro-arguments -Wno-covered-switch-default -Wno-switch-enum -Wswitch)
+	SET(VC4C_ENABLED_WARNINGS ${VC4C_ENABLED_WARNINGS} -Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-shadow -Wno-padded -Wno-shadow-field-in-constructor -Wno-global-constructors -Wno-exit-time-destructors -Wno-missing-prototypes -Wno-gnu-anonymous-struct -Wno-nested-anon-types -Wno-documentation -Wno-unused-command-line-argument -Wno-unused-member-function -Wno-gnu-zero-variadic-macro-arguments -Wno-covered-switch-default -Wno-switch-enum -Wno-return-std-move-in-c++11 -Wswitch -Werror=return-stack-address)
 elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-	SET(VC4C_ENABLED_WARNINGS ${VC4C_ENABLED_WARNINGS} -Wdouble-promotion -fdelete-null-pointer-checks -Wuninitialized -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=format -Wsuggest-override -Wconversion -Wzero-as-null-pointer-constant -Wno-psabi)
+	SET(VC4C_ENABLED_WARNINGS ${VC4C_ENABLED_WARNINGS} -Wlogical-op -Wmisleading-indentation -Wduplicated-cond -Wdouble-promotion -fdelete-null-pointer-checks -Wuninitialized -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=format -Wsuggest-override -Wconversion -Wzero-as-null-pointer-constant -Wno-psabi -Werror=return-local-addr -Werror=uninitialized)
 endif()
 target_compile_options(${VC4C_LIBRARY_NAME} PRIVATE ${VC4C_ENABLED_WARNINGS})
 target_compile_options(${VC4C_PROGRAM_NAME} PRIVATE ${VC4C_ENABLED_WARNINGS})
@@ -121,6 +121,7 @@ if(VC4C_ENABLE_LLVM_LIB_FRONTEND)
 	# adds require macros as well as include-paths
 	# SYSTEM here suppresses (at least on some compilers/systems) all warnings from the LLVM header file
 	target_include_directories(${VC4C_LIBRARY_NAME} SYSTEM PRIVATE "${LLVM_INCLUDE_PATH}")
+	# TODO LLVM_LIB_FLAGS results in a lot of warnings about redefining _GNU_SOURCE (at least for Clang)
 	target_compile_options(${VC4C_LIBRARY_NAME} PRIVATE ${LLVM_LIB_FLAGS})
 	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE USE_LLVM_LIBRARY=1 LLVM_LIBRARY_VERSION=${LLVM_LIBRARY_VERSION})
 	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE USE_LLVM_LIBRARY=1 LLVM_LIBRARY_VERSION=${LLVM_LIBRARY_VERSION})

@@ -353,7 +353,7 @@ KernelInfo qpu_asm::getKernelInfos(
     {
         std::string paramName = param.parameterName;
         paramName = paramName.empty() ? param.name : paramName;
-        const DataType& paramType = param.type;
+        auto paramType = param.type;
         std::string typeName = param.origTypeName;
         ParamInfo paramInfo;
         paramInfo.setSize(static_cast<uint16_t>(paramType.getPhysicalWidth()));

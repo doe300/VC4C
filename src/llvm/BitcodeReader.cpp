@@ -32,7 +32,7 @@ using namespace vc4c::llvm2qasm;
 
 static AddressSpace toAddressSpace(int num)
 {
-    // XXX this mapping is not guaranteed, mapping only determined by experiment
+    // See also https://github.com/llvm-mirror/clang/blob/master/lib/Basic/Targets/SPIR.h for the mapping order
     // XXX somehow the values from the kernel meta data and the parameter pointer types differ?! (e.g.
     // NVIDIA/oclSimpleTexture3D_kernel.cl)
     switch(num)
@@ -473,7 +473,7 @@ static DataType& addToMap(DataType&& dataType, const llvm::Type* type, FastMap<c
     return typesMap.emplace(type, dataType).first->second;
 }
 
-DataType BitcodeReader::toDataType(const llvm::Type* type)
+DataType BitcodeReader::toDataType(Module& module, const llvm::Type* type)
 {
     if(type == nullptr)
         return TYPE_UNKNOWN;
@@ -482,7 +482,7 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
         return it->second;
     if(type->isVectorTy())
     {
-        return toDataType(type->getVectorElementType())
+        return toDataType(module, type->getVectorElementType())
             .toVectorType(static_cast<unsigned char>(llvm::cast<const llvm::VectorType>(type)->getVectorNumElements()));
     }
     if(type->isVoidTy())
@@ -550,15 +550,16 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
         const llvm::StructType* str = llvm::cast<const llvm::StructType>(type->getPointerElementType());
         if(str->isOpaque() && str->getName().find("opencl.image") == 0)
         {
-            ImageType* imageType = new ImageType();
-            imageType->dimensions = str->getName().find('3') != llvm::StringRef::npos ?
+            auto dimensions = str->getName().find('3') != llvm::StringRef::npos ?
                 3 :
                 str->getName().find('2') != llvm::StringRef::npos ? 2 : 1;
-            imageType->isImageArray = str->getName().find("array") != llvm::StringRef::npos;
-            imageType->isImageBuffer = str->getName().find("buffer") != llvm::StringRef::npos;
-            imageType->isSampled = false;
+            auto isImageArray = str->getName().find("array") != llvm::StringRef::npos;
+            auto isImageBuffer = str->getName().find("buffer") != llvm::StringRef::npos;
+            auto isSampled = false;
 
-            return addToMap(DataType(imageType), type, typesMap);
+            return addToMap(DataType(module.createImageType(
+                                static_cast<uint8_t>(dimensions), isImageArray, isImageBuffer, isSampled)),
+                type, typesMap);
         }
     }
     if(type->isStructTy())
@@ -570,13 +571,13 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
         }
         // need to be added to the map before iterating over the children to prevent stack-overflow
         // (since the type itself could be recursive)
-        StructType* structType =
-            new StructType(type->getStructName(), {}, llvm::cast<const llvm::StructType>(type)->isPacked());
+        auto structType =
+            module.createStructType(type->getStructName(), {}, llvm::cast<const llvm::StructType>(type)->isPacked());
         DataType& dataType = addToMap(DataType(structType), type, typesMap);
         structType->elementTypes.reserve(type->getStructNumElements());
         for(unsigned i = 0; i < type->getStructNumElements(); ++i)
         {
-            structType->elementTypes.emplace_back(toDataType(type->getStructElementType(i)));
+            structType->elementTypes.emplace_back(toDataType(module, type->getStructElementType(i)));
         }
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Struct " << type->getStructName() << ": " << structType->getContent() << logging::endl);
@@ -584,19 +585,22 @@ DataType BitcodeReader::toDataType(const llvm::Type* type)
     }
     if(type->isArrayTy())
     {
-        const DataType elementType = toDataType(type->getArrayElementType());
-        return addToMap(elementType.toArrayType(static_cast<uint32_t>(type->getArrayNumElements())), type, typesMap);
+        DataType elementType = toDataType(module, type->getArrayElementType());
+        return addToMap(
+            DataType(module.createArrayType(elementType, static_cast<uint32_t>(type->getArrayNumElements()))), type,
+            typesMap);
     }
     if(type->isPointerTy())
     {
-        return toDataType(type->getPointerElementType())
-            .toPointerType(toAddressSpace(static_cast<int32_t>(type->getPointerAddressSpace())));
+        DataType elementType = toDataType(module, type->getPointerElementType());
+        return DataType(module.createPointerType(
+            elementType, toAddressSpace(static_cast<int32_t>(type->getPointerAddressSpace()))));
     }
     dumpLLVM(type);
     throw CompilationError(CompilationStep::PARSER, "Unknown LLVM type", std::to_string(type->getTypeID()));
 }
 
-static ParameterDecorations toParameterDecorations(const llvm::Argument& arg, const DataType& type, bool isKernel)
+static ParameterDecorations toParameterDecorations(const llvm::Argument& arg, DataType type, bool isKernel)
 {
     ParameterDecorations deco = ParameterDecorations::NONE;
     if(arg.hasSExtAttr())
@@ -650,7 +654,7 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
     parsedFunctions[&func] = std::make_pair(method, LLVMInstructionList{});
 
     method->name = cleanMethodName(func.getName());
-    method->returnType = toDataType(func.getReturnType());
+    method->returnType = toDataType(module, func.getReturnType());
 
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Reading function " << method->returnType.to_string() << " " << method->name << "(...)"
@@ -667,11 +671,12 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
     for(const llvm::Argument& arg : func.getArgumentList())
 #endif
     {
-        auto type = toDataType(arg.getType());
+        auto type = toDataType(module, arg.getType());
         if(arg.hasByValAttr())
             // is always read-only, and the address-space initially set is __private, which we cannot have for pointer
             // Parameters
-            type.getPointerType()->addressSpace = AddressSpace::CONSTANT;
+            // TODO remove, pass to consructor! Same for all other setting of values
+            const_cast<PointerType*>(type.getPointerType())->addressSpace = AddressSpace::CONSTANT;
         method->parameters.emplace_back(Parameter(toParameterName(arg, paramCounter), type,
             toParameterDecorations(arg, type, func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)));
         CPPLOG_LAZY(logging::Level::DEBUG,
@@ -880,8 +885,8 @@ void BitcodeReader::parseInstruction(
     case MemoryOps::Alloca:
     {
         const llvm::AllocaInst* alloca = llvm::cast<const llvm::AllocaInst>(&inst);
-        const DataType contentType = toDataType(alloca->getAllocatedType());
-        const DataType pointerType = toDataType(alloca->getType());
+        const DataType contentType = toDataType(module, alloca->getAllocatedType());
+        const DataType pointerType = toDataType(module, alloca->getType());
         unsigned alignment = alloca->getAlignment();
         // XXX need to heed the array-size?
         auto it = method.stackAllocations.emplace(
@@ -1169,7 +1174,7 @@ Value BitcodeReader::toValue(Method& method, const llvm::Value* val)
         localMap[val] = loc;
         return loc->createReference();
     }
-    const DataType type = toDataType(val->getType());
+    const DataType type = toDataType(const_cast<Module&>(method.module), val->getType());
     if(llvm::dyn_cast<const llvm::Constant>(val) != nullptr)
     {
         return toConstant(const_cast<Module&>(method.module), val);
@@ -1185,7 +1190,7 @@ Value BitcodeReader::toValue(Method& method, const llvm::Value* val)
 
 Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
 {
-    const DataType type = toDataType(val->getType());
+    const DataType type = toDataType(module, val->getType());
     if(auto constant = llvm::dyn_cast<const llvm::ConstantInt>(val))
     {
         if(constant->getSExtValue() > std::numeric_limits<uint32_t>::max() ||
@@ -1285,7 +1290,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         if(globalIt != module.globalData.end())
             return globalIt->createReference();
 
-        module.globalData.emplace_back(Global(name, toDataType(global->getType()),
+        module.globalData.emplace_back(Global(name, toDataType(module, global->getType()),
             global->hasInitializer() ? toConstant(module, global->getInitializer()) : UNDEFINED_VALUE,
             global->isConstant()));
         CPPLOG_LAZY(
@@ -1318,7 +1323,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
             throw CompilationError(
                 CompilationStep::PARSER, "Bit-casts over different type-sizes are not yet implemented!");
         }
-        result.type = toDataType(expr->getType());
+        result.type = toDataType(module, expr->getType());
         return result;
     }
     if(expr->getOpcode() == llvm::Instruction::MemoryOps::GetElementPtr)
@@ -1340,7 +1345,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
             }
 
             // we need to make the type of the value fit the return-type expected
-            srcGlobal.type = toDataType(expr->getType());
+            srcGlobal.type = toDataType(module, expr->getType());
             // TODO is this correct or would we need a new local referring to the global?
             return srcGlobal;
         }
@@ -1351,7 +1356,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
     {
         // int <-> pointer cast is a zext (+ type conversion)
         const Value src = toConstant(module, expr->getOperand(0));
-        const DataType destType = toDataType(expr->getType());
+        const DataType destType = toDataType(module, expr->getType());
         // if the bit-widths of the source and destination are the the same width, simply return the source
         // otherwise, simply truncate or zero-extend
         Value dest(src);
@@ -1396,7 +1401,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
     }
     if(expr->getOpcode() == llvm::Instruction::OtherOps::ICmp || expr->getOpcode() == llvm::Instruction::OtherOps::FCmp)
     {
-        const DataType destType = toDataType(expr->getType());
+        const DataType destType = toDataType(module, expr->getType());
         const DataType boolType = TYPE_BOOL.toVectorType(destType.getVectorWidth());
 
         const Value src0 = toConstant(module, expr->getOperand(0));

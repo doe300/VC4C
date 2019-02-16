@@ -526,7 +526,7 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
 
 static constexpr unsigned MSB = 31;
 
-Literal intermediate::asr(const DataType& type, const Literal& left, const Literal& right)
+Literal intermediate::asr(DataType type, const Literal& left, const Literal& right)
 {
     std::bitset<sizeof(int32_t) * 8> tmp(left.signedInt());
     if(right.signedInt() < 0)
@@ -540,7 +540,7 @@ Literal intermediate::asr(const DataType& type, const Literal& left, const Liter
     return Literal(static_cast<uint32_t>(tmp.to_ulong()));
 }
 
-Literal intermediate::clz(const DataType& type, const Literal& val)
+Literal intermediate::clz(DataType type, const Literal& val)
 {
     for(int i = MSB; i >= 0; --i)
     {
@@ -551,22 +551,22 @@ Literal intermediate::clz(const DataType& type, const Literal& val)
     return Literal(32);
 }
 
-Literal intermediate::smod(const DataType& type, const Literal& numerator, const Literal& denominator)
+Literal intermediate::smod(DataType type, const Literal& numerator, const Literal& denominator)
 {
     throw CompilationError(CompilationStep::GENERAL, "SMOD is currently not implemented!");
 }
 
-Literal intermediate::srem(const DataType& type, const Literal& numerator, const Literal& denominator)
+Literal intermediate::srem(DataType type, const Literal& numerator, const Literal& denominator)
 {
     throw CompilationError(CompilationStep::GENERAL, "SREM is currently not implemented!");
 }
 
-Literal intermediate::fmod(const DataType& type, const Literal& numerator, const Literal& denominator)
+Literal intermediate::fmod(DataType type, const Literal& numerator, const Literal& denominator)
 {
     throw CompilationError(CompilationStep::GENERAL, "FMOD is currently not implemented!");
 }
 
-Literal intermediate::frem(const DataType& type, const Literal& numerator, const Literal& denominator)
+Literal intermediate::frem(DataType type, const Literal& numerator, const Literal& denominator)
 {
     throw CompilationError(CompilationStep::GENERAL, "FREM is currently not implemented!");
 }

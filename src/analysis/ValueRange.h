@@ -47,7 +47,7 @@ namespace vc4c
         {
         public:
             ValueRange(bool isFloat, bool isSigned = true);
-            ValueRange(const DataType& type);
+            ValueRange(DataType type);
 
             Optional<FloatRange> getFloatRange() const;
             Optional<IntegerRange> getIntRange() const;
@@ -56,7 +56,7 @@ namespace vc4c
              * Returns whether all possible values are positive
              */
             bool isUnsigned() const;
-            bool fitsIntoType(const DataType& type, bool isSigned = true) const;
+            bool fitsIntoType(DataType type, bool isSigned = true) const;
             bool hasExplicitBoundaries() const;
 
             std::string to_string() const;

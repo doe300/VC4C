@@ -465,17 +465,17 @@ bool ContainerValue::isUndefined() const
     return true;
 }
 
-Value::Value(const Literal& lit, const DataType& type) noexcept : data(lit), type(type) {}
+Value::Value(const Literal& lit, DataType type) noexcept : data(lit), type(type) {}
 
-Value::Value(Register reg, const DataType& type) noexcept : data(reg), type(type) {}
+Value::Value(Register reg, DataType type) noexcept : data(reg), type(type) {}
 
-Value::Value(const ContainerValue& container, const DataType& type) : data(container), type(type) {}
+Value::Value(const ContainerValue& container, DataType type) : data(container), type(type) {}
 
-Value::Value(const Local* local, const DataType& type) noexcept : data(const_cast<Local*>(local)), type(type) {}
+Value::Value(const Local* local, DataType type) noexcept : data(const_cast<Local*>(local)), type(type) {}
 
-Value::Value(const DataType& type) noexcept : data(VariantNamespace::monostate{}), type(type) {}
+Value::Value(DataType type) noexcept : data(VariantNamespace::monostate{}), type(type) {}
 
-Value::Value(SmallImmediate immediate, const DataType& type) noexcept : data(immediate), type(type) {}
+Value::Value(SmallImmediate immediate, DataType type) noexcept : data(immediate), type(type) {}
 
 bool Value::operator==(const Value& other) const
 {
@@ -639,7 +639,7 @@ const LocalUser* Value::getSingleWriter() const
     return nullptr;
 }
 
-Value Value::createZeroInitializer(const DataType& type)
+Value Value::createZeroInitializer(DataType type)
 {
     if(type.isScalarType() || type.getPointerType())
         return INT_ZERO;

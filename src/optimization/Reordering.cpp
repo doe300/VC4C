@@ -124,8 +124,8 @@ static NODISCARD InstructionWalker findInstructionNotAccessing(
                 excludedValues.emplace(Value(REG_SFU_OUT, TYPE_FLOAT));
                 excludedValues.emplace(Value(REG_SFU_RECIP, TYPE_FLOAT));
                 excludedValues.emplace(Value(REG_SFU_RECIP_SQRT, TYPE_FLOAT));
-                excludedValues.emplace(Value(REG_TMU0_ADDRESS, TYPE_VOID.toPointerType()));
-                excludedValues.emplace(Value(REG_TMU1_ADDRESS, TYPE_VOID.toPointerType()));
+                excludedValues.emplace(Value(REG_TMU0_ADDRESS, TYPE_VOID_POINTER));
+                excludedValues.emplace(Value(REG_TMU1_ADDRESS, TYPE_VOID_POINTER));
             }
         }
         --instructionsLeft;
@@ -197,8 +197,8 @@ static NODISCARD InstructionWalker findReplacementCandidate(
         excludedValues.emplace(Value(REG_SFU_OUT, TYPE_FLOAT));
         excludedValues.emplace(Value(REG_SFU_RECIP, TYPE_FLOAT));
         excludedValues.emplace(Value(REG_SFU_RECIP_SQRT, TYPE_FLOAT));
-        excludedValues.emplace(Value(REG_TMU0_ADDRESS, TYPE_VOID.toPointerType()));
-        excludedValues.emplace(Value(REG_TMU1_ADDRESS, TYPE_VOID.toPointerType()));
+        excludedValues.emplace(Value(REG_TMU0_ADDRESS, TYPE_VOID_POINTER));
+        excludedValues.emplace(Value(REG_TMU1_ADDRESS, TYPE_VOID_POINTER));
         PROFILE_START(findInstructionNotAccessing);
         replacementIt =
             findInstructionNotAccessing(basicBlock, pos, excludedValues, config.additionalOptions.replaceNopThreshold);

@@ -56,7 +56,7 @@ namespace vc4c
             const Word* getWordAddress(MemoryAddress address) const;
 
             Value readWord(MemoryAddress address) const;
-            MemoryAddress incrementAddress(MemoryAddress address, const DataType& typeSize) const;
+            MemoryAddress incrementAddress(MemoryAddress address, DataType typeSize) const;
 
             MemoryAddress getMaximumAddress() const;
             void setUniforms(const std::vector<Word>& uniforms, MemoryAddress address);

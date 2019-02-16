@@ -17,7 +17,7 @@ namespace vc4c
      *
      * The module-class manages shared data, like globals and contains the list of methods
      */
-    class Module : private NonCopyable
+    class Module : private NonCopyable, public TypeHolder
     {
         using MethodList = std::vector<std::unique_ptr<Method>>;
 

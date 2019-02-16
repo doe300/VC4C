@@ -9,6 +9,7 @@
 #include "CompilationError.h"
 #include "helper.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <limits>
 #include <sstream>
@@ -16,12 +17,14 @@
 
 using namespace vc4c;
 
-ComplexType::~ComplexType() {}
+// TODO remove if possible!
+TypeHolder GLOBAL_TYPE_HOLDER;
+std::unique_ptr<ComplexType> TypeHolder::voidPtr{new PointerType(TYPE_VOID)};
 
-DataType::DataType(std::shared_ptr<ComplexType>&& complexType) :
-    complexType(complexType), bitWidth(DataType::COMPLEX), numElements(1), isFloatingPoint(false)
-{
-}
+// just to make sure, the last bits are always zero for pointers
+static_assert(alignof(ComplexType) > Bitfield<uint8_t>::MASK_Bit, "");
+
+ComplexType::~ComplexType() {}
 
 static std::string toSignedIntegerTypeName(unsigned char bitWidth, const std::string& typeName)
 {
@@ -106,12 +109,27 @@ std::string vc4c::toString(AddressSpace space, bool shortName)
         CompilationStep::GENERAL, "Unhandled address space", std::to_string(static_cast<int>(space)));
 }
 
+static ComplexType* toPointer(uintptr_t val)
+{
+    return reinterpret_cast<ComplexType*>(val);
+}
+
+DataType::DataType(const ComplexType* complexType) : Bitfield(reinterpret_cast<uintptr_t>(complexType))
+{
+    if(getSimpleFlag())
+        throw CompilationError(
+            CompilationStep::GENERAL, "Internal error: Complex type has simple flag set!", to_string());
+}
+
 std::string DataType::to_string() const
 {
-    if(complexType)
-        return complexType->getTypeName();
+    if(!getSimpleFlag())
+        return toPointer(getComplexType())->getTypeName();
     const std::string braceLeft(isVectorType() ? "<" : "");
     const std::string braceRight(isVectorType() ? ">" : "");
+    auto isFloatingPoint = getFloatingPoint();
+    auto bitWidth = getBitWidth();
+    auto numElements = getNumElements();
     if(numElements > 1)
         return braceLeft + (std::to_string(numElements) + " x ") +
             (toSimpleTypeName(bitWidth, isFloatingPoint) + braceRight);
@@ -120,8 +138,11 @@ std::string DataType::to_string() const
 
 std::string DataType::getTypeName(bool isSigned, bool isUnsigned) const
 {
-    if(complexType != nullptr || (!isFloatingType() && !isSigned && !isUnsigned))
+    if(!getSimpleFlag() || (!isFloatingType() && !isSigned && !isUnsigned))
         return to_string();
+    auto isFloatingPoint = getFloatingPoint();
+    auto bitWidth = getBitWidth();
+    auto numElements = getNumElements();
     const std::string simpleName = toSimpleTypeName(bitWidth, isFloatingPoint);
     const std::string tName = isFloatingPoint ?
         toFloatingPointTypeName(bitWidth, simpleName) :
@@ -132,152 +153,149 @@ std::string DataType::getTypeName(bool isSigned, bool isUnsigned) const
     return tName;
 }
 
-bool DataType::operator==(const DataType& right) const
+bool DataType::operator==(DataType right) const noexcept
 {
-    if(this == &right)
-        return true;
-    return bitWidth == right.bitWidth && numElements == right.numElements && isFloatingPoint == right.isFloatingPoint &&
-        (complexType == nullptr) == (right.complexType == nullptr) &&
-        (complexType != nullptr ? (*complexType.get()) == (*right.complexType.get()) : true);
-}
-
-bool DataType::operator<(const DataType& other) const
-{
-    return complexType < other.complexType || bitWidth < other.bitWidth || isFloatingPoint < other.isFloatingPoint ||
-        numElements < other.numElements;
+    // TODO when complex types are rewritten, can be simplified to comparing values?
+    // E.g. is it then guaranteed for two same complex types to be the same object/pointer?
+    // TODO test for LLVM and SPIR-V
+    if(getSimpleFlag() || right.getSimpleFlag())
+        return value == right.value;
+    return (getComplexType() == 0 && right.getComplexType() == 0) ||
+        (*toPointer(getComplexType()) == *toPointer(right.getComplexType()));
 }
 
 bool DataType::isSimpleType() const
 {
-    return !complexType;
+    return getSimpleFlag();
 }
 
 bool DataType::isScalarType() const
 {
-    return !complexType && numElements == 1;
+    return getSimpleFlag() && getNumElements() == 1;
 }
 
 bool DataType::isVectorType() const
 {
-    return !complexType && numElements > 1;
-}
-
-PointerType* DataType::getPointerType()
-{
-    return dynamic_cast<PointerType*>(complexType.get());
+    return getSimpleFlag() && getNumElements() > 1;
 }
 
 const PointerType* DataType::getPointerType() const
 {
-    return dynamic_cast<const PointerType*>(complexType.get());
-}
-
-ArrayType* DataType::getArrayType()
-{
-    return dynamic_cast<ArrayType*>(complexType.get());
+    if(getSimpleFlag())
+        return nullptr;
+    return dynamic_cast<const PointerType*>(toPointer(getComplexType()));
 }
 
 const ArrayType* DataType::getArrayType() const
 {
-    return dynamic_cast<const ArrayType*>(complexType.get());
-}
-
-StructType* DataType::getStructType()
-{
-    return dynamic_cast<StructType*>(complexType.get());
+    if(getSimpleFlag())
+        return nullptr;
+    return dynamic_cast<const ArrayType*>(toPointer(getComplexType()));
 }
 
 const StructType* DataType::getStructType() const
 {
-    return dynamic_cast<const StructType*>(complexType.get());
-}
-
-ImageType* DataType::getImageType()
-{
-    return dynamic_cast<ImageType*>(complexType.get());
+    if(getSimpleFlag())
+        return nullptr;
+    return dynamic_cast<const StructType*>(toPointer(getComplexType()));
 }
 
 const ImageType* DataType::getImageType() const
 {
-    return dynamic_cast<const ImageType*>(complexType.get());
+    if(getSimpleFlag())
+        return nullptr;
+    return dynamic_cast<const ImageType*>(toPointer(getComplexType()));
 }
 
 bool DataType::isFloatingType() const
 {
-    if(complexType)
-        return false;
-    return isFloatingPoint;
+    return getSimpleFlag() && getFloatingPoint();
 }
 
 bool DataType::isIntegralType() const
 {
     if(getPointerType())
         return true;
-    if(complexType)
-        return false;
-    return !isFloatingPoint;
+    return getSimpleFlag() && !getFloatingPoint();
 }
 
 bool DataType::isUnknown() const
 {
-    return bitWidth == DataType::UNKNOWN;
+    return getSimpleFlag() && getBitWidth() == DataType::UNKNOWN;
 }
 
 bool DataType::isLabelType() const
 {
-    return bitWidth == DataType::LABEL;
+    return getSimpleFlag() && getBitWidth() == DataType::LABEL;
 }
 
 bool DataType::isVoidType() const
 {
-    return bitWidth == DataType::VOID;
+    return getSimpleFlag() && getBitWidth() == DataType::VOID;
 }
 
 DataType DataType::getElementType(const int index) const
 {
-    if(auto ptrType = getPointerType())
-        return ptrType->elementType;
-    if(auto arrayType = getArrayType())
-        return arrayType->elementType;
-    if(getStructType() && index >= 0)
-        return getStructType()->elementTypes.at(static_cast<std::size_t>(index));
-    if(complexType)
+    if(!getSimpleFlag())
+    {
+        if(auto ptrType = getPointerType())
+            return ptrType->elementType;
+        if(auto arrayType = getArrayType())
+            return arrayType->elementType;
+        if(getStructType() && index >= 0)
+            return getStructType()->elementTypes.at(static_cast<std::size_t>(index));
         throw CompilationError(
             CompilationStep::GENERAL, "Can't get element-type of heterogeneous complex type", to_string());
-    if(numElements == 1)
+    }
+    if(getNumElements() == 1)
         return *this;
-    return DataType{bitWidth, 1, isFloatingPoint};
-}
-
-DataType DataType::toPointerType(AddressSpace addressSpace) const
-{
-    return DataType(new PointerType(*this, addressSpace));
+    return DataType{getBitWidth(), 1, getFloatingPoint()};
 }
 
 DataType DataType::toVectorType(unsigned char vectorWidth) const
 {
-    if(complexType)
+    if(!getSimpleFlag())
         throw CompilationError(CompilationStep::GENERAL, "Can't form vector-type of complex type", to_string());
     if(vectorWidth > 16 || vectorWidth == 0)
         throw CompilationError(CompilationStep::GENERAL, "Invalid width for SIMD vector",
             std::to_string(static_cast<unsigned>(vectorWidth)));
-    if(numElements == vectorWidth)
+    if(getNumElements() == vectorWidth)
         return *this;
-    return DataType(bitWidth, vectorWidth, isFloatingPoint);
+    return DataType(getBitWidth(), vectorWidth, getFloatingPoint());
 }
 
 DataType DataType::toArrayType(unsigned int numElements) const
 {
-    return DataType(new ArrayType(*this, numElements));
+    return DataType(GLOBAL_TYPE_HOLDER.createArrayType(*this, numElements));
 }
 
-bool DataType::containsType(const DataType& other) const
+bool DataType::containsType(DataType other) const
 {
     if(*this == other)
         return true;
-    if(complexType && !getPointerType())
-        throw CompilationError(CompilationStep::GENERAL, "Can't check type hierarchy for complex type", to_string());
-    if(!isFloatingPoint && !other.isFloatingPoint && bitWidth <= other.bitWidth)
+    auto thisBitWidth = getBitWidth();
+    auto otherBitWidth = other.getBitWidth();
+    auto thisFloatType = getFloatingPoint();
+    auto otherFloatType = other.getFloatingPoint();
+    if(!getSimpleFlag())
+    {
+        thisFloatType = false;
+        if(getPointerType())
+            thisBitWidth = 32;
+        else
+            throw CompilationError(
+                CompilationStep::GENERAL, "Can't check type hierarchy for complex type", to_string());
+    }
+    if(!other.getSimpleFlag())
+    {
+        otherFloatType = false;
+        if(other.getPointerType())
+            otherBitWidth = 32;
+        else
+            throw CompilationError(
+                CompilationStep::GENERAL, "Can't check type hierarchy for complex type", other.to_string());
+    }
+    if(!thisFloatType && !otherFloatType && thisBitWidth <= otherBitWidth)
     {
         // FIXME correct? doesn't the comparison need to be the other way round?
         return true;
@@ -285,37 +303,39 @@ bool DataType::containsType(const DataType& other) const
     return false;
 }
 
-const DataType DataType::getUnionType(const DataType& other) const
+DataType DataType::getUnionType(DataType other) const
 {
     if(*this == other)
         return *this;
     // doesn't work for heterogeneous types
-    if(complexType || other.complexType)
+    if(!getSimpleFlag() || !other.getSimpleFlag())
         throw CompilationError(CompilationStep::GENERAL, "Can't form union type of distinct complex types!");
-    if(isFloatingPoint != other.isFloatingPoint)
+    if(getFloatingPoint() != other.getFloatingPoint())
         throw CompilationError(CompilationStep::GENERAL, "Can't form union type of floating-point and integer types!");
     if(isVoidType() || isUnknown() || isLabelType())
         throw CompilationError(CompilationStep::GENERAL, "Can't form union type with this type", to_string());
-    return DataType(std::max(getScalarBitCount(), other.getScalarBitCount()), std::max(numElements, other.numElements),
-        isFloatingPoint);
+    return DataType(std::max(getScalarBitCount(), other.getScalarBitCount()),
+        std::max(getNumElements(), other.getNumElements()), getFloatingPoint());
 }
 
 unsigned char DataType::getScalarBitCount() const
 {
-    if(getPointerType())
-        // 32-bit pointer
-        return 32;
-    if(getImageType())
-        // images are pointers to the image-data
-        return 32;
-    if(complexType)
+    if(!getSimpleFlag())
+    {
+        if(getPointerType())
+            // 32-bit pointer
+            return 32;
+        if(getImageType())
+            // images are pointers to the image-data
+            return 32;
         throw CompilationError(CompilationStep::GENERAL, "Can't get bit-width of complex type", to_string());
+    }
     if(isVoidType())
         // single byte
         return 8;
     if(isUnknown())
         return 32;
-    return bitWidth;
+    return getBitWidth();
 }
 
 uint32_t DataType::getScalarWidthMask() const
@@ -325,27 +345,31 @@ uint32_t DataType::getScalarWidthMask() const
 
 unsigned int DataType::getPhysicalWidth() const
 {
-    if(getPointerType())
-        // 32-bit pointer
-        return 4;
-    if(auto arrayType = getArrayType())
-        return arrayType->elementType.getPhysicalWidth() * arrayType->size;
-    if(auto structType = getStructType())
-        return structType->getStructSize();
-    if(getImageType())
-        // images are just pointers to data
-        // 32-bit pointer
-        return 4;
-    if(complexType)
+    if(!getSimpleFlag())
+    {
+        if(getPointerType())
+            // 32-bit pointer
+            return 4;
+        if(auto arrayType = getArrayType())
+            return arrayType->elementType.getPhysicalWidth() * arrayType->size;
+        if(auto structType = getStructType())
+            return structType->getStructSize();
+        if(getImageType())
+            // images are just pointers to data
+            // 32-bit pointer
+            return 4;
         // any other complex type
         throw CompilationError(CompilationStep::GENERAL, "Can't get width of complex type", to_string());
+    }
     return getVectorWidth(true) * getScalarBitCount() / 8;
 }
 
 unsigned char DataType::getVectorWidth(bool physicalWidth) const
 {
-    if(complexType && numElements != 1)
-        throw CompilationError(CompilationStep::GENERAL, "Can't have vectors of complex types", to_string());
+    auto numElements = getNumElements();
+    if(!getSimpleFlag())
+        // Vectors of complex types are not allowed
+        return 1;
     if(physicalWidth && numElements == 3)
         // OpenCL 1.2, page 203:
         //"For 3-component vector data types, the size of the data type is 4 * sizeof(component)"
@@ -355,22 +379,9 @@ unsigned char DataType::getVectorWidth(bool physicalWidth) const
 
 unsigned DataType::getAlignmentInBytes() const
 {
-    if(complexType)
-        return complexType->getAlignmentInBytes();
+    if(!getSimpleFlag())
+        return toPointer(getComplexType())->getAlignmentInBytes();
     return getPhysicalWidth();
-}
-
-std::size_t std::hash<DataType>::operator()(const DataType& type) const noexcept
-{
-    const std::hash<std::shared_ptr<ComplexType>> complexHash;
-    const std::hash<unsigned char> numHash;
-    return complexHash(type.complexType) ^ numHash(type.bitWidth) ^ numHash(type.numElements) ^
-        numHash(type.isFloatingPoint);
-}
-
-PointerType::PointerType(const DataType& elementType, const AddressSpace addressSpace, unsigned alignment) :
-    elementType(elementType), addressSpace(addressSpace), alignment(alignment)
-{
 }
 
 bool PointerType::operator==(const ComplexType& other) const
@@ -380,6 +391,7 @@ bool PointerType::operator==(const ComplexType& other) const
     const PointerType* right = dynamic_cast<const PointerType*>(&other);
     if(right == nullptr)
         return false;
+    // TODO do we need also check for address space?!
     return elementType == right->elementType;
 }
 
@@ -399,11 +411,6 @@ unsigned PointerType::getAlignmentInBytes() const
 std::string PointerType::getTypeName() const
 {
     return toString(addressSpace, true) + " " + elementType.to_string() + "*";
-}
-
-StructType::StructType(const std::string& name, const std::vector<DataType>& elementTypes, const bool isPacked) :
-    name(name), elementTypes(elementTypes), isPacked(isPacked)
-{
 }
 
 bool StructType::operator==(const ComplexType& other) const
@@ -495,8 +502,6 @@ std::string StructType::getContent() const
     return s.str();
 }
 
-ArrayType::ArrayType(const DataType& elementType, const unsigned int size) : elementType(elementType), size(size) {}
-
 bool ArrayType::operator==(const ComplexType& other) const
 {
     if(this == &other)
@@ -548,4 +553,62 @@ unsigned ImageType::getAlignmentInBytes() const
 std::string ImageType::toImageConfigurationName(const std::string& localName)
 {
     return localName + ".image_config";
+}
+
+PointerType* TypeHolder::createPointerType(DataType elementType, AddressSpace addressSpace, unsigned alignment)
+{
+    std::lock_guard<std::mutex> guard(accessMutex);
+    std::unique_ptr<ComplexType> tmp(new PointerType(elementType, addressSpace, alignment));
+    auto it = std::find_if(complexTypes.begin(), complexTypes.end(), [&](const auto& type) -> bool {
+        auto ptrType = dynamic_cast<PointerType*>(type.get());
+        // PointerType::operator== only checks for elementType, which is too little for this here
+        return ptrType && ptrType->elementType == elementType && ptrType->addressSpace == addressSpace;
+    });
+    if(it != complexTypes.end())
+        return dynamic_cast<PointerType*>(it->get());
+    complexTypes.emplace_back(std::move(tmp));
+    return dynamic_cast<PointerType*>(complexTypes.back().get());
+}
+
+StructType* TypeHolder::createStructType(
+    const std::string& name, const std::vector<DataType>& elementTypes, bool isPacked)
+{
+    std::lock_guard<std::mutex> guard(accessMutex);
+    std::unique_ptr<ComplexType> tmp(new StructType(name, elementTypes, isPacked));
+    auto it = std::find_if(complexTypes.begin(), complexTypes.end(), [&](const auto& type) -> bool {
+        auto structType = dynamic_cast<StructType*>(type.get());
+        return structType && *structType == *tmp;
+    });
+    if(it != complexTypes.end())
+        return dynamic_cast<StructType*>(it->get());
+    complexTypes.emplace_back(std::move(tmp));
+    return dynamic_cast<StructType*>(complexTypes.back().get());
+}
+
+ArrayType* TypeHolder::createArrayType(DataType elementType, unsigned int size)
+{
+    std::lock_guard<std::mutex> guard(accessMutex);
+    std::unique_ptr<ComplexType> tmp(new ArrayType(elementType, size));
+    auto it = std::find_if(complexTypes.begin(), complexTypes.end(), [&](const auto& type) -> bool {
+        auto arrayType = dynamic_cast<ArrayType*>(type.get());
+        return arrayType && *arrayType == *tmp;
+    });
+    if(it != complexTypes.end())
+        return dynamic_cast<ArrayType*>(it->get());
+    complexTypes.emplace_back(std::move(tmp));
+    return dynamic_cast<ArrayType*>(complexTypes.back().get());
+}
+
+ImageType* TypeHolder::createImageType(uint8_t dimensions, bool isImageArray, bool isImageBuffer, bool isSampled)
+{
+    std::lock_guard<std::mutex> guard(accessMutex);
+    std::unique_ptr<ComplexType> tmp(new ImageType(dimensions, isImageArray, isImageBuffer, isSampled));
+    auto it = std::find_if(complexTypes.begin(), complexTypes.end(), [&](const auto& type) -> bool {
+        auto imgType = dynamic_cast<ImageType*>(type.get());
+        return imgType && *imgType == *tmp;
+    });
+    if(it != complexTypes.end())
+        return dynamic_cast<ImageType*>(it->get());
+    complexTypes.emplace_back(std::move(tmp));
+    return dynamic_cast<ImageType*>(complexTypes.back().get());
 }

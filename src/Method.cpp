@@ -81,7 +81,7 @@ const StackAllocation* Method::findStackAllocation(const std::string& name) cons
     return nullptr;
 }
 
-const Local* Method::findOrCreateLocal(const DataType& type, const std::string& name)
+const Local* Method::findOrCreateLocal(DataType type, const std::string& name)
 {
     const Local* loc = findLocal(name);
     if(loc == nullptr)
@@ -150,7 +150,7 @@ bool Method::isLocallyLimited(InstructionWalker curIt, const Local* locale, cons
 
 static std::atomic_size_t tmpIndex{0};
 
-const Value Method::addNewLocal(const DataType& type, const std::string& prefix, const std::string& postfix)
+const Value Method::addNewLocal(DataType type, const std::string& prefix, const std::string& postfix)
 {
     const std::string name = createLocalName(prefix, postfix);
     if(findLocal(name) != nullptr)
@@ -489,6 +489,26 @@ void Method::moveBlock(BasicBlockList::iterator origin, BasicBlockList::iterator
     // splice removes the element pointed to by origin from the list (second) parameter and inserts it into the list
     // object at position dest without creating or destroying an object
     basicBlocks.splice(dest, basicBlocks, origin);
+}
+
+DataType Method::createPointerType(DataType elementType, AddressSpace addressSpace, unsigned alignment)
+{
+    return DataType(const_cast<Module&>(module).createPointerType(elementType, addressSpace, alignment));
+}
+
+DataType Method::createStructType(const std::string& name, const std::vector<DataType>& elementTypes, bool isPacked)
+{
+    return DataType(const_cast<Module&>(module).createStructType(name, elementTypes, isPacked));
+}
+
+DataType Method::createArrayType(DataType elementType, unsigned int size)
+{
+    return DataType(const_cast<Module&>(module).createArrayType(elementType, size));
+}
+
+DataType Method::createImageType(uint8_t dimensions, bool isImageArray, bool isImageBuffer, bool isSampled)
+{
+    return DataType(const_cast<Module&>(module).createImageType(dimensions, isImageArray, isImageBuffer, isSampled));
 }
 
 BasicBlock* Method::getNextBlockAfter(const BasicBlock* block)

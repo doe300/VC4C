@@ -1378,8 +1378,9 @@ bool optimizations::cacheWorkGroupDMAAccess(const Module& module, Method& method
             log << "Memory location " << pair.first->to_string() << " is accessed via DMA in the dynamic range ["
                 << offsetRange.minValue << ", " << offsetRange.maxValue << "]" << logging::endl);
 
-        auto accessedType = pair.first->type.toArrayType(static_cast<unsigned>(
-            offsetRange.maxValue - offsetRange.minValue + 1 /* bounds of range are inclusive! */));
+        auto accessedType = method.createArrayType(pair.first->type,
+            static_cast<unsigned>(
+                offsetRange.maxValue - offsetRange.minValue + 1 /* bounds of range are inclusive! */));
 
         // TODO the local is not correct, at least not if there is a work-group uniform offset
         auto vpmArea = method.vpm->addArea(pair.first, accessedType, false);

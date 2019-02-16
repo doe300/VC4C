@@ -24,17 +24,17 @@ namespace vc4c
             const Register b_lod_bias;
             const Signaling signal;
 
-            inline Value getAddress(const DataType& type) const
+            inline Value getAddress(DataType type) const
             {
                 return Value(s_coordinate, type);
             }
 
-            inline Value getXCoord(const DataType& type = TYPE_FLOAT) const
+            inline Value getXCoord(DataType type = TYPE_FLOAT) const
             {
                 return Value(s_coordinate, type);
             }
 
-            inline Value getYCoord(const DataType& type = TYPE_FLOAT) const
+            inline Value getYCoord(DataType type = TYPE_FLOAT) const
             {
                 return Value(t_coordinate, type);
             }

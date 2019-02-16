@@ -59,7 +59,7 @@ namespace vc4c
             void parseInstruction(
                 Module& module, Method& method, LLVMInstructionList& instructions, const llvm::Instruction& inst);
 
-            DataType toDataType(const llvm::Type* type);
+            DataType toDataType(Module& module, const llvm::Type* type);
             Value parseInlineGetElementPtr(
                 Module& module, Method& method, LLVMInstructionList& instructions, const llvm::Value* pointerOperand);
             Value toValue(Method& method, const llvm::Value* val);

@@ -146,7 +146,7 @@ Value Memory::readWord(MemoryAddress address) const
     return Value(Literal(*getWordAddress(address)), TYPE_INT32);
 }
 
-MemoryAddress Memory::incrementAddress(MemoryAddress address, const DataType& typeSize) const
+MemoryAddress Memory::incrementAddress(MemoryAddress address, DataType typeSize) const
 {
     return address + typeSize.getPhysicalWidth();
 }
@@ -215,7 +215,7 @@ static std::string toRegisterWriteString(const Value& val, std::bitset<16> eleme
     return (val.type.to_string() + " {") + to_string<std::string>(parts) + "}";
 }
 
-LiteralType getLiteralType(const DataType& type)
+LiteralType getLiteralType(DataType type)
 {
     if(type.isFloatingType())
         return LiteralType::REAL;

@@ -554,10 +554,10 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
         // convert x[num] to x*
         // TODO shouldn't x[num] be converted to x[num]* ?? (e.g. for HandBrake/vscale_all_dither_opencl.cl)
         // or distinguish between first and following indices?
-        finalType = arrayType->elementType.toPointerType(
+        finalType = method.createPointerType(arrayType->elementType,
             container.type.getPointerType() ? container.type.getPointerType()->addressSpace : AddressSpace::PRIVATE);
     else if(!(firstIndexIsElement && indices.size() == 1))
-        finalType = subContainerType.toPointerType(container.type.getPointerType()->addressSpace);
+        finalType = method.createPointerType(subContainerType, container.type.getPointerType()->addressSpace);
 
     if(dest.type != finalType)
     {

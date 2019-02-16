@@ -92,7 +92,7 @@ namespace vc4c
          * NOTE: The name of a local must be unique within a method (for parameter, globals, stack-allocations too)
          */
         NODISCARD const Value addNewLocal(
-            const DataType& type, const std::string& prefix = "", const std::string& postfix = "");
+            DataType type, const std::string& prefix = "", const std::string& postfix = "");
 
         /*
          * Looks for a local with the given name and returns it.
@@ -116,7 +116,7 @@ namespace vc4c
          * If a local, parameter, global or stack-allocation with such a name already exists, it is returned.
          * Otherwise a new local is created
          */
-        const Local* findOrCreateLocal(const DataType& type, const std::string& name) __attribute__((returns_nonnull));
+        const Local* findOrCreateLocal(DataType type, const std::string& name) __attribute__((returns_nonnull));
 
         /*!
          * Checks if all usages of this local are within a certain range from the current instruction, but following
@@ -271,6 +271,16 @@ namespace vc4c
          * and therefore can only be called if the blocks predecessor does not fall-through.
          */
         void moveBlock(BasicBlockList::iterator origin, BasicBlockList::iterator dest);
+
+        // NOTE: The Method does not hold any types, since it might be destroyed (inlined), it only redirects these
+        // calls to the Module
+        DataType createPointerType(
+            DataType elementType, AddressSpace addressSpace = AddressSpace::PRIVATE, unsigned alignment = 0);
+        DataType createStructType(
+            const std::string& name, const std::vector<DataType>& elementTypes, bool isPacked = false);
+        DataType createArrayType(DataType elementType, unsigned int size);
+        DataType createImageType(
+            uint8_t dimensions, bool isImageArray = false, bool isImageBuffer = false, bool isSampled = false);
 
     private:
         /*

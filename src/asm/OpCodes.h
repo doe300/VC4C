@@ -257,7 +257,7 @@ namespace vc4c
         }
         bool hasEffect() const;
 
-        static const Unpack unpackTo32Bit(const DataType& type);
+        static const Unpack unpackTo32Bit(DataType type);
     };
 
     /*

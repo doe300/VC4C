@@ -15,8 +15,8 @@ namespace vc4c
 {
     const Value VPM_IN_SETUP_REGISTER(REG_VPM_IN_SETUP, TYPE_INT32);
     const Value VPM_OUT_SETUP_REGISTER(REG_VPM_OUT_SETUP, TYPE_INT32);
-    const Value VPM_DMA_LOAD_ADDR_REGISTER(REG_VPM_DMA_LOAD_ADDR, TYPE_VOID.toPointerType());
-    const Value VPM_DMA_STORE_ADDR_REGISTER(REG_VPM_DMA_STORE_ADDR, TYPE_VOID.toPointerType());
+    const Value VPM_DMA_LOAD_ADDR_REGISTER(REG_VPM_DMA_LOAD_ADDR, TYPE_VOID_POINTER);
+    const Value VPM_DMA_STORE_ADDR_REGISTER(REG_VPM_DMA_STORE_ADDR, TYPE_VOID_POINTER);
     const Value VPM_DMA_LOAD_WAIT_REGISTER(REG_VPM_DMA_LOAD_WAIT, TYPE_UNKNOWN);
     const Value VPM_DMA_STORE_WAIT_REGISTER(REG_VPM_DMA_STORE_WAIT, TYPE_UNKNOWN);
     const Value VPM_IO_REGISTER(REG_VPM_IO, TYPE_UNKNOWN);
@@ -690,7 +690,7 @@ namespace vc4c
              * NOTE:
              * The number of elements is the number of SCALAR elements!
              */
-            uint8_t getElementsInRow(const DataType& elementType) const;
+            uint8_t getElementsInRow(DataType elementType) const;
 
             /*
              * If we pack multiple values (value = byte/half-word/word vector of size 1 to 16) into a single row (e.g.
@@ -717,7 +717,7 @@ namespace vc4c
              *
              * If the data-type is set to unknown, the element-type of the local associated with this area is used
              */
-            VPWGenericSetup toWriteSetup(const DataType& elementType) const;
+            VPWGenericSetup toWriteSetup(DataType elementType) const;
 
             /*
              * Generates a VPM-to-RAM DMA write setup for storing the contents of the VPM area into RAM with the given
@@ -725,7 +725,7 @@ namespace vc4c
              *
              * If the data-type is set to unknown, the element-type of the local associated with this area is used
              */
-            VPWDMASetup toWriteDMASetup(const DataType& elementType, uint8_t numValues = 1) const;
+            VPWDMASetup toWriteDMASetup(DataType elementType, uint8_t numValues = 1) const;
 
             /*
              * Generates a VPM-to-QPU read setup for accessing the base-address of this VPM area for the given number of
@@ -733,7 +733,7 @@ namespace vc4c
              *
              * If the data-type is set to unknown, the default element-type of this area is used
              */
-            VPRGenericSetup toReadSetup(const DataType& elementType, uint8_t numValues = 1) const;
+            VPRGenericSetup toReadSetup(DataType elementType, uint8_t numValues = 1) const;
 
             /*
              * Generates a RAM-to-VPM DMA read setup for loading the contents of a memory address into this VPM area
@@ -741,7 +741,7 @@ namespace vc4c
              *
              * If the data-type is set to unknown, the default element-type of this area is used
              */
-            VPRDMASetup toReadDMASetup(const DataType& elementType, uint8_t numValues = 1) const;
+            VPRDMASetup toReadDMASetup(DataType elementType, uint8_t numValues = 1) const;
 
             std::string to_string() const;
         };
@@ -769,14 +769,14 @@ namespace vc4c
             const VPMArea& getScratchArea() const;
             const VPMArea* findArea(const Local* local);
             const VPMArea* addArea(
-                const Local* local, const DataType& elementType, bool isStackArea, unsigned numStacks = NUM_QPUS);
+                const Local* local, DataType elementType, bool isStackArea, unsigned numStacks = NUM_QPUS);
 
             /*
              * The maximum number of vectors (of the given type) which can be cached in this VPM.
              *
              * On the hardware side, this is limited to 16 for reading and 64 for writing (see Broadcom spec, page 53)
              */
-            unsigned getMaxCacheVectors(const DataType& type, bool writeAccess) const;
+            unsigned getMaxCacheVectors(DataType type, bool writeAccess) const;
 
             /*
              * Inserts a read from VPM into a QPU register
@@ -797,13 +797,13 @@ namespace vc4c
              * Inserts a read from RAM into VPM via DMA
              */
             NODISCARD InstructionWalker insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
-                const DataType& type, const VPMArea* area = nullptr, bool useMutex = true,
+                DataType type, const VPMArea* area = nullptr, bool useMutex = true,
                 const Value& inAreaOffset = INT_ZERO);
             /*
              * Inserts a write from VPM into RAM via DMA
              */
             NODISCARD InstructionWalker insertWriteRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
-                const DataType& type, const VPMArea* area = nullptr, bool useMutex = true,
+                DataType type, const VPMArea* area = nullptr, bool useMutex = true,
                 const Value& inAreaOffset = INT_ZERO);
             /*
              * Inserts a copy from RAM via DMA and VPM into RAM
@@ -814,7 +814,7 @@ namespace vc4c
              * Inserts a filling of a memory-area with a single value from VPM
              */
             NODISCARD InstructionWalker insertFillRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
-                const DataType& type, unsigned numCopies, const VPMArea* area = nullptr, bool useMutex = true);
+                DataType type, unsigned numCopies, const VPMArea* area = nullptr, bool useMutex = true);
 
             /*
              * Updates the maximum size used by the scratch area.
@@ -827,7 +827,7 @@ namespace vc4c
              * the type needs to be converted to a type with all element-types set to 16-element vectors
              * to correctly determine the amount of VPM cache required to store the data.
              */
-            static DataType getVPMStorageType(const DataType& type);
+            static DataType getVPMStorageType(DataType type);
 
         private:
             const unsigned maximumVPMSize;

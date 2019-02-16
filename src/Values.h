@@ -647,14 +647,14 @@ namespace vc4c
          */
         DataType type;
 
-        Value(const Literal& lit, const DataType& type) noexcept;
-        Value(Register reg, const DataType& type) noexcept;
-        Value(const ContainerValue& container, const DataType& type);
+        Value(const Literal& lit, DataType type) noexcept;
+        Value(Register reg, DataType type) noexcept;
+        Value(const ContainerValue& container, DataType type);
         Value(const Value& val) = default;
         Value(Value&& val) noexcept = default;
-        Value(const Local* local, const DataType& type) noexcept;
-        Value(const DataType& type) noexcept;
-        Value(SmallImmediate immediate, const DataType& type) noexcept;
+        Value(const Local* local, DataType type) noexcept;
+        Value(DataType type) noexcept;
+        Value(SmallImmediate immediate, DataType type) noexcept;
         ~Value() = default;
 
         Value& operator=(const Value& right) = default;
@@ -805,7 +805,7 @@ namespace vc4c
          * For scalar types, a simple INT_ZERO is returned, for compound types, a container containing the correct
          * amount of zero-elements is created
          */
-        static Value createZeroInitializer(const DataType& type);
+        static Value createZeroInitializer(DataType type);
 
         /*
          * Returns the stored data of the given type, if it matches the stored type.

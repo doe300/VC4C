@@ -48,7 +48,7 @@ static std::string getVPMSizeName(uint8_t size)
     }
 }
 
-static uint8_t getVPMSize(const DataType& paramType)
+static uint8_t getVPMSize(DataType paramType)
 {
     // documentation, table 32 (page 57)
     switch(paramType.getScalarBitCount())
@@ -228,7 +228,7 @@ std::string VPRSetup::to_string() const
  * alignment correct = column % column-divisor == 0
  * byte/half-word-offset = column / column-divisor
  */
-static unsigned char getColumnDivisor(const DataType& type)
+static unsigned char getColumnDivisor(DataType type)
 {
     /*
      * Since we currently use one VPM row for a single vector,
@@ -248,8 +248,8 @@ static unsigned char getColumnDivisor(const DataType& type)
 /*
  * Checks whether the given area fits into the VPM area
  */
-static bool checkIndices(const DataType& type, unsigned char rowIndex, unsigned char columnIndex, unsigned char numRows,
-    unsigned char numColumns)
+static bool checkIndices(
+    DataType type, unsigned char rowIndex, unsigned char columnIndex, unsigned char numRows, unsigned char numColumns)
 {
     if((columnIndex + numColumns) > VPM_NUM_COLUMNS)
         return false;
@@ -260,7 +260,7 @@ static bool checkIndices(const DataType& type, unsigned char rowIndex, unsigned 
     return true;
 }
 
-static uint8_t getVPMDMAMode(const DataType& paramType)
+static uint8_t getVPMDMAMode(DataType paramType)
 {
     // documentation, table 34 (page 58) / table 36 (page 59)
     // The offset is added initially onto the address, so don't set it (it will skip to write the first byte(s)/half
@@ -348,7 +348,7 @@ std::pair<DataType, uint8_t> periphery::getBestVectorSize(const int64_t numBytes
 /*
  * Calculates the address of the data in the VPM in the format used by the QPU-side access (read/write VPM)
  */
-static uint8_t calculateQPUSideAddress(const DataType& type, unsigned char rowIndex, unsigned char columnIndex)
+static uint8_t calculateQPUSideAddress(DataType type, unsigned char rowIndex, unsigned char columnIndex)
 {
     // see Broadcom spec, pages 57, 58 and figure 8 (page 54)
     // Y coord is the multiple of 16 * 32-bit (= 64 Byte)
@@ -373,7 +373,7 @@ static uint8_t calculateQPUSideAddress(const DataType& type, unsigned char rowIn
 }
 
 static NODISCARD InstructionWalker calculateElementOffset(
-    Method& method, InstructionWalker it, const DataType& elementType, const Value& inAreaOffset, Value& elementOffset)
+    Method& method, InstructionWalker it, DataType elementType, const Value& inAreaOffset, Value& elementOffset)
 {
     if(auto lit = inAreaOffset.getLiteralValue())
     {
@@ -466,8 +466,8 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
     return it;
 }
 
-InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
-    const DataType& type, const VPMArea* area, bool useMutex, const Value& inAreaOffset)
+InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress, DataType type,
+    const VPMArea* area, bool useMutex, const Value& inAreaOffset)
 {
     if(area != nullptr)
         area->checkAreaSize(getVPMStorageType(type).getPhysicalWidth());
@@ -527,8 +527,8 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
     return it;
 }
 
-InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
-    const DataType& type, const VPMArea* area, bool useMutex, const Value& inAreaOffset)
+InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, const Value& memoryAddress, DataType type,
+    const VPMArea* area, bool useMutex, const Value& inAreaOffset)
 {
     if(area != nullptr)
         area->checkAreaSize(getVPMStorageType(type).getPhysicalWidth());
@@ -618,8 +618,8 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
     return it;
 }
 
-InstructionWalker VPM::insertFillRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
-    const DataType& type, const unsigned numCopies, const VPMArea* area, bool useMutex)
+InstructionWalker VPM::insertFillRAM(Method& method, InstructionWalker it, const Value& memoryAddress, DataType type,
+    const unsigned numCopies, const VPMArea* area, bool useMutex)
 {
     if(numCopies == 0)
         return it;
@@ -680,7 +680,7 @@ DataType VPMArea::getElementType() const
     return TYPE_UNKNOWN;
 }
 
-uint8_t VPMArea::getElementsInRow(const DataType& elementType) const
+uint8_t VPMArea::getElementsInRow(DataType elementType) const
 {
     DataType type = (elementType.isUnknown() ? getElementType() : elementType).toVectorType(1);
     if(type.isUnknown())
@@ -704,7 +704,7 @@ bool VPMArea::canBePackedIntoRow() const
     return !canBeAccessedViaDMA() || getElementType().getVectorWidth() == NATIVE_VECTOR_SIZE;
 }
 
-VPWGenericSetup VPMArea::toWriteSetup(const DataType& elementType) const
+VPWGenericSetup VPMArea::toWriteSetup(DataType elementType) const
 {
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.isUnknown())
@@ -720,7 +720,7 @@ VPWGenericSetup VPMArea::toWriteSetup(const DataType& elementType) const
     return setup;
 }
 
-VPWDMASetup VPMArea::toWriteDMASetup(const DataType& elementType, uint8_t numValues) const
+VPWDMASetup VPMArea::toWriteDMASetup(DataType elementType, uint8_t numValues) const
 {
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.getScalarBitCount() > 32)
@@ -761,7 +761,7 @@ VPWDMASetup VPMArea::toWriteDMASetup(const DataType& elementType, uint8_t numVal
     return setup;
 }
 
-VPRGenericSetup VPMArea::toReadSetup(const DataType& elementType, uint8_t numValues) const
+VPRGenericSetup VPMArea::toReadSetup(DataType elementType, uint8_t numValues) const
 {
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.isUnknown())
@@ -777,7 +777,7 @@ VPRGenericSetup VPMArea::toReadSetup(const DataType& elementType, uint8_t numVal
     return setup;
 }
 
-VPRDMASetup VPMArea::toReadDMASetup(const DataType& elementType, uint8_t numValues) const
+VPRDMASetup VPMArea::toReadDMASetup(DataType elementType, uint8_t numValues) const
 {
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.getScalarBitCount() > 32)
@@ -843,7 +843,7 @@ const VPMArea* VPM::findArea(const Local* local)
     return nullptr;
 }
 
-const VPMArea* VPM::addArea(const Local* local, const DataType& elementType, bool isStackArea, unsigned numStacks)
+const VPMArea* VPM::addArea(const Local* local, DataType elementType, bool isStackArea, unsigned numStacks)
 {
     // Since we can only read/write in packages of 16-element vectors on the QPU-side, we need to reserve enough space
     // for 16-element vectors (even if we do not use all of the elements)
@@ -896,7 +896,7 @@ const VPMArea* VPM::addArea(const Local* local, const DataType& elementType, boo
     return ptr.get();
 }
 
-unsigned VPM::getMaxCacheVectors(const DataType& type, bool writeAccess) const
+unsigned VPM::getMaxCacheVectors(DataType type, bool writeAccess) const
 {
     unsigned numFreeRows = 0;
     // can possible use up all rows up to the first area
@@ -1055,7 +1055,7 @@ VPMInstructions periphery::findRelatedVPMInstructions(InstructionWalker anyVPMIn
     return result;
 }
 
-DataType VPM::getVPMStorageType(const DataType& type)
+DataType VPM::getVPMStorageType(DataType type)
 {
     DataType inVPMType = TYPE_UNKNOWN;
     if(auto arrayType = type.getArrayType())
