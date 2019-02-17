@@ -33,16 +33,6 @@ extern std::vector<vc4c::Value> toLoadedValues(uint32_t mask, vc4c::intermediate
 extern void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo,
     ReferenceRetainingList<Global>& globals, std::vector<qpu_asm::Instruction>& instructions);
 
-static Value ELEMENT_NUMBER(
-    ContainerValue({Value(SmallImmediate(0), TYPE_INT8), Value(SmallImmediate(1), TYPE_INT8),
-        Value(SmallImmediate(2), TYPE_INT8), Value(SmallImmediate(3), TYPE_INT8), Value(SmallImmediate(4), TYPE_INT8),
-        Value(SmallImmediate(5), TYPE_INT8), Value(SmallImmediate(6), TYPE_INT8), Value(SmallImmediate(7), TYPE_INT8),
-        Value(SmallImmediate(8), TYPE_INT8), Value(SmallImmediate(9), TYPE_INT8), Value(SmallImmediate(10), TYPE_INT8),
-        Value(SmallImmediate(11), TYPE_INT8), Value(SmallImmediate(12), TYPE_INT8),
-        Value(SmallImmediate(13), TYPE_INT8), Value(SmallImmediate(14), TYPE_INT8),
-        Value(SmallImmediate(15), TYPE_INT8)}),
-    TYPE_INT8);
-
 std::size_t EmulationData::calcParameterSize() const
 {
     return std::accumulate(parameter.begin(), parameter.end(), 0,
@@ -334,7 +324,7 @@ std::pair<Value, bool> Registers::readRegister(Register reg)
         return std::make_pair(readCache.at(REG_UNIFORM), true);
     }
     if(reg == REG_ELEMENT_NUMBER)
-        return std::make_pair(ELEMENT_NUMBER, true);
+        return std::make_pair(ELEMENT_NUMBERS, true);
     if(reg == REG_QPU_NUMBER)
         return std::make_pair(Value(SmallImmediate(qpu.ID), TYPE_INT8), true);
     if(reg == REG_NOP)
@@ -418,8 +408,7 @@ static Value toStorageValue(const Value& oldVal, const Value& newVal, std::bitse
         return newVal;
     if(elementMask.none())
         return oldVal;
-    Value result(ContainerValue(NATIVE_VECTOR_SIZE), newVal.type);
-    auto& resultElements = result.container().elements;
+    ContainerValue result(NATIVE_VECTOR_SIZE);
     auto newContainer = newVal.checkContainer();
     auto oldContainer = oldVal.checkContainer();
 
@@ -427,9 +416,9 @@ static Value toStorageValue(const Value& oldVal, const Value& newVal, std::bitse
     {
         const Value& newElement = newContainer ? newContainer->elements[i] : newVal;
         const Value& oldElement = oldContainer ? oldContainer->elements[i] : oldVal;
-        resultElements.emplace_back(elementMask.test(i) ? newElement : oldElement);
+        result.elements.emplace_back(elementMask.test(i) ? newElement : oldElement);
     }
-    return result;
+    return Value(std::move(result), newVal.type);
 }
 
 void Registers::writeStorageRegister(Register reg, Value&& val, std::bitset<16> elementMask)
@@ -625,9 +614,8 @@ void TMUs::checkTMUWriteCycle() const
 
 Value TMUs::readMemoryAddress(const Value& address) const
 {
-    Value res(ContainerValue(NATIVE_VECTOR_SIZE), TYPE_INT32);
+    ContainerValue res(NATIVE_VECTOR_SIZE);
     auto addressContainer = address.checkContainer();
-    auto& resElements = res.container().elements;
     for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
     {
         const Value& element = addressContainer ? addressContainer->elements[i] : address;
@@ -640,12 +628,13 @@ Value TMUs::readMemoryAddress(const Value& address) const
             throw CompilationError(
                 CompilationStep::GENERAL, "Cannot read from undefined TMU address", address.to_string());
         else
-            resElements.emplace_back(memory.readWord(element.getLiteralValue()->toImmediate()));
+            res.elements.emplace_back(memory.readWord(element.getLiteralValue()->toImmediate()));
     }
+    Value result(std::move(res), TYPE_INT32);
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Reading via TMU from memory address " << address.to_string(false, true) << ": "
-            << res.to_string(false, true) << logging::endl);
-    return res;
+            << result.to_string(false, true) << logging::endl);
+    return result;
 }
 
 uint8_t TMUs::toRealTMU(uint8_t tmu) const
@@ -680,13 +669,12 @@ static Value calcSFU(Value&& in, const std::function<float(float)>& func)
         throw CompilationError(CompilationStep::GENERAL, "Cannot calculate SFU operation with undefined operand");
     if(auto container = in.checkContainer())
     {
-        Value res(ContainerValue(container->elements.size()), in.type);
-        auto& resElements = res.container().elements;
+        ContainerValue res(container->elements.size());
         for(Value& val : container->elements)
         {
-            resElements.emplace_back(calcSFU(std::move(val), func));
+            res.elements.emplace_back(calcSFU(std::move(val), func));
         }
-        return res;
+        return Value(std::move(res), in.type);
     }
     throw CompilationError(CompilationStep::GENERAL, "Invalid value to use as SFU-parameter", in.to_string());
 }
@@ -773,32 +761,32 @@ Value VPM::readValue()
     {
     case 0: // Byte
     {
-        result = Value(ContainerValue(NATIVE_VECTOR_SIZE), TYPE_INT8.toVectorType(NATIVE_VECTOR_SIZE));
-        auto& resElements = result.container().elements;
+        ContainerValue tmp(NATIVE_VECTOR_SIZE);
         for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
         {
-            resElements.emplace_back(Literal((dataPtr[i / 4] >> ((i % 4) * 8)) & 0xFF), TYPE_INT8);
+            tmp.elements.emplace_back(Literal((dataPtr[i / 4] >> ((i % 4) * 8)) & 0xFF), TYPE_INT8);
         }
+        result = Value(std::move(tmp), TYPE_INT8.toVectorType(NATIVE_VECTOR_SIZE));
         break;
     }
     case 1: // Half-word
     {
-        result = Value(ContainerValue(NATIVE_VECTOR_SIZE), TYPE_INT16.toVectorType(NATIVE_VECTOR_SIZE));
-        auto& resElements = result.container().elements;
+        ContainerValue tmp(NATIVE_VECTOR_SIZE);
         for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
         {
-            resElements.emplace_back(Literal((dataPtr[i / 2] >> ((i % 2) * 16)) & 0xFFFF), TYPE_INT16);
+            tmp.elements.emplace_back(Literal((dataPtr[i / 2] >> ((i % 2) * 16)) & 0xFFFF), TYPE_INT16);
         }
+        result = Value(std::move(tmp), TYPE_INT16.toVectorType(NATIVE_VECTOR_SIZE));
         break;
     }
     case 2: // Word
     {
-        result = Value(ContainerValue(NATIVE_VECTOR_SIZE), TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE));
-        auto& resElements = result.container().elements;
+        ContainerValue tmp(NATIVE_VECTOR_SIZE);
         for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
         {
-            resElements.emplace_back(Literal(dataPtr[i]), TYPE_INT32);
+            tmp.elements.emplace_back(Literal(dataPtr[i]), TYPE_INT32);
         }
+        result = Value(std::move(tmp), TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE));
         break;
     }
     }
@@ -1526,11 +1514,10 @@ void QPU::writeConditional(Register dest, const Value& in, ConditionCode cond, c
             ++instrumentation[mulInst].numMulALUSkipped;
         return;
     }
-    Value result(ContainerValue(NATIVE_VECTOR_SIZE), in.type);
+    ContainerValue result(NATIVE_VECTOR_SIZE);
 
     std::bitset<16> elementMask{};
 
-    auto& outElements = result.container().elements;
     auto inContainer = in.checkContainer();
     for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
     {
@@ -1540,13 +1527,13 @@ void QPU::writeConditional(Register dest, const Value& in, ConditionCode cond, c
                 elementMask.set(i);
             Value element = inContainer ? inContainer->elements[i] : in;
             element.type = element.type.toVectorType(1);
-            outElements.emplace_back(std::move(element));
+            result.elements.emplace_back(std::move(element));
         }
         else
-            outElements.emplace_back(UNDEFINED_VALUE);
+            result.elements.emplace_back(UNDEFINED_VALUE);
     }
 
-    registers.writeRegister(dest, result, elementMask);
+    registers.writeRegister(dest, Value(std::move(result), in.type), elementMask);
 
     if(addInst != nullptr)
     {

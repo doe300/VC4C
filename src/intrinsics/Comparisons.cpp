@@ -393,15 +393,16 @@ InstructionWalker intermediate::insertIsNegative(InstructionWalker it, const Val
     }
     else if(auto container = src.checkContainer())
     {
-        dest = Value(ContainerValue(container->elements.size()), TYPE_BOOL);
+        ContainerValue tmp(container->elements.size());
         for(const auto& elem : container->elements)
         {
             if(auto lit = elem.getLiteralValue())
-                dest.container().elements.push_back(lit->signedInt() < 0 ? INT_MINUS_ONE : INT_ZERO);
+                tmp.elements.push_back(lit->signedInt() < 0 ? INT_MINUS_ONE : INT_ZERO);
             else
                 throw CompilationError(CompilationStep::OPTIMIZER, "Can't handle container with non-literal values",
                     src.to_string(false, true));
         }
+        dest = Value(std::move(tmp), TYPE_BOOL.toVectorType(container->elements.size()));
     }
     else if(src.getSingleWriter() != nullptr &&
         src.getSingleWriter()->hasDecoration(InstructionDecorations::UNSIGNED_RESULT))

@@ -123,6 +123,23 @@ namespace vc4c
         }
 
 #define BITFIELD_ENTRY(name, Type, pos, length)                                                                        \
+    inline bool fits##name##Field(Type val)                                                                            \
+    {                                                                                                                  \
+        return fitsEntry<Type>(val, Bitfield::MASK_##length);                                                          \
+    }                                                                                                                  \
+    inline Type get##name() const                                                                                      \
+    {                                                                                                                  \
+        return getEntry<Type>(pos, Bitfield::MASK_##length);                                                           \
+    }                                                                                                                  \
+    inline void set##name(Type val)                                                                                    \
+    {                                                                                                                  \
+        if(!fits##name##Field(val))                                                                                    \
+            throw CompilationError(CompilationStep::GENERAL, "Value is out of bounds for bit-field type");             \
+        setEntry<Type>(val, pos, Bitfield::MASK_##length);                                                             \
+    }                                                                                                                  \
+    static constexpr LayoutType layout##name{pos, Bitfield::SIZE_##length, #name};
+
+#define BITFIELD_ENTRY_CONSTEXPR(name, Type, pos, length)                                                              \
     constexpr inline bool fits##name##Field(Type val)                                                                  \
     {                                                                                                                  \
         return fitsEntry<Type>(val, Bitfield::MASK_##length);                                                          \

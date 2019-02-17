@@ -356,14 +356,8 @@ Optional<Value> IntermediateInstruction::getPrecalculatedValueForArg(
     {
         if(arg.hasRegister(REG_ELEMENT_NUMBER))
         {
-            Value elementIndices(ContainerValue(16), arg.type);
-            for(unsigned i = 0; i < NATIVE_VECTOR_SIZE; ++i)
-            {
-                elementIndices.container().elements.emplace_back(Literal(i), TYPE_INT8);
-            }
-            return elementIndices;
+            return ELEMENT_NUMBERS;
         }
-        return arg;
     }
     else if(arg.checkContainer())
         return arg;

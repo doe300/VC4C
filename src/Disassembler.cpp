@@ -267,18 +267,17 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Refere
 
         const DataType type = DataType(GLOBAL_TYPE_HOLDER.createArrayType(
             TYPE_INT32, static_cast<unsigned>(moduleInfo.getGlobalDataSize().getValue()) * 2));
-        globals.emplace_back("globalData", DataType(GLOBAL_TYPE_HOLDER.createPointerType(type, AddressSpace::GLOBAL)),
-            Value(ContainerValue(), type), false);
-
-        auto& elements = globals.begin()->value.container().elements;
-        elements.reserve(tmp.size());
+        ContainerValue elements(tmp.size());
         for(uint32_t t : tmp)
         {
             // need to byte-swap to value
             uint32_t correctVal =
                 ((t >> 24) & 0xFF) | ((t >> 8) & 0xFF00) | ((t << 8) & 0xFF0000) | ((t << 24) & 0xFF000000);
-            elements.emplace_back(Literal(correctVal), TYPE_INT32);
+            elements.elements.emplace_back(Literal(correctVal), TYPE_INT32);
         }
+
+        globals.emplace_back("globalData", DataType(GLOBAL_TYPE_HOLDER.createPointerType(type, AddressSpace::GLOBAL)),
+            Value(std::move(elements), type), false);
 
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Extracted " << moduleInfo.getGlobalDataSize().getValue() << " words of global data"

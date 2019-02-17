@@ -1213,22 +1213,22 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
     else if(auto constant = llvm::dyn_cast<const llvm::ConstantVector>(val))
     {
         // element types are stored as operands
-        Value aggregate(ContainerValue(constant->getNumOperands()), type);
+        ContainerValue aggregate(constant->getNumOperands());
         for(unsigned i = 0; i < constant->getNumOperands(); ++i)
         {
-            aggregate.container().elements.push_back(toConstant(module, constant->getOperand(i)));
+            aggregate.elements.push_back(toConstant(module, constant->getOperand(i)));
         }
-        return aggregate;
+        return Value(std::move(aggregate), type);
     }
     else if(auto constant = llvm::dyn_cast<const llvm::ConstantArray>(val))
     {
         // element types are stored as operands
-        Value aggregate(ContainerValue(constant->getNumOperands()), type);
+        ContainerValue aggregate(constant->getNumOperands());
         for(unsigned i = 0; i < constant->getNumOperands(); ++i)
         {
-            aggregate.container().elements.push_back(toConstant(module, constant->getOperand(i)));
+            aggregate.elements.push_back(toConstant(module, constant->getOperand(i)));
         }
-        return aggregate;
+        return Value(std::move(aggregate), type);
     }
     else if(auto constant = llvm::dyn_cast<const llvm::ConstantStruct>(val))
     {
@@ -1244,31 +1244,31 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
             return Value(Literal(static_cast<uint32_t>(sampler)), TYPE_SAMPLER);
         }
         // element types are stored as operands
-        Value aggregate(ContainerValue(constant->getNumOperands()), type);
+        ContainerValue aggregate(constant->getNumOperands());
         for(unsigned i = 0; i < constant->getNumOperands(); ++i)
         {
-            aggregate.container().elements.push_back(toConstant(module, constant->getOperand(i)));
+            aggregate.elements.push_back(toConstant(module, constant->getOperand(i)));
         }
-        return aggregate;
+        return Value(std::move(aggregate), type);
     }
     else if(auto constant = llvm::dyn_cast<const llvm::ConstantDataSequential>(val))
     {
         // vector/array constant, but packed in storage
-        Value aggregate(ContainerValue(constant->getNumElements()), type);
+        ContainerValue aggregate(constant->getNumOperands());
         for(unsigned i = 0; i < constant->getNumElements(); ++i)
         {
-            aggregate.container().elements.push_back(toConstant(module, constant->getElementAsConstant(i)));
+            aggregate.elements.push_back(toConstant(module, constant->getElementAsConstant(i)));
         }
-        return aggregate;
+        return Value(std::move(aggregate), type);
     }
     else if(auto constant = llvm::dyn_cast<const llvm::ConstantAggregateZero>(val))
     {
-        Value aggregate(ContainerValue(constant->getNumElements()), type);
+        ContainerValue aggregate(constant->getNumOperands());
         for(unsigned i = 0; i < constant->getNumElements(); ++i)
         {
-            aggregate.container().elements.push_back(toConstant(module, constant->getElementValue(i)));
+            aggregate.elements.push_back(toConstant(module, constant->getElementValue(i)));
         }
-        return aggregate;
+        return Value(std::move(aggregate), type);
     }
     else if(auto constant = llvm::dyn_cast<const llvm::ConstantFP>(val))
     {

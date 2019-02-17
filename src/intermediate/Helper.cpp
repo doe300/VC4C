@@ -265,13 +265,14 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
 
     // if all indices are ascending (correspond to the elements of source 0), we can simply copy it
     // if all indices point to the same, replicate this index over the vector
-    bool indicesCorrespond = mask.container().isElementNumber();
-    bool allIndicesSame = mask.container().isAllSame();
+    const auto& maskContainer = mask.container();
+    bool indicesCorrespond = maskContainer.isElementNumber();
+    bool allIndicesSame = maskContainer.isAllSame();
     if(indicesCorrespond)
     {
         // the vector is copied in-order
-        if(mask.container().elements.size() > source0.type.getVectorWidth() &&
-            checkIndicesNotUndefined(mask.container(), source0.type.getVectorWidth()))
+        if(maskContainer.elements.size() > source0.type.getVectorWidth() &&
+            checkIndicesNotUndefined(maskContainer, source0.type.getVectorWidth()))
         {
             // The second vector participates in the shuffling
             // move the first vector in-order
@@ -295,11 +296,11 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     if(allIndicesSame)
     {
         const int32_t indexValue =
-            mask.container().elements[0].literal().signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ?
-            mask.container().elements[0].literal().signedInt() :
-            mask.container().elements[0].literal().signedInt() - static_cast<int32_t>(source0.type.getVectorWidth());
+            maskContainer.elements[0].literal().signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ?
+            maskContainer.elements[0].literal().signedInt() :
+            maskContainer.elements[0].literal().signedInt() - static_cast<int32_t>(source0.type.getVectorWidth());
         const Value source =
-            mask.container().elements[0].literal().signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ?
+            maskContainer.elements[0].literal().signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ?
             source0 :
             source1;
         // if all indices same, replicate
@@ -322,9 +323,9 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     }
 
     // mask is container of literals, indices have arbitrary order
-    for(std::size_t i = 0; i < mask.container().elements.size(); ++i)
+    for(std::size_t i = 0; i < maskContainer.elements.size(); ++i)
     {
-        Value index = mask.container().elements[i];
+        Value index = maskContainer.elements[i];
         if(index.isUndefined())
             // don't write anything at this position
             continue;
@@ -353,18 +354,20 @@ InstructionWalker intermediate::insertMakePositive(
     }
     else if(auto container = src.checkContainer())
     {
-        dest = Value(ContainerValue(container->elements.size()), src.type);
-        writeIsNegative = Value(ContainerValue(container->elements.size()), src.type);
+        ContainerValue tmpDest(container->elements.size());
+        ContainerValue tmpNegative(container->elements.size());
         for(const auto& elem : container->elements)
         {
             if(!elem.getLiteralValue())
                 throw CompilationError(CompilationStep::OPTIMIZER, "Can't handle container with non-literal values",
                     src.to_string(false, true));
             bool isNegative = elem.getLiteralValue()->signedInt() < 0;
-            dest.container().elements.push_back(
+            tmpDest.elements.push_back(
                 isNegative ? Value(Literal(-elem.getLiteralValue()->signedInt()), elem.type) : elem);
-            writeIsNegative.container().elements.push_back(isNegative ? INT_MINUS_ONE : INT_ZERO);
+            tmpNegative.elements.push_back(isNegative ? INT_MINUS_ONE : INT_ZERO);
         }
+        dest = Value(std::move(tmpDest), src.type);
+        writeIsNegative = Value(std::move(tmpNegative), src.type);
     }
     else if(src.getSingleWriter() != nullptr &&
         src.getSingleWriter()->hasDecoration(InstructionDecorations::UNSIGNED_RESULT))

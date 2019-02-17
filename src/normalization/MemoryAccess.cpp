@@ -1035,9 +1035,10 @@ static Optional<Value> getConstantValue(const MemoryInstruction* mem)
 {
     // can only read from constant global data, so the global is always the source
     const Global* global = mem->getSource().local()->getBase(true)->as<Global>();
-    if(mem->getSource().local()->reference.second >= 0 && global->value.checkContainer())
+    auto globalContainer = global->value.checkContainer();
+    if(mem->getSource().local()->reference.second >= 0 && globalContainer)
         // fixed index
-        return global->value.container().elements.at(mem->getSource().local()->reference.second);
+        return globalContainer->elements.at(mem->getSource().local()->reference.second);
     else if(global->value.isLiteralValue())
         // scalar value
         return global->value;
@@ -1047,11 +1048,11 @@ static Optional<Value> getConstantValue(const MemoryInstruction* mem)
     else if(global->value.isUndefined())
         // all entries are undefined
         return Value(global->value.type.getElementType());
-    else if(global->value.checkContainer() && global->value.container().isElementNumber())
+    else if(globalContainer && globalContainer->isElementNumber())
         return ELEMENT_NUMBER_REGISTER;
-    else if(global->value.checkContainer() && global->value.container().isAllSame())
+    else if(globalContainer && globalContainer->isAllSame())
         // all entries are the same
-        return global->value.container().elements.at(0);
+        return globalContainer->elements.at(0);
     return NO_VALUE;
 }
 

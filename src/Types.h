@@ -237,7 +237,7 @@ namespace vc4c
          */
 
         // the pointer to the complex type object
-        BITFIELD_ENTRY(ComplexType, uintptr_t, 0, Pointer)
+        BITFIELD_ENTRY_CONSTEXPR(ComplexType, uintptr_t, 0, Pointer)
 
         /*
          * Whether the type is simple or complex
@@ -245,16 +245,16 @@ namespace vc4c
          * The value lies within the alignment of the ComplexType pointer on purpose, since the LSB bit can never be set
          * for complex pointers.
          */
-        BITFIELD_ENTRY(SimpleFlag, bool, 0, Bit)
+        BITFIELD_ENTRY_CONSTEXPR(SimpleFlag, bool, 0, Bit)
         // whether this type is a floating point type
-        BITFIELD_ENTRY(FloatingPoint, bool, 4, Bit)
+        BITFIELD_ENTRY_CONSTEXPR(FloatingPoint, bool, 4, Bit)
         /*
          * the number of bits a scalar value of this type used on the QPU.
          * NOTE: This is not the physical bit-width used in memory!
          */
-        BITFIELD_ENTRY(BitWidth, uint8_t, 8, Byte)
+        BITFIELD_ENTRY_CONSTEXPR(BitWidth, uint8_t, 8, Byte)
         // the number of elements for vector-types
-        BITFIELD_ENTRY(NumElements, uint8_t, 16, Byte)
+        BITFIELD_ENTRY_CONSTEXPR(NumElements, uint8_t, 16, Byte)
 
         friend struct std::hash<DataType>;
     };
@@ -262,51 +262,51 @@ namespace vc4c
     /*
      * 8-bit integer type (e.g. char, uchar)
      */
-    static constexpr DataType TYPE_INT8 = DataType{DataType::BYTE, 1, false};
+    static constexpr DataType TYPE_INT8{DataType::BYTE, 1, false};
     /*
      * 16-bit integer type (e.g. short, ushort)
      */
-    static constexpr DataType TYPE_INT16 = DataType{DataType::HALF_WORD, 1, false};
+    static constexpr DataType TYPE_INT16{DataType::HALF_WORD, 1, false};
     /*
      * 32-bit integer type (e.g. int, uint)
      */
-    static constexpr DataType TYPE_INT32 = DataType{DataType::WORD, 1, false};
+    static constexpr DataType TYPE_INT32{DataType::WORD, 1, false};
     /*
      * 64-bit integer type (e.g. long, ulong)
      *
      * NOTE: Is only supported for constants
      */
-    static constexpr DataType TYPE_INT64 = DataType{DataType::LONG_WORD, 1, false};
+    static constexpr DataType TYPE_INT64{DataType::LONG_WORD, 1, false};
     /*
      * 32-bit floating-point type
      */
-    static constexpr DataType TYPE_FLOAT = DataType{DataType::WORD, 1, true};
+    static constexpr DataType TYPE_FLOAT{DataType::WORD, 1, true};
     /*
      * 16-bit floating-point type
      */
-    static constexpr DataType TYPE_HALF = DataType{DataType::HALF_WORD, 1, true};
+    static constexpr DataType TYPE_HALF{DataType::HALF_WORD, 1, true};
     /*
      * 64-bit floating-point type
      *
      * NOTE: Is only supported for constants
      */
-    static constexpr DataType TYPE_DOUBLE = DataType{DataType::LONG_WORD, 1, true};
+    static constexpr DataType TYPE_DOUBLE{DataType::LONG_WORD, 1, true};
     /*
      * 1-bit boolean type
      */
-    static constexpr DataType TYPE_BOOL = DataType{DataType::BIT, 1, false};
+    static constexpr DataType TYPE_BOOL{DataType::BIT, 1, false};
     /*
      * Void-type, only valid as pointed-to type
      */
-    static constexpr DataType TYPE_VOID = DataType{DataType::VOID, 1, false};
+    static constexpr DataType TYPE_VOID{DataType::VOID, 1, false};
     /*
      * Unknown type, e.g. in unknown-values or as type of periphery-registers
      */
-    static constexpr DataType TYPE_UNKNOWN = DataType{DataType::UNKNOWN, 1, false};
+    static constexpr DataType TYPE_UNKNOWN{DataType::UNKNOWN, 1, false};
     /*
      * Data-type for labels as destination for branches
      */
-    static constexpr DataType TYPE_LABEL = DataType{DataType::LABEL, 1, false};
+    static constexpr DataType TYPE_LABEL{DataType::LABEL, 1, false};
     /*
      * Data-type for OpenCL samplers, is equivalent to 32-bit integers
      */

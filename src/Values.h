@@ -602,7 +602,7 @@ namespace vc4c
         {
             elements.reserve(size);
         }
-        ContainerValue(std::vector<Value>&& values) : elements(values) {}
+        ContainerValue(std::vector<Value>&& values) : elements(std::move(values)) {}
 
         /**
          * Determines if all elements of this container are scalar
@@ -649,7 +649,7 @@ namespace vc4c
 
         Value(const Literal& lit, DataType type) noexcept;
         Value(Register reg, DataType type) noexcept;
-        Value(const ContainerValue& container, DataType type);
+        Value(ContainerValue&& container, DataType type);
         Value(const Value& val) = default;
         Value(Value&& val) noexcept = default;
         Value(const Local* local, DataType type) noexcept;
@@ -925,6 +925,10 @@ namespace vc4c
      * The Value representing the REG_ELEMENT_NUMBER
      */
     const Value ELEMENT_NUMBER_REGISTER(REG_ELEMENT_NUMBER, TYPE_INT8.toVectorType(16));
+    /*
+     * The element numbers (0, 1, 2, 3, ...) returned when querying the element-number register
+     */
+    extern const Value ELEMENT_NUMBERS;
     /*
      * The Value representing the r5 rotation offset register
      */

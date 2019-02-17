@@ -383,15 +383,16 @@ static std::pair<Value, Value> calculateConstant(const Value& divisor, unsigned 
 {
     if(auto container = divisor.checkContainer())
     {
-        Value factors(ContainerValue(container->elements.size()), divisor.type);
-        Value shifts(ContainerValue(container->elements.size()), divisor.type);
+        ContainerValue factors(container->elements.size());
+        ContainerValue shifts(container->elements.size());
+        auto elementType = divisor.type.toVectorType(1);
         for(const auto& element : container->elements)
         {
             auto tmp = calculateConstant(element.literal(), accuracy);
-            factors.container().elements.push_back(Value(tmp.first, factors.type.toVectorType(1)));
-            shifts.container().elements.push_back(Value(tmp.second, shifts.type.toVectorType(1)));
+            factors.elements.push_back(Value(tmp.first, elementType));
+            shifts.elements.push_back(Value(tmp.second, elementType));
         }
-        return std::make_pair(factors, shifts);
+        return std::make_pair(Value(std::move(factors), divisor.type), Value(std::move(shifts), divisor.type));
     }
 
     const Literal div = divisor.getLiteralValue().value();

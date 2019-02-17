@@ -673,7 +673,7 @@ void SPIRVShuffle::mapInstruction(TypeMapping& types, ConstantMapping& constants
             index = UNDEFINED_VALUE;
         else
         {
-            index = Value(indices, TYPE_INT8);
+            index = Value(std::move(indices), TYPE_INT8);
         }
     }
     CPPLOG_LAZY(logging::Level::DEBUG,

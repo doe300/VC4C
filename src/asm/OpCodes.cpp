@@ -301,16 +301,15 @@ Optional<Value> Unpack::operator()(const Value& val) const
     if(auto container = val.checkContainer())
     {
         // unpack vectors per element
-        Value result(ContainerValue(container->elements.size()), val.type);
-        auto& resultElements = result.container().elements;
+        ContainerValue result(container->elements.size());
         for(const Value& elem : container->elements)
         {
             if(auto lit = elem.getLiteralValue())
-                resultElements.emplace_back(unpackLiteral(*this, *lit, elem.type));
+                result.elements.emplace_back(unpackLiteral(*this, *lit, elem.type));
             else
                 return NO_VALUE;
         }
-        return result;
+        return Value(std::move(result), val.type);
     }
     // can only unpack literals
     if(auto lit = val.getLiteralValue())
@@ -505,17 +504,16 @@ Optional<Value> Pack::operator()(const Value& val, const VectorFlags& flags) con
     if(auto container = val.checkContainer())
     {
         // pack vectors per element
-        Value result(ContainerValue(container->elements.size()), val.type);
-        auto& resultElements = result.container().elements;
+        ContainerValue result(container->elements.size());
         for(std::size_t i = 0; i < container->elements.size(); ++i)
         {
             auto& elem = container->elements[i];
             if(auto lit = elem.getLiteralValue())
-                resultElements.emplace_back(packLiteral(*this, *lit, elem.type, flags[i]));
+                result.elements.emplace_back(packLiteral(*this, *lit, elem.type, flags[i]));
             else
                 return NO_VALUE;
         }
-        return result;
+        return Value(std::move(result), val.type);
     }
     // can only pack literals
     if(auto lit = val.getLiteralValue())
@@ -914,9 +912,8 @@ PrecalculatedValue OpCode::operator()(const Value& firstOperand, const Optional<
     {
         auto numElements = std::max(firstContainer ? firstContainer->elements.size() : 1,
             secondVal ? (secondContainer ? secondContainer->elements.size() : 1) : 0);
-        Value res(ContainerValue(numElements), resultType);
+        ContainerValue res(numElements);
         VectorFlags flags;
-        auto& resElements = res.container().elements;
         for(unsigned char i = 0; i < numElements; ++i)
         {
             PrecalculatedValue tmp{NO_VALUE, {}};
@@ -929,10 +926,10 @@ PrecalculatedValue OpCode::operator()(const Value& firstOperand, const Optional<
             if(!tmp.first)
                 // result could not be calculated for a single component of the vector, abort
                 return std::make_pair(NO_VALUE, VectorFlags{});
-            resElements.emplace_back(std::move(tmp.first).value());
+            res.elements.emplace_back(std::move(tmp.first).value());
             flags[i] = tmp.second[0];
         }
-        return std::make_pair(std::move(res), flags);
+        return std::make_pair(Value(std::move(res), resultType), flags);
     }
 
     if(firstOperand.isUndefined() || (numOperands > 1 && secondVal && secondVal->isUndefined()))

@@ -397,7 +397,6 @@ bool ShuffleVector::mapInstruction(Method& method)
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating operations mixing " << v1.to_string() << " and " << v2.to_string() << " into "
             << dest.to_string() << logging::endl);
-    DataType destType = v1.type.toVectorType(mask.type.getVectorWidth());
     ignoreReturnValue(intermediate::insertVectorShuffle(method.appendToEnd(), method, dest, v1, v2, mask));
     return true;
 }

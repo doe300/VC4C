@@ -17,6 +17,15 @@ using namespace vc4c;
 constexpr Literal tombstone_traits<Literal>::tombstone;
 constexpr SmallImmediate tombstone_traits<SmallImmediate>::tombstone;
 
+const Value vc4c::ELEMENT_NUMBERS(
+    ContainerValue({Value(Literal(0), TYPE_INT8), Value(Literal(1), TYPE_INT8), Value(Literal(2), TYPE_INT8),
+        Value(Literal(3), TYPE_INT8), Value(Literal(4), TYPE_INT8), Value(Literal(5), TYPE_INT8),
+        Value(Literal(6), TYPE_INT8), Value(Literal(7), TYPE_INT8), Value(Literal(8), TYPE_INT8),
+        Value(Literal(9), TYPE_INT8), Value(Literal(10), TYPE_INT8), Value(Literal(11), TYPE_INT8),
+        Value(Literal(12), TYPE_INT8), Value(Literal(13), TYPE_INT8), Value(Literal(14), TYPE_INT8),
+        Value(Literal(15), TYPE_INT8)}),
+    TYPE_INT8.toVectorType(16));
+
 std::string vc4c::toString(const RegisterFile file)
 {
     std::string fileName;
@@ -469,7 +478,7 @@ Value::Value(const Literal& lit, DataType type) noexcept : data(lit), type(type)
 
 Value::Value(Register reg, DataType type) noexcept : data(reg), type(type) {}
 
-Value::Value(const ContainerValue& container, DataType type) : data(container), type(type) {}
+Value::Value(ContainerValue&& container, DataType type) : data(std::move(container)), type(type) {}
 
 Value::Value(const Local* local, DataType type) noexcept : data(const_cast<Local*>(local)), type(type) {}
 
@@ -544,10 +553,11 @@ bool Value::isUndefined() const
 
 bool Value::isZeroInitializer() const
 {
+    auto cont = checkContainer();
     return (checkLiteral() && literal().unsignedInt() == 0) || (checkImmediate() && immediate().value == 0) ||
-        (checkContainer() &&
-            std::all_of(container().elements.begin(), container().elements.end(),
-                [](const Value& val) -> bool { return val.isZeroInitializer(); }));
+        (cont && std::all_of(cont->elements.begin(), cont->elements.end(), [](const Value& val) -> bool {
+            return val.isZeroInitializer();
+        }));
 }
 
 bool Value::isLiteralValue() const
@@ -643,31 +653,34 @@ Value Value::createZeroInitializer(DataType type)
 {
     if(type.isScalarType() || type.getPointerType())
         return INT_ZERO;
-    Value val(ContainerValue(), type);
     if(type.isVectorType())
     {
+        ContainerValue val(type.getVectorWidth());
         for(unsigned i = 0; i < type.getVectorWidth(); i++)
         {
-            val.container().elements.push_back(INT_ZERO);
+            val.elements.push_back(INT_ZERO);
         }
+        return Value(std::move(val), type);
     }
-    else if(auto arrayType = type.getArrayType())
+    if(auto arrayType = type.getArrayType())
     {
+        ContainerValue val(arrayType->size);
         for(unsigned i = 0; i < arrayType->size; i++)
         {
-            val.container().elements.push_back(createZeroInitializer(arrayType->elementType));
+            val.elements.push_back(createZeroInitializer(arrayType->elementType));
         }
+        return Value(std::move(val), type);
     }
-    else if(auto structType = type.getStructType())
+    if(auto structType = type.getStructType())
     {
+        ContainerValue val(structType->elementTypes.size());
         for(unsigned i = 0; i < structType->elementTypes.size(); i++)
         {
-            val.container().elements.push_back(createZeroInitializer(type.getElementType(i)));
+            val.elements.push_back(createZeroInitializer(type.getElementType(static_cast<int>(i))));
         }
+        return Value(std::move(val), type);
     }
-    else
-        throw CompilationError(CompilationStep::GENERAL, "Unhandled type for zero-initializer", type.to_string());
-    return val;
+    throw CompilationError(CompilationStep::GENERAL, "Unhandled type for zero-initializer", type.to_string());
 }
 
 std::size_t std::hash<vc4c::ContainerValue>::operator()(vc4c::ContainerValue const& val) const noexcept

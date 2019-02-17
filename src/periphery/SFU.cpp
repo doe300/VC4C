@@ -59,10 +59,10 @@ Optional<Value> periphery::precalculateSFU(Register sfuReg, const Value& input)
         return elemFunc(input);
     if(auto container = input.checkContainer())
     {
-        Value result(ContainerValue(input.type.getVectorWidth()), input.type);
+        ContainerValue result(input.type.getVectorWidth());
         for(const auto& elem : container->elements)
-            result.container().elements.emplace_back(elemFunc(elem));
-        return result;
+            result.elements.emplace_back(elemFunc(elem));
+        return Value(std::move(result), input.type);
     }
     return NO_VALUE;
 }

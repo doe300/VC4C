@@ -54,35 +54,36 @@ static bool fitsIntoSignedMaskedLoad(const Value& val)
 
 static NODISCARD InstructionWalker copyVector(Method& method, InstructionWalker it, const Value& out, const Value& in)
 {
-    if(in.container().isAllSame())
+    const auto& inContainer = in.container();
+    if(inContainer.isAllSame())
     {
         // if all values within a container are the same, there is no need to extract them separately, a simple move
         // (e.g. load) will do
-        it.emplace((new intermediate::MoveOperation(out, in.container().elements[0]))->copyExtrasFrom(it.get()));
+        it.emplace((new intermediate::MoveOperation(out, inContainer.elements[0]))->copyExtrasFrom(it.get()));
         return it.nextInBlock();
     }
-    if(in.container().isElementNumber(false))
+    if(inContainer.isElementNumber(false))
     {
         // if the value in the container corresponds to the element-number, simply copy it
         it.emplace((new intermediate::MoveOperation(out, ELEMENT_NUMBER_REGISTER))->copyExtrasFrom(it.get()));
         return it.nextInBlock();
     }
-    if(in.container().isElementNumber(true))
+    if(inContainer.isElementNumber(true))
     {
         // if the value in the container corresponds to the element number plus an offset (a general ascending range),
         // convert to addition
-        auto offset = in.container().elements.at(0).getLiteralValue()->signedInt();
+        auto offset = inContainer.elements.at(0).getLiteralValue()->signedInt();
         it.emplace((new intermediate::Operation(OP_ADD, out, ELEMENT_NUMBER_REGISTER, Value(Literal(offset), in.type)))
                        ->copyExtrasFrom(it.get()));
         return it.nextInBlock();
     }
-    if(std::all_of(in.container().elements.begin(), in.container().elements.end(), fitsIntoUnsignedMaskedLoad))
+    if(std::all_of(inContainer.elements.begin(), inContainer.elements.end(), fitsIntoUnsignedMaskedLoad))
     {
         // if the container elements all fit into the results of an unsigned bit-masked load, use such an instruction
         std::bitset<32> mask;
-        for(std::size_t i = 0; i < in.container().elements.size(); ++i)
+        for(std::size_t i = 0; i < inContainer.elements.size(); ++i)
         {
-            auto elemVal = in.container().elements[i].getLiteralValue()->unsignedInt();
+            auto elemVal = inContainer.elements[i].getLiteralValue()->unsignedInt();
             mask.set(i + 16, elemVal >> 1);
             mask.set(i, elemVal & 1);
         }
@@ -91,13 +92,13 @@ static NODISCARD InstructionWalker copyVector(Method& method, InstructionWalker 
         it->copyExtrasFrom(it.get());
         return it.nextInBlock();
     }
-    if(std::all_of(in.container().elements.begin(), in.container().elements.end(), fitsIntoSignedMaskedLoad))
+    if(std::all_of(inContainer.elements.begin(), inContainer.elements.end(), fitsIntoSignedMaskedLoad))
     {
         // if the container elements all fit into the results of an signed bit-masked load, use such an instruction
         std::bitset<32> mask;
-        for(std::size_t i = 0; i < in.container().elements.size(); ++i)
+        for(std::size_t i = 0; i < inContainer.elements.size(); ++i)
         {
-            auto elemVal = in.container().elements[i].getLiteralValue()->signedInt();
+            auto elemVal = inContainer.elements[i].getLiteralValue()->signedInt();
             mask.set(i + 16, elemVal < 0);
             mask.set(i, elemVal & 1);
         }
@@ -123,7 +124,7 @@ static NODISCARD InstructionWalker copyVector(Method& method, InstructionWalker 
     it.emplace(new intermediate::MoveOperation(realOut, in.getCompoundPart(0)));
     it.nextInBlock();
     // optimize this by looking for the most common value and initializing all (but the first) elements with this one
-    auto maxOccurrence = getMostCommonElement(in.container().elements);
+    auto maxOccurrence = getMostCommonElement(inContainer.elements);
     if(maxOccurrence && maxOccurrence.value() != in.getCompoundPart(0))
     {
         it.emplace(new intermediate::Operation(
@@ -176,14 +177,15 @@ InstructionWalker normalization::handleContainer(
         // need to rotate all (possible non-existing) 16 elements, so use a temporary vector with 16 elements and rotate
         // it
         std::vector<Value> tmp;
+        auto& sourceContainer = src.container().elements;
         tmp.reserve(16);
-        tmp.insert(tmp.begin(), src.container().elements.begin(), src.container().elements.end());
+        tmp.insert(tmp.begin(), sourceContainer.begin(), sourceContainer.end());
         while(tmp.size() != 16)
             tmp.push_back(UNDEFINED_VALUE);
         std::rotate(tmp.begin(), tmp.begin() + offset, tmp.end());
-        for(std::size_t i = 0; i < src.container().elements.size(); ++i)
+        for(std::size_t i = 0; i < sourceContainer.size(); ++i)
         {
-            src.container().elements[i] = tmp[i];
+            sourceContainer[i] = tmp[i];
         }
         rot->setSource(std::move(src));
         // TODO next step could be optimized, if we used the vector-rotation to extract an element
