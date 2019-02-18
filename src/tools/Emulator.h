@@ -97,7 +97,7 @@ namespace vc4c
             QPU& qpu;
             FastMap<Register, Value> storageRegisters;
             Optional<Value> hostInterrupt;
-            OrderedMap<Register, Value> readCache;
+            SortedMap<Register, Value> readCache;
 
             Value getActualValue(const Value& val);
 

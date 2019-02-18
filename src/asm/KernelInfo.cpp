@@ -198,8 +198,7 @@ static void toBinary(const Value& val, std::vector<uint8_t>& queue)
             CompilationStep::CODE_GENERATION, "Can't map value-type to binary literal", val.to_string());
 }
 
-static std::vector<uint8_t> generateDataSegment(
-    const ReferenceRetainingList<Global>& globalData, Byte totalStackFrameSize)
+static std::vector<uint8_t> generateDataSegment(const StableList<Global>& globalData, Byte totalStackFrameSize)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Writing data segment for " << globalData.size() << " values..." << logging::endl);
@@ -232,8 +231,8 @@ static std::vector<uint8_t> generateDataSegment(
     return bytes;
 }
 
-std::size_t ModuleInfo::write(std::ostream& stream, const OutputMode mode,
-    const ReferenceRetainingList<Global>& globalData, Byte totalStackFrameSize)
+std::size_t ModuleInfo::write(
+    std::ostream& stream, const OutputMode mode, const StableList<Global>& globalData, Byte totalStackFrameSize)
 {
     std::size_t numWords = 0;
     if(mode == OutputMode::HEX || mode == OutputMode::ASSEMBLER)

@@ -97,7 +97,7 @@ const Local* Method::findOrCreateLocal(DataType type, const std::string& name)
 }
 
 static NODISCARD bool removeUsagesInBasicBlock(const Method& method, const BasicBlock& bb, const Local* locale,
-    OrderedMap<const LocalUser*, LocalUse>& remainingUsers, int& usageRangeLeft)
+    SortedMap<const LocalUser*, LocalUse>& remainingUsers, int& usageRangeLeft)
 {
     auto it = bb.walk();
     while(usageRangeLeft >= 0 && !it.isEndOfMethod())

@@ -1064,7 +1064,7 @@ struct LocalUsageOrdering
     }
 };
 
-using AccessRanges = OrderedMap<const Local*, FastAccessList<MemoryAccessRange>, LocalUsageOrdering>;
+using AccessRanges = SortedMap<const Local*, FastAccessList<MemoryAccessRange>, LocalUsageOrdering>;
 
 static AccessRanges determineAccessRanges(Method& method)
 {

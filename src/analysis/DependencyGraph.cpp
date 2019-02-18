@@ -858,15 +858,21 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
     }
 
 #ifdef DEBUG_MODE
-    if(block.size() > 12)
-    {
-        auto nameFunc = [](const intermediate::IntermediateInstruction* i) -> std::string { return i->to_string(); };
-        auto weakEdgeFunc = [](const Dependency& dep) -> bool { return !dep.isMandatoryDelay; };
-        auto edgeLabelFunc = [](const Dependency& dep) -> std::string { return std::to_string(dep.numDelayCycles); };
-        DebugGraph<const intermediate::IntermediateInstruction*, Dependency,
-            Directionality::DIRECTED>::dumpGraph<DependencyGraph>(*graph.get(), "/tmp/vc4c-deps.dot", nameFunc,
-            weakEdgeFunc, edgeLabelFunc);
-    }
+    logging::logLazy(logging::Level::DEBUG, [&]() {
+        if(block.size() > 12)
+        {
+            auto nameFunc = [](const intermediate::IntermediateInstruction* i) -> std::string {
+                return i->to_string();
+            };
+            auto weakEdgeFunc = [](const Dependency& dep) -> bool { return !dep.isMandatoryDelay; };
+            auto edgeLabelFunc = [](const Dependency& dep) -> std::string {
+                return std::to_string(dep.numDelayCycles);
+            };
+            DebugGraph<const intermediate::IntermediateInstruction*, Dependency,
+                Directionality::DIRECTED>::dumpGraph<DependencyGraph>(*graph.get(), "/tmp/vc4c-deps.dot", nameFunc,
+                weakEdgeFunc, edgeLabelFunc);
+        }
+    });
 #endif
 
     PROFILE_END(createDependencyGraph);

@@ -173,13 +173,15 @@ std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createDependencyGraph(
     }
 
 #ifdef DEBUG_MODE
-    auto nameFunc = [](const BasicBlock* bb) -> std::string { return bb->getLabel()->getLabel()->name; };
-    auto weakEdgeFunc = [](const DataDependency& dep) -> bool {
-        return std::all_of(dep.begin(), dep.end(),
-            [](const auto& pair) -> bool { return !has_flag(pair.second, DataDependencyType::FLOW); });
-    };
-    DebugGraph<BasicBlock*, DataDependency, DataDependencyEdge::Directed>::dumpGraph<DataDependencyGraph>(
-        *graph.get(), "/tmp/vc4c-data-dependencies.dot", nameFunc, weakEdgeFunc, toEdgeLabel);
+    logging::logLazy(logging::Level::DEBUG, [&]() {
+        auto nameFunc = [](const BasicBlock* bb) -> std::string { return bb->getLabel()->getLabel()->name; };
+        auto weakEdgeFunc = [](const DataDependency& dep) -> bool {
+            return std::all_of(dep.begin(), dep.end(),
+                [](const auto& pair) -> bool { return !has_flag(pair.second, DataDependencyType::FLOW); });
+        };
+        DebugGraph<BasicBlock*, DataDependency, DataDependencyEdge::Directed>::dumpGraph<DataDependencyGraph>(
+            *graph.get(), "/tmp/vc4c-data-dependencies.dot", nameFunc, weakEdgeFunc, toEdgeLabel);
+    });
 #endif
 
     PROFILE_END(createDataDependencyGraph);

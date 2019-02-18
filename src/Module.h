@@ -33,7 +33,7 @@ namespace vc4c
         /*
          * The global data within this module
          */
-        ReferenceRetainingList<Global> globalData;
+        StableList<Global> globalData;
         /*
          * The module's methods
          */

@@ -30,8 +30,8 @@ using namespace vc4c::tools;
 
 extern std::vector<vc4c::Value> toLoadedValues(uint32_t mask, vc4c::intermediate::LoadType type);
 
-extern void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo,
-    ReferenceRetainingList<Global>& globals, std::vector<qpu_asm::Instruction>& instructions);
+extern void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, StableList<Global>& globals,
+    std::vector<qpu_asm::Instruction>& instructions);
 
 std::size_t EmulationData::calcParameterSize() const
 {
@@ -1824,7 +1824,7 @@ bool tools::emulateTask(std::vector<qpu_asm::Instruction>::const_iterator firstI
     return emulate(firstInstruction, memory, uniformAddresses, instrumentation, maxCycles);
 }
 
-static Memory fillMemory(const ReferenceRetainingList<Global>& globalData, const EmulationData& settings,
+static Memory fillMemory(const StableList<Global>& globalData, const EmulationData& settings,
     MemoryAddress& uniformBaseAddressOut, MemoryAddress& globalDataAddressOut,
     std::vector<MemoryAddress>& parameterAddressesOut)
 {
@@ -1944,7 +1944,7 @@ std::string InstrumentationResult::to_string() const
 EmulationResult tools::emulate(const EmulationData& data)
 {
     qpu_asm::ModuleInfo module;
-    ReferenceRetainingList<Global> globals;
+    StableList<Global> globals;
     std::vector<qpu_asm::Instruction> instructions;
     if(data.module.second != nullptr)
         extractBinary(*data.module.second, module, globals, instructions);

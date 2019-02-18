@@ -85,9 +85,11 @@ std::unique_ptr<LifetimeGraph> LifetimeGraph::createLifetimeGraph(Method& method
     });
 
 #ifdef DEBUG_MODE
-    auto nameFunc = [](const Local* loc) -> std::string { return loc->name; };
-    DebugGraph<const Local*, LifetimeRelation, Directionality::UNDIRECTED>::dumpGraph<LifetimeGraph>(
-        *graph.get(), "/tmp/vc4c-lifetimes.dot", nameFunc);
+    logging::logLazy(logging::Level::DEBUG, [&]() {
+        auto nameFunc = [](const Local* loc) -> std::string { return loc->name; };
+        DebugGraph<const Local*, LifetimeRelation, Directionality::UNDIRECTED>::dumpGraph<LifetimeGraph>(
+            *graph.get(), "/tmp/vc4c-lifetimes.dot", nameFunc);
+    });
 #endif
 
     PROFILE_END(createLifetimeGraph);
@@ -104,7 +106,7 @@ struct StackNodeSorter
 };
 
 static void assignOffset(StackAllocation* s, FastSet<LifetimeNode*>& processedNodes,
-    OrderedSet<LifetimeNode*, StackNodeSorter>::iterator it, std::size_t offset)
+    SortedSet<LifetimeNode*, StackNodeSorter>::iterator it, std::size_t offset)
 {
     s->offset = offset;
     processedNodes.emplace(*it);
@@ -114,7 +116,7 @@ static void assignOffset(StackAllocation* s, FastSet<LifetimeNode*>& processedNo
 
 unsigned LifetimeGraph::calculateRequiredStackSize()
 {
-    OrderedSet<LifetimeNode*, StackNodeSorter> stackNodes;
+    SortedSet<LifetimeNode*, StackNodeSorter> stackNodes;
 
     for(std::pair<const Local* const, LifetimeNode>& node : nodes)
     {

@@ -127,7 +127,7 @@ namespace vc4c
          * subtree rooted with current node stack --> To store all the connected ancestors (could be part of SCC)
          */
         ControlFlowLoop findLoopsHelper(const CFGNode* node, FastMap<const CFGNode*, int>& discoveryTimes,
-            FastMap<const CFGNode*, int>& lowestReachable, RandomModificationList<const CFGNode*>& stack, int& time);
+            FastMap<const CFGNode*, int>& lowestReachable, FastModificationList<const CFGNode*>& stack, int& time);
 
         /*
          * Creates the CFG from the basic-blocks within the given method

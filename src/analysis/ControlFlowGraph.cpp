@@ -200,7 +200,7 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops()
 
     FastMap<const CFGNode*, int> discoveryTimes;
     FastMap<const CFGNode*, int> lowestReachable;
-    RandomModificationList<const CFGNode*> stack;
+    FastModificationList<const CFGNode*> stack;
     // a time of 0 means not initialized yet
     int time = 1;
 
@@ -208,7 +208,7 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops()
     // connected components in DFS tree with node 'i'
 
     // we need the nodes sorted by the order of the basic blocks
-    OrderedSet<const CFGNode*, CFGNodeSorter> orderedNodes;
+    SortedSet<const CFGNode*, CFGNodeSorter> orderedNodes;
     for(auto& pair : nodes)
         orderedNodes.emplace(&pair.second);
 
@@ -463,7 +463,7 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
     }
 
 #ifdef DEBUG_MODE
-    graph->dumpGraph("/tmp/vc4c-cfg.dot");
+    logging::logLazy(logging::Level::DEBUG, [&]() { graph->dumpGraph("/tmp/vc4c-cfg.dot"); });
 #endif
 
     PROFILE_END(createCFG);
@@ -471,7 +471,7 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
 }
 
 ControlFlowLoop ControlFlowGraph::findLoopsHelper(const CFGNode* node, FastMap<const CFGNode*, int>& discoveryTimes,
-    FastMap<const CFGNode*, int>& lowestReachable, RandomModificationList<const CFGNode*>& stack, int& time)
+    FastMap<const CFGNode*, int>& lowestReachable, FastModificationList<const CFGNode*>& stack, int& time)
 {
     // Initialize discovery time and low value
     discoveryTimes[node] = lowestReachable[node] = ++time;

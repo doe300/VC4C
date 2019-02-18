@@ -94,7 +94,7 @@ namespace vc4c
         /*
          * Returns all the LocalUsers accessing this object
          */
-        const OrderedMap<const LocalUser*, LocalUse>& getUsers() const;
+        const SortedMap<const LocalUser*, LocalUse>& getUsers() const;
         /*
          * Returns the users of the given kind (reading or writing) accessing this Local
          */
@@ -189,7 +189,7 @@ namespace vc4c
     private:
         // FIXME unordered_map randomly throws SEGFAULT somewhere in stdlib in #removeUser called by
         // IntermediateInstruction#erase
-        OrderedMap<const LocalUser*, LocalUse> users;
+        SortedMap<const LocalUser*, LocalUse> users;
 
         friend class Method;
     };

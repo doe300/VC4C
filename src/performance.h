@@ -16,108 +16,51 @@
 
 namespace vc4c
 {
-    enum class AccessType
-    {
-        RANDOM_ACCESS = 1,
-        SEQUENTIAL = 2
-    };
-
-    enum class InsertRemoveType
-    {
-        FRONT = 1,
-        END = 2,
-        ARBITRARY_POSITION = 3
-    };
-
-    enum class OrderType
-    {
-        ORDERED = 1,
-        UNORDERED = 2
-    };
-
-    ////
-    // General types
-    ////
-
-    template <typename T, AccessType A, InsertRemoveType IR>
-    class PerformanceList;
-
-    template <typename T, OrderType O, typename H = std::hash<T>>
-    class PerformanceSet;
-
-    template <typename K, typename V, OrderType O, typename C = std::less<K>>
-    class PerformanceMap;
-
-    ////
-    // Specializations
-    ////
-
+    /*!
+     * A list type which allows fast read-access to arbitrary elements in the container (e.g. by using a constant
+     * offset)
+     */
     template <typename T>
-    class PerformanceList<T, AccessType::RANDOM_ACCESS, InsertRemoveType::END> : public std::vector<T>
-    {
-    public:
-        explicit PerformanceList(std::size_t numEntries = 0) : std::vector<T>(numEntries) {}
-    };
+    using FastAccessList = std::vector<T>;
+    /*!
+     * A list type which allows fast insertion/deletion and reordering of arbitrary elements in the container (e.g. by
+     * simply manipulating pointers to the next/previous elements)
+     */
     template <typename T>
-    class PerformanceList<T, AccessType::SEQUENTIAL, InsertRemoveType::ARBITRARY_POSITION> : public std::list<T>
-    {
-    };
-
-    template <typename T, typename H>
-    class PerformanceSet<T, OrderType::UNORDERED, H> : public std::unordered_set<T, H>
-    {
-    };
-    template <typename T, typename H>
-    class PerformanceSet<T, OrderType::ORDERED, H> : public std::set<T, H>
-    {
-    public:
-        explicit PerformanceSet(const H& comparison = {}) : std::set<T, H>(comparison) {}
-    };
-
-    template <typename K, typename V, typename C>
-    class PerformanceMap<K, V, OrderType::UNORDERED, C> : public std::unordered_map<K, V, C>
-    {
-    };
-
-    template <typename K, typename V, typename C>
-    class PerformanceMap<K, V, OrderType::ORDERED, C> : public std::map<K, V, C>
-    {
-    public:
-        explicit PerformanceMap(const C& comparison = {}) : std::map<K, V, C>(comparison) {}
-    };
-
-    ////
-    // Easier names
-    ////
-
+    using FastModificationList = std::list<T>;
+    /*!
+     * A list-type which is stored compactly in memory providing better cache behavior and little to no memory overhead
+     */
     template <typename T>
-    using RandomAccessList = PerformanceList<T, AccessType::RANDOM_ACCESS, InsertRemoveType::END>;
-    template <typename T>
-    using RandomModificationList = PerformanceList<T, AccessType::SEQUENTIAL, InsertRemoveType::ARBITRARY_POSITION>;
-    template <typename T>
-    using FastAccessList = RandomAccessList<T>;
-    template <typename T>
-    using FastModificationList = RandomModificationList<T>;
+    using CompactList = std::vector<T>;
     /*!
      * A list type in which the references (and pointers) to the elements are not modified (e.g. stay valid even after
      * insertions, modifications)
      */
     template <typename T>
-    using ReferenceRetainingList = RandomModificationList<T>;
+    using StableList = std::list<T>;
 
-    template <typename T, typename H = std::hash<T>>
-    using UnorderedSet = PerformanceSet<T, OrderType::UNORDERED, H>;
+    /*!
+     * A set type where the elements are sorted according to their (natural or explicit) order
+     */
     template <typename T, typename C = std::less<T>>
-    using OrderedSet = PerformanceSet<T, OrderType::ORDERED, C>;
+    using SortedSet = std::set<T, C>;
+    /*!
+     * A set type which allows fast lookup and insertion of elements
+     */
     template <typename T, typename H = std::hash<T>>
-    using FastSet = UnorderedSet<T, H>;
+    using FastSet = std::unordered_set<T, H>;
 
-    template <typename K, typename V, typename H = std::hash<K>>
-    using UnorderedMap = PerformanceMap<K, V, OrderType::UNORDERED, H>;
+    /*!
+     * A map type where the entries are sorted according to the (natural or explicit) order of the keys
+     */
     template <typename K, typename V, typename C = std::less<K>>
-    using OrderedMap = PerformanceMap<K, V, OrderType::ORDERED, C>;
-    template <typename K, typename V>
-    using FastMap = UnorderedMap<K, V>;
+    using SortedMap = std::map<K, V, C>;
+    /*!
+     * A map type providing fast lookup and insertion of elements
+     */
+    template <typename K, typename V, typename H = std::hash<K>>
+    using FastMap = std::unordered_map<K, V, H>;
 } // namespace vc4c
 
 #endif /* PERFORMANCE_H */

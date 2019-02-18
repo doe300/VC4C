@@ -543,18 +543,20 @@ void GraphColoring::createGraph()
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Colored graph with " << graph.getNodes().size() << " nodes created!" << logging::endl);
 #ifdef DEBUG_MODE
-    DebugGraph<const Local*, LocalRelation, ColoredEdge::Directed> debugGraph(
-        "/tmp/vc4c-register-graph.dot", graph.getNodes().size());
-    const std::function<std::string(const Local* const&)> nameFunc = [](const Local* const& l) -> std::string {
-        return l->name;
-    };
-    const std::function<bool(const LocalRelation&)> weakEdgeFunc = [](const LocalRelation& r) -> bool {
-        return r != LocalRelation::USED_TOGETHER;
-    };
-    for(const auto& node : graph.getNodes())
-    {
-        debugGraph.addNodeWithNeighbors<ColoredNode>(node.second, nameFunc, weakEdgeFunc);
-    }
+    logging::logLazy(logging::Level::DEBUG, [&]() {
+        DebugGraph<const Local*, LocalRelation, ColoredEdge::Directed> debugGraph(
+            "/tmp/vc4c-register-graph.dot", graph.getNodes().size());
+        const std::function<std::string(const Local* const&)> nameFunc = [](const Local* const& l) -> std::string {
+            return l->name;
+        };
+        const std::function<bool(const LocalRelation&)> weakEdgeFunc = [](const LocalRelation& r) -> bool {
+            return r != LocalRelation::USED_TOGETHER;
+        };
+        for(const auto& node : graph.getNodes())
+        {
+            debugGraph.addNodeWithNeighbors<ColoredNode>(node.second, nameFunc, weakEdgeFunc);
+        }
+    });
 #endif
 }
 
@@ -674,7 +676,7 @@ static RegisterFile getBlockedInputs(
     return blockedFiles;
 }
 
-static NODISCARD LocalUse checkUser(const OrderedMap<const LocalUser*, LocalUse>& users, const InstructionWalker it)
+static NODISCARD LocalUse checkUser(const SortedMap<const LocalUser*, LocalUse>& users, const InstructionWalker it)
 {
     LocalUse use;
     it.forAllInstructions([&users, &use](const intermediate::IntermediateInstruction* instr) {
@@ -688,7 +690,7 @@ static NODISCARD LocalUse checkUser(const OrderedMap<const LocalUser*, LocalUse>
     return use;
 }
 
-static NODISCARD LocalUse assertUser(const OrderedMap<const LocalUser*, LocalUse>& users, const InstructionWalker it)
+static NODISCARD LocalUse assertUser(const SortedMap<const LocalUser*, LocalUse>& users, const InstructionWalker it)
 {
     auto use = checkUser(users, it);
     if(!use.readsLocal() && !use.writesLocal())
@@ -1044,7 +1046,7 @@ FastMap<const Local*, Register> GraphColoring::toRegisterMap() const
         throw CompilationError(CompilationStep::LABEL_REGISTER_MAPPING, "There are erroneous register-associations!");
     }
 
-    UnorderedMap<const Local*, Register> result;
+    FastMap<const Local*, Register> result;
     result.reserve(graph.getNodes().size());
 
     for(const auto& pair : graph.getNodes())

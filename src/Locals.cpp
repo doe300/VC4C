@@ -31,7 +31,7 @@ Value Local::createReference(int index) const
     return Value(this, type);
 }
 
-const OrderedMap<const LocalUser*, LocalUse>& Local::getUsers() const
+const SortedMap<const LocalUser*, LocalUse>& Local::getUsers() const
 {
     return users;
 }

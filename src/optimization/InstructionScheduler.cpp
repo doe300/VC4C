@@ -118,7 +118,7 @@ struct NodeSorter : public std::less<intermediate::IntermediateInstruction*>
 };
 
 // TODO OpenSet leaks all pending instructions if exception is thrown
-using OpenSet = OrderedSet<intermediate::IntermediateInstruction*, NodeSorter>;
+using OpenSet = SortedSet<intermediate::IntermediateInstruction*, NodeSorter>;
 using DelaysMap = FastMap<const intermediate::IntermediateInstruction*, std::size_t>;
 
 static constexpr int DEFAULT_PRIORITY = 1000;

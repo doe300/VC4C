@@ -214,7 +214,7 @@ static std::string readString(std::istream& binary, uint64_t stringLength)
     return name;
 }
 
-void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, ReferenceRetainingList<Global>& globals,
+void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, StableList<Global>& globals,
     std::vector<qpu_asm::Instruction>& instructions)
 {
     // skip magic number
@@ -309,7 +309,7 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Refere
 }
 
 static std::size_t generateOutput(std::ostream& stream, qpu_asm::ModuleInfo& moduleInfo,
-    const ReferenceRetainingList<Global>& globals, const std::vector<qpu_asm::Instruction>& instructions,
+    const StableList<Global>& globals, const std::vector<qpu_asm::Instruction>& instructions,
     const OutputMode outputMode)
 {
     std::size_t numBytes = moduleInfo.write(stream, outputMode, globals, Byte(0)) * sizeof(uint64_t);
@@ -346,7 +346,7 @@ std::size_t vc4c::disassembleModule(std::istream& binary, std::ostream& output, 
     }
 
     qpu_asm::ModuleInfo moduleInfo;
-    ReferenceRetainingList<Global> globals;
+    StableList<Global> globals;
     std::vector<qpu_asm::Instruction> instructions;
     extractBinary(binary, moduleInfo, globals, instructions);
 

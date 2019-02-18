@@ -25,7 +25,7 @@ namespace vc4c
      */
     class Method : private NonCopyable
     {
-        using BasicBlockList = RandomModificationList<BasicBlock>;
+        using BasicBlockList = FastModificationList<BasicBlock>;
 
     public:
         static const std::string WORK_DIMENSIONS;
@@ -63,7 +63,7 @@ namespace vc4c
         /*
          * The list of stack-allocations from within that method, sorted by descending alignment value
          */
-        OrderedSet<StackAllocation, order_by_alignment_and_name> stackAllocations;
+        SortedSet<StackAllocation, order_by_alignment_and_name> stackAllocations;
         /*
          * Additional meta-data for kernel-functions
          */
@@ -290,7 +290,7 @@ namespace vc4c
         /*
          * The list of locals
          */
-        UnorderedMap<std::string, Local> locals;
+        FastMap<std::string, Local> locals;
         /*
          * The currently valid CFG
          *

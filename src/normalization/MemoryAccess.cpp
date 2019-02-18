@@ -158,9 +158,9 @@ struct VPMAccessGroup
 {
     bool isVPMWrite;
     DataType groupType = TYPE_UNKNOWN;
-    RandomAccessList<InstructionWalker> dmaSetups;
-    RandomAccessList<InstructionWalker> genericSetups;
-    RandomAccessList<InstructionWalker> addressWrites;
+    FastAccessList<InstructionWalker> dmaSetups;
+    FastAccessList<InstructionWalker> genericSetups;
+    FastAccessList<InstructionWalker> addressWrites;
     // this is the distance/offset (start of row to start of row, 1 = consecutive) between two vectors in number of
     // vectors that would fit in between
     int stride = 1;
