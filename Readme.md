@@ -23,7 +23,7 @@ The following configuration variables can be set in CMake:
 - `MULTI_THREADED` toggles building with multi-threaded support
 - `VERIFY_OUTPUT` toggles the usage of [vc4asm](https://github.com/maazl/vc4asm) to validate the generated machine code
 - `LLVMIR_FRONTEND` toggles building of the LLVM-IR front-end, requires an installed CLang compiler (LLVM or SPIRV-LLVM)
-- `VC4CL_STDLIB_HEADER_SOURCE` sets the headers for the GPU-side [VC4CLStdLib](https://github.com/doe300/VC4CLStdLib), by default looks in `/usr/local/include/vc4cl-stdlib/VC4CLStdLib.h`, `/usr/include/vc4cl-stdlib/VC4CLStdLib.h` and `../VC4CLStdLib/include/VC4CLStdLib.h`
+- `VC4CL_STDLIB_DIR` specifies an optional folder where the development headers for the GPU-side [VC4CLStdLib](https://github.com/doe300/VC4CLStdLib) are located, by default looks in `../VC4CLStdLib/include/`
 - `CROSS_COMPILE` toggles whether to cross-compile for the Raspberry Pi. NOTE: The [Raspberry Pi cross-compiler](https://github.com/raspberrypi/tools) is no longer supported, since it is based on an ancient GCC 4.9
 - `CROSS_COMPILER_PATH` sets the root path to the cross compiler to use
 - `SPIRV_FRONTEND` toggles building of the SPIR-V front-end, requires SPIRV-LLVM

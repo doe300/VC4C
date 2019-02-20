@@ -29,20 +29,18 @@ if(NOT BUILD_DEBUG)
 endif()
 
 # Path to the VC4CL standard library
-if(NOT VC4CL_STDLIB_HEADER_SOURCE)
+# NOTE: Resolving ~ (for home directory) is currently not supported
+if(NOT VC4CL_STDLIB_DIR)
 	find_file(VC4CL_STDLIB_FOUND "VC4CLStdLib/include/VC4CLStdLib.h")
-	if(VC4CL_STDLIB_FOUND) # Check system path
-		set(VC4CL_STDLIB_HEADER_SOURCE "${VC4CL_STDLIB_FOUND}")
-	elseif(EXISTS "/usr/local/include/vc4cl-stdlib/VC4CLStdLib.h") # Check installed path (I)
-		set(VC4CL_STDLIB_HEADER_SOURCE "/usr/local/include/vc4cl-stdlib/VC4CLStdLib.h")
-	elseif(EXISTS "/usr/include/vc4cl-stdlib/VC4CLStdLib.h") # Check installed path (II)
-		set(VC4CL_STDLIB_HEADER_SOURCE "/usr/include/vc4cl-stdlib/VC4CLStdLib.h")
-	elseif(EXISTS "${CMAKE_SOURCE_DIR}/../VC4CLStdLib/include/VC4CLStdLib.h") # Check local path
-		set(VC4CL_STDLIB_HEADER_SOURCE "${CMAKE_SOURCE_DIR}/../VC4CLStdLib/include/VC4CLStdLib.h")
+	if(VC4CL_STDLIB_FOUND)
+		get_filename_component(VC4CL_STDLIB_DIR ${VC4CL_STDLIB_FOUND} DIRECTORY)
+		message(STATUS "VC4CL standard library headers found: ${VC4CL_STDLIB_DIR}")
+	elseif(EXISTS "${CMAKE_SOURCE_DIR}/../VC4CLStdLib/include/VC4CLStdLib.h")
+		set(VC4CL_STDLIB_DIR "${CMAKE_SOURCE_DIR}/../VC4CLStdLib/include/")
+		message(STATUS "VC4CL standard library headers found: ${VC4CL_STDLIB_DIR}")
 	else()
-		message(FATAL_ERROR "VC4CL standard-library headers not found!")
+		message(WARNING "No development version of VC4CL standard-library headers found, will not automatically generate the precompiled files!")
 	endif()
-	message(STATUS "VC4CL standard library headers found: ${VC4CL_STDLIB_HEADER_SOURCE}")
 endif()
 
 if(CROSS_COMPILE)
@@ -292,15 +290,6 @@ if(VERIFY_OUTPUT)
 	)
 endif()
 
-# Pre-compile VC4CL standard-library into pre-compiled header
-if(NOT VC4CL_STDLIB_HEADER)
-	get_filename_component(VC4CL_STDLIB_DIR ${VC4CL_STDLIB_HEADER_SOURCE} DIRECTORY)
-	set(VC4CL_STDLIB_HEADER "${VC4CL_STDLIB_DIR}/VC4CLStdLib.h.pch")
-endif()
-if(NOT VC4CL_STDLIB_CONFIG_HEADER)
-	get_filename_component(VC4CL_STDLIB_DIR ${VC4CL_STDLIB_HEADER_SOURCE} DIRECTORY)
-	set(VC4CL_STDLIB_CONFIG_HEADER "${VC4CL_STDLIB_DIR}/defines.h")
-endif()
 if(SPIRV_CLANG_FOUND)
 	set(PRECOMPILE_COMMAND "${SPIRV_CLANG_FOUND}")
 elseif(CLANG_FOUND)
@@ -308,23 +297,6 @@ elseif(CLANG_FOUND)
 else()
 	message(FATAL_ERROR "No supported OpenCL compiler found!")
 endif()
-# Re-use the parameters for local and debian-package installation build
-set(VC4CL_STDLIB_PCH_ARGS -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info -cl-single-precision-constant -Wno-all -Wno-gcc-compat -Wdouble-promotion -Wno-undefined-inline -x cl -emit-pch -o)
-set(VC4CL_STDLIB_MODULE_ARGS -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info -cl-single-precision-constant -Wno-all -Wno-gcc-compat -Wdouble-promotion -Wno-undefined-inline -x cl -emit-llvm-bc -o)
-string(REPLACE ";" " " VC4CL_STDLIB_PCH_ARGS_LIST "${VC4CL_STDLIB_PCH_ARGS}")
-string(REPLACE ";" " " VC4CL_STDLIB_MODULE_ARGS_LIST "${VC4CL_STDLIB_MODULE_ARGS}")
-add_custom_target(vc4cl-stdlib
-    COMMAND             if [ ! -e ${VC4CL_STDLIB_HEADER} ]; then ${PRECOMPILE_COMMAND} ${VC4CL_STDLIB_PCH_ARGS} ${VC4CL_STDLIB_HEADER} ${VC4CL_STDLIB_HEADER_SOURCE} && echo \"VC4CL standard library precompiled into ${VC4CL_STDLIB_HEADER}\" \; fi
-    WORKING_DIRECTORY   ${VC4CL_STDLIB_DIR}
-    SOURCES				${VC4CL_STDLIB_HEADER_SOURCE}
-)
-string(REPLACE "h.pch" "bc" VC4CL_STDLIB_MODULE ${VC4CL_STDLIB_HEADER})
-add_custom_target(vc4cl-stdlib-module
-	COMMAND             if [ ! -e ${VC4CL_STDLIB_MODULE} ]; then ${PRECOMPILE_COMMAND} ${VC4CL_STDLIB_MODULE_ARGS} ${VC4CL_STDLIB_MODULE} ${VC4CL_STDLIB_HEADER_SOURCE} && echo \"VC4CL standard library precompiled into module ${VC4CL_STDLIB_MODULE}\" \; fi
-	WORKING_DIRECTORY   ${VC4CL_STDLIB_DIR}
-	SOURCES				${VC4CL_STDLIB_HEADER_SOURCE}
-)
-add_dependencies(vc4cl-stdlib vc4cl-stdlib-module)
 
 # Variant backport for C++ < 17
 ExternalProject_Add( variant-project
@@ -370,7 +342,6 @@ endif (BUILD_TESTING)
 
 if (BUILD_DEB_PACKAGE)
 	message(STATUS "build deb package...")
-	message(STATUS "Debian package expects VC4CL standard library PCH to be located in: ${VC4CL_STDLIB_HEADER}")
 
 	# Generate postint-script for debian package, building the VC4CLStdLib PCH
 	configure_file(cmake/deb-postint.in "${CMAKE_BINARY_DIR}/postinst" @ONLY NEWLINE_STYLE UNIX)

@@ -1,5 +1,4 @@
 #!/bin/sh
 set -e
-cd @VC4CL_STDLIB_DIR@
-rm -f @VC4CL_STDLIB_HEADER@
-rm -f @VC4CL_STDLIB_MODULE@
+rm -f @CMAKE_INSTALL_PREFIX@/include/vc4cl-stdlib/VC4CLStdLib.bc
+rm -f @CMAKE_INSTALL_PREFIX@/include/vc4cl-stdlib/VC4CLStdLib.h.pch

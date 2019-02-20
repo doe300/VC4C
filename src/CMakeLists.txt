@@ -8,8 +8,11 @@ set(VC4C_LIBRARY_NAME VC4CC)
 set(VC4C_PROGRAM_NAME VC4C)
 
 target_compile_definitions(${VC4C_LIBRARY_NAME} PUBLIC VC4C_VERSION="${PROJECT_VERSION}")
-target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE VC4CL_STDLIB_HEADER="${VC4CL_STDLIB_HEADER}" VC4CL_STDLIB_CONFIG_HEADER="${VC4CL_STDLIB_CONFIG_HEADER}" VC4CL_STDLIB_MODULE="${VC4CL_STDLIB_MODULE}")
-target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE VC4C_VERSION="${PROJECT_VERSION}" VC4CL_STDLIB_HEADER="${VC4CL_STDLIB_HEADER}" VC4CL_STDLIB_CONFIG_HEADER="${VC4CL_STDLIB_CONFIG_HEADER}" VC4CL_STDLIB_MODULE="${VC4CL_STDLIB_MODULE}")
+target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE VC4C_VERSION="${PROJECT_VERSION}")
+if(VC4CL_STDLIB_DIR)
+	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE VC4CL_STDLIB_FOLDER="${VC4CL_STDLIB_DIR}")
+	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE VC4CL_STDLIB_FOLDER="${VC4CL_STDLIB_DIR}")
+endif()
 
 # append usage of C++ to compiler flags, also optimize for speed and enable all warnings
 set(VC4C_ENABLED_WARNINGS -Wall -Wextra -Wold-style-cast -Wnon-virtual-dtor -Wnull-dereference -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings -Werror=return-type -Werror=unused-result -Werror=shift-count-overflow -Werror=missing-field-initializers -Werror=reorder)
@@ -69,9 +72,6 @@ include(tools/sources.list)
 
 # Add all dependencies
 target_link_libraries(${VC4C_PROGRAM_NAME} ${VC4C_LIBRARY_NAME} ${SYSROOT_LIBRARY_FLAGS})
-
-#VC4CL standard-library (build only dependency)
-add_dependencies(${VC4C_LIBRARY_NAME} vc4cl-stdlib)
 
 # cpplog
 add_dependencies(${VC4C_LIBRARY_NAME} cpplog-project-build)
@@ -142,6 +142,13 @@ endif()
 add_dependencies(${VC4C_LIBRARY_NAME} variant-project-build)
 target_include_directories(${VC4C_LIBRARY_NAME} PRIVATE "${PROJECT_SOURCE_DIR}/lib/variant/include")
 target_include_directories(${VC4C_PROGRAM_NAME} PRIVATE "${PROJECT_SOURCE_DIR}/lib/variant/include")
+
+if(VC4CL_STDLIB_DIR)
+	# Pre-compile VC4CL standard library files if development headers available and output files do not yet exist
+	add_custom_command(TARGET ${VC4C_PROGRAM_NAME} POST_BUILD
+	    COMMAND             if \[\[ ! -e ${VC4CL_STDLIB_DIR}/VC4CLStdLib.bc || ! -e ${VC4CL_STDLIB_DIR}/VC4CLStdLib.h.pch \]\]; then $<TARGET_FILE:${VC4C_PROGRAM_NAME}> --quiet --precompile-stdlib -o ${VC4CL_STDLIB_DIR}/ ${VC4CL_STDLIB_DIR}/VC4CLStdLib.h && echo \"VC4CL standard library precompiled into ${VC4CL_STDLIB_DIR}\" \; fi
+	)
+endif(VC4CL_STDLIB_DIR)
 
 # "For shared libraries VERSION and SOVERSION can be used to specify the build version and API version respectively."
 set_target_properties(

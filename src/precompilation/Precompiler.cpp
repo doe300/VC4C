@@ -17,9 +17,12 @@
 #include <iterator>
 #include <libgen.h>
 #include <sstream>
+#include <unistd.h>
 
 using namespace vc4c;
 using namespace vc4c::precompilation;
+
+extern void runPrecompiler(const std::string& command, std::istream* inputStream, std::ostream* outputStream);
 
 bool vc4c::isSupportedByFrontend(SourceType inputType, Frontend frontend)
 {
@@ -224,7 +227,7 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
             // FIXME this does not work, since the SPIRV-LLVM does not generate a correct VC4CL standard-library module
             tempFiles.emplace_back(new TemporaryFile());
             SPIRVResult stdLib(tempFiles.back()->fileName);
-            compileLLVMToSPIRV(LLVMIRSource(VC4CL_STDLIB_MODULE ""), "", stdLib);
+            compileLLVMToSPIRV(LLVMIRSource(findStandardLibraryFiles().llvmModule), "", stdLib);
             sources.emplace_back(stdLib);
         }
 
@@ -250,7 +253,7 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
             });
         if(includeStandardLibrary)
         {
-            sources.emplace_back(VC4CL_STDLIB_MODULE "");
+            sources.emplace_back(findStandardLibraryFiles().llvmModule);
         }
 
         LLVMIRResult result(&output);
@@ -292,6 +295,83 @@ bool Precompiler::isLinkerAvailable()
 #else
     return false;
 #endif
+}
+
+std::string determineFilePath(const std::string& fileName, const std::vector<std::string>& folders)
+{
+    for(const auto& folder : folders)
+    {
+        auto fullPath = folder + "/" + fileName;
+        if(access(fullPath.data(), R_OK) == 0)
+        {
+            // the file exists (including resolving sym-links, etc.) and can be read
+            return fullPath;
+        }
+        else
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Could not access VC4CL standard-library file: " << fullPath << " (" << strerror(errno) << ')'
+                    << logging::endl);
+        }
+    }
+    return "";
+}
+
+const StdlibFiles& Precompiler::findStandardLibraryFiles(const std::vector<std::string>& additionalFolders)
+{
+    static const StdlibFiles paths = [&]() {
+        std::vector<std::string> allPaths(additionalFolders);
+#ifdef VC4CL_STDLIB_FOLDER
+        allPaths.emplace_back(VC4CL_STDLIB_FOLDER);
+#endif
+        allPaths.emplace_back("/usr/local/include/vc4cl-stdlib/");
+        allPaths.emplace_back("/usr/include/vc4cl-stdlib/");
+        if(auto homeDir = std::getenv("HOME"))
+        {
+            allPaths.emplace_back(std::string(homeDir) + "/.cache/vc4c");
+        }
+        StdlibFiles tmp;
+        tmp.configurationHeader = determineFilePath("defines.h", allPaths);
+        tmp.llvmModule = determineFilePath("VC4CLStdLib.bc", allPaths);
+        tmp.precompiledHeader = determineFilePath("VC4CLStdLib.h.pch", allPaths);
+        if(tmp.configurationHeader.empty() || (tmp.llvmModule.empty() && tmp.precompiledHeader.empty()))
+        {
+            throw CompilationError(CompilationStep::PRECOMPILATION,
+                "Required VC4CL standard library file not found in any of the provided paths",
+                to_string<std::string>(allPaths));
+        }
+        return tmp;
+    }();
+    return paths;
+}
+
+void Precompiler::precompileStandardLibraryFiles(const std::string& sourceFile, const std::string& destinationFolder)
+{
+    // TODO merge with creating of parameters in FrontendCompiler#buildClangCommand
+    auto pchArgs =
+        " -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info "
+        "-cl-single-precision-constant -Wno-all -Wno-gcc-compat -Wdouble-promotion -Wno-undefined-inline -x cl "
+        "-emit-pch -o ";
+    auto moduleArgs =
+        " -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info "
+        "-cl-single-precision-constant -Wno-all -Wno-gcc-compat -Wdouble-promotion -Wno-undefined-inline -x cl "
+        "-emit-llvm-bc -o ";
+
+#ifdef SPIRV_CLANG_PATH
+    // just OpenCL C -> LLVM IR (but with Khronos CLang)
+    const std::string compiler = SPIRV_CLANG_PATH;
+#else
+    const std::string compiler = CLANG_PATH;
+#endif
+
+    auto pchCommand = compiler + pchArgs + destinationFolder + "/VC4CLStdLib.h.pch " + sourceFile;
+    auto moduleCommand = compiler + moduleArgs + destinationFolder + "/VC4CLStdLib.bc " + sourceFile;
+
+    CPPLOG_LAZY(logging::Level::INFO, log << "Pre-compiling standard library with: " << pchCommand << logging::endl);
+    runPrecompiler(pchCommand, nullptr, nullptr);
+
+    CPPLOG_LAZY(logging::Level::INFO, log << "Pre-compiling standard library with: " << moduleCommand << logging::endl);
+    runPrecompiler(moduleCommand, nullptr, nullptr);
 }
 
 Precompiler::Precompiler(

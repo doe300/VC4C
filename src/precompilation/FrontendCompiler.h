@@ -116,11 +116,12 @@ namespace vc4c
             chainSteps<SourceType::SPIRV_TEXT, SourceType::OPENCL_C, SourceType::LLVM_IR_BIN>(
                 compileOpenCLWithPCH, compileLLVMToSPIRVText);
 
-#if defined(LLVM_LINK_PATH) && defined(VC4CL_STDLIB_MODULE)
-        static const auto compileOpenCLToLLVMIR = compileOpenCLAndLinkModule;
-#else
-        static const auto compileOpenCLToLLVMIR = compileOpenCLWithPCH;
-#endif
+        /*
+         * General version of compiling OpenCL C source to to LLVM binary module with the standard-library included.
+         * Depending on the compilation options, the standard-library PCH is included or the standard-library module is
+         * linked in.
+         */
+        void compileOpenCLToLLVMIR(OpenCLSource&& source, const std::string& userOptions, LLVMIRResult& result);
     } /* namespace precompilation */
 } /* namespace vc4c */
 

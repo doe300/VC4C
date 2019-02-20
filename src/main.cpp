@@ -19,6 +19,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <string>
 #include <unistd.h>
 #include <unordered_map>
 
@@ -73,11 +74,20 @@ static void printHelp()
     std::cout << "\t--no-kernel-info\tDont write the kernel-info meta-data" << std::endl;
     std::cout << "\t--spirv\t\t\tExplicitely use the SPIR-V front-end" << std::endl;
     std::cout << "\t--llvm\t\t\tExplicitely use the LLVM-IR front-end" << std::endl;
-    std::cout << "\t--disassemble\t\tDisassembles the binary input to either hex or assembler output" << std::endl;
-    std::cout << "\t--verification-error\t\t\tAbort if instruction verification failed" << std::endl;
-    std::cout << "\t--no-verification-error\t\t\tContinue if instruction verification failed" << std::endl;
-
+    std::cout << "\t--verification-error\tAbort if instruction verification failed" << std::endl;
+    std::cout << "\t--no-verification-error\tContinue if instruction verification failed" << std::endl;
     std::cout << "\tany other option is passed to the pre-compiler" << std::endl;
+
+    std::cout << "modes:" << std::endl;
+    std::cout << "(modes completely change the behavior of the program and therefore only support a limited number of "
+                 "options)"
+              << std::endl;
+    std::cout << "\t--disassemble\t\tDisassembles the binary input to either hex or assembler output. Only supports "
+                 "the input-, output- and logging-flags listed above."
+              << std::endl;
+    std::cout << "\t--precompile-stdlib\tPre-compiles the the VC4CLStdLib.h header file given as input "
+                 "into the folder specified as output. Ignores all other options except for the logging flags"
+              << std::endl;
 }
 
 #ifndef LLVM_LIBRARY_VERSION
@@ -119,8 +129,8 @@ static void printInfo()
 #ifdef USE_LLVM_LIBRARY
         std::string("LLVM library front-end with libLLVM ") + toVersionString(LLVM_LIBRARY_VERSION),
 #endif
-#ifdef VC4CL_STDLIB_HEADER
-        "VC4CL standard-library in " VC4CL_STDLIB_HEADER,
+#ifdef VC4CL_STDLIB_FOLDER
+        "custom VC4CL standard-library path " VC4CL_STDLIB_FOLDER,
 #endif
 #ifdef SPIRV_FRONTEND
         "SPIR-V linker",
@@ -154,6 +164,7 @@ int main(int argc, char** argv)
     std::string outputFile;
     std::string options;
     bool runDisassembler = false;
+    bool precompileStdlib = false;
 
     if(argc == 1)
     {
@@ -201,6 +212,8 @@ int main(int argc, char** argv)
         }
         else if(strcmp("--disassemble", argv[i]) == 0)
             runDisassembler = true;
+        else if(strcmp("--precompile-stdlib", argv[i]) == 0)
+            precompileStdlib = true;
         else if(strcmp("-o", argv[i]) == 0)
         {
             if(i + 1 == argc)
@@ -266,14 +279,30 @@ int main(int argc, char** argv)
             std::cerr << "For disassembling, a single input file must be specified, aborting!" << std::endl;
             return 4;
         }
-        logging::debug() << "Disassembling '" << inputFiles[0] << "' into '" << outputFile << "'..." << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Disassembling '" << inputFiles[0] << "' into '" << outputFile << "'..." << logging::endl);
         disassemble(inputFiles[0], outputFile, config.outputMode);
         return 0;
     }
+    if(precompileStdlib)
+    {
+        if(inputFiles.size() != 1)
+        {
+            std::cerr
+                << "For pre-compiling the VC4CL standard library, a single input file must be specified, aborting!"
+                << std::endl;
+            return 5;
+        }
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Pre-compiling '" << inputFiles[0] << "' into '" << outputFile << "'..." << logging::endl);
+        Precompiler::precompileStandardLibraryFiles(inputFiles[0], outputFile);
+        return 0;
+    }
 
-    logging::debug() << "Compiling '" << to_string<std::string>(inputFiles, "', '") << "' into '" << outputFile
-                     << "' with optimization level " << static_cast<unsigned>(config.optimizationLevel)
-                     << " and options '" << options << "' ..." << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Compiling '" << to_string<std::string>(inputFiles, "', '") << "' into '" << outputFile
+            << "' with optimization level " << static_cast<unsigned>(config.optimizationLevel) << " and options '"
+            << options << "' ..." << logging::endl);
 
     Optional<std::string> inputFile;
     std::unique_ptr<std::istream> input;

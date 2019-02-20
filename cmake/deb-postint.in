@@ -1,6 +1,4 @@
 #!/bin/sh
 set -e
-cd @VC4CL_STDLIB_DIR@
-@PRECOMPILE_COMMAND@ @VC4CL_STDLIB_PCH_ARGS_LIST@ @VC4CL_STDLIB_HEADER@ @VC4CL_STDLIB_HEADER_SOURCE@
-@PRECOMPILE_COMMAND@ @VC4CL_STDLIB_MODULE_ARGS_LIST@ @VC4CL_STDLIB_MODULE@ @VC4CL_STDLIB_HEADER_SOURCE@
-echo "VC4CL standard library precompiled into @VC4CL_STDLIB_HEADER@ and @VC4CL_STDLIB_MODULE@"
+@CMAKE_INSTALL_PREFIX@/bin/vc4c --precompile-stdlib -o @CMAKE_INSTALL_PREFIX@/include/vc4cl-stdlib/ @CMAKE_INSTALL_PREFIX@/include/vc4cl-stdlib/VC4CLStdLib.h
+echo "VC4CL standard library precompiled into @CMAKE_INSTALL_PREFIX@/include/vc4cl-stdlib/"

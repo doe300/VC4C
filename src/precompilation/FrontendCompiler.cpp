@@ -64,13 +64,13 @@ static std::string buildClangCommand(const std::string& compiler, const std::str
     // link in our standard-functions
     command.append(" -Wno-undefined-inline -Wno-unused-parameter -Wno-unused-local-typedef -Wno-gcc-compat ");
     if(usePCH)
-        command.append("-include-pch " VC4CL_STDLIB_HEADER " ");
+        command.append("-include-pch " + Precompiler::findStandardLibraryFiles().precompiledHeader + " ");
     else
     {
         command.append("-finclude-default-header ");
         // The #defines (esp. for extensions) from the default headers differ from the supported #defines,
         // so we need to include our #defines/undefines
-        command.append("-include " VC4CL_STDLIB_CONFIG_HEADER " ");
+        command.append("-include " + Precompiler::findStandardLibraryFiles().configurationHeader + " ");
     }
     if(options.find("-x cl") == std::string::npos)
     {
@@ -82,7 +82,7 @@ static std::string buildClangCommand(const std::string& compiler, const std::str
     return command.append(emitter).append(" -o ").append(outputFile).append(" ").append(inputFile);
 }
 
-static void runPrecompiler(const std::string& command, std::istream* inputStream, std::ostream* outputStream)
+void runPrecompiler(const std::string& command, std::istream* inputStream, std::ostream* outputStream)
 {
     std::ostringstream stderr;
     int status = runProcess(command, inputStream, outputStream, &stderr);
@@ -185,12 +185,11 @@ void precompilation::compileOpenCLWithDefaultHeader(
 
 void precompilation::linkInStdlibModule(LLVMIRSource&& source, const std::string& userOptions, LLVMIRResult& result)
 {
-#ifndef VC4CL_STDLIB_MODULE
-    throw CompilationError(CompilationStep::LINKER, "LLVM IR module for VC4CL std-lib is not defined!");
-#endif
+    if(Precompiler::findStandardLibraryFiles().llvmModule.empty())
+        throw CompilationError(CompilationStep::LINKER, "LLVM IR module for VC4CL std-lib is not defined!");
     std::vector<LLVMIRSource> sources;
     sources.emplace_back(std::forward<LLVMIRSource>(source));
-    sources.emplace_back(VC4CL_STDLIB_MODULE "");
+    sources.emplace_back(Precompiler::findStandardLibraryFiles().llvmModule);
     linkLLVMModules(std::move(sources), userOptions, result);
 }
 
@@ -347,4 +346,18 @@ void precompilation::optimizeLLVMText(
     CPPLOG_LAZY(logging::Level::INFO, log << "Optimizing LLVM text with opt: " << commandOpt << logging::endl);
     runPrecompiler(commandOpt, source.stream, result.stream);
 #endif
+}
+
+void precompilation::compileOpenCLToLLVMIR(OpenCLSource&& source, const std::string& userOptions, LLVMIRResult& result)
+{
+    // This check has the positive side-effect that if the VC4CLStdLib LLVM module is missing but the PCH exists, then
+    // the compilation with PCH (a bit slower but functional) will be used.
+#ifdef LLVM_LINK_PATH
+    if(!Precompiler::findStandardLibraryFiles().llvmModule.empty())
+        return compileOpenCLAndLinkModule(std::move(source), userOptions, result);
+#endif
+    if(!Precompiler::findStandardLibraryFiles().precompiledHeader.empty())
+        return compileOpenCLWithPCH(std::move(source), userOptions, result);
+    throw CompilationError(
+        CompilationStep::PRECOMPILATION, "Cannot include VC4CL standard library with neither PCH nor module defined");
 }
