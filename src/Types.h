@@ -111,45 +111,45 @@ namespace vc4c
         /*
          * Whether this type is not a complex type
          */
-        bool isSimpleType() const;
+        bool isSimpleType() const noexcept;
         // vector can only be vector of scalars, so its counts as simple type!
         /*
          * Whether this is a non-complex type with a single element
          */
-        bool isScalarType() const;
+        bool isScalarType() const noexcept;
         /*
          * Whether this is a non-complex type with more than one elements
          */
-        bool isVectorType() const;
+        bool isVectorType() const noexcept;
 
         //"complex" types
         // These functions return nullptr if this DataType is not of the requested type and can therefore be used to
         // check for the complex type.
-        const PointerType* getPointerType() const;
-        const ArrayType* getArrayType() const;
-        const StructType* getStructType() const;
-        const ImageType* getImageType() const;
+        const PointerType* getPointerType() const noexcept;
+        const ArrayType* getArrayType() const noexcept;
+        const StructType* getStructType() const noexcept;
+        const ImageType* getImageType() const noexcept;
 
         /*
          * Whether this is a scalar- or vector-variant of a floating-point type
          */
-        bool isFloatingType() const;
+        bool isFloatingType() const noexcept;
         /*
          * Whether this is a scalar- or vector-variant of an integral type (e.g. integers, boolean, pointers)
          */
-        bool isIntegralType() const;
+        bool isIntegralType() const noexcept;
         /*
          * Whether this type is the unknown-type
          */
-        bool isUnknown() const;
+        bool isUnknown() const noexcept;
         /*
          * Whether this type is a label
          */
-        bool isLabelType() const;
+        bool isLabelType() const noexcept;
         /*
          * Whether this type is void
          */
-        bool isVoidType() const;
+        bool isVoidType() const noexcept;
 
         /*
          * Returns the element-type for the given index.
@@ -212,7 +212,7 @@ namespace vc4c
          * NOTE: as per OpenCL 1.2 standard, the physical-width of a 3-element vector equals the physical/logical-width
          * of a 4-element vector with same scalar type.
          */
-        unsigned char getVectorWidth(bool physicalWidth = false) const;
+        unsigned char getVectorWidth(bool physicalWidth = false) const noexcept;
 
         /*
          * Returns the alignment of an object of this type

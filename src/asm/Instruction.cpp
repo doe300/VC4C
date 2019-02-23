@@ -18,15 +18,6 @@
 using namespace vc4c;
 using namespace vc4c::qpu_asm;
 
-Instruction::Instruction() : Bitfield(0) {}
-
-Instruction::Instruction(uint64_t code) : Bitfield(code) {}
-
-uint64_t Instruction::toBinaryCode() const
-{
-    return value;
-}
-
 std::string Instruction::toASMString() const
 {
     if(auto op = as<ALUInstruction>())

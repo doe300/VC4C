@@ -91,7 +91,7 @@ namespace vc4c
         }
 
         template <typename T>
-        constexpr inline void setEntry(T val, UnderlyingType pos, UnderlyingType mask)
+        constexpr inline void setEntry(T val, UnderlyingType pos, UnderlyingType mask) noexcept
         {
             /* since for some fields, the "default" or "not set" value has not the bit-mask 0..0, we need to clear them
              * first */
@@ -100,14 +100,14 @@ namespace vc4c
         }
 
         template <typename T>
-        constexpr inline T getEntry(UnderlyingType pos, UnderlyingType mask) const
+        constexpr inline T getEntry(UnderlyingType pos, UnderlyingType mask) const noexcept
         {
             return static_cast<T>(mask & getValue(pos));
         }
 
         template <typename T>
         constexpr inline typename std::enable_if<!std::is_signed<T>::value, bool>::type fitsEntry(
-            T val, UnderlyingType mask) const
+            T val, UnderlyingType mask) const noexcept
         {
             return static_cast<UnderlyingType>(mask & static_cast<UnderlyingType>(val)) ==
                 static_cast<UnderlyingType>(val);
@@ -115,7 +115,7 @@ namespace vc4c
 
         template <typename T>
         constexpr inline typename std::enable_if<std::is_signed<T>::value, bool>::type fitsEntry(
-            T val, UnderlyingType mask) const
+            T val, UnderlyingType mask) const noexcept
         {
             using UT = typename std::make_unsigned<T>::type;
             return static_cast<UnderlyingType>(mask & static_cast<UnderlyingType>(bit_cast<T, UT>(val))) ==
@@ -123,11 +123,11 @@ namespace vc4c
         }
 
 #define BITFIELD_ENTRY(name, Type, pos, length)                                                                        \
-    inline bool fits##name##Field(Type val)                                                                            \
+    inline bool fits##name##Field(Type val) const noexcept                                                             \
     {                                                                                                                  \
         return fitsEntry<Type>(val, Bitfield::MASK_##length);                                                          \
     }                                                                                                                  \
-    inline Type get##name() const                                                                                      \
+    inline Type get##name() const noexcept                                                                             \
     {                                                                                                                  \
         return getEntry<Type>(pos, Bitfield::MASK_##length);                                                           \
     }                                                                                                                  \
@@ -140,11 +140,11 @@ namespace vc4c
     static constexpr LayoutType layout##name{pos, Bitfield::SIZE_##length, #name};
 
 #define BITFIELD_ENTRY_CONSTEXPR(name, Type, pos, length)                                                              \
-    constexpr inline bool fits##name##Field(Type val)                                                                  \
+    constexpr inline bool fits##name##Field(Type val) const noexcept                                                   \
     {                                                                                                                  \
         return fitsEntry<Type>(val, Bitfield::MASK_##length);                                                          \
     }                                                                                                                  \
-    constexpr inline Type get##name() const                                                                            \
+    constexpr inline Type get##name() const noexcept                                                                   \
     {                                                                                                                  \
         return getEntry<Type>(pos, Bitfield::MASK_##length);                                                           \
     }                                                                                                                  \
@@ -158,7 +158,7 @@ namespace vc4c
 
         UnderlyingType value;
 
-        constexpr inline UnderlyingType getValue(UnderlyingType startPos) const
+        constexpr inline UnderlyingType getValue(UnderlyingType startPos) const noexcept
         {
             return static_cast<UnderlyingType>(value >> startPos);
         }
@@ -195,7 +195,7 @@ namespace vc4c
 
         explicit constexpr InstructionPart(unsigned char val) noexcept : value(val) {}
 
-        constexpr operator unsigned char() const
+        constexpr operator unsigned char() const noexcept
         {
             return value;
         }
@@ -203,12 +203,12 @@ namespace vc4c
         /*
          * Two objects are the same, if their integral values match
          */
-        constexpr bool operator==(const InstructionPart& other) const
+        constexpr bool operator==(const InstructionPart& other) const noexcept
         {
             return value == other.value;
         }
 
-        constexpr bool operator!=(const InstructionPart& other) const
+        constexpr bool operator!=(const InstructionPart& other) const noexcept
         {
             return value != other.value;
         }

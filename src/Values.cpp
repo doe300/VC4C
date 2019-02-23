@@ -43,12 +43,12 @@ std::string vc4c::toString(const RegisterFile file)
     return fileName;
 }
 
-bool vc4c::isFixed(const RegisterFile file)
+bool vc4c::isFixed(const RegisterFile file) noexcept
 {
     return file == RegisterFile::ACCUMULATOR || file == RegisterFile::PHYSICAL_A || file == RegisterFile::PHYSICAL_B;
 }
 
-bool Register::isGeneralPurpose() const
+bool Register::isGeneralPurpose() const noexcept
 {
     return num < 32;
 }
@@ -162,7 +162,7 @@ std::string Register::to_string(bool specialNames, bool readAccess) const
         std::to_string(num);
 }
 
-int Register::getAccumulatorNumber() const
+int Register::getAccumulatorNumber() const noexcept
 {
     switch(num)
     {
@@ -183,51 +183,51 @@ int Register::getAccumulatorNumber() const
     }
 }
 
-bool Register::operator<(Register right) const
+bool Register::operator<(Register right) const noexcept
 {
     const auto tmp = static_cast<unsigned char>(file) < static_cast<unsigned char>(right.file);
     return tmp || num < right.num;
 }
 
-bool Register::operator>(Register right) const
+bool Register::operator>(Register right) const noexcept
 {
     const auto tmp = static_cast<unsigned char>(file) > static_cast<unsigned char>(right.file);
     return tmp || num > right.num;
 }
 
-bool Register::operator==(Register right) const
+bool Register::operator==(Register right) const noexcept
 {
     if(this == &right)
         return true;
     return num == right.num && file == right.file;
 }
 
-bool Register::isAccumulator() const
+bool Register::isAccumulator() const noexcept
 {
     return (num >= 32 && num <= 37) || file == RegisterFile::ACCUMULATOR;
 }
 
-bool Register::isTileBuffer() const
+bool Register::isTileBuffer() const noexcept
 {
     return num >= 43 && num <= 47;
 }
 
-bool Register::isVertexPipelineMemory() const
+bool Register::isVertexPipelineMemory() const noexcept
 {
     return num >= 48 && num <= 50;
 }
 
-bool Register::isSpecialFunctionsUnit() const
+bool Register::isSpecialFunctionsUnit() const noexcept
 {
     return num >= 52 && num <= 55;
 }
 
-bool Register::isTextureMemoryUnit() const
+bool Register::isTextureMemoryUnit() const noexcept
 {
     return num >= 56;
 }
 
-bool Register::hasSideEffectsOnRead() const
+bool Register::hasSideEffectsOnRead() const noexcept
 {
     if(!isReadable())
         return false;
@@ -240,7 +240,7 @@ bool Register::hasSideEffectsOnRead() const
     return false;
 }
 
-bool Register::hasSideEffectsOnWrite() const
+bool Register::hasSideEffectsOnWrite() const noexcept
 {
     if(!isWriteable())
         return false;
@@ -263,19 +263,19 @@ bool Register::hasSideEffectsOnWrite() const
     return false;
 }
 
-bool Register::isReadable() const
+bool Register::isReadable() const noexcept
 {
     if(num == 40 /* UNIFORM address */ || (num >= 43 && num <= 47) /* TLB setup */ || num >= 52 /* SFU, TMU write */)
         return false;
     return true;
 }
 
-bool Register::isWriteable() const
+bool Register::isWriteable() const noexcept
 {
     return true;
 }
 
-bool Register::triggersReadOfR4() const
+bool Register::triggersReadOfR4() const noexcept
 {
     return isSpecialFunctionsUnit();
     // TODO TMU S coordinates trigger the loading/processing of the (texture) value, but the signal  is needed to
@@ -283,7 +283,7 @@ bool Register::triggersReadOfR4() const
     // || (num == 56 || num == 60) /* TMU S coordinates */;
 }
 
-bool Literal::operator==(const Literal& other) const
+bool Literal::operator==(const Literal& other) const noexcept
 {
     if(this == &other)
         return true;
@@ -291,7 +291,7 @@ bool Literal::operator==(const Literal& other) const
     return u == other.u;
 }
 
-bool Literal::operator<(const Literal& other) const
+bool Literal::operator<(const Literal& other) const noexcept
 {
     return u < other.u;
 }
@@ -310,29 +310,29 @@ std::string Literal::to_string() const
     throw CompilationError(CompilationStep::GENERAL, "Unhandled literal type!");
 }
 
-bool Literal::isTrue() const
+bool Literal::isTrue() const noexcept
 {
     if(type == LiteralType::BOOL || type == LiteralType::INTEGER)
         return u == 1;
     return false;
 }
 
-float Literal::real() const
+float Literal::real() const noexcept
 {
     return f;
 }
 
-int32_t Literal::signedInt() const
+int32_t Literal::signedInt() const noexcept
 {
     return i;
 }
 
-uint32_t Literal::unsignedInt() const
+uint32_t Literal::unsignedInt() const noexcept
 {
     return u;
 }
 
-uint32_t Literal::toImmediate() const
+uint32_t Literal::toImmediate() const noexcept
 {
     return u;
 }
@@ -361,7 +361,7 @@ std::string SmallImmediate::to_string() const
         std::to_string(static_cast<unsigned>(value)));
 }
 
-Optional<int32_t> SmallImmediate::getIntegerValue() const
+Optional<int32_t> SmallImmediate::getIntegerValue() const noexcept
 {
     if(value <= 15)
         // 0, ..., 15
@@ -372,7 +372,7 @@ Optional<int32_t> SmallImmediate::getIntegerValue() const
     return {};
 }
 
-Optional<float> SmallImmediate::getFloatingValue() const
+Optional<float> SmallImmediate::getFloatingValue() const noexcept
 {
     if(value >= 32 && value <= 39)
         // 1.0, ..., 128.0
@@ -383,12 +383,12 @@ Optional<float> SmallImmediate::getFloatingValue() const
     return {};
 }
 
-bool SmallImmediate::isVectorRotation() const
+bool SmallImmediate::isVectorRotation() const noexcept
 {
     return value >= 48 && value <= 63;
 }
 
-Optional<unsigned char> SmallImmediate::getRotationOffset() const
+Optional<unsigned char> SmallImmediate::getRotationOffset() const noexcept
 {
     if(!isVectorRotation())
         return {};
@@ -397,7 +397,7 @@ Optional<unsigned char> SmallImmediate::getRotationOffset() const
     return static_cast<unsigned char>(value - VECTOR_ROTATE_R5.value);
 }
 
-Optional<Literal> SmallImmediate::toLiteral() const
+Optional<Literal> SmallImmediate::toLiteral() const noexcept
 {
     if(auto intVal = getIntegerValue())
         return Literal(*intVal);
@@ -406,7 +406,7 @@ Optional<Literal> SmallImmediate::toLiteral() const
     return {};
 }
 
-Optional<SmallImmediate> SmallImmediate::fromInteger(signed char val)
+Optional<SmallImmediate> SmallImmediate::fromInteger(signed char val) noexcept
 {
     if(val < -16 || val > 15)
         return {};
@@ -560,12 +560,12 @@ bool Value::isZeroInitializer() const
         }));
 }
 
-bool Value::isLiteralValue() const
+bool Value::isLiteralValue() const noexcept
 {
     return checkLiteral() || checkImmediate();
 }
 
-Optional<Literal> Value::getLiteralValue() const
+Optional<Literal> Value::getLiteralValue() const noexcept
 {
     if(auto lit = checkLiteral())
         return *lit;

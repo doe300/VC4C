@@ -27,13 +27,13 @@ namespace vc4c
 
     template <typename T,
         typename R = typename std::conditional<std::numeric_limits<T>::is_signed, int32_t, uint32_t>::type>
-    R saturate(int64_t val)
+    CONST R saturate(int64_t val) noexcept
     {
         return static_cast<int32_t>(std::min(std::max(val, static_cast<int64_t>(std::numeric_limits<T>::min())),
             static_cast<int64_t>(std::numeric_limits<T>::max())));
     }
 
-    inline float saturate(double val)
+    CONST inline float saturate(double val) noexcept
     {
         return static_cast<float>(std::min(std::max(val, static_cast<double>(std::numeric_limits<float>::lowest())),
             static_cast<double>(std::numeric_limits<float>::max())));
@@ -150,8 +150,8 @@ namespace vc4c
         explicit constexpr Signaling(unsigned char val) noexcept : InstructionPart(val) {}
 
         std::string to_string() const;
-        bool hasSideEffects() const;
-        bool triggersReadOfR4() const;
+        bool hasSideEffects() const noexcept;
+        bool triggersReadOfR4() const noexcept;
     };
 
     /*
@@ -250,12 +250,12 @@ namespace vc4c
         std::string to_string() const;
 
         Optional<Value> operator()(const Value& val) const;
-        bool isPMBitSet() const;
-        inline bool isUnpackFromR4() const
+        bool isPMBitSet() const noexcept;
+        inline bool isUnpackFromR4() const noexcept
         {
             return isPMBitSet();
         }
-        bool hasEffect() const;
+        bool hasEffect() const noexcept;
 
         static const Unpack unpackTo32Bit(DataType type);
     };
@@ -351,12 +351,12 @@ namespace vc4c
         std::string to_string() const;
 
         Optional<Value> operator()(const Value& val, const VectorFlags& flags) const;
-        bool isPMBitSet() const;
-        inline bool supportsMulALU() const
+        bool isPMBitSet() const noexcept;
+        inline bool supportsMulALU() const noexcept
         {
             return isPMBitSet();
         }
-        bool hasEffect() const;
+        bool hasEffect() const noexcept;
     };
 
     /*
@@ -515,7 +515,7 @@ namespace vc4c
         SET_FLAGS = 1
     };
     std::string toString(SetFlag flag);
-    bool isFlagSetByMulALU(unsigned char opAdd, unsigned char opMul);
+    bool isFlagSetByMulALU(unsigned char opAdd, unsigned char opMul) noexcept;
 
     /*!
      * Write swap for add and multiply unit outputs
@@ -561,7 +561,7 @@ namespace vc4c
 
         bool matchesCondition(ConditionCode cond) const;
 
-        inline bool operator==(ElementFlags other) const
+        inline bool operator==(ElementFlags other) const noexcept
         {
             return zero == other.zero && negative == other.negative && carry == other.carry &&
                 overflow == other.overflow;
@@ -574,7 +574,7 @@ namespace vc4c
          *
          * NOTE: The carry and overflow flags are set to UNDEFINED
          */
-        static ElementFlags fromValue(const Value& val);
+        static ElementFlags fromValue(const Value& val) noexcept;
     };
 
     /*!
@@ -639,14 +639,14 @@ namespace vc4c
         {
         }
 
-        bool operator==(const OpCode& right) const;
-        bool operator!=(const OpCode& right) const;
-        bool operator<(const OpCode& right) const;
+        bool operator==(const OpCode& right) const noexcept;
+        bool operator!=(const OpCode& right) const noexcept;
+        bool operator<(const OpCode& right) const noexcept;
 
         /*
          * Whether the op-code can be executed on the add ALU
          */
-        constexpr bool runsOnAddALU() const
+        constexpr bool runsOnAddALU() const noexcept
         {
             return opAdd != 0;
         }
@@ -654,7 +654,7 @@ namespace vc4c
         /*
          * Whether the op-code can be executed on the mul ALU
          */
-        constexpr bool runsOnMulALU() const
+        constexpr bool runsOnMulALU() const noexcept
         {
             return opMul != 0;
         }
@@ -676,7 +676,7 @@ namespace vc4c
          * These definitions are taken from:
          * https://en.wikipedia.org/wiki/Idempotence
          */
-        bool isIdempotent() const;
+        bool isIdempotent() const noexcept;
 
         /*
          * Whether the operation is associative.
@@ -688,7 +688,7 @@ namespace vc4c
          * Taken from:
          * https://en.wikipedia.org/wiki/Associative_property
          */
-        bool isAssociative() const;
+        bool isAssociative() const noexcept;
 
         /*
          * Whether the operation is commutative.
@@ -700,7 +700,7 @@ namespace vc4c
          * Taken from:
          * https://en.wikipedia.org/wiki/Commutative_property
          */
-        bool isCommutative() const;
+        bool isCommutative() const noexcept;
 
         /*
          * Whether the operation ins left distributive over the given operation.
@@ -715,7 +715,7 @@ namespace vc4c
          *
          * NOTE: The distributivity does not hold for overflow!
          */
-        bool isLeftDistributiveOver(const OpCode& other) const;
+        bool isLeftDistributiveOver(const OpCode& other) const noexcept;
         /*
          * Whether the operation ins right distributive over the given operation.
          *
@@ -729,7 +729,7 @@ namespace vc4c
          *
          * NOTE: The distributivity does not hold for overflow!
          */
-        bool isRightDistributiveOver(const OpCode& other) const;
+        bool isRightDistributiveOver(const OpCode& other) const noexcept;
 
         /*
          * Returns the op-code for the given op-code name.

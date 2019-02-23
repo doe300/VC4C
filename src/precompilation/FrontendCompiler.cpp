@@ -350,8 +350,8 @@ void precompilation::optimizeLLVMText(
 
 void precompilation::compileOpenCLToLLVMIR(OpenCLSource&& source, const std::string& userOptions, LLVMIRResult& result)
 {
-    // This check has the positive side-effect that if the VC4CLStdLib LLVM module is missing but the PCH exists, then
-    // the compilation with PCH (a bit slower but functional) will be used.
+// This check has the positive side-effect that if the VC4CLStdLib LLVM module is missing but the PCH exists, then
+// the compilation with PCH (a bit slower but functional) will be used.
 #ifdef LLVM_LINK_PATH
     if(!Precompiler::findStandardLibraryFiles().llvmModule.empty())
         return compileOpenCLAndLinkModule(std::move(source), userOptions, result);

@@ -28,14 +28,17 @@ namespace vc4c
         class Instruction : protected Bitfield<uint64_t>
         {
         public:
-            Instruction();
-            explicit Instruction(uint64_t code);
+            constexpr Instruction() noexcept : Bitfield(0) {}
+            constexpr explicit Instruction(uint64_t code) noexcept : Bitfield(code) {}
 
             /*
              * Generates a string of custom assembler code for this instruction
              */
             std::string toASMString() const;
-            uint64_t toBinaryCode() const;
+            constexpr uint64_t toBinaryCode() const noexcept
+            {
+                return value;
+            }
             std::string toHexString(bool withAssemblerCode) const;
 
             /*

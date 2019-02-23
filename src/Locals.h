@@ -48,7 +48,7 @@ namespace vc4c
         /*
          * Whether this use is a writing use
          */
-        bool writesLocal() const
+        bool writesLocal() const noexcept
         {
             return numWrites > 0;
         }
@@ -56,7 +56,7 @@ namespace vc4c
         /*
          * Whether the corresponding user reads the corresponding Local
          */
-        bool readsLocal() const
+        bool readsLocal() const noexcept
         {
             return numReads > 0;
         }

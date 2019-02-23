@@ -32,7 +32,7 @@ namespace vc4c
     /*
      * Whether the argument is fixed to a single register-file
      */
-    bool isFixed(RegisterFile file);
+    CONST bool isFixed(RegisterFile file) noexcept;
 
     /*
      * Represents a single hardware-register.
@@ -56,12 +56,12 @@ namespace vc4c
          * Returns the accumulator-number for the physical register, if it represents an accumulator. Returns -1
          * otherwise.
          */
-        int getAccumulatorNumber() const;
+        int getAccumulatorNumber() const noexcept;
 
-        bool operator<(Register right) const;
-        bool operator>(Register right) const;
-        bool operator==(Register right) const;
-        bool operator!=(Register right) const
+        bool operator<(Register right) const noexcept;
+        bool operator>(Register right) const noexcept;
+        bool operator==(Register right) const noexcept;
+        bool operator!=(Register right) const noexcept
         {
             return !(*this == right);
         }
@@ -71,28 +71,28 @@ namespace vc4c
          *
          * The register-numbers 0 - 31 in both physical register-files are general purpose registers.
          */
-        bool isGeneralPurpose() const;
+        bool isGeneralPurpose() const noexcept;
 
         /*
          * Whether this register is an accumulator.
          */
-        bool isAccumulator() const;
+        bool isAccumulator() const noexcept;
         /*
          * Whether this register is a periphery-registers to access the tile-buffer (TLB)
          */
-        bool isTileBuffer() const;
+        bool isTileBuffer() const noexcept;
         /*
          * Whether this register is used to access the VPM
          */
-        bool isVertexPipelineMemory() const;
+        bool isVertexPipelineMemory() const noexcept;
         /*
          * Whether the register accesses the SFU
          */
-        bool isSpecialFunctionsUnit() const;
+        bool isSpecialFunctionsUnit() const noexcept;
         /*
          * Whether the register accesses the TMU periphery
          */
-        bool isTextureMemoryUnit() const;
+        bool isTextureMemoryUnit() const noexcept;
         /*
          * Whether reading this register has side-effects.
          *
@@ -101,7 +101,7 @@ namespace vc4c
          * - locking the hardware-mutex
          * - blocking until an operation has finished (e.g. reading VPM_WAIT)
          */
-        bool hasSideEffectsOnRead() const;
+        bool hasSideEffectsOnRead() const noexcept;
         /*
          * Whether writing this register has side-effects.
          *
@@ -111,22 +111,22 @@ namespace vc4c
          * - writing configuration-registers for periphery (e.g. vpw_setup, tmu_address)
          * - triggering a host-interrupt
          */
-        bool hasSideEffectsOnWrite() const;
+        bool hasSideEffectsOnWrite() const noexcept;
 
         /*
          * Whether this register can be read
          */
-        bool isReadable() const;
+        bool isReadable() const noexcept;
         /*
          * Whether this register can be written to
          */
-        bool isWriteable() const;
+        bool isWriteable() const noexcept;
 
         /*
          * Whether writing into this register triggers the result to appear in r4, e.g. by triggering an SFU calculation
          * or loading via TMU
          */
-        bool triggersReadOfR4() const;
+        bool triggersReadOfR4() const noexcept;
 
         static constexpr int INVALID_ACCUMULATOR{-1};
     };
@@ -423,36 +423,36 @@ namespace vc4c
         Literal& operator=(const Literal&) = default;
         Literal& operator=(Literal&&) noexcept = default;
 
-        bool operator==(const Literal& other) const;
-        inline bool operator!=(const Literal& other) const
+        bool operator==(const Literal& other) const noexcept;
+        inline bool operator!=(const Literal& other) const noexcept
         {
             return !(*this == other);
         }
-        bool operator<(const Literal& other) const;
+        bool operator<(const Literal& other) const noexcept;
 
         std::string to_string() const;
 
         /*
          * Whether this literal represents the boolean value true
          */
-        bool isTrue() const;
+        bool isTrue() const noexcept;
         /*
          * Bit-casts the stored value to a floating-point value
          */
-        float real() const;
+        float real() const noexcept;
         /*
          * Bit-casts the stored value to a signed value
          */
-        int32_t signedInt() const;
+        int32_t signedInt() const noexcept;
         /*
          * Bit-casts the stored value to an unsigned value
          */
-        uint32_t unsignedInt() const;
+        uint32_t unsignedInt() const noexcept;
 
         /*
          * Converts the stored value to a immediate-value which can be used in a load-immediate instruction.
          */
-        uint32_t toImmediate() const;
+        uint32_t toImmediate() const noexcept;
 
     private:
         /*
@@ -474,7 +474,7 @@ namespace vc4c
         static constexpr bool is_specialized = true;
         static constexpr Literal tombstone = Literal(optional_tombstone_tag{});
 
-        static constexpr bool isTombstone(const Literal& val)
+        static constexpr bool isTombstone(const Literal& val) noexcept
         {
             return val.type == LiteralType::TOMBSTONE;
         }
@@ -509,7 +509,7 @@ namespace vc4c
          * the field-values 16 - 31 map to the integer values -16 to -1.
          * So the range [-16, 15] can be represented by SmallImmediate objects.
          */
-        Optional<int32_t> getIntegerValue() const;
+        Optional<int32_t> getIntegerValue() const noexcept;
         /*
          * Returns the floating-point value represented by this object, if this object represents a floating-point
          * value.
@@ -518,11 +518,11 @@ namespace vc4c
          * the field-values 40 - 47 represent the constants 1/256.0, 1/128.0, ..., 1/2.
          * So every power of two from 1/256.0 to 128.0 can be represented by SmallImmediates.
          */
-        Optional<float> getFloatingValue() const;
+        Optional<float> getFloatingValue() const noexcept;
         /*
          * Returns whether the field-value represents a vector-rotation
          */
-        bool isVectorRotation() const;
+        bool isVectorRotation() const noexcept;
         /*
          * Returns the constant offset for vector-rotations, if this object represents one.
          *
@@ -532,21 +532,21 @@ namespace vc4c
          *
          * NOTE: vector-rotations can only be performed by the multiplication ALU.
          */
-        Optional<unsigned char> getRotationOffset() const;
+        Optional<unsigned char> getRotationOffset() const noexcept;
 
         /*
          * Returns the Literal value which is represented by this SmallImmediate object.
          *
          * For vector-rotation field-values, no value us returned.
          */
-        Optional<Literal> toLiteral() const;
+        Optional<Literal> toLiteral() const noexcept;
 
         /*
          * Tries to create a SmallImmediate object from the given integer-value.
          *
          * Returns a new object for an argument in the range [-16, 15] and an empty optional-value otherwise.
          */
-        static Optional<SmallImmediate> fromInteger(signed char val);
+        static Optional<SmallImmediate> fromInteger(signed char val) noexcept;
         /*
          * Creates a new object from the given constant vector-rotation offset.
          *
@@ -561,7 +561,7 @@ namespace vc4c
         static constexpr bool is_specialized = true;
         static constexpr SmallImmediate tombstone = SmallImmediate(255);
 
-        static constexpr bool isTombstone(SmallImmediate val)
+        static constexpr bool isTombstone(SmallImmediate val) noexcept
         {
             return val.value == 255;
         }
@@ -675,54 +675,54 @@ namespace vc4c
         /*
          * Returns a pointer to the data of the given type or nullptr if the data is not of the requested type.
          */
-        Register* checkRegister()
+        Register* checkRegister() noexcept
         {
             return VariantNamespace::get_if<Register>(&data);
         }
 
-        const Register* checkRegister() const
+        const Register* checkRegister() const noexcept
         {
             return VariantNamespace::get_if<Register>(&data);
         }
 
-        Literal* checkLiteral()
+        Literal* checkLiteral() noexcept
         {
             return VariantNamespace::get_if<Literal>(&data);
         }
 
-        const Literal* checkLiteral() const
+        const Literal* checkLiteral() const noexcept
         {
             return VariantNamespace::get_if<Literal>(&data);
         }
 
-        SmallImmediate* checkImmediate()
+        SmallImmediate* checkImmediate() noexcept
         {
             return VariantNamespace::get_if<SmallImmediate>(&data);
         }
 
-        const SmallImmediate* checkImmediate() const
+        const SmallImmediate* checkImmediate() const noexcept
         {
             return VariantNamespace::get_if<SmallImmediate>(&data);
         }
 
-        Local* checkLocal()
+        Local* checkLocal() noexcept
         {
             auto loc = VariantNamespace::get_if<Local*>(&data);
             return loc ? *loc : nullptr;
         }
 
-        const Local* checkLocal() const
+        const Local* checkLocal() const noexcept
         {
             auto loc = VariantNamespace::get_if<Local*>(&data);
             return loc ? *loc : nullptr;
         }
 
-        ContainerValue* checkContainer()
+        ContainerValue* checkContainer() noexcept
         {
             return VariantNamespace::get_if<ContainerValue>(&data);
         }
 
-        const ContainerValue* checkContainer() const
+        const ContainerValue* checkContainer() const noexcept
         {
             return VariantNamespace::get_if<ContainerValue>(&data);
         }
@@ -761,13 +761,13 @@ namespace vc4c
         /*
          * Whether this Value represents a literal value (e.g. contains a Literal or SmallImmediate)
          */
-        bool isLiteralValue() const;
+        bool isLiteralValue() const noexcept;
         /*
          * Returns the Literal stored in this Value.
          *
          * This function also converts a stored SmallImmediate into the corresponding Literal value
          */
-        Optional<Literal> getLiteralValue() const;
+        Optional<Literal> getLiteralValue() const noexcept;
 
         std::string to_string(bool writeAccess = false, bool withLiterals = false) const;
 

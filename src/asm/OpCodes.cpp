@@ -133,12 +133,12 @@ std::string Signaling::to_string() const
         CompilationStep::CODE_GENERATION, "Unsupported signal", std::to_string(static_cast<unsigned>(value)));
 }
 
-bool Signaling::hasSideEffects() const
+bool Signaling::hasSideEffects() const noexcept
 {
     return *this != SIGNAL_NONE && *this != SIGNAL_ALU_IMMEDIATE && *this != SIGNAL_LOAD_IMMEDIATE;
 }
 
-bool Signaling::triggersReadOfR4() const
+bool Signaling::triggersReadOfR4() const noexcept
 {
     return *this == SIGNAL_LOAD_ALPHA || *this == SIGNAL_LOAD_COLOR || *this == SIGNAL_LOAD_COLOR_END ||
         *this == SIGNAL_LOAD_COVERAGE || *this == SIGNAL_LOAD_TMU0 || *this == SIGNAL_LOAD_TMU1;
@@ -328,13 +328,13 @@ const Unpack Unpack::unpackTo32Bit(DataType type)
     throw CompilationError(CompilationStep::GENERAL, "Unhandled type-width for unpack-modes", type.to_string());
 }
 
-bool Unpack::isPMBitSet() const
+bool Unpack::isPMBitSet() const noexcept
 {
     // check whether pm bit set
     return value & 0x1;
 }
 
-bool Unpack::hasEffect() const
+bool Unpack::hasEffect() const noexcept
 {
     // exclude "normal" NOP and NOP with pm bit set
     return value != 0 && value != 1;
@@ -521,13 +521,13 @@ Optional<Value> Pack::operator()(const Value& val, const VectorFlags& flags) con
     return NO_VALUE;
 }
 
-bool Pack::isPMBitSet() const
+bool Pack::isPMBitSet() const noexcept
 {
     // check for pm bit set
     return value & 0x10;
 }
 
-bool Pack::hasEffect() const
+bool Pack::hasEffect() const noexcept
 {
     // exclude "normal" NOP and NOP with pm bit set
     return value != 0 && value != 0x10;
@@ -546,7 +546,7 @@ std::string vc4c::toString(const SetFlag flag)
         CompilationStep::CODE_GENERATION, "Unsupported set-flags flag", std::to_string(static_cast<unsigned>(flag)));
 }
 
-bool vc4c::isFlagSetByMulALU(unsigned char opAdd, unsigned char opMul)
+bool vc4c::isFlagSetByMulALU(unsigned char opAdd, unsigned char opMul) noexcept
 {
     // despite what the Broadcom specification states, only using mul ALU if add ALU executes nop.
     return opAdd == OP_NOP.opAdd && opMul != OP_NOP.opMul;
@@ -614,7 +614,7 @@ std::string ElementFlags::to_string() const
     return toFlagString(zero, 'z') + toFlagString(negative, 'n') + toFlagString(carry, 'c');
 }
 
-ElementFlags ElementFlags::fromValue(const Value& val)
+ElementFlags ElementFlags::fromValue(const Value& val) noexcept
 {
     ElementFlags flags;
     if(auto lit = val.getLiteralValue())
@@ -635,7 +635,7 @@ VectorFlags VectorFlags::fromValue(const Value& val)
     return {};
 }
 
-bool OpCode::operator==(const OpCode& right) const
+bool OpCode::operator==(const OpCode& right) const noexcept
 {
     if(opAdd > 0 && opAdd == right.opAdd)
         return true;
@@ -646,18 +646,18 @@ bool OpCode::operator==(const OpCode& right) const
     return false;
 }
 
-bool OpCode::operator!=(const OpCode& right) const
+bool OpCode::operator!=(const OpCode& right) const noexcept
 {
     return !(*this == right);
 }
 
-bool OpCode::operator<(const OpCode& right) const
+bool OpCode::operator<(const OpCode& right) const noexcept
 {
     return opAdd < right.opAdd || opMul < right.opMul;
 }
 
 // Taken from https://stackoverflow.com/questions/2835469/how-to-perform-rotate-shift-in-c?noredirect=1&lq=1
-static unsigned int rotate_right(unsigned int value, int shift)
+CONST static unsigned int rotate_right(unsigned int value, int shift) noexcept
 {
     if((shift &= 31) == 0)
         return value;
@@ -971,7 +971,7 @@ static const std::array<OpCode, 32> addCodes = {OP_NOP, OP_FADD, OP_FSUB, OP_FMI
 static const std::array<OpCode, 8> mulCodes = {
     OP_NOP, OP_FMUL, OP_MUL24, OP_V8MULD, OP_V8MIN, OP_V8MAX, OP_V8ADDS, OP_V8SUBS};
 
-bool OpCode::isIdempotent() const
+bool OpCode::isIdempotent() const noexcept
 {
     if(*this == OP_AND || *this == OP_FMAX || *this == OP_FMIN || *this == OP_MAX || *this == OP_MIN ||
         *this == OP_OR || *this == OP_V8MAX || *this == OP_V8MIN)
@@ -981,14 +981,14 @@ bool OpCode::isIdempotent() const
     return false;
 }
 
-bool OpCode::isAssociative() const
+bool OpCode::isAssociative() const noexcept
 {
     return *this == OP_ADD || *this == OP_AND || *this == OP_FADD || *this == OP_FMAX || *this == OP_FMAXABS ||
         *this == OP_FMIN || *this == OP_FMINABS || *this == OP_FMUL || *this == OP_MAX || *this == OP_MIN ||
         *this == OP_OR || *this == OP_V8MAX || *this == OP_V8MIN || *this == OP_XOR;
 }
 
-bool OpCode::isCommutative() const
+bool OpCode::isCommutative() const noexcept
 {
     return *this == OP_ADD || *this == OP_AND || *this == OP_FADD || *this == OP_FMAX || *this == OP_FMAXABS ||
         *this == OP_FMIN || *this == OP_FMINABS || *this == OP_FMUL || *this == OP_MAX || *this == OP_MIN ||
@@ -996,7 +996,7 @@ bool OpCode::isCommutative() const
         *this == OP_V8MULD || *this == OP_XOR;
 }
 
-bool OpCode::isLeftDistributiveOver(const OpCode& other) const
+bool OpCode::isLeftDistributiveOver(const OpCode& other) const noexcept
 {
     if(*this == OP_FMUL)
         return other == OP_FADD || other == OP_FSUB;
@@ -1009,7 +1009,7 @@ bool OpCode::isLeftDistributiveOver(const OpCode& other) const
     return false;
 }
 
-bool OpCode::isRightDistributiveOver(const OpCode& other) const
+bool OpCode::isRightDistributiveOver(const OpCode& other) const noexcept
 {
     if(*this == OP_FMUL)
         return other == OP_FADD || other == OP_FSUB;

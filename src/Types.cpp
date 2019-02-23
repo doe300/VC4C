@@ -109,7 +109,7 @@ std::string vc4c::toString(AddressSpace space, bool shortName)
         CompilationStep::GENERAL, "Unhandled address space", std::to_string(static_cast<int>(space)));
 }
 
-static ComplexType* toPointer(uintptr_t val)
+CONST static ComplexType* toPointer(uintptr_t val) noexcept
 {
     return reinterpret_cast<ComplexType*>(val);
 }
@@ -164,72 +164,72 @@ bool DataType::operator==(DataType right) const noexcept
         (*toPointer(getComplexType()) == *toPointer(right.getComplexType()));
 }
 
-bool DataType::isSimpleType() const
+bool DataType::isSimpleType() const noexcept
 {
     return getSimpleFlag();
 }
 
-bool DataType::isScalarType() const
+bool DataType::isScalarType() const noexcept
 {
     return getSimpleFlag() && getNumElements() == 1;
 }
 
-bool DataType::isVectorType() const
+bool DataType::isVectorType() const noexcept
 {
     return getSimpleFlag() && getNumElements() > 1;
 }
 
-const PointerType* DataType::getPointerType() const
+const PointerType* DataType::getPointerType() const noexcept
 {
     if(getSimpleFlag())
         return nullptr;
     return dynamic_cast<const PointerType*>(toPointer(getComplexType()));
 }
 
-const ArrayType* DataType::getArrayType() const
+const ArrayType* DataType::getArrayType() const noexcept
 {
     if(getSimpleFlag())
         return nullptr;
     return dynamic_cast<const ArrayType*>(toPointer(getComplexType()));
 }
 
-const StructType* DataType::getStructType() const
+const StructType* DataType::getStructType() const noexcept
 {
     if(getSimpleFlag())
         return nullptr;
     return dynamic_cast<const StructType*>(toPointer(getComplexType()));
 }
 
-const ImageType* DataType::getImageType() const
+const ImageType* DataType::getImageType() const noexcept
 {
     if(getSimpleFlag())
         return nullptr;
     return dynamic_cast<const ImageType*>(toPointer(getComplexType()));
 }
 
-bool DataType::isFloatingType() const
+bool DataType::isFloatingType() const noexcept
 {
     return getSimpleFlag() && getFloatingPoint();
 }
 
-bool DataType::isIntegralType() const
+bool DataType::isIntegralType() const noexcept
 {
     if(getPointerType())
         return true;
     return getSimpleFlag() && !getFloatingPoint();
 }
 
-bool DataType::isUnknown() const
+bool DataType::isUnknown() const noexcept
 {
     return getSimpleFlag() && getBitWidth() == DataType::UNKNOWN;
 }
 
-bool DataType::isLabelType() const
+bool DataType::isLabelType() const noexcept
 {
     return getSimpleFlag() && getBitWidth() == DataType::LABEL;
 }
 
-bool DataType::isVoidType() const
+bool DataType::isVoidType() const noexcept
 {
     return getSimpleFlag() && getBitWidth() == DataType::VOID;
 }
@@ -364,7 +364,7 @@ unsigned int DataType::getPhysicalWidth() const
     return getVectorWidth(true) * getScalarBitCount() / 8;
 }
 
-unsigned char DataType::getVectorWidth(bool physicalWidth) const
+unsigned char DataType::getVectorWidth(bool physicalWidth) const noexcept
 {
     auto numElements = getNumElements();
     if(!getSimpleFlag())

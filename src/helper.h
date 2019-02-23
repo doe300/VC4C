@@ -29,6 +29,12 @@
 #define FALL_THROUGH /* fall through */
 #endif
 
+// The function only reads its arguments and global state, has no side effect except its return value
+#define PURE __attribute__((pure))
+// The function only reads its arguments, has no side effect except its return value
+// Calling this function several times with the same arguments is guaranteed to return the same value
+#define CONST __attribute__((const))
+
 namespace vc4c
 {
     /*
@@ -76,7 +82,7 @@ namespace vc4c
      * Asserts a pointer to be non-null
      */
     template <typename T>
-    inline const T* checkPointer(const T* ptr)
+    CONST inline const T* checkPointer(const T* ptr)
     {
         if(ptr == nullptr)
             throw CompilationError(CompilationStep::GENERAL, "Tried to access a null-pointer!");
@@ -87,7 +93,7 @@ namespace vc4c
      * Asserts a pointer to be non-null
      */
     template <typename T>
-    inline T* checkPointer(T* ptr)
+    CONST inline T* checkPointer(T* ptr)
     {
         if(ptr == nullptr)
             throw CompilationError(CompilationStep::GENERAL, "Tried to access a null-pointer!");
@@ -98,7 +104,7 @@ namespace vc4c
      * Bit-casts a value between two types with the same bit-width
      */
     template <typename From, typename To>
-    inline To bit_cast(From in)
+    CONST inline To bit_cast(From in) noexcept
     {
         static_assert(sizeof(From) == sizeof(To), "Can't convert types from different sizes!");
         union {
@@ -113,7 +119,7 @@ namespace vc4c
      * Returns the bit-field with the additional flag set
      */
     template <typename Bitfield>
-    constexpr inline NODISCARD Bitfield add_flag(Bitfield orig, Bitfield flag)
+    CONST constexpr inline NODISCARD Bitfield add_flag(Bitfield orig, Bitfield flag) noexcept
     {
         return static_cast<Bitfield>(static_cast<unsigned>(orig) | static_cast<unsigned>(flag));
     }
@@ -122,7 +128,7 @@ namespace vc4c
      * Returns the bit-field with the additional flag being cleared
      */
     template <typename Bitfield>
-    constexpr inline NODISCARD Bitfield remove_flag(Bitfield orig, Bitfield flag)
+    CONST constexpr inline NODISCARD Bitfield remove_flag(Bitfield orig, Bitfield flag) noexcept
     {
         return static_cast<Bitfield>(static_cast<unsigned>(orig) & ~static_cast<unsigned>(flag));
     }
@@ -131,7 +137,7 @@ namespace vc4c
      * Returns whether the given flag is set in the bit-field
      */
     template <typename Bitfield>
-    constexpr inline bool has_flag(Bitfield field, Bitfield flag)
+    CONST constexpr inline bool has_flag(Bitfield field, Bitfield flag) noexcept
     {
         return (static_cast<unsigned>(field) & static_cast<unsigned>(flag)) == static_cast<unsigned>(flag);
     }
@@ -140,7 +146,7 @@ namespace vc4c
      * Returns a bit-field containing only the intersecting flags of the operands
      */
     template <typename Bitfield>
-    constexpr inline NODISCARD Bitfield intersect_flags(Bitfield field0, Bitfield field1)
+    CONST constexpr inline NODISCARD Bitfield intersect_flags(Bitfield field0, Bitfield field1) noexcept
     {
         return static_cast<Bitfield>(static_cast<unsigned>(field0) & static_cast<unsigned>(field1));
     }
@@ -149,7 +155,7 @@ namespace vc4c
      * Returns a bit-field containing all flags set in either of the operands
      */
     template <typename Bitfield>
-    constexpr inline NODISCARD Bitfield combine_flags(Bitfield field0, Bitfield field1)
+    CONST constexpr inline NODISCARD Bitfield combine_flags(Bitfield field0, Bitfield field1) noexcept
     {
         return static_cast<Bitfield>(static_cast<unsigned>(field0) | static_cast<unsigned>(field1));
     }
@@ -160,7 +166,7 @@ namespace vc4c
         return [memberFunc, args...](const T& val) -> R { return (val.*memberFunc)(std::forward<Args>(args)...); };
     }
 
-    constexpr inline bool isPowerTwo(uint32_t val)
+    CONST constexpr inline bool isPowerTwo(uint32_t val) noexcept
     {
         // https://en.wikipedia.org/wiki/Power_of_two#Fast_algorithm_to_check_if_a_positive_number_is_a_power_of_two
         return val > 0 && (val & (val - 1)) == 0;
@@ -170,7 +176,7 @@ namespace vc4c
      * To explicitly ignore return values of NODISCARD functions
      */
     template <typename T>
-    inline void ignoreReturnValue(T&& val)
+    inline void ignoreReturnValue(T&& val) noexcept
     {
     }
 } // namespace vc4c
