@@ -380,12 +380,11 @@ static intermediate::Sampler parseSampler(const spv_parsed_instruction_t* instru
     return tmp;
 }
 
-static Value parseConstant(const spv_parsed_instruction_t* instruction, const TypeMapping& typeMappings)
+static CompoundConstant parseConstant(const spv_parsed_instruction_t* instruction, const TypeMapping& typeMappings)
 {
-    Value constant(typeMappings.at(instruction->type_id));
+    CompoundConstant constant(typeMappings.at(instruction->type_id), UNDEFINED_LITERAL);
     if(instruction->num_words > 3)
     {
-        constant = Value(Literal(0u), typeMappings.at(instruction->type_id));
         //"Types 32 bits wide or smaller take one word."
         uint64_t val = getWord(instruction, 3);
         if(instruction->num_words > 4)
@@ -395,32 +394,33 @@ static Value parseConstant(const spv_parsed_instruction_t* instruction, const Ty
         if((val >> 32) != 0)
             throw CompilationError(
                 CompilationStep::PARSER, "Constant value is out of valid range", std::to_string(val));
-        constant.literal() = Literal(static_cast<uint32_t>(val));
+        constant = CompoundConstant(typeMappings.at(instruction->type_id), Literal(static_cast<uint32_t>(val)));
 
         if(constant.type.isFloatingType())
             // set correct type, just for cosmetic purposes
-            constant.literal().type = LiteralType::REAL;
+            constant = CompoundConstant(
+                typeMappings.at(instruction->type_id), Literal(bit_cast<uint32_t, float>(static_cast<uint32_t>(val))));
     }
     return constant;
 }
 
-static Value parseConstantComposite(const spv_parsed_instruction_t* instruction, const TypeMapping& typeMappings,
-    const ConstantMapping& constantMappings)
+static CompoundConstant parseConstantComposite(const spv_parsed_instruction_t* instruction,
+    const TypeMapping& typeMappings, const ConstantMapping& constantMappings)
 {
     DataType containerType = typeMappings.at(getWord(instruction, 1));
-    std::vector<Value> constants;
+    std::vector<CompoundConstant> constants;
     for(std::size_t i = 3; i < instruction->num_words; ++i)
     {
         //"Result Type must be a composite type, whose top-level members/elements/components/columns have the same type
         // as the types of the Constituents."
         // -> no heterogeneous composite possible
-        const Value element = constantMappings.at(instruction->words[i]);
+        auto element = constantMappings.at(instruction->words[i]);
         constants.push_back(element);
     }
-    return Value(ContainerValue{std::move(constants)}, containerType);
+    return CompoundConstant(containerType, std::move(constants));
 }
 
-static Optional<Value> specializeConstant(const uint32_t resultID, DataType type,
+static Optional<CompoundConstant> specializeConstant(const uint32_t resultID, DataType type,
     const FastMap<uint32_t, std::vector<std::pair<spv::Decoration, uint32_t>>>& decorations)
 {
     auto it = decorations.find(resultID);
@@ -428,9 +428,9 @@ static Optional<Value> specializeConstant(const uint32_t resultID, DataType type
     {
         Optional<uint32_t> res(getDecoration(it->second, spv::Decoration::SpecId));
         if(res)
-            return Value(Literal(res.value()), type);
+            return CompoundConstant(type, Literal(res.value()));
     }
-    return NO_VALUE;
+    return {};
 }
 
 static SPIRVMethod& getOrCreateMethod(const Module& module, MethodMapping& methods, const uint32_t id)
@@ -488,8 +488,8 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case spv::Op::OpNop:
         return SPV_SUCCESS;
     case spv::Op::OpUndef:
-        constantMappings.emplace(parsed_instruction->result_id, UNDEFINED_VALUE);
-        constantMappings.at(parsed_instruction->result_id).type = typeMappings.at(parsed_instruction->type_id);
+        constantMappings.emplace(parsed_instruction->result_id,
+            CompoundConstant(typeMappings.at(parsed_instruction->type_id), UNDEFINED_LITERAL));
         return SPV_SUCCESS;
     case spv::Op::OpSourceContinued:
         return SPV_SUCCESS;
@@ -592,16 +592,16 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         if(getWord(parsed_instruction, 2) == SpvExecutionModeLocalSizeId)
             //"Indicates the work-group size in the x, y, and z dimensions"
             metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES] = {
-                constantMappings.at(getWord(parsed_instruction, 3)).literal().unsignedInt(),
-                constantMappings.at(getWord(parsed_instruction, 4)).literal().unsignedInt(),
-                constantMappings.at(getWord(parsed_instruction, 5)).literal().unsignedInt()};
+                constantMappings.at(getWord(parsed_instruction, 3)).getScalar()->unsignedInt(),
+                constantMappings.at(getWord(parsed_instruction, 4)).getScalar()->unsignedInt(),
+                constantMappings.at(getWord(parsed_instruction, 5)).getScalar()->unsignedInt()};
         else if(getWord(parsed_instruction, 2) == SpvExecutionModeLocalSizeHintId)
             //"A hint to the compiler, which indicates the most likely to be used work-group size in the x, y, and z
             // dimensions"
             metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES_HINT] = {
-                constantMappings.at(getWord(parsed_instruction, 3)).literal().unsignedInt(),
-                constantMappings.at(getWord(parsed_instruction, 4)).literal().unsignedInt(),
-                constantMappings.at(getWord(parsed_instruction, 5)).literal().unsignedInt()};
+                constantMappings.at(getWord(parsed_instruction, 3)).getScalar()->unsignedInt(),
+                constantMappings.at(getWord(parsed_instruction, 4)).getScalar()->unsignedInt(),
+                constantMappings.at(getWord(parsed_instruction, 5)).getScalar()->unsignedInt()};
         else
             throw CompilationError(CompilationStep::PARSER, "Invalid execution mode");
         return SPV_SUCCESS;
@@ -682,7 +682,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         DataType elementType = typeMappings.at(getWord(parsed_instruction, 2));
         typeMappings.emplace(getWord(parsed_instruction, 1),
             module->createArrayType(elementType,
-                static_cast<unsigned>(constantMappings.at(getWord(parsed_instruction, 3)).literal().unsignedInt())));
+                static_cast<unsigned>(constantMappings.at(getWord(parsed_instruction, 3)).getScalar()->unsignedInt())));
         return SPV_SUCCESS;
     }
     case spv::Op::OpTypeStruct:
@@ -758,10 +758,10 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         // but so far, this instruction was never encountered
         return UNSUPPORTED_INSTRUCTION("spv::Op::OpTypeForwardPointer");
     case spv::Op::OpConstantTrue:
-        constantMappings.emplace(parsed_instruction->result_id, BOOL_TRUE);
+        constantMappings.emplace(parsed_instruction->result_id, CompoundConstant(TYPE_BOOL, Literal(true)));
         return SPV_SUCCESS;
     case spv::Op::OpConstantFalse:
-        constantMappings.emplace(parsed_instruction->result_id, BOOL_FALSE);
+        constantMappings.emplace(parsed_instruction->result_id, CompoundConstant(TYPE_BOOL, Literal(false)));
         return SPV_SUCCESS;
     case spv::Op::OpConstant: // integer or floating point scalar constant
         constantMappings.emplace(parsed_instruction->result_id, parseConstant(parsed_instruction, typeMappings));
@@ -772,8 +772,8 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     case spv::Op::OpConstantSampler: // convert to 32-bit integer constant
     {
-        Value sampler(Literal(static_cast<uint32_t>(parseSampler(parsed_instruction))),
-            typeMappings.at(parsed_instruction->type_id));
+        CompoundConstant sampler(typeMappings.at(parsed_instruction->type_id),
+            Literal(static_cast<uint32_t>(parseSampler(parsed_instruction))));
         constantMappings.emplace(parsed_instruction->result_id, sampler);
         return SPV_SUCCESS;
     }
@@ -788,9 +788,10 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         // constituent types."
         auto type = typeMappings.at(parsed_instruction->type_id);
         if(type.isScalarType() || type.isVectorType() || type.getPointerType())
-            constantMappings.emplace(parsed_instruction->result_id, Value(INT_ZERO.literal(), type));
+            constantMappings.emplace(parsed_instruction->result_id, CompoundConstant(type, Literal(0u)));
         else if(type.getArrayType())
-            constantMappings.emplace(parsed_instruction->result_id, INT_ZERO);
+            // TODO correct?
+            constantMappings.emplace(parsed_instruction->result_id, CompoundConstant(type, Literal(0u)));
         else
             throw CompilationError(CompilationStep::LLVM_2_IR, "Unhandled type for null constant", type.to_string());
 
@@ -816,32 +817,32 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     {
         //"[...] Similarly, the "True" and "False" parts of OpSpecConstantTrue and OpSpecConstantFalse provide the
         // default Boolean specialization constants."
-        const Optional<Value> spec = specializeConstant(parsed_instruction->result_id, TYPE_BOOL, decorationMappings);
-        constantMappings.emplace(parsed_instruction->result_id, spec.value_or(BOOL_TRUE));
+        auto spec = specializeConstant(parsed_instruction->result_id, TYPE_BOOL, decorationMappings);
+        constantMappings.emplace(
+            parsed_instruction->result_id, spec.value_or(CompoundConstant(TYPE_BOOL, Literal(true))));
         return SPV_SUCCESS;
     }
     case spv::Op::OpSpecConstantFalse:
     {
         //"[...] Similarly, the "True" and "False" parts of OpSpecConstantTrue and OpSpecConstantFalse provide the
         // default Boolean specialization constants."
-        const Optional<Value> spec = specializeConstant(parsed_instruction->result_id, TYPE_BOOL, decorationMappings);
-        constantMappings.emplace(parsed_instruction->result_id, spec.value_or(BOOL_FALSE));
+        auto spec = specializeConstant(parsed_instruction->result_id, TYPE_BOOL, decorationMappings);
+        constantMappings.emplace(
+            parsed_instruction->result_id, spec.value_or(CompoundConstant(TYPE_BOOL, Literal(false))));
         return SPV_SUCCESS;
     }
     case spv::Op::OpSpecConstant:
     {
         //"The literal operands to OpSpecConstant are the default numerical specialization constants."
-        const Value constant = parseConstant(parsed_instruction, typeMappings);
-        const Optional<Value> spec =
-            specializeConstant(parsed_instruction->result_id, constant.type, decorationMappings);
+        auto constant = parseConstant(parsed_instruction, typeMappings);
+        auto spec = specializeConstant(parsed_instruction->result_id, constant.type, decorationMappings);
         constantMappings.emplace(parsed_instruction->result_id, spec.value_or(constant));
         return SPV_SUCCESS;
     }
     case spv::Op::OpSpecConstantComposite:
     {
-        const Value constant = parseConstantComposite(parsed_instruction, typeMappings, constantMappings);
-        const Optional<Value> spec =
-            specializeConstant(parsed_instruction->result_id, constant.type, decorationMappings);
+        auto constant = parseConstantComposite(parsed_instruction, typeMappings, constantMappings);
+        auto spec = specializeConstant(parsed_instruction->result_id, constant.type, decorationMappings);
         constantMappings.emplace(parsed_instruction->result_id, spec.value_or(constant));
         return SPV_SUCCESS;
     }
@@ -850,7 +851,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         //"The OpSpecConstantOp instruction is specialized by executing the operation and replacing the instruction with
         // the result."
         const DataType type = typeMappings.at(parsed_instruction->type_id);
-        const Optional<Value> spec = specializeConstant(parsed_instruction->result_id, type, decorationMappings);
+        auto spec = specializeConstant(parsed_instruction->result_id, type, decorationMappings);
         if(spec)
         {
             constantMappings.emplace(parsed_instruction->result_id, spec.value());
@@ -860,7 +861,9 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         {
             const auto result = calculateConstantOperation(parsed_instruction);
             if(result.first == SPV_SUCCESS && result.second)
-                constantMappings.emplace(parsed_instruction->result_id, result.second.value());
+                // FIXME how to get Value to CompoundConstant??
+                // constantMappings.emplace(parsed_instruction->result_id, result.second.value());
+                throw CompilationError(CompilationStep::PARSER, "OpSpecConstantOp is currently not supported!");
             else if(result.first == SPV_SUCCESS)
                 // can't fall back to inserting the instruction, since there is no method associated with it!
                 throw CompilationError(CompilationStep::PARSER, "Failed to pre-calculate specialization value!");
@@ -905,7 +908,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         const std::string name =
             it != names.end() ? it->second : (std::string("%") + std::to_string(parsed_instruction->result_id));
         auto type = typeMappings.at(parsed_instruction->type_id);
-        Value val(type.getElementType());
+        CompoundConstant val(type.getElementType(), UNDEFINED_LITERAL);
         if(parsed_instruction->num_words > 4)
             val = constantMappings.at(getWord(parsed_instruction, 4));
         unsigned alignment = 0;
@@ -936,13 +939,13 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             // OpVariables outside of any function are global data
             isConstant = isConstant ||
                 static_cast<SpvStorageClass>(getWord(parsed_instruction, 3)) == SpvStorageClassUniformConstant;
-            module->globalData.emplace_back(Global(name, type, val, isConstant));
+            module->globalData.emplace_back(Global(name, type, CompoundConstant(val), isConstant));
             const_cast<unsigned&>(module->globalData.back().type.getPointerType()->alignment) = alignment;
             memoryAllocatedData.emplace(parsed_instruction->result_id, &module->globalData.back());
         }
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Reading variable: " << type.to_string() << " " << name
-                << " with value: " << val.to_string(false, true) << logging::endl);
+            log << "Reading variable: " << type.to_string() << " " << name << " with value: " << val.to_string(true)
+                << logging::endl);
         return SPV_SUCCESS;
     }
     case spv::Op::OpImageTexelPointer:
@@ -1005,7 +1008,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         // -> decorations are always forward references
         // -> can be applied to instruction/parameter/type on parsing it
         return parseDecoration(
-            parsed_instruction, parsed_instruction->num_words > 3 ? getWord(parsed_instruction, 3) : UNDEFINED_LITERAL);
+            parsed_instruction, parsed_instruction->num_words > 3 ? getWord(parsed_instruction, 3) : UNDEFINED_SCALAR);
     case spv::Op::OpDecorateId:
         //"Target is the <id> to decorate. It can potentially be any <id> that is a forward reference"
         // -> decorations are always forward references
@@ -1013,8 +1016,8 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         // In this version, the decoration operands are not literals, but specified by their IDs
         return parseDecoration(parsed_instruction,
             parsed_instruction->num_words > 3 ?
-                constantMappings.at(getWord(parsed_instruction, 3)).getLiteralValue()->unsignedInt() :
-                UNDEFINED_LITERAL);
+                constantMappings.at(getWord(parsed_instruction, 3)).getScalar()->unsignedInt() :
+                UNDEFINED_SCALAR);
     case spv::Op::OpMemberDecorate:
         return UNSUPPORTED_INSTRUCTION("OpMemberDecorate");
     case spv::Op::OpDecorationGroup:

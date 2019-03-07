@@ -58,8 +58,7 @@ Optional<Value> Expression::getConstantExpression() const
 
 bool Expression::hasConstantOperand() const
 {
-    return arg0.getLiteralValue() || arg0.checkContainer() ||
-        (arg1 && (arg1->getLiteralValue() || arg1->checkContainer()));
+    return arg0.getLiteralValue() || arg0.checkVector() || (arg1 && (arg1->getLiteralValue() || arg1->checkVector()));
 }
 
 Expression Expression::combineWith(const FastMap<const Local*, Expression>& inputs) const
@@ -91,11 +90,11 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
             return Expression{OP_V8MIN, expr0->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
     }
 
-    auto firstArgConstant = arg0.getLiteralValue() || arg0.checkContainer() ?
+    auto firstArgConstant = arg0.getLiteralValue() || arg0.checkVector() ?
         Optional<Value>(arg0) :
         expr0 ? expr0->getConstantExpression() : NO_VALUE;
 
-    auto secondArgConstant = arg1 && (arg1->getLiteralValue() || arg1->checkContainer()) ?
+    auto secondArgConstant = arg1 && (arg1->getLiteralValue() || arg1->checkVector()) ?
         arg1 :
         expr1 ? expr1->getConstantExpression() : NO_VALUE;
 

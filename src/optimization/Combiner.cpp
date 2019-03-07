@@ -6,6 +6,7 @@
 
 #include "Combiner.h"
 
+#include "../GlobalValues.h"
 #include "../InstructionWalker.h"
 #include "../analysis/ValueRange.h"
 #include "../intermediate/Helper.h"

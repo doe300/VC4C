@@ -126,9 +126,14 @@ namespace vc4c
     static_assert(sizeof(SmallImmediate) == sizeof(uint8_t), "");
     static_assert(sizeof(Optional<SmallImmediate>) == sizeof(SmallImmediate), "");
 
-    static_assert(std::is_default_constructible<ContainerValue>::value, "ContainerValue is not default constructible!");
-    static_assert(assert_assignable<ContainerValue>::value, "ContainerValue is not assignable!");
-    static_assert(std::is_destructible<ContainerValue>::value, "ContainerValue is not destructible!");
+    static_assert(assert_assignable<CompoundConstant>::value, "ContainerValue is not assignable!");
+    static_assert(std::is_destructible<CompoundConstant>::value, "ContainerValue is not destructible!");
+    static_assert(assert_stringifyable<CompoundConstant>::value, "SIMDVector is not stringify-able!");
+
+    static_assert(std::is_default_constructible<SIMDVector>::value, "SIMDVector is not default constructible!");
+    static_assert(assert_assignable<SIMDVector>::value, "SIMDVector is not assignable!");
+    static_assert(std::is_destructible<SIMDVector>::value, "SIMDVector is not destructible!");
+    static_assert(assert_hashable<SIMDVector>::value, "SIMDVector is not hashable!");
 
     static_assert(!std::is_default_constructible<Value>::value, "Value is default constructible!");
     static_assert(assert_assignable<Value>::value, "Value is not assignable!");

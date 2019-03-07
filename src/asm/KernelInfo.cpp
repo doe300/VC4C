@@ -6,6 +6,7 @@
 
 #include "KernelInfo.h"
 
+#include "../GlobalValues.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "Instruction.h"
 #include "log.h"
@@ -154,14 +155,14 @@ std::string KernelInfo::to_string() const
         ::to_string<ParamInfo>(parameters) + uniformsString;
 }
 
-static void toBinary(const Value& val, std::vector<uint8_t>& queue)
+static void toBinary(const CompoundConstant& val, std::vector<uint8_t>& queue)
 {
-    if(auto container = val.checkContainer())
+    if(auto container = val.getCompound())
     {
-        for(const Value& element : container->elements)
+        for(const auto& element : *container)
             toBinary(element, queue);
     }
-    else if(auto lit = val.checkLiteral())
+    else if(auto lit = val.getScalar())
     {
         switch(lit->type)
         {
@@ -212,7 +213,7 @@ static std::vector<uint8_t> generateDataSegment(const StableList<Global>& global
         {
             bytes.push_back(0);
         }
-        toBinary(global.value, bytes);
+        toBinary(global.initialValue, bytes);
     }
 
     // allocate space for stack

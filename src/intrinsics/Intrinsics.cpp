@@ -513,7 +513,7 @@ static NODISCARD InstructionWalker intrinsifyUnary(Method& method, InstructionWa
     {
         if(callSite->methodName.find(pair.first) != std::string::npos)
         {
-            if((arg.getLiteralValue() || arg.checkContainer()) && pair.second.unaryInstr &&
+            if((arg.getLiteralValue() || arg.checkVector()) && pair.second.unaryInstr &&
                 (result = pair.second.unaryInstr.value()(arg)))
             {
                 CPPLOG_LAZY(logging::Level::DEBUG,
@@ -734,7 +734,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
                 op->conditional, op->setFlags));
             it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
-        else if((arg1.isLiteralValue() || arg1.checkContainer()) && arg0.type.getScalarBitCount() <= 16)
+        else if((arg1.isLiteralValue() || arg1.checkVector()) && arg0.type.getScalarBitCount() <= 16)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying unsigned division by constant: " << op->to_string() << logging::endl);
@@ -781,7 +781,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
                 it.previousInBlock();
             }
         }
-        else if((arg1.isLiteralValue() || arg1.checkContainer()) && arg0.type.getScalarBitCount() <= 16)
+        else if((arg1.isLiteralValue() || arg1.checkVector()) && arg0.type.getScalarBitCount() <= 16)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying signed division by constant: " << op->to_string() << logging::endl);
@@ -834,7 +834,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
                 Value(Literal(arg1.getLiteralValue()->unsignedInt() - 1), arg1.type), op->conditional, op->setFlags));
             it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
-        else if((arg1.isLiteralValue() || arg1.checkContainer()) && arg0.type.getScalarBitCount() <= 16)
+        else if((arg1.isLiteralValue() || arg1.checkVector()) && arg0.type.getScalarBitCount() <= 16)
         {
             it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, *op, true);
         }
@@ -877,7 +877,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
                 it.previousInBlock();
             }
         }
-        else if((arg1.isLiteralValue() || arg1.checkContainer()) && arg0.type.getScalarBitCount() <= 16)
+        else if((arg1.isLiteralValue() || arg1.checkVector()) && arg0.type.getScalarBitCount() <= 16)
         {
             it = intrinsifySignedIntegerDivisionByConstant(method, it, *op, true);
         }
@@ -897,7 +897,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
                 Value(Literal(arg0.getLiteralValue()->real() / arg1.getLiteralValue()->real()), arg0.type),
                 op->conditional, op->setFlags));
         }
-        else if(arg1.getLiteralValue() || arg1.checkContainer())
+        else if(arg1.getLiteralValue() || arg1.checkVector())
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying floating division with multiplication of constant inverse: " << op->to_string()

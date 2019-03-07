@@ -191,10 +191,10 @@ InstructionWalker intermediate::insertVectorInsertion(
  * indices are actually undefined and therefore don't need to be copied from the second vector (e.g. by moving 3-element
  * vector into 4-element vector).
  */
-static bool checkIndicesNotUndefined(const ContainerValue& container, const unsigned int startIndex)
+static bool checkIndicesNotUndefined(const SIMDVector& container, const unsigned int startIndex)
 {
-    for(auto i = startIndex; i < container.elements.size(); ++i)
-        if(container.elements[i].isUndefined())
+    for(auto i = startIndex; i < container.size(); ++i)
+        if(container[i].isUndefined())
             return false;
     return true;
 }
@@ -246,7 +246,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         // initialize all values with the first index
         return intermediate::insertReplication(it, source0, destination);
     }
-    else if(!mask.checkContainer())
+    else if(!mask.checkVector())
     {
         if(source1.isUndefined())
             return insertDynamicVectorShuffle(it, method, destination, source0, mask);
@@ -265,13 +265,13 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
 
     // if all indices are ascending (correspond to the elements of source 0), we can simply copy it
     // if all indices point to the same, replicate this index over the vector
-    const auto& maskContainer = mask.container();
+    const auto& maskContainer = mask.vector();
     bool indicesCorrespond = maskContainer.isElementNumber();
     bool allIndicesSame = maskContainer.isAllSame();
     if(indicesCorrespond)
     {
         // the vector is copied in-order
-        if(maskContainer.elements.size() > source0.type.getVectorWidth() &&
+        if(mask.type.getVectorWidth() > source0.type.getVectorWidth() &&
             checkIndicesNotUndefined(maskContainer, source0.type.getVectorWidth()))
         {
             // The second vector participates in the shuffling
@@ -295,14 +295,11 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     }
     if(allIndicesSame)
     {
-        const int32_t indexValue =
-            maskContainer.elements[0].literal().signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ?
-            maskContainer.elements[0].literal().signedInt() :
-            maskContainer.elements[0].literal().signedInt() - static_cast<int32_t>(source0.type.getVectorWidth());
+        const int32_t indexValue = maskContainer[0].signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ?
+            maskContainer[0].signedInt() :
+            maskContainer[0].signedInt() - static_cast<int32_t>(source0.type.getVectorWidth());
         const Value source =
-            maskContainer.elements[0].literal().signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ?
-            source0 :
-            source1;
+            maskContainer[0].signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ? source0 : source1;
         // if all indices same, replicate
         Value tmp(UNDEFINED_VALUE);
         if(indexValue == 0)
@@ -323,21 +320,18 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     }
 
     // mask is container of literals, indices have arbitrary order
-    for(std::size_t i = 0; i < maskContainer.elements.size(); ++i)
+    for(std::size_t i = 0; i < maskContainer.size(); ++i)
     {
-        Value index = maskContainer.elements[i];
+        auto index = maskContainer[i];
         if(index.isUndefined())
             // don't write anything at this position
             continue;
-        if(!index.checkLiteral())
-            throw CompilationError(CompilationStep::GENERAL, "Invalid mask value", mask.to_string(false, true));
         const Value& container =
-            index.literal().signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ? source0 : source1;
-        if(index.literal().signedInt() >= static_cast<int32_t>(source0.type.getVectorWidth()))
-            index.literal() = Literal(index.literal().signedInt() - source0.type.getVectorWidth());
-        index.type = TYPE_INT8;
+            index.signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ? source0 : source1;
+        if(index.signedInt() >= static_cast<int32_t>(source0.type.getVectorWidth()))
+            index = Literal(index.signedInt() - source0.type.getVectorWidth());
         const Value tmp = method.addNewLocal(container.type.getElementType(), "%vector_shuffle");
-        it = insertVectorExtraction(it, method, container, index, tmp);
+        it = insertVectorExtraction(it, method, container, Value(index, TYPE_INT8), tmp);
         it = insertVectorInsertion(it, method, destination, Value(Literal(static_cast<int32_t>(i)), TYPE_INT8), tmp);
     }
     return it;
@@ -352,19 +346,16 @@ InstructionWalker intermediate::insertMakePositive(
         dest = isNegative ? Value(Literal(-lit->signedInt()), src.type) : src;
         writeIsNegative = isNegative ? INT_MINUS_ONE : INT_ZERO;
     }
-    else if(auto container = src.checkContainer())
+    else if(auto vector = src.checkVector())
     {
-        ContainerValue tmpDest(container->elements.size());
-        ContainerValue tmpNegative(container->elements.size());
-        for(const auto& elem : container->elements)
+        SIMDVector tmpDest;
+        SIMDVector tmpNegative;
+        for(unsigned i = 0; i < vector->size(); ++i)
         {
-            if(!elem.getLiteralValue())
-                throw CompilationError(CompilationStep::OPTIMIZER, "Can't handle container with non-literal values",
-                    src.to_string(false, true));
-            bool isNegative = elem.getLiteralValue()->signedInt() < 0;
-            tmpDest.elements.push_back(
-                isNegative ? Value(Literal(-elem.getLiteralValue()->signedInt()), elem.type) : elem);
-            tmpNegative.elements.push_back(isNegative ? INT_MINUS_ONE : INT_ZERO);
+            auto elem = (*vector)[i];
+            bool isNegative = elem.signedInt() < 0;
+            tmpDest[i] = isNegative ? Literal(-elem.signedInt()) : elem;
+            tmpNegative[i] = isNegative ? Literal(-1) : Literal(0u);
         }
         dest = Value(std::move(tmpDest), src.type);
         writeIsNegative = Value(std::move(tmpNegative), src.type);

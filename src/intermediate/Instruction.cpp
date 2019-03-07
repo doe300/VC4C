@@ -4,6 +4,7 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
+#include "../GlobalValues.h"
 #include "IntermediateInstruction.h"
 #include "log.h"
 
@@ -122,8 +123,8 @@ bool IntermediateInstruction::hasValueType(const ValueType type) const
         return false;
     switch(type)
     {
-    case ValueType::CONTAINER:
-        return output->checkContainer();
+    case ValueType::VECTOR:
+        return output->checkVector();
     case ValueType::LITERAL:
         return output->checkLiteral();
     case ValueType::LOCAL:
@@ -359,7 +360,7 @@ Optional<Value> IntermediateInstruction::getPrecalculatedValueForArg(
             return ELEMENT_NUMBERS;
         }
     }
-    else if(arg.checkContainer())
+    else if(arg.checkVector())
         return arg;
     return NO_VALUE;
 }

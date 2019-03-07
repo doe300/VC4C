@@ -46,7 +46,7 @@ static Value getValue(const uint32_t id, Method& method, const TypeMapping& type
 {
     auto cit = constants.find(id);
     if(cit != constants.end())
-        return cit->second;
+        return cit->second.toValue().value_or(UNDEFINED_VALUE);
     auto mit = memoryAllocated.find(id);
     if(mit != memoryAllocated.end())
         return mit->second->createReference();
@@ -124,8 +124,9 @@ void SPIRVInstruction::mapInstruction(TypeMapping& types, ConstantMapping& const
 Optional<Value> SPIRVInstruction::precalculate(
     const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
-    const Value& op1 = constants.at(operands.at(0));
-    const Value op2 = operands.size() > 1 ? constants.at(operands[1]) : UNDEFINED_VALUE;
+    const Value op1 = constants.at(operands.at(0)).toValue().value_or(UNDEFINED_VALUE);
+    const Value op2 =
+        operands.size() > 1 ? constants.at(operands[1]).toValue().value_or(UNDEFINED_VALUE) : UNDEFINED_VALUE;
 
     if(opcode == "fptoui")
         return Value(Literal(static_cast<uint32_t>(op1.literal().real())), TYPE_INT32);
@@ -183,7 +184,7 @@ Optional<Value> SPIRVInstruction::precalculate(
         // in C++, unsigned right shift is logical (fills with zeroes)
         return Value(Literal(op1.literal().unsignedInt() >> op2.literal().signedInt()), op1.type);
     if(opcode == "asr")
-        return Value(intermediate::asr(op1.type, op1.literal(), op2.literal()), op1.type);
+        return Value(intermediate::asr(op1.literal(), op2.literal()), op1.type);
     if(opcode == "shl")
         return Value(Literal(op1.literal().unsignedInt() << op2.literal().signedInt()), op1.type);
 
@@ -214,8 +215,8 @@ void SPIRVComparison::mapInstruction(TypeMapping& types, ConstantMapping& consta
 Optional<Value> SPIRVComparison::precalculate(
     const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
-    const Value& op1 = constants.at(operands.at(0));
-    const Value& op2 = constants.at(operands.at(1));
+    const Value op1 = constants.at(operands.at(0)).toValue().value_or(UNDEFINED_VALUE);
+    const Value op2 = constants.at(operands.at(1)).toValue().value_or(UNDEFINED_VALUE);
 
     if(intermediate::COMP_EQ == opcode)
         return op1 == op2 ? BOOL_TRUE : BOOL_FALSE;
@@ -316,7 +317,7 @@ Optional<Value> SPIRVReturn::precalculate(
     const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
     if(returnValue && constants.find(returnValue.value()) != constants.end())
-        return constants.at(returnValue.value());
+        return constants.at(returnValue.value()).toValue();
     return NO_VALUE;
 }
 
@@ -369,7 +370,7 @@ SPIRVLabel::SPIRVLabel(const uint32_t id, SPIRVMethod& method) :
 {
 }
 
-void SPIRVLabel::mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants,
+void SPIRVLabel::mapInstruction(std::map<uint32_t, DataType>& types, ConstantMapping& constants,
     std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods,
     std::map<uint32_t, Local*>& memoryAllocated)
 {
@@ -452,13 +453,15 @@ Optional<Value> SPIRVConversion::precalculate(
     auto it = constants.find(sourceID);
     if(it != constants.end())
     {
-        const Value& source = it->second;
+        auto source = it->second.toValue();
+        if(!source)
+            return NO_VALUE;
         Value dest(UNDEFINED_VALUE);
         auto destType = types.at(typeID);
         switch(type)
         {
         case ConversionType::BITCAST:
-            dest = source;
+            dest = *source;
             dest.type = destType;
             return dest;
         case ConversionType::FLOATING:
@@ -615,7 +618,7 @@ Optional<Value> SPIRVCopy::precalculate(
 {
     auto it = constants.find(sourceID);
     if(it != constants.end())
-        return it->second;
+        return it->second.toValue();
     return NO_VALUE;
 }
 
@@ -648,25 +651,27 @@ void SPIRVShuffle::mapInstruction(TypeMapping& types, ConstantMapping& constants
     }
     else // all indices are literal values
     {
-        ContainerValue indices(this->indices.size());
+        SIMDVector indices;
         bool allIndicesUndef = true;
         bool allIndicesZero = true;
+        unsigned char numIndex = 0;
         for(const uint32_t index : this->indices)
         {
             //"A Component literal may also be FFFFFFFF, which means the corresponding result component has no source
             // and is undefined"
-            if(index == UNDEFINED_LITERAL)
+            if(index == UNDEFINED_SCALAR)
             {
-                indices.elements.emplace_back(UNDEFINED_VALUE);
+                indices[numIndex] = UNDEFINED_LITERAL;
             }
             else
             {
                 allIndicesUndef = false;
-                if(index != 0 && index != UNDEFINED_LITERAL)
+                if(index != 0 && index != UNDEFINED_SCALAR)
                     // accept UNDEF as zero, so i.e. (0,0,0,UNDEF) can be simplified as all-zero
                     allIndicesZero = false;
-                indices.elements.emplace_back(Literal(index), TYPE_INT8);
+                indices[numIndex] = Literal(index);
             }
+            ++numIndex;
         }
 
         if(allIndicesUndef)
@@ -684,8 +689,8 @@ void SPIRVShuffle::mapInstruction(TypeMapping& types, ConstantMapping& constants
         intermediate::insertVectorShuffle(method.method->appendToEnd(), *method.method, dest, src0, src1, index));
 }
 
-Optional<Value> SPIRVShuffle::precalculate(const std::map<uint32_t, DataType>& types,
-    const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
+Optional<Value> SPIRVShuffle::precalculate(const std::map<uint32_t, DataType>& types, const ConstantMapping& constants,
+    const std::map<uint32_t, Local*>& memoryAllocated) const
 {
     return NO_VALUE;
 }
@@ -725,7 +730,12 @@ Optional<Value> SPIRVIndexOf::precalculate(
     Value container(UNDEFINED_VALUE);
     auto cit = constants.find(this->container);
     if(cit != constants.end())
-        container = cit->second;
+    {
+        if(auto val = cit->second.toValue())
+            container = *val;
+        else
+            return NO_VALUE;
+    }
     else if(memoryAllocated.find(this->container) != memoryAllocated.end())
         container = memoryAllocated.at(this->container)->createReference();
     else
@@ -737,7 +747,7 @@ Optional<Value> SPIRVIndexOf::precalculate(
     std::vector<Value> indexValues;
     indexValues.reserve(indices.size());
     std::for_each(indices.begin(), indices.end(),
-        [&indexValues, &constants](uint32_t index) { indexValues.push_back(constants.at(index)); });
+        [&indexValues, &constants](uint32_t index) { indexValues.push_back(*constants.at(index).toValue()); });
 
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Pre-calculating indices of " << container.to_string() << logging::endl);
 
@@ -860,19 +870,19 @@ void SPIRVSelect::mapInstruction(TypeMapping& types, ConstantMapping& constants,
     method.method->appendToEnd(new intermediate::MoveOperation(dest, sourceFalse, COND_ZERO_SET));
 }
 
-Optional<Value> SPIRVSelect::precalculate(const std::map<uint32_t, DataType>& types,
-    const std::map<uint32_t, Value>& constants, const std::map<uint32_t, Local*>& memoryAllocated) const
+Optional<Value> SPIRVSelect::precalculate(const std::map<uint32_t, DataType>& types, const ConstantMapping& constants,
+    const std::map<uint32_t, Local*>& memoryAllocated) const
 {
     auto it = constants.find(condID);
     if(it != constants.end())
     {
-        if(it->second.literal().isTrue() && constants.find(trueID) != constants.end())
+        if(it->second.getScalar()->isTrue() && constants.find(trueID) != constants.end())
         {
-            return constants.at(trueID);
+            return constants.at(trueID).toValue();
         }
-        if(!it->second.literal().isTrue() && constants.find(falseID) != constants.end())
+        if(!it->second.getScalar()->isTrue() && constants.find(falseID) != constants.end())
         {
-            return constants.at(falseID);
+            return constants.at(falseID).toValue();
         }
     }
     return NO_VALUE;
@@ -916,13 +926,16 @@ Optional<Value> SPIRVSwitch::precalculate(
     auto it = constants.find(selectorID);
     if(it != constants.end())
     {
-        const Value& selector = it->second;
+        auto val = it->second.toValue();
+        if(!val)
+            return NO_VALUE;
+        const Value& selector = *val;
         for(const auto& pair : destinations)
         {
             it = constants.find(pair.second);
             if(selector.hasLiteral(Literal(pair.first)) && it != constants.end())
             {
-                return it->second;
+                return it->second.toValue();
             }
         }
     }

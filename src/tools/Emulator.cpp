@@ -6,6 +6,7 @@
 
 #include "Emulator.h"
 
+#include "../GlobalValues.h"
 #include "../Profiler.h"
 #include "../asm/ALUInstruction.h"
 #include "../asm/BranchInstruction.h"
@@ -28,7 +29,7 @@
 using namespace vc4c;
 using namespace vc4c::tools;
 
-extern std::vector<vc4c::Value> toLoadedValues(uint32_t mask, vc4c::intermediate::LoadType type);
+extern SIMDVector toLoadedValues(uint32_t mask, vc4c::intermediate::LoadType type);
 
 extern void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, StableList<Global>& globals,
     std::vector<qpu_asm::Instruction>& instructions);
@@ -126,14 +127,14 @@ const tools::Word* Memory::getWordAddress(MemoryAddress address) const
     throw CompilationError(CompilationStep::GENERAL, "Address is not part of any buffer", std::to_string(address));
 }
 
-Value Memory::readWord(MemoryAddress address) const
+tools::Word Memory::readWord(MemoryAddress address) const
 {
     if(address % sizeof(Word) != 0)
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Reading word from non-word-aligned memory location will be truncated to align with "
                    "word-boundaries: "
                 << address << logging::endl);
-    return Value(Literal(*getWordAddress(address)), TYPE_INT32);
+    return *getWordAddress(address);
 }
 
 MemoryAddress Memory::incrementAddress(MemoryAddress address, DataType typeSize) const
@@ -193,10 +194,11 @@ static std::string toRegisterWriteString(const Value& val, std::bitset<16> eleme
         return val.to_string(true, true);
     std::vector<std::string> parts;
     parts.reserve(NATIVE_VECTOR_SIZE);
-    auto valContainer = val.checkContainer();
+    auto valVector = val.checkVector();
+    auto elementType = val.type.toVectorType(1);
     for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
     {
-        const Value& element = valContainer ? valContainer->elements[i] : val;
+        const Value& element = valVector ? Value((*valVector)[i], elementType) : val;
         if(elementMask.test(i))
             parts.emplace_back(element.to_string(false, true));
         else
@@ -218,15 +220,15 @@ void Registers::writeRegister(Register reg, const Value& val, std::bitset<16> el
 {
     // set the types of the elements to the type of the container
     Value modifiedValue(val);
-    if(auto container = modifiedValue.checkContainer())
+    auto elementType = modifiedValue.type.toVectorType(1);
+    if(auto vector = modifiedValue.checkVector())
     {
         for(unsigned i = 0; i < elementMask.size(); ++i)
         {
             if(elementMask.test(i))
             {
-                auto& element = container->elements.at(i);
-                element.type = modifiedValue.type.toVectorType(1);
-                element.literal().type = getLiteralType(modifiedValue.type.toVectorType(1));
+                auto& element = vector->at(i);
+                element.type = getLiteralType(elementType);
             }
         }
     }
@@ -368,7 +370,7 @@ void Registers::clearReadCache()
 
 Value Registers::getActualValue(const Value& val)
 {
-    if(val.checkContainer())
+    if(val.checkVector())
         return val;
     if(val.checkLiteral())
         return val;
@@ -393,6 +395,7 @@ Value Registers::readStorageRegister(Register reg)
     auto it = storageRegisters.find(reg);
     if(it == storageRegisters.end())
     {
+        // TODO for ALU operations which are not actually executed (e.g. flags do not match), this leads to confusion
         logging::warn() << "Reading from register not previously defined: " << reg.to_string() << logging::endl;
         return UNDEFINED_VALUE;
     }
@@ -408,15 +411,15 @@ static Value toStorageValue(const Value& oldVal, const Value& newVal, std::bitse
         return newVal;
     if(elementMask.none())
         return oldVal;
-    ContainerValue result(NATIVE_VECTOR_SIZE);
-    auto newContainer = newVal.checkContainer();
-    auto oldContainer = oldVal.checkContainer();
+    SIMDVector result;
+    auto newVector = newVal.checkVector();
+    auto oldVector = oldVal.checkVector();
 
     for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
     {
-        const Value& newElement = newContainer ? newContainer->elements[i] : newVal;
-        const Value& oldElement = oldContainer ? oldContainer->elements[i] : oldVal;
-        result.elements.emplace_back(elementMask.test(i) ? newElement : oldElement);
+        auto newElement = newVector ? (*newVector)[i] : newVal.literal();
+        auto oldElement = oldVector ? (*oldVector)[i] : oldVal.literal();
+        result[i] = elementMask.test(i) ? newElement : oldElement;
     }
     return Value(std::move(result), newVal.type);
 }
@@ -441,12 +444,12 @@ void Registers::writeStorageRegister(Register reg, Value&& val, std::bitset<16> 
             storageRegisters.at(REG_ACC5) = actualValue;
             return;
         }
-        const auto& elements = actualValue.container().elements;
+        const auto& elements = actualValue.vector();
         if(reg.file == RegisterFile::PHYSICAL_A)
         {
             // per-quad replication
             storageRegisters.at(REG_ACC5) =
-                Value(ContainerValue({elements[0], elements[0], elements[0], elements[0], elements[4], elements[4],
+                Value(SIMDVector({elements[0], elements[0], elements[0], elements[0], elements[4], elements[4],
                           elements[4], elements[4], elements[8], elements[8], elements[8], elements[8], elements[12],
                           elements[12], elements[12], elements[12]}),
                     actualValue.type.toVectorType(16));
@@ -454,8 +457,7 @@ void Registers::writeStorageRegister(Register reg, Value&& val, std::bitset<16> 
         else if(reg.file == RegisterFile::PHYSICAL_B)
         {
             // across all elements replication
-            storageRegisters.at(REG_ACC5) =
-                Value(elements[0].getLiteralValue().value(), actualValue.type.toVectorType(16));
+            storageRegisters.at(REG_ACC5) = Value(elements[0], actualValue.type.toVectorType(16));
         }
         else
             throw CompilationError(CompilationStep::GENERAL,
@@ -477,7 +479,7 @@ Value UniformCache::readUniform()
     if(lastAddressSetCycle != 0 && lastAddressSetCycle + 2 > qpu.getCurrentCycle())
         // see Broadcom specification, page 22
         throw CompilationError(CompilationStep::GENERAL, "Reading UNIFORM within 2 cycles of last UNIFORM reset!");
-    Value val = memory.readWord(uniformAddress);
+    Value val(Literal(memory.readWord(uniformAddress)), TYPE_INT32);
     // do not increment UNIFORM pointer for multiple reads in same instruction
     uniformAddress = memory.incrementAddress(uniformAddress, TYPE_INT32);
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Reading UNIFORM value: " << val.to_string(false, true) << logging::endl);
@@ -492,9 +494,10 @@ void UniformCache::setUniformAddress(const Value& val)
         uniformAddress = lit->toImmediate();
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Reset UNIFORM address to: " << uniformAddress << logging::endl);
     }
-    else if(auto container = val.checkContainer())
+    else if(auto vector = val.checkVector())
         // see Broadcom specification, page 22
-        setUniformAddress(container->elements[0]);
+        // TODO conversion to Value and back to Literal is inefficient
+        setUniformAddress(Value((*vector)[0], TYPE_INT32));
     else
         throw CompilationError(CompilationStep::GENERAL, "Invalid value to set as uniform address", val.to_string());
     lastAddressSetCycle = qpu.getCurrentCycle();
@@ -539,9 +542,10 @@ void TMUs::setTMUNoSwap(Value&& swapVal)
 {
     if(swapVal.getLiteralValue())
         tmuNoSwap = swapVal.getLiteralValue()->isTrue();
-    else if(auto container = swapVal.checkContainer())
+    else if(auto vector = swapVal.checkVector())
         // XXX or per-element?
-        setTMUNoSwap(std::move(container->elements[0]));
+        // TODO conversion to Value and back to Literal is inefficient
+        setTMUNoSwap(Value((*vector)[0], TYPE_INT32));
     else
         throw CompilationError(
             CompilationStep::GENERAL, "Invalid value to set as uniform address", swapVal.to_string());
@@ -614,11 +618,12 @@ void TMUs::checkTMUWriteCycle() const
 
 Value TMUs::readMemoryAddress(const Value& address) const
 {
-    ContainerValue res(NATIVE_VECTOR_SIZE);
-    auto addressContainer = address.checkContainer();
+    SIMDVector res;
+    auto addressVector = address.checkVector();
     for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
     {
-        const Value& element = addressContainer ? addressContainer->elements[i] : address;
+        // TODO conversion to Value and back to Literal is inefficient
+        const Value& element = addressVector ? Value((*addressVector)[i], TYPE_INT32) : address;
         // TODO this is true for the real TMU, but we can have an offset of zero in the emulator
         //			if(element == INT_ZERO)
         //				//reading an address of zero disables TMU load for that element
@@ -628,7 +633,7 @@ Value TMUs::readMemoryAddress(const Value& address) const
             throw CompilationError(
                 CompilationStep::GENERAL, "Cannot read from undefined TMU address", address.to_string());
         else
-            res.elements.emplace_back(memory.readWord(element.getLiteralValue()->toImmediate()));
+            res[i] = Literal(memory.readWord(element.getLiteralValue()->toImmediate()));
     }
     Value result(std::move(res), TYPE_INT32);
     CPPLOG_LAZY(logging::Level::DEBUG,
@@ -667,13 +672,9 @@ static Value calcSFU(Value&& in, const std::function<float(float)>& func)
         return Value(Literal(func(static_cast<float>(lit->real()))), TYPE_FLOAT);
     if(in.isUndefined())
         throw CompilationError(CompilationStep::GENERAL, "Cannot calculate SFU operation with undefined operand");
-    if(auto container = in.checkContainer())
+    if(auto vector = in.checkVector())
     {
-        ContainerValue res(container->elements.size());
-        for(Value& val : container->elements)
-        {
-            res.elements.emplace_back(calcSFU(std::move(val), func));
-        }
+        SIMDVector res = vector->transform([&](Literal in) -> Literal { return Literal(func(in.real())); });
         return Value(std::move(res), in.type);
     }
     throw CompilationError(CompilationStep::GENERAL, "Invalid value to use as SFU-parameter", in.to_string());
@@ -761,30 +762,30 @@ Value VPM::readValue()
     {
     case 0: // Byte
     {
-        ContainerValue tmp(NATIVE_VECTOR_SIZE);
+        SIMDVector tmp;
         for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
         {
-            tmp.elements.emplace_back(Literal((dataPtr[i / 4] >> ((i % 4) * 8)) & 0xFF), TYPE_INT8);
+            tmp[i] = Literal((dataPtr[i / 4] >> ((i % 4) * 8)) & 0xFF);
         }
         result = Value(std::move(tmp), TYPE_INT8.toVectorType(NATIVE_VECTOR_SIZE));
         break;
     }
     case 1: // Half-word
     {
-        ContainerValue tmp(NATIVE_VECTOR_SIZE);
+        SIMDVector tmp;
         for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
         {
-            tmp.elements.emplace_back(Literal((dataPtr[i / 2] >> ((i % 2) * 16)) & 0xFFFF), TYPE_INT16);
+            tmp[i] = Literal((dataPtr[i / 2] >> ((i % 2) * 16)) & 0xFFFF);
         }
         result = Value(std::move(tmp), TYPE_INT16.toVectorType(NATIVE_VECTOR_SIZE));
         break;
     }
     case 2: // Word
     {
-        ContainerValue tmp(NATIVE_VECTOR_SIZE);
+        SIMDVector tmp;
         for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
         {
-            tmp.elements.emplace_back(Literal(dataPtr[i]), TYPE_INT32);
+            tmp[i] = Literal(dataPtr[i]);
         }
         result = Value(std::move(tmp), TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE));
         break;
@@ -827,39 +828,39 @@ void VPM::writeValue(Value&& val)
     {
     case 0: // Byte
     {
-        auto valContainer = val.checkContainer();
+        auto valVector = val.checkVector();
         for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
         {
-            const Value& element = valContainer ? valContainer->elements[i] : val;
+            auto element = valVector ? (*valVector)[i] : val.getLiteralValue();
             dataPtr[i / 4] &= ~(0xFF << ((i % 4) * 8));
-            if(auto lit = element.getLiteralValue())
+            if(element)
                 // non-literal (e.g. undefined possible, simply skip writing element)
-                dataPtr[i / 4] |= static_cast<Word>(lit->unsignedInt() & 0xFF) << ((i % 4) * 8);
+                dataPtr[i / 4] |= static_cast<Word>(element->unsignedInt() & 0xFF) << ((i % 4) * 8);
         }
         break;
     }
     case 1: // Half-word
     {
-        auto valContainer = val.checkContainer();
+        auto valVector = val.checkVector();
         for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
         {
-            const Value& element = valContainer ? valContainer->elements[i] : val;
+            auto element = valVector ? (*valVector)[i] : val.getLiteralValue();
             dataPtr[i / 2] &= ~(0xFFFF << ((i % 2) * 16));
-            if(auto lit = element.getLiteralValue())
+            if(element)
                 // non-literal (e.g. undefined possible, simply skip writing element)
-                dataPtr[i / 2] |= static_cast<Word>(lit->unsignedInt() & 0xFFFF) << ((i % 2) * 16);
+                dataPtr[i / 2] |= static_cast<Word>(element->unsignedInt() & 0xFFFF) << ((i % 2) * 16);
         }
         break;
     }
     case 2: // Word
     {
-        auto valContainer = val.checkContainer();
+        auto valVector = val.checkVector();
         for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
         {
-            const Value& element = valContainer ? valContainer->elements[i] : val;
-            if(auto lit = element.getLiteralValue())
+            auto element = valVector ? (*valVector)[i] : val.getLiteralValue();
+            if(element)
                 // non-literal (e.g. undefined possible, simply skip writing element)
-                dataPtr[i] = static_cast<Word>(lit->unsignedInt());
+                dataPtr[i] = static_cast<Word>(element->unsignedInt());
         }
         break;
     }
@@ -878,7 +879,8 @@ void VPM::writeValue(Value&& val)
 
 void VPM::setWriteSetup(Value&& val)
 {
-    const Value& element0 = val.checkContainer() ? val.container().elements[0] : val;
+    // TODO conversion to Value and back to Literal is inefficient
+    const Value& element0 = val.checkVector() ? Value(val.vector()[0], TYPE_INT32) : val;
     if(element0.isUndefined())
         throw CompilationError(CompilationStep::GENERAL, "Undefined VPM setup value", val.to_string());
     periphery::VPWSetup setup = periphery::VPWSetup::fromLiteral(element0.getLiteralValue()->unsignedInt());
@@ -896,7 +898,8 @@ void VPM::setWriteSetup(Value&& val)
 
 void VPM::setReadSetup(Value&& val)
 {
-    const Value& element0 = val.checkContainer() ? val.container().elements[0] : val;
+    // TODO conversion to Value and back to Literal is inefficient
+    const Value& element0 = val.checkVector() ? Value(val.vector()[0], TYPE_INT32) : val;
     if(element0.isUndefined())
         throw CompilationError(CompilationStep::GENERAL, "Undefined VPM setup value", val.to_string());
     periphery::VPRSetup setup = periphery::VPRSetup::fromLiteral(element0.getLiteralValue()->unsignedInt());
@@ -914,7 +917,8 @@ void VPM::setReadSetup(Value&& val)
 
 void VPM::setDMAWriteAddress(Value&& val)
 {
-    const Value& element0 = val.checkContainer() ? val.container().elements[0] : val;
+    // TODO conversion to Value and back to Literal is inefficient
+    const Value& element0 = val.checkVector() ? Value(val.vector()[0], TYPE_INT32) : val;
     if(element0.isUndefined())
         throw CompilationError(CompilationStep::GENERAL, "Undefined DMA setup value", val.to_string());
     periphery::VPWSetup setup = periphery::VPWSetup::fromLiteral(dmaWriteSetup);
@@ -970,7 +974,8 @@ void VPM::setDMAWriteAddress(Value&& val)
 
 void VPM::setDMAReadAddress(Value&& val)
 {
-    const Value& element0 = val.checkContainer() ? val.container().elements[0] : val;
+    // TODO conversion to Value and back to Literal is inefficient
+    const Value& element0 = val.checkVector() ? Value(val.vector()[0], TYPE_INT32) : val;
     if(element0.isUndefined())
         throw CompilationError(CompilationStep::GENERAL, "Undefined DMA setup value", val.to_string());
     periphery::VPRSetup setup = periphery::VPRSetup::fromLiteral(dmaReadSetup);
@@ -1168,13 +1173,13 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
                 imm = load->getPack()(imm, generateImmediateFlags(Literal(load->getImmediateInt()))).value();
                 break;
             case OpLoad::LOAD_SIGNED:
-                imm = Value(ContainerValue(toLoadedValues(imm.getLiteralValue()->unsignedInt(),
-                                vc4c::intermediate::LoadType::PER_ELEMENT_SIGNED)),
+                imm = Value(toLoadedValues(
+                                imm.getLiteralValue()->unsignedInt(), vc4c::intermediate::LoadType::PER_ELEMENT_SIGNED),
                     imm.type.toVectorType(16));
                 break;
             case OpLoad::LOAD_UNSIGNED:
-                imm = Value(ContainerValue(toLoadedValues(imm.getLiteralValue()->unsignedInt(),
-                                vc4c::intermediate::LoadType::PER_ELEMENT_UNSIGNED)),
+                imm = Value(toLoadedValues(imm.getLiteralValue()->unsignedInt(),
+                                vc4c::intermediate::LoadType::PER_ELEMENT_UNSIGNED),
                     imm.type.toVectorType(16));
                 break;
             }
@@ -1278,7 +1283,7 @@ static std::pair<Value, bool> applyVectorRotation(std::pair<Value, bool>&& input
     if(mux1 == InputMultiplex::REGB || mux2 == InputMultiplex::REGB)
         throw CompilationError(CompilationStep::GENERAL, "Cannot read vector rotation offset", input.first.to_string());
 
-    if(input.first.checkLiteral() || (input.first.checkContainer() && input.first.container().isAllSame()))
+    if(input.first.checkLiteral() || (input.first.checkVector() && input.first.vector().isAllSame()))
         return std::move(input);
 
     unsigned char distance;
@@ -1287,8 +1292,8 @@ static std::pair<Value, bool> applyVectorRotation(std::pair<Value, bool>&& input
         //"Mul output vector rotation is taken from accumulator r5, element 0, bits [3:0]"
         // - Broadcom Specification, page 30
         Value tmp = registers.readRegister(REG_ACC5).first;
-        if(auto container = tmp.checkContainer())
-            distance = 16 - static_cast<uint8_t>(container->elements.at(0).getLiteralValue()->unsignedInt() & 0xF);
+        if(auto vector = tmp.checkVector())
+            distance = 16 - static_cast<uint8_t>((*vector)[0].unsignedInt() & 0xF);
         else
             distance = 16 - static_cast<uint8_t>(tmp.getLiteralValue()->unsignedInt() & 0xF);
     }
@@ -1297,7 +1302,7 @@ static std::pair<Value, bool> applyVectorRotation(std::pair<Value, bool>&& input
 
     Value result(std::forward<Value>(input.first));
 
-    auto& resultElements = result.container().elements;
+    auto& resultElements = result.vector();
     std::rotate(resultElements.begin(), resultElements.begin() + distance, resultElements.end());
 
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 170, "vector rotations", 1);
@@ -1362,11 +1367,6 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
 
     if(aluInst->getAddCondition() != COND_NEVER && aluInst->getAddition() != OP_NOP.opAdd)
     {
-        if(addIn0.checkContainer() && addIn0.container().isUndefined())
-            addIn0 = UNDEFINED_VALUE;
-        if(addIn1.checkContainer() && addIn1.container().isUndefined())
-            addIn1 = UNDEFINED_VALUE;
-
         if(aluInst->getUnpack().hasEffect())
         {
             PROFILE_START(EmulateUnpack);
@@ -1424,11 +1424,6 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
     }
     if(aluInst->getMulCondition() != COND_NEVER && aluInst->getMultiplication() != OP_NOP.opMul)
     {
-        if(mulIn0.checkContainer() && mulIn0.container().isUndefined())
-            mulIn0 = UNDEFINED_VALUE;
-        if(mulIn1.checkContainer() && mulIn1.container().isUndefined())
-            mulIn1 = UNDEFINED_VALUE;
-
         if(aluInst->getUnpack().hasEffect())
         {
             PROFILE_START(EmulateUnpack);
@@ -1514,26 +1509,34 @@ void QPU::writeConditional(Register dest, const Value& in, ConditionCode cond, c
             ++instrumentation[mulInst].numMulALUSkipped;
         return;
     }
-    ContainerValue result(NATIVE_VECTOR_SIZE);
 
     std::bitset<16> elementMask{};
-
-    auto inContainer = in.checkContainer();
-    for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
+    if(in.isUndefined())
     {
-        if((!inContainer || i < inContainer->elements.size()))
+        if(std::any_of(flags.begin(), flags.end(),
+               [&](const ElementFlags& flag) -> bool { return flag.matchesCondition(cond); }))
         {
-            if(flags[i].matchesCondition(cond))
-                elementMask.set(i);
-            Value element = inContainer ? inContainer->elements[i] : in;
-            element.type = element.type.toVectorType(1);
-            result.elements.emplace_back(std::move(element));
+            // we would write an undefined value
+            throw CompilationError(CompilationStep::GENERAL, "Cannot write an undefined value", dest.to_string());
         }
-        else
-            result.elements.emplace_back(UNDEFINED_VALUE);
+        // do not write register, but also don't return to allow instrumentation
     }
-
-    registers.writeRegister(dest, Value(std::move(result), in.type), elementMask);
+    else
+    {
+        SIMDVector result;
+        auto inVector = in.checkVector();
+        for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
+        {
+            if((!inVector || i < inVector->size()))
+            {
+                if(flags[i].matchesCondition(cond))
+                    elementMask.set(i);
+                auto element = inVector ? (*inVector)[i] : in.literal();
+                result[i] = element;
+            }
+        }
+        registers.writeRegister(dest, Value(std::move(result), in.type), elementMask);
+    }
 
     if(addInst != nullptr)
     {
@@ -1830,7 +1833,7 @@ static Memory fillMemory(const StableList<Global>& globalData, const EmulationDa
 {
     auto globalDataSize =
         std::accumulate(globalData.begin(), globalData.end(), 0u, [](unsigned u, const Global& global) -> unsigned {
-            return u + global.value.type.getPhysicalWidth() / (TYPE_INT32.getScalarBitCount() / 8);
+            return u + global.initialValue.type.getPhysicalWidth() / (TYPE_INT32.getScalarBitCount() / 8);
         });
     auto size = globalDataSize + settings.calcParameterSize();
     // make sure to have enough space to align UNIFORMs
@@ -1844,14 +1847,25 @@ static Memory fillMemory(const StableList<Global>& globalData, const EmulationDa
 
     for(const Global& global : globalData)
     {
-        if(!global.value.type.getArrayType() || global.value.type.getElementType() != TYPE_INT32)
+        if(!global.initialValue.type.getArrayType() || global.initialValue.type.getElementType() != TYPE_INT32)
             throw CompilationError(
-                CompilationStep::GENERAL, "Unhandled type of global data", global.value.type.to_string());
-        for(const Value& word : global.value.container().elements)
+                CompilationStep::GENERAL, "Unhandled type of global data", global.initialValue.type.to_string());
+        if(auto compound = global.initialValue.getCompound())
         {
-            *mem.getWordAddress(currentAddress) = word.getLiteralValue()->unsignedInt();
+            for(const auto& word : *compound)
+            {
+                *mem.getWordAddress(currentAddress) = word.getScalar()->unsignedInt();
+                currentAddress += TYPE_INT32.getScalarBitCount() / 8;
+            }
+        }
+        else if(auto lit = global.initialValue.getScalar())
+        {
+            *mem.getWordAddress(currentAddress) = lit->unsignedInt();
             currentAddress += TYPE_INT32.getScalarBitCount() / 8;
         }
+        else
+            throw CompilationError(
+                CompilationStep::GENERAL, "Unhandled global data contents", global.initialValue.to_string());
     }
 
     parameterAddressesOut.reserve(settings.parameter.size());
@@ -1893,8 +1907,7 @@ static void dumpMemory(const Memory& memory, const std::string& fileName, Memory
             f << "Uniforms: " << std::endl;
         if(addr % (sizeof(tools::Word) * 8) == 0)
             f << std::hex << "0x" << addr << "\t";
-        f << " " << std::hex << std::setfill('0') << std::setw(8)
-          << memory.readWord(addr).getLiteralValue()->unsignedInt();
+        f << " " << std::hex << std::setfill('0') << std::setw(8) << memory.readWord(addr);
         if(addr % (sizeof(tools::Word) * 8) == (sizeof(tools::Word) * 7))
             f << std::endl;
         addr += sizeof(tools::Word);

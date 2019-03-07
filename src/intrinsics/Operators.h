@@ -36,8 +36,8 @@ namespace vc4c
          * Implementations for on-host calculations
          */
 
-        Literal asr(DataType type, const Literal& left, const Literal& right);
-        Literal clz(DataType type, const Literal& val);
+        Literal asr(Literal left, Literal right);
+        Literal clz(Literal val);
         /*
          * OpSMod: "Signed modulo operation of Operand 1 modulo Operand 2. The sign of a non-0 result comes from
          * Operand 2."

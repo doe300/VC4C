@@ -11,7 +11,10 @@
 #include "Optional.h"
 #include "Types.h"
 #include "Variant.h"
+#include "config.h"
 #include "performance.h"
+
+#include <vector>
 
 namespace vc4c
 {
@@ -454,6 +457,12 @@ namespace vc4c
          */
         uint32_t toImmediate() const noexcept;
 
+        /*
+         * A Literal is "undefined" if it is of TOMBSTONE type. the internal value can be any of the 2^32 possible
+         * values
+         */
+        bool isUndefined() const noexcept;
+
     private:
         /*
          * The bit-wise representation of this literal
@@ -467,6 +476,11 @@ namespace vc4c
         static_assert(sizeof(int32_t) == sizeof(uint32_t) && sizeof(uint32_t) == sizeof(float),
             "Sizes of literal types do not match!");
     };
+
+    /*
+     * A literal value with undefined value, doubles as not-set literal for compact optionals
+     */
+    static constexpr Literal UNDEFINED_LITERAL{optional_tombstone_tag{}};
 
     template <>
     struct tombstone_traits<Literal>
@@ -577,53 +591,115 @@ namespace vc4c
         LITERAL,
         LOCAL, // also contains labels
         REGISTER,
-        CONTAINER,
+        VECTOR,
         UNDEFINED,
         // literal values passed by the parsers are either converted to load-instructions or small immediate values
         SMALL_IMMEDIATE
     };
 
-    struct Value;
-
     /*
-     * Content type for Values containing several values (e.g. vector- or array- constants)
-     *
-     * NOTE: This can also contain containers of non-scalar values (e.g. array of vectors)
+     * Content type for Values containing a whole SIMD vector
      */
-    struct ContainerValue
+    class SIMDVector
     {
-        /*
-         * The single elements
-         */
-        std::vector<Value> elements;
+    public:
+        SIMDVector(Literal defaultValue = UNDEFINED_LITERAL) : elements(NATIVE_VECTOR_SIZE, defaultValue) {}
 
-        ContainerValue() = default;
-        explicit ContainerValue(std::size_t size) : elements()
+        explicit SIMDVector(std::initializer_list<Literal> list) : elements(list)
         {
-            elements.reserve(size);
+            elements.resize(NATIVE_VECTOR_SIZE, UNDEFINED_LITERAL);
         }
-        ContainerValue(std::vector<Value>&& values) : elements(std::move(values)) {}
 
-        /**
-         * Determines if all elements of this container are scalar
-         */
-        bool hasOnlyScalarElements() const;
+        SIMDVector(const SIMDVector&) = default;
+        SIMDVector(SIMDVector&&) noexcept = default;
+
+        SIMDVector& operator=(const SIMDVector&) = default;
+        SIMDVector& operator=(SIMDVector&&) noexcept = default;
+
+        inline bool operator==(const SIMDVector& other) const noexcept
+        {
+            return elements == other.elements;
+        }
+
+        inline bool operator!=(const SIMDVector& other) const noexcept
+        {
+            return elements != other.elements;
+        }
+
+        std::vector<Literal>::iterator begin() noexcept
+        {
+            return elements.begin();
+        }
+
+        std::vector<Literal>::const_iterator begin() const noexcept
+        {
+            return elements.begin();
+        }
+
+        std::vector<Literal>::iterator end() noexcept
+        {
+            return elements.end();
+        }
+
+        std::vector<Literal>::const_iterator end() const noexcept
+        {
+            return elements.end();
+        }
+
+        inline Literal& operator[](std::size_t index) noexcept
+        {
+            return elements[index];
+        }
+
+        inline Literal operator[](std::size_t index) const noexcept
+        {
+            return elements[index];
+        }
+
+        inline Literal& at(std::size_t index)
+        {
+            return elements.at(index);
+        }
+
+        inline Literal at(std::size_t index) const
+        {
+            return elements.at(index);
+        }
+
+        inline uint8_t size() const noexcept
+        {
+            return NATIVE_VECTOR_SIZE;
+        }
 
         /*
-         * Determines whether all elements of this container have the same value
+         * Determines whether all elements of this vector have the same value
          */
-        bool isAllSame() const;
+        bool isAllSame() const noexcept;
 
         /*
          * Determines whether all element-values correspond to their element number,  e.g. i32 1, i32 2, ...
          * if the parameter is set to true, an arbitrary initial offset is allowed, e.g. i32 5, i32 6, ...
          */
-        bool isElementNumber(bool withOffset = false) const;
+        bool isElementNumber(bool withOffset = false) const noexcept;
 
         /*
          * Returns whether all elements contained are undefined
          */
         bool isUndefined() const;
+
+        void forAllElements(const std::function<void(Literal)>& consumer) const;
+        SIMDVector transform(const std::function<Literal(Literal)>& transformOp) const&;
+        SIMDVector transform(const std::function<Literal(Literal)>& transformOp) &&;
+
+        /*
+         * Rotates the elements of this vector UPWARDS by the given offset.
+         */
+        // TODO use this for constant vector rotation
+        SIMDVector rotate(uint8_t offset) const&;
+        SIMDVector rotate(uint8_t offset) &&;
+
+    private:
+        std::vector<Literal> elements;
     };
 
     class Local;
@@ -641,7 +717,7 @@ namespace vc4c
         /*
          * Contains the data actually stored in this Value
          */
-        Variant<Literal, Register, Local*, SmallImmediate, ContainerValue, VariantNamespace::monostate> data;
+        Variant<Literal, Register, Local*, SmallImmediate, SIMDVector, VariantNamespace::monostate> data;
         /*
          * The data-type of the Value
          */
@@ -649,7 +725,7 @@ namespace vc4c
 
         Value(const Literal& lit, DataType type) noexcept;
         Value(Register reg, DataType type) noexcept;
-        Value(ContainerValue&& container, DataType type);
+        Value(SIMDVector&& vector, DataType type);
         Value(const Value& val) = default;
         Value(Value&& val) noexcept = default;
         Value(const Local* local, DataType type) noexcept;
@@ -717,14 +793,14 @@ namespace vc4c
             return loc ? *loc : nullptr;
         }
 
-        ContainerValue* checkContainer() noexcept
+        SIMDVector* checkVector() noexcept
         {
-            return VariantNamespace::get_if<ContainerValue>(&data);
+            return VariantNamespace::get_if<SIMDVector>(&data);
         }
 
-        const ContainerValue* checkContainer() const noexcept
+        const SIMDVector* checkVector() const noexcept
         {
-            return VariantNamespace::get_if<ContainerValue>(&data);
+            return VariantNamespace::get_if<SIMDVector>(&data);
         }
 
         /*
@@ -851,14 +927,14 @@ namespace vc4c
             return VariantNamespace::get<SmallImmediate>(data);
         }
 
-        ContainerValue& container()
+        SIMDVector& vector()
         {
-            return VariantNamespace::get<ContainerValue>(data);
+            return VariantNamespace::get<SIMDVector>(data);
         }
 
-        const ContainerValue& container() const
+        const SIMDVector& vector() const
         {
-            return VariantNamespace::get<ContainerValue>(data);
+            return VariantNamespace::get<SIMDVector>(data);
         }
     };
 
@@ -967,9 +1043,9 @@ namespace std
     };
 
     template <>
-    struct hash<vc4c::ContainerValue>
+    struct hash<vc4c::SIMDVector>
     {
-        size_t operator()(const vc4c::ContainerValue& val) const noexcept;
+        size_t operator()(const vc4c::SIMDVector& val) const noexcept;
     };
 
     template <>

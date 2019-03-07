@@ -381,16 +381,13 @@ static std::pair<Literal, Literal> calculateConstant(Literal divisor, unsigned a
 
 static std::pair<Value, Value> calculateConstant(const Value& divisor, unsigned accuracy)
 {
-    if(auto container = divisor.checkContainer())
+    if(auto vector = divisor.checkVector())
     {
-        ContainerValue factors(container->elements.size());
-        ContainerValue shifts(container->elements.size());
-        auto elementType = divisor.type.toVectorType(1);
-        for(const auto& element : container->elements)
+        SIMDVector factors;
+        SIMDVector shifts;
+        for(unsigned i = 0; i < vector->size(); ++i)
         {
-            auto tmp = calculateConstant(element.literal(), accuracy);
-            factors.elements.push_back(Value(tmp.first, elementType));
-            shifts.elements.push_back(Value(tmp.second, elementType));
+            std::tie(factors[i], shifts[i]) = calculateConstant((*vector)[i], accuracy);
         }
         return std::make_pair(Value(std::move(factors), divisor.type), Value(std::move(shifts), divisor.type));
     }
@@ -416,7 +413,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
         throw CompilationError(CompilationStep::OPTIMIZER, "Division by constant may overflow for argument type",
             op.getFirstArg().type.to_string());
     if(!op.getSecondArg().ifPresent(toFunction(&Value::isLiteralValue)) &&
-        !(op.getSecondArg() && op.assertArgument(1).checkContainer()))
+        !(op.getSecondArg() && op.assertArgument(1).checkVector()))
         throw CompilationError(CompilationStep::OPTIMIZER, "Can only optimize division by constant", op.to_string());
 
     /*
@@ -527,7 +524,7 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
 
 static constexpr unsigned MSB = 31;
 
-Literal intermediate::asr(DataType type, const Literal& left, const Literal& right)
+Literal intermediate::asr(Literal left, Literal right)
 {
     std::bitset<sizeof(int32_t) * 8> tmp(left.signedInt());
     if(right.signedInt() < 0)
@@ -541,7 +538,7 @@ Literal intermediate::asr(DataType type, const Literal& left, const Literal& rig
     return Literal(static_cast<uint32_t>(tmp.to_ulong()));
 }
 
-Literal intermediate::clz(DataType type, const Literal& val)
+Literal intermediate::clz(Literal val)
 {
     for(int i = MSB; i >= 0; --i)
     {

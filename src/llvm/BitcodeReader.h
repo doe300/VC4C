@@ -65,6 +65,8 @@ namespace vc4c
             Value toValue(Method& method, const llvm::Value* val);
             Value toConstant(Module& module, const llvm::Value* val);
             Value precalculateConstantExpression(Module& module, const llvm::ConstantExpr* expr);
+
+            CompoundConstant toConstantGlobal(Module& module, const llvm::Value* val);
         };
 #endif
 

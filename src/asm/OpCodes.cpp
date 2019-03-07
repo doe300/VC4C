@@ -185,29 +185,31 @@ std::string Unpack::to_string() const
         CompilationStep::CODE_GENERATION, "Unsupported unpack-mode", std::to_string(static_cast<unsigned>(value)));
 }
 
-static Value unpackLiteral(Unpack mode, Literal literal, DataType type)
+static Literal unpackLiteral(Unpack mode, Literal literal, bool isFloatOperation)
 {
+    if(literal.isUndefined())
+        return literal;
     switch(mode)
     {
     case UNPACK_NOP:
-        return Value(literal, type);
+        return literal;
     case UNPACK_16A_32:
     {
         // signed conversion -> truncate to unsigned short, bit-cast to signed short and sign-extend
         uint16_t lowWord = static_cast<uint16_t>(literal.unsignedInt());
-        if(type.isFloatingType())
-            return Value(Literal(static_cast<float>(half_t(lowWord))), type);
+        if(isFloatOperation)
+            return Literal(static_cast<float>(half_t(lowWord)));
         int16_t lowWordSigned = bit_cast<uint16_t, int16_t>(lowWord);
-        return Value(Literal(static_cast<int32_t>(lowWordSigned)), type);
+        return Literal(static_cast<int32_t>(lowWordSigned));
     }
     case UNPACK_16B_32:
     {
         // signed conversion -> truncate to unsigned short, bit-cast to signed short and sign-extend
         uint16_t highWord = static_cast<uint16_t>(literal.unsignedInt() >> 16);
-        if(type.isFloatingType())
-            return Value(Literal(static_cast<float>(half_t(highWord))), type);
+        if(isFloatOperation)
+            return Literal(static_cast<float>(half_t(highWord)));
         int16_t highWordSigned = bit_cast<uint16_t, int16_t>(highWord);
-        return Value(Literal(static_cast<int32_t>(highWordSigned)), type);
+        return Literal(static_cast<int32_t>(highWordSigned));
     }
     case UNPACK_R4_ALPHA_REPLICATE:
         FALL_THROUGH
@@ -215,75 +217,74 @@ static Value unpackLiteral(Unpack mode, Literal literal, DataType type)
     {
         // unsigned cast required to guarantee cutting off the value
         uint8_t lsb = static_cast<uint8_t>(literal.unsignedInt());
-        return Value(Literal((static_cast<uint32_t>(lsb) << 24) | (static_cast<uint32_t>(lsb) << 16) |
-                         (static_cast<uint32_t>(lsb) << 8) | lsb),
-            type);
+        return Literal((static_cast<uint32_t>(lsb) << 24) | (static_cast<uint32_t>(lsb) << 16) |
+            (static_cast<uint32_t>(lsb) << 8) | lsb);
     }
     case UNPACK_8A_32:
     {
-        if(type.isFloatingType())
-            return unpackLiteral(UNPACK_R4_COLOR0, literal, type);
+        if(isFloatOperation)
+            return unpackLiteral(UNPACK_R4_COLOR0, literal, isFloatOperation);
         // unsigned cast required to guarantee cutting off the value
         uint8_t byte0 = static_cast<uint8_t>(literal.unsignedInt());
-        return Value(Literal(static_cast<uint32_t>(byte0)), type);
+        return Literal(static_cast<uint32_t>(byte0));
     }
     case UNPACK_8B_32:
     {
-        if(type.isFloatingType())
-            return unpackLiteral(UNPACK_R4_COLOR1, literal, type);
+        if(isFloatOperation)
+            return unpackLiteral(UNPACK_R4_COLOR1, literal, isFloatOperation);
         // unsigned cast required to guarantee cutting off the value
         uint8_t byte1 = static_cast<uint8_t>(literal.unsignedInt() >> 8);
-        return Value(Literal(static_cast<uint32_t>(byte1)), type);
+        return Literal(static_cast<uint32_t>(byte1));
     }
     case UNPACK_8C_32:
     {
-        if(type.isFloatingType())
-            return unpackLiteral(UNPACK_R4_COLOR2, literal, type);
+        if(isFloatOperation)
+            return unpackLiteral(UNPACK_R4_COLOR2, literal, isFloatOperation);
         // unsigned cast required to guarantee cutting off the value
         uint8_t byte2 = static_cast<uint8_t>(literal.unsignedInt() >> 16);
-        return Value(Literal(static_cast<uint32_t>(byte2)), type);
+        return Literal(static_cast<uint32_t>(byte2));
     }
     case UNPACK_8D_32:
     {
-        if(type.isFloatingType())
-            return unpackLiteral(UNPACK_R4_COLOR3, literal, type);
+        if(isFloatOperation)
+            return unpackLiteral(UNPACK_R4_COLOR3, literal, isFloatOperation);
         // unsigned cast required to guarantee cutting off the value
         uint8_t byte3 = static_cast<uint8_t>(literal.unsignedInt() >> 24);
-        return Value(Literal(static_cast<uint32_t>(byte3)), type);
+        return Literal(static_cast<uint32_t>(byte3));
     }
     case UNPACK_R4_16A_32:
     {
         uint16_t lowWord = static_cast<uint16_t>(literal.unsignedInt());
-        return Value(Literal(static_cast<float>(half_t(lowWord))), type);
+        return Literal(static_cast<float>(half_t(lowWord)));
     }
     case UNPACK_R4_16B_32:
     {
         uint16_t highWord = static_cast<uint16_t>(literal.unsignedInt() >> 16);
-        return Value(Literal(static_cast<float>(half_t(highWord))), type);
+        return Literal(static_cast<float>(half_t(highWord)));
     }
     case UNPACK_R4_COLOR0:
     {
         // unsigned cast required to guarantee cutting off the value
         uint8_t byte0 = static_cast<uint8_t>(literal.unsignedInt());
-        return Value(Literal(static_cast<float>(byte0) / 255.0f), type);
+        return Literal(static_cast<float>(byte0) / 255.0f);
     }
     case UNPACK_R4_COLOR1:
     {
         // unsigned cast required to guarantee cutting off the value
         uint8_t byte1 = static_cast<uint8_t>(literal.unsignedInt() >> 8);
-        return Value(Literal(static_cast<float>(byte1) / 255.0f), type);
+        return Literal(static_cast<float>(byte1) / 255.0f);
     }
     case UNPACK_R4_COLOR2:
     {
         // unsigned cast required to guarantee cutting off the value
         uint8_t byte2 = static_cast<uint8_t>(literal.unsignedInt() >> 16);
-        return Value(Literal(static_cast<float>(byte2) / 255.0f), type);
+        return Literal(static_cast<float>(byte2) / 255.0f);
     }
     case UNPACK_R4_COLOR3:
     {
         // unsigned cast required to guarantee cutting off the value
         uint8_t byte3 = static_cast<uint8_t>(literal.unsignedInt() >> 24);
-        return Value(Literal(static_cast<float>(byte3) / 255.0f), type);
+        return Literal(static_cast<float>(byte3) / 255.0f);
     }
     }
     throw CompilationError(
@@ -298,22 +299,17 @@ Optional<Value> Unpack::operator()(const Value& val) const
     // we never can pack complex types (even pointer, there are always 32-bit)
     if(!val.type.isSimpleType())
         return NO_VALUE;
-    if(auto container = val.checkContainer())
+    if(auto vector = val.checkVector())
     {
         // unpack vectors per element
-        ContainerValue result(container->elements.size());
-        for(const Value& elem : container->elements)
-        {
-            if(auto lit = elem.getLiteralValue())
-                result.elements.emplace_back(unpackLiteral(*this, *lit, elem.type));
-            else
-                return NO_VALUE;
-        }
+        auto elemType = val.type.toVectorType(1);
+        SIMDVector result = vector->transform(
+            [&](Literal lit) -> Literal { return unpackLiteral(*this, lit, elemType.isFloatingType()); });
         return Value(std::move(result), val.type);
     }
     // can only unpack literals
     if(auto lit = val.getLiteralValue())
-        return unpackLiteral(*this, *lit, val.type);
+        return Value(unpackLiteral(*this, *lit, val.type.isFloatingType()), val.type);
     return NO_VALUE;
 }
 
@@ -393,36 +389,38 @@ std::string Pack::to_string() const
         CompilationStep::CODE_GENERATION, "Unsupported pack-mode", std::to_string(static_cast<unsigned>(value)));
 }
 
-Value packLiteral(Pack mode, Literal literal, DataType type, const ElementFlags& flags)
+Literal packLiteral(Pack mode, Literal literal, bool isFloatOperation, const ElementFlags& flags)
 {
+    if(literal.isUndefined())
+        return literal;
     switch(mode)
     {
     case PACK_NOP:
-        return Value(literal, type);
+        return literal;
     case PACK_32_16A:
-        if(type.isFloatingType())
-            return Value(Literal(static_cast<uint16_t>(half_t(literal.real()))), type);
-        return Value(Literal(literal.unsignedInt() & 0xFFFF), type);
+        if(isFloatOperation)
+            return Literal(static_cast<uint16_t>(half_t(literal.real())));
+        return Literal(literal.unsignedInt() & 0xFFFF);
     case PACK_32_16A_S:
-        if(type.isFloatingType())
+        if(isFloatOperation)
             // TODO no saturation?
-            return Value(Literal(static_cast<uint16_t>(half_t(literal.real()))), type);
-        return Value(Literal(saturate<int16_t>(literal.signedInt()) & 0xFFFF), type);
+            return Literal(static_cast<uint16_t>(half_t(literal.real())));
+        return Literal(saturate<int16_t>(literal.signedInt()) & 0xFFFF);
     case PACK_32_16B:
-        if(type.isFloatingType())
-            return Value(Literal(static_cast<uint16_t>(half_t(literal.real())) << 16), type);
-        return Value(Literal((literal.unsignedInt() & 0xFFFF) << 16), type);
+        if(isFloatOperation)
+            return Literal(static_cast<uint16_t>(half_t(literal.real())) << 16);
+        return Literal((literal.unsignedInt() & 0xFFFF) << 16);
     case PACK_32_16B_S:
-        if(type.isFloatingType())
+        if(isFloatOperation)
             // TODO no saturation?
-            return Value(Literal(static_cast<uint16_t>(half_t(literal.real())) << 16), type);
-        return Value(Literal(saturate<int16_t>(literal.signedInt()) << 16), type);
+            return Literal(static_cast<uint16_t>(half_t(literal.real())) << 16);
+        return Literal(saturate<int16_t>(literal.signedInt()) << 16);
     case PACK_32_32:
         // this depends on signed integer overflow (to determine overflow and then saturate)
         switch(flags.overflow)
         {
         case FlagStatus::CLEAR:
-            return Value(literal, type);
+            return literal;
         case FlagStatus::SET:
             /*
              * Rationale:
@@ -431,62 +429,59 @@ Value packLiteral(Pack mode, Literal literal, DataType type, const ElementFlags&
              * - for signed negative overflow, the MSB depends on the second MSB values?
              * TODO not correct for signed negative overflow?
              */
-            return flags.negative == FlagStatus::CLEAR ? Value(Literal(0x80000000u), type) :
-                                                         Value(Literal(0x7FFFFFFFu), type);
+            return flags.negative == FlagStatus::CLEAR ? Literal(0x80000000u) : Literal(0x7FFFFFFFu);
         case FlagStatus::UNDEFINED:
         default:
             throw CompilationError(CompilationStep::GENERAL, "Cannot saturate on unknown overflow flags",
-                Value(literal, type).to_string());
+                Value(literal, isFloatOperation ? TYPE_FLOAT : TYPE_INT32).to_string());
         }
     case PACK_32_8888:
-        return Value(Literal(((literal.unsignedInt() & 0xFF) << 24) | ((literal.unsignedInt() & 0xFF) << 16) |
-                         ((literal.unsignedInt() & 0xFF) << 8) | (literal.unsignedInt() & 0xFF)),
-            type);
+        return Literal(((literal.unsignedInt() & 0xFF) << 24) | ((literal.unsignedInt() & 0xFF) << 16) |
+            ((literal.unsignedInt() & 0xFF) << 8) | (literal.unsignedInt() & 0xFF));
     case PACK_32_8888_S:
-        return Value(Literal((saturate<uint8_t>(literal.unsignedInt()) << 24) |
-                         (saturate<uint8_t>(literal.unsignedInt()) << 16) |
-                         (saturate<uint8_t>(literal.unsignedInt()) << 8) | saturate<uint8_t>(literal.unsignedInt())),
-            type);
+        return Literal((saturate<uint8_t>(literal.unsignedInt()) << 24) |
+            (saturate<uint8_t>(literal.unsignedInt()) << 16) | (saturate<uint8_t>(literal.unsignedInt()) << 8) |
+            saturate<uint8_t>(literal.unsignedInt()));
     case PACK_32_8A:
-        return Value(Literal(literal.unsignedInt() & 0xFF), type);
+        return Literal(literal.unsignedInt() & 0xFF);
     case PACK_32_8A_S:
-        return Value(Literal(saturate<uint8_t>(literal.unsignedInt())), type);
+        return Literal(saturate<uint8_t>(literal.unsignedInt()));
     case PACK_32_8B:
-        return Value(Literal((literal.unsignedInt() & 0xFF) << 8), type);
+        return Literal((literal.unsignedInt() & 0xFF) << 8);
     case PACK_32_8B_S:
-        return Value(Literal(saturate<uint8_t>(literal.unsignedInt()) << 8), type);
+        return Literal(saturate<uint8_t>(literal.unsignedInt()) << 8);
     case PACK_32_8C:
-        return Value(Literal((literal.unsignedInt() & 0xFF) << 16), type);
+        return Literal((literal.unsignedInt() & 0xFF) << 16);
     case PACK_32_8C_S:
-        return Value(Literal(saturate<uint8_t>(literal.unsignedInt()) << 16), type);
+        return Literal(saturate<uint8_t>(literal.unsignedInt()) << 16);
     case PACK_32_8D:
-        return Value(Literal((literal.unsignedInt() & 0xFF) << 24), type);
+        return Literal((literal.unsignedInt() & 0xFF) << 24);
     case PACK_32_8D_S:
-        return Value(Literal(saturate<uint8_t>(literal.unsignedInt()) << 24), type);
+        return Literal(saturate<uint8_t>(literal.unsignedInt()) << 24);
     case PACK_MUL_GRAY_REPLICATE:
     {
         auto tmp = static_cast<uint32_t>(literal.real() / 255.0f) & 0xFF;
-        return Value(Literal(tmp << 24 | tmp << 16 | tmp << 8 | tmp), type);
+        return Literal(tmp << 24 | tmp << 16 | tmp << 8 | tmp);
     }
     case PACK_MUL_COLOR0:
     {
         auto tmp = static_cast<uint32_t>(literal.real() * 255.0f) & 0xFF;
-        return Value(Literal(tmp), type);
+        return Literal(tmp);
     }
     case PACK_MUL_COLOR1:
     {
         auto tmp = static_cast<uint32_t>(literal.real() * 255.0f) & 0xFF;
-        return Value(Literal(tmp << 8), type);
+        return Literal(tmp << 8);
     }
     case PACK_MUL_COLOR2:
     {
         auto tmp = static_cast<uint32_t>(literal.real() * 255.0f) & 0xFF;
-        return Value(Literal(tmp << 16), type);
+        return Literal(tmp << 16);
     }
     case PACK_MUL_COLOR3:
     {
         auto tmp = static_cast<uint32_t>(literal.real() * 255.0f) & 0xFF;
-        return Value(Literal(tmp << 24), type);
+        return Literal(tmp << 24);
     }
     }
     throw CompilationError(
@@ -501,23 +496,21 @@ Optional<Value> Pack::operator()(const Value& val, const VectorFlags& flags) con
     // we never can pack complex types (even pointer, there are always 32-bit)
     if(!val.type.isSimpleType())
         return NO_VALUE;
-    if(auto container = val.checkContainer())
+    if(auto vector = val.checkVector())
     {
         // pack vectors per element
-        ContainerValue result(container->elements.size());
-        for(std::size_t i = 0; i < container->elements.size(); ++i)
+        auto elemType = val.type.toVectorType(1);
+        SIMDVector result;
+        for(std::size_t i = 0; i < vector->size(); ++i)
         {
-            auto& elem = container->elements[i];
-            if(auto lit = elem.getLiteralValue())
-                result.elements.emplace_back(packLiteral(*this, *lit, elem.type, flags[i]));
-            else
-                return NO_VALUE;
+            auto elem = (*vector)[i];
+            result[i] = packLiteral(*this, elem, elemType.isFloatingType(), flags[i]);
         }
         return Value(std::move(result), val.type);
     }
     // can only pack literals
     if(auto lit = val.getLiteralValue())
-        return packLiteral(*this, *lit, val.type, flags[0]);
+        return Value(packLiteral(*this, *lit, val.type.isFloatingType(), flags[0]), val.type);
     return NO_VALUE;
 }
 
@@ -616,14 +609,20 @@ std::string ElementFlags::to_string() const
 
 ElementFlags ElementFlags::fromValue(const Value& val) noexcept
 {
-    ElementFlags flags;
     if(auto lit = val.getLiteralValue())
     {
-        // for both unsigned and float, the MSB is the sign and MBS(x) == 1 means x < 0
-        flags.negative = lit->signedInt() < 0 ? FlagStatus::SET : FlagStatus::CLEAR;
-        // for signed, unsigned and float, zero is all bits zero
-        flags.zero = lit->unsignedInt() == 0 ? FlagStatus::SET : FlagStatus::CLEAR;
+        return ElementFlags::fromLiteral(*lit);
     }
+    return ElementFlags{};
+}
+
+ElementFlags ElementFlags::fromLiteral(Literal lit) noexcept
+{
+    ElementFlags flags;
+    // for both unsigned and float, the MSB is the sign and MBS(x) == 1 means x < 0
+    flags.negative = lit.signedInt() < 0 ? FlagStatus::SET : FlagStatus::CLEAR;
+    // for signed, unsigned and float, zero is all bits zero
+    flags.zero = lit.unsignedInt() == 0 ? FlagStatus::SET : FlagStatus::CLEAR;
     return flags;
 }
 
@@ -664,26 +663,24 @@ CONST static unsigned int rotate_right(unsigned int value, int shift) noexcept
     return (value >> shift) | (value << (32 - shift));
 }
 
-static std::pair<Optional<Value>, VectorFlags> setFlags(Value&& val)
+static std::pair<Optional<Literal>, ElementFlags> setFlags(Literal lit)
 {
-    auto flags = VectorFlags::fromValue(val);
-    return std::make_pair(std::forward<Value>(val), flags);
+    auto flags = ElementFlags::fromLiteral(lit);
+    return std::make_pair(std::forward<Literal>(lit), flags);
 }
 
-static std::pair<Optional<Value>, VectorFlags> setFlags(Value&& val, bool is32BitOverflow)
+static std::pair<Optional<Literal>, ElementFlags> setFlags(Literal lit, bool is32BitOverflow)
 {
-    auto tmp = setFlags(std::forward<Value>(val));
-    auto flags = tmp.second[0];
-    flags.carry = is32BitOverflow ? FlagStatus::SET : FlagStatus::CLEAR;
-    return std::make_pair(std::move(tmp.first), flags);
+    auto tmp = setFlags(lit);
+    tmp.second.carry = is32BitOverflow ? FlagStatus::SET : FlagStatus::CLEAR;
+    return tmp;
 }
 
-static std::pair<Optional<Value>, VectorFlags> setFlags(Value&& val, bool is32BitOverflow, bool isSignedOverflow)
+static std::pair<Optional<Literal>, ElementFlags> setFlags(Literal lit, bool is32BitOverflow, bool isSignedOverflow)
 {
-    auto tmp = setFlags(std::forward<Value>(val), is32BitOverflow);
-    auto flags = tmp.second[0];
-    flags.overflow = isSignedOverflow ? FlagStatus::SET : FlagStatus::CLEAR;
-    return std::make_pair(std::move(tmp.first), flags);
+    auto tmp = setFlags(lit, is32BitOverflow);
+    tmp.second.overflow = isSignedOverflow ? FlagStatus::SET : FlagStatus::CLEAR;
+    return tmp;
 }
 
 static bool checkMinMaxCarry(const Literal& arg0, const Literal& arg1, bool useAbs = false)
@@ -701,136 +698,130 @@ static bool checkMinMaxCarry(const Literal& arg0, const Literal& arg1, bool useA
     return useAbs ? (std::abs(arg0.real()) > std::abs(arg1.real())) : (arg0.real() > arg1.real());
 }
 
-static PrecalculatedValue calcLiteral(
-    const OpCode& code, Literal firstLit, Literal secondLit, DataType resultType, DataType firstType)
+static std::pair<Optional<Literal>, ElementFlags> calcLiteral(const OpCode& code, Literal firstLit, Literal secondLit)
 {
     if(code == OP_ADD)
     {
         auto extendedVal =
             static_cast<uint64_t>(firstLit.unsignedInt()) + static_cast<uint64_t>(secondLit.unsignedInt());
         auto signedVal = static_cast<int64_t>(firstLit.signedInt()) + static_cast<int64_t>(secondLit.signedInt());
-        return setFlags(Value(Literal(firstLit.signedInt() + secondLit.signedInt()), resultType),
+        return setFlags(Literal(firstLit.signedInt() + secondLit.signedInt()),
             extendedVal > static_cast<uint64_t>(0xFFFFFFFFul),
             signedVal > static_cast<int64_t>(std::numeric_limits<int32_t>::max()) ||
                 signedVal < static_cast<int64_t>(std::numeric_limits<int32_t>::min()));
     }
     if(code == OP_AND)
-        return setFlags(Value(Literal(firstLit.unsignedInt() & secondLit.unsignedInt()), resultType), false, false);
+        return setFlags(Literal(firstLit.unsignedInt() & secondLit.unsignedInt()), false, false);
     if(code == OP_ASR)
     {
         // carry is set if bits set are shifted out of the register: val & (2^shift-offset-1) != 0
         auto shiftLoss = firstLit.unsignedInt() & ((1 << secondLit.signedInt()) - 1);
-        return setFlags(Value(intermediate::asr(resultType, firstLit, secondLit), resultType), shiftLoss != 0, false);
+        return setFlags(intermediate::asr(firstLit, secondLit), shiftLoss != 0, false);
     }
     if(code == OP_CLZ)
-        return setFlags(Value(intermediate::clz(resultType, firstLit), resultType), false, false);
+        return setFlags(intermediate::clz(firstLit), false, false);
     if(code == OP_FADD)
-        return setFlags(Value(Literal(firstLit.real() + secondLit.real()), resultType),
-            (firstLit.real() + secondLit.real()) > 0.0f);
+        return setFlags(Literal(firstLit.real() + secondLit.real()), (firstLit.real() + secondLit.real()) > 0.0f);
     if(code == OP_FMAX)
     {
         if(std::isnan(firstLit.real()))
-            return setFlags(Value(firstLit, resultType), checkMinMaxCarry(firstLit, secondLit));
+            return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit));
         if(std::isnan(secondLit.real()))
-            return setFlags(Value(secondLit, resultType), checkMinMaxCarry(firstLit, secondLit));
+            return setFlags(secondLit, checkMinMaxCarry(firstLit, secondLit));
         static_assert(std::max(std::numeric_limits<float>::infinity(), 0.0f) != 0.0f, "");
         static_assert(std::max(-std::numeric_limits<float>::infinity(), 0.0f) == 0.0f, "");
-        return setFlags(Value(Literal(std::max(firstLit.real(), secondLit.real())), resultType),
-            firstLit.real() > secondLit.real(), false);
+        return setFlags(
+            Literal(std::max(firstLit.real(), secondLit.real())), firstLit.real() > secondLit.real(), false);
     }
     if(code == OP_FMAXABS)
     {
         if(std::isnan(firstLit.real()))
-            return setFlags(Value(firstLit, resultType), checkMinMaxCarry(firstLit, secondLit, true));
+            return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit, true));
         if(std::isnan(secondLit.real()))
-            return setFlags(Value(secondLit, resultType), checkMinMaxCarry(firstLit, secondLit, true));
+            return setFlags(secondLit, checkMinMaxCarry(firstLit, secondLit, true));
         if(std::isinf(firstLit.real()))
-            return setFlags(Value(firstLit, resultType), checkMinMaxCarry(firstLit, secondLit, true));
+            return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit, true));
         if(std::isinf(secondLit.real()))
-            return setFlags(Value(secondLit, resultType), checkMinMaxCarry(firstLit, secondLit, true));
-        return setFlags(Value(Literal(std::max(std::fabs(firstLit.real()), std::fabs(secondLit.real()))), resultType),
+            return setFlags(secondLit, checkMinMaxCarry(firstLit, secondLit, true));
+        return setFlags(Literal(std::max(std::fabs(firstLit.real()), std::fabs(secondLit.real()))),
             std::fabs(firstLit.real()) > std::fabs(secondLit.real()), false);
     }
     if(code == OP_FMIN)
     {
         if(std::isnan(firstLit.real()))
-            return setFlags(Value(secondLit, resultType), checkMinMaxCarry(firstLit, secondLit));
+            return setFlags(secondLit, checkMinMaxCarry(firstLit, secondLit));
         if(std::isnan(secondLit.real()))
-            return setFlags(Value(firstLit, resultType), checkMinMaxCarry(firstLit, secondLit));
+            return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit));
         static_assert(std::min(std::numeric_limits<float>::infinity(), 0.0f) == 0.0f, "");
         static_assert(std::min(-std::numeric_limits<float>::infinity(), 0.0f) != 0.0f, "");
-        return setFlags(Value(Literal(std::min(firstLit.real(), secondLit.real())), resultType),
-            firstLit.real() > secondLit.real(), false);
+        return setFlags(
+            Literal(std::min(firstLit.real(), secondLit.real())), firstLit.real() > secondLit.real(), false);
     }
     if(code == OP_FMINABS)
     {
         if(std::isnan(firstLit.real()))
-            return setFlags(Value(secondLit, resultType), checkMinMaxCarry(firstLit, secondLit, true));
+            return setFlags(secondLit, checkMinMaxCarry(firstLit, secondLit, true));
         if(std::isnan(secondLit.real()))
-            return setFlags(Value(firstLit, resultType), checkMinMaxCarry(firstLit, secondLit, true));
-        return setFlags(Value(Literal(std::min(std::fabs(firstLit.real()), std::fabs(secondLit.real()))), resultType),
+            return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit, true));
+        return setFlags(Literal(std::min(std::fabs(firstLit.real()), std::fabs(secondLit.real()))),
             std::fabs(firstLit.real()) > std::fabs(secondLit.real()), false);
     }
     if(code == OP_FMUL)
-        return setFlags(Value(Literal(firstLit.real() * secondLit.real()), resultType));
+        return setFlags(Literal(firstLit.real() * secondLit.real()));
     if(code == OP_FSUB)
-        return setFlags(Value(Literal(firstLit.real() - secondLit.real()), resultType),
-            (firstLit.real() - secondLit.real()) > 0.0f);
+        return setFlags(Literal(firstLit.real() - secondLit.real()), (firstLit.real() - secondLit.real()) > 0.0f);
     if(code == OP_FTOI)
     {
         if(std::isnan(firstLit.real()) || std::isinf(firstLit.real()) ||
             std::abs(static_cast<int64_t>(firstLit.real())) > std::numeric_limits<int32_t>::max())
-            return setFlags(Value(Literal(0u), TYPE_INT32.toVectorType(firstType.getVectorWidth())));
-        return setFlags(
-            Value(Literal(static_cast<int32_t>(firstLit.real())), TYPE_INT32.toVectorType(firstType.getVectorWidth())),
-            false);
+            return setFlags(Literal(0u));
+        return setFlags(Literal(static_cast<int32_t>(firstLit.real())), false);
     }
     if(code == OP_ITOF)
-        return setFlags(Value(Literal(static_cast<float>(firstLit.signedInt())),
-                            TYPE_FLOAT.toVectorType(firstType.getVectorWidth())),
+        return setFlags(Literal(static_cast<float>(firstLit.signedInt())),
+
             false);
     if(code == OP_MAX)
-        return setFlags(Value(Literal(std::max(firstLit.signedInt(), secondLit.signedInt())), resultType),
+        return setFlags(Literal(std::max(firstLit.signedInt(), secondLit.signedInt())),
             firstLit.signedInt() > secondLit.signedInt(), false);
     if(code == OP_MIN)
-        return setFlags(Value(Literal(std::min(firstLit.signedInt(), secondLit.signedInt())), resultType),
+        return setFlags(Literal(std::min(firstLit.signedInt(), secondLit.signedInt())),
             firstLit.signedInt() > secondLit.signedInt(), false);
     if(code == OP_MUL24)
     {
         auto extendedVal = static_cast<uint64_t>(firstLit.unsignedInt() & 0xFFFFFFu) *
             static_cast<uint64_t>(secondLit.unsignedInt() & 0xFFFFFFu);
-        return setFlags(
-            Value(Literal((firstLit.unsignedInt() & 0xFFFFFF) * (secondLit.unsignedInt() & 0xFFFFFF)), resultType),
+        return setFlags(Literal((firstLit.unsignedInt() & 0xFFFFFF) * (secondLit.unsignedInt() & 0xFFFFFF)),
             extendedVal > static_cast<uint64_t>(0xFFFFFFFFul));
     }
     if(code == OP_NOT)
-        return setFlags(Value(Literal(~firstLit.unsignedInt()), resultType), false);
+        return setFlags(Literal(~firstLit.unsignedInt()), false);
     if(code == OP_OR)
-        return setFlags(Value(Literal(firstLit.unsignedInt() | secondLit.unsignedInt()), resultType), false, false);
+        return setFlags(Literal(firstLit.unsignedInt() | secondLit.unsignedInt()), false, false);
     if(code == OP_ROR)
-        return setFlags(Value(Literal(rotate_right(firstLit.unsignedInt(), secondLit.signedInt())), resultType), false);
+        return setFlags(Literal(rotate_right(firstLit.unsignedInt(), secondLit.signedInt())), false);
     if(code == OP_SHL)
     {
         auto extendedVal = static_cast<uint64_t>(firstLit.unsignedInt())
             << static_cast<uint64_t>(secondLit.unsignedInt());
-        return setFlags(Value(Literal(firstLit.unsignedInt() << secondLit.signedInt()), resultType),
+        return setFlags(Literal(firstLit.unsignedInt() << secondLit.signedInt()),
             extendedVal > static_cast<uint64_t>(0xFFFFFFFFul));
     }
     if(code == OP_SHR)
     {
         // carry is set if bits set are shifted out of the register: val & (2^shift-offset-1) != 0
         auto shiftLoss = firstLit.unsignedInt() & ((1 << secondLit.signedInt()) - 1);
-        return setFlags(Value(Literal(firstLit.unsignedInt() >> secondLit.signedInt()), resultType), shiftLoss != 0);
+        return setFlags(Literal(firstLit.unsignedInt() >> secondLit.signedInt()), shiftLoss != 0);
     }
     if(code == OP_SUB)
     {
         auto extendedVal = static_cast<int64_t>(firstLit.signedInt()) - static_cast<int64_t>(secondLit.signedInt());
-        return setFlags(Value(Literal(firstLit.signedInt() - secondLit.signedInt()), resultType),
+        return setFlags(Literal(firstLit.signedInt() - secondLit.signedInt()),
             extendedVal<0, extendedVal> static_cast<int64_t>(std::numeric_limits<int32_t>::max()) ||
                 extendedVal < static_cast<int64_t>(std::numeric_limits<int32_t>::min()));
     }
     if(code == OP_XOR)
-        return setFlags(Value(Literal(firstLit.unsignedInt() ^ secondLit.unsignedInt()), resultType), false, false);
+        return setFlags(Literal(firstLit.unsignedInt() ^ secondLit.unsignedInt()), false, false);
     if(code == OP_V8ADDS || code == OP_V8SUBS || code == OP_V8MAX || code == OP_V8MIN || code == OP_V8MULD)
     {
         std::array<uint32_t, 4> bytesA, bytesB, bytesOut;
@@ -858,10 +849,10 @@ static PrecalculatedValue calcLiteral(
             });
         uint32_t result = ((bytesOut[3] & 0xFF) << 24) | ((bytesOut[2] & 0xFF) << 16) | ((bytesOut[1] & 0xFF) << 8) |
             (bytesOut[0] & 0xFF);
-        return setFlags(Value(Literal(result), resultType));
+        return setFlags(Literal(result));
     }
 
-    return std::make_pair(NO_VALUE, VectorFlags{});
+    return std::make_pair(Optional<Literal>{}, ElementFlags{});
 }
 
 PrecalculatedValue OpCode::operator()(const Value& firstOperand, const Optional<Value>& secondOperand) const
@@ -881,16 +872,15 @@ PrecalculatedValue OpCode::operator()(const Value& firstOperand, const Optional<
             VectorFlags{});
 
     // extract the literal value behind the operands
-    if(!firstOperand.getLiteralValue() && !firstOperand.checkContainer())
+    if(!firstOperand.getLiteralValue() && !firstOperand.checkVector())
         return std::make_pair(NO_VALUE, VectorFlags{});
     Optional<Value> secondVal =
-        !secondOperand || (secondOperand->getLiteralValue() || secondOperand->checkContainer()) ? secondOperand :
-                                                                                                  NO_VALUE;
+        !secondOperand || (secondOperand->getLiteralValue() || secondOperand->checkVector()) ? secondOperand : NO_VALUE;
     if(numOperands > 1 && !secondVal)
         return std::make_pair(NO_VALUE, VectorFlags{});
 
-    auto firstContainer = firstOperand.checkContainer();
-    auto secondContainer = secondVal ? secondVal->checkContainer() : nullptr;
+    auto firstVector = firstOperand.checkVector();
+    auto secondVector = secondVal ? secondVal->checkVector() : nullptr;
 
     // do not calculate vector rotations
     if(firstOperand.checkImmediate() && firstOperand.immediate().isVectorRotation())
@@ -899,8 +889,8 @@ PrecalculatedValue OpCode::operator()(const Value& firstOperand, const Optional<
         return std::make_pair(NO_VALUE, VectorFlags{});
 
     // both (used) values are literals (or literal containers)
-    bool calcPerComponent = (firstContainer && firstContainer->elements.size() > 1 && !firstContainer->isAllSame()) ||
-        (numOperands > 1 && secondContainer && secondContainer->elements.size() > 1 && !secondContainer->isAllSame());
+    bool calcPerComponent =
+        (firstVector && !firstVector->isAllSame()) || (numOperands > 1 && secondVector && !secondVector->isAllSame());
     DataType resultType = firstOperand.type;
     if(numOperands > 1 &&
         (secondVal->type.getVectorWidth() > resultType.getVectorWidth() ||
@@ -910,23 +900,22 @@ PrecalculatedValue OpCode::operator()(const Value& firstOperand, const Optional<
     // at least one used value is a container, need to calculate component-wise
     if(calcPerComponent)
     {
-        auto numElements = std::max(firstContainer ? firstContainer->elements.size() : 1,
-            secondVal ? (secondContainer ? secondContainer->elements.size() : 1) : 0);
-        ContainerValue res(numElements);
+        SIMDVector res;
         VectorFlags flags;
-        for(unsigned char i = 0; i < numElements; ++i)
+        auto elementType = resultType.getElementType();
+        for(unsigned char i = 0; i < res.size(); ++i)
         {
             PrecalculatedValue tmp{NO_VALUE, {}};
-            // TODO call calcLiteral directly? Need to perform some checks
             if(numOperands == 1)
-                tmp = operator()(firstContainer ? firstContainer->elements.at(i) : firstOperand, NO_VALUE);
+                tmp = operator()(
+                    firstVector ? (*firstVector)[i] : *firstOperand.getLiteralValue(), UNDEFINED_LITERAL, elementType);
             else
-                tmp = operator()(firstContainer ? firstContainer->elements.at(i) : firstOperand,
-                    secondContainer ? secondContainer->elements.at(i) : secondVal.value());
+                tmp = operator()(firstVector ? (*firstVector)[i] : *firstOperand.getLiteralValue(),
+                    secondVector ? (*secondVector)[i] : *secondVal->getLiteralValue(), elementType);
             if(!tmp.first)
                 // result could not be calculated for a single component of the vector, abort
                 return std::make_pair(NO_VALUE, VectorFlags{});
-            res.elements.emplace_back(std::move(tmp.first).value());
+            res[i] = *std::move(tmp.first)->getLiteralValue();
             flags[i] = tmp.second[0];
         }
         return std::make_pair(Value(std::move(res), resultType), flags);
@@ -936,13 +925,30 @@ PrecalculatedValue OpCode::operator()(const Value& firstOperand, const Optional<
         return std::make_pair(UNDEFINED_VALUE, VectorFlags{});
 
     // TODO throws if first element is no literal
-    const Literal firstLit = firstOperand.getLiteralValue() ? firstOperand.getLiteralValue().value() :
-                                                              firstContainer->elements.at(0).getLiteralValue().value();
+    const Literal firstLit =
+        firstOperand.getLiteralValue() ? firstOperand.getLiteralValue().value() : (*firstVector)[0];
     const Literal secondLit = (!secondVal || numOperands == 1) ?
         INT_ZERO.literal() :
-        secondVal->getLiteralValue() ? secondVal->getLiteralValue().value() :
-                                       secondContainer->elements.at(0).getLiteralValue().value();
-    return calcLiteral(*this, firstLit, secondLit, resultType, firstOperand.type);
+        secondVal->getLiteralValue() ? secondVal->getLiteralValue().value() : (*secondVector)[0];
+    return operator()(firstLit, secondLit, resultType);
+}
+
+PrecalculatedValue OpCode::operator()(Literal firstOperand, Literal secondOperand, DataType resultType) const
+{
+    if(numOperands >= 1 && firstOperand.isUndefined())
+        // returns an undefined value (of the correct type)
+        return std::make_pair(returnsFloat ? Value(TYPE_FLOAT) : Value(resultType), VectorFlags{});
+    if(numOperands == 2 && secondOperand.isUndefined())
+        // returns an undefined value (of the correct type)
+        return std::make_pair(returnsFloat ? Value(TYPE_FLOAT) : Value(resultType), VectorFlags{});
+
+    auto tmp = calcLiteral(*this, firstOperand, secondOperand);
+    if(!tmp.first)
+        return std::make_pair(NO_VALUE, VectorFlags{});
+
+    resultType = opAdd == OP_FTOI.opAdd ? TYPE_INT32 : resultType;
+    resultType = opAdd == OP_ITOF.opAdd ? TYPE_FLOAT : resultType;
+    return std::make_pair(Value(*tmp.first, resultType), tmp.second);
 }
 
 const OpCode& OpCode::toOpCode(const std::string& name)

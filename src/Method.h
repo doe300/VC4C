@@ -19,6 +19,7 @@ namespace vc4c
     } // namespace periphery
     class ControlFlowGraph;
     class Module;
+    struct Global;
 
     /*
      * Base class representing a function (e.g. an OpenCL kernel)

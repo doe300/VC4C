@@ -6,6 +6,7 @@
 
 #include "TMU.h"
 
+#include "../GlobalValues.h"
 #include "../InstructionWalker.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/operators.h"

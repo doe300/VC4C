@@ -28,40 +28,30 @@ InstructionWalker periphery::insertSFUCall(const Register sfuReg, InstructionWal
 
 Optional<Value> periphery::precalculateSFU(Register sfuReg, const Value& input)
 {
-    std::function<Value(const Value&)> elemFunc;
+    std::function<Literal(const Literal&)> elemFunc;
     switch(sfuReg.num)
     {
     case REG_SFU_EXP2.num:
-        elemFunc = [](const Value& val) -> Value {
-            return Value(Literal(std::exp2(val.getLiteralValue()->real())), TYPE_FLOAT);
-        };
+        elemFunc = [](const Literal& val) -> Literal { return Literal(std::exp2(val.real())); };
         break;
     case REG_SFU_LOG2.num:
-        elemFunc = [](const Value& val) -> Value {
-            return Value(Literal(std::log2(val.getLiteralValue()->real())), TYPE_FLOAT);
-        };
+        elemFunc = [](const Literal& val) -> Literal { return Literal(std::log2(val.real())); };
         break;
     case REG_SFU_RECIP.num:
-        elemFunc = [](const Value& val) -> Value {
-            return Value(Literal(1.0f / val.getLiteralValue()->real()), TYPE_FLOAT);
-        };
+        elemFunc = [](const Literal& val) -> Literal { return Literal(1.0f / val.real()); };
         break;
     case REG_SFU_RECIP_SQRT.num:
-        elemFunc = [](const Value& val) -> Value {
-            return Value(Literal(1.0f / std::sqrt(val.getLiteralValue()->real())), TYPE_FLOAT);
-        };
+        elemFunc = [](const Literal& val) -> Literal { return Literal(1.0f / std::sqrt(val.real())); };
         break;
     default:
         throw CompilationError(CompilationStep::GENERAL, "Invalid SFU input register", sfuReg.to_string());
     }
 
-    if(input.getLiteralValue())
-        return elemFunc(input);
-    if(auto container = input.checkContainer())
+    if(auto lit = input.getLiteralValue())
+        return Value(elemFunc(*lit), TYPE_FLOAT);
+    if(auto vector = input.checkVector())
     {
-        ContainerValue result(input.type.getVectorWidth());
-        for(const auto& elem : container->elements)
-            result.elements.emplace_back(elemFunc(elem));
+        SIMDVector result = vector->transform(elemFunc);
         return Value(std::move(result), input.type);
     }
     return NO_VALUE;

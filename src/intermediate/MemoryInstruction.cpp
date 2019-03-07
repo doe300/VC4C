@@ -6,6 +6,7 @@
 
 #include "IntermediateInstruction.h"
 
+#include "../GlobalValues.h"
 #include "../asm/Instruction.h"
 #include "../periphery/VPM.h"
 

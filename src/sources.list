@@ -10,6 +10,8 @@ target_sources(${VC4C_LIBRARY_NAME}
     Disassembler.cpp
     Expression.cpp
     Expression.h
+    GlobalValues.cpp
+    GlobalValues.h
     Graph.h
     HalfType.cpp
     HalfType.h

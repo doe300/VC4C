@@ -1213,62 +1213,26 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
     else if(auto constant = llvm::dyn_cast<const llvm::ConstantVector>(val))
     {
         // element types are stored as operands
-        ContainerValue aggregate(constant->getNumOperands());
+        SIMDVector aggregate;
         for(unsigned i = 0; i < constant->getNumOperands(); ++i)
         {
-            aggregate.elements.push_back(toConstant(module, constant->getOperand(i)));
-        }
-        return Value(std::move(aggregate), type);
-    }
-    else if(auto constant = llvm::dyn_cast<const llvm::ConstantArray>(val))
-    {
-        // element types are stored as operands
-        ContainerValue aggregate(constant->getNumOperands());
-        for(unsigned i = 0; i < constant->getNumOperands(); ++i)
-        {
-            aggregate.elements.push_back(toConstant(module, constant->getOperand(i)));
-        }
-        return Value(std::move(aggregate), type);
-    }
-    else if(auto constant = llvm::dyn_cast<const llvm::ConstantStruct>(val))
-    {
-        // special treatment for spirv.ConstantSampler type
-        if(type == TYPE_SAMPLER)
-        {
-            intermediate::Sampler sampler(
-                static_cast<intermediate::AddressingMode>(
-                    toConstant(module, constant->getOperand(0)).getLiteralValue()->unsignedInt()),
-                toConstant(module, constant->getOperand(1)).getLiteralValue()->isTrue(),
-                static_cast<intermediate::FilterMode>(
-                    toConstant(module, constant->getOperand(2)).getLiteralValue()->unsignedInt()));
-            return Value(Literal(static_cast<uint32_t>(sampler)), TYPE_SAMPLER);
-        }
-        // element types are stored as operands
-        ContainerValue aggregate(constant->getNumOperands());
-        for(unsigned i = 0; i < constant->getNumOperands(); ++i)
-        {
-            aggregate.elements.push_back(toConstant(module, constant->getOperand(i)));
+            aggregate[i] = *toConstant(module, constant->getOperand(i)).getLiteralValue();
         }
         return Value(std::move(aggregate), type);
     }
     else if(auto constant = llvm::dyn_cast<const llvm::ConstantDataSequential>(val))
     {
         // vector/array constant, but packed in storage
-        ContainerValue aggregate(constant->getNumOperands());
+        SIMDVector aggregate;
         for(unsigned i = 0; i < constant->getNumElements(); ++i)
         {
-            aggregate.elements.push_back(toConstant(module, constant->getElementAsConstant(i)));
+            aggregate[i] = *toConstant(module, constant->getElementAsConstant(i)).getLiteralValue();
         }
         return Value(std::move(aggregate), type);
     }
     else if(auto constant = llvm::dyn_cast<const llvm::ConstantAggregateZero>(val))
     {
-        ContainerValue aggregate(constant->getNumOperands());
-        for(unsigned i = 0; i < constant->getNumElements(); ++i)
-        {
-            aggregate.elements.push_back(toConstant(module, constant->getElementValue(i)));
-        }
-        return Value(std::move(aggregate), type);
+        return Value(SIMDVector(Literal(0u)), type);
     }
     else if(auto constant = llvm::dyn_cast<const llvm::ConstantFP>(val))
     {
@@ -1291,7 +1255,8 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
             return globalIt->createReference();
 
         module.globalData.emplace_back(Global(name, toDataType(module, global->getType()),
-            global->hasInitializer() ? toConstant(module, global->getInitializer()) : UNDEFINED_VALUE,
+            global->hasInitializer() ? toConstantGlobal(module, global->getInitializer()) :
+                                       CompoundConstant(TYPE_UNKNOWN, UNDEFINED_LITERAL),
             global->isConstant()));
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Global read: " << module.globalData.back().to_string() << logging::endl);
@@ -1307,7 +1272,8 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
     else
     {
         dumpLLVM(val);
-        throw CompilationError(CompilationStep::PARSER, "Unhandled constant type", std::to_string(val->getValueID()));
+        throw CompilationError(CompilationStep::PARSER, "Unhandled constant type for non-global constant",
+            std::to_string(val->getValueID()));
     }
 }
 
@@ -1480,6 +1446,113 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
     dumpLLVM(expr);
     throw CompilationError(
         CompilationStep::PARSER, "This type of constant expression is not supported yet", expr->getOpcodeName());
+}
+
+CompoundConstant BitcodeReader::toConstantGlobal(Module& module, const llvm::Value* val)
+{
+    const DataType type = toDataType(module, val->getType());
+    if(auto constant = llvm::dyn_cast<const llvm::ConstantInt>(val))
+    {
+        if(constant->getSExtValue() > std::numeric_limits<uint32_t>::max() ||
+            constant->getSExtValue() < std::numeric_limits<int32_t>::min())
+        {
+            dumpLLVM(constant);
+            throw CompilationError(CompilationStep::PARSER, "Constant value is out of valid range",
+                std::to_string(constant->getSExtValue()));
+        }
+        if(constant->isNegative())
+            return CompoundConstant(type, Literal(static_cast<int32_t>(constant->getSExtValue())));
+        return CompoundConstant(type, Literal(static_cast<uint32_t>(constant->getZExtValue())));
+    }
+    /*
+     * DO NOT COMBINE THE NEXT ELSE-CLAUSES
+     *
+     * For "standard" LLVM (4.0+), ConstantVector, ConstantArray and ConstantStruct have a common super-type
+     * ConstantAggregate, but not yet for SPIRV-LLVM (~3.6)
+     */
+    else if(auto constant = llvm::dyn_cast<const llvm::ConstantVector>(val))
+    {
+        // element types are stored as operands
+        std::vector<CompoundConstant> aggregate;
+        aggregate.reserve(constant->getNumOperands());
+        for(unsigned i = 0; i < constant->getNumOperands(); ++i)
+        {
+            aggregate.emplace_back(toConstantGlobal(module, constant->getOperand(i)));
+        }
+        return CompoundConstant(type, std::move(aggregate));
+    }
+    else if(auto constant = llvm::dyn_cast<const llvm::ConstantArray>(val))
+    {
+        // element types are stored as operands
+        std::vector<CompoundConstant> aggregate;
+        aggregate.reserve(constant->getNumOperands());
+        for(unsigned i = 0; i < constant->getNumOperands(); ++i)
+        {
+            aggregate.emplace_back(toConstantGlobal(module, constant->getOperand(i)));
+        }
+        return CompoundConstant(type, std::move(aggregate));
+    }
+    else if(auto constant = llvm::dyn_cast<const llvm::ConstantStruct>(val))
+    {
+        // special treatment for spirv.ConstantSampler type
+        if(type == TYPE_SAMPLER)
+        {
+            intermediate::Sampler sampler(
+                static_cast<intermediate::AddressingMode>(
+                    toConstant(module, constant->getOperand(0)).getLiteralValue()->unsignedInt()),
+                toConstant(module, constant->getOperand(1)).getLiteralValue()->isTrue(),
+                static_cast<intermediate::FilterMode>(
+                    toConstant(module, constant->getOperand(2)).getLiteralValue()->unsignedInt()));
+            return CompoundConstant(TYPE_SAMPLER, Literal(static_cast<uint32_t>(sampler)));
+        }
+        // element types are stored as operands
+        std::vector<CompoundConstant> aggregate;
+        aggregate.reserve(constant->getNumOperands());
+        for(unsigned i = 0; i < constant->getNumOperands(); ++i)
+        {
+            aggregate.push_back(toConstantGlobal(module, constant->getOperand(i)));
+        }
+        return CompoundConstant(type, std::move(aggregate));
+    }
+    else if(auto constant = llvm::dyn_cast<const llvm::ConstantDataSequential>(val))
+    {
+        // vector/array constant, but packed in storage
+        std::vector<CompoundConstant> aggregate;
+        aggregate.reserve(constant->getNumElements());
+        for(unsigned i = 0; i < constant->getNumElements(); ++i)
+        {
+            aggregate.emplace_back(toConstantGlobal(module, constant->getElementAsConstant(i)));
+        }
+        return CompoundConstant(type, std::move(aggregate));
+    }
+    else if(auto constant = llvm::dyn_cast<const llvm::ConstantAggregateZero>(val))
+    {
+        std::vector<CompoundConstant> aggregate;
+        aggregate.reserve(constant->getNumElements());
+        for(unsigned i = 0; i < constant->getNumElements(); ++i)
+        {
+            aggregate.emplace_back(toConstantGlobal(module, constant->getElementValue(i)));
+        }
+        return CompoundConstant(type, std::move(aggregate));
+    }
+    else if(auto constant = llvm::dyn_cast<const llvm::ConstantFP>(val))
+    {
+        return CompoundConstant(type, Literal(constant->getValueAPF().convertToFloat()));
+    }
+    else if(llvm::dyn_cast<const llvm::ConstantPointerNull>(val) != nullptr)
+    {
+        return CompoundConstant(type, Literal(0u));
+    }
+    else if(llvm::dyn_cast<const llvm::UndefValue>(val) != nullptr)
+    {
+        return CompoundConstant(type, UNDEFINED_LITERAL);
+    }
+    else
+    {
+        dumpLLVM(val);
+        throw CompilationError(
+            CompilationStep::PARSER, "Unhandled constant type for global constant", std::to_string(val->getValueID()));
+    }
 }
 
 #endif

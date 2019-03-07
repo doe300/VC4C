@@ -7,6 +7,7 @@
 #ifndef SRC_MODULE_H_
 #define SRC_MODULE_H_
 
+#include "GlobalValues.h"
 #include "Method.h"
 #include "performance.h"
 

@@ -299,34 +299,6 @@ namespace vc4c
     };
 
     /*
-     * Global data, can be accessed by all kernel-functions in a module and is consistent across kernel-invocations.
-     * The global data segment is part of the module binary code and contains the initial values for all global data.
-     */
-    struct Global final : public Local
-    {
-        Global(const std::string& name, DataType globalType, const Value& value, bool isConstant);
-        Global(Global&&) = default;
-        ~Global() override = default;
-
-        std::string to_string(bool withContent = false) const override;
-
-        /*
-         * Returns true, since global data resides in memory
-         */
-        bool residesInMemory() const override;
-
-        /*
-         * The initial value, usually defaults to a zero-initializer
-         */
-        Value value;
-
-        /*
-         * Whether this global value is a constant
-         */
-        const bool isConstant;
-    };
-
-    /*
      * Allocation on the "stack".
      *
      * Since call stacks are not supported, the allocations are located on a special area of the global data.

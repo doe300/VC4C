@@ -20,6 +20,7 @@
 namespace vc4c
 {
     class DataType;
+    class Literal;
     struct Value;
     struct VectorFlags;
     struct OpCode;
@@ -575,6 +576,7 @@ namespace vc4c
          * NOTE: The carry and overflow flags are set to UNDEFINED
          */
         static ElementFlags fromValue(const Value& val) noexcept;
+        static ElementFlags fromLiteral(Literal lit) noexcept;
     };
 
     /*!
@@ -663,6 +665,7 @@ namespace vc4c
          * Tries to calculate the operation for this op-code with the operands given
          */
         PrecalculatedValue operator()(const Value& firstOperand, const Optional<Value>& secondOperand) const;
+        PrecalculatedValue operator()(Literal firstOperand, Literal secondOperand, DataType resultType) const;
 
         /*
          * Whether the operation is idempotent.

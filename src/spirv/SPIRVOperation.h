@@ -25,7 +25,7 @@ namespace vc4c
     namespace spirv2qasm
     {
         static constexpr uint32_t UNDEFINED_ID{0};
-        static constexpr uint32_t UNDEFINED_LITERAL{0xFFFFFFFF};
+        static constexpr uint32_t UNDEFINED_SCALAR{0xFFFFFFFF};
 
         struct SPIRVMethod
         {
@@ -37,7 +37,7 @@ namespace vc4c
         };
 
         using TypeMapping = std::map<uint32_t, DataType>;
-        using ConstantMapping = std::map<uint32_t, Value>;
+        using ConstantMapping = std::map<uint32_t, CompoundConstant>;
         using LocalTypeMapping = std::map<uint32_t, uint32_t>;
         using MethodMapping = std::map<uint32_t, SPIRVMethod>;
         using AllocationMapping = std::map<uint32_t, Local*>;
@@ -153,7 +153,7 @@ namespace vc4c
             SPIRVLabel(uint32_t id, SPIRVMethod& method);
             ~SPIRVLabel() override = default;
 
-            void mapInstruction(std::map<uint32_t, DataType>& types, std::map<uint32_t, Value>& constants,
+            void mapInstruction(std::map<uint32_t, DataType>& types, ConstantMapping& constants,
                 std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods,
                 std::map<uint32_t, Local*>& memoryAllocated) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,

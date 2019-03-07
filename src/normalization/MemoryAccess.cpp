@@ -1035,24 +1035,29 @@ static Optional<Value> getConstantValue(const MemoryInstruction* mem)
 {
     // can only read from constant global data, so the global is always the source
     const Global* global = mem->getSource().local()->getBase(true)->as<Global>();
-    auto globalContainer = global->value.checkContainer();
-    if(mem->getSource().local()->reference.second >= 0 && globalContainer)
-        // fixed index
-        return globalContainer->elements.at(mem->getSource().local()->reference.second);
-    else if(global->value.isLiteralValue())
+    if(auto literal = global->initialValue.getScalar())
         // scalar value
-        return global->value;
-    else if(global->value.isZeroInitializer())
+        return Value(*literal, global->initialValue.type.getElementType());
+    if(global->initialValue.isZeroInitializer())
         // all entries are the same
-        return Value::createZeroInitializer(global->value.type.getElementType());
-    else if(global->value.isUndefined())
+        return Value::createZeroInitializer(global->initialValue.type.getElementType());
+    if(global->initialValue.isUndefined())
         // all entries are undefined
-        return Value(global->value.type.getElementType());
-    else if(globalContainer && globalContainer->isElementNumber())
-        return ELEMENT_NUMBER_REGISTER;
-    else if(globalContainer && globalContainer->isAllSame())
+        return Value(global->initialValue.type.getElementType());
+    auto globalContainer = global->initialValue.getCompound();
+    if(global->initialValue.isAllSame())
         // all entries are the same
-        return globalContainer->elements.at(0);
+        return globalContainer->at(0).toValue();
+    if(globalContainer && mem->getSource().local()->reference.second >= 0)
+        // fixed index
+        return globalContainer->at(mem->getSource().local()->reference.second).toValue();
+    if(auto val = global->initialValue.toValue())
+    {
+        if(auto vector = val->checkVector())
+        {
+            return vector->isElementNumber() ? ELEMENT_NUMBER_REGISTER : NO_VALUE;
+        }
+    }
     return NO_VALUE;
 }
 
@@ -1173,6 +1178,7 @@ static bool lowerMemoryToRegister(
             auto tmpIt = *it;
             if(constantValue)
             {
+                logging::warn() << constantValue->to_string(false, true) << logging::endl;
                 it = memoryInstructions.erase(it);
                 if(mem->op == MemoryOperation::COPY)
                 {
@@ -1195,7 +1201,7 @@ static bool lowerMemoryToRegister(
                 it = memoryInstructions.erase(it);
                 auto tmp = method.addNewLocal(toConvertedRegisterType.value(), "%lowered_constant");
 
-                assign(tmpIt, tmp) = local->as<const Global>()->value;
+                assign(tmpIt, tmp) = *local->as<const Global>()->initialValue.toValue();
                 tmpIt = lowerReadWriteOfMemoryToRegister(tmpIt, method, local, tmp, mem);
                 logging::debug() << "Replaced loading of constant memory with vector rotation of register: "
                                  << tmpIt.copy().previousInBlock()->to_string() << logging::endl;
@@ -1205,7 +1211,7 @@ static bool lowerMemoryToRegister(
                 it = memoryInstructions.erase(it);
                 auto tmp = method.addNewLocal(toConvertedRegisterType.value(), "%lowered_constant");
 
-                assign(tmpIt, tmp) = local->as<const Global>()->value;
+                assign(tmpIt, tmp) = *local->as<const Global>()->initialValue.toValue();
                 tmpIt = lowerReadWriteOfMemoryToRegister(tmpIt, method, local, tmp, mem);
                 logging::debug() << "Replaced copying from constant memory with vector rotation and writing of memory: "
                                  << tmpIt.copy().previousInBlock()->to_string() << logging::endl;
@@ -1595,8 +1601,9 @@ static FastMap<const Local*, MemoryAccess> determineMemoryAccess(Method& method)
                     if(isMemoryOnlyRead(local))
                     {
                         // global buffer
-                        if(getConstantValue(memInstr))
+                        if(auto c = getConstantValue(memInstr))
                         {
+                            logging::warn() << c->to_string(false, true) << logging::endl;
                             logging::debug() << "Constant element of constant buffer '" << local->to_string()
                                              << "' will be stored in a register " << logging::endl;
                             mapping[local].preferred = MemoryType::QPU_REGISTER_READONLY;

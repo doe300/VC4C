@@ -18,12 +18,8 @@ constexpr Literal tombstone_traits<Literal>::tombstone;
 constexpr SmallImmediate tombstone_traits<SmallImmediate>::tombstone;
 
 const Value vc4c::ELEMENT_NUMBERS(
-    ContainerValue({Value(Literal(0), TYPE_INT8), Value(Literal(1), TYPE_INT8), Value(Literal(2), TYPE_INT8),
-        Value(Literal(3), TYPE_INT8), Value(Literal(4), TYPE_INT8), Value(Literal(5), TYPE_INT8),
-        Value(Literal(6), TYPE_INT8), Value(Literal(7), TYPE_INT8), Value(Literal(8), TYPE_INT8),
-        Value(Literal(9), TYPE_INT8), Value(Literal(10), TYPE_INT8), Value(Literal(11), TYPE_INT8),
-        Value(Literal(12), TYPE_INT8), Value(Literal(13), TYPE_INT8), Value(Literal(14), TYPE_INT8),
-        Value(Literal(15), TYPE_INT8)}),
+    SIMDVector({Literal(0), Literal(1), Literal(2), Literal(3), Literal(4), Literal(5), Literal(6), Literal(7),
+        Literal(8), Literal(9), Literal(10), Literal(11), Literal(12), Literal(13), Literal(14), Literal(15)}),
     TYPE_INT8.toVectorType(16));
 
 std::string vc4c::toString(const RegisterFile file)
@@ -287,6 +283,8 @@ bool Literal::operator==(const Literal& other) const noexcept
 {
     if(this == &other)
         return true;
+    if(type == LiteralType::TOMBSTONE)
+        return other.type == LiteralType::TOMBSTONE;
     // checks for bit-equality
     return u == other.u;
 }
@@ -306,6 +304,8 @@ std::string Literal::to_string() const
         return std::to_string(i);
     case LiteralType::REAL:
         return std::to_string(real());
+    case LiteralType::TOMBSTONE:
+        return "undefined";
     }
     throw CompilationError(CompilationStep::GENERAL, "Unhandled literal type!");
 }
@@ -335,6 +335,11 @@ uint32_t Literal::unsignedInt() const noexcept
 uint32_t Literal::toImmediate() const noexcept
 {
     return u;
+}
+
+bool Literal::isUndefined() const noexcept
+{
+    return type == LiteralType::TOMBSTONE;
 }
 
 std::string SmallImmediate::to_string() const
@@ -424,61 +429,75 @@ SmallImmediate SmallImmediate::fromRotationOffset(unsigned char offset)
     return static_cast<SmallImmediate>(static_cast<unsigned char>(offset + VECTOR_ROTATE_R5));
 }
 
-bool ContainerValue::hasOnlyScalarElements() const
+bool SIMDVector::isAllSame() const noexcept
 {
-    return std::all_of(elements.begin(), elements.end(), toFunction(&Value::isLiteralValue));
+    Literal firstElement = elements[0];
+    return std::all_of(elements.begin(), elements.end(),
+        // if items are UNDEFINED, ignore them, since maybe the remaining items all have the same value
+        [=](Literal lit) -> bool { return lit.isUndefined() || lit == firstElement; });
 }
 
-bool ContainerValue::isAllSame() const
+bool SIMDVector::isElementNumber(bool withOffset) const noexcept
 {
-    if(elements.empty())
-        return true;
-
-    const Value singleValue = elements[0];
-    for(const Value& element : elements)
-    {
-        if(element.isUndefined())
-            // if items are UNDEFINED, ignore them, since maybe the remaining items all have the same value
-            continue;
-        if(element != singleValue)
-            return false;
-    }
-    return true;
-}
-
-bool ContainerValue::isElementNumber(bool withOffset) const
-{
-    if(elements.empty())
-        return true;
-    if(std::any_of(elements.begin(), elements.end(), [](const Value& val) -> bool { return !val.getLiteralValue(); }))
-        return false;
-    const int32_t offset = withOffset ? elements[0].getLiteralValue()->signedInt() : 0;
+    const int32_t offset = withOffset ? elements[0].signedInt() : 0;
     for(std::size_t i = 0; i < elements.size(); ++i)
     {
-        if(elements[i].isUndefined())
-            // if items are UNDEFINED, ignore them, since maybe the remaining items correspond to the element-number
-            continue;
-        if(elements[i].getLiteralValue()->signedInt() != static_cast<int32_t>(i) + offset)
+        if(elements[i].signedInt() != static_cast<int32_t>(i) + offset)
             return false;
     }
     return true;
 }
 
-bool ContainerValue::isUndefined() const
+bool SIMDVector::isUndefined() const
 {
-    for(const Value& elem : elements)
+    return std::all_of(elements.begin(), elements.end(), [](Literal lit) -> bool { return lit.isUndefined(); });
+}
+
+void SIMDVector::forAllElements(const std::function<void(Literal)>& consumer) const
+{
+    std::for_each(elements.begin(), elements.end(), consumer);
+}
+
+SIMDVector SIMDVector::transform(const std::function<Literal(Literal)>& transformOp) const&
+{
+    SIMDVector copy;
+    for(unsigned i = 0; i < elements.size(); ++i)
     {
-        if(!elem.isUndefined())
-            return false;
+        copy.elements[i] = transformOp(elements[i]);
     }
-    return true;
+    return copy;
+}
+
+SIMDVector SIMDVector::transform(const std::function<Literal(Literal)>& transformOp) &&
+{
+    std::transform(elements.begin(), elements.end(), elements.begin(), transformOp);
+    return std::move(*this);
+}
+
+SIMDVector SIMDVector::rotate(uint8_t offset) const&
+{
+    SIMDVector copy(*this);
+    //"Rotates the order of the elements in the range [first,last), in such a way that the element pointed by middle
+    // becomes the new first element."
+    offset = (NATIVE_VECTOR_SIZE - offset);
+    std::rotate(copy.begin(), copy.begin() + offset, copy.end());
+    return copy;
+}
+
+SIMDVector SIMDVector::rotate(uint8_t offset) &&
+{
+    //"Rotates the order of the elements in the range [first,last), in such a way that the element pointed by middle
+    // becomes the new first element."
+    offset = (NATIVE_VECTOR_SIZE - offset);
+    std::rotate(begin(), begin() + offset, end());
+    return std::move(*this);
 }
 
 Value::Value(const Literal& lit, DataType type) noexcept : data(lit), type(type) {}
 
 Value::Value(Register reg, DataType type) noexcept : data(reg), type(type) {}
 
-Value::Value(ContainerValue&& container, DataType type) : data(std::move(container)), type(type) {}
+Value::Value(SIMDVector&& vector, DataType type) : data(std::move(vector)), type(type) {}
 
 Value::Value(const Local* local, DataType type) noexcept : data(const_cast<Local*>(local)), type(type) {}
 
@@ -498,19 +517,19 @@ bool Value::operator==(const Value& other) const
         return other.hasLiteral(*lit);
     if(auto loc = checkLocal())
         return other.hasLocal(loc);
-    if(auto container = checkContainer())
-        return other.container().elements == container->elements;
+    if(auto vec = checkVector())
+        return other.vector() == *vec;
     if(auto imm = checkImmediate())
         return other.hasImmediate(*imm);
     if(isUndefined())
         return other.isUndefined();
-    throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type!");
+    throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type", to_string());
 }
 
 Value Value::getCompoundPart(std::size_t index) const
 {
-    if(auto container = checkContainer())
-        return container->elements.at(index);
+    if(auto vec = checkVector())
+        return Value(vec->at(index), type.toVectorType(1));
     if(auto loc = checkLocal())
         return Value(loc, type.getElementType());
     if(auto reg = checkRegister())
@@ -547,17 +566,36 @@ bool Value::hasImmediate(SmallImmediate immediate) const
 
 bool Value::isUndefined() const
 {
-    return VariantNamespace::holds_alternative<VariantNamespace::monostate>(data) ||
-        (checkContainer() && container().isUndefined()) || (checkLocal() && local() == nullptr);
+    if(auto lit = checkLiteral())
+    {
+        return lit->isUndefined();
+    }
+    if(VariantNamespace::holds_alternative<Local*>(data))
+    {
+        return VariantNamespace::get<Local*>(data) == nullptr;
+    }
+    if(VariantNamespace::holds_alternative<VariantNamespace::monostate>(data))
+    {
+        return true;
+    }
+    if(auto vector = checkVector())
+    {
+        return vector->isUndefined();
+    }
+    return false;
 }
 
 bool Value::isZeroInitializer() const
 {
-    auto cont = checkContainer();
-    return (checkLiteral() && literal().unsignedInt() == 0) || (checkImmediate() && immediate().value == 0) ||
-        (cont && std::all_of(cont->elements.begin(), cont->elements.end(), [](const Value& val) -> bool {
-            return val.isZeroInitializer();
-        }));
+    if(auto vec = checkVector())
+    {
+        return vec->at(0).unsignedInt() == 0 && vec->isAllSame();
+    }
+    if(auto lit = getLiteralValue())
+    {
+        return lit->unsignedInt() == 0;
+    }
+    return false;
 }
 
 bool Value::isLiteralValue() const noexcept
@@ -579,20 +617,18 @@ std::string Value::to_string(const bool writeAccess, bool withLiterals) const
     const std::string typeName = (type.isUnknown() ? "unknown" : type.to_string()) + ' ';
     if(auto lit = checkLiteral())
         return typeName + lit->to_string();
-    if(auto container = checkContainer())
+    if(auto vec = checkVector())
     {
         if(withLiterals)
         {
             std::string tmp;
-            const std::string pre = type.isVectorType() ? "<" : type.getArrayType() ? "[" : "{";
-            const std::string post = type.isVectorType() ? ">" : type.getArrayType() ? "]" : "}";
-            for(const Value& element : container->elements)
-                tmp.append(element.to_string(writeAccess, withLiterals)).append(", ");
-            return typeName + pre + tmp.substr(0, tmp.length() - 2) + post;
+            for(const auto& lit : *vec)
+                tmp.append(lit.to_string()).append(", ");
+            return typeName + "<" + tmp.substr(0, tmp.length() - 2) + ">";
         }
         if(isZeroInitializer())
             return typeName + "zerointializer";
-        return typeName + std::string("container with ") + std::to_string(container->elements.size()) + " elements";
+        return typeName + "SIMD vector";
     }
     if(auto loc = checkLocal())
         return withLiterals ? loc->to_string(true) : (typeName + loc->name);
@@ -655,44 +691,40 @@ Value Value::createZeroInitializer(DataType type)
         return INT_ZERO;
     if(type.isVectorType())
     {
-        ContainerValue val(type.getVectorWidth());
-        for(unsigned i = 0; i < type.getVectorWidth(); i++)
-        {
-            val.elements.push_back(INT_ZERO);
-        }
-        return Value(std::move(val), type);
+        return Value(SIMDVector(Literal{0u}), type);
     }
-    if(auto arrayType = type.getArrayType())
-    {
-        ContainerValue val(arrayType->size);
-        for(unsigned i = 0; i < arrayType->size; i++)
-        {
-            val.elements.push_back(createZeroInitializer(arrayType->elementType));
-        }
-        return Value(std::move(val), type);
-    }
-    if(auto structType = type.getStructType())
-    {
-        ContainerValue val(structType->elementTypes.size());
-        for(unsigned i = 0; i < structType->elementTypes.size(); i++)
-        {
-            val.elements.push_back(createZeroInitializer(type.getElementType(static_cast<int>(i))));
-        }
-        return Value(std::move(val), type);
-    }
+    // TODO do we ever have to create array- and struct zero initializers ??
+    // if(auto arrayType = type.getArrayType())
+    // {
+    //     ContainerValue val(arrayType->size);
+    //     for(unsigned i = 0; i < arrayType->size; i++)
+    //     {
+    //         val.elements.push_back(createZeroInitializer(arrayType->elementType));
+    //     }
+    //     return Value(std::move(val), type);
+    // }
+    // if(auto structType = type.getStructType())
+    // {
+    //     ContainerValue val(structType->elementTypes.size());
+    //     for(unsigned i = 0; i < structType->elementTypes.size(); i++)
+    //     {
+    //         val.elements.push_back(createZeroInitializer(type.getElementType(static_cast<int>(i))));
+    //     }
+    //     return Value(std::move(val), type);
+    // }
     throw CompilationError(CompilationStep::GENERAL, "Unhandled type for zero-initializer", type.to_string());
 }
 
-std::size_t std::hash<vc4c::ContainerValue>::operator()(vc4c::ContainerValue const& val) const noexcept
+std::size_t std::hash<vc4c::SIMDVector>::operator()(vc4c::SIMDVector const& val) const noexcept
 {
-    static const std::hash<Value> elementHash;
-    return std::accumulate(val.elements.begin(), val.elements.end(), static_cast<std::size_t>(0),
-        [&](std::size_t s, const Value& val) -> std::size_t { return s + elementHash(val); });
+    static const std::hash<Literal> elementHash;
+    return std::accumulate(val.begin(), val.end(), static_cast<std::size_t>(0),
+        [&](std::size_t s, const Literal& val) -> std::size_t { return s + elementHash(val); });
 }
 
 std::size_t std::hash<vc4c::Value>::operator()(vc4c::Value const& val) const noexcept
 {
     std::hash<DataType> typeHash;
-    std::hash<Variant<Literal, Register, Local*, SmallImmediate, ContainerValue, VariantNamespace::monostate>> dataHash;
+    std::hash<Variant<Literal, Register, Local*, SmallImmediate, SIMDVector, VariantNamespace::monostate>> dataHash;
     return typeHash(val.type) ^ dataHash(val.data);
 }

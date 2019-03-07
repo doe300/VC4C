@@ -55,7 +55,7 @@ namespace vc4c
             Word* getWordAddress(MemoryAddress address);
             const Word* getWordAddress(MemoryAddress address) const;
 
-            Value readWord(MemoryAddress address) const;
+            Word readWord(MemoryAddress address) const;
             MemoryAddress incrementAddress(MemoryAddress address, DataType typeSize) const;
 
             MemoryAddress getMaximumAddress() const;

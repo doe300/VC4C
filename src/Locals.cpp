@@ -194,26 +194,6 @@ bool Parameter::isOutputParameter() const
     return has_flag(decorations, ParameterDecorations::OUTPUT);
 }
 
-Global::Global(const std::string& name, DataType globalType, const Value& value, bool isConstant) :
-    Local(globalType, name), value(value), isConstant(isConstant)
-{
-    if(!globalType.getPointerType())
-        throw CompilationError(CompilationStep::GENERAL, "Global value needs to have a pointer type", to_string());
-    if(isConstant != (globalType.getPointerType()->addressSpace == AddressSpace::CONSTANT))
-        throw CompilationError(
-            CompilationStep::GENERAL, "Constness attributes of global and pointer to global do not match", to_string());
-}
-
-std::string Global::to_string(bool withContent) const
-{
-    return (name + ": ") + value.to_string(false, withContent) + (isConstant ? " (const)" : "");
-}
-
-bool Global::residesInMemory() const
-{
-    return true;
-}
-
 StackAllocation::StackAllocation(const std::string& name, DataType type, std::size_t size, std::size_t alignment) :
     Local(type, name), offset(0), alignment(alignment == 0 ? 1 : alignment),
     size(size > 0 ? size : type.getElementType().getPhysicalWidth())

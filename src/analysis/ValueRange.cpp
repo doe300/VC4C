@@ -244,16 +244,16 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
                 std::max(static_cast<int64_t>(constant->getLiteralValue()->signedInt()),
                     static_cast<int64_t>(constant->getLiteralValue()->unsignedInt())));
     }
-    else if(constant && constant->checkContainer() && constant->container().hasOnlyScalarElements())
+    else if(constant && constant->checkVector())
     {
         if(constant->type.isFloatingType())
         {
             double min = std::numeric_limits<double>::max();
             double max = std::numeric_limits<double>::min();
-            for(const Value& element : constant->container().elements)
+            for(auto element : constant->vector())
             {
-                min = std::min(min, static_cast<double>(element.getLiteralValue()->real()));
-                max = std::max(max, static_cast<double>(element.getLiteralValue()->real()));
+                min = std::min(min, static_cast<double>(element.real()));
+                max = std::max(max, static_cast<double>(element.real()));
             }
             extendBoundaries(min, max);
         }
@@ -261,14 +261,12 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
         {
             int64_t min = std::numeric_limits<int64_t>::max();
             int64_t max = std::numeric_limits<int64_t>::min();
-            for(const Value& element : constant->container().elements)
+            for(auto element : constant->vector())
             {
                 min = std::min(min,
-                    std::min(static_cast<int64_t>(element.getLiteralValue()->signedInt()),
-                        static_cast<int64_t>(element.getLiteralValue()->unsignedInt())));
+                    std::min(static_cast<int64_t>(element.signedInt()), static_cast<int64_t>(element.unsignedInt())));
                 max = std::max(max,
-                    std::max(static_cast<int64_t>(element.getLiteralValue()->signedInt()),
-                        static_cast<int64_t>(element.getLiteralValue()->unsignedInt())));
+                    std::max(static_cast<int64_t>(element.signedInt()), static_cast<int64_t>(element.unsignedInt())));
             }
             extendBoundaries(min, max);
         }

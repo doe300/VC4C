@@ -17,13 +17,13 @@
 using namespace vc4c;
 using namespace vc4c::normalization;
 
-static Optional<Value> getMostCommonElement(const std::vector<Value>& container)
+static Optional<Literal> getMostCommonElement(const SIMDVector& container, uint8_t numRelevantEntries)
 {
-    FastMap<Value, unsigned> histogram;
+    FastMap<Literal, unsigned> histogram;
     histogram.reserve(container.size());
-    for(const auto& val : container)
+    for(uint8_t i = 0; i < std::min(container.size(), numRelevantEntries); ++i)
     {
-        ++histogram[val];
+        ++histogram[container[i]];
     }
 
     auto maxVal = histogram.begin();
@@ -33,33 +33,28 @@ static Optional<Value> getMostCommonElement(const std::vector<Value>& container)
             maxVal = it;
     }
     // if all are equal, default to first element
-    return maxVal->second == 1 ? NO_VALUE : Optional<Value>{maxVal->first};
+    return maxVal->second == 1 ? Optional<Literal>{} : maxVal->first;
 }
 
-static bool fitsIntoUnsignedMaskedLoad(const Value& val)
+static bool fitsIntoUnsignedMaskedLoad(Literal lit)
 {
-    if(!val.getLiteralValue())
-        return false;
-    return val.getLiteralValue()->unsignedInt() == 0 || val.getLiteralValue()->unsignedInt() == 1 ||
-        val.getLiteralValue()->unsignedInt() == 2 || val.getLiteralValue()->unsignedInt() == 3;
+    return lit.unsignedInt() == 0 || lit.unsignedInt() == 1 || lit.unsignedInt() == 2 || lit.unsignedInt() == 3;
 }
 
-static bool fitsIntoSignedMaskedLoad(const Value& val)
+static bool fitsIntoSignedMaskedLoad(Literal lit)
 {
-    if(!val.getLiteralValue())
-        return false;
-    return val.getLiteralValue()->signedInt() == 0 || val.getLiteralValue()->signedInt() == 1 ||
-        val.getLiteralValue()->signedInt() == -2 || val.getLiteralValue()->signedInt() == -1;
+    return lit.signedInt() == 0 || lit.signedInt() == 1 || lit.signedInt() == -2 || lit.signedInt() == -1;
 }
 
 static NODISCARD InstructionWalker copyVector(Method& method, InstructionWalker it, const Value& out, const Value& in)
 {
-    const auto& inContainer = in.container();
+    const auto& inContainer = in.vector();
     if(inContainer.isAllSame())
     {
         // if all values within a container are the same, there is no need to extract them separately, a simple move
         // (e.g. load) will do
-        it.emplace((new intermediate::MoveOperation(out, inContainer.elements[0]))->copyExtrasFrom(it.get()));
+        it.emplace((new intermediate::MoveOperation(out, Value(inContainer[0], in.type.getElementType())))
+                       ->copyExtrasFrom(it.get()));
         return it.nextInBlock();
     }
     if(inContainer.isElementNumber(false))
@@ -72,18 +67,18 @@ static NODISCARD InstructionWalker copyVector(Method& method, InstructionWalker 
     {
         // if the value in the container corresponds to the element number plus an offset (a general ascending range),
         // convert to addition
-        auto offset = inContainer.elements.at(0).getLiteralValue()->signedInt();
+        auto offset = inContainer[0].signedInt();
         it.emplace((new intermediate::Operation(OP_ADD, out, ELEMENT_NUMBER_REGISTER, Value(Literal(offset), in.type)))
                        ->copyExtrasFrom(it.get()));
         return it.nextInBlock();
     }
-    if(std::all_of(inContainer.elements.begin(), inContainer.elements.end(), fitsIntoUnsignedMaskedLoad))
+    if(std::all_of(inContainer.begin(), inContainer.end(), fitsIntoUnsignedMaskedLoad))
     {
         // if the container elements all fit into the results of an unsigned bit-masked load, use such an instruction
         std::bitset<32> mask;
-        for(std::size_t i = 0; i < inContainer.elements.size(); ++i)
+        for(std::size_t i = 0; i < inContainer.size(); ++i)
         {
-            auto elemVal = inContainer.elements[i].getLiteralValue()->unsignedInt();
+            auto elemVal = inContainer[i].unsignedInt();
             mask.set(i + 16, elemVal >> 1);
             mask.set(i, elemVal & 1);
         }
@@ -92,13 +87,13 @@ static NODISCARD InstructionWalker copyVector(Method& method, InstructionWalker 
         it->copyExtrasFrom(it.get());
         return it.nextInBlock();
     }
-    if(std::all_of(inContainer.elements.begin(), inContainer.elements.end(), fitsIntoSignedMaskedLoad))
+    if(std::all_of(inContainer.begin(), inContainer.end(), fitsIntoSignedMaskedLoad))
     {
         // if the container elements all fit into the results of an signed bit-masked load, use such an instruction
         std::bitset<32> mask;
-        for(std::size_t i = 0; i < inContainer.elements.size(); ++i)
+        for(std::size_t i = 0; i < inContainer.size(); ++i)
         {
-            auto elemVal = inContainer.elements[i].getLiteralValue()->signedInt();
+            auto elemVal = inContainer[i].signedInt();
             mask.set(i + 16, elemVal < 0);
             mask.set(i, elemVal & 1);
         }
@@ -118,25 +113,29 @@ static NODISCARD InstructionWalker copyVector(Method& method, InstructionWalker 
     }
 
     // the input could be an array lowered into register, so the type is not required to be a vector
-    auto typeWidth = in.type.getArrayType() ? in.type.getArrayType()->size : in.type.getVectorWidth();
+    auto typeWidth =
+        in.type.getArrayType() ? static_cast<uint8_t>(in.type.getArrayType()->size) : in.type.getVectorWidth();
+    auto elemType = in.type.getElementType();
     // copy first element without test for flags, so the register allocator finds an unconditional write of the
     // container
-    it.emplace(new intermediate::MoveOperation(realOut, in.getCompoundPart(0)));
+    it.emplace(new intermediate::MoveOperation(realOut, Value(inContainer[0], elemType)));
     it.nextInBlock();
     // optimize this by looking for the most common value and initializing all (but the first) elements with this one
-    auto maxOccurrence = getMostCommonElement(inContainer.elements);
-    if(maxOccurrence && maxOccurrence.value() != in.getCompoundPart(0))
+    // all other elements (not in the original data, but part of the SIMD vector, e.g. if source has less than 16
+    // elements), we don't care about their value
+    auto maxOccurrence = getMostCommonElement(inContainer, typeWidth);
+    if(maxOccurrence && maxOccurrence.value() != inContainer[0])
     {
         it.emplace(new intermediate::Operation(
             OP_SUB, NOP_REGISTER, INT_ZERO, ELEMENT_NUMBER_REGISTER, COND_ALWAYS, SetFlag::SET_FLAGS));
         it.nextInBlock();
-        it.emplace(new intermediate::MoveOperation(realOut, maxOccurrence.value(), COND_NEGATIVE_SET));
+        it.emplace(new intermediate::MoveOperation(realOut, Value(maxOccurrence.value(), elemType), COND_NEGATIVE_SET));
         it->addDecorations(intermediate::InstructionDecorations::ELEMENT_INSERTION);
         it.nextInBlock();
     }
     for(uint8_t i = 0; i < typeWidth; ++i)
     {
-        if(maxOccurrence && in.getCompoundPart(i) == maxOccurrence.value())
+        if(maxOccurrence && inContainer[i] == maxOccurrence.value())
             continue;
         // 1) set flags for element i
         it.emplace(new intermediate::Operation(OP_XOR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER,
@@ -144,7 +143,7 @@ static NODISCARD InstructionWalker copyVector(Method& method, InstructionWalker 
         it.nextInBlock();
 
         // 2) copy element i of the input vector to the output
-        it.emplace(new intermediate::MoveOperation(realOut, in.getCompoundPart(i), COND_ZERO_SET));
+        it.emplace(new intermediate::MoveOperation(realOut, Value(inContainer[i], elemType), COND_ZERO_SET));
         it->addDecorations(intermediate::InstructionDecorations::ELEMENT_INSERTION);
         it.nextInBlock();
     }
@@ -163,7 +162,7 @@ InstructionWalker normalization::handleContainer(
     intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
     intermediate::Operation* op = it.get<intermediate::Operation>();
     intermediate::VectorRotation* rot = it.get<intermediate::VectorRotation>();
-    if(rot != nullptr && rot->getSource().checkContainer() && (rot->getOffset().isLiteralValue()))
+    if(rot != nullptr && rot->getSource().checkVector() && (rot->getOffset().isLiteralValue()))
     {
         Value src = rot->getSource();
         // vector rotation -> rotate container (if static offset)
@@ -176,12 +175,9 @@ InstructionWalker normalization::handleContainer(
         offset = (16 - offset);
         // need to rotate all (possible non-existing) 16 elements, so use a temporary vector with 16 elements and rotate
         // it
-        std::vector<Value> tmp;
-        auto& sourceContainer = src.container().elements;
-        tmp.reserve(16);
-        tmp.insert(tmp.begin(), sourceContainer.begin(), sourceContainer.end());
-        while(tmp.size() != 16)
-            tmp.push_back(UNDEFINED_VALUE);
+        auto& sourceContainer = src.vector();
+        SIMDVector tmp(sourceContainer);
+        // TODO use SIMDVector#rotate?!
         std::rotate(tmp.begin(), tmp.begin() + offset, tmp.end());
         for(std::size_t i = 0; i < sourceContainer.size(); ++i)
         {
@@ -194,7 +190,7 @@ InstructionWalker normalization::handleContainer(
     // jump from previous block to next one intended, so no "else"
     // if the source is a container and the offset is a literal (already applied above), remove the rotation (see move
     // branch) if the source is a container and the offset is no literal, extract the container, but keep rotation
-    if(rot != nullptr && rot->getSource().checkContainer() && !(rot->getOffset().isLiteralValue()))
+    if(rot != nullptr && rot->getSource().checkVector() && !(rot->getOffset().isLiteralValue()))
     {
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Rewriting rotation from container " << rot->to_string() << logging::endl);
@@ -202,7 +198,7 @@ InstructionWalker normalization::handleContainer(
         it = copyVector(method, it, tmp, move->getSource());
         it->setArgument(0, std::move(tmp));
     }
-    else if(move != nullptr && move->getSource().checkContainer())
+    else if(move != nullptr && move->getSource().checkVector())
     {
         if(!move->getSource().type.getPointerType())
         {
@@ -215,27 +211,25 @@ InstructionWalker normalization::handleContainer(
         }
     }
     else if(op != nullptr &&
-        (op->getFirstArg().checkContainer() || (op->getSecondArg() && op->assertArgument(1).checkContainer())))
+        (op->getFirstArg().checkVector() || (op->getSecondArg() && op->assertArgument(1).checkVector())))
     {
         for(std::size_t i = 0; i < op->getArguments().size(); ++i)
         {
             // for special containers, rewrite to scalars/registers
-            if(auto con = op->assertArgument(i).checkContainer())
+            if(auto con = op->assertArgument(i).checkVector())
             {
                 if(con->isAllSame())
                 {
                     const Value& container = op->assertArgument(i);
-                    Value tmp = con->elements.at(0);
-                    tmp.type = container.type;
-                    op->setArgument(i, std::move(tmp));
+                    op->setArgument(i, Value((*con)[0], container.type));
                 }
-                else if(op->assertArgument(i).container().isElementNumber())
+                else if(op->assertArgument(i).vector().isElementNumber())
                 {
                     op->setArgument(i, Value(REG_ELEMENT_NUMBER, op->assertArgument(i).type));
                 }
             }
         }
-        if(op->getFirstArg().checkContainer() && !op->getFirstArg().type.getPointerType())
+        if(op->getFirstArg().checkVector() && !op->getFirstArg().type.getPointerType())
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Rewriting operation with container-input " << op->to_string() << logging::endl);
@@ -245,7 +239,7 @@ InstructionWalker normalization::handleContainer(
             // don't skip next instruction
             it.previousInBlock();
         }
-        if(op->getSecondArg() && op->assertArgument(1).checkContainer() && !op->assertArgument(1).type.getPointerType())
+        if(op->getSecondArg() && op->assertArgument(1).checkVector() && !op->assertArgument(1).type.getPointerType())
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Rewriting operation with container-input " << op->to_string() << logging::endl);

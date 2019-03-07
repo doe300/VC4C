@@ -32,26 +32,22 @@ LoadImmediate::LoadImmediate(const Value& dest, uint32_t mask, LoadType type, Co
     setArgument(0, Value(Literal(mask), TYPE_INT32));
 }
 
-std::vector<vc4c::Value> toLoadedValues(uint32_t mask, vc4c::intermediate::LoadType type)
+SIMDVector toLoadedValues(uint32_t mask, vc4c::intermediate::LoadType type)
 {
     std::bitset<32> bits(mask);
-    std::vector<Value> values;
-    values.reserve(NATIVE_VECTOR_SIZE);
+    SIMDVector values;
     if(type == LoadType::PER_ELEMENT_UNSIGNED)
     {
         for(std::size_t i = 0; i < 16; ++i)
         {
-            values.emplace_back(
-                Literal(static_cast<unsigned>(bits.test(i + 16)) * 2u + static_cast<unsigned>(bits.test(i))),
-                TYPE_INT8);
+            values[i] = Literal(static_cast<unsigned>(bits.test(i + 16)) * 2u + static_cast<unsigned>(bits.test(i)));
         }
     }
     else if(type == LoadType::PER_ELEMENT_SIGNED)
     {
         for(std::size_t i = 0; i < 16; ++i)
         {
-            values.emplace_back(
-                Literal(static_cast<int>(bits.test(i + 16)) * -2 + static_cast<int>(bits.test(i))), TYPE_INT32);
+            values[i] = Literal(static_cast<int>(bits.test(i + 16)) * -2 + static_cast<int>(bits.test(i)));
         }
     }
     else
@@ -80,13 +76,15 @@ std::string LoadImmediate::to_string() const
     case LoadType::PER_ELEMENT_SIGNED:
 
         return (getOutput()->to_string(true) + " = loadsi ") +
-            vc4c::to_string<Value>(
-                toLoadedValues(assertArgument(0).literal().unsignedInt(), LoadType::PER_ELEMENT_SIGNED)) +
+            (Value(toLoadedValues(assertArgument(0).literal().unsignedInt(), LoadType::PER_ELEMENT_SIGNED),
+                 TYPE_INT32.toVectorType(16)))
+                .to_string() +
             createAdditionalInfoString();
     case LoadType::PER_ELEMENT_UNSIGNED:
         return (getOutput()->to_string(true) + " = loadui ") +
-            vc4c::to_string<Value>(
-                toLoadedValues(assertArgument(0).literal().unsignedInt(), LoadType::PER_ELEMENT_UNSIGNED)) +
+            (Value(toLoadedValues(assertArgument(0).literal().unsignedInt(), LoadType::PER_ELEMENT_UNSIGNED),
+                 TYPE_INT8.toVectorType(16)))
+                .to_string() +
             createAdditionalInfoString();
     }
     throw CompilationError(
@@ -119,14 +117,12 @@ PrecalculatedValue LoadImmediate::precalculate(const std::size_t numIterations) 
         return PrecalculatedValue{getArgument(0), ElementFlags::fromValue(assertArgument(0))};
     case LoadType::PER_ELEMENT_SIGNED:
     {
-        auto val = Value(ContainerValue(toLoadedValues(assertArgument(0).literal().unsignedInt(), type)),
-            TYPE_INT32.toVectorType(16));
+        auto val = Value(toLoadedValues(assertArgument(0).literal().unsignedInt(), type), TYPE_INT32.toVectorType(16));
         return PrecalculatedValue{val, VectorFlags::fromValue(val)};
     }
     case LoadType::PER_ELEMENT_UNSIGNED:
     {
-        auto val = Value(ContainerValue(toLoadedValues(assertArgument(0).literal().unsignedInt(), type)),
-            TYPE_INT8.toVectorType(16));
+        auto val = Value(toLoadedValues(assertArgument(0).literal().unsignedInt(), type), TYPE_INT8.toVectorType(16));
         return PrecalculatedValue{val, VectorFlags::fromValue(val)};
     }
     }
