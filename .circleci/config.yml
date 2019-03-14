@@ -53,7 +53,8 @@ jobs:
           command: mkdir build && cd build && cmake ../ -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=ON -DLLVMIR_FRONTEND=OFF -DSPIRV_FRONTEND=OFF
       - run:
           name: make
-          command: cd build && make -j`nproc`
+          # TODO CicleCI runs out of memory
+          command: cd build && make # -j`nproc`
       - run:
           name: deb-packing
           command: cd build && cpack -G DEB && cpack -G DEB --config ../VC4CLStdLib/CPackConfig.cmake

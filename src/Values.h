@@ -14,7 +14,8 @@
 #include "config.h"
 #include "performance.h"
 
-#include <vector>
+#include <algorithm>
+#include <array>
 
 namespace vc4c
 {
@@ -602,12 +603,24 @@ namespace vc4c
      */
     class SIMDVector
     {
-    public:
-        SIMDVector(Literal defaultValue = UNDEFINED_LITERAL) : elements(NATIVE_VECTOR_SIZE, defaultValue) {}
+        // TODO save some more space by splitting values (32-bit) and types (3/8 bit)
+        // e.g. splitting values and types using the underlying type, we get from 16*64-bit (=128B) to 16*32-bit +
+        // 16*8-bit (=80B)
+        // TODO also could rewrite as pointer to array, smaller for compilation/slower for emulation, but how to
+        // maintain element memory? Global in module?
+        using Elements = std::array<Literal, NATIVE_VECTOR_SIZE>;
 
-        explicit SIMDVector(std::initializer_list<Literal> list) : elements(list)
+    public:
+        constexpr SIMDVector(Literal defaultValue = UNDEFINED_LITERAL) noexcept :
+            elements({defaultValue, defaultValue, defaultValue, defaultValue, defaultValue, defaultValue, defaultValue,
+                defaultValue, defaultValue, defaultValue, defaultValue, defaultValue, defaultValue, defaultValue,
+                defaultValue, defaultValue})
         {
-            elements.resize(NATIVE_VECTOR_SIZE, UNDEFINED_LITERAL);
+        }
+
+        explicit constexpr SIMDVector(std::initializer_list<Literal> list) noexcept : SIMDVector()
+        {
+            std::copy_n(list.begin(), std::min(NATIVE_VECTOR_SIZE, list.size()), elements.begin());
         }
 
         SIMDVector(const SIMDVector&) = default;
@@ -626,22 +639,22 @@ namespace vc4c
             return elements != other.elements;
         }
 
-        std::vector<Literal>::iterator begin() noexcept
+        Elements::iterator begin() noexcept
         {
             return elements.begin();
         }
 
-        std::vector<Literal>::const_iterator begin() const noexcept
+        inline Elements::const_iterator begin() const noexcept
         {
             return elements.begin();
         }
 
-        std::vector<Literal>::iterator end() noexcept
+        Elements::iterator end() noexcept
         {
             return elements.end();
         }
 
-        std::vector<Literal>::const_iterator end() const noexcept
+        inline Elements::const_iterator end() const noexcept
         {
             return elements.end();
         }
@@ -666,7 +679,7 @@ namespace vc4c
             return elements.at(index);
         }
 
-        inline uint8_t size() const noexcept
+        constexpr uint8_t size() const noexcept
         {
             return NATIVE_VECTOR_SIZE;
         }
@@ -688,18 +701,18 @@ namespace vc4c
         bool isUndefined() const;
 
         void forAllElements(const std::function<void(Literal)>& consumer) const;
-        SIMDVector transform(const std::function<Literal(Literal)>& transformOp) const&;
+        SIMDVector transform(const std::function<Literal(Literal)>& transformOp) const &;
         SIMDVector transform(const std::function<Literal(Literal)>& transformOp) &&;
 
         /*
          * Rotates the elements of this vector UPWARDS by the given offset.
          */
         // TODO use this for constant vector rotation
-        SIMDVector rotate(uint8_t offset) const&;
+        SIMDVector rotate(uint8_t offset) const &;
         SIMDVector rotate(uint8_t offset) &&;
 
     private:
-        std::vector<Literal> elements;
+        Elements elements;
     };
 
     class Local;
@@ -742,12 +755,6 @@ namespace vc4c
             return !(*this == other);
         }
 
-        /*
-         * Returns the element-value for the given index.
-         *
-         * For containers of constants, this returns the container-element on the given index.
-         */
-        Value getCompoundPart(std::size_t index) const;
         /*
          * Returns a pointer to the data of the given type or nullptr if the data is not of the requested type.
          */

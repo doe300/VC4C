@@ -256,7 +256,7 @@ namespace vc4c
         NODISCARD bool replaceLocalInBlock(const Local* oldLocal, const Local* newLocal,
             LocalUse::Type type = LocalUse::Type::READER, bool forward = true, bool stopWhenWritten = true);
 
-        NODISCARD bool replaceValueInBlock(const Value oldValue, const Value newValue,
+        NODISCARD bool replaceValueInBlock(const Value& oldValue, const Value& newValue,
             LocalUse::Type type = LocalUse::Type::READER, bool forward = true, bool stopWhenWritten = true);
 
     private:

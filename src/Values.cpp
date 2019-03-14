@@ -458,7 +458,7 @@ void SIMDVector::forAllElements(const std::function<void(Literal)>& consumer) co
     std::for_each(elements.begin(), elements.end(), consumer);
 }
 
-SIMDVector SIMDVector::transform(const std::function<Literal(Literal)>& transformOp) const&
+SIMDVector SIMDVector::transform(const std::function<Literal(Literal)>& transformOp) const &
 {
     SIMDVector copy;
     for(unsigned i = 0; i < elements.size(); ++i)
@@ -474,7 +474,7 @@ SIMDVector SIMDVector::transform(const std::function<Literal(Literal)>& transfor
     return std::move(*this);
 }
 
-SIMDVector SIMDVector::rotate(uint8_t offset) const&
+SIMDVector SIMDVector::rotate(uint8_t offset) const &
 {
     SIMDVector copy(*this);
     //"Rotates the order of the elements in the range [first,last), in such a way that the element pointed by middle
@@ -524,20 +524,6 @@ bool Value::operator==(const Value& other) const
     if(isUndefined())
         return other.isUndefined();
     throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type", to_string());
-}
-
-Value Value::getCompoundPart(std::size_t index) const
-{
-    if(auto vec = checkVector())
-        return Value(vec->at(index), type.toVectorType(1));
-    if(auto loc = checkLocal())
-        return Value(loc, type.getElementType());
-    if(auto reg = checkRegister())
-        // would only be valid for IO-registers, writing all values sequentially??
-        return Value(*reg, type.getElementType());
-    if(isUndefined())
-        return UNDEFINED_VALUE;
-    throw CompilationError(CompilationStep::GENERAL, "Can't get part of non-compound value", to_string(false));
 }
 
 bool Value::hasLocal(const Local* local) const

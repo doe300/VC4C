@@ -706,7 +706,7 @@ namespace vc4c
         bool isCommutative() const noexcept;
 
         /*
-         * Whether the operation ins left distributive over the given operation.
+         * Whether the operation is left distributive over the given operation.
          *
          * Left-distributivity is defined as:
          * - a op (b op2 c) = (a op b) op2 (a op c)
@@ -720,7 +720,7 @@ namespace vc4c
          */
         bool isLeftDistributiveOver(const OpCode& other) const noexcept;
         /*
-         * Whether the operation ins right distributive over the given operation.
+         * Whether the operation is right distributive over the given operation.
          *
          * Right-distributivity is defined as:
          * - (b op2 c) op a = (b op a) op2 (c op a)

@@ -359,7 +359,7 @@ ConstInstructionWalker& ConstInstructionWalker::nextInMethod()
 }
 
 bool InstructionWalker::replaceValueInBlock(
-    const Value oldValue, const Value newValue, LocalUse::Type type, bool forward, bool stopWhenWritten)
+    const Value& oldValue, const Value& newValue, LocalUse::Type type, bool forward, bool stopWhenWritten)
 {
     bool replaced = false;
     auto it = copy();

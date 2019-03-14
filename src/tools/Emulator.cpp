@@ -417,8 +417,8 @@ static Value toStorageValue(const Value& oldVal, const Value& newVal, std::bitse
 
     for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
     {
-        auto newElement = newVector ? (*newVector)[i] : newVal.literal();
-        auto oldElement = oldVector ? (*oldVector)[i] : oldVal.literal();
+        auto newElement = newVector ? (*newVector)[i] : newVal.isUndefined() ? UNDEFINED_LITERAL : newVal.literal();
+        auto oldElement = oldVector ? (*oldVector)[i] : oldVal.isUndefined() ? UNDEFINED_LITERAL : oldVal.literal();
         result[i] = elementMask.test(i) ? newElement : oldElement;
     }
     return Value(std::move(result), newVal.type);
@@ -1517,7 +1517,8 @@ void QPU::writeConditional(Register dest, const Value& in, ConditionCode cond, c
                [&](const ElementFlags& flag) -> bool { return flag.matchesCondition(cond); }))
         {
             // we would write an undefined value
-            throw CompilationError(CompilationStep::GENERAL, "Cannot write an undefined value", dest.to_string());
+            throw CompilationError(
+                CompilationStep::GENERAL, "Cannot write an undefined value", dest.to_string(true, false));
         }
         // do not write register, but also don't return to allow instrumentation
     }

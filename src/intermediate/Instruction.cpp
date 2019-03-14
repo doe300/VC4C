@@ -409,12 +409,12 @@ void IntermediateInstruction::replaceLocal(const Local* oldLocal, const Local* n
     replaceValue(oldLocal->createReference(), newLocal->createReference(), type);
 }
 
-void IntermediateInstruction::replaceLocal(const Local* oldLocal, const Value newValue, LocalUse::Type type)
+void IntermediateInstruction::replaceLocal(const Local* oldLocal, const Value& newValue, LocalUse::Type type)
 {
     replaceValue(oldLocal->createReference(), newValue, type);
 }
 
-bool IntermediateInstruction::replaceValue(const Value oldValue, const Value newValue, LocalUse::Type type)
+bool IntermediateInstruction::replaceValue(const Value& oldValue, const Value& newValue, LocalUse::Type type)
 {
     bool replaced = false;
     if(newValue == oldValue)
