@@ -80,6 +80,7 @@ void Precompiler::precompile(std::istream& input, std::unique_ptr<std::istream>&
 
 SourceType Precompiler::getSourceType(std::istream& stream)
 {
+    PROFILE_START(GetSourceType);
     // http://llvm.org/docs/BitCodeFormat.html#magic-numbers
     static constexpr char LLVM_BITCODE_MAGIC_NUMBER[2] = {0x42, 0x43};
     static constexpr uint32_t SPIRV_MAGIC_NUMBER = 0x07230203;
@@ -112,6 +113,7 @@ SourceType Precompiler::getSourceType(std::istream& stream)
     // reset stream position
     stream.seekg(0);
 
+    PROFILE_END(GetSourceType);
     return type;
 }
 
@@ -297,7 +299,7 @@ bool Precompiler::isLinkerAvailable()
 #endif
 }
 
-std::string determineFilePath(const std::string& fileName, const std::vector<std::string>& folders)
+static std::string determineFilePath(const std::string& fileName, const std::vector<std::string>& folders)
 {
     for(const auto& folder : folders)
     {
@@ -347,6 +349,7 @@ const StdlibFiles& Precompiler::findStandardLibraryFiles(const std::vector<std::
 
 void Precompiler::precompileStandardLibraryFiles(const std::string& sourceFile, const std::string& destinationFolder)
 {
+    PROFILE_START(PrecompileStandardLibraryFiles);
     // TODO merge with creating of parameters in FrontendCompiler#buildClangCommand
     auto pchArgs =
         " -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info "
@@ -372,6 +375,8 @@ void Precompiler::precompileStandardLibraryFiles(const std::string& sourceFile, 
 
     CPPLOG_LAZY(logging::Level::INFO, log << "Pre-compiling standard library with: " << moduleCommand << logging::endl);
     runPrecompiler(moduleCommand, nullptr, nullptr);
+
+    PROFILE_END(PrecompileStandardLibraryFiles);
 }
 
 Precompiler::Precompiler(

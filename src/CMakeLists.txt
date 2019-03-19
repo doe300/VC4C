@@ -127,6 +127,15 @@ if(VC4C_ENABLE_LLVM_LIB_FRONTEND)
 	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE USE_LLVM_LIBRARY=1 LLVM_LIBRARY_VERSION=${LLVM_LIBRARY_VERSION})
 endif(VC4C_ENABLE_LLVM_LIB_FRONTEND)
 
+# LibClang
+if(VC4C_ENABLE_LIBCLANG)
+	target_link_libraries(${VC4C_LIBRARY_NAME} "${LIBCLANG_LIBRARIES}")
+	# SYSTEM here suppresses (at least on some compilers/systems) all warnings from the LLVM header file
+	target_include_directories(${VC4C_LIBRARY_NAME} SYSTEM PRIVATE ${LIBCLANG_INCLUDE_PATH})
+	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE USE_LIBCLANG=1)
+	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE USE_LIBCLANG=1)
+endif(VC4C_ENABLE_LIBCLANG)
+
 if(VERIFY_OUTPUT)
 	add_dependencies(${VC4C_LIBRARY_NAME} vc4asm-project-build)
 	add_library(vc4asm STATIC IMPORTED)

@@ -136,7 +136,10 @@ static void printInfo()
         "SPIR-V linker",
 #endif
 #ifdef VERIFIER_HEADER
-        "vc4asm verification"
+        "vc4asm verification",
+#endif
+#ifdef USE_LIBCLANG
+        "compilation with libClang"
 #endif
     };
 

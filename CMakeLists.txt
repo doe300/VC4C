@@ -22,6 +22,8 @@ option(LLVMLIB_FRONTEND "Enables the front-end using the LLVM library to read LL
 option(BUILD_DEB_PACKAGE "Enables creating .deb package" ON)
 # Option whether to enable code coverage analysis via gcov
 option(ENABLE_COVERAGE "Enables collection of code coverage via gcov" OFF)
+# Option whether to enable use of the CLang library (EXPERIMENTAL)
+option(CLANG_LIBRARY "Uses the libclang library for compilation, uses the clang executable otherwise" OFF)
 
 # Only allow coverage for debug builds
 if(NOT BUILD_DEBUG)
@@ -167,6 +169,28 @@ if(LLVMLIB_FRONTEND AND NOT CROSS_COMPILE AND NOT SPIRV_CLANG_FOUND)
 	endif()
 	if(LLVM_LINK_FOUND)
 		message(STATUS "LLVM-link found: " ${LLVM_LINK_FOUND})
+	endif()
+endif()
+
+if(CLANG_LIBRARY)
+	if(NOT LIBCLANG_LIBRARIES)
+		find_library(LIBCLANG_LIBRARY_FRONTEND NAMES clangFrontend libclangFrontend)
+		find_library(LIBCLANG_LIBRARY_CODEGEN NAMES clangCodeGen libclangCodeGen)
+
+		if(LIBCLANG_LIBRARY_FRONTEND AND LIBCLANG_LIBRARY_CODEGEN)
+			set(LIBCLANG_LIBRARIES ${LIBCLANG_LIBRARY_FRONTEND} ${LIBCLANG_LIBRARY_CODEGEN})
+		endif()
+	endif()
+	if(NOT LIBCLANG_INCLUDE_PATH)
+		find_path(LIBCLANG_INCLUDE_PATH clang-c/Index.h)
+	endif()
+	if(LIBCLANG_LIBRARIES AND LIBCLANG_INCLUDE_PATH)
+		message(STATUS "Using LibClang libraries: ${LIBCLANG_LIBRARIES}")
+		message(STATUS "Using LibClang headers: ${LIBCLANG_INCLUDE_PATH}")
+		set(VC4C_ENABLE_LIBCLANG ON)
+	else()
+		message(WARNING "LibClang enabled, but no libClang libraries were found")
+		set(VC4C_ENABLE_LIBCLANG OFF)
 	endif()
 endif()
 
@@ -355,6 +379,11 @@ if (BUILD_DEB_PACKAGE)
 		if(LLVMLIB_FRONTEND)
 			# If we also build with libLLVM front-end, require the LLVM library and its development files too (llvm-3.9-dev contains the libLLVM.so)
 			set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, llvm-3.9, llvm-3.9-dev")
+		endif()
+		if(LIBCLANG_LIBRARY_PATH)
+			# If we also build with libclang, require the library
+			# TODO check versions/development headers required?
+			set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, libclang-3.9, libclang-3.9-dev")
 		endif()
 	endif()
 

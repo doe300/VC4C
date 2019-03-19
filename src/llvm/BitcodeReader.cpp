@@ -30,6 +30,20 @@
 using namespace vc4c;
 using namespace vc4c::llvm2qasm;
 
+// also used by LibClang
+// NOTE: The buffer string needs to outlive the MemoryBuffer object!
+std::unique_ptr<llvm::MemoryBuffer> fromInputStream(std::istream& stream, std::string& buffer)
+{
+    // required, since LLVM cannot read from std::istreams
+    if(auto sstream = dynamic_cast<std::istringstream*>(&stream))
+        buffer = sstream->str();
+    else if(auto sstream = dynamic_cast<std::stringstream*>(&stream))
+        buffer = sstream->str();
+    else
+        buffer.insert(buffer.end(), std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+    return std::unique_ptr<llvm::MemoryBuffer>(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(buffer)));
+}
+
 static AddressSpace toAddressSpace(int num)
 {
     // See also https://github.com/llvm-mirror/clang/blob/master/lib/Basic/Targets/SPIR.h for the mapping order
@@ -75,15 +89,8 @@ static void dumpLLVM(const T* val)
 
 BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType) : context()
 {
-    // required, since LLVM cannot read from std::istreams
     std::string tmp;
-    if(auto sstream = dynamic_cast<std::istringstream*>(&stream))
-        tmp = sstream->str();
-    else if(auto sstream = dynamic_cast<std::stringstream*>(&stream))
-        tmp = sstream->str();
-    else
-        tmp.insert(tmp.end(), std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
-    std::unique_ptr<llvm::MemoryBuffer> buf(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(tmp)));
+    auto buf = fromInputStream(stream, tmp);
     if(sourceType == SourceType::LLVM_IR_BIN)
     {
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Reading LLVM module from bit-code..." << logging::endl);
@@ -997,6 +1004,7 @@ void BitcodeReader::parseInstruction(
             if(auto alias = llvm::dyn_cast<const llvm::GlobalAlias>(call->getCalledValue()))
             {
                 func = llvm::dyn_cast<const llvm::Function>(alias->getAliasee());
+                // TODO for some OpenCL CTS SPIR test cases, the alias is not a function (but of function type)
             }
         }
         if(func == nullptr)
