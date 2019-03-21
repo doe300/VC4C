@@ -16,9 +16,18 @@ TEST_KERNEL2(atomic_sub)
 TEST_KERNEL2(atomic_xchg)
 TEST_KERNEL(atomic_inc)
 TEST_KERNEL(atomic_dec)
-// TODO atomic_cmpxchg
 TEST_KERNEL2(atomic_min)
 TEST_KERNEL2(atomic_max)
 TEST_KERNEL2(atomic_and)
 TEST_KERNEL2(atomic_or)
 TEST_KERNEL2(atomic_xor)
+
+__kernel void test_atomic_cmpxchg(__global unsigned *ptr, unsigned compare, unsigned val)
+{
+    atomic_cmpxchg(ptr, compare, val);
+}
+
+__kernel void test_atomic_xchg_float(__global float *ptr, float val)
+{
+    atomic_xchg(ptr, val);
+}

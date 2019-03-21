@@ -826,7 +826,9 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
                     calculatingExpressions.emplace(it->getOutput()->local(), expr.value());
                 }
                 auto exprIt = expressions.find(expr.value());
-                if(exprIt != expressions.end() && exprIt->second.first != it.get())
+                // replace instruction with matching expression, if the expression is not constant (no use replacing
+                // loading of constants with copies of a local initialized with a constant)
+                if(exprIt != expressions.end() && exprIt->second.first != it.get() && !expr->getConstantExpression())
                 {
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Found common subexpression: " << it->to_string() << " is the same as "

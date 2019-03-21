@@ -70,7 +70,11 @@ if(CROSS_COMPILE)
 	message(STATUS "Cross compiling for Raspbian with compiler: ${CMAKE_CXX_COMPILER}")
 endif()
 
-project (VC4C VERSION 0.4)
+if(NOT BUILD_NUMBER)
+	set(BUILD_NUMBER 9999)
+endif()
+
+project (VC4C VERSION 0.4.${BUILD_NUMBER})
 
 # Set C++ standard to C++14 without any extensions (e.g. GNU)
 set(CMAKE_CXX_STANDARD 14)

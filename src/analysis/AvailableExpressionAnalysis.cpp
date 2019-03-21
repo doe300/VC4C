@@ -50,7 +50,7 @@ std::pair<AvailableExpressions, Optional<Expression>> AvailableExpressionAnalysi
             for(const auto& expr : cacheIt->second)
                 newExpressions.erase(expr);
         }
-        if(auto expr = Expression::createExpression(*instr))
+        if((expr = Expression::createExpression(*instr)))
         {
             // only adds if expression is not already in there
             auto it = newExpressions.emplace(expr.value(), std::make_pair(instr, 0));

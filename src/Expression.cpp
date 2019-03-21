@@ -42,13 +42,18 @@ bool Expression::operator==(const Expression& other) const
 
 std::string Expression::to_string() const
 {
-    return std::string(code.name) + " " + arg0.to_string() +
-        (arg1 ? std::string(", ") + arg1.to_string() : std::string{});
+    auto basic =
+        std::string(code.name) + " " + arg0.to_string() + (arg1 ? std::string(", ") + arg1.to_string() : std::string{});
+    std::string extra;
+    extra += unpackMode.hasEffect() ? unpackMode.to_string() + " " : "";
+    extra += packMode.hasEffect() ? packMode.to_string() + " " : "";
+    extra += intermediate::toString(deco);
+    return basic + (extra.empty() ? "" : (" (" + extra + ')'));
 }
 
 bool Expression::isMoveExpression() const
 {
-    return (code == OP_OR || code == OP_V8MAX || code == OP_V8MIN) && arg1 == arg0;
+    return code.numOperands == 2 && code.isIdempotent() && arg1 == arg0;
 }
 
 Optional<Value> Expression::getConstantExpression() const
@@ -56,9 +61,19 @@ Optional<Value> Expression::getConstantExpression() const
     return code(arg0, arg1).first;
 }
 
+static bool isConstantOperand(const Value& op)
+{
+    return op.getLiteralValue() || op.checkVector();
+}
+
+static bool isConstantOperand(const Optional<Value>& op)
+{
+    return op && isConstantOperand(*op);
+}
+
 bool Expression::hasConstantOperand() const
 {
-    return arg0.getLiteralValue() || arg0.checkVector() || (arg1 && (arg1->getLiteralValue() || arg1->checkVector()));
+    return isConstantOperand(arg0) || isConstantOperand(arg1);
 }
 
 Expression Expression::combineWith(const FastMap<const Local*, Expression>& inputs) const
@@ -90,14 +105,6 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
             return Expression{OP_V8MIN, expr0->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
     }
 
-    auto firstArgConstant = arg0.getLiteralValue() || arg0.checkVector() ?
-        Optional<Value>(arg0) :
-        expr0 ? expr0->getConstantExpression() : NO_VALUE;
-
-    auto secondArgConstant = arg1 && (arg1->getLiteralValue() || arg1->checkVector()) ?
-        arg1 :
-        expr1 ? expr1->getConstantExpression() : NO_VALUE;
-
     if(code.numOperands == 2)
     {
         if(code.isIdempotent() && arg0 == arg1)
@@ -116,13 +123,93 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
             // f(a, absorb) = absorb
             return Expression{OP_V8MIN, arg1.value(), arg1, UNPACK_NOP, PACK_NOP, deco};
 
-        // TODO can use associative, commutative properties?
-        // f(constA, f(constB, a)) = f(f(constA, constB), a), if associative
-        // f(constA, f(a, constB)) = f(f(constA, constB), a), if associative and commutative
-        // f(a, f(a, b)) = f(a, b), if associative and idempotent
-        // f(a, f(b, a)) = f(a, b), if associative, commutative and idempotent
-        // g(f(a, b), f(a, c)) = f(a, g(b, c)), if left distributive
-        // g(f(a, b), f(c, b)) = f(g(a, c), b), if right distributive
+        if(code.isAssociative() && expr1 && expr1->code == code && isConstantOperand(arg0) &&
+            isConstantOperand(expr1->arg0))
+        {
+            // f(constA, f(constB, a)) = f(f(constA, constB), a), if associative
+            if(auto tmp = code(arg0, expr1->arg0).first)
+            {
+                return Expression{code, *tmp, expr1->arg1, UNPACK_NOP, PACK_NOP, deco};
+            }
+        }
+
+        if(code.isAssociative() && expr0 && expr0->code == code && isConstantOperand(arg1) &&
+            isConstantOperand(expr0->arg1))
+        {
+            // f(f(a, constA), constB) = f(a, f(constA, constB)), if associative
+            if(auto tmp = code(*expr0->arg1, arg1).first)
+            {
+                return Expression{code, expr0->arg0, tmp, UNPACK_NOP, PACK_NOP, deco};
+            }
+        }
+
+        if(code.isAssociative() && code.isCommutative() && expr1 && expr1->code == code && isConstantOperand(arg0) &&
+            isConstantOperand(expr1->arg1))
+        {
+            // f(constA, f(a, constB)) = f(f(constA, constB), a), if associative and commutative
+            if(auto tmp = code(arg0, expr1->arg1).first)
+            {
+                return Expression{code, *tmp, expr1->arg0, UNPACK_NOP, PACK_NOP, deco};
+            }
+        }
+
+        if(code.isAssociative() && code.isCommutative() && expr0 && expr0->code == code && isConstantOperand(arg1) &&
+            isConstantOperand(expr0->arg0))
+        {
+            // f(f(constA, a), constB) = f(f(constA, constB), a), if associative and commutative
+            if(auto tmp = code(expr0->arg0, arg1).first)
+            {
+                return Expression{code, *tmp, expr0->arg1, UNPACK_NOP, PACK_NOP, deco};
+            }
+        }
+
+        if(code.isAssociative() && code.isIdempotent() && expr1 && expr1->code == code && expr1->arg0 == arg0)
+        {
+            // f(a, f(a, b)) = f(a, b), if associative and idempotent
+            return Expression{code, arg0, expr1->arg1, UNPACK_NOP, PACK_NOP, deco};
+        }
+
+        if(code.isAssociative() && code.isIdempotent() && expr0 && expr0->code == code && expr0->arg1 == arg1)
+        {
+            // f(f(a, b), b) = f(a, b), if associative and idempotent
+            return Expression{code, expr0->arg0, arg1, UNPACK_NOP, PACK_NOP, deco};
+        }
+
+        if(code.isAssociative() && code.isIdempotent() && code.isCommutative() && expr1 && expr1->code == code &&
+            expr1->arg1 == arg0)
+        {
+            // f(a, f(b, a)) = f(a, b), if associative, commutative and idempotent
+            return Expression{code, arg0, expr1->arg0, UNPACK_NOP, PACK_NOP, deco};
+        }
+
+        if(code.isAssociative() && code.isIdempotent() && code.isCommutative() && expr0 && expr0->code == code &&
+            expr0->arg0 == arg1)
+        {
+            // f(f(a, b), a) = f(a, b), if associative, commutative and idempotent
+            return Expression{code, expr0->arg0, arg1, UNPACK_NOP, PACK_NOP, deco};
+        }
+
+        if(expr0 && expr1 && expr0->code == expr1->code && expr0->code.isLeftDistributiveOver(code) &&
+            expr0->arg0 == expr1->arg0)
+        {
+            // g(f(a, b), f(a, c)) = f(a, g(b, c)), if left distributive
+            if(auto tmp = code(*expr0->arg1, expr1->arg1).first)
+            {
+                return Expression{expr0->code, expr0->arg0, tmp, UNPACK_NOP, PACK_NOP, deco};
+            }
+        }
+
+        if(expr0 && expr1 && expr0->code == expr1->code && expr0->code.isRightDistributiveOver(code) &&
+            expr0->arg1 == expr1->arg1)
+        {
+            // g(f(a, b), f(c, b)) = f(g(a, c), b), if right distributive
+            if(auto tmp = code(expr0->arg0, expr1->arg0).first)
+            {
+                return Expression{expr0->code, *tmp, expr0->arg1, UNPACK_NOP, PACK_NOP, deco};
+            }
+        }
+
+        // TODO more properties to use (e.g. distributive and commutative?)
 
         if(code == OP_FADD && arg0 == arg1)
         {

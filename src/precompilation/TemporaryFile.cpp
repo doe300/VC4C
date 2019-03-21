@@ -27,7 +27,8 @@ TemporaryFile::TemporaryFile(const std::string& fileTemplate) : fileName(fileTem
             0)
         throw CompilationError(CompilationStep::PRECOMPILATION, "Invalid template for temporary file", fileName);
     if(fileName.find("/tmp/") != 0)
-        logging::warn() << "Temporary file is not created in /tmp/: " << fileTemplate << logging::endl;
+        CPPLOG_LAZY(logging::Level::WARNING,
+            log << "Temporary file is not created in /tmp/: " << fileTemplate << logging::endl);
     int fd = mkostemp(const_cast<char*>(fileName.data()), O_CREAT);
     if(fd < 0)
         throw CompilationError(
@@ -42,7 +43,8 @@ TemporaryFile::TemporaryFile(const std::string& fileTemplate) : fileName(fileTem
 TemporaryFile::TemporaryFile(const std::string& fileName, std::istream& data) : fileName(fileName)
 {
     if(fileName.find("/tmp/") != 0)
-        logging::warn() << "Temporary file is not created in /tmp/: " << fileName << logging::endl;
+        CPPLOG_LAZY(logging::Level::WARNING,
+            log << "Temporary file is not created in /tmp/: " << fileName << logging::endl);
     std::ofstream f(fileName, std::ios_base::out | std::ios_base::trunc | std::ios_base::binary);
     f << data.rdbuf();
     // XXX error-check (both streams?)
@@ -52,7 +54,8 @@ TemporaryFile::TemporaryFile(const std::string& fileName, std::istream& data) : 
 TemporaryFile::TemporaryFile(const std::string& fileName, const std::vector<char>& data) : fileName(fileName)
 {
     if(fileName.find("/tmp/") != 0)
-        logging::warn() << "Temporary file is not created in /tmp/: " << fileName << logging::endl;
+        CPPLOG_LAZY(logging::Level::WARNING,
+            log << "Temporary file is not created in /tmp/: " << fileName << logging::endl);
     std::ofstream f(fileName, std::ios_base::out | std::ios_base::trunc | std::ios_base::binary);
     f.write(data.data(), data.size());
     // XXX error-check stream
