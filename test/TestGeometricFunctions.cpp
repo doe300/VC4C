@@ -183,95 +183,96 @@ static std::array<float, 4> checkCross4(const std::array<float, 4>& in0, const s
 
 void TestGeometricFunctions::testCross3()
 {
-    testBinaryGroupFunction<3>(config, "-DOUT=float3 -DIN0=float3 -DIN1=float3 -DFUNC=cross -DTRIPLE=3 -DTYPE=float",
-        checkCross3,
+    testBinaryGroupFunction<3, CompareArrayULP<3, 3>>(config,
+        "-DOUT=float3 -DIN0=float3 -DIN1=float3 -DFUNC=cross -DTRIPLE=3 -DTYPE=float", checkCross3,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestGeometricFunctions::testCross4()
 {
-    testBinaryGroupFunction<4>(config, "-DOUT=float4 -DIN0=float4 -DIN1=float4 -DFUNC=cross", checkCross4,
+    testBinaryGroupFunction<4, CompareArrayULP<4, 3>>(config, "-DOUT=float4 -DIN0=float4 -DIN1=float4 -DFUNC=cross",
+        checkCross4,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestGeometricFunctions::testDotScalar()
 {
-    testBinaryReducedFunction<1>(config, "-DOUT=float -DIN0=float -DIN1=float -DFUNC=dot", checkDot<1>,
+    // for ULP, see latest OpenCL specification: 2 * |vector| - 1
+    testBinaryReducedFunction<1, CompareULP<0>>(config, "-DOUT=float -DIN0=float -DIN1=float -DFUNC=dot", checkDot<1>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestGeometricFunctions::testDot2()
 {
-    testBinaryReducedFunction<2>(config, "-DOUT=float -DIN0=float2 -DIN1=float2 -DFUNC=dot", checkDot<2>,
+    testBinaryReducedFunction<2, CompareULP<2>>(config, "-DOUT=float -DIN0=float2 -DIN1=float2 -DFUNC=dot", checkDot<2>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestGeometricFunctions::testDot3()
 {
-    testBinaryReducedFunction<3>(config, "-DOUT=float -DIN0=float3 -DIN1=float3 -DFUNC=dot -DTRIPLE=1 -DTYPE=float",
-        checkDot<3>,
+    testBinaryReducedFunction<3, CompareULP<4>>(config,
+        "-DOUT=float -DIN0=float3 -DIN1=float3 -DFUNC=dot -DTRIPLE=1 -DTYPE=float", checkDot<3>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestGeometricFunctions::testDot4()
 {
-    testBinaryReducedFunction<4>(config, "-DOUT=float -DIN0=float4 -DIN1=float4 -DFUNC=dot", checkDot<4>,
+    testBinaryReducedFunction<4, CompareULP<6>>(config, "-DOUT=float -DIN0=float4 -DIN1=float4 -DFUNC=dot", checkDot<4>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestGeometricFunctions::testDistanceScalar()
 {
-    testBinaryReducedFunction<1, CompareULP<4 /* sqrt */>>(config,
-        "-DOUT=float -DIN0=float -DIN1=float -DFUNC=distance", checkDistance<1>,
+    // for ULP, see latest OpenCL specification: 4 ("sqrt") + (1.5 * |vector|) + (0.5 * (|vector| - 1))
+    testBinaryReducedFunction<1, CompareULP<5>>(config, "-DOUT=float -DIN0=float -DIN1=float -DFUNC=distance",
+        checkDistance<1>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestGeometricFunctions::testDistance2()
 {
-    testBinaryReducedFunction<2, CompareULP<4 /* sqrt */>>(config,
-        "-DOUT=float -DIN0=float2 -DIN1=float2 -DFUNC=distance", checkDistance<2>,
+    testBinaryReducedFunction<2, CompareULP<7>>(config, "-DOUT=float -DIN0=float2 -DIN1=float2 -DFUNC=distance",
+        checkDistance<2>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestGeometricFunctions::testDistance3()
 {
-    testBinaryReducedFunction<3, CompareULP<4 /* sqrt */>>(config,
+    testBinaryReducedFunction<3, CompareULP<9>>(config,
         "-DOUT=float -DIN0=float3 -DIN1=float3 -DFUNC=distance -DTRIPLE=1 -DTYPE=float", checkDistance<3>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestGeometricFunctions::testDistance4()
 {
-    testBinaryReducedFunction<4, CompareULP<4 /* sqrt */>>(config,
-        "-DOUT=float -DIN0=float4 -DIN1=float4 -DFUNC=distance", checkDistance<4>,
+    testBinaryReducedFunction<4, CompareULP<11>>(config, "-DOUT=float -DIN0=float4 -DIN1=float4 -DFUNC=distance",
+        checkDistance<4>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestGeometricFunctions::testLengthScalar()
 {
-    testUnaryReducedFunction<1, CompareULP<4 /* sqrt */>>(config, "-DOUT=float -DIN=float -DFUNC=length",
-        checkLength<1>,
+    // for ULP, see latest OpenCL specification: 4 ("sqrt") + 0.5 * ((0.5 * |vector|) + (0.5 * (|vector| - 1)))
+    testUnaryReducedFunction<1, CompareULP<4>>(config, "-DOUT=float -DIN=float -DFUNC=length", checkLength<1>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestGeometricFunctions::testLength2()
 {
-    testUnaryReducedFunction<2, CompareULP<4 /* sqrt */>>(config, "-DOUT=float -DIN=float2 -DFUNC=length",
-        checkLength<2>,
+    testUnaryReducedFunction<2, CompareULP<5>>(config, "-DOUT=float -DIN=float2 -DFUNC=length", checkLength<2>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestGeometricFunctions::testLength3()
 {
-    testUnaryReducedFunction<3, CompareULP<4 /* sqrt */>>(config,
-        "-DOUT=float -DIN=float3 -DFUNC=length -DTRIPLE=1 -DTYPE=float", checkLength<3>,
+    testUnaryReducedFunction<3, CompareULP<5>>(config, "-DOUT=float -DIN=float3 -DFUNC=length -DTRIPLE=1 -DTYPE=float",
+        checkLength<3>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestGeometricFunctions::testLength4()
 {
-    testUnaryReducedFunction<4, CompareULP<4 /* sqrt */>>(config, "-DOUT=float -DIN=float4 -DFUNC=length",
-        checkLength<4>,
+    testUnaryReducedFunction<4, CompareULP<6>>(config, "-DOUT=float -DIN=float4 -DFUNC=length", checkLength<4>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 

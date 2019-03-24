@@ -109,7 +109,7 @@ void TestCommonFunctions::testClamp()
 
 void TestCommonFunctions::testDegrees()
 {
-    // maximum error not in standard, but see here: https://github.com/KhronosGroup/OpenCL-Docs/issues/33
+    // maximum error not in OpenCL 1.2 standard, but in latest
     testUnaryFunction<2>(config, "-DFUNC=degrees",
         [](float a) -> float { return a * (180.f / static_cast<float>(M_PI)); },
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
@@ -117,21 +117,21 @@ void TestCommonFunctions::testDegrees()
 
 void TestCommonFunctions::testMax()
 {
-    // maximum error not in standard, but see here: https://github.com/KhronosGroup/OpenCL-Docs/issues/33
+    // maximum error not in OpenCL 1.2 standard, but in latest
     testBinaryFunction<0>(config, "-DFUNC=max", [](float a, float b) -> float { return std::max(a, b); },
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestCommonFunctions::testMin()
 {
-    // maximum error not in standard, but see here: https://github.com/KhronosGroup/OpenCL-Docs/issues/33
+    // maximum error not in OpenCL 1.2 standard, but in latest
     testBinaryFunction<0>(config, "-DFUNC=min", [](float a, float b) -> float { return std::min(a, b); },
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestCommonFunctions::testMix()
 {
-    // maximum error not in standard, but see here: https://github.com/KhronosGroup/OpenCL-Docs/issues/33
+    // maximum error not in OpenCL 1.2 standard, but in latest
     // technically implementation defined, but we derive the maximum ULP from the ULPs of the used functions
     testTernaryFunction<0>(config, "-DFUNC=mix", [](float a, float b, float c) -> float { return a + (b - a) * c; },
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
@@ -139,7 +139,7 @@ void TestCommonFunctions::testMix()
 
 void TestCommonFunctions::testRadians()
 {
-    // maximum error not in standard, but see here: https://github.com/KhronosGroup/OpenCL-Docs/issues/33
+    // maximum error not in OpenCL 1.2 standard, but in latest
     testUnaryFunction<2>(config, "-DFUNC=radians",
         [](float a) -> float { return a * (static_cast<float>(M_PI) / 180.f); },
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
@@ -147,26 +147,25 @@ void TestCommonFunctions::testRadians()
 
 void TestCommonFunctions::testStep()
 {
-    // maximum error not in standard, but see here: https://github.com/KhronosGroup/OpenCL-Docs/issues/33
+    // maximum error not in OpenCL 1.2 standard, but in latest
     testBinaryFunction<0>(config, "-DFUNC=step", [](float a, float b) -> float { return b < a ? 0.0f : 1.0f; },
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestCommonFunctions::testSmoothStep()
 {
-    // maximum error not in standard, but see here: https://github.com/KhronosGroup/OpenCL-Docs/issues/33
+    // maximum error not in OpenCL 1.2 standard, but in latest
     auto smoothstep = [](float edge0, float edge1, float val) -> float {
         float t = checkClamp((val - edge0) / (edge1 - edge0), 0, 1);
         return t * t * (3 - 2 * t);
     };
-    // technically implementation defined, but we derive the maximum ULP from the ULPs of the used functions
     testTernaryFunction<3>(config, "-DFUNC=smoothstep", smoothstep,
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestCommonFunctions::testSign()
 {
-    // maximum error not in standard, but see here: https://github.com/KhronosGroup/OpenCL-Docs/issues/33
+    // maximum error not in OpenCL 1.2 standard, but in latest
     testUnaryFunction<0>(config, "-DFUNC=sign",
         [](float a) -> float { return (std::signbit(a) ? -1.0f : 1.0f) * (std::abs(a) > 0 ? 1.0f : 0.0f); },
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));

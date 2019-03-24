@@ -137,6 +137,8 @@ jobs:
       - run: ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
       - run: ldconfig
       - run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators --emulate-conversions --emulate-geometric --emulate-memory --emulate-vector
+      - run: dpkg -r vc4c
+      - run: dpkg -r vc4cl-stdlib
   test-spirv:
     docker:
       - image: nomaddo/cross-rpi:0.1
@@ -148,6 +150,8 @@ jobs:
       - run: ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
       - run: ldconfig
       - run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators --emulate-conversions --emulate-vector
+      - run: dpkg -r vc4c
+      - run: dpkg -r vc4cl-stdlib
 workflows:
   version: 2
   commit:

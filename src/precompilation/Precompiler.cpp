@@ -353,11 +353,13 @@ void Precompiler::precompileStandardLibraryFiles(const std::string& sourceFile, 
     // TODO merge with creating of parameters in FrontendCompiler#buildClangCommand
     auto pchArgs =
         " -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info "
-        "-cl-single-precision-constant -Wno-all -Wno-gcc-compat -Wdouble-promotion -Wno-undefined-inline -x cl "
+        "-cl-single-precision-constant -Wno-all -Wno-gcc-compat -Wdouble-promotion -Wno-undefined-inline "
+        "-Wno-unknown-attributes -x cl "
         "-emit-pch -o ";
     auto moduleArgs =
         " -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info "
-        "-cl-single-precision-constant -Wno-all -Wno-gcc-compat -Wdouble-promotion -Wno-undefined-inline -x cl "
+        "-cl-single-precision-constant -Wno-all -Wno-gcc-compat -Wdouble-promotion -Wno-undefined-inline "
+        "-Wno-unknown-attributes -x cl "
         "-emit-llvm-bc -o ";
 
 #ifdef SPIRV_CLANG_PATH

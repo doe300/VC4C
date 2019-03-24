@@ -7,6 +7,9 @@ add_executable( VC4C main.cpp concepts.h)
 set(VC4C_LIBRARY_NAME VC4CC)
 set(VC4C_PROGRAM_NAME VC4C)
 
+# Set lower case application since most applications are lower case on Linux
+set_target_properties(${VC4C_PROGRAM_NAME} PROPERTIES OUTPUT_NAME "vc4c")
+
 target_compile_definitions(${VC4C_LIBRARY_NAME} PUBLIC VC4C_VERSION="${PROJECT_VERSION}")
 target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE VC4C_VERSION="${PROJECT_VERSION}")
 if(VC4CL_STDLIB_DIR)
