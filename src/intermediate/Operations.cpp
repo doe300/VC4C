@@ -780,8 +780,11 @@ qpu_asm::DecoratedInstruction CombinedOperation::convertToAsm(const FastMap<cons
     const IntermediateInstruction* addOp = getFirstOp()->op.runsOnAddALU() ? op1.get() : op2.get();
     const IntermediateInstruction* mulOp = !getFirstOp()->op.runsOnAddALU() ? op1.get() : op2.get();
 
-    if(addOp != nullptr && mulOp != nullptr && addOp->getOutput() && mulOp->getOutput() &&
-        addOp->getOutput().value() != mulOp->getOutput().value())
+    if(addOp == nullptr || mulOp == nullptr)
+        throw CompilationError(
+            CompilationStep::CODE_GENERATION, "One of the combined operations ins NULL", to_string());
+
+    if(addOp->getOutput() && mulOp->getOutput() && addOp->getOutput().value() != mulOp->getOutput().value())
     {
         const Register addOut = addOp->getOutput()->checkLocal() ? registerMapping.at(addOp->getOutput()->local()) :
                                                                    addOp->getOutput()->reg();
@@ -846,8 +849,8 @@ bool CombinedOperation::hasSideEffects() const
 
 IntermediateInstruction* CombinedOperation::copyFor(Method& method, const std::string& localPrefix) const
 {
-    return (new CombinedOperation(static_cast<Operation*>(op1->copyFor(method, localPrefix)),
-                static_cast<Operation*>(op2->copyFor(method, localPrefix))))
+    return (new CombinedOperation(dynamic_cast<Operation*>(op1->copyFor(method, localPrefix)),
+                dynamic_cast<Operation*>(op2->copyFor(method, localPrefix))))
         ->copyExtrasFrom(this);
 }
 

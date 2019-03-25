@@ -463,8 +463,9 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
             //-> add offset of element at given index to global offset
             if(auto lit = index.getLiteralValue())
             {
-                subOffset =
-                    Value(Literal(lit->signedInt() * subContainerType.getElementType().getPhysicalWidth()), TYPE_INT32);
+                subOffset = Value(Literal(lit->signedInt() *
+                                      static_cast<int32_t>(subContainerType.getElementType().getPhysicalWidth())),
+                    TYPE_INT32);
             }
             else
             {
@@ -493,8 +494,9 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
         {
             // takes the address of an element of the vector
             if(auto lit = index.getLiteralValue())
-                subOffset =
-                    Value(Literal(lit->signedInt() * subContainerType.getElementType().getPhysicalWidth()), TYPE_INT32);
+                subOffset = Value(Literal(lit->signedInt() *
+                                      static_cast<int32_t>(subContainerType.getElementType().getPhysicalWidth())),
+                    TYPE_INT32);
             else
                 subOffset = assign(it, TYPE_INT32, "%vector_element_offset") =
                     index * Literal(subContainerType.getElementType().getPhysicalWidth());

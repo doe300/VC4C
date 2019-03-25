@@ -57,7 +57,7 @@ TemporaryFile::TemporaryFile(const std::string& fileName, const std::vector<char
         CPPLOG_LAZY(
             logging::Level::WARNING, log << "Temporary file is not created in /tmp/: " << fileName << logging::endl);
     std::ofstream f(fileName, std::ios_base::out | std::ios_base::trunc | std::ios_base::binary);
-    f.write(data.data(), data.size());
+    f.write(data.data(), static_cast<std::streamsize>(data.size()));
     // XXX error-check stream
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Temporary file '" << fileName << "' created" << logging::endl);
 }

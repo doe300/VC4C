@@ -66,7 +66,7 @@ std::unique_ptr<LifetimeGraph> LifetimeGraph::createLifetimeGraph(Method& method
     }
 
     // mark all globals/parameters as overlapping
-    overlapLocals(*graph.get(), liveLocals);
+    overlapLocals(*graph, liveLocals);
 
     method.forAllInstructions([&liveLocals, &graph](const intermediate::IntermediateInstruction* inst) -> void {
         if(auto lifetimeInst = dynamic_cast<const intermediate::LifetimeBoundary*>(inst))
@@ -78,7 +78,7 @@ std::unique_ptr<LifetimeGraph> LifetimeGraph::createLifetimeGraph(Method& method
             {
                 liveLocals.emplace(local);
                 // new local, mark all currently live locals as overlapping
-                overlapLocals(*graph.get(), liveLocals);
+                overlapLocals(*graph, liveLocals);
             }
         }
         // TODO this is not completely correct, would need to follow the control-flow from start to stop(s)
@@ -88,7 +88,7 @@ std::unique_ptr<LifetimeGraph> LifetimeGraph::createLifetimeGraph(Method& method
     logging::logLazy(logging::Level::DEBUG, [&]() {
         auto nameFunc = [](const Local* loc) -> std::string { return loc->name; };
         DebugGraph<const Local*, LifetimeRelation, Directionality::UNDIRECTED>::dumpGraph<LifetimeGraph>(
-            *graph.get(), "/tmp/vc4c-lifetimes.dot", nameFunc);
+            *graph, "/tmp/vc4c-lifetimes.dot", nameFunc);
     });
 #endif
 

@@ -15,10 +15,8 @@
 #include <cstdint>
 #include <cstring>
 
-vc4c::spirv2qasm::SPIRVParser::~SPIRVParser()
-{
-    // out-of-line destructor
-}
+// out-of-line destructor
+vc4c::spirv2qasm::SPIRVParser::~SPIRVParser() = default;
 
 #ifdef SPIRV_FRONTEND
 

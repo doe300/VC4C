@@ -5,7 +5,7 @@ jobs:
       - image: nomaddo/native
     steps:
       - checkout
-      - run: .circleci/clang-format-diff.sh
+      - run: scripts/clang-format-diff.sh
   cross:
     docker:
       - image: nomaddo/cross-rpi:0.2

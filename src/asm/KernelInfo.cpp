@@ -22,7 +22,7 @@ static void writeStream(std::ostream& stream, const std::array<uint8_t, 8>& buf,
 {
     if(mode == OutputMode::BINARY)
     {
-        stream.write(reinterpret_cast<const char*>(buf.data()), buf.size());
+        stream.write(reinterpret_cast<const char*>(buf.data()), static_cast<std::streamsize>(buf.size()));
     }
     else if(mode == OutputMode::HEX)
     {
@@ -282,7 +282,7 @@ std::size_t ModuleInfo::write(
     case OutputMode::BINARY:
     {
         const auto binary = generateDataSegment(globalData, totalStackFrameSize);
-        stream.write(reinterpret_cast<const char*>(binary.data()), binary.size());
+        stream.write(reinterpret_cast<const char*>(binary.data()), static_cast<std::streamsize>(binary.size()));
         numWords += binary.size() / sizeof(uint64_t);
         break;
     }
@@ -342,7 +342,7 @@ KernelInfo qpu_asm::getKernelInfos(
     }
     {
         uint32_t requiredSize = std::accumulate(method.metaData.workGroupSizeHints.begin(),
-            method.metaData.workGroupSizeHints.end(), 1, std::multiplies<uint32_t>());
+            method.metaData.workGroupSizeHints.end(), 1u, std::multiplies<uint32_t>());
         if(requiredSize > KernelInfo::MAX_WORK_GROUP_SIZES)
         {
             logging::warn() << "Work-group size hint " << requiredSize << " exceeds the limit of "

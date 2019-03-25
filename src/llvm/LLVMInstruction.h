@@ -33,7 +33,7 @@ namespace vc4c
         {
         public:
             explicit LLVMInstruction();
-            virtual ~LLVMInstruction();
+            virtual ~LLVMInstruction() noexcept = 0;
 
             virtual bool mapInstruction(Method& method) = 0;
 
@@ -50,7 +50,7 @@ namespace vc4c
             CallSite(Value&& dest, const Method& method, std::vector<Value>&& args = {});
             CallSite(std::string&& methodName, DataType&& returnType, std::vector<Value>&& args = {});
             explicit CallSite(const Method& method, std::vector<Value>&& args = {});
-            ~CallSite() override = default;
+            ~CallSite() noexcept override = default;
 
             bool mapInstruction(Method& method) override;
 
@@ -64,7 +64,7 @@ namespace vc4c
         {
         public:
             Copy(Value&& dest, Value&& orig, bool isLoadStore = false, bool isRead = false, bool isBitcast = false);
-            ~Copy() override = default;
+            ~Copy() noexcept override = default;
 
             bool mapInstruction(Method& method) override;
 
@@ -80,7 +80,7 @@ namespace vc4c
         {
         public:
             UnaryOperator(std::string&& opCode, Value&& dest, Value&& arg);
-            ~UnaryOperator() override = default;
+            ~UnaryOperator() noexcept override = default;
 
             bool mapInstruction(Method& method) override;
 
@@ -94,7 +94,7 @@ namespace vc4c
         {
         public:
             BinaryOperator(std::string&& opCode, Value&& dest, Value&& arg0, Value&& arg1);
-            ~BinaryOperator() override = default;
+            ~BinaryOperator() noexcept override = default;
 
             bool mapInstruction(Method& method) override;
 
@@ -106,7 +106,7 @@ namespace vc4c
         {
         public:
             IndexOf(Value&& dest, Value&& container, std::vector<Value>&& indices);
-            ~IndexOf() override = default;
+            ~IndexOf() noexcept override = default;
 
             bool mapInstruction(Method& method) override;
 
@@ -120,7 +120,7 @@ namespace vc4c
         {
         public:
             Comparison(Value&& dest, std::string&& comp, Value&& op1, Value&& op2, bool isFloat);
-            ~Comparison() override = default;
+            ~Comparison() noexcept override = default;
 
             bool mapInstruction(Method& method) override;
 
@@ -136,7 +136,7 @@ namespace vc4c
         {
         public:
             ContainerInsertion(Value&& dest, Value&& container, Value&& newValue, Value&& index);
-            ~ContainerInsertion() override = default;
+            ~ContainerInsertion() noexcept override = default;
 
             bool mapInstruction(Method& method) override;
 
@@ -151,7 +151,7 @@ namespace vc4c
         {
         public:
             ContainerExtraction(Value&& dest, Value&& container, Value&& index);
-            ~ContainerExtraction() override = default;
+            ~ContainerExtraction() noexcept override = default;
 
             bool mapInstruction(Method& method) override;
 
@@ -166,7 +166,7 @@ namespace vc4c
         public:
             explicit ValueReturn();
             explicit ValueReturn(Value&& val);
-            ~ValueReturn() override = default;
+            ~ValueReturn() noexcept override = default;
 
             bool mapInstruction(Method& method) override;
 
@@ -179,7 +179,7 @@ namespace vc4c
         {
         public:
             ShuffleVector(Value&& dest, Value&& v1, Value&& v2, Value&& mask);
-            ~ShuffleVector() override = default;
+            ~ShuffleVector() noexcept override = default;
 
             bool mapInstruction(Method& method) override;
 
@@ -194,7 +194,7 @@ namespace vc4c
         {
         public:
             explicit LLVMLabel(Value&& label);
-            ~LLVMLabel() override = default;
+            ~LLVMLabel() noexcept override = default;
 
             bool mapInstruction(Method& method) override;
 
@@ -206,7 +206,7 @@ namespace vc4c
         {
         public:
             PhiNode(Value&& dest, std::vector<std::pair<Value, const Local*>>&& labels);
-            ~PhiNode() override = default;
+            ~PhiNode() noexcept override = default;
 
             bool mapInstruction(Method& method) override;
 
@@ -219,7 +219,7 @@ namespace vc4c
         {
         public:
             Selection(Value&& dest, Value&& cond, Value&& opt1, Value&& opt2);
-            ~Selection() override = default;
+            ~Selection() noexcept override = default;
 
             bool mapInstruction(Method& method) override;
 
@@ -235,7 +235,7 @@ namespace vc4c
         public:
             explicit Branch(Value&& label);
             Branch(Value&& cond, Value&& thenLabel, Value&& elseLabel);
-            ~Branch() override = default;
+            ~Branch() noexcept override = default;
 
             bool mapInstruction(Method& method) override;
 
@@ -249,7 +249,7 @@ namespace vc4c
         {
         public:
             Switch(Value&& cond, Value&& defaultLabel, FastMap<int, Value>&& cases);
-            ~Switch() override = default;
+            ~Switch() noexcept override = default;
 
             bool mapInstruction(Method& method) override;
 

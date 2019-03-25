@@ -169,7 +169,7 @@ std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createDependencyGraph(
     std::unique_ptr<DataDependencyGraph> graph(new DataDependencyGraph(method.size()));
     for(auto& block : method)
     {
-        findDependencies(block, *graph.get(), mapping);
+        findDependencies(block, *graph, mapping);
     }
 
 #ifdef DEBUG_MODE
@@ -180,7 +180,7 @@ std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createDependencyGraph(
                 [](const auto& pair) -> bool { return !has_flag(pair.second, DataDependencyType::FLOW); });
         };
         DebugGraph<BasicBlock*, DataDependency, DataDependencyEdge::Directed>::dumpGraph<DataDependencyGraph>(
-            *graph.get(), "/tmp/vc4c-data-dependencies.dot", nameFunc, weakEdgeFunc, toEdgeLabel);
+            *graph, "/tmp/vc4c-data-dependencies.dot", nameFunc, weakEdgeFunc, toEdgeLabel);
     });
 #endif
 

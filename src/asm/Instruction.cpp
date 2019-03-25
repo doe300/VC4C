@@ -102,7 +102,7 @@ std::string Instruction::toOutputRegister(bool regFileA, const Address reg)
 std::string Instruction::toExtrasString(const Signaling sig, const ConditionCode cond, const SetFlag flags,
     const Unpack unpack, const Pack pack, bool usesOutputA, bool usesInputAOrR4)
 {
-    std::string result("");
+    std::string result{};
     if(sig != SIGNAL_NONE && sig != SIGNAL_ALU_IMMEDIATE)
         result += std::string(".") + sig.to_string();
     if(cond != COND_ALWAYS)
@@ -128,7 +128,7 @@ std::string qpu_asm::toHexString(const uint64_t code)
 std::string DecoratedInstruction::toASMString(bool addComments) const
 {
     auto tmp = instruction.toASMString();
-    return addComments ? addComment(tmp) : tmp;
+    return addComments ? addComment(std::move(tmp)) : tmp;
 }
 
 std::string DecoratedInstruction::toHexString(bool withAssemblerCode) const
@@ -136,16 +136,16 @@ std::string DecoratedInstruction::toHexString(bool withAssemblerCode) const
     auto tmp = instruction.toHexString(withAssemblerCode);
     if(withAssemblerCode)
     {
-        return addComment(tmp);
+        return addComment(std::move(tmp));
     }
     return tmp;
 }
 
-std::string DecoratedInstruction::addComment(std::string s) const
+std::string DecoratedInstruction::addComment(std::string&& s) const
 {
     std::string r;
     if(!comment.empty())
-        r = s + " // " + comment;
+        r = s.append(" // ").append(comment);
     else
         r = s;
 

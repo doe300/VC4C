@@ -128,10 +128,6 @@ struct LoopControl
         default:
             throw CompilationError(CompilationStep::OPTIMIZER, "Operation for this step-kind is not yet mapped!");
         }
-        if(!iterationStep.ifPresent(
-               [](const InstructionWalker& it) -> bool { return it.get<const intermediate::Operation>(); }))
-            return OP_NOP;
-        return iterationStep->get<const intermediate::Operation>()->op;
     }
 
     Optional<Literal> getStep() const
@@ -747,7 +743,8 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
             const Value& offset = stepOp->assertArgument(1);
             if(offset.getLiteralValue())
                 stepOp->setArgument(1,
-                    Value(Literal(offset.getLiteralValue()->signedInt() * loopControl.vectorizationFactor),
+                    Value(Literal(offset.getLiteralValue()->signedInt() *
+                              static_cast<int32_t>(loopControl.vectorizationFactor)),
                         offset.type.toVectorType(static_cast<unsigned char>(
                             offset.type.getVectorWidth() * loopControl.vectorizationFactor))));
             else
@@ -758,7 +755,8 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
             const Value& offset = stepOp->getFirstArg();
             if(offset.getLiteralValue())
                 stepOp->setArgument(0,
-                    Value(Literal(offset.getLiteralValue()->signedInt() * loopControl.vectorizationFactor),
+                    Value(Literal(offset.getLiteralValue()->signedInt() *
+                              static_cast<int32_t>(loopControl.vectorizationFactor)),
                         offset.type.toVectorType(static_cast<unsigned char>(
                             offset.type.getVectorWidth() * loopControl.vectorizationFactor))));
             else
@@ -850,7 +848,7 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
     for(auto& loop : loops)
     {
         // 3. determine operation on iteration variable and bounds
-        LoopControl loopControl = extractLoopControl(loop, *dependencyGraph.get());
+        LoopControl loopControl = extractLoopControl(loop, *dependencyGraph);
         PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + 333, "Loops found", 1);
         if(loopControl.iterationVariable == nullptr)
             // we could not find the iteration variable, skip this loop
@@ -879,13 +877,13 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
         loopControl.vectorizationFactor = vectorizationFactor.value();
 
         // 5. cost-benefit calculation
-        int rating = calculateCostsVsBenefits(loop, loopControl, *dependencyGraph.get());
+        int rating = calculateCostsVsBenefits(loop, loopControl, *dependencyGraph);
         if(rating < 0 /* TODO some positive factor to be required before vectorizing loops? */)
             // vectorization (probably) doesn't pay off
             continue;
 
         // 6. run vectorization
-        vectorize(loop, loopControl, *dependencyGraph.get());
+        vectorize(loop, loopControl, *dependencyGraph);
         // increasing the iteration step might create a value not fitting into small immediate
         normalization::handleImmediate(module, method, loopControl.iterationStep.value(), config);
         hasChanged = true;
@@ -1011,7 +1009,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
 {
     auto it = method.walkAllInstructions();
     if(!it.get<intermediate::BranchLabel>() ||
-        BasicBlock::DEFAULT_BLOCK.compare(it.get<intermediate::BranchLabel>()->getLabel()->name) != 0)
+        BasicBlock::DEFAULT_BLOCK != it.get<intermediate::BranchLabel>()->getLabel()->name)
     {
         it = method.emplaceLabel(
             it, new intermediate::BranchLabel(*method.findOrCreateLocal(TYPE_LABEL, BasicBlock::DEFAULT_BLOCK)));

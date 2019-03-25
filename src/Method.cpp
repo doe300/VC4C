@@ -60,7 +60,7 @@ const Parameter* Method::findParameter(const std::string& name) const
 {
     for(const Parameter& param : parameters)
     {
-        if(param.name.compare(name) == 0)
+        if(param.name == name)
             return &param;
     }
     return nullptr;
@@ -75,7 +75,7 @@ const StackAllocation* Method::findStackAllocation(const std::string& name) cons
 {
     for(const StackAllocation& s : stackAllocations)
     {
-        if(s.name.compare(name) == 0)
+        if(s.name == name)
             return &s;
     }
     return nullptr;
@@ -481,7 +481,7 @@ ControlFlowGraph& Method::getCFG()
         std::unique_ptr<ControlFlowGraph> tmp = ControlFlowGraph::createCFG(*this);
         cfg.swap(tmp);
     }
-    return *cfg.get();
+    return *cfg;
 }
 
 void Method::moveBlock(BasicBlockList::iterator origin, BasicBlockList::iterator dest)

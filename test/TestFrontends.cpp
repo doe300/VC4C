@@ -27,10 +27,8 @@ TestFrontends::TestFrontends()
     TEST_ADD(TestFrontends::testLinking);
 }
 
-TestFrontends::~TestFrontends()
-{
-    // out-of-line virtual destructor
-}
+// out-of-line virtual destructor
+TestFrontends::~TestFrontends() = default;
 
 void TestFrontends::testSPIRVCapabilitiesSupport()
 {

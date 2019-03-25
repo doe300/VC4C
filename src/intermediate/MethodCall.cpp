@@ -78,7 +78,7 @@ const DataType MethodCall::getReturnType() const
 
 bool MethodCall::matchesSignature(const Method& method) const
 {
-    if(methodName.compare(method.name) != 0)
+    if(methodName != method.name)
     {
         return false;
     }

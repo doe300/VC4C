@@ -139,8 +139,6 @@ Parameter::Parameter(const std::string& name, DataType type, const ParameterDeco
 {
 }
 
-Parameter::~Parameter() {}
-
 std::string vc4c::toString(ParameterDecorations deco)
 {
     std::string res;

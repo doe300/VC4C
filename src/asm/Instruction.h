@@ -106,7 +106,7 @@ namespace vc4c
             std::string toHexString(bool withAssemblerCode) const;
 
         private:
-            std::string addComment(std::string s) const;
+            std::string addComment(std::string&& s) const;
         };
     } // namespace qpu_asm
 } // namespace vc4c

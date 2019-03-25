@@ -49,7 +49,7 @@ bool vc4c::isSupportedByFrontend(SourceType inputType, Frontend frontend)
 }
 
 void Precompiler::precompile(std::istream& input, std::unique_ptr<std::istream>& output, Configuration config,
-    const std::string& options, const Optional<std::string>& inputFile, Optional<std::string> outputFile)
+    const std::string& options, const Optional<std::string>& inputFile, const Optional<std::string>& outputFile)
 {
     PROFILE_START(Precompile);
     Precompiler precompiler(config, input, Precompiler::getSourceType(input), inputFile);
@@ -88,7 +88,7 @@ SourceType Precompiler::getSourceType(std::istream& stream)
     static constexpr char SPIRV_MAGIC_NUMBER_BIG_ENDIAN[4] = {0x03, 0x02, 0x23, 0x07};
     std::array<char, 1024> buffer;
     stream.read(buffer.data(), 1000);
-    const std::string s(buffer.data(), stream.gcount());
+    const std::string s(buffer.data(), static_cast<std::size_t>(stream.gcount()));
 
     SourceType type = SourceType::UNKNOWN;
     if(s.find("ModuleID") != std::string::npos || s.find("\ntarget triple") != std::string::npos)
@@ -303,7 +303,7 @@ static std::string determineFilePath(const std::string& fileName, const std::vec
 {
     for(const auto& folder : folders)
     {
-        auto fullPath = folder + "/" + fileName;
+        auto fullPath = (folder + "/").append(fileName);
         if(access(fullPath.data(), R_OK) == 0)
         {
             // the file exists (including resolving sym-links, etc.) and can be read
@@ -409,7 +409,7 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
     {
         // for resolving relative includes
         std::array<char, 1024> buffer;
-        strcpy(buffer.data(), inputFile->data());
+        strncpy(buffer.data(), inputFile->data(), std::min(buffer.size(), inputFile->size()));
         std::string tmp = dirname(buffer.data());
         extendedOptions.append(" -I ").append(tmp);
     }

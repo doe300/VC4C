@@ -72,7 +72,7 @@ namespace vc4c
              */
             std::string instrumentationDump;
 
-            explicit EmulationData() {}
+            explicit EmulationData() = default;
 
             EmulationData(const std::string& moduleFile, const std::string& kernelName,
                 const std::vector<std::pair<uint32_t, Optional<std::vector<uint32_t>>>>& parameter,

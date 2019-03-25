@@ -66,7 +66,7 @@ namespace vc4c
          * this file instead of needing to write input to a temporary file) \return the number of bytes written (only
          * meaningful for binary output-mode)
          */
-        static std::size_t compile(std::istream& input, std::ostream& output, Configuration config = {},
+        static std::size_t compile(std::istream& input, std::ostream& output, const Configuration& config = {},
             const std::string& options = "", const Optional<std::string>& inputFile = {});
 
     private:

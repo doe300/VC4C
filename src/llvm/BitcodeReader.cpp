@@ -458,7 +458,7 @@ void BitcodeReader::parse(Module& module)
             CPPLOG_LAZY(
                 logging::Level::DEBUG, log << "Found SPIR kernel-function: " << func.getName() << logging::endl);
             Method& kernelFunc = parseFunction(module, func);
-            extractKernelMetadata(kernelFunc, func, *llvmModule.get(), context);
+            extractKernelMetadata(kernelFunc, func, *llvmModule, context);
             kernelFunc.isKernel = true;
         }
     }
@@ -838,7 +838,7 @@ void BitcodeReader::parseInstruction(
         Value cond = toValue(method, switchIns->getCondition());
         Value defaultLabel = toValue(method, switchIns->getDefaultDest());
         FastMap<int, Value> caseLabels;
-        for(auto& casePair : const_cast<llvm::SwitchInst*>(switchIns)->cases())
+        for(const auto& casePair : switchIns->cases())
         {
             caseLabels.emplace(static_cast<int>(casePair.getCaseValue()->getSExtValue()),
                 toValue(method, casePair.getCaseSuccessor()));

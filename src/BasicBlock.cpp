@@ -24,8 +24,6 @@ BasicBlock::BasicBlock(Method& method, intermediate::BranchLabel* label) : metho
     instructions.emplace_back(label);
 }
 
-BasicBlock::~BasicBlock() {}
-
 bool BasicBlock::empty() const
 {
     // no instructions

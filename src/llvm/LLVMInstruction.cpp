@@ -20,7 +20,7 @@ using namespace vc4c::llvm2qasm;
 
 LLVMInstruction::LLVMInstruction() : decorations(intermediate::InstructionDecorations::NONE) {}
 
-LLVMInstruction::~LLVMInstruction() {}
+LLVMInstruction::~LLVMInstruction() noexcept = default;
 
 LLVMInstruction* LLVMInstruction::setDecorations(const intermediate::InstructionDecorations decorations)
 {
@@ -493,7 +493,7 @@ bool Switch::mapInstruction(Method& method)
         // for every case, if equal,branch to given label
         Value tmp = method.addNewLocal(TYPE_BOOL, "%switch");
         method.appendToEnd(new intermediate::Comparison(
-            intermediate::COMP_EQ, std::move(tmp), std::move(cond), Value(Literal(option.first), TYPE_INT32)));
+            intermediate::COMP_EQ, Value(tmp), std::move(cond), Value(Literal(option.first), TYPE_INT32)));
         method.appendToEnd(new intermediate::Branch(option.second.local(), COND_ZERO_CLEAR, tmp));
     }
     // branch default label

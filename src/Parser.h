@@ -28,7 +28,7 @@ namespace vc4c
     class Parser
     {
     public:
-        virtual ~Parser();
+        virtual ~Parser() noexcept = 0;
         /*
          * Parses the currently set input and populates the module given with the globals/functions extracted from the
          * input.

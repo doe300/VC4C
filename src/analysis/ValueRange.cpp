@@ -54,7 +54,8 @@ static std::hash<DataType> h;
 static std::map<std::size_t, std::pair<double, double>> floatTypeLimits = {
     {h(TYPE_HALF), std::make_pair(6.103515625e-05, 65504.0)},
     {h(TYPE_FLOAT),
-        std::make_pair<double, double>(std::numeric_limits<float>::min(), std::numeric_limits<float>::max())},
+        std::make_pair<double, double>(static_cast<double>(std::numeric_limits<float>::min()),
+            static_cast<double>(std::numeric_limits<float>::max()))},
     {h(TYPE_DOUBLE), std::make_pair(std::numeric_limits<double>::min(), std::numeric_limits<double>::max())}};
 
 ValueRange::ValueRange(DataType type) : ValueRange(type.isFloatingType(), !isUnsignedType(type))
@@ -237,7 +238,8 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
     else if(constant && constant->isLiteralValue())
     {
         if(constant->type.isFloatingType())
-            extendBoundaries(constant->getLiteralValue()->real(), constant->getLiteralValue()->real());
+            extendBoundaries(static_cast<double>(constant->getLiteralValue()->real()),
+                static_cast<double>(constant->getLiteralValue()->real()));
         else
             extendBoundaries(std::min(static_cast<int64_t>(constant->getLiteralValue()->signedInt()),
                                  static_cast<int64_t>(constant->getLiteralValue()->unsignedInt())),
@@ -287,18 +289,18 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
         const ValueRange& sourceRange = ranges.at(it->assertArgument(0).local());
         extendBoundaries(sourceRange);
     }
-    else if(op && op->op == OP_AND && it->readsLiteral())
+    else if(op && op->op == OP_AND && op->readsLiteral())
     {
         /*
          * y = x & constant
          *
          * y is in range [0, constant] (unsigned)
          */
-        auto argIt = std::find_if(it->getArguments().begin(), it->getArguments().end(),
+        auto argIt = std::find_if(op->getArguments().begin(), op->getArguments().end(),
             [](const Value& val) -> bool { return val.isLiteralValue(); });
-        if(argIt == it->getArguments().end())
+        if(argIt == op->getArguments().end())
             throw CompilationError(CompilationStep::GENERAL,
-                "Failed to get literal argument for operation which reads a literal value", it->to_string());
+                "Failed to get literal argument for operation which reads a literal value", op->to_string());
         extendBoundaries(0, static_cast<int64_t>(argIt->getLiteralValue()->unsignedInt()));
     }
     else if(op && op->op == OP_CLZ)
@@ -317,20 +319,20 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
          *
          * y is in range [0.0, float_max]
          */
-        extendBoundaries(0.0, std::numeric_limits<float>::max());
+        extendBoundaries(0.0, static_cast<double>(std::numeric_limits<float>::max()));
     }
-    else if(op && op->op == OP_SHR && it->readsLiteral())
+    else if(op && op->op == OP_SHR && op->readsLiteral())
     {
         /*
          * y = x >> constant
          *
          * y is in range [x.min >> constant, x.max >> constant] (unsigned)
          */
-        if(it->assertArgument(0).checkLocal() && ranges.find(it->assertArgument(0).local()) != ranges.end() &&
-            it->assertArgument(1).isLiteralValue())
+        if(op->assertArgument(0).checkLocal() && ranges.find(op->assertArgument(0).local()) != ranges.end() &&
+            op->assertArgument(1).isLiteralValue())
         {
-            const ValueRange& sourceRange = ranges.at(it->assertArgument(0).local());
-            int64_t offset = static_cast<int64_t>(it->assertArgument(1).getLiteralValue()->signedInt());
+            const ValueRange& sourceRange = ranges.at(op->assertArgument(0).local());
+            int64_t offset = static_cast<int64_t>(op->assertArgument(1).getLiteralValue()->signedInt());
             // TODO not correct if min/max is negative
             extendBoundaries(
                 sourceRange.getIntRange()->minValue >> offset, sourceRange.getIntRange()->maxValue >> offset);
@@ -341,18 +343,18 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
          *
          * y is in range [0, constant] (unsigned)
          */
-        if(it->assertArgument(0).isLiteralValue())
+        if(op->assertArgument(0).isLiteralValue())
         {
-            extendBoundaries(0, static_cast<int64_t>(it->assertArgument(0).getLiteralValue()->unsignedInt()));
+            extendBoundaries(0, static_cast<int64_t>(op->assertArgument(0).getLiteralValue()->unsignedInt()));
         }
     }
     // general case for operations, only works if the used locals are only written once (otherwise, their range
     // could change afterwards!)
-    else if(op && !it->getArguments().empty() &&
+    else if(op && !op->getArguments().empty() &&
         (op->op == OP_ADD || op->op == OP_AND || op->op == OP_FADD || op->op == OP_FMAX || op->op == OP_FMAXABS ||
             op->op == OP_FMIN || op->op == OP_FMINABS || op->op == OP_FMUL || op->op == OP_FSUB || op->op == OP_ITOF ||
             op->op == OP_MAX || op->op == OP_MIN || op->op == OP_MUL24 || op->op == OP_SHR || op->op == OP_SUB) &&
-        std::all_of(it->getArguments().begin(), it->getArguments().end(),
+        std::all_of(op->getArguments().begin(), op->getArguments().end(),
             [](const Value& arg) -> bool { return arg.isLiteralValue() || (arg.getSingleWriter() != nullptr); }))
     {
         /*
@@ -364,7 +366,8 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
         if(arg0.isLiteralValue())
         {
             if(arg0.type.isFloatingType())
-                firstRange.extendBoundaries(arg0.getLiteralValue()->real(), arg0.getLiteralValue()->real());
+                firstRange.extendBoundaries(static_cast<double>(arg0.getLiteralValue()->real()),
+                    static_cast<double>(arg0.getLiteralValue()->real()));
             else
                 firstRange.extendBoundaries(std::min(static_cast<int64_t>(arg0.getLiteralValue()->signedInt()),
                                                 static_cast<int64_t>(arg0.getLiteralValue()->unsignedInt())),
@@ -391,14 +394,15 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
         Optional<Value> minVal = NO_VALUE;
         Optional<Value> maxVal = NO_VALUE;
 
-        if(it->getArguments().size() > 1)
+        if(op->getArguments().size() > 1)
         {
             const Value arg1 = op->assertArgument(1);
             ValueRange secondRange(arg1.type);
             if(arg1.isLiteralValue())
             {
                 if(arg1.type.isFloatingType())
-                    secondRange.extendBoundaries(arg1.getLiteralValue()->real(), arg1.getLiteralValue()->real());
+                    secondRange.extendBoundaries(static_cast<double>(arg1.getLiteralValue()->real()),
+                        static_cast<double>(arg1.getLiteralValue()->real()));
                 else
                     secondRange.extendBoundaries(std::min(static_cast<int64_t>(arg1.getLiteralValue()->signedInt()),
                                                      static_cast<int64_t>(arg1.getLiteralValue()->unsignedInt())),
@@ -431,7 +435,7 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
             maxVal = op->op(firstMax, NO_VALUE).first;
         }
 
-        if(it->hasDecoration(InstructionDecorations::UNSIGNED_RESULT) && !it->getOutput()->type.isFloatingType())
+        if(op->hasDecoration(InstructionDecorations::UNSIGNED_RESULT) && !op->getOutput()->type.isFloatingType())
         {
             if(minVal && minVal->isLiteralValue())
                 minVal = Value(Literal(std::max(minVal->getLiteralValue()->signedInt(), 0)), minVal->type);
@@ -441,8 +445,9 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
 
         if(minVal && minVal->isLiteralValue() && maxVal && maxVal->isLiteralValue())
         {
-            if(it->getOutput()->type.isFloatingType())
-                extendBoundaries(minVal->getLiteralValue()->real(), maxVal->getLiteralValue()->real());
+            if(op->getOutput()->type.isFloatingType())
+                extendBoundaries(static_cast<double>(minVal->getLiteralValue()->real()),
+                    static_cast<double>(maxVal->getLiteralValue()->real()));
             else
                 extendBoundaries(std::min(static_cast<int64_t>(minVal->getLiteralValue()->signedInt()),
                                      static_cast<int64_t>(minVal->getLiteralValue()->unsignedInt())),

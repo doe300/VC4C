@@ -747,22 +747,22 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
             continue;
         auto& node = graph->getOrCreateNode(inst.get());
 
-        createLocalDependencies(*graph.get(), node, lastLocalWrites, lastLocalReads);
-        createFlagDependencies(*graph.get(), node, lastSettingOfFlags, lastConditional);
-        createR4Dependencies(*graph.get(), node, lastTriggerOfR4, lastReadOfR4);
-        createR5Dependencies(*graph.get(), node, lastWriteOfR5, lastReadOfR5);
+        createLocalDependencies(*graph, node, lastLocalWrites, lastLocalReads);
+        createFlagDependencies(*graph, node, lastSettingOfFlags, lastConditional);
+        createR4Dependencies(*graph, node, lastTriggerOfR4, lastReadOfR4);
+        createR5Dependencies(*graph, node, lastWriteOfR5, lastReadOfR5);
         createMutexDependencies(
-            *graph.get(), node, lastMutexLock, lastMutexUnlock, lastInstruction, lastSemaphoreAccess, lastMemFence);
-        createSemaphoreDepencies(*graph.get(), node, lastSemaphoreAccess, lastMemFence, lastMutexUnlock, lastReadOfR4);
-        createUniformDependencies(*graph.get(), node, lastWriteOfUniformAddress, lastReadOfUniform);
-        createReplicationDependencies(*graph.get(), node, lastReplicationWrite, lastReplicationRead);
-        createVPMSetupDependencies(*graph.get(), node, lastVPMWriteSetup, lastVPMReadSetup);
-        createVPMIODependencies(*graph.get(), node, lastVPMWrite, lastVPMRead);
-        createVPMAddressDependencies(*graph.get(), node, lastVPMWriteAddress, lastVPMReadAddress);
-        createVPMWaitDependencies(*graph.get(), node, lastVPMWriteWait, lastVPMReadWait);
-        createTMUCoordinateDependencies(*graph.get(), node, lastTMU0CoordsWrite, lastTMU1CoordsWrite,
-            lastTMUNoswapWrite, lastSemaphoreAccess, lastMemFence);
-        createThreadEndDependencies(*graph.get(), node, lastHostInterrupt, lastProgramEnd);
+            *graph, node, lastMutexLock, lastMutexUnlock, lastInstruction, lastSemaphoreAccess, lastMemFence);
+        createSemaphoreDepencies(*graph, node, lastSemaphoreAccess, lastMemFence, lastMutexUnlock, lastReadOfR4);
+        createUniformDependencies(*graph, node, lastWriteOfUniformAddress, lastReadOfUniform);
+        createReplicationDependencies(*graph, node, lastReplicationWrite, lastReplicationRead);
+        createVPMSetupDependencies(*graph, node, lastVPMWriteSetup, lastVPMReadSetup);
+        createVPMIODependencies(*graph, node, lastVPMWrite, lastVPMRead);
+        createVPMAddressDependencies(*graph, node, lastVPMWriteAddress, lastVPMReadAddress);
+        createVPMWaitDependencies(*graph, node, lastVPMWriteWait, lastVPMReadWait);
+        createTMUCoordinateDependencies(*graph, node, lastTMU0CoordsWrite, lastTMU1CoordsWrite, lastTMUNoswapWrite,
+            lastSemaphoreAccess, lastMemFence);
+        createThreadEndDependencies(*graph, node, lastHostInterrupt, lastProgramEnd);
         auto branch = dynamic_cast<const intermediate::Branch*>(inst.get());
         if(branch)
         {
@@ -869,7 +869,7 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
                 return std::to_string(dep.numDelayCycles);
             };
             DebugGraph<const intermediate::IntermediateInstruction*, Dependency,
-                Directionality::DIRECTED>::dumpGraph<DependencyGraph>(*graph.get(), "/tmp/vc4c-deps.dot", nameFunc,
+                Directionality::DIRECTED>::dumpGraph<DependencyGraph>(*graph, "/tmp/vc4c-deps.dot", nameFunc,
                 weakEdgeFunc, edgeLabelFunc);
         }
     });

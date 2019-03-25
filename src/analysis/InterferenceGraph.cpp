@@ -149,7 +149,7 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(Method& method
         auto nameFunc = [](const Local* loc) -> std::string { return loc->name; };
         auto edgeFunc = [](InterferenceType type) -> bool { return !has_flag(type, InterferenceType::USED_TOGETHER); };
         DebugGraph<Local*, InterferenceType, Directionality::UNDIRECTED>::dumpGraph(
-            *graph.get(), "/tmp/vc4c-interference.dot", nameFunc, edgeFunc);
+            *graph, "/tmp/vc4c-interference.dot", nameFunc, edgeFunc);
     });
 #endif
     return graph;

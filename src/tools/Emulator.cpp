@@ -72,12 +72,12 @@ tools::Word* Memory::getWordAddress(MemoryAddress address)
         throw CompilationError(CompilationStep::GENERAL,
             "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
     }
-    for(auto it = buffers.begin(); it != buffers.end(); ++it)
+    for(const auto& buf : buffers)
     {
-        if(it->first <= address && (it->first + it->second.get().size()) > address)
+        if(buf.first <= address && (buf.first + buf.second.get().size()) > address)
         {
             auto wordBoundsAddress = (address / sizeof(Word)) * sizeof(Word);
-            return reinterpret_cast<Word*>(it->second.get().data() + wordBoundsAddress - it->first);
+            return reinterpret_cast<Word*>(buf.second.get().data() + wordBoundsAddress - buf.first);
         }
     }
     logging::logLazy(logging::Level::WARNING, [&]() {
@@ -111,12 +111,12 @@ const tools::Word* Memory::getWordAddress(MemoryAddress address) const
         throw CompilationError(CompilationStep::GENERAL,
             "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
     }
-    for(auto it = buffers.begin(); it != buffers.end(); ++it)
+    for(const auto& buf : buffers)
     {
-        if(it->first <= address && (it->first + it->second.get().size()) > address)
+        if(buf.first <= address && (buf.first + buf.second.get().size()) > address)
         {
             auto wordBoundsAddress = (address / sizeof(Word)) * sizeof(Word);
-            return reinterpret_cast<const Word*>(it->second.get().data() + wordBoundsAddress - it->first);
+            return reinterpret_cast<const Word*>(buf.second.get().data() + wordBoundsAddress - buf.first);
         }
     }
     logging::logLazy(logging::Level::WARNING, [&]() {
@@ -526,6 +526,9 @@ std::pair<Value, bool> TMUs::readTMU()
         else if(tmu1ResponseQueue.front().second < queue->front().second)
             queue = &tmu1ResponseQueue;
     }
+
+    if(queue == nullptr)
+        throw CompilationError(CompilationStep::GENERAL, "Illegal TMU response queue");
 
     auto front = queue->front();
     queue->pop();
@@ -1633,8 +1636,6 @@ bool QPU::executeSignal(Signaling signal)
         return tmus.triggerTMURead(1);
     else
         throw CompilationError(CompilationStep::GENERAL, "Unhandled signal", signal.to_string());
-
-    return true;
 }
 
 void QPU::setFlags(const Value& output, ConditionCode cond, const VectorFlags& newFlags)

@@ -98,7 +98,7 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
     {
         if(code.isIdempotent() && expr0->code == code)
             // f(f(a)) = f(a)
-            return Expression{code, expr0->arg0, expr1->arg1, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
+            return Expression{code, expr0->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
         // NOTE: ftoi(itof(i)) != i, itof(ftoi(f)) != f, since the truncation/rounding would get lost!
         if(code == OP_NOT && expr0->code == OP_NOT)
             // not(not(a)) = a

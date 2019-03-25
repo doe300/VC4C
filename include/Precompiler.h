@@ -149,7 +149,7 @@ namespace vc4c
          */
         static void precompile(std::istream& input, std::unique_ptr<std::istream>& output, Configuration config = {},
             const std::string& options = "", const Optional<std::string>& inputFile = {},
-            Optional<std::string> outputFile = {});
+            const Optional<std::string>& outputFile = {});
 
         /*
          * Determines the type of code stored in the given stream.

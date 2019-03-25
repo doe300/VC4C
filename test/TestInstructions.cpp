@@ -26,10 +26,8 @@ TestInstructions::TestInstructions()
     TEST_ADD(TestInstructions::testOpCodeFlags);
 }
 
-TestInstructions::~TestInstructions()
-{
-    // out-of-line virtual destructor
-}
+// out-of-line virtual destructor
+TestInstructions::~TestInstructions() = default;
 
 void TestInstructions::testConditionCodes()
 {

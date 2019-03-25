@@ -30,7 +30,7 @@ namespace vc4c
         typename R = typename std::conditional<std::numeric_limits<T>::is_signed, int32_t, uint32_t>::type>
     CONST R saturate(int64_t val) noexcept
     {
-        return static_cast<int32_t>(std::min(std::max(val, static_cast<int64_t>(std::numeric_limits<T>::min())),
+        return static_cast<R>(std::min(std::max(val, static_cast<int64_t>(std::numeric_limits<T>::min())),
             static_cast<int64_t>(std::numeric_limits<T>::max())));
     }
 

@@ -46,7 +46,7 @@ const Global* Module::findGlobal(const std::string& name) const
 {
     for(const Global& global : globalData)
     {
-        if(global.name.compare(name) == 0)
+        if(global.name == name)
             return &global;
     }
     return nullptr;

@@ -62,7 +62,7 @@ bool vc4c::operator<(const CFGNode& one, const CFGNode& other)
     if(firstLabel == BasicBlock::DEFAULT_BLOCK)
         return false;
     if(firstLabel == BasicBlock::LAST_BLOCK)
-        return secondLabel == BasicBlock::LAST_BLOCK ? false : true;
+        return secondLabel != BasicBlock::LAST_BLOCK;
 
     return firstLabel > secondLabel;
 }

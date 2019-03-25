@@ -24,7 +24,7 @@ std::unique_ptr<ComplexType> TypeHolder::voidPtr{new PointerType(TYPE_VOID)};
 // just to make sure, the last bits are always zero for pointers
 static_assert(alignof(ComplexType) > Bitfield<uint8_t>::MASK_Bit, "");
 
-ComplexType::~ComplexType() {}
+ComplexType::~ComplexType() noexcept = default;
 
 static std::string toSignedIntegerTypeName(unsigned char bitWidth, const std::string& typeName)
 {

@@ -104,7 +104,7 @@ namespace vc4c
             virtual void replaceLocal(
                 const Local* oldLocal, const Local* newLocal, LocalUse::Type type = LocalUse::Type::BOTH);
             virtual void replaceLocal(
-                const Local* oldLocal, const Value& newLocal, LocalUse::Type type = LocalUse::Type::BOTH);
+                const Local* oldLocal, const Value& newValue, LocalUse::Type type = LocalUse::Type::BOTH);
 
             /*
              * Whether this instructions reads the given register

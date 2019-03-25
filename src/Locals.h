@@ -77,7 +77,7 @@ namespace vc4c
     public:
         Local(const Local&) = delete;
         Local(Local&&) = default;
-        virtual ~Local() = default;
+        virtual ~Local() noexcept = default;
 
         Local& operator=(const Local&) = delete;
         Local& operator=(Local&&) = delete;
@@ -256,7 +256,7 @@ namespace vc4c
         Parameter(
             const std::string& name, DataType type, ParameterDecorations decorations = ParameterDecorations::NONE);
         Parameter(Parameter&&) = default;
-        ~Parameter() override;
+        ~Parameter() noexcept override = default;
 
         std::string to_string(bool withContent = false) const override;
 
@@ -309,7 +309,7 @@ namespace vc4c
     {
         StackAllocation(const std::string& name, DataType type, std::size_t size = 0, std::size_t alignment = 1);
         StackAllocation(StackAllocation&&) = default;
-        ~StackAllocation() override = default;
+        ~StackAllocation() noexcept override = default;
 
         /*
          * Since the "stack" is located in memory, so are allocations on it

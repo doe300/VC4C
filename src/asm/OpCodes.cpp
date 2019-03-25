@@ -414,7 +414,8 @@ Literal packLiteral(Pack mode, Literal literal, bool isFloatOperation, const Ele
         if(isFloatOperation)
             // TODO no saturation?
             return Literal(static_cast<uint16_t>(half_t(literal.real())) << 16);
-        return Literal(saturate<int16_t>(literal.signedInt()) << 16);
+        // need to bitcast here, since left shifting negative values is undefined behavior
+        return Literal(bit_cast<int32_t, uint32_t>(saturate<int16_t>(literal.signedInt())) << 16);
     case PACK_32_32:
         // this depends on signed integer overflow (to determine overflow and then saturate)
         switch(flags.overflow)
@@ -954,7 +955,7 @@ PrecalculatedValue OpCode::operator()(Literal firstOperand, Literal secondOperan
 const OpCode& OpCode::toOpCode(const std::string& name)
 {
     const OpCode& code = findOpCode(name);
-    if(code == OP_NOP && name.compare("nop") != 0)
+    if(code == OP_NOP && name != "nop")
         throw CompilationError(CompilationStep::GENERAL, "No machine code operation for this op-code", name);
     return code;
 }
@@ -979,12 +980,8 @@ static const std::array<OpCode, 8> mulCodes = {
 
 bool OpCode::isIdempotent() const noexcept
 {
-    if(*this == OP_AND || *this == OP_FMAX || *this == OP_FMIN || *this == OP_MAX || *this == OP_MIN ||
-        *this == OP_OR || *this == OP_V8MAX || *this == OP_V8MIN)
-    {
-        return true;
-    }
-    return false;
+    return *this == OP_AND || *this == OP_FMAX || *this == OP_FMIN || *this == OP_MAX || *this == OP_MIN ||
+        *this == OP_OR || *this == OP_V8MAX || *this == OP_V8MIN;
 }
 
 bool OpCode::isAssociative() const noexcept

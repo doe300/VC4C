@@ -23,7 +23,7 @@ static NODISCARD InstructionWalker insertCombiningBitcast(
     InstructionWalker it, Method& method, const Value& src, const Value& dest)
 {
     // the number of source elements to combine in a single destination element
-    auto sizeFactor = dest.type.getScalarBitCount() / src.type.getScalarBitCount();
+    unsigned sizeFactor = dest.type.getScalarBitCount() / src.type.getScalarBitCount();
     // the number of bits to shift per element
     auto shift = src.type.getScalarBitCount();
 
@@ -41,12 +41,12 @@ static NODISCARD InstructionWalker insertCombiningBitcast(
 
     std::vector<Value> shiftedTruncatedVectors;
     shiftedTruncatedVectors.reserve(sizeFactor);
-    for(auto i = 0; i < sizeFactor; ++i)
+    for(unsigned i = 0; i < sizeFactor; ++i)
     {
         shiftedTruncatedVectors.emplace_back(
             method.addNewLocal(dest.type.toVectorType(src.type.getVectorWidth()), "%bit_cast"));
         const Value& result = shiftedTruncatedVectors.back();
-        assign(it, result) = truncatedSource << Value(Literal(static_cast<unsigned>(shift * i)), TYPE_INT8);
+        assign(it, result) = truncatedSource << Value(Literal(shift * i), TYPE_INT8);
     }
 
     /*
@@ -139,7 +139,7 @@ static NODISCARD InstructionWalker insertSplittingBitcast(
     InstructionWalker it, Method& method, const Value& src, const Value& dest)
 {
     // the number of destination elements to extract from a single source element
-    auto sizeFactor = src.type.getScalarBitCount() / dest.type.getScalarBitCount();
+    unsigned sizeFactor = src.type.getScalarBitCount() / dest.type.getScalarBitCount();
     // the number of bits to shift per element
     auto shift = dest.type.getScalarBitCount();
 
@@ -153,12 +153,11 @@ static NODISCARD InstructionWalker insertSplittingBitcast(
      */
     std::vector<Value> shiftedTruncatedVectors;
     shiftedTruncatedVectors.reserve(sizeFactor);
-    for(auto i = 0; i < sizeFactor; ++i)
+    for(unsigned i = 0; i < sizeFactor; ++i)
     {
         shiftedTruncatedVectors.emplace_back(method.addNewLocal(dest.type, "%bit_cast"));
         const Value& result = shiftedTruncatedVectors.back();
-        Value tmp = assign(it, dest.type, "%bit_cast") =
-            src >> Value(Literal(static_cast<unsigned>(shift * i)), TYPE_INT8);
+        Value tmp = assign(it, dest.type, "%bit_cast") = src >> Value(Literal(shift * i), TYPE_INT8);
         assign(it, result) = tmp & Value(Literal(dest.type.getScalarWidthMask()), TYPE_INT32);
     }
 
@@ -345,22 +344,22 @@ InstructionWalker intermediate::insertSaturation(
         {
         case 8:
             return it.emplace((new MoveOperation(dest,
-                                   Value(Literal(isSigned ? saturate<int8_t>(lit->signedInt()) :
-                                                            saturate<uint8_t>(lit->unsignedInt())),
+                                   Value(isSigned ? Literal(saturate<int8_t>(lit->signedInt())) :
+                                                    Literal(saturate<uint8_t>(lit->unsignedInt())),
                                        dest.type)))
                                   ->addDecorations(isSigned ? InstructionDecorations::NONE :
                                                               InstructionDecorations::UNSIGNED_RESULT));
         case 16:
             return it.emplace((new MoveOperation(dest,
-                                   Value(Literal(isSigned ? saturate<int16_t>(lit->signedInt()) :
-                                                            saturate<uint16_t>(lit->unsignedInt())),
+                                   Value(isSigned ? Literal(saturate<int16_t>(lit->signedInt())) :
+                                                    Literal(saturate<uint16_t>(lit->unsignedInt())),
                                        dest.type)))
                                   ->addDecorations(isSigned ? InstructionDecorations::NONE :
                                                               InstructionDecorations::UNSIGNED_RESULT));
         case 32:
             return it.emplace((new MoveOperation(dest,
-                                   Value(Literal(isSigned ? saturate<int32_t>(lit->signedInt()) :
-                                                            saturate<uint32_t>(lit->unsignedInt())),
+                                   Value(isSigned ? Literal(saturate<int32_t>(lit->signedInt())) :
+                                                    Literal(saturate<uint32_t>(lit->unsignedInt())),
                                        dest.type)))
                                   ->addDecorations(isSigned ? InstructionDecorations::NONE :
                                                               InstructionDecorations::UNSIGNED_RESULT));

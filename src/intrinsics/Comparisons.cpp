@@ -188,7 +188,6 @@ static InstructionWalker intrinsifyFloatingRelation(Method& method, InstructionW
      */
 
     // http://llvm.org/docs/LangRef.html#fcmp-instruction
-    const Value tmp = method.addNewLocal(comp->getFirstArg().type, comp->getOutput()->local()->name);
     if(COMP_TRUE == comp->opCode)
     {
         // true
@@ -317,13 +316,13 @@ InstructionWalker intermediate::intrinsifyComparison(Method& method, Instruction
         if(COMP_NEQ == comp->opCode)
         {
             // a != b == !(a == b)
+            comp->opCode = COMP_EQ;
             negateResult = true;
-            const_cast<std::string&>(comp->opCode) = COMP_EQ;
         }
         else if(COMP_UNSIGNED_GE == comp->opCode)
         {
             // a >= b -> !(a < b)
-            const_cast<std::string&>(comp->opCode) = COMP_UNSIGNED_LT;
+            comp->opCode = COMP_UNSIGNED_LT;
             negateResult = true;
         }
         else if(COMP_UNSIGNED_GT == comp->opCode)
@@ -341,7 +340,7 @@ InstructionWalker intermediate::intrinsifyComparison(Method& method, Instruction
         else if(COMP_SIGNED_GE == comp->opCode)
         {
             // a >= b -> !(a < b)
-            const_cast<std::string&>(comp->opCode) = COMP_SIGNED_LT;
+            comp->opCode = COMP_SIGNED_LT;
             negateResult = true;
         }
         else if(COMP_SIGNED_GT == comp->opCode)

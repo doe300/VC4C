@@ -35,10 +35,8 @@
 
 using namespace vc4c;
 
-Parser::~Parser()
-{
-    // out-of-line virtual method definition
-}
+// out-of-line virtual method definition
+Parser::~Parser() noexcept = default;
 
 Compiler::Compiler(std::istream& stream, std::ostream& output) : input(stream), output(output), config()
 {
@@ -137,7 +135,7 @@ const Configuration& Compiler::getConfiguration() const
     return config;
 }
 
-std::size_t Compiler::compile(std::istream& input, std::ostream& output, const Configuration config,
+std::size_t Compiler::compile(std::istream& input, std::ostream& output, const Configuration& config,
     const std::string& options, const Optional<std::string>& inputFile)
 {
     try
@@ -154,7 +152,7 @@ std::size_t Compiler::compile(std::istream& input, std::ostream& output, const C
             tmpFile.openInputStream(in);
 
         // compilation
-        Compiler conv(*in.get(), output);
+        Compiler conv(*in, output);
 
         conv.getConfiguration() = config;
         std::size_t result = conv.convert();

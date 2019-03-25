@@ -12,7 +12,7 @@
 
 using namespace vc4c;
 
-static const std::string STYLE_EDGE_STRONG = "";
+static const std::string STYLE_EDGE_STRONG{};
 static const std::string STYLE_EDGE_WEAK = "style=\"dashed\"";
 
 static std::string cleanName(const std::string& name)

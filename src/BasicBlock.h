@@ -51,7 +51,7 @@ namespace vc4c
         BasicBlock(Method& method, intermediate::BranchLabel* label);
         BasicBlock(const BasicBlock&) = delete;
         BasicBlock(BasicBlock&&) = delete;
-        ~BasicBlock();
+        ~BasicBlock() noexcept = default;
 
         BasicBlock& operator=(const BasicBlock&) = delete;
         BasicBlock& operator=(BasicBlock&&) = delete;

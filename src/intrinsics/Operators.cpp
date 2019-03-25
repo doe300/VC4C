@@ -369,7 +369,7 @@ static std::pair<Literal, Literal> calculateConstant(Literal divisor, unsigned a
 {
     uint32_t shift = static_cast<uint32_t>(std::log2(divisor.unsignedInt() * accuracy)) + 2;
     uint32_t factor =
-        static_cast<uint32_t>(std::round(std::pow(2.0f, shift) / static_cast<float>(divisor.unsignedInt())));
+        static_cast<uint32_t>(std::round(std::pow(2.0f, shift) / static_cast<double>(divisor.unsignedInt())));
     if(shift > 31)
         throw CompilationError(CompilationStep::OPTIMIZER,
             "Unsigned division by constant generated invalid shift offset", std::to_string(shift));
@@ -526,7 +526,7 @@ static constexpr unsigned MSB = 31;
 
 Literal intermediate::asr(Literal left, Literal right)
 {
-    std::bitset<sizeof(int32_t) * 8> tmp(left.signedInt());
+    std::bitset<sizeof(int32_t) * 8> tmp(static_cast<uint64_t>(left.signedInt()));
     if(right.signedInt() < 0)
         throw CompilationError(CompilationStep::GENERAL, "ASR with negative numbers is not implemented");
     for(auto i = 0; i < right.signedInt(); ++i)
@@ -543,7 +543,7 @@ Literal intermediate::clz(Literal val)
     for(int i = MSB; i >= 0; --i)
     {
         if(((val.unsignedInt() >> i) & 0x1) == 0x1)
-            return Literal(static_cast<int32_t>(MSB - i));
+            return Literal(static_cast<int32_t>(MSB) - i);
     }
     // Tests show that VC4 returns 32 for clz(0)
     return Literal(32);

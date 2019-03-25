@@ -76,7 +76,7 @@ namespace vc4c
     {
         Global(const std::string& name, DataType globalType, CompoundConstant&& initialValue, bool isConstant);
         Global(Global&&) = default;
-        ~Global() override = default;
+        ~Global() noexcept override = default;
 
         std::string to_string(bool withContent = false) const override;
 

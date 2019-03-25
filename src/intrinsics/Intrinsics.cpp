@@ -307,10 +307,8 @@ struct Intrinsic
     const Optional<BinaryInstruction> binaryInstr;
 
     explicit Intrinsic(const IntrinsicFunction& func) : func(func) {}
-
-    Intrinsic(const IntrinsicFunction& func, const UnaryInstruction unary) : func(func), unaryInstr(unary) {}
-
-    Intrinsic(const IntrinsicFunction& func, const BinaryInstruction binary) : func(func), binaryInstr(binary) {}
+    Intrinsic(const IntrinsicFunction& func, const UnaryInstruction& unary) : func(func), unaryInstr(unary) {}
+    Intrinsic(const IntrinsicFunction& func, const BinaryInstruction& binary) : func(func), binaryInstr(binary) {}
 };
 
 /*
@@ -503,7 +501,7 @@ static NODISCARD InstructionWalker intrinsifyUnary(Method& method, InstructionWa
     {
         return it;
     }
-    if(callSite->getArguments().size() == 0 || callSite->getArguments().size() > 2 /* check for sign-flag too*/)
+    if(callSite->getArguments().empty() || callSite->getArguments().size() > 2 /* check for sign-flag too*/)
     {
         return it;
     }
@@ -1220,7 +1218,7 @@ static NODISCARD InstructionWalker intrinsifyWorkItemFunctions(Method& method, I
     if(callSite->getArguments().size() > 1)
         return it;
 
-    if(callSite->methodName.compare("vc4cl_work_dimensions") == 0 && callSite->getArguments().size() == 0)
+    if(callSite->methodName == "vc4cl_work_dimensions" && callSite->getArguments().empty())
     {
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying reading of work-item dimensions" << logging::endl);
         // setting the type to int8 allows us to optimize e.g. multiplications with work-item values
