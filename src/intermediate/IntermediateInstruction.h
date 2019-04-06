@@ -613,6 +613,9 @@ namespace vc4c
             void setImmediate(const Literal& value);
 
             const LoadType type;
+
+            static SIMDVector toLoadedValues(uint32_t mask, LoadType type);
+            static uint32_t fromLoadedValues(SIMDVector values, LoadType type);
         };
 
         /*

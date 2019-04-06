@@ -332,7 +332,7 @@ std::string IntermediateInstruction::createAdditionalInfoString() const
     res = res.substr(0, res.size() - 1);
     if(!res.empty())
         res = std::string(" ") + res + ")";
-    return std::string(" ()").compare(res) == 0 ? "" : res;
+    return res == " ()" ? "" : res;
 }
 
 Optional<Value> IntermediateInstruction::getPrecalculatedValueForArg(

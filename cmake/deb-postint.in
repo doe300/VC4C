@@ -3,6 +3,6 @@ set -e
 mkdir -p /etc/ld.so.conf.d
 echo "@CMAKE_INSTALL_PREFIX@/lib" > /etc/ld.so.conf.d/99-vc4c.conf
 ldconfig
-echo "Extended library load path by: $(cat /etc/ld.so.conf.d/99-vc4c.conf)"
-@CMAKE_INSTALL_PREFIX@/bin/vc4c --precompile-stdlib -o @CMAKE_INSTALL_PREFIX@/include/vc4cl-stdlib/ @CMAKE_INSTALL_PREFIX@/include/vc4cl-stdlib/VC4CLStdLib.h
-echo "VC4CL standard library precompiled into @CMAKE_INSTALL_PREFIX@/include/vc4cl-stdlib/"
+echo "[VC4C] Extended library load path by: $(cat /etc/ld.so.conf.d/99-vc4c.conf)"
+@CMAKE_INSTALL_PREFIX@/bin/vc4c --quiet --precompile-stdlib -o @CMAKE_INSTALL_PREFIX@/include/vc4cl-stdlib/ @CMAKE_INSTALL_PREFIX@/include/vc4cl-stdlib/VC4CLStdLib.h
+echo "[VC4C] VC4CL standard library precompiled into @CMAKE_INSTALL_PREFIX@/include/vc4cl-stdlib/"

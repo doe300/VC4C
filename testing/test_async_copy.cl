@@ -1,7 +1,7 @@
 
 __kernel
 __attribute__((reqd_work_group_size(12,1,1)))
-void test_aync_copy(const __global int16 *input, __local int16 *output0, __global int16* output1)
+void test_async_copy(const __global int16 *input, __local int16 *output0, __global int16* output1)
 {
 	//size_t size = get_local_size(0); TODO not yet supported
 	size_t size = 12;

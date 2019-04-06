@@ -29,8 +29,6 @@
 using namespace vc4c;
 using namespace vc4c::tools;
 
-extern SIMDVector toLoadedValues(uint32_t mask, vc4c::intermediate::LoadType type);
-
 extern void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, StableList<Global>& globals,
     std::vector<qpu_asm::Instruction>& instructions);
 
@@ -1176,13 +1174,13 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
                 imm = load->getPack()(imm, generateImmediateFlags(Literal(load->getImmediateInt()))).value();
                 break;
             case OpLoad::LOAD_SIGNED:
-                imm = Value(toLoadedValues(
-                                imm.getLiteralValue()->unsignedInt(), vc4c::intermediate::LoadType::PER_ELEMENT_SIGNED),
+                imm = Value(intermediate::LoadImmediate::toLoadedValues(
+                                imm.getLiteralValue()->unsignedInt(), intermediate::LoadType::PER_ELEMENT_SIGNED),
                     imm.type.toVectorType(16));
                 break;
             case OpLoad::LOAD_UNSIGNED:
-                imm = Value(toLoadedValues(imm.getLiteralValue()->unsignedInt(),
-                                vc4c::intermediate::LoadType::PER_ELEMENT_UNSIGNED),
+                imm = Value(intermediate::LoadImmediate::toLoadedValues(
+                                imm.getLiteralValue()->unsignedInt(), intermediate::LoadType::PER_ELEMENT_UNSIGNED),
                     imm.type.toVectorType(16));
                 break;
             }

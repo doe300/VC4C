@@ -248,11 +248,26 @@ namespace vc4c
      *
      * (Try to keep fully assignable, if possible)
      */
+    static_assert(!std::is_same<detail::compact_optional<unsigned>, detail::optional_dispatch<unsigned>>::value,
+        "Unsigned uses compact optional!");
     static_assert(std::is_default_constructible<Optional<unsigned>>::value, "Optional is not default constructible!");
     static_assert(assert_assignable<Optional<unsigned>>::value, "Optional is not assignable!");
     static_assert(assert_copyable<Optional<unsigned>>::value, "Optional is not copyable!");
     static_assert(assert_moveable<Optional<unsigned>>::value, "Optional is not moveable!");
-    static_assert(std::is_destructible<Optional<unsigned>>::value, "Optional is not destructible!");
+    static_assert(std::is_default_constructible<Optional<unsigned>>::value, "Optional is not default constructible!");
+    static_assert(std::is_trivially_destructible<Optional<unsigned>>::value, "Optional is not trivially destructible!");
+
+    static_assert(std::is_same<detail::compact_optional<Literal>, detail::optional_dispatch<Literal>>::value,
+        "Literal does not use compact optional!");
+    static_assert(std::is_default_constructible<Optional<Literal>>::value, "Optional is not default constructible!");
+    static_assert(assert_assignable<Optional<Literal>>::value, "Optional is not assignable!");
+    static_assert(assert_copyable<Optional<Literal>>::value, "Optional is not copyable!");
+    static_assert(assert_moveable<Optional<Literal>>::value, "Optional is not moveable!");
+    static_assert(
+        std::is_trivially_copy_assignable<Optional<Literal>>::value, "Optional is not trivially copy assignable!");
+    static_assert(
+        std::is_trivially_move_assignable<Optional<Literal>>::value, "Optional is not trivially move assignable!");
+    static_assert(std::is_trivially_destructible<Optional<Literal>>::value, "Optional is not trivially destructible!");
 
     static_assert(assert_not_copyable<TemporaryFile>::value, "TemporaryFile is copyable!");
 

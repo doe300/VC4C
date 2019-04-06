@@ -72,24 +72,15 @@ namespace vc4c
 
         public:
             compact_optional() noexcept : storedValue(Traits::tombstone) {}
-            compact_optional(const compact_optional& other) : storedValue(other.storedValue) {}
-            compact_optional(compact_optional&& other) noexcept : storedValue(std::move(other.storedValue)) {}
+            compact_optional(const compact_optional& other) = default;
+            compact_optional(compact_optional&& other) noexcept = default;
             compact_optional(const T& val) : storedValue(val) {}
             compact_optional(T&& val) noexcept : storedValue(std::move(val)) {}
 
             // TODO need destructor which skips for EMPTY?? Or make sure EMPTY value is valid value?
 
-            compact_optional& operator=(const compact_optional& other)
-            {
-                storedValue = other.storedValue;
-                return *this;
-            }
-
-            compact_optional& operator=(compact_optional&& other) noexcept
-            {
-                storedValue = std::move(other.storedValue);
-                return *this;
-            }
+            compact_optional& operator=(const compact_optional& other) = default;
+            compact_optional& operator=(compact_optional&& other) noexcept = default;
 
             compact_optional& operator=(const T& val)
             {
@@ -178,17 +169,15 @@ namespace vc4c
         template <typename T>
         bool operator==(const compact_optional<T>& o1, const compact_optional<T>& o2)
         {
-            if(o1.has_value() || o2.has_value())
-                return o1.has_value() == o2.has_value();
-            return *o1 == *o2;
+            if(o1.has_value())
+                return o2.has_value() && *o1 == *o2;
+            return !o2.has_value();
         }
 
         template <typename T>
         bool operator!=(const compact_optional<T>& o1, const compact_optional<T>& o2)
         {
-            if(o1.has_value() || o2.has_value())
-                return o1.has_value() != o2.has_value();
-            return *o1 != *o2;
+            return !(o1 == o2);
         }
 
         template <typename T>

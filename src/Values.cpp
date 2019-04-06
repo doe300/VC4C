@@ -437,12 +437,32 @@ bool SIMDVector::isAllSame() const noexcept
         [=](Literal lit) -> bool { return lit.isUndefined() || lit == firstElement; });
 }
 
-bool SIMDVector::isElementNumber(bool withOffset) const noexcept
+bool SIMDVector::isElementNumber(bool withOffset, bool withFactor) const noexcept
 {
-    const int32_t offset = withOffset ? elements[0].signedInt() : 0;
+    if(withOffset && withFactor)
+        return false;
+    if(withOffset)
+    {
+        int32_t offset = elements[0].signedInt();
+        for(std::size_t i = 0; i < elements.size(); ++i)
+        {
+            if(elements[i].signedInt() != (static_cast<int32_t>(i) + offset))
+                return false;
+        }
+    }
+    if(withFactor)
+    {
+        int32_t factor = elements[1].signedInt();
+        for(std::size_t i = 0; i < elements.size(); ++i)
+        {
+            if(elements[i].signedInt() != (static_cast<int32_t>(i) * factor))
+                return false;
+        }
+    }
+
     for(std::size_t i = 0; i < elements.size(); ++i)
     {
-        if(elements[i].signedInt() != static_cast<int32_t>(i) + offset)
+        if(elements[i].signedInt() != static_cast<int32_t>(i))
             return false;
     }
     return true;

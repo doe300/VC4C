@@ -32,30 +32,6 @@ LoadImmediate::LoadImmediate(const Value& dest, uint32_t mask, LoadType type, Co
     setArgument(0, Value(Literal(mask), TYPE_INT32));
 }
 
-SIMDVector toLoadedValues(uint32_t mask, vc4c::intermediate::LoadType type)
-{
-    std::bitset<32> bits(mask);
-    SIMDVector values;
-    if(type == LoadType::PER_ELEMENT_UNSIGNED)
-    {
-        for(std::size_t i = 0; i < 16; ++i)
-        {
-            values[i] = Literal(static_cast<unsigned>(bits.test(i + 16)) * 2u + static_cast<unsigned>(bits.test(i)));
-        }
-    }
-    else if(type == LoadType::PER_ELEMENT_SIGNED)
-    {
-        for(std::size_t i = 0; i < 16; ++i)
-        {
-            values[i] = Literal(static_cast<int>(bits.test(i + 16)) * -2 + static_cast<int>(bits.test(i)));
-        }
-    }
-    else
-        throw CompilationError(
-            CompilationStep::GENERAL, "Unhandled type of masked load", std::to_string(static_cast<unsigned>(type)));
-    return values;
-}
-
 std::string LoadImmediate::to_string() const
 {
     switch(type)
@@ -178,4 +154,61 @@ void LoadImmediate::setImmediate(const Literal& value)
         Value(value,
             value.type == LiteralType::INTEGER ? TYPE_INT32 :
                                                  (value.type == LiteralType::REAL ? TYPE_FLOAT : TYPE_BOOL)));
+}
+
+SIMDVector LoadImmediate::toLoadedValues(uint32_t mask, vc4c::intermediate::LoadType type)
+{
+    std::bitset<32> bits(mask);
+    SIMDVector values;
+    if(type == LoadType::PER_ELEMENT_UNSIGNED)
+    {
+        for(std::size_t i = 0; i < 16; ++i)
+        {
+            values[i] = Literal(static_cast<unsigned>(bits.test(i + 16)) * 2u + static_cast<unsigned>(bits.test(i)));
+        }
+    }
+    else if(type == LoadType::PER_ELEMENT_SIGNED)
+    {
+        for(std::size_t i = 0; i < 16; ++i)
+        {
+            values[i] = Literal(static_cast<int>(bits.test(i + 16)) * -2 + static_cast<int>(bits.test(i)));
+        }
+    }
+    else
+        throw CompilationError(
+            CompilationStep::GENERAL, "Unhandled type of masked load", std::to_string(static_cast<unsigned>(type)));
+    return values;
+}
+
+uint32_t LoadImmediate::fromLoadedValues(SIMDVector values, LoadType type)
+{
+    if(type == LoadType::PER_ELEMENT_SIGNED)
+    {
+        std::bitset<32> mask;
+        for(std::size_t i = 0; i < values.size(); ++i)
+        {
+            auto elemVal = values[i].signedInt();
+            if(elemVal < -2 || elemVal > 1)
+                throw CompilationError(
+                    CompilationStep::GENERAL, "Invalid element to load via signed element load", values[i].to_string());
+            mask.set(i + 16, elemVal < 0);
+            mask.set(i, elemVal & 1);
+        }
+        return static_cast<uint32_t>(mask.to_ulong());
+    }
+    if(type == LoadType::PER_ELEMENT_UNSIGNED)
+    {
+        std::bitset<32> mask;
+        for(std::size_t i = 0; i < values.size(); ++i)
+        {
+            auto elemVal = values[i].unsignedInt();
+            if(elemVal > 3)
+                throw CompilationError(
+                    CompilationStep::GENERAL, "Invalid element to load via signed element load", values[i].to_string());
+            mask.set(i + 16, elemVal >> 1);
+            mask.set(i, elemVal & 1);
+        }
+        return static_cast<uint32_t>(mask.to_ulong());
+    }
+    throw CompilationError(CompilationStep::GENERAL, "Invalid load type", std::to_string(static_cast<unsigned>(type)));
 }

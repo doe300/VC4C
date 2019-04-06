@@ -684,18 +684,23 @@ namespace vc4c
             return NATIVE_VECTOR_SIZE;
         }
 
-        /*
+        /**
          * Determines whether all elements of this vector have the same value
          */
         bool isAllSame() const noexcept;
 
-        /*
-         * Determines whether all element-values correspond to their element number,  e.g. i32 1, i32 2, ...
-         * if the parameter is set to true, an arbitrary initial offset is allowed, e.g. i32 5, i32 6, ...
+        /**
+         * Determines whether all element-values correspond to their element number,  e.g. 1, 2, 3, 4, ...
+         *
+         * If withOffset is set to true, an arbitrary initial offset is allowed, e.g. 5, 6, 7, 8, ...
+         *
+         * If withFactor is set to true, an arbitrary factor is allowed, e.g. 0, 4, 8, 12, 16, ...
+         *
+         * NOTE: The parameters withOffset and withFactor cannot be set at the same time
          */
-        bool isElementNumber(bool withOffset = false) const noexcept;
+        bool isElementNumber(bool withOffset = false, bool withFactor = false) const noexcept;
 
-        /*
+        /**
          * Returns whether all elements contained are undefined
          */
         bool isUndefined() const;
