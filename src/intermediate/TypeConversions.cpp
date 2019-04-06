@@ -6,7 +6,7 @@
 
 #include "TypeConversions.h"
 
-#include "Helper.h"
+#include "VectorHelper.h"
 #include "operators.h"
 
 using namespace vc4c;

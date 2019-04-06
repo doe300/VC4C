@@ -8,7 +8,7 @@
 
 #include "../InstructionWalker.h"
 #include "../Method.h"
-#include "../intermediate/Helper.h"
+#include "../intermediate/VectorHelper.h"
 #include "CompilationError.h"
 #include "log.h"
 

@@ -8,7 +8,7 @@
 
 #include "../GlobalValues.h"
 #include "../InstructionWalker.h"
-#include "../intermediate/Helper.h"
+#include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
 #include "log.h"
 

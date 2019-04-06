@@ -9,6 +9,7 @@
 #include "../analysis/ValueRange.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/TypeConversions.h"
+#include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
 #include "../periphery/SFU.h"
 #include "../periphery/TMU.h"

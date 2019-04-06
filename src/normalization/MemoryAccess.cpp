@@ -11,7 +11,7 @@
 #include "../Module.h"
 #include "../Profiler.h"
 #include "../analysis/ValueRange.h"
-#include "../intermediate/Helper.h"
+#include "../intermediate/VectorHelper.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/operators.h"
 #include "../periphery/TMU.h"

@@ -13,24 +13,6 @@ namespace vc4c
 {
     namespace intermediate
     {
-        enum class Direction : unsigned char
-        {
-            UP,
-            DOWN
-        };
-        NODISCARD InstructionWalker insertVectorRotation(InstructionWalker it, const Value& src, const Value& offset,
-            const Value& dest, Direction direction = Direction::UP);
-
-        NODISCARD InstructionWalker insertReplication(
-            InstructionWalker it, const Value& src, const Value& dest, bool useDestionation = true);
-
-        NODISCARD InstructionWalker insertVectorExtraction(
-            InstructionWalker it, Method& method, const Value& container, const Value& index, const Value& dest);
-        NODISCARD InstructionWalker insertVectorInsertion(
-            InstructionWalker it, Method& method, const Value& container, const Value& index, const Value& value);
-        NODISCARD InstructionWalker insertVectorShuffle(InstructionWalker it, Method& method, const Value& destination,
-            const Value& source0, const Value& source1, const Value& mask);
-
         /*
          * After this function returns, dest will contain the positive value of src (either src or it's two's
          * compliment) and writeIsNegative will return whether the src was negative (-1 if negative, 0 otherwise)

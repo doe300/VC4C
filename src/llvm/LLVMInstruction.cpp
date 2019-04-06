@@ -9,6 +9,7 @@
 #include "../intermediate/Helper.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/TypeConversions.h"
+#include "../intermediate/VectorHelper.h"
 #include "config.h"
 #include "log.h"
 
@@ -168,6 +169,15 @@ bool CallSite::mapInstruction(Method& method)
                 << logging::endl);
         ignoreReturnValue(intermediate::insertVectorShuffle(
             method.appendToEnd(), method, output, arguments.at(0), arguments.at(1), arguments.at(2)));
+        return true;
+    }
+    if(methodName.find("shuffle") == 0)
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying OpenCL shuffle function with " << arguments.at(0).to_string() << " and mask "
+                << arguments.at(1).to_string(false, true) << logging::endl);
+        ignoreReturnValue(intermediate::insertVectorShuffle(
+            method.appendToEnd(), method, output, arguments.at(0), UNDEFINED_VALUE, arguments.at(1)));
         return true;
     }
     static std::regex readFencePattern("_Z\\d*read_mem_fence.*");
