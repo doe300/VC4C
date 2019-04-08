@@ -22,6 +22,9 @@ namespace vc4c
     class CFGRelation
     {
     public:
+        // this is used for only optimizations::removeConstantLoadInLoops
+        bool isBackEdge = false;
+
         // map of the source block and the implicit flags
         // std::map<BasicBlock*, bool> isImplicit;
 
@@ -43,9 +46,6 @@ namespace vc4c
     private:
         // map of the source block and the predecessor within this block (empty for fall-through)
         std::map<BasicBlock*, Optional<InstructionWalker>> predecessors;
-
-        // this is used for only optimizations::removeConstantLoadInLoops
-        bool isBackEdge = false;
 
         friend class ControlFlowGraph;
     };
@@ -152,7 +152,7 @@ namespace vc4c
          * This is similar to findLoopsHelper, but this finds also nested loops excluding one-block-loop.
          */
         FastAccessList<ControlFlowLoop> findLoopsHelperRecursively(const CFGNode* node,
-            FastMap<const CFGNode*, int>& discoveryTimes, RandomModificationList<const CFGNode*>& stack, int& time);
+            FastMap<const CFGNode*, int>& discoveryTimes, FastModificationList<const CFGNode*>& stack, int& time);
 
         friend class Method;
     };

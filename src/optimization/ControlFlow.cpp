@@ -1365,7 +1365,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             // a.
             bool hasConstantInstruction = false;
             auto block = pair.first;
-            for(auto it = block->begin(); it != block->end(); it = it.nextInBlock())
+            for(auto it = block->walk(); it != block->walkEnd(); it = it.nextInBlock())
             {
                 if(it.has() && it->isConstantInstruction())
                 {
@@ -1634,7 +1634,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             if(targetBlock != nullptr)
             {
                 // insert before 'br' operation
-                auto& targetInst = targetBlock->end().previousInBlock();
+                auto& targetInst = targetBlock->walkEnd().previousInBlock();
                 for(auto it : insts->second)
                 {
                     auto inst = it.get();
@@ -1660,7 +1660,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                         continue;
                     processedInsts.insert(inst);
 
-                    insertedBlock->end().emplace(it.release());
+                    insertedBlock->walkEnd().emplace(it.release());
                     it.erase();
                 }
 

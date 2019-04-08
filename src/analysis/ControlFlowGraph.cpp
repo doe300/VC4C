@@ -523,7 +523,6 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::clone()
         node.second.forAllIncomingEdges([&newNode, &graph](const CFGNode& source, const CFGEdge& edge) -> bool {
             auto& newSource = graph->getOrCreateNode(source.key);
             auto& newEdge = newSource.getOrCreateEdge(&newNode, CFGRelation{}).addInput(newSource);
-            newEdge.data.isImplicit.emplace(source.key, edge.data.isImplicit.at(source.key));
             newEdge.data.predecessors.emplace(source.key, edge.data.predecessors.at(source.key));
             return true;
         });
@@ -581,7 +580,7 @@ ControlFlowLoop ControlFlowGraph::findLoopsHelper(const CFGNode* node, FastMap<c
 }
 
 FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoopsHelperRecursively(const CFGNode* node,
-    FastMap<const CFGNode*, int>& discoveryTimes, RandomModificationList<const CFGNode*>& stack, int& time)
+    FastMap<const CFGNode*, int>& discoveryTimes, FastModificationList<const CFGNode*>& stack, int& time)
 {
     // Initialize discovery time
     discoveryTimes[node] = ++time;
@@ -598,7 +597,7 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoopsHelperRecursively(con
             if(std::find(stack.begin(), stack.end(), v) != stack.end() && node != v)
             {
                 ControlFlowLoop loop;
-                RandomModificationList<const CFGNode*> tempStack = stack;
+                FastModificationList<const CFGNode*> tempStack = stack;
 
                 while(tempStack.back() != v)
                 {
