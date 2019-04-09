@@ -1480,7 +1480,10 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             {
                 auto& node1 = inclusionTree.getOrCreateNode(&loop1);
                 auto& node2 = inclusionTree.getOrCreateNode(&loop2);
-                node1.addEdge(&node2, {});
+                if(!node1.isAdjacent(&node2))
+                {
+                    node1.addEdge(&node2, {});
+                }
             }
         }
     }
@@ -1638,7 +1641,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 for(auto it : insts->second)
                 {
                     auto inst = it.get();
-                    if(processedInsts.find(inst) != processedInsts.end())
+                    if(!it.has() || processedInsts.find(inst) != processedInsts.end())
                         continue;
                     processedInsts.insert(inst);
 
@@ -1656,7 +1659,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 for(auto it : insts->second)
                 {
                     auto inst = it.get();
-                    if(processedInsts.find(inst) != processedInsts.end())
+                    if(!it.has() || processedInsts.find(inst) != processedInsts.end())
                         continue;
                     processedInsts.insert(inst);
 
