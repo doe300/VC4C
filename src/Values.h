@@ -696,9 +696,13 @@ namespace vc4c
          *
          * If withFactor is set to true, an arbitrary factor is allowed, e.g. 0, 4, 8, 12, 16, ...
          *
+         * If ignoreUndefined is set, elements which are undefined are assumed to have the value matching the element
+         * number (with offset or factor), e.g. 0, 1, 2, 3, undefined, 5, ... will return true.
+         *
          * NOTE: The parameters withOffset and withFactor cannot be set at the same time
          */
-        bool isElementNumber(bool withOffset = false, bool withFactor = false) const noexcept;
+        bool isElementNumber(bool withOffset = false, bool withFactor = false, bool ignoreUndefined = true) const
+            noexcept;
 
         /**
          * Returns whether all elements contained are undefined

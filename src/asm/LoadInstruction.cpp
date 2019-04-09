@@ -6,6 +6,7 @@
 
 #include "LoadInstruction.h"
 
+#include "../intermediate/IntermediateInstruction.h"
 #include "../periphery/VPM.h"
 
 using namespace vc4c;
@@ -63,16 +64,16 @@ std::string LoadInstruction::toASMString() const
     {
         auto s = std::string("ldui") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
             ((toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") +
-                std::to_string(getImmediateShort0()) + ", ") +
-            std::to_string(getImmediateShort1());
+                to_string<Literal, SIMDVector>(intermediate::LoadImmediate::toLoadedValues(
+                    getImmediateInt(), intermediate::LoadType::PER_ELEMENT_UNSIGNED)));
         return s;
     }
     if(getType() == OpLoad::LOAD_SIGNED)
     {
         auto s = std::string("ldsi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
             ((toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") +
-                std::to_string(getImmediateShort0()) + ", ") +
-            std::to_string(getImmediateShort1());
+                to_string<Literal, SIMDVector>(intermediate::LoadImmediate::toLoadedValues(
+                    getImmediateInt(), intermediate::LoadType::PER_ELEMENT_SIGNED)));
         return s;
     }
     std::string valString;

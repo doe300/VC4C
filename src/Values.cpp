@@ -437,31 +437,43 @@ bool SIMDVector::isAllSame() const noexcept
         [=](Literal lit) -> bool { return lit.isUndefined() || lit == firstElement; });
 }
 
-bool SIMDVector::isElementNumber(bool withOffset, bool withFactor) const noexcept
+bool SIMDVector::isElementNumber(bool withOffset, bool withFactor, bool ignoreUndefined) const noexcept
 {
     if(withOffset && withFactor)
         return false;
     if(withOffset)
     {
-        int32_t offset = elements[0].signedInt();
+        Optional<int32_t> offset;
         for(std::size_t i = 0; i < elements.size(); ++i)
         {
-            if(elements[i].signedInt() != (static_cast<int32_t>(i) + offset))
+            if(ignoreUndefined && elements[i].isUndefined())
+                continue;
+            if(!offset)
+                // get offset from first non-undefined element
+                offset = elements[i].signedInt() - static_cast<int32_t>(i);
+            if(elements[i].signedInt() != (static_cast<int32_t>(i) + *offset))
                 return false;
         }
     }
     if(withFactor)
     {
-        int32_t factor = elements[1].signedInt();
+        Optional<int32_t> factor;
         for(std::size_t i = 0; i < elements.size(); ++i)
         {
-            if(elements[i].signedInt() != (static_cast<int32_t>(i) * factor))
+            if(ignoreUndefined && elements[i].isUndefined())
+                continue;
+            if(!factor && i != 0)
+                // get factor from first non-undefined element
+                factor = elements[i].signedInt() / static_cast<int32_t>(i);
+            if(elements[i].signedInt() != (static_cast<int32_t>(i) * *factor))
                 return false;
         }
     }
 
     for(std::size_t i = 0; i < elements.size(); ++i)
     {
+        if(ignoreUndefined && elements[i].isUndefined())
+            continue;
         if(elements[i].signedInt() != static_cast<int32_t>(i))
             return false;
     }

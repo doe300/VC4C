@@ -3,15 +3,13 @@
  *
  * See the file "LICENSE" for the full license governing this code.
  */
-
-// TODO retest shuffle tests! OpenCL-CTS relationals/test_relationals/shuffle*, boost/test_random_shuffle
-
 #include "VectorHelper.h"
 
 #include "../Profiler.h"
 #include "log.h"
 #include "operators.h"
 
+#include <map>
 #include <sstream>
 
 using namespace vc4c;
@@ -199,6 +197,14 @@ static bool checkIndicesNotUndefined(const SIMDVector& container, const unsigned
     return true;
 }
 
+static uint32_t rotateElementNumberDown(uint32_t value, uint8_t index)
+{
+    if(value >= index)
+        return value - index;
+    // "overflow" within [0, 15]
+    return value + 16 - index;
+}
+
 static NODISCARD InstructionWalker insertDynamicVectorShuffle(
     InstructionWalker it, Method& method, const Value& destination, const Value& source, const Value& mask)
 {
@@ -230,9 +236,22 @@ static NODISCARD InstructionWalker insertDynamicVectorShuffle(
     return it;
 }
 
+static uint32_t toLowestIndex(uint32_t mask)
+{
+    uint32_t index = 0;
+    while(mask != 0)
+    {
+        mask >>= 1;
+        ++index;
+    }
+    // bit set at index 0 is first/only iteration -> index is already incremented to 1
+    return index - 1;
+}
+
 InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method& method, const Value& destination,
     const Value& source0, const Value& source1, const Value& mask)
 {
+    bool isSingleSource = source1.isUndefined();
     if(mask.isUndefined())
     {
         // order does not matter
@@ -256,45 +275,34 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
             }
         }
 
-        if(source1.isUndefined())
+        if(isSingleSource)
             return insertDynamicVectorShuffle(it, method, destination, source0, mask);
-        // if we have both vectors, build one large vector by appending them
-        // TODO does not work if both vectors are 16-element!!
-        // for smaller vector, combine to one and shuffle the one, for larger need to select from both
-        Value tmpInput = method.addNewLocal(source0.type.toVectorType(mask.type.getVectorWidth()), "%shuffle_input");
-        Value tmpSource1 = method.addNewLocal(source1.type.toVectorType(16), "%shuffle_result");
-        it.emplace(new MoveOperation(tmpInput, source0));
-        it.nextInBlock();
-        it = insertVectorRotation(
-            it, source1, Value(Literal(source0.type.getVectorWidth()), TYPE_INT8), tmpSource1, Direction::UP);
-        assign(it, NOP_REGISTER) =
-            (ELEMENT_NUMBER_REGISTER - Value(Literal(source0.type.getVectorWidth()), TYPE_INT8), SetFlag::SET_FLAGS);
-        assign(it, tmpInput) = (tmpSource1, COND_NEGATIVE_CLEAR, InstructionDecorations::ELEMENT_INSERTION);
-        return insertDynamicVectorShuffle(it, method, destination, tmpInput, mask);
+        if((source0.type.getVectorWidth() + source1.type.getVectorWidth()) <= NATIVE_VECTOR_SIZE)
+        {
+            // if we have both vectors with combined at most 16 elements, build one large vector by appending them
+            Value tmpInput =
+                method.addNewLocal(source0.type.toVectorType(mask.type.getVectorWidth()), "%shuffle_input");
+            it = insertVectorConcatenation(it, method, source0, source1, tmpInput);
+            return insertDynamicVectorShuffle(it, method, destination, tmpInput, mask);
+        }
+        // TODO need to select from both depending on whether offset >=/< 16
+        throw CompilationError(
+            CompilationStep::GENERAL, "Shuffling two 16-element vectors with dynamic offsets is not yet supported");
     }
 
     // if all indices are ascending (correspond to the elements of source 0), we can simply copy it
     // if all indices point to the same, replicate this index over the vector
     const auto& maskContainer = mask.vector();
-    bool indicesCorrespond = maskContainer.isElementNumber();
+    bool indicesCorrespond = maskContainer.isElementNumber(false, false, true);
     bool allIndicesSame = maskContainer.isAllSame();
     if(indicesCorrespond)
     {
         // the vector is copied in-order
-        if(mask.type.getVectorWidth() > source0.type.getVectorWidth() &&
+        if(!isSingleSource && mask.type.getVectorWidth() > source0.type.getVectorWidth() &&
             checkIndicesNotUndefined(maskContainer, source0.type.getVectorWidth()))
         {
             // The second vector participates in the shuffling
-            // move the first vector in-order
-            assign(it, destination) = source0;
-            // rotate the second vector with the size of the first as offset
-            const Value secondRotated = method.addNewLocal(destination.type, "%vector_shuffle");
-            const Value numElementsFirst(Literal(static_cast<uint32_t>(source0.type.getVectorWidth())), TYPE_INT8);
-            it = insertVectorRotation(it, source1, numElementsFirst, secondRotated, Direction::UP);
-            // insert the elements of the second vector with an element-number of higher or equals the size of the first
-            // vector into the result
-            assign(it, NOP_REGISTER) = (ELEMENT_NUMBER_REGISTER - numElementsFirst, SetFlag::SET_FLAGS);
-            assign(it, destination) = (secondRotated, COND_NEGATIVE_CLEAR);
+            return insertVectorConcatenation(it, method, source0, source1, destination);
         }
         else
         {
@@ -323,28 +331,102 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         return insertReplication(it, tmp, destination);
     }
 
-    // zero out destination first, also required so register allocator finds unconditional write to destination
+    // copy source(s) into destination
+    // this allows us to skip extracting and inserting values from/to same index
+    // also required so register allocator finds unconditional write to destination
+    uint8_t numCorrespondingIndices = 0;
     if(destination.checkLocal() && destination.local()->getUsers(LocalUse::Type::WRITER).empty())
     {
-        assign(it, destination) = 0_val;
+        if(isSingleSource || source0.type.getVectorWidth() + source1.type.getVectorWidth() > NATIVE_VECTOR_SIZE)
+        {
+            assign(it, destination) = source0;
+            numCorrespondingIndices = source0.type.getVectorWidth();
+        }
+        else
+        {
+            it = insertVectorConcatenation(it, method, source0, source1, destination);
+            numCorrespondingIndices = source0.type.getVectorWidth() + source1.type.getVectorWidth();
+        }
     }
 
     // mask is container of literals, indices have arbitrary order
-    // TODO find combinations of elements to rotate together (same offset). Also use for literal container assembly
-    for(std::size_t i = 0; i < maskContainer.size(); ++i)
+    // For optimization, find combinations of elements to rotate together (same offset) from the same source vector
+    std::map<std::pair<uint8_t, uint8_t>, std::bitset<32>> relativeSources;
+    for(uint8_t i = 0; i < maskContainer.size(); ++i)
     {
-        auto index = maskContainer[i];
-        if(index.isUndefined())
+        auto firstVectorSize = source0.type.getVectorWidth();
+        if(maskContainer[i].isUndefined())
             // don't write anything at this position
             continue;
-        const Value& container =
-            index.signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ? source0 : source1;
-        if(index.signedInt() >= static_cast<int32_t>(source0.type.getVectorWidth()))
-            index = Literal(index.signedInt() - source0.type.getVectorWidth());
-        const Value tmp = method.addNewLocal(container.type.getElementType(), "%vector_shuffle");
-        it = insertVectorExtraction(it, method, container, Value(index, TYPE_INT8), tmp);
-        it = insertVectorInsertion(it, method, destination, Value(Literal(static_cast<int32_t>(i)), TYPE_INT8), tmp);
+        if(maskContainer[i].unsignedInt() == i && i < numCorrespondingIndices)
+            // copies same element from and to same position, already done above
+            continue;
+        auto source = (maskContainer[i].unsignedInt() >= firstVectorSize) ?
+            // source is from second vector
+            std::make_pair(rotateElementNumberDown(maskContainer[i].unsignedInt() - firstVectorSize, i), 1) :
+            // source is from first vector
+            std::make_pair(rotateElementNumberDown(maskContainer[i].unsignedInt(), i), 0);
+        relativeSources[source] |= (1 << i);
     }
+
+    for(const auto& sources : relativeSources)
+    {
+        const Value& src = sources.first.second == 0 ? source0 : source1;
+        if(sources.second.count() == destination.type.getVectorWidth())
+        {
+            it = insertVectorRotation(
+                it, src, Value(Literal(sources.first.first), TYPE_INT8), destination, Direction::DOWN);
+        }
+        else
+        {
+            auto tmp = method.addNewLocal(destination.type, "%vector_shuffle");
+            // rotate source vector by the given offset
+            it = insertVectorRotation(it, src, Value(Literal(sources.first.first), TYPE_INT8), tmp, Direction::DOWN);
+            // set flags only for the selected elements
+            ConditionCode cond = COND_NEVER;
+            if(sources.second.count() == 1)
+            {
+                // for cosmetic purposes (and possible combination with other instructions), mask single elements via
+                // xoring small immediates
+                assign(it, NOP_REGISTER) = (ELEMENT_NUMBER_REGISTER ^
+                        Value(Literal(toLowestIndex(static_cast<uint32_t>(sources.second.to_ulong()))), TYPE_INT8),
+                    SetFlag::SET_FLAGS);
+                cond = COND_ZERO_SET;
+            }
+            else
+            {
+                it.emplace(new LoadImmediate(
+                    NOP_REGISTER, static_cast<uint32_t>(sources.second.to_ulong()), LoadType::PER_ELEMENT_UNSIGNED));
+                it->setSetFlags(SetFlag::SET_FLAGS);
+                it.nextInBlock();
+                cond = COND_ZERO_CLEAR;
+            }
+
+            // copy into destination only for the selected flags
+            assign(it, destination) = (tmp, cond);
+        }
+    }
+    return it;
+}
+
+NODISCARD InstructionWalker intermediate::insertVectorConcatenation(
+    InstructionWalker it, Method& method, const Value& source0, const Value& source1, const Value& dest)
+{
+    if(source0.type.getVectorWidth() + source1.type.getVectorWidth() > NATIVE_VECTOR_SIZE)
+        throw CompilationError(
+            CompilationStep::GENERAL, "Cannot concatenate vectors with combined more than 16 elements");
+
+    // move the first vector in-order
+    assign(it, dest) = source0;
+    // rotate the second vector with the size of the first as offset
+    Value tmpSource1 = method.addNewLocal(source1.type.toVectorType(16), "%vector_concat");
+    it = insertVectorRotation(
+        it, source1, Value(Literal(source0.type.getVectorWidth()), TYPE_INT8), tmpSource1, Direction::UP);
+    // insert the elements of the second vector with an element-number of higher or equals the size of the first
+    // vector into the result
+    assign(it, NOP_REGISTER) =
+        (ELEMENT_NUMBER_REGISTER - Value(Literal(source0.type.getVectorWidth()), TYPE_INT8), SetFlag::SET_FLAGS);
+    assign(it, dest) = (tmpSource1, COND_NEGATIVE_CLEAR, InstructionDecorations::ELEMENT_INSERTION);
     return it;
 }
 
@@ -476,10 +558,9 @@ static void addMatchingElementNumber(Literal val, uint8_t index, std::set<Elemen
             candidates.emplace(ElementSource{
                 SourceType::ELEMENT_NUMBER, {}, ModificationType::MULTIPLY, Literal(val.unsignedInt() / index)});
 
-        if(false && val.signedInt() >= 0 && val.signedInt() < static_cast<int32_t>(NATIVE_VECTOR_SIZE))
-            // FIXME needs to be rotation sub/sub with modulo!!
-            candidates.emplace(ElementSource{
-                SourceType::ELEMENT_NUMBER, {}, ModificationType::ROTATE, Literal(val.unsignedInt() - index)});
+        if(val.signedInt() >= 0 && val.signedInt() < static_cast<int32_t>(NATIVE_VECTOR_SIZE))
+            candidates.emplace(ElementSource{SourceType::ELEMENT_NUMBER, {}, ModificationType::ROTATE,
+                Literal(rotateElementNumberDown(val.unsignedInt(), index))});
     }
 }
 
@@ -658,7 +739,7 @@ Optional<std::vector<ElementSource>> intermediate::checkVectorCanBeAssembled(Dat
                 // otherwise try again with next candidate
                 results.clear();
         }
-        
+
         /*
          * TODO extend by trying to find one source matching
          * 1. all (currently done)
@@ -759,7 +840,7 @@ InstructionWalker intermediate::insertAssembleVector(
         break;
     case ModificationType::ROTATE:
         // TODO is direction correct??
-        return insertVectorRotation(it, tmp, dest, Value(*modVal, dest.type), Direction::UP);
+        return insertVectorRotation(it, tmp, dest, Value(*modVal, dest.type), Direction::DOWN);
     }
     return it;
 }

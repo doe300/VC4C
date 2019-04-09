@@ -58,13 +58,13 @@ static NODISCARD InstructionWalker copyVector(Method& method, InstructionWalker 
                        ->copyExtrasFrom(it.get()));
         return it.nextInBlock();
     }
-    if(inContainer.isElementNumber(false, false))
+    if(inContainer.isElementNumber(false, false, true))
     {
         // if the value in the container corresponds to the element-number, simply copy it
         it.emplace((new intermediate::MoveOperation(out, ELEMENT_NUMBER_REGISTER))->copyExtrasFrom(it.get()));
         return it.nextInBlock();
     }
-    if(inContainer.isElementNumber(true, false))
+    if(inContainer.isElementNumber(true, false, true))
     {
         // if the value in the container corresponds to the element number plus an offset (a general ascending range),
         // convert to addition
@@ -73,7 +73,7 @@ static NODISCARD InstructionWalker copyVector(Method& method, InstructionWalker 
                        ->copyExtrasFrom(it.get()));
         return it.nextInBlock();
     }
-    if(inContainer.isElementNumber(false, true) && inContainer[NATIVE_VECTOR_SIZE - 1].unsignedInt() < (1 << 16))
+    if(inContainer.isElementNumber(false, true, true) && inContainer[NATIVE_VECTOR_SIZE - 1].unsignedInt() < (1 << 16))
     {
         // if the value in the container corresponds to the element number times a factor (a general ascending range
         // with step of more than 1), convert to multiplication (only if it fits in mul24)

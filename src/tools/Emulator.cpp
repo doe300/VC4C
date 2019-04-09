@@ -1108,13 +1108,16 @@ static Register toRegister(Address addr, bool isfileB)
     return Register{isfileB ? RegisterFile::PHYSICAL_B : RegisterFile::PHYSICAL_A, addr};
 }
 
-static ElementFlags generateImmediateFlags(Literal lit)
+static VectorFlags generateImmediateFlags(SIMDVector vector)
 {
-    ElementFlags flags;
-    flags.carry = FlagStatus::CLEAR;
-    flags.negative = lit.signedInt() < 0 ? FlagStatus::SET : FlagStatus::CLEAR;
-    flags.overflow = FlagStatus::CLEAR;
-    flags.zero = lit.unsignedInt() == 0 ? FlagStatus::SET : FlagStatus::CLEAR;
+    VectorFlags flags;
+    for(uint8_t i = 0; i < vector.size(); ++i)
+    {
+        flags[i].carry = FlagStatus::CLEAR;
+        flags[i].negative = vector[i].signedInt() < 0 ? FlagStatus::SET : FlagStatus::CLEAR;
+        flags[i].overflow = FlagStatus::CLEAR;
+        flags[i].zero = vector[i].unsignedInt() == 0 ? FlagStatus::SET : FlagStatus::CLEAR;
+    }
     return flags;
 }
 
@@ -1165,33 +1168,33 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
         else if(auto load = inst->as<qpu_asm::LoadInstruction>())
         {
             auto type = load->getType();
-            Value imm(Literal(load->getImmediateInt()), TYPE_INT32);
+            SIMDVector loadedValues;
             switch(type)
             {
             case OpLoad::LOAD_IMM_32:
-                if(load->getPack().hasEffect())
-                    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 210, "values packed", 1);
-                imm = load->getPack()(imm, generateImmediateFlags(Literal(load->getImmediateInt()))).value();
+                loadedValues = Literal(load->getImmediateInt());
                 break;
             case OpLoad::LOAD_SIGNED:
-                imm = Value(intermediate::LoadImmediate::toLoadedValues(
-                                imm.getLiteralValue()->unsignedInt(), intermediate::LoadType::PER_ELEMENT_SIGNED),
-                    imm.type.toVectorType(16));
+                loadedValues = intermediate::LoadImmediate::toLoadedValues(
+                    load->getImmediateInt(), intermediate::LoadType::PER_ELEMENT_SIGNED);
                 break;
             case OpLoad::LOAD_UNSIGNED:
-                imm = Value(intermediate::LoadImmediate::toLoadedValues(
-                                imm.getLiteralValue()->unsignedInt(), intermediate::LoadType::PER_ELEMENT_UNSIGNED),
-                    imm.type.toVectorType(16));
+                loadedValues = intermediate::LoadImmediate::toLoadedValues(
+                    load->getImmediateInt(), intermediate::LoadType::PER_ELEMENT_UNSIGNED);
                 break;
             }
 
+            auto flags = generateImmediateFlags(loadedValues);
+            if(load->getPack().hasEffect())
+                PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 210, "values packed", 1);
+            Value imm = load->getPack()(Value(SIMDVector(loadedValues), TYPE_INT32.toVectorType(16)), flags).value();
             writeConditional(
                 toRegister(load->getAddOut(), load->getWriteSwap() == WriteSwap::SWAP), imm, load->getAddCondition());
             writeConditional(toRegister(load->getMulOut(), load->getWriteSwap() == WriteSwap::DONT_SWAP), imm,
                 load->getMulCondition());
             if(load->getSetFlag() == SetFlag::SET_FLAGS)
                 setFlags(imm, load->getAddCondition() != COND_NEVER ? load->getAddCondition() : load->getMulCondition(),
-                    generateImmediateFlags(Literal(load->getImmediateInt())));
+                    flags);
             ++nextPC;
         }
         else if(auto semaphore = inst->as<qpu_asm::SemaphoreInstruction>())

@@ -32,6 +32,9 @@ namespace vc4c
         NODISCARD InstructionWalker insertVectorShuffle(InstructionWalker it, Method& method, const Value& destination,
             const Value& source0, const Value& source1, const Value& mask);
 
+        NODISCARD InstructionWalker insertVectorConcatenation(
+            InstructionWalker it, Method& method, const Value& source0, const Value& source1, const Value& dest);
+
         /**
          * Types of input sources for generating vector elements
          *
