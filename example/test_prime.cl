@@ -6,7 +6,7 @@ __kernel void test_prime(const int maybePrime, __global bool* out)
 	int root = ceil(tmp);
 	for(int i = 2; i <= root; i++)
 	{
-		if(root % i == 0)
+		if(maybePrime % i == 0)
 		{
 			*out = false;
 			return;
