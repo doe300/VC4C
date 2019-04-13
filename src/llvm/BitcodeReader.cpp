@@ -838,8 +838,14 @@ void BitcodeReader::parseInstruction(
         Value cond = toValue(method, switchIns->getCondition());
         Value defaultLabel = toValue(method, switchIns->getDefaultDest());
         FastMap<int, Value> caseLabels;
-        for(const auto& casePair : switchIns->cases())
+        for(const auto& constCasePair : switchIns->cases())
         {
+#if LLVM_LIBRARY_VERSION >= 50
+            auto& casePair = constCasePair;
+#else
+            // For older LLVM versions, getCaseValue() and getCaseSuccessor() are not const
+            auto& casePair = const_cast<std::remove_const<decltype(constCasePair)>::type&>(constCasePair);
+#endif
             caseLabels.emplace(static_cast<int>(casePair.getCaseValue()->getSExtValue()),
                 toValue(method, casePair.getCaseSuccessor()));
         }
