@@ -212,10 +212,12 @@ static NODISCARD InstructionWalker insertDynamicVectorShuffle(
     for(unsigned char i = 0; i < mask.type.getVectorWidth(); ++i)
     {
         Value offsetTmp0 = method.addNewLocal(TYPE_INT8, "%shuffle_offset");
-        Value resultTmp = method.addNewLocal(source.type, "%shuffle_tmp");
+        Value resultTmp = method.addNewLocal(source.type.getElementType(), "%shuffle_tmp");
         // Rotate into temporary, because of "An instruction that does a vector rotate by r5 must not immediately follow
         // an instruction that writes to r5." - Broadcom Specification, page 37
         it = insertVectorRotation(it, mask, Value(Literal(i), TYPE_INT8), offsetTmp0, Direction::DOWN);
+        // TODO reuse insertVectorInsertion/Extraction, but only if 2 rotations by variable + constant are optimized
+        // into one (like is done here)
         // pos 3 -> 1 => rotate up by -2 (14), pos 1 -> 3 => rotate up by 2
         Value offsetTmp1 = assign(it, TYPE_INT8, "%shuffle_offset") = Value(Literal(i), TYPE_INT8) - offsetTmp0;
         it = insertVectorRotation(it, source, offsetTmp1, resultTmp, Direction::UP);
@@ -232,6 +234,44 @@ static NODISCARD InstructionWalker insertDynamicVectorShuffle(
                 (as_unsigned{ELEMENT_NUMBER_REGISTER} == as_unsigned{Value(Literal(i), TYPE_INT8)});
             assign(it, destination) = (resultTmp, cond, InstructionDecorations::ELEMENT_INSERTION);
         }
+    }
+    return it;
+}
+
+static NODISCARD InstructionWalker insertDynamicVectorShuffle2Vectors(InstructionWalker it, Method& method,
+    const Value& destination, const Value& source0, const Value& source1, const Value& mask)
+{
+    // For each element select which input to use, truncate offset to [0,15] within that input, extract and insert
+    // TODO needs improvement!
+
+    if(source0.type.getVectorWidth() != NATIVE_VECTOR_SIZE)
+    {
+        // We assert the first vector to have 16 elements to have a few benefits:
+        // - no need to convert the indices of the second vector explicitly to [0, 15], since taking the bits [0:3]
+        // automatically cuts off the high bit.
+        throw CompilationError(CompilationStep::GENERAL, "Unhandled case of shuffling 2 vectors");
+    }
+
+    for(uint8_t index = 0; index < destination.type.getVectorWidth(); ++index)
+    {
+        // Rotate mask vector index to element 0
+        Value offsetTmp0 = method.addNewLocal(TYPE_INT8, "%shuffle_offset");
+        it = insertVectorRotation(it, mask, Value(Literal(index), TYPE_INT8), offsetTmp0, Direction::DOWN);
+        // Only consider 0th element: zero set if first source, zero clear otherwise
+        auto offsetTmp1 = assign(it, TYPE_INT8, "%vector_selection") =
+            offsetTmp0 / Literal(static_cast<uint32_t>(NATIVE_VECTOR_SIZE));
+        // Replicate value to all elements to select the same source vector everywhere
+        Value offsetTmp2 = method.addNewLocal(TYPE_INT8.toVectorType(NATIVE_VECTOR_SIZE), "%vector_selection");
+        it = insertReplication(it, offsetTmp1, offsetTmp2);
+        assign(it, NOP_REGISTER) = (offsetTmp2, SetFlag::SET_FLAGS);
+        Value sourceTmp = method.addNewLocal(source0.type, "%vector_shuffle");
+        assign(it, sourceTmp) = (source0, COND_ZERO_SET);
+        assign(it, sourceTmp) = (source1, COND_ZERO_CLEAR);
+        // TODO either add optimization to combine this two rotations or use manual combining code!
+        // Extract value from source vector at position determined from mask vector and insert in destination vector
+        Value valTmp = method.addNewLocal(destination.type.getElementType(), "%vector_shuffle");
+        it = insertVectorExtraction(it, method, sourceTmp, offsetTmp0, valTmp);
+        it = insertVectorInsertion(it, method, destination, Value(Literal(index), TYPE_INT8), valTmp);
     }
     return it;
 }
@@ -285,9 +325,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
             it = insertVectorConcatenation(it, method, source0, source1, tmpInput);
             return insertDynamicVectorShuffle(it, method, destination, tmpInput, mask);
         }
-        // TODO need to select from both depending on whether offset >=/< 16
-        throw CompilationError(
-            CompilationStep::GENERAL, "Shuffling two 16-element vectors with dynamic offsets is not yet supported");
+        return insertDynamicVectorShuffle2Vectors(it, method, destination, source0, source1, mask);
     }
 
     // if all indices are ascending (correspond to the elements of source 0), we can simply copy it
@@ -645,11 +683,19 @@ static void addMatchingReplicateQuadNumber(Literal val, uint8_t index, std::set<
     }
 }
 
-static std::vector<std::set<ElementSource>> getElementSources(DataType vectorType, const SIMDVector& vector)
+static std::vector<std::set<ElementSource>> getElementSources(DataType type, const SIMDVector& vector)
 {
-    std::vector<std::set<ElementSource>> sources(vectorType.getVectorWidth());
+    // Type can be vector or lowered array
+    uint32_t numElements = 0;
+    if(type.isVectorType())
+        numElements = type.getVectorWidth();
+    else if(auto array = type.getArrayType())
+        numElements = array->size;
+    else
+        throw CompilationError(CompilationStep::GENERAL, "Invalid input type for vector assembly", type.to_string());
 
-    for(unsigned char i = 0; i < vectorType.getVectorWidth(); ++i)
+    std::vector<std::set<ElementSource>> sources(numElements);
+    for(unsigned char i = 0; i < numElements; ++i)
     {
         /*
          * x is element in vector:
@@ -814,11 +860,13 @@ InstructionWalker intermediate::insertAssembleVector(
         tmp = method.addNewLocal(dest.type);
         it.emplace(new LoadImmediate(tmp, LoadImmediate::fromLoadedValues(loadElements, LoadType::PER_ELEMENT_UNSIGNED),
             LoadType::PER_ELEMENT_UNSIGNED));
+        it.nextInBlock();
         break;
     case SourceType::LOAD_SIGNED_MASK:
         tmp = method.addNewLocal(dest.type);
         it.emplace(new LoadImmediate(tmp, LoadImmediate::fromLoadedValues(loadElements, LoadType::PER_ELEMENT_SIGNED),
             LoadType::PER_ELEMENT_SIGNED));
+        it.nextInBlock();
         break;
     case SourceType::REPLICATE_QUAD_NUMBER:
         assign(it, Value(REG_REPLICATE_QUAD, dest.type)) = ELEMENT_NUMBER_REGISTER / 4_lit;
@@ -839,8 +887,7 @@ InstructionWalker intermediate::insertAssembleVector(
         assign(it, dest) = mul24(tmp, Value(*modVal, dest.type));
         break;
     case ModificationType::ROTATE:
-        // TODO is direction correct??
-        return insertVectorRotation(it, tmp, dest, Value(*modVal, dest.type), Direction::DOWN);
+        return insertVectorRotation(it, tmp, Value(*modVal, dest.type), dest, Direction::DOWN);
     }
     return it;
 }

@@ -63,6 +63,27 @@ __kernel void test(__global TYPE* out, const __global TYPE* in) {
 }
 )";
 
+static const std::string VECTOR_ASSEMBLY_FUNCTION = R"(
+__kernel void test(__global TYPE* out) {
+  size_t gid = get_global_id(0);
+  out[gid] = (TYPE)(SOURCES);
+}
+)";
+
+static std::unordered_map<std::string, std::array<uint32_t, 16>> assemblySources = {
+    {"random", {1, 15, 2, 3, 14, 4, 15, 7, 2, 8, 14, 15, 11, 14, 14, 3}},
+    {"elem_num", {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}},
+    {"constant", {42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42}},
+    {"per_quad", {0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3}},
+    {"ldui", {2, 3, 1, 3, 0, 2, 1, 2, 3, 0, 1, 1, 2, 1, 1, 3}},
+    {"elem_num+offset", {40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55}},
+    {"per_quad+offset", {7, 7, 7, 7, 8, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 10}},
+    {"ldui+offset", {6, 7, 8, 7, 6, 8, 6, 7, 9, 7, 6, 7, 8, 6, 9, 7}},
+    {"elem_num*factor", {0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30}},
+    {"per_quad*factor", {0, 0, 0, 0, 7, 7, 7, 7, 14, 14, 14, 14, 21, 21, 21, 21}},
+    {"ldui*factor", {0, 7, 14, 21, 7, 14, 0, 21, 14, 7, 21, 0, 21, 21, 7, 7}},
+    {"elem_num<<rotated", {11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}}};
+
 TestVectorFunctions::TestVectorFunctions(const vc4c::Configuration& config) : config(config)
 {
     TEST_ADD(TestVectorFunctions::testVectorLoad2Int);
@@ -116,6 +137,21 @@ TestVectorFunctions::TestVectorFunctions(const vc4c::Configuration& config) : co
         TEST_ADD(TestVectorFunctions::testExtractElement);
         TEST_ADD(TestVectorFunctions::testInsertElement);
         */
+
+    // Tests for vector assembly with constants
+    // TODO also test for different vector width?!
+    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "random");
+    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "elem_num");
+    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "constant");
+    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "per_quad");
+    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "ldui");
+    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "elem_num+offset");
+    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "per_quad+offset");
+    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "ldui+offset");
+    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "elem_num*factor");
+    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "per_quad*factor");
+    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "ldui*factor");
+    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "elem_num<<rotated");
 }
 
 void TestVectorFunctions::onMismatch(const std::string& expected, const std::string& result)
@@ -198,7 +234,7 @@ static void testVectorShuffle2Function(vc4c::Configuration& config, const std::s
 
     auto in0 = generateInput<T, N * 12>(true);
     auto in1 = generateInput<T, N * 12>(true);
-    auto mask = generateInput<T, N * 12>(true, 0, static_cast<int>(N - 1));
+    auto mask = generateInput<T, N * 12>(true, 0, static_cast<int>(2 * N - 1));
 
     auto out = runEmulation<T, T, N, 12>(code, {in0, in1, mask});
     checkTrinaryGroupedResults<T, T, N * 12, N>(
@@ -219,6 +255,21 @@ static void testVectorReorderFunction(vc4c::Configuration& config, const std::st
     auto pos = options.find("-DORDER=") + std::string("-DORDER=").size();
     checkUnaryGroupedResults<T, T, GroupSize * 12, GroupSize>(
         in, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
+}
+
+template <typename T, std::size_t N>
+static void testVectorAssemblyFunction(vc4c::Configuration& config, const std::string& options,
+    const std::array<T, N>& result, const std::function<void(const std::string&, const std::string&)>& onError)
+{
+    std::stringstream code;
+    compileBuffer(config, code, VECTOR_ASSEMBLY_FUNCTION, options);
+
+    auto out = runEmulation<T, T, N, 12>(code, {});
+    for(uint32_t i = 0; i < std::min(result.size(), out.size()); ++i)
+    {
+        if(out[i] != result[i])
+            onError(std::to_string(result[i]), std::to_string(out[i]));
+    }
 }
 
 void TestVectorFunctions::testVectorLoad2Int()
@@ -482,5 +533,26 @@ void TestVectorFunctions::testVectorReorder16()
         [](const std::array<short, 16>& in) -> std::array<short, 16> {
             return checkShuffle(in, {1, 10, 0, 12, 15, 5, 6, 8, 2, 3, 9, 11, 10, 15, 5, 8});
         },
+        std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+template <typename T, std::size_t N>
+std::string to_string(const std::array<T, N>& vec)
+{
+    std::string res;
+    if(vec.empty())
+        return res;
+    for(auto elem : vec)
+    {
+        // NO SPACE is on purpose!
+        res.append(",").append(std::to_string(elem));
+    }
+    return res.substr(1);
+}
+
+void TestVectorFunctions::testVectorAssembly(std::string source)
+{
+    testVectorAssemblyFunction<uint32_t, 16>(config, "-DTYPE=uint16 -DSOURCES=" + to_string(assemblySources.at(source)),
+        assemblySources.at(source),
         std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }

@@ -634,7 +634,11 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                     // FIXME this re-orders UNIFORM reads (e.g. in test_branches.cl) ||
                     // !((*sourceWriter)->signal.hasSideEffects() || (*sourceWriter)->doesSetFlag()))
                     ) &&
-                !it->signal.hasSideEffects())
+                !it->signal.hasSideEffects() &&
+                // TODO don't know why this does not work (maybe because of some other optimization applied to the
+                // result?), but rewriting moves to rotation registers screw up the
+                // TestVectorFunctions#testShuffle2Vector16 test
+                !it->writesRegister(REG_REPLICATE_ALL) && !it->writesRegister(REG_REPLICATE_QUAD))
             {
                 // if the source is only used once (by this move) and the destination is a register, we can replace this
                 // move by the operation calculating the source  This optimization can save almost one instruction per

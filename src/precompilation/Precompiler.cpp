@@ -104,7 +104,8 @@ SourceType Precompiler::getSourceType(std::istream& stream)
         type = SourceType::QPUASM_BIN;
     else if(std::atol(buffer.data()) == QPUASM_MAGIC_NUMBER || std::atol(buffer.data()) == QPUASM_NUMBER_MAGIC)
         type = SourceType::QPUASM_HEX;
-    else if(s.find_first_of(" \n\t") != std::string::npos || s.find("kernel") != std::string::npos)
+    else if(s.find_first_of(" \n\t") != std::string::npos || s.find("kernel") != std::string::npos ||
+        s.find("/**") != std::string::npos || s.find("//") != std::string::npos)
         // XXX better check
         type = SourceType::OPENCL_C;
 
@@ -409,6 +410,7 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
     {
         // for resolving relative includes
         std::array<char, 1024> buffer;
+        buffer.fill(0);
         strncpy(buffer.data(), inputFile->data(), std::min(buffer.size(), inputFile->size()));
         std::string tmp = dirname(buffer.data());
         extendedOptions.append(" -I ").append(tmp);

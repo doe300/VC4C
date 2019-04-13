@@ -31,7 +31,7 @@ public:
     void testVectorLoad16Int();
     void testVectorLoad16Short();
     void testVectorLoad16Char();
-    
+
     void testVectorStore2Int();
     void testVectorStore2Short();
     void testVectorStore2Char();
@@ -47,7 +47,7 @@ public:
     void testVectorStore16Int();
     void testVectorStore16Short();
     void testVectorStore16Char();
-    
+
     void testShuffleVector2();
     void testShuffleVector4();
     void testShuffleVector8();
@@ -56,13 +56,15 @@ public:
     void testShuffle2Vector4();
     void testShuffle2Vector8();
     void testShuffle2Vector16();
-    
+
     void testVectorReorder2();
     void testVectorReorder4();
     void testVectorReorder8();
     void testVectorReorder16();
     void testExtractElement();
     void testInsertElement();
+
+    void testVectorAssembly(std::string source);
 
 private:
     vc4c::Configuration config;
