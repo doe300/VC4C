@@ -60,7 +60,6 @@ public:
     void testSaturateUnsignedCharToSignedChar();
     //TODO with rounding modes
     
-    // XXX
     void testVectorBitcastTruncation4To1();
     void testVectorBitcastTruncation2To1();
     void testVectorBitcastExtension1To4();

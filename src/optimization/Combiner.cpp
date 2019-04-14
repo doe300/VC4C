@@ -882,7 +882,9 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                                                   Value(SmallImmediate::fromRotationOffset(offset), TYPE_INT8)))
                                                  ->copyExtrasFrom(rot));
                                     it->copyExtrasFrom(firstRot);
-                                    firstIt->erase();
+                                    if(firstRot->getOutput()->local()->getUsers(LocalUse::Type::READER).empty())
+                                        // only remove first rotation if it does not have a second user
+                                        firstIt->erase();
                                 }
                             }
                         }

@@ -42,7 +42,8 @@ namespace vc4c
      *
      * NOTE: To use this function, the objects stored in the container need to support the to_string() method
      */
-    template <typename T, typename VT = std::vector<T>>
+    template <typename T, typename VT = std::vector<T>,
+        typename std::enable_if<!std::is_arithmetic<T>::value, void*>::type = nullptr>
     inline std::string to_string(const VT& values, const std::string& separator = ", ")
     {
         std::string tmp;
@@ -74,6 +75,18 @@ namespace vc4c
         for(const std::string& val : values)
         {
             tmp.append(val).append(separator);
+        }
+        return tmp.substr(0, tmp.size() - separator.size());
+    }
+
+    template <typename T, typename VT = std::vector<T>,
+        typename std::enable_if<std::is_arithmetic<T>::value, void*>::type = nullptr>
+    inline std::string to_string(const VT& values, const std::string& separator)
+    {
+        std::string tmp;
+        for(auto val : values)
+        {
+            tmp.append(std::to_string(val)).append(separator);
         }
         return tmp.substr(0, tmp.size() - separator.size());
     }

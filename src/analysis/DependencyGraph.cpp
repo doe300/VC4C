@@ -303,12 +303,13 @@ static void createMutexDependencies(DependencyGraph& graph, DependencyNode& node
     const intermediate::IntermediateInstruction* lastSemaphoreAccess,
     const intermediate::IntermediateInstruction* lastMemFence)
 {
-    if((node.key->hasValueType(ValueType::REGISTER) && node.key->getOutput()->reg().isVertexPipelineMemory()) ||
-        std::any_of(node.key->getArguments().begin(), node.key->getArguments().end(),
-            [](const Value& arg) -> bool { return arg.checkRegister() && arg.reg().isVertexPipelineMemory(); }) ||
-        node.key->writesRegister(REG_MUTEX))
+    if(lastMutexLock &&
+        ((node.key->hasValueType(ValueType::REGISTER) && node.key->getOutput()->reg().isVertexPipelineMemory()) ||
+            std::any_of(node.key->getArguments().begin(), node.key->getArguments().end(),
+                [](const Value& arg) -> bool { return arg.checkRegister() && arg.reg().isVertexPipelineMemory(); }) ||
+            node.key->writesRegister(REG_MUTEX)))
     {
-        // any VPM operation or mutex unlock must be ordered after the corresponding mutex lock
+        // any VPM operation or mutex unlock must be ordered after the previous mutex lock, if it exists
         auto& otherNode = graph.assertNode(lastMutexLock);
         addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::MUTEX_LOCK);
     }
@@ -497,13 +498,13 @@ static void createVPMIODependencies(DependencyGraph& graph, DependencyNode& node
         (node.key->writesRegister(REG_VPM_IO) || node.key->writesRegister(REG_VPM_DMA_STORE_ADDR) ||
             node.key->writesRegister(REG_MUTEX)))
     {
-        // any other VPM write, VPM write address setup or unlocking mutex must be executed aftre the VPM write
+        // any other VPM write, VPM write address setup or unlocking mutex must be executed after the VPM write
         auto& otherNode = graph.assertNode(lastVPMWrite);
         addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
     }
     if(lastVPMRead != nullptr && (node.key->readsRegister(REG_VPM_IO) || node.key->writesRegister(REG_MUTEX)))
     {
-        // any other VPM read or unlocking mutex must be executed aftre the VPM read
+        // any other VPM read or unlocking mutex must be executed after the VPM read
         auto& otherNode = graph.assertNode(lastVPMRead);
         addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
     }

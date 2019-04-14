@@ -34,7 +34,7 @@ extern void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo,
 
 std::size_t EmulationData::calcParameterSize() const
 {
-    return std::accumulate(parameter.begin(), parameter.end(), 0,
+    return std::accumulate(parameter.begin(), parameter.end(), 0u,
                [](std::size_t size, const auto& pair) -> std::size_t {
                    return size + (pair.second ? pair.second->size() * sizeof(uint32_t) : sizeof(uint32_t));
                }) /
@@ -515,14 +515,24 @@ std::pair<Value, bool> TMUs::readTMU()
 
     // need to select the first triggered read in both queues
     std::queue<std::pair<Value, uint32_t>>* queue = nullptr;
+    bool tmuFlag = false;
     if(!tmu0ResponseQueue.empty())
+    {
         queue = &tmu0ResponseQueue;
+        tmuFlag = false;
+    }
     if(!tmu1ResponseQueue.empty())
     {
         if(queue == nullptr)
+        {
             queue = &tmu1ResponseQueue;
+            tmuFlag = true;
+        }
         else if(tmu1ResponseQueue.front().second < queue->front().second)
+        {
             queue = &tmu1ResponseQueue;
+            tmuFlag = true;
+        }
     }
 
     if(queue == nullptr)
@@ -530,7 +540,12 @@ std::pair<Value, bool> TMUs::readTMU()
 
     auto front = queue->front();
     queue->pop();
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 68, "TMU read", 1);
+    if(tmuFlag)
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 68, "TMU0 read", 1);
+    else
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 69, "TMU1 read", 1);
+    CPPLOG_LAZY(
+        logging::Level::DEBUG, log << "Reading from TMU: " << front.first.to_string(true, true) << logging::endl);
     return std::make_pair(front.first, true);
 }
 
@@ -596,7 +611,12 @@ bool TMUs::triggerTMURead(uint8_t tmu)
         throw CompilationError(CompilationStep::GENERAL, "TMU response queue is full!");
 
     auto val = requestQueue.front();
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 65, "TMU read trigger", val.second + 9 <= qpu.getCurrentCycle());
+    if(tmu == 0)
+        PROFILE_COUNTER(
+            vc4c::profiler::COUNTER_EMULATOR + 65, "TMU0 read trigger", val.second + 9 <= qpu.getCurrentCycle());
+    else
+        PROFILE_COUNTER(
+            vc4c::profiler::COUNTER_EMULATOR + 66, "TMU1 read trigger", val.second + 9 <= qpu.getCurrentCycle());
     if(val.second + 9 > qpu.getCurrentCycle())
         // block for at least 9 cycles
         return false;
@@ -637,6 +657,7 @@ Value TMUs::readMemoryAddress(const Value& address) const
             res[i] = Literal(memory.readWord(element.getLiteralValue()->toImmediate()));
     }
     Value result(std::move(res), TYPE_INT32);
+    // XXX for cosmetic/correctness, this should print the rounded-down (to word boundaries) addresses
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Reading via TMU from memory address " << address.to_string(false, true) << ": "
             << result.to_string(false, true) << logging::endl);
@@ -659,6 +680,7 @@ Value SFU::readSFU()
     const Value val = sfuResult.value();
     sfuResult = NO_VALUE;
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 70, "SFU read", 1);
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Reading from SFU: " << val.to_string(true, true) << logging::endl);
     return val;
 }
 
@@ -1980,10 +2002,14 @@ EmulationResult tools::emulate(const EmulationData& data)
         kernelInfo = module.kernelInfos.begin();
     if(kernelInfo == module.kernelInfos.end())
         throw CompilationError(CompilationStep::GENERAL, "Failed to find kernel-info for kernel", data.kernelName);
-    if(data.parameter.size() != kernelInfo->getParamCount())
+    // Count number of direct parameter words (e.g. also for literal vectors)
+    auto numKernelWords = std::accumulate(kernelInfo->parameters.begin(), kernelInfo->parameters.end(), 0u,
+        [](unsigned u, const qpu_asm::ParamInfo& param) -> unsigned { return u + param.getVectorElements(); });
+    if(data.parameter.size() != numKernelWords)
         throw CompilationError(CompilationStep::GENERAL,
-            "The number of parameters specified does not match the number of kernel arguments",
-            std::to_string(static_cast<unsigned>(kernelInfo->getParamCount())));
+            "The number of parameters specified (" + std::to_string(data.parameter.size()) +
+                ") does not match the number of kernel arguments (" +
+                std::to_string(static_cast<unsigned>(kernelInfo->getParamCount())) + ')');
 
     MemoryAddress uniformAddress;
     MemoryAddress globalDataAddress;

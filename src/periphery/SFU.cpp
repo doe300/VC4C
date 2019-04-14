@@ -16,8 +16,6 @@ using namespace vc4c::operators;
 
 InstructionWalker periphery::insertSFUCall(const Register sfuReg, InstructionWalker it, const Value& arg)
 {
-    // TODO need to synchronize SFU ?? (per slice!)
-    // Also need to include the reading of r4. And if this is enclosed in mutex, the NOPs are no longer replaced?
     // 1. move argument to SFU register
     assign(it, Value(sfuReg, TYPE_FLOAT)) = arg;
     // 2. wait 2 instructions / don't touch r4

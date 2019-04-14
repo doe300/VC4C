@@ -66,7 +66,11 @@ static std::vector<std::string> createUniformValues(const qpu_asm::KernelInfo& k
     if(uniformsUsed.getGlobalDataAddressUsed())
         values.emplace_back("global data address");
     for(const auto& param : kernel.parameters)
-        values.emplace_back(param.typeName + " " + param.name);
+    {
+        // To correctly annotate multi-UNIFORM parameters (e.g. literal vectors)
+        for(uint16_t i = 0; i < param.getVectorElements(); ++i)
+            values.emplace_back(param.typeName + " " + param.name);
+    }
     values.emplace_back("re-run flag");
 
     return values;
@@ -81,8 +85,7 @@ static std::string getUniform(unsigned index, const std::vector<std::string>& va
 {
     if(index >= values.size())
     {
-        logging::warn() << "Reading UNIFORM out of bounds" << logging::endl;
-        return "";
+        return "UNIFORM out of bounds!";
     }
     return values[index];
 }
@@ -118,6 +121,7 @@ static std::string annotateRegisters(
         if(currentKernel == nullptr)
             return "";
         else
+            // TODO order of kernels extracted/kernel-code association is wrong, see test_vector.cl
             currentUniformValues = createUniformValues(*currentKernel);
     }
 
@@ -206,11 +210,11 @@ static std::string readString(std::istream& binary, uint64_t stringLength)
 {
     std::array<char, 1024> buffer;
 
-    binary.read(buffer.data(), stringLength);
+    binary.read(buffer.data(), static_cast<std::streamsize>(stringLength));
     const std::string name(buffer.data(), stringLength);
     uint64_t numPaddingBytes = Byte(stringLength).getPaddingTo(sizeof(uint64_t));
     // skip padding after kernel name
-    binary.read(buffer.data(), numPaddingBytes);
+    binary.read(buffer.data(), static_cast<std::streamsize>(numPaddingBytes));
 
     return name;
 }
@@ -264,7 +268,8 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Stable
         // all the data
         std::vector<uint32_t> tmp;
         tmp.resize(moduleInfo.getGlobalDataSize().getValue() * 2);
-        binary.read(reinterpret_cast<char*>(tmp.data()), moduleInfo.getGlobalDataSize().toBytes().getValue());
+        binary.read(reinterpret_cast<char*>(tmp.data()),
+            static_cast<std::streamsize>(moduleInfo.getGlobalDataSize().toBytes().getValue()));
 
         const DataType type = DataType(GLOBAL_TYPE_HOLDER.createArrayType(
             TYPE_INT32, static_cast<unsigned>(moduleInfo.getGlobalDataSize().getValue()) * 2));

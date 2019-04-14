@@ -31,7 +31,7 @@ __kernel void test_add(__global const uchar16* in0, __global const ushort16* in1
 
 __kernel void test_param(const uchar16 in1, const int4 in2, __global int4* out)
 {
-	*out = in2 + convert_int4(in1.xyzw);
+	*out = in2 + as_int4(in1);
 }
 
 __kernel void test_vector_load(const __global char* in, __global char3* out)
