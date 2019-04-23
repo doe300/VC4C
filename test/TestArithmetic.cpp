@@ -10,17 +10,25 @@
 // TODO for floating point checks, add Inf/NaN values
 
 static const std::string UNARY_OPERATION = R"(
-__kernel void test(__global TYPE* out, const __global TYPE* in) {
+#ifdef TYPE
+#define IN TYPE
+#define OUT TYPE
+#endif
+__kernel void test(__global OUT* out, const __global IN* in) {
   size_t gid = get_global_id(0);
   // need to cache locally, e.g. for increment
-  TYPE tmp = in[gid];
+  IN tmp = in[gid];
   // need to have braces for sizeof operator
   out[gid] = OP (tmp);
 }
 )";
 
 static const std::string BINARY_OPERATION = R"(
-__kernel void test(__global TYPE* out, const __global TYPE* in0, const __global TYPE* in1) {
+#ifdef TYPE
+#define IN TYPE
+#define OUT TYPE
+#endif
+__kernel void test(__global OUT* out, const __global IN* in0, const __global IN* in1) {
   size_t gid = get_global_id(0);
   out[gid] = in0[gid] OP in1[gid];
 }
@@ -178,6 +186,14 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedCharOr);
     TEST_ADD(TestArithmetic::testFloatOr);
 
+    TEST_ADD(TestArithmetic::testSignedIntNot);
+    TEST_ADD(TestArithmetic::testSignedShortNot);
+    TEST_ADD(TestArithmetic::testSignedCharNot);
+    TEST_ADD(TestArithmetic::testUnsignedIntNot);
+    TEST_ADD(TestArithmetic::testUnsignedShortNot);
+    TEST_ADD(TestArithmetic::testUnsignedCharNot);
+    TEST_ADD(TestArithmetic::testFloatNot);
+
     TEST_ADD(TestArithmetic::testSignedIntBitNot);
     TEST_ADD(TestArithmetic::testUnsignedIntBitNot);
     TEST_ADD(TestArithmetic::testSignedShortBitNot);
@@ -205,6 +221,20 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortBitXor);
     TEST_ADD(TestArithmetic::testSignedCharBitXor);
     TEST_ADD(TestArithmetic::testUnsignedCharBitXor);
+
+    TEST_ADD(TestArithmetic::testSignedIntBitShiftLeft);
+    TEST_ADD(TestArithmetic::testUnsignedIntBitShiftLeft);
+    TEST_ADD(TestArithmetic::testSignedShortBitShiftLeft);
+    TEST_ADD(TestArithmetic::testUnsignedShortBitShiftLeft);
+    TEST_ADD(TestArithmetic::testSignedCharBitShiftLeft);
+    TEST_ADD(TestArithmetic::testUnsignedCharBitShiftLeft);
+
+    TEST_ADD(TestArithmetic::testSignedIntBitShiftRight);
+    TEST_ADD(TestArithmetic::testUnsignedIntBitShiftRight);
+    TEST_ADD(TestArithmetic::testSignedShortBitShiftRight);
+    TEST_ADD(TestArithmetic::testUnsignedShortBitShiftRight);
+    TEST_ADD(TestArithmetic::testSignedCharBitShiftRight);
+    TEST_ADD(TestArithmetic::testUnsignedCharBitShiftRight);
 }
 
 void TestArithmetic::onMismatch(const std::string& expected, const std::string& result)
@@ -224,6 +254,21 @@ static void testUnaryOperation(vc4c::Configuration& config, const std::string& o
     auto out = runEmulation<T, T, 16, 12>(code, {in});
     auto pos = options.find("-DOP=") + std::string("-DOP=").size();
     checkUnaryResults<T, T>(in, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
+}
+
+template <typename In, typename Out, typename Comparison = std::equal_to<Out>>
+static void testUnaryOperation(vc4c::Configuration& config, const std::string& options,
+    const std::function<Out(In)>& op, const std::function<void(const std::string&, const std::string&)>& onError,
+    bool allowZero = true)
+{
+    std::stringstream code;
+    compileBuffer(config, code, UNARY_OPERATION, options);
+
+    auto in = generateInput<In, 16 * 12>(true);
+
+    auto out = runEmulation<In, Out, 16, 12>(code, {in});
+    auto pos = options.find("-DOP=") + std::string("-DOP=").size();
+    checkUnaryResults<Out, Out>(in, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
 template <typename T, typename Comparison = std::equal_to<T>>
@@ -293,6 +338,24 @@ template <typename T>
 static int checkOr(T arg1, T arg2)
 {
     return (arg1 != 0 || arg2 != 0) ? -1 : 0;
+}
+
+template <typename T>
+static int checkNot(T arg)
+{
+    return !arg ? -1 : 0;
+}
+
+template <typename T>
+static int checkShiftLeft(T arg1, T arg2)
+{
+    return arg1 << arg2;
+}
+
+template <typename T>
+static int checkShiftRight(T arg1, T arg2)
+{
+    return arg1 >> arg2;
 }
 
 void TestArithmetic::testSignedIntUnaryPlus()
@@ -971,6 +1034,42 @@ void TestArithmetic::testFloatOr()
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
+void TestArithmetic::testSignedIntNot()
+{
+    testUnaryOperation<int, int>(config, "-DIN=int16 -DOUT=int16 -DOP=!", checkNot<int>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedIntNot()
+{
+    testUnaryOperation<unsigned, int>(config, "-DIN=uint16 -DOUT=int16 -DOP=!", checkNot<unsigned>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testSignedShortNot()
+{
+    testUnaryOperation<short, int>(config, "-DIN=short16 -DOUT=short16 -DOP=!", checkNot<short>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedShortNot()
+{
+    testUnaryOperation<unsigned short, int>(config, "-DIN=ushort16 -DOUT=short16 -DOP=!", checkNot<unsigned short>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testSignedCharNot()
+{
+    testUnaryOperation<char, int>(config, "-DIN=char16 -DOUT=char16 -DOP=!", checkNot<char>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedCharNot()
+{
+    testUnaryOperation<unsigned char, int>(config, "-DIN=uchar16 -DOUT=char16 -DOP=!", checkNot<unsigned char>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testFloatNot()
+{
+    testUnaryOperation<float, int>(config, "-DIN=float16 -DOUT=int16 -DOP=!", checkNot<float>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
 void TestArithmetic::testSignedIntBitNot()
 {
     testUnaryOperation<int>(config, "-DTYPE=int16 -DOP=~", std::bit_not<int>{},
@@ -1092,5 +1191,67 @@ void TestArithmetic::testSignedCharBitXor()
 void TestArithmetic::testUnsignedCharBitXor()
 {
     testBinaryOperation<unsigned char>(config, "-DTYPE=uchar16 -DOP=^", std::bit_xor<unsigned char>{},
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testSignedIntBitShiftLeft()
+{
+    testBinaryOperation<int>(config, "-DTYPE=int16 -DOP=<<", checkShiftLeft<int>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedIntBitShiftLeft()
+{
+    testBinaryOperation<unsigned>(config, "-DTYPE=uint16 -DOP=<<", checkShiftLeft<unsigned>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testSignedShortBitShiftLeft()
+{
+    testBinaryOperation<short>(config, "-DTYPE=short16 -DOP=<<", checkShiftLeft<short>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedShortBitShiftLeft()
+{
+    testBinaryOperation<unsigned short>(config, "-DTYPE=ushort16 -DOP=<<", checkShiftLeft<unsigned short>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testSignedCharBitShiftLeft()
+{
+    testBinaryOperation<char>(config, "-DTYPE=char16 -DOP=<<", checkShiftLeft<char>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedCharBitShiftLeft()
+{
+    testBinaryOperation<unsigned char>(config, "-DTYPE=uchar16 -DOP=<<", checkShiftLeft<unsigned char>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testSignedIntBitShiftRight()
+{
+    testBinaryOperation<int>(config, "-DTYPE=int16 -DOP=>>", checkShiftRight<int>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedIntBitShiftRight()
+{
+    testBinaryOperation<unsigned>(config, "-DTYPE=uint16 -DOP=>>", checkShiftRight<unsigned>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testSignedShortBitShiftRight()
+{
+    testBinaryOperation<short>(config, "-DTYPE=short16 -DOP=>>", checkShiftRight<short>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedShortBitShiftRight()
+{
+    testBinaryOperation<unsigned short>(config, "-DTYPE=ushort16 -DOP=>>", checkShiftRight<unsigned short>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testSignedCharBitShiftRight()
+{
+    testBinaryOperation<char>(config, "-DTYPE=char16 -DOP=>>", checkShiftRight<char>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedCharBitShiftRight()
+{
+    testBinaryOperation<unsigned char>(config, "-DTYPE=uchar16 -DOP=>>", checkShiftRight<unsigned char>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }

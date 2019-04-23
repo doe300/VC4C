@@ -157,7 +157,7 @@ public:
     void testUnsignedShortOr();
     void testUnsignedCharOr();
     void testFloatOr();
-    // XXX following block
+
     void testSignedIntNot();
     void testSignedShortNot();
     void testSignedCharNot();
@@ -199,7 +199,6 @@ public:
     void testUnsignedCharBitXor();
     // "The bitwise operators [...] except the built-in scalar and vector float types" - OpenCL 1.2, section 6.3.f
 
-    // XXX following block
     void testSignedIntBitShiftLeft();
     void testUnsignedIntBitShiftLeft();
     void testSignedShortBitShiftLeft();
@@ -209,7 +208,6 @@ public:
     // "The operators right-shift, left-shift [...] except the built-in scalar and vector float types" - OpenCL 1.2,
     // section 6.3.j
 
-    // XXX following block
     void testSignedIntBitShiftRight();
     void testUnsignedIntBitShiftRight();
     void testSignedShortBitShiftRight();

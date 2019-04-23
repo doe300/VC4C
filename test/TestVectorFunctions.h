@@ -64,7 +64,11 @@ public:
     void testExtractElement();
     void testInsertElement();
 
-    void testVectorAssembly(std::string source);
+    void testVectorAssembly16(std::string source);
+    void testVectorAssembly8(std::string source);
+    void testVectorAssembly4(std::string source);
+    void testVectorAssembly2(std::string source);
+    void testVectorAssemblyScalar(std::string source);
 
 private:
     vc4c::Configuration config;

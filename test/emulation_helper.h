@@ -138,7 +138,8 @@ void checkUnaryResults(const std::array<Input, N>& input, const std::array<Resul
         if(!c(output[i], op(input[i])))
         {
             auto result = std::to_string(output[i]);
-            auto expected = opName + " " + std::to_string(input[i]) + " = " + std::to_string(op(input[i]));
+            auto expected = opName + " " + std::to_string(input[i]) + " = " + std::to_string(op(input[i])) +
+                (N > 1 ? (" for element " + std::to_string(i)) : "");
             onError(expected, result);
         }
     }
@@ -157,7 +158,7 @@ void checkBinaryResults(const std::array<Input, N>& input0, const std::array<Inp
         {
             auto result = std::to_string(output[i]);
             auto expected = std::to_string(input0[i]) + " " + opName + " " + std::to_string(input1[i]) + " = " +
-                std::to_string(op(input0[i], input1[i]));
+                std::to_string(op(input0[i], input1[i])) + (N > 1 ? (" for element " + std::to_string(i)) : "");
             onError(expected, result);
         }
     }
@@ -177,7 +178,8 @@ void checkTernaryResults(const std::array<Input, N>& input0, const std::array<In
         {
             auto result = std::to_string(output[i]);
             auto expected = std::to_string(input0[i]) + " " + opName + " " + std::to_string(input1[i]) + ", " +
-                std::to_string(input2[i]) + " = " + std::to_string(op(input0[i], input1[i], input2[i]));
+                std::to_string(input2[i]) + " = " + std::to_string(op(input0[i], input1[i], input2[i])) +
+                (N > 1 ? (" for element " + std::to_string(i)) : "");
             onError(expected, result);
         }
     }
@@ -206,7 +208,8 @@ void checkUnaryReducedResults(const std::array<Input, N>& input, const std::arra
         if(!c(output[i / GroupSize], op(*group)))
         {
             auto result = std::to_string(output[i / GroupSize]);
-            auto expected = opName + " " + toString(*group) + " = " + std::to_string(op(*group));
+            auto expected = opName + " " + toString(*group) + " = " + std::to_string(op(*group)) +
+                (N > 1 ? (" for element " + std::to_string(i) + " (group " + std::to_string(i / GroupSize) + ')') : "");
             onError(expected, result);
         }
     }
@@ -229,7 +232,8 @@ void checkBinaryReducedResults(const std::array<Input, N>& input0, const std::ar
         {
             auto result = std::to_string(output[i / GroupSize]);
             auto expected = opName + " {" + toString(*group0) + "}, {" + toString(*group1) +
-                "} = " + std::to_string(op(*group0, *group1));
+                "} = " + std::to_string(op(*group0, *group1)) +
+                (N > 1 ? (" for element " + std::to_string(i) + " (group " + std::to_string(i / GroupSize) + ')') : "");
             onError(expected, result);
         }
     }
@@ -250,7 +254,8 @@ void checkUnaryGroupedResults(const std::array<Input, N>& input, const std::arra
         if(!c(*outputGroup, op(*inputGroup)))
         {
             auto result = toString(*outputGroup);
-            auto expected = opName + " " + toString(*inputGroup) + " = " + toString(op(*inputGroup));
+            auto expected = opName + " " + toString(*inputGroup) + " = " + toString(op(*inputGroup)) +
+                (N > 1 ? (" for element " + std::to_string(i) + " (group " + std::to_string(i / GroupSize) + ')') : "");
             onError(expected, result);
         }
     }
@@ -275,7 +280,8 @@ void checkBinaryGroupedResults(const std::array<Input, N>& input0, const std::ar
         {
             auto result = toString(*outputGroup);
             auto expected = opName + " {" + toString(*inputGroup0) + "}, {" + toString(*inputGroup1) +
-                "} = " + toString(op(*inputGroup0, *inputGroup1));
+                "} = " + toString(op(*inputGroup0, *inputGroup1)) +
+                (N > 1 ? (" for element " + std::to_string(i) + " (group " + std::to_string(i / GroupSize) + ')') : "");
             onError(expected, result);
         }
     }
@@ -301,7 +307,8 @@ void checkTrinaryGroupedResults(const std::array<Input, N>& input0, const std::a
         {
             auto result = toString(*outputGroup);
             auto expected = opName + " {" + toString(*inputGroup0) + "}, {" + toString(*inputGroup1) + "}, {" +
-                toString(*inputGroup2) + "} = " + toString(op(*inputGroup0, *inputGroup1, *inputGroup2));
+                toString(*inputGroup2) + "} = " + toString(op(*inputGroup0, *inputGroup1, *inputGroup2)) +
+                (N > 1 ? (" for element " + std::to_string(i) + " (group " + std::to_string(i / GroupSize) + ')') : "");
             onError(expected, result);
         }
     }

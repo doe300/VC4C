@@ -139,19 +139,14 @@ TestVectorFunctions::TestVectorFunctions(const vc4c::Configuration& config) : co
         */
 
     // Tests for vector assembly with constants
-    // TODO also test for different vector width?!
-    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "random");
-    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "elem_num");
-    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "constant");
-    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "per_quad");
-    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "ldui");
-    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "elem_num+offset");
-    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "per_quad+offset");
-    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "ldui+offset");
-    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "elem_num*factor");
-    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "per_quad*factor");
-    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "ldui*factor");
-    TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly, "elem_num<<rotated");
+    for(const auto& pair : assemblySources)
+    {
+        TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly16, pair.first);
+        TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly8, pair.first);
+        TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly4, pair.first);
+        TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssembly2, pair.first);
+        TEST_ADD_WITH_STRING(TestVectorFunctions::testVectorAssemblyScalar, pair.first);
+    }
 }
 
 void TestVectorFunctions::onMismatch(const std::string& expected, const std::string& result)
@@ -257,14 +252,14 @@ static void testVectorReorderFunction(vc4c::Configuration& config, const std::st
         in, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
-template <typename T, std::size_t N>
+template <typename T, std::size_t N, std::size_t M = N>
 static void testVectorAssemblyFunction(vc4c::Configuration& config, const std::string& options,
-    const std::array<T, N>& result, const std::function<void(const std::string&, const std::string&)>& onError)
+    const std::array<T, M>& result, const std::function<void(const std::string&, const std::string&)>& onError)
 {
     std::stringstream code;
     compileBuffer(config, code, VECTOR_ASSEMBLY_FUNCTION, options);
 
-    auto out = runEmulation<T, T, N, 12>(code, {});
+    auto out = runEmulation<T, T, N, 1>(code, {});
     for(uint32_t i = 0; i < std::min(result.size(), out.size()); ++i)
     {
         if(out[i] != result[i])
@@ -537,22 +532,50 @@ void TestVectorFunctions::testVectorReorder16()
 }
 
 template <typename T, std::size_t N>
-std::string to_string(const std::array<T, N>& vec)
+std::string to_string(const std::array<T, N>& vec, unsigned numElements)
 {
     std::string res;
     if(vec.empty())
         return res;
-    for(auto elem : vec)
+    for(unsigned i = 0; i < numElements; ++i)
     {
         // NO SPACE is on purpose!
-        res.append(",").append(std::to_string(elem));
+        res.append(",").append(std::to_string(vec[i]));
     }
     return res.substr(1);
 }
 
-void TestVectorFunctions::testVectorAssembly(std::string source)
+void TestVectorFunctions::testVectorAssembly16(std::string source)
 {
-    testVectorAssemblyFunction<uint32_t, 16>(config, "-DTYPE=uint16 -DSOURCES=" + to_string(assemblySources.at(source)),
+    testVectorAssemblyFunction<uint32_t, 16>(config,
+        "-DTYPE=uint16 -DSOURCES=" + to_string(assemblySources.at(source), 16), assemblySources.at(source),
+        std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestVectorFunctions::testVectorAssembly8(std::string source)
+{
+    testVectorAssemblyFunction<uint32_t, 8>(config,
+        "-DTYPE=uint8 -DSOURCES=" + to_string(assemblySources.at(source), 8), assemblySources.at(source),
+        std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestVectorFunctions::testVectorAssembly4(std::string source)
+{
+    testVectorAssemblyFunction<uint32_t, 4>(config,
+        "-DTYPE=uint4 -DSOURCES=" + to_string(assemblySources.at(source), 4), assemblySources.at(source),
+        std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestVectorFunctions::testVectorAssembly2(std::string source)
+{
+    testVectorAssemblyFunction<uint32_t, 2>(config,
+        "-DTYPE=uint2 -DSOURCES=" + to_string(assemblySources.at(source), 2), assemblySources.at(source),
+        std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestVectorFunctions::testVectorAssemblyScalar(std::string source)
+{
+    testVectorAssemblyFunction<uint32_t, 1>(config, "-DTYPE=uint -DSOURCES=" + to_string(assemblySources.at(source), 1),
         assemblySources.at(source),
         std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
