@@ -25,9 +25,6 @@ namespace vc4c
         // this is used for only optimizations::removeConstantLoadInLoops
         bool isBackEdge = false;
 
-        // map of the source block and the implicit flags
-        // std::map<BasicBlock*, bool> isImplicit;
-
         bool operator==(const CFGRelation& other) const;
 
         std::string getLabel() const;
