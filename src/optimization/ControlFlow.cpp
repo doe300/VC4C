@@ -1319,7 +1319,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 
     auto cfg = method.getCFG().clone();
 #ifdef DEBUG_MODE
-    cfg->dumpGraph("before-removeConstantLoadInLoops.dot", true);
+    cfg->dumpGraph("/tmp/before-removeConstantLoadInLoops.dot", true);
 #endif
 
     // 1. Simplify the CFG to avoid combinatorial explosion. (e.g. testing/test_barrier.cl)
@@ -1442,7 +1442,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     }
 
 #ifdef DEBUG_MODE
-    cfg->dumpGraph("before-removeConstantLoadInLoops-simplified.dot", true);
+    cfg->dumpGraph("/tmp/before-removeConstantLoadInLoops-simplified.dot", true);
 #endif
 
     // 2. Find loops
@@ -1678,7 +1678,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 
 #ifdef DEBUG_MODE
     auto& cfg2 = method.getCFG();
-    cfg2.dumpGraph("after-removeConstantLoadInLoops.dot", true);
+    cfg2.dumpGraph("/tmp/after-removeConstantLoadInLoops.dot", true);
 #endif
 
     if(hasChanged)
