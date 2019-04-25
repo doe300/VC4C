@@ -1448,6 +1448,13 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     // 2. Find loops
     auto loops = cfg->findLoops(true);
 
+    // FIXME: Skip this optimization because it takes so long time with many loops.
+    if(loops.size() > 100000)
+    {
+        logging::warn() << "Skip this optimization due to many nodes in loops." << logging::endl;
+        return false;
+    }
+
     // 3. Generate inclusion relation of loops as trees
     // e.g.
     //
