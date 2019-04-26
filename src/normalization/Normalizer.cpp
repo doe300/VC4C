@@ -16,6 +16,7 @@
 #include "../optimization/ControlFlow.h"
 #include "../optimization/Eliminator.h"
 #include "../optimization/Reordering.h"
+#include "../periphery/VPM.h"
 #include "Inliner.h"
 #include "LiteralValues.h"
 #include "MemoryAccess.h"
@@ -299,4 +300,6 @@ void Normalizer::adjustMethod(Module& module, Method& method) const
         }
         logging::debug() << "-----" << logging::endl;
     });
+
+    method.vpm->dumpUsage();
 }

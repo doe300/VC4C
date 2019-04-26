@@ -80,11 +80,10 @@ const CFGNode* ControlFlowLoop::findPredecessor() const
                     // TODO testing/boost-compute/test_accumulator.cl throws errors here, because it has multiple
                     // predecessors (in kernel "reduce")! How to handle them?
                     throw CompilationError(CompilationStep::GENERAL, "Found multiple predecessors for CFG loop",
-                        neighbor.key->getLabel()->to_string());
+                        neighbor.key->to_string());
 
                 CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Found predecessor for CFG loop: " << neighbor.key->getLabel()->to_string()
-                        << logging::endl);
+                    log << "Found predecessor for CFG loop: " << neighbor.key->to_string() << logging::endl);
                 predecessor = &neighbor;
             }
             return true;
@@ -103,11 +102,11 @@ const CFGNode* ControlFlowLoop::findSuccessor() const
             {
                 // the relation is forward and node is not within this loop -> successor
                 if(successor != nullptr)
-                    throw CompilationError(CompilationStep::GENERAL, "Found multiple successors for CFG loop",
-                        neighbor.key->getLabel()->to_string());
+                    throw CompilationError(
+                        CompilationStep::GENERAL, "Found multiple successors for CFG loop", neighbor.key->to_string());
 
                 CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Found successor for CFG loop: " << neighbor.key->getLabel()->to_string() << logging::endl);
+                    log << "Found successor for CFG loop: " << neighbor.key->to_string() << logging::endl);
                 successor = &neighbor;
             }
             return true;
@@ -151,6 +150,8 @@ bool ControlFlowLoop::includes(const ControlFlowLoop& other) const
 
 CFGNode& ControlFlowGraph::getStartOfControlFlow()
 {
+    if(nodes.empty())
+        throw CompilationError(CompilationStep::GENERAL, "Cannot get start of empty CFG!");
     // TODO return node without any predecessors?
     return assertNode(&(*nodes.begin()->first->method.begin()));
 }
@@ -172,8 +173,8 @@ CFGNode& ControlFlowGraph::getEndOfControlFlow()
         {
             if(candidate != nullptr)
             {
-                logging::error() << "Candidate: " << candidate->key->getLabel()->to_string() << logging::endl;
-                logging::error() << "Candidate: " << node.key->getLabel()->to_string() << logging::endl;
+                logging::error() << "Candidate: " << candidate->key->to_string() << logging::endl;
+                logging::error() << "Candidate: " << node.key->to_string() << logging::endl;
                 throw CompilationError(CompilationStep::GENERAL, "Found more than one CFG node without successors!");
             }
             candidate = &node;
@@ -234,7 +235,7 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops()
         {
             logging::debug() << "Found a control-flow loop: ";
             for(auto it = loop.rbegin(); it != loop.rend(); ++it)
-                logging::debug() << (*it)->key->getLabel()->to_string() << " -> ";
+                logging::debug() << (*it)->key->to_string() << " -> ";
             logging::debug() << logging::endl;
         }
     });
@@ -289,7 +290,7 @@ void ControlFlowGraph::updateOnBlockInsertion(Method& method, BasicBlock& newBlo
                     logging::error() << edge.data.getPredecessor(prevNode.key)->to_string() << logging::endl;
 
                     throw CompilationError(CompilationStep::GENERAL, "Multiple implicit branches from basic block",
-                        prevNode.key->getLabel()->to_string());
+                        prevNode.key->to_string());
                 }
                 fallThroughEdge = &edge;
             }
@@ -325,15 +326,15 @@ void ControlFlowGraph::updateOnBlockRemoval(Method& method, BasicBlock& oldBlock
     nodePtr->forAllIncomingEdges([&](CFGNode& predecessor, CFGEdge& edge) -> bool {
         if(!edge.data.isImplicit(predecessor.key))
             throw CompilationError(CompilationStep::GENERAL, "Explicit jump to basic block, cannot remove basic block",
-                oldBlock.getLabel()->to_string());
+                oldBlock.to_string());
         else if(fallThroughEdge)
         {
             logging::error()
                 << fallThroughEdge->data.getPredecessor(fallThroughEdge->getOtherNode(*nodePtr).key)->to_string()
                 << logging::endl;
             logging::error() << edge.data.getPredecessor(predecessor.key)->to_string() << logging::endl;
-            throw CompilationError(CompilationStep::GENERAL, "Multiple implicit branches to basic block",
-                oldBlock.getLabel()->to_string());
+            throw CompilationError(
+                CompilationStep::GENERAL, "Multiple implicit branches to basic block", oldBlock.to_string());
         }
         else
             fallThroughEdge = &edge;
@@ -379,8 +380,8 @@ void ControlFlowGraph::updateOnBranchInsertion(Method& method, InstructionWalker
                 logging::error() << fallThroughEdge->data.getPredecessor(node.key)->to_string() << logging::endl;
                 logging::error() << edge.data.getPredecessor(node.key)->to_string() << logging::endl;
 
-                throw CompilationError(CompilationStep::GENERAL, "Multiple implicit branches from basic block",
-                    node.key->getLabel()->to_string());
+                throw CompilationError(
+                    CompilationStep::GENERAL, "Multiple implicit branches from basic block", node.key->to_string());
             }
             fallThroughEdge = &edge;
         }
@@ -415,7 +416,7 @@ void ControlFlowGraph::updateOnBranchRemoval(Method& method, BasicBlock& affecte
 
     if(!branchEdge)
         throw CompilationError(
-            CompilationStep::GENERAL, "No CFG edge found for branch to targer", branchTarget->to_string());
+            CompilationStep::GENERAL, "No CFG edge found for branch to target", branchTarget->to_string());
 
     if(branchEdge->getDirection() == Direction::BOTH)
     {

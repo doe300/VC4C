@@ -700,6 +700,8 @@ namespace vc4c
              * When writing into VPM, a QPU always writes vectors of 16 elements. Since the DMA configuration cannot set
              * a stride of less than a row, we would not be able to transfer the second, third, etc. value without
              * copying all the junk of the remaining (unset) vector-elements of the previous values.
+             *
+             * TODO is this true at all? What about DMA write stride setup "Blockmode" bit? And DAM read setup "VPitch"?
              */
             bool canBeAccessedViaDMA() const;
 
@@ -721,27 +723,27 @@ namespace vc4c
 
             /*
              * Generates a VPM-to-RAM DMA write setup for storing the contents of the VPM area into RAM with the given
-             * element-type and number of values of the given type.
+             * element-type and number of rows of the given type.
              *
              * If the data-type is set to unknown, the element-type of the local associated with this area is used
              */
-            VPWDMASetup toWriteDMASetup(DataType elementType, uint8_t numValues = 1) const;
+            VPWDMASetup toWriteDMASetup(DataType elementType, uint8_t numRows = 1) const;
 
             /*
              * Generates a VPM-to-QPU read setup for accessing the base-address of this VPM area for the given number of
-             * elements of the given data-type.
+             * rows of the given data-type.
              *
              * If the data-type is set to unknown, the default element-type of this area is used
              */
-            VPRGenericSetup toReadSetup(DataType elementType, uint8_t numValues = 1) const;
+            VPRGenericSetup toReadSetup(DataType elementType, uint8_t numRows = 1) const;
 
             /*
              * Generates a RAM-to-VPM DMA read setup for loading the contents of a memory address into this VPM area
-             * given the element-type and numbr of values of the given type.
+             * given the element-type and number of rows of the given type.
              *
              * If the data-type is set to unknown, the default element-type of this area is used
              */
-            VPRDMASetup toReadDMASetup(DataType elementType, uint8_t numValues = 1) const;
+            VPRDMASetup toReadDMASetup(DataType elementType, uint8_t numRows = 1) const;
 
             std::string to_string() const;
         };
@@ -798,13 +800,13 @@ namespace vc4c
              */
             NODISCARD InstructionWalker insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
                 DataType type, const VPMArea* area = nullptr, bool useMutex = true,
-                const Value& inAreaOffset = INT_ZERO);
+                const Value& inAreaOffset = INT_ZERO, const Value& numEntries = INT_ONE);
             /*
              * Inserts a write from VPM into RAM via DMA
              */
             NODISCARD InstructionWalker insertWriteRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
                 DataType type, const VPMArea* area = nullptr, bool useMutex = true,
-                const Value& inAreaOffset = INT_ZERO);
+                const Value& inAreaOffset = INT_ZERO, const Value& numEntries = INT_ONE);
             /*
              * Inserts a copy from RAM via DMA and VPM into RAM
              */
@@ -828,6 +830,11 @@ namespace vc4c
              * to correctly determine the amount of VPM cache required to store the data.
              */
             static DataType getVPMStorageType(DataType type);
+
+            /*
+             * Prints the currently configured usage of the VPM (areas and types) to the log output
+             */
+            void dumpUsage() const;
 
         private:
             const unsigned maximumVPMSize;
@@ -883,8 +890,8 @@ namespace vc4c
         /*
          * Returns the instruction related to the current VPM access of the instruction given.
          *
-         * This function looks within the same mutex-lock block at the preceding and following instructions to find
-         * the instructions required for the given VPM access.
+         * This function looks within the same mutex-lock block (if any) at the preceding and following instructions to
+         * find the instructions required for the given VPM access.
          */
         VPMInstructions findRelatedVPMInstructions(InstructionWalker anyVPMInstruction, bool isVPMRead);
     } // namespace periphery

@@ -364,8 +364,7 @@ bool Method::removeBlock(BasicBlock& block, bool overwriteUsages)
         if(&(*it) == &block)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Removing basic block '" << block.getLabel()->to_string() << "' from function " << name
-                    << logging::endl);
+                log << "Removing basic block '" << block.to_string() << "' from function " << name << logging::endl);
             ;
             updateCFGOnBlockRemoval(&(*it));
             basicBlocks.erase(it);
@@ -373,7 +372,7 @@ bool Method::removeBlock(BasicBlock& block, bool overwriteUsages)
         }
         ++it;
     }
-    logging::warn() << "Basic block '" << block.getLabel()->to_string() << "' was not found in this function " << name
+    logging::warn() << "Basic block '" << block.to_string() << "' was not found in this function " << name
                     << logging::endl;
     return false;
 }

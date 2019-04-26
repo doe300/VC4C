@@ -25,10 +25,13 @@
 #include "TestMemoryAccess.h"
 #include "TestConversionFunctions.h"
 #include "TestOptimizations.h"
+#include "TestIntrinsics.h"
 
 #include "tools.h"
 #include "../lib/cpplog/include/logger.h"
 #include "RegressionTest.h"
+
+//TODO test for compact optional!
 
 using namespace std;
 
@@ -107,6 +110,11 @@ static Test::Suite* newConversionFunctionsTest()
     return new TestConversionFuntions(config);
 }
 
+static Test::Suite* newIntrinsicsTest()
+{
+    return new TestIntrinsicFunctions(config);
+}
+
 /*
  * 
  */
@@ -138,6 +146,7 @@ int main(int argc, char** argv)
     Test::registerSuite(newVectorFunctionsTest, "emulate-vector", "Runs emulation tests for the OpenCL standard-library vector functions");
     Test::registerSuite(newMemoryAccessTest, "emulate-memory", "Runs emulation tests for various functions testing different kinds of memory access");
     Test::registerSuite(newConversionFunctionsTest, "emulate-conversions", "Runs emulation tests for the OpenCL standard-library type conversion functions");
+    Test::registerSuite(newIntrinsicsTest, "test-intrinsics", "Runs tests on the code generated for intrinsic functions");
 
     auto args = std::vector<char*>();
     // we need this first argument, since the  cpptest-lite helper expects the first argument to be skipped (as if passed directly the main arguments)

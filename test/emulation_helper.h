@@ -329,7 +329,17 @@ void copyConvert(const In& in, Out& out)
     if(out.size() < N)
         throw vc4c::CompilationError(vc4c::CompilationStep::GENERAL, "Invalid container size for copy");
     auto base = reinterpret_cast<const typename Out::value_type*>(in.data());
+    // FIXME for copying single-element char/short vectors to int, this still accesses bytes outside of the source
+    // vector
     std::copy(base, base + N, out.data());
+}
+
+template <typename Type, std::size_t VectorWidth, std::size_t LocalSize, std::size_t NumGroups>
+constexpr std::size_t minBufferSize() noexcept
+{
+    // reserve at least 1 word, since otherwise buffers of less than a single word (e.g. single chars/shorts) have no
+    // space to read from/write to
+    return std::max(static_cast<std::size_t>(1), VectorWidth * LocalSize * NumGroups * sizeof(Type) / sizeof(uint32_t));
 }
 
 template <typename Input, typename Result, std::size_t VectorWidth, std::size_t LocalSize, std::size_t NumGroups = 1>
@@ -340,14 +350,13 @@ std::array<Result, VectorWidth * LocalSize * NumGroups> runEmulation(std::string
     using namespace vc4c::tools;
 
     std::vector<std::pair<uint32_t, vc4c::Optional<std::vector<uint32_t>>>> parameter;
-    parameter.emplace_back(std::make_pair(
-        0, std::vector<uint32_t>(VectorWidth * LocalSize * NumGroups * sizeof(Result) / sizeof(uint32_t))));
+    parameter.emplace_back(
+        std::make_pair(0, std::vector<uint32_t>(minBufferSize<Result, VectorWidth, LocalSize, NumGroups>())));
     for(const auto& input : inputs)
     {
-        parameter.emplace_back(std::make_pair(
-            0, std::vector<uint32_t>(VectorWidth * LocalSize * NumGroups * sizeof(Input) / sizeof(uint32_t))));
-        copyConvert<VectorWidth * LocalSize * NumGroups * sizeof(Input) / sizeof(uint32_t)>(
-            input, parameter.back().second.value());
+        parameter.emplace_back(
+            std::make_pair(0, std::vector<uint32_t>(minBufferSize<Input, VectorWidth, LocalSize, NumGroups>())));
+        copyConvert<minBufferSize<Input, VectorWidth, LocalSize, NumGroups>()>(input, parameter.back().second.value());
     }
 
     WorkGroupConfig workGroups;

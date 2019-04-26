@@ -22,6 +22,8 @@ target_sources(TestVC4C
     TestInstructions.h
     TestIntegerFunctions.h
     TestIntegerFunctions.cpp
+    TestIntrinsics.cpp
+    TestIntrinsics.h
     TestMathFunctions.cpp
     TestMathFunctions.h
     TestMemoryAccess.cpp

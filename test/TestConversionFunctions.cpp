@@ -553,10 +553,9 @@ void TestConversionFuntions::testVectorBitcastTruncation2To1()
     testReinterpretation<uint8_t, uint16_t, 4, 2, 4>(config, "-DIN=uchar4 -DOUT=ushort2",
         checkReinterpretation<uint8_t, uint16_t, 4>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    // TODO mismatch due to emulator only handling 32-bit values (see below)
-    // testReinterpretation<uint8_t, uint16_t, 2, 1, 2>(config, "-DIN=uchar2 -DOUT=ushort",
-    //     checkReinterpretation<uint8_t, uint16_t, 2>,
-    //     std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testReinterpretation<uint8_t, uint16_t, 2, 1, 2>(config, "-DIN=uchar2 -DOUT=ushort",
+        checkReinterpretation<uint8_t, uint16_t, 2>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testVectorBitcastExtension1To4()
@@ -596,9 +595,7 @@ void TestConversionFuntions::testVectorBitcastExtension1To2()
     testReinterpretation<uint16_t, uint8_t, 2, 4, 4>(config, "-DIN=ushort2 -DOUT=uchar4",
         checkReinterpretation<uint16_t, uint8_t, 4>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    // TODO causes SEGFAULT copying result, since 1*uint16_t does not fill a whole integer. Is the result vector 0
-    // elements??
-    // testReinterpretation<uint16_t, uint8_t, 1, 2, 2>(config, "-DIN=ushort -DOUT=uchar2",
-    //     checkReinterpretation<uint16_t, uint8_t, 2>,
-    //     std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testReinterpretation<uint16_t, uint8_t, 1, 2, 2>(config, "-DIN=ushort -DOUT=uchar2",
+        checkReinterpretation<uint16_t, uint8_t, 2>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }

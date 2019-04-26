@@ -168,7 +168,7 @@ static NODISCARD InstructionWalker findReplacementCandidate(
             // TODO for now, we can't handle this case, since there may be several writing instructions jumping to the
             // block
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Can't find reason for NOP in block: " << basicBlock.getLabel()->to_string() << logging::endl);
+                log << "Can't find reason for NOP in block: " << basicBlock.to_string() << logging::endl);
             return basicBlock.walkEnd();
         }
         excludedValues.insert(lastInstruction->getOutput().value());

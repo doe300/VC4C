@@ -190,10 +190,10 @@ namespace vc4c
                 logging::logLazy(logging::Level::DEBUG, [&]() {
                     for(const BasicBlock& block : method)
                     {
-                        logging::debug() << block.getLabel()->to_string()
-                                         << " (in) : " << dumpFunction(getInitialResult(block)) << logging::endl;
-                        logging::debug() << block.getLabel()->to_string()
-                                         << " (out) : " << dumpFunction(getFinalResult(block)) << logging::endl;
+                        logging::debug() << block.to_string() << " (in) : " << dumpFunction(getInitialResult(block))
+                                         << logging::endl;
+                        logging::debug() << block.to_string() << " (out) : " << dumpFunction(getFinalResult(block))
+                                         << logging::endl;
                     }
                 });
             }

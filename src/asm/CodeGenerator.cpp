@@ -118,7 +118,7 @@ const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(
         if(bb.empty())
         {
             // show label comment for empty block with label comment for next block
-            s = s.empty() ? bb.getLabel()->to_string() : (s + ",").append(bb.getLabel()->to_string());
+            s = s.empty() ? bb.to_string() : (s + ",").append(bb.to_string());
             continue;
         }
 

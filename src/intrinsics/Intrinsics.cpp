@@ -363,10 +363,10 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> unaryIn
     {"vc4cl_saturate_lsb", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_UNSIGNED_CHAR_SATURATE)}},
     {"vc4cl_is_nan",
         Intrinsic{intrinsifyCheckNaN(false),
-            [](const Value& val) { return std::isnan(val.literal().real()) ? INT_MINUS_ONE : INT_ZERO; }}},
+            [](const Value& val) { return std::isnan(val.literal().real()) ? INT_ONE : INT_ZERO; }}},
     {"vc4cl_is_inf_nan", Intrinsic{intrinsifyCheckNaN(true), [](const Value& val) {
                                        return std::isnan(val.literal().real()) || std::isinf(val.literal().real()) ?
-                                           INT_MINUS_ONE :
+                                           INT_ONE :
                                            INT_ZERO;
                                    }}}};
 
@@ -383,18 +383,12 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryI
     {"vc4cl_fminabs",
         Intrinsic{intrinsifyBinaryALUInstruction(OP_FMINABS.name),
             [](const Value& val0, const Value& val1) { return OP_FMINABS(val0, val1).first.value(); }}},
-    {"vc4cl_shr",
-        Intrinsic{intrinsifyBinaryALUInstruction(OP_SHR.name),
-            [](const Value& val0, const Value& val1) { return OP_SHR(val0, val1).first.value(); }}},
     {"vc4cl_asr",
         Intrinsic{intrinsifyBinaryALUInstruction(OP_ASR.name),
             [](const Value& val0, const Value& val1) { return OP_ASR(val0, val1).first.value(); }}},
     {"vc4cl_ror",
         Intrinsic{intrinsifyBinaryALUInstruction(OP_ROR.name),
             [](const Value& val0, const Value& val1) { return OP_ROR(val0, val1).first.value(); }}},
-    {"vc4cl_shl",
-        Intrinsic{intrinsifyBinaryALUInstruction(OP_SHL.name),
-            [](const Value& val0, const Value& val1) { return OP_SHL(val0, val1).first.value(); }}},
     {"vc4cl_min",
         Intrinsic{intrinsifyBinaryALUInstruction(OP_MIN.name, true),
             [](const Value& val0, const Value& val1) { return OP_MIN(val0, val1).first.value(); }}},
@@ -1011,17 +1005,36 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
         }
         else // 32-bits
         {
-            // itofp + if MSB set add 2^31(f)
-            //            it.emplace(new Operation("and", REG_NOP, Value(Literal(0x80000000UL), TYPE_INT32),
-            //            op->getFirstArg(), op->conditional, SetFlag::SET_FLAGS));
-            //            ++it;
-            //            it.emplace((new Operation("itof", tmp, op->getFirstArg(),
-            //            op->conditional))->setDecorations(op->decoration));
-            //            ++it;
-            //            it.reset(new Operation("fadd", op->getOutput(), tmp, Value(Literal(std::pow(2, 31)),
-            //            TYPE_FLOAT), COND_ZERO_CLEAR));
-            // TODO this passed OpenCL-CTS parameter_types, but what of large values (MSB set)??
-            it.reset(new Operation(OP_ITOF, op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags));
+            // // itof(x) < 0 <=> x >= 2^31
+            // // XXX still not correct for values with both highest bits set!
+            // it.emplace(new Operation(OP_ITOF, op->getOutput().value(), op->getFirstArg()));
+            // it->setSetFlags(SetFlag::SET_FLAGS);
+            // it.nextInBlock();
+            // // => itof(x & 0x3FFFFFFF) + 2^31
+            // auto tmpInt = assign(it, op->getOutput()->type) =
+            //     (op->getFirstArg() & Value(Literal(0x3FFFFFFF_lit), TYPE_INT32), COND_NEGATIVE_SET);
+            // auto tmpFloat = method.addNewLocal(op->getOutput()->type);
+            // it.emplace(new Operation(OP_ITOF, tmpFloat, tmpInt, COND_NEGATIVE_SET));
+            // it.nextInBlock();
+            // assign(it, op->getOutput().value()) =
+            //     (tmpFloat + Value(Literal(1.0f + std::pow(2.0f, 31.0f)), TYPE_FLOAT), COND_NEGATIVE_SET);
+            // it.erase();
+
+            // uitof(x) = y * uitof(x/y) + uitof(x & |y|), where |y| is the bits for y
+            auto tmpInt = assign(it, op->getFirstArg().type) = op->getFirstArg() / 2_lit;
+            auto tmpFloat = method.addNewLocal(op->getOutput()->type);
+            it.emplace(new Operation(OP_ITOF, tmpFloat, tmpInt));
+            it.nextInBlock();
+            auto tmpFloat2 = assign(it, tmpFloat.type) = tmpFloat * Value(Literal(2.0f), TYPE_FLOAT);
+            auto tmpInt2 = assign(it, op->getFirstArg().type) = op->getFirstArg() % 2_lit;
+            auto tmpFloat3 = method.addNewLocal(op->getOutput()->type);
+            it.emplace(new Operation(OP_ITOF, tmpFloat3, tmpInt2));
+            it.nextInBlock();
+            it.reset(new Operation(OP_FADD, op->getOutput().value(), tmpFloat2, tmpFloat3));
+
+            // Simple but wrong for x > 2^31-1
+            // it.reset(new Operation(OP_ITOF, op->getOutput().value(), op->getFirstArg(), op->conditional,
+            // op->setFlags));
         }
     }
     // float to integer
@@ -1032,10 +1045,29 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
     // float to unsigned integer
     else if(op->opCode == "fptoui")
     {
-        // TODO special treatment??
-        // TODO truncate to type?
-        it.reset(new Operation(OP_FTOI, op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags));
-        it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+        if(op->getOutput()->type.getScalarBitCount() >= 32)
+        {
+            // x > 2^31-1 => ftoui(x) = 2^31 + ftoi(x -2^31)
+            auto maxInt = static_cast<float>(std::numeric_limits<int32_t>::max());
+            auto tmpFloat = assign(it, op->getFirstArg().type) =
+                (op->getFirstArg() - Value(Literal(maxInt), TYPE_FLOAT), SetFlag::SET_FLAGS);
+            auto tmpInt = method.addNewLocal(op->getOutput()->type);
+            it.emplace(new Operation(OP_FTOI, tmpInt, tmpFloat, COND_NEGATIVE_CLEAR));
+            it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+            it.nextInBlock();
+            assign(it, op->getOutput().value()) = (tmpInt + Value(0x80000000_lit, TYPE_INT32), COND_NEGATIVE_CLEAR,
+                InstructionDecorations::UNSIGNED_RESULT);
+
+            // x <= 2^31-1 => ftoui(x) = ftoi(x)
+            it.reset(new Operation(OP_FTOI, op->getOutput().value(), op->getFirstArg(), COND_NEGATIVE_SET));
+            it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+        }
+        else
+        {
+            // converting negative float values to unsigned types is implementation defined anyway
+            it.reset(new Operation(OP_FTOI, op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags));
+            it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+        }
     }
     // sign extension
     else if(op->opCode == "sext")

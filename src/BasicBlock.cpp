@@ -270,3 +270,8 @@ void BasicBlock::dumpInstructions() const
         logging::debug() << "Block end ----" << logging::endl;
     });
 }
+
+std::string BasicBlock::to_string() const
+{
+    return "block " + getLabel()->getLabel()->name;
+}

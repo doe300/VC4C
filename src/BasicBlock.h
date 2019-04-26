@@ -145,6 +145,8 @@ namespace vc4c
             return method;
         }
 
+        std::string to_string() const;
+
     private:
         Method& method;
         intermediate::InstructionsList instructions;
