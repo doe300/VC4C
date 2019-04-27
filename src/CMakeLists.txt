@@ -158,7 +158,7 @@ target_include_directories(${VC4C_PROGRAM_NAME} PRIVATE "${PROJECT_SOURCE_DIR}/l
 if(VC4CL_STDLIB_DIR)
 	# Pre-compile VC4CL standard library files if development headers available and output files do not yet exist
 	add_custom_command(TARGET ${VC4C_PROGRAM_NAME} POST_BUILD
-	    COMMAND             if \[\[ ! -e ${VC4CL_STDLIB_DIR}/VC4CLStdLib.bc || ! -e ${VC4CL_STDLIB_DIR}/VC4CLStdLib.h.pch \]\]; then $<TARGET_FILE:${VC4C_PROGRAM_NAME}> --quiet --precompile-stdlib -o ${VC4CL_STDLIB_DIR}/ ${VC4CL_STDLIB_DIR}/VC4CLStdLib.h && echo \"VC4CL standard library precompiled into ${VC4CL_STDLIB_DIR}\" \; fi
+	    COMMAND if \[ ! -e ${VC4CL_STDLIB_DIR}/VC4CLStdLib.bc -o ! -e ${VC4CL_STDLIB_DIR}/VC4CLStdLib.h.pch \]; then $<TARGET_FILE:${VC4C_PROGRAM_NAME}> --quiet --precompile-stdlib -o ${VC4CL_STDLIB_DIR}/ ${VC4CL_STDLIB_DIR}/VC4CLStdLib.h && echo \"VC4CL standard library precompiled into ${VC4CL_STDLIB_DIR}\" \; fi
 	)
 endif(VC4CL_STDLIB_DIR)
 

@@ -100,6 +100,45 @@ namespace vc4c
          */
         bool reorderBasicBlocks(const Module& module, Method& method, const Configuration& config);
 
+        /**
+         * Simplifies selected conditional control-flow patterns (e.g. if-else, switch-case) by rewriting the control
+         * flow to conditional execution.
+         *
+         * Example:
+         *   - = xor.setf %a, 15
+         *   br.ifz %1
+         *   - = xor.setf %a, 42
+         *   br.ifz %2
+         *   br %3
+         *   [...]
+         *   label: %1
+         *   %c = 13
+         *   br %4
+         *   label: %2
+         *   %b = ...
+         *   %c = mul24 %b, 112
+         *   br %4
+         *   label: %3
+         *   [...]
+         *   %c = 42
+         *   br %4
+         *   [...]
+         *   label: %4
+         *
+         * is converted to:
+         *   [...]
+         *   %c = 42
+         *   - = xor.setf %a, 15
+         *   %c = 13 (ifz)
+         *   - = xor.setf %a, 42
+         *   %b = ...
+         *   %c = mul24.ifz %b, 112
+         *   br %4
+         *   [...]
+         *   label: %4
+         */
+        bool simplifyConditionalBlocks(const Module& module, Method& method, const Configuration& config);
+
     } /* namespace optimizations */
 } /* namespace vc4c */
 

@@ -236,6 +236,9 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
      */
     OptimizationPass("ReorderBasicBlocks", "reorder-blocks", reorderBasicBlocks,
         "reorders basic blocks to eliminate as many explicit branches as possible", OptimizationType::INITIAL),
+    OptimizationPass("SimplifyConditionalBlocks", "simplify-conditionals", simplifyConditionalBlocks,
+        "simplifies selected if-else and switch-case blocks by replacing the control-flow with conditional execution",
+        OptimizationType::INITIAL),
     OptimizationPass("SimplifyBranches", "simplify-branches", simplifyBranches,
         "combines successive branches to the same label and replaces unnecessary branches with fall-through",
         OptimizationType::INITIAL),
@@ -304,6 +307,8 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("schedule-instructions");
         passes.emplace("work-group-cache");
         passes.emplace("eliminate-common-subexpressions");
+        // XXX if tested enough, move to full
+        passes.emplace("simplify-conditionals");
         FALL_THROUGH
     case OptimizationLevel::MEDIUM:
         passes.emplace("merge-blocks");

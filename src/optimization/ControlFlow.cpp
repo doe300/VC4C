@@ -1314,8 +1314,8 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
             it->getLabel()->getLabel()->name != BasicBlock::LAST_BLOCK)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Found basic block with single direct successor: " << prevIt->getLabel()->to_string() << " and "
-                    << it->getLabel()->to_string() << logging::endl);
+                log << "Found basic block with single direct successor: " << prevIt->to_string() << " and "
+                    << it->to_string() << logging::endl);
             blocksToMerge.emplace_back(prevIt->getLabel()->getLabel(), it->getLabel()->getLabel());
         }
         ++it;
@@ -1343,8 +1343,7 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
                     << logging::endl);
         else
         {
-            logging::warn() << "Failed to remove empty basic block: " << sourceBlock->getLabel()->to_string()
-                            << logging::endl;
+            logging::warn() << "Failed to remove empty basic block: " << sourceBlock->to_string() << logging::endl;
             if(!sourceBlock->empty())
             {
                 logging::warn() << "Block was not empty: " << logging::endl;
@@ -1378,8 +1377,8 @@ bool optimizations::reorderBasicBlocks(const Module& module, Method& method, con
             predecessor->key != &(*prevIt) && !prevIt->fallsThroughToNextBlock())
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Reordering block with single predecessor not being the previous block: "
-                    << blockIt->getLabel()->to_string() << logging::endl);
+                log << "Reordering block with single predecessor not being the previous block: " << blockIt->to_string()
+                    << logging::endl);
 
             auto predecessorIt = method.begin();
             while(predecessorIt != method.end())
@@ -1391,7 +1390,7 @@ bool optimizations::reorderBasicBlocks(const Module& module, Method& method, con
 
             if(predecessorIt == method.end())
                 throw CompilationError(CompilationStep::OPTIMIZER,
-                    "Failed to find predecessor basic block: ", predecessor->key->getLabel()->to_string());
+                    "Failed to find predecessor basic block: ", predecessor->key->to_string());
 
             // we insert before the iteration, so we need to set the iterator after the predecessor
             ++predecessorIt;
@@ -1408,4 +1407,203 @@ bool optimizations::reorderBasicBlocks(const Module& module, Method& method, con
     }
 
     return false;
+}
+
+struct IfElseBlock
+{
+    // The common predecessor block, the block whether the condition(s) are checked
+    CFGNode* predecessor;
+    // The blocks executed for the different cases (may be a single for if without else or several for switch-cases)
+    FastAccessList<CFGNode*> conditionalBlocks;
+    // The common successor block, i.e. the block after the if-else or switch-case block
+    CFGNode* successor;
+};
+
+static FastAccessList<IfElseBlock> findIfElseBlocks(ControlFlowGraph& graph)
+{
+    FastAccessList<IfElseBlock> blocks;
+    graph.forAllNodes([&](CFGNode& node) {
+        IfElseBlock candidateBlock{&node, {}, nullptr};
+        node.forAllOutgoingEdges([&](CFGNode& successor, CFGEdge& edge) -> bool {
+            // edge is a candidate, if it has a single successor (the same as all other candidates) and a single
+            // predecessor (the base node being checked)
+            // TODO does not accept if-without-else blocks or switch-with-defaults!! Would need to allow one
+            // of the direct successors to also be successor of all other direct successors
+            // TODO to guarantee that we not only save instructions, but also execution cycles, we should check the
+            // maximum length of the resulting block not exceeding the instructions we save executing one of the cases
+            // (e.g. 2 branches + some conditionals/phi).
+            if(auto succ = successor.getSingleSuccessor())
+            {
+                if((candidateBlock.successor == nullptr || succ == candidateBlock.successor) &&
+                    successor.getSinglePredecessor() == &node)
+                {
+                    candidateBlock.conditionalBlocks.emplace_back(&successor);
+                    candidateBlock.successor = succ;
+                    return true;
+                }
+            }
+            // first level successors have different/multiple second level successors (or multiple predecessors), abort
+            candidateBlock.successor = nullptr;
+            return false;
+        });
+
+        if(candidateBlock.successor != nullptr && candidateBlock.conditionalBlocks.size() > 1)
+        {
+            blocks.emplace_back(std::move(candidateBlock));
+        }
+    });
+    return blocks;
+}
+
+bool optimizations::simplifyConditionalBlocks(const Module& module, Method& method, const Configuration& config)
+{
+    bool changedCode = false;
+    for(const auto& block : findIfElseBlocks(method.getCFG()))
+    {
+        CPPLOG_LAZY_BLOCK(logging::Level::DEBUG, {
+            logging::debug() << "Found conditional block candidate: " << block.predecessor->key->to_string()
+                             << logging::endl;
+            for(auto succ : block.conditionalBlocks)
+                logging::debug() << "\t" << succ->key->to_string() << logging::endl;
+            logging::debug() << "Successor: " << block.successor->key->to_string() << logging::endl;
+        });
+
+        bool hasSideEffects = false;
+        FastSet<const Local*> nonlocalLocals;
+        for(auto succ : block.conditionalBlocks)
+        {
+            auto it = succ->key->walk().nextInBlock(); // skip label
+            while(it != succ->key->walkEnd())
+            {
+                if(it.get<intermediate::Branch>() == nullptr && (it->hasSideEffects() || it->hasConditionalExecution()))
+                {
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Side effect in " << succ->key->to_string() << " - " << it->to_string()
+                            << logging::endl);
+                    hasSideEffects = true;
+                    break;
+                }
+                if(it->hasValueType(ValueType::LOCAL) && !succ->key->isLocallyLimited(it, it->getOutput()->local(), 8))
+                    nonlocalLocals.emplace(it->getOutput()->local());
+                it.nextInBlock();
+            }
+            if(hasSideEffects)
+                break;
+        }
+
+        if(hasSideEffects)
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Aborting optimization, since conditional block has side effects" << logging::endl);
+            continue;
+        }
+
+        CPPLOG_LAZY_BLOCK(logging::Level::DEBUG, {
+            for(auto loc : nonlocalLocals)
+                logging::debug() << "Non-local: " << loc->to_string() << logging::endl;
+        });
+
+        // need to reorder successive blocks, so that default branch (without any condition) is inserted top-most and
+        // not at last!
+        InstructionWalker beforeBranchesIt = block.predecessor->key->walk().nextInBlock();
+        while(!beforeBranchesIt.get<intermediate::Branch>())
+            beforeBranchesIt.nextInBlock();
+        // go to last before the first branch
+        beforeBranchesIt.previousInBlock();
+
+        for(auto succ : block.conditionalBlocks)
+        {
+            succ->forAllIncomingEdges([&](CFGNode& predecessor, CFGEdge& edge) -> bool {
+                // the predecessor instruction is the branch to this block (if not fall-through)
+                auto lastIt = edge.data.getPredecessor(predecessor.key);
+
+                // copy the whole block content before the branch to the block, modify writing all external locals to
+                // only be applied for the same condition the branch is applied and remove the branch (if not
+                // fall-through).
+                // at the moment of this optimization, the writing of the conditional the branch depends on is already
+                // generated, so we can just re-use the conditional.
+                Optional<Value> condVal{};
+                ConditionCode cond = COND_ALWAYS;
+                {
+                    auto branch = lastIt.get<intermediate::Branch>();
+                    if(branch && branch->getTarget() == succ->key->getLabel()->getLabel() &&
+                        branch->hasConditionalExecution())
+                    {
+                        condVal = branch->getCondition();
+                        cond = branch->conditional;
+                    }
+                    else
+                    {
+                        // the last branch is unconditional (e.g. the default for switch-cases), but we need to insert
+                        // the unconditional local assignment as first instruction.
+                        // remove original unconditional branch
+                        lastIt.erase();
+                        // make sure the instructions are inserted before all other
+                        lastIt = beforeBranchesIt;
+                    }
+                }
+
+                // 1.) insert flag depending on the conditional of the branch
+                if(condVal && cond != COND_ALWAYS)
+                    assign(lastIt, NOP_REGISTER) = (*condVal, SetFlag::SET_FLAGS);
+
+                // 2.) insert all instructions
+                for(auto& inst : *succ->key)
+                {
+                    if(dynamic_cast<const intermediate::BranchLabel*>(inst.get()))
+                        // neither move nor delete the label
+                        continue;
+
+                    if(dynamic_cast<const intermediate::Branch*>(inst.get()))
+                    {
+                        // do not copy branches to successor label
+                        inst.reset();
+                        continue;
+                    }
+
+                    lastIt.emplace(inst.release());
+
+                    // 3.) modify all instructions writing non-locals to only write under same condition as the branch
+                    // XXX do we win anything in making all the instructions conditional? Technically this would be
+                    // possible
+                    for(auto loc : nonlocalLocals)
+                    {
+                        if(lastIt->writesLocal(loc))
+                        {
+                            lastIt->setCondition(cond);
+                            break;
+                        }
+                    }
+
+                    lastIt.nextInBlock();
+                }
+
+                // 4.) remove branch to original block
+                if(condVal)
+                    lastIt.erase();
+
+                // 5.) remove original block
+                if(!method.removeBlock(*succ->key))
+                {
+                    CPPLOG_LAZY_BLOCK(logging::Level::WARNING, {
+                        logging::warn() << "Failed to remove move-from basic block: " << succ->key->to_string()
+                                        << logging::endl;
+                        succ->key->dumpInstructions();
+                    });
+                    // XXX throw exception here or continue??
+                }
+
+                // there is only one incoming edge
+                return false;
+            });
+        }
+
+        // insert branch to successor block to guarantee we switch into that, independent of the block order
+        block.predecessor->key->walkEnd().emplace(
+            new intermediate::Branch(block.successor->key->getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+
+        changedCode = true;
+    }
+
+    return changedCode;
 }
