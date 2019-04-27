@@ -1005,21 +1005,6 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
         }
         else // 32-bits
         {
-            // // itof(x) < 0 <=> x >= 2^31
-            // // XXX still not correct for values with both highest bits set!
-            // it.emplace(new Operation(OP_ITOF, op->getOutput().value(), op->getFirstArg()));
-            // it->setSetFlags(SetFlag::SET_FLAGS);
-            // it.nextInBlock();
-            // // => itof(x & 0x3FFFFFFF) + 2^31
-            // auto tmpInt = assign(it, op->getOutput()->type) =
-            //     (op->getFirstArg() & Value(Literal(0x3FFFFFFF_lit), TYPE_INT32), COND_NEGATIVE_SET);
-            // auto tmpFloat = method.addNewLocal(op->getOutput()->type);
-            // it.emplace(new Operation(OP_ITOF, tmpFloat, tmpInt, COND_NEGATIVE_SET));
-            // it.nextInBlock();
-            // assign(it, op->getOutput().value()) =
-            //     (tmpFloat + Value(Literal(1.0f + std::pow(2.0f, 31.0f)), TYPE_FLOAT), COND_NEGATIVE_SET);
-            // it.erase();
-
             // uitof(x) = y * uitof(x/y) + uitof(x & |y|), where |y| is the bits for y
             auto tmpInt = assign(it, op->getFirstArg().type) = op->getFirstArg() / 2_lit;
             auto tmpFloat = method.addNewLocal(op->getOutput()->type);
@@ -1031,10 +1016,6 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
             it.emplace(new Operation(OP_ITOF, tmpFloat3, tmpInt2));
             it.nextInBlock();
             it.reset(new Operation(OP_FADD, op->getOutput().value(), tmpFloat2, tmpFloat3));
-
-            // Simple but wrong for x > 2^31-1
-            // it.reset(new Operation(OP_ITOF, op->getOutput().value(), op->getFirstArg(), op->conditional,
-            // op->setFlags));
         }
     }
     // float to integer

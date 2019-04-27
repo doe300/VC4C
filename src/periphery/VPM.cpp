@@ -504,9 +504,11 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
         Value elementOffset = UNDEFINED_VALUE;
         it = calculateElementOffset(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset);
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
-        if(!realArea.canBePackedIntoRow())
-            // need to modify offset to point to next row, not next element in same row
-            elementOffset = assign(it, TYPE_INT32, "%vpm_row_offset") = elementOffset << 4_val;
+        // TODO is this correct? it fails memory-emulation tests. Is the element offset different for
+        // master/remove_mutex branch?
+        // if(!realArea.canBePackedIntoRow())
+        //     // need to modify offset to point to next row, not next element in same row
+        //     elementOffset = assign(it, TYPE_INT32, "%vpm_row_offset") = elementOffset << 4_val;
         // 3) write setup with dynamic address
         dmaSetupBits = assign(it, TYPE_INT32, "%vpr_setup") =
             (dmaSetupBits + elementOffset, InstructionDecorations::VPM_READ_CONFIGURATION);
@@ -584,9 +586,10 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
         Value elementOffset = UNDEFINED_VALUE;
         it = calculateElementOffset(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset);
         // 2) dynamically calculate new VPM address from base and offset (shift and add offset to setup-value)
-        if(!realArea.canBePackedIntoRow())
-            // need to modify offset to point to next row, not next element in same row
-            elementOffset = assign(it, TYPE_INT32, "%vpm_row_offset") = elementOffset << 4_val;
+        // TODO is this correct? See #insertReadRAM
+        // if(!realArea.canBePackedIntoRow())
+        //     // need to modify offset to point to next row, not next element in same row
+        //     elementOffset = assign(it, TYPE_INT32, "%vpm_row_offset") = elementOffset << 4_val;
         Value shiftedOffset = assign(it, TYPE_INT32) = elementOffset << 3_val;
         // 3) write setup with dynamic address
         dmaSetupBits = assign(it, TYPE_INT32, "%vpw_setup") =
