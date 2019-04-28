@@ -7,6 +7,8 @@
 #include "TestArithmetic.h"
 #include "emulation_helper.h"
 
+#include <climits>
+
 // TODO for floating point checks, add Inf/NaN values
 
 static const std::string UNARY_OPERATION = R"(
@@ -45,6 +47,19 @@ static const std::string RELATIONAL_OPERATION = R"(
 __kernel void test(__global int16* out, const __global TYPE* in0, const __global TYPE* in1) {
   size_t gid = get_global_id(0);
   out[gid] = convert_int16(in0[gid] OP in1[gid]);
+}
+)";
+
+static const std::string TERNARY_OPERATOR = R"(
+#ifdef TYPE
+#define IN TYPE
+#define OUT TYPE
+#endif
+__kernel void test(__global OUT* out, const __global IN* in0, const __global IN* in1) {
+  size_t gid = get_global_id(0);
+  IN a = in0[gid];
+  IN b = in1[gid];
+  out[gid] = a OP b ? a : b;
 }
 )";
 
@@ -163,12 +178,18 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedCharLessEquals);
     TEST_ADD(TestArithmetic::testFloatLessEquals);
 
-    TEST_ADD(TestArithmetic::testSignedIntSelection);
-    TEST_ADD(TestArithmetic::testSignedShortSelection);
-    TEST_ADD(TestArithmetic::testSignedCharSelection);
-    TEST_ADD(TestArithmetic::testUnsignedIntSelection);
-    TEST_ADD(TestArithmetic::testUnsignedShortSelection);
-    TEST_ADD(TestArithmetic::testUnsignedCharSelection);
+    TEST_ADD(TestArithmetic::testSignedIntSelectScalar);
+    TEST_ADD(TestArithmetic::testSignedIntSelectVector);
+    TEST_ADD(TestArithmetic::testSignedShortSelectScalar);
+    TEST_ADD(TestArithmetic::testSignedShortSelectVector);
+    TEST_ADD(TestArithmetic::testSignedCharSelectScalar);
+    TEST_ADD(TestArithmetic::testSignedCharSelectVector);
+    TEST_ADD(TestArithmetic::testUnsignedIntSelectScalar);
+    TEST_ADD(TestArithmetic::testUnsignedIntSelectVector);
+    TEST_ADD(TestArithmetic::testUnsignedShortSelectScalar);
+    TEST_ADD(TestArithmetic::testUnsignedShortSelectVector);
+    TEST_ADD(TestArithmetic::testUnsignedCharSelectScalar);
+    TEST_ADD(TestArithmetic::testUnsignedCharSelectVector);
 
     TEST_ADD(TestArithmetic::testSignedIntAnd);
     TEST_ADD(TestArithmetic::testSignedShortAnd);
@@ -235,6 +256,20 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortBitShiftRight);
     TEST_ADD(TestArithmetic::testSignedCharBitShiftRight);
     TEST_ADD(TestArithmetic::testUnsignedCharBitShiftRight);
+
+    TEST_ADD(TestArithmetic::testSignedIntTrinaryScalar);
+    TEST_ADD(TestArithmetic::testSignedIntTrinaryVector);
+    TEST_ADD(TestArithmetic::testSignedShortTrinaryScalar);
+    TEST_ADD(TestArithmetic::testSignedShortTrinaryVector);
+    TEST_ADD(TestArithmetic::testSignedCharTrinaryScalar);
+    TEST_ADD(TestArithmetic::testSignedCharTrinaryVector);
+
+    TEST_ADD(TestArithmetic::testUnsignedIntTrinaryScalar);
+    TEST_ADD(TestArithmetic::testUnsignedIntTrinaryVector);
+    TEST_ADD(TestArithmetic::testUnsignedShortTrinaryScalar);
+    TEST_ADD(TestArithmetic::testUnsignedShortTrinaryVector);
+    TEST_ADD(TestArithmetic::testUnsignedCharTrinaryScalar);
+    TEST_ADD(TestArithmetic::testUnsignedCharTrinaryVector);
 }
 
 void TestArithmetic::onMismatch(const std::string& expected, const std::string& result)
@@ -287,6 +322,22 @@ static void testBinaryOperation(vc4c::Configuration& config, const std::string& 
         in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
+template <typename T, std::size_t N, typename Comparison = std::equal_to<T>>
+static void testTernaryOperator(vc4c::Configuration& config, const std::string& options,
+    const std::function<T(T, T)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
+{
+    std::stringstream code;
+    compileBuffer(config, code, TERNARY_OPERATOR, options);
+
+    auto in0 = generateInput<T, N * 12>(true);
+    auto in1 = generateInput<T, N * 12>(true);
+
+    auto out = runEmulation<T, T, N, 12>(code, {in0, in1});
+    auto pos = options.find("-DOP=") + std::string("-DOP=").size();
+    checkBinaryResults<T, T, N * 12, Comparison>(
+        in0, in1, out, op, "(a" + options.substr(pos, options.find(' ', pos) - pos) + "b)?a:b", onError);
+}
+
 template <typename T>
 static void testRelationalOperation(vc4c::Configuration& config, const std::string& options,
     const std::function<int(T, T)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
@@ -302,23 +353,18 @@ static void testRelationalOperation(vc4c::Configuration& config, const std::stri
     checkBinaryResults<int, T, 16 * 12>(in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
-template <typename T>
-static void testSelectionOperation(vc4c::Configuration& config, const std::string& options,
-    const std::function<void(const std::string&, const std::string&)>& onError)
+template <typename T, std::size_t N>
+static void testSelectOperation(vc4c::Configuration& config, const std::string& options,
+    const std::function<T(T, T)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
 {
     std::stringstream code;
     compileBuffer(config, code, SELECTION_OPERATION, options);
 
-    auto in0 = generateInput<T, 16 * 12>(true);
-    auto in1 = generateInput<T, 16 * 12>(true);
+    auto in0 = generateInput<T, N * 12>(true);
+    auto in1 = generateInput<T, N * 12>(true);
 
-    auto out = runEmulation<T, T, 16, 12>(code, {in0, in1});
-    auto op = [](T a, T b) -> T {
-        typename std::make_signed<T>::type signedVal;
-        std::memcpy(&signedVal, &a, sizeof(T));
-        return signedVal < 0 ? b : a;
-    };
-    checkBinaryResults<T, T, 16 * 12, std::equal_to<T>, T>(in0, in1, out, op, "select", onError);
+    auto out = runEmulation<T, T, N, 12>(code, {in0, in1});
+    checkBinaryResults<T, T, N * 12, std::equal_to<T>, T>(in0, in1, out, op, "select", onError);
 }
 
 template <typename C, typename T = typename C::first_argument_type>
@@ -346,17 +392,59 @@ static int checkNot(T arg)
     return !arg ? -1 : 0;
 }
 
+/*
+ * For the shift operands, for some arbitrary reason, the OpenCL 1.2 (and 2.0) standard defines some weird behavior:
+ * The shift mask is ANDed with the number of bits - 1 of the shifted type before applying the shift.
+ *
+ * E.g. (ushort)a << (ushort)b -> (ushort)a << ((ushort)b & 15)
+ *
+ * This is applied by LLVM (introduced in
+ * https://github.com/llvm-mirror/clang/commit/7a83421776416d6a9044fb03b5b02208b47646c1) and also checked by OpenCL CTS
+ * (https://github.com/KhronosGroup/OpenCL-CTS/blob/cl12_trunk/test_conformance/integer_ops/verification_and_generation_functions.c)
+ * see also https://stackoverflow.com/questions/51919757/left-shift-by-negative-value-in-opencl
+ */
+
 template <typename T>
 static int checkShiftLeft(T arg1, T arg2)
 {
-    return arg1 << arg2;
+    return arg1 << (vc4c::bit_cast<T, std::make_unsigned_t<T>>(arg2) % (sizeof(T) * CHAR_BIT));
 }
 
 template <typename T>
 static int checkShiftRight(T arg1, T arg2)
 {
-    return arg1 >> arg2;
+    return arg1 >> (vc4c::bit_cast<T, std::make_unsigned_t<T>>(arg2) % (sizeof(T) * CHAR_BIT));
 }
+
+template <typename T>
+static T checkSelectScalar(T a, T b)
+{
+    return a != 0 ? b : a;
+};
+
+template <typename T>
+static T checkSelectVector(T a, T b)
+{
+    auto signedVal = vc4c::bit_cast<T, std::make_signed_t<T>>(a);
+    return signedVal < 0 ? b : a;
+};
+
+template <typename T>
+static T checkTrinaryScalar(T a, T b)
+{
+    return (a < b) != 0 ? a : b;
+};
+
+template <typename T>
+static T checkTrinaryVector(T a, T b)
+{
+    // OpenCL 1.2, 6.3.i: "exp1 ? exp2 : exp3 [...] If the result is a vector value, then this is equivalent to calling
+    // select(exp3, exp2, exp1)"
+    std::make_signed_t<T> signedVal =
+        vc4c::bit_cast<T, std::make_signed_t<T>>(a) - vc4c::bit_cast<T, std::make_signed_t<T>>(b);
+    // a - b ? a : b -> select(b, a, a - b) -> MSB(a - b) ? a : b
+    return signedVal < 0 ? a : b;
+};
 
 void TestArithmetic::testSignedIntUnaryPlus()
 {
@@ -914,39 +1002,75 @@ void TestArithmetic::testFloatLessEquals()
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
-void TestArithmetic::testSignedIntSelection()
+void TestArithmetic::testSignedIntSelectScalar()
 {
-    testSelectionOperation<int>(config, "-DTYPE=int16",
+    testSelectOperation<int, 1>(config, "-DTYPE=int", checkSelectScalar<int>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
-void TestArithmetic::testSignedShortSelection()
+void TestArithmetic::testSignedIntSelectVector()
 {
-    testSelectionOperation<short>(config, "-DTYPE=short16",
+    testSelectOperation<int, 16>(config, "-DTYPE=int16", checkSelectVector<int>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
-void TestArithmetic::testSignedCharSelection()
+void TestArithmetic::testSignedShortSelectScalar()
 {
-    testSelectionOperation<char>(config, "-DTYPE=char16",
+    testSelectOperation<short, 1>(config, "-DTYPE=short", checkSelectScalar<short>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
-void TestArithmetic::testUnsignedIntSelection()
+void TestArithmetic::testSignedShortSelectVector()
 {
-    testSelectionOperation<unsigned int>(config, "-DTYPE=uint16",
+    testSelectOperation<short, 16>(config, "-DTYPE=short16", checkSelectVector<short>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
-void TestArithmetic::testUnsignedShortSelection()
+void TestArithmetic::testSignedCharSelectScalar()
 {
-    testSelectionOperation<unsigned short>(config, "-DTYPE=ushort16",
+    testSelectOperation<char, 1>(config, "-DTYPE=char", checkSelectScalar<char>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
-void TestArithmetic::testUnsignedCharSelection()
+void TestArithmetic::testSignedCharSelectVector()
 {
-    testSelectionOperation<unsigned char>(config, "-DTYPE=uchar16",
+    testSelectOperation<char, 16>(config, "-DTYPE=char16", checkSelectVector<char>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedIntSelectScalar()
+{
+    testSelectOperation<unsigned, 1>(config, "-DTYPE=uint", checkSelectScalar<unsigned>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedIntSelectVector()
+{
+    testSelectOperation<unsigned int, 16>(config, "-DTYPE=uint16", checkSelectVector<unsigned>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedShortSelectScalar()
+{
+    testSelectOperation<unsigned short, 1>(config, "-DTYPE=ushort", checkSelectScalar<unsigned short>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedShortSelectVector()
+{
+    testSelectOperation<unsigned short, 16>(config, "-DTYPE=ushort16", checkSelectVector<unsigned short>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedCharSelectScalar()
+{
+    testSelectOperation<unsigned char, 1>(config, "-DTYPE=uchar", checkSelectScalar<unsigned char>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedCharSelectVector()
+{
+    testSelectOperation<unsigned char, 16>(config, "-DTYPE=uchar16", checkSelectVector<unsigned char>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -1253,5 +1377,67 @@ void TestArithmetic::testSignedCharBitShiftRight()
 void TestArithmetic::testUnsignedCharBitShiftRight()
 {
     testBinaryOperation<unsigned char>(config, "-DTYPE=uchar16 -DOP=>>", checkShiftRight<unsigned char>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testSignedIntTrinaryScalar()
+{
+    testTernaryOperator<int, 1>(config, "-DTYPE=int -DOP=<", checkTrinaryScalar<int>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testSignedIntTrinaryVector()
+{
+    testTernaryOperator<int, 16>(config, "-DTYPE=int16 -DOP=-", checkTrinaryVector<int>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testSignedShortTrinaryScalar()
+{
+    testTernaryOperator<short, 1>(config, "-DTYPE=short -DOP=<", checkTrinaryScalar<short>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testSignedShortTrinaryVector()
+{
+    testTernaryOperator<short, 16>(config, "-DTYPE=short16 -DOP=-", checkTrinaryVector<short>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testSignedCharTrinaryScalar()
+{
+    testTernaryOperator<char, 1>(config, "-DTYPE=char -DOP=<", checkTrinaryScalar<char>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testSignedCharTrinaryVector()
+{
+    testTernaryOperator<char, 16>(config, "-DTYPE=char16 -DOP=-", checkTrinaryVector<char>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedIntTrinaryScalar()
+{
+    testTernaryOperator<unsigned, 1>(config, "-DTYPE=uint -DOP=<", checkTrinaryScalar<unsigned>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedIntTrinaryVector()
+{
+    testTernaryOperator<unsigned, 16>(config, "-DTYPE=uint16 -DOP=-", checkTrinaryVector<unsigned>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedShortTrinaryScalar()
+{
+    testTernaryOperator<unsigned short, 1>(config, "-DTYPE=ushort -DOP=<", checkTrinaryScalar<unsigned short>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedShortTrinaryVector()
+{
+    testTernaryOperator<unsigned short, 16>(config, "-DTYPE=ushort16 -DOP=-", checkTrinaryVector<unsigned short>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedCharTrinaryScalar()
+{
+    testTernaryOperator<unsigned char, 1>(config, "-DTYPE=uchar -DOP=<", checkTrinaryScalar<unsigned char>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedCharTrinaryVector()
+{
+    testTernaryOperator<unsigned char, 16>(config, "-DTYPE=uchar16 -DOP=-", checkTrinaryVector<unsigned char>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }

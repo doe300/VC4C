@@ -265,7 +265,7 @@ static T checkClz(T in)
 template <typename T>
 static T checkMulHi(T in1, T in2)
 {
-    return (static_cast<int64_t>(in1) * static_cast<int64_t>(in2)) >> sizeof(T) * 8;
+    return (static_cast<int64_t>(in1) * static_cast<int64_t>(in2)) >> (sizeof(T) * 8);
 }
 
 template <typename T>

@@ -286,20 +286,44 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(
         }
         // if R >= D then
         // R = R >= D ? R - D : R <=> R = R - D >= 0 ? R - D : R <=> R = R - D < 0 ? R : R - D
+        ConditionCode newRemainderCond = COND_ALWAYS;
         {
-            Value tmp = assign(it, op.getOutput()->type, "%udiv.tmp") = (remainder - divisor, SetFlag::SET_FLAGS);
+            Value tmp = UNDEFINED_VALUE;
+            // TODO need to optimize!!
+            // XXX can this be skipped if numerator and divisor are known to not have the high-bit set??
+            if(numerator.type.getScalarBitCount() == 32)
+            {
+                // need some special treatment here, since unsigned (R - D) <=> 0 is not correct, since - sets flags for
+                // signed arithmetic. => Use more complex unsigned comparison functions, see Comparisons.cpp, block
+                // which handles COMP_UNSIGNED_LT
+
+                // (R >= D) == !(R < D)
+                assign(it, NOP_REGISTER) = (remainder ^ divisor, SetFlag::SET_FLAGS);
+                Value unsignedMax = method.addNewLocal(remainder.type, "%icomp");
+                assign(it, unsignedMax) = (min(remainder, divisor), COND_NEGATIVE_SET);
+                assign(it, unsignedMax) = (max(remainder, divisor), COND_NEGATIVE_CLEAR);
+                assign(it, NOP_REGISTER) = (unsignedMax ^ remainder, SetFlag::SET_FLAGS);
+
+                tmp = assign(it, op.getOutput()->type, "%udiv.tmp") = (remainder - divisor);
+                newRemainderCond = COND_ZERO_SET;
+            }
+            else
+            {
+                tmp = assign(it, op.getOutput()->type, "%udiv.tmp") = (remainder - divisor, SetFlag::SET_FLAGS);
+                newRemainderCond = COND_NEGATIVE_CLEAR;
+            }
             Value newRemainder = method.addNewLocal(op.getOutput()->type, "%udiv.remainder");
-            assign(it, newRemainder) = (tmp, COND_NEGATIVE_CLEAR);
-            assign(it, newRemainder) = (remainder, COND_NEGATIVE_SET);
+            assign(it, newRemainder) = (tmp, newRemainderCond);
+            assign(it, newRemainder) = (remainder, newRemainderCond.invert());
             remainder = newRemainder;
         }
         // Q(i) := 1
         {
             Value newQuotient = method.addNewLocal(op.getOutput()->type, "%udiv.quotient");
             assign(it, newQuotient) =
-                (quotient | Value(Literal(static_cast<int32_t>(1) << i), TYPE_INT32), COND_NEGATIVE_CLEAR);
+                (quotient | Value(Literal(static_cast<int32_t>(1) << i), TYPE_INT32), newRemainderCond);
             // else Q(new) := Q(old)
-            assign(it, newQuotient) = (quotient, COND_NEGATIVE_SET);
+            assign(it, newQuotient) = (quotient, newRemainderCond.invert());
             quotient = newQuotient;
         }
     }
@@ -465,8 +489,6 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
 
 InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, InstructionWalker it, IntrinsicOperation& op)
 {
-    // TODO correct??
-
     /*
      * https://dspace.mit.edu/bitstream/handle/1721.1/80133/43609668-MIT.pdf
      * https://en.wikipedia.org/wiki/Division_algorithm#Newton.E2.80.93Raphson_division

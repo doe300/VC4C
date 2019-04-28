@@ -17,6 +17,8 @@ public:
 
 	void testSPIRVCapabilitiesSupport();
 	void testLinking();
+	void testSourceTypeDetection();
+	void testDisassembler();
 };
 
 #endif /* TEST_SPIRVFRONTEND_H */

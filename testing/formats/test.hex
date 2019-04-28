@@ -1,0 +1,523 @@
+// Module with 5 kernels, global data with 0 words (64-bit each), starting at offset 75 words and 0 words of stack-frame
+0xdeadbeaf, 0xdeadbeaf, 
+0x00012c05, 0x00000000, 
+// Kernel 'test_switch_2_default' with 59 instructions, offset 76, with following parameters: __global out int* out (4 B, 1 items), __global in const int* in (4 B, 1 items), __global in const int* cond (4 B, 1 items) (lSize, lids, gidX, offX)
+0x3b00004c, 0x03054000, 
+0x00000000, 0x00000000, 
+0x00000246, 0x00000000, 
+0x74736574, 0x6977735f, 
+0x5f686374, 0x65645f32, 
+0x6c756166, 0x00000074, 
+0x000c2004, 0x11000801, 
+0x0074756f, 0x00000000, 
+0x2a746e69, 0x00000000, 
+0x00082004, 0x11004401, 
+0x00006e69, 0x00000000, 
+0x2a746e69, 0x00000000, 
+0x00102004, 0x11004401, 
+0x646e6f63, 0x00000000, 
+0x2a746e69, 0x00000000, 
+// Kernel 'test_simple_if' with 59 instructions, offset 135, with following parameters: __global out int* out (4 B, 1 items), __global in const int* in (4 B, 1 items), __global in const int* cond (4 B, 1 items) (lSize, lids, gidX, offX)
+0x3b000087, 0x03038000, 
+0x00000000, 0x00000000, 
+0x00000246, 0x00000000, 
+0x74736574, 0x6d69735f, 
+0x5f656c70, 0x00006669, 
+0x000c2004, 0x11000801, 
+0x0074756f, 0x00000000, 
+0x2a746e69, 0x00000000, 
+0x00082004, 0x11004401, 
+0x00006e69, 0x00000000, 
+0x2a746e69, 0x00000000, 
+0x00102004, 0x11004401, 
+0x646e6f63, 0x00000000, 
+0x2a746e69, 0x00000000, 
+// Kernel 'test_switch_2' with 75 instructions, offset 194, with following parameters: __global out int* out (4 B, 1 items), __global in const int* in (4 B, 1 items), __global in const int* cond (4 B, 1 items) (lSize, lids, gidX, offX)
+0x4b0000c2, 0x03034000, 
+0x00000000, 0x00000000, 
+0x00000246, 0x00000000, 
+0x74736574, 0x6977735f, 
+0x5f686374, 0x00000032, 
+0x000c2004, 0x11000801, 
+0x0074756f, 0x00000000, 
+0x2a746e69, 0x00000000, 
+0x00082004, 0x11004401, 
+0x00006e69, 0x00000000, 
+0x2a746e69, 0x00000000, 
+0x00102004, 0x11004401, 
+0x646e6f63, 0x00000000, 
+0x2a746e69, 0x00000000, 
+// Kernel 'test_switch_more' with 112 instructions, offset 269, with following parameters: __global out int* out (4 B, 1 items), __global in const int* in (4 B, 1 items), __global in const int* cond (4 B, 1 items) (lSize, lids, gidX, offX)
+0x7000010d, 0x03040000, 
+0x00000000, 0x00000000, 
+0x00000246, 0x00000000, 
+0x74736574, 0x6977735f, 
+0x5f686374, 0x65726f6d, 
+0x000c2004, 0x11000801, 
+0x0074756f, 0x00000000, 
+0x2a746e69, 0x00000000, 
+0x00082004, 0x11004401, 
+0x00006e69, 0x00000000, 
+0x2a746e69, 0x00000000, 
+0x00102004, 0x11004401, 
+0x646e6f63, 0x00000000, 
+0x2a746e69, 0x00000000, 
+// Kernel 'test_switch_more_default' with 113 instructions, offset 381, with following parameters: __global out int* out (4 B, 1 items), __global in const int* in (4 B, 1 items), __global in const int* cond (4 B, 1 items) (lSize, lids, gidX, offX)
+0x7100017d, 0x03060000, 
+0x00000000, 0x00000000, 
+0x00000246, 0x00000000, 
+0x74736574, 0x6977735f, 
+0x5f686374, 0x65726f6d, 
+0x6665645f, 0x746c7561, 
+0x000c2004, 0x11000801, 
+0x0074756f, 0x00000000, 
+0x2a746e69, 0x00000000, 
+0x00082004, 0x11004401, 
+0x00006e69, 0x00000000, 
+0x2a746e69, 0x00000000, 
+0x00102004, 0x11004401, 
+0x646e6f63, 0x00000000, 
+0x2a746e69, 0x00000000, 
+0x00000000, 0x00000000, 
+0x00000000, 0x00000000, 
+// kernel test_switch_2_default, label: %start_of_function
+0x159c1fc0, 0xd0020927, //or tmu_noswap, 1 (1), 1 (1)
+0x15827d80, 0x10020067, //or ra1, unif, unif
+0x15827d80, 0x10020027, //or ra0, unif, unif
+0x15827d80, 0x10020127, //or ra4, unif, unif
+0x15827d80, 0x100208a7, //or r2, unif, unif
+0x15827d80, 0x100200e7, //or ra3, unif, unif
+0x15827d80, 0x100208e7, //or r3, unif, unif
+0x15827d80, 0x100200a7, //or ra2, unif, unif
+0x15067d80, 0x18020827, //or.zextByte0To32 r0, ra1, ra1
+0x15027d80, 0x18020867, //or.zextByte0To32 r1, ra0, ra0
+0x40127030, 0x100049e0, //mul24 r0, ra4, r0
+0x0c9e7400, 0x10020827, //add r0, r2, r0
+0x0c9e7040, 0x10020027, //add ra0, r0, r1
+0x4098403e, 0xd00049e2, //mul24 r2, 4 (4), elem_num
+0x15027d80, 0x10020827, //or r0, ra0, ra0
+0x119c21c0, 0xd0020827, //shl r0, r0, 2 (2)
+0x0c9e7600, 0x10020867, //add r1, r3, r0
+0x0d981dc0, 0xd00229e7, //sub.setf -, elem_num, 1 (1)
+0x159c0fc0, 0xd00a0827, //or.ifnc r0, 0 (0), 0 (0)
+0x0c9e7280, 0x10080827, //add.ifn r0, r1, r2
+0x159e7000, 0x10020f27, //or tmu1s, r0, r0
+0x009e7000, 0xb00009e7, //nop.load_tmu1.never 
+0x159e7900, 0x100208e7, //or r3, r4, r4
+0x15027d80, 0x10020827, //or r0, ra0, ra0
+0x119c21c0, 0xd0020827, //shl r0, r0, 2 (2)
+0x0c0a7c00, 0x100208a7, //add r2, ra2, r0
+0x4098403e, 0xd00049e1, //mul24 r1, 4 (4), elem_num
+0x0d981dc0, 0xd00229e7, //sub.setf -, elem_num, 1 (1)
+0x159c0fc0, 0xd00a0827, //or.ifnc r0, 0 (0), 0 (0)
+0x0c9e7440, 0x10080827, //add.ifn r0, r2, r1
+0x159e7000, 0x10020e27, //or tmu0s, r0, r0
+0x009e7000, 0xa00009e7, //nop.load_tmu0.never 
+0x00000011, 0xe0021967, //ldi rep_all|r5, 17
+0x169e7940, 0x100229e7, //xor.setf -, r4, r5
+0x969c1fff, 0xd0068861, //xor.ifzc r1, 1 (1), 1 (1); v8min.ifz r1, 1 (1), 1 (1)
+0x159e76c0, 0x10020827, //or r0, r3, r3
+0x0d9c0e00, 0xd0020827, //sub r0, 0 (0), r0
+0x159e7240, 0x100229e7, //or.setf -, r1, r1
+0x959e76c0, 0x10068861, //or.ifzc r1, r3, r3; v8min.ifz r1, r0, r0
+0x15027d80, 0x10020827, //or r0, ra0, ra0
+0x119c21c0, 0xd0020827, //shl r0, r0, 2 (2)
+0x15ce7d80, 0x100209e7, //or -, mutex_acq, mutex_acq
+0x00001a00, 0xe0021c67, //ldi vpw_setup, vpm_setup(size: 16 words, stride: 1 rows, address: h32(0))
+0x159e7240, 0x10020c27, //or vpm, r1, r1
+0x80814000, 0xe0021c67, //ldi vpw_setup, vdw_setup(rows: 1, elements: 1 words, address: h32(0,0))
+0xc0010000, 0xe0021c67, //ldi vpw_setup, vdw_setup(memory stride: 0 bytes)
+0x0c0e7c00, 0x10021ca7, //add vpw_addr, ra3, r0
+0x159f2fc0, 0x100209e7, //or -, vpw_wait, vpw_wait
+0x159c1fc0, 0xd0020ce7, //or mutex_rel, 1 (1), 1 (1)
+// label: %end_of_function
+0x15827d80, 0x10020827, //or r0, unif, unif
+0x159a7c00, 0x100229e7, //or.setf -, elem_num, r0
+0xfffffe48, 0xf01809e7, //brr.ifallzc (pc+4) + -55 // to %start_of_function
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x179e6e00, 0x100209a7, //not irq, qpu_num
+0x009e7000, 0x300009e7, //nop.thrend.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+// kernel test_simple_if, label: %start_of_function
+0x159c1fc0, 0xd0020927, //or tmu_noswap, 1 (1), 1 (1)
+0x15827d80, 0x10020067, //or ra1, unif, unif
+0x15827d80, 0x10020027, //or ra0, unif, unif
+0x15827d80, 0x100208e7, //or r3, unif, unif
+0x15827d80, 0x100208a7, //or r2, unif, unif
+0x15827d80, 0x10020127, //or ra4, unif, unif
+0x15827d80, 0x100200e7, //or ra3, unif, unif
+0x15827d80, 0x100200a7, //or ra2, unif, unif
+0x15067d80, 0x18020827, //or.zextByte0To32 r0, ra1, ra1
+0x15027d80, 0x18020867, //or.zextByte0To32 r1, ra0, ra0
+0x409e7018, 0x100049e0, //mul24 r0, r3, r0
+0x0c9e7400, 0x10020827, //add r0, r2, r0
+0x0c9e7040, 0x100208e7, //add r3, r0, r1
+0x4098403e, 0xd00049e2, //mul24 r2, 4 (4), elem_num
+0x159e76c0, 0x10020827, //or r0, r3, r3
+0x119c21c0, 0xd0020827, //shl r0, r0, 2 (2)
+0x0c0e7c00, 0x10020867, //add r1, ra3, r0
+0x0d981dc0, 0xd00229e7, //sub.setf -, elem_num, 1 (1)
+0x159c0fc0, 0xd00a0827, //or.ifnc r0, 0 (0), 0 (0)
+0x0c9e7280, 0x10080827, //add.ifn r0, r1, r2
+0x159e7000, 0x10020f27, //or tmu1s, r0, r0
+0x009e7000, 0xb00009e7, //nop.load_tmu1.never 
+0x159e7900, 0x10020027, //or ra0, r4, r4
+0x159e76c0, 0x10020827, //or r0, r3, r3
+0x119c21c0, 0xd0020827, //shl r0, r0, 2 (2)
+0x0c0a7c00, 0x100208a7, //add r2, ra2, r0
+0x4098403e, 0xd00049e1, //mul24 r1, 4 (4), elem_num
+0x0d981dc0, 0xd00229e7, //sub.setf -, elem_num, 1 (1)
+0x159c0fc0, 0xd00a0827, //or.ifnc r0, 0 (0), 0 (0)
+0x0c9e7440, 0x10080827, //add.ifn r0, r2, r1
+0x159e7000, 0x10020e27, //or tmu0s, r0, r0
+0x009e7000, 0xa00009e7, //nop.load_tmu0.never 
+0x0000002a, 0xe0021967, //ldi rep_all|r5, 42
+0x139e7940, 0x100229e7, //max.setf -, r4, r5
+0x969c1fff, 0xd00f8820, //xor.ifcc r0, 1 (1), 1 (1); v8min.ifc r0, 1 (1), 1 (1)
+0x15027d80, 0x10020867, //or r1, ra0, ra0
+0x0d9c0e40, 0xd0020867, //sub r1, 0 (0), r1
+0x159e7000, 0x100229e7, //or.setf -, r0, r0
+0x95027d89, 0x10068861, //or.ifzc r1, ra0, ra0; v8min.ifz r1, r1, r1
+0x159e76c0, 0x10020827, //or r0, r3, r3
+0x119c21c0, 0xd0020827, //shl r0, r0, 2 (2)
+0x15ce7d80, 0x100209e7, //or -, mutex_acq, mutex_acq
+0x00001a00, 0xe0021c67, //ldi vpw_setup, vpm_setup(size: 16 words, stride: 1 rows, address: h32(0))
+0x159e7240, 0x10020c27, //or vpm, r1, r1
+0x80814000, 0xe0021c67, //ldi vpw_setup, vdw_setup(rows: 1, elements: 1 words, address: h32(0,0))
+0xc0010000, 0xe0021c67, //ldi vpw_setup, vdw_setup(memory stride: 0 bytes)
+0x0c127c00, 0x10021ca7, //add vpw_addr, ra4, r0
+0x159f2fc0, 0x100209e7, //or -, vpw_wait, vpw_wait
+0x159c1fc0, 0xd0020ce7, //or mutex_rel, 1 (1), 1 (1)
+// label: %end_of_function
+0x15827d80, 0x10020827, //or r0, unif, unif
+0x159a7c00, 0x100229e7, //or.setf -, elem_num, r0
+0xfffffe48, 0xf01809e7, //brr.ifallzc (pc+4) + -55 // to %start_of_function
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x179e6e00, 0x100209a7, //not irq, qpu_num
+0x009e7000, 0x300009e7, //nop.thrend.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+// kernel test_switch_2, label: %start_of_function
+0x159c1fc0, 0xd0020927, //or tmu_noswap, 1 (1), 1 (1)
+0x15827d80, 0x10020067, //or ra1, unif, unif
+0x15827d80, 0x10020027, //or ra0, unif, unif
+0x15827d80, 0x10020167, //or ra5, unif, unif
+0x15827d80, 0x100208e7, //or r3, unif, unif
+0x15827d80, 0x10020127, //or ra4, unif, unif
+0x15827d80, 0x100200e7, //or ra3, unif, unif
+0x15827d80, 0x100200a7, //or ra2, unif, unif
+0x15067d80, 0x18020827, //or.zextByte0To32 r0, ra1, ra1
+0x15027d80, 0x180208a7, //or.zextByte0To32 r2, ra0, ra0
+0x40167030, 0x100049e0, //mul24 r0, ra5, r0
+0x0c9e7600, 0x10020827, //add r0, r3, r0
+0x0c9e7080, 0x100208e7, //add r3, r0, r2
+0x4098403e, 0xd00049e2, //mul24 r2, 4 (4), elem_num
+0x919c27db, 0xd0025801, //shl r0, r3, 2 (2); v8min ra1, r3, r3
+0x0c0e7c00, 0x10020027, //add ra0, ra3, r0
+0x0d981dc0, 0xd00229e7, //sub.setf -, elem_num, 1 (1)
+0x159c0fc0, 0xd00a0827, //or.ifnc r0, 0 (0), 0 (0)
+0x0c027c80, 0x10080827, //add.ifn r0, ra0, r2
+0x159e7000, 0x10020f27, //or tmu1s, r0, r0
+0x009e7000, 0xb00009e7, //nop.load_tmu1.never 
+0x159e7900, 0x10020027, //or ra0, r4, r4
+0x159e76c0, 0x10020827, //or r0, r3, r3
+0x119c21c0, 0xd0020827, //shl r0, r0, 2 (2)
+0x0c0a7c00, 0x100208e7, //add r3, ra2, r0
+0x4098403e, 0xd00049e2, //mul24 r2, 4 (4), elem_num
+0x0d981dc0, 0xd00229e7, //sub.setf -, elem_num, 1 (1)
+0x159c0fc0, 0xd00a0827, //or.ifnc r0, 0 (0), 0 (0)
+0x0c9e7680, 0x10080827, //add.ifn r0, r3, r2
+0x159e7000, 0x10020e27, //or tmu0s, r0, r0
+0x009e7000, 0xa00009e7, //nop.load_tmu0.never 
+0x159e7900, 0x100208a7, //or r2, r4, r4
+0x00000011, 0xe0021967, //ldi rep_all|r5, 17
+0x169e7540, 0x100229e7, //xor.setf -, r2, r5
+0x969c1fff, 0xd0068820, //xor.ifzc r0, 1 (1), 1 (1); v8min.ifz r0, 1 (1), 1 (1)
+0x159a7c00, 0x100229e7, //or.setf -, elem_num, r0
+0x00000078, 0xf01809e7, //brr.ifallzc (pc+4) + 15 // to %sw.epilog.sink.split
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x159e7480, 0x100229e7, //or.setf -, r2, r2
+0x969c1fff, 0xd0068820, //xor.ifzc r0, 1 (1), 1 (1); v8min.ifz r0, 1 (1), 1 (1)
+0x15027d80, 0x10020867, //or r1, ra0, ra0
+0x159a7c00, 0x100229e7, //or.setf -, elem_num, r0
+0x00000020, 0xf01809e7, //brr.ifallzc (pc+4) + 4 // to %sw.bb
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x00000068, 0xf0f809e7, //brr (pc+4) + 13 // to %sw.epilog
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+// label: %sw.bb
+0x0000002a, 0xe0021967, //ldi rep_all|r5, 42
+0x0d027b80, 0x10020827, //sub r0, r5, ra0
+0x159e7000, 0x10020867, //or r1, r0, r0
+// label: %sw.epilog.sink.split
+0x15067d80, 0x10020827, //or r0, ra1, ra1
+0x119c21c0, 0xd0020827, //shl r0, r0, 2 (2)
+0x15ce7d80, 0x100209e7, //or -, mutex_acq, mutex_acq
+0x00001a00, 0xe0021c67, //ldi vpw_setup, vpm_setup(size: 16 words, stride: 1 rows, address: h32(0))
+0x159e7240, 0x10020c27, //or vpm, r1, r1
+0x80814000, 0xe0021c67, //ldi vpw_setup, vdw_setup(rows: 1, elements: 1 words, address: h32(0,0))
+0xc0010000, 0xe0021c67, //ldi vpw_setup, vdw_setup(memory stride: 0 bytes)
+0x0c127c00, 0x10021ca7, //add vpw_addr, ra4, r0
+0x159f2fc0, 0x100209e7, //or -, vpw_wait, vpw_wait
+0x159c1fc0, 0xd0020ce7, //or mutex_rel, 1 (1), 1 (1)
+// block %sw.epilog, label: %end_of_function
+0x15827d80, 0x10020827, //or r0, unif, unif
+0x159a7c00, 0x100229e7, //or.setf -, elem_num, r0
+0xfffffdc8, 0xf01809e7, //brr.ifallzc (pc+4) + -71 // to %start_of_function
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x179e6e00, 0x100209a7, //not irq, qpu_num
+0x009e7000, 0x300009e7, //nop.thrend.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+// kernel test_switch_more, label: %start_of_function
+0x159c1fc0, 0xd0020927, //or tmu_noswap, 1 (1), 1 (1)
+0x15827d80, 0x10020067, //or ra1, unif, unif
+0x15827d80, 0x10020027, //or ra0, unif, unif
+0x15827d80, 0x10020127, //or ra4, unif, unif
+0x15827d80, 0x100208a7, //or r2, unif, unif
+0x15827d80, 0x100200e7, //or ra3, unif, unif
+0x15827d80, 0x100208e7, //or r3, unif, unif
+0x15827d80, 0x100200a7, //or ra2, unif, unif
+0x15067d80, 0x18020827, //or.zextByte0To32 r0, ra1, ra1
+0x15027d80, 0x18020867, //or.zextByte0To32 r1, ra0, ra0
+0x40127030, 0x100049e0, //mul24 r0, ra4, r0
+0x0c9e7400, 0x10020827, //add r0, r2, r0
+0x0c9e7040, 0x100208a7, //add r2, r0, r1
+0x4098403e, 0xd00049e1, //mul24 r1, 4 (4), elem_num
+0x919c25d2, 0xd0025800, //shl r0, r2, 2 (2); v8min ra0, r2, r2
+0x0c9e7600, 0x100208e7, //add r3, r3, r0
+0x0d981dc0, 0xd00229e7, //sub.setf -, elem_num, 1 (1)
+0x159c0fc0, 0xd00a0827, //or.ifnc r0, 0 (0), 0 (0)
+0x0c9e7640, 0x10080827, //add.ifn r0, r3, r1
+0x159e7000, 0x10020f27, //or tmu1s, r0, r0
+0x009e7000, 0xb00009e7, //nop.load_tmu1.never 
+0x159e7900, 0x100208e7, //or r3, r4, r4
+0x159e7480, 0x10020827, //or r0, r2, r2
+0x119c21c0, 0xd0020827, //shl r0, r0, 2 (2)
+0x0c0a7c00, 0x100208a7, //add r2, ra2, r0
+0x4098403e, 0xd00049e1, //mul24 r1, 4 (4), elem_num
+0x0d981dc0, 0xd00229e7, //sub.setf -, elem_num, 1 (1)
+0x159c0fc0, 0xd00a0827, //or.ifnc r0, 0 (0), 0 (0)
+0x0c9e7440, 0x10080827, //add.ifn r0, r2, r1
+0x159e7000, 0x10020e27, //or tmu0s, r0, r0
+0x009e7000, 0xa00009e7, //nop.load_tmu0.never 
+0x159e7900, 0x10020867, //or r1, r4, r4
+0x0000002a, 0xe0021967, //ldi rep_all|r5, 42
+0x169e7340, 0x100229e7, //xor.setf -, r1, r5
+0x969c1fff, 0xd0068820, //xor.ifzc r0, 1 (1), 1 (1); v8min.ifz r0, 1 (1), 1 (1)
+0x159a7c00, 0x100229e7, //or.setf -, elem_num, r0
+0x000000d0, 0xf01809e7, //brr.ifallzc (pc+4) + 26 // to %sw.bb8
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x159e7240, 0x100229e7, //or.setf -, r1, r1
+0x969c1fff, 0xd0068820, //xor.ifzc r0, 1 (1), 1 (1); v8min.ifz r0, 1 (1), 1 (1)
+0x159a7c00, 0x100229e7, //or.setf -, elem_num, r0
+0x00000150, 0xf01809e7, //brr.ifallzc (pc+4) + 42 // to %sw.bb
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x159e7240, 0x10020867, //or r1, r1, r1
+0x169c13c0, 0xd00229e7, //xor.setf -, r1, 1 (1)
+0x969c1fff, 0xd0068820, //xor.ifzc r0, 1 (1), 1 (1); v8min.ifz r0, 1 (1), 1 (1)
+0x159a7c00, 0x100229e7, //or.setf -, elem_num, r0
+0x00000090, 0xf01809e7, //brr.ifallzc (pc+4) + 18 // to %sw.bb5
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x169df3c0, 0xd00229e7, //xor.setf -, r1, -1 (31)
+0x969c1fff, 0xd0068820, //xor.ifzc r0, 1 (1), 1 (1); v8min.ifz r0, 1 (1), 1 (1)
+0x159a7c00, 0x100229e7, //or.setf -, elem_num, r0
+0x00000098, 0xf01809e7, //brr.ifallzc (pc+4) + 19 // to %sw.bb3
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x00000120, 0xf0f809e7, //brr (pc+4) + 36 // to %sw.epilog
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+// label: %sw.bb8
+0xffffffd6, 0xe0021967, //ldi rep_all|r5, 4294967254
+0x0c9e7740, 0x10020827, //add r0, r3, r5
+0x159e7000, 0x10020867, //or r1, r0, r0
+0x00000098, 0xf0f809e7, //brr (pc+4) + 19 // to %sw.epilog.sink.split
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+// label: %sw.bb5
+0x159e76c0, 0x10020827, //or r0, r3, r3
+0x119c41c0, 0xd0020827, //shl r0, r0, 4 (4)
+0x0c9e70c0, 0x10020827, //add r0, r0, r3
+0x159e7000, 0x10020867, //or r1, r0, r0
+0x00000058, 0xf0f809e7, //brr (pc+4) + 11 // to %sw.epilog.sink.split
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+// label: %sw.bb3
+0x159e76c0, 0x10020827, //or r0, r3, r3
+0x119c21c0, 0xd0020827, //shl r0, r0, 2 (2)
+0x0c9e70c0, 0x10020827, //add r0, r0, r3
+0x159e7000, 0x10020867, //or r1, r0, r0
+0x00000018, 0xf0f809e7, //brr (pc+4) + 3 // to %sw.epilog.sink.split
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+// label: %sw.bb
+0x159e76c0, 0x10020827, //or r0, r3, r3
+0x0d9c0e00, 0xd0020827, //sub r0, 0 (0), r0
+0x159e7000, 0x10020867, //or r1, r0, r0
+// label: %sw.epilog.sink.split
+0x15027d80, 0x10020827, //or r0, ra0, ra0
+0x119c21c0, 0xd0020827, //shl r0, r0, 2 (2)
+0x15ce7d80, 0x100209e7, //or -, mutex_acq, mutex_acq
+0x00001a00, 0xe0021c67, //ldi vpw_setup, vpm_setup(size: 16 words, stride: 1 rows, address: h32(0))
+0x159e7240, 0x10020c27, //or vpm, r1, r1
+0x80814000, 0xe0021c67, //ldi vpw_setup, vdw_setup(rows: 1, elements: 1 words, address: h32(0,0))
+0xc0010000, 0xe0021c67, //ldi vpw_setup, vdw_setup(memory stride: 0 bytes)
+0x0c0e7c00, 0x10021ca7, //add vpw_addr, ra3, r0
+0x159f2fc0, 0x100209e7, //or -, vpw_wait, vpw_wait
+0x159c1fc0, 0xd0020ce7, //or mutex_rel, 1 (1), 1 (1)
+// block %sw.epilog, label: %end_of_function
+0x15827d80, 0x10020827, //or r0, unif, unif
+0x159a7c00, 0x100229e7, //or.setf -, elem_num, r0
+0xfffffca0, 0xf01809e7, //brr.ifallzc (pc+4) + -108 // to %start_of_function
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x179e6e00, 0x100209a7, //not irq, qpu_num
+0x009e7000, 0x300009e7, //nop.thrend.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+// kernel test_switch_more_default, label: %start_of_function
+0x159c1fc0, 0xd0020927, //or tmu_noswap, 1 (1), 1 (1)
+0x15827d80, 0x10020067, //or ra1, unif, unif
+0x15827d80, 0x10020027, //or ra0, unif, unif
+0x15827d80, 0x10020127, //or ra4, unif, unif
+0x15827d80, 0x100208a7, //or r2, unif, unif
+0x15827d80, 0x100200e7, //or ra3, unif, unif
+0x15827d80, 0x100208e7, //or r3, unif, unif
+0x15827d80, 0x100200a7, //or ra2, unif, unif
+0x15067d80, 0x18020827, //or.zextByte0To32 r0, ra1, ra1
+0x15027d80, 0x18020867, //or.zextByte0To32 r1, ra0, ra0
+0x40127030, 0x100049e0, //mul24 r0, ra4, r0
+0x0c9e7400, 0x10020827, //add r0, r2, r0
+0x0c9e7040, 0x100208a7, //add r2, r0, r1
+0x4098403e, 0xd00049e1, //mul24 r1, 4 (4), elem_num
+0x919c25d2, 0xd0025800, //shl r0, r2, 2 (2); v8min ra0, r2, r2
+0x0c9e7600, 0x100208e7, //add r3, r3, r0
+0x0d981dc0, 0xd00229e7, //sub.setf -, elem_num, 1 (1)
+0x159c0fc0, 0xd00a0827, //or.ifnc r0, 0 (0), 0 (0)
+0x0c9e7640, 0x10080827, //add.ifn r0, r3, r1
+0x159e7000, 0x10020f27, //or tmu1s, r0, r0
+0x009e7000, 0xb00009e7, //nop.load_tmu1.never 
+0x159e7900, 0x100208e7, //or r3, r4, r4
+0x159e7480, 0x10020827, //or r0, r2, r2
+0x119c21c0, 0xd0020827, //shl r0, r0, 2 (2)
+0x0c0a7c00, 0x100208a7, //add r2, ra2, r0
+0x4098403e, 0xd00049e1, //mul24 r1, 4 (4), elem_num
+0x0d981dc0, 0xd00229e7, //sub.setf -, elem_num, 1 (1)
+0x159c0fc0, 0xd00a0827, //or.ifnc r0, 0 (0), 0 (0)
+0x0c9e7440, 0x10080827, //add.ifn r0, r2, r1
+0x159e7000, 0x10020e27, //or tmu0s, r0, r0
+0x009e7000, 0xa00009e7, //nop.load_tmu0.never 
+0x159e7900, 0x10020867, //or r1, r4, r4
+0x0000002a, 0xe0021967, //ldi rep_all|r5, 42
+0x169e7340, 0x100229e7, //xor.setf -, r1, r5
+0x969c1fff, 0xd0068820, //xor.ifzc r0, 1 (1), 1 (1); v8min.ifz r0, 1 (1), 1 (1)
+0x159a7c00, 0x100229e7, //or.setf -, elem_num, r0
+0x000000e8, 0xf01809e7, //brr.ifallzc (pc+4) + 29 // to %sw.bb8
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x159e7240, 0x100229e7, //or.setf -, r1, r1
+0x969c1fff, 0xd0068820, //xor.ifzc r0, 1 (1), 1 (1); v8min.ifz r0, 1 (1), 1 (1)
+0x159a7c00, 0x100229e7, //or.setf -, elem_num, r0
+0x00000158, 0xf01809e7, //brr.ifallzc (pc+4) + 43 // to %sw.bb
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x159e7240, 0x10020867, //or r1, r1, r1
+0x169c13c0, 0xd00229e7, //xor.setf -, r1, 1 (1)
+0x969c1fff, 0xd0068820, //xor.ifzc r0, 1 (1), 1 (1); v8min.ifz r0, 1 (1), 1 (1)
+0x159a7c00, 0x100229e7, //or.setf -, elem_num, r0
+0x000000a8, 0xf01809e7, //brr.ifallzc (pc+4) + 21 // to %sw.bb5
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x169df3c0, 0xd00229e7, //xor.setf -, r1, -1 (31)
+0x969c1fff, 0xd0068820, //xor.ifzc r0, 1 (1), 1 (1); v8min.ifz r0, 1 (1), 1 (1)
+0x159a7c00, 0x100229e7, //or.setf -, elem_num, r0
+0x000000a8, 0xf01809e7, //brr.ifallzc (pc+4) + 21 // to %sw.bb3
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+// label: %sw.default
+0x0000057c, 0xe0021967, //ldi rep_all|r5, 1404
+0x149e7740, 0x10020827, //and r0, r3, r5
+0x159e7000, 0x10020867, //or r1, r0, r0
+0x000000c0, 0xf0f809e7, //brr (pc+4) + 24 // to %sw.epilog
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+// label: %sw.bb8
+0x0000002a, 0xe0021967, //ldi rep_all|r5, 42
+0x0c9e7740, 0x10020827, //add r0, r3, r5
+0x159e7000, 0x10020867, //or r1, r0, r0
+0x00000088, 0xf0f809e7, //brr (pc+4) + 17 // to %sw.epilog
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+// label: %sw.bb5
+0x609d703f, 0xd00049e0, //v8muld r0, -9 (23), -9 (23)
+0x0c9e7600, 0x10020827, //add r0, r3, r0
+0x159e7000, 0x10020867, //or r1, r0, r0
+0x00000050, 0xf0f809e7, //brr (pc+4) + 10 // to %sw.epilog
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+// label: %sw.bb3
+0x0000002d, 0xe0021967, //ldi rep_all|r5, 45
+0x169e7740, 0x10020827, //xor r0, r3, r5
+0x159e7000, 0x10020867, //or r1, r0, r0
+0x00000018, 0xf0f809e7, //brr (pc+4) + 3 // to %sw.epilog
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+// label: %sw.bb
+0x159e76c0, 0x10020827, //or r0, r3, r3
+0x0d9c0e00, 0xd0020827, //sub r0, 0 (0), r0
+0x159e7000, 0x10020867, //or r1, r0, r0
+// label: %sw.epilog
+0x15027d80, 0x10020827, //or r0, ra0, ra0
+0x119c21c0, 0xd0020827, //shl r0, r0, 2 (2)
+0x15ce7d80, 0x100209e7, //or -, mutex_acq, mutex_acq
+0x00001a00, 0xe0021c67, //ldi vpw_setup, vpm_setup(size: 16 words, stride: 1 rows, address: h32(0))
+0x159e7240, 0x10020c27, //or vpm, r1, r1
+0x80814000, 0xe0021c67, //ldi vpw_setup, vdw_setup(rows: 1, elements: 1 words, address: h32(0,0))
+0xc0010000, 0xe0021c67, //ldi vpw_setup, vdw_setup(memory stride: 0 bytes)
+0x0c0e7c00, 0x10021ca7, //add vpw_addr, ra3, r0
+0x159f2fc0, 0x100209e7, //or -, vpw_wait, vpw_wait
+0x159c1fc0, 0xd0020ce7, //or mutex_rel, 1 (1), 1 (1)
+// label: %end_of_function
+0x15827d80, 0x10020827, //or r0, unif, unif
+0x159a7c00, 0x100229e7, //or.setf -, elem_num, r0
+0xfffffc98, 0xf01809e7, //brr.ifallzc (pc+4) + -109 // to %start_of_function
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x179e6e00, 0x100209a7, //not irq, qpu_num
+0x009e7000, 0x300009e7, //nop.thrend.never 
+0x009e7000, 0x100009e7, //nop.never 
+0x009e7000, 0x100009e7, //nop.never 

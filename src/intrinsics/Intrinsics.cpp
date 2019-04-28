@@ -29,6 +29,8 @@ using namespace vc4c;
 using namespace vc4c::intermediate;
 using namespace vc4c::operators;
 
+// TODO need to add sign extension to some more intrinsics?
+
 // The function to apply for pre-calculation
 using UnaryInstruction = std::function<Optional<Value>(const Value&)>;
 static const UnaryInstruction NO_OP = [](const Value& val) { return NO_VALUE; };
@@ -967,8 +969,19 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
     // arithmetic shift right
     else if(op->opCode == "ashr")
     {
-        it.reset(new Operation(
-            OP_ASR, op->getOutput().value(), op->getFirstArg(), op->assertArgument(1), op->conditional, op->setFlags));
+        if(op->getFirstArg().type.getScalarBitCount() < 32)
+        {
+            // for asr with signed types < 32-bit, we need to sign-extend to 32-bit first, since this might not yet be
+            // done (e.g. when directly loaded from TMU)
+            // TODO need some central/better way of correctly sign-extending the values always!
+            auto tmp = method.addNewLocal(op->getFirstArg().type, "%asr.sext");
+            it = insertSignExtension(it, method, op->getFirstArg(), tmp, true, op->conditional);
+            it.reset(new Operation(
+                OP_ASR, op->getOutput().value(), tmp, op->assertArgument(1), op->conditional, op->setFlags));
+        }
+        else
+            it.reset(new Operation(OP_ASR, op->getOutput().value(), op->getFirstArg(), op->assertArgument(1),
+                op->conditional, op->setFlags));
     }
     else if(op->opCode == "lshr")
     {

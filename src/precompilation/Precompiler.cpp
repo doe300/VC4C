@@ -86,6 +86,16 @@ SourceType Precompiler::getSourceType(std::istream& stream)
     static constexpr uint32_t SPIRV_MAGIC_NUMBER = 0x07230203;
     static constexpr char SPIRV_MAGIC_NUMBER_LITTLE_ENDIAN[4] = {0x07, 0x23, 0x02, 0x03};
     static constexpr char SPIRV_MAGIC_NUMBER_BIG_ENDIAN[4] = {0x03, 0x02, 0x23, 0x07};
+    static const std::string QPUASM_MAGIC = []() {
+        std::stringstream s;
+        s << "0x" << std::hex << QPUASM_MAGIC_NUMBER;
+        return s.str();
+    }();
+    static const std::string QPUASM_CIGAM = []() {
+        std::stringstream s;
+        s << "0x" << std::hex << QPUASM_NUMBER_MAGIC;
+        return s.str();
+    }();
     std::array<char, 1024> buffer;
     stream.read(buffer.data(), 1000);
     const std::string s(buffer.data(), static_cast<std::size_t>(stream.gcount()));
@@ -102,10 +112,10 @@ SourceType Precompiler::getSourceType(std::istream& stream)
         type = SourceType::SPIRV_TEXT;
     else if(memcmp(buffer.data(), &QPUASM_MAGIC_NUMBER, 4) == 0 || memcmp(buffer.data(), &QPUASM_NUMBER_MAGIC, 4) == 0)
         type = SourceType::QPUASM_BIN;
-    else if(std::atol(buffer.data()) == QPUASM_MAGIC_NUMBER || std::atol(buffer.data()) == QPUASM_NUMBER_MAGIC)
+    else if(s.find(QPUASM_MAGIC) != std::string::npos || s.find(QPUASM_CIGAM) != std::string::npos)
         type = SourceType::QPUASM_HEX;
-    else if(s.find_first_of(" \n\t") != std::string::npos || s.find("kernel") != std::string::npos ||
-        s.find("/**") != std::string::npos || s.find("//") != std::string::npos)
+    else if(s.find("kernel") != std::string::npos || s.find("/**") != std::string::npos ||
+        s.find("//") != std::string::npos || s.find("#include") != std::string::npos)
         // XXX better check
         type = SourceType::OPENCL_C;
 

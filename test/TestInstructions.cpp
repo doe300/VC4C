@@ -104,6 +104,16 @@ void TestInstructions::testUnpackModes()
     TEST_ASSERT_EQUALS(FLOAT_ONE, UNPACK_R4_COLOR3(Value(Literal(0xFF123456), TYPE_INT8)));
     TEST_ASSERT_EQUALS(
         Value(Literal(0x3efefeffu), TYPE_FLOAT), UNPACK_R4_COLOR3(Value(Literal(0x7F123456), TYPE_INT8)));
+
+    TEST_ASSERT_EQUALS(FLOAT_ZERO, UNPACK_R4_16A_32(INT_ZERO));
+    TEST_ASSERT_EQUALS(FLOAT_ONE, UNPACK_R4_16A_32(Value(Literal(static_cast<uint16_t>(1.0_h)), TYPE_HALF)));
+    TEST_ASSERT_EQUALS(
+        FLOAT_ONE, UNPACK_R4_16A_32(Value(Literal(static_cast<uint16_t>(1.0_h) | 0x12340000u), TYPE_HALF)));
+
+    TEST_ASSERT_EQUALS(FLOAT_ZERO, UNPACK_R4_16B_32(INT_ZERO));
+    TEST_ASSERT_EQUALS(FLOAT_ONE, UNPACK_R4_16B_32(Value(Literal(static_cast<uint16_t>(1.0_h) << 16), TYPE_HALF)));
+    TEST_ASSERT_EQUALS(
+        FLOAT_ONE, UNPACK_R4_16B_32(Value(Literal((static_cast<uint16_t>(1.0_h) << 16) | 0x00001234u), TYPE_HALF)));
 }
 
 void TestInstructions::testPackModes()
@@ -161,6 +171,11 @@ void TestInstructions::testPackModes()
     TEST_ASSERT_EQUALS(
         Value(Literal(0xFF000000u), TYPE_INT8), PACK_32_8D_S(Value(Literal(0x12345678u), TYPE_INT32), {}));
     TEST_ASSERT_EQUALS(INT_ZERO, PACK_32_8D_S(INT_ZERO, {}));
+
+    TEST_ASSERT_EQUALS(INT_ZERO, PACK_MUL_GRAY_REPLICATE(FLOAT_ZERO, {}));
+    TEST_ASSERT_EQUALS(
+        Value(Literal(0x7F7F7F7F), TYPE_INT8), PACK_MUL_GRAY_REPLICATE(Value(Literal(0.5f), TYPE_FLOAT), {}));
+    TEST_ASSERT_EQUALS(Value(Literal(0xFFFFFFFF), TYPE_INT8), PACK_MUL_GRAY_REPLICATE(FLOAT_ONE, {}));
 
     TEST_ASSERT_EQUALS(INT_ZERO, PACK_MUL_COLOR0(FLOAT_ZERO, {}));
     TEST_ASSERT_EQUALS(Value(Literal(0x7F), TYPE_INT8), PACK_MUL_COLOR0(Value(Literal(0.5f), TYPE_FLOAT), {}));

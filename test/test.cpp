@@ -26,6 +26,7 @@
 #include "TestConversionFunctions.h"
 #include "TestOptimizations.h"
 #include "TestIntrinsics.h"
+#include "TestExpressions.h"
 
 #include "tools.h"
 #include "../lib/cpplog/include/logger.h"
@@ -127,6 +128,7 @@ int main(int argc, char** argv)
     Test::registerSuite(Test::newInstance<TestOperators>, "test-operators", "Tests the implementation of some operators");
     Test::registerSuite(Test::newInstance<TestInstructions>, "test-instructions", "Tests some common instruction handling");
     Test::registerSuite(Test::newInstance<TestFrontends>, "test-frontend", "Tests various functions of the default front-end");
+    Test::registerSuite(Test::newInstance<TestExpressions>, "test-expressions", "Tests the internal expression handling");
     Test::registerSuite(newLLVMCompilationTest<true>, "regressions-llvm", "Runs the regression-test using the LLVM-IR front-end", false);
     Test::registerSuite(newSPIRVCompiltionTest<true>, "regressions-spirv", "Runs the regression-test using the SPIR-V front-end", false);
     Test::registerSuite(newCompilationTest<true>, "regressions", "Runs the regression-test using the default front-end", false);

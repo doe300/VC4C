@@ -40,6 +40,7 @@ bool Expression::operator==(const Expression& other) const
         unpackMode == other.unpackMode && packMode == other.packMode && deco == other.deco;
 }
 
+LCOV_EXCL_START
 std::string Expression::to_string() const
 {
     auto basic =
@@ -50,6 +51,7 @@ std::string Expression::to_string() const
     extra += intermediate::toString(deco);
     return basic + (extra.empty() ? "" : (" (" + extra + ')'));
 }
+LCOV_EXCL_STOP
 
 bool Expression::isMoveExpression() const
 {
@@ -88,6 +90,26 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
         // no expression can be combined
         return *this;
 
+    // replace move expressions by their sources, if possible
+    if(expr0 && expr0->isMoveExpression() && expr0->arg0.checkLocal() &&
+        inputs.find(expr0->arg0.local()) != inputs.end())
+        // replace left expression by source
+        expr0 = &inputs.at(expr0->arg0.local());
+
+    if(expr1 && expr1->isMoveExpression() && expr1->arg0.checkLocal() &&
+        inputs.find(expr1->arg0.local()) != inputs.end())
+        // replace right expression by source
+        expr1 = &inputs.at(expr1->arg0.local());
+
+    // "replace" this with source expression
+    if(isMoveExpression())
+    {
+        if(expr0)
+            return expr0->combineWith(inputs);
+        if(expr1)
+            return expr1->combineWith(inputs);
+    }
+
     if(unpackMode.hasEffect() || packMode.hasEffect() ||
         (expr0 != nullptr && (expr0->unpackMode.hasEffect() || expr0->packMode.hasEffect())) ||
         ((expr1 != nullptr && (expr1->unpackMode.hasEffect() || expr1->packMode.hasEffect()))))
@@ -102,7 +124,7 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
         // NOTE: ftoi(itof(i)) != i, itof(ftoi(f)) != f, since the truncation/rounding would get lost!
         if(code == OP_NOT && expr0->code == OP_NOT)
             // not(not(a)) = a
-            return Expression{OP_V8MIN, expr0->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
+            return Expression{OP_V8MIN, expr0->arg0, expr0->arg0, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
     }
 
     if(code.numOperands == 2)
@@ -186,7 +208,7 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
             expr0->arg0 == arg1)
         {
             // f(f(a, b), a) = f(a, b), if associative, commutative and idempotent
-            return Expression{code, expr0->arg0, arg1, UNPACK_NOP, PACK_NOP, deco};
+            return Expression{code, expr0->arg0, expr0->arg1, UNPACK_NOP, PACK_NOP, deco};
         }
 
         if(expr0 && expr1 && expr0->code == expr1->code && expr0->code.isLeftDistributiveOver(code) &&
@@ -197,6 +219,7 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
             {
                 return Expression{expr0->code, expr0->arg0, tmp, UNPACK_NOP, PACK_NOP, deco};
             }
+            // TODO add general (with non-constant) case? E.g. if expression g(b, c) already exists
         }
 
         if(expr0 && expr1 && expr0->code == expr1->code && expr0->code.isRightDistributiveOver(code) &&

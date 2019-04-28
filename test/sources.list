@@ -12,6 +12,8 @@ target_sources(TestVC4C
     TestConversionFunctions.h
     TestEmulator.cpp
     TestEmulator.h
+    TestExpressions.cpp
+    TestExpressions.h
     TestFrontends.cpp
     TestFrontends.h
     TestGeometricFunctions.cpp

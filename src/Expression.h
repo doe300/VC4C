@@ -25,7 +25,7 @@ namespace vc4c
         Optional<Value> arg1;
         Unpack unpackMode = UNPACK_NOP;
         Pack packMode = PACK_NOP;
-        intermediate::InstructionDecorations deco;
+        intermediate::InstructionDecorations deco = intermediate::InstructionDecorations::NONE;
 
         static Optional<Expression> createExpression(const intermediate::IntermediateInstruction& instr);
 

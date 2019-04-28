@@ -1565,6 +1565,16 @@ void TestIntrinsicFunctions::testBitcastInt()
     testUnaryFunctionWithConstant<unsigned, int>(code, options, in, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
+
+struct EqualNaN
+{
+    // The "normal" float equality operator always returns false for NaN
+    bool operator()(float a, float b) const noexcept
+    {
+        return (std::isnan(a) && std::isnan(b) && std::signbit(a) == std::signbit(b)) || a == b;
+    }
+};
+
 void TestIntrinsicFunctions::testBitcastFloat()
 {
     auto func = [](int i) -> float { return vc4c::bit_cast<int, float>(i); };
@@ -1572,7 +1582,7 @@ void TestIntrinsicFunctions::testBitcastFloat()
     std::string options = "-DFUNC=vc4cl_bitcast_float -DIN=int -DOUT=float -DDEFINE_PROTOTYPE";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    testUnaryFunction<int, float, 1>(code, options, func,
+    testUnaryFunction<int, float, 1, int, EqualNaN>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     code.str("");

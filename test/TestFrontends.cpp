@@ -21,10 +21,16 @@ using namespace vc4c::spirv2qasm;
 
 using namespace vc4c;
 
+// TODO add some tests for the different types of (pre) compilation (module, PCH, etc., compile LLVM bin/text)
+
+extern void disassemble(const std::string& input, const std::string& output, const vc4c::OutputMode outputMode);
+
 TestFrontends::TestFrontends()
 {
     TEST_ADD(TestFrontends::testSPIRVCapabilitiesSupport);
     TEST_ADD(TestFrontends::testLinking);
+    TEST_ADD(TestFrontends::testSourceTypeDetection);
+    TEST_ADD(TestFrontends::testDisassembler);
 }
 
 // out-of-line virtual destructor
@@ -83,4 +89,74 @@ void TestFrontends::testLinking()
 
     TEST_ASSERT(res.executionSuccessful);
     TEST_ASSERT_EQUALS(res.results[0].second->at(0), res.results[1].second->at(0));
+}
+
+void TestFrontends::testSourceTypeDetection()
+{
+    {
+        std::ifstream in{"./example/fibonacci.cl"};
+        TEST_ASSERT_EQUALS(SourceType::OPENCL_C, Precompiler::getSourceType(in));
+    }
+
+    {
+        std::ifstream in{"./example/fibonacci.ir"};
+        TEST_ASSERT_EQUALS(SourceType::LLVM_IR_TEXT, Precompiler::getSourceType(in));
+    }
+
+    {
+        std::ifstream in{"./testing/formats/test.bc"};
+        TEST_ASSERT_EQUALS(SourceType::LLVM_IR_BIN, Precompiler::getSourceType(in));
+    }
+
+    {
+        std::ifstream in{"./example/fibonacci.spt"};
+        TEST_ASSERT_EQUALS(SourceType::SPIRV_TEXT, Precompiler::getSourceType(in));
+    }
+
+    {
+        std::ifstream in{"./testing/formats/test.spv"};
+        TEST_ASSERT_EQUALS(SourceType::SPIRV_BIN, Precompiler::getSourceType(in));
+    }
+
+    {
+        std::ifstream in{"./testing/formats/test.hex"};
+        TEST_ASSERT_EQUALS(SourceType::QPUASM_HEX, Precompiler::getSourceType(in));
+    }
+
+    {
+        std::ifstream in{"./testing/formats/test.bin"};
+        TEST_ASSERT_EQUALS(SourceType::QPUASM_BIN, Precompiler::getSourceType(in));
+    }
+
+    {
+        std::ifstream in{"./testing/formats/test.txt"};
+        TEST_ASSERT_EQUALS(SourceType::UNKNOWN, Precompiler::getSourceType(in));
+    }
+}
+
+void TestFrontends::testDisassembler()
+{
+    std::string inputFile{"./testing/formats/test.bin"};
+    vc4c::TemporaryFile tmp{};
+    disassemble(inputFile, tmp.fileName, OutputMode::HEX);
+
+    std::string originalContent;
+    {
+        std::ifstream origFile{"./testing/formats/test_disassembled.hex"};
+        std::stringstream tmp;
+        tmp << origFile.rdbuf();
+        originalContent = tmp.str();
+    }
+
+    std::string disassembledContent;
+    {
+        std::unique_ptr<std::istream> disassembledFile;
+        tmp.openInputStream(disassembledFile);
+        TEST_ASSERT(!!disassembledFile);
+        std::stringstream tmp;
+        tmp << disassembledFile->rdbuf();
+        disassembledContent = tmp.str();
+    }
+
+    TEST_ASSERT_EQUALS(originalContent, disassembledContent);
 }

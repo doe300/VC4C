@@ -16,6 +16,7 @@
 
 using namespace vc4c;
 
+LCOV_EXCL_START
 std::string ConditionCode::to_string() const
 {
     switch(*this)
@@ -40,6 +41,7 @@ std::string ConditionCode::to_string() const
     throw CompilationError(
         CompilationStep::CODE_GENERATION, "Unsupported condition", std::to_string(static_cast<unsigned>(value)));
 }
+LCOV_EXCL_STOP
 
 ConditionCode ConditionCode::invert() const
 {
@@ -92,6 +94,7 @@ BranchCond ConditionCode::toBranchCondition() const
     throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid condition for branch", to_string());
 }
 
+LCOV_EXCL_START
 std::string Signaling::to_string() const
 {
     switch(*this)
@@ -132,6 +135,7 @@ std::string Signaling::to_string() const
     throw CompilationError(
         CompilationStep::CODE_GENERATION, "Unsupported signal", std::to_string(static_cast<unsigned>(value)));
 }
+LCOV_EXCL_STOP
 
 bool Signaling::hasSideEffects() const noexcept
 {
@@ -144,6 +148,7 @@ bool Signaling::triggersReadOfR4() const noexcept
         *this == SIGNAL_LOAD_COVERAGE || *this == SIGNAL_LOAD_TMU0 || *this == SIGNAL_LOAD_TMU1;
 }
 
+LCOV_EXCL_START
 std::string Unpack::to_string() const
 {
     // http://maazl.de/project/vc4asm/doc/extensions.html#pack
@@ -184,6 +189,7 @@ std::string Unpack::to_string() const
     throw CompilationError(
         CompilationStep::CODE_GENERATION, "Unsupported unpack-mode", std::to_string(static_cast<unsigned>(value)));
 }
+LCOV_EXCL_STOP
 
 static Literal unpackLiteral(Unpack mode, Literal literal, bool isFloatOperation)
 {
@@ -336,6 +342,7 @@ bool Unpack::hasEffect() const noexcept
     return value != 0 && value != 1;
 }
 
+LCOV_EXCL_START
 std::string Pack::to_string() const
 {
     // http://maazl.de/project/vc4asm/doc/extensions.html#pack
@@ -388,6 +395,7 @@ std::string Pack::to_string() const
     throw CompilationError(
         CompilationStep::CODE_GENERATION, "Unsupported pack-mode", std::to_string(static_cast<unsigned>(value)));
 }
+LCOV_EXCL_STOP
 
 Literal packLiteral(Pack mode, Literal literal, bool isFloatOperation, const ElementFlags& flags)
 {
@@ -461,7 +469,7 @@ Literal packLiteral(Pack mode, Literal literal, bool isFloatOperation, const Ele
         return Literal(saturate<uint8_t>(literal.unsignedInt()) << 24);
     case PACK_MUL_GRAY_REPLICATE:
     {
-        auto tmp = static_cast<uint32_t>(literal.real() / 255.0f) & 0xFF;
+        auto tmp = static_cast<uint32_t>(literal.real() * 255.0f) & 0xFF;
         return Literal(tmp << 24 | tmp << 16 | tmp << 8 | tmp);
     }
     case PACK_MUL_COLOR0:
@@ -527,6 +535,7 @@ bool Pack::hasEffect() const noexcept
     return value != 0 && value != 0x10;
 }
 
+LCOV_EXCL_START
 std::string vc4c::toString(const SetFlag flag)
 {
     switch(flag)
@@ -539,6 +548,7 @@ std::string vc4c::toString(const SetFlag flag)
     throw CompilationError(
         CompilationStep::CODE_GENERATION, "Unsupported set-flags flag", std::to_string(static_cast<unsigned>(flag)));
 }
+LCOV_EXCL_STOP
 
 bool vc4c::isFlagSetByMulALU(unsigned char opAdd, unsigned char opMul) noexcept
 {
@@ -593,7 +603,7 @@ bool ElementFlags::matchesCondition(ConditionCode cond) const
     }
     throw CompilationError(CompilationStep::GENERAL, "Unhandled condition code", cond.to_string());
 }
-
+LCOV_EXCL_START
 static std::string toFlagString(FlagStatus flag, char flagChar)
 {
     if(flag == FlagStatus::CLEAR)
@@ -607,6 +617,7 @@ std::string ElementFlags::to_string() const
 {
     return toFlagString(zero, 'z') + toFlagString(negative, 'n') + toFlagString(carry, 'c');
 }
+LCOV_EXCL_STOP
 
 ElementFlags ElementFlags::fromValue(const Value& val) noexcept
 {
@@ -1160,6 +1171,7 @@ Optional<Value> OpCode::getRightAbsorbingElement(const OpCode code)
     return NO_VALUE;
 }
 
+LCOV_EXCL_START
 std::string vc4c::toString(const BranchCond cond)
 {
     switch(cond)
@@ -1194,3 +1206,4 @@ std::string vc4c::toString(const BranchCond cond)
     throw CompilationError(
         CompilationStep::GENERAL, "Invalid branch-condition", std::to_string(static_cast<int>(cond)));
 }
+LCOV_EXCL_STOP

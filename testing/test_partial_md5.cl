@@ -46,7 +46,7 @@ __kernel void calculate_md5(__global char* msg, unsigned length, __global char* 
 
     // Process the message in successive 512-bit chunks:
     // "for each 512-bit chunk of padded message"
-/*    for(unsigned part = 0; part < length / sizeof(unsigned); part += 16)
+    for(unsigned part = 0; part < length / sizeof(unsigned); part += 16)
     {
         // "break chunk into sixteen 32-bit words M[j], 0 ≤ j ≤ 15"
         M[0] = ((__global unsigned*) msg)[part];
@@ -73,7 +73,9 @@ __kernel void calculate_md5(__global char* msg, unsigned length, __global char* 
         unsigned D = d0;
 
         // Main loop:
-        for(unsigned i = 0; i < 64; ++i)
+        // XXX works so far with this loop disabled
+        // TODO passes for i = 0, 16, 32 and 48 bu not for full loop
+        /* for(unsigned i = 0; i < 64; ++i)
         {
             unsigned F, g;
             if(i < 16)
@@ -102,14 +104,14 @@ __kernel void calculate_md5(__global char* msg, unsigned length, __global char* 
             D = C;
             C = B;
             B = B + leftrotate(F, s[i]);
-        }
+        }*/
 
         // Add this chunk's hash to result so far:
         a0 = a0 + A;
         b0 = b0 + B;
         c0 = c0 + C;
         d0 = d0 + D;
-    } */
+    }
 
     ((__global unsigned*) digest)[0] = a0;
     ((__global unsigned*) digest)[1] = b0;

@@ -96,7 +96,7 @@ static NODISCARD InstructionWalker insertExtractHalfWordElements(
     // 2.2) otherwise, use lower half-word from odd elements and upper half-word from even elements
 
     // tmp = address & 0b11 ? src >> 16 : src
-    const Value tmp = method.addNewLocal(dest.type, "%tmp_result");
+    const Value tmp = method.addNewLocal(dest.type, "%tmu_result");
     assign(it, tmp) = (src >> 16_val, COND_ZERO_CLEAR);
     assign(it, tmp) = (src, COND_ZERO_SET);
 
@@ -125,7 +125,7 @@ static NODISCARD InstructionWalker insertExtractByteElements(
     Value shiftOffset = assign(it, dest.type, "%shift_offset") = mul24(alignmentOffset, 8_val);
 
     // tmp = src >> shiftOffset
-    Value tmp = assign(it, dest.type, "%tmp_result") = src >> shiftOffset;
+    Value tmp = assign(it, dest.type, "%tmu_result") = src >> shiftOffset;
 
     // dest = tmp & 0xFF
     assign(it, dest) = tmp & Value(Literal(TYPE_INT8.getScalarWidthMask()), TYPE_INT32);

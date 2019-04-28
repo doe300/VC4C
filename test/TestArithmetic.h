@@ -135,12 +135,18 @@ public:
     void testFloatLessEquals();
 
     // logical operators
-    void testSignedIntSelection();
-    void testSignedShortSelection();
-    void testSignedCharSelection();
-    void testUnsignedIntSelection();
-    void testUnsignedShortSelection();
-    void testUnsignedCharSelection();
+    void testSignedIntSelectScalar();
+    void testSignedIntSelectVector();
+    void testSignedShortSelectScalar();
+    void testSignedShortSelectVector();
+    void testSignedCharSelectScalar();
+    void testSignedCharSelectVector();
+    void testUnsignedIntSelectScalar();
+    void testUnsignedIntSelectVector();
+    void testUnsignedShortSelectScalar();
+    void testUnsignedShortSelectVector();
+    void testUnsignedCharSelectScalar();
+    void testUnsignedCharSelectVector();
 
     void testSignedIntAnd();
     void testSignedShortAnd();
@@ -216,6 +222,20 @@ public:
     void testUnsignedCharBitShiftRight();
     // "The operators right-shift, left-shift [...] except the built-in scalar and vector float types" - OpenCL 1.2,
     // section 6.3.j
+
+    void testSignedIntTrinaryScalar();
+    void testSignedIntTrinaryVector();
+    void testSignedShortTrinaryScalar();
+    void testSignedShortTrinaryVector();
+    void testSignedCharTrinaryScalar();
+    void testSignedCharTrinaryVector();
+
+    void testUnsignedIntTrinaryScalar();
+    void testUnsignedIntTrinaryVector();
+    void testUnsignedShortTrinaryScalar();
+    void testUnsignedShortTrinaryVector();
+    void testUnsignedCharTrinaryScalar();
+    void testUnsignedCharTrinaryVector();
 
 private:
     vc4c::Configuration config;
