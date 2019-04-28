@@ -22,6 +22,7 @@ using namespace vc4c;
 // Is located in Types.cpp
 extern TypeHolder GLOBAL_TYPE_HOLDER;
 
+LCOV_EXCL_START
 static std::vector<std::string> createUniformValues(const qpu_asm::KernelInfo& kernel)
 {
     /* the order of implicit/explicit parameters needs to match the order of parameters in
@@ -205,6 +206,7 @@ static std::string annotateRegisters(
 
     return annotations.empty() ? "" : (" // " + vc4c::to_string<std::string, std::set<std::string>>(annotations));
 }
+LCOV_EXCL_STOP
 
 static std::string readString(std::istream& binary, uint64_t stringLength)
 {

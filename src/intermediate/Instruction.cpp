@@ -11,6 +11,7 @@
 using namespace vc4c;
 using namespace vc4c::intermediate;
 
+LCOV_EXCL_START
 std::string intermediate::toString(const InstructionDecorations decoration)
 {
     std::string res;
@@ -58,6 +59,7 @@ std::string intermediate::toString(const InstructionDecorations decoration)
         res.append("vpw_config ");
     return res.substr(0, res.empty() ? 0 : res.size() - 1);
 }
+LCOV_EXCL_STOP
 
 InstructionDecorations intermediate::forwardDecorations(InstructionDecorations decorations)
 {
@@ -314,6 +316,7 @@ Value IntermediateInstruction::renameValue(Method& method, const Value& orig, co
     return copy->createReference();
 }
 
+LCOV_EXCL_START
 std::string IntermediateInstruction::createAdditionalInfoString() const
 {
     std::string res("(");
@@ -334,6 +337,7 @@ std::string IntermediateInstruction::createAdditionalInfoString() const
         res = std::string(" ") + res + ")";
     return res == " ()" ? "" : res;
 }
+LCOV_EXCL_STOP
 
 Optional<Value> IntermediateInstruction::getPrecalculatedValueForArg(
     const std::size_t argIndex, const std::size_t numIterations) const

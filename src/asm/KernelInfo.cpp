@@ -53,6 +53,7 @@ static NODISCARD std::size_t copyName(
     return numWords;
 }
 
+LCOV_EXCL_START
 std::string ParamInfo::to_string() const
 {
     // address space
@@ -66,6 +67,7 @@ std::string ParamInfo::to_string() const
         ((typeName) + " ") + (name + " (") + (std::to_string(getSize()) + " B, ") +
         std::to_string(getVectorElements()) + " items)";
 }
+LCOV_EXCL_STOP
 
 std::size_t ParamInfo::write(std::ostream& stream, const OutputMode mode) const
 {
@@ -117,6 +119,7 @@ std::size_t KernelInfo::write(std::ostream& stream, const OutputMode mode) const
     return numWords;
 }
 
+LCOV_EXCL_START
 std::string KernelInfo::to_string() const
 {
     std::vector<std::string> uniformsSet;
@@ -154,6 +157,7 @@ std::string KernelInfo::to_string() const
         (std::to_string(getOffset().getValue()) + ", with following parameters: ") +
         ::to_string<ParamInfo>(parameters) + uniformsString;
 }
+LCOV_EXCL_STOP
 
 static void toBinary(const CompoundConstant& val, std::vector<uint8_t>& queue)
 {
@@ -390,12 +394,14 @@ KernelInfo qpu_asm::getKernelInfos(
 
     if(!method.stackAllocations.empty())
     {
+        LCOV_EXCL_START
         logging::logLazy(logging::Level::DEBUG, [&]() {
             logging::debug() << "Kernel " << method.name << ":" << logging::endl;
             for(const auto& s : method.stackAllocations)
                 logging::debug() << "Stack-Entry: " << s.to_string() << ", size: " << s.size
                                  << ", alignment: " << s.alignment << ", offset: " << s.offset << logging::endl;
         });
+        LCOV_EXCL_STOP
     }
 
     return info;

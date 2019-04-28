@@ -239,6 +239,7 @@ void CodeGenerator::toMachineCode(Method& kernel)
     kernel.cleanLocals();
     const auto& instructions = generateInstructions(kernel);
 #ifdef VERIFIER_HEADER
+    LCOV_EXCL_START
     std::vector<uint64_t> hexData;
     hexData.reserve(instructions.size());
     for(const auto& instr : instructions)
@@ -269,5 +270,6 @@ void CodeGenerator::toMachineCode(Method& kernel)
     CPPLOG_LAZY(logging::Level::INFO, log << "Validation-output: " << logging::endl);
     v.Validate();
     fflush(stderr);
+    LCOV_EXCL_STOP
 #endif
 }

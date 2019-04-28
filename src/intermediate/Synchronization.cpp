@@ -15,11 +15,13 @@ SemaphoreAdjustment::SemaphoreAdjustment(const Semaphore semaphore, const bool i
 {
 }
 
+LCOV_EXCL_START
 std::string SemaphoreAdjustment::to_string() const
 {
     return std::string("semaphore ") + (std::to_string(static_cast<unsigned>(semaphore)) + " ") +
         (increase ? "increase" : "decrease") + createAdditionalInfoString();
 }
+LCOV_EXCL_STOP
 
 qpu_asm::DecoratedInstruction SemaphoreAdjustment::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
@@ -56,6 +58,7 @@ MemoryBarrier::MemoryBarrier(const MemoryScope scope, const MemorySemantics sema
 {
 }
 
+LCOV_EXCL_START
 static std::string toString(const MemoryScope scope)
 {
     switch(scope)
@@ -102,6 +105,7 @@ std::string MemoryBarrier::to_string() const
     return std::string("mem-fence ") + (::toString(scope) + ", ") + ::toString(semantics) +
         createAdditionalInfoString();
 }
+LCOV_EXCL_STOP
 
 qpu_asm::DecoratedInstruction MemoryBarrier::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
@@ -135,10 +139,13 @@ LifetimeBoundary::LifetimeBoundary(const Value& allocation, const bool lifetimeE
     setArgument(0, allocation);
 }
 
+LCOV_EXCL_START
 std::string LifetimeBoundary::to_string() const
 {
     return std::string("life-time for ") + getStackAllocation().to_string() + (isLifetimeEnd ? " ends" : " starts");
 }
+LCOV_EXCL_STOP
+
 qpu_asm::DecoratedInstruction LifetimeBoundary::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
@@ -177,10 +184,12 @@ MutexLock::MutexLock(MutexAccess accessType) : IntermediateInstruction(Optional<
         setOutput(MUTEX_REGISTER);
 }
 
+LCOV_EXCL_START
 std::string MutexLock::to_string() const
 {
     return REG_MUTEX.to_string(true, locksMutex());
 }
+LCOV_EXCL_STOP
 
 qpu_asm::DecoratedInstruction MutexLock::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const

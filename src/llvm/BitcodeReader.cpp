@@ -77,6 +77,7 @@ static std::string cleanMethodName(const std::string& name)
     return std::regex_replace(tmp, trailingRegex, "");
 }
 
+LCOV_EXCL_START
 template <typename T>
 static void dumpLLVM(const T* val)
 {
@@ -86,6 +87,7 @@ static void dumpLLVM(const T* val)
     val->dump();
 #endif
 }
+LCOV_EXCL_STOP
 
 BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType) : context()
 {

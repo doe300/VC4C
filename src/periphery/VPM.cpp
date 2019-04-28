@@ -33,6 +33,7 @@ static constexpr bool IS_PACKED = true;
  * The naming of the setup-parameters are adopted from http://maazl.de/project/vc4asm/doc/vc4.qinc.html#VPM
  */
 
+LCOV_EXCL_START
 static std::string getVPMSizeName(uint8_t size)
 {
     switch(size)
@@ -48,6 +49,7 @@ static std::string getVPMSizeName(uint8_t size)
             CompilationStep::GENERAL, "Invalid parameter type-size", std::to_string(static_cast<unsigned>(size)));
     }
 }
+LCOV_EXCL_STOP
 
 static uint8_t getVPMSize(DataType paramType)
 {
@@ -66,6 +68,7 @@ static uint8_t getVPMSize(DataType paramType)
     }
 }
 
+LCOV_EXCL_START
 static std::string getVPMModeName(uint8_t mode)
 {
     if(mode >= 4)
@@ -216,6 +219,7 @@ std::string VPRSetup::to_string() const
         return dmaSetup.to_string();
     return strideSetup.to_string();
 }
+LCOV_EXCL_STOP
 
 /*
  * Returns the divisor for the column-offset applicable for the given type.
@@ -840,6 +844,7 @@ VPRDMASetup VPMArea::toReadDMASetup(DataType elementType, uint8_t numRows) const
     return setup;
 }
 
+LCOV_EXCL_START
 static std::string toUsageString(VPMUsage usage, const Local* local)
 {
     switch(usage)
@@ -862,6 +867,7 @@ std::string VPMArea::to_string() const
     return toUsageString(usageType, originalAddress) + ", rows[" + std::to_string(static_cast<unsigned>(rowOffset)) +
         ", " + std::to_string(static_cast<unsigned>(rowOffset + numRows)) + "[";
 }
+LCOV_EXCL_STOP
 
 VPM::VPM(const unsigned totalVPMSize) : maximumVPMSize(std::min(VPM_DEFAULT_SIZE, totalVPMSize)), areas(VPM_NUM_ROWS)
 {
@@ -1115,6 +1121,7 @@ DataType VPM::getVPMStorageType(DataType type)
     return inVPMType;
 }
 
+LCOV_EXCL_START
 static void writeArea(std::wostream& s, const std::string& name, unsigned width)
 {
     auto sub = name.substr(0, width - 1) + "|";
@@ -1159,3 +1166,4 @@ void VPM::dumpUsage() const
         stream << logging::endl;
     });
 }
+LCOV_EXCL_STOP

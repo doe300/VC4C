@@ -85,6 +85,7 @@ FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::Inte
     return result;
 }
 
+LCOV_EXCL_START
 std::string LivenessAnalysis::to_string(const FastSet<const Local*>& liveLocals)
 {
     if(liveLocals.empty())
@@ -97,6 +98,7 @@ std::string LivenessAnalysis::to_string(const FastSet<const Local*>& liveLocals)
         s << ", " << (*it)->name;
     return s.str();
 }
+LCOV_EXCL_STOP
 
 LocalUsageAnalysis::LocalUsageAnalysis() :
     GlobalAnalysis(LocalUsageAnalysis::analyzeLocalUsage, LocalUsageAnalysis::to_string)
@@ -148,6 +150,7 @@ std::pair<FastSet<const Local*>, FastSet<const Local*>> LocalUsageAnalysis::anal
     return std::make_pair(std::move(importedLocals), std::move(localsWritten));
 }
 
+LCOV_EXCL_START
 std::string LocalUsageAnalysis::to_string(const FastSet<const Local*>& locals)
 {
     if(locals.empty())
@@ -160,3 +163,4 @@ std::string LocalUsageAnalysis::to_string(const FastSet<const Local*>& locals)
         s << ", " << (*it)->name;
     return s.str();
 }
+LCOV_EXCL_STOP

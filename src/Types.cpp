@@ -26,6 +26,7 @@ static_assert(alignof(ComplexType) > Bitfield<uint8_t>::MASK_Bit, "");
 
 ComplexType::~ComplexType() noexcept = default;
 
+LCOV_EXCL_START
 static std::string toSignedIntegerTypeName(unsigned char bitWidth, const std::string& typeName)
 {
     switch(bitWidth)
@@ -108,6 +109,7 @@ std::string vc4c::toString(AddressSpace space, bool shortName)
     throw CompilationError(
         CompilationStep::GENERAL, "Unhandled address space", std::to_string(static_cast<int>(space)));
 }
+LCOV_EXCL_STOP
 
 CONST static ComplexType* toPointer(uintptr_t val) noexcept
 {
@@ -121,6 +123,7 @@ DataType::DataType(const ComplexType* complexType) : Bitfield(reinterpret_cast<u
             CompilationStep::GENERAL, "Internal error: Complex type has simple flag set!", to_string());
 }
 
+LCOV_EXCL_START
 std::string DataType::to_string() const
 {
     if(!getSimpleFlag())
@@ -152,6 +155,7 @@ std::string DataType::getTypeName(bool isSigned, bool isUnsigned) const
         return tName + std::to_string(numElements);
     return tName;
 }
+LCOV_EXCL_STOP
 
 bool DataType::operator==(DataType right) const noexcept
 {
@@ -408,10 +412,12 @@ unsigned PointerType::getAlignmentInBytes() const
     return 4;
 }
 
+LCOV_EXCL_START
 std::string PointerType::getTypeName() const
 {
     return toString(addressSpace, true) + " " + elementType.to_string() + "*";
 }
+LCOV_EXCL_STOP
 
 bool StructType::operator==(const ComplexType& other) const
 {
@@ -483,6 +489,7 @@ unsigned StructType::getAlignmentInBytes() const
     return getStructSize();
 }
 
+LCOV_EXCL_START
 std::string StructType::getTypeName() const
 {
     return name;
@@ -501,6 +508,7 @@ std::string StructType::getContent() const
     s << '}';
     return s.str();
 }
+LCOV_EXCL_STOP
 
 bool ArrayType::operator==(const ComplexType& other) const
 {
@@ -518,10 +526,12 @@ unsigned ArrayType::getAlignmentInBytes() const
     return elementType.getPhysicalWidth();
 }
 
+LCOV_EXCL_START
 std::string ArrayType::getTypeName() const
 {
     return (elementType.to_string() + "[") + std::to_string(size) + "]";
 }
+LCOV_EXCL_STOP
 
 bool ImageType::operator==(const ComplexType& other) const
 {
@@ -534,6 +544,7 @@ bool ImageType::operator==(const ComplexType& other) const
         isImageBuffer == right->isImageBuffer && isSampled == right->isSampled;
 }
 
+LCOV_EXCL_START
 std::string ImageType::getTypeName() const
 {
     std::string name = "image";
@@ -544,6 +555,7 @@ std::string ImageType::getTypeName() const
         name.append("_buffer");
     return name;
 }
+LCOV_EXCL_STOP
 
 unsigned ImageType::getAlignmentInBytes() const
 {

@@ -105,6 +105,7 @@ Optional<Value> CompoundConstant::toValue() const
     return NO_VALUE;
 }
 
+LCOV_EXCL_START
 std::string CompoundConstant::to_string(bool withContent) const
 {
     const std::string typeName = (type.isUnknown() ? "unknown" : type.to_string()) + ' ';
@@ -129,6 +130,7 @@ std::string CompoundConstant::to_string(bool withContent) const
         return typeName + "undefined";
     throw CompilationError(CompilationStep::GENERAL, "Unhandled compound constant type!");
 }
+LCOV_EXCL_STOP
 
 Global::Global(const std::string& name, DataType globalType, CompoundConstant&& value, bool isConstant) :
     Local(globalType, name), initialValue(std::move(value)), isConstant(isConstant)
@@ -140,10 +142,12 @@ Global::Global(const std::string& name, DataType globalType, CompoundConstant&& 
             CompilationStep::GENERAL, "Constness attributes of global and pointer to global do not match", to_string());
 }
 
+LCOV_EXCL_START
 std::string Global::to_string(bool withContent) const
 {
     return (name + ": ") + initialValue.to_string(withContent) + (isConstant ? " (const)" : "");
 }
+LCOV_EXCL_STOP
 
 bool Global::residesInMemory() const
 {

@@ -32,6 +32,7 @@ LoadImmediate::LoadImmediate(const Value& dest, uint32_t mask, LoadType type, Co
     setArgument(0, Value(Literal(mask), TYPE_INT32));
 }
 
+LCOV_EXCL_START
 std::string LoadImmediate::to_string() const
 {
     switch(type)
@@ -66,6 +67,7 @@ std::string LoadImmediate::to_string() const
     throw CompilationError(
         CompilationStep::GENERAL, "Unhandled type of load", std::to_string(static_cast<unsigned>(type)));
 }
+LCOV_EXCL_STOP
 
 IntermediateInstruction* LoadImmediate::copyFor(Method& method, const std::string& localPrefix) const
 {

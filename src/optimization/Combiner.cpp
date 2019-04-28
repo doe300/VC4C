@@ -1046,6 +1046,7 @@ struct MemoryAccessRange
     // the maximum range (in elements!) the memory is accessed in
     analysis::IntegerRange offsetRange{0, 0};
 
+    LCOV_EXCL_START
     std::string to_string() const
     {
         return (addressWrite->to_string() +
@@ -1055,6 +1056,7 @@ struct MemoryAccessRange
                 " dynamic element range [") +
             (std::to_string(offsetRange.minValue) + ", ") + (std::to_string(offsetRange.maxValue) + "]");
     }
+    LCOV_EXCL_STOP
 };
 
 struct LocalUsageOrdering

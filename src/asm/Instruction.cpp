@@ -18,6 +18,7 @@
 using namespace vc4c;
 using namespace vc4c::qpu_asm;
 
+LCOV_EXCL_START
 std::string Instruction::toASMString() const
 {
     if(auto op = as<ALUInstruction>())
@@ -40,6 +41,7 @@ std::string Instruction::toHexString(bool withAssemblerCode) const
     }
     return qpu_asm::toHexString(binaryCode);
 }
+LCOV_EXCL_STOP
 
 bool Instruction::isValidInstruction() const
 {
@@ -60,6 +62,7 @@ Register Instruction::getMulOutput() const
     return Register{RegisterFile::PHYSICAL_A, getAddOut()};
 }
 
+LCOV_EXCL_START
 std::string Instruction::toInputRegister(
     const InputMultiplex mux, const Address regA, const Address regB, const bool hasImmediate)
 {
@@ -153,3 +156,4 @@ std::string DecoratedInstruction::addComment(std::string&& s) const
         r = "// " + previousComment + "\n" + r;
     return r;
 }
+LCOV_EXCL_STOP

@@ -22,6 +22,7 @@ const Value vc4c::ELEMENT_NUMBERS(
         Literal(8), Literal(9), Literal(10), Literal(11), Literal(12), Literal(13), Literal(14), Literal(15)}),
     TYPE_INT8.toVectorType(16));
 
+LCOV_EXCL_START
 std::string vc4c::toString(const RegisterFile file)
 {
     std::string fileName;
@@ -38,6 +39,7 @@ std::string vc4c::toString(const RegisterFile file)
 
     return fileName;
 }
+LCOV_EXCL_STOP
 
 bool vc4c::isFixed(const RegisterFile file) noexcept
 {
@@ -49,6 +51,7 @@ bool Register::isGeneralPurpose() const noexcept
     return num < 32;
 }
 
+LCOV_EXCL_START
 std::string Register::to_string(bool specialNames, bool readAccess) const
 {
     if(specialNames)
@@ -157,6 +160,7 @@ std::string Register::to_string(bool specialNames, bool readAccess) const
     return std::string(file == RegisterFile::PHYSICAL_A ? "ra" : (file == RegisterFile::PHYSICAL_B ? "rb" : "rx")) +
         std::to_string(num);
 }
+LCOV_EXCL_STOP
 
 int Register::getAccumulatorNumber() const noexcept
 {
@@ -294,6 +298,7 @@ bool Literal::operator<(const Literal& other) const noexcept
     return u < other.u;
 }
 
+LCOV_EXCL_START
 std::string Literal::to_string() const
 {
     switch(type)
@@ -309,6 +314,7 @@ std::string Literal::to_string() const
     }
     throw CompilationError(CompilationStep::GENERAL, "Unhandled literal type!");
 }
+LCOV_EXCL_STOP
 
 bool Literal::isTrue() const noexcept
 {
@@ -342,6 +348,7 @@ bool Literal::isUndefined() const noexcept
     return type == LiteralType::TOMBSTONE;
 }
 
+LCOV_EXCL_START
 std::string SmallImmediate::to_string() const
 {
     if(value <= 15)
@@ -365,6 +372,7 @@ std::string SmallImmediate::to_string() const
     throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid small immediate value",
         std::to_string(static_cast<unsigned>(value)));
 }
+LCOV_EXCL_STOP
 
 Optional<int32_t> SmallImmediate::getIntegerValue() const noexcept
 {
@@ -630,6 +638,7 @@ Optional<Literal> Value::getLiteralValue() const noexcept
     return {};
 }
 
+LCOV_EXCL_START
 std::string Value::to_string(const bool writeAccess, bool withLiterals) const
 {
     const std::string typeName = (type.isUnknown() ? "unknown" : type.to_string()) + ' ';
@@ -658,6 +667,7 @@ std::string Value::to_string(const bool writeAccess, bool withLiterals) const
         return typeName + "undefined";
     throw CompilationError(CompilationStep::GENERAL, "Unhandled value-type!");
 }
+LCOV_EXCL_STOP
 
 bool Value::isWriteable() const
 {

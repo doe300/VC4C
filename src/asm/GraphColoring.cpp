@@ -178,6 +178,7 @@ std::size_t ColoredNodeBase::fixToRegister()
         CompilationStep::LABEL_REGISTER_MAPPING, "Cannot fix local to file with no registers left", to_string());
 }
 
+LCOV_EXCL_START
 std::string ColoredNodeBase::to_string(bool longDescription) const
 {
     const auto* self = reinterpret_cast<const ColoredNode*>(this);
@@ -202,6 +203,7 @@ std::string ColoredNodeBase::to_string(bool longDescription) const
     }
     return res;
 }
+LCOV_EXCL_STOP
 
 static void fixToRegisterFile(const RegisterFile file, const Local* local, FastMap<const Local*, LocalUsage>& localUses)
 {
@@ -505,6 +507,7 @@ void GraphColoring::createGraph()
         }
         if(node.initialFile == RegisterFile::NONE)
         {
+            LCOV_EXCL_START
             logging::logLazy(logging::Level::WARNING, [&]() {
                 logging::warn() << "Node " << node.key->name
                                 << " has no initially possible registers:" << logging::endl;
@@ -513,6 +516,7 @@ void GraphColoring::createGraph()
                 for(const auto& it : pair.second.associatedInstructions)
                     logging::warn() << "\t\t" << it->to_string() << logging::endl;
             });
+            LCOV_EXCL_STOP
         }
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Created node: " << node.to_string(false) << logging::endl);
     }
@@ -543,6 +547,7 @@ void GraphColoring::createGraph()
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Colored graph with " << graph.getNodes().size() << " nodes created!" << logging::endl);
 #ifdef DEBUG_MODE
+    LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&]() {
         DebugGraph<const Local*, LocalRelation, ColoredEdge::Directed> debugGraph(
             "/tmp/vc4c-register-graph.dot", graph.getNodes().size());
@@ -557,6 +562,7 @@ void GraphColoring::createGraph()
             debugGraph.addNodeWithNeighbors<ColoredNode>(node.second, nameFunc, weakEdgeFunc);
         }
     });
+    LCOV_EXCL_STOP
 #endif
 }
 
@@ -1020,6 +1026,7 @@ bool GraphColoring::fixErrors()
     for(const Local* local : errorSet)
     {
         ColoredNode& node = graph.assertNode(local);
+        LCOV_EXCL_START
         logging::logLazy(logging::Level::DEBUG, [&]() {
             logging::debug() << "Error in register-allocation for node: " << node.to_string() << logging::endl;
             auto& s = logging::debug() << "Local is blocked by: ";
@@ -1030,6 +1037,7 @@ bool GraphColoring::fixErrors()
             });
             s << logging::endl;
         });
+        LCOV_EXCL_STOP
         if(!fixSingleError(method, graph, node, localUses, localUses.at(local)))
             allFixed = false;
     }

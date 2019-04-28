@@ -71,6 +71,7 @@ ALUInstruction::ALUInstruction(const Unpack unpack, const Pack pack, const Condi
         throw CompilationError(CompilationStep::CODE_GENERATION, "Opcode specified for wrong ALU", toASMString());
 }
 
+LCOV_EXCL_START
 std::string ALUInstruction::toASMString() const
 {
     const OpCode& opAdd = OpCode::toOpCode(getAddition(), false);
@@ -141,6 +142,7 @@ std::string ALUInstruction::toASMString() const
 
     return s;
 }
+LCOV_EXCL_STOP
 
 static Register getInputRegister(InputMultiplex mux, Address regA, Address regB)
 {

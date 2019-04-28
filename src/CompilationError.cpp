@@ -17,6 +17,7 @@
 
 using namespace vc4c;
 
+// LCOV_EXCL_START
 static std::string to_sting(const CompilationStep step)
 {
     switch(step)
@@ -133,3 +134,4 @@ void CompilationError::logBacktrace()
     free(strings);
 #endif
 }
+// LCOV_EXCL_STOP

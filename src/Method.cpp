@@ -309,6 +309,7 @@ void Method::cleanLocals()
         */
 }
 
+LCOV_EXCL_START
 void Method::dumpInstructions() const
 {
     for(const BasicBlock& bb : *this)
@@ -316,6 +317,7 @@ void Method::dumpInstructions() const
         bb.dumpInstructions();
     }
 }
+LCOV_EXCL_STOP
 
 BasicBlock* Method::findBasicBlock(const Local* label)
 {

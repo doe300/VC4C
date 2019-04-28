@@ -60,12 +60,14 @@ static const std::vector<OptimizationStep> SINGLE_STEPS = {
 
 static bool runSingleSteps(const Module& module, Method& method, const Configuration& config)
 {
+    LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&](std::wostream& log) {
         log << "Running steps: ";
         for(const OptimizationStep& step : SINGLE_STEPS)
             log << step.name << ", ";
         log << logging::endl;
     });
+    LCOV_EXCL_STOP
 
     // since an optimization-step can be run on the result of the previous step,
     // we can't just pass the resulting iterator (pointing behind the optimization result) into the next
@@ -199,6 +201,7 @@ static void runOptimizationPasses(const Module& module, Method& method, const Co
         index += 100;
     }
 
+    LCOV_EXCL_START
     logging::logLazy(logging::Level::INFO, [&]() {
         logging::info() << logging::endl;
         if(numInstructions != method.countInstructions())
@@ -215,6 +218,7 @@ static void runOptimizationPasses(const Module& module, Method& method, const Co
                             << " iterations" << logging::endl;
         }
     });
+    LCOV_EXCL_STOP
     PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + index, "OptimizationIterations",
         config.additionalOptions.maxOptimizationIterations - iterationsLeft - 1);
     CPPLOG_LAZY(logging::Level::DEBUG, log << "-----" << logging::endl);

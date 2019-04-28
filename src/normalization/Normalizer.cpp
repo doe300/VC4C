@@ -77,6 +77,7 @@ static void propagateGroupUniforms(Module& module, Method& method, InstructionWa
  */
 static void checkNormalized(Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
+    LCOV_EXCL_START
     if(it.has() && !it->isNormalized())
     {
         if(it.get<intermediate::MethodCall>())
@@ -92,6 +93,7 @@ static void checkNormalized(Module& module, Method& method, InstructionWalker it
         }
         throw CompilationError(CompilationStep::NORMALIZER, "Not normalized instruction found", it->to_string());
     }
+    LCOV_EXCL_STOP
 }
 
 // NOTE: The order is on purpose and must not be changed!
@@ -242,6 +244,7 @@ void Normalizer::normalizeMethod(Module& module, Method& method) const
     optimizations::unrollWorkGroups(module, method, config);
     PROFILE_END(UnrollWorkGroups);
 
+    LCOV_EXCL_START
     logging::logLazy(logging::Level::INFO, [&]() {
         logging::info() << logging::endl;
         if(numInstructions != method.countInstructions())
@@ -255,6 +258,7 @@ void Normalizer::normalizeMethod(Module& module, Method& method) const
         }
         logging::debug() << "-----" << logging::endl;
     });
+    LCOV_EXCL_STOP
 }
 
 void Normalizer::adjustMethod(Module& module, Method& method) const
@@ -287,6 +291,7 @@ void Normalizer::adjustMethod(Module& module, Method& method) const
     PROFILE_END(ExtendBranches);
 
     PROFILE_END(AdjustmentPasses);
+    LCOV_EXCL_START
     logging::logLazy(logging::Level::INFO, [&]() {
         logging::info() << logging::endl;
         if(numInstructions != method.countInstructions())
@@ -300,6 +305,7 @@ void Normalizer::adjustMethod(Module& module, Method& method) const
         }
         logging::debug() << "-----" << logging::endl;
     });
+    LCOV_EXCL_STOP
 
     method.vpm->dumpUsage();
 }

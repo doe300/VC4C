@@ -1074,6 +1074,7 @@ void VPM::incrementCycle()
     ++currentCycle;
 }
 
+LCOV_EXCL_START
 void VPM::dumpContents() const
 {
     logging::logLazy(logging::Level::DEBUG, [&]() {
@@ -1090,6 +1091,7 @@ void VPM::dumpContents() const
         logging::debug() << logging::endl;
     });
 }
+LCOV_EXCL_STOP
 
 std::pair<Value, bool> Semaphores::increment(uint8_t index)
 {
@@ -1918,6 +1920,7 @@ static Memory fillMemory(const StableList<Global>& globalData, const EmulationDa
     return mem;
 }
 
+LCOV_EXCL_START
 static void dumpMemory(const Memory& memory, const std::string& fileName, MemoryAddress uniformAddress, bool before)
 {
     std::ofstream f(fileName, !before ? std::ios::app : std::ios::trunc);
@@ -1978,6 +1981,7 @@ std::string InstrumentationResult::to_string() const
 
     return vc4c::to_string<std::string>(parts);
 }
+LCOV_EXCL_STOP
 
 EmulationResult tools::emulate(const EmulationData& data)
 {

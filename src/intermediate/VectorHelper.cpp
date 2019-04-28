@@ -516,6 +516,7 @@ bool ElementSource::isCompatible(const ElementSource& other) const noexcept
     return true;
 }
 
+LCOV_EXCL_START
 std::string ElementSource::to_string() const
 {
     std::stringstream ss;
@@ -564,6 +565,7 @@ std::string ElementSource::to_string() const
 
     return ss.str();
 }
+LCOV_EXCL_STOP
 
 // TODO why not trivially moveable??
 static_assert(std::is_trivially_destructible<ElementSource>::value, "");

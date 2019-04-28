@@ -25,6 +25,7 @@ SemaphoreInstruction::SemaphoreInstruction(const Pack pack, const ConditionCode 
     setSemaphore(semaphore);
 }
 
+LCOV_EXCL_START
 std::string SemaphoreInstruction::toASMString() const
 {
     std::string s;
@@ -40,3 +41,4 @@ std::string SemaphoreInstruction::toASMString() const
 
     return s;
 }
+LCOV_EXCL_STOP

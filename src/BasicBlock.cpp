@@ -258,6 +258,7 @@ bool BasicBlock::isStartOfMethod() const
     return &(*method.begin()) == this;
 }
 
+LCOV_EXCL_START
 void BasicBlock::dumpInstructions() const
 {
     logging::logLazy(logging::Level::DEBUG, [&]() {
@@ -275,3 +276,4 @@ std::string BasicBlock::to_string() const
 {
     return "block " + getLabel()->getLabel()->name;
 }
+LCOV_EXCL_STOP

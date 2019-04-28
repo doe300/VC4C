@@ -103,6 +103,7 @@ MemoryInstruction::MemoryInstruction(const MemoryOperation op, Value&& dest, Val
     }
 }
 
+LCOV_EXCL_START
 std::string MemoryInstruction::to_string() const
 {
     switch(op)
@@ -121,6 +122,7 @@ std::string MemoryInstruction::to_string() const
     throw CompilationError(
         CompilationStep::GENERAL, "Unknown memory operation type", std::to_string(static_cast<unsigned>(op)));
 }
+LCOV_EXCL_STOP
 
 qpu_asm::DecoratedInstruction MemoryInstruction::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const

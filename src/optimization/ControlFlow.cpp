@@ -1343,16 +1343,20 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
                     << logging::endl);
         else
         {
-            logging::warn() << "Failed to remove empty basic block: " << sourceBlock->to_string() << logging::endl;
-            if(!sourceBlock->empty())
-            {
-                logging::warn() << "Block was not empty: " << logging::endl;
-                sourceBlock->dumpInstructions();
-            }
-            sourceBlock->forPredecessors([](InstructionWalker it) {
-                if(it.get())
-                    logging::warn() << "Block has explicit predecessor: " << it->to_string() << logging::endl;
+            LCOV_EXCL_START
+            CPPLOG_LAZY_BLOCK(logging::Level::WARNING, {
+                logging::warn() << "Failed to remove empty basic block: " << sourceBlock->to_string() << logging::endl;
+                if(!sourceBlock->empty())
+                {
+                    logging::warn() << "Block was not empty: " << logging::endl;
+                    sourceBlock->dumpInstructions();
+                }
+                sourceBlock->forPredecessors([](InstructionWalker it) {
+                    if(it.get())
+                        logging::warn() << "Block has explicit predecessor: " << it->to_string() << logging::endl;
+                });
             });
+            LCOV_EXCL_STOP
         }
 
         blockMap.emplace(pair.second, pair.first);

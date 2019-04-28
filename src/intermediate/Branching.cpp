@@ -16,10 +16,12 @@ BranchLabel::BranchLabel(const Local& label) : IntermediateInstruction(label.cre
     setArgument(0, label.createReference());
 }
 
+LCOV_EXCL_START
 std::string BranchLabel::to_string() const
 {
     return std::string("label: ") + getLabel()->name + createAdditionalInfoString();
 }
+LCOV_EXCL_STOP
 
 IntermediateInstruction* BranchLabel::copyFor(Method& method, const std::string& localPrefix) const
 {
@@ -63,6 +65,7 @@ Branch::Branch(const Local* target, const ConditionCode condCode, const Value& c
     setArgument(1, cond);
 }
 
+LCOV_EXCL_START
 std::string Branch::to_string() const
 {
     if(getCondition() == BOOL_TRUE)
@@ -73,6 +76,7 @@ std::string Branch::to_string() const
         (getCondition() != BOOL_TRUE ? std::string(" (on ") + getCondition().to_string(false, false) + ")" : "") +
         createAdditionalInfoString();
 }
+LCOV_EXCL_STOP
 
 IntermediateInstruction* Branch::copyFor(Method& method, const std::string& localPrefix) const
 {
@@ -159,6 +163,7 @@ PhiNode::PhiNode(Value&& dest, std::vector<std::pair<Value, const Local*>>&& lab
     }
 }
 
+LCOV_EXCL_START
 std::string PhiNode::to_string() const
 {
     std::string args;
@@ -173,6 +178,7 @@ qpu_asm::DecoratedInstruction PhiNode::convertToAsm(const FastMap<const Local*, 
     throw CompilationError(
         CompilationStep::CODE_GENERATION, "There should be no more phi-nodes at this point", to_string());
 }
+LCOV_EXCL_STOP
 
 bool PhiNode::isNormalized() const
 {

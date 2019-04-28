@@ -166,6 +166,7 @@ namespace vc4c
         /**
          * Creates a string representation of the bit-layout with the given elements to be considered
          */
+        LCOV_EXCL_START
         std::string createLayout(std::initializer_list<LayoutType> elements)
         {
             // 2 characters per bit
@@ -184,6 +185,7 @@ namespace vc4c
             }
             return tmp;
         }
+        LCOV_EXCL_STOP
     };
 
     /*

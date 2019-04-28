@@ -180,6 +180,7 @@ bool ValueRange::hasExplicitBoundaries() const
     return !hasDefaultBoundaries;
 }
 
+LCOV_EXCL_START
 std::string ValueRange::to_string() const
 {
     if(auto floatRange = VariantNamespace::get_if<FloatRange>(&range))
@@ -190,6 +191,7 @@ std::string ValueRange::to_string() const
             "]";
     throw CompilationError(CompilationStep::GENERAL, "Invalid range type");
 }
+LCOV_EXCL_STOP
 
 void ValueRange::update(const Optional<Value>& constant, const FastMap<const Local*, ValueRange>& ranges,
     const intermediate::IntermediateInstruction* it, Method* method)

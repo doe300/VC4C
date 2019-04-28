@@ -105,6 +105,7 @@ const LocalUser* Local::getSingleWriter() const
     return writer;
 }
 
+LCOV_EXCL_START
 std::string Local::to_string(bool withContent) const
 {
     std::string content;
@@ -119,6 +120,7 @@ std::string Local::to_string(bool withContent) const
     }
     return (type.to_string() + " ") + name + content;
 }
+LCOV_EXCL_STOP
 
 bool Local::residesInMemory() const
 {
@@ -139,6 +141,7 @@ Parameter::Parameter(const std::string& name, DataType type, const ParameterDeco
 {
 }
 
+LCOV_EXCL_START
 std::string vc4c::toString(ParameterDecorations deco)
 {
     std::string res;
@@ -181,6 +184,7 @@ std::string Parameter::to_string(bool withContent) const
     }
     return tmp;
 }
+LCOV_EXCL_STOP
 
 bool Parameter::isInputParameter() const
 {

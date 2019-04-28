@@ -149,6 +149,7 @@ static void findDependencies(BasicBlock& bb, DataDependencyGraph& graph, Instruc
 }
 
 #ifdef DEBUG_MODE
+LCOV_EXCL_START
 static std::string toEdgeLabel(const DataDependency& dependency)
 {
     std::string label;
@@ -160,6 +161,7 @@ static std::string toEdgeLabel(const DataDependency& dependency)
 
     return label.empty() ? "" : label.substr(1);
 }
+LCOV_EXCL_STOP
 #endif
 
 std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createDependencyGraph(Method& method)
@@ -173,6 +175,7 @@ std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createDependencyGraph(
     }
 
 #ifdef DEBUG_MODE
+    LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&]() {
         auto nameFunc = [](const BasicBlock* bb) -> std::string { return bb->getLabel()->getLabel()->name; };
         auto weakEdgeFunc = [](const DataDependency& dep) -> bool {
@@ -182,6 +185,7 @@ std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createDependencyGraph(
         DebugGraph<BasicBlock*, DataDependency, DataDependencyEdge::Directed>::dumpGraph<DataDependencyGraph>(
             *graph, "/tmp/vc4c-data-dependencies.dot", nameFunc, weakEdgeFunc, toEdgeLabel);
     });
+    LCOV_EXCL_STOP
 #endif
 
     PROFILE_END(createDataDependencyGraph);

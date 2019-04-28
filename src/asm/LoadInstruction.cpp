@@ -58,6 +58,7 @@ LoadInstruction::LoadInstruction(const Pack pack, const ConditionCode condAdd, c
     setImmediateShort1(value1);
 }
 
+LCOV_EXCL_START
 std::string LoadInstruction::toASMString() const
 {
     if(getType() == OpLoad::LOAD_UNSIGNED)
@@ -92,3 +93,4 @@ std::string LoadInstruction::toASMString() const
         (toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") + valString;
     return s;
 }
+LCOV_EXCL_STOP

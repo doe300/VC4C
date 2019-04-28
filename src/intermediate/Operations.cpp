@@ -57,11 +57,13 @@ Operation::Operation(OpCode opCode, Value&& dest, Value&& arg0, Value&& arg1, Co
     setArgument(1, std::move(arg1));
 }
 
+LCOV_EXCL_START
 std::string Operation::to_string() const
 {
     return (getOutput()->to_string(true) + " = ") + (std::string(op.name) + " ") + getFirstArg().to_string() +
         (getSecondArg() ? std::string(", ") + assertArgument(1).to_string() : "") + createAdditionalInfoString();
 }
+LCOV_EXCL_STOP
 
 IntermediateInstruction* Operation::copyFor(Method& method, const std::string& localPrefix) const
 {
@@ -418,11 +420,13 @@ IntrinsicOperation::IntrinsicOperation(
     setArgument(1, std::move(arg1));
 }
 
+LCOV_EXCL_START
 std::string IntrinsicOperation::to_string() const
 {
     return (getOutput()->to_string(true) + " = ") + (opCode + " ") + getFirstArg().to_string() +
         (getSecondArg() ? std::string(", ") + assertArgument(1).to_string() : "") + createAdditionalInfoString();
 }
+LCOV_EXCL_STOP
 
 IntermediateInstruction* IntrinsicOperation::copyFor(Method& method, const std::string& localPrefix) const
 {
@@ -474,6 +478,7 @@ MoveOperation::MoveOperation(Value&& dest, Value&& arg, const ConditionCode cond
     setArgument(0, std::move(arg));
 }
 
+LCOV_EXCL_START
 std::string MoveOperation::to_string() const
 {
     if(getSource().getLiteralValue() &&
@@ -490,6 +495,7 @@ std::string MoveOperation::to_string() const
             createAdditionalInfoString();
     return (getOutput()->to_string(true) + " = ") + getSource().to_string() + createAdditionalInfoString();
 }
+LCOV_EXCL_STOP
 
 IntermediateInstruction* MoveOperation::copyFor(Method& method, const std::string& localPrefix) const
 {
@@ -586,6 +592,7 @@ VectorRotation::VectorRotation(
     setArgument(1, std::move(offset));
 }
 
+LCOV_EXCL_START
 std::string VectorRotation::to_string() const
 {
     // this is only for display purposes, the rotation register is handled correctly
@@ -593,6 +600,7 @@ std::string VectorRotation::to_string() const
     return (getOutput()->to_string(true) + " = ") + (getSource().to_string() + " ") + offset.to_string() +
         createAdditionalInfoString();
 }
+LCOV_EXCL_STOP
 
 IntermediateInstruction* VectorRotation::copyFor(Method& method, const std::string& localPrefix) const
 {
@@ -657,6 +665,7 @@ bool VectorRotation::isSimpleMove() const
     return false;
 }
 
+LCOV_EXCL_START
 static std::string toTypeString(DelayType delay)
 {
     switch(delay)
@@ -679,6 +688,7 @@ static std::string toTypeString(DelayType delay)
     throw CompilationError(
         CompilationStep::GENERAL, "Invalid nop delay type", std::to_string(static_cast<unsigned>(delay)));
 }
+LCOV_EXCL_STOP
 
 Nop::Nop(const DelayType type, const Signaling signal) : IntermediateInstruction(Optional<Value>{}), type(type)
 {
@@ -686,10 +696,12 @@ Nop::Nop(const DelayType type, const Signaling signal) : IntermediateInstruction
     this->canBeCombined = false;
 }
 
+LCOV_EXCL_START
 std::string Nop::to_string() const
 {
     return std::string("nop (") + toTypeString(type) + ")" + createAdditionalInfoString();
 }
+LCOV_EXCL_STOP
 
 IntermediateInstruction* Nop::copyFor(Method& method, const std::string& localPrefix) const
 {
@@ -765,10 +777,12 @@ void CombinedOperation::replaceLocal(const Local* oldLocal, const Local* newLoca
     op2->replaceLocal(oldLocal, newLocal, type);
 }
 
+LCOV_EXCL_START
 std::string CombinedOperation::to_string() const
 {
     return (op1->to_string() + " and ") + op2->to_string();
 }
+LCOV_EXCL_STOP
 
 qpu_asm::DecoratedInstruction CombinedOperation::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const

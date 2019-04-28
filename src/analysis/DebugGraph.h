@@ -13,6 +13,7 @@
 #include <functional>
 
 #ifdef DEBUG_MODE
+// LCOV_EXCL_START
 
 namespace vc4c
 {
@@ -156,5 +157,6 @@ namespace vc4c
     };
 
 } /* namespace vc4c */
+// LCOV_EXCL_STOP
 #endif /* DEBUG_MODE */
 #endif /* DEBUG_GRAPH_H */

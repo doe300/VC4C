@@ -859,6 +859,7 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
     }
 
 #ifdef DEBUG_MODE
+    LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&]() {
         if(block.size() > 12)
         {
@@ -874,6 +875,7 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
                 weakEdgeFunc, edgeLabelFunc);
         }
     });
+    LCOV_EXCL_STOP
 #endif
 
     PROFILE_END(createDependencyGraph);

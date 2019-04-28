@@ -25,6 +25,7 @@ MethodCall::MethodCall(Value&& dest, std::string&& methodName, std::vector<Value
         setArgument(i, std::move(args[i]));
 }
 
+LCOV_EXCL_START
 std::string MethodCall::to_string() const
 {
     std::string signature = (getReturnType() == TYPE_VOID ? "" : getOutput()->to_string(true) + " = ") +
@@ -41,6 +42,7 @@ std::string MethodCall::to_string() const
 
     return signature + createAdditionalInfoString();
 }
+LCOV_EXCL_STOP
 
 IntermediateInstruction* MethodCall::copyFor(Method& method, const std::string& localPrefix) const
 {
@@ -108,6 +110,7 @@ Return::Return(Value&& val) : IntermediateInstruction(Optional<Value>{})
 
 Return::Return() : IntermediateInstruction(Optional<Value>{}) {}
 
+LCOV_EXCL_START
 std::string Return::to_string() const
 {
     return std::string("return ") + (getReturnValue() ? getReturnValue().to_string() : "") +
@@ -125,6 +128,7 @@ qpu_asm::DecoratedInstruction Return::convertToAsm(const FastMap<const Local*, R
     throw CompilationError(
         CompilationStep::LABEL_REGISTER_MAPPING, "There should be no more returns at this point", to_string());
 }
+LCOV_EXCL_STOP
 
 bool Return::mapsToASMInstruction() const
 {

@@ -18,6 +18,8 @@
 #include <mutex>
 #endif
 
+// LCOV_EXCL_START
+
 using namespace vc4c;
 
 using Clock = std::chrono::system_clock;
@@ -146,3 +148,4 @@ void profiler::increaseCounter(const std::size_t index, std::string name, const 
     counters[index].fileName = std::move(file);
     counters[index].lineNumber = line;
 }
+// LCOV_EXCL_STOP

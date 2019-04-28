@@ -9,6 +9,7 @@
 #include "../helper.h"
 
 #ifdef DEBUG_MODE
+LCOV_EXCL_START
 
 using namespace vc4c;
 
@@ -58,5 +59,5 @@ void vc4c::printNode(std::ofstream& file, uintptr_t ID, const std::string& name)
 {
     file << ID << " [label=" << cleanName(name) << "];" << std::endl;
 }
-
+LCOV_EXCL_STOP
 #endif

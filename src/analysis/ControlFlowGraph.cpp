@@ -20,6 +20,7 @@ bool CFGRelation::operator==(const CFGRelation& other) const
     return predecessors == other.predecessors;
 }
 
+LCOV_EXCL_START
 std::string CFGRelation::getLabel() const
 {
     if(std::all_of(predecessors.begin(), predecessors.end(), [](const auto& pair) -> bool { return !pair.second; }))
@@ -38,6 +39,7 @@ std::string CFGRelation::getLabel() const
             return (s.empty() ? s : (s + ", ")) + converter(pair);
         });
 }
+LCOV_EXCL_STOP
 
 InstructionWalker CFGRelation::getPredecessor(BasicBlock* source) const
 {
@@ -230,6 +232,7 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops()
         }
     }
 
+    LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&]() {
         for(const auto& loop : loops)
         {
@@ -239,10 +242,12 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops()
             logging::debug() << logging::endl;
         }
     });
+    LCOV_EXCL_STOP
 
     return loops;
 }
 
+LCOV_EXCL_START
 void ControlFlowGraph::dumpGraph(const std::string& path) const
 {
 #ifdef DEBUG_MODE
@@ -257,6 +262,7 @@ void ControlFlowGraph::dumpGraph(const std::string& path) const
         edgeLabelFunc);
 #endif
 }
+LCOV_EXCL_STOP
 
 void ControlFlowGraph::updateOnBlockInsertion(Method& method, BasicBlock& newBlock)
 {

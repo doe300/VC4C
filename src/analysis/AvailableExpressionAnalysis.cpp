@@ -76,6 +76,7 @@ AvailableExpressions AvailableExpressionAnalysis::analyzeAvailableExpressionsWra
     return analyzeAvailableExpressions(instr, previousExpressions, cache, std::numeric_limits<unsigned>::max()).first;
 }
 
+LCOV_EXCL_START
 std::string AvailableExpressionAnalysis::to_string(const AvailableExpressions& expressions)
 {
     if(expressions.empty())
@@ -88,3 +89,4 @@ std::string AvailableExpressionAnalysis::to_string(const AvailableExpressions& e
         s << ", " << it->first.to_string();
     return s.str();
 }
+LCOV_EXCL_STOP

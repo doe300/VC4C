@@ -35,8 +35,20 @@
 // Calling this function several times with the same arguments is guaranteed to return the same value
 #define CONST __attribute__((const))
 
+/*
+ * For usage with LCOV, the occurrence of the strings "LCOV_EXCL_START" and "LCOV_EXCL_STOP" inside the source file
+ * excludes the contained block from coverage.
+ * NOTE: The strings must be in the source file before macro preprocessing, e.g. as macro-name or comment.
+ *
+ * To make their meaning clear, we define them as macros here to be used in the code blocks to skip coverage collection
+ * for.
+ */
+#define LCOV_EXCL_START /* << LCOV_EXCL_START - This block is excluded from code coverage via lcov */
+#define LCOV_EXCL_STOP  /* << LCOV_EXCL_STOP - end of lcov exclusion block */
+
 namespace vc4c
 {
+    LCOV_EXCL_START
     /*
      * Converts a container (defaults to std::vector) of values to a single string separated by the given string.
      *
@@ -90,6 +102,7 @@ namespace vc4c
         }
         return tmp.substr(0, tmp.size() - separator.size());
     }
+    LCOV_EXCL_STOP
 
     /*
      * Asserts a pointer to be non-null

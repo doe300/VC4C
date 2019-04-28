@@ -120,6 +120,7 @@ void runPrecompiler(const std::string& command, std::istream* inputStream, std::
     int status = runProcess(command, inputStream, outputStream, &stderr);
     if(status == 0) // success
     {
+        LCOV_EXCL_START
         logging::logLazy(logging::Level::WARNING, [&]() {
             if(!stderr.str().empty())
             {
@@ -127,6 +128,7 @@ void runPrecompiler(const std::string& command, std::istream* inputStream, std::
                 logging::warn() << stderr.str() << logging::endl;
             }
         });
+        LCOV_EXCL_STOP
         return;
     }
     if(!stderr.str().empty())

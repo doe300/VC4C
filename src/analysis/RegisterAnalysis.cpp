@@ -233,6 +233,7 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
     return values;
 }
 
+LCOV_EXCL_START
 std::string UsedElementsAnalysis::to_string(const UsedElements& registerElements)
 {
     if(registerElements.empty())
@@ -245,3 +246,4 @@ std::string UsedElementsAnalysis::to_string(const UsedElements& registerElements
         s << ", " << it->first->to_string() << " (" << it->second.to_string() << ")";
     return s.str();
 }
+LCOV_EXCL_STOP

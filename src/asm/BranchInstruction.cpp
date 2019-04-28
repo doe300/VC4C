@@ -23,6 +23,7 @@ BranchInstruction::BranchInstruction(const BranchCond cond, const BranchRel rela
     setImmediate(offset);
 }
 
+LCOV_EXCL_START
 std::string BranchInstruction::toASMString() const
 {
     auto s = std::string("br") + (getBranchRelative() == BranchRel::BRANCH_RELATIVE ? "r" : "a") +
@@ -38,3 +39,4 @@ std::string BranchInstruction::toASMString() const
                 "");
     return s;
 }
+LCOV_EXCL_STOP

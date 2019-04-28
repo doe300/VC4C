@@ -85,11 +85,13 @@ std::unique_ptr<LifetimeGraph> LifetimeGraph::createLifetimeGraph(Method& method
     });
 
 #ifdef DEBUG_MODE
+    LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&]() {
         auto nameFunc = [](const Local* loc) -> std::string { return loc->name; };
         DebugGraph<const Local*, LifetimeRelation, Directionality::UNDIRECTED>::dumpGraph<LifetimeGraph>(
             *graph, "/tmp/vc4c-lifetimes.dot", nameFunc);
     });
+    LCOV_EXCL_STOP
 #endif
 
     PROFILE_END(createLifetimeGraph);
