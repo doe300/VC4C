@@ -1163,8 +1163,10 @@ static AccessRanges determineAccessRanges(Method& method)
                             }
                             else
                             {
-                                throw CompilationError(CompilationStep::OPTIMIZER,
-                                    "Unhandled case of memory access: ", trackIt->to_string());
+                                CPPLOG_LAZY(logging::Level::DEBUG,
+                                    log << "Unhandled case of memory access: " << trackIt->to_string());
+                                it.nextInBlock();
+                                continue;
                             }
                             range.baseAddressAdd = trackIt;
                         }
@@ -1354,6 +1356,13 @@ static void rewriteIndexCalculation(Method& method, MemoryAccessRange& range)
 
 bool optimizations::cacheWorkGroupDMAAccess(const Module& module, Method& method, const Configuration& config)
 {
+    if(method.metaData.getWorkGroupSize() == 1)
+    {
+        // no need to do anything, if there is only 1 work-item
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Skipping work-group caching for work-groups of fixed item count of 1");
+        return false;
+    }
     auto memoryAccessRanges = determineAccessRanges(method);
     for(auto& pair : memoryAccessRanges)
     {

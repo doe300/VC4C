@@ -230,6 +230,8 @@ namespace vc4c
             std::pair<Value, bool> increment(uint8_t index);
             std::pair<Value, bool> decrement(uint8_t index);
 
+            void checkAllZero() const;
+
         private:
             std::array<uint8_t, 16> counter;
         };

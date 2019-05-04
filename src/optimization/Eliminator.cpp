@@ -846,6 +846,11 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Rewriting expression '" << expr->to_string() << "' to '" << newExpr.to_string() << "'"
                             << logging::endl);
+
+                    if(exprIt != expressions.end() && exprIt->second.first == it.get())
+                        // reset this expression, since the mapped instruction will be overwritten
+                        expressions.erase(exprIt);
+
                     if(newExpr.code.numOperands == 1)
                         it.reset(new intermediate::Operation(newExpr.code, it->getOutput().value(), newExpr.arg0));
                     else

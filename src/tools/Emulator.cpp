@@ -1100,7 +1100,12 @@ std::pair<Value, bool> Semaphores::increment(uint8_t index)
     if(cnt == 15)
         return std::make_pair(Value(SmallImmediate(15), TYPE_INT8), false);
     ++cnt;
-    return std::make_pair(Value(SmallImmediate(cnt), TYPE_INT8), true);
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Semaphore " << static_cast<unsigned>(index) << " increased to: " << static_cast<unsigned>(cnt)
+            << logging::endl);
+    // Broadcom specification, page 33: "The instruction otherwise behaves like a 32-bit load immediate instruction, so
+    // the ALU outputs will not generally be useful." -> It "loads" the lower part of the opcode
+    return std::make_pair(Value(Literal(static_cast<uint32_t>(cnt)), TYPE_INT8), true);
 }
 
 std::pair<Value, bool> Semaphores::decrement(uint8_t index)
@@ -1110,7 +1115,24 @@ std::pair<Value, bool> Semaphores::decrement(uint8_t index)
     if(cnt == 0)
         return std::make_pair(INT_ZERO, false);
     --cnt;
-    return std::make_pair(Value(SmallImmediate(cnt), TYPE_INT8), true);
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Semaphore " << static_cast<unsigned>(index) << " decreased to: " << static_cast<unsigned>(cnt)
+            << logging::endl);
+    // Broadcom specification, page 33: "The instruction otherwise behaves like a 32-bit load immediate instruction, so
+    // the ALU outputs will not generally be useful." -> It "loads" the lower part of the opcode
+    return std::make_pair(Value(Literal((1u << 4) | static_cast<uint32_t>(cnt)), TYPE_INT8), true);
+}
+
+void Semaphores::checkAllZero() const
+{
+    for(unsigned i = 0; i < counter.size(); ++i)
+    {
+        if(counter[i] != 0)
+        {
+            CPPLOG_LAZY(logging::Level::ERROR,
+                log << "Semaphore " << i << " (" << counter[i] << ") is not reset to zero!" << logging::endl);
+        }
+    }
 }
 
 uint32_t QPU::getCurrentCycle() const
@@ -1225,10 +1247,12 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
         {
             bool dontStall = true;
             Value result = UNDEFINED_VALUE;
-            if(semaphore->getIncrementSemaphore())
-                std::tie(result, dontStall) = semaphores.increment(static_cast<uint8_t>(semaphore->getSemaphore()));
-            else
+            if(semaphore->getAcquire())
+                // NOTE: "acquire" is decrement, see SemaphoreInstruction#getAcquire() function documentation
                 std::tie(result, dontStall) = semaphores.decrement(static_cast<uint8_t>(semaphore->getSemaphore()));
+            else
+                std::tie(result, dontStall) = semaphores.increment(static_cast<uint8_t>(semaphore->getSemaphore()));
+
             if(dontStall)
             {
                 if(semaphore->getPack().hasEffect())
@@ -1830,6 +1854,13 @@ bool tools::emulate(std::vector<qpu_asm::Instruction>::const_iterator firstInstr
         }
     }
     PROFILE_END(Emulation);
+
+    // Run some sanity checks
+    semaphores.checkAllZero();
+    if(mutex.isLocked())
+    {
+        CPPLOG_LAZY(logging::Level::ERROR, log << "Hardware mutex was not unlocked!" << logging::endl);
+    }
 
     CPPLOG_LAZY(logging::Level::INFO,
         log << "Emulation " << (success ? "finished" : "timed out") << " for " << uniformAddresses.size()

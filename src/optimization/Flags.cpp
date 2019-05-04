@@ -67,6 +67,11 @@ static bool rewriteSettingOfFlags(
                         log << "Making instruction with constant condition unconditional: " << (*condIt)->to_string()
                             << logging::endl);
                     (*condIt)->conditional = COND_ALWAYS;
+                    if(auto branch = condIt->get<intermediate::Branch>())
+                        // just for cosmetics, reset branch condition to "bool true"
+                        // XXX since this removes some branches/makes some unconditional, it would be useful to re-run
+                        // the basic-block/branching optimizations afterwards
+                        branch->replaceValue(branch->getCondition(), BOOL_TRUE, LocalUse::Type::READER);
                     changedInstructions = true;
                     ++condIt;
                 }
