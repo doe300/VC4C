@@ -603,6 +603,45 @@ namespace vc4c
     using PrecalculatedValue = std::pair<Optional<Value>, VectorFlags>;
 
     /*
+     * Container for markers denoting opcode flag behavior, i.e. which flag is set when.
+     *
+     * Values of this enumeration are supposed to be OR'ed (bit-field)
+     */
+    enum class FlagBehavior : uint16_t
+    {
+        // The behavior of this opcode is not known
+        UNKNOWN = 0x0,
+        // This opcode does not set any flags
+        NONE = 0x1,
+        // Zero flag is never set
+        ZERO_NEVER = 0x2,
+        // Zero flag is set for result == 0x00000000
+        ZERO_ALL_ZEROS = 0x4,
+        // Zero flag is set for result = 0x80000000 (floating point negative zero)
+        // XXX Test whether this is applied anywhere!
+        ZERO_RESULT_NEGATIVE_ZERO = 0x8,
+        // Negative flag is never set
+        NEGATIVE_NEVER = 0x10,
+        // Negative flag is set for signed result < 0 (word-MSB set), same for integer and float
+        NEGATIVE_MSB_SET = 0x20,
+        // Carry flag is never set
+        CARRY_NEVER = 0x100,
+        // Carry flag is set if the operation would set the 33th bit (e.g. -1 + -1 / 0xFFFFFFFF + 0xFFFFFFFF =
+        // 0x1FFFFFFFE)
+        CARRY_WORD_OVERFLOW = 0x200,
+        // Carry flag is set if the operation would set the -1th bit (e.g. 1 >> 1)
+        CARRY_WORD_UNDERFLOW = 0x400,
+        // Carry flag is set if the first (signed integer/float) operand is greater than the second operand
+        CARRY_FIRST_GREATER_SECOND = 0x800,
+        // Carry flag is set if the absolute value (float!) of the first operand is greater than the absolute value of
+        // the second operand
+        CARRY_ABSOLUTE_FIRST_GREATER_SECOND = 0x1000,
+        // Carry flag is set if the result is greater than (float/signed) zero (at least 1 bit set,
+        // word-MSB not set)
+        CARRY_POSITIVE = 0x2000,
+    };
+
+    /*
      * The operation-code being executed by ALU instructions.
      *
      * Most of the op-codes can only be executed on one of the ALUs, with a few exceptions.
@@ -633,11 +672,16 @@ namespace vc4c
          * Whether the operation returns a floating-point value
          */
         bool returnsFloat;
+        /*
+         * Which flags are set when for this opcode
+         */
+        FlagBehavior flagBehavior;
 
         constexpr OpCode(const char* name, unsigned char opAdd, unsigned char opMul, unsigned char numOperands,
-            bool acceptsFloat, bool returnsFloat) noexcept :
+            bool acceptsFloat, bool returnsFloat, FlagBehavior flagBehavior) noexcept :
             name(name),
-            opAdd(opAdd), opMul(opMul), numOperands(numOperands), acceptsFloat(acceptsFloat), returnsFloat(returnsFloat)
+            opAdd(opAdd), opMul(opMul), numOperands(numOperands), acceptsFloat(acceptsFloat),
+            returnsFloat(returnsFloat), flagBehavior(flagBehavior)
         {
         }
 
@@ -770,20 +814,20 @@ namespace vc4c
          * The left absorbing element is a value used as the left operand, which results in the result being the
          * absorbing element (e.g. 0 for multiplications and for and)
          */
-        static Optional<Value> getLeftAbsorbingElement(const OpCode code);
+        static Optional<Value> getLeftAbsorbingElement(const OpCode& code);
         /*
          * Returns the right absorbing element for the given op-code
          *
          * The right absorbing element is a value used as the right operand, which results in the result being the
          * absorbing element (e.g. 0 for multiplications and for and)
          */
-        static Optional<Value> getRightAbsorbingElement(const OpCode code);
+        static Optional<Value> getRightAbsorbingElement(const OpCode& code);
     };
 
     /*
      * A no-op on both ALUs
      */
-    static constexpr OpCode OP_NOP{"nop", 0, 0, 0, false, false};
+    static constexpr OpCode OP_NOP{"nop", 0, 0, 0, false, false, FlagBehavior::NONE};
     /*
      * Floating-point addition
      *
@@ -796,7 +840,8 @@ namespace vc4c
      * - -Inf + -Inf = -Inf
      * -> TODO simply does "normal" float add?! So different NaN codes result in different result NaN vs. Inf?
      */
-    static constexpr OpCode OP_FADD{"fadd", 1, 0, 2, true, true};
+    static constexpr OpCode OP_FADD{"fadd", 1, 0, 2, true, true,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_POSITIVE)};
     /*
      * Floating-point subtraction
      *
@@ -808,7 +853,8 @@ namespace vc4c
      * - Inf - -Inf = Inf
      * - -Inf - -Inf = Inf
      */
-    static constexpr OpCode OP_FSUB{"fsub", 2, 0, 2, true, true};
+    static constexpr OpCode OP_FSUB{"fsub", 2, 0, 2, true, true,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_POSITIVE)};
     /*
      * Floating-point minimum function
      *
@@ -824,7 +870,9 @@ namespace vc4c
      * -> -Inf < Inf < NaN
      * -> Simple "normal" fmin/fmax: NaN (0x7F8xxxxx) > Inf (0x7F800000)
      */
-    static constexpr OpCode OP_FMIN{"fmin", 3, 0, 2, true, true};
+    static constexpr OpCode OP_FMIN{"fmin", 3, 0, 2, true, true,
+        add_flag(
+            FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_FIRST_GREATER_SECOND)};
     /*
      * Floating-point maximum
      *
@@ -840,7 +888,9 @@ namespace vc4c
      * -> -Inf < Inf < NaN
      * -> Simple "normal" fmin/fmax: NaN (0x7F8xxxxx) > Inf (0x7F800000)
      */
-    static constexpr OpCode OP_FMAX{"fmax", 4, 0, 2, true, true};
+    static constexpr OpCode OP_FMAX{"fmax", 4, 0, 2, true, true,
+        add_flag(
+            FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_FIRST_GREATER_SECOND)};
     /*
      * Floating-point minimum of absolute values
      *
@@ -855,7 +905,9 @@ namespace vc4c
      * - fminabs(-Inf, -Inf) = Inf
      * -> Simple "normal" fminabs/fmaxabs: NaN (0x7F8xxxxx) > Inf (0x7F800000)
      */
-    static constexpr OpCode OP_FMINABS{"fminabs", 5, 0, 2, true, true};
+    static constexpr OpCode OP_FMINABS{"fminabs", 5, 0, 2, true, true,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_NEVER,
+            FlagBehavior::CARRY_ABSOLUTE_FIRST_GREATER_SECOND)};
     /*
      * Floating-point maximum of absolute values
      *
@@ -870,7 +922,9 @@ namespace vc4c
      * - fmaxabs(-Inf, -Inf) = Inf
      * -> Simple "normal" fminabs/fmaxabs: NaN (0x7F8xxxxx) > Inf (0x7F800000)
      */
-    static constexpr OpCode OP_FMAXABS{"fmaxabs", 6, 0, 2, true, true};
+    static constexpr OpCode OP_FMAXABS{"fmaxabs", 6, 0, 2, true, true,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_NEVER,
+            FlagBehavior::CARRY_ABSOLUTE_FIRST_GREATER_SECOND)};
     /*
      * Converts floating-point to signed integer
      *
@@ -880,75 +934,94 @@ namespace vc4c
      * - ftoi(-Inf) = 0
      * -> any out-of-bounds value is flushed to zero
      */
-    static constexpr OpCode OP_FTOI{"ftoi", 7, 0, 1, true, false};
+    static constexpr OpCode OP_FTOI{"ftoi", 7, 0, 1, true, false,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)};
     /*
      * Converts Signed integer to floating-point
      */
-    static constexpr OpCode OP_ITOF{"itof", 8, 0, 1, false, true};
+    static constexpr OpCode OP_ITOF{"itof", 8, 0, 1, false, true,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)};
     /*
      * Integer addition
      */
-    static constexpr OpCode OP_ADD{"add", 12, 0, 2, false, false};
+    static constexpr OpCode OP_ADD{"add", 12, 0, 2, false, false,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_WORD_OVERFLOW)};
     /*
      * Integer subtraction
      */
-    static constexpr OpCode OP_SUB{"sub", 13, 0, 2, false, false};
+    static constexpr OpCode OP_SUB{"sub", 13, 0, 2, false, false,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_WORD_OVERFLOW)};
     /*
      * Integer right shift (unsigned)
      */
-    static constexpr OpCode OP_SHR{"shr", 14, 0, 2, false, false};
+    static constexpr OpCode OP_SHR{"shr", 14, 0, 2, false, false,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_WORD_UNDERFLOW)};
     /*
      * Integer arithmetic right shift (signed)
      */
-    static constexpr OpCode OP_ASR{"asr", 15, 0, 2, false, false};
+    static constexpr OpCode OP_ASR{"asr", 15, 0, 2, false, false,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_WORD_UNDERFLOW)};
     /*
      * Integer rotate right
      */
-    static constexpr OpCode OP_ROR{"ror", 16, 0, 2, false, false};
+    static constexpr OpCode OP_ROR{"ror", 16, 0, 2, false, false,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)};
     /*
      * Integer left shift
      */
-    static constexpr OpCode OP_SHL{"shl", 17, 0, 2, false, false};
+    static constexpr OpCode OP_SHL{"shl", 17, 0, 2, false, false,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_WORD_OVERFLOW)};
     /*
      * Integer minimum function
      */
-    static constexpr OpCode OP_MIN{"min", 18, 0, 2, false, false};
+    static constexpr OpCode OP_MIN{"min", 18, 0, 2, false, false,
+        add_flag(
+            FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_FIRST_GREATER_SECOND)};
     /*
      * Integer maximum function
      */
-    static constexpr OpCode OP_MAX{"max", 19, 0, 2, false, false};
+    static constexpr OpCode OP_MAX{"max", 19, 0, 2, false, false,
+        add_flag(
+            FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_FIRST_GREATER_SECOND)};
     /*
      * Bitwise AND
      */
-    static constexpr OpCode OP_AND{"and", 20, 0, 2, false, false};
+    static constexpr OpCode OP_AND{"and", 20, 0, 2, false, false,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)};
     /*
      * Bitwise OR
      */
-    static constexpr OpCode OP_OR{"or", 21, 0, 2, false, false};
+    static constexpr OpCode OP_OR{"or", 21, 0, 2, false, false,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)};
     /*
      * Bitwise XOR
      */
-    static constexpr OpCode OP_XOR{"xor", 22, 0, 2, false, false};
+    static constexpr OpCode OP_XOR{"xor", 22, 0, 2, false, false,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)};
     /*
      * Bitwise unary NOT
      */
-    static constexpr OpCode OP_NOT{"not", 23, 0, 1, false, false};
+    static constexpr OpCode OP_NOT{"not", 23, 0, 1, false, false,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)};
     /*
      * Count leading zeroes
      */
-    static constexpr OpCode OP_CLZ{"clz", 24, 0, 1, false, false};
+    static constexpr OpCode OP_CLZ{"clz", 24, 0, 1, false, false,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_NEVER, FlagBehavior::CARRY_NEVER)};
     /*
      * Integer addition with saturation per 8-bit element
      *
      * The addition is saturated unsigned char, i.e. clamp(a + b, 0, 255)
      */
-    static constexpr OpCode OP_V8ADDS{"v8adds", 30, 6, 2, false, false};
+    static constexpr OpCode OP_V8ADDS{"v8adds", 30, 6, 2, false, false,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)};
     /*
      * Integer subtraction with saturation per 8-bit element
      *
      * The subtraction is saturated unsigned char, i.e. clamp(a - b, 0, 255)
      */
-    static constexpr OpCode OP_V8SUBS{"v8subs", 31, 7, 2, false, false};
+    static constexpr OpCode OP_V8SUBS{"v8subs", 31, 7, 2, false, false,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)};
     /*
      * Floating-point multiplication
      *
@@ -960,27 +1033,32 @@ namespace vc4c
      * - fmul(Inf, -Inf) = -Inf
      * - fmul(-Inf, -Inf) = Inf
      */
-    static constexpr OpCode OP_FMUL{"fmul", 0, 1, 2, true, true};
+    static constexpr OpCode OP_FMUL{"fmul", 0, 1, 2, true, true,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)};
     /*
      * 24-bit integer multiplication
      */
-    static constexpr OpCode OP_MUL24{"mul24", 0, 2, 2, false, false};
+    static constexpr OpCode OP_MUL24{"mul24", 0, 2, 2, false, false,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_WORD_OVERFLOW)};
     /*
      * Multiply two vectors of 8-bit values in the range [0, 1.0]
      */
-    static constexpr OpCode OP_V8MULD{"v8muld", 0, 3, 2, false, false};
+    static constexpr OpCode OP_V8MULD{"v8muld", 0, 3, 2, false, false,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)};
     /*
      * Integer minimum value per 8-bit element
      *
      * This is the unsigned char minimum
      */
-    static constexpr OpCode OP_V8MIN{"v8min", 0, 4, 2, false, false};
+    static constexpr OpCode OP_V8MIN{"v8min", 0, 4, 2, false, false,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)};
     /*
      * Integer maximum value per 8-bit element
      *
      * This is the unsigned char maximum
      */
-    static constexpr OpCode OP_V8MAX{"v8max", 0, 5, 2, false, false};
+    static constexpr OpCode OP_V8MAX{"v8max", 0, 5, 2, false, false,
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)};
 
     /*!
      * Loads a 32-bit constant value into the output register

@@ -20,7 +20,8 @@ jobs:
           command: mkdir build && cd build && sudo cmake ../ -DBUILD_NUMBER=$CIRCLE_BUILD_NUM -DCROSS_COMPILE=ON -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=ON -DSPIRV_FRONTEND=OFF -DSPIRV_COMPILER_ROOT=/tmp/skip-searching -DSYSROOT_CROSS=/home/idein/cross -DCROSS_COMPILER_PATH=${HOME}/x-tools/armv6-rpi-linux-gnueabihf/bin -DCROSS_COMPILER_PREFIX="armv6-rpi-linux-gnueabihf-"
       - run:
           name: make
-          command: cd build && sudo make -j`nproc`
+          # TODO CicleCI runs out of memory
+          command: cd build && sudo make # -j`nproc`
       - run:
           name: deb-packing
           command: cd build && sudo cpack -G DEB && sudo cpack -G DEB --config ../VC4CLStdLib/CPackConfig.cmake
@@ -98,7 +99,8 @@ jobs:
           command: cd build && make spirv-tools-project spirv-tools-project-build
       - run:
           name: make
-          command: cd build && make -j`nproc`
+          # TODO CicleCI runs out of memory
+          command: cd build && make # -j`nproc`
       - run:
           name: deb-packing
           command: cd build && cpack -G DEB && cpack -G DEB --config ../VC4CLStdLib/CPackConfig.cmake
@@ -136,7 +138,7 @@ jobs:
       - run: dpkg -i build/vc4c-0.4-Linux.deb
       - run: ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
       - run: ldconfig
-      - run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators --emulate-conversions --emulate-geometric --emulate-memory --emulate-relational --emulate-vector --test-instructions
+      - run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators --emulate-geometric --emulate-memory --emulate-relational --emulate-vector --test-instructions
       - run: dpkg -r vc4c
       - run: dpkg -r vc4cl-stdlib
   test-spirv:
@@ -149,7 +151,7 @@ jobs:
       - run: dpkg -i build/vc4c-0.4-Linux.deb
       - run: ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
       - run: ldconfig
-      - run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators --emulate-conversions --emulate-vector
+      - run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators --emulate-vector
       - run: dpkg -r vc4c
       - run: dpkg -r vc4cl-stdlib
 workflows:
@@ -158,12 +160,11 @@ workflows:
     jobs:
       - check-code-style
       - build
-      # TODO Disables, since it takes to much resources and Circle CI aborts the compilation
-      # - build-spirv
+      - build-spirv
       - cross
       - test:
           requires:
             - build
-      # - test-spirv:
-      #     requires:
-      #       - build-spirv
+      - test-spirv:
+          requires:
+            - build-spirv

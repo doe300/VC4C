@@ -8,6 +8,7 @@
 
 #ifdef SPIRV_FRONTEND
 #include "../intermediate/Helper.h"
+#include "../intermediate/VectorHelper.h"
 #include "../intermediate/TypeConversions.h"
 #include "../intrinsics/Images.h"
 #include "../intrinsics/Operators.h"

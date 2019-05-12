@@ -24,7 +24,7 @@ namespace vc4c
         /*
          * Additional flags set for individual instructions
          */
-        enum class InstructionDecorations
+        enum class InstructionDecorations : uint32_t
         {
             // There are no decorations set for this instruction
             NONE = 0,
@@ -69,7 +69,16 @@ namespace vc4c
             // The instruction calculates VPM read configuration
             VPM_READ_CONFIGURATION = 1 << 19,
             // The instruction calculates VPM write configuration
-            VPM_WRITE_CONFIGURATION = 1 << 20
+            VPM_WRITE_CONFIGURATION = 1 << 20,
+            // The behavior of the instruction in case of a signed integer overflow is undefined. Corresponds to LLVM
+            // "nsw"
+            SIGNED_OVERFLOW_IS_UB = 1 << 21,
+            // The behavior of the instruction of an unsigned overflow occurs. Corresponds to LLVM "nuw"
+            UNSIGNED_OVERFLOW_IS_UB = 1 << 22,
+            // The division (signed or unsigned) or right shift (arithmetic or logical) is exact, e.g. there is no
+            // remainder (for division) and no non-zero bits are shifted out of the value. I.e. for exact division (a /
+            // b) * b == a and for shifts (a >> b) << b == a.
+            EXACT_OPERATION = 1 << 23
         };
 
         std::string toString(InstructionDecorations decoration);

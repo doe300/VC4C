@@ -9,16 +9,22 @@
 
 #include "cpptest.h"
 
+#include "VC4C.h"
+
 class TestFrontends : public Test::Suite
 {
 public:
-	TestFrontends();
-	~TestFrontends() override;
+    TestFrontends();
+    ~TestFrontends() override;
 
-	void testSPIRVCapabilitiesSupport();
-	void testLinking();
-	void testSourceTypeDetection();
-	void testDisassembler();
+    void testSPIRVCapabilitiesSupport();
+    void testLinking();
+    void testSourceTypeDetection();
+    void testDisassembler();
+    void testCompilation(vc4c::SourceType type);
+
+private:
+    void testEmulation(std::stringstream& binary);
 };
 
 #endif /* TEST_SPIRVFRONTEND_H */

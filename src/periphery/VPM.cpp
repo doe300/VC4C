@@ -873,7 +873,7 @@ VPM::VPM(const unsigned totalVPMSize) : maximumVPMSize(std::min(VPM_DEFAULT_SIZE
 {
     // set a size of at least 1 row, so if no scratch is used, the first area has an offset of != 0 and therefore is
     // different than the scratch-area
-    areas[0] = std::make_shared<VPMArea>(VPMArea{VPMUsage::SCRATCH, 0, 1, nullptr});
+    areas[0] = std::make_shared<VPMArea>(VPMUsage::SCRATCH, 0, 1, nullptr);
 }
 
 const VPMArea& VPM::getScratchArea() const
@@ -930,8 +930,8 @@ const VPMArea* VPM::addArea(const Local* local, DataType elementType, bool isSta
         return nullptr;
 
     // for now align all new VPM areas at the beginning of a row
-    auto ptr = std::make_shared<VPMArea>(VPMArea{isStackArea ? VPMUsage::STACK : VPMUsage::LOCAL_MEMORY,
-        static_cast<uint8_t>(rowOffset.value()), numRows, local});
+    auto ptr = std::make_shared<VPMArea>(isStackArea ? VPMUsage::STACK : VPMUsage::LOCAL_MEMORY,
+        static_cast<uint8_t>(rowOffset.value()), numRows, local);
     for(auto i = rowOffset.value(); i < (rowOffset.value() + numRows); ++i)
         areas[i] = ptr;
     CPPLOG_LAZY(logging::Level::DEBUG,

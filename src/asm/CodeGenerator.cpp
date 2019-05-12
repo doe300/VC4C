@@ -6,7 +6,10 @@
 
 #include "CodeGenerator.h"
 
-#include "../../lib/vc4asm/src/Validator.h"
+#if defined(VERIFIER_HEADER)
+#include VERIFIER_HEADER
+#endif
+
 #include "../InstructionWalker.h"
 #include "../Module.h"
 #include "../Profiler.h"

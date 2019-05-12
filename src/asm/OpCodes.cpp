@@ -642,12 +642,19 @@ VectorFlags VectorFlags::fromValue(const Value& val)
 {
     if(val.getLiteralValue())
         return ElementFlags::fromValue(val);
-    // TODO extract for vector of values
-    return {};
+    VectorFlags flags{};
+    if(auto vec = val.checkVector())
+    {
+        for(unsigned i = 0; i < vec->size(); ++i)
+            flags[i] = ElementFlags::fromLiteral((*vec)[i]);
+    }
+    return flags;
 }
 
 bool OpCode::operator==(const OpCode& right) const noexcept
 {
+    if(this == &right)
+        return true;
     if(opAdd > 0 && opAdd == right.opAdd)
         return true;
     if(opMul > 0 && opMul == right.opMul)
@@ -675,6 +682,7 @@ CONST static unsigned int rotate_right(unsigned int value, int shift) noexcept
     return (value >> shift) | (value << (32 - shift));
 }
 
+// TODO somehow use the FlagBehavior here?
 static std::pair<Optional<Literal>, ElementFlags> setFlags(Literal lit)
 {
     auto flags = ElementFlags::fromLiteral(lit);
@@ -1111,7 +1119,7 @@ Optional<Value> OpCode::getRightIdentity(const OpCode& code)
     return NO_VALUE;
 }
 
-Optional<Value> OpCode::getLeftAbsorbingElement(const OpCode code)
+Optional<Value> OpCode::getLeftAbsorbingElement(const OpCode& code)
 {
     if(code == OP_AND)
         return INT_ZERO;
@@ -1146,7 +1154,7 @@ Optional<Value> OpCode::getLeftAbsorbingElement(const OpCode code)
     return NO_VALUE;
 }
 
-Optional<Value> OpCode::getRightAbsorbingElement(const OpCode code)
+Optional<Value> OpCode::getRightAbsorbingElement(const OpCode& code)
 {
     if(code == OP_AND)
         return INT_ZERO;

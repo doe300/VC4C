@@ -77,15 +77,6 @@ namespace vc4c
     static_assert((Binary16(static_cast<uint16_t>(0x7C00))).isInf(), "Bitwise check failed!");
     static_assert((Binary16(static_cast<uint16_t>(0xFFFF))).isNaN(), "Bitwise check failed!");
 
-    /*
-    static_assert(static_cast<float>(HALF_ZERO) == 0.0f, "Floating-point check
-    failed!");
-    static_assert(static_cast<float>(HALF_ONE) == 1.0f, "Floating-point check
-    failed!");
-    static_assert(static_cast<float>(HALF_INF) ==
-    std::numeric_limits<float>::infinity(), "Floating-point check failed!");
-    */
-
     inline Binary16 operator""_h(long double val)
     {
         return Binary16(static_cast<float>(val));

@@ -19,7 +19,7 @@ namespace vc4c
 {
     namespace intermediate
     {
-        enum class InstructionDecorations;
+        enum class InstructionDecorations : uint32_t;
     } // namespace intermediate
 
     namespace spirv2qasm

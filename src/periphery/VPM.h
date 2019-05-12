@@ -644,6 +644,16 @@ namespace vc4c
          */
         struct VPMArea
         {
+            VPMArea(VPMUsage usage, uint8_t rowOffset, uint8_t numRows, const Local* basePointer = nullptr) :
+                usageType(usage), rowOffset(rowOffset), numRows(numRows), originalAddress(basePointer)
+            {
+            }
+            VPMArea(const VPMArea&) = delete;
+            VPMArea(VPMArea&&) noexcept = delete;
+
+            VPMArea& operator=(const VPMArea&) = delete;
+            VPMArea& operator=(VPMArea&&) noexcept = delete;
+
             // the usage type of this area of VPM
             const VPMUsage usageType;
             /*

@@ -19,6 +19,9 @@ using namespace vc4c;
 using namespace vc4c::intermediate;
 using namespace vc4c::operators;
 
+// TODO optimize "exact" divisions. How? no need to calculate remainder?!
+// first need to find a case where the flag is set!
+
 InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(
     Method& method, InstructionWalker it, IntrinsicOperation& op)
 {

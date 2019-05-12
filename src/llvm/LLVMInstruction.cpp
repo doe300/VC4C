@@ -45,7 +45,7 @@ CallSite::CallSite(Value&& dest, const Method& method, std::vector<Value>&& args
     }
 }
 
-CallSite::CallSite(std::string&& methodName, DataType&& returnType, std::vector<Value>&& args) :
+CallSite::CallSite(std::string&& methodName, DataType returnType, std::vector<Value>&& args) :
     dest(Value(nullptr, returnType)), methodName(methodName), arguments(args)
 {
 }
@@ -179,20 +179,6 @@ bool CallSite::mapInstruction(Method& method)
         ignoreReturnValue(intermediate::insertVectorShuffle(
             method.appendToEnd(), method, output, arguments.at(0), UNDEFINED_VALUE, arguments.at(1)));
         return true;
-    }
-    if(methodName.find("as_uchar") == 0 || methodName.find("as_char") == 0 || methodName.find("as_ushort") == 0 ||
-        methodName.find("as_short") == 0 || methodName.find("as_uint") == 0 || methodName.find("as_int") == 0 ||
-        methodName.find("as_float") == 0 || methodName.find("as_half") == 0)
-    {
-        /*
-         * On some systems (e.g. CircleCI test docker image), neither the CLang intrinsic (as_type is macro to
-         * __builtin_astype) for CLang 5.0+ nor the manual mapping (via _conversions.h) seems to work.
-         * So we add a third way of mapping those functions
-         */
-        CPPLOG_LAZY(
-            logging::Level::DEBUG, log << "Lowering bit-cast function '" << methodName << "' ..." << logging::endl);
-        Copy cp(Value(dest), Value(arguments.at(0)), false, false, true);
-        return cp.mapInstruction(method);
     }
     static std::regex readFencePattern("_Z\\d*read_mem_fence.*");
     static std::regex writeFencePattern("_Z\\d*write_mem_fence.*");

@@ -733,7 +733,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying unsigned division by constant: " << op->to_string() << logging::endl);
-            // TODO is never used, LLVM always uses i32 for division
+            // XXX is never used, LLVM always uses i32 for division??
             it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, *op);
         }
         else
@@ -780,7 +780,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying signed division by constant: " << op->to_string() << logging::endl);
-            // TODO is never used, LLVM always uses i32 for division
+            // XXX is never used, LLVM always uses i32 for division??
             it = intrinsifySignedIntegerDivisionByConstant(method, it, *op);
         }
         /*        // a / b = ftoi(itof(a) / itof(b))

@@ -233,7 +233,9 @@ void precompilation::linkInStdlibModule(LLVMIRSource&& source, const std::string
     std::vector<LLVMIRSource> sources;
     sources.emplace_back(std::forward<LLVMIRSource>(source));
     sources.emplace_back(Precompiler::findStandardLibraryFiles().llvmModule);
-    linkLLVMModules(std::move(sources), userOptions, result);
+    auto options = userOptions;
+    // set options to reduce output module size by only linking in required std-lib symbols
+    linkLLVMModules(std::move(sources), "-only-needed -internalize", result);
 }
 
 void precompilation::compileOpenCLToLLVMText(
@@ -303,7 +305,11 @@ void precompilation::linkLLVMModules(
             return a + " -";
         });
 
-    std::string command = std::string(LLVM_LINK_PATH " -only-needed -internalize ") + (out + " ") + inputs;
+    /*
+     * NOTE: cannot use " -only-needed -internalize" in general case, since symbols used across module boundaries are
+     * otherwise optimized away. " -only-needed -internalize" is now only used when linking in the standard-library.
+     */
+    std::string command = std::string(LLVM_LINK_PATH " ") + userOptions + " " + out + " " + inputs;
 
     // llvm-link does not like multiple white-spaces in the list of files (assumes file with empty name)
     std::size_t n = 0;

@@ -31,6 +31,10 @@ TestFrontends::TestFrontends()
     TEST_ADD(TestFrontends::testLinking);
     TEST_ADD(TestFrontends::testSourceTypeDetection);
     TEST_ADD(TestFrontends::testDisassembler);
+
+    TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::OPENCL_C);
+    TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::LLVM_IR_TEXT);
+    TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::LLVM_IR_BIN);
 }
 
 // out-of-line virtual destructor
@@ -159,4 +163,50 @@ void TestFrontends::testDisassembler()
     }
 
     TEST_ASSERT_EQUALS(originalContent, disassembledContent);
+}
+
+void TestFrontends::testCompilation(vc4c::SourceType type)
+{
+    std::ifstream in("./example/fibonacci.cl");
+
+    // pre-compile to given type and check result type
+    Configuration precompConfig{};
+    Precompiler precomp{precompConfig, in, Precompiler::getSourceType(in)};
+
+    std::unique_ptr<std::istream> tmp;
+    precomp.run(tmp, type);
+
+    TEST_ASSERT_EQUALS(type, Precompiler::getSourceType(*tmp));
+
+    // compile from given type and emulate code
+    std::stringstream out;
+    Configuration config;
+    config.outputMode = OutputMode::BINARY;
+    Compiler::compile(*tmp, out, config);
+
+    testEmulation(out);
+}
+
+void TestFrontends::testEmulation(std::stringstream& binary)
+{
+    std::vector<std::pair<uint32_t, Optional<std::vector<uint32_t>>>> params;
+    params.push_back(std::make_pair(1, Optional<std::vector<uint32_t>>{}));
+    params.push_back(std::make_pair(1, Optional<std::vector<uint32_t>>{}));
+    params.push_back(std::make_pair(0, Optional<std::vector<uint32_t>>{std::vector<uint32_t>(16)}));
+    tools::EmulationData data(binary, "fibonacci", params);
+    auto res = tools::emulate(data);
+
+    TEST_ASSERT(res.executionSuccessful);
+
+    auto& out = *res.results[2].second;
+    TEST_ASSERT_EQUALS(2, out.at(0));
+    TEST_ASSERT_EQUALS(3, out.at(1));
+    TEST_ASSERT_EQUALS(5, out.at(2));
+    TEST_ASSERT_EQUALS(8, out.at(3));
+    TEST_ASSERT_EQUALS(13, out.at(4));
+    TEST_ASSERT_EQUALS(21, out.at(5));
+    TEST_ASSERT_EQUALS(34, out.at(6));
+    TEST_ASSERT_EQUALS(55, out.at(7));
+    TEST_ASSERT_EQUALS(89, out.at(8));
+    TEST_ASSERT_EQUALS(144, out.at(9));
 }

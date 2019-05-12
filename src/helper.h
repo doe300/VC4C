@@ -150,6 +150,13 @@ namespace vc4c
         return static_cast<Bitfield>(static_cast<unsigned>(orig) | static_cast<unsigned>(flag));
     }
 
+    template <typename Bitfield>
+    CONST constexpr inline NODISCARD Bitfield add_flag(Bitfield orig, Bitfield flag0, Bitfield flag1) noexcept
+    {
+        return static_cast<Bitfield>(
+            static_cast<unsigned>(orig) | static_cast<unsigned>(flag0) | static_cast<unsigned>(flag1));
+    }
+
     /*
      * Returns the bit-field with the additional flag being cleared
      */
@@ -204,6 +211,7 @@ namespace vc4c
     template <typename T>
     inline void ignoreReturnValue(T&& val) noexcept
     {
+        (void) val;
     }
 } // namespace vc4c
 

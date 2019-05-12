@@ -17,8 +17,6 @@ using namespace vc4c;
 using namespace vc4c::intermediate;
 using namespace vc4c::operators;
 
-// TODO optimize unsigned comparison, unsigned min/max
-
 static NODISCARD InstructionWalker replaceWithSetBoolean(
     InstructionWalker it, const Value& dest, ConditionCode trueCode, const Value& value = BOOL_TRUE)
 {

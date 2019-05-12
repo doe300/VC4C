@@ -29,10 +29,6 @@
 #include <unistd.h>
 #include <vector>
 
-#ifdef VERIFIER_HEADER
-#include VERIFIER_HEADER
-#endif
-
 using namespace vc4c;
 
 // out-of-line virtual method definition

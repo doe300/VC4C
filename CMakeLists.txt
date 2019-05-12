@@ -300,6 +300,12 @@ if(NOT ((SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND) OR (LLVMLIB_FRONTEND AND LLVM
 	message(WARNING " Neither SPIR-V nor LLVM library front-end are configured!")
 endif()
 
+if(VERIFY_OUTPUT AND ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU") AND (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 9.0))
+    # XXX for now, vc4asm does not compile for GCC 9
+    message(WARNING "The vc4asm assembler validation does not compile with GCC 9.0+. It will automatically be disabled")
+    set(VERIFY_OUTPUT FALSE)
+endif()
+
 if(VERIFY_OUTPUT)
 	ExternalProject_Add(vc4asm-project
 		PREFIX				${CMAKE_BINARY_DIR}/vc4asm

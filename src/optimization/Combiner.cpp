@@ -21,6 +21,8 @@
 
 // TODO combine y = (x >> n) << n with and
 // same for y = (x << n) >> n (at least of n constant)
+// TODO for "exact" shifts, y == (y >> n) << n!
+// need to find a case of shifts first, where the exact flag is set!
 
 using namespace vc4c;
 using namespace vc4c::optimizations;

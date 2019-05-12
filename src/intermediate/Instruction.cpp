@@ -57,6 +57,12 @@ std::string intermediate::toString(const InstructionDecorations decoration)
         res.append("vpr_config ");
     if(has_flag(decoration, InstructionDecorations::VPM_WRITE_CONFIGURATION))
         res.append("vpw_config ");
+    if(has_flag(decoration, InstructionDecorations::SIGNED_OVERFLOW_IS_UB))
+        res.append("nsw ");
+    if(has_flag(decoration, InstructionDecorations::UNSIGNED_OVERFLOW_IS_UB))
+        res.append("nuw ");
+    if(has_flag(decoration, InstructionDecorations::EXACT_OPERATION))
+        res.append("exact ");
     return res.substr(0, res.empty() ? 0 : res.size() - 1);
 }
 LCOV_EXCL_STOP
