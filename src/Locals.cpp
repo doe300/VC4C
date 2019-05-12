@@ -26,9 +26,9 @@ Value Local::createReference(int index) const
 {
     if(index != WHOLE_OBJECT)
     {
-        return Value(this, type.getElementType(index));
+        return Value(const_cast<Local*>(this), type.getElementType(index));
     }
-    return Value(this, type);
+    return Value(const_cast<Local*>(this), type);
 }
 
 const SortedMap<const LocalUser*, LocalUse>& Local::getUsers() const

@@ -1352,8 +1352,9 @@ static std::pair<Value, bool> applyVectorRotation(std::pair<Value, bool>&& input
     else
         distance = 16 - offset.getRotationOffset().value();
 
-    Value result(std::forward<Value>(input.first));
+    Value result(std::move(input.first));
 
+    // TODO use SIMDVector#rotate()
     auto& resultElements = result.vector();
     std::rotate(resultElements.begin(), resultElements.begin() + distance, resultElements.end());
 
@@ -1459,6 +1460,7 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
             logging::error() << "Failed to emulate ALU operation: " << addCode.name << " with "
                              << addIn0.to_string(false, true) << " and " << addIn1.to_string(false, true)
                              << logging::endl;
+        // fall-through for errors above on purpose so the next instruction throws an exception
         Value result(std::move(tmp.first).value());
         if(aluInst->getWriteSwap() == WriteSwap::DONT_SWAP && aluInst->getPack().hasEffect())
         {

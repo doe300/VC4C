@@ -73,8 +73,8 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                     // XXX or the input -local is only written after the last use of the output-local
                     // both locals can be the same and the move can be removed
 
-                    const Local* inLoc = move->getSource().local();
-                    const Local* outLoc = move->getOutput()->local();
+                    auto inLoc = move->getSource().local();
+                    auto outLoc = move->getOutput()->local();
                     // for instruction added by phi-elimination, the result could have been written to (with a different
                     // source) previously, so check
                     bool isWrittenTo = !outLoc->getUsers(LocalUse::Type::WRITER).empty();

@@ -36,6 +36,8 @@ using namespace vc4c::operators;
  * - too complex phi-nodes with pointers: clNN/im2col.cl
  */
 
+//TODO make use of parameter's maxByteOffset? E.g. for caching?
+
 struct BaseAndOffset
 {
     Optional<Value> base;

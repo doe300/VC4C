@@ -539,7 +539,7 @@ Value::Value(Register reg, DataType type) noexcept : data(reg), type(type) {}
 
 Value::Value(SIMDVector&& vector, DataType type) : data(std::move(vector)), type(type) {}
 
-Value::Value(const Local* local, DataType type) noexcept : data(const_cast<Local*>(local)), type(type) {}
+Value::Value(Local* local, DataType type) noexcept : data(local), type(type) {}
 
 Value::Value(DataType type) noexcept : data(VariantNamespace::monostate{}), type(type) {}
 
@@ -753,6 +753,6 @@ std::size_t std::hash<vc4c::SIMDVector>::operator()(vc4c::SIMDVector const& val)
 std::size_t std::hash<vc4c::Value>::operator()(vc4c::Value const& val) const noexcept
 {
     std::hash<DataType> typeHash;
-    std::hash<Variant<Literal, Register, Local*, SmallImmediate, SIMDVector, VariantNamespace::monostate>> dataHash;
+    std::hash<decltype(val.data)> dataHash;
     return typeHash(val.type) ^ dataHash(val.data);
 }

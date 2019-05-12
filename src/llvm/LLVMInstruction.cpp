@@ -222,7 +222,7 @@ bool Copy::mapInstruction(Method& method)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating bit-cast from " << orig.to_string() << " into " << dest.to_string() << logging::endl);
-        ignoreReturnValue(intermediate::insertBitcast(method.appendToEnd(), method, orig, dest));
+        ignoreReturnValue(intermediate::insertBitcast(method.appendToEnd(), method, orig, dest, decorations));
     }
     else if(isLoadStore)
     {
@@ -230,22 +230,25 @@ bool Copy::mapInstruction(Method& method)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Generating reading from " << orig.to_string() << " into " << dest.to_string() << logging::endl);
-            method.appendToEnd(new intermediate::MemoryInstruction(
-                intermediate::MemoryOperation::READ, std::move(dest), std::move(orig)));
+            method.appendToEnd((new intermediate::MemoryInstruction(
+                                    intermediate::MemoryOperation::READ, std::move(dest), std::move(orig)))
+                                   ->addDecorations(decorations));
         }
         else
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Generating writing of " << orig.to_string() << " into " << dest.to_string() << logging::endl);
-            method.appendToEnd(new intermediate::MemoryInstruction(
-                intermediate::MemoryOperation::WRITE, std::move(dest), std::move(orig)));
+            method.appendToEnd((new intermediate::MemoryInstruction(
+                                    intermediate::MemoryOperation::WRITE, std::move(dest), std::move(orig)))
+                                   ->addDecorations(decorations));
         }
     }
     else
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating copy of " << orig.to_string() << " into " << dest.to_string() << logging::endl);
-        method.appendToEnd(new intermediate::MoveOperation(std::move(dest), std::move(orig)));
+        method.appendToEnd(
+            (new intermediate::MoveOperation(std::move(dest), std::move(orig)))->addDecorations(decorations));
     }
     return true;
 }
@@ -386,12 +389,12 @@ bool ValueReturn::mapInstruction(Method& method)
     if(hasValue)
     {
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating return of " << val.to_string() << logging::endl);
-        method.appendToEnd(new intermediate::Return(std::move(val)));
+        method.appendToEnd((new intermediate::Return(std::move(val)))->addDecorations(decorations));
     }
     else
     {
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating return nothing" << logging::endl);
-        method.appendToEnd(new intermediate::Return());
+        method.appendToEnd((new intermediate::Return())->addDecorations(decorations));
     }
     return true;
 }
@@ -416,7 +419,7 @@ LLVMLabel::LLVMLabel(Value&& label) : label(label) {}
 bool LLVMLabel::mapInstruction(Method& method)
 {
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating label " << label.to_string() << logging::endl);
-    method.appendToEnd(new intermediate::BranchLabel(*label.local()));
+    method.appendToEnd((new intermediate::BranchLabel(*label.local()))->addDecorations(decorations));
     return true;
 }
 
@@ -426,7 +429,7 @@ bool PhiNode::mapInstruction(Method& method)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating Phi-Node with " << labels.size() << " options into " << dest.to_string() << logging::endl);
-    method.appendToEnd(new intermediate::PhiNode(std::move(dest), std::move(labels)));
+    method.appendToEnd((new intermediate::PhiNode(std::move(dest), std::move(labels)))->addDecorations(decorations));
     return true;
 }
 
@@ -474,15 +477,18 @@ bool Branch::mapInstruction(Method& method)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating unconditional branch to " << thenLabel.to_string() << logging::endl);
-        method.appendToEnd(new intermediate::Branch(thenLabel.local(), COND_ALWAYS, BOOL_TRUE));
+        method.appendToEnd(
+            (new intermediate::Branch(thenLabel.local(), COND_ALWAYS, BOOL_TRUE))->addDecorations(decorations));
     }
     else
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating branch on condition " << cond.to_string() << " to either " << thenLabel.to_string()
                 << " or " << elseLabel.to_string() << logging::endl);
-        method.appendToEnd(new intermediate::Branch(thenLabel.local(), COND_ZERO_CLEAR /* condition is true */, cond));
-        method.appendToEnd(new intermediate::Branch(elseLabel.local(), COND_ZERO_SET /* condition is false */, cond));
+        method.appendToEnd((new intermediate::Branch(thenLabel.local(), COND_ZERO_CLEAR /* condition is true */, cond))
+                               ->addDecorations(decorations));
+        method.appendToEnd((new intermediate::Branch(elseLabel.local(), COND_ZERO_SET /* condition is false */, cond))
+                               ->addDecorations(decorations));
     }
 
     return true;

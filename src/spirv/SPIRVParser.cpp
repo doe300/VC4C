@@ -534,6 +534,14 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
                     getWord(parsed_instruction, 5), getWord(parsed_instruction, 6), getWord(parsed_instruction, 7)));
             return SPV_SUCCESS;
         }
+        if(getWord(parsed_instruction, 4) == OpenCLLIB::Entrypoints::Shuffle)
+        {
+            localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+            instructions.emplace_back(
+                new SPIRVShuffle(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id,
+                    getWord(parsed_instruction, 5), UNDEFINED_ID, getWord(parsed_instruction, 6)));
+            return SPV_SUCCESS;
+        }
         // these instructions are not really handled -> throw error here (where we know the method-name)
         throw CompilationError(CompilationStep::PARSER, "OpenCL standard-function seems to be not implemented",
             getOpenCLMethodName(getWord(parsed_instruction, 4)));

@@ -750,7 +750,7 @@ namespace vc4c
         Value(SIMDVector&& vector, DataType type);
         Value(const Value& val) = default;
         Value(Value&& val) noexcept = default;
-        Value(const Local* local, DataType type) noexcept;
+        Value(Local* local, DataType type) noexcept;
         Value(DataType type) noexcept;
         Value(SmallImmediate immediate, DataType type) noexcept;
         ~Value() = default;

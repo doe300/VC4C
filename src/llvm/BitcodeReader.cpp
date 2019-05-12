@@ -688,11 +688,17 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
             const_cast<PointerType*>(type.getPointerType())->addressSpace = AddressSpace::CONSTANT;
         method->parameters.emplace_back(Parameter(toParameterName(arg, paramCounter), type,
             toParameterDecorations(arg, type, func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)));
-        CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Reading parameter " << method->parameters.back().to_string(true) << logging::endl);
-        if(method->parameters.back().type.getImageType() && func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)
-            intermediate::reserveImageConfiguration(module, method->parameters.back());
-        localMap[&arg] = &method->parameters.back();
+        auto& param = method->parameters.back();
+        if(arg.getDereferenceableBytes() != 0)
+            param.maxByteOffset = arg.getDereferenceableBytes();
+#if LLVM_LIBRARY_VERSION >= 39
+        if(arg.getDereferenceableOrNullBytes() != 0)
+            param.maxByteOffset = arg.getDereferenceableOrNullBytes();
+#endif
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Reading parameter " << param.to_string(true) << logging::endl);
+        if(param.type.getImageType() && func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)
+            intermediate::reserveImageConfiguration(module, param);
+        localMap[&arg] = &param;
     }
 
     parseFunctionBody(module, *method, parsedFunctions.at(&func).second, func);
@@ -736,6 +742,15 @@ static intermediate::InstructionDecorations toInstructionDecorations(const llvm:
     if(llvm::isa<llvm::FPMathOperator>(&inst) && inst.hasUnsafeAlgebra())
 #endif
         deco = add_flag(deco, intermediate::InstructionDecorations::FAST_MATH);
+    if(inst.hasNoSignedWrap())
+        deco = add_flag(deco, intermediate::InstructionDecorations::SIGNED_OVERFLOW_IS_UB);
+    if(inst.hasNoUnsignedWrap())
+        deco = add_flag(deco, intermediate::InstructionDecorations::UNSIGNED_OVERFLOW_IS_UB);
+#if LLVM_LIBRARY_VERSION >= 39
+    // XXX this is sometimes added to add and getelementptr operations, but not present in the LLVM IR output!?
+    if(inst.isExact())
+        deco = add_flag(deco, intermediate::InstructionDecorations::EXACT_OPERATION);
+#endif
     return deco;
 }
 
@@ -896,10 +911,10 @@ void BitcodeReader::parseInstruction(
     case MemoryOps::Alloca:
     {
         const llvm::AllocaInst* alloca = llvm::cast<const llvm::AllocaInst>(&inst);
+        // for arrays, the allocated type is the array type, so we don't need to handle them special here
         const DataType contentType = toDataType(module, alloca->getAllocatedType());
         const DataType pointerType = toDataType(module, alloca->getType());
         unsigned alignment = alloca->getAlignment();
-        // XXX need to heed the array-size?
         auto it = method.stackAllocations.emplace(
             StackAllocation(("%" + alloca->getName()).str(), pointerType, contentType.getPhysicalWidth(), alignment));
         localMap[alloca] = &(*it.first);
@@ -911,6 +926,7 @@ void BitcodeReader::parseInstruction(
     {
         const llvm::GetElementPtrInst* indexOf = llvm::cast<const llvm::GetElementPtrInst>(&inst);
         std::vector<Value> indices;
+        // TODO for isInBounds(), mark all indices as IN_BOUNDS, can be used for memory access?
         std::for_each(indexOf->idx_begin(), indexOf->idx_end(),
             [this, &method, &indices](const llvm::Value* val) -> void { indices.emplace_back(toValue(method, val)); });
         instructions.emplace_back(
@@ -926,6 +942,7 @@ void BitcodeReader::parseInstruction(
             src = parseInlineGetElementPtr(module, method, instructions, load->getPointerOperand());
         else
             src = toValue(method, load->getPointerOperand());
+        // TODO for volatile, mark argument pointer as VOLATILE
         if(load->isVolatile() && src.checkLocal() && src.local()->is<Parameter>())
             src.local()->as<Parameter>()->decorations =
                 add_flag(src.local()->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
@@ -941,6 +958,7 @@ void BitcodeReader::parseInstruction(
             dest = parseInlineGetElementPtr(module, method, instructions, store->getPointerOperand());
         else
             dest = toValue(method, store->getPointerOperand());
+        // TODO for volatile, mark argument pointer as VOLATILE
         if(store->isVolatile() && dest.checkLocal() && dest.local()->is<Parameter>())
             dest.local()->as<Parameter>()->decorations =
                 add_flag(dest.local()->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
@@ -949,6 +967,7 @@ void BitcodeReader::parseInstruction(
         break;
     }
     case CastOps::AddrSpaceCast:
+        // TODO need to handle somehow special? E.g. need to track address spaces? Or is it allowed at all?
         FALL_THROUGH
     case CastOps::BitCast:
     {

@@ -808,7 +808,7 @@ Optional<std::vector<ElementSource>> intermediate::checkVectorCanBeAssembled(Dat
     if(results.empty())
         return {};
     logging::debug() << "Matching vector sources: " << to_string<ElementSource>(results) << logging::endl;
-    return std::move(results);
+    return results;
 }
 
 InstructionWalker intermediate::insertAssembleVector(

@@ -8,8 +8,8 @@
 
 #ifdef SPIRV_FRONTEND
 #include "../intermediate/Helper.h"
-#include "../intermediate/VectorHelper.h"
 #include "../intermediate/TypeConversions.h"
+#include "../intermediate/VectorHelper.h"
 #include "../intrinsics/Images.h"
 #include "../intrinsics/Operators.h"
 #include "log.h"
@@ -45,6 +45,8 @@ static DataType getType(const uint32_t id, const TypeMapping& types, const Const
 static Value getValue(const uint32_t id, Method& method, const TypeMapping& types, const ConstantMapping& constants,
     const AllocationMapping& memoryAllocated, const LocalTypeMapping& localTypes)
 {
+    if(id == UNDEFINED_ID)
+        return UNDEFINED_VALUE;
     auto cit = constants.find(id);
     if(cit != constants.end())
         return cit->second.toValue().value_or(UNDEFINED_VALUE);

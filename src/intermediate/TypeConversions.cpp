@@ -322,6 +322,8 @@ InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method
 
         Value tmp = assign(it, TYPE_INT32, "%sext") = (src << widthDiff, conditional);
         it.emplace(new Operation(OP_ASR, dest, tmp, widthDiff, conditional, setFlags));
+        // we shifted the exact same number of bits to the left before, so all N trailing bits are zero
+        it->addDecorations(InstructionDecorations::EXACT_OPERATION);
     }
 
     it.nextInBlock();

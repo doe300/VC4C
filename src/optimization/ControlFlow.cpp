@@ -951,7 +951,7 @@ void optimizations::extendBranches(const Module& module, Method& method, const C
     }
 }
 
-static NODISCARD InstructionWalker loadVectorParameter(const Parameter& param, Method& method, InstructionWalker it)
+static NODISCARD InstructionWalker loadVectorParameter(Parameter& param, Method& method, InstructionWalker it)
 {
     // we need to load a UNIFORM per vector element into the particular vector element
     for(uint8_t i = 0; i < param.type.getVectorWidth(); ++i)
@@ -1133,7 +1133,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     }
 
     // load arguments to locals (via reading from uniform)
-    for(const Parameter& param : method.parameters)
+    for(Parameter& param : method.parameters)
     {
         // do the loading
         // we need special treatment for non-scalar parameter (e.g. vectors), since they can't be read with just 1
