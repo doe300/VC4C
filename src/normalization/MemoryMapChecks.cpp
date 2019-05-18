@@ -9,12 +9,14 @@
 #include "../GlobalValues.h"
 #include "../Profiler.h"
 #include "../intermediate/IntermediateInstruction.h"
+#include "../intermediate/operators.h"
 #include "../periphery/VPM.h"
 #include "log.h"
 
 using namespace vc4c;
 using namespace vc4c::normalization;
 using namespace vc4c::intermediate;
+using namespace vc4c::operators;
 
 using MappingCheck = MemoryInfo (*)(Method& method, const Local*, MemoryAccess&);
 
@@ -132,7 +134,7 @@ static InstructionWalker findNextValueStore(
 std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineMemoryAccess(Method& method)
 {
     // TODO lower local/private struct-elements into VPM?! At least for single structs
-    logging::debug() << "Determining memory access for kernel: " << method.name << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Determining memory access for kernel: " << method.name << logging::endl);
     MemoryAccessMap mapping;
     FastSet<InstructionWalker> allWalkers;
     for(const auto& param : method.parameters)
@@ -142,8 +144,9 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
         auto pointerType = param.type.getPointerType();
         if(pointerType->addressSpace == AddressSpace::CONSTANT)
         {
-            logging::debug() << "Constant parameter '" << param.to_string() << "' will be read from RAM via TMU"
-                             << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Constant parameter '" << param.to_string() << "' will be read from RAM via TMU"
+                    << logging::endl);
             mapping[&param].preferred = MemoryAccessType::RAM_LOAD_TMU;
             // fall-back, e.g. for memory copy
             mapping[&param].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
@@ -152,16 +155,18 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
         {
             if(isMemoryOnlyRead(&param))
             {
-                logging::debug() << "Global parameter '" << param.to_string()
-                                 << "' without any write access will be read from RAM via TMU" << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Global parameter '" << param.to_string()
+                        << "' without any write access will be read from RAM via TMU" << logging::endl);
                 mapping[&param].preferred = MemoryAccessType::RAM_LOAD_TMU;
                 // fall-back, e.g. for memory copy
                 mapping[&param].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
             }
             else
             {
-                logging::debug() << "Global parameter '" << param.to_string()
-                                 << "' which is written to will be stored in RAM and accessed via VPM" << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Global parameter '" << param.to_string()
+                        << "' which is written to will be stored in RAM and accessed via VPM" << logging::endl);
                 mapping[&param].preferred = MemoryAccessType::RAM_READ_WRITE_VPM;
                 mapping[&param].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
             }
@@ -169,8 +174,9 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
         else if(pointerType->addressSpace == AddressSpace::LOCAL)
         {
             // TODO if last access index is known and fits into VPM, set for VPM-or-RAM
-            logging::debug() << "Local parameter '" << param.to_string()
-                             << "' will be stored in RAM and accessed via VPM" << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Local parameter '" << param.to_string() << "' will be stored in RAM and accessed via VPM"
+                    << logging::endl);
             mapping[&param].preferred = MemoryAccessType::RAM_READ_WRITE_VPM;
             mapping[&param].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
         }
@@ -180,14 +186,42 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
     }
 
     InstructionWalker it = method.walkAllInstructions();
+    // The 64 bit store instructions which need to be split up in two 32 bit store instructions and the locals for the
+    // lower and upper words
+    FastMap<const MemoryInstruction*, std::pair<const Local*, const Local*>> rewrite64BitStoresTo32;
     while(!it.isEndOfMethod())
     {
         if(auto memInstr = it.get<MemoryInstruction>())
         {
-            // convert read-then-write to copy
-            if(memInstr->op == MemoryOperation::READ && !memInstr->hasConditionalExecution() &&
+            auto rewriteParts = rewrite64BitStoresTo32.find(memInstr);
+            if(rewriteParts != rewrite64BitStoresTo32.end())
+            {
+                // rewrite the 64-bit store to 2 32-bit stores
+                auto lowerIndex = Value(memInstr->getDestination().local(), method.createPointerType(TYPE_INT32));
+                it.emplace(new MemoryInstruction(
+                    MemoryOperation::WRITE, Value(lowerIndex), rewriteParts->second.first->createReference()));
+                it->copyExtrasFrom(memInstr);
+                auto startIt = it;
+                it.nextInBlock();
+                auto upperIndex = assign(it, lowerIndex.type) = lowerIndex + 4_val;
+                if(auto ref = lowerIndex.local()->reference.first)
+                    upperIndex.local()->reference.first = ref;
+                it.emplace(new MemoryInstruction(
+                    MemoryOperation::WRITE, std::move(upperIndex), rewriteParts->second.second->createReference()));
+                it->copyExtrasFrom(memInstr);
+                it.nextInBlock();
+
+                rewrite64BitStoresTo32.erase(rewriteParts);
+                it.erase();
+
+                // continue with exactly the first store instruction
+                memInstr = startIt.get<MemoryInstruction>();
+                it = startIt;
+            }
+            else if(memInstr->op == MemoryOperation::READ && !memInstr->hasConditionalExecution() &&
                 memInstr->getDestination().local()->getUsers(LocalUse::Type::READER).size() == 1)
             {
+                // convert read-then-write to copy
                 auto nextIt = findNextValueStore(
                     it, memInstr->getDestination(), 16 /* TODO */, memInstr->getSource().local()->getBase(true));
                 auto nextMemInstr = nextIt.isEndOfBlock() ? nullptr : nextIt.get<const MemoryInstruction>();
@@ -199,11 +233,17 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
                 {
                     // TODO also extend so value read, not modified and stored (if used otherwise) is replaced with load
                     // (for other uses) and copy -> supports other type sizes
-                    logging::debug()
-                        << "Found reading of memory where the sole usage writes the value back into memory: "
-                        << memInstr->to_string() << logging::endl;
-                    logging::debug() << "Replacing manual copy of memory with memory copy instruction for write: "
-                                     << nextMemInstr->to_string() << logging::endl;
+                    LCOV_EXCL_START
+                    CPPLOG_LAZY_BLOCK(
+                        logging::Level::DEBUG, {
+                            logging::debug()
+                                << "Found reading of memory where the sole usage writes the value back into memory: "
+                                << memInstr->to_string() << logging::endl;
+                            logging::debug()
+                                << "Replacing manual copy of memory with memory copy instruction for write: "
+                                << nextMemInstr->to_string() << logging::endl;
+                        });
+                    LCOV_EXCL_STOP
 
                     auto src = memInstr->getSource();
                     it.erase();
@@ -211,6 +251,142 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
                         std::move(src), Value(nextMemInstr->getNumEntries())));
                     // continue with the next instruction after the read in the next iteration
                     continue;
+                }
+            }
+            // fall-through on purpose, since the below block also handles cases which match the first condition of the
+            // above block, but not the second (e.g. read and write of 64-bit struct in different blocks)
+            if(memInstr->op == MemoryOperation::READ && !memInstr->hasConditionalExecution() &&
+                memInstr->getDestination().type.getElementType() == TYPE_INT64 && memInstr->getSource().checkLocal() &&
+                memInstr->getSource().local()->getBase(true)->type.getElementType().getStructType())
+            {
+                // This is a "read of a 64-bit integer value from a memory area which refers to a struct pointer"
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Found reading of 64-bit integer bit-cast from struct pointer: " << memInstr->to_string()
+                        << logging::endl);
+                bool canBeSplitUp = true;
+                FastSet<const MoveOperation*> movesToRewrite;
+                FastSet<const Operation*> shiftsToRewrite;
+                FastSet<const MemoryInstruction*> storesToRewrite;
+
+                // Check whether all uses are used in a supported way (e.g. actually only access of the lower 32 bit or
+                // copy the whole value)
+                for(auto user : memInstr->getDestination().local()->getUsers(LocalUse::Type::READER))
+                {
+                    if(auto move = dynamic_cast<const MoveOperation*>(user))
+                    {
+                        // check for truncation from 64 to 32 bits
+                        if(move->getOutput()->type.getScalarBitCount() != 32)
+                        {
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Unsupported move, aborting rewrite: " << move->to_string() << logging::endl);
+                            canBeSplitUp = false;
+                            break;
+                        }
+                        // moves which truncate the 64 bit integer to 32 bit are accepted
+                        movesToRewrite.emplace(move);
+                    }
+                    else if(auto memAccess = dynamic_cast<const MemoryInstruction*>(user))
+                    {
+                        // memory writes accesses using this value are accepted
+                        if(memAccess->op != MemoryOperation::WRITE)
+                        {
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Unsupported memory access, aborting rewrite: " << memAccess->to_string()
+                                    << logging::endl);
+                            canBeSplitUp = false;
+                            break;
+                        }
+                        storesToRewrite.emplace(memAccess);
+                    }
+                    else if(auto op = dynamic_cast<const Operation*>(user))
+                    {
+                        if(op->op == OP_SHR && op->getSecondArg())
+                        {
+                            auto shiftOffset = op->assertArgument(1).getLiteralValue();
+                            if(auto writer = op->assertArgument(1).getSingleWriter())
+                            {
+                                auto precalc = writer->precalculate();
+                                shiftOffset = precalc.first ? precalc.first->getLiteralValue() : shiftOffset;
+                            }
+
+                            if(shiftOffset == 32_lit)
+                            {
+                                // shift exactly 1 word -> reads upper word
+                                shiftsToRewrite.emplace(op);
+                            }
+                            else
+                            {
+                                CPPLOG_LAZY(logging::Level::DEBUG,
+                                    log << "Unsupported shift of 64 bit integer, aborting rewrite: "
+                                        << user->to_string() << logging::endl);
+                                canBeSplitUp = false;
+                            }
+                        }
+                        else
+                        {
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Unsupported operation with 64 bit integer, aborting rewrite: "
+                                    << user->to_string() << logging::endl);
+                            canBeSplitUp = false;
+                        }
+                    }
+                    else
+                    {
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Unsupported access to 64 bit integer, aborting rewrite: " << user->to_string()
+                                << logging::endl);
+                        canBeSplitUp = false;
+                    }
+                }
+                if(canBeSplitUp)
+                {
+                    // split load into 2 loads (upper and lower word), mark stores for conversion
+                    // TODO move both inserted loads (and also both inserted stores) into one mutex block (load/store 2
+                    // values at once)
+                    auto origLocal = memInstr->getDestination();
+                    auto lowerLocal = method.addNewLocal(TYPE_INT32, origLocal.local()->name + ".lower");
+                    auto upperLocal = method.addNewLocal(TYPE_INT32, origLocal.local()->name + ".upper");
+
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Splitting '" << origLocal.to_string() << "' into '" << lowerLocal.to_string()
+                            << "' and '" << upperLocal.to_string() << '\'' << logging::endl);
+
+                    auto lowerIndex = Value(memInstr->getSource().local(), method.createPointerType(TYPE_INT32));
+                    it.emplace(new MemoryInstruction(MemoryOperation::READ, Value(lowerLocal), Value(lowerIndex)));
+                    it->copyExtrasFrom(memInstr);
+                    auto startIt = it;
+                    it.nextInBlock();
+                    auto upperIndex = assign(it, lowerIndex.type) = lowerIndex + 4_val;
+                    if(auto ref = lowerIndex.local()->reference.first)
+                        upperIndex.local()->reference.first = ref;
+                    it.emplace(new MemoryInstruction(MemoryOperation::READ, Value(upperLocal), std::move(upperIndex)));
+                    it->copyExtrasFrom(memInstr);
+                    it.nextInBlock();
+
+                    for(auto store : storesToRewrite)
+                    {
+                        // mark all stores for rewrite
+                        rewrite64BitStoresTo32.emplace(store,
+                            std::pair<const Local*, const Local*>{lowerLocal.checkLocal(), upperLocal.checkLocal()});
+                    }
+
+                    for(auto move : movesToRewrite)
+                        // replace all truncations with usage of lower word
+                        const_cast<MoveOperation*>(move)->replaceValue(origLocal, lowerLocal, LocalUse::Type::READER);
+
+                    for(auto shift : shiftsToRewrite)
+                    {
+                        // replace all shifts of the upper word to lower with upper word
+                        // use a shift by zero, so we do not need to access the instruction walker
+                        const_cast<Operation*>(shift)->setArgument(0, upperLocal);
+                        const_cast<Operation*>(shift)->setArgument(1, 0_val);
+                    }
+
+                    it.erase();
+
+                    // continue with exactly the first load instruction
+                    memInstr = startIt.get<MemoryInstruction>();
+                    it = startIt;
                 }
             }
             for(const auto local : memInstr->getMemoryAreas())
@@ -226,8 +402,9 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
                 {
                     if(local->type.isSimpleType() || convertSmallArrayToRegister(local))
                     {
-                        logging::debug() << "Small stack value '" << local->to_string()
-                                         << "' will be stored in a register" << logging::endl;
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Small stack value '" << local->to_string() << "' will be stored in a register"
+                                << logging::endl);
                         mapping[local].preferred = MemoryAccessType::QPU_REGISTER_READWRITE;
                         // we cannot pack an array into a VPM cache line, since always all 16 elements are read/written
                         // and we would overwrite the other elements
@@ -236,16 +413,17 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
                     }
                     else if(!local->type.getElementType().getStructType())
                     {
-                        logging::debug() << "Stack value '" << local->to_string()
-                                         << "' will be stored in VPM per QPU (with fall-back to RAM via VPM)"
-                                         << logging::endl;
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Stack value '" << local->to_string()
+                                << "' will be stored in VPM per QPU (with fall-back to RAM via VPM)" << logging::endl);
                         mapping[local].preferred = MemoryAccessType::VPM_PER_QPU;
                         mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
                     }
                     else
                     {
-                        logging::debug() << "Struct stack value '" << local->to_string()
-                                         << "' will be stored in RAM per QPU (via VPM)" << logging::endl;
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Struct stack value '" << local->to_string()
+                                << "' will be stored in RAM per QPU (via VPM)" << logging::endl);
                         mapping[local].preferred = MemoryAccessType::RAM_READ_WRITE_VPM;
                         mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
                     }
@@ -257,22 +435,25 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
                         // global buffer
                         if(getConstantValue(memInstr->getSource()))
                         {
-                            logging::debug() << "Constant element of constant buffer '" << local->to_string()
-                                             << "' will be stored in a register " << logging::endl;
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Constant element of constant buffer '" << local->to_string()
+                                    << "' will be stored in a register " << logging::endl);
                             mapping[local].preferred = MemoryAccessType::QPU_REGISTER_READONLY;
                             mapping[local].fallback = MemoryAccessType::RAM_LOAD_TMU;
                         }
                         else if(convertSmallArrayToRegister(local))
                         {
-                            logging::debug() << "Small constant buffer '" << local->to_string()
-                                             << "' will be stored in a register" << logging::endl;
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Small constant buffer '" << local->to_string()
+                                    << "' will be stored in a register" << logging::endl);
                             mapping[local].preferred = MemoryAccessType::QPU_REGISTER_READONLY;
                             mapping[local].fallback = MemoryAccessType::RAM_LOAD_TMU;
                         }
                         else
                         {
-                            logging::debug() << "Constant buffer '" << local->to_string()
-                                             << "' will be read from RAM via TMU" << logging::endl;
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Constant buffer '" << local->to_string() << "' will be read from RAM via TMU"
+                                    << logging::endl);
                             mapping[local].preferred = MemoryAccessType::RAM_LOAD_TMU;
                             // fall-back, e.g. for memory copy
                             mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
@@ -281,16 +462,18 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
                     else if(!local->type.getElementType().getStructType())
                     {
                         // local buffer
-                        logging::debug() << "Local buffer '" << local->to_string()
-                                         << "' will be stored in VPM (with fall-back to RAM via VPM)" << logging::endl;
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Local buffer '" << local->to_string()
+                                << "' will be stored in VPM (with fall-back to RAM via VPM)" << logging::endl);
                         mapping[local].preferred = MemoryAccessType::VPM_SHARED_ACCESS;
                         mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
                     }
                     else
                     {
                         // local buffer
-                        logging::debug() << "Local struct '" << local->to_string() << "' will be stored in RAM via VPM"
-                                         << logging::endl;
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Local struct '" << local->to_string() << "' will be stored in RAM via VPM"
+                                << logging::endl);
                         mapping[local].preferred = MemoryAccessType::RAM_READ_WRITE_VPM;
                         mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
                     }
@@ -487,9 +670,10 @@ static Optional<MemoryAccessRange> determineAccessRange(Method& method, Instruct
         // XXX if the memory is __local and the width of the writes is known, can lower into VPM (e.g. for data
         // exchange between work-items). But then the __local memory should be set small enough to fit in the VPM
         // completely, which is already handled at this point.
-        logging::debug() << "DMA address is directly set to a parameter/global address, cannot be "
-                            "optimized by caching multiple accesses: "
-                         << it->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "DMA address is directly set to a parameter/global address, cannot be "
+                   "optimized by caching multiple accesses: "
+                << it->to_string() << logging::endl);
         return {};
     }
     MemoryAccessRange range;
@@ -503,8 +687,9 @@ static Optional<MemoryAccessRange> determineAccessRange(Method& method, Instruct
         if(!walker)
         {
             // TODO this is actually no problem (other than finding the iterator), is it?
-            logging::debug() << "Unhandled case, address is calculated in a different basic-block: " << it->to_string()
-                             << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Unhandled case, address is calculated in a different basic-block: " << it->to_string()
+                    << logging::endl);
             return {};
         }
         else
@@ -517,8 +702,8 @@ static Optional<MemoryAccessRange> determineAccessRange(Method& method, Instruct
     {
         // 2. rewrite address so all work-group uniform parts are combined and all variable parts and
         // added in the end
-        logging::debug() << "Found VPM DMA address write with work-group uniform operand: " << it->to_string()
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Found VPM DMA address write with work-group uniform operand: " << it->to_string() << logging::endl);
         Value varArg = *variableArg;
         // 2.1 jump over final addition of base address if it is a parameter
         if(trackIt.get<Operation>() && trackIt.get<const Operation>()->op == OP_ADD)
@@ -560,8 +745,9 @@ static Optional<MemoryAccessRange> determineAccessRange(Method& method, Instruct
         }
         else
         {
-            logging::debug() << "Cannot optimize further, since add of base-address and pointer was not found: "
-                             << it->to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Cannot optimize further, since add of base-address and pointer was not found: "
+                    << it->to_string() << logging::endl);
             return {};
         }
         auto writer = varArg.getSingleWriter();
@@ -573,8 +759,9 @@ static Optional<MemoryAccessRange> determineAccessRange(Method& method, Instruct
                     it->assertArgument(0).type.getElementType().getPhysicalWidth())
             {
                 // Abort, since the offset shifted does not match the type-width of the element type
-                logging::debug() << "Cannot optimize further, since shift-offset does not match type size: "
-                                 << it->to_string() << " and " << writer->to_string() << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Cannot optimize further, since shift-offset does not match type size: " << it->to_string()
+                        << " and " << writer->to_string() << logging::endl);
                 return {};
             }
             range.typeSizeShift = trackIt.getBasicBlock()->findWalkerForInstruction(writer, trackIt);
@@ -626,15 +813,16 @@ static Optional<InstructionWalker> findSingleWriter(InstructionWalker it, const 
     }
     if(!writer)
     {
-        logging::debug() << "Unhandled case, value does not have exactly 1 writer: " << it->to_string()
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Unhandled case, value does not have exactly 1 writer: " << it->to_string() << logging::endl);
         return {};
     }
     auto writerIt = it.getBasicBlock()->findWalkerForInstruction(writer, it);
     if(!writerIt)
     {
-        logging::debug() << "Unhandled case, address is calculated in a different basic-block: " << it->to_string()
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Unhandled case, address is calculated in a different basic-block: " << it->to_string()
+                << logging::endl);
         return {};
     }
     return writerIt;
@@ -781,25 +969,32 @@ static const periphery::VPMArea* checkCacheMemoryAccessRanges(
     std::tie(allUniformPartsEqual, offsetRange) = checkWorkGroupUniformParts(memoryAccessRanges);
     if(!allUniformPartsEqual)
     {
-        logging::debug() << "Cannot cache memory location " << baseAddr->to_string()
-                         << " in VPM, since the work-group uniform parts of the address calculations differ, which "
-                            "is not yet supported!"
-                         << logging::endl;
+        LCOV_EXCL_START
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Cannot cache memory location " << baseAddr->to_string()
+                << " in VPM, since the work-group uniform parts of the address calculations differ, which "
+                   "is not yet supported!"
+                << logging::endl);
+        LCOV_EXCL_STOP
         return nullptr;
     }
     if((offsetRange.maxValue - offsetRange.minValue) >= maxNumVectors || (offsetRange.maxValue < offsetRange.minValue))
     {
         // this also checks for any over/underflow when converting the range to unsigned int in the next steps
-        logging::debug() << "Cannot cache memory location " << baseAddr->to_string()
-                         << " in VPM, the accessed range is too big: [" << offsetRange.minValue << ", "
-                         << offsetRange.maxValue << "]" << logging::endl;
+        LCOV_EXCL_START
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Cannot cache memory location " << baseAddr->to_string()
+                << " in VPM, the accessed range is too big: [" << offsetRange.minValue << ", " << offsetRange.maxValue
+                << "]" << logging::endl);
+        LCOV_EXCL_STOP
         return nullptr;
     }
-    logging::debug() << "Memory location " << baseAddr->to_string() << " is accessed via DMA in the dynamic range ["
-                     << offsetRange.minValue << ", " << offsetRange.maxValue << "]" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Memory location " << baseAddr->to_string() << " is accessed via DMA in the dynamic range ["
+            << offsetRange.minValue << ", " << offsetRange.maxValue << "]" << logging::endl);
 
     // TODO correct type?? Shouldn't it be baseAddr->type.getElmentType().toArrayType(...??
-    auto accessedType = baseAddr->type.toArrayType(
+    auto accessedType = method.createArrayType(baseAddr->type,
         static_cast<unsigned>(offsetRange.maxValue - offsetRange.minValue + 1 /* bounds of range are inclusive! */));
 
     // XXX the local is not correct, at least not if there is a work-group uniform offset, but since all work-items
@@ -807,9 +1002,9 @@ static const periphery::VPMArea* checkCacheMemoryAccessRanges(
     auto vpmArea = method.vpm->addArea(baseAddr, accessedType, false);
     if(vpmArea == nullptr)
     {
-        logging::debug() << "Memory location " << baseAddr->to_string() << " with dynamic access range ["
-                         << offsetRange.minValue << ", " << offsetRange.maxValue
-                         << "] cannot be cached in VPM, since it does not fit" << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Memory location " << baseAddr->to_string() << " with dynamic access range [" << offsetRange.minValue
+                << ", " << offsetRange.maxValue << "] cannot be cached in VPM, since it does not fit" << logging::endl);
         return nullptr;
     }
     return vpmArea;

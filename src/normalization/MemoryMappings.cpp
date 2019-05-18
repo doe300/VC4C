@@ -120,15 +120,17 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(
                 throw CompilationError(CompilationStep::NORMALIZER,
                     "Lowering copy with more than 1 entry is not yet implemented", mem->to_string());
             it.reset(new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmpVal)));
-            logging::debug() << "Replaced memory copy from constant memory to memory write of constant value: "
-                             << it->to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Replaced memory copy from constant memory to memory write of constant value: "
+                    << it->to_string() << logging::endl);
             return mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
         }
         if(mem->op == MemoryOperation::READ)
         {
             it.reset(new MoveOperation(mem->getDestination(), tmpVal));
-            logging::debug() << "Replaced loading of constant memory with constant literal: " << it->to_string()
-                             << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Replaced loading of constant memory with constant literal: " << it->to_string()
+                    << logging::endl);
             return it;
         }
     }
@@ -137,8 +139,9 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(
         if(mem->op == MemoryOperation::READ)
         {
             it.reset(new MoveOperation(mem->getDestination(), tmpVal));
-            logging::debug() << "Replaced loading of constant memory with vector rotation of register: "
-                             << it->to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Replaced loading of constant memory with vector rotation of register: " << it->to_string()
+                    << logging::endl);
             return it;
         }
         if(mem->op == MemoryOperation::COPY)
@@ -148,8 +151,9 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(
                     "Lowering copy with more than 1 entry is not yet implemented", mem->to_string());
             it.reset(new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmpVal)));
             it = mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
-            logging::debug() << "Replaced copying from constant memory with vector rotation and writing of memory: "
-                             << it->to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Replaced copying from constant memory with vector rotation and writing of memory: "
+                    << it->to_string() << logging::endl);
             return it;
         }
     }
@@ -165,15 +169,17 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(
             // object is processed
             it.reset(new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), *std::move(constant)));
             it = mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
-            logging::debug() << "Replaced memory copy from constant memory to memory write of constant value: "
-                             << it->to_string() << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Replaced memory copy from constant memory to memory write of constant value: "
+                    << it->to_string() << logging::endl);
             return it;
         }
         else
         {
             it.reset(new MoveOperation(mem->getOutput().value(), *constant));
-            logging::debug() << "Replaced loading of constant memory with constant literal: " << it->to_string()
-                             << logging::endl;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Replaced loading of constant memory with constant literal: " << it->to_string()
+                    << logging::endl);
             return it;
         }
     }
@@ -218,8 +224,9 @@ static InstructionWalker lowerMemoryReadWriteToRegister(
     else
         throw CompilationError(
             CompilationStep::NORMALIZER, "Unhandled case of lowering memory access to register", mem->to_string());
-    logging::debug() << "Replaced access to stack allocation '" << it->to_string()
-                     << "' with: " << it.copy().previousInBlock()->to_string() << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Replaced access to stack allocation '" << it->to_string()
+            << "' with: " << it.copy().previousInBlock()->to_string() << logging::endl);
     return it.erase();
 }
 
@@ -243,7 +250,8 @@ static InstructionWalker lowerMemoryCopyToRegister(
         throw CompilationError(CompilationStep::NORMALIZER,
             "Lowering copy with more than 1 entry is not yet implemented", mem->to_string());
 
-    logging::debug() << "Lowering copy with register-mapped memory: " << mem->to_string() << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Lowering copy with register-mapped memory: " << mem->to_string() << logging::endl);
 
     Value tmpIndex = UNDEFINED_VALUE;
     if(srcInfo.mappedRegisterOrConstant)
@@ -310,9 +318,11 @@ static InstructionWalker lowerMemoryReadToVPM(
         throw CompilationError(CompilationStep::NORMALIZER, "Cannot lower into VPM without VPM area", mem->to_string());
 
     if(srcInfo.type == MemoryAccessType::VPM_PER_QPU)
-        logging::debug() << "Lowering read of stack allocation into VPM: " << mem->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Lowering read of stack allocation into VPM: " << mem->to_string() << logging::endl);
     else
-        logging::debug() << "Lowering read of shared local memory into VPM: " << mem->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Lowering read of shared local memory into VPM: " << mem->to_string() << logging::endl);
 
     Value inAreaOffset = UNDEFINED_VALUE;
     it = insertToInVPMAreaOffset(method, it, inAreaOffset, srcInfo, mem, mem->getSource());
@@ -335,9 +345,11 @@ static InstructionWalker lowerMemoryWriteToVPM(
         throw CompilationError(CompilationStep::NORMALIZER, "Cannot lower into VPM without VPM area", mem->to_string());
 
     if(destInfo.type == MemoryAccessType::VPM_PER_QPU)
-        logging::debug() << "Lowering write to stack allocation into VPM: " << mem->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Lowering write to stack allocation into VPM: " << mem->to_string() << logging::endl);
     else
-        logging::debug() << "Lowering write to shared local memory into VPM: " << mem->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Lowering write to shared local memory into VPM: " << mem->to_string() << logging::endl);
 
     Value inAreaOffset = UNDEFINED_VALUE;
     it = insertToInVPMAreaOffset(method, it, inAreaOffset, destInfo, mem, mem->getDestination());
@@ -366,7 +378,8 @@ static InstructionWalker lowerMemoryWriteToVPM(
 static InstructionWalker loadMemoryViaTMU(
     Method& method, InstructionWalker it, MemoryInstruction* mem, const MemoryInfo& srcInfo, const MemoryInfo& destInfo)
 {
-    logging::debug() << "Loading from read-only memory via TMU: " << mem->to_string() << logging::endl;
+    CPPLOG_LAZY(
+        logging::Level::DEBUG, log << "Loading from read-only memory via TMU: " << mem->to_string() << logging::endl);
     if(mem->op == MemoryOperation::READ)
     {
         if(auto param = srcInfo.local->as<Parameter>())
@@ -388,7 +401,8 @@ static InstructionWalker loadMemoryViaTMU(
 static InstructionWalker accessMemoryInRAMViaVPM(
     Method& method, InstructionWalker it, MemoryInstruction* mem, const MemoryInfo& srcInfo, const MemoryInfo& destInfo)
 {
-    logging::debug() << "Mapping access to memory located in RAM: " << mem->to_string() << logging::endl;
+    CPPLOG_LAZY(
+        logging::Level::DEBUG, log << "Mapping access to memory located in RAM: " << mem->to_string() << logging::endl);
     switch(mem->op)
     {
     case MemoryOperation::FILL:
@@ -471,7 +485,8 @@ static InstructionWalker mapMemoryCopy(
     if(srcInVPM && destInVPM)
     {
         // copy from VPM into VPM -> VPM read + VPM write
-        logging::debug() << "Mapping copy from/to VPM to VPM read and VPM write: " << mem->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Mapping copy from/to VPM to VPM read and VPM write: " << mem->to_string() << logging::endl);
 
         if(mem->getNumEntries() != INT_ONE)
             // TODO could for static count insert that number of reads/writes, for dynamic need a loop!
@@ -486,7 +501,8 @@ static InstructionWalker mapMemoryCopy(
     else if(srcInVPM && destInRAM)
     {
         // copy from VPM into RAM -> DMA write
-        logging::debug() << "Mapping copy from VPM into RAM to DMA write: " << mem->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Mapping copy from VPM into RAM to DMA write: " << mem->to_string() << logging::endl);
         Value inAreaOffset = UNDEFINED_VALUE;
         it = insertToInVPMAreaOffset(method, it, inAreaOffset, srcInfo, mem, mem->getSource());
         it = method.vpm->insertWriteRAM(method, it, mem->getDestination(), mem->getSourceElementType(), srcInfo.area,
@@ -496,7 +512,8 @@ static InstructionWalker mapMemoryCopy(
     else if(srcInRAM && destInVPM)
     {
         // copy from RAM into VPM -> DMA read
-        logging::debug() << "Mapping copy from RAM into VPM to DMA read: " << mem->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Mapping copy from RAM into VPM to DMA read: " << mem->to_string() << logging::endl);
         Value inAreaOffset = UNDEFINED_VALUE;
         it = insertToInVPMAreaOffset(method, it, inAreaOffset, destInfo, mem, mem->getDestination());
         it = method.vpm->insertReadRAM(method, it, mem->getSource(), mem->getSourceElementType(), destInfo.area, true,
@@ -513,8 +530,8 @@ static InstructionWalker mapMemoryCopy(
             (mem->getSourceElementType().getScalarBitCount() * mem->getSourceElementType().getVectorWidth()) / 8;
         if(numBytes > std::numeric_limits<unsigned>::max())
             throw CompilationError(CompilationStep::OPTIMIZER, "Cannot copy more than 4GB of data", mem->to_string());
-        logging::debug() << "Mapping copy from RAM into RAM to DMA read and DMA write: " << mem->to_string()
-                         << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Mapping copy from RAM into RAM to DMA read and DMA write: " << mem->to_string() << logging::endl);
         it = method.vpm->insertCopyRAM(
             method, it, mem->getDestination(), mem->getSource(), static_cast<unsigned>(numBytes), nullptr);
         return it.erase();
@@ -522,8 +539,9 @@ static InstructionWalker mapMemoryCopy(
     else if(destInRegister && destInfo.convertedRegisterType)
     {
         // copy from VPM/RAM into register -> read from VPM/RAM + write to register
-        logging::debug() << "Mapping copy from VPM/RAM into register to read from VPM/RAM and register insertion: "
-                         << mem->to_string() << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Mapping copy from VPM/RAM into register to read from VPM/RAM and register insertion: "
+                << mem->to_string() << logging::endl);
         // TODO some general version
         if(copiesWholeRegister(mem->getNumEntries(), mem->getSourceElementType(), *destInfo.convertedRegisterType))
         {
@@ -535,6 +553,7 @@ static InstructionWalker mapMemoryCopy(
     }
     else
     {
+        LCOV_EXCL_START
         logging::error() << "Source: " << (srcInfo.local ? srcInfo.local->to_string() : "?") << " - "
                          << static_cast<unsigned>(srcInfo.type) << " - "
                          << (srcInfo.area ? srcInfo.area->to_string() : "") << logging::endl;
@@ -545,6 +564,7 @@ static InstructionWalker mapMemoryCopy(
 
         throw CompilationError(
             CompilationStep::NORMALIZER, "Unhandled case for handling memory copy", mem->to_string());
+        LCOV_EXCL_STOP
     }
 
     throw CompilationError(CompilationStep::NORMALIZER, "Need to be re-written", mem->to_string());

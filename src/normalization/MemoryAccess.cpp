@@ -22,13 +22,6 @@ using namespace vc4c::intermediate;
 using namespace vc4c::periphery;
 using namespace vc4c::operators;
 
-/**
- * TODO fix issues:
- * - invalid local type for memory: NVIDIA/MedianFilter.cl, HandBrake/yaif_filter.cl, rodinia/lud_kernel.cl, ... (e.g.
- * select between stack allocations)
- * - too complex phi-nodes with pointers: clNN/im2col.cl
- */
-
 // TODO make use of parameter's maxByteOffset? E.g. for caching?
 
 struct BaseAndOffset
@@ -238,9 +231,10 @@ static InstructionWalker findGroupOfVPMAccess(
                 CompilationStep::OPTIMIZER, "Setting VPM address with non-move is not supported", it->to_string());
         const auto baseAndOffset = findBaseAndOffset(it.get<MoveOperation>()->getSource());
         const bool isVPMWrite = it->writesRegister(REG_VPM_DMA_STORE_ADDR);
-        logging::debug() << "Found base address " << baseAndOffset.base.to_string() << " with offset "
-                         << std::to_string(baseAndOffset.offset.value_or(-1L)) << " for "
-                         << (isVPMWrite ? "writing into" : "reading from") << " memory" << logging::endl;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Found base address " << baseAndOffset.base.to_string() << " with offset "
+                << std::to_string(baseAndOffset.offset.value_or(-1L)) << " for "
+                << (isVPMWrite ? "writing into" : "reading from") << " memory" << logging::endl);
 
         if(!baseAndOffset.base)
             // this address-write could not be fixed to a base and an offset
@@ -263,8 +257,9 @@ static InstructionWalker findGroupOfVPMAccess(
                 // special case for first offset - use it to determine stride
                 group.stride = baseAndOffset.offset.value() -
                     findBaseAndOffset(group.addressWrites[0].get<MoveOperation>()->getSource()).offset.value();
-                logging::debug() << "Using a stride of " << group.stride
-                                 << " elements between consecutive access to memory" << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Using a stride of " << group.stride << " elements between consecutive access to memory"
+                        << logging::endl);
             }
             if(!baseAndOffset.offset || baseAndOffset.offset.value() != (nextOffset * group.stride))
                 // a group exists, but the offsets do not match
@@ -347,15 +342,20 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
 {
     if(group.genericSetups.size() != group.addressWrites.size() || group.genericSetups.size() != group.dmaSetups.size())
     {
-        logging::debug() << "Number of instructions do not match for combining VPM writes!" << logging::endl;
-        logging::debug() << group.genericSetups.size() << " generic VPM setups, " << group.addressWrites.size()
-                         << " VPR address writes and " << group.dmaSetups.size() << " DMA setups" << logging::endl;
+        LCOV_EXCL_START
+        CPPLOG_LAZY_BLOCK(logging::Level::DEBUG, {
+            logging::debug() << "Number of instructions do not match for combining VPM writes!" << logging::endl;
+            logging::debug() << group.genericSetups.size() << " generic VPM setups, " << group.addressWrites.size()
+                             << " VPR address writes and " << group.dmaSetups.size() << " DMA setups" << logging::endl;
+        });
+        LCOV_EXCL_STOP
         return;
     }
     if(group.addressWrites.size() <= 1)
         return;
-    logging::debug() << "Combining " << group.addressWrites.size()
-                     << " writes to consecutive memory into one DMA write... " << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Combining " << group.addressWrites.size() << " writes to consecutive memory into one DMA write... "
+            << logging::endl);
 
     // 1. Update DMA setup to the number of rows written
     {
@@ -432,15 +432,20 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
 {
     if(group.genericSetups.size() != group.addressWrites.size() || group.genericSetups.size() != group.dmaSetups.size())
     {
-        logging::debug() << "Number of instructions do not match for combining VPM reads!" << logging::endl;
-        logging::debug() << group.genericSetups.size() << " generic VPM setups, " << group.addressWrites.size()
-                         << " VPR address writes and " << group.dmaSetups.size() << " DMA setups" << logging::endl;
+        LCOV_EXCL_START
+        CPPLOG_LAZY_BLOCK(logging::Level::DEBUG, {
+            logging::debug() << "Number of instructions do not match for combining VPM reads!" << logging::endl;
+            logging::debug() << group.genericSetups.size() << " generic VPM setups, " << group.addressWrites.size()
+                             << " VPR address writes and " << group.dmaSetups.size() << " DMA setups" << logging::endl;
+        });
+        LCOV_EXCL_STOP
         return;
     }
     if(group.genericSetups.size() <= 1)
         return;
-    logging::debug() << "Combining " << group.genericSetups.size()
-                     << " reads of consecutive memory into one DMA read... " << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Combining " << group.genericSetups.size() << " reads of consecutive memory into one DMA read... "
+            << logging::endl);
 
     // 1. Update DMA setup to the number of rows read
     {
@@ -514,7 +519,8 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
         numRemoved += 2;
     }
 
-    logging::debug() << "Removed " << numRemoved << " instructions by combining VPR reads" << logging::endl;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Removed " << numRemoved << " instructions by combining VPR reads" << logging::endl);
 }
 
 /*
@@ -572,7 +578,8 @@ InstructionWalker normalization::accessGlobalData(
         {
             if(auto globalOffset = module.getGlobalDataOffset(arg.local()))
             {
-                logging::debug() << "Replacing access to global data: " << it->to_string() << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Replacing access to global data: " << it->to_string() << logging::endl);
                 Value tmp = UNDEFINED_VALUE;
                 if(globalOffset.value() == 0)
                 {
@@ -652,12 +659,16 @@ void normalization::spillLocals(const Module& module, Method& method, const Conf
         it.nextInMethod();
     }
 
-    for(const auto& pair : spillingCandidates)
-    {
-        logging::debug() << "Spilling candidate: " << pair.first->to_string() << " ("
-                         << pair.first->getUsers(LocalUse::Type::WRITER).size() << " writes, "
-                         << pair.first->getUsers(LocalUse::Type::READER).size() << " reads)" << logging::endl;
-    }
+    LCOV_EXCL_START
+    CPPLOG_LAZY_BLOCK(logging::Level::DEBUG, {
+        for(const auto& pair : spillingCandidates)
+        {
+            logging::debug() << "Spilling candidate: " << pair.first->to_string() << " ("
+                             << pair.first->getUsers(LocalUse::Type::WRITER).size() << " writes, "
+                             << pair.first->getUsers(LocalUse::Type::READER).size() << " reads)" << logging::endl;
+        }
+    });
+    LCOV_EXCL_STOP
 
     // TODO do not preemptively spill, only on register conflicts. Which case??
 }
@@ -679,8 +690,8 @@ void normalization::resolveStackAllocation(
             // 2.remove the life-time instructions
             if(it.get<intermediate::LifetimeBoundary>() != nullptr)
             {
-                logging::debug() << "Dropping life-time instruction for stack-allocation: " << arg.to_string()
-                                 << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Dropping life-time instruction for stack-allocation: " << arg.to_string() << logging::endl);
                 it = it.erase();
                 // to not skip the next instruction
                 it.previousInBlock();
@@ -705,7 +716,8 @@ void normalization::resolveStackAllocation(
                 // TODO to save instructions, could pre-calculate 'global-data address + global-data size + (QPU-ID *
                 // stack allocations maximum size)' once, if any stack-allocation exists ??
 
-                logging::debug() << "Replacing access to stack allocated data: " << it->to_string() << logging::endl;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Replacing access to stack allocated data: " << it->to_string() << logging::endl);
                 const Value qpuOffset = method.addNewLocal(TYPE_INT32, "%stack_offset");
                 const Value addrTemp = method.addNewLocal(arg.type, "%stack_addr");
                 Value finalAddr = method.addNewLocal(arg.type, "%stack_addr");

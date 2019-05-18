@@ -118,6 +118,7 @@ static Optional<std::pair<Value, InstructionDecorations>> combineAdditions(
     return prevResult;
 }
 
+LCOV_EXCL_START
 std::string MemoryAccessRange::to_string() const
 {
     return (memoryInstruction->to_string() +
@@ -127,6 +128,7 @@ std::string MemoryAccessRange::to_string() const
             " dynamic element range [") +
         (std::to_string(offsetRange.minValue) + ", ") + (std::to_string(offsetRange.maxValue) + "]");
 }
+LCOV_EXCL_STOP
 
 InstructionWalker normalization::insertAddressToWorkItemSpecificOffset(
     InstructionWalker it, Method& method, Value& out, MemoryAccessRange& range)
