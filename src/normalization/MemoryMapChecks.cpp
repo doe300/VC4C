@@ -528,13 +528,21 @@ static MemoryInfo canLowerToRegisterReadWrite(Method& method, const Local* baseA
 {
     // a) the private memory fits into a single register
     if(baseAddr->type.isScalarType())
+    {
+        if(auto stackAllocation = baseAddr->as<StackAllocation>())
+            const_cast<StackAllocation*>(stackAllocation)->isLowered = true;
         return MemoryInfo{baseAddr, MemoryAccessType::QPU_REGISTER_READWRITE, nullptr, {},
             method.addNewLocal(baseAddr->type, "%lowered_stack")};
+    }
     // b) the private memory is small enough to be rewritten to fit into a single register (e.g. int[4])
     auto convertedType = convertSmallArrayToRegister(baseAddr);
     if(convertedType)
+    {
+        if(auto stackAllocation = baseAddr->as<StackAllocation>())
+            const_cast<StackAllocation*>(stackAllocation)->isLowered = true;
         return MemoryInfo{baseAddr, MemoryAccessType::QPU_REGISTER_READWRITE, nullptr, {},
             method.addNewLocal(*convertedType, "%lowered_stack"), convertedType};
+    }
 
     // cannot lower to register, use fall-back
     access.preferred = access.fallback;
@@ -545,9 +553,16 @@ static MemoryInfo canLowerToPrivateVPMArea(Method& method, const Local* baseAddr
 {
     auto area =
         method.vpm->addArea(baseAddr, baseAddr->type.getElementType(), true, method.metaData.getWorkGroupSize());
-    if(area)
+    if(false && area)
+    {
+        // FIXME enable once storing with element (non-vector) offset into VPM is implemented
+        // Retest: OpenCL-CTS/vload_private, OpenCL_CTS/vstore_private, emulate-memory
+        // mark stack allocation as lowered to VPM to skip reserving a stack area
+        if(auto stackAllocation = baseAddr->as<StackAllocation>())
+            const_cast<StackAllocation*>(stackAllocation)->isLowered = true;
         return MemoryInfo{
             baseAddr, MemoryAccessType::VPM_PER_QPU, area, {}, NO_VALUE, convertSmallArrayToRegister(baseAddr)};
+    }
 
     // cannot lower to register, use fall-back
     access.preferred = access.fallback;

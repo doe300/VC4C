@@ -426,6 +426,9 @@ void Method::calculateStackOffsets()
     std::size_t currentOffset = 0;
     for(auto it = stackAllocations.begin(); it != stackAllocations.end(); ++it)
     {
+        if(it->isLowered)
+            // is lowered into VPM, does not participate in in-memory-stack
+            continue;
         if((stackBaseOffset + currentOffset) % it->alignment != 0)
             currentOffset += it->alignment - ((stackBaseOffset + currentOffset) % it->alignment);
         const_cast<std::size_t&>(it->offset) = currentOffset;
@@ -440,9 +443,16 @@ std::size_t Method::calculateStackSize() const
     const StackAllocation* max = &(*stackAllocations.begin());
     for(const StackAllocation& s : stackAllocations)
     {
+        if(s.isLowered)
+            // is lowered into VPM, does not participate in in-memory-stack
+            continue;
         if(s.offset + s.size > max->offset + max->size)
             max = &s;
     }
+    if(max->isLowered)
+        // stack allocation with highest offset is lowered to VPM -> all stack allocations are lowered to VPM
+        return 0;
+
     std::size_t stackSize = max->offset + max->size;
 
     // make sure, stack-size is aligned to maximum stack entry alignment (for 2nd, 3rd, ... stack-frame)

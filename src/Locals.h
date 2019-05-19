@@ -334,6 +334,11 @@ namespace vc4c
          * If not set, the alignment defaults to 1 byte
          */
         std::size_t size;
+        /*
+         * Whether this stack allocation is lowered into VPM or register. For lowered stack allocations, no area in the
+         * "constant" memory block needs to be reserved.
+         */
+        bool isLowered = false;
     };
 
     /*

@@ -399,7 +399,8 @@ KernelInfo qpu_asm::getKernelInfos(
             logging::debug() << "Kernel " << method.name << ":" << logging::endl;
             for(const auto& s : method.stackAllocations)
                 logging::debug() << "Stack-Entry: " << s.to_string() << ", size: " << s.size
-                                 << ", alignment: " << s.alignment << ", offset: " << s.offset << logging::endl;
+                                 << ", alignment: " << s.alignment << ", offset: " << s.offset
+                                 << (s.isLowered ? " (lowered)" : "") << logging::endl;
         });
         LCOV_EXCL_STOP
     }
