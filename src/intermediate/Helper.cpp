@@ -153,6 +153,7 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
                 subOffset = method.addNewLocal(TYPE_INT32, "%index_offset");
                 it.emplace(new intermediate::IntrinsicOperation("mul", Value(subOffset), Value(index),
                     Value(Literal(subContainerType.getElementType().getPhysicalWidth()), TYPE_INT32)));
+                it->addDecorations(InstructionDecorations::SIGNED_OVERFLOW_IS_UB);
                 it.nextInBlock();
             }
 
@@ -180,7 +181,8 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
                     TYPE_INT32);
             else
                 subOffset = assign(it, TYPE_INT32, "%vector_element_offset") =
-                    index * Literal(subContainerType.getElementType().getPhysicalWidth());
+                    (index * Literal(subContainerType.getElementType().getPhysicalWidth()),
+                        InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::UNSIGNED_OVERFLOW_IS_UB);
             subContainerType = subContainerType.getElementType();
         }
         else
@@ -204,12 +206,14 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
         }
         else
         {
-            Value tmp = assign(it, TYPE_INT32, "%index_offset") = offset + subOffset;
+            Value tmp = assign(it, TYPE_INT32, "%index_offset") =
+                (offset + subOffset, InstructionDecorations::SIGNED_OVERFLOW_IS_UB);
             offset = tmp;
         }
     }
     // add last offset to container
-    assign(it, dest) = container + offset;
+    assign(it, dest) =
+        (container + offset, InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::UNSIGNED_OVERFLOW_IS_UB);
 
     /*
      * associates the index with the local/parameter it refers to.

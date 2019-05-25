@@ -122,8 +122,8 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
             // f(f(a)) = f(a)
             return Expression{code, expr0->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
         // NOTE: ftoi(itof(i)) != i, itof(ftoi(f)) != f, since the truncation/rounding would get lost!
-        if(code == OP_NOT && expr0->code == OP_NOT)
-            // not(not(a)) = a
+        if(code.isSelfInverse() && code == expr0->code)
+            // f(f(a)) = a, e.g. not(not(a)) = a
             return Expression{OP_V8MIN, expr0->arg0, expr0->arg0, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
     }
 
@@ -132,6 +132,12 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
         if(code.isIdempotent() && arg0 == arg1)
             // f(a, a) = a
             return Expression{OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco};
+        if(code.isSelfInverse() && arg0 == arg1)
+        {
+            // f(a, a) = 0, e.g. a - a = 0
+            auto zero = code.returnsFloat ? FLOAT_ZERO : INT_ZERO;
+            return Expression{OP_V8MIN, zero, zero, UNPACK_NOP, PACK_NOP, deco};
+        }
         if(OpCode::getLeftIdentity(code) == arg0)
             // f(id, a) = a
             return Expression{OP_V8MIN, arg1.value(), arg1, UNPACK_NOP, PACK_NOP, deco};
@@ -266,6 +272,40 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
                 return Expression{OP_FMUL, arg0,
                     Value(Literal(expr1->arg0.getLiteralValue()->real() + 1.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP,
                     add_flag(deco, expr1->deco)};
+        }
+
+        // TODO generalize! E.g. via mapping opcode -> inverse opcode (inverse according to which of the operands?!)
+        if(expr0 && arg1 && expr0->arg1 && (arg1 == expr0->arg0 || arg1 == expr0->arg1))
+        {
+            // NOTE: This rewrite removes overflow since it removes two operations that could overflow!
+            const auto& otherArg = arg1 == expr0->arg0 ? *expr0->arg1 : expr0->arg0;
+            // (a + b) - a = b
+            // (a + b) - b = a
+            // (a - b) + b = a
+            if((code == OP_SUB && expr0->code == OP_ADD) || (code == OP_FSUB && expr0->code == OP_FADD) ||
+                (code == OP_ADD && expr0->code == OP_SUB && arg1 == expr0->arg1) ||
+                (code == OP_FADD && expr0->code == OP_FSUB && arg1 == expr0->arg1))
+                return Expression{OP_V8MIN, otherArg, otherArg, UNPACK_NOP, PACK_NOP, deco};
+
+            // (a - b) - a = -b
+            if((code == OP_SUB && expr0->code == OP_SUB && arg1 == expr0->arg0) ||
+                (code == OP_FSUB && expr0->code == OP_FSUB && arg1 == expr0->arg0))
+                return Expression{code, INT_ZERO, otherArg, UNPACK_NOP, PACK_NOP, deco};
+        }
+        if(expr1 && expr1->arg1 && (arg0 == expr1->arg0 || arg0 == expr1->arg1))
+        {
+            // NOTE: This rewrite removes overflow since it removes two operations that could overflow!
+            const auto& otherArg = arg0 == expr1->arg0 ? *expr1->arg1 : expr1->arg0;
+            // a + (b - a) = b
+            if((code == OP_ADD && expr1->code == OP_SUB && arg0 == expr1->arg1) ||
+                (code == OP_FADD && expr1->code == OP_FSUB && arg0 == expr1->arg1))
+            {
+                return Expression{OP_V8MIN, otherArg, otherArg, UNPACK_NOP, PACK_NOP, deco};
+            }
+            // a - (b + a) = -b
+            // a - (a + b) = -b
+            if((code == OP_SUB && expr1->code == OP_ADD) || (code == OP_FSUB && expr1->code == OP_FADD))
+                return Expression{code, INT_ZERO, otherArg, UNPACK_NOP, PACK_NOP, deco};
         }
     }
 

@@ -1044,6 +1044,11 @@ bool OpCode::isRightDistributiveOver(const OpCode& other) const noexcept
     return false;
 }
 
+bool OpCode::isSelfInverse() const noexcept
+{
+    return *this == OP_NOT || *this == OP_SUB || *this == OP_FSUB || *this == OP_XOR;
+}
+
 const OpCode& OpCode::toOpCode(const unsigned char opCode, const bool isMulALU)
 {
     if(opCode == 0)

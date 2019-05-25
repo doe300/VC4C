@@ -29,6 +29,14 @@ using namespace vc4c::optimizations;
 using namespace vc4c::intermediate;
 using namespace vc4c::operators;
 
+// Taken from https://stackoverflow.com/questions/2835469/how-to-perform-rotate-shift-in-c?noredirect=1&lq=1
+constexpr static uint32_t rotate_left_halfword(uint32_t value, uint8_t shift) noexcept
+{
+    return (value << shift) | (value >> (16 - shift));
+}
+
+static_assert((rotate_left_halfword(0x12340000 >> 16, 4) << 16) == 0x23410000, "");
+
 static const std::string combineLoadLiteralsThreshold = "combine-load-threshold";
 
 bool optimizations::simplifyBranches(const Module& module, Method& method, const Configuration& config)
@@ -836,9 +844,83 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
         InstructionWalker it = block.walk();
         while(!it.isEndOfBlock())
         {
-            if(it.get<VectorRotation>() && !it->hasSideEffects())
+            VectorRotation* rot = it.get<VectorRotation>();
+            if(rot)
             {
-                VectorRotation* rot = it.get<VectorRotation>();
+                if(rot->getOffset() == ROTATION_REGISTER ||
+                    (rot->getOffset().checkImmediate() && rot->getOffset().immediate() == VECTOR_ROTATE_R5))
+                {
+                    // check whether we rotate by a constant offset, e.g. when rewritten by some other optimization
+                    // and rewrite rotation to rotation by this static offset
+                    auto writer = block.findLastWritingOfRegister(it, REG_ACC5);
+                    Optional<Value> staticOffset = NO_VALUE;
+                    if(writer && (staticOffset = (*writer)->precalculate(2).first))
+                    {
+                        if(staticOffset == INT_ZERO || staticOffset->hasLiteral(16_lit))
+                        {
+                            // NOTE: offset of 16 can occur for downwards rotations a << (16 - x) when the actual
+                            // rotation x is zero.
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Replacing vector rotation by offset of zero with move: " << it->to_string()
+                                    << logging::endl);
+                            it.reset(
+                                (new MoveOperation(rot->getOutput().value(), rot->getSource()))->copyExtrasFrom(rot));
+                            hasChanged = true;
+                            continue;
+                        }
+                        else if(staticOffset->getLiteralValue() &&
+                            staticOffset->getLiteralValue()->unsignedInt() < NATIVE_VECTOR_SIZE)
+                        {
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Rewriting vector rotation to use constant offset: " << it->to_string()
+                                    << logging::endl);
+                            rot->replaceValue(rot->getOffset(),
+                                Value(SmallImmediate::fromRotationOffset(
+                                          static_cast<uint8_t>(staticOffset->getLiteralValue()->unsignedInt())),
+                                    TYPE_INT8),
+                                LocalUse::Type::READER);
+                            hasChanged = true;
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            if(rot && rot->getSource().checkLocal() && rot->getOffset().checkImmediate() &&
+                rot->getOffset().immediate() != VECTOR_ROTATE_R5 && !rot->hasUnpackMode() &&
+                !rot->signal.hasSideEffects())
+            {
+                auto writer = dynamic_cast<const LoadImmediate*>(rot->getSource().getSingleWriter());
+                if(writer && !writer->hasPackMode())
+                {
+                    // we rotate the result of a load -> rewrite to rotate the load instead.
+                    if(writer->type == LoadType::REPLICATE_INT32)
+                    {
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Replacing rotation of constant load with constant load: " << rot->to_string()
+                                << logging::endl);
+                        it.reset(
+                            (new LoadImmediate(it->getOutput().value(), writer->getImmediate()))->copyExtrasFrom(rot));
+                        hasChanged = true;
+                        continue;
+                    }
+                    // rotate upper and lower parts by given offset and reset rotation with load!
+                    auto lit = writer->assertArgument(0).literal().unsignedInt();
+                    auto offset = rot->getOffset().immediate().getRotationOffset();
+                    auto upper = rotate_left_halfword(lit >> 16, *offset) << 16;
+                    auto lower = rotate_left_halfword(lit & 0xFFFF, *offset);
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Replacing rotation of masked load with rotated masked load: " << rot->to_string()
+                            << logging::endl);
+                    it.reset(
+                        (new LoadImmediate(it->getOutput().value(), upper | lower, writer->type))->copyExtrasFrom(rot));
+                    hasChanged = true;
+                    continue;
+                }
+            }
+
+            if(rot && !rot->hasSideEffects())
+            {
                 if(rot->getSource().checkLocal() && rot->getOffset().checkImmediate() &&
                     rot->getOffset().immediate() != VECTOR_ROTATE_R5)
                 {

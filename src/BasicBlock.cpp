@@ -253,6 +253,25 @@ Optional<InstructionWalker> BasicBlock::findLastSettingOfFlags(const Instruction
     return {};
 }
 
+Optional<InstructionWalker> BasicBlock::findLastWritingOfRegister(InstructionWalker start, Register reg) const
+{
+    InstructionWalker it = start.copy().previousInBlock();
+    while(!it.isStartOfBlock())
+    {
+        if(it->writesRegister(reg))
+            return it;
+        if(auto comb = it.get<intermediate::CombinedOperation>())
+        {
+            if(comb->op1 && comb->op1->writesRegister(reg))
+                return it;
+            if(comb->op2 && comb->op2->writesRegister(reg))
+                return it;
+        }
+        it.previousInBlock();
+    }
+    return {};
+}
+
 bool BasicBlock::isStartOfMethod() const
 {
     return &(*method.begin()) == this;

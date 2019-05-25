@@ -131,6 +131,11 @@ namespace vc4c
          */
         Optional<InstructionWalker> findLastSettingOfFlags(InstructionWalker start) const;
         /*
+         * Returns the InstructionWalker for the last (as in prior to the given instruction) instruction writing into
+         * the given register within this basic block
+         */
+        Optional<InstructionWalker> findLastWritingOfRegister(InstructionWalker start, Register reg) const;
+        /*
          * Returns whether this basic-block is the start of the method body
          */
         bool isStartOfMethod() const;

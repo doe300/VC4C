@@ -777,6 +777,16 @@ namespace vc4c
          * NOTE: The distributivity does not hold for overflow!
          */
         bool isRightDistributiveOver(const OpCode& other) const noexcept;
+        /*
+         * Whether the operation is self-inverse
+         *
+         * - Unary operations are self-inverse, iff op(op(x)) = x for all x, e.g. for not
+         * - Binary operations are self-inverse, iff op(x, x) = 0 for all x, e.g. sub, xor
+         *
+         * See also:
+         * https://en.wikipedia.org/wiki/Inverse_function#Self-inverses
+         */
+        bool isSelfInverse() const noexcept;
 
         /*
          * Returns the op-code for the given op-code name.

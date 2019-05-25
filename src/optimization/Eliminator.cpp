@@ -30,18 +30,17 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
     while(!it.isEndOfMethod())
     {
         intermediate::IntermediateInstruction* instr = it.get();
+        intermediate::Operation* op = it.get<intermediate::Operation>();
+        intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
+        intermediate::LoadImmediate* load = it.get<intermediate::LoadImmediate>();
+
         // fail-fast on all not-supported instruction types
         // also skip all instructions writing to non-locals (registers)
-        if(it.get() && !it.get<intermediate::Branch>() && !it.get<intermediate::BranchLabel>() &&
-            !it.get<intermediate::SemaphoreAdjustment>() && instr->hasValueType(ValueType::LOCAL))
+        if((op || move || load) && instr->hasValueType(ValueType::LOCAL))
         {
-            intermediate::Operation* op = it.get<intermediate::Operation>();
-            intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
-            intermediate::LoadImmediate* load = it.get<intermediate::LoadImmediate>();
-
             // check whether the output of an instruction is never read
             // only check for ALU-operations and loads, if no flags are set and no special signals are sent
-            if((move != nullptr || op != nullptr || load != nullptr) && !instr->hasSideEffects())
+            if(!instr->hasSideEffects())
             {
                 const Local* dest = instr->getOutput()->local();
                 // check whether local is
@@ -160,6 +159,49 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                 }
             }
         }
+        // remove unnecessary writes to special purpose registers
+        if((op || move || load) && instr->hasValueType(ValueType::REGISTER) && !instr->hasSideEffects())
+        {
+            // check whether the register output is actually used. This depends on the kind of register
+            // Having an unused rotation offset write can happen, e.g. if the value is zero and the rotation gets
+            // rewritten to a move (in #combineVectorRotations)
+            bool isUsed = true;
+            if(instr->writesRegister(REG_ACC5) || instr->writesRegister(REG_REPLICATE_QUAD) ||
+                instr->writesRegister(REG_REPLICATE_ALL))
+            {
+                auto checkIt = it.copy().nextInBlock();
+                while(!checkIt.isEndOfBlock())
+                {
+                    if(checkIt.get() &&
+                        (checkIt->writesRegister(REG_ACC5) || checkIt->writesRegister(REG_REPLICATE_QUAD) ||
+                            checkIt->writesRegister(REG_REPLICATE_ALL)))
+                    {
+                        // register is written before it is read!
+                        isUsed = false;
+                        break;
+                    }
+                    if(checkIt.get() &&
+                        (checkIt->readsRegister(REG_ACC5) || checkIt->readsRegister(REG_REPLICATE_QUAD) ||
+                            checkIt->readsRegister(REG_REPLICATE_ALL)))
+                    {
+                        // register is used
+                        break;
+                    }
+                    checkIt.nextInBlock();
+                }
+            }
+            // TODO same for SFU/TMU?! Or do they always trigger side effects?
+
+            if(!isUsed)
+            {
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Removing write to special purpose register which is never used: " << it->to_string()
+                        << logging::endl);
+                it.erase();
+                hasChanged = true;
+                continue;
+            }
+        }
         it.nextInMethod();
     }
     // remove unused locals. This is actually not required, but gives us some feedback about the effect of this
@@ -206,6 +248,17 @@ InstructionWalker optimizations::simplifyOperation(
                     log << "Replacing obsolete " << op->to_string() << " with move 2" << logging::endl);
                 it.reset((new intermediate::MoveOperation(
                               op->getOutput().value(), rightAbsorbing.value(), op->conditional, op->setFlags))
+                             ->addDecorations(it->decoration));
+            }
+            // both operands are the same and the operation is self-inverse <=> f(a, a) = 0
+            else if(op->op.isSelfInverse() && firstArg == secondArg && firstArg.type.getElementType() != TYPE_BOOL)
+            {
+                // do not replace xor true, true, since this is almost always combined with or true, true for inverted
+                // condition
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Replacing obsolete " << op->to_string() << " with move 7" << logging::endl);
+                it.reset((new intermediate::MoveOperation(op->getOutput().value(),
+                              Value(Literal(0u), op->getOutput()->type), op->conditional, op->setFlags))
                              ->addDecorations(it->decoration));
             }
             // writes into the input -> can be removed, if it doesn't do anything
