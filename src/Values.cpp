@@ -752,7 +752,10 @@ std::size_t std::hash<vc4c::SIMDVector>::operator()(vc4c::SIMDVector const& val)
 
 std::size_t std::hash<vc4c::Value>::operator()(vc4c::Value const& val) const noexcept
 {
-    std::hash<DataType> typeHash;
+    // NOTE: Cannot apply hash of type here, since
+    // 1) Values with same content but different type are considered equal (see operator==) and
+    // 2) otherwise for FastSet or FastMap e.g. periphery-register-values are not considered equal, if they differ only
+    // in type
     std::hash<decltype(val.data)> dataHash;
-    return typeHash(val.type) ^ dataHash(val.data);
+    return dataHash(val.data);
 }

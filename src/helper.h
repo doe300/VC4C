@@ -93,7 +93,7 @@ namespace vc4c
 
     template <typename T, typename VT = std::vector<T>,
         typename std::enable_if<std::is_arithmetic<T>::value, void*>::type = nullptr>
-    inline std::string to_string(const VT& values, const std::string& separator)
+    inline std::string to_string(const VT& values, const std::string& separator = ", ")
     {
         std::string tmp;
         for(auto val : values)

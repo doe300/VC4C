@@ -29,6 +29,9 @@
 using namespace vc4c;
 using namespace vc4c::tools;
 
+// TODO can we actually read multiple times from r5? Does r5 retain its previous value? Does the same work for r4 (e.g.
+// when set via TMU/SFU)?
+
 extern void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, StableList<Global>& globals,
     std::vector<qpu_asm::Instruction>& instructions);
 
@@ -929,6 +932,8 @@ void VPM::setReadSetup(Value&& val)
     if(setup.isDMASetup())
         dmaReadSetup = setup.value;
     else if(setup.isGenericSetup())
+        // TODO warn/error if there is still VPM read pending from previous setup. TODO or create VPM read queue like
+        // for TMU?
         vpmReadSetup = setup.value;
     else if(setup.isStrideSetup())
         readStrideSetup = setup.value;
@@ -986,6 +991,9 @@ void VPM::setDMAWriteAddress(Value&& val)
         memcpy(reinterpret_cast<uint8_t*>(memory.getWordAddress(address)) + address % sizeof(Word),
             reinterpret_cast<uint8_t*>(&cache.at(vpmBaseAddress.first).at(vpmBaseAddress.second)) + byteOffset,
             typeSize * sizes.second);
+        logging::debug() << "\tVPM row: "
+                         << to_string<unsigned, std::array<unsigned, 16>>(cache.at(vpmBaseAddress.first))
+                         << logging::endl;
         vpmBaseAddress.first += 1;
         // write stride is end-to-start, so add size of vector
         address += stride + (typeSize * sizes.second);
@@ -1045,6 +1053,9 @@ void VPM::setDMAReadAddress(Value&& val)
         memcpy(reinterpret_cast<uint8_t*>(&cache.at(vpmBaseAddress.first).at(vpmBaseAddress.second)) + byteOffset,
             reinterpret_cast<uint8_t*>(memory.getWordAddress(address)) + address % sizeof(Word),
             typeSize * sizes.second);
+        logging::debug() << "\tVPM row: "
+                         << to_string<unsigned, std::array<unsigned, 16>>(cache.at(vpmBaseAddress.first))
+                         << logging::endl;
         vpmBaseAddress.first += static_cast<uint32_t>((vpitch * typeSize) / sizeof(Word));
         vpmBaseAddress.second += static_cast<uint32_t>((vpitch * typeSize) % sizeof(Word));
         // read pitch is start-to-start, so we don't have to add anything
@@ -1905,11 +1916,16 @@ static Memory fillMemory(const StableList<Global>& globalData, const EmulationDa
     MemoryAddress currentAddress = 0;
     globalDataAddressOut = currentAddress;
 
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Memory layout:" << logging::endl);
+
     for(const Global& global : globalData)
     {
         if(!global.initialValue.type.getArrayType() || global.initialValue.type.getElementType() != TYPE_INT32)
             throw CompilationError(
                 CompilationStep::GENERAL, "Unhandled type of global data", global.initialValue.type.to_string());
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "\tGlobal '" << global.name << "' at offset 0x" << std::hex << currentAddress << std::dec
+                << logging::endl);
         if(auto compound = global.initialValue.getCompound())
         {
             for(const auto& word : *compound)
@@ -1934,6 +1950,9 @@ static Memory fillMemory(const StableList<Global>& globalData, const EmulationDa
         tools::Word* addr = mem.getWordAddress(currentAddress);
         if(pair.second)
         {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "\tParameter at offset 0x" << std::hex << currentAddress << std::dec << " with "
+                    << pair.second->size() << " words" << logging::endl);
             parameterAddressesOut.emplace_back(currentAddress);
             std::copy_n(pair.second->data(), pair.second->size(), addr);
             currentAddress += static_cast<MemoryAddress>(pair.second->size() * sizeof(uint32_t));

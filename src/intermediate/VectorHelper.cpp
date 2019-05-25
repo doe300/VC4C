@@ -173,13 +173,24 @@ InstructionWalker intermediate::insertVectorInsertion(
         // we use the mask version of loads to set the elements we want to insert to and then use flags to insert only
         // those
         unsigned maskLit = (1 << value.type.getVectorWidth()) - 1;
-        auto mask = method.addNewLocal(TYPE_INT32, "%vector_mask");
         auto shiftedMask = method.addNewLocal(TYPE_INT32, "%vector_mask");
-        it.emplace(new LoadImmediate(mask, maskLit, LoadType::PER_ELEMENT_UNSIGNED));
-        it.nextInBlock();
-        it = insertVectorRotation(it, mask, index, shiftedMask);
+        if(auto lit = index.getLiteralValue())
+        {
+            // rotate mask by constant offset at compile time
+            it.emplace(new LoadImmediate(
+                shiftedMask, maskLit << (lit->unsignedInt() % NATIVE_VECTOR_SIZE), LoadType::PER_ELEMENT_UNSIGNED));
+            it.nextInBlock();
+        }
+        else
+        {
+            // rotate mask by dynamic offset at runtime
+            auto mask = method.addNewLocal(TYPE_INT32, "%vector_mask");
+            it.emplace(new LoadImmediate(mask, maskLit, LoadType::PER_ELEMENT_UNSIGNED));
+            it.nextInBlock();
+            it = insertVectorRotation(it, mask, index, shiftedMask);
+        }
         assign(it, NOP_REGISTER) = (shiftedMask, SetFlag::SET_FLAGS);
-        assign(it, container) = (value, COND_ZERO_CLEAR);
+        assign(it, container) = (tmp, COND_ZERO_CLEAR);
     }
     return it;
 }

@@ -127,6 +127,29 @@ static NODISCARD InstructionWalker findInstructionNotAccessing(
                 excludedValues.emplace(Value(REG_TMU0_ADDRESS, TYPE_VOID_POINTER));
                 excludedValues.emplace(Value(REG_TMU1_ADDRESS, TYPE_VOID_POINTER));
             }
+            if(it->writesRegister(REG_ACC5) || it->writesRegister(REG_REPLICATE_ALL) ||
+                it->writesRegister(REG_REPLICATE_QUAD))
+            {
+                excludedValues.emplace(Value(REG_ACC5, TYPE_UNKNOWN));
+                excludedValues.emplace(Value(REG_REPLICATE_ALL, TYPE_UNKNOWN));
+                excludedValues.emplace(Value(REG_REPLICATE_QUAD, TYPE_UNKNOWN));
+            }
+        }
+        if(it->readsRegister(REG_SFU_OUT))
+        {
+            excludedValues.emplace(Value(REG_SFU_EXP2, TYPE_FLOAT));
+            excludedValues.emplace(Value(REG_SFU_LOG2, TYPE_FLOAT));
+            excludedValues.emplace(Value(REG_SFU_OUT, TYPE_FLOAT));
+            excludedValues.emplace(Value(REG_SFU_RECIP, TYPE_FLOAT));
+            excludedValues.emplace(Value(REG_SFU_RECIP_SQRT, TYPE_FLOAT));
+            excludedValues.emplace(Value(REG_TMU0_ADDRESS, TYPE_VOID_POINTER));
+            excludedValues.emplace(Value(REG_TMU1_ADDRESS, TYPE_VOID_POINTER));
+        }
+        if(it->readsRegister(REG_ACC5) || it->readsRegister(REG_REPLICATE_ALL) || it->readsRegister(REG_REPLICATE_QUAD))
+        {
+            excludedValues.emplace(Value(REG_ACC5, TYPE_UNKNOWN));
+            excludedValues.emplace(Value(REG_REPLICATE_ALL, TYPE_UNKNOWN));
+            excludedValues.emplace(Value(REG_REPLICATE_QUAD, TYPE_UNKNOWN));
         }
         --instructionsLeft;
         it.nextInBlock();
@@ -181,6 +204,13 @@ static NODISCARD InstructionWalker findReplacementCandidate(
         {
             excludedValues.emplace(Value(REG_VPM_DMA_STORE_BUSY, TYPE_UNKNOWN));
             excludedValues.emplace(Value(REG_VPM_IO, TYPE_UNKNOWN));
+        }
+        if(lastInstruction->writesRegister(REG_ACC5) || lastInstruction->writesRegister(REG_REPLICATE_ALL) ||
+            lastInstruction->writesRegister(REG_REPLICATE_QUAD))
+        {
+            excludedValues.emplace(Value(REG_ACC5, TYPE_UNKNOWN));
+            excludedValues.emplace(Value(REG_REPLICATE_ALL, TYPE_UNKNOWN));
+            excludedValues.emplace(Value(REG_REPLICATE_QUAD, TYPE_UNKNOWN));
         }
         PROFILE_START(findInstructionNotAccessing);
         replacementIt =

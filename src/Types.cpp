@@ -83,7 +83,7 @@ static std::string toSimpleTypeName(unsigned char bitWidth, bool isFloat)
     if(bitWidth == DataType::LABEL)
         return "label";
     if(bitWidth == DataType::UNKNOWN)
-        return "";
+        return "?";
     if(bitWidth == DataType::BIT)
         return "bool";
     if(isFloat)
