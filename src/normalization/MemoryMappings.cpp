@@ -360,11 +360,40 @@ static InstructionWalker lowerMemoryWriteToVPM(
     }
     if(mem->op == MemoryOperation::FILL)
     {
-        logging::error() << "Destination: " << destInfo.local->to_string() << " - "
-                         << static_cast<unsigned>(destInfo.type) << " - "
+        if(!mem->getNumEntries().getLiteralValue())
+        {
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "Filling dynamically sized VPM area is not yet implemented", mem->to_string());
+        }
+        if(mem->getSource().type == TYPE_INT8)
+        {
+            // if we fill single bytes, combine them to some vector type to not have to write so many single bytes
+            auto vpmType = periphery::getBestVectorSize(mem->getNumEntries().getLiteralValue()->unsignedInt());
+            // 1. replicate byte across word
+            auto fillWord = assign(it, TYPE_INT32) = (mem->getSource(), UNPACK_8A_32);
+            // 2. replicate word across all vector elements
+            auto fillVector = method.addNewLocal(TYPE_INT32.toVectorType(16), "%memory_fill");
+            it = insertReplication(it, fillWord, fillVector);
+            // 3. calculate base offset for per-QPU memory area
+            Value inAreaOffset = UNDEFINED_VALUE;
+            it = insertToInVPMAreaOffset(method, it, inAreaOffset, destInfo, mem, mem->getDestination());
+            // 3. write vector to VPM
+            auto vpmTypeSize = Literal(vpmType.first.getPhysicalWidth());
+            it.emplace(new MutexLock(MutexAccess::LOCK));
+            it.nextInBlock();
+            for(unsigned i = 0; i < vpmType.second; ++i)
+            {
+                auto byteOffset = assign(it, TYPE_INT32) = Value(Literal(i), TYPE_INT32) * vpmTypeSize;
+                byteOffset = assign(it, TYPE_INT32) = inAreaOffset + byteOffset;
+                it = method.vpm->insertWriteVPM(method, it, fillVector, destInfo.area, false, byteOffset);
+            }
+            it.emplace(new MutexLock(MutexAccess::RELEASE));
+            it.nextInBlock();
+            return it.erase();
+        }
+        logging::error() << "Destination: " << destInfo.local->to_string() << " - " << mem->getNumEntries().to_string()
+                         << " - " << mem->getSource().to_string() << " - "
                          << (destInfo.area ? destInfo.area->to_string() : "") << logging::endl;
-        throw CompilationError(
-            CompilationStep::NORMALIZER, "Filling VPM area is not yet implemented", mem->to_string());
     }
     throw CompilationError(
         CompilationStep::NORMALIZER, "Unhandled case to lower writing of memory into VPM", mem->to_string());
@@ -410,13 +439,32 @@ static InstructionWalker accessMemoryInRAMViaVPM(
         if(!mem->getNumEntries().isLiteralValue())
             throw CompilationError(CompilationStep::OPTIMIZER,
                 "Filling dynamically sized memory is not yet implemented", mem->to_string());
-        uint64_t numCopies = mem->getNumEntries().getLiteralValue()->unsignedInt();
-        if(numCopies > std::numeric_limits<unsigned>::max())
-            throw CompilationError(CompilationStep::OPTIMIZER, "Cannot fill more than 4GB of data", mem->to_string());
-        // TODO could optimize (e.g. for zero-initializers) by writing several bytes at once
-        it = method.vpm->insertWriteVPM(method, it, mem->getSource(), nullptr);
-        it = method.vpm->insertFillRAM(
-            method, it, mem->getDestination(), mem->getSourceElementType(), static_cast<unsigned>(numCopies), nullptr);
+        auto numCopies = mem->getNumEntries().getLiteralValue()->unsignedInt();
+        it.emplace(new MutexLock(MutexAccess::LOCK));
+        it.nextInBlock();
+        if(mem->getSource().type == TYPE_INT8)
+        {
+            // if we fill single bytes, combine them to some vector type to not have to write so many single bytes
+            auto vpmType = periphery::getBestVectorSize(numCopies);
+            // 1. replicate byte across word
+            auto fillWord = assign(it, TYPE_INT32) = (mem->getSource(), UNPACK_8A_32);
+            // 2. replicate word across all vector elements
+            auto fillVector = method.addNewLocal(TYPE_INT32.toVectorType(16), "%memory_fill");
+            it = insertReplication(it, fillWord, fillVector);
+            // 3. write vector to VPM
+            it = method.vpm->insertWriteVPM(method, it, fillVector, nullptr, false);
+            // 4. fill memory with vector
+            it = method.vpm->insertFillRAM(
+                method, it, mem->getDestination(), vpmType.first, vpmType.second, nullptr, false);
+        }
+        else
+        {
+            it = method.vpm->insertWriteVPM(method, it, mem->getSource(), nullptr, false);
+            it = method.vpm->insertFillRAM(method, it, mem->getDestination(), mem->getSourceElementType(),
+                static_cast<unsigned>(numCopies), nullptr, false);
+        }
+        it.emplace(new MutexLock(MutexAccess::RELEASE));
+        it.nextInBlock();
         auto* dest = mem->getDestination().checkLocal() ? mem->getDestination().local()->getBase(true) : nullptr;
         if(dest && dest->is<Parameter>())
             const_cast<Parameter*>(dest->as<const Parameter>())->decorations =
@@ -482,13 +530,61 @@ static InstructionWalker mapMemoryCopy(
         const_cast<Parameter*>(dest->as<const Parameter>())->decorations =
             add_flag(dest->as<const Parameter>()->decorations, ParameterDecorations::OUTPUT);
 
+    // for some/all copies, LLVM generates memcpy of i8* to i8* with the number of bytes as number of elements. We need
+    // to convert it back to the actual number of elements of the given type
+    auto numEntries = mem->getNumEntries();
+    Optional<DataType> vpmRowType{};
+    if(numEntries.getLiteralValue() && srcInfo.area && mem->getSourceElementType() == TYPE_INT8)
+    {
+        auto origType = srcInfo.local->type.getElementType();
+        auto numBytes = numEntries.getLiteralValue()->unsignedInt();
+        if(numBytes != origType.getPhysicalWidth())
+            throw CompilationError(
+                CompilationStep::NORMALIZER, "Byte-wise partial copy from VPM is yet implemented", mem->to_string());
+        if(auto array = origType.getArrayType())
+        {
+            numEntries = Value(Literal(array->size), TYPE_INT32);
+            vpmRowType = array->elementType;
+        }
+        else if(origType.isVectorType())
+        {
+            numEntries = INT_ONE;
+            vpmRowType = origType;
+        }
+        else
+            throw CompilationError(
+                CompilationStep::NORMALIZER, "Unsupported element type for memory copy into VPM", mem->to_string());
+    }
+
+    if(numEntries.getLiteralValue() && destInfo.area && mem->getDestinationElementType() == TYPE_INT8)
+    {
+        auto origType = destInfo.local->type.getElementType();
+        auto numBytes = numEntries.getLiteralValue()->unsignedInt();
+        if(numBytes != origType.getPhysicalWidth())
+            throw CompilationError(
+                CompilationStep::NORMALIZER, "Byte-wise partial copy to VPM is yet implemented", mem->to_string());
+        if(auto array = origType.getArrayType())
+        {
+            numEntries = Value(Literal(array->size), TYPE_INT32);
+            vpmRowType = array->elementType;
+        }
+        else if(origType.isVectorType())
+        {
+            numEntries = INT_ONE;
+            vpmRowType = origType;
+        }
+        else
+            throw CompilationError(
+                CompilationStep::NORMALIZER, "Unsupported element type for memory copy into VPM", mem->to_string());
+    }
+
     if(srcInVPM && destInVPM)
     {
         // copy from VPM into VPM -> VPM read + VPM write
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Mapping copy from/to VPM to VPM read and VPM write: " << mem->to_string() << logging::endl);
 
-        if(mem->getNumEntries() != INT_ONE)
+        if(numEntries != INT_ONE)
             // TODO could for static count insert that number of reads/writes, for dynamic need a loop!
             throw CompilationError(CompilationStep::NORMALIZER,
                 "Copying within VPM with more than 1 entries is not yet implemented", mem->to_string());
@@ -505,8 +601,9 @@ static InstructionWalker mapMemoryCopy(
             log << "Mapping copy from VPM into RAM to DMA write: " << mem->to_string() << logging::endl);
         Value inAreaOffset = UNDEFINED_VALUE;
         it = insertToInVPMAreaOffset(method, it, inAreaOffset, srcInfo, mem, mem->getSource());
-        it = method.vpm->insertWriteRAM(method, it, mem->getDestination(), mem->getSourceElementType(), srcInfo.area,
-            true, inAreaOffset, mem->getNumEntries());
+        it = method.vpm->insertWriteRAM(method, it,
+            Value(mem->getDestination().local(), vpmRowType.value_or(mem->getDestinationElementType())),
+            vpmRowType.value_or(mem->getSourceElementType()), srcInfo.area, true, inAreaOffset, numEntries);
         return it.erase();
     }
     else if(srcInRAM && destInVPM)
@@ -516,17 +613,18 @@ static InstructionWalker mapMemoryCopy(
             log << "Mapping copy from RAM into VPM to DMA read: " << mem->to_string() << logging::endl);
         Value inAreaOffset = UNDEFINED_VALUE;
         it = insertToInVPMAreaOffset(method, it, inAreaOffset, destInfo, mem, mem->getDestination());
-        it = method.vpm->insertReadRAM(method, it, mem->getSource(), mem->getSourceElementType(), destInfo.area, true,
-            inAreaOffset, mem->getNumEntries());
+        it = method.vpm->insertReadRAM(method, it,
+            Value(mem->getSource().local(), vpmRowType.value_or(mem->getSourceElementType())),
+            vpmRowType.value_or(mem->getDestinationElementType()), destInfo.area, true, inAreaOffset, numEntries);
         return it.erase();
     }
     else if(srcInRAM && destInRAM)
     {
         // copy from RAM into RAM -> DMA read + DMA write
-        if(!mem->getNumEntries().isLiteralValue())
+        if(!numEntries.isLiteralValue())
             throw CompilationError(CompilationStep::OPTIMIZER,
                 "Copying dynamically sized memory within RAM is not yet implemented", mem->to_string());
-        uint64_t numBytes = mem->getNumEntries().getLiteralValue()->unsignedInt() *
+        uint64_t numBytes = numEntries.getLiteralValue()->unsignedInt() *
             (mem->getSourceElementType().getScalarBitCount() * mem->getSourceElementType().getVectorWidth()) / 8;
         if(numBytes > std::numeric_limits<unsigned>::max())
             throw CompilationError(CompilationStep::OPTIMIZER, "Cannot copy more than 4GB of data", mem->to_string());
@@ -543,7 +641,7 @@ static InstructionWalker mapMemoryCopy(
             log << "Mapping copy from VPM/RAM into register to read from VPM/RAM and register insertion: "
                 << mem->to_string() << logging::endl);
         // TODO some general version
-        if(copiesWholeRegister(mem->getNumEntries(), mem->getSourceElementType(), *destInfo.convertedRegisterType))
+        if(copiesWholeRegister(numEntries, mem->getSourceElementType(), *destInfo.convertedRegisterType))
         {
             // e.g. for copying 32 bytes into float[8] register -> just read 1 float16 vector
             it.reset(new MemoryInstruction(MemoryOperation::READ, Value(*destInfo.mappedRegisterOrConstant),

@@ -48,6 +48,13 @@ public:
     void testVectorStore16Short();
     void testVectorStore16Char();
 
+    void testVectorLoad3IntUneven();
+    void testVectorLoad3ShortUneven();
+    void testVectorLoad3CharUneven();
+    void testVectorStore3IntUneven();
+    void testVectorStore3ShortUneven();
+    void testVectorStore3CharUneven();
+
     void testShuffleVector2();
     void testShuffleVector4();
     void testShuffleVector8();

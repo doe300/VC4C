@@ -314,6 +314,29 @@ void checkTrinaryGroupedResults(const std::array<Input, N>& input0, const std::a
     }
 }
 
+template <typename Result, typename Input, std::size_t NumGroups, std::size_t InputGroupSize,
+    std::size_t OutputGroupSize, std::size_t GroupSize = std::max(InputGroupSize, OutputGroupSize)>
+void checkUnaryGroupedUnevenResults(const std::array<Input, GroupSize * NumGroups>& input,
+    const std::array<Result, GroupSize * NumGroups>& output,
+    const std::function<std::array<Result, OutputGroupSize>(const std::array<Input, InputGroupSize>&)>& op,
+    const std::function<bool(const std::array<Result, OutputGroupSize>&, const std ::array<Result, OutputGroupSize>&)>&
+        comp,
+    const std::string& opName, const std::function<void(const std::string&, const std::string&)>& onError)
+{
+    for(std::size_t i = 0; i < NumGroups; ++i)
+    {
+        auto inputGroup = reinterpret_cast<const std::array<Input, InputGroupSize>*>(&input[i * InputGroupSize]);
+        auto outputGroup = reinterpret_cast<const std::array<Input, OutputGroupSize>*>(&output[i * OutputGroupSize]);
+        if(!comp(*outputGroup, op(*inputGroup)))
+        {
+            auto result = toString(*outputGroup);
+            auto expected = opName + " " + toString(*inputGroup) + " = " + toString(op(*inputGroup)) +
+                (" for group " + std::to_string(i) + ')');
+            onError(expected, result);
+        }
+    }
+}
+
 inline void compileBuffer(
     vc4c::Configuration& config, std::stringstream& buffer, const std::string& source, const std::string& options)
 {

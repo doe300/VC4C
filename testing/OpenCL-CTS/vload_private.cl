@@ -107,3 +107,20 @@ __kernel void test_fn7( __global float2 *src, __global uint *offsets, __global u
     float2 tmp = vload2( offsets[ tid ], ( (__private float *) sPrivateStorage ) + alignmentOffsets[ tid ] );
    results[ tid ] = tmp;
 }
+
+#undef PRIV_TYPE
+#undef PRIV_SIZE
+#define PRIV_TYPE float16
+#define PRIV_SIZE 4
+__kernel void test_fn16( __global PRIV_TYPE *src, __global uint *offsets, __global uint *alignmentOffsets, __global PRIV_TYPE *results )
+{
+    //TODO test with modified alignmentOffsets
+    __private PRIV_TYPE sPrivateStorage[ PRIV_SIZE ];
+    int tid = get_global_id( 0 );
+
+    for( int i = 0; i < PRIV_SIZE; i++ )
+      sPrivateStorage[ i ] = src[ i ];
+
+    PRIV_TYPE tmp = vload16( offsets[ tid ], ( (__private float *) sPrivateStorage ) + alignmentOffsets[ tid ] );
+   results[ tid ] = tmp;
+}

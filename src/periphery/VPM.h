@@ -608,7 +608,7 @@ namespace vc4c
          *
          * E.g. for 64 bytes, the pair (int16, 1) is returned and an input of 6 bytes yields the pair (short3, 1)
          */
-        std::pair<DataType, uint8_t> getBestVectorSize(const int64_t numBytes);
+        std::pair<DataType, uint32_t> getBestVectorSize(uint32_t numBytes);
 
         enum class VPMUsage : unsigned char
         {
@@ -839,7 +839,7 @@ namespace vc4c
              * the type needs to be converted to a type with all element-types set to 16-element vectors
              * to correctly determine the amount of VPM cache required to store the data.
              */
-            static DataType getVPMStorageType(DataType type);
+            static DataType getVPMStorageType(DataType elemenType);
 
             /*
              * Prints the currently configured usage of the VPM (areas and types) to the log output

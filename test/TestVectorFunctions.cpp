@@ -24,6 +24,15 @@ __kernel void test(__global CAT(TYPE,N)* out, const __global TYPE* in) {
 }
 )";
 
+static const std::string VECTOR_LOAD3_FUNCTION = R"(
+#define CONCAT(a,b) a ## b
+#define CAT(a,b) CONCAT(a,b)
+__kernel void test(__global CAT(TYPE,3)* out, const __global TYPE* in) {
+  size_t gid = get_global_id(0);
+  out[gid] = vload3(gid, in);
+}
+)";
+
 static const std::string VECTOR_STORE_FUNCTION = R"(
 #define CONCAT(a,b) a ## b
 #define CAT(a,b) CONCAT(a,b)
@@ -38,6 +47,15 @@ __kernel void test(__global TYPE* out, const __global CAT(TYPE,N)* in) {
 #else
   CAT(vstore,N)(in[gid], gid, out);
 #endif
+}
+)";
+
+static const std::string VECTOR_STORE3_FUNCTION = R"(
+#define CONCAT(a,b) a ## b
+#define CAT(a,b) CONCAT(a,b)
+__kernel void test(__global TYPE* out, const __global CAT(TYPE,3)* in) {
+  size_t gid = get_global_id(0);
+  vstore3(in[gid], gid, out);
 }
 )";
 
@@ -118,6 +136,13 @@ TestVectorFunctions::TestVectorFunctions(const vc4c::Configuration& config) : co
     TEST_ADD(TestVectorFunctions::testVectorStore16Short);
     TEST_ADD(TestVectorFunctions::testVectorStore16Char);
 
+    TEST_ADD(TestVectorFunctions::testVectorLoad3IntUneven);
+    TEST_ADD(TestVectorFunctions::testVectorLoad3ShortUneven);
+    TEST_ADD(TestVectorFunctions::testVectorLoad3CharUneven);
+    TEST_ADD(TestVectorFunctions::testVectorStore3IntUneven);
+    TEST_ADD(TestVectorFunctions::testVectorStore3ShortUneven);
+    TEST_ADD(TestVectorFunctions::testVectorStore3CharUneven);
+
     TEST_ADD(TestVectorFunctions::testShuffleVector2);
     TEST_ADD(TestVectorFunctions::testShuffleVector4);
     TEST_ADD(TestVectorFunctions::testShuffleVector8);
@@ -164,7 +189,8 @@ static void testVectorLoadFunction(vc4c::Configuration& config, const std::strin
     auto in = generateInput<T, N * 12>(true);
 
     auto out = runEmulation<T, T, N, 12>(code, {in});
-    checkUnaryResults<T, T>(in, out, [](T val) -> T { return val; }, std::string("vload") + std::to_string(N), onError);
+    checkUnaryResults<T, T>(
+        in, out, [](T val) -> T { return val; }, std::string("vload") + std::to_string(N), onError);
 }
 
 template <typename T, std::size_t N>
@@ -179,6 +205,49 @@ static void testVectorStoreFunction(vc4c::Configuration& config, const std::stri
     auto out = runEmulation<T, T, N, 12>(code, {in});
     checkUnaryResults<T, T>(
         in, out, [](T val) -> T { return val; }, std::string("vstore") + std::to_string(N), onError);
+}
+
+template <typename T>
+static void testVectorLoad3Function(vc4c::Configuration& config, const std::string& options,
+    const std::function<void(const std::string&, const std::string&)>& onError)
+{
+    std::stringstream code;
+    compileBuffer(config, code, VECTOR_LOAD3_FUNCTION, options);
+
+    auto in = generateInput<T, 4 * 12>(true);
+
+    auto out = runEmulation<T, T, 4, 12>(code, {in});
+    checkUnaryGroupedUnevenResults<T, T, 12, 3, 4>(
+        in, out,
+        [](const std::array<T, 3>& val) -> std::array<T, 4> {
+            return std::array<T, 4>{val[0], val[1], val[2], 0};
+        },
+        [](const std::array<T, 4>& val0, const std::array<T, 4>& val1) -> bool {
+            return val0[0] == val1[0] && val0[1] == val1[1] &&
+                val0[2] == val1[2] /* 4th element omitted on purpose, since it is not copied */;
+        },
+        "vload3", onError);
+}
+
+template <typename T>
+static void testVectorStore3Function(vc4c::Configuration& config, const std::string& options,
+    const std::function<void(const std::string&, const std::string&)>& onError)
+{
+    std::stringstream code;
+    compileBuffer(config, code, VECTOR_STORE3_FUNCTION, options);
+
+    auto in = generateInput<T, 4 * 12>(true);
+
+    auto out = runEmulation<T, T, 4, 12>(code, {in});
+    checkUnaryGroupedUnevenResults<T, T, 12, 4, 3>(
+        in, out,
+        [](const std::array<T, 4>& val) -> std::array<T, 3> {
+            return std::array<T, 3>{val[0], val[1], val[2]};
+        },
+        [](const std::array<T, 3>& val0, const std::array<T, 3>& val1) -> bool {
+            return val0[0] == val1[0] && val0[1] == val1[1] && val0[2] == val1[2];
+        },
+        "vstore3", onError);
 }
 
 template <typename T, std::size_t N>
@@ -447,6 +516,42 @@ void TestVectorFunctions::testVectorStore16Char()
         std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
+void TestVectorFunctions::testVectorLoad3IntUneven()
+{
+    testVectorLoad3Function<int>(config, "-DTYPE=int",
+        std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestVectorFunctions::testVectorLoad3ShortUneven()
+{
+    testVectorLoad3Function<short>(config, "-DTYPE=short",
+        std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestVectorFunctions::testVectorLoad3CharUneven()
+{
+    testVectorLoad3Function<char>(config, "-DTYPE=char",
+        std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestVectorFunctions::testVectorStore3IntUneven()
+{
+    testVectorStore3Function<int>(config, "-DTYPE=int",
+        std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestVectorFunctions::testVectorStore3ShortUneven()
+{
+    testVectorStore3Function<short>(config, "-DTYPE=short",
+        std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestVectorFunctions::testVectorStore3CharUneven()
+{
+    testVectorStore3Function<char>(config, "-DTYPE=char",
+        std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
 void TestVectorFunctions::testShuffleVector2()
 {
     testVectorShuffleFunction<unsigned, 2>(config, "-DTYPE=uint2",
@@ -497,7 +602,8 @@ void TestVectorFunctions::testShuffle2Vector16()
 
 void TestVectorFunctions::testVectorReorder2()
 {
-    testVectorReorderFunction<short, 2>(config, "-DTYPE=short2 -DORDER=s10",
+    testVectorReorderFunction<short, 2>(
+        config, "-DTYPE=short2 -DORDER=s10",
         [](const std::array<short, 2>& in) -> std::array<short, 2> {
             return checkShuffle(in, {1, 0});
         },
@@ -506,7 +612,8 @@ void TestVectorFunctions::testVectorReorder2()
 
 void TestVectorFunctions::testVectorReorder4()
 {
-    testVectorReorderFunction<short, 4>(config, "-DTYPE=short4 -DORDER=s1302",
+    testVectorReorderFunction<short, 4>(
+        config, "-DTYPE=short4 -DORDER=s1302",
         [](const std::array<short, 4>& in) -> std::array<short, 4> {
             return checkShuffle(in, {1, 3, 0, 2});
         },
@@ -515,7 +622,8 @@ void TestVectorFunctions::testVectorReorder4()
 
 void TestVectorFunctions::testVectorReorder8()
 {
-    testVectorReorderFunction<short, 8>(config, "-DTYPE=short8 -DORDER=s10671342",
+    testVectorReorderFunction<short, 8>(
+        config, "-DTYPE=short8 -DORDER=s10671342",
         [](const std::array<short, 8>& in) -> std::array<short, 8> {
             return checkShuffle(in, {1, 0, 6, 7, 1, 3, 4, 2});
         },
@@ -524,7 +632,8 @@ void TestVectorFunctions::testVectorReorder8()
 
 void TestVectorFunctions::testVectorReorder16()
 {
-    testVectorReorderFunction<short, 16>(config, "-DTYPE=short16 -DORDER=s1a0cf568239baf58",
+    testVectorReorderFunction<short, 16>(
+        config, "-DTYPE=short16 -DORDER=s1a0cf568239baf58",
         [](const std::array<short, 16>& in) -> std::array<short, 16> {
             return checkShuffle(in, {1, 10, 0, 12, 15, 5, 6, 8, 2, 3, 9, 11, 10, 15, 5, 8});
         },

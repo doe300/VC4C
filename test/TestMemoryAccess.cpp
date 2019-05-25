@@ -9,6 +9,8 @@
 #include "emulation_helper.h"
 #include "test_cases.h"
 
+#include <numeric>
+
 using namespace vc4c;
 using namespace vc4c::tools;
 
@@ -106,6 +108,12 @@ TestMemoryAccess::TestMemoryAccess(const Configuration& config) : TestEmulator(f
     TEST_ADD(TestMemoryAccess::testVectorLoadStoreIntPrivate);
     TEST_ADD(TestMemoryAccess::testVectorLoadStoreIntLocal);
     TEST_ADD(TestMemoryAccess::testVectorLoadStoreIntGlobal);
+
+    TEST_ADD(TestMemoryAccess::testVectorLoadStorePrivateRegister);
+    TEST_ADD(TestMemoryAccess::testVectorLoadStorePrivateVPMFull);
+    TEST_ADD(TestMemoryAccess::testVectorLoadStorePrivateVPMPartial);
+    TEST_ADD(TestMemoryAccess::testVectorLoadStoreLocalParameter);
+    TEST_ADD(TestMemoryAccess::testVectorLoadStoreGlobalParameter);
 }
 
 void TestMemoryAccess::onMismatch(const std::string& expected, const std::string& result)
@@ -125,8 +133,8 @@ static void testPrivateLocalFunction(vc4c::Configuration& config, const std::str
     auto out = runEmulation<T, T, 16, 1>(code, {in});
     auto storage = options.find("-DSTORAGE=") + std::string("-DSTORAGE=").size();
     auto type = options.find("-DTYPE=") + std::string("-DTYPE=").size();
-    checkUnaryResults<T, T>(in, out,
-        [](T val) -> T { return val + (val + 3) + (val + 7) + (val + 11) + (val + 13) + (val + 17); },
+    checkUnaryResults<T, T>(
+        in, out, [](T val) -> T { return val + (val + 3) + (val + 7) + (val + 11) + (val + 13) + (val + 17); },
         options.substr(type, options.find(' ', type) - type) +
             options.substr(storage, options.find(' ', storage) - storage),
         onError);
@@ -149,8 +157,8 @@ static void testGlobalFunction(vc4c::Configuration& config, const std::string& o
 
     auto out = runEmulation<T, T, 16, 1>(code, {in, p11, p12, p21, p22, p31, p32});
     auto type = options.find("-DTYPE=") + std::string("-DTYPE=").size();
-    checkUnaryResults<T, T>(in, out,
-        [](T val) -> T { return val + (val + 3) + (val + 7) + (val + 11) + (val + 13) + (val + 17); },
+    checkUnaryResults<T, T>(
+        in, out, [](T val) -> T { return val + (val + 3) + (val + 7) + (val + 11) + (val + 13) + (val + 17); },
         options.substr(type, options.find(' ', type) - type) + "__global", onError);
 }
 
@@ -397,4 +405,212 @@ void TestMemoryAccess::testVectorLoadStoreIntGlobal()
 {
     testGlobalFunction<int>(config, "-DTYPE=int",
         std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestMemoryAccess::testVectorLoadStorePrivateRegister()
+{
+    std::stringstream buffer;
+    compileFile(buffer, "./testing/unaligned_memory_access.cl", "", true);
+
+    EmulationData data;
+    data.kernelName = "test_private_register";
+    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.module = std::make_pair("", &buffer);
+
+    // output
+    data.parameter.emplace_back(0, std::vector<unsigned>(5 * 8));
+    // input
+    data.parameter.emplace_back(
+        0, std::vector<unsigned>{0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf});
+    // offsets
+    data.parameter.emplace_back(0, std::vector<unsigned>{0, 1, 2, 3});
+
+    const auto result = emulate(data);
+    TEST_ASSERT(result.executionSuccessful);
+    TEST_ASSERT_EQUALS(3u, result.results.size());
+
+    auto& out = result.results[0].second.value();
+
+    const std::vector<uint32_t> golden = {0x0, 0x1, 0xc, 0xd, 0xe, 0xf, 0x6, 0x7, 0x8, 0x9, 0xa, 0xc, 0xd, 0xe, 0xf,
+        0x0, 0x8, 0x9, 0xa, 0xc, 0xd, 0xe, 0xf, 0x0, 0xf, 0x6, 0x7, 0x8, 0x9, 0xa, 0xc, 0xd, 0xd, 0xe, 0xf, 0x6, 0x7,
+        0x8, 0x9, 0xa};
+
+    TEST_ASSERT_EQUALS(out.size(), golden.size());
+
+    for(unsigned i = 0; i < out.size(); ++i)
+    {
+        if(out[i] != golden[i])
+        {
+            TEST_ASSERT_EQUALS(golden[i], out[i]);
+            TEST_ASSERT_EQUALS("", "element " + std::to_string(i));
+        }
+    }
+}
+
+void TestMemoryAccess::testVectorLoadStorePrivateVPMFull()
+{
+    std::stringstream buffer;
+    compileFile(buffer, "./testing/unaligned_memory_access.cl", "", true);
+
+    EmulationData data;
+    data.kernelName = "test_private_vpm_full_row";
+    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.module = std::make_pair("", &buffer);
+
+    // output
+    data.parameter.emplace_back(0, std::vector<unsigned>(5 * 8));
+    // input
+    data.parameter.emplace_back(0,
+        std::vector<unsigned>{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+            0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f});
+    // offsets
+    data.parameter.emplace_back(0, std::vector<unsigned>{0, 1, 2, 3, 11});
+
+    const auto result = emulate(data);
+    TEST_ASSERT(result.executionSuccessful);
+    TEST_ASSERT_EQUALS(3u, result.results.size());
+
+    auto& out = result.results[0].second.value();
+
+    const std::vector<uint32_t> golden = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19,
+        0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+        0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f};
+
+    TEST_ASSERT_EQUALS(out.size(), golden.size());
+
+    for(unsigned i = 0; i < out.size(); ++i)
+    {
+        if(out[i] != golden[i])
+        {
+            TEST_ASSERT_EQUALS(golden[i], out[i]);
+            TEST_ASSERT_EQUALS("", "element " + std::to_string(i));
+        }
+    }
+}
+
+void TestMemoryAccess::testVectorLoadStorePrivateVPMPartial()
+{
+    std::stringstream buffer;
+    compileFile(buffer, "./testing/unaligned_memory_access.cl", "", true);
+
+    EmulationData data;
+    data.kernelName = "test_private_vpm_partial_row";
+    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.module = std::make_pair("", &buffer);
+
+    // output
+    data.parameter.emplace_back(0, std::vector<unsigned>(5 * 8));
+    // input
+    data.parameter.emplace_back(0,
+        std::vector<unsigned>{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+            0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f});
+    // offsets
+    data.parameter.emplace_back(0, std::vector<unsigned>{0, 1, 2, 3, 11});
+
+    const auto result = emulate(data);
+    TEST_ASSERT(result.executionSuccessful);
+    TEST_ASSERT_EQUALS(3u, result.results.size());
+
+    auto& out = result.results[0].second.value();
+
+    const std::vector<uint32_t> golden = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19,
+        0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+        0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f};
+
+    TEST_ASSERT_EQUALS(out.size(), golden.size());
+
+    for(unsigned i = 0; i < out.size(); ++i)
+    {
+        if(out[i] != golden[i])
+        {
+            TEST_ASSERT_EQUALS(golden[i], out[i]);
+            TEST_ASSERT_EQUALS("", "element " + std::to_string(i));
+        }
+    }
+}
+
+void TestMemoryAccess::testVectorLoadStoreLocalParameter()
+{
+    std::stringstream buffer;
+    compileFile(buffer, "./testing/unaligned_memory_access.cl", "", true);
+
+    EmulationData data;
+    data.kernelName = "test_local_parameter";
+    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.module = std::make_pair("", &buffer);
+
+    // output
+    data.parameter.emplace_back(0, std::vector<unsigned>(5 * 8));
+    // input
+    data.parameter.emplace_back(0,
+        std::vector<unsigned>{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+            0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f});
+    // offsets
+    data.parameter.emplace_back(0, std::vector<unsigned>{0, 1, 2, 3, 11});
+    // local buffer
+    data.parameter.emplace_back(0, std::vector<unsigned>(2 * 16));
+
+    const auto result = emulate(data);
+    TEST_ASSERT(result.executionSuccessful);
+    TEST_ASSERT_EQUALS(4u, result.results.size());
+
+    auto& out = result.results[0].second.value();
+
+    const std::vector<uint32_t> golden = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19,
+        0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+        0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f};
+
+    TEST_ASSERT_EQUALS(out.size(), golden.size());
+
+    for(unsigned i = 0; i < out.size(); ++i)
+    {
+        if(out[i] != golden[i])
+        {
+            TEST_ASSERT_EQUALS(golden[i], out[i]);
+            TEST_ASSERT_EQUALS("", "element " + std::to_string(i));
+        }
+    }
+}
+
+void TestMemoryAccess::testVectorLoadStoreGlobalParameter()
+{
+    std::stringstream buffer;
+    compileFile(buffer, "./testing/unaligned_memory_access.cl", "", true);
+
+    EmulationData data;
+    data.kernelName = "test_global";
+    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.module = std::make_pair("", &buffer);
+
+    // output
+    data.parameter.emplace_back(0, std::vector<unsigned>(5 * 8));
+    // input
+    data.parameter.emplace_back(0,
+        std::vector<unsigned>{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+            0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f});
+    // offsets
+    data.parameter.emplace_back(0, std::vector<unsigned>{0, 1, 2, 3, 11});
+    // global buffer
+    data.parameter.emplace_back(0, std::vector<unsigned>(2 * 16));
+
+    const auto result = emulate(data);
+    TEST_ASSERT(result.executionSuccessful);
+    TEST_ASSERT_EQUALS(4u, result.results.size());
+
+    auto& out = result.results[0].second.value();
+
+    const std::vector<uint32_t> golden = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19,
+        0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+        0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f};
+
+    TEST_ASSERT_EQUALS(out.size(), golden.size());
+
+    for(unsigned i = 0; i < out.size(); ++i)
+    {
+        if(out[i] != golden[i])
+        {
+            TEST_ASSERT_EQUALS(golden[i], out[i]);
+            TEST_ASSERT_EQUALS("", "element " + std::to_string(i));
+        }
+    }
 }

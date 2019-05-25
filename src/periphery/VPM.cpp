@@ -7,6 +7,7 @@
 #include "VPM.h"
 
 #include "../Profiler.h"
+#include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
 #include "log.h"
 
@@ -328,7 +329,7 @@ InstructionWalker periphery::insertWriteDMA(
     return it;
 }
 
-std::pair<DataType, uint8_t> periphery::getBestVectorSize(const int64_t numBytes)
+std::pair<DataType, uint32_t> periphery::getBestVectorSize(uint32_t numBytes)
 {
     for(uint8_t numElements = 16; numElements > 0; --numElements)
     {
@@ -340,8 +341,8 @@ std::pair<DataType, uint8_t> periphery::getBestVectorSize(const int64_t numBytes
             {
                 DataType result = typeSize == 4 ? TYPE_INT32 : typeSize == 2 ? TYPE_INT16 : TYPE_INT8;
                 result = result.toVectorType(numElements);
-                uint8_t numVectors = static_cast<uint8_t>(
-                    numBytes / (static_cast<int64_t>(numElements) * static_cast<int64_t>(typeSize)));
+                auto numVectors = static_cast<uint32_t>(
+                    numBytes / (static_cast<uint32_t>(numElements) * static_cast<uint32_t>(typeSize)));
                 return std::make_pair(result, numVectors);
             }
         }
@@ -404,12 +405,60 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
     it = insertLockMutex(it, useMutex);
     // 1) configure reading from VPM into QPU
     const VPMArea& realArea = area != nullptr ? *area : getScratchArea();
-    const VPRSetup genericSetup(realArea.toReadSetup(dest.type));
+    VPRSetup genericSetup(realArea.toReadSetup(dest.type));
+    Value outputValue = VPM_IO_REGISTER;
     if(inAreaOffset == INT_ZERO)
     {
         it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(genericSetup.value)));
         it->addDecorations(InstructionDecorations::VPM_READ_CONFIGURATION);
         it.nextInBlock();
+    }
+    else if(dest.type.getVectorWidth() > 1 &&
+        (!inAreaOffset.getLiteralValue() ||
+            (inAreaOffset.getLiteralValue()->unsignedInt() % dest.type.getPhysicalWidth()) != 0))
+    {
+        // TODO make sure this block is only used where really really required!
+        /*
+         * In OpenCL, vectors are aligned to the alignment of the element type (e.g. a char16 vector is char aligned).
+         * More accurately: they can be loaded/stored from any address aligned to the element type!
+         * This is at least true when loaded via vloadN.
+         * Since loading vectors from VPM is always aligned to the whole vector (actually the whole 16-element vector),
+         * we need to do some manual post-processing to assemble a correct result vector.
+         *
+         * Goal: Load a N-element vector V from row X with an offset of I bytes, where I is aligned to the element type
+         * of V.
+         * - Calculate base VPM address: B = X + I / sizeof(V)
+         * - Load 2 <E16> (16-element vectors of correct element type E) vectors L and U from VPM address B and B + 1
+         * - Calculate rotation factor: R = (I % sizeof(V)) / sizeof(E)
+         * - Rotate result of first load downwards by R elements: L = rotate(L, R)
+         * - Rotate result of second load upwards by R elements: U = rotate(U, R)
+         * - Copy elements [0, N-R] from the first vector L into the result
+         * - Copy elements [N-R, N] from the second vector U into the result
+         */
+        Value elementOffset = UNDEFINED_VALUE;
+        it = calculateElementOffset(method, it, dest.type, inAreaOffset, elementOffset);
+        genericSetup.genericSetup.setNumber(2);
+        assign(it, VPM_IN_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
+            InstructionDecorations::VPM_READ_CONFIGURATION);
+        auto lowerPart = assign(it, dest.type, "%vpm.unaligned.lower") = VPM_IO_REGISTER;
+        auto upperPart = assign(it, dest.type, "%vpm.unaligned.upper") = VPM_IO_REGISTER;
+        auto rotationOffset = assign(it, TYPE_INT8) = inAreaOffset % Literal(dest.type.getPhysicalWidth());
+        rotationOffset = assign(it, TYPE_INT8, "%vpm.unaligned.offset") =
+            rotationOffset / Literal(dest.type.getElementType().getPhysicalWidth());
+        Value lowerRotated = method.addNewLocal(dest.type, "%vpm.unaligned.lower");
+        Value upperRotated = method.addNewLocal(dest.type, "%vpm.unaligned.upper");
+        it = insertVectorRotation(it, lowerPart, rotationOffset, lowerRotated, Direction::DOWN);
+        outputValue = assign(it, dest.type, "%vpm.unaligned.result") = lowerRotated;
+        it = insertVectorRotation(it, upperPart, rotationOffset, upperRotated, Direction::DOWN);
+        Value rotationOffsetReplicated = method.addNewLocal(TYPE_INT8.toVectorType(16));
+        it = insertReplication(it, rotationOffset, rotationOffsetReplicated);
+        auto selectionOffset = assign(it, TYPE_INT8.toVectorType(16)) =
+            Value(Literal(dest.type.getVectorWidth()), TYPE_INT8) - rotationOffsetReplicated;
+        assign(it, NOP_REGISTER) = (ELEMENT_NUMBER_REGISTER - selectionOffset, SetFlag::SET_FLAGS);
+        assign(it, outputValue) = (upperRotated, COND_NEGATIVE_CLEAR);
+
+        // TODO we need something similar for storing!! But there, we need to load the old version in the VPM for 2
+        // rows, combine with the elements we actually want to set and write back both rows to not do unwanted changes!
     }
     else
     {
@@ -424,7 +473,7 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
             InstructionDecorations::VPM_READ_CONFIGURATION);
     }
     // 2) read value from VPM
-    assign(it, dest) = VPM_IO_REGISTER;
+    assign(it, dest) = outputValue;
     it = insertUnlockMutex(it, useMutex);
     return it;
 }
@@ -471,6 +520,8 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
     const VPMArea* area, bool useMutex, const Value& inAreaOffset, const Value& numEntries)
 {
     if(area != nullptr)
+        // FIXME this needs to have the numEntries added and the correct type!!!
+        // TODO rename numEntries to numRows or move entry->row handling here?!
         area->checkAreaSize(getVPMStorageType(type).getPhysicalWidth());
     else
         // a single vector can only use a maximum of 1 row
@@ -531,7 +582,11 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
     }
     assign(it, VPM_IN_SETUP_REGISTER) = (dmaSetupBits, InstructionDecorations::VPM_READ_CONFIGURATION);
 
-    const VPRSetup strideSetup(VPRStrideSetup(0));
+    VPRSetup strideSetup(VPRStrideSetup(0));
+    if(numEntries != INT_ONE)
+        // NOTE: This for read the pitch (start-to-start) and for write the stride (end-to-start) is set, we need to set
+        // this to the data size, but not required for write setup!
+        strideSetup.strideSetup = VPRStrideSetup(static_cast<uint16_t>(type.getPhysicalWidth()));
     it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(strideSetup.value)));
     it->addDecorations(InstructionDecorations::VPM_READ_CONFIGURATION);
     it.nextInBlock();
@@ -643,6 +698,7 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
 
     it = insertLockMutex(it, useMutex);
 
+    // TODO use insertReadRAM/insertWriteRAM with multiple entries??
     it = insertReadRAM(method, it, srcAddress, size.first, area, false);
     it = insertWriteRAM(method, it, destAddress, size.first, area, false);
 
@@ -937,7 +993,7 @@ const VPMArea* VPM::addArea(const Local* local, DataType elementType, bool isSta
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Allocating " << numRows << " rows (per 64 byte) of VPM cache starting at row " << rowOffset.value()
             << " for local: " << local->to_string(false)
-            << (isStackArea ? std::string("(") + std::to_string(numStacks) + " stacks )" : "") << logging::endl);
+            << (isStackArea ? std::string(" (") + std::to_string(numStacks) + " stacks)" : "") << logging::endl);
     PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL + 90, "VPM cache size", requestedSize);
     return ptr.get();
 }
@@ -1101,23 +1157,24 @@ VPMInstructions periphery::findRelatedVPMInstructions(InstructionWalker anyVPMIn
     return result;
 }
 
-DataType VPM::getVPMStorageType(DataType type)
+DataType VPM::getVPMStorageType(DataType elemenType)
 {
     DataType inVPMType = TYPE_UNKNOWN;
-    if(auto arrayType = type.getArrayType())
+    if(auto arrayType = elemenType.getArrayType())
     {
         // e.g. short2[17] -> short16[17]
         // also int4[1][2] -> int16[1][2]
         inVPMType = getVPMStorageType(arrayType->elementType).toArrayType(arrayType->size);
     }
-    else if(type.getPointerType())
+    else if(elemenType.getPointerType())
         // e.g. int* -> int16
         inVPMType = TYPE_INT32.toVectorType(16);
-    else if(!type.isSimpleType())
-        throw CompilationError(CompilationStep::GENERAL, "Unhandled element-type to cache in VPM", type.to_string());
+    else if(!elemenType.isSimpleType())
+        throw CompilationError(
+            CompilationStep::GENERAL, "Unhandled element-type to cache in VPM", elemenType.to_string());
     else
         // e.g. char3 -> char16
-        inVPMType = type.toVectorType(16);
+        inVPMType = elemenType.toVectorType(16);
     return inVPMType;
 }
 

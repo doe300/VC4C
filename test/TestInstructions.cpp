@@ -361,6 +361,25 @@ void TestInstructions::testOpCodeProperties()
                 }
             }
         }
+        if(op.isSelfInverse())
+        {
+            if(op.numOperands == 1)
+            {
+                if(op(*op(arg2, NO_VALUE).first, NO_VALUE).first != arg2)
+                {
+                    TEST_ASSERT_EQUALS(op(*op(arg2, NO_VALUE).first, NO_VALUE).first, arg2);
+                    TEST_ASSERT_EQUALS("selfInverse", op.name);
+                }
+            }
+            else
+            {
+                if(op(arg2, arg2).first != INT_ZERO)
+                {
+                    TEST_ASSERT_EQUALS(op(arg2, arg2).first, INT_ZERO);
+                    TEST_ASSERT_EQUALS("selfInverse", op.name);
+                }
+            }
+        }
         if(op.isAssociative())
         {
             if(op(arg, op(arg, arg2).first).first != op(*op(arg, arg).first, arg2).first)
