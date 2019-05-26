@@ -276,17 +276,17 @@ namespace vc4c
 
             bool isGenericSetup() const
             {
-                return (value & 0xC0000000) == 0;
+                return (value & 0xC0000000u) == 0u;
             }
 
             bool isDMASetup() const
             {
-                return (value & 0xC0000000) == 0x80000000;
+                return (value & 0xC0000000u) == 0x80000000u;
             }
 
             bool isStrideSetup() const
             {
-                return (value & 0xC0000000) == 0xC0000000;
+                return (value & 0xC0000000u) == 0xC0000000u;
             }
 
             static VPWSetup fromLiteral(uint32_t val)
@@ -530,17 +530,17 @@ namespace vc4c
 
             bool isGenericSetup() const
             {
-                return (value & 0xC0000000) == 0;
+                return (value & 0xC0000000u) == 0u;
             }
 
             bool isDMASetup() const
             {
-                return ((value & 0x80000000) == 0x80000000) && ((value & 0x70000000) != 0x10000000);
+                return ((value & 0x80000000u) == 0x80000000u) && ((value & 0x70000000u) != 0x10000000u);
             }
 
             bool isStrideSetup() const
             {
-                return (value & 0xF0000000) == 0x90000000;
+                return (value & 0xF0000000u) == 0x90000000u;
             }
 
             static VPRSetup fromLiteral(uint32_t val)
@@ -595,12 +595,12 @@ namespace vc4c
          * Inserts a read from the memory located at addr into the value dest
          */
         NODISCARD InstructionWalker insertReadDMA(
-            Method& method, InstructionWalker it, const Value& dest, const Value& addr, const bool useMutex = true);
+            Method& method, InstructionWalker it, const Value& dest, const Value& addr, bool useMutex = true);
         /*
          * Inserts write from the value src into the memory located at addr
          */
         NODISCARD InstructionWalker insertWriteDMA(
-            Method& method, InstructionWalker it, const Value& src, const Value& addr, const bool useMutex = true);
+            Method& method, InstructionWalker it, const Value& src, const Value& addr, bool useMutex = true);
 
         /*
          * Tries to find a combination of a vector of an integer-type and a number of vectors to match the given size in
@@ -650,6 +650,7 @@ namespace vc4c
             }
             VPMArea(const VPMArea&) = delete;
             VPMArea(VPMArea&&) noexcept = delete;
+            ~VPMArea() noexcept = default;
 
             VPMArea& operator=(const VPMArea&) = delete;
             VPMArea& operator=(VPMArea&&) noexcept = delete;

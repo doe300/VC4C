@@ -205,7 +205,7 @@ namespace vc4c
         inline void forAllInstructions(
             const std::function<void(const intermediate::IntermediateInstruction*)>& func) const
         {
-            const intermediate::CombinedOperation* combined = get<const intermediate::CombinedOperation>();
+            auto combined = get<const intermediate::CombinedOperation>();
             if(combined != nullptr)
             {
                 func(combined->getFirstOp());
@@ -223,7 +223,7 @@ namespace vc4c
         inline bool allInstructionMatches(
             const std::function<bool(const intermediate::IntermediateInstruction*)>& func) const
         {
-            const intermediate::CombinedOperation* combined = get<const intermediate::CombinedOperation>();
+            auto combined = get<const intermediate::CombinedOperation>();
             if(combined != nullptr)
             {
                 return func(combined->getFirstOp()) && func(combined->getSecondOP());
@@ -239,7 +239,7 @@ namespace vc4c
         inline bool anyInstructionMatches(
             const std::function<bool(const intermediate::IntermediateInstruction*)>& func) const
         {
-            const intermediate::CombinedOperation* combined = get<const intermediate::CombinedOperation>();
+            auto combined = get<const intermediate::CombinedOperation>();
             if(combined != nullptr)
             {
                 return func(combined->getFirstOp()) || func(combined->getSecondOP());
@@ -397,7 +397,7 @@ namespace vc4c
         inline void forAllInstructions(
             const std::function<void(const intermediate::IntermediateInstruction*)>& func) const
         {
-            const intermediate::CombinedOperation* combined = get<const intermediate::CombinedOperation>();
+            auto combined = get<const intermediate::CombinedOperation>();
             if(combined != nullptr)
             {
                 func(combined->getFirstOp());
@@ -415,7 +415,7 @@ namespace vc4c
         inline bool allInstructionMatches(
             const std::function<bool(const intermediate::IntermediateInstruction*)>& func) const
         {
-            const intermediate::CombinedOperation* combined = get<const intermediate::CombinedOperation>();
+            auto combined = get<const intermediate::CombinedOperation>();
             if(combined != nullptr)
             {
                 return func(combined->getFirstOp()) && func(combined->getSecondOP());
@@ -431,7 +431,7 @@ namespace vc4c
         inline bool anyInstructionMatches(
             const std::function<bool(const intermediate::IntermediateInstruction*)>& func) const
         {
-            const intermediate::CombinedOperation* combined = get<const intermediate::CombinedOperation>();
+            auto combined = get<const intermediate::CombinedOperation>();
             if(combined != nullptr)
             {
                 return func(combined->getFirstOp()) || func(combined->getSecondOP());

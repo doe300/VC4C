@@ -202,7 +202,6 @@ static InstructionWalker lowerMemoryReadWriteToRegister(
             "Cannot map memory location to register without mapping register specified", mem->to_string());
     const auto& loweredRegister = loweredInfo.mappedRegisterOrConstant.value();
     const auto local = loweredInfo.local;
-    // TODO does this also handle whole-object access (e.g. for scalar/vector memory areas) ??
     // TODO check whether index is guaranteed to be in range [0, 16[
     if(mem->op == MemoryOperation::READ)
     {
@@ -214,7 +213,6 @@ static InstructionWalker lowerMemoryReadWriteToRegister(
     {
         Value tmpIndex = UNDEFINED_VALUE;
         it = insertAddressToElementOffset(it, method, tmpIndex, local, loweredRegister, mem, mem->getDestination());
-        // TODO need special handling for inserting multiple elements to set all new elements
         it = insertVectorInsertion(it, method, loweredRegister, tmpIndex, mem->getSource());
     }
     else if(mem->op == MemoryOperation::FILL && mem->getSource().type.isScalarType())
@@ -273,7 +271,6 @@ static InstructionWalker lowerMemoryCopyToRegister(
         // TODO is this ever called?? copying into register (from anywhere should be handled smewhere else)
         throw CompilationError(CompilationStep::NORMALIZER,
             "lowerMemoryCopyToRegister should not be called to copy into register", mem->to_string());
-        // TODO need special handling for inserting multiple elements to set all new elements
         auto tmp = method.addNewLocal(mem->getDestinationElementType());
         it.emplace(new MemoryInstruction(MemoryOperation::READ, std::move(tmp), Value(mem->getSource())));
         it = mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);

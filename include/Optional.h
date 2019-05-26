@@ -76,6 +76,7 @@ namespace vc4c
             compact_optional(compact_optional&& other) noexcept = default;
             compact_optional(const T& val) : storedValue(val) {}
             compact_optional(T&& val) noexcept : storedValue(std::move(val)) {}
+            ~compact_optional() noexcept = default;
 
             // TODO need destructor which skips for EMPTY?? Or make sure EMPTY value is valid value?
 
@@ -225,6 +226,7 @@ namespace vc4c
         constexpr Optional(T&& value) : Base(std::forward<T>(value)) {}
         constexpr Optional(const Optional<T>& other) : Base(other) {}
         constexpr Optional(Optional<T>&& other) : Base(std::forward<Base>(other)) {}
+        ~Optional() noexcept = default;
 
         Optional& operator=(const Optional&) = default;
         Optional& operator=(Optional&&) = default;

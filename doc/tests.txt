@@ -34,7 +34,7 @@ test_buffer						PASSED
 test_buffer_allocator			PASSED
 test_buffer_iterator			PASSED
 test_clamp_range				PASSED
-test_closure					result mismatch (ULP, "add_two_and_pi": difference{6.49642e-06%} between results[1]{7.33999968} and 7.34f{7.34000015} exceeds 1e-06%) (PASSES on emulator)
+test_closure					result mismatch (ULP, "add_two_and_pi": difference{6.49642e-08%} between results[1]{7.33999968} and 7.34f{7.34000015} exceeds 1e-06%)
 test_command_queue				PASSED
 test_complex					PASSED
 test_constant_iterator			PASSED
@@ -42,7 +42,7 @@ test_context					PASSED
 test_context_error				PASSED
 test_copy						PASSED
 test_copy_if					PASSED (emulation fails with out-of-bounds access)
-test_copy_type_mismatch			Invalid Value error, hangs
+test_copy_type_mismatch			Invalid Value error (command_queue:hpp:884, unexpected return value for clEnqueueUnmapMemObject, CL_INVALID_VALUE -> mapping not found?!), hangs
 test_count						compilation error (long)
 test_counting_iterator			PASSED
 test_device						PASSED (skips some OpenCL 2.0+ tests)
@@ -60,7 +60,7 @@ test_find_end					PASSED
 test_flat_map					PASSED
 test_flat_set					PASSED
 test_for_each					PASSED
-test_function					compilation error (struct, is converted to long by LLVM)
+test_function					PASSED
 test_function_input_iterator	PASSED
 test_functional_as				compilation error (not normalized instruction as_float, but works on host machine! LLVM version?!)
 test_functional_bind			result mismatch ("transform_pow_two")
@@ -86,15 +86,15 @@ test_iota						PASSED
 test_is_permutation				PASSED (reads 1-after-bounds of allocated buffer)
 test_is_sorted					PASSED
 test_kernel						PASSED
-test_lambda						PASSED (compilation error on register association)
+test_lambda						compilation error on register association
 test_lexicographical_compare	PASSED
 test_linear_congruential_engine	PASSED
 test_literal_conversion			PASSED
 test_local_buffer				SKIPPED ("device does not support local memory")
 test_malloc						PASSED
 test_mapped_view				PASSED (result value mismatch for emulator)
-test_merge						compilation error (register association)
-test_merge_sort_gpu				compilation error (register association), double test skipped
+test_merge						PASSED
+test_merge_sort_gpu				compilation error (register association, long), double test skipped
 test_mersenne_twister_engine	PASSED
 test_mismatch					PASSED
 test_next_permutation			PASSED
@@ -111,14 +111,14 @@ test_pinned_allocator			PASSED/SKIPPED
 test_pipe						SKIPPED
 test_platform					PASSED/SKIPPED
 test_prev_permutation			PASSED
-test_program					FAILED (fails for creating "library" (non-kernel functions) to be linked into kernel later)
+test_program					FAILED ("compile_and_link")
 test_program_cache				PASSED/SKIPPED
 test_radix_sort					result mismatches, compilation errors (long kernels), reads 1-after-bounds of allocated buffer
 test_radix_sort_by_key			result mismatches, reads 1-after-bounds of allocated buffer
 test_random_fill				PASSED
 test_random_shuffle				PASSED
-test_reduce						result mismatches (0 != x), SIGABRT (std::out_of_range in vector), kills all succeeding tests, reads 1-after-bounds of allocated buffer
-test_reduce_by_key				(runs long, fails on QPU due to many buffers) hangs QPU?
+test_reduce						result mismatches, reads 1-after-bounds of allocated buffer
+test_reduce_by_key				PASSED
 test_remove						PASSED (reads 1-after-bounds of allocated buffer)
 test_replace					PASSED
 test_result_of					PASSED
@@ -135,10 +135,10 @@ test_set_intersection			PASSED
 test_set_symmetric_difference   PASSED
 test_set_union					PASSED (SEGFAULTS on emulator)
 test_sort						result mismatch; compilation error (long)
-test_sort_by_key				result mismatch, exception: "Invalid Value" in boost/compute/detail/get_object_info.hpp(94)
+test_sort_by_key				result mismatch, compilation error (register association)
 test_sort_by_transform			PASSED (writes out-of-bounds of allocated buffer)
 test_stable_partition			PASSED (reads 1-after-bounds of allocated buffer)
-test_stable_sort				result mismatch ("sort_int_vector", "sort_int2")
+test_stable_sort				result mismatch ("sort_int_vector")
 test_stable_sort_by_key			PASSED
 test_stack						PASSED
 test_strided_iterator			PASSED
@@ -147,7 +147,7 @@ test_struct						PASSED
 test_svm_ptr					PASSED
 test_system						PASSED
 test_tabulate					PASSED
-test_threefry_engine			compilation error (struct parameter converted to 64 bit)
+test_threefry_engine			compilation error
 test_transform					result mismatch (ULP pow/sqrt and 0 != x)
 test_transform_if				PASSED
 test_transform_iterator			PASSED
@@ -157,15 +157,15 @@ test_type_traits				PASSED
 test_types						PASSED
 test_uniform_int_distribution	compilation error (long)
 test_uniform_real_distribution	compilation error (long in kernel code)
-test_unique						assertion failure (test_unique.cpp:47 and 66, reads after bounds of allocated buffer)
+test_unique						PASSED
 test_unique_copy				PASSED
 test_unsupported_extension		PASSED
-test_user_defined_types			compilation error (packed struct, converted to ulong by LLVM)
+test_user_defined_types			PASSED
 test_user_event					PASSED
 test_valarray					result mismatch (only "sum", calls boost::compute::accumulate)
 test_vector						PASSED (reads 1-after-bounds of allocated buffer)
 test_wait_list					PASSED
-test_zip_iterator				PASSED
+test_zip_iterator				compilation error (lowering copy with multiple entries into VPM not yet implemented)
 
 clRNG:
 Inventory						invalid buffer size

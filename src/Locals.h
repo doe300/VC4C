@@ -76,11 +76,11 @@ namespace vc4c
     {
     public:
         Local(const Local&) = delete;
-        Local(Local&&) = default;
+        Local(Local&&) noexcept = default;
         virtual ~Local() noexcept = default;
 
         Local& operator=(const Local&) = delete;
-        Local& operator=(Local&&) = delete;
+        Local& operator=(Local&&) noexcept = delete;
         bool operator<(const Local& other) const;
         bool operator==(const Local& other) const;
 
@@ -102,7 +102,7 @@ namespace vc4c
         /*
          * Executes the consumer for all users of the type specified
          */
-        void forUsers(const LocalUse::Type type, const std::function<void(const LocalUser*)>& consumer) const;
+        void forUsers(LocalUse::Type type, const std::function<void(const LocalUser*)>& consumer) const;
         /*
          * Removes an instance of use for the given user and usage-type.
          *
@@ -255,7 +255,7 @@ namespace vc4c
     {
         Parameter(
             const std::string& name, DataType type, ParameterDecorations decorations = ParameterDecorations::NONE);
-        Parameter(Parameter&&) = default;
+        Parameter(Parameter&&) noexcept = default;
         ~Parameter() noexcept override = default;
 
         std::string to_string(bool withContent = false) const override;
@@ -308,7 +308,7 @@ namespace vc4c
     struct StackAllocation final : public Local
     {
         StackAllocation(const std::string& name, DataType type, std::size_t size = 0, std::size_t alignment = 1);
-        StackAllocation(StackAllocation&&) = default;
+        StackAllocation(StackAllocation&&) noexcept = default;
         ~StackAllocation() noexcept override = default;
 
         /*

@@ -70,15 +70,13 @@ namespace vc4c
         class Mutex : private NonCopyable
         {
         public:
-            explicit Mutex() : locked(false), lockOwner(255) {}
-
             bool isLocked() const;
             NODISCARD bool lock(uint8_t qpu);
             void unlock(uint8_t qpu);
 
         private:
-            bool locked;
-            uint8_t lockOwner;
+            bool locked{false};
+            uint8_t lockOwner{255};
         };
 
         class Registers : private NonCopyable
@@ -158,8 +156,6 @@ namespace vc4c
         class SFU : private NonCopyable
         {
         public:
-            explicit SFU() : lastSFUWrite(0), currentCycle(0), sfuResult(NO_VALUE) {}
-
             Value readSFU();
             bool hasValueOnR4() const;
 
@@ -173,15 +169,15 @@ namespace vc4c
         private:
             // FIXME is SFU calculation per QPU? Or do QPUs need to lock the SFU access?
             // XXX per QPU cycle??
-            uint32_t lastSFUWrite;
-            uint32_t currentCycle;
-            Optional<Value> sfuResult;
+            uint32_t lastSFUWrite{0};
+            uint32_t currentCycle{0};
+            Optional<Value> sfuResult{NO_VALUE};
         };
 
         class VPM : private NonCopyable
         {
         public:
-            VPM(Memory& memory) :
+            explicit VPM(Memory& memory) :
                 memory(memory), vpmReadSetup(0), vpmWriteSetup(0), dmaReadSetup(0), dmaWriteSetup(0),
                 readStrideSetup(0), writeStrideSetup(0), lastDMAReadTrigger(0), lastDMAWriteTrigger(0), currentCycle(0),
                 cache({})
@@ -222,7 +218,7 @@ namespace vc4c
         class Semaphores : private NonCopyable
         {
         public:
-            explicit Semaphores()
+            explicit Semaphores() : counter{}
             {
                 counter.fill(0);
             }

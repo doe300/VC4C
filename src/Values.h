@@ -414,7 +414,7 @@ namespace vc4c
     public:
         LiteralType type;
 
-        constexpr Literal(optional_tombstone_tag) noexcept : type(LiteralType::TOMBSTONE), u() {}
+        explicit constexpr Literal(optional_tombstone_tag) noexcept : type(LiteralType::TOMBSTONE), u() {}
         explicit constexpr Literal(int32_t integer) noexcept : type(LiteralType::INTEGER), i(integer) {}
         explicit constexpr Literal(uint32_t integer) noexcept : type(LiteralType::INTEGER), u(integer) {}
         explicit constexpr Literal(float real) noexcept : type(LiteralType::REAL), f(real) {}
@@ -611,20 +611,21 @@ namespace vc4c
         using Elements = std::array<Literal, NATIVE_VECTOR_SIZE>;
 
     public:
-        constexpr SIMDVector(Literal defaultValue = UNDEFINED_LITERAL) noexcept :
+        constexpr explicit SIMDVector(Literal defaultValue = UNDEFINED_LITERAL) noexcept :
             elements({defaultValue, defaultValue, defaultValue, defaultValue, defaultValue, defaultValue, defaultValue,
                 defaultValue, defaultValue, defaultValue, defaultValue, defaultValue, defaultValue, defaultValue,
                 defaultValue, defaultValue})
         {
         }
 
-        explicit constexpr SIMDVector(std::initializer_list<Literal> list) noexcept : SIMDVector()
+        constexpr SIMDVector(std::initializer_list<Literal> list) noexcept : SIMDVector()
         {
             std::copy_n(list.begin(), std::min(NATIVE_VECTOR_SIZE, list.size()), elements.begin());
         }
 
         SIMDVector(const SIMDVector&) = default;
         SIMDVector(SIMDVector&&) noexcept = default;
+        ~SIMDVector() noexcept = default;
 
         SIMDVector& operator=(const SIMDVector&) = default;
         SIMDVector& operator=(SIMDVector&&) noexcept = default;
@@ -728,7 +729,8 @@ namespace vc4c
     namespace intermediate
     {
         class IntermediateInstruction;
-    };
+    } /* namespace intermediate */
+
     using LocalUser = intermediate::IntermediateInstruction;
 
     /*

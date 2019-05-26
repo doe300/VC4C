@@ -27,58 +27,58 @@ namespace vc4c
         enum class InstructionDecorations : uint32_t
         {
             // There are no decorations set for this instruction
-            NONE = 0,
+            NONE = 0u,
             // The result and parameters (floating-point values) are assumed to be non-NaN
-            NO_NAN = 1 << 0,
+            NO_NAN = 1u << 0u,
             // The result and parameters (floating-point values) are assumed to be not +/- Inf
-            NO_INF = 1 << 1,
+            NO_INF = 1u << 1u,
             // The use of a reciprocal is allowed for this division
-            ALLOW_RECIP = 1 << 2,
+            ALLOW_RECIP = 1u << 2u,
             // Implies NO_NAN, NO_INF and ALLOW_RECIP
-            FAST_MATH = 1 << 3,
+            FAST_MATH = 1u << 3u,
             // The conversion result needs be saturated within the limits of the result type
-            SATURATED_CONVERSION = 1 << 4,
+            SATURATED_CONVERSION = 1u << 4u,
             // The result is the number of work-dimensions as of get_work_dim()
-            BUILTIN_WORK_DIMENSIONS = 1 << 5,
+            BUILTIN_WORK_DIMENSIONS = 1u << 5u,
             // The result is the local size in one of the dimensions as of get_local_size()
-            BUILTIN_LOCAL_SIZE = 1 << 6,
+            BUILTIN_LOCAL_SIZE = 1u << 6u,
             // The result is the local ID in one of the dimensions as of get_local_id()
-            BUILTIN_LOCAL_ID = 1 << 7,
+            BUILTIN_LOCAL_ID = 1u << 7u,
             // The result is the number of work-groups in one of the dimensions as of get_num_groups()
-            BUILTIN_NUM_GROUPS = 1 << 8,
+            BUILTIN_NUM_GROUPS = 1u << 8u,
             // The result is the group-ID in one of the dimensions as of get_group_id()
-            BUILTIN_GROUP_ID = 1 << 9,
+            BUILTIN_GROUP_ID = 1u << 9u,
             // The result is the global offset in one dimension as of get_global_offset()
-            BUILTIN_GLOBAL_OFFSET = 1 << 10,
+            BUILTIN_GLOBAL_OFFSET = 1u << 10u,
             // The result is the global size in one dimension as of get_global_size()
-            BUILTIN_GLOBAL_SIZE = 1 << 11,
+            BUILTIN_GLOBAL_SIZE = 1u << 11u,
             // The result is the global id for one dimension (get_global_id())
-            BUILTIN_GLOBAL_ID = 1 << 12,
+            BUILTIN_GLOBAL_ID = 1u << 12u,
             // The result value is unsigned (signed by default)
-            UNSIGNED_RESULT = 1 << 13,
+            UNSIGNED_RESULT = 1u << 13u,
             // The result is a value of a PHI-node being set
-            PHI_NODE = 1 << 14,
+            PHI_NODE = 1u << 14u,
             // The conditional branch depends on ALL flags, not just the flag of the first SIMD-element
-            BRANCH_ON_ALL_ELEMENTS = 1 << 15,
+            BRANCH_ON_ALL_ELEMENTS = 1u << 15u,
             // The instructions inserts a single element into a vector
-            ELEMENT_INSERTION = 1 << 16,
+            ELEMENT_INSERTION = 1u << 16u,
             // The instruction was already processed by auto-vectorization
-            AUTO_VECTORIZED = 1 << 17,
+            AUTO_VECTORIZED = 1u << 17u,
             // The result of the instruction is the same for all work-items within a single work-group
-            WORK_GROUP_UNIFORM_VALUE = 1 << 18,
+            WORK_GROUP_UNIFORM_VALUE = 1u << 18u,
             // The instruction calculates VPM read configuration
-            VPM_READ_CONFIGURATION = 1 << 19,
+            VPM_READ_CONFIGURATION = 1u << 19u,
             // The instruction calculates VPM write configuration
-            VPM_WRITE_CONFIGURATION = 1 << 20,
+            VPM_WRITE_CONFIGURATION = 1u << 20u,
             // The behavior of the instruction in case of a signed integer overflow is undefined. Corresponds to LLVM
             // "nsw"
-            SIGNED_OVERFLOW_IS_UB = 1 << 21,
+            SIGNED_OVERFLOW_IS_UB = 1u << 21u,
             // The behavior of the instruction of an unsigned overflow occurs. Corresponds to LLVM "nuw"
-            UNSIGNED_OVERFLOW_IS_UB = 1 << 22,
+            UNSIGNED_OVERFLOW_IS_UB = 1u << 22u,
             // The division (signed or unsigned) or right shift (arithmetic or logical) is exact, e.g. there is no
             // remainder (for division) and no non-zero bits are shifted out of the value. I.e. for exact division (a /
             // b) * b == a and for shifts (a >> b) << b == a.
-            EXACT_OPERATION = 1 << 23
+            EXACT_OPERATION = 1u << 23u
         };
 
         std::string toString(InstructionDecorations decoration);
@@ -168,7 +168,7 @@ namespace vc4c
             /*
              * Returns the argument for the given index
              */
-            const Optional<Value> getArgument(std::size_t index) const;
+            Optional<Value> getArgument(std::size_t index) const;
             /*
              * Returns the argument for the given index.
              *
@@ -778,7 +778,7 @@ namespace vc4c
         struct MutexLock final : IntermediateInstruction
         {
         public:
-            MutexLock(MutexAccess accessType);
+            explicit MutexLock(MutexAccess accessType);
             ~MutexLock() override = default;
 
             std::string to_string() const override;

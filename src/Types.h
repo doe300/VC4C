@@ -84,6 +84,7 @@ namespace vc4c
         explicit DataType(const ComplexType* complexType);
         DataType(const DataType&) = default;
         DataType(DataType&&) noexcept = default;
+        ~DataType() noexcept = default;
 
         DataType& operator=(const DataType&) = default;
         DataType& operator=(DataType&&) noexcept = default;
@@ -351,7 +352,7 @@ namespace vc4c
         std::string getTypeName() const override;
 
     private:
-        PointerType(DataType type, AddressSpace addrSpace = AddressSpace::PRIVATE, unsigned align = 0) :
+        explicit PointerType(DataType type, AddressSpace addrSpace = AddressSpace::PRIVATE, unsigned align = 0) :
             elementType(type), addressSpace(addrSpace), alignment(align)
         {
         }
@@ -389,7 +390,7 @@ namespace vc4c
          * Calculates the size of the struct up to the given index (of all elements excluding the given index) in Bytes.
          * If index is -1 (WHOLE_OBJECT), the complete size of the struct is returned
          */
-        unsigned int getStructSize(const int index = WHOLE_OBJECT) const;
+        unsigned int getStructSize(int index = WHOLE_OBJECT) const;
 
         unsigned getAlignmentInBytes() const override;
         std::string getTypeName() const override;
@@ -470,8 +471,10 @@ namespace vc4c
         static std::string toImageConfigurationName(const std::string& localName);
 
     private:
-        ImageType(uint8_t dimensions, bool isImageArray = false, bool isImageBuffer = false, bool isSampled = false) :
-            dimensions(dimensions), isImageArray(isImageArray), isImageBuffer(isImageBuffer), isSampled(isSampled)
+        explicit ImageType(
+            uint8_t dimensions, bool isImageArray = false, bool isImageBuffer = false, bool isSampled = false) :
+            dimensions(dimensions),
+            isImageArray(isImageArray), isImageBuffer(isImageBuffer), isSampled(isSampled)
         {
         }
 

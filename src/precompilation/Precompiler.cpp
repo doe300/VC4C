@@ -96,7 +96,7 @@ SourceType Precompiler::getSourceType(std::istream& stream)
         s << "0x" << std::hex << QPUASM_NUMBER_MAGIC;
         return s.str();
     }();
-    std::array<char, 1024> buffer;
+    std::array<char, 1024> buffer{};
     stream.read(buffer.data(), 1000);
     const std::string s(buffer.data(), static_cast<std::size_t>(stream.gcount()));
 
@@ -227,7 +227,7 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
         std::transform(inputs.begin(), inputs.end(), std::back_inserter(sources), [&](const auto& pair) -> SPIRVSource {
             if(auto temp = compileToSPIRV(pair))
             {
-                tempFiles.emplace_back(new TemporaryFile(std::move(temp.value())));
+                tempFiles.emplace_back(std::make_unique<TemporaryFile>(std::move(temp.value())));
                 return SPIRVSource(tempFiles.back()->fileName);
             }
             if(pair.second)
@@ -238,7 +238,7 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
         if(includeStandardLibrary)
         {
             // FIXME this does not work, since the SPIRV-LLVM does not generate a correct VC4CL standard-library module
-            tempFiles.emplace_back(new TemporaryFile());
+            tempFiles.emplace_back(std::make_unique<TemporaryFile>());
             SPIRVResult stdLib(tempFiles.back()->fileName);
             compileLLVMToSPIRV(LLVMIRSource(findStandardLibraryFiles().llvmModule), "", stdLib);
             sources.emplace_back(stdLib);
@@ -257,7 +257,7 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
             inputs.begin(), inputs.end(), std::back_inserter(sources), [&](const auto& pair) -> LLVMIRSource {
                 if(auto temp = compileToLLVM(pair))
                 {
-                    tempFiles.emplace_back(new TemporaryFile(std::move(temp.value())));
+                    tempFiles.emplace_back(std::make_unique<TemporaryFile>(std::move(temp.value())));
                     return LLVMIRSource(tempFiles.back()->fileName);
                 }
                 if(pair.second)
@@ -419,7 +419,7 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
     if(inputFile)
     {
         // for resolving relative includes
-        std::array<char, 1024> buffer;
+        std::array<char, 1024> buffer{};
         buffer.fill(0);
         strncpy(buffer.data(), inputFile->data(), std::min(buffer.size(), inputFile->size()));
         std::string tmp = dirname(buffer.data());
@@ -429,7 +429,7 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
     if(inputType == outputType)
     {
         const std::string buffer(std::istreambuf_iterator<char>(input), {});
-        output.reset(new std::istringstream(buffer));
+        output = std::make_unique<std::istringstream>(buffer);
         return;
     }
 
@@ -513,5 +513,5 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
 
     CPPLOG_LAZY(logging::Level::INFO, log << "Compilation complete!" << logging::endl);
 
-    output.reset(new std::istringstream(tempStream.str()));
+    output = std::make_unique<std::istringstream>(tempStream.str());
 }

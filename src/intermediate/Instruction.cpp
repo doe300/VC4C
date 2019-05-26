@@ -149,7 +149,7 @@ bool IntermediateInstruction::hasValueType(const ValueType type) const
     }
 }
 
-const Optional<Value> IntermediateInstruction::getArgument(const std::size_t index) const
+Optional<Value> IntermediateInstruction::getArgument(const std::size_t index) const
 {
     if(arguments.size() > index)
         return arguments[index];

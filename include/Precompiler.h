@@ -87,7 +87,7 @@ namespace vc4c
         ~TemporaryFile();
 
         TemporaryFile& operator=(const TemporaryFile&) = delete;
-        TemporaryFile& operator=(TemporaryFile&&) = delete;
+        TemporaryFile& operator=(TemporaryFile&&) noexcept = delete;
 
         void openOutputStream(std::unique_ptr<std::ostream>& ptr) const;
         void openInputStream(std::unique_ptr<std::istream>& ptr) const;

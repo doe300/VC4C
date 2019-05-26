@@ -95,6 +95,13 @@ if(MULTI_THREADED)
 	find_package(Threads)
 endif()
 
+# clang-tidy
+find_program(CLANG_TIDY NAMES clang-tidy clang-tidy-5.0 clang-tidy-6.0 clang-tidy-7 clang-tidy-8)
+if(FALSE AND BUILD_DEBUG AND CLANG_TIDY)
+    message(STATUS "Enabling clang-tidy compile time checks: ${CLANG_TIDY}")
+    set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY}")
+endif()
+
 ####
 # Dependencies
 ####

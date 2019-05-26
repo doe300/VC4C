@@ -281,7 +281,7 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Stable
         {
             // need to byte-swap to value
             uint32_t correctVal =
-                ((t >> 24) & 0xFF) | ((t >> 8) & 0xFF00) | ((t << 8) & 0xFF0000) | ((t << 24) & 0xFF000000);
+                ((t >> 24u) & 0xFFu) | ((t >> 8u) & 0xFF00u) | ((t << 8u) & 0xFF0000u) | ((t << 24u) & 0xFF000000u);
             elements.emplace_back(TYPE_INT32, Literal(correctVal));
         }
 
@@ -403,7 +403,7 @@ void disassemble(const std::string& input, const std::string& output, const Outp
         is = &std::cin;
     else
     {
-        inputFile.reset(new std::ifstream(input, std::ios_base::in | std::ios_base::binary));
+        inputFile = std::make_unique<std::ifstream>(input, std::ios_base::in | std::ios_base::binary);
         is = inputFile.get();
     }
 
@@ -411,7 +411,7 @@ void disassemble(const std::string& input, const std::string& output, const Outp
         os = &std::cout;
     else
     {
-        outputFile.reset(new std::ofstream(output));
+        outputFile = std::make_unique<std::ofstream>(output);
         os = outputFile.get();
     }
 

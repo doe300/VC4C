@@ -195,7 +195,7 @@ static NODISCARD InstructionWalker insertSplittingBitcast(
 }
 
 InstructionWalker intermediate::insertBitcast(
-    InstructionWalker it, Method& method, const Value& src, const Value& dest, const InstructionDecorations deco)
+    InstructionWalker it, Method& method, const Value& src, const Value& dest, InstructionDecorations deco)
 {
     /*
      * TODO room for optimization:

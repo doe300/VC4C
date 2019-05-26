@@ -1229,7 +1229,7 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
             switch(type)
             {
             case OpLoad::LOAD_IMM_32:
-                loadedValues = Literal(load->getImmediateInt());
+                loadedValues = SIMDVector(Literal(load->getImmediateInt()));
                 break;
             case OpLoad::LOAD_SIGNED:
                 loadedValues = intermediate::LoadImmediate::toLoadedValues(

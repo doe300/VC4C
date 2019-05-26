@@ -92,17 +92,17 @@ static std::string toAddressAndModeString(uint8_t size, uint16_t address, bool i
     {
     case 0: // 8 bit
         typeSize = 8;
-        xCoord = address & 0x3;
-        yCoord = (address >> 2) & 0x3F;
+        xCoord = address & 0x3u;
+        yCoord = (address >> 2u) & 0x3Fu;
         break;
     case 1: // 16 bit
         typeSize = 16;
-        xCoord = address & 0x1;
-        yCoord = (address >> 1) & 0x3F;
+        xCoord = address & 0x1u;
+        yCoord = (address >> 1u) & 0x3Fu;
         break;
     case 2: // 32 bit
         typeSize = 32;
-        yCoord = address & 0x3F;
+        yCoord = address & 0x3Fu;
         break;
     default:
         throw CompilationError(
@@ -286,7 +286,7 @@ static uint8_t getVPMDMAMode(DataType paramType)
 }
 
 InstructionWalker periphery::insertReadDMA(
-    Method& method, InstructionWalker it, const Value& dest, const Value& addr, const bool useMutex)
+    Method& method, InstructionWalker it, const Value& dest, const Value& addr, bool useMutex)
 {
     if(useMutex)
     {
@@ -308,7 +308,7 @@ InstructionWalker periphery::insertReadDMA(
 }
 
 InstructionWalker periphery::insertWriteDMA(
-    Method& method, InstructionWalker it, const Value& src, const Value& addr, const bool useMutex)
+    Method& method, InstructionWalker it, const Value& src, const Value& addr, bool useMutex)
 {
     if(useMutex)
     {
@@ -826,7 +826,7 @@ VPWDMASetup VPMArea::toWriteDMASetup(DataType elementType, uint8_t numRows) cons
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.getScalarBitCount() > 32)
         // converts e.g. 64.bit integer to 2x 32.bit integer
-        type = DataType(32, type.getVectorWidth() * type.getScalarBitCount() / 32, type.isFloatingType());
+        type = DataType(32, type.getVectorWidth() * type.getScalarBitCount() / 32u, type.isFloatingType());
     if(type.isUnknown())
         throw CompilationError(
             CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
