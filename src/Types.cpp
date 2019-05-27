@@ -265,7 +265,7 @@ DataType DataType::toVectorType(unsigned char vectorWidth) const
             std::to_string(static_cast<unsigned>(vectorWidth)));
     if(getNumElements() == vectorWidth)
         return *this;
-    return DataType(getBitWidth(), vectorWidth, getFloatingPoint());
+    return DataType{getBitWidth(), vectorWidth, getFloatingPoint()};
 }
 
 DataType DataType::toArrayType(unsigned int numElements) const
@@ -318,8 +318,8 @@ DataType DataType::getUnionType(DataType other) const
         throw CompilationError(CompilationStep::GENERAL, "Can't form union type of floating-point and integer types!");
     if(isVoidType() || isUnknown() || isLabelType())
         throw CompilationError(CompilationStep::GENERAL, "Can't form union type with this type", to_string());
-    return DataType(std::max(getScalarBitCount(), other.getScalarBitCount()),
-        std::max(getNumElements(), other.getNumElements()), getFloatingPoint());
+    return DataType{std::max(getScalarBitCount(), other.getScalarBitCount()),
+        std::max(getNumElements(), other.getNumElements()), getFloatingPoint()};
 }
 
 unsigned char DataType::getScalarBitCount() const

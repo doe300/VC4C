@@ -72,7 +72,7 @@ namespace vc4c
         CompilationError(CompilationStep step, const std::string& message, const std::string& object);
         CompilationError(const CompilationError&) = default;
         CompilationError(CompilationError&&) = default; // RPi cross-compiler throws on noexcept
-        ~CompilationError() noexcept override = default;
+        ~CompilationError() noexcept override;
 
         CompilationError& operator=(const CompilationError&) = default;
         CompilationError& operator=(CompilationError&&) = default; // RPi cross-compiler throws on noexcept

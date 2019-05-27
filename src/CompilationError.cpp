@@ -61,6 +61,8 @@ CompilationError::CompilationError(const CompilationStep step, const std::string
     logBacktrace();
 }
 
+CompilationError::~CompilationError() noexcept = default;
+
 #if defined(DEBUG_MODE) and defined(__GNUC__)
 // adapted from here: https://stackoverflow.com/a/2526298/8720655
 static void demangleAndPrint(char* line, int i)

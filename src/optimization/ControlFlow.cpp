@@ -199,6 +199,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
         LoopControl loopControl;
         loopControl.iterationVariable = local;
 
+        // TODO use general expression analysis to find loop step function?
         for(const auto& pair : local->getUsers())
         {
             const intermediate::IntermediateInstruction* inst = pair.first;
@@ -265,10 +266,10 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                                 loopControl.determineStepKind(it->get<intermediate::Operation>()->op);
                             }
                         }
-                    };
+                    }
                 }
             }
-        };
+        }
 
         loop.front()->forAllOutgoingEdges([&](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
             if(!edge.data.isImplicit(loop.front()->key))

@@ -858,10 +858,10 @@ void VPM::writeValue(Value&& val)
         for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
         {
             auto element = valVector ? (*valVector)[i] : val.getLiteralValue();
-            dataPtr[i / 4] &= ~(0xFF << ((i % 4) * 8));
+            dataPtr[i / 4] &= ~(0xFFu << ((i % 4u) * 8u));
             if(element)
                 // non-literal (e.g. undefined possible, simply skip writing element)
-                dataPtr[i / 4] |= static_cast<Word>(element->unsignedInt() & 0xFF) << ((i % 4) * 8);
+                dataPtr[i / 4] |= static_cast<Word>(element->unsignedInt() & 0xFFu) << ((i % 4u) * 8u);
         }
         break;
     }
@@ -871,10 +871,10 @@ void VPM::writeValue(Value&& val)
         for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
         {
             auto element = valVector ? (*valVector)[i] : val.getLiteralValue();
-            dataPtr[i / 2] &= ~(0xFFFF << ((i % 2) * 16));
+            dataPtr[i / 2] &= ~(0xFFFFu << ((i % 2u) * 16u));
             if(element)
                 // non-literal (e.g. undefined possible, simply skip writing element)
-                dataPtr[i / 2] |= static_cast<Word>(element->unsignedInt() & 0xFFFF) << ((i % 2) * 16);
+                dataPtr[i / 2] |= static_cast<Word>(element->unsignedInt() & 0xFFFFu) << ((i % 2u) * 16u);
         }
         break;
     }

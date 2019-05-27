@@ -383,6 +383,12 @@ InstructionWalker optimizations::moveRotationSourcesToAccumulators(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     // makes sure, all sources for vector-rotations have a usage-range small enough to be on an accumulator
+    /*
+     * "The full horizontal vector rotate is only available when both of the mul ALU input arguments are taken from
+     * accumulators r0-r3."
+     * - Broadcom specification, page 20
+     *
+     */
     auto rot = it.get<VectorRotation>();
     if(rot)
     {
@@ -415,7 +421,8 @@ InstructionWalker optimizations::moveRotationSourcesToAccumulators(
                 return writer;
             }
         }
-        else if(rot->getSource().checkRegister() && !rot->getSource().reg().isAccumulator())
+        else if(rot->getSource().checkRegister() &&
+            (!rot->getSource().reg().isAccumulator() || rot->getSource().reg().getAccumulatorNumber() > 3))
         {
             // e.g. inserting into vector from reading VPM
             // insert temporary local to be read into, rotate local and NOP, since it is required

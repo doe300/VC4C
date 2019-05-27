@@ -715,9 +715,7 @@ bool optimizations::combineLoadingConstants(const Module& module, Method& method
                         // LocalUser#replaceLocal
                         FastSet<const LocalUser*> readers = oldLocal->getUsers(LocalUse::Type::READER);
                         for(const LocalUser* reader : readers)
-                        {
                             const_cast<LocalUser*>(reader)->replaceLocal(oldLocal, newLocal);
-                        };
                         it.erase();
                         hasChanged = true;
                         continue;
@@ -739,9 +737,7 @@ bool optimizations::combineLoadingConstants(const Module& module, Method& method
                         // LocalUser#replaceLocal
                         FastSet<const LocalUser*> readers = oldLocal->getUsers(LocalUse::Type::READER);
                         for(const LocalUser* reader : readers)
-                        {
                             const_cast<LocalUser*>(reader)->replaceLocal(oldLocal, newLocal);
-                        };
                         it.erase();
                         hasChanged = true;
                         continue;

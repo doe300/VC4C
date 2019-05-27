@@ -30,7 +30,7 @@ namespace vc4c
         ComplexType() = default;
         ComplexType(const ComplexType&) = delete;
         ComplexType(ComplexType&&) noexcept = delete;
-        virtual ~ComplexType() noexcept = 0;
+        virtual ~ComplexType() noexcept;
 
         ComplexType& operator=(const ComplexType&) = delete;
         ComplexType& operator=(ComplexType&&) noexcept = delete;

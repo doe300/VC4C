@@ -36,7 +36,7 @@ namespace vc4c
 #define PROFILE_COUNTER_WITH_PREV(index, name, value, prevIndex)                                                       \
     profiler::increaseCounter(index, name, value, __FILE__, __LINE__, prevIndex)
 
-#define PROFILE_RESULTS() profiler::dumpProfileResults();
+#define PROFILE_RESULTS() profiler::dumpProfileResults()
 #else
 #define PROFILE(func, ...) func(__VA_ARGS__)
 
