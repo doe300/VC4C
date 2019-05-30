@@ -159,13 +159,11 @@ LCOV_EXCL_STOP
 
 bool DataType::operator==(DataType right) const noexcept
 {
-    // TODO when complex types are rewritten, can be simplified to comparing values?
-    // E.g. is it then guaranteed for two same complex types to be the same object/pointer?
-    // TODO test for LLVM and SPIR-V
-    if(getSimpleFlag() || right.getSimpleFlag())
+    if(isSimpleType() || right.isSimpleType())
         return value == right.value;
-    return (getComplexType() == 0 && right.getComplexType() == 0) ||
-        (*toPointer(getComplexType()) == *toPointer(right.getComplexType()));
+    auto leftComplex = toPointer(getComplexType());
+    auto rightComplex = toPointer(right.getComplexType());
+    return leftComplex == rightComplex || *leftComplex == *rightComplex;
 }
 
 bool DataType::isSimpleType() const noexcept

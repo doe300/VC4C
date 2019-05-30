@@ -75,6 +75,20 @@ std::string Register::to_string(bool specialNames, bool readAccess) const
             }
             if(num == 39)
                 return "-";
+            if(num == 41)
+            {
+                if(file == RegisterFile::PHYSICAL_A)
+                    return "x_coord";
+                if(file == RegisterFile::PHYSICAL_B)
+                    return "y_coord";
+            }
+            if(num == 42)
+            {
+                if(file == RegisterFile::PHYSICAL_A)
+                    return "ms_mask";
+                if(file == RegisterFile::PHYSICAL_B)
+                    return "rev_flag";
+            }
             if(num == 48)
                 return "vpm";
             if(num == 49)
@@ -109,6 +123,15 @@ std::string Register::to_string(bool specialNames, bool readAccess) const
                 return "irq";
             if(num == 39)
                 return "-";
+            if(num == 40)
+                return "unif_addr";
+            if(num == 42)
+            {
+                if(file == RegisterFile::PHYSICAL_A)
+                    return "ms_mask";
+                if(file == RegisterFile::PHYSICAL_B)
+                    return "rev_flag";
+            }
             if(num == 48)
                 return "vpm";
             if(num == 49)

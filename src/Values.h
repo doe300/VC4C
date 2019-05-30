@@ -137,28 +137,54 @@ namespace vc4c
 
     /*
      * UNIFORM registers, present on both physical register-files, used to read the kernel parameters and
-     * image-configuration
+     * image-configuration.
+     *
+     * 32-bit UNIFORM values are automatically replicated across all SIMD elements on read.
      */
     static constexpr Register REG_UNIFORM{RegisterFile::PHYSICAL_ANY, 32};
     /*
-     * Accumulator 0
+     * General-purpose accumulator 0
+     *
+     * NOTE: Full range vector rotation is only available if both inputs to the mul ALU are stored in the accumulators 0
+     * to 3.
      */
     static constexpr Register REG_ACC0{RegisterFile::ACCUMULATOR, 32};
     /*
-     * Accumulator 1
+     * General-purpose accumulator 1
+     *
+     * NOTE: Full range vector rotation is only available if both inputs to the mul ALU are stored in the accumulators 0
+     * to 3.
      */
     static constexpr Register REG_ACC1{RegisterFile::ACCUMULATOR, 33};
     /*
-     * Accumulator 2
+     * General-purpose accumulator 2
+     *
+     * NOTE: Full range vector rotation is only available if both inputs to the mul ALU are stored in the accumulators 0
+     * to 3.
      */
     static constexpr Register REG_ACC2{RegisterFile::ACCUMULATOR, 34};
     /*
-     * Accumulator 3
+     * General-purpose accumulator 3
+     *
+     * NOTE: Full range vector rotation is only available if both inputs to the mul ALU are stored in the accumulators 0
+     * to 3.
      */
     static constexpr Register REG_ACC3{RegisterFile::ACCUMULATOR, 35};
     /*
+     * Varying input register
+     *
+     * Varying variables are pre-interpolated floating-point inputs for shaders, see specification section 6.
+     *
+     * "Reads of the VARYING_READ register will stall while empty, unless all of the varyings have been read for that
+     * thread in which case the read returns undefined data." - Broadcom specification, section 6
+     */
+    static constexpr Register REG_VARYING{RegisterFile::PHYSICAL_ANY, 35};
+    /*
      * "Accumulator 4", cannot be used as a "standard" accumulator.
      * Instead contains the result of some periphery-components (e.g. SFU, TMU)
+     *
+     * Similar to "normal" registers and accumulators, the previous result is available for successive reads of r4 and
+     * r5 until it is overwritten by another periphery action writing into the register.
      *
      * NOTE: Reading from r4 offers some additional unpack-modes (see OpCodes.h)
      */
@@ -178,14 +204,22 @@ namespace vc4c
      * within a slice). Writing any value different from zero disables the TMU swapping and allows all QPUs to access
      * both TMUs by writing in their corresponding registers.
      *
+     * NOTE: The value written is only taken from SIMD element 0.
+     *
      * "If TMU_NOSWAP is written, the write must be three instructions before the first TMU write instruction"
      * - Broadcom specification, page 37
      */
     static constexpr Register REG_TMU_NOSWAP{RegisterFile::PHYSICAL_ANY, 36};
     /*
-     * "Accumulator 5", contains a dynamically set offset for vector-rotations
+     * Write to "accumulator 5" to set a dynamic offset for vector-rotations.
      *
-     * The offset are the bits [0:3], truncating any upper bits
+     * When any of the replication registers below are written, the replicated value can be read from this "accumulator
+     * 5" register.
+     *
+     * Similar to "normal" registers and accumulators, the previous result is available for successive reads of r4 and
+     * r5 until it is overwritten by another periphery action writing into the register.
+     *
+     * NOTE: The vector rotation offset is only taken from the bits [0:3], truncating/ignoring any upper bits
      */
     static constexpr Register REG_ACC5{RegisterFile::ACCUMULATOR, 37};
     /*
@@ -198,11 +232,11 @@ namespace vc4c
      */
     static constexpr Register REG_REPLICATE_ALL{RegisterFile::PHYSICAL_B, 37};
     /*
-     * When read, fills the vector-element with the corresponding element-number (e.g. (0, 2, 3, 4, ...)
+     * When read, fills the vector-element with the corresponding element-number (e.g. [0, 1, 2, 3, 4, ...])
      */
     static constexpr Register REG_ELEMENT_NUMBER{RegisterFile::PHYSICAL_A, 38};
     /*
-     * Sets the QPU-number across all vector-elements when read
+     * Reading this register returns the QPU-number across all vector-elements
      */
     static constexpr Register REG_QPU_NUMBER{RegisterFile::PHYSICAL_B, 38};
     /*
@@ -227,6 +261,51 @@ namespace vc4c
      * - Broadcom specification, page 22
      */
     static constexpr Register REG_UNIFORM_ADDRESS{RegisterFile::PHYSICAL_ANY, 40};
+
+    /*
+     * X pixel coordinates
+     *
+     * Originally a register for usage in shaders.
+     *
+     * Returns the constant pattern [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1] on read, cannot be written.
+     */
+    static constexpr Register REG_X_COORDS{RegisterFile::PHYSICAL_A, 41};
+
+    /*
+     * Y pixel coordinates
+     *
+     * Originally a register for usage in shaders.
+     *
+     * Returns the constant pattern [0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1] on read, cannot be written.
+     */
+    static constexpr Register REG_Y_COORDS{RegisterFile::PHYSICAL_B, 41};
+
+    /*
+     * Multisample mask register
+     *
+     * In its original usage, this register stores multisample masks and is updated when loading new pixels.
+     *
+     * This register can be used outside of shaders register and has following properties:
+     * - Like all general-purpose registers, writing and reading is per-element
+     * - Also supports conditional write/read per-element
+     * - Like the "physical" registers, there must be a delay between writing and reading the register
+     * - NOTE: The register truncates the input to the 4 lowest bits, being able to only store the values [0,15]
+     */
+    static constexpr Register REG_MS_MASK{RegisterFile::PHYSICAL_A, 42};
+
+    /*
+     * Inversion flag register
+     *
+     * In its original usage, this register determines whether primitives face backwards
+     *
+     * This register can be used outside of shaders register and has following properties:
+     * - NOTE: Only SIMD element 0 is written and the value is replicated across all elements
+     * - Therefore, conditional write is only supported for element 0
+     * - Supports conditional read per-element
+     * - Like the "physical" registers, there must be a delay between writing and reading the register
+     * - NOTE: The register only stores the lowest bit, being able to only store the values [0,1]
+     */
+    static constexpr Register REG_REV_FLAG{RegisterFile::PHYSICAL_B, 42};
 
     // VPM I/O, see specification section 7
     /*

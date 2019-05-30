@@ -25,12 +25,10 @@
 #include <fstream>
 #include <iomanip>
 #include <numeric>
+#include <random>
 
 using namespace vc4c;
 using namespace vc4c::tools;
-
-// TODO can we actually read multiple times from r5? Does r5 retain its previous value? Does the same work for r4 (e.g.
-// when set via TMU/SFU)?
 
 extern void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, StableList<Global>& globals,
     std::vector<qpu_asm::Instruction>& instructions);
@@ -259,6 +257,8 @@ void Registers::writeRegister(Register reg, const Value& val, std::bitset<16> el
         return;
     else if(reg.num == REG_UNIFORM_ADDRESS.num)
         qpu.uniforms.setUniformAddress(getActualValue(modifiedValue));
+    else if(reg.num == REG_MS_MASK.num)
+        writeStorageRegister(reg, std::move(modifiedValue), elementMask);
     else if(reg.num == REG_VPM_IO.num)
         qpu.vpm.writeValue(getActualValue(modifiedValue));
     else if(reg == REG_VPM_IN_SETUP)
@@ -326,6 +326,22 @@ std::pair<Value, bool> Registers::readRegister(Register reg)
         // cannot optimize to use iterator here, since we modify the element in cache!
         return std::make_pair(readCache.at(REG_UNIFORM), true);
     }
+    if(reg.num == REG_VARYING.num)
+    {
+        // returns random floating-point values
+        std::default_random_engine generator;
+        std::uniform_real_distribution<float> distribution;
+        return std::make_pair(Value(SIMDVector{Literal(distribution(generator)), Literal(distribution(generator)),
+                                        Literal(distribution(generator)), Literal(distribution(generator)),
+                                        Literal(distribution(generator)), Literal(distribution(generator)),
+                                        Literal(distribution(generator)), Literal(distribution(generator)),
+                                        Literal(distribution(generator)), Literal(distribution(generator)),
+                                        Literal(distribution(generator)), Literal(distribution(generator)),
+                                        Literal(distribution(generator)), Literal(distribution(generator)),
+                                        Literal(distribution(generator)), Literal(distribution(generator))},
+                                  TYPE_FLOAT.toVectorType(16)),
+            true);
+    }
     if(reg == REG_ELEMENT_NUMBER)
         return std::make_pair(ELEMENT_NUMBERS, true);
     if(reg == REG_QPU_NUMBER)
@@ -335,6 +351,22 @@ std::pair<Value, bool> Registers::readRegister(Register reg)
         logging::warn() << "Reading NOP register" << logging::endl;
         return std::make_pair(UNDEFINED_VALUE, true);
     }
+    if(reg == REG_X_COORDS)
+        // returns fixed pattern
+        return std::make_pair(Value(SIMDVector{Literal(0u), Literal(1u), Literal(0u), Literal(1u), Literal(0u),
+                                        Literal(1u), Literal(0u), Literal(1u), Literal(0u), Literal(1u), Literal(0u),
+                                        Literal(1u), Literal(0u), Literal(1u), Literal(0u), Literal(1u)},
+                                  TYPE_INT8.toVectorType(16)),
+            true);
+    if(reg == REG_Y_COORDS)
+        // returns fixed pattern
+        return std::make_pair(Value(SIMDVector{Literal(0u), Literal(0u), Literal(1u), Literal(1u), Literal(0u),
+                                        Literal(0u), Literal(1u), Literal(1u), Literal(0u), Literal(0u), Literal(1u),
+                                        Literal(1u), Literal(0u), Literal(0u), Literal(1u), Literal(1u)},
+                                  TYPE_INT8.toVectorType(16)),
+            true);
+    if(reg == REG_MS_MASK || reg == REG_REV_FLAG)
+        return std::make_pair(readStorageRegister(reg), true);
     if(reg.num == REG_VPM_IO.num)
     {
         if(readCache.find(REG_VPM_IO) == readCache.end())
@@ -427,6 +459,30 @@ static Value toStorageValue(const Value& oldVal, const Value& newVal, std::bitse
 
 void Registers::writeStorageRegister(Register reg, Value&& val, std::bitset<16> elementMask)
 {
+    if(reg == REG_MS_MASK)
+    {
+        // actual value is truncated to lowest 4 Bits per element
+        auto truncate = [](Literal lit) -> Literal { return Literal(lit.unsignedInt() & 0xF); };
+        Value actualValue = getActualValue(val);
+        if(auto lit = actualValue.getLiteralValue())
+            val = Value(truncate(*lit), actualValue.type);
+        else if(auto vec = actualValue.checkVector())
+            val = Value(vec->transform(truncate), actualValue.type);
+        else
+            throw CompilationError(
+                CompilationStep::GENERAL, "Unhandled value to write to multisample mask", actualValue.to_string());
+    }
+    if(reg == REG_REV_FLAG)
+    {
+        if(!elementMask.test(0))
+            // if 0th element is not set, retain old value
+            return;
+        // actual value stored is truncated to lowest 1 Bit and replicated across all elements
+        Value actualValue = getActualValue(val);
+        auto firstElement = actualValue.getLiteralValue() ? *actualValue.getLiteralValue() : actualValue.vector()[0];
+        firstElement = Literal(firstElement.unsignedInt() & 1);
+        val = Value(SIMDVector{firstElement}, actualValue.type.toVectorType(16));
+    }
     auto it = storageRegisters.find(reg);
     if(it == storageRegisters.end())
         it = storageRegisters.emplace(reg, val).first;
@@ -434,6 +490,8 @@ void Registers::writeStorageRegister(Register reg, Value&& val, std::bitset<16> 
         it->second = toStorageValue(it->second, getActualValue(val), elementMask);
     if(reg.num == REG_REPLICATE_ALL.num && elementMask.any())
     {
+        // TODO if some flags are set, but not the 0th (or 0th, 4th, 8th and 12th), need to retain old value?
+        // TODO or is conditional replication possible at all?
         // is not actually stored in the physical file A or B
         storageRegisters.erase(it);
         storageRegisters.emplace(REG_ACC5, val);
