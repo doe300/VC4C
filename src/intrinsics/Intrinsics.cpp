@@ -180,9 +180,9 @@ enum class DMAAccess : unsigned char
     PREFETCH
 };
 
-static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access)
+static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access, bool setMutex)
 {
-    return [access](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker {
+    return [access, setMutex](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker {
         switch(access)
         {
         case DMAAccess::READ:
@@ -190,15 +190,16 @@ static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access)
             CPPLOG_LAZY(
                 logging::Level::DEBUG, log << "Intrinsifying memory read " << callSite->to_string() << logging::endl);
             // This needs to be access via VPM for atomic-instructions to work correctly!!
-            it =
-                periphery::insertReadDMA(method, it, callSite->getOutput().value(), callSite->assertArgument(0), false);
+            it = periphery::insertReadDMA(
+                method, it, callSite->getOutput().value(), callSite->assertArgument(0), setMutex);
             break;
         }
         case DMAAccess::WRITE:
         {
             CPPLOG_LAZY(
                 logging::Level::DEBUG, log << "Intrinsifying memory write " << callSite->to_string() << logging::endl);
-            it = periphery::insertWriteDMA(method, it, callSite->assertArgument(1), callSite->assertArgument(0), false);
+            it = periphery::insertWriteDMA(
+                method, it, callSite->assertArgument(1), callSite->assertArgument(0), setMutex);
             break;
         }
         case DMAAccess::COPY:
@@ -211,7 +212,8 @@ static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access)
                 throw CompilationError(CompilationStep::OPTIMIZER,
                     "Memory copy with non-constant size is not yet supported", callSite->to_string());
             it = method.vpm->insertCopyRAM(method, it, callSite->assertArgument(0), callSite->assertArgument(1),
-                callSite->assertArgument(2).getLiteralValue()->unsignedInt() * type.getInMemoryWidth(), nullptr, false);
+                callSite->assertArgument(2).getLiteralValue()->unsignedInt() * type.getInMemoryWidth(), nullptr,
+                setMutex);
             break;
         }
         case DMAAccess::PREFETCH:
@@ -348,7 +350,7 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> unaryIn
             [](const Value& val) { return periphery::precalculateSFU(REG_SFU_RECIP, val); }}},
     {"vc4cl_semaphore_increment", Intrinsic{intrinsifySemaphoreAccess(true)}},
     {"vc4cl_semaphore_decrement", Intrinsic{intrinsifySemaphoreAccess(false)}},
-    {"vc4cl_dma_read", Intrinsic{intrinsifyDMAAccess(DMAAccess::READ)}},
+    {"vc4cl_dma_read", Intrinsic{intrinsifyDMAAccess(DMAAccess::READ, false)}},
     {"vc4cl_unpack_sext", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_NOP, UNPACK_SHORT_TO_INT_SEXT)}},
     {"vc4cl_unpack_color_byte0", Intrinsic{intrinsifyUnaryALUInstruction(OP_FMIN.name, false, PACK_NOP, UNPACK_8A_32)}},
     {"vc4cl_unpack_color_byte1", Intrinsic{intrinsifyUnaryALUInstruction(OP_FMIN.name, false, PACK_NOP, UNPACK_8B_32)}},
@@ -366,11 +368,12 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> unaryIn
     {"vc4cl_is_nan",
         Intrinsic{intrinsifyCheckNaN(false),
             [](const Value& val) { return std::isnan(val.literal().real()) ? INT_ONE : INT_ZERO; }}},
-    {"vc4cl_is_inf_nan", Intrinsic{intrinsifyCheckNaN(true), [](const Value& val) {
-                                       return std::isnan(val.literal().real()) || std::isinf(val.literal().real()) ?
-                                           INT_ONE :
-                                           INT_ZERO;
-                                   }}}};
+    {"vc4cl_is_inf_nan",
+        Intrinsic{intrinsifyCheckNaN(true),
+            [](const Value& val) {
+                return std::isnan(val.literal().real()) || std::isinf(val.literal().real()) ? INT_ONE : INT_ZERO;
+            }}},
+    {"vc4cl_vload3", Intrinsic{intrinsifyDMAAccess(DMAAccess::READ, true)}}};
 
 const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryIntrinsicMapping = {
     {"vc4cl_fmax",
@@ -403,7 +406,7 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryI
     {"vc4cl_mul24",
         Intrinsic{intrinsifyBinaryALUInstruction(OP_MUL24.name, true),
             [](const Value& val0, const Value& val1) { return OP_MUL24(val0, val1).first.value(); }}},
-    {"vc4cl_dma_write", Intrinsic{intrinsifyDMAAccess(DMAAccess::WRITE)}},
+    {"vc4cl_dma_write", Intrinsic{intrinsifyDMAAccess(DMAAccess::WRITE, false)}},
     {"vc4cl_vector_rotate", Intrinsic{intrinsifyVectorRotation()}},
     // the 32-bit saturation MUST BE applied to the over-/underflowing operation
     {"vc4cl_saturated_add", Intrinsic{intrinsifyBinaryALUInstruction(OP_ADD.name, false, PACK_32_32)}},
@@ -430,10 +433,11 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryI
             [](const Value& val0, const Value& val1) { return OP_V8MIN(val0, val1).first.value(); }}},
     {"vc4cl_v8max",
         Intrinsic{intrinsifyBinaryALUInstruction(OP_V8MAX.name, false),
-            [](const Value& val0, const Value& val1) { return OP_V8MAX(val0, val1).first.value(); }}}};
+            [](const Value& val0, const Value& val1) { return OP_V8MAX(val0, val1).first.value(); }}},
+    {"vc4cl_vstore3", Intrinsic{intrinsifyDMAAccess(DMAAccess::WRITE, true)}}};
 
 const static std::map<std::string, Intrinsic, std::greater<std::string>> ternaryIntrinsicMapping = {
-    {"vc4cl_dma_copy", Intrinsic{intrinsifyDMAAccess(DMAAccess::COPY)}},
+    {"vc4cl_dma_copy", Intrinsic{intrinsifyDMAAccess(DMAAccess::COPY, false)}},
     {"vc4cl_flag_cond", Intrinsic{intrinsifyFlagCondition}}};
 
 const static std::map<std::string, std::pair<Intrinsic, Optional<Value>>, std::greater<std::string>>

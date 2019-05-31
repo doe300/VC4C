@@ -397,7 +397,7 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
 {
     const DataType vpmStorageType = getVPMStorageType(dest.type);
     if(area != nullptr)
-        area->checkAreaSize(vpmStorageType.getInMemoryWidth());
+        area->checkAreaSize(vpmStorageType.getLogicalWidth());
     else
         // a single vector can only use a maximum of 1 row
         updateScratchSize(1);
@@ -485,7 +485,7 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
 {
     const DataType vpmStorageType = getVPMStorageType(src.type);
     if(area != nullptr)
-        area->checkAreaSize(vpmStorageType.getInMemoryWidth());
+        area->checkAreaSize(vpmStorageType.getLogicalWidth());
     else
         // a single vector can only use a maximum of 1 row
         updateScratchSize(1);
@@ -524,7 +524,7 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
     if(area != nullptr)
         // FIXME this needs to have the numEntries added and the correct type!!!
         // TODO rename numEntries to numRows or move entry->row handling here?!
-        area->checkAreaSize(getVPMStorageType(type).getInMemoryWidth());
+        area->checkAreaSize(getVPMStorageType(type).getLogicalWidth());
     else
         // a single vector can only use a maximum of 1 row
         updateScratchSize(1);
@@ -608,7 +608,7 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
     const VPMArea* area, bool useMutex, const Value& inAreaOffset, const Value& numEntries)
 {
     if(area != nullptr)
-        area->checkAreaSize(getVPMStorageType(type).getInMemoryWidth());
+        area->checkAreaSize(getVPMStorageType(type).getLogicalWidth());
     else
         // a single vector can only use a maximum of 1 row
         updateScratchSize(1);
@@ -694,7 +694,7 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
 {
     const auto size = getBestVectorSize(numBytes);
     if(area != nullptr)
-        area->checkAreaSize(size.first.getInMemoryWidth());
+        area->checkAreaSize(size.first.getLogicalWidth());
     else
         updateScratchSize(1);
 
@@ -727,7 +727,7 @@ InstructionWalker VPM::insertFillRAM(Method& method, InstructionWalker it, const
         return it;
 
     if(area != nullptr)
-        area->checkAreaSize(type.getInMemoryWidth());
+        area->checkAreaSize(type.getLogicalWidth());
     else
         updateScratchSize(1);
 
@@ -835,12 +835,12 @@ VPWDMASetup VPMArea::toWriteDMASetup(DataType elementType, uint8_t numRows) cons
             CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
 
     // by "default", one value per row, so we need to store the number of values as number of rows
-    uint8_t rowDepth = type.getVectorWidth(true);
+    uint8_t rowDepth = type.getVectorWidth();
     if(canBePackedIntoRow())
     {
         // if we have the row packed, we need to calculate the row-width from the maximum row-width and the number of
         // elements
-        const unsigned totalNumElements = type.getVectorWidth(true) * numRows;
+        const unsigned totalNumElements = type.getVectorWidth() * numRows;
         const uint8_t elementsPerRow = getElementsInRow(type);
         if((totalNumElements > elementsPerRow) && (totalNumElements % elementsPerRow != 0))
             throw CompilationError(CompilationStep::GENERAL,
@@ -897,7 +897,7 @@ VPRDMASetup VPMArea::toReadDMASetup(DataType elementType, uint8_t numRows) const
     // If the data is packed, have a pitch of 1 unit (e.g. 1 byte/half-word/word offset depending on type)
     // otherwise, always jump to the next row
     const uint8_t vpmPitch = canBePackedIntoRow() ? 1 : TYPE_INT32.getScalarBitCount() / type.getScalarBitCount();
-    VPRDMASetup setup(getVPMDMAMode(type), type.getVectorWidth(true) % 16 /* 0 => 16 */, numRows % 16 /* 0 => 16 */,
+    VPRDMASetup setup(getVPMDMAMode(type), type.getVectorWidth() % 16 /* 0 => 16 */, numRows % 16 /* 0 => 16 */,
         vpmPitch % 16 /* 0 => 16 */);
     setup.setWordRow(rowOffset);
     setup.setVertical(!IS_HORIZONTAL);
@@ -955,7 +955,7 @@ const VPMArea* VPM::addArea(const Local* local, DataType elementType, bool isSta
     // for 16-element vectors (even if we do not use all of the elements)
     DataType inVPMType = getVPMStorageType(elementType);
 
-    unsigned requestedSize = inVPMType.getInMemoryWidth() * (isStackArea ? numStacks : 1);
+    unsigned requestedSize = inVPMType.getLogicalWidth() * (isStackArea ? numStacks : 1);
     if(requestedSize > maximumVPMSize)
         // does not fit, independent of packing of rows
         return nullptr;
