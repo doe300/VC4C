@@ -244,9 +244,36 @@ static NODISCARD InstructionWalker findReplacementCandidate(
     return replacementIt;
 }
 
-static void replaceNOPs(BasicBlock& basicBlock, Method& method, const Configuration& config)
+/*
+ * only insert instruction,
+ * - if local is used afterwards (and not just in the next few instructions)
+ * - or the pack-mode of the previous instruction is set, since in that case, the register-file A
+ * MUST be used, so it cannot be read in the next instruction
+ * - or the unpack-mode of this instruction is set, since in that case, the register-file A MUST be
+ * used, so it cannot be written to in the previous instruction
+ * - also vector-rotations MUST be on accumulator, but the input MUST NOT be written in the previous
+ * instruction, so they are also split up
+ */
+static bool needsDelay(
+    InstructionWalker prevIt, InstructionWalker nextIt, const Local* local, std::size_t accumulatorThreshold)
+{
+    // we also need to insert an instruction, if the local is unpacked in any successive instruction,
+    // in which case it cannot be on an accumulator. Since we have a direct read-after-write, the local
+    // can also not be on register-file A -> we need to insert buffer
+    bool isUnpacked = false;
+    local->forUsers(LocalUse::Type::READER, [&isUnpacked](const LocalUser* user) {
+        if(user->hasUnpackMode())
+            isUnpacked = true;
+    });
+
+    return prevIt->hasPackMode() || nextIt->hasUnpackMode() || nextIt.get<VectorRotation>() ||
+        !prevIt.getBasicBlock()->isLocallyLimited(prevIt, local, accumulatorThreshold) || isUnpacked;
+}
+
+static bool replaceNOPs(BasicBlock& basicBlock, Method& method, const Configuration& config)
 {
     InstructionWalker it = basicBlock.walk();
+    bool hasChanged = false;
     while(!it.isEndOfBlock())
     {
         const Nop* nop = it.get<Nop>();
@@ -264,6 +291,25 @@ static void replaceNOPs(BasicBlock& basicBlock, Method& method, const Configurat
                 it.reset(replacementIt.release());
                 if(cannotBeCombined)
                     it->canBeCombined = false;
+                hasChanged = true;
+
+                // make sure to not create a new conflict and insert NOP instead (which might be replaced again later
+                // on)
+                auto prevIt = replacementIt.copy().previousInBlock();
+                auto nextIt = replacementIt.copy().nextInBlock();
+                while(!prevIt.has())
+                    prevIt.previousInBlock();
+                while(!nextIt.isEndOfBlock() && !nextIt.has())
+                    nextIt.nextInBlock();
+                if(!prevIt.isStartOfBlock() && prevIt.has() && !nextIt.isEndOfBlock() && nextIt.has() &&
+                    prevIt->hasValueType(ValueType::LOCAL) && nextIt->readsLocal(prevIt->getOutput()->local()) &&
+                    needsDelay(
+                        prevIt, nextIt, prevIt->getOutput()->local(), config.additionalOptions.accumulatorThreshold))
+                {
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Inserting NOP to prevent further read-after-write errors" << logging::endl);
+                    replacementIt.reset(new Nop(DelayType::WAIT_REGISTER));
+                }
             }
             else if(nop->type == DelayType::WAIT_VPM)
             {
@@ -272,10 +318,12 @@ static void replaceNOPs(BasicBlock& basicBlock, Method& method, const Configurat
                 it.erase();
                 // to not skip the next nop
                 it.previousInBlock();
+                hasChanged = true;
             }
         }
         it.nextInBlock();
     }
+    return hasChanged;
 }
 
 bool optimizations::splitReadAfterWrites(const Module& module, Method& method, const Configuration& config)
@@ -300,24 +348,7 @@ bool optimizations::splitReadAfterWrites(const Module& module, Method& method, c
             {
                 if(it->readsLocal(lastWrittenTo))
                 {
-                    // we also need to insert an instruction, if the local is unpacked in any successive instruction,
-                    // in which case it cannot be on an accumulator. Since we have a direct read-after-write, the local
-                    // can also not be on register-file A -> we need to insert buffer
-                    bool isUnpacked = false;
-                    lastWrittenTo->forUsers(LocalUse::Type::READER, [&isUnpacked](const LocalUser* user) {
-                        if(user->hasUnpackMode())
-                            isUnpacked = true;
-                    });
-                    // only insert instruction, if local is used afterwards (and not just in the next few instructions)
-                    // or the pack-mode of the previous instruction is set, since in that case, the register-file A MUST
-                    // be used, so it cannot be read in the next instruction  or the unpack-mode of this instruction is
-                    // set, since in that case, the register-file A MUST be used, so it cannot be written to in the
-                    // previous instruction  also vector-rotations MUST be on accumulator, but the input MUST NOT be
-                    // written in the previous instruction, so they are also split up
-                    if(lastInstruction->hasPackMode() || it->hasUnpackMode() || it.get<VectorRotation>() ||
-                        !lastInstruction.getBasicBlock()->isLocallyLimited(
-                            lastInstruction, lastWrittenTo, config.additionalOptions.accumulatorThreshold) ||
-                        isUnpacked)
+                    if(needsDelay(lastInstruction, it, lastWrittenTo, config.additionalOptions.accumulatorThreshold))
                     {
                         CPPLOG_LAZY(logging::Level::DEBUG,
                             log << "Inserting NOP to split up read-after-write before: " << it->to_string()
@@ -368,15 +399,19 @@ bool optimizations::reorderWithinBasicBlocks(const Module& module, Method& metho
      * 3. split up VPM setup and wait VPM wait, so the delay can be used productively (only possible if we allow
      * reordering over mutex-release). How many instructions to try to insert? 3?
      */
+    bool hasChanged = false;
     for(BasicBlock& block : method)
     {
         // remove NOPs by inserting instructions which do not violate the reason for the NOP
-        PROFILE(replaceNOPs, block, method, config);
+        PROFILE_START(replaceNOPs);
+        if(replaceNOPs(block, method, config))
+            hasChanged = true;
+        PROFILE_END(replaceNOPs);
     }
 
     // after all re-orders are done, remove empty instructions
     method.cleanEmptyInstructions();
-    return false;
+    return hasChanged;
 }
 
 InstructionWalker optimizations::moveRotationSourcesToAccumulators(

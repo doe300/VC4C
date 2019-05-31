@@ -161,6 +161,77 @@ bool CallSite::mapInstruction(Method& method)
         ignoreReturnValue(intermediate::insertByteSwap(method.appendToEnd(), method, arguments.at(0), output));
         return true;
     }
+    if(methodName.find("llvm.fshl") == 0)
+    {
+        /*
+         * Funnel shift:
+         * declare i8  @llvm.fshl.i8 (i8 %a, i8 %b, i8 %c)
+         * declare <2 x i32> @llvm.fshl.v2i32(<2 x i32> %a, <2 x i32> %b, <2 x i32> %c)
+         *
+         * Concatenates the first two values, shifts left by the third value and extracts the most significant bits to
+         * match the output (=input) type. If the first two operands are the same, this is a left rotation.
+         *
+         * => ((((a << sizeof(type)) | (b & mask(type))) << (c % sizeof(type)) >> sizeof(type)) & mask(type)
+         */
+        if(arguments.at(0) == arguments.at(1) && arguments[0].type.getScalarBitCount() == 32)
+        {
+            // funnel-shift left with identical operands is rotation left
+            // rotation left by X is rotation right by sizeof(type)-X
+            // NOTE: Since we only support full 32-bit rotation, we only apply this for 32-bit types!
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Intrinsifying llvm.fshl with identical operands with rotate right" << logging::endl);
+            auto tmp = method.addNewLocal(arguments.at(2).type, "%fshl.offset");
+            method.appendToEnd(new intermediate::Operation(OP_SUB, tmp, Value(Literal(32u), TYPE_INT8), arguments[2]));
+            method.appendToEnd(new intermediate::Operation(OP_ROR, output, arguments[0], tmp));
+            return true;
+        }
+        // TODO general case correct??
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Intrinsifying llvm.fshl with manual funnel-shifting" << logging::endl);
+        auto upper = method.addNewLocal(TYPE_INT32.toVectorType(arguments.at(0).type.getVectorWidth()), "%fshl.upper");
+        auto lower = method.addNewLocal(arguments.at(1).type, "%fshl.lower");
+        auto offset = method.addNewLocal(arguments.at(2).type, "%fshl.offset");
+        method.appendToEnd(new intermediate::Operation(
+            OP_SHL, upper, arguments.at(0), Value(Literal(arguments.at(0).type.getScalarBitCount()), TYPE_INT8)));
+        method.appendToEnd(new intermediate::Operation(
+            OP_AND, lower, arguments.at(1), Value(Literal(arguments.at(1).type.getScalarWidthMask()), TYPE_INT32)));
+        method.appendToEnd(new intermediate::Operation(
+            OP_AND, offset, arguments.at(2), Value(Literal(arguments.at(2).type.getScalarBitCount()), TYPE_INT8)));
+
+        auto combined = method.addNewLocal(upper.type, "%fshl.combined");
+        method.appendToEnd(new intermediate::Operation(OP_OR, combined, upper, lower));
+        auto shifted = method.addNewLocal(upper.type, "%fshl.shifted");
+        method.appendToEnd(new intermediate::Operation(OP_SHL, shifted, combined, offset));
+        upper = method.addNewLocal(shifted.type, "%fshl.upper");
+        method.appendToEnd(new intermediate::Operation(
+            OP_SHR, upper, shifted, Value(Literal(arguments.at(0).type.getScalarBitCount()), TYPE_INT8)));
+        method.appendToEnd(new intermediate::Operation(
+            OP_AND, output, upper, Value(Literal(arguments.at(0).type.getScalarWidthMask()), TYPE_INT32)));
+        return true;
+    }
+    if(methodName.find("llvm.fshr") == 0)
+    {
+        /*
+         * Funnel shift:
+         * declare i8  @llvm.fshr.i8 (i8 %a, i8 %b, i8 %c)
+         * declare <2 x i32> @llvm.fshr.v2i32(<2 x i32> %a, <2 x i32> %b, <2 x i32> %c)
+         *
+         * Concatenates the first two values, shifts right by the third value and extracts the least significant bits to
+         * match the output (=input) type. If the first two operands are the same, this is a right rotation.
+         *
+         * => ((((a << sizeof(type)) | (b & mask(type))) >> (c % sizeof(type))) & mask(type)
+         */
+        if(arguments.at(0) == arguments.at(1) && arguments[0].type.getScalarBitCount() == 32)
+        {
+            // funnel-shift right with identical operands is rotation right
+            // NOTE: Since we only support full 32-bit rotation, we only apply this for 32-bit types!
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Intrinsifying llvm.fshr with identical operands with rotate right" << logging::endl);
+            method.appendToEnd(new intermediate::Operation(OP_ROR, output, arguments[0], arguments.at(2)));
+            return true;
+        }
+        // TODO general case
+    }
     if(methodName.find("shuffle2") == 0)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,

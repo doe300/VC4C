@@ -418,6 +418,8 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
             (inAreaOffset.getLiteralValue()->unsignedInt() % dest.type.getPhysicalWidth()) != 0))
     {
         // TODO make sure this block is only used where really really required!
+        // TODO precalculate inAreaOffset!
+        // TODO if inAreaOffset guaranteed to lie within one row, skip loading of second
         /*
          * In OpenCL, vectors are aligned to the alignment of the element type (e.g. a char16 vector is char aligned).
          * More accurately: they can be loaded/stored from any address aligned to the element type!
@@ -826,7 +828,8 @@ VPWDMASetup VPMArea::toWriteDMASetup(DataType elementType, uint8_t numRows) cons
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.getScalarBitCount() > 32)
         // converts e.g. 64.bit integer to 2x 32.bit integer
-        type = DataType(32, type.getVectorWidth() * type.getScalarBitCount() / 32u, type.isFloatingType());
+        type = DataType{
+            32, static_cast<uint8_t>(type.getVectorWidth() * type.getScalarBitCount() / 32u), type.isFloatingType()};
     if(type.isUnknown())
         throw CompilationError(
             CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
@@ -882,7 +885,8 @@ VPRDMASetup VPMArea::toReadDMASetup(DataType elementType, uint8_t numRows) const
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.getScalarBitCount() > 32)
         // converts e.g. 64.bit integer to 2x 32.bit integer
-        type = DataType(32, type.getVectorWidth() * type.getScalarBitCount() / 32, type.isFloatingType());
+        type = DataType{
+            32, static_cast<uint8_t>(type.getVectorWidth() * type.getScalarBitCount() / 32), type.isFloatingType()};
     if(type.isUnknown())
         throw CompilationError(
             CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());

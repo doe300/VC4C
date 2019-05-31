@@ -115,7 +115,8 @@ SourceType Precompiler::getSourceType(std::istream& stream)
     else if(s.find(QPUASM_MAGIC) != std::string::npos || s.find(QPUASM_CIGAM) != std::string::npos)
         type = SourceType::QPUASM_HEX;
     else if(s.find("kernel") != std::string::npos || s.find("/**") != std::string::npos ||
-        s.find("//") != std::string::npos || s.find("#include") != std::string::npos)
+        s.find("//") != std::string::npos || s.find("#include") != std::string::npos ||
+        s.find("#define") != std::string::npos || s.find("typedef") != std::string::npos)
         // XXX better check
         type = SourceType::OPENCL_C;
 

@@ -79,6 +79,9 @@ Optional<Value> normalization::getConstantValue(const Value& source)
  */
 static Optional<DataType> convertSmallArrayToRegister(const Local* local)
 {
+    // TODO can't we also lower e.g. uint4[4] into 1 register? Shouldn't be a problem if element access is implemented
+    // correctly, since the anyway can use vloadN/vstoreN to access vectors of any size. Just need to make sure not to
+    // set whole vector when storing first element!
     const Local* base = local->getBase(true);
     if(auto ptrType = base->type.getPointerType())
     {
@@ -174,6 +177,8 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
         else if(pointerType->addressSpace == AddressSpace::LOCAL)
         {
             // TODO if last access index is known and fits into VPM, set for VPM-or-RAM
+            // TODO need to make sure the correct size is used (by default, lowering to VPM uses the pointed-to-type
+            // which could be wrong!)
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Local parameter '" << param.to_string() << "' will be stored in RAM and accessed via VPM"
                     << logging::endl);
@@ -231,8 +236,6 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
                     nextMemInstr->getSourceElementType().getPhysicalWidth() ==
                         memInstr->getDestinationElementType().getPhysicalWidth())
                 {
-                    // TODO also extend so value read, not modified and stored (if used otherwise) is replaced with load
-                    // (for other uses) and copy -> supports other type sizes
                     LCOV_EXCL_START
                     CPPLOG_LAZY_BLOCK(
                         logging::Level::DEBUG, {
@@ -551,12 +554,12 @@ static MemoryInfo canLowerToRegisterReadWrite(Method& method, const Local* baseA
 
 static MemoryInfo canLowerToPrivateVPMArea(Method& method, const Local* baseAddr, MemoryAccess& access)
 {
-    auto area =
-        method.vpm->addArea(baseAddr, baseAddr->type.getElementType(), true, method.metaData.getWorkGroupSize());
-    if(false && area)
+    // FIXME enable once storing with element (non-vector) offset into VPM is implemented
+    // Retest: OpenCL-CTS/vload_private, OpenCL_CTS/vstore_private, emulate-memory
+    auto area = static_cast<periphery::VPMArea*>(nullptr);
+    // TODO method.vpm->addArea(baseAddr, baseAddr->type.getElementType(), true, method.metaData.getWorkGroupSize());
+    if(area)
     {
-        // FIXME enable once storing with element (non-vector) offset into VPM is implemented
-        // Retest: OpenCL-CTS/vload_private, OpenCL_CTS/vstore_private, emulate-memory
         // mark stack allocation as lowered to VPM to skip reserving a stack area
         if(auto stackAllocation = baseAddr->as<StackAllocation>())
             const_cast<StackAllocation*>(stackAllocation)->isLowered = true;
@@ -860,8 +863,7 @@ static FastAccessList<MemoryAccessRange> determineAccessRanges(
         {
         case MemoryOperation::READ:
         {
-            auto writerIt = findSingleWriter(it, memInstr->getSource());
-            if(writerIt)
+            if(auto writerIt = findSingleWriter(it, memInstr->getSource()))
             {
                 auto res = determineAccessRange(method, writerIt.value(), it);
                 if(res)
@@ -874,8 +876,7 @@ static FastAccessList<MemoryAccessRange> determineAccessRanges(
         case MemoryOperation::WRITE:
         case MemoryOperation::FILL:
         {
-            auto writerIt = findSingleWriter(it, memInstr->getDestination());
-            if(writerIt)
+            if(auto writerIt = findSingleWriter(it, memInstr->getDestination()))
             {
                 auto res = determineAccessRange(method, writerIt.value(), it);
                 if(res)
@@ -899,8 +900,7 @@ static FastAccessList<MemoryAccessRange> determineAccessRanges(
                 else
                     return FastAccessList<MemoryAccessRange>{};
             }
-            writerIt = findSingleWriter(it, memInstr->getDestination());
-            if(writerIt)
+            if((writerIt = findSingleWriter(it, memInstr->getDestination())))
             {
                 auto res = determineAccessRange(method, writerIt.value(), it);
                 if(res)
