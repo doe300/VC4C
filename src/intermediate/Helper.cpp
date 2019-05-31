@@ -145,14 +145,14 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
             if(auto lit = index.getLiteralValue())
             {
                 subOffset = Value(Literal(lit->signedInt() *
-                                      static_cast<int32_t>(subContainerType.getElementType().getPhysicalWidth())),
+                                      static_cast<int32_t>(subContainerType.getElementType().getInMemoryWidth())),
                     TYPE_INT32);
             }
             else
             {
                 subOffset = method.addNewLocal(TYPE_INT32, "%index_offset");
                 it.emplace(new intermediate::IntrinsicOperation("mul", Value(subOffset), Value(index),
-                    Value(Literal(subContainerType.getElementType().getPhysicalWidth()), TYPE_INT32)));
+                    Value(Literal(subContainerType.getElementType().getInMemoryWidth()), TYPE_INT32)));
                 it->addDecorations(InstructionDecorations::SIGNED_OVERFLOW_IS_UB);
                 it.nextInBlock();
             }
@@ -177,11 +177,11 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
             // takes the address of an element of the vector
             if(auto lit = index.getLiteralValue())
                 subOffset = Value(Literal(lit->signedInt() *
-                                      static_cast<int32_t>(subContainerType.getElementType().getPhysicalWidth())),
+                                      static_cast<int32_t>(subContainerType.getElementType().getInMemoryWidth())),
                     TYPE_INT32);
             else
                 subOffset = assign(it, TYPE_INT32, "%vector_element_offset") =
-                    (index * Literal(subContainerType.getElementType().getPhysicalWidth()),
+                    (index * Literal(subContainerType.getElementType().getInMemoryWidth()),
                         InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::UNSIGNED_OVERFLOW_IS_UB);
             subContainerType = subContainerType.getElementType();
         }

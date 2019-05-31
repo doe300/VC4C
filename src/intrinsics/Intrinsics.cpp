@@ -211,7 +211,7 @@ static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access)
                 throw CompilationError(CompilationStep::OPTIMIZER,
                     "Memory copy with non-constant size is not yet supported", callSite->to_string());
             it = method.vpm->insertCopyRAM(method, it, callSite->assertArgument(0), callSite->assertArgument(1),
-                callSite->assertArgument(2).getLiteralValue()->unsignedInt() * type.getPhysicalWidth(), nullptr, false);
+                callSite->assertArgument(2).getLiteralValue()->unsignedInt() * type.getInMemoryWidth(), nullptr, false);
             break;
         }
         case DMAAccess::PREFETCH:

@@ -345,7 +345,7 @@ uint32_t DataType::getScalarWidthMask() const
     return static_cast<uint32_t>((static_cast<uint64_t>(1) << getScalarBitCount()) - 1);
 }
 
-unsigned int DataType::getPhysicalWidth() const
+unsigned int DataType::getLogicalWidth() const
 {
     if(!getSimpleFlag())
     {
@@ -353,7 +353,28 @@ unsigned int DataType::getPhysicalWidth() const
             // 32-bit pointer
             return 4;
         if(auto arrayType = getArrayType())
-            return arrayType->elementType.getPhysicalWidth() * arrayType->size;
+            return arrayType->elementType.getLogicalWidth() * arrayType->size;
+        if(auto structType = getStructType())
+            return structType->getStructSize();
+        if(getImageType())
+            // images are just pointers to data
+            // 32-bit pointer
+            return 4;
+        // any other complex type
+        throw CompilationError(CompilationStep::GENERAL, "Can't get width of complex type", to_string());
+    }
+    return getVectorWidth(false) * getScalarBitCount() / 8;
+}
+
+unsigned int DataType::getInMemoryWidth() const
+{
+    if(!getSimpleFlag())
+    {
+        if(getPointerType())
+            // 32-bit pointer
+            return 4;
+        if(auto arrayType = getArrayType())
+            return arrayType->elementType.getInMemoryWidth() * arrayType->size;
         if(auto structType = getStructType())
             return structType->getStructSize();
         if(getImageType())
@@ -379,11 +400,11 @@ unsigned char DataType::getVectorWidth(bool physicalWidth) const noexcept
     return numElements;
 }
 
-unsigned DataType::getAlignmentInBytes() const
+unsigned DataType::getInMemoryAlignment() const
 {
     if(!getSimpleFlag())
-        return toPointer(getComplexType())->getAlignmentInBytes();
-    return getPhysicalWidth();
+        return toPointer(getComplexType())->getInMemoryAlignment();
+    return getInMemoryWidth();
 }
 
 bool PointerType::operator==(const ComplexType& other) const
@@ -401,10 +422,10 @@ unsigned PointerType::getAlignment() const
 {
     if(alignment != 0)
         return alignment;
-    return elementType.getPhysicalWidth();
+    return elementType.getInMemoryWidth();
 }
 
-unsigned PointerType::getAlignmentInBytes() const
+unsigned PointerType::getInMemoryAlignment() const
 {
     // pointer are words, so they are aligned as such
     return 4;
@@ -437,7 +458,7 @@ unsigned int StructType::getStructSize(const int index) const
         {
             if(i == static_cast<std::size_t>(index))
                 break;
-            size += elementTypes[i].getPhysicalWidth();
+            size += elementTypes[i].getInMemoryWidth();
         }
         return size;
     }
@@ -448,7 +469,7 @@ unsigned int StructType::getStructSize(const int index) const
     {
         if(i == static_cast<std::size_t>(index))
             break;
-        auto elementAlignment = elementTypes[i].getAlignmentInBytes();
+        auto elementAlignment = elementTypes[i].getInMemoryAlignment();
         alignment = std::max(alignment, elementAlignment);
         // OpenCL 1.2, page 203
         //"A data item declared to be a data type in memory is always aligned to the size of the data type in bytes."
@@ -457,7 +478,7 @@ unsigned int StructType::getStructSize(const int index) const
             // alignment is added before the next type, not after the last
             size += elementAlignment - (size % elementAlignment);
         }
-        size += elementTypes[i].getPhysicalWidth();
+        size += elementTypes[i].getInMemoryWidth();
     }
     if(index < 0)
     {
@@ -471,7 +492,7 @@ unsigned int StructType::getStructSize(const int index) const
     else
     {
         // add padding for element which is retrieved
-        auto elementAlignment = elementTypes.at(static_cast<std::size_t>(index)).getAlignmentInBytes();
+        auto elementAlignment = elementTypes.at(static_cast<std::size_t>(index)).getInMemoryAlignment();
         if(size % elementAlignment != 0)
         {
             // alignment is added before the next type, not after the last
@@ -482,7 +503,7 @@ unsigned int StructType::getStructSize(const int index) const
     return size;
 }
 
-unsigned StructType::getAlignmentInBytes() const
+unsigned StructType::getInMemoryAlignment() const
 {
     return getStructSize();
 }
@@ -518,10 +539,10 @@ bool ArrayType::operator==(const ComplexType& other) const
     return size == right->size && elementType == right->elementType;
 }
 
-unsigned ArrayType::getAlignmentInBytes() const
+unsigned ArrayType::getInMemoryAlignment() const
 {
     // arrays are only aligned to their element-type size, not their complete size
-    return elementType.getPhysicalWidth();
+    return elementType.getInMemoryWidth();
 }
 
 LCOV_EXCL_START
@@ -555,7 +576,7 @@ std::string ImageType::getTypeName() const
 }
 LCOV_EXCL_STOP
 
-unsigned ImageType::getAlignmentInBytes() const
+unsigned ImageType::getInMemoryAlignment() const
 {
     throw CompilationError(CompilationStep::GENERAL, "Alignment for images is not implemented yet");
 }

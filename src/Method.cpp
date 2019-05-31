@@ -367,7 +367,6 @@ bool Method::removeBlock(BasicBlock& block, bool overwriteUsages)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Removing basic block '" << block.to_string() << "' from function " << name << logging::endl);
-            ;
             updateCFGOnBlockRemoval(&(*it));
             basicBlocks.erase(it);
             return true;

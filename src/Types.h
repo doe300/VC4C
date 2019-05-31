@@ -37,7 +37,7 @@ namespace vc4c
 
         virtual bool operator==(const ComplexType& other) const = 0;
 
-        virtual unsigned getAlignmentInBytes() const = 0;
+        virtual unsigned getInMemoryAlignment() const = 0;
         virtual std::string getTypeName() const = 0;
     };
 
@@ -198,11 +198,20 @@ namespace vc4c
         uint32_t getScalarWidthMask() const;
 
         /*
-         * Returns the width of this type in bytes.
+         * Returns the actual width of this type in bytes.
          *
          * For vector-types, this is the scalar bit-count times the vector-width.
          */
-        unsigned int getPhysicalWidth() const;
+        unsigned int getLogicalWidth() const;
+
+        /*
+         * Returns the width of this type as it is stored in memory in bytes.
+         *
+         * For vector-types, this is the scalar bit-count times the vector-width.
+         *
+         * NOTE: 3-element vectors have an in-memory width of 4-element vectors with the same element type.
+         */
+        unsigned int getInMemoryWidth() const;
 
         /*
          * Returns the logical or physical vector width of this type.
@@ -217,8 +226,11 @@ namespace vc4c
 
         /*
          * Returns the alignment of an object of this type
+         *
+         * NOTE: The alignment is calculated for in-memory usage and therefore the alignment of a 3-element vector is
+         * the alignment of the 4-element vector with the same element type.
          */
-        unsigned getAlignmentInBytes() const;
+        unsigned getInMemoryAlignment() const;
 
         enum TypeWidths : unsigned char
         {
@@ -348,7 +360,7 @@ namespace vc4c
          */
         unsigned getAlignment() const;
 
-        unsigned getAlignmentInBytes() const override;
+        unsigned getInMemoryAlignment() const override;
         std::string getTypeName() const override;
 
     private:
@@ -387,12 +399,12 @@ namespace vc4c
         bool operator==(const ComplexType& other) const override;
 
         /*
-         * Calculates the size of the struct up to the given index (of all elements excluding the given index) in Bytes.
-         * If index is -1 (WHOLE_OBJECT), the complete size of the struct is returned
+         * Calculates the size of the struct in-memory up to the given index (of all elements excluding the given index)
+         * in bytes. If index is -1 (WHOLE_OBJECT), the complete size of the struct is returned
          */
         unsigned int getStructSize(int index = WHOLE_OBJECT) const;
 
-        unsigned getAlignmentInBytes() const override;
+        unsigned getInMemoryAlignment() const override;
         std::string getTypeName() const override;
 
         std::string getContent() const;
@@ -424,7 +436,7 @@ namespace vc4c
         ~ArrayType() override = default;
         bool operator==(const ComplexType& other) const override;
 
-        unsigned getAlignmentInBytes() const override;
+        unsigned getInMemoryAlignment() const override;
         std::string getTypeName() const override;
 
     private:
@@ -459,7 +471,7 @@ namespace vc4c
         ~ImageType() override = default;
         bool operator==(const ComplexType& other) const override;
 
-        unsigned getAlignmentInBytes() const override;
+        unsigned getInMemoryAlignment() const override;
         /*
          * Reconstructs the OpenCL C image-type name out of the image-info stored
          */

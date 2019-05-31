@@ -138,7 +138,7 @@ tools::Word Memory::readWord(MemoryAddress address) const
 
 MemoryAddress Memory::incrementAddress(MemoryAddress address, DataType typeSize) const
 {
-    return address + typeSize.getPhysicalWidth();
+    return address + typeSize.getInMemoryWidth();
 }
 
 MemoryAddress Memory::getMaximumAddress() const
@@ -1962,7 +1962,7 @@ static Memory fillMemory(const StableList<Global>& globalData, const EmulationDa
 {
     auto globalDataSize =
         std::accumulate(globalData.begin(), globalData.end(), 0u, [](unsigned u, const Global& global) -> unsigned {
-            return u + global.initialValue.type.getPhysicalWidth() / (TYPE_INT32.getScalarBitCount() / 8);
+            return u + global.initialValue.type.getInMemoryWidth() / (TYPE_INT32.getScalarBitCount() / 8);
         });
     auto size = globalDataSize + settings.calcParameterSize();
     // make sure to have enough space to align UNIFORMs

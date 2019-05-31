@@ -91,7 +91,7 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
                                       [](const Value& arg) -> bool { return arg.getLiteralValue().has_value(); }))
                                      .getLiteralValue()
                                      ->signedInt() /
-                val.type.getElementType().getPhysicalWidth()));
+                val.type.getElementType().getInMemoryWidth()));
     }
 
     // 3. an addition with two locals -> one is the base, the other the calculation of the literal
@@ -103,10 +103,10 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
         const auto offset1 = findOffset(args[1]);
         if(offset0.offset && args[1].checkLocal())
             return BaseAndOffset(args[1].local()->getBase(false)->createReference(),
-                static_cast<int32_t>(offset0.offset.value() / val.type.getElementType().getPhysicalWidth()));
+                static_cast<int32_t>(offset0.offset.value() / val.type.getElementType().getInMemoryWidth()));
         if(offset1.offset && args[0].checkLocal())
             return BaseAndOffset(args[0].local()->getBase(false)->createReference(),
-                static_cast<int32_t>(offset1.offset.value() / val.type.getElementType().getPhysicalWidth()));
+                static_cast<int32_t>(offset1.offset.value() / val.type.getElementType().getInMemoryWidth()));
     }
     /*
         if(writers.size() == 1)
@@ -373,7 +373,7 @@ static void groupVPMWrites(VPM& vpm, VPMAccessGroup& group)
         // stride is the distance in bytes from end of v1 to start of v2
         strideSetupValue.strideSetup.setStride(
             static_cast<uint16_t>(static_cast<unsigned>(group.stride == 0 ? 0 : group.stride - 1) *
-                group.groupType.getElementType().getPhysicalWidth()));
+                group.groupType.getElementType().getInMemoryWidth()));
     }
     std::size_t numRemoved = 0;
     vpm.updateScratchSize(static_cast<unsigned char>(group.addressWrites.size()));
@@ -472,7 +472,7 @@ static void groupVPMReads(VPM& vpm, VPMAccessGroup& group)
         VPRSetupWrapper strideSetupValue(strideSetup);
         // in contrast to writing memory, the pitch is the distance from start to start of successive rows
         strideSetupValue.strideSetup.setPitch(static_cast<uint16_t>(
-            static_cast<unsigned>(group.stride) * group.groupType.getElementType().getPhysicalWidth()));
+            static_cast<unsigned>(group.stride) * group.groupType.getElementType().getInMemoryWidth()));
     }
 
     // 2. Remove all but the first generic and DMA setups

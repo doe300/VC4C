@@ -378,7 +378,7 @@ static uint8_t calculateQPUSideAddress(DataType type, unsigned char rowIndex, un
         throw CompilationError(CompilationStep::GENERAL, "Invalid bit-width to store in VPM", type.to_string());
 }
 
-static NODISCARD InstructionWalker calculateElementOffset(
+static NODISCARD InstructionWalker calculateElementOffsetInVPM(
     Method& method, InstructionWalker it, DataType elementType, const Value& inAreaOffset, Value& elementOffset)
 {
     // e.g. 32-bit type, 4 byte offset -> 1 32-bit element offset
@@ -388,7 +388,7 @@ static NODISCARD InstructionWalker calculateElementOffset(
         elementOffset = INT_ZERO;
     else
         elementOffset = assign(it, TYPE_INT16, "%vpm_element_offset") =
-            inAreaOffset / Literal(elementType.getPhysicalWidth());
+            inAreaOffset / Literal(elementType.getInMemoryWidth());
     return it;
 }
 
@@ -397,7 +397,7 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
 {
     const DataType vpmStorageType = getVPMStorageType(dest.type);
     if(area != nullptr)
-        area->checkAreaSize(vpmStorageType.getPhysicalWidth());
+        area->checkAreaSize(vpmStorageType.getInMemoryWidth());
     else
         // a single vector can only use a maximum of 1 row
         updateScratchSize(1);
@@ -415,7 +415,7 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
     }
     else if(dest.type.getVectorWidth() > 1 &&
         (!inAreaOffset.getLiteralValue() ||
-            (inAreaOffset.getLiteralValue()->unsignedInt() % dest.type.getPhysicalWidth()) != 0))
+            (inAreaOffset.getLiteralValue()->unsignedInt() % dest.type.getInMemoryWidth()) != 0))
     {
         // TODO make sure this block is only used where really really required!
         // TODO precalculate inAreaOffset!
@@ -438,15 +438,15 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
          * - Copy elements [N-R, N] from the second vector U into the result
          */
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffset(method, it, dest.type, inAreaOffset, elementOffset);
+        it = calculateElementOffsetInVPM(method, it, dest.type, inAreaOffset, elementOffset);
         genericSetup.genericSetup.setNumber(2);
         assign(it, VPM_IN_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
             InstructionDecorations::VPM_READ_CONFIGURATION);
         auto lowerPart = assign(it, dest.type, "%vpm.unaligned.lower") = VPM_IO_REGISTER;
         auto upperPart = assign(it, dest.type, "%vpm.unaligned.upper") = VPM_IO_REGISTER;
-        auto rotationOffset = assign(it, TYPE_INT8) = inAreaOffset % Literal(dest.type.getPhysicalWidth());
+        auto rotationOffset = assign(it, TYPE_INT8) = inAreaOffset % Literal(dest.type.getInMemoryWidth());
         rotationOffset = assign(it, TYPE_INT8, "%vpm.unaligned.offset") =
-            rotationOffset / Literal(dest.type.getElementType().getPhysicalWidth());
+            rotationOffset / Literal(dest.type.getElementType().getInMemoryWidth());
         Value lowerRotated = method.addNewLocal(dest.type, "%vpm.unaligned.lower");
         Value upperRotated = method.addNewLocal(dest.type, "%vpm.unaligned.upper");
         it = insertVectorRotation(it, lowerPart, rotationOffset, lowerRotated, Direction::DOWN);
@@ -468,7 +468,7 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffset(method, it, dest.type, inAreaOffset, elementOffset);
+        it = calculateElementOffsetInVPM(method, it, dest.type, inAreaOffset, elementOffset);
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // 3) write setup with dynamic address
         assign(it, VPM_IN_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
@@ -485,7 +485,7 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
 {
     const DataType vpmStorageType = getVPMStorageType(src.type);
     if(area != nullptr)
-        area->checkAreaSize(vpmStorageType.getPhysicalWidth());
+        area->checkAreaSize(vpmStorageType.getInMemoryWidth());
     else
         // a single vector can only use a maximum of 1 row
         updateScratchSize(1);
@@ -506,7 +506,7 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffset(method, it, src.type, inAreaOffset, elementOffset);
+        it = calculateElementOffsetInVPM(method, it, src.type, inAreaOffset, elementOffset);
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // 3) write setup with dynamic address
         assign(it, VPM_OUT_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
@@ -524,7 +524,7 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
     if(area != nullptr)
         // FIXME this needs to have the numEntries added and the correct type!!!
         // TODO rename numEntries to numRows or move entry->row handling here?!
-        area->checkAreaSize(getVPMStorageType(type).getPhysicalWidth());
+        area->checkAreaSize(getVPMStorageType(type).getInMemoryWidth());
     else
         // a single vector can only use a maximum of 1 row
         updateScratchSize(1);
@@ -559,7 +559,7 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffset(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset);
+        it = calculateElementOffsetInVPM(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset);
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // TODO is this correct? it fails memory-emulation tests. Is the element offset different for
         // master/remove_mutex branch?
@@ -588,7 +588,7 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
     if(numEntries != INT_ONE)
         // NOTE: This for read the pitch (start-to-start) and for write the stride (end-to-start) is set, we need to set
         // this to the data size, but not required for write setup!
-        strideSetup.strideSetup = VPRStrideSetup(static_cast<uint16_t>(type.getPhysicalWidth()));
+        strideSetup.strideSetup = VPRStrideSetup(static_cast<uint16_t>(type.getInMemoryWidth()));
     it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(strideSetup.value)));
     it->addDecorations(InstructionDecorations::VPM_READ_CONFIGURATION);
     it.nextInBlock();
@@ -608,7 +608,7 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
     const VPMArea* area, bool useMutex, const Value& inAreaOffset, const Value& numEntries)
 {
     if(area != nullptr)
-        area->checkAreaSize(getVPMStorageType(type).getPhysicalWidth());
+        area->checkAreaSize(getVPMStorageType(type).getInMemoryWidth());
     else
         // a single vector can only use a maximum of 1 row
         updateScratchSize(1);
@@ -645,7 +645,7 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffset(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset);
+        it = calculateElementOffsetInVPM(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset);
         // 2) dynamically calculate new VPM address from base and offset (shift and add offset to setup-value)
         // TODO is this correct? See #insertReadRAM
         // if(!realArea.canBePackedIntoRow())
@@ -694,7 +694,7 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
 {
     const auto size = getBestVectorSize(numBytes);
     if(area != nullptr)
-        area->checkAreaSize(size.first.getPhysicalWidth());
+        area->checkAreaSize(size.first.getInMemoryWidth());
     else
         updateScratchSize(1);
 
@@ -708,9 +708,9 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
     {
         // increment offset from base address
         Value tmpSource = assign(it, srcAddress.type, "%mem_copy_addr") =
-            srcAddress + Value(Literal(i * size.first.getPhysicalWidth()), TYPE_INT8);
+            srcAddress + Value(Literal(i * size.first.getInMemoryWidth()), TYPE_INT8);
         Value tmpDest = assign(it, destAddress.type, "%mem_copy_addr") =
-            destAddress + Value(Literal(i * size.first.getPhysicalWidth()), TYPE_INT8);
+            destAddress + Value(Literal(i * size.first.getInMemoryWidth()), TYPE_INT8);
 
         it = insertReadRAM(method, it, tmpSource, size.first, area, false);
         it = insertWriteRAM(method, it, tmpDest, size.first, area, false);
@@ -727,7 +727,7 @@ InstructionWalker VPM::insertFillRAM(Method& method, InstructionWalker it, const
         return it;
 
     if(area != nullptr)
-        area->checkAreaSize(type.getPhysicalWidth());
+        area->checkAreaSize(type.getInMemoryWidth());
     else
         updateScratchSize(1);
 
@@ -737,7 +737,7 @@ InstructionWalker VPM::insertFillRAM(Method& method, InstructionWalker it, const
     {
         // increment offset from base address
         Value tmpDest = assign(it, memoryAddress.type, "%mem_fill_addr") =
-            memoryAddress + Value(Literal(i * type.getPhysicalWidth()), TYPE_INT8);
+            memoryAddress + Value(Literal(i * type.getInMemoryWidth()), TYPE_INT8);
         it = insertWriteRAM(method, it, tmpDest, type, area, false);
     }
     it = insertUnlockMutex(it, useMutex);
@@ -955,7 +955,7 @@ const VPMArea* VPM::addArea(const Local* local, DataType elementType, bool isSta
     // for 16-element vectors (even if we do not use all of the elements)
     DataType inVPMType = getVPMStorageType(elementType);
 
-    unsigned requestedSize = inVPMType.getPhysicalWidth() * (isStackArea ? numStacks : 1);
+    unsigned requestedSize = inVPMType.getInMemoryWidth() * (isStackArea ? numStacks : 1);
     if(requestedSize > maximumVPMSize)
         // does not fit, independent of packing of rows
         return nullptr;

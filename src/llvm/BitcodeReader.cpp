@@ -916,7 +916,7 @@ void BitcodeReader::parseInstruction(
         const DataType pointerType = toDataType(module, alloca->getType());
         unsigned alignment = alloca->getAlignment();
         auto it = method.stackAllocations.emplace(
-            StackAllocation(("%" + alloca->getName()).str(), pointerType, contentType.getPhysicalWidth(), alignment));
+            StackAllocation(("%" + alloca->getName()).str(), pointerType, contentType.getInMemoryWidth(), alignment));
         localMap[alloca] = &(*it.first);
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Reading stack allocation: " << it.first->to_string() << logging::endl);

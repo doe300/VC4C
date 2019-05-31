@@ -35,7 +35,7 @@ Optional<unsigned int> Module::getGlobalDataOffset(const Local* local) const
         {
             return offset;
         }
-        offset += global.initialValue.type.getPhysicalWidth();
+        offset += global.initialValue.type.getInMemoryWidth();
     }
     if(local == nullptr)
         return offset;

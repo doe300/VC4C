@@ -72,7 +72,7 @@ InstructionWalker normalization::insertAddressToStackOffset(InstructionWalker it
     if(type == MemoryAccessType::VPM_PER_QPU)
     {
         // size of one stack-frame in bytes
-        auto stackByteSize = periphery::VPM::getVPMStorageType(baseAddress->type.getElementType()).getPhysicalWidth();
+        auto stackByteSize = periphery::VPM::getVPMStorageType(baseAddress->type.getElementType()).getInMemoryWidth();
         // add offset of stack-frame
         Value stackOffset = method.addNewLocal(TYPE_VOID_POINTER, "%stack_offset");
         assign(it, stackOffset) = mul24(Value(Literal(stackByteSize), TYPE_INT16), Value(REG_QPU_NUMBER, TYPE_INT8));
@@ -92,7 +92,7 @@ InstructionWalker normalization::insertAddressToElementOffset(InstructionWalker 
     it = insertAddressToOffset(it, method, tmpIndex, baseAddress, mem, ptrValue);
     // the index (as per index calculation) is in bytes, but we need index in elements, so divide by element size
     out = assign(it, TYPE_VOID_POINTER, "%element_offset") =
-        tmpIndex / Literal(container.type.getElementType().getPhysicalWidth());
+        tmpIndex / Literal(container.type.getElementType().getInMemoryWidth());
     return it;
 }
 

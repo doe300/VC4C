@@ -68,7 +68,7 @@ static bool copiesWholeRegister(const Value& numEntries, const DataType& element
 {
     // for copying of byte* where actually the whole vector is copied
     return numEntries.getLiteralValue() &&
-        numEntries.getLiteralValue()->unsignedInt() * elementType.getPhysicalWidth() == registerType.getPhysicalWidth();
+        numEntries.getLiteralValue()->unsignedInt() * elementType.getLogicalWidth() == registerType.getLogicalWidth();
 }
 
 /*
@@ -375,7 +375,7 @@ static InstructionWalker lowerMemoryWriteToVPM(
             Value inAreaOffset = UNDEFINED_VALUE;
             it = insertToInVPMAreaOffset(method, it, inAreaOffset, destInfo, mem, mem->getDestination());
             // 3. write vector to VPM
-            auto vpmTypeSize = Literal(vpmType.first.getPhysicalWidth());
+            auto vpmTypeSize = Literal(vpmType.first.getInMemoryWidth());
             it.emplace(new MutexLock(MutexAccess::LOCK));
             it.nextInBlock();
             for(unsigned i = 0; i < vpmType.second; ++i)
@@ -535,7 +535,7 @@ static InstructionWalker mapMemoryCopy(
     {
         auto origType = srcInfo.local->type.getElementType();
         auto numBytes = numEntries.getLiteralValue()->unsignedInt();
-        if(numBytes != origType.getPhysicalWidth())
+        if(numBytes != origType.getInMemoryWidth())
             throw CompilationError(
                 CompilationStep::NORMALIZER, "Byte-wise partial copy from VPM is yet implemented", mem->to_string());
         if(auto array = origType.getArrayType())
@@ -557,7 +557,7 @@ static InstructionWalker mapMemoryCopy(
     {
         auto origType = destInfo.local->type.getElementType();
         auto numBytes = numEntries.getLiteralValue()->unsignedInt();
-        if(numBytes != origType.getPhysicalWidth())
+        if(numBytes != origType.getInMemoryWidth())
             throw CompilationError(
                 CompilationStep::NORMALIZER, "Byte-wise partial copy to VPM is yet implemented", mem->to_string());
         if(auto array = origType.getArrayType())
@@ -637,7 +637,6 @@ static InstructionWalker mapMemoryCopy(
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Mapping copy from VPM/RAM into register to read from VPM/RAM and register insertion: "
                 << mem->to_string() << logging::endl);
-        // TODO some general version
         if(copiesWholeRegister(numEntries, mem->getSourceElementType(), *destInfo.convertedRegisterType))
         {
             // e.g. for copying 32 bytes into float[8] register -> just read 1 float16 vector
@@ -645,6 +644,8 @@ static InstructionWalker mapMemoryCopy(
                 Value(mem->getSource().local(), method.createPointerType(*destInfo.convertedRegisterType))));
             return mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
         }
+        // TODO some general version. Need to insert single elements in a way that others are kept
+        // TODO e.g. boost_compute/test_threefy_engine.cl (RPI only, not on host!)
     }
     else
     {
@@ -662,5 +663,9 @@ static InstructionWalker mapMemoryCopy(
         LCOV_EXCL_STOP
     }
 
+    logging::error() << src->to_string() << " - " << static_cast<unsigned>(srcInfo.type) << " - "
+                     << (srcInfo.area ? srcInfo.area->to_string() : "") << logging::endl;
+    logging::error() << dest->to_string() << " - " << static_cast<unsigned>(destInfo.type) << " - "
+                     << (destInfo.area ? destInfo.area->to_string() : "") << logging::endl;
     throw CompilationError(CompilationStep::NORMALIZER, "Need to be re-written", mem->to_string());
 }

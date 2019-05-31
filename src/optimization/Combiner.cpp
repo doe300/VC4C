@@ -1265,7 +1265,7 @@ static AccessRanges determineAccessRanges(Method& method)
                         {
                             if(!writer->assertArgument(1).getLiteralValue() ||
                                 (1u << writer->assertArgument(1).getLiteralValue()->unsignedInt()) !=
-                                    it->assertArgument(0).type.getElementType().getPhysicalWidth())
+                                    it->assertArgument(0).type.getElementType().getLogicalWidth())
                             {
                                 // Abort, since the offset shifted does not match the type-width of the element type
                                 CPPLOG_LAZY(logging::Level::DEBUG,

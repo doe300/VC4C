@@ -198,7 +198,7 @@ bool Parameter::isOutputParameter() const
 
 StackAllocation::StackAllocation(const std::string& name, DataType type, std::size_t size, std::size_t alignment) :
     Local(type, name), offset(0), alignment(alignment == 0 ? 1 : alignment),
-    size(size > 0 ? size : type.getElementType().getPhysicalWidth())
+    size(size > 0 ? size : type.getElementType().getInMemoryWidth())
 {
     if(!type.getPointerType())
         throw CompilationError(CompilationStep::GENERAL, "Stack allocation needs to have a pointer type!", to_string());

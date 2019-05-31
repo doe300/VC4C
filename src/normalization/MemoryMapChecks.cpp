@@ -233,8 +233,8 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
                 if(nextMemInstr != nullptr && !nextIt->hasConditionalExecution() &&
                     nextMemInstr->op == MemoryOperation::WRITE &&
                     nextMemInstr->getSource().getSingleWriter() == memInstr &&
-                    nextMemInstr->getSourceElementType().getPhysicalWidth() ==
-                        memInstr->getDestinationElementType().getPhysicalWidth())
+                    nextMemInstr->getSourceElementType().getInMemoryWidth() ==
+                        memInstr->getDestinationElementType().getInMemoryWidth())
                 {
                     LCOV_EXCL_START
                     CPPLOG_LAZY_BLOCK(
@@ -774,7 +774,7 @@ static Optional<MemoryAccessRange> determineAccessRange(Method& method, Instruct
         {
             if(!writer->assertArgument(1).getLiteralValue() ||
                 (1u << writer->assertArgument(1).getLiteralValue()->unsignedInt()) !=
-                    it->assertArgument(0).type.getElementType().getPhysicalWidth())
+                    it->assertArgument(0).type.getElementType().getLogicalWidth())
             {
                 // Abort, since the offset shifted does not match the type-width of the element type
                 CPPLOG_LAZY(logging::Level::DEBUG,

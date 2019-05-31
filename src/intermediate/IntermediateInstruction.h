@@ -831,15 +831,6 @@ namespace vc4c
             bool accessesLocalMemory() const;
 
             /*
-             * Whether the source (address or local value) can be moved into VPM
-             */
-            bool canMoveSourceIntoVPM() const;
-            /*
-             * Whether the destination (address or local value) can be moved into VPM
-             */
-            bool canMoveDestinationIntoVPM() const;
-
-            /*
              * Returns the element-type (e.g. type of area pointed to) for the source
              *
              * For local values, this returns the value-type, for pointers the pointed-to type.

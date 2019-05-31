@@ -179,11 +179,11 @@ static void toBinary(const CompoundConstant& val, std::vector<uint8_t>& queue)
             for(std::size_t i = 0; i < val.type.getVectorWidth(true); ++i)
             {
                 // little endian
-                if(val.type.getElementType().getPhysicalWidth() > 3)
+                if(val.type.getElementType().getScalarBitCount() > 24)
                     queue.push_back(static_cast<uint8_t>((lit->toImmediate() & 0xFF000000) >> 24));
-                if(val.type.getElementType().getPhysicalWidth() > 2)
+                if(val.type.getElementType().getScalarBitCount() > 16)
                     queue.push_back(static_cast<uint8_t>((lit->toImmediate() & 0xFF0000) >> 16));
-                if(val.type.getElementType().getPhysicalWidth() > 1)
+                if(val.type.getElementType().getScalarBitCount() > 8)
                     queue.push_back(static_cast<uint8_t>((lit->toImmediate() & 0xFF00) >> 8));
                 queue.push_back(static_cast<uint8_t>(lit->toImmediate() & 0xFF));
             }
@@ -195,7 +195,7 @@ static void toBinary(const CompoundConstant& val, std::vector<uint8_t>& queue)
     else if(val.isUndefined())
     {
         // e.g. for array <type> undefined, need to reserve enough bytes
-        for(std::size_t s = 0; s < val.type.getPhysicalWidth(); ++s)
+        for(std::size_t s = 0; s < val.type.getInMemoryWidth(); ++s)
             queue.push_back(0);
     }
     else
@@ -360,7 +360,7 @@ KernelInfo qpu_asm::getKernelInfos(
         auto paramType = param.type;
         std::string typeName = param.origTypeName;
         ParamInfo paramInfo;
-        paramInfo.setSize(static_cast<uint16_t>(paramType.getPhysicalWidth()));
+        paramInfo.setSize(static_cast<uint16_t>(paramType.getInMemoryWidth()));
         paramInfo.setPointer(paramType.getPointerType() || paramType.getImageType());
         paramInfo.setImage(!!paramType.getImageType());
         paramInfo.setDecorations(param.decorations);
@@ -382,7 +382,7 @@ KernelInfo qpu_asm::getKernelInfos(
         {
             // since the client passes the actual (struct) type to as argument, the VC4CL run-time needs to know that
             // size
-            paramInfo.setSize(static_cast<uint16_t>(paramType.getPointerType()->elementType.getPhysicalWidth()));
+            paramInfo.setSize(static_cast<uint16_t>(paramType.getPointerType()->elementType.getInMemoryWidth()));
             // we also need to fix-up the other decorations and qualifiers we modified:
             // direct struct parameters are always in the __private address space (since they are function-local
             // values), we just "moved" them to the __constant address space for a) better optimization and b) kernels
