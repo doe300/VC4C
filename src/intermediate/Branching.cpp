@@ -152,8 +152,8 @@ const Value& Branch::getCondition() const
     return assertArgument(1);
 }
 
-PhiNode::PhiNode(Value&& dest, std::vector<std::pair<Value, const Local*>>&& labelPairs, ConditionCode cond,
-    const SetFlag setFlags) :
+PhiNode::PhiNode(
+    Value&& dest, std::vector<std::pair<Value, const Local*>>&& labelPairs, ConditionCode cond, SetFlag setFlags) :
     IntermediateInstruction(std::move(dest), cond, setFlags)
 {
     for(std::size_t i = 0; i < labelPairs.size(); ++i)

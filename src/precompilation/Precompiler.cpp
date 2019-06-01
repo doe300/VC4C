@@ -117,7 +117,7 @@ SourceType Precompiler::getSourceType(std::istream& stream)
     else if(s.find("kernel") != std::string::npos || s.find("/**") != std::string::npos ||
         s.find("//") != std::string::npos || s.find("#include") != std::string::npos ||
         s.find("#define") != std::string::npos || s.find("typedef") != std::string::npos)
-        // XXX better check
+        // TODO need better check
         type = SourceType::OPENCL_C;
 
     // reset flags (e.g. if we were at the end of the file)

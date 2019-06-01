@@ -742,11 +742,11 @@ static intermediate::InstructionDecorations toInstructionDecorations(const llvm:
     if(llvm::isa<llvm::FPMathOperator>(&inst) && inst.hasUnsafeAlgebra())
 #endif
         deco = add_flag(deco, intermediate::InstructionDecorations::FAST_MATH);
+#if LLVM_LIBRARY_VERSION >= 39
     if(inst.hasNoSignedWrap())
         deco = add_flag(deco, intermediate::InstructionDecorations::SIGNED_OVERFLOW_IS_UB);
     if(inst.hasNoUnsignedWrap())
         deco = add_flag(deco, intermediate::InstructionDecorations::UNSIGNED_OVERFLOW_IS_UB);
-#if LLVM_LIBRARY_VERSION >= 39
     // XXX this is sometimes added to add and getelementptr operations, but not present in the LLVM IR output!?
     if(inst.isExact())
         deco = add_flag(deco, intermediate::InstructionDecorations::EXACT_OPERATION);
@@ -1027,7 +1027,6 @@ void BitcodeReader::parseInstruction(
             if(auto alias = llvm::dyn_cast<const llvm::GlobalAlias>(call->getCalledValue()))
             {
                 func = llvm::dyn_cast<const llvm::Function>(alias->getAliasee());
-                // TODO for some OpenCL CTS SPIR test cases, the alias is not a function (but of function type)
             }
         }
         if(func == nullptr)
@@ -1343,7 +1342,6 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
 
             // we need to make the type of the value fit the return-type expected
             srcGlobal.type = toDataType(module, expr->getType());
-            // TODO is this correct or would we need a new local referring to the global?
             return srcGlobal;
         }
     }

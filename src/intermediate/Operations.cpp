@@ -145,9 +145,6 @@ static std::pair<Register, Optional<SmallImmediate>> getInputValue(
     }
     if(auto imm = val.checkImmediate())
         return std::make_pair(Register{RegisterFile::PHYSICAL_B, imm->value}, *imm);
-    //    if (val.hasType(ValueType::LITERAL))
-    //        return std::make_pair(Register{RegisterFile::PHYSICAL_B, val.literal.toImmediate()},
-    //        static_cast<SmallImmediate> (val.literal.toImmediate()));
     throw CompilationError(CompilationStep::CODE_GENERATION, "Unhandled value", instr->to_string());
 }
 

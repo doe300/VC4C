@@ -768,7 +768,7 @@ Optional<Value> SPIRVIndexOf::precalculate(
             if(index.getLiteralValue())
             {
                 subOffset = Value(Literal(index.getLiteralValue()->signedInt() *
-                                      subContainerType.getElementType().getPhysicalWidth()),
+                                      subContainerType.getElementType().getInMemoryWidth()),
                     TYPE_INT32);
             }
             else

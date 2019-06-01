@@ -10,8 +10,6 @@
 
 using namespace vc4c;
 
-// TODO test (all tests), fix issues, fix clang-format, compile with SPIRV -> test with SPIRV
-
 bool CompoundConstant::isAllSame() const
 {
     if(getScalar())

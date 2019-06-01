@@ -306,8 +306,6 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     if(mask.isUndefined())
     {
         // order does not matter
-        // TODO is anything required to be done at all??
-        // Make sure, as of this point the destination is valid and has a register associated with it
         throw CompilationError(
             CompilationStep::GENERAL, "Cannot shuffle a vector with an undefined mask", mask.to_string());
     }
@@ -578,7 +576,8 @@ std::string ElementSource::to_string() const
 }
 LCOV_EXCL_STOP
 
-// TODO why not trivially moveable??
+// TODO why not trivially move constructible??
+static_assert(std::is_trivially_move_assignable<ElementSource>::value, "");
 static_assert(std::is_trivially_destructible<ElementSource>::value, "");
 
 static bool checkAdditionOverflow(int32_t val, int32_t offset)

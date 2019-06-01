@@ -687,7 +687,7 @@ DataType spirv2qasm::getIntegerType(const uint32_t bitWidth, const uint32_t sign
         return TYPE_INT8;
     CPPLOG_LAZY(
         logging::Level::DEBUG, log << "Unrecognized integer type with " << bitWidth << " bits" << logging::endl);
-    return DataType(bitWidth, 1, false);
+    return DataType{bitWidth, 1, false};
 }
 
 AddressSpace spirv2qasm::toAddressSpace(const spv::StorageClass storageClass)

@@ -80,8 +80,6 @@ bool CallSite::mapInstruction(Method& method)
             {
                 pointer = pointer.local()->reference.first->createReference();
             }
-            // TODO still fails for values passed as parameter (e.g. in
-            // /opt/SPIRV-LLVM/tools/clang/test/CodeGenOpenCL/addr-space-struct-arg.cl)
         }
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Converting life-time instrinsic to life-time instruction" << logging::endl);

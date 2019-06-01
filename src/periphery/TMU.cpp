@@ -35,7 +35,7 @@ static NODISCARD InstructionWalker insertCalculateAddressOffsets(
      * any element not in use (e.g. 5 to 15 for 4-element vector) needs to be set to 0
      */
     const Value addressOffsets = method.addNewLocal(TYPE_INT32.toVectorType(type.getVectorWidth()), "%address_offset");
-    // XXX actually this is baseAddr.type * type.num, but we can't have vectors of pointers
+    // NOTE: actually this is baseAddr.type * type.num, but we can't have vectors of pointers
     outputAddress = method.addNewLocal(TYPE_INT32.toVectorType(type.getVectorWidth()), "%tmu_address");
 
     // since the base address might be a single pointer, we need to replicate it for the upper vector elements to read
