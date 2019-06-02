@@ -213,6 +213,9 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
 InstructionWalker optimizations::simplifyOperation(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
+    // TODO move to OpCode? As more powerful version of the calculation operator. Use properties where applicable and
+    // precalculate where possible
+    // Use new solving/simplification here and as replacement of/in precalculate?
     if(auto op = it.get<intermediate::Operation>())
     {
         if(op->isSimpleOperation())
@@ -802,7 +805,7 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                     if(arg1.checkLocal())
                         foundAnd(out, arg1.local(), it);
                 }
-            };
+            }
 
             if(op->op == OP_OR)
             {
@@ -917,6 +920,13 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
                         calculatingExpressions.at(it->getOutput()->local()) = newExpr;
                     replacedSomething = true;
                 }
+            }
+            else if(it->hasValueType(ValueType::LOCAL))
+            {
+                // if we failed to create an expression for an output local (e.g. because of conditional access, etc.),
+                // need to reset the expression for that local, since any previous expression might no longer be
+                // accurate.
+                calculatingExpressions.erase(it->getOutput()->local());
             }
         }
     }

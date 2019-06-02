@@ -159,6 +159,8 @@ void TestCommonFunctions::testSmoothStep()
         float t = checkClamp((val - edge0) / (edge1 - edge0), 0, 1);
         return t * t * (3 - 2 * t);
     };
+    // TODO guarantee that edge0 <= edge1? What does the standard say?
+    // "Results are undefined if edge0 >= edge1 or if x, edge0 or edge1 is a NaN."
     testTernaryFunction<3>(config, "-DFUNC=smoothstep", smoothstep,
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }

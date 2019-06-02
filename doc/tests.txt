@@ -29,7 +29,7 @@ test_array						PASSED
 test_async_wait					PASSED
 test_async_wait_guard			PASSED
 test_bernoulli_distribution		PASSED
-test_binary_search				result mismatch (manual test returns correct result for value in/not in sorted list)
+test_binary_search				result mismatch
 test_buffer						PASSED
 test_buffer_allocator			PASSED
 test_buffer_iterator			PASSED
@@ -42,7 +42,7 @@ test_context					PASSED
 test_context_error				PASSED
 test_copy						PASSED
 test_copy_if					PASSED (emulation fails with out-of-bounds access)
-test_copy_type_mismatch			Invalid Value error (command_queue:hpp:884, unexpected return value for clEnqueueUnmapMemObject, CL_INVALID_VALUE -> mapping not found?!), hangs
+test_copy_type_mismatch			Invalid Value error (command_queue:hpp:884, unexpected return value for clEnqueueUnmapMemObject, CL_INVALID_VALUE -> mapping not found!), hangs
 test_count						compilation error (long)
 test_counting_iterator			PASSED
 test_device						PASSED (skips some OpenCL 2.0+ tests)
@@ -86,7 +86,7 @@ test_iota						PASSED
 test_is_permutation				PASSED (reads 1-after-bounds of allocated buffer)
 test_is_sorted					PASSED
 test_kernel						PASSED
-test_lambda						compilation error on register association
+test_lambda						PASSED
 test_lexicographical_compare	PASSED
 test_linear_congruential_engine	PASSED
 test_literal_conversion			PASSED
@@ -94,7 +94,7 @@ test_local_buffer				SKIPPED ("device does not support local memory")
 test_malloc						PASSED
 test_mapped_view				PASSED (result value mismatch for emulator)
 test_merge						PASSED
-test_merge_sort_gpu				compilation error (register association, long), double test skipped
+test_merge_sort_gpu				Invalid Value error (get_object_info.hpp:104), compilation error (register association, long), double test skipped
 test_mersenne_twister_engine	PASSED
 test_mismatch					PASSED
 test_next_permutation			PASSED

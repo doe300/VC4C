@@ -265,34 +265,36 @@ static const std::vector<MergeCondition> mergeConditions = {
             return false;
         return true;
     },
-    // check maximum 1 immediate value is used (both can use the same immediate value)
+    // check maximum 1 literal value is used (both can use the same literal value)
     [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
-        Optional<SmallImmediate> immediate;
+        // TODO This could be optimized, if we known which literals will be extracted to extra load instructions.
+        // XXX Need then to check only for literals which are converted to small immediate values in-place.
+        Optional<Literal> literal;
         if(firstOp != nullptr)
         {
-            if(firstOp->getFirstArg().checkImmediate())
-                immediate = firstOp->getFirstArg().immediate();
-            if(firstOp->getSecondArg() && firstOp->assertArgument(1).checkImmediate())
-                immediate = firstOp->assertArgument(1).immediate();
+            if(auto lit = firstOp->getFirstArg().getLiteralValue())
+                literal = lit;
+            if(firstOp->getSecondArg() && firstOp->assertArgument(1).getLiteralValue())
+                literal = firstOp->assertArgument(1).getLiteralValue();
         }
         if(firstMove != nullptr)
         {
-            if(firstMove->getSource().checkImmediate())
-                immediate = firstMove->getSource().immediate();
+            if(auto lit = firstMove->getSource().getLiteralValue())
+                literal = lit;
         }
-        if(immediate)
+        if(literal)
         {
             if(secondOp != nullptr)
             {
-                if(secondOp->getFirstArg().checkImmediate() && !secondOp->getFirstArg().hasImmediate(immediate.value()))
+                if(secondOp->getFirstArg().getLiteralValue() && !secondOp->getFirstArg().hasLiteral(*literal))
                     return false;
-                if(secondOp->getSecondArg() && secondOp->assertArgument(1).checkImmediate() &&
-                    !secondOp->assertArgument(1).hasImmediate(immediate.value()))
+                if(secondOp->getSecondArg() && secondOp->assertArgument(1).getLiteralValue() &&
+                    !secondOp->assertArgument(1).hasLiteral(*literal))
                     return false;
             }
             if(secondMove != nullptr)
             {
-                if(secondMove->getSource().checkImmediate() && !secondMove->getSource().hasImmediate(immediate.value()))
+                if(secondMove->getSource().getLiteralValue() && !secondMove->getSource().hasLiteral(*literal))
                     return false;
             }
         }

@@ -101,6 +101,12 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
         // replace right expression by source
         expr1 = &inputs.at(expr1->arg0.local());
 
+    if(unpackMode.hasEffect() || packMode.hasEffect() ||
+        (expr0 != nullptr && (expr0->unpackMode.hasEffect() || expr0->packMode.hasEffect())) ||
+        ((expr1 != nullptr && (expr1->unpackMode.hasEffect() || expr1->packMode.hasEffect()))))
+        // cannot combine pack modes
+        return *this;
+
     // "replace" this with source expression
     if(isMoveExpression())
     {
@@ -109,12 +115,6 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
         if(expr1)
             return expr1->combineWith(inputs);
     }
-
-    if(unpackMode.hasEffect() || packMode.hasEffect() ||
-        (expr0 != nullptr && (expr0->unpackMode.hasEffect() || expr0->packMode.hasEffect())) ||
-        ((expr1 != nullptr && (expr1->unpackMode.hasEffect() || expr1->packMode.hasEffect()))))
-        // cannot combine pack modes
-        return *this;
 
     if(code.numOperands == 1 && expr0 != nullptr)
     {
