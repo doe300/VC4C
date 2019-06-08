@@ -522,7 +522,7 @@ namespace vc4c
     /*
      * Void pointer type in the default address space
      */
-    static const DataType TYPE_VOID_POINTER = DataType{TypeHolder::voidPtr.get()};
+    extern const DataType TYPE_VOID_POINTER;
 } // namespace vc4c
 
 namespace std

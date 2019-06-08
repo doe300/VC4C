@@ -283,6 +283,14 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
     {
         extendBoundaries(static_cast<int64_t>(0), static_cast<int64_t>(NATIVE_VECTOR_SIZE) - 1);
     }
+    else if(constant && constant->hasRegister(REG_MS_MASK))
+    {
+        extendBoundaries(static_cast<int64_t>(0), static_cast<int64_t>(0xF));
+    }
+    else if(constant && constant->hasRegister(REG_REV_FLAG))
+    {
+        extendBoundaries(static_cast<int64_t>(0), static_cast<int64_t>(1));
+    }
     else if(dynamic_cast<const MoveOperation*>(it) && it->assertArgument(0).checkLocal() &&
         ranges.find(it->assertArgument(0).local()) != ranges.end())
     {

@@ -20,6 +20,7 @@ using namespace vc4c;
 // TODO remove if possible!
 TypeHolder GLOBAL_TYPE_HOLDER;
 std::unique_ptr<ComplexType> TypeHolder::voidPtr{new PointerType(TYPE_VOID)};
+const DataType vc4c::TYPE_VOID_POINTER{TypeHolder::voidPtr.get()};
 
 // just to make sure, the last bits are always zero for pointers
 static_assert(alignof(ComplexType) > Bitfield<uint8_t>::MASK_Bit, "");
@@ -120,7 +121,10 @@ DataType::DataType(const ComplexType* complexType) : Bitfield(reinterpret_cast<u
 {
     if(getSimpleFlag())
         throw CompilationError(
-            CompilationStep::GENERAL, "Internal error: Complex type has simple flag set!", to_string());
+            CompilationStep::GENERAL, "Internal error: Complex type has simple flag set", to_string());
+    if(!complexType)
+        throw CompilationError(
+            CompilationStep::GENERAL, "Internal error: Cannot create complex type without a complex type!");
 }
 
 LCOV_EXCL_START

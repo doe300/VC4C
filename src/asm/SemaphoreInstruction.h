@@ -34,10 +34,7 @@ namespace vc4c
             BITFIELD_ENTRY(MulCondition, ConditionCode, 46, Triple)
             BITFIELD_ENTRY(SetFlag, SetFlag, 45, Bit)
 
-            /*
-             * XXX according to http://maazl.de/project/vc4asm/doc/instructions.html#sema
-             * The other bits of the lower word can be chosen arbitrary and used to combine semaphore with literal load
-             */
+            // The other bits of the lower word can be chosen arbitrary and used to combine semaphore with literal load
             BITFIELD_ENTRY(ImmediateInt, uint32_t, 0, Int)
 
             /**

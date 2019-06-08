@@ -197,19 +197,6 @@ static NODISCARD InstructionWalker insertSplittingBitcast(
 InstructionWalker intermediate::insertBitcast(
     InstructionWalker it, Method& method, const Value& src, const Value& dest, InstructionDecorations deco)
 {
-    /*
-     * TODO room for optimization:
-     * to extract e.g. a single char from a char4, LLVM generates something like:
-     *
-     * int tmp = bitcast char4 in to int
-     * char out = convert tmp to char
-     *
-     * For example in test_vector.cl kernel test_vector_load.
-     *
-     * => If we can detect the bit-cast to be used only to extract an element (of the original type before casting), we
-     * can skip it?!
-     *
-     */
     if(src.isUndefined())
         it.emplace(new intermediate::MoveOperation(dest, UNDEFINED_VALUE));
     else if(src.isZeroInitializer())

@@ -153,7 +153,6 @@ qpu_asm::DecoratedInstruction Operation::convertToAsm(const FastMap<const Local*
 {
     const Register outReg = getOutput()->checkLocal() ? registerMapping.at(getOutput()->local()) : getOutput()->reg();
 
-    // TODO make sure, only mul pack modes are used for mul ALU writing to register file A
     Unpack unpack = unpackMode;
     Pack pack = packMode;
     if(pack.isPMBitSet() != unpack.isPMBitSet())
@@ -167,6 +166,10 @@ qpu_asm::DecoratedInstruction Operation::convertToAsm(const FastMap<const Local*
         else if(unpack.hasEffect())
             pack = unpack.isPMBitSet() ? PACK_NOP_PM : PACK_NOP;
     }
+    // make sure, only mul pack modes are used for mul ALU writing to register file A
+    if(!op.runsOnAddALU() && pack.hasEffect() && !pack.supportsMulALU())
+        throw CompilationError(
+            CompilationStep::CODE_GENERATION, "Cannot use add ALU only pack mode with mul ALU operation", to_string());
 
     auto input0 = getInputValue(getFirstArg(), registerMapping, this);
     auto input1 = getSecondArg() ? getInputValue(assertArgument(1), registerMapping, this) :

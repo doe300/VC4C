@@ -310,6 +310,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("extract-loads-from-loops");
         passes.emplace("schedule-instructions");
         passes.emplace("work-group-cache");
+        // XXX move CSE to medium? Need to profile performance and re-check all emulation tests with CSE enabled
         passes.emplace("eliminate-common-subexpressions");
         // XXX if tested enough, move to full
         passes.emplace("simplify-conditionals");

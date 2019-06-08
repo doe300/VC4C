@@ -848,8 +848,8 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                 if(rot->getOffset() == ROTATION_REGISTER ||
                     (rot->getOffset().checkImmediate() && rot->getOffset().immediate() == VECTOR_ROTATE_R5))
                 {
-                    // check whether we rotate by a constant offset, e.g. when rewritten by some other optimization
-                    // and rewrite rotation to rotation by this static offset
+                    // check whether we rotate by r5 which is set to a constant value (e.g. when rewritten by some
+                    // other optimization) and rewrite rotation to rotation by this static offset
                     auto writer = block.findLastWritingOfRegister(it, REG_ACC5);
                     Optional<Value> staticOffset = NO_VALUE;
                     if(writer && (staticOffset = (*writer)->precalculate(2).first))

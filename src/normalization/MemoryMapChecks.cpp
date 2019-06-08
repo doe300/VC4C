@@ -82,6 +82,7 @@ static Optional<DataType> convertSmallArrayToRegister(const Local* local)
     // TODO can't we also lower e.g. uint4[4] into 1 register? Shouldn't be a problem if element access is implemented
     // correctly, since the anyway can use vloadN/vstoreN to access vectors of any size. Just need to make sure not to
     // set whole vector when storing first element!
+    // TODO for gentype3/vload3/vstore3, need to make sure to either use padded or not-padded size for all access!
     const Local* base = local->getBase(true);
     if(auto ptrType = base->type.getPointerType())
     {

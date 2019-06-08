@@ -638,7 +638,7 @@ static void createR5Dependencies(DependencyGraph& graph, DependencyNode& node,
     const intermediate::IntermediateInstruction* lastWriteOfR5,
     const intermediate::IntermediateInstruction* lastReadOfR5)
 {
-    // TODO write more general for any (non-periphery) register?
+    // TODO write more general for any (non-periphery) register? E.g. ms_mask, rev_flag
     if(lastWriteOfR5 && dynamic_cast<const intermediate::VectorRotation*>(node.key) &&
         (node.key->readsRegister(REG_ACC5)))
     {

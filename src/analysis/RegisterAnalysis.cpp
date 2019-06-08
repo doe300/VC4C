@@ -76,7 +76,7 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
         if(inst->writesRegister(REG_VPM_DMA_LOAD_ADDR) || inst->writesRegister(REG_VPM_DMA_STORE_ADDR) ||
             inst->writesRegister(REG_VPM_IN_SETUP) || inst->writesRegister(REG_VPM_OUT_SETUP) ||
             inst->writesRegister(REG_REPLICATE_ALL) || inst->writesRegister(REG_TMU_NOSWAP) ||
-            inst->writesRegister(REG_UNIFORM_ADDRESS))
+            inst->writesRegister(REG_UNIFORM_ADDRESS) || inst->writesRegister(REG_REV_FLAG))
         {
             // only 0st element used
             inst->forUsedLocals([&](const Local* loc, LocalUse::Type type) {

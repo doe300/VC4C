@@ -734,8 +734,10 @@ static std::pair<Optional<Literal>, ElementFlags> calcLiteral(const OpCode& code
         return setFlags(Literal(firstLit.unsignedInt() & secondLit.unsignedInt()), false, false);
     if(code == OP_ASR)
     {
+        // Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
+        auto offset = secondLit.unsignedInt() & 0x1F;
         // carry is set if bits set are shifted out of the register: val & (2^shift-offset-1) != 0
-        auto shiftLoss = firstLit.unsignedInt() & ((1 << secondLit.signedInt()) - 1);
+        auto shiftLoss = firstLit.unsignedInt() & ((1 << offset) - 1);
         return setFlags(intermediate::asr(firstLit, secondLit), shiftLoss != 0, false);
     }
     if(code == OP_CLZ)
@@ -822,16 +824,18 @@ static std::pair<Optional<Literal>, ElementFlags> calcLiteral(const OpCode& code
         return setFlags(Literal(rotate_right(firstLit.unsignedInt(), secondLit.signedInt())), false);
     if(code == OP_SHL)
     {
-        auto extendedVal = static_cast<uint64_t>(firstLit.unsignedInt())
-            << static_cast<uint64_t>(secondLit.unsignedInt());
-        return setFlags(Literal(firstLit.unsignedInt() << secondLit.signedInt()),
-            extendedVal > static_cast<uint64_t>(0xFFFFFFFFul));
+        // Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
+        auto offset = secondLit.unsignedInt() & 0x1F;
+        auto extendedVal = static_cast<uint64_t>(firstLit.unsignedInt()) << offset;
+        return setFlags(Literal(firstLit.unsignedInt() << offset), extendedVal > static_cast<uint64_t>(0xFFFFFFFFul));
     }
     if(code == OP_SHR)
     {
+        // Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
+        auto offset = secondLit.unsignedInt() & 0x1F;
         // carry is set if bits set are shifted out of the register: val & (2^shift-offset-1) != 0
-        auto shiftLoss = firstLit.unsignedInt() & ((1 << secondLit.signedInt()) - 1);
-        return setFlags(Literal(firstLit.unsignedInt() >> secondLit.signedInt()), shiftLoss != 0);
+        auto shiftLoss = firstLit.unsignedInt() & ((1 << offset) - 1);
+        return setFlags(Literal(firstLit.unsignedInt() >> offset), shiftLoss != 0);
     }
     if(code == OP_SUB)
     {

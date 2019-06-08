@@ -100,7 +100,8 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(
     // TODO check whether index is guaranteed to be in range [0, 16[
     auto elementType = srcInfo.convertedRegisterType ? *srcInfo.convertedRegisterType :
                                                        srcInfo.mappedRegisterOrConstant->type.getElementType();
-    auto wholeRegister =
+
+    auto wholeRegister = srcInfo.convertedRegisterType &&
         copiesWholeRegister(mem->getNumEntries(), mem->getDestinationElementType(), *srcInfo.convertedRegisterType);
     Value tmpVal(UNDEFINED_VALUE);
     if(mem->op == MemoryOperation::COPY && wholeRegister)

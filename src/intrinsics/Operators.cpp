@@ -554,7 +554,9 @@ Literal intermediate::asr(Literal left, Literal right)
     std::bitset<sizeof(int32_t) * 8> tmp(static_cast<uint64_t>(left.signedInt()));
     if(right.signedInt() < 0)
         throw CompilationError(CompilationStep::GENERAL, "ASR with negative numbers is not implemented");
-    for(auto i = 0; i < right.signedInt(); ++i)
+    // Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
+    auto offset = right.unsignedInt() & 0x1F;
+    for(unsigned i = 0; i < offset; ++i)
     {
         bool MSBSet = tmp.test(MSB);
         tmp >>= 1;
