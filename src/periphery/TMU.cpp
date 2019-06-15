@@ -49,8 +49,7 @@ static NODISCARD InstructionWalker insertCalculateAddressOffsets(
     }
 
     // addressOffsets = sizeof(type) * elem_num
-    assign(it, addressOffsets) =
-        mul24(Value(Literal(static_cast<uint32_t>(type.getScalarBitCount()) / 8), TYPE_INT8), ELEMENT_NUMBER_REGISTER);
+    assign(it, addressOffsets) = ELEMENT_NUMBER_REGISTER * Literal(static_cast<uint32_t>(type.getScalarBitCount()) / 8);
     // outputAddress = (elem_num < type.num) ? baseAddress + addressOffsets : 0
     assign(it, NOP_REGISTER) =
         (ELEMENT_NUMBER_REGISTER - Value(Literal(static_cast<int32_t>(type.getVectorWidth())), TYPE_INT8),

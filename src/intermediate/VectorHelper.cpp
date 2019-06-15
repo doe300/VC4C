@@ -903,3 +903,58 @@ InstructionWalker intermediate::insertAssembleVector(
     }
     return it;
 }
+
+InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& method, const Value& dest,
+    const Value& src, OpCode foldingOp, InstructionDecorations decorations)
+{
+    if(foldingOp.numOperands != 2 || foldingOp.acceptsFloat != foldingOp.returnsFloat)
+        throw CompilationError(CompilationStep::GENERAL, "Invalid operation to fold vectors", foldingOp.name);
+
+    if(!isPowerTwo(dest.type.getVectorWidth()))
+        throw CompilationError(
+            CompilationStep::GENERAL, "Folding with vectors non-power of two is not yet implemented", dest.to_string());
+    if(!isPowerTwo(src.type.getVectorWidth()))
+        throw CompilationError(
+            CompilationStep::GENERAL, "Folding with vectors non-power of two is not yet implemented", src.to_string());
+
+    // 1. split into N parts with the output vector width
+    // first temporary result is the lower N elements of the source
+    auto tmpResult = src;
+
+    // 2. combine vectors element-wise via the folding operation
+    /*
+     * For powers of 2 can use faster version (see also vc4cl-stdlib/_relationals.h#any/all)
+     *
+     * Example
+     * int16 -> int2:
+     *
+     *    | in[0] . in[1] . in[2] . in[3] . in[4] . in[5] . in[6] . in[7] |
+     * op | in[8] . in[9] . in[A] . in[B] . in[C] . in[D] . in[E] . in[F] |
+     * =  | tm[0] . tm[1] . tm[2] . tm[3] . tm[4] . tm[5] . tm[6] . tm[7] |
+     *
+     *    | tm[0] . tm[1] . tm[2] . tm[3] |
+     * op | tm[4] . tm[5] . tm[6] . tm[7] |
+     * =  | tm[0] . tm[1] . tm[2] . tm[3] |
+     *
+     *    | tm[0] . tm[1] |
+     * op | tm[2] . tm[3] |
+     * =  | de[0] . de[1] |
+     */
+    while(tmpResult.type.getVectorWidth() > dest.type.getVectorWidth())
+    {
+        auto halfSize = static_cast<uint8_t>(tmpResult.type.getVectorWidth() / 2u);
+        auto tmpUp = method.addNewLocal(dest.type.toVectorType(halfSize), "%vector_fold.upper");
+        auto newTmpResult = method.addNewLocal(dest.type.toVectorType(halfSize), "%vector_fold");
+
+        it = insertVectorRotation(it, tmpResult, Value(Literal(halfSize), TYPE_INT8), tmpUp, Direction::DOWN);
+
+        it.emplace(new Operation(foldingOp, newTmpResult, tmpResult, tmpUp));
+        it->addDecorations(decorations);
+        it.nextInBlock();
+
+        tmpResult = newTmpResult;
+    }
+
+    // 3. move result to dest
+    return it.emplace(new MoveOperation(dest, tmpResult));
+}

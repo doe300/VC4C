@@ -97,6 +97,19 @@ namespace vc4c
         NODISCARD InstructionWalker insertAssembleVector(
             InstructionWalker it, Method& method, const Value& dest, std::vector<ElementSource>&& sources);
 
+        /**
+         * Inserts operations to fold the given input vector to the given output value using the given binary operation
+         *
+         * The folding is done by:
+         * 1. splitting the input vector into N parts with output vector size
+         * 2. fold the N parts by repetitive applying the given folding operation
+         * 3. store the result in the output value
+         *
+         * If the output vector size is larger or equals than the input vector size, a simple move will be inserted.
+         */
+        NODISCARD InstructionWalker insertFoldVector(InstructionWalker it, Method& method, const Value& dest,
+            const Value& src, OpCode foldingOp, InstructionDecorations decorations = InstructionDecorations::NONE);
+
     } // namespace intermediate
 } // namespace vc4c
 

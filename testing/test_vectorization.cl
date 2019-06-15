@@ -28,10 +28,9 @@ kernel void test4(global int *A, global int *B) {
   unsigned sum = 0;
   //Expected: should be able to vectorize
   //Attention: need to make sure, i is recognized as iteration-variable, not sum
-  //Actual: loop is recognized with correct iteration variable, fails to vectorize
+  //Actual: loop is recognized with correct iteration variable, vectorized version calculates correctly
   for (int i = 0; i < 1024; ++i)
     sum += A[i] + 5;
-  //FIXME the vectorized sum values are not added together
   *B = sum;
 }
 

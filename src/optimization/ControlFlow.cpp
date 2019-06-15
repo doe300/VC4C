@@ -12,6 +12,7 @@
 #include "../analysis/DataDependencyGraph.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/TypeConversions.h"
+#include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
 #include "../normalization/LiteralValues.h"
 #include "../periphery/VPM.h"
@@ -140,7 +141,9 @@ struct LoopControl
             return {};
         if(op->getArgument(0) && op->assertArgument(0).isLiteralValue())
             return op->assertArgument(0).getLiteralValue();
-        return op->assertArgument(1).getLiteralValue();
+        if(auto arg1 = op->getArgument(1))
+            return arg1->getLiteralValue();
+        return {};
     }
 
     int32_t countIterations(int32_t initial, int32_t limit, int32_t step, const std::string& comparisonType) const
@@ -330,11 +333,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
             {
                 // userIt converts the loop-variable to the condition. The comparison value is the upper bound
                 const intermediate::IntermediateInstruction* inst = userIt->first;
-                if(inst->getArguments().size() != 2)
-                {
-                    // TODO error
-                }
-                if(inst->assertArgument(0).hasLocal(iterationStep.local()))
+                if(inst->getArguments().size() > 1 && inst->assertArgument(0).hasLocal(iterationStep.local()))
                     loopControl.terminatingValue = inst->assertArgument(1);
                 else
                     loopControl.terminatingValue = inst->assertArgument(0);
@@ -565,9 +564,8 @@ static void scheduleForVectorization(
     local->forUsers(LocalUse::Type::READER, [&openInstructions, &loop](const LocalUser* user) -> void {
         if(!user->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
             openInstructions.emplace(user);
-        if(user->getOutput().ifPresent([](const Value& out) -> bool {
-               return out.checkRegister() && (out.reg().isSpecialFunctionsUnit() || out.reg().isTextureMemoryUnit());
-           }))
+        if(user->hasValueType(ValueType::REGISTER) &&
+            (user->getOutput()->reg().isSpecialFunctionsUnit() || user->getOutput()->reg().isTextureMemoryUnit()))
         {
             // need to add the reading of SFU/TMU too
             if(auto optIt = loop.findInLoop(user))
@@ -589,21 +587,36 @@ static void scheduleForVectorization(
     });
 }
 
-static void vectorizeInstruction(InstructionWalker it,
+static uint8_t getVectorWidth(DataType type)
+{
+    if(auto ptrType = type.getPointerType())
+        return ptrType->elementType.getVectorWidth();
+    return type.getVectorWidth();
+}
+
+static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Method& method,
     FastSet<const intermediate::IntermediateInstruction*>& openInstructions, unsigned vectorizationFactor,
     ControlFlowLoop& loop)
 {
-    CPPLOG_LAZY(logging::Level::DEBUG, log << "Vectorizing instruction: " << it->to_string() << logging::endl);
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Vectorizing instruction: " << inst->to_string() << logging::endl);
 
     // 1. update types of values matching the types of their locals
     unsigned char vectorWidth = 1;
-    for(auto& arg : it->getArguments())
+    for(auto& arg : inst->getArguments())
     {
         if(arg.checkLocal() && arg.type != arg.local()->type)
         {
             scheduleForVectorization(arg.local(), openInstructions, loop);
-            const_cast<DataType&>(arg.type) = arg.type.toVectorType(arg.local()->type.getVectorWidth());
-            vectorWidth = std::max(vectorWidth, arg.type.getVectorWidth());
+            if(auto ptrType = arg.local()->type.getPointerType())
+            {
+                const_cast<DataType&>(arg.type) = DataType(ptrType);
+                vectorWidth = std::max(vectorWidth, ptrType->elementType.getVectorWidth());
+            }
+            else
+            {
+                const_cast<DataType&>(arg.type) = arg.type.toVectorType(arg.local()->type.getVectorWidth());
+                vectorWidth = std::max(vectorWidth, arg.type.getVectorWidth());
+            }
         }
         else if(arg.checkRegister())
         {
@@ -613,28 +626,88 @@ static void vectorizeInstruction(InstructionWalker it,
     }
 
     // 2. depending on operation performed, update type of output
-    if(it->getOutput() && (it.get<intermediate::Operation>() || it.get<intermediate::MoveOperation>()))
+    if(inst->getOutput() &&
+        (dynamic_cast<const intermediate::Operation*>(inst) || dynamic_cast<const intermediate::MoveOperation*>(inst)))
     {
         // TODO vector-rotations need special handling?!
-        Value& out = const_cast<Value&>(it->getOutput().value());
+        Value& out = const_cast<Value&>(inst->getOutput().value());
         if(auto ptrType = out.type.getPointerType())
             // TODO this is only correct if the elements are located in one block (base+0, base+1, base+2...). Is this
             // guaranteed?
-            out.type = it.getBasicBlock()->getMethod().createPointerType(
-                ptrType->elementType.toVectorType(vectorWidth), ptrType->addressSpace);
+            out.type = method.createPointerType(ptrType->elementType.toVectorType(vectorWidth), ptrType->addressSpace);
         else
             out.type = out.type.toVectorType(vectorWidth);
         if(auto loc = out.checkLocal())
         {
             if(auto ptrType = loc->type.getPointerType())
                 // TODO see above
-                const_cast<DataType&>(loc->type) = it.getBasicBlock()->getMethod().createPointerType(
-                    loc->type.getPointerType()->elementType.toVectorType(out.type.getVectorWidth()),
+                const_cast<DataType&>(loc->type) = method.createPointerType(
+                    loc->type.getPointerType()->elementType.toVectorType(getVectorWidth(out.type)),
                     ptrType->addressSpace);
             else
-                const_cast<DataType&>(loc->type) = loc->type.toVectorType(out.type.getVectorWidth());
+                const_cast<DataType&>(loc->type) = loc->type.toVectorType(getVectorWidth(out.type));
             scheduleForVectorization(loc, openInstructions, loop);
         }
+    }
+
+    if(inst->writesRegister(REG_TMU0_ADDRESS) || inst->writesRegister(REG_TMU1_ADDRESS))
+    {
+        // if we write to a TMU address register, we need to adapt the setting of valid TMU address elements (vs.
+        // zeroing out) to match the new vector width
+        auto optIt = loop.findInLoop(inst);
+        if(!optIt)
+            // TODO not actually a problem, we just have to find the instruction walker
+            throw CompilationError(
+                CompilationStep::OPTIMIZER, "Cannot vectorize setting TMU address outside of loop", inst->to_string());
+
+        optIt = optIt->getBasicBlock()->findLastSettingOfFlags(*optIt);
+        if(!optIt)
+            throw CompilationError(CompilationStep::OPTIMIZER,
+                "Failed to find setting of element-wise flags for setting of TMU address", inst->to_string());
+        auto op = optIt->get<intermediate::Operation>();
+        if(!op || op->op != OP_SUB || !op->assertArgument(0).hasRegister(REG_ELEMENT_NUMBER) ||
+            !op->assertArgument(1).getLiteralValue())
+            // TODO make more robust!
+            throw CompilationError(CompilationStep::OPTIMIZER,
+                "Unhandled instruction setting flags for valid TMU address elements", (*optIt)->to_string());
+        // we have instruction - = elem_num - vector_width (setf)
+        logging::debug() << "Vectorizing TMU load element mask: " << op->to_string() << logging::endl;
+        op->setArgument(1, Value(Literal(vectorWidth), TYPE_INT8));
+        op->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+        // TODO if the previous size was 1 and the input is not directly an UNIFORM value, we need to replicate the base
+        // address too!
+
+        // when writing to TMU address register, we also need to change the element address offset, since it is added
+        // twice (once for the modified original index and once for the TMU loading element address offset).
+        // The TMU address is set conditionally depending on the above setting of flags to either zero or the base
+        // address + element offset
+        auto firstArg = inst->getArgument(0);
+        if(dynamic_cast<MoveOperation*>(inst) == nullptr || !firstArg || firstArg->checkLocal() == nullptr ||
+            firstArg->local()->getUsers(LocalUse::Type::WRITER).size() != 2)
+            // TODO make more robust!
+            throw CompilationError(
+                CompilationStep::OPTIMIZER, "Unhandled instruction setting TMU address elements", inst->to_string());
+        firstArg->local()->forUsers(LocalUse::Type::WRITER, [&](const LocalUser* writer) {
+            if(dynamic_cast<const MoveOperation*>(writer) && writer->assertArgument(0).getLiteralValue() == 0_lit)
+                // setting of zero, skip this
+                return;
+            // we are interested in the other writer
+            logging::debug() << "Fixing up TMU address element offset: " << writer->to_string() << logging::endl;
+            auto wIt = loop.findInLoop(writer);
+            if(!wIt || dynamic_cast<const Operation*>(writer) == nullptr)
+                throw CompilationError(CompilationStep::OPTIMIZER,
+                    "Failed to find instruction writing TMU address element offset", writer->to_string());
+            // TODO is this true for all vector widths? Not just 1 -> x!?
+            if(writer->assertArgument(0).type.getPointerType() && writer->assertArgument(1).getSingleWriter())
+                // first argument is base address, second argument is element offset
+                (*wIt)->replaceValue(writer->assertArgument(1), INT_ZERO, LocalUse::Type::READER);
+            else if(writer->assertArgument(1).type.getPointerType() && writer->assertArgument(0).getSingleWriter())
+                // second argument is base address, first argument is element offset
+                (*wIt)->replaceValue(writer->assertArgument(0), INT_ZERO, LocalUse::Type::READER);
+            else
+                throw CompilationError(CompilationStep::OPTIMIZER,
+                    "Unhandled instruction setting TMU address element offset", writer->to_string());
+        });
     }
 
     // TODO need to adapt types of some registers/output of load, etc.?
@@ -642,8 +715,8 @@ static void vectorizeInstruction(InstructionWalker it,
     // scalars, if the read-instruction was vectorized before the write-instruction
 
     // mark as already processed and remove from open-set
-    it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
-    openInstructions.erase(it.get());
+    inst->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+    openInstructions.erase(inst);
 }
 
 static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
@@ -708,8 +781,9 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
             loopControl.iterationVariable->type.getVectorWidth());
     intermediate::MoveOperation* move = dynamic_cast<intermediate::MoveOperation*>(loopControl.initialization);
     Optional<InstructionWalker> initialValueWalker;
-    if(move != nullptr && move->getSource().hasLiteral(INT_ZERO.literal()) &&
-        loopControl.stepKind == StepKind::ADD_CONSTANT && loopControl.getStep() == INT_ONE.literal())
+    bool isStepPlusOne = loopControl.stepKind == StepKind::ADD_CONSTANT && loopControl.getStep() == INT_ONE.literal();
+    Optional<Value> precalculatedInitialValue;
+    if(move != nullptr && move->getSource().hasLiteral(INT_ZERO.literal()) && isStepPlusOne)
     {
         // special/default case: initial value is zero and step is +1
         move->setSource(Value(ELEMENT_NUMBER_REGISTER));
@@ -717,14 +791,25 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Changed initial value: " << loopControl.initialization->to_string() << logging::endl);
     }
-    else if(move != nullptr && move->getSource().getLiteralValue() && loopControl.stepKind == StepKind::ADD_CONSTANT &&
-        loopControl.getStep() == INT_ONE.literal() &&
-        (initialValueWalker = findWalker(loop.findPredecessor(), move)).has_value())
+    else if(move != nullptr && move->getSource().getLiteralValue() && isStepPlusOne &&
+        (initialValueWalker = findWalker(loop.findPredecessor(), move)))
     {
         // more general case: initial value is a literal and step is +1
         initialValueWalker->reset(
             (new intermediate::Operation(OP_ADD, move->getOutput().value(), move->getSource(), ELEMENT_NUMBER_REGISTER))
                 ->copyExtrasFrom(move));
+        initialValueWalker.value()->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+        loopControl.initialization = initialValueWalker->get();
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Changed initial value: " << loopControl.initialization->to_string() << logging::endl);
+    }
+    else if((precalculatedInitialValue = loopControl.initialization->precalculate().first) && isStepPlusOne &&
+        (initialValueWalker = findWalker(loop.findPredecessor(), loopControl.initialization)))
+    {
+        // more general case: initial value is some constant and step is +1
+        initialValueWalker->reset((new intermediate::Operation(OP_ADD, loopControl.initialization->getOutput().value(),
+                                       *precalculatedInitialValue, ELEMENT_NUMBER_REGISTER))
+                                      ->copyExtrasFrom(loopControl.initialization));
         initialValueWalker.value()->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
         loopControl.initialization = initialValueWalker->get();
         CPPLOG_LAZY(logging::Level::DEBUG,
@@ -779,7 +864,8 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
  * - in final iteration, fix TMU/VPM configuration and address calculation and loop condition
  * - fix initial iteration value and step
  */
-static void vectorize(ControlFlowLoop& loop, LoopControl& loopControl, const DataDependencyGraph& dependencyGraph)
+static void vectorize(
+    ControlFlowLoop& loop, LoopControl& loopControl, Method& method, const DataDependencyGraph& dependencyGraph)
 {
     FastSet<const intermediate::IntermediateInstruction*> openInstructions;
 
@@ -792,38 +878,84 @@ static void vectorize(ControlFlowLoop& loop, LoopControl& loopControl, const Dat
     // iteratively change all instructions
     while(!openInstructions.empty())
     {
-        auto it = loop.findInLoop(*openInstructions.begin());
-        if(!it)
+        auto inst = *openInstructions.begin();
+        if(auto it = loop.findInLoop(inst))
         {
-            // TODO what to do?? These are e.g. for accumulation-variables (like sum, maximum)
-            // FIXME depending on the operation performed on this locals, the vector-elements need to be folded into a
-            // scalar/previous vector width
+            vectorizeInstruction(it->get(), method, openInstructions, loopControl.vectorizationFactor, loop);
+            ++numVectorized;
+        }
+        else if(dynamic_cast<const intermediate::MoveOperation*>(inst) && inst->hasValueType(ValueType::LOCAL) &&
+            !inst->hasSideEffects())
+        {
+            // follow all simple moves to other locals (to find the instruction we really care about)
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Local is accessed outside of loop: " << (*openInstructions.begin())->to_string()
-                    << logging::endl);
-
-            const intermediate::IntermediateInstruction* inst = *openInstructions.begin();
-            const Value& arg = inst->assertArgument(0);
-            const intermediate::Operation* op = dynamic_cast<const intermediate::Operation*>(arg.getSingleWriter());
-            if(std::all_of(inst->getArguments().begin(), inst->getArguments().end(),
-                   [&arg](const Value& otherArg) -> bool { return otherArg == arg; }) &&
-                op != nullptr && op->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED) &&
-                !op->hasSideEffects())
-            {
-                /*
-                 * There is a single writer to this local, which is vectorized and calculates the local via some
-                 * operation (also has no side-effects)
-                 * -> TODO we can accept the instruction by folding the vector-elements with the operation last applied
-                 */
-            }
-            throw CompilationError(CompilationStep::OPTIMIZER,
-                "Accessing vectorized locals outside of the loop is not yet implemented",
-                (*openInstructions.begin())->to_string());
+                log << "Local is accessed outside of loop: " << inst->to_string() << logging::endl);
+            vectorizeInstruction(const_cast<intermediate::IntermediateInstruction*>(inst), method, openInstructions,
+                loopControl.vectorizationFactor, loop);
+            ++numVectorized;
         }
         else
         {
-            vectorizeInstruction(it.value(), openInstructions, loopControl.vectorizationFactor, loop);
-            ++numVectorized;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Local is accessed outside of loop: " << inst->to_string() << logging::endl);
+
+            // fold vectorized version into "scalar" version by applying the accumulation function
+            // NOTE: The "scalar" version is not required to be actual scalar (vector-width of 1), could just be
+            // some other smaller vector-width
+            if((inst->getArguments().size() == 1 || inst->assertArgument(1) == inst->assertArgument(0)) &&
+                inst->assertArgument(0).checkLocal())
+            {
+                auto arg = inst->assertArgument(0);
+                // since we are in the process of vectorization, the local type is already updated, but the argument
+                // type is pending. For the next steps, we need to update the argument type.
+                arg.type = arg.local()->type;
+                auto origVectorType =
+                    arg.type.toVectorType(arg.type.getVectorWidth() / loopControl.vectorizationFactor);
+
+                Optional<OpCode> accumulationOp{};
+                if(auto writer = arg.getSingleWriter())
+                {
+                    while(dynamic_cast<const intermediate::MoveOperation*>(writer) && !writer->hasSideEffects())
+                    {
+                        auto tmp = writer->assertArgument(0).getSingleWriter();
+                        writer = tmp ? tmp : writer;
+                    }
+                    if(auto op = dynamic_cast<const intermediate::Operation*>(writer))
+                        accumulationOp = op->op;
+                }
+
+                if(accumulationOp)
+                {
+                    Optional<InstructionWalker> it;
+                    if(auto succ = loop.findSuccessor())
+                    {
+                        it = succ->key->findWalkerForInstruction(inst, succ->key->walkEnd());
+                    }
+                    if(it)
+                    {
+                        // insert folding or argument, heed original vector width
+                        auto newArg = method.addNewLocal(origVectorType, "%vector_fold");
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Folding vectorized local " << arg.to_string() << " into " << newArg.to_string()
+                                << " for: " << inst->to_string() << logging::endl);
+                        ignoreReturnValue(insertFoldVector(
+                            *it, method, newArg, arg, *accumulationOp, InstructionDecorations::AUTO_VECTORIZED));
+                        // replace argument with folded version
+                        const_cast<IntermediateInstruction*>(inst)->replaceValue(arg, newArg, LocalUse::Type::READER);
+                        openInstructions.erase(inst);
+                        continue;
+                    }
+                    // TODO handle variable used in other blocks, how to find walker?
+                }
+                else
+                {
+                    throw CompilationError(CompilationStep::OPTIMIZER,
+                        "Failed to determine accumulation operation for vectorized local", arg.to_string());
+                }
+            }
+
+            throw CompilationError(CompilationStep::OPTIMIZER,
+                "Accessing vectorized locals outside of the loop is not yet implemented", inst->to_string());
         }
     }
 
@@ -884,7 +1016,7 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
             continue;
 
         // 6. run vectorization
-        vectorize(loop, loopControl, *dependencyGraph);
+        vectorize(loop, loopControl, method, *dependencyGraph);
         // increasing the iteration step might create a value not fitting into small immediate
         normalization::handleImmediate(module, method, loopControl.iterationStep.value(), config);
         hasChanged = true;
@@ -911,8 +1043,8 @@ void optimizations::extendBranches(const Module& module, Method& method, const C
             {
                 /*
                  * branch can only depend on scalar value
-                 * -> set any not used vector-element (all except element 0) to a value where it doesn't influence the
-                 * condition
+                 * -> set any not used vector-element (all except element 0) to a value where it doesn't influence
+                 * the condition
                  *
                  * Using ELEMENT_NUMBER sets the vector-elements 1 to 15 to a non-zero value and 0 to either 0 (if
                  * condition was false) or 1 (if condition was true)
@@ -1158,13 +1290,14 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
             /*
              * NOTE: Pointers with the byval decoration are treated as simple pointers, saving us from having to
              * re-write all instructions accessing them. In return, the VC4CL run-time needs to convert the direct
-             * kernel argument (e.g. a struct) to a pointer-to-data argument by allocating a buffer (similar to local
-             * arguments).
+             * kernel argument (e.g. a struct) to a pointer-to-data argument by allocating a buffer (similar to
+             * local arguments).
              *
              * Alternative ways of solving this:
-             * - Read parameter from UNIFORMs and write to VPM, where it can be accessed like "normal" pointed-to data
-             * - Read directly from UNIFORM storage, needs pointer to UNIFORM and re-set UNIFORM pointer for successive
-             * parameter
+             * - Read parameter from UNIFORMs and write to VPM, where it can be accessed like "normal" pointed-to
+             * data
+             * - Read directly from UNIFORM storage, needs pointer to UNIFORM and re-set UNIFORM pointer for
+             * successive parameter
              * - Load the single parts separately via UNIFORMs like any other vector/scalar, replace index-chain and
              * access functions.
              */
@@ -1419,7 +1552,7 @@ struct IfElseBlock
     // The common predecessor block, the block whether the condition(s) are checked
     CFGNode* predecessor;
     // The blocks executed for the different cases (may be a single for if without else or several for switch-cases)
-    FastAccessList<CFGNode*> conditionalBlocks;
+    FastSet<CFGNode*> conditionalBlocks;
     // The common successor block, i.e. the block after the if-else or switch-case block
     CFGNode* successor;
 };
@@ -1429,32 +1562,125 @@ static FastAccessList<IfElseBlock> findIfElseBlocks(ControlFlowGraph& graph)
     FastAccessList<IfElseBlock> blocks;
     graph.forAllNodes([&](CFGNode& node) {
         IfElseBlock candidateBlock{&node, {}, nullptr};
-        node.forAllOutgoingEdges([&](CFGNode& successor, CFGEdge& edge) -> bool {
-            // edge is a candidate, if it has a single successor (the same as all other candidates) and a single
-            // predecessor (the base node being checked)
-            // TODO does not accept if-without-else blocks or switch-with-defaults!! Would need to allow one
-            // of the direct successors to also be successor of all other direct successors
+
+        node.forAllOutgoingEdges([&](CFGNode& candidate, CFGEdge& edge) -> bool {
+            /*
+             * edge is a candidate, if it has a single successor (the same as all other candidates) and a single
+             * predecessor (the base node being checked):
+             *
+             * If-Else:
+             *     Node
+             *     /  \
+             * Then    Else  <- candidates
+             *     \  /
+             *   Successor
+             *
+             * Switch-Case-Default:
+             *        Node
+             *       /  |  \
+             *      /   |   \
+             * Case0  Case1  Default  <- candidates
+             *      \   |   /
+             *       \  |  /
+             *      Successor
+             */
+
             // TODO to guarantee that we not only save instructions, but also execution cycles, we should check the
-            // maximum length of the resulting block not exceeding the instructions we save executing one of the cases
-            // (e.g. 2 branches + some conditionals/phi).
-            if(auto succ = successor.getSingleSuccessor())
+            // maximum length of the resulting block not exceeding the instructions we save executing one of the
+            // cases (e.g. 2 branches + some conditionals/phi).
+            if(auto succ = candidate.getSingleSuccessor())
             {
                 if((candidateBlock.successor == nullptr || succ == candidateBlock.successor) &&
-                    successor.getSinglePredecessor() == &node)
+                    candidate.getSinglePredecessor() == &node)
                 {
-                    candidateBlock.conditionalBlocks.emplace_back(&successor);
+                    candidateBlock.conditionalBlocks.emplace(&candidate);
                     candidateBlock.successor = succ;
                     return true;
                 }
             }
-            // first level successors have different/multiple second level successors (or multiple predecessors), abort
+            // first level successors have different/multiple second level successors (or multiple predecessors),
+            // abort
             candidateBlock.successor = nullptr;
             return false;
         });
 
         if(candidateBlock.successor != nullptr && candidateBlock.conditionalBlocks.size() > 1)
-        {
             blocks.emplace_back(std::move(candidateBlock));
+        else if(false) // TODO needs testing!
+        {
+            // TODO also needs extension in rewriting, special handling for successor which is conditional!
+            // we failed with simple version above, recheck for more complex version:
+            FastSet<CFGNode*> candidates;
+
+            node.forAllOutgoingEdges([&](CFGNode& candidate, CFGEdge& edge) -> bool {
+                candidates.emplace(&candidate);
+                return true;
+            });
+
+            if(candidates.size() == 1 || candidates.find(&node) != candidates.end())
+                // single successors will always match!  Also simple nodes might!
+                return;
+
+            FastSet<CFGNode*> conditionalBlocks;
+            FastSet<CFGNode*> fallThroughBlocks;
+
+            node.forAllOutgoingEdges([&](CFGNode& candidate, CFGEdge& edge) -> bool {
+                /*
+                 * edge is a candidate, if
+                 * - it has a single successor (the same as almost all other candidates) and a single predecessor
+                 * (the base node being checked) or
+                 * - it is the single successor of all other candidates and has only candidates and the base node as
+                 * successors
+                 *
+                 * If-without-Else:
+                 * Node
+                 *  | \
+                 *  |  Then  <- candidate
+                 *  | /
+                 * Successor  <-candidate
+                 *
+                 * Switch-Case:
+                 *       Node
+                 *       / | \
+                 *  Case0  |  Case1  <- candidates
+                 *       \ | /
+                 *     Successor  <- candidate
+                 */
+                if(auto succ = candidate.getSingleSuccessor())
+                {
+                    if(candidates.find(succ) != candidates.end() && candidate.getSinglePredecessor() == &node)
+                    {
+                        // this block is succeeded by another candidate, this is a "normal" conditional block
+                        conditionalBlocks.emplace(&candidate);
+                        return true;
+                    }
+                    bool allPredecessorsAreCandidates = true;
+                    candidate.forAllIncomingEdges([&](CFGNode& pred, CFGEdge& e) -> bool {
+                        if(candidates.find(&pred) == candidates.end() && &pred != &node)
+                        {
+                            allPredecessorsAreCandidates = false;
+                            return false;
+                        }
+                        return true;
+                    });
+                    if(allPredecessorsAreCandidates && candidates.find(succ) == candidates.end())
+                    {
+                        // this block is succeeded by any other block and all predecessors are candidates for
+                        // conditional, this is also a "fallthrough" block
+                        conditionalBlocks.emplace(&candidate);
+                        fallThroughBlocks.emplace(&candidate);
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+            if(candidates.size() == conditionalBlocks.size() && fallThroughBlocks.size() == 1)
+            {
+                // all blocks could be assigned to either category and there is only 1 fall-through block
+                blocks.emplace_back(IfElseBlock{&node, std::move(conditionalBlocks), *fallThroughBlocks.begin()});
+                logging::error() << "ADVANCED VERSION" << logging::endl;
+            }
         }
     });
     return blocks;
@@ -1462,6 +1688,7 @@ static FastAccessList<IfElseBlock> findIfElseBlocks(ControlFlowGraph& graph)
 
 bool optimizations::simplifyConditionalBlocks(const Module& module, Method& method, const Configuration& config)
 {
+    // NOTE: boost-compute/test_binary_search.cl/calls to atomic_min are good test candidates!
     bool changedCode = false;
     for(const auto& block : findIfElseBlocks(method.getCFG()))
     {
@@ -1508,8 +1735,8 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
                 logging::debug() << "Non-local: " << loc->to_string() << logging::endl;
         });
 
-        // need to reorder successive blocks, so that default branch (without any condition) is inserted top-most and
-        // not at last!
+        // need to reorder successive blocks, so that default branch (without any condition) is inserted top-most
+        // and not at last!
         InstructionWalker beforeBranchesIt = block.predecessor->key->walk().nextInBlock();
         while(!beforeBranchesIt.get<intermediate::Branch>())
             beforeBranchesIt.nextInBlock();
@@ -1522,11 +1749,11 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
                 // the predecessor instruction is the branch to this block (if not fall-through)
                 auto lastIt = edge.data.getPredecessor(predecessor.key);
 
-                // copy the whole block content before the branch to the block, modify writing all external locals to
-                // only be applied for the same condition the branch is applied and remove the branch (if not
+                // copy the whole block content before the branch to the block, modify writing all external locals
+                // to only be applied for the same condition the branch is applied and remove the branch (if not
                 // fall-through).
-                // at the moment of this optimization, the writing of the conditional the branch depends on is already
-                // generated, so we can just re-use the conditional.
+                // at the moment of this optimization, the writing of the conditional the branch depends on is
+                // already generated, so we can just re-use the conditional.
                 Optional<Value> condVal{};
                 ConditionCode cond = COND_ALWAYS;
                 {
@@ -1539,10 +1766,11 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
                     }
                     else
                     {
-                        // the last branch is unconditional (e.g. the default for switch-cases), but we need to insert
-                        // the unconditional local assignment as first instruction.
-                        // remove original unconditional branch
-                        lastIt.erase();
+                        // the last branch is unconditional (e.g. the default for switch-cases), but we need to
+                        // insert the unconditional local assignment as first instruction.
+                        if(branch && branch->getTarget() == succ->key->getLabel()->getLabel())
+                            // remove original unconditional branch. If this is a fall-through don't remove anything
+                            lastIt.erase();
                         // make sure the instructions are inserted before all other
                         lastIt = beforeBranchesIt;
                     }
@@ -1568,7 +1796,8 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
 
                     lastIt.emplace(inst.release());
 
-                    // 3.) modify all instructions writing non-locals to only write under same condition as the branch
+                    // 3.) modify all instructions writing non-locals to only write under same condition as the
+                    // branch
                     // XXX do we win anything in making all the instructions conditional? Technically this would be
                     // possible
                     for(auto loc : nonlocalLocals)
