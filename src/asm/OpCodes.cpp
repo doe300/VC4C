@@ -319,6 +319,13 @@ Optional<Value> Unpack::operator()(const Value& val) const
     return NO_VALUE;
 }
 
+SIMDVector Unpack::operator()(const SIMDVector& val, bool isFloatOperation) const
+{
+    if(!hasEffect())
+        return val;
+    return val.transform([&](Literal lit) -> Literal { return unpackLiteral(*this, lit, isFloatOperation); });
+}
+
 const Unpack Unpack::unpackTo32Bit(DataType type)
 {
     if(type.getScalarBitCount() >= DataType::WORD)
@@ -523,6 +530,16 @@ Optional<Value> Pack::operator()(const Value& val, const VectorFlags& flags) con
     return NO_VALUE;
 }
 
+SIMDVector Pack::operator()(const SIMDVector& val, const VectorFlags& flags, bool isFloatOperation) const
+{
+    if(!hasEffect())
+        return val;
+    SIMDVector result;
+    for(std::size_t i = 0; i < val.size(); ++i)
+        result[i] = packLiteral(*this, val[i], isFloatOperation, flags[i]);
+    return result;
+}
+
 bool Pack::isPMBitSet() const noexcept
 {
     // check for pm bit set
@@ -718,7 +735,7 @@ static bool checkMinMaxCarry(const Literal& arg0, const Literal& arg1, bool useA
     return useAbs ? (std::abs(arg0.real()) > std::abs(arg1.real())) : (arg0.real() > arg1.real());
 }
 
-static std::pair<Optional<Literal>, ElementFlags> calcLiteral(const OpCode& code, Literal firstLit, Literal secondLit)
+static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Literal secondLit)
 {
     if(code == OP_ADD)
     {
@@ -973,6 +990,32 @@ PrecalculatedValue OpCode::operator()(Literal firstOperand, Literal secondOperan
     resultType = opAdd == OP_FTOI.opAdd ? TYPE_INT32 : resultType;
     resultType = opAdd == OP_ITOF.opAdd ? TYPE_FLOAT : resultType;
     return std::make_pair(Value(*tmp.first, resultType), tmp.second);
+}
+
+PrecalculatedVector OpCode::operator()(const SIMDVector& firstOperand, const SIMDVector& secondOperand) const
+{
+    if(numOperands >= 1 && firstOperand.isUndefined())
+        // returns an undefined vector
+        return std::make_pair(SIMDVector{}, VectorFlags{});
+    if(numOperands == 2 && secondOperand.isUndefined())
+        // returns an undefined vector
+        return std::make_pair(SIMDVector{}, VectorFlags{});
+    SIMDVector res;
+    VectorFlags flags;
+    for(unsigned char i = 0; i < res.size(); ++i)
+    {
+        PrecalculatedLiteral tmp{Optional<Literal>{}, {}};
+        if(numOperands == 1)
+            tmp = calcLiteral(*this, firstOperand[i], UNDEFINED_LITERAL);
+        else
+            tmp = calcLiteral(*this, firstOperand[i], secondOperand[i]);
+        if(!tmp.first)
+            // result could not be calculated for a single component of the vector, abort
+            return std::make_pair(Optional<SIMDVector>{}, VectorFlags{});
+        res[i] = *tmp.first;
+        flags[i] = tmp.second;
+    }
+    return std::make_pair(res, flags);
 }
 
 const OpCode& OpCode::toOpCode(const std::string& name)

@@ -22,6 +22,7 @@ namespace vc4c
     class DataType;
     class Literal;
     struct Value;
+    class SIMDVector;
     struct VectorFlags;
     struct OpCode;
     enum class BranchCond : unsigned char;
@@ -251,6 +252,8 @@ namespace vc4c
         std::string to_string() const;
 
         Optional<Value> operator()(const Value& val) const;
+        SIMDVector operator()(const SIMDVector& val, bool isFloatOperation) const;
+
         bool isPMBitSet() const noexcept;
         inline bool isUnpackFromR4() const noexcept
         {
@@ -352,6 +355,8 @@ namespace vc4c
         std::string to_string() const;
 
         Optional<Value> operator()(const Value& val, const VectorFlags& flags) const;
+        SIMDVector operator()(const SIMDVector& val, const VectorFlags& flags, bool isFloatOperation) const;
+
         bool isPMBitSet() const noexcept;
         inline bool supportsMulALU() const noexcept
         {
@@ -601,6 +606,8 @@ namespace vc4c
      * NOTE: The flags are only of meaning if the value is set
      */
     using PrecalculatedValue = std::pair<Optional<Value>, VectorFlags>;
+    using PrecalculatedLiteral = std::pair<Optional<Literal>, ElementFlags>;
+    using PrecalculatedVector = std::pair<Optional<SIMDVector>, VectorFlags>;
 
     /*
      * Container for markers denoting opcode flag behavior, i.e. which flag is set when.
@@ -710,6 +717,7 @@ namespace vc4c
          */
         PrecalculatedValue operator()(const Value& firstOperand, const Optional<Value>& secondOperand) const;
         PrecalculatedValue operator()(Literal firstOperand, Literal secondOperand, DataType resultType) const;
+        PrecalculatedVector operator()(const SIMDVector& firstOperand, const SIMDVector& secondOperand) const;
 
         /*
          * Whether the operation is idempotent.

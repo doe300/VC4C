@@ -556,6 +556,22 @@ SIMDVector SIMDVector::rotate(uint8_t offset) &&
     return std::move(*this);
 }
 
+LCOV_EXCL_START
+std::string SIMDVector::to_string(bool withLiterals) const
+{
+    if(withLiterals)
+    {
+        std::string tmp;
+        for(const auto& lit : elements)
+            tmp.append(lit.to_string()).append(", ");
+        return "<" + tmp.substr(0, tmp.length() - 2) + ">";
+    }
+    if(isAllSame() && at(0).unsignedInt() == 0)
+        return "zerointializer";
+    return "SIMD vector";
+}
+LCOV_EXCL_STOP
+
 Value::Value(const Literal& lit, DataType type) noexcept : data(lit), type(type) {}
 
 Value::Value(Register reg, DataType type) noexcept : data(reg), type(type) {}
@@ -662,24 +678,13 @@ Optional<Literal> Value::getLiteralValue() const noexcept
 }
 
 LCOV_EXCL_START
-std::string Value::to_string(const bool writeAccess, bool withLiterals) const
+std::string Value::to_string(bool writeAccess, bool withLiterals) const
 {
     const std::string typeName = (type.isUnknown() ? "unknown" : type.to_string()) + ' ';
     if(auto lit = checkLiteral())
         return typeName + lit->to_string();
     if(auto vec = checkVector())
-    {
-        if(withLiterals)
-        {
-            std::string tmp;
-            for(const auto& lit : *vec)
-                tmp.append(lit.to_string()).append(", ");
-            return typeName + "<" + tmp.substr(0, tmp.length() - 2) + ">";
-        }
-        if(isZeroInitializer())
-            return typeName + "zerointializer";
-        return typeName + "SIMD vector";
-    }
+        return typeName + vec->to_string(withLiterals);
     if(auto loc = checkLocal())
         return withLiterals ? loc->to_string(true) : (typeName + loc->name);
     if(auto reg = checkRegister())

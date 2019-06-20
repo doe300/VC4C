@@ -82,26 +82,24 @@ namespace vc4c
         class Registers : private NonCopyable
         {
         public:
-            explicit Registers(QPU& qpu) : qpu(qpu), hostInterrupt(NO_VALUE) {}
+            explicit Registers(QPU& qpu) : qpu(qpu), hostInterrupt() {}
 
-            void writeRegister(Register reg, const Value& val, std::bitset<16> elementMask);
-            std::pair<Value, bool> readRegister(Register reg);
+            void writeRegister(Register reg, const SIMDVector& val, std::bitset<16> elementMask);
+            std::pair<SIMDVector, bool> readRegister(Register reg);
 
-            Value getInterruptValue() const;
+            SIMDVector getInterruptValue() const;
 
             void clearReadCache();
 
         private:
             QPU& qpu;
-            FastMap<Register, Value> storageRegisters;
-            Optional<Value> hostInterrupt;
-            SortedMap<Register, Value> readCache;
+            FastMap<Register, SIMDVector> storageRegisters;
+            Optional<SIMDVector> hostInterrupt;
+            SortedMap<Register, SIMDVector> readCache;
 
-            Value getActualValue(const Value& val);
-
-            Value readStorageRegister(Register reg);
-            void writeStorageRegister(Register reg, Value&& val, std::bitset<16> elementMask);
-            void setReadCache(Register reg, const Value& val);
+            SIMDVector readStorageRegister(Register reg);
+            void writeStorageRegister(Register reg, SIMDVector&& val, std::bitset<16> elementMask);
+            void setReadCache(Register reg, const SIMDVector& val);
         };
 
         class UniformCache : private NonCopyable
@@ -112,8 +110,8 @@ namespace vc4c
             {
             }
 
-            Value readUniform();
-            void setUniformAddress(const Value& val);
+            SIMDVector readUniform();
+            void setUniformAddress(const SIMDVector& val);
 
         private:
             QPU& qpu;
@@ -127,14 +125,14 @@ namespace vc4c
         public:
             TMUs(QPU& qpu, Memory& memory) : qpu(qpu), tmuNoSwap(false), lastTMUNoSwap(0), memory(memory) {}
 
-            std::pair<Value, bool> readTMU();
+            std::pair<SIMDVector, bool> readTMU();
             bool hasValueOnR4() const;
 
-            void setTMUNoSwap(Value&& swapVal);
-            void setTMURegisterS(uint8_t tmu, Value&& val);
-            void setTMURegisterT(uint8_t tmu, Value&& val);
-            void setTMURegisterR(uint8_t tmu, Value&& val);
-            void setTMURegisterB(uint8_t tmu, Value&& val);
+            void setTMUNoSwap(const SIMDVector& swapVal);
+            void setTMURegisterS(uint8_t tmu, const SIMDVector& val);
+            void setTMURegisterT(uint8_t tmu, const SIMDVector& val);
+            void setTMURegisterR(uint8_t tmu, const SIMDVector& val);
+            void setTMURegisterB(uint8_t tmu, const SIMDVector& val);
 
             NODISCARD bool triggerTMURead(uint8_t tmu);
 
@@ -143,26 +141,26 @@ namespace vc4c
             bool tmuNoSwap;
             uint32_t lastTMUNoSwap;
             Memory& memory;
-            std::queue<std::pair<Value, uint32_t>> tmu0RequestQueue;
-            std::queue<std::pair<Value, uint32_t>> tmu0ResponseQueue;
-            std::queue<std::pair<Value, uint32_t>> tmu1RequestQueue;
-            std::queue<std::pair<Value, uint32_t>> tmu1ResponseQueue;
+            std::queue<std::pair<SIMDVector, uint32_t>> tmu0RequestQueue;
+            std::queue<std::pair<SIMDVector, uint32_t>> tmu0ResponseQueue;
+            std::queue<std::pair<SIMDVector, uint32_t>> tmu1RequestQueue;
+            std::queue<std::pair<SIMDVector, uint32_t>> tmu1ResponseQueue;
 
             void checkTMUWriteCycle() const;
-            Value readMemoryAddress(const Value& address) const;
+            SIMDVector readMemoryAddress(const SIMDVector& address) const;
             uint8_t toRealTMU(uint8_t tmu) const;
         };
 
         class SFU : private NonCopyable
         {
         public:
-            Value readSFU();
+            SIMDVector readSFU();
             bool hasValueOnR4() const;
 
-            void startRecip(Value&& val);
-            void startRecipSqrt(Value&& val);
-            void startExp2(Value&& val);
-            void startLog2(Value&& val);
+            void startRecip(const SIMDVector& val);
+            void startRecipSqrt(const SIMDVector& val);
+            void startExp2(const SIMDVector& val);
+            void startLog2(const SIMDVector& val);
 
             void incrementCycle();
 
@@ -171,7 +169,7 @@ namespace vc4c
             // XXX per QPU cycle??
             uint32_t lastSFUWrite{0};
             uint32_t currentCycle{0};
-            Optional<Value> sfuResult{NO_VALUE};
+            Optional<SIMDVector> sfuResult{};
         };
 
         class VPM : private NonCopyable
@@ -184,14 +182,14 @@ namespace vc4c
             {
             }
 
-            Value readValue();
-            void writeValue(Value&& val);
+            SIMDVector readValue();
+            void writeValue(const SIMDVector& val);
 
-            void setWriteSetup(Value&& val);
-            void setReadSetup(Value&& val);
+            void setWriteSetup(const SIMDVector& val);
+            void setReadSetup(const SIMDVector& val);
 
-            void setDMAWriteAddress(Value&& val);
-            void setDMAReadAddress(Value&& val);
+            void setDMAWriteAddress(const SIMDVector& val);
+            void setDMAReadAddress(const SIMDVector& val);
 
             NODISCARD bool waitDMAWrite() const;
             NODISCARD bool waitDMARead() const;
@@ -223,8 +221,8 @@ namespace vc4c
                 counter.fill(0);
             }
 
-            std::pair<Value, bool> increment(uint8_t index);
-            std::pair<Value, bool> decrement(uint8_t index);
+            std::pair<SIMDVector, bool> increment(uint8_t index);
+            std::pair<SIMDVector, bool> decrement(uint8_t index);
 
             void checkAllZero() const;
 
@@ -250,7 +248,7 @@ namespace vc4c
             const uint8_t ID;
 
             uint32_t getCurrentCycle() const;
-            std::pair<Value, bool> readR4();
+            std::pair<SIMDVector, bool> readR4();
 
             NODISCARD bool execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction);
 
@@ -277,11 +275,11 @@ namespace vc4c
             friend class VPM;
 
             NODISCARD bool executeALU(const qpu_asm::ALUInstruction* aluInst);
-            void writeConditional(Register dest, const Value& in, ConditionCode cond,
+            void writeConditional(Register dest, const SIMDVector& in, ConditionCode cond,
                 const qpu_asm::ALUInstruction* addInst = nullptr, const qpu_asm::ALUInstruction* mulInst = nullptr);
             bool isConditionMet(BranchCond cond) const;
             NODISCARD bool executeSignal(Signaling signal);
-            void setFlags(const Value& output, ConditionCode cond, const VectorFlags& newFlags);
+            void setFlags(const SIMDVector& output, ConditionCode cond, const VectorFlags& newFlags);
         };
 
         std::vector<MemoryAddress> buildUniforms(Memory& memory, MemoryAddress baseAddress,

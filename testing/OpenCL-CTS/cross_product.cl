@@ -1,6 +1,6 @@
-__kernel void test_cross(__global float3 *x, __global float3 *y, __global float3 *dst)
+__kernel void test_cross(__global float *x, __global float *y, __global float *dst)
 {
     int  tid = get_global_id(0);
 
-    dst[tid] = cross(x[tid], y[tid]);
+    vstore3(cross(vload3(tid, x), vload3(tid, y)), tid, dst);
 }

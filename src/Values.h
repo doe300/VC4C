@@ -800,6 +800,8 @@ namespace vc4c
         SIMDVector rotate(uint8_t offset) const &;
         SIMDVector rotate(uint8_t offset) &&;
 
+        std::string to_string(bool withLiterals = false) const;
+
     private:
         Elements elements;
     };
