@@ -74,7 +74,7 @@ __kernel void calculate_md5(__global char* msg, unsigned length, __global char* 
 
         // Main loop:
         // XXX works so far with this loop disabled
-        // TODO passes for i = 0, 16, 32 and 48 bu not for full loop
+        // TODO passes for i <16, but not 32, 48 or full 64 iterations
         /* for(unsigned i = 0; i < 64; ++i)
         {
             unsigned F, g;

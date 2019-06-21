@@ -37,6 +37,8 @@ namespace vc4c
             Optional<DataType> convertedRegisterType = {};
             // flags which TMU to be used for reading
             bool tmuFlag = false;
+
+            std::string to_string() const;
         };
 
         using GroupedAccessRanges =

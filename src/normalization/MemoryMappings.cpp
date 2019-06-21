@@ -57,6 +57,29 @@ static constexpr MemoryMapper MAPPERS[6][4] = {
 };
 /* clang-format on */
 
+LCOV_EXCL_START
+std::string MemoryInfo::to_string() const
+{
+    switch(type)
+    {
+    case MemoryAccessType::QPU_REGISTER_READONLY:
+        return "read-only register " + mappedRegisterOrConstant.to_string();
+    case MemoryAccessType::QPU_REGISTER_READWRITE:
+        return "register " + mappedRegisterOrConstant.to_string();
+    case MemoryAccessType::VPM_PER_QPU:
+        return "private VPM area " + (area ? area->to_string() : "(null)");
+    case MemoryAccessType::VPM_SHARED_ACCESS:
+        return "shared VPM area " + (area ? area->to_string() : "(null)");
+    case MemoryAccessType::RAM_LOAD_TMU:
+        return "read-only memory access via TMU" + std::string(tmuFlag ? "1" : "0");
+    case MemoryAccessType::RAM_READ_WRITE_VPM:
+        return "read-write memory access via VPM" + (area ? " (cached in" + area->to_string() + ")" : "");
+    }
+    throw CompilationError(
+        CompilationStep::NORMALIZER, "Unhandled memory info type", std::to_string(static_cast<uint32_t>(type)));
+}
+LCOV_EXCL_STOP
+
 InstructionWalker normalization::mapMemoryAccess(Method& method, InstructionWalker it,
     intermediate::MemoryInstruction* mem, const MemoryInfo& srcInfo, const MemoryInfo& destInfo)
 {
@@ -635,18 +658,39 @@ static InstructionWalker mapMemoryCopy(
     else if(destInRegister && destInfo.convertedRegisterType)
     {
         // copy from VPM/RAM into register -> read from VPM/RAM + write to register
-        CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Mapping copy from VPM/RAM into register to read from VPM/RAM and register insertion: "
-                << mem->to_string() << logging::endl);
         if(copiesWholeRegister(numEntries, mem->getSourceElementType(), *destInfo.convertedRegisterType))
         {
             // e.g. for copying 32 bytes into float[8] register -> just read 1 float16 vector
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Mapping copy of whole register from VPM/RAM into register to read from VPM/RAM: "
+                    << mem->to_string() << logging::endl);
             it.reset(new MemoryInstruction(MemoryOperation::READ, Value(*destInfo.mappedRegisterOrConstant),
                 Value(mem->getSource().local(), method.createPointerType(*destInfo.convertedRegisterType))));
             return mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
         }
-        // TODO some general version. Need to insert single elements in a way that others are kept
-        // TODO e.g. boost_compute/test_threefy_engine.cl (RPI only, not on host!)
+        else if(numEntries.getLiteralValue() &&
+            (numEntries.getLiteralValue()->unsignedInt() * mem->getSourceElementType().getVectorWidth()) <=
+                NATIVE_VECTOR_SIZE)
+        {
+            // general case, read whole row via TMU/VPM and insert only actually used elements
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Mapping partial copy of read only RAM into register: " << mem->to_string() << logging::endl);
+            // e.g. if we copy 2 entries of int2, we need to copy 4 SIMD elements
+            auto numElements =
+                numEntries.getLiteralValue()->unsignedInt() * mem->getSourceElementType().getVectorWidth();
+
+            auto tmp = method.addNewLocal(
+                mem->getSourceElementType().toVectorType(static_cast<uint8_t>(numElements)), "%mem_read_tmp");
+            it.emplace(new MemoryInstruction(MemoryOperation::READ, Value(tmp), Value(mem->getSource())));
+            it = mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
+            it.reset(new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmp)));
+            return mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
+        }
+        else if(numEntries.getLiteralValue() &&
+            (numEntries.getLiteralValue()->unsignedInt() * mem->getSourceElementType().getVectorWidth()) <=
+                NATIVE_VECTOR_SIZE)
+        {
+        }
     }
     else
     {

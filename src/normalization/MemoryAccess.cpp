@@ -826,7 +826,12 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
         // cannot be used, use the fall-back
         infos.reserve(memoryMapping.size());
         for(auto& mapping : memoryMapping)
-            infos.emplace(mapping.first, checkMemoryMapping(method, mapping.first, mapping.second));
+        {
+            auto it = infos.emplace(mapping.first, checkMemoryMapping(method, mapping.first, mapping.second));
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Local '" << it.first->first->to_string()
+                    << "' will be mapped to: " << it.first->second.to_string() << logging::endl);
+        }
     }
 
     // list of basic blocks where multiple VPM accesses could be combined
