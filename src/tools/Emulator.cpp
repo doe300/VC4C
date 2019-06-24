@@ -203,15 +203,6 @@ static std::string toRegisterWriteString(const SIMDVector& val, std::bitset<16> 
 }
 LCOV_EXCL_STOP
 
-LiteralType getLiteralType(DataType type)
-{
-    if(type.isFloatingType())
-        return LiteralType::REAL;
-    if(type == TYPE_BOOL)
-        return LiteralType::BOOL;
-    return LiteralType::INTEGER;
-}
-
 void Registers::writeRegister(Register reg, const SIMDVector& val, std::bitset<16> elementMask)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,

@@ -96,8 +96,8 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(
 
     // split arguments into parts
     auto outputType = op.getOutput()->type;
-    Value arg0Hi = assign(it, outputType, "%mul.arg0Hi") = arg0 >> 24_val;
-    Value arg1Hi = assign(it, outputType, "%mul.arg1Hi") = arg1 >> 24_val;
+    Value arg0Hi = assign(it, outputType, "%mul.arg0Hi") = as_unsigned{arg0} >> 24_val;
+    Value arg1Hi = assign(it, outputType, "%mul.arg1Hi") = as_unsigned{arg1} >> 24_val;
 
     Value resHiLo = assign(it, outputType, "%mul.resHiLo") = mul24(arg0Hi, arg1);
     Value resLoHi = assign(it, outputType, "%mul.resLoHi") = mul24(arg0, arg1Hi);
@@ -282,7 +282,8 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(
         // R(0) := N(i)         -- set the least-significant bit of R equal to bit i of the numerator
         // R = R | ((N >> i) & 1) <=> R = R | (N & (1 << i) == 1 ? 1 : 0) <=> R = R | 1, if N & (1 << i) != 0
         {
-            Value tmp = assign(it, numerator.type, "%udiv.tmp") = numerator >> Value(Literal(i), TYPE_INT32);
+            Value tmp = assign(it, numerator.type, "%udiv.tmp") =
+                as_unsigned{numerator} >> Value(Literal(i), TYPE_INT32);
             Value tmp2 = assign(it, tmp.type, "%udiv.tmp") = tmp & 1_val;
             // XXX actually OP_OR, but it gets somehow removed/optimized away
             remainder = assign(it, op.getOutput()->type, "%udiv.remainder") = remainder + tmp2;

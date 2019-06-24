@@ -780,7 +780,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
             Value tmp = method.addNewLocal(arg1.type, "%unsigned");
             Value sign = UNDEFINED_VALUE;
             it = insertMakePositive(it, method, arg0, tmp, sign);
-            Value tmpResult = assign(it, op->getOutput()->type) = (tmp >>
+            Value tmpResult = assign(it, op->getOutput()->type) = (as_unsigned{tmp} >>
                     Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->unsignedInt()))), arg1.type),
                 op->conditional, op->setFlags, InstructionDecorations::UNSIGNED_RESULT);
             Value tmpResult2 = op->getOutput().value();
@@ -1211,7 +1211,7 @@ static NODISCARD InstructionWalker intrinsifyReadWorkItemInfo(Method& method, In
         }
     }
     Value tmp0 = assign(it, TYPE_INT8) = mul24(arg, 8_val);
-    Value tmp1 = assign(it, TYPE_INT8) = itemInfo->createReference() >> tmp0;
+    Value tmp1 = assign(it, TYPE_INT8) = as_unsigned{itemInfo->createReference()} >> tmp0;
     return it.reset(
         (new Operation(OP_AND, it->getOutput().value(), tmp1, Value(Literal(static_cast<uint32_t>(0xFF)), TYPE_INT8)))
             ->copyExtrasFrom(it.get())

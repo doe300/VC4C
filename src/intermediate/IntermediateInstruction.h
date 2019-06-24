@@ -619,7 +619,7 @@ namespace vc4c
             PrecalculatedValue precalculate(std::size_t numIterations) const override;
 
             Literal getImmediate() const;
-            void setImmediate(const Literal& value);
+            void setImmediate(const Literal& value, DataType type = TYPE_INT32);
 
             const LoadType type;
 

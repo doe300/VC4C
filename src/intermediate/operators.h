@@ -162,20 +162,22 @@ namespace vc4c
         };
 
         template <typename T>
-        struct as_comparable
+        struct as_type
         {
             const Value& val;
         };
 
-        using as_unsigned = as_comparable<comp_unsigned>;
-        using as_signed = as_comparable<comp_signed>;
-        using as_float = as_comparable<comp_float>;
+        using as_unsigned = as_type<comp_unsigned>;
+        using as_signed = as_type<comp_signed>;
+        using as_float = as_type<comp_float>;
 
-        NODISCARD inline OperationWrapper operator-(const Value& arg)
+        NODISCARD inline OperationWrapper operator-(as_float&& arg)
         {
-            if(arg.type.isFloatingType())
-                return OperationWrapper{OP_FSUB, FLOAT_ZERO, arg};
-            return OperationWrapper{OP_SUB, INT_ZERO, arg};
+            return OperationWrapper{OP_FSUB, FLOAT_ZERO, arg.val};
+        }
+        NODISCARD inline OperationWrapper operator-(as_signed&& arg)
+        {
+            return OperationWrapper{OP_SUB, INT_ZERO, arg.val};
         }
 
         NODISCARD inline OperationWrapper operator+(const Value& arg1, const Value& arg2)
@@ -187,6 +189,16 @@ namespace vc4c
             return OperationWrapper{OP_ADD, arg1, arg2};
         }
 
+        NODISCARD inline OperationWrapper operator+(as_float&& arg1, as_float&& arg2)
+        {
+            return OperationWrapper{OP_FADD, arg1.val, arg2.val};
+        }
+
+        NODISCARD inline OperationWrapper operator+(as_signed&& arg1, as_signed&& arg2)
+        {
+            return OperationWrapper{OP_ADD, arg1.val, arg2.val};
+        }
+
         NODISCARD inline OperationWrapper operator-(const Value& arg1, const Value& arg2)
         {
             if(arg1.type.isFloatingType() != arg2.type.isFloatingType())
@@ -194,6 +206,16 @@ namespace vc4c
             if(arg1.type.isFloatingType() && arg2.type.isFloatingType())
                 return OperationWrapper{OP_FSUB, arg1, arg2};
             return OperationWrapper{OP_SUB, arg1, arg2};
+        }
+
+        NODISCARD inline OperationWrapper operator-(as_float&& arg1, as_float&& arg2)
+        {
+            return OperationWrapper{OP_FSUB, arg1.val, arg2.val};
+        }
+
+        NODISCARD inline OperationWrapper operator-(as_signed&& arg1, as_signed&& arg2)
+        {
+            return OperationWrapper{OP_SUB, arg1.val, arg2.val};
         }
 
         NODISCARD inline OperationWrapper operator*(const Value& arg1, const Value& arg2)
@@ -204,6 +226,11 @@ namespace vc4c
                 arg2.type.getScalarBitCount() <= 24)
                 return OperationWrapper{OP_MUL24, arg1, arg2};
             throw CompilationError(CompilationStep::GENERAL, "Invalid operand types for multiplication");
+        }
+
+        NODISCARD inline OperationWrapper operator*(as_float&& arg1, as_float&& arg2)
+        {
+            return OperationWrapper{OP_FMUL, arg1.val, arg2.val};
         }
 
         NODISCARD inline OperationWrapper operator*(const Value& arg1, const Literal& arg2)
@@ -294,10 +321,16 @@ namespace vc4c
             return OperationWrapper{OP_SHL, arg1, arg2};
         }
 
-        NODISCARD inline OperationWrapper operator>>(const Value& arg1, const Value& arg2)
+        // signed right shift, does arithmetic shift
+        NODISCARD inline OperationWrapper operator>>(as_signed&& arg1, const Value& arg2)
         {
-            // TODO could also be ASR for signed numbers!
-            return OperationWrapper{OP_SHR, arg1, arg2};
+            return OperationWrapper{OP_ASR, arg1.val, arg2};
+        }
+
+        // unsigned right shift, does bit-shift
+        NODISCARD inline OperationWrapper operator>>(as_unsigned&& arg1, const Value& arg2)
+        {
+            return OperationWrapper{OP_SHR, arg1.val, arg2};
         }
 
         NODISCARD inline OperationWrapper operator,(const Value& src, Signaling sig)
@@ -339,6 +372,16 @@ namespace vc4c
             throw CompilationError(CompilationStep::GENERAL, "Invalid operand types for max operator");
         }
 
+        NODISCARD inline OperationWrapper max(as_float&& arg1, as_float&& arg2)
+        {
+            return OperationWrapper{OP_FMAX, arg1.val, arg2.val};
+        }
+
+        NODISCARD inline OperationWrapper max(as_signed&& arg1, as_signed&& arg2)
+        {
+            return OperationWrapper{OP_MAX, arg1.val, arg2.val};
+        }
+
         NODISCARD inline OperationWrapper min(const Value& arg1, const Value& arg2)
         {
             if(arg1.type.isFloatingType() && arg2.type.isFloatingType())
@@ -346,6 +389,16 @@ namespace vc4c
             if(arg1.type.isIntegralType() && arg2.type.isIntegralType())
                 return OperationWrapper{OP_MIN, arg1, arg2};
             throw CompilationError(CompilationStep::GENERAL, "Invalid operand types for min operator");
+        }
+
+        NODISCARD inline OperationWrapper min(as_float&& arg1, as_float&& arg2)
+        {
+            return OperationWrapper{OP_FMIN, arg1.val, arg2.val};
+        }
+
+        NODISCARD inline OperationWrapper min(as_signed&& arg1, as_signed&& arg2)
+        {
+            return OperationWrapper{OP_MIN, arg1.val, arg2.val};
         }
 
         NODISCARD inline OperationWrapper mul24(const Value& arg1, const Value& arg2)
@@ -476,7 +529,7 @@ namespace vc4c
         }
 
         template <typename T>
-        NODISCARD inline ComparisonWrapper operator==(as_comparable<T>&& a, as_comparable<T>&& b)
+        NODISCARD inline ComparisonWrapper operator==(as_type<T>&& a, as_type<T>&& b)
         {
             // a == b <=> a xor b == 0 [<=> a - b == 0]
             static const auto func = [](InstructionWalker& it, const Value& arg0, const Value& arg1) {
@@ -494,10 +547,10 @@ namespace vc4c
         }
 
         template <typename T>
-        NODISCARD inline ComparisonWrapper operator!=(as_comparable<T>&& a, as_comparable<T>&& b)
+        NODISCARD inline ComparisonWrapper operator!=(as_type<T>&& a, as_type<T>&& b)
         {
             // a != b <=> a xor b != 0
-            auto tmp = (std::forward<as_comparable<T>>(a) == std::forward<as_comparable<T>>(b));
+            auto tmp = (std::forward<as_type<T>>(a) == std::forward<as_type<T>>(b));
             return ComparisonWrapper{tmp.code.invert(), a.val, b.val, ComparisonWrapper::FuncType{tmp.func}};
         }
 

@@ -404,9 +404,8 @@ InstructionWalker intermediate::insertIsNegative(InstructionWalker it, const Val
     {
         if(dest.isUndefined() || !dest.isWriteable())
             throw CompilationError(CompilationStep::GENERAL, "Cannot write into this value", dest.to_string(true));
-        it.emplace(new Operation(
-            OP_ASR, dest, src, Value(Literal(static_cast<uint32_t>(TYPE_INT32.getScalarBitCount() - 1)), TYPE_INT32)));
-        it.nextInBlock();
+        assign(it, dest) =
+            as_signed{src} >> Value(Literal(static_cast<uint32_t>(TYPE_INT32.getScalarBitCount() - 1)), TYPE_INT32);
     }
     return it;
 }

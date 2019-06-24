@@ -325,12 +325,6 @@ const BasicBlock* ConstInstructionWalker::getBasicBlock() const
     return basicBlock;
 }
 
-bool InstructionWalker::replaceLocalInBlock(
-    const Local* oldLocal, const Local* newLocal, LocalUse::Type type, bool forward, bool stopFlag)
-{
-    return replaceValueInBlock(oldLocal->createReference(), newLocal->createReference(), type, forward, stopFlag);
-}
-
 ConstInstructionWalker& ConstInstructionWalker::nextInBlock()
 {
     ++pos;

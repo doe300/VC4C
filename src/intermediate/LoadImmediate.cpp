@@ -149,14 +149,11 @@ Literal LoadImmediate::getImmediate() const
     return assertArgument(0).literal();
 }
 
-void LoadImmediate::setImmediate(const Literal& value)
+void LoadImmediate::setImmediate(const Literal& value, DataType type)
 {
-    if(type != LoadType::REPLICATE_INT32)
+    if(this->type != LoadType::REPLICATE_INT32)
         throw CompilationError(CompilationStep::GENERAL, "Cannot set immediate value for masked load", to_string());
-    setArgument(0,
-        Value(value,
-            value.type == LiteralType::INTEGER ? TYPE_INT32 :
-                                                 (value.type == LiteralType::REAL ? TYPE_FLOAT : TYPE_BOOL)));
+    setArgument(0, Value(value, type));
 }
 
 SIMDVector LoadImmediate::toLoadedValues(uint32_t mask, vc4c::intermediate::LoadType type)

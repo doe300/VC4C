@@ -80,8 +80,7 @@ InstructionWalker intermediate::insertMakePositive(
         }
         if(!writeIsNegative.checkLocal())
             writeIsNegative = method.addNewLocal(TYPE_INT32.toVectorType(src.type.getVectorWidth()), "%sign");
-        it.emplace(new Operation(OP_ASR, writeIsNegative, srcInt, Value(Literal(31u), TYPE_INT8)));
-        it.nextInBlock();
+        assign(it, writeIsNegative) = as_signed{srcInt} >> 31_val;
         //%tmp = xor %src, %sign
         Value tmp = assign(it, src.type, "%twos_complement") = srcInt ^ writeIsNegative;
         //%unsigned = sub %tmp, %sign
@@ -272,7 +271,7 @@ InstructionWalker intermediate::insertByteSwap(
         // TODO shorts lose signedness!
 
         // ? ? A B -> 0 ? ? A
-        Value tmpA0 = assign(it, src.type, "byte_swap") = src >> 8_val;
+        Value tmpA0 = assign(it, src.type, "byte_swap") = as_unsigned{src} >> 8_val;
         // ? ? A B -> ? A B 0
         Value tmpB0 = assign(it, src.type, "byte_swap") = src << 8_val;
         // 0 ? ? A -> 0 0 0 A

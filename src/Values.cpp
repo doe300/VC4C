@@ -341,9 +341,7 @@ LCOV_EXCL_STOP
 
 bool Literal::isTrue() const noexcept
 {
-    if(type == LiteralType::BOOL || type == LiteralType::INTEGER)
-        return u == 1;
-    return false;
+    return u == 1;
 }
 
 float Literal::real() const noexcept

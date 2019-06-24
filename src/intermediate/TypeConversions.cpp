@@ -157,7 +157,7 @@ static NODISCARD InstructionWalker insertSplittingBitcast(
     {
         shiftedTruncatedVectors.emplace_back(method.addNewLocal(dest.type, "%bit_cast"));
         const Value& result = shiftedTruncatedVectors.back();
-        Value tmp = assign(it, dest.type, "%bit_cast") = src >> Value(Literal(shift * i), TYPE_INT8);
+        Value tmp = assign(it, dest.type, "%bit_cast") = as_unsigned{src} >> Value(Literal(shift * i), TYPE_INT8);
         assign(it, result) = tmp & Value(Literal(dest.type.getScalarWidthMask()), TYPE_INT32);
     }
 

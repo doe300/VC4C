@@ -96,7 +96,7 @@ static NODISCARD InstructionWalker insertExtractHalfWordElements(
 
     // tmp = address & 0b11 ? src >> 16 : src
     const Value tmp = method.addNewLocal(dest.type, "%tmu_result");
-    assign(it, tmp) = (src >> 16_val, COND_ZERO_CLEAR);
+    assign(it, tmp) = (as_unsigned{src} >> 16_val, COND_ZERO_CLEAR);
     assign(it, tmp) = (src, COND_ZERO_SET);
 
     // dest = tmp & 0xFFFF
@@ -124,7 +124,7 @@ static NODISCARD InstructionWalker insertExtractByteElements(
     Value shiftOffset = assign(it, dest.type, "%shift_offset") = mul24(alignmentOffset, 8_val);
 
     // tmp = src >> shiftOffset
-    Value tmp = assign(it, dest.type, "%tmu_result") = src >> shiftOffset;
+    Value tmp = assign(it, dest.type, "%tmu_result") = as_unsigned{src} >> shiftOffset;
 
     // dest = tmp & 0xFF
     assign(it, dest) = tmp & Value(Literal(TYPE_INT8.getScalarWidthMask()), TYPE_INT32);
