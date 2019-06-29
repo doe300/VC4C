@@ -16,6 +16,7 @@ public:
 
     void testPrivateStorage();
     void testLocalStorage();
+    void testVectorAssembly();
     void testConstantStorage();
     void testRegisterStorage();
 

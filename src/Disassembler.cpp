@@ -278,12 +278,8 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Stable
         std::vector<CompoundConstant> elements;
         elements.reserve(tmp.size());
         for(uint32_t t : tmp)
-        {
-            // need to byte-swap to value
-            uint32_t correctVal =
-                ((t >> 24u) & 0xFFu) | ((t >> 8u) & 0xFF00u) | ((t << 8u) & 0xFF0000u) | ((t << 24u) & 0xFF000000u);
-            elements.emplace_back(TYPE_INT32, Literal(correctVal));
-        }
+            // words are already in little endian
+            elements.emplace_back(TYPE_INT32, Literal(t));
 
         globals.emplace_back("globalData", DataType(GLOBAL_TYPE_HOLDER.createPointerType(type, AddressSpace::GLOBAL)),
             CompoundConstant(type, std::move(elements)), false);

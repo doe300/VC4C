@@ -178,14 +178,14 @@ static void toBinary(const CompoundConstant& val, std::vector<uint8_t>& queue)
         case LiteralType::REAL:
             for(std::size_t i = 0; i < val.type.getVectorWidth(true); ++i)
             {
-                // little endian
-                if(val.type.getElementType().getScalarBitCount() > 24)
-                    queue.push_back(static_cast<uint8_t>((lit->toImmediate() & 0xFF000000) >> 24));
-                if(val.type.getElementType().getScalarBitCount() > 16)
-                    queue.push_back(static_cast<uint8_t>((lit->toImmediate() & 0xFF0000) >> 16));
+                // little endian (LSB has lowest address -> is first in memory)
+                queue.push_back(static_cast<uint8_t>(lit->toImmediate() & 0xFF));
                 if(val.type.getElementType().getScalarBitCount() > 8)
                     queue.push_back(static_cast<uint8_t>((lit->toImmediate() & 0xFF00) >> 8));
-                queue.push_back(static_cast<uint8_t>(lit->toImmediate() & 0xFF));
+                if(val.type.getElementType().getScalarBitCount() > 16)
+                    queue.push_back(static_cast<uint8_t>((lit->toImmediate() & 0xFF0000) >> 16));
+                if(val.type.getElementType().getScalarBitCount() > 24)
+                    queue.push_back(static_cast<uint8_t>((lit->toImmediate() & 0xFF000000) >> 24));
             }
             break;
         default:

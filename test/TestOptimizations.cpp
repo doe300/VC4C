@@ -22,6 +22,8 @@ TestOptimizations::TestOptimizations() : TestEmulator(true)
     TEST_ADD_WITH_STRING(TestOptimizations::testBarrier, "");
     TEST_ADD_WITH_STRING(TestOptimizations::testBranches, "");
     TEST_ADD_WITH_STRING(TestOptimizations::testWorkItem, "");
+    TEST_ADD_WITH_STRING(TestOptimizations::testCRC16, "");
+    TEST_ADD_WITH_STRING(TestOptimizations::testPearson16, "");
     TEST_ADD_WITH_STRING(TestOptimizations::testFibonacci, "");
     TEST_ADD_WITH_STRING(TestOptimizations::testStruct, "");
     TEST_ADD_WITH_STRING(TestOptimizations::testCopy, "");
@@ -44,6 +46,8 @@ TestOptimizations::TestOptimizations() : TestEmulator(true)
         TEST_ADD_WITH_STRING(TestOptimizations::testBarrier, pass.parameterName);
         TEST_ADD_WITH_STRING(TestOptimizations::testBranches, pass.parameterName);
         TEST_ADD_WITH_STRING(TestOptimizations::testWorkItem, pass.parameterName);
+        TEST_ADD_WITH_STRING(TestOptimizations::testCRC16, pass.parameterName);
+        TEST_ADD_WITH_STRING(TestOptimizations::testPearson16, pass.parameterName);
         TEST_ADD_WITH_STRING(TestOptimizations::testFibonacci, pass.parameterName);
         TEST_ADD_WITH_STRING(TestOptimizations::testStruct, pass.parameterName);
         TEST_ADD_WITH_STRING(TestOptimizations::testCopy, pass.parameterName);
@@ -140,6 +144,22 @@ void TestOptimizations::testWorkItem(std::string passParamName)
     config.optimizationLevel = OptimizationLevel::NONE;
 
     TestEmulator::testWorkItem();
+}
+
+void TestOptimizations::testCRC16(std::string passParamName)
+{
+    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.optimizationLevel = OptimizationLevel::NONE;
+
+    TestEmulator::testCRC16();
+}
+
+void TestOptimizations::testPearson16(std::string passParamName)
+{
+    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.optimizationLevel = OptimizationLevel::NONE;
+
+    TestEmulator::testPearson16();
 }
 
 void TestOptimizations::testFibonacci(std::string passParamName)

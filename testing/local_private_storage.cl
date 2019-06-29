@@ -46,6 +46,15 @@ __kernel void test_constant_storage(__global uchar* out)
     out[gid] = message[gid];
 }
 
+// This test assures constant buffer is not in-lined into vector and therefore also tests constant buffer endianess
+__constant uchar message2[] = "Hello World!and some more text so it cannot be lowered into register";
+__kernel void test_constant_storage2(__global uchar* out)
+{
+    size_t gid = get_global_id(0);
+    // every kernel writes 1 single character
+    out[gid] = message2[gid];
+}
+
 __kernel void test_register_storage(__global uchar* out)
 {
     size_t gid = get_global_id(0);

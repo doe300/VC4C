@@ -23,6 +23,7 @@
 #define __constant static const
 #define __global
 #define __private
+#include "../testing/test_hashes.cl"
 #include "../testing/test_partial_md5.cl"
 
 using namespace vc4c;
@@ -47,6 +48,8 @@ TestEmulator::TestEmulator(const vc4c::Configuration& config) : config(config), 
         TEST_ADD_TWO_ARGUMENTS(TestEmulator::testFloatEmulations, i, vc4c::test::floatTests.at(i).first.kernelName);
     }
     TEST_ADD(TestEmulator::testPartialMD5);
+    TEST_ADD(TestEmulator::testCRC16);
+    TEST_ADD(TestEmulator::testPearson16);
     TEST_ADD(TestEmulator::printProfilingInfo);
 }
 
@@ -503,6 +506,70 @@ void TestEmulator::testPartialMD5()
     while(expectedIt != hostResult.end())
     {
         TEST_ASSERT_EQUALS(*expectedIt, *resultIt);
+
+        ++resultIt;
+        ++expectedIt;
+    }
+}
+
+void TestEmulator::testCRC16()
+{
+    const std::string sample("Hello World!");
+
+    std::stringstream buffer;
+    compileFile(buffer, "./testing/test_hashes.cl", "", cachePrecompilation);
+
+    EmulationData data;
+    data.kernelName = "crc16";
+    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.module = std::make_pair("", &buffer);
+
+    data.parameter.emplace_back(0, std::vector<uint32_t>(1));
+    data.parameter.emplace_back(0, std::vector<uint32_t>(sample.size() / sizeof(uint32_t)));
+    memcpy(data.parameter.back().second->data(), sample.data(), sample.size());
+    data.parameter.emplace_back(sample.size(), Optional<std::vector<uint32_t>>{});
+
+    const auto result = emulate(data);
+    TEST_ASSERT(result.executionSuccessful);
+    TEST_ASSERT_EQUALS(3u, result.results.size());
+
+    // host-side calculation
+    uint16_t hostResult{};
+    crc16(&hostResult, reinterpret_cast<const uint8_t*>(sample.data()), sample.size());
+
+    TEST_ASSERT_EQUALS(hostResult, result.results.at(0).second->front());
+}
+
+void TestEmulator::testPearson16()
+{
+    const std::string sample("Hello World!");
+
+    std::stringstream buffer;
+    compileFile(buffer, "./testing/test_hashes.cl", "", cachePrecompilation);
+
+    EmulationData data;
+    data.kernelName = "Pearson16";
+    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.module = std::make_pair("", &buffer);
+
+    data.parameter.emplace_back(0, std::vector<uint32_t>(sample.size() / sizeof(uint32_t)));
+    memcpy(data.parameter.back().second->data(), sample.data(), sample.size());
+    data.parameter.emplace_back(sample.size(), Optional<std::vector<uint32_t>>{});
+    data.parameter.emplace_back(0, std::vector<uint32_t>(2));
+
+    const auto result = emulate(data);
+    TEST_ASSERT(result.executionSuccessful);
+    TEST_ASSERT_EQUALS(3u, result.results.size());
+
+    // host-side calculation
+    std::array<uint8_t, 8> hostResult{};
+    Pearson16(reinterpret_cast<const uint8_t*>(sample.data()), sample.size(), hostResult.data());
+
+    auto expectedIt = hostResult.begin();
+    auto resultIt = reinterpret_cast<const uint8_t*>(&result.results.at(2).second->front());
+    while(expectedIt != hostResult.end())
+    {
+        TEST_ASSERT_EQUALS(static_cast<unsigned>(*expectedIt), static_cast<unsigned>(*resultIt));
 
         ++resultIt;
         ++expectedIt;

@@ -93,6 +93,7 @@ TestMemoryAccess::TestMemoryAccess(const Configuration& config) : TestEmulator(f
 {
     TEST_ADD(TestMemoryAccess::testPrivateStorage);
     TEST_ADD(TestMemoryAccess::testLocalStorage);
+    TEST_ADD(TestMemoryAccess::testVectorAssembly);
     TEST_ADD(TestMemoryAccess::testConstantStorage);
     TEST_ADD(TestMemoryAccess::testRegisterStorage);
 
@@ -233,7 +234,7 @@ void TestMemoryAccess::testLocalStorage()
     }
 }
 
-void TestMemoryAccess::testConstantStorage()
+void TestMemoryAccess::testVectorAssembly()
 {
     std::stringstream buffer;
     compileFile(buffer, "./testing/local_private_storage.cl");
@@ -255,6 +256,30 @@ void TestMemoryAccess::testConstantStorage()
     TEST_ASSERT_EQUALS(1u, result.results.size());
     TEST_ASSERT_EQUALS(
         std::string("Hello World"), std::string(reinterpret_cast<const char*>(result.results[0].second->data())));
+}
+
+void TestMemoryAccess::testConstantStorage()
+{
+    std::stringstream buffer;
+    compileFile(buffer, "./testing/local_private_storage.cl");
+
+    EmulationData data;
+    data.kernelName = "test_constant_storage2";
+    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.module = std::make_pair("", &buffer);
+    data.workGroup.dimensions = 3;
+    data.workGroup.globalOffsets = {0, 0, 0};
+    data.workGroup.localSizes = {12, 1, 1};
+    data.workGroup.numGroups = {1, 1, 1};
+
+    // parameter 0 is the output
+    data.parameter.emplace_back(0, std::vector<uint32_t>(12));
+
+    const auto result = emulate(data);
+    TEST_ASSERT(result.executionSuccessful);
+    TEST_ASSERT_EQUALS(1u, result.results.size());
+    TEST_ASSERT_EQUALS(
+        std::string("Hello World!"), std::string(reinterpret_cast<const char*>(result.results[0].second->data())));
 }
 
 void TestMemoryAccess::testRegisterStorage()
