@@ -1433,6 +1433,12 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 return false;
             });
 
+            if(prev == nullptr || next == nullptr)
+            {
+                throw CompilationError(
+                    CompilationStep::OPTIMIZER, "A unnecessary node must has just a previous node and a next node.");
+            }
+
             cfg->eraseNode(node->key);
             if(!prev->isAdjacent(next))
             {
