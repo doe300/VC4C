@@ -1679,6 +1679,8 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                     insertedBlock->walkEnd().emplace(it.release());
                     it.erase();
                 }
+                // Clear processed instructions
+                insts->second.clear();
 
                 if(headBlock->getLabel()->getLabel()->name == BasicBlock::DEFAULT_BLOCK)
                 {
