@@ -626,7 +626,7 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoopsHelperRecursively(con
 
 // LoopInclusionTreeNodeBase::LoopInclusionTreeNodeBase(const KeyType key) : Node(key) {}
 
-LoopInclusionTreeNode* castToTreeNode(LoopInclusionTreeNodeBase* base)
+LoopInclusionTreeNode* vc4c::castToTreeNode(LoopInclusionTreeNodeBase* base)
 {
     auto* node = dynamic_cast<LoopInclusionTreeNode*>(base);
     if(node == nullptr)
@@ -636,7 +636,7 @@ LoopInclusionTreeNode* castToTreeNode(LoopInclusionTreeNodeBase* base)
     return node;
 }
 
-const LoopInclusionTreeNode* castToTreeNode(const LoopInclusionTreeNodeBase* base)
+const LoopInclusionTreeNode* vc4c::castToTreeNode(const LoopInclusionTreeNodeBase* base)
 {
     auto* node = dynamic_cast<const LoopInclusionTreeNode*>(base);
     if(node == nullptr)

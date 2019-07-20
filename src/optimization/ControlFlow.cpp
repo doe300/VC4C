@@ -1579,11 +1579,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     for(auto& loop : inclusionTree.getNodes())
     {
         auto& node = inclusionTree.getOrCreateNode(loop.first);
-        auto root = dynamic_cast<LoopInclusionTreeNode*>(node.findRoot({}));
-        if(root == nullptr)
-        {
-            throw CompilationError(CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
-        }
+        auto root = castToTreeNode(node.findRoot({}));
 
         if(processedNodes.find(root) != processedNodes.end())
             continue;
@@ -1598,12 +1594,8 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             auto currentNode = que.front();
             que.pop();
 
-            auto targetTreeNode = dynamic_cast<LoopInclusionTreeNode*>(
-                currentNode->findRoot(moveDepth == -1 ? Optional<int>() : Optional<int>(moveDepth - 1)));
-            if(targetTreeNode == nullptr)
-            {
-                throw CompilationError(CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
-            }
+            auto targetTreeNode =
+                castToTreeNode(currentNode->findRoot(moveDepth == -1 ? Optional<int>() : Optional<int>(moveDepth - 1)));
             auto targetLoop = targetTreeNode->key;
 
             currentNode->forAllOutgoingEdges(
