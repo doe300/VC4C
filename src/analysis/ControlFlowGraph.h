@@ -22,6 +22,9 @@ namespace vc4c
     class CFGRelation
     {
     public:
+        // this is used for only optimizations::removeConstantLoadInLoops
+        bool isBackEdge = false;
+
         bool operator==(const CFGRelation& other) const;
 
         std::string getLabel() const;
@@ -56,11 +59,14 @@ namespace vc4c
      */
     struct ControlFlowLoop : public FastAccessList<const CFGNode*>
     {
+        ControlFlowLoop() = default;
+
         /*
-         * Returns the basic-block in the CFG preceding the first node in the loop, the node from which the loop is
+         * Returns the basic-block(s) in the CFG preceding the first node in the loop, the node from which the loop is
          * entered.
          */
         const CFGNode* findPredecessor() const;
+        FastAccessList<const CFGNode*> findPredecessors() const;
 
         /*
          * Returns the basic-block in the CFG following the last node in the loop, the node into which this loop exits
@@ -102,17 +108,27 @@ namespace vc4c
         /*
          * Finds all loops in the CFG
          */
-        FastAccessList<ControlFlowLoop> findLoops();
+        FastAccessList<ControlFlowLoop> findLoops(bool recursively);
 
         /*
          * Dump this graph as dot file
          */
-        void dumpGraph(const std::string& path) const;
+        void dumpGraph(const std::string& path, bool dumpConstantLoadInstructions) const;
 
         void updateOnBlockInsertion(Method& method, BasicBlock& newBlock);
         void updateOnBlockRemoval(Method& method, BasicBlock& oldBlock);
         void updateOnBranchInsertion(Method& method, InstructionWalker it);
         void updateOnBranchRemoval(Method& method, BasicBlock& affectedBlock, const Local* branchTarget);
+
+        /*
+         * Creates the CFG from the basic-blocks within the given method
+         */
+        static std::unique_ptr<ControlFlowGraph> createCFG(Method& method);
+
+        /*
+         * Clone the CFG
+         */
+        std::unique_ptr<ControlFlowGraph> clone();
 
     private:
         explicit ControlFlowGraph(std::size_t numBlocks) : Graph(numBlocks) {}
@@ -130,9 +146,10 @@ namespace vc4c
             FastMap<const CFGNode*, int>& lowestReachable, FastModificationList<const CFGNode*>& stack, int& time);
 
         /*
-         * Creates the CFG from the basic-blocks within the given method
+         * This is similar to findLoopsHelper, but this finds also nested loops excluding one-block-loop.
          */
-        static std::unique_ptr<ControlFlowGraph> createCFG(Method& method);
+        FastAccessList<ControlFlowLoop> findLoopsHelperRecursively(const CFGNode* node,
+            FastMap<const CFGNode*, int>& discoveryTimes, FastModificationList<const CFGNode*>& stack, int& time);
 
         friend class Method;
     };
@@ -146,12 +163,21 @@ namespace vc4c
 
     struct LoopInclusionTreeNodeBase
     {
-        LoopInclusionTreeNodeBase* findRoot();
+        virtual ~LoopInclusionTreeNodeBase() = default;
+
+        LoopInclusionTreeNodeBase* findRoot(Optional<int> depth);
+        unsigned int longestPathLengthToRoot() const;
+        bool hasCFGNodeInChildren(const CFGNode* node) const;
+
+        std::string dumpLabel() const;
     };
 
     using LoopInclusionTreeNode =
         Node<ControlFlowLoop*, LoopInclusion, Directionality::DIRECTED, LoopInclusionTreeNodeBase>;
     using LoopInclusionTreeEdge = LoopInclusionTreeNode::EdgeType;
+
+    LoopInclusionTreeNode* castToTreeNode(LoopInclusionTreeNodeBase* base);
+    const LoopInclusionTreeNode* castToTreeNode(const LoopInclusionTreeNodeBase* base);
 
     /*
      * The trees represents inclusion relation of control-flow loops. This may have multiple trees.

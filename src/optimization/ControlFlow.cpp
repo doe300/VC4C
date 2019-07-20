@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <queue>
 
 using namespace vc4c;
 using namespace vc4c::optimizations;
@@ -972,7 +973,7 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
 {
     // 1. find loops
     auto& cfg = method.getCFG();
-    auto loops = cfg.findLoops();
+    auto loops = cfg.findLoops(false);
     bool hasChanged = false;
 
     // 2. determine data dependencies of loop bodies
@@ -1313,15 +1314,176 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
 
 bool optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
 {
-    CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "moveConstantsDepth = " << config.additionalOptions.moveConstantsDepth << logging::endl);
+    const int moveDepth = config.additionalOptions.moveConstantsDepth;
     bool hasChanged = false;
 
-    // 1. find loops
-    auto& cfg = method.getCFG();
-    auto loops = cfg.findLoops();
+    auto cfg = method.getCFG().clone();
+#ifdef DEBUG_MODE
+    cfg->dumpGraph("/tmp/before-removeConstantLoadInLoops.dot", true);
+#endif
 
-    // 2. generate inclusion relation of loops as trees
+    // 1. Simplify the CFG to avoid combinatorial explosion. (e.g. testing/test_barrier.cl)
+    // Remove unnecessary CFG nodes
+    // - a. nodes which have more than two incoming or outgoing edges
+    // - b. nodes which have constant loading instruction(s)
+    // - c. predecessor nodes of the node which has back edge
+
+    // FIXME: fix the simplifying count (to finding the fixed point?)
+    for(int i = 0; i < 2; i++)
+    {
+        // set isBackEdge flag
+        {
+            std::set<CFGNode*> visited;
+
+            std::queue<CFGNode*> que;
+            que.push(&cfg->getStartOfControlFlow());
+            while(!que.empty())
+            {
+                auto cur = que.front();
+                que.pop();
+
+                visited.insert(cur);
+
+                cur->forAllOutgoingEdges([&que, &visited, &cur](CFGNode& next, CFGEdge& edge) -> bool {
+                    if(visited.find(cur) != visited.end())
+                    {
+                        edge.data.isBackEdge = true;
+                    }
+                    else
+                    {
+                        que.push(&next);
+                    }
+                    return true;
+                });
+            }
+        }
+
+        std::vector<CFGNode*> unnecessaryNodes;
+
+        for(auto& pair : cfg->getNodes())
+        {
+            // a.
+            bool hasConstantInstruction = false;
+            auto block = pair.first;
+            for(auto it = block->walk(); it != block->walkEnd(); it = it.nextInBlock())
+            {
+                if(it.has() && it->isConstantInstruction())
+                {
+                    hasConstantInstruction = true;
+                    break;
+                }
+            }
+            if(hasConstantInstruction)
+            {
+                continue;
+            }
+
+            int incomingEdgesCount = 0;
+            pair.second.forAllIncomingEdges([&incomingEdgesCount](const CFGNode& next, const CFGEdge& edge) -> bool {
+                incomingEdgesCount++;
+                return true;
+            });
+            int outgoingEdgesCount = 0;
+            pair.second.forAllOutgoingEdges([&outgoingEdgesCount](const CFGNode& next, const CFGEdge& edge) -> bool {
+                outgoingEdgesCount++;
+                return true;
+            });
+
+            // b.
+            if(incomingEdgesCount >= 2 || outgoingEdgesCount >= 2)
+            {
+                continue;
+            }
+
+            // c.
+            bool hasBackEdge = false;
+            pair.second.forAllOutgoingEdges([&hasBackEdge](const CFGNode& next, const CFGEdge& edge) -> bool {
+                next.forAllIncomingEdges([&hasBackEdge](const CFGNode& nnext, const CFGEdge& nedge) -> bool {
+                    if(nedge.data.isBackEdge)
+                    {
+                        hasBackEdge = true;
+                        return false;
+                    }
+                    return true;
+                });
+                if(hasBackEdge)
+                {
+                    return false;
+                }
+                return true;
+            });
+            if(hasBackEdge)
+            {
+                continue;
+            }
+
+            unnecessaryNodes.push_back(&pair.second);
+        }
+
+        for(auto& node : unnecessaryNodes)
+        {
+            CFGNode *prev = nullptr, *next = nullptr;
+            // A unnecessary node must has just one previous node and one next node.
+            node->forAllIncomingEdges([&prev](CFGNode& node, CFGEdge&) -> bool {
+                prev = &node;
+                return false;
+            });
+            node->forAllOutgoingEdges([&next](CFGNode& node, CFGEdge&) -> bool {
+                next = &node;
+                return false;
+            });
+
+            if(prev == nullptr || next == nullptr)
+            {
+                throw CompilationError(
+                    CompilationStep::OPTIMIZER, "A unnecessary node must has just a previous node and a next node.");
+            }
+
+            cfg->eraseNode(node->key);
+            if(!prev->isAdjacent(next))
+            {
+                prev->addEdge(next, {});
+            }
+        }
+    }
+
+#ifdef DEBUG_MODE
+    cfg->dumpGraph("/tmp/before-removeConstantLoadInLoops-simplified.dot", true);
+#endif
+
+    // 2. Find loops
+    auto loops = cfg->findLoops(true);
+
+    // FIXME: Skip this optimization because it takes so long time with many loops.
+    if(loops.size() > 100000)
+    {
+        logging::warn() << "Skip this optimization due to many nodes in loops." << logging::endl;
+        return false;
+    }
+
+    // 3. Generate inclusion relation of loops as trees
+    // e.g.
+    //
+    // loop A {
+    //     loop B {
+    //         loop C {
+    //         }
+    //     }
+    //     loop D {
+    //     }
+    // }
+    //
+    // to
+    //
+    //       +-+
+    //  +----+A+
+    //  |    +++
+    //  |     |
+    //  v     v
+    // +-+   +++   +-+
+    // |D|   |B+-->+C|
+    // +-+   +-+   +-+
+    //
     LoopInclusionTree inclusionTree;
     for(auto& loop1 : loops)
     {
@@ -1331,86 +1493,200 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             {
                 auto& node1 = inclusionTree.getOrCreateNode(&loop1);
                 auto& node2 = inclusionTree.getOrCreateNode(&loop2);
-                node1.addEdge(&node2, {});
-            }
-        }
-    }
-
-    // logging::debug() << "inclusionTree" << logging::endl;
-    // for(auto& loop : inclusionTree) {
-    //     logging::debug() << "  " << loop.first << logging::endl;
-    //     for(auto& node : loop.second.getNeighbors()) {
-    //         logging::debug() << "    " << node.first->key << ": " << node.second.includes << logging::endl;
-    //     }
-    // }
-
-    // 3. move constant load operations from root of trees
-    FastSet<ControlFlowLoop*> processed;
-    for(auto& loop : loops)
-    {
-        auto& node = inclusionTree.getOrCreateNode(&loop);
-        auto root = reinterpret_cast<LoopInclusionTreeNode*>(node.findRoot());
-
-        if(processed.find(root->key) != processed.end())
-            continue;
-        processed.insert(root->key);
-
-        // to prevent multiple block creation
-        BasicBlock* insertedBlock = nullptr;
-
-        for(auto& cfgNode : *root->key)
-        {
-            auto block = cfgNode->key;
-            for(auto it = block->walk(); it != block->walkEnd(); it = it.nextInBlock())
-            {
-                // TODO: Constants like `mul24 r1, 4, elem_num` should be also moved.
-                if(auto loadInst = it.get<LoadImmediate>())
+                if(!node1.isAdjacent(&node2))
                 {
-                    // LoadImmediate must have output value
-                    auto out = loadInst->getOutput().value();
-                    if(loadInst->hasValueType(ValueType::LOCAL) && !loadInst->hasSideEffects() &&
-                        !loadInst->hasConditionalExecution())
-                    {
-                        CPPLOG_LAZY(logging::Level::DEBUG,
-                            log << "Moving constant load out of loop: " << it->to_string() << logging::endl);
-                        if(insertedBlock != nullptr)
-                        {
-                            insertedBlock->walkEnd().emplace(it.release());
-                        }
-                        else
-                        {
-                            if(auto targetBlock = root->key->findPredecessor())
-                            {
-                                auto targetInst = targetBlock->key->walkEnd();
-                                targetInst.emplace(it.release());
-                            }
-                            else
-                            {
-                                CPPLOG_LAZY(logging::Level::DEBUG,
-                                    log << "Create a new basic block before the root of inclusion tree"
-                                        << logging::endl);
-
-                                auto headBlock = method.begin();
-
-                                insertedBlock = &method.createAndInsertNewBlock(
-                                    method.begin(), "%createdByRemoveConstantLoadInLoops");
-                                insertedBlock->walkEnd().emplace(it.release());
-
-                                if(headBlock->getLabel()->getLabel()->name == BasicBlock::DEFAULT_BLOCK)
-                                {
-                                    // swap labels because DEFAULT_BLOCK is treated as head block.
-                                    headBlock->getLabel()->getLabel()->name.swap(
-                                        insertedBlock->getLabel()->getLabel()->name);
-                                }
-                            }
-                        }
-                        it.erase();
-                        hasChanged = true;
-                    }
+                    node1.addEdge(&node2, {});
                 }
             }
         }
     }
+    // Remove extra relations.
+    for(auto& loop : loops)
+    {
+        auto& currentNode = inclusionTree.getOrCreateNode(&loop);
+
+        // Remove parent nodes except node which has longest path to the root node.
+        LoopInclusionTreeNodeBase* longestNode = nullptr;
+        int longestLength = -1;
+        currentNode.forAllIncomingEdges([&](LoopInclusionTreeNode& parent, LoopInclusionTreeEdge&) -> bool {
+            auto parentNode = &parent;
+            int length = parentNode->longestPathLengthToRoot();
+
+            if(length > longestLength)
+            {
+                longestNode = parentNode;
+                longestLength = length;
+            }
+
+            return true;
+        });
+
+        if(longestNode)
+        {
+            std::vector<LoopInclusionTreeNode*> nonConnectedEdges;
+
+            currentNode.forAllIncomingEdges([&](LoopInclusionTreeNode& other, LoopInclusionTreeEdge&) -> bool {
+                auto otherNode = &other;
+                if(longestNode != otherNode)
+                {
+                    // To avoid finishing loop
+                    nonConnectedEdges.push_back(otherNode);
+                }
+                return true;
+            });
+
+            for(auto& otherNode : nonConnectedEdges)
+            {
+                otherNode->removeAsNeighbor(&currentNode);
+            }
+        }
+    }
+
+    // 4. Move constant load operations from root of trees
+
+    std::map<LoopInclusionTreeNode*, std::vector<InstructionWalker>> instMapper;
+
+    // find instructions to be moved
+    for(auto& loop : inclusionTree.getNodes())
+    {
+        auto& node = inclusionTree.getOrCreateNode(loop.first);
+        for(auto& cfgNode : *node.key)
+        {
+            if(node.hasCFGNodeInChildren(cfgNode))
+            {
+                // treat this node as that it's in child nodes.
+                continue;
+            }
+
+            auto block = cfgNode->key;
+            for(auto it = block->walk(); it != block->walkEnd(); it = it.nextInBlock())
+            {
+                if(it->isConstantInstruction())
+                {
+                    instMapper[&node].push_back(it);
+
+                    hasChanged = true;
+                }
+            }
+        }
+    }
+
+    std::set<LoopInclusionTreeNode*> processedNodes;
+    std::set<IntermediateInstruction*> processedInsts;
+    BasicBlock* insertedBlock = nullptr;
+
+    // move instructions
+    for(auto& loop : inclusionTree.getNodes())
+    {
+        auto& node = inclusionTree.getOrCreateNode(loop.first);
+        auto root = castToTreeNode(node.findRoot({}));
+
+        if(processedNodes.find(root) != processedNodes.end())
+            continue;
+        processedNodes.insert(root);
+
+        // process tree nodes with BFS
+        std::queue<LoopInclusionTreeNode*> que;
+        que.push(root);
+
+        while(!que.empty())
+        {
+            auto currentNode = que.front();
+            que.pop();
+
+            auto targetTreeNode =
+                castToTreeNode(currentNode->findRoot(moveDepth == -1 ? Optional<int>() : Optional<int>(moveDepth - 1)));
+            auto targetLoop = targetTreeNode->key;
+
+            currentNode->forAllOutgoingEdges(
+                [&](const LoopInclusionTreeNode& child, const LoopInclusionTreeEdge&) -> bool {
+                    que.push(const_cast<LoopInclusionTreeNode*>(&child));
+                    return true;
+                });
+
+            auto insts = instMapper.find(currentNode);
+            if(insts == instMapper.end())
+            {
+                continue;
+            }
+
+            const CFGNode* targetCFGNode = nullptr;
+            // Find the predecessor block of targetLoop.
+            {
+                FastAccessList<const CFGNode*> predecessors = targetLoop->findPredecessors();
+                if(predecessors.size() > 0)
+                {
+                    for(auto& block : method)
+                    {
+                        auto loopBB = std::find_if(targetLoop->begin(), targetLoop->end(),
+                            [&block](const CFGNode* node) { return node->key == &block; });
+                        if(loopBB != targetLoop->end())
+                        {
+                            // the predecessor block must exist before targetLoop.
+                            break;
+                        }
+
+                        auto bb = std::find_if(predecessors.begin(), predecessors.end(),
+                            [&block](const CFGNode* node) { return node->key == &block; });
+                        if(bb != predecessors.end())
+                        {
+                            targetCFGNode = *bb;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            auto targetBlock = targetCFGNode != nullptr ? targetCFGNode->key : insertedBlock;
+
+            if(targetBlock != nullptr)
+            {
+                // insert before 'br' operation
+                auto& targetInst = targetBlock->walkEnd().previousInBlock();
+                for(auto it : insts->second)
+                {
+                    auto inst = it.get();
+                    if(!it.has() || processedInsts.find(inst) != processedInsts.end())
+                        continue;
+                    processedInsts.insert(inst);
+
+                    targetInst.emplace(it.release());
+                    it.erase();
+                }
+            }
+            else
+            {
+                logging::debug() << "Create a new basic block before the target block" << logging::endl;
+
+                auto headBlock = method.begin();
+
+                insertedBlock = &method.createAndInsertNewBlock(method.begin(), "%createdByRemoveConstantLoadInLoops");
+                for(auto it : insts->second)
+                {
+                    auto inst = it.get();
+                    if(!it.has() || processedInsts.find(inst) != processedInsts.end())
+                        continue;
+                    processedInsts.insert(inst);
+
+                    insertedBlock->walkEnd().emplace(it.release());
+                    it.erase();
+                }
+                // Clear processed instructions
+                insts->second.clear();
+
+                if(headBlock->getLabel()->getLabel()->name == BasicBlock::DEFAULT_BLOCK)
+                {
+                    // swap labels because DEFAULT_BLOCK is treated as head block.
+                    headBlock->getLabel()->getLabel()->name.swap(insertedBlock->getLabel()->getLabel()->name);
+                }
+            }
+        }
+    }
+
+#ifdef DEBUG_MODE
+    auto& cfg2 = method.getCFG();
+    cfg2.dumpGraph("/tmp/after-removeConstantLoadInLoops.dot", true);
+#endif
 
     if(hasChanged)
         // combine the newly reordered (and at one place accumulated) loading instructions

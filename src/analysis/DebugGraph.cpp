@@ -57,7 +57,7 @@ void vc4c::printEdge(
 
 void vc4c::printNode(std::ofstream& file, uintptr_t ID, const std::string& name)
 {
-    file << ID << " [label=" << cleanName(name) << "];" << std::endl;
+    file << ID << " [label=" << cleanName(name) << ", shape=\"box\"];" << std::endl;
 }
 LCOV_EXCL_STOP
 #endif

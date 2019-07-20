@@ -239,6 +239,13 @@ namespace vc4c
 
             bool replaceValue(const Value& oldValue, const Value& newValue, LocalUse::Type type);
 
+            /* Determine constant instruction, such as
+             * - load immediate instruction
+             * - instruction whose all arguments are immediate value and which has output without side effect (its
+             * result is immediate)
+             */
+            bool isConstantInstruction() const;
+
             Signaling signal;
             Unpack unpackMode;
             Pack packMode;
