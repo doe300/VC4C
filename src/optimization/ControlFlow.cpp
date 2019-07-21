@@ -1642,7 +1642,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             if(targetBlock != nullptr)
             {
                 // insert before 'br' operation
-                auto& targetInst = targetBlock->walkEnd().previousInBlock();
+                auto targetInst = targetBlock->walkEnd().previousInBlock();
                 for(auto it : insts->second)
                 {
                     auto inst = it.get();
