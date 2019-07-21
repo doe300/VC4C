@@ -70,97 +70,6 @@ bool vc4c::operator<(const CFGNode& one, const CFGNode& other)
     return firstLabel > secondLabel;
 }
 
-const CFGNode* ControlFlowLoop::findPredecessor() const
-{
-    const CFGNode* predecessor = nullptr;
-    for(const CFGNode* node : *this)
-    {
-        node->forAllIncomingEdges([this, &predecessor](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
-            if(std::find(begin(), end(), &neighbor) == end())
-            {
-                // the relation is backwards and node is not within this loop -> predecessor
-                if(predecessor != nullptr)
-                    // TODO testing/boost-compute/test_accumulator.cl throws errors here, because it has multiple
-                    // predecessors (in kernel "reduce")! How to handle them?
-                    throw CompilationError(CompilationStep::GENERAL, "Found multiple predecessors for CFG loop",
-                        neighbor.key->to_string());
-
-                CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Found predecessor for CFG loop: " << neighbor.key->to_string() << logging::endl);
-                predecessor = &neighbor;
-            }
-            return true;
-        });
-    }
-    return predecessor;
-}
-
-FastAccessList<const CFGNode*> ControlFlowLoop::findPredecessors() const
-{
-    FastAccessList<const CFGNode*> predecessors;
-    for(const CFGNode* node : *this)
-    {
-        node->forAllIncomingEdges([this, &predecessors](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
-            if(std::find(begin(), end(), &neighbor) == end())
-            {
-                predecessors.push_back(&neighbor);
-            }
-            return true;
-        });
-    }
-    return predecessors;
-}
-
-const CFGNode* ControlFlowLoop::findSuccessor() const
-{
-    const CFGNode* successor = nullptr;
-    for(const CFGNode* node : *this)
-    {
-        node->forAllOutgoingEdges([this, &successor](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
-            if(std::find(begin(), end(), &neighbor) == end())
-            {
-                // the relation is forward and node is not within this loop -> successor
-                if(successor != nullptr)
-                    throw CompilationError(
-                        CompilationStep::GENERAL, "Found multiple successors for CFG loop", neighbor.key->to_string());
-
-                CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Found successor for CFG loop: " << neighbor.key->to_string() << logging::endl);
-                successor = &neighbor;
-            }
-            return true;
-        });
-    }
-    return successor;
-}
-
-Optional<InstructionWalker> ControlFlowLoop::findInLoop(const intermediate::IntermediateInstruction* inst) const
-{
-    for(const CFGNode* node : *this)
-    {
-        if(auto it = node->key->findWalkerForInstruction(inst, node->key->walkEnd()))
-            return it;
-    }
-    return {};
-}
-
-bool ControlFlowLoop::includes(const ControlFlowLoop& other) const
-{
-    if(*this == other)
-        return false;
-
-    for(auto otherItr : other)
-    {
-        auto thisItr = std::find_if(begin(), end(), [&](const CFGNode* node) { return node->key == otherItr->key; });
-        if(thisItr == end())
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 CFGNode& ControlFlowGraph::getStartOfControlFlow()
 {
     if(nodes.empty())
@@ -290,7 +199,8 @@ void ControlFlowGraph::dumpGraph(const std::string& path, bool dumpConstantLoadI
         }
     };
     auto edgeLabelFunc = [](const CFGRelation& r) -> std::string { return r.getLabel(); };
-    DebugGraph<BasicBlock*, CFGRelation, CFGEdge::Directed>::dumpGraph<ControlFlowGraph>(*this, path, nameFunc,
+    DebugGraph<BasicBlock*, CFGRelation, CFGEdge::Directed>::dumpGraph<ControlFlowGraph>(
+        *this, path, nameFunc,
         [](const CFGRelation& rel) -> bool {
             return std::all_of(rel.predecessors.begin(), rel.predecessors.end(),
                 [](const auto& pair) -> bool { return !pair.second; });

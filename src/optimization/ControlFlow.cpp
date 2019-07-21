@@ -9,6 +9,7 @@
 #include "../InstructionWalker.h"
 #include "../Profiler.h"
 #include "../analysis/ControlFlowGraph.h"
+#include "../analysis/ControlFlowLoop.h"
 #include "../analysis/DataDependencyGraph.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/TypeConversions.h"
@@ -1462,94 +1463,16 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     }
 
     // 3. Generate inclusion relation of loops as trees
-    // e.g.
-    //
-    // loop A {
-    //     loop B {
-    //         loop C {
-    //         }
-    //     }
-    //     loop D {
-    //     }
-    // }
-    //
-    // to
-    //
-    //       +-+
-    //  +----+A+
-    //  |    +++
-    //  |     |
-    //  v     v
-    // +-+   +++   +-+
-    // |D|   |B+-->+C|
-    // +-+   +-+   +-+
-    //
-    LoopInclusionTree inclusionTree;
-    for(auto& loop1 : loops)
-    {
-        for(auto& loop2 : loops)
-        {
-            if(loop1.includes(loop2))
-            {
-                auto& node1 = inclusionTree.getOrCreateNode(&loop1);
-                auto& node2 = inclusionTree.getOrCreateNode(&loop2);
-                if(!node1.isAdjacent(&node2))
-                {
-                    node1.addEdge(&node2, {});
-                }
-            }
-        }
-    }
-    // Remove extra relations.
-    for(auto& loop : loops)
-    {
-        auto& currentNode = inclusionTree.getOrCreateNode(&loop);
-
-        // Remove parent nodes except node which has longest path to the root node.
-        LoopInclusionTreeNodeBase* longestNode = nullptr;
-        int longestLength = -1;
-        currentNode.forAllIncomingEdges([&](LoopInclusionTreeNode& parent, LoopInclusionTreeEdge&) -> bool {
-            auto parentNode = &parent;
-            int length = parentNode->longestPathLengthToRoot();
-
-            if(length > longestLength)
-            {
-                longestNode = parentNode;
-                longestLength = length;
-            }
-
-            return true;
-        });
-
-        if(longestNode)
-        {
-            std::vector<LoopInclusionTreeNode*> nonConnectedEdges;
-
-            currentNode.forAllIncomingEdges([&](LoopInclusionTreeNode& other, LoopInclusionTreeEdge&) -> bool {
-                auto otherNode = &other;
-                if(longestNode != otherNode)
-                {
-                    // To avoid finishing loop
-                    nonConnectedEdges.push_back(otherNode);
-                }
-                return true;
-            });
-
-            for(auto& otherNode : nonConnectedEdges)
-            {
-                otherNode->removeAsNeighbor(&currentNode);
-            }
-        }
-    }
+    auto inclusionTree = createLoopInclusingTree(loops);
 
     // 4. Move constant load operations from root of trees
 
     std::map<LoopInclusionTreeNode*, std::vector<InstructionWalker>> instMapper;
 
     // find instructions to be moved
-    for(auto& loop : inclusionTree.getNodes())
+    for(auto& loop : inclusionTree->getNodes())
     {
-        auto& node = inclusionTree.getOrCreateNode(loop.first);
+        auto& node = inclusionTree->getOrCreateNode(loop.first);
         for(auto& cfgNode : *node.key)
         {
             if(node.hasCFGNodeInChildren(cfgNode))
@@ -1576,9 +1499,9 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     BasicBlock* insertedBlock = nullptr;
 
     // move instructions
-    for(auto& loop : inclusionTree.getNodes())
+    for(auto& loop : inclusionTree->getNodes())
     {
-        auto& node = inclusionTree.getOrCreateNode(loop.first);
+        auto& node = inclusionTree->getOrCreateNode(loop.first);
         auto root = castToTreeNode(node.findRoot({}));
 
         if(processedNodes.find(root) != processedNodes.end())
