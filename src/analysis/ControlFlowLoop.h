@@ -1,6 +1,7 @@
 #ifndef VC4C_CONTROLFLOWLOOP_H
 #define VC4C_CONTROLFLOWLOOP_H 1
 
+#include "../Expression.h"
 #include "../Graph.h"
 #include "../InstructionWalker.h"
 #include "../performance.h"
@@ -13,8 +14,29 @@ namespace vc4c
 {
     class BasicBlock;
     class CFGRelation;
-
     using CFGNode = Node<BasicBlock*, CFGRelation, Directionality::BIDIRECTIONAL>;
+    class DataDependencyGraph;
+
+    /**
+     * "Variable i in loop L is called induction variable of L if each time i changes value in L,it is
+     * incremented/decremented by loop-invariant value."
+     * - https://www.cs.princeton.edu/courses/archive/spring03/cs320/notes/loops.pdf, slide 29
+     *
+     * We especially care about induction variables, since the loop iteration variable is usually an induction variable.
+     * Example: i in for(int i = 0; i < xxx; ++i)
+     */
+    struct InductionVariable
+    {
+        // The local associated with this induction variable
+        Local* local;
+        // The initial value assignment to the induction variable
+        const intermediate::IntermediateInstruction* initialAssignment;
+        // The expression calculating the actual value change for every loop iteration
+        const intermediate::IntermediateInstruction* inductionStep;
+        // The condition to hold to repeat the loop as the pair of comparison and the compared-to value. This might not
+        // be valid for all induction variables, only for loop iteration variables
+        Optional<std::pair<const char*, Value>> repeatCondition = {};
+    };
 
     /*
      * A loop in the control-flow represented by the basic-blocks taking part in it
@@ -37,6 +59,7 @@ namespace vc4c
          * into.
          */
         const CFGNode* findSuccessor() const;
+        FastAccessList<const CFGNode*> findSuccessors() const;
 
         /*
          * Returns the InstructionWalker for the given instruction, if it is within the loop.
@@ -47,6 +70,23 @@ namespace vc4c
          * Returns whether this loop includes other loop and doesn't equal it.
          */
         bool includes(const ControlFlowLoop& other) const;
+
+        /*
+         * Returns the list of induction variables of this loop.
+         *
+         * The parameter includeIterationInformation defines whether to try to find additional information which is only
+         * useful when trying to determine the loop iteration variable.
+         */
+        FastAccessList<InductionVariable> findInductionVariables(
+            const DataDependencyGraph& dependencyGraph, bool includeIterationInformation) const;
+
+        /*
+         * Returns this loop's header, or a nullptr if the header could not be deduced
+         *
+         * The loop header is the only node inside the loop which has direct predecessor nodes that are not inside the
+         * loop
+         */
+        const CFGNode* getHeader() const;
     };
 
     /*

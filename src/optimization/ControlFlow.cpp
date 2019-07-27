@@ -32,8 +32,8 @@ using namespace vc4c::operators;
 
 static FastSet<Local*> findLoopIterations(const ControlFlowLoop& loop, const DataDependencyGraph& dependencyGraph)
 {
-    FastSet<Local*> innerDependencies;
-    FastSet<Local*> outerDependencies;
+    SortedSet<Local*> innerDependencies;
+    SortedSet<Local*> outerDependencies;
     for(auto& node : loop)
     {
         // not all basic blocks have an entry in the dependency graph (e.g. if they have no dependency)
@@ -64,6 +64,7 @@ static FastSet<Local*> findLoopIterations(const ControlFlowLoop& loop, const Dat
     }
 
     FastSet<Local*> intersection;
+    // NOTE: Cannot pass unordered_set into set_intersection, since it requires its inputs to be sorted!
     std::set_intersection(innerDependencies.begin(), innerDependencies.end(), outerDependencies.begin(),
         outerDependencies.end(), std::inserter(intersection, intersection.begin()));
 
@@ -393,6 +394,21 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                     << loopControl.iterationVariable->name << logging::endl);
     }
 
+    // TODO test only!
+    auto inductionVariables = loop.findInductionVariables(dependencyGraph, true);
+    for(auto& control : availableLoopControls)
+        logging::warn() << "Control: " << control.iterationVariable->to_string() << " from "
+                        << control.initialization->to_string() << " step "
+                        << (control.iterationStep ? (*control.iterationStep)->to_string() : "(unknown)") << " until "
+                        << control.comparison << ' ' << control.terminatingValue.to_string() << logging::endl;
+    for(auto& var : inductionVariables)
+        logging::warn() << "Induction: " << var.local->to_string() << " from " << var.initialAssignment->to_string()
+                        << " step " << var.inductionStep->to_string() << " while "
+                        << (var.repeatCondition ?
+                                   (var.repeatCondition->first + (" " + var.repeatCondition->second.to_string())) :
+                                   "(?)")
+                        << logging::endl;
+
     if(availableLoopControls.empty())
         return LoopControl{};
     else if(availableLoopControls.size() == 1)
@@ -462,8 +478,8 @@ static int calculateCostsVsBenefits(
 {
     int costs = 0;
 
-    FastSet<const Local*> readAddresses;
-    FastSet<const Local*> writtenAddresses;
+    SortedSet<const Local*> readAddresses;
+    SortedSet<const Local*> writtenAddresses;
 
     InstructionWalker it = loop.front()->key->walk();
     while(!it.isEndOfMethod() && it != loop.back()->key->walkEnd())
@@ -528,6 +544,7 @@ static int calculateCostsVsBenefits(
         ++costs;
 
     FastSet<const Local*> readAndWrittenAddresses;
+    // NOTE: Cannot pass unordered_set into set_intersection, since it requires its inputs to be sorted!
     std::set_intersection(readAddresses.begin(), readAddresses.end(), writtenAddresses.begin(), writtenAddresses.end(),
         std::inserter(readAndWrittenAddresses, readAndWrittenAddresses.begin()));
     // the references could be null-pointers
