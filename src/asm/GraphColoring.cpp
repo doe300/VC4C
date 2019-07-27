@@ -297,7 +297,7 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
                 "Can't unpack two inputs in one instruction", instr.to_string());
         }
     }
-    if(instr.hasPackMode() && instr.hasValueType(ValueType::LOCAL))
+    if(instr.hasPackMode() && instr.checkOutputLocal())
     {
         //"[...] the a-regfile pack block allows the 32-bit ALU result to be packed back into the a-regfile as 8 or 16
         // bit data."  logging::debug() << "Fixed local " << instr.output.get().local.to_string() << " to register-file
@@ -343,11 +343,11 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
     // remove all blocked files from all locals
     if(blockedFiles != RegisterFile::NONE)
     {
-        if(firstArg && firstArg->checkLocal())
-            blockRegisterFile(blockedFiles, firstArg->local(), localUses);
+        if(auto loc = (firstArg & &Value::checkLocal))
+            blockRegisterFile(blockedFiles, loc, localUses);
 
-        if(secondArg && secondArg->checkLocal())
-            blockRegisterFile(blockedFiles, secondArg->local(), localUses);
+        if(auto loc = (secondArg & &Value::checkLocal))
+            blockRegisterFile(blockedFiles, loc, localUses);
     }
 }
 
@@ -380,22 +380,19 @@ static void fixLocals(const InstructionWalker it, FastMap<const Local*, LocalUsa
         }
         // if both instructions for a combined instruction write to the same output, the output MUST be on an
         // accumulator
-        if(comp->op1 && comp->op1->hasValueType(ValueType::LOCAL) && comp->op2 &&
-            comp->op2->hasValueType(ValueType::LOCAL) &&
+        if(comp->op1 && comp->op1->checkOutputLocal() && comp->op2 && comp->op2->checkOutputLocal() &&
             comp->op1->getOutput()->local() == comp->op2->getOutput()->local())
         {
             fixToRegisterFile(RegisterFile::ACCUMULATOR, comp->op1->getOutput()->local(), localUses);
         }
         // FIXME handling of forcing local to register-file A because of unpack-mode (unpack + combined even possible??)
-        lastWrittenLocal0 =
-            comp->op1 && comp->op1->hasValueType(ValueType::LOCAL) ? comp->op1->getOutput()->local() : nullptr;
-        lastWrittenLocal1 =
-            comp->op2 && comp->op2->hasValueType(ValueType::LOCAL) ? comp->op2->getOutput()->local() : nullptr;
+        lastWrittenLocal0 = comp->op1 && comp->op1->checkOutputLocal() ? comp->op1->getOutput()->local() : nullptr;
+        lastWrittenLocal1 = comp->op2 && comp->op2->checkOutputLocal() ? comp->op2->getOutput()->local() : nullptr;
     }
     else
     {
         PROFILE(updateFixedLocals, *it.get(), lastWrittenLocal0, lastWrittenLocal1, RegisterFile::NONE, localUses);
-        lastWrittenLocal0 = it->hasValueType(ValueType::LOCAL) ? it->getOutput()->local() : nullptr;
+        lastWrittenLocal0 = it->checkOutputLocal() ? it->getOutput()->local() : nullptr;
         lastWrittenLocal1 = nullptr;
     }
 }

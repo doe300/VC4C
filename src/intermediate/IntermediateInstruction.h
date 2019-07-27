@@ -127,6 +127,30 @@ namespace vc4c
              * Whether at least one of the operands of this instruction is a constant
              */
             bool readsLiteral() const;
+            /**
+             * Whether this instruction reads any register
+             */
+            bool readsRegister() const;
+            /*
+             * Whether at least one of the operands of this instruction reads a local
+             */
+            bool readsLocal() const;
+            /**
+             * Returns ONE of the arguments that take the given register
+             */
+            const Value* findRegisterArgument(Register reg) const noexcept;
+            /**
+             * Returns ONE of the arguments that any register as input
+             */
+            const Value* findRegisterArgument() const noexcept;
+            /**
+             * Returns ONE of the arguments that takes a literal value
+             */
+            const Value* findLiteralArgument() const noexcept;
+            /**
+             * Returns ONE of the arguments that takes a local
+             */
+            const Value* findLocalArgument() const noexcept;
 
             virtual std::string to_string() const = 0;
             /*
@@ -160,10 +184,16 @@ namespace vc4c
              * Returns the output value, if any
              */
             const Optional<Value>& getOutput() const;
-            /*
-             * Whether the instruction has an output and the output has the given type
+
+            /**
+             * Returns the register written by this instruction, if it writes a register
              */
-            bool hasValueType(ValueType type) const;
+            Optional<Register> checkOutputRegister() const noexcept;
+
+            /**
+             * Returns the local written by this instruction, if it writes a local
+             */
+            const Local* checkOutputLocal() const noexcept;
 
             /*
              * Returns the argument for the given index
@@ -175,10 +205,19 @@ namespace vc4c
              * Throws an exception, if the index is not valid!
              */
             const Value& assertArgument(std::size_t index) const;
+            /**
+             * Returns the argument index of the given value, if it is read by this instruction
+             */
+            Optional<size_t> findArgument(const Value& val) const;
             /*
              * Lists all arguments/operands
              */
             const std::vector<Value>& getArguments() const;
+            /**
+             * Returns the other input value if the instruction takes exactly 2 input arguments and one of them is the
+             * given value
+             */
+            Optional<Value> findOtherArgument(const Value& val) const;
             /*
              * Sets the argument for the given index to the value specified
              */
@@ -193,7 +232,7 @@ namespace vc4c
             IntermediateInstruction* setSetFlags(SetFlag setFlags);
             IntermediateInstruction* setUnpackMode(Unpack unpackMode);
             IntermediateInstruction* addDecorations(InstructionDecorations decorations);
-            bool hasDecoration(InstructionDecorations deco) const;
+            bool hasDecoration(InstructionDecorations deco) const noexcept;
 
             /*
              * Whether this instruction has any side-effects.

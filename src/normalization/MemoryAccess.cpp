@@ -330,7 +330,7 @@ static InstructionWalker findGroupOfVPMAccess(
             do
             {
                 it.nextInBlock();
-            } while(!it.isEndOfBlock() && it.get() != nullptr && it->hasValueType(ValueType::REGISTER));
+            } while(!it.isEndOfBlock() && it.get() != nullptr && it->checkOutputRegister());
             return it;
         }
     }
@@ -648,7 +648,7 @@ void normalization::spillLocals(const Module& module, Method& method, const Conf
         // TODO if at some point all Basic block have references to their used locals, remove all locals which are used
         // just in one basic block instead of this logic??
         FastMap<const Local*, InstructionWalker>::iterator cIt;
-        if(it->hasValueType(ValueType::LOCAL) &&
+        if(it->checkOutputLocal() &&
             (cIt = spillingCandidates.find(it->getOutput()->local())) != spillingCandidates.end())
         {
             if(method.isLocallyLimited(it, it->getOutput()->local(), MINIMUM_THRESHOLD))

@@ -966,11 +966,10 @@ PrecalculatedValue OpCode::operator()(const Value& firstOperand, const Optional<
         return std::make_pair(UNDEFINED_VALUE, VectorFlags{});
 
     // TODO throws if first element is no literal
-    const Literal firstLit =
-        firstOperand.getLiteralValue() ? firstOperand.getLiteralValue().value() : (*firstVector)[0];
+    const Literal firstLit = firstOperand.getLiteralValue() ? *firstOperand.getLiteralValue() : (*firstVector)[0];
     const Literal secondLit = (!secondVal || numOperands == 1) ?
         INT_ZERO.literal() :
-        secondVal->getLiteralValue() ? secondVal->getLiteralValue().value() : (*secondVector)[0];
+        secondVal->getLiteralValue() ? *secondVal->getLiteralValue() : (*secondVector)[0];
     return operator()(firstLit, secondLit, resultType);
 }
 

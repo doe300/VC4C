@@ -214,8 +214,7 @@ InstructionWalker normalization::handleContainer(
             it.previousInBlock();
         }
     }
-    else if(op != nullptr &&
-        (op->getFirstArg().checkVector() || (op->getSecondArg() && op->assertArgument(1).checkVector())))
+    else if(op != nullptr && (op->getFirstArg().checkVector() || (op->getSecondArg() & &Value::checkVector)))
     {
         for(std::size_t i = 0; i < op->getArguments().size(); ++i)
         {
@@ -243,7 +242,7 @@ InstructionWalker normalization::handleContainer(
             // don't skip next instruction
             it.previousInBlock();
         }
-        if(op->getSecondArg() && op->assertArgument(1).checkVector() && !op->assertArgument(1).type.getPointerType())
+        if((op->getSecondArg() & &Value::checkVector) && !op->assertArgument(1).type.getPointerType())
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Rewriting operation with container-input " << op->to_string() << logging::endl);
@@ -815,7 +814,7 @@ InstructionWalker normalization::handleImmediate(
 static NODISCARD InstructionWalker findWriteOfLocal(InstructionWalker it, const Local* loc)
 {
     // TODO could already abort after X steps (X being the accumulator threshold)
-    while(!it.isStartOfBlock() && !(it->hasValueType(ValueType::LOCAL) && it->getOutput()->hasLocal(loc)))
+    while(!it.isStartOfBlock() && !(it->checkOutputLocal() == loc))
     {
         it.previousInBlock();
     }
@@ -832,8 +831,9 @@ static Optional<Value> findPreviousUseWithImmediate(
     while(instRemaining > 0 && !it.isStartOfBlock())
     {
         if(it.get<intermediate::MoveOperation>() && it->getArgument(0) == arg && it->conditional == COND_ALWAYS &&
-            it->getOutput().ifPresent(
-                [](const Value& val) -> bool { return val.checkLocal() && val.local()->name.find(localPrefix) == 0; }))
+            (it->getOutput() & [](const Value& val) -> bool {
+                return val.checkLocal() && val.local()->name.find(localPrefix) == 0;
+            }))
         {
             return it->getOutput();
         }

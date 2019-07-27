@@ -36,7 +36,7 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
 
         // fail-fast on all not-supported instruction types
         // also skip all instructions writing to non-locals (registers)
-        if((op || move || load) && instr->hasValueType(ValueType::LOCAL))
+        if((op || move || load) && instr->checkOutputLocal())
         {
             // check whether the output of an instruction is never read
             // only check for ALU-operations and loads, if no flags are set and no special signals are sent
@@ -160,7 +160,7 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
             }
         }
         // remove unnecessary writes to special purpose registers
-        if((op || move || load) && instr->hasValueType(ValueType::REGISTER) && !instr->hasSideEffects())
+        if((op || move || load) && instr->checkOutputRegister() && !instr->hasSideEffects())
         {
             // check whether the register output is actually used. This depends on the kind of register
             // Having an unused rotation offset write can happen, e.g. if the value is zero and the rotation gets
@@ -226,10 +226,9 @@ InstructionWalker optimizations::simplifyOperation(
                     op->getFirstArg().getSingleWriter()->precalculate(3).first :
                     NO_VALUE)
                                        .value_or(op->getFirstArg());
-            const Optional<Value> secondArg =
-                (op->getSecondArg() && op->assertArgument(1).getSingleWriter() != nullptr ?
-                        op->assertArgument(1).getSingleWriter()->precalculate(3).first :
-                        op->getSecondArg());
+            const Optional<Value> secondArg = (op->getSecondArg() & &Value::getSingleWriter) ?
+                op->assertArgument(1).getSingleWriter()->precalculate(3).first :
+                op->getSecondArg();
 
             Optional<Value> rightIdentity = OpCode::getRightIdentity(op->op);
             Optional<Value> leftIdentity = OpCode::getLeftIdentity(op->op);
@@ -442,7 +441,7 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
     }
 
     // set reference of local to original reference, if always the same for all possible sources
-    if(node.hasValueType(ValueType::LOCAL))
+    if(auto output = node.checkOutputLocal())
     {
         const Local* ref = nullptr;
         for(const auto& pair : node.getValuesForLabels())
@@ -450,8 +449,7 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
             if(!pair.second.checkLocal())
                 // cannot set universal reference
                 return;
-            if(pair.second.hasLocal(node.getOutput()->local()) ||
-                pair.second.local()->getBase(true) == node.getOutput()->local())
+            if(pair.second.hasLocal(output) || pair.second.local()->getBase(true) == output)
                 // phi node references its own result, ignore
                 continue;
             if(ref != nullptr &&
@@ -515,8 +513,7 @@ static bool isNoReadBetween(InstructionWalker first, InstructionWalker second, R
             first->writesRegister(REG_MUTEX))
             return false;
         // for reading VPM, check also VPM read setup
-        if(reg.isVertexPipelineMemory() && first->hasValueType(ValueType::REGISTER) &&
-            first->getOutput()->reg().isVertexPipelineMemory())
+        if(reg.isVertexPipelineMemory() && (first->checkOutputRegister() & &Register::isVertexPipelineMemory))
             return false;
         first.nextInBlock();
     }
@@ -560,7 +557,7 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
         if(op && !it.get<intermediate::VectorRotation>() && !op->hasConditionalExecution() && !op->hasPackMode() &&
             !op->hasUnpackMode() && op->getOutput().has_value() &&
             (!op->getSource().checkRegister() || !op->getSource().reg().hasSideEffectsOnRead()) &&
-            (!op->getOutput().value().checkRegister()))
+            (!op->checkOutputRegister()))
         {
             auto it2 = it.copy().nextInBlock();
             auto oldValue = op->getOutput().value();
@@ -632,7 +629,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 move->getSource().local()->getUsers(LocalUse::Type::READER).size() == 1;
             // the destination is written and read only once (and not in combination with a literal value, to not
             // introduce register conflicts)
-            bool destUsedOnce = move->hasValueType(ValueType::LOCAL) && move->getOutput()->getSingleWriter() == move &&
+            bool destUsedOnce = move->checkOutputLocal() && move->getOutput()->getSingleWriter() == move &&
                 move->getOutput()->local()->getUsers(LocalUse::Type::READER).size() == 1;
             bool destUsedOnceWithoutLiteral = destUsedOnce &&
                 !(*move->getOutput()->local()->getUsers(LocalUse::Type::READER).begin())->readsLiteral();
@@ -640,8 +637,8 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
             auto sourceWriter = (move->getSource().getSingleWriter() != nullptr) ?
                 it.getBasicBlock()->findWalkerForInstruction(move->getSource().getSingleWriter(), it) :
                 Optional<InstructionWalker>{};
-            auto destinationReader = (move->hasValueType(ValueType::LOCAL) &&
-                                         move->getOutput()->local()->getUsers(LocalUse::Type::READER).size() == 1) ?
+            auto destinationReader =
+                (move->checkOutputLocal() && move->getOutput()->local()->getUsers(LocalUse::Type::READER).size() == 1) ?
                 it.getBasicBlock()->findWalkerForInstruction(
                     *move->getOutput()->local()->getUsers(LocalUse::Type::READER).begin(),
                     it.getBasicBlock()->walkEnd()) :
@@ -685,7 +682,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 it.previousInBlock();
                 flag = true;
             }
-            else if(it->hasValueType(ValueType::REGISTER) && sourceUsedOnce && sourceWriter &&
+            else if(it->checkOutputRegister() && sourceUsedOnce && sourceWriter &&
                 (!(*sourceWriter)->hasSideEffects()
                     // FIXME this re-orders UNIFORM reads (e.g. in test_branches.cl) ||
                     // !((*sourceWriter)->signal.hasSideEffects() || (*sourceWriter)->doesSetFlag()))
@@ -701,6 +698,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 // VPM write/VPM address write
                 // TODO This could potentially lead to far longer usage-ranges for operands of sourceWriter and
                 // therefore to register conflicts
+                // TODO when replacing moves which set flags, need to make sure, flags are not overridden in between!
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Replacing obsolete move with instruction calculating its source: " << it->to_string()
                         << logging::endl);
@@ -738,7 +736,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                     if((*destinationReader)->assertArgument(i).hasLocal(oldLocal))
                         (*destinationReader)->setArgument(i, std::move(newInput));
                 }
-                if(oldLocal->residesInMemory() && (*destinationReader)->hasValueType(ValueType::LOCAL) &&
+                if(oldLocal->residesInMemory() && (*destinationReader)->checkOutputLocal() &&
                     (*destinationReader)->getOutput()->local()->getBase(true) ==
                         (*destinationReader)->getOutput()->local())
                     (*destinationReader)->getOutput()->local()->reference =
@@ -880,10 +878,10 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
             if(expr)
             {
                 Expression newExpr = expr.value();
-                if(it->hasValueType(ValueType::LOCAL))
+                if(auto out = it->checkOutputLocal())
                 {
-                    calculatingExpressions.erase(it->getOutput()->local());
-                    calculatingExpressions.emplace(it->getOutput()->local(), expr.value());
+                    calculatingExpressions.erase(out);
+                    calculatingExpressions.emplace(out, expr.value());
                 }
                 auto exprIt = expressions.find(expr.value());
                 // replace instruction with matching expression, if the expression is not constant (no use replacing
@@ -916,17 +914,17 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
                     it->setPackMode(newExpr.packMode);
                     it->addDecorations(newExpr.deco);
 
-                    if(it->hasValueType(ValueType::LOCAL))
-                        calculatingExpressions.at(it->getOutput()->local()) = newExpr;
+                    if(auto loc = it->checkOutputLocal())
+                        calculatingExpressions.at(loc) = newExpr;
                     replacedSomething = true;
                 }
             }
-            else if(it->hasValueType(ValueType::LOCAL))
+            else if(auto loc = it->checkOutputLocal())
             {
                 // if we failed to create an expression for an output local (e.g. because of conditional access, etc.),
                 // need to reset the expression for that local, since any previous expression might no longer be
                 // accurate.
-                calculatingExpressions.erase(it->getOutput()->local());
+                calculatingExpressions.erase(loc);
             }
         }
     }
@@ -936,7 +934,7 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
 InstructionWalker optimizations::rewriteConstantSFUCall(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
-    if(!it.has() || !it->hasValueType(ValueType::REGISTER) || !it->getOutput()->reg().isSpecialFunctionsUnit())
+    if(!it.has() || !(it->checkOutputRegister() & &Register::isSpecialFunctionsUnit))
         return it;
 
     auto constantValue = it->precalculate(3).first;

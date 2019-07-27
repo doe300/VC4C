@@ -158,7 +158,7 @@ static int calculateSchedulingPriority(DependencyEdge& dependency, BasicBlock& b
                return arg.checkLocal() && arg.local()->getUsers(LocalUse::Type::READER).size() == 1;
            }))
             --latencyLeft;
-        if(instr->hasValueType(ValueType::LOCAL) && instr->getOutput()->getSingleWriter() == instr)
+        if(instr->checkOutputLocal() && instr->getOutput()->getSingleWriter() == instr)
             latencyLeft += 2;
         if(std::all_of(instr->getArguments().begin(), instr->getArguments().end(), [&](const Value& arg) -> bool {
                return arg.getLiteralValue() || arg.hasRegister(REG_QPU_NUMBER) || arg.hasRegister(REG_ELEMENT_NUMBER);
@@ -233,7 +233,7 @@ static OpenSet::const_iterator selectInstruction(OpenSet& openNodes, DependencyG
         if(priority < std::get<1>(selected) ||
             // keep instructions writing the same local together to be combined more easily
             // TODO make better/check result
-            (priority == std::get<1>(selected) && lastInstruction->hasValueType(ValueType::LOCAL) &&
+            (priority == std::get<1>(selected) && lastInstruction->checkOutputLocal() &&
                 (*it)->writesLocal(lastInstruction->getOutput()->local())) ||
             // keep vector rotations close to their use by devaluing them after all other equal-priority instructions
             (priority == std::get<1>(selected) && lastInstruction.get<intermediate::VectorRotation>() &&

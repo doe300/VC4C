@@ -568,7 +568,7 @@ LoopInclusionTreeNodeBase* LoopInclusionTreeNodeBase::findRoot(Optional<int> dep
     self->forAllIncomingEdges([&](LoopInclusionTreeNodeBase& parent, LoopInclusionTreeEdge&) -> bool {
         // The root node must be only one
         std::function<int(const int&)> dec = [](const int& d) -> int { return d - 1; };
-        root = parent.findRoot(depth.ifPresent(dec));
+        root = parent.findRoot(depth & dec);
         return true;
     });
     return root;

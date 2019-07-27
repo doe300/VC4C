@@ -664,20 +664,6 @@ namespace vc4c
     constexpr SmallImmediate VECTOR_ROTATE_R5{48};
 
     /*
-     * The tag-type for the tagged union containing the actual content of a Value
-     */
-    enum class ValueType : unsigned char
-    {
-        LITERAL,
-        LOCAL, // also contains labels
-        REGISTER,
-        VECTOR,
-        UNDEFINED,
-        // literal values passed by the parsers are either converted to load-instructions or small immediate values
-        SMALL_IMMEDIATE
-    };
-
-    /*
      * Content type for Values containing a whole SIMD vector
      */
     class SIMDVector

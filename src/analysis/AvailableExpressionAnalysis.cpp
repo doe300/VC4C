@@ -41,10 +41,10 @@ std::pair<AvailableExpressions, Optional<Expression>> AvailableExpressionAnalysi
     }
 
     Optional<Expression> expr;
-    if(instr->hasValueType(ValueType::LOCAL))
+    if(auto loc = instr->checkOutputLocal())
     {
         // re-set all expressions using the local written to as input
-        auto cacheIt = cache.find(instr->getOutput()->local());
+        auto cacheIt = cache.find(loc);
         if(cacheIt != cache.end())
         {
             for(const auto& expr : cacheIt->second)
@@ -53,7 +53,7 @@ std::pair<AvailableExpressions, Optional<Expression>> AvailableExpressionAnalysi
         if((expr = Expression::createExpression(*instr)))
         {
             // only adds if expression is not already in there
-            auto it = newExpressions.emplace(expr.value(), std::make_pair(instr, 0));
+            auto it = newExpressions.emplace(*expr, std::make_pair(instr, 0));
             if(it.second)
             {
                 // add map from input locals to expression (if we really inserted an expression)

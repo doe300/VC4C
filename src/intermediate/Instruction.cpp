@@ -125,28 +125,16 @@ const Optional<Value>& IntermediateInstruction::getOutput() const
     return output;
 }
 
-bool IntermediateInstruction::hasValueType(const ValueType type) const
+Optional<Register> IntermediateInstruction::checkOutputRegister() const noexcept
 {
-    if(!output)
-        return false;
-    switch(type)
-    {
-    case ValueType::VECTOR:
-        return output->checkVector();
-    case ValueType::LITERAL:
-        return output->checkLiteral();
-    case ValueType::LOCAL:
-        return output->checkLocal();
-    case ValueType::REGISTER:
-        return output->checkRegister();
-    case ValueType::SMALL_IMMEDIATE:
-        return output->checkImmediate();
-    case ValueType::UNDEFINED:
-        return output->isUndefined();
-    default:
-        throw CompilationError(
-            CompilationStep::GENERAL, "Unhandled value type", std::to_string(static_cast<int>(type)));
-    }
+    if(output && output->checkRegister())
+        return output->reg();
+    return {};
+}
+
+const Local* IntermediateInstruction::checkOutputLocal() const noexcept
+{
+    return (output & &Value::checkLocal);
 }
 
 Optional<Value> IntermediateInstruction::getArgument(const std::size_t index) const
@@ -161,6 +149,26 @@ const Value& IntermediateInstruction::assertArgument(std::size_t index) const
     if(arguments.size() > index)
         return arguments[index];
     throw CompilationError(CompilationStep::GENERAL, "Invalid index for retrieving argument", std::to_string(index));
+}
+
+Optional<size_t> IntermediateInstruction::findArgument(const Value& val) const
+{
+    for(unsigned i = 0; i < arguments.size(); ++i)
+        if(arguments[i] == val)
+            return i;
+    return {};
+}
+
+Optional<Value> IntermediateInstruction::findOtherArgument(const Value& val) const
+{
+    if(arguments.size() == 2)
+    {
+        if(arguments[0] == val)
+            return arguments[1];
+        if(arguments[1] == val)
+            return arguments[0];
+    }
+    return NO_VALUE;
 }
 
 const std::vector<Value>& IntermediateInstruction::getArguments() const
@@ -238,14 +246,14 @@ IntermediateInstruction* IntermediateInstruction::addDecorations(const Instructi
     return this;
 }
 
-bool IntermediateInstruction::hasDecoration(InstructionDecorations deco) const
+bool IntermediateInstruction::hasDecoration(InstructionDecorations deco) const noexcept
 {
     return has_flag(decoration, deco);
 }
 
 bool IntermediateInstruction::hasSideEffects() const
 {
-    if(hasValueType(ValueType::REGISTER) && output->reg().hasSideEffectsOnWrite())
+    if(checkOutputRegister() && output->reg().hasSideEffectsOnWrite())
         return true;
     for(const Value& arg : arguments)
     {
@@ -411,7 +419,7 @@ bool IntermediateInstruction::readsLocal(const Local* local) const
 
 bool IntermediateInstruction::writesLocal(const Local* local) const
 {
-    return hasValueType(ValueType::LOCAL) && output->hasLocal(local);
+    return local != nullptr && checkOutputLocal() == local;
 }
 
 void IntermediateInstruction::replaceLocal(const Local* oldLocal, const Local* newLocal, const LocalUse::Type type)
@@ -466,10 +474,7 @@ bool IntermediateInstruction::isConstantInstruction() const
 
 bool IntermediateInstruction::readsRegister(Register reg) const
 {
-    for(const Value& arg : arguments)
-        if(arg.hasRegister(reg))
-            return true;
-    return false;
+    return findRegisterArgument(reg);
 }
 
 bool IntermediateInstruction::writesRegister(Register reg) const
@@ -479,10 +484,49 @@ bool IntermediateInstruction::writesRegister(Register reg) const
 
 bool IntermediateInstruction::readsLiteral() const
 {
-    for(const Value& arg : arguments)
+    return findLiteralArgument();
+}
+
+bool IntermediateInstruction::readsRegister() const
+{
+    return findRegisterArgument();
+}
+
+bool IntermediateInstruction::readsLocal() const
+{
+    return findLocalArgument();
+}
+
+const Value* IntermediateInstruction::findRegisterArgument(Register reg) const noexcept
+{
+    for(const auto& arg : arguments)
+        if(arg.hasRegister(reg))
+            return &arg;
+    return nullptr;
+}
+
+const Value* IntermediateInstruction::findRegisterArgument() const noexcept
+{
+    for(const auto& arg : arguments)
+        if(arg.checkRegister())
+            return &arg;
+    return nullptr;
+}
+
+const Value* IntermediateInstruction::findLiteralArgument() const noexcept
+{
+    for(const auto& arg : arguments)
         if(arg.isLiteralValue())
-            return true;
-    return false;
+            return &arg;
+    return nullptr;
+}
+
+const Value* IntermediateInstruction::findLocalArgument() const noexcept
+{
+    for(const auto& arg : arguments)
+        if(arg.checkLocal())
+            return &arg;
+    return nullptr;
 }
 
 void IntermediateInstruction::removeAsUserFromValue(const Value& value, const LocalUse::Type type)

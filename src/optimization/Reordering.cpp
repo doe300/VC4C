@@ -302,7 +302,7 @@ static bool replaceNOPs(BasicBlock& basicBlock, Method& method, const Configurat
                 while(!nextIt.isEndOfBlock() && !nextIt.has())
                     nextIt.nextInBlock();
                 if(!prevIt.isStartOfBlock() && prevIt.has() && !nextIt.isEndOfBlock() && nextIt.has() &&
-                    prevIt->hasValueType(ValueType::LOCAL) && nextIt->readsLocal(prevIt->getOutput()->local()) &&
+                    prevIt->checkOutputLocal() && nextIt->readsLocal(prevIt->getOutput()->local()) &&
                     needsDelay(
                         prevIt, nextIt, prevIt->getOutput()->local(), config.additionalOptions.accumulatorThreshold))
                 {
@@ -364,7 +364,7 @@ bool optimizations::splitReadAfterWrites(const Module& module, Method& method, c
             if(it->mapsToASMInstruction())
             {
                 // ignoring instructions not mapped to machine code, e.g. labels will also check for write-label-read
-                lastWrittenTo = it->hasValueType(ValueType::LOCAL) ? it->getOutput()->local() : nullptr;
+                lastWrittenTo = it->checkOutputLocal();
                 lastInstruction = it;
             }
 
@@ -432,7 +432,7 @@ InstructionWalker optimizations::moveRotationSourcesToAccumulators(
             InstructionWalker writer = it.copy().previousInBlock();
             while(!writer.isStartOfBlock())
             {
-                if(writer.has() && writer->hasValueType(ValueType::LOCAL) && writer->getOutput()->hasLocal(loc))
+                if(writer.has() && writer->checkOutputLocal() && writer->getOutput()->hasLocal(loc))
                     break;
                 writer.previousInBlock();
             }

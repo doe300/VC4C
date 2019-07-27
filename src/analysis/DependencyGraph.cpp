@@ -261,7 +261,7 @@ static void createR4Dependencies(DependencyGraph& graph, DependencyNode& node,
         auto& otherNode = graph.assertNode(lastTriggerOfR4);
         unsigned delayCycles = 0;
         bool fixedDelay = false;
-        if(lastTriggerOfR4->hasValueType(ValueType::REGISTER) && lastTriggerOfR4->getOutput()->reg().triggersReadOfR4())
+        if(lastTriggerOfR4->checkOutputRegister() & &Register::triggersReadOfR4)
         {
             // delay slots for SFU calculations
             delayCycles = 2;
@@ -274,8 +274,7 @@ static void createR4Dependencies(DependencyGraph& graph, DependencyNode& node,
         addDependency(
             otherNode.getOrCreateEdge(&node).data, DependencyType::SIGNAL_READ_AFTER_WRITE, delayCycles, fixedDelay);
     }
-    if(node.key->signal.triggersReadOfR4() ||
-        (node.key->hasValueType(ValueType::REGISTER) && node.key->getOutput()->reg().triggersReadOfR4()))
+    if(node.key->signal.triggersReadOfR4() || (node.key->checkOutputRegister() & &Register::triggersReadOfR4))
     {
         // XXX Although it might not be necessary to order signals of reading from TMU and the actual reads of r4 (e.g.
         // load_tmu0; read r4; load_tmu1; read r4), we still do so, since it has not been tested whether the QPU hsa
@@ -304,7 +303,7 @@ static void createMutexDependencies(DependencyGraph& graph, DependencyNode& node
     const intermediate::IntermediateInstruction* lastMemFence)
 {
     if(lastMutexLock &&
-        ((node.key->hasValueType(ValueType::REGISTER) && node.key->getOutput()->reg().isVertexPipelineMemory()) ||
+        ((node.key->checkOutputRegister() & &Register::isVertexPipelineMemory) ||
             std::any_of(node.key->getArguments().begin(), node.key->getArguments().end(),
                 [](const Value& arg) -> bool { return arg.checkRegister() && arg.reg().isVertexPipelineMemory(); }) ||
             node.key->writesRegister(REG_MUTEX)))
@@ -535,8 +534,7 @@ static void createVPMWaitDependencies(DependencyGraph& graph, DependencyNode& no
     const intermediate::IntermediateInstruction* lastVPMReadWait)
 {
     if(lastVPMWriteWait != nullptr &&
-        (node.key->writesRegister(REG_MUTEX) ||
-            (node.key->hasValueType(ValueType::REGISTER) && node.key->getOutput()->reg().isVertexPipelineMemory())))
+        (node.key->writesRegister(REG_MUTEX) || (node.key->checkOutputRegister() & &Register::isVertexPipelineMemory)))
     {
         // unlocking of the mutex as well as any following VPM accesses (within that mutex) need to be ordered after the
         // VPM write wait instruction
@@ -546,7 +544,7 @@ static void createVPMWaitDependencies(DependencyGraph& graph, DependencyNode& no
     if(lastVPMReadWait != nullptr &&
         (node.key->readsRegister(REG_VPM_IO) ||
             /* this check is for writing following reads, e.g. for memory copies */
-            (node.key->hasValueType(ValueType::REGISTER) && node.key->getOutput()->reg().isVertexPipelineMemory())))
+            (node.key->checkOutputRegister() & &Register::isVertexPipelineMemory)))
     {
         // all reading of VPM need to be ordered after the VPM read wait instruction (if any)
         auto& otherNode = graph.assertNode(lastVPMReadWait);
@@ -561,8 +559,7 @@ static void createTMUCoordinateDependencies(DependencyGraph& graph, DependencyNo
     const intermediate::IntermediateInstruction* lastSemaphoreAccess,
     const intermediate::IntermediateInstruction* lastMemFence)
 {
-    if(lastTMUNoswapWrite != nullptr && node.key->hasValueType(ValueType::REGISTER) &&
-        node.key->getOutput()->reg().isTextureMemoryUnit())
+    if(lastTMUNoswapWrite != nullptr && (node.key->checkOutputRegister() & &Register::isTextureMemoryUnit))
     {
         // do not re-order/keep minimum distance between TMU swapping configuration and writing TMU addresses
         auto& otherNode = graph.assertNode(lastTMUNoswapWrite);
@@ -586,15 +583,13 @@ static void createTMUCoordinateDependencies(DependencyGraph& graph, DependencyNo
         auto& otherNode = graph.assertNode(lastTMU1CoordsWrite);
         addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
     }
-    if(lastSemaphoreAccess && node.key->hasValueType(ValueType::REGISTER) &&
-        node.key->getOutput()->reg().isTextureMemoryUnit())
+    if(lastSemaphoreAccess && (node.key->checkOutputRegister() & &Register::isTextureMemoryUnit))
     {
         // do not re-order setting of TMU registers (addresses) before semaphore access
         auto& otherNode = graph.assertNode(lastSemaphoreAccess);
         addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER);
     }
-    if(lastMemFence && node.key->hasValueType(ValueType::REGISTER) &&
-        node.key->getOutput()->reg().isTextureMemoryUnit())
+    if(lastMemFence && (node.key->checkOutputRegister() & &Register::isTextureMemoryUnit))
     {
         // do not re-order setting of TMU registers (addresses) before memory locks
         auto& otherNode = graph.assertNode(lastMemFence);
@@ -783,8 +778,7 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
             lastSettingOfFlags = inst.get();
         if(inst->hasConditionalExecution() || (branch && !branch->isUnconditional()))
             lastConditional = inst.get();
-        if(inst->signal.triggersReadOfR4() ||
-            (inst->hasValueType(ValueType::REGISTER) && inst->getOutput()->reg().triggersReadOfR4()))
+        if(inst->signal.triggersReadOfR4() || (inst->checkOutputRegister() & &Register::triggersReadOfR4))
             lastTriggerOfR4 = inst.get();
         if(inst->readsRegister(REG_SFU_OUT))
             lastReadOfR4 = inst.get();
@@ -836,8 +830,8 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
             lastTMU1CoordsWrite = inst.get();
         if(inst->writesRegister(REG_TMU_NOSWAP))
             lastTMUNoswapWrite = inst.get();
-        if(inst->hasValueType(ValueType::LOCAL))
-            lastLocalWrites[inst->getOutput()->local()] = inst.get();
+        if(auto loc = inst->checkOutputLocal())
+            lastLocalWrites[loc] = inst.get();
         for(const Value& arg : inst->getArguments())
         {
             if(auto loc = arg.checkLocal())

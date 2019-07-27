@@ -56,7 +56,7 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
             }
             return first;
         }
-        if(inst->hasValueType(ValueType::LOCAL) &&
+        if(inst->checkOutputLocal() &&
             (!inst->hasConditionalExecution() ||
                 (cache.find(inst->getOutput()->local()) != cache.end() &&
                     cache.at(inst->getOutput()->local()).isInversionOf(inst->conditional))))
@@ -64,7 +64,7 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
             // TODO for exact check, would also need to compare the instruction setting the flags
             values.erase(inst->getOutput()->local());
         }
-        else if(inst->hasValueType(ValueType::LOCAL) && inst->hasConditionalExecution())
+        else if(inst->checkOutputLocal() && inst->hasConditionalExecution())
         {
             auto it = cache.find(inst->getOutput()->local());
             if(it != cache.end() && it->second.isInversionOf(inst->conditional))
@@ -116,8 +116,7 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
         {
             // by default, we need all the elements our outputs need
             // if we do not know the mask, assume all elements are needed
-            auto outIt =
-                inst->hasValueType(ValueType::LOCAL) ? nextValues.find(inst->getOutput()->local()) : nextValues.end();
+            auto outIt = inst->checkOutputLocal() ? nextValues.find(inst->getOutput()->local()) : nextValues.end();
             inst->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
                 if(has_flag(type, LocalUse::Type::READER))
                 {
@@ -192,8 +191,8 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
                         }
                     });
                 }
-                else if(op->op == OP_SUB && op->getFirstArg().hasRegister(REG_ELEMENT_NUMBER) && op->getSecondArg() &&
-                    op->assertArgument(1).getLiteralValue())
+                else if(op->op == OP_SUB && op->getFirstArg().hasRegister(REG_ELEMENT_NUMBER) &&
+                    (op->getSecondArg() & &Value::getLiteralValue))
                 {
                     // only the first n elements are set where n is the literal (only if all conditions are checks
                     // for zero set/clear)
@@ -223,7 +222,7 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
                 }
             }
             cache.clear();
-            if(inst->hasValueType(ValueType::LOCAL) && !inst->hasConditionalExecution())
+            if(inst->checkOutputLocal() && !inst->hasConditionalExecution())
                 cache.emplace(inst->getOutput()->local(), inst->conditional);
         }
         for(const auto& val : newValues)

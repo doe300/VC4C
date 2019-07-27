@@ -306,12 +306,11 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
          *
          * y is in range [0, constant] (unsigned)
          */
-        auto argIt = std::find_if(op->getArguments().begin(), op->getArguments().end(),
-            [](const Value& val) -> bool { return val.isLiteralValue(); });
-        if(argIt == op->getArguments().end())
+        if(auto litArg = op->findLiteralArgument())
+            extendBoundaries(0, static_cast<int64_t>(litArg->literal().unsignedInt()));
+        else
             throw CompilationError(CompilationStep::GENERAL,
                 "Failed to get literal argument for operation which reads a literal value", op->to_string());
-        extendBoundaries(0, static_cast<int64_t>(argIt->getLiteralValue()->unsignedInt()));
     }
     else if(op && op->op == OP_CLZ)
     {
@@ -525,7 +524,7 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
     auto it = method.walkAllInstructions();
     while(!it.isEndOfMethod())
     {
-        if(it.has() && !it.get<BranchLabel>() && it->hasValueType(ValueType::LOCAL))
+        if(it.has() && !it.get<BranchLabel>() && it->checkOutputLocal())
         {
             ValueRange& range = ranges.emplace(it->getOutput()->local(), it->getOutput()->local()->type).first->second;
             range.update(it->precalculate(3).first, ranges, it.get(), &method);

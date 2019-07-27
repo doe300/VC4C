@@ -31,7 +31,7 @@ FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::Inte
 
     FastSet<const Local*> result(nextResult);
 
-    if(instr->hasValueType(ValueType::LOCAL) &&
+    if(instr->checkOutputLocal() &&
         !instr->hasDecoration(vc4c::intermediate::InstructionDecorations::ELEMENT_INSERTION))
     {
         auto out = instr->getOutput()->local();
@@ -124,7 +124,7 @@ std::pair<FastSet<const Local*>, FastSet<const Local*>> LocalUsageAnalysis::anal
             }
         }
 
-        if(instr->hasValueType(ValueType::LOCAL) && !instr->getOutput()->local()->type.isLabelType())
+        if(instr->checkOutputLocal() && !instr->getOutput()->local()->type.isLabelType())
             localsWritten.emplace(instr->getOutput()->local());
     };
 

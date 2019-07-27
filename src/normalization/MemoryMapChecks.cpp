@@ -660,7 +660,7 @@ static FastMap<Value, InstructionDecorations> findDirectLevelAdditionInputs(cons
     auto op = dynamic_cast<const Operation*>(writer);
     bool onlySideEffectIsReadingUniform = op && op->hasSideEffects() && !op->doesSetFlag() &&
         !op->signal.hasSideEffects() &&
-        !(op->hasValueType(ValueType::REGISTER) && op->getOutput()->reg().hasSideEffectsOnWrite()) &&
+        !(op->checkOutputRegister() && op->getOutput()->reg().hasSideEffectsOnWrite()) &&
         std::all_of(op->getArguments().begin(), op->getArguments().end(), [](const Value& arg) -> bool {
             return !arg.checkRegister() || arg.reg() == REG_UNIFORM || !arg.reg().hasSideEffectsOnRead();
         });

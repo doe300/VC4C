@@ -135,8 +135,8 @@ struct LoopControl
 
     Optional<Literal> getStep() const
     {
-        if(!iterationStep.ifPresent(
-               [](const InstructionWalker& it) -> bool { return it.get<const intermediate::Operation>(); }))
+        if(!(iterationStep &
+                   [](const InstructionWalker& it) -> bool { return it.get<const intermediate::Operation>(); }))
             return {};
         const intermediate::Operation* op = iterationStep->get<const intermediate::Operation>();
         if(op->getArguments().size() != 2)
@@ -228,7 +228,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                     it.value()->readsLiteral() &&
                     // TODO could here more simply check against output being the local the iteration variable is set to
                     // (in the phi-node inside the loop)
-                    it.value()->getOutput().ifPresent([](const Value& val) -> bool {
+                    (it.value()->getOutput() & [](const Value& val) -> bool {
                         return val.checkLocal() &&
                             std::any_of(val.local()->getUsers().begin(), val.local()->getUsers().end(),
                                 [](const auto& pair) -> bool {
@@ -242,7 +242,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                     loopControl.determineStepKind(it->get<intermediate::Operation>()->op);
                 }
                 // for use-with immediate local, TODO need better checking
-                else if(it->get<intermediate::MoveOperation>() && it.value()->hasValueType(ValueType::LOCAL))
+                else if(it->get<intermediate::MoveOperation>() && it.value()->checkOutputLocal())
                 {
                     // second-level checking for loop iteration step (e.g. if loop variable is copied for
                     // use-with-immediate)
@@ -255,8 +255,7 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
                         if(pair.second.readsLocal() && it)
                         {
                             if(it->get<intermediate::Operation>() && it.value()->getArguments().size() == 2 &&
-                                it.value()->readsLiteral() &&
-                                it.value()->getOutput().ifPresent([](const Value& val) -> bool {
+                                it.value()->readsLiteral() && (it.value()->getOutput() & [](const Value& val) -> bool {
                                     return val.checkLocal() &&
                                         std::any_of(val.local()->getUsers().begin(), val.local()->getUsers().end(),
                                             [](const auto& pair) -> bool {
@@ -471,10 +470,10 @@ static int calculateCostsVsBenefits(
     {
         if(it.has())
         {
-            if(it->getOutput().ifPresent([](const Value& out) -> bool {
+            if(it->getOutput() & [](const Value& out) -> bool {
                    return out.hasRegister(REG_VPM_DMA_LOAD_ADDR) || out.hasRegister(REG_TMU0_ADDRESS) ||
                        out.hasRegister(REG_TMU1_ADDRESS);
-               }))
+               })
             {
                 for(const Value& arg : it->getArguments())
                 {
@@ -566,7 +565,7 @@ static void scheduleForVectorization(
     local->forUsers(LocalUse::Type::READER, [&openInstructions, &loop](const LocalUser* user) -> void {
         if(!user->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
             openInstructions.emplace(user);
-        if(user->hasValueType(ValueType::REGISTER) &&
+        if(user->checkOutputRegister() &&
             (user->getOutput()->reg().isSpecialFunctionsUnit() || user->getOutput()->reg().isTextureMemoryUnit()))
         {
             // need to add the reading of SFU/TMU too
@@ -886,7 +885,7 @@ static void vectorize(
             vectorizeInstruction(it->get(), method, openInstructions, loopControl.vectorizationFactor, loop);
             ++numVectorized;
         }
-        else if(dynamic_cast<const intermediate::MoveOperation*>(inst) && inst->hasValueType(ValueType::LOCAL) &&
+        else if(dynamic_cast<const intermediate::MoveOperation*>(inst) && inst->checkOutputLocal() &&
             !inst->hasSideEffects())
         {
             // follow all simple moves to other locals (to find the instruction we really care about)
@@ -1914,7 +1913,7 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
                     hasSideEffects = true;
                     break;
                 }
-                if(it->hasValueType(ValueType::LOCAL) && !succ->key->isLocallyLimited(it, it->getOutput()->local(), 8))
+                if(it->checkOutputLocal() && !succ->key->isLocallyLimited(it, it->getOutput()->local(), 8))
                     nonlocalLocals.emplace(it->getOutput()->local());
                 it.nextInBlock();
             }

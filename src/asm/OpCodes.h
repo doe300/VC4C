@@ -971,11 +971,15 @@ namespace vc4c
         add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_WORD_OVERFLOW)};
     /*
      * Integer right shift (unsigned)
+     *
+     * NOTE: Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
      */
     static constexpr OpCode OP_SHR{"shr", 14, 0, 2, false, false,
         add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_WORD_UNDERFLOW)};
     /*
      * Integer arithmetic right shift (signed)
+     *
+     * NOTE: Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
      */
     static constexpr OpCode OP_ASR{"asr", 15, 0, 2, false, false,
         add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_WORD_UNDERFLOW)};
@@ -986,6 +990,8 @@ namespace vc4c
         add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)};
     /*
      * Integer left shift
+     *
+     * NOTE: Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
      */
     static constexpr OpCode OP_SHL{"shl", 17, 0, 2, false, false,
         add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_WORD_OVERFLOW)};
@@ -1023,6 +1029,8 @@ namespace vc4c
         add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)};
     /*
      * Count leading zeroes
+     *
+     * NOTE: Tests show that VC4 returns 32 for clz(0)
      */
     static constexpr OpCode OP_CLZ{"clz", 24, 0, 1, false, false,
         add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_NEVER, FlagBehavior::CARRY_NEVER)};

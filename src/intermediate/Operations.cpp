@@ -208,9 +208,9 @@ qpu_asm::DecoratedInstruction Operation::convertToAsm(const FastMap<const Local*
 
     const WriteSwap swap = writeSwap ? WriteSwap::SWAP : WriteSwap::DONT_SWAP;
 
-    if(getSecondArg())
+    if(auto arg1 = getSecondArg())
     {
-        InputMultiplex inMux1 = getInputMux(input1.first, assertArgument(1).checkRegister(), input1.second,
+        InputMultiplex inMux1 = getInputMux(input1.first, arg1->checkRegister(), input1.second,
             input0.first.file == RegisterFile::PHYSICAL_A, input0.first.file == RegisterFile::PHYSICAL_B);
 
         // one of the values is a literal immediate
@@ -257,7 +257,7 @@ qpu_asm::DecoratedInstruction Operation::convertToAsm(const FastMap<const Local*
             else if(has_flag(input1.first.file, RegisterFile::PHYSICAL_ANY))
             {
                 if(getInputValue(getFirstArg(), registerMapping, this).first ==
-                    getInputValue(assertArgument(1), registerMapping, this).first)
+                    getInputValue(*arg1, registerMapping, this).first)
                 {
                     // same inputs - this allows e.g. vc4asm to recognize "mov x, uniform" correctly
                     input1.first.file = input0.first.file;
