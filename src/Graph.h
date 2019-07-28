@@ -199,13 +199,35 @@ namespace vc4c
             return singleNeighbor;
         }
 
-        Node* getSinglePredecessor()
+        Node* getSinglePredecessor(const std::function<bool(const Relation&)>& relation)
         {
             static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have predecessors!");
             Node* singlePredecessor = nullptr;
             for(auto& edge : edges)
             {
-                if(edge.second->isOutput(*this))
+                if(edge.second->isOutput(*this) && relation(edge.second->data))
+                {
+                    if(singlePredecessor != nullptr)
+                        // multiple predecessors
+                        return nullptr;
+                    singlePredecessor = edge.first;
+                }
+            }
+            return singlePredecessor;
+        }
+
+        Node* getSinglePredecessor()
+        {
+            return getSinglePredecessor([](const Relation& rel) -> bool { return true; });
+        }
+
+        const Node* getSinglePredecessor(const std::function<bool(const Relation&)>& relation) const
+        {
+            static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have predecessors!");
+            const Node* singlePredecessor = nullptr;
+            for(auto& edge : edges)
+            {
+                if(edge.second->isOutput(*this) && relation(edge.second->data))
                 {
                     if(singlePredecessor != nullptr)
                         // multiple predecessors
@@ -218,28 +240,38 @@ namespace vc4c
 
         const Node* getSinglePredecessor() const
         {
-            static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have predecessors!");
-            const Node* singlePredecessor = nullptr;
-            for(auto& edge : edges)
-            {
-                if(edge.second->isOutput(*this))
-                {
-                    if(singlePredecessor != nullptr)
-                        // multiple predecessors
-                        return nullptr;
-                    singlePredecessor = edge.first;
-                }
-            }
-            return singlePredecessor;
+            return getSinglePredecessor([](const Relation& rel) -> bool { return true; });
         }
 
-        Node* getSingleSuccessor()
+        Node* getSingleSuccessor(const std::function<bool(const Relation&)>& relation)
         {
             static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have successors!");
             Node* singleSuccessor = nullptr;
             for(auto& edge : edges)
             {
-                if(edge.second->isInput(*this))
+                if(edge.second->isInput(*this) && relation(edge.second->data))
+                {
+                    if(singleSuccessor != nullptr)
+                        // multiple successors
+                        return nullptr;
+                    singleSuccessor = edge.first;
+                }
+            }
+            return singleSuccessor;
+        }
+
+        Node* getSingleSuccessor()
+        {
+            return getSingleSuccessor([](const Relation& rel) -> bool { return true; });
+        }
+
+        const Node* getSingleSuccessor(const std::function<bool(const Relation&)>& relation) const
+        {
+            static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have successors!");
+            const Node* singleSuccessor = nullptr;
+            for(auto& edge : edges)
+            {
+                if(edge.second->isInput(*this) && relation(edge.second->data))
                 {
                     if(singleSuccessor != nullptr)
                         // multiple successors
@@ -252,19 +284,7 @@ namespace vc4c
 
         const Node* getSingleSuccessor() const
         {
-            static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have successors!");
-            const Node* singleSuccessor = nullptr;
-            for(auto& edge : edges)
-            {
-                if(edge.second->isInput(*this))
-                {
-                    if(singleSuccessor != nullptr)
-                        // multiple successors
-                        return nullptr;
-                    singleSuccessor = edge.first;
-                }
-            }
-            return singleSuccessor;
+            return getSingleSuccessor([](const Relation& rel) -> bool { return true; });
         }
 
         bool isAdjacent(NodeType* node) const

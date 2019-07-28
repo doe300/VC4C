@@ -312,3 +312,54 @@ InstructionWalker intermediate::insertByteSwap(
 
     return it;
 }
+
+const Local* intermediate::getSourceLocal(const Local* local)
+{
+    while(auto writer = local->getSingleWriter())
+    {
+        auto move = dynamic_cast<const MoveOperation*>(writer);
+        if(move && move->isSimpleMove() && !move->hasConditionalExecution() && move->readsLocal())
+            local = move->getSource().local();
+    }
+    return local;
+}
+
+const IntermediateInstruction* intermediate::getSourceInstruction(const IntermediateInstruction* inst)
+{
+    while(auto move = dynamic_cast<const MoveOperation*>(inst))
+    {
+        if(move->isSimpleMove() && !move->hasConditionalExecution())
+        {
+            if(auto writer = move->getSource().getSingleWriter())
+                inst = writer;
+        }
+    }
+    return inst;
+}
+
+FastSet<const Local*> intermediate::getEquivalenceClass(const Local* local)
+{
+    FastSet<const Local*> clazz;
+
+    // go backward until the beginning of the class to make sure we get all the branches
+    auto startLocal = getSourceLocal(local);
+    // go forward - this takes all the possible branches
+    std::function<void(const LocalUser*)> processNext = [&](const LocalUser* reader) {
+        auto move = dynamic_cast<const MoveOperation*>(reader);
+        if(move && move->isSimpleMove() && !move->hasConditionalExecution() && move->checkOutputLocal())
+        {
+            auto out = move->getOutput()->local();
+            if(out->getSingleWriter() == reader)
+            {
+                // if there are multiple writers, the local could take different values
+                clazz.emplace(out);
+                out->forUsers(LocalUse::Type::READER, processNext);
+            }
+        }
+    };
+
+    clazz.emplace(startLocal);
+    startLocal->forUsers(LocalUse::Type::READER, processNext);
+
+    return clazz;
+}

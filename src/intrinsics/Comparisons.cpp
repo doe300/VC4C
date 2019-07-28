@@ -68,6 +68,7 @@ static InstructionWalker intrinsifyIntegerRelation(
          * 8-bit:
          * a < b [<=> max(a & 0xFF, b & 0xFF) != a] <=> max(a, b) != a (since MSB is never set -> always positive)
          */
+        ConditionCode cond = COND_NEVER;
         if(comp->getFirstArg().type.getScalarBitCount() == 32)
         {
             // a < b [b = 2^x] <=> (a & (b-1)) == a <=> (a & ~(b-1)) == 0
@@ -124,15 +125,14 @@ static InstructionWalker intrinsifyIntegerRelation(
                 assign(it, unsignedMax) = (max(comp->getFirstArg(), comp->assertArgument(1)), COND_NEGATIVE_CLEAR);
                 assign(it, NOP_REGISTER) = (unsignedMax ^ comp->getFirstArg(), SetFlag::SET_FLAGS);
             }
+            cond = COND_ZERO_CLEAR;
         }
         else
         {
             // for non 32-bit types, high-bit is not set and therefore signed max == unsigned max
-            const Value tmp = method.addNewLocal(comp->getFirstArg().type, "%icomp");
-            assign(it, tmp) = (max(comp->getFirstArg(), comp->assertArgument(1)));
-            assign(it, NOP_REGISTER) = (tmp ^ comp->getFirstArg(), SetFlag::SET_FLAGS);
+            cond = assignNop(it) = (as_signed{comp->getFirstArg()} < as_signed{comp->assertArgument(1)});
         }
-        it = replaceWithSetBoolean(it, comp->getOutput().value(), invertResult ? COND_ZERO_SET : COND_ZERO_CLEAR);
+        it = replaceWithSetBoolean(it, comp->getOutput().value(), invertResult ? cond.invert() : cond);
     }
     else if(COMP_SIGNED_LT == comp->opCode)
     {
@@ -165,9 +165,9 @@ static NODISCARD InstructionWalker insertCheckForNaN(
         return it;
     auto nanCond = assignNop(it) = isnan(as_float{comp->getFirstArg()});
     assign(it, result) = (invertResult ? BOOL_FALSE : BOOL_TRUE, nanCond);
-    if(comp->getSecondArg())
+    if(auto arg1 = comp->getSecondArg())
     {
-        nanCond = assignNop(it) = isnan(as_float{comp->assertArgument(1)});
+        nanCond = assignNop(it) = isnan(as_float{*arg1});
         assign(it, result) = (invertResult ? BOOL_FALSE : BOOL_TRUE, nanCond);
     }
     return it;
