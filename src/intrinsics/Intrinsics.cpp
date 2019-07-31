@@ -1049,6 +1049,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
         }
         else // 32-bits
         {
+            // TODO sometimes is off by 1 ULP, e.g. for 1698773569 gets 1698773504 instead of expected 1698773632
             // uitof(x) = y * uitof(x/y) + uitof(x & |y|), where |y| is the bits for y
             auto tmpInt = assign(it, op->getFirstArg().type) = op->getFirstArg() / 2_lit;
             auto tmpFloat = method.addNewLocal(op->getOutput()->type);

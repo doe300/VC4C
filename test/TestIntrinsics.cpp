@@ -904,7 +904,8 @@ void TestIntrinsicFunctions::testIntToFloat()
     std::string options = "-DFUNC=(float) -DIN=int -DOUT=float";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    testUnaryFunction<int, float, 1>(code, options, [](int i) -> float { return static_cast<float>(i); },
+    testUnaryFunction<int, float, 1>(
+        code, options, [](int i) -> float { return static_cast<float>(i); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestIntrinsicFunctions::testShortToFloat()
@@ -912,7 +913,8 @@ void TestIntrinsicFunctions::testShortToFloat()
     std::string options = "-DFUNC=(float) -DIN=short -DOUT=float";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    testUnaryFunction<short, float, 1>(code, options, [](short i) -> float { return static_cast<float>(i); },
+    testUnaryFunction<short, float, 1>(
+        code, options, [](short i) -> float { return static_cast<float>(i); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestIntrinsicFunctions::testCharToFloat()
@@ -920,7 +922,8 @@ void TestIntrinsicFunctions::testCharToFloat()
     std::string options = "-DFUNC=(float) -DIN=char -DOUT=float";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    testUnaryFunction<char, float, 1>(code, options, [](char i) -> float { return static_cast<float>(i); },
+    testUnaryFunction<char, float, 1>(
+        code, options, [](char i) -> float { return static_cast<float>(i); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestIntrinsicFunctions::testUnsignedIntToFloat()
@@ -928,7 +931,8 @@ void TestIntrinsicFunctions::testUnsignedIntToFloat()
     std::string options = "-DFUNC=(float) -DIN=uint -DOUT=float";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    testUnaryFunction<unsigned, float, 1>(code, options, [](unsigned i) -> float { return static_cast<float>(i); },
+    testUnaryFunction<unsigned, float, 1>(
+        code, options, [](unsigned i) -> float { return static_cast<float>(i); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestIntrinsicFunctions::testUnsignedShortToFloat()
@@ -936,8 +940,8 @@ void TestIntrinsicFunctions::testUnsignedShortToFloat()
     std::string options = "-DFUNC=(float) -DIN=ushort -DOUT=float";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    testUnaryFunction<unsigned short, float, 1>(code, options,
-        [](unsigned short i) -> float { return static_cast<float>(i); },
+    testUnaryFunction<unsigned short, float, 1>(
+        code, options, [](unsigned short i) -> float { return static_cast<float>(i); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestIntrinsicFunctions::testUnsignedCharToFloat()
@@ -945,8 +949,8 @@ void TestIntrinsicFunctions::testUnsignedCharToFloat()
     std::string options = "-DFUNC=(float) -DIN=uchar -DOUT=float";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    testUnaryFunction<unsigned char, float, 1>(code, options,
-        [](unsigned char i) -> float { return static_cast<float>(i); },
+    testUnaryFunction<unsigned char, float, 1>(
+        code, options, [](unsigned char i) -> float { return static_cast<float>(i); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -957,7 +961,8 @@ void TestIntrinsicFunctions::testFloatToInt()
     compileBuffer(config, code, UNARY_FUNCTION, options);
     // conversion from float to integer with out-of-range values is implementation defined, see OpenCL 1.2,
     // section 6.2.3.3
-    testUnaryFunction<float, int, 1, int>(code, options, [](float f) -> int { return static_cast<int>(f); },
+    testUnaryFunction<float, int, 1, int>(
+        code, options, [](float f) -> int { return static_cast<int>(f); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestIntrinsicFunctions::testFloatToShort()
@@ -967,7 +972,8 @@ void TestIntrinsicFunctions::testFloatToShort()
     compileBuffer(config, code, UNARY_FUNCTION, options);
     // conversion from float to integer with out-of-range values is implementation defined, see OpenCL 1.2,
     // section 6.2.3.3
-    testUnaryFunction<float, short, 1, short>(code, options, [](float f) -> short { return static_cast<short>(f); },
+    testUnaryFunction<float, short, 1, short>(
+        code, options, [](float f) -> short { return static_cast<short>(f); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestIntrinsicFunctions::testFloatToChar()
@@ -977,7 +983,8 @@ void TestIntrinsicFunctions::testFloatToChar()
     compileBuffer(config, code, UNARY_FUNCTION, options);
     // conversion from float to integer with out-of-range values is implementation defined, see OpenCL 1.2,
     // section 6.2.3.3
-    testUnaryFunction<float, char, 1, char>(code, options, [](float f) -> char { return static_cast<char>(f); },
+    testUnaryFunction<float, char, 1, char>(
+        code, options, [](float f) -> char { return static_cast<char>(f); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestIntrinsicFunctions::testFloatToUnsignedInt()
@@ -987,8 +994,8 @@ void TestIntrinsicFunctions::testFloatToUnsignedInt()
     compileBuffer(config, code, UNARY_FUNCTION, options);
     // conversion from float to integer with out-of-range values is implementation defined, see OpenCL 1.2,
     // section 6.2.3.3
-    testUnaryFunction<float, unsigned, 1, unsigned>(code, options,
-        [](float f) -> unsigned { return static_cast<unsigned>(f); },
+    testUnaryFunction<float, unsigned, 1, unsigned>(
+        code, options, [](float f) -> unsigned { return static_cast<unsigned>(f); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestIntrinsicFunctions::testFloatToUnsignedShort()
@@ -998,8 +1005,8 @@ void TestIntrinsicFunctions::testFloatToUnsignedShort()
     compileBuffer(config, code, UNARY_FUNCTION, options);
     // conversion from float to integer with out-of-range values is implementation defined, see OpenCL 1.2,
     // section 6.2.3.3
-    testUnaryFunction<float, unsigned short, 1, unsigned short>(code, options,
-        [](float f) -> unsigned short { return static_cast<unsigned short>(f); },
+    testUnaryFunction<float, unsigned short, 1, unsigned short>(
+        code, options, [](float f) -> unsigned short { return static_cast<unsigned short>(f); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestIntrinsicFunctions::testFloatToUnsignedChar()
@@ -1009,8 +1016,8 @@ void TestIntrinsicFunctions::testFloatToUnsignedChar()
     compileBuffer(config, code, UNARY_FUNCTION, options);
     // conversion from float to integer with out-of-range values is implementation defined, see OpenCL 1.2,
     // section 6.2.3.3
-    testUnaryFunction<float, unsigned char, 1, unsigned char>(code, options,
-        [](float f) -> unsigned char { return static_cast<unsigned char>(f); },
+    testUnaryFunction<float, unsigned char, 1, unsigned char>(
+        code, options, [](float f) -> unsigned char { return static_cast<unsigned char>(f); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -1019,14 +1026,16 @@ void TestIntrinsicFunctions::testFtoi()
     std::string options = "-DFUNC=vc4cl_ftoi -DIN=float -DOUT=int -DDEFINE_PROTOTYPE";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    testUnaryFunction<float, int, 1, int>(code, options, [](float f) -> int { return static_cast<int>(f); },
+    testUnaryFunction<float, int, 1, int>(
+        code, options, [](float f) -> int { return static_cast<int>(f); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     code.str("");
     auto in = generateInput<float, 1, int>(true)[0];
     options.append(" -DSOURCES=").append(std::to_string(in)).append("f");
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);
-    testUnaryFunctionWithConstant<float, int>(code, options, in, [](float f) -> int { return static_cast<int>(f); },
+    testUnaryFunctionWithConstant<float, int>(
+        code, options, in, [](float f) -> int { return static_cast<int>(f); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -1035,14 +1044,16 @@ void TestIntrinsicFunctions::testItof()
     std::string options = "-DFUNC=vc4cl_itof -DIN=int -DOUT=float -DDEFINE_PROTOTYPE";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    testUnaryFunction<int, float, 1>(code, options, [](int i) -> float { return static_cast<float>(i); },
+    testUnaryFunction<int, float, 1>(
+        code, options, [](int i) -> float { return static_cast<float>(i); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     code.str("");
     auto in = generateInput<int, 1>(true)[0];
     options.append(" -DSOURCES=").append(std::to_string(in));
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);
-    testUnaryFunctionWithConstant<int, float>(code, options, in, [](int i) -> float { return static_cast<float>(i); },
+    testUnaryFunctionWithConstant<int, float>(
+        code, options, in, [](int i) -> float { return static_cast<float>(i); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -1071,7 +1082,7 @@ void TestIntrinsicFunctions::testSfuRsqrt()
     std::string options = "-DFUNC=vc4cl_sfu_rsqrt -DIN=float -DOUT=float -DDEFINE_PROTOTYPE";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    testUnaryFunction<float, float, 1, unsigned>(code, options, func,
+    testUnaryFunction<float, float, 1, unsigned, CompareULP<8192>>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     code.str("");
@@ -1087,7 +1098,7 @@ void TestIntrinsicFunctions::testSfuExp2()
     std::string options = "-DFUNC=vc4cl_sfu_exp2 -DIN=float -DOUT=float -DDEFINE_PROTOTYPE";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    testUnaryFunction<float, float, 1, unsigned>(code, options, std::exp2f,
+    testUnaryFunction<float, float, 1, unsigned, CompareULP<8192>>(code, options, std::exp2f,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     code.str("");
@@ -1102,7 +1113,7 @@ void TestIntrinsicFunctions::testSfuLog2()
     std::string options = "-DFUNC=vc4cl_sfu_log2 -DIN=float -DOUT=float -DDEFINE_PROTOTYPE";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    testUnaryFunction<float, float, 1, unsigned>(code, options, std::log2f,
+    testUnaryFunction<float, float, 1, unsigned, CompareULP<8192>>(code, options, std::log2f,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     code.str("");
@@ -1119,7 +1130,7 @@ void TestIntrinsicFunctions::testSfuRecip()
     std::string options = "-DFUNC=vc4cl_sfu_recip -DIN=float -DOUT=float -DDEFINE_PROTOTYPE";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    testUnaryFunction<float, float, 1, unsigned>(code, options, func,
+    testUnaryFunction<float, float, 1, unsigned, CompareULP<8192>>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     code.str("");

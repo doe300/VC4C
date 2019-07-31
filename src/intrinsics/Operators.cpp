@@ -142,8 +142,7 @@ bool intermediate::canOptimizeMultiplicationWithBinaryMethod(const IntrinsicOper
 InstructionWalker intermediate::intrinsifyIntegerMultiplicationViaBinaryMethod(
     Method& method, InstructionWalker it, IntrinsicOperation& op)
 {
-    auto factor = op.getFirstArg().getLiteralValue() ? op.getFirstArg().getLiteralValue()->signedInt() :
-                                                       op.getSecondArg()->getLiteralValue()->signedInt();
+    auto factor = (op.getFirstArg().getLiteralValue() | op.getSecondArg()->getLiteralValue())->signedInt();
     const auto& src = op.getFirstArg().getLiteralValue() ? op.getSecondArg().value() : op.getFirstArg();
 
     if(factor <= 0)
@@ -440,8 +439,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
     if(op.getFirstArg().type.getScalarBitCount() > 16)
         throw CompilationError(CompilationStep::OPTIMIZER, "Division by constant may overflow for argument type",
             op.getFirstArg().type.to_string());
-    if(!op.getSecondArg().ifPresent(toFunction(&Value::isLiteralValue)) &&
-        !(op.getSecondArg() && op.assertArgument(1).checkVector()))
+    if(!(op.getSecondArg() & &Value::isLiteralValue) && !(op.getSecondArg() & &Value::checkVector))
         throw CompilationError(CompilationStep::OPTIMIZER, "Can only optimize division by constant", op.to_string());
 
     /*

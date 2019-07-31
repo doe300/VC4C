@@ -241,17 +241,60 @@ namespace vc4c
             return has_value() ? (*this)->to_string() : "-";
         }
 
-        bool ifPresent(const std::function<bool(const T&)>& predicate) const
-        {
-            return has_value() && predicate(**this);
-        }
-
 #if __cplusplus < 201703L
         bool has_value() const
         {
             return static_cast<bool>(*this);
         }
 #endif
+
+        // These operators are defined as member operators to not interfere with any other operator, since any Type is
+        // implicitly convertible to Optional<Type>
+        bool operator&(const std::function<bool(const T&)>& func) const
+        {
+            return has_value() && func(**this);
+        }
+
+        template <typename R>
+        Optional<R> operator&(const std::function<Optional<R>(const T&)>& func) const
+        {
+            return has_value() ? func(**this) : Optional<R>{};
+        }
+
+        template <typename R>
+        R* operator&(const std::function<R*(const T&)>& func) const
+        {
+            return has_value() ? func(**this) : nullptr;
+        }
+
+        template <typename S = T>
+        typename std::enable_if<std::is_class<S>::value, bool>::type operator&(bool (S::*func)() const) const
+        {
+            return has_value() && ((**this).*func)();
+        }
+
+        template <typename R, typename S = T>
+        typename std::enable_if<std::is_class<S>::value, Optional<R>>::type operator&(
+            Optional<R> (S::*func)() const) const
+        {
+            return has_value() ? ((**this).*func)() : Optional<R>{};
+        }
+
+        template <typename R, typename S = T>
+        typename std::enable_if<std::is_class<S>::value, R*>::type operator&(R* (S::*func)() const) const
+        {
+            return has_value() ? ((**this).*func)() : nullptr;
+        }
+
+        const Optional<T>& operator|(const Optional<T>& other) const &
+        {
+            return has_value() ? *this : other;
+        }
+
+        Optional<T> operator|(Optional<T>&& other) &&
+        {
+            return has_value() ? *this : other;
+        }
     };
 
     template <typename R>

@@ -1,7 +1,5 @@
 // TODO add to optimization test
-// TODO add to emulator test
-
-__kernel void test_simple_if(__global int* out, __global const int* in, __global const int* cond)
+__kernel void test_simple_if_else(__global int* out, __global const int* in, __global const int* cond)
 {
     uint gid = get_global_id(0);
     int val = in[gid];
@@ -14,6 +12,20 @@ __kernel void test_simple_if(__global int* out, __global const int* in, __global
     {
         out[gid] = -val;
     }
+}
+
+__kernel void test_simple_if(__global int* out, __global const int* in, __global const int* cond)
+{
+    uint gid = get_global_id(0);
+    int val = in[gid];
+    int factor = 1;
+    // is already converted to select(xxx) by clang
+    if(cond[gid] > 42)
+    {
+        val += 17;
+        factor = -3;
+    }
+    out[gid] = -val * factor;
 }
 
 __kernel void test_switch_2_default(__global int* out, __global const int* in, __global const int* cond)
