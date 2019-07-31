@@ -18,6 +18,8 @@ target_sources(${VC4C_LIBRARY_NAME}
     ${CMAKE_CURRENT_LIST_DIR}/LifetimeGraph.h
     ${CMAKE_CURRENT_LIST_DIR}/LivenessAnalysis.h
     ${CMAKE_CURRENT_LIST_DIR}/LivenessAnalysis.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/PatternMatching.h
+    ${CMAKE_CURRENT_LIST_DIR}/PatternMatching.cpp
     ${CMAKE_CURRENT_LIST_DIR}/RegisterAnalysis.h
     ${CMAKE_CURRENT_LIST_DIR}/RegisterAnalysis.cpp
     ${CMAKE_CURRENT_LIST_DIR}/ValueRange.cpp

@@ -34,6 +34,8 @@ target_sources(TestVC4C
     TestOperators.h
     TestOptimizations.cpp
     TestOptimizations.h
+    TestPatternMatching.cpp
+    TestPatternMatching.h
     TestRelationalFunctions.cpp
     TestRelationalFunctions.h
     TestVectorFunctions.cpp

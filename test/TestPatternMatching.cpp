@@ -1,0 +1,580 @@
+
+#include "TestPatternMatching.h"
+
+#include "Expression.h"
+#include "Method.h"
+#include "Module.h"
+#include "analysis/PatternMatching.h"
+#include "intermediate/operators.h"
+
+using namespace vc4c;
+using namespace vc4c::pattern;
+using namespace vc4c::operators;
+
+static Module module{Configuration{}};
+
+TestPatternMatching::TestPatternMatching()
+{
+    TEST_ADD(TestPatternMatching::testInstructionMatch);
+    TEST_ADD(TestPatternMatching::testExpressionMatch);
+    TEST_ADD(TestPatternMatching::testSingleSearch);
+    TEST_ADD(TestPatternMatching::testConsecutiveSearch);
+    TEST_ADD(TestPatternMatching::testGappedSearch);
+}
+
+void TestPatternMatching::testInstructionMatch()
+{
+    Method m(module);
+    auto& block = m.createAndInsertNewBlock(m.begin(), "dummyLabel");
+    auto it = block.walkEnd();
+
+    // successful test - match binary instruction with wildcards
+    {
+        auto in = m.addNewLocal(TYPE_INT32);
+        auto out = assign(it, TYPE_INT32) = (15_val + in, COND_NEGATIVE_CLEAR);
+        auto inst = (it.copy().previousInBlock()).get();
+
+        Value realOut = UNDEFINED_VALUE;
+        Literal realConstant = UNDEFINED_LITERAL;
+        Value realIn = UNDEFINED_VALUE;
+        OpCode realOp = OP_NOP;
+        ConditionCode realCond = COND_NEVER;
+        auto part = capture(realOut) = (capture(realOp), capture(realConstant), capture(realIn), capture(realCond));
+
+        TEST_ASSERT(matches(inst, part));
+        TEST_ASSERT_EQUALS(out, realOut);
+        TEST_ASSERT(OP_ADD == realOp);
+        TEST_ASSERT_EQUALS(15_lit, realConstant);
+        TEST_ASSERT_EQUALS(in, realIn);
+        TEST_ASSERT_EQUALS(COND_NEGATIVE_CLEAR, realCond);
+    }
+
+    // successful test - match unary instruction specifically
+    {
+        auto out = assign(it, TYPE_INT32) = 42_val;
+        auto inst = (it.copy().previousInBlock()).get();
+
+        auto part = match(out) = (match(FAKEOP_MOV), match(42_val));
+
+        TEST_ASSERT(matches(inst, part));
+    }
+
+    // successful test - match load
+    {
+        auto out = m.addNewLocal(TYPE_INT32);
+        it.emplace(new intermediate::LoadImmediate(out, 42_lit));
+
+        Value realOut = UNDEFINED_VALUE;
+        Literal realConstant = UNDEFINED_LITERAL;
+        ConditionCode realCond = COND_NEVER;
+        auto part = capture(realOut) = (match(FAKEOP_LDI), capture(realConstant), capture(realCond));
+
+        TEST_ASSERT(matches(it.get(), part));
+        TEST_ASSERT_EQUALS(out, realOut);
+        TEST_ASSERT_EQUALS(42_lit, realConstant);
+        TEST_ASSERT_EQUALS(COND_ALWAYS, realCond);
+    }
+
+    // failing test - value mismatch
+    {
+        auto in = m.addNewLocal(TYPE_INT32);
+        auto out = assign(it, TYPE_INT32) = (15_val + in, COND_NEGATIVE_CLEAR);
+        auto inst = (it.copy().previousInBlock()).get();
+
+        Value realIn = UNDEFINED_VALUE;
+        ConditionCode realCond = COND_NEVER;
+        auto part = anyValue() = (match(OP_ADD), match(17_val), capture(realIn), capture(realCond));
+
+        TEST_ASSERT(!matches(inst, part));
+        // check captures not updated
+        TEST_ASSERT(realIn.isUndefined());
+        TEST_ASSERT_EQUALS(COND_NEVER, realCond);
+    }
+
+    // failing test - opcode mismatch
+    {
+        auto in = m.addNewLocal(TYPE_INT32);
+        auto out = assign(it, TYPE_INT32) = (15_val + in, COND_NEGATIVE_CLEAR);
+        auto inst = (it.copy().previousInBlock()).get();
+
+        Value realIn = UNDEFINED_VALUE;
+        ConditionCode realCond = COND_NEVER;
+        auto part = anyValue() = (match(OP_SUB), anyValue(), capture(realIn), capture(realCond));
+
+        TEST_ASSERT(!matches(inst, part));
+        // check captures not updated
+        TEST_ASSERT(realIn.isUndefined());
+        TEST_ASSERT_EQUALS(COND_NEVER, realCond);
+    }
+
+    // failing test - unsupported operation
+    {
+        auto out = m.addNewLocal(TYPE_INT32);
+        it.emplace(new intermediate::SemaphoreAdjustment(Semaphore::BARRIER_WORK_ITEM_10, false));
+
+        Value realOut = UNDEFINED_VALUE;
+        OpCode realCode = OP_NOP;
+        auto part = capture(realOut) = (capture(realCode), anyValue());
+
+        TEST_ASSERT(!matches(it.get(), part));
+        // check captures not updated
+        TEST_ASSERT(realOut.isUndefined());
+        TEST_ASSERT(OP_NOP == realCode);
+    }
+
+    // failing test - value type (local, literal) mismatch
+    {
+        auto in = m.addNewLocal(TYPE_INT32);
+        auto out = assign(it, TYPE_INT32) = (15_val + in, COND_NEGATIVE_CLEAR);
+        auto inst = (it.copy().previousInBlock()).get();
+
+        Value realOut = UNDEFINED_VALUE;
+        const Local* loc = nullptr;
+        auto part = capture(realOut) = (match(OP_ADD), capture(loc), anyValue());
+
+        TEST_ASSERT(!matches(inst, part));
+        // check captures not updated
+        TEST_ASSERT(realOut.isUndefined());
+        TEST_ASSERT(loc == nullptr);
+    }
+
+    // failing test - condition mismatch
+    {
+        auto in = m.addNewLocal(TYPE_INT32);
+        auto out = assign(it, TYPE_INT32) = (15_val + in, COND_NEGATIVE_CLEAR);
+        auto inst = (it.copy().previousInBlock()).get();
+
+        Value realOut = UNDEFINED_VALUE;
+        OpCode realCode = OP_NOP;
+        auto part = capture(realOut) = (capture(realCode), anyValue(), match(COND_CARRY_CLEAR));
+
+        TEST_ASSERT(!matches(it.get(), part));
+        // check captures not updated
+        TEST_ASSERT(realOut.isUndefined());
+        TEST_ASSERT(OP_NOP == realCode);
+    }
+
+    // failing test - argument size mismatch
+    {
+        auto out = assign(it, TYPE_INT32) = 42_val;
+        auto inst = (it.copy().previousInBlock()).get();
+
+        Value secondArg = UNDEFINED_VALUE;
+        auto part = match(out) = (match(FAKEOP_MOV), match(42_val), capture(secondArg));
+
+        TEST_ASSERT(!matches(it.get(), part));
+        // check captures not updated
+        TEST_ASSERT(secondArg.isUndefined());
+    }
+
+    // failing test - pack mode
+    {
+        auto out = assign(it, TYPE_INT32) = (42_val, PACK_32_16A);
+        auto inst = (it.copy().previousInBlock()).get();
+
+        Value arg = UNDEFINED_VALUE;
+        auto part = match(out) = (anyOperation(), capture(arg));
+
+        TEST_ASSERT(!matches(it.get(), part));
+        // check captures not updated
+        TEST_ASSERT(arg.isUndefined());
+    }
+
+    // failing test - unpack mode
+    {
+        auto out = assign(it, TYPE_INT32) = (42_val, UNPACK_16A_32);
+        auto inst = (it.copy().previousInBlock()).get();
+
+        Value arg = UNDEFINED_VALUE;
+        auto part = match(out) = (anyOperation(), capture(arg));
+
+        TEST_ASSERT(!matches(it.get(), part));
+        // check captures not updated
+        TEST_ASSERT(arg.isUndefined());
+    }
+
+    // failing test - no instruction
+    {
+        auto part = anyValue() = (anyOperation(), anyValue());
+        TEST_ASSERT(!matches(nullptr, part));
+    }
+
+    // TODO successful and failing test for supported arithmetic properties
+}
+
+void TestPatternMatching::testExpressionMatch()
+{
+    // successful test - exact match
+    {
+        Expression expr{OP_V8ADDS, 42_val, 17_val};
+
+        auto part = anyValue() = (match(OP_V8ADDS), match(42_val), match(17_val));
+        TEST_ASSERT(matches(expr, part));
+    }
+
+    // successful test - wildcard match
+    {
+        Expression expr{OP_V8ADDS, 42_val, 17_val};
+
+        Value out = UNDEFINED_VALUE;
+        OpCode code = OP_NOP;
+        Value arg0 = UNDEFINED_VALUE;
+        Value arg1 = UNDEFINED_VALUE;
+
+        auto part = capture(out) = (capture(code), capture(arg0), capture(arg1));
+        TEST_ASSERT(matches(expr, part));
+        TEST_ASSERT(out.isUndefined());
+        TEST_ASSERT(OP_V8ADDS == code);
+        TEST_ASSERT_EQUALS(42_val, arg0);
+        TEST_ASSERT_EQUALS(17_val, arg1);
+    }
+
+    // failing test - value mismatch
+    {
+        Expression expr{OP_V8ADDS, 42_val, 17_val};
+
+        OpCode code = OP_NOP;
+        Value arg1 = UNDEFINED_VALUE;
+
+        auto part = anyValue() = (capture(code), match(43_val), capture(arg1));
+        TEST_ASSERT(!matches(expr, part));
+        TEST_ASSERT(code == OP_NOP);
+        TEST_ASSERT(arg1.isUndefined());
+    }
+
+    // failing test - opcode mismatch
+    {
+        Expression expr{OP_V8ADDS, 42_val, 17_val};
+
+        Value arg0 = UNDEFINED_VALUE;
+        Value arg1 = UNDEFINED_VALUE;
+
+        auto part = anyValue() = (match(OP_ADD), capture(arg0), capture(arg1));
+        TEST_ASSERT(!matches(expr, part));
+        TEST_ASSERT(arg0.isUndefined());
+        TEST_ASSERT(arg1.isUndefined());
+    }
+
+    // failing test - pack mode
+    {
+        Expression expr{OP_V8ADDS, 42_val, 17_val, UNPACK_NOP, PACK_32_32};
+
+        OpCode code = OP_NOP;
+        Value arg0 = UNDEFINED_VALUE;
+        Value arg1 = UNDEFINED_VALUE;
+
+        auto part = anyValue() = (capture(code), capture(arg0), capture(arg1));
+        TEST_ASSERT(!matches(expr, part));
+        TEST_ASSERT(code == OP_NOP);
+        TEST_ASSERT(arg0.isUndefined());
+        TEST_ASSERT(arg1.isUndefined());
+    }
+
+    // failing test - unpack mode
+    {
+        Expression expr{OP_V8ADDS, 42_val, 17_val, UNPACK_8A_32};
+
+        OpCode code = OP_NOP;
+        Value arg0 = UNDEFINED_VALUE;
+        Value arg1 = UNDEFINED_VALUE;
+
+        auto part = anyValue() = (capture(code), capture(arg0), capture(arg1));
+        TEST_ASSERT(!matches(expr, part));
+        TEST_ASSERT(code == OP_NOP);
+        TEST_ASSERT(arg0.isUndefined());
+        TEST_ASSERT(arg1.isUndefined());
+    }
+
+    // TODO successful and failing test for supported arithmetic properties
+}
+
+void TestPatternMatching::testSingleSearch()
+{
+    Method m(module);
+    auto& block = m.createAndInsertNewBlock(m.begin(), "dummyLabel");
+    auto it = block.walkEnd();
+
+    // successful test - matching start
+    {
+        assignNop(it) = 42_val + 17_val;
+
+        Value arg = UNDEFINED_VALUE;
+        auto start = block.walk().nextInBlock();
+        auto part = anyValue() = (anyOperation(), capture(arg));
+        TEST_ASSERT(start == search(start, part));
+        TEST_ASSERT_EQUALS(42_val, arg);
+    }
+
+    // successful test - matching last instruction
+    {
+        auto out = assign(it, TYPE_INT32) = 42_val + UNIFORM_REGISTER;
+
+        Value arg = UNDEFINED_VALUE;
+        auto part = match(out) = (anyOperation(), anyValue(), capture(arg));
+        auto match = search(block.walk(), part);
+        TEST_ASSERT(!match.isEndOfBlock());
+        TEST_ASSERT(block.walkEnd().previousInBlock() == match);
+        TEST_ASSERT_EQUALS(UNIFORM_REGISTER, arg);
+    }
+
+    // failing test - start is end of block
+    {
+        auto part = anyValue() = (anyOperation(), anyValue());
+        TEST_ASSERT(search(InstructionWalker{}, part).isEndOfBlock());
+    }
+
+    // failing test - no matching instructions
+    {
+        auto part = match(UNIFORM_REGISTER) = (anyOperation(), anyValue());
+        TEST_ASSERT(search(block.walk(), part).isEndOfBlock());
+    }
+
+    // failing test - start after matching instruction
+    {
+        auto out = assign(it, TYPE_FLOAT) = ELEMENT_NUMBER_REGISTER / 2_lit;
+        auto start = it.previousInBlock().nextInBlock();
+        assignNop(it) = UNIFORM_REGISTER - 17_val;
+
+        auto part = match(out) = (anyOperation(), match(ELEMENT_NUMBER_REGISTER));
+        TEST_ASSERT(search(start, part).isEndOfBlock());
+    }
+}
+
+void TestPatternMatching::testConsecutiveSearch()
+{
+    Method m(module);
+    auto& block = m.createAndInsertNewBlock(m.begin(), "dummyLabel");
+    auto it = block.walkEnd();
+
+    // successful test - start matches
+    {
+        auto out = assign(it, TYPE_INT16) = UNIFORM_REGISTER - 2_val;
+        auto out2 = assign(it, TYPE_INT32) = out | 110_val;
+
+        Value arg0 = UNDEFINED_VALUE;
+        Value arg1 = UNDEFINED_VALUE;
+
+        Pattern pattern{{match(out) = (anyOperation(), match(UNIFORM_REGISTER), capture(arg0)),
+                            match(out2) = (match(OP_OR), match(out), capture(arg1))},
+            false};
+
+        auto start = block.walk().nextInBlock();
+        auto matchIt = search(start, pattern);
+        TEST_ASSERT(matchIt == start);
+        TEST_ASSERT_EQUALS(2_val, arg0);
+        TEST_ASSERT_EQUALS(110_val, arg1);
+
+        // should have same result on repeat
+        matchIt = search(start, pattern);
+        TEST_ASSERT(matchIt == start);
+        TEST_ASSERT_EQUALS(2_val, arg0);
+        TEST_ASSERT_EQUALS(110_val, arg1);
+    }
+
+    // successful test - last instructions match
+    {
+        auto out = assign(it, TYPE_INT16) = UNIFORM_REGISTER + 17_val;
+        auto out2 = assign(it, TYPE_INT32) = out & 110_val;
+
+        Value arg0 = UNDEFINED_VALUE;
+        Value arg1 = UNDEFINED_VALUE;
+
+        Pattern pattern{{match(out) = (anyOperation(), match(UNIFORM_REGISTER), capture(arg0)),
+                            match(out2) = (match(OP_AND), match(out), capture(arg1))},
+            false};
+
+        auto matchIt = search(block.walk(), pattern);
+        TEST_ASSERT(!matchIt.isEndOfBlock());
+        TEST_ASSERT_EQUALS(17_val, arg0);
+        TEST_ASSERT_EQUALS(110_val, arg1);
+    }
+
+    // failing test - start is end of block
+    {
+        Value arg0 = UNDEFINED_VALUE;
+        Value arg1 = UNDEFINED_VALUE;
+
+        Pattern pattern{{anyValue() = (anyOperation(), match(UNIFORM_REGISTER), capture(arg0)),
+                            anyValue() = (match(OP_AND), anyValue(), capture(arg1))},
+            false};
+
+        auto matchIt = search(block.walkEnd().previousInBlock(), pattern);
+        TEST_ASSERT(matchIt.isEndOfBlock());
+        TEST_ASSERT(arg0.isUndefined());
+        TEST_ASSERT(arg1.isUndefined());
+    }
+
+    // failing test - no matching instructions
+    {
+        Value arg0 = UNDEFINED_VALUE;
+        Value arg1 = UNDEFINED_VALUE;
+
+        Pattern pattern{{anyValue() = (match(OP_MUL24), match(UNIFORM_REGISTER), capture(arg0)),
+                            anyValue() = (match(OP_AND), anyValue(), capture(arg1))},
+            false};
+
+        auto matchIt = search(block.walk(), pattern);
+        TEST_ASSERT(matchIt.isEndOfBlock());
+        TEST_ASSERT(arg0.isUndefined());
+        TEST_ASSERT(arg1.isUndefined());
+    }
+
+    // failing test - start after matching instructions
+    {
+        auto out = assign(it, TYPE_INT16) = UNIFORM_REGISTER + 17_val;
+        auto out2 = assign(it, TYPE_INT32) = out & 111_val;
+
+        Value arg0 = UNDEFINED_VALUE;
+        Value arg1 = UNDEFINED_VALUE;
+
+        Pattern pattern{{match(out) = (anyOperation(), match(UNIFORM_REGISTER), capture(arg0)),
+                            match(out2) = (match(OP_AND), match(out), capture(arg1))},
+            false};
+
+        auto matchIt = search(it, pattern);
+        TEST_ASSERT(matchIt.isEndOfBlock());
+        TEST_ASSERT(arg0.isUndefined());
+        TEST_ASSERT(arg1.isUndefined());
+    }
+
+    // failing test - other instruction within match
+    {
+        auto out = assign(it, TYPE_INT16) = UNIFORM_REGISTER + 17_val;
+        assignNop(it) = ELEMENT_NUMBER_REGISTER ^ UNIFORM_REGISTER;
+        auto out2 = assign(it, TYPE_INT32) = out ^ 111_val;
+
+        Value arg0 = UNDEFINED_VALUE;
+        Value arg1 = UNDEFINED_VALUE;
+
+        Pattern pattern{{match(out) = (anyOperation(), match(UNIFORM_REGISTER), capture(arg0)),
+                            match(out2) = (match(OP_XOR), match(out), capture(arg1))},
+            false};
+
+        auto matchIt = search(block.walk(), pattern);
+        TEST_ASSERT(matchIt.isEndOfBlock());
+        TEST_ASSERT(arg0.isUndefined());
+        TEST_ASSERT(arg1.isUndefined());
+    }
+
+    // failing test - matching instructions in wrong order
+    {
+        auto out = assign(it, TYPE_INT16) = UNIFORM_REGISTER + 17_val;
+        auto out2 = assign(it, TYPE_INT32) = out & 111_val;
+
+        Value arg0 = UNDEFINED_VALUE;
+        Value arg1 = UNDEFINED_VALUE;
+
+        Pattern pattern{{match(out2) = (anyOperation(), match(out), capture(arg0)),
+                            match(out) = (match(OP_ADD), match(UNIFORM_REGISTER), capture(arg1))},
+            false};
+
+        auto matchIt = search(block.walk(), pattern);
+        TEST_ASSERT(matchIt.isEndOfBlock());
+        TEST_ASSERT(arg0.isUndefined());
+        TEST_ASSERT(arg1.isUndefined());
+    }
+}
+
+void TestPatternMatching::testGappedSearch()
+{
+    Method m(module);
+    auto& block = m.createAndInsertNewBlock(m.begin(), "dummyLabel");
+    auto it = block.walkEnd();
+
+    // successful test - matching instructions without gap
+    {
+        auto out = assign(it, TYPE_INT16) = UNIFORM_REGISTER - 2_val;
+        auto out2 = assign(it, TYPE_INT32) = out | 110_val;
+
+        Value arg0 = UNDEFINED_VALUE;
+        Value arg1 = UNDEFINED_VALUE;
+
+        Pattern pattern{{match(out) = (anyOperation(), match(UNIFORM_REGISTER), capture(arg0)),
+                            match(out2) = (match(OP_OR), match(out), capture(arg1))},
+            true};
+
+        auto start = block.walk().nextInBlock();
+        auto matchIt = search(start, pattern);
+        TEST_ASSERT(matchIt == start);
+        TEST_ASSERT_EQUALS(2_val, arg0);
+        TEST_ASSERT_EQUALS(110_val, arg1);
+
+        // should have same result on repeat
+        matchIt = search(start, pattern);
+        TEST_ASSERT(matchIt == start);
+        TEST_ASSERT_EQUALS(2_val, arg0);
+        TEST_ASSERT_EQUALS(110_val, arg1);
+    }
+
+    // successful test - matching instructions with gaps
+    {
+        auto out = assign(it, TYPE_INT16) = UNIFORM_REGISTER + 17_val;
+        assignNop(it) = ELEMENT_NUMBER_REGISTER ^ UNIFORM_REGISTER;
+        assignNop(it) = out & 17_val;
+        auto out2 = assign(it, TYPE_INT32) = out ^ 111_val;
+        assignNop(it) = out2 ^ 17_val;
+        auto out3 = assign(it, TYPE_FLOAT) = out2 & out;
+
+        Value arg0 = UNDEFINED_VALUE;
+        Value arg1 = UNDEFINED_VALUE;
+
+        Pattern pattern{{match(out) = (anyOperation(), match(UNIFORM_REGISTER), capture(arg0)),
+                            match(out2) = (match(OP_XOR), match(out), capture(arg1)),
+                            match(out3) = (match(OP_AND), match(out2), match(out))},
+            true};
+
+        auto matchIt = search(block.walk(), pattern);
+        TEST_ASSERT(!matchIt.isEndOfBlock());
+        TEST_ASSERT_EQUALS(17_val, arg0);
+        TEST_ASSERT_EQUALS(111_val, arg1);
+    }
+
+    // failing test - start is end of block
+    {
+        Value arg0 = UNDEFINED_VALUE;
+        Value arg1 = UNDEFINED_VALUE;
+
+        Pattern pattern{{anyValue() = (anyOperation(), match(UNIFORM_REGISTER), capture(arg0)),
+                            anyValue() = (match(OP_XOR), anyValue(), capture(arg1))},
+            true};
+
+        auto matchIt = search(block.walkEnd().previousInBlock(), pattern);
+        TEST_ASSERT(matchIt.isEndOfBlock());
+        TEST_ASSERT(arg0.isUndefined());
+        TEST_ASSERT(arg1.isUndefined());
+    }
+
+    // failing test - matching instructions in wrong order
+    {
+        auto out = assign(it, TYPE_INT16) = UNIFORM_REGISTER + 17_val;
+        assignNop(it) = ELEMENT_NUMBER_REGISTER ^ UNIFORM_REGISTER;
+        auto out2 = assign(it, TYPE_INT32) = out ^ 111_val;
+
+        Value arg0 = UNDEFINED_VALUE;
+        Value arg1 = UNDEFINED_VALUE;
+
+        Pattern pattern{{match(out2) = (match(OP_XOR), match(out), capture(arg0)),
+                            match(out) = (match(OP_ADD), match(UNIFORM_REGISTER), capture(arg1))},
+            true};
+
+        auto matchIt = search(block.walk(), pattern);
+        TEST_ASSERT(matchIt.isEndOfBlock());
+        TEST_ASSERT(arg0.isUndefined());
+        TEST_ASSERT(arg1.isUndefined());
+    }
+
+    // failing test - no matching instructions
+    {
+        Value arg0 = UNDEFINED_VALUE;
+        Value arg1 = UNDEFINED_VALUE;
+
+        Pattern pattern{{anyValue() = (match(OP_V8MULD), anyValue(), capture(arg0)),
+                            anyValue() = (match(OP_ADD), match(UNIFORM_REGISTER), capture(arg1))},
+            true};
+
+        auto matchIt = search(block.walk(), pattern);
+        TEST_ASSERT(matchIt.isEndOfBlock());
+        TEST_ASSERT(arg0.isUndefined());
+        TEST_ASSERT(arg1.isUndefined());
+    }
+}

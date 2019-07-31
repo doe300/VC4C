@@ -27,6 +27,7 @@
 #include "TestOptimizations.h"
 #include "TestIntrinsics.h"
 #include "TestExpressions.h"
+#include "TestPatternMatching.h"
 
 #include "tools.h"
 #include "../lib/cpplog/include/logger.h"
@@ -149,6 +150,7 @@ int main(int argc, char** argv)
     Test::registerSuite(newMemoryAccessTest, "emulate-memory", "Runs emulation tests for various functions testing different kinds of memory access");
     Test::registerSuite(newConversionFunctionsTest, "emulate-conversions", "Runs emulation tests for the OpenCL standard-library type conversion functions");
     Test::registerSuite(newIntrinsicsTest, "test-intrinsics", "Runs tests on the code generated for intrinsic functions");
+    Test::registerSuite(Test::newInstance<TestPatternMatching>, "test-patterns", "Runs tests on the pattern matching framework");
 
     auto args = std::vector<char*>();
     // we need this first argument, since the  cpptest-lite helper expects the first argument to be skipped (as if passed directly the main arguments)
