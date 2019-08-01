@@ -305,7 +305,16 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
             break;
         }
 
-        auto step = Expression::createExpression(**stepCandidates.begin());
+        auto stepOperation = dynamic_cast<const intermediate::Operation*>(*stepCandidates.begin());
+        if(!stepOperation)
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Step instruction is not an operation: " << (*stepCandidates.begin())->to_string()
+                    << logging::endl);
+            break;
+        }
+
+        auto step = Expression::createExpression(*stepOperation);
         if(!step || !step->hasConstantOperand())
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -313,11 +322,10 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
             break;
         }
 
-        auto stepInstruction = *stepCandidates.begin();
         // we have an initial value as well as a single step expression
         // since the remaining values and instructions are not required for an induction variable, we try to find it out
         // after adding the variable to the result
-        variables.emplace_back(InductionVariable{local, initialAssignment, stepInstruction});
+        variables.emplace_back(InductionVariable{local, initialAssignment, stepOperation});
 
         if(!includeIterationInformation)
             // if we don't care for iteration variable information, we are done here
@@ -385,8 +393,9 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
         // - Second: the flags from consuming the boolean value to actually select the branch to take
 
         // simple case, there exists an instruction, where the output of the step is directly used as branch condition
-        auto comparisonInstruction = stepInstruction->writesLocal(repeatConditionLocal) ? stepInstruction : nullptr;
-        auto stepLocal = stepInstruction->getOutput().value().local();
+        const intermediate::IntermediateInstruction* comparisonInstruction =
+            stepOperation->writesLocal(repeatConditionLocal) ? stepOperation : nullptr;
+        auto stepLocal = stepOperation->getOutput().value().local();
         // TODO support induction variable (not result of induction step) is used in comparison?? Possible at all, e.g.
         // for i++? Need to distinguish between the two cases
         if(!comparisonInstruction)

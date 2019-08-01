@@ -267,6 +267,7 @@ static void updateOnly(const intermediate::IntermediateInstruction* inst, Instru
     if(auto op = determineOpCode(inst))
         updateMatch(*op, pattern.operation);
     // TODO apply for commutative property of opcode, if given
+    // -> how to (for capture) decide, which way around to capture??
     updateMatch(inst->getArgument(0), pattern.firstArgument);
     updateMatch(inst->getArgument(1), pattern.secondArgument);
     updateMatch(inst->conditional, pattern.condition);

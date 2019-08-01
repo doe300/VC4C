@@ -119,11 +119,24 @@ static InstructionWalker intrinsifyIntegerRelation(
                  * a neg  | min(a, b) != a | max(a, b) != a | min(a, b) != a |
                  * a zero | max(a, b) != a | min(a, b) != a | max(a, b) != a |
                  */
-                assign(it, NOP_REGISTER) = (comp->getFirstArg() ^ comp->assertArgument(1), SetFlag::SET_FLAGS);
-                Value unsignedMax = method.addNewLocal(comp->getFirstArg().type, "%icomp");
-                assign(it, unsignedMax) = (min(comp->getFirstArg(), comp->assertArgument(1)), COND_NEGATIVE_SET);
-                assign(it, unsignedMax) = (max(comp->getFirstArg(), comp->assertArgument(1)), COND_NEGATIVE_CLEAR);
-                assign(it, NOP_REGISTER) = (unsignedMax ^ comp->getFirstArg(), SetFlag::SET_FLAGS);
+                auto firstArg = comp->getFirstArg();
+                auto secondArg = comp->assertArgument(1);
+                // insert a single instruction loading literal values to not need to insert one per usage
+                if(firstArg.getLiteralValue())
+                {
+                    firstArg = method.addNewLocal(firstArg.type);
+                    assign(it, firstArg) = comp->getFirstArg();
+                }
+                if(secondArg.getLiteralValue())
+                {
+                    secondArg = method.addNewLocal(secondArg.type);
+                    assign(it, secondArg) = comp->assertArgument(1);
+                }
+                assign(it, NOP_REGISTER) = (firstArg ^ secondArg, SetFlag::SET_FLAGS);
+                Value unsignedMax = method.addNewLocal(firstArg.type, "%icomp");
+                assign(it, unsignedMax) = (min(firstArg, secondArg), COND_NEGATIVE_SET);
+                assign(it, unsignedMax) = (max(firstArg, secondArg), COND_NEGATIVE_CLEAR);
+                assign(it, NOP_REGISTER) = (unsignedMax ^ firstArg, SetFlag::SET_FLAGS);
             }
             cond = COND_ZERO_CLEAR;
         }

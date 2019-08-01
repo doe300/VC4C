@@ -30,6 +30,17 @@ namespace vc4c
         // A fake operation to indicate a mutex access
         static constexpr OpCode FAKEOP_MUTEX{"mutex", 131, 131, 1, false, false, FlagBehavior::NONE};
 
+        // Dummy entries to be used with the capture(...) functions if the caller wants to make sure multiple entries
+        // match, but does not care about their actual value.
+        static thread_local Value V1 = UNDEFINED_VALUE;
+        static thread_local Value V2 = UNDEFINED_VALUE;
+        static thread_local Value V3 = UNDEFINED_VALUE;
+        static thread_local Value V4 = UNDEFINED_VALUE;
+        static thread_local OpCode O1 = OP_NOP;
+        static thread_local OpCode O2 = OP_NOP;
+        static thread_local ConditionCode C1 = COND_NEVER;
+        static thread_local ConditionCode C2 = COND_NEVER;
+
         /**
          * A placeholder for an entry (e.g. Value or Opcode) to be filled with the object matching the pattern at the
          * given position.

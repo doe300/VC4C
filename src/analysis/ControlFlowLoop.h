@@ -32,7 +32,7 @@ namespace vc4c
         // The initial value assignment to the induction variable
         const intermediate::IntermediateInstruction* initialAssignment;
         // The expression calculating the actual value change for every loop iteration
-        const intermediate::IntermediateInstruction* inductionStep;
+        const intermediate::Operation* inductionStep;
         // The condition to hold to repeat the loop as the pair of comparison and the compared-to value. This might not
         // be valid for all induction variables, only for loop iteration variables
         Optional<std::pair<const char*, Value>> repeatCondition = {};

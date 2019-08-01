@@ -557,7 +557,9 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
         if(op && !it.get<intermediate::VectorRotation>() && !op->hasConditionalExecution() && !op->hasPackMode() &&
             !op->hasUnpackMode() && op->getOutput().has_value() &&
             (!op->getSource().checkRegister() || !op->getSource().reg().hasSideEffectsOnRead()) &&
-            (!op->checkOutputRegister()))
+            (!op->checkOutputRegister()) &&
+            (!op->readsLiteral() ||
+                SmallImmediate::fromInteger(static_cast<char>(op->getSource().getLiteralValue()->signedInt()))))
         {
             auto it2 = it.copy().nextInBlock();
             auto oldValue = op->getOutput().value();
