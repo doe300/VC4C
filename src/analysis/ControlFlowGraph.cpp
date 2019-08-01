@@ -199,8 +199,7 @@ void ControlFlowGraph::dumpGraph(const std::string& path, bool dumpConstantLoadI
         }
     };
     auto edgeLabelFunc = [](const CFGRelation& r) -> std::string { return r.getLabel(); };
-    DebugGraph<BasicBlock*, CFGRelation, CFGEdge::Directed>::dumpGraph<ControlFlowGraph>(
-        *this, path, nameFunc,
+    DebugGraph<BasicBlock*, CFGRelation, CFGEdge::Directed>::dumpGraph<ControlFlowGraph>(*this, path, nameFunc,
         [](const CFGRelation& rel) -> bool {
             return std::all_of(rel.predecessors.begin(), rel.predecessors.end(),
                 [](const auto& pair) -> bool { return !pair.second; });

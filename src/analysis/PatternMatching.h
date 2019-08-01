@@ -74,6 +74,15 @@ namespace vc4c
          *
          * If the resulting Pattern matches a given input, the referenced value is replaced with the matching value from
          * the input.
+         *
+         * NOTE: If a pattern contains multiple capture() using the same object, e.g. multiple capture() taking the same
+         * local Value, the pattern only matches if the values at the given positions are equal.
+         * Example:
+         * Pattern:     $<1> = add $<2>, $<2>
+         * Input1:  i32 %out = add i32 15, i32 15
+         * Input2: i32 %out1 = add i32 17, i32 %in
+         * -> Input1 matches, while Input2 does not
+         *
          */
         inline ValuePattern capture(Value& val)
         {
@@ -87,6 +96,14 @@ namespace vc4c
          *
          * If the resulting Pattern matches a given input, the referenced local is replaced with the matching local from
          * the input.
+         *
+         * NOTE: If a pattern contains multiple capture() using the same object, e.g. multiple capture() taking the same
+         * local Value, the pattern only matches if the values at the given positions are equal.
+         * Example:
+         * Pattern:     $<1> = add $<2>, $<2>
+         * Input1:  i32 %out = add i32 15, i32 15
+         * Input2: i32 %out1 = add i32 17, i32 %in
+         * -> Input1 matches, while Input2 does not
          */
         inline ValuePattern capture(const Local*& local)
         {
@@ -100,6 +117,14 @@ namespace vc4c
          *
          * If the resulting Pattern matches a given input, the referenced literal value is replaced with the matching
          * literal constant from the input.
+         *
+         * NOTE: If a pattern contains multiple capture() using the same object, e.g. multiple capture() taking the same
+         * local Value, the pattern only matches if the values at the given positions are equal.
+         * Example:
+         * Pattern:     $<1> = add $<2>, $<2>
+         * Input1:  i32 %out = add i32 15, i32 15
+         * Input2: i32 %out1 = add i32 17, i32 %in
+         * -> Input1 matches, while Input2 does not
          */
         inline ValuePattern capture(Literal& lit)
         {
@@ -132,6 +157,14 @@ namespace vc4c
          *
          * If the resulting Pattern matches a given input, the referenced operation is replaced with the matching
          * operation from the input.
+         *
+         * NOTE: If a pattern contains multiple capture() using the same object, e.g. multiple capture() taking the same
+         * local Value, the pattern only matches if the values at the given positions are equal.
+         * Example:
+         * Pattern:     $<1> = add $<2>, $<2>
+         * Input1:  i32 %out = add i32 15, i32 15
+         * Input2: i32 %out1 = add i32 17, i32 %in
+         * -> Input1 matches, while Input2 does not
          */
         inline OperationPattern capture(OpCode& code)
         {
@@ -146,7 +179,13 @@ namespace vc4c
             return OperationPattern{Ignored{}};
         }
 
-        using ConditionPattern = Variant<ConditionCode, Placeholder<ConditionCode>, Ignored>;
+        // Helper type to support capturing an inverted condition
+        struct InvertedCondition
+        {
+            Placeholder<ConditionCode> cond;
+        };
+
+        using ConditionPattern = Variant<ConditionCode, Placeholder<ConditionCode>, InvertedCondition, Ignored>;
 
         /**
          * Creates an ConditionPattern which matches the given condition code.
@@ -164,10 +203,37 @@ namespace vc4c
          *
          * If the resulting Pattern matches a given input, the referenced condition code is replaced with the matching
          * condition code from the input.
+         *
+         * NOTE: If a pattern contains multiple capture() using the same object, e.g. multiple capture() taking the same
+         * local Value, the pattern only matches if the values at the given positions are equal.
+         * Example:
+         * Pattern:     $<1> = add $<2>, $<2>
+         * Input1:  i32 %out = add i32 15, i32 15
+         * Input2: i32 %out1 = add i32 17, i32 %in
+         * -> Input1 matches, while Input2 does not
          */
         inline ConditionPattern capture(ConditionCode& code)
         {
             return ConditionPattern{std::ref(code)};
+        }
+
+        /**
+         * Creates an ConditionPattern which matches an arbitrary condition code.
+         *
+         * If the resulting Pattern matches a given input, the referenced condition code is replaced with the reverted
+         * condition of the matching condition code from the input.
+         *
+         * NOTE: If a pattern contains multiple capture() using the same object, e.g. multiple capture() taking the same
+         * local Value, the pattern only matches if the values at the given positions are equal.
+         * Example:
+         * Pattern:     $<1> = add $<2>, $<2>
+         * Input1:  i32 %out = add i32 15, i32 15
+         * Input2: i32 %out1 = add i32 17, i32 %in
+         * -> Input1 matches, while Input2 does not
+         */
+        inline ConditionPattern captureInverse(ConditionCode& code)
+        {
+            return ConditionPattern{InvertedCondition{std::ref(code)}};
         }
 
         /**
@@ -176,6 +242,46 @@ namespace vc4c
         inline ConditionPattern anyCondition()
         {
             return ConditionPattern{Ignored{}};
+        }
+
+        using FlagPattern = Variant<SetFlag, Placeholder<SetFlag>, Ignored>;
+
+        /**
+         * Creates an FlagPattern which matches the given flag state.
+         *
+         * The given operation is read-only and the resulting Pattern will only match a given input if the flag
+         * state at the given position matches the input flags.
+         */
+        inline FlagPattern match(SetFlag flag)
+        {
+            return FlagPattern{flag};
+        }
+
+        /**
+         * Creates an FlagPattern which matches an arbitrary flag state.
+         *
+         * If the resulting Pattern matches a given input, the referenced flag state is replaced with the matching
+         * flag state from the input.
+         *
+         * NOTE: If a pattern contains multiple capture() using the same object, e.g. multiple capture() taking the same
+         * local Value, the pattern only matches if the values at the given positions are equal.
+         * Example:
+         * Pattern:     $<1> = add $<2>, $<2>
+         * Input1:  i32 %out = add i32 15, i32 15
+         * Input2: i32 %out1 = add i32 17, i32 %in
+         * -> Input1 matches, while Input2 does not
+         */
+        inline FlagPattern capture(SetFlag& flag)
+        {
+            return FlagPattern{std::ref(flag)};
+        }
+
+        /**
+         * Creates a FlagPattern which matches an arbitrary flag state.
+         */
+        inline FlagPattern anyFlags()
+        {
+            return FlagPattern{Ignored{}};
         }
 
         /**
@@ -188,6 +294,7 @@ namespace vc4c
             ValuePattern firstArgument;
             ValuePattern secondArgument;
             ConditionPattern condition = anyCondition();
+            FlagPattern flags = anyFlags();
         };
 
         // Helper type to store temporary unary instruction
@@ -196,6 +303,7 @@ namespace vc4c
             OperationPattern operation;
             ValuePattern firstArgument;
             ConditionPattern condition = anyCondition();
+            FlagPattern flags = anyFlags();
         };
 
         // Helper type to store temporary binary instruction
@@ -205,6 +313,7 @@ namespace vc4c
             ValuePattern firstArgument;
             ValuePattern secondArgument;
             ConditionPattern condition = anyCondition();
+            FlagPattern flags = anyFlags();
         };
 
         inline UnaryInstructionPattern operator,(OperationPattern&& operation, ValuePattern&& arg)
@@ -228,6 +337,18 @@ namespace vc4c
         {
             return BinaryInstructionPattern{std::move(binary.operation), std::move(binary.firstArgument),
                 std::move(binary.secondArgument), std::move(condition)};
+        }
+
+        inline UnaryInstructionPattern operator,(UnaryInstructionPattern&& unary, FlagPattern&& flag)
+        {
+            return UnaryInstructionPattern{std::move(unary.operation), std::move(unary.firstArgument),
+                std::move(unary.condition), std::move(flag)};
+        }
+
+        inline BinaryInstructionPattern operator,(BinaryInstructionPattern&& binary, FlagPattern&& flag)
+        {
+            return BinaryInstructionPattern{std::move(binary.operation), std::move(binary.firstArgument),
+                std::move(binary.secondArgument), std::move(binary.condition), std::move(flag)};
         }
 
         /**
