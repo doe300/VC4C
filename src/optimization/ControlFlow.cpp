@@ -456,7 +456,15 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, unsigned vectorizationFac
     {
         if(it->writesRegister(REG_VPM_OUT_SETUP))
         {
-            periphery::VPWSetupWrapper vpwSetup(it.get<intermediate::LoadImmediate>());
+            periphery::VPWSetupWrapper vpwSetup(static_cast<intermediate::LoadImmediate*>(nullptr));
+            if(auto load = it.get<intermediate::LoadImmediate>())
+                vpwSetup = periphery::VPWSetupWrapper(it.get<intermediate::LoadImmediate>());
+            else if(auto move = it.get<intermediate::MoveOperation>())
+                vpwSetup = periphery::VPWSetupWrapper(it.get<intermediate::MoveOperation>());
+            else
+                throw CompilationError(CompilationStep::OPTIMIZER,
+                    "Unsupported instruction to write VPM for vectorized value", it->to_string());
+
             auto vpmWrite = periphery::findRelatedVPMInstructions(it, false).vpmAccess;
             if(vpwSetup.isDMASetup() && vpmWrite &&
                 (*vpmWrite)->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
@@ -469,7 +477,15 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, unsigned vectorizationFac
         }
         else if(it->writesRegister(REG_VPM_IN_SETUP))
         {
-            periphery::VPRSetupWrapper vprSetup(it.get<intermediate::LoadImmediate>());
+            periphery::VPRSetupWrapper vprSetup(static_cast<intermediate::LoadImmediate*>(nullptr));
+            if(auto load = it.get<intermediate::LoadImmediate>())
+                vprSetup = periphery::VPRSetupWrapper(it.get<intermediate::LoadImmediate>());
+            else if(auto move = it.get<intermediate::MoveOperation>())
+                vprSetup = periphery::VPRSetupWrapper(it.get<intermediate::MoveOperation>());
+            else
+                throw CompilationError(CompilationStep::OPTIMIZER,
+                    "Unsupported instruction to write VPM for vectorized value", it->to_string());
+
             auto vpmRead = periphery::findRelatedVPMInstructions(it, true).vpmAccess;
             if(vprSetup.isDMASetup() && vpmRead &&
                 (*vpmRead)->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))

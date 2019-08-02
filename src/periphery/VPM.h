@@ -561,22 +561,32 @@ namespace vc4c
             using Base = T;
 
         public:
-            explicit SetupWrapper(intermediate::LoadImmediate* load) : T(0), load(load)
+            explicit SetupWrapper(intermediate::LoadImmediate* load) : T(0), load(load), move(nullptr)
             {
                 if(load != nullptr)
                     Base::value = load->getImmediate().toImmediate();
+            }
+
+            explicit SetupWrapper(intermediate::MoveOperation* move) : T(0), load(nullptr), move(move)
+            {
+                if(move != nullptr)
+                    Base::value = move->getSource().getLiteralValue().value().toImmediate();
             }
 
             ~SetupWrapper()
             {
                 if(load != nullptr)
                     load->setImmediate(Literal(Base::value));
+                if(move != nullptr)
+                    move->setSource(Value(Literal(Base::value), TYPE_INT32));
             }
 
             inline void resetSetup() const
             {
                 if(load != nullptr)
                     Base::value = load->getImmediate().toImmediate();
+                if(move != nullptr)
+                    Base::value = move->getSource().getLiteralValue().value().toImmediate();
             }
 
             inline std::string to_string() const
@@ -586,6 +596,7 @@ namespace vc4c
 
         private:
             intermediate::LoadImmediate* load;
+            intermediate::MoveOperation* move;
         };
 
         using VPWSetupWrapper = SetupWrapper<VPWSetup>;

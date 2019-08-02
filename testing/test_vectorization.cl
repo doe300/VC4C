@@ -44,7 +44,7 @@ kernel void test5(global float *A) {
 kernel void test6(global int *A, global int *B) {
   unsigned sum = 0;
   //Expected: should be able to vectorize
-  //Actual: loop is recognized, fails for reading and writing same memory address (B) ??
+  //Actual: loop is recognized, fails for reading and writing same memory address (B)
   for (int i = 0; i < 1024; ++i)
     if (A[i] > B[i])
       sum += A[i] + 5;
@@ -53,7 +53,8 @@ kernel void test6(global int *A, global int *B) {
 
 kernel void test7(global int *A) {
   //Expected: should be able to vectorize
-  //Actual: cannot find the "upper" bound, comparison is more complex than checked for
+  //Actual: declines vectorization for reading and writing same memory address
+  //TODO
   for (int i = 1024; i > 0; --i)
     A[i] +=1;
 }
@@ -69,7 +70,7 @@ kernel void test8(global int * A, global int * B) {
 kernel void test9(global int * A, global int * B) {
   //Expected: cannot be vectorized
   //-> we can read from deviating memory locations, but not store into them
-  //Actual: loop is recognized and vectorized (factor 16)
+  //Actual: declines vectorization for reading and writing same memory address
   for (int i = 0; i < 1024; ++i)
       A[i * 4] += B[i];
 }
@@ -86,7 +87,7 @@ struct Foo{ int A[100], K, B[100]; };
 kernel void test11(global struct Foo *out) {
   local struct Foo f;
   //Expected: may be able to vectorize
-  //Actual: loop recognized, but not vectorized, since calculated factor is 1
+  //Actual: declines vectorization for reading and writing same memory address
   for (int i = 0; i < 100; ++i)
     f.A[i] = f.B[i] + 100;
   *out = f;
