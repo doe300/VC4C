@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <numeric>
 #include <queue>
 
@@ -30,392 +31,101 @@ using namespace vc4c::optimizations;
 using namespace vc4c::intermediate;
 using namespace vc4c::operators;
 
-static FastSet<Local*> findLoopIterations(const ControlFlowLoop& loop, const DataDependencyGraph& dependencyGraph)
+static InductionVariable extractLoopControl(const ControlFlowLoop& loop, const DataDependencyGraph& dependencyGraph)
 {
-    SortedSet<Local*> innerDependencies;
-    SortedSet<Local*> outerDependencies;
-    for(auto& node : loop)
-    {
-        // not all basic blocks have an entry in the dependency graph (e.g. if they have no dependency)
-        if(auto dependencyNode = dependencyGraph.findNode(node->key))
-        {
-            // TODO is checking for only incoming edges correct?
-            dependencyNode->forAllIncomingEdges(
-                [&](const DataDependencyNode& neighbor, const DataDependencyEdge& edge) -> bool {
-                    // check if this basic block has a local dependent on at least two phi-nodes
-                    for(auto& dependency : edge.data)
-                    {
-                        if(has_flag(dependency.second, add_flag(DataDependencyType::PHI, DataDependencyType::FLOW)))
-                        {
-                            if(std::find_if(loop.begin(), loop.end(), [&neighbor](const CFGNode* node) -> bool {
-                                   return node->key == neighbor.key;
-                               }) != loop.end())
-                                //... one of which lies within the loop
-                                innerDependencies.emplace(dependency.first);
-                            else
-                                //... and the other outside of it
-                                outerDependencies.emplace(dependency.first);
-                        }
-                    }
-
-                    return true;
-                });
-        }
-    }
-
-    FastSet<Local*> intersection;
-    // NOTE: Cannot pass unordered_set into set_intersection, since it requires its inputs to be sorted!
-    std::set_intersection(innerDependencies.begin(), innerDependencies.end(), outerDependencies.begin(),
-        outerDependencies.end(), std::inserter(intersection, intersection.begin()));
-
-    if(intersection.empty())
-    {
-        CPPLOG_LAZY(logging::Level::DEBUG, log << "Failed to find loop iteration variable for loop" << logging::endl);
-    }
-
-    return intersection;
-}
-
-enum class StepKind : unsigned char
-{
-    // step-kind is not known
-    UNKNOWN,
-    // integer addition with constant factor, e.g. step of +1. Default for more for-range loops
-    ADD_CONSTANT,
-    // integer subtraction with constant factor e.g. step of -1. Default for loops counting backwards
-    SUB_CONSTANT,
-    // integer multiplication with constant factor
-    MUL_CONSTANT
-};
-
-struct LoopControl
-{
-    // the initial value for the loop iteration variable
-    intermediate::IntermediateInstruction* initialization = nullptr;
-    // the value compared with to terminate the loop
-    Value terminatingValue = UNDEFINED_VALUE;
-    // the local containing the current iteration-variable
-    Local* iterationVariable = nullptr;
-    // the operation to change the iteration-variable
-    Optional<InstructionWalker> iterationStep{};
-    // the kind of step performed
-    StepKind stepKind = StepKind::UNKNOWN;
-    // the comparison to check for continue/end loop
-    Optional<InstructionWalker> comparisonInstruction{};
-    // the branch-instruction to continue the loop
-    Optional<InstructionWalker> repetitionJump{};
-    // the comparison function to abort the loop
-    std::string comparison{};
-    // the vectorization-factor used
-    unsigned vectorizationFactor = 0;
-
-    void determineStepKind(const OpCode& code)
-    {
-        if(code == OP_ADD)
-            stepKind = StepKind::ADD_CONSTANT;
-        else if(code == OP_SUB)
-            stepKind = StepKind::SUB_CONSTANT;
-        else if(code == OP_MUL24)
-            stepKind = StepKind::MUL_CONSTANT;
-    }
-
-    OpCode getStepOperation() const
-    {
-        switch(stepKind)
-        {
-        case StepKind::ADD_CONSTANT:
-            return OP_ADD;
-        case StepKind::SUB_CONSTANT:
-            return OP_SUB;
-        case StepKind::MUL_CONSTANT:
-            return OP_MUL24;
-        default:
-            throw CompilationError(CompilationStep::OPTIMIZER, "Operation for this step-kind is not yet mapped!");
-        }
-    }
-
-    Optional<Literal> getStep() const
-    {
-        if(!(iterationStep &
-                   [](const InstructionWalker& it) -> bool { return it.get<const intermediate::Operation>(); }))
-            return {};
-        const intermediate::Operation* op = iterationStep->get<const intermediate::Operation>();
-        if(op->getArguments().size() != 2)
-            return {};
-        if(op->getArgument(0) && op->assertArgument(0).isLiteralValue())
-            return op->assertArgument(0).getLiteralValue();
-        if(auto arg1 = op->getArgument(1))
-            return arg1->getLiteralValue();
-        return {};
-    }
-
-    int32_t countIterations(int32_t initial, int32_t limit, int32_t step, const std::string& comparisonType) const
-    {
-        // TODO this is not always true (e.g. true for test_vectorization.cl#test5, not true for #test11
-        if(comparisonType == intermediate::COMP_EQ)
-            // we compare up to including the limit
-            limit += 1;
-        else if(comparisonType == "lt")
-            // we compare up to excluding the limit
-            limit += 0;
-        else
-            throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled comparison type", comparisonType);
-        switch(stepKind)
-        {
-        case StepKind::ADD_CONSTANT:
-            // iterations = (end - start) / step
-            return (limit - initial) / step;
-        case StepKind::SUB_CONSTANT:
-            // iterations = (start - end) / step
-            return (initial - limit) / step;
-        case StepKind::MUL_CONSTANT:
-            // limit = (start * step) ^ iterations -> iterations = log(start * step) / log(limit)
-            return static_cast<int32_t>(std::log(initial * step) / std::log(limit));
-        default:
-            throw CompilationError(CompilationStep::OPTIMIZER, "Invalid step type!");
-        }
-    }
-
-    bool operator==(const LoopControl& other) const
-    {
-        return iterationVariable == other.iterationVariable;
-    }
-};
-
-struct LoopControlHash : public std::hash<Local*>
-{
-    size_t operator()(const LoopControl& val) const noexcept
-    {
-        return std::hash<Local*>::operator()(val.iterationVariable);
-    }
-};
-
-static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDependencyGraph& dependencyGraph)
-{
-    FastSet<LoopControl, LoopControlHash> availableLoopControls;
-
-    for(Local* local : findLoopIterations(loop, dependencyGraph))
-    {
-        if(local == nullptr)
-            continue;
-
-        CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Loop iteration variable candidate: " << local->to_string(false) << logging::endl);
-
-        LoopControl loopControl;
-        loopControl.iterationVariable = local;
-
-        // TODO use general expression analysis to find loop step function?
-        for(const auto& pair : local->getUsers())
-        {
-            const intermediate::IntermediateInstruction* inst = pair.first;
-            Optional<InstructionWalker> it = loop.findInLoop(inst);
-            //"lower" bound: the initial setting of the value outside of the loop
-            if(pair.second.writesLocal() && inst->hasDecoration(intermediate::InstructionDecorations::PHI_NODE) && !it)
-            {
-                auto tmp = inst->precalculate(4).first;
-                if(tmp && tmp->isLiteralValue())
-                {
-                    CPPLOG_LAZY(
-                        logging::Level::DEBUG, log << "Found lower bound: " << tmp->to_string() << logging::endl);
-                    loopControl.initialization = const_cast<intermediate::IntermediateInstruction*>(inst);
-                }
-            }
-            // iteration step: the instruction inside the loop where the iteration variable is changed
-            // XXX this currently only looks for single operations with immediate values (e.g. +1,-1)
-            else if(pair.second.readsLocal() && it)
-            {
-                if(it->get<intermediate::Operation>() && it.value()->getArguments().size() == 2 &&
-                    it.value()->readsLiteral() &&
-                    // TODO could here more simply check against output being the local the iteration variable is set to
-                    // (in the phi-node inside the loop)
-                    (it.value()->getOutput() & [](const Value& val) -> bool {
-                        return val.checkLocal() &&
-                            std::any_of(val.local()->getUsers().begin(), val.local()->getUsers().end(),
-                                [](const auto& pair) -> bool {
-                                    return pair.first->hasDecoration(intermediate::InstructionDecorations::PHI_NODE);
-                                });
-                    }))
-                {
-                    CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Found iteration instruction: " << it.value()->to_string() << logging::endl);
-                    loopControl.iterationStep = it;
-                    loopControl.determineStepKind(it->get<intermediate::Operation>()->op);
-                }
-                // for use-with immediate local, TODO need better checking
-                else if(it->get<intermediate::MoveOperation>() && it.value()->checkOutputLocal())
-                {
-                    // second-level checking for loop iteration step (e.g. if loop variable is copied for
-                    // use-with-immediate)
-                    const Local* stepLocal = it.value()->getOutput()->local();
-                    for(const auto& pair : stepLocal->getUsers())
-                    {
-                        const intermediate::IntermediateInstruction* inst = pair.first;
-                        Optional<InstructionWalker> it = loop.findInLoop(inst);
-                        // iteration step: the instruction inside the loop where the iteration variable is changed
-                        if(pair.second.readsLocal() && it)
-                        {
-                            if(it->get<intermediate::Operation>() && it.value()->getArguments().size() == 2 &&
-                                it.value()->readsLiteral() && (it.value()->getOutput() & [](const Value& val) -> bool {
-                                    return val.checkLocal() &&
-                                        std::any_of(val.local()->getUsers().begin(), val.local()->getUsers().end(),
-                                            [](const auto& pair) -> bool {
-                                                return pair.first->hasDecoration(
-                                                    intermediate::InstructionDecorations::PHI_NODE);
-                                            });
-                                }))
-                            {
-                                CPPLOG_LAZY(logging::Level::DEBUG,
-                                    log << "Found iteration instruction: " << it.value()->to_string() << logging::endl);
-                                loopControl.iterationStep = it;
-                                loopControl.determineStepKind(it->get<intermediate::Operation>()->op);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        loop.front()->forAllOutgoingEdges([&](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
-            if(!edge.data.isImplicit(loop.front()->key))
-            {
-                if(std::find(loop.begin(), loop.end(), &neighbor) != loop.end())
-                {
-                    // FIXME is this correct?
-                    loopControl.repetitionJump = edge.data.getPredecessor(loop.front()->key);
-                    CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Found loop repetition branch: " << loopControl.repetitionJump.value()->to_string()
-                            << logging::endl);
-                }
-            }
-            return true;
-        });
-
-        //"upper" bound: the value being checked against inside the loop
-        if(loopControl.repetitionJump && loopControl.iterationStep)
-        {
-            const Value repeatCond = loopControl.repetitionJump->get<intermediate::Branch>()->getCondition();
-            const Value iterationStep = loopControl.iterationStep.value()->getOutput().value();
-
-            // check for either local (iteration-variable or iteration-step result) whether they are used in the
-            // condition on which the loop is repeated  and select the literal used together with in this condition
-
-            // simple case, there exists an instruction, directly mapping the values
-            auto userIt =
-                std::find_if(iterationStep.local()->getUsers().begin(), iterationStep.local()->getUsers().end(),
-                    [&repeatCond](const auto& pair) -> bool { return pair.first->writesLocal(repeatCond.local()); });
-            if(userIt == iterationStep.local()->getUsers().end())
-            {
-                //"default" case, the iteration-variable is compared to something and the result of this comparison is
-                // used to branch  e.g. "- = xor <iteration-variable>, <upper-bound> (setf)"
-                userIt =
-                    std::find_if(iterationStep.local()->getUsers().begin(), iterationStep.local()->getUsers().end(),
-                        [](const auto& pair) -> bool { return pair.first->setFlags == SetFlag::SET_FLAGS; });
-                if(userIt != iterationStep.local()->getUsers().end())
-                {
-                    // TODO need to check, whether the comparison result is the one used for branching
-                    // if not, set userIt to loop.end()
-                    auto instIt = loop.findInLoop(userIt->first);
-                    loopControl.comparisonInstruction = instIt;
-                    CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Found loop continue condition: "
-                            << loopControl.comparisonInstruction.value()->to_string() << logging::endl);
-                }
-                else
-                {
-                    // TODO more complex case, the iteration-variable is used in an operation, whose result is compared
-                    // to something and that result is used to branch, e.g:
-                    // <tmp> = max <iteration-variable>, <upper-bound>
-                    // - = xor <tmp>, <upper-bound> (setf)
-                    // this also applies for unsigned less than for 32-bit integers
-                }
-            }
-
-            if(userIt != iterationStep.local()->getUsers().end())
-            {
-                // userIt converts the loop-variable to the condition. The comparison value is the upper bound
-                const intermediate::IntermediateInstruction* inst = userIt->first;
-                if(inst->getArguments().size() > 1 && inst->assertArgument(0).hasLocal(iterationStep.local()))
-                    loopControl.terminatingValue = inst->assertArgument(1);
-                else
-                    loopControl.terminatingValue = inst->assertArgument(0);
-                if(loopControl.terminatingValue.getSingleWriter() != nullptr)
-                {
-                    if(auto tmp = loopControl.terminatingValue.getSingleWriter()->precalculate(4).first)
-                        loopControl.terminatingValue = tmp.value();
-                    else
-                    {
-                        auto writer = loopControl.terminatingValue.getSingleWriter();
-                        if(writer->readsLocal(iterationStep.local()))
-                        {
-                            for(const auto& arg : writer->getArguments())
-                            {
-                                if(!arg.hasLocal(iterationStep.local()))
-                                {
-                                    auto precalc =
-                                        arg.getSingleWriter() ? arg.getSingleWriter()->precalculate(4).first : NO_VALUE;
-                                    loopControl.terminatingValue = precalc ? precalc.value() : arg;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-                CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Found upper bound: " << loopControl.terminatingValue.to_string() << logging::endl);
-
-                // determine type of comparison
-                if(auto comparison = dynamic_cast<const intermediate::Operation*>(inst))
-                {
-                    bool isEqualityComparison = comparison->op == OP_XOR;
-                    bool isLessThenComparison = comparison->op == OP_SUB || comparison->op == OP_FSUB;
-                    // TODO distinguish ==/!=, </>/<=/>= !! The setting of flags as well as the reading (for branch) can
-                    // be for positive/negative flags
-                    // XXX need to distinguish between continuation condition and cancel condition
-                    if(isEqualityComparison)
-                        loopControl.comparison = intermediate::COMP_EQ;
-                    if(isLessThenComparison)
-                        loopControl.comparison = "lt";
-                    if(!loopControl.comparison.empty())
-                        CPPLOG_LAZY(logging::Level::DEBUG,
-                            log << "Found comparison type: " << loopControl.comparison << logging::endl);
-                }
-            }
-        }
-
-        if(loopControl.initialization && !loopControl.terminatingValue.isUndefined() && loopControl.iterationStep &&
-            loopControl.repetitionJump)
-        {
-            availableLoopControls.emplace(loopControl);
-        }
-        else
-            CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Failed to find all bounds and step for iteration variable, skipping: "
-                    << loopControl.iterationVariable->name << logging::endl);
-    }
-
-    // TODO test only!
     auto inductionVariables = loop.findInductionVariables(dependencyGraph, true);
-    for(auto& control : availableLoopControls)
-        logging::warn() << "Control: " << control.iterationVariable->to_string() << " from "
-                        << control.initialization->to_string() << " step "
-                        << (control.iterationStep ? (*control.iterationStep)->to_string() : "(unknown)") << " until "
-                        << control.comparison << ' ' << control.terminatingValue.to_string() << logging::endl;
-    for(auto& var : inductionVariables)
-        logging::warn() << "Induction: " << var.local->to_string() << " from " << var.initialAssignment->to_string()
-                        << " step " << var.inductionStep->to_string() << " while "
-                        << (var.repeatCondition ?
-                                   (var.repeatCondition->first + (" " + var.repeatCondition->second.to_string())) :
-                                   "(?)")
-                        << logging::endl;
 
-    if(availableLoopControls.empty())
-        return LoopControl{};
-    else if(availableLoopControls.size() == 1)
-        return *availableLoopControls.begin();
+    for(auto& var : inductionVariables)
+        logging::debug() << "Induction variable: " << var.local->to_string() << " from "
+                         << var.initialAssignment->to_string() << " step " << var.inductionStep->to_string()
+                         << " while "
+                         << (var.repeatCondition ?
+                                    (var.repeatCondition->first + (" " + var.repeatCondition->second.to_string())) :
+                                    "(?)")
+                         << logging::endl;
+
+    if(inductionVariables.empty())
+        return InductionVariable{};
+    else if(inductionVariables.size() == 1)
+        return *inductionVariables.begin();
 
     throw CompilationError(
         CompilationStep::OPTIMIZER, "Selecting from multiple iteration variables is not supported yet!");
+}
+
+static Optional<unsigned> calculateDistance(
+    const InductionVariable& inductionVariable, Literal lowerBound, Literal upperBound)
+{
+    auto comp = inductionVariable.repeatCondition.value().first;
+
+    if((comp == intermediate::COMP_SIGNED_LE || comp == intermediate::COMP_SIGNED_LT ||
+           comp == intermediate::COMP_UNSIGNED_LE || comp == intermediate::COMP_UNSIGNED_LT) &&
+        lowerBound.signedInt() > upperBound.signedInt())
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Iterating across type wrap is not supported for: " << inductionVariable.local->to_string()
+                << " from " << lowerBound.to_string() << " to " << upperBound.to_string() << logging::endl);
+        return {};
+    }
+
+    if((comp == intermediate::COMP_SIGNED_GE || comp == intermediate::COMP_SIGNED_GT ||
+           comp == intermediate::COMP_UNSIGNED_GE || comp == intermediate::COMP_UNSIGNED_GT) &&
+        lowerBound.signedInt() < upperBound.signedInt())
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Iterating across type wrap is not supported for: " << inductionVariable.local->to_string()
+                << " from " << lowerBound.to_string() << " to " << upperBound.to_string() << logging::endl);
+        return {};
+    }
+
+    if(comp == intermediate::COMP_SIGNED_LT)
+        return static_cast<unsigned>(upperBound.signedInt() - lowerBound.signedInt());
+    if(comp == intermediate::COMP_SIGNED_LE)
+        return static_cast<unsigned>(upperBound.signedInt() - lowerBound.signedInt() + 1);
+    if(comp == intermediate::COMP_SIGNED_GT)
+        return static_cast<unsigned>(lowerBound.signedInt() - upperBound.signedInt());
+    if(comp == intermediate::COMP_SIGNED_GE)
+        return static_cast<unsigned>(lowerBound.signedInt() - upperBound.signedInt() + 1);
+    if(comp == intermediate::COMP_UNSIGNED_LT)
+        return upperBound.unsignedInt() - lowerBound.unsignedInt();
+    if(comp == intermediate::COMP_UNSIGNED_LE)
+        return upperBound.unsignedInt() - lowerBound.unsignedInt() + 1u;
+    if(comp == intermediate::COMP_UNSIGNED_GT)
+        return lowerBound.unsignedInt() - upperBound.unsignedInt();
+    if(comp == intermediate::COMP_UNSIGNED_GE)
+        return lowerBound.unsignedInt() - upperBound.unsignedInt() + 1u;
+    if(comp == intermediate::COMP_NEQ)
+        // XXX could be wrong for unsigned induction variable and more than 2^31 iterations
+        return static_cast<unsigned>(std::max(lowerBound.signedInt(), upperBound.signedInt()) -
+            std::min(lowerBound.signedInt(), upperBound.signedInt()));
+
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Unsupported comparison for calculating distance for: " << inductionVariable.local->to_string()
+            << " and comparison: " << comp << logging::endl);
+    return {};
+}
+
+static Optional<unsigned> calculateIterationCount(
+    const InductionVariable& inductionVariable, Literal lowerBound, Literal upperBound, Literal stepValue)
+{
+    auto distance = calculateDistance(inductionVariable, lowerBound, upperBound);
+    if(!distance)
+        return {};
+
+    if(inductionVariable.inductionStep->op == OP_ADD)
+        // iterations = (end - start) / step
+        return *distance / static_cast<unsigned>(std::abs(stepValue.signedInt()));
+    if(inductionVariable.inductionStep->op == OP_SUB)
+        // iterations = (start - end) / step
+        return *distance / static_cast<unsigned>(std::abs(stepValue.signedInt()));
+    // XXX add support for more step operations
+    // E.g. mul? Need to calculate:
+    // limit = (start * step) ^ iterations -> iterations = log(start * step) / log(limit)
+
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Unsupported induction operation for: " << inductionVariable.local->to_string()
+            << " and induction step: " << inductionVariable.inductionStep->to_string() << logging::endl);
+    return {};
 }
 
 /*
@@ -423,7 +133,8 @@ static LoopControl extractLoopControl(const ControlFlowLoop& loop, const DataDep
  * - checks the maximum vector-width used inside the loop
  * - tries to find an optimal factor, which never exceeds 16 elements and divides the number of iterations equally
  */
-static Optional<unsigned> determineVectorizationFactor(const ControlFlowLoop& loop, const LoopControl& loopControl)
+static Optional<unsigned> determineVectorizationFactor(const ControlFlowLoop& loop,
+    const InductionVariable& inductionVariable, Literal lowerBound, Literal upperBound, Literal stepValue)
 {
     unsigned char maxTypeWidth = 1;
     InstructionWalker it = loop.front()->key->walk();
@@ -441,20 +152,19 @@ static Optional<unsigned> determineVectorizationFactor(const ControlFlowLoop& lo
         log << "Found maximum used vector-width of " << static_cast<unsigned>(maxTypeWidth) << " elements"
             << logging::endl);
 
-    const Literal initial = loopControl.initialization->precalculate(4).first->getLiteralValue().value();
-    // TODO for test_vectorization.cl#test5 this calculates an iteration count of 1023 (instead of 1024)
-    const Literal end = loopControl.terminatingValue.getLiteralValue().value();
     // the number of iterations from the bounds depends on the iteration operation
-    auto iterations = loopControl.countIterations(
-        initial.signedInt(), end.signedInt(), loopControl.getStep()->signedInt(), loopControl.comparison);
-    CPPLOG_LAZY(logging::Level::DEBUG, log << "Determined iteration count of " << iterations << logging::endl);
+    auto iterations = calculateIterationCount(inductionVariable, lowerBound, upperBound, stepValue);
+    if(!iterations)
+        return {};
+
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Determined iteration count of " << *iterations << logging::endl);
 
     // find the biggest factor fitting into 16 SIMD-elements
     unsigned factor = 16 / maxTypeWidth;
     while(factor > 0)
     {
         // TODO factors not in [1,2,3,4,8,16] possible?? Should be from hardware-specification side
-        if((iterations % static_cast<int32_t>(factor)) == 0)
+        if((*iterations % factor) == 0)
             break;
         --factor;
     }
@@ -473,8 +183,8 @@ static Optional<unsigned> determineVectorizationFactor(const ControlFlowLoop& lo
  * On the benefit-side, we have (as factors):
  * - the iterations saved (times the number of instructions in an iteration)
  */
-static int calculateCostsVsBenefits(
-    const ControlFlowLoop& loop, const LoopControl& loopControl, const DataDependencyGraph& dependencyGraph)
+static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const InductionVariable& inductionVariable,
+    const DataDependencyGraph& dependencyGraph, unsigned vectorizationFactor)
 {
     int costs = 0;
 
@@ -540,7 +250,7 @@ static int calculateCostsVsBenefits(
 
     // constant cost - loading immediate for iteration-step for vector-width > 15 (no longer fitting into small
     // immediate)
-    if(loopControl.iterationStep.value()->getOutput()->type.getVectorWidth() * loopControl.vectorizationFactor > 15)
+    if(inductionVariable.inductionStep->getOutput()->type.getVectorWidth() * vectorizationFactor > 15)
         ++costs;
 
     FastSet<const Local*> readAndWrittenAddresses;
@@ -568,7 +278,7 @@ static int calculateCostsVsBenefits(
         numInstructions += static_cast<int>(node->key->size());
     }
     // the number of instructions/cycles saved
-    int benefits = numInstructions * static_cast<int>(loopControl.vectorizationFactor);
+    int benefits = numInstructions * static_cast<int>(vectorizationFactor);
 
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Calculated an cost-vs-benefit rating of " << (benefits - costs)
@@ -737,7 +447,7 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
     openInstructions.erase(inst);
 }
 
-static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
+static std::size_t fixVPMSetups(ControlFlowLoop& loop, unsigned vectorizationFactor)
 {
     InstructionWalker it = loop.front()->key->walk();
     std::size_t numVectorized = 0;
@@ -752,8 +462,7 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
                 (*vpmWrite)->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
             {
                 // Since this is only true for values actually vectorized, the corresponding VPM-write is checked
-                vpwSetup.dmaSetup.setDepth(
-                    static_cast<uint8_t>(vpwSetup.dmaSetup.getDepth() * loopControl.vectorizationFactor));
+                vpwSetup.dmaSetup.setDepth(static_cast<uint8_t>(vpwSetup.dmaSetup.getDepth() * vectorizationFactor));
                 ++numVectorized;
                 it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
             }
@@ -767,7 +476,7 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, LoopControl& loopControl)
             {
                 // See VPM write
                 vprSetup.dmaSetup.setRowLength(
-                    (vprSetup.dmaSetup.getRowLength() * loopControl.vectorizationFactor) % 16 /* 0 => 16 */);
+                    (vprSetup.dmaSetup.getRowLength() * vectorizationFactor) % 16 /* 0 => 16 */);
                 ++numVectorized;
                 it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
             }
@@ -788,18 +497,17 @@ static Optional<InstructionWalker> findWalker(const CFGNode* node, const interme
                              Optional<InstructionWalker>{};
 }
 
-static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopControl)
+static void fixInitialValueAndStep(
+    ControlFlowLoop& loop, InductionVariable& inductionVariable, Literal stepValue, unsigned vectorizationFactor)
 {
-    intermediate::Operation* stepOp = loopControl.iterationStep->get<intermediate::Operation>();
-    if(stepOp == nullptr)
-        throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled iteration step operation");
-
-    const_cast<DataType&>(loopControl.initialization->getOutput()->type) =
-        loopControl.initialization->getOutput()->type.toVectorType(
-            loopControl.iterationVariable->type.getVectorWidth());
-    intermediate::MoveOperation* move = dynamic_cast<intermediate::MoveOperation*>(loopControl.initialization);
+    auto stepOp = const_cast<intermediate::Operation*>(inductionVariable.inductionStep);
+    const_cast<DataType&>(inductionVariable.initialAssignment->getOutput()->type) =
+        inductionVariable.initialAssignment->getOutput()->type.toVectorType(
+            inductionVariable.local->type.getVectorWidth());
+    intermediate::MoveOperation* move = const_cast<intermediate::MoveOperation*>(
+        dynamic_cast<const intermediate::MoveOperation*>(inductionVariable.initialAssignment));
     Optional<InstructionWalker> initialValueWalker;
-    bool isStepPlusOne = loopControl.stepKind == StepKind::ADD_CONSTANT && loopControl.getStep() == INT_ONE.literal();
+    bool isStepPlusOne = stepOp->op == OP_ADD && stepValue.unsignedInt() == 1u;
     Optional<Value> precalculatedInitialValue;
     if(move != nullptr && move->getSource().hasLiteral(INT_ZERO.literal()) && isStepPlusOne)
     {
@@ -807,7 +515,7 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
         move->setSource(Value(ELEMENT_NUMBER_REGISTER));
         move->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Changed initial value: " << loopControl.initialization->to_string() << logging::endl);
+            log << "Changed initial value: " << inductionVariable.initialAssignment->to_string() << logging::endl);
     }
     else if(move != nullptr && move->getSource().getLiteralValue() && isStepPlusOne &&
         (initialValueWalker = findWalker(loop.findPredecessor(), move)))
@@ -817,25 +525,26 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
             (new intermediate::Operation(OP_ADD, move->getOutput().value(), move->getSource(), ELEMENT_NUMBER_REGISTER))
                 ->copyExtrasFrom(move));
         initialValueWalker.value()->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
-        loopControl.initialization = initialValueWalker->get();
+        inductionVariable.initialAssignment = initialValueWalker->get();
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Changed initial value: " << loopControl.initialization->to_string() << logging::endl);
+            log << "Changed initial value: " << inductionVariable.initialAssignment->to_string() << logging::endl);
     }
-    else if((precalculatedInitialValue = loopControl.initialization->precalculate().first) && isStepPlusOne &&
-        (initialValueWalker = findWalker(loop.findPredecessor(), loopControl.initialization)))
+    else if((precalculatedInitialValue = inductionVariable.initialAssignment->precalculate().first) && isStepPlusOne &&
+        (initialValueWalker = findWalker(loop.findPredecessor(), inductionVariable.initialAssignment)))
     {
         // more general case: initial value is some constant and step is +1
-        initialValueWalker->reset((new intermediate::Operation(OP_ADD, loopControl.initialization->getOutput().value(),
-                                       *precalculatedInitialValue, ELEMENT_NUMBER_REGISTER))
-                                      ->copyExtrasFrom(loopControl.initialization));
+        initialValueWalker->reset(
+            (new intermediate::Operation(OP_ADD, inductionVariable.initialAssignment->getOutput().value(),
+                 *precalculatedInitialValue, ELEMENT_NUMBER_REGISTER))
+                ->copyExtrasFrom(inductionVariable.initialAssignment));
         initialValueWalker.value()->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
-        loopControl.initialization = initialValueWalker->get();
+        inductionVariable.initialAssignment = initialValueWalker->get();
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Changed initial value: " << loopControl.initialization->to_string() << logging::endl);
+            log << "Changed initial value: " << inductionVariable.initialAssignment->to_string() << logging::endl);
     }
     else
         throw CompilationError(
-            CompilationStep::OPTIMIZER, "Unhandled initial value", loopControl.initialization->to_string());
+            CompilationStep::OPTIMIZER, "Unhandled initial value", inductionVariable.initialAssignment->to_string());
 
     bool stepChanged = false;
     switch(stepOp->op.opAdd)
@@ -847,10 +556,9 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
             const Value& offset = stepOp->assertArgument(1);
             if(offset.getLiteralValue())
                 stepOp->setArgument(1,
-                    Value(Literal(offset.getLiteralValue()->signedInt() *
-                              static_cast<int32_t>(loopControl.vectorizationFactor)),
-                        offset.type.toVectorType(static_cast<unsigned char>(
-                            offset.type.getVectorWidth() * loopControl.vectorizationFactor))));
+                    Value(Literal(offset.getLiteralValue()->signedInt() * static_cast<int32_t>(vectorizationFactor)),
+                        offset.type.toVectorType(
+                            static_cast<unsigned char>(offset.type.getVectorWidth() * vectorizationFactor))));
             else
                 throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled iteration step", stepOp->to_string());
         }
@@ -859,10 +567,9 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
             const Value& offset = stepOp->getFirstArg();
             if(offset.getLiteralValue())
                 stepOp->setArgument(0,
-                    Value(Literal(offset.getLiteralValue()->signedInt() *
-                              static_cast<int32_t>(loopControl.vectorizationFactor)),
-                        offset.type.toVectorType(static_cast<unsigned char>(
-                            offset.type.getVectorWidth() * loopControl.vectorizationFactor))));
+                    Value(Literal(offset.getLiteralValue()->signedInt() * static_cast<int32_t>(vectorizationFactor)),
+                        offset.type.toVectorType(
+                            static_cast<unsigned char>(offset.type.getVectorWidth() * vectorizationFactor))));
             else
                 throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled iteration step", stepOp->to_string());
         }
@@ -882,15 +589,14 @@ static void fixInitialValueAndStep(ControlFlowLoop& loop, LoopControl& loopContr
  * - in final iteration, fix TMU/VPM configuration and address calculation and loop condition
  * - fix initial iteration value and step
  */
-static void vectorize(
-    ControlFlowLoop& loop, LoopControl& loopControl, Method& method, const DataDependencyGraph& dependencyGraph)
+static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariable, Method& method,
+    const DataDependencyGraph& dependencyGraph, unsigned vectorizationFactor, Literal stepValue)
 {
     FastSet<const intermediate::IntermediateInstruction*> openInstructions;
 
-    const_cast<DataType&>(loopControl.iterationVariable->type) =
-        loopControl.iterationVariable->type.toVectorType(loopControl.iterationVariable->type.getVectorWidth() *
-            static_cast<unsigned char>(loopControl.vectorizationFactor));
-    scheduleForVectorization(loopControl.iterationVariable, openInstructions, loop);
+    const_cast<DataType&>(inductionVariable.local->type) = inductionVariable.local->type.toVectorType(
+        inductionVariable.local->type.getVectorWidth() * static_cast<unsigned char>(vectorizationFactor));
+    scheduleForVectorization(inductionVariable.local, openInstructions, loop);
     std::size_t numVectorized = 0;
 
     // iteratively change all instructions
@@ -899,7 +605,7 @@ static void vectorize(
         auto inst = *openInstructions.begin();
         if(auto it = loop.findInLoop(inst))
         {
-            vectorizeInstruction(it->get(), method, openInstructions, loopControl.vectorizationFactor, loop);
+            vectorizeInstruction(it->get(), method, openInstructions, vectorizationFactor, loop);
             ++numVectorized;
         }
         else if(dynamic_cast<const intermediate::MoveOperation*>(inst) && inst->checkOutputLocal() &&
@@ -909,7 +615,7 @@ static void vectorize(
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Local is accessed outside of loop: " << inst->to_string() << logging::endl);
             vectorizeInstruction(const_cast<intermediate::IntermediateInstruction*>(inst), method, openInstructions,
-                loopControl.vectorizationFactor, loop);
+                vectorizationFactor, loop);
             ++numVectorized;
         }
         else
@@ -927,8 +633,7 @@ static void vectorize(
                 // since we are in the process of vectorization, the local type is already updated, but the argument
                 // type is pending. For the next steps, we need to update the argument type.
                 arg.type = arg.local()->type;
-                auto origVectorType =
-                    arg.type.toVectorType(arg.type.getVectorWidth() / loopControl.vectorizationFactor);
+                auto origVectorType = arg.type.toVectorType(arg.type.getVectorWidth() / vectorizationFactor);
 
                 Optional<OpCode> accumulationOp{};
                 if(auto writer = arg.getSingleWriter())
@@ -977,9 +682,9 @@ static void vectorize(
         }
     }
 
-    numVectorized += fixVPMSetups(loop, loopControl);
+    numVectorized += fixVPMSetups(loop, vectorizationFactor);
 
-    fixInitialValueAndStep(loop, loopControl);
+    fixInitialValueAndStep(loop, inductionVariable, stepValue, vectorizationFactor);
     numVectorized += 2;
 
     CPPLOG_LAZY(logging::Level::DEBUG,
@@ -999,14 +704,15 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
     for(auto& loop : loops)
     {
         // 3. determine operation on iteration variable and bounds
-        LoopControl loopControl = extractLoopControl(loop, *dependencyGraph);
+        auto inductionVariable = extractLoopControl(loop, *dependencyGraph);
         PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + 333, "Loops found", 1);
-        if(loopControl.iterationVariable == nullptr)
+        if(inductionVariable.local == nullptr)
             // we could not find the iteration variable, skip this loop
             continue;
 
-        if(!loopControl.initialization || loopControl.terminatingValue.isUndefined() ||
-            !loopControl.terminatingValue.isLiteralValue() || !loopControl.iterationStep || !loopControl.repetitionJump)
+        if(!inductionVariable.initialAssignment || !inductionVariable.inductionStep ||
+            !inductionVariable.repeatCondition || !inductionVariable.repeatCondition->first ||
+            inductionVariable.repeatCondition->second.isUndefined())
         {
             // we need to know both bounds and the iteration step (for now)
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -1014,8 +720,35 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
             continue;
         }
 
+        auto lowerBound = (inductionVariable.initialAssignment->precalculate(4).first & &Value::getLiteralValue);
+        auto upperBound = inductionVariable.repeatCondition->second.getLiteralValue();
+
+        if(!lowerBound || !upperBound)
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Upper or lower bound is not a literal value, aborting vectorization!" << logging::endl);
+            continue;
+        }
+
+        Optional<Literal> stepConstant{};
+        if(auto stepValue =
+                inductionVariable.inductionStep->findOtherArgument(inductionVariable.local->createReference()))
+        {
+            stepConstant =
+                ((stepValue->getSingleWriter() ? stepValue->getSingleWriter()->precalculate(4).first : stepValue) &
+                    &Value::getLiteralValue);
+        }
+
+        if(!stepConstant)
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Iteration step increment is not a literal value, aborting vectorization!" << logging::endl);
+            continue;
+        }
+
         // 4. determine vectorization factor
-        Optional<unsigned> vectorizationFactor = determineVectorizationFactor(loop, loopControl);
+        Optional<unsigned> vectorizationFactor =
+            determineVectorizationFactor(loop, inductionVariable, *lowerBound, *upperBound, *stepConstant);
         if(!vectorizationFactor)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -1023,24 +756,32 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
             continue;
         }
         if(vectorizationFactor.value() == 1)
+        {
             // nothing to do
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Maximum vectorization factor is one, nothing to vectorize, aborting!" << logging::endl);
             continue;
-        loopControl.vectorizationFactor = vectorizationFactor.value();
+        }
 
         // 5. cost-benefit calculation
-        int rating = calculateCostsVsBenefits(loop, loopControl, *dependencyGraph);
+        int rating = calculateCostsVsBenefits(loop, inductionVariable, *dependencyGraph, *vectorizationFactor);
         if(rating < 0 /* TODO some positive factor to be required before vectorizing loops? */)
+        {
             // vectorization (probably) doesn't pay off
+            CPPLOG_LAZY(
+                logging::Level::DEBUG, log << "Vectorization determined to be inefficient, aborting!" << logging::endl);
+
             continue;
+        }
 
         // 6. run vectorization
-        vectorize(loop, loopControl, method, *dependencyGraph);
+        vectorize(loop, inductionVariable, method, *dependencyGraph, *vectorizationFactor, *stepConstant);
         // increasing the iteration step might create a value not fitting into small immediate
-        normalization::handleImmediate(module, method, loopControl.iterationStep.value(), config);
+        normalization::handleImmediate(
+            module, method, loop.findInLoop(inductionVariable.inductionStep).value(), config);
         hasChanged = true;
 
-        PROFILE_COUNTER(
-            vc4c::profiler::COUNTER_OPTIMIZATION + 334, "Vectorization factors", loopControl.vectorizationFactor);
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + 334, "Vectorization factors", *vectorizationFactor);
     }
 
     return hasChanged;
