@@ -10,6 +10,7 @@
 #include "../Profiler.h"
 #include "../analysis/AvailableExpressionAnalysis.h"
 #include "../analysis/DataDependencyGraph.h"
+#include "../normalization/LiteralValues.h"
 #include "../periphery/SFU.h"
 #include "log.h"
 
@@ -558,8 +559,7 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
             !op->hasUnpackMode() && op->getOutput().has_value() &&
             (!op->getSource().checkRegister() || !op->getSource().reg().hasSideEffectsOnRead()) &&
             (!op->checkOutputRegister()) &&
-            (!op->readsLiteral() ||
-                SmallImmediate::fromInteger(static_cast<char>(op->getSource().getLiteralValue()->signedInt()))))
+            (!op->readsLiteral() || normalization::toImmediate(*op->getSource().getLiteralValue())))
         {
             auto it2 = it.copy().nextInBlock();
             auto oldValue = op->getOutput().value();

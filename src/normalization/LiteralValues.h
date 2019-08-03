@@ -7,6 +7,8 @@
 #ifndef LITERALVALUES_H
 #define LITERALVALUES_H
 
+#include "../Values.h"
+
 namespace vc4c
 {
     class Method;
@@ -57,6 +59,11 @@ namespace vc4c
          */
         InstructionWalker handleUseWithImmediate(
             const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+
+        /**
+         * Returns the small immediate representation of the given literal, if it can be represented as such
+         */
+        Optional<SmallImmediate> toImmediate(Literal lit);
     } // namespace normalization
 } // namespace vc4c
 

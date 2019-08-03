@@ -913,3 +913,11 @@ InstructionWalker normalization::handleUseWithImmediate(
 
     return it;
 }
+
+Optional<SmallImmediate> normalization::toImmediate(Literal lit)
+{
+    auto it = immediateMappings.find(lit);
+    if(it != immediateMappings.end() && it->second.opCode == OP_NOP)
+        return it->second.immediate;
+    return {};
+}
