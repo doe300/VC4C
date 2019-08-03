@@ -135,9 +135,9 @@ bool MemoryInstruction::isNormalized() const
     return false;
 }
 
-bool MemoryInstruction::hasSideEffects() const
+SideEffectType MemoryInstruction::getSideEffects() const
 {
-    return true;
+    return add_flag(IntermediateInstruction::getSideEffects(), SideEffectType::MEMORY_ACCESS);
 }
 
 IntermediateInstruction* MemoryInstruction::copyFor(Method& method, const std::string& localPrefix) const

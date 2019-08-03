@@ -856,9 +856,10 @@ bool CombinedOperation::isNormalized() const
     return (!op1 || op1->isNormalized()) && (!op2 || op2->isNormalized());
 }
 
-bool CombinedOperation::hasSideEffects() const
+SideEffectType CombinedOperation::getSideEffects() const
 {
-    return (op1 && op1->hasSideEffects()) || (op2 && op2->hasSideEffects());
+    return add_flag(
+        op1 ? op1->getSideEffects() : SideEffectType::NONE, op2 ? op2->getSideEffects() : SideEffectType::NONE);
 }
 
 IntermediateInstruction* CombinedOperation::copyFor(Method& method, const std::string& localPrefix) const

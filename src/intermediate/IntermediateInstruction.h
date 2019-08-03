@@ -78,7 +78,12 @@ namespace vc4c
             // The division (signed or unsigned) or right shift (arithmetic or logical) is exact, e.g. there is no
             // remainder (for division) and no non-zero bits are shifted out of the value. I.e. for exact division (a /
             // b) * b == a and for shifts (a >> b) << b == a.
-            EXACT_OPERATION = 1u << 23u
+            EXACT_OPERATION = 1u << 23u,
+            // An instruction which is located within a loop but does not depend on any calculate (or flag) done from
+            // inside the loop. I.e. an instruction which calculates the same result for every loop iteration.
+            // NOTE: The invariance marker does not distinguish between nested loops, so an instruction invariant for a
+            // nested loop might not be invariant for its parent loop!
+            LOOP_INVARIANT = 1u << 24u
         };
 
         std::string toString(InstructionDecorations decoration);
@@ -89,6 +94,30 @@ namespace vc4c
          * or an element insertion
          */
         InstructionDecorations forwardDecorations(InstructionDecorations decorations);
+
+        /**
+         * Types of side-effects an instruction can have
+         *
+         * This type is a bit-set for combination of side-effects!
+         */
+        enum class SideEffectType
+        {
+            NONE = 0,
+            // Instruction reads a register which has side-effects, e.g. UNIFORM, TMU_OUT
+            REGISTER_READ = 1u << 0u,
+            // Instruction writes a register which has side-effects, e.g. SFU_XXX, VPM_IO
+            REGISTER_WRITE = 1u << 1u,
+            // Instructions writes flags
+            FLAGS = 1u << 2u,
+            // Instructions issues a signal with side-effects
+            SIGNAL = 1u << 3u,
+            // Instruction is a branch
+            BRANCH = 1u << 4u,
+            // Instruction writes a semaphore
+            SEMAPHORE = 1u << 5u,
+            // Instruction accesses memory
+            MEMORY_ACCESS = 1u << 6u
+        };
 
         /*
          * Converted to QPU instructions,
@@ -243,7 +272,9 @@ namespace vc4c
              * - branches, semaphores
              * - setting of ALU flags
              */
-            virtual bool hasSideEffects() const;
+            bool hasSideEffects() const;
+            virtual SideEffectType getSideEffects() const;
+
             /*
              * Whether an unpack-mode is set
              */
@@ -479,7 +510,7 @@ namespace vc4c
             qpu_asm::DecoratedInstruction convertToAsm(const FastMap<const Local*, Register>& registerMapping,
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             bool isNormalized() const override;
-            bool hasSideEffects() const override;
+            SideEffectType getSideEffects() const override;
 
             const Local* getTarget() const;
 
@@ -598,7 +629,7 @@ namespace vc4c
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
             bool mapsToASMInstruction() const override;
             bool isNormalized() const override;
-            bool hasSideEffects() const override;
+            SideEffectType getSideEffects() const override;
 
             const Operation* getFirstOp() const;
             const Operation* getSecondOP() const;
@@ -702,7 +733,7 @@ namespace vc4c
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
             bool isNormalized() const override;
-            bool hasSideEffects() const override;
+            SideEffectType getSideEffects() const override;
 
             const Semaphore semaphore;
             const bool increase;
@@ -832,7 +863,7 @@ namespace vc4c
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
             bool isNormalized() const override;
-            bool hasSideEffects() const override;
+            SideEffectType getSideEffects() const override;
 
             bool locksMutex() const;
             bool releasesMutex() const;
@@ -866,7 +897,7 @@ namespace vc4c
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             IntermediateInstruction* copyFor(Method& method, const std::string& localPrefix) const override;
             bool isNormalized() const override;
-            bool hasSideEffects() const override;
+            SideEffectType getSideEffects() const override;
 
             const Value& getSource() const;
             const Value& getDestination() const;

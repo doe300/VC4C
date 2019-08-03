@@ -43,9 +43,9 @@ bool SemaphoreAdjustment::isNormalized() const
     return true;
 }
 
-bool SemaphoreAdjustment::hasSideEffects() const
+SideEffectType SemaphoreAdjustment::getSideEffects() const
 {
-    return true;
+    return add_flag(IntermediateInstruction::getSideEffects(), SideEffectType::SEMAPHORE);
 }
 
 IntermediateInstruction* SemaphoreAdjustment::copyFor(Method& method, const std::string& localPrefix) const
@@ -204,9 +204,10 @@ bool MutexLock::isNormalized() const
     return true;
 }
 
-bool MutexLock::hasSideEffects() const
+SideEffectType MutexLock::getSideEffects() const
 {
-    return true;
+    return add_flag(IntermediateInstruction::getSideEffects(),
+        locksMutex() ? SideEffectType::REGISTER_READ : SideEffectType::REGISTER_WRITE);
 }
 
 IntermediateInstruction* MutexLock::copyFor(Method& method, const std::string& localPrefix) const

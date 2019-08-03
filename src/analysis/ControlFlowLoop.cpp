@@ -692,6 +692,64 @@ const CFGNode* ControlFlowLoop::getHeader() const
     return header;
 }
 
+FastSet<InstructionWalker> ControlFlowLoop::findLoopInvariants()
+{
+    /*
+     * For algorithm, see
+     * https://www.cs.princeton.edu/courses/archive/spring03/cs320/notes/loops.pdf, slide 23
+     */
+
+    // given a certain loop, any instruction which is marked as invariant, calculates a constant expression (without
+    // depending on some flags) or is not part of the loop is considered invariant
+    auto writerIsInvariant = [&](const LocalUser* writer) -> bool {
+        return writer->hasDecoration(intermediate::InstructionDecorations::LOOP_INVARIANT) ||
+            (!writer->hasConditionalExecution() && writer->precalculate().first) || !findInLoop(writer);
+    };
+
+    // given a certain loop, any instruction which only consumes constants or locals written by invariant instructions
+    // (see above) is considered invaraint
+    auto checkArgInvariant = [&](const Value& arg) -> bool {
+        if(arg.getLiteralValue())
+            return true;
+        if(arg.hasRegister(REG_ELEMENT_NUMBER) || arg.hasRegister(REG_QPU_NUMBER))
+            return true;
+        if(auto local = arg.checkLocal())
+        {
+            auto writers = local->getUsers(LocalUse::Type::WRITER);
+            return std::all_of(writers.begin(), writers.end(), writerIsInvariant);
+        }
+        return false;
+    };
+
+    FastSet<InstructionWalker> invariantInstructions;
+    for(auto node : *this)
+    {
+        auto it = node->key->walk();
+        while(!it.isEndOfBlock())
+        {
+            if(it.has() && !it.get<intermediate::BranchLabel>() && !it->signal.hasSideEffects() &&
+                std::all_of(it->getArguments().begin(), it->getArguments().end(), checkArgInvariant))
+            {
+                bool invariantCondition = false;
+                if(!it->hasConditionalExecution())
+                    invariantCondition = true;
+                else if(auto setflag = it.getBasicBlock()->findLastSettingOfFlags(it))
+                    invariantCondition =
+                        (*setflag)->hasDecoration(intermediate::InstructionDecorations::LOOP_INVARIANT);
+
+                if(invariantCondition)
+                {
+                    it->addDecorations(intermediate::InstructionDecorations::LOOP_INVARIANT);
+                    invariantInstructions.emplace(it);
+                }
+            }
+            it.nextInBlock();
+        }
+    }
+
+    return invariantInstructions;
+}
+
 LoopInclusionTreeNodeBase::~LoopInclusionTreeNodeBase() noexcept = default;
 
 std::unique_ptr<LoopInclusionTree> vc4c::createLoopInclusingTree(FastAccessList<ControlFlowLoop>& loops)

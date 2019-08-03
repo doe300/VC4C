@@ -63,6 +63,8 @@ std::string intermediate::toString(const InstructionDecorations decoration)
         res.append("nuw ");
     if(has_flag(decoration, InstructionDecorations::EXACT_OPERATION))
         res.append("exact ");
+    if(has_flag(decoration, InstructionDecorations::LOOP_INVARIANT))
+        res.append("invariant ");
     return res.substr(0, res.empty() ? 0 : res.size() - 1);
 }
 LCOV_EXCL_STOP
@@ -94,6 +96,8 @@ InstructionDecorations intermediate::forwardDecorations(InstructionDecorations d
         res = add_flag(res, InstructionDecorations::VPM_READ_CONFIGURATION);
     if(has_flag(decorations, InstructionDecorations::VPM_WRITE_CONFIGURATION))
         res = add_flag(res, InstructionDecorations::VPM_WRITE_CONFIGURATION);
+    if(has_flag(decorations, InstructionDecorations::LOOP_INVARIANT))
+        res = add_flag(res, InstructionDecorations::LOOP_INVARIANT);
     return res;
 }
 
@@ -253,14 +257,25 @@ bool IntermediateInstruction::hasDecoration(InstructionDecorations deco) const n
 
 bool IntermediateInstruction::hasSideEffects() const
 {
-    if(checkOutputRegister() && output->reg().hasSideEffectsOnWrite())
-        return true;
+    return getSideEffects() != SideEffectType::NONE;
+}
+
+SideEffectType IntermediateInstruction::getSideEffects() const
+{
+    SideEffectType sideEffects = SideEffectType::NONE;
+    if((checkOutputRegister() & &Register::hasSideEffectsOnWrite))
+        sideEffects = add_flag(sideEffects, SideEffectType::REGISTER_WRITE);
     for(const Value& arg : arguments)
     {
         if(arg.checkRegister() && arg.reg().hasSideEffectsOnRead())
-            return true;
+            sideEffects = add_flag(sideEffects, SideEffectType::REGISTER_READ);
     }
-    return signal.hasSideEffects() || setFlags == SetFlag::SET_FLAGS;
+    if(signal.hasSideEffects())
+        sideEffects = add_flag(sideEffects, SideEffectType::SIGNAL);
+    if(setFlags == SetFlag::SET_FLAGS)
+        sideEffects = add_flag(sideEffects, SideEffectType::FLAGS);
+
+    return sideEffects;
 }
 
 bool IntermediateInstruction::hasUnpackMode() const

@@ -132,9 +132,9 @@ bool Branch::isNormalized() const
     return true;
 }
 
-bool Branch::hasSideEffects() const
+SideEffectType Branch::getSideEffects() const
 {
-    return true;
+    return add_flag(IntermediateInstruction::getSideEffects(), SideEffectType::BRANCH);
 }
 
 const Local* Branch::getTarget() const
