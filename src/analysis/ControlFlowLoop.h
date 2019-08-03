@@ -1,3 +1,8 @@
+/*
+ * Author: doe300
+ *
+ * See the file "LICENSE" for the full license governing this code.
+ */
 #ifndef VC4C_CONTROLFLOWLOOP_H
 #define VC4C_CONTROLFLOWLOOP_H 1
 

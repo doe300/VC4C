@@ -6,9 +6,9 @@
 
 #include "Optimizer.h"
 
-#include "../BackgroundWorker.h"
 #include "../Module.h"
 #include "../Profiler.h"
+#include "../ThreadPool.h"
 #include "../intrinsics/Intrinsics.h"
 #include "Combiner.h"
 #include "ControlFlow.h"
@@ -230,7 +230,7 @@ void Optimizer::optimize(Module& module) const
     const auto f = [&](Method* kernelFunc) {
         runOptimizationPasses(module, *kernelFunc, config, initialPasses, repeatingPasses, finalPasses);
     };
-    BackgroundWorker::scheduleAll<Method*>(module.getKernels(), f, "Optimizer");
+    ThreadPool{"Optimizer"}.scheduleAll<Method*>(module.getKernels(), f);
 }
 
 const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {

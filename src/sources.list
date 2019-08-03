@@ -1,7 +1,5 @@
 target_sources(${VC4C_LIBRARY_NAME}
   PRIVATE
-    BackgroundWorker.cpp
-    BackgroundWorker.h
     BasicBlock.cpp
     BasicBlock.h
     Bitfield.h
@@ -31,6 +29,8 @@ target_sources(${VC4C_LIBRARY_NAME}
     ProcessUtil.h
     Profiler.cpp
     Profiler.h
+    ThreadPool.cpp
+    ThreadPool.h
     Types.cpp
     Types.h
     Units.h

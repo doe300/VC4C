@@ -6,11 +6,11 @@
 
 #include "Normalizer.h"
 
-#include "../BackgroundWorker.h"
 #include "../InstructionWalker.h"
 #include "../Method.h"
 #include "../Module.h"
 #include "../Profiler.h"
+#include "../ThreadPool.h"
 #include "../intrinsics/Intrinsics.h"
 #include "../optimization/Combiner.h"
 #include "../optimization/ControlFlow.h"
@@ -184,14 +184,14 @@ void Normalizer::normalize(Module& module) const
     }
     // 3. run other normalization steps on kernel functions
     const auto f = [&module, this](Method* kernelFunc) -> void { normalizeMethod(module, *kernelFunc); };
-    BackgroundWorker::scheduleAll<Method*>(module.getKernels(), f, "Normalization");
+    ThreadPool{"Normalization"}.scheduleAll<Method*>(module.getKernels(), f);
 }
 
 void Normalizer::adjust(Module& module) const
 {
     // run adjustment steps on kernel functions
     const auto f = [&module, this](Method* kernelFunc) -> void { adjustMethod(module, *kernelFunc); };
-    BackgroundWorker::scheduleAll<Method*>(module.getKernels(), f, "Adjustment");
+    ThreadPool{"Adjustment"}.scheduleAll<Method*>(module.getKernels(), f);
 }
 
 void Normalizer::normalizeMethod(Module& module, Method& method) const

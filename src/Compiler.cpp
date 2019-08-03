@@ -6,11 +6,11 @@
 
 #include "Compiler.h"
 
-#include "BackgroundWorker.h"
 #include "CompilationError.h"
 #include "Parser.h"
 #include "Precompiler.h"
 #include "Profiler.h"
+#include "ThreadPool.h"
 #include "asm/CodeGenerator.h"
 #include "log.h"
 #include "logger.h"
@@ -109,7 +109,7 @@ std::size_t Compiler::convert()
     PROFILE_END(SecondNormalizer);
 
     const auto f = [&codeGen](Method* kernelFunc) -> void { codeGen.toMachineCode(*kernelFunc); };
-    BackgroundWorker::scheduleAll<Method*>(module.getKernels(), f, "CodeGenerator");
+    ThreadPool{"CodeGenerator"}.scheduleAll<Method*>(module.getKernels(), f);
 
     // TODO could discard unused globals
     // since they are exported, they are still in the intermediate code, even if not used (e.g. optimized away)

@@ -1600,6 +1600,6 @@ void TestIntrinsicFunctions::testBitcastFloat()
     auto in = generateInput<int, 1>(true)[0];
     options.append(" -DSOURCES=").append(std::to_string(in));
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);
-    testUnaryFunctionWithConstant<int, float>(code, options, in, func,
+    testUnaryFunctionWithConstant<int, float, EqualNaN>(code, options, in, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
