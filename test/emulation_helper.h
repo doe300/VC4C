@@ -186,7 +186,7 @@ void checkTernaryResults(const std::array<Input, N>& input0, const std::array<In
 }
 
 template <typename C>
-static std::string toString(const C& container)
+std::string toString(const C& container)
 {
     return std::accumulate(container.begin(), container.end(), std::string{},
         [](const std::string s, const typename C::value_type v) -> std::string {

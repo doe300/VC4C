@@ -13,6 +13,7 @@ class TestMemoryAccess : public TestEmulator
 {
 public:
     TestMemoryAccess(const vc4c::Configuration& config = {});
+    ~TestMemoryAccess() override;
 
     void testPrivateStorage();
     void testLocalStorage();

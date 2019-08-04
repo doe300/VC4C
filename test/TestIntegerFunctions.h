@@ -15,6 +15,7 @@ class TestIntegerFunctions : public Test::Suite
 {
 public:
     TestIntegerFunctions(const vc4c::Configuration& config = {});
+    ~TestIntegerFunctions() override;
     
     void testAbsSignedInt();
     void testAbsSignedShort();

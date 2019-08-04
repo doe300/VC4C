@@ -15,6 +15,7 @@ class TestConversionFuntions : public TestEmulator
 {
 public:
     explicit TestConversionFuntions(const vc4c::Configuration& config = {});
+    ~TestConversionFuntions() override;
 
     // conversion instructions
     void testSignedTruncation();

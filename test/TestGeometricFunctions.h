@@ -15,6 +15,7 @@ class TestGeometricFunctions : public Test::Suite
 {
 public:
     TestGeometricFunctions(const vc4c::Configuration& config = {});
+    ~TestGeometricFunctions() override;
     
     void testCross3();
     void testCross4();

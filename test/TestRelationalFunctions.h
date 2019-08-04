@@ -15,6 +15,7 @@ class TestRelationalFunctions : public Test::Suite
 {
 public:
     TestRelationalFunctions(const vc4c::Configuration& config = {});
+    ~TestRelationalFunctions() override;
 
     void testIsEqual();
     void testIsEqualScalar();

@@ -103,9 +103,11 @@ TestRelationalFunctions::TestRelationalFunctions(const vc4c::Configuration& conf
     // TODO (randomly) add NaN/Inf inputs, esp. for checks for NaN/Inf
 }
 
+TestRelationalFunctions::~TestRelationalFunctions() = default;
+
 void TestRelationalFunctions::onMismatch(const std::string& expected, const std::string& result)
 {
-    TEST_ASSERT_EQUALS(expected, result);
+    TEST_ASSERT_EQUALS(expected, result)
 }
 
 template <unsigned N, typename Distribution = InfNaNUniformDistribution>
@@ -167,20 +169,6 @@ static void testUnaryGroupFunction(vc4c::Configuration& config, const std::strin
     auto out = runEmulation<T, R, 16, 12>(code, {in});
     auto pos = options.find("-DFUNC=") + std::string("-DFUNC=").size();
     checkUnaryReducedResults<R, T>(in, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
-}
-
-template <typename C, typename T = typename C::first_argument_type>
-static int checkRelation(T arg1, T arg2)
-{
-    C c{};
-    return c(arg1, arg2) ? -1 : 0;
-}
-
-template <typename C, typename T = typename C::first_argument_type>
-static int checkScalarRelation(T arg1, T arg2)
-{
-    C c{};
-    return c(arg1, arg2) ? 1 : 0;
 }
 
 template <typename T>

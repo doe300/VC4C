@@ -55,9 +55,11 @@ TestGeometricFunctions::TestGeometricFunctions(const vc4c::Configuration& config
     TEST_ADD(TestGeometricFunctions::testNormalize4);
 }
 
+TestGeometricFunctions::~TestGeometricFunctions() = default;
+
 void TestGeometricFunctions::onMismatch(const std::string& expected, const std::string& result)
 {
-    TEST_ASSERT_EQUALS(expected, result);
+    TEST_ASSERT_EQUALS(expected, result)
 }
 
 template <std::size_t N>

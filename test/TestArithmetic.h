@@ -15,6 +15,7 @@ class TestArithmetic : public Test::Suite
 {
 public:
     TestArithmetic(const vc4c::Configuration& config = {});
+    ~TestArithmetic() override;
 
     // arithmetic operators
     void testSignedIntUnaryPlus();

@@ -15,6 +15,7 @@ class TestVectorFunctions : public Test::Suite
 {
 public:
     TestVectorFunctions(const vc4c::Configuration& config = {});
+    ~TestVectorFunctions() override;
 
     void testVectorLoad2Int();
     void testVectorLoad2Short();

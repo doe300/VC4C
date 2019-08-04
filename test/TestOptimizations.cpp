@@ -67,6 +67,8 @@ TestOptimizations::TestOptimizations() : TestEmulator(true)
     // suites fail
 }
 
+TestOptimizations::~TestOptimizations() = default;
+
 static const optimizations::OptimizationPass& getPass(std::string&& paramName)
 {
     for(const auto& pass : optimizations::Optimizer::ALL_PASSES)

@@ -168,9 +168,11 @@ TestIntrinsicFunctions::TestIntrinsicFunctions(const vc4c::Configuration& config
     TEST_ADD(TestIntrinsicFunctions::testBitcastFloat);
 }
 
+TestIntrinsicFunctions::~TestIntrinsicFunctions() = default;
+
 void TestIntrinsicFunctions::onMismatch(const std::string& expected, const std::string& result)
 {
-    TEST_ASSERT_EQUALS(expected, result);
+    TEST_ASSERT_EQUALS(expected, result)
 }
 
 template <typename In, typename Out, std::size_t N, typename Limits = In, typename Comparison = std::equal_to<Out>>
@@ -194,19 +196,6 @@ static void testUnaryFunctionWithConstant(std::stringstream& code, const std::st
     std::array<In, 1> tmpIn{in};
     checkUnaryResults<Out, In, 1, Comparison>(
         tmpIn, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
-}
-
-template <typename In, typename Out, std::size_t N, typename Comparison = std::equal_to<Out>>
-static void testBinaryOperation(std::stringstream& code, const std::string& options,
-    const std::function<Out(In, In)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
-{
-    auto in0 = generateInput<In, N * 12>(true);
-    auto in1 = generateInput<In, N * 12>(false);
-
-    auto out = runEmulation<In, Out, N, 12>(code, {in0, in1});
-    auto pos = options.find("-DOP=") + std::string("-DOP=").size();
-    checkBinaryResults<Out, In, N * 12, Comparison>(
-        in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
 template <typename In, typename Out, std::size_t N, typename Comparison = std::equal_to<Out>>

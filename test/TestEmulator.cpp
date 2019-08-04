@@ -59,6 +59,8 @@ TestEmulator::TestEmulator(bool cachePrecompilation, const vc4c::Configuration& 
     // Constructor just, so the tests are not added to children
 }
 
+TestEmulator::~TestEmulator() = default;
+
 void TestEmulator::compileFile(
     std::stringstream& buffer, const std::string& fileName, const std::string& options, bool cachePrecompilation)
 {
@@ -95,19 +97,19 @@ void TestEmulator::testHelloWorld()
     data.parameter.emplace_back(0u, std::vector<uint32_t>(data.calcNumWorkItems() * 16 / sizeof(uint32_t)));
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(1u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(1u, result.results.size())
 
     const auto& out = *result.results.front().second;
 
-    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(out.data()), 16));
-    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(out.data()) + 16, 16));
-    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(out.data()) + 32, 16));
-    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(out.data()) + 48, 16));
-    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(out.data()) + 64, 16));
-    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(out.data()) + 80, 16));
-    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(out.data()) + 96, 16));
-    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(out.data()) + 112, 16));
+    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(out.data()), 16))
+    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(out.data()) + 16, 16))
+    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(out.data()) + 32, 16))
+    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(out.data()) + 48, 16))
+    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(out.data()) + 64, 16))
+    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(out.data()) + 80, 16))
+    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(out.data()) + 96, 16))
+    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(out.data()) + 112, 16))
 }
 
 void TestEmulator::testHelloWorldVector()
@@ -126,14 +128,14 @@ void TestEmulator::testHelloWorldVector()
     data.parameter.emplace_back(0u, std::vector<uint32_t>(16 / sizeof(uint32_t)));
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(2u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(2u, result.results.size())
 
     const auto& in = *result.results.front().second;
     const auto& out = *result.results.back().second;
 
-    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(in.data()), 16));
-    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(out.data()), 16));
+    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(in.data()), 16))
+    TEST_ASSERT_EQUALS(0, strncmp("Hello World!", reinterpret_cast<const char*>(out.data()), 16))
 }
 
 void TestEmulator::testPrime()
@@ -151,11 +153,11 @@ void TestEmulator::testPrime()
         data.parameter.emplace_back(0u, std::vector<uint32_t>(1));
 
         const auto result = emulate(data);
-        TEST_ASSERT(result.executionSuccessful);
-        TEST_ASSERT_EQUALS(2u, result.results.size());
+        TEST_ASSERT(result.executionSuccessful)
+        TEST_ASSERT_EQUALS(2u, result.results.size())
 
         const auto& out = *result.results.back().second;
-        TEST_ASSERT(*reinterpret_cast<const bool*>(out.data()));
+        TEST_ASSERT(*reinterpret_cast<const bool*>(out.data()))
     }
     {
         data.parameter.clear();
@@ -163,11 +165,11 @@ void TestEmulator::testPrime()
         data.parameter.emplace_back(0u, std::vector<uint32_t>(1));
 
         const auto result = emulate(data);
-        TEST_ASSERT(result.executionSuccessful);
-        TEST_ASSERT_EQUALS(2u, result.results.size());
+        TEST_ASSERT(result.executionSuccessful)
+        TEST_ASSERT_EQUALS(2u, result.results.size())
 
         const auto& out = *result.results.back().second;
-        TEST_ASSERT(!*reinterpret_cast<const bool*>(out.data()));
+        TEST_ASSERT(!*reinterpret_cast<const bool*>(out.data()))
     }
 }
 
@@ -187,23 +189,23 @@ void TestEmulator::testBarrier()
     data.parameter.emplace_back(0u, std::vector<uint32_t>(12 * data.calcNumWorkItems()));
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(1u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(1u, result.results.size())
 
     const auto& out = *result.results.front().second;
 
     for(uint32_t i = 0; i < data.calcNumWorkItems(); ++i)
     {
-        TEST_ASSERT_EQUALS(0u, out[0 + i * 12]);
-        TEST_ASSERT_EQUALS(1u, out[1 + i * 12]);
-        TEST_ASSERT_EQUALS(2u, out[2 + i * 12]);
-        TEST_ASSERT_EQUALS(4u, out[4 + i * 12]);
-        TEST_ASSERT_EQUALS(5u, out[5 + i * 12]);
-        TEST_ASSERT_EQUALS(6u, out[6 + i * 12]);
-        TEST_ASSERT_EQUALS(7u, out[7 + i * 12]);
-        TEST_ASSERT_EQUALS(8u, out[8 + i * 12]);
-        TEST_ASSERT_EQUALS(9u, out[9 + i * 12]);
-        TEST_ASSERT_EQUALS(10u, out[10 + i * 12]);
+        TEST_ASSERT_EQUALS(0u, out[0 + i * 12])
+        TEST_ASSERT_EQUALS(1u, out[1 + i * 12])
+        TEST_ASSERT_EQUALS(2u, out[2 + i * 12])
+        TEST_ASSERT_EQUALS(4u, out[4 + i * 12])
+        TEST_ASSERT_EQUALS(5u, out[5 + i * 12])
+        TEST_ASSERT_EQUALS(6u, out[6 + i * 12])
+        TEST_ASSERT_EQUALS(7u, out[7 + i * 12])
+        TEST_ASSERT_EQUALS(8u, out[8 + i * 12])
+        TEST_ASSERT_EQUALS(9u, out[9 + i * 12])
+        TEST_ASSERT_EQUALS(10u, out[10 + i * 12])
     }
 }
 
@@ -224,18 +226,18 @@ void TestEmulator::testBranches()
     data.parameter.emplace_back(0u, std::vector<uint32_t>(16));
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(2u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(2u, result.results.size())
 
     const auto& out = *result.results.back().second;
 
-    TEST_ASSERT_EQUALS(512u, out[2]);
-    TEST_ASSERT_EQUALS(100u, out[3]);
-    TEST_ASSERT_EQUALS(100u, out[4]);
-    TEST_ASSERT_EQUALS(512u, out[5]);
-    TEST_ASSERT_EQUALS(109u, out[7]);
-    TEST_ASSERT_EQUALS(109u, out[0]);
-    TEST_ASSERT_EQUALS(1849u, out[1]);
+    TEST_ASSERT_EQUALS(512u, out[2])
+    TEST_ASSERT_EQUALS(100u, out[3])
+    TEST_ASSERT_EQUALS(100u, out[4])
+    TEST_ASSERT_EQUALS(512u, out[5])
+    TEST_ASSERT_EQUALS(109u, out[7])
+    TEST_ASSERT_EQUALS(109u, out[0])
+    TEST_ASSERT_EQUALS(1849u, out[1])
 }
 
 void TestEmulator::testWorkItem()
@@ -258,8 +260,8 @@ void TestEmulator::testWorkItem()
     // TODO test with global offset != 0
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(1u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(1u, result.results.size())
 
     const auto& out = *result.results.front().second;
 
@@ -271,29 +273,29 @@ void TestEmulator::testWorkItem()
             auto globalID = data.workGroup.globalOffsets.at(0) + (xGroup * data.workGroup.localSizes.at(0) + xItem);
             const uint32_t* base = out.data() + (globalID * 24);
 
-            TEST_ASSERT_EQUALS(3u, base[0]);
-            TEST_ASSERT_EQUALS(data.workGroup.numGroups.at(0) * data.workGroup.localSizes.at(0), base[1]);
-            TEST_ASSERT_EQUALS(data.workGroup.numGroups.at(1) * data.workGroup.localSizes.at(1), base[2]);
-            TEST_ASSERT_EQUALS(data.workGroup.numGroups.at(2) * data.workGroup.localSizes.at(2), base[3]);
-            TEST_ASSERT_EQUALS(globalID, base[4]);
-            TEST_ASSERT_EQUALS(0u, base[5]);
-            TEST_ASSERT_EQUALS(0u, base[6]);
-            TEST_ASSERT_EQUALS(data.workGroup.globalOffsets.at(0), base[7]);
-            TEST_ASSERT_EQUALS(0u, base[8]);
-            TEST_ASSERT_EQUALS(0u, base[9]);
-            TEST_ASSERT_EQUALS(data.workGroup.numGroups.at(0), base[10]);
-            TEST_ASSERT_EQUALS(1u, base[11]);
-            TEST_ASSERT_EQUALS(1u, base[12]);
-            TEST_ASSERT_EQUALS(xGroup, base[13]);
-            TEST_ASSERT_EQUALS(0u, base[14]);
-            TEST_ASSERT_EQUALS(0u, base[15]);
-            TEST_ASSERT_EQUALS(data.workGroup.localSizes.at(0), base[16]);
-            TEST_ASSERT_EQUALS(1u, base[17]);
-            TEST_ASSERT_EQUALS(1u, base[18]);
-            TEST_ASSERT_EQUALS(xItem, base[19]);
-            TEST_ASSERT_EQUALS(0u, base[20]);
-            TEST_ASSERT_EQUALS(0u, base[21]);
-            TEST_ASSERT_EQUALS(1u, base[22]);
+            TEST_ASSERT_EQUALS(3u, base[0])
+            TEST_ASSERT_EQUALS(data.workGroup.numGroups.at(0) * data.workGroup.localSizes.at(0), base[1])
+            TEST_ASSERT_EQUALS(data.workGroup.numGroups.at(1) * data.workGroup.localSizes.at(1), base[2])
+            TEST_ASSERT_EQUALS(data.workGroup.numGroups.at(2) * data.workGroup.localSizes.at(2), base[3])
+            TEST_ASSERT_EQUALS(globalID, base[4])
+            TEST_ASSERT_EQUALS(0u, base[5])
+            TEST_ASSERT_EQUALS(0u, base[6])
+            TEST_ASSERT_EQUALS(data.workGroup.globalOffsets.at(0), base[7])
+            TEST_ASSERT_EQUALS(0u, base[8])
+            TEST_ASSERT_EQUALS(0u, base[9])
+            TEST_ASSERT_EQUALS(data.workGroup.numGroups.at(0), base[10])
+            TEST_ASSERT_EQUALS(1u, base[11])
+            TEST_ASSERT_EQUALS(1u, base[12])
+            TEST_ASSERT_EQUALS(xGroup, base[13])
+            TEST_ASSERT_EQUALS(0u, base[14])
+            TEST_ASSERT_EQUALS(0u, base[15])
+            TEST_ASSERT_EQUALS(data.workGroup.localSizes.at(0), base[16])
+            TEST_ASSERT_EQUALS(1u, base[17])
+            TEST_ASSERT_EQUALS(1u, base[18])
+            TEST_ASSERT_EQUALS(xItem, base[19])
+            TEST_ASSERT_EQUALS(0u, base[20])
+            TEST_ASSERT_EQUALS(0u, base[21])
+            TEST_ASSERT_EQUALS(1u, base[22])
         }
     }
 }
@@ -322,8 +324,8 @@ void TestEmulator::testSHA1()
     data.parameter.emplace_back(0, std::vector<uint32_t>(8));
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(4u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(4u, result.results.size())
 
     if(digest != result.results.at(3).second.value())
     {
@@ -331,7 +333,7 @@ void TestEmulator::testSHA1()
         auto resultIt = result.results.at(3).second->begin();
         while(expectedIt != digest.end())
         {
-            TEST_ASSERT_EQUALS(*expectedIt, *resultIt);
+            TEST_ASSERT_EQUALS(*expectedIt, *resultIt)
 
             ++resultIt;
             ++expectedIt;
@@ -362,8 +364,8 @@ void TestEmulator::testSHA256()
     data.parameter.emplace_back(0, Optional<std::vector<uint32_t>>{});
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(3u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(3u, result.results.size())
 
     if(memcmp(digest.data(), result.results.at(1).second->data(), digest.size()) != 0)
     {
@@ -371,7 +373,7 @@ void TestEmulator::testSHA256()
         auto resultIt = result.results.at(1).second->begin();
         while(expectedIt != digest.end())
         {
-            TEST_ASSERT_EQUALS(*expectedIt, *resultIt);
+            TEST_ASSERT_EQUALS(*expectedIt, *resultIt)
 
             ++resultIt;
             ++expectedIt;
@@ -398,8 +400,8 @@ void TestEmulator::testIntegerEmulation(
     data.module.second = &buffer;
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(data.parameter.size(), result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(data.parameter.size(), result.results.size())
 
     for(const auto& pair : expectedResults)
     {
@@ -407,7 +409,7 @@ void TestEmulator::testIntegerEmulation(
         const auto& expected = pair.second;
 
         // we might write values we do not check
-        TEST_ASSERT(expected.size() <= output.size());
+        TEST_ASSERT(expected.size() <= output.size())
 
         // general test equality
         if(output != expected)
@@ -417,10 +419,10 @@ void TestEmulator::testIntegerEmulation(
             {
                 int e = bit_cast<uint32_t, int>(expected.at(i));
                 int o = bit_cast<uint32_t, int>(output.at(i));
-                TEST_ASSERT_EQUALS(e, o);
+                TEST_ASSERT_EQUALS(e, o)
                 if(e != o)
                 {
-                    TEST_ASSERT_EQUALS("", "element " + std::to_string(i));
+                    TEST_ASSERT_EQUALS("", "element " + std::to_string(i))
                 }
             }
         }
@@ -435,8 +437,8 @@ void TestEmulator::testFloatingEmulation(
     data.module.second = &buffer;
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(data.parameter.size(), result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(data.parameter.size(), result.results.size())
 
     for(const auto& pair : expectedResults)
     {
@@ -444,7 +446,7 @@ void TestEmulator::testFloatingEmulation(
         const auto& expected = pair.second;
 
         // we might write values we do not check
-        TEST_ASSERT(expected.size() <= output.size());
+        TEST_ASSERT(expected.size() <= output.size())
 
         // general test equality
         if(output != expected)
@@ -459,11 +461,11 @@ void TestEmulator::testFloatingEmulation(
                  * Thus for any value, which cannot be represented exactly, the values may differ.
                  * So we allow up to 1 ULP error
                  */
-                TEST_ASSERT_ULP(e, o, maxULP);
+                TEST_ASSERT_ULP(e, o, maxULP)
                 auto delta = e * maxULP * std::numeric_limits<float>::epsilon();
                 if(!Test::Comparisons::inMaxDistance(e, o, delta))
                 {
-                    TEST_ASSERT_EQUALS("", "element " + std::to_string(i));
+                    TEST_ASSERT_EQUALS("", "element " + std::to_string(i))
                 }
             }
         }
@@ -488,8 +490,8 @@ void TestEmulator::testPartialMD5()
     data.parameter.emplace_back(0, std::vector<uint32_t>(8));
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(3u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(3u, result.results.size())
 
     // host-side calculation
     std::array<unsigned, 4> hostResult{};
@@ -498,14 +500,14 @@ void TestEmulator::testPartialMD5()
         std::copy(sample.begin(), sample.end(), in.begin());
 
         hostResult.fill(0);
-        calculate_md5(in.data(), sample.size(), reinterpret_cast<char*>(hostResult.data()));
+        calculate_md5(in.data(), static_cast<unsigned>(sample.size()), reinterpret_cast<char*>(hostResult.data()));
     }
 
     auto expectedIt = hostResult.begin();
     auto resultIt = result.results.at(2).second->begin();
     while(expectedIt != hostResult.end())
     {
-        TEST_ASSERT_EQUALS(*expectedIt, *resultIt);
+        TEST_ASSERT_EQUALS(*expectedIt, *resultIt)
 
         ++resultIt;
         ++expectedIt;
@@ -530,14 +532,14 @@ void TestEmulator::testCRC16()
     data.parameter.emplace_back(sample.size(), Optional<std::vector<uint32_t>>{});
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(3u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(3u, result.results.size())
 
     // host-side calculation
     uint16_t hostResult{};
-    crc16(&hostResult, reinterpret_cast<const uint8_t*>(sample.data()), sample.size());
+    crc16(&hostResult, reinterpret_cast<const uint8_t*>(sample.data()), static_cast<unsigned>(sample.size()));
 
-    TEST_ASSERT_EQUALS(hostResult, result.results.at(0).second->front());
+    TEST_ASSERT_EQUALS(hostResult, result.results.at(0).second->front())
 }
 
 void TestEmulator::testPearson16()
@@ -558,18 +560,18 @@ void TestEmulator::testPearson16()
     data.parameter.emplace_back(0, std::vector<uint32_t>(2));
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(3u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(3u, result.results.size())
 
     // host-side calculation
     std::array<uint8_t, 8> hostResult{};
-    Pearson16(reinterpret_cast<const uint8_t*>(sample.data()), sample.size(), hostResult.data());
+    Pearson16(reinterpret_cast<const uint8_t*>(sample.data()), static_cast<unsigned>(sample.size()), hostResult.data());
 
     auto expectedIt = hostResult.begin();
     auto resultIt = reinterpret_cast<const uint8_t*>(&result.results.at(2).second->front());
     while(expectedIt != hostResult.end())
     {
-        TEST_ASSERT_EQUALS(static_cast<unsigned>(*expectedIt), static_cast<unsigned>(*resultIt));
+        TEST_ASSERT_EQUALS(static_cast<unsigned>(*expectedIt), static_cast<unsigned>(*resultIt))
 
         ++resultIt;
         ++expectedIt;

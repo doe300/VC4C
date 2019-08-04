@@ -41,9 +41,11 @@ TestCommonFunctions::TestCommonFunctions(const vc4c::Configuration& config) : co
     TEST_ADD(TestCommonFunctions::testSign);
 }
 
+TestCommonFunctions::~TestCommonFunctions() = default;
+
 void TestCommonFunctions::onMismatch(const std::string& expected, const std::string& result)
 {
-    TEST_ASSERT_EQUALS(expected, result);
+    TEST_ASSERT_EQUALS(expected, result)
 }
 
 template <std::size_t ULP>

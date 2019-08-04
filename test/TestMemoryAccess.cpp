@@ -117,9 +117,11 @@ TestMemoryAccess::TestMemoryAccess(const Configuration& config) : TestEmulator(f
     TEST_ADD(TestMemoryAccess::testVectorLoadStoreGlobalParameter);
 }
 
+TestMemoryAccess::~TestMemoryAccess() = default;
+
 void TestMemoryAccess::onMismatch(const std::string& expected, const std::string& result)
 {
-    TEST_ASSERT_EQUALS(expected, result);
+    TEST_ASSERT_EQUALS(expected, result)
 }
 
 template <typename T>
@@ -185,8 +187,8 @@ void TestMemoryAccess::testPrivateStorage()
     data.parameter.emplace_back(0, std::vector<uint32_t>(24));
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(2u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(2u, result.results.size())
 
     if(expected != result.results.at(1).second.value())
     {
@@ -194,7 +196,7 @@ void TestMemoryAccess::testPrivateStorage()
         auto resultIt = result.results.at(1).second->end();
         while(expectedIt != expected.end())
         {
-            TEST_ASSERT_EQUALS(*expectedIt, *resultIt);
+            TEST_ASSERT_EQUALS(*expectedIt, *resultIt)
             ++resultIt;
             ++expectedIt;
         }
@@ -221,15 +223,15 @@ void TestMemoryAccess::testLocalStorage()
     data.parameter.emplace_back(0, std::vector<uint32_t>(24));
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(2u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(2u, result.results.size())
 
     // actual results are indeterministic, since the order of the loads/stores across work-items is not guaranteed
     for(auto res : result.results.at(1).second.value())
     {
         if(res % 7 != 0)
         {
-            TEST_ASSERT_EQUALS(7, res);
+            TEST_ASSERT_EQUALS(7, res)
         }
     }
 }
@@ -252,10 +254,10 @@ void TestMemoryAccess::testVectorAssembly()
     data.parameter.emplace_back(0, std::vector<uint32_t>(12));
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(1u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(1u, result.results.size())
     TEST_ASSERT_EQUALS(
-        std::string("Hello World"), std::string(reinterpret_cast<const char*>(result.results[0].second->data())));
+        std::string("Hello World"), std::string(reinterpret_cast<const char*>(result.results[0].second->data())))
 }
 
 void TestMemoryAccess::testConstantStorage()
@@ -276,10 +278,10 @@ void TestMemoryAccess::testConstantStorage()
     data.parameter.emplace_back(0, std::vector<uint32_t>(12));
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(1u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(1u, result.results.size())
     TEST_ASSERT_EQUALS(
-        std::string("Hello World!"), std::string(reinterpret_cast<const char*>(result.results[0].second->data())));
+        std::string("Hello World!"), std::string(reinterpret_cast<const char*>(result.results[0].second->data())))
 }
 
 void TestMemoryAccess::testRegisterStorage()
@@ -300,10 +302,10 @@ void TestMemoryAccess::testRegisterStorage()
     data.parameter.emplace_back(0, std::vector<uint32_t>(12));
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(1u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(1u, result.results.size())
     TEST_ASSERT_EQUALS(
-        std::string("Hello World"), std::string(reinterpret_cast<const char*>(result.results[0].second->data())));
+        std::string("Hello World"), std::string(reinterpret_cast<const char*>(result.results[0].second->data())))
 }
 
 void TestMemoryAccess::testVPMWrites()
@@ -330,8 +332,8 @@ void TestMemoryAccess::testVPMWrites()
     data.parameter.emplace_back(0, std::vector<uint32_t>(10 * 16 * 4));
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(5u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(5u, result.results.size())
 
     auto& src = data.parameter[0].second.value();
     auto& res1 = result.results[1].second.value();
@@ -341,10 +343,10 @@ void TestMemoryAccess::testVPMWrites()
 
     for(unsigned i = 0; i < 10 * 16; ++i)
     {
-        TEST_ASSERT_EQUALS(src.at(i % 16), res1.at(i));
-        TEST_ASSERT_EQUALS(static_cast<short>(src.at(i % 16)), reinterpret_cast<const short*>(res2.data())[i]);
-        TEST_ASSERT_EQUALS(src.at(i % 16), static_cast<unsigned>(reinterpret_cast<const char*>(res3.data())[i]));
-        TEST_ASSERT_EQUALS(src.at(i % 16), res4.at((i / 16) * 3 * 16 /* stride */ + (i % 16)));
+        TEST_ASSERT_EQUALS(src.at(i % 16), res1.at(i))
+        TEST_ASSERT_EQUALS(static_cast<short>(src.at(i % 16)), reinterpret_cast<const short*>(res2.data())[i])
+        TEST_ASSERT_EQUALS(src.at(i % 16), static_cast<unsigned>(reinterpret_cast<const char*>(res3.data())[i]))
+        TEST_ASSERT_EQUALS(src.at(i % 16), res4.at((i / 16) * 3 * 16 /* stride */ + (i % 16)))
     }
 }
 
@@ -369,8 +371,8 @@ void TestMemoryAccess::testVPMReads()
         data.parameter[1].second->at(i) = i;
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(2u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(2u, result.results.size())
 
     auto& v1 = result.results[0].second.value();
     auto& v2 = result.results[1].second.value();
@@ -380,8 +382,8 @@ void TestMemoryAccess::testVPMReads()
 
     for(unsigned i = 0; i < 10 * 4; ++i)
     {
-        TEST_ASSERT_EQUALS(v1.at(i), v2.at(i));
-        TEST_ASSERT_EQUALS((i / 4) * 12 /*stride * elements*/ + (i % 4), v2[i]);
+        TEST_ASSERT_EQUALS(v1.at(i), v2.at(i))
+        TEST_ASSERT_EQUALS((i / 4) * 12 /*stride * elements*/ + (i % 4), v2[i])
     }
 }
 
@@ -451,8 +453,8 @@ void TestMemoryAccess::testVectorLoadStorePrivateRegister()
     data.parameter.emplace_back(0, std::vector<unsigned>{0, 1, 2, 3});
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(3u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(3u, result.results.size())
 
     auto& out = result.results[0].second.value();
 
@@ -460,14 +462,14 @@ void TestMemoryAccess::testVectorLoadStorePrivateRegister()
         0x0, 0x8, 0x9, 0xa, 0xc, 0xd, 0xe, 0xf, 0x0, 0xf, 0x6, 0x7, 0x8, 0x9, 0xa, 0xc, 0xd, 0xd, 0xe, 0xf, 0x6, 0x7,
         0x8, 0x9, 0xa};
 
-    TEST_ASSERT_EQUALS(out.size(), golden.size());
+    TEST_ASSERT_EQUALS(out.size(), golden.size())
 
     for(unsigned i = 0; i < out.size(); ++i)
     {
         if(out[i] != golden[i])
         {
-            TEST_ASSERT_EQUALS(golden[i], out[i]);
-            TEST_ASSERT_EQUALS("", "element " + std::to_string(i));
+            TEST_ASSERT_EQUALS(golden[i], out[i])
+            TEST_ASSERT_EQUALS("", "element " + std::to_string(i))
         }
     }
 }
@@ -492,8 +494,8 @@ void TestMemoryAccess::testVectorLoadStorePrivateVPMFull()
     data.parameter.emplace_back(0, std::vector<unsigned>{0, 1, 2, 3, 11});
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(3u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(3u, result.results.size())
 
     auto& out = result.results[0].second.value();
 
@@ -501,14 +503,14 @@ void TestMemoryAccess::testVectorLoadStorePrivateVPMFull()
         0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
         0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f};
 
-    TEST_ASSERT_EQUALS(out.size(), golden.size());
+    TEST_ASSERT_EQUALS(out.size(), golden.size())
 
     for(unsigned i = 0; i < out.size(); ++i)
     {
         if(out[i] != golden[i])
         {
-            TEST_ASSERT_EQUALS(golden[i], out[i]);
-            TEST_ASSERT_EQUALS("", "element " + std::to_string(i));
+            TEST_ASSERT_EQUALS(golden[i], out[i])
+            TEST_ASSERT_EQUALS("", "element " + std::to_string(i))
         }
     }
 }
@@ -533,8 +535,8 @@ void TestMemoryAccess::testVectorLoadStorePrivateVPMPartial()
     data.parameter.emplace_back(0, std::vector<unsigned>{0, 1, 2, 3, 11});
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(3u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(3u, result.results.size())
 
     auto& out = result.results[0].second.value();
 
@@ -542,14 +544,14 @@ void TestMemoryAccess::testVectorLoadStorePrivateVPMPartial()
         0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
         0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f};
 
-    TEST_ASSERT_EQUALS(out.size(), golden.size());
+    TEST_ASSERT_EQUALS(out.size(), golden.size())
 
     for(unsigned i = 0; i < out.size(); ++i)
     {
         if(out[i] != golden[i])
         {
-            TEST_ASSERT_EQUALS(golden[i], out[i]);
-            TEST_ASSERT_EQUALS("", "element " + std::to_string(i));
+            TEST_ASSERT_EQUALS(golden[i], out[i])
+            TEST_ASSERT_EQUALS("", "element " + std::to_string(i))
         }
     }
 }
@@ -576,8 +578,8 @@ void TestMemoryAccess::testVectorLoadStoreLocalParameter()
     data.parameter.emplace_back(0, std::vector<unsigned>(2 * 16));
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(4u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(4u, result.results.size())
 
     auto& out = result.results[0].second.value();
 
@@ -585,14 +587,14 @@ void TestMemoryAccess::testVectorLoadStoreLocalParameter()
         0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
         0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f};
 
-    TEST_ASSERT_EQUALS(out.size(), golden.size());
+    TEST_ASSERT_EQUALS(out.size(), golden.size())
 
     for(unsigned i = 0; i < out.size(); ++i)
     {
         if(out[i] != golden[i])
         {
-            TEST_ASSERT_EQUALS(golden[i], out[i]);
-            TEST_ASSERT_EQUALS("", "element " + std::to_string(i));
+            TEST_ASSERT_EQUALS(golden[i], out[i])
+            TEST_ASSERT_EQUALS("", "element " + std::to_string(i))
         }
     }
 }
@@ -619,8 +621,8 @@ void TestMemoryAccess::testVectorLoadStoreGlobalParameter()
     data.parameter.emplace_back(0, std::vector<unsigned>(2 * 16));
 
     const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful);
-    TEST_ASSERT_EQUALS(4u, result.results.size());
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(4u, result.results.size())
 
     auto& out = result.results[0].second.value();
 
@@ -628,14 +630,14 @@ void TestMemoryAccess::testVectorLoadStoreGlobalParameter()
         0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
         0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f};
 
-    TEST_ASSERT_EQUALS(out.size(), golden.size());
+    TEST_ASSERT_EQUALS(out.size(), golden.size())
 
     for(unsigned i = 0; i < out.size(); ++i)
     {
         if(out[i] != golden[i])
         {
-            TEST_ASSERT_EQUALS(golden[i], out[i]);
-            TEST_ASSERT_EQUALS("", "element " + std::to_string(i));
+            TEST_ASSERT_EQUALS(golden[i], out[i])
+            TEST_ASSERT_EQUALS("", "element " + std::to_string(i))
         }
     }
 }

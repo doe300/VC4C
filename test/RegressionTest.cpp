@@ -424,7 +424,7 @@ void RegressionTest::testRegression(std::string clFile, std::string options, vc4
     
     const std::size_t numBytes = Compiler::compile(in, out, config, options, clFile);
     
-    TEST_ASSERT(numBytes > 0);
+    TEST_ASSERT(numBytes > 0)
 }
 
 void RegressionTest::testPending(std::string clFile, std::string options, vc4c::Frontend frontend)

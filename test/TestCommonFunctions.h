@@ -15,6 +15,7 @@ class TestCommonFunctions : public Test::Suite
 {
 public:
   TestCommonFunctions(const vc4c::Configuration& config = {});
+  ~TestCommonFunctions() override;
   
   void testClamp();
   void testDegrees();

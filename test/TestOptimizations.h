@@ -18,6 +18,7 @@ class TestOptimizations : public TestEmulator
 {
 public:
     TestOptimizations();
+    ~TestOptimizations() override;
 
     void testEmptyIterator(std::string passParamName);
     void testEmptyKernel(std::string passParamName);

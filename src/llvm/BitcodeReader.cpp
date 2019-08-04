@@ -1173,9 +1173,10 @@ Value BitcodeReader::parseInlineGetElementPtr(
             dumpLLVM(constExpr);
             throw CompilationError(CompilationStep::PARSER, "Invalid constant operation for load-instruction!");
         }
-        llvm::GetElementPtrInst* indexOf = llvm::cast<llvm::GetElementPtrInst>(constExpr->getAsInstruction());
+        std::unique_ptr<llvm::GetElementPtrInst> indexOf(
+            llvm::cast<llvm::GetElementPtrInst>(constExpr->getAsInstruction()));
         parseInstruction(module, method, instructions, *indexOf);
-        auto tmp = toValue(method, indexOf);
+        auto tmp = toValue(method, indexOf.get());
         // required so LLVM can clean up the constant expression correctly
         indexOf->dropAllReferences();
         return tmp;

@@ -88,9 +88,11 @@ TestConversionFuntions::TestConversionFuntions(const vc4c::Configuration& config
     TEST_ADD(TestConversionFuntions::testVectorBitcastExtension1To2);
 }
 
+TestConversionFuntions::~TestConversionFuntions() = default;
+
 void TestConversionFuntions::onMismatch(const std::string& expected, const std::string& result)
 {
-    TEST_ASSERT_EQUALS(expected, result);
+    TEST_ASSERT_EQUALS(expected, result)
 }
 
 template <typename I, typename O>

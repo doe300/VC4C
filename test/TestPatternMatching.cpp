@@ -11,7 +11,8 @@ using namespace vc4c;
 using namespace vc4c::pattern;
 using namespace vc4c::operators;
 
-static Module module{Configuration{}};
+static const Configuration config{};
+static Module module{config};
 
 // TODO add test for matching same value success/failure
 
@@ -23,6 +24,8 @@ TestPatternMatching::TestPatternMatching()
     TEST_ADD(TestPatternMatching::testConsecutiveSearch);
     TEST_ADD(TestPatternMatching::testGappedSearch);
 }
+
+TestPatternMatching::~TestPatternMatching() = default;
 
 void TestPatternMatching::testInstructionMatch()
 {
@@ -43,12 +46,12 @@ void TestPatternMatching::testInstructionMatch()
         ConditionCode realCond = COND_NEVER;
         auto part = capture(realOut) = (capture(realOp), capture(realConstant), capture(realIn), capture(realCond));
 
-        TEST_ASSERT(matches(inst, part));
-        TEST_ASSERT_EQUALS(out, realOut);
-        TEST_ASSERT(OP_ADD == realOp);
-        TEST_ASSERT_EQUALS(15_lit, realConstant);
-        TEST_ASSERT_EQUALS(in, realIn);
-        TEST_ASSERT_EQUALS(COND_NEGATIVE_CLEAR, realCond);
+        TEST_ASSERT(matches(inst, part))
+        TEST_ASSERT_EQUALS(out, realOut)
+        TEST_ASSERT(OP_ADD == realOp)
+        TEST_ASSERT_EQUALS(15_lit, realConstant)
+        TEST_ASSERT_EQUALS(in, realIn)
+        TEST_ASSERT_EQUALS(COND_NEGATIVE_CLEAR, realCond)
     }
 
     // successful test - match unary instruction specifically
@@ -58,7 +61,7 @@ void TestPatternMatching::testInstructionMatch()
 
         auto part = match(out) = (match(FAKEOP_MOV), match(42_val));
 
-        TEST_ASSERT(matches(inst, part));
+        TEST_ASSERT(matches(inst, part))
     }
 
     // successful test - match load
@@ -71,10 +74,10 @@ void TestPatternMatching::testInstructionMatch()
         ConditionCode realCond = COND_NEVER;
         auto part = capture(realOut) = (match(FAKEOP_LDI), capture(realConstant), capture(realCond));
 
-        TEST_ASSERT(matches(it.get(), part));
-        TEST_ASSERT_EQUALS(out, realOut);
-        TEST_ASSERT_EQUALS(42_lit, realConstant);
-        TEST_ASSERT_EQUALS(COND_ALWAYS, realCond);
+        TEST_ASSERT(matches(it.get(), part))
+        TEST_ASSERT_EQUALS(out, realOut)
+        TEST_ASSERT_EQUALS(42_lit, realConstant)
+        TEST_ASSERT_EQUALS(COND_ALWAYS, realCond)
     }
 
     // successful test - match same input
@@ -85,8 +88,8 @@ void TestPatternMatching::testInstructionMatch()
         Value arg = UNDEFINED_VALUE;
         auto part = anyValue() = (match(OP_XOR), capture(arg), capture(arg));
 
-        TEST_ASSERT(matches(inst, part));
-        TEST_ASSERT_EQUALS(UNIFORM_REGISTER, arg);
+        TEST_ASSERT(matches(inst, part))
+        TEST_ASSERT_EQUALS(UNIFORM_REGISTER, arg)
     }
 
     // successful test - matching flags
@@ -98,9 +101,9 @@ void TestPatternMatching::testInstructionMatch()
         SetFlag flags = SetFlag::DONT_SET;
         auto part = anyValue() = (match(OP_XOR), capture(arg), anyValue(), capture(flags));
 
-        TEST_ASSERT(matches(inst, part));
-        TEST_ASSERT_EQUALS(17_val, arg);
-        TEST_ASSERT(flags == SetFlag::SET_FLAGS);
+        TEST_ASSERT(matches(inst, part))
+        TEST_ASSERT_EQUALS(17_val, arg)
+        TEST_ASSERT(flags == SetFlag::SET_FLAGS)
     }
 
     // failing test - value mismatch
@@ -113,10 +116,10 @@ void TestPatternMatching::testInstructionMatch()
         ConditionCode realCond = COND_NEVER;
         auto part = anyValue() = (match(OP_ADD), match(17_val), capture(realIn), capture(realCond));
 
-        TEST_ASSERT(!matches(inst, part));
+        TEST_ASSERT(!matches(inst, part))
         // check captures not updated
-        TEST_ASSERT(realIn.isUndefined());
-        TEST_ASSERT_EQUALS(COND_NEVER, realCond);
+        TEST_ASSERT(realIn.isUndefined())
+        TEST_ASSERT_EQUALS(COND_NEVER, realCond)
     }
 
     // failing test - opcode mismatch
@@ -129,25 +132,24 @@ void TestPatternMatching::testInstructionMatch()
         ConditionCode realCond = COND_NEVER;
         auto part = anyValue() = (match(OP_SUB), anyValue(), capture(realIn), capture(realCond));
 
-        TEST_ASSERT(!matches(inst, part));
+        TEST_ASSERT(!matches(inst, part))
         // check captures not updated
-        TEST_ASSERT(realIn.isUndefined());
-        TEST_ASSERT_EQUALS(COND_NEVER, realCond);
+        TEST_ASSERT(realIn.isUndefined())
+        TEST_ASSERT_EQUALS(COND_NEVER, realCond)
     }
 
     // failing test - unsupported operation
     {
-        auto out = m.addNewLocal(TYPE_INT32);
         it.emplace(new intermediate::SemaphoreAdjustment(Semaphore::BARRIER_WORK_ITEM_10, false));
 
         Value realOut = UNDEFINED_VALUE;
         OpCode realCode = OP_NOP;
         auto part = capture(realOut) = (capture(realCode), anyValue());
 
-        TEST_ASSERT(!matches(it.get(), part));
+        TEST_ASSERT(!matches(it.get(), part))
         // check captures not updated
-        TEST_ASSERT(realOut.isUndefined());
-        TEST_ASSERT(OP_NOP == realCode);
+        TEST_ASSERT(realOut.isUndefined())
+        TEST_ASSERT(OP_NOP == realCode)
     }
 
     // failing test - value type (local, literal) mismatch
@@ -160,10 +162,10 @@ void TestPatternMatching::testInstructionMatch()
         const Local* loc = nullptr;
         auto part = capture(realOut) = (match(OP_ADD), capture(loc), anyValue());
 
-        TEST_ASSERT(!matches(inst, part));
+        TEST_ASSERT(!matches(inst, part))
         // check captures not updated
-        TEST_ASSERT(realOut.isUndefined());
-        TEST_ASSERT(loc == nullptr);
+        TEST_ASSERT(realOut.isUndefined())
+        TEST_ASSERT(loc == nullptr)
     }
 
     // failing test - condition mismatch
@@ -176,10 +178,10 @@ void TestPatternMatching::testInstructionMatch()
         OpCode realCode = OP_NOP;
         auto part = capture(realOut) = (capture(realCode), anyValue(), match(COND_CARRY_CLEAR));
 
-        TEST_ASSERT(!matches(inst, part));
+        TEST_ASSERT(!matches(inst, part))
         // check captures not updated
-        TEST_ASSERT(realOut.isUndefined());
-        TEST_ASSERT(OP_NOP == realCode);
+        TEST_ASSERT(realOut.isUndefined())
+        TEST_ASSERT(OP_NOP == realCode)
     }
 
     // failing test - argument size mismatch
@@ -190,9 +192,9 @@ void TestPatternMatching::testInstructionMatch()
         Value secondArg = UNDEFINED_VALUE;
         auto part = match(out) = (match(FAKEOP_MOV), match(42_val), capture(secondArg));
 
-        TEST_ASSERT(!matches(inst, part));
+        TEST_ASSERT(!matches(inst, part))
         // check captures not updated
-        TEST_ASSERT(secondArg.isUndefined());
+        TEST_ASSERT(secondArg.isUndefined())
     }
 
     // failing test - pack mode
@@ -203,9 +205,9 @@ void TestPatternMatching::testInstructionMatch()
         Value arg = UNDEFINED_VALUE;
         auto part = match(out) = (anyOperation(), capture(arg));
 
-        TEST_ASSERT(!matches(inst, part));
+        TEST_ASSERT(!matches(inst, part))
         // check captures not updated
-        TEST_ASSERT(arg.isUndefined());
+        TEST_ASSERT(arg.isUndefined())
     }
 
     // failing test - unpack mode
@@ -216,15 +218,15 @@ void TestPatternMatching::testInstructionMatch()
         Value arg = UNDEFINED_VALUE;
         auto part = match(out) = (anyOperation(), capture(arg));
 
-        TEST_ASSERT(!matches(inst, part));
+        TEST_ASSERT(!matches(inst, part))
         // check captures not updated
-        TEST_ASSERT(arg.isUndefined());
+        TEST_ASSERT(arg.isUndefined())
     }
 
     // failing test - no instruction
     {
         auto part = anyValue() = (anyOperation(), anyValue());
-        TEST_ASSERT(!matches(nullptr, part));
+        TEST_ASSERT(!matches(nullptr, part))
     }
 
     // failing test - same value capture conflict
@@ -235,9 +237,9 @@ void TestPatternMatching::testInstructionMatch()
         Value arg = UNDEFINED_VALUE;
         auto part = match(out) = (anyOperation(), capture(arg), capture(arg));
 
-        TEST_ASSERT(!matches(inst, part));
+        TEST_ASSERT(!matches(inst, part))
         // check captures not updated
-        TEST_ASSERT(arg.isUndefined());
+        TEST_ASSERT(arg.isUndefined())
     }
 
     // successful test - mismatching flags
@@ -248,8 +250,8 @@ void TestPatternMatching::testInstructionMatch()
         Value arg = UNDEFINED_VALUE;
         auto part = match(out) = (match(OP_XOR), capture(arg), anyValue(), match(SetFlag::SET_FLAGS));
 
-        TEST_ASSERT(!matches(inst, part));
-        TEST_ASSERT(arg.isUndefined());
+        TEST_ASSERT(!matches(inst, part))
+        TEST_ASSERT(arg.isUndefined())
     }
 
     // TODO successful and failing test for supported arithmetic properties
@@ -262,7 +264,7 @@ void TestPatternMatching::testExpressionMatch()
         Expression expr{OP_V8ADDS, 42_val, 17_val};
 
         auto part = anyValue() = (match(OP_V8ADDS), match(42_val), match(17_val));
-        TEST_ASSERT(matches(expr, part));
+        TEST_ASSERT(matches(expr, part))
     }
 
     // successful test - wildcard match
@@ -275,11 +277,11 @@ void TestPatternMatching::testExpressionMatch()
         Value arg1 = UNDEFINED_VALUE;
 
         auto part = capture(out) = (capture(code), capture(arg0), capture(arg1));
-        TEST_ASSERT(matches(expr, part));
-        TEST_ASSERT(out.isUndefined());
-        TEST_ASSERT(OP_V8ADDS == code);
-        TEST_ASSERT_EQUALS(42_val, arg0);
-        TEST_ASSERT_EQUALS(17_val, arg1);
+        TEST_ASSERT(matches(expr, part))
+        TEST_ASSERT(out.isUndefined())
+        TEST_ASSERT(OP_V8ADDS == code)
+        TEST_ASSERT_EQUALS(42_val, arg0)
+        TEST_ASSERT_EQUALS(17_val, arg1)
     }
 
     // successful test - match same input
@@ -291,10 +293,10 @@ void TestPatternMatching::testExpressionMatch()
         Value arg = UNDEFINED_VALUE;
 
         auto part = capture(out) = (capture(code), capture(arg), capture(arg));
-        TEST_ASSERT(matches(expr, part));
-        TEST_ASSERT(out.isUndefined());
-        TEST_ASSERT(OP_V8ADDS == code);
-        TEST_ASSERT_EQUALS(42_val, arg);
+        TEST_ASSERT(matches(expr, part))
+        TEST_ASSERT(out.isUndefined())
+        TEST_ASSERT(OP_V8ADDS == code)
+        TEST_ASSERT_EQUALS(42_val, arg)
     }
 
     // failing test - value mismatch
@@ -305,9 +307,9 @@ void TestPatternMatching::testExpressionMatch()
         Value arg1 = UNDEFINED_VALUE;
 
         auto part = anyValue() = (capture(code), match(43_val), capture(arg1));
-        TEST_ASSERT(!matches(expr, part));
-        TEST_ASSERT(code == OP_NOP);
-        TEST_ASSERT(arg1.isUndefined());
+        TEST_ASSERT(!matches(expr, part))
+        TEST_ASSERT(code == OP_NOP)
+        TEST_ASSERT(arg1.isUndefined())
     }
 
     // failing test - opcode mismatch
@@ -318,9 +320,9 @@ void TestPatternMatching::testExpressionMatch()
         Value arg1 = UNDEFINED_VALUE;
 
         auto part = anyValue() = (match(OP_ADD), capture(arg0), capture(arg1));
-        TEST_ASSERT(!matches(expr, part));
-        TEST_ASSERT(arg0.isUndefined());
-        TEST_ASSERT(arg1.isUndefined());
+        TEST_ASSERT(!matches(expr, part))
+        TEST_ASSERT(arg0.isUndefined())
+        TEST_ASSERT(arg1.isUndefined())
     }
 
     // failing test - pack mode
@@ -332,10 +334,10 @@ void TestPatternMatching::testExpressionMatch()
         Value arg1 = UNDEFINED_VALUE;
 
         auto part = anyValue() = (capture(code), capture(arg0), capture(arg1));
-        TEST_ASSERT(!matches(expr, part));
-        TEST_ASSERT(code == OP_NOP);
-        TEST_ASSERT(arg0.isUndefined());
-        TEST_ASSERT(arg1.isUndefined());
+        TEST_ASSERT(!matches(expr, part))
+        TEST_ASSERT(code == OP_NOP)
+        TEST_ASSERT(arg0.isUndefined())
+        TEST_ASSERT(arg1.isUndefined())
     }
 
     // failing test - unpack mode
@@ -347,10 +349,10 @@ void TestPatternMatching::testExpressionMatch()
         Value arg1 = UNDEFINED_VALUE;
 
         auto part = anyValue() = (capture(code), capture(arg0), capture(arg1));
-        TEST_ASSERT(!matches(expr, part));
-        TEST_ASSERT(code == OP_NOP);
-        TEST_ASSERT(arg0.isUndefined());
-        TEST_ASSERT(arg1.isUndefined());
+        TEST_ASSERT(!matches(expr, part))
+        TEST_ASSERT(code == OP_NOP)
+        TEST_ASSERT(arg0.isUndefined())
+        TEST_ASSERT(arg1.isUndefined())
     }
 
     // failing test - same value capture conflict
@@ -361,9 +363,9 @@ void TestPatternMatching::testExpressionMatch()
         Value arg = UNDEFINED_VALUE;
 
         auto part = anyValue() = (capture(code), capture(arg), capture(arg));
-        TEST_ASSERT(!matches(expr, part));
-        TEST_ASSERT(code == OP_NOP);
-        TEST_ASSERT(arg.isUndefined());
+        TEST_ASSERT(!matches(expr, part))
+        TEST_ASSERT(code == OP_NOP)
+        TEST_ASSERT(arg.isUndefined())
     }
 
     // TODO successful and failing test for supported arithmetic properties
@@ -382,8 +384,8 @@ void TestPatternMatching::testSingleSearch()
         Value arg = UNDEFINED_VALUE;
         auto start = block.walk().nextInBlock();
         auto part = anyValue() = (anyOperation(), capture(arg));
-        TEST_ASSERT(start == search(start, part));
-        TEST_ASSERT_EQUALS(42_val, arg);
+        TEST_ASSERT(start == search(start, part))
+        TEST_ASSERT_EQUALS(42_val, arg)
     }
 
     // successful test - matching last instruction
@@ -393,9 +395,9 @@ void TestPatternMatching::testSingleSearch()
         Value arg = UNDEFINED_VALUE;
         auto part = match(out) = (anyOperation(), anyValue(), capture(arg));
         auto match = search(block.walk(), part);
-        TEST_ASSERT(!match.isEndOfBlock());
-        TEST_ASSERT(block.walkEnd().previousInBlock() == match);
-        TEST_ASSERT_EQUALS(UNIFORM_REGISTER, arg);
+        TEST_ASSERT(!match.isEndOfBlock())
+        TEST_ASSERT(block.walkEnd().previousInBlock() == match)
+        TEST_ASSERT_EQUALS(UNIFORM_REGISTER, arg)
     }
 
     // successful test - same input match
@@ -405,20 +407,20 @@ void TestPatternMatching::testSingleSearch()
         Value arg = UNDEFINED_VALUE;
         auto start = block.walk().nextInBlock();
         auto part = anyValue() = (anyOperation(), capture(arg), capture(arg));
-        TEST_ASSERT(!search(start, part).isEndOfBlock());
-        TEST_ASSERT_EQUALS(19_val, arg);
+        TEST_ASSERT(!search(start, part).isEndOfBlock())
+        TEST_ASSERT_EQUALS(19_val, arg)
     }
 
     // failing test - start is end of block
     {
         auto part = anyValue() = (anyOperation(), anyValue());
-        TEST_ASSERT(search(InstructionWalker{}, part).isEndOfBlock());
+        TEST_ASSERT(search(InstructionWalker{}, part).isEndOfBlock())
     }
 
     // failing test - no matching instructions
     {
         auto part = match(UNIFORM_REGISTER) = (anyOperation(), anyValue());
-        TEST_ASSERT(search(block.walk(), part).isEndOfBlock());
+        TEST_ASSERT(search(block.walk(), part).isEndOfBlock())
     }
 
     // failing test - start after matching instruction
@@ -428,7 +430,7 @@ void TestPatternMatching::testSingleSearch()
         assignNop(it) = UNIFORM_REGISTER - 17_val;
 
         auto part = match(out) = (anyOperation(), match(ELEMENT_NUMBER_REGISTER));
-        TEST_ASSERT(search(start, part).isEndOfBlock());
+        TEST_ASSERT(search(start, part).isEndOfBlock())
     }
 
     // failing test - same value capture conflict
@@ -438,8 +440,8 @@ void TestPatternMatching::testSingleSearch()
         Value arg = UNDEFINED_VALUE;
         auto start = block.walk().nextInBlock();
         auto part = anyValue() = (match(OP_XOR), capture(arg), capture(arg));
-        TEST_ASSERT(search(start, part).isEndOfBlock());
-        TEST_ASSERT(arg.isUndefined());
+        TEST_ASSERT(search(start, part).isEndOfBlock())
+        TEST_ASSERT(arg.isUndefined())
     }
 }
 
@@ -463,15 +465,15 @@ void TestPatternMatching::testConsecutiveSearch()
 
         auto start = block.walk().nextInBlock();
         auto matchIt = search(start, pattern);
-        TEST_ASSERT(matchIt == start);
-        TEST_ASSERT_EQUALS(2_val, arg0);
-        TEST_ASSERT_EQUALS(110_val, arg1);
+        TEST_ASSERT(matchIt == start)
+        TEST_ASSERT_EQUALS(2_val, arg0)
+        TEST_ASSERT_EQUALS(110_val, arg1)
 
         // should have same result on repeat
         matchIt = search(start, pattern);
-        TEST_ASSERT(matchIt == start);
-        TEST_ASSERT_EQUALS(2_val, arg0);
-        TEST_ASSERT_EQUALS(110_val, arg1);
+        TEST_ASSERT(matchIt == start)
+        TEST_ASSERT_EQUALS(2_val, arg0)
+        TEST_ASSERT_EQUALS(110_val, arg1)
     }
 
     // successful test - last instructions match
@@ -487,9 +489,9 @@ void TestPatternMatching::testConsecutiveSearch()
             false};
 
         auto matchIt = search(block.walk(), pattern);
-        TEST_ASSERT(!matchIt.isEndOfBlock());
-        TEST_ASSERT_EQUALS(17_val, arg0);
-        TEST_ASSERT_EQUALS(110_val, arg1);
+        TEST_ASSERT(!matchIt.isEndOfBlock())
+        TEST_ASSERT_EQUALS(17_val, arg0)
+        TEST_ASSERT_EQUALS(110_val, arg1)
     }
 
     // successful test - same capture across instructions
@@ -504,8 +506,8 @@ void TestPatternMatching::testConsecutiveSearch()
             false};
 
         auto matchIt = search(block.walk(), pattern);
-        TEST_ASSERT(!matchIt.isEndOfBlock());
-        TEST_ASSERT_EQUALS(17_val, arg);
+        TEST_ASSERT(!matchIt.isEndOfBlock())
+        TEST_ASSERT_EQUALS(17_val, arg)
     }
 
     // successful test - same code capture across instructions
@@ -522,10 +524,10 @@ void TestPatternMatching::testConsecutiveSearch()
             false};
 
         auto matchIt = search(block.walk(), pattern);
-        TEST_ASSERT(!matchIt.isEndOfBlock());
-        TEST_ASSERT(code == OP_OR);
-        TEST_ASSERT_EQUALS(111_val, arg0);
-        TEST_ASSERT_EQUALS(156_val, arg1);
+        TEST_ASSERT(!matchIt.isEndOfBlock())
+        TEST_ASSERT(code == OP_OR)
+        TEST_ASSERT_EQUALS(111_val, arg0)
+        TEST_ASSERT_EQUALS(156_val, arg1)
     }
 
     // successful test - match inverted conditions
@@ -541,9 +543,9 @@ void TestPatternMatching::testConsecutiveSearch()
             false};
 
         auto matchIt = search(block.walk(), pattern);
-        TEST_ASSERT(!matchIt.isEndOfBlock());
-        TEST_ASSERT_EQUALS(1717_val, arg);
-        TEST_ASSERT_EQUALS(COND_CARRY_CLEAR, cond);
+        TEST_ASSERT(!matchIt.isEndOfBlock())
+        TEST_ASSERT_EQUALS(1717_val, arg)
+        TEST_ASSERT_EQUALS(COND_CARRY_CLEAR, cond)
     }
 
     // failing test - start is end of block
@@ -556,9 +558,9 @@ void TestPatternMatching::testConsecutiveSearch()
             false};
 
         auto matchIt = search(block.walkEnd().previousInBlock(), pattern);
-        TEST_ASSERT(matchIt.isEndOfBlock());
-        TEST_ASSERT(arg0.isUndefined());
-        TEST_ASSERT(arg1.isUndefined());
+        TEST_ASSERT(matchIt.isEndOfBlock())
+        TEST_ASSERT(arg0.isUndefined())
+        TEST_ASSERT(arg1.isUndefined())
     }
 
     // failing test - no matching instructions
@@ -571,9 +573,9 @@ void TestPatternMatching::testConsecutiveSearch()
             false};
 
         auto matchIt = search(block.walk(), pattern);
-        TEST_ASSERT(matchIt.isEndOfBlock());
-        TEST_ASSERT(arg0.isUndefined());
-        TEST_ASSERT(arg1.isUndefined());
+        TEST_ASSERT(matchIt.isEndOfBlock())
+        TEST_ASSERT(arg0.isUndefined())
+        TEST_ASSERT(arg1.isUndefined())
     }
 
     // failing test - start after matching instructions
@@ -589,9 +591,9 @@ void TestPatternMatching::testConsecutiveSearch()
             false};
 
         auto matchIt = search(it, pattern);
-        TEST_ASSERT(matchIt.isEndOfBlock());
-        TEST_ASSERT(arg0.isUndefined());
-        TEST_ASSERT(arg1.isUndefined());
+        TEST_ASSERT(matchIt.isEndOfBlock())
+        TEST_ASSERT(arg0.isUndefined())
+        TEST_ASSERT(arg1.isUndefined())
     }
 
     // failing test - other instruction within match
@@ -608,9 +610,9 @@ void TestPatternMatching::testConsecutiveSearch()
             false};
 
         auto matchIt = search(block.walk(), pattern);
-        TEST_ASSERT(matchIt.isEndOfBlock());
-        TEST_ASSERT(arg0.isUndefined());
-        TEST_ASSERT(arg1.isUndefined());
+        TEST_ASSERT(matchIt.isEndOfBlock())
+        TEST_ASSERT(arg0.isUndefined())
+        TEST_ASSERT(arg1.isUndefined())
     }
 
     // failing test - matching instructions in wrong order
@@ -626,9 +628,9 @@ void TestPatternMatching::testConsecutiveSearch()
             false};
 
         auto matchIt = search(block.walk(), pattern);
-        TEST_ASSERT(matchIt.isEndOfBlock());
-        TEST_ASSERT(arg0.isUndefined());
-        TEST_ASSERT(arg1.isUndefined());
+        TEST_ASSERT(matchIt.isEndOfBlock())
+        TEST_ASSERT(arg0.isUndefined())
+        TEST_ASSERT(arg1.isUndefined())
     }
 
     // failing test - same value capture conflict
@@ -643,8 +645,8 @@ void TestPatternMatching::testConsecutiveSearch()
             false};
 
         auto matchIt = search(block.walk(), pattern);
-        TEST_ASSERT(matchIt.isEndOfBlock());
-        TEST_ASSERT(arg.isUndefined());
+        TEST_ASSERT(matchIt.isEndOfBlock())
+        TEST_ASSERT(arg.isUndefined())
     }
 
     // failing test - same condition capture conflict
@@ -661,10 +663,10 @@ void TestPatternMatching::testConsecutiveSearch()
             false};
 
         auto matchIt = search(block.walk(), pattern);
-        TEST_ASSERT(matchIt.isEndOfBlock());
-        TEST_ASSERT(arg0.isUndefined());
-        TEST_ASSERT(arg1.isUndefined());
-        TEST_ASSERT_EQUALS(cond, COND_NEVER);
+        TEST_ASSERT(matchIt.isEndOfBlock())
+        TEST_ASSERT(arg0.isUndefined())
+        TEST_ASSERT(arg1.isUndefined())
+        TEST_ASSERT_EQUALS(cond, COND_NEVER)
     }
 
     // failing test - inverted conditions capture conflict
@@ -680,9 +682,9 @@ void TestPatternMatching::testConsecutiveSearch()
             false};
 
         auto matchIt = search(block.walk(), pattern);
-        TEST_ASSERT(matchIt.isEndOfBlock());
-        TEST_ASSERT(arg.isUndefined());
-        TEST_ASSERT_EQUALS(cond, COND_NEVER);
+        TEST_ASSERT(matchIt.isEndOfBlock())
+        TEST_ASSERT(arg.isUndefined())
+        TEST_ASSERT_EQUALS(cond, COND_NEVER)
     }
 }
 
@@ -706,15 +708,15 @@ void TestPatternMatching::testGappedSearch()
 
         auto start = block.walk().nextInBlock();
         auto matchIt = search(start, pattern);
-        TEST_ASSERT(matchIt == start);
-        TEST_ASSERT_EQUALS(2_val, arg0);
-        TEST_ASSERT_EQUALS(110_val, arg1);
+        TEST_ASSERT(matchIt == start)
+        TEST_ASSERT_EQUALS(2_val, arg0)
+        TEST_ASSERT_EQUALS(110_val, arg1)
 
         // should have same result on repeat
         matchIt = search(start, pattern);
-        TEST_ASSERT(matchIt == start);
-        TEST_ASSERT_EQUALS(2_val, arg0);
-        TEST_ASSERT_EQUALS(110_val, arg1);
+        TEST_ASSERT(matchIt == start)
+        TEST_ASSERT_EQUALS(2_val, arg0)
+        TEST_ASSERT_EQUALS(110_val, arg1)
     }
 
     // successful test - matching instructions with gaps
@@ -735,9 +737,9 @@ void TestPatternMatching::testGappedSearch()
             true};
 
         auto matchIt = search(block.walk(), pattern);
-        TEST_ASSERT(!matchIt.isEndOfBlock());
-        TEST_ASSERT_EQUALS(17_val, arg0);
-        TEST_ASSERT_EQUALS(111_val, arg1);
+        TEST_ASSERT(!matchIt.isEndOfBlock())
+        TEST_ASSERT_EQUALS(17_val, arg0)
+        TEST_ASSERT_EQUALS(111_val, arg1)
     }
 
     // successful test - same capture across instructions
@@ -757,8 +759,8 @@ void TestPatternMatching::testGappedSearch()
             true};
 
         auto matchIt = search(block.walk(), pattern);
-        TEST_ASSERT(!matchIt.isEndOfBlock());
-        TEST_ASSERT_EQUALS(13.0_val, arg);
+        TEST_ASSERT(!matchIt.isEndOfBlock())
+        TEST_ASSERT_EQUALS(13.0_val, arg)
     }
 
     // successful test - same condition capture across instructions
@@ -779,9 +781,9 @@ void TestPatternMatching::testGappedSearch()
             true};
 
         auto matchIt = search(block.walk(), pattern);
-        TEST_ASSERT(!matchIt.isEndOfBlock());
-        TEST_ASSERT_EQUALS(11.0_val, arg);
-        TEST_ASSERT_EQUALS(COND_CARRY_CLEAR, cond);
+        TEST_ASSERT(!matchIt.isEndOfBlock())
+        TEST_ASSERT_EQUALS(11.0_val, arg)
+        TEST_ASSERT_EQUALS(COND_CARRY_CLEAR, cond)
     }
 
     // failing test - start is end of block
@@ -794,9 +796,9 @@ void TestPatternMatching::testGappedSearch()
             true};
 
         auto matchIt = search(block.walkEnd().previousInBlock(), pattern);
-        TEST_ASSERT(matchIt.isEndOfBlock());
-        TEST_ASSERT(arg0.isUndefined());
-        TEST_ASSERT(arg1.isUndefined());
+        TEST_ASSERT(matchIt.isEndOfBlock())
+        TEST_ASSERT(arg0.isUndefined())
+        TEST_ASSERT(arg1.isUndefined())
     }
 
     // failing test - matching instructions in wrong order
@@ -813,9 +815,9 @@ void TestPatternMatching::testGappedSearch()
             true};
 
         auto matchIt = search(block.walk(), pattern);
-        TEST_ASSERT(matchIt.isEndOfBlock());
-        TEST_ASSERT(arg0.isUndefined());
-        TEST_ASSERT(arg1.isUndefined());
+        TEST_ASSERT(matchIt.isEndOfBlock())
+        TEST_ASSERT(arg0.isUndefined())
+        TEST_ASSERT(arg1.isUndefined())
     }
 
     // failing test - no matching instructions
@@ -828,9 +830,9 @@ void TestPatternMatching::testGappedSearch()
             true};
 
         auto matchIt = search(block.walk(), pattern);
-        TEST_ASSERT(matchIt.isEndOfBlock());
-        TEST_ASSERT(arg0.isUndefined());
-        TEST_ASSERT(arg1.isUndefined());
+        TEST_ASSERT(matchIt.isEndOfBlock())
+        TEST_ASSERT(arg0.isUndefined())
+        TEST_ASSERT(arg1.isUndefined())
     }
 
     // failing test - same value capture conflict
@@ -846,8 +848,8 @@ void TestPatternMatching::testGappedSearch()
             true};
 
         auto matchIt = search(block.walk(), pattern);
-        TEST_ASSERT(matchIt.isEndOfBlock());
-        TEST_ASSERT(arg.isUndefined());
+        TEST_ASSERT(matchIt.isEndOfBlock())
+        TEST_ASSERT(arg.isUndefined())
     }
 
     // failing test - same condition capture conflict
@@ -867,8 +869,8 @@ void TestPatternMatching::testGappedSearch()
             true};
 
         auto matchIt = search(block.walk(), pattern);
-        TEST_ASSERT(matchIt.isEndOfBlock());
-        TEST_ASSERT(arg.isUndefined());
-        TEST_ASSERT_EQUALS(COND_NEVER, cond);
+        TEST_ASSERT(matchIt.isEndOfBlock())
+        TEST_ASSERT(arg.isUndefined())
+        TEST_ASSERT_EQUALS(COND_NEVER, cond)
     }
 }

@@ -15,6 +15,7 @@ class TestIntrinsicFunctions : public TestEmulator
 {
 public:
     TestIntrinsicFunctions(const vc4c::Configuration& config = {});
+    ~TestIntrinsicFunctions() override;
 
     void testIntMultiplicationWithConstant();
     void testShortMultiplicationWithConstant();

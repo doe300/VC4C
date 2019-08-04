@@ -28,6 +28,7 @@ class TestEmulator : public Test::Suite
 public:
     TestEmulator(const vc4c::Configuration& config = {});
     explicit TestEmulator(bool cachePrecompilation, const vc4c::Configuration& config = {});
+    ~TestEmulator() override;
 
     void testHelloWorld();
     void testHelloWorldVector();

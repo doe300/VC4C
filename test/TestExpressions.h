@@ -13,6 +13,7 @@ class TestExpressions : public Test::Suite
 {
 public:
     TestExpressions();
+    ~TestExpressions() override;
     
     void testCreation();
     void testCombination();

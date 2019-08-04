@@ -272,9 +272,11 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedCharTrinaryVector);
 }
 
+TestArithmetic::~TestArithmetic() = default;
+
 void TestArithmetic::onMismatch(const std::string& expected, const std::string& result)
 {
-    TEST_ASSERT_EQUALS(expected, result);
+    TEST_ASSERT_EQUALS(expected, result)
 }
 
 template <typename T, typename Comparison = std::equal_to<T>>
@@ -289,21 +291,6 @@ static void testUnaryOperation(vc4c::Configuration& config, const std::string& o
     auto out = runEmulation<T, T, 16, 12>(code, {in});
     auto pos = options.find("-DOP=") + std::string("-DOP=").size();
     checkUnaryResults<T, T>(in, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
-}
-
-template <typename In, typename Out, typename Comparison = std::equal_to<Out>>
-static void testUnaryOperation(vc4c::Configuration& config, const std::string& options,
-    const std::function<Out(In)>& op, const std::function<void(const std::string&, const std::string&)>& onError,
-    bool allowZero = true)
-{
-    std::stringstream code;
-    compileBuffer(config, code, UNARY_OPERATION, options);
-
-    auto in = generateInput<In, 16 * 12>(true);
-
-    auto out = runEmulation<In, Out, 16, 12>(code, {in});
-    auto pos = options.find("-DOP=") + std::string("-DOP=").size();
-    checkUnaryResults<Out, Out>(in, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
 template <typename T, typename Comparison = std::equal_to<T>>
@@ -407,13 +394,13 @@ static int checkNot(T arg)
 template <typename T>
 static int checkShiftLeft(T arg1, T arg2)
 {
-    return arg1 << (vc4c::bit_cast<T, std::make_unsigned_t<T>>(arg2) % (sizeof(T) * CHAR_BIT));
+    return static_cast<int>(arg1 << (vc4c::bit_cast<T, std::make_unsigned_t<T>>(arg2) % (sizeof(T) * CHAR_BIT)));
 }
 
 template <typename T>
 static int checkShiftRight(T arg1, T arg2)
 {
-    return arg1 >> (vc4c::bit_cast<T, std::make_unsigned_t<T>>(arg2) % (sizeof(T) * CHAR_BIT));
+    return static_cast<int>(arg1 >> (vc4c::bit_cast<T, std::make_unsigned_t<T>>(arg2) % (sizeof(T) * CHAR_BIT)));
 }
 
 template <typename T>
@@ -448,77 +435,87 @@ static T checkTrinaryVector(T a, T b)
 
 void TestArithmetic::testSignedIntUnaryPlus()
 {
-    testUnaryOperation<int>(config, "-DTYPE=int16 -DOP=+", [](int i) -> int { return +i; },
+    testUnaryOperation<int>(
+        config, "-DTYPE=int16 -DOP=+", [](int i) -> int { return +i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testUnsignedIntUnaryPlus()
 {
-    testUnaryOperation<unsigned>(config, "-DTYPE=uint16 -DOP=+", [](unsigned i) -> unsigned { return +i; },
+    testUnaryOperation<unsigned>(
+        config, "-DTYPE=uint16 -DOP=+", [](unsigned i) -> unsigned { return +i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testSignedShortUnaryPlus()
 {
-    testUnaryOperation<short>(config, "-DTYPE=short16 -DOP=+", [](short i) -> short { return +i; },
+    testUnaryOperation<short>(
+        config, "-DTYPE=short16 -DOP=+", [](short i) -> short { return +i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testUnsignedShortUnaryPlus()
 {
-    testUnaryOperation<unsigned short>(config, "-DTYPE=ushort16 -DOP=+",
-        [](unsigned short i) -> unsigned short { return +i; },
+    testUnaryOperation<unsigned short>(
+        config, "-DTYPE=ushort16 -DOP=+", [](unsigned short i) -> unsigned short { return +i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testSignedCharUnaryPlus()
 {
-    testUnaryOperation<char>(config, "-DTYPE=char16 -DOP=+", [](char i) -> char { return +i; },
+    testUnaryOperation<char>(
+        config, "-DTYPE=char16 -DOP=+", [](char i) -> char { return +i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testUnsignedCharUnaryPlus()
 {
-    testUnaryOperation<unsigned char>(config, "-DTYPE=uchar16 -DOP=+",
-        [](unsigned char i) -> unsigned char { return +i; },
+    testUnaryOperation<unsigned char>(
+        config, "-DTYPE=uchar16 -DOP=+", [](unsigned char i) -> unsigned char { return +i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testFloatUnaryPlus()
 {
-    testUnaryOperation<float>(config, "-DTYPE=float16 -DOP=+", [](float i) -> float { return +i; },
+    testUnaryOperation<float>(
+        config, "-DTYPE=float16 -DOP=+", [](float i) -> float { return +i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestArithmetic::testSignedIntUnaryMinus()
 {
-    testUnaryOperation<int>(config, "-DTYPE=int16 -DOP=-", [](int i) -> int { return -i; },
+    testUnaryOperation<int>(
+        config, "-DTYPE=int16 -DOP=-", [](int i) -> int { return -i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testUnsignedIntUnaryMinus()
 {
-    testUnaryOperation<unsigned>(config, "-DTYPE=uint16 -DOP=-", [](unsigned i) -> unsigned { return -i; },
+    testUnaryOperation<unsigned>(
+        config, "-DTYPE=uint16 -DOP=-", [](unsigned i) -> unsigned { return -i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testSignedShortUnaryMinus()
 {
-    testUnaryOperation<short>(config, "-DTYPE=short16 -DOP=-", [](short i) -> short { return -i; },
+    testUnaryOperation<short>(
+        config, "-DTYPE=short16 -DOP=-", [](short i) -> short { return -i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testUnsignedShortUnaryMinus()
 {
-    testUnaryOperation<unsigned short>(config, "-DTYPE=ushort16 -DOP=-",
-        [](unsigned short i) -> unsigned short { return -i; },
+    testUnaryOperation<unsigned short>(
+        config, "-DTYPE=ushort16 -DOP=-", [](unsigned short i) -> unsigned short { return -i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testSignedCharUnaryMinus()
 {
-    testUnaryOperation<char>(config, "-DTYPE=char16 -DOP=-", [](char i) -> char { return -i; },
+    testUnaryOperation<char>(
+        config, "-DTYPE=char16 -DOP=-", [](char i) -> char { return -i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testUnsignedCharUnaryMinus()
 {
-    testUnaryOperation<unsigned char>(config, "-DTYPE=uchar16 -DOP=-",
-        [](unsigned char i) -> unsigned char { return -i; },
+    testUnaryOperation<unsigned char>(
+        config, "-DTYPE=uchar16 -DOP=-", [](unsigned char i) -> unsigned char { return -i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testFloatUnaryMinus()
 {
-    testUnaryOperation<float>(config, "-DTYPE=float16 -DOP=-", [](float i) -> float { return -i; },
+    testUnaryOperation<float>(
+        config, "-DTYPE=float16 -DOP=-", [](float i) -> float { return -i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -716,67 +713,75 @@ void TestArithmetic::testUnsignedCharModulo()
 
 void TestArithmetic::testSignedIntIncrement()
 {
-    testUnaryOperation<int>(config, "-DTYPE=int16 -DOP=++", [](int i) -> int { return ++i; },
+    testUnaryOperation<int>(
+        config, "-DTYPE=int16 -DOP=++", [](int i) -> int { return ++i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testUnsignedIntIncrement()
 {
-    testUnaryOperation<unsigned>(config, "-DTYPE=uint16 -DOP=++", [](unsigned i) -> unsigned { return ++i; },
+    testUnaryOperation<unsigned>(
+        config, "-DTYPE=uint16 -DOP=++", [](unsigned i) -> unsigned { return ++i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testSignedShortIncrement()
 {
-    testUnaryOperation<short>(config, "-DTYPE=short16 -DOP=++", [](short i) -> short { return ++i; },
+    testUnaryOperation<short>(
+        config, "-DTYPE=short16 -DOP=++", [](short i) -> short { return ++i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testUnsignedShortIncrement()
 {
-    testUnaryOperation<unsigned short>(config, "-DTYPE=ushort16 -DOP=++",
-        [](unsigned short i) -> unsigned short { return ++i; },
+    testUnaryOperation<unsigned short>(
+        config, "-DTYPE=ushort16 -DOP=++", [](unsigned short i) -> unsigned short { return ++i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testSignedCharIncrement()
 {
-    testUnaryOperation<char>(config, "-DTYPE=char16 -DOP=++", [](char i) -> char { return ++i; },
+    testUnaryOperation<char>(
+        config, "-DTYPE=char16 -DOP=++", [](char i) -> char { return ++i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testUnsignedCharIncrement()
 {
-    testUnaryOperation<unsigned char>(config, "-DTYPE=uchar16 -DOP=++",
-        [](unsigned char i) -> unsigned char { return ++i; },
+    testUnaryOperation<unsigned char>(
+        config, "-DTYPE=uchar16 -DOP=++", [](unsigned char i) -> unsigned char { return ++i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestArithmetic::testSignedIntDecrement()
 {
-    testUnaryOperation<int>(config, "-DTYPE=int16 -DOP=--", [](int i) -> int { return --i; },
+    testUnaryOperation<int>(
+        config, "-DTYPE=int16 -DOP=--", [](int i) -> int { return --i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testUnsignedIntDecrement()
 {
-    testUnaryOperation<unsigned>(config, "-DTYPE=uint16 -DOP=--", [](unsigned i) -> unsigned { return --i; },
+    testUnaryOperation<unsigned>(
+        config, "-DTYPE=uint16 -DOP=--", [](unsigned i) -> unsigned { return --i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testSignedShortDecrement()
 {
-    testUnaryOperation<short>(config, "-DTYPE=short16 -DOP=--", [](short i) -> short { return --i; },
+    testUnaryOperation<short>(
+        config, "-DTYPE=short16 -DOP=--", [](short i) -> short { return --i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testUnsignedShortDecrement()
 {
-    testUnaryOperation<unsigned short>(config, "-DTYPE=ushort16 -DOP=--",
-        [](unsigned short i) -> unsigned short { return --i; },
+    testUnaryOperation<unsigned short>(
+        config, "-DTYPE=ushort16 -DOP=--", [](unsigned short i) -> unsigned short { return --i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testSignedCharDecrement()
 {
-    testUnaryOperation<char>(config, "-DTYPE=char16 -DOP=--", [](char i) -> char { return --i; },
+    testUnaryOperation<char>(
+        config, "-DTYPE=char16 -DOP=--", [](char i) -> char { return --i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testUnsignedCharDecrement()
 {
-    testUnaryOperation<unsigned char>(config, "-DTYPE=uchar16 -DOP=--",
-        [](unsigned char i) -> unsigned char { return --i; },
+    testUnaryOperation<unsigned char>(
+        config, "-DTYPE=uchar16 -DOP=--", [](unsigned char i) -> unsigned char { return --i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 

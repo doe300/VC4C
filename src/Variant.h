@@ -26,10 +26,10 @@ namespace vc4c
 } // namespace vc4c
 #elif __has_include("mpark/variant.hpp")
 // mpark/variant has too many warnings we cannot do anything about
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wweak-vtables"
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wweak-vtables"
 #include "mpark/variant.hpp"
-#pragma GCC diagnostic pop
+#pragma clang diagnostic pop
 
 namespace vc4c
 {

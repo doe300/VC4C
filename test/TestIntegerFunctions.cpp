@@ -150,9 +150,11 @@ TestIntegerFunctions::TestIntegerFunctions(const vc4c::Configuration& config) : 
     TEST_ADD(TestIntegerFunctions::testMul24UnsignedInt);
 }
 
+TestIntegerFunctions::~TestIntegerFunctions() = default;
+
 void TestIntegerFunctions::onMismatch(const std::string& expected, const std::string& result)
 {
-    TEST_ASSERT_EQUALS(expected, result);
+    TEST_ASSERT_EQUALS(expected, result)
 }
 
 template <typename T, typename R = T>
@@ -203,7 +205,7 @@ static void testTernaryFunction(vc4c::Configuration& config, const std::string& 
 template <typename T>
 static typename std::make_unsigned<T>::type checkAbs(T in)
 {
-    return std::abs(in);
+    return static_cast<typename std::make_unsigned<T>::type>(std::abs(in));
 }
 
 template <typename T>
@@ -215,8 +217,9 @@ static T checkIdentity(T in)
 template <typename T>
 static typename std::make_unsigned<T>::type checkAbsDiff(T in1, T in2)
 {
-    return std::abs((in1 > in2) ? (static_cast<int64_t>(in1) - static_cast<int64_t>(in2)) :
-                                  (static_cast<int64_t>(in2) - static_cast<int64_t>(in1)));
+    return static_cast<typename std::make_unsigned<T>::type>(
+        std::abs((in1 > in2) ? (static_cast<int64_t>(in1) - static_cast<int64_t>(in2)) :
+                               (static_cast<int64_t>(in2) - static_cast<int64_t>(in1))));
 }
 
 template <typename T>
@@ -228,15 +231,15 @@ static T checkDiff(T in1, T in2)
 template <typename T>
 static T checkAddSat(T in1, T in2)
 {
-    return std::max(std::min(static_cast<int64_t>(in1) + static_cast<int64_t>(in2),
-                        static_cast<int64_t>(std::numeric_limits<T>::max())),
-        static_cast<int64_t>(std::numeric_limits<T>::min()));
+    return static_cast<T>(std::max(std::min(static_cast<int64_t>(in1) + static_cast<int64_t>(in2),
+                                       static_cast<int64_t>(std::numeric_limits<T>::max())),
+        static_cast<int64_t>(std::numeric_limits<T>::min())));
 }
 
 template <typename T>
 static T checkHAdd(T in1, T in2)
 {
-    return (static_cast<int64_t>(in1) + static_cast<int64_t>(in2)) >> 1;
+    return static_cast<T>((static_cast<int64_t>(in1) + static_cast<int64_t>(in2)) >> 1);
 }
 
 template <typename T>
@@ -248,7 +251,7 @@ static T checkClamp(T val, T min, T max)
 template <typename T>
 static T checkRHAdd(T in1, T in2)
 {
-    return (static_cast<int64_t>(in1) + static_cast<int64_t>(in2) + 1) >> 1;
+    return static_cast<T>((static_cast<int64_t>(in1) + static_cast<int64_t>(in2) + 1) >> 1);
 }
 
 template <typename T>
@@ -257,15 +260,15 @@ static T checkClz(T in)
     for(int i = sizeof(T) * 8 - 1; i >= 0; --i)
     {
         if(((static_cast<uint64_t>(in) >> i) & 0x1) == 0x1)
-            return sizeof(T) * 8 - 1 - i;
+            return static_cast<T>(sizeof(T) * 8u - 1u - static_cast<unsigned>(i));
     }
-    return sizeof(T) * 8;
+    return static_cast<T>(sizeof(T) * 8u);
 }
 
 template <typename T>
 static T checkMulHi(T in1, T in2)
 {
-    return (static_cast<int64_t>(in1) * static_cast<int64_t>(in2)) >> (sizeof(T) * 8);
+    return static_cast<T>((static_cast<int64_t>(in1) * static_cast<int64_t>(in2)) >> (sizeof(T) * 8));
 }
 
 template <typename T>
@@ -288,31 +291,31 @@ template <typename T>
 static T checkRotate(T v, T shift)
 {
     // auto s = shift >= 0 ? shift % (sizeof(T) * 8) : -((-shift) % (sizeof(T) * 8));
-    auto s = (static_cast<int64_t>(shift) + (static_cast<int64_t>(1) << 32)) % (sizeof(T) * 8);
+    auto s = static_cast<uint64_t>(static_cast<int64_t>(shift) + (int64_t{1} << 32)) % (sizeof(T) * 8);
     auto tmp = vc4c::bit_cast<T, typename std::make_unsigned<T>::type>(v);
-    tmp = (tmp << s) | (tmp >> ((sizeof(T) * 8) - s));
+    tmp = static_cast<decltype(tmp)>((tmp << s) | (tmp >> ((sizeof(T) * 8) - s)));
     return vc4c::bit_cast<typename std::make_unsigned<T>::type, T>(tmp);
 }
 
 template <typename T>
 static T checkSubSat(T in1, T in2)
 {
-    return std::max(std::min(static_cast<int64_t>(in1) - static_cast<int64_t>(in2),
-                        static_cast<int64_t>(std::numeric_limits<T>::max())),
-        static_cast<int64_t>(std::numeric_limits<T>::min()));
+    return static_cast<T>(std::max(std::min(static_cast<int64_t>(in1) - static_cast<int64_t>(in2),
+                                       static_cast<int64_t>(std::numeric_limits<T>::max())),
+        static_cast<int64_t>(std::numeric_limits<T>::min())));
 }
 
 template <typename R, typename T, typename U = typename std::make_unsigned<T>::type>
 static R checkUpsample(T in1, U in2)
 {
-    return static_cast<R>(in1) << (sizeof(T) * 8) | static_cast<R>(in2);
+    return static_cast<R>((static_cast<R>(in1) << (sizeof(T) * 8)) | static_cast<R>(in2));
 }
 
 template <typename T>
 static T checkPopcount(T val)
 {
-    std::bitset<sizeof(T) * 8> set(val);
-    return set.count();
+    std::bitset<sizeof(T) * 8> set(static_cast<unsigned long>(val));
+    return static_cast<T>(set.count());
 }
 
 template <typename T>

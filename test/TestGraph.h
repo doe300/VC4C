@@ -13,6 +13,7 @@ class TestGraph : public Test::Suite
 {
 public:
     TestGraph();
+    ~TestGraph() override;
 
     void testAssertNode();
     void testFindNode();

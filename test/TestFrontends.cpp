@@ -78,7 +78,7 @@ void TestFrontends::testLinking()
 
     std::stringstream tmp;
     auto type = Precompiler::linkSourceCode(inputs, tmp);
-    TEST_ASSERT(type == SourceType::LLVM_IR_BIN || type == SourceType::SPIRV_BIN);
+    TEST_ASSERT(type == SourceType::LLVM_IR_BIN || type == SourceType::SPIRV_BIN)
 
     std::stringstream out;
     Compiler comp(tmp, out);
@@ -91,50 +91,50 @@ void TestFrontends::testLinking()
     tools::EmulationData data(out, "test_linker", params);
     auto res = tools::emulate(data);
 
-    TEST_ASSERT(res.executionSuccessful);
-    TEST_ASSERT_EQUALS(res.results[0].second->at(0), res.results[1].second->at(0));
+    TEST_ASSERT(res.executionSuccessful)
+    TEST_ASSERT_EQUALS(res.results[0].second->at(0), res.results[1].second->at(0))
 }
 
 void TestFrontends::testSourceTypeDetection()
 {
     {
         std::ifstream in{"./example/fibonacci.cl"};
-        TEST_ASSERT_EQUALS(SourceType::OPENCL_C, Precompiler::getSourceType(in));
+        TEST_ASSERT_EQUALS(SourceType::OPENCL_C, Precompiler::getSourceType(in))
     }
 
     {
         std::ifstream in{"./example/fibonacci.ir"};
-        TEST_ASSERT_EQUALS(SourceType::LLVM_IR_TEXT, Precompiler::getSourceType(in));
+        TEST_ASSERT_EQUALS(SourceType::LLVM_IR_TEXT, Precompiler::getSourceType(in))
     }
 
     {
         std::ifstream in{"./testing/formats/test.bc"};
-        TEST_ASSERT_EQUALS(SourceType::LLVM_IR_BIN, Precompiler::getSourceType(in));
+        TEST_ASSERT_EQUALS(SourceType::LLVM_IR_BIN, Precompiler::getSourceType(in))
     }
 
     {
         std::ifstream in{"./example/fibonacci.spt"};
-        TEST_ASSERT_EQUALS(SourceType::SPIRV_TEXT, Precompiler::getSourceType(in));
+        TEST_ASSERT_EQUALS(SourceType::SPIRV_TEXT, Precompiler::getSourceType(in))
     }
 
     {
         std::ifstream in{"./testing/formats/test.spv"};
-        TEST_ASSERT_EQUALS(SourceType::SPIRV_BIN, Precompiler::getSourceType(in));
+        TEST_ASSERT_EQUALS(SourceType::SPIRV_BIN, Precompiler::getSourceType(in))
     }
 
     {
         std::ifstream in{"./testing/formats/test.hex"};
-        TEST_ASSERT_EQUALS(SourceType::QPUASM_HEX, Precompiler::getSourceType(in));
+        TEST_ASSERT_EQUALS(SourceType::QPUASM_HEX, Precompiler::getSourceType(in))
     }
 
     {
         std::ifstream in{"./testing/formats/test.bin"};
-        TEST_ASSERT_EQUALS(SourceType::QPUASM_BIN, Precompiler::getSourceType(in));
+        TEST_ASSERT_EQUALS(SourceType::QPUASM_BIN, Precompiler::getSourceType(in))
     }
 
     {
         std::ifstream in{"./testing/formats/test.txt"};
-        TEST_ASSERT_EQUALS(SourceType::UNKNOWN, Precompiler::getSourceType(in));
+        TEST_ASSERT_EQUALS(SourceType::UNKNOWN, Precompiler::getSourceType(in))
     }
 }
 
@@ -156,13 +156,13 @@ void TestFrontends::testDisassembler()
     {
         std::unique_ptr<std::istream> disassembledFile;
         tmp.openInputStream(disassembledFile);
-        TEST_ASSERT(!!disassembledFile);
+        TEST_ASSERT(!!disassembledFile)
         std::stringstream tmp;
         tmp << disassembledFile->rdbuf();
         disassembledContent = tmp.str();
     }
 
-    TEST_ASSERT_EQUALS(originalContent, disassembledContent);
+    TEST_ASSERT_EQUALS(originalContent, disassembledContent)
 }
 
 void TestFrontends::testCompilation(vc4c::SourceType type)
@@ -176,7 +176,7 @@ void TestFrontends::testCompilation(vc4c::SourceType type)
     std::unique_ptr<std::istream> tmp;
     precomp.run(tmp, type);
 
-    TEST_ASSERT_EQUALS(type, Precompiler::getSourceType(*tmp));
+    TEST_ASSERT_EQUALS(type, Precompiler::getSourceType(*tmp))
 
     // compile from given type and emulate code
     std::stringstream out;
@@ -196,17 +196,17 @@ void TestFrontends::testEmulation(std::stringstream& binary)
     tools::EmulationData data(binary, "fibonacci", params);
     auto res = tools::emulate(data);
 
-    TEST_ASSERT(res.executionSuccessful);
+    TEST_ASSERT(res.executionSuccessful)
 
     auto& out = *res.results[2].second;
-    TEST_ASSERT_EQUALS(2, out.at(0));
-    TEST_ASSERT_EQUALS(3, out.at(1));
-    TEST_ASSERT_EQUALS(5, out.at(2));
-    TEST_ASSERT_EQUALS(8, out.at(3));
-    TEST_ASSERT_EQUALS(13, out.at(4));
-    TEST_ASSERT_EQUALS(21, out.at(5));
-    TEST_ASSERT_EQUALS(34, out.at(6));
-    TEST_ASSERT_EQUALS(55, out.at(7));
-    TEST_ASSERT_EQUALS(89, out.at(8));
-    TEST_ASSERT_EQUALS(144, out.at(9));
+    TEST_ASSERT_EQUALS(2u, out.at(0))
+    TEST_ASSERT_EQUALS(3u, out.at(1))
+    TEST_ASSERT_EQUALS(5u, out.at(2))
+    TEST_ASSERT_EQUALS(8u, out.at(3))
+    TEST_ASSERT_EQUALS(13u, out.at(4))
+    TEST_ASSERT_EQUALS(21u, out.at(5))
+    TEST_ASSERT_EQUALS(34u, out.at(6))
+    TEST_ASSERT_EQUALS(55u, out.at(7))
+    TEST_ASSERT_EQUALS(89u, out.at(8))
+    TEST_ASSERT_EQUALS(144u, out.at(9))
 }

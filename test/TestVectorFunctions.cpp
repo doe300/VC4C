@@ -174,9 +174,11 @@ TestVectorFunctions::TestVectorFunctions(const vc4c::Configuration& config) : co
     }
 }
 
+TestVectorFunctions::~TestVectorFunctions() = default;
+
 void TestVectorFunctions::onMismatch(const std::string& expected, const std::string& result)
 {
-    TEST_ASSERT_EQUALS(expected, result);
+    TEST_ASSERT_EQUALS(expected, result)
 }
 
 template <typename T, std::size_t N>
@@ -256,7 +258,7 @@ std::array<T, N> checkShuffle(const std::array<T, N>& in, const std::array<T, N>
     std::array<T, N> result;
 
     for(std::size_t i = 0; i < N; ++i)
-        result[i] = in[mask[i]];
+        result[i] = in[static_cast<std::size_t>(mask[i])];
 
     return result;
 }
