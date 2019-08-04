@@ -1,0 +1,20 @@
+if(NOT CROSS_COMPILER_PATH)
+	set(CROSS_COMPILER_PATH "/usr/bin")
+endif()
+if(NOT CROSS_COMPILER_PREFIX)
+	set(CROSS_COMPILER_PREFIX "arm-linux-gnueabihf-")
+endif()
+#Set Cross compiler
+include(cmake/RaspberryPi.cmake)
+# Raspbian ships CLang 3.9 in its repositories
+set(CLANG_FOUND /usr/bin/clang-3.9)
+   set(OPT_FOUND /usr/bin/opt-3.9)
+set(LLVM_LINK_FOUND /usr/bin/llvm-link-3.9)
+set(ADVANCED_OPENCL_FEATURES ON)
+if (SYSROOT_CROSS)
+  # set(CMAKE_SYSROOT ${SYSROOT_CROSS})
+  set(CMAKE_FIND_ROOT_PATH ${SYSROOT_CROSS})
+  set(SYSROOT_LIBRARY_FLAGS "-Wl,-rpath-link,${SYSROOT_CROSS}/lib/arm-linux-gnueabihf:${SYSROOT_CROSS}/usr/lib/arm-linux-gnueabihf")
+endif()
+
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)

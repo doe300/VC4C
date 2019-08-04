@@ -18,13 +18,6 @@ if(VC4CL_STDLIB_DIR)
 endif()
 
 # append usage of C++ to compiler flags, also optimize for speed and enable all warnings
-set(VC4C_ENABLED_WARNINGS -Wall -Wextra -Wold-style-cast -Wnon-virtual-dtor -Wnull-dereference -Wno-unused-parameter -Wno-missing-field-initializers -Wno-write-strings -Werror=return-type -Werror=unused-result -Werror=shift-count-overflow -Werror=missing-field-initializers -Werror=reorder)
-# Enable additional warnings, if available
-if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-	SET(VC4C_ENABLED_WARNINGS ${VC4C_ENABLED_WARNINGS} -Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-shadow -Wno-padded -Wno-shadow-field-in-constructor -Wno-global-constructors -Wno-exit-time-destructors -Wno-missing-prototypes -Wno-gnu-anonymous-struct -Wno-nested-anon-types -Wno-documentation -Wno-unused-command-line-argument -Wno-unused-member-function -Wno-gnu-zero-variadic-macro-arguments -Wno-covered-switch-default -Wno-switch-enum -Wno-return-std-move-in-c++11 -Wswitch -Werror=return-stack-address)
-elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-	SET(VC4C_ENABLED_WARNINGS ${VC4C_ENABLED_WARNINGS} -Wlogical-op -Wmisleading-indentation -Wduplicated-cond -Wdouble-promotion -fdelete-null-pointer-checks -Wuninitialized -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=format -Wsuggest-override -Wconversion -Wzero-as-null-pointer-constant -Wno-psabi -Werror=return-local-addr -Werror=uninitialized)
-endif()
 target_compile_options(${VC4C_LIBRARY_NAME} PRIVATE ${VC4C_ENABLED_WARNINGS})
 target_compile_options(${VC4C_PROGRAM_NAME} PRIVATE ${VC4C_ENABLED_WARNINGS})
 
@@ -90,8 +83,6 @@ if(MULTI_THREADED)
 	target_link_libraries(${VC4C_LIBRARY_NAME} ${CMAKE_THREAD_LIBS_INIT})
 	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE MULTI_THREADED=1)
 	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE MULTI_THREADED=1)
-	# For dlopen, dlsym
-	target_link_libraries(${VC4C_LIBRARY_NAME} dl)
 endif(MULTI_THREADED)
 
 # SPIR-V Tools
@@ -171,26 +162,7 @@ set_target_properties(
 	SOVERSION "1.2"
 )
 
-find_program(
-  CLANG_FORMAT_PATH
-  NAMES clang-format clang-format-3.8 clang-format-3.9 clang-format-4.0
-  HINTS "/usr/bin" "/usr/local/bin"
-)
-
-if(CLANG_FORMAT_PATH)
-  message (STATUS "found clang-format: ${CLANG_FORMAT_PATH}")
-  get_target_property(VC4CC_SRCS ${VC4C_LIBRARY_NAME} SOURCES)
-  get_target_property(VC4C_SRCS ${VC4C_PROGRAM_NAME} SOURCES)
-  add_custom_target(
-    clang-format
-    COMMAND ${CLANG_FORMAT_PATH}
-      -i ${VC4CC_SRCS} ${VC4C_SRCS}
-    WORKING_DIRECTORY
-      ${CMAKE_CURRENT_SOURCE_DIR}
-  )
-else()
-  message (WARNING "clang-format not found: strongly recommend to use it before commit!")
-endif()
+include(../cmake/clang-format.cmake)
 
 ##
 # Installation targets
@@ -204,6 +176,10 @@ install(TARGETS ${VC4C_PROGRAM_NAME} EXPORT VC4C-targets RUNTIME DESTINATION bin
 install(EXPORT VC4CC-targets DESTINATION share/vc4cc)
 # Creates the install target for the headers
 install(DIRECTORY "${PROJECT_SOURCE_DIR}/include/" DESTINATION include/vc4cc FILES_MATCHING PATTERN "*.h")
+# Precompiles the headers
+# TODO replace with usage of generator expression once CMake 3.14 is in Raspbian buster repository
+get_property(VC4C_PROGRAM_LOCATION TARGET ${VC4C_PROGRAM_NAME} PROPERTY LOCATION)
+install(CODE "execute_process(COMMAND ${VC4C_PROGRAM_LOCATION} --quiet --precompile-stdlib -o $DESTDIR/${CMAKE_INSTALL_PREFIX}/include/vc4cl-stdlib/ ${VC4CL_STDLIB_DIR}/VC4CLStdLib.h)")
 # Exports the target (to be used by CMake to find the SOURCE library)
 export(TARGETS ${VC4C_LIBRARY_NAME} FILE vc4cc-exports.cmake)
 # Adds custom uninstall command

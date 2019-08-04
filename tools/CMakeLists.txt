@@ -6,6 +6,7 @@ add_executable(qpu_emulator emulator.cpp)
 target_link_libraries(qpu_emulator VC4CC ${SYSROOT_LIBRARY_FLAGS})
 target_include_directories(qpu_emulator PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_include_directories(qpu_emulator PRIVATE "${PROJECT_SOURCE_DIR}/lib/variant/include")
+target_compile_options(qpu_emulator PRIVATE ${VC4C_ENABLED_WARNINGS})
 
 if(BUILD_DEBUG)
 	target_compile_definitions(qpu_emulator PRIVATE DEBUG_MODE=1)
