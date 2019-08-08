@@ -1173,10 +1173,12 @@ Value BitcodeReader::parseInlineGetElementPtr(
             dumpLLVM(constExpr);
             throw CompilationError(CompilationStep::PARSER, "Invalid constant operation for load-instruction!");
         }
-        std::unique_ptr<llvm::GetElementPtrInst> indexOf(
-            llvm::cast<llvm::GetElementPtrInst>(constExpr->getAsInstruction()));
+        // FIXME this leaks the indexOf instruction. But if we wrap this in a unique_ptr, some memory access tests start
+        // to fail... ?!? Probably occurs because toValue(...) needs the Value pointer to be stable, since it is stored
+        // in a global map...
+        auto indexOf = llvm::cast<llvm::GetElementPtrInst>(constExpr->getAsInstruction());
         parseInstruction(module, method, instructions, *indexOf);
-        auto tmp = toValue(method, indexOf.get());
+        auto tmp = toValue(method, indexOf);
         // required so LLVM can clean up the constant expression correctly
         indexOf->dropAllReferences();
         return tmp;

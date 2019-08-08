@@ -45,7 +45,7 @@ void printValue(uint32_t val, BufferType type)
     }
     case BufferType::FLOAT:
     {
-        float f = *reinterpret_cast<float*>(&val);
+        float f = bit_cast<uint32_t, float>(val);
         std::cout << f;
         break;
     }
@@ -262,7 +262,8 @@ int main(int argc, char** argv)
         else if(std::string("-b") == argv[i])
         {
             ++i;
-            data.parameter.emplace_back(0u, std::vector<tools::Word>(std::strtol(argv[i], nullptr, 0), 0x0));
+            data.parameter.emplace_back(
+                0u, std::vector<tools::Word>(static_cast<std::size_t>(std::strtol(argv[i], nullptr, 0)), 0x0));
             bufferTypes.push_back(BufferType::BINARY);
         }
         else if(std::string("-ib") == argv[i])
@@ -302,21 +303,21 @@ int main(int argc, char** argv)
     logging::info() << "Running emulator with " << data.parameter.size() << " parameters on kernel " << data.kernelName
                     << logging::endl;
     auto result = emulate(data);
-    if(outParam >= 0 && outParam < result.results.size())
+    if(outParam >= 0 && static_cast<unsigned>(outParam) < result.results.size())
     {
         std::cout << "Result (buffer " << outParam << "): ";
-        const auto& out = result.results[outParam];
+        const auto& out = result.results[static_cast<unsigned>(outParam)];
         if(out.second)
         {
             std::for_each(out.second->begin(), out.second->end(), [&bufferTypes, outParam](uint32_t val) {
-                printValue(val, bufferTypes[outParam]);
+                printValue(val, bufferTypes[static_cast<unsigned>(outParam)]);
                 std::cout << " ";
             });
             std::cout << "(" << out.second->size() << " entries)" << std::endl;
         }
         else
         {
-            printValue(out.first, bufferTypes[outParam]);
+            printValue(out.first, bufferTypes[static_cast<unsigned>(outParam)]);
             std::cout << std::endl;
         }
     }

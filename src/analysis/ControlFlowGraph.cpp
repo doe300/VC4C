@@ -404,9 +404,9 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
         bb.forPredecessors([&bb, &graph](InstructionWalker it) -> void {
             // this transition is implicit if the previous instruction is not a branch at all or a conditional branch to
             // somewhere else (then the transition happens if the condition is not met)
-            bool isImplicit = !it.get<intermediate::Branch>();
-            //|| (it.get<intermediate::Branch>()->conditional != COND_ALWAYS &&
-            //        it.get<intermediate::Branch>()->getTarget() != bb.getLabel()->getLabel());
+            bool isImplicit = true;
+            if(auto branch = it.get<intermediate::Branch>())
+                isImplicit = branch->getTarget() != bb.getLabel()->getLabel();
             // connection from it.getBasicBlock() to bb
             auto& node = graph->getOrCreateNode(it.getBasicBlock());
             auto& edge = node.getOrCreateEdge(&graph->getOrCreateNode(&bb), CFGRelation{}).addInput(node);

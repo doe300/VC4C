@@ -75,6 +75,11 @@ static bool rewriteSettingOfFlags(
                     changedInstructions = true;
                     ++condIt;
                 }
+                else if(condIt->get<intermediate::Branch>())
+                    // Skip removing branches, since the flags for branches might not yet be set, they are set in the
+                    // adjustment block. Although for most branches, the flags are already set (since the condition is
+                    // already calculated, this is not required, e.g. this is not the case for work-group-loop branches.
+                    ++condIt;
                 else
                 {
                     // condition is statically not matched, remove instruction

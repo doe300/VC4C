@@ -881,10 +881,9 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
             {
                 Expression newExpr = expr.value();
                 if(auto out = it->checkOutputLocal())
-                {
+                    // remove from cache before using the result for the expression not to depend on itself
                     calculatingExpressions.erase(out);
-                    calculatingExpressions.emplace(out, expr.value());
-                }
+
                 auto exprIt = expressions.find(expr.value());
                 // replace instruction with matching expression, if the expression is not constant (no use replacing
                 // loading of constants with copies of a local initialized with a constant)
@@ -917,9 +916,14 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
                     it->addDecorations(newExpr.deco);
 
                     if(auto loc = it->checkOutputLocal())
-                        calculatingExpressions.at(loc) = newExpr;
+                        calculatingExpressions.emplace(loc, newExpr);
                     replacedSomething = true;
                 }
+
+                if(auto out = it->checkOutputLocal())
+                    // add to cache after using the result for the expression not to depend on itself
+                    // NOTE: not overwriting the above emplace is on purpose
+                    calculatingExpressions.emplace(out, expr.value());
             }
             else if(auto loc = it->checkOutputLocal())
             {

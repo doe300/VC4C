@@ -289,12 +289,24 @@ namespace vc4c
 
         bool isAdjacent(NodeType* node) const
         {
-            return edges.find(node) != edges.end();
+            return getEdge(node);
         }
 
         inline bool isAdjacent(const NodeType* node) const
         {
-            return isAdjacent(const_cast<NodeType*>(node));
+            return getEdge(node);
+        }
+
+        inline EdgeType* getEdge(NodeType* node) const
+        {
+            auto it = edges.find(node);
+            return it != edges.end() ? it->second : nullptr;
+        }
+
+        inline EdgeType* getEdge(const NodeType* node) const
+        {
+            auto it = edges.find(const_cast<NodeType*>(node));
+            return it != edges.end() ? it->second : nullptr;
         }
 
         /*

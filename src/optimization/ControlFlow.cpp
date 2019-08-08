@@ -1442,30 +1442,50 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
             destBlock->walkEnd().emplace(sourceIt.release());
             sourceIt.nextInBlock();
         }
+        // remove explicit branch from destination block to source block, if any
+        auto& sourceNode = method.getCFG().assertNode(sourceBlock);
+        auto& destNode = method.getCFG().assertNode(destBlock);
+        if(auto edge = sourceNode.getEdge(&destNode))
+        {
+            auto predecessorIt = edge->data.getPredecessor(destBlock);
+            if(auto branch = predecessorIt.get<intermediate::Branch>())
+            {
+                if(branch->getTarget() == sourceBlock->getLabel()->getLabel())
+                {
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Removing explicit branch to basic block about to be merged: "
+                            << predecessorIt->to_string() << logging::endl);
+                    predecessorIt.erase();
+                }
+            }
+        }
+
         // then remove the source block
         if(method.removeBlock(*sourceBlock))
+        {
+            blockMap.emplace(pair.second, pair.first);
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Merged block " << pair.second->to_string() << " into " << pair.first->to_string()
                     << logging::endl);
+        }
         else
         {
             LCOV_EXCL_START
-            CPPLOG_LAZY_BLOCK(logging::Level::WARNING, {
-                logging::warn() << "Failed to remove empty basic block: " << sourceBlock->to_string() << logging::endl;
+            CPPLOG_LAZY_BLOCK(logging::Level::ERROR, {
                 if(!sourceBlock->empty())
                 {
-                    logging::warn() << "Block was not empty: " << logging::endl;
+                    logging::error() << "Block was not empty: " << logging::endl;
                     sourceBlock->dumpInstructions();
                 }
                 sourceBlock->forPredecessors([](InstructionWalker it) {
                     if(it.get())
-                        logging::warn() << "Block has explicit predecessor: " << it->to_string() << logging::endl;
+                        logging::error() << "Block has explicit predecessor: " << it->to_string() << logging::endl;
                 });
             });
             LCOV_EXCL_STOP
+            throw CompilationError(
+                CompilationStep::OPTIMIZER, "Failed to remove empty basic block: ", sourceBlock->to_string());
         }
-
-        blockMap.emplace(pair.second, pair.first);
     }
 
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Merged " << blocksToMerge.size() << " pair of blocks!" << logging::endl);
@@ -1474,13 +1494,13 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
 
 bool optimizations::reorderBasicBlocks(const Module& module, Method& method, const Configuration& config)
 {
-    const auto& cfg = method.getCFG();
+    auto& cfg = method.getCFG();
     auto blockIt = method.begin();
     auto prevIt = method.begin();
     ++blockIt;
     while(blockIt != method.end())
     {
-        const auto& node = cfg.assertNode(&(*blockIt));
+        auto& node = cfg.assertNode(&(*blockIt));
         const auto predecessor = node.getSinglePredecessor();
         // Never re-order end-of-block. Though it should work, there could be trouble anyway
         if(blockIt->getLabel()->getLabel()->name != BasicBlock::LAST_BLOCK && predecessor != nullptr &&
@@ -1508,6 +1528,29 @@ bool optimizations::reorderBasicBlocks(const Module& module, Method& method, con
             // prevIt stays the same, since we removed the block and the next blockIt now follows prevIt
             blockIt = prevIt;
             ++blockIt;
+
+            // if the now moved block did fall-through, we need to insert an explicit branch to its previous successor,
+            // since they might now not longer be adjacent.
+            const CFGNode* fallThroughSuccessor = nullptr;
+            node.forAllOutgoingEdges([&](const CFGNode& successor, const CFGEdge& edge) -> bool {
+                if(edge.data.isImplicit(node.key))
+                {
+                    if(fallThroughSuccessor)
+                        throw CompilationError(CompilationStep::GENERAL, "Multiple implicit branches from basic block",
+                            node.key->to_string());
+                    fallThroughSuccessor = &successor;
+                }
+                return true;
+            });
+            if(fallThroughSuccessor)
+            {
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Inserting explicit branch to previous fall-through successor for moved block '"
+                        << node.key->to_string() << "' to '" << fallThroughSuccessor->key->to_string() << '\''
+                        << logging::endl);
+                node.key->walkEnd().emplace(new intermediate::Branch(
+                    fallThroughSuccessor->key->getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+            }
         }
         else
         {
@@ -1516,6 +1559,9 @@ bool optimizations::reorderBasicBlocks(const Module& module, Method& method, con
         }
     }
 
+#ifdef DEBUG_MODE
+    cfg.dumpGraph("/tmp/vc4c-cfg-reordered.dot", false);
+#endif
     return false;
 }
 
