@@ -1415,9 +1415,7 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
 
         const auto& prevNode = graph.assertNode(&(*prevIt));
         const auto& node = graph.assertNode(&(*it));
-        if(node.getSinglePredecessor() == &prevNode && prevNode.getSingleSuccessor() == &node &&
-            // TODO for now, we cannot merge the last block, otherwise work-group unrolling doesn't work anymore
-            it->getLabel()->getLabel()->name != BasicBlock::LAST_BLOCK)
+        if(node.getSinglePredecessor() == &prevNode && prevNode.getSingleSuccessor() == &node)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Found basic block with single direct successor: " << prevIt->to_string() << " and "
@@ -1858,4 +1856,182 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
     }
 
     return changedCode;
+}
+
+// If we loop through all work-groups, the initial work-group id for all dimensions is always zero
+// Also, to not override the work-group index at every iteration, extract the writing out of the loops
+static bool moveGroupIdInitializers(Method& method, BasicBlock& defaultBlock, BasicBlock& newStartBlock)
+{
+    CPPLOG_LAZY(
+        logging::Level::DEBUG, log << "Moving group ID initializers out of work-group-loop..." << logging::endl);
+    auto insertIt = newStartBlock.walkEnd();
+    // whether the group id locals are not written and therefore not used inside the "real" kernel code
+    bool groupIdsOnlyRead = true;
+    for(const auto& id : {Method::GROUP_ID_X, Method::GROUP_ID_Y, Method::GROUP_ID_Z})
+    {
+        auto loc = method.findOrCreateLocal(TYPE_INT32, id);
+        if(auto writer = loc->getSingleWriter())
+        {
+            groupIdsOnlyRead = false;
+            if(auto it = defaultBlock.findWalkerForInstruction(writer, defaultBlock.walkEnd()))
+                it->erase();
+        }
+        assign(insertIt, loc->createReference()) = INT_ZERO;
+    }
+
+    return groupIdsOnlyRead;
+}
+
+// Reset all branches to the last-block (e.g. for return statements) to the reset block instead
+static void resetReturnBranches(Method& method, BasicBlock& lastBlock, BasicBlock& resetBlock)
+{
+    lastBlock.forPredecessors([&](InstructionWalker walker) {
+        if(auto branch = walker.get<intermediate::Branch>())
+        {
+            if(branch->getTarget() == lastBlock.getLabel()->getLabel())
+            {
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Resetting branch to last block to jump to first work-group repetition block instead: "
+                        << walker->to_string() << logging::endl);
+                // need to reset the instruction to correctly update the CFG
+                walker.reset((new intermediate::Branch(
+                                  resetBlock.getLabel()->getLabel(), branch->conditional, branch->getCondition()))
+                                 ->copyExtrasFrom(branch));
+            }
+        }
+        // fall-throughs are already handled by inserting the block
+    });
+}
+
+// After the main kernel code executed, insert a block which
+// - reads uniform address
+// - reads maximum values for all group id dimensions
+// - resets uniform pointer to previously read address
+NODISCARD static InstructionWalker insertAddressResetBlock(
+    Method& method, InstructionWalker it, const Value& maxGroupIdX, const Value& maxGroupIdY, const Value& maxGroupIdZ)
+{
+    auto& lastBlock = *it.getBasicBlock();
+    it = method.emplaceLabel(
+        it, new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL, "", "%work_group_repetition").local()));
+    auto& resetBlock = *it.getBasicBlock();
+    resetReturnBranches(method, lastBlock, resetBlock);
+
+    // insert after label, not before
+    it.nextInBlock();
+
+    auto tmp = assign(it, TYPE_INT32) = UNIFORM_REGISTER;
+    assign(it, maxGroupIdX) = UNIFORM_REGISTER;
+    assign(it, maxGroupIdY) = UNIFORM_REGISTER;
+    assign(it, maxGroupIdZ) = UNIFORM_REGISTER;
+    assign(it, Value(REG_UNIFORM_ADDRESS, TYPE_INT32)) = tmp;
+    return it;
+}
+
+// For every dimension insert a block which
+// - Resets the previous id to zero
+// - Increments the current id by one
+// - Checks whether the current id is smaller than the maximum value
+// - If so, jumps back to the default block
+// - Otherwise, falls through to the next block
+NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& method, const BasicBlock& defaultBlock,
+    const Value& id, const Value& maxValue, InstructionWalker it, const Local* previousId)
+{
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Inserting repetition block for: " << id.to_string() << logging::endl);
+    it = method.emplaceLabel(it,
+        new intermediate::BranchLabel(
+            *method.addNewLocal(TYPE_LABEL, "", "%repeat_" + id.local()->name.substr(1)).local()));
+    // insert after label, not before
+    it.nextInBlock();
+
+    // first increment current id then reset previous dimension to be able to skip inserting a nop, since we read the
+    // current id immediately afterwards
+    assign(it, id) = id + INT_ONE;
+    if(previousId)
+        assign(it, previousId->createReference()) = INT_ZERO;
+    // NOTE: using signed comparison limits the number of work-groups per dimension to INT_MAX - 1 to avoid overflow.
+    // This is also reflected host-side on the kernel_config::MAX_WORK_ITEM_DIMENSIONS limit and checked in
+    // Kernel::enqueueNDRange.
+    auto cond = assignNop(it) = as_signed{id} < as_signed{maxValue};
+    // XXX can be optimized, when branch supports carry conditions
+    auto condValue = method.addNewLocal(TYPE_BOOL);
+    assign(it, condValue) = (BOOL_TRUE, cond);
+    assign(it, condValue) = (BOOL_TRUE ^ BOOL_TRUE, cond.invert());
+    it.emplace(new intermediate::Branch(defaultBlock.getLabel()->getLabel(), COND_ZERO_CLEAR, condValue));
+    it.nextInMethod();
+    return it;
+}
+
+static void insertRepetitionBlocks(Method& method, const BasicBlock& defaultBlock, BasicBlock& lastBlock)
+{
+    auto maxGroupIdX = method.findOrCreateLocal(TYPE_INT32, Method::MAX_GROUP_ID_X)->createReference();
+    auto maxGroupIdY = method.findOrCreateLocal(TYPE_INT32, Method::MAX_GROUP_ID_Y)->createReference();
+    auto maxGroupIdZ = method.findOrCreateLocal(TYPE_INT32, Method::MAX_GROUP_ID_Z)->createReference();
+
+    auto it = lastBlock.walk();
+    it = insertAddressResetBlock(method, it, maxGroupIdX, maxGroupIdY, maxGroupIdZ);
+
+    auto groupIdX = method.findLocal(Method::GROUP_ID_X)->createReference();
+    it = insertSingleDimensionRepetitionBlock(method, defaultBlock, groupIdX, maxGroupIdX, it, nullptr);
+
+    auto groupIdY = method.findLocal(Method::GROUP_ID_Y)->createReference();
+    it = insertSingleDimensionRepetitionBlock(method, defaultBlock, groupIdY, maxGroupIdY, it, maxGroupIdX.local());
+
+    auto groupIdZ = method.findLocal(Method::GROUP_ID_Z)->createReference();
+    it = insertSingleDimensionRepetitionBlock(method, defaultBlock, groupIdZ, maxGroupIdZ, it, maxGroupIdY.local());
+}
+
+bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const Configuration& config)
+{
+    if(method.walkAllInstructions().isEndOfMethod())
+        return false;
+    CPPLOG_LAZY(
+        logging::Level::DEBUG, log << "Wrapping kernel " << method.name << " in a work-group loop..." << logging::endl);
+
+    // The old head block, the head block of the actual kernel execution
+    auto& defaultBlock = *method.begin();
+    if(defaultBlock.empty())
+        return false;
+
+    // The new head block, the block initializing the group ids
+    auto startIt = method.emplaceLabel(method.walkAllInstructions(),
+        new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL, "", "%group_id_initializer").local()));
+    auto& startBlock = *startIt.getBasicBlock();
+
+    // The old and new tail block which indicates kernel execution finished
+    auto lastBlock = method.findBasicBlock(method.findLocal(BasicBlock::LAST_BLOCK));
+    if(!lastBlock)
+    {
+        CPPLOG_LAZY(
+            logging::Level::WARNING, log << "Failed to find the default last block, aborting!" << logging::endl);
+        return false;
+    }
+
+    // Remove reads of UNIFORMs for group ids and move initializing to zero out of loop
+    bool groupIdsNotUsed = moveGroupIdInitializers(method, defaultBlock, startBlock);
+
+    // Insert all the code required to increment/reset the ids and repeat the kernel code
+    insertRepetitionBlocks(method, defaultBlock, *lastBlock);
+
+    // set correct information to metadata
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Adjusting kernel metadata..." << logging::endl);
+    method.metaData.uniformsUsed.setGroupIDXUsed(false);
+    method.metaData.uniformsUsed.setGroupIDYUsed(false);
+    method.metaData.uniformsUsed.setGroupIDZUsed(false);
+    method.metaData.uniformsUsed.setUniformAddressUsed(true);
+    method.metaData.uniformsUsed.setMaxGroupIDXUsed(true);
+    method.metaData.uniformsUsed.setMaxGroupIDYUsed(true);
+    method.metaData.uniformsUsed.setMaxGroupIDZUsed(true);
+
+    // TODO can lower register pressure by 2 over whole code at the cost of 2 instructions per cycle by compressing
+    // all group_ids into single register. Also saves 2 instructions for initialization. Run at least if group_ids
+    // are not used differently in code.
+    // TODO cases whether group ids are not used are not very many (used in get_global_id(...))
+    // TODO or instead group all group_id, group_offset, ... into vectors (per type, e.g. group_id[3],
+    // group_offset[3])?? Requires 2 instructions per element to initialize, 2 instructions to extract. Could also do
+    // calculation of e.g. get_global_id(?) in parallel for all (3) dimensions -> Extra optimization?! Enhance/Replace
+    // local-compression with that? XXX Or run as adjustment step if register-pressure more than X??V
+    if(groupIdsNotUsed)
+        ; // XXX logging::warn() << "TEST: Group ids are not used in kernel: " << method.name << logging::endl;
+
+    return true;
 }

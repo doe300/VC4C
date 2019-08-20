@@ -743,34 +743,6 @@ bool optimizations::combineLoadingConstants(const Module& module, Method& method
     return hasChanged;
 }
 
-bool optimizations::unrollWorkGroups(const Module& module, Method& method, const Configuration& config)
-{
-    /*
-     * Kernel Loop Optimization:
-     *
-     * Block for re-running the kernel:
-     * In a loop with a count specified in GROUP_LOOP_SIZE, the kernel is re-run.
-     * This saves some of the overhead for changing the group-id and re-starting the kernel via a mailbox call.
-     *
-     * In return, for every loop iteration there needs to be a UNIFORM with the count of remaining loop iterations
-     * left. Or just a non-zero value for all but the last and a zero-value for the last iteration. Additionally,
-     * all UNIFORMs need to be re-loaded!!
-     */
-    const Local* startLabel = method.findOrCreateLocal(TYPE_LABEL, BasicBlock::DEFAULT_BLOCK);
-
-    // add conditional jump to end of kernel, to jump back to the beginning
-    auto lastBlock = method.findBasicBlock(method.findLocal(BasicBlock::LAST_BLOCK));
-    if(!lastBlock)
-        throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find the default last block!");
-    const Local* loopSize = method.findOrCreateLocal(TYPE_INT32, Method::GROUP_LOOP_SIZE);
-    InstructionWalker it = lastBlock->walk().nextInBlock();
-    assign(it, loopSize->createReference()) =
-        (UNIFORM_REGISTER, InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
-    it.emplace(new Branch(startLabel, COND_ZERO_CLEAR, loopSize->createReference()));
-
-    return true;
-}
-
 InstructionWalker optimizations::combineSelectionWithZero(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
@@ -1077,8 +1049,7 @@ static FastMap<Value, InstructionDecorations> findDirectLevelAdditionInputs(cons
         return result;
     }
     auto op = dynamic_cast<const Operation*>(writer);
-    bool onlySideEffectIsReadingUniform = op && op->hasSideEffects() && !op->doesSetFlag() &&
-        !op->signal.hasSideEffects() && !(op->checkOutputRegister() & &Register::hasSideEffectsOnWrite) &&
+    bool onlySideEffectIsReadingUniform = op && op->getSideEffects() == SideEffectType::REGISTER_READ &&
         std::all_of(op->getArguments().begin(), op->getArguments().end(), [](const Value& arg) -> bool {
             return !arg.checkRegister() || arg.reg() == REG_UNIFORM || !arg.reg().hasSideEffectsOnRead();
         });

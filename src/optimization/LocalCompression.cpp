@@ -21,7 +21,7 @@ using namespace vc4c::optimizations;
 static const std::vector<std::string> workGroupLocalNames = {Method::LOCAL_IDS, Method::LOCAL_SIZES, Method::GROUP_ID_X,
     Method::GROUP_ID_Y, Method::GROUP_ID_Z, Method::NUM_GROUPS_X, Method::NUM_GROUPS_Y, Method::NUM_GROUPS_Z,
     Method::GLOBAL_OFFSET_X, Method::GLOBAL_OFFSET_Y, Method::GLOBAL_OFFSET_Z, Method::WORK_DIMENSIONS,
-    Method::GLOBAL_DATA_ADDRESS, Method::GROUP_LOOP_SIZE};
+    Method::GLOBAL_DATA_ADDRESS};
 
 static NODISCARD InstructionWalker compressLocalWrite(
     Method& method, InstructionWalker it, const Local& local, const Local& container, unsigned char index)

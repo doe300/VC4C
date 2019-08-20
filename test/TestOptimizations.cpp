@@ -14,6 +14,10 @@
 
 using namespace vc4c;
 
+// The emulator requires this optimization to execute more than 1 work group
+// TODO can we somehow get rid of this?
+static const std::string requiredOptimization = "loop-work-groups";
+
 TestOptimizations::TestOptimizations() : TestEmulator(true)
 {
     // test once all functions without optimizations enabled
@@ -89,7 +93,8 @@ void TestOptimizations::testEmptyIterator(std::string passParamName)
      *
      * This test just checks that no optimization steps throw exceptions or crash when finding an empty iterator.
      */
-    Module mod{{}};
+    Configuration config{};
+    Module mod{config};
     Method method{mod};
     method.appendToEnd(new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL).local()));
     method.appendToEnd(new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER));
@@ -102,7 +107,8 @@ void TestOptimizations::testEmptyIterator(std::string passParamName)
 
 void TestOptimizations::testEmptyKernel(std::string passParamName)
 {
-    Module mod{{}};
+    Configuration config{};
+    Module mod{config};
     Method method{mod};
 
     getPass(std::move(passParamName))(mod, method, {});
@@ -126,7 +132,7 @@ void TestOptimizations::testHelloWorldVector(std::string passParamName)
 
 void TestOptimizations::testBarrier(std::string passParamName)
 {
-    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
     TestEmulator::testBarrier();
@@ -142,7 +148,7 @@ void TestOptimizations::testBranches(std::string passParamName)
 
 void TestOptimizations::testWorkItem(std::string passParamName)
 {
-    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
     TestEmulator::testWorkItem();
@@ -166,7 +172,7 @@ void TestOptimizations::testPearson16(std::string passParamName)
 
 void TestOptimizations::testFibonacci(std::string passParamName)
 {
-    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
     TestEmulator::testIntegerEmulations(0, "fibonacci");
@@ -174,7 +180,7 @@ void TestOptimizations::testFibonacci(std::string passParamName)
 
 void TestOptimizations::testStruct(std::string passParamName)
 {
-    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
     TestEmulator::testIntegerEmulations(2, "test_struct");
@@ -182,7 +188,7 @@ void TestOptimizations::testStruct(std::string passParamName)
 
 void TestOptimizations::testCopy(std::string passParamName)
 {
-    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
     TestEmulator::testIntegerEmulations(3, "test_copy");
@@ -190,7 +196,7 @@ void TestOptimizations::testCopy(std::string passParamName)
 
 void TestOptimizations::testAtomics(std::string passParamName)
 {
-    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
     TestEmulator::testIntegerEmulations(4, "test_atomics");
@@ -198,7 +204,7 @@ void TestOptimizations::testAtomics(std::string passParamName)
 
 void TestOptimizations::testF2I(std::string passParamName)
 {
-    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
     TestEmulator::testIntegerEmulations(5, "test_f2i");
@@ -206,7 +212,7 @@ void TestOptimizations::testF2I(std::string passParamName)
 
 void TestOptimizations::testGlobalData(std::string passParamName)
 {
-    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
     TestEmulator::testIntegerEmulations(6, "test_global_data");
@@ -214,7 +220,7 @@ void TestOptimizations::testGlobalData(std::string passParamName)
 
 void TestOptimizations::testSelect(std::string passParamName)
 {
-    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
     TestEmulator::testIntegerEmulations(14, "test_select");
@@ -222,7 +228,7 @@ void TestOptimizations::testSelect(std::string passParamName)
 
 void TestOptimizations::testDot3Local(std::string passParamName)
 {
-    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
     TestEmulator::testFloatEmulations(1, "dot3_local");
@@ -230,7 +236,7 @@ void TestOptimizations::testDot3Local(std::string passParamName)
 
 void TestOptimizations::testVectorAdd(std::string passParamName)
 {
-    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
     TestEmulator::testFloatEmulations(4, "VectorAdd");
@@ -238,7 +244,7 @@ void TestOptimizations::testVectorAdd(std::string passParamName)
 
 void TestOptimizations::testArithmetic(std::string passParamName)
 {
-    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
     TestEmulator::testFloatEmulations(5, "test_arithm");
@@ -246,7 +252,7 @@ void TestOptimizations::testArithmetic(std::string passParamName)
 
 void TestOptimizations::testClamp(std::string passParamName)
 {
-    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
     TestEmulator::testFloatEmulations(10, "test_clamp");
@@ -254,7 +260,7 @@ void TestOptimizations::testClamp(std::string passParamName)
 
 void TestOptimizations::testCross(std::string passParamName)
 {
-    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
     TestEmulator::testFloatEmulations(11, "test_cross");

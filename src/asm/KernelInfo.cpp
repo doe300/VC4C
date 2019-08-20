@@ -149,6 +149,14 @@ std::string KernelInfo::to_string() const
         uniformsSet.emplace_back("offZ");
     if(uniformsUsed.getGlobalDataAddressUsed())
         uniformsSet.emplace_back("global");
+    if(uniformsUsed.getUniformAddressUsed())
+        uniformsSet.emplace_back("unifAddr");
+    if(uniformsUsed.getMaxGroupIDXUsed())
+        uniformsSet.emplace_back("maxGidX");
+    if(uniformsUsed.getMaxGroupIDYUsed())
+        uniformsSet.emplace_back("maxGidY");
+    if(uniformsUsed.getMaxGroupIDZUsed())
+        uniformsSet.emplace_back("maxGidZ");
     const std::string uniformsString =
         uniformsSet.empty() ? "" : (std::string(" (") + vc4c::to_string<std::string>(uniformsSet) + ")");
 

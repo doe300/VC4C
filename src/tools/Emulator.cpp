@@ -380,6 +380,7 @@ SIMDVector Registers::readStorageRegister(Register reg)
     if(it == storageRegisters.end())
     {
         // TODO for ALU operations which are not actually executed (e.g. flags do not match), this leads to confusion
+        // TODO in any other case, this should be escalated to error!
         logging::warn() << "Reading from register not previously defined: " << reg.to_string() << logging::endl;
         return SIMDVector{};
     }
@@ -657,27 +658,34 @@ static SIMDVector calcSFU(const SIMDVector& in, const std::function<float(float)
     return in.transform([&](Literal in) -> Literal { return Literal(func(in.real())); });
 }
 
+static float addSFUError(float val)
+{
+    // assume 10 bits of SFU accuracy (half float)
+    // -> convert from 23 bits accuracy to 10 bits accuracy
+    return bit_cast<uint32_t, float>(bit_cast<float, uint32_t>(val) & 0xFFFFE000);
+}
+
 void SFU::startRecip(const SIMDVector& val)
 {
-    sfuResult = calcSFU(val, [](float f) -> float { return 1.0f / f; });
+    sfuResult = calcSFU(val, [](float f) -> float { return addSFUError(1.0f / f); });
     lastSFUWrite = currentCycle;
 }
 
 void SFU::startRecipSqrt(const SIMDVector& val)
 {
-    sfuResult = calcSFU(val, [](float f) -> float { return 1.0f / std::sqrt(f); });
+    sfuResult = calcSFU(val, [](float f) -> float { return addSFUError(1.0f / std::sqrt(f)); });
     lastSFUWrite = currentCycle;
 }
 
 void SFU::startExp2(const SIMDVector& val)
 {
-    sfuResult = calcSFU(val, [](float f) -> float { return std::exp2(f); });
+    sfuResult = calcSFU(val, [](float f) -> float { return addSFUError(std::exp2(f)); });
     lastSFUWrite = currentCycle;
 }
 
 void SFU::startLog2(const SIMDVector& val)
 {
-    sfuResult = calcSFU(val, [](float f) -> float { return std::log2(f); });
+    sfuResult = calcSFU(val, [](float f) -> float { return addSFUError(std::log2(f)); });
     lastSFUWrite = currentCycle;
 }
 
@@ -1616,66 +1624,63 @@ std::vector<MemoryAddress> tools::buildUniforms(Memory& memory, MemoryAddress ba
 {
     std::vector<MemoryAddress> res;
 
-    Word numQPUs = config.localSizes.at(0) * config.localSizes.at(1) * config.localSizes.at(2);
-    Word numReruns = config.numGroups.at(0) * config.numGroups.at(1) * config.numGroups.at(2);
+    Word numQPUs = config.localSizes[0] * config.localSizes[1] * config.localSizes[2];
     res.reserve(numQPUs);
 
-    std::array<Word, 3> groupIDs = {0, 0, 0};
-
     std::vector<Word> qpuUniforms;
-    qpuUniforms.resize(uniformsUsed.countUniforms() + 1 /* re-run flag */ + parameter.size());
+    qpuUniforms.resize(uniformsUsed.countUniforms() + parameter.size());
+
+    if((config.numGroups[0] > 1 || config.numGroups[1] > 1 || config.numGroups[2] > 1) &&
+        !(uniformsUsed.getMaxGroupIDXUsed() && uniformsUsed.getMaxGroupIDYUsed() && uniformsUsed.getMaxGroupIDZUsed()))
+        throw CompilationError(CompilationStep::GENERAL,
+            "Emulator of multiple work-groups requires work-group-loop optimization to be enabled!");
 
     for(uint8_t q = 0; q < numQPUs; ++q)
     {
-        std::array<Word, 3> localIDs = {q % config.localSizes.at(0),
-            (q / config.localSizes.at(0)) % config.localSizes.at(1),
-            (q / config.localSizes.at(0)) / config.localSizes.at(1)};
+        std::array<Word, 3> localIDs = {q % config.localSizes[0], (q / config.localSizes[0]) % config.localSizes[1],
+            (q / config.localSizes[0]) / config.localSizes[1]};
 
-        for(uint8_t g = 0; g < numReruns; ++g)
-        {
-            groupIDs = {g % config.numGroups.at(0), (g / config.numGroups.at(0)) % config.numGroups.at(1),
-                (g / config.numGroups.at(0)) / config.numGroups.at(1)};
+        std::size_t i = 0;
+        if(uniformsUsed.getWorkDimensionsUsed())
+            qpuUniforms[i++] = config.dimensions;
+        if(uniformsUsed.getLocalSizesUsed())
+            qpuUniforms[i++] = (config.localSizes[2] << 16) | (config.localSizes[1] << 8) | config.localSizes[0];
+        if(uniformsUsed.getLocalIDsUsed())
+            qpuUniforms[i++] = (localIDs[2] << 16) | (localIDs[1] << 8) | localIDs[0];
+        if(uniformsUsed.getNumGroupsXUsed())
+            qpuUniforms[i++] = config.numGroups[0];
+        if(uniformsUsed.getNumGroupsYUsed())
+            qpuUniforms[i++] = config.numGroups[1];
+        if(uniformsUsed.getNumGroupsZUsed())
+            qpuUniforms[i++] = config.numGroups[2];
+        if(uniformsUsed.getGroupIDXUsed())
+            qpuUniforms[i++] = 0; // is only set for single work-groups
+        if(uniformsUsed.getGroupIDYUsed())
+            qpuUniforms[i++] = 0; // is only set for single work-groups
+        if(uniformsUsed.getGroupIDZUsed())
+            qpuUniforms[i++] = 0; // is only set for single work-groups
+        if(uniformsUsed.getGlobalOffsetXUsed())
+            qpuUniforms[i++] = config.globalOffsets[0];
+        if(uniformsUsed.getGlobalOffsetYUsed())
+            qpuUniforms[i++] = config.globalOffsets[1];
+        if(uniformsUsed.getGlobalOffsetZUsed())
+            qpuUniforms[i++] = config.globalOffsets[2];
+        if(uniformsUsed.getGlobalDataAddressUsed())
+            qpuUniforms[i++] = globalData;
+        for(auto param : parameter)
+            qpuUniforms[i++] = param;
+        if(uniformsUsed.getUniformAddressUsed())
+            qpuUniforms[i++] = baseAddress;
+        if(uniformsUsed.getMaxGroupIDXUsed())
+            qpuUniforms[i++] = config.numGroups[0];
+        if(uniformsUsed.getMaxGroupIDYUsed())
+            qpuUniforms[i++] = config.numGroups[1];
+        if(uniformsUsed.getMaxGroupIDZUsed())
+            qpuUniforms[i++] = config.numGroups[2];
 
-            std::size_t i = 0;
-            if(uniformsUsed.getWorkDimensionsUsed())
-                qpuUniforms[i++] = config.dimensions;
-            if(uniformsUsed.getLocalSizesUsed())
-                qpuUniforms[i++] =
-                    (config.localSizes.at(2) << 16) | (config.localSizes.at(1) << 8) | config.localSizes.at(0);
-            if(uniformsUsed.getLocalIDsUsed())
-                qpuUniforms[i++] = (localIDs.at(2) << 16) | (localIDs.at(1) << 8) | localIDs.at(0);
-            if(uniformsUsed.getNumGroupsXUsed())
-                qpuUniforms[i++] = config.numGroups.at(0);
-            if(uniformsUsed.getNumGroupsYUsed())
-                qpuUniforms[i++] = config.numGroups.at(1);
-            if(uniformsUsed.getNumGroupsZUsed())
-                qpuUniforms[i++] = config.numGroups.at(2);
-            if(uniformsUsed.getGroupIDXUsed())
-                qpuUniforms[i++] = groupIDs.at(0);
-            if(uniformsUsed.getGroupIDYUsed())
-                qpuUniforms[i++] = groupIDs.at(1);
-            if(uniformsUsed.getGroupIDZUsed())
-                qpuUniforms[i++] = groupIDs.at(2);
-            if(uniformsUsed.getGlobalOffsetXUsed())
-                qpuUniforms[i++] = config.globalOffsets.at(0);
-            if(uniformsUsed.getGlobalOffsetYUsed())
-                qpuUniforms[i++] = config.globalOffsets.at(1);
-            if(uniformsUsed.getGlobalOffsetZUsed())
-                qpuUniforms[i++] = config.globalOffsets.at(2);
-            if(uniformsUsed.getGlobalDataAddressUsed())
-                qpuUniforms[i++] = globalData;
-            for(auto param : parameter)
-            {
-                qpuUniforms[i++] = param;
-            }
-            qpuUniforms[i++] = (numReruns - 1) - g;
-
-            memory.setUniforms(qpuUniforms, baseAddress);
-            if(g == 0)
-                res.emplace_back(baseAddress);
-
-            baseAddress += static_cast<Word>(qpuUniforms.size() * sizeof(Word));
-        }
+        memory.setUniforms(qpuUniforms, baseAddress);
+        res.emplace_back(baseAddress);
+        baseAddress += static_cast<Word>(qpuUniforms.size() * sizeof(Word));
     }
 
     return res;

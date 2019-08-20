@@ -238,6 +238,8 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
      * The first optimizations run modify the control-flow of the method.
      * After this block of optimizations is run, the CFG of the method is stable (does not change anymore)
      */
+    OptimizationPass("AddWorkGroupLoops", "loop-work-groups", addWorkGroupLoop,
+        "merges all work-group executions into a single kernel execution", OptimizationType::INITIAL),
     OptimizationPass("ReorderBasicBlocks", "reorder-blocks", reorderBasicBlocks,
         "reorders basic blocks to eliminate as many explicit branches as possible", OptimizationType::INITIAL),
     OptimizationPass("SimplifyConditionalBlocks", "simplify-conditionals", simplifyConditionalBlocks,
@@ -278,7 +280,7 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
      * can therefore introduce instructions or constructs (e.g. combined instructions) not supported by
      * the other optimizations.
      */
-    // XXX not enabled with any optimization level for now
+    // XXX not enabled with any optimization level for now. TODO also move before repeated optimizations?
     OptimizationPass("CompressWorkGroupInfo", "compress-work-group-info", compressWorkGroupLocals,
         "compresses work-group info into single local", OptimizationType::FINAL),
     OptimizationPass("SplitReadAfterWrites", "split-read-write", splitReadAfterWrites,
@@ -331,6 +333,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("reorder");
         passes.emplace("combine");
         passes.emplace("remove-unused-flags");
+        passes.emplace("loop-work-groups");
         FALL_THROUGH
     case OptimizationLevel::NONE:
         // TODO this is not an optimization, more a normalization step.

@@ -31,7 +31,10 @@ const std::string Method::GLOBAL_OFFSET_X("%global_offset_x");
 const std::string Method::GLOBAL_OFFSET_Y("%global_offset_y");
 const std::string Method::GLOBAL_OFFSET_Z("%global_offset_z");
 const std::string Method::GLOBAL_DATA_ADDRESS("%global_data_address");
-const std::string Method::GROUP_LOOP_SIZE("%group_loop_size");
+const std::string Method::UNIFORM_ADDRESS("%uniform_address");
+const std::string Method::MAX_GROUP_ID_X("%max_group_id_x");
+const std::string Method::MAX_GROUP_ID_Y("%max_group_id_y");
+const std::string Method::MAX_GROUP_ID_Z("%max_group_id_z");
 
 // TODO track locals via thread-not-safe shared_ptr. Method itself tracks as weak_ptr,
 // so local is erased when there is no more use. Local#reference also is shared_ptr

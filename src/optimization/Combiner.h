@@ -99,16 +99,6 @@ namespace vc4c
         bool combineLoadingConstants(const Module& module, Method& method, const Configuration& config);
 
         /*
-         * Adds a branch from the end to the start to allow for running several kernels (from several work-groups) in
-         * one execution. Since the kernels have different group-IDs, all instructions (including loading of parameters)
-         * are repeated. Otherwise, all parameters would need to reserve their registers over the whole range of the
-         * program, which would fail register-mapping for a lot of kernels.
-         *
-         * NOTE: As of this step, there is a control-flow loop around the whole kernel code
-         */
-        bool unrollWorkGroups(const Module& module, Method& method, const Configuration& config);
-
-        /*
          * Prepares selections (successive writes to same value with inverted conditions) which write to a local, have
          * no side-effects and one of the sources is zero for combination, by rewriting the zero-write to xor-ing the
          * other value

@@ -42,8 +42,10 @@ namespace vc4c
         static const std::string GLOBAL_OFFSET_Y;
         static const std::string GLOBAL_OFFSET_Z;
         static const std::string GLOBAL_DATA_ADDRESS;
-        // the number of (remaining) work-groups to execute in loop
-        static const std::string GROUP_LOOP_SIZE;
+        static const std::string UNIFORM_ADDRESS;
+        static const std::string MAX_GROUP_ID_X;
+        static const std::string MAX_GROUP_ID_Y;
+        static const std::string MAX_GROUP_ID_Z;
 
         /*
          * Whether this function is a kernel-function

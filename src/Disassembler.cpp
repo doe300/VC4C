@@ -72,7 +72,14 @@ static std::vector<std::string> createUniformValues(const qpu_asm::KernelInfo& k
         for(uint16_t i = 0; i < param.getVectorElements(); ++i)
             values.emplace_back(param.typeName + " " + param.name);
     }
-    values.emplace_back("re-run flag");
+    if(uniformsUsed.getUniformAddressUsed())
+        values.emplace_back("uniform address");
+    if(uniformsUsed.getMaxGroupIDXUsed())
+        values.emplace_back("maximum group ID X");
+    if(uniformsUsed.getMaxGroupIDYUsed())
+        values.emplace_back("maximum group ID Y");
+    if(uniformsUsed.getMaxGroupIDZUsed())
+        values.emplace_back("maximum group ID Z");
 
     return values;
 }

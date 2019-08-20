@@ -139,6 +139,56 @@ namespace vc4c
          */
         bool simplifyConditionalBlocks(const Module& module, Method& method, const Configuration& config);
 
+        /**
+         * Extends kernel code to be able to run for all work-groups without the need to return to host-code.
+         *
+         * Inserts a control-flow loop per dimension (X, Y, Z) of the group id around the kernel code. Depending on the
+         * current and maximum group id (per dimension), the kernel code is repeated for the next group.
+         *
+         * To not require duplication of the UNIFORM values host-side (and also improve UNIFORM cache hits), the UNIFORM
+         * pointer is reset after every kernel execution to the same UNIFORM values used for the previous execution.
+         *
+         * Also moves the group id variables to the start of the kernel to be only loaded once.
+         *
+         * Generates:
+         * label: %start_of_kernel
+         * %gid_x = 0
+         * %gid_y = 0
+         * %gid_z = 0
+         *
+         * label: %start_of_kernel_content
+         *
+         * [... real kernel content]
+         *
+         * %uniform_ptr = uniform
+         * %max_gid_x = uniform
+         * %max_gid_y = uniform
+         * %max_gid_z = uniform
+         * uniform_address = %uniform_ptr
+         *
+         * %gid_x += 1
+         * br %start_of_kernel_content if %gid_x < %max_gid_x
+         *
+         * label: ...
+         * %gid_x = 0
+         * %gid_y += 1
+         * br %start_of_kernel_content if %gid_y < %max_gid_y
+         *
+         * label: ...
+         * %gix_y = 0
+         * %gid_z += 1
+         * br %start_of_kernel_content if %gid_z < %max_gid_z
+         *
+         * label: %end_of_kernel
+         * [.. stop segment]
+         *
+         *
+         *
+         * NOTE: As of this step, there are several control-flow loop around the whole kernel code.
+         * NOTE: This optimization step might increase register pressure!
+         */
+        bool addWorkGroupLoop(const Module& module, Method& method, const Configuration& config);
+
     } /* namespace optimizations */
 } /* namespace vc4c */
 

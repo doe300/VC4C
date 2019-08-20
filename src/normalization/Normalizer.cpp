@@ -12,7 +12,6 @@
 #include "../Profiler.h"
 #include "../ThreadPool.h"
 #include "../intrinsics/Intrinsics.h"
-#include "../optimization/Combiner.h"
 #include "../optimization/ControlFlow.h"
 #include "../optimization/Eliminator.h"
 #include "../optimization/Reordering.h"
@@ -246,16 +245,6 @@ void Normalizer::normalizeMethod(Module& module, Method& method) const
 
     PROFILE_END(NormalizationPasses);
 
-    // add (runtime-configurable) loop over the whole kernel execution, allowing for skipping some of the syscall
-    // overhead for kernels with many work-groups
-    logging::logLazy(logging::Level::DEBUG, []() {
-        logging::debug() << logging::endl;
-        logging::debug() << "Running pass: UnrollWorkGroups" << logging::endl;
-    });
-    PROFILE_START(UnrollWorkGroups);
-    optimizations::unrollWorkGroups(module, method, config);
-    PROFILE_END(UnrollWorkGroups);
-
     LCOV_EXCL_START
     logging::logLazy(logging::Level::INFO, [&]() {
         logging::info() << logging::endl;
@@ -280,6 +269,7 @@ void Normalizer::adjustMethod(Module& module, Method& method) const
     std::size_t numInstructions = method.countInstructions();
 
     PROFILE_START(AdjustmentPasses);
+    method.cleanEmptyInstructions();
 
     for(const auto& step : adjustmentSteps)
     {
