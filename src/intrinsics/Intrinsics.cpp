@@ -1177,13 +1177,11 @@ static NODISCARD InstructionWalker intrinsifyReadWorkItemInfo(Method& method, In
      * -> res = (UNIFORM >> (dim * 8)) & 0xFF
      */
     const Local* itemInfo = method.findOrCreateLocal(TYPE_INT32, local);
-    auto literalDim =
-        arg.getLiteralValue() ? arg : arg.getSingleWriter() ? arg.getSingleWriter()->precalculate().first : NO_VALUE;
-    if(literalDim && literalDim->getLiteralValue())
+    if(auto literalDim = (arg.getConstantValue() & &Value::getLiteralValue))
     {
         // NOTE: This forces the local_ids/local_sizes values to be on register-file A, but safes an instruction per
         // read
-        switch(literalDim->getLiteralValue()->unsignedInt())
+        switch(literalDim->unsignedInt())
         {
         case 0:
             return it.reset((new MoveOperation(it->getOutput().value(), itemInfo->createReference()))

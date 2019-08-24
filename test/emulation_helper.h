@@ -351,10 +351,17 @@ void copyConvert(const In& in, Out& out)
 {
     if(out.size() < N)
         throw vc4c::CompilationError(vc4c::CompilationStep::GENERAL, "Invalid container size for copy");
-    auto base = reinterpret_cast<const typename Out::value_type*>(in.data());
-    // FIXME for copying single-element char/short vectors to int, this still accesses bytes outside of the source
-    // vector
-    std::copy(base, base + N, out.data());
+    if(in.size() * sizeof(typename In::value_type) < N * sizeof(typename Out::value_type))
+    {
+        // special case for e.g. copying char/short to unsigned int
+        auto dest = reinterpret_cast<typename In::value_type*>(out.data());
+        std::copy(in.data(), in.data() + in.size(), dest);
+    }
+    else
+    {
+        auto base = reinterpret_cast<const typename Out::value_type*>(in.data());
+        std::copy(base, base + N, out.data());
+    }
 }
 
 template <typename Type, std::size_t VectorWidth, std::size_t LocalSize, std::size_t NumGroups>

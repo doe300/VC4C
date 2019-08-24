@@ -32,5 +32,5 @@ set(CMAKE_CXX_FLAGS_MSAN "-fsanitize=memory -fno-optimize-sibling-calls -fsaniti
 
 # UndefinedBehaviour
 # Run with: UBSAN_OPTIONS=print_stacktrace=1 environment variable
-set(CMAKE_C_FLAGS_UBSAN "-fsanitize=undefined -fno-omit-frame-pointer -g -Og")
-set(CMAKE_CXX_FLAGS_UBSAN "-fsanitize=undefined -fno-omit-frame-pointer -g -Og")
+set(CMAKE_C_FLAGS_UBSAN "-fsanitize=undefined -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fno-omit-frame-pointer -g -Og")
+set(CMAKE_CXX_FLAGS_UBSAN "-fsanitize=undefined -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fno-omit-frame-pointer -g -Og")

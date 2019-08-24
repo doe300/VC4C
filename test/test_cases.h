@@ -51,7 +51,7 @@ namespace vc4c
 		}
 
 		template<typename T>
-		static std::pair<uint32_t, Optional<std::vector<uint32_t>>> toParameter(const std::vector<T>& values)
+		std::pair<uint32_t, Optional<std::vector<uint32_t>>> toParameter(const std::vector<T>& values)
 		{
 			std::vector<uint32_t> buffer;
 			buffer.reserve(values.size());
@@ -62,13 +62,13 @@ namespace vc4c
 		}
 
 		template<typename T>
-		static std::pair<uint32_t, Optional<std::vector<uint32_t>>> toScalarParameter(T val)
+		std::pair<uint32_t, Optional<std::vector<uint32_t>>> toScalarParameter(T val)
 		{
 			return std::make_pair(bit_cast<T, uint32_t>(val), Optional<std::vector<uint32_t>>{});
 		}
 
 		template<typename T>
-		static std::vector<T> toRange(T start, T end, T step = 1)
+		std::vector<T> toRange(T start, T end, T step = 1)
 		{
 			std::vector<T> out;
 			for(T val = start; val != end; val += step)
@@ -77,7 +77,7 @@ namespace vc4c
 		}
 		
 		template<typename T, typename R>
-		static std::vector<R> transfer(std::vector<T> in, const std::function<R(T)>& func)
+		std::vector<R> transfer(std::vector<T> in, const std::function<R(T)>& func)
 		{
 			std::vector<R> out;
 			out.resize(in.size());
@@ -168,10 +168,24 @@ namespace vc4c
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/uchar_compare.cl", "test_select",
 					{toParameter(std::vector<unsigned>{0x01020304}), toParameter(std::vector<unsigned>{0x04020301}), toParameter(std::vector<unsigned>(1))}, {}, maxExecutionCycles),
 					addVector({}, 2, std::vector<unsigned>{0x04020301})
-				)
+				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_async_copy.cl", "test_async_copy",
+				    {toParameter(toRange<unsigned>(0, 12*16)), toParameter(std::vector<unsigned>(12*16)), toParameter(std::vector<unsigned>(12*16))}, toConfig(12), maxExecutionCycles),
+				    addVector(addVector({}, 1, toRange<unsigned>(0, 12*16)), 2, toRange<unsigned>(0, 12*16))
+				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_shuffle.cl", "test_shuffle",
+				    {toParameter(std::vector<unsigned>{0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c, 0x13121110, 0x17161514, 0x1b1a1918, 0x1f1e1d1c}), toParameter(std::vector<unsigned>(10*16/sizeof(int32_t)))}, toConfig(1), maxExecutionCycles),
+				    addVector({}, 1, std::vector<unsigned>{0x08040607, 0x010d0c01, 0x0f0e0900, 0x06080304, 0x120b0701, 0x09080f15, 0x01021300, 0x08070d11, 0x10021b1a, 0x17061904, 0x131c0908, 0x0f0e0d1a, 0x10020111, 0x10020111, 0x10020111, 0x10020111,
+				                                           0x01000000, 0x10000011, 0x02011100, 0x00001002, 0x00000000, 0x04040404, 0x08080808, 0x0c0c0c0c, 0, 0, 0, 0, 0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c, 0x0d0c0b0a, 0x01000f0e, 0x05040302, 0x09080706, 0x0c0d0e0f, 0x08090a0b, 0x04050607, 0x00010203})
+                ),
+				//TODO need to pass parameter as literal vectors, not buffers
+				// std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vector.cl", "test_param",
+				//     {toParameter(std::vector<unsigned>{0x40, 0, 0, 0, 0x41, 0, 0, 0, 0x42, 0, 0, 0, 0x43, 0, 0, 0}), toParameter(std::vector<unsigned>{0x15, 0x16, 0x17, 0x18}), toParameter(std::vector<unsigned>(4))}, toConfig(1), maxExecutionCycles),
+				//     addVector({}, 2, std::vector<unsigned>{0x55, 0x57, 0x59, 0x61})
+				// )
 		};
 
-		//TODO NVIDIA/matrixMul, NVIDIA/transpose, OpenCLIPP/Arithmetic, OpenCLIPP/Logic, OpenCLIPP/Thresholding, test_signedness, test_shuffle, local_private_storage
+		//TODO NVIDIA/matrixMul, NVIDIA/transpose, OpenCLIPP/Arithmetic, OpenCLIPP/Logic, OpenCLIPP/Thresholding, test_signedness
 
 		static std::vector<std::pair<EmulationData, std::map<uint32_t, std::vector<uint32_t>>>> floatTests = {
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "example/test_instructions.cl", "test_instructions",

@@ -26,7 +26,8 @@ TestExpressions::~TestExpressions() = default;
 
 void TestExpressions::testCreation()
 {
-    Module mod{Configuration{}};
+    Configuration config{};
+    Module mod{config};
     Method method(mod);
 
     method.appendToEnd(new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL).local()));
@@ -117,7 +118,8 @@ void TestExpressions::testCreation()
 
 void TestExpressions::testCombination()
 {
-    Module mod{Configuration{}};
+    Configuration config{};
+    Module mod{config};
     Method method(mod);
     FastMap<const Local*, Expression> expressions;
 

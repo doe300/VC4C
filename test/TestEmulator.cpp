@@ -256,8 +256,8 @@ void TestEmulator::testWorkItem()
     // output buffer: 24 * work-items
     data.parameter.emplace_back(0, std::vector<uint32_t>(24 * data.calcNumWorkItems()));
 
-    // FIXME sometimes succeeds, sometimes fails
     // TODO test with global offset != 0
+    // TODO test with multi dimensions!
 
     const auto result = emulate(data);
     TEST_ASSERT(result.executionSuccessful)

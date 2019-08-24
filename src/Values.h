@@ -960,6 +960,32 @@ namespace vc4c
          */
         const LocalUser* getSingleWriter() const;
 
+        /**
+         * Returns whether this value is an uniform value (a value equal across all SIMD vector elements).
+         *
+         * Uniform values are among others:
+         * - literal values
+         * - SIMD vectors with all same elements
+         * - small immediates
+         * - uniform registers (UNIFORM, QPU number)
+         */
+        bool isUniform() const;
+
+        /**
+         * Returns the constant value "contained" in this value, if any.
+         *
+         * A value is considered constant, if it matches one of the conditions:
+         * - it is a literal value
+         * - it is a SIMD vector
+         * - it is a small immediate
+         * - it is a constant register value
+         * - it is a local with a single writer writing a constant value (only if transitive flag set)
+         *
+         * If the resulting Value is set, it is guaranteed to be either a literal value, a small immediate or a
+         * register.
+         */
+        Optional<Value> getConstantValue(bool transitive = true) const;
+
         /*
          * Creates a zero-initializer Value for the given data-type.
          *

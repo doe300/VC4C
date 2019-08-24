@@ -672,6 +672,8 @@ Optional<Literal> Value::getLiteralValue() const noexcept
         return *lit;
     if(auto imm = checkImmediate())
         return imm->toLiteral();
+    if(auto vector = checkVector())
+        return vector->isAllSame() ? ((*vector)[0]) : Optional<Literal>{};
     return {};
 }
 
@@ -737,6 +739,35 @@ const LocalUser* Value::getSingleWriter() const
     if(auto loc = checkLocal())
         return loc->getSingleWriter();
     return nullptr;
+}
+
+bool Value::isUniform() const
+{
+    if(checkImmediate())
+        return true;
+    if(checkLiteral())
+        return true;
+    if(auto vec = checkVector())
+        return vec->isAllSame();
+    if(auto reg = checkRegister())
+        return *reg == REG_UNIFORM || *reg == REG_QPU_NUMBER || *reg == REG_REV_FLAG;
+    return isUndefined();
+}
+
+Optional<Value> Value::getConstantValue(bool transitive) const
+{
+    if(checkLiteral())
+        return *this;
+    if(checkImmediate())
+        return *this;
+    if(checkVector())
+        return *this;
+    auto reg = checkRegister();
+    if(reg && (*reg == REG_ELEMENT_NUMBER || *reg == REG_QPU_NUMBER))
+        return *this;
+    if(auto loc = checkLocal())
+        return (transitive && loc->getSingleWriter()) ? loc->getSingleWriter()->precalculate().first : NO_VALUE;
+    return isUndefined() ? *this : NO_VALUE;
 }
 
 Value Value::createZeroInitializer(DataType type)
