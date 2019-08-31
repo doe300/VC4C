@@ -172,7 +172,7 @@ InstructionWalker intermediate::insertVectorInsertion(
         // other unchanged
         // we use the mask version of loads to set the elements we want to insert to and then use flags to insert only
         // those
-        unsigned maskLit = (1 << value.type.getVectorWidth()) - 1;
+        unsigned maskLit = (1u << value.type.getVectorWidth()) - 1u;
         auto shiftedMask = method.addNewLocal(TYPE_INT32, "%vector_mask");
         if(auto lit = index.getLiteralValue())
         {
@@ -392,7 +392,8 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         else
         {
             it = insertVectorConcatenation(it, method, source0, source1, destination);
-            numCorrespondingIndices = source0.type.getVectorWidth() + source1.type.getVectorWidth();
+            numCorrespondingIndices =
+                static_cast<uint8_t>(source0.type.getVectorWidth() + source1.type.getVectorWidth());
         }
     }
 
@@ -413,7 +414,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
             std::make_pair(rotateElementNumberDown(maskContainer[i].unsignedInt() - firstVectorSize, i), 1) :
             // source is from first vector
             std::make_pair(rotateElementNumberDown(maskContainer[i].unsignedInt(), i), 0);
-        relativeSources[source] |= (1 << i);
+        relativeSources[source] |= (1u << i);
     }
 
     for(const auto& sources : relativeSources)

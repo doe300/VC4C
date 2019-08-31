@@ -229,9 +229,9 @@ void TestMemoryAccess::testLocalStorage()
     // actual results are indeterministic, since the order of the loads/stores across work-items is not guaranteed
     for(auto res : result.results.at(1).second.value())
     {
-        if(res % 7 != 0)
+        if(res % 7u != 0)
         {
-            TEST_ASSERT_EQUALS(7, res)
+            TEST_ASSERT_EQUALS(7u, res)
         }
     }
 }

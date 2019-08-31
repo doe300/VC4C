@@ -573,6 +573,9 @@ namespace vc4c
                     Base::value = move->getSource().getLiteralValue().value().toImmediate();
             }
 
+            SetupWrapper(const SetupWrapper&) = default;
+            SetupWrapper(SetupWrapper&&) noexcept = default;
+
             ~SetupWrapper()
             {
                 if(load != nullptr)
@@ -580,6 +583,9 @@ namespace vc4c
                 if(move != nullptr)
                     move->setSource(Value(Literal(Base::value), TYPE_INT32));
             }
+
+            SetupWrapper& operator=(const SetupWrapper&) = default;
+            SetupWrapper& operator=(SetupWrapper&&) noexcept = default;
 
             inline void resetSetup() const
             {

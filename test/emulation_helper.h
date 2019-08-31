@@ -69,7 +69,7 @@ struct NormalDistribution : public std::normal_distribution<double>
 };
 
 template <typename Distribution, unsigned InfPercentage = 10, unsigned NaNPercentage = 10>
-struct InfNaNWrapper : private Distribution
+struct InfNaNWrapper : public Distribution
 {
     explicit InfNaNWrapper(double min, double max) : Distribution(min, max), infNaNDistribution(0.0, 1.0) {}
 
@@ -111,7 +111,8 @@ std::array<T, N> generateInput(bool allowNull,
     std::mt19937 gen(rd());
     // NOTE: double here allows for float::lowest() and float::max() to be used, see also
     // https://stackoverflow.com/a/36826730/8720655
-    Distribution dis(min, max);
+    Distribution dis(
+        static_cast<typename Distribution::result_type>(min), static_cast<typename Distribution::result_type>(max));
 
     for(std::size_t i = 0; i < N; ++i)
     {

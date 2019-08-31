@@ -17,6 +17,7 @@ namespace vc4c
     struct Byte
     {
     public:
+        using type = uint64_t;
         constexpr explicit Byte(uint64_t val) : value(val) {}
 
         constexpr explicit operator uint64_t() const
@@ -65,6 +66,7 @@ namespace vc4c
     struct Word
     {
     public:
+        using type = uint64_t;
         constexpr explicit Word(uint64_t val) : value(val) {}
         constexpr explicit Word(Byte bytes) : value(bytes.value / sizeof(uint64_t)) {}
 

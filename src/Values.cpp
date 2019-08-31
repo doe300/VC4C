@@ -540,7 +540,7 @@ SIMDVector SIMDVector::rotate(uint8_t offset) const &
     SIMDVector copy(*this);
     //"Rotates the order of the elements in the range [first,last), in such a way that the element pointed by middle
     // becomes the new first element."
-    offset = (NATIVE_VECTOR_SIZE - offset);
+    offset = static_cast<uint8_t>(NATIVE_VECTOR_SIZE - offset);
     std::rotate(copy.begin(), copy.begin() + offset, copy.end());
     return copy;
 }
@@ -549,7 +549,7 @@ SIMDVector SIMDVector::rotate(uint8_t offset) &&
 {
     //"Rotates the order of the elements in the range [first,last), in such a way that the element pointed by middle
     // becomes the new first element."
-    offset = (NATIVE_VECTOR_SIZE - offset);
+    offset = static_cast<uint8_t>(NATIVE_VECTOR_SIZE - offset);
     std::rotate(begin(), begin() + offset, end());
     return std::move(*this);
 }

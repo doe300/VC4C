@@ -449,7 +449,12 @@ bool StructType::operator==(const ComplexType& other) const
     const StructType* right = dynamic_cast<const StructType*>(&other);
     if(right == nullptr)
         return false;
-    return isPacked == right->isPacked && elementTypes == right->elementTypes;
+    // NOTE: comparing by name is technically not necessary, since we don't actually care whether two struct types with
+    // the same layout are the exact same types or not. But it is required to work around a quirk in
+    // BitcodeReader#toDataType, since there struct types are inserted empty into the TypeHolder and after that the
+    // element types are resolved. If now the first element type is also a newly created struct type, both types have no
+    // elements and are therefore considered equal. Occurs e.g. in testing/bullet/jointSolver.cl.
+    return name == right->name && isPacked == right->isPacked && elementTypes == right->elementTypes;
 }
 
 unsigned int StructType::getStructSize(const int index) const

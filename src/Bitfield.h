@@ -19,6 +19,11 @@
 
 namespace vc4c
 {
+    template <typename T>
+    using underlying_type = typename std::conditional<std::is_enum<T>::value, std::underlying_type<T>,
+        typename std::conditional<std::is_integral<T>::value || std::is_same<T, bool>::value, std::remove_reference<T>,
+            T>::type>::type;
+
     /*
      * A bit-field is an integral type with a specific binary layout where different parts of the binary code have
      * different meanings.
@@ -102,7 +107,8 @@ namespace vc4c
         template <typename T>
         constexpr inline T getEntry(UnderlyingType pos, UnderlyingType mask) const noexcept
         {
-            return static_cast<T>(mask & getValue(pos));
+            auto tmp = static_cast<typename underlying_type<T>::type>(mask & getValue(pos));
+            return static_cast<T>(tmp);
         }
 
         template <typename T>
@@ -193,6 +199,7 @@ namespace vc4c
      */
     struct InstructionPart
     {
+        using type = unsigned char;
         unsigned char value;
 
         explicit constexpr InstructionPart(unsigned char val) noexcept : value(val) {}

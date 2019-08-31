@@ -458,9 +458,9 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, unsigned vectorizationFac
         {
             periphery::VPWSetupWrapper vpwSetup(static_cast<intermediate::LoadImmediate*>(nullptr));
             if(auto load = it.get<intermediate::LoadImmediate>())
-                vpwSetup = periphery::VPWSetupWrapper(it.get<intermediate::LoadImmediate>());
+                vpwSetup = periphery::VPWSetupWrapper(load);
             else if(auto move = it.get<intermediate::MoveOperation>())
-                vpwSetup = periphery::VPWSetupWrapper(it.get<intermediate::MoveOperation>());
+                vpwSetup = periphery::VPWSetupWrapper(move);
             else
                 throw CompilationError(CompilationStep::OPTIMIZER,
                     "Unsupported instruction to write VPM for vectorized value", it->to_string());
@@ -479,9 +479,9 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, unsigned vectorizationFac
         {
             periphery::VPRSetupWrapper vprSetup(static_cast<intermediate::LoadImmediate*>(nullptr));
             if(auto load = it.get<intermediate::LoadImmediate>())
-                vprSetup = periphery::VPRSetupWrapper(it.get<intermediate::LoadImmediate>());
+                vprSetup = periphery::VPRSetupWrapper(load);
             else if(auto move = it.get<intermediate::MoveOperation>())
-                vprSetup = periphery::VPRSetupWrapper(it.get<intermediate::MoveOperation>());
+                vprSetup = periphery::VPRSetupWrapper(move);
             else
                 throw CompilationError(CompilationStep::OPTIMIZER,
                     "Unsupported instruction to write VPM for vectorized value", it->to_string());
@@ -611,7 +611,7 @@ static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariabl
     FastSet<const intermediate::IntermediateInstruction*> openInstructions;
 
     const_cast<DataType&>(inductionVariable.local->type) = inductionVariable.local->type.toVectorType(
-        inductionVariable.local->type.getVectorWidth() * static_cast<unsigned char>(vectorizationFactor));
+        static_cast<unsigned char>(inductionVariable.local->type.getVectorWidth() * vectorizationFactor));
     scheduleForVectorization(inductionVariable.local, openInstructions, loop);
     std::size_t numVectorized = 0;
 
@@ -649,7 +649,8 @@ static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariabl
                 // since we are in the process of vectorization, the local type is already updated, but the argument
                 // type is pending. For the next steps, we need to update the argument type.
                 arg.type = arg.local()->type;
-                auto origVectorType = arg.type.toVectorType(arg.type.getVectorWidth() / vectorizationFactor);
+                auto origVectorType =
+                    arg.type.toVectorType(static_cast<uint8_t>(arg.type.getVectorWidth() / vectorizationFactor));
 
                 Optional<OpCode> accumulationOp{};
                 if(auto writer = arg.getSingleWriter())
@@ -1622,7 +1623,7 @@ static FastAccessList<IfElseBlock> findIfElseBlocks(ControlFlowGraph& graph)
 
         if(candidateBlock.successor != nullptr && candidateBlock.conditionalBlocks.size() > 1)
             blocks.emplace_back(std::move(candidateBlock));
-        else if(false) // TODO needs testing!
+        else if(/* DISABLES CODE */ (false)) // TODO needs testing!
         {
             // TODO also needs extension in rewriting, special handling for successor which is conditional!
             // we failed with simple version above, recheck for more complex version:

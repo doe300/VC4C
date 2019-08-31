@@ -87,11 +87,12 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
                 ->local()
                 ->getBase(false)
                 ->createReference(),
-            static_cast<int32_t>((*std::find_if(args.begin(), args.end(),
-                                      [](const Value& arg) -> bool { return arg.getLiteralValue().has_value(); }))
-                                     .getLiteralValue()
-                                     ->signedInt() /
-                val.type.getElementType().getInMemoryWidth()));
+            (*std::find_if(
+                 args.begin(), args.end(), [](const Value& arg) -> bool { return arg.getLiteralValue().has_value(); }))
+                    .getLiteralValue()
+                    ->signedInt() /
+                /* in-memory width can't be > 2^30 anyway */
+                static_cast<int32_t>(val.type.getElementType().getInMemoryWidth()));
     }
 
     // 3. an addition with two locals -> one is the base, the other the calculation of the literal
@@ -103,10 +104,10 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
         const auto offset1 = findOffset(args[1]);
         if(offset0.offset && args[1].checkLocal())
             return BaseAndOffset(args[1].local()->getBase(false)->createReference(),
-                static_cast<int32_t>(offset0.offset.value() / val.type.getElementType().getInMemoryWidth()));
+                offset0.offset.value() / static_cast<int32_t>(val.type.getElementType().getInMemoryWidth()));
         if(offset1.offset && args[0].checkLocal())
             return BaseAndOffset(args[0].local()->getBase(false)->createReference(),
-                static_cast<int32_t>(offset1.offset.value() / val.type.getElementType().getInMemoryWidth()));
+                offset1.offset.value() / static_cast<int32_t>(val.type.getElementType().getInMemoryWidth()));
     }
     /*
         if(writers.size() == 1)

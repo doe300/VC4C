@@ -690,10 +690,10 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
             toParameterDecorations(arg, type, func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)));
         auto& param = method->parameters.back();
         if(arg.getDereferenceableBytes() != 0)
-            param.maxByteOffset = arg.getDereferenceableBytes();
+            param.maxByteOffset = static_cast<std::size_t>(arg.getDereferenceableBytes());
 #if LLVM_LIBRARY_VERSION >= 39
         if(arg.getDereferenceableOrNullBytes() != 0)
-            param.maxByteOffset = arg.getDereferenceableOrNullBytes();
+            param.maxByteOffset = static_cast<std::size_t>(arg.getDereferenceableOrNullBytes());
 #endif
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Reading parameter " << param.to_string(true) << logging::endl);
         if(param.type.getImageType() && func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)

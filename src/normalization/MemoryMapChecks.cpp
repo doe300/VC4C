@@ -60,7 +60,7 @@ Optional<Value> normalization::getConstantValue(const Value& source)
         return globalContainer->at(0).toValue();
     if(globalContainer && source.local()->reference.second >= 0)
         // fixed index
-        return globalContainer->at(source.local()->reference.second).toValue();
+        return globalContainer->at(static_cast<std::size_t>(source.local()->reference.second)).toValue();
     if(auto val = global->initialValue.toValue())
     {
         if(auto vector = val->checkVector())

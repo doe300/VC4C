@@ -22,6 +22,8 @@ option(LLVMLIB_FRONTEND "Enables the front-end using the LLVM library to read LL
 option(ENABLE_COVERAGE "Enables collection of code coverage via gcov" OFF)
 # Option whether to enable use of the CLang library (EXPERIMENTAL)
 option(CLANG_LIBRARY "Uses the libclang library for compilation, uses the clang executable otherwise" OFF)
+# Option whether to enable more compile-time checks
+option(ADVANCED_CHECKS "Enable advanced compile-time checks" OFF)
 
 # Path to the VC4CL standard library
 # NOTE: Resolving ~ (for home directory) is currently not supported
@@ -78,7 +80,7 @@ endif()
 
 # clang-tidy
 find_program(CLANG_TIDY NAMES clang-tidy clang-tidy-5.0 clang-tidy-6.0 clang-tidy-7 clang-tidy-8)
-if(FALSE AND BUILD_DEBUG AND CLANG_TIDY)
+if(ADVANCED_CHECKS AND CLANG_TIDY)
     message(STATUS "Enabling clang-tidy compile time checks: ${CLANG_TIDY}")
     set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY}")
 endif()

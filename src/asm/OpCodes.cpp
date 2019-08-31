@@ -754,7 +754,7 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
         // Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
         auto offset = secondLit.unsignedInt() & 0x1F;
         // carry is set if bits set are shifted out of the register: val & (2^shift-offset-1) != 0
-        auto shiftLoss = firstLit.unsignedInt() & ((1 << offset) - 1);
+        auto shiftLoss = firstLit.unsignedInt() & ((1u << offset) - 1u);
         return setFlags(intermediate::asr(firstLit, secondLit), shiftLoss != 0, false);
     }
     if(code == OP_CLZ)
@@ -851,7 +851,7 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
         // Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
         auto offset = secondLit.unsignedInt() & 0x1F;
         // carry is set if bits set are shifted out of the register: val & (2^shift-offset-1) != 0
-        auto shiftLoss = firstLit.unsignedInt() & ((1 << offset) - 1);
+        auto shiftLoss = firstLit.unsignedInt() & ((1u << offset) - 1u);
         return setFlags(Literal(firstLit.unsignedInt() >> offset), shiftLoss != 0);
     }
     if(code == OP_SUB)

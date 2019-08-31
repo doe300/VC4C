@@ -169,8 +169,9 @@ void Normalizer::normalize(Module& module) const
         PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION + 2, "Eliminate Phi-nodes (after)",
             method->countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 1);
     }
+    auto kernels = module.getKernels();
     // 2. inline kernel-functions
-    for(Method* kernelFunc : module.getKernels())
+    for(Method* kernelFunc : kernels)
     {
         Method& kernel = *kernelFunc;
 
@@ -183,14 +184,15 @@ void Normalizer::normalize(Module& module) const
     }
     // 3. run other normalization steps on kernel functions
     const auto f = [&module, this](Method* kernelFunc) -> void { normalizeMethod(module, *kernelFunc); };
-    ThreadPool{"Normalization"}.scheduleAll<Method*>(module.getKernels(), f);
+    ThreadPool{"Normalization"}.scheduleAll<Method*>(kernels, f);
 }
 
 void Normalizer::adjust(Module& module) const
 {
     // run adjustment steps on kernel functions
+    auto kernels = module.getKernels();
     const auto f = [&module, this](Method* kernelFunc) -> void { adjustMethod(module, *kernelFunc); };
-    ThreadPool{"Adjustment"}.scheduleAll<Method*>(module.getKernels(), f);
+    ThreadPool{"Adjustment"}.scheduleAll<Method*>(kernels, f);
 }
 
 void Normalizer::normalizeMethod(Module& module, Method& method) const

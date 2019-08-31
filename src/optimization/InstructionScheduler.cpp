@@ -223,7 +223,7 @@ static OpenSet::const_iterator selectInstruction(OpenSet& openNodes, DependencyG
         // select first entry (with highest priority) for which all dependencies are fulfilled (with latency)
         int priority = checkDependenciesMet(graph.assertNode(*it), block, openNodes);
         if(priority < MIN_PRIORITY)
-            priority -= successiveMandatoryDelays.at(*it);
+            priority -= static_cast<int>(successiveMandatoryDelays.at(*it));
         // TODO use preferred delays?
         // TODO remove adding/removing priorities in calculateSchedulingPriority?
         // TODO remove extra cases here?

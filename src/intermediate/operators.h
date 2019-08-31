@@ -432,6 +432,12 @@ namespace vc4c
                 it.nextInBlock();
             }
 
+            void operator=(Value&& src) &&
+            {
+                it.emplace(new intermediate::MoveOperation(Value(result), std::move(src)));
+                it.nextInBlock();
+            }
+
             NODISCARD ConditionCode operator=(ComparisonWrapper&& op) &&
             {
                 return op(it, result, op.arg0, op.arg1);
@@ -480,6 +486,14 @@ namespace vc4c
             {
                 auto result = method.addNewLocal(type, name);
                 it.emplace(new intermediate::MoveOperation(result, src));
+                it.nextInBlock();
+                return result;
+            }
+
+            NODISCARD Value operator=(Value&& src) &&
+            {
+                auto result = method.addNewLocal(type, name);
+                it.emplace(new intermediate::MoveOperation(Value(result), std::move(src)));
                 it.nextInBlock();
                 return result;
             }

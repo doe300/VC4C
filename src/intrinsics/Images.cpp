@@ -320,5 +320,4 @@ InstructionWalker intermediate::insertQueryMeasurements(
     else
         throw CompilationError(CompilationStep::GENERAL, "Unsupported image dimensions",
             std::to_string(static_cast<unsigned>(imageType->dimensions)));
-    throw CompilationError(CompilationStep::GENERAL, "Unimplemented image-query function", it->to_string());
 }

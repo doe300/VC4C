@@ -153,7 +153,8 @@ void Memory::setUniforms(const std::vector<Word>& uniforms, MemoryAddress addres
 {
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 10, "setUniforms", 1);
     std::size_t offset = address / sizeof(Word);
-    std::copy_n(uniforms.begin(), uniforms.size(), VariantNamespace::get<DirectBuffer>(data).begin() + offset);
+    std::copy_n(uniforms.begin(), uniforms.size(),
+        VariantNamespace::get<DirectBuffer>(data).begin() + static_cast<std::vector<Word>::difference_type>(offset));
 }
 
 bool Mutex::isLocked() const
@@ -1140,12 +1141,12 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
             {
                 ++instrumentation[inst].numBranchTaken;
                 int32_t offset = 4 /* Branch starts at PC + 4 */ +
-                    static_cast<int32_t>(br->getImmediate() / sizeof(uint64_t)) /* immediate offset is in bytes */;
+                    (br->getImmediate() / static_cast<int32_t>(sizeof(uint64_t))) /* immediate offset is in bytes */;
                 if(br->getAddRegister() == BranchReg::BRANCH_REG ||
                     br->getBranchRelative() == BranchRel::BRANCH_ABSOLUTE)
                     throw CompilationError(
                         CompilationStep::GENERAL, "This kind of branch is not yet implemented", br->toASMString());
-                nextPC += offset;
+                nextPC += static_cast<ProgramCounter>(offset);
 
                 // see Broadcom specification, page 34
                 registers.writeRegister(toRegister(br->getAddOut(), br->getWriteSwap() == WriteSwap::SWAP),
@@ -1290,10 +1291,10 @@ static std::pair<SIMDVector, bool> applyVectorRotation(std::pair<SIMDVector, boo
         //"Mul output vector rotation is taken from accumulator r5, element 0, bits [3:0]"
         // - Broadcom Specification, page 30
         auto tmp = registers.readRegister(REG_ACC5).first;
-        distance = 16 - static_cast<uint8_t>(tmp[0].unsignedInt() & 0xF);
+        distance = static_cast<uint8_t>(16 - (tmp[0].unsignedInt() & 0xF));
     }
     else
-        distance = 16 - offset.getRotationOffset().value();
+        distance = static_cast<uint8_t>(16 - offset.getRotationOffset().value());
 
     SIMDVector result(std::move(input.first));
 
@@ -1882,7 +1883,7 @@ static void dumpMemory(const Memory& memory, const std::string& fileName, Memory
         f << " " << std::hex << std::setfill('0') << std::setw(8) << memory.readWord(addr);
         if(addr % (sizeof(tools::Word) * 8) == (sizeof(tools::Word) * 7))
             f << std::endl;
-        addr += sizeof(tools::Word);
+        addr += static_cast<MemoryAddress>(sizeof(tools::Word));
     }
     f << std::endl;
     CPPLOG_LAZY(logging::Level::DEBUG,
@@ -1971,9 +1972,10 @@ EmulationResult tools::emulate(const EmulationData& data)
         dumpMemory(mem, data.memoryDump, uniformAddress, true);
 
     InstrumentationResults instrumentation;
-    bool status =
-        emulate(instructions.begin() + (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue(),
-            mem, uniformAddresses, instrumentation, data.maxEmulationCycles);
+    bool status = emulate(instructions.begin() +
+            static_cast<std::vector<qpu_asm::Instruction>::difference_type>(
+                (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue()),
+        mem, uniformAddresses, instrumentation, data.maxEmulationCycles);
 
     if(!data.memoryDump.empty())
         dumpMemory(mem, data.memoryDump, uniformAddress, false);
@@ -1998,7 +2000,9 @@ EmulationResult tools::emulate(const EmulationData& data)
     std::unique_ptr<std::ofstream> dumpInstrumentation;
     if(!data.instrumentationDump.empty())
         dumpInstrumentation.reset(new std::ofstream(data.instrumentationDump));
-    auto it = instructions.begin() + (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue();
+    auto it = instructions.begin() +
+        static_cast<std::vector<qpu_asm::Instruction>::difference_type>(
+            (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue());
     result.instrumentation.reserve(kernelInfo->getLength().getValue());
     while(true)
     {

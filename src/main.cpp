@@ -100,7 +100,7 @@ static void printHelp()
 static std::string toVersionString(unsigned version)
 {
     std::stringstream s;
-    s << (version / 10.0f);
+    s << (static_cast<float>(version) / 10.0f);
     return s.str();
 }
 

@@ -21,7 +21,7 @@
 
 #if __cplusplus > 201402L
 #define FALL_THROUGH [[fallthrough]];
-#elif defined(__clang_major__) && __clang_major__ >= 4
+#elif defined(__clang_major__) && (__clang_major__ >= 4 || (__clang_major__ == 3 && __clang_minor__ == 9))
 #define FALL_THROUGH [[clang::fallthrough]];
 #elif defined(__GNUC__) && __GNUC__ >= 7
 #define FALL_THROUGH __attribute__((fallthrough));

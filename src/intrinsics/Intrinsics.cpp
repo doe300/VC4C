@@ -644,7 +644,8 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
                           op->conditional, op->setFlags))
                          ->copyExtrasFrom(it.get()));
         }
-        else if(arg0.getLiteralValue() && isPowerTwo(arg0.getLiteralValue()->signedInt()))
+        else if(arg0.getLiteralValue() && arg0.getLiteralValue()->signedInt() > 0 &&
+            isPowerTwo(arg0.getLiteralValue()->unsignedInt()))
         {
             // a * 2^n = a << n
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -655,7 +656,8 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
                      op->conditional, op->setFlags))
                     ->copyExtrasFrom(it.get()));
         }
-        else if(arg1.getLiteralValue() && isPowerTwo(arg1.getLiteralValue()->signedInt()))
+        else if(arg1.getLiteralValue() && arg1.getLiteralValue()->signedInt() > 0 &&
+            isPowerTwo(arg1.getLiteralValue()->unsignedInt()))
         {
             // a * 2^n = a << n
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -674,7 +676,8 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
                           op->conditional, op->setFlags))
                          ->copyExtrasFrom(it.get()));
         }
-        else if(arg0.getLiteralValue() && isPowerTwo(arg0.getLiteralValue()->signedInt() + 1))
+        else if(arg0.getLiteralValue() && arg0.getLiteralValue()->signedInt() > 0 &&
+            isPowerTwo(arg0.getLiteralValue()->unsignedInt() + 1))
         {
             // x * (2^k - 1) = x * 2^k - x = x << k - x
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -686,7 +689,8 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
             it.reset((new Operation(OP_SUB, op->getOutput().value(), tmp, arg1, op->conditional, op->setFlags))
                          ->copyExtrasFrom(it.get()));
         }
-        else if(arg1.getLiteralValue() && isPowerTwo(arg1.getLiteralValue()->signedInt() + 1))
+        else if(arg1.getLiteralValue() && arg1.getLiteralValue()->signedInt() > 0 &&
+            isPowerTwo(arg1.getLiteralValue()->unsignedInt() + 1))
         {
             // x * (2^k - 1) = x * 2^k - x = x << k - x
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -734,7 +738,8 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
             it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
         // a / 2^n = a >> n
-        else if(arg1.getLiteralValue() && isPowerTwo(arg1.getLiteralValue()->signedInt()))
+        else if(arg1.getLiteralValue() && arg1.getLiteralValue()->signedInt() > 0 &&
+            isPowerTwo(arg1.getLiteralValue()->unsignedInt()))
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying division with right-shift: " << op->to_string() << logging::endl);
@@ -772,7 +777,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
         }
         // a / 2^n = (abs(a) >> n) * sign(a)
         else if(arg1.isLiteralValue() && arg1.getLiteralValue()->signedInt() > 0 &&
-            isPowerTwo(arg1.getLiteralValue()->signedInt()))
+            isPowerTwo(arg1.getLiteralValue()->unsignedInt()))
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying signed division with right-shift and sign-copy: " << op->to_string()
@@ -874,7 +879,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
         }
         // a % 2^n = (abs(a) & 2^n-1) * sign(a)
         else if(arg1.isLiteralValue() && arg1.getLiteralValue()->signedInt() > 0 &&
-            isPowerTwo(arg1.getLiteralValue()->signedInt()))
+            isPowerTwo(arg1.getLiteralValue()->unsignedInt()))
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying signed modulo by power of two: " << op->to_string() << logging::endl);
