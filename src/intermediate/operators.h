@@ -7,6 +7,7 @@
 #ifndef VC4C_INSTRUCTION_OPERATORS_H
 #define VC4C_INSTRUCTION_OPERATORS_H
 
+#include "../InstructionWalker.h"
 #include "../asm/OpCodes.h"
 #include "../helper.h"
 #include "IntermediateInstruction.h"

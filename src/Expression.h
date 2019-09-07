@@ -9,6 +9,7 @@
 #include "Values.h"
 #include "asm/OpCodes.h"
 #include "intermediate/IntermediateInstruction.h"
+#include "intermediate/operators.h"
 
 namespace vc4c
 {
@@ -47,6 +48,35 @@ namespace vc4c
          */
         Expression combineWith(const FastMap<const Local*, Expression>& inputs) const;
     };
+
+    // Extends the operator syntax to create expressions from it
+    namespace operators
+    {
+        struct ExpressionWrapper
+        {
+            NODISCARD Expression operator=(OperationWrapper&& op) &&;
+        };
+
+        /**
+         * Creates an expression from the given operation
+         *
+         * NOTE: If the assigned operation wrapper has side effects, an exception will be thrown!
+         */
+        NODISCARD inline ExpressionWrapper expression()
+        {
+            return ExpressionWrapper{};
+        }
+
+        /**
+         * Creates an expression from the given operation
+         *
+         * NOTE: If the given operation wrapper has side effects, an exception will be thrown!
+         */
+        NODISCARD inline Expression expression(OperationWrapper&& op)
+        {
+            return ExpressionWrapper{} = std::move(op);
+        }
+    } // namespace operators
 } /* namespace vc4c */
 
 namespace std

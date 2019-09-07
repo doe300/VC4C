@@ -21,6 +21,19 @@ InstructionPattern ValuePattern::operator=(BinaryInstructionPattern&& binary) &&
         std::move(binary.secondArgument), std::move(binary.condition), std::move(binary.flags)};
 }
 
+InstructionPattern ValuePattern::operator=(vc4c::operators::OperationWrapper&& op) &&
+{
+    if(op.packMode.hasEffect() || op.unpackMode.hasEffect())
+        throw CompilationError(CompilationStep::GENERAL, "(Un-)Pack modes are not yet supported for pattern matching!");
+    if(op.signal.hasSideEffects())
+        throw CompilationError(CompilationStep::GENERAL, "Signals are not yet supported for pattern matching!");
+    if(op.decoration != intermediate::InstructionDecorations::NONE)
+        throw CompilationError(
+            CompilationStep::GENERAL, "Instruction decorations are not yet supported for pattern matching!");
+    return InstructionPattern{std::move(*this), match(op.op), match(op.arg0), op.arg1 ? match(*op.arg1) : anyValue(),
+        match(op.conditional), match(op.setFlags)};
+}
+
 using MatchCache = std::unordered_map<const void*, Variant<Value, OpCode, ConditionCode, SetFlag>>;
 
 // The caches are tracked to be able to check whether two captures on the same local value actually capture the same

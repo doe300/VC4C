@@ -320,3 +320,10 @@ size_t std::hash<vc4c::Expression>::operator()(const vc4c::Expression& expr) con
     return nameHash(expr.code.name) ^ valHash(expr.arg0) ^ (expr.arg1 ? valHash(expr.arg1.value()) : 0) ^
         expr.unpackMode.value ^ expr.packMode.value ^ static_cast<unsigned>(expr.deco);
 }
+
+Expression operators::ExpressionWrapper::operator=(OperationWrapper&& op) &&
+{
+    if(op.signal.hasSideEffects() || op.setFlags == SetFlag::SET_FLAGS)
+        throw CompilationError(CompilationStep::GENERAL, "Expressions cannot have side-effects!");
+    return Expression{op.op, std::move(op.arg0), std::move(op.arg1), op.unpackMode, op.packMode, op.decoration};
+}

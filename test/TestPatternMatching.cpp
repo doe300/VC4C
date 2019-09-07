@@ -732,8 +732,7 @@ void TestPatternMatching::testGappedSearch()
         Value arg1 = UNDEFINED_VALUE;
 
         Pattern pattern{{match(out) = (anyOperation(), match(UNIFORM_REGISTER), capture(arg0)),
-                            match(out2) = (match(OP_XOR), match(out), capture(arg1)),
-                            match(out3) = (match(OP_AND), match(out2), match(out))},
+                            match(out2) = (match(OP_XOR), match(out), capture(arg1)), match(out3) = (out2 & out)},
             true};
 
         auto matchIt = search(block.walk(), pattern);

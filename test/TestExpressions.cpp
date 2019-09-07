@@ -124,17 +124,17 @@ void TestExpressions::testCombination()
     FastMap<const Local*, Expression> expressions;
 
     auto loc0 = method.addNewLocal(TYPE_INT32);
-    Expression loc0Plus1{OP_ADD, loc0, INT_ONE};
+    auto loc0Plus1 = expression() = loc0 + INT_ONE;
     auto loc1 = method.addNewLocal(TYPE_INT32);
     expressions.emplace(loc1.local(), loc0Plus1);
     TEST_ASSERT_EQUALS(loc0Plus1, loc0Plus1.combineWith(expressions))
 
-    Expression moveLoc1{OP_OR, loc1, loc1};
+    auto moveLoc1 = expression(loc1 | loc1);
     auto loc2 = method.addNewLocal(TYPE_INT32);
     expressions.emplace(loc2.local(), moveLoc1);
     TEST_ASSERT_EQUALS(loc0Plus1, moveLoc1.combineWith(expressions))
 
-    Expression loc2Plus1{OP_ADD, loc2, INT_ONE};
+    auto loc2Plus1 = expression(loc2 + INT_ONE);
     auto loc3 = method.addNewLocal(TYPE_INT32);
     expressions.emplace(loc3.local(), loc2Plus1);
 
@@ -143,13 +143,13 @@ void TestExpressions::testCombination()
     Expression loc0Plus2{OP_ADD, loc0, Value(2_lit, TYPE_INT32)};
 
     {
-        Expression loc2Pack{OP_OR, loc2, NO_VALUE, UNPACK_NOP, PACK_32_16B};
+        auto loc2Pack = expression((loc2 | INT_ONE, PACK_32_16B));
         TEST_ASSERT_EQUALS(loc2Pack, loc2Pack.combineWith(expressions))
     }
 
     {
         // single operand combination rules
-        Expression notLoc3{OP_NOT, loc3, NO_VALUE};
+        auto notLoc3 = expression(~loc3);
         auto loc4 = method.addNewLocal(TYPE_INT32);
         expressions.emplace(loc4.local(), notLoc3);
 
@@ -159,7 +159,7 @@ void TestExpressions::testCombination()
 
     {
         // 2 operands idempotent, identity and absorbing
-        Expression andLoc3{OP_AND, loc3, loc3};
+        auto andLoc3 = expression(loc3 & loc3);
         TEST_ASSERT_EQUALS(loc0Plus2, andLoc3.combineWith(expressions))
 
         Expression andLoc3Id{OP_AND, loc3, INT_MINUS_ONE};
@@ -240,7 +240,7 @@ void TestExpressions::testCombination()
         // (2 * a) + (3 * a) = (2 + 3) * a
         Expression twoAPlusThreeA{OP_FADD, twoA, threeA};
         TEST_ASSERT_EQUALS(aMul5, twoAPlusThreeA.combineWith(expressions))
-        
-        //XXX tests for general case, when added
+
+        // XXX tests for general case, when added
     }
 }

@@ -4,6 +4,7 @@
 #include "../Values.h"
 #include "../Variant.h"
 #include "../asm/OpCodes.h"
+#include "../intermediate/operators.h"
 
 #include <functional>
 #include <vector>
@@ -11,11 +12,6 @@
 namespace vc4c
 {
     struct Expression;
-
-    namespace intermediate
-    {
-        class IntermediateInstruction;
-    } // namespace intermediate
 
     namespace pattern
     {
@@ -67,6 +63,13 @@ namespace vc4c
             // Operator-syntax version of combining output pattern (this) with the instruction operation
             NODISCARD InstructionPattern operator=(UnaryInstructionPattern&& unary) &&;
             NODISCARD InstructionPattern operator=(BinaryInstructionPattern&& binary) &&;
+            /**
+             * Creates an instruction pattern from the given operation
+             *
+             * NOTE: If the assigned operation wrapper has side effects or sets unsupported fields (e.g. un-/pack
+             * modes), an exception will be thrown!
+             */
+            NODISCARD InstructionPattern operator=(vc4c::operators::OperationWrapper&& op) &&;
         };
 
         /**
