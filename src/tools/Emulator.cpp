@@ -1703,9 +1703,9 @@ static void emulateStep(std::vector<qpu_asm::Instruction>::const_iterator firstI
         }
         catch(const std::exception&)
         {
-            logging::error() << "Emulation threw exception execution in following instruction on QPU " << qpus[i].ID
-                             << ": " << qpus[i].getCurrentInstruction(firstInstruction)->toHexString(true)
-                             << logging::endl;
+            logging::error() << "Emulation threw exception execution in following instruction on QPU "
+                             << static_cast<unsigned>(qpus[i].ID) << ": "
+                             << qpus[i].getCurrentInstruction(firstInstruction)->toHexString(true) << logging::endl;
             // re-throw error
             throw;
         }

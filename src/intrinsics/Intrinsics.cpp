@@ -209,11 +209,12 @@ static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access, bool setMutex)
                     << logging::endl);
             const DataType type = callSite->assertArgument(0).type.getElementType();
             if(!callSite->getArgument(2) || !callSite->assertArgument(2).getLiteralValue())
-                throw CompilationError(CompilationStep::OPTIMIZER,
-                    "Memory copy with non-constant size is not yet supported", callSite->to_string());
-            it = method.vpm->insertCopyRAM(method, it, callSite->assertArgument(0), callSite->assertArgument(1),
-                callSite->assertArgument(2).getLiteralValue()->unsignedInt() * type.getInMemoryWidth(), nullptr,
-                setMutex);
+                it = method.vpm->insertCopyRAMDynamic(method, it, callSite->assertArgument(0),
+                    callSite->assertArgument(1), callSite->assertArgument(2), nullptr, setMutex);
+            else
+                it = method.vpm->insertCopyRAM(method, it, callSite->assertArgument(0), callSite->assertArgument(1),
+                    callSite->assertArgument(2).getLiteralValue()->unsignedInt() * type.getInMemoryWidth(), nullptr,
+                    setMutex);
             break;
         }
         case DMAAccess::PREFETCH:

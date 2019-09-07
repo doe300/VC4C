@@ -840,6 +840,10 @@ namespace vc4c
              */
             NODISCARD InstructionWalker insertCopyRAM(Method& method, InstructionWalker it, const Value& destAddress,
                 const Value& srcAddress, unsigned numBytes, const VPMArea* area = nullptr, bool useMutex = true);
+
+            NODISCARD InstructionWalker insertCopyRAMDynamic(Method& method, InstructionWalker it,
+                const Value& destAddress, const Value& srcAddress, const Value& numEntries,
+                const VPMArea* area = nullptr, bool useMutex = true);
             /*
              * Inserts a filling of a memory-area with a single value from VPM
              */

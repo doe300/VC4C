@@ -7,6 +7,7 @@
 #include "VPM.h"
 
 #include "../Profiler.h"
+#include "../intermediate/Helper.h"
 #include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
 #include "log.h"
@@ -717,6 +718,39 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
     }
     it = insertUnlockMutex(it, useMutex);
 
+    return it;
+}
+
+InstructionWalker VPM::insertCopyRAMDynamic(Method& method, InstructionWalker it, const Value& destAddress,
+    const Value& srcAddress, const Value& numEntries, const VPMArea* area, bool useMutex)
+{
+    it = insertLockMutex(it, useMutex);
+
+    // count from maximum to 0 (exclusive)
+    auto counter = assign(it, numEntries.type, "%remaining_iterations") = numEntries;
+    auto& block = intermediate::insertLoop(method, it, counter, COND_ZERO_CLEAR, "dynamic_dma_copy");
+    {
+        // inside the loop, a single iteration
+        auto inLoopIt = block.walk().nextInBlock();
+        auto elementType = destAddress.type.getElementType();
+        auto index = assign(inLoopIt, counter.type) = numEntries - counter;
+        // XXX does not support more than 2^23 elements
+        auto offset = assign(inLoopIt, counter.type) =
+            mul24(index, Value(Literal(elementType.getInMemoryWidth()), TYPE_INT32));
+
+        // increment offset from base address
+        Value tmpSource = assign(inLoopIt, srcAddress.type, "%mem_copy_addr") = srcAddress + offset;
+        Value tmpDest = assign(inLoopIt, destAddress.type, "%mem_copy_addr") = destAddress + offset;
+
+        inLoopIt = insertReadRAM(method, inLoopIt, tmpSource, elementType, area, false);
+        inLoopIt = insertWriteRAM(method, inLoopIt, tmpDest, elementType, area, false);
+
+        // decrement remaining iterations counter
+        assign(inLoopIt, counter) = counter - INT_ONE;
+    }
+
+    it.nextInBlock();
+    it = insertUnlockMutex(it, useMutex);
     return it;
 }
 

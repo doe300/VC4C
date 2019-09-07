@@ -642,17 +642,21 @@ static InstructionWalker mapMemoryCopy(
     else if(srcInRAM && destInRAM)
     {
         // copy from RAM into RAM -> DMA read + DMA write
-        if(!numEntries.isLiteralValue())
-            throw CompilationError(CompilationStep::OPTIMIZER,
-                "Copying dynamically sized memory within RAM is not yet implemented", mem->to_string());
-        uint64_t numBytes = numEntries.getLiteralValue()->unsignedInt() *
-            (mem->getSourceElementType().getScalarBitCount() * mem->getSourceElementType().getVectorWidth()) / 8;
-        if(numBytes > std::numeric_limits<unsigned>::max())
-            throw CompilationError(CompilationStep::OPTIMIZER, "Cannot copy more than 4GB of data", mem->to_string());
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Mapping copy from RAM into RAM to DMA read and DMA write: " << mem->to_string() << logging::endl);
-        it = method.vpm->insertCopyRAM(
-            method, it, mem->getDestination(), mem->getSource(), static_cast<unsigned>(numBytes), nullptr);
+        if(!numEntries.isLiteralValue())
+            it = method.vpm->insertCopyRAMDynamic(method, it, mem->getDestination(), mem->getSource(), numEntries);
+        else
+        {
+            uint64_t numBytes = numEntries.getLiteralValue()->unsignedInt() *
+                (mem->getSourceElementType().getScalarBitCount() * mem->getSourceElementType().getVectorWidth()) / 8;
+            if(numBytes > std::numeric_limits<unsigned>::max())
+                throw CompilationError(
+                    CompilationStep::OPTIMIZER, "Cannot copy more than 4GB of data", mem->to_string());
+
+            it = method.vpm->insertCopyRAM(
+                method, it, mem->getDestination(), mem->getSource(), static_cast<unsigned>(numBytes), nullptr);
+        }
         return it.erase();
     }
     else if(destInRegister && destInfo.convertedRegisterType)

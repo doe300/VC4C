@@ -71,6 +71,21 @@ namespace vc4c
          * See https://en.wikipedia.org/wiki/Equivalence_class
          */
         FastSet<const Local*> getEquivalenceClass(const Local* local);
+
+        /**
+         * Inserts a tight loop into the given method at the given position
+         *
+         * The input instruction walker will be set to the first instruction (the label) in the block FOLLOWING the
+         * loop. The output basic block is the inserted block and can be used to insert code into the loop itself.
+         *
+         * NOTE: The inserted loop will be a while(conditionValue) loop, so the condition variable needs to be
+         * initialized before the loop starts.
+         *
+         * NOTE: The loop is repeated as long as the conditionValue matches the repeatCondition. Normal branch condition
+         * behavior applies, so only the first element of the conditionValue is actually checked!
+         */
+        NODISCARD BasicBlock& insertLoop(Method& method, InstructionWalker& it, const Value& conditionValue,
+            ConditionCode repeatCondition, const std::string& label = "");
     } // namespace intermediate
 } // namespace vc4c
 

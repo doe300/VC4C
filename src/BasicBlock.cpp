@@ -286,6 +286,8 @@ void BasicBlock::dumpInstructions() const
             [](const std::unique_ptr<intermediate::IntermediateInstruction>& instr) {
                 if(instr)
                     logging::debug() << instr->to_string() << logging::endl;
+                else
+                    logging::debug() << "(null)" << logging::endl;
             });
         logging::debug() << "Block end ----" << logging::endl;
     });

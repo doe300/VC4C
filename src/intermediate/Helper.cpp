@@ -363,3 +363,30 @@ FastSet<const Local*> intermediate::getEquivalenceClass(const Local* local)
 
     return clazz;
 }
+
+BasicBlock& intermediate::insertLoop(Method& method, InstructionWalker& it, const Value& conditionValue,
+    ConditionCode repeatCondition, const std::string& label)
+{
+    auto loopLabel = method.addNewLocal(TYPE_LABEL, label);
+    auto preheaderLabel = method.addNewLocal(TYPE_LABEL, loopLabel.local()->name, "preheader");
+    auto afterLoopLabel = method.addNewLocal(TYPE_LABEL, loopLabel.local()->name, "after");
+
+    auto preheaderIt = method.emplaceLabel(it, new BranchLabel(*preheaderLabel.local()));
+    preheaderIt.nextInBlock();
+
+    // in the preheader, jump over loop only when condition becomes false, otherwise fall through loop content block
+    preheaderIt.emplace(new Branch(loopLabel.local(), repeatCondition, conditionValue));
+    preheaderIt.nextInBlock();
+    preheaderIt.emplace(new Branch(afterLoopLabel.local(), repeatCondition.invert(), conditionValue));
+    preheaderIt.nextInBlock();
+
+    auto inLoopIt = method.emplaceLabel(preheaderIt, new BranchLabel(*loopLabel.local()));
+    inLoopIt.nextInBlock();
+
+    // in loop content block, unconditionally jump back to preheader
+    inLoopIt.emplace(new Branch(preheaderLabel.local(), COND_ALWAYS, BOOL_TRUE));
+    inLoopIt.nextInBlock();
+
+    it = method.emplaceLabel(inLoopIt, new BranchLabel(*afterLoopLabel.local()));
+    return *inLoopIt.getBasicBlock();
+}
