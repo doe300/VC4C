@@ -497,6 +497,13 @@ namespace vc4c
             return first;
         }
 
+        const NodeType& getOtherNode(const NodeType& oneNode) const
+        {
+            if(&first == &oneNode)
+                return second;
+            return first;
+        }
+
         Edge& addInput(const NodeType& node)
         {
             static_assert(Direction == Directionality::BIDIRECTIONAL, "Can only add input for bidirectional graphs!");

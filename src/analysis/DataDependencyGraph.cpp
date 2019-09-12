@@ -14,53 +14,39 @@
 
 using namespace vc4c;
 
-// TODO use LocalUsageAnalysis??!
-
-bool DataDependencyNodeBase::dependsOnBlock(const BasicBlock& bb, const DataDependencyType type) const
-{
-    const auto* self = reinterpret_cast<const DataDependencyNode*>(this);
-    bool hasDependency = false;
-    // TODO is checking here for only incoming edges correct? Could there be dependencies in both directions?
-    self->forAllIncomingEdges([&](const DataDependencyNode& neighbor, const DataDependencyEdge& edge) -> bool {
-        if(neighbor.key == &bb && std::any_of(edge.data.begin(), edge.data.end(), [&type](const auto& pair) -> bool {
-               return has_flag(pair.second, type);
-           }))
-        {
-            hasDependency = true;
-            return false;
-        }
-        return true;
-    });
-    return hasDependency;
-}
-
-bool DataDependencyNodeBase::hasExternalDependencies(const Local* local, const DataDependencyType type) const
-{
-    const auto* self = reinterpret_cast<const DataDependencyNode*>(this);
-    bool hasDependency = false;
-    // TODO same here, is checking here for only incoming edges correct? Could there be dependencies in both directions?
-    self->forAllIncomingEdges([&](const DataDependencyNode& neighbor, const DataDependencyEdge& edge) -> bool {
-        if(std::any_of(edge.data.begin(), edge.data.end(),
-               [local, &type](const auto& pair) -> bool { return pair.first == local && has_flag(pair.second, type); }))
-        {
-            hasDependency = true;
-            return false;
-        }
-        return true;
-    });
-    return hasDependency;
-}
-
-FastSet<const Local*> DataDependencyNodeBase::getAllExternalDependencies(const DataDependencyType type) const
+FastSet<const Local*> DataDependencyNodeBase::getAllIncomingDependencies() const
 {
     const auto* self = reinterpret_cast<const DataDependencyNode*>(this);
     FastSet<const Local*> results;
-    // TODO same here, is checking here for only incoming edges correct? Could there be dependencies in both directions?
     self->forAllIncomingEdges([&](const DataDependencyNode& neighbor, const DataDependencyEdge& edge) -> bool {
-        for(const auto& dependency : edge.data)
+        auto it = edge.data.find(neighbor.key);
+        if(it != edge.data.end())
         {
-            if(has_flag(dependency.second, type))
-                results.emplace(dependency.first);
+            for(auto& dependency : it->second)
+            {
+                if(has_flag(dependency.second, DataDependencyType::FLOW))
+                    results.emplace(dependency.first);
+            }
+        }
+        return true;
+    });
+
+    return results;
+}
+
+FastSet<const Local*> DataDependencyNodeBase::getAllOutgoingDependencies() const
+{
+    const auto* self = reinterpret_cast<const DataDependencyNode*>(this);
+    FastSet<const Local*> results;
+    self->forAllOutgoingEdges([&](const DataDependencyNode& neighbor, const DataDependencyEdge& edge) -> bool {
+        auto it = edge.data.find(self->key);
+        if(it != edge.data.end())
+        {
+            for(const auto& dependency : it->second)
+            {
+                if(has_flag(dependency.second, DataDependencyType::FLOW))
+                    results.emplace(dependency.first);
+            }
         }
         return true;
     });
@@ -107,21 +93,15 @@ static void findDependencies(BasicBlock& bb, DataDependencyGraph& graph, Instruc
                     if(instIt.getBasicBlock() != &bb ||
                         instIt->hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
                     {
+                        auto type = DataDependencyType::FLOW;
+                        if(instIt->hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
+                            type = add_flag(type, DataDependencyType::PHI);
+
+                        auto& neighbor = graph.getOrCreateNode(instIt.getBasicBlock());
                         auto& neighborDependencies =
-                            graph.getOrCreateNode(&bb)
-                                .getOrCreateEdge(&graph.getOrCreateNode(instIt.getBasicBlock()))
-                                .data;
-                        neighborDependencies[const_cast<Local*>(local)] =
-                            add_flag(neighborDependencies[const_cast<Local*>(local)], DataDependencyType::FLOW);
-                    }
-                    if(instIt->hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
-                    {
-                        auto& neighborDependencies =
-                            graph.getOrCreateNode(&bb)
-                                .getOrCreateEdge(&graph.getOrCreateNode(instIt.getBasicBlock()))
-                                .data;
-                        neighborDependencies[const_cast<Local*>(local)] =
-                            add_flag(neighborDependencies[const_cast<Local*>(local)], DataDependencyType::PHI);
+                            graph.getOrCreateNode(&bb).getOrCreateEdge(&neighbor).addInput(neighbor).data;
+                        neighborDependencies[instIt.getBasicBlock()][const_cast<Local*>(local)] =
+                            add_flag(neighborDependencies[instIt.getBasicBlock()][const_cast<Local*>(local)], type);
                     }
                 });
             }
@@ -135,12 +115,13 @@ static void findDependencies(BasicBlock& bb, DataDependencyGraph& graph, Instruc
                         if(instIt.getBasicBlock() != &bb ||
                             inst->hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
                         {
+                            auto& node = graph.getOrCreateNode(&bb);
                             auto& neighborDependencies =
-                                graph.getOrCreateNode(&bb)
-                                    .getOrCreateEdge(&graph.getOrCreateNode(instIt.getBasicBlock()))
+                                node.getOrCreateEdge(&graph.getOrCreateNode(instIt.getBasicBlock()))
+                                    .addInput(node)
                                     .data;
-                            neighborDependencies[const_cast<Local*>(local)] =
-                                add_flag(neighborDependencies[const_cast<Local*>(local)], DataDependencyType::ANTI);
+                            neighborDependencies[&bb][const_cast<Local*>(local)] = add_flag(
+                                neighborDependencies[&bb][const_cast<Local*>(local)], DataDependencyType::ANTI);
                         }
                     });
             }
@@ -154,10 +135,19 @@ static std::string toEdgeLabel(const DataDependency& dependency)
 {
     std::string label;
 
-    for(const auto& pair : dependency)
+    if(dependency.size() == 2)
     {
-        label.append(" ").append(pair.first->name);
+        auto it = dependency.begin();
+        for(const auto& pair : it->second)
+            label.append(" ").append(pair.first->name);
+        label.append(" <-> ");
+        ++it;
+        for(const auto& pair : it->second)
+            label.append(" ").append(pair.first->name);
     }
+    else if(dependency.size() == 1)
+        for(const auto& pair : dependency.begin()->second)
+            label.append(" ").append(pair.first->name);
 
     return label.empty() ? "" : label.substr(1);
 }
@@ -178,10 +168,7 @@ std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createDependencyGraph(
     LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&]() {
         auto nameFunc = [](const BasicBlock* bb) -> std::string { return bb->getLabel()->getLabel()->name; };
-        auto weakEdgeFunc = [](const DataDependency& dep) -> bool {
-            return std::all_of(dep.begin(), dep.end(),
-                [](const auto& pair) -> bool { return !has_flag(pair.second, DataDependencyType::FLOW); });
-        };
+        auto weakEdgeFunc = [](const DataDependency& dep) -> bool { return false; };
         DebugGraph<BasicBlock*, DataDependency, DataDependencyEdge::Directed>::dumpGraph<DataDependencyGraph>(
             *graph, "/tmp/vc4c-data-dependencies.dot", nameFunc, weakEdgeFunc, toEdgeLabel);
     });

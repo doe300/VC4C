@@ -130,20 +130,24 @@ static SortedSet<Local*> findInductionCandidates(
             dependencyNode->forAllIncomingEdges(
                 [&](const DataDependencyNode& neighbor, const DataDependencyEdge& edge) -> bool {
                     // check if this basic block has a local dependent on at least two phi-nodes
-                    for(auto& dependency : edge.data)
+                    auto it = edge.data.find(neighbor.key);
+                    if(it != edge.data.end())
                     {
-                        if(has_flag(dependency.second, add_flag(DataDependencyType::PHI, DataDependencyType::FLOW)))
+                        for(auto& dependency : it->second)
                         {
-                            // TODO couldn't this be simplified to checking neighbor against the main dependency node's
-                            // basic block?? Since this is an edge from/to that node?
-                            if(std::find_if(loop.begin(), loop.end(), [&neighbor](const CFGNode* node) -> bool {
-                                   return node->key == neighbor.key;
-                               }) != loop.end())
-                                //... one of which lies within the loop
-                                innerDependencies.emplace(dependency.first);
-                            else
-                                //... and the other outside of it
-                                outerDependencies.emplace(dependency.first);
+                            if(has_flag(dependency.second, add_flag(DataDependencyType::PHI, DataDependencyType::FLOW)))
+                            {
+                                // TODO couldn't this be simplified to checking neighbor against the main dependency
+                                // node's basic block?? Since this is an edge from/to that node?
+                                if(std::find_if(loop.begin(), loop.end(), [&neighbor](const CFGNode* node) -> bool {
+                                       return node->key == neighbor.key;
+                                   }) != loop.end())
+                                    //... one of which lies within the loop
+                                    innerDependencies.emplace(dependency.first);
+                                else
+                                    //... and the other outside of it
+                                    outerDependencies.emplace(dependency.first);
+                            }
                         }
                     }
 

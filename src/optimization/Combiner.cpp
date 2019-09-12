@@ -550,6 +550,7 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                             Operation* newMove = nextMove->combineWith(op->op);
                             if(newMove != nullptr)
                             {
+                                newMove->copyExtrasFrom(nextMove);
                                 it.reset(new CombinedOperation(dynamic_cast<Operation*>(it.release()), newMove));
                                 nextIt.erase();
                             }
@@ -562,6 +563,7 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                             Operation* newMove = move->combineWith(nextOp->op);
                             if(newMove != nullptr)
                             {
+                                newMove->copyExtrasFrom(move);
                                 it.reset(new CombinedOperation(newMove, dynamic_cast<Operation*>(nextIt.release())));
                                 nextIt.erase();
                             }
@@ -578,6 +580,8 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                             Operation* newMove1 = nextMove->combineWith(firstOnMul ? OP_MUL24 : OP_ADD);
                             if(newMove0 != nullptr && newMove1 != nullptr)
                             {
+                                newMove0->copyExtrasFrom(move);
+                                newMove1->copyExtrasFrom(nextMove);
                                 it.reset(new CombinedOperation(newMove0, newMove1));
                                 nextIt.erase();
                             }

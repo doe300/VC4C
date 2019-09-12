@@ -9,7 +9,6 @@
 #include "../InstructionWalker.h"
 #include "../Profiler.h"
 #include "../analysis/AvailableExpressionAnalysis.h"
-#include "../analysis/DataDependencyGraph.h"
 #include "../normalization/LiteralValues.h"
 #include "../periphery/SFU.h"
 #include "log.h"

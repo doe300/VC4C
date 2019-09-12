@@ -32,7 +32,8 @@ namespace vc4c
                                      std::pair<FastSet<const Local*>, FastMap<const Local*, ConditionCode>>>
         {
         public:
-            explicit LivenessAnalysis();
+            // The optional parameter are the locals assumed to be live at the end of the block
+            explicit LivenessAnalysis(FastSet<const Local*>&& outgoingLiveLocals = {});
 
         private:
             /*

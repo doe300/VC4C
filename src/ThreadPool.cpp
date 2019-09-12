@@ -55,9 +55,12 @@ void ThreadPool::workerTask(const std::string& poolName)
         std::packaged_task<void()> task;
         {
             std::unique_lock<std::mutex> lock(queueMutex);
-            queueCondition.wait(lock, [&] { return !keepRunning || !taskQueue.empty(); });
+            queueCondition.wait_for(
+                lock, std::chrono::milliseconds{100}, [&] { return !keepRunning || !taskQueue.empty(); });
             if(!keepRunning)
                 return;
+            if(taskQueue.empty())
+                continue;
             task = std::move(taskQueue.front());
             taskQueue.pop();
         }

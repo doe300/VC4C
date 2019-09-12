@@ -13,7 +13,10 @@
 using namespace vc4c;
 using namespace vc4c::analysis;
 
-LivenessAnalysis::LivenessAnalysis() : LocalAnalysis(LivenessAnalysis::analyzeLiveness, LivenessAnalysis::to_string) {}
+LivenessAnalysis::LivenessAnalysis(FastSet<const Local*>&& outgoingLiveLocals) :
+    LocalAnalysis(LivenessAnalysis::analyzeLiveness, LivenessAnalysis::to_string, std::move(outgoingLiveLocals))
+{
+}
 
 static bool isIfElseWrite(const FastSet<const LocalUser*>& users)
 {
