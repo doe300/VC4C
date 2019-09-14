@@ -7,6 +7,7 @@
 #include "LivenessAnalysis.h"
 
 #include "../Profiler.h"
+#include "ControlFlowGraph.h"
 
 #include <sstream>
 
@@ -102,6 +103,81 @@ std::string LivenessAnalysis::to_string(const FastSet<const Local*>& liveLocals)
     return s.str();
 }
 LCOV_EXCL_STOP
+
+/*
+ * Algorithm:
+ * in reverse order of control flow, starting from end of kernel
+ * 1. run local liveness analysis, cache result for block including live locals at end of block
+ * 2. for all direct predecessor blocks
+ * 2.1 if cached live locals at end of predecessor block already contains all live locals at start of current block,
+ * stop
+ * 2.2 if edge is work-group loop, stop
+ * 2.3 if no cached live locals of predecessor blocks, or new locals, (re-)run step 1 for predecessor block
+ */
+
+using LiveLocalsCache = FastMap<const BasicBlock*, FastSet<const Local*>>;
+
+static void runAnalysis(const CFGNode& node, FastMap<const BasicBlock*, std::unique_ptr<LivenessAnalysis>>& results,
+    LiveLocalsCache& cachedEndLiveLocals, FastSet<const Local*>&& cacheEntry, const BasicBlock* startOfKernel)
+{
+    PROFILE_START(GlobalLivenessAnalysis);
+    auto& analyzer = results[node.key];
+    analyzer.reset(new LivenessAnalysis(std::move(cacheEntry)));
+    (*analyzer)(*node.key);
+    // copy on purpose, since result could be modified by previous forAllIncomingEdges loop
+    auto startLiveLocals = analyzer->getStartResult();
+
+    if(node.key == startOfKernel)
+    {
+        // skip work-group loop, since they do not modify the live locals
+        // TODO if the work-group loop is not active, there might be a kernel code loop back to the start, can there?
+        return;
+    }
+
+    node.forAllIncomingEdges([&](const CFGNode& predecessor, const CFGEdge&) -> bool {
+        // add all live locals from the beginning of this block to the end of the new one and check whether we are done
+        // with this predecessor
+        auto predCacheIt = cachedEndLiveLocals.find(predecessor.key);
+        if(predCacheIt != cachedEndLiveLocals.end())
+        {
+            auto sizePrevious = predCacheIt->second.size();
+            predCacheIt->second.insert(startLiveLocals.begin(), startLiveLocals.end());
+            if(predCacheIt->second.size() == sizePrevious)
+                // no new locals were added, can abort this node
+                return true;
+        }
+        else
+            predCacheIt = cachedEndLiveLocals.emplace(predecessor.key, startLiveLocals).first;
+
+        runAnalysis(
+            predecessor, results, cachedEndLiveLocals, FastSet<const Local*>{predCacheIt->second}, startOfKernel);
+
+        return true;
+    });
+    PROFILE_END(GlobalLivenessAnalysis);
+}
+
+void GlobalLivenessAnalysis::operator()(Method& method)
+{
+    // TODO need to improve for performance, e.g. make sure, we don't do unnecessary block analyses
+    auto& cfg = method.getCFG();
+    auto& finalNode = cfg.getEndOfControlFlow();
+
+    // The cache of the live locals at the end of a given basic blocks (e.g. consumed by any succeeding block)
+    LiveLocalsCache cachedEndLiveLocals;
+    runAnalysis(finalNode, results, cachedEndLiveLocals, {}, cfg.getStartOfControlFlow().key);
+}
+
+void GlobalLivenessAnalysis::dumpResults(const Method& method) const
+{
+    logging::logLazy(logging::Level::DEBUG, [&]() {
+        for(const BasicBlock& block : method)
+        {
+            logging::debug() << block.to_string() << logging::endl;
+            results.at(&block)->dumpResults(block);
+        }
+    });
+}
 
 LocalUsageAnalysis::LocalUsageAnalysis() :
     GlobalAnalysis(LocalUsageAnalysis::analyzeLocalUsage, LocalUsageAnalysis::to_string)

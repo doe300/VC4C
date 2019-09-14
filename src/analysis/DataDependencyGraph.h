@@ -22,7 +22,10 @@ namespace vc4c
         ANTI = 2,
         // the dependency is on a phi-node and is therefore depending on the branch the block was entered by. Any other
         // dependency is "constant", the depending value is not changed in different basic blocks
-        PHI = 4
+        PHI = 4,
+        // the dependency (of one of the types determined by the other enum values) is not directly from the source to
+        // the destination block, but instead between blocks that are executed in between according to the CFG.
+        TRANSITIVE = 8
     };
 
     /*
@@ -38,9 +41,9 @@ namespace vc4c
 
     struct DataDependencyNodeBase
     {
-        // Returns all locals written somewhere else and consumed
+        // Returns all locals written somewhere else and consumed (or transitively consumed) by this node
         FastSet<const Local*> getAllIncomingDependencies() const;
-        // Returns all locals written by this node and consumed somewhere else
+        // Returns all locals written (or transitively passed through) by this node and consumed somewhere else
         FastSet<const Local*> getAllOutgoingDependencies() const;
     };
 
@@ -74,6 +77,25 @@ namespace vc4c
          * Assuming block D uses a local written by block A, it will depend on block A and not B or C!
          */
         static std::unique_ptr<DataDependencyGraph> createDependencyGraph(Method& method);
+
+        /**
+         * Creates a data dependency graph including "transitive" dependencies.
+         *
+         * In contrast to the #createDependencyGraph function, this will make sure the data dependencies actually follow
+         * the control flow of the method. I.e. a block will only depend on directly preceding blocks. If these blocks
+         * do not provide all required data, they in return depend on their directly preceding blocks until all
+         * dependencies are resolved.
+         *
+         * Example:
+         *   A
+         *  / \
+         * B   C
+         *  \ /
+         *   D
+         * Assuming block D uses a local written by block A, it will depend on block B and C and not A directly (also B
+         * and C will depend on A)!
+         */
+        static std::unique_ptr<DataDependencyGraph> createTransitiveDependencyGraph(Method& method);
 
     private:
         explicit DataDependencyGraph(std::size_t numBlocks) : Graph(numBlocks) {}

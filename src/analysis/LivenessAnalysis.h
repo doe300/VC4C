@@ -10,6 +10,8 @@
 #include "../performance.h"
 #include "Analysis.h"
 
+#include <memory>
+
 namespace vc4c
 {
     class Local;
@@ -48,6 +50,34 @@ namespace vc4c
                 std::pair<FastSet<const Local*>, FastMap<const Local*, ConditionCode>>& cache);
 
             static std::string to_string(const FastSet<const Local*>& liveLocals);
+        };
+
+        /**
+         * Analyzes the liveness (the life-time range) of locals across all basic blocks
+         *
+         * See LivenessAnalysis for detailed description of the liveness.
+         *
+         * Runs the LivenessAnalysis for every block taking into account all locals that are live at the end and start
+         * of all blocks, recursively.
+         *
+         * The result will contain all locals for a given instruction that are live at that instruction, whether
+         * actually used in the corresponding block or not.
+         */
+        class GlobalLivenessAnalysis
+        {
+        public:
+            explicit GlobalLivenessAnalysis() = default;
+
+            void operator()(Method& method);
+
+            inline const LivenessAnalysis& getLocalAnalysis(const BasicBlock& block) const
+            {
+                return *results.at(&block);
+            }
+            void dumpResults(const Method& method) const;
+
+        private:
+            FastMap<const BasicBlock*, std::unique_ptr<LivenessAnalysis>> results;
         };
 
         /*

@@ -8,7 +8,9 @@
 
 #include "../InstructionWalker.h"
 #include "../Profiler.h"
+#include "ControlFlowGraph.h"
 #include "DebugGraph.h"
+#include "LivenessAnalysis.h"
 
 #include "log.h"
 
@@ -24,7 +26,8 @@ FastSet<const Local*> DataDependencyNodeBase::getAllIncomingDependencies() const
         {
             for(auto& dependency : it->second)
             {
-                if(has_flag(dependency.second, DataDependencyType::FLOW))
+                if(has_flag(dependency.second, DataDependencyType::FLOW) ||
+                    has_flag(dependency.second, DataDependencyType::TRANSITIVE))
                     results.emplace(dependency.first);
             }
         }
@@ -44,7 +47,8 @@ FastSet<const Local*> DataDependencyNodeBase::getAllOutgoingDependencies() const
         {
             for(const auto& dependency : it->second)
             {
-                if(has_flag(dependency.second, DataDependencyType::FLOW))
+                if(has_flag(dependency.second, DataDependencyType::FLOW) ||
+                    has_flag(dependency.second, DataDependencyType::TRANSITIVE))
                     results.emplace(dependency.first);
             }
         }
@@ -129,6 +133,31 @@ static void findDependencies(BasicBlock& bb, DataDependencyGraph& graph, Instruc
     }
 }
 
+static void makeTransitive(
+    const ControlFlowGraph& cfg, DataDependencyGraph& graph, const analysis::GlobalLivenessAnalysis& analysis)
+{
+    for(auto& cfgNode : cfg.getNodes())
+    {
+        auto& startLiveLocals = analysis.getLocalAnalysis(*cfgNode.first).getStartResult();
+        auto& node = graph.getOrCreateNode(cfgNode.first);
+
+        // a basic block has all incoming live locals as dependencies to all direct successor blocks
+        cfgNode.second.forAllIncomingEdges([&](const CFGNode& predecessor, const CFGEdge&) -> bool {
+            auto& predecessorNode = graph.getOrCreateNode(predecessor.key);
+            auto& edgeData = node.getOrCreateEdge(&predecessorNode).addInput(predecessorNode).data[predecessorNode.key];
+            for(const auto& loc : startLiveLocals)
+            {
+                // TODO add "normal" data dependency graph for
+                // 1) distinguish between direct and transitive dependencies
+                // 2) flow and anti/phi dependencies
+                edgeData[const_cast<Local*>(loc)] = add_flag(edgeData[const_cast<Local*>(loc)],
+                    add_flag(DataDependencyType::FLOW, DataDependencyType::TRANSITIVE));
+            }
+            return true;
+        });
+    }
+}
+
 #ifdef DEBUG_MODE
 LCOV_EXCL_START
 static std::string toEdgeLabel(const DataDependency& dependency)
@@ -176,5 +205,28 @@ std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createDependencyGraph(
 #endif
 
     PROFILE_END(createDataDependencyGraph);
+    return graph;
+}
+
+std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createTransitiveDependencyGraph(Method& method)
+{
+    PROFILE_START(createTransitiveDependencyGraph);
+    std::unique_ptr<DataDependencyGraph> graph(new DataDependencyGraph(method.size()));
+    analysis::GlobalLivenessAnalysis gla;
+    gla(method);
+    makeTransitive(method.getCFG(), *graph, gla);
+
+#ifdef DEBUG_MODE
+    LCOV_EXCL_START
+    logging::logLazy(logging::Level::DEBUG, [&]() {
+        auto nameFunc = [](const BasicBlock* bb) -> std::string { return bb->getLabel()->getLabel()->name; };
+        auto weakEdgeFunc = [](const DataDependency& dep) -> bool { return false; };
+        DebugGraph<BasicBlock*, DataDependency, DataDependencyEdge::Directed>::dumpGraph<DataDependencyGraph>(
+            *graph, "/tmp/vc4c-data-dependencies-transitive.dot", nameFunc, weakEdgeFunc, toEdgeLabel);
+    });
+    LCOV_EXCL_STOP
+#endif
+
+    PROFILE_END(createTransitiveDependencyGraph);
     return graph;
 }

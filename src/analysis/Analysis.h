@@ -24,9 +24,6 @@ namespace vc4c
             BACKWARD
         };
 
-        template <typename V, typename C>
-        using DefaultLocalTransferFunction =
-            std::function<V(const intermediate::IntermediateInstruction*, const V&, C&)>;
         template <typename V>
         using DumpFunction = std::function<std::string(const V&)>;
 
@@ -36,27 +33,29 @@ namespace vc4c
          *
          * Adapted from here: https://web.stanford.edu/class/archive/cs/cs143/cs143.1128/lectures/15/Slides15.pdf
          */
-        template <AnalysisDirection D, typename V, typename C = void*, typename F = DefaultLocalTransferFunction<V, C>>
+        template <AnalysisDirection D, typename V, typename C = void*, typename... Args>
         class LocalAnalysis
         {
         public:
             static constexpr AnalysisDirection Direction = D;
             using Values = V;
             using Cache = C;
-            using TransferFunction = F;
+            using AdditionalArgs = std::tuple<Args...>;
+            using TransferFunction =
+                std::function<V(const intermediate::IntermediateInstruction*, const V&, C&, Args&...)>;
 
             /*
              * Analyses the given basic block and fills the internal result store
              *
              * NOTE: One instance of a LocalAnalysis can only analyze a single basic block!
              */
-            void operator()(const BasicBlock& block)
+            void operator()(const BasicBlock& block, Args&... args)
             {
                 results.reserve(block.size());
                 if(Direction == AnalysisDirection::FORWARD)
-                    analyzeForward(block);
+                    analyzeForward(block, args...);
                 else
-                    analyzeBackward(block);
+                    analyzeBackward(block, args...);
 
                 resultAtStart = &results.at(block.begin()->get());
                 if(!block.empty())
@@ -107,7 +106,7 @@ namespace vc4c
             const Values* resultAtEnd = nullptr;
 
         private:
-            void analyzeForward(const BasicBlock& block)
+            void analyzeForward(const BasicBlock& block, Args&... args)
             {
                 Cache c;
                 const auto* prevVal = &initialValue;
@@ -116,13 +115,13 @@ namespace vc4c
                     if(inst)
                     {
                         auto pos = results.emplace(
-                            inst.get(), std::forward<Values>(transferFunction(inst.get(), *prevVal, c)));
+                            inst.get(), std::forward<Values>(transferFunction(inst.get(), *prevVal, c, args...)));
                         prevVal = &(pos.first->second);
                     }
                 }
             }
 
-            void analyzeBackward(const BasicBlock& block)
+            void analyzeBackward(const BasicBlock& block, Args&... args)
             {
                 Cache c;
                 const auto* prevVal = &initialValue;
@@ -132,12 +131,15 @@ namespace vc4c
                     --it;
                     if(*it)
                     {
-                        auto pos =
-                            results.emplace(it->get(), std::forward<Values>(transferFunction(it->get(), *prevVal, c)));
+                        auto pos = results.emplace(
+                            it->get(), std::forward<Values>(transferFunction(it->get(), *prevVal, c, args...)));
                         prevVal = &(pos.first->second);
                     }
                 } while(it != block.begin());
             }
+
+            template <typename, typename, typename...>
+            friend class CombinedLocalAnalysis;
         };
 
         /*
@@ -146,8 +148,8 @@ namespace vc4c
          * The first return value is the initial value (before the block executes), the second the final value (after
          * the block executes)
          */
-        template <typename V>
-        using DefaultGlobalTransferFunction = std::function<std::pair<V, V>(const BasicBlock&)>;
+        template <typename V, typename... Args>
+        using DefaultGlobalTransferFunction = std::function<std::pair<V, V>(const BasicBlock&, Args&...)>;
 
         /*
          * Template for global analyses
@@ -156,22 +158,22 @@ namespace vc4c
          * of the single blocks
          *
          */
-        template <typename V, typename F = DefaultGlobalTransferFunction<V>>
+        template <typename V, typename... Args>
         class GlobalAnalysis
         {
         public:
             using Values = V;
-            using TransferFunction = F;
+            using TransferFunction = DefaultGlobalTransferFunction<V, Args...>;
 
             /*
              * Analyses the given method and fills the internal result store
              */
-            void operator()(const Method& method)
+            void operator()(const Method& method, Args&... args)
             {
                 results.reserve(method.size());
                 for(const BasicBlock& block : method)
                 {
-                    results.emplace(&block, std::forward<std::pair<Values, Values>>(transferFunction(block)));
+                    results.emplace(&block, std::forward<std::pair<Values, Values>>(transferFunction(block, args...)));
                 }
             }
 
@@ -208,6 +210,104 @@ namespace vc4c
             const TransferFunction transferFunction;
             const DumpFunction<Values> dumpFunction;
             std::unordered_map<const BasicBlock*, std::pair<Values, Values>> results;
+        };
+
+        template <typename AnalysisA, typename AnalysisB, typename... Args>
+        class CombinedLocalAnalysis
+        {
+            static_assert(AnalysisA::Direction == AnalysisB::Direction, "");
+
+        public:
+            CombinedLocalAnalysis(AnalysisA&& first, AnalysisB&& second) : a(first), b(second) {}
+
+            /*
+             * Analyses the given basic block and fills the internal result store
+             *
+             * NOTE: One instance of a LocalAnalysis can only analyze a single basic block!
+             */
+            void operator()(const BasicBlock& block, Args&... args)
+            {
+                a.results.reserve(block.size());
+                b.results.reserve(block.size());
+                if(AnalysisA::Direction == AnalysisDirection::FORWARD)
+                    analyzeForward(block, args...);
+                else
+                    analyzeBackward(block, args...);
+
+                a.resultAtStart = &a.results.at(block.begin()->get());
+                b.resultAtStart = &b.results.at(block.begin()->get());
+                if(!block.empty())
+                {
+                    a.resultAtEnd = &a.results.at((--block.end())->get());
+                    b.resultAtEnd = &b.results.at((--block.end())->get());
+                }
+            }
+
+            std::pair<const typename AnalysisA::Values*, const typename AnalysisB::Values*> getResult(
+                const intermediate::IntermediateInstruction* instr) const
+            {
+                return std::make_pair(&a.results.at(instr), &b.results.at(instr));
+            }
+
+            std::pair<const typename AnalysisA::Values*, const typename AnalysisB::Values*> getStartResult() const
+            {
+                return std::make_pair(a.resultAtStart, b.resultAtStart);
+            }
+
+            std::pair<const typename AnalysisA::Values*, const typename AnalysisB::Values*> getEndResult() const
+            {
+                return std::make_pair(a.resultAtEnd, b.resultAtEnd);
+            }
+
+        private:
+            AnalysisA a;
+            AnalysisB b;
+
+            void analyzeForward(const BasicBlock& block, Args&... args)
+            {
+                typename AnalysisA::Cache cacheA;
+                typename AnalysisB::Cache cacheB;
+                const auto* prevValA = &a.initialValue;
+                const auto* prevValB = &b.initialValue;
+                for(const auto& inst : block)
+                {
+                    if(inst)
+                    {
+                        auto posA = a.results.emplace(inst.get(),
+                            std::forward<typename AnalysisA::Values>(
+                                a.transferFunction(inst.get(), *prevValA, cacheA, args...)));
+                        prevValA = &(posA.first->second);
+                        auto posB = b.results.emplace(inst.get(),
+                            std::forward<typename AnalysisB::Values>(
+                                b.transferFunction(inst.get(), *prevValB, cacheB, *prevValA)));
+                        prevValB = &(posB.first->second);
+                    }
+                }
+            }
+
+            void analyzeBackward(const BasicBlock& block, Args&... args)
+            {
+                typename AnalysisA::Cache cacheA;
+                typename AnalysisB::Cache cacheB;
+                const auto* prevValA = &a.initialValue;
+                const auto* prevValB = &b.initialValue;
+                auto it = block.end();
+                do
+                {
+                    --it;
+                    if(*it)
+                    {
+                        auto posA = a.results.emplace(it->get(),
+                            std::forward<typename AnalysisA::Values>(
+                                a.transferFunction(it->get(), *prevValA, cacheA, args...)));
+                        prevValA = &(posA.first->second);
+                        auto posB = b.results.emplace(it->get(),
+                            std::forward<typename AnalysisB::Values>(
+                                b.transferFunction(it->get(), *prevValB, cacheB, *prevValA)));
+                        prevValB = &(posB.first->second);
+                    }
+                } while(it != block.begin());
+            }
         };
     } /* namespace analysis */
 } /* namespace vc4c */
