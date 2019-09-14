@@ -623,7 +623,10 @@ namespace vc4c
          * Tries to find a combination of a vector of an integer-type and a number of vectors to match the given size in
          * bytes.
          *
-         * E.g. for 64 bytes, the pair (int16, 1) is returned and an input of 6 bytes yields the pair (short3, 1)
+         * NOTE: The algorithm prefers vectors with more elements over larger base types!
+         *
+         * E.g. for 64 bytes, the pair (int16, 1) is returned and an input of 6 bytes yields the pair (short3, 1).
+         * Moreover, for 48 bytes, the pair (char16, 3) is returned and for 32 bytes, the pair (short16, 1).
          */
         std::pair<DataType, uint32_t> getBestVectorSize(uint32_t numBytes);
 
@@ -849,6 +852,9 @@ namespace vc4c
              */
             NODISCARD InstructionWalker insertFillRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
                 DataType type, unsigned numCopies, const VPMArea* area = nullptr, bool useMutex = true);
+            NODISCARD InstructionWalker insertFillRAMDynamic(Method& method, InstructionWalker it,
+                const Value& memoryAddress, DataType type, const Value& numCopies, const VPMArea* area = nullptr,
+                bool useMutex = true);
 
             /*
              * Updates the maximum size used by the scratch area.

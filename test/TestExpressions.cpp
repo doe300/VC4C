@@ -124,7 +124,7 @@ void TestExpressions::testCombination()
     FastMap<const Local*, Expression> expressions;
 
     auto loc0 = method.addNewLocal(TYPE_INT32);
-    auto loc0Plus1 = expression() = loc0 + INT_ONE;
+    auto loc0Plus1 = expression(loc0 + INT_ONE);
     auto loc1 = method.addNewLocal(TYPE_INT32);
     expressions.emplace(loc1.local(), loc0Plus1);
     TEST_ASSERT_EQUALS(loc0Plus1, loc0Plus1.combineWith(expressions))

@@ -863,7 +863,10 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
             if(assertUser(users, it).writesLocal())
             {
                 // 2) check if next instruction reads this local
-                it.nextInMethod();
+                do
+                {
+                    it.nextInMethod();
+                } while(!it.isEndOfMethod() && it.has() && !it->mapsToASMInstruction());
                 bool localRead = checkUser(users, it).readsLocal();
                 if(localRead && it.get<intermediate::VectorRotation>())
                 {

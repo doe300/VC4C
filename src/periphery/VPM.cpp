@@ -727,7 +727,8 @@ InstructionWalker VPM::insertCopyRAMDynamic(Method& method, InstructionWalker it
     it = insertLockMutex(it, useMutex);
 
     // count from maximum to 0 (exclusive)
-    auto counter = assign(it, numEntries.type, "%remaining_iterations") = numEntries;
+    auto counter = assign(it, numEntries.type, "%remaining_iterations") =
+        (numEntries, InstructionDecorations::PHI_NODE);
     auto& block = intermediate::insertLoop(method, it, counter, COND_ZERO_CLEAR, "dynamic_dma_copy");
     {
         // inside the loop, a single iteration
@@ -746,7 +747,7 @@ InstructionWalker VPM::insertCopyRAMDynamic(Method& method, InstructionWalker it
         inLoopIt = insertWriteRAM(method, inLoopIt, tmpDest, elementType, area, false);
 
         // decrement remaining iterations counter
-        assign(inLoopIt, counter) = counter - INT_ONE;
+        assign(inLoopIt, counter) = (counter - INT_ONE, InstructionDecorations::PHI_NODE);
     }
 
     it.nextInBlock();
@@ -776,6 +777,36 @@ InstructionWalker VPM::insertFillRAM(Method& method, InstructionWalker it, const
     }
     it = insertUnlockMutex(it, useMutex);
 
+    return it;
+}
+
+InstructionWalker VPM::insertFillRAMDynamic(Method& method, InstructionWalker it, const Value& memoryAddress,
+    DataType type, const Value& numCopies, const VPMArea* area, bool useMutex)
+{
+    it = insertLockMutex(it, useMutex);
+
+    // count from maximum to 0 (exclusive)
+    auto counter = assign(it, numCopies.type, "%remaining_iterations") = (numCopies, InstructionDecorations::PHI_NODE);
+    auto& block = intermediate::insertLoop(method, it, counter, COND_ZERO_CLEAR, "dynamic_dma_fill");
+    {
+        // inside the loop, a single iteration
+        auto inLoopIt = block.walk().nextInBlock();
+        auto index = assign(inLoopIt, counter.type) = numCopies - counter;
+        // XXX does not support more than 2^23 elements
+        auto offset = assign(inLoopIt, counter.type) =
+            mul24(index, Value(Literal(type.getInMemoryWidth()), TYPE_INT32));
+
+        // increment offset from base address
+        Value tmpDest = assign(inLoopIt, memoryAddress.type, "%mem_fill_addr") = memoryAddress + offset;
+
+        inLoopIt = insertWriteRAM(method, inLoopIt, tmpDest, type, area, false);
+
+        // decrement remaining iterations counter
+        assign(inLoopIt, counter) = (counter - INT_ONE, InstructionDecorations::PHI_NODE);
+    }
+
+    it.nextInBlock();
+    it = insertUnlockMutex(it, useMutex);
     return it;
 }
 

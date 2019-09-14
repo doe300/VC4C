@@ -183,6 +183,10 @@ namespace vc4c
 				//     {toParameter(std::vector<unsigned>{0x40, 0, 0, 0, 0x41, 0, 0, 0, 0x42, 0, 0, 0, 0x43, 0, 0, 0}), toParameter(std::vector<unsigned>{0x15, 0x16, 0x17, 0x18}), toParameter(std::vector<unsigned>(4))}, toConfig(1), maxExecutionCycles),
 				//     addVector({}, 2, std::vector<unsigned>{0x55, 0x57, 0x59, 0x61})
 				// )
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/async_copy_global_to_local.cl", "test_async_copy_global_to_local",
+					{toParameter(toRange<unsigned>(0, 64)), toParameter(std::vector<unsigned>(64)), toParameter(std::vector<unsigned>(64)), toScalarParameter(64), toScalarParameter(8)}, toConfig(8), maxExecutionCycles),
+					addVector({}, 1, toRange<unsigned>(0, 64))
+				),
 		};
 
 		//TODO NVIDIA/matrixMul, NVIDIA/transpose, OpenCLIPP/Arithmetic, OpenCLIPP/Logic, OpenCLIPP/Thresholding, test_signedness

@@ -84,6 +84,7 @@ void TestPatternMatching::testInstructionMatch()
     {
         auto out = assign(it, TYPE_INT16) = UNIFORM_REGISTER ^ UNIFORM_REGISTER;
         auto inst = (it.copy().previousInBlock()).get();
+        (void) out;
 
         Value arg = UNDEFINED_VALUE;
         auto part = anyValue() = (match(OP_XOR), capture(arg), capture(arg));
@@ -96,6 +97,7 @@ void TestPatternMatching::testInstructionMatch()
     {
         auto out = assign(it, TYPE_INT16) = (17_val ^ UNIFORM_REGISTER, SetFlag::SET_FLAGS);
         auto inst = (it.copy().previousInBlock()).get();
+        (void) out;
 
         Value arg = UNDEFINED_VALUE;
         SetFlag flags = SetFlag::DONT_SET;
@@ -111,6 +113,7 @@ void TestPatternMatching::testInstructionMatch()
         auto in = m.addNewLocal(TYPE_INT32);
         auto out = assign(it, TYPE_INT32) = (15_val + in, COND_NEGATIVE_CLEAR);
         auto inst = (it.copy().previousInBlock()).get();
+        (void) out;
 
         Value realIn = UNDEFINED_VALUE;
         ConditionCode realCond = COND_NEVER;
@@ -127,6 +130,7 @@ void TestPatternMatching::testInstructionMatch()
         auto in = m.addNewLocal(TYPE_INT32);
         auto out = assign(it, TYPE_INT32) = (15_val + in, COND_NEGATIVE_CLEAR);
         auto inst = (it.copy().previousInBlock()).get();
+        (void) out;
 
         Value realIn = UNDEFINED_VALUE;
         ConditionCode realCond = COND_NEVER;
@@ -157,6 +161,7 @@ void TestPatternMatching::testInstructionMatch()
         auto in = m.addNewLocal(TYPE_INT32);
         auto out = assign(it, TYPE_INT32) = (15_val + in, COND_NEGATIVE_CLEAR);
         auto inst = (it.copy().previousInBlock()).get();
+        (void) out;
 
         Value realOut = UNDEFINED_VALUE;
         const Local* loc = nullptr;
@@ -173,6 +178,7 @@ void TestPatternMatching::testInstructionMatch()
         auto in = m.addNewLocal(TYPE_INT32);
         auto out = assign(it, TYPE_INT32) = (15_val + in, COND_NEGATIVE_CLEAR);
         auto inst = (it.copy().previousInBlock()).get();
+        (void) out;
 
         Value realOut = UNDEFINED_VALUE;
         OpCode realCode = OP_NOP;

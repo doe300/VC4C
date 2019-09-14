@@ -141,8 +141,12 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(
         if(mem->op == MemoryOperation::COPY)
         {
             if(!wholeRegister && mem->getNumEntries() != INT_ONE)
+            {
+                logging::error() << mem->getSource().to_string() << " - " << srcInfo.to_string() << " -> "
+                                 << mem->getDestination().to_string() << " - " << destInfo.to_string() << logging::endl;
                 throw CompilationError(CompilationStep::NORMALIZER,
                     "Lowering copy with more than 1 entry is not yet implemented", mem->to_string());
+            }
             it.reset(new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmpVal)));
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Replaced memory copy from constant memory to memory write of constant value: "
@@ -171,8 +175,12 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(
         if(mem->op == MemoryOperation::COPY)
         {
             if(!wholeRegister && mem->getNumEntries() != INT_ONE)
+            {
+                logging::error() << mem->getSource().to_string() << " - " << srcInfo.to_string() << " -> "
+                                 << mem->getDestination().to_string() << " - " << destInfo.to_string() << logging::endl;
                 throw CompilationError(CompilationStep::NORMALIZER,
                     "Lowering copy with more than 1 entry is not yet implemented", mem->to_string());
+            }
             it.reset(new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmpVal)));
             it = mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -187,8 +195,12 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(
         if(mem->op == MemoryOperation::COPY)
         {
             if(mem->getNumEntries() != INT_ONE)
+            {
+                logging::error() << mem->getSource().to_string() << " - " << srcInfo.to_string() << " -> "
+                                 << mem->getDestination().to_string() << " - " << destInfo.to_string() << logging::endl;
                 throw CompilationError(CompilationStep::NORMALIZER,
                     "Lowering copy with more than 1 entry is not yet implemented", mem->to_string());
+            }
             // since a copy always involves another memory object, this rewrite is picked up when the other
             // object is processed
             it.reset(new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), *std::move(constant)));
@@ -268,10 +280,6 @@ static InstructionWalker lowerMemoryCopyToRegister(
     auto wholeRegister =
         copiesWholeRegister(mem->getNumEntries(), mem->getDestinationElementType(), *srcInfo.convertedRegisterType);
 
-    if(!wholeRegister && mem->getNumEntries() != INT_ONE)
-        throw CompilationError(CompilationStep::NORMALIZER,
-            "Lowering copy with more than 1 entry is not yet implemented", mem->to_string());
-
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Lowering copy with register-mapped memory: " << mem->to_string() << logging::endl);
 
@@ -280,14 +288,30 @@ static InstructionWalker lowerMemoryCopyToRegister(
     {
         // TODO check whether index is guaranteed to be in range [0, 16[
         Value tmp(UNDEFINED_VALUE);
+        Value numEntries = INT_ONE;
         if(wholeRegister)
             tmp = *srcInfo.mappedRegisterOrConstant;
         else
         {
-            tmp = method.addNewLocal(mem->getSourceElementType());
+            if(mem->getNumEntries() != INT_ONE)
+            {
+                if(auto lit = mem->getNumEntries().getLiteralValue())
+                {
+                    // TODO is this correct??
+                    auto tmpType = periphery::getBestVectorSize(lit->unsignedInt());
+                    numEntries = Value(Literal(tmpType.second), TYPE_INT32);
+                    tmp = method.addNewLocal(tmpType.first);
+                }
+                throw CompilationError(CompilationStep::NORMALIZER,
+                    "Lowering copy with a dynamic number of entries is not yet implemented", mem->to_string());
+            }
+            else
+                tmp = method.addNewLocal(mem->getSourceElementType());
             it = insertVectorExtraction(it, method, *srcInfo.mappedRegisterOrConstant, tmpIndex, tmp);
         }
-        it.reset(new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmp)));
+        logging::error() << tmp.to_string() << " - " << numEntries.to_string() << logging::endl;
+        it.reset(new MemoryInstruction(
+            MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmp), std::move(numEntries)));
         return mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
     }
     if(destInfo.mappedRegisterOrConstant)
@@ -457,32 +481,40 @@ static InstructionWalker accessMemoryInRAMViaVPM(
     {
     case MemoryOperation::FILL:
     {
-        if(!mem->getNumEntries().isLiteralValue())
-            throw CompilationError(CompilationStep::OPTIMIZER,
-                "Filling dynamically sized memory is not yet implemented", mem->to_string());
-        auto numCopies = mem->getNumEntries().getLiteralValue()->unsignedInt();
         it.emplace(new MutexLock(MutexAccess::LOCK));
         it.nextInBlock();
-        if(mem->getSource().type == TYPE_INT8)
+        if(auto numCopies = mem->getNumEntries().getLiteralValue())
         {
-            // if we fill single bytes, combine them to some vector type to not have to write so many single bytes
-            auto vpmType = periphery::getBestVectorSize(numCopies);
-            // 1. replicate byte across word
-            auto fillWord = assign(it, TYPE_INT32) = (mem->getSource(), UNPACK_8A_32);
-            // 2. replicate word across all vector elements
-            auto fillVector = method.addNewLocal(TYPE_INT32.toVectorType(16), "%memory_fill");
-            it = insertReplication(it, fillWord, fillVector);
-            // 3. write vector to VPM
-            it = method.vpm->insertWriteVPM(method, it, fillVector, nullptr, false);
-            // 4. fill memory with vector
-            it = method.vpm->insertFillRAM(
-                method, it, mem->getDestination(), vpmType.first, vpmType.second, nullptr, false);
+            if(mem->getSource().type == TYPE_INT8)
+            {
+                // if we fill single bytes, combine them to some vector type to not have to write so many single bytes
+                auto vpmType = periphery::getBestVectorSize(numCopies->unsignedInt());
+                // 1. replicate byte across word
+                auto fillWord = assign(it, TYPE_INT32) = (mem->getSource(), UNPACK_8A_32);
+                // 2. replicate word across all vector elements
+                auto fillVector = method.addNewLocal(TYPE_INT32.toVectorType(16), "%memory_fill");
+                it = insertReplication(it, fillWord, fillVector);
+                // 3. write vector to VPM
+                it = method.vpm->insertWriteVPM(method, it, fillVector, nullptr, false);
+                // 4. fill memory with vector
+                it = method.vpm->insertFillRAM(
+                    method, it, mem->getDestination(), vpmType.first, vpmType.second, nullptr, false);
+            }
+            else
+            {
+                it = method.vpm->insertWriteVPM(method, it, mem->getSource(), nullptr, false);
+                it = method.vpm->insertFillRAM(method, it, mem->getDestination(), mem->getSourceElementType(),
+                    numCopies->unsignedInt(), nullptr, false);
+            }
         }
         else
         {
+            // Fill dynamically sized memory
+            // TODO This is usually the result of an (llvm.)memset(...) instruction, which always writes a certain
+            // number of single bytes, which is very inefficient!
             it = method.vpm->insertWriteVPM(method, it, mem->getSource(), nullptr, false);
-            it = method.vpm->insertFillRAM(method, it, mem->getDestination(), mem->getSourceElementType(),
-                static_cast<unsigned>(numCopies), nullptr, false);
+            it = method.vpm->insertFillRAMDynamic(
+                method, it, mem->getDestination(), mem->getSourceElementType(), mem->getNumEntries(), nullptr, false);
         }
         it.emplace(new MutexLock(MutexAccess::RELEASE));
         it.nextInBlock();
@@ -690,10 +722,14 @@ static InstructionWalker mapMemoryCopy(
             it.reset(new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmp)));
             return mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
         }
-        else if(numEntries.getLiteralValue() &&
-            (numEntries.getLiteralValue()->unsignedInt() * mem->getSourceElementType().getVectorWidth()) <=
-                NATIVE_VECTOR_SIZE)
+        else
         {
+            // copy an dynamic (or constant but too big fitting) area of VPM/RAM (via TMU or VPM) to register
+            logging::error() << src->to_string() << " - " << srcInfo.to_string() << logging::endl;
+            logging::error() << dest->to_string() << " - " << destInfo.to_string() << logging::endl;
+            if(auto writer = mem->getNumEntries().getSingleWriter())
+                logging::error() << writer->to_string() << logging::endl;
+            throw CompilationError(CompilationStep::NORMALIZER, "Needs to be re-written", mem->to_string());
         }
     }
     else
@@ -711,10 +747,4 @@ static InstructionWalker mapMemoryCopy(
             CompilationStep::NORMALIZER, "Unhandled case for handling memory copy", mem->to_string());
         LCOV_EXCL_STOP
     }
-
-    logging::error() << src->to_string() << " - " << static_cast<unsigned>(srcInfo.type) << " - "
-                     << (srcInfo.area ? srcInfo.area->to_string() : "") << logging::endl;
-    logging::error() << dest->to_string() << " - " << static_cast<unsigned>(destInfo.type) << " - "
-                     << (destInfo.area ? destInfo.area->to_string() : "") << logging::endl;
-    throw CompilationError(CompilationStep::NORMALIZER, "Need to be re-written", mem->to_string());
 }
