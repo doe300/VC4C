@@ -2,6 +2,8 @@
 
 using namespace vc4c;
 
+constexpr OpCode Expression::FAKEOP_UMUL;
+
 Optional<Expression> Expression::createExpression(const intermediate::IntermediateInstruction& instr)
 {
     if(instr.hasSideEffects())
@@ -30,6 +32,38 @@ Optional<Expression> Expression::createExpression(const intermediate::Intermedia
     return Expression{code, instr.getArgument(0).value(),
         instr.getArgument(1) ? instr.getArgument(1) : code == OP_V8MIN ? instr.getArgument(0) : NO_VALUE,
         instr.unpackMode, instr.packMode, instr.decoration};
+}
+
+static Optional<Expression> createRecursiveExpressionInner(const intermediate::IntermediateInstruction& instr,
+    unsigned maxDepth, FastMap<const Local*, Expression>& parentsCache, bool allowFakeOperations)
+{
+    if(auto expr = Expression::createExpression(instr))
+    {
+        if(maxDepth > 0)
+        {
+            for(auto& arg : instr.getArguments())
+            {
+                if(auto writer = arg.getSingleWriter())
+                {
+                    if(parentsCache.find(arg.local()) != parentsCache.end())
+                        continue;
+                    if(auto parentExpr =
+                            createRecursiveExpressionInner(*writer, maxDepth - 1, parentsCache, allowFakeOperations))
+                        parentsCache.emplace(arg.local(), *std::move(parentExpr));
+                }
+            }
+            return expr->combineWith(parentsCache, allowFakeOperations);
+        }
+        return expr;
+    }
+    return {};
+}
+
+Optional<Expression> Expression::createRecursiveExpression(
+    const intermediate::IntermediateInstruction& instr, unsigned maxDepth, bool allowFakeOperations)
+{
+    FastMap<const Local*, Expression> parentsCache;
+    return createRecursiveExpressionInner(instr, maxDepth, parentsCache, allowFakeOperations);
 }
 
 bool Expression::operator==(const Expression& other) const
@@ -78,7 +112,7 @@ bool Expression::hasConstantOperand() const
     return isConstantOperand(arg0) || isConstantOperand(arg1);
 }
 
-Expression Expression::combineWith(const FastMap<const Local*, Expression>& inputs) const
+Expression Expression::combineWith(const FastMap<const Local*, Expression>& inputs, bool allowFakeOperations) const
 {
     const Expression* expr0 = nullptr;
     const Expression* expr1 = nullptr;
@@ -307,6 +341,39 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
             if((code == OP_SUB && expr1->code == OP_ADD) || (code == OP_FSUB && expr1->code == OP_FADD))
                 return Expression{code, INT_ZERO, otherArg, UNPACK_NOP, PACK_NOP, deco};
         }
+
+        // (a << const) + a = a + (a << const) -> a * ((1 << const) + 1)
+        if(allowFakeOperations && code == OP_ADD && expr0 && expr0->arg0 == arg1 &&
+            (expr0->arg1 & &Value::getLiteralValue))
+        {
+            auto factor = (1u << expr0->arg1->getLiteralValue()->unsignedInt()) + 1u;
+            return Expression{FAKEOP_UMUL, expr0->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+        }
+        if(allowFakeOperations && code == OP_ADD && expr1 && expr1->arg0 == arg0 &&
+            (expr1->arg1 & &Value::getLiteralValue))
+        {
+            auto factor = (1u << expr1->arg1->getLiteralValue()->unsignedInt()) + 1u;
+            return Expression{FAKEOP_UMUL, arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+        }
+
+        // (a * constA) << constB = (constA * a) << constB -> a * (constA << constB)
+        if(allowFakeOperations && code == OP_SHL && expr0 && expr0->code == FAKEOP_UMUL &&
+            (expr0->arg1 & &Value::getLiteralValue) && (arg1 & &Value::getLiteralValue))
+        {
+            auto factor = expr0->arg1->getLiteralValue()->unsignedInt() << arg1->getLiteralValue()->unsignedInt();
+            return Expression{FAKEOP_UMUL, expr0->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+        }
+        if(allowFakeOperations && code == OP_SHL && expr0 && expr0->code == FAKEOP_UMUL && expr0->arg1 &&
+            (expr0->arg0.getLiteralValue()) && (arg1 & &Value::getLiteralValue))
+        {
+            auto factor = expr0->arg0.getLiteralValue()->unsignedInt() << arg1->getLiteralValue()->unsignedInt();
+            return Expression{
+                FAKEOP_UMUL, *expr0->arg1, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+        }
+
+        // TODO
+        // (a << constA) * constB = constB * (a << constA) -> a * ((1 << constA) * constB)
+        // (a * const) + a = a + (a * const) = (const * a) + a = a + (const * a) -> a * (const + 1)
     }
 
     return *this;

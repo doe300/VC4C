@@ -21,6 +21,9 @@ namespace vc4c
      */
     struct Expression
     {
+        // A fake operation to indicate an unsigned multiplication
+        static constexpr OpCode FAKEOP_UMUL{"umul", 132, 132, 2, false, false, FlagBehavior::NONE};
+
         OpCode code;
         Value arg0;
         Optional<Value> arg1;
@@ -28,7 +31,20 @@ namespace vc4c
         Pack packMode = PACK_NOP;
         intermediate::InstructionDecorations deco = intermediate::InstructionDecorations::NONE;
 
+        /**
+         * Tries to create an expression representing the single instruction
+         */
         static Optional<Expression> createExpression(const intermediate::IntermediateInstruction& instr);
+
+        /**
+         * Tries to create an expression representing the calculation in the given instruction while also regarding the
+         * instructions calculating the instruction arguments.
+         *
+         * If the optional parameter allowFakeOperations is set, the resulting expression might be an operation, which
+         * can not be mapped to an instruction, e.g. the fake "umul" defined above.
+         */
+        static Optional<Expression> createRecursiveExpression(const intermediate::IntermediateInstruction& instr,
+            unsigned maxDepth = 6, bool allowFakeOperations = false);
 
         bool operator==(const Expression& other) const;
 
@@ -44,9 +60,12 @@ namespace vc4c
          * Expressions can be combined, e.g. if the inputs of this expression can be calculated with one of the
          * arguments and the op-codes can be combined.
          *
+         * If the optional parameter allowFakeOperations is set, the resulting expression might be an operation, which
+         * can not be mapped to an instruction, e.g. the fake "umul" defined above.
+         *
          * Returns a copy of this expression, if no combination could be done
          */
-        Expression combineWith(const FastMap<const Local*, Expression>& inputs) const;
+        Expression combineWith(const FastMap<const Local*, Expression>& inputs, bool allowFakeOperations = false) const;
     };
 
     // Extends the operator syntax to create expressions from it
