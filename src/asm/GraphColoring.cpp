@@ -541,6 +541,53 @@ void GraphColoring::createGraph()
     }
     PROFILE_END(InterferenceToColoredGraph);
 
+    // 3. iteration: pre-color neighbors with fixed/blocked register-files
+    // This prevents some locals from being assigned to a register-file where other locals used together cannot be
+    // assigned anymore to anything, since their only valid register-file is now blocked.
+    PROFILE_START(ForwardBlockedRegisterFiles);
+    FastSet<ColoredNode*> openNodes;
+    for(auto& node : graph.getNodes())
+    {
+        if(node.second.possibleFiles == RegisterFile::PHYSICAL_A ||
+            node.second.possibleFiles == RegisterFile::PHYSICAL_B)
+        {
+            // this node is fixed to register-file A(B), all others used together cannot be on file A(B)
+            auto blockedFile = node.second.possibleFiles;
+            auto otherFile =
+                blockedFile == RegisterFile::PHYSICAL_A ? RegisterFile::PHYSICAL_B : RegisterFile::PHYSICAL_A;
+            node.second.forAllEdges([&](ColoredNode& neighbor, ColoredEdge& edge) -> bool {
+                if(edge.data == analysis::InterferenceType::USED_TOGETHER)
+                {
+                    bool fileRemoved = has_flag(neighbor.possibleFiles, blockedFile);
+                    neighbor.possibleFiles = remove_flag(neighbor.possibleFiles, blockedFile);
+                    if(fileRemoved && neighbor.possibleFiles == otherFile)
+                        // neighbor is now fixed to the other physical file, process all of its neighbors afterwards
+                        openNodes.emplace(&neighbor);
+                }
+                return true;
+            });
+        }
+    }
+    while(!openNodes.empty())
+    {
+        auto& node = *openNodes.begin();
+        auto blockedFile = node->possibleFiles;
+        auto otherFile = blockedFile == RegisterFile::PHYSICAL_A ? RegisterFile::PHYSICAL_B : RegisterFile::PHYSICAL_A;
+        node->forAllEdges([&](ColoredNode& neighbor, ColoredEdge& edge) -> bool {
+            if(edge.data == analysis::InterferenceType::USED_TOGETHER)
+            {
+                bool fileRemoved = has_flag(neighbor.possibleFiles, blockedFile);
+                neighbor.possibleFiles = remove_flag(neighbor.possibleFiles, blockedFile);
+                if(fileRemoved && neighbor.possibleFiles == otherFile)
+                    // neighbor is now fixed to the other physical file, process all of its neighbors afterwards
+                    openNodes.emplace(&neighbor);
+            }
+            return true;
+        });
+        openNodes.erase(openNodes.begin());
+    }
+    PROFILE_END(ForwardBlockedRegisterFiles);
+
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Colored graph with " << graph.getNodes().size() << " nodes created!" << logging::endl);
 #ifdef DEBUG_MODE

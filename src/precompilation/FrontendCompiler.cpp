@@ -77,6 +77,19 @@ static std::vector<std::string> buildClangCommand(const std::string& compiler, c
         command.emplace_back("-cl-single-precision-constant");
     }
 #endif
+    /*
+     * Problem:
+     * "In C99, inline means that a function's definition is provided only for inlining, and that there is another
+     * definition (without inline) somewhere else in the program." - https://clang.llvm.org/compatibility.html#inline
+     *
+     * -> Unless the function is actually inlined (which the compiler decides on its own), it will only be declared, not
+     * defined resulting in compilation error.
+     *
+     * See https://clang.llvm.org/compatibility.html#inline
+     *
+     * As solution, we set inline behavior to C89, even OpenCL is based on C99
+     */
+    command.emplace_back("-fgnu89-inline");
     // link in our standard-functions
     command.emplace_back("-Wno-undefined-inline");
     command.emplace_back("-Wno-unused-parameter");
