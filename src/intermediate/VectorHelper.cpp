@@ -188,7 +188,7 @@ InstructionWalker intermediate::insertVectorInsertion(
     if(value.type.isScalarType())
     {
         // single element -> create condition only met in given index
-        auto cond = assignNop(it) = (as_unsigned{ELEMENT_NUMBER_REGISTER} == as_unsigned{index});
+        auto cond = assignNop(it) = selectSIMDElement(index);
         // 3) move when condition is met
         assign(it, container) = (tmp, cond, InstructionDecorations::ELEMENT_INSERTION);
     }
@@ -268,8 +268,7 @@ static NODISCARD InstructionWalker insertDynamicVectorShuffle(
         }
         else
         {
-            auto cond = assignNop(it) =
-                (as_unsigned{ELEMENT_NUMBER_REGISTER} == as_unsigned{Value(Literal(i), TYPE_INT8)});
+            auto cond = assignNop(it) = selectSIMDElement(i);
             assign(it, destination) = (resultTmp, cond, InstructionDecorations::ELEMENT_INSERTION);
         }
     }

@@ -9,6 +9,7 @@
 #include "../InstructionWalker.h"
 #include "../Method.h"
 #include "../intermediate/VectorHelper.h"
+#include "../intermediate/operators.h"
 #include "CompilationError.h"
 #include "log.h"
 
@@ -17,6 +18,7 @@
 
 using namespace vc4c;
 using namespace vc4c::optimizations;
+using namespace vc4c::operators;
 
 static const std::vector<std::string> workGroupLocalNames = {Method::LOCAL_IDS, Method::LOCAL_SIZES, Method::GROUP_ID_X,
     Method::GROUP_ID_Y, Method::GROUP_ID_Z, Method::NUM_GROUPS_X, Method::NUM_GROUPS_Y, Method::NUM_GROUPS_Z,
@@ -38,6 +40,20 @@ static NODISCARD InstructionWalker compressLocalWrite(
             it, method, container.createReference(), Value(SmallImmediate(index), TYPE_INT8), src);
         it.erase();
         return it;
+    }
+    if(auto op = it.get<intermediate::Operation>())
+    {
+        if(op->writesLocal(&local) && op->readsLocal(&local) && op->readsLiteral() && !op->hasSideEffects() &&
+            !op->hasConditionalExecution())
+        {
+            // replace local with index in container and make calculation only applicable for this index,  e.g. for
+            // work-group loop group-id increment
+            auto cond = assignNop(it) = selectSIMDElement(index);
+            op->replaceLocal(&local, &container, LocalUse::Type::BOTH);
+            op->setCondition(cond);
+            it.nextInBlock();
+            return it;
+        }
     }
 
     const Value tmp = method.addNewLocal(local.type);

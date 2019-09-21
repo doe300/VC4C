@@ -289,7 +289,7 @@ InstructionWalker intermediate::insertByteSwap(
         it.nextInBlock();
         // A B C D -> D A B C
         const Value tmpBD0 = method.addNewLocal(src.type, "byte_swap");
-        it.emplace(new Operation(OP_ROR, tmpBD0, src, Value(Literal(16u), TYPE_INT8)));
+        it.emplace(new Operation(OP_ROR, tmpBD0, src, Value(Literal(8u), TYPE_INT8)));
         it.nextInBlock();
         // B C D A -> 0 0 0 A
         Value tmpA1 = assign(it, src.type, "byte_swap") = tmpAC0 & 0x000000FF_val;

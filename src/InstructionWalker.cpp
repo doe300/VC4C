@@ -145,6 +145,11 @@ BasicBlock* InstructionWalker::getBasicBlock()
     return basicBlock;
 }
 
+const BasicBlock* InstructionWalker::getBasicBlock() const
+{
+    return basicBlock;
+}
+
 InstructionWalker& InstructionWalker::nextInBlock()
 {
     ++pos;

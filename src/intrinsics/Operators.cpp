@@ -394,6 +394,13 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivisionByConstant(
 
 static std::pair<Literal, Literal> calculateConstant(Literal divisor, unsigned accuracy)
 {
+    // See OpenCL 1.2 specification, section 6.2:
+    // "A divide by zero with integer types does not cause an exception but will result in an unspecified value."
+    // -> just return a dummy value. This also prevents UBSAN errors
+    if(divisor.isUndefined() || divisor.unsignedInt() == 0)
+        // a multiplication by 1 and a shift by 0 should both be able to be eliminated
+        return std::make_pair(Literal(1), Literal(0));
+
     uint32_t shift = static_cast<uint32_t>(std::log2(divisor.unsignedInt() * accuracy)) + 2;
     uint32_t factor =
         static_cast<uint32_t>(std::round(std::pow(2.0f, shift) / static_cast<double>(divisor.unsignedInt())));

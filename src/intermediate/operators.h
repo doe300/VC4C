@@ -688,6 +688,28 @@ namespace vc4c
             };
             return ComparisonWrapper{COND_ZERO_SET, val.val, UNDEFINED_VALUE, func};
         }
+
+        NODISCARD inline ComparisonWrapper selectSIMDElement(uint8_t index)
+        {
+            return as_unsigned{ELEMENT_NUMBER_REGISTER} == as_unsigned{Value(Literal(index), TYPE_INT8)};
+        }
+
+        NODISCARD inline ComparisonWrapper selectSIMDElement(const Value& index)
+        {
+            return as_unsigned{ELEMENT_NUMBER_REGISTER} == as_unsigned{index};
+        }
+
+        NODISCARD inline ComparisonWrapper selectSIMDElements(std::bitset<NATIVE_VECTOR_SIZE> indices)
+        {
+            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1) {
+                it.emplace(new intermediate::LoadImmediate(
+                    out, arg0.getLiteralValue().value().unsignedInt(), intermediate::LoadType::PER_ELEMENT_UNSIGNED));
+                it->setSetFlags(SetFlag::SET_FLAGS);
+                it.nextInBlock();
+            };
+            return ComparisonWrapper{COND_ZERO_CLEAR,
+                Value(Literal(static_cast<uint32_t>(indices.to_ulong())), TYPE_INT8), UNDEFINED_VALUE, func};
+        }
     } // namespace operators
 } // namespace vc4c
 

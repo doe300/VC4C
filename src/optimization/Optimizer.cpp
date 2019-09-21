@@ -251,8 +251,8 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         OptimizationType::INITIAL),
     OptimizationPass("MergeBasicBlocks", "merge-blocks", mergeAdjacentBasicBlocks,
         "merges adjacent basic blocks if there are no other conflicting transitions", OptimizationType::INITIAL),
-    OptimizationPass(
-        "VectorizeLoops", "vectorize-loops", vectorizeLoops, "vectorizes loops (WIP)", OptimizationType::INITIAL),
+    OptimizationPass("VectorizeLoops", "vectorize-loops", vectorizeLoops, "vectorizes supported types of loops",
+        OptimizationType::INITIAL),
     /*
      * The second block executes optimizations only within a single basic block.
      * These optimizations may be executed in a loop until there are not more changes to the instructions

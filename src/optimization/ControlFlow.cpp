@@ -1198,7 +1198,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
         for(auto& node : unnecessaryNodes)
         {
             CFGNode *prev = nullptr, *next = nullptr;
-            // A unnecessary node must has just one previous node and one next node.
+            // An unnecessary node must have just one previous node and one next node.
             node->forAllIncomingEdges([&prev](CFGNode& node, CFGEdge&) -> bool {
                 prev = &node;
                 return false;
@@ -1210,12 +1210,13 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 
             if(prev == nullptr || next == nullptr)
             {
+                // FIXME this fails for all kernels for %end_of_kernel, but if we remove this, it SEGFAULTs further down
                 throw CompilationError(
                     CompilationStep::OPTIMIZER, "A unnecessary node must has just a previous node and a next node.");
             }
 
             cfg->eraseNode(node->key);
-            if(!prev->isAdjacent(next))
+            if(prev && next && !prev->isAdjacent(next))
             {
                 prev->addEdge(next, {});
             }

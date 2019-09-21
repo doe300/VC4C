@@ -82,6 +82,7 @@ namespace vc4c
          * Returns the basic-block the current position belongs to
          */
         BasicBlock* getBasicBlock();
+        const BasicBlock* getBasicBlock() const;
 
         /*
          * Steps forward to the next instruction within the same basic block
