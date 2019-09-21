@@ -136,13 +136,7 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
         }
         if(auto rot = dynamic_cast<const intermediate::VectorRotation*>(inst))
         {
-            if(rot->getOffset().hasRegister(REG_ACC5))
-            {
-                // we don't know the exact offset, so reserve all
-                for(auto& val : newValues)
-                    val.second.set();
-            }
-            else if(rot->getOffset().immediate().getRotationOffset())
+            if(rot->type == intermediate::RotationType::FULL && rot->getOffset().immediate().getRotationOffset())
             {
                 // we rotate all the used elements by the offset (if known)
                 for(auto& val : newValues)
@@ -152,6 +146,13 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
                     tmp = rotate_left(tmp, rot->getOffset().immediate().getRotationOffset().value());
                     val.second = tmp;
                 }
+            }
+            // TODO constant per-quad rotation
+            else
+            {
+                // we don't know the exact offset, so reserve all
+                for(auto& val : newValues)
+                    val.second.set();
             }
         }
         if(inst->doesSetFlag())

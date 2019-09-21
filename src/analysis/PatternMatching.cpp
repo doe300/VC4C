@@ -230,6 +230,7 @@ static Optional<OpCode> determineOpCode(const intermediate::IntermediateInstruct
     if(auto op = dynamic_cast<const intermediate::Operation*>(inst))
         return op->op;
     if(dynamic_cast<const intermediate::VectorRotation*>(inst))
+        // TODO need to distinguish between full-range and per-quad?!
         return FAKEOP_ROTATE;
     if(dynamic_cast<const intermediate::MoveOperation*>(inst))
         return FAKEOP_MOV;

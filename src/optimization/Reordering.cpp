@@ -425,8 +425,11 @@ InstructionWalker optimizations::moveRotationSourcesToAccumulators(
      *
      */
     auto rot = it.get<VectorRotation>();
-    if(rot)
+    if(rot && rot->isFullRotationAllowed())
     {
+        // NOTE: can either run on if-full-rotation allowed, this is greedy, will rewrite some cases where not necessary
+        // or on if-quad-rotation-not-allowed, this is generous, will only rewrite when necessary, but might cause
+        // register allocation errors
         if(auto loc = rot->getSource().checkLocal())
         {
             InstructionWalker writer = it.copy().previousInBlock();

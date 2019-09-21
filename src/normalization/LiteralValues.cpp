@@ -176,6 +176,11 @@ InstructionWalker normalization::handleContainer(
             rot->getOffset().immediate().getRotationOffset().value();
         //"Rotates the order of the elements in the range [first,last), in such a way that the element pointed by middle
         // becomes the new first element."
+        {
+            // TODO per-quad rotation. First need to find a code, where this is actually used...
+            throw CompilationError(
+                CompilationStep::NORMALIZER, "Rotating constant vectors is currently not supported", it->to_string());
+        }
         offset = (16 - offset);
         // need to rotate all (possible non-existing) 16 elements, so use a temporary vector with 16 elements and rotate
         // it

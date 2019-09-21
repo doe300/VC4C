@@ -463,12 +463,40 @@ namespace vc4c
             virtual bool isSimpleMove() const;
         };
 
+        enum class RotationType : unsigned char
+        {
+            // Full vector rotation across all 16 SIMD elements, inputs must be accumulators
+            // out[index] = input[(index + 16 - offset) % 16]
+            // E.g. element_number << 2 -> [14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+            FULL,
+            // Partial vector rotation within the four quads, inputs can be any register on physical file A
+            // out[index] = input[(index / 4) * 4 + (index + 4 - offset) % 4]
+            // e.g. element_number << 2 -> [2, 3, 0, 1, 6, 7, 4, 5, 11, 12, 8, 9, 15, 14, 12, 13]
+            PER_QUAD,
+            // This allows the usage of both full and partial vector rotation depending on the input register
+            // NOTE: This is only valid if the offset is in [0, 3] for a single element which will be rotated from
+            // element zero to element1, element2 or element3
+            ANY
+        };
+
+        /**
+         * A MUL ALU operation which does not calculate anything, but instead rotates the input vector
+         *
+         * Behavior:
+         * - For full-range vector rotations, all inputs needs to be read from accumulators
+         * - For per-quad vector rotation, inputs can also be located in physical registers
+         * - In either case, the input register (physical or accumulator) must not be written in the instruction before
+         * the vector rotation
+         * - if rotated by r5 (e.g. dynamic offset), r5 must not be written in the instruction before the vector
+         * rotation
+         * - can output into any accumulator or physical register
+         */
         struct VectorRotation final : public MoveOperation
         {
-            VectorRotation(const Value& dest, const Value& src, const Value& offset, ConditionCode cond = COND_ALWAYS,
-                SetFlag setFlags = SetFlag::DONT_SET);
-            VectorRotation(Value&& dest, Value&& src, Value&& offset, ConditionCode cond = COND_ALWAYS,
-                SetFlag setFlags = SetFlag::DONT_SET);
+            VectorRotation(const Value& dest, const Value& src, const Value& offset, RotationType type,
+                ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
+            VectorRotation(Value&& dest, Value&& src, Value&& offset, RotationType type,
+                ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
             ~VectorRotation() override = default;
 
             std::string to_string() const override;
@@ -481,6 +509,10 @@ namespace vc4c
             const Value& getOffset() const;
 
             bool isSimpleMove() const override;
+            bool isPerQuadRotationAllowed() const;
+            bool isFullRotationAllowed() const;
+
+            RotationType type;
         };
 
         struct BranchLabel final : public IntermediateInstruction

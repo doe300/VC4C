@@ -64,7 +64,8 @@ struct NodeSorter : public std::less<intermediate::IntermediateInstruction*>
             priority -= 30;
 
         // give vector rotations lower priority to make the usage-range of the accumulator used smaller
-        if(dynamic_cast<const intermediate::VectorRotation*>(inst))
+        if(dynamic_cast<const intermediate::VectorRotation*>(inst) &&
+            dynamic_cast<const intermediate::VectorRotation*>(inst)->isFullRotationAllowed())
             priority -= 50;
 
         // for conditional instructions setting flags themselves not preceding the other instructions depending on same

@@ -116,16 +116,10 @@ std::string ALUInstruction::toASMString() const
              getWriteSwap() == WriteSwap::SWAP, mulCanUnpack) +
             " ") +
         (opMul != OP_NOP ? toOutputRegister(getWriteSwap() == WriteSwap::SWAP, getMulOut()) : "") + mulArgs;
-    if(getMulMultiplexA() != InputMultiplex::REGA && getMulMultiplexA() != InputMultiplex::REGB &&
-        getMulMultiplexB() != InputMultiplex::REGA && getMulMultiplexB() != InputMultiplex::REGB &&
-        getSig() == SIGNAL_ALU_IMMEDIATE &&
-        (opAdd == OP_NOP || (getAddMultiplexA() != InputMultiplex::REGB && getAddMultiplexB() != InputMultiplex::REGB)))
+    if(isVectorRotation())
     {
-        // both inputs for mul are accumulators, an immediate value is used
-        // and the ADD ALU executes NOP or both inputs from the ADD ALU are not on
-        // register-file B
-        // -> vector rotation
         mulPart.append(" ").append(static_cast<SmallImmediate>(getInputB()).to_string());
+        mulPart.append(isFullRangeRotation() ? " (full)" : " (quad)");
     }
     std::string s;
     if(opAdd != OP_NOP)
@@ -202,4 +196,22 @@ Register ALUInstruction::getMulSecondOperand() const
     if(getMultiplication() == OP_NOP.opMul)
         return REG_NOP;
     return getInputRegister(getMulMultiplexB(), getInputA(), getInputB());
+}
+
+bool ALUInstruction::isVectorRotation() const
+{
+    return getSig() == SIGNAL_ALU_IMMEDIATE && static_cast<SmallImmediate>(getInputB()).isVectorRotation();
+}
+
+static bool isRegister0To3(InputMultiplex mux)
+{
+    return mux == InputMultiplex::ACC0 || mux == InputMultiplex::ACC1 || mux == InputMultiplex::ACC2 ||
+        mux == InputMultiplex::ACC3;
+}
+
+bool ALUInstruction::isFullRangeRotation() const
+{
+    //"The full horizontal vector rotate is only available when both of the mul ALU input arguments are taken from
+    // accumulators r0-r3" - Broadcom specification, page 20
+    return isVectorRotation() && isRegister0To3(getMulMultiplexA()) && isRegister0To3(getMulMultiplexB());
 }

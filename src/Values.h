@@ -782,9 +782,10 @@ namespace vc4c
         /*
          * Rotates the elements of this vector UPWARDS by the given offset.
          */
-        // TODO use this for constant vector rotation
         SIMDVector rotate(uint8_t offset) const &;
         SIMDVector rotate(uint8_t offset) &&;
+        SIMDVector rotatePerQuad(uint8_t offset) const &;
+        SIMDVector rotatePerQuad(uint8_t offset) &&;
 
         std::string to_string(bool withLiterals = false) const;
 

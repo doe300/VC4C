@@ -230,12 +230,19 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
     // an input can only be blocked if there is another one
     if(secondArg)
     {
-        // only accumulators can be rotated
-        if(dynamic_cast<const intermediate::VectorRotation*>(&instr) != nullptr && firstArg->checkLocal())
+        auto rot = dynamic_cast<const intermediate::VectorRotation*>(&instr);
+        if(rot && firstArg->checkLocal())
         {
             // logging::debug() << "Local " << firstArg.get().local.to_string() << " must be an accumulator, because it
             // is used in a vector-rotation in " << instr.to_string() << logging::endl;
-            blockRegisterFile(RegisterFile::PHYSICAL_ANY, firstArg->local(), localUses);
+            auto toBlock = RegisterFile::PHYSICAL_B;
+            if(!rot->isFullRotationAllowed())
+                // per-quad vector rotation MUST NOT take accumulator as input!
+                toBlock = add_flag(toBlock, RegisterFile::ACCUMULATOR);
+            if(!rot->isPerQuadRotationAllowed())
+                // only accumulators can be rotated across all vector elements
+                toBlock = add_flag(toBlock, RegisterFile::PHYSICAL_A);
+            blockRegisterFile(toBlock, firstArg->local(), localUses);
         } // the else here skip all the other checks, since they are useless for vector-rotations (already limits to
           // accumulator-only)
         else if(firstArg->checkLocal() && secondArg->checkImmediate())

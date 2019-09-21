@@ -16,13 +16,14 @@ using namespace vc4c;
 using namespace vc4c::intermediate;
 using namespace vc4c::operators;
 
-InstructionWalker intermediate::insertVectorRotation(
-    InstructionWalker it, const Value& src, const Value& offset, const Value& dest, const Direction direction)
+InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const Value& src, const Value& offset,
+    const Value& dest, const Direction direction, bool isSingleElementMoveFromToZero)
 {
     /*
      * The vector rotation is done by
      * 1. rotating the inputs to the MUL ALU by the value specified in the small-immediate
-     * - the inputs MUST be accumulators!
+     * - for full rotation, the inputs MUST be accumulators!
+     * - for per-quad rotation, the inputs MUST be on physical register-file A!
      * (2. calculating the result of the MUL ALU)
      * (3. writing the result to the MUL output)
      *
@@ -112,7 +113,30 @@ InstructionWalker intermediate::insertVectorRotation(
         // we insert a delay before every vector rotation, since the rotated value can't be written in the previous
         // instruction and a NOP guarantees it. Also, it should be removed by reordering in most cases
         nop(it, DelayType::WAIT_REGISTER);
-        it.emplace(new VectorRotation(dest, src, appliedOffset));
+        auto type = intermediate::RotationType::FULL;
+        if(isSingleElementMoveFromToZero && appliedOffset.checkImmediate())
+        {
+            if(auto origOffset = appliedOffset.immediate().getRotationOffset())
+            {
+                if(/* DISABLES CODE */ (false) && *origOffset > 12)
+                {
+                    // need to convert full-range offset to per-quad offset, e.g. element 2 to 0 is rotation by 14 for
+                    // full vector and by 2 for per-quad
+
+                    // FIXME forcing to file A causes too many register errors, need to limit some conversions
+                    // 15 -> 3, 14 -> 2, 13 -> 1
+                    appliedOffset.immediate() = SmallImmediate::fromRotationOffset(3u - (15u - *origOffset));
+                    type = intermediate::RotationType::PER_QUAD;
+                }
+                else if(*origOffset < 4)
+                {
+                    // for upwards rotations with less than 4 (within the first quad), the rotation is the same for both
+                    // modes, so we let the register allocator decide which one to use
+                    type = intermediate::RotationType::ANY;
+                }
+            }
+        }
+        it.emplace(new VectorRotation(dest, src, appliedOffset, type));
         it.nextInBlock();
     }
     return it;
@@ -139,7 +163,8 @@ InstructionWalker intermediate::insertVectorExtraction(
         assign(it, dest) = container;
         return it;
     }
-    return insertVectorRotation(it, container, index, dest, Direction::DOWN);
+    // for scalar output values, we only care about the 0th element, so we might also use per-quad rotation
+    return insertVectorRotation(it, container, index, dest, Direction::DOWN, dest.type.isScalarType());
 }
 
 InstructionWalker intermediate::insertVectorInsertion(
@@ -155,7 +180,9 @@ InstructionWalker intermediate::insertVectorInsertion(
     {
         tmp = method.addNewLocal(value.type, "%vector_insert");
         // 1) rotate value to the correct vector-position
-        it = intermediate::insertVectorRotation(it, value, index, tmp, intermediate::Direction::UP);
+        // for scalar input values, we only care about the one inserted element, so we might also use per-quad rotation
+        it = intermediate::insertVectorRotation(
+            it, value, index, tmp, intermediate::Direction::UP, value.type.isScalarType());
     }
     // 2) insert element(s) into container
     if(value.type.isScalarType())
@@ -373,7 +400,8 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         {
             // if the index to be used is not 0, rotate to position 0
             tmp = method.addNewLocal(source.type, "%vector_shuffle");
-            it = insertVectorRotation(it, source, Value(Literal(indexValue), TYPE_INT8), tmp, Direction::DOWN);
+            // allow per-quad rotation, since we only care about the 0th element, since we replicate this one
+            it = insertVectorRotation(it, source, Value(Literal(indexValue), TYPE_INT8), tmp, Direction::DOWN, true);
         }
         return insertReplication(it, tmp, destination);
     }

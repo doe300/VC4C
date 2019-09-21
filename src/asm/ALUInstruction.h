@@ -55,6 +55,9 @@ namespace vc4c
             Register getAddSecondOperand() const;
             Register getMulFirstOperand() const;
             Register getMulSecondOperand() const;
+
+            bool isVectorRotation() const;
+            bool isFullRangeRotation() const;
         };
     } // namespace qpu_asm
 } // namespace vc4c

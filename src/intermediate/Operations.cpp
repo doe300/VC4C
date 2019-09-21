@@ -576,17 +576,19 @@ bool MoveOperation::isSimpleMove() const
     return !hasSideEffects() && !unpackMode.hasEffect() && !packMode.hasEffect();
 }
 
-VectorRotation::VectorRotation(
-    const Value& dest, const Value& src, const Value& offset, const ConditionCode cond, const SetFlag setFlags) :
-    MoveOperation(dest, src, cond, setFlags)
+VectorRotation::VectorRotation(const Value& dest, const Value& src, const Value& offset, RotationType type,
+    const ConditionCode cond, const SetFlag setFlags) :
+    MoveOperation(dest, src, cond, setFlags),
+    type(type)
 {
     signal = SIGNAL_ALU_IMMEDIATE;
     setArgument(1, offset);
 }
 
 VectorRotation::VectorRotation(
-    Value&& dest, Value&& src, Value&& offset, const ConditionCode cond, const SetFlag setFlags) :
-    MoveOperation(std::move(dest), std::move(src), cond, setFlags)
+    Value&& dest, Value&& src, Value&& offset, RotationType type, const ConditionCode cond, const SetFlag setFlags) :
+    MoveOperation(std::move(dest), std::move(src), cond, setFlags),
+    type(type)
 {
     signal = SIGNAL_ALU_IMMEDIATE;
     setArgument(1, std::move(offset));
@@ -598,6 +600,7 @@ std::string VectorRotation::to_string() const
     // this is only for display purposes, the rotation register is handled correctly
     SmallImmediate offset = getOffset().hasRegister(REG_ACC5) ? VECTOR_ROTATE_R5 : getOffset().immediate();
     return (getOutput()->to_string(true) + " = ") + (getSource().to_string() + " ") + offset.to_string() +
+        (type == RotationType::FULL ? " (full)" : (type == RotationType::PER_QUAD ? "(quad)" : "(full/quad)")) +
         createAdditionalInfoString();
 }
 LCOV_EXCL_STOP
@@ -605,7 +608,7 @@ LCOV_EXCL_STOP
 IntermediateInstruction* VectorRotation::copyFor(Method& method, const std::string& localPrefix) const
 {
     return (new VectorRotation(renameValue(method, getOutput().value(), localPrefix),
-                renameValue(method, getSource(), localPrefix), renameValue(method, getOffset(), localPrefix),
+                renameValue(method, getSource(), localPrefix), renameValue(method, getOffset(), localPrefix), type,
                 conditional, setFlags))
         ->copyExtrasFrom(this);
 }
@@ -618,10 +621,20 @@ qpu_asm::DecoratedInstruction VectorRotation::convertToAsm(const FastMap<const L
     auto input = getInputValue(getSource(), registerMapping, this);
     auto rotationOffset = getInputValue(getOffset(), registerMapping, this);
     const InputMultiplex inMux = getInputMux(input.first, false, Optional<SmallImmediate>{});
-    if(inMux == InputMultiplex::REGA || inMux == InputMultiplex::REGB)
-    {
-        throw CompilationError(CompilationStep::CODE_GENERATION, "Can't rotate from register as input", to_string());
-    }
+    if(inMux == InputMultiplex::REGB)
+        // not allowed in either case, since input B is used for rotation offset
+        throw CompilationError(CompilationStep::CODE_GENERATION, "Can't rotate register-file B as input", to_string());
+    if(!isPerQuadRotationAllowed() && inMux == InputMultiplex::REGA)
+        throw CompilationError(CompilationStep::CODE_GENERATION,
+            "Can't rotate across full SIMD-vector from physical register as input", to_string());
+    if(!isFullRotationAllowed() && inMux != InputMultiplex::REGA)
+        throw CompilationError(
+            CompilationStep::CODE_GENERATION, "Per-quad rotate must take register-file A as input", to_string());
+
+    if(input.first.isAccumulator() && inMux != InputMultiplex::REGA)
+        input.first.num = REG_NOP.num; // Cosmetics, so vc4asm does not print "maybe reading reg xx"
+    else if(has_flag(input.first.file, RegisterFile::PHYSICAL_ANY))
+        input.first.file = RegisterFile::PHYSICAL_A;
 
     const bool writeSwap = outReg.file == RegisterFile::PHYSICAL_A;
     const WriteSwap swap = writeSwap ? WriteSwap::SWAP : WriteSwap::DONT_SWAP;
@@ -630,17 +643,18 @@ qpu_asm::DecoratedInstruction VectorRotation::convertToAsm(const FastMap<const L
     {
         SmallImmediate imm(VECTOR_ROTATE_R5 + static_cast<unsigned char>(rotationOffset.second.value()));
         return qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap, REG_NOP.num,
-            outReg.num, OP_V8MIN, OP_NOP, REG_NOP.num, imm, MULTIPLEX_NONE, MULTIPLEX_NONE, inMux, inMux);
+            outReg.num, OP_V8MIN, OP_NOP, input.first.num, imm, MULTIPLEX_NONE, MULTIPLEX_NONE, inMux, inMux);
     }
     else if(auto imm = getOffset().checkImmediate())
     {
         return qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap, REG_NOP.num,
-            outReg.num, OP_V8MIN, OP_NOP, REG_NOP.num, *imm, MULTIPLEX_NONE, MULTIPLEX_NONE, inMux, inMux);
+            outReg.num, OP_V8MIN, OP_NOP, input.first.num, *imm, MULTIPLEX_NONE, MULTIPLEX_NONE, inMux, inMux);
     }
     else
         // use offset from r5
         return qpu_asm::ALUInstruction(unpackMode, packMode, COND_NEVER, conditional, setFlags, swap, REG_NOP.num,
-            outReg.num, OP_V8MIN, OP_NOP, REG_NOP.num, VECTOR_ROTATE_R5, MULTIPLEX_NONE, MULTIPLEX_NONE, inMux, inMux);
+            outReg.num, OP_V8MIN, OP_NOP, input.first.num, VECTOR_ROTATE_R5, MULTIPLEX_NONE, MULTIPLEX_NONE, inMux,
+            inMux);
 }
 
 Operation* VectorRotation::combineWith(const std::string& otherOpCode) const
@@ -663,6 +677,16 @@ const Value& VectorRotation::getOffset() const
 bool VectorRotation::isSimpleMove() const
 {
     return false;
+}
+
+bool VectorRotation::isPerQuadRotationAllowed() const
+{
+    return type != RotationType::FULL;
+}
+
+bool VectorRotation::isFullRotationAllowed() const
+{
+    return type != RotationType::PER_QUAD;
 }
 
 LCOV_EXCL_START

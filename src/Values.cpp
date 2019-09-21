@@ -540,6 +540,8 @@ SIMDVector SIMDVector::rotate(uint8_t offset) const &
     SIMDVector copy(*this);
     //"Rotates the order of the elements in the range [first,last), in such a way that the element pointed by middle
     // becomes the new first element."
+    // -> this rotates downwards by the offset (middle - start), so we need to invert the offset
+    // rotate_up(vec, offset) = rotate_down(vec, len(vec) - offset)
     offset = static_cast<uint8_t>(NATIVE_VECTOR_SIZE - offset);
     std::rotate(copy.begin(), copy.begin() + offset, copy.end());
     return copy;
@@ -551,6 +553,25 @@ SIMDVector SIMDVector::rotate(uint8_t offset) &&
     // becomes the new first element."
     offset = static_cast<uint8_t>(NATIVE_VECTOR_SIZE - offset);
     std::rotate(begin(), begin() + offset, end());
+    return std::move(*this);
+}
+
+SIMDVector SIMDVector::rotatePerQuad(uint8_t offset) const &
+{
+    SIMDVector copy(*this);
+    std::rotate(copy.begin() + 0, copy.begin() + 4 - offset, copy.begin() + 4);
+    std::rotate(copy.begin() + 4, copy.begin() + 8 - offset, copy.begin() + 8);
+    std::rotate(copy.begin() + 8, copy.begin() + 12 - offset, copy.begin() + 12);
+    std::rotate(copy.begin() + 12, copy.end() - offset, copy.end());
+    return copy;
+}
+
+SIMDVector SIMDVector::rotatePerQuad(uint8_t offset) &&
+{
+    std::rotate(begin() + 0, begin() + 4 - offset, begin() + 4);
+    std::rotate(begin() + 4, begin() + 8 - offset, begin() + 8);
+    std::rotate(begin() + 8, begin() + 12 - offset, begin() + 12);
+    std::rotate(begin() + 12, end() - offset, end());
     return std::move(*this);
 }
 

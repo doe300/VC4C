@@ -63,7 +63,8 @@ void TestExpressions::testCreation()
 
     {
         // skip vector rotation
-        it.emplace(new intermediate::VectorRotation(NOP_REGISTER, Value(REG_REPLICATE_ALL, TYPE_INT32), INT_ONE));
+        it.emplace(new intermediate::VectorRotation(
+            NOP_REGISTER, Value(REG_REPLICATE_ALL, TYPE_INT32), INT_ONE, intermediate::RotationType::FULL));
         TEST_ASSERT(!Expression::createExpression(*it.get()))
     }
 

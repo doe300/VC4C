@@ -480,7 +480,7 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                     {
                         // also check that if the next instruction is a vector rotation, neither of the locals is being
                         // rotated there  since vector rotations can't rotate vectors which have been written in the
-                        // instruction directly preceding it
+                        // instruction directly preceding it (true for both full-vector and per-quad rotations)
                         auto checkIt = nextIt.copy().nextInBlock();
                         if(!checkIt.isEndOfBlock() && checkIt.get<VectorRotation>())
                         {
@@ -817,7 +817,10 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                     Optional<Value> staticOffset = NO_VALUE;
                     if(writer && (staticOffset = (*writer)->precalculate(2).first))
                     {
-                        if(staticOffset == INT_ZERO || staticOffset->hasLiteral(16_lit))
+                        if(staticOffset == INT_ZERO ||
+                            /* since 4 divides 16, this is also valid for per-quad rotation */
+                            (rot->isFullRotationAllowed() && staticOffset->hasLiteral(16_lit)) ||
+                            (!rot->isFullRotationAllowed() && staticOffset->hasLiteral(4_lit)))
                         {
                             // NOTE: offset of 16 can occur for downwards rotations a << (16 - x) when the actual
                             // rotation x is zero.
@@ -865,18 +868,21 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                         hasChanged = true;
                         continue;
                     }
-                    // rotate upper and lower parts by given offset and reset rotation with load!
-                    auto lit = writer->assertArgument(0).literal().unsignedInt();
-                    auto offset = rot->getOffset().immediate().getRotationOffset();
-                    auto upper = rotate_left_halfword(lit >> 16, *offset) << 16;
-                    auto lower = rotate_left_halfword(lit & 0xFFFF, *offset);
-                    CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Replacing rotation of masked load with rotated masked load: " << rot->to_string()
-                            << logging::endl);
-                    it.reset(
-                        (new LoadImmediate(it->getOutput().value(), upper | lower, writer->type))->copyExtrasFrom(rot));
-                    hasChanged = true;
-                    continue;
+                    else if(rot->type == RotationType::FULL)
+                    {
+                        // rotate upper and lower parts by given offset and reset rotation with load!
+                        auto lit = writer->assertArgument(0).literal().unsignedInt();
+                        auto offset = rot->getOffset().immediate().getRotationOffset();
+                        auto upper = rotate_left_halfword(lit >> 16, *offset) << 16;
+                        auto lower = rotate_left_halfword(lit & 0xFFFF, *offset);
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Replacing rotation of masked load with rotated masked load: " << rot->to_string()
+                                << logging::endl);
+                        it.reset((new LoadImmediate(it->getOutput().value(), upper | lower, writer->type))
+                                     ->copyExtrasFrom(rot));
+                        hasChanged = true;
+                        continue;
+                    }
                 }
             }
 
@@ -890,7 +896,7 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                         const VectorRotation* firstRot = dynamic_cast<const VectorRotation*>(writer);
                         if(firstRot != nullptr && !firstRot->hasSideEffects() &&
                             firstRot->getOffset().checkImmediate() &&
-                            firstRot->getOffset().immediate() != VECTOR_ROTATE_R5)
+                            firstRot->getOffset().immediate() != VECTOR_ROTATE_R5 && rot->type == firstRot->type)
                         {
                             auto firstIt = it.getBasicBlock()->findWalkerForInstruction(firstRot, it);
                             if(firstIt)
@@ -900,13 +906,14 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                                  * Can combine the offsets of two rotations,
                                  * - if the only source of a vector rotation is only written once,
                                  * - the source of the input is another vector rotation,
-                                 * - both rotations only use immediate offsets and
-                                 * - neither rotation has any side effects
+                                 * - both rotations only use immediate offsets,
+                                 * - neither rotation has any side effects and
+                                 * - both rotations are of the same type (full-vector or per-quad)
                                  */
                                 const uint8_t offset =
                                     (rot->getOffset().immediate().getRotationOffset().value() +
                                         firstRot->getOffset().immediate().getRotationOffset().value()) %
-                                    16;
+                                    (!rot->isFullRotationAllowed() ? 4 : 16);
                                 if(offset == 0)
                                 {
                                     CPPLOG_LAZY(logging::Level::DEBUG,
@@ -923,9 +930,10 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                                         log << "Combining vector rotations " << firstRot->to_string() << " and "
                                             << rot->to_string() << " to a single rotation with offset "
                                             << static_cast<unsigned>(offset) << logging::endl);
-                                    it.reset((new VectorRotation(rot->getOutput().value(), firstRot->getSource(),
-                                                  Value(SmallImmediate::fromRotationOffset(offset), TYPE_INT8)))
-                                                 ->copyExtrasFrom(rot));
+                                    it.reset(
+                                        (new VectorRotation(rot->getOutput().value(), firstRot->getSource(),
+                                             Value(SmallImmediate::fromRotationOffset(offset), TYPE_INT8), rot->type))
+                                            ->copyExtrasFrom(rot));
                                     it->copyExtrasFrom(firstRot);
                                     if(firstRot->getOutput()->local()->getUsers(LocalUse::Type::READER).empty())
                                         // only remove first rotation if it does not have a second user

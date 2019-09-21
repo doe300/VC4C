@@ -1267,19 +1267,20 @@ static std::pair<SIMDVector, bool> toInputValue(
     throw CompilationError(CompilationStep::GENERAL, "Unhandled ALU input");
 }
 
-static std::pair<SIMDVector, bool> applyVectorRotation(std::pair<SIMDVector, bool>&& input, Signaling sig,
-    InputMultiplex mux1, InputMultiplex mux2, Address regB, Registers& registers)
+static std::pair<SIMDVector, bool> applyVectorRotation(
+    std::pair<SIMDVector, bool>&& input, const qpu_asm::ALUInstruction* ins, Registers& registers)
 {
     if(!input.second)
         // if we stall, do not rotate
         return std::move(input);
-    if(sig != SIGNAL_ALU_IMMEDIATE)
+    if(!ins->isVectorRotation())
         // no rotation set
         return std::move(input);
-    SmallImmediate offset(regB);
+    SmallImmediate offset(ins->getInputB());
     if(!offset.isVectorRotation())
         return std::move(input);
-    if(mux1 == InputMultiplex::REGB || mux2 == InputMultiplex::REGB)
+    if(ins->getMulMultiplexA() == InputMultiplex::REGB || ins->getMulMultiplexB() == InputMultiplex::REGB)
+        // XXX can't we actually?! See http://maazl.de/project/vc4asm/doc/VideoCoreIV-addendum.html
         throw CompilationError(CompilationStep::GENERAL, "Cannot read vector rotation offset", input.first.to_string());
 
     if(input.first.isAllSame())
@@ -1287,21 +1288,20 @@ static std::pair<SIMDVector, bool> applyVectorRotation(std::pair<SIMDVector, boo
 
     unsigned char distance;
     if(offset == VECTOR_ROTATE_R5)
-    {
         //"Mul output vector rotation is taken from accumulator r5, element 0, bits [3:0]"
         // - Broadcom Specification, page 30
-        auto tmp = registers.readRegister(REG_ACC5).first;
-        distance = static_cast<uint8_t>(16 - (tmp[0].unsignedInt() & 0xF));
-    }
+        distance = static_cast<uint8_t>(registers.readRegister(REG_ACC5).first[0].unsignedInt());
     else
-        distance = static_cast<uint8_t>(16 - offset.getRotationOffset().value());
+        distance = offset.getRotationOffset().value();
 
     SIMDVector result(std::move(input.first));
+    if(ins->isFullRangeRotation())
+        result = std::move(result).rotate(distance & 0xF);
+    else
+        result = std::move(result).rotatePerQuad(distance & 0x3);
 
-    // TODO use SIMDVector#rotate()
-    std::rotate(result.begin(), result.begin() + distance, result.end());
-
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 170, "vector rotations", 1);
+    PROFILE_COUNTER(
+        vc4c::profiler::COUNTER_EMULATOR + 170, "vector rotations (full/total)", ins->isFullRangeRotation());
     return std::make_pair(result, true);
 }
 
@@ -1343,14 +1343,12 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
         std::tie(mulIn0, mulIn0NotStall) =
             applyVectorRotation(toInputValue(registers, aluInst->getMulMultiplexA(), aluInst->getInputA(),
                                     aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE),
-                aluInst->getSig(), aluInst->getMulMultiplexA(), aluInst->getMulMultiplexB(), aluInst->getInputB(),
-                registers);
+                aluInst, registers);
         if(mulCode.numOperands > 1)
             std::tie(mulIn1, mulIn1NotStall) =
                 applyVectorRotation(toInputValue(registers, aluInst->getMulMultiplexB(), aluInst->getInputA(),
                                         aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE),
-                    aluInst->getSig(), aluInst->getMulMultiplexA(), aluInst->getMulMultiplexB(), aluInst->getInputB(),
-                    registers);
+                    aluInst, registers);
         PROFILE_END(EmulateVectorRotation);
 
         if(!mulIn0NotStall || !mulIn1NotStall)
