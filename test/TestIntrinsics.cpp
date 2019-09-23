@@ -91,6 +91,71 @@ __kernel void test(__global OUT* out) {
 }
 )";
 
+static const std::string FUNNEL_SHIFT = R"(
+__kernel void test(__global TYPE* out, __global const TYPE* in, __global const TYPE* offset) {
+  size_t gid = get_global_id(0);
+  TYPE tmp = in[gid];
+  // will be converted to fshl/fshr by clang
+  TYPE off = offset[gid] & (sizeof(TYPE) * 8 - 1);
+#ifdef LEFT
+  out[gid] = (tmp << off) | (tmp >> ((TYPE)(sizeof(TYPE) * 8) - off));
+#else
+  out[gid] = (tmp >> off) | (tmp << ((TYPE)(sizeof(TYPE) * 8) - off));
+#endif
+}
+)";
+
+static const std::string BYTE_SWAP = R"(
+__kernel void test(__global TYPE* out, const __global TYPE* in) {
+  size_t gid = get_global_id(0);
+#if SIZE == 4
+  out[gid] = __builtin_bswap32(in[gid]);
+#else
+  out[gid] = __builtin_bswap16(in[gid]);
+#endif
+}
+)";
+
+static const std::string DMA_ACCESS = R"(
+TYPE vc4cl_dma_read(volatile __global TYPE*);
+void vc4cl_dma_write(volatile __global TYPE*, TYPE);
+void vc4cl_dma_copy(__global TYPE*, const __global TYPE*, size_t);
+void vc4cl_mutex_lock(void);
+void vc4cl_mutex_unlock(void);
+uchar vc4cl_work_dimensions(void);
+
+__kernel void test(__global TYPE* out, __global TYPE* in) {
+  size_t gid = get_global_id(0);
+  vc4cl_mutex_lock();
+#if defined(READWRITE)
+  TYPE tmp = vc4cl_dma_read(in + gid);
+  vc4cl_dma_write(out + gid, tmp);
+#elif defined(DYNAMIC)
+  vc4cl_dma_copy(out + gid, in + gid, vc4cl_work_dimensions() & 1);
+#else
+  vc4cl_dma_copy(out + gid, in + gid, 1);
+#endif
+  vc4cl_mutex_unlock();
+}
+)";
+
+static const std::string LLVM_MEM = R"(
+typedef struct {
+  int16 a;
+  float16 b;
+} Type;
+
+__kernel void test(__global Type* out, const __global Type* in)
+{
+  size_t gid = get_global_id(0);
+#ifdef MEMSET
+  out[gid] = (Type){.a = 0, .b = 0};
+#else
+  out[gid] = in[gid];
+#endif
+}
+)";
+
 TestIntrinsicFunctions::TestIntrinsicFunctions(const vc4c::Configuration& config) : TestEmulator(false, config)
 {
     TEST_ADD(TestIntrinsicFunctions::testIntMultiplicationWithConstant);
@@ -166,6 +231,20 @@ TestIntrinsicFunctions::TestIntrinsicFunctions(const vc4c::Configuration& config
     TEST_ADD(TestIntrinsicFunctions::testBitcastUnsignedInt);
     TEST_ADD(TestIntrinsicFunctions::testBitcastInt);
     TEST_ADD(TestIntrinsicFunctions::testBitcastFloat);
+
+    TEST_ADD(TestIntrinsicFunctions::testLLVMMemcpy);
+    TEST_ADD(TestIntrinsicFunctions::testLLVMMemset);
+    TEST_ADD(TestIntrinsicFunctions::testLLVMFshlUnsignedChar);
+    TEST_ADD(TestIntrinsicFunctions::testLLVMFshrUnsignedChar);
+    TEST_ADD(TestIntrinsicFunctions::testLLVMFshlUnsignedShort);
+    TEST_ADD(TestIntrinsicFunctions::testLLVMFshrUnsignedShort);
+    TEST_ADD(TestIntrinsicFunctions::testLLVMBswapUnsignedShort);
+    TEST_ADD(TestIntrinsicFunctions::testLLVMFshlUnsignedInt);
+    TEST_ADD(TestIntrinsicFunctions::testLLVMFshrUnsignedInt);
+    TEST_ADD(TestIntrinsicFunctions::testLLVMBswapUnsignedInt);
+
+    TEST_ADD(TestIntrinsicFunctions::testDMAReadWrite);
+    TEST_ADD(TestIntrinsicFunctions::testDMACopy);
 }
 
 TestIntrinsicFunctions::~TestIntrinsicFunctions() = default;
@@ -863,28 +942,32 @@ void TestIntrinsicFunctions::testFloatDivisionByConstant()
     std::stringstream code;
     auto newOptions = options + " -DSOURCE=32.0f";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
-    testBinaryOperationWithSecondConstants<float, float, 16>(code, newOptions, 32.0f, std::divides<float>{},
+    testBinaryOperationWithSecondConstants<float, float, 16, CompareULP<3>>(code, newOptions, 32.0f,
+        std::divides<float>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
     code.str("");
     newOptions = options + " -DSOURCE=31.0f";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
-    testBinaryOperationWithSecondConstants<float, float, 16>(code, newOptions, 31.0f, std::divides<float>{},
+    testBinaryOperationWithSecondConstants<float, float, 16, CompareULP<3>>(code, newOptions, 31.0f,
+        std::divides<float>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
     code.str("");
     newOptions = options + " -DSOURCE=17.0f";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
-    testBinaryOperationWithSecondConstants<float, float, 16>(code, newOptions, 17.0f, std::divides<float>{},
+    testBinaryOperationWithSecondConstants<float, float, 16, CompareULP<3>>(code, newOptions, 17.0f,
+        std::divides<float>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
     code.str("");
     newOptions = options + " -DSOURCE=12.0f";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
-    testBinaryOperationWithSecondConstants<float, float, 16>(code, newOptions, 12.0f, std::divides<float>{},
+    testBinaryOperationWithSecondConstants<float, float, 16, CompareULP<3>>(code, newOptions, 12.0f,
+        std::divides<float>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -1590,5 +1673,155 @@ void TestIntrinsicFunctions::testBitcastFloat()
     options.append(" -DSOURCES=").append(std::to_string(in));
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);
     testUnaryFunctionWithConstant<int, float, EqualNaN>(code, options, in, func,
+        std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntrinsicFunctions::testLLVMMemcpy()
+{
+    auto func = [](uint64_t i) -> uint64_t { return i; };
+
+    std::string options = "-DFUNC=llvm.memcpy";
+    std::stringstream code;
+    compileBuffer(config, code, LLVM_MEM, options);
+    testUnaryFunction<uint64_t, uint64_t, 16>(code, options, func,
+        std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntrinsicFunctions::testLLVMMemset()
+{
+    auto func = [](uint64_t i) -> uint64_t { return 0; };
+
+    std::string options = "-DMEMSET -DFUNC=llvm.memset";
+    std::stringstream code;
+    compileBuffer(config, code, LLVM_MEM, options);
+    testUnaryFunction<uint64_t, uint64_t, 16>(code, options, func,
+        std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntrinsicFunctions::testLLVMFshlUnsignedChar()
+{
+    auto func = [](uint8_t i, uint8_t offset) -> uint8_t {
+        return static_cast<uint8_t>((i << (offset & 0x7)) | (i >> (8 - (offset & 0x7))));
+    };
+
+    std::string options = "-DLEFT -DTYPE=uchar -DFUNC=fshl";
+    std::stringstream code;
+    compileBuffer(config, code, FUNNEL_SHIFT, options);
+    testBinaryFunction<unsigned char, unsigned char, 1>(code, options, func,
+        std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntrinsicFunctions::testLLVMFshrUnsignedChar()
+{
+    auto func = [](uint8_t i, uint8_t offset) -> uint8_t {
+        return static_cast<uint8_t>((i >> (offset & 0x7)) | (i << (8 - (offset & 0x7))));
+    };
+
+    std::string options = "-DTYPE=uchar -DFUNC=fshr";
+    std::stringstream code;
+    compileBuffer(config, code, FUNNEL_SHIFT, options);
+    testBinaryFunction<unsigned char, unsigned char, 1>(code, options, func,
+        std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntrinsicFunctions::testLLVMFshlUnsignedShort()
+{
+    auto func = [](uint16_t i, uint16_t offset) -> uint16_t {
+        return static_cast<uint16_t>((i << (offset & 0xF)) | (i >> (16 - (offset & 0xF))));
+    };
+
+    std::string options = "-DLEFT -DTYPE=ushort -DFUNC=fshl";
+    std::stringstream code;
+    compileBuffer(config, code, FUNNEL_SHIFT, options);
+    testBinaryFunction<unsigned short, unsigned short, 1>(code, options, func,
+        std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntrinsicFunctions::testLLVMFshrUnsignedShort()
+{
+    auto func = [](uint16_t i, uint16_t offset) -> uint16_t {
+        return static_cast<uint16_t>((i >> (offset & 0xF)) | (i << (16 - (offset & 0xF))));
+    };
+
+    std::string options = "-DTYPE=ushort -DFUNC=fshr";
+    std::stringstream code;
+    compileBuffer(config, code, FUNNEL_SHIFT, options);
+    testBinaryFunction<unsigned short, unsigned short, 1>(code, options, func,
+        std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntrinsicFunctions::testLLVMBswapUnsignedShort()
+{
+    auto func = [](uint16_t i) -> uint16_t { return __builtin_bswap16(i); };
+
+    std::string options = "-DTYPE=ushort -DSIZE=2 -DFUNC=bswap";
+    std::stringstream code;
+    compileBuffer(config, code, BYTE_SWAP, options);
+    testUnaryFunction<unsigned short, unsigned short, 1>(code, options, func,
+        std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntrinsicFunctions::testLLVMFshlUnsignedInt()
+{
+    auto func = [](uint32_t i, uint32_t offset) -> uint32_t {
+        return static_cast<uint32_t>((i << (offset & 0x1F)) | (i >> (32 - (offset & 0x1F))));
+    };
+
+    std::string options = "-DLEFT -DTYPE=uint -DFUNC=fshl";
+    std::stringstream code;
+    compileBuffer(config, code, FUNNEL_SHIFT, options);
+    testBinaryFunction<unsigned, unsigned, 1>(code, options, func,
+        std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntrinsicFunctions::testLLVMFshrUnsignedInt()
+{
+    auto func = [](uint32_t i, uint32_t offset) -> uint32_t {
+        return static_cast<uint32_t>((i >> (offset & 0x1F)) | (i << (32 - (offset & 0x1F))));
+    };
+
+    std::string options = "-DTYPE=uint -DFUNC=fshr";
+    std::stringstream code;
+    compileBuffer(config, code, FUNNEL_SHIFT, options);
+    testBinaryFunction<unsigned, unsigned, 1>(code, options, func,
+        std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntrinsicFunctions::testLLVMBswapUnsignedInt()
+{
+    auto func = [](uint32_t i) -> uint32_t { return __builtin_bswap32(i); };
+
+    std::string options = "-DTYPE=uint -DSIZE=4 -DFUNC=bswap";
+    std::stringstream code;
+    compileBuffer(config, code, BYTE_SWAP, options);
+    testUnaryFunction<unsigned, unsigned, 1>(code, options, func,
+        std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntrinsicFunctions::testDMAReadWrite()
+{
+    auto func = [](uint32_t i) -> uint32_t { return i; };
+
+    std::string options = "-DREADWRITE -DTYPE=uint16 -DFUNC=vc4cl_dma_read";
+    std::stringstream code;
+    compileBuffer(config, code, DMA_ACCESS, options);
+    testUnaryFunction<unsigned, unsigned, 16>(code, options, func,
+        std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntrinsicFunctions::testDMACopy()
+{
+    auto func = [](uint32_t i) -> uint32_t { return i; };
+
+    std::string options = "-DDYNAMIC -DTYPE=uint16 -DFUNC=vc4cl_dma_copy";
+    std::stringstream code;
+    compileBuffer(config, code, DMA_ACCESS, options);
+    testUnaryFunction<unsigned, unsigned, 16>(code, options, func,
+        std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    options = "-DTYPE=uint16 -DFUNC=vc4cl_dma_copy";
+    code.clear();
+    compileBuffer(config, code, DMA_ACCESS, options);
+    testUnaryFunction<unsigned, unsigned, 16>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }

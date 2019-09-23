@@ -91,6 +91,20 @@ public:
     void testBitcastInt();
     void testBitcastFloat();
 
+    void testLLVMMemcpy();
+    void testLLVMMemset();
+    void testLLVMFshlUnsignedChar();
+    void testLLVMFshrUnsignedChar();
+    void testLLVMFshlUnsignedShort();
+    void testLLVMFshrUnsignedShort();
+    void testLLVMBswapUnsignedShort();
+    void testLLVMFshlUnsignedInt();
+    void testLLVMFshrUnsignedInt();
+    void testLLVMBswapUnsignedInt();
+
+    void testDMAReadWrite();
+    void testDMACopy();
+
 private:
     void onMismatch(const std::string& expected, const std::string& result);
 };

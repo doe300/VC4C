@@ -178,12 +178,15 @@ bool CallSite::mapInstruction(Method& method)
             // NOTE: Since we only support full 32-bit rotation, we only apply this for 32-bit types!
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying llvm.fshl with identical operands with rotate right" << logging::endl);
-            auto tmp = method.addNewLocal(arguments.at(2).type, "%fshl.offset");
-            method.appendToEnd(new intermediate::Operation(OP_SUB, tmp, Value(Literal(32u), TYPE_INT8), arguments[2]));
-            method.appendToEnd(new intermediate::Operation(OP_ROR, output, arguments[0], tmp));
+            auto truncatedOffset = method.addNewLocal(arguments.at(2).type, "%fshl.offset");
+            auto offset = method.addNewLocal(arguments.at(2).type, "%fshl.offset");
+            method.appendToEnd(new intermediate::Operation(OP_AND, truncatedOffset, arguments[2],
+                Value(Literal(arguments.at(2).type.getScalarBitCount() - 1u), TYPE_INT8)));
+            method.appendToEnd(
+                new intermediate::Operation(OP_SUB, offset, Value(Literal(32u), TYPE_INT8), truncatedOffset));
+            method.appendToEnd(new intermediate::Operation(OP_ROR, output, arguments[0], offset));
             return true;
         }
-        // TODO general case correct??
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Intrinsifying llvm.fshl with manual funnel-shifting" << logging::endl);
         auto upper = method.addNewLocal(TYPE_INT32.toVectorType(arguments.at(0).type.getVectorWidth()), "%fshl.upper");
@@ -194,7 +197,7 @@ bool CallSite::mapInstruction(Method& method)
         method.appendToEnd(new intermediate::Operation(
             OP_AND, lower, arguments.at(1), Value(Literal(arguments.at(1).type.getScalarWidthMask()), TYPE_INT32)));
         method.appendToEnd(new intermediate::Operation(
-            OP_AND, offset, arguments.at(2), Value(Literal(arguments.at(2).type.getScalarBitCount()), TYPE_INT8)));
+            OP_AND, offset, arguments.at(2), Value(Literal(arguments.at(2).type.getScalarBitCount() - 1u), TYPE_INT8)));
 
         auto combined = method.addNewLocal(upper.type, "%fshl.combined");
         method.appendToEnd(new intermediate::Operation(OP_OR, combined, upper, lower));
@@ -228,7 +231,25 @@ bool CallSite::mapInstruction(Method& method)
             method.appendToEnd(new intermediate::Operation(OP_ROR, output, arguments[0], arguments.at(2)));
             return true;
         }
-        // TODO general case
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Intrinsifying llvm.fshr with manual funnel-shifting" << logging::endl);
+        auto upper = method.addNewLocal(TYPE_INT32.toVectorType(arguments.at(0).type.getVectorWidth()), "%fshr.upper");
+        auto lower = method.addNewLocal(arguments.at(1).type, "%fshr.lower");
+        auto offset = method.addNewLocal(arguments.at(2).type, "%fshr.offset");
+        method.appendToEnd(new intermediate::Operation(
+            OP_SHL, upper, arguments.at(0), Value(Literal(arguments.at(0).type.getScalarBitCount()), TYPE_INT8)));
+        method.appendToEnd(new intermediate::Operation(
+            OP_AND, lower, arguments.at(1), Value(Literal(arguments.at(1).type.getScalarWidthMask()), TYPE_INT32)));
+        method.appendToEnd(new intermediate::Operation(
+            OP_AND, offset, arguments.at(2), Value(Literal(arguments.at(2).type.getScalarBitCount() - 1u), TYPE_INT8)));
+
+        auto combined = method.addNewLocal(upper.type, "%fshr.combined");
+        method.appendToEnd(new intermediate::Operation(OP_OR, combined, upper, lower));
+        auto shifted = method.addNewLocal(upper.type, "%fshr.shifted");
+        method.appendToEnd(new intermediate::Operation(OP_SHR, shifted, combined, offset));
+        method.appendToEnd(new intermediate::Operation(
+            OP_AND, output, shifted, Value(Literal(arguments.at(0).type.getScalarWidthMask()), TYPE_INT32)));
+        return true;
     }
     if(methodName.find("shuffle2") == 0)
     {

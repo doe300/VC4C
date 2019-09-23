@@ -128,8 +128,10 @@ InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const
                     appliedOffset.immediate() = SmallImmediate::fromRotationOffset(3u - (15u - *origOffset));
                     type = intermediate::RotationType::PER_QUAD;
                 }
-                else if(*origOffset < 4)
+                else if(/* DISABLES CODE */ (false) && *origOffset < 4)
                 {
+                    // FIXME this is not always guaranteed, is it? What about e.g. rotating "up" 2 to get from position
+                    // 14 to 0?
                     // for upwards rotations with less than 4 (within the first quad), the rotation is the same for both
                     // modes, so we let the register allocator decide which one to use
                     type = intermediate::RotationType::ANY;
