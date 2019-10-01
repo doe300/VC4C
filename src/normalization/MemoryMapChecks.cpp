@@ -111,7 +111,7 @@ static bool isMemoryOnlyRead(const Local* local)
 }
 
 // Finds the next instruction writing the given value into memory
-static InstructionWalker findNextValueStore(
+static NODISCARD InstructionWalker findNextValueStore(
     InstructionWalker it, const Value& src, std::size_t limit, const Local* sourceLocation)
 {
     while(!it.isEndOfBlock() && limit > 0)
@@ -133,6 +133,25 @@ static InstructionWalker findNextValueStore(
         --limit;
     }
     return it.getBasicBlock()->walkEnd();
+}
+
+static NODISCARD std::pair<InstructionWalker, InstructionWalker> insert64BitWrite(Method& method, InstructionWalker it,
+    Local* address, Value lower, Value upper, IntermediateInstruction* origInstruction = nullptr)
+{
+    auto lowerIndex = Value(address, method.createPointerType(TYPE_INT32));
+    it.emplace(new MemoryInstruction(MemoryOperation::WRITE, Value(lowerIndex), std::move(lower)));
+    if(origInstruction)
+        it->copyExtrasFrom(origInstruction);
+    auto startIt = it;
+    it.nextInBlock();
+    auto upperIndex = assign(it, lowerIndex.type) = lowerIndex + 4_val;
+    if(auto ref = lowerIndex.local()->reference.first)
+        upperIndex.local()->reference.first = ref;
+    it.emplace(new MemoryInstruction(MemoryOperation::WRITE, std::move(upperIndex), std::move(upper)));
+    if(origInstruction)
+        it->copyExtrasFrom(origInstruction);
+    it.nextInBlock();
+    return std::make_pair(it, startIt);
 }
 
 std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineMemoryAccess(Method& method)
@@ -203,26 +222,53 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
             if(rewriteParts != rewrite64BitStoresTo32.end())
             {
                 // rewrite the 64-bit store to 2 32-bit stores
-                auto lowerIndex = Value(memInstr->getDestination().local(), method.createPointerType(TYPE_INT32));
-                it.emplace(new MemoryInstruction(
-                    MemoryOperation::WRITE, Value(lowerIndex), rewriteParts->second.first->createReference()));
-                it->copyExtrasFrom(memInstr);
-                auto startIt = it;
-                it.nextInBlock();
-                auto upperIndex = assign(it, lowerIndex.type) = lowerIndex + 4_val;
-                if(auto ref = lowerIndex.local()->reference.first)
-                    upperIndex.local()->reference.first = ref;
-                it.emplace(new MemoryInstruction(
-                    MemoryOperation::WRITE, std::move(upperIndex), rewriteParts->second.second->createReference()));
-                it->copyExtrasFrom(memInstr);
-                it.nextInBlock();
-
+                InstructionWalker startIt;
+                std::tie(it, startIt) = insert64BitWrite(method, it, memInstr->getDestination().local(),
+                    rewriteParts->second.first->createReference(), rewriteParts->second.second->createReference(),
+                    memInstr);
                 rewrite64BitStoresTo32.erase(rewriteParts);
                 it.erase();
 
                 // continue with exactly the first store instruction
                 memInstr = startIt.get<MemoryInstruction>();
                 it = startIt;
+            }
+            else if(memInstr->op == MemoryOperation::WRITE && !memInstr->hasConditionalExecution() &&
+                memInstr->getSource().type.getElementType() == TYPE_INT64)
+            {
+                // we can lower some more 64-bit writes, if the values can either be written statically (e.g. a
+                // constant) or it is guaranteed that the upper word is zero (e.g. converted from 32-bit word).
+                auto source = memInstr->getSource();
+                while(auto writer = dynamic_cast<const intermediate::MoveOperation*>(source.getSingleWriter()))
+                {
+                    if(!writer->isSimpleMove())
+                        break;
+                    source = writer->getSource();
+                }
+                // NOTE: we only check for exactly 32-bit, since otherwise VPM would only write the actually used bits,
+                // not all 32
+                auto lowerSource = source.type.getScalarBitCount() == 32 ? source : source.getConstantValue();
+                if(lowerSource)
+                {
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Converting write of 64-bit '" << memInstr->getSource().to_string()
+                            << "' where the upper part is guaranteed to be zero to a write of the lower part and zero"
+                            << logging::endl);
+
+                    // fix type of constant
+                    if(lowerSource->type == TYPE_INT64)
+                        lowerSource->type = TYPE_INT32;
+
+                    // rewrite the 64-bit store to 2 32-bit stores
+                    InstructionWalker startIt;
+                    std::tie(it, startIt) = insert64BitWrite(method, it, memInstr->getDestination().local(),
+                        *lowerSource, Value(Literal(0u), TYPE_INT32), memInstr);
+                    it.erase();
+
+                    // continue with exactly the first store instruction
+                    memInstr = startIt.get<MemoryInstruction>();
+                    it = startIt;
+                }
             }
             else if(memInstr->op == MemoryOperation::READ && !memInstr->hasConditionalExecution() &&
                 memInstr->getDestination().local()->getUsers(LocalUse::Type::READER).size() == 1)
@@ -499,8 +545,7 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
 static MemoryInfo canLowerToRegisterReadOnly(Method& method, const Local* baseAddr, MemoryAccess& access)
 {
     // a) the global is a constant scalar/vector which fits into a single register
-    auto constant = getConstantValue(baseAddr->createReference());
-    if(constant)
+    if(auto constant = getConstantValue(baseAddr->createReference()))
     {
         return MemoryInfo{baseAddr, MemoryAccessType::QPU_REGISTER_READONLY, nullptr, {}, constant};
     }

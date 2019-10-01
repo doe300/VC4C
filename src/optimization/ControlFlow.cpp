@@ -834,12 +834,19 @@ void optimizations::extendBranches(const Module& module, Method& method, const C
                     branch->hasDecoration(intermediate::InstructionDecorations::BRANCH_ON_ALL_ELEMENTS) !=
                         has_flag(lastSetFlags.second, intermediate::InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
                 {
+                    auto cond = branch->getCondition();
+                    if(auto lit = cond.getLiteralValue())
+                    {
+                        if(auto imm = normalization::toImmediate(*lit))
+                            cond = Value(*imm, cond.type);
+                        else
+                            throw CompilationError(CompilationStep::NORMALIZER,
+                                "Unhandled literal value in branch condition", branch->to_string());
+                    }
                     if(branch->hasDecoration(intermediate::InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
-                        assign(it, NOP_REGISTER) =
-                            (branch->getCondition() | branch->getCondition(), SetFlag::SET_FLAGS);
+                        assign(it, NOP_REGISTER) = (branch->getCondition() | cond, SetFlag::SET_FLAGS);
                     else
-                        assign(it, NOP_REGISTER) =
-                            (ELEMENT_NUMBER_REGISTER | branch->getCondition(), SetFlag::SET_FLAGS);
+                        assign(it, NOP_REGISTER) = (ELEMENT_NUMBER_REGISTER | cond, SetFlag::SET_FLAGS);
                 }
                 lastSetFlags.first = branch->getCondition();
                 lastSetFlags.second = branch->decoration;

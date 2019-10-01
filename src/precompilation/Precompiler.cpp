@@ -116,7 +116,9 @@ SourceType Precompiler::getSourceType(std::istream& stream)
         type = SourceType::QPUASM_HEX;
     else if(s.find("kernel") != std::string::npos || s.find("/**") != std::string::npos ||
         s.find("//") != std::string::npos || s.find("#include") != std::string::npos ||
-        s.find("#define") != std::string::npos || s.find("typedef") != std::string::npos)
+        s.find("#define") != std::string::npos || s.find("typedef") != std::string::npos ||
+        s.find("extern") != std ::string::npos || s.find("struct") != std ::string::npos ||
+        s.find("return") != std ::string::npos)
         // TODO need better check
         type = SourceType::OPENCL_C;
 
@@ -365,12 +367,14 @@ void Precompiler::precompileStandardLibraryFiles(const std::string& sourceFile, 
     // TODO merge with creating of parameters in FrontendCompiler#buildClangCommand
     auto pchArgs =
         " -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info "
-        "-cl-single-precision-constant -Wno-all -Wno-gcc-compat -Wdouble-promotion -Wno-undefined-inline "
+        "-cl-single-precision-constant -fgnu89-inline -Wno-all -Wno-gcc-compat -Wdouble-promotion "
+        "-Wno-undefined-inline "
         "-Wno-unknown-attributes -x cl "
         "-emit-pch -o ";
     auto moduleArgs =
         " -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info "
-        "-cl-single-precision-constant -Wno-all -Wno-gcc-compat -Wdouble-promotion -Wno-undefined-inline "
+        "-cl-single-precision-constant -fgnu89-inline -Wno-all -Wno-gcc-compat -Wdouble-promotion "
+        "-Wno-undefined-inline "
         "-Wno-unknown-attributes -x cl "
         "-emit-llvm-bc -o ";
 

@@ -307,15 +307,28 @@ void precompilation::linkLLVMModules(
 
     // only one input can be from a stream
     std::istream* inputStream = nullptr;
+    // this is needed, since we can use a maximum of 1 stream input
+    std::vector<std::unique_ptr<TemporaryFile>> tempFiles;
     const std::string out = result.file ? std::string("-o=") + result.file.value() : "";
     std::string inputs = std::accumulate(
         sources.begin(), sources.end(), std::string{}, [&](const std::string& a, const LLVMIRSource& b) -> std::string {
             if(b.file)
                 return (a + " ") + b.file.value();
             if(inputStream != nullptr)
-                throw CompilationError(CompilationStep::LINKER, "Cannot link with multiple stream-inputs!");
-            inputStream = b.stream;
-            return a + " -";
+            {
+                // there already is a stream input, need to move this input to temporary file
+                tempFiles.emplace_back(new TemporaryFile());
+                std::unique_ptr<std::ostream> s;
+                auto& file = tempFiles.back();
+                file->openOutputStream(s);
+                (*s) << b.stream->rdbuf();
+                return (a + " ") + file->fileName;
+            }
+            else
+            {
+                inputStream = b.stream;
+                return a + " -";
+            }
         });
 
     /*
