@@ -9,6 +9,7 @@
 #include "emulation_helper.h"
 
 #include <algorithm>
+#include <climits>
 #include <iomanip>
 #include <sstream>
 
@@ -27,7 +28,7 @@ __kernel void test(__global OUT* out, const __global IN* in) {
 }
 )";
 
-static const std::string REINTERPRET_OPERATION = R"(
+static const std::string REINTERPRET_ADDRESS_OPERATION = R"(
 // trick to allow concatenating macro (content!!) to symbol
 #define CONCAT(A, B) CONCAT_(A, B)
 #define CONCAT_(A, B) A##B
@@ -35,6 +36,21 @@ static const std::string REINTERPRET_OPERATION = R"(
 __kernel void test(__global OUT* out, const __global IN* in) {
   size_t gid = get_global_id(0);
   out[gid] = CONCAT(as_,OUT)(in[gid]);
+}
+)";
+
+static const std::string REINTERPRET_VALUE_OPERATION = R"(
+// trick to allow concatenating macro (content!!) to symbol
+#define CONCAT(A, B) CONCAT_(A, B)
+#define CONCAT_(A, B) A##B
+
+__kernel void test(__global OUT* out, const __global IN* in1, const __global IN* in2) {
+
+  size_t gid = get_global_id(0);
+  IN a = in1[gid];
+  IN b = in2[gid];
+  OUT c = CONCAT(as_,OUT)(a + a) + CONCAT(as_,OUT)(b + b);
+  out[gid] = c;
 }
 )";
 
@@ -116,17 +132,32 @@ static void testConversionOperation(vc4c::Configuration& config, const std::stri
 }
 
 template <typename I, typename O, std::size_t NumIn, std::size_t NumOut, std::size_t Num = std::max(NumIn, NumOut)>
-static void testReinterpretation(vc4c::Configuration& config, const std::string& options,
+static void testAddressReinterpretation(vc4c::Configuration& config, const std::string& options,
     const std::function<void(const std::array<I, Num>&, const std::array<O, Num>&,
         const std::function<void(const std::string&, const std::string&)>&)>& check,
     const std::function<void(const std::string&, const std::string&)>& onError)
 {
     std::stringstream code;
-    compileBuffer(config, code, REINTERPRET_OPERATION, options);
+    compileBuffer(config, code, REINTERPRET_ADDRESS_OPERATION, options);
 
     auto in = generateInput<I, Num>(true);
     auto out = runEmulation<I, O, Num, 1>(code, {in});
     check(in, out, onError);
+}
+
+template <typename I, typename O, std::size_t NumIn, std::size_t NumOut, std::size_t Num = std::max(NumIn, NumOut)>
+static void testValueReinterpretation(vc4c::Configuration& config, const std::string& options,
+    const std::function<void(const std::array<I, Num>&, const std::array<I, Num>&, const std::array<O, Num>&,
+        const std::function<void(const std::string&, const std::string&)>&)>& check,
+    const std::function<void(const std::string&, const std::string&)>& onError)
+{
+    std::stringstream code;
+    compileBuffer(config, code, REINTERPRET_VALUE_OPERATION, options);
+
+    auto in1 = generateInput<I, Num>(true);
+    auto in2 = generateInput<I, Num>(true);
+    auto out = runEmulation<I, O, Num, 1>(code, {in1, in2});
+    check(in1, in2, out, onError);
 }
 
 template <typename T, typename S>
@@ -442,6 +473,25 @@ struct Reinterpretation
 {
 };
 
+template <typename T>
+static constexpr uint32_t TYPE_SIZE = sizeof(T) * CHAR_BIT;
+template <typename T>
+static constexpr uint32_t TYPE_MASK = static_cast<uint32_t>((uint64_t{1} << TYPE_SIZE<T>) -1u);
+
+static_assert(TYPE_MASK<uint8_t> == 0xFFu, "");
+static_assert(TYPE_MASK<uint16_t> == 0xFFFFu, "");
+static_assert(TYPE_MASK<uint32_t> == 0xFFFFFFFFu, "");
+
+template <typename A, typename B>
+struct LargerType
+{
+    using type = typename std::conditional<sizeof(A) >= sizeof(B), A, B>::type;
+};
+
+static_assert(std::is_same<uint32_t, typename LargerType<uint16_t, uint32_t>::type>::value, "");
+static_assert(std::is_same<uint16_t, typename LargerType<uint16_t, uint16_t>::type>::value, "");
+static_assert(std::is_same<uint16_t, typename LargerType<uint16_t, uint8_t>::type>::value, "");
+
 template <typename T, std::size_t Num>
 struct Reinterpretation<4, T, Num>
 {
@@ -453,12 +503,45 @@ struct Reinterpretation<4, T, Num>
             (static_cast<uint32_t>(in[i * 4 + 3]) << (sizeof(T) * 24));
     }
 
+    uint32_t operator()(const std::array<T, Num>& in, unsigned i, unsigned j) const noexcept
+    {
+        auto tmp0 = (static_cast<uint32_t>(in[i * 4]) + static_cast<uint32_t>(in[j * 4])) & TYPE_MASK<T>;
+        auto tmp1 = (static_cast<uint32_t>(in[i * 4 + 1]) + static_cast<uint32_t>(in[j * 4 + 1])) & TYPE_MASK<T>;
+        auto tmp2 = (static_cast<uint32_t>(in[i * 4 + 2]) + static_cast<uint32_t>(in[j * 4 + 2])) & TYPE_MASK<T>;
+        auto tmp3 = (static_cast<uint32_t>(in[i * 4 + 3]) + static_cast<uint32_t>(in[j * 4 + 3])) & TYPE_MASK<T>;
+
+        return (tmp0 << (sizeof(T) * 0)) | (tmp1 << (sizeof(T) * 8)) | (tmp2 << (sizeof(T) * 16)) |
+            (tmp3 << (sizeof(T) * 24));
+    }
+
+    uint32_t add(uint32_t a, uint32_t b) const noexcept
+    {
+        auto SIZE = TYPE_SIZE<T>;
+        auto tmp0 = (a + b) & TYPE_MASK<T>;
+        auto tmp1 = ((a >> SIZE) + (b >> SIZE)) & TYPE_MASK<T>;
+        auto tmp2 = ((a >> 2 * SIZE) + (b >> 2 * SIZE)) & TYPE_MASK<T>;
+        auto tmp3 = ((a >> 3 * SIZE) + (b >> 3 * SIZE)) & TYPE_MASK<T>;
+
+        return (tmp0 << (SIZE * 0)) | (tmp1 << (SIZE * 1)) | (tmp2 << (SIZE * 2)) | (tmp3 << (SIZE * 3));
+    }
+
     std::string print(const std::array<T, Num>& in, unsigned i) const
     {
         std::stringstream ss;
         ss << std::hex << '{' << static_cast<uint32_t>(in[i * 4]) << ", " << static_cast<uint32_t>(in[i * 4 + 1])
            << ", " << static_cast<uint32_t>(in[i * 4 + 2]) << ", " << static_cast<uint32_t>(in[i * 4 + 3])
            << "} = " << operator()(in, i);
+        return ss.str();
+    }
+
+    std::string print(const std::array<T, Num>& in, unsigned i, unsigned j) const
+    {
+        std::stringstream ss;
+        ss << std::hex << '{' << static_cast<uint32_t>(in[i * 4]) << ", " << static_cast<uint32_t>(in[i * 4 + 1])
+           << ", " << static_cast<uint32_t>(in[i * 4 + 2]) << ", " << static_cast<uint32_t>(in[i * 4 + 3]) << "} + {"
+           << static_cast<uint32_t>(in[j * 4]) << ", " << static_cast<uint32_t>(in[j * 4 + 1]) << ", "
+           << static_cast<uint32_t>(in[j * 4 + 2]) << ", " << static_cast<uint32_t>(in[j * 4 + 3])
+           << "} = " << operator()(in, i, j);
         return ss.str();
     }
 };
@@ -472,11 +555,36 @@ struct Reinterpretation<2, T, Num>
             (static_cast<uint32_t>(in[i * 2 + 1]) << (sizeof(T) * 8));
     }
 
+    uint32_t operator()(const std::array<T, Num>& in, unsigned i, unsigned j) const noexcept
+    {
+        auto tmp0 = (static_cast<uint32_t>(in[i * 2]) + static_cast<uint32_t>(in[j * 2])) & TYPE_MASK<T>;
+        auto tmp1 = (static_cast<uint32_t>(in[i * 2 + 1]) + static_cast<uint32_t>(in[j * 2 + 1])) & TYPE_MASK<T>;
+        return (tmp0 << (sizeof(T) * 0)) | (tmp1 << (sizeof(T) * 8));
+    }
+
+    uint32_t add(uint32_t a, uint32_t b) const noexcept
+    {
+        auto SIZE = TYPE_SIZE<T>;
+        auto tmp0 = (a + b) & TYPE_MASK<T>;
+        auto tmp1 = ((a >> SIZE) + (b >> SIZE)) & TYPE_MASK<T>;
+
+        return (tmp0 << (SIZE * 0)) | (tmp1 << (SIZE * 1));
+    }
+
     std::string print(const std::array<T, Num>& in, unsigned i) const
     {
         std::stringstream ss;
         ss << std::hex << '{' << static_cast<uint32_t>(in[i * 2]) << ", " << static_cast<uint32_t>(in[i * 2 + 1])
            << "} = " << operator()(in, i);
+        return ss.str();
+    }
+
+    std::string print(const std::array<T, Num>& in, unsigned i, unsigned j) const
+    {
+        std::stringstream ss;
+        ss << std::hex << '{' << static_cast<uint32_t>(in[i * 2]) << ", " << static_cast<uint32_t>(in[i * 2 + 1])
+           << "} + {" << static_cast<uint32_t>(in[j * 2]) << ", " << static_cast<uint32_t>(in[j * 2 + 1])
+           << "} = " << operator()(in, i, j);
         return ss.str();
     }
 };
@@ -489,10 +597,27 @@ struct Reinterpretation<1, T, Num>
         return in[i];
     }
 
+    uint32_t operator()(const std::array<T, Num>& in, unsigned i, unsigned j) const noexcept
+    {
+        return (in[i] + in[j]) & TYPE_MASK<T>;
+    }
+
+    uint32_t add(uint32_t a, uint32_t b) const noexcept
+    {
+        return (a + b) & TYPE_MASK<T>;
+    }
+
     std::string print(const std::array<T, Num>& in, unsigned i) const
     {
         std::stringstream ss;
         ss << std::hex << static_cast<uint32_t>(in[i]);
+        return ss.str();
+    }
+
+    std::string print(const std::array<T, Num>& in, unsigned i, unsigned j) const
+    {
+        std::stringstream ss;
+        ss << std::hex << static_cast<uint32_t>(in[i]) << " + " << static_cast<uint32_t>(in[j]);
         return ss.str();
     }
 };
@@ -518,86 +643,178 @@ static void checkReinterpretation(const std::array<I, Num>& in, const std::array
     }
 }
 
+template <typename I, typename O, std::size_t Num,
+    std::size_t Factor = std::max(sizeof(I) / sizeof(O), sizeof(O) / sizeof(I))>
+static void checkReinterpretation2(const std::array<I, Num>& in1, const std::array<I, Num>& in2,
+    const std::array<O, Num>& out, const std::function<void(const std::string&, const std::string&)>& onError)
+{
+    Reinterpretation<sizeof(O) / sizeof(I), I, Num> inputConverter{};
+    Reinterpretation<sizeof(I) / sizeof(O), O, Num> outputConverter{};
+    for(unsigned i = 0; i < Num / Factor; ++i)
+    {
+        auto inSample1 = inputConverter(in1, i, i);
+        auto inSample2 = inputConverter(in2, i, i);
+        auto outSample = outputConverter(out, i);
+        if(outputConverter.add(inSample1, inSample2) != outSample)
+            onError(inputConverter.print(in1, i, i) + " + " + inputConverter.print(in2, i, i) + " for sample " +
+                    std::to_string(i),
+                outputConverter.print(out, i));
+    }
+}
+
 void TestConversionFuntions::testVectorBitcastTruncation4To1()
 {
-    testReinterpretation<uint8_t, uint32_t, 16, 4, 16>(config, "-DIN=uchar16 -DOUT=uint4",
+    testAddressReinterpretation<uint8_t, uint32_t, 16, 4, 16>(config, "-DIN=uchar16 -DOUT=uint4",
         checkReinterpretation<uint8_t, uint32_t, 16>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testReinterpretation<uint8_t, uint32_t, 8, 2, 8>(config, "-DIN=uchar8 -DOUT=uint2",
+    testAddressReinterpretation<uint8_t, uint32_t, 8, 2, 8>(config, "-DIN=uchar8 -DOUT=uint2",
         checkReinterpretation<uint8_t, uint32_t, 8>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testReinterpretation<uint8_t, uint32_t, 4, 1, 4>(config, "-DIN=uchar4 -DOUT=uint",
+    testAddressReinterpretation<uint8_t, uint32_t, 4, 1, 4>(config, "-DIN=uchar4 -DOUT=uint",
         checkReinterpretation<uint8_t, uint32_t, 4>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    testValueReinterpretation<uint8_t, uint32_t, 16, 4, 16>(config, "-DIN=uchar16 -DOUT=uint4",
+        checkReinterpretation2<uint8_t, uint32_t, 16>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testValueReinterpretation<uint8_t, uint32_t, 8, 2, 8>(config, "-DIN=uchar8 -DOUT=uint2",
+        checkReinterpretation2<uint8_t, uint32_t, 8>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testValueReinterpretation<uint8_t, uint32_t, 4, 1, 4>(config, "-DIN=uchar4 -DOUT=uint",
+        checkReinterpretation2<uint8_t, uint32_t, 4>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testVectorBitcastTruncation2To1()
 {
-    testReinterpretation<uint16_t, uint32_t, 16, 8, 16>(config, "-DIN=ushort16 -DOUT=uint8",
+    testAddressReinterpretation<uint16_t, uint32_t, 16, 8, 16>(config, "-DIN=ushort16 -DOUT=uint8",
         checkReinterpretation<uint16_t, uint32_t, 16>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testReinterpretation<uint16_t, uint32_t, 8, 4, 8>(config, "-DIN=ushort8 -DOUT=uint4",
+    testAddressReinterpretation<uint16_t, uint32_t, 8, 4, 8>(config, "-DIN=ushort8 -DOUT=uint4",
         checkReinterpretation<uint16_t, uint32_t, 8>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testReinterpretation<uint16_t, uint32_t, 4, 2, 4>(config, "-DIN=ushort4 -DOUT=uint2",
+    testAddressReinterpretation<uint16_t, uint32_t, 4, 2, 4>(config, "-DIN=ushort4 -DOUT=uint2",
         checkReinterpretation<uint16_t, uint32_t, 4>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testReinterpretation<uint16_t, uint32_t, 2, 1, 2>(config, "-DIN=ushort2 -DOUT=uint",
+    testAddressReinterpretation<uint16_t, uint32_t, 2, 1, 2>(config, "-DIN=ushort2 -DOUT=uint",
         checkReinterpretation<uint16_t, uint32_t, 2>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    testReinterpretation<uint8_t, uint16_t, 16, 8, 16>(config, "-DIN=uchar16 -DOUT=ushort8",
+    testAddressReinterpretation<uint8_t, uint16_t, 16, 8, 16>(config, "-DIN=uchar16 -DOUT=ushort8",
         checkReinterpretation<uint8_t, uint16_t, 16>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testReinterpretation<uint8_t, uint16_t, 8, 4, 8>(config, "-DIN=uchar8 -DOUT=ushort4",
+    testAddressReinterpretation<uint8_t, uint16_t, 8, 4, 8>(config, "-DIN=uchar8 -DOUT=ushort4",
         checkReinterpretation<uint8_t, uint16_t, 8>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testReinterpretation<uint8_t, uint16_t, 4, 2, 4>(config, "-DIN=uchar4 -DOUT=ushort2",
+    testAddressReinterpretation<uint8_t, uint16_t, 4, 2, 4>(config, "-DIN=uchar4 -DOUT=ushort2",
         checkReinterpretation<uint8_t, uint16_t, 4>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testReinterpretation<uint8_t, uint16_t, 2, 1, 2>(config, "-DIN=uchar2 -DOUT=ushort",
+    testAddressReinterpretation<uint8_t, uint16_t, 2, 1, 2>(config, "-DIN=uchar2 -DOUT=ushort",
         checkReinterpretation<uint8_t, uint16_t, 2>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    testValueReinterpretation<uint16_t, uint32_t, 16, 8, 16>(config, "-DIN=ushort16 -DOUT=uint8",
+        checkReinterpretation2<uint16_t, uint32_t, 16>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testValueReinterpretation<uint16_t, uint32_t, 8, 4, 8>(config, "-DIN=ushort8 -DOUT=uint4",
+        checkReinterpretation2<uint16_t, uint32_t, 8>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testValueReinterpretation<uint16_t, uint32_t, 4, 2, 4>(config, "-DIN=ushort4 -DOUT=uint2",
+        checkReinterpretation2<uint16_t, uint32_t, 4>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testValueReinterpretation<uint16_t, uint32_t, 2, 1, 2>(config, "-DIN=ushort2 -DOUT=uint",
+        checkReinterpretation2<uint16_t, uint32_t, 2>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    testValueReinterpretation<uint8_t, uint16_t, 16, 8, 16>(config, "-DIN=uchar16 -DOUT=ushort8",
+        checkReinterpretation2<uint8_t, uint16_t, 16>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testValueReinterpretation<uint8_t, uint16_t, 8, 4, 8>(config, "-DIN=uchar8 -DOUT=ushort4",
+        checkReinterpretation2<uint8_t, uint16_t, 8>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testValueReinterpretation<uint8_t, uint16_t, 4, 2, 4>(config, "-DIN=uchar4 -DOUT=ushort2",
+        checkReinterpretation2<uint8_t, uint16_t, 4>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testValueReinterpretation<uint8_t, uint16_t, 2, 1, 2>(config, "-DIN=uchar2 -DOUT=ushort",
+        checkReinterpretation2<uint8_t, uint16_t, 2>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testVectorBitcastExtension1To4()
 {
-    testReinterpretation<uint32_t, uint8_t, 4, 16, 16>(config, "-DIN=uint4 -DOUT=uchar16",
+    testAddressReinterpretation<uint32_t, uint8_t, 4, 16, 16>(config, "-DIN=uint4 -DOUT=uchar16",
         checkReinterpretation<uint32_t, uint8_t, 16>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testReinterpretation<uint32_t, uint8_t, 2, 8, 8>(config, "-DIN=uint2 -DOUT=uchar8",
+    testAddressReinterpretation<uint32_t, uint8_t, 2, 8, 8>(config, "-DIN=uint2 -DOUT=uchar8",
         checkReinterpretation<uint32_t, uint8_t, 8>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testReinterpretation<uint32_t, uint8_t, 1, 4, 4>(config, "-DIN=uint -DOUT=uchar4",
+    testAddressReinterpretation<uint32_t, uint8_t, 1, 4, 4>(config, "-DIN=uint -DOUT=uchar4",
         checkReinterpretation<uint32_t, uint8_t, 4>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    testValueReinterpretation<uint32_t, uint8_t, 4, 16, 16>(config, "-DIN=uint4 -DOUT=uchar16",
+        checkReinterpretation2<uint32_t, uint8_t, 16>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testValueReinterpretation<uint32_t, uint8_t, 2, 8, 8>(config, "-DIN=uint2 -DOUT=uchar8",
+        checkReinterpretation2<uint32_t, uint8_t, 8>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testValueReinterpretation<uint32_t, uint8_t, 1, 4, 4>(config, "-DIN=uint -DOUT=uchar4",
+        checkReinterpretation2<uint32_t, uint8_t, 4>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testVectorBitcastExtension1To2()
 {
-    testReinterpretation<uint32_t, uint16_t, 8, 16, 16>(config, "-DIN=uint8 -DOUT=ushort16",
+    testAddressReinterpretation<uint32_t, uint16_t, 8, 16, 16>(config, "-DIN=uint8 -DOUT=ushort16",
         checkReinterpretation<uint32_t, uint16_t, 16>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testReinterpretation<uint32_t, uint16_t, 4, 8, 8>(config, "-DIN=uint4 -DOUT=ushort8",
+    testAddressReinterpretation<uint32_t, uint16_t, 4, 8, 8>(config, "-DIN=uint4 -DOUT=ushort8",
         checkReinterpretation<uint32_t, uint16_t, 8>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testReinterpretation<uint32_t, uint16_t, 2, 4, 4>(config, "-DIN=uint2 -DOUT=ushort4",
+    testAddressReinterpretation<uint32_t, uint16_t, 2, 4, 4>(config, "-DIN=uint2 -DOUT=ushort4",
         checkReinterpretation<uint32_t, uint16_t, 4>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testReinterpretation<uint32_t, uint16_t, 1, 2, 2>(config, "-DIN=uint -DOUT=ushort2",
+    testAddressReinterpretation<uint32_t, uint16_t, 1, 2, 2>(config, "-DIN=uint -DOUT=ushort2",
         checkReinterpretation<uint32_t, uint16_t, 2>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    testReinterpretation<uint16_t, uint8_t, 8, 16, 16>(config, "-DIN=ushort8 -DOUT=uchar16",
+    testAddressReinterpretation<uint16_t, uint8_t, 8, 16, 16>(config, "-DIN=ushort8 -DOUT=uchar16",
         checkReinterpretation<uint16_t, uint8_t, 16>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testReinterpretation<uint16_t, uint8_t, 4, 8, 8>(config, "-DIN=ushort4 -DOUT=uchar8",
+    testAddressReinterpretation<uint16_t, uint8_t, 4, 8, 8>(config, "-DIN=ushort4 -DOUT=uchar8",
         checkReinterpretation<uint16_t, uint8_t, 8>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testReinterpretation<uint16_t, uint8_t, 2, 4, 4>(config, "-DIN=ushort2 -DOUT=uchar4",
+    testAddressReinterpretation<uint16_t, uint8_t, 2, 4, 4>(config, "-DIN=ushort2 -DOUT=uchar4",
         checkReinterpretation<uint16_t, uint8_t, 4>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testReinterpretation<uint16_t, uint8_t, 1, 2, 2>(config, "-DIN=ushort -DOUT=uchar2",
+    testAddressReinterpretation<uint16_t, uint8_t, 1, 2, 2>(config, "-DIN=ushort -DOUT=uchar2",
         checkReinterpretation<uint16_t, uint8_t, 2>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    testValueReinterpretation<uint32_t, uint16_t, 8, 16, 16>(config, "-DIN=uint8 -DOUT=ushort16",
+        checkReinterpretation2<uint32_t, uint16_t, 16>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testValueReinterpretation<uint32_t, uint16_t, 4, 8, 8>(config, "-DIN=uint4 -DOUT=ushort8",
+        checkReinterpretation2<uint32_t, uint16_t, 8>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testValueReinterpretation<uint32_t, uint16_t, 2, 4, 4>(config, "-DIN=uint2 -DOUT=ushort4",
+        checkReinterpretation2<uint32_t, uint16_t, 4>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testValueReinterpretation<uint32_t, uint16_t, 1, 2, 2>(config, "-DIN=uint -DOUT=ushort2",
+        checkReinterpretation2<uint32_t, uint16_t, 2>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    testValueReinterpretation<uint16_t, uint8_t, 8, 16, 16>(config, "-DIN=ushort8 -DOUT=uchar16",
+        checkReinterpretation2<uint16_t, uint8_t, 16>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testValueReinterpretation<uint16_t, uint8_t, 4, 8, 8>(config, "-DIN=ushort4 -DOUT=uchar8",
+        checkReinterpretation2<uint16_t, uint8_t, 8>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testValueReinterpretation<uint16_t, uint8_t, 2, 4, 4>(config, "-DIN=ushort2 -DOUT=uchar4",
+        checkReinterpretation2<uint16_t, uint8_t, 4>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    // FIXME, compilation error, but only for this one!
+    // testValueReinterpretation<uint16_t, uint8_t, 1, 2, 2>(config, "-DIN=ushort -DOUT=uchar2",
+    //     checkReinterpretation2<uint16_t, uint8_t, 2>,
+    //     std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }

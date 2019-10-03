@@ -183,7 +183,8 @@ static NODISCARD InstructionWalker insertSplittingBitcast(
         const Value& stv = shiftedTruncatedVectors.at(i % shiftedTruncatedVectors.size());
         unsigned sourceElement = static_cast<unsigned>(i / shiftedTruncatedVectors.size());
 
-        const Value tmp = method.addNewLocal(dest.type, "%bit_cast");
+        // need to fix-up the type to single element for vector insertion to handle it as such
+        const Value tmp = method.addNewLocal(dest.type.getElementType(), "%bit_cast");
         // the vector-rotation to element 0 and then to the destination element should be combined by optimization-step
         // #combineVectorRotations
         it = insertVectorExtraction(it, method, stv, Value(Literal(sourceElement), TYPE_INT8), tmp);

@@ -889,8 +889,9 @@ InstructionWalker intermediate::insertAssembleVector(
         tmp = assign(it, dest.type) = INT_ZERO;
         break;
     case SourceType::CONSTANT:
-        if(std::any_of(sources.begin(), sources.end(),
-               [&](const ElementSource& src) -> bool { return src.sourceValue != sources[0].sourceValue; }))
+        if(std::any_of(sources.begin(), sources.end(), [&](const ElementSource& src) -> bool {
+               return src.sourceType != SourceType::ANY && src.sourceValue != sources[0].sourceValue;
+           }))
             throw CompilationError(CompilationStep::GENERAL, "Cannot assemble vector with different constant sources",
                 to_string<ElementSource>(sources));
         tmp = assign(it, dest.type) = Value(*sources[0].sourceValue, dest.type);
