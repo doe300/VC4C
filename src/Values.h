@@ -1083,6 +1083,10 @@ namespace vc4c
      */
     const Value FLOAT_INF(Literal(static_cast<uint32_t>(0x7F800000)), TYPE_FLOAT);
     /*
+     * The floating-point constant representing -INF
+     */
+    const Value FLOAT_NEG_INF(Literal(static_cast<uint32_t>(0xFF800000)), TYPE_FLOAT);
+    /*
      * The floating-point constant representing NAN
      *
      * NOTE: There are different representations of a NaN!

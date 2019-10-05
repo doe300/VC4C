@@ -66,6 +66,22 @@ namespace vc4c
          * Returns a copy of this expression, if no combination could be done
          */
         Expression combineWith(const FastMap<const Local*, Expression>& inputs, bool allowFakeOperations = false) const;
+
+        /**
+         * Returns the value this expression converges to (if it converges at all).
+         *
+         * For the calculation of the limit it is assumed that the expression is calculated an infinite number of times
+         * with the output of the previous calculation taken as the single input local of the next calculation.
+         *
+         * If the optional initial value is given, it will be used as start point of the induction.
+         *
+         * An expression converges to a given limit, if:
+         * - the op-code itself converges (e.g. add converges to +-INT_MAX, or does not converge)
+         * - the expression takes exactly 1 non-constant argument
+         * - the result converges linearly, e.g. for add/sub. Shl also converges to zero on its first operand, but jumps
+         *   between negative and positive values first, thus it is not considered.
+         */
+        Optional<Value> getConvergenceLimit(Optional<Literal> initialValue = {}) const;
     };
 
     // Extends the operator syntax to create expressions from it

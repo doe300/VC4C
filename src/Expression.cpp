@@ -1,5 +1,7 @@
 #include "Expression.h"
 
+#include "log.h"
+
 using namespace vc4c;
 
 constexpr OpCode Expression::FAKEOP_UMUL;
@@ -377,6 +379,67 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
     }
 
     return *this;
+}
+
+Optional<Value> Expression::getConvergenceLimit(Optional<Literal> initialValue) const
+{
+    if(auto constant = getConstantExpression())
+        return constant;
+    if(arg1 && arg1->checkLocal() && arg0.checkLocal() && arg0.local() != arg1->local())
+        // multiple different locals
+        return NO_VALUE;
+    bool leftIsLocal = arg0.checkLocal();
+    bool rightIsLocal = arg1 && arg1->checkLocal();
+    Optional<Value> constantOperand = arg0.getConstantValue() | (arg1 ? arg1->getConstantValue() : NO_VALUE);
+
+    if(!leftIsLocal && !rightIsLocal)
+        return NO_VALUE;
+
+    switch(code.opAdd)
+    {
+    case OP_FADD.opAdd:
+        if(leftIsLocal && rightIsLocal)
+            // a + a = a * 2 -> +-inf
+            return initialValue ? (initialValue->real() < 0 ? FLOAT_NEG_INF : FLOAT_INF) : NO_VALUE;
+        if(leftIsLocal || rightIsLocal)
+            // a + x = x + a -> +-inf
+            return (arg1 & &Value::getLiteralValue).value().real() < 0 ? FLOAT_NEG_INF : FLOAT_INF;
+        return NO_VALUE;
+    case OP_ADD.opAdd:
+        if(leftIsLocal && rightIsLocal)
+            // a + a = a * 2 -> INT_MIN/INT_MAX
+            return initialValue ?
+                (initialValue->signedInt() < 0 ? Value(Literal(std::numeric_limits<int32_t>::min()), TYPE_INT32) :
+                                                 Value(Literal(std::numeric_limits<int32_t>::max()), TYPE_INT32)) :
+                NO_VALUE;
+        if(leftIsLocal || rightIsLocal)
+            // a + x = x + a -> INT_MIN/INT_MAX
+            return (arg1 & &Value::getLiteralValue).value().signedInt() < 0 ?
+                Value(Literal(std::numeric_limits<int32_t>::min()), TYPE_INT32) :
+                Value(Literal(std::numeric_limits<int32_t>::max()), TYPE_INT32);
+        return NO_VALUE;
+    case OP_SHL.opAdd:
+        if(leftIsLocal)
+            // a << x, a << a -> UINT_MAX if a != 0, 0 otherwise
+            return initialValue == Literal(0u) ? INT_ZERO :
+                                                 Value(Literal(std::numeric_limits<uint32_t>::max()), TYPE_INT32);
+        if(rightIsLocal)
+            // x << a -> UINT_MAX if x,a != 0, 0 otherwise
+            return (initialValue == Literal(0u) || (constantOperand & &Value::getLiteralValue) == Literal(0u)) ?
+                INT_ZERO :
+                Value(Literal(std::numeric_limits<uint32_t>::max()), TYPE_INT32);
+        return NO_VALUE;
+    case OP_SHR.opAdd:
+        if(leftIsLocal && !rightIsLocal)
+            // a >> x -> 0
+            return INT_ZERO;
+        // a >> (a % 32), x >> (a % 32) -> ? (since a could be != 0, but (a % 32) is 0)
+        return NO_VALUE;
+        // TODO more op-codes, where it makes sense
+    }
+    CPPLOG_LAZY(
+        logging::Level::DEBUG, log << "Unhandled convergence limit calculation for: " << to_string() << logging::endl);
+    return NO_VALUE;
 }
 
 size_t std::hash<vc4c::Expression>::operator()(const vc4c::Expression& expr) const noexcept

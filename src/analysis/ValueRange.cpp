@@ -5,6 +5,7 @@
  */
 #include "ValueRange.h"
 
+#include "../Expression.h"
 #include "../InstructionWalker.h"
 #include "../Method.h"
 #include "../Profiler.h"
@@ -50,20 +51,19 @@ ValueRange::ValueRange(bool isFloat, bool isSigned) : hasDefaultBoundaries(true)
     }
 }
 
-static std::hash<DataType> h;
-static std::map<std::size_t, std::pair<double, double>> floatTypeLimits = {
-    {h(TYPE_HALF), std::make_pair(6.103515625e-05, 65504.0)},
-    {h(TYPE_FLOAT),
+static std::map<DataType, std::pair<double, double>> floatTypeLimits = {
+    {TYPE_HALF, std::make_pair(6.103515625e-05, 65504.0)},
+    {TYPE_FLOAT,
         std::make_pair<double, double>(static_cast<double>(std::numeric_limits<float>::min()),
             static_cast<double>(std::numeric_limits<float>::max()))},
-    {h(TYPE_DOUBLE), std::make_pair(std::numeric_limits<double>::min(), std::numeric_limits<double>::max())}};
+    {TYPE_DOUBLE, std::make_pair(std::numeric_limits<double>::min(), std::numeric_limits<double>::max())}};
 
 ValueRange::ValueRange(DataType type) : ValueRange(type.isFloatingType(), !isUnsignedType(type))
 {
     const DataType elemType = type.getPointerType() ? type : type.getElementType();
     if(type.isFloatingType())
     {
-        auto it = floatTypeLimits.find(h(elemType));
+        auto it = floatTypeLimits.find(elemType);
         if(it == floatTypeLimits.end())
             throw CompilationError(CompilationStep::GENERAL, "Unhandled floating-point type", type.to_string());
         floatRange(range).minValue = it->second.first;
@@ -161,10 +161,10 @@ bool ValueRange::fitsIntoType(DataType type, bool isSigned) const
     {
         if(!type.isFloatingType())
             return false;
-        if(floatTypeLimits.find(h(elemType)) == floatTypeLimits.end())
+        if(floatTypeLimits.find(elemType) == floatTypeLimits.end())
             throw CompilationError(CompilationStep::GENERAL, "Unhandled floating-point type", type.to_string());
-        return isInRange(floatRange->minValue, floatRange->maxValue, floatTypeLimits.at(h(elemType)).first,
-            floatTypeLimits.at(h(elemType)).second);
+        return isInRange(floatRange->minValue, floatRange->maxValue, floatTypeLimits.at(elemType).first,
+            floatTypeLimits.at(elemType).second);
     }
     if(auto intRange = VariantNamespace::get_if<IntegerRange>(&range))
     {
@@ -178,6 +178,56 @@ bool ValueRange::fitsIntoType(DataType type, bool isSigned) const
 bool ValueRange::hasExplicitBoundaries() const
 {
     return !hasDefaultBoundaries;
+}
+
+Optional<Value> ValueRange::getLowerLimit() const
+{
+    if(hasDefaultBoundaries)
+        return NO_VALUE;
+    if(auto floatRange = VariantNamespace::get_if<FloatRange>(&range))
+    {
+        if(floatRange->minValue < static_cast<double>(std::numeric_limits<float>::lowest()))
+            return NO_VALUE;
+        if(floatRange->minValue > static_cast<double>(std::numeric_limits<float>::max()))
+            return NO_VALUE;
+        return Value(Literal(static_cast<float>(floatRange->minValue)), TYPE_FLOAT);
+    }
+    if(auto intRange = VariantNamespace::get_if<IntegerRange>(&range))
+    {
+        if(intRange->minValue < std::numeric_limits<int32_t>::min())
+            return NO_VALUE;
+        if(intRange->minValue > std::numeric_limits<uint32_t>::max())
+            return NO_VALUE;
+        if(intRange->minValue > std::numeric_limits<int32_t>::max())
+            return Value(Literal(static_cast<uint32_t>(intRange->minValue)), TYPE_FLOAT);
+        return Value(Literal(static_cast<int32_t>(intRange->minValue)), TYPE_FLOAT);
+    }
+    return NO_VALUE;
+}
+
+Optional<Value> ValueRange::getUpperLimit() const
+{
+    if(hasDefaultBoundaries)
+        return NO_VALUE;
+    if(auto floatRange = VariantNamespace::get_if<FloatRange>(&range))
+    {
+        if(floatRange->maxValue < static_cast<double>(std::numeric_limits<float>::lowest()))
+            return NO_VALUE;
+        if(floatRange->maxValue > static_cast<double>(std::numeric_limits<float>::max()))
+            return NO_VALUE;
+        return Value(Literal(static_cast<float>(floatRange->maxValue)), TYPE_FLOAT);
+    }
+    if(auto intRange = VariantNamespace::get_if<IntegerRange>(&range))
+    {
+        if(intRange->maxValue < std::numeric_limits<int32_t>::min())
+            return NO_VALUE;
+        if(intRange->maxValue > std::numeric_limits<uint32_t>::max())
+            return NO_VALUE;
+        if(intRange->maxValue > std::numeric_limits<int32_t>::max())
+            return Value(Literal(static_cast<uint32_t>(intRange->maxValue)), TYPE_FLOAT);
+        return Value(Literal(static_cast<int32_t>(intRange->maxValue)), TYPE_FLOAT);
+    }
+    return NO_VALUE;
 }
 
 LCOV_EXCL_START
@@ -237,16 +287,9 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
         extendBoundaries(static_cast<int64_t>(1), static_cast<int64_t>(3));
     }
     // loading of immediates/literals
-    else if(constant && constant->isLiteralValue())
+    else if(auto lit = (constant & &Value::getLiteralValue))
     {
-        if(constant->type.isFloatingType())
-            extendBoundaries(static_cast<double>(constant->getLiteralValue()->real()),
-                static_cast<double>(constant->getLiteralValue()->real()));
-        else
-            extendBoundaries(std::min(static_cast<int64_t>(constant->getLiteralValue()->signedInt()),
-                                 static_cast<int64_t>(constant->getLiteralValue()->unsignedInt())),
-                std::max(static_cast<int64_t>(constant->getLiteralValue()->signedInt()),
-                    static_cast<int64_t>(constant->getLiteralValue()->unsignedInt())));
+        extendBoundaries(*lit, constant->type.isFloatingType());
     }
     else if(constant && constant->checkVector())
     {
@@ -372,17 +415,8 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
          */
         const Value& arg0 = op->getFirstArg();
         ValueRange firstRange(arg0.type);
-        if(arg0.isLiteralValue())
-        {
-            if(arg0.type.isFloatingType())
-                firstRange.extendBoundaries(static_cast<double>(arg0.getLiteralValue()->real()),
-                    static_cast<double>(arg0.getLiteralValue()->real()));
-            else
-                firstRange.extendBoundaries(std::min(static_cast<int64_t>(arg0.getLiteralValue()->signedInt()),
-                                                static_cast<int64_t>(arg0.getLiteralValue()->unsignedInt())),
-                    std::min(static_cast<int64_t>(arg0.getLiteralValue()->signedInt()),
-                        static_cast<int64_t>(arg0.getLiteralValue()->unsignedInt())));
-        }
+        if(auto lit = arg0.getLiteralValue())
+            firstRange.extendBoundaries(*lit, arg0.type.isFloatingType());
         else if(arg0.checkLocal() && ranges.find(arg0.local()) != ranges.end())
             firstRange.extendBoundaries(ranges.at(arg0.local()));
 
@@ -407,17 +441,8 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
         {
             const Value arg1 = op->assertArgument(1);
             ValueRange secondRange(arg1.type);
-            if(arg1.isLiteralValue())
-            {
-                if(arg1.type.isFloatingType())
-                    secondRange.extendBoundaries(static_cast<double>(arg1.getLiteralValue()->real()),
-                        static_cast<double>(arg1.getLiteralValue()->real()));
-                else
-                    secondRange.extendBoundaries(std::min(static_cast<int64_t>(arg1.getLiteralValue()->signedInt()),
-                                                     static_cast<int64_t>(arg1.getLiteralValue()->unsignedInt())),
-                        std::min(static_cast<int64_t>(arg1.getLiteralValue()->signedInt()),
-                            static_cast<int64_t>(arg1.getLiteralValue()->unsignedInt())));
-            }
+            if(auto lit = arg1.getLiteralValue())
+                secondRange.extendBoundaries(*lit, arg1.type.isFloatingType());
             else if(arg1.checkLocal() && ranges.find(arg1.local()) != ranges.end())
                 secondRange.extendBoundaries(ranges.at(arg1.local()));
 
@@ -452,7 +477,7 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
                 maxVal = Value(Literal(std::max(maxVal->getLiteralValue()->signedInt(), 0)), minVal->type);
         }
 
-        if(minVal && minVal->isLiteralValue() && maxVal && maxVal->isLiteralValue())
+        if(minVal && minVal->getLiteralValue() && maxVal && maxVal->getLiteralValue())
         {
             if(op->getOutput()->type.isFloatingType())
                 extendBoundaries(static_cast<double>(minVal->getLiteralValue()->real()),
@@ -490,6 +515,182 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
     }
 }
 
+void ValueRange::updateRecursively(const Local* currentLocal, Method* method, FastMap<const Local*, ValueRange>& ranges,
+    FastMap<const intermediate::IntermediateInstruction*, ValueRange>& closedSet,
+    FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>>& openSet)
+{
+    if(ranges.find(currentLocal) != ranges.end())
+        return;
+    ValueRange localRange(currentLocal->type);
+    // writes to this local which are not yet fully resolved (where the range is not yet fully known)
+    FastSet<const intermediate::IntermediateInstruction*> openWrites;
+    // 1. try to determine non-recursive (but transitive) ranges for single writers
+    currentLocal->forUsers(LocalUse::Type::WRITER, [&](const LocalUser* writer) {
+        auto closedIt = closedSet.find(writer);
+        if(closedIt != closedSet.end())
+        {
+            // already processed
+            localRange.extendBoundaries(closedIt->second);
+            return;
+        }
+        if(openSet.find(writer) != openSet.end())
+        {
+            // we already processed/are already processing this instruction, abort to not run in stack overflow below
+            openWrites.emplace(writer);
+            return;
+        }
+        // insert dummy to mark as already processed without setting the (incomplete) partial result
+        openSet.emplace(writer, Optional<ValueRange>{});
+        bool allInputsProcessed = true;
+        writer->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
+            if(has_flag(type, LocalUse::Type::READER))
+            {
+                updateRecursively(loc, method, ranges, closedSet, openSet);
+                if(ranges.find(loc) == ranges.end())
+                    allInputsProcessed = false;
+            }
+        });
+        ValueRange tmpRange(currentLocal->type);
+        tmpRange.update(writer->precalculate().first, ranges, writer, method);
+        if(allInputsProcessed && tmpRange.hasExplicitBoundaries())
+        {
+            // in the first step, only close if bounds are explicitly set to something. The default bounds are handled
+            // afterwards
+            openSet.erase(writer);
+            closedSet.emplace(writer, tmpRange);
+            localRange.extendBoundaries(tmpRange);
+        }
+        else
+            openWrites.emplace(writer);
+    });
+
+    // 2. store partial ranges for open writes to be processed later
+    for(auto writer : openWrites)
+        // set partial range to all open writes (overwrite if needed)
+        openSet.emplace(writer, localRange).first->second = localRange;
+
+    // 3. handle special case with single open writer
+    if(openWrites.size() == 1)
+    {
+        auto write = *openWrites.begin();
+        // if we only have 1 open write, can determine an expression for it and have a non-default partial range (from
+        // all other writes) for this local, we can check whether the expression converges to a value and then extend
+        // the bounds to it.
+        // NOTE: The convergence is pessimistic, since we could create a smaller range if we knew the exact number the
+        // (most likely phi-instruction) is executed, e.g. once for if-else and a fixed number for some loops.
+        if(auto expr = Expression::createRecursiveExpression(*write))
+        {
+            FastSet<Value> limits;
+            if((expr->arg0.checkLocal() && expr->arg0.local() != currentLocal) ||
+                (expr->arg1 & &Value::checkLocal && expr->arg1->local() != currentLocal))
+            {
+                // the expression takes another local as input, use its bounds as starting values for the convergence
+                // limit calculation
+                auto otherLocal = expr->arg0.checkLocal() ? expr->arg0.local() : expr->arg1.value().local();
+                ValueRange otherRange(otherLocal->type);
+                auto rangeIt = ranges.find(otherLocal);
+                bool isPartialRange = false;
+                if(rangeIt != ranges.end())
+                    // we know the fixed range of the single input local, use as base for convergence
+                    otherRange = rangeIt->second;
+                else
+                {
+                    for(const auto& open : openSet)
+                    {
+                        if(open.second && open.first->writesLocal(otherLocal) && open.first->readsLocal(currentLocal) &&
+                            dynamic_cast<const MoveOperation*>(open.first))
+                        {
+                            // This is only true if the only open writes of the other local depend on (more precisely,
+                            // are moves of) the current local (e.g. phi-node), otherwise the range of the other local
+                            // might still extend. If the other local moves from this local, the extension is then
+                            // handled when processing the open entry for the other local.
+                            otherRange = *open.second;
+                            isPartialRange = true;
+                            break;
+                        }
+                    }
+                }
+
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Using input '" << otherLocal->to_string() << "' with"
+                        << (isPartialRange ? " partial " : " ") << "range '" << otherRange.to_string()
+                        << "' for calculating convergence limit of: " << expr->to_string() << logging::endl);
+
+                if(auto lowerLimit = expr->getConvergenceLimit(otherRange.getLowerLimit() & &Value::getLiteralValue))
+                    limits.emplace(std::move(lowerLimit).value());
+                if(auto upperLimit = expr->getConvergenceLimit(otherRange.getUpperLimit() & &Value::getLiteralValue))
+                    limits.emplace(std::move(upperLimit).value());
+
+                // If (partial) range of input is set, and output range is not (e.g. this is the only write), set output
+                // range to this. Otherwise, we always get full-range... This should be okay, since if f(lower) -> x and
+                // f(upper) -> x, then the result is in range [min(lower, x), max(upper, x)]
+                if(localRange.hasDefaultBoundaries && otherRange.hasExplicitBoundaries())
+                    localRange.extendBoundaries(otherRange);
+            }
+            else if(auto limit = expr->getConvergenceLimit())
+                // some operations always converge to a fixed value, independent of the actual start values
+                limits.emplace(std::move(limit).value());
+
+            if(limits.size() == 1)
+            {
+                auto limit = limits.begin();
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Expression '" << expr->to_string() << "' for local '" << currentLocal->to_string()
+                        << "' converges to: " << limit->to_string() << logging::endl);
+
+                // if at this point the localRange is still the default range (e.g. this is the only write and we could
+                // not determine the input local's range, see above), set to explicitly use all values for safety.
+                // Otherwise, the resulting range would only be the converged value!
+                localRange.hasDefaultBoundaries = false;
+
+                if(auto lit = limit->getLiteralValue())
+                {
+                    localRange.extendBoundaries(*lit, limit->type.isFloatingType());
+                    openSet.erase(write);
+                    closedSet.emplace(write, localRange);
+                    openWrites.erase(write);
+                }
+            }
+        }
+    }
+
+    // 4. store final range
+    if(openWrites.empty())
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Finished value range for '" << currentLocal->to_string() << "': " << localRange.to_string()
+                << logging::endl);
+        // convert entries from closed set to result ranges
+        ranges.emplace(currentLocal, std::move(localRange));
+    }
+}
+
+void ValueRange::processedOpenSet(Method* method, FastMap<const Local*, ValueRange>& ranges,
+    FastMap<const intermediate::IntermediateInstruction*, ValueRange>& closedSet,
+    FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>>& openSet)
+{
+    auto it = openSet.begin();
+    while(it != openSet.end())
+    {
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Rerunning value range for: " << it->first->to_string() << logging::endl);
+        FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>> tmpOpenSet{openSet};
+        updateRecursively(openSet.begin()->first->checkOutputLocal(), method, ranges, closedSet, tmpOpenSet);
+        if(tmpOpenSet.size() != openSet.size())
+        {
+            // we actually did something, update open set. Since we don't known which entries were removed (and whether
+            // the iterator is still valid), replace completely
+            it = tmpOpenSet.begin();
+            openSet = std::move(tmpOpenSet);
+        }
+        else
+            ++it;
+    }
+
+    // TODO does not handle all dependencies, but can also not run in loop until open set empty, since (at least for
+    // now) this results in an infinite loop, e.g. for ./testing/test_vectorization.cl
+}
+
 ValueRange ValueRange::getValueRange(const Value& val, Method* method)
 {
     ValueRange range(val.type.isFloatingType(), true);
@@ -504,9 +705,29 @@ ValueRange ValueRange::getValueRange(const Value& val, Method* method)
             tmp.update(NO_VALUE, ranges, loc->getSingleWriter(), method);
         }
     }
-    range.update(val.isLiteralValue() ? Optional<Value>(val) :
-                                        (singleWriter ? singleWriter->precalculate(3).first : Optional<Value>{}),
+    range.update(val.getConstantValue() | (singleWriter ? singleWriter->precalculate(3).first : Optional<Value>{}),
         ranges, singleWriter, method);
+    return range;
+}
+
+ValueRange ValueRange::getValueRangeRecursive(const Value& val, Method* method)
+{
+    FastMap<const Local*, ValueRange> ranges;
+    if(auto loc = val.checkLocal())
+    {
+        PROFILE_START(RecursiveValueRange);
+        FastMap<const intermediate::IntermediateInstruction*, ValueRange> closedSet;
+        FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>> openSet;
+        updateRecursively(loc, method, ranges, closedSet, openSet);
+        processedOpenSet(method, ranges, closedSet, openSet);
+        PROFILE_END(RecursiveValueRange);
+
+        auto rangeIt = ranges.find(loc);
+        if(rangeIt != ranges.end())
+            return rangeIt->second;
+    }
+    ValueRange range(val.type.isFloatingType(), true);
+    range.update(val.getConstantValue(), ranges, val.getSingleWriter(), method);
     return range;
 }
 
@@ -617,6 +838,16 @@ void ValueRange::extendBoundaries(const ValueRange& other)
         extendBoundaries(floatRange->minValue, floatRange->maxValue);
     if(auto intRange = VariantNamespace::get_if<IntegerRange>(&other.range))
         extendBoundaries(intRange->minValue, intRange->maxValue);
+}
+
+void ValueRange::extendBoundaries(Literal literal, bool isFloat)
+{
+    if(isFloat)
+        extendBoundaries(static_cast<double>(literal.real()), static_cast<double>(literal.real()));
+    else
+        extendBoundaries(
+            std::min(static_cast<int64_t>(literal.signedInt()), static_cast<int64_t>(literal.unsignedInt())),
+            std::max(static_cast<int64_t>(literal.signedInt()), static_cast<int64_t>(literal.unsignedInt())));
 }
 
 void ValueRange::extendBoundariesToUnknown(bool isKnownToBeUnsigned)

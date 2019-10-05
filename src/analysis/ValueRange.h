@@ -18,6 +18,7 @@ namespace vc4c
 {
     class DataType;
     class Local;
+    class Literal;
     class Method;
     struct Value;
 
@@ -59,9 +60,13 @@ namespace vc4c
             bool fitsIntoType(DataType type, bool isSigned = true) const;
             bool hasExplicitBoundaries() const;
 
+            Optional<Value> getLowerLimit() const;
+            Optional<Value> getUpperLimit() const;
+
             std::string to_string() const;
 
             static ValueRange getValueRange(const Value& val, Method* method = nullptr);
+            static ValueRange getValueRangeRecursive(const Value& val, Method* method = nullptr);
             static FastMap<const Local*, ValueRange> determineValueRanges(Method& method);
 
         private:
@@ -71,9 +76,19 @@ namespace vc4c
             void extendBoundaries(double newMin, double newMax);
             void extendBoundaries(int64_t newMin, int64_t newMax);
             void extendBoundaries(const ValueRange& other);
+            void extendBoundaries(Literal literal, bool isFloat);
             void extendBoundariesToUnknown(bool isKnownToBeUnsigned = false);
             void update(const Optional<Value>& constant, const FastMap<const Local*, ValueRange>& ranges,
                 const intermediate::IntermediateInstruction* it = nullptr, Method* method = nullptr);
+
+            static void updateRecursively(const Local* currentLocal, Method* method,
+                FastMap<const Local*, ValueRange>& ranges,
+                FastMap<const intermediate::IntermediateInstruction*, ValueRange>& closedSet,
+                FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>>& openSet);
+
+            static void processedOpenSet(Method* method, FastMap<const Local*, ValueRange>& ranges,
+                FastMap<const intermediate::IntermediateInstruction*, ValueRange>& closedSet,
+                FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>>& openSet);
         };
 
     } /* namespace analysis */
