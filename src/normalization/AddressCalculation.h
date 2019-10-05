@@ -8,6 +8,7 @@
 
 #include "../InstructionWalker.h"
 #include "../Values.h"
+#include "../analysis/MemoryAnalysis.h"
 #include "../analysis/ValueRange.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../performance.h"
@@ -21,31 +22,9 @@ namespace vc4c
 
     namespace normalization
     {
-        /**
-         * Enum for the different ways of how to access memory areas
-         */
-        enum class MemoryAccessType
-        {
-            // lower the value into a register and replace all loads with moves
-            QPU_REGISTER_READONLY,
-            // lower the value into a register and replace all loads/stores with moves
-            QPU_REGISTER_READWRITE,
-            // store in VPM in extra space per QPU!!
-            VPM_PER_QPU,
-            // store in VPM, QPUs share access to common data
-            VPM_SHARED_ACCESS,
-            // keep in RAM/global data segment, read via TMU
-            RAM_LOAD_TMU,
-            // keep in RAM/global data segment, access via VPM
-            RAM_READ_WRITE_VPM
-        };
-
-        struct MemoryAccess
-        {
-            FastSet<InstructionWalker> accessInstructions;
-            MemoryAccessType preferred;
-            MemoryAccessType fallback;
-        };
+        using MemoryAccessRange = analysis::MemoryAccessRange;
+        using MemoryAccessType = analysis::MemoryAccessType;
+        using MemoryAccess = analysis::MemoryAccess;
 
         MemoryAccessType toMemoryAccessType(periphery::VPMUsage usage);
 
@@ -83,26 +62,6 @@ namespace vc4c
         NODISCARD InstructionWalker insertAddressToElementOffset(InstructionWalker it, Method& method, Value& out,
             const Local* baseAddress, const Value& container, const intermediate::MemoryInstruction* mem,
             const Value& ptrValue);
-
-        // represents analysis data for the range of memory accessed per memory object
-        struct MemoryAccessRange
-        {
-            const Local* memoryObject;
-            // the memory instruction accessing the memory object
-            InstructionWalker memoryInstruction;
-            // the instruction adding the offset to the base pointer
-            InstructionWalker baseAddressAdd;
-            // the instruction converting the address offset from element offset to byte offset
-            Optional<InstructionWalker> typeSizeShift;
-            // the work-group uniform parts of which the address offset is calculated from
-            FastMap<Value, intermediate::InstructionDecorations> groupUniformAddressParts;
-            // the dynamic parts (specific to the work-item) of which the address offset is calculated from
-            FastMap<Value, intermediate::InstructionDecorations> dynamicAddressParts;
-            // the maximum range (in elements!) the memory is accessed in
-            analysis::IntegerRange offsetRange{0, 0};
-
-            std::string to_string() const;
-        };
 
         /*
          * Converts an address (e.g. index-chain) which contains work-group uniform and work-item specific parts (as

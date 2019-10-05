@@ -17,6 +17,25 @@ namespace vc4c
     namespace analysis
     {
         /**
+         * Enum for the different ways of how to access memory areas
+         */
+        enum class MemoryAccessType
+        {
+            // lower the value into a register and replace all loads with moves
+            QPU_REGISTER_READONLY,
+            // lower the value into a register and replace all loads/stores with moves
+            QPU_REGISTER_READWRITE,
+            // store in VPM in extra space per QPU!!
+            VPM_PER_QPU,
+            // store in VPM, QPUs share access to common data
+            VPM_SHARED_ACCESS,
+            // keep in RAM/global data segment, read via TMU
+            RAM_LOAD_TMU,
+            // keep in RAM/global data segment, access via VPM
+            RAM_READ_WRITE_VPM
+        };
+
+        /**
          * Analysis data for the range of memory accessed per memory object
          *
          * The final address is calculated as following:
@@ -41,12 +60,19 @@ namespace vc4c
             Optional<InstructionWalker> typeSizeShift{};
             // the work-group uniform parts of which the address offset is calculated from
             FastMap<Value, intermediate::InstructionDecorations> groupUniformAddressParts{};
-            // the dynamic parts of which the address offset is calculated from
+            // the dynamic parts (specific to the work-item) of which the address offset is calculated from
             FastMap<Value, intermediate::InstructionDecorations> dynamicAddressParts{};
             // the maximum range (in elements!) the memory is accessed in
             analysis::IntegerRange offsetRange{0, 0};
 
             std::string to_string() const;
+        };
+
+        struct MemoryAccess
+        {
+            FastSet<InstructionWalker> accessInstructions;
+            MemoryAccessType preferred;
+            MemoryAccessType fallback;
         };
 
         struct LocalUsageOrdering
@@ -60,8 +86,20 @@ namespace vc4c
          * Determines all the limited access ranges of the single memory-bases locals.
          *
          * For any local not present in the resulting map, the access range could not be determined
+         *
+         * NOTE: This function is intended to be run AFTER the MemoryInstructions have been lowered!
          */
         AccessRanges determineAccessRanges(Method& method);
+
+        /**
+         * Determines all the limited access ranges of the given local.
+         *
+         * if the access range could not be determined for all memory access operations, an empty list is returned.
+         *
+         * NOTE: This function is intended to be run BEFORE the MemoryInstructions have been lowered!
+         */
+        FastAccessList<MemoryAccessRange> determineAccessRanges(
+            Method& method, const Local* baseAddr, MemoryAccess& access);
 
     } // namespace analysis
 

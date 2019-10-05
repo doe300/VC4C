@@ -118,21 +118,12 @@ static Optional<std::pair<Value, InstructionDecorations>> combineAdditions(
     return prevResult;
 }
 
-LCOV_EXCL_START
-std::string MemoryAccessRange::to_string() const
-{
-    return (memoryInstruction->to_string() +
-               (memoryInstruction->writesRegister(REG_VPM_DMA_LOAD_ADDR) ? " - read " : " - write ")) +
-        (memoryObject->to_string() +
-            (groupUniformAddressParts.empty() ? " with" : " with work-group uniform offset and") +
-            " dynamic element range [") +
-        (std::to_string(offsetRange.minValue) + ", ") + (std::to_string(offsetRange.maxValue) + "]");
-}
-LCOV_EXCL_STOP
-
 InstructionWalker normalization::insertAddressToWorkItemSpecificOffset(
-    InstructionWalker it, Method& method, Value& out, MemoryAccessRange& range)
+    InstructionWalker it, Method& method, Value& out, analysis::MemoryAccessRange& range)
 {
+    if(range.constantOffset)
+        throw CompilationError(CompilationStep::NORMALIZER,
+            "Calculating work-item specific offset with constant part is not yet implemented", range.to_string());
     auto dynamicParts = combineAdditions(method, it, range.dynamicAddressParts);
     out = dynamicParts->first;
     if(range.typeSizeShift)

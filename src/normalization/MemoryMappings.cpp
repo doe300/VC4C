@@ -297,11 +297,23 @@ static InstructionWalker lowerMemoryCopyToRegister(
             {
                 if(auto lit = mem->getNumEntries().getLiteralValue())
                 {
-                    // TODO is this correct??
-                    auto tmpType = periphery::getBestVectorSize(lit->unsignedInt());
-                    numEntries = Value(Literal(tmpType.second), TYPE_INT32);
-                    tmp = method.addNewLocal(tmpType.first);
+                    // TODO is this correct?
+                    // NOTE: copied entry type could be byte, which actual type is half-word or word!
+                    auto typeFactor = static_cast<uint32_t>(
+                        srcInfo.mappedRegisterOrConstant->type.getElementType().getScalarBitCount() /
+                        mem->getSourceElementType().getScalarBitCount());
+                    if((lit->unsignedInt() % typeFactor) != 0)
+                        throw CompilationError(CompilationStep::NORMALIZER,
+                            "Copied number of bytes is not a multiple of the actual register type", mem->to_string());
+                    auto numElements = lit->unsignedInt() / typeFactor;
+                    if(numElements == 0 || numElements > NATIVE_VECTOR_SIZE)
+                        throw CompilationError(
+                            CompilationStep::NORMALIZER, "Invalid copied number of elements", mem->to_string());
+                    tmp = method.addNewLocal(
+                        srcInfo.mappedRegisterOrConstant->type.toVectorType(static_cast<uint8_t>(numElements)));
                 }
+                // TODO only add if above is tested and works!
+                // else
                 throw CompilationError(CompilationStep::NORMALIZER,
                     "Lowering copy with a dynamic number of entries is not yet implemented", mem->to_string());
             }
@@ -309,7 +321,6 @@ static InstructionWalker lowerMemoryCopyToRegister(
                 tmp = method.addNewLocal(mem->getSourceElementType());
             it = insertVectorExtraction(it, method, *srcInfo.mappedRegisterOrConstant, tmpIndex, tmp);
         }
-        logging::error() << tmp.to_string() << " - " << numEntries.to_string() << logging::endl;
         it.reset(new MemoryInstruction(
             MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmp), std::move(numEntries)));
         return mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
@@ -335,7 +346,7 @@ static InstructionWalker insertToInVPMAreaOffset(Method& method, InstructionWalk
     if(info.ranges)
     {
         auto range = std::find_if(info.ranges->begin(), info.ranges->end(),
-            [&](const MemoryAccessRange& range) -> bool { return range.memoryInstruction == it; });
+            [&](const MemoryAccessRange& range) -> bool { return range.addressWrite == it; });
         if(range == info.ranges->end())
             throw CompilationError(CompilationStep::NORMALIZER,
                 "Failed to find memory access range for VPM cached memory access", mem->to_string());
@@ -705,15 +716,22 @@ static InstructionWalker mapMemoryCopy(
             return mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
         }
         else if(numEntries.getLiteralValue() &&
-            (numEntries.getLiteralValue()->unsignedInt() * mem->getSourceElementType().getVectorWidth()) <=
-                NATIVE_VECTOR_SIZE)
+            (numEntries.getLiteralValue()->unsignedInt() * mem->getSourceElementType().getLogicalWidth()) <=
+                TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE).getLogicalWidth())
         {
             // general case, read whole row via TMU/VPM and insert only actually used elements
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Mapping partial copy of read only RAM into register: " << mem->to_string() << logging::endl);
             // e.g. if we copy 2 entries of int2, we need to copy 4 SIMD elements
+            // also if we copy 20 entries of i8, we need to copy 5 SIMD elements of i32!
             auto numElements =
-                numEntries.getLiteralValue()->unsignedInt() * mem->getSourceElementType().getVectorWidth();
+                (numEntries.getLiteralValue()->unsignedInt() * mem->getSourceElementType().getLogicalWidth()) /
+                destInfo.convertedRegisterType->getElementType().getLogicalWidth();
+            if(numElements == 0 || numElements > NATIVE_VECTOR_SIZE)
+                // TODO copy e.g. copying 1 byte into an int vector, need to combine the byte with the rest of the word
+                // for the correct element
+                throw CompilationError(
+                    CompilationStep::NORMALIZER, "Invalid copied number of elements", mem->to_string());
 
             auto tmp = method.addNewLocal(
                 mem->getSourceElementType().toVectorType(static_cast<uint8_t>(numElements)), "%mem_read_tmp");
