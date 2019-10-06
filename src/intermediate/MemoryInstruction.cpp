@@ -8,7 +8,6 @@
 
 #include "../GlobalValues.h"
 #include "../asm/Instruction.h"
-#include "../periphery/VPM.h"
 
 #include "log.h"
 
@@ -89,8 +88,10 @@ static void checkSingleValue(const Value& val)
     throw CompilationError(CompilationStep::LLVM_2_IR, "Operand needs to the constant one", val.to_string());
 }
 
-MemoryInstruction::MemoryInstruction(const MemoryOperation op, Value&& dest, Value&& src, Value&& numEntries) :
-    IntermediateInstruction(std::move(dest)), op(op)
+MemoryInstruction::MemoryInstruction(
+    const MemoryOperation op, Value&& dest, Value&& src, Value&& numEntries, bool useMutex) :
+    IntermediateInstruction(std::move(dest)),
+    op(op), guardAccess(useMutex)
 {
     setArgument(0, std::move(src));
     setArgument(1, std::move(numEntries));
@@ -106,18 +107,19 @@ MemoryInstruction::MemoryInstruction(const MemoryOperation op, Value&& dest, Val
 LCOV_EXCL_START
 std::string MemoryInstruction::to_string() const
 {
+    auto lockString = guardAccess ? " (guarded)" : " (unguarded)";
     switch(op)
     {
     case MemoryOperation::COPY:
         return std::string("copy ") + (getNumEntries().to_string() + " entries from ") +
-            (getSource().to_string() + " into ") + getDestination().to_string();
+            (getSource().to_string() + " into ") + getDestination().to_string() + lockString;
     case MemoryOperation::FILL:
         return std::string("fill ") + (getDestination().to_string() + " with ") +
-            (getNumEntries().to_string() + " copies of ") + getSource().to_string();
+            (getNumEntries().to_string() + " copies of ") + getSource().to_string() + lockString;
     case MemoryOperation::READ:
-        return (getDestination().to_string() + " = load memory at ") + getSource().to_string();
+        return (getDestination().to_string() + " = load memory at ") + getSource().to_string() + lockString;
     case MemoryOperation::WRITE:
-        return std::string("store ") + (getSource().to_string() + " into ") + getDestination().to_string();
+        return std::string("store ") + (getSource().to_string() + " into ") + getDestination().to_string() + lockString;
     }
     throw CompilationError(
         CompilationStep::GENERAL, "Unknown memory operation type", std::to_string(static_cast<unsigned>(op)));
@@ -143,7 +145,8 @@ SideEffectType MemoryInstruction::getSideEffects() const
 IntermediateInstruction* MemoryInstruction::copyFor(Method& method, const std::string& localPrefix) const
 {
     return (new MemoryInstruction(op, renameValue(method, getDestination(), localPrefix),
-                renameValue(method, getSource(), localPrefix), renameValue(method, getNumEntries(), localPrefix)))
+                renameValue(method, getSource(), localPrefix), renameValue(method, getNumEntries(), localPrefix),
+                guardAccess))
         ->copyExtrasFrom(this);
 }
 

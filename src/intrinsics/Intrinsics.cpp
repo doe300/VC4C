@@ -190,16 +190,18 @@ static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access, bool setMutex)
             CPPLOG_LAZY(
                 logging::Level::DEBUG, log << "Intrinsifying memory read " << callSite->to_string() << logging::endl);
             // This needs to be access via VPM for atomic-instructions to work correctly!!
-            it = periphery::insertReadDMA(
-                method, it, callSite->getOutput().value(), callSite->assertArgument(0), setMutex);
+            it.emplace(new MemoryInstruction(MemoryOperation::READ, Value(callSite->getOutput().value()),
+                Value(callSite->assertArgument(0)), Value(INT_ONE), setMutex));
+            it.nextInBlock();
             break;
         }
         case DMAAccess::WRITE:
         {
             CPPLOG_LAZY(
                 logging::Level::DEBUG, log << "Intrinsifying memory write " << callSite->to_string() << logging::endl);
-            it = periphery::insertWriteDMA(
-                method, it, callSite->assertArgument(1), callSite->assertArgument(0), setMutex);
+            it.emplace(new MemoryInstruction(MemoryOperation::WRITE, Value(callSite->assertArgument(0)),
+                Value(callSite->assertArgument(1)), Value(INT_ONE), setMutex));
+            it.nextInBlock();
             break;
         }
         case DMAAccess::COPY:
@@ -207,14 +209,9 @@ static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access, bool setMutex)
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying ternary '" << callSite->to_string() << "' to DMA copy operation "
                     << logging::endl);
-            const DataType type = callSite->assertArgument(0).type.getElementType();
-            if(!callSite->getArgument(2) || !callSite->assertArgument(2).getLiteralValue())
-                it = method.vpm->insertCopyRAMDynamic(method, it, callSite->assertArgument(0),
-                    callSite->assertArgument(1), callSite->assertArgument(2), nullptr, setMutex);
-            else
-                it = method.vpm->insertCopyRAM(method, it, callSite->assertArgument(0), callSite->assertArgument(1),
-                    callSite->assertArgument(2).getLiteralValue()->unsignedInt() * type.getInMemoryWidth(), nullptr,
-                    setMutex);
+            it.emplace(new MemoryInstruction(MemoryOperation::COPY, Value(callSite->assertArgument(0)),
+                Value(callSite->assertArgument(1)), callSite->getArgument(2).value_or(INT_ONE), setMutex));
+            it.nextInBlock();
             break;
         }
         case DMAAccess::PREFETCH:

@@ -922,7 +922,8 @@ namespace vc4c
         struct MemoryInstruction final : IntermediateInstruction
         {
         public:
-            MemoryInstruction(MemoryOperation op, Value&& dest, Value&& src, Value&& numEntries = Value(INT_ONE));
+            MemoryInstruction(MemoryOperation op, Value&& dest, Value&& src, Value&& numEntries = Value(INT_ONE),
+                bool useMutex = true);
 
             std::string to_string() const override;
             qpu_asm::DecoratedInstruction convertToAsm(const FastMap<const Local*, Register>& registerMapping,
@@ -964,6 +965,7 @@ namespace vc4c
             FastSet<const Local*> getMemoryAreas() const;
 
             const MemoryOperation op;
+            const bool guardAccess;
         };
     } // namespace intermediate
 } // namespace vc4c

@@ -384,7 +384,7 @@ static InstructionWalker lowerMemoryReadToVPM(
     it = insertToInVPMAreaOffset(method, it, inAreaOffset, srcInfo, mem, mem->getSource());
     if(mem->op == MemoryOperation::READ)
     {
-        it = method.vpm->insertReadVPM(method, it, mem->getDestination(), srcInfo.area, true, inAreaOffset);
+        it = method.vpm->insertReadVPM(method, it, mem->getDestination(), srcInfo.area, mem->guardAccess, inAreaOffset);
         return it.erase();
     }
     throw CompilationError(
@@ -411,7 +411,7 @@ static InstructionWalker lowerMemoryWriteToVPM(
     it = insertToInVPMAreaOffset(method, it, inAreaOffset, destInfo, mem, mem->getDestination());
     if(mem->op == MemoryOperation::WRITE)
     {
-        it = method.vpm->insertWriteVPM(method, it, mem->getSource(), destInfo.area, true, inAreaOffset);
+        it = method.vpm->insertWriteVPM(method, it, mem->getSource(), destInfo.area, mem->guardAccess, inAreaOffset);
         return it.erase();
     }
     if(mem->op == MemoryOperation::FILL)
@@ -435,16 +435,22 @@ static InstructionWalker lowerMemoryWriteToVPM(
             it = insertToInVPMAreaOffset(method, it, inAreaOffset, destInfo, mem, mem->getDestination());
             // 3. write vector to VPM
             auto vpmTypeSize = Literal(vpmType.first.getInMemoryWidth());
-            it.emplace(new MutexLock(MutexAccess::LOCK));
-            it.nextInBlock();
+            if(mem->guardAccess)
+            {
+                it.emplace(new MutexLock(MutexAccess::LOCK));
+                it.nextInBlock();
+            }
             for(unsigned i = 0; i < vpmType.second; ++i)
             {
                 auto byteOffset = assign(it, TYPE_INT32) = Value(Literal(i), TYPE_INT32) * vpmTypeSize;
                 byteOffset = assign(it, TYPE_INT32) = inAreaOffset + byteOffset;
                 it = method.vpm->insertWriteVPM(method, it, fillVector, destInfo.area, false, byteOffset);
             }
-            it.emplace(new MutexLock(MutexAccess::RELEASE));
-            it.nextInBlock();
+            if(mem->guardAccess)
+            {
+                it.emplace(new MutexLock(MutexAccess::RELEASE));
+                it.nextInBlock();
+            }
             return it.erase();
         }
         logging::error() << "Destination: " << destInfo.local->to_string() << " - " << mem->getNumEntries().to_string()
@@ -492,8 +498,11 @@ static InstructionWalker accessMemoryInRAMViaVPM(
     {
     case MemoryOperation::FILL:
     {
-        it.emplace(new MutexLock(MutexAccess::LOCK));
-        it.nextInBlock();
+        if(mem->guardAccess)
+        {
+            it.emplace(new MutexLock(MutexAccess::LOCK));
+            it.nextInBlock();
+        }
         if(auto numCopies = mem->getNumEntries().getLiteralValue())
         {
             if(mem->getSource().type == TYPE_INT8)
@@ -527,8 +536,11 @@ static InstructionWalker accessMemoryInRAMViaVPM(
             it = method.vpm->insertFillRAMDynamic(
                 method, it, mem->getDestination(), mem->getSourceElementType(), mem->getNumEntries(), nullptr, false);
         }
-        it.emplace(new MutexLock(MutexAccess::RELEASE));
-        it.nextInBlock();
+        if(mem->guardAccess)
+        {
+            it.emplace(new MutexLock(MutexAccess::RELEASE));
+            it.nextInBlock();
+        }
         auto* dest = mem->getDestination().checkLocal() ? mem->getDestination().local()->getBase(true) : nullptr;
         if(dest && dest->is<Parameter>())
             const_cast<Parameter*>(dest->as<const Parameter>())->decorations =
@@ -537,7 +549,7 @@ static InstructionWalker accessMemoryInRAMViaVPM(
     }
     case MemoryOperation::READ:
     {
-        it = periphery::insertReadDMA(method, it, mem->getDestination(), mem->getSource());
+        it = periphery::insertReadDMA(method, it, mem->getDestination(), mem->getSource(), mem->guardAccess);
         auto* src = mem->getSource().checkLocal() ? mem->getSource().local()->getBase(true) : nullptr;
         if(src && src->is<Parameter>())
             const_cast<Parameter*>(src->as<const Parameter>())->decorations =
@@ -546,7 +558,7 @@ static InstructionWalker accessMemoryInRAMViaVPM(
     }
     case MemoryOperation::WRITE:
     {
-        it = periphery::insertWriteDMA(method, it, mem->getSource(), mem->getDestination());
+        it = periphery::insertWriteDMA(method, it, mem->getSource(), mem->getDestination(), mem->guardAccess);
         auto* dest = mem->getDestination().checkLocal() ? mem->getDestination().local()->getBase(true) : nullptr;
         if(dest && dest->is<Parameter>())
             const_cast<Parameter*>(dest->as<const Parameter>())->decorations =
@@ -652,11 +664,24 @@ static InstructionWalker mapMemoryCopy(
             // TODO could for static count insert that number of reads/writes, for dynamic need a loop!
             throw CompilationError(CompilationStep::NORMALIZER,
                 "Copying within VPM with more than 1 entries is not yet implemented", mem->to_string());
+        if(mem->guardAccess)
+        {
+            it.emplace(new MutexLock(MutexAccess::LOCK));
+            it.nextInBlock();
+        }
         auto tmpVal = method.addNewLocal(mem->getSourceElementType(), "%vpm_copy_tmp");
-        it.emplace(new MemoryInstruction(MemoryOperation::READ, Value(tmpVal), Value(mem->getSource())));
+        it.emplace(new MemoryInstruction(
+            MemoryOperation::READ, Value(tmpVal), Value(mem->getSource()), Value(numEntries), false));
         it = mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
-        it.reset(new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmpVal)));
-        return mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
+        it.reset(new MemoryInstruction(
+            MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmpVal), Value(numEntries), false));
+        it = mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
+        if(mem->guardAccess)
+        {
+            it.emplace(new MutexLock(MutexAccess::RELEASE));
+            it.nextInBlock();
+        }
+        return it;
     }
     else if(srcInVPM && destInRAM)
     {
@@ -667,7 +692,7 @@ static InstructionWalker mapMemoryCopy(
         it = insertToInVPMAreaOffset(method, it, inAreaOffset, srcInfo, mem, mem->getSource());
         it = method.vpm->insertWriteRAM(method, it,
             Value(mem->getDestination().local(), vpmRowType.value_or(mem->getDestinationElementType())),
-            vpmRowType.value_or(mem->getSourceElementType()), srcInfo.area, true, inAreaOffset, numEntries);
+            vpmRowType.value_or(mem->getSourceElementType()), srcInfo.area, mem->guardAccess, inAreaOffset, numEntries);
         return it.erase();
     }
     else if(srcInRAM && destInVPM)
@@ -679,7 +704,8 @@ static InstructionWalker mapMemoryCopy(
         it = insertToInVPMAreaOffset(method, it, inAreaOffset, destInfo, mem, mem->getDestination());
         it = method.vpm->insertReadRAM(method, it,
             Value(mem->getSource().local(), vpmRowType.value_or(mem->getSourceElementType())),
-            vpmRowType.value_or(mem->getDestinationElementType()), destInfo.area, true, inAreaOffset, numEntries);
+            vpmRowType.value_or(mem->getDestinationElementType()), destInfo.area, mem->guardAccess, inAreaOffset,
+            numEntries);
         return it.erase();
     }
     else if(srcInRAM && destInRAM)
@@ -688,7 +714,8 @@ static InstructionWalker mapMemoryCopy(
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Mapping copy from RAM into RAM to DMA read and DMA write: " << mem->to_string() << logging::endl);
         if(!numEntries.isLiteralValue())
-            it = method.vpm->insertCopyRAMDynamic(method, it, mem->getDestination(), mem->getSource(), numEntries);
+            it = method.vpm->insertCopyRAMDynamic(
+                method, it, mem->getDestination(), mem->getSource(), numEntries, nullptr, mem->guardAccess);
         else
         {
             uint64_t numBytes = numEntries.getLiteralValue()->unsignedInt() *
@@ -697,8 +724,8 @@ static InstructionWalker mapMemoryCopy(
                 throw CompilationError(
                     CompilationStep::OPTIMIZER, "Cannot copy more than 4GB of data", mem->to_string());
 
-            it = method.vpm->insertCopyRAM(
-                method, it, mem->getDestination(), mem->getSource(), static_cast<unsigned>(numBytes), nullptr);
+            it = method.vpm->insertCopyRAM(method, it, mem->getDestination(), mem->getSource(),
+                static_cast<unsigned>(numBytes), nullptr, mem->guardAccess);
         }
         return it.erase();
     }
@@ -712,7 +739,8 @@ static InstructionWalker mapMemoryCopy(
                 log << "Mapping copy of whole register from VPM/RAM into register to read from VPM/RAM: "
                     << mem->to_string() << logging::endl);
             it.reset(new MemoryInstruction(MemoryOperation::READ, Value(*destInfo.mappedRegisterOrConstant),
-                Value(mem->getSource().local(), method.createPointerType(*destInfo.convertedRegisterType))));
+                Value(mem->getSource().local(), method.createPointerType(*destInfo.convertedRegisterType)),
+                Value(INT_ONE), mem->guardAccess));
             return mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
         }
         else if(numEntries.getLiteralValue() &&
@@ -733,12 +761,25 @@ static InstructionWalker mapMemoryCopy(
                 throw CompilationError(
                     CompilationStep::NORMALIZER, "Invalid copied number of elements", mem->to_string());
 
+            if(mem->guardAccess)
+            {
+                it.emplace(new MutexLock(MutexAccess::LOCK));
+                it.nextInBlock();
+            }
             auto tmp = method.addNewLocal(
                 mem->getSourceElementType().toVectorType(static_cast<uint8_t>(numElements)), "%mem_read_tmp");
-            it.emplace(new MemoryInstruction(MemoryOperation::READ, Value(tmp), Value(mem->getSource())));
+            it.emplace(new MemoryInstruction(
+                MemoryOperation::READ, Value(tmp), Value(mem->getSource()), Value(INT_ONE), false));
             it = mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
-            it.reset(new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmp)));
-            return mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
+            it.reset(new MemoryInstruction(
+                MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmp), Value(INT_ONE), false));
+            it = mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfo, destInfo);
+            if(mem->guardAccess)
+            {
+                it.emplace(new MutexLock(MutexAccess::RELEASE));
+                it.nextInBlock();
+            }
+            return it;
         }
         else
         {

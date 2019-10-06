@@ -136,10 +136,16 @@ static NODISCARD InstructionWalker findNextValueStore(
 }
 
 static NODISCARD std::pair<InstructionWalker, InstructionWalker> insert64BitWrite(Method& method, InstructionWalker it,
-    Local* address, Value lower, Value upper, IntermediateInstruction* origInstruction = nullptr)
+    Local* address, Value lower, Value upper, MemoryInstruction* origInstruction = nullptr)
 {
+    if(origInstruction->guardAccess)
+    {
+        it.emplace(new MutexLock(MutexAccess::LOCK));
+        it.nextInBlock();
+    }
     auto lowerIndex = Value(address, method.createPointerType(TYPE_INT32));
-    it.emplace(new MemoryInstruction(MemoryOperation::WRITE, Value(lowerIndex), std::move(lower)));
+    it.emplace(
+        new MemoryInstruction(MemoryOperation::WRITE, Value(lowerIndex), std::move(lower), Value(INT_ONE), false));
     if(origInstruction)
         it->copyExtrasFrom(origInstruction);
     auto startIt = it;
@@ -147,10 +153,16 @@ static NODISCARD std::pair<InstructionWalker, InstructionWalker> insert64BitWrit
     auto upperIndex = assign(it, lowerIndex.type) = lowerIndex + 4_val;
     if(auto ref = lowerIndex.local()->reference.first)
         upperIndex.local()->reference.first = ref;
-    it.emplace(new MemoryInstruction(MemoryOperation::WRITE, std::move(upperIndex), std::move(upper)));
+    it.emplace(
+        new MemoryInstruction(MemoryOperation::WRITE, std::move(upperIndex), std::move(upper), Value(INT_ONE), false));
     if(origInstruction)
         it->copyExtrasFrom(origInstruction);
     it.nextInBlock();
+    if(origInstruction->guardAccess)
+    {
+        it.emplace(new MutexLock(MutexAccess::RELEASE));
+        it.nextInBlock();
+    }
     return std::make_pair(it, startIt);
 }
 
@@ -298,7 +310,7 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
                     auto src = memInstr->getSource();
                     it.erase();
                     nextIt.reset(new MemoryInstruction(MemoryOperation::COPY, Value(nextMemInstr->getDestination()),
-                        std::move(src), Value(nextMemInstr->getNumEntries())));
+                        std::move(src), Value(nextMemInstr->getNumEntries()), nextMemInstr->guardAccess));
                     // continue with the next instruction after the read in the next iteration
                     continue;
                 }
@@ -391,8 +403,6 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
                 if(canBeSplitUp)
                 {
                     // split load into 2 loads (upper and lower word), mark stores for conversion
-                    // TODO move both inserted loads (and also both inserted stores) into one mutex block (load/store 2
-                    // values at once)
                     auto origLocal = memInstr->getDestination();
                     auto lowerLocal = method.addNewLocal(TYPE_INT32, origLocal.local()->name + ".lower");
                     auto upperLocal = method.addNewLocal(TYPE_INT32, origLocal.local()->name + ".upper");
@@ -401,17 +411,29 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
                         log << "Splitting '" << origLocal.to_string() << "' into '" << lowerLocal.to_string()
                             << "' and '" << upperLocal.to_string() << '\'' << logging::endl);
 
+                    if(memInstr->guardAccess)
+                    {
+                        it.emplace(new MutexLock(MutexAccess::LOCK));
+                        it.nextInBlock();
+                    }
                     auto lowerIndex = Value(memInstr->getSource().local(), method.createPointerType(TYPE_INT32));
-                    it.emplace(new MemoryInstruction(MemoryOperation::READ, Value(lowerLocal), Value(lowerIndex)));
+                    it.emplace(new MemoryInstruction(
+                        MemoryOperation::READ, Value(lowerLocal), Value(lowerIndex), Value(INT_ONE), false));
                     it->copyExtrasFrom(memInstr);
                     auto startIt = it;
                     it.nextInBlock();
                     auto upperIndex = assign(it, lowerIndex.type) = lowerIndex + 4_val;
                     if(auto ref = lowerIndex.local()->reference.first)
                         upperIndex.local()->reference.first = ref;
-                    it.emplace(new MemoryInstruction(MemoryOperation::READ, Value(upperLocal), std::move(upperIndex)));
+                    it.emplace(new MemoryInstruction(
+                        MemoryOperation::READ, Value(upperLocal), std::move(upperIndex), Value(INT_ONE), false));
                     it->copyExtrasFrom(memInstr);
                     it.nextInBlock();
+                    if(memInstr->guardAccess)
+                    {
+                        it.emplace(new MutexLock(MutexAccess::RELEASE));
+                        it.nextInBlock();
+                    }
 
                     for(auto store : storesToRewrite)
                     {

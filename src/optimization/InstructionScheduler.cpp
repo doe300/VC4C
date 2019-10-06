@@ -10,7 +10,6 @@
 #include "../Profiler.h"
 #include "../analysis/DependencyGraph.h"
 #include "../intermediate/IntermediateInstruction.h"
-#include "../periphery/VPM.h"
 #include "log.h"
 
 using namespace vc4c;
