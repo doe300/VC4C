@@ -239,8 +239,8 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Stable
     binary.read(reinterpret_cast<char*>(&moduleInfo.value), sizeof(moduleInfo.value));
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Extracted module with " << moduleInfo.getInfoCount() << " kernels, "
-            << moduleInfo.getGlobalDataSize().getValue() << " words of global data and "
-            << moduleInfo.getStackFrameSize().getValue() << " words of stack-frames" << logging::endl);
+            << moduleInfo.getGlobalDataSize() << " words of global data and "
+            << moduleInfo.getStackFrameSize() << " words of stack-frames" << logging::endl);
 
     for(uint16_t k = 0; k < moduleInfo.getInfoCount(); ++k)
     {
@@ -292,7 +292,7 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Stable
             CompoundConstant(type, std::move(elements)), false);
 
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Extracted " << moduleInfo.getGlobalDataSize().getValue() << " words of global data"
+            log << "Extracted " << moduleInfo.getGlobalDataSize() << " words of global data"
                 << logging::endl);
     }
 

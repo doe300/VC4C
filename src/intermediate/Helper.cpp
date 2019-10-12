@@ -313,15 +313,15 @@ InstructionWalker intermediate::insertByteSwap(
     return it;
 }
 
-const Local* intermediate::getSourceLocal(const Local* local)
+Value intermediate::getSourceValue(Value value)
 {
-    while(auto writer = local->getSingleWriter())
+    while(auto writer = value.getSingleWriter())
     {
         auto move = dynamic_cast<const MoveOperation*>(writer);
-        if(move && move->isSimpleMove() && !move->hasConditionalExecution() && move->readsLocal())
-            local = move->getSource().local();
+        if(move && move->isSimpleMove() && !move->hasConditionalExecution())
+            value = move->getSource();
     }
-    return local;
+    return value;
 }
 
 const IntermediateInstruction* intermediate::getSourceInstruction(const IntermediateInstruction* inst)
@@ -335,6 +335,17 @@ const IntermediateInstruction* intermediate::getSourceInstruction(const Intermed
         }
     }
     return inst;
+}
+
+static const Local* getSourceLocal(const Local* local)
+{
+    while(auto writer = local->getSingleWriter())
+    {
+        auto move = dynamic_cast<const MoveOperation*>(writer);
+        if(move && move->isSimpleMove() && !move->hasConditionalExecution() && move->readsLocal())
+            local = move->getSource().local();
+    }
+    return local;
 }
 
 FastSet<const Local*> intermediate::getEquivalenceClass(const Local* local)

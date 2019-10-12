@@ -117,8 +117,8 @@ SourceType Precompiler::getSourceType(std::istream& stream)
     else if(s.find("kernel") != std::string::npos || s.find("/**") != std::string::npos ||
         s.find("//") != std::string::npos || s.find("#include") != std::string::npos ||
         s.find("#define") != std::string::npos || s.find("typedef") != std::string::npos ||
-        s.find("extern") != std ::string::npos || s.find("struct") != std ::string::npos ||
-        s.find("return") != std ::string::npos)
+        s.find("extern") != std::string::npos || s.find("struct") != std::string::npos ||
+        s.find("return") != std::string::npos || s.find("static") != std::string::npos)
         // TODO need better check
         type = SourceType::OPENCL_C;
 

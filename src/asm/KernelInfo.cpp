@@ -232,7 +232,7 @@ static std::vector<uint8_t> generateDataSegment(const StableList<Global>& global
     if(totalStackFrameSize.getValue() > 0)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Reserving " << totalStackFrameSize.getValue() << " bytes for stack-frames..." << logging::endl);
+            log << "Reserving " << totalStackFrameSize << " bytes for stack-frames..." << logging::endl);
         for(std::size_t s = 0; s < totalStackFrameSize.getValue(); ++s)
             bytes.push_back(0);
     }
@@ -250,9 +250,9 @@ std::size_t ModuleInfo::write(
     std::size_t numWords = 0;
     if(mode == OutputMode::HEX || mode == OutputMode::ASSEMBLER)
     {
-        stream << "// Module with " << getInfoCount() << " kernels, global data with " << getGlobalDataSize().getValue()
-               << " words (64-bit each), starting at offset " << getGlobalDataOffset().getValue() << " words and "
-               << getStackFrameSize().getValue() << " words of stack-frame" << std::endl;
+        stream << "// Module with " << getInfoCount() << " kernels, global data with " << getGlobalDataSize()
+               << " words (64-bit each), starting at offset " << getGlobalDataOffset() << " words and "
+               << getStackFrameSize() << " words of stack-frame" << std::endl;
     }
     std::array<uint8_t, 8> buf{};
     if(mode == OutputMode::BINARY || mode == OutputMode::HEX)
@@ -304,7 +304,7 @@ std::size_t ModuleInfo::write(
         for(const Global& global : globalData)
             stream << "//" << global.to_string(true) << std::endl;
         if(totalStackFrameSize.getValue() > 0)
-            stream << "//" << totalStackFrameSize.getValue() << " bytes of stack" << std::endl;
+            stream << "//" << totalStackFrameSize << " bytes of stack" << std::endl;
         for(std::size_t i = 0; i < binary.size(); i += 8)
             stream << toHexString((static_cast<uint64_t>(binary[i]) << 56) |
                           (static_cast<uint64_t>(binary[i + 1]) << 48) | (static_cast<uint64_t>(binary[i + 2]) << 40) |

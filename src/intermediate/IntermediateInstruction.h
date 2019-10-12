@@ -936,10 +936,6 @@ namespace vc4c
             const Value& getDestination() const;
             const Value& getNumEntries() const;
 
-            bool accessesConstantGlobal() const;
-            bool accessesStackAllocation() const;
-            bool accessesLocalMemory() const;
-
             /*
              * Returns the element-type (e.g. type of area pointed to) for the source
              *

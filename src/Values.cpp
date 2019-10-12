@@ -475,34 +475,51 @@ bool SIMDVector::isElementNumber(bool withOffset, bool withFactor, bool ignoreUn
         Optional<int32_t> offset;
         for(std::size_t i = 0; i < elements.size(); ++i)
         {
-            if(ignoreUndefined && elements[i].isUndefined())
-                continue;
+            if(elements[i].isUndefined())
+            {
+                if(ignoreUndefined)
+                    continue;
+                else
+                    return false;
+            }
             if(!offset)
                 // get offset from first non-undefined element
                 offset = elements[i].signedInt() - static_cast<int32_t>(i);
             if(elements[i].signedInt() != (static_cast<int32_t>(i) + *offset))
                 return false;
         }
+        return true;
     }
     if(withFactor)
     {
         Optional<int32_t> factor;
         for(std::size_t i = 0; i < elements.size(); ++i)
         {
-            if(ignoreUndefined && elements[i].isUndefined())
-                continue;
+            if(elements[i].isUndefined())
+            {
+                if(ignoreUndefined)
+                    continue;
+                else
+                    return false;
+            }
             if(!factor && i != 0)
                 // get factor from first non-undefined element
                 factor = elements[i].signedInt() / static_cast<int32_t>(i);
             if(elements[i].signedInt() != (static_cast<int32_t>(i) * *factor))
                 return false;
         }
+        return true;
     }
 
     for(std::size_t i = 0; i < elements.size(); ++i)
     {
-        if(ignoreUndefined && elements[i].isUndefined())
-            continue;
+        if(elements[i].isUndefined())
+        {
+            if(ignoreUndefined)
+                continue;
+            else
+                return false;
+        }
         if(elements[i].signedInt() != static_cast<int32_t>(i))
             return false;
     }
@@ -512,11 +529,6 @@ bool SIMDVector::isElementNumber(bool withOffset, bool withFactor, bool ignoreUn
 bool SIMDVector::isUndefined() const
 {
     return std::all_of(elements.begin(), elements.end(), [](Literal lit) -> bool { return lit.isUndefined(); });
-}
-
-void SIMDVector::forAllElements(const std::function<void(Literal)>& consumer) const
-{
-    std::for_each(elements.begin(), elements.end(), consumer);
 }
 
 SIMDVector SIMDVector::transform(const std::function<Literal(Literal)>& transformOp) const &
@@ -537,20 +549,15 @@ SIMDVector SIMDVector::transform(const std::function<Literal(Literal)>& transfor
 
 SIMDVector SIMDVector::rotate(uint8_t offset) const &
 {
-    SIMDVector copy(*this);
-    //"Rotates the order of the elements in the range [first,last), in such a way that the element pointed by middle
-    // becomes the new first element."
-    // -> this rotates downwards by the offset (middle - start), so we need to invert the offset
-    // rotate_up(vec, offset) = rotate_down(vec, len(vec) - offset)
-    offset = static_cast<uint8_t>(NATIVE_VECTOR_SIZE - offset);
-    std::rotate(copy.begin(), copy.begin() + offset, copy.end());
-    return copy;
+    return SIMDVector{*this}.rotate(offset);
 }
 
 SIMDVector SIMDVector::rotate(uint8_t offset) &&
 {
     //"Rotates the order of the elements in the range [first,last), in such a way that the element pointed by middle
     // becomes the new first element."
+    // -> this rotates downwards by the offset (middle - start), so we need to invert the offset
+    // rotate_up(vec, offset) = rotate_down(vec, len(vec) - offset)
     offset = static_cast<uint8_t>(NATIVE_VECTOR_SIZE - offset);
     std::rotate(begin(), begin() + offset, end());
     return std::move(*this);
@@ -558,12 +565,7 @@ SIMDVector SIMDVector::rotate(uint8_t offset) &&
 
 SIMDVector SIMDVector::rotatePerQuad(uint8_t offset) const &
 {
-    SIMDVector copy(*this);
-    std::rotate(copy.begin() + 0, copy.begin() + 4 - offset, copy.begin() + 4);
-    std::rotate(copy.begin() + 4, copy.begin() + 8 - offset, copy.begin() + 8);
-    std::rotate(copy.begin() + 8, copy.begin() + 12 - offset, copy.begin() + 12);
-    std::rotate(copy.begin() + 12, copy.end() - offset, copy.end());
-    return copy;
+    return SIMDVector{*this}.rotatePerQuad(offset);
 }
 
 SIMDVector SIMDVector::rotatePerQuad(uint8_t offset) &&
@@ -585,6 +587,8 @@ std::string SIMDVector::to_string(bool withLiterals) const
             tmp.append(lit.to_string()).append(", ");
         return "<" + tmp.substr(0, tmp.length() - 2) + ">";
     }
+    if(isUndefined())
+        return "<undefined>";
     if(isAllSame() && at(0).unsignedInt() == 0)
         return "zerointializer";
     return "SIMD vector";

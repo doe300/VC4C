@@ -394,31 +394,3 @@ InstructionWalker intermediate::intrinsifyComparison(Method& method, Instruction
 
     return it;
 }
-
-InstructionWalker intermediate::insertIsNegative(InstructionWalker it, const Value& src, Value& dest)
-{
-    if(auto lit = src.getLiteralValue())
-    {
-        dest = lit->signedInt() < 0 ? INT_MINUS_ONE : INT_ZERO;
-    }
-    else if(auto vector = src.checkVector())
-    {
-        SIMDVector tmp =
-            vector->transform([&](Literal lit) -> Literal { return lit.signedInt() < 0 ? Literal{-1} : Literal{0}; });
-        dest = Value(std::move(tmp), TYPE_BOOL.toVectorType(vector->size()));
-    }
-    else if(src.getSingleWriter() != nullptr &&
-        src.getSingleWriter()->hasDecoration(InstructionDecorations::UNSIGNED_RESULT))
-    {
-        // the value is set to be unsigned, so it cannot be negative
-        dest = INT_ZERO;
-    }
-    else
-    {
-        if(dest.isUndefined() || !dest.isWriteable())
-            throw CompilationError(CompilationStep::GENERAL, "Cannot write into this value", dest.to_string(true));
-        assign(it, dest) =
-            as_signed{src} >> Value(Literal(static_cast<uint32_t>(TYPE_INT32.getScalarBitCount() - 1)), TYPE_INT32);
-    }
-    return it;
-}

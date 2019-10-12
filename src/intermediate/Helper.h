@@ -35,14 +35,14 @@ namespace vc4c
             InstructionWalker it, Method& method, const Value& src, const Value& dest);
 
         /**
-         * For a given local, finds the local (possible the input) that is the original source of a move-chain.
+         * For a given value, finds the value (possible the input) that is the original source of a move-chain.
          *
          * Walks a chain of move-instructions backwards as long as the moves are unconditional simple moves without
          * side-effects.
          *
          * @return the local at the beginning of the move-chain
          */
-        const Local* getSourceLocal(const Local* local);
+        Value getSourceValue(Value value);
 
         /**
          * For a given instruction, finds the instruction (possible the input) that is the original source of a

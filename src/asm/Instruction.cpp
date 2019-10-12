@@ -50,16 +50,24 @@ bool Instruction::isValidInstruction() const
 
 Register Instruction::getAddOutput() const
 {
+    Register reg{RegisterFile::PHYSICAL_ANY, getAddOut()};
+    if(reg.isAccumulator() && reg.getAccumulatorNumber() != 4)
+        // cannot write to accumulator r4, instead will write "tmu_noswap" which should be handled as such
+        return Register{RegisterFile::ACCUMULATOR, reg.num};
     if(getWriteSwap() == WriteSwap::SWAP)
-        return Register{RegisterFile::PHYSICAL_B, getAddOut()};
-    return Register{RegisterFile::PHYSICAL_A, getAddOut()};
+        return Register{RegisterFile::PHYSICAL_B, reg.num};
+    return Register{RegisterFile::PHYSICAL_A, reg.num};
 }
 
 Register Instruction::getMulOutput() const
 {
+    Register reg{RegisterFile::PHYSICAL_ANY, getMulOut()};
+    if(reg.isAccumulator() && reg.getAccumulatorNumber() != 4)
+        // cannot write to accumulator r4, instead will write "tmu_noswap" which should be handled as such
+        return Register{RegisterFile::ACCUMULATOR, reg.num};
     if(getWriteSwap() == WriteSwap::DONT_SWAP)
-        return Register{RegisterFile::PHYSICAL_B, getAddOut()};
-    return Register{RegisterFile::PHYSICAL_A, getAddOut()};
+        return Register{RegisterFile::PHYSICAL_B, reg.num};
+    return Register{RegisterFile::PHYSICAL_A, reg.num};
 }
 
 LCOV_EXCL_START

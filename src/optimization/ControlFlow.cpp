@@ -655,11 +655,7 @@ static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariabl
                 Optional<OpCode> accumulationOp{};
                 if(auto writer = arg.getSingleWriter())
                 {
-                    while(dynamic_cast<const intermediate::MoveOperation*>(writer) && !writer->hasSideEffects())
-                    {
-                        auto tmp = writer->assertArgument(0).getSingleWriter();
-                        writer = tmp ? tmp : writer;
-                    }
+                    writer = intermediate::getSourceInstruction(writer);
                     if(auto op = dynamic_cast<const intermediate::Operation*>(writer))
                         accumulationOp = op->op;
                 }

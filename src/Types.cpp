@@ -283,6 +283,8 @@ bool DataType::containsType(DataType other) const
     auto otherBitWidth = other.getBitWidth();
     auto thisFloatType = getFloatingPoint();
     auto otherFloatType = other.getFloatingPoint();
+    auto thisElements = getVectorWidth(false);
+    auto otherElements = other.getVectorWidth(false);
     if(!getSimpleFlag())
     {
         thisFloatType = false;
@@ -301,12 +303,7 @@ bool DataType::containsType(DataType other) const
             throw CompilationError(
                 CompilationStep::GENERAL, "Can't check type hierarchy for complex type", other.to_string());
     }
-    if(!thisFloatType && !otherFloatType && thisBitWidth <= otherBitWidth)
-    {
-        // FIXME correct? doesn't the comparison need to be the other way round?
-        return true;
-    }
-    return false;
+    return !thisFloatType && !otherFloatType && thisElements >= otherElements && thisBitWidth >= otherBitWidth;
 }
 
 DataType DataType::getUnionType(DataType other) const
@@ -367,7 +364,8 @@ unsigned int DataType::getLogicalWidth() const
         // any other complex type
         throw CompilationError(CompilationStep::GENERAL, "Can't get width of complex type", to_string());
     }
-    return getVectorWidth(false) * getScalarBitCount() / 8;
+    // if for some strange type the scalar bit count is not a multiple of the byte-size, add a byte (per element)
+    return getVectorWidth(false) * (getScalarBitCount() / 8 + (getScalarBitCount() % 8 != 0));
 }
 
 unsigned int DataType::getInMemoryWidth() const
@@ -388,7 +386,8 @@ unsigned int DataType::getInMemoryWidth() const
         // any other complex type
         throw CompilationError(CompilationStep::GENERAL, "Can't get width of complex type", to_string());
     }
-    return getVectorWidth(true) * getScalarBitCount() / 8;
+    // if for some strange type the scalar bit count is not a multiple of the byte-size, add a byte (per element)
+    return getVectorWidth(true) * (getScalarBitCount() / 8 + (getScalarBitCount() % 8 != 0));
 }
 
 unsigned char DataType::getVectorWidth(bool physicalWidth) const noexcept
@@ -514,6 +513,10 @@ unsigned int StructType::getStructSize(const int index) const
 
 unsigned StructType::getInMemoryAlignment() const
 {
+    // "Structures may optionally be “packed” structures, which indicate that the alignment of the struct is one byte,
+    // [...]" - https://llvm.org/docs/LangRef.html
+    if(isPacked)
+        return 1;
     return getStructSize();
 }
 
@@ -526,14 +529,15 @@ std::string StructType::getTypeName() const
 std::string StructType::getContent() const
 {
     std::ostringstream s;
-    s << '{';
+    // Similar to LLVM IR, we indicate a "packed" struct with a surounding "<...>"
+    s << (isPacked ? "<{" : "{");
     for(std::size_t i = 0; i < elementTypes.size(); ++i)
     {
         if(i != 0)
             s << ", ";
         s << elementTypes[i].to_string();
     }
-    s << '}';
+    s << (isPacked ? "}>" : "}");
     return s.str();
 }
 LCOV_EXCL_STOP

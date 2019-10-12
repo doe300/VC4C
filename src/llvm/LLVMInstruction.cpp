@@ -45,22 +45,6 @@ CallSite::CallSite(Value&& dest, const Method& method, std::vector<Value>&& args
     }
 }
 
-CallSite::CallSite(std::string&& methodName, DataType returnType, std::vector<Value>&& args) :
-    dest(Value(nullptr, returnType)), methodName(methodName), arguments(args)
-{
-}
-
-CallSite::CallSite(const Method& method, std::vector<Value>&& args) :
-    dest(Value(nullptr, method.returnType)), methodName(method.name), arguments(args)
-{
-    if(method.parameters.size() != args.size())
-    {
-        throw CompilationError(CompilationStep::PARSER, "Invalid numbers of method arguments",
-            std::string("Got ") + (std::to_string(args.size()) + ", expected ") +
-                std::to_string(method.parameters.size()));
-    }
-}
-
 bool CallSite::mapInstruction(Method& method)
 {
     // map calls to @llvm.lifetime.start / @llvm.lifetime.end to lifetime-instructions

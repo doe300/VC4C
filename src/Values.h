@@ -775,7 +775,6 @@ namespace vc4c
          */
         bool isUndefined() const;
 
-        void forAllElements(const std::function<void(Literal)>& consumer) const;
         SIMDVector transform(const std::function<Literal(Literal)>& transformOp) const &;
         SIMDVector transform(const std::function<Literal(Literal)>& transformOp) &&;
 
