@@ -246,8 +246,8 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
                          << ", destination " << dest.to_string() << ", final index type " << finalType.to_string()
                          << " and indices: " << to_string<Value>(indices)
                          << (firstIndexIsElement ? " (first index is element)" : "") << logging::endl;
-        throw CompilationError(
-            CompilationStep::LLVM_2_IR, "Types of retrieving indices do not match!", finalType.to_string());
+        throw CompilationError(CompilationStep::LLVM_2_IR, "Types of retrieving indices do not match!",
+            dest.type.to_string() + " and " + finalType.to_string());
         LCOV_EXCL_STOP
     }
 

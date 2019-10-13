@@ -94,13 +94,27 @@ static Optional<MemoryAccessRange> determineAccessRange(
     Method& method, InstructionWalker it, InstructionWalker memIt, FastMap<const Local*, InstructionWalker>& indexCache)
 {
     // 1. find writes to VPM DMA addresses with work-group uniform part in address values
+    if(auto memInst = it.get<intermediate::MemoryInstruction>())
+    {
+        if(memInst->getSource().checkLocal() &&
+            (memInst->getSource().local()->is<Parameter>() || memInst->getSource().local()->is<Global>()))
+        {
+            // direct write of address (e.g. all work items access the same location)
+            MemoryAccessRange range;
+            range.addressWrite = memIt;
+            range.memoryObject = memInst->getSource().local();
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Found memory access without offset: " << range.to_string() << logging::endl);
+            return range;
+        }
+    }
     if(it.get<intermediate::MoveOperation>() && it->assertArgument(0).checkLocal() &&
         (it->assertArgument(0).local()->is<Parameter>() || it->assertArgument(0).local()->is<Global>()))
     {
         // direct write of address (e.g. all work items access the same location)
         // XXX if the memory is __local and the width of the writes is known, can lower into VPM (e.g. for data
         // exchange between work-items). But then the __local memory should be set small enough to fit in the VPM
-        // completely, which is already handled at this point.
+        // completely, which is already handled at this point (see above).
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "DMA address is directly set to a parameter/global address, cannot be "
                    "optimized by caching multiple accesses: "
@@ -254,7 +268,7 @@ static Optional<MemoryAccessRange> determineAccessRange(
                 range.dynamicAddressParts.emplace(val);
                 if(val.first.checkLocal())
                 {
-                    auto singleRange = analysis::ValueRange::getValueRange(val.first, &method);
+                    auto singleRange = analysis::ValueRange::getValueRangeRecursive(val.first, &method);
                     range.offsetRange.minValue += singleRange.getIntRange()->minValue;
                     range.offsetRange.maxValue += singleRange.getIntRange()->maxValue;
                 }
@@ -311,8 +325,15 @@ static Optional<InstructionWalker> findSingleWriter(InstructionWalker it, const 
     }
     if(!writer)
     {
+        if(auto loc = val.checkLocal())
+        {
+            // if the value is the parameter/global directly, the address write might not yet exist
+            if(loc->is<Parameter>() || loc->is<Global>())
+                return it;
+        }
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Unhandled case, value does not have exactly 1 writer: " << it->to_string() << logging::endl);
+            log << "Unhandled case, value does not have exactly 1 writer for '" << val.to_string()
+                << "': " << it->to_string() << logging::endl);
         return {};
     }
     auto writerIt = it.getBasicBlock()->findWalkerForInstruction(writer, it);
@@ -329,15 +350,10 @@ static Optional<InstructionWalker> findSingleWriter(InstructionWalker it, const 
 FastAccessList<MemoryAccessRange> analysis::determineAccessRanges(
     Method& method, const Local* baseAddr, MemoryAccess& access)
 {
-    // FIXME re-enable check for caching once rest works again
-    return FastAccessList<MemoryAccessRange>{};
     // cache already found write walkers in case the output is reused in a different block
     // TODO remove this when we can find walker for any instruction across blocks fast
     FastMap<const Local*, InstructionWalker> indexCache;
     // NOTE: If we cannot find one access range for a local, we cannot combine any other access ranges for this local!
-    static const auto copiedFromCheck = [](const InstructionWalker& it) -> bool {
-        return it.get<const intermediate::MemoryInstruction>()->op == intermediate::MemoryOperation::COPY;
-    };
     FastAccessList<MemoryAccessRange> result;
     for(auto it : access.accessInstructions)
     {
@@ -348,13 +364,15 @@ FastAccessList<MemoryAccessRange> analysis::determineAccessRanges(
         {
             if(auto writerIt = findSingleWriter(it, memInstr->getSource()))
             {
-                auto res = determineAccessRange(method, writerIt.value(), it, indexCache);
-                if(res)
-                    result.emplace_back(std::move(res.value()));
-                else
-                    return FastAccessList<MemoryAccessRange>{};
+                if(auto res = determineAccessRange(method, writerIt.value(), it, indexCache))
+                {
+                    result.emplace_back(std::move(res).value());
+                    break;
+                }
             }
-            break;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Failed to determine access range for memory read: " << it->to_string() << logging::endl);
+            return FastAccessList<MemoryAccessRange>{};
         }
         case intermediate::MemoryOperation::WRITE:
         case intermediate::MemoryOperation::FILL:
@@ -362,37 +380,39 @@ FastAccessList<MemoryAccessRange> analysis::determineAccessRanges(
             // TODO for fill (and copy below) need to heed number of elements!
             if(auto writerIt = findSingleWriter(it, memInstr->getDestination()))
             {
-                auto res = determineAccessRange(method, writerIt.value(), it, indexCache);
-                if(res)
-                    result.emplace_back(std::move(res.value()));
-                else
-                    return FastAccessList<MemoryAccessRange>{};
+                if(auto res = determineAccessRange(method, writerIt.value(), it, indexCache))
+                {
+                    result.emplace_back(std::move(res).value());
+                    break;
+                }
             }
-            break;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Failed to determine access range for memory write/fill: " << it->to_string() << logging::endl);
+            return FastAccessList<MemoryAccessRange>{};
         }
         case intermediate::MemoryOperation::COPY:
         {
-            auto writerIt = findSingleWriter(it, memInstr->getSource());
-            if(writerIt &&
-                // special handling for memory which is only copied from (never read/written), since no extra space
-                // is required
-                !std::all_of(access.accessInstructions.begin(), access.accessInstructions.end(), copiedFromCheck))
+            Value matchingAddress = UNDEFINED_VALUE;
+            if(memInstr->getSource().local()->getBase(true) == baseAddr)
+                matchingAddress = memInstr->getSource();
+            else if(memInstr->getDestination().local()->getBase(true) == baseAddr)
+                matchingAddress = memInstr->getDestination();
+            else
+                throw CompilationError(CompilationStep::GENERAL, "Failed to find address referring to address",
+                    memInstr->to_string() + " and " + baseAddr->to_string());
+
+            if(auto writerIt = findSingleWriter(it, matchingAddress))
             {
-                auto res = determineAccessRange(method, writerIt.value(), it, indexCache);
-                if(res)
+                if(auto res = determineAccessRange(method, writerIt.value(), it, indexCache))
+                {
                     result.emplace_back(std::move(res.value()));
-                else
-                    return FastAccessList<MemoryAccessRange>{};
+                    break;
+                }
             }
-            if((writerIt = findSingleWriter(it, memInstr->getDestination())))
-            {
-                auto res = determineAccessRange(method, writerIt.value(), it, indexCache);
-                if(res)
-                    result.emplace_back(std::move(res.value()));
-                else
-                    return FastAccessList<MemoryAccessRange>{};
-            }
-            break;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Failed to determine access range for local '" << baseAddr->to_string()
+                    << "' in memory copy: " << it->to_string() << logging::endl);
+            return FastAccessList<MemoryAccessRange>{};
         }
         }
     }

@@ -616,10 +616,10 @@ void ValueRange::updateRecursively(const Local* currentLocal, Method* method, Fa
                         << (isPartialRange ? " partial " : " ") << "range '" << otherRange.to_string()
                         << "' for calculating convergence limit of: " << expr->to_string() << logging::endl);
 
-                if(auto lowerLimit = expr->getConvergenceLimit(otherRange.getLowerLimit() & &Value::getLiteralValue))
-                    limits.emplace(std::move(lowerLimit).value());
-                if(auto upperLimit = expr->getConvergenceLimit(otherRange.getUpperLimit() & &Value::getLiteralValue))
-                    limits.emplace(std::move(upperLimit).value());
+                limits.emplace(expr->getConvergenceLimit(otherRange.getLowerLimit() & &Value::getLiteralValue)
+                                   .value_or(UNDEFINED_VALUE));
+                limits.emplace(expr->getConvergenceLimit(otherRange.getUpperLimit() & &Value::getLiteralValue)
+                                   .value_or(UNDEFINED_VALUE));
 
                 // If (partial) range of input is set, and output range is not (e.g. this is the only write), set output
                 // range to this. Otherwise, we always get full-range... This should be okay, since if f(lower) -> x and
@@ -627,25 +627,25 @@ void ValueRange::updateRecursively(const Local* currentLocal, Method* method, Fa
                 if(localRange.hasDefaultBoundaries && otherRange.hasExplicitBoundaries())
                     localRange.extendBoundaries(otherRange);
             }
-            else if(auto limit = expr->getConvergenceLimit())
+            else
                 // some operations always converge to a fixed value, independent of the actual start values
-                limits.emplace(std::move(limit).value());
+                limits.emplace(expr->getConvergenceLimit().value_or(UNDEFINED_VALUE));
 
-            if(limits.size() == 1)
+            if(limits.size() == 1 && !limits.begin()->isUndefined())
             {
-                auto limit = limits.begin();
+                auto limit = *limits.begin();
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Expression '" << expr->to_string() << "' for local '" << currentLocal->to_string()
-                        << "' converges to: " << limit->to_string() << logging::endl);
+                        << "' converges to: " << limit.to_string() << logging::endl);
 
                 // if at this point the localRange is still the default range (e.g. this is the only write and we could
                 // not determine the input local's range, see above), set to explicitly use all values for safety.
                 // Otherwise, the resulting range would only be the converged value!
                 localRange.hasDefaultBoundaries = false;
 
-                if(auto lit = limit->getLiteralValue())
+                if(auto lit = limit.getLiteralValue())
                 {
-                    localRange.extendBoundaries(*lit, limit->type.isFloatingType());
+                    localRange.extendBoundaries(*lit, limit.type.isFloatingType());
                     openSet.erase(write);
                     closedSet.emplace(write, localRange);
                     openWrites.erase(write);

@@ -8,6 +8,7 @@
 
 #include "../GlobalValues.h"
 #include "../Profiler.h"
+#include "../intermediate/Helper.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/operators.h"
 #include "../periphery/VPM.h"
@@ -250,13 +251,7 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
             {
                 // we can lower some more 64-bit writes, if the values can either be written statically (e.g. a
                 // constant) or it is guaranteed that the upper word is zero (e.g. converted from 32-bit word).
-                auto source = memInstr->getSource();
-                while(auto writer = dynamic_cast<const intermediate::MoveOperation*>(source.getSingleWriter()))
-                {
-                    if(!writer->isSimpleMove())
-                        break;
-                    source = writer->getSource();
-                }
+                auto source = intermediate::getSourceValue(memInstr->getSource());
                 // NOTE: we only check for exactly 32-bit, since otherwise VPM would only write the actually used bits,
                 // not all 32
                 auto lowerSource = source.type.getScalarBitCount() == 32 ? source : source.getConstantValue();
@@ -308,9 +303,36 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
                     LCOV_EXCL_STOP
 
                     auto src = memInstr->getSource();
+                    auto dest = nextMemInstr->getDestination();
+
+                    if(nextMemInstr->getSourceElementType().getInMemoryWidth() !=
+                            nextMemInstr->getDestinationElementType().getInMemoryWidth() ||
+                        memInstr->getSourceElementType().getInMemoryWidth() !=
+                            memInstr->getDestinationElementType().getInMemoryWidth())
+                    {
+                        // we read/write a different data type than the pointer type, this can e.g. happen when
+                        // combining vloadN/vstoreN into single copy, where the actual types are vectors, but the
+                        // pointers are to scalars.
+                        // -> need to find the actual type by using the element types of the in-register type
+                        auto valueType = method.createPointerType(nextMemInstr->getSourceElementType());
+                        {
+                            auto tmp = method.addNewLocal(valueType);
+                            if(auto loc = src.checkLocal())
+                                tmp.local()->reference = loc->reference;
+                            assign(nextIt, tmp) = src;
+                            src = tmp;
+                        }
+                        {
+                            auto tmp = method.addNewLocal(valueType);
+                            if(auto loc = dest.checkLocal())
+                                tmp.local()->reference = loc->reference;
+                            assign(nextIt, tmp) = dest;
+                            dest = tmp;
+                        }
+                    }
                     it.erase();
-                    nextIt.reset(new MemoryInstruction(MemoryOperation::COPY, Value(nextMemInstr->getDestination()),
-                        std::move(src), Value(nextMemInstr->getNumEntries()), nextMemInstr->guardAccess));
+                    nextIt.reset(new MemoryInstruction(MemoryOperation::COPY, Value(std::move(dest)), std::move(src),
+                        Value(nextMemInstr->getNumEntries()), nextMemInstr->guardAccess));
                     // continue with the next instruction after the read in the next iteration
                     continue;
                 }
@@ -723,12 +745,15 @@ static MemoryInfo canMapToDMAReadWrite(Method& method, const Local* baseAddr, Me
     auto ranges = analysis::determineAccessRanges(method, baseAddr, access);
     PROFILE_END(DetermineAccessRanges);
 
-    if(!ranges.empty())
+    if(!ranges.empty() && baseAddr->type.getPointerType() &&
+        baseAddr->type.getPointerType()->addressSpace == AddressSpace::LOCAL)
     {
         auto area = checkCacheMemoryAccessRanges(method, baseAddr, ranges);
         if(area)
-            // TODO also need to mark for initial load/write-back
+        {
+            // for local/private memory, there is no need for initial load/write-back
             return MemoryInfo{baseAddr, MemoryAccessType::VPM_SHARED_ACCESS, area, std::move(ranges)};
+        }
     }
     return MemoryInfo{baseAddr, MemoryAccessType::RAM_READ_WRITE_VPM};
 }
