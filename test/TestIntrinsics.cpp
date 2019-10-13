@@ -40,7 +40,7 @@ FUNCTION(OUT,VAL(FUNC),IN);
 #endif
 
 __kernel void test(__global OUT* out) {
-  *out = FUNC(SOURCES);
+  *out = FUNC((IN)SOURCES);
 }
 )";
 
@@ -87,7 +87,7 @@ FUNCTION(OUT,VAL(FUNC),IN);
 #endif
 
 __kernel void test(__global OUT* out) {
-  *out = FUNC(SOURCES0, SOURCES1);
+  *out = FUNC((IN)SOURCES0, (IN)SOURCES1);
 }
 )";
 
@@ -117,9 +117,9 @@ __kernel void test(__global TYPE* out, const __global TYPE* in) {
 )";
 
 static const std::string DMA_ACCESS = R"(
-TYPE vc4cl_dma_read(volatile __global TYPE*);
-void vc4cl_dma_write(volatile __global TYPE*, TYPE);
-void vc4cl_dma_copy(__global TYPE*, const __global TYPE*, size_t);
+TYPE vc4cl_dma_read(volatile __global TYPE*) __attribute__((overloadable));
+void vc4cl_dma_write(volatile __global TYPE*, TYPE) __attribute__((overloadable));
+void vc4cl_dma_copy(__global TYPE*, const __global TYPE*, size_t) __attribute__((overloadable));
 void vc4cl_mutex_lock(void);
 void vc4cl_mutex_unlock(void);
 uchar vc4cl_work_dimensions(void);

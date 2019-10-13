@@ -22,6 +22,7 @@ public:
     void testSourceTypeDetection();
     void testDisassembler();
     void testCompilation(vc4c::SourceType type);
+    void testKernelAttributes();
 
 private:
     void testEmulation(std::stringstream& binary);

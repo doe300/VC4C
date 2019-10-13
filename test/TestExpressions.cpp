@@ -20,6 +20,7 @@ TestExpressions::TestExpressions()
 {
     TEST_ADD(TestExpressions::testCreation);
     TEST_ADD(TestExpressions::testCombination);
+    TEST_ADD(TestExpressions::testConvergence);
 }
 
 TestExpressions::~TestExpressions() = default;
@@ -159,6 +160,18 @@ void TestExpressions::testCombination()
     }
 
     {
+        // 2 operands, self-inverse
+        auto selfInverse = expression(loc3 - loc3);
+        TEST_ASSERT_EQUALS(moveZero, selfInverse.combineWith(expressions))
+
+        auto someLocal = method.addNewLocal(TYPE_INT32);
+        expressions.emplace(someLocal.local(), selfInverse);
+        selfInverse = expression(someLocal - someLocal);
+        Expression moveZeroFloat{OP_V8MIN, FLOAT_ZERO, FLOAT_ZERO};
+        TEST_ASSERT_EQUALS(moveZeroFloat, selfInverse.combineWith(expressions))
+    }
+
+    {
         // 2 operands idempotent, identity and absorbing
         auto andLoc3 = expression(loc3 & loc3);
         TEST_ASSERT_EQUALS(loc0Plus2, andLoc3.combineWith(expressions))
@@ -244,4 +257,278 @@ void TestExpressions::testCombination()
 
         // XXX tests for general case, when added
     }
+
+    {
+        // 2 operands, special code-specific rules
+        auto a = method.addNewLocal(TYPE_FLOAT);
+        auto b = method.addNewLocal(TYPE_FLOAT);
+
+        // fadd(fmul(a, constB), a) = fmul(a, constB+1)
+        auto innerMul = expression(a * Value(Literal(42.0f), TYPE_FLOAT));
+        auto inner = method.addNewLocal(TYPE_FLOAT);
+        expressions.emplace(inner.local(), innerMul);
+        auto outerAdd = expression(inner + a);
+        Expression result{OP_FMUL, a, Value(Literal(43.0f), TYPE_FLOAT)};
+        TEST_ASSERT_EQUALS(result, outerAdd.combineWith(expressions))
+
+        // fadd(fmul(constB, a), a) = fmul(a, constB+1)
+        innerMul = expression(Value(Literal(42.0f), TYPE_FLOAT) * a);
+        expressions.at(inner.local()) = innerMul;
+        outerAdd = expression(inner + a);
+        result = Expression{OP_FMUL, a, Value(Literal(43.0f), TYPE_FLOAT)};
+        TEST_ASSERT_EQUALS(result, outerAdd.combineWith(expressions))
+
+        // fadd(a, fmul(a, constB)) = fmul(a, constB+1)
+        innerMul = expression(a * Value(Literal(42.0f), TYPE_FLOAT));
+        expressions.at(inner.local()) = innerMul;
+        outerAdd = expression(a + inner);
+        result = Expression{OP_FMUL, a, Value(Literal(43.0f), TYPE_FLOAT)};
+        TEST_ASSERT_EQUALS(result, outerAdd.combineWith(expressions))
+
+        // fadd(a, fmul(constB, a)) = fmul(a, constB+1)
+        innerMul = expression(Value(Literal(42.0f), TYPE_FLOAT) * a);
+        expressions.at(inner.local()) = innerMul;
+        outerAdd = expression(a + inner);
+        result = Expression{OP_FMUL, a, Value(Literal(43.0f), TYPE_FLOAT)};
+        TEST_ASSERT_EQUALS(result, outerAdd.combineWith(expressions))
+
+        // (a + b) - a = b
+        auto innerAdd = expression(a + b);
+        expressions.at(inner.local()) = innerAdd;
+        auto outer = expression(inner - a);
+        result = Expression{OP_V8MIN, b, b};
+        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions))
+
+        // (a + b) - b = a
+        outer = expression(inner - b);
+        result = Expression{OP_V8MIN, a, a};
+        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions))
+
+        // (a - b) + b = a
+        auto innerSub = expression(a - b);
+        expressions.at(inner.local()) = innerSub;
+        outer = expression(inner + b);
+        result = Expression{OP_V8MIN, a, a};
+        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions))
+
+        // (a - b) - a = -b
+        outer = expression(inner - a);
+        result = Expression{OP_FSUB, FLOAT_ZERO, b};
+        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions))
+
+        // a + (b - a) = b
+        innerSub = expression(b - a);
+        expressions.at(inner.local()) = innerSub;
+        outer = expression(a + inner);
+        result = Expression{OP_V8MIN, b, b};
+        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions))
+
+        // a - (b + a) = -b
+        innerAdd = expression(b + a);
+        expressions.at(inner.local()) = innerAdd;
+        outer = expression(a - inner);
+        result = Expression{OP_FSUB, FLOAT_ZERO, b};
+        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions))
+
+        // a - (a + b) = -b
+        innerAdd = expression(a + b);
+        expressions.at(inner.local()) = innerAdd;
+        outer = expression(a - inner);
+        result = Expression{OP_FSUB, FLOAT_ZERO, b};
+        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions))
+
+        // (a << const) + a = a + (a << const) -> a * ((1 << const) + 1)
+        auto innerShift = expression(loc0 << 12_val);
+        inner = method.addNewLocal(TYPE_INT32);
+        expressions.emplace(inner.local(), innerShift);
+        outer = expression(inner + loc0);
+        result = Expression{Expression::FAKEOP_UMUL, loc0, 4097_val};
+        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+
+        // TODO is somehow not combined!
+        // // (a * constA) << constB = (constA * a) << constB -> a * (constA << constB)
+        // innerMul = Expression{Expression::FAKEOP_UMUL, loc0, 27_val};
+        // expressions.emplace(inner.local(), innerMul);
+        // outer = expression(inner << 13_val);
+        // result = Expression{Expression::FAKEOP_UMUL, loc0, 221184_val};
+        // TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+
+        // innerMul = Expression{Expression::FAKEOP_UMUL, 27_val, loc0};
+        // expressions.emplace(inner.local(), innerMul);
+        // outer = expression(inner << 13_val);
+        // result = Expression{Expression::FAKEOP_UMUL, loc0, 221184_val};
+        // TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+    }
+}
+
+void TestExpressions::testConvergence()
+{
+    Configuration config{};
+    Module mod{config};
+    Method method(mod);
+
+    auto floatVal = method.addNewLocal(TYPE_FLOAT);
+    auto intVal = method.addNewLocal(TYPE_INT32);
+
+    Value floatPos = 23.0_val;
+    Value floatNeg(Literal(-23.0f), TYPE_FLOAT);
+    Value intPos = 23_val;
+    Value intNeg(Literal(-23), TYPE_INT32);
+    Value intMin = 0x80000000_val;
+    Value intMax = 0x7FFFFFFF_val;
+
+    // fadd
+    TEST_ASSERT(!expression(floatVal + floatVal).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(FLOAT_INF, expression(floatVal + floatVal).getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT_EQUALS(FLOAT_NEG_INF, expression(floatVal + floatVal).getConvergenceLimit(floatNeg.literal()))
+    TEST_ASSERT_EQUALS(FLOAT_INF, expression(floatVal + floatPos).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(FLOAT_INF, expression(floatPos + floatVal).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(FLOAT_NEG_INF, expression(floatVal + floatNeg).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(FLOAT_NEG_INF, expression(floatNeg + floatVal).getConvergenceLimit())
+    TEST_ASSERT(!expression(floatVal + FLOAT_ZERO).getConvergenceLimit())
+    TEST_ASSERT(!expression(FLOAT_ZERO + floatVal).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(floatPos, expression(floatVal + FLOAT_ZERO).getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT_EQUALS(floatPos, expression(FLOAT_ZERO + floatVal).getConvergenceLimit(floatPos.literal()))
+
+    // fsub
+    TEST_ASSERT_EQUALS(FLOAT_ZERO, expression(floatVal - floatVal).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(FLOAT_NEG_INF, expression(floatVal - floatPos).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(FLOAT_INF, expression(floatVal - floatNeg).getConvergenceLimit())
+    TEST_ASSERT(!expression(floatPos - floatVal).getConvergenceLimit())
+    TEST_ASSERT(!expression(floatNeg - floatVal).getConvergenceLimit())
+    TEST_ASSERT(!expression(floatVal - FLOAT_ZERO).getConvergenceLimit())
+    TEST_ASSERT(!expression(FLOAT_ZERO - floatVal).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(floatPos, expression(floatVal - FLOAT_ZERO).getConvergenceLimit(floatPos.literal()))
+
+    // fmin
+    TEST_ASSERT(!expression(min(floatVal, floatVal)).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(floatNeg, expression(min(floatVal, floatPos)).getConvergenceLimit(floatNeg.literal()))
+    TEST_ASSERT_EQUALS(floatNeg, expression(min(floatVal, floatNeg)).getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT_EQUALS(floatNeg, expression(min(floatPos, floatVal)).getConvergenceLimit(floatNeg.literal()))
+    TEST_ASSERT_EQUALS(floatNeg, expression(min(floatNeg, floatVal)).getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT(!expression(min(floatNeg, floatVal)).getConvergenceLimit())
+
+    // fmax
+    TEST_ASSERT(!expression(max(floatVal, floatVal)).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(floatPos, expression(max(floatVal, floatNeg)).getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT_EQUALS(floatPos, expression(max(floatVal, floatPos)).getConvergenceLimit(floatNeg.literal()))
+    TEST_ASSERT_EQUALS(floatPos, expression(max(floatNeg, floatVal)).getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT_EQUALS(floatPos, expression(max(floatPos, floatVal)).getConvergenceLimit(floatNeg.literal()))
+    TEST_ASSERT(!expression(max(floatNeg, floatVal)).getConvergenceLimit())
+
+    // fminabs
+    TEST_ASSERT(!(Expression{OP_FMINABS, floatVal, floatVal}).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(floatPos, (Expression{OP_FMINABS, floatVal, floatNeg}).getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT_EQUALS(floatPos, (Expression{OP_FMINABS, floatVal, floatPos}).getConvergenceLimit(floatNeg.literal()))
+    TEST_ASSERT_EQUALS(floatPos, (Expression{OP_FMINABS, floatNeg, floatVal}).getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT_EQUALS(floatPos, (Expression{OP_FMINABS, floatPos, floatVal}).getConvergenceLimit(floatNeg.literal()))
+
+    // fmaxabs
+    TEST_ASSERT(!(Expression{OP_FMAXABS, floatVal, floatVal}).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(floatPos, (Expression{OP_FMAXABS, floatVal, floatNeg}).getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT_EQUALS(floatPos, (Expression{OP_FMAXABS, floatVal, floatPos}).getConvergenceLimit(floatNeg.literal()))
+    TEST_ASSERT_EQUALS(floatPos, (Expression{OP_FMAXABS, floatNeg, floatVal}).getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT_EQUALS(floatPos, (Expression{OP_FMAXABS, floatPos, floatVal}).getConvergenceLimit(floatNeg.literal()))
+
+    // ftoi
+    TEST_ASSERT(!(Expression{OP_FTOI, floatVal, NO_VALUE}).getConvergenceLimit())
+    // itof
+    TEST_ASSERT(!(Expression{OP_ITOF, intVal, NO_VALUE}).getConvergenceLimit())
+
+    // add
+    TEST_ASSERT(!expression(intVal + intVal).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intMax, expression(intVal + intVal).getConvergenceLimit(intPos.literal()))
+    TEST_ASSERT_EQUALS(intMin, expression(intVal + intVal).getConvergenceLimit(intNeg.literal()))
+    TEST_ASSERT_EQUALS(intMax, expression(intVal + intPos).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intMax, expression(intPos + intVal).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intMin, expression(intVal + intNeg).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intMin, expression(intNeg + intVal).getConvergenceLimit())
+    TEST_ASSERT(!expression(intVal + INT_ZERO).getConvergenceLimit())
+    TEST_ASSERT(!expression(INT_ZERO + intVal).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intPos, expression(intVal + INT_ZERO).getConvergenceLimit(intPos.literal()))
+    TEST_ASSERT_EQUALS(intPos, expression(INT_ZERO + intVal).getConvergenceLimit(intPos.literal()))
+
+    // sub
+    TEST_ASSERT_EQUALS(INT_ZERO, expression(intVal - intVal).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intMin, expression(intVal - intPos).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intMax, expression(intVal - intNeg).getConvergenceLimit())
+    TEST_ASSERT(!expression(intPos - intVal).getConvergenceLimit())
+    TEST_ASSERT(!expression(intNeg - intVal).getConvergenceLimit())
+    TEST_ASSERT(!expression(intVal - INT_ZERO).getConvergenceLimit())
+    TEST_ASSERT(!expression(INT_ZERO - intVal).getConvergenceLimit())
+
+    // shr
+    TEST_ASSERT(!expression(as_unsigned{intVal} >> intVal).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(INT_ZERO, expression(as_unsigned{intVal} >> intPos).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(INT_ZERO, expression(as_unsigned{intVal} >> intVal).getConvergenceLimit(INT_ZERO.literal()))
+
+    // asr
+    TEST_ASSERT(!expression(as_signed{intVal} >> intVal).getConvergenceLimit())
+    TEST_ASSERT(!expression(as_signed{intVal} >> intPos).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(INT_ZERO, expression(as_signed{intVal} >> intVal).getConvergenceLimit(INT_ZERO.literal()))
+    TEST_ASSERT_EQUALS(
+        INT_MINUS_ONE, expression(as_signed{intVal} >> intVal).getConvergenceLimit(INT_MINUS_ONE.literal()))
+    // XXX actually converges to -1 for all values <= 0x8000001F
+
+    // ror
+    TEST_ASSERT(!(Expression{OP_ROR, intVal, intVal}).getConvergenceLimit())
+    TEST_ASSERT(!(Expression{OP_ROR, intPos, intVal}).getConvergenceLimit())
+    TEST_ASSERT(!(Expression{OP_ROR, intVal, intPos}).getConvergenceLimit())
+    // shl
+    TEST_ASSERT(!expression(intVal << intVal).getConvergenceLimit())
+    TEST_ASSERT(!expression(intPos << intVal).getConvergenceLimit())
+    TEST_ASSERT(!expression(intVal << intPos).getConvergenceLimit())
+
+    // min
+    TEST_ASSERT(!expression(min(intVal, intVal)).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intNeg, expression(min(intVal, intPos)).getConvergenceLimit(intNeg.literal()))
+    TEST_ASSERT_EQUALS(intNeg, expression(min(intVal, intNeg)).getConvergenceLimit(intPos.literal()))
+    TEST_ASSERT_EQUALS(intNeg, expression(min(intPos, intVal)).getConvergenceLimit(intNeg.literal()))
+    TEST_ASSERT_EQUALS(intNeg, expression(min(intNeg, intVal)).getConvergenceLimit(intPos.literal()))
+    TEST_ASSERT(!expression(min(intNeg, intVal)).getConvergenceLimit())
+
+    // max
+    TEST_ASSERT(!expression(max(intVal, intVal)).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intPos, expression(max(intVal, intNeg)).getConvergenceLimit(intPos.literal()))
+    TEST_ASSERT_EQUALS(intPos, expression(max(intVal, intPos)).getConvergenceLimit(intNeg.literal()))
+    TEST_ASSERT_EQUALS(intPos, expression(max(intNeg, intVal)).getConvergenceLimit(intPos.literal()))
+    TEST_ASSERT_EQUALS(intPos, expression(max(intPos, intVal)).getConvergenceLimit(intNeg.literal()))
+    TEST_ASSERT(!expression(max(intNeg, intVal)).getConvergenceLimit())
+
+    // and
+    TEST_ASSERT(!expression(intVal & intVal).getConvergenceLimit())
+    TEST_ASSERT(!expression(intPos & intVal).getConvergenceLimit())
+    TEST_ASSERT(!expression(intVal & intPos).getConvergenceLimit())
+    // or
+    TEST_ASSERT(!expression(intVal | intVal).getConvergenceLimit())
+    TEST_ASSERT(!expression(intPos | intVal).getConvergenceLimit())
+    TEST_ASSERT(!expression(intVal | intPos).getConvergenceLimit())
+    // xor
+    TEST_ASSERT(!expression(intVal ^ intVal).getConvergenceLimit())
+    TEST_ASSERT(!expression(intPos ^ intVal).getConvergenceLimit())
+    TEST_ASSERT(!expression(intVal ^ intPos).getConvergenceLimit())
+    // not
+    TEST_ASSERT(!expression(~intVal).getConvergenceLimit())
+
+    // clz
+    TEST_ASSERT(!(Expression{OP_CLZ, intVal, NO_VALUE}).getConvergenceLimit())
+    // v8adds
+    TEST_ASSERT(!(Expression{OP_V8ADDS, intVal, intVal}).getConvergenceLimit())
+    TEST_ASSERT(!(Expression{OP_V8ADDS, intPos, intVal}).getConvergenceLimit())
+    TEST_ASSERT(!(Expression{OP_V8ADDS, intVal, intPos}).getConvergenceLimit())
+    // XXX actually, may converge to per-element all bits set (for each element where a bit is set)
+    // v8subs
+    TEST_ASSERT(!(Expression{OP_V8SUBS, intVal, intVal}).getConvergenceLimit())
+    TEST_ASSERT(!(Expression{OP_V8SUBS, intPos, intVal}).getConvergenceLimit())
+    TEST_ASSERT(!(Expression{OP_V8SUBS, intVal, intPos}).getConvergenceLimit())
+    // XXX actually, may converge to per-element zero (for each element where a bit is set)
+
+    // fmul
+    // TODO converges for |value| </> 1 and value </==/> 0 in different directions
+    // mul24
+    TEST_ASSERT(!(expression(mul24(intVal, intVal))).getConvergenceLimit())
+    // XXX
+    // V8muld
+    // V8min
+    // V8max
 }

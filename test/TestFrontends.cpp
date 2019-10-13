@@ -6,7 +6,10 @@
 
 #include "TestFrontends.h"
 
+#include "GlobalValues.h"
 #include "VC4C.h"
+#include "asm/Instruction.h"
+#include "asm/KernelInfo.h"
 #include "spirv/SPIRVHelper.h"
 #include "tools.h"
 #ifdef SPIRV_HEADER
@@ -24,6 +27,8 @@ using namespace vc4c;
 // TODO add some tests for the different types of (pre) compilation (module, PCH, etc., compile LLVM bin/text)
 
 extern void disassemble(const std::string& input, const std::string& output, const vc4c::OutputMode outputMode);
+extern void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, StableList<Global>& globals,
+    std::vector<qpu_asm::Instruction>& instructions);
 
 TestFrontends::TestFrontends()
 {
@@ -35,6 +40,8 @@ TestFrontends::TestFrontends()
     TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::OPENCL_C);
     TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::LLVM_IR_TEXT);
     TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::LLVM_IR_BIN);
+
+    TEST_ADD(TestFrontends::testKernelAttributes);
 }
 
 // out-of-line virtual destructor
@@ -165,26 +172,32 @@ void TestFrontends::testDisassembler()
     TEST_ASSERT_EQUALS(originalContent, disassembledContent)
 }
 
-void TestFrontends::testCompilation(vc4c::SourceType type)
+static std::pair<std::stringstream, SourceType> compile(
+    std::istream& source, SourceType intermediateType, const std::string& options = "")
 {
-    std::ifstream in("./example/fibonacci.cl");
-
     // pre-compile to given type and check result type
     Configuration precompConfig{};
-    Precompiler precomp{precompConfig, in, Precompiler::getSourceType(in)};
+    Precompiler precomp{precompConfig, source, Precompiler::getSourceType(source)};
 
     std::unique_ptr<std::istream> tmp;
-    precomp.run(tmp, type);
-
-    TEST_ASSERT_EQUALS(type, Precompiler::getSourceType(*tmp))
+    precomp.run(tmp, intermediateType, options);
+    auto realIntermediateType = Precompiler::getSourceType(*tmp);
 
     // compile from given type and emulate code
     std::stringstream out;
     Configuration config;
     config.outputMode = OutputMode::BINARY;
-    Compiler::compile(*tmp, out, config);
+    Compiler::compile(*tmp, out, config, options);
+    return std::make_pair(std::move(out), realIntermediateType);
+}
 
-    testEmulation(out);
+void TestFrontends::testCompilation(vc4c::SourceType type)
+{
+    std::ifstream in("./example/fibonacci.cl");
+
+    auto res = compile(in, type);
+    TEST_ASSERT_EQUALS(type, res.second)
+    testEmulation(res.first);
 }
 
 void TestFrontends::testEmulation(std::stringstream& binary)
@@ -209,4 +222,25 @@ void TestFrontends::testEmulation(std::stringstream& binary)
     TEST_ASSERT_EQUALS(55u, out.at(7))
     TEST_ASSERT_EQUALS(89u, out.at(8))
     TEST_ASSERT_EQUALS(144u, out.at(9))
+}
+
+static constexpr char* ATTRIBUTE_KERNEL = R"(
+__attribute__((vec_type_hint(int4)))
+__attribute__((work_group_size_hint(2, 2, 3)))
+__attribute__((reqd_work_group_size(2, 2, 3)))
+__kernel void test() { }
+)";
+
+void TestFrontends::testKernelAttributes()
+{
+    std::stringstream ss(ATTRIBUTE_KERNEL);
+    auto res = compile(ss, SourceType::OPENCL_C);
+    // don't do anything here, just make sure it compiles
+    qpu_asm::ModuleInfo module;
+    StableList<Global> globals;
+    std::vector<qpu_asm::Instruction> instructions;
+    extractBinary(res.first, module, globals, instructions);
+
+    TEST_ASSERT(!module.kernelInfos.empty())
+    TEST_ASSERT_EQUALS(uint64_t{0x0000000300020002}, module.kernelInfos[0].workGroupSize)
 }

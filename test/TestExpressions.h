@@ -17,6 +17,7 @@ public:
     
     void testCreation();
     void testCombination();
+    void testConvergence();
 };
 
 #endif /* TEST_EXPRESSIONS_H */

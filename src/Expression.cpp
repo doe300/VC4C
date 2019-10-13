@@ -390,7 +390,8 @@ Optional<Value> Expression::getConvergenceLimit(Optional<Literal> initialValue) 
         return NO_VALUE;
     bool leftIsLocal = arg0.checkLocal();
     bool rightIsLocal = arg1 && arg1->checkLocal();
-    Optional<Value> constantOperand = arg0.getConstantValue() | (arg1 ? arg1->getConstantValue() : NO_VALUE);
+    Optional<Literal> constantLiteral =
+        (arg0.getConstantValue() | (arg1 ? arg1->getConstantValue() : NO_VALUE)) & &Value::getLiteralValue;
 
     if(!leftIsLocal && !rightIsLocal)
         return NO_VALUE;
@@ -398,44 +399,137 @@ Optional<Value> Expression::getConvergenceLimit(Optional<Literal> initialValue) 
     switch(code.opAdd)
     {
     case OP_FADD.opAdd:
-        if(leftIsLocal && rightIsLocal)
+        if(leftIsLocal && rightIsLocal && initialValue)
             // a + a = a * 2 -> +-inf
-            return initialValue ? (initialValue->real() < 0 ? FLOAT_NEG_INF : FLOAT_INF) : NO_VALUE;
-        if(leftIsLocal || rightIsLocal)
+            return initialValue->real() == 0.0f ? NO_VALUE : (initialValue->real() < 0.0f ? FLOAT_NEG_INF : FLOAT_INF);
+        if((leftIsLocal || rightIsLocal) && constantLiteral)
+            // a + 0 = 0 + a -> a
             // a + x = x + a -> +-inf
-            return (arg1 & &Value::getLiteralValue).value().real() < 0 ? FLOAT_NEG_INF : FLOAT_INF;
+            return constantLiteral->real() == 0.0f ? (initialValue ? Value(*initialValue, TYPE_FLOAT) : NO_VALUE) :
+                                                     (constantLiteral->real() < 0.0f ? FLOAT_NEG_INF : FLOAT_INF);
+        return NO_VALUE;
+    case OP_FSUB.opAdd:
+        if(leftIsLocal && rightIsLocal)
+            // a - a = 0, 0 - 0 = 0, ...
+            return FLOAT_ZERO;
+        if(leftIsLocal && constantLiteral)
+            // a - 0 -> a
+            // a - x -> +-inf
+            return constantLiteral->real() == 0.0f ? (initialValue ? Value(*initialValue, TYPE_FLOAT) : NO_VALUE) :
+                                                     (constantLiteral->real() < 0.0f ? FLOAT_INF : FLOAT_NEG_INF);
+        // x - a = (x-a), x - (x-a) = a, ...
+        return NO_VALUE;
+    case OP_FMIN.opAdd:
+        if(leftIsLocal && rightIsLocal)
+            // min(a, a) -> a
+            return initialValue ? Value(*initialValue, TYPE_FLOAT) : NO_VALUE;
+        if((leftIsLocal || rightIsLocal) && initialValue && constantLiteral)
+            // min(a, x) -> min(a, x)
+            return Value(Literal(std::min(initialValue->real(), constantLiteral->real())), TYPE_FLOAT);
+        return NO_VALUE;
+    case OP_FMAX.opAdd:
+        if(leftIsLocal && rightIsLocal)
+            // max(a, a) -> a
+            return initialValue ? Value(*initialValue, TYPE_FLOAT) : NO_VALUE;
+        if((leftIsLocal || rightIsLocal) && initialValue && constantLiteral)
+            // max(a, x) -> max(a, x)
+            return Value(Literal(std::max(initialValue->real(), constantLiteral->real())), TYPE_FLOAT);
+        return NO_VALUE;
+    case OP_FMINABS.opAdd:
+        if(leftIsLocal && rightIsLocal)
+            // minabs(a, a) -> abs(a)
+            return initialValue ? Value(Literal(std::abs(initialValue->real())), TYPE_FLOAT) : NO_VALUE;
+        if((leftIsLocal || rightIsLocal) && initialValue && constantLiteral)
+            // minabs(a, x) -> min(abs(a), abs(x))
+            return Value(
+                Literal(std::min(std::abs(initialValue->real()), std::abs(constantLiteral->real()))), TYPE_FLOAT);
+        return NO_VALUE;
+    case OP_FMAXABS.opAdd:
+        if(leftIsLocal && rightIsLocal)
+            // maxabs(a, a) -> abs(a)
+            return initialValue ? Value(Literal(std::abs(initialValue->real())), TYPE_FLOAT) : NO_VALUE;
+        if((leftIsLocal || rightIsLocal) && initialValue && constantLiteral)
+            // maxabs(a, x) -> max(abs(a), abs(x))
+            return Value(
+                Literal(std::max(std::abs(initialValue->real()), std::abs(constantLiteral->real()))), TYPE_FLOAT);
         return NO_VALUE;
     case OP_ADD.opAdd:
-        if(leftIsLocal && rightIsLocal)
+        if(leftIsLocal && rightIsLocal && initialValue)
             // a + a = a * 2 -> INT_MIN/INT_MAX
-            return initialValue ?
-                (initialValue->signedInt() < 0 ? Value(Literal(std::numeric_limits<int32_t>::min()), TYPE_INT32) :
-                                                 Value(Literal(std::numeric_limits<int32_t>::max()), TYPE_INT32)) :
-                NO_VALUE;
-        if(leftIsLocal || rightIsLocal)
-            // a + x = x + a -> INT_MIN/INT_MAX
-            return (arg1 & &Value::getLiteralValue).value().signedInt() < 0 ?
-                Value(Literal(std::numeric_limits<int32_t>::min()), TYPE_INT32) :
-                Value(Literal(std::numeric_limits<int32_t>::max()), TYPE_INT32);
-        return NO_VALUE;
-    case OP_SHL.opAdd:
-        if(leftIsLocal)
-            // a << x, a << a -> UINT_MAX if a != 0, 0 otherwise
-            return initialValue == Literal(0u) ? INT_ZERO :
-                                                 Value(Literal(std::numeric_limits<uint32_t>::max()), TYPE_INT32);
-        if(rightIsLocal)
-            // x << a -> UINT_MAX if x,a != 0, 0 otherwise
-            return (initialValue == Literal(0u) || (constantOperand & &Value::getLiteralValue) == Literal(0u)) ?
+            return initialValue->signedInt() == 0 ?
                 INT_ZERO :
-                Value(Literal(std::numeric_limits<uint32_t>::max()), TYPE_INT32);
+                (initialValue->signedInt() < 0 ? Value(Literal(std::numeric_limits<int32_t>::min()), TYPE_INT32) :
+                                                 Value(Literal(std::numeric_limits<int32_t>::max()), TYPE_INT32));
+        if((leftIsLocal || rightIsLocal) && constantLiteral)
+            // a + 0 = 0 + a -> a
+            // a + x = x + a -> INT_MIN/INT_MAX
+            return constantLiteral->signedInt() == 0 ?
+                (initialValue ? Value(*initialValue, TYPE_INT32) : NO_VALUE) :
+                (constantLiteral->signedInt() < 0 ? Value(Literal(std::numeric_limits<int32_t>::min()), TYPE_INT32) :
+                                                    Value(Literal(std::numeric_limits<int32_t>::max()), TYPE_INT32));
+        return NO_VALUE;
+    case OP_SUB.opAdd:
+        if(leftIsLocal && rightIsLocal)
+            // a - a -> 0
+            return INT_ZERO;
+        if(leftIsLocal && constantLiteral)
+            // a - 0 -> a
+            // a - x -> INT_MIN/INT_MAX
+            return constantLiteral->signedInt() == 0 ?
+                (initialValue ? Value(*initialValue, TYPE_INT32) : NO_VALUE) :
+                (constantLiteral->signedInt() < 0 ? Value(Literal(std::numeric_limits<int32_t>::max()), TYPE_INT32) :
+                                                    Value(Literal(std::numeric_limits<int32_t>::min()), TYPE_INT32));
         return NO_VALUE;
     case OP_SHR.opAdd:
-        if(leftIsLocal && !rightIsLocal)
+        if(leftIsLocal && !rightIsLocal && constantLiteral)
+            // a >> 0 -> a
             // a >> x -> 0
+            return constantLiteral->unsignedInt() == 0 ? (initialValue ? Value(*initialValue, TYPE_INT32) : NO_VALUE) :
+                                                         INT_ZERO;
+        if(leftIsLocal && rightIsLocal && initialValue && initialValue->unsignedInt() == 0)
+            // 0 >> 0 -> 0
             return INT_ZERO;
         // a >> (a % 32), x >> (a % 32) -> ? (since a could be != 0, but (a % 32) is 0)
         return NO_VALUE;
-        // TODO more op-codes, where it makes sense
+    case OP_ASR.opAdd:
+        if(leftIsLocal && rightIsLocal && initialValue)
+            // -1 >> -1 (%32) -> -1
+            // 0 >> 0 -> 0
+            return initialValue->signedInt() == 0 ? INT_ZERO :
+                                                    (initialValue->signedInt() == -1 ? INT_MINUS_ONE : NO_VALUE);
+        if(leftIsLocal && !rightIsLocal && constantLiteral && initialValue)
+            // a >> 0 -> a
+            // a >> x -> 0/-1
+            return constantLiteral->unsignedInt() == 0 ? Value(*initialValue, TYPE_INT32) :
+                                                         initialValue->signedInt() < 0 ? INT_MINUS_ONE : INT_ZERO;
+        return NO_VALUE;
+    case OP_SHL.opAdd:
+        if(leftIsLocal && initialValue)
+            // 0 << x -> 0
+            // a << 0 -> a
+            return (initialValue->unsignedInt() == 0) ?
+                INT_ZERO :
+                (constantLiteral && constantLiteral->unsignedInt() == 0 ? Value(*initialValue, TYPE_INT32) : NO_VALUE);
+        if(rightIsLocal && constantLiteral && constantLiteral->unsignedInt() == 0)
+            // 0 << a -> 0
+            return INT_ZERO;
+        return NO_VALUE;
+    case OP_MIN.opAdd:
+        if(leftIsLocal && rightIsLocal)
+            // min(a, a) -> a
+            return initialValue ? Value(*initialValue, TYPE_INT32) : NO_VALUE;
+        if((leftIsLocal || rightIsLocal) && initialValue && constantLiteral)
+            // min(a, x) -> min(a, x)
+            return Value(Literal(std::min(initialValue->signedInt(), constantLiteral->signedInt())), TYPE_INT32);
+        return NO_VALUE;
+    case OP_MAX.opAdd:
+        if(leftIsLocal && rightIsLocal)
+            // max(a, a) -> a
+            return initialValue ? Value(*initialValue, TYPE_INT32) : NO_VALUE;
+        if((leftIsLocal || rightIsLocal) && initialValue && constantLiteral)
+            // max(a, x) -> max(a, x)
+            return Value(Literal(std::max(initialValue->signedInt(), constantLiteral->signedInt())), TYPE_INT32);
+        return NO_VALUE;
     }
     CPPLOG_LAZY(
         logging::Level::DEBUG, log << "Unhandled convergence limit calculation for: " << to_string() << logging::endl);

@@ -30,7 +30,7 @@
 #include "TestPatternMatching.h"
 
 #include "tools.h"
-#include "../lib/cpplog/include/logger.h"
+#include "logger.h"
 #include "RegressionTest.h"
 
 //TODO test for compact optional!
