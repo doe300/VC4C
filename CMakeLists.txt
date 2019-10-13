@@ -89,6 +89,16 @@ endif()
 # Dependencies
 ####
 
+if((CMAKE_MAJOR_VERSION VERSION_GREATER 3) OR ((CMAKE_MAJOR_VERSION VERSION_EQUAL 3) AND (CMAKE_MINOR_VERSION VERSION_GREATER_EQUAL 14)))
+	# CMake 3.14 introduces https://cmake.org/cmake/help/latest/module/FetchContent.html which allows us to run the configuration step
+	# of the downloaded dependencies at CMake configuration step and therefore, we have the proper targets available.
+	message(STATUS "Using CMake 3.14+ FetchContent to include dependencies...")
+	set(DEPENDENCIES_USE_FETCH_CONTENT ON)
+else()
+	message(STATUS "Using CMake <3.14 ExternalProject to include dependencies...")
+	set(DEPENDENCIES_USE_FETCH_CONTENT OFF)
+endif()
+
 if(BUILD_OFFLINE)
 	# A result of != 0 is an error, so disable updating
 	set_property(DIRECTORY ${VC4C_SOURCE_DIR} PROPERTY EP_UPDATE_DISCONNECTED 1)
@@ -127,55 +137,11 @@ if(VERIFY_OUTPUT AND ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU") AND (CMAKE_CXX_
 endif()
 
 if(VERIFY_OUTPUT)
-	ExternalProject_Add(vc4asm-project
-		PREFIX				${CMAKE_BINARY_DIR}/vc4asm
-		SOURCE_DIR 			${CMAKE_SOURCE_DIR}/lib/vc4asm
-		GIT_REPOSITORY 		https://github.com/maazl/vc4asm.git
-		UPDATE_COMMAND 		git pull -f https://github.com/maazl/vc4asm.git
-		STEP_TARGETS 		build
-  		EXCLUDE_FROM_ALL	TRUE
-  		TIMEOUT 			30		#Timeout for downloads, in seconds
-  		CMAKE_ARGS
-  		  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-  		  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-  		  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
-  		  -DCMAKE_CXX_FLAGS="-fPIC"
-  		  -DCMAKE_C_FLAGS="-fPIC"
-	)
+	include(cmake/vc4asm.cmake)
 endif()
-
-ExternalProject_Add( cpplog-project
-	PREFIX 				${CMAKE_BINARY_DIR}/cpplog
-	BINARY_DIR 			${CMAKE_BINARY_DIR}/cpplog
-	SOURCE_DIR 			${CMAKE_SOURCE_DIR}/lib/cpplog
-	GIT_REPOSITORY 		https://github.com/doe300/cpplog.git
-	UPDATE_COMMAND 		git pull -f https://github.com/doe300/cpplog.git
-	CMAKE_ARGS 			-DCPPLOG_NAMESPACE=logging -DCPPLOG_CUSTOM_LOGGER=true -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-	STEP_TARGETS 		build	#If we set our dependency on this, the install step is skipped
-	EXCLUDE_FROM_ALL 	TRUE	#Skip for "make all" to skip install
-	TIMEOUT 			30		#Timeout for downloads, in seconds
-	CMAKE_ARGS
-	  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-	  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-	  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
-)
-
+include(cmake/cpplog.cmake)
 # Variant backport for C++ < 17
-ExternalProject_Add( variant-project
-	PREFIX 				${CMAKE_BINARY_DIR}/variant
-	BINARY_DIR 			${CMAKE_BINARY_DIR}/variant
-	SOURCE_DIR 			${CMAKE_SOURCE_DIR}/lib/variant
-	GIT_REPOSITORY 		https://github.com/mpark/variant.git
-	UPDATE_COMMAND 		git pull -f https://github.com/mpark/variant.git
-	CMAKE_ARGS 			-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-	STEP_TARGETS 		build	#If we set our dependency on this, the install step is skipped
-  	EXCLUDE_FROM_ALL 	TRUE	#Skip for "make all" to skip install
-  	TIMEOUT 			30		#Timeout for downloads, in seconds
-  	CMAKE_ARGS
-  	  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-	  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-	  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
-)
+include(cmake/variant.cmake)
 
 ####
 # Additional configuration
@@ -191,19 +157,7 @@ add_subdirectory(tools)
 
 if (BUILD_TESTING)
 	enable_testing()
-	ExternalProject_Add(cpptest-lite-project
-		PREFIX 				${CMAKE_BINARY_DIR}/cpptest-lite
-		SOURCE_DIR 			${CMAKE_SOURCE_DIR}/lib/cpptest-lite
-		GIT_REPOSITORY		https://github.com/doe300/cpptest-lite.git
-		UPDATE_COMMAND 		git pull -f https://github.com/doe300/cpptest-lite.git
-		STEP_TARGETS 		build
-  		EXCLUDE_FROM_ALL	TRUE
-  		TIMEOUT 			30		#Timeout for downloads, in seconds
-  		CMAKE_ARGS
-  		  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-  		  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-  		  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
-	)
+	include(cmake/cpptest-lite.cmake)
     add_subdirectory(test)
 endif (BUILD_TESTING)
 

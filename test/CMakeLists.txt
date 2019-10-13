@@ -8,14 +8,11 @@ if(BUILD_DEBUG)
 endif(BUILD_DEBUG)
 
 target_include_directories (TestVC4C PRIVATE "${PROJECT_SOURCE_DIR}/src")
-target_include_directories(TestVC4C PRIVATE "${PROJECT_SOURCE_DIR}/lib/variant/include")
+target_include_directories(TestVC4C PRIVATE ${variant_HEADERS})
 
-add_dependencies(TestVC4C cpptest-lite-project-build)
-add_library(cpptest-lite SHARED IMPORTED)
-ExternalProject_Get_Property(cpptest-lite-project BINARY_DIR)
-set_target_properties(cpptest-lite PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/libcpptest-lite.so")
-target_link_libraries(TestVC4C cpptest-lite)
-target_include_directories (TestVC4C PRIVATE "${PROJECT_SOURCE_DIR}/lib/cpptest-lite/include")
+add_dependencies(TestVC4C cpptest-lite-dependencies)
+target_link_libraries(TestVC4C ${cpptest_LIBS})
+target_include_directories (TestVC4C PRIVATE "${cpptest_HEADERS}")
 
 if(SPIRV_CLANG_FOUND)
 	target_compile_definitions(TestVC4C PRIVATE SPIRV_CLANG_PATH="${SPIRV_CLANG_FOUND}")

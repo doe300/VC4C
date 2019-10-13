@@ -70,13 +70,10 @@ include(tools/sources.list)
 target_link_libraries(${VC4C_PROGRAM_NAME} ${VC4C_LIBRARY_NAME} ${SYSROOT_LIBRARY_FLAGS})
 
 # cpplog
-add_dependencies(${VC4C_LIBRARY_NAME} cpplog-project-build)
-add_library(cpplog-static STATIC IMPORTED)
-ExternalProject_Get_Property(cpplog-project BINARY_DIR)
-set_target_properties(cpplog-static PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/libcpplog-static.a")
-target_link_libraries(${VC4C_LIBRARY_NAME} cpplog-static)
-target_include_directories(${VC4C_LIBRARY_NAME} PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/lib/cpplog/include>)
-target_compile_definitions(${VC4C_LIBRARY_NAME} PUBLIC CPPLOG_NAMESPACE=logging CPPLOG_CUSTOM_LOGGER=true)
+add_dependencies(${VC4C_LIBRARY_NAME} cpplog-dependencies)
+target_link_libraries(${VC4C_LIBRARY_NAME} ${cpplog_LIBS})
+target_include_directories(${VC4C_LIBRARY_NAME} PUBLIC ${cpplog_HEADERS})
+target_compile_definitions(${VC4C_LIBRARY_NAME} PUBLIC ${cpplog_DEFINES})
 
 # threading library
 if(MULTI_THREADED)
@@ -87,21 +84,11 @@ endif(MULTI_THREADED)
 
 # SPIR-V Tools
 if(VC4C_ENABLE_SPIRV_FRONTEND)
-	add_dependencies(${VC4C_LIBRARY_NAME} spirv-tools-project-build)
-	ExternalProject_Get_Property(spirv-tools-project BINARY_DIR)
+	add_dependencies(${VC4C_LIBRARY_NAME} SPIRV-Dependencies)
+	target_link_libraries(${VC4C_LIBRARY_NAME} ${SPIRV_Tools_LIBS})
+	target_include_directories(${VC4C_LIBRARY_NAME} PRIVATE ${SPIRV_Headers_HEADERS})
+	target_include_directories(${VC4C_LIBRARY_NAME} PRIVATE ${SPIRV_Tools_HEADERS})
 
-	set(spirv-tools "-Wl,--whole-archive ${BINARY_DIR}/source/libSPIRV-Tools.a -Wl,--no-whole-archive")
-	target_link_libraries(${VC4C_LIBRARY_NAME} "${spirv-tools}")
-
-	set(spirv-tools-opt "-Wl,--whole-archive ${BINARY_DIR}/source/opt/libSPIRV-Tools-opt.a -Wl,--no-whole-archive")
-	target_link_libraries(${VC4C_LIBRARY_NAME} "${spirv-tools-opt}")
-
-	add_library(spirv-tools-link STATIC IMPORTED)
-	set_target_properties(spirv-tools-link PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/source/link/libSPIRV-Tools-link.a")
-	target_link_libraries(${VC4C_LIBRARY_NAME} spirv-tools-link)
-
-	target_include_directories(${VC4C_LIBRARY_NAME} PRIVATE "${PROJECT_SOURCE_DIR}/lib/spirv-headers/include")
-	target_include_directories(${VC4C_LIBRARY_NAME} PRIVATE "${PROJECT_SOURCE_DIR}/lib/spirv-tools/include")
 	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE SPIRV_LLVM_SPIRV_PATH="${SPIRV_LLVM_SPIR_FOUND}" SPIRV_FRONTEND=1)
 	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE SPIRV_LLVM_SPIRV_PATH="${SPIRV_LLVM_SPIR_FOUND}" SPIRV_FRONTEND=1)
 endif(VC4C_ENABLE_SPIRV_FRONTEND)
@@ -131,20 +118,16 @@ if(VC4C_ENABLE_LIBCLANG)
 endif(VC4C_ENABLE_LIBCLANG)
 
 if(VERIFY_OUTPUT)
-	add_dependencies(${VC4C_LIBRARY_NAME} vc4asm-project-build)
-	add_library(vc4asm STATIC IMPORTED)
-	ExternalProject_Get_Property(vc4asm-project BINARY_DIR)
-	set_target_properties(vc4asm PROPERTIES IMPORTED_LOCATION "${BINARY_DIR}/libvc4asm.a")
-	target_link_libraries(${VC4C_LIBRARY_NAME} vc4asm)
-
-	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE VERIFIER_HEADER="${PROJECT_SOURCE_DIR}/lib/vc4asm/src/Validator.h")
-	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE VERIFIER_HEADER="${PROJECT_SOURCE_DIR}/lib/vc4asm/src/Validator.h")
+	add_dependencies(${VC4C_LIBRARY_NAME} vc4asm-dependencies)
+	target_link_libraries(${VC4C_LIBRARY_NAME} ${vc4asm_LIBS})
+	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE VERIFIER_HEADER="${vc4asm_HEADER}")
+	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE VERIFIER_HEADER="${vc4asm_HEADER}")
 endif()
 
 # Download mpark/variant library as dependency
-add_dependencies(${VC4C_LIBRARY_NAME} variant-project-build)
-target_include_directories(${VC4C_LIBRARY_NAME} PRIVATE "${PROJECT_SOURCE_DIR}/lib/variant/include")
-target_include_directories(${VC4C_PROGRAM_NAME} PRIVATE "${PROJECT_SOURCE_DIR}/lib/variant/include")
+add_dependencies(${VC4C_LIBRARY_NAME} variant-dependencies)
+target_include_directories(${VC4C_LIBRARY_NAME} PRIVATE ${variant_HEADERS})
+target_include_directories(${VC4C_PROGRAM_NAME} PRIVATE ${variant_HEADERS})
 
 if(VC4CL_STDLIB_DIR)
 	# Pre-compile VC4CL standard library files if development headers available and output files do not yet exist
