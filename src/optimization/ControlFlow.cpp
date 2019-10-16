@@ -1747,7 +1747,7 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
         if(hasSideEffects)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Aborting optimization, since conditional block has side effects" << logging::endl);
+                log << "Skipping this candidate, since conditional block has side effects" << logging::endl);
             continue;
         }
 
@@ -1787,7 +1787,7 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
                     }
                     else
                     {
-                        // the last branch is unconditional (e.g. the default for switch-cases), but we need to
+                        // the last branch maybe unconditional (e.g. the default for switch-cases), but we need to
                         // insert the unconditional local assignment as first instruction.
                         if(branch && branch->getTarget() == succ->key->getLabel()->getLabel())
                             // remove original unconditional branch. If this is a fall-through don't remove anything
@@ -1945,6 +1945,7 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
     it = method.emplaceLabel(it,
         new intermediate::BranchLabel(
             *method.addNewLocal(TYPE_LABEL, "", "%repeat_" + id.local()->name.substr(1)).local()));
+    it.get<intermediate::BranchLabel>()->isWorkGroupLoop = true;
     // insert after label, not before
     it.nextInBlock();
 
@@ -2000,6 +2001,7 @@ bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const
     // The new head block, the block initializing the group ids
     auto startIt = method.emplaceLabel(method.walkAllInstructions(),
         new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL, "", "%group_id_initializer").local()));
+    startIt.get<intermediate::BranchLabel>()->isWorkGroupLoop = true;
     auto& startBlock = *startIt.getBasicBlock();
 
     // The old and new tail block which indicates kernel execution finished

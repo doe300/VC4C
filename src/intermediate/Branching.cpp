@@ -19,7 +19,8 @@ BranchLabel::BranchLabel(const Local& label) : IntermediateInstruction(label.cre
 LCOV_EXCL_START
 std::string BranchLabel::to_string() const
 {
-    return std::string("label: ") + getLabel()->name + createAdditionalInfoString();
+    return std::string("label: ") + getLabel()->name + createAdditionalInfoString() +
+        (isWorkGroupLoop ? " (work-group loop)" : "");
 }
 LCOV_EXCL_STOP
 

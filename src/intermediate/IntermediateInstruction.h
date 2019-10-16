@@ -530,6 +530,9 @@ namespace vc4c
 
             const Local* getLabel() const;
             Local* getLabel();
+
+            // whether this block is part of the work-group loop and not the actual kernel code
+            bool isWorkGroupLoop = false;
         };
 
         struct Branch final : public IntermediateInstruction

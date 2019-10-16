@@ -397,6 +397,29 @@ namespace vc4c
             return edges.size();
         }
 
+        bool isSource() const
+        {
+            static_assert(
+                EdgeType::Directed != Directionality::UNDIRECTED, "Can only find sources in directed graphs!");
+            bool hasIncomingEdges = false;
+            forAllIncomingEdges([&](const NodeType&, const EdgeType&) -> bool {
+                hasIncomingEdges = true;
+                return false;
+            });
+            return !hasIncomingEdges;
+        }
+
+        bool isSink() const
+        {
+            static_assert(EdgeType::Directed != Directionality::UNDIRECTED, "Can only find sinks in directed graphs!");
+            bool hasOutgoingEdges = false;
+            forAllOutgoingEdges([&](const NodeType&, const EdgeType&) -> bool {
+                hasOutgoingEdges = true;
+                return false;
+            });
+            return !hasOutgoingEdges;
+        }
+
         Key key;
 
     protected:
@@ -652,12 +675,7 @@ namespace vc4c
                 EdgeType::Directed != Directionality::UNDIRECTED, "Can only find sources in directed graphs!");
             for(auto& pair : nodes)
             {
-                bool hasIncomingEdges = false;
-                pair.second.forAllIncomingEdges([&](const NodeType&, const EdgeType&) -> bool {
-                    hasIncomingEdges = true;
-                    return false;
-                });
-                if(!hasIncomingEdges)
+                if(pair.second.isSource())
                     return &pair.second;
             }
             return nullptr;
@@ -674,12 +692,7 @@ namespace vc4c
                 EdgeType::Directed != Directionality::UNDIRECTED, "Can only find sources in directed graphs!");
             for(auto& pair : nodes)
             {
-                bool hasIncomingEdges = false;
-                pair.second.forAllIncomingEdges([&](const NodeType&, const EdgeType&) -> bool {
-                    hasIncomingEdges = true;
-                    return false;
-                });
-                if(!hasIncomingEdges)
+                if(pair.second.isSource())
                 {
                     if(!consumer(pair.second))
                         return;
@@ -695,12 +708,7 @@ namespace vc4c
             static_assert(EdgeType::Directed != Directionality::UNDIRECTED, "Can only find sinks in directed graphs!");
             for(auto& pair : nodes)
             {
-                bool hasOutgoingEdges = false;
-                pair.second.forAllOutgoingEdges([&](const NodeType&, const EdgeType&) -> bool {
-                    hasOutgoingEdges = true;
-                    return false;
-                });
-                if(!hasOutgoingEdges)
+                if(pair.second.isSink())
                     return &pair.second;
             }
             return nullptr;
@@ -716,12 +724,7 @@ namespace vc4c
             static_assert(EdgeType::Directed != Directionality::UNDIRECTED, "Can only find sinks in directed graphs!");
             for(auto& pair : nodes)
             {
-                bool hasOutgoingEdges = false;
-                pair.second.forAllOutgoingEdges([&](const NodeType&, const EdgeType&) -> bool {
-                    hasOutgoingEdges = true;
-                    return false;
-                });
-                if(!hasOutgoingEdges)
+                if(pair.second.isSink())
                 {
                     if(!consumer(pair.second))
                         return;

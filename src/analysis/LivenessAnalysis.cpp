@@ -127,10 +127,11 @@ static void runAnalysis(const CFGNode& node, FastMap<const BasicBlock*, std::uni
     // copy on purpose, since result could be modified by previous forAllIncomingEdges loop
     auto startLiveLocals = analyzer->getStartResult();
 
-    if(node.key == startOfKernel)
+    if(node.key == startOfKernel && node.key->getLabel()->isWorkGroupLoop)
     {
         // skip work-group loop, since they do not modify the live locals
-        // TODO if the work-group loop is not active, there might be a kernel code loop back to the start, can there?
+        // Since if the work-group loop is not active, there might be a kernel code loop back to the start, we only
+        // abort if the work-group loop is active (in which case the first block will have the flag set).
         return;
     }
 
