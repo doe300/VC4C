@@ -737,32 +737,22 @@ static bool checkMinMaxCarry(const Literal& arg0, const Literal& arg1, bool useA
 
 static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Literal secondLit)
 {
-    if(code == OP_ADD)
+    switch(code.opAdd)
     {
-        auto extendedVal =
-            static_cast<uint64_t>(firstLit.unsignedInt()) + static_cast<uint64_t>(secondLit.unsignedInt());
-        auto signedVal = static_cast<int64_t>(firstLit.signedInt()) + static_cast<int64_t>(secondLit.signedInt());
-        return setFlags(Literal(firstLit.signedInt() + secondLit.signedInt()),
-            extendedVal > static_cast<uint64_t>(0xFFFFFFFFul),
-            signedVal > static_cast<int64_t>(std::numeric_limits<int32_t>::max()) ||
-                signedVal < static_cast<int64_t>(std::numeric_limits<int32_t>::min()));
-    }
-    if(code == OP_AND)
-        return setFlags(Literal(firstLit.unsignedInt() & secondLit.unsignedInt()), false, false);
-    if(code == OP_ASR)
-    {
-        // Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
-        auto offset = secondLit.unsignedInt() & 0x1F;
-        // carry is set if bits set are shifted out of the register: val & (2^shift-offset-1) != 0
-        auto shiftLoss = firstLit.unsignedInt() & ((1u << offset) - 1u);
-        return setFlags(intermediate::asr(firstLit, secondLit), shiftLoss != 0, false);
-    }
-    if(code == OP_CLZ)
-        return setFlags(intermediate::clz(firstLit), false, false);
-    if(code == OP_FADD)
+    case OP_FADD.opAdd:
         return setFlags(Literal(firstLit.real() + secondLit.real()), (firstLit.real() + secondLit.real()) > 0.0f);
-    if(code == OP_FMAX)
-    {
+    case OP_FSUB.opAdd:
+        return setFlags(Literal(firstLit.real() - secondLit.real()), (firstLit.real() - secondLit.real()) > 0.0f);
+    case OP_FMIN.opAdd:
+        if(std::isnan(firstLit.real()))
+            return setFlags(secondLit, checkMinMaxCarry(firstLit, secondLit));
+        if(std::isnan(secondLit.real()))
+            return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit));
+        static_assert(std::min(std::numeric_limits<float>::infinity(), 0.0f) == 0.0f, "");
+        static_assert(std::min(-std::numeric_limits<float>::infinity(), 0.0f) != 0.0f, "");
+        return setFlags(
+            Literal(std::min(firstLit.real(), secondLit.real())), firstLit.real() > secondLit.real(), false);
+    case OP_FMAX.opAdd:
         if(std::isnan(firstLit.real()))
             return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit));
         if(std::isnan(secondLit.real()))
@@ -771,9 +761,14 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
         static_assert(std::max(-std::numeric_limits<float>::infinity(), 0.0f) == 0.0f, "");
         return setFlags(
             Literal(std::max(firstLit.real(), secondLit.real())), firstLit.real() > secondLit.real(), false);
-    }
-    if(code == OP_FMAXABS)
-    {
+    case OP_FMINABS.opAdd:
+        if(std::isnan(firstLit.real()))
+            return setFlags(secondLit, checkMinMaxCarry(firstLit, secondLit, true));
+        if(std::isnan(secondLit.real()))
+            return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit, true));
+        return setFlags(Literal(std::min(std::fabs(firstLit.real()), std::fabs(secondLit.real()))),
+            std::fabs(firstLit.real()) > std::fabs(secondLit.real()), false);
+    case OP_FMAXABS.opAdd:
         if(std::isnan(firstLit.real()))
             return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit, true));
         if(std::isnan(secondLit.real()))
@@ -784,69 +779,31 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
             return setFlags(secondLit, checkMinMaxCarry(firstLit, secondLit, true));
         return setFlags(Literal(std::max(std::fabs(firstLit.real()), std::fabs(secondLit.real()))),
             std::fabs(firstLit.real()) > std::fabs(secondLit.real()), false);
-    }
-    if(code == OP_FMIN)
-    {
-        if(std::isnan(firstLit.real()))
-            return setFlags(secondLit, checkMinMaxCarry(firstLit, secondLit));
-        if(std::isnan(secondLit.real()))
-            return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit));
-        static_assert(std::min(std::numeric_limits<float>::infinity(), 0.0f) == 0.0f, "");
-        static_assert(std::min(-std::numeric_limits<float>::infinity(), 0.0f) != 0.0f, "");
-        return setFlags(
-            Literal(std::min(firstLit.real(), secondLit.real())), firstLit.real() > secondLit.real(), false);
-    }
-    if(code == OP_FMINABS)
-    {
-        if(std::isnan(firstLit.real()))
-            return setFlags(secondLit, checkMinMaxCarry(firstLit, secondLit, true));
-        if(std::isnan(secondLit.real()))
-            return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit, true));
-        return setFlags(Literal(std::min(std::fabs(firstLit.real()), std::fabs(secondLit.real()))),
-            std::fabs(firstLit.real()) > std::fabs(secondLit.real()), false);
-    }
-    if(code == OP_FMUL)
-        return setFlags(Literal(firstLit.real() * secondLit.real()));
-    if(code == OP_FSUB)
-        return setFlags(Literal(firstLit.real() - secondLit.real()), (firstLit.real() - secondLit.real()) > 0.0f);
-    if(code == OP_FTOI)
-    {
+    case OP_FTOI.opAdd:
         if(std::isnan(firstLit.real()) || std::isinf(firstLit.real()) ||
             std::abs(static_cast<int64_t>(firstLit.real())) > std::numeric_limits<int32_t>::max())
             return setFlags(Literal(0u));
         return setFlags(Literal(static_cast<int32_t>(firstLit.real())), false);
-    }
-    if(code == OP_ITOF)
-        return setFlags(Literal(static_cast<float>(firstLit.signedInt())),
-
-            false);
-    if(code == OP_MAX)
-        return setFlags(Literal(std::max(firstLit.signedInt(), secondLit.signedInt())),
-            firstLit.signedInt() > secondLit.signedInt(), false);
-    if(code == OP_MIN)
-        return setFlags(Literal(std::min(firstLit.signedInt(), secondLit.signedInt())),
-            firstLit.signedInt() > secondLit.signedInt(), false);
-    if(code == OP_MUL24)
+    case OP_ITOF.opAdd:
+        return setFlags(Literal(static_cast<float>(firstLit.signedInt())), false);
+    case OP_ADD.opAdd:
     {
-        auto extendedVal = static_cast<uint64_t>(firstLit.unsignedInt() & 0xFFFFFFu) *
-            static_cast<uint64_t>(secondLit.unsignedInt() & 0xFFFFFFu);
-        return setFlags(Literal((firstLit.unsignedInt() & 0xFFFFFF) * (secondLit.unsignedInt() & 0xFFFFFF)),
-            extendedVal > static_cast<uint64_t>(0xFFFFFFFFul));
+        auto extendedVal =
+            static_cast<uint64_t>(firstLit.unsignedInt()) + static_cast<uint64_t>(secondLit.unsignedInt());
+        auto signedVal = static_cast<int64_t>(firstLit.signedInt()) + static_cast<int64_t>(secondLit.signedInt());
+        return setFlags(Literal(firstLit.signedInt() + secondLit.signedInt()),
+            extendedVal > static_cast<uint64_t>(0xFFFFFFFFul),
+            signedVal > static_cast<int64_t>(std::numeric_limits<int32_t>::max()) ||
+                signedVal < static_cast<int64_t>(std::numeric_limits<int32_t>::min()));
     }
-    if(code == OP_NOT)
-        return setFlags(Literal(~firstLit.unsignedInt()), false);
-    if(code == OP_OR)
-        return setFlags(Literal(firstLit.unsignedInt() | secondLit.unsignedInt()), false, false);
-    if(code == OP_ROR)
-        return setFlags(Literal(rotate_right(firstLit.unsignedInt(), secondLit.signedInt())), false);
-    if(code == OP_SHL)
+    case OP_SUB.opAdd:
     {
-        // Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
-        auto offset = secondLit.unsignedInt() & 0x1F;
-        auto extendedVal = static_cast<uint64_t>(firstLit.unsignedInt()) << offset;
-        return setFlags(Literal(firstLit.unsignedInt() << offset), extendedVal > static_cast<uint64_t>(0xFFFFFFFFul));
+        auto extendedVal = static_cast<int64_t>(firstLit.signedInt()) - static_cast<int64_t>(secondLit.signedInt());
+        return setFlags(Literal(firstLit.signedInt() - secondLit.signedInt()),
+            extendedVal<0, extendedVal> static_cast<int64_t>(std::numeric_limits<int32_t>::max()) ||
+                extendedVal < static_cast<int64_t>(std::numeric_limits<int32_t>::min()));
     }
-    if(code == OP_SHR)
+    case OP_SHR.opAdd:
     {
         // Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
         auto offset = secondLit.unsignedInt() & 0x1F;
@@ -854,15 +811,54 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
         auto shiftLoss = firstLit.unsignedInt() & ((1u << offset) - 1u);
         return setFlags(Literal(firstLit.unsignedInt() >> offset), shiftLoss != 0);
     }
-    if(code == OP_SUB)
+    case OP_ASR.opAdd:
     {
-        auto extendedVal = static_cast<int64_t>(firstLit.signedInt()) - static_cast<int64_t>(secondLit.signedInt());
-        return setFlags(Literal(firstLit.signedInt() - secondLit.signedInt()),
-            extendedVal<0, extendedVal> static_cast<int64_t>(std::numeric_limits<int32_t>::max()) ||
-                extendedVal < static_cast<int64_t>(std::numeric_limits<int32_t>::min()));
+        // Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
+        auto offset = secondLit.unsignedInt() & 0x1F;
+        // carry is set if bits set are shifted out of the register: val & (2^shift-offset-1) != 0
+        auto shiftLoss = firstLit.unsignedInt() & ((1u << offset) - 1u);
+        return setFlags(intermediate::asr(firstLit, secondLit), shiftLoss != 0, false);
     }
-    if(code == OP_XOR)
+    case OP_ROR.opAdd:
+        return setFlags(Literal(rotate_right(firstLit.unsignedInt(), secondLit.signedInt())), false);
+    case OP_SHL.opAdd:
+    {
+        // Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
+        auto offset = secondLit.unsignedInt() & 0x1F;
+        auto extendedVal = static_cast<uint64_t>(firstLit.unsignedInt()) << offset;
+        return setFlags(Literal(firstLit.unsignedInt() << offset), extendedVal > static_cast<uint64_t>(0xFFFFFFFFul));
+    }
+    case OP_MIN.opAdd:
+        return setFlags(Literal(std::min(firstLit.signedInt(), secondLit.signedInt())),
+            firstLit.signedInt() > secondLit.signedInt(), false);
+    case OP_MAX.opAdd:
+        return setFlags(Literal(std::max(firstLit.signedInt(), secondLit.signedInt())),
+            firstLit.signedInt() > secondLit.signedInt(), false);
+    case OP_AND.opAdd:
+        return setFlags(Literal(firstLit.unsignedInt() & secondLit.unsignedInt()), false, false);
+    case OP_OR.opAdd:
+        return setFlags(Literal(firstLit.unsignedInt() | secondLit.unsignedInt()), false, false);
+    case OP_XOR.opAdd:
         return setFlags(Literal(firstLit.unsignedInt() ^ secondLit.unsignedInt()), false, false);
+    case OP_NOT.opAdd:
+        return setFlags(Literal(~firstLit.unsignedInt()), false);
+    case OP_CLZ.opAdd:
+        return setFlags(intermediate::clz(firstLit), false, false);
+    }
+
+    switch(code.opMul)
+    {
+    case OP_FMUL.opMul:
+        return setFlags(Literal(firstLit.real() * secondLit.real()));
+    case OP_MUL24.opMul:
+    {
+        auto extendedVal = static_cast<uint64_t>(firstLit.unsignedInt() & 0xFFFFFFu) *
+            static_cast<uint64_t>(secondLit.unsignedInt() & 0xFFFFFFu);
+        return setFlags(Literal((firstLit.unsignedInt() & 0xFFFFFF) * (secondLit.unsignedInt() & 0xFFFFFF)),
+            extendedVal > static_cast<uint64_t>(0xFFFFFFFFul));
+    }
+    }
+
     if(code == OP_V8ADDS || code == OP_V8SUBS || code == OP_V8MAX || code == OP_V8MIN || code == OP_V8MULD)
     {
         std::array<uint32_t, 4> bytesA, bytesB, bytesOut;

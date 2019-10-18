@@ -66,10 +66,11 @@ void Local::removeUser(const LocalUser& user, const LocalUse::Type type)
         users.erase(&user);
         return;
     }
-    if(users.find(&user) == users.end())
+    auto it = users.find(&user);
+    if(it == users.end())
         throw CompilationError(
             CompilationStep::GENERAL, "Trying to remove a not registered user for a local", user.to_string());
-    LocalUse& use = users.at(&user);
+    LocalUse& use = it->second;
     if(type == LocalUse::Type::READER)
         --use.numReads;
     else if(type == LocalUse::Type::WRITER)
@@ -80,9 +81,10 @@ void Local::removeUser(const LocalUser& user, const LocalUse::Type type)
 
 void Local::addUser(const LocalUser& user, const LocalUse::Type type)
 {
-    if(users.find(&user) == users.end())
-        users.emplace(&user, LocalUse());
-    LocalUse& use = users.at(&user);
+    auto it = users.find(&user);
+    if(it == users.end())
+        it = users.emplace(&user, LocalUse()).first;
+    LocalUse& use = it->second;
     if(has_flag(type, LocalUse::Type::READER))
         ++use.numReads;
     if(has_flag(type, LocalUse::Type::WRITER))

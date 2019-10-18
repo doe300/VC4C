@@ -34,6 +34,7 @@ static void overlapLocals(LifetimeGraph& graph, const FastSet<const Local*>& liv
     for(const Local* l1 : liveLocals)
     {
         auto& node = graph.getOrCreateNode(l1);
+        node.reserveEdgesSize(liveLocals.size() - 1u);
         for(const Local* l2 : liveLocals)
         {
             if(l1 != l2)

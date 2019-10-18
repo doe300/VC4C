@@ -463,6 +463,7 @@ GraphColoring::GraphColoring(Method& method, InstructionWalker it) :
 void GraphColoring::createGraph()
 {
     interferenceGraph = analysis::InterferenceGraph::createGraph(method);
+    graph.reserveNodeSize(localUses.size());
     // 1. iteration: set files and locals used together and map to start/end of range
     PROFILE_START(createColoredNodes);
     for(const auto& pair : localUses)
@@ -540,6 +541,9 @@ void GraphColoring::createGraph()
     for(const auto& interferenceNode : interferenceGraph->getNodes())
     {
         ColoredNode& node = graph.assertNode(interferenceNode.first);
+        if(node.getEdgesSize() == 0)
+            // To not force rehashing, only reserve for nodes without edges
+            node.reserveEdgesSize(interferenceNode.second.getEdgesSize());
         interferenceNode.second.forAllEdges(
             [&](const analysis::InterferenceNode& neighbor, const analysis::Interference& edge) -> bool {
                 node.getOrCreateEdge(&graph.assertNode(neighbor.key)).data = edge.data;
@@ -837,6 +841,7 @@ static NODISCARD bool moveLocalToRegisterFile(Method& method, ColoredGraph& grap
         // cannot determine the actual neighbors
         tmpNode.takeValues(node);
         // TODO need to update the local used in the current instruction as input with the new temporary
+        tmpNode.reserveEdgesSize(node.getEdgesSize());
         node.forAllEdges([&](ColoredNode& neighbor, ColoredEdge&) -> bool {
             neighbor.getOrCreateEdge(&tmpNode, LocalRelation::USED_SIMULTANEOUSLY);
             return true;
@@ -899,6 +904,7 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
     // by re-checking which registers are not used by any neighbor
 
     const auto& users = node.key->getUsers();
+    auto& use = localUses.at(node.key);
 
     // CASE 1)
     if(node.initialFile == RegisterFile::ACCUMULATOR && !node.hasFreeRegisters(RegisterFile::ACCUMULATOR))
@@ -909,7 +915,7 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
         PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 10, "Register error case 1", 1);
 
         // the register-files which can be used after the fix by this local
-        RegisterFile freeFiles = remove_flag(RegisterFile::ANY, localUses.at(node.key).blockedFiles);
+        RegisterFile freeFiles = remove_flag(RegisterFile::ANY, use.blockedFiles);
 
         for(InstructionWalker it : localUse.associatedInstructions)
         {
@@ -948,8 +954,8 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
         // now the register can be on the physical files
         // if free-files in NONE, maybe the next iteration can assign a valid register
         node.possibleFiles = freeFiles;
-        node.initialFile = remove_flag(RegisterFile::ANY, localUses.at(node.key).blockedFiles);
-        localUse.possibleFiles = remove_flag(RegisterFile::ANY, localUses.at(node.key).blockedFiles);
+        node.initialFile = remove_flag(RegisterFile::ANY, use.blockedFiles);
+        localUse.possibleFiles = remove_flag(RegisterFile::ANY, use.blockedFiles);
     }
     // CASE 2)
     else if((has_flag(node.initialFile, RegisterFile::PHYSICAL_A) && node.hasFreeRegisters(RegisterFile::PHYSICAL_A)) ||
@@ -991,7 +997,7 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
                        fileBCouldBeUsed ? RegisterFile::PHYSICAL_B : RegisterFile::NONE))
                 << logging::endl);
 
-        if(!has_flag(localUses.at(node.key).blockedFiles, RegisterFile::ACCUMULATOR))
+        if(!has_flag(use.blockedFiles, RegisterFile::ACCUMULATOR))
         {
             // the "easier" solution is to copy the local into an accumulator before each use, where it conflicts with
             // other inputs
@@ -1051,7 +1057,7 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
                        moveToFileB ? RegisterFile::PHYSICAL_B : RegisterFile::NONE))
                 << logging::endl);
 
-        if(has_flag(localUses.at(node.key).blockedFiles, RegisterFile::ACCUMULATOR))
+        if(has_flag(use.blockedFiles, RegisterFile::ACCUMULATOR))
         {
             // some of the instruction this local is used as input, do not accept accumulators (e.g. unpack)
             throw CompilationError(CompilationStep::LABEL_REGISTER_MAPPING,
@@ -1113,10 +1119,10 @@ FastMap<const Local*, Register> GraphColoring::toRegisterMap() const
 
     for(const auto& pair : graph.getNodes())
     {
-        result.emplace(pair.first, pair.second.getRegisterFixed());
+        auto it = result.emplace(pair.first, pair.second.getRegisterFixed()).first;
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Assigned local " << pair.first->name << " to register "
-                << result.at(pair.first).to_string(true, false) << logging::endl);
+            log << "Assigned local " << pair.first->name << " to register " << it->second.to_string(true, false)
+                << logging::endl);
     }
 
     return result;

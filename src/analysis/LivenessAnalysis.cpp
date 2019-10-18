@@ -120,7 +120,6 @@ using LiveLocalsCache = FastMap<const BasicBlock*, FastSet<const Local*>>;
 static void runAnalysis(const CFGNode& node, FastMap<const BasicBlock*, std::unique_ptr<LivenessAnalysis>>& results,
     LiveLocalsCache& cachedEndLiveLocals, FastSet<const Local*>&& cacheEntry, const BasicBlock* startOfKernel)
 {
-    PROFILE_START(GlobalLivenessAnalysis);
     auto& analyzer = results[node.key];
     analyzer.reset(new LivenessAnalysis(std::move(cacheEntry)));
     (*analyzer)(*node.key);
@@ -135,6 +134,7 @@ static void runAnalysis(const CFGNode& node, FastMap<const BasicBlock*, std::uni
         return;
     }
 
+    // TODO could breadth-first be faster?
     node.forAllIncomingEdges([&](const CFGNode& predecessor, const CFGEdge&) -> bool {
         // add all live locals from the beginning of this block to the end of the new one and check whether we are done
         // with this predecessor
@@ -155,18 +155,20 @@ static void runAnalysis(const CFGNode& node, FastMap<const BasicBlock*, std::uni
 
         return true;
     });
-    PROFILE_END(GlobalLivenessAnalysis);
 }
 
 void GlobalLivenessAnalysis::operator()(Method& method)
 {
     // TODO need to improve for performance, e.g. make sure, we don't do unnecessary block analyses
+    PROFILE_START(GlobalLivenessAnalysis);
     auto& cfg = method.getCFG();
     auto& finalNode = cfg.getEndOfControlFlow();
 
     // The cache of the live locals at the end of a given basic blocks (e.g. consumed by any succeeding block)
-    LiveLocalsCache cachedEndLiveLocals;
+    LiveLocalsCache cachedEndLiveLocals(cfg.getNodes().size());
+    results.reserve(cfg.getNodes().size());
     runAnalysis(finalNode, results, cachedEndLiveLocals, {}, cfg.getStartOfControlFlow().key);
+    PROFILE_END(GlobalLivenessAnalysis);
 }
 
 void GlobalLivenessAnalysis::dumpResults(const Method& method) const

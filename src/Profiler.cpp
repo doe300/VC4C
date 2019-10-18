@@ -140,12 +140,13 @@ void profiler::increaseCounter(const std::size_t index, std::string name, const 
 #ifdef MULTI_THREADED
     std::lock_guard<std::mutex> guard(lockCounters);
 #endif
-    counters[index].index = index;
-    counters[index].name = std::move(name);
-    counters[index].count += value;
-    counters[index].invocations += 1;
-    counters[index].prevCounter = prevIndex;
-    counters[index].fileName = std::move(file);
-    counters[index].lineNumber = line;
+    auto& entry = counters[index];
+    entry.index = index;
+    entry.name = std::move(name);
+    entry.count += value;
+    entry.invocations += 1;
+    entry.prevCounter = prevIndex;
+    entry.fileName = std::move(file);
+    entry.lineNumber = line;
 }
 // LCOV_EXCL_STOP

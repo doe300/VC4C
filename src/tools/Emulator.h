@@ -99,7 +99,7 @@ namespace vc4c
 
             SIMDVector readStorageRegister(Register reg);
             void writeStorageRegister(Register reg, SIMDVector&& val, std::bitset<16> elementMask);
-            void setReadCache(Register reg, const SIMDVector& val);
+            NODISCARD SortedMap<Register, SIMDVector>::iterator setReadCache(Register reg, const SIMDVector& val);
         };
 
         class UniformCache : private NonCopyable

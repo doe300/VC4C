@@ -397,6 +397,12 @@ namespace vc4c
             return edges.size();
         }
 
+        // NOTE: Since the reserve forces a rehashing, this should be called for nodes without edges only!
+        void reserveEdgesSize(std::size_t numEdges)
+        {
+            edges.reserve(numEdges);
+        }
+
         bool isSource() const
         {
             static_assert(
@@ -586,9 +592,7 @@ namespace vc4c
 
         explicit Graph(std::size_t numNodes = 0) : nodes(), edges()
         {
-            nodes.reserve(numNodes);
-            // it is safe to assume we have at least 1 edge per node
-            edges.reserve(numNodes);
+            reserveNodeSize(numNodes);
         }
         Graph(const Graph&) = delete;
         Graph(Graph&&) noexcept = delete;
@@ -621,20 +625,22 @@ namespace vc4c
          */
         NodeType& assertNode(const Key& key)
         {
-            if(nodes.find(key) == nodes.end())
+            auto it = nodes.find(key);
+            if(it == nodes.end())
             {
                 throw CompilationError(CompilationStep::GENERAL, "Failed to find graph-node for key");
             }
-            return nodes.at(key);
+            return it->second;
         }
 
         const NodeType& assertNode(const Key& key) const
         {
-            if(nodes.find(key) == nodes.end())
+            auto it = nodes.find(key);
+            if(it == nodes.end())
             {
                 throw CompilationError(CompilationStep::GENERAL, "Failed to find graph-node for key");
             }
-            return nodes.at(key);
+            return it->second;
         }
 
         NodeType* findNode(const Key& key)
@@ -756,6 +762,14 @@ namespace vc4c
         {
             nodes.clear();
             edges.clear();
+        }
+
+        // NOTE: Since the reserve forces a rehashing, this should be called for empty graphs only!
+        void reserveNodeSize(std::size_t numNodes)
+        {
+            nodes.reserve(numNodes);
+            // it is safe to assume we have at least 1 edge per node
+            edges.reserve(numNodes);
         }
 
     protected:

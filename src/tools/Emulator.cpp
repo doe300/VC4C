@@ -285,23 +285,25 @@ std::pair<SIMDVector, bool> Registers::readRegister(Register reg)
         return std::make_pair(readStorageRegister(reg), true);
     if(reg.file == RegisterFile::ACCUMULATOR && reg.num != REG_SFU_OUT.num)
         return std::make_pair(readStorageRegister(reg), true);
-    if(reg.num == REG_SFU_OUT.num)
+    switch(reg.num)
+    {
+    case REG_SFU_OUT.num:
     {
         auto it = readCache.find(REG_SFU_OUT);
         if(it != readCache.end())
             return std::make_pair(it->second, true);
         auto pair = qpu.readR4();
-        setReadCache(REG_SFU_OUT, pair.first);
+        (void) setReadCache(REG_SFU_OUT, pair.first);
         return pair;
     }
-    if(reg.num == REG_UNIFORM.num)
+    case REG_UNIFORM.num:
     {
-        if(readCache.find(REG_UNIFORM) == readCache.end())
-            setReadCache(REG_UNIFORM, qpu.uniforms.readUniform());
-        // cannot optimize to use iterator here, since we modify the element in cache!
-        return std::make_pair(readCache.at(REG_UNIFORM), true);
+        auto it = readCache.find(REG_UNIFORM);
+        if(it == readCache.end())
+            it = setReadCache(REG_UNIFORM, qpu.uniforms.readUniform());
+        return std::make_pair(it->second, true);
     }
-    if(reg.num == REG_VARYING.num)
+    case REG_VARYING.num:
     {
         // returns random floating-point values
         std::default_random_engine generator;
@@ -316,50 +318,58 @@ std::pair<SIMDVector, bool> Registers::readRegister(Register reg)
 
             true);
     }
-    if(reg == REG_ELEMENT_NUMBER)
-        return std::make_pair(ELEMENT_NUMBERS.vector(), true);
-    if(reg == REG_QPU_NUMBER)
-        return std::make_pair(SIMDVector(Literal(qpu.ID)), true);
-    if(reg == REG_NOP)
-    {
+    case REG_ELEMENT_NUMBER.num:
+
+        if(reg == REG_ELEMENT_NUMBER)
+            return std::make_pair(ELEMENT_NUMBERS.vector(), true);
+        if(reg == REG_QPU_NUMBER)
+            return std::make_pair(SIMDVector(Literal(qpu.ID)), true);
+        // should never happen
+        break;
+    case REG_NOP.num:
         logging::warn() << "Reading NOP register" << logging::endl;
         return std::make_pair(SIMDVector{}, true);
-    }
-    if(reg == REG_X_COORDS)
-        // returns fixed pattern
-        return std::make_pair(SIMDVector({Literal(0u), Literal(1u), Literal(0u), Literal(1u), Literal(0u), Literal(1u),
-                                  Literal(0u), Literal(1u), Literal(0u), Literal(1u), Literal(0u), Literal(1u),
-                                  Literal(0u), Literal(1u), Literal(0u), Literal(1u)}),
-
-            true);
-    if(reg == REG_Y_COORDS)
-        // returns fixed pattern
-        return std::make_pair(SIMDVector({Literal(0u), Literal(0u), Literal(1u), Literal(1u), Literal(0u), Literal(0u),
-                                  Literal(1u), Literal(1u), Literal(0u), Literal(0u), Literal(1u), Literal(1u),
-                                  Literal(0u), Literal(0u), Literal(1u), Literal(1u)}),
-
-            true);
-    if(reg == REG_MS_MASK || reg == REG_REV_FLAG)
+    case REG_X_COORDS.num:
+        if(reg == REG_X_COORDS)
+            // returns fixed pattern
+            return std::make_pair(SIMDVector({Literal(0u), Literal(1u), Literal(0u), Literal(1u), Literal(0u),
+                                      Literal(1u), Literal(0u), Literal(1u), Literal(0u), Literal(1u), Literal(0u),
+                                      Literal(1u), Literal(0u), Literal(1u), Literal(0u), Literal(1u)}),
+                true);
+        if(reg == REG_Y_COORDS)
+            // returns fixed pattern
+            return std::make_pair(SIMDVector({Literal(0u), Literal(0u), Literal(1u), Literal(1u), Literal(0u),
+                                      Literal(0u), Literal(1u), Literal(1u), Literal(0u), Literal(0u), Literal(1u),
+                                      Literal(1u), Literal(0u), Literal(0u), Literal(1u), Literal(1u)}),
+                true);
+        // should never happen
+        break;
+    case REG_MS_MASK.num:
+        // both valid for REG_MS_MASK and REG_EV_FLAG
         return std::make_pair(readStorageRegister(reg), true);
-    if(reg.num == REG_VPM_IO.num)
+    case REG_VPM_IO.num:
     {
-        if(readCache.find(REG_VPM_IO) == readCache.end())
-            setReadCache(REG_VPM_IO, qpu.vpm.readValue());
-        // cannot optimize to use iterator here, since we modify the element in cache!
-        return std::make_pair(readCache.at(REG_VPM_IO), true);
+        auto it = readCache.find(REG_VPM_IO);
+        if(it == readCache.end())
+            it = setReadCache(REG_VPM_IO, qpu.vpm.readValue());
+        return std::make_pair(it->second, true);
     }
-    if(reg == REG_VPM_DMA_LOAD_WAIT)
-        return std::make_pair(SIMDVector{}, qpu.vpm.waitDMARead());
-    if(reg == REG_VPM_DMA_STORE_WAIT)
-        return std::make_pair(SIMDVector{}, qpu.vpm.waitDMAWrite());
-    if(reg.num == REG_MUTEX.num)
+    case REG_VPM_DMA_LOAD_WAIT.num:
+        if(reg == REG_VPM_DMA_LOAD_WAIT)
+            return std::make_pair(SIMDVector{}, qpu.vpm.waitDMARead());
+        if(reg == REG_VPM_DMA_STORE_WAIT)
+            return std::make_pair(SIMDVector{}, qpu.vpm.waitDMAWrite());
+        // should never happen
+        break;
+    case REG_MUTEX.num:
     {
-        if(readCache.find(REG_MUTEX) == readCache.end())
-            setReadCache(REG_MUTEX, qpu.mutex.lock(qpu.ID) ? SIMDVector(Literal(true)) : SIMDVector(Literal(false)));
-        // cannot optimize to use iterator here, since we modify the element in cache!
-        return std::make_pair(readCache.at(REG_MUTEX), readCache.at(REG_MUTEX)[0].isTrue());
+        auto it = readCache.find(REG_MUTEX);
+        if(it == readCache.end())
+            it = setReadCache(
+                REG_MUTEX, qpu.mutex.lock(qpu.ID) ? SIMDVector(Literal(true)) : SIMDVector(Literal(false)));
+        return std::make_pair(it->second, it->second[0].isTrue());
     }
-
+    }
     throw CompilationError(CompilationStep::GENERAL, "Read of invalid register", reg.to_string());
 }
 
@@ -451,13 +461,13 @@ void Registers::writeStorageRegister(Register reg, SIMDVector&& val, std::bitset
     }
 }
 
-void Registers::setReadCache(Register reg, const SIMDVector& val)
+SortedMap<Register, SIMDVector>::iterator Registers::setReadCache(Register reg, const SIMDVector& val)
 {
     auto it = readCache.find(reg);
     if(it == readCache.end())
-        readCache.emplace(reg, val);
-    else
-        it->second = val;
+        return readCache.emplace(reg, val).first;
+    it->second = val;
+    return it;
 }
 
 SIMDVector UniformCache::readUniform()
