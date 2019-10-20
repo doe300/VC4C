@@ -18,6 +18,41 @@ namespace vc4c
 
     namespace analysis
     {
+        struct LivenessChanges
+        {
+            FastAccessList<const Local*> removedLocals;
+            FastAccessList<const Local*> addedLocals;
+        };
+
+        using LivenessAnalysisCache = std::pair<FastSet<const Local*>, FastMap<const Local*, ConditionCode>>;
+
+        /**
+         * Analyses the changes in the liveness of locals within a basic block
+         *
+         * See LivenessAnalysis below for details.
+         *
+         * This is a helper analysis and probably won't be useful on its own.
+         */
+        class LivenessChangesAnalysis
+            : public LocalAnalysis<AnalysisDirection::BACKWARD, LivenessChanges, LivenessAnalysisCache>
+        {
+        public:
+            explicit LivenessChangesAnalysis();
+
+        private:
+            /*
+             * For an instruction reading a, b and writing c:
+             *
+             * - c's liveness ends (any previous value of c is now dead)
+             * - a's, b's livenesses begin (they need to be live to be read)
+             * - any other live local remains live
+             */
+            static LivenessChanges analyzeLivenessChanges(const intermediate::IntermediateInstruction* instr,
+                const LivenessChanges& previousChanges, LivenessAnalysisCache& cache);
+
+            static std::string to_string(const LivenessChanges& changes);
+        };
+
         /*
          * Analyses the liveness (the life-time range) of locals within a single basic block
          *
@@ -30,12 +65,49 @@ namespace vc4c
          *
          * Also called Live Variable Analysis (https://en.wikipedia.org/wiki/Live_variable_analysis)
          */
-        class LivenessAnalysis : public LocalAnalysis<AnalysisDirection::BACKWARD, FastSet<const Local*>,
-                                     std::pair<FastSet<const Local*>, FastMap<const Local*, ConditionCode>>>
+        class LivenessAnalysis
+            : public LocalAnalysis<AnalysisDirection::BACKWARD, FastSet<const Local*>, LivenessAnalysisCache>
         {
         public:
             // The optional parameter are the locals assumed to be live at the end of the block
             explicit LivenessAnalysis(FastSet<const Local*>&& outgoingLiveLocals = {});
+
+            /**
+             * Analyzes the live locals inside the block and returns the live locals at the beginning of the block.
+             *
+             * The optional parameter outgoingLiveLocals takes the locals that are live at the end of the block (i.e.
+             * that are live at the beginning of the successor blocks). If this parameter is not set, only locals used
+             * inside this block are considered.
+             *
+             * NOTE: Usage of this function directly over the "normal" analyze operator() is highly recommended, iff
+             * only the live locals at the beginning of the block are of interest.
+             *
+             * Returns the live locals at the beginning of the block
+             */
+            static FastSet<const Local*> analyzeIncomingLiveLocals(
+                const BasicBlock& block, FastSet<const Local*>&& outgoingLiveLocals = {});
+
+            /**
+             * Analyzes the live locals inside the block using the given precalculated liveness changes.
+             *
+             * The behavior of calling this function is identical to calling the default analyze operator().
+             * The only difference is, that this function does not recalculate the liveness changes, but uses the given
+             * changes instead.
+             */
+            void analyzeWithChanges(const BasicBlock& block, const LivenessChangesAnalysis& analysis);
+
+            /**
+             * Similar to #analyzeWithChanges, but only takes the given new additional outgoing locals as input and
+             * processes their lifetimes.
+             *
+             * NOTE: Via this method, only new live locals can be added, none can be removed. I.e. the given locals are
+             * all added to the already live locals!
+             *
+             * NOTE: Before calling this function, the #analyzeWithChanges or the analyze operator() needs to be called
+             * first!
+             */
+            void updateWithChanges(const BasicBlock& block, const LivenessChangesAnalysis& analysis,
+                FastSet<const Local*>&& outgoingLiveLocals);
 
         private:
             /*
@@ -46,8 +118,7 @@ namespace vc4c
              * - any other live local remains live
              */
             static FastSet<const Local*> analyzeLiveness(const intermediate::IntermediateInstruction* instr,
-                const FastSet<const Local*>& nextResult,
-                std::pair<FastSet<const Local*>, FastMap<const Local*, ConditionCode>>& cache);
+                const FastSet<const Local*>& nextResult, LivenessAnalysisCache& cache);
 
             static std::string to_string(const FastSet<const Local*>& liveLocals);
         };
@@ -74,10 +145,15 @@ namespace vc4c
             {
                 return *results.at(&block);
             }
+            inline const LivenessChangesAnalysis& getChanges(const BasicBlock& block) const
+            {
+                return changes.at(&block);
+            }
             void dumpResults(const Method& method) const;
 
         private:
             FastMap<const BasicBlock*, std::unique_ptr<LivenessAnalysis>> results;
+            FastMap<const BasicBlock*, LivenessChangesAnalysis> changes;
         };
 
         /*

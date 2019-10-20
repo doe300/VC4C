@@ -14,8 +14,8 @@
 using namespace vc4c;
 using namespace vc4c::analysis;
 
-LivenessAnalysis::LivenessAnalysis(FastSet<const Local*>&& outgoingLiveLocals) :
-    LocalAnalysis(LivenessAnalysis::analyzeLiveness, LivenessAnalysis::to_string, std::move(outgoingLiveLocals))
+LivenessChangesAnalysis::LivenessChangesAnalysis() :
+    LocalAnalysis(LivenessChangesAnalysis::analyzeLivenessChanges, LivenessChangesAnalysis::to_string)
 {
 }
 
@@ -25,66 +25,171 @@ static bool isIfElseWrite(const FastSet<const LocalUser*>& users)
     return users.size() == 2 && (*users.begin())->conditional.isInversionOf((*(++users.begin()))->conditional);
 }
 
-FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::IntermediateInstruction* instr,
-    const FastSet<const Local*>& nextResult,
-    std::pair<FastSet<const Local*>, FastMap<const Local*, ConditionCode>>& cache)
+static LivenessChanges analyzeLivenessChangesInner(
+    const intermediate::IntermediateInstruction* instr, LivenessAnalysisCache& cache)
 {
-    PROFILE_START(LivenessAnalysis);
+    PROFILE_START(LivenessChangesAnalysis);
+    LivenessChanges changes;
     auto& conditionalWrites = cache.first;
     auto& conditionalReads = cache.second;
 
-    FastSet<const Local*> result(nextResult);
+    if(dynamic_cast<const intermediate::BranchLabel*>(instr))
+        // labels do not change any lifetime, since we do not track label lifetimes
+        return changes;
 
-    if(instr->checkOutputLocal() &&
-        !instr->hasDecoration(vc4c::intermediate::InstructionDecorations::ELEMENT_INSERTION))
-    {
-        auto out = instr->getOutput()->local();
-        if(instr->hasConditionalExecution() &&
-            !instr->hasDecoration(intermediate::InstructionDecorations::ELEMENT_INSERTION))
+    instr->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
+        if(has_flag(type, LocalUse::Type::WRITER) &&
+            !instr->hasDecoration(vc4c::intermediate::InstructionDecorations::ELEMENT_INSERTION))
         {
-            auto condReadIt = conditionalReads.find(out);
-            if(condReadIt != conditionalReads.end() && condReadIt->second == instr->conditional &&
-                condReadIt->first->getSingleWriter() == instr)
-                // the local only exists within a conditional block (e.g. temporary within the same flag)
-                result.erase(out);
-            else if(conditionalWrites.find(out) != conditionalWrites.end() &&
-                isIfElseWrite(out->getUsers(LocalUse::Type::WRITER)))
-                // the local is written in a select statement (if a then write b otherwise c), which is now complete
-                // (since the other write is already added to conditionalWrites)
-                // NOTE: For conditions (if there are several conditional writes, we need to keep the local)
-                result.erase(out);
+            if(instr->hasConditionalExecution() &&
+                !instr->hasDecoration(intermediate::InstructionDecorations::ELEMENT_INSERTION))
+            {
+                auto condReadIt = conditionalReads.find(loc);
+                if(condReadIt != conditionalReads.end() && condReadIt->second == instr->conditional &&
+                    condReadIt->first->getSingleWriter() == instr)
+                    // the local only exists within a conditional block (e.g. temporary within the same flag)
+                    changes.removedLocals.emplace_back(loc);
+                else if(conditionalWrites.find(loc) != conditionalWrites.end() &&
+                    isIfElseWrite(loc->getUsers(LocalUse::Type::WRITER)))
+                    // the local is written in a select statement (if a then write b otherwise c), which is now complete
+                    // (since the other write is already added to conditionalWrites)
+                    // NOTE: For conditions (if there are several conditional writes, we need to keep the local)
+                    changes.removedLocals.emplace_back(loc);
+                else
+                    conditionalWrites.emplace(loc);
+            }
             else
-                conditionalWrites.emplace(out);
+                changes.removedLocals.emplace_back(loc);
         }
-        else
-            result.erase(out);
-    }
-    if(auto combInstr = dynamic_cast<const intermediate::CombinedOperation*>(instr))
-    {
-        if(combInstr->op1)
-            result = analyzeLiveness(combInstr->op1.get(), result, cache);
-        if(combInstr->op2)
-            result = analyzeLiveness(combInstr->op2.get(), result, cache);
-    }
-
-    for(const Value& arg : instr->getArguments())
-    {
-        if(arg.checkLocal() && !arg.local()->type.isLabelType())
+        if(has_flag(type, LocalUse::Type::READER) && !loc->type.isLabelType())
         {
-            result.emplace(arg.local());
+            changes.addedLocals.emplace_back(loc);
             if(instr->hasConditionalExecution())
             {
                 // there exist locals which only exist if a certain condition is met, so check this
-                auto condReadIt = conditionalReads.find(arg.local());
+                auto condReadIt = conditionalReads.find(loc);
                 // if the local is read with different conditions, it must exist in any case
                 // TODO be exact, would need to check whether the SetFlags instruction is the same for both instructions
                 if(condReadIt != conditionalReads.end() && condReadIt->second != instr->conditional)
                     conditionalReads.erase(condReadIt);
                 else
-                    conditionalReads.emplace(arg.local(), instr->conditional);
+                    conditionalReads.emplace(loc, instr->conditional);
             }
         }
+    });
+
+    PROFILE_END(LivenessChangesAnalysis);
+    return changes;
+}
+
+LivenessChanges LivenessChangesAnalysis::analyzeLivenessChanges(const intermediate::IntermediateInstruction* instr,
+    const LivenessChanges& previousChanges, LivenessAnalysisCache& cache)
+{
+    return analyzeLivenessChangesInner(instr, cache);
+}
+
+LCOV_EXCL_START
+std::string LivenessChangesAnalysis::to_string(const LivenessChanges& changes)
+{
+    std::stringstream s;
+    auto it = changes.removedLocals.begin();
+    s << '-' << (*it)->name;
+    ++it;
+    for(; it != changes.removedLocals.end(); ++it)
+        s << ", -" << (*it)->name;
+
+    it = changes.addedLocals.begin();
+    s << '+' << (*it)->name;
+    ++it;
+    for(; it != changes.addedLocals.end(); ++it)
+        s << ", +" << (*it)->name;
+    return s.str();
+}
+LCOV_EXCL_STOP
+
+LivenessAnalysis::LivenessAnalysis(FastSet<const Local*>&& outgoingLiveLocals) :
+    LocalAnalysis(LivenessAnalysis::analyzeLiveness, LivenessAnalysis::to_string, std::move(outgoingLiveLocals))
+{
+}
+
+static FastSet<const Local*> updateLiveness(
+    FastSet<const Local*>&& nextResult, const LivenessChanges& changes, bool skipAdditions = false);
+
+FastSet<const Local*> LivenessAnalysis::analyzeIncomingLiveLocals(
+    const BasicBlock& block, FastSet<const Local*>&& outgoingLiveLocals)
+{
+    Cache c;
+    auto prevVal = std::move(outgoingLiveLocals);
+    auto it = block.end();
+    do
+    {
+        --it;
+        if(*it)
+            prevVal = updateLiveness(std::move(prevVal), analyzeLivenessChangesInner(it->get(), c));
+    } while(it != block.begin());
+    return prevVal;
+}
+
+void LivenessAnalysis::analyzeWithChanges(const BasicBlock& block, const LivenessChangesAnalysis& analysis)
+{
+    results.reserve(block.size());
+    const auto* prevVal = &initialValue;
+    auto it = block.end();
+    do
+    {
+        --it;
+        if(*it)
+        {
+            auto pos = results.emplace(
+                it->get(), updateLiveness(FastSet<const Local*>{*prevVal}, analysis.getResult(it->get())));
+            prevVal = &(pos.first->second);
+        }
+    } while(it != block.begin());
+
+    resultAtStart = &results.at(block.begin()->get());
+    if(!block.empty())
+        resultAtEnd = &results.at((--block.end())->get());
+}
+
+void LivenessAnalysis::updateWithChanges(
+    const BasicBlock& block, const LivenessChangesAnalysis& analysis, FastSet<const Local*>&& outgoingLiveLocals)
+{
+    auto prevVal = std::move(outgoingLiveLocals);
+    auto it = block.end();
+    do
+    {
+        --it;
+        if(*it)
+        {
+            // Do not handle locals added by the instruction itself, since they are already handled by the initial run.
+            // Here, we only care about whether/when the lifetime of the additional locals ends within this block.
+            auto tmp = updateLiveness(std::move(prevVal), analysis.getResult(it->get()), true);
+            results.at(it->get()).insert(tmp.begin(), tmp.end());
+            prevVal = std::move(tmp);
+        }
+    } while(!prevVal.empty() && it != block.begin());
+}
+
+FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::IntermediateInstruction* instr,
+    const FastSet<const Local*>& nextResult, LivenessAnalysisCache& cache)
+{
+    return updateLiveness(FastSet<const Local*>{nextResult}, analyzeLivenessChangesInner(instr, cache));
+}
+
+static FastSet<const Local*> updateLiveness(
+    FastSet<const Local*>&& nextResult, const LivenessChanges& changes, bool skipAdditions)
+{
+    PROFILE_START(LivenessAnalysis);
+
+    FastSet<const Local*> result(std::move(nextResult));
+    for(auto removed : changes.removedLocals)
+        result.erase(removed);
+    if(!skipAdditions)
+    {
+        for(auto added : changes.addedLocals)
+            result.emplace(added);
     }
+
     PROFILE_END(LivenessAnalysis);
     return result;
 }
@@ -118,11 +223,20 @@ LCOV_EXCL_STOP
 using LiveLocalsCache = FastMap<const BasicBlock*, FastSet<const Local*>>;
 
 static void runAnalysis(const CFGNode& node, FastMap<const BasicBlock*, std::unique_ptr<LivenessAnalysis>>& results,
-    LiveLocalsCache& cachedEndLiveLocals, FastSet<const Local*>&& cacheEntry, const BasicBlock* startOfKernel)
+    const FastMap<const BasicBlock*, LivenessChangesAnalysis>& changes, LiveLocalsCache& cachedEndLiveLocals,
+    FastSet<const Local*>&& cacheEntry, const BasicBlock* startOfKernel)
 {
+    PROFILE_START(SingleLivenessAnalysis);
     auto& analyzer = results[node.key];
-    analyzer.reset(new LivenessAnalysis(std::move(cacheEntry)));
-    (*analyzer)(*node.key);
+    if(!analyzer)
+    {
+        analyzer.reset(new LivenessAnalysis(std::move(cacheEntry)));
+        analyzer->analyzeWithChanges(*node.key, changes.at(node.key));
+    }
+    else
+        analyzer->updateWithChanges(*node.key, changes.at(node.key), std::move(cacheEntry));
+    PROFILE_END(SingleLivenessAnalysis);
+
     // copy on purpose, since result could be modified by previous forAllIncomingEdges loop
     auto startLiveLocals = analyzer->getStartResult();
 
@@ -134,7 +248,6 @@ static void runAnalysis(const CFGNode& node, FastMap<const BasicBlock*, std::uni
         return;
     }
 
-    // TODO could breadth-first be faster?
     node.forAllIncomingEdges([&](const CFGNode& predecessor, const CFGEdge&) -> bool {
         // add all live locals from the beginning of this block to the end of the new one and check whether we are done
         // with this predecessor
@@ -150,8 +263,8 @@ static void runAnalysis(const CFGNode& node, FastMap<const BasicBlock*, std::uni
         else
             predCacheIt = cachedEndLiveLocals.emplace(predecessor.key, startLiveLocals).first;
 
-        runAnalysis(
-            predecessor, results, cachedEndLiveLocals, FastSet<const Local*>{predCacheIt->second}, startOfKernel);
+        runAnalysis(predecessor, results, changes, cachedEndLiveLocals, FastSet<const Local*>{predCacheIt->second},
+            startOfKernel);
 
         return true;
     });
@@ -159,15 +272,21 @@ static void runAnalysis(const CFGNode& node, FastMap<const BasicBlock*, std::uni
 
 void GlobalLivenessAnalysis::operator()(Method& method)
 {
-    // TODO need to improve for performance, e.g. make sure, we don't do unnecessary block analyses
     PROFILE_START(GlobalLivenessAnalysis);
     auto& cfg = method.getCFG();
     auto& finalNode = cfg.getEndOfControlFlow();
+    changes.reserve(method.size());
+    // precalculate changes in livenesses
+    for(const auto& block : method)
+    {
+        auto it = changes.emplace(&block, LivenessChangesAnalysis{}).first;
+        it->second(block);
+    }
 
     // The cache of the live locals at the end of a given basic blocks (e.g. consumed by any succeeding block)
     LiveLocalsCache cachedEndLiveLocals(cfg.getNodes().size());
     results.reserve(cfg.getNodes().size());
-    runAnalysis(finalNode, results, cachedEndLiveLocals, {}, cfg.getStartOfControlFlow().key);
+    runAnalysis(finalNode, results, changes, cachedEndLiveLocals, {}, cfg.getStartOfControlFlow().key);
     PROFILE_END(GlobalLivenessAnalysis);
 }
 

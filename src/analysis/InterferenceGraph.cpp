@@ -30,117 +30,90 @@ FastSet<InterferenceNode*> InterferenceGraph::findOverfullNodes(std::size_t numN
 
 std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(Method& method)
 {
-    // TODO try to optimize
     PROFILE_START(createInterferenceGraph);
-    std::unique_ptr<InterferenceGraph> graph(new InterferenceGraph(method.getNumLocals()));
+    std::unique_ptr<InterferenceGraph> graph_ptr(new InterferenceGraph(method.getNumLocals()));
+    auto& graph = *graph_ptr;
 
-    FastMap<BasicBlock*, LivenessAnalysis> livenesses;
-    livenesses.reserve(method.getCFG().getNodes().size());
+    GlobalLivenessAnalysis livenessAnalysis;
+    livenessAnalysis(method);
+
+    PROFILE_START(LivenessToInterference);
     for(auto& block : method)
     {
-        auto& blockAnalysis = livenesses[&block];
-        blockAnalysis(block);
-    }
-
-    // tracks local life-ranges stemming from local being used in succeeding blocks (and written in this block or
-    // before)
-    FastMap<const intermediate::IntermediateInstruction*, FastSet<const Local*>> additionalLocals;
-    for(auto& pair : livenesses)
-    {
-        if(!pair.second.getStartResult().empty())
-        {
-            // there are dependencies from other blocks. For each local, walk the CFG back until we meet the write or
-            // until we meet another liveness-range of the local
-            // TODO is there a better/more efficient way? Can't we combine the walking for all locals from start? Since
-            // predecessor blocks are the same
-            for(auto& local : pair.second.getStartResult())
-            {
-                FastSet<BasicBlock*> blocksVisited;
-                InstructionVisitor v{[&](InstructionWalker& it) -> InstructionVisitResult {
-                                         // skip the own label itself
-                                         if(it.get() == pair.first->getLabel())
-                                             return InstructionVisitResult::CONTINUE;
-                                         if(it.get<intermediate::BranchLabel>())
-                                         {
-                                             if(it.getBasicBlock()->isStartOfMethod())
-                                                 // do not repeat work-group loop
-                                                 return InstructionVisitResult::STOP_BRANCH;
-                                             if(blocksVisited.find(it.getBasicBlock()) != blocksVisited.end())
-                                                 // loop, abort after one iteration
-                                                 return InstructionVisitResult::STOP_BRANCH;
-                                             blocksVisited.emplace(it.getBasicBlock());
-                                         }
-
-                                         auto addLocalsIt = additionalLocals.find(it.get());
-                                         auto& lives = livenesses.at(it.getBasicBlock()).getResult(it.get());
-                                         if(it->writesLocal(local) || lives.find(local) != lives.end() ||
-                                             (addLocalsIt != additionalLocals.end() &&
-                                                 addLocalsIt->second.find(local) != addLocalsIt->second.end()))
-                                             return InstructionVisitResult::STOP_BRANCH;
-                                         additionalLocals[it.get()].emplace(local);
-                                         return InstructionVisitResult::CONTINUE;
-                                     },
-                    false, true};
-                v.visitReverse(pair.first->walk(), &method.getCFG());
-            }
-        }
-    }
-
-    for(auto& block : method)
-    {
-        auto& blockAnalysis = livenesses[&block];
-        for(const auto& inst : block)
+        auto& blockAnalysis = livenessAnalysis.getLocalAnalysis(block);
+        auto& livenessChanges = livenessAnalysis.getChanges(block);
+        if(block.empty())
+            // empty block means no changes in live locals -> no changes in interference
+            continue;
+        // to update only the interference for local lifetime changes, we re-create the changes given from the
+        // LivenessChangesAnalysis on the list of tracked live locals.
+        auto& liveLocals = blockAnalysis.getEndResult();
+        FastMap<const Local*, InterferenceNode*> liveNodes(liveLocals.size());
+        for(auto loc : liveLocals)
+            liveNodes.emplace(loc, &graph.getOrCreateNode(const_cast<Local*>(loc)));
+        // NOTE: iterate in reverse order to be able to track the changes in live locals (which are also generated in
+        // reverse order) correctly
+        for(auto it = block.rbegin(); it != block.rend(); ++it)
         {
             // combined operations can write multiple locals
-            const auto combInstr = dynamic_cast<const intermediate::CombinedOperation*>(inst.get());
-            if(combInstr && combInstr->op1 && combInstr->op1->checkOutputLocal() && combInstr->op2 &&
-                combInstr->op2->checkOutputLocal() &&
-                combInstr->op1->getOutput()->local() != combInstr->op2->getOutput()->local())
+            const auto combInstr = dynamic_cast<const intermediate::CombinedOperation*>(it->get());
+            if(combInstr && combInstr->op1 && combInstr->op2)
             {
-                graph->getOrCreateNode(combInstr->op1->getOutput()->local())
-                    .getOrCreateEdge(
-                        &graph->getOrCreateNode(combInstr->op2->getOutput()->local()), InterferenceType::USED_TOGETHER)
-                    .data = InterferenceType::USED_TOGETHER;
+                auto firstOut = combInstr->op1->checkOutputLocal();
+                auto secondOut = combInstr->op2->checkOutputLocal();
+                if(firstOut && secondOut && firstOut != secondOut)
+                {
+                    graph.getOrCreateNode(const_cast<Local*>(firstOut))
+                        .getOrCreateEdge(
+                            &graph.getOrCreateNode(const_cast<Local*>(secondOut)), InterferenceType::USED_TOGETHER)
+                        .data = InterferenceType::USED_TOGETHER;
+                }
             }
             // instructions in general can read multiple locals
-            FastSet<Local*> localsRead;
             // we have a maximum of 4 locals per (combined) instruction
-            localsRead.reserve(4);
-            inst->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
+            FastSet<InterferenceNode*> localsRead(4);
+            (*it)->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
                 if(has_flag(type, LocalUse::Type::READER) && !loc->type.isLabelType())
-                    localsRead.emplace(const_cast<Local*>(loc));
+                    localsRead.emplace(&graph.getOrCreateNode(const_cast<Local*>(loc)));
             });
             if(localsRead.size() > 1)
             {
                 for(auto locIt = localsRead.begin(); locIt != localsRead.end(); ++locIt)
                 {
-                    auto& firstNode = graph->getOrCreateNode(*locIt);
+                    auto& firstNode = **locIt;
                     auto locIt2 = locIt;
                     for(++locIt2; locIt2 != localsRead.end(); ++locIt2)
                     {
-                        firstNode.getOrCreateEdge(&graph->getOrCreateNode(*locIt2), InterferenceType::USED_TOGETHER)
-                            .data = InterferenceType::USED_TOGETHER;
+                        firstNode.getOrCreateEdge(*locIt2, InterferenceType::USED_TOGETHER).data =
+                            InterferenceType::USED_TOGETHER;
                     }
                 }
             }
 
-            auto blockResults = blockAnalysis.getResult(inst.get());
-            auto addIt = additionalLocals.find(inst.get());
-            if(addIt != additionalLocals.end())
-                blockResults.insert(addIt->second.begin(), addIt->second.end());
+            auto& changes = livenessChanges.getResult(it->get());
+            // Most live locals for one instruction are also live for the previous/next instruction (the only changes
+            // are the one given by the LivenessChangeAnalysis). Therefore, we only need to create a new edge for all
+            // newly added live locals (times all existing live locals), instead of all live locals times all live
+            // locals.
 
-            for(auto locIt = blockResults.begin(); locIt != blockResults.end(); ++locIt)
+            for(auto loc : changes.removedLocals)
+                liveNodes.erase(loc);
+
+            for(auto loc : changes.addedLocals)
             {
-                auto& firstNode = graph->getOrCreateNode(const_cast<Local*>(*locIt));
-                auto locIt2 = locIt;
-                for(++locIt2; locIt2 != blockResults.end(); ++locIt2)
+                auto& firstNode = graph.getOrCreateNode(const_cast<Local*>(loc));
+                for(auto node : liveNodes)
                 {
-                    firstNode.getOrCreateEdge(
-                        &graph->getOrCreateNode(const_cast<Local*>(*locIt2)), InterferenceType::USED_SIMULTANEOUSLY);
+                    if(node.second != &firstNode)
+                        // the node could already be in the list (e.g. when read multiple times) and creating an edge
+                        // between a node and itself would cause allocation errors.
+                        firstNode.getOrCreateEdge(node.second, InterferenceType::USED_SIMULTANEOUSLY);
                 }
+                liveNodes.emplace(loc, &firstNode);
             }
         }
     }
+    PROFILE_END(LivenessToInterference);
 
     PROFILE_END(createInterferenceGraph);
 
@@ -150,9 +123,9 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(Method& method
         auto nameFunc = [](const Local* loc) -> std::string { return loc->name; };
         auto edgeFunc = [](InterferenceType type) -> bool { return !has_flag(type, InterferenceType::USED_TOGETHER); };
         DebugGraph<Local*, InterferenceType, Directionality::UNDIRECTED>::dumpGraph(
-            *graph, "/tmp/vc4c-interference.dot", nameFunc, edgeFunc);
+            graph, "/tmp/vc4c-interference.dot", nameFunc, edgeFunc);
     });
     LCOV_EXCL_STOP
 #endif
-    return graph;
+    return graph_ptr;
 }

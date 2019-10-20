@@ -86,6 +86,15 @@ namespace vc4c
         }
         InstructionWalker walkEnd();
         ConstInstructionWalker walkEnd() const;
+
+        inline intermediate::InstructionsList::const_reverse_iterator rbegin() const
+        {
+            return instructions.rbegin();
+        }
+        inline intermediate::InstructionsList::const_reverse_iterator rend() const
+        {
+            return instructions.rend();
+        }
         /*
          * Returns the number of instructions within this block
          */
