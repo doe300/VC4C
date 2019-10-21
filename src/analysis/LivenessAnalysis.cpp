@@ -240,7 +240,8 @@ static void runAnalysis(const CFGNode& node, FastMap<const BasicBlock*, std::uni
     // copy on purpose, since result could be modified by previous forAllIncomingEdges loop
     auto startLiveLocals = analyzer->getStartResult();
 
-    if(node.key == startOfKernel && node.key->getLabel()->isWorkGroupLoop)
+    if(node.key == startOfKernel &&
+        node.key->getLabel()->hasDecoration(intermediate::InstructionDecorations::WORK_GROUP_LOOP))
     {
         // skip work-group loop, since they do not modify the live locals
         // Since if the work-group loop is not active, there might be a kernel code loop back to the start, we only

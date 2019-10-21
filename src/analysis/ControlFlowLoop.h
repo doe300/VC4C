@@ -55,6 +55,8 @@ namespace vc4c
         /*
          * Returns the basic-block(s) in the CFG preceding the first node in the loop, the node from which the loop is
          * entered.
+         *
+         * NOTE: The single return value variant returns NULL if there are multiple predecessors!
          */
         const CFGNode* findPredecessor() const;
         FastAccessList<const CFGNode*> findPredecessors() const;
@@ -62,6 +64,8 @@ namespace vc4c
         /*
          * Returns the basic-block in the CFG following the last node in the loop, the node into which this loop exits
          * into.
+         *
+         * NOTE: The single return value variant returns NULL if there are multiple successors!
          */
         const CFGNode* findSuccessor() const;
         FastAccessList<const CFGNode*> findSuccessors() const;
@@ -108,6 +112,14 @@ namespace vc4c
          * @return the list of marked loop invariant instructions
          */
         FastSet<InstructionWalker> findLoopInvariants();
+
+        /**
+         * Returns whether at least one edge in this loop is part of the work-group loop optimization and therefore this
+         * loop is a version of the work-group loop.
+         */
+        bool isWorkGroupLoop() const;
+
+        bool operator==(const ControlFlowLoop& other) const noexcept;
     };
 
     /*

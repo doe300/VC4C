@@ -21,14 +21,15 @@ const CFGNode* ControlFlowLoop::findPredecessor() const
             if(std::find(begin(), end(), &neighbor) == end())
             {
                 // the relation is backwards and node is not within this loop -> predecessor
-                if(predecessor != nullptr)
-                    // TODO testing/boost-compute/test_accumulator.cl throws errors here, because it has multiple
-                    // predecessors (in kernel "reduce")! How to handle them?
-                    throw CompilationError(CompilationStep::GENERAL, "Found multiple predecessors for CFG loop",
-                        neighbor.key->to_string());
-
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Found predecessor for CFG loop: " << neighbor.key->to_string() << logging::endl);
+
+                if(predecessor != nullptr)
+                {
+                    // multiple predecessors, abort
+                    predecessor = nullptr;
+                    return false;
+                }
                 predecessor = &neighbor;
             }
             return true;
@@ -62,12 +63,15 @@ const CFGNode* ControlFlowLoop::findSuccessor() const
             if(std::find(begin(), end(), &neighbor) == end())
             {
                 // the relation is forward and node is not within this loop -> successor
-                if(successor != nullptr)
-                    throw CompilationError(
-                        CompilationStep::GENERAL, "Found multiple successors for CFG loop", neighbor.key->to_string());
-
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Found successor for CFG loop: " << neighbor.key->to_string() << logging::endl);
+
+                if(successor != nullptr)
+                {
+                    // multiple successors, abort
+                    successor = nullptr;
+                    return false;
+                }
                 successor = &neighbor;
             }
             return true;
@@ -756,6 +760,49 @@ FastSet<InstructionWalker> ControlFlowLoop::findLoopInvariants()
     }
 
     return invariantInstructions;
+}
+
+bool ControlFlowLoop::isWorkGroupLoop() const
+{
+    // check all edges of adjacent nodes within this loop
+    for(auto it = ++begin(); it != end(); ++it)
+    {
+        if(auto edge = (*(it - 1))->getEdge(*it))
+        {
+            if(edge->data.isWorkGroupLoop)
+                return true;
+        }
+    }
+    // final check between last and first
+    if(auto edge = front()->getEdge(back()))
+        if(edge->data.isWorkGroupLoop)
+            return true;
+    return false;
+}
+
+bool ControlFlowLoop::operator==(const ControlFlowLoop& other) const noexcept
+{
+    if(size() != other.size())
+        return false;
+    if(empty())
+        return true;
+    // the loops could be rotated by a fixed offset
+    auto otherIt = std::find(other.begin(), other.end(), front());
+    if(otherIt != other.end())
+    {
+        auto thisIt = begin();
+        while(otherIt != other.end() && thisIt != end())
+        {
+            if(*otherIt != *thisIt)
+                return false;
+            ++otherIt;
+            ++thisIt;
+            if(otherIt == other.end())
+                otherIt = other.begin();
+        }
+        return true;
+    }
+    return false;
 }
 
 LoopInclusionTreeNodeBase::~LoopInclusionTreeNodeBase() noexcept = default;

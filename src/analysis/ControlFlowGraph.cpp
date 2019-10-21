@@ -24,21 +24,23 @@ bool CFGRelation::operator==(const CFGRelation& other) const
 LCOV_EXCL_START
 std::string CFGRelation::getLabel() const
 {
+    std::string wgl = isWorkGroupLoop ? " (wgl)" : "";
     if(std::all_of(predecessors.begin(), predecessors.end(), [](const auto& pair) -> bool { return !pair.second; }))
     {
-        return "";
+        return "" + std::move(wgl);
     }
     if(predecessors.empty())
-        return "";
+        return "" + std::move(wgl);
     const auto converter = [](const std::pair<BasicBlock*, Optional<InstructionWalker>>& pair) -> std::string {
         if(pair.second && pair.second->get<const intermediate::Branch>())
             return "br " + pair.second->get<const intermediate::Branch>()->conditional.to_string();
         return "";
     };
     return std::accumulate(predecessors.begin(), predecessors.end(), std::string{},
-        [&](const std::string& s, const auto& pair) -> std::string {
-            return (s.empty() ? s : (s + ", ")) + converter(pair);
-        });
+               [&](const std::string& s, const auto& pair) -> std::string {
+                   return (s.empty() ? s : (s + ", ")) + converter(pair);
+               }) +
+        std::move(wgl);
 }
 LCOV_EXCL_STOP
 
@@ -116,7 +118,7 @@ struct CFGNodeSorter : public std::less<CFGNode*>
     }
 };
 
-FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(bool recursively)
+FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(bool recursively, bool skipWorkGroupLoops)
 {
     FastAccessList<ControlFlowLoop> loops;
     loops.reserve(8);
@@ -142,7 +144,7 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(bool recursively)
             if(recursively)
             {
                 auto subLoops = findLoopsHelperRecursively(node, discoveryTimes, stack, time);
-                if(subLoops.size() >= 1)
+                if(!subLoops.empty())
                     loops.insert(loops.end(), subLoops.begin(), subLoops.end());
             }
             else
@@ -161,14 +163,36 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(bool recursively)
         }
     }
 
+    // NOTE: need to merge loops, since for recursive loops we get multiple results for same loop with different
+    // starting blocks
+    for(auto it = loops.begin(); it < loops.end() - 1; ++it)
+    {
+        auto it2 = it + 1;
+        while(it2 != loops.end())
+        {
+            if(*it == *it2)
+                it2 = loops.erase(it2);
+            else
+                ++it2;
+        }
+    }
+
+    if(skipWorkGroupLoops)
+    {
+        loops.erase(std::remove_if(loops.begin(), loops.end(),
+                        [](const ControlFlowLoop& loop) -> bool { return loop.isWorkGroupLoop(); }),
+            loops.end());
+    }
+
     LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&]() {
         for(const auto& loop : loops)
         {
-            logging::debug() << "Found a control-flow loop: ";
+            auto& log = logging::debug();
+            log << "Found a control-flow loop: ";
             for(auto it = loop.rbegin(); it != loop.rend(); ++it)
-                logging::debug() << (*it)->key->to_string() << " -> ";
-            logging::debug() << logging::endl;
+                log << (*it)->key->to_string() << " -> ";
+            log << logging::endl;
         }
     });
     LCOV_EXCL_STOP
@@ -188,7 +212,8 @@ void ControlFlowGraph::dumpGraph(const std::string& path, bool dumpConstantLoadI
             ss << bb->getLabel()->getLabel()->name << "\\n";
             std::for_each(bb->instructions.begin(), bb->instructions.end(),
                 [&ss](const std::unique_ptr<intermediate::IntermediateInstruction>& instr) {
-                    if(instr && instr->isConstantInstruction())
+                    if(instr && instr->isConstantInstruction() && instr->checkOutputLocal() &&
+                        instr->checkOutputLocal()->getSingleWriter() == instr.get())
                         ss << instr->to_string() << "\\l";
                 });
             return ss.str();
@@ -322,6 +347,7 @@ void ControlFlowGraph::updateOnBranchInsertion(Method& method, InstructionWalker
     auto& edge = node.getOrCreateEdge(&nextNode).addInput(node);
     // overwrite possible fall-through edge
     edge.data.predecessors[node.key] = it;
+    edge.data.isWorkGroupLoop = it->hasDecoration(intermediate::InstructionDecorations::WORK_GROUP_LOOP);
 
     CFGEdge* fallThroughEdge = nullptr;
     node.forAllOutgoingEdges([&](CFGNode& successor, CFGEdge& edge) -> bool {
@@ -406,12 +432,18 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
             // this transition is implicit if the previous instruction is not a branch at all or a conditional branch to
             // somewhere else (then the transition happens if the condition is not met)
             bool isImplicit = true;
+            bool isWorkGroupLoop = false;
             if(auto branch = it.get<intermediate::Branch>())
+            {
                 isImplicit = branch->getTarget() != bb.getLabel()->getLabel();
+                isWorkGroupLoop = branch->getTarget() == bb.getLabel()->getLabel() &&
+                    branch->hasDecoration(intermediate::InstructionDecorations::WORK_GROUP_LOOP);
+            }
             // connection from it.getBasicBlock() to bb
             auto& node = graph->getOrCreateNode(it.getBasicBlock());
             auto& edge = node.getOrCreateEdge(&graph->getOrCreateNode(&bb), CFGRelation{}).addInput(node);
             edge.data.predecessors.emplace(node.key, isImplicit ? Optional<InstructionWalker>{} : it);
+            edge.data.isWorkGroupLoop = isWorkGroupLoop;
         });
     }
 
@@ -434,6 +466,7 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::clone()
             auto& newSource = graph->getOrCreateNode(source.key);
             auto& newEdge = newSource.getOrCreateEdge(&newNode, CFGRelation{}).addInput(newSource);
             newEdge.data.predecessors.emplace(source.key, edge.data.predecessors.at(source.key));
+            newEdge.data.isWorkGroupLoop = edge.data.isWorkGroupLoop;
             return true;
         });
     }

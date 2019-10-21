@@ -83,7 +83,9 @@ namespace vc4c
             // inside the loop. I.e. an instruction which calculates the same result for every loop iteration.
             // NOTE: The invariance marker does not distinguish between nested loops, so an instruction invariant for a
             // nested loop might not be invariant for its parent loop!
-            LOOP_INVARIANT = 1u << 24u
+            LOOP_INVARIANT = 1u << 24u,
+            // The instruction is part of the work-group-loop and not of the actual kernel body
+            WORK_GROUP_LOOP = 1u << 25u
         };
 
         std::string toString(InstructionDecorations decoration);
@@ -530,9 +532,6 @@ namespace vc4c
 
             const Local* getLabel() const;
             Local* getLabel();
-
-            // whether this block is part of the work-group loop and not the actual kernel code
-            bool isWorkGroupLoop = false;
         };
 
         struct Branch final : public IntermediateInstruction

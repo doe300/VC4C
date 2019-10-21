@@ -25,6 +25,8 @@ namespace vc4c
     public:
         // this is used for only optimizations::removeConstantLoadInLoops
         bool isBackEdge = false;
+        // whether this edge represents a (back-) jump of the work-group loop optimization
+        bool isWorkGroupLoop = false;
 
         bool operator==(const CFGRelation& other) const;
 
@@ -76,7 +78,7 @@ namespace vc4c
         /*
          * Finds all loops in the CFG
          */
-        FastAccessList<ControlFlowLoop> findLoops(bool recursively);
+        FastAccessList<ControlFlowLoop> findLoops(bool recursively, bool skipWorkGroupLoops = true);
 
         /*
          * Dump this graph as dot file

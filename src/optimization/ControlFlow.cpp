@@ -1095,6 +1095,9 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     const int moveDepth = config.additionalOptions.moveConstantsDepth;
     bool hasChanged = false;
 
+    if(method.getCFG().getNodes().empty())
+        return false;
+
     auto cfg = method.getCFG().clone();
 #ifdef DEBUG_MODE
     cfg->dumpGraph("/tmp/before-removeConstantLoadInLoops.dot", true);
@@ -1211,13 +1214,6 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 return false;
             });
 
-            if(prev == nullptr || next == nullptr)
-            {
-                // FIXME this fails for all kernels for %end_of_kernel, but if we remove this, it SEGFAULTs further down
-                throw CompilationError(
-                    CompilationStep::OPTIMIZER, "A unnecessary node must has just a previous node and a next node.");
-            }
-
             cfg->eraseNode(node->key);
             if(prev && next && !prev->isAdjacent(next))
             {
@@ -1233,8 +1229,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     // 2. Find loops
     auto loops = cfg->findLoops(true);
 
-    // FIXME: Skip this optimization because it takes so long time with many loops.
-    if(loops.size() > 100000)
+    if(loops.size() > 100)
     {
         logging::warn() << "Skip this optimization due to many nodes in loops." << logging::endl;
         return false;
@@ -1260,12 +1255,13 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             }
 
             auto block = cfgNode->key;
-            for(auto it = block->walk(); it != block->walkEnd(); it = it.nextInBlock())
+            for(auto it = block->walk(); it != block->walkEnd(); it.nextInBlock())
             {
-                if(it->isConstantInstruction())
+                if(it->isConstantInstruction() && it->checkOutputLocal() &&
+                    it->checkOutputLocal()->getSingleWriter() == it.get())
                 {
+                    // can only move constant writes of locals only written exactly here
                     instMapper[&node].push_back(it);
-
                     hasChanged = true;
                 }
             }
@@ -1351,8 +1347,9 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                         continue;
                     processedInsts.insert(inst);
 
+                    CPPLOG_LAZY(logging::Level::DEBUG, log << "Moving constant load out of loop: " << it->to_string());
                     targetInst.emplace(it.release());
-                    it.erase();
+                    it.reset(nullptr);
                 }
             }
             else
@@ -1369,8 +1366,9 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                         continue;
                     processedInsts.insert(inst);
 
+                    CPPLOG_LAZY(logging::Level::DEBUG, log << "Moving constant load out of loop: " << it->to_string());
                     insertedBlock->walkEnd().emplace(it.release());
-                    it.erase();
+                    it.reset(nullptr);
                 }
                 // Clear processed instructions
                 insts->second.clear();
@@ -1390,8 +1388,11 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 #endif
 
     if(hasChanged)
+    {
+        method.cleanEmptyInstructions();
         // combine the newly reordered (and at one place accumulated) loading instructions
         combineLoadingConstants(module, method, config);
+    }
 
     return hasChanged;
 }
@@ -1945,7 +1946,7 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
     it = method.emplaceLabel(it,
         new intermediate::BranchLabel(
             *method.addNewLocal(TYPE_LABEL, "", "%repeat_" + id.local()->name.substr(1)).local()));
-    it.get<intermediate::BranchLabel>()->isWorkGroupLoop = true;
+    it->addDecorations(InstructionDecorations::WORK_GROUP_LOOP);
     // insert after label, not before
     it.nextInBlock();
 
@@ -1962,7 +1963,8 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
     auto condValue = method.addNewLocal(TYPE_BOOL);
     assign(it, condValue) = (BOOL_TRUE, cond);
     assign(it, condValue) = (BOOL_TRUE ^ BOOL_TRUE, cond.invert());
-    it.emplace(new intermediate::Branch(defaultBlock.getLabel()->getLabel(), COND_ZERO_CLEAR, condValue));
+    it.emplace((new intermediate::Branch(defaultBlock.getLabel()->getLabel(), COND_ZERO_CLEAR, condValue))
+                   ->addDecorations(InstructionDecorations::WORK_GROUP_LOOP));
     it.nextInMethod();
     return it;
 }
@@ -2001,7 +2003,7 @@ bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const
     // The new head block, the block initializing the group ids
     auto startIt = method.emplaceLabel(method.walkAllInstructions(),
         new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL, "", "%group_id_initializer").local()));
-    startIt.get<intermediate::BranchLabel>()->isWorkGroupLoop = true;
+    startIt->addDecorations(InstructionDecorations::WORK_GROUP_LOOP);
     auto& startBlock = *startIt.getBasicBlock();
 
     // The old and new tail block which indicates kernel execution finished
