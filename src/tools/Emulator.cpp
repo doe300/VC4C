@@ -279,12 +279,12 @@ void Registers::writeRegister(Register reg, const SIMDVector& val, std::bitset<1
             CompilationStep::GENERAL, "Conditional write to periphery registers is not allowed", reg.to_string());
 }
 
-std::pair<SIMDVector, bool> Registers::readRegister(Register reg)
+std::pair<SIMDVector, bool> Registers::readRegister(Register reg, bool anyElementUsed)
 {
     if(reg.isGeneralPurpose())
-        return std::make_pair(readStorageRegister(reg), true);
+        return std::make_pair(readStorageRegister(reg, anyElementUsed), true);
     if(reg.file == RegisterFile::ACCUMULATOR && reg.num != REG_SFU_OUT.num)
-        return std::make_pair(readStorageRegister(reg), true);
+        return std::make_pair(readStorageRegister(reg, anyElementUsed), true);
     switch(reg.num)
     {
     case REG_SFU_OUT.num:
@@ -346,7 +346,7 @@ std::pair<SIMDVector, bool> Registers::readRegister(Register reg)
         break;
     case REG_MS_MASK.num:
         // both valid for REG_MS_MASK and REG_EV_FLAG
-        return std::make_pair(readStorageRegister(reg), true);
+        return std::make_pair(readStorageRegister(reg, anyElementUsed), true);
     case REG_VPM_IO.num:
     {
         auto it = readCache.find(REG_VPM_IO);
@@ -385,15 +385,17 @@ void Registers::clearReadCache()
     readCache.clear();
 }
 
-SIMDVector Registers::readStorageRegister(Register reg)
+SIMDVector Registers::readStorageRegister(Register reg, bool anyElementUsed)
 {
     auto it = storageRegisters.find(reg);
     if(it == storageRegisters.end())
     {
-        // TODO for ALU operations which are not actually executed (e.g. flags do not match), this leads to confusion
-        // TODO in any other case, this should be escalated to error!
-        logging::warn() << "Reading from register not previously defined: " << reg.to_string() << logging::endl;
-        return SIMDVector{};
+        if(anyElementUsed)
+            throw CompilationError(
+                CompilationStep::GENERAL, "Reading from register not previously defined:", reg.to_string());
+        else
+            // for ALU operations which are not actually executed (e.g. flags do not match), we can return a dummy value
+            return SIMDVector{};
     }
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Reading from register '" << reg.to_string(true, true) << "': " << it->second.to_string(true)
@@ -1249,36 +1251,36 @@ const qpu_asm::Instruction* QPU::getCurrentInstruction(
     return &(*(firstInstruction + pc));
 }
 
-static std::pair<SIMDVector, bool> toInputValue(
-    Registers& registers, InputMultiplex mux, Address addressA, Address addressB, bool regBIsImmediate)
+static std::pair<SIMDVector, bool> toInputValue(Registers& registers, InputMultiplex mux, Address addressA,
+    Address addressB, bool regBIsImmediate, bool anyElementExecuted)
 {
     switch(mux)
     {
     case InputMultiplex::ACC0:
-        return registers.readRegister(REG_ACC0);
+        return registers.readRegister(REG_ACC0, anyElementExecuted);
     case InputMultiplex::ACC1:
-        return registers.readRegister(REG_ACC1);
+        return registers.readRegister(REG_ACC1, anyElementExecuted);
     case InputMultiplex::ACC2:
-        return registers.readRegister(REG_ACC2);
+        return registers.readRegister(REG_ACC2, anyElementExecuted);
     case InputMultiplex::ACC3:
-        return registers.readRegister(REG_ACC3);
+        return registers.readRegister(REG_ACC3, anyElementExecuted);
     case InputMultiplex::ACC4:
-        return registers.readRegister(REG_SFU_OUT);
+        return registers.readRegister(REG_SFU_OUT, anyElementExecuted);
     case InputMultiplex::ACC5:
-        return registers.readRegister(REG_ACC5);
+        return registers.readRegister(REG_ACC5, anyElementExecuted);
     case InputMultiplex::REGA:
-        return registers.readRegister(Register{RegisterFile::PHYSICAL_A, addressA});
+        return registers.readRegister(Register{RegisterFile::PHYSICAL_A, addressA}, anyElementExecuted);
     case InputMultiplex::REGB:
         if(regBIsImmediate)
             return std::make_pair(SIMDVector(*SmallImmediate{addressB}.toLiteral()), true);
         else
-            return registers.readRegister(Register{RegisterFile::PHYSICAL_B, addressB});
+            return registers.readRegister(Register{RegisterFile::PHYSICAL_B, addressB}, anyElementExecuted);
     }
     throw CompilationError(CompilationStep::GENERAL, "Unhandled ALU input");
 }
 
-static std::pair<SIMDVector, bool> applyVectorRotation(
-    std::pair<SIMDVector, bool>&& input, const qpu_asm::ALUInstruction* ins, Registers& registers)
+static std::pair<SIMDVector, bool> applyVectorRotation(std::pair<SIMDVector, bool>&& input,
+    const qpu_asm::ALUInstruction* ins, Registers& registers, bool anyElementExecuted)
 {
     if(!input.second)
         // if we stall, do not rotate
@@ -1300,7 +1302,7 @@ static std::pair<SIMDVector, bool> applyVectorRotation(
     if(offset == VECTOR_ROTATE_R5)
         //"Mul output vector rotation is taken from accumulator r5, element 0, bits [3:0]"
         // - Broadcom Specification, page 30
-        distance = static_cast<uint8_t>(registers.readRegister(REG_ACC5).first[0].unsignedInt());
+        distance = static_cast<uint8_t>(registers.readRegister(REG_ACC5, anyElementExecuted).first[0].unsignedInt());
     else
         distance = offset.getRotationOffset().value();
 
@@ -1313,6 +1315,12 @@ static std::pair<SIMDVector, bool> applyVectorRotation(
     PROFILE_COUNTER(
         vc4c::profiler::COUNTER_EMULATOR + 170, "vector rotations (full/total)", ins->isFullRangeRotation());
     return std::make_pair(result, true);
+}
+
+static bool isAnyElementExecuted(const VectorFlags& flags, ConditionCode code)
+{
+    return code == COND_ALWAYS ||
+        std::any_of(flags.begin(), flags.end(), [=](ElementFlags flag) { return flag.matchesCondition(code); });
 }
 
 bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
@@ -1328,13 +1336,16 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
     // need to read both input before writing any registers
     if(aluInst->getAddCondition() != COND_NEVER && aluInst->getAddition() != OP_NOP.opAdd)
     {
+        bool anyElementExecuting = isAnyElementExecuted(flags, aluInst->getAddCondition());
+
         bool addIn0NotStall = true;
         bool addIn1NotStall = true;
         std::tie(addIn0, addIn0NotStall) = toInputValue(registers, aluInst->getAddMultiplexA(), aluInst->getInputA(),
-            aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE);
+            aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE, anyElementExecuting);
         if(addCode.numOperands > 1)
-            std::tie(addIn1, addIn1NotStall) = toInputValue(registers, aluInst->getAddMultiplexB(),
-                aluInst->getInputA(), aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE);
+            std::tie(addIn1, addIn1NotStall) =
+                toInputValue(registers, aluInst->getAddMultiplexB(), aluInst->getInputA(), aluInst->getInputB(),
+                    aluInst->getSig() == SIGNAL_ALU_IMMEDIATE, anyElementExecuting);
 
         if(!addIn0NotStall || !addIn1NotStall)
         {
@@ -1346,19 +1357,21 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
 
     if(aluInst->getMulCondition() != COND_NEVER && aluInst->getMultiplication() != OP_NOP.opMul)
     {
+        bool anyElementExecuting = isAnyElementExecuted(flags, aluInst->getMulCondition());
+
         bool mulIn0NotStall = true;
         bool mulIn1NotStall = true;
 
         PROFILE_START(EmulateVectorRotation);
-        std::tie(mulIn0, mulIn0NotStall) =
-            applyVectorRotation(toInputValue(registers, aluInst->getMulMultiplexA(), aluInst->getInputA(),
-                                    aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE),
-                aluInst, registers);
+        std::tie(mulIn0, mulIn0NotStall) = applyVectorRotation(
+            toInputValue(registers, aluInst->getMulMultiplexA(), aluInst->getInputA(), aluInst->getInputB(),
+                aluInst->getSig() == SIGNAL_ALU_IMMEDIATE, anyElementExecuting),
+            aluInst, registers, anyElementExecuting);
         if(mulCode.numOperands > 1)
-            std::tie(mulIn1, mulIn1NotStall) =
-                applyVectorRotation(toInputValue(registers, aluInst->getMulMultiplexB(), aluInst->getInputA(),
-                                        aluInst->getInputB(), aluInst->getSig() == SIGNAL_ALU_IMMEDIATE),
-                    aluInst, registers);
+            std::tie(mulIn1, mulIn1NotStall) = applyVectorRotation(
+                toInputValue(registers, aluInst->getMulMultiplexB(), aluInst->getInputA(), aluInst->getInputB(),
+                    aluInst->getSig() == SIGNAL_ALU_IMMEDIATE, anyElementExecuting),
+                aluInst, registers, anyElementExecuting);
         PROFILE_END(EmulateVectorRotation);
 
         if(!mulIn0NotStall || !mulIn1NotStall)

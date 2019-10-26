@@ -82,10 +82,13 @@ namespace vc4c
         class Registers : private NonCopyable
         {
         public:
-            explicit Registers(QPU& qpu) : qpu(qpu), hostInterrupt() {}
+            explicit Registers(QPU& qpu) : qpu(qpu), hostInterrupt()
+            {
+                storageRegisters.reserve(128);
+            }
 
             void writeRegister(Register reg, const SIMDVector& val, std::bitset<16> elementMask);
-            std::pair<SIMDVector, bool> readRegister(Register reg);
+            std::pair<SIMDVector, bool> readRegister(Register reg, bool anyElementUsed);
 
             SIMDVector getInterruptValue() const;
 
@@ -97,7 +100,7 @@ namespace vc4c
             Optional<SIMDVector> hostInterrupt;
             SortedMap<Register, SIMDVector> readCache;
 
-            SIMDVector readStorageRegister(Register reg);
+            SIMDVector readStorageRegister(Register reg, bool anyElementUsed);
             void writeStorageRegister(Register reg, SIMDVector&& val, std::bitset<16> elementMask);
             NODISCARD SortedMap<Register, SIMDVector>::iterator setReadCache(Register reg, const SIMDVector& val);
         };
@@ -264,7 +267,7 @@ namespace vc4c
             VPM& vpm;
             Semaphores& semaphores;
             uint32_t currentCycle;
-            std::array<ElementFlags, vc4c::NATIVE_VECTOR_SIZE> flags;
+            VectorFlags flags;
             ProgramCounter pc;
             InstrumentationResults& instrumentation;
 

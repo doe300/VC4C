@@ -573,11 +573,11 @@ DataType BitcodeReader::toDataType(Module& module, const llvm::Type* type)
     }
     if(type->isStructTy())
     {
-        // detect SPIRV sampler-type
+        // detect special OpenCL types
         if(type->getStructName() == "spirv.Sampler" || type->getStructName() == "spirv.ConstantSampler")
-        {
             return TYPE_SAMPLER;
-        }
+        if(type->getStructName() == "opencl.event_t")
+            return TYPE_EVENT;
         // need to be added to the map before iterating over the children to prevent stack-overflow
         // (since the type itself could be recursive)
         auto structType =

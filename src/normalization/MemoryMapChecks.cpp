@@ -91,6 +91,9 @@ static Optional<DataType> convertSmallArrayToRegister(const Local* local)
         auto arrayType = baseType.getArrayType();
         if(arrayType && arrayType->size <= NATIVE_VECTOR_SIZE && arrayType->elementType.isScalarType())
             return arrayType->elementType.toVectorType(static_cast<uint8_t>(arrayType->size));
+        if(auto pointerType = baseType.getPointerType())
+            // pointer to pointer (the content is a pointer) fits into register
+            return baseType;
     }
     return {};
 }
