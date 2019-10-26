@@ -293,7 +293,7 @@ std::pair<SIMDVector, bool> Registers::readRegister(Register reg)
         if(it != readCache.end())
             return std::make_pair(it->second, true);
         auto pair = qpu.readR4();
-        (void) setReadCache(REG_SFU_OUT, pair.first);
+        ignoreReturnValue(setReadCache(REG_SFU_OUT, pair.first));
         return pair;
     }
     case REG_UNIFORM.num:
