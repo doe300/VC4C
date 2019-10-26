@@ -11,7 +11,7 @@ kernel void test1 (global float a[], global float b[]) {
 //following samples taken (slightly modified) from https://llvm.org/docs/Vectorizers.html
 kernel void test2(global float *A, global float* B, float K, int start, int end) {
   //Expected: cannot be vectorized, since iteration count is unknown
-  //Actual: loop is recognized but skipped, failed to find bounds
+  //Actual: loop is recognized but skipped, bounds are not constant values
   for (int i = start; i < end; ++i)
     A[i] *= B[i] + K;
 }

@@ -1,7 +1,7 @@
-
+// TODO use to implement work-group/memory-in-VPM cache optimization
 __kernel void test_work_item(__global uint* ptr)
 {
-	__global uint* out = ptr + mul24(get_global_id(0), (uint)24);
+	__global uint* out = ptr + get_global_id(0) * (uint)24;
 	out[0] = get_work_dim();
 	out[1] = get_global_size(0);
 	out[2] = get_global_size(1);

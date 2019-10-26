@@ -80,7 +80,7 @@ static void testBinaryFunction(vc4c::Configuration& config, const std::string& o
         in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
-template <std::size_t ULP>
+template <std::size_t ULP, typename Compare = CompareULP<ULP>>
 static void testTernaryFunction(vc4c::Configuration& config, const std::string& options,
     const std::function<float(float, float, float)>& op,
     const std::function<void(const std::string&, const std::string&)>& onError)
@@ -94,7 +94,7 @@ static void testTernaryFunction(vc4c::Configuration& config, const std::string& 
 
     auto out = runEmulation<float, float, 16, 12>(code, {in0, in1, in2});
     auto pos = options.find("-DFUNC=") + std::string("-DFUNC=").size();
-    checkTernaryResults<float, float, 16 * 12, CompareULP<ULP>>(
+    checkTernaryResults<float, float, 16 * 12, Compare>(
         in0, in1, in2, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
@@ -154,16 +154,31 @@ void TestCommonFunctions::testStep()
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
-void TestCommonFunctions::testSmoothStep()
+// maximum error not in OpenCL 1.2 standard, but in latest
+struct SmoothStepComparator : public CompareULP<3>
 {
-    // maximum error not in OpenCL 1.2 standard, but in latest
-    auto smoothstep = [](float edge0, float edge1, float val) -> float {
+    inline float operator()(float edge0, float edge1, float val) const noexcept
+    {
+        if(edge0 >= edge0 || std::isnan(edge0) || std::isnan(edge1) || std::isnan(val))
+            // the NaN is used below to mark such error case, which are then ignored
+            return std::numeric_limits<float>::quiet_NaN();
         float t = checkClamp((val - edge0) / (edge1 - edge0), 0, 1);
         return t * t * (3 - 2 * t);
-    };
-    // TODO guarantee that edge0 <= edge1? What does the standard say?
-    // "Results are undefined if edge0 >= edge1 or if x, edge0 or edge1 is a NaN."
-    testTernaryFunction<3>(config, "-DFUNC=smoothstep", smoothstep,
+    }
+
+    inline bool operator()(float a, float b) const noexcept
+    {
+        // OpenCL 1.2 specification: "Results are undefined if edge0 >= edge1 or if x, edge0 or edge1 is a NaN."
+        if(std::isnan(a) || std::isnan(b))
+            // error case, see above, ignore
+            return true;
+        return CompareULP::operator()(a, b);
+    }
+};
+
+void TestCommonFunctions::testSmoothStep()
+{
+    testTernaryFunction<3, SmoothStepComparator>(config, "-DFUNC=smoothstep", SmoothStepComparator{},
         std::bind(&TestCommonFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 

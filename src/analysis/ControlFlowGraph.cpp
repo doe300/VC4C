@@ -163,25 +163,28 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(bool recursively, bo
         }
     }
 
+    // NOTE: since the below loop has O(n^2) complexity, we first filter all work-group loops
+    if(skipWorkGroupLoops)
+    {
+        loops.erase(std::remove_if(loops.begin(), loops.end(),
+                        [](const ControlFlowLoop& loop) -> bool { return loop.isWorkGroupLoop(); }),
+            loops.end());
+    }
+
     // NOTE: need to merge loops, since for recursive loops we get multiple results for same loop with different
     // starting blocks
+    // FIXME for test_barrier.cl (or any big if-else/switch inside loops), this are far too many loops to handle..
+    // -> need to somehow combine all if-else/switch cases in a single loop??
     for(auto it = loops.begin(); it < loops.end() - 1; ++it)
     {
         auto it2 = it + 1;
-        while(it2 != loops.end())
+        while(it2 < loops.end())
         {
             if(*it == *it2)
                 it2 = loops.erase(it2);
             else
                 ++it2;
         }
-    }
-
-    if(skipWorkGroupLoops)
-    {
-        loops.erase(std::remove_if(loops.begin(), loops.end(),
-                        [](const ControlFlowLoop& loop) -> bool { return loop.isWorkGroupLoop(); }),
-            loops.end());
     }
 
     LCOV_EXCL_START
