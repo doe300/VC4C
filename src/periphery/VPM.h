@@ -55,7 +55,7 @@ namespace vc4c
              *
              * Examples:
              * For packed and horizontal mode (default), an address of 7 for 8-bit values writes into the columns 12 to
-             * 15 in the first row of the VPM The same values for vertical laned mode write into the third byte of the
+             * 15 in the first row of the VPM. The same values for vertical laned mode write into the third byte of the
              * third row into the columns 0 to 15
              *
              * NOTE:

@@ -345,6 +345,11 @@ void TestExpressions::testCombination()
         result = Expression{Expression::FAKEOP_UMUL, loc0, 4097_val};
         TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
 
+        // (a << const) - a = a * ((1 << const) - 1)
+        outer = expression(inner - loc0);
+        result = Expression{Expression::FAKEOP_UMUL, loc0, 4095_val};
+        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+
         // TODO is somehow not combined!
         // // (a * constA) << constB = (constA * a) << constB -> a * (constA << constB)
         // innerMul = Expression{Expression::FAKEOP_UMUL, loc0, 27_val};
@@ -358,6 +363,48 @@ void TestExpressions::testCombination()
         // outer = expression(inner << 13_val);
         // result = Expression{Expression::FAKEOP_UMUL, loc0, 221184_val};
         // TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+
+        // (a * constA) + a = a * (constA + 1)
+        innerMul = Expression{Expression::FAKEOP_UMUL, loc0, 17_val};
+        expressions.at(inner.local()) = innerMul;
+        outer = expression(inner + loc0);
+        result = Expression{Expression::FAKEOP_UMUL, loc0, 18_val};
+        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+
+        // (constA * a) + a = a * (constA + 1)
+        innerMul = Expression{Expression::FAKEOP_UMUL, 17_val, loc0};
+        expressions.at(inner.local()) = innerMul;
+        outer = expression(inner + loc0);
+        result = Expression{Expression::FAKEOP_UMUL, loc0, 18_val};
+        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+
+        // a + (a * constA) = a * (constA + 1)
+        innerMul = Expression{Expression::FAKEOP_UMUL, loc0, 17_val};
+        expressions.at(inner.local()) = innerMul;
+        outer = expression(loc0 + inner);
+        result = Expression{Expression::FAKEOP_UMUL, loc0, 18_val};
+        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+
+        // a + (constA * a) = a * (constA + 1)
+        innerMul = Expression{Expression::FAKEOP_UMUL, 17_val, loc0};
+        expressions.at(inner.local()) = innerMul;
+        outer = expression(loc0 + inner);
+        result = Expression{Expression::FAKEOP_UMUL, loc0, 18_val};
+        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+
+        // (a * constA) - a = a * (constA - 1)
+        innerMul = Expression{Expression::FAKEOP_UMUL, loc0, 17_val};
+        expressions.at(inner.local()) = innerMul;
+        outer = expression(inner - loc0);
+        result = Expression{Expression::FAKEOP_UMUL, loc0, 16_val};
+        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+
+        // (constA * a) - a = a * (constA - 1)
+        innerMul = Expression{Expression::FAKEOP_UMUL, 17_val, loc0};
+        expressions.at(inner.local()) = innerMul;
+        outer = expression(inner - loc0);
+        result = Expression{Expression::FAKEOP_UMUL, loc0, 16_val};
+        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
     }
 }
 

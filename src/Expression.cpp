@@ -345,17 +345,25 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
         }
 
         // (a << const) + a = a + (a << const) -> a * ((1 << const) + 1)
-        if(allowFakeOperations && code == OP_ADD && expr0 && expr0->arg0 == arg1 &&
+        if(allowFakeOperations && code == OP_ADD && expr0 && expr0->code == OP_SHL && expr0->arg0 == arg1 &&
             (expr0->arg1 & &Value::getLiteralValue))
         {
             auto factor = (1u << expr0->arg1->getLiteralValue()->unsignedInt()) + 1u;
             return Expression{FAKEOP_UMUL, expr0->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
         }
-        if(allowFakeOperations && code == OP_ADD && expr1 && expr1->arg0 == arg0 &&
+        if(allowFakeOperations && code == OP_ADD && expr1 && expr1->code == OP_SHL && expr1->arg0 == arg0 &&
             (expr1->arg1 & &Value::getLiteralValue))
         {
             auto factor = (1u << expr1->arg1->getLiteralValue()->unsignedInt()) + 1u;
             return Expression{FAKEOP_UMUL, arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+        }
+
+        // (a << const) - a = a * ((1 << const) - 1)
+        if(allowFakeOperations && code == OP_SUB && expr0 && expr0->code == OP_SHL && expr0->arg0 == arg1 &&
+            (expr0->arg1 & &Value::getLiteralValue))
+        {
+            auto factor = (1u << expr0->arg1->getLiteralValue()->unsignedInt()) - 1u;
+            return Expression{FAKEOP_UMUL, expr0->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
         }
 
         // (a * constA) << constB = (constA * a) << constB -> a * (constA << constB)
@@ -369,6 +377,48 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
             (expr0->arg0.getLiteralValue()) && (arg1 & &Value::getLiteralValue))
         {
             auto factor = expr0->arg0.getLiteralValue()->unsignedInt() << arg1->getLiteralValue()->unsignedInt();
+            return Expression{
+                FAKEOP_UMUL, *expr0->arg1, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+        }
+
+        // (a * constA) + a = (constA * a) + a = a + (a * constA) = a + (constA * a) = a * (constA + 1)
+        if(allowFakeOperations && code == OP_ADD && expr0 && expr0->code == FAKEOP_UMUL && (expr0->arg0 == arg1) &&
+            (expr0->arg1 & &Value::getLiteralValue))
+        {
+            auto factor = expr0->arg1->getLiteralValue()->unsignedInt() + 1u;
+            return Expression{FAKEOP_UMUL, expr0->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+        }
+        if(allowFakeOperations && code == OP_ADD && expr0 && expr0->code == FAKEOP_UMUL && expr0->arg1 &&
+            expr0->arg1 == arg1 && (expr0->arg0.getLiteralValue()))
+        {
+            auto factor = expr0->arg0.getLiteralValue()->unsignedInt() + 1u;
+            return Expression{
+                FAKEOP_UMUL, *expr0->arg1, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+        }
+        if(allowFakeOperations && code == OP_ADD && expr1 && expr1->code == FAKEOP_UMUL && (expr1->arg0 == arg0) &&
+            (expr1->arg1 & &Value::getLiteralValue))
+        {
+            auto factor = expr1->arg1->getLiteralValue()->unsignedInt() + 1u;
+            return Expression{FAKEOP_UMUL, expr1->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+        }
+        if(allowFakeOperations && code == OP_ADD && expr1 && expr1->code == FAKEOP_UMUL && expr1->arg1 &&
+            expr1->arg1 == arg0 && (expr1->arg0.getLiteralValue()))
+        {
+            auto factor = expr1->arg0.getLiteralValue()->unsignedInt() + 1u;
+            return Expression{FAKEOP_UMUL, arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+        }
+
+        // (a * constA) - a = (constA * a) - a = a * (constA - 1)
+        if(allowFakeOperations && code == OP_SUB && expr0 && expr0->code == FAKEOP_UMUL && (expr0->arg0 == arg1) &&
+            (expr0->arg1 & &Value::getLiteralValue))
+        {
+            auto factor = expr0->arg1->getLiteralValue()->unsignedInt() - 1u;
+            return Expression{FAKEOP_UMUL, expr0->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+        }
+        if(allowFakeOperations && code == OP_SUB && expr0 && expr0->code == FAKEOP_UMUL && expr0->arg1 &&
+            expr0->arg1 == arg1 && (expr0->arg0.getLiteralValue()))
+        {
+            auto factor = expr0->arg0.getLiteralValue()->unsignedInt() - 1u;
             return Expression{
                 FAKEOP_UMUL, *expr0->arg1, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
         }

@@ -60,6 +60,11 @@ namespace vc4c
             bool fitsIntoType(DataType type, bool isSigned = true) const;
             bool hasExplicitBoundaries() const;
 
+            inline explicit operator bool() const noexcept
+            {
+                return hasExplicitBoundaries();
+            }
+
             Optional<Value> getLowerLimit() const;
             Optional<Value> getUpperLimit() const;
 
