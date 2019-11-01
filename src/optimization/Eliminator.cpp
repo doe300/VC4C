@@ -866,7 +866,7 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
         // we do not run the whole analysis in front, but only the next step to save on memory usage
         // For that purpose, we also override the previous expressions on every step
         analysis::AvailableExpressionAnalysis::Cache cache{};
-        analysis::AvailableExpressions expressions{};
+        AvailableExpressions expressions{};
         FastMap<const Local*, std::shared_ptr<Expression>> calculatingExpressions{};
 
         for(auto it = block.walk(); !it.isEndOfBlock(); it.nextInBlock())
@@ -897,9 +897,9 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
                 }
                 else if(*(newExpr = expr->combineWith(calculatingExpressions)) != *expr)
                 {
-                    if(auto inst = newExpr->toInstruction(it->getOutput().value()))
+                    if(newExpr->insertInstructions(it, it->getOutput().value(), expressions))
                     {
-                        CPPLOG_LAZY(logging::Level::DEBUG,
+                        CPPLOG_LAZY(logging::Level::WARNING,
                             log << "Rewriting expression '" << expr->to_string() << "' to '" << newExpr->to_string()
                                 << "'" << logging::endl);
 
@@ -907,10 +907,13 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
                             // reset this expression, since the mapped instruction will be overwritten
                             expressions.erase(exprIt);
 
-                        it.reset(inst);
+                        // remove original instruction
+                        it.erase();
+                        it.previousInBlock();
                         if(auto loc = it->checkOutputLocal())
                             calculatingExpressions.emplace(loc, newExpr);
                         replacedSomething = true;
+                        expressions.emplace(newExpr, std::make_pair(it.get(), 0));
                     }
                 }
 

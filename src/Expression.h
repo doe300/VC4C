@@ -10,12 +10,21 @@
 #include "asm/OpCodes.h"
 #include "intermediate/IntermediateInstruction.h"
 #include "intermediate/operators.h"
+#include "performance.h"
 
 #include <memory>
 
 namespace vc4c
 {
     struct Expression;
+
+    /*
+     * Maps the available locals and the available expression writing into the given local for a given point in
+     * the program code. The additional integer value is the distance in instructions from the current position
+     * where the expression was written.
+     */
+    using AvailableExpressions =
+        FastMap<std::shared_ptr<Expression>, std::pair<const intermediate::IntermediateInstruction*, unsigned>>;
 
     // Using shared_ptr allows to copy expressions and also to share subexpressions
     struct SubExpression : private Variant<VariantNamespace::monostate, Value, std::shared_ptr<Expression>>
@@ -162,6 +171,15 @@ namespace vc4c
          * NOTE: Only simple expressions (without sub-expressions) can be converted to instructions!
          */
         intermediate::IntermediateInstruction* toInstruction(const Value& output) const;
+
+        /**
+         * If possible, generates instructions for this and all child expressions, if there a not yet any matching
+         * instructions for the (sub-)expressions in the input container.
+         *
+         * Returns whether instructions were inserted
+         */
+        NODISCARD bool insertInstructions(
+            InstructionWalker& it, const Value& out, const AvailableExpressions& existingExpressions) const;
 
         inline Expression& addDecorations(intermediate::InstructionDecorations newDeco)
         {

@@ -776,6 +776,49 @@ intermediate::IntermediateInstruction* Expression::toInstruction(const Value& ou
     return inst;
 }
 
+bool Expression::insertInstructions(
+    InstructionWalker& it, const Value& out, const AvailableExpressions& existingExpressions) const
+{
+    if(code.opAdd > 32 || code.opMul > 32)
+        // check for fake opcodes
+        return false;
+
+    if(existingExpressions.find(std::const_pointer_cast<Expression>(shared_from_this())) != existingExpressions.end())
+        // nothing to do
+        return false;
+
+    if(isMoveExpression() && arg0.checkExpression())
+        // to not insert moves, but the moved-from data
+        return arg0.checkExpression()->insertInstructions(it, out, existingExpressions);
+
+    // TODO this is only 0-level recursive, since we do not have the right locals for intermediate results
+
+    auto leftVal = arg0.checkValue();
+    if(auto leftExpr = arg0.checkExpression())
+    {
+        auto it = existingExpressions.find(leftExpr);
+        if(it == existingExpressions.end())
+            return false;
+        leftVal = it->second.first->getOutput();
+    }
+
+    auto rightVal = arg0.checkValue();
+    if(auto rightExpr = arg0.checkExpression())
+    {
+        auto it = existingExpressions.find(rightExpr);
+        if(it == existingExpressions.end())
+            return false;
+        rightVal = it->second.first->getOutput();
+    }
+
+    if(!leftVal || (code.numOperands > 1 && !rightVal))
+        return false;
+
+    it.emplace(Expression{code, *leftVal, rightVal, unpackMode, packMode, deco}.toInstruction(out));
+    it.nextInBlock();
+    return true;
+}
+
 size_t std::hash<vc4c::SubExpression>::operator()(const vc4c::SubExpression& expr) const noexcept
 {
     std::hash<SubExpression::Base> baseHash;

@@ -15,14 +15,6 @@ namespace vc4c
     namespace analysis
     {
         /*
-         * Maps the available locals and the available expression writing into the given local for a given point in
-         * the program code. The additional integer value is the distance in instructions from the current position
-         * where the expression was written.
-         */
-        using AvailableExpressions =
-            FastMap<std::shared_ptr<Expression>, std::pair<const intermediate::IntermediateInstruction*, unsigned>>;
-
-        /*
          * Analyses the available expressions within a single basic block.
          *
          * An available expression at a given point in the program is an expression that already has been calculated
