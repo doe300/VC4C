@@ -6,7 +6,81 @@ using namespace vc4c;
 
 constexpr OpCode Expression::FAKEOP_UMUL;
 
-Optional<Expression> Expression::createExpression(const intermediate::IntermediateInstruction& instr)
+SubExpression::SubExpression(const Optional<Value>& val) : Base(VariantNamespace::monostate{})
+{
+    if(val)
+        *this = *val;
+}
+
+SubExpression::SubExpression(Optional<Value>&& val) : Base(VariantNamespace::monostate{})
+{
+    if(val)
+        *this = std::move(val).value();
+}
+
+bool SubExpression::operator==(const SubExpression& other) const
+{
+    if(index() != other.index())
+        return false;
+    if(VariantNamespace::get_if<VariantNamespace::monostate>(this))
+        return true;
+    if(auto val = VariantNamespace::get_if<Value>(this))
+        return *val == VariantNamespace::get<Value>(other);
+    if(auto expr = VariantNamespace::get_if<std::shared_ptr<Expression>>(this))
+    {
+        auto otherExpr = VariantNamespace::get_if<std::shared_ptr<Expression>>(&other);
+        // we compare by value to make sure we can merge same (but not identical object) subexpressions
+        return (!expr && !otherExpr) || (!(*expr) && !(*otherExpr)) || *expr == *otherExpr || **expr == **otherExpr;
+    }
+    throw CompilationError(CompilationStep::GENERAL, "Unhandled subexpression type");
+}
+
+LCOV_EXCL_START
+std::string SubExpression::to_string() const
+{
+    if(VariantNamespace::get_if<VariantNamespace::monostate>(this))
+        return "-";
+    if(auto val = VariantNamespace::get_if<Value>(this))
+        return val->to_string();
+    if(auto expr = VariantNamespace::get_if<std::shared_ptr<Expression>>(this))
+    {
+        if(auto ptr = *expr)
+            return "(" + ptr->to_string() + ")";
+        else
+            return "-";
+    }
+    throw CompilationError(CompilationStep::GENERAL, "Unhandled subexpression type");
+}
+LCOV_EXCL_STOP
+
+Optional<Value> SubExpression::getConstantExpression() const
+{
+    if(VariantNamespace::get_if<VariantNamespace::monostate>(this))
+        return NO_VALUE;
+    if(auto val = VariantNamespace::get_if<Value>(this))
+        return *val;
+    if(auto expr = VariantNamespace::get_if<std::shared_ptr<Expression>>(this))
+    {
+        if(auto ptr = *expr)
+            return ptr->getConstantExpression();
+        return NO_VALUE;
+    }
+    throw CompilationError(CompilationStep::GENERAL, "Unhandled subexpression type");
+}
+
+static bool isConstantOperand(const Value& op)
+{
+    return op.getLiteralValue() || op.checkVector();
+}
+
+bool SubExpression::isConstant() const
+{
+    if(auto val = VariantNamespace::get_if<Value>(this))
+        return isConstantOperand(*val);
+    return false;
+}
+
+std::shared_ptr<Expression> Expression::createExpression(const intermediate::IntermediateInstruction& instr)
 {
     if(instr.hasSideEffects())
         return {};
@@ -31,13 +105,13 @@ Optional<Expression> Expression::createExpression(const intermediate::Intermedia
     auto code = dynamic_cast<const intermediate::Operation*>(&instr) != nullptr ?
         dynamic_cast<const intermediate::Operation&>(instr).op :
         OP_V8MIN;
-    return Expression{code, instr.getArgument(0).value(),
+    return std::make_shared<Expression>(code, instr.getArgument(0).value(),
         instr.getArgument(1) ? instr.getArgument(1) : code == OP_V8MIN ? instr.getArgument(0) : NO_VALUE,
-        instr.unpackMode, instr.packMode, instr.decoration};
+        instr.unpackMode, instr.packMode, instr.decoration);
 }
 
-static Optional<Expression> createRecursiveExpressionInner(const intermediate::IntermediateInstruction& instr,
-    unsigned maxDepth, FastMap<const Local*, Expression>& parentsCache, bool allowFakeOperations)
+static std::shared_ptr<Expression> createRecursiveExpressionInner(const intermediate::IntermediateInstruction& instr,
+    unsigned maxDepth, FastMap<const Local*, std::shared_ptr<Expression>>& parentsCache, bool allowFakeOperations)
 {
     if(auto expr = Expression::createExpression(instr))
     {
@@ -51,7 +125,7 @@ static Optional<Expression> createRecursiveExpressionInner(const intermediate::I
                         continue;
                     if(auto parentExpr =
                             createRecursiveExpressionInner(*writer, maxDepth - 1, parentsCache, allowFakeOperations))
-                        parentsCache.emplace(arg.local(), *std::move(parentExpr));
+                        parentsCache.emplace(arg.local(), std::move(parentExpr));
                 }
             }
             return expr->combineWith(parentsCache, allowFakeOperations);
@@ -61,10 +135,10 @@ static Optional<Expression> createRecursiveExpressionInner(const intermediate::I
     return {};
 }
 
-Optional<Expression> Expression::createRecursiveExpression(
+std::shared_ptr<Expression> Expression::createRecursiveExpression(
     const intermediate::IntermediateInstruction& instr, unsigned maxDepth, bool allowFakeOperations)
 {
-    FastMap<const Local*, Expression> parentsCache;
+    FastMap<const Local*, std::shared_ptr<Expression>> parentsCache;
     return createRecursiveExpressionInner(instr, maxDepth, parentsCache, allowFakeOperations);
 }
 
@@ -79,8 +153,7 @@ bool Expression::operator==(const Expression& other) const
 LCOV_EXCL_START
 std::string Expression::to_string() const
 {
-    auto basic =
-        std::string(code.name) + " " + arg0.to_string() + (arg1 ? std::string(", ") + arg1.to_string() : std::string{});
+    auto basic = std::string(code.name) + " " + arg0.to_string() + ", " + arg1.to_string();
     std::string extra;
     extra += unpackMode.hasEffect() ? unpackMode.to_string() + " " : "";
     extra += packMode.hasEffect() ? packMode.to_string() + " " : "";
@@ -96,182 +169,245 @@ bool Expression::isMoveExpression() const
 
 Optional<Value> Expression::getConstantExpression() const
 {
-    return code(arg0, arg1).first;
-}
-
-static bool isConstantOperand(const Value& op)
-{
-    return op.getLiteralValue() || op.checkVector();
-}
-
-static bool isConstantOperand(const Optional<Value>& op)
-{
-    return op && isConstantOperand(*op);
+    if(auto firstVal = arg0.getConstantExpression())
+    {
+        auto secondVal = arg1.getConstantExpression();
+        return code(*firstVal, secondVal).first;
+    }
+    return NO_VALUE;
 }
 
 bool Expression::hasConstantOperand() const
 {
-    return isConstantOperand(arg0) || isConstantOperand(arg1);
+    return arg0.isConstant() || arg1.isConstant();
 }
 
-Expression Expression::combineWith(const FastMap<const Local*, Expression>& inputs, bool allowFakeOperations) const
+static Optional<Value> calculate(const OpCode& code, const Optional<Value>& firstArg, const Optional<Value>& secondArg)
 {
-    const Expression* expr0 = nullptr;
-    const Expression* expr1 = nullptr;
-    if(arg0.checkLocal() && inputs.find(arg0.local()) != inputs.end())
-        expr0 = &inputs.at(arg0.local());
-    if(arg1 && arg1->checkLocal() && inputs.find(arg1->local()) != inputs.end())
-        expr1 = &inputs.at(arg1->local());
-    if(expr0 == nullptr && expr1 == nullptr)
-        // no expression can be combined
-        return *this;
+    if(firstArg)
+        return code(*firstArg, secondArg).first;
+    return NO_VALUE;
+}
+
+// need special check, since Values with Literal and SmallImmediates do not compare equal
+static bool hasValue(const Optional<Value>& val, Optional<Literal> lit)
+{
+    return val && lit && val->hasLiteral(*lit);
+}
+
+std::shared_ptr<Expression> Expression::combineWith(
+    const FastMap<const Local*, std::shared_ptr<Expression>>& inputs, bool allowFakeOperations)
+{
+    // TODO stop for built-in locals/parameters/constants??!
+
+    auto firstVal = arg0.checkValue();
+    auto secondVal = arg1.checkValue();
+    auto firstExpr = arg0.checkExpression();
+    auto secondExpr = arg1.checkExpression();
+
+    if(auto firstLoc = arg0.checkLocal())
+    {
+        auto it = inputs.find(firstLoc);
+        if(it != inputs.end())
+        {
+            firstVal = NO_VALUE;
+            firstExpr = it->second;
+            arg0 = firstExpr;
+        }
+    }
+    if(auto secondLoc = arg1.checkLocal())
+    {
+        auto it = inputs.find(secondLoc);
+        if(it != inputs.end())
+        {
+            secondVal = NO_VALUE;
+            secondExpr = it->second;
+            arg1 = secondExpr;
+        }
+    }
 
     // replace move expressions by their sources, if possible
-    if(expr0 && expr0->isMoveExpression() && expr0->arg0.checkLocal() &&
-        inputs.find(expr0->arg0.local()) != inputs.end())
-        // replace left expression by source
-        expr0 = &inputs.at(expr0->arg0.local());
+    if(firstExpr && firstExpr->isMoveExpression())
+    {
+        if(firstExpr->arg0.checkLocal() && inputs.find(firstExpr->arg0.checkLocal()) != inputs.end())
+        {
+            // replace left expression by source
+            firstVal = NO_VALUE;
+            firstExpr = inputs.at(firstExpr->arg0.checkLocal());
+            arg0 = firstExpr;
+        }
+        else
+        {
+            arg0 = firstExpr->arg0;
+            firstVal = arg0.checkValue();
+            firstExpr = arg0.checkExpression();
+        }
+    }
 
-    if(expr1 && expr1->isMoveExpression() && expr1->arg0.checkLocal() &&
-        inputs.find(expr1->arg0.local()) != inputs.end())
-        // replace right expression by source
-        expr1 = &inputs.at(expr1->arg0.local());
+    if(secondExpr && secondExpr->isMoveExpression())
+    {
+        if(secondExpr->arg0.checkLocal() && inputs.find(secondExpr->arg0.checkLocal()) != inputs.end())
+        {
+            // replace right expression by source
+            secondVal = NO_VALUE;
+            secondExpr = inputs.at(secondExpr->arg0.checkLocal());
+            arg1 = secondExpr;
+        }
+        else
+        {
+            arg1 = secondExpr->arg0;
+            secondVal = arg1.checkValue();
+            secondExpr = arg1.checkExpression();
+        }
+    }
 
     if(unpackMode.hasEffect() || packMode.hasEffect() ||
-        (expr0 != nullptr && (expr0->unpackMode.hasEffect() || expr0->packMode.hasEffect())) ||
-        ((expr1 != nullptr && (expr1->unpackMode.hasEffect() || expr1->packMode.hasEffect()))))
+        (firstExpr != nullptr && (firstExpr->unpackMode.hasEffect() || firstExpr->packMode.hasEffect())) ||
+        ((secondExpr != nullptr && (secondExpr->unpackMode.hasEffect() || secondExpr->packMode.hasEffect()))))
         // cannot combine pack modes
-        return *this;
+        return shared_from_this();
 
     // "replace" this with source expression
     if(isMoveExpression())
     {
-        if(expr0)
-            return expr0->combineWith(inputs);
-        if(expr1)
-            return expr1->combineWith(inputs);
+        if(firstExpr)
+            return firstExpr->combineWith(inputs);
+        if(secondExpr)
+            return secondExpr->combineWith(inputs);
     }
 
-    if(code.numOperands == 1 && expr0 != nullptr)
+    if(code.numOperands == 1 && firstExpr != nullptr)
     {
-        if(code.isIdempotent() && expr0->code == code)
+        if(code.isIdempotent() && firstExpr->code == code)
             // f(f(a)) = f(a)
-            return Expression{code, expr0->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
+            return std::make_shared<Expression>(
+                code, firstExpr->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, firstExpr->deco));
         // NOTE: ftoi(itof(i)) != i, itof(ftoi(f)) != f, since the truncation/rounding would get lost!
-        if(code.isSelfInverse() && code == expr0->code)
+        if(code.isSelfInverse() && code == firstExpr->code)
+        {
             // f(f(a)) = a, e.g. not(not(a)) = a
-            return Expression{OP_V8MIN, expr0->arg0, expr0->arg0, UNPACK_NOP, PACK_NOP, add_flag(deco, expr0->deco)};
+            auto inner = firstExpr->arg0.checkExpression();
+            return inner ? inner->addDecorations(deco).shared_from_this() :
+                           std::make_shared<Expression>(OP_V8MIN, firstExpr->arg0, firstExpr->arg0, UNPACK_NOP,
+                               PACK_NOP, add_flag(deco, firstExpr->deco));
+        }
     }
 
     if(code.numOperands == 2)
     {
         if(code.isIdempotent() && arg0 == arg1)
             // f(a, a) = a
-            return Expression{OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco};
+            return firstExpr ? firstExpr->addDecorations(deco).shared_from_this() :
+                               std::make_shared<Expression>(OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco);
         if(code.isSelfInverse() && arg0 == arg1)
         {
             // f(a, a) = 0, e.g. a - a = 0
             auto zero = code.returnsFloat ? FLOAT_ZERO : INT_ZERO;
-            return Expression{OP_V8MIN, zero, zero, UNPACK_NOP, PACK_NOP, deco};
+            return std::make_shared<Expression>(OP_V8MIN, zero, zero, UNPACK_NOP, PACK_NOP, deco);
         }
-        if(OpCode::getLeftIdentity(code) == arg0)
+        if(firstVal && hasValue(firstVal, OpCode::getLeftIdentity(code) & &Value::getLiteralValue))
             // f(id, a) = a
-            return Expression{OP_V8MIN, arg1.value(), arg1, UNPACK_NOP, PACK_NOP, deco};
-        if(OpCode::getRightIdentity(code) == arg1)
+            return secondExpr ? secondExpr->addDecorations(deco).shared_from_this() :
+                                std::make_shared<Expression>(OP_V8MIN, arg1, arg1, UNPACK_NOP, PACK_NOP, deco);
+        if(secondVal && hasValue(secondVal, OpCode::getRightIdentity(code) & &Value::getLiteralValue))
             // f(a, id) = a
-            return Expression{OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco};
-        if(OpCode::getLeftAbsorbingElement(code) == arg0)
+            return firstExpr ? firstExpr->addDecorations(deco).shared_from_this() :
+                               std::make_shared<Expression>(OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco);
+        if(firstVal && hasValue(firstVal, OpCode::getLeftAbsorbingElement(code) & &Value::getLiteralValue))
             // f(absorb, a) = absorb
-            return Expression{OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco};
-        if(OpCode::getRightAbsorbingElement(code) == arg1)
+            return std::make_shared<Expression>(OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco);
+        if(secondVal && hasValue(secondVal, OpCode::getRightAbsorbingElement(code) & &Value::getLiteralValue))
             // f(a, absorb) = absorb
-            return Expression{OP_V8MIN, arg1.value(), arg1, UNPACK_NOP, PACK_NOP, deco};
+            return std::make_shared<Expression>(OP_V8MIN, arg1, arg1, UNPACK_NOP, PACK_NOP, deco);
 
-        if(code.isAssociative() && expr1 && expr1->code == code && isConstantOperand(arg0) &&
-            isConstantOperand(expr1->arg0))
+        if(firstVal && code.isAssociative() && secondExpr && secondExpr->code == code && arg0.isConstant() &&
+            secondExpr->arg0.isConstant())
         {
             // f(constA, f(constB, a)) = f(f(constA, constB), a), if associative
-            if(auto tmp = code(arg0, expr1->arg0).first)
+            if(auto tmp = calculate(code, firstVal, secondExpr->arg0.checkValue()))
             {
-                return Expression{code, *tmp, expr1->arg1, UNPACK_NOP, PACK_NOP, deco};
+                return std::make_shared<Expression>(code, *tmp, secondExpr->arg1, UNPACK_NOP, PACK_NOP, deco);
             }
         }
 
-        if(code.isAssociative() && expr0 && expr0->code == code && isConstantOperand(arg1) &&
-            isConstantOperand(expr0->arg1))
+        if(secondVal && code.isAssociative() && firstExpr && firstExpr->code == code && arg1.isConstant() &&
+            firstExpr->arg1.isConstant())
         {
             // f(f(a, constA), constB) = f(a, f(constA, constB)), if associative
-            if(auto tmp = code(*expr0->arg1, arg1).first)
+            if(auto tmp = calculate(code, firstExpr->arg1.checkValue(), secondVal))
             {
-                return Expression{code, expr0->arg0, tmp, UNPACK_NOP, PACK_NOP, deco};
+                return std::make_shared<Expression>(code, firstExpr->arg0, tmp, UNPACK_NOP, PACK_NOP, deco);
             }
         }
 
-        if(code.isAssociative() && code.isCommutative() && expr1 && expr1->code == code && isConstantOperand(arg0) &&
-            isConstantOperand(expr1->arg1))
+        if(firstVal && code.isAssociative() && code.isCommutative() && secondExpr && secondExpr->code == code &&
+            arg0.isConstant() && secondExpr->arg1.isConstant())
         {
             // f(constA, f(a, constB)) = f(f(constA, constB), a), if associative and commutative
-            if(auto tmp = code(arg0, expr1->arg1).first)
+            if(auto tmp = calculate(code, firstVal, secondExpr->arg1.checkValue()))
             {
-                return Expression{code, *tmp, expr1->arg0, UNPACK_NOP, PACK_NOP, deco};
+                return std::make_shared<Expression>(code, *tmp, secondExpr->arg0, UNPACK_NOP, PACK_NOP, deco);
             }
         }
 
-        if(code.isAssociative() && code.isCommutative() && expr0 && expr0->code == code && isConstantOperand(arg1) &&
-            isConstantOperand(expr0->arg0))
+        if(secondVal && code.isAssociative() && code.isCommutative() && firstExpr && firstExpr->code == code &&
+            arg1.isConstant() && firstExpr->arg0.isConstant())
         {
             // f(f(constA, a), constB) = f(f(constA, constB), a), if associative and commutative
-            if(auto tmp = code(expr0->arg0, arg1).first)
+            if(auto tmp = calculate(code, firstExpr->arg0.checkValue(), secondVal))
             {
-                return Expression{code, *tmp, expr0->arg1, UNPACK_NOP, PACK_NOP, deco};
+                return std::make_shared<Expression>(code, *tmp, firstExpr->arg1, UNPACK_NOP, PACK_NOP, deco);
             }
         }
 
-        if(code.isAssociative() && code.isIdempotent() && expr1 && expr1->code == code && expr1->arg0 == arg0)
+        if(code.isAssociative() && code.isIdempotent() && secondExpr && secondExpr->code == code &&
+            secondExpr->arg0 == arg0)
         {
             // f(a, f(a, b)) = f(a, b), if associative and idempotent
-            return Expression{code, arg0, expr1->arg1, UNPACK_NOP, PACK_NOP, deco};
+            return std::make_shared<Expression>(code, arg0, secondExpr->arg1, UNPACK_NOP, PACK_NOP, deco);
         }
 
-        if(code.isAssociative() && code.isIdempotent() && expr0 && expr0->code == code && expr0->arg1 == arg1)
+        if(code.isAssociative() && code.isIdempotent() && firstExpr && firstExpr->code == code &&
+            firstExpr->arg1 == arg1)
         {
             // f(f(a, b), b) = f(a, b), if associative and idempotent
-            return Expression{code, expr0->arg0, arg1, UNPACK_NOP, PACK_NOP, deco};
+            return std::make_shared<Expression>(code, firstExpr->arg0, arg1, UNPACK_NOP, PACK_NOP, deco);
         }
 
-        if(code.isAssociative() && code.isIdempotent() && code.isCommutative() && expr1 && expr1->code == code &&
-            expr1->arg1 == arg0)
+        if(code.isAssociative() && code.isIdempotent() && code.isCommutative() && secondExpr &&
+            secondExpr->code == code && secondExpr->arg1 == arg0)
         {
             // f(a, f(b, a)) = f(a, b), if associative, commutative and idempotent
-            return Expression{code, arg0, expr1->arg0, UNPACK_NOP, PACK_NOP, deco};
+            return std::make_shared<Expression>(code, arg0, secondExpr->arg0, UNPACK_NOP, PACK_NOP, deco);
         }
 
-        if(code.isAssociative() && code.isIdempotent() && code.isCommutative() && expr0 && expr0->code == code &&
-            expr0->arg0 == arg1)
+        if(code.isAssociative() && code.isIdempotent() && code.isCommutative() && firstExpr &&
+            firstExpr->code == code && firstExpr->arg0 == arg1)
         {
             // f(f(a, b), a) = f(a, b), if associative, commutative and idempotent
-            return Expression{code, expr0->arg0, expr0->arg1, UNPACK_NOP, PACK_NOP, deco};
+            return std::make_shared<Expression>(code, firstExpr->arg0, firstExpr->arg1, UNPACK_NOP, PACK_NOP, deco);
         }
 
-        if(expr0 && expr1 && expr0->code == expr1->code && expr0->code.isLeftDistributiveOver(code) &&
-            expr0->arg0 == expr1->arg0)
+        if(firstExpr && secondExpr && firstExpr->code == secondExpr->code &&
+            firstExpr->code.isLeftDistributiveOver(code) && firstExpr->arg0 == secondExpr->arg0)
         {
             // g(f(a, b), f(a, c)) = f(a, g(b, c)), if left distributive
-            if(auto tmp = code(*expr0->arg1, expr1->arg1).first)
-            {
-                return Expression{expr0->code, expr0->arg0, tmp, UNPACK_NOP, PACK_NOP, deco};
-            }
-            // TODO add general (with non-constant) case? E.g. if expression g(b, c) already exists
+            if(auto tmp = calculate(code, firstExpr->arg1.checkValue(), secondExpr->arg1.checkValue()))
+                return std::make_shared<Expression>(firstExpr->code, firstExpr->arg0, tmp, UNPACK_NOP, PACK_NOP, deco);
+            // general non-constant case
+            auto tmp = std::make_shared<Expression>(code, firstExpr->arg1, secondExpr->arg1);
+            return std::make_shared<Expression>(firstExpr->code, firstExpr->arg0, tmp, UNPACK_NOP, PACK_NOP, deco);
         }
 
-        if(expr0 && expr1 && expr0->code == expr1->code && expr0->code.isRightDistributiveOver(code) &&
-            expr0->arg1 == expr1->arg1)
+        if(firstExpr && secondExpr && firstExpr->code == secondExpr->code &&
+            firstExpr->code.isRightDistributiveOver(code) && firstExpr->arg1 == secondExpr->arg1)
         {
             // g(f(a, b), f(c, b)) = f(g(a, c), b), if right distributive
-            if(auto tmp = code(expr0->arg0, expr1->arg0).first)
-            {
-                return Expression{expr0->code, *tmp, expr0->arg1, UNPACK_NOP, PACK_NOP, deco};
-            }
+            if(auto tmp = calculate(code, firstExpr->arg0.checkValue(), secondExpr->arg0.checkValue()))
+                return std::make_shared<Expression>(firstExpr->code, *tmp, firstExpr->arg1, UNPACK_NOP, PACK_NOP, deco);
+            // general non-constant case
+            auto tmp = std::make_shared<Expression>(code, firstExpr->arg0, secondExpr->arg0);
+            return std::make_shared<Expression>(firstExpr->code, tmp, firstExpr->arg1, UNPACK_NOP, PACK_NOP, deco);
         }
 
         // TODO more properties to use (e.g. distributive and commutative?)
@@ -279,148 +415,162 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
         if(code == OP_FADD && arg0 == arg1)
         {
             // doesn't save any instruction, but utilizes mul ALU
-            return Expression{OP_FMUL, arg0, Value(Literal(2.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP, deco};
+            return std::make_shared<Expression>(
+                OP_FMUL, arg0, Value(Literal(2.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP, deco);
         }
 
         // TODO generalize! E.g. for fsub
-        if(code == OP_FADD && expr0 && expr0->code == OP_FMUL)
+        if(code == OP_FADD && firstExpr && firstExpr->code == OP_FMUL)
         {
-            if(expr0->arg0 == arg1 && expr0->arg1->getLiteralValue())
+            if(firstExpr->arg0 == arg1 && firstExpr->arg1.getLiteralValue())
                 // fadd(fmul(a, constB), a) = fmul(a, constB+1)
-                return Expression{OP_FMUL, arg1.value(),
-                    Value(Literal(expr0->arg1->getLiteralValue()->real() + 1.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP,
-                    add_flag(deco, expr0->deco)};
-            if(expr0->arg1 == arg1 && expr0->arg0.getLiteralValue())
+                return std::make_shared<Expression>(OP_FMUL, arg1,
+                    Value(Literal(firstExpr->arg1.getLiteralValue()->real() + 1.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP,
+                    add_flag(deco, firstExpr->deco));
+            if(firstExpr->arg1 == arg1 && firstExpr->arg0.getLiteralValue())
                 // fadd(fmul(constB, a), a) = fmul(a, constB+1)
-                return Expression{OP_FMUL, arg1.value(),
-                    Value(Literal(expr0->arg0.getLiteralValue()->real() + 1.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP,
-                    add_flag(deco, expr0->deco)};
+                return std::make_shared<Expression>(OP_FMUL, arg1,
+                    Value(Literal(firstExpr->arg0.getLiteralValue()->real() + 1.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP,
+                    add_flag(deco, firstExpr->deco));
         }
-        if(code == OP_FADD && expr1 && expr1->code == OP_FMUL)
+        if(code == OP_FADD && secondExpr && secondExpr->code == OP_FMUL)
         {
-            if(expr1->arg0 == arg0 && expr1->arg1->getLiteralValue())
+            if(secondExpr->arg0 == arg0 && secondExpr->arg1.getLiteralValue())
                 // fadd(a, fmul(a, constB)) = fmul(a, constB+1)
-                return Expression{OP_FMUL, arg0,
-                    Value(Literal(expr1->arg1->getLiteralValue()->real() + 1.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP,
-                    add_flag(deco, expr1->deco)};
-            if(expr1->arg1 == arg0 && expr1->arg0.getLiteralValue())
+                return std::make_shared<Expression>(OP_FMUL, arg0,
+                    Value(Literal(secondExpr->arg1.getLiteralValue()->real() + 1.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP,
+                    add_flag(deco, secondExpr->deco));
+            if(secondExpr->arg1 == arg0 && secondExpr->arg0.getLiteralValue())
                 // fadd(a, fmul(constB, a)) = fmul(a, constB+1)
-                return Expression{OP_FMUL, arg0,
-                    Value(Literal(expr1->arg0.getLiteralValue()->real() + 1.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP,
-                    add_flag(deco, expr1->deco)};
+                return std::make_shared<Expression>(OP_FMUL, arg0,
+                    Value(Literal(secondExpr->arg0.getLiteralValue()->real() + 1.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP,
+                    add_flag(deco, secondExpr->deco));
         }
 
         // TODO generalize! E.g. via mapping opcode -> inverse opcode (inverse according to which of the operands?!)
-        if(expr0 && arg1 && expr0->arg1 && (arg1 == expr0->arg0 || arg1 == expr0->arg1))
+        if(firstExpr && arg1 && firstExpr->arg1 && (arg1 == firstExpr->arg0 || arg1 == firstExpr->arg1))
         {
             // NOTE: This rewrite removes overflow since it removes two operations that could overflow!
-            const auto& otherArg = arg1 == expr0->arg0 ? *expr0->arg1 : expr0->arg0;
+            const auto& otherArg = arg1 == firstExpr->arg0 ? firstExpr->arg1 : firstExpr->arg0;
+            auto otherExpr = otherArg.checkExpression();
             // (a + b) - a = b
             // (a + b) - b = a
             // (a - b) + b = a
-            if((code == OP_SUB && expr0->code == OP_ADD) || (code == OP_FSUB && expr0->code == OP_FADD) ||
-                (code == OP_ADD && expr0->code == OP_SUB && arg1 == expr0->arg1) ||
-                (code == OP_FADD && expr0->code == OP_FSUB && arg1 == expr0->arg1))
-                return Expression{OP_V8MIN, otherArg, otherArg, UNPACK_NOP, PACK_NOP, deco};
+            if((code == OP_SUB && firstExpr->code == OP_ADD) || (code == OP_FSUB && firstExpr->code == OP_FADD) ||
+                (code == OP_ADD && firstExpr->code == OP_SUB && arg1 == firstExpr->arg1) ||
+                (code == OP_FADD && firstExpr->code == OP_FSUB && arg1 == firstExpr->arg1))
+                return otherExpr ?
+                    otherExpr->addDecorations(deco).shared_from_this() :
+                    std::make_shared<Expression>(OP_V8MIN, otherArg, otherArg, UNPACK_NOP, PACK_NOP, deco);
 
             // (a - b) - a = -b
-            if((code == OP_SUB && expr0->code == OP_SUB && arg1 == expr0->arg0) ||
-                (code == OP_FSUB && expr0->code == OP_FSUB && arg1 == expr0->arg0))
-                return Expression{code, INT_ZERO, otherArg, UNPACK_NOP, PACK_NOP, deco};
+            if((code == OP_SUB && firstExpr->code == OP_SUB && arg1 == firstExpr->arg0) ||
+                (code == OP_FSUB && firstExpr->code == OP_FSUB && arg1 == firstExpr->arg0))
+                return std::make_shared<Expression>(code, INT_ZERO, otherArg, UNPACK_NOP, PACK_NOP, deco);
         }
-        if(expr1 && expr1->arg1 && (arg0 == expr1->arg0 || arg0 == expr1->arg1))
+        if(secondExpr && secondExpr->arg1 && (arg0 == secondExpr->arg0 || arg0 == secondExpr->arg1))
         {
             // NOTE: This rewrite removes overflow since it removes two operations that could overflow!
-            const auto& otherArg = arg0 == expr1->arg0 ? *expr1->arg1 : expr1->arg0;
+            const auto& otherArg = arg0 == secondExpr->arg0 ? secondExpr->arg1 : secondExpr->arg0;
+            auto otherExpr = otherArg.checkExpression();
             // a + (b - a) = b
-            if((code == OP_ADD && expr1->code == OP_SUB && arg0 == expr1->arg1) ||
-                (code == OP_FADD && expr1->code == OP_FSUB && arg0 == expr1->arg1))
-            {
-                return Expression{OP_V8MIN, otherArg, otherArg, UNPACK_NOP, PACK_NOP, deco};
-            }
+            if((code == OP_ADD && secondExpr->code == OP_SUB && arg0 == secondExpr->arg1) ||
+                (code == OP_FADD && secondExpr->code == OP_FSUB && arg0 == secondExpr->arg1))
+                return otherExpr ?
+                    otherExpr->addDecorations(deco).shared_from_this() :
+                    std::make_shared<Expression>(OP_V8MIN, otherArg, otherArg, UNPACK_NOP, PACK_NOP, deco);
+
             // a - (b + a) = -b
             // a - (a + b) = -b
-            if((code == OP_SUB && expr1->code == OP_ADD) || (code == OP_FSUB && expr1->code == OP_FADD))
-                return Expression{code, INT_ZERO, otherArg, UNPACK_NOP, PACK_NOP, deco};
+            if((code == OP_SUB && secondExpr->code == OP_ADD) || (code == OP_FSUB && secondExpr->code == OP_FADD))
+                return std::make_shared<Expression>(code, INT_ZERO, otherArg, UNPACK_NOP, PACK_NOP, deco);
         }
 
         // (a << const) + a = a + (a << const) -> a * ((1 << const) + 1)
-        if(allowFakeOperations && code == OP_ADD && expr0 && expr0->code == OP_SHL && expr0->arg0 == arg1 &&
-            (expr0->arg1 & &Value::getLiteralValue))
+        if(allowFakeOperations && code == OP_ADD && firstExpr && firstExpr->code == OP_SHL && firstExpr->arg0 == arg1 &&
+            (firstExpr->arg1.getLiteralValue()))
         {
-            auto factor = (1u << expr0->arg1->getLiteralValue()->unsignedInt()) + 1u;
-            return Expression{FAKEOP_UMUL, expr0->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+            auto factor = (1u << firstExpr->arg1.getLiteralValue()->unsignedInt()) + 1u;
+            return std::make_shared<Expression>(
+                FAKEOP_UMUL, firstExpr->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco);
         }
-        if(allowFakeOperations && code == OP_ADD && expr1 && expr1->code == OP_SHL && expr1->arg0 == arg0 &&
-            (expr1->arg1 & &Value::getLiteralValue))
+        if(allowFakeOperations && code == OP_ADD && secondExpr && secondExpr->code == OP_SHL &&
+            secondExpr->arg0 == arg0 && (secondExpr->arg1.getLiteralValue()))
         {
-            auto factor = (1u << expr1->arg1->getLiteralValue()->unsignedInt()) + 1u;
-            return Expression{FAKEOP_UMUL, arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+            auto factor = (1u << secondExpr->arg1.getLiteralValue()->unsignedInt()) + 1u;
+            return std::make_shared<Expression>(
+                FAKEOP_UMUL, arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco);
         }
 
         // (a << const) - a = a * ((1 << const) - 1)
-        if(allowFakeOperations && code == OP_SUB && expr0 && expr0->code == OP_SHL && expr0->arg0 == arg1 &&
-            (expr0->arg1 & &Value::getLiteralValue))
+        if(allowFakeOperations && code == OP_SUB && firstExpr && firstExpr->code == OP_SHL && firstExpr->arg0 == arg1 &&
+            firstExpr->arg1.getLiteralValue())
         {
-            auto factor = (1u << expr0->arg1->getLiteralValue()->unsignedInt()) - 1u;
-            return Expression{FAKEOP_UMUL, expr0->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+            auto factor = (1u << firstExpr->arg1.getLiteralValue()->unsignedInt()) - 1u;
+            return std::make_shared<Expression>(
+                FAKEOP_UMUL, firstExpr->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco);
         }
 
         // (a * constA) << constB = (constA * a) << constB -> a * (constA << constB)
-        if(allowFakeOperations && code == OP_SHL && expr0 && expr0->code == FAKEOP_UMUL &&
-            (expr0->arg1 & &Value::getLiteralValue) && (arg1 & &Value::getLiteralValue))
+        if(allowFakeOperations && code == OP_SHL && firstExpr && firstExpr->code == FAKEOP_UMUL &&
+            (firstExpr->arg1.getLiteralValue()) && (arg1.getLiteralValue()))
         {
-            auto factor = expr0->arg1->getLiteralValue()->unsignedInt() << arg1->getLiteralValue()->unsignedInt();
-            return Expression{FAKEOP_UMUL, expr0->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+            auto factor = firstExpr->arg1.getLiteralValue()->unsignedInt() << arg1.getLiteralValue()->unsignedInt();
+            return std::make_shared<Expression>(
+                FAKEOP_UMUL, firstExpr->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco);
         }
-        if(allowFakeOperations && code == OP_SHL && expr0 && expr0->code == FAKEOP_UMUL && expr0->arg1 &&
-            (expr0->arg0.getLiteralValue()) && (arg1 & &Value::getLiteralValue))
+        if(allowFakeOperations && code == OP_SHL && firstExpr && firstExpr->code == FAKEOP_UMUL && firstExpr->arg1 &&
+            (firstExpr->arg0.getLiteralValue()) && (arg1.getLiteralValue()))
         {
-            auto factor = expr0->arg0.getLiteralValue()->unsignedInt() << arg1->getLiteralValue()->unsignedInt();
-            return Expression{
-                FAKEOP_UMUL, *expr0->arg1, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+            auto factor = firstExpr->arg0.getLiteralValue()->unsignedInt() << arg1.getLiteralValue()->unsignedInt();
+            return std::make_shared<Expression>(
+                FAKEOP_UMUL, firstExpr->arg1, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco);
         }
 
         // (a * constA) + a = (constA * a) + a = a + (a * constA) = a + (constA * a) = a * (constA + 1)
-        if(allowFakeOperations && code == OP_ADD && expr0 && expr0->code == FAKEOP_UMUL && (expr0->arg0 == arg1) &&
-            (expr0->arg1 & &Value::getLiteralValue))
+        if(allowFakeOperations && code == OP_ADD && firstExpr && firstExpr->code == FAKEOP_UMUL &&
+            (firstExpr->arg0 == arg1) && (firstExpr->arg1.getLiteralValue()))
         {
-            auto factor = expr0->arg1->getLiteralValue()->unsignedInt() + 1u;
-            return Expression{FAKEOP_UMUL, expr0->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+            auto factor = firstExpr->arg1.getLiteralValue()->unsignedInt() + 1u;
+            return std::make_shared<Expression>(
+                FAKEOP_UMUL, firstExpr->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco);
         }
-        if(allowFakeOperations && code == OP_ADD && expr0 && expr0->code == FAKEOP_UMUL && expr0->arg1 &&
-            expr0->arg1 == arg1 && (expr0->arg0.getLiteralValue()))
+        if(allowFakeOperations && code == OP_ADD && firstExpr && firstExpr->code == FAKEOP_UMUL && firstExpr->arg1 &&
+            firstExpr->arg1 == arg1 && (firstExpr->arg0.getLiteralValue()))
         {
-            auto factor = expr0->arg0.getLiteralValue()->unsignedInt() + 1u;
-            return Expression{
-                FAKEOP_UMUL, *expr0->arg1, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+            auto factor = firstExpr->arg0.getLiteralValue()->unsignedInt() + 1u;
+            return std::make_shared<Expression>(
+                FAKEOP_UMUL, firstExpr->arg1, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco);
         }
-        if(allowFakeOperations && code == OP_ADD && expr1 && expr1->code == FAKEOP_UMUL && (expr1->arg0 == arg0) &&
-            (expr1->arg1 & &Value::getLiteralValue))
+        if(allowFakeOperations && code == OP_ADD && secondExpr && secondExpr->code == FAKEOP_UMUL &&
+            (secondExpr->arg0 == arg0) && (secondExpr->arg1.getLiteralValue()))
         {
-            auto factor = expr1->arg1->getLiteralValue()->unsignedInt() + 1u;
-            return Expression{FAKEOP_UMUL, expr1->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+            auto factor = secondExpr->arg1.getLiteralValue()->unsignedInt() + 1u;
+            return std::make_shared<Expression>(
+                FAKEOP_UMUL, secondExpr->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco);
         }
-        if(allowFakeOperations && code == OP_ADD && expr1 && expr1->code == FAKEOP_UMUL && expr1->arg1 &&
-            expr1->arg1 == arg0 && (expr1->arg0.getLiteralValue()))
+        if(allowFakeOperations && code == OP_ADD && secondExpr && secondExpr->code == FAKEOP_UMUL && secondExpr->arg1 &&
+            secondExpr->arg1 == arg0 && (secondExpr->arg0.getLiteralValue()))
         {
-            auto factor = expr1->arg0.getLiteralValue()->unsignedInt() + 1u;
-            return Expression{FAKEOP_UMUL, arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+            auto factor = secondExpr->arg0.getLiteralValue()->unsignedInt() + 1u;
+            return std::make_shared<Expression>(
+                FAKEOP_UMUL, arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco);
         }
 
         // (a * constA) - a = (constA * a) - a = a * (constA - 1)
-        if(allowFakeOperations && code == OP_SUB && expr0 && expr0->code == FAKEOP_UMUL && (expr0->arg0 == arg1) &&
-            (expr0->arg1 & &Value::getLiteralValue))
+        if(allowFakeOperations && code == OP_SUB && firstExpr && firstExpr->code == FAKEOP_UMUL &&
+            (firstExpr->arg0 == arg1) && (firstExpr->arg1.getLiteralValue()))
         {
-            auto factor = expr0->arg1->getLiteralValue()->unsignedInt() - 1u;
-            return Expression{FAKEOP_UMUL, expr0->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+            auto factor = firstExpr->arg1.getLiteralValue()->unsignedInt() - 1u;
+            return std::make_shared<Expression>(
+                FAKEOP_UMUL, firstExpr->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco);
         }
-        if(allowFakeOperations && code == OP_SUB && expr0 && expr0->code == FAKEOP_UMUL && expr0->arg1 &&
-            expr0->arg1 == arg1 && (expr0->arg0.getLiteralValue()))
+        if(allowFakeOperations && code == OP_SUB && firstExpr && firstExpr->code == FAKEOP_UMUL && firstExpr->arg1 &&
+            firstExpr->arg1 == arg1 && (firstExpr->arg0.getLiteralValue()))
         {
-            auto factor = expr0->arg0.getLiteralValue()->unsignedInt() - 1u;
-            return Expression{
-                FAKEOP_UMUL, *expr0->arg1, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco};
+            auto factor = firstExpr->arg0.getLiteralValue()->unsignedInt() - 1u;
+            return std::make_shared<Expression>(
+                FAKEOP_UMUL, firstExpr->arg1, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco);
         }
 
         // TODO
@@ -428,20 +578,37 @@ Expression Expression::combineWith(const FastMap<const Local*, Expression>& inpu
         // (a * const) + a = a + (a * const) = (const * a) + a = a + (const * a) -> a * (const + 1)
     }
 
-    return *this;
+    // in any other case, just build an expression tree
+    if((firstExpr && !arg0.checkExpression()) || (secondExpr && !arg1.checkExpression()))
+    {
+        // there is a first/second expression, which was not set before (e.g. set via the input), set is as first/second
+        // expression
+        SubExpression newFirst = arg0;
+        SubExpression newSecond = arg1;
+        if(firstExpr)
+            newFirst = SubExpression{firstExpr};
+        if(secondExpr)
+            newSecond = SubExpression{secondExpr};
+        return std::make_shared<Expression>(code, newFirst, newSecond, unpackMode, packMode, deco);
+    }
+
+    return shared_from_this();
 }
 
 Optional<Value> Expression::getConvergenceLimit(Optional<Literal> initialValue) const
 {
     if(auto constant = getConstantExpression())
         return constant;
-    if(arg1 && arg1->checkLocal() && arg0.checkLocal() && arg0.local() != arg1->local())
+    if(arg1 && arg1.checkLocal() && arg0.checkLocal() && arg0.checkLocal() != arg1.checkLocal())
         // multiple different locals
         return NO_VALUE;
     bool leftIsLocal = arg0.checkLocal();
-    bool rightIsLocal = arg1 && arg1->checkLocal();
-    Optional<Literal> constantLiteral =
-        (arg0.getConstantValue() | (arg1 ? arg1->getConstantValue() : NO_VALUE)) & &Value::getLiteralValue;
+    bool rightIsLocal = arg1 && arg1.checkLocal();
+    auto firstVal = arg0.checkValue();
+    auto secondVal = arg1.checkValue();
+    Optional<Literal> constantLiteral = ((firstVal ? firstVal->getConstantValue() : NO_VALUE) |
+                                            (secondVal ? secondVal->getConstantValue() : NO_VALUE)) &
+        &Value::getLiteralValue;
 
     if(!leftIsLocal && !rightIsLocal)
         return NO_VALUE;
@@ -586,18 +753,48 @@ Optional<Value> Expression::getConvergenceLimit(Optional<Literal> initialValue) 
     return NO_VALUE;
 }
 
+intermediate::IntermediateInstruction* Expression::toInstruction(const Value& output) const
+{
+    if(code.opAdd > 32 || code.opMul > 32)
+        // check for fake opcodes
+        return nullptr;
+
+    intermediate::IntermediateInstruction* inst;
+    auto firstVal = arg0.checkValue();
+    auto secondVal = arg1.checkValue();
+    if(firstVal && code.numOperands == 1)
+        inst = new intermediate::Operation(code, output, *firstVal);
+    else if(firstVal && secondVal)
+        inst = new intermediate::Operation(code, output, *firstVal, *secondVal);
+    else
+        // if either input is an expression, there is no instructions generating the values (and we don't know the local
+        // to read), so we cannot generate the instruction.
+        return nullptr;
+    inst->setUnpackMode(unpackMode);
+    inst->setPackMode(packMode);
+    inst->addDecorations(deco);
+    return inst;
+}
+
+size_t std::hash<vc4c::SubExpression>::operator()(const vc4c::SubExpression& expr) const noexcept
+{
+    std::hash<SubExpression::Base> baseHash;
+    return baseHash(expr);
+}
+
 size_t std::hash<vc4c::Expression>::operator()(const vc4c::Expression& expr) const noexcept
 {
     hash<const char*> nameHash;
-    hash<Value> valHash;
+    hash<SubExpression> valHash;
 
-    return nameHash(expr.code.name) ^ valHash(expr.arg0) ^ (expr.arg1 ? valHash(expr.arg1.value()) : 0) ^
+    return nameHash(expr.code.name) ^ valHash(expr.arg0) ^ (expr.arg1 ? valHash(expr.arg1) : 0) ^
         expr.unpackMode.value ^ expr.packMode.value ^ static_cast<unsigned>(expr.deco);
 }
 
-Expression operators::ExpressionWrapper::operator=(OperationWrapper&& op) &&
+std::shared_ptr<Expression> operators::ExpressionWrapper::operator=(OperationWrapper&& op) &&
 {
     if(op.signal.hasSideEffects() || op.setFlags == SetFlag::SET_FLAGS)
         throw CompilationError(CompilationStep::GENERAL, "Expressions cannot have side-effects!");
-    return Expression{op.op, std::move(op.arg0), std::move(op.arg1), op.unpackMode, op.packMode, op.decoration};
+    return std::make_shared<Expression>(
+        op.op, std::move(op.arg0), std::move(op.arg1), op.unpackMode, op.packMode, op.decoration);
 }

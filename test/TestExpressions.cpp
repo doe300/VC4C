@@ -123,18 +123,18 @@ void TestExpressions::testCombination()
     Configuration config{};
     Module mod{config};
     Method method(mod);
-    FastMap<const Local*, Expression> expressions;
+    FastMap<const Local*, std::shared_ptr<Expression>> expressions;
 
     auto loc0 = method.addNewLocal(TYPE_INT32);
     auto loc0Plus1 = expression(loc0 + INT_ONE);
     auto loc1 = method.addNewLocal(TYPE_INT32);
     expressions.emplace(loc1.local(), loc0Plus1);
-    TEST_ASSERT_EQUALS(loc0Plus1, loc0Plus1.combineWith(expressions))
+    TEST_ASSERT_EQUALS(loc0Plus1, loc0Plus1->combineWith(expressions))
 
     auto moveLoc1 = expression(loc1 | loc1);
     auto loc2 = method.addNewLocal(TYPE_INT32);
     expressions.emplace(loc2.local(), moveLoc1);
-    TEST_ASSERT_EQUALS(loc0Plus1, moveLoc1.combineWith(expressions))
+    TEST_ASSERT_EQUALS(loc0Plus1, moveLoc1->combineWith(expressions))
 
     auto loc2Plus1 = expression(loc2 + INT_ONE);
     auto loc3 = method.addNewLocal(TYPE_INT32);
@@ -146,7 +146,7 @@ void TestExpressions::testCombination()
 
     {
         auto loc2Pack = expression((loc2 | INT_ONE, PACK_32_16B));
-        TEST_ASSERT_EQUALS(loc2Pack, loc2Pack.combineWith(expressions))
+        TEST_ASSERT_EQUALS(*loc2Pack, *loc2Pack->combineWith(expressions))
     }
 
     {
@@ -156,55 +156,55 @@ void TestExpressions::testCombination()
         expressions.emplace(loc4.local(), notLoc3);
 
         Expression notLoc4{OP_NOT, loc4, NO_VALUE};
-        TEST_ASSERT_EQUALS(moveLoc3, notLoc4.combineWith(expressions))
+        TEST_ASSERT_EQUALS(moveLoc3, *notLoc4.combineWith(expressions))
     }
 
     {
         // 2 operands, self-inverse
         auto selfInverse = expression(loc3 - loc3);
-        TEST_ASSERT_EQUALS(moveZero, selfInverse.combineWith(expressions))
+        TEST_ASSERT_EQUALS(moveZero, *selfInverse->combineWith(expressions))
 
         auto someLocal = method.addNewLocal(TYPE_INT32);
         expressions.emplace(someLocal.local(), selfInverse);
         selfInverse = expression(someLocal - someLocal);
         Expression moveZeroFloat{OP_V8MIN, FLOAT_ZERO, FLOAT_ZERO};
-        TEST_ASSERT_EQUALS(moveZeroFloat, selfInverse.combineWith(expressions))
+        TEST_ASSERT_EQUALS(moveZeroFloat, *selfInverse->combineWith(expressions))
     }
 
     {
         // 2 operands idempotent, identity and absorbing
         auto andLoc3 = expression(loc3 & loc3);
-        TEST_ASSERT_EQUALS(loc0Plus2, andLoc3.combineWith(expressions))
+        TEST_ASSERT_EQUALS(loc0Plus2, *andLoc3->combineWith(expressions))
 
         Expression andLoc3Id{OP_AND, loc3, INT_MINUS_ONE};
-        TEST_ASSERT_EQUALS(moveLoc3, andLoc3Id.combineWith(expressions))
+        TEST_ASSERT_EQUALS(*loc2Plus1, *andLoc3Id.combineWith(expressions))
 
         Expression andIdLoc3{OP_AND, INT_MINUS_ONE, loc3};
-        TEST_ASSERT_EQUALS(moveLoc3, andIdLoc3.combineWith(expressions))
+        TEST_ASSERT_EQUALS(*loc2Plus1, *andIdLoc3.combineWith(expressions))
 
         Expression andLoc3Absorb{OP_AND, loc3, INT_ZERO};
-        TEST_ASSERT_EQUALS(moveZero, andLoc3Absorb.combineWith(expressions))
+        TEST_ASSERT_EQUALS(moveZero, *andLoc3Absorb.combineWith(expressions))
 
         Expression andAbsorbLoc3{OP_AND, INT_ZERO, loc3};
-        TEST_ASSERT_EQUALS(moveZero, andAbsorbLoc3.combineWith(expressions))
+        TEST_ASSERT_EQUALS(moveZero, *andAbsorbLoc3.combineWith(expressions))
     }
 
     {
         // 2 operands associativity (and commutativity) with constants
-        Expression onePlusLoc0{OP_ADD, INT_ONE, loc0};
+        auto onePlusLoc0 = std::make_shared<Expression>(OP_ADD, INT_ONE, loc0);
         auto loc4 = method.addNewLocal(TYPE_INT32);
         expressions.emplace(loc4.local(), onePlusLoc0);
         Expression onePlusLoc4{OP_ADD, INT_ONE, loc4};
         // x + 2 = 1 + (1 + x)
-        TEST_ASSERT_EQUALS(loc0Plus2, onePlusLoc4.combineWith(expressions))
+        TEST_ASSERT_EQUALS(loc0Plus2, *onePlusLoc4.combineWith(expressions))
         // x + 2 = (x + 1) + 1
-        TEST_ASSERT_EQUALS(loc0Plus2, loc2Plus1.combineWith(expressions))
+        TEST_ASSERT_EQUALS(loc0Plus2, *loc2Plus1->combineWith(expressions))
         // x + 2 = 1 + (x + 1)
         Expression onePlusLoc2{OP_ADD, INT_ONE, loc2};
-        TEST_ASSERT_EQUALS(loc0Plus2, onePlusLoc2.combineWith(expressions))
+        TEST_ASSERT_EQUALS(loc0Plus2, *onePlusLoc2.combineWith(expressions))
         // x + 2 = (1 + x) + 1
         Expression loc4Plus1{OP_ADD, loc4, INT_ONE};
-        TEST_ASSERT_EQUALS(loc0Plus2, loc4Plus1.combineWith(expressions))
+        TEST_ASSERT_EQUALS(loc0Plus2, *loc4Plus1.combineWith(expressions))
     }
 
     {
@@ -212,37 +212,37 @@ void TestExpressions::testCombination()
         auto a = method.addNewLocal(TYPE_FLOAT);
         auto b = method.addNewLocal(TYPE_FLOAT);
         auto c = method.addNewLocal(TYPE_FLOAT);
-        Expression minAB{OP_FMIN, a, b};
+        auto minAB = std::make_shared<Expression>(OP_FMIN, a, b);
         expressions.emplace(c.local(), minAB);
         // min(a, min(a, b)) = min(a, b)
         Expression minAC{OP_FMIN, a, c};
-        TEST_ASSERT_EQUALS(minAB, minAC.combineWith(expressions))
+        TEST_ASSERT_EQUALS(*minAB, *minAC.combineWith(expressions))
         // min(min(a, b), b) = min(a, b)
         Expression minCB{OP_FMIN, c, b};
-        TEST_ASSERT_EQUALS(minAB, minCB.combineWith(expressions))
+        TEST_ASSERT_EQUALS(*minAB, *minCB.combineWith(expressions))
         // min(b, min(a, b)) = min(a, b)
         Expression minBC{OP_FMIN, b, c};
-        TEST_ASSERT_EQUALS(minAB, minBC.combineWith(expressions))
+        TEST_ASSERT_EQUALS(*minAB, *minBC.combineWith(expressions))
         // min(min(a, b), a) = min(a, b)
         Expression minCA{OP_FMIN, c, a};
-        TEST_ASSERT_EQUALS(minAB, minCA.combineWith(expressions))
+        TEST_ASSERT_EQUALS(*minAB, *minCA.combineWith(expressions))
     }
 
     {
         // 2 operands distributivity
         auto a = method.addNewLocal(TYPE_FLOAT);
 
-        Expression aMul2{OP_FMUL, a, Value(2.0_lit, TYPE_FLOAT)};
+        auto aMul2 = std::make_shared<Expression>(OP_FMUL, a, Value(2.0_lit, TYPE_FLOAT));
         auto a2 = method.addNewLocal(TYPE_FLOAT);
         expressions.emplace(a2.local(), aMul2);
-        Expression aMul3{OP_FMUL, a, Value(3.0_lit, TYPE_FLOAT)};
+        auto aMul3 = std::make_shared<Expression>(OP_FMUL, a, Value(3.0_lit, TYPE_FLOAT));
         auto a3 = method.addNewLocal(TYPE_FLOAT);
         expressions.emplace(a3.local(), aMul3);
 
-        Expression twoMulA{OP_FMUL, Value(2.0_lit, TYPE_FLOAT), a};
+        auto twoMulA = std::make_shared<Expression>(OP_FMUL, Value(2.0_lit, TYPE_FLOAT), a);
         auto twoA = method.addNewLocal(TYPE_FLOAT);
         expressions.emplace(twoA.local(), twoMulA);
-        Expression threeMulA{OP_FMUL, Value(3.0_lit, TYPE_FLOAT), a};
+        auto threeMulA = std::make_shared<Expression>(OP_FMUL, Value(3.0_lit, TYPE_FLOAT), a);
         auto threeA = method.addNewLocal(TYPE_FLOAT);
         expressions.emplace(threeA.local(), threeMulA);
 
@@ -250,10 +250,10 @@ void TestExpressions::testCombination()
 
         // (a * 2) + (a * 3) = a * (2 + 3)
         Expression a2PlusA3{OP_FADD, a2, a3};
-        TEST_ASSERT_EQUALS(aMul5, a2PlusA3.combineWith(expressions))
+        TEST_ASSERT_EQUALS(aMul5, *a2PlusA3.combineWith(expressions))
         // (2 * a) + (3 * a) = (2 + 3) * a
         Expression twoAPlusThreeA{OP_FADD, twoA, threeA};
-        TEST_ASSERT_EQUALS(aMul5, twoAPlusThreeA.combineWith(expressions))
+        TEST_ASSERT_EQUALS(aMul5, *twoAPlusThreeA.combineWith(expressions))
 
         // XXX tests for general case, when added
     }
@@ -269,73 +269,73 @@ void TestExpressions::testCombination()
         expressions.emplace(inner.local(), innerMul);
         auto outerAdd = expression(inner + a);
         Expression result{OP_FMUL, a, Value(Literal(43.0f), TYPE_FLOAT)};
-        TEST_ASSERT_EQUALS(result, outerAdd.combineWith(expressions))
+        TEST_ASSERT_EQUALS(result, *outerAdd->combineWith(expressions))
 
         // fadd(fmul(constB, a), a) = fmul(a, constB+1)
         innerMul = expression(Value(Literal(42.0f), TYPE_FLOAT) * a);
         expressions.at(inner.local()) = innerMul;
         outerAdd = expression(inner + a);
         result = Expression{OP_FMUL, a, Value(Literal(43.0f), TYPE_FLOAT)};
-        TEST_ASSERT_EQUALS(result, outerAdd.combineWith(expressions))
+        TEST_ASSERT_EQUALS(result, *outerAdd->combineWith(expressions))
 
         // fadd(a, fmul(a, constB)) = fmul(a, constB+1)
         innerMul = expression(a * Value(Literal(42.0f), TYPE_FLOAT));
         expressions.at(inner.local()) = innerMul;
         outerAdd = expression(a + inner);
         result = Expression{OP_FMUL, a, Value(Literal(43.0f), TYPE_FLOAT)};
-        TEST_ASSERT_EQUALS(result, outerAdd.combineWith(expressions))
+        TEST_ASSERT_EQUALS(result, *outerAdd->combineWith(expressions))
 
         // fadd(a, fmul(constB, a)) = fmul(a, constB+1)
         innerMul = expression(Value(Literal(42.0f), TYPE_FLOAT) * a);
         expressions.at(inner.local()) = innerMul;
         outerAdd = expression(a + inner);
         result = Expression{OP_FMUL, a, Value(Literal(43.0f), TYPE_FLOAT)};
-        TEST_ASSERT_EQUALS(result, outerAdd.combineWith(expressions))
+        TEST_ASSERT_EQUALS(result, *outerAdd->combineWith(expressions))
 
         // (a + b) - a = b
         auto innerAdd = expression(a + b);
         expressions.at(inner.local()) = innerAdd;
         auto outer = expression(inner - a);
         result = Expression{OP_V8MIN, b, b};
-        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions))
 
         // (a + b) - b = a
         outer = expression(inner - b);
         result = Expression{OP_V8MIN, a, a};
-        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions))
 
         // (a - b) + b = a
         auto innerSub = expression(a - b);
         expressions.at(inner.local()) = innerSub;
         outer = expression(inner + b);
         result = Expression{OP_V8MIN, a, a};
-        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions))
 
         // (a - b) - a = -b
         outer = expression(inner - a);
         result = Expression{OP_FSUB, FLOAT_ZERO, b};
-        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions))
 
         // a + (b - a) = b
         innerSub = expression(b - a);
         expressions.at(inner.local()) = innerSub;
         outer = expression(a + inner);
         result = Expression{OP_V8MIN, b, b};
-        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions))
 
         // a - (b + a) = -b
         innerAdd = expression(b + a);
         expressions.at(inner.local()) = innerAdd;
         outer = expression(a - inner);
         result = Expression{OP_FSUB, FLOAT_ZERO, b};
-        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions))
 
         // a - (a + b) = -b
         innerAdd = expression(a + b);
         expressions.at(inner.local()) = innerAdd;
         outer = expression(a - inner);
         result = Expression{OP_FSUB, FLOAT_ZERO, b};
-        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions))
 
         // (a << const) + a = a + (a << const) -> a * ((1 << const) + 1)
         auto innerShift = expression(loc0 << 12_val);
@@ -343,68 +343,101 @@ void TestExpressions::testCombination()
         expressions.emplace(inner.local(), innerShift);
         outer = expression(inner + loc0);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 4097_val};
-        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
+
+        outer = expression(loc0 + inner);
+        result = Expression{Expression::FAKEOP_UMUL, loc0, 4097_val};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
 
         // (a << const) - a = a * ((1 << const) - 1)
         outer = expression(inner - loc0);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 4095_val};
-        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
 
-        // TODO is somehow not combined!
-        // // (a * constA) << constB = (constA * a) << constB -> a * (constA << constB)
-        // innerMul = Expression{Expression::FAKEOP_UMUL, loc0, 27_val};
-        // expressions.emplace(inner.local(), innerMul);
-        // outer = expression(inner << 13_val);
-        // result = Expression{Expression::FAKEOP_UMUL, loc0, 221184_val};
-        // TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+        // (a * constA) << constB = (constA * a) << constB -> a * (constA << constB)
+        innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, loc0, 27_val);
+        expressions.at(inner.local()) = innerMul;
+        outer = expression(inner << 13_val);
+        result = Expression{Expression::FAKEOP_UMUL, loc0, 221184_val};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
 
-        // innerMul = Expression{Expression::FAKEOP_UMUL, 27_val, loc0};
-        // expressions.emplace(inner.local(), innerMul);
-        // outer = expression(inner << 13_val);
-        // result = Expression{Expression::FAKEOP_UMUL, loc0, 221184_val};
-        // TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+        innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 27_val, loc0);
+        expressions.at(inner.local()) = innerMul;
+        outer = expression(inner << 13_val);
+        result = Expression{Expression::FAKEOP_UMUL, loc0, 221184_val};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
 
         // (a * constA) + a = a * (constA + 1)
-        innerMul = Expression{Expression::FAKEOP_UMUL, loc0, 17_val};
+        innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, loc0, 17_val);
         expressions.at(inner.local()) = innerMul;
         outer = expression(inner + loc0);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 18_val};
-        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
 
         // (constA * a) + a = a * (constA + 1)
-        innerMul = Expression{Expression::FAKEOP_UMUL, 17_val, loc0};
+        innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 17_val, loc0);
         expressions.at(inner.local()) = innerMul;
         outer = expression(inner + loc0);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 18_val};
-        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
 
         // a + (a * constA) = a * (constA + 1)
-        innerMul = Expression{Expression::FAKEOP_UMUL, loc0, 17_val};
+        innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, loc0, 17_val);
         expressions.at(inner.local()) = innerMul;
         outer = expression(loc0 + inner);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 18_val};
-        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
 
         // a + (constA * a) = a * (constA + 1)
-        innerMul = Expression{Expression::FAKEOP_UMUL, 17_val, loc0};
+        innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 17_val, loc0);
         expressions.at(inner.local()) = innerMul;
         outer = expression(loc0 + inner);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 18_val};
-        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
 
         // (a * constA) - a = a * (constA - 1)
-        innerMul = Expression{Expression::FAKEOP_UMUL, loc0, 17_val};
+        innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, loc0, 17_val);
         expressions.at(inner.local()) = innerMul;
         outer = expression(inner - loc0);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 16_val};
-        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
 
         // (constA * a) - a = a * (constA - 1)
-        innerMul = Expression{Expression::FAKEOP_UMUL, 17_val, loc0};
+        innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 17_val, loc0);
         expressions.at(inner.local()) = innerMul;
         outer = expression(inner - loc0);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 16_val};
-        TEST_ASSERT_EQUALS(result, outer.combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
+    }
+
+    {
+        // special cases with sub-expression
+
+        // f(f(a)) = a
+        auto someLoc = method.addNewLocal(TYPE_INT32);
+        auto subExpr = std::make_shared<Expression>(OP_MUL24, someLoc, someLoc);
+        auto middleExp = std::make_shared<Expression>(OP_NOT, subExpr);
+        auto outer = std::make_shared<Expression>(OP_NOT, middleExp);
+        // pointer-equality checked on purpose!
+        TEST_ASSERT_EQUALS(subExpr, outer->combineWith(expressions))
+
+        // f(a, a) = a
+        outer = std::make_shared<Expression>(OP_AND, subExpr, subExpr);
+        // pointer-equality checked on purpose!
+        TEST_ASSERT_EQUALS(subExpr, outer->combineWith(expressions))
+
+        // (a + b) - a = b
+        auto someExpr = std::make_shared<Expression>(OP_MUL24, someLoc, someLoc);
+        subExpr = std::make_shared<Expression>(OP_ADD, someLoc, someExpr);
+        outer = std::make_shared<Expression>(OP_SUB, subExpr, someLoc);
+        // pointer-equality checked on purpose!
+        TEST_ASSERT_EQUALS(someExpr, outer->combineWith(expressions))
+
+        // a + (b - a) = b
+        subExpr = std::make_shared<Expression>(OP_SUB, someExpr, someLoc);
+        outer = std::make_shared<Expression>(OP_ADD, someLoc, subExpr);
+        // pointer-equality checked on purpose!
+        TEST_ASSERT_EQUALS(someExpr, outer->combineWith(expressions))
     }
 }
 
@@ -425,43 +458,43 @@ void TestExpressions::testConvergence()
     Value intMax = 0x7FFFFFFF_val;
 
     // fadd
-    TEST_ASSERT(!expression(floatVal + floatVal).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(FLOAT_INF, expression(floatVal + floatVal).getConvergenceLimit(floatPos.literal()))
-    TEST_ASSERT_EQUALS(FLOAT_NEG_INF, expression(floatVal + floatVal).getConvergenceLimit(floatNeg.literal()))
-    TEST_ASSERT_EQUALS(FLOAT_INF, expression(floatVal + floatPos).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(FLOAT_INF, expression(floatPos + floatVal).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(FLOAT_NEG_INF, expression(floatVal + floatNeg).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(FLOAT_NEG_INF, expression(floatNeg + floatVal).getConvergenceLimit())
-    TEST_ASSERT(!expression(floatVal + FLOAT_ZERO).getConvergenceLimit())
-    TEST_ASSERT(!expression(FLOAT_ZERO + floatVal).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(floatPos, expression(floatVal + FLOAT_ZERO).getConvergenceLimit(floatPos.literal()))
-    TEST_ASSERT_EQUALS(floatPos, expression(FLOAT_ZERO + floatVal).getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT(!expression(floatVal + floatVal)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(FLOAT_INF, expression(floatVal + floatVal)->getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT_EQUALS(FLOAT_NEG_INF, expression(floatVal + floatVal)->getConvergenceLimit(floatNeg.literal()))
+    TEST_ASSERT_EQUALS(FLOAT_INF, expression(floatVal + floatPos)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(FLOAT_INF, expression(floatPos + floatVal)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(FLOAT_NEG_INF, expression(floatVal + floatNeg)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(FLOAT_NEG_INF, expression(floatNeg + floatVal)->getConvergenceLimit())
+    TEST_ASSERT(!expression(floatVal + FLOAT_ZERO)->getConvergenceLimit())
+    TEST_ASSERT(!expression(FLOAT_ZERO + floatVal)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(floatPos, expression(floatVal + FLOAT_ZERO)->getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT_EQUALS(floatPos, expression(FLOAT_ZERO + floatVal)->getConvergenceLimit(floatPos.literal()))
 
     // fsub
-    TEST_ASSERT_EQUALS(FLOAT_ZERO, expression(floatVal - floatVal).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(FLOAT_NEG_INF, expression(floatVal - floatPos).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(FLOAT_INF, expression(floatVal - floatNeg).getConvergenceLimit())
-    TEST_ASSERT(!expression(floatPos - floatVal).getConvergenceLimit())
-    TEST_ASSERT(!expression(floatNeg - floatVal).getConvergenceLimit())
-    TEST_ASSERT(!expression(floatVal - FLOAT_ZERO).getConvergenceLimit())
-    TEST_ASSERT(!expression(FLOAT_ZERO - floatVal).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(floatPos, expression(floatVal - FLOAT_ZERO).getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT_EQUALS(FLOAT_ZERO, expression(floatVal - floatVal)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(FLOAT_NEG_INF, expression(floatVal - floatPos)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(FLOAT_INF, expression(floatVal - floatNeg)->getConvergenceLimit())
+    TEST_ASSERT(!expression(floatPos - floatVal)->getConvergenceLimit())
+    TEST_ASSERT(!expression(floatNeg - floatVal)->getConvergenceLimit())
+    TEST_ASSERT(!expression(floatVal - FLOAT_ZERO)->getConvergenceLimit())
+    TEST_ASSERT(!expression(FLOAT_ZERO - floatVal)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(floatPos, expression(floatVal - FLOAT_ZERO)->getConvergenceLimit(floatPos.literal()))
 
     // fmin
-    TEST_ASSERT(!expression(min(floatVal, floatVal)).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(floatNeg, expression(min(floatVal, floatPos)).getConvergenceLimit(floatNeg.literal()))
-    TEST_ASSERT_EQUALS(floatNeg, expression(min(floatVal, floatNeg)).getConvergenceLimit(floatPos.literal()))
-    TEST_ASSERT_EQUALS(floatNeg, expression(min(floatPos, floatVal)).getConvergenceLimit(floatNeg.literal()))
-    TEST_ASSERT_EQUALS(floatNeg, expression(min(floatNeg, floatVal)).getConvergenceLimit(floatPos.literal()))
-    TEST_ASSERT(!expression(min(floatNeg, floatVal)).getConvergenceLimit())
+    TEST_ASSERT(!expression(min(floatVal, floatVal))->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(floatNeg, expression(min(floatVal, floatPos))->getConvergenceLimit(floatNeg.literal()))
+    TEST_ASSERT_EQUALS(floatNeg, expression(min(floatVal, floatNeg))->getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT_EQUALS(floatNeg, expression(min(floatPos, floatVal))->getConvergenceLimit(floatNeg.literal()))
+    TEST_ASSERT_EQUALS(floatNeg, expression(min(floatNeg, floatVal))->getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT(!expression(min(floatNeg, floatVal))->getConvergenceLimit())
 
     // fmax
-    TEST_ASSERT(!expression(max(floatVal, floatVal)).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(floatPos, expression(max(floatVal, floatNeg)).getConvergenceLimit(floatPos.literal()))
-    TEST_ASSERT_EQUALS(floatPos, expression(max(floatVal, floatPos)).getConvergenceLimit(floatNeg.literal()))
-    TEST_ASSERT_EQUALS(floatPos, expression(max(floatNeg, floatVal)).getConvergenceLimit(floatPos.literal()))
-    TEST_ASSERT_EQUALS(floatPos, expression(max(floatPos, floatVal)).getConvergenceLimit(floatNeg.literal()))
-    TEST_ASSERT(!expression(max(floatNeg, floatVal)).getConvergenceLimit())
+    TEST_ASSERT(!expression(max(floatVal, floatVal))->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(floatPos, expression(max(floatVal, floatNeg))->getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT_EQUALS(floatPos, expression(max(floatVal, floatPos))->getConvergenceLimit(floatNeg.literal()))
+    TEST_ASSERT_EQUALS(floatPos, expression(max(floatNeg, floatVal))->getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT_EQUALS(floatPos, expression(max(floatPos, floatVal))->getConvergenceLimit(floatNeg.literal()))
+    TEST_ASSERT(!expression(max(floatNeg, floatVal))->getConvergenceLimit())
 
     // fminabs
     TEST_ASSERT(!(Expression{OP_FMINABS, floatVal, floatVal}).getConvergenceLimit())
@@ -483,38 +516,38 @@ void TestExpressions::testConvergence()
     TEST_ASSERT(!(Expression{OP_ITOF, intVal, NO_VALUE}).getConvergenceLimit())
 
     // add
-    TEST_ASSERT(!expression(intVal + intVal).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(intMax, expression(intVal + intVal).getConvergenceLimit(intPos.literal()))
-    TEST_ASSERT_EQUALS(intMin, expression(intVal + intVal).getConvergenceLimit(intNeg.literal()))
-    TEST_ASSERT_EQUALS(intMax, expression(intVal + intPos).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(intMax, expression(intPos + intVal).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(intMin, expression(intVal + intNeg).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(intMin, expression(intNeg + intVal).getConvergenceLimit())
-    TEST_ASSERT(!expression(intVal + INT_ZERO).getConvergenceLimit())
-    TEST_ASSERT(!expression(INT_ZERO + intVal).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(intPos, expression(intVal + INT_ZERO).getConvergenceLimit(intPos.literal()))
-    TEST_ASSERT_EQUALS(intPos, expression(INT_ZERO + intVal).getConvergenceLimit(intPos.literal()))
+    TEST_ASSERT(!expression(intVal + intVal)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intMax, expression(intVal + intVal)->getConvergenceLimit(intPos.literal()))
+    TEST_ASSERT_EQUALS(intMin, expression(intVal + intVal)->getConvergenceLimit(intNeg.literal()))
+    TEST_ASSERT_EQUALS(intMax, expression(intVal + intPos)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intMax, expression(intPos + intVal)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intMin, expression(intVal + intNeg)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intMin, expression(intNeg + intVal)->getConvergenceLimit())
+    TEST_ASSERT(!expression(intVal + INT_ZERO)->getConvergenceLimit())
+    TEST_ASSERT(!expression(INT_ZERO + intVal)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intPos, expression(intVal + INT_ZERO)->getConvergenceLimit(intPos.literal()))
+    TEST_ASSERT_EQUALS(intPos, expression(INT_ZERO + intVal)->getConvergenceLimit(intPos.literal()))
 
     // sub
-    TEST_ASSERT_EQUALS(INT_ZERO, expression(intVal - intVal).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(intMin, expression(intVal - intPos).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(intMax, expression(intVal - intNeg).getConvergenceLimit())
-    TEST_ASSERT(!expression(intPos - intVal).getConvergenceLimit())
-    TEST_ASSERT(!expression(intNeg - intVal).getConvergenceLimit())
-    TEST_ASSERT(!expression(intVal - INT_ZERO).getConvergenceLimit())
-    TEST_ASSERT(!expression(INT_ZERO - intVal).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(INT_ZERO, expression(intVal - intVal)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intMin, expression(intVal - intPos)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intMax, expression(intVal - intNeg)->getConvergenceLimit())
+    TEST_ASSERT(!expression(intPos - intVal)->getConvergenceLimit())
+    TEST_ASSERT(!expression(intNeg - intVal)->getConvergenceLimit())
+    TEST_ASSERT(!expression(intVal - INT_ZERO)->getConvergenceLimit())
+    TEST_ASSERT(!expression(INT_ZERO - intVal)->getConvergenceLimit())
 
     // shr
-    TEST_ASSERT(!expression(as_unsigned{intVal} >> intVal).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(INT_ZERO, expression(as_unsigned{intVal} >> intPos).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(INT_ZERO, expression(as_unsigned{intVal} >> intVal).getConvergenceLimit(INT_ZERO.literal()))
+    TEST_ASSERT(!expression(as_unsigned{intVal} >> intVal)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(INT_ZERO, expression(as_unsigned{intVal} >> intPos)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(INT_ZERO, expression(as_unsigned{intVal} >> intVal)->getConvergenceLimit(INT_ZERO.literal()))
 
     // asr
-    TEST_ASSERT(!expression(as_signed{intVal} >> intVal).getConvergenceLimit())
-    TEST_ASSERT(!expression(as_signed{intVal} >> intPos).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(INT_ZERO, expression(as_signed{intVal} >> intVal).getConvergenceLimit(INT_ZERO.literal()))
+    TEST_ASSERT(!expression(as_signed{intVal} >> intVal)->getConvergenceLimit())
+    TEST_ASSERT(!expression(as_signed{intVal} >> intPos)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(INT_ZERO, expression(as_signed{intVal} >> intVal)->getConvergenceLimit(INT_ZERO.literal()))
     TEST_ASSERT_EQUALS(
-        INT_MINUS_ONE, expression(as_signed{intVal} >> intVal).getConvergenceLimit(INT_MINUS_ONE.literal()))
+        INT_MINUS_ONE, expression(as_signed{intVal} >> intVal)->getConvergenceLimit(INT_MINUS_ONE.literal()))
     // XXX actually converges to -1 for all values <= 0x8000001F
 
     // ror
@@ -522,40 +555,40 @@ void TestExpressions::testConvergence()
     TEST_ASSERT(!(Expression{OP_ROR, intPos, intVal}).getConvergenceLimit())
     TEST_ASSERT(!(Expression{OP_ROR, intVal, intPos}).getConvergenceLimit())
     // shl
-    TEST_ASSERT(!expression(intVal << intVal).getConvergenceLimit())
-    TEST_ASSERT(!expression(intPos << intVal).getConvergenceLimit())
-    TEST_ASSERT(!expression(intVal << intPos).getConvergenceLimit())
+    TEST_ASSERT(!expression(intVal << intVal)->getConvergenceLimit())
+    TEST_ASSERT(!expression(intPos << intVal)->getConvergenceLimit())
+    TEST_ASSERT(!expression(intVal << intPos)->getConvergenceLimit())
 
     // min
-    TEST_ASSERT(!expression(min(intVal, intVal)).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(intNeg, expression(min(intVal, intPos)).getConvergenceLimit(intNeg.literal()))
-    TEST_ASSERT_EQUALS(intNeg, expression(min(intVal, intNeg)).getConvergenceLimit(intPos.literal()))
-    TEST_ASSERT_EQUALS(intNeg, expression(min(intPos, intVal)).getConvergenceLimit(intNeg.literal()))
-    TEST_ASSERT_EQUALS(intNeg, expression(min(intNeg, intVal)).getConvergenceLimit(intPos.literal()))
-    TEST_ASSERT(!expression(min(intNeg, intVal)).getConvergenceLimit())
+    TEST_ASSERT(!expression(min(intVal, intVal))->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intNeg, expression(min(intVal, intPos))->getConvergenceLimit(intNeg.literal()))
+    TEST_ASSERT_EQUALS(intNeg, expression(min(intVal, intNeg))->getConvergenceLimit(intPos.literal()))
+    TEST_ASSERT_EQUALS(intNeg, expression(min(intPos, intVal))->getConvergenceLimit(intNeg.literal()))
+    TEST_ASSERT_EQUALS(intNeg, expression(min(intNeg, intVal))->getConvergenceLimit(intPos.literal()))
+    TEST_ASSERT(!expression(min(intNeg, intVal))->getConvergenceLimit())
 
     // max
-    TEST_ASSERT(!expression(max(intVal, intVal)).getConvergenceLimit())
-    TEST_ASSERT_EQUALS(intPos, expression(max(intVal, intNeg)).getConvergenceLimit(intPos.literal()))
-    TEST_ASSERT_EQUALS(intPos, expression(max(intVal, intPos)).getConvergenceLimit(intNeg.literal()))
-    TEST_ASSERT_EQUALS(intPos, expression(max(intNeg, intVal)).getConvergenceLimit(intPos.literal()))
-    TEST_ASSERT_EQUALS(intPos, expression(max(intPos, intVal)).getConvergenceLimit(intNeg.literal()))
-    TEST_ASSERT(!expression(max(intNeg, intVal)).getConvergenceLimit())
+    TEST_ASSERT(!expression(max(intVal, intVal))->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intPos, expression(max(intVal, intNeg))->getConvergenceLimit(intPos.literal()))
+    TEST_ASSERT_EQUALS(intPos, expression(max(intVal, intPos))->getConvergenceLimit(intNeg.literal()))
+    TEST_ASSERT_EQUALS(intPos, expression(max(intNeg, intVal))->getConvergenceLimit(intPos.literal()))
+    TEST_ASSERT_EQUALS(intPos, expression(max(intPos, intVal))->getConvergenceLimit(intNeg.literal()))
+    TEST_ASSERT(!expression(max(intNeg, intVal))->getConvergenceLimit())
 
     // and
-    TEST_ASSERT(!expression(intVal & intVal).getConvergenceLimit())
-    TEST_ASSERT(!expression(intPos & intVal).getConvergenceLimit())
-    TEST_ASSERT(!expression(intVal & intPos).getConvergenceLimit())
+    TEST_ASSERT(!expression(intVal & intVal)->getConvergenceLimit())
+    TEST_ASSERT(!expression(intPos & intVal)->getConvergenceLimit())
+    TEST_ASSERT(!expression(intVal & intPos)->getConvergenceLimit())
     // or
-    TEST_ASSERT(!expression(intVal | intVal).getConvergenceLimit())
-    TEST_ASSERT(!expression(intPos | intVal).getConvergenceLimit())
-    TEST_ASSERT(!expression(intVal | intPos).getConvergenceLimit())
+    TEST_ASSERT(!expression(intVal | intVal)->getConvergenceLimit())
+    TEST_ASSERT(!expression(intPos | intVal)->getConvergenceLimit())
+    TEST_ASSERT(!expression(intVal | intPos)->getConvergenceLimit())
     // xor
-    TEST_ASSERT(!expression(intVal ^ intVal).getConvergenceLimit())
-    TEST_ASSERT(!expression(intPos ^ intVal).getConvergenceLimit())
-    TEST_ASSERT(!expression(intVal ^ intPos).getConvergenceLimit())
+    TEST_ASSERT(!expression(intVal ^ intVal)->getConvergenceLimit())
+    TEST_ASSERT(!expression(intPos ^ intVal)->getConvergenceLimit())
+    TEST_ASSERT(!expression(intVal ^ intPos)->getConvergenceLimit())
     // not
-    TEST_ASSERT(!expression(~intVal).getConvergenceLimit())
+    TEST_ASSERT(!expression(~intVal)->getConvergenceLimit())
 
     // clz
     TEST_ASSERT(!(Expression{OP_CLZ, intVal, NO_VALUE}).getConvergenceLimit())
@@ -573,7 +606,7 @@ void TestExpressions::testConvergence()
     // fmul
     // TODO converges for |value| </> 1 and value </==/> 0 in different directions
     // mul24
-    TEST_ASSERT(!(expression(mul24(intVal, intVal))).getConvergenceLimit())
+    TEST_ASSERT(!(expression(mul24(intVal, intVal)))->getConvergenceLimit())
     // XXX
     // V8muld
     // V8min

@@ -11,30 +11,98 @@
 #include "intermediate/IntermediateInstruction.h"
 #include "intermediate/operators.h"
 
+#include <memory>
+
 namespace vc4c
 {
+    struct Expression;
+
+    // Using shared_ptr allows to copy expressions and also to share subexpressions
+    struct SubExpression : private Variant<VariantNamespace::monostate, Value, std::shared_ptr<Expression>>
+    {
+        using Base = Variant<VariantNamespace::monostate, Value, std::shared_ptr<Expression>>;
+        explicit SubExpression() : Base(VariantNamespace::monostate{}) {}
+        SubExpression(const Value& val) : Base(val) {}
+        SubExpression(Value&& val) : Base(std::move(val)) {}
+        SubExpression(const Optional<Value>& val);
+        SubExpression(Optional<Value>&& val);
+        SubExpression(const std::shared_ptr<Expression>& child) : Base(child) {}
+
+        explicit inline operator bool() const noexcept
+        {
+            return !VariantNamespace::holds_alternative<VariantNamespace::monostate>(*this);
+        }
+
+        bool operator==(const SubExpression& other) const;
+        inline bool operator!=(const SubExpression& other) const
+        {
+            return !(*this == other);
+        }
+
+        std::string to_string() const;
+        Optional<Value> getConstantExpression() const;
+        bool isConstant() const;
+
+        inline Optional<Value> checkValue() const
+        {
+            if(auto val = VariantNamespace::get_if<Value>(this))
+                return *val;
+            return NO_VALUE;
+        }
+
+        inline std::shared_ptr<Expression> checkExpression() const
+        {
+            if(auto expr = VariantNamespace::get_if<std::shared_ptr<Expression>>(this))
+                return *expr ? (*expr) : nullptr;
+            return nullptr;
+        }
+
+        inline const Local* checkLocal() const
+        {
+            if(auto val = VariantNamespace::get_if<Value>(this))
+                return val->checkLocal();
+            return nullptr;
+        }
+
+        inline Optional<Literal> getLiteralValue() const
+        {
+            if(auto val = VariantNamespace::get_if<Value>(this))
+                return val->getLiteralValue();
+            return {};
+        }
+
+        friend std::hash<vc4c::SubExpression>;
+    };
+
     /**
      * An expression is an abstraction of an ALU operation (or load) where only the inputs and the type of operation
      * is considered.
      *
      * Expressions might not have any side-effects or conditional execution!
      */
-    struct Expression
+    struct Expression : public std::enable_shared_from_this<Expression>
     {
         // A fake operation to indicate an unsigned multiplication
         static constexpr OpCode FAKEOP_UMUL{"umul", 132, 132, 2, false, false, FlagBehavior::NONE};
 
         OpCode code;
-        Value arg0;
-        Optional<Value> arg1;
+        SubExpression arg0;
+        SubExpression arg1{};
         Unpack unpackMode = UNPACK_NOP;
         Pack packMode = PACK_NOP;
         intermediate::InstructionDecorations deco = intermediate::InstructionDecorations::NONE;
 
+        Expression(const OpCode& op, const SubExpression& first, const SubExpression& second = SubExpression{},
+            Unpack unpack = UNPACK_NOP, Pack pack = PACK_NOP, intermediate::InstructionDecorations decorations = {}) :
+            code(op),
+            arg0(first), arg1(second), unpackMode(unpack), packMode(pack), deco(decorations)
+        {
+        }
+
         /**
          * Tries to create an expression representing the single instruction
          */
-        static Optional<Expression> createExpression(const intermediate::IntermediateInstruction& instr);
+        static std::shared_ptr<Expression> createExpression(const intermediate::IntermediateInstruction& instr);
 
         /**
          * Tries to create an expression representing the calculation in the given instruction while also regarding the
@@ -43,10 +111,14 @@ namespace vc4c
          * If the optional parameter allowFakeOperations is set, the resulting expression might be an operation, which
          * can not be mapped to an instruction, e.g. the fake "umul" defined above.
          */
-        static Optional<Expression> createRecursiveExpression(const intermediate::IntermediateInstruction& instr,
+        static std::shared_ptr<Expression> createRecursiveExpression(const intermediate::IntermediateInstruction& instr,
             unsigned maxDepth = 6, bool allowFakeOperations = false);
 
         bool operator==(const Expression& other) const;
+        inline bool operator!=(const Expression& other) const
+        {
+            return !(*this == other);
+        }
 
         std::string to_string() const;
 
@@ -65,7 +137,8 @@ namespace vc4c
          *
          * Returns a copy of this expression, if no combination could be done
          */
-        Expression combineWith(const FastMap<const Local*, Expression>& inputs, bool allowFakeOperations = false) const;
+        std::shared_ptr<Expression> combineWith(
+            const FastMap<const Local*, std::shared_ptr<Expression>>& inputs, bool allowFakeOperations = false);
 
         /**
          * Returns the value this expression converges to (if it converges at all).
@@ -82,6 +155,19 @@ namespace vc4c
          *   between negative and positive values first, thus it is not considered.
          */
         Optional<Value> getConvergenceLimit(Optional<Literal> initialValue = {}) const;
+
+        /**
+         * Returns the instruction representing this expression or a nullptr of no such instruction can be formed.
+         *
+         * NOTE: Only simple expressions (without sub-expressions) can be converted to instructions!
+         */
+        intermediate::IntermediateInstruction* toInstruction(const Value& output) const;
+
+        inline Expression& addDecorations(intermediate::InstructionDecorations newDeco)
+        {
+            deco = add_flag(deco, newDeco);
+            return *this;
+        }
     };
 
     // Extends the operator syntax to create expressions from it
@@ -89,7 +175,7 @@ namespace vc4c
     {
         struct ExpressionWrapper
         {
-            NODISCARD Expression operator=(OperationWrapper&& op) &&;
+            NODISCARD std::shared_ptr<Expression> operator=(OperationWrapper&& op) &&;
         };
 
         /**
@@ -107,7 +193,7 @@ namespace vc4c
          *
          * NOTE: If the given operation wrapper has side effects, an exception will be thrown!
          */
-        NODISCARD inline Expression expression(OperationWrapper&& op)
+        NODISCARD inline std::shared_ptr<Expression> expression(OperationWrapper&& op)
         {
             return ExpressionWrapper{} = std::move(op);
         }
@@ -116,6 +202,12 @@ namespace vc4c
 
 namespace std
 {
+    template <>
+    struct hash<vc4c::SubExpression>
+    {
+        size_t operator()(const vc4c::SubExpression& expr) const noexcept;
+    };
+
     template <>
     struct hash<vc4c::Expression>
     {

@@ -867,23 +867,23 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
         // For that purpose, we also override the previous expressions on every step
         analysis::AvailableExpressionAnalysis::Cache cache{};
         analysis::AvailableExpressions expressions{};
-        FastMap<const Local*, Expression> calculatingExpressions{};
+        FastMap<const Local*, std::shared_ptr<Expression>> calculatingExpressions{};
 
         for(auto it = block.walk(); !it.isEndOfBlock(); it.nextInBlock())
         {
             if(!it.has())
                 continue;
-            Optional<Expression> expr;
+            std::shared_ptr<Expression> expr;
             std::tie(expressions, expr) = analysis::AvailableExpressionAnalysis::analyzeAvailableExpressions(
                 it.get(), expressions, cache, config.additionalOptions.maxCommonExpressionDinstance);
             if(expr)
             {
-                Expression newExpr = expr.value();
+                auto newExpr = expr;
                 if(auto out = it->checkOutputLocal())
                     // remove from cache before using the result for the expression not to depend on itself
                     calculatingExpressions.erase(out);
 
-                auto exprIt = expressions.find(expr.value());
+                auto exprIt = expressions.find(expr);
                 // replace instruction with matching expression, if the expression is not constant (no use replacing
                 // loading of constants with copies of a local initialized with a constant)
                 if(exprIt != expressions.end() && exprIt->second.first != it.get() && !expr->getConstantExpression())
@@ -895,34 +895,29 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
                         it->getOutput().value(), exprIt->second.first->getOutput().value()));
                     replacedSomething = true;
                 }
-                else if((newExpr = expr->combineWith(calculatingExpressions)) != expr)
+                else if(*(newExpr = expr->combineWith(calculatingExpressions)) != *expr)
                 {
-                    CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Rewriting expression '" << expr->to_string() << "' to '" << newExpr.to_string() << "'"
-                            << logging::endl);
+                    if(auto inst = newExpr->toInstruction(it->getOutput().value()))
+                    {
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Rewriting expression '" << expr->to_string() << "' to '" << newExpr->to_string()
+                                << "'" << logging::endl);
 
-                    if(exprIt != expressions.end() && exprIt->second.first == it.get())
-                        // reset this expression, since the mapped instruction will be overwritten
-                        expressions.erase(exprIt);
+                        if(exprIt != expressions.end() && exprIt->second.first == it.get())
+                            // reset this expression, since the mapped instruction will be overwritten
+                            expressions.erase(exprIt);
 
-                    if(newExpr.code.numOperands == 1)
-                        it.reset(new intermediate::Operation(newExpr.code, it->getOutput().value(), newExpr.arg0));
-                    else
-                        it.reset(new intermediate::Operation(
-                            newExpr.code, it->getOutput().value(), newExpr.arg0, newExpr.arg1.value()));
-                    it->setUnpackMode(newExpr.unpackMode);
-                    it->setPackMode(newExpr.packMode);
-                    it->addDecorations(newExpr.deco);
-
-                    if(auto loc = it->checkOutputLocal())
-                        calculatingExpressions.emplace(loc, newExpr);
-                    replacedSomething = true;
+                        it.reset(inst);
+                        if(auto loc = it->checkOutputLocal())
+                            calculatingExpressions.emplace(loc, newExpr);
+                        replacedSomething = true;
+                    }
                 }
 
                 if(auto out = it->checkOutputLocal())
                     // add to cache after using the result for the expression not to depend on itself
                     // NOTE: not overwriting the above emplace is on purpose
-                    calculatingExpressions.emplace(out, expr.value());
+                    calculatingExpressions.emplace(out, expr);
             }
             else if(auto loc = it->checkOutputLocal())
             {

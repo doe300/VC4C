@@ -9,6 +9,8 @@
 using namespace vc4c;
 using namespace vc4c::pattern;
 
+// TODO extend with proper new expression support
+
 InstructionPattern ValuePattern::operator=(UnaryInstructionPattern&& unary) &&
 {
     return InstructionPattern{std::move(*this), std::move(unary.operation), std::move(unary.firstArgument), anyValue(),
@@ -130,6 +132,14 @@ static bool matchesValue(
     throw CompilationError(CompilationStep::GENERAL, "Unhandled ValuePattern type");
 }
 
+static bool matchesValue(
+    const SubExpression& sub, const ValuePattern& pattern, const MatchCache& previousCache, MatchCache& newCache)
+{
+    if(auto val = sub.checkValue())
+        return matchesValue(val, pattern, previousCache, newCache);
+    return false;
+}
+
 static void updateMatch(const Optional<Value>& val, ValuePattern& pattern)
 {
     if(auto local = VariantNamespace::get_if<Placeholder<const Local*>>(&pattern.pattern))
@@ -138,6 +148,13 @@ static void updateMatch(const Optional<Value>& val, ValuePattern& pattern)
         literal->get() = val->getLiteralValue().value();
     else if(auto value = VariantNamespace::get_if<Placeholder<Value>>(&pattern.pattern))
         value->get() = val.value();
+}
+
+static void updateMatch(const SubExpression& sub, ValuePattern& pattern)
+{
+    if(auto val = sub.checkValue())
+        updateMatch(val, pattern);
+    // TODO do anything else for e.g. real sub-expressions??
 }
 
 static bool matchesOperation(

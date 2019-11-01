@@ -70,14 +70,13 @@ namespace vc4c
      *
      * Generate SVG with: "sfdp -Tsvg <input>.dot -o <output>.svg"
      */
-    template <typename Key, typename Relation, Directionality Direction>
+    template <typename Key, typename Relation, Directionality Direction,
+        typename DefaultNodeType = Node<Key, Relation, Direction>>
     class DebugGraph
     {
     public:
         template <typename U>
         using NameFunc = std::function<std::string(const U&)>;
-
-        using DefaultNodeType = Node<Key, Relation, Direction>;
 
         explicit DebugGraph(const std::string& fileName, std::size_t numNodes) : file(fileName)
         {
@@ -104,7 +103,8 @@ namespace vc4c
         }
 
         template <typename NodeType = DefaultNodeType>
-        void addNodeWithNeighbors(const NodeType& node, const NameFunc<Key>& nameFunc = NodeType::to_string,
+        void addNodeWithNeighbors(
+            const NodeType& node, const NameFunc<Key>& nameFunc = NodeType::to_string,
             const std::function<bool(const Relation&)>& weakEdgeFunc = [](const Relation& r) -> bool { return false; },
             const NameFunc<Relation>& edgeLabelFunc = [](const Relation& r) -> std::string { return ""; })
         {
@@ -139,8 +139,8 @@ namespace vc4c
         }
 
         template <typename G = Graph<Key, DefaultNodeType>>
-        static void dumpGraph(const G& graph, const std::string& fileName,
-            const NameFunc<Key>& nameFunc = G::NodeType::to_string,
+        static void dumpGraph(
+            const G& graph, const std::string& fileName, const NameFunc<Key>& nameFunc = G::NodeType::to_string,
             const std::function<bool(const Relation&)>& weakEdgeFunc = [](const Relation& r) -> bool { return false; },
             const NameFunc<Relation>& edgeLabelFunc = [](const Relation& r) -> std::string { return ""; })
         {
@@ -149,6 +149,21 @@ namespace vc4c
             {
                 debugGraph.addNodeWithNeighbors(node.second, nameFunc, weakEdgeFunc, edgeLabelFunc);
             }
+        }
+
+        void addNode(Key id, const std::string& name)
+        {
+            if(processedNodes.find(reinterpret_cast<const DefaultNodeType*>(id)) == processedNodes.end())
+            {
+                printNode(file, reinterpret_cast<uintptr_t>(id), name);
+                processedNodes.emplace(reinterpret_cast<const DefaultNodeType*>(id));
+            }
+        }
+
+        void addEdge(Key id1, Key id2, bool weakEdge, const std::string& edgeLabel, vc4c::Direction direction)
+        {
+            printEdge(file, reinterpret_cast<uintptr_t>(id1), reinterpret_cast<uintptr_t>(id2), weakEdge, direction,
+                edgeLabel);
         }
 
     private:
