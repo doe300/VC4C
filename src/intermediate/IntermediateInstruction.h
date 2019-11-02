@@ -102,7 +102,8 @@ namespace vc4c
          *
          * This can be used to determine that the associated local can only have possible values.
          *
-         * NOTE: This does only checks for the local IDs/sizes as well as the number of dimensions, if the additional flag is set!
+         * NOTE: This does only checks for the local IDs/sizes as well as the number of dimensions, if the additional
+         * flag is set!
          */
         bool isGroupBuiltin(InstructionDecorations decorations, bool includeAll);
 

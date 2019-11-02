@@ -22,14 +22,17 @@ extern TypeHolder GLOBAL_TYPE_HOLDER;
 TestInstructions::TestInstructions()
 {
     TEST_ADD(TestInstructions::testConditionCodes);
+    TEST_ADD(TestInstructions::testSignals);
     TEST_ADD(TestInstructions::testUnpackModes);
     TEST_ADD(TestInstructions::testPackModes);
     TEST_ADD(TestInstructions::testConstantSaturations);
     TEST_ADD(TestInstructions::testBitfields);
+    TEST_ADD(TestInstructions::testElementFlags);
     TEST_ADD(TestInstructions::testOpCodes);
     TEST_ADD(TestInstructions::testOpCodeProperties);
     TEST_ADD(TestInstructions::testHalfFloat);
     TEST_ADD(TestInstructions::testOpCodeFlags);
+    TEST_ADD(TestInstructions::testRegister);
     TEST_ADD(TestInstructions::testImmediates);
     TEST_ADD(TestInstructions::testSIMDVector);
     TEST_ADD(TestInstructions::testValue);
@@ -71,6 +74,44 @@ void TestInstructions::testConditionCodes()
     TEST_ASSERT_EQUALS(BranchCond::ANY_Z_SET, COND_ZERO_SET.toBranchCondition())
 }
 
+void TestInstructions::testSignals()
+{
+    TEST_ASSERT(SIGNAL_SOFT_BREAK.hasSideEffects())
+    TEST_ASSERT(!SIGNAL_NONE.hasSideEffects())
+    TEST_ASSERT(SIGNAL_SWITCH_THREAD.hasSideEffects())
+    TEST_ASSERT(SIGNAL_END_PROGRAM.hasSideEffects())
+    TEST_ASSERT(SIGNAL_WAIT_FOR_SCORE.hasSideEffects())
+    TEST_ASSERT(SIGNAL_UNLOCK_SCORE.hasSideEffects())
+    TEST_ASSERT(SIGNAL_THREAD_SWITCH_LAST.hasSideEffects())
+    TEST_ASSERT(SIGNAL_LOAD_COVERAGE.hasSideEffects())
+    TEST_ASSERT(SIGNAL_LOAD_COLOR.hasSideEffects())
+    TEST_ASSERT(SIGNAL_LOAD_COLOR_END.hasSideEffects())
+    TEST_ASSERT(SIGNAL_LOAD_TMU0.hasSideEffects())
+    TEST_ASSERT(SIGNAL_LOAD_TMU1.hasSideEffects())
+    TEST_ASSERT(SIGNAL_LOAD_ALPHA.hasSideEffects())
+    TEST_ASSERT(!SIGNAL_ALU_IMMEDIATE.hasSideEffects())
+    TEST_ASSERT(!SIGNAL_LOAD_IMMEDIATE.hasSideEffects())
+    // XXX not sure about this one, is "changing PC" a valid side-effect?
+    TEST_ASSERT(SIGNAL_BRANCH.hasSideEffects())
+
+    TEST_ASSERT(!SIGNAL_SOFT_BREAK.triggersReadOfR4())
+    TEST_ASSERT(!SIGNAL_NONE.triggersReadOfR4())
+    TEST_ASSERT(!SIGNAL_SWITCH_THREAD.triggersReadOfR4())
+    TEST_ASSERT(!SIGNAL_END_PROGRAM.triggersReadOfR4())
+    TEST_ASSERT(!SIGNAL_WAIT_FOR_SCORE.triggersReadOfR4())
+    TEST_ASSERT(!SIGNAL_UNLOCK_SCORE.triggersReadOfR4())
+    TEST_ASSERT(!SIGNAL_THREAD_SWITCH_LAST.triggersReadOfR4())
+    TEST_ASSERT(SIGNAL_LOAD_COVERAGE.triggersReadOfR4())
+    TEST_ASSERT(SIGNAL_LOAD_COLOR.triggersReadOfR4())
+    TEST_ASSERT(SIGNAL_LOAD_COLOR_END.triggersReadOfR4())
+    TEST_ASSERT(SIGNAL_LOAD_TMU0.triggersReadOfR4())
+    TEST_ASSERT(SIGNAL_LOAD_TMU1.triggersReadOfR4())
+    TEST_ASSERT(SIGNAL_LOAD_ALPHA.triggersReadOfR4())
+    TEST_ASSERT(!SIGNAL_ALU_IMMEDIATE.triggersReadOfR4())
+    TEST_ASSERT(!SIGNAL_LOAD_IMMEDIATE.triggersReadOfR4())
+    TEST_ASSERT(!SIGNAL_BRANCH.triggersReadOfR4())
+}
+
 void TestInstructions::testUnpackModes()
 {
     TEST_ASSERT_EQUALS(INT_MINUS_ONE, UNPACK_NOP(INT_MINUS_ONE))
@@ -79,6 +120,7 @@ void TestInstructions::testUnpackModes()
     TEST_ASSERT_EQUALS(INT_MINUS_ONE, UNPACK_16A_32(INT_MINUS_ONE))
     TEST_ASSERT_EQUALS(INT_MINUS_ONE, UNPACK_16A_32(Value(Literal(0xFFFF), TYPE_INT16)))
     TEST_ASSERT_EQUALS(INT_ZERO, UNPACK_16A_32(INT_ZERO))
+    TEST_ASSERT_EQUALS(ELEMENT_NUMBERS, UNPACK_16A_32(ELEMENT_NUMBERS))
 
     TEST_ASSERT_EQUALS(INT_MINUS_ONE, UNPACK_16B_32(INT_MINUS_ONE))
     TEST_ASSERT_EQUALS(INT_MINUS_ONE, UNPACK_16B_32(Value(Literal(0xFFFF0000u), TYPE_INT32)))
@@ -136,6 +178,7 @@ void TestInstructions::testPackModes()
 
     TEST_ASSERT_EQUALS(Value(Literal(0xFFFF), TYPE_INT16), PACK_32_16A(INT_MINUS_ONE, {}))
     TEST_ASSERT_EQUALS(INT_ZERO, PACK_32_16A(INT_ZERO, {}))
+    TEST_ASSERT_EQUALS(ELEMENT_NUMBERS, PACK_32_16A(ELEMENT_NUMBERS, {}))
 
     TEST_ASSERT_EQUALS(Value(Literal(0xFFFF0000u), TYPE_INT32), PACK_32_16B(INT_MINUS_ONE, {}))
     TEST_ASSERT_EQUALS(INT_ZERO, PACK_32_16B(INT_ZERO, {}))
@@ -222,6 +265,13 @@ void TestInstructions::testConstantSaturations()
     TEST_ASSERT_EQUALS(static_cast<int64_t>(0), saturate<unsigned short>(-100000))
     TEST_ASSERT_EQUALS(static_cast<int64_t>(-2147483648), saturate<int>(-(static_cast<int64_t>(1) << 40)))
     TEST_ASSERT_EQUALS(static_cast<int64_t>(0), saturate<unsigned int>(-(static_cast<int64_t>(1) << 40)))
+
+    TEST_ASSERT_EQUALS(42.0f, saturate(42.0))
+    TEST_ASSERT_EQUALS(-42.0f, saturate(-42.0))
+    TEST_ASSERT_EQUALS(
+        std::numeric_limits<float>::lowest(), saturate(2.0 * static_cast<double>(std::numeric_limits<float>::lowest())))
+    TEST_ASSERT_EQUALS(
+        std::numeric_limits<float>::max(), saturate(2.0 * static_cast<double>(std::numeric_limits<float>::max())))
 }
 
 struct TestBitfield : public Bitfield<int32_t>
@@ -247,6 +297,43 @@ void TestInstructions::testBitfields()
     t3.setTupleOffset9(0x3);
     TEST_ASSERT_EQUALS(3, t3.getTupleOffset9())
     TEST_ASSERT_EQUALS(3 << 9, t3.value)
+}
+
+void TestInstructions::testElementFlags()
+{
+    ElementFlags flags;
+    TEST_ASSERT(flags.matchesCondition(COND_ALWAYS))
+    TEST_ASSERT(!flags.matchesCondition(COND_NEVER))
+
+    flags = ElementFlags::fromValue(INT_ZERO);
+    flags.carry = flags.overflow = FlagStatus::CLEAR;
+    ElementFlags zero{FlagStatus::SET, FlagStatus::CLEAR, FlagStatus::CLEAR, FlagStatus::CLEAR};
+    TEST_ASSERT_EQUALS(zero, flags)
+    TEST_ASSERT(flags.matchesCondition(COND_ZERO_SET))
+    TEST_ASSERT(!flags.matchesCondition(COND_ZERO_CLEAR))
+    TEST_ASSERT(!flags.matchesCondition(COND_NEGATIVE_SET))
+    TEST_ASSERT(flags.matchesCondition(COND_NEGATIVE_CLEAR))
+    TEST_ASSERT(!flags.matchesCondition(COND_CARRY_SET))
+    TEST_ASSERT(flags.matchesCondition(COND_CARRY_CLEAR))
+
+    flags = ElementFlags::fromValue(INT_MINUS_ONE);
+    flags.carry = flags.overflow = FlagStatus::CLEAR;
+    ElementFlags minumsOne{FlagStatus::CLEAR, FlagStatus::SET, FlagStatus::CLEAR, FlagStatus::CLEAR};
+    TEST_ASSERT_EQUALS(minumsOne, flags)
+    TEST_ASSERT(!flags.matchesCondition(COND_ZERO_SET))
+    TEST_ASSERT(flags.matchesCondition(COND_ZERO_CLEAR))
+    TEST_ASSERT(flags.matchesCondition(COND_NEGATIVE_SET))
+    TEST_ASSERT(!flags.matchesCondition(COND_NEGATIVE_CLEAR))
+    TEST_ASSERT(!flags.matchesCondition(COND_CARRY_SET))
+    TEST_ASSERT(flags.matchesCondition(COND_CARRY_CLEAR))
+
+    flags = ElementFlags{FlagStatus::CLEAR, FlagStatus::CLEAR, FlagStatus::SET, FlagStatus::CLEAR};
+    TEST_ASSERT(!flags.matchesCondition(COND_ZERO_SET))
+    TEST_ASSERT(flags.matchesCondition(COND_ZERO_CLEAR))
+    TEST_ASSERT(!flags.matchesCondition(COND_NEGATIVE_SET))
+    TEST_ASSERT(flags.matchesCondition(COND_NEGATIVE_CLEAR))
+    TEST_ASSERT(flags.matchesCondition(COND_CARRY_SET))
+    TEST_ASSERT(!flags.matchesCondition(COND_CARRY_CLEAR))
 }
 
 void TestInstructions::testOpCodes()
@@ -687,6 +774,208 @@ void TestInstructions::testOpCodeFlags()
     // TODO v8ops
 }
 
+void TestInstructions::testRegister()
+{
+    TEST_ASSERT(!isFixed(RegisterFile::NONE))
+    TEST_ASSERT(isFixed(RegisterFile::ACCUMULATOR))
+    TEST_ASSERT(isFixed(RegisterFile::PHYSICAL_A))
+    TEST_ASSERT(isFixed(RegisterFile::PHYSICAL_B))
+    TEST_ASSERT(!isFixed(RegisterFile::PHYSICAL_ANY))
+    TEST_ASSERT(!isFixed(RegisterFile::ANY))
+
+    TEST_ASSERT((Register(RegisterFile::PHYSICAL_A, 16)).isGeneralPurpose())
+    TEST_ASSERT(!REG_UNIFORM.isGeneralPurpose())
+
+    TEST_ASSERT_EQUALS(0, REG_ACC0.getAccumulatorNumber())
+    TEST_ASSERT_EQUALS(1, REG_ACC1.getAccumulatorNumber())
+    TEST_ASSERT_EQUALS(2, REG_ACC2.getAccumulatorNumber())
+    TEST_ASSERT_EQUALS(3, REG_ACC3.getAccumulatorNumber())
+    TEST_ASSERT_EQUALS(4, REG_TMU_OUT.getAccumulatorNumber())
+    TEST_ASSERT_EQUALS(5, REG_ACC5.getAccumulatorNumber())
+    TEST_ASSERT_EQUALS(-1, (Register(RegisterFile::PHYSICAL_A, 16)).getAccumulatorNumber())
+    TEST_ASSERT_EQUALS(-1, REG_NOP.getAccumulatorNumber())
+
+    TEST_ASSERT(REG_ACC0 < REG_ACC1)
+    TEST_ASSERT((Register(RegisterFile::PHYSICAL_A, 16)) < (Register(RegisterFile::PHYSICAL_B, 1)))
+    TEST_ASSERT(REG_ACC1 > REG_ACC0)
+    TEST_ASSERT((Register(RegisterFile::PHYSICAL_B, 16)) > (Register(RegisterFile::PHYSICAL_A, 1)))
+
+    TEST_ASSERT(!REG_ACC0.isVertexPipelineMemory())
+    TEST_ASSERT(REG_VPM_IO.isVertexPipelineMemory())
+    TEST_ASSERT(REG_VPM_DMA_LOAD_BUSY.isVertexPipelineMemory())
+    TEST_ASSERT(REG_VPM_DMA_STORE_BUSY.isVertexPipelineMemory())
+    TEST_ASSERT(REG_VPM_IN_SETUP.isVertexPipelineMemory())
+    TEST_ASSERT(REG_VPM_OUT_SETUP.isVertexPipelineMemory())
+    TEST_ASSERT(REG_VPM_DMA_LOAD_WAIT.isVertexPipelineMemory())
+    TEST_ASSERT(REG_VPM_DMA_STORE_WAIT.isVertexPipelineMemory())
+    TEST_ASSERT(REG_VPM_DMA_LOAD_ADDR.isVertexPipelineMemory())
+    TEST_ASSERT(REG_VPM_DMA_STORE_ADDR.isVertexPipelineMemory())
+    TEST_ASSERT(!REG_SFU_RECIP.isVertexPipelineMemory())
+
+    TEST_ASSERT(!REG_VPM_DMA_STORE_ADDR.isSpecialFunctionsUnit())
+    TEST_ASSERT(REG_SFU_RECIP.isSpecialFunctionsUnit())
+    TEST_ASSERT(REG_SFU_RECIP_SQRT.isSpecialFunctionsUnit())
+    TEST_ASSERT(REG_SFU_LOG2.isSpecialFunctionsUnit())
+    TEST_ASSERT(REG_SFU_EXP2.isSpecialFunctionsUnit())
+    TEST_ASSERT(!REG_TMU0_ADDRESS.isSpecialFunctionsUnit())
+
+    TEST_ASSERT(!REG_SFU_EXP2.isTextureMemoryUnit())
+    TEST_ASSERT(REG_TMU0_ADDRESS.isTextureMemoryUnit())
+    TEST_ASSERT(REG_TMU0_COORD_T_V_Y.isTextureMemoryUnit())
+    TEST_ASSERT(REG_TMU0_COORD_R_BORDER_COLOR.isTextureMemoryUnit())
+    TEST_ASSERT(REG_TMU0_COORD_B_LOD_BIAS.isTextureMemoryUnit())
+    TEST_ASSERT(REG_TMU1_ADDRESS.isTextureMemoryUnit())
+    TEST_ASSERT(REG_TMU1_COORD_T_V_Y.isTextureMemoryUnit())
+    TEST_ASSERT(REG_TMU1_COORD_R_BORDER_COLOR.isTextureMemoryUnit())
+    TEST_ASSERT(REG_TMU1_COORD_B_LOD_BIAS.isTextureMemoryUnit())
+
+    for(uint8_t i = 0; i < 32; ++i)
+    {
+        TEST_ASSERT(!Register(RegisterFile::PHYSICAL_A, i).hasSideEffectsOnRead())
+        TEST_ASSERT(!Register(RegisterFile::PHYSICAL_B, i).hasSideEffectsOnRead())
+    }
+    TEST_ASSERT(REG_UNIFORM.hasSideEffectsOnRead())
+    TEST_ASSERT(REG_VARYING.hasSideEffectsOnRead())
+    TEST_ASSERT(!REG_ELEMENT_NUMBER.hasSideEffectsOnRead())
+    TEST_ASSERT(!REG_QPU_NUMBER.hasSideEffectsOnRead())
+    TEST_ASSERT(!REG_NOP.hasSideEffectsOnRead())
+    TEST_ASSERT(!REG_X_COORDS.hasSideEffectsOnRead())
+    TEST_ASSERT(!REG_Y_COORDS.hasSideEffectsOnRead())
+    TEST_ASSERT(!REG_MS_MASK.hasSideEffectsOnRead())
+    TEST_ASSERT(!REG_REV_FLAG.hasSideEffectsOnRead())
+    TEST_ASSERT(REG_VPM_IO.hasSideEffectsOnRead())
+    TEST_ASSERT(REG_VPM_DMA_LOAD_BUSY.hasSideEffectsOnRead())
+    TEST_ASSERT(REG_VPM_DMA_STORE_BUSY.hasSideEffectsOnRead())
+    TEST_ASSERT(REG_VPM_DMA_LOAD_WAIT.hasSideEffectsOnRead())
+    TEST_ASSERT(REG_VPM_DMA_STORE_WAIT.hasSideEffectsOnRead())
+    TEST_ASSERT(REG_MUTEX.hasSideEffectsOnRead())
+
+    for(uint8_t i = 0; i < 32; ++i)
+    {
+        TEST_ASSERT(!Register(RegisterFile::PHYSICAL_A, i).hasSideEffectsOnWrite())
+        TEST_ASSERT(!Register(RegisterFile::PHYSICAL_B, i).hasSideEffectsOnWrite())
+    }
+    TEST_ASSERT(!REG_ACC0.hasSideEffectsOnWrite())
+    TEST_ASSERT(!REG_ACC1.hasSideEffectsOnWrite())
+    TEST_ASSERT(!REG_ACC2.hasSideEffectsOnWrite())
+    TEST_ASSERT(!REG_ACC3.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_TMU_NOSWAP.hasSideEffectsOnWrite())
+    TEST_ASSERT(!REG_ACC5.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_HOST_INTERRUPT.hasSideEffectsOnWrite())
+    TEST_ASSERT(!REG_NOP.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_UNIFORM_ADDRESS.hasSideEffectsOnWrite())
+    // XXX don't know whether these have side-effects, so assume so for now
+    TEST_ASSERT(REG_MS_MASK.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_REV_FLAG.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_VPM_IO.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_VPM_IN_SETUP.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_VPM_OUT_SETUP.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_VPM_DMA_LOAD_ADDR.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_VPM_DMA_STORE_ADDR.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_MUTEX.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_SFU_RECIP.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_SFU_RECIP_SQRT.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_SFU_LOG2.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_SFU_EXP2.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_TMU0_ADDRESS.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_TMU0_COORD_T_V_Y.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_TMU0_COORD_R_BORDER_COLOR.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_TMU0_COORD_B_LOD_BIAS.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_TMU1_ADDRESS.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_TMU1_COORD_T_V_Y.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_TMU1_COORD_R_BORDER_COLOR.hasSideEffectsOnWrite())
+    TEST_ASSERT(REG_TMU1_COORD_B_LOD_BIAS.hasSideEffectsOnWrite())
+
+    for(uint8_t i = 0; i < 32; ++i)
+    {
+        TEST_ASSERT(Register(RegisterFile::PHYSICAL_A, i).isReadable())
+        TEST_ASSERT(Register(RegisterFile::PHYSICAL_B, i).isReadable())
+    }
+    TEST_ASSERT(REG_UNIFORM.isReadable())
+    TEST_ASSERT(REG_ACC1.isReadable())
+    TEST_ASSERT(REG_ACC2.isReadable())
+    TEST_ASSERT(REG_VARYING.isReadable())
+    TEST_ASSERT(REG_ACC5.isReadable())
+    TEST_ASSERT(REG_ELEMENT_NUMBER.isReadable())
+    TEST_ASSERT(REG_QPU_NUMBER.isReadable())
+    TEST_ASSERT(REG_NOP.isReadable())
+    TEST_ASSERT(!REG_UNIFORM_ADDRESS.isReadable())
+    TEST_ASSERT(REG_X_COORDS.isReadable())
+    TEST_ASSERT(REG_Y_COORDS.isReadable())
+    TEST_ASSERT(REG_MS_MASK.isReadable())
+    TEST_ASSERT(REG_REV_FLAG.isReadable())
+    TEST_ASSERT(REG_VPM_IO.isReadable())
+    TEST_ASSERT(REG_VPM_DMA_LOAD_BUSY.isReadable())
+    TEST_ASSERT(REG_VPM_DMA_STORE_BUSY.isReadable())
+    TEST_ASSERT(REG_VPM_DMA_LOAD_WAIT.isReadable())
+    TEST_ASSERT(REG_VPM_DMA_STORE_WAIT.isReadable())
+    TEST_ASSERT(REG_MUTEX.isReadable())
+    TEST_ASSERT(!REG_SFU_RECIP.isReadable())
+    TEST_ASSERT(!REG_SFU_RECIP_SQRT.isReadable())
+    TEST_ASSERT(!REG_SFU_LOG2.isReadable())
+    TEST_ASSERT(!REG_SFU_EXP2.isReadable())
+    TEST_ASSERT(!REG_TMU0_ADDRESS.isReadable())
+    TEST_ASSERT(!REG_TMU0_COORD_T_V_Y.isReadable())
+    TEST_ASSERT(!REG_TMU0_COORD_R_BORDER_COLOR.isReadable())
+    TEST_ASSERT(!REG_TMU0_COORD_B_LOD_BIAS.isReadable())
+    TEST_ASSERT(!REG_TMU1_ADDRESS.isReadable())
+    TEST_ASSERT(!REG_TMU1_COORD_T_V_Y.isReadable())
+    TEST_ASSERT(!REG_TMU1_COORD_R_BORDER_COLOR.isReadable())
+    TEST_ASSERT(!REG_TMU1_COORD_B_LOD_BIAS.isReadable())
+
+    for(uint8_t i = 0; i < 32; ++i)
+    {
+        TEST_ASSERT(Register(RegisterFile::PHYSICAL_A, i).isWriteable())
+        TEST_ASSERT(Register(RegisterFile::PHYSICAL_B, i).isWriteable())
+    }
+    TEST_ASSERT(REG_ACC0.isWriteable())
+    TEST_ASSERT(REG_ACC1.isWriteable())
+    TEST_ASSERT(REG_ACC2.isWriteable())
+    TEST_ASSERT(REG_ACC3.isWriteable())
+    TEST_ASSERT(REG_TMU_NOSWAP.isWriteable())
+    TEST_ASSERT(REG_ACC5.isWriteable())
+    TEST_ASSERT(REG_HOST_INTERRUPT.isWriteable())
+    TEST_ASSERT(REG_NOP.isWriteable())
+    TEST_ASSERT(REG_UNIFORM_ADDRESS.isWriteable())
+    TEST_ASSERT(REG_X_COORDS.isWriteable())
+    TEST_ASSERT(REG_Y_COORDS.isWriteable())
+    TEST_ASSERT(REG_MS_MASK.isWriteable())
+    TEST_ASSERT(REG_REV_FLAG.isWriteable())
+    TEST_ASSERT(REG_VPM_IO.isWriteable())
+    TEST_ASSERT(REG_VPM_IN_SETUP.isWriteable())
+    TEST_ASSERT(REG_VPM_OUT_SETUP.isWriteable())
+    TEST_ASSERT(REG_VPM_DMA_LOAD_ADDR.isWriteable())
+    TEST_ASSERT(REG_VPM_DMA_STORE_ADDR.isWriteable())
+    TEST_ASSERT(REG_MUTEX.isWriteable())
+    TEST_ASSERT(REG_SFU_RECIP.isWriteable())
+    TEST_ASSERT(REG_SFU_RECIP_SQRT.isWriteable())
+    TEST_ASSERT(REG_SFU_LOG2.isWriteable())
+    TEST_ASSERT(REG_SFU_EXP2.isWriteable())
+    TEST_ASSERT(REG_TMU0_ADDRESS.isWriteable())
+    TEST_ASSERT(REG_TMU0_COORD_T_V_Y.isWriteable())
+    TEST_ASSERT(REG_TMU0_COORD_R_BORDER_COLOR.isWriteable())
+    TEST_ASSERT(REG_TMU0_COORD_B_LOD_BIAS.isWriteable())
+    TEST_ASSERT(REG_TMU1_ADDRESS.isWriteable())
+    TEST_ASSERT(REG_TMU1_COORD_T_V_Y.isWriteable())
+    TEST_ASSERT(REG_TMU1_COORD_R_BORDER_COLOR.isWriteable())
+    TEST_ASSERT(REG_TMU1_COORD_B_LOD_BIAS.isWriteable())
+
+    TEST_ASSERT(REG_SFU_RECIP.triggersReadOfR4())
+    TEST_ASSERT(REG_SFU_RECIP_SQRT.triggersReadOfR4())
+    TEST_ASSERT(REG_SFU_LOG2.triggersReadOfR4())
+    TEST_ASSERT(REG_SFU_EXP2.triggersReadOfR4())
+    // TEST_ASSERT(REG_TMU0_ADDRESS.triggersReadOfR4())
+    // TEST_ASSERT(REG_TMU1_ADDRESS.triggersReadOfR4())
+
+    TEST_ASSERT(!REG_ACC0.isUnsignedInteger())
+    TEST_ASSERT(REG_ELEMENT_NUMBER.isUnsignedInteger())
+    TEST_ASSERT(REG_QPU_NUMBER.isUnsignedInteger())
+    TEST_ASSERT(REG_X_COORDS.isUnsignedInteger())
+    TEST_ASSERT(REG_Y_COORDS.isUnsignedInteger())
+    TEST_ASSERT(REG_MS_MASK.isUnsignedInteger())
+    TEST_ASSERT(REG_REV_FLAG.isUnsignedInteger())
+}
+
 void TestInstructions::testImmediates()
 {
     for(char c = -16; c < 16; ++c)
@@ -706,6 +995,13 @@ void TestInstructions::testImmediates()
         TEST_ASSERT(!!s)
         TEST_ASSERT_EQUALS(f, s->toLiteral()->real())
     }
+
+    for(uint8_t i = 1; i < 15; ++i)
+    {
+        TEST_ASSERT_EQUALS(i, SmallImmediate::fromRotationOffset(i).getRotationOffset().value())
+    }
+    TEST_THROWS(SmallImmediate::fromRotationOffset(0), CompilationError)
+    TEST_THROWS(SmallImmediate::fromRotationOffset(42), CompilationError)
 }
 
 void TestInstructions::testSIMDVector()
@@ -795,6 +1091,14 @@ void TestInstructions::testValue()
     TEST_ASSERT(!ELEMENT_NUMBER_REGISTER.isUniform())
     TEST_ASSERT(!ELEMENT_NUMBERS.isUniform())
 
+    TEST_ASSERT(INT_ONE.isUnsignedInteger())
+    TEST_ASSERT(!UNDEFINED_VALUE.isUnsignedInteger())
+    TEST_ASSERT(Value(SIMDVector{Literal{13}}, TYPE_INT32).isUnsignedInteger())
+    TEST_ASSERT(!Value(SIMDVector{}, TYPE_INT32).isUnsignedInteger())
+    TEST_ASSERT(ELEMENT_NUMBER_REGISTER.isUnsignedInteger())
+    TEST_ASSERT(Value(SmallImmediate(5), TYPE_INT8).isUnsignedInteger())
+    TEST_ASSERT(!UNIFORM_REGISTER.isUnsignedInteger())
+
     TEST_ASSERT_EQUALS(INT_ONE, INT_ONE.getConstantValue())
     TEST_ASSERT_EQUALS(UNDEFINED_VALUE, UNDEFINED_VALUE.getConstantValue())
     TEST_ASSERT_EQUALS(ELEMENT_NUMBER_REGISTER, ELEMENT_NUMBER_REGISTER.getConstantValue())
@@ -811,6 +1115,10 @@ void TestInstructions::testTypes()
     TEST_ASSERT(!type.isScalarType())
     TEST_ASSERT(!type.isUnknown())
     TEST_ASSERT(type.isVectorType())
+    TEST_ASSERT(!type.getArrayType())
+    TEST_ASSERT(!type.getPointerType())
+    TEST_ASSERT(!type.getStructType())
+    TEST_ASSERT(!type.getImageType())
 
     TEST_ASSERT_EQUALS("<3 x i17>", type.to_string())
     TEST_ASSERT_EQUALS("int", TYPE_INT32.getTypeName(true, false))
@@ -858,6 +1166,7 @@ void TestInstructions::testTypes()
         TEST_ASSERT(!type.getArrayType())
         TEST_ASSERT(!type.getStructType())
         TEST_ASSERT(!type.getImageType())
+        TEST_ASSERT(type.isIntegralType())
         TEST_ASSERT_EQUALS(TYPE_INT16.toVectorType(3), type.getElementType())
         TEST_ASSERT_EQUALS(4, type.getLogicalWidth())
         TEST_ASSERT_EQUALS(4, type.getInMemoryWidth())

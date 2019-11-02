@@ -17,15 +17,18 @@ public:
     ~TestInstructions() override;
 
     void testConditionCodes();
+    void testSignals();
     void testUnpackModes();
     void testPackModes();
     void testConstantSaturations();
     void testBitfields();
+    void testElementFlags();
     void testOpCodes();
     void testOpCodeProperties();
     void testHalfFloat();
     void testOpCodeFlags();
 
+    void testRegister();
     void testImmediates();
     void testSIMDVector();
     void testValue();

@@ -116,6 +116,43 @@ void TestExpressions::testCreation()
         TEST_ASSERT(expr2->code == OP_FSUB)
         TEST_ASSERT(!!expr2->arg1)
     }
+
+    {
+        // recursive + simplification
+        auto loc = method.addNewLocal(TYPE_INT32);
+        auto origLoc = loc;
+        for(auto i = 0; i < 10; ++i)
+        {
+            loc = assign(it, TYPE_INT32) = loc + 1_val;
+        }
+        it.previousInBlock();
+        auto expr = Expression::createRecursiveExpression(*it.get(), 13);
+        TEST_ASSERT(!!expr)
+        auto combined = expression(origLoc + 10_val);
+        TEST_ASSERT_EQUALS(*combined, *expr)
+    }
+
+    {
+        // recursive + simplification with fake operations
+        auto loc = method.addNewLocal(TYPE_INT32);
+        auto origLoc = loc;
+
+        // x * 4 ...
+        loc = assign(it, TYPE_INT32) = loc << 2_val;
+        // ... + x ...
+        loc = assign(it, TYPE_INT32) = loc + origLoc;
+        // ... * 4 ...
+        loc = assign(it, TYPE_INT32) = loc << 2_val;
+        // ... + x ...
+        loc = assign(it, TYPE_INT32) = loc + origLoc;
+        // (x * 4 + x) * 4 + x = x * 21
+
+        it.previousInBlock();
+        auto expr = Expression::createRecursiveExpression(*it.get());
+        TEST_ASSERT(!!expr)
+        auto combined = std::make_shared<Expression>(Expression::FAKEOP_UMUL, origLoc, 21_val);
+        TEST_ASSERT_EQUALS(*combined, *expr)
+    }
 }
 
 void TestExpressions::testCombination()
@@ -343,71 +380,71 @@ void TestExpressions::testCombination()
         expressions.emplace(inner.local(), innerShift);
         outer = expression(inner + loc0);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 4097_val};
-        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
 
         outer = expression(loc0 + inner);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 4097_val};
-        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
 
         // (a << const) - a = a * ((1 << const) - 1)
         outer = expression(inner - loc0);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 4095_val};
-        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
 
         // (a * constA) << constB = (constA * a) << constB -> a * (constA << constB)
         innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, loc0, 27_val);
         expressions.at(inner.local()) = innerMul;
         outer = expression(inner << 13_val);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 221184_val};
-        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
 
         innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 27_val, loc0);
         expressions.at(inner.local()) = innerMul;
         outer = expression(inner << 13_val);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 221184_val};
-        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
 
         // (a * constA) + a = a * (constA + 1)
         innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, loc0, 17_val);
         expressions.at(inner.local()) = innerMul;
         outer = expression(inner + loc0);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 18_val};
-        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
 
         // (constA * a) + a = a * (constA + 1)
         innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 17_val, loc0);
         expressions.at(inner.local()) = innerMul;
         outer = expression(inner + loc0);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 18_val};
-        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
 
         // a + (a * constA) = a * (constA + 1)
         innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, loc0, 17_val);
         expressions.at(inner.local()) = innerMul;
         outer = expression(loc0 + inner);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 18_val};
-        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
 
         // a + (constA * a) = a * (constA + 1)
         innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 17_val, loc0);
         expressions.at(inner.local()) = innerMul;
         outer = expression(loc0 + inner);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 18_val};
-        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
 
         // (a * constA) - a = a * (constA - 1)
         innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, loc0, 17_val);
         expressions.at(inner.local()) = innerMul;
         outer = expression(inner - loc0);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 16_val};
-        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
 
         // (constA * a) - a = a * (constA - 1)
         innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 17_val, loc0);
         expressions.at(inner.local()) = innerMul;
         outer = expression(inner - loc0);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 16_val};
-        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, true))
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
     }
 
     {

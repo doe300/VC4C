@@ -103,8 +103,7 @@ namespace vc4c
         }
 
         template <typename NodeType = DefaultNodeType>
-        void addNodeWithNeighbors(
-            const NodeType& node, const NameFunc<Key>& nameFunc = NodeType::to_string,
+        void addNodeWithNeighbors(const NodeType& node, const NameFunc<Key>& nameFunc = NodeType::to_string,
             const std::function<bool(const Relation&)>& weakEdgeFunc = [](const Relation& r) -> bool { return false; },
             const NameFunc<Relation>& edgeLabelFunc = [](const Relation& r) -> std::string { return ""; })
         {
@@ -139,8 +138,8 @@ namespace vc4c
         }
 
         template <typename G = Graph<Key, DefaultNodeType>>
-        static void dumpGraph(
-            const G& graph, const std::string& fileName, const NameFunc<Key>& nameFunc = G::NodeType::to_string,
+        static void dumpGraph(const G& graph, const std::string& fileName,
+            const NameFunc<Key>& nameFunc = G::NodeType::to_string,
             const std::function<bool(const Relation&)>& weakEdgeFunc = [](const Relation& r) -> bool { return false; },
             const NameFunc<Relation>& edgeLabelFunc = [](const Relation& r) -> std::string { return ""; })
         {

@@ -29,7 +29,7 @@ public:
     void testWorkItem(std::string passParamName);
     void testCRC16(std::string passParamName);
     void testPearson16(std::string passParamName);
-    
+
     void testFibonacci(std::string passParamName);
     void testStruct(std::string passParamName);
     void testCopy(std::string passParamName);

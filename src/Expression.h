@@ -84,6 +84,21 @@ namespace vc4c
     };
 
     /**
+     * Options to control the generation of expressions
+     *
+     * This is a bit-mask!
+     */
+    enum class ExpressionOptions
+    {
+        NONE = 0,
+        // Allow creating of fake (as in not represent-able in machine instructions) operation codes, e.g. simplified
+        // unsigned multiplication
+        ALLOW_FAKE_OPS = 1,
+        // Stop at any built-in work-item and work-group value, e.g. local/global ids, work-group size.
+        STOP_AT_BUILTINS = 2
+    };
+
+    /**
      * An expression is an abstraction of an ALU operation (or load) where only the inputs and the type of operation
      * is considered.
      *
@@ -121,7 +136,9 @@ namespace vc4c
          * can not be mapped to an instruction, e.g. the fake "umul" defined above.
          */
         static std::shared_ptr<Expression> createRecursiveExpression(const intermediate::IntermediateInstruction& instr,
-            unsigned maxDepth = 6, bool allowFakeOperations = false);
+            unsigned maxDepth = 6,
+            ExpressionOptions options = add_flag(
+                ExpressionOptions::ALLOW_FAKE_OPS, ExpressionOptions::STOP_AT_BUILTINS));
 
         bool operator==(const Expression& other) const;
         inline bool operator!=(const Expression& other) const
@@ -146,8 +163,8 @@ namespace vc4c
          *
          * Returns a copy of this expression, if no combination could be done
          */
-        std::shared_ptr<Expression> combineWith(
-            const FastMap<const Local*, std::shared_ptr<Expression>>& inputs, bool allowFakeOperations = false);
+        std::shared_ptr<Expression> combineWith(const FastMap<const Local*, std::shared_ptr<Expression>>& inputs,
+            ExpressionOptions options = ExpressionOptions::NONE);
 
         /**
          * Returns the value this expression converges to (if it converges at all).

@@ -122,22 +122,16 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(
  */
 static constexpr int BINARY_METHOD_OPERATIONS_THRESHOLD = 8;
 
-bool intermediate::canOptimizeMultiplicationWithUnsignedBinaryMethod(const IntrinsicOperation& op)
+bool intermediate::canOptimizeMultiplicationWithBinaryMethod(const IntrinsicOperation& op)
 {
-    bool anyDeconstructionCandidate = false;
-    bool allUnsigned = std::all_of(op.getArguments().begin(), op.getArguments().end(), [&](const Value& arg) -> bool {
+    return std::any_of(op.getArguments().begin(), op.getArguments().end(), [](const Value& arg) -> bool {
         if(arg.getLiteralValue() && arg.getLiteralValue()->signedInt() > 0)
         {
             std::bitset<32> tmp(arg.getLiteralValue()->unsignedInt());
-            if(tmp.count() <= BINARY_METHOD_OPERATIONS_THRESHOLD)
-            {
-                anyDeconstructionCandidate = true;
-                return true;
-            }
+            return tmp.count() <= BINARY_METHOD_OPERATIONS_THRESHOLD;
         }
-        return arg.isUnsignedInteger();
+        return false;
     });
-    return allUnsigned && anyDeconstructionCandidate;
 }
 
 /*
@@ -145,10 +139,9 @@ bool intermediate::canOptimizeMultiplicationWithUnsignedBinaryMethod(const Intri
  *
  * See: https://www.clear.rice.edu/comp512/Lectures/Papers/Lefevre-Multiplication.pdf, chapter 3
  *
- * NOTE: This method only works on unsigned integers! For signed integers would need to apply the same sign conversions
- * as above.
+ * NOTE: The constant multiplication factor needs to be unsigned!
  */
-InstructionWalker intermediate::intrinsifyIntegerMultiplicationViaUnsignedBinaryMethod(
+InstructionWalker intermediate::intrinsifyIntegerMultiplicationViaBinaryMethod(
     Method& method, InstructionWalker it, IntrinsicOperation& op)
 {
     auto factor = (op.getFirstArg().getLiteralValue() | op.getSecondArg()->getLiteralValue())->signedInt();

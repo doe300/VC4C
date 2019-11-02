@@ -632,7 +632,8 @@ static std::string toFlagString(FlagStatus flag, char flagChar)
 
 std::string ElementFlags::to_string() const
 {
-    return toFlagString(zero, 'z') + toFlagString(negative, 'n') + toFlagString(carry, 'c');
+    return toFlagString(zero, 'z') + toFlagString(negative, 'n') + toFlagString(carry, 'c') +
+        toFlagString(overflow, 'o');
 }
 LCOV_EXCL_STOP
 

@@ -1,5 +1,6 @@
 #include "Expression.h"
 
+#include "Profiler.h"
 #include "log.h"
 
 using namespace vc4c;
@@ -111,10 +112,13 @@ std::shared_ptr<Expression> Expression::createExpression(const intermediate::Int
 }
 
 static std::shared_ptr<Expression> createRecursiveExpressionInner(const intermediate::IntermediateInstruction& instr,
-    unsigned maxDepth, FastMap<const Local*, std::shared_ptr<Expression>>& parentsCache, bool allowFakeOperations)
+    unsigned maxDepth, FastMap<const Local*, std::shared_ptr<Expression>>& parentsCache, ExpressionOptions options)
 {
+    bool stopAtBuiltin = has_flag(options, ExpressionOptions::STOP_AT_BUILTINS);
     if(auto expr = Expression::createExpression(instr))
     {
+        if(stopAtBuiltin && intermediate::isGroupBuiltin(expr->deco, true))
+            return expr;
         if(maxDepth > 0)
         {
             for(auto& arg : instr.getArguments())
@@ -123,12 +127,11 @@ static std::shared_ptr<Expression> createRecursiveExpressionInner(const intermed
                 {
                     if(parentsCache.find(arg.local()) != parentsCache.end())
                         continue;
-                    if(auto parentExpr =
-                            createRecursiveExpressionInner(*writer, maxDepth - 1, parentsCache, allowFakeOperations))
+                    if(auto parentExpr = createRecursiveExpressionInner(*writer, maxDepth - 1, parentsCache, options))
                         parentsCache.emplace(arg.local(), std::move(parentExpr));
                 }
             }
-            return expr->combineWith(parentsCache, allowFakeOperations);
+            return expr->combineWith(parentsCache, options);
         }
         return expr;
     }
@@ -136,10 +139,13 @@ static std::shared_ptr<Expression> createRecursiveExpressionInner(const intermed
 }
 
 std::shared_ptr<Expression> Expression::createRecursiveExpression(
-    const intermediate::IntermediateInstruction& instr, unsigned maxDepth, bool allowFakeOperations)
+    const intermediate::IntermediateInstruction& instr, unsigned maxDepth, ExpressionOptions options)
 {
+    PROFILE_START(createRecursiveExpression);
     FastMap<const Local*, std::shared_ptr<Expression>> parentsCache;
-    return createRecursiveExpressionInner(instr, maxDepth, parentsCache, allowFakeOperations);
+    auto exp = createRecursiveExpressionInner(instr, maxDepth, parentsCache, options);
+    PROFILE_END(createRecursiveExpression);
+    return exp;
 }
 
 bool Expression::operator==(const Expression& other) const
@@ -164,7 +170,8 @@ LCOV_EXCL_STOP
 
 bool Expression::isMoveExpression() const
 {
-    return code.numOperands == 2 && code.isIdempotent() && arg1 == arg0;
+    return code.numOperands == 2 && code.isIdempotent() && arg1 == arg0 && !unpackMode.hasEffect() &&
+        !packMode.hasEffect();
 }
 
 Optional<Value> Expression::getConstantExpression() const
@@ -196,14 +203,18 @@ static bool hasValue(const Optional<Value>& val, Optional<Literal> lit)
 }
 
 std::shared_ptr<Expression> Expression::combineWith(
-    const FastMap<const Local*, std::shared_ptr<Expression>>& inputs, bool allowFakeOperations)
+    const FastMap<const Local*, std::shared_ptr<Expression>>& inputs, ExpressionOptions options)
 {
-    // TODO stop for built-in locals/parameters/constants??!
+    bool allowFakeOperations = has_flag(options, ExpressionOptions::ALLOW_FAKE_OPS);
+    bool stopAtBuiltin = has_flag(options, ExpressionOptions::STOP_AT_BUILTINS);
 
     auto firstVal = arg0.checkValue();
     auto secondVal = arg1.checkValue();
     auto firstExpr = arg0.checkExpression();
     auto secondExpr = arg1.checkExpression();
+
+    if(stopAtBuiltin && intermediate::isGroupBuiltin(deco, true))
+        return shared_from_this();
 
     if(auto firstLoc = arg0.checkLocal())
     {

@@ -578,7 +578,7 @@ void ValueRange::updateRecursively(const Local* currentLocal, Method* method, Fa
         // the bounds to it.
         // NOTE: The convergence is pessimistic, since we could create a smaller range if we knew the exact number the
         // (most likely phi-instruction) is executed, e.g. once for if-else and a fixed number for some loops.
-        if(auto expr = Expression::createRecursiveExpression(*write, 6, true))
+        if(auto expr = Expression::createRecursiveExpression(*write))
         {
             FastSet<Value> limits;
             if((expr->arg0.checkLocal() && expr->arg0.checkLocal() != currentLocal) ||
