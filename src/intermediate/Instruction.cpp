@@ -103,6 +103,30 @@ InstructionDecorations intermediate::forwardDecorations(InstructionDecorations d
     return res;
 }
 
+bool intermediate::isGroupBuiltin(InstructionDecorations decorations, bool includeAll)
+{
+    if(includeAll)
+    {
+        if(has_flag(decorations, InstructionDecorations::BUILTIN_LOCAL_ID))
+            return true;
+        if(has_flag(decorations, InstructionDecorations::BUILTIN_LOCAL_SIZE))
+            return true;
+        if(has_flag(decorations, InstructionDecorations::BUILTIN_WORK_DIMENSIONS))
+            return true;
+    }
+    if(has_flag(decorations, InstructionDecorations::BUILTIN_GLOBAL_ID))
+        return true;
+    if(has_flag(decorations, InstructionDecorations::BUILTIN_GLOBAL_OFFSET))
+        return true;
+    if(has_flag(decorations, InstructionDecorations::BUILTIN_GLOBAL_SIZE))
+        return true;
+    if(has_flag(decorations, InstructionDecorations::BUILTIN_GROUP_ID))
+        return true;
+    if(has_flag(decorations, InstructionDecorations::BUILTIN_NUM_GROUPS))
+        return true;
+    return false;
+}
+
 IntermediateInstruction::IntermediateInstruction(
     Optional<Value>&& output, ConditionCode cond, SetFlag setFlags, Pack packMode) :
     signal(SIGNAL_NONE),

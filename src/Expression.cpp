@@ -595,6 +595,16 @@ std::shared_ptr<Expression> Expression::combineWith(
     return shared_from_this();
 }
 
+static bool isUnsigned(const SubExpression& sub)
+{
+    if(auto expr = sub.checkExpression())
+        return intermediate::isGroupBuiltin(expr->deco, true) ||
+            has_flag(expr->deco, intermediate::InstructionDecorations::UNSIGNED_RESULT);
+    if(auto val = sub.checkValue())
+        return val->isUnsignedInteger();
+    return false;
+}
+
 Optional<Value> Expression::getConvergenceLimit(Optional<Literal> initialValue) const
 {
     if(auto constant = getConstantExpression())
@@ -604,14 +614,14 @@ Optional<Value> Expression::getConvergenceLimit(Optional<Literal> initialValue) 
         return NO_VALUE;
     bool leftIsLocal = arg0.checkLocal();
     bool rightIsLocal = arg1 && arg1.checkLocal();
+    // TODO make use of
+    bool leftIsUnsigned = isUnsigned(arg0);
+    bool rightIsUnsigned = isUnsigned(arg1);
     auto firstVal = arg0.checkValue();
     auto secondVal = arg1.checkValue();
     Optional<Literal> constantLiteral = ((firstVal ? firstVal->getConstantValue() : NO_VALUE) |
                                             (secondVal ? secondVal->getConstantValue() : NO_VALUE)) &
         &Value::getLiteralValue;
-
-    if(!leftIsLocal && !rightIsLocal)
-        return NO_VALUE;
 
     switch(code.opAdd)
     {
@@ -746,6 +756,18 @@ Optional<Value> Expression::getConvergenceLimit(Optional<Literal> initialValue) 
         if((leftIsLocal || rightIsLocal) && initialValue && constantLiteral)
             // max(a, x) -> max(a, x)
             return Value(Literal(std::max(initialValue->signedInt(), constantLiteral->signedInt())), TYPE_INT32);
+        return NO_VALUE;
+    }
+    if(code.opMul == FAKEOP_UMUL.opMul)
+    {
+        if(constantLiteral == Literal(0u))
+            // a * 0 -> 0
+            return INT_ZERO;
+        if(leftIsLocal && rightIsLocal)
+            // 0 * 0 -> 0
+            // a * a -> INT_MAX
+            return initialValue == Literal(0u) ? INT_ZERO :
+                                                 Value(Literal(std::numeric_limits<uint32_t>::max()), TYPE_INT32);
         return NO_VALUE;
     }
     CPPLOG_LAZY(

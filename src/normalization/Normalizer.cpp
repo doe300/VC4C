@@ -71,6 +71,38 @@ static void propagateGroupUniforms(Module& module, Method& method, InstructionWa
 }
 
 /*
+ * Propagate UNSIGNED_RESULT decoration through the kernel code
+ */
+static void propagateUnsignedValues(Module& module, Method& method, InstructionWalker it, const Configuration& config)
+{
+    // XXX does not propagate decoration via phi-nodes of back jumps
+    if(it.get<intermediate::Nop>() || it.get<intermediate::BranchLabel>() || it.get<intermediate::MutexLock>() ||
+        it.get<intermediate::SemaphoreAdjustment>() || it.get<intermediate::MemoryBarrier>())
+        return;
+    if(intermediate::isGroupBuiltin(it->decoration, true))
+    {
+        it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
+        return;
+    }
+    if(it.get<intermediate::Operation>())
+        // TODO to be on the safe side, for now skip operations, since they could convert purely unsigned values to
+        // signed ones (e.g. sub)
+        return;
+    if(it->hasConditionalExecution())
+    {
+        auto flagsIt = it.getBasicBlock()->findLastSettingOfFlags(it);
+        if(!(flagsIt && (*flagsIt)->hasDecoration(intermediate::InstructionDecorations::UNSIGNED_RESULT)))
+        {
+            // for conditional writes need to check whether condition is met by all work-items (e.g. element insertion)
+            return;
+        }
+    }
+    if(std::all_of(it->getArguments().begin(), it->getArguments().end(),
+           [](const Value& val) -> bool { return val.isUnsignedInteger(); }))
+        it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
+}
+
+/*
  * Dummy normalization step which asserts all remaining instructions are normalized
  */
 static void checkNormalized(Module& module, Method& method, InstructionWalker it, const Configuration& config)
@@ -105,7 +137,9 @@ const static std::vector<std::pair<std::string, NormalizationStep>> initialNorma
     // after the second run
     {"HandleImmediates", handleImmediate},
     // propagates the instruction decoration whether values are work-group uniform
-    {"PropagateGroupUniformValues", propagateGroupUniforms}};
+    {"PropagateGroupUniformValues", propagateGroupUniforms},
+    // propagates the unsigned result instruction decoration
+    {"PropagateUnsigned", propagateUnsignedValues}};
 
 // these normalization steps are run after the memory access is converted
 const static std::vector<std::pair<std::string, NormalizationStep>> initialNormalizationSteps2 = {

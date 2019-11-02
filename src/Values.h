@@ -132,6 +132,11 @@ namespace vc4c
          */
         bool triggersReadOfR4() const noexcept;
 
+        /**
+         * Returns whether this register is guaranteed to return an unsigned (positive) integer
+         */
+        bool isUnsignedInteger() const noexcept;
+
         static constexpr int INVALID_ACCUMULATOR{-1};
     };
 
@@ -970,6 +975,16 @@ namespace vc4c
          * - uniform registers (UNIFORM, QPU number)
          */
         bool isUniform() const;
+
+        /**
+         * Return whether this value is guaranteed to be an unsigned (positive) integer.
+         *
+         * Unsigned integers are among others:
+         * - positive integer constants
+         * - unsigned registers (QPU number, element number)
+         * - locals where all writes are decorated as unsigned
+         */
+        bool isUnsignedInteger() const;
 
         /**
          * Returns the constant value "contained" in this value, if any.

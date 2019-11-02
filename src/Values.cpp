@@ -306,6 +306,12 @@ bool Register::triggersReadOfR4() const noexcept
     // || (num == 56 || num == 60) /* TMU S coordinates */;
 }
 
+bool Register::isUnsignedInteger() const noexcept
+{
+    return *this == REG_QPU_NUMBER || *this == REG_ELEMENT_NUMBER || *this == REG_X_COORDS || *this == REG_Y_COORDS ||
+        *this == REG_REV_FLAG || *this == REG_MS_MASK || *this == REG_MUTEX;
+}
+
 bool Literal::operator==(const Literal& other) const noexcept
 {
     if(this == &other)
@@ -777,6 +783,30 @@ bool Value::isUniform() const
     if(auto reg = checkRegister())
         return *reg == REG_UNIFORM || *reg == REG_QPU_NUMBER || *reg == REG_REV_FLAG;
     return isUndefined();
+}
+
+bool Value::isUnsignedInteger() const
+{
+    if(!type.isIntegralType())
+        return false;
+    if(auto reg = checkRegister())
+        return reg->isUnsignedInteger();
+    if(auto lit = getLiteralValue())
+        return lit->signedInt() > 0;
+    if(auto local = checkLocal())
+    {
+        auto writes = local->getUsers(LocalUse::Type::WRITER);
+        return local->is<Parameter>() || local->residesInMemory() ||
+            std::all_of(writes.begin(), writes.end(), [](const intermediate::IntermediateInstruction* instr) -> bool {
+                return instr->hasDecoration(vc4c::intermediate::InstructionDecorations::UNSIGNED_RESULT) ||
+                    intermediate::isGroupBuiltin(instr->decoration, true);
+            });
+    }
+    if(auto vec = checkVector())
+    {
+        return std::all_of(vec->begin(), vec->end(), [](const Literal& lit) -> bool { return lit.signedInt() > 0; });
+    }
+    return false;
 }
 
 Optional<Value> Value::getConstantValue(bool transitive) const

@@ -700,12 +700,12 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
             it.reset((new Operation(OP_SUB, op->getOutput().value(), tmp, arg0, op->conditional, op->setFlags))
                          ->copyExtrasFrom(it.get()));
         }
-        else if(canOptimizeMultiplicationWithBinaryMethod(*op))
+        else if(canOptimizeMultiplicationWithUnsignedBinaryMethod(*op))
         {
             // e.g. x * 3 = x << 1 + x
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Intrinsifying multiplication via binary method: " << op->to_string() << logging::endl);
-            it = intrinsifyIntegerMultiplicationViaBinaryMethod(method, it, *op);
+                log << "Intrinsifying multiplication via unsigned binary method: " << op->to_string() << logging::endl);
+            it = intrinsifyIntegerMultiplicationViaUnsignedBinaryMethod(method, it, *op);
         }
         else if(std::all_of(op->getArguments().begin(), op->getArguments().end(), [](const Value& arg) -> bool {
                     return vc4c::analysis::ValueRange::getValueRange(arg).isUnsigned();

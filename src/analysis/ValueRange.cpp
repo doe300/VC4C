@@ -249,12 +249,7 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
     const Operation* op = dynamic_cast<const Operation*>(it);
 
     // values set by built-ins
-    if(it &&
-        (it->hasDecoration(InstructionDecorations::BUILTIN_GLOBAL_ID) ||
-            it->hasDecoration(InstructionDecorations::BUILTIN_GLOBAL_OFFSET) ||
-            it->hasDecoration(InstructionDecorations::BUILTIN_GLOBAL_SIZE) ||
-            it->hasDecoration(InstructionDecorations::BUILTIN_GROUP_ID) ||
-            it->hasDecoration(InstructionDecorations::BUILTIN_NUM_GROUPS)))
+    if(it && isGroupBuiltin(it->decoration, false))
     {
         // is always positive
         extendBoundaries(static_cast<int64_t>(0), std::numeric_limits<uint32_t>::max());
@@ -542,14 +537,19 @@ void ValueRange::updateRecursively(const Local* currentLocal, Method* method, Fa
         // insert dummy to mark as already processed without setting the (incomplete) partial result
         openSet.emplace(writer, Optional<ValueRange>{});
         bool allInputsProcessed = true;
-        writer->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
-            if(has_flag(type, LocalUse::Type::READER))
-            {
-                updateRecursively(loc, method, ranges, closedSet, openSet);
-                if(ranges.find(loc) == ranges.end())
-                    allInputsProcessed = false;
-            }
-        });
+        if(!isGroupBuiltin(writer->decoration, true))
+        {
+            // we can skip recursively processing the arguments, if we know that the below #update will already result
+            // in an explicit range, e.g. for accessing work-item info
+            writer->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
+                if(has_flag(type, LocalUse::Type::READER))
+                {
+                    updateRecursively(loc, method, ranges, closedSet, openSet);
+                    if(ranges.find(loc) == ranges.end())
+                        allInputsProcessed = false;
+                }
+            });
+        }
         ValueRange tmpRange(currentLocal->type);
         tmpRange.update(writer->precalculate().first, ranges, writer, method);
         if(allInputsProcessed && tmpRange.hasExplicitBoundaries())
@@ -578,15 +578,15 @@ void ValueRange::updateRecursively(const Local* currentLocal, Method* method, Fa
         // the bounds to it.
         // NOTE: The convergence is pessimistic, since we could create a smaller range if we knew the exact number the
         // (most likely phi-instruction) is executed, e.g. once for if-else and a fixed number for some loops.
-        if(auto expr = Expression::createRecursiveExpression(*write))
+        if(auto expr = Expression::createRecursiveExpression(*write, 6, true))
         {
             FastSet<Value> limits;
-            if((expr->arg0.checkLocal() && expr->arg0.local() != currentLocal) ||
-                (expr->arg1 & &Value::checkLocal && expr->arg1->local() != currentLocal))
+            if((expr->arg0.checkLocal() && expr->arg0.checkLocal() != currentLocal) ||
+                (expr->arg1.checkLocal() && expr->arg1.checkLocal() != currentLocal))
             {
                 // the expression takes another local as input, use its bounds as starting values for the convergence
                 // limit calculation
-                auto otherLocal = expr->arg0.checkLocal() ? expr->arg0.local() : expr->arg1.value().local();
+                auto otherLocal = expr->arg0.checkLocal() ? expr->arg0.checkLocal() : expr->arg1.checkLocal();
                 ValueRange otherRange(otherLocal->type);
                 auto rangeIt = ranges.find(otherLocal);
                 bool isPartialRange = false;
@@ -675,7 +675,7 @@ void ValueRange::processedOpenSet(Method* method, FastMap<const Local*, ValueRan
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Rerunning value range for: " << it->first->to_string() << logging::endl);
         FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>> tmpOpenSet{openSet};
-        updateRecursively(openSet.begin()->first->checkOutputLocal(), method, ranges, closedSet, tmpOpenSet);
+        updateRecursively(it->first->checkOutputLocal(), method, ranges, closedSet, tmpOpenSet);
         if(tmpOpenSet.size() != openSet.size())
         {
             // we actually did something, update open set. Since we don't known which entries were removed (and whether
@@ -689,6 +689,16 @@ void ValueRange::processedOpenSet(Method* method, FastMap<const Local*, ValueRan
 
     // TODO does not handle all dependencies, but can also not run in loop until open set empty, since (at least for
     // now) this results in an infinite loop, e.g. for ./testing/test_vectorization.cl
+
+    LCOV_EXCL_START
+    CPPLOG_LAZY_BLOCK(logging::Level::DEBUG, {
+        for(const auto& inst : openSet)
+        {
+            logging::debug() << "Value range still unspecified: " << inst.first->to_string()
+                             << (inst.second ? " with partial range: " + inst.second.to_string() : "") << logging::endl;
+        }
+    });
+    LCOV_EXCL_STOP
 }
 
 ValueRange ValueRange::getValueRange(const Value& val, Method* method)
@@ -754,12 +764,14 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
         it.nextInMethod();
     }
 
+    LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&]() {
         std::for_each(ranges.begin(), ranges.end(), [](const std::pair<const Local*, ValueRange>& pair) -> void {
             logging::debug() << "Local " << pair.first->to_string() << " with range " << pair.second.to_string()
                              << logging::endl;
         });
     });
+    LCOV_EXCL_STOP
     PROFILE_END(DetermineValueRanges);
     return ranges;
 }

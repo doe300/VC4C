@@ -89,13 +89,22 @@ namespace vc4c
         };
 
         std::string toString(InstructionDecorations decoration);
-        /*
+        /**
          * Returns all decorations set in the given decorations which can be forwarded to a move of the output-value of
          * the decorated instruction E.g. if an output is unsigned, the value moved to another register is still
          * unsigned, same for all built-in flags. On the other side, a moved value is no longer a PHI-node instruction
          * or an element insertion
          */
         InstructionDecorations forwardDecorations(InstructionDecorations decorations);
+
+        /**
+         * Returns whether one of the decorations specified is one of the work-group builtins.
+         *
+         * This can be used to determine that the associated local can only have possible values.
+         *
+         * NOTE: This does only checks for the local IDs/sizes as well as the number of dimensions, if the additional flag is set!
+         */
+        bool isGroupBuiltin(InstructionDecorations decorations, bool includeAll);
 
         /**
          * Types of side-effects an instruction can have
