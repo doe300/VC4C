@@ -90,6 +90,9 @@ ValueRange::ValueRange(DataType type) : ValueRange(type.isFloatingType(), !isUns
     }
 }
 
+ValueRange::ValueRange(FloatRange range) : range(range), hasDefaultBoundaries(false) {}
+ValueRange::ValueRange(IntegerRange range) : range(range), hasDefaultBoundaries(false) {}
+
 Optional<FloatRange> ValueRange::getFloatRange() const
 {
     FloatRange result;
@@ -415,23 +418,6 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
         else if(arg0.checkLocal() && ranges.find(arg0.local()) != ranges.end())
             firstRange.extendBoundaries(ranges.at(arg0.local()));
 
-        Value firstMin(TYPE_UNKNOWN);
-        Value firstMax(TYPE_UNKNOWN);
-
-        if(arg0.type.isFloatingType())
-        {
-            firstMin = Value(Literal(saturate(firstRange.getFloatRange()->minValue)), arg0.type);
-            firstMax = Value(Literal(saturate(firstRange.getFloatRange()->maxValue)), arg0.type);
-        }
-        else
-        {
-            firstMin = Value(Literal(saturate<int32_t>(firstRange.getIntRange()->minValue)), arg0.type);
-            firstMax = Value(Literal(saturate<uint32_t>(firstRange.getIntRange()->maxValue)), arg0.type);
-        }
-
-        Optional<Value> minVal = NO_VALUE;
-        Optional<Value> maxVal = NO_VALUE;
-
         if(op->getArguments().size() > 1)
         {
             const Value arg1 = op->assertArgument(1);
@@ -441,52 +427,10 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
             else if(arg1.checkLocal() && ranges.find(arg1.local()) != ranges.end())
                 secondRange.extendBoundaries(ranges.at(arg1.local()));
 
-            Value secondMin(TYPE_UNKNOWN);
-            Value secondMax(TYPE_UNKNOWN);
-
-            if(arg1.type.isFloatingType())
-            {
-                secondMin = Value(Literal(saturate(secondRange.getFloatRange()->minValue)), arg1.type);
-                secondMax = Value(Literal(saturate(secondRange.getFloatRange()->maxValue)), arg1.type);
-            }
-            else
-            {
-                secondMin = Value(Literal(saturate<int32_t>(secondRange.getIntRange()->minValue)), arg1.type);
-                secondMax = Value(Literal(saturate<uint32_t>(secondRange.getIntRange()->maxValue)), arg1.type);
-            }
-
-            minVal = op->op(firstMin, secondMin).first;
-            maxVal = op->op(firstMax, secondMax).first;
+            extendBoundaries(op->op(firstRange, secondRange));
         }
         else
-        {
-            minVal = op->op(firstMin, NO_VALUE).first;
-            maxVal = op->op(firstMax, NO_VALUE).first;
-        }
-
-        if(op->hasDecoration(InstructionDecorations::UNSIGNED_RESULT) && !op->getOutput()->type.isFloatingType())
-        {
-            if(minVal && minVal->isLiteralValue())
-                minVal = Value(Literal(std::max(minVal->getLiteralValue()->signedInt(), 0)), minVal->type);
-            if(maxVal && maxVal->isLiteralValue())
-                maxVal = Value(Literal(std::max(maxVal->getLiteralValue()->signedInt(), 0)), minVal->type);
-        }
-
-        if(minVal && minVal->getLiteralValue() && maxVal && maxVal->getLiteralValue())
-        {
-            if(op->getOutput()->type.isFloatingType())
-                extendBoundaries(static_cast<double>(minVal->getLiteralValue()->real()),
-                    static_cast<double>(maxVal->getLiteralValue()->real()));
-            else
-                extendBoundaries(std::min(static_cast<int64_t>(minVal->getLiteralValue()->signedInt()),
-                                     static_cast<int64_t>(minVal->getLiteralValue()->unsignedInt())),
-                    std::max(static_cast<int64_t>(maxVal->getLiteralValue()->signedInt()),
-                        static_cast<int64_t>(maxVal->getLiteralValue()->unsignedInt())));
-        }
-        else
-            // failed to pre-calculate the bounds
-            extendBoundariesToUnknown(
-                isUnsignedType(it->getOutput()->type) || it->hasDecoration(InstructionDecorations::UNSIGNED_RESULT));
+            extendBoundaries(op->op(firstRange, ValueRange{op->op.acceptsFloat}));
     }
     else
     {
@@ -774,6 +718,11 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
     LCOV_EXCL_STOP
     PROFILE_END(DetermineValueRanges);
     return ranges;
+}
+
+bool ValueRange::operator==(const ValueRange& other) const
+{
+    return (hasDefaultBoundaries && other.hasDefaultBoundaries) || range == other.range;
 }
 
 void ValueRange::extendBoundaries(double newMin, double newMax)

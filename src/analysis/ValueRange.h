@@ -33,12 +33,22 @@ namespace vc4c
         {
             double minValue = static_cast<double>(std::numeric_limits<float>::lowest());
             double maxValue = static_cast<double>(std::numeric_limits<float>::max());
+
+            constexpr bool operator==(const FloatRange& other) const noexcept
+            {
+                return minValue == other.minValue && maxValue == other.maxValue;
+            }
         };
 
         struct IntegerRange
         {
             int64_t minValue = std::numeric_limits<int32_t>::lowest();
             int64_t maxValue = std::numeric_limits<uint32_t>::max();
+
+            constexpr bool operator==(const IntegerRange& other) const noexcept
+            {
+                return minValue == other.minValue && maxValue == other.maxValue;
+            }
         };
 
         /*
@@ -49,6 +59,8 @@ namespace vc4c
         public:
             ValueRange(bool isFloat, bool isSigned = true);
             ValueRange(DataType type);
+            explicit ValueRange(FloatRange range);
+            explicit ValueRange(IntegerRange range);
 
             Optional<FloatRange> getFloatRange() const;
             Optional<IntegerRange> getIntRange() const;
@@ -73,6 +85,12 @@ namespace vc4c
             static ValueRange getValueRange(const Value& val, Method* method = nullptr);
             static ValueRange getValueRangeRecursive(const Value& val, Method* method = nullptr);
             static FastMap<const Local*, ValueRange> determineValueRanges(Method& method);
+
+            bool operator==(const ValueRange& other) const;
+            bool operator!=(const ValueRange& other) const
+            {
+                return !(*this == other);
+            }
 
         private:
             Variant<FloatRange, IntegerRange> range;

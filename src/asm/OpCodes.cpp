@@ -8,6 +8,7 @@
 
 #include "../HalfType.h"
 #include "../Values.h"
+#include "../analysis/ValueRange.h"
 #include "../intrinsics/Operators.h"
 #include "CompilationError.h"
 
@@ -1012,6 +1013,70 @@ PrecalculatedVector OpCode::operator()(const SIMDVector& firstOperand, const SIM
         flags[i] = tmp.second;
     }
     return std::make_pair(res, flags);
+}
+
+analysis::ValueRange OpCode::operator()(
+    const analysis::ValueRange& firstRange, const analysis::ValueRange& secondRange) const
+{
+    using namespace analysis;
+    auto firstFloats = firstRange.getFloatRange();
+    auto secondFloats = secondRange.getFloatRange();
+    if(acceptsFloat && !firstFloats && (numOperands > 1 && !secondFloats))
+        return ValueRange(TYPE_FLOAT);
+    auto firstInts = firstRange.getIntRange();
+    auto secondInts = secondRange.getIntRange();
+    if(!acceptsFloat && !firstInts && (numOperands > 1 && !secondInts))
+        return ValueRange(TYPE_INT32);
+
+    switch(opAdd)
+    {
+    case OP_FADD.opAdd:
+        return ValueRange{
+            FloatRange{firstFloats->minValue + secondFloats->minValue, firstFloats->maxValue + secondFloats->maxValue}};
+    case OP_FSUB.opAdd:
+        return ValueRange{
+            FloatRange{firstFloats->minValue - secondFloats->maxValue, firstFloats->maxValue - secondFloats->minValue}};
+    case OP_FMIN.opAdd:
+        return ValueRange{FloatRange{std::min(firstFloats->minValue, secondFloats->minValue),
+            std::min(firstFloats->maxValue, secondFloats->maxValue)}};
+    case OP_FMAX.opAdd:
+        return ValueRange{FloatRange{std::max(firstFloats->minValue, secondFloats->minValue),
+            std::max(firstFloats->maxValue, secondFloats->maxValue)}};
+    case OP_FMINABS.opAdd:
+        return ValueRange{FloatRange{std::min(std::abs(firstFloats->minValue), std::abs(secondFloats->minValue)),
+            std::min(std::abs(firstFloats->maxValue), std::abs(secondFloats->maxValue))}};
+    case OP_FMAXABS.opAdd:
+        return ValueRange{FloatRange{std::max(std::abs(firstFloats->minValue), std::abs(secondFloats->minValue)),
+            std::max(std::abs(firstFloats->maxValue), std::abs(secondFloats->maxValue))}};
+    case OP_FTOI.opAdd:
+        return ValueRange{IntegerRange{saturate<int32_t>(static_cast<int64_t>(firstFloats->minValue)),
+            saturate<int32_t>(static_cast<int64_t>(firstFloats->maxValue))}};
+    case OP_ITOF.opAdd:
+        return ValueRange{
+            FloatRange{static_cast<double>(firstInts->minValue), static_cast<double>(firstInts->maxValue)}};
+    case OP_ADD.opAdd:
+        return ValueRange{
+            IntegerRange{firstInts->minValue + secondInts->minValue, firstInts->maxValue + secondInts->maxValue}};
+    case OP_SUB.opAdd:
+        return ValueRange{
+            IntegerRange{firstInts->minValue - secondInts->maxValue, firstInts->maxValue - secondInts->minValue}};
+    case OP_MIN.opAdd:
+        return ValueRange{IntegerRange{
+            std::min(firstInts->minValue, secondInts->minValue), std::min(firstInts->maxValue, secondInts->maxValue)}};
+    case OP_MAX.opAdd:
+        return ValueRange{IntegerRange{
+            std::max(firstInts->minValue, secondInts->minValue), std::max(firstInts->maxValue, secondInts->maxValue)}};
+    case OP_CLZ.opAdd:
+        // XXX could try to determine maximum number of leading zeroes from input
+        return ValueRange{IntegerRange{0, 32}};
+    }
+
+    if(opMul == OP_FMUL.opMul)
+        return ValueRange{FloatRange{
+            std::min(firstFloats->minValue * secondFloats->maxValue, firstFloats->maxValue * secondFloats->minValue),
+            std::max(firstFloats->maxValue * secondFloats->maxValue, firstFloats->minValue * secondFloats->minValue)}};
+
+    return ValueRange(returnsFloat ? TYPE_FLOAT : TYPE_INT32);
 }
 
 const OpCode& OpCode::toOpCode(const std::string& name)

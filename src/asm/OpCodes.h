@@ -27,6 +27,11 @@ namespace vc4c
     struct OpCode;
     enum class BranchCond : unsigned char;
 
+    namespace analysis
+    {
+        class ValueRange;
+    } // namespace analysis
+
     template <typename T,
         typename R = typename std::conditional<std::numeric_limits<T>::is_signed, int32_t, uint32_t>::type>
     CONST R saturate(int64_t val) noexcept
@@ -718,6 +723,8 @@ namespace vc4c
         PrecalculatedValue operator()(const Value& firstOperand, const Optional<Value>& secondOperand) const;
         PrecalculatedValue operator()(Literal firstOperand, Literal secondOperand, DataType resultType) const;
         PrecalculatedVector operator()(const SIMDVector& firstOperand, const SIMDVector& secondOperand) const;
+        analysis::ValueRange operator()(
+            const analysis::ValueRange& firstRange, const analysis::ValueRange& secondRange) const;
 
         /*
          * Whether the operation is idempotent.

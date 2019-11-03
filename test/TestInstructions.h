@@ -27,6 +27,7 @@ public:
     void testOpCodeProperties();
     void testHalfFloat();
     void testOpCodeFlags();
+    void testOpCodeRanges();
 
     void testRegister();
     void testImmediates();

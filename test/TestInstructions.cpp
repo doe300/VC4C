@@ -10,10 +10,13 @@
 #include "GlobalValues.h"
 #include "HalfType.h"
 #include "Values.h"
+#include "analysis/ValueRange.h"
 #include "asm/ALUInstruction.h"
 #include "asm/LoadInstruction.h"
 #include "asm/OpCodes.h"
 #include "normalization/LiteralValues.h"
+
+#include <functional>
 
 using namespace vc4c;
 
@@ -32,6 +35,7 @@ TestInstructions::TestInstructions()
     TEST_ADD(TestInstructions::testOpCodeProperties);
     TEST_ADD(TestInstructions::testHalfFloat);
     TEST_ADD(TestInstructions::testOpCodeFlags);
+    TEST_ADD(TestInstructions::testOpCodeRanges);
     TEST_ADD(TestInstructions::testRegister);
     TEST_ADD(TestInstructions::testImmediates);
     TEST_ADD(TestInstructions::testSIMDVector);
@@ -772,6 +776,64 @@ void TestInstructions::testOpCodeFlags()
     TEST_ASSERT(checkFlagSet(OP_XOR(INT_ONE, INT_MINUS_ONE).second, FlagsMask::NEGATIVE))
 
     // TODO v8ops
+}
+
+// determines the bounds of the new range by determining the minimum/maximum value of calculating the given operation
+// with all bounds combinations
+template <typename T,
+    typename Range =
+        typename std::conditional<std::is_same<T, double>::value, analysis::FloatRange, analysis::IntegerRange>::type,
+    typename Op = std::function<T(T, T)>>
+analysis::ValueRange calculateRange(const Range& in0, const Range& in1, Op&& op)
+{
+    auto res = {op(in0.minValue, in1.minValue), op(in0.minValue, in1.maxValue), op(in0.maxValue, in1.minValue),
+        op(in0.maxValue, in1.maxValue)};
+    return analysis::ValueRange{
+        Range{*std::min_element(res.begin(), res.end()), *std::max_element(res.begin(), res.end())}};
+}
+
+void TestInstructions::testOpCodeRanges()
+{
+    using namespace analysis;
+
+    ValueRange emptyRange{TYPE_UNKNOWN};
+    FloatRange innerFloat0{-1024.0, 4096.0};
+    FloatRange innerFloat1{-42.0, 42.0};
+    ValueRange floatRange0{innerFloat0};
+    ValueRange floatRange1{innerFloat1};
+    IntegerRange innerInt0{-1024, 4096};
+    IntegerRange innerInt1{-42, 42};
+    ValueRange intRange0{innerInt0};
+    ValueRange intRange1{innerInt1};
+
+    TEST_ASSERT_EQUALS(
+        calculateRange<double>(innerFloat0, innerFloat1, std::plus<>{}), OP_FADD(floatRange0, floatRange1))
+    TEST_ASSERT_EQUALS(
+        calculateRange<double>(innerFloat0, innerFloat1, std::minus<>{}), OP_FSUB(floatRange0, floatRange1))
+    TEST_ASSERT_EQUALS(calculateRange<double>(innerFloat0, innerFloat1, [](auto a, auto b) { return std::min(a, b); }),
+        OP_FMIN(floatRange0, floatRange1))
+    TEST_ASSERT_EQUALS(calculateRange<double>(innerFloat0, innerFloat1, [](auto a, auto b) { return std::max(a, b); }),
+        OP_FMAX(floatRange0, floatRange1))
+    TEST_ASSERT_EQUALS(calculateRange<double>(
+                           innerFloat0, innerFloat1, [](auto a, auto b) { return std::min(std::abs(a), std::abs(b)); }),
+        OP_FMINABS(floatRange0, floatRange1))
+    TEST_ASSERT_EQUALS(calculateRange<double>(
+                           innerFloat0, innerFloat1, [](auto a, auto b) { return std::max(std::abs(a), std::abs(b)); }),
+        OP_FMAXABS(floatRange0, floatRange1))
+    TEST_ASSERT_EQUALS(ValueRange(IntegerRange{-1024, 4096}), OP_FTOI(floatRange0, emptyRange))
+    TEST_ASSERT_EQUALS(ValueRange(FloatRange{-1024.0, 4096.0}), OP_ITOF(intRange0, emptyRange))
+    TEST_ASSERT_EQUALS(calculateRange<int64_t>(innerInt0, innerInt1, std::plus<>{}), OP_ADD(intRange0, intRange1))
+    TEST_ASSERT_EQUALS(calculateRange<int64_t>(innerInt0, innerInt1, std::minus<>{}), OP_SUB(intRange0, intRange1))
+    TEST_ASSERT_EQUALS(calculateRange<int64_t>(innerInt0, innerInt1, [](auto a, auto b) { return std::min(a, b); }),
+        OP_MIN(intRange0, intRange1))
+    TEST_ASSERT_EQUALS(calculateRange<int64_t>(innerInt0, innerInt1, [](auto a, auto b) { return std::max(a, b); }),
+        OP_MAX(intRange0, intRange1))
+    TEST_ASSERT_EQUALS(ValueRange(IntegerRange{0, 32}), OP_CLZ(intRange0, emptyRange))
+    TEST_ASSERT_EQUALS(
+        calculateRange<double>(innerFloat0, innerFloat1, std::multiplies<>{}), OP_FMUL(floatRange0, floatRange1))
+
+    TEST_ASSERT(!OP_MUL24(intRange0, intRange1).hasExplicitBoundaries())
+    TEST_ASSERT(!OP_MUL24(floatRange0, floatRange1).hasExplicitBoundaries())
 }
 
 void TestInstructions::testRegister()
