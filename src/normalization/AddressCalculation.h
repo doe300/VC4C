@@ -75,10 +75,6 @@ namespace vc4c
         NODISCARD InstructionWalker insertAddressToWorkItemSpecificOffset(
             InstructionWalker it, Method& method, Value& out, MemoryAccessRange& range);
 
-        struct LocalUsageOrdering
-        {
-            bool operator()(const Local* l1, const Local* l2) const;
-        };
     } /* namespace normalization */
 } /* namespace vc4c */
 #endif /* VC4C_NORMALIZATION_ADDRESS_CALCULATION_H */

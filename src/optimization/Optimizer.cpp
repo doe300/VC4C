@@ -127,7 +127,8 @@ Optimizer::Optimizer(const Configuration& config) : config(config)
         if(config.additionalEnabledOptimizations.find(pass.parameterName) !=
             config.additionalEnabledOptimizations.end())
             addToPasses(pass, initialPasses, repeatingPasses, finalPasses);
-        if(enabledPasses.find(pass.parameterName) != enabledPasses.end())
+        // don't add a pass twice if it is manually enabled and in the list of enabled passed via the optimization level
+        else if(enabledPasses.find(pass.parameterName) != enabledPasses.end())
             addToPasses(pass, initialPasses, repeatingPasses, finalPasses);
     }
 }
@@ -263,11 +264,12 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
     OptimizationPass("CombineRotations", "combine-rotations", combineVectorRotations,
         "combines duplicate vector rotations, e.g. introduced by vector-shuffle into a single rotation",
         OptimizationType::REPEAT),
+    OptimizationPass("EliminateMoves", "eliminate-moves", eliminateRedundantMoves,
+        "Replaces moves with the operation producing their source", OptimizationType::REPEAT),
+    // executed after eliminate-moves to not have to rewrite simple moves with the more complex expression rewrite
     OptimizationPass("CommonSubexpressionElimination", "eliminate-common-subexpressions", eliminateCommonSubexpressions,
         "eliminates repetitive calculations of common expressions by re-using previous results (WIP, slow)",
         OptimizationType::REPEAT),
-    OptimizationPass("EliminateMoves", "eliminate-moves", eliminateRedundantMoves,
-        "Replaces moves with the operation producing their source", OptimizationType::REPEAT),
     OptimizationPass("EliminateBitOperations", "eliminate-bit-operations", eliminateRedundantBitOp,
         "Rewrites redundant bit operations", OptimizationType::REPEAT),
     OptimizationPass("PropagateMoves", "copy-propagation", propagateMoves,

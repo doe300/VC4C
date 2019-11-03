@@ -131,16 +131,3 @@ InstructionWalker normalization::insertAddressToWorkItemSpecificOffset(
             (dynamicParts->first << (*range.typeSizeShift)->assertArgument(1), dynamicParts->second);
     return it;
 }
-
-bool LocalUsageOrdering::operator()(const Local* l1, const Local* l2) const
-{
-    // prefer more usages over less usages
-    // since there is always only 1 writer for the local address, we prefer this over only counting readers for
-    // performance reasons
-    // TODO is this the correct way to do this? E.g. is there one usage per memory access?
-    if(l1->getUsers().size() > l2->getUsers().size())
-        return true;
-    if(l1->getUsers().size() == l2->getUsers().size())
-        return l1 < l2;
-    return false;
-}

@@ -43,7 +43,7 @@ namespace vc4c
 
         using GroupedAccessRanges =
             FastMap<const Local*, std::pair<FastAccessList<MemoryAccessRange>, const periphery::VPMArea*>>;
-        using MemoryAccessMap = SortedMap<const Local*, MemoryAccess, LocalUsageOrdering>;
+        using MemoryAccessMap = SortedMap<const Local*, MemoryAccess, analysis::LocalUsageOrdering>;
 
         /*
          * Basic algorithm to determine the preferred and fall-back (e.g. if access-types not supported by preferred)
