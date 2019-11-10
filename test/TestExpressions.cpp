@@ -9,6 +9,7 @@
 #include "InstructionWalker.h"
 #include "Method.h"
 #include "Module.h"
+#include "analysis/ValueRange.h"
 #include "intermediate/operators.h"
 
 using namespace vc4c;
@@ -21,6 +22,7 @@ TestExpressions::TestExpressions()
     TEST_ADD(TestExpressions::testCreation);
     TEST_ADD(TestExpressions::testCombination);
     TEST_ADD(TestExpressions::testConvergence);
+    TEST_ADD(TestExpressions::testValueRange);
 }
 
 TestExpressions::~TestExpressions() = default;
@@ -292,7 +294,34 @@ void TestExpressions::testCombination()
         Expression twoAPlusThreeA{OP_FADD, twoA, threeA};
         TEST_ASSERT_EQUALS(aMul5, *twoAPlusThreeA.combineWith(expressions))
 
-        // XXX tests for general case, when added
+        // general non-constant case
+        auto b = method.addNewLocal(TYPE_FLOAT);
+        auto c = method.addNewLocal(TYPE_FLOAT);
+
+        auto aMulB = std::make_shared<Expression>(OP_FMUL, a, b);
+        auto abc2 = method.addNewLocal(TYPE_FLOAT);
+        expressions.emplace(abc2.local(), aMulB);
+        auto aMulC = std::make_shared<Expression>(OP_FMUL, a, c);
+        auto abc3 = method.addNewLocal(TYPE_FLOAT);
+        expressions.emplace(abc3.local(), aMulC);
+
+        auto BMulA = std::make_shared<Expression>(OP_FMUL, b, a);
+        auto twoABC = method.addNewLocal(TYPE_FLOAT);
+        expressions.emplace(twoABC.local(), BMulA);
+        auto CMulA = std::make_shared<Expression>(OP_FMUL, c, a);
+        auto threeABC = method.addNewLocal(TYPE_FLOAT);
+        expressions.emplace(threeABC.local(), CMulA);
+
+        auto bc = method.addNewLocal(TYPE_FLOAT);
+        expressions.emplace(bc.local(), expression(b + c));
+        auto aMulBC = expression(as_float{a} * as_float{bc})->combineWith(expressions);
+
+        // (a * b) + (a * c) = a * (b + c)
+        Expression abc2PlusABC3{OP_FADD, abc2, abc3};
+        TEST_ASSERT_EQUALS(*aMulBC, *abc2PlusABC3.combineWith(expressions))
+        // (b * a) + (c * a) = (b + c) * a
+        Expression twoABCPlusThreeABC{OP_FADD, twoABC, threeABC};
+        TEST_ASSERT_EQUALS(*aMulBC, *twoABCPlusThreeABC.combineWith(expressions))
     }
 
     {
@@ -506,6 +535,7 @@ void TestExpressions::testConvergence()
     TEST_ASSERT(!expression(FLOAT_ZERO + floatVal)->getConvergenceLimit())
     TEST_ASSERT_EQUALS(floatPos, expression(floatVal + FLOAT_ZERO)->getConvergenceLimit(floatPos.literal()))
     TEST_ASSERT_EQUALS(floatPos, expression(FLOAT_ZERO + floatVal)->getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT_EQUALS(46.0_val, expression(floatPos + floatPos)->getConvergenceLimit())
 
     // fsub
     TEST_ASSERT_EQUALS(FLOAT_ZERO, expression(floatVal - floatVal)->getConvergenceLimit())
@@ -516,6 +546,7 @@ void TestExpressions::testConvergence()
     TEST_ASSERT(!expression(floatVal - FLOAT_ZERO)->getConvergenceLimit())
     TEST_ASSERT(!expression(FLOAT_ZERO - floatVal)->getConvergenceLimit())
     TEST_ASSERT_EQUALS(floatPos, expression(floatVal - FLOAT_ZERO)->getConvergenceLimit(floatPos.literal()))
+    TEST_ASSERT_EQUALS(46.0_val, expression(floatPos - floatNeg)->getConvergenceLimit())
 
     // fmin
     TEST_ASSERT(!expression(min(floatVal, floatVal))->getConvergenceLimit())
@@ -524,6 +555,7 @@ void TestExpressions::testConvergence()
     TEST_ASSERT_EQUALS(floatNeg, expression(min(floatPos, floatVal))->getConvergenceLimit(floatNeg.literal()))
     TEST_ASSERT_EQUALS(floatNeg, expression(min(floatNeg, floatVal))->getConvergenceLimit(floatPos.literal()))
     TEST_ASSERT(!expression(min(floatNeg, floatVal))->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(floatNeg, expression(min(floatPos, floatNeg))->getConvergenceLimit())
 
     // fmax
     TEST_ASSERT(!expression(max(floatVal, floatVal))->getConvergenceLimit())
@@ -532,6 +564,7 @@ void TestExpressions::testConvergence()
     TEST_ASSERT_EQUALS(floatPos, expression(max(floatNeg, floatVal))->getConvergenceLimit(floatPos.literal()))
     TEST_ASSERT_EQUALS(floatPos, expression(max(floatPos, floatVal))->getConvergenceLimit(floatNeg.literal()))
     TEST_ASSERT(!expression(max(floatNeg, floatVal))->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(floatNeg, expression(min(floatPos, floatNeg))->getConvergenceLimit())
 
     // fminabs
     TEST_ASSERT(!(Expression{OP_FMINABS, floatVal, floatVal}).getConvergenceLimit())
@@ -539,6 +572,7 @@ void TestExpressions::testConvergence()
     TEST_ASSERT_EQUALS(floatPos, (Expression{OP_FMINABS, floatVal, floatPos}).getConvergenceLimit(floatNeg.literal()))
     TEST_ASSERT_EQUALS(floatPos, (Expression{OP_FMINABS, floatNeg, floatVal}).getConvergenceLimit(floatPos.literal()))
     TEST_ASSERT_EQUALS(floatPos, (Expression{OP_FMINABS, floatPos, floatVal}).getConvergenceLimit(floatNeg.literal()))
+    TEST_ASSERT_EQUALS(floatPos, (Expression{OP_FMINABS, floatPos, floatNeg}).getConvergenceLimit())
 
     // fmaxabs
     TEST_ASSERT(!(Expression{OP_FMAXABS, floatVal, floatVal}).getConvergenceLimit())
@@ -546,11 +580,14 @@ void TestExpressions::testConvergence()
     TEST_ASSERT_EQUALS(floatPos, (Expression{OP_FMAXABS, floatVal, floatPos}).getConvergenceLimit(floatNeg.literal()))
     TEST_ASSERT_EQUALS(floatPos, (Expression{OP_FMAXABS, floatNeg, floatVal}).getConvergenceLimit(floatPos.literal()))
     TEST_ASSERT_EQUALS(floatPos, (Expression{OP_FMAXABS, floatPos, floatVal}).getConvergenceLimit(floatNeg.literal()))
+    TEST_ASSERT_EQUALS(floatPos, (Expression{OP_FMAXABS, floatPos, floatNeg}).getConvergenceLimit())
 
     // ftoi
     TEST_ASSERT(!(Expression{OP_FTOI, floatVal, NO_VALUE}).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intPos, (Expression{OP_FTOI, floatPos, NO_VALUE}).getConvergenceLimit())
     // itof
     TEST_ASSERT(!(Expression{OP_ITOF, intVal, NO_VALUE}).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(floatPos, (Expression{OP_ITOF, intPos, NO_VALUE}).getConvergenceLimit())
 
     // add
     TEST_ASSERT(!expression(intVal + intVal)->getConvergenceLimit())
@@ -564,6 +601,7 @@ void TestExpressions::testConvergence()
     TEST_ASSERT(!expression(INT_ZERO + intVal)->getConvergenceLimit())
     TEST_ASSERT_EQUALS(intPos, expression(intVal + INT_ZERO)->getConvergenceLimit(intPos.literal()))
     TEST_ASSERT_EQUALS(intPos, expression(INT_ZERO + intVal)->getConvergenceLimit(intPos.literal()))
+    TEST_ASSERT_EQUALS(46_val, expression(intPos + intPos)->getConvergenceLimit())
 
     // sub
     TEST_ASSERT_EQUALS(INT_ZERO, expression(intVal - intVal)->getConvergenceLimit())
@@ -573,11 +611,13 @@ void TestExpressions::testConvergence()
     TEST_ASSERT(!expression(intNeg - intVal)->getConvergenceLimit())
     TEST_ASSERT(!expression(intVal - INT_ZERO)->getConvergenceLimit())
     TEST_ASSERT(!expression(INT_ZERO - intVal)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(46_val, expression(intPos - intNeg)->getConvergenceLimit())
 
     // shr
     TEST_ASSERT(!expression(as_unsigned{intVal} >> intVal)->getConvergenceLimit())
     TEST_ASSERT_EQUALS(INT_ZERO, expression(as_unsigned{intVal} >> intPos)->getConvergenceLimit())
     TEST_ASSERT_EQUALS(INT_ZERO, expression(as_unsigned{intVal} >> intVal)->getConvergenceLimit(INT_ZERO.literal()))
+    TEST_ASSERT_EQUALS(5_val, expression(as_unsigned{intPos} >> 2_val)->getConvergenceLimit())
 
     // asr
     TEST_ASSERT(!expression(as_signed{intVal} >> intVal)->getConvergenceLimit())
@@ -586,15 +626,21 @@ void TestExpressions::testConvergence()
     TEST_ASSERT_EQUALS(
         INT_MINUS_ONE, expression(as_signed{intVal} >> intVal)->getConvergenceLimit(INT_MINUS_ONE.literal()))
     // XXX actually converges to -1 for all values <= 0x8000001F
+    TEST_ASSERT_EQUALS(5_val, expression(as_signed{intPos} >> 2_val)->getConvergenceLimit())
 
     // ror
     TEST_ASSERT(!(Expression{OP_ROR, intVal, intVal}).getConvergenceLimit())
     TEST_ASSERT(!(Expression{OP_ROR, intPos, intVal}).getConvergenceLimit())
     TEST_ASSERT(!(Expression{OP_ROR, intVal, intPos}).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(23_val, (Expression{OP_ROR, 1472_val, 6_val}).getConvergenceLimit())
+
     // shl
     TEST_ASSERT(!expression(intVal << intVal)->getConvergenceLimit())
     TEST_ASSERT(!expression(intPos << intVal)->getConvergenceLimit())
     TEST_ASSERT(!expression(intVal << intPos)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intVal, expression(intVal << INT_ZERO)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(INT_ZERO, expression(INT_ZERO << intVal)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(1472_val, expression(23_val << 6_val)->getConvergenceLimit())
 
     // min
     TEST_ASSERT(!expression(min(intVal, intVal))->getConvergenceLimit())
@@ -603,6 +649,7 @@ void TestExpressions::testConvergence()
     TEST_ASSERT_EQUALS(intNeg, expression(min(intPos, intVal))->getConvergenceLimit(intNeg.literal()))
     TEST_ASSERT_EQUALS(intNeg, expression(min(intNeg, intVal))->getConvergenceLimit(intPos.literal()))
     TEST_ASSERT(!expression(min(intNeg, intVal))->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intNeg, expression(min(intNeg, intPos))->getConvergenceLimit())
 
     // max
     TEST_ASSERT(!expression(max(intVal, intVal))->getConvergenceLimit())
@@ -611,24 +658,34 @@ void TestExpressions::testConvergence()
     TEST_ASSERT_EQUALS(intPos, expression(max(intNeg, intVal))->getConvergenceLimit(intPos.literal()))
     TEST_ASSERT_EQUALS(intPos, expression(max(intPos, intVal))->getConvergenceLimit(intNeg.literal()))
     TEST_ASSERT(!expression(max(intNeg, intVal))->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(intPos, expression(max(intNeg, intPos))->getConvergenceLimit())
 
     // and
     TEST_ASSERT(!expression(intVal & intVal)->getConvergenceLimit())
     TEST_ASSERT(!expression(intPos & intVal)->getConvergenceLimit())
     TEST_ASSERT(!expression(intVal & intPos)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(INT_ONE, expression(intPos & intNeg)->getConvergenceLimit())
+
     // or
     TEST_ASSERT(!expression(intVal | intVal)->getConvergenceLimit())
     TEST_ASSERT(!expression(intPos | intVal)->getConvergenceLimit())
     TEST_ASSERT(!expression(intVal | intPos)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(INT_MINUS_ONE, expression(intPos | intNeg)->getConvergenceLimit())
+
     // xor
     TEST_ASSERT(!expression(intVal ^ intVal)->getConvergenceLimit())
     TEST_ASSERT(!expression(intPos ^ intVal)->getConvergenceLimit())
     TEST_ASSERT(!expression(intVal ^ intPos)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(Value(Literal(-2), TYPE_INT32), expression(intPos ^ intNeg)->getConvergenceLimit())
+
     // not
     TEST_ASSERT(!expression(~intVal)->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(INT_ZERO, expression(~INT_MINUS_ONE)->getConvergenceLimit())
 
     // clz
     TEST_ASSERT(!(Expression{OP_CLZ, intVal, NO_VALUE}).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(32_val, (Expression{OP_CLZ, 0_val, NO_VALUE}).getConvergenceLimit())
+
     // v8adds
     TEST_ASSERT(!(Expression{OP_V8ADDS, intVal, intVal}).getConvergenceLimit())
     TEST_ASSERT(!(Expression{OP_V8ADDS, intPos, intVal}).getConvergenceLimit())
@@ -642,10 +699,121 @@ void TestExpressions::testConvergence()
 
     // fmul
     // TODO converges for |value| </> 1 and value </==/> 0 in different directions
+    TEST_ASSERT_EQUALS(46.0_val, expression(floatPos * 2.0_val)->getConvergenceLimit())
     // mul24
     TEST_ASSERT(!(expression(mul24(intVal, intVal)))->getConvergenceLimit())
+    TEST_ASSERT_EQUALS(46_val, expression(intPos * 2_val)->getConvergenceLimit())
     // XXX
     // V8muld
     // V8min
     // V8max
+
+    // fake umul
+    TEST_ASSERT_EQUALS(INT_ZERO, (Expression{Expression::FAKEOP_UMUL, INT_ZERO, intVal}).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(INT_ZERO, (Expression{Expression::FAKEOP_UMUL, intVal, INT_ZERO}).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(
+        INT_ZERO, (Expression{Expression::FAKEOP_UMUL, intVal, intVal}).getConvergenceLimit(INT_ZERO.literal()))
+    TEST_ASSERT_EQUALS(46_val, (Expression{Expression::FAKEOP_UMUL, 23_val, 2_val}).getConvergenceLimit())
+    TEST_ASSERT_EQUALS(529_val, (Expression{Expression::FAKEOP_UMUL, intVal, intVal}).getConvergenceLimit(23_lit))
+    TEST_ASSERT_EQUALS(
+        INT_MINUS_ONE /* UINT_MAX */, (Expression{Expression::FAKEOP_UMUL, intVal, intVal}).getConvergenceLimit())
+}
+
+void TestExpressions::testValueRange()
+{
+    using namespace analysis;
+    Configuration config{};
+    Module mod{config};
+    Method method(mod);
+    FastMap<const Local*, std::shared_ptr<Expression>> expressions;
+    auto options = add_flag(ExpressionOptions::ALLOW_FAKE_OPS, ExpressionOptions::STOP_AT_BUILTINS);
+
+    auto lid = method.addNewLocal(TYPE_INT32);
+    expressions.emplace(lid.local(),
+        expression((method.addNewLocal(TYPE_INT32) + 4_val, intermediate::InstructionDecorations::BUILTIN_LOCAL_ID)));
+    auto gid = method.addNewLocal(TYPE_INT32);
+    expressions.emplace(gid.local(),
+        expression((method.addNewLocal(TYPE_INT32) + 4_val, intermediate::InstructionDecorations::BUILTIN_GLOBAL_ID)));
+
+    // (lid << 2) -lid -> lid * 3 -> [0, 33]
+    {
+        auto inner = method.addNewLocal(TYPE_INT32);
+        expressions.emplace(inner.local(), expression(lid << 2_val)->combineWith(expressions, options));
+        auto expr = expression(inner - lid)->combineWith(expressions, options);
+        auto range = ValueRange::getValueRange(*expr);
+        TEST_ASSERT(!!range)
+        TEST_ASSERT_EQUALS(ValueRange(0.0, 33.0), range)
+    }
+
+    // constant >> local -> [0, constant]
+    {
+        auto loc = method.addNewLocal(TYPE_INT16);
+        auto expr = expression(as_unsigned{42_val} >> loc);
+        auto range = ValueRange::getValueRange(*expr);
+        TEST_ASSERT(!!range)
+        TEST_ASSERT_EQUALS(ValueRange(0.0, 42.0), range)
+    }
+
+    // unsigned local >> constant -> [0, UINT_MAX >> constant]
+    {
+        auto loc = method.addNewLocal(TYPE_INT16);
+        auto inner = method.addNewLocal(TYPE_INT32);
+        expressions.emplace(
+            inner.local(), expression((loc << 2_val, intermediate::InstructionDecorations::UNSIGNED_RESULT)));
+        auto expr = expression(as_unsigned{inner} >> 17_val)->combineWith(expressions, options);
+        auto range = ValueRange::getValueRange(*expr);
+        TEST_ASSERT(!!range)
+        TEST_ASSERT_EQUALS(ValueRange(0.0, 32767.0), range)
+    }
+
+    // lid + constant -> [constant, constant + 11]
+    {
+        auto expr = expression(lid + 42_val)->combineWith(expressions, options);
+        auto range = ValueRange::getValueRange(*expr);
+        TEST_ASSERT(!!range)
+        TEST_ASSERT_EQUALS(ValueRange(42.0, 53.0), range)
+    }
+
+    // min(gid, constant) -> [0, constant]
+    {
+        auto expr = expression(min(as_signed{gid}, as_signed{17_val}))->combineWith(expressions, options);
+        auto range = ValueRange::getValueRange(*expr);
+        TEST_ASSERT(!!range)
+        TEST_ASSERT_EQUALS(ValueRange(0.0, 17.0), range)
+    }
+
+    // itof(lid) * constant -> [0.0, 11.0 * constant]
+    {
+        auto conv = method.addNewLocal(TYPE_FLOAT);
+        expressions.emplace(
+            conv.local(), std::make_shared<Expression>(OP_ITOF, lid, lid)->combineWith(expressions, options));
+        auto expr = expression(conv * Value(Literal(-15.0f), TYPE_FLOAT))->combineWith(expressions, options);
+        auto range = ValueRange::getValueRange(*expr);
+        TEST_ASSERT(!!range)
+        TEST_ASSERT_EQUALS(ValueRange(-165.0, 0.0), range)
+    }
+
+    // fmax(itof(lid), neg constant) -> [0, 11]
+    {
+        auto conv = method.addNewLocal(TYPE_FLOAT);
+        expressions.emplace(
+            conv.local(), std::make_shared<Expression>(OP_ITOF, lid, lid)->combineWith(expressions, options));
+        auto expr = expression(max(as_float{conv}, as_float{Value(Literal(-42.0f), TYPE_FLOAT)}))
+                        ->combineWith(expressions, options);
+        auto range = ValueRange::getValueRange(*expr);
+        TEST_ASSERT(!!range)
+        TEST_ASSERT_EQUALS(ValueRange(0.0, 11.0), range)
+    }
+
+    // fmaxabs(itof(lid), neg constant) -> [|constant|, |constant|]
+    {
+        auto conv = method.addNewLocal(TYPE_FLOAT);
+        expressions.emplace(
+            conv.local(), std::make_shared<Expression>(OP_ITOF, lid, lid)->combineWith(expressions, options));
+        auto expr = std::make_shared<Expression>(OP_FMAXABS, conv, Value(Literal(-42.0f), TYPE_FLOAT))
+                        ->combineWith(expressions, options);
+        auto range = ValueRange::getValueRange(*expr);
+        TEST_ASSERT(!!range)
+        TEST_ASSERT_EQUALS(ValueRange(42.0, 42.0), range)
+    }
 }

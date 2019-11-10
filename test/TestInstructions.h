@@ -38,6 +38,8 @@ public:
 
     void testALUInstructions();
     void testLoadInstriction();
+
+    void testValueRanges();
 };
 
 #endif /* TEST_INSTRUCTIONS_H */

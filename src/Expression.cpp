@@ -159,7 +159,8 @@ bool Expression::operator==(const Expression& other) const
 LCOV_EXCL_START
 std::string Expression::to_string() const
 {
-    auto basic = std::string(code.name) + " " + arg0.to_string() + ", " + arg1.to_string();
+    auto basic =
+        std::string(code.name) + " " + arg0.to_string() + (code.numOperands > 1 ? ", " + arg1.to_string() : "");
     std::string extra;
     extra += unpackMode.hasEffect() ? unpackMode.to_string() + " " : "";
     extra += packMode.hasEffect() ? packMode.to_string() + " " : "";
@@ -179,7 +180,15 @@ Optional<Value> Expression::getConstantExpression() const
     if(auto firstVal = arg0.getConstantExpression())
     {
         auto secondVal = arg1.getConstantExpression();
-        return code(*firstVal, secondVal).first;
+        if(secondVal && code.opMul == FAKEOP_UMUL.opMul)
+        {
+            auto firstLit = firstVal->getLiteralValue();
+            auto secondLit = secondVal->getLiteralValue();
+            if(firstLit && secondLit)
+                return Value(Literal(firstLit->unsignedInt() * secondLit->unsignedInt()), TYPE_INT32);
+        }
+        else
+            return code(*firstVal, secondVal).first;
     }
     return NO_VALUE;
 }
@@ -272,6 +281,11 @@ std::shared_ptr<Expression> Expression::combineWith(
         }
     }
 
+    if(stopAtBuiltin && firstExpr && intermediate::isGroupBuiltin(firstExpr->deco, true))
+        firstExpr = nullptr;
+    if(stopAtBuiltin && secondExpr && intermediate::isGroupBuiltin(secondExpr->deco, true))
+        secondExpr = nullptr;
+
     if(unpackMode.hasEffect() || packMode.hasEffect() ||
         (firstExpr != nullptr && (firstExpr->unpackMode.hasEffect() || firstExpr->packMode.hasEffect())) ||
         ((secondExpr != nullptr && (secondExpr->unpackMode.hasEffect() || secondExpr->packMode.hasEffect()))))
@@ -291,6 +305,7 @@ std::shared_ptr<Expression> Expression::combineWith(
     {
         if(code.isIdempotent() && firstExpr->code == code)
             // f(f(a)) = f(a)
+            // XXX there are no single-argument idempotent operations
             return std::make_shared<Expression>(
                 code, firstExpr->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, firstExpr->deco));
         // NOTE: ftoi(itof(i)) != i, itof(ftoi(f)) != f, since the truncation/rounding would get lost!
@@ -308,6 +323,7 @@ std::shared_ptr<Expression> Expression::combineWith(
     {
         if(code.isIdempotent() && arg0 == arg1)
             // f(a, a) = a
+            // XXX this is actually hidden by the isMoveExpression() check above
             return firstExpr ? firstExpr->addDecorations(deco).shared_from_this() :
                                std::make_shared<Expression>(OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco);
         if(code.isSelfInverse() && arg0 == arg1)
@@ -616,6 +632,16 @@ static bool isUnsigned(const SubExpression& sub)
     return false;
 }
 
+static Optional<Value> getConvergenceLimit0(const SubExpression& sub)
+{
+    if(auto val = sub.checkValue())
+        return *val;
+
+    if(auto expr = sub.checkExpression())
+        return expr->getConvergenceLimit();
+    return {};
+}
+
 Optional<Value> Expression::getConvergenceLimit(Optional<Literal> initialValue) const
 {
     if(auto constant = getConstantExpression())
@@ -628,8 +654,8 @@ Optional<Value> Expression::getConvergenceLimit(Optional<Literal> initialValue) 
     // TODO make use of
     bool leftIsUnsigned = isUnsigned(arg0);
     bool rightIsUnsigned = isUnsigned(arg1);
-    auto firstVal = arg0.checkValue();
-    auto secondVal = arg1.checkValue();
+    auto firstVal = arg0.checkValue() | getConvergenceLimit0(arg0);
+    auto secondVal = arg1.checkValue() | getConvergenceLimit0(arg1);
     Optional<Literal> constantLiteral = ((firstVal ? firstVal->getConstantValue() : NO_VALUE) |
                                             (secondVal ? secondVal->getConstantValue() : NO_VALUE)) &
         &Value::getLiteralValue;
@@ -742,12 +768,12 @@ Optional<Value> Expression::getConvergenceLimit(Optional<Literal> initialValue) 
                                                          initialValue->signedInt() < 0 ? INT_MINUS_ONE : INT_ZERO;
         return NO_VALUE;
     case OP_SHL.opAdd:
+        if(leftIsLocal && constantLiteral && constantLiteral->unsignedInt() == 0)
+            // a << 0 -> a
+            return initialValue ? Value(*initialValue, TYPE_INT32) : arg0.checkValue();
         if(leftIsLocal && initialValue)
             // 0 << x -> 0
-            // a << 0 -> a
-            return (initialValue->unsignedInt() == 0) ?
-                INT_ZERO :
-                (constantLiteral && constantLiteral->unsignedInt() == 0 ? Value(*initialValue, TYPE_INT32) : NO_VALUE);
+            return (initialValue->unsignedInt() == 0) ? INT_ZERO : NO_VALUE;
         if(rightIsLocal && constantLiteral && constantLiteral->unsignedInt() == 0)
             // 0 << a -> 0
             return INT_ZERO;
@@ -776,9 +802,11 @@ Optional<Value> Expression::getConvergenceLimit(Optional<Literal> initialValue) 
             return INT_ZERO;
         if(leftIsLocal && rightIsLocal)
             // 0 * 0 -> 0
+            // const * const -> const^2
             // a * a -> INT_MAX
-            return initialValue == Literal(0u) ? INT_ZERO :
-                                                 Value(Literal(std::numeric_limits<uint32_t>::max()), TYPE_INT32);
+            return initialValue ?
+                Value(Literal(initialValue->unsignedInt() * initialValue->unsignedInt()), TYPE_INT32) :
+                Value(Literal(std::numeric_limits<uint32_t>::max()), TYPE_INT32);
         return NO_VALUE;
     }
     CPPLOG_LAZY(

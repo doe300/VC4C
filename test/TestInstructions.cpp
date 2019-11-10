@@ -14,6 +14,7 @@
 #include "asm/ALUInstruction.h"
 #include "asm/LoadInstruction.h"
 #include "asm/OpCodes.h"
+#include "intermediate/IntermediateInstruction.h"
 #include "normalization/LiteralValues.h"
 
 #include <functional>
@@ -44,6 +45,7 @@ TestInstructions::TestInstructions()
     TEST_ADD(TestInstructions::testCompoundConstants);
     TEST_ADD(TestInstructions::testALUInstructions);
     TEST_ADD(TestInstructions::testLoadInstriction);
+    TEST_ADD(TestInstructions::testValueRanges);
 }
 
 // out-of-line virtual destructor
@@ -118,6 +120,10 @@ void TestInstructions::testSignals()
 
 void TestInstructions::testUnpackModes()
 {
+    uint32_t halfOne = static_cast<uint16_t>(half_t{1.0f});
+    uint32_t colorHalf = 0x7F;
+    Value floatHalf(Literal(127.0f / 255.0f), TYPE_FLOAT);
+
     TEST_ASSERT_EQUALS(INT_MINUS_ONE, UNPACK_NOP(INT_MINUS_ONE))
     TEST_ASSERT_EQUALS(INT_ZERO, UNPACK_NOP(INT_ZERO))
 
@@ -125,10 +131,12 @@ void TestInstructions::testUnpackModes()
     TEST_ASSERT_EQUALS(INT_MINUS_ONE, UNPACK_16A_32(Value(Literal(0xFFFF), TYPE_INT16)))
     TEST_ASSERT_EQUALS(INT_ZERO, UNPACK_16A_32(INT_ZERO))
     TEST_ASSERT_EQUALS(ELEMENT_NUMBERS, UNPACK_16A_32(ELEMENT_NUMBERS))
+    TEST_ASSERT_EQUALS(FLOAT_ONE, UNPACK_16A_32(Value(Literal(halfOne), TYPE_FLOAT)))
 
     TEST_ASSERT_EQUALS(INT_MINUS_ONE, UNPACK_16B_32(INT_MINUS_ONE))
     TEST_ASSERT_EQUALS(INT_MINUS_ONE, UNPACK_16B_32(Value(Literal(0xFFFF0000u), TYPE_INT32)))
     TEST_ASSERT_EQUALS(INT_ZERO, UNPACK_16B_32(INT_ZERO))
+    TEST_ASSERT_EQUALS(FLOAT_ONE, UNPACK_16B_32(Value(Literal(halfOne << 16), TYPE_FLOAT)))
 
     TEST_ASSERT_EQUALS(INT_MINUS_ONE, UNPACK_8888_32(INT_MINUS_ONE))
     TEST_ASSERT_EQUALS(INT_MINUS_ONE, UNPACK_8888_32(Value(Literal(0xFF), TYPE_INT8)))
@@ -136,15 +144,19 @@ void TestInstructions::testUnpackModes()
 
     TEST_ASSERT_EQUALS(Value(Literal(0xFF), TYPE_INT32), UNPACK_8A_32(Value(Literal(0xFF), TYPE_INT8)))
     TEST_ASSERT_EQUALS(INT_ZERO, UNPACK_8A_32(INT_ZERO))
+    TEST_ASSERT_EQUALS(floatHalf, UNPACK_8A_32(Value(Literal(colorHalf), TYPE_FLOAT)))
 
     TEST_ASSERT_EQUALS(Value(Literal(0xFF), TYPE_INT32), UNPACK_8B_32(Value(Literal(0xFF00), TYPE_INT8)))
     TEST_ASSERT_EQUALS(INT_ZERO, UNPACK_8B_32(INT_ZERO))
+    TEST_ASSERT_EQUALS(floatHalf, UNPACK_8B_32(Value(Literal(colorHalf << 8), TYPE_FLOAT)))
 
     TEST_ASSERT_EQUALS(Value(Literal(0xFF), TYPE_INT32), UNPACK_8C_32(Value(Literal(0xFF0000), TYPE_INT8)))
     TEST_ASSERT_EQUALS(INT_ZERO, UNPACK_8C_32(INT_ZERO))
+    TEST_ASSERT_EQUALS(floatHalf, UNPACK_8C_32(Value(Literal(colorHalf << 16), TYPE_FLOAT)))
 
     TEST_ASSERT_EQUALS(Value(Literal(0xFF), TYPE_INT32), UNPACK_8D_32(Value(Literal(0xFF000000u), TYPE_INT8)))
     TEST_ASSERT_EQUALS(INT_ZERO, UNPACK_8D_32(INT_ZERO))
+    TEST_ASSERT_EQUALS(floatHalf, UNPACK_8D_32(Value(Literal(colorHalf << 24), TYPE_FLOAT)))
 
     TEST_ASSERT_EQUALS(FLOAT_ZERO, UNPACK_R4_COLOR0(INT_ZERO))
     TEST_ASSERT_EQUALS(FLOAT_ONE, UNPACK_R4_COLOR0(Value(Literal(0xFF), TYPE_INT8)))
@@ -173,19 +185,46 @@ void TestInstructions::testUnpackModes()
     TEST_ASSERT_EQUALS(FLOAT_ONE,
         UNPACK_R4_16B_32(
             Value(Literal(static_cast<uint32_t>(static_cast<uint16_t>(1.0_h) << 16u) | 0x00001234u), TYPE_HALF)))
+
+    // value ranges
+    using namespace analysis;
+    ValueRange shortRange(static_cast<double>(std::numeric_limits<int16_t>::min()), 12345.0);
+    ValueRange notSoShortRange(-65000.0, 17.0);
+    TEST_ASSERT_EQUALS(ValueRange(TYPE_FLOAT), UNPACK_NOP(ValueRange(TYPE_FLOAT), true))
+    TEST_ASSERT_EQUALS(ValueRange(TYPE_INT32), UNPACK_NOP_PM(ValueRange(TYPE_INT32), false))
+
+    TEST_ASSERT_EQUALS(shortRange, UNPACK_16A_32(shortRange, true))
+    TEST_ASSERT_EQUALS(shortRange, UNPACK_16A_32(shortRange, false))
+    TEST_ASSERT_EQUALS(ValueRange(TYPE_INT32), UNPACK_16A_32(notSoShortRange, false))
+
+    TEST_ASSERT_EQUALS(ValueRange(17.0 / 255.0, 127.0 / 255.0), UNPACK_8A_32(ValueRange{17.0, 127.0}, true))
+    TEST_ASSERT_EQUALS(ValueRange(TYPE_FLOAT), UNPACK_8A_32(ValueRange{-17.0, 2127.0}, true))
+    TEST_ASSERT_EQUALS(ValueRange(17.0, 42.0), UNPACK_8A_32(ValueRange(17.0, 42.0), false))
+    TEST_ASSERT_EQUALS(ValueRange(TYPE_INT32), UNPACK_8A_32(shortRange, false))
+
+    TEST_ASSERT_EQUALS(shortRange, UNPACK_R4_16A_32(shortRange, true))
+    TEST_ASSERT_EQUALS(ValueRange(TYPE_FLOAT), UNPACK_R4_16A_32(ValueRange(-70000.0, 80000.0), true))
+    // TODO actually needs to test "not-so-half" range
+    TEST_ASSERT_EQUALS(notSoShortRange, UNPACK_R4_16A_32(notSoShortRange, false))
+
+    TEST_ASSERT_EQUALS(ValueRange(17.0 / 255.0, 127.0 / 255.0), UNPACK_R4_COLOR0(ValueRange{17.0, 127.0}, true))
 }
 
 void TestInstructions::testPackModes()
 {
+    uint32_t halfOne = static_cast<uint16_t>(half_t{1.0f});
+
     TEST_ASSERT_EQUALS(INT_MINUS_ONE, PACK_NOP(INT_MINUS_ONE, {}))
     TEST_ASSERT_EQUALS(INT_ZERO, PACK_NOP(INT_ZERO, {}))
 
     TEST_ASSERT_EQUALS(Value(Literal(0xFFFF), TYPE_INT16), PACK_32_16A(INT_MINUS_ONE, {}))
     TEST_ASSERT_EQUALS(INT_ZERO, PACK_32_16A(INT_ZERO, {}))
     TEST_ASSERT_EQUALS(ELEMENT_NUMBERS, PACK_32_16A(ELEMENT_NUMBERS, {}))
+    TEST_ASSERT_EQUALS(Value(Literal(halfOne), TYPE_FLOAT), PACK_32_16A(FLOAT_ONE, {}))
 
     TEST_ASSERT_EQUALS(Value(Literal(0xFFFF0000u), TYPE_INT32), PACK_32_16B(INT_MINUS_ONE, {}))
     TEST_ASSERT_EQUALS(INT_ZERO, PACK_32_16B(INT_ZERO, {}))
+    TEST_ASSERT_EQUALS(Value(Literal(halfOne << 16), TYPE_FLOAT), PACK_32_16B(FLOAT_ONE, {}))
 
     TEST_ASSERT_EQUALS(INT_MINUS_ONE, PACK_32_8888(INT_MINUS_ONE, {}))
     TEST_ASSERT_EQUALS(INT_MINUS_ONE, PACK_32_8888(Value(Literal(0xFF), TYPE_INT8), {}))
@@ -207,6 +246,7 @@ void TestInstructions::testPackModes()
     TEST_ASSERT_EQUALS(Value(Literal(0x8000), TYPE_INT16), PACK_32_16A_S(Value(Literal(0x87654321u), TYPE_INT32), {}))
     TEST_ASSERT_EQUALS(Value(Literal(0x7FFF), TYPE_INT16), PACK_32_16A_S(Value(Literal(0x12345678u), TYPE_INT32), {}))
     TEST_ASSERT_EQUALS(INT_ZERO, PACK_32_16A_S(INT_ZERO, {}))
+    TEST_ASSERT_EQUALS(Value(Literal(halfOne), TYPE_FLOAT), PACK_32_16A_S(FLOAT_ONE, {}))
 
     TEST_ASSERT_EQUALS(Value(Literal(0xFFFF0000u), TYPE_INT16), PACK_32_16B_S(INT_MINUS_ONE, {}))
     TEST_ASSERT_EQUALS(
@@ -214,6 +254,7 @@ void TestInstructions::testPackModes()
     TEST_ASSERT_EQUALS(
         Value(Literal(0x7FFF0000u), TYPE_INT16), PACK_32_16B_S(Value(Literal(0x12345678u), TYPE_INT32), {}))
     TEST_ASSERT_EQUALS(INT_ZERO, PACK_32_16B_S(INT_ZERO, {}))
+    TEST_ASSERT_EQUALS(Value(Literal(halfOne << 16), TYPE_FLOAT), PACK_32_16B_S(FLOAT_ONE, {}))
 
     TEST_ASSERT_EQUALS(INT_MINUS_ONE, PACK_32_8888_S(Value(Literal(0xFF), TYPE_INT8), {}))
     TEST_ASSERT_EQUALS(INT_MINUS_ONE, PACK_32_8888_S(Value(Literal(0x12345678u), TYPE_INT32), {}))
@@ -252,6 +293,37 @@ void TestInstructions::testPackModes()
     TEST_ASSERT_EQUALS(INT_ZERO, PACK_MUL_COLOR3(FLOAT_ZERO, {}))
     TEST_ASSERT_EQUALS(Value(Literal(0x7F000000), TYPE_INT8), PACK_MUL_COLOR3(Value(Literal(0.5f), TYPE_FLOAT), {}))
     TEST_ASSERT_EQUALS(Value(Literal(0xFF000000), TYPE_INT8), PACK_MUL_COLOR3(FLOAT_ONE, {}))
+
+    // value ranges
+    using namespace analysis;
+    ValueRange shortRange(static_cast<double>(std::numeric_limits<int16_t>::min()), 12345.0);
+    ValueRange notSoShortRange(-65000.0, 17.0);
+
+    TEST_ASSERT_EQUALS(notSoShortRange, PACK_NOP(notSoShortRange, false))
+    TEST_ASSERT_EQUALS(notSoShortRange, PACK_NOP_PM(notSoShortRange, false))
+
+    TEST_ASSERT_EQUALS(shortRange, PACK_32_16A(shortRange, true))
+    TEST_ASSERT_EQUALS(ValueRange(TYPE_HALF), PACK_32_16A(ValueRange(-70000.0, 80000.0), true))
+    TEST_ASSERT_EQUALS(ValueRange(TYPE_INT32), PACK_32_16A(shortRange, false))
+    TEST_ASSERT_EQUALS(ValueRange(17.0, 1227.0), PACK_32_16A(ValueRange(17.0, 1227.0), false))
+
+    TEST_ASSERT_EQUALS(RANGE_UCHAR, PACK_32_8A(shortRange, false))
+    TEST_ASSERT_EQUALS(ValueRange(17.0, 127.0), PACK_32_8A(ValueRange(17.0, 127.0), false))
+
+    TEST_ASSERT_EQUALS(shortRange, PACK_32_32(shortRange, false))
+    TEST_ASSERT_EQUALS(notSoShortRange, PACK_32_32(notSoShortRange, false))
+
+    TEST_ASSERT_EQUALS(shortRange, PACK_32_16A_S(shortRange, true))
+    TEST_ASSERT_EQUALS(ValueRange(TYPE_HALF), PACK_32_16A_S(ValueRange(-70000.0, 80000.0), true))
+    TEST_ASSERT_EQUALS(shortRange, PACK_32_16A_S(shortRange, false))
+    TEST_ASSERT_EQUALS(ValueRange(static_cast<double>(std::numeric_limits<int16_t>::min()), 17.0),
+        PACK_32_16A_S(notSoShortRange, false))
+
+    TEST_ASSERT_EQUALS(ValueRange(0.0, 17.0), PACK_32_8A_S(notSoShortRange, false))
+    TEST_ASSERT_EQUALS(ValueRange(17.0, 255.0), PACK_32_8A_S(ValueRange(17.0, 1207.0), false))
+
+    TEST_ASSERT_EQUALS(RANGE_UCHAR, PACK_MUL_COLOR0(ValueRange(-17.0, 255.0), false))
+    TEST_ASSERT_EQUALS(ValueRange(17.0, 127.0), PACK_MUL_COLOR0(ValueRange(17.0 / 255.0, 127.0 / 255.0), false))
 }
 
 void TestInstructions::testConstantSaturations()
@@ -780,16 +852,22 @@ void TestInstructions::testOpCodeFlags()
 
 // determines the bounds of the new range by determining the minimum/maximum value of calculating the given operation
 // with all bounds combinations
-template <typename T,
-    typename Range =
-        typename std::conditional<std::is_same<T, double>::value, analysis::FloatRange, analysis::IntegerRange>::type,
-    typename Op = std::function<T(T, T)>>
-analysis::ValueRange calculateRange(const Range& in0, const Range& in1, Op&& op)
+template <typename T, typename Op = std::function<T(T, T)>>
+analysis::ValueRange calculateRange(const analysis::ValueRange& in0, const analysis::ValueRange& in1, Op&& op)
 {
-    auto res = {op(in0.minValue, in1.minValue), op(in0.minValue, in1.maxValue), op(in0.maxValue, in1.minValue),
-        op(in0.maxValue, in1.maxValue)};
-    return analysis::ValueRange{
-        Range{*std::min_element(res.begin(), res.end()), *std::max_element(res.begin(), res.end())}};
+    // auto res = {op(in0.minValue, in1.minValue), op(in0.minValue, in1.maxValue), op(in0.maxValue, in1.minValue),
+    //     op(in0.maxValue, in1.maxValue), op(in0.minValue, T{0}), op(in0.maxValue, T{0}), op(T{0}, in1.minValue),
+    //     op(T{0}, in1.maxValue)};
+    // This tests almost "all" combinations (not quite, only full integer steps, but still enough)
+    std::vector<T> res;
+    res.reserve(static_cast<std::size_t>((in0.maxValue - in0.minValue + 1) * (in1.maxValue - in1.minValue + 1)));
+    for(T a = static_cast<T>(in0.minValue); a <= static_cast<T>(in0.maxValue); ++a)
+    {
+        for(T b = static_cast<T>(in1.minValue); b <= static_cast<T>(in1.maxValue); ++b)
+            res.emplace_back(op(a, b));
+    }
+    return analysis::ValueRange{static_cast<double>(*std::min_element(res.begin(), res.end())),
+        static_cast<double>(*std::max_element(res.begin(), res.end()))};
 }
 
 void TestInstructions::testOpCodeRanges()
@@ -797,43 +875,130 @@ void TestInstructions::testOpCodeRanges()
     using namespace analysis;
 
     ValueRange emptyRange{TYPE_UNKNOWN};
-    FloatRange innerFloat0{-1024.0, 4096.0};
-    FloatRange innerFloat1{-42.0, 42.0};
-    ValueRange floatRange0{innerFloat0};
-    ValueRange floatRange1{innerFloat1};
-    IntegerRange innerInt0{-1024, 4096};
-    IntegerRange innerInt1{-42, 42};
-    ValueRange intRange0{innerInt0};
-    ValueRange intRange1{innerInt1};
 
-    TEST_ASSERT_EQUALS(
-        calculateRange<double>(innerFloat0, innerFloat1, std::plus<>{}), OP_FADD(floatRange0, floatRange1))
-    TEST_ASSERT_EQUALS(
-        calculateRange<double>(innerFloat0, innerFloat1, std::minus<>{}), OP_FSUB(floatRange0, floatRange1))
-    TEST_ASSERT_EQUALS(calculateRange<double>(innerFloat0, innerFloat1, [](auto a, auto b) { return std::min(a, b); }),
-        OP_FMIN(floatRange0, floatRange1))
-    TEST_ASSERT_EQUALS(calculateRange<double>(innerFloat0, innerFloat1, [](auto a, auto b) { return std::max(a, b); }),
-        OP_FMAX(floatRange0, floatRange1))
-    TEST_ASSERT_EQUALS(calculateRange<double>(
-                           innerFloat0, innerFloat1, [](auto a, auto b) { return std::min(std::abs(a), std::abs(b)); }),
-        OP_FMINABS(floatRange0, floatRange1))
-    TEST_ASSERT_EQUALS(calculateRange<double>(
-                           innerFloat0, innerFloat1, [](auto a, auto b) { return std::max(std::abs(a), std::abs(b)); }),
-        OP_FMAXABS(floatRange0, floatRange1))
-    TEST_ASSERT_EQUALS(ValueRange(IntegerRange{-1024, 4096}), OP_FTOI(floatRange0, emptyRange))
-    TEST_ASSERT_EQUALS(ValueRange(FloatRange{-1024.0, 4096.0}), OP_ITOF(intRange0, emptyRange))
-    TEST_ASSERT_EQUALS(calculateRange<int64_t>(innerInt0, innerInt1, std::plus<>{}), OP_ADD(intRange0, intRange1))
-    TEST_ASSERT_EQUALS(calculateRange<int64_t>(innerInt0, innerInt1, std::minus<>{}), OP_SUB(intRange0, intRange1))
-    TEST_ASSERT_EQUALS(calculateRange<int64_t>(innerInt0, innerInt1, [](auto a, auto b) { return std::min(a, b); }),
-        OP_MIN(intRange0, intRange1))
-    TEST_ASSERT_EQUALS(calculateRange<int64_t>(innerInt0, innerInt1, [](auto a, auto b) { return std::max(a, b); }),
-        OP_MAX(intRange0, intRange1))
-    TEST_ASSERT_EQUALS(ValueRange(IntegerRange{0, 32}), OP_CLZ(intRange0, emptyRange))
-    TEST_ASSERT_EQUALS(
-        calculateRange<double>(innerFloat0, innerFloat1, std::multiplies<>{}), OP_FMUL(floatRange0, floatRange1))
+    std::vector<ValueRange> ranges = {ValueRange{-1024.0, -256.0}, ValueRange{-42.0, 28.0}, ValueRange{17.0, 42.0},
+        ValueRange{0.0, 0.0}, ValueRange{20000000.0, 20000010.0} /* < for mul24 */};
 
-    TEST_ASSERT(!OP_MUL24(intRange0, intRange1).hasExplicitBoundaries())
-    TEST_ASSERT(!OP_MUL24(floatRange0, floatRange1).hasExplicitBoundaries())
+    TEST_ASSERT_EQUALS(RANGE_FLOAT, OP_FADD(ValueRange{}, ValueRange{}))
+    TEST_ASSERT_EQUALS(RANGE_FLOAT, OP_FSUB(ValueRange{}, ValueRange{}))
+    TEST_ASSERT_EQUALS(RANGE_FLOAT, OP_FMIN(ValueRange{}, ValueRange{}))
+    TEST_ASSERT_EQUALS(RANGE_FLOAT, OP_FMAX(ValueRange{}, ValueRange{}))
+    TEST_ASSERT_EQUALS(RANGE_FLOAT, OP_FMINABS(ValueRange{}, ValueRange{}))
+    TEST_ASSERT_EQUALS(RANGE_FLOAT, OP_FMAXABS(ValueRange{}, ValueRange{}))
+    TEST_ASSERT_EQUALS(RANGE_FLOAT, OP_FMUL(ValueRange{}, ValueRange{}))
+    TEST_ASSERT_EQUALS(RANGE_INT, OP_FTOI(ValueRange{}, ValueRange{}))
+    TEST_ASSERT_EQUALS(RANGE_FLOAT, OP_ITOF(ValueRange{}, ValueRange{}))
+    TEST_ASSERT_EQUALS(RANGE_INT, OP_ADD(ValueRange{}, ValueRange{}))
+    TEST_ASSERT_EQUALS(RANGE_INT, OP_SUB(ValueRange{}, ValueRange{}))
+    TEST_ASSERT_EQUALS(RANGE_UINT, OP_SHR(ValueRange{}, ValueRange{}))
+    TEST_ASSERT_EQUALS(RANGE_UINT, OP_SHL(ValueRange{}, ValueRange{}))
+    TEST_ASSERT_EQUALS(RANGE_INT, OP_MIN(ValueRange{}, ValueRange{}))
+    TEST_ASSERT_EQUALS(RANGE_INT, OP_MAX(ValueRange{}, ValueRange{}))
+    TEST_ASSERT_EQUALS(RANGE_UINT, OP_AND(ValueRange{}, ValueRange{}))
+
+    for(const auto& innerFloat0 : ranges)
+    {
+        ValueRange floatRange0{innerFloat0};
+        for(const auto& innerFloat1 : ranges)
+        {
+            ValueRange floatRange1{innerFloat1};
+            TEST_ASSERT_EQUALS(
+                calculateRange<double>(innerFloat0, innerFloat1, std::plus<>{}), OP_FADD(floatRange0, floatRange1))
+            TEST_ASSERT_EQUALS(
+                calculateRange<double>(innerFloat0, innerFloat1, std::minus<>{}), OP_FSUB(floatRange0, floatRange1))
+            TEST_ASSERT_EQUALS(
+                calculateRange<double>(innerFloat0, innerFloat1, [](auto a, auto b) { return std::min(a, b); }),
+                OP_FMIN(floatRange0, floatRange1))
+            TEST_ASSERT_EQUALS(
+                calculateRange<double>(innerFloat0, innerFloat1, [](auto a, auto b) { return std::max(a, b); }),
+                OP_FMAX(floatRange0, floatRange1))
+            TEST_ASSERT_EQUALS(calculateRange<double>(innerFloat0, innerFloat1,
+                                   [](auto a, auto b) { return std::min(std::abs(a), std::abs(b)); }),
+                OP_FMINABS(floatRange0, floatRange1))
+            TEST_ASSERT_EQUALS(calculateRange<double>(innerFloat0, innerFloat1,
+                                   [](auto a, auto b) { return std::max(std::abs(a), std::abs(b)); }),
+                OP_FMAXABS(floatRange0, floatRange1))
+            TEST_ASSERT_EQUALS(calculateRange<double>(innerFloat0, innerFloat1, std::multiplies<>{}),
+                OP_FMUL(floatRange0, floatRange1))
+        }
+    }
+
+    {
+        ValueRange range0{-1024.0, 4096.0};
+        TEST_ASSERT_EQUALS(range0, OP_FTOI(range0, emptyRange))
+        TEST_ASSERT_EQUALS(range0, OP_ITOF(range0, emptyRange))
+    }
+
+    for(const auto& innerInt0 : ranges)
+    {
+        ValueRange intRange0{innerInt0};
+        for(const auto& innerInt1 : ranges)
+        {
+            ValueRange intRange1{innerInt1};
+            TEST_ASSERT_EQUALS(
+                calculateRange<int64_t>(innerInt0, innerInt1, std::plus<>{}), OP_ADD(intRange0, intRange1))
+            TEST_ASSERT_EQUALS(
+                calculateRange<int64_t>(innerInt0, innerInt1, std::minus<>{}), OP_SUB(intRange0, intRange1))
+            if(innerInt0.minValue >= 0)
+            {
+                TEST_ASSERT_EQUALS(calculateRange<int64_t>(innerInt0, innerInt1,
+                                       [](auto a, auto b) {
+                                           return saturate<uint32_t>(static_cast<int64_t>(
+                                               static_cast<uint64_t>(a) >> (0x1Fu & static_cast<uint64_t>(b))));
+                                       }),
+                    OP_SHR(intRange0, intRange1))
+            }
+            else
+            {
+                TEST_ASSERT_EQUALS(RANGE_UINT, OP_SHR(intRange0, intRange1))
+            }
+            if(innerInt0.minValue >= 0)
+            {
+                TEST_ASSERT_EQUALS(calculateRange<int64_t>(innerInt0, innerInt1,
+                                       [](auto a, auto b) {
+                                           return saturate<uint32_t>(static_cast<int64_t>(
+                                               static_cast<uint64_t>(a) << (0x1Fu & static_cast<uint64_t>(b))));
+                                       }),
+                    OP_SHL(intRange0, intRange1))
+            }
+            else
+            {
+                TEST_ASSERT_EQUALS(RANGE_UINT, OP_SHL(intRange0, intRange1))
+            }
+            TEST_ASSERT_EQUALS(
+                calculateRange<int64_t>(innerInt0, innerInt1, [](auto a, auto b) { return std::min(a, b); }),
+                OP_MIN(intRange0, intRange1))
+            TEST_ASSERT_EQUALS(
+                calculateRange<int64_t>(innerInt0, innerInt1, [](auto a, auto b) { return std::max(a, b); }),
+                OP_MAX(intRange0, intRange1))
+            if(innerInt0.minValue >= 0 && innerInt1.minValue >= 0)
+            {
+                // XXX the range is too broad, which is not an actual problem, just maybe inefficient
+                TEST_ASSERT(calculateRange<int64_t>(innerInt0, innerInt1, [](auto a, auto b) {
+                    return static_cast<int64_t>(static_cast<uint64_t>(a) & static_cast<uint64_t>(b));
+                }).fitsIntoRange(OP_AND(intRange0, intRange1)))
+            }
+            else
+            {
+                TEST_ASSERT_EQUALS(RANGE_UINT, OP_AND(intRange0, intRange1))
+            }
+            TEST_ASSERT_EQUALS(ValueRange(0.0, 32.0), OP_CLZ(intRange0, emptyRange))
+            if(innerInt0.minValue >= 0 && innerInt1.minValue >= 0 && innerInt0.maxValue < 0xFFFFFF &&
+                innerInt1.maxValue < 0xFFFFFF)
+            {
+                TEST_ASSERT_EQUALS(calculateRange<int64_t>(innerInt0, innerInt1,
+                                       [](auto a, auto b) {
+                                           return static_cast<int64_t>((0xFFFFFFu & static_cast<uint64_t>(a)) *
+                                               (0xFFFFFFu & static_cast<uint64_t>(b)));
+                                       }),
+                    OP_MUL24(intRange0, intRange1))
+            }
+            else
+            {
+                TEST_ASSERT_EQUALS(RANGE_UINT, OP_MUL24(intRange0, intRange1))
+            }
+        }
+    }
 }
 
 void TestInstructions::testRegister()
@@ -1477,4 +1642,106 @@ void TestInstructions::testLoadInstriction()
         TEST_ASSERT_EQUALS(Register(RegisterFile::PHYSICAL_A, 17), ins.getAddOutput())
         TEST_ASSERT_EQUALS(REG_ACC2, ins.getMulOutput())
     }
+}
+
+void TestInstructions::testValueRanges()
+{
+    // undefined/unlimited range
+    {
+        auto range = analysis::ValueRange::getValueRange(UNDEFINED_VALUE);
+        TEST_ASSERT(!range.hasExplicitBoundaries())
+        TEST_ASSERT(!range.fitsIntoType(TYPE_INT32))
+        TEST_ASSERT(!range.fitsIntoType(TYPE_VOID))
+        TEST_ASSERT(!range.fitsIntoRange(analysis::ValueRange(-17.0, 42.0)))
+        TEST_ASSERT_EQUALS(analysis::ValueRange(), range)
+        TEST_ASSERT(!range.getLowerLimit(TYPE_FLOAT))
+        TEST_ASSERT(!range.getLowerLimit(TYPE_VOID))
+        TEST_ASSERT(!range.getUpperLimit(TYPE_INT32))
+        TEST_ASSERT(!range.getUpperLimit(TYPE_VOID))
+        TEST_ASSERT(!range.toAbsoluteRange().hasExplicitBoundaries())
+    }
+
+    // constant range
+    {
+        Value constant(Literal(0.5f), TYPE_FLOAT);
+        auto range = analysis::ValueRange::getValueRange(constant);
+        TEST_ASSERT(range.hasExplicitBoundaries())
+        TEST_ASSERT(range.isUnsigned())
+        TEST_ASSERT(range.fitsIntoType(TYPE_HALF))
+        TEST_ASSERT(range.fitsIntoRange(analysis::ValueRange(0.0, 1.0)))
+        TEST_ASSERT(!range.fitsIntoRange(analysis::ValueRange(0.0, 0.1)))
+        TEST_ASSERT_EQUALS(constant, range.getLowerLimit(TYPE_FLOAT))
+        TEST_ASSERT_EQUALS(constant, range.getUpperLimit(TYPE_FLOAT))
+        TEST_ASSERT_EQUALS(INT_ZERO, range.getLowerLimit(TYPE_INT32))
+        TEST_ASSERT_EQUALS(INT_ONE, range.getUpperLimit(TYPE_INT8))
+        TEST_ASSERT(!!range.getSingletonValue())
+        TEST_ASSERT_ULP(0.5, *range.getSingletonValue(), 1)
+        TEST_ASSERT_EQUALS(range, range.toAbsoluteRange())
+    }
+
+    // constant vector range
+    {
+        Value constant(SIMDVector({Literal(-16.4f), Literal(15.0f), Literal(-3.2f)}), TYPE_FLOAT);
+        auto range = analysis::ValueRange::getValueRange(constant);
+        TEST_ASSERT(range.hasExplicitBoundaries())
+        TEST_ASSERT(!range.isUnsigned())
+        TEST_ASSERT(range.fitsIntoType(TYPE_HALF))
+        TEST_ASSERT(range.fitsIntoRange(analysis::ValueRange(-23.0, 18.0)))
+        TEST_ASSERT(!range.fitsIntoRange(analysis::ValueRange(0.0, 0.1)))
+        TEST_ASSERT_EQUALS(Value(Literal(-16.4f), TYPE_FLOAT), range.getLowerLimit(TYPE_FLOAT))
+        TEST_ASSERT_EQUALS(Value(Literal(15.0f), TYPE_FLOAT), range.getUpperLimit(TYPE_FLOAT))
+        TEST_ASSERT_EQUALS(Value(Literal(-17), TYPE_INT32), range.getLowerLimit(TYPE_INT32))
+        TEST_ASSERT_EQUALS(Value(Literal(15), TYPE_INT8), range.getUpperLimit(TYPE_INT8))
+        TEST_ASSERT(!range.getSingletonValue())
+
+        constant = Value(SIMDVector{}, TYPE_INT32);
+        range = analysis::ValueRange::getValueRange(constant);
+        TEST_ASSERT(!range.hasExplicitBoundaries())
+    }
+
+    // negative range
+    {
+        analysis::ValueRange range{-420000.0, -17.0};
+        TEST_ASSERT(range.hasExplicitBoundaries())
+        TEST_ASSERT(!range.isUnsigned())
+        TEST_ASSERT(!range.fitsIntoType(TYPE_HALF))
+        TEST_ASSERT(!range.fitsIntoType(TYPE_INT16))
+        TEST_ASSERT(range.fitsIntoType(TYPE_INT32))
+        TEST_ASSERT(!range.fitsIntoType(TYPE_VOID_POINTER))
+        TEST_ASSERT(range.fitsIntoRange(analysis::ValueRange(-600000.0, 1.0)))
+        TEST_ASSERT(!range.fitsIntoRange(analysis::ValueRange(0.0, 0.1)))
+        TEST_ASSERT_EQUALS(Value(Literal(-420000.0f), TYPE_FLOAT), range.getLowerLimit(TYPE_FLOAT))
+        TEST_ASSERT_EQUALS(Value(Literal(-17.0f), TYPE_FLOAT), range.getUpperLimit(TYPE_FLOAT))
+        TEST_ASSERT_EQUALS(Value(Literal(-420000), TYPE_INT32), range.getLowerLimit(TYPE_INT32))
+        TEST_ASSERT_EQUALS(Value(Literal(-17), TYPE_INT32), range.getUpperLimit(TYPE_INT8))
+        TEST_ASSERT_EQUALS(NO_VALUE, range.getLowerLimit(TYPE_VOID_POINTER))
+        TEST_ASSERT(!range.getSingletonValue())
+        TEST_ASSERT_EQUALS(analysis::ValueRange(17.0, 420000.0), range.toAbsoluteRange())
+    }
+
+    // signed range
+    {
+        analysis::ValueRange range{-42.0, 17.0};
+        TEST_ASSERT(range.hasExplicitBoundaries())
+        TEST_ASSERT(!range.isUnsigned())
+        TEST_ASSERT(range.fitsIntoType(TYPE_HALF))
+        TEST_ASSERT(range.fitsIntoType(TYPE_INT16))
+        TEST_ASSERT(range.fitsIntoRange(analysis::ValueRange(-60.0, 18.0)))
+        TEST_ASSERT(!range.fitsIntoRange(analysis::ValueRange(0.0, 0.1)))
+        TEST_ASSERT_EQUALS(Value(Literal(-42.0f), TYPE_FLOAT), range.getLowerLimit(TYPE_FLOAT))
+        TEST_ASSERT_EQUALS(Value(Literal(17.0f), TYPE_FLOAT), range.getUpperLimit(TYPE_FLOAT))
+        TEST_ASSERT_EQUALS(Value(Literal(-42), TYPE_INT32), range.getLowerLimit(TYPE_INT32))
+        TEST_ASSERT_EQUALS(Value(Literal(17), TYPE_INT32), range.getUpperLimit(TYPE_INT8))
+        TEST_ASSERT(!range.getSingletonValue())
+        TEST_ASSERT_EQUALS(analysis::ValueRange(0.0, 42.0), range.toAbsoluteRange())
+    }
+
+    TEST_ASSERT_EQUALS(analysis::ValueRange(0.0, 11.0),
+        analysis::ValueRange::getValueRange(intermediate::InstructionDecorations::BUILTIN_LOCAL_ID))
+    TEST_ASSERT_EQUALS(analysis::ValueRange(0.0, 12.0),
+        analysis::ValueRange::getValueRange(intermediate::InstructionDecorations::BUILTIN_LOCAL_SIZE))
+    TEST_ASSERT_EQUALS(analysis::RANGE_UINT,
+        analysis::ValueRange::getValueRange(intermediate::InstructionDecorations::BUILTIN_GROUP_ID))
+    TEST_ASSERT_EQUALS(analysis::ValueRange(1.0, 3.0),
+        analysis::ValueRange::getValueRange(intermediate::InstructionDecorations::BUILTIN_WORK_DIMENSIONS))
 }

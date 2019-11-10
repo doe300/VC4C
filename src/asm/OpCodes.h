@@ -258,6 +258,7 @@ namespace vc4c
 
         Optional<Value> operator()(const Value& val) const;
         SIMDVector operator()(const SIMDVector& val, bool isFloatOperation) const;
+        analysis::ValueRange operator()(const analysis::ValueRange& range, bool isFloatOperation) const;
 
         bool isPMBitSet() const noexcept;
         inline bool isUnpackFromR4() const noexcept
@@ -361,6 +362,7 @@ namespace vc4c
 
         Optional<Value> operator()(const Value& val, const VectorFlags& flags) const;
         SIMDVector operator()(const SIMDVector& val, const VectorFlags& flags, bool isFloatOperation) const;
+        analysis::ValueRange operator()(const analysis::ValueRange& range, bool isFloatOperation) const;
 
         bool isPMBitSet() const noexcept;
         inline bool supportsMulALU() const noexcept

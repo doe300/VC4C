@@ -20,45 +20,62 @@ using namespace vc4c;
 using namespace vc4c::analysis;
 using namespace vc4c::intermediate;
 
+ValueRange analysis::RANGE_HALF{static_cast<double>(std::numeric_limits<half_t>::lowest()),
+    static_cast<double>(std::numeric_limits<half_t>::max())};
+
+// Sanity check, that we do not lose precision for all representable values
+static_assert(static_cast<int32_t>(static_cast<double>(std::numeric_limits<int32_t>::min())) ==
+        std::numeric_limits<int32_t>::min(),
+    "");
+static_assert(static_cast<int32_t>(static_cast<double>(std::numeric_limits<int32_t>::max())) ==
+        std::numeric_limits<int32_t>::max(),
+    "");
+static_assert(static_cast<uint32_t>(static_cast<double>(std::numeric_limits<uint32_t>::max())) ==
+        std::numeric_limits<uint32_t>::max(),
+    "");
+static_assert(static_cast<float>(static_cast<double>(std::numeric_limits<float>::lowest())) ==
+        std::numeric_limits<float>::lowest(),
+    "");
+static_assert(
+    static_cast<float>(static_cast<double>(std::numeric_limits<float>::min())) == std::numeric_limits<float>::min(),
+    "");
+static_assert(
+    static_cast<float>(static_cast<double>(std::numeric_limits<float>::max())) == std::numeric_limits<float>::max(),
+    "");
+
 static bool isUnsignedType(DataType type)
 {
     /* bool and pointer types are unsigned, everything else could be signed */
     return type.getElementType() == TYPE_BOOL || type.getPointerType();
 }
 
-static constexpr FloatRange& floatRange(Variant<FloatRange, IntegerRange>& range)
-{
-    return VariantNamespace::get<FloatRange>(range);
-}
+static std::map<DataType, ValueRange> floatTypeLimits = {{TYPE_HALF, RANGE_HALF}, {TYPE_FLOAT, RANGE_FLOAT},
+    {TYPE_DOUBLE, ValueRange(std::numeric_limits<double>::min(), std::numeric_limits<double>::max())}};
 
-static constexpr IntegerRange& intRange(Variant<FloatRange, IntegerRange>& range)
+static constexpr ValueRange toIntTypeLimit(uint32_t numBits, bool isSigned) noexcept
 {
-    return VariantNamespace::get<IntegerRange>(range);
-}
-
-ValueRange::ValueRange(bool isFloat, bool isSigned) : hasDefaultBoundaries(true)
-{
-    // make sure the correct defaults are set
-    if(isFloat)
-        range = FloatRange();
+    int64_t minValue = std::numeric_limits<int64_t>::min();
+    int64_t maxValue = std::numeric_limits<int64_t>::max();
+    if(isSigned)
+    {
+        minValue = numBits == 8 ?
+            std::numeric_limits<int8_t>::min() :
+            (numBits == 16 ? std::numeric_limits<int16_t>::min() : std::numeric_limits<int32_t>::min());
+        maxValue = numBits == 8 ?
+            std::numeric_limits<uint8_t>::max() :
+            (numBits == 16 ? std::numeric_limits<uint16_t>::max() : std::numeric_limits<uint32_t>::max());
+    }
     else
     {
-        range = IntegerRange();
-        if(isSigned)
-            intRange(range).maxValue = std::numeric_limits<int32_t>::max();
-        else
-            intRange(range).minValue = 0;
+        minValue = 0;
+        maxValue = numBits == 8 ?
+            std::numeric_limits<uint8_t>::max() :
+            (numBits == 16 ? std::numeric_limits<uint16_t>::max() : std::numeric_limits<uint32_t>::max());
     }
+    return ValueRange(static_cast<double>(minValue), static_cast<double>(maxValue));
 }
 
-static std::map<DataType, std::pair<double, double>> floatTypeLimits = {
-    {TYPE_HALF, std::make_pair(6.103515625e-05, 65504.0)},
-    {TYPE_FLOAT,
-        std::make_pair<double, double>(static_cast<double>(std::numeric_limits<float>::min()),
-            static_cast<double>(std::numeric_limits<float>::max()))},
-    {TYPE_DOUBLE, std::make_pair(std::numeric_limits<double>::min(), std::numeric_limits<double>::max())}};
-
-ValueRange::ValueRange(DataType type) : ValueRange(type.isFloatingType(), !isUnsignedType(type))
+ValueRange::ValueRange(DataType type)
 {
     const DataType elemType = type.getPointerType() ? type : type.getElementType();
     if(type.isFloatingType())
@@ -66,78 +83,20 @@ ValueRange::ValueRange(DataType type) : ValueRange(type.isFloatingType(), !isUns
         auto it = floatTypeLimits.find(elemType);
         if(it == floatTypeLimits.end())
             throw CompilationError(CompilationStep::GENERAL, "Unhandled floating-point type", type.to_string());
-        floatRange(range).minValue = it->second.first;
-        floatRange(range).maxValue = it->second.second;
-    }
-    else if(isUnsignedType(type))
-    {
-        intRange(range).minValue = 0;
-        intRange(range).maxValue = elemType.getScalarBitCount() == 8 ?
-            std::numeric_limits<uint8_t>::max() :
-            (elemType.getScalarBitCount() == 16 ? std::numeric_limits<uint16_t>::max() :
-                                                  std::numeric_limits<uint32_t>::max());
+        minValue = it->second.minValue;
+        maxValue = it->second.maxValue;
     }
     else
     {
-        intRange(range).minValue = elemType.getScalarBitCount() == 8 ?
-            std::numeric_limits<int8_t>::min() :
-            (elemType.getScalarBitCount() == 16 ? std::numeric_limits<int16_t>::min() :
-                                                  std::numeric_limits<int32_t>::min());
-        intRange(range).maxValue = elemType.getScalarBitCount() == 8 ?
-            std::numeric_limits<uint8_t>::max() :
-            (elemType.getScalarBitCount() == 16 ? std::numeric_limits<uint16_t>::max() :
-                                                  std::numeric_limits<uint32_t>::max());
+        auto range = toIntTypeLimit(elemType.getScalarBitCount(), !isUnsignedType(elemType));
+        minValue = range.minValue;
+        maxValue = range.maxValue;
     }
-}
-
-ValueRange::ValueRange(FloatRange range) : range(range), hasDefaultBoundaries(false) {}
-ValueRange::ValueRange(IntegerRange range) : range(range), hasDefaultBoundaries(false) {}
-
-Optional<FloatRange> ValueRange::getFloatRange() const
-{
-    FloatRange result;
-    if(auto floatRange = VariantNamespace::get_if<FloatRange>(&range))
-        return *floatRange;
-    if(auto intRange = VariantNamespace::get_if<IntegerRange>(&range))
-    {
-        if(static_cast<double>(intRange->maxValue) <= static_cast<double>(std::numeric_limits<float>::max()) &&
-            static_cast<double>(intRange->minValue) >= static_cast<double>(std::numeric_limits<float>::min()))
-        {
-            result.minValue = static_cast<double>(intRange->minValue);
-            result.maxValue = static_cast<double>(intRange->maxValue);
-            return result;
-        }
-        return {};
-    }
-    return {};
-}
-
-Optional<IntegerRange> ValueRange::getIntRange() const
-{
-    IntegerRange result;
-    if(auto floatRange = VariantNamespace::get_if<FloatRange>(&range))
-    {
-        if(static_cast<int64_t>(floatRange->maxValue) <= static_cast<int64_t>(std::numeric_limits<int32_t>::max()) &&
-            static_cast<int64_t>(floatRange->minValue) >= static_cast<int64_t>(std::numeric_limits<int32_t>::min()))
-        {
-            result.maxValue = static_cast<int32_t>(floatRange->maxValue);
-            result.minValue = static_cast<int32_t>(floatRange->minValue);
-            return result;
-        }
-        return {};
-    }
-    if(auto intRange = VariantNamespace::get_if<IntegerRange>(&range))
-        return *intRange;
-    return {};
 }
 
 bool ValueRange::isUnsigned() const
 {
-    if(auto floatRange = VariantNamespace::get_if<FloatRange>(&range))
-        return floatRange->minValue >= 0.0 && floatRange->maxValue >= 0.0;
-    if(auto intRange = VariantNamespace::get_if<IntegerRange>(&range))
-        return intRange->minValue >= 0 && intRange->maxValue >= 0;
-    return false;
+    return minValue >= 0.0 && maxValue >= 0.0;
 }
 
 bool isInRange(double valMin, double valMax, double min, double max)
@@ -145,144 +104,130 @@ bool isInRange(double valMin, double valMax, double min, double max)
     return valMin >= min && valMin <= max && valMax >= min && valMax <= max;
 }
 
-bool isInRange(int64_t valMin, int64_t valMax, uint64_t numBits, bool isSigned)
-{
-    // signed: -2^(bits - 1)
-    // unsigned: 0
-    int64_t min = isSigned ? -bit_cast<uint64_t, int64_t>(1 << (numBits - 1)) : 0;
-    // signed: 2^(bits - 1) - 1
-    // unsigned: 2^bits - 1
-    int64_t max = bit_cast<uint64_t, int64_t>(isSigned ? (1 << (numBits - 1)) : 1 << numBits) - 1;
-
-    return valMin >= min && valMin <= max && valMax >= min && valMax <= max;
-}
-
 bool ValueRange::fitsIntoType(DataType type, bool isSigned) const
 {
     const DataType elemType = type.getElementType();
-    if(auto floatRange = VariantNamespace::get_if<FloatRange>(&range))
+    if(type.isFloatingType())
     {
-        if(!type.isFloatingType())
-            return false;
-        if(floatTypeLimits.find(elemType) == floatTypeLimits.end())
+        auto it = floatTypeLimits.find(elemType);
+        if(it == floatTypeLimits.end())
             throw CompilationError(CompilationStep::GENERAL, "Unhandled floating-point type", type.to_string());
-        return isInRange(floatRange->minValue, floatRange->maxValue, floatTypeLimits.at(elemType).first,
-            floatTypeLimits.at(elemType).second);
+        return isInRange(minValue, maxValue, it->second.minValue, it->second.maxValue);
     }
-    if(auto intRange = VariantNamespace::get_if<IntegerRange>(&range))
+    if(type.isIntegralType())
     {
-        if(!type.isIntegralType())
-            return false;
-        return isInRange(intRange->minValue, intRange->maxValue, elemType.getScalarBitCount(), isSigned);
+        auto range = toIntTypeLimit(elemType.getScalarBitCount(), isSigned);
+        return isInRange(minValue, maxValue, range.minValue, range.maxValue);
     }
     return false;
 }
 
 bool ValueRange::hasExplicitBoundaries() const
 {
-    return !hasDefaultBoundaries;
+    return !std::isinf(minValue) && !std::isnan(minValue) && !std::isinf(maxValue) && !std::isnan(maxValue);
 }
 
-Optional<Value> ValueRange::getLowerLimit() const
+Optional<Value> ValueRange::getLowerLimit(DataType type) const
 {
-    if(hasDefaultBoundaries)
+    if(!hasExplicitBoundaries())
         return NO_VALUE;
-    if(auto floatRange = VariantNamespace::get_if<FloatRange>(&range))
+    ValueRange typeLimits;
+    std::function<Literal(double)> conv;
+    if(type.isFloatingType())
     {
-        if(floatRange->minValue < static_cast<double>(std::numeric_limits<float>::lowest()))
-            return NO_VALUE;
-        if(floatRange->minValue > static_cast<double>(std::numeric_limits<float>::max()))
-            return NO_VALUE;
-        return Value(Literal(static_cast<float>(floatRange->minValue)), TYPE_FLOAT);
+        auto it = floatTypeLimits.find(type);
+        if(it == floatTypeLimits.end())
+            throw CompilationError(CompilationStep::GENERAL, "Unhandled floating-point type", type.to_string());
+        typeLimits = it->second;
+        conv = [](double d) -> Literal { return Literal(static_cast<float>(d)); };
     }
-    if(auto intRange = VariantNamespace::get_if<IntegerRange>(&range))
+    else if(type.isIntegralType())
     {
-        if(intRange->minValue < std::numeric_limits<int32_t>::min())
-            return NO_VALUE;
-        if(intRange->minValue > std::numeric_limits<uint32_t>::max())
-            return NO_VALUE;
-        if(intRange->minValue > std::numeric_limits<int32_t>::max())
-            return Value(Literal(static_cast<uint32_t>(intRange->minValue)), TYPE_FLOAT);
-        return Value(Literal(static_cast<int32_t>(intRange->minValue)), TYPE_FLOAT);
+        auto isSigned = !isUnsignedType(type);
+        typeLimits = toIntTypeLimit(type.getScalarBitCount(), isSigned);
+        if(isSigned)
+            conv = [](double d) -> Literal { return Literal(static_cast<int32_t>(std::floor(d))); };
+        else
+            conv = [](double d) -> Literal { return Literal(static_cast<uint32_t>(std::floor(d))); };
     }
-    return NO_VALUE;
+    else
+        return NO_VALUE;
+
+    if(minValue < typeLimits.minValue)
+        return NO_VALUE;
+    if(minValue > typeLimits.maxValue)
+        return NO_VALUE;
+    return Value(conv(minValue), type);
 }
 
-Optional<Value> ValueRange::getUpperLimit() const
+Optional<Value> ValueRange::getUpperLimit(DataType type) const
 {
-    if(hasDefaultBoundaries)
+    if(!hasExplicitBoundaries())
         return NO_VALUE;
-    if(auto floatRange = VariantNamespace::get_if<FloatRange>(&range))
+    ValueRange typeLimits;
+    std::function<Literal(double)> conv;
+    if(type.isFloatingType())
     {
-        if(floatRange->maxValue < static_cast<double>(std::numeric_limits<float>::lowest()))
-            return NO_VALUE;
-        if(floatRange->maxValue > static_cast<double>(std::numeric_limits<float>::max()))
-            return NO_VALUE;
-        return Value(Literal(static_cast<float>(floatRange->maxValue)), TYPE_FLOAT);
+        auto it = floatTypeLimits.find(type);
+        if(it == floatTypeLimits.end())
+            throw CompilationError(CompilationStep::GENERAL, "Unhandled floating-point type", type.to_string());
+        typeLimits = it->second;
+        conv = [](double d) -> Literal { return Literal(static_cast<float>(d)); };
     }
-    if(auto intRange = VariantNamespace::get_if<IntegerRange>(&range))
+    else if(type.isIntegralType())
     {
-        if(intRange->maxValue < std::numeric_limits<int32_t>::min())
-            return NO_VALUE;
-        if(intRange->maxValue > std::numeric_limits<uint32_t>::max())
-            return NO_VALUE;
-        if(intRange->maxValue > std::numeric_limits<int32_t>::max())
-            return Value(Literal(static_cast<uint32_t>(intRange->maxValue)), TYPE_FLOAT);
-        return Value(Literal(static_cast<int32_t>(intRange->maxValue)), TYPE_FLOAT);
+        auto isSigned = !isUnsignedType(type);
+        typeLimits = toIntTypeLimit(type.getScalarBitCount(), isSigned);
+        if(isSigned)
+            conv = [](double d) -> Literal { return Literal(static_cast<int32_t>(std::ceil(d))); };
+        else
+            conv = [](double d) -> Literal { return Literal(static_cast<uint32_t>(std::ceil(d))); };
     }
-    return NO_VALUE;
+    else
+        return NO_VALUE;
+
+    if(maxValue < typeLimits.minValue)
+        return NO_VALUE;
+    if(maxValue > typeLimits.maxValue)
+        return NO_VALUE;
+    return Value(conv(maxValue), type);
+}
+
+ValueRange ValueRange::toAbsoluteRange() const noexcept
+{
+    if(!hasExplicitBoundaries())
+        return *this;
+    // min <= 0 && max <= 0 -> [abs(max), abs(min)]
+    if(minValue <= 0.0 && maxValue <= 0.0)
+        return ValueRange{std::abs(maxValue), std::abs(minValue)};
+    // min >= 0 && max >= 0 -> [min, max]
+    if(minValue >= 0.0 && maxValue >= 0.0)
+        return *this;
+    // min <= 0 && max >= 0 -> [0, max(abs(min), abs(max))]
+    return ValueRange{0.0, std::max(std::abs(minValue), std::abs(maxValue))};
 }
 
 LCOV_EXCL_START
 std::string ValueRange::to_string() const
 {
-    if(auto floatRange = VariantNamespace::get_if<FloatRange>(&range))
-        return std::string("[") + (std::to_string(floatRange->minValue) + ", ") + std::to_string(floatRange->maxValue) +
-            "]";
-    if(auto intRange = VariantNamespace::get_if<IntegerRange>(&range))
-        return std::string("[") + (std::to_string(intRange->minValue) + ", ") + std::to_string(intRange->maxValue) +
-            "]";
-    throw CompilationError(CompilationStep::GENERAL, "Invalid range type");
+    if(static_cast<double>(static_cast<int64_t>(minValue)) == minValue &&
+        static_cast<double>(static_cast<int64_t>(maxValue)) == maxValue)
+        // if we have integer bounds, show as integer range
+        return std::string("[") + (std::to_string(static_cast<int64_t>(minValue)) + ", ") +
+            std::to_string(static_cast<int64_t>(maxValue)) + "]";
+    return std::string("[") + (std::to_string(minValue) + ", ") + std::to_string(maxValue) + "]";
 }
 LCOV_EXCL_STOP
 
 void ValueRange::update(const Optional<Value>& constant, const FastMap<const Local*, ValueRange>& ranges,
-    const intermediate::IntermediateInstruction* it, Method* method)
+    const intermediate::IntermediateInstruction* it, const Method* method)
 {
     const Operation* op = dynamic_cast<const Operation*>(it);
 
     // values set by built-ins
-    if(it && isGroupBuiltin(it->decoration, false))
+    if(auto range = getValueRange(it ? it->decoration : InstructionDecorations::NONE))
     {
-        // is always positive
-        extendBoundaries(static_cast<int64_t>(0), std::numeric_limits<uint32_t>::max());
-    }
-    else if(it && it->hasDecoration(InstructionDecorations::BUILTIN_LOCAL_ID))
-    {
-        int64_t maxID = 0;
-        if(method && method->metaData.isWorkGroupSizeSet())
-        {
-            maxID =
-                *std::max_element(method->metaData.workGroupSizes.begin(), method->metaData.workGroupSizes.end()) - 1;
-        }
-        else
-            maxID = 11;
-        extendBoundaries(0l, maxID);
-    }
-    else if(it && it->hasDecoration(InstructionDecorations::BUILTIN_LOCAL_SIZE))
-    {
-        int64_t maxSize = 0;
-        if(method && method->metaData.isWorkGroupSizeSet())
-        {
-            maxSize = *std::max_element(method->metaData.workGroupSizes.begin(), method->metaData.workGroupSizes.end());
-        }
-        else
-            maxSize = NUM_QPUS;
-        extendBoundaries(0l, maxSize);
-    }
-    else if(it && it->hasDecoration(InstructionDecorations::BUILTIN_WORK_DIMENSIONS))
-    {
-        extendBoundaries(static_cast<int64_t>(1), static_cast<int64_t>(3));
+        extendBoundaries(*range);
     }
     // loading of immediates/literals
     else if(auto lit = (constant & &Value::getLiteralValue))
@@ -294,7 +239,7 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
         if(constant->type.isFloatingType())
         {
             double min = std::numeric_limits<double>::max();
-            double max = std::numeric_limits<double>::min();
+            double max = std::numeric_limits<double>::lowest();
             for(auto element : constant->vector())
             {
                 min = std::min(min, static_cast<double>(element.real()));
@@ -383,9 +328,9 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
         {
             const ValueRange& sourceRange = ranges.at(op->assertArgument(0).local());
             int64_t offset = static_cast<int64_t>(op->assertArgument(1).getLiteralValue()->signedInt());
+            auto div = static_cast<double>(1 << offset);
             // TODO not correct if min/max is negative
-            extendBoundaries(
-                sourceRange.getIntRange()->minValue >> offset, sourceRange.getIntRange()->maxValue >> offset);
+            extendBoundaries(std::trunc(sourceRange.minValue / div), std::trunc(sourceRange.maxValue / div));
         }
 
         /*
@@ -430,7 +375,7 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
             extendBoundaries(op->op(firstRange, secondRange));
         }
         else
-            extendBoundaries(op->op(firstRange, ValueRange{op->op.acceptsFloat}));
+            extendBoundaries(op->op(firstRange, ValueRange{}));
     }
     else
     {
@@ -454,7 +399,8 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
     }
 }
 
-void ValueRange::updateRecursively(const Local* currentLocal, Method* method, FastMap<const Local*, ValueRange>& ranges,
+void ValueRange::updateRecursively(const Local* currentLocal, const Method* method,
+    FastMap<const Local*, ValueRange>& ranges,
     FastMap<const intermediate::IntermediateInstruction*, ValueRange>& closedSet,
     FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>>& openSet)
 {
@@ -560,15 +506,19 @@ void ValueRange::updateRecursively(const Local* currentLocal, Method* method, Fa
                         << (isPartialRange ? " partial " : " ") << "range '" << otherRange.to_string()
                         << "' for calculating convergence limit of: " << expr->to_string() << logging::endl);
 
-                limits.emplace(expr->getConvergenceLimit(otherRange.getLowerLimit() & &Value::getLiteralValue)
+                limits.emplace(expr->getConvergenceLimit(
+                                       otherRange.getLowerLimit(expr->code.acceptsFloat ? TYPE_FLOAT : TYPE_INT32) &
+                                       &Value::getLiteralValue)
                                    .value_or(UNDEFINED_VALUE));
-                limits.emplace(expr->getConvergenceLimit(otherRange.getUpperLimit() & &Value::getLiteralValue)
+                limits.emplace(expr->getConvergenceLimit(
+                                       otherRange.getUpperLimit(expr->code.acceptsFloat ? TYPE_FLOAT : TYPE_INT32) &
+                                       &Value::getLiteralValue)
                                    .value_or(UNDEFINED_VALUE));
 
                 // If (partial) range of input is set, and output range is not (e.g. this is the only write), set output
                 // range to this. Otherwise, we always get full-range... This should be okay, since if f(lower) -> x and
                 // f(upper) -> x, then the result is in range [min(lower, x), max(upper, x)]
-                if(localRange.hasDefaultBoundaries && otherRange.hasExplicitBoundaries())
+                if(!localRange.hasExplicitBoundaries() && otherRange.hasExplicitBoundaries())
                     localRange.extendBoundaries(otherRange);
             }
             else
@@ -585,7 +535,7 @@ void ValueRange::updateRecursively(const Local* currentLocal, Method* method, Fa
                 // if at this point the localRange is still the default range (e.g. this is the only write and we could
                 // not determine the input local's range, see above), set to explicitly use all values for safety.
                 // Otherwise, the resulting range would only be the converged value!
-                localRange.hasDefaultBoundaries = false;
+                localRange.extendBoundariesToUnknown();
 
                 if(auto lit = limit.getLiteralValue())
                 {
@@ -609,7 +559,7 @@ void ValueRange::updateRecursively(const Local* currentLocal, Method* method, Fa
     }
 }
 
-void ValueRange::processedOpenSet(Method* method, FastMap<const Local*, ValueRange>& ranges,
+void ValueRange::processedOpenSet(const Method* method, FastMap<const Local*, ValueRange>& ranges,
     FastMap<const intermediate::IntermediateInstruction*, ValueRange>& closedSet,
     FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>>& openSet)
 {
@@ -619,6 +569,7 @@ void ValueRange::processedOpenSet(Method* method, FastMap<const Local*, ValueRan
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Rerunning value range for: " << it->first->to_string() << logging::endl);
         FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>> tmpOpenSet{openSet};
+        tmpOpenSet.erase(it->first);
         updateRecursively(it->first->checkOutputLocal(), method, ranges, closedSet, tmpOpenSet);
         if(tmpOpenSet.size() != openSet.size())
         {
@@ -645,9 +596,40 @@ void ValueRange::processedOpenSet(Method* method, FastMap<const Local*, ValueRan
     LCOV_EXCL_STOP
 }
 
-ValueRange ValueRange::getValueRange(const Value& val, Method* method)
+Optional<ValueRange> ValueRange::getValueRange(intermediate::InstructionDecorations deco, const Method* method)
 {
-    ValueRange range(val.type.isFloatingType(), true);
+    if(isGroupBuiltin(deco, false))
+        // is always positive
+        return RANGE_UINT;
+    else if(has_flag(deco, InstructionDecorations::BUILTIN_LOCAL_ID))
+    {
+        int64_t maxID = 0;
+        if(method && method->metaData.isWorkGroupSizeSet())
+            maxID =
+                *std::max_element(method->metaData.workGroupSizes.begin(), method->metaData.workGroupSizes.end()) - 1;
+        else
+            maxID = NUM_QPUS - 1;
+        return ValueRange{0.0, static_cast<double>(maxID)};
+    }
+    else if(has_flag(deco, InstructionDecorations::BUILTIN_LOCAL_SIZE))
+    {
+        int64_t maxSize = 0;
+        if(method && method->metaData.isWorkGroupSizeSet())
+            maxSize = *std::max_element(method->metaData.workGroupSizes.begin(), method->metaData.workGroupSizes.end());
+        else
+            maxSize = NUM_QPUS;
+        return ValueRange{0.0, static_cast<double>(maxSize)};
+    }
+    else if(has_flag(deco, InstructionDecorations::BUILTIN_WORK_DIMENSIONS))
+        return ValueRange{1.0, 3.0};
+    return {};
+}
+
+ValueRange ValueRange::getValueRange(const Value& val, const Method* method)
+{
+    if(val.isUndefined())
+        return ValueRange{};
+    ValueRange range;
     auto singleWriter = val.getSingleWriter();
     FastMap<const Local*, ValueRange> ranges;
     if(singleWriter && dynamic_cast<const MoveOperation*>(singleWriter))
@@ -664,7 +646,7 @@ ValueRange ValueRange::getValueRange(const Value& val, Method* method)
     return range;
 }
 
-ValueRange ValueRange::getValueRangeRecursive(const Value& val, Method* method)
+ValueRange ValueRange::getValueRangeRecursive(const Value& val, const Method* method)
 {
     FastMap<const Local*, ValueRange> ranges;
     if(auto loc = val.checkLocal())
@@ -680,9 +662,52 @@ ValueRange ValueRange::getValueRangeRecursive(const Value& val, Method* method)
         if(rangeIt != ranges.end())
             return rangeIt->second;
     }
-    ValueRange range(val.type.isFloatingType(), true);
+    ValueRange range;
     range.update(val.getConstantValue(), ranges, val.getSingleWriter(), method);
     return range;
+}
+
+static Optional<analysis::ValueRange> getRange(const SubExpression& sub, const Method* method)
+{
+    if(auto val = sub.checkValue())
+        return analysis::ValueRange::getValueRange(*val, method);
+
+    if(auto expr = sub.checkExpression())
+        return ValueRange::getValueRange(*expr, method);
+    return {};
+}
+
+ValueRange ValueRange::getValueRange(const Expression& expr, const Method* method)
+{
+    if(auto range = getValueRange(expr.deco, method))
+        return *range;
+
+    auto leftRange = getRange(expr.arg0, method).value_or(ValueRange{});
+    auto rightRange = (expr.code.numOperands > 1 ? getRange(expr.arg1, method) : ValueRange{}).value_or(ValueRange{});
+    if(expr.unpackMode.hasEffect())
+    {
+        leftRange = expr.unpackMode(leftRange, expr.code.acceptsFloat);
+        if(expr.code.numOperands > 1)
+            rightRange = expr.unpackMode(rightRange, expr.code.acceptsFloat);
+    }
+
+    if(expr.isMoveExpression())
+        return leftRange;
+
+    if(expr.code == Expression::FAKEOP_UMUL)
+    {
+        if(!leftRange || !rightRange)
+            return RANGE_UINT;
+        if(leftRange.minValue < 0.0 || rightRange.minValue < 0.0)
+            return RANGE_UINT;
+        return ValueRange{leftRange.minValue * rightRange.minValue, leftRange.maxValue * rightRange.maxValue};
+    }
+
+    auto result = expr.code(leftRange, rightRange);
+    if(has_flag(expr.deco, intermediate::InstructionDecorations::UNSIGNED_RESULT))
+        // TODO somehow generalize this!
+        result.shrinkToIntersection(RANGE_UINT);
+    return expr.packMode.hasEffect() ? expr.packMode(result, expr.code.returnsFloat) : result;
 }
 
 FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& method)
@@ -722,83 +747,30 @@ FastMap<const Local*, ValueRange> ValueRange::determineValueRanges(Method& metho
 
 bool ValueRange::operator==(const ValueRange& other) const
 {
-    return (hasDefaultBoundaries && other.hasDefaultBoundaries) || range == other.range;
+    return (!hasExplicitBoundaries() && !other.hasExplicitBoundaries()) ||
+        (minValue == other.minValue && maxValue == other.maxValue);
 }
 
 void ValueRange::extendBoundaries(double newMin, double newMax)
 {
     if(newMax < newMin)
         std::swap(newMax, newMin);
-    if(auto floatRange = VariantNamespace::get_if<FloatRange>(&range))
+    if(hasExplicitBoundaries())
     {
-        if(hasDefaultBoundaries)
-        {
-            floatRange->maxValue = newMax;
-            floatRange->minValue = newMin;
-        }
-        else
-        {
-            floatRange->maxValue = std::max(floatRange->maxValue, newMax);
-            floatRange->minValue = std::min(floatRange->minValue, newMin);
-        }
+        maxValue = std::max(maxValue, newMax);
+        minValue = std::min(minValue, newMin);
     }
-    if(auto intRange = VariantNamespace::get_if<IntegerRange>(&range))
+    else
     {
-        if(hasDefaultBoundaries)
-        {
-            intRange->maxValue = static_cast<int64_t>(newMax);
-            intRange->minValue = static_cast<int64_t>(newMin);
-        }
-        else
-        {
-            intRange->maxValue = std::max(intRange->maxValue, static_cast<int64_t>(newMax));
-            intRange->minValue = std::min(intRange->minValue, static_cast<int64_t>(newMin));
-        }
+        maxValue = newMax;
+        minValue = newMin;
     }
-
-    hasDefaultBoundaries = false;
-}
-
-void ValueRange::extendBoundaries(int64_t newMin, int64_t newMax)
-{
-    if(newMax < newMin)
-        std::swap(newMax, newMin);
-    if(auto floatRange = VariantNamespace::get_if<FloatRange>(&range))
-    {
-        if(hasDefaultBoundaries)
-        {
-            floatRange->maxValue = static_cast<double>(newMax);
-            floatRange->minValue = static_cast<double>(newMin);
-        }
-        else
-        {
-            floatRange->maxValue = std::max(floatRange->maxValue, static_cast<double>(newMax));
-            floatRange->minValue = std::min(floatRange->minValue, static_cast<double>(newMin));
-        }
-    }
-    if(auto intRange = VariantNamespace::get_if<IntegerRange>(&range))
-    {
-        if(hasDefaultBoundaries)
-        {
-            intRange->maxValue = newMax;
-            intRange->minValue = newMin;
-        }
-        else
-        {
-            intRange->maxValue = std::max(intRange->maxValue, newMax);
-            intRange->minValue = std::min(intRange->minValue, newMin);
-        }
-    }
-
-    hasDefaultBoundaries = false;
 }
 
 void ValueRange::extendBoundaries(const ValueRange& other)
 {
-    if(auto floatRange = VariantNamespace::get_if<FloatRange>(&other.range))
-        extendBoundaries(floatRange->minValue, floatRange->maxValue);
-    if(auto intRange = VariantNamespace::get_if<IntegerRange>(&other.range))
-        extendBoundaries(intRange->minValue, intRange->maxValue);
+    if(other)
+        extendBoundaries(other.minValue, other.maxValue);
 }
 
 void ValueRange::extendBoundaries(Literal literal, bool isFloat)
@@ -806,31 +778,34 @@ void ValueRange::extendBoundaries(Literal literal, bool isFloat)
     if(isFloat)
         extendBoundaries(static_cast<double>(literal.real()), static_cast<double>(literal.real()));
     else
-        extendBoundaries(
-            std::min(static_cast<int64_t>(literal.signedInt()), static_cast<int64_t>(literal.unsignedInt())),
-            std::max(static_cast<int64_t>(literal.signedInt()), static_cast<int64_t>(literal.unsignedInt())));
+        extendBoundaries(std::min(static_cast<double>(literal.signedInt()), static_cast<double>(literal.unsignedInt())),
+            std::max(static_cast<double>(literal.signedInt()), static_cast<double>(literal.unsignedInt())));
 }
 
 void ValueRange::extendBoundariesToUnknown(bool isKnownToBeUnsigned)
 {
-    if(hasDefaultBoundaries)
+    if(isKnownToBeUnsigned)
+        extendBoundaries(RANGE_UINT);
+    else
     {
-        if(VariantNamespace::holds_alternative<IntegerRange>(range) && isKnownToBeUnsigned)
-        {
-            range = IntegerRange();
-            intRange(range).minValue = 0;
-            hasDefaultBoundaries = false;
-        }
-        // the default boundaries are already the widest for the underlying type
+        minValue = std::numeric_limits<double>::lowest();
+        maxValue = std::numeric_limits<double>::max();
+    }
+}
+
+void ValueRange::shrinkToIntersection(const ValueRange& other)
+{
+    if(!hasExplicitBoundaries())
+        extendBoundaries(other);
+    else if(!other.hasExplicitBoundaries())
+        // if the other range is unspecified, the intersection is this range
         return;
-    }
-    if(VariantNamespace::holds_alternative<FloatRange>(range))
-        range = FloatRange();
-    if(VariantNamespace::holds_alternative<IntegerRange>(range))
+    else
     {
-        range = IntegerRange();
-        if(isKnownToBeUnsigned)
-            intRange(range).minValue = 0;
+        minValue = std::max(minValue, other.minValue);
+        maxValue = std::min(maxValue, other.maxValue);
+
+        if(minValue > maxValue)
+            std::swap(minValue, maxValue);
     }
-    hasDefaultBoundaries = false;
 }

@@ -18,6 +18,7 @@ public:
     void testCreation();
     void testCombination();
     void testConvergence();
+    void testValueRange();
 };
 
 #endif /* TEST_EXPRESSIONS_H */

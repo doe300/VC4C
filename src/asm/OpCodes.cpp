@@ -327,6 +327,42 @@ SIMDVector Unpack::operator()(const SIMDVector& val, bool isFloatOperation) cons
     return val.transform([&](Literal lit) -> Literal { return unpackLiteral(*this, lit, isFloatOperation); });
 }
 
+analysis::ValueRange Unpack::operator()(const analysis::ValueRange& range, bool isFloatOperation) const
+{
+    using namespace analysis;
+    switch(*this)
+    {
+    case UNPACK_NOP:
+    case UNPACK_NOP_PM:
+        return range;
+    case UNPACK_16A_32:
+        if(isFloatOperation)
+            return UNPACK_R4_16A_32(range, isFloatOperation);
+        if(range.fitsIntoRange(RANGE_SHORT))
+            return range;
+        // XXX since the unpack mode does not saturate, having a larger range is UB, I guess
+        return ValueRange(TYPE_INT32);
+    case UNPACK_8A_32:
+        if(isFloatOperation)
+            return UNPACK_R4_COLOR0(range, isFloatOperation);
+        if(range.fitsIntoRange(RANGE_UCHAR))
+            return range;
+        // XXX since the unpack mode does not saturate, having a larger range is UB, I guess
+        return ValueRange(TYPE_INT32);
+    case UNPACK_R4_16A_32:
+        if(range.fitsIntoRange(RANGE_HALF))
+            return range;
+        // XXX since the unpack mode does not saturate, having a larger range is UB, I guess
+        return ValueRange(TYPE_FLOAT);
+    case UNPACK_R4_COLOR0:
+        if(range.fitsIntoRange(RANGE_UCHAR))
+            return range / 255.0;
+        // XXX since the unpack mode does not saturate, having a larger range is UB, I guess
+        return ValueRange(TYPE_FLOAT);
+    }
+    return ValueRange{isFloatOperation ? TYPE_FLOAT : TYPE_INT32};
+}
+
 const Unpack Unpack::unpackTo32Bit(DataType type)
 {
     if(type.getScalarBitCount() >= DataType::WORD)
@@ -539,6 +575,56 @@ SIMDVector Pack::operator()(const SIMDVector& val, const VectorFlags& flags, boo
     for(std::size_t i = 0; i < val.size(); ++i)
         result[i] = packLiteral(*this, val[i], isFloatOperation, flags[i]);
     return result;
+}
+
+analysis::ValueRange Pack::operator()(const analysis::ValueRange& range, bool isFloatOperation) const
+{
+    using namespace analysis;
+    switch(*this)
+    {
+    case PACK_NOP:
+    case PACK_NOP_PM:
+    case PACK_32_32:
+        return range;
+        // TODO support non-saturating/truncating cases into LSB(s)
+    case PACK_32_16A:
+        if(isFloatOperation)
+        {
+            if(range.fitsIntoRange(RANGE_HALF))
+                return range;
+            // XXX since the pack mode does not saturate, having a larger range is UB, I guess
+            return RANGE_HALF;
+        }
+        if(range.fitsIntoRange(ValueRange(0.0, static_cast<double>(std::numeric_limits<uint16_t>::max()))))
+            // since we might need to cut off the upper bits, for now only handle if they are zero anyways!
+            return range;
+        // TODO is this correct?? Is the conversion supposed to be signed or unsigned??
+        return ValueRange(TYPE_INT32);
+    case PACK_32_8A:
+        if(range.fitsIntoRange(RANGE_UCHAR))
+            return range;
+        return RANGE_UCHAR;
+    case PACK_32_16A_S:
+        if(isFloatOperation)
+        {
+            if(range.fitsIntoRange(RANGE_HALF))
+                return range;
+            // XXX since the pack mode does not saturate, having a larger range is UB, I guess
+            return RANGE_HALF;
+        }
+        return ValueRange(static_cast<double>(saturate<int16_t>(static_cast<int64_t>(range.minValue))),
+            static_cast<double>(saturate<int16_t>(static_cast<int64_t>(range.maxValue))));
+    case PACK_32_8A_S:
+        return ValueRange(static_cast<double>(saturate<uint8_t>(static_cast<int64_t>(range.minValue))),
+            static_cast<double>(saturate<uint8_t>(static_cast<int64_t>(range.maxValue))));
+    case PACK_MUL_COLOR0:
+        // FIXME is this correct/as expected?? Since the actual value range is still the same [0, 1] (same for unpack
+        // mode)
+        if(range.fitsIntoRange(ValueRange(0.0, 1.0)))
+            return range * 255.0;
+        return RANGE_UCHAR;
+    }
+    return ValueRange{isFloatOperation ? TYPE_FLOAT : TYPE_INT32};
 }
 
 bool Pack::isPMBitSet() const noexcept
@@ -1019,62 +1105,161 @@ analysis::ValueRange OpCode::operator()(
     const analysis::ValueRange& firstRange, const analysis::ValueRange& secondRange) const
 {
     using namespace analysis;
-    auto firstFloats = firstRange.getFloatRange();
-    auto secondFloats = secondRange.getFloatRange();
-    if(acceptsFloat && !firstFloats && (numOperands > 1 && !secondFloats))
-        return ValueRange(TYPE_FLOAT);
-    auto firstInts = firstRange.getIntRange();
-    auto secondInts = secondRange.getIntRange();
-    if(!acceptsFloat && !firstInts && (numOperands > 1 && !secondInts))
-        return ValueRange(TYPE_INT32);
 
     switch(opAdd)
     {
     case OP_FADD.opAdd:
-        return ValueRange{
-            FloatRange{firstFloats->minValue + secondFloats->minValue, firstFloats->maxValue + secondFloats->maxValue}};
+        if(!firstRange || !secondRange)
+            return RANGE_FLOAT;
+        return ValueRange{firstRange.minValue + secondRange.minValue, firstRange.maxValue + secondRange.maxValue};
     case OP_FSUB.opAdd:
-        return ValueRange{
-            FloatRange{firstFloats->minValue - secondFloats->maxValue, firstFloats->maxValue - secondFloats->minValue}};
+        if(!firstRange || !secondRange)
+            return RANGE_FLOAT;
+        return ValueRange{firstRange.minValue - secondRange.maxValue, firstRange.maxValue - secondRange.minValue};
     case OP_FMIN.opAdd:
-        return ValueRange{FloatRange{std::min(firstFloats->minValue, secondFloats->minValue),
-            std::min(firstFloats->maxValue, secondFloats->maxValue)}};
+        if(!firstRange || !secondRange)
+            return RANGE_FLOAT;
+        return ValueRange{
+            std::min(firstRange.minValue, secondRange.minValue), std::min(firstRange.maxValue, secondRange.maxValue)};
     case OP_FMAX.opAdd:
-        return ValueRange{FloatRange{std::max(firstFloats->minValue, secondFloats->minValue),
-            std::max(firstFloats->maxValue, secondFloats->maxValue)}};
+        if(!firstRange || !secondRange)
+            return RANGE_FLOAT;
+        return ValueRange{
+            std::max(firstRange.minValue, secondRange.minValue), std::max(firstRange.maxValue, secondRange.maxValue)};
     case OP_FMINABS.opAdd:
-        return ValueRange{FloatRange{std::min(std::abs(firstFloats->minValue), std::abs(secondFloats->minValue)),
-            std::min(std::abs(firstFloats->maxValue), std::abs(secondFloats->maxValue))}};
+    {
+        if(!firstRange || !secondRange)
+            return RANGE_FLOAT;
+        auto firstAbs = firstRange.toAbsoluteRange();
+        auto secondAbs = secondRange.toAbsoluteRange();
+        return ValueRange{
+            std::min(firstAbs.minValue, secondAbs.minValue), std::min(firstAbs.maxValue, secondAbs.maxValue)};
+    }
     case OP_FMAXABS.opAdd:
-        return ValueRange{FloatRange{std::max(std::abs(firstFloats->minValue), std::abs(secondFloats->minValue)),
-            std::max(std::abs(firstFloats->maxValue), std::abs(secondFloats->maxValue))}};
+    {
+        if(!firstRange || !secondRange)
+            return RANGE_FLOAT;
+        auto firstAbs = firstRange.toAbsoluteRange();
+        auto secondAbs = secondRange.toAbsoluteRange();
+        return ValueRange{
+            std::max(firstAbs.minValue, secondAbs.minValue), std::max(firstAbs.maxValue, secondAbs.maxValue)};
+    }
     case OP_FTOI.opAdd:
-        return ValueRange{IntegerRange{saturate<int32_t>(static_cast<int64_t>(firstFloats->minValue)),
-            saturate<int32_t>(static_cast<int64_t>(firstFloats->maxValue))}};
+        if(!firstRange)
+            return RANGE_INT;
+        return ValueRange{static_cast<double>(saturate<int32_t>(static_cast<int64_t>(firstRange.minValue))),
+            static_cast<double>(saturate<int32_t>(static_cast<int64_t>(firstRange.maxValue)))};
     case OP_ITOF.opAdd:
-        return ValueRange{
-            FloatRange{static_cast<double>(firstInts->minValue), static_cast<double>(firstInts->maxValue)}};
+        if(!firstRange)
+            return RANGE_FLOAT;
+        return ValueRange{static_cast<double>(firstRange.minValue), static_cast<double>(firstRange.maxValue)};
     case OP_ADD.opAdd:
-        return ValueRange{
-            IntegerRange{firstInts->minValue + secondInts->minValue, firstInts->maxValue + secondInts->maxValue}};
+        if(!firstRange || !secondRange)
+            return RANGE_INT;
+        return ValueRange{firstRange.minValue + secondRange.minValue, firstRange.maxValue + secondRange.maxValue};
     case OP_SUB.opAdd:
-        return ValueRange{
-            IntegerRange{firstInts->minValue - secondInts->maxValue, firstInts->maxValue - secondInts->minValue}};
+        if(!firstRange || !secondRange)
+            return RANGE_INT;
+        return ValueRange{firstRange.minValue - secondRange.maxValue, firstRange.maxValue - secondRange.minValue};
+    case OP_SHR.opAdd:
+        if(!firstRange && !secondRange)
+            return RANGE_UINT;
+        if(firstRange && firstRange.minValue < 0.0)
+            return RANGE_UINT;
+        if(firstRange && secondRange && secondRange.isUnsigned() &&
+            (static_cast<int64_t>(secondRange.minValue) / 32) == (static_cast<int64_t>(secondRange.maxValue) / 32))
+        {
+            // if there is no modulo 32 overflow within the values of the second range, we can use the following:
+            // [a, b] >> [c, d] -> [a >> d, b >> c]
+            auto minOffset = static_cast<int64_t>(secondRange.minValue) % 32;
+            auto minFactor = static_cast<double>(1 << minOffset);
+            auto maxOffset = static_cast<int64_t>(secondRange.maxValue) % 32;
+            auto maxFactor = static_cast<double>(1 << maxOffset);
+            return ValueRange(std::trunc(firstRange.minValue / maxFactor), std::trunc(firstRange.maxValue / minFactor));
+        }
+        if(secondRange && secondRange.getSingletonValue() && secondRange.isUnsigned())
+        {
+            // [a, b] >> const -> [a / 2^const, b / 2^const]
+            // the case for first range given is already handled above
+            // second operand is taken modulo 32!!
+            auto offset = static_cast<int64_t>(*secondRange.getSingletonValue()) % 32;
+            auto div = static_cast<double>(1 << offset);
+            return RANGE_UINT / div;
+        }
+        if(firstRange && firstRange.isUnsigned())
+            // [a, b] >> [?, ?] -> [0, b]
+            return ValueRange{0.0, std::trunc(firstRange.maxValue)};
+        return RANGE_UINT;
+    case OP_SHL.opAdd:
+        if(!firstRange || !secondRange)
+            return RANGE_UINT;
+        if(firstRange && firstRange.minValue < 0.0)
+            return RANGE_UINT;
+        if(firstRange && firstRange.isUnsigned())
+        {
+            if(firstRange.getSingletonValue() == 0.0)
+                // [0, 0] >> [?, ?] > [0, 0]
+                return ValueRange(0.0, 0.0);
+            if(secondRange && secondRange.isUnsigned() &&
+                (static_cast<int64_t>(secondRange.minValue) / 32) == (static_cast<int64_t>(secondRange.maxValue) / 32))
+            {
+                // if there is no modulo 32 overflow within the values of the second range, we can use the following:
+                // [a, b] << [c, d] -> [a << c, b << d]
+                auto minOffset = static_cast<int64_t>(secondRange.minValue) % 32;
+                auto newMin = static_cast<int64_t>(firstRange.minValue) << minOffset;
+                auto maxOffset = static_cast<int64_t>(secondRange.maxValue) % 32;
+                auto newMax = static_cast<int64_t>(firstRange.maxValue) << maxOffset;
+                return ValueRange(
+                    static_cast<double>(saturate<uint32_t>(newMin)), static_cast<double>(saturate<uint32_t>(newMax)));
+            }
+            // [a, b] << [?, ?] -> [a, UINT_MAX]
+            return ValueRange(
+                std::trunc(firstRange.minValue), static_cast<double>(std::numeric_limits<uint32_t>::max()));
+        }
+        return RANGE_UINT;
     case OP_MIN.opAdd:
-        return ValueRange{IntegerRange{
-            std::min(firstInts->minValue, secondInts->minValue), std::min(firstInts->maxValue, secondInts->maxValue)}};
+        if(!firstRange || !secondRange)
+            return RANGE_INT;
+        return ValueRange{
+            std::min(firstRange.minValue, secondRange.minValue), std::min(firstRange.maxValue, secondRange.maxValue)};
     case OP_MAX.opAdd:
-        return ValueRange{IntegerRange{
-            std::max(firstInts->minValue, secondInts->minValue), std::max(firstInts->maxValue, secondInts->maxValue)}};
+        if(!firstRange || !secondRange)
+            return RANGE_INT;
+        return ValueRange{
+            std::max(firstRange.minValue, secondRange.minValue), std::max(firstRange.maxValue, secondRange.maxValue)};
+    case OP_AND.opAdd:
+        if(!firstRange || !secondRange)
+            return RANGE_UINT;
+        if(firstRange.minValue < 0 || secondRange.minValue < 0)
+            return RANGE_UINT;
+        return ValueRange{0, std::min(firstRange.maxValue, secondRange.maxValue)};
     case OP_CLZ.opAdd:
         // XXX could try to determine maximum number of leading zeroes from input
-        return ValueRange{IntegerRange{0, 32}};
+        return ValueRange{0.0, 32.0};
     }
 
     if(opMul == OP_FMUL.opMul)
-        return ValueRange{FloatRange{
-            std::min(firstFloats->minValue * secondFloats->maxValue, firstFloats->maxValue * secondFloats->minValue),
-            std::max(firstFloats->maxValue * secondFloats->maxValue, firstFloats->minValue * secondFloats->minValue)}};
+    {
+        if(!firstRange || !secondRange)
+            return ValueRange{TYPE_FLOAT};
+        auto options = {firstRange.minValue * secondRange.minValue, firstRange.minValue * secondRange.maxValue,
+            firstRange.maxValue * secondRange.minValue, firstRange.maxValue * secondRange.maxValue};
+        return ValueRange{std::min(options), std::max(options)};
+    }
+    if(opMul == OP_MUL24.opMul)
+    {
+        if(!firstRange || !secondRange)
+            return RANGE_UINT;
+        if(firstRange.minValue < 0.0 || secondRange.minValue < 0.0)
+            return RANGE_UINT;
+        if(firstRange.maxValue >= static_cast<double>(0xFFFFFFu) ||
+            secondRange.maxValue >= static_cast<double>(0xFFFFFFu))
+            return RANGE_UINT;
+
+        auto options = {firstRange.minValue * secondRange.minValue, firstRange.minValue * secondRange.maxValue,
+            firstRange.maxValue * secondRange.minValue, firstRange.maxValue * secondRange.maxValue};
+        return ValueRange{std::min(options), std::max(options)};
+    }
 
     return ValueRange(returnsFloat ? TYPE_FLOAT : TYPE_INT32);
 }
