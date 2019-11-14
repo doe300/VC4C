@@ -761,10 +761,11 @@ static MemoryInfo canMapToDMAReadWrite(Method& method, const Local* baseAddr, Me
     return MemoryInfo{baseAddr, MemoryAccessType::RAM_READ_WRITE_VPM};
 }
 
-static std::pair<bool, analysis::IntegerRange> checkWorkGroupUniformParts(
-    FastAccessList<MemoryAccessRange>& accessRanges)
+// TODO move to MemoryAnalysis.cpp
+std::pair<bool, analysis::ValueRange> analysis::checkWorkGroupUniformParts(
+    FastAccessList<MemoryAccessRange>& accessRanges, bool allowConstantOffsets)
 {
-    analysis::IntegerRange offsetRange{std::numeric_limits<int>::max(), std::numeric_limits<int>::min()};
+    analysis::ValueRange offsetRange{};
     const auto& firstUniformAddresses = accessRanges.front().groupUniformAddressParts;
     FastMap<Value, InstructionDecorations> differingUniformParts;
     bool allUniformPartsEqual = true;
@@ -782,15 +783,28 @@ static std::pair<bool, analysis::IntegerRange> checkWorkGroupUniformParts(
                 if(entry.groupUniformAddressParts.find(pair.first) == entry.groupUniformAddressParts.end())
                     differingUniformParts.emplace(pair);
         }
-        offsetRange.minValue = std::min(offsetRange.minValue, entry.offsetRange.minValue);
-        offsetRange.maxValue = std::max(offsetRange.maxValue, entry.offsetRange.maxValue);
+        if(auto range = entry.offsetRange)
+        {
+            offsetRange.minValue = std::min(offsetRange.minValue, range->minValue);
+            offsetRange.maxValue = std::max(offsetRange.maxValue, range->maxValue);
+        }
+        else
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Cannot cache memory location with unknown accessed range" << logging::endl);
+            return std::make_pair(false, analysis::ValueRange{});
+        }
+        if(!allowConstantOffsets && entry.constantOffset)
+        {
+            CPPLOG_LAZY(
+                logging::Level::DEBUG, log << "Constant address offsets are not yet supported" << logging::endl);
+            return std::make_pair(false, analysis::ValueRange{});
+        }
     }
     if(!allUniformPartsEqual)
     {
         if(std::all_of(differingUniformParts.begin(), differingUniformParts.end(),
-               [](const std::pair<Value, InstructionDecorations>& part) -> bool {
-                   return part.first.getLiteralValue().has_value();
-               }))
+               [](const auto& part) -> bool { return part.first.getLiteralValue().has_value(); }))
         {
             // all work-group uniform values which differ between various accesses of the same local are literal
             // values. We can use this knowledge to still allow caching the local, by converting the literals to
@@ -802,8 +816,17 @@ static std::pair<bool, analysis::IntegerRange> checkWorkGroupUniformParts(
                 {
                     if(differingUniformParts.find(it->first) != differingUniformParts.end())
                     {
-                        entry.offsetRange.minValue += it->first.getLiteralValue()->signedInt();
-                        entry.offsetRange.maxValue += it->first.getLiteralValue()->signedInt();
+                        if(entry.offsetRange)
+                        {
+                            entry.offsetRange->minValue += it->first.getLiteralValue()->signedInt();
+                            entry.offsetRange->maxValue += it->first.getLiteralValue()->signedInt();
+                        }
+                        else
+                            // TODO correct??
+                            entry.offsetRange =
+                                analysis::ValueRange{static_cast<double>(it->first.getLiteralValue()->signedInt()),
+                                    static_cast<double>(it->first.getLiteralValue()->signedInt())};
+
                         entry.dynamicAddressParts.emplace(*it);
                         it = entry.groupUniformAddressParts.erase(it);
                     }
@@ -814,7 +837,7 @@ static std::pair<bool, analysis::IntegerRange> checkWorkGroupUniformParts(
             return checkWorkGroupUniformParts(accessRanges);
         }
         else
-            return std::make_pair(false, analysis::IntegerRange{});
+            return std::make_pair(false, analysis::ValueRange{});
     }
     return std::make_pair(true, offsetRange);
 }
@@ -826,8 +849,8 @@ static const periphery::VPMArea* checkCacheMemoryAccessRanges(
     GroupedAccessRanges result;
 
     bool allUniformPartsEqual;
-    analysis::IntegerRange offsetRange;
-    std::tie(allUniformPartsEqual, offsetRange) = checkWorkGroupUniformParts(memoryAccessRanges);
+    analysis::ValueRange offsetRange;
+    std::tie(allUniformPartsEqual, offsetRange) = analysis::checkWorkGroupUniformParts(memoryAccessRanges);
     if(!allUniformPartsEqual)
     {
         LCOV_EXCL_START

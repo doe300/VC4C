@@ -385,10 +385,17 @@ void Registers::clearReadCache()
     readCache.clear();
 }
 
+static constexpr uint8_t toIndex(Register reg) noexcept
+{
+    // we have 2 bits for the register file and need to store the files 1, 2 and 4. By subtracting 1, we can store all
+    // of them in 2 bits
+    return (static_cast<uint8_t>(reg.file) - 1) * 64 + reg.num;
+}
+
 SIMDVector Registers::readStorageRegister(Register reg, bool anyElementUsed)
 {
-    auto it = storageRegisters.find(reg);
-    if(it == storageRegisters.end())
+    const auto& vec = storageRegisters.at(toIndex(reg));
+    if(vec.isUndefined())
     {
         if(anyElementUsed)
             throw CompilationError(
@@ -398,9 +405,8 @@ SIMDVector Registers::readStorageRegister(Register reg, bool anyElementUsed)
             return SIMDVector{};
     }
     CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Reading from register '" << reg.to_string(true, true) << "': " << it->second.to_string(true)
-            << logging::endl);
-    return it->second;
+        log << "Reading from register '" << reg.to_string(true, true) << "': " << vec.to_string(true) << logging::endl);
+    return vec;
 }
 
 static SIMDVector toStorageValue(const SIMDVector& oldVal, const SIMDVector& newVal, std::bitset<16> elementMask)
@@ -433,29 +439,25 @@ void Registers::writeStorageRegister(Register reg, SIMDVector&& val, std::bitset
         // actual value stored is truncated to lowest 1 Bit and replicated across all elements
         val = SIMDVector(Literal(val[0].unsignedInt() & 1));
     }
-    auto it = storageRegisters.find(reg);
-    if(it == storageRegisters.end())
-        it = storageRegisters.emplace(reg, val).first;
-    else
-        it->second = toStorageValue(it->second, val, elementMask);
+    auto& vec = storageRegisters.at(toIndex(reg)) = toStorageValue(storageRegisters.at(toIndex(reg)), val, elementMask);
     if(reg.num == REG_REPLICATE_ALL.num && elementMask.any())
     {
         // TODO if some flags are set, but not the 0th (or 0th, 4th, 8th and 12th), need to retain old value?
         // TODO or is conditional replication possible at all?
         // is not actually stored in the physical file A or B
-        storageRegisters.erase(it);
-        storageRegisters.emplace(REG_ACC5, val);
+        vec = SIMDVector{};
+        storageRegisters.at(toIndex(REG_ACC5)) = val;
 
         if(reg.file == RegisterFile::PHYSICAL_A)
         {
             // per-quad replication
-            storageRegisters.at(REG_ACC5) = SIMDVector({val[0], val[0], val[0], val[0], val[4], val[4], val[4], val[4],
-                val[8], val[8], val[8], val[8], val[12], val[12], val[12], val[12]});
+            storageRegisters.at(toIndex(REG_ACC5)) = SIMDVector({val[0], val[0], val[0], val[0], val[4], val[4], val[4],
+                val[4], val[8], val[8], val[8], val[8], val[12], val[12], val[12], val[12]});
         }
         else if(reg.file == RegisterFile::PHYSICAL_B)
         {
             // across all elements replication
-            storageRegisters.at(REG_ACC5) = SIMDVector(val[0]);
+            storageRegisters.at(toIndex(REG_ACC5)) = SIMDVector(val[0]);
         }
         else
             throw CompilationError(CompilationStep::GENERAL,

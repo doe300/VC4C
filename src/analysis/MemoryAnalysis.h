@@ -12,8 +12,12 @@
 #include "../performance.h"
 #include "ValueRange.h"
 
+#include <memory>
+
 namespace vc4c
 {
+    struct Expression;
+
     namespace analysis
     {
         /**
@@ -50,21 +54,28 @@ namespace vc4c
         {
             // the underlying memory object which is accessed
             const Local* memoryObject = nullptr;
-            // the instruction writing the address to VPR_ADDR or VPW_ADDR
+            // the instruction writing the address to VPR_ADDR or VPW_ADDR or the intermediate::MemoryInstruction
             InstructionWalker addressWrite{};
             // the optional constant offset added after the base address was calculated, e.g. for element index
             Optional<Value> constantOffset;
             // the instruction adding the offset to the base pointer, could be the same as addressWrite
-            InstructionWalker baseAddressAdd{};
+            const intermediate::Operation* baseAddressAdd = nullptr;
             // the instruction converting the address offset from element offset to byte offset
-            Optional<InstructionWalker> typeSizeShift{};
+            const intermediate::Operation* typeSizeShift = nullptr;
             // the work-group uniform parts of which the address offset is calculated from
             FastMap<Value, intermediate::InstructionDecorations> groupUniformAddressParts{};
             // the dynamic parts (specific to the work-item) of which the address offset is calculated from
             FastMap<Value, intermediate::InstructionDecorations> dynamicAddressParts{};
             // the maximum range (in elements!) the memory is accessed in
-            analysis::IntegerRange offsetRange{0, 0};
-
+            Optional<analysis::ValueRange> offsetRange;
+            /*
+             * The optional expression calculating the memory address.
+             * If typeSizeShift is set, this is the input to that instruction (the address offset calculation in
+             * elements), otherwise if baseAddressAdd is set, this is the input to that instruction (the address offset
+             * calculation in bytes), otherwise this is the input to the addressWrite instruction (the full address
+             * calculation in bytes).
+             */
+            std::shared_ptr<Expression> addressExpression;
             std::string to_string() const;
         };
 
@@ -100,6 +111,18 @@ namespace vc4c
          */
         FastAccessList<MemoryAccessRange> determineAccessRanges(
             Method& method, const Local* baseAddr, MemoryAccess& access);
+
+        /**
+         * Checks whether all work-group uniform parts of the memory accesses are equal.
+         *
+         * If not, tries to convert the work-group uniform address offset parts to dynamic offsets and continues
+         * determining the range of dynamic offsets.
+         *
+         * Returns whether all work-group uniform parts of the address calculation are equal and the non-uniform access
+         * range. E.g. the memory location is accessed only in <group uniform parts> + [access range].
+         */
+        std::pair<bool, analysis::ValueRange> checkWorkGroupUniformParts(
+            FastAccessList<MemoryAccessRange>& accessRanges, bool allowConstantOffsets = true);
 
     } // namespace analysis
 

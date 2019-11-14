@@ -13,6 +13,7 @@
 #include "config.h"
 #include "tools.h"
 
+#include <array>
 #include <bitset>
 #include <limits>
 #include <queue>
@@ -82,10 +83,7 @@ namespace vc4c
         class Registers : private NonCopyable
         {
         public:
-            explicit Registers(QPU& qpu) : qpu(qpu), hostInterrupt()
-            {
-                storageRegisters.reserve(128);
-            }
+            explicit Registers(QPU& qpu) : qpu(qpu), hostInterrupt() {}
 
             void writeRegister(Register reg, const SIMDVector& val, std::bitset<16> elementMask);
             std::pair<SIMDVector, bool> readRegister(Register reg, bool anyElementUsed);
@@ -96,7 +94,7 @@ namespace vc4c
 
         private:
             QPU& qpu;
-            FastMap<Register, SIMDVector> storageRegisters;
+            std::array<SIMDVector, 4 * 64> storageRegisters;
             Optional<SIMDVector> hostInterrupt;
             SortedMap<Register, SIMDVector> readCache;
 

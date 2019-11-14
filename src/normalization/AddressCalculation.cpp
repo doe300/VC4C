@@ -128,6 +128,6 @@ InstructionWalker normalization::insertAddressToWorkItemSpecificOffset(
     out = dynamicParts->first;
     if(range.typeSizeShift)
         out = assign(it, dynamicParts->first.type) =
-            (dynamicParts->first << (*range.typeSizeShift)->assertArgument(1), dynamicParts->second);
+            (dynamicParts->first << range.typeSizeShift->assertArgument(1), dynamicParts->second);
     return it;
 }

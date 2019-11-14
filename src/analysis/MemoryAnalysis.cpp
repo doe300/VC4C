@@ -1,6 +1,7 @@
 
 #include "MemoryAnalysis.h"
 
+#include "../Expression.h"
 #include "../GlobalValues.h"
 #include "log.h"
 
@@ -10,21 +11,35 @@ using namespace vc4c::analysis;
 LCOV_EXCL_START
 std::string MemoryAccessRange::to_string() const
 {
+    std::string exprPart{};
+    if(addressExpression)
+        exprPart = typeSizeShift ? (" with element offset expression: " + addressExpression->to_string()) :
+                                   (baseAddressAdd ? " with byte offset expression: " + addressExpression->to_string() :
+                                                     (" with address expression: " + addressExpression->to_string()));
+
     return (addressWrite->to_string() +
                (addressWrite->writesRegister(REG_VPM_DMA_LOAD_ADDR) ? " - read " : " - write ")) +
         (memoryObject->to_string() +
             (groupUniformAddressParts.empty() ? " with" : " with work-group uniform offset and") +
-            " dynamic element range [") +
-        (std::to_string(offsetRange.minValue) + ", ") + (std::to_string(offsetRange.maxValue) + "]") +
-        (constantOffset ? " offset by " + constantOffset->to_string() : "");
+            " dynamic elements") +
+        (offsetRange ? (" in range [" + (std::to_string(offsetRange->minValue) + ", ") +
+                           (std::to_string(offsetRange->maxValue) + "]")) :
+                       " with indeterminate range") +
+        (constantOffset ? " offset by " + constantOffset->to_string() : "") + exprPart;
 }
 LCOV_EXCL_STOP
 
 bool LocalUsageOrdering::operator()(const Local* l1, const Local* l2) const
 {
     // prefer more usages over less usages
+    // since there is always only 1 writer for the local address, we prefer this over only counting readers for
+    // performance reasons
     // TODO is this the correct way to do this? E.g. is there one usage per memory access?
-    return l1->getUsers(LocalUse::Type::READER).size() > l2->getUsers(LocalUse::Type::READER).size() || l1 < l2;
+    if(l1->getUsers().size() > l2->getUsers().size())
+        return true;
+    if(l1->getUsers().size() == l2->getUsers().size())
+        return l1 < l2;
+    return false;
 }
 
 static bool isGroupUniform(const Local* local)
@@ -229,10 +244,10 @@ static Optional<MemoryAccessRange> determineAccessRange(
                     log << "Unhandled case of memory access: " << trackIt->to_string() << logging::endl);
                 return {};
             }
-            range.baseAddressAdd = trackIt;
+            range.baseAddressAdd = dynamic_cast<const intermediate::Operation*>(trackIt.get());
             break;
         }
-        if(!range.memoryObject || range.baseAddressAdd.isEndOfBlock())
+        if(!range.memoryObject || !range.baseAddressAdd)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Cannot optimize further, since add of base-address and pointer was not found: "
@@ -254,7 +269,7 @@ static Optional<MemoryAccessRange> determineAccessRange(
                         << " and " << writer->to_string() << logging::endl);
                 return {};
             }
-            range.typeSizeShift = trackIt.getBasicBlock()->findWalkerForInstruction(writer, trackIt);
+            range.typeSizeShift = dynamic_cast<const intermediate::Operation*>(writer);
             varArg = writer->assertArgument(0);
         }
         // 2.3 collect all directly neighboring (and directly referenced) additions
@@ -268,9 +283,23 @@ static Optional<MemoryAccessRange> determineAccessRange(
                 range.dynamicAddressParts.emplace(val);
                 if(val.first.checkLocal())
                 {
-                    auto singleRange = analysis::ValueRange::getValueRangeRecursive(val.first, &method);
-                    range.offsetRange.minValue += singleRange.getIntRange()->minValue;
-                    range.offsetRange.maxValue += singleRange.getIntRange()->maxValue;
+                    if(auto singleRange = analysis::ValueRange::getValueRangeRecursive(val.first, &method))
+                    {
+                        if(range.offsetRange)
+                        {
+                            range.offsetRange->minValue += singleRange.minValue;
+                            range.offsetRange->maxValue += singleRange.maxValue;
+                        }
+                    }
+                    else
+                    {
+                        // we might have an determinate access range before, but this address part, we don't know the
+                        // range -> indeterminate range
+                        logging::debug() << "Could not determine access range for address part '"
+                                         << val.first.to_string() << "' for memory access: " << memIt->to_string()
+                                         << logging::endl;
+                        range.offsetRange = {};
+                    }
                 }
                 else
                     throw CompilationError(

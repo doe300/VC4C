@@ -1044,104 +1044,42 @@ static Optional<std::pair<Value, InstructionDecorations>> combineAdditions(
     return prevResult;
 }
 
-static std::pair<bool, analysis::IntegerRange> checkWorkGroupUniformParts(
-    FastAccessList<analysis::MemoryAccessRange>& accessRanges)
-{
-    analysis::IntegerRange offsetRange{std::numeric_limits<int>::max(), std::numeric_limits<int>::min()};
-    const auto& firstUniformAddresses = accessRanges.front().groupUniformAddressParts;
-    FastMap<Value, InstructionDecorations> differingUniformParts;
-    bool allUniformPartsEqual = true;
-    for(auto& entry : accessRanges)
-    {
-        if(entry.groupUniformAddressParts != firstUniformAddresses)
-        {
-            allUniformPartsEqual = false;
-            for(const auto& pair : entry.groupUniformAddressParts)
-            {
-                if(firstUniformAddresses.find(pair.first) == firstUniformAddresses.end())
-                    differingUniformParts.emplace(pair);
-            }
-            for(const auto& pair : firstUniformAddresses)
-                if(entry.groupUniformAddressParts.find(pair.first) == entry.groupUniformAddressParts.end())
-                    differingUniformParts.emplace(pair);
-        }
-        offsetRange.minValue = std::min(offsetRange.minValue, entry.offsetRange.minValue);
-        offsetRange.maxValue = std::max(offsetRange.maxValue, entry.offsetRange.maxValue);
-        if(entry.constantOffset)
-        {
-            CPPLOG_LAZY(
-                logging::Level::DEBUG, log << "Constant address offsets are not yet supported" << logging::endl);
-            return std::make_pair(false, analysis::IntegerRange{});
-        }
-    }
-    if(!allUniformPartsEqual)
-    {
-        if(std::all_of(differingUniformParts.begin(), differingUniformParts.end(),
-               [](const auto& part) -> bool { return part.first.getLiteralValue().has_value(); }))
-        {
-            // all work-group uniform values which differ between various accesses of the same local are literal
-            // values. We can use this knowledge to still allow caching the local, by converting the literals to
-            // dynamic offsets
-            for(auto& entry : accessRanges)
-            {
-                auto it = entry.groupUniformAddressParts.begin();
-                while(it != entry.groupUniformAddressParts.end())
-                {
-                    if(differingUniformParts.find(it->first) != differingUniformParts.end())
-                    {
-                        entry.offsetRange.minValue += it->first.getLiteralValue()->signedInt();
-                        entry.offsetRange.maxValue += it->first.getLiteralValue()->signedInt();
-                        entry.dynamicAddressParts.emplace(*it);
-                        it = entry.groupUniformAddressParts.erase(it);
-                    }
-                    else
-                        ++it;
-                }
-            }
-            return checkWorkGroupUniformParts(accessRanges);
-        }
-        else
-            return std::make_pair(false, analysis::IntegerRange{});
-    }
-    return std::make_pair(true, offsetRange);
-}
+// static void rewriteIndexCalculation(Method& method, analysis::MemoryAccessRange& range)
+// {
+//     // 3. combine the additions so work-group uniform and non-uniform values are added
+//     // separately
+//     auto insertIt = range.typeSizeShift ? range.typeSizeShift.value() : range.baseAddressAdd;
+//     auto firstVal = combineAdditions(method, insertIt, range.groupUniformAddressParts);
+//     auto secondVal = combineAdditions(method, insertIt, range.dynamicAddressParts);
+//     Optional<std::pair<Value, InstructionDecorations>> resultVal;
+//     if(!range.groupUniformAddressParts.empty() || !range.dynamicAddressParts.empty())
+//         throw CompilationError(CompilationStep::OPTIMIZER, "Too many values remaining",
+//             std::to_string(range.groupUniformAddressParts.size() + range.dynamicAddressParts.size()));
+//     if(firstVal && secondVal)
+//     {
+//         // add work-group uniform and variable part
+//         resultVal = std::make_pair(
+//             method.addNewLocal(range.memoryObject->type), intersect_flags(firstVal->second, secondVal->second));
+//         insertIt.emplace(new Operation(OP_ADD, resultVal->first, firstVal->first, secondVal->first));
+//         insertIt->addDecorations(resultVal->second);
+//     }
+//     else if(firstVal)
+//         resultVal = firstVal;
+//     else if(secondVal)
+//         resultVal = secondVal;
+//     if(range.typeSizeShift)
+//         (*range.typeSizeShift)->setArgument(0, std::move(resultVal->first));
+//     else
+//         // TODO replace index variable with new index variable
+//         throw CompilationError(
+//             CompilationStep::OPTIMIZER, "Not yet implemented, no shift in address calculation", range.to_string());
 
-static void rewriteIndexCalculation(Method& method, analysis::MemoryAccessRange& range)
-{
-    // 3. combine the additions so work-group uniform and non-uniform values are added
-    // separately
-    auto insertIt = range.typeSizeShift ? range.typeSizeShift.value() : range.baseAddressAdd;
-    auto firstVal = combineAdditions(method, insertIt, range.groupUniformAddressParts);
-    auto secondVal = combineAdditions(method, insertIt, range.dynamicAddressParts);
-    Optional<std::pair<Value, InstructionDecorations>> resultVal;
-    if(!range.groupUniformAddressParts.empty() || !range.dynamicAddressParts.empty())
-        throw CompilationError(CompilationStep::OPTIMIZER, "Too many values remaining",
-            std::to_string(range.groupUniformAddressParts.size() + range.dynamicAddressParts.size()));
-    if(firstVal && secondVal)
-    {
-        // add work-group uniform and variable part
-        resultVal = std::make_pair(
-            method.addNewLocal(range.memoryObject->type), intersect_flags(firstVal->second, secondVal->second));
-        insertIt.emplace(new Operation(OP_ADD, resultVal->first, firstVal->first, secondVal->first));
-        insertIt->addDecorations(resultVal->second);
-    }
-    else if(firstVal)
-        resultVal = firstVal;
-    else if(secondVal)
-        resultVal = secondVal;
-    if(range.typeSizeShift)
-        (*range.typeSizeShift)->setArgument(0, std::move(resultVal->first));
-    else
-        // TODO replace index variable with new index variable
-        throw CompilationError(
-            CompilationStep::OPTIMIZER, "Not yet implemented, no shift in address calculation", range.to_string());
-
-    CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Rewrote address-calculation with indices "
-            << (firstVal ? (firstVal->first.to_string() + " (" + toString(firstVal->second) + ")") : "") << " and "
-            << (secondVal ? (secondVal->first.to_string() + " (" + toString(secondVal->second) + ")") : "")
-            << logging::endl);
-}
+//     CPPLOG_LAZY(logging::Level::DEBUG,
+//         log << "Rewrote address-calculation with indices "
+//             << (firstVal ? (firstVal->first.to_string() + " (" + toString(firstVal->second) + ")") : "") << " and "
+//             << (secondVal ? (secondVal->first.to_string() + " (" + toString(secondVal->second) + ")") : "")
+//             << logging::endl);
+// }
 
 bool optimizations::cacheWorkGroupDMAAccess(const Module& module, Method& method, const Configuration& config)
 {
@@ -1156,8 +1094,8 @@ bool optimizations::cacheWorkGroupDMAAccess(const Module& module, Method& method
     for(auto& pair : memoryAccessRanges)
     {
         bool allUniformPartsEqual;
-        analysis::IntegerRange offsetRange;
-        std::tie(allUniformPartsEqual, offsetRange) = checkWorkGroupUniformParts(pair.second);
+        analysis::ValueRange offsetRange;
+        std::tie(allUniformPartsEqual, offsetRange) = analysis::checkWorkGroupUniformParts(pair.second, false);
         if(!allUniformPartsEqual)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -1202,8 +1140,8 @@ bool optimizations::cacheWorkGroupDMAAccess(const Module& module, Method& method
         // TODO insert store VPM into memory area at end of kernel
         // TODO rewrite memory accesses to only access the correct VPM area
 
-        for(auto& entry : pair.second)
-            rewriteIndexCalculation(method, entry);
+        // for(auto& entry : pair.second)
+        //     rewriteIndexCalculation(method, entry);
 
         // TODO now, combine access to memory with VPM access
         // need to make sure, only 1 kernel accesses RAM/writes the configuration, how?
