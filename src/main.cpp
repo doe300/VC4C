@@ -129,11 +129,17 @@ static void printInfo()
 #ifdef USE_LLVM_LIBRARY
         std::string("LLVM library front-end with libLLVM ") + toVersionString(LLVM_LIBRARY_VERSION),
 #endif
+#ifdef SPIRV_LLVM_SPIRV_PATH
+        "SPIRV-LLVM converter in " SPIRV_LLVM_SPIRV_PATH,
+#endif
 #ifdef VC4CL_STDLIB_FOLDER
         "custom VC4CL standard-library path " VC4CL_STDLIB_FOLDER,
 #endif
 #ifdef SPIRV_FRONTEND
         "SPIR-V linker",
+#endif
+#ifdef LLVM_LINK_PATH
+        "LLVM linker",
 #endif
 #ifdef VERIFIER_HEADER
         "vc4asm verification",

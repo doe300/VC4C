@@ -70,12 +70,14 @@ namespace vc4c
             Optional<analysis::ValueRange> offsetRange;
             /*
              * The optional expression calculating the memory address.
+             *
              * If typeSizeShift is set, this is the input to that instruction (the address offset calculation in
              * elements), otherwise if baseAddressAdd is set, this is the input to that instruction (the address offset
              * calculation in bytes), otherwise this is the input to the addressWrite instruction (the full address
              * calculation in bytes).
              */
             std::shared_ptr<Expression> addressExpression;
+
             std::string to_string() const;
         };
 

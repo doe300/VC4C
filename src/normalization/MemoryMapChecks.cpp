@@ -46,6 +46,8 @@ Optional<Value> normalization::getConstantValue(const Value& source)
 {
     // can only read from constant global data, so the global is always the source
     const Global* global = source.local()->getBase(true)->as<Global>();
+    if(!global)
+        return NO_VALUE;
     if(auto literal = global->initialValue.getScalar())
         // scalar value
         return Value(*literal, global->initialValue.type.getElementType());
@@ -701,7 +703,7 @@ static MemoryInfo canLowerToRegisterReadWrite(Method& method, const Local* baseA
 static MemoryInfo canLowerToPrivateVPMArea(Method& method, const Local* baseAddr, MemoryAccess& access)
 {
     // FIXME enable once storing with element (non-vector) offset into VPM is implemented
-    // Retest: OpenCL-CTS/vload_private, OpenCL_CTS/vstore_private, emulate-memory
+    // Retest: OpenCL-CTS/vload_private, OpenCL_CTS/vstore_private, emulate-memory, test_async_copy
     auto area = static_cast<periphery::VPMArea*>(nullptr);
     // TODO method.vpm->addArea(baseAddr, baseAddr->type.getElementType(), true, method.metaData.getWorkGroupSize());
     if(area)

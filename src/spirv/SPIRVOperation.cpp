@@ -723,8 +723,24 @@ void SPIRVIndexOf::mapInstruction(TypeMapping& types, ConstantMapping& constants
         indexValues.push_back(getValue(indexID, *method.method, types, constants, memoryAllocated, localTypes));
     }
 
+    bool ptrAccessChain = isPtrAcessChain;
+
+    // XXX work-around for problem matching resulting type to actual output type for vload3/vstore3
+    // For some reason, SPIR-V does not introduce a pointer cast operation, but "casts" in the index chain. But this
+    // casting does not happen at the end, but in between, and how are we supposed to know that?
+    if(indexValues.size() == 2 && isPtrAcessChain &&
+        dest.type != method.method->createPointerType(container.type.getElementType()) &&
+        dest.type.getElementType().isSimpleType() && container.type.getElementType().isSimpleType() &&
+        dest.type.getElementType() == container.type.getElementType().toVectorType(1))
+    {
+        // if we have an index-chain for a <n x type>* into a type* with element-flag set and 1 actual offset, we would
+        // get: <n x type>* -> <n x type>* -> <n x type>, but we need <n x type>* -> <n x type> -> type, so just unmark
+        // the element-flag to resolve the element-type of the first pointer too.
+        ptrAccessChain = false;
+    }
+
     ignoreReturnValue(intermediate::insertCalculateIndices(
-        method.method->appendToEnd(), *method.method.get(), container, dest, indexValues, isPtrAcessChain));
+        method.method->appendToEnd(), *method.method.get(), container, dest, indexValues, ptrAccessChain));
 }
 
 Optional<Value> SPIRVIndexOf::precalculate(

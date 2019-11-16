@@ -108,6 +108,16 @@ namespace vc4c
             chainSteps<SourceType::LLVM_IR_BIN, SourceType::OPENCL_C, SourceType::LLVM_IR_BIN>(
                 compileOpenCLWithDefaultHeader, linkInStdlibModule);
 
+#ifdef SPIRV_LINK_MODULES
+        //  Use LLVM linker instead of PCH for faster compilation
+        static const auto compileOpenCLToSPIRV =
+            chainSteps<SourceType::SPIRV_BIN, SourceType::OPENCL_C, SourceType::LLVM_IR_BIN>(
+                compileOpenCLAndLinkModule, compileLLVMToSPIRV);
+
+        static const auto compileOpenCLToSPIRVText =
+            chainSteps<SourceType::SPIRV_TEXT, SourceType::OPENCL_C, SourceType::LLVM_IR_BIN>(
+                compileOpenCLAndLinkModule, compileLLVMToSPIRVText);
+#else
         static const auto compileOpenCLToSPIRV =
             chainSteps<SourceType::SPIRV_BIN, SourceType::OPENCL_C, SourceType::LLVM_IR_BIN>(
                 compileOpenCLWithPCH, compileLLVMToSPIRV);
@@ -115,6 +125,7 @@ namespace vc4c
         static const auto compileOpenCLToSPIRVText =
             chainSteps<SourceType::SPIRV_TEXT, SourceType::OPENCL_C, SourceType::LLVM_IR_BIN>(
                 compileOpenCLWithPCH, compileLLVMToSPIRVText);
+#endif
 
         /*
          * General version of compiling OpenCL C source to to LLVM binary module with the standard-library included.
