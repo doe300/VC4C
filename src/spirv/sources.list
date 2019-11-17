@@ -1,5 +1,7 @@
 target_sources(${VC4C_LIBRARY_NAME}
   PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/SPIRVBuiltins.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/SPIRVBuiltins.h
     ${CMAKE_CURRENT_LIST_DIR}/SPIRVHelper.cpp
     ${CMAKE_CURRENT_LIST_DIR}/SPIRVHelper.h
     ${CMAKE_CURRENT_LIST_DIR}/SPIRVOperation.cpp

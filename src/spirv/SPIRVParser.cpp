@@ -8,6 +8,7 @@
 
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intrinsics/Images.h"
+#include "SPIRVBuiltins.h"
 #include "SPIRVHelper.h"
 #include "log.h"
 
@@ -316,6 +317,22 @@ spv_result_t SPIRVParser::parseDecoration(const spv_parsed_instruction_t* parsed
         decorationMappings[target].push_back({spv::Decoration::MaxByteOffset, value});
         return SPV_SUCCESS;
     case spv::Decoration::BuiltIn: // entity (object, struct-member) represents given built-in
+        switch(static_cast<spv::BuiltIn>(value))
+        {
+        case spv::BuiltIn::WorkDim:
+        case spv::BuiltIn::GlobalSize:
+        case spv::BuiltIn::GlobalInvocationId:
+        case spv::BuiltIn::WorkgroupSize:
+        case spv::BuiltIn::LocalInvocationId:
+        case spv::BuiltIn::NumWorkgroups:
+        case spv::BuiltIn::WorkgroupId:
+        case spv::BuiltIn::GlobalOffset:
+            decorationMappings[target].push_back({spv::Decoration::BuiltIn, value});
+            return SPV_SUCCESS;
+        default:
+            logging::error() << "Met unsupported builtin decoration " << value << logging::endl;
+            return SPV_UNSUPPORTED;
+        }
     case spv::Decoration::Aliased: // pointer needs to be accessed with aliased access in mind. XXX how/is it handled?
     case spv::Decoration::FPRoundingMode: // explicit rounding mode
         // handle unsupported decorations which can't be simply ignored
@@ -428,8 +445,7 @@ static Optional<CompoundConstant> specializeConstant(const uint32_t resultID, Da
     auto it = decorations.find(resultID);
     if(it != decorations.end())
     {
-        Optional<uint32_t> res(getDecoration(it->second, spv::Decoration::SpecId));
-        if(res)
+        if(auto res = getDecoration(it->second, spv::Decoration::SpecId))
             return CompoundConstant(type, Literal(res.value()));
     }
     return {};
@@ -928,6 +944,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             val = constantMappings.at(getWord(parsed_instruction, 4));
         unsigned alignment = 0;
         bool isConstant = false;
+        spv::BuiltIn builtinId = spv::BuiltIn::Max;
         auto it2 = decorationMappings.find(parsed_instruction->type_id);
         if(it2 != decorationMappings.end())
         {
@@ -935,8 +952,13 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             isConstant = getDecoration(it2->second, spv::Decoration::Constant).has_value();
         }
         it2 = decorationMappings.find(parsed_instruction->result_id);
-        if(alignment == 0 && it2 != decorationMappings.end())
-            alignment = getDecoration(it2->second, spv::Decoration::Alignment).value_or(0);
+        if(it2 != decorationMappings.end())
+        {
+            if(alignment == 0)
+                alignment = getDecoration(it2->second, spv::Decoration::Alignment).value_or(0);
+            builtinId = static_cast<spv::BuiltIn>(getDecoration(it2->second, spv::Decoration::BuiltIn)
+                                                      .value_or(static_cast<uint32_t>(spv::BuiltIn::Max)));
+        }
 
         // the type of OpVariable is the pointer
         //... but the global data/stack allocation needs to have the real type (is re-set in #parse())
@@ -948,6 +970,46 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             auto pos = currentMethod->method->stackAllocations.emplace(StackAllocation(name, type, 0, alignment));
             // TODO set initial value!. Allowed for OpVariables with storage-class Function?
             memoryAllocatedData.emplace(parsed_instruction->result_id, &const_cast<StackAllocation&>(*pos.first));
+        }
+        else if(builtinId != spv::BuiltIn::Max)
+        {
+            // This is a built-in, do not generate a global variable, but reference to the UNIFORM/convert to vector3.
+            /*
+             * From SPI-V view, they are constants (OpVariable in UniformConstant address space) which are read as such
+             * (e.g. via OpLoad instruction). Since in OpenCL C source code, only a single dimension can be accessed at
+             * any time, the loaded value will be converted to one of the elements (assuming no optimizations occur
+             * here) (e.g. via OpCompositeExtract instruction).
+             */
+            switch(builtinId)
+            {
+            case spv::BuiltIn::WorkDim:
+                memoryAllocatedData.emplace(parsed_instruction->result_id, &BUILTIN_WORK_DIMENSIONS);
+                break;
+            case spv::BuiltIn::GlobalSize:
+                memoryAllocatedData.emplace(parsed_instruction->result_id, &BUILTIN_GLOBAL_SIZE);
+                break;
+            case spv::BuiltIn::GlobalInvocationId:
+                memoryAllocatedData.emplace(parsed_instruction->result_id, &BUILTIN_GLOBAL_ID);
+                break;
+            case spv::BuiltIn::WorkgroupSize:
+                memoryAllocatedData.emplace(parsed_instruction->result_id, &BUILTIN_LOCAL_SIZE);
+                break;
+            case spv::BuiltIn::LocalInvocationId:
+                memoryAllocatedData.emplace(parsed_instruction->result_id, &BUILTIN_LOCAL_ID);
+                break;
+            case spv::BuiltIn::NumWorkgroups:
+                memoryAllocatedData.emplace(parsed_instruction->result_id, &BUILTIN_NUM_GROUPS);
+                break;
+            case spv::BuiltIn::WorkgroupId:
+                memoryAllocatedData.emplace(parsed_instruction->result_id, &BUILTIN_GROUP_ID);
+                break;
+            case spv::BuiltIn::GlobalOffset:
+                memoryAllocatedData.emplace(parsed_instruction->result_id, &BUILTIN_GLOBAL_OFFSET);
+                break;
+            default:
+                logging::error() << "Met unsupported builtin " << static_cast<uint32_t>(builtinId) << logging::endl;
+                return SPV_UNSUPPORTED;
+            }
         }
         else
         {

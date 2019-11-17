@@ -15,6 +15,7 @@
 #include "../optimization/ControlFlow.h"
 #include "../optimization/Eliminator.h"
 #include "../optimization/Reordering.h"
+#include "../spirv/SPIRVBuiltins.h"
 #include "Inliner.h"
 #include "LiteralValues.h"
 #include "MemoryAccess.h"
@@ -128,6 +129,10 @@ static void checkNormalized(Module& module, Method& method, InstructionWalker it
 
 // NOTE: The order is on purpose and must not be changed!
 const static std::vector<std::pair<std::string, NormalizationStep>> initialNormalizationSteps = {
+#ifdef SPIRV_FRONTEND
+    // fixes "loading" of OpenCL C work-item functions as SPIR-V built-ins. Needs to run before handling intrinsics
+    {"LowerSPIRVBuiltins", spirv2qasm::lowerBuiltins},
+#endif
     // intrinsifies calls to built-ins and unsupported operations
     {"Intrinsics", optimizations::intrinsify},
     // replaces all remaining returns with jumps to the end of the kernel-function

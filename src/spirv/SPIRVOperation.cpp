@@ -12,6 +12,7 @@
 #include "../intermediate/VectorHelper.h"
 #include "../intrinsics/Images.h"
 #include "../intrinsics/Operators.h"
+#include "SPIRVBuiltins.h"
 #include "log.h"
 
 #include <algorithm>
@@ -525,14 +526,25 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
         else
             it = memoryAllocated.find(id);
         if(it != memoryAllocated.end())
-            dest = it->second->createReference(destIndices && !destIndices->empty() ? destIndices->at(0) : ANY_ELEMENT);
+            dest = it->second->createReference(
+                destIndices && !destIndices->empty() ? static_cast<int>((*destIndices)[0]) : ANY_ELEMENT);
         else
             dest =
                 method.method->findOrCreateLocal(source.type, std::string("%") + std::to_string(id))->createReference();
     }
     else
         dest = toNewLocal(*method.method, id, typeID, types, localTypes);
-    if(memoryAccess != MemoryAccess::NONE)
+    if(auto builtin = dynamic_cast<SPIRVBuiltin*>(source.checkLocal()))
+    {
+        // this is a "load" from a built-in variable -> convert to move which will then be handled by
+        // SPIRVBuiltins#lowerBuiltins
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating reading of " << builtin->to_string() << " into " << dest.to_string() << logging::endl);
+        method.method->appendToEnd(
+            (new intermediate::IntrinsicOperation(std::string{BUILTIN_INTRINSIC}, std::move(dest), std::move(source)))
+                ->addDecorations(decorations));
+    }
+    else if(memoryAccess != MemoryAccess::NONE)
     {
         // FIXME can't handle I/O of complex types, e.g. array (bigger than 16 elements), see
         // JohnTheRipper/DES_bs_kernel.cl  need to split in I/O of scalar type (use VPM cache, multi-line VPM)
@@ -799,7 +811,7 @@ Optional<Value> SPIRVIndexOf::precalculate(
             if(index.getLiteralValue())
             {
                 subOffset = Value(Literal(index.getLiteralValue()->signedInt() *
-                                      subContainerType.getElementType().getInMemoryWidth()),
+                                      static_cast<int>(subContainerType.getElementType().getInMemoryWidth())),
                     TYPE_INT32);
             }
             else
@@ -817,9 +829,9 @@ Optional<Value> SPIRVIndexOf::precalculate(
                 throw CompilationError(CompilationStep::LLVM_2_IR, "Can't access struct-element with non-literal index",
                     index.to_string());
 
-            subOffset =
-                Value(Literal(container.type.getStructType()->getStructSize(index.getLiteralValue()->unsignedInt())),
-                    TYPE_INT32);
+            subOffset = Value(Literal(container.type.getStructType()->getStructSize(
+                                  static_cast<int>(index.getLiteralValue()->unsignedInt()))),
+                TYPE_INT32);
             subContainerType = subContainerType.getElementType(index.getLiteralValue()->signedInt());
         }
         else

@@ -248,7 +248,13 @@ void precompilation::linkInStdlibModule(LLVMIRSource&& source, const std::string
     sources.emplace_back(Precompiler::findStandardLibraryFiles().llvmModule);
     auto options = userOptions;
     // set options to reduce output module size by only linking in required std-lib symbols
-    linkLLVMModules(std::move(sources), "-only-needed -internalize", result);
+    /*
+     * We could also set "-internalize" which makes all non-kernel functions to internal functions (internal linkage).
+     * This only helps us however, if we do further processing and not if we read the module directly.
+     * Also, this causes the SPIRV-LLVM translator to discard the function definitions for VC4CL std-lib implentations
+     * of OpenCL C standard library functions converted back to OpExtInst operations.
+     */
+    linkLLVMModules(std::move(sources), "-only-needed", result);
 }
 
 void precompilation::compileOpenCLToLLVMText(

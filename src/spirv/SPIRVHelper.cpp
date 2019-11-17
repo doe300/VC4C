@@ -629,7 +629,7 @@ Optional<uint32_t> spirv2qasm::getDecoration(
         if(pair.first == deco)
             return pair.second;
     }
-    return Optional<uint32_t>(false);
+    return Optional<uint32_t>{};
 }
 
 static ParameterDecorations toDecoration(spv::FunctionParameterAttribute attribute)
