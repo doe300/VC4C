@@ -175,6 +175,10 @@ void SPIRVParser::parse(Module& module)
 
             m.second.method->parameters.emplace_back(std::move(param));
         }
+
+        // to support OpenCL built-in operations, we need to demangle all VC4CL std-lib definitions of the OpenCL C
+        // standard functions to be able to map them correctly.
+        m.second.method->name = demangleFunctionName(m.second.method->name);
     }
 
     // map SPIRVOperations to IntermediateInstructions
@@ -501,7 +505,10 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case spv::Op::OpMemberName: // name of struct-member
         return SPV_SUCCESS;
     case spv::Op::OpString:
-        break;
+        // XXX can we make something from these? This is e.g. used to specify the original kernel parameter names, at
+        // least for more recent clang/SPIR-V compilers, see
+        // https://github.com/KhronosGroup/SPIRV-LLVM-Translator/blob/5de39350b76246609a2b233e9453e54f48f0a9c6/lib/SPIRV/SPIRVWriter.cpp#L1910
+        return SPV_SUCCESS;
     case spv::Op::OpLine: // source level debug info
         return SPV_SUCCESS;
     case spv::Op::OpExtension:
@@ -526,9 +533,9 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         if(parsed_instruction->ext_inst_type != SPV_EXT_INST_TYPE_OPENCL_STD)
             throw CompilationError(CompilationStep::PARSER, "Invalid extended instruction set",
                 std::to_string(parsed_instruction->ext_inst_type));
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         if(getWord(parsed_instruction, 4) == OpenCLLIB::Entrypoints::Shuffle2)
         {
-            localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
             instructions.emplace_back(
                 new SPIRVShuffle(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id,
                     getWord(parsed_instruction, 5), getWord(parsed_instruction, 6), getWord(parsed_instruction, 7)));
@@ -536,15 +543,17 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         }
         if(getWord(parsed_instruction, 4) == OpenCLLIB::Entrypoints::Shuffle)
         {
-            localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
             instructions.emplace_back(
                 new SPIRVShuffle(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id,
                     getWord(parsed_instruction, 5), UNDEFINED_ID, getWord(parsed_instruction, 6)));
             return SPV_SUCCESS;
         }
-        // these instructions are not really handled -> throw error here (where we know the method-name)
-        throw CompilationError(CompilationStep::PARSER, "OpenCL standard-function seems to be not implemented",
-            getOpenCLMethodName(getWord(parsed_instruction, 4)));
+        // the OpenCL built-in operations are not supported directly, but there might be a function definition for them
+        // here, we simply map them to function calls and resolve the possible matching definitions later
+        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod,
+            getOpenCLMethodName(getWord(parsed_instruction, 4)), parsed_instruction->type_id,
+            parseArguments(parsed_instruction, 5)));
+        return SPV_SUCCESS;
     }
     case spv::Op::OpMemoryModel:
         if(getWord(parsed_instruction, 1) != SpvAddressingModelLogical &&

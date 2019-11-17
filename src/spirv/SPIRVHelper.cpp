@@ -17,6 +17,10 @@
 
 #include <algorithm>
 
+#ifdef __GNUC__
+#include <cxxabi.h>
+#endif
+
 using namespace vc4c;
 using namespace vc4c::spirv2qasm;
 
@@ -687,7 +691,7 @@ DataType spirv2qasm::getIntegerType(const uint32_t bitWidth, const uint32_t sign
         return TYPE_INT8;
     CPPLOG_LAZY(
         logging::Level::DEBUG, log << "Unrecognized integer type with " << bitWidth << " bits" << logging::endl);
-    return DataType{bitWidth, 1, false};
+    return DataType{static_cast<uint8_t>(bitWidth), 1, false};
 }
 
 AddressSpace spirv2qasm::toAddressSpace(const spv::StorageClass storageClass)
@@ -745,7 +749,7 @@ void spirv2qasm::consumeSPIRVMessage(
 std::vector<uint32_t> spirv2qasm::readStreamOfWords(std::istream* in)
 {
     std::vector<uint32_t> words;
-    words.reserve(in->rdbuf()->in_avail());
+    words.reserve(static_cast<std::size_t>(in->rdbuf()->in_avail()));
     char buffer[sizeof(uint32_t)];
     while(in->read(buffer, sizeof(uint32_t)).good())
     {
@@ -788,4 +792,29 @@ void spirv2qasm::linkSPIRVModules(const std::vector<std::istream*>& inputModules
 #endif
 }
 
+std::string spirv2qasm::demangleFunctionName(const std::string& name)
+{
+    if(name.find("_Z") != 0)
+        return name;
+
+#ifdef __GNUC__
+    int status;
+    char* real_name = abi::__cxa_demangle(name.data(), nullptr, nullptr, &status);
+    std::string result = name;
+
+    if(status == 0)
+    {
+        // if demangling is successful, output the demangled function name
+        result = real_name;
+        // the demangled name contains the arguments, so we need ignore them
+        result = result.substr(0, result.find('('));
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Demangled function name '" << name << "' to: " << result << logging::endl);
+    }
+    free(real_name);
+    return result;
+#else
+    return name;
+#endif
+}
 #endif /* SPIRV_HEADER */

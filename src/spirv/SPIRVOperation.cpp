@@ -275,6 +275,21 @@ void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constant
     {
         args.push_back(getValue(op, *method.method, types, constants, memoryAllocated, localTypes));
     }
+    // For some built-in OpenCL instruction, we need some special fix-up.
+    // E.g. for vector load/stores the SPIR-V OpenCL built-in operations are called vloadn/vstoren, but the function
+    // names are vloadN/vstoreN (where N is the vector size)
+    if(calledFunction == "vloadn")
+    {
+        // the last parameter is the vector width, remove it and write it into the name
+        auto num = arguments.back();
+        args.pop_back();
+        calledFunction = "vload" + std::to_string(num);
+    }
+    else if(calledFunction == "vstoren")
+    {
+        // the vector width is not explicitly given, so extract it from the argument types
+        calledFunction = "vstore" + std::to_string(args.front().type.getVectorWidth());
+    }
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating intermediate call-site to '" << calledFunction << "' with " << args.size()
             << " parameters into " << dest.to_string(true) << logging::endl);

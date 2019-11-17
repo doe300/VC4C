@@ -36,6 +36,9 @@ namespace vc4c
 
         std::vector<uint32_t> readStreamOfWords(std::istream* in);
         void linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output);
+
+        std::string demangleFunctionName(const std::string& name);
+
     } // namespace spirv2qasm
 } // namespace vc4c
 
