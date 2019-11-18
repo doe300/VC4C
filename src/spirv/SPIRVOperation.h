@@ -92,7 +92,7 @@ namespace vc4c
                 const AllocationMapping& memoryAllocated) const override;
         };
 
-        class SPIRVCallSite final : public SPIRVOperation
+        class SPIRVCallSite : public SPIRVOperation
         {
         public:
             SPIRVCallSite(uint32_t id, SPIRVMethod& method, uint32_t methodID, uint32_t resultType,
@@ -106,11 +106,27 @@ namespace vc4c
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
                 const AllocationMapping& memoryAllocated) const override;
 
-        private:
+        protected:
             Optional<uint32_t> methodID;
             const uint32_t typeID;
             Optional<std::string> methodName;
             std::vector<uint32_t> arguments;
+        };
+
+        // Special call site/method call to handle SPIR-V operations that return (vector of) bool, while the mapped
+        // OpenCL C function returns (vector of) int. This also handles the OpenCL C pattern of returning -1 instead of
+        // 1 for !false values in vector variants.
+        class SPIRVBoolCallSite final : public SPIRVCallSite
+        {
+        public:
+            SPIRVBoolCallSite(uint32_t id, SPIRVMethod& method, uint32_t methodID, uint32_t resultType,
+                std::vector<uint32_t>&& arguments);
+            SPIRVBoolCallSite(uint32_t id, SPIRVMethod& method, const std::string& methodName, uint32_t resultType,
+                std::vector<uint32_t>&& arguments);
+            ~SPIRVBoolCallSite() override = default;
+
+            void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
+                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
         };
 
         class SPIRVReturn final : public SPIRVOperation
@@ -162,8 +178,10 @@ namespace vc4c
 
         enum class ConversionType : unsigned char
         {
-            SIGNED,
-            UNSIGNED,
+            SIGNED_TO_SIGNED,
+            UNSIGNED_TO_UNSIGNED,
+            SIGNED_TO_UNSIGNED,
+            UNSIGNED_TO_SIGNED,
             FLOATING,
             BITCAST
         };
@@ -172,7 +190,7 @@ namespace vc4c
         {
         public:
             SPIRVConversion(uint32_t id, SPIRVMethod& method, uint32_t resultType, uint32_t sourceID,
-                ConversionType type, intermediate::InstructionDecorations decorations, bool isSaturated = false);
+                ConversionType type, intermediate::InstructionDecorations decorations);
             ~SPIRVConversion() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
@@ -184,7 +202,6 @@ namespace vc4c
             const uint32_t typeID;
             const uint32_t sourceID;
             const ConversionType type;
-            const bool isSaturated;
         };
 
         enum class MemoryAccess : unsigned char
@@ -201,9 +218,6 @@ namespace vc4c
             // copies whole object
             SPIRVCopy(uint32_t id, SPIRVMethod& method, uint32_t resultType, uint32_t sourceID,
                 MemoryAccess memoryAccess = MemoryAccess::NONE, uint32_t size = UNDEFINED_ID);
-            // copies single parts
-            SPIRVCopy(uint32_t id, SPIRVMethod& method, uint32_t resultType, uint32_t sourceID,
-                std::vector<uint32_t>&& destIndices, std::vector<uint32_t>&& sourceIndices);
             ~SPIRVCopy() override = default;
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
                 MethodMapping& methods, AllocationMapping& memoryAllocated) override;
@@ -215,8 +229,29 @@ namespace vc4c
             const uint32_t sourceID;
             const MemoryAccess memoryAccess;
             const Optional<uint32_t> sizeID;
-            const Optional<std::vector<uint32_t>> destIndices;
-            const Optional<std::vector<uint32_t>> sourceIndices;
+        };
+
+        class SPIRVInsertionExtraction final : public SPIRVOperation
+        {
+        public:
+            // inserts single element at given index
+            SPIRVInsertionExtraction(uint32_t id, SPIRVMethod& method, uint32_t resultType, uint32_t srcContainerId,
+                uint32_t srcElementId, std::vector<uint32_t>&& indices, bool literalIndices);
+            // extracts single element at given index
+            SPIRVInsertionExtraction(uint32_t id, SPIRVMethod& method, uint32_t resultType, uint32_t srcContainerId,
+                std::vector<uint32_t>&& indices, bool literalIndices);
+            ~SPIRVInsertionExtraction() override = default;
+            void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
+                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+            Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
+                const AllocationMapping& memoryAllocated) const override;
+
+        private:
+            const uint32_t typeID;
+            const uint32_t containerId;
+            Optional<uint32_t> elementId;
+            std::vector<uint32_t> indices;
+            bool indicesAreLiteral;
         };
 
         class SPIRVShuffle final : public SPIRVOperation
@@ -374,6 +409,24 @@ namespace vc4c
         private:
             const uint32_t sizeInBytes;
             const bool isLifetimeEnd;
+        };
+
+        class SPIRVFoldInstruction final : public SPIRVOperation
+        {
+        public:
+            SPIRVFoldInstruction(uint32_t id, SPIRVMethod& method, uint32_t resultType,
+                const std::string& foldOperation, uint32_t sourceID, intermediate::InstructionDecorations decorations);
+            ~SPIRVFoldInstruction() override = default;
+
+            void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
+                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+            Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
+                const AllocationMapping& memoryAllocated) const override;
+
+        private:
+            const uint32_t typeID;
+            const uint32_t sourceID;
+            const std::string foldOperation;
         };
     } // namespace spirv2qasm
 } // namespace vc4c

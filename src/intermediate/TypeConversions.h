@@ -21,12 +21,24 @@ namespace vc4c
         NODISCARD InstructionWalker insertSignExtension(InstructionWalker it, Method& method, const Value& src,
             const Value& dest, bool allowLiteral, ConditionCode conditional = COND_ALWAYS,
             SetFlag setFlags = SetFlag::DONT_SET);
+
+        enum class ConversionType
+        {
+            SIGNED_TO_SIGNED,
+            UNSIGNED_TO_UNSIGNED,
+            SIGNED_TO_UNSIGNED,
+            UNSIGNED_TO_SIGNED
+        };
+
         NODISCARD InstructionWalker insertSaturation(
-            InstructionWalker it, Method& method, const Value& src, const Value& dest, bool isSigned);
+            InstructionWalker it, Method& method, const Value& src, const Value& dest, ConversionType type);
         NODISCARD InstructionWalker insertTruncate(
             InstructionWalker it, Method& method, const Value& src, const Value& dest);
         NODISCARD InstructionWalker insertFloatingPointConversion(
             InstructionWalker it, Method& method, const Value& src, const Value& dest);
+        NODISCARD InstructionWalker insertFloatToIntegerSaturation(InstructionWalker it, Method& method,
+            const Value& src, const Value& dest, int32_t minInt = std::numeric_limits<int32_t>::min(),
+            uint32_t maxInt = std::numeric_limits<int32_t>::max());
     } /* namespace intermediate */
 
 } /* namespace vc4c */

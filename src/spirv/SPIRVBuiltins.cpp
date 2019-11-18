@@ -11,6 +11,8 @@
 #include "../intermediate/VectorHelper.h"
 #include "log.h"
 
+#ifdef SPIRV_FRONTEND
+
 using namespace vc4c;
 using namespace vc4c::spirv2qasm;
 
@@ -130,3 +132,4 @@ void spirv2qasm::lowerBuiltins(Module& module, Method& method, InstructionWalker
         it.erase();
     }
 }
+#endif /* SPIRV_FRONTEND */

@@ -618,6 +618,33 @@ static NODISCARD InstructionWalker intrinsifyTernary(Method& method, Instruction
     return it;
 }
 
+static constexpr uint32_t getMaximumUnsignedValue(uint8_t numBits)
+{
+    return static_cast<uint32_t>((uint64_t{1} << numBits) - 1u);
+}
+
+static constexpr int32_t getMaximumSignedValue(uint8_t numBits)
+{
+    return static_cast<int32_t>((int64_t{1} << (numBits - 1)) - 1);
+}
+
+static constexpr int32_t getMinimumSignedValue(uint8_t numBits)
+{
+    return static_cast<int32_t>(-(int64_t{1} << (numBits - 1)));
+}
+
+static_assert(getMaximumUnsignedValue(32) == std::numeric_limits<uint32_t>::max(), "");
+static_assert(getMaximumUnsignedValue(16) == std::numeric_limits<uint16_t>::max(), "");
+static_assert(getMaximumUnsignedValue(8) == std::numeric_limits<uint8_t>::max(), "");
+
+static_assert(getMaximumSignedValue(32) == std::numeric_limits<int32_t>::max(), "");
+static_assert(getMaximumSignedValue(16) == std::numeric_limits<int16_t>::max(), "");
+static_assert(getMaximumSignedValue(8) == std::numeric_limits<int8_t>::max(), "");
+
+static_assert(getMinimumSignedValue(32) == std::numeric_limits<int32_t>::min(), "");
+static_assert(getMinimumSignedValue(16) == std::numeric_limits<int16_t>::min(), "");
+static_assert(getMinimumSignedValue(8) == std::numeric_limits<int8_t>::min(), "");
+
 static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker it, const MathType& mathType)
 {
     IntrinsicOperation* op = it.get<IntrinsicOperation>();
@@ -956,8 +983,8 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying saturated truncate with move and pack-mode: " << op->to_string()
                     << logging::endl);
-            it = insertSaturation(it, method, op->getFirstArg(), op->getOutput().value(),
-                !op->hasDecoration(InstructionDecorations::UNSIGNED_RESULT));
+            it = insertSaturation(
+                it, method, op->getFirstArg(), op->getOutput().value(), ConversionType::UNSIGNED_TO_UNSIGNED);
             it.nextInBlock();
             it.erase();
         }
@@ -988,8 +1015,8 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
     {
         if(saturateResult)
         {
-            throw CompilationError(
-                CompilationStep::OPTIMIZER, "Saturation on floating-point conversion is not supprted", op->to_string());
+            throw CompilationError(CompilationStep::OPTIMIZER,
+                "Saturation on floating-point conversion is not supported", op->to_string());
         }
         it = insertFloatingPointConversion(it, method, arg0, op->getOutput().value());
         // remove 'fptrunc'
@@ -1069,13 +1096,31 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
     // float to integer
     else if(op->opCode == "fptosi")
     {
-        it.reset((new Operation(OP_FTOI, op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags))
-                     ->copyExtrasFrom(it.get()));
+        if(has_flag(op->decoration, intermediate::InstructionDecorations::SATURATED_CONVERSION))
+        {
+            auto tmp = method.addNewLocal(op->getOutput()->type);
+            it = insertFloatToIntegerSaturation(it, method, arg0, tmp,
+                getMinimumSignedValue(tmp.type.getScalarBitCount()),
+                static_cast<uint32_t>(getMaximumSignedValue(tmp.type.getScalarBitCount())));
+            it.reset((new MoveOperation(*op->getOutput(), tmp))->copyExtrasFrom(op));
+        }
+        else
+            it.reset((new Operation(OP_FTOI, op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags))
+                         ->copyExtrasFrom(it.get()));
     }
     // float to unsigned integer
     else if(op->opCode == "fptoui")
     {
-        if(op->getOutput()->type.getScalarBitCount() >= 32)
+        if(has_flag(op->decoration, InstructionDecorations::SATURATED_CONVERSION))
+        {
+            auto tmp = method.addNewLocal(op->getOutput()->type);
+            it = insertFloatToIntegerSaturation(
+                it, method, arg0, tmp, 0, getMaximumUnsignedValue(tmp.type.getScalarBitCount()));
+            it.reset((new MoveOperation(*op->getOutput(), tmp))
+                         ->copyExtrasFrom(op)
+                         ->addDecorations(InstructionDecorations::UNSIGNED_RESULT));
+        }
+        else if(op->getOutput()->type.getScalarBitCount() >= 32)
         {
             // x > 2^31-1 => ftoui(x) = 2^31 + ftoi(x -2^31)
             auto maxInt = static_cast<float>(std::numeric_limits<int32_t>::max());

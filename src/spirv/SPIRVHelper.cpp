@@ -87,11 +87,11 @@ std::string spirv2qasm::getOpenCLMethodName(const uint32_t instructionID)
     case OpenCLLIB::Entrypoints::Expm1:
         return "expm1";
     case OpenCLLIB::Entrypoints::FClamp:
-        return "fclamp";
+        return "clamp";
     case OpenCLLIB::Entrypoints::FMax_common:
-        return "fmax";
+        return "max";
     case OpenCLLIB::Entrypoints::FMin_common:
-        return "fmin";
+        return "min";
     case OpenCLLIB::Entrypoints::Fabs:
         return "fabs";
     case OpenCLLIB::Entrypoints::Fast_distance:
@@ -102,12 +102,14 @@ std::string spirv2qasm::getOpenCLMethodName(const uint32_t instructionID)
         return "fast_normalize";
     case OpenCLLIB::Entrypoints::Fdim:
         return "fdim";
+    case OpenCLLIB::Entrypoints::Floor:
+        return "floor";
     case OpenCLLIB::Entrypoints::Fma:
         return "fma";
     case OpenCLLIB::Entrypoints::Fmax:
-        return "fmax";
+        return "max";
     case OpenCLLIB::Entrypoints::Fmin:
-        return "fmin";
+        return "min";
     case OpenCLLIB::Entrypoints::Fmod:
         return "fmod";
     case OpenCLLIB::Entrypoints::Fract:

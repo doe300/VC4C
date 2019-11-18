@@ -305,6 +305,56 @@ Optional<Value> SPIRVCallSite::precalculate(
     return NO_VALUE;
 }
 
+SPIRVBoolCallSite::SPIRVBoolCallSite(
+    uint32_t id, SPIRVMethod& method, uint32_t methodID, uint32_t resultType, std::vector<uint32_t>&& arguments) :
+    SPIRVCallSite(id, method, methodID, resultType, std::move(arguments))
+{
+}
+
+SPIRVBoolCallSite::SPIRVBoolCallSite(uint32_t id, SPIRVMethod& method, const std::string& methodName,
+    uint32_t resultType, std::vector<uint32_t>&& arguments) :
+    SPIRVCallSite(id, method, methodName, resultType, std::move(arguments))
+{
+}
+
+void SPIRVBoolCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
+    MethodMapping& methods, AllocationMapping& memoryAllocated)
+{
+    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
+    std::string calledFunction = methodName.value_or("");
+    if(methodID)
+        calledFunction = methods.at(methodID.value()).method->name;
+    std::vector<Value> args;
+    for(const uint32_t op : arguments)
+    {
+        args.push_back(getValue(op, *method.method, types, constants, memoryAllocated, localTypes));
+    }
+
+    // Simply emitting a call-site/method-call would not be correct, since the SPIR-V operations being mapped return
+    // type is bool (or a vector of bool), while the OpenCL C standard functions being mapped return int/vector of int.
+    // Doing a simple map will result in inliner failing, since an integer return value cannot safely be assigned to a
+    // boolean value.
+    // Additionally, the OpenCL C functions return a 0 (false) and 1 (true) for scalar and a 0 (false) and -1 (true) for
+    // vector-versions, which cannot be mapped 1:1 to returning a false/true value.
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating intermediate call-site with boolean conversion to '" << calledFunction << "' with "
+            << args.size() << " parameters into " << dest.to_string(true) << logging::endl);
+    auto tmp = method.method->addNewLocal(TYPE_INT32.toVectorType(dest.type.getVectorWidth()));
+    method.method->appendToEnd((new intermediate::MethodCall(Value(tmp), std::move(calledFunction), std::move(args)))
+                                   ->addDecorations(decorations));
+    if(dest.type.isVectorType())
+    {
+        // returns 0 for false and -1 for true
+        // 0 & 1 -> 0 and -1 & 1 -> 1
+        method.method->appendToEnd(new intermediate::Operation(OP_AND, std::move(dest), std::move(tmp), INT_ONE));
+    }
+    else
+    {
+        // returns 0 for false and 1 for true
+        method.method->appendToEnd(new intermediate::MoveOperation(std::move(dest), std::move(tmp)));
+    }
+}
+
 SPIRVReturn::SPIRVReturn(SPIRVMethod& method) :
     SPIRVOperation(UNDEFINED_ID, method, intermediate::InstructionDecorations::NONE)
 {
@@ -405,10 +455,9 @@ Optional<Value> SPIRVLabel::precalculate(
 }
 
 SPIRVConversion::SPIRVConversion(const uint32_t id, SPIRVMethod& method, const uint32_t resultType,
-    const uint32_t sourceID, const ConversionType type, const intermediate::InstructionDecorations decorations,
-    bool isSaturated) :
+    const uint32_t sourceID, const ConversionType type, const intermediate::InstructionDecorations decorations) :
     SPIRVOperation(id, method, decorations),
-    typeID(resultType), sourceID(sourceID), type(type), isSaturated(isSaturated)
+    typeID(resultType), sourceID(sourceID), type(type)
 {
 }
 
@@ -417,53 +466,94 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
 {
     Value source = getValue(sourceID, *method.method, types, constants, memoryAllocated, localTypes);
     Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
-    const uint8_t sourceWidth = source.type.getScalarBitCount();
-    const uint8_t destWidth = dest.type.getScalarBitCount();
+    bool isSaturated = has_flag(decorations, intermediate::InstructionDecorations::SATURATED_CONVERSION);
 
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating intermediate conversion from " << source.to_string(false) << " to " << dest.to_string(true)
             << logging::endl);
-    switch(type)
+
+    if(type == ConversionType::BITCAST)
     {
-    case ConversionType::BITCAST:
         ignoreReturnValue(
             intermediate::insertBitcast(method.method->appendToEnd(), *method.method.get(), source, dest, decorations));
-        break;
-    case ConversionType::FLOATING:
+        return;
+    }
+    if(type == ConversionType::FLOATING)
+    {
+        if(isSaturated)
+            throw CompilationError(
+                CompilationStep::LLVM_2_IR, "Saturated floating-point conversion is not yet supported");
         method.method->appendToEnd((new intermediate::IntrinsicOperation("fptrunc", std::move(dest), std::move(source)))
                                        ->addDecorations(decorations));
-        break;
-    case ConversionType::SIGNED:
-        if(isSaturated)
-            ignoreReturnValue(
-                intermediate::insertSaturation(method.method->appendToEnd(), *method.method.get(), source, dest, true));
-        if(sourceWidth < destWidth)
-            method.method->appendToEnd(
-                (new intermediate::IntrinsicOperation("sext", std::move(dest), std::move(source)))
-                    ->addDecorations(decorations));
-        else
-            // for |dest| > |source|, we do nothing (just move), since truncating would cut off the leading 1-bits for
-            // negative numbers  and since the ALU only calculates 32-bit operations, we need 32-bit negative numbers
-            // TODO completely correct? Since we do not truncate out-of-bounds values! (Same for bitcast-intrinsics)
-            method.method->appendToEnd(
-                (new intermediate::MoveOperation(std::move(dest), std::move(source)))->addDecorations(decorations));
-        break;
-    case ConversionType::UNSIGNED:
-        if(isSaturated)
-            ignoreReturnValue(intermediate::insertSaturation(
-                method.method->appendToEnd(), *method.method.get(), source, dest, false));
-        else if(sourceWidth > destWidth)
-            method.method->appendToEnd(
-                (new intermediate::IntrinsicOperation("trunc", std::move(dest), std::move(source)))
-                    ->addDecorations(decorations));
-        else if(sourceWidth == destWidth)
-            method.method->appendToEnd((new intermediate::MoveOperation(dest, source))->addDecorations(decorations));
-        else // |source| < |dest|
-            method.method->appendToEnd(
-                (new intermediate::IntrinsicOperation("zext", std::move(dest), std::move(source)))
-                    ->addDecorations(add_flag(decorations, intermediate::InstructionDecorations::UNSIGNED_RESULT)));
-        break;
+        return;
     }
+
+    // convert input value to 32-bit integer type with proper sign
+    Value tmp = source;
+    if(type == ConversionType::SIGNED_TO_SIGNED || type == ConversionType::SIGNED_TO_UNSIGNED)
+    {
+        tmp = method.method->addNewLocal(TYPE_INT32.toVectorType(source.type.getVectorWidth()));
+        method.method->appendToEnd((new intermediate::IntrinsicOperation("sext", Value(tmp), std::move(source))));
+    }
+    if(type == ConversionType::UNSIGNED_TO_SIGNED || type == ConversionType::UNSIGNED_TO_UNSIGNED)
+    {
+        tmp = method.method->addNewLocal(TYPE_INT32.toVectorType(source.type.getVectorWidth()));
+        method.method->appendToEnd((new intermediate::IntrinsicOperation("zext", Value(tmp), std::move(source)))
+                                       ->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT));
+    }
+
+    // truncate/saturate to correctly sized type
+    if(isSaturated)
+    {
+        intermediate::ConversionType outType;
+        switch(type)
+        {
+        case ConversionType::SIGNED_TO_SIGNED:
+            outType = intermediate::ConversionType::SIGNED_TO_SIGNED;
+            break;
+        case ConversionType::SIGNED_TO_UNSIGNED:
+            outType = intermediate::ConversionType::SIGNED_TO_UNSIGNED;
+            break;
+        case ConversionType::UNSIGNED_TO_SIGNED:
+            outType = intermediate::ConversionType::UNSIGNED_TO_SIGNED;
+            break;
+        case ConversionType::UNSIGNED_TO_UNSIGNED:
+            outType = intermediate::ConversionType::UNSIGNED_TO_UNSIGNED;
+            break;
+        default:
+            throw CompilationError(CompilationStep::LLVM_2_IR, "Unhandled conversion type!");
+        }
+        ignoreReturnValue(
+            intermediate::insertSaturation(method.method->appendToEnd(), *method.method.get(), tmp, dest, outType));
+        return;
+    }
+    else if(type == ConversionType::SIGNED_TO_SIGNED)
+    {
+        // signed 32-bit to signed other size -> move to retain 32-bit sign
+        method.method->appendToEnd(
+            (new intermediate::MoveOperation(std::move(dest), std::move(tmp)))->addDecorations(decorations));
+        return;
+    }
+    else if(type == ConversionType::SIGNED_TO_UNSIGNED || type == ConversionType::UNSIGNED_TO_UNSIGNED)
+    {
+        // (un)signed 32-bit to unsigned some size -> trunc (since negative values are UB anyway)
+        // TODO correct??
+        method.method->appendToEnd(
+            (new intermediate::IntrinsicOperation("trunc", std::move(dest), std::move(tmp)))
+                ->addDecorations(add_flag(decorations, intermediate::InstructionDecorations::UNSIGNED_RESULT)));
+        return;
+    }
+    else if(type == ConversionType::UNSIGNED_TO_SIGNED)
+    {
+        // unsigned 32-bit to signed some size -> trunc + sext
+        auto tmp2 = method.method->addNewLocal(dest.type);
+        method.method->appendToEnd(
+            (new intermediate::IntrinsicOperation("trunc", Value(tmp2), std::move(tmp)))
+                ->addDecorations(add_flag(decorations, intermediate::InstructionDecorations::UNSIGNED_RESULT)));
+        method.method->appendToEnd((new intermediate::IntrinsicOperation("sext", std::move(dest), std::move(tmp2))));
+        return;
+    }
+    throw CompilationError(CompilationStep::LLVM_2_IR, "This type of conversion is not yet implemented!");
 }
 
 Optional<Value> SPIRVConversion::precalculate(
@@ -486,11 +576,14 @@ Optional<Value> SPIRVConversion::precalculate(
         case ConversionType::FLOATING:
             // double representation of all floating-point values is the same for the same value
             return source;
-        case ConversionType::SIGNED:
+        case ConversionType::SIGNED_TO_SIGNED:
             // TODO trunc/sext + saturation
             break;
-        case ConversionType::UNSIGNED:
+        case ConversionType::UNSIGNED_TO_UNSIGNED:
             // TODO trunc/zext + saturation
+            break;
+        case ConversionType::SIGNED_TO_UNSIGNED:
+        case ConversionType::UNSIGNED_TO_SIGNED:
             break;
         }
     }
@@ -501,14 +594,6 @@ SPIRVCopy::SPIRVCopy(const uint32_t id, SPIRVMethod& method, const uint32_t resu
     const MemoryAccess memoryAccess, const uint32_t size) :
     SPIRVOperation(id, method, intermediate::InstructionDecorations::NONE),
     typeID(resultType), sourceID(sourceID), memoryAccess(memoryAccess), sizeID(size)
-{
-}
-
-SPIRVCopy::SPIRVCopy(const uint32_t id, SPIRVMethod& method, const uint32_t resultType, const uint32_t sourceID,
-    std::vector<uint32_t>&& destIndices, std::vector<uint32_t>&& sourceIndices) :
-    SPIRVOperation(id, method, intermediate::InstructionDecorations::NONE),
-    typeID(resultType), sourceID(sourceID), memoryAccess(MemoryAccess::NONE), destIndices(std::move(destIndices)),
-    sourceIndices(std::move(sourceIndices))
 {
 }
 
@@ -525,12 +610,7 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
             it = memoryAllocated.find(sourceID);
         else
             it = memoryAllocated.find(id);
-        if(it != memoryAllocated.end())
-            dest = it->second->createReference(
-                destIndices && !destIndices->empty() ? static_cast<int>((*destIndices)[0]) : ANY_ELEMENT);
-        else
-            dest =
-                method.method->findOrCreateLocal(source.type, std::string("%") + std::to_string(id))->createReference();
+        dest = method.method->findOrCreateLocal(source.type, std::string("%") + std::to_string(id))->createReference();
     }
     else
         dest = toNewLocal(*method.method, id, typeID, types, localTypes);
@@ -604,7 +684,7 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
             }
         }
     }
-    else if(!destIndices && !sourceIndices)
+    else
     {
         // simple move
         CPPLOG_LAZY(logging::Level::DEBUG,
@@ -612,34 +692,6 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
                 << logging::endl);
         method.method->appendToEnd(
             (new intermediate::MoveOperation(std::move(dest), std::move(source)))->addDecorations(decorations));
-    }
-    else if(sourceIndices && dest.type.isScalarType())
-    {
-        if(sourceIndices->size() > 1)
-            throw CompilationError(CompilationStep::LLVM_2_IR, "Multi level indices are not implemented yet");
-        // index is literal
-        CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Generating intermediate extraction of index " << sourceIndices->at(0) << " from "
-                << source.to_string() << " into " << dest.to_string(true) << logging::endl);
-        ignoreReturnValue(intermediate::insertVectorExtraction(method.method->appendToEnd(), *method.method, source,
-            Value(Literal(sourceIndices->at(0)), TYPE_INT8), dest));
-    }
-    else if((!sourceIndices || (sourceIndices->at(0) == 0)) && destIndices)
-    {
-        if(destIndices->size() > 1)
-            throw CompilationError(CompilationStep::LLVM_2_IR, "Multi level indices are not implemented yet");
-        // add element to vector to element
-        // index is literal
-        CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Generating intermediate insertion of " << source.to_string() << " into element "
-                << destIndices->at(0) << " of " << dest.to_string(true) << logging::endl);
-        ignoreReturnValue(intermediate::insertVectorInsertion(
-            method.method->appendToEnd(), *method.method, dest, Value(Literal(destIndices->at(0)), TYPE_INT8), source));
-    }
-    else
-    {
-        throw std::runtime_error("This version of copy is not implemented yet!");
-        // TODO indices are already literals!!
     }
 }
 
@@ -649,6 +701,63 @@ Optional<Value> SPIRVCopy::precalculate(
     auto it = constants.find(sourceID);
     if(it != constants.end())
         return it->second.toValue();
+    return NO_VALUE;
+}
+
+SPIRVInsertionExtraction::SPIRVInsertionExtraction(uint32_t id, SPIRVMethod& method, uint32_t resultType,
+    uint32_t srcContainerId, uint32_t srcElementId, std::vector<uint32_t>&& indices, bool literalIndices) :
+    SPIRVOperation(id, method, intermediate::InstructionDecorations::ELEMENT_INSERTION),
+    typeID(resultType), containerId(srcContainerId), elementId(srcElementId), indices(std::move(indices)),
+    indicesAreLiteral(literalIndices)
+{
+}
+
+SPIRVInsertionExtraction::SPIRVInsertionExtraction(uint32_t id, SPIRVMethod& method, uint32_t resultType,
+    uint32_t srcContainerId, std::vector<uint32_t>&& indices, bool literalIndices) :
+    SPIRVOperation(id, method, intermediate::InstructionDecorations::ELEMENT_INSERTION),
+    typeID(resultType), containerId(srcContainerId), indices(std::move(indices)), indicesAreLiteral(literalIndices)
+{
+}
+
+void SPIRVInsertionExtraction::mapInstruction(TypeMapping& types, ConstantMapping& constants,
+    LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated)
+{
+    Value container = getValue(containerId, *method.method, types, constants, memoryAllocated, localTypes);
+    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
+    auto element =
+        elementId ? getValue(*elementId, *method.method, types, constants, memoryAllocated, localTypes) : NO_VALUE;
+
+    if(indices.size() != 1)
+        throw CompilationError(CompilationStep::LLVM_2_IR, "Multi level indices are not implemented yet");
+
+    auto index = indicesAreLiteral ?
+        Value(Literal(indices[0]), TYPE_INT8) :
+        getValue(indices[0], *method.method, types, constants, memoryAllocated, localTypes);
+
+    if(element) // we have source element -> insertions
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating intermediate insertion of " << element->to_string() << " into element "
+                << index.to_string() << " of " << dest.to_string(true) << logging::endl);
+        // 1. copy whole composite
+        method.method->appendToEnd(new intermediate::MoveOperation(Value(dest), std::move(container)));
+        // 2. insert object at given index
+        ignoreReturnValue(
+            intermediate::insertVectorInsertion(method.method->appendToEnd(), *method.method, dest, index, *element));
+    }
+    else
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating intermediate extraction of index " << index.to_string() << " from "
+                << container.to_string() << " into " << dest.to_string(true) << logging::endl);
+        ignoreReturnValue(
+            intermediate::insertVectorExtraction(method.method->appendToEnd(), *method.method, container, index, dest));
+    }
+}
+
+Optional<Value> SPIRVInsertionExtraction::precalculate(
+    const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
+{
     return NO_VALUE;
 }
 
@@ -1093,21 +1202,54 @@ SPIRVLifetimeInstruction::SPIRVLifetimeInstruction(const uint32_t id, SPIRVMetho
 void SPIRVLifetimeInstruction::mapInstruction(TypeMapping& types, ConstantMapping& constants,
     LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated)
 {
-    const Value pointer = getValue(id, *method.method, types, constants, memoryAllocated, localTypes);
+    Value pointer = getValue(id, *method.method, types, constants, memoryAllocated, localTypes);
+
+    if(pointer.checkLocal())
+    {
+        if(auto alloc = const_cast<StackAllocation*>(pointer.local()->getBase(true)->as<StackAllocation>()))
+            pointer = alloc->createReference();
+    }
 
     //"If Size is non-zero, it is the number of bytes of memory whose lifetime is starting"
-    if(sizeInBytes != 0)
-        pointer.local()->as<StackAllocation>()->size = sizeInBytes;
+    if(sizeInBytes != 0 && pointer.checkLocal())
+    {
+        if(auto alloc = pointer.local()->as<StackAllocation>())
+            alloc->size = std::max(alloc->size, static_cast<std::size_t>(sizeInBytes));
+    }
 
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating life-time " << (isLifetimeEnd ? "end" : "start") << " for " << pointer.to_string()
-            << logging::endl);
+            << (sizeInBytes != 0 ? " with size of " + std::to_string(sizeInBytes) + " bytes" : "") << logging::endl);
     method.method->appendToEnd(new intermediate::LifetimeBoundary(pointer, isLifetimeEnd));
 }
 
 Optional<Value> SPIRVLifetimeInstruction::precalculate(
     const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
+    return NO_VALUE;
+}
+
+SPIRVFoldInstruction::SPIRVFoldInstruction(uint32_t id, SPIRVMethod& method, uint32_t resultType,
+    const std::string& foldOperation, uint32_t sourceID, intermediate::InstructionDecorations decorations) :
+    SPIRVOperation(id, method, decorations),
+    typeID(resultType), sourceID(sourceID), foldOperation(foldOperation)
+{
+}
+
+void SPIRVFoldInstruction::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
+    MethodMapping& methods, AllocationMapping& memoryAllocated)
+{
+    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
+    Value src = getValue(sourceID, *method.method, types, constants, memoryAllocated, localTypes);
+    auto code = OpCode::toOpCode(foldOperation);
+    ignoreReturnValue(
+        intermediate::insertFoldVector(method.method->appendToEnd(), *method.method, dest, src, code, decorations));
+}
+
+Optional<Value> SPIRVFoldInstruction::precalculate(
+    const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
+{
+    // XXX could implement for all-constant operand
     return NO_VALUE;
 }
 

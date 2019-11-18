@@ -319,7 +319,7 @@ InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method
 }
 
 InstructionWalker intermediate::insertSaturation(
-    InstructionWalker it, Method& method, const Value& src, const Value& dest, bool isSigned)
+    InstructionWalker it, Method& method, const Value& src, const Value& dest, ConversionType type)
 {
     // saturation = clamping to min/max of type
     //-> dest = max(min(src, destType.max), destType.min)
@@ -328,31 +328,34 @@ InstructionWalker intermediate::insertSaturation(
     if(!dest.type.isSimpleType() || dest.type.isFloatingType())
         throw CompilationError(CompilationStep::GENERAL, "Invalid target type for saturation", dest.type.to_string());
 
+    bool isInputSigned = type == ConversionType::SIGNED_TO_SIGNED || type == ConversionType::SIGNED_TO_UNSIGNED;
+    bool isOutputSigned = type == ConversionType::UNSIGNED_TO_SIGNED || type == ConversionType::SIGNED_TO_SIGNED;
+
     if(auto lit = src.getLiteralValue())
     {
         switch(dest.type.getScalarBitCount())
         {
         case 8:
             return it.emplace((new MoveOperation(dest,
-                                   Value(isSigned ? Literal(saturate<int8_t>(lit->signedInt())) :
-                                                    Literal(saturate<uint8_t>(lit->unsignedInt())),
+                                   Value(isOutputSigned ? Literal(saturate<int8_t>(lit->signedInt())) :
+                                                          Literal(saturate<uint8_t>(lit->unsignedInt())),
                                        dest.type)))
-                                  ->addDecorations(isSigned ? InstructionDecorations::NONE :
-                                                              InstructionDecorations::UNSIGNED_RESULT));
+                                  ->addDecorations(isOutputSigned ? InstructionDecorations::NONE :
+                                                                    InstructionDecorations::UNSIGNED_RESULT));
         case 16:
             return it.emplace((new MoveOperation(dest,
-                                   Value(isSigned ? Literal(saturate<int16_t>(lit->signedInt())) :
-                                                    Literal(saturate<uint16_t>(lit->unsignedInt())),
+                                   Value(isOutputSigned ? Literal(saturate<int16_t>(lit->signedInt())) :
+                                                          Literal(saturate<uint16_t>(lit->unsignedInt())),
                                        dest.type)))
-                                  ->addDecorations(isSigned ? InstructionDecorations::NONE :
-                                                              InstructionDecorations::UNSIGNED_RESULT));
+                                  ->addDecorations(isOutputSigned ? InstructionDecorations::NONE :
+                                                                    InstructionDecorations::UNSIGNED_RESULT));
         case 32:
             return it.emplace((new MoveOperation(dest,
-                                   Value(isSigned ? Literal(saturate<int32_t>(lit->signedInt())) :
-                                                    Literal(saturate<uint32_t>(lit->unsignedInt())),
+                                   Value(isOutputSigned ? Literal(saturate<int32_t>(lit->signedInt())) :
+                                                          Literal(saturate<uint32_t>(lit->unsignedInt())),
                                        dest.type)))
-                                  ->addDecorations(isSigned ? InstructionDecorations::NONE :
-                                                              InstructionDecorations::UNSIGNED_RESULT));
+                                  ->addDecorations(isOutputSigned ? InstructionDecorations::NONE :
+                                                                    InstructionDecorations::UNSIGNED_RESULT));
         default:
             throw CompilationError(
                 CompilationStep::GENERAL, "Invalid target type for saturation", dest.type.to_string());
@@ -360,17 +363,62 @@ InstructionWalker intermediate::insertSaturation(
     }
     else // saturation can be easily done via pack-modes
     {
-        if(dest.type.getScalarBitCount() == 8 && !isSigned)
+        if(dest.type.getScalarBitCount() == 8)
+        {
+            Value tmpSrc = src;
+            if(!isInputSigned)
+                // if unsigned and MSB is set, will interpret as negative signed -> mask off MSB
+                tmpSrc = assign(it, src.type) = (src & 0x7FFFFFFF_val, InstructionDecorations::UNSIGNED_RESULT);
+            if(isOutputSigned)
+            {
+                // dest = min(max(src, -128), 127)
+                auto tmp = assign(it, TYPE_INT8) =
+                    max(as_signed{tmpSrc}, as_signed{Value(Literal(std::numeric_limits<int8_t>::min()), TYPE_INT8)});
+                return it.emplace(
+                    new Operation(OP_MIN, dest, tmp, Value(Literal(std::numeric_limits<int8_t>::max()), TYPE_INT8)));
+            }
+            else
+                return it.emplace((new MoveOperation(dest, tmpSrc))
+                                      ->setPackMode(PACK_INT_TO_UNSIGNED_CHAR_SATURATE)
+                                      ->addDecorations(InstructionDecorations::UNSIGNED_RESULT));
+        }
+        else if(dest.type.getScalarBitCount() == 16)
+        {
+            Value tmpSrc = src;
+            if(!isInputSigned)
+                // if unsigned and MSB is set, will interpret as negative signed -> mask off MSB
+                tmpSrc = assign(it, src.type) = (src & 0x7FFFFFFF_val, InstructionDecorations::UNSIGNED_RESULT);
+            if(isOutputSigned)
+                return it.emplace((new MoveOperation(dest, tmpSrc))->setPackMode(PACK_INT_TO_SIGNED_SHORT_SATURATE));
+            else
+            {
+                auto tmp = assign(it, TYPE_INT16) =
+                    max(as_signed{tmpSrc}, as_signed{Value(Literal(std::numeric_limits<uint16_t>::min()), TYPE_INT16)});
+                return it.emplace(
+                    new Operation(OP_MIN, dest, tmp, Value(Literal(std::numeric_limits<uint16_t>::max()), TYPE_INT16)));
+            }
+        }
+
+        if(isOutputSigned == isInputSigned)
+            // signed -> signed or unsigned -> unsigned => move
             return it.emplace((new MoveOperation(dest, src))
-                                  ->setPackMode(PACK_INT_TO_UNSIGNED_CHAR_SATURATE)
+                                  ->addDecorations(isOutputSigned ? InstructionDecorations::NONE :
+                                                                    InstructionDecorations::UNSIGNED_RESULT));
+
+        if(isInputSigned && !isOutputSigned)
+            // signed -> unsigned => dest = max(src, 0)
+            return it.emplace(
+                (new Operation(OP_MAX, dest, src, INT_ZERO))->addDecorations(InstructionDecorations::UNSIGNED_RESULT));
+        if(!isInputSigned && isOutputSigned)
+        {
+            // unsigned -> signed => dest = MSB(src) ? INT_MAX : src
+            auto negativeCond = assignNop(it) = as_signed{src} < as_signed{INT_ZERO};
+            assign(it, dest) = (0x7FFFFFFF_val, negativeCond, InstructionDecorations::UNSIGNED_RESULT);
+            return it.emplace((new MoveOperation(dest, src, negativeCond.invert()))
                                   ->addDecorations(InstructionDecorations::UNSIGNED_RESULT));
-        else if(dest.type.getScalarBitCount() == 16 && isSigned)
-            return it.emplace((new MoveOperation(dest, src))->setPackMode(PACK_INT_TO_SIGNED_SHORT_SATURATE));
-        // TODO 32-bit saturation cannot be applied as an extra instruction, has to be done in the instruction
-        // calculating the overflowing value
-        // TODO need to saturate manually
-        throw CompilationError(
-            CompilationStep::GENERAL, "Saturation to this type is not yet supported", dest.type.to_string());
+        }
+        throw CompilationError(CompilationStep::GENERAL, "Saturation to this type is not yet supported",
+            "from " + src.type.to_string() + " to " + dest.type.to_string());
     }
 }
 
@@ -400,4 +448,24 @@ InstructionWalker intermediate::insertFloatingPointConversion(
     else
         throw CompilationError(CompilationStep::GENERAL, "Unsupported floating-point conversion");
     return it.nextInBlock();
+}
+
+InstructionWalker intermediate::insertFloatToIntegerSaturation(
+    InstructionWalker it, Method& method, const Value& src, const Value& dest, int32_t minInt, uint32_t maxInt)
+{
+    auto maxFloat = Value(Literal(static_cast<float>(maxInt)), TYPE_FLOAT);
+    auto maxInteger = Value(Literal(maxInt), dest.type);
+    auto minFloat = Value(Literal(static_cast<float>(minInt)), TYPE_FLOAT);
+    auto minInteger = Value(Literal(minInt), dest.type);
+
+    // default -> dest = ftoi(src)
+    it.emplace((new Operation(OP_FTOI, dest, src)));
+    it.nextInBlock();
+    // src >= itof(max) -> dest = max
+    auto overflowCond = assignNop(it) = as_float{src} >= as_float{maxFloat};
+    assign(it, dest) = (maxInteger, overflowCond);
+    // src <= itof(min) -> dest = min
+    auto underflowCond = assignNop(it) = as_float{src} <= as_float{minFloat};
+    assign(it, dest) = (minInteger, underflowCond);
+    return it;
 }

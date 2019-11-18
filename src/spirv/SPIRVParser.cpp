@@ -1126,9 +1126,16 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case spv::Op::OpGroupMemberDecorate:
         return UNSUPPORTED_INSTRUCTION("OpGroupMemberDecorate");
     case spv::Op::OpVectorExtractDynamic:
-        return UNSUPPORTED_INSTRUCTION("OpVectorExtractDynamic");
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVInsertionExtraction(parsed_instruction->result_id, *currentMethod,
+            parsed_instruction->type_id, getWord(parsed_instruction, 3), parseArguments(parsed_instruction, 4), false));
+        return SPV_SUCCESS;
     case spv::Op::OpVectorInsertDynamic:
-        return UNSUPPORTED_INSTRUCTION("OpVectorInsertDynamic");
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVInsertionExtraction(parsed_instruction->result_id, *currentMethod,
+            parsed_instruction->type_id, getWord(parsed_instruction, 3), getWord(parsed_instruction, 4),
+            parseArguments(parsed_instruction, 5), false));
+        return SPV_SUCCESS;
     case spv::Op::OpVectorShuffle:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
@@ -1139,17 +1146,14 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return UNSUPPORTED_INSTRUCTION("OpCompositeConstruct");
     case spv::Op::OpCompositeExtract:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVCopy(parsed_instruction->result_id, *currentMethod,
-            parsed_instruction->type_id, getWord(parsed_instruction, 3), {0}, parseArguments(parsed_instruction, 4)));
+        instructions.emplace_back(new SPIRVInsertionExtraction(parsed_instruction->result_id, *currentMethod,
+            parsed_instruction->type_id, getWord(parsed_instruction, 3), parseArguments(parsed_instruction, 4), true));
         return SPV_SUCCESS;
     case spv::Op::OpCompositeInsert:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        // 1. copy whole composite
-        instructions.emplace_back(new SPIRVCopy(parsed_instruction->result_id, *currentMethod,
-            parsed_instruction->type_id, getWord(parsed_instruction, 4)));
-        // 2. insert object at given index
-        instructions.emplace_back(new SPIRVCopy(parsed_instruction->result_id, *currentMethod,
-            parsed_instruction->type_id, getWord(parsed_instruction, 3), parseArguments(parsed_instruction, 5), {0}));
+        instructions.emplace_back(new SPIRVInsertionExtraction(parsed_instruction->result_id, *currentMethod,
+            parsed_instruction->type_id, getWord(parsed_instruction, 4), getWord(parsed_instruction, 3),
+            parseArguments(parsed_instruction, 5), true));
         return SPV_SUCCESS;
     case spv::Op::OpCopyObject:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
@@ -1260,14 +1264,14 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case spv::Op::OpUConvert: // change bit-width (type) of value
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod,
-            parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::UNSIGNED,
+            parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::UNSIGNED_TO_UNSIGNED,
             add_flag(toInstructionDecorations(parsed_instruction->result_id),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
     case spv::Op::OpSConvert: // change bit-width (type) of value
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod,
-            parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::SIGNED,
+            parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::SIGNED_TO_SIGNED,
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
     case spv::Op::OpFConvert: // change bit-width (type) of value
@@ -1279,50 +1283,54 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case spv::Op::OpConvertPtrToU: // pointer to unsigned -> same as OpUConvert
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod,
-            parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::UNSIGNED,
+            parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::UNSIGNED_TO_UNSIGNED,
             add_flag(toInstructionDecorations(parsed_instruction->result_id),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return SPV_SUCCESS;
     case spv::Op::OpSatConvertSToU: // signed to unsigned (with saturation)
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod,
-            parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::UNSIGNED,
+            parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::SIGNED_TO_UNSIGNED,
             add_flag(toInstructionDecorations(parsed_instruction->result_id),
-                intermediate::InstructionDecorations::UNSIGNED_RESULT),
-            true));
+                add_flag(intermediate::InstructionDecorations::UNSIGNED_RESULT,
+                    intermediate::InstructionDecorations::SATURATED_CONVERSION))));
         return SPV_SUCCESS;
     case spv::Op::OpSatConvertUToS: // unsigned to signed (with saturation)
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod,
-            parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::SIGNED,
-            toInstructionDecorations(parsed_instruction->result_id), true));
+            parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::UNSIGNED_TO_SIGNED,
+            add_flag(toInstructionDecorations(parsed_instruction->result_id),
+                intermediate::InstructionDecorations::SATURATED_CONVERSION)));
         return SPV_SUCCESS;
     case spv::Op::OpConvertUToPtr: // unsigned to pointer -> same as OpUConvert
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod,
-            parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::UNSIGNED,
+            parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::UNSIGNED_TO_UNSIGNED,
             toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
     case spv::Op::OpPtrCastToGeneric:
         //"Convert a pointer’s Storage Class to Generic."
         // -> simply copy the pointer
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVCopy(parsed_instruction->result_id, *currentMethod,
-            parsed_instruction->type_id, getWord(parsed_instruction, 3)));
+        instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod,
+            parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::BITCAST,
+            toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
     case spv::Op::OpGenericCastToPtr:
         //"Convert a pointer’s Storage Class to a non-Generic class."
         // -> simple copy the pointer
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVCopy(parsed_instruction->result_id, *currentMethod,
-            parsed_instruction->type_id, getWord(parsed_instruction, 3)));
+        instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod,
+            parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::BITCAST,
+            toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
     case spv::Op::OpGenericCastToPtrExplicit:
         //"Attempts to explicitly convert Pointer to Storage storage-class pointer value."
         // -> simple copy the pointer
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVCopy(parsed_instruction->result_id, *currentMethod,
-            parsed_instruction->type_id, getWord(parsed_instruction, 3)));
+        instructions.emplace_back(new SPIRVConversion(parsed_instruction->result_id, *currentMethod,
+            parsed_instruction->type_id, getWord(parsed_instruction, 3), ConversionType::BITCAST,
+            toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
     case spv::Op::OpBitcast:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
@@ -1448,34 +1456,51 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case spv::Op::OpSMulExtended:
         return UNSUPPORTED_INSTRUCTION("OpSMulExtended");
     case spv::Op::OpAny:
-        return UNSUPPORTED_INSTRUCTION("OpAny");
+        // This is NOT the OpenCL any(...), it does NOT check the MSB, instead it takes a vector of boolean values and
+        // checks whether any of them is true!
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(
+            new SPIRVFoldInstruction(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, "or",
+                getWord(parsed_instruction, 3), intermediate::InstructionDecorations::UNSIGNED_RESULT));
+        return SPV_SUCCESS;
     case spv::Op::OpAll:
-        return UNSUPPORTED_INSTRUCTION("OpAll");
+        // This is NOT the OpenCL all(...), it does NOT check the MSB, instead it takes a vector of boolean values and
+        // checks whether all of them are true!
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(
+            new SPIRVFoldInstruction(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id, "and",
+                getWord(parsed_instruction, 3), intermediate::InstructionDecorations::UNSIGNED_RESULT));
+        return SPV_SUCCESS;
     case spv::Op::OpIsNan:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "isnan",
+        instructions.emplace_back(new SPIRVBoolCallSite(parsed_instruction->result_id, *currentMethod, "vc4cl_is_nan",
             parsed_instruction->type_id, parseArguments(parsed_instruction, 3)));
         return SPV_SUCCESS;
     case spv::Op::OpIsInf:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "ifinf",
+        instructions.emplace_back(new SPIRVBoolCallSite(parsed_instruction->result_id, *currentMethod, "isinf",
             parsed_instruction->type_id, parseArguments(parsed_instruction, 3)));
         return SPV_SUCCESS;
     case spv::Op::OpIsFinite:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "isfinite",
+        instructions.emplace_back(new SPIRVBoolCallSite(parsed_instruction->result_id, *currentMethod, "isfinite",
             parsed_instruction->type_id, parseArguments(parsed_instruction, 3)));
         return SPV_SUCCESS;
     case spv::Op::OpIsNormal:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "isnormal",
+        instructions.emplace_back(new SPIRVBoolCallSite(parsed_instruction->result_id, *currentMethod, "isnormal",
             parsed_instruction->type_id, parseArguments(parsed_instruction, 3)));
         return SPV_SUCCESS;
     case spv::Op::OpSignBitSet:
-        return UNSUPPORTED_INSTRUCTION("OpSignBitSet");
+        // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementations are reverted back to the SPIR-V
+        // opcodes, create a function call to the VC4CL function definition
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVBoolCallSite(parsed_instruction->result_id, *currentMethod, "signbit",
+            parsed_instruction->type_id, parseArguments(parsed_instruction, 3)));
+        return SPV_SUCCESS;
     case spv::Op::OpLessOrGreater:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "islessgreater",
+        instructions.emplace_back(new SPIRVBoolCallSite(parsed_instruction->result_id, *currentMethod, "islessgreater",
             parsed_instruction->type_id, parseArguments(parsed_instruction, 3)));
         return SPV_SUCCESS;
     case spv::Op::OpOrdered:
@@ -1675,9 +1700,11 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
     case spv::Op::OpShiftRightArithmetic:
+        // Instead of directly mapping to "asr" operation, we let the intrinsics lowering handle the shift to apply
+        // sign-extension for non-32-bit types.
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         instructions.emplace_back(
-            new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "asr", parsed_instruction->type_id,
+            new SPIRVInstruction(parsed_instruction->result_id, *currentMethod, "ashr", parsed_instruction->type_id,
                 parseArguments(parsed_instruction, 3), toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
     case spv::Op::OpShiftLeftLogical:
@@ -1716,8 +1743,12 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             parsed_instruction->type_id, parseArguments(parsed_instruction, 3)));
         return SPV_SUCCESS;
     case spv::Op::OpControlBarrier:
-        //"barrier()" is handled via header-function
-        return UNSUPPORTED_INSTRUCTION("OpControlBarrier");
+        // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation of "barrier()" is reverted back
+        // to this OpControlBarrier, create a function call to the "barrier()" function
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "barrier",
+            parsed_instruction->type_id, {getWord(parsed_instruction, 1)}));
+        return SPV_SUCCESS;
     case spv::Op::OpMemoryBarrier:
         instructions.emplace_back(
             new SPIRVMemoryBarrier(*currentMethod, getWord(parsed_instruction, 1), getWord(parsed_instruction, 2)));
@@ -1729,48 +1760,100 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         // OpenCL 2.x feature
         return UNSUPPORTED_INSTRUCTION("OpAtomicStore");
     case spv::Op::OpAtomicExchange:
-        // handled via intrinsics
-        return UNSUPPORTED_INSTRUCTION("OpAtomicExchange");
-    case spv::Op::OpAtomicCompareExchange:
-        // handled via intrinsics
-        return UNSUPPORTED_INSTRUCTION("OpAtomicCompareExchange");
+        // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
+        // opcode, create a function call to the function definition
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "atomic_xchg",
+            parsed_instruction->type_id, {getWord(parsed_instruction, 3), getWord(parsed_instruction, 6)}));
+        return SPV_SUCCESS;
     case spv::Op::OpAtomicCompareExchangeWeak:
         // OpenCL 2.x feature
         // since SPIR-V 1.3 deprecated in favor of OpAtomicCompareExchange (identical behavior)
-        return UNSUPPORTED_INSTRUCTION("OpAtomicCompareExchangeWeak");
+    case spv::Op::OpAtomicCompareExchange:
+        // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
+        // opcode, create a function call to the function definition
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "atomic_cmpxchg",
+            parsed_instruction->type_id,
+            {getWord(parsed_instruction, 3), getWord(parsed_instruction, 8), getWord(parsed_instruction, 7)}));
+        return SPV_SUCCESS;
     case spv::Op::OpAtomicIIncrement:
-        // handled via intrinsics
-        return UNSUPPORTED_INSTRUCTION("OpAtomicIIncrement");
+        // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
+        // opcode, create a function call to the function definition
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "atomic_inc",
+            parsed_instruction->type_id, {getWord(parsed_instruction, 3)}));
+        return SPV_SUCCESS;
     case spv::Op::OpAtomicIDecrement:
-        // handled via intrinsics
-        return UNSUPPORTED_INSTRUCTION("OpAtomicIDecrement");
+        // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
+        // opcode, create a function call to the function definition
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "atomic_dec",
+            parsed_instruction->type_id, {getWord(parsed_instruction, 3)}));
+        return SPV_SUCCESS;
     case spv::Op::OpAtomicIAdd:
-        // handled via intrinsics
-        return UNSUPPORTED_INSTRUCTION("OpAtomicIAdd");
+        // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
+        // opcode, create a function call to the function definition
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "atomic_add",
+            parsed_instruction->type_id, {getWord(parsed_instruction, 3), getWord(parsed_instruction, 6)}));
+        return SPV_SUCCESS;
     case spv::Op::OpAtomicISub:
-        // handled via intrinsics
-        return UNSUPPORTED_INSTRUCTION("OpAtomicISub");
+        // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
+        // opcode, create a function call to the function definition
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "atomic_sub",
+            parsed_instruction->type_id, {getWord(parsed_instruction, 3), getWord(parsed_instruction, 6)}));
+        return SPV_SUCCESS;
     case spv::Op::OpAtomicSMin:
-        // handled via intrinsics
-        return UNSUPPORTED_INSTRUCTION("OpAtomicSMin");
+        // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
+        // opcode, create a function call to the function definition
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "atomic_min",
+            parsed_instruction->type_id, {getWord(parsed_instruction, 3), getWord(parsed_instruction, 6)}));
+        return SPV_SUCCESS;
     case spv::Op::OpAtomicUMin:
-        // handled via intrinsics
-        return UNSUPPORTED_INSTRUCTION("OpAtomicUMin");
+        // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
+        // opcode, create a function call to the function definition
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "atomic_min",
+            parsed_instruction->type_id, {getWord(parsed_instruction, 3), getWord(parsed_instruction, 6)}));
+        return SPV_SUCCESS;
     case spv::Op::OpAtomicSMax:
-        // handled via intrinsics
-        return UNSUPPORTED_INSTRUCTION("OpAtomicSMax");
+        // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
+        // opcode, create a function call to the function definition
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "atomic_max",
+            parsed_instruction->type_id, {getWord(parsed_instruction, 3), getWord(parsed_instruction, 6)}));
+        return SPV_SUCCESS;
     case spv::Op::OpAtomicUMax:
-        // handled via intrinsics
-        return UNSUPPORTED_INSTRUCTION("OpAtomicUMax");
+        // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
+        // opcode, create a function call to the function definition
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "atomic_max",
+            parsed_instruction->type_id, {getWord(parsed_instruction, 3), getWord(parsed_instruction, 6)}));
+        return SPV_SUCCESS;
     case spv::Op::OpAtomicAnd:
-        // handled via intrinsics
-        return UNSUPPORTED_INSTRUCTION("OpAtomicAnd");
+        // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
+        // opcode, create a function call to the function definition
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "atomic_and",
+            parsed_instruction->type_id, {getWord(parsed_instruction, 3), getWord(parsed_instruction, 6)}));
+        return SPV_SUCCESS;
     case spv::Op::OpAtomicOr:
-        // handled via intrinsics
-        return UNSUPPORTED_INSTRUCTION("OpAtomicOr");
+        // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
+        // opcode, create a function call to the function definition
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "atomic_or",
+            parsed_instruction->type_id, {getWord(parsed_instruction, 3), getWord(parsed_instruction, 6)}));
+        return SPV_SUCCESS;
     case spv::Op::OpAtomicXor:
-        // handled via intrinsics
-        return UNSUPPORTED_INSTRUCTION("OpAtomicXor");
+        // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
+        // opcode, create a function call to the function definition
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "atomic_xor",
+            parsed_instruction->type_id, {getWord(parsed_instruction, 3), getWord(parsed_instruction, 6)}));
+        return SPV_SUCCESS;
     case spv::Op::OpPhi:
     {
         const std::vector<uint32_t> args = parseArguments(parsed_instruction, 3);
@@ -1834,9 +1917,22 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             getWord(parsed_instruction, 2), true, toInstructionDecorations(parsed_instruction->result_id)));
         return SPV_SUCCESS;
     case spv::Op::OpGroupAsyncCopy:
-        return UNSUPPORTED_INSTRUCTION("OpGroupAsyncCopy");
+        // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation of "async_work_group_copy()" is
+        // reverted back to this OpGroupAsyncCopy, create a function call to the "async_work_group_copy()" function
+        // TODO support for strided version (word 7), map to async_work_group_strided_copy
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod,
+            "async_work_group_copy", parsed_instruction->type_id,
+            {getWord(parsed_instruction, 4), getWord(parsed_instruction, 5), getWord(parsed_instruction, 6),
+                getWord(parsed_instruction, 8)}));
+        return SPV_SUCCESS;
     case spv::Op::OpGroupWaitEvents:
-        return UNSUPPORTED_INSTRUCTION("OpGroupWaitEvents");
+        // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation of "wait_group_events()" is
+        // reverted back to this OpGroupWaitEvents, create a function call to the "wait_group_events()" function
+        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
+        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "wait_group_events",
+            parsed_instruction->type_id, parseArguments(parsed_instruction, 2)));
+        return SPV_SUCCESS;
     case spv::Op::OpAtomicFlagTestAndSet:
         // OpenCL 2.x feature
         return UNSUPPORTED_INSTRUCTION("OpAtomicFlagTestAndSet");
