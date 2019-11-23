@@ -85,7 +85,7 @@ namespace vc4c
         public:
             explicit Registers(QPU& qpu) : qpu(qpu), hostInterrupt() {}
 
-            void writeRegister(Register reg, const SIMDVector& val, std::bitset<16> elementMask);
+            void writeRegister(Register reg, const SIMDVector& val, std::bitset<16> elementMask, BitMask bitMask);
             std::pair<SIMDVector, bool> readRegister(Register reg, bool anyElementUsed);
 
             SIMDVector getInterruptValue() const;
@@ -99,7 +99,7 @@ namespace vc4c
             SortedMap<Register, SIMDVector> readCache;
 
             SIMDVector readStorageRegister(Register reg, bool anyElementUsed);
-            void writeStorageRegister(Register reg, SIMDVector&& val, std::bitset<16> elementMask);
+            void writeStorageRegister(Register reg, SIMDVector&& val, std::bitset<16> elementMask, BitMask bitMask);
             NODISCARD SortedMap<Register, SIMDVector>::iterator setReadCache(Register reg, const SIMDVector& val);
         };
 
@@ -276,7 +276,7 @@ namespace vc4c
             friend class VPM;
 
             NODISCARD bool executeALU(const qpu_asm::ALUInstruction* aluInst);
-            void writeConditional(Register dest, const SIMDVector& in, ConditionCode cond,
+            void writeConditional(Register dest, const SIMDVector& in, ConditionCode cond, BitMask bitMask,
                 const qpu_asm::ALUInstruction* addInst = nullptr, const qpu_asm::ALUInstruction* mulInst = nullptr);
             bool isConditionMet(BranchCond cond) const;
             NODISCARD bool executeSignal(Signaling signal);

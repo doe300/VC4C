@@ -149,6 +149,11 @@ bool Signaling::triggersReadOfR4() const noexcept
         *this == SIGNAL_LOAD_COVERAGE || *this == SIGNAL_LOAD_TMU0 || *this == SIGNAL_LOAD_TMU1;
 }
 
+Literal BitMask::operator()(Literal newValue, Literal oldValue) const noexcept
+{
+    return Literal((newValue.unsignedInt() & mask) | (oldValue.unsignedInt() & ~mask));
+}
+
 LCOV_EXCL_START
 std::string Unpack::to_string() const
 {
@@ -492,25 +497,24 @@ Literal packLiteral(Pack mode, Literal literal, bool isFloatOperation, const Ele
         return Literal(((literal.unsignedInt() & 0xFF) << 24) | ((literal.unsignedInt() & 0xFF) << 16) |
             ((literal.unsignedInt() & 0xFF) << 8) | (literal.unsignedInt() & 0xFF));
     case PACK_32_8888_S:
-        return Literal((saturate<uint8_t>(literal.unsignedInt()) << 24) |
-            (saturate<uint8_t>(literal.unsignedInt()) << 16) | (saturate<uint8_t>(literal.unsignedInt()) << 8) |
-            saturate<uint8_t>(literal.unsignedInt()));
+        return Literal((saturate<uint8_t>(literal.signedInt()) << 24) | (saturate<uint8_t>(literal.signedInt()) << 16) |
+            (saturate<uint8_t>(literal.signedInt()) << 8) | saturate<uint8_t>(literal.signedInt()));
     case PACK_32_8A:
         return Literal(literal.unsignedInt() & 0xFF);
     case PACK_32_8A_S:
-        return Literal(saturate<uint8_t>(literal.unsignedInt()));
+        return Literal(saturate<uint8_t>(literal.signedInt()));
     case PACK_32_8B:
         return Literal((literal.unsignedInt() & 0xFF) << 8);
     case PACK_32_8B_S:
-        return Literal(saturate<uint8_t>(literal.unsignedInt()) << 8);
+        return Literal(saturate<uint8_t>(literal.signedInt()) << 8);
     case PACK_32_8C:
         return Literal((literal.unsignedInt() & 0xFF) << 16);
     case PACK_32_8C_S:
-        return Literal(saturate<uint8_t>(literal.unsignedInt()) << 16);
+        return Literal(saturate<uint8_t>(literal.signedInt()) << 16);
     case PACK_32_8D:
         return Literal((literal.unsignedInt() & 0xFF) << 24);
     case PACK_32_8D_S:
-        return Literal(saturate<uint8_t>(literal.unsignedInt()) << 24);
+        return Literal(saturate<uint8_t>(literal.signedInt()) << 24);
     case PACK_MUL_GRAY_REPLICATE:
     {
         auto tmp = static_cast<uint32_t>(literal.real() * 255.0f) & 0xFF;
@@ -637,6 +641,27 @@ bool Pack::hasEffect() const noexcept
 {
     // exclude "normal" NOP and NOP with pm bit set
     return value != 0 && value != 0x10;
+}
+
+BitMask Pack::getMask() const
+{
+    if(!hasEffect())
+        return BITMASK_ALL;
+    if(*this == PACK_32_32 || *this == PACK_32_8888 || *this == PACK_32_8888_S || *this == PACK_MUL_GRAY_REPLICATE)
+        return BITMASK_ALL;
+    if(*this == PACK_32_16A || *this == PACK_32_16A_S)
+        return {0x0000FFFF};
+    if(*this == PACK_32_16B || *this == PACK_32_16B_S)
+        return {0xFFFF0000};
+    if(*this == PACK_32_8A || *this == PACK_32_8A_S || *this == PACK_MUL_COLOR0)
+        return {0x000000FF};
+    if(*this == PACK_32_8B || *this == PACK_32_8B_S || *this == PACK_MUL_COLOR1)
+        return {0x0000FF00};
+    if(*this == PACK_32_8C || *this == PACK_32_8C_S || *this == PACK_MUL_COLOR2)
+        return {0x00FF0000};
+    if(*this == PACK_32_8D || *this == PACK_32_8D_S || *this == PACK_MUL_COLOR3)
+        return {0xFF000000};
+    throw CompilationError(CompilationStep::GENERAL, "Cannot determine mask for unknown pack mode", to_string());
 }
 
 LCOV_EXCL_START
@@ -868,6 +893,8 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
         return setFlags(Literal(std::max(std::fabs(firstLit.real()), std::fabs(secondLit.real()))),
             std::fabs(firstLit.real()) > std::fabs(secondLit.real()), false);
     case OP_FTOI.opAdd:
+        // XXX seem to convert unsigned values > 2^31 to unsigned integer and anything out of bounds [INT_MIN,
+        // UINT_MAX] to 0. Could make use of this to speed up fptoui?
         if(std::isnan(firstLit.real()) || std::isinf(firstLit.real()) ||
             std::abs(static_cast<int64_t>(firstLit.real())) > std::numeric_limits<int32_t>::max())
             return setFlags(Literal(0u));

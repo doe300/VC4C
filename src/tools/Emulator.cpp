@@ -204,22 +204,22 @@ static std::string toRegisterWriteString(const SIMDVector& val, std::bitset<16> 
 }
 LCOV_EXCL_STOP
 
-void Registers::writeRegister(Register reg, const SIMDVector& val, std::bitset<16> elementMask)
+void Registers::writeRegister(Register reg, const SIMDVector& val, std::bitset<16> elementMask, BitMask bitMask)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Writing into register '" << reg.to_string(true, false)
             << "': " << toRegisterWriteString(val, elementMask) << logging::endl);
     if(reg.isGeneralPurpose())
-        writeStorageRegister(reg, SIMDVector(val), elementMask);
+        writeStorageRegister(reg, SIMDVector(val), elementMask, bitMask);
     else if(reg.isAccumulator())
     {
         if(reg.num == REG_TMU_NOSWAP.num)
             qpu.tmus.setTMUNoSwap(val);
         else if(reg.num == REG_REPLICATE_ALL.num)
             // the physical file A or B is important here!
-            writeStorageRegister(reg, SIMDVector(val), elementMask);
+            writeStorageRegister(reg, SIMDVector(val), elementMask, bitMask);
         else
-            writeStorageRegister(Register{RegisterFile::ACCUMULATOR, reg.num}, SIMDVector(val), elementMask);
+            writeStorageRegister(Register{RegisterFile::ACCUMULATOR, reg.num}, SIMDVector(val), elementMask, bitMask);
     }
     else if(reg.num == REG_HOST_INTERRUPT.num)
     {
@@ -233,7 +233,7 @@ void Registers::writeRegister(Register reg, const SIMDVector& val, std::bitset<1
     else if(reg.num == REG_UNIFORM_ADDRESS.num)
         qpu.uniforms.setUniformAddress(val);
     else if(reg.num == REG_MS_MASK.num)
-        writeStorageRegister(reg, SIMDVector(val), elementMask);
+        writeStorageRegister(reg, SIMDVector(val), elementMask, bitMask);
     else if(reg.num == REG_VPM_IO.num)
         qpu.vpm.writeValue(val);
     else if(reg == REG_VPM_IN_SETUP)
@@ -409,7 +409,8 @@ SIMDVector Registers::readStorageRegister(Register reg, bool anyElementUsed)
     return vec;
 }
 
-static SIMDVector toStorageValue(const SIMDVector& oldVal, const SIMDVector& newVal, std::bitset<16> elementMask)
+static SIMDVector toStorageValue(
+    const SIMDVector& oldVal, const SIMDVector& newVal, std::bitset<16> elementMask, BitMask bitMask)
 {
     if(elementMask.all())
         return newVal;
@@ -418,12 +419,12 @@ static SIMDVector toStorageValue(const SIMDVector& oldVal, const SIMDVector& new
     SIMDVector result;
     for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
     {
-        result[i] = elementMask.test(i) ? newVal[i] : oldVal[i];
+        result[i] = elementMask.test(i) ? bitMask(newVal[i], oldVal[i]) : oldVal[i];
     }
     return result;
 }
 
-void Registers::writeStorageRegister(Register reg, SIMDVector&& val, std::bitset<16> elementMask)
+void Registers::writeStorageRegister(Register reg, SIMDVector&& val, std::bitset<16> elementMask, BitMask bitMask)
 {
     if(reg == REG_MS_MASK)
     {
@@ -439,7 +440,8 @@ void Registers::writeStorageRegister(Register reg, SIMDVector&& val, std::bitset
         // actual value stored is truncated to lowest 1 Bit and replicated across all elements
         val = SIMDVector(Literal(val[0].unsignedInt() & 1));
     }
-    auto& vec = storageRegisters.at(toIndex(reg)) = toStorageValue(storageRegisters.at(toIndex(reg)), val, elementMask);
+    auto& vec = storageRegisters.at(toIndex(reg)) =
+        toStorageValue(storageRegisters.at(toIndex(reg)), val, elementMask, bitMask);
     if(reg.num == REG_REPLICATE_ALL.num && elementMask.any())
     {
         // TODO if some flags are set, but not the 0th (or 0th, 4th, 8th and 12th), need to retain old value?
@@ -1164,9 +1166,9 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
 
                 // see Broadcom specification, page 34
                 registers.writeRegister(toRegister(br->getAddOut(), br->getWriteSwap() == WriteSwap::SWAP),
-                    SIMDVector(Literal(pc + 4)), std::bitset<16>(0xFFFF));
+                    SIMDVector(Literal(pc + 4)), std::bitset<16>(0xFFFF), BITMASK_ALL);
                 registers.writeRegister(toRegister(br->getMulOut(), br->getWriteSwap() == WriteSwap::DONT_SWAP),
-                    SIMDVector(Literal(pc + 4)), std::bitset<16>(0xFFFF));
+                    SIMDVector(Literal(pc + 4)), std::bitset<16>(0xFFFF), BITMASK_ALL);
             }
             else
                 // simply skip to next PC
@@ -1197,10 +1199,11 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
             if(load->getPack().hasEffect())
                 PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 210, "values packed", 1);
             SIMDVector imm = load->getPack()(loadedValues, flags, false);
-            writeConditional(
-                toRegister(load->getAddOut(), load->getWriteSwap() == WriteSwap::SWAP), imm, load->getAddCondition());
+            auto mask = load->getPack().getMask();
+            writeConditional(toRegister(load->getAddOut(), load->getWriteSwap() == WriteSwap::SWAP), imm,
+                load->getAddCondition(), mask);
             writeConditional(toRegister(load->getMulOut(), load->getWriteSwap() == WriteSwap::DONT_SWAP), imm,
-                load->getMulCondition());
+                load->getMulCondition(), mask);
             if(load->getSetFlag() == SetFlag::SET_FLAGS)
                 setFlags(imm, load->getAddCondition() != COND_NEVER ? load->getAddCondition() : load->getMulCondition(),
                     flags);
@@ -1221,10 +1224,11 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
                 if(semaphore->getPack().hasEffect())
                     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 210, "values packed", 1);
                 result = semaphore->getPack()(result, {}, false);
+                auto mask = semaphore->getPack().getMask();
                 writeConditional(toRegister(semaphore->getAddOut(), semaphore->getWriteSwap() == WriteSwap::SWAP),
-                    result, semaphore->getAddCondition());
+                    result, semaphore->getAddCondition(), mask);
                 writeConditional(toRegister(semaphore->getMulOut(), semaphore->getWriteSwap() == WriteSwap::DONT_SWAP),
-                    result, semaphore->getMulCondition());
+                    result, semaphore->getMulCondition(), mask);
                 if(semaphore->getSetFlag() == SetFlag::SET_FLAGS)
                     setFlags(result,
                         semaphore->getAddCondition() != COND_NEVER ? semaphore->getAddCondition() :
@@ -1414,16 +1418,18 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
                              << addIn0.to_string(true) << " and " << addIn1.to_string(true) << logging::endl;
         // fall-through for errors above on purpose so the next instruction throws an exception
         auto result = std::move(tmp.first).value();
+        auto mask = BITMASK_ALL;
         if(aluInst->getWriteSwap() == WriteSwap::DONT_SWAP && aluInst->getPack().hasEffect())
         {
             PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 210, "values packed", 1);
             if(aluInst->getPack().supportsMulALU())
                 throw CompilationError(CompilationStep::GENERAL, "Cannot apply mul pack mode on add result!");
             result = aluInst->getPack()(result, tmp.second, addCode.returnsFloat);
+            mask = aluInst->getPack().getMask();
         }
 
         writeConditional(toRegister(aluInst->getAddOut(), aluInst->getWriteSwap() == WriteSwap::SWAP), result,
-            aluInst->getAddCondition(), aluInst, nullptr);
+            aluInst->getAddCondition(), mask, aluInst, nullptr);
         if(aluInst->getSetFlag() == SetFlag::SET_FLAGS)
             setFlags(result, aluInst->getAddCondition(), tmp.second);
         PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 180, "add instructions", 1);
@@ -1457,17 +1463,19 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
             logging::error() << "Failed to emulate ALU operation: " << mulCode.name << " with "
                              << mulIn0.to_string(true) << " and " << mulIn1.to_string(true) << logging::endl;
         auto result = std::move(tmp.first).value();
+        auto mask = BITMASK_ALL;
         if(aluInst->getWriteSwap() == WriteSwap::SWAP && aluInst->getPack().hasEffect())
         {
             PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 210, "values packed", 1);
             if(!aluInst->getPack().supportsMulALU())
                 throw CompilationError(CompilationStep::GENERAL, "Cannot apply add pack mode on mul result!");
             result = aluInst->getPack()(result, tmp.second, mulCode.returnsFloat);
+            mask = aluInst->getPack().getMask();
         }
 
         // FIXME these might depend on flags of add ALU set in same instruction (which is wrong)
         writeConditional(toRegister(aluInst->getMulOut(), aluInst->getWriteSwap() == WriteSwap::DONT_SWAP), result,
-            aluInst->getMulCondition(), nullptr, aluInst);
+            aluInst->getMulCondition(), mask, nullptr, aluInst);
         if(aluInst->getSetFlag() == SetFlag::SET_FLAGS &&
             isFlagSetByMulALU(aluInst->getAddition(), aluInst->getMultiplication()))
             setFlags(result, aluInst->getMulCondition(), tmp.second);
@@ -1480,12 +1488,12 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
     return true;
 }
 
-void QPU::writeConditional(Register dest, const SIMDVector& in, ConditionCode cond,
+void QPU::writeConditional(Register dest, const SIMDVector& in, ConditionCode cond, BitMask bitMask,
     const qpu_asm::ALUInstruction* addInst, const qpu_asm::ALUInstruction* mulInst)
 {
     if(cond == COND_ALWAYS)
     {
-        registers.writeRegister(dest, in, std::bitset<16>(0xFFFF));
+        registers.writeRegister(dest, in, std::bitset<16>(0xFFFF), bitMask);
         if(addInst)
             ++instrumentation[addInst].numAddALUExecuted;
         if(mulInst)
@@ -1520,7 +1528,7 @@ void QPU::writeConditional(Register dest, const SIMDVector& in, ConditionCode co
             if(flags[i].matchesCondition(cond))
                 elementMask.set(i);
         }
-        registers.writeRegister(dest, in, elementMask);
+        registers.writeRegister(dest, in, elementMask, bitMask);
     }
 
     if(addInst != nullptr)

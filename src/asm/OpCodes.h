@@ -351,6 +351,22 @@ namespace vc4c
     constexpr Unpack UNPACK_R4_COLOR2{13};
     constexpr Unpack UNPACK_R4_COLOR3{15};
 
+    /**
+     * Represents a mask of bytes actually used by e.g. Pack modes.
+     */
+    struct BitMask
+    {
+        uint32_t mask;
+
+        /**
+         * Creates a new literal value by taking all bits from the new value where the corresponding bit in the mask is
+         * set and taking the bits from the old value otherwise.
+         */
+        Literal operator()(Literal newValue, Literal oldValue) const noexcept;
+    };
+
+    constexpr BitMask BITMASK_ALL{0xFFFFFFFF};
+
     /*
      * ALU instructions can also pack their results back into packed storage-formats.
      */
@@ -370,6 +386,7 @@ namespace vc4c
             return isPMBitSet();
         }
         bool hasEffect() const noexcept;
+        BitMask getMask() const;
     };
 
     /*
@@ -381,12 +398,16 @@ namespace vc4c
      * Convert to 16 bit float if input was float result, else convert to int16 (no saturation, just take ls 16 bits)
      * and copy into lower half
      *
+     * NOTE: Only the Half-Word specified is actually written, the other bytes retain their previous values!
+     *
      * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_16A{1};
     /*
      * Convert to 16 bit float if input was float result, else convert to int16 (no saturation, just take ls 16 bits)
      * and copy into higher half
+     *
+     * NOTE: Only the Half-Word specified is actually written, the other bytes retain their previous values!
      *
      * NOTE: The pm bit is part of the pack value and set as high bit
      */
@@ -400,11 +421,15 @@ namespace vc4c
     /*
      * Convert to 8-bit unsigned int (no saturation, just take LSB) and copy into byte 0 (LSB)
      *
+     * NOTE: Only the Byte specified is actually written, the other bytes retain their previous values!
+     *
      * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_8A{4};
     /*
      * Convert to 8-bit unsigned int (no saturation, just take LSB) and copy into byte 1
+     *
+     * NOTE: Only the Byte specified is actually written, the other bytes retain their previous values!
      *
      * NOTE: The pm bit is part of the pack value and set as high bit
      */
@@ -412,11 +437,15 @@ namespace vc4c
     /*
      * Convert to 8-bit unsigned int (no saturation, just take LSB) and copy into byte 2
      *
+     * NOTE: Only the Byte specified is actually written, the other bytes retain their previous values!
+     *
      * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_8C{6};
     /*
      * Convert to 8-bit unsigned int (no saturation, just take LSB) and copy into byte 3 (MSB)
+     *
+     * NOTE: Only the Byte specified is actually written, the other bytes retain their previous values!
      *
      * NOTE: The pm bit is part of the pack value and set as high bit
      */
@@ -438,6 +467,8 @@ namespace vc4c
      * On a non-float instruction, this converts any negative int32 value (high bit set) lower than the int16 minimum
      * value (-32768) to 0x00008000 and any value exceeding the int16 maximum value (32767) to 0x00007FFF.
      *
+     * NOTE: Only the Half-Word specified is actually written, the other bytes retain their previous values!
+     *
      * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_16A_S{9};
@@ -448,13 +479,16 @@ namespace vc4c
      * On a non-float instruction, this converts any negative int32 value (high bit set) lower than the int16 minimum
      * value (-32768) to 0x80000000 and any value exceeding the int16 maximum value (32767) to 0x7FFF0000.
      *
+     * NOTE: Only the Half-Word specified is actually written, the other bytes retain their previous values!
+     *
      * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_16B_S{10};
     /*
      * Saturate to 8-bit unsigned int and replicate across all bytes of 32-bit word
      *
-     * Converts any value which exceeds the uint8 range (0-255) to 0xFFFFFFFF.
+     * Takes the input as signed integer, resulting in negative values being truncated to zero and anything > 255 to
+     * 0xFF.
      *
      * NOTE: The pm bit is part of the pack value and set as high bit
      */
@@ -462,7 +496,10 @@ namespace vc4c
     /*
      * Saturate to 8-bit unsigned int and copy into byte 0 (LSB)
      *
-     * Converts any value which exceeds the uint8 range (0-255) to 0x000000FF.
+     * Takes the input as signed integer, resulting in negative values being truncated to zero and anything > 255 to
+     * 0xFF.
+     *
+     * NOTE: Only the Byte specified is actually written, the other bytes retain their previous values!
      *
      * NOTE: The pm bit is part of the pack value and set as high bit
      */
@@ -470,7 +507,10 @@ namespace vc4c
     /*
      * Saturate to 8-bit unsigned int and copy into byte 1
      *
-     * Converts any value which exceeds the uint8 range (0-255) to 0x0000FF00.
+     * Takes the input as signed integer, resulting in negative values being truncated to zero and anything > 255 to
+     * 0xFF00.
+     *
+     * NOTE: Only the Byte specified is actually written, the other bytes retain their previous values!
      *
      * NOTE: The pm bit is part of the pack value and set as high bit
      */
@@ -478,7 +518,10 @@ namespace vc4c
     /*
      * Saturate to 8-bit unsigned int and copy into byte 2
      *
-     * Converts any value which exceeds the uint8 range (0-255) to 0x00FF0000.
+     * Takes the input as signed integer, resulting in negative values being truncated to zero and anything > 255 to
+     * 0xFF0000.
+     *
+     * NOTE: Only the Byte specified is actually written, the other bytes retain their previous values!
      *
      * NOTE: The pm bit is part of the pack value and set as high bit
      */
@@ -486,7 +529,10 @@ namespace vc4c
     /*
      * Saturate to 8-bit unsigned int and copy into byte 3(MSB)
      *
-     * Converts any value which exceeds the uint8 range (0-255) to 0xFF000000.
+     * Takes the input as signed integer, resulting in negative values being truncated to zero and anything > 255 to
+     * 0xFF000000.
+     *
+     * NOTE: Only the Byte specified is actually written, the other bytes retain their previous values!
      *
      * NOTE: The pm bit is part of the pack value and set as high bit
      */
