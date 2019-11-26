@@ -50,7 +50,7 @@ static Value getValue(const uint32_t id, Method& method, const TypeMapping& type
         return UNDEFINED_VALUE;
     auto cit = constants.find(id);
     if(cit != constants.end())
-        return cit->second.toValue().value_or(UNDEFINED_VALUE);
+        return cit->second.toValue().value_or(Value(cit->second.type));
     auto mit = memoryAllocated.find(id);
     if(mit != memoryAllocated.end())
         return mit->second->createReference();
@@ -289,7 +289,9 @@ void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constant
     else if(calledFunction == "vstoren")
     {
         // the vector width is not explicitly given, so extract it from the argument types
-        calledFunction = "vstore" + std::to_string(args.front().type.getVectorWidth());
+        // arguments are: <value>, <index>, <address>
+        auto num = args.front().type.getVectorWidth();
+        calledFunction = "vstore" + std::to_string(num);
     }
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating intermediate call-site to '" << calledFunction << "' with " << args.size()
@@ -610,7 +612,11 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
             it = memoryAllocated.find(sourceID);
         else
             it = memoryAllocated.find(id);
-        dest = method.method->findOrCreateLocal(source.type, std::string("%") + std::to_string(id))->createReference();
+        if(it != memoryAllocated.end())
+            dest = it->second->createReference(ANY_ELEMENT);
+        else
+            dest =
+                method.method->findOrCreateLocal(source.type, std::string("%") + std::to_string(id))->createReference();
     }
     else
         dest = toNewLocal(*method.method, id, typeID, types, localTypes);
@@ -849,15 +855,10 @@ void SPIRVIndexOf::mapInstruction(TypeMapping& types, ConstantMapping& constants
     Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
     Value container = getValue(this->container, *method.method, types, constants, memoryAllocated, localTypes);
 
-    CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Generating calculating indices of " << container.to_string() << " into " << dest.to_string()
-            << logging::endl);
     std::vector<Value> indexValues;
     indexValues.reserve(indices.size());
     for(const uint32_t indexID : indices)
-    {
         indexValues.push_back(getValue(indexID, *method.method, types, constants, memoryAllocated, localTypes));
-    }
 
     bool ptrAccessChain = isPtrAcessChain;
 
@@ -874,6 +875,22 @@ void SPIRVIndexOf::mapInstruction(TypeMapping& types, ConstantMapping& constants
         // the element-flag to resolve the element-type of the first pointer too.
         ptrAccessChain = false;
     }
+
+    // XXX work-around for global arrays which are represented as pointer to array. If now the first index is considered
+    // the element, the second index is in multiple of the whole array size, but should address an array element.
+    if(indexValues.size() == 2 && isPtrAcessChain && container.checkLocal() && container.local()->is<Global>() &&
+        container.type.getElementType().getArrayType())
+    {
+        // if we have an index-chain for a type[n]* into a type* with element-flag set and 1 actual offset, we would
+        // get: type[n]* -> type[n]* -> type[n], but we need type[n]* -> type[n] -> type, so just unmark the
+        // element-flag to resolve the element-type of the first pointer too.
+        ptrAccessChain = false;
+    }
+
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating calculating indices of " << container.to_string() << " into " << dest.to_string()
+            << " with indices: " << to_string<Value>(indexValues) << (ptrAccessChain ? " (first index is element)" : "")
+            << logging::endl);
 
     ignoreReturnValue(intermediate::insertCalculateIndices(
         method.method->appendToEnd(), *method.method.get(), container, dest, indexValues, ptrAccessChain));

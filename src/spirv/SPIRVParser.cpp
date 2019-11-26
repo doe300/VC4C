@@ -159,6 +159,18 @@ void SPIRVParser::parse(Module& module)
         if(it != names.end())
             m.second.method->name = it->second;
         m.second.method->parameters.reserve(m.second.parameters.size());
+        std::istringstream parameterTypeNames{};
+        {
+            // This is e.g. used to specify the original kernel parameter names, at least for more recent clang/SPIR-V
+            // compilers, see
+            // https://github.com/KhronosGroup/SPIRV-LLVM-Translator/blob/5de39350b76246609a2b233e9453e54f48f0a9c6/lib/SPIRV/SPIRVWriter.cpp#L1910
+            // this is in the format "kernel_arg_type.%kernel_name%.typename0,typename1,..."
+            auto searchText = "kernel_arg_type." + m.second.method->name;
+            auto it = std::find_if(
+                strings.begin(), strings.end(), [&](const auto& s) -> bool { return s.find(searchText) == 0; });
+            if(it != strings.end() && it->find('.') != std::string::npos)
+                parameterTypeNames.str(it->substr(it->find_last_of('.') + 1));
+        }
         for(const auto& pair : m.second.parameters)
         {
             auto type = typeMappings.at(pair.second);
@@ -173,6 +185,10 @@ void SPIRVParser::parse(Module& module)
 
             if(param.type.getImageType())
                 intermediate::reserveImageConfiguration(module, param);
+
+            std::string parameterType{};
+            if(parameterTypeNames && std::getline(parameterTypeNames, parameterType, ','))
+                param.origTypeName = parameterType;
 
             m.second.method->parameters.emplace_back(std::move(param));
         }
@@ -520,10 +536,8 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     case spv::Op::OpMemberName: // name of struct-member
         return SPV_SUCCESS;
-    case spv::Op::OpString:
-        // XXX can we make something from these? This is e.g. used to specify the original kernel parameter names, at
-        // least for more recent clang/SPIR-V compilers, see
-        // https://github.com/KhronosGroup/SPIRV-LLVM-Translator/blob/5de39350b76246609a2b233e9453e54f48f0a9c6/lib/SPIRV/SPIRVWriter.cpp#L1910
+    case spv::Op::OpString: // e.g. kernel original parameter type names
+        strings.emplace_back(readLiteralString(parsed_instruction, &parsed_instruction->operands[1]));
         return SPV_SUCCESS;
     case spv::Op::OpLine: // source level debug info
         return SPV_SUCCESS;
@@ -787,7 +801,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         //" Declare the Storage Class for a forward reference to a pointer."
         // TODO we actually are interested, currently at least to provide it as information for clGetKernelArgInfo
         // but so far, this instruction was never encountered
-        return UNSUPPORTED_INSTRUCTION("spv::Op::OpTypeForwardPointer");
+        return UNSUPPORTED_INSTRUCTION("OpTypeForwardPointer");
     case spv::Op::OpConstantTrue:
         constantMappings.emplace(parsed_instruction->result_id, CompoundConstant(TYPE_BOOL, Literal(true)));
         return SPV_SUCCESS;
@@ -936,7 +950,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         // used for global values as well as stack-allocations
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
         auto it = names.find(parsed_instruction->result_id);
-        const std::string name =
+        std::string name =
             it != names.end() ? it->second : (std::string("%") + std::to_string(parsed_instruction->result_id));
         auto type = typeMappings.at(parsed_instruction->type_id);
         CompoundConstant val(type.getElementType(), UNDEFINED_LITERAL);
@@ -967,6 +981,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         {
             // OpVariables within a function body are stack allocations
             //"All OpVariable instructions in a function must have a Storage Class of Function."
+            name = name.find('%') == 0 ? name : ("%" + name);
             auto pos = currentMethod->method->stackAllocations.emplace(StackAllocation(name, type, 0, alignment));
             // TODO set initial value!. Allowed for OpVariables with storage-class Function?
             memoryAllocatedData.emplace(parsed_instruction->result_id, &const_cast<StackAllocation&>(*pos.first));
@@ -1016,6 +1031,8 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             // OpVariables outside of any function are global data
             isConstant = isConstant ||
                 static_cast<SpvStorageClass>(getWord(parsed_instruction, 3)) == SpvStorageClassUniformConstant;
+            // replace the '%' and add the leading '@' to match the LLVM front-end
+            name = "@" + (name.find('%') == 0 ? name.substr(1) : name);
             module->globalData.emplace_back(Global(name, type, CompoundConstant(val), isConstant));
             const_cast<unsigned&>(module->globalData.back().type.getPointerType()->alignment) = alignment;
             memoryAllocatedData.emplace(parsed_instruction->result_id, &module->globalData.back());

@@ -646,6 +646,8 @@ static ParameterDecorations toDecoration(spv::FunctionParameterAttribute attribu
         return ParameterDecorations::ZERO_EXTEND;
     case spv::FunctionParameterAttribute::NoAlias:
         return ParameterDecorations::RESTRICT;
+    case spv::FunctionParameterAttribute::ByVal:
+        return ParameterDecorations::BY_VALUE;
     default:
         return ParameterDecorations::NONE;
     }
@@ -668,6 +670,15 @@ void spirv2qasm::setParameterDecorations(
             param.decorations = add_flag(param.decorations, ParameterDecorations::RESTRICT);
         else if(pair.first == spv::Decoration::Volatile)
             param.decorations = add_flag(param.decorations, ParameterDecorations::VOLATILE);
+    }
+
+    if(has_flag(param.decorations, ParameterDecorations::BY_VALUE))
+    {
+        // Same as for LLVM front-end (in BitcodeReader.cpp#parseFunction)
+        // is always read-only, and the address-space initially set is __private, which we cannot have for pointer
+        // Parameters
+        // TODO remove, pass to consructor! Same for all other setting of values
+        const_cast<PointerType*>(param.type.getPointerType())->addressSpace = AddressSpace::CONSTANT;
     }
 
     // TODO according to the SPIR-V specification 1.3 revision 5, 2.18.2: "The OpenCL memory model must, unless

@@ -77,6 +77,8 @@ namespace vc4c
             std::vector<std::unique_ptr<SPIRVOperation>> instructions;
             // the global mapping of kernel ID -> meta-data
             FastMap<uint32_t, std::map<MetaDataType, std::array<uint32_t, 3>>> metadataMappings;
+            // the global list of custom strings (e.g. kernel original parameter type names)
+            FastAccessList<std::string> strings;
             // the global mapping of ID -> name for this ID (e.g. type-, function-name)
             FastMap<uint32_t, std::string> names;
 

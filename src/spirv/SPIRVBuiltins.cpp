@@ -111,6 +111,9 @@ void spirv2qasm::lowerBuiltins(Module& module, Method& method, InstructionWalker
             // built-in has no dimensional argument -> simply convert to intrinsic function
             it.reset((new intermediate::MethodCall(Value{*it->getOutput()}, std::string{builtInt->intrinsicFunction}))
                          ->copyExtrasFrom(intrinsicOp));
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Replaced reading of SPIR-V built-in with intrinsic function call: " << it->to_string()
+                    << logging::endl);
             return;
         }
         auto arg = getDimensionalArgument(*intrinsicOp);
@@ -123,6 +126,10 @@ void spirv2qasm::lowerBuiltins(Module& module, Method& method, InstructionWalker
         // insert intrinsic function call to temporary
         auto tmp = method.addNewLocal(builtInt->type.getElementType(), builtInt->name);
         it.emplace(new intermediate::MethodCall(Value{tmp}, std::string{builtInt->intrinsicFunction}, {*arg}));
+
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Replaced reading of SPIR-V built-in with intrinsic function call and vector rotation: "
+                << it->to_string() << logging::endl);
 
         // replace this instruction with vector rotation in opposite direction of the result to balance out the now
         // wrong rotations of the output vector for element extraction
