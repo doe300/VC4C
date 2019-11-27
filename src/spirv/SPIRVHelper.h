@@ -25,6 +25,7 @@ namespace vc4c
         std::string getOpenCLMethodName(uint32_t instructionID);
         std::string getErrorMessage(spv_result_t error);
         spv_result_t checkCapability(spv::Capability cap);
+        spv_result_t checkExtension(const std::string& extension);
         Optional<uint32_t> getDecoration(
             const std::vector<std::pair<spv::Decoration, uint32_t>>& decorations, spv::Decoration deco);
         void setParameterDecorations(

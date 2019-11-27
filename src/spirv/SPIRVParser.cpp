@@ -279,15 +279,21 @@ intermediate::InstructionDecorations toInstructionDecoration(const spv::FPFastMa
 intermediate::InstructionDecorations SPIRVParser::toInstructionDecorations(const uint32_t id)
 {
     intermediate::InstructionDecorations deco = intermediate::InstructionDecorations::NONE;
-    if(decorationMappings.find(id) == decorationMappings.end())
+    auto decoIt = decorationMappings.find(id);
+    if(decoIt == decorationMappings.end())
     {
         return intermediate::InstructionDecorations::NONE;
     }
-    const auto decoration = getDecoration(decorationMappings.at(id), spv::Decoration::FPFastMathMode);
+    const auto decoration = getDecoration(decoIt->second, spv::Decoration::FPFastMathMode);
     if(decoration)
         deco = add_flag(deco, toInstructionDecoration(static_cast<spv::FPFastMathModeMask>(decoration.value())));
-    if(getDecoration(decorationMappings.at(id), spv::Decoration::SaturatedConversion))
+    if(getDecoration(decoIt->second, spv::Decoration::SaturatedConversion))
         deco = add_flag(deco, intermediate::InstructionDecorations::SATURATED_CONVERSION);
+    // these are provided by the SPV_KHR_no_integer_wrap_decoration extension
+    if(getDecoration(decoIt->second, spv::Decoration::NoSignedWrap))
+        deco = add_flag(deco, intermediate::InstructionDecorations::SIGNED_OVERFLOW_IS_UB);
+    if(getDecoration(decoIt->second, spv::Decoration::NoUnsignedWrap))
+        deco = add_flag(deco, intermediate::InstructionDecorations::UNSIGNED_OVERFLOW_IS_UB);
     return deco;
 }
 
@@ -545,9 +551,10 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     {
         const std::string extension = readLiteralString(parsed_instruction, &parsed_instruction->operands[0]);
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Using extension: " << extension << logging::endl);
-        // there are currently no extensions supported
-        // a list of all extension: https://www.khronos.org/registry/spir-v/
-        throw CompilationError(CompilationStep::PARSER, "Use of unsupported SPIR-V extension", extension);
+        auto ret = checkExtension(extension);
+        if(ret != SPV_SUCCESS)
+            throw CompilationError(CompilationStep::PARSER, "Use of unsupported SPIR-V extension", extension);
+        return ret;
     }
     case spv::Op::OpExtInstImport: // adds a new set of instructions
     {

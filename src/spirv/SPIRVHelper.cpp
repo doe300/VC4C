@@ -623,6 +623,16 @@ spv_result_t spirv2qasm::checkCapability(const spv::Capability cap)
     return SPV_UNSUPPORTED;
 }
 
+spv_result_t spirv2qasm::checkExtension(const std::string& extension)
+{
+    if(extension == "SPV_KHR_no_integer_wrap_decoration")
+        // Adds support for integer wrap/nowrap decorations, similar to LLVM nsw/nuw flags
+        // https://github.com/KhronosGroup/SPIRV-Registry/blob/master/extensions/KHR/SPV_KHR_no_integer_wrap_decoration.html
+        return SPV_SUCCESS;
+    // a list of all extension: https://www.khronos.org/registry/spir-v/
+    return SPV_UNSUPPORTED;
+}
+
 Optional<uint32_t> spirv2qasm::getDecoration(
     const std::vector<std::pair<spv::Decoration, uint32_t>>& decorations, const spv::Decoration deco)
 {
