@@ -38,6 +38,7 @@ const SortedMap<const LocalUser*, LocalUse>& Local::getUsers() const
 
 FastSet<const LocalUser*> Local::getUsers(const LocalUse::Type type) const
 {
+    auto lock = getUsersLock();
     FastSet<const LocalUser*> users;
     for(const auto& pair : this->users)
     {
@@ -50,6 +51,7 @@ FastSet<const LocalUser*> Local::getUsers(const LocalUse::Type type) const
 
 void Local::forUsers(const LocalUse::Type type, const std::function<void(const LocalUser*)>& consumer) const
 {
+    auto lock = getUsersLock();
     for(const auto& pair : this->users)
     {
         if((has_flag(type, LocalUse::Type::READER) && pair.second.readsLocal()) ||
@@ -60,6 +62,7 @@ void Local::forUsers(const LocalUse::Type type, const std::function<void(const L
 
 void Local::removeUser(const LocalUser& user, const LocalUse::Type type)
 {
+    auto lock = getUsersLock();
     if(type == LocalUse::Type::BOTH)
     {
         // if we remove the user completely, ignore if it was a user
@@ -81,6 +84,7 @@ void Local::removeUser(const LocalUser& user, const LocalUse::Type type)
 
 void Local::addUser(const LocalUser& user, const LocalUse::Type type)
 {
+    auto lock = getUsersLock();
     auto it = users.find(&user);
     if(it == users.end())
         it = users.emplace(&user, LocalUse()).first;
@@ -93,6 +97,7 @@ void Local::addUser(const LocalUser& user, const LocalUse::Type type)
 
 const LocalUser* Local::getSingleWriter() const
 {
+    auto lock = getUsersLock();
     const LocalUser* writer = nullptr;
     for(const auto& pair : this->users)
     {
@@ -136,6 +141,18 @@ const Local* Local::getBase(bool includeOffsets) const
         return reference.first->getBase(includeOffsets);
     }
     return this;
+}
+
+Local::RAIILock Local::getUsersLock() const
+{
+    // no-op
+    return RAIILock{};
+}
+
+Local::RAIILock::~RAIILock() noexcept
+{
+    if(func)
+        func();
 }
 
 Parameter::Parameter(const std::string& name, DataType type, const ParameterDecorations decorations) :

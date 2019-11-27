@@ -18,6 +18,12 @@ using namespace vc4c::spirv2qasm;
 
 SPIRVBuiltin::~SPIRVBuiltin() noexcept = default;
 
+Local::RAIILock SPIRVBuiltin::getUsersLock() const
+{
+    usersLock.lock();
+    return RAIILock([&]() { usersLock.unlock(); });
+}
+
 // get_work_dim - scalar integer
 SPIRVBuiltin spirv2qasm::BUILTIN_WORK_DIMENSIONS{
     spv::BuiltIn::WorkDim, TYPE_INT8, "%builtin_work_dimensions", "vc4cl_work_dimensions", false};

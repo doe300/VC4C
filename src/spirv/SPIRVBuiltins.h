@@ -12,6 +12,8 @@
 
 #include "spirv/unified1/spirv.hpp11"
 
+#include <mutex>
+
 namespace vc4c
 {
     class InstructionWalker;
@@ -40,6 +42,10 @@ namespace vc4c
             spv::BuiltIn builtInId;
             std::string intrinsicFunction;
             bool hasDimensionalArgument;
+
+        protected:
+            mutable std::mutex usersLock;
+            RAIILock getUsersLock() const override;
         };
 
         // get_work_dim - scalar integer
