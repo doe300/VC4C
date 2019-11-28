@@ -828,7 +828,7 @@ Optional<Value> Value::getConstantValue(bool transitive) const
 Value Value::createZeroInitializer(DataType type)
 {
     if(type.isScalarType() || type.getPointerType())
-        return INT_ZERO;
+        return Value(Literal(0u), type);
     if(type.isVectorType())
     {
         return Value(SIMDVector(Literal{0u}), type);

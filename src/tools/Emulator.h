@@ -41,7 +41,7 @@ namespace vc4c
             /*
              * Use a direct buffer
              */
-            explicit Memory(std::size_t size) : data(DirectBuffer(size, 0)) {}
+            explicit Memory(std::size_t size) : data(DirectBuffer(size, 0xDEADBEEF)) {}
             /*
              * Use a mapping of existing buffers
              *

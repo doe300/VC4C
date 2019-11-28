@@ -291,6 +291,21 @@ void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constant
         // the vector width is not explicitly given, so extract it from the argument types
         // arguments are: <value>, <index>, <address>
         auto num = args.front().type.getVectorWidth();
+        if(num == 1 && args.size() == 3)
+        {
+            // For some instructions, an vstore1 is generated -> manually convert to index calculation and store
+            // instruction
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Generating intermediate storage of " << args[0].to_string() << " into " << args[2].to_string()
+                    << " at index " << args[1].to_string() << logging::endl);
+
+            auto tmp = method.method->addNewLocal(args[2].type);
+            ignoreReturnValue(intermediate::insertCalculateIndices(
+                method.method->appendToEnd(), *method.method, args[2], tmp, {args[1]}));
+            method.method->appendToEnd(new intermediate::MemoryInstruction(
+                intermediate::MemoryOperation::WRITE, std::move(tmp), std::move(args[0])));
+            return;
+        }
         calledFunction = "vstore" + std::to_string(num);
     }
     CPPLOG_LAZY(logging::Level::DEBUG,

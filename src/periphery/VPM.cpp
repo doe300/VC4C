@@ -393,6 +393,23 @@ static NODISCARD InstructionWalker calculateElementOffsetInVPM(
     return it;
 }
 
+/**
+ * The checks are as follows:
+ * - in-VPM type is 16-element vector version of "original" type (dest.type)
+ * - if "original" type is scalar, every scalar is in 0th element of its own 16-element vector, so just load
+ * the vector (fast case, simple divide offset by element size)
+ * - if "original" type is vector (of size N) and offset is multiple of that vector size, every entry is the first N
+ * elements of its own 16-element vector, so just calculate the offset of the whole entry (fast case, simple divide
+ * offset by element size)
+ * - otherwise (e.g. offset unknown), we need to assume "unaligned" (not a multiple of the element size) access, so need
+ * to access multiple elements and rotate/combine the results
+ */
+static bool isUnalignedMemoryVPMAccess(const Value& offset, DataType elementType)
+{
+    return elementType.getVectorWidth() > 1 &&
+        (!offset.getLiteralValue() || (offset.getLiteralValue()->unsignedInt() % elementType.getInMemoryWidth()) != 0);
+}
+
 InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const Value& dest, const VPMArea* area,
     bool useMutex, const Value& inAreaOffset)
 {
@@ -403,24 +420,24 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
         // a single vector can only use a maximum of 1 row
         updateScratchSize(1);
 
+    // try to get constant offset value
+    auto internalOffset = inAreaOffset.getConstantValue(true).value_or(inAreaOffset);
+
     it = insertLockMutex(it, useMutex);
     // 1) configure reading from VPM into QPU
     const VPMArea& realArea = area != nullptr ? *area : getScratchArea();
     VPRSetup genericSetup(realArea.toReadSetup(dest.type));
     Value outputValue = VPM_IO_REGISTER;
-    if(inAreaOffset == INT_ZERO)
+    if(internalOffset == INT_ZERO)
     {
         it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(genericSetup.value)));
         it->addDecorations(InstructionDecorations::VPM_READ_CONFIGURATION);
         it.nextInBlock();
     }
-    else if(dest.type.getVectorWidth() > 1 &&
-        (!inAreaOffset.getLiteralValue() ||
-            (inAreaOffset.getLiteralValue()->unsignedInt() % dest.type.getInMemoryWidth()) != 0))
+    else if(isUnalignedMemoryVPMAccess(internalOffset, dest.type))
     {
         // TODO make sure this block is only used where really really required!
-        // TODO precalculate inAreaOffset!
-        // TODO if inAreaOffset guaranteed to lie within one row, skip loading of second
+        // TODO if inAreaOffset guaranteed to lie within one row, skip loading of second?!
         /*
          * In OpenCL, vectors are aligned to the alignment of the element type (e.g. a char16 vector is char aligned).
          * More accurately: they can be loaded/stored from any address aligned to the element type!
@@ -439,13 +456,13 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
          * - Copy elements [N-R, N] from the second vector U into the result
          */
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffsetInVPM(method, it, dest.type, inAreaOffset, elementOffset);
+        it = calculateElementOffsetInVPM(method, it, dest.type, internalOffset, elementOffset);
         genericSetup.genericSetup.setNumber(2);
         assign(it, VPM_IN_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
             InstructionDecorations::VPM_READ_CONFIGURATION);
         auto lowerPart = assign(it, dest.type, "%vpm.unaligned.lower") = VPM_IO_REGISTER;
         auto upperPart = assign(it, dest.type, "%vpm.unaligned.upper") = VPM_IO_REGISTER;
-        auto rotationOffset = assign(it, TYPE_INT8) = inAreaOffset % Literal(dest.type.getInMemoryWidth());
+        auto rotationOffset = assign(it, TYPE_INT8) = internalOffset % Literal(dest.type.getInMemoryWidth());
         rotationOffset = assign(it, TYPE_INT8, "%vpm.unaligned.offset") =
             rotationOffset / Literal(dest.type.getElementType().getInMemoryWidth());
         Value lowerRotated = method.addNewLocal(dest.type, "%vpm.unaligned.lower");
@@ -469,7 +486,7 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffsetInVPM(method, it, dest.type, inAreaOffset, elementOffset);
+        it = calculateElementOffsetInVPM(method, it, dest.type, internalOffset, elementOffset);
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // 3) write setup with dynamic address
         assign(it, VPM_IN_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
@@ -491,11 +508,14 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
         // a single vector can only use a maximum of 1 row
         updateScratchSize(1);
 
+    // try to get constant offset value
+    auto internalOffset = inAreaOffset.getConstantValue(true).value_or(inAreaOffset);
+
     it = insertLockMutex(it, useMutex);
     // 1. configure writing from QPU into VPM
     const VPMArea& realArea = area != nullptr ? *area : getScratchArea();
     const VPWSetup genericSetup(realArea.toWriteSetup(src.type));
-    if(inAreaOffset == INT_ZERO)
+    if(internalOffset == INT_ZERO)
     {
         it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(genericSetup.value)));
         it->addDecorations(InstructionDecorations::VPM_WRITE_CONFIGURATION);
@@ -507,7 +527,7 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffsetInVPM(method, it, src.type, inAreaOffset, elementOffset);
+        it = calculateElementOffsetInVPM(method, it, src.type, internalOffset, elementOffset);
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // 3) write setup with dynamic address
         assign(it, VPM_OUT_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
@@ -713,6 +733,11 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
         Value tmpDest = assign(it, destAddress.type, "%mem_copy_addr") =
             destAddress + Value(Literal(i * size.first.getInMemoryWidth()), TYPE_INT8);
 
+        if(auto local = srcAddress.checkLocal())
+            tmpSource.local()->reference.first = local->reference.first;
+        if(auto local = destAddress.checkLocal())
+            tmpDest.local()->reference.first = local->reference.first;
+
         it = insertReadRAM(method, it, tmpSource, size.first, area, false);
         it = insertWriteRAM(method, it, tmpDest, size.first, area, false);
     }
@@ -742,6 +767,29 @@ InstructionWalker VPM::insertCopyRAMDynamic(Method& method, InstructionWalker it
         // increment offset from base address
         Value tmpSource = assign(inLoopIt, srcAddress.type, "%mem_copy_addr") = srcAddress + offset;
         Value tmpDest = assign(inLoopIt, destAddress.type, "%mem_copy_addr") = destAddress + offset;
+
+        if(auto local = srcAddress.checkLocal())
+        {
+            // set the type of the parameter, if we can determine it
+            if(auto param = local->as<Parameter>())
+                srcAddress.local()->as<Parameter>()->decorations =
+                    add_flag(param->decorations, ParameterDecorations::INPUT);
+            if(local->reference.first != nullptr && local->reference.first->as<Parameter>() != nullptr)
+                local->reference.first->as<Parameter>()->decorations =
+                    add_flag(local->reference.first->as<Parameter>()->decorations, ParameterDecorations::INPUT);
+            tmpSource.local()->reference.first = local->reference.first;
+        }
+        if(auto local = destAddress.checkLocal())
+        {
+            // set the type of the parameter, if we can determine it
+            if(auto param = local->as<Parameter>())
+                destAddress.local()->as<Parameter>()->decorations =
+                    add_flag(param->decorations, ParameterDecorations::OUTPUT);
+            if(local->reference.first != nullptr && local->reference.first->as<Parameter>() != nullptr)
+                local->reference.first->as<Parameter>()->decorations =
+                    add_flag(local->reference.first->as<Parameter>()->decorations, ParameterDecorations::OUTPUT);
+            tmpDest.local()->reference.first = local->reference.first;
+        }
 
         inLoopIt = insertReadRAM(method, inLoopIt, tmpSource, elementType, area, false);
         inLoopIt = insertWriteRAM(method, inLoopIt, tmpDest, elementType, area, false);

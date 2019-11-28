@@ -21,10 +21,6 @@ vc4c::spirv2qasm::SPIRVParser::~SPIRVParser() = default;
 
 #ifdef SPIRV_FRONTEND
 
-#if __has_include("spirv-tools/optimizer.hpp")
-#include "spirv-tools/optimizer.hpp"
-#endif
-
 using namespace vc4c;
 using namespace vc4c::spirv2qasm;
 
@@ -54,44 +50,6 @@ static std::string getErrorPosition(spv_diagnostic diagnostics)
     if(diagnostics == nullptr)
         return "?";
     return std::to_string(diagnostics->position.line).append(":") + std::to_string(diagnostics->position.column);
-}
-
-static std::vector<uint32_t> runSPRVToolsOptimizer(const std::vector<uint32_t>& input)
-{
-#if 0 /* SPIRV-Tools optimizer hangs in some code */
-    logging::debug() << "Running SPIR-V Tools optimizations..." << logging::endl;
-    spvtools::Optimizer opt(SPV_ENV_OPENCL_EMBEDDED_1_2);
-    opt.SetMessageConsumer(consumeSPIRVMessage);
-    // converts OpSpecConstant(True/False) to OpConstant(True/False)
-    opt.RegisterPass(spvtools::CreateFreezeSpecConstantValuePass());
-    // converts OpSpecConstantOp and OpSpecConstantComposite to OpConstants
-    opt.RegisterPass(spvtools::CreateFoldSpecConstantOpAndCompositePass());
-    // unified duplicate constants
-    opt.RegisterPass(spvtools::CreateUnifyConstantPass());
-    // removed obsolete constants
-    opt.RegisterPass(spvtools::CreateEliminateDeadConstantPass());
-    // inline methods
-    opt.RegisterPass(spvtools::CreateInlinePass());
-    // converts access-chain with constant indices
-    opt.RegisterPass(spvtools::CreateLocalAccessChainConvertPass());
-    // replaces access to local memory with register-usage
-    opt.RegisterPass(spvtools::CreateLocalSingleBlockLoadStoreElimPass());
-
-    std::vector<uint32_t> optimizedWords;
-    if(!opt.Run(input.data(), input.size(), &optimizedWords))
-    {
-        logging::warn() << "Error running SPIR-V Tools optimizer!" << logging::endl;
-    }
-    else if(optimizedWords.size() > 0)
-    {
-        logging::debug() << "SPIR-V Tools optimizations complete, changed number of words from " << input.size()
-                         << " to " << optimizedWords.size() << logging::endl;
-        return optimizedWords;
-    }
-    else
-        logging::debug() << "SPIR-V Tools optimizations complete, no changes." << logging::endl;
-#endif
-    return input;
 }
 
 // to relay names of unsupported operations
@@ -127,11 +85,6 @@ void SPIRVParser::parse(Module& module)
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Read SPIR-V binary with " << words.size() << " words" << logging::endl);
     }
-
-        // run SPIR-V Tools optimizations
-#if 0 /* SPIRV-Tools optimizer hangs in some code */
-    words = runSPRVToolsOptimizer(words);
-#endif
 
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Starting parsing..." << logging::endl);
 
