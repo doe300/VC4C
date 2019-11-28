@@ -830,8 +830,11 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
         {
             auto it = infos.emplace(mapping.first, checkMemoryMapping(method, mapping.first, mapping.second));
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Local '" << it.first->first->to_string()
-                    << "' will be mapped to: " << it.first->second.to_string() << logging::endl);
+                log << (it.first->first->is<Parameter>() ?
+                               "Parameter" :
+                               (it.first->first->is<StackAllocation>() ? "Stack variable" : "Local"))
+                    << " '" << it.first->first->to_string() << "' will be mapped to: " << it.first->second.to_string()
+                    << logging::endl);
         }
     }
 

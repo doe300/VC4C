@@ -406,7 +406,7 @@ void ValueRange::updateRecursively(const Local* currentLocal, const Method* meth
 {
     if(ranges.find(currentLocal) != ranges.end())
         return;
-    ValueRange localRange(currentLocal->type);
+    ValueRange localRange;
     // writes to this local which are not yet fully resolved (where the range is not yet fully known)
     FastSet<const intermediate::IntermediateInstruction*> openWrites;
     // 1. try to determine non-recursive (but transitive) ranges for single writers
@@ -440,7 +440,7 @@ void ValueRange::updateRecursively(const Local* currentLocal, const Method* meth
                 }
             });
         }
-        ValueRange tmpRange(currentLocal->type);
+        ValueRange tmpRange;
         tmpRange.update(writer->precalculate().first, ranges, writer, method);
         if(allInputsProcessed && tmpRange.hasExplicitBoundaries())
         {

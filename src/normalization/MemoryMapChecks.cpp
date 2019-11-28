@@ -720,12 +720,21 @@ static MemoryInfo canLowerToPrivateVPMArea(Method& method, const Local* baseAddr
     return checkMemoryMapping(method, baseAddr, access);
 }
 
+static MemoryInfo toSharedVPMArea(const Local* baseAddr, const periphery::VPMArea* area,
+    Optional<std::vector<MemoryAccessRange>>&& ranges, Optional<DataType>&& areaType)
+{
+    if(auto parameter = baseAddr->as<Parameter>())
+        // mark parameter as lowered
+        const_cast<Parameter*>(parameter)->isLowered = true;
+    return MemoryInfo{
+        baseAddr, MemoryAccessType::VPM_SHARED_ACCESS, area, std::move(ranges), NO_VALUE, std::move(areaType)};
+}
+
 static MemoryInfo canLowerToSharedVPMArea(Method& method, const Local* baseAddr, MemoryAccess& access)
 {
     auto area = method.vpm->addArea(baseAddr, baseAddr->type.getElementType(), false);
     if(area)
-        return MemoryInfo{
-            baseAddr, MemoryAccessType::VPM_SHARED_ACCESS, area, {}, NO_VALUE, convertSmallArrayToRegister(baseAddr)};
+        return toSharedVPMArea(baseAddr, area, {}, convertSmallArrayToRegister(baseAddr));
 
     // cannot lower to register, use fall-back
     access.preferred = access.fallback;
@@ -757,7 +766,7 @@ static MemoryInfo canMapToDMAReadWrite(Method& method, const Local* baseAddr, Me
         if(area)
         {
             // for local/private memory, there is no need for initial load/write-back
-            return MemoryInfo{baseAddr, MemoryAccessType::VPM_SHARED_ACCESS, area, std::move(ranges)};
+            return toSharedVPMArea(baseAddr, area, std::move(ranges), {});
         }
     }
     return MemoryInfo{baseAddr, MemoryAccessType::RAM_READ_WRITE_VPM};
@@ -787,8 +796,14 @@ std::pair<bool, analysis::ValueRange> analysis::checkWorkGroupUniformParts(
         }
         if(auto range = entry.offsetRange)
         {
-            offsetRange.minValue = std::min(offsetRange.minValue, range->minValue);
-            offsetRange.maxValue = std::max(offsetRange.maxValue, range->maxValue);
+            if(offsetRange)
+            {
+                offsetRange.minValue = std::min(offsetRange.minValue, range->minValue);
+                offsetRange.maxValue = std::max(offsetRange.maxValue, range->maxValue);
+            }
+            else
+                // for the first entry, the combined range is still unknown/undefined
+                offsetRange = *range;
         }
         else
         {

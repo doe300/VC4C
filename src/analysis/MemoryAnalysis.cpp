@@ -17,8 +17,17 @@ std::string MemoryAccessRange::to_string() const
                                    (baseAddressAdd ? " with byte offset expression: " + addressExpression->to_string() :
                                                      (" with address expression: " + addressExpression->to_string()));
 
-    return (addressWrite->to_string() +
-               (addressWrite->writesRegister(REG_VPM_DMA_LOAD_ADDR) ? " - read " : " - write ")) +
+    auto mode = (addressWrite->writesRegister(REG_VPM_DMA_LOAD_ADDR) ||
+                (addressWrite.get<intermediate::MemoryInstruction>() &&
+                    addressWrite.get<intermediate::MemoryInstruction>()->op == intermediate::MemoryOperation::READ) ?
+            " - read " :
+            (addressWrite->writesRegister(REG_VPM_DMA_STORE_ADDR) ||
+                        (addressWrite.get<intermediate::MemoryInstruction>() &&
+                            addressWrite.get<intermediate::MemoryInstruction>()->op ==
+                                intermediate::MemoryOperation::WRITE) ?
+                    " - write " :
+                    " - access "));
+    return addressWrite->to_string() + mode +
         (memoryObject->to_string() +
             (groupUniformAddressParts.empty() ? " with" : " with work-group uniform offset and") +
             " dynamic elements") +
@@ -105,239 +114,8 @@ static FastMap<Value, intermediate::InstructionDecorations> findDirectLevelAddit
     return result;
 }
 
-static Optional<MemoryAccessRange> determineAccessRange(
-    Method& method, InstructionWalker it, InstructionWalker memIt, FastMap<const Local*, InstructionWalker>& indexCache)
-{
-    // 1. find writes to VPM DMA addresses with work-group uniform part in address values
-    if(auto memInst = it.get<intermediate::MemoryInstruction>())
-    {
-        if(memInst->getSource().checkLocal() &&
-            (memInst->getSource().local()->is<Parameter>() || memInst->getSource().local()->is<Global>()))
-        {
-            // direct write of address (e.g. all work items access the same location)
-            MemoryAccessRange range;
-            range.addressWrite = memIt;
-            range.memoryObject = memInst->getSource().local();
-            CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Found memory access without offset: " << range.to_string() << logging::endl);
-            return range;
-        }
-    }
-    if(it.get<intermediate::MoveOperation>() && it->assertArgument(0).checkLocal() &&
-        (it->assertArgument(0).local()->is<Parameter>() || it->assertArgument(0).local()->is<Global>()))
-    {
-        // direct write of address (e.g. all work items access the same location)
-        // XXX if the memory is __local and the width of the writes is known, can lower into VPM (e.g. for data
-        // exchange between work-items). But then the __local memory should be set small enough to fit in the VPM
-        // completely, which is already handled at this point (see above).
-        CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "DMA address is directly set to a parameter/global address, cannot be "
-                   "optimized by caching multiple accesses: "
-                << it->to_string() << logging::endl);
-        return {};
-    }
-    MemoryAccessRange range;
-    range.addressWrite = memIt;
-    // if the instruction is a move, handle/skip it here, so the add with the shifted offset +
-    // base-pointer is found correctly
-    auto trackIt = it;
-    if(it.get<intermediate::MoveOperation>() && it->assertArgument(0).getSingleWriter())
-    {
-        auto walker = it.getBasicBlock()->findWalkerForInstruction(it->assertArgument(0).getSingleWriter(), it);
-        if(!walker)
-        {
-            // TODO this does not work for MemoryInstruction mapping, since the instructions are not in order of
-            // execution!
-            auto cacheIt = indexCache.find(it->assertArgument(0).checkLocal());
-            if(cacheIt != indexCache.end())
-                walker = cacheIt->second;
-        }
-        if(!walker)
-        {
-            // XXX this is actually no problem (other than finding the iterator)
-            CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Unhandled case, address is calculated in a different basic-block: " << it->to_string()
-                    << logging::endl);
-            return {};
-        }
-        else
-            trackIt = walker.value();
-    }
-
-    auto variableArg =
-        std::find_if_not(trackIt->getArguments().begin(), trackIt->getArguments().end(), isWorkGroupUniform);
-    if(variableArg != trackIt->getArguments().end() && variableArg->getSingleWriter() != nullptr)
-    {
-        // 2. rewrite address so all work-group uniform parts are combined and all variable parts and
-        // added in the end
-        // TODO is this the correct criteria? We could also handle only base-pointer + local_id, for
-        // example
-        CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Found VPM DMA address write with work-group uniform operand: " << it->to_string() << logging::endl);
-        Value varArg = *variableArg;
-        if(!trackIt.isEndOfBlock() && trackIt->checkOutputLocal() &&
-            indexCache.find(trackIt->checkOutputLocal()) == indexCache.end())
-            indexCache.emplace(trackIt->checkOutputLocal(), trackIt);
-
-        // 2.1 jump over final addition of base address if it is a parameter
-        while(trackIt.get<intermediate::Operation>() && trackIt.get<const intermediate::Operation>()->op == OP_ADD)
-        {
-            const auto& arg0 = trackIt->assertArgument(0);
-            const auto& arg1 = trackIt->assertArgument(1);
-            if(arg0.checkLocal() &&
-                (arg0.local()->is<Parameter>() || arg0.local()->is<Global>() ||
-                    arg0.local()->name == Method::GLOBAL_DATA_ADDRESS))
-            {
-                range.memoryObject = arg0.local();
-                varArg = arg1;
-            }
-            else if(arg1.checkLocal() &&
-                (arg1.local()->is<Parameter>() || arg1.local()->is<Global>() ||
-                    arg1.local()->name == Method::GLOBAL_DATA_ADDRESS))
-            {
-                range.memoryObject = arg1.local();
-                varArg = arg0;
-            }
-            else if(arg0.hasRegister(REG_UNIFORM))
-            {
-                // e.g. reading of uniform for parameter is replaced by reading uniform here (if
-                // parameter only used once)
-                range.memoryObject = trackIt->getOutput()->local()->getBase(true);
-                varArg = arg1;
-            }
-            else if(arg1.hasRegister(REG_UNIFORM))
-            {
-                range.memoryObject = trackIt->getOutput()->local()->getBase(true);
-                varArg = arg0;
-            }
-            else if(auto constant = arg0.getConstantValue(true))
-            {
-                // this is an add of a constant, the actual base-address add might be the source of the
-                // other argument
-                if(auto writer = arg1.getSingleWriter())
-                {
-                    if(auto tmp = trackIt.getBasicBlock()->findWalkerForInstruction(writer, trackIt))
-                    {
-                        range.constantOffset = constant;
-                        trackIt = *tmp;
-                        continue;
-                    }
-                }
-            }
-            else if(auto constant = arg1.getConstantValue(true))
-            {
-                // this is an add of a constant, the actual base-address add might be the source of the
-                // other argument
-                if(auto writer = arg0.getSingleWriter())
-                {
-                    if(auto tmp = trackIt.getBasicBlock()->findWalkerForInstruction(writer, trackIt))
-                    {
-                        range.constantOffset = constant;
-                        trackIt = *tmp;
-                        continue;
-                    }
-                }
-            }
-            else
-            {
-                CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Unhandled case of memory access: " << trackIt->to_string() << logging::endl);
-                return {};
-            }
-            range.baseAddressAdd = dynamic_cast<const intermediate::Operation*>(trackIt.get());
-            break;
-        }
-        if(!range.memoryObject || !range.baseAddressAdd)
-        {
-            CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Cannot optimize further, since add of base-address and pointer was not found: "
-                    << it->to_string() << logging::endl);
-            return {};
-        }
-        auto writer = varArg.getSingleWriter();
-        // 2.2 jump over shl (if any) and remember offset
-        if(dynamic_cast<const intermediate::Operation*>(writer) &&
-            dynamic_cast<const intermediate::Operation*>(writer)->op == OP_SHL)
-        {
-            if(!writer->assertArgument(1).getLiteralValue() ||
-                (1u << writer->assertArgument(1).getLiteralValue()->unsignedInt()) !=
-                    it->assertArgument(0).type.getElementType().getLogicalWidth())
-            {
-                // Abort, since the offset shifted does not match the type-width of the element type
-                CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Cannot optimize further, since shift-offset does not match type size: " << it->to_string()
-                        << " and " << writer->to_string() << logging::endl);
-                return {};
-            }
-            range.typeSizeShift = dynamic_cast<const intermediate::Operation*>(writer);
-            varArg = writer->assertArgument(0);
-        }
-        // 2.3 collect all directly neighboring (and directly referenced) additions
-        // result is now: finalAdd + (sum(addedValues) << shiftFactor)
-        auto addressParts = findDirectLevelAdditionInputs(varArg);
-        // 2.4 calculate the maximum dynamic offset
-        for(const auto& val : addressParts)
-        {
-            if(!has_flag(val.second, intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))
-            {
-                range.dynamicAddressParts.emplace(val);
-                if(val.first.checkLocal())
-                {
-                    if(auto singleRange = analysis::ValueRange::getValueRangeRecursive(val.first, &method))
-                    {
-                        if(range.offsetRange)
-                        {
-                            range.offsetRange->minValue += singleRange.minValue;
-                            range.offsetRange->maxValue += singleRange.maxValue;
-                        }
-                    }
-                    else
-                    {
-                        // we might have an determinate access range before, but this address part, we don't know the
-                        // range -> indeterminate range
-                        logging::debug() << "Could not determine access range for address part '"
-                                         << val.first.to_string() << "' for memory access: " << memIt->to_string()
-                                         << logging::endl;
-                        range.offsetRange = {};
-                    }
-                }
-                else
-                    throw CompilationError(
-                        CompilationStep::OPTIMIZER, "Unhandled value for memory access offset", val.first.to_string());
-            }
-            else
-                range.groupUniformAddressParts.emplace(val);
-        }
-        CPPLOG_LAZY(logging::Level::DEBUG, log << "Found memory access range: " << range.to_string() << logging::endl);
-        return range;
-    }
-    return {};
-}
-
-AccessRanges analysis::determineAccessRanges(Method& method)
-{
-    // TODO if we cannot find an access range for a local, we cannot combine any other access ranges for this globally!
-    AccessRanges result;
-    // cache already found write walkers in case the output is reused in a different block
-    // TODO remove this when we can find walker for any instruction across blocks fast
-    FastMap<const Local*, InstructionWalker> indexCache;
-    for(BasicBlock& block : method)
-    {
-        InstructionWalker it = block.walk();
-        while(!it.isEndOfBlock())
-        {
-            if(it.has() && (it->writesRegister(REG_VPM_DMA_LOAD_ADDR) || it->writesRegister(REG_VPM_DMA_STORE_ADDR)))
-            {
-                if(auto range = determineAccessRange(method, it, it, indexCache))
-                    result[range->memoryObject].emplace_back(std::move(range).value());
-            }
-            it.nextInBlock();
-        }
-    }
-    return result;
-}
-
-static Optional<InstructionWalker> findSingleWriter(InstructionWalker it, const Value& val)
+static const intermediate::IntermediateInstruction* getSingleWriter(
+    const Value& val, const intermediate::IntermediateInstruction* defaultInst)
 {
     const intermediate::IntermediateInstruction* writer = nullptr;
     for(const auto& w : val.local()->getUsers(LocalUse::Type::WRITER))
@@ -357,31 +135,331 @@ static Optional<InstructionWalker> findSingleWriter(InstructionWalker it, const 
         if(auto loc = val.checkLocal())
         {
             // if the value is the parameter/global directly, the address write might not yet exist
-            if(loc->is<Parameter>() || loc->is<Global>())
-                return it;
+            if(loc->is<Parameter>() || loc->residesInMemory())
+                return defaultInst;
         }
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Unhandled case, value does not have exactly 1 writer for '" << val.to_string()
-                << "': " << it->to_string() << logging::endl);
+                << "': " << defaultInst->to_string() << logging::endl);
         return {};
     }
-    auto writerIt = it.getBasicBlock()->findWalkerForInstruction(writer, it);
-    if(!writerIt)
+    return writer;
+}
+
+static Optional<ValueRange> addNumEntries(const Local* baseAddress, Optional<ValueRange> range,
+    const intermediate::MemoryInstruction* memInst, const Local* local)
+{
+    const auto& numEntries = memInst->getNumEntries();
+    if(numEntries == INT_ONE)
+        return range;
+    if(!range || !*range)
+        return range;
+
+    double typeFactor = 1;
+    if(local && baseAddress && local->type.getElementType() == baseAddress->type.getElementType())
+        // there is no type conversion between the memory access and the actually stored type
+        // -> simply add the number of entries
+        typeFactor = 1.0;
+    else
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Unhandled case, address is calculated in a different basic-block: " << it->to_string()
+            log << "Determining number of accessed entries with differing base and accessed types is not yet "
+                   "supported: "
+                << memInst->to_string() << logging::endl);
+        return RANGE_UINT;
+    }
+
+    if(auto lit = numEntries.getConstantValue() & &Value::getLiteralValue)
+    {
+        auto maxOffset = static_cast<double>(lit->unsignedInt() - 1u) * typeFactor;
+        return ValueRange{range->minValue, range->maxValue + maxOffset};
+    }
+    if(auto writer = numEntries.getSingleWriter())
+    {
+        if(auto expr = Expression::createRecursiveExpression(*writer))
+        {
+            if(auto lit = expr->getConstantExpression() & &Value::getLiteralValue)
+            {
+                auto maxOffset = static_cast<double>(lit->unsignedInt() - 1u) * typeFactor;
+                return ValueRange{range->minValue, range->maxValue + maxOffset};
+            }
+            if(auto tmpRange = ValueRange::getValueRange(*expr))
+            {
+                auto maxOffset = (tmpRange.maxValue - 1.0) * typeFactor;
+                return ValueRange{range->minValue, range->maxValue + maxOffset};
+            }
+        }
+    }
+    // TODO error or try to determine differently (e.g. lifetime bounds, array bounds, etc...)
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Could not determine number of accessed entries, falling back to undefined access range: "
+            << memInst->to_string() << logging::endl);
+    return ValueRange{};
+}
+
+static bool findMemoryObjectAndBaseAddressAdd(
+    MemoryAccessRange& range, Optional<Value>& varArg, const intermediate::IntermediateInstruction*& trackInst)
+{
+    // TODO directly use expression?? this resolves all the moves.
+    // check 2 layers of adds: base-address, constant offset and index offset (here check type-size shift and actual
+    // index offset)
+    while(dynamic_cast<const intermediate::Operation*>(trackInst) &&
+        dynamic_cast<const intermediate::Operation*>(trackInst)->op == OP_ADD)
+    {
+        const auto& arg0 = trackInst->assertArgument(0);
+        const auto& arg1 = trackInst->assertArgument(1);
+        if(arg0.checkLocal() &&
+            (arg0.local()->is<Parameter>() || arg0.local()->residesInMemory() ||
+                arg0.local()->name == Method::GLOBAL_DATA_ADDRESS))
+        {
+            range.memoryObject = arg0.local();
+            varArg = arg1;
+        }
+        else if(arg1.checkLocal() &&
+            (arg1.local()->is<Parameter>() || arg1.local()->residesInMemory() ||
+                arg1.local()->name == Method::GLOBAL_DATA_ADDRESS))
+        {
+            range.memoryObject = arg1.local();
+            varArg = arg0;
+        }
+        else if(arg0.hasRegister(REG_UNIFORM))
+        {
+            // e.g. reading of uniform for parameter is replaced by reading uniform here (if
+            // parameter only used once)
+            range.memoryObject = trackInst->getOutput()->local()->getBase(true);
+            varArg = arg1;
+        }
+        else if(arg1.hasRegister(REG_UNIFORM))
+        {
+            range.memoryObject = trackInst->getOutput()->local()->getBase(true);
+            varArg = arg0;
+        }
+        else if(auto constant = arg0.getConstantValue(true))
+        {
+            // this is an add of a constant, the actual base-address add might be the source of the
+            // other argument
+            if(auto writer = getSingleWriter(arg1, nullptr))
+            {
+                range.constantOffset = constant;
+                trackInst = writer;
+                continue;
+            }
+        }
+        else if(auto constant = arg1.getConstantValue(true))
+        {
+            // this is an add of a constant, the actual base-address add might be the source of the
+            // other argument
+            if(auto writer = getSingleWriter(arg0, nullptr))
+            {
+                range.constantOffset = constant;
+                trackInst = writer;
+                continue;
+            }
+        }
+        else
+        {
+            // we cannot directly determine the required values, try with simplified expression...
+            auto expr = Expression::createRecursiveExpression(*trackInst, 8);
+            bool isHandled = false;
+            if(expr && expr->code == OP_ADD)
+            {
+                auto firstLoc = expr->arg0.checkLocal();
+                auto secondLoc = expr->arg1.checkLocal();
+                if(firstLoc &&
+                    (firstLoc->is<Parameter>() || firstLoc->residesInMemory() ||
+                        firstLoc->name == Method::GLOBAL_DATA_ADDRESS))
+                {
+                    range.memoryObject = firstLoc;
+                    varArg = arg1;
+                    isHandled = true;
+                }
+                else if(secondLoc &&
+                    (secondLoc->is<Parameter>() || secondLoc->residesInMemory() ||
+                        secondLoc->name == Method::GLOBAL_DATA_ADDRESS))
+                {
+                    range.memoryObject = secondLoc;
+                    varArg = arg0;
+                    isHandled = true;
+                }
+                range.addressExpression = expr;
+            }
+            if(!isHandled)
+                return false;
+        }
+        range.baseAddressAdd = dynamic_cast<const intermediate::Operation*>(trackInst);
+        break;
+    }
+    return true;
+}
+
+static bool findTypeSizeShift(
+    MemoryAccessRange& range, Optional<Value>& varArg, const intermediate::IntermediateInstruction& inst)
+{
+    if(varArg)
+    {
+        auto writer = varArg->getSingleWriter();
+        if(dynamic_cast<const intermediate::Operation*>(writer) &&
+            dynamic_cast<const intermediate::Operation*>(writer)->op == OP_SHL)
+        {
+            auto secondLiteral = writer->assertArgument(1).getConstantValue() & &Value::getLiteralValue;
+            if(!secondLiteral ||
+                (1u << secondLiteral->unsignedInt()) != inst.assertArgument(0).type.getElementType().getLogicalWidth())
+                // Abort, since the offset shifted does not match the type-width of the element type
+                return false;
+            range.typeSizeShift = dynamic_cast<const intermediate::Operation*>(writer);
+            varArg = writer->assertArgument(0);
+        }
+    }
+    return true;
+}
+
+static Optional<MemoryAccessRange> determineAccessRange(
+    Method& method, const intermediate::IntermediateInstruction& inst, InstructionWalker memIt)
+{
+    // 1. find writes to VPM DMA addresses with work-group uniform part in address values
+    if(auto memInst = dynamic_cast<const intermediate::MemoryInstruction*>(&inst))
+    {
+        auto checkLocal = memInst->op == intermediate::MemoryOperation::READ ?
+            memInst->getSource().checkLocal() :
+            memInst->op == intermediate::MemoryOperation::WRITE ? memInst->getDestination().checkLocal() : nullptr;
+        if(checkLocal && (checkLocal->is<Parameter>() || checkLocal->residesInMemory()))
+        {
+            // direct write of address (e.g. all work items access the same location)
+            MemoryAccessRange range;
+            range.addressWrite = memIt;
+            range.memoryObject = checkLocal;
+            range.offsetRange = addNumEntries(range.memoryObject, ValueRange{0.0, 0.0}, memInst, checkLocal);
+            if(auto writer = checkLocal->getSingleWriter())
+                range.addressExpression = Expression::createRecursiveExpression(*writer);
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Found memory access without offset: " << range.to_string() << logging::endl);
+            return range;
+        }
+    }
+    auto memInst = memIt.get<intermediate::MemoryInstruction>();
+    if(memInst && dynamic_cast<const intermediate::MoveOperation*>(&inst) && inst.assertArgument(0).checkLocal() &&
+        (inst.assertArgument(0).local()->is<Parameter>() || inst.assertArgument(0).local()->residesInMemory()))
+    {
+        // direct write of address (e.g. all work items access the same location)
+        MemoryAccessRange range;
+        range.addressWrite = memIt;
+        range.memoryObject = inst.assertArgument(0).local()->getBase(false);
+        range.offsetRange =
+            addNumEntries(range.memoryObject, ValueRange{0.0, 0.0}, memInst, inst.assertArgument(0).local());
+        range.addressExpression = Expression::createRecursiveExpression(inst);
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "DMA address is directly set to a parameter/global address: " << range.to_string() << logging::endl);
+        return range;
+    }
+    MemoryAccessRange range;
+    range.addressWrite = memIt;
+    range.offsetRange = ValueRange{0.0, 0.0};
+    // if the instruction is a move, handle/skip it here, so the add with the shifted offset +
+    // base-pointer is found correctly
+    auto trackInst = &inst;
+    if(dynamic_cast<const intermediate::MoveOperation*>(&inst) && inst.assertArgument(0).getSingleWriter())
+        trackInst = inst.assertArgument(0).getSingleWriter();
+
+    Optional<Value> varArg;
+    auto variableArg =
+        std::find_if_not(trackInst->getArguments().begin(), trackInst->getArguments().end(), isWorkGroupUniform);
+    if(variableArg != trackInst->getArguments().end() && variableArg->getSingleWriter() != nullptr)
+        varArg = *variableArg;
+
+    // 2. rewrite address so all work-group uniform parts are combined and all variable parts and
+    // added in the end
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Found VPM DMA address write with work-group uniform operand: " << inst.to_string() << logging::endl);
+
+    // 2.1 jump over final addition of base address if it is a parameter
+    if(!findMemoryObjectAndBaseAddressAdd(range, varArg, trackInst))
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Unhandled case of memory access: " << trackInst->to_string() << logging::endl);
+        return {};
+    }
+    if(!range.memoryObject || !range.baseAddressAdd)
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Address add of base-address and pointer was not found: " << inst.to_string() << logging::endl);
+        return {};
+    }
+    // 2.2 jump over shl (if any) and remember offset
+    if(!findTypeSizeShift(range, varArg, inst))
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Address shift-offset does not match type size: " << inst.to_string() << " and "
+                << (varArg & &Value::getSingleWriter ? varArg->getSingleWriter()->to_string() : "(no writer)")
                 << logging::endl);
         return {};
     }
-    return writerIt;
+    // 2.3 collect all directly neighboring (and directly referenced) additions
+    // result is now: finalAdd + (sum(addedValues) << shiftFactor)
+    auto addressPartsSource = varArg ? *varArg : trackInst ? trackInst->getOutput().value() : inst.getOutput().value();
+    auto addressParts = findDirectLevelAdditionInputs(addressPartsSource);
+    if(auto writer = addressPartsSource.getSingleWriter())
+        range.addressExpression = Expression::createRecursiveExpression(*writer, 8);
+    // 2.4 calculate the maximum dynamic offset
+    for(const auto& val : addressParts)
+    {
+        if(!has_flag(val.second, intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))
+        {
+            range.dynamicAddressParts.emplace(val);
+            if(val.first.checkLocal())
+            {
+                if(auto singleRange = analysis::ValueRange::getValueRangeRecursive(val.first, &method))
+                {
+                    if(range.offsetRange && *range.offsetRange)
+                    {
+                        range.offsetRange->minValue += singleRange.minValue;
+                        range.offsetRange->maxValue += singleRange.maxValue;
+                    }
+                }
+                else
+                {
+                    // we might have an determinate access range before, but this address part, we don't know the
+                    // range -> indeterminate range
+                    logging::debug() << "Could not determine access range for address part '" << val.first.to_string()
+                                     << "' for memory access: " << memIt->to_string() << logging::endl;
+                    range.offsetRange = {};
+                }
+            }
+            else
+                throw CompilationError(
+                    CompilationStep::OPTIMIZER, "Unhandled value for memory access offset", val.first.to_string());
+        }
+        else
+            range.groupUniformAddressParts.emplace(val);
+    }
+
+    range.offsetRange = addNumEntries(range.memoryObject, range.offsetRange, memInst, nullptr /* TODO */);
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Found memory access range: " << range.to_string() << logging::endl);
+    return range;
+}
+
+AccessRanges analysis::determineAccessRanges(Method& method)
+{
+    // TODO if we cannot find an access range for a local, we cannot combine any other access ranges for this globally!
+    AccessRanges result;
+    for(BasicBlock& block : method)
+    {
+        InstructionWalker it = block.walk();
+        while(!it.isEndOfBlock())
+        {
+            if(it.has() && (it->writesRegister(REG_VPM_DMA_LOAD_ADDR) || it->writesRegister(REG_VPM_DMA_STORE_ADDR)))
+            {
+                if(auto range = determineAccessRange(method, *it.get(), it))
+                    result[range->memoryObject].emplace_back(std::move(range).value());
+            }
+            it.nextInBlock();
+        }
+    }
+    return result;
 }
 
 FastAccessList<MemoryAccessRange> analysis::determineAccessRanges(
     Method& method, const Local* baseAddr, MemoryAccess& access)
 {
-    // cache already found write walkers in case the output is reused in a different block
-    // TODO remove this when we can find walker for any instruction across blocks fast
-    FastMap<const Local*, InstructionWalker> indexCache;
     // NOTE: If we cannot find one access range for a local, we cannot combine any other access ranges for this local!
     FastAccessList<MemoryAccessRange> result;
     for(auto it : access.accessInstructions)
@@ -391,9 +469,9 @@ FastAccessList<MemoryAccessRange> analysis::determineAccessRanges(
         {
         case intermediate::MemoryOperation::READ:
         {
-            if(auto writerIt = findSingleWriter(it, memInstr->getSource()))
+            if(auto writer = getSingleWriter(memInstr->getSource(), memInstr))
             {
-                if(auto res = determineAccessRange(method, writerIt.value(), it, indexCache))
+                if(auto res = determineAccessRange(method, *writer, it))
                 {
                     result.emplace_back(std::move(res).value());
                     break;
@@ -406,10 +484,9 @@ FastAccessList<MemoryAccessRange> analysis::determineAccessRanges(
         case intermediate::MemoryOperation::WRITE:
         case intermediate::MemoryOperation::FILL:
         {
-            // TODO for fill (and copy below) need to heed number of elements!
-            if(auto writerIt = findSingleWriter(it, memInstr->getDestination()))
+            if(auto writer = getSingleWriter(memInstr->getDestination(), memInstr))
             {
-                if(auto res = determineAccessRange(method, writerIt.value(), it, indexCache))
+                if(auto res = determineAccessRange(method, *writer, it))
                 {
                     result.emplace_back(std::move(res).value());
                     break;
@@ -430,9 +507,9 @@ FastAccessList<MemoryAccessRange> analysis::determineAccessRanges(
                 throw CompilationError(CompilationStep::GENERAL, "Failed to find address referring to address",
                     memInstr->to_string() + " and " + baseAddr->to_string());
 
-            if(auto writerIt = findSingleWriter(it, matchingAddress))
+            if(auto writer = getSingleWriter(matchingAddress, memInstr))
             {
-                if(auto res = determineAccessRange(method, writerIt.value(), it, indexCache))
+                if(auto res = determineAccessRange(method, *writer, it))
                 {
                     result.emplace_back(std::move(res.value()));
                     break;
