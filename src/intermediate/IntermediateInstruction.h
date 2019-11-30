@@ -148,7 +148,9 @@ namespace vc4c
             IntermediateInstruction& operator=(IntermediateInstruction&&) = delete;
 
             virtual FastMap<const Local*, LocalUse::Type> getUsedLocals() const;
-            virtual void forUsedLocals(const std::function<void(const Local*, LocalUse::Type)>& consumer) const;
+            virtual void forUsedLocals(
+                const std::function<void(const Local*, LocalUse::Type, const IntermediateInstruction&)>& consumer)
+                const;
             virtual bool readsLocal(const Local* local) const;
             virtual bool writesLocal(const Local* local) const;
             virtual void replaceLocal(
@@ -661,7 +663,9 @@ namespace vc4c
             ~CombinedOperation() override = default;
 
             FastMap<const Local*, LocalUse::Type> getUsedLocals() const override;
-            void forUsedLocals(const std::function<void(const Local*, LocalUse::Type)>& consumer) const override;
+            void forUsedLocals(
+                const std::function<void(const Local*, LocalUse::Type, const IntermediateInstruction&)>& consumer)
+                const override;
             bool readsLocal(const Local* local) const override;
             bool writesLocal(const Local* local) const override;
             void replaceLocal(const Local* oldLocal, const Local* newLocal, LocalUse::Type type) override;

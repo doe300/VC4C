@@ -182,48 +182,52 @@ static void createLocalDependencies(DependencyGraph& graph, DependencyNode& node
     bool isVectorRotation = dynamic_cast<const intermediate::VectorRotation*>(node.key) != nullptr;
     // can only unpack from register-file A which requires a read-after-write delay of at least 1 instruction
     bool hasUnpackMode = node.key->hasUnpackMode();
-    node.key->forUsedLocals([&](const Local* loc, LocalUse::Type type) -> void {
-        const intermediate::IntermediateInstruction* lastWrite = nullptr;
-        const intermediate::IntermediateInstruction* lastRead = nullptr;
-        {
-            auto writeIt = lastLocalWrites.find(loc);
-            if(writeIt != lastLocalWrites.end())
-                lastWrite = writeIt->second;
-            auto readIt = lastLocalReads.find(loc);
-            if(readIt != lastLocalReads.end())
-                lastRead = readIt->second;
-        }
-        unsigned distance =
-            (!isVectorRotation && !hasUnpackMode && isLocallyLimited(loc, node.key, lastWrite, lastRead)) ? 0 : 1;
-        if(has_flag(type, LocalUse::Type::READER))
-        {
-            // any reading of a local depends on the previous write
-            if(lastWrite != nullptr)
+    node.key->forUsedLocals(
+        [&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) -> void {
+            const intermediate::IntermediateInstruction* lastWrite = nullptr;
+            const intermediate::IntermediateInstruction* lastRead = nullptr;
             {
-                distance = std::max(distance, lastWrite->hasPackMode() ? 1u : 0u);
-                auto& otherNode = graph.assertNode(lastWrite);
-                addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_READ_AFTER_WRITE, distance,
-                    isVectorRotation || hasUnpackMode || lastWrite->hasPackMode());
+                auto writeIt = lastLocalWrites.find(loc);
+                if(writeIt != lastLocalWrites.end())
+                    lastWrite = writeIt->second;
+                auto readIt = lastLocalReads.find(loc);
+                if(readIt != lastLocalReads.end())
+                    lastRead = readIt->second;
             }
-        }
-        if(has_flag(type, LocalUse::Type::WRITER))
-        {
-            if(lastWrite != nullptr)
+            unsigned distance = (!isVectorRotation && !hasUnpackMode &&
+                                    (isLocallyLimited(loc, node.key, lastWrite, lastRead) ||
+                                        isLocallyLimited(loc, &inst, lastWrite, lastRead))) ?
+                0 :
+                1;
+            if(has_flag(type, LocalUse::Type::READER))
             {
-                // writing a local needs to preserve the order the local is written before
-                distance = std::max(distance, lastWrite->hasPackMode() ? 1u : 0u);
-                auto& otherNode = graph.assertNode(lastWrite);
-                addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_WRITE_AFTER_WRITE, distance,
-                    lastWrite->hasPackMode());
+                // any reading of a local depends on the previous write
+                if(lastWrite != nullptr)
+                {
+                    distance = std::max(distance, lastWrite->hasPackMode() ? 1u : 0u);
+                    auto& otherNode = graph.assertNode(lastWrite);
+                    addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_READ_AFTER_WRITE,
+                        distance, isVectorRotation || hasUnpackMode || lastWrite->hasPackMode());
+                }
             }
-            if(lastRead != nullptr)
+            if(has_flag(type, LocalUse::Type::WRITER))
             {
-                // writing a local must be ordered after previous reads
-                auto& otherNode = graph.assertNode(lastRead);
-                addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_WRITE_AFTER_READ);
+                if(lastWrite != nullptr)
+                {
+                    // writing a local needs to preserve the order the local is written before
+                    distance = std::max(distance, lastWrite->hasPackMode() ? 1u : 0u);
+                    auto& otherNode = graph.assertNode(lastWrite);
+                    addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_WRITE_AFTER_WRITE,
+                        distance, lastWrite->hasPackMode());
+                }
+                if(lastRead != nullptr)
+                {
+                    // writing a local must be ordered after previous reads
+                    auto& otherNode = graph.assertNode(lastRead);
+                    addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_WRITE_AFTER_READ);
+                }
             }
-        }
-    });
+        });
 }
 
 static void createFlagDependencies(DependencyGraph& graph, DependencyNode& node,

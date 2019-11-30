@@ -87,7 +87,8 @@ static void findDependencies(BasicBlock& bb, DataDependencyGraph& graph, Instruc
     {
         if(!inst)
             continue;
-        inst->forUsedLocals([&inst, &bb, &mapping, &graph](const Local* local, LocalUse::Type type) -> void {
+        inst->forUsedLocals([&bb, &mapping, &graph](const Local* local, LocalUse::Type type,
+                                const intermediate::IntermediateInstruction& inst) -> void {
             if(has_flag(type, LocalUse::Type::READER) && !local->type.isLabelType())
             {
                 local->forUsers(LocalUse::Type::WRITER, [local, &bb, &mapping, &graph](const LocalUser* user) -> void {
@@ -117,7 +118,7 @@ static void findDependencies(BasicBlock& bb, DataDependencyGraph& graph, Instruc
 
                         // add local to relation (may not yet exist)
                         if(instIt.getBasicBlock() != &bb ||
-                            inst->hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
+                            inst.hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
                         {
                             auto& node = graph.getOrCreateNode(&bb);
                             auto& neighborDependencies =

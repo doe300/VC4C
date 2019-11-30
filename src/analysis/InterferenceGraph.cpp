@@ -72,10 +72,11 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(Method& method
             // instructions in general can read multiple locals
             // we have a maximum of 4 locals per (combined) instruction
             FastSet<InterferenceNode*> localsRead(4);
-            (*it)->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
-                if(has_flag(type, LocalUse::Type::READER) && !loc->type.isLabelType())
-                    localsRead.emplace(&graph.getOrCreateNode(const_cast<Local*>(loc)));
-            });
+            (*it)->forUsedLocals(
+                [&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) {
+                    if(has_flag(type, LocalUse::Type::READER) && !loc->type.isLabelType())
+                        localsRead.emplace(&graph.getOrCreateNode(const_cast<Local*>(loc)));
+                });
             if(localsRead.size() > 1)
             {
                 for(auto locIt = localsRead.begin(); locIt != localsRead.end(); ++locIt)

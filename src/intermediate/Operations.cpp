@@ -777,7 +777,8 @@ FastMap<const Local*, LocalUse::Type> CombinedOperation::getUsedLocals() const
     return res;
 }
 
-void CombinedOperation::forUsedLocals(const std::function<void(const Local*, LocalUse::Type)>& consumer) const
+void CombinedOperation::forUsedLocals(
+    const std::function<void(const Local*, LocalUse::Type, const IntermediateInstruction&)>& consumer) const
 {
     if(op1)
         op1->forUsedLocals(consumer);

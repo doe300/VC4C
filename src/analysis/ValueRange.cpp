@@ -431,14 +431,15 @@ void ValueRange::updateRecursively(const Local* currentLocal, const Method* meth
         {
             // we can skip recursively processing the arguments, if we know that the below #update will already result
             // in an explicit range, e.g. for accessing work-item info
-            writer->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
-                if(has_flag(type, LocalUse::Type::READER))
-                {
-                    updateRecursively(loc, method, ranges, closedSet, openSet);
-                    if(ranges.find(loc) == ranges.end())
-                        allInputsProcessed = false;
-                }
-            });
+            writer->forUsedLocals(
+                [&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) {
+                    if(has_flag(type, LocalUse::Type::READER))
+                    {
+                        updateRecursively(loc, method, ranges, closedSet, openSet);
+                        if(ranges.find(loc) == ranges.end())
+                            allInputsProcessed = false;
+                    }
+                });
         }
         ValueRange tmpRange;
         tmpRange.update(writer->precalculate().first, ranges, writer, method);

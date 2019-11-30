@@ -79,26 +79,28 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
             inst->writesRegister(REG_UNIFORM_ADDRESS) || inst->writesRegister(REG_REV_FLAG))
         {
             // only 0st element used
-            inst->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
-                if(has_flag(type, LocalUse::Type::READER))
-                {
-                    newValues[loc].set(0);
-                }
-            });
+            inst->forUsedLocals(
+                [&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) {
+                    if(has_flag(type, LocalUse::Type::READER))
+                    {
+                        newValues[loc].set(0);
+                    }
+                });
         }
         else if(inst->writesRegister(REG_REPLICATE_QUAD))
         {
             // only 0st, 4st, 8th and 12th element is used
-            inst->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
-                if(has_flag(type, LocalUse::Type::READER))
-                {
-                    auto& elements = newValues[loc];
-                    elements.set(0);
-                    elements.set(4);
-                    elements.set(8);
-                    elements.set(12);
-                }
-            });
+            inst->forUsedLocals(
+                [&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) {
+                    if(has_flag(type, LocalUse::Type::READER))
+                    {
+                        auto& elements = newValues[loc];
+                        elements.set(0);
+                        elements.set(4);
+                        elements.set(8);
+                        elements.set(12);
+                    }
+                });
         }
         else if(auto branch = dynamic_cast<const intermediate::Branch*>(inst))
         {
@@ -117,22 +119,23 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
             // by default, we need all the elements our outputs need
             // if we do not know the mask, assume all elements are needed
             auto outIt = inst->checkOutputLocal() ? nextValues.find(inst->getOutput()->local()) : nextValues.end();
-            inst->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
-                if(has_flag(type, LocalUse::Type::READER))
-                {
-                    if(outIt != nextValues.end())
-                        newValues[loc] |= outIt->second;
-                    else if(values.find(loc) != values.end())
-                        // we know the elements the local will be used afterwards TODO is this correct?
-                        newValues[loc] |= 0;
-                    else if(inst->doesSetFlag() && inst->writesRegister(REG_NOP))
-                        // is handled by block below
-                        newValues[loc] |= 0;
-                    else
-                        // we don't know anything about the usage, assume all elements
-                        newValues[loc] |= 0xFFFF;
-                }
-            });
+            inst->forUsedLocals(
+                [&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) {
+                    if(has_flag(type, LocalUse::Type::READER))
+                    {
+                        if(outIt != nextValues.end())
+                            newValues[loc] |= outIt->second;
+                        else if(values.find(loc) != values.end())
+                            // we know the elements the local will be used afterwards TODO is this correct?
+                            newValues[loc] |= 0;
+                        else if(inst.doesSetFlag() && inst.writesRegister(REG_NOP))
+                            // is handled by block below
+                            newValues[loc] |= 0;
+                        else
+                            // we don't know anything about the usage, assume all elements
+                            newValues[loc] |= 0xFFFF;
+                    }
+                });
         }
         if(auto rot = dynamic_cast<const intermediate::VectorRotation*>(inst))
         {
@@ -171,12 +174,13 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
                 {
                     // if all conditions in cache are for zero set/clear, only the first element is of any meaning
                     // (since the others are never zero as of the register-number) e.g. for setting branch flags
-                    inst->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
-                        if(has_flag(type, LocalUse::Type::READER))
-                        {
-                            newValues[loc] = 0x1;
-                        }
-                    });
+                    inst->forUsedLocals(
+                        [&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) {
+                            if(has_flag(type, LocalUse::Type::READER))
+                            {
+                                newValues[loc] = 0x1;
+                            }
+                        });
                 }
                 else if(op->op == OP_XOR && op->readsRegister(REG_ELEMENT_NUMBER) &&
                     std::any_of(inst->getArguments().begin(), inst->getArguments().end(), literalImmediateCheck))
@@ -185,12 +189,13 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
                     // set/clear)
                     auto lit = op->getFirstArg().getLiteralValue() ? op->getFirstArg().getLiteralValue() :
                                                                      op->assertArgument(1).getLiteralValue();
-                    inst->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
-                        if(has_flag(type, LocalUse::Type::READER))
-                        {
-                            newValues[loc] = (1 << lit->unsignedInt());
-                        }
-                    });
+                    inst->forUsedLocals(
+                        [&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) {
+                            if(has_flag(type, LocalUse::Type::READER))
+                            {
+                                newValues[loc] = (1 << lit->unsignedInt());
+                            }
+                        });
                 }
                 else if(op->op == OP_SUB && op->getFirstArg().hasRegister(REG_ELEMENT_NUMBER) &&
                     (op->getSecondArg() & &Value::getLiteralValue))
@@ -198,12 +203,13 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
                     // only the first n elements are set where n is the literal (only if all conditions are checks
                     // for zero set/clear)
                     auto lit = op->assertArgument(1).getLiteralValue();
-                    inst->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
-                        if(has_flag(type, LocalUse::Type::READER))
-                        {
-                            newValues[loc] = (1 << lit->unsignedInt()) - 1;
-                        }
-                    });
+                    inst->forUsedLocals(
+                        [&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) {
+                            if(has_flag(type, LocalUse::Type::READER))
+                            {
+                                newValues[loc] = (1 << lit->unsignedInt()) - 1;
+                            }
+                        });
                 }
                 else if(inst->writesRegister(REG_NOP))
                 {
@@ -214,12 +220,13 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
                             auto locIt = nextValues.find(entry.first);
                             return in | (locIt != nextValues.end() ? locIt->second : std::bitset<16>{0xFFFF});
                         });
-                    inst->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
-                        if(has_flag(type, LocalUse::Type::READER))
-                        {
-                            newValues[loc] |= mask;
-                        }
-                    });
+                    inst->forUsedLocals(
+                        [&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) {
+                            if(has_flag(type, LocalUse::Type::READER))
+                            {
+                                newValues[loc] |= mask;
+                            }
+                        });
                 }
             }
             cache.clear();

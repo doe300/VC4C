@@ -419,7 +419,8 @@ GraphColoring::GraphColoring(Method& method, InstructionWalker it) :
             !it.get<intermediate::MemoryBarrier>())
         {
             // 1) create entry per local
-            it->forUsedLocals([this, it](const Local* l, const LocalUse::Type type) -> void {
+            it->forUsedLocals([this, it](const Local* l, const LocalUse::Type type,
+                                  const intermediate::IntermediateInstruction& inst) -> void {
                 if(localUses.find(l) == localUses.end())
                 {
                     if(l->type == TYPE_LABEL)
@@ -431,7 +432,8 @@ GraphColoring::GraphColoring(Method& method, InstructionWalker it) :
             // 2) update fixed locals
             PROFILE(fixLocals, it, localUses, lastWrittenLocal0, lastWrittenLocal1);
             // 3) update local usage-ranges as well as assign all locals to closed-set or open-set
-            it->forUsedLocals([this, it](const Local* l, const LocalUse::Type type) -> void {
+            it->forUsedLocals([this, it](const Local* l, const LocalUse::Type type,
+                                  const intermediate::IntermediateInstruction& inst) -> void {
                 auto& range = localUses.at(l);
                 range.associatedInstructions.insert(it);
                 range.lastOccurrence = it;

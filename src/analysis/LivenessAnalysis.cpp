@@ -37,16 +37,16 @@ static LivenessChanges analyzeLivenessChangesInner(
         // labels do not change any lifetime, since we do not track label lifetimes
         return changes;
 
-    instr->forUsedLocals([&](const Local* loc, LocalUse::Type type) {
+    instr->forUsedLocals([&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) {
         if(has_flag(type, LocalUse::Type::WRITER) &&
-            !instr->hasDecoration(vc4c::intermediate::InstructionDecorations::ELEMENT_INSERTION))
+            !inst.hasDecoration(vc4c::intermediate::InstructionDecorations::ELEMENT_INSERTION))
         {
-            if(instr->hasConditionalExecution() &&
-                !instr->hasDecoration(intermediate::InstructionDecorations::ELEMENT_INSERTION))
+            if(inst.hasConditionalExecution() &&
+                !inst.hasDecoration(intermediate::InstructionDecorations::ELEMENT_INSERTION))
             {
                 auto condReadIt = conditionalReads.find(loc);
-                if(condReadIt != conditionalReads.end() && condReadIt->second == instr->conditional &&
-                    condReadIt->first->getSingleWriter() == instr)
+                if(condReadIt != conditionalReads.end() && condReadIt->second == inst.conditional &&
+                    condReadIt->first->getSingleWriter() == &inst)
                     // the local only exists within a conditional block (e.g. temporary within the same flag)
                     changes.removedLocals.emplace_back(loc);
                 else if(conditionalWrites.find(loc) != conditionalWrites.end() &&
@@ -64,16 +64,16 @@ static LivenessChanges analyzeLivenessChangesInner(
         if(has_flag(type, LocalUse::Type::READER) && !loc->type.isLabelType())
         {
             changes.addedLocals.emplace_back(loc);
-            if(instr->hasConditionalExecution())
+            if(inst.hasConditionalExecution())
             {
                 // there exist locals which only exist if a certain condition is met, so check this
                 auto condReadIt = conditionalReads.find(loc);
                 // if the local is read with different conditions, it must exist in any case
                 // TODO be exact, would need to check whether the SetFlags instruction is the same for both instructions
-                if(condReadIt != conditionalReads.end() && condReadIt->second != instr->conditional)
+                if(condReadIt != conditionalReads.end() && condReadIt->second != inst.conditional)
                     conditionalReads.erase(condReadIt);
                 else
-                    conditionalReads.emplace(loc, instr->conditional);
+                    conditionalReads.emplace(loc, inst.conditional);
             }
         }
     });
@@ -93,16 +93,24 @@ std::string LivenessChangesAnalysis::to_string(const LivenessChanges& changes)
 {
     std::stringstream s;
     auto it = changes.removedLocals.begin();
-    s << '-' << (*it)->name;
-    ++it;
-    for(; it != changes.removedLocals.end(); ++it)
-        s << ", -" << (*it)->name;
+    if(it != changes.removedLocals.end())
+    {
+        s << '-' << (*it)->name;
+        ++it;
+        for(; it != changes.removedLocals.end(); ++it)
+            s << ", -" << (*it)->name;
+    }
 
     it = changes.addedLocals.begin();
-    s << '+' << (*it)->name;
-    ++it;
-    for(; it != changes.addedLocals.end(); ++it)
-        s << ", +" << (*it)->name;
+    if(it != changes.addedLocals.end())
+    {
+        if(!changes.removedLocals.empty())
+            s << ' ';
+        s << '+' << (*it)->name;
+        ++it;
+        for(; it != changes.addedLocals.end(); ++it)
+            s << ", +" << (*it)->name;
+    }
     return s.str();
 }
 LCOV_EXCL_STOP

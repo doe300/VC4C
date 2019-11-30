@@ -437,14 +437,15 @@ FastMap<const Local*, LocalUse::Type> IntermediateInstruction::getUsedLocals() c
     return locals;
 }
 
-void IntermediateInstruction::forUsedLocals(const std::function<void(const Local*, LocalUse::Type)>& consumer) const
+void IntermediateInstruction::forUsedLocals(
+    const std::function<void(const Local*, LocalUse::Type, const IntermediateInstruction&)>& consumer) const
 {
     if(auto loc = checkOutputLocal())
-        consumer(loc, LocalUse::Type::WRITER);
+        consumer(loc, LocalUse::Type::WRITER, *this);
     for(const Value& arg : arguments)
     {
         if(auto loc = arg.checkLocal())
-            consumer(loc, LocalUse::Type::READER);
+            consumer(loc, LocalUse::Type::READER, *this);
     }
 }
 
