@@ -281,9 +281,22 @@ static bool findMemoryObjectAndBaseAddressAdd(
                     varArg = arg0;
                     isHandled = true;
                 }
-                range.addressExpression = expr;
             }
-            if(!isHandled)
+            // e.g. there is no offset at all, then the expression shrinks to a move of the base address
+            else if(expr && expr->isMoveExpression() && expr->arg0.checkValue() & &Value::checkLocal)
+            {
+                auto loc = expr->arg0.checkValue()->local();
+                if(loc->is<Parameter>() || loc->residesInMemory() || loc->name == Method::GLOBAL_DATA_ADDRESS)
+                {
+                    range.memoryObject = loc;
+                    range.constantOffset = INT_ZERO;
+                    varArg = INT_ZERO;
+                    isHandled = true;
+                }
+            }
+            if(isHandled)
+                range.addressExpression = expr;
+            else
                 return false;
         }
         range.baseAddressAdd = dynamic_cast<const intermediate::Operation*>(trackInst);
@@ -523,4 +536,90 @@ FastAccessList<MemoryAccessRange> analysis::determineAccessRanges(
         }
     }
     return result;
+}
+
+std::pair<bool, analysis::ValueRange> analysis::checkWorkGroupUniformParts(
+    FastAccessList<MemoryAccessRange>& accessRanges, bool allowConstantOffsets)
+{
+    analysis::ValueRange offsetRange{};
+    const auto& firstUniformAddresses = accessRanges.front().groupUniformAddressParts;
+    FastMap<Value, intermediate::InstructionDecorations> differingUniformParts;
+    bool allUniformPartsEqual = true;
+    for(auto& entry : accessRanges)
+    {
+        if(entry.groupUniformAddressParts != firstUniformAddresses)
+        {
+            allUniformPartsEqual = false;
+            for(const auto& pair : entry.groupUniformAddressParts)
+            {
+                if(firstUniformAddresses.find(pair.first) == firstUniformAddresses.end())
+                    differingUniformParts.emplace(pair);
+            }
+            for(const auto& pair : firstUniformAddresses)
+                if(entry.groupUniformAddressParts.find(pair.first) == entry.groupUniformAddressParts.end())
+                    differingUniformParts.emplace(pair);
+        }
+        if(auto range = entry.offsetRange)
+        {
+            if(offsetRange)
+            {
+                offsetRange.minValue = std::min(offsetRange.minValue, range->minValue);
+                offsetRange.maxValue = std::max(offsetRange.maxValue, range->maxValue);
+            }
+            else
+                // for the first entry, the combined range is still unknown/undefined
+                offsetRange = *range;
+        }
+        else
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Cannot cache memory location with unknown accessed range" << logging::endl);
+            return std::make_pair(false, analysis::ValueRange{});
+        }
+        if(!allowConstantOffsets && entry.constantOffset)
+        {
+            CPPLOG_LAZY(
+                logging::Level::DEBUG, log << "Constant address offsets are not yet supported" << logging::endl);
+            return std::make_pair(false, analysis::ValueRange{});
+        }
+    }
+    if(!allUniformPartsEqual)
+    {
+        if(std::all_of(differingUniformParts.begin(), differingUniformParts.end(),
+               [](const auto& part) -> bool { return part.first.getLiteralValue().has_value(); }))
+        {
+            // all work-group uniform values which differ between various accesses of the same local are literal
+            // values. We can use this knowledge to still allow caching the local, by converting the literals to
+            // dynamic offsets
+            for(auto& entry : accessRanges)
+            {
+                auto it = entry.groupUniformAddressParts.begin();
+                while(it != entry.groupUniformAddressParts.end())
+                {
+                    if(differingUniformParts.find(it->first) != differingUniformParts.end())
+                    {
+                        if(entry.offsetRange)
+                        {
+                            entry.offsetRange->minValue += it->first.getLiteralValue()->signedInt();
+                            entry.offsetRange->maxValue += it->first.getLiteralValue()->signedInt();
+                        }
+                        else
+                            // TODO correct??
+                            entry.offsetRange =
+                                analysis::ValueRange{static_cast<double>(it->first.getLiteralValue()->signedInt()),
+                                    static_cast<double>(it->first.getLiteralValue()->signedInt())};
+
+                        entry.dynamicAddressParts.emplace(*it);
+                        it = entry.groupUniformAddressParts.erase(it);
+                    }
+                    else
+                        ++it;
+                }
+            }
+            return checkWorkGroupUniformParts(accessRanges);
+        }
+        else
+            return std::make_pair(false, analysis::ValueRange{});
+    }
+    return std::make_pair(true, offsetRange);
 }

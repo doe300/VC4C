@@ -460,25 +460,33 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
         genericSetup.genericSetup.setNumber(2);
         assign(it, VPM_IN_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
             InstructionDecorations::VPM_READ_CONFIGURATION);
+        // Example:
+        // VPM has (address B) 0, 1, 2, 3, 4, 5, 6, 7, ..., (address B + 1) 16, 17, 18, 19, 20, ..., 31
+        // Vector size N = 16, rotation factor R = 11
+        // L = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
         auto lowerPart = assign(it, dest.type, "%vpm.unaligned.lower") = VPM_IO_REGISTER;
+        // U = [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
         auto upperPart = assign(it, dest.type, "%vpm.unaligned.upper") = VPM_IO_REGISTER;
         auto rotationOffset = assign(it, TYPE_INT8) = internalOffset % Literal(dest.type.getInMemoryWidth());
         rotationOffset = assign(it, TYPE_INT8, "%vpm.unaligned.offset") =
             rotationOffset / Literal(dest.type.getElementType().getInMemoryWidth());
         Value lowerRotated = method.addNewLocal(dest.type, "%vpm.unaligned.lower");
         Value upperRotated = method.addNewLocal(dest.type, "%vpm.unaligned.upper");
+        // L = [11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         it = insertVectorRotation(it, lowerPart, rotationOffset, lowerRotated, Direction::DOWN);
+        // V = [11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         outputValue = assign(it, dest.type, "%vpm.unaligned.result") = lowerRotated;
+        // U = [27, 28, 29, 30, 31, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]
         it = insertVectorRotation(it, upperPart, rotationOffset, upperRotated, Direction::DOWN);
         Value rotationOffsetReplicated = method.addNewLocal(TYPE_INT8.toVectorType(16));
         it = insertReplication(it, rotationOffset, rotationOffsetReplicated);
+        // N-R = 5
         auto selectionOffset = assign(it, TYPE_INT8.toVectorType(16)) =
             Value(Literal(dest.type.getVectorWidth()), TYPE_INT8) - rotationOffsetReplicated;
+        // flags = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         assign(it, NOP_REGISTER) = (ELEMENT_NUMBER_REGISTER - selectionOffset, SetFlag::SET_FLAGS);
+        // V = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]
         assign(it, outputValue) = (upperRotated, COND_NEGATIVE_CLEAR);
-
-        // TODO we need something similar for storing!! But there, we need to load the old version in the VPM for 2
-        // rows, combine with the elements we actually want to set and write back both rows to not do unwanted changes!
     }
     else
     {
@@ -520,6 +528,68 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
         it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(genericSetup.value)));
         it->addDecorations(InstructionDecorations::VPM_WRITE_CONFIGURATION);
         it.nextInBlock();
+    }
+    else if(isUnalignedMemoryVPMAccess(internalOffset, src.type))
+    {
+        // TODO make sure this block is only used where really really required!
+        // TODO if inAreaOffset guaranteed to lie within one row, skip loading of second?!
+        /*
+         * In OpenCL, vectors are aligned to the alignment of the element type (e.g. a char16 vector is char
+         * aligned). More accurately: they can be loaded/stored from any address aligned to the element type! This
+         * is at least true when stored via vstoreN. Since storing vectors into VPM is always aligned to the whole
+         * vector (actually the whole 16-element vector), we need to do some manual post-processing to assemble a
+         * correct result vector. For storing, we actually need to load the old value, insert the changed data at
+         * the given position and store the new value back to not overwrite valid data (since we always write 16
+         * elements, even if we don't want to).
+         *
+         * Goal: Store a N-element vector V into row X with an offset of I bytes, where I is aligned to the element
+         * type of V.
+         * - Calculate base VPM address: B = X + I / sizeof(V)
+         * - Load 2 <E16> (16-element vectors of correct element type E) vectors L and U from VPM address B and B +
+         * 1
+         * - Calculate rotation factor: R = (I % sizeof(V)) / sizeof(E)
+         * - Rotate new data vector V upwards by R elements: V = rotate(V, R)
+         * - Copy elements [N-R, N] from the rotated new data vector V into first vector L
+         * - Copy elements [0, N-R] from the rotated new data vector V into first vector U
+         * - Write 2 <E16> vectors L and U into VPM address B and B + 1
+         */
+        Value elementOffset = UNDEFINED_VALUE;
+        it = calculateElementOffsetInVPM(method, it, src.type, internalOffset, elementOffset);
+        {
+            VPRSetup genericReadSetup(realArea.toReadSetup(src.type));
+            genericReadSetup.genericSetup.setNumber(2);
+            assign(it, VPM_IN_SETUP_REGISTER) = (Value(Literal(genericReadSetup.value), TYPE_INT32) + elementOffset,
+                InstructionDecorations::VPM_READ_CONFIGURATION);
+        }
+        // Example:
+        // VPM has (address B) 0, 1, 2, 3, 4, 5, 6, 7, ..., (address B + 1) 16, 17, 18, 19, 20, ..., 31
+        // Vector size N = 16, rotation factor R = 11
+        // Vector data V = [40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55]
+        // L = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        auto lowerPart = assign(it, src.type, "%vpm.unaligned.orig.lower") = VPM_IO_REGISTER;
+        // U = [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+        auto upperPart = assign(it, src.type, "%vpm.unaligned.orig.upper") = VPM_IO_REGISTER;
+        auto rotationOffset = assign(it, TYPE_INT8) = internalOffset % Literal(src.type.getInMemoryWidth());
+        rotationOffset = assign(it, TYPE_INT8, "%vpm.unaligned.offset") =
+            rotationOffset / Literal(src.type.getElementType().getInMemoryWidth());
+        Value srcRotated = method.addNewLocal(src.type, "%vpm.unaligned.new");
+        // V = [45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 40, 41, 42, 43, 44]
+        it = insertVectorRotation(it, src, rotationOffset, srcRotated, Direction::UP);
+        Value rotationOffsetReplicated = method.addNewLocal(TYPE_INT8.toVectorType(16));
+        it = insertReplication(it, rotationOffset, rotationOffsetReplicated);
+        rotationOffsetReplicated = assign(it, rotationOffsetReplicated.type) = rotationOffsetReplicated - 1_val;
+        // flags = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, -1, -2, -3, -4, -5]
+        assign(it, NOP_REGISTER) = (rotationOffsetReplicated - ELEMENT_NUMBER_REGISTER, SetFlag::SET_FLAGS);
+        // L = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 40, 41, 42, 43, 44]
+        assign(it, lowerPart) = (srcRotated, COND_NEGATIVE_SET);
+        // U = [45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 27, 28, 29, 30, 31]
+        assign(it, upperPart) = (srcRotated, COND_NEGATIVE_CLEAR);
+        assign(it, VPM_OUT_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
+            InstructionDecorations::VPM_WRITE_CONFIGURATION);
+        assign(it, VPM_IO_REGISTER) = lowerPart;
+        assign(it, VPM_IO_REGISTER) = upperPart;
+        it = insertUnlockMutex(it, useMutex);
+        return it;
     }
     else
     {
