@@ -171,7 +171,7 @@ namespace vc4c
 				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_async_copy.cl", "test_async_copy",
 				    {toParameter(toRange<unsigned>(0, 12*16)), toParameter(std::vector<unsigned>(12*16)), toParameter(std::vector<unsigned>(12*16))}, toConfig(12), maxExecutionCycles),
-				    addVector(addVector({}, 1, toRange<unsigned>(0, 12*16)), 2, toRange<unsigned>(0, 12*16))
+				    addVector(/*the __local arg might be lowered to VPM addVector({}, 1, toRange<unsigned>(0, 12*16))*/ {}, 2, toRange<unsigned>(0, 12*16))
 				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_shuffle.cl", "test_shuffle",
 				    {toParameter(std::vector<unsigned>{0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c, 0x13121110, 0x17161514, 0x1b1a1918, 0x1f1e1d1c}), toParameter(std::vector<unsigned>(10*16/sizeof(int32_t)))}, toConfig(1), maxExecutionCycles),

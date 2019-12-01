@@ -197,6 +197,8 @@ std::string Parameter::to_string(bool withContent) const
             extras.emplace_back("used bytes: " + std::to_string(maxByteOffset));
         if(decorations != ParameterDecorations::NONE)
             extras.emplace_back(toString(decorations));
+        if(isLowered)
+            extras.emplace_back("lowered");
 
         if(!extras.empty())
             tmp.append(" (").append(vc4c::to_string<std::string>(extras)).append(")");

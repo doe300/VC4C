@@ -65,7 +65,7 @@ std::string ParamInfo::to_string() const
         (getDecorations() != ParameterDecorations::NONE ? toString(getDecorations()) + " " : "") +
         // type + name
         ((typeName) + " ") + (name + " (") + (std::to_string(getSize()) + " B, ") +
-        std::to_string(getVectorElements()) + " items)";
+        std::to_string(getVectorElements()) + " items)" + (getLowered() ? " (lowered)" : "");
 }
 LCOV_EXCL_STOP
 
@@ -385,6 +385,7 @@ KernelInfo qpu_asm::getKernelInfos(
         paramInfo.setUnsigned(has_flag(param.decorations, ParameterDecorations::ZERO_EXTEND));
         paramInfo.setTypeName(
             typeName.empty() ? paramType.getTypeName(paramInfo.getSigned(), paramInfo.getUnsigned()) : typeName);
+        paramInfo.setLowered(param.isLowered);
 
         if(paramType.getPointerType() && has_flag(param.decorations, ParameterDecorations::BY_VALUE))
         {

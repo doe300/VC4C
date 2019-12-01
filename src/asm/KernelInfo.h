@@ -58,7 +58,16 @@ namespace vc4c
              */
             BITFIELD_ENTRY(Decorations, ParameterDecorations, 42, Decuple)
 
-            //// 3 Bits unused
+            //// 2 Bits unused
+
+            /*
+             * Whether this parameter lowered into shared VPM memory and therefore no temporary buffers needs to
+             * be allocated for it.
+             *
+             * NOTE: This is only valid for __local parameters where the VC4C compiler can deduce the maximum accessed
+             * range.
+             */
+            BITFIELD_ENTRY(Lowered, bool, 54, Bit)
 
             /*
              * The address space for this parameter

@@ -319,6 +319,14 @@ namespace vc4c
          * to the to_string() representation of the data-type
          */
         std::string origTypeName;
+        /*
+         * Whether this parameter is lowered into shared VPM area. For lowered parameters, no buffer needs to be
+         * allocated at run-time.
+         *
+         * NOTE: Only __local parameters (where the temporary buffers are managed by the OpenCL implementations) can be
+         * lowered into VPM.
+         */
+        bool isLowered = false;
     };
 
     /*
