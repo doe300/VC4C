@@ -51,7 +51,7 @@ jobs:
       - run:
           name: configure
           # Use SPIRV-LLVM
-          command: mkdir build && cd build && cmake ../ -DBUILD_NUMBER=$CIRCLE_BUILD_NUM -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=ON -DLLVMIR_FRONTEND=OFF -DSPIRV_FRONTEND=OFF
+          command: mkdir build && cd build && cmake ../ -DBUILD_NUMBER=$CIRCLE_BUILD_NUM -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=ON -DSPIRV_FRONTEND=OFF
       - run:
           name: make
           # TODO CicleCI runs out of memory
@@ -93,7 +93,7 @@ jobs:
           command: git clone https://github.com/doe300/VC4CLStdLib.git VC4CLStdLib && cd VC4CLStdLib && cmake . -DCROSS_COMPILE=OFF && make install && cd ..
       - run:
           name: configure
-          command: mkdir build && cd build && cmake ../ -DBUILD_NUMBER=$CIRCLE_BUILD_NUM -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=OFF -DLLVMIR_FRONTEND=OFF -DSPIRV_FRONTEND=ON
+          command: mkdir build && cd build && cmake ../ -DBUILD_NUMBER=$CIRCLE_BUILD_NUM -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=OFF -DSPIRV_FRONTEND=ON
       - run:
           name: spirv-tools
           command: cd build && make spirv-tools-project spirv-tools-project-build

@@ -1,42 +1,50 @@
 ####
-# Find either LLVM SPIR-V compiler ...
+# Find either LLVM SPIR-V translator ...
 ####
 
-if(NOT SPIRV_COMPILER_ROOT)
-	# Try to detect the location of the SPIRV-LLVM binaries
-	find_program(LLVM_SPIRV_FOUND NAMES llvm-spirv HINTS "/opt/SPIRV-LLVM/build/bin/")
+if(NOT SPIRV_COMPILER_ROOT AND NOT SPIRV_TRANSLATOR_ROOT)
+	# Try to detect the location of the SPIRV-LLVM-Translator binaries
+	find_program(LLVM_SPIRV_FOUND NAMES llvm-spirv HINTS "/opt/SPIRV-LLVM-Translator/build/tools/llvm-spirv/")
 	if(LLVM_SPIRV_FOUND)
-		get_filename_component(SPIRV_COMPILER_ROOT "${LLVM_SPIRV_FOUND}" DIRECTORY)
+		get_filename_component(SPIRV_TRANSLATOR_ROOT "${LLVM_SPIRV_FOUND}" DIRECTORY)
 	endif()
 endif()
-if(SPIRV_COMPILER_ROOT)
-	message(STATUS "Khronos OpenCL toolkit: ${SPIRV_COMPILER_ROOT}")
-	find_file(SPIRV_CLANG_FOUND clang PATHS ${SPIRV_COMPILER_ROOT} NO_DEFAULT_PATH)
-	find_file(SPIRV_LLVM_SPIR_FOUND llvm-spirv PATHS ${SPIRV_COMPILER_ROOT} NO_DEFAULT_PATH)
+if(SPIRV_TRANSLATOR_ROOT)
+	message(STATUS "Khronos OpenCL toolkit: ${SPIRV_TRANSLATOR_ROOT}")
+	# The translator uses the built-in clang
+	find_program(SPIRV_CLANG_FOUND clang NAMES clang clang-3.9 clang-4.0 clang-5.0 clang-6.0)
+	find_program(LLVM_LINK_FOUND llvm-link NAMES llvm-link llvm-link-3.9 llvm-link-4.0 llvm-link-5.0 llvm-link-6.0)
+	find_file(SPIRV_LLVM_SPIR_FOUND llvm-spirv PATHS ${SPIRV_TRANSLATOR_ROOT} NO_DEFAULT_PATH)
 	if(SPIRV_CLANG_FOUND)
 		message(STATUS "Khronos OpenCL compiler: ${SPIRV_CLANG_FOUND}")
 	endif()
+	if(LLVM_LINK_FOUND)
+		# Using the LLVM linker allows us to compile without PCH, but link in standard-library module which is much faster.
+		# Since the LLVM SPIR-V translator is based on the default clang, we can also use the default LLVM linker.
+		message(STATUS "LLVM-link found: " ${LLVM_LINK_FOUND})
+		set(SPIRV_LINK_MODULES ON)
+	endif()
 endif()
 
 ####
-# ... or find LLVM SPIR-V translator
+# ... or find deprecated LLVM SPIR-V compiler
 ####
-if(NOT SPIRV_COMPILER_ROOT)
-	if(NOT SPIRV_TRANSLATOR_ROOT)
-		# Try to detect the location of the SPIRV-LLVM-Translator binaries
-		find_program(LLVM_SPIRV_FOUND NAMES llvm-spirv HINTS "/opt/SPIRV-LLVM-Translator/build/tools/")
+if(NOT SPIRV_TRANSLATOR_ROOT)
+	if(NOT SPIRV_COMPILER_ROOT)
+		# Try to detect the location of the SPIRV-LLVM binaries
+		find_program(LLVM_SPIRV_FOUND NAMES llvm-spirv HINTS "/opt/SPIRV-LLVM/build/bin/")
 		if(LLVM_SPIRV_FOUND)
-			get_filename_component(SPIRV_TRANSLATOR_ROOT "${LLVM_SPIRV_FOUND}" DIRECTORY)
+			get_filename_component(SPIRV_COMPILER_ROOT "${LLVM_SPIRV_FOUND}" DIRECTORY)
 		endif()
 	endif()
-	if(SPIRV_TRANSLATOR_ROOT)
-		message(STATUS "Khronos OpenCL toolkit: ${SPIRV_TRANSLATOR_ROOT}")
-		# The translator uses the built-in clang
-		find_program(SPIRV_CLANG_FOUND clang)
-		find_file(SPIRV_LLVM_SPIR_FOUND llvm-spirv PATHS ${SPIRV_TRANSLATOR_ROOT} NO_DEFAULT_PATH)
+	if(SPIRV_COMPILER_ROOT)
+		message(STATUS "Khronos OpenCL toolkit: ${SPIRV_COMPILER_ROOT}")
+		find_file(SPIRV_CLANG_FOUND clang PATHS ${SPIRV_COMPILER_ROOT} NO_DEFAULT_PATH)
+		find_file(SPIRV_LLVM_SPIR_FOUND llvm-spirv PATHS ${SPIRV_COMPILER_ROOT} NO_DEFAULT_PATH)
 		if(SPIRV_CLANG_FOUND)
 			message(STATUS "Khronos OpenCL compiler: ${SPIRV_CLANG_FOUND}")
 		endif()
+		set(SPIRV_LINK_MODULES OFF)
 	endif()
 endif()
 
@@ -70,7 +78,7 @@ if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
 		set(SPIRV-Headers_SOURCE_DIR ${SPIRV_HEADERS_SOURCE_DIR})
 		FetchContent_MakeAvailable(spirv-tools-project)
 		# Set variables expected by the VC4CC library to the SPIRV-Tools libraries.
-		set(SPIRV_Tools_LIBS SPIRV-Tools SPIRV-Tools-opt SPIRV-Tools-link)
+		set(SPIRV_Tools_LIBS SPIRV-Tools SPIRV-Tools-link)
 		# the headers are already included by linking the targets
 		set(SPIRV_Tools_HEADERS "")
 		# we need to export these targets, since they are required by VC4CC which we export
@@ -108,7 +116,7 @@ if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
 		)
 		ExternalProject_Get_Property(spirv-tools-project BINARY_DIR)
 		ExternalProject_Get_Property(spirv-tools-project SOURCE_DIR)
-		set(SPIRV_Tools_LIBS "-Wl,--whole-archive ${BINARY_DIR}/source/libSPIRV-Tools.a ${BINARY_DIR}/source/opt/libSPIRV-Tools-opt.a ${BINARY_DIR}/source/link/libSPIRV-Tools-link.a -Wl,--no-whole-archive")
+		set(SPIRV_Tools_LIBS "-Wl,--whole-archive ${BINARY_DIR}/source/libSPIRV-Tools.a ${BINARY_DIR}/source/link/libSPIRV-Tools-link.a -Wl,--no-whole-archive")
 		set(SPIRV_Tools_HEADERS ${SOURCE_DIR}/include)
 
 		# This target is used to collect the dependencies on all SPIR-V library build steps

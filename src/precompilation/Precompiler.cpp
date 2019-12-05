@@ -269,11 +269,20 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
             });
         if(includeStandardLibrary)
         {
-            sources.emplace_back(findStandardLibraryFiles().llvmModule);
-        }
+            // need to link the std-lib module with the special function to set the correct flags (e.g. to not fail if
+            // std-lib module was already linked into one of the sources)
+            auto tmpFile = std::make_unique<TemporaryFile>();
+            LLVMIRResult tmp(tmpFile->fileName);
+            linkLLVMModules(std::move(sources), "", tmp);
 
-        LLVMIRResult result(&output);
-        linkLLVMModules(std::move(sources), "", result);
+            LLVMIRResult result(&output);
+            linkInStdlibModule(LLVMIRSource(tmp), "", result);
+        }
+        else
+        {
+            LLVMIRResult result(&output);
+            linkLLVMModules(std::move(sources), "", result);
+        }
         PROFILE_END(linkSourceCode);
         return SourceType::LLVM_IR_BIN;
     }
