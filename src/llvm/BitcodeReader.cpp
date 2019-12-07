@@ -1273,7 +1273,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
     }
     else if(llvm::dyn_cast<const llvm::ConstantPointerNull>(val) != nullptr)
     {
-        return Value(INT_ZERO.literal(), type);
+        return Value(Literal(0u), type);
     }
     else if(auto constant = llvm::dyn_cast<const llvm::ConstantExpr>(val))
     {
@@ -1410,7 +1410,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
         switch(predicate)
         {
         case llvm::CmpInst::FCMP_FALSE:
-            return Value(BOOL_FALSE.literal(), boolType);
+            return Value(Literal(false), boolType);
         case llvm::CmpInst::FCMP_OEQ:
             return Value(Literal(src0.getLiteralValue()->real() == src1.getLiteralValue()->real()), boolType);
         case llvm::CmpInst::FCMP_OGT:
@@ -1433,7 +1433,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
         case llvm::CmpInst::FCMP_UNE:
             break;
         case llvm::CmpInst::FCMP_TRUE:
-            return Value(BOOL_TRUE.literal(), destType);
+            return Value(Literal(true), destType);
         case llvm::CmpInst::ICMP_EQ:
             return Value(
                 Literal(src0.getLiteralValue()->unsignedInt() == src1.getLiteralValue()->unsignedInt()), boolType);

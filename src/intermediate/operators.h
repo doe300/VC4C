@@ -64,9 +64,9 @@ namespace vc4c
 
         struct OperationWrapper : private NonCopyable
         {
-            const OpCode op;
-            const Value arg0;
-            const Optional<Value> arg1 = NO_VALUE;
+            OpCode op;
+            Value arg0;
+            Optional<Value> arg1 = NO_VALUE;
 
             OperationWrapper(OpCode code, const Value& arg0) : op(code), arg0(arg0) {}
             OperationWrapper(OpCode code, const Value& arg0, const Value& arg1) : op(code), arg0(arg0), arg1(arg1) {}
@@ -134,11 +134,11 @@ namespace vc4c
 
         struct ComparisonWrapper : private NonCopyable
         {
-            const ConditionCode code;
-            const Value arg0;
-            const Value arg1;
+            ConditionCode code;
+            Value arg0;
+            Value arg1;
             using FuncType = std::function<void(InstructionWalker&, const Value&, const Value&, const Value&)>;
-            const FuncType func;
+            FuncType func;
 
             ComparisonWrapper(ConditionCode code, const Value& arg0, const Value& arg1, FuncType&& func) :
                 code(code), arg0(arg0), arg1(arg1), func(std::forward<FuncType>(func))

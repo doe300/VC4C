@@ -64,6 +64,7 @@ namespace vc4c
 
         Node(const Node&) = delete;
         Node(Node&&) noexcept = delete;
+        ~Node() noexcept = default;
 
         Node& operator=(const Node&) = delete;
         Node& operator=(Node&&) noexcept = delete;
@@ -467,6 +468,7 @@ namespace vc4c
 
         Edge(const Edge&) = delete;
         Edge(Edge&&) noexcept = delete;
+        ~Edge() noexcept = default;
 
         Edge& operator=(const Edge&) = delete;
         Edge& operator=(Edge&&) noexcept = delete;
@@ -596,6 +598,7 @@ namespace vc4c
         }
         Graph(const Graph&) = delete;
         Graph(Graph&&) noexcept = delete;
+        ~Graph() noexcept = default;
 
         Graph& operator=(const Graph&) = delete;
         Graph& operator=(Graph&&) noexcept = delete;

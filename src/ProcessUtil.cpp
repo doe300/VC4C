@@ -139,7 +139,7 @@ static int runReadOnlySubprocess(const std::string& command, std::ostream* outpu
         std::size_t numRead = 0;
         while((numRead = fread(buffer.data(), sizeof(char), buffer.size(), fd)) > 0)
         {
-            output->write(buffer.data(), numRead);
+            output->write(buffer.data(), static_cast<std::streamsize>(numRead));
         }
         if(ferror(fd))
         {
@@ -161,7 +161,7 @@ static int runWriteOnlySubprocess(const std::string& command, std::istream* inpu
         std::array<char, 512> buffer;
         while(input->read(buffer.data(), buffer.size()))
         {
-            fwrite(buffer.data(), sizeof(char), input->gcount(), fd);
+            fwrite(buffer.data(), sizeof(char), static_cast<std::size_t>(input->gcount()), fd);
         }
         if(ferror(fd))
         {
@@ -247,7 +247,7 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
         {
             in.read(buffer.data(), buffer.size());
             numBytes = in.gcount();
-            write(pipes[STD_IN][WRITE], buffer.data(), in.gcount());
+            write(pipes[STD_IN][WRITE], buffer.data(), static_cast<std::size_t>(in.gcount()));
             if(numBytes != buffer.size())
                 break;
         }

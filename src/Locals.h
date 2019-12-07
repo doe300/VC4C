@@ -189,8 +189,7 @@ namespace vc4c
         struct RAIILock
         {
             using UnlockFunc = std::function<void()>;
-            explicit RAIILock() : func(nullptr) {}
-            RAIILock(UnlockFunc&& f) : func(std::move(f)) {}
+            explicit RAIILock(UnlockFunc&& f = nullptr) : func(std::move(f)) {}
             RAIILock(const RAIILock&) = delete;
             RAIILock(RAIILock&& other) noexcept : func(std::move(other.func))
             {

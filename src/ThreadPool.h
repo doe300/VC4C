@@ -19,7 +19,7 @@ namespace vc4c
     class ThreadPool
     {
     public:
-        ThreadPool(const std::string& poolName, unsigned numThreads = std::thread::hardware_concurrency());
+        explicit ThreadPool(const std::string& poolName, unsigned numThreads = std::thread::hardware_concurrency());
         ThreadPool(const ThreadPool&) = delete;
         ThreadPool(ThreadPool&&) noexcept = delete;
         ~ThreadPool();

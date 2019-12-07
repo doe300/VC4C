@@ -124,7 +124,7 @@ static void demangleAndPrint(char* line, int i)
 void CompilationError::logBacktrace()
 {
 #if defined(DEBUG_MODE) and defined(__GNUC__)
-    std::array<void*, 256> funcPointers;
+    std::array<void*, 256> funcPointers{};
     int numFuncs = backtrace(funcPointers.data(), funcPointers.size());
 
     char** strings = backtrace_symbols(funcPointers.data(), numFuncs);

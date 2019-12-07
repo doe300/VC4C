@@ -231,7 +231,7 @@ InstructionWalker normalization::handleContainer(
                     const Value& container = op->assertArgument(i);
                     op->setArgument(i, Value((*con)[0], container.type));
                 }
-                else if(op->assertArgument(i).vector().isElementNumber())
+                else if(con->isElementNumber())
                 {
                     op->setArgument(i, Value(REG_ELEMENT_NUMBER, op->assertArgument(i).type));
                 }

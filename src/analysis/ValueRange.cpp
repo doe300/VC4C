@@ -293,7 +293,7 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
          * y is in range [0, constant] (unsigned)
          */
         if(auto litArg = op->findLiteralArgument())
-            extendBoundaries(0, static_cast<int64_t>(litArg->literal().unsignedInt()));
+            extendBoundaries(0, static_cast<int64_t>(litArg->getLiteralValue()->unsignedInt()));
         else
             throw CompilationError(CompilationStep::GENERAL,
                 "Failed to get literal argument for operation which reads a literal value", op->to_string());

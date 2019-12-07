@@ -96,7 +96,7 @@ InstructionWalker intermediate::insertRestoreSign(
 {
     if(src.getLiteralValue() && sign.getLiteralValue())
     {
-        dest = sign.isZeroInitializer() ? src : Value(Literal(-src.literal().signedInt()), src.type);
+        dest = sign.isZeroInitializer() ? src : Value(Literal(-src.getLiteralValue()->signedInt()), src.type);
     }
     else
     {

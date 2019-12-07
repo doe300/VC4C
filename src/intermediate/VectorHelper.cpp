@@ -105,7 +105,7 @@ InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const
     }
 
     // 2. create rotation instruction
-    if(appliedOffset.hasLiteral(INT_ZERO.literal()))
+    if(appliedOffset.hasLiteral(0_lit))
         // a rotation by 0 is a simple move
         assign(it, dest) = src;
     else

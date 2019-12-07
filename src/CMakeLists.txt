@@ -90,8 +90,8 @@ endif(MULTI_THREADED)
 if(VC4C_ENABLE_SPIRV_FRONTEND)
 	add_dependencies(${VC4C_LIBRARY_NAME} SPIRV-Dependencies)
 	target_link_libraries(${VC4C_LIBRARY_NAME} ${SPIRV_Tools_LIBS})
-	target_include_directories(${VC4C_LIBRARY_NAME} PRIVATE ${SPIRV_Headers_HEADERS})
-	target_include_directories(${VC4C_LIBRARY_NAME} PRIVATE ${SPIRV_Tools_HEADERS})
+	target_include_directories(${VC4C_LIBRARY_NAME} SYSTEM PRIVATE ${SPIRV_Headers_HEADERS})
+	target_include_directories(${VC4C_LIBRARY_NAME} SYSTEM PRIVATE ${SPIRV_Tools_HEADERS})
 
 	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE SPIRV_LLVM_SPIRV_PATH="${SPIRV_LLVM_SPIR_FOUND}" SPIRV_FRONTEND=1)
 	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE SPIRV_LLVM_SPIRV_PATH="${SPIRV_LLVM_SPIR_FOUND}" SPIRV_FRONTEND=1)
@@ -130,8 +130,8 @@ endif()
 
 # Download mpark/variant library as dependency
 add_dependencies(${VC4C_LIBRARY_NAME} variant-dependencies)
-target_include_directories(${VC4C_LIBRARY_NAME} PRIVATE ${variant_HEADERS})
-target_include_directories(${VC4C_PROGRAM_NAME} PRIVATE ${variant_HEADERS})
+target_include_directories(${VC4C_LIBRARY_NAME} SYSTEM PRIVATE ${variant_HEADERS})
+target_include_directories(${VC4C_PROGRAM_NAME} SYSTEM PRIVATE ${variant_HEADERS})
 
 if(VC4CL_STDLIB_DIR)
 	# Pre-compile VC4CL standard library files if development headers available and output files do not yet exist

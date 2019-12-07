@@ -386,11 +386,11 @@ std::string SmallImmediate::to_string() const
         return (std::to_string(static_cast<int>(value) - 32) + " (") + std::to_string(static_cast<int>(value)) + ")";
     if(value <= 39)
         // 1.0, ..., 128.0
-        return (std::to_string(static_cast<float>(1 << (static_cast<int>(value) - 32))) + " (") +
+        return (std::to_string(static_cast<float>(1u << (static_cast<int>(value) - 32))) + " (") +
             std::to_string(static_cast<int>(value)) + ")";
     if(value <= 47)
         // 1/256, ..., 1/2
-        return (std::to_string(1.0f / static_cast<float>(1 << (48 - static_cast<int>(value)))) + " (") +
+        return (std::to_string(1.0f / static_cast<float>(1u << (48 - static_cast<int>(value)))) + " (") +
             std::to_string(static_cast<int>(value)) + ")";
     if(value == 48)
         return "<< r5";
@@ -416,10 +416,10 @@ Optional<float> SmallImmediate::getFloatingValue() const noexcept
 {
     if(value >= 32 && value <= 39)
         // 1.0, ..., 128.0
-        return static_cast<float>(1 << (static_cast<unsigned>(value) - 32));
+        return static_cast<float>(1u << (static_cast<unsigned>(value) - 32));
     if(value >= 40 && value <= 47)
         // 1/256, ..., 1/2
-        return 1.0f / static_cast<float>(1 << (48 - static_cast<unsigned>(value)));
+        return 1.0f / static_cast<float>(1u << (48 - static_cast<unsigned>(value)));
     return {};
 }
 
@@ -540,7 +540,7 @@ bool SIMDVector::isUndefined() const
 SIMDVector SIMDVector::transform(const std::function<Literal(Literal)>& transformOp) const &
 {
     SIMDVector copy;
-    for(unsigned i = 0; i < elements.size(); ++i)
+    for(std::size_t i = 0; i < elements.size(); ++i)
     {
         copy.elements[i] = transformOp(elements[i]);
     }

@@ -589,7 +589,7 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
                 if(replacedThisInstruction)
                     foldConstants(module, method, it2, config);
 
-                if(it2->getOutput().has_value() && it2->getOutput().value() == oldValue)
+                if(it2->getOutput() && it2->getOutput() == oldValue)
                     break;
 
                 it2.nextInBlock();
@@ -770,7 +770,7 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                 //
                 // and v1, v2, v3 => and v1, v2, v3
                 // or  v4, v1, v2    mov v4, v2
-                auto foundAnd = [&](Local* out, Local* in, InstructionWalker walker) {
+                auto foundAnd = [&](const Local* out, const Local* in, InstructionWalker walker) {
                     auto it = walker.copy().nextInBlock();
                     while(!it.isEndOfBlock())
                     {
@@ -795,10 +795,8 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                 const auto& arg0 = op->assertArgument(0);
                 const auto& arg1 = op->assertArgument(1);
 
-                if(op->getOutput() && op->getOutput()->checkLocal())
+                if(auto out = op->checkOutputLocal())
                 {
-                    auto out = op->getOutput().value().local();
-
                     if(arg0.checkLocal())
                         foundAnd(out, arg0.local(), it);
                     if(arg1.checkLocal())
@@ -813,7 +811,7 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                 //
                 // or  v1, v2, v3 => or  v1, v2, v3
                 // or  v4, v1, v2    mov v4, v1
-                auto foundOr = [&](Local* out, Local* in, InstructionWalker walker) {
+                auto foundOr = [&](const Local* out, const Local* in, InstructionWalker walker) {
                     auto it = walker.copy().nextInBlock();
                     while(!it.isEndOfBlock())
                     {
@@ -840,10 +838,8 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                 const auto& arg0 = op->assertArgument(0);
                 const auto& arg1 = op->assertArgument(1);
 
-                if(op->getOutput() && op->getOutput()->checkLocal())
+                if(auto out = op->checkOutputLocal())
                 {
-                    auto out = op->getOutput()->local();
-
                     if(arg0.checkLocal())
                         foundOr(out, arg0.local(), it);
                     if(arg1.checkLocal())

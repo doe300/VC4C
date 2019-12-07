@@ -217,7 +217,7 @@ LCOV_EXCL_STOP
 
 static std::string readString(std::istream& binary, uint64_t stringLength)
 {
-    std::array<char, 1024> buffer;
+    std::array<char, 1024> buffer = {0};
 
     binary.read(buffer.data(), static_cast<std::streamsize>(stringLength));
     const std::string name(buffer.data(), stringLength);

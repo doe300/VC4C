@@ -298,12 +298,13 @@ InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method
     {
         // out = asr(shl(in, bit_diff) bit_diff)
         // where bit_diff is the difference to full 32-bit
-        Value widthDiff(Literal(static_cast<int32_t>(32 - src.type.getScalarBitCount())), TYPE_INT8);
+        Literal diffLit(static_cast<int32_t>(32 - src.type.getScalarBitCount()));
+        Value widthDiff(diffLit, TYPE_INT8);
 
         if(!allowLiteral)
         {
             Value tmp = method.addNewLocal(TYPE_INT8, "%sext");
-            it.emplace(new LoadImmediate(tmp, widthDiff.literal()));
+            it.emplace(new LoadImmediate(tmp, diffLit));
             it.nextInBlock();
             widthDiff = tmp;
         }

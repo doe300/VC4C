@@ -525,7 +525,7 @@ static void fixInitialValueAndStep(
     Optional<InstructionWalker> initialValueWalker;
     bool isStepPlusOne = stepOp->op == OP_ADD && stepValue.unsignedInt() == 1u;
     Optional<Value> precalculatedInitialValue;
-    if(move != nullptr && move->getSource().hasLiteral(INT_ZERO.literal()) && isStepPlusOne)
+    if(move != nullptr && move->getSource().hasLiteral(0_lit) && isStepPlusOne)
     {
         // special/default case: initial value is zero and step is +1
         move->setSource(Value(ELEMENT_NUMBER_REGISTER));
@@ -811,7 +811,7 @@ void optimizations::extendBranches(const Module& module, Method& method, const C
         if(auto branch = it.get<intermediate::Branch>())
         {
             CPPLOG_LAZY(logging::Level::DEBUG, log << "Extending branch: " << branch->to_string() << logging::endl);
-            if(branch->hasConditionalExecution() || !branch->getCondition().hasLiteral(BOOL_TRUE.literal()))
+            if(branch->hasConditionalExecution() || !branch->getCondition().hasLiteral(Literal(true)))
             {
                 /*
                  * branch can only depend on scalar value

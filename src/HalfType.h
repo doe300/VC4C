@@ -25,8 +25,8 @@ namespace vc4c
         uint16_t fraction : 10;
 
         constexpr explicit Binary16(uint16_t val = 0) :
-            sign(static_cast<uint16_t>(val >> 15)), exponent(static_cast<uint16_t>((val & 0x7C00) >> 10)),
-            fraction(static_cast<uint16_t>(val & 0x3FF))
+            sign(static_cast<uint16_t>(val >> 15u)), exponent(static_cast<uint16_t>((val & 0x7C00u) >> 10u)),
+            fraction(static_cast<uint16_t>(val & 0x3FFu))
         {
         }
 
@@ -41,7 +41,7 @@ namespace vc4c
 
         inline constexpr operator uint16_t() const
         {
-            return static_cast<uint16_t>((sign << 15) | (exponent << 10) | (fraction));
+            return static_cast<uint16_t>((sign << 15u) | (exponent << 10u) | (fraction));
         }
 
         inline constexpr bool isZero() const
@@ -70,12 +70,11 @@ namespace vc4c
     constexpr Binary16 HALF_INF(0, 0x1F, 0);
 
     static_assert(sizeof(Binary16) == 2, "Binary16 type has wrong size!");
-    static_assert(static_cast<uint16_t>(Binary16(static_cast<uint16_t>(0x1234))) == static_cast<uint16_t>(0x1234),
-        "Bit conversion failed!");
-    static_assert((Binary16(static_cast<uint16_t>(0))).isZero(), "Bitwise check failed!");
-    static_assert((Binary16(static_cast<uint16_t>(0x123))).isSubnormal(), "Bitwise check failed!");
-    static_assert((Binary16(static_cast<uint16_t>(0x7C00))).isInf(), "Bitwise check failed!");
-    static_assert((Binary16(static_cast<uint16_t>(0xFFFF))).isNaN(), "Bitwise check failed!");
+    static_assert(static_cast<uint16_t>(Binary16(uint16_t{0x1234})) == uint16_t{0x1234}, "Bit conversion failed!");
+    static_assert((Binary16(uint16_t{0})).isZero(), "Bitwise check failed!");
+    static_assert((Binary16(uint16_t{0x123})).isSubnormal(), "Bitwise check failed!");
+    static_assert((Binary16(uint16_t{0x7C00})).isInf(), "Bitwise check failed!");
+    static_assert((Binary16(uint16_t{0xFFFF})).isNaN(), "Bitwise check failed!");
 
     inline Binary16 operator""_h(long double val)
     {

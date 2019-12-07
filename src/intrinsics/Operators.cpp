@@ -51,7 +51,7 @@ InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(
     // skip the original instruction
     it.nextInBlock();
 
-    if(op1Sign.hasLiteral(INT_ZERO.literal()) && op2Sign.hasLiteral(INT_ZERO.literal()))
+    if(op1Sign.hasLiteral(0_lit) && op2Sign.hasLiteral(0_lit))
     {
         // if both operands are marked with (unsigned), we don't need to invert the result
         it.emplace(new MoveOperation(opDest, tmpDest));
@@ -233,7 +233,7 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivision(
     it = intrinsifyUnsignedIntegerDivision(method, it, op, useRemainder);
     it.nextInBlock();
 
-    if(op1Sign.hasLiteral(INT_ZERO.literal()) && op2Sign.hasLiteral(INT_ZERO.literal()))
+    if(op1Sign.hasLiteral(0_lit) && op2Sign.hasLiteral(0_lit))
     {
         // if both operands are marked with (unsigned), we don't need to invert the result
         it.emplace(new MoveOperation(opDest, tmpDest));
@@ -375,7 +375,7 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivisionByConstant(
     it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, op, useRemainder);
     it.nextInBlock();
 
-    if(op1Sign.hasLiteral(INT_ZERO.literal()) && op2Sign.hasLiteral(INT_ZERO.literal()))
+    if(op1Sign.hasLiteral(0_lit) && op2Sign.hasLiteral(0_lit))
     {
         // if both operands are marked with (unsigned), we don't need to invert the result
         assign(it, opDest) = tmpDest;

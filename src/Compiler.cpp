@@ -178,7 +178,7 @@ std::unique_ptr<logging::Logger> logging::LOGGER(new logging::ColoredLogger(std:
 void vc4c::setLogger(std::wostream& outputStream, const bool coloredOutput, const LogLevel level)
 {
     if(coloredOutput)
-        logging::LOGGER.reset(new logging::ColoredLogger(outputStream, static_cast<logging::Level>(level)));
+        logging::LOGGER = std::make_unique<logging::ColoredLogger>(outputStream, static_cast<logging::Level>(level));
     else
-        logging::LOGGER.reset(new logging::StreamLogger(outputStream, static_cast<logging::Level>(level)));
+        logging::LOGGER = std::make_unique<logging::StreamLogger>(outputStream, static_cast<logging::Level>(level));
 }
