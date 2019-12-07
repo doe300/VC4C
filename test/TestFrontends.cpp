@@ -78,13 +78,17 @@ void TestFrontends::testLinking()
     }
 
     std::unique_ptr<std::istream> file0(new std::ifstream("./testing/test_linking_0.cl"));
-    std::unique_ptr<std::istream> file1(new std::ifstream("./testing/test_linking_0.cl"));
+    std::unique_ptr<std::istream> file1(new std::ifstream("./testing/test_linking_1.cl"));
+    std::unique_ptr<std::istream> file2(new std::ifstream("./testing/test_linking_2.cl"));
     std::unordered_map<std::istream*, Optional<std::string>> inputs{
         {file0.get(), Optional<std::string>{"./testing/test_linking_0.cl"}},
-        {file1.get(), Optional<std::string>{"./testing/test_linking_1.cl"}}};
+        {file1.get(), Optional<std::string>{"./testing/test_linking_1.cl"}},
+        {file2.get(), Optional<std::string>{"./testing/test_linking_2.cl"}}};
 
     std::stringstream tmp;
-    auto type = Precompiler::linkSourceCode(inputs, tmp);
+    // extra linking in std-lib tests handling of multiple times linking std-lib, since it will also be linked in for
+    // the OpenCL C -> LLVM IR compilation
+    auto type = Precompiler::linkSourceCode(inputs, tmp, true);
     TEST_ASSERT(type == SourceType::LLVM_IR_BIN || type == SourceType::SPIRV_BIN)
 
     std::stringstream out;

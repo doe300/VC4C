@@ -11,7 +11,7 @@ This compiler supports OpenCL C (via LLVM or [SPIRV-LLVM](https://github.com/Khr
 
 - A C++14 capable compiler (Raspbian stretch ships with GCC 6.x, which is supported. GCC 4.9 used by Raspbian jessie is no longer supported! The clang from the Raspbian repository is also okay and can double as OpenCL compiler, see below)
 - CMake in version >= 3.1
-- A suitable OpenCL 1.2 compiler. Supported versions are the "original" LLVM/CLang (version 3.9 and up, **using this one is recommended**), which can be found in the Raspbian repositories, and Khronos [SPIRV-LLVM](https://github.com/KhronosGroup/SPIRV-LLVM) with the Khronos [SPIR-V compiler front-end](https://github.com/KhronosGroup/SPIR/tree/spirv-1.0) (only the tools clang and llvm-spirv need to be built).
+- A suitable OpenCL 1.2 compiler. Supported versions are the "original" LLVM/CLang (version 3.9 and up, **using this one is recommended**), which can be found in the Raspbian repositories, the Khronos [SPIRV-LLVM Translator](https://github.com/KhronosGroup/SPIRV-LLVM-Translator) built on top of the "original" LLVM/CLang or the deprecated Khronos [SPIRV-LLVM](https://github.com/KhronosGroup/SPIRV-LLVM) with the Khronos [SPIR-V compiler front-end](https://github.com/KhronosGroup/SPIR/tree/spirv-1.0) (only the tools clang and llvm-spirv need to be built).
 - The source-code for [VC4CLStdLib](https://github.com/doe300/VC4CLStdLib) for the GPU-side standard-library
 
 ## Build

@@ -318,8 +318,16 @@ void precompilation::linkLLVMModules(
     const std::string out = result.file ? std::string("-o=") + result.file.value() : "";
     std::string inputs = std::accumulate(
         sources.begin(), sources.end(), std::string{}, [&](const std::string& a, const LLVMIRSource& b) -> std::string {
+            /*
+             * If we have multiple input files compiled with the VC4CC compiler, then they might all contain the
+             * definition/implementation of one or more VC4CL std-lib functions (e.g. get_global_id()).
+             * To not fail on ODR violations, we allow all but the first linked in modules to simply override already
+             * defined symbols from the previous modules.
+             * TODO is there a better solution?
+             */
+            auto separator = a.empty() ? " " : " -override=";
             if(b.file)
-                return (a + " ") + b.file.value();
+                return a + separator + b.file.value();
             if(inputStream != nullptr)
             {
                 // there already is a stream input, need to move this input to temporary file
@@ -328,7 +336,7 @@ void precompilation::linkLLVMModules(
                 auto& file = tempFiles.back();
                 file->openOutputStream(s);
                 (*s) << b.stream->rdbuf();
-                return (a + " ") + file->fileName;
+                return a + separator + file->fileName;
             }
             else
             {

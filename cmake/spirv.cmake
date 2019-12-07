@@ -78,7 +78,7 @@ if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
 		set(SPIRV-Headers_SOURCE_DIR ${SPIRV_HEADERS_SOURCE_DIR})
 		FetchContent_MakeAvailable(spirv-tools-project)
 		# Set variables expected by the VC4CC library to the SPIRV-Tools libraries.
-		set(SPIRV_Tools_LIBS SPIRV-Tools SPIRV-Tools-link)
+		set(SPIRV_Tools_LIBS SPIRV-Tools SPIRV-Tools-opt SPIRV-Tools-link)
 		# the headers are already included by linking the targets
 		set(SPIRV_Tools_HEADERS "")
 		# we need to export these targets, since they are required by VC4CC which we export
@@ -116,7 +116,7 @@ if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
 		)
 		ExternalProject_Get_Property(spirv-tools-project BINARY_DIR)
 		ExternalProject_Get_Property(spirv-tools-project SOURCE_DIR)
-		set(SPIRV_Tools_LIBS "-Wl,--whole-archive ${BINARY_DIR}/source/libSPIRV-Tools.a ${BINARY_DIR}/source/link/libSPIRV-Tools-link.a -Wl,--no-whole-archive")
+		set(SPIRV_Tools_LIBS "-Wl,--whole-archive ${BINARY_DIR}/source/libSPIRV-Tools.a ${BINARY_DIR}/source/opt/libSPIRV-Tools-opt.a ${BINARY_DIR}/source/link/libSPIRV-Tools-link.a -Wl,--no-whole-archive")
 		set(SPIRV_Tools_HEADERS ${SOURCE_DIR}/include)
 
 		# This target is used to collect the dependencies on all SPIR-V library build steps
