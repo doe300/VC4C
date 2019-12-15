@@ -985,20 +985,23 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
         bytesB[1] = secondLit.unsignedInt() >> 8 & 0xFF;
         bytesB[2] = secondLit.unsignedInt() >> 16 & 0xFF;
         bytesB[3] = secondLit.unsignedInt() >> 24 & 0xFF;
-        std::transform(
-            bytesA.begin(), bytesA.end(), bytesB.begin(), bytesOut.begin(), [&](uint32_t a, uint32_t b) -> uint32_t {
-                if(code == OP_V8ADDS)
-                    return std::min(a + b, 255u);
-                if(code == OP_V8SUBS)
-                    return static_cast<uint32_t>(std::max(std::min(static_cast<int32_t>(a - b), 255), 0));
-                if(code == OP_V8MAX)
-                    return std::max(a, b);
-                if(code == OP_V8MIN)
-                    return std::min(a, b);
-                if(code == OP_V8MULD)
-                    return (a * b + 127) / 255;
-                throw CompilationError(CompilationStep::GENERAL, "Unhandled op-code", code.name);
-            });
+        std::function<uint32_t(uint32_t, uint32_t)> func = [&](uint32_t, uint32_t) -> uint32_t {
+            throw CompilationError(CompilationStep::GENERAL, "Unhandled op-code", code.name);
+        };
+        if(code == OP_V8ADDS)
+            func = [](uint32_t a, uint32_t b) -> uint32_t { return std::min(a + b, 255u); };
+        if(code == OP_V8SUBS)
+            func = [](uint32_t a, uint32_t b) -> uint32_t {
+                return static_cast<uint32_t>(std::max(std::min(static_cast<int32_t>(a - b), 255), 0));
+            };
+        if(code == OP_V8MAX)
+            func = [](uint32_t a, uint32_t b) -> uint32_t { return std::max(a, b); };
+        if(code == OP_V8MIN)
+            func = [](uint32_t a, uint32_t b) -> uint32_t { return std::min(a, b); };
+        if(code == OP_V8MULD)
+            func = [](uint32_t a, uint32_t b) -> uint32_t { return (a * b + 127) / 255; };
+
+        std::transform(bytesA.begin(), bytesA.end(), bytesB.begin(), bytesOut.begin(), func);
         uint32_t result = ((bytesOut[3] & 0xFF) << 24) | ((bytesOut[2] & 0xFF) << 16) | ((bytesOut[1] & 0xFF) << 8) |
             (bytesOut[0] & 0xFF);
         return setFlags(Literal(result));
@@ -1079,7 +1082,7 @@ PrecalculatedValue OpCode::operator()(const Value& firstOperand, const Optional<
     // TODO throws if first element is no literal
     const Literal firstLit = firstOperand.getLiteralValue() ? *firstOperand.getLiteralValue() : (*firstVector)[0];
     const Literal secondLit = (!secondVal || numOperands == 1) ?
-        INT_ZERO.literal() :
+        Literal(0u) :
         secondVal->getLiteralValue() ? *secondVal->getLiteralValue() : (*secondVector)[0];
     return operator()(firstLit, secondLit, resultType);
 }

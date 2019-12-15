@@ -29,6 +29,7 @@ target_sources(${VC4C_LIBRARY_NAME}
     ProcessUtil.h
     Profiler.cpp
     Profiler.h
+    signals.cpp
     ThreadPool.cpp
     ThreadPool.h
     Types.cpp

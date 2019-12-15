@@ -559,11 +559,15 @@ static constexpr unsigned MSB = 31;
 
 Literal intermediate::asr(Literal left, Literal right)
 {
-    std::bitset<sizeof(int32_t) * 8> tmp(static_cast<uint64_t>(left.signedInt()));
     if(right.signedInt() < 0)
         throw CompilationError(CompilationStep::GENERAL, "ASR with negative numbers is not implemented");
     // Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
     auto offset = right.unsignedInt() & 0x1F;
+    if((-1 >> 31u) == -1)
+        // if signed right shift is arithmetic shift, then use that instead of the manual shifting
+        return Literal(left.signedInt() >> offset);
+
+    std::bitset<sizeof(int32_t) * 8> tmp(static_cast<uint64_t>(left.signedInt()));
     for(unsigned i = 0; i < offset; ++i)
     {
         bool MSBSet = tmp.test(MSB);
@@ -575,11 +579,17 @@ Literal intermediate::asr(Literal left, Literal right)
 
 Literal intermediate::clz(Literal val)
 {
+#ifdef __GNUC__
+    // __builtin_clz(0) is undefined, so check before
+    if(val.unsignedInt() != 0)
+        return Literal(__builtin_clz(val.unsignedInt()));
+#else
     for(int i = MSB; i >= 0; --i)
     {
         if(((val.unsignedInt() >> i) & 0x1) == 0x1)
             return Literal(static_cast<int32_t>(MSB) - i);
     }
+#endif
     // Tests show that VC4 returns 32 for clz(0)
     return Literal(32);
 }
