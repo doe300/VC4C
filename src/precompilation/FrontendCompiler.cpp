@@ -299,6 +299,23 @@ void precompilation::disassembleSPIRV(SPIRVSource&& source, const std::string& u
     PROFILE_END(DisassembleSPIRV);
 }
 
+static std::string getEmptyModule()
+{
+    static TemporaryFile emptyModule = []() {
+        TemporaryFile empty{"/tmp/vc4c-empty-XXXXXX"};
+
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Compiling empty module to work around llvm-link bug/feature..." << logging::endl);
+        LLVMIRResult result{empty.fileName};
+        std::stringstream ss{""};
+        compileOpenCLWithDefaultHeader(OpenCLSource{ss}, "", result);
+
+        return empty;
+    }();
+
+    return emptyModule.fileName;
+}
+
 void precompilation::linkLLVMModules(
     std::vector<LLVMIRSource>&& sources, const std::string& userOptions, LLVMIRResult& result)
 {
@@ -346,10 +363,23 @@ void precompilation::linkLLVMModules(
         });
 
     /*
+     * There is a feature/bug in llvm-link which discards all flags (e.g. the "-only-needed" flag set for linking in the
+     * VC4CL std-lib) for the first module with and the first module without the "-override" flag, see
+     * https://github.com/llvm/llvm-project/blob/master/llvm/tools/llvm-link/llvm-link.cpp#L279.
+     *
+     * This results i.e. in all std-lib functions being linked in the resulting modules from the VC4CL std-lib module,
+     * which then results is much larger LLVM module parsing times.
+     *
+     * To circumvent this, we link in an empty module as first module with the "-override" flag, which results in the
+     * other flags being correctly applied for all successive modules.
+     */
+    auto emptyInput = " -override=" + getEmptyModule();
+
+    /*
      * NOTE: cannot use " -only-needed -internalize" in general case, since symbols used across module boundaries are
      * otherwise optimized away. " -only-needed -internalize" is now only used when linking in the standard-library.
      */
-    std::string command = std::string(LLVM_LINK_PATH " ") + userOptions + " " + out + " " + inputs;
+    std::string command = std::string(LLVM_LINK_PATH " ") + userOptions + " " + out + " " + emptyInput + " " + inputs;
 
     // llvm-link does not like multiple white-spaces in the list of files (assumes file with empty name)
     std::size_t n = 0;

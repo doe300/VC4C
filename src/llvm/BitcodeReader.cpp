@@ -40,8 +40,12 @@ std::unique_ptr<llvm::MemoryBuffer> fromInputStream(std::istream& stream, std::s
     else if(auto sstream = dynamic_cast<std::stringstream*>(&stream))
         buffer = sstream->str();
     else
-        buffer.insert(buffer.end(), std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
-    return std::unique_ptr<llvm::MemoryBuffer>(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(buffer)));
+    {
+        std::stringstream ss;
+        ss << stream.rdbuf();
+        buffer = ss.str();
+    }
+    return std::unique_ptr<llvm::MemoryBuffer>(llvm::MemoryBuffer::getMemBufferCopy(llvm::StringRef(buffer)));
 }
 
 static AddressSpace toAddressSpace(int num)
