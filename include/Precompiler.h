@@ -73,11 +73,11 @@ namespace vc4c
         /*
          * Creates and manages a new empty temporary file
          */
-        explicit TemporaryFile(const std::string& fileTemplate = "/tmp/vc4c-XXXXXX");
+        explicit TemporaryFile(const std::string& fileTemplate = "/tmp/vc4c-XXXXXX", bool hasStaticLifetime = false);
         /*
          * Creates and manages a new temporary file with fixed file-name and initial content
          */
-        explicit TemporaryFile(const std::string& fileName, std::istream& data);
+        explicit TemporaryFile(const std::string& fileName, std::istream& data, bool hasStaticLifetime = false);
         /*
          * Creates and manages a new temporary file with fixed file-name and initial content
          */
@@ -93,6 +93,10 @@ namespace vc4c
         void openInputStream(std::unique_ptr<std::istream>& ptr) const;
 
         const std::string fileName;
+
+    private:
+        // this temporary file lives as long as the program lives
+        bool isStaticTemporary;
     };
 
     /*

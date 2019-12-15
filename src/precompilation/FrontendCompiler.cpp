@@ -302,7 +302,7 @@ void precompilation::disassembleSPIRV(SPIRVSource&& source, const std::string& u
 static std::string getEmptyModule()
 {
     static TemporaryFile emptyModule = []() {
-        TemporaryFile empty{"/tmp/vc4c-empty-XXXXXX"};
+        TemporaryFile empty{"/tmp/vc4c-empty-XXXXXX", true};
 
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Compiling empty module to work around llvm-link bug/feature..." << logging::endl);

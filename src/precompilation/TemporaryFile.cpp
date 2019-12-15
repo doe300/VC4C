@@ -18,7 +18,8 @@ using namespace vc4c;
 
 static const std::string TEMP_FILE_TEMPLATE = "XXXXXX";
 
-TemporaryFile::TemporaryFile(const std::string& fileTemplate) : fileName(fileTemplate)
+TemporaryFile::TemporaryFile(const std::string& fileTemplate, bool hasStaticLifetime) :
+    fileName(fileTemplate), isStaticTemporary(hasStaticLifetime)
 {
     // make sure, the format is as expected by mkstemp()
     // taken from: https://stackoverflow.com/questions/20446201/how-to-check-if-string-ends-with-txt#20446239
@@ -40,7 +41,8 @@ TemporaryFile::TemporaryFile(const std::string& fileTemplate) : fileName(fileTem
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Temporary file '" << fileName << "' created" << logging::endl);
 }
 
-TemporaryFile::TemporaryFile(const std::string& fileName, std::istream& data) : fileName(fileName)
+TemporaryFile::TemporaryFile(const std::string& fileName, std::istream& data, bool hasStaticLifetime) :
+    fileName(fileName), isStaticTemporary(hasStaticLifetime)
 {
     if(fileName.find("/tmp/") != 0)
         CPPLOG_LAZY(
@@ -62,7 +64,8 @@ TemporaryFile::TemporaryFile(const std::string& fileName, const std::vector<char
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Temporary file '" << fileName << "' created" << logging::endl);
 }
 
-TemporaryFile::TemporaryFile(TemporaryFile&& other) noexcept : fileName(other.fileName)
+TemporaryFile::TemporaryFile(TemporaryFile&& other) noexcept :
+    fileName(other.fileName), isStaticTemporary(other.isStaticTemporary)
 {
     const_cast<std::string&>(other.fileName) = "";
 }
@@ -75,9 +78,12 @@ TemporaryFile::~TemporaryFile()
     // since C++ doesn't like exceptions in destructors, just print an error-message and continue
     if(remove(fileName.data()) < 0)
     {
-        logging::error() << "Failed to remove temporary file: " << strerror(errno) << logging::endl;
+        if(!isStaticTemporary)
+            logging::error() << "Failed to remove temporary file: " << strerror(errno) << logging::endl;
     }
-    CPPLOG_LAZY(logging::Level::DEBUG, log << "Temporary file '" << fileName << "' deleted" << logging::endl);
+    if(!isStaticTemporary)
+        // if this object has static lifetime, the logger might no longer exist when the destructor is called
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Temporary file '" << fileName << "' deleted" << logging::endl);
 }
 
 void TemporaryFile::openOutputStream(std::unique_ptr<std::ostream>& ptr) const
