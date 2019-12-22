@@ -55,6 +55,12 @@ Local* BranchLabel::getLabel()
     return assertArgument(0).local();
 }
 
+bool BranchLabel::innerEquals(const IntermediateInstruction& other) const
+{
+    // no extra fields to check
+    return dynamic_cast<const BranchLabel*>(&other);
+}
+
 Branch::Branch(const Local* target, const ConditionCode condCode, const Value& cond) :
     IntermediateInstruction({}, condCode)
 {
@@ -152,6 +158,12 @@ const Value& Branch::getCondition() const
     return assertArgument(1);
 }
 
+bool Branch::innerEquals(const IntermediateInstruction& other) const
+{
+    // no extra fields to check
+    return dynamic_cast<const Branch*>(&other);
+}
+
 PhiNode::PhiNode(
     Value&& dest, std::vector<std::pair<Value, const Local*>>&& labelPairs, ConditionCode cond, SetFlag setFlags) :
     IntermediateInstruction(std::move(dest), cond, setFlags)
@@ -205,4 +217,10 @@ FastMap<const Local*, Value> PhiNode::getValuesForLabels() const
         res.emplace(assertArgument(i).local(), assertArgument(i + 1));
     }
     return res;
+}
+
+bool PhiNode::innerEquals(const IntermediateInstruction& other) const
+{
+    // no extra fields to check
+    return dynamic_cast<const PhiNode*>(&other);
 }

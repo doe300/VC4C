@@ -145,6 +145,19 @@ IntermediateInstruction::~IntermediateInstruction()
         const_cast<Local*>(pair.first)->removeUser(*this, LocalUse::Type::BOTH);
 }
 
+bool IntermediateInstruction::operator==(const IntermediateInstruction& other) const
+{
+    if(this == &other)
+        return true;
+    if(signal != other.signal || unpackMode != other.unpackMode || packMode != other.packMode ||
+        conditional != other.conditional || setFlags != other.setFlags || canBeCombined != other.canBeCombined ||
+        decoration != other.decoration)
+        return false;
+    if(output != other.output || arguments != other.arguments)
+        return false;
+    return innerEquals(other);
+}
+
 bool IntermediateInstruction::mapsToASMInstruction() const
 {
     return true;

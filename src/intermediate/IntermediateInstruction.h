@@ -147,6 +147,12 @@ namespace vc4c
             IntermediateInstruction& operator=(const IntermediateInstruction&) = delete;
             IntermediateInstruction& operator=(IntermediateInstruction&&) = delete;
 
+            bool operator==(const IntermediateInstruction& other) const;
+            inline bool operator!=(const IntermediateInstruction& other) const
+            {
+                return !(*this == other);
+            }
+
             virtual FastMap<const Local*, LocalUse::Type> getUsedLocals() const;
             virtual void forUsedLocals(
                 const std::function<void(const Local*, LocalUse::Type, const IntermediateInstruction&)>& consumer)
@@ -345,6 +351,8 @@ namespace vc4c
 
             Optional<Value> getPrecalculatedValueForArg(std::size_t argIndex, std::size_t numIterations) const;
 
+            virtual bool innerEquals(const IntermediateInstruction& other) const = 0;
+
         private:
             Optional<Value> output;
             std::vector<Value> arguments;
@@ -387,6 +395,9 @@ namespace vc4c
 
             OpCode op;
             CombinedOperation* parent;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
         };
 
         /*
@@ -412,6 +423,9 @@ namespace vc4c
             const Optional<Value> getSecondArg() const;
 
             std::string opCode;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
         };
 
         struct MethodCall final : public IntermediateInstruction
@@ -431,6 +445,9 @@ namespace vc4c
             bool matchesSignature(const Method& method) const;
 
             std::string methodName;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
         };
 
         struct Return final : public IntermediateInstruction
@@ -447,6 +464,9 @@ namespace vc4c
             bool isNormalized() const override;
 
             Optional<Value> getReturnValue() const;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
         };
 
         struct MoveOperation : public IntermediateInstruction
@@ -475,6 +495,9 @@ namespace vc4c
              * triggering any side-effects, unpacking or packing any values.
              */
             virtual bool isSimpleMove() const;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
         };
 
         enum class RotationType : unsigned char
@@ -527,6 +550,9 @@ namespace vc4c
             bool isFullRotationAllowed() const;
 
             RotationType type;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
         };
 
         struct BranchLabel final : public IntermediateInstruction
@@ -544,6 +570,9 @@ namespace vc4c
 
             const Local* getLabel() const;
             Local* getLabel();
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
         };
 
         struct Branch final : public IntermediateInstruction
@@ -562,6 +591,9 @@ namespace vc4c
 
             bool isUnconditional() const;
             const Value& getCondition() const;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
         };
 
         enum class DelayType : unsigned char
@@ -597,6 +629,9 @@ namespace vc4c
             bool isNormalized() const override;
 
             DelayType type;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
         };
 
         // names are according to LLVM names
@@ -684,6 +719,9 @@ namespace vc4c
 
             const std::unique_ptr<IntermediateInstruction> op1;
             const std::unique_ptr<IntermediateInstruction> op2;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
         };
 
         /**
@@ -750,6 +788,9 @@ namespace vc4c
 
             static SIMDVector toLoadedValues(uint32_t mask, LoadType type);
             static uint32_t fromLoadedValues(SIMDVector values, LoadType type);
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
         };
 
         /*
@@ -785,6 +826,9 @@ namespace vc4c
 
             const Semaphore semaphore;
             const bool increase;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
         };
 
         struct PhiNode final : public IntermediateInstruction
@@ -801,6 +845,9 @@ namespace vc4c
             bool isNormalized() const override;
 
             FastMap<const Local*, Value> getValuesForLabels() const;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
         };
 
         /*
@@ -868,6 +915,9 @@ namespace vc4c
 
             MemoryScope scope;
             MemorySemantics semantics;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
         };
 
         /*
@@ -889,6 +939,9 @@ namespace vc4c
             const Value& getStackAllocation() const;
 
             bool isLifetimeEnd;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
         };
 
         enum class MutexAccess : unsigned char
@@ -915,6 +968,9 @@ namespace vc4c
 
             bool locksMutex() const;
             bool releasesMutex() const;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
 
         private:
             MutexAccess accessType;
@@ -978,6 +1034,9 @@ namespace vc4c
 
             const MemoryOperation op;
             const bool guardAccess;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
         };
     } // namespace intermediate
 } // namespace vc4c

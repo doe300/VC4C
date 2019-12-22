@@ -53,6 +53,13 @@ IntermediateInstruction* SemaphoreAdjustment::copyFor(Method& method, const std:
     return (new SemaphoreAdjustment(semaphore, increase))->copyExtrasFrom(this)->setOutput(getOutput());
 }
 
+bool SemaphoreAdjustment::innerEquals(const IntermediateInstruction& other) const
+{
+    if(auto otherSema = dynamic_cast<const SemaphoreAdjustment*>(&other))
+        return semaphore == otherSema->semaphore && increase == otherSema->increase;
+    return false;
+}
+
 MemoryBarrier::MemoryBarrier(const MemoryScope scope, const MemorySemantics semantics) :
     IntermediateInstruction(Optional<Value>{}), scope(scope), semantics(semantics)
 {
@@ -129,6 +136,13 @@ bool MemoryBarrier::mapsToASMInstruction() const
     return false;
 }
 
+bool MemoryBarrier::innerEquals(const IntermediateInstruction& other) const
+{
+    if(auto otherBarrier = dynamic_cast<const MemoryBarrier*>(&other))
+        return scope == otherBarrier->scope && semantics == otherBarrier->semantics;
+    return false;
+}
+
 LifetimeBoundary::LifetimeBoundary(const Value& allocation, const bool lifetimeEnd) :
     IntermediateInstruction(Optional<Value>{}), isLifetimeEnd(lifetimeEnd)
 {
@@ -172,6 +186,13 @@ bool LifetimeBoundary::mapsToASMInstruction() const
 const Value& LifetimeBoundary::getStackAllocation() const
 {
     return assertArgument(0);
+}
+
+bool LifetimeBoundary::innerEquals(const IntermediateInstruction& other) const
+{
+    if(auto otherBound = dynamic_cast<const LifetimeBoundary*>(&other))
+        return isLifetimeEnd == otherBound->isLifetimeEnd;
+    return false;
 }
 
 static const Value MUTEX_REGISTER(REG_MUTEX, TYPE_BOOL);
@@ -223,4 +244,11 @@ bool MutexLock::locksMutex() const
 bool MutexLock::releasesMutex() const
 {
     return accessType == MutexAccess::RELEASE;
+}
+
+bool MutexLock::innerEquals(const IntermediateInstruction& other) const
+{
+    if(auto otherLock = dynamic_cast<const MutexLock*>(&other))
+        return accessType == otherLock->accessType;
+    return false;
 }

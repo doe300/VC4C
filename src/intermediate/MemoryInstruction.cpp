@@ -261,3 +261,10 @@ FastSet<const Local*> MemoryInstruction::getMemoryAreas() const
     }
     return res;
 }
+
+bool MemoryInstruction::innerEquals(const IntermediateInstruction& other) const
+{
+    if(auto otherMem = dynamic_cast<const MemoryInstruction*>(&other))
+        return op == otherMem->op && guardAccess == otherMem->guardAccess;
+    return false;
+}

@@ -212,3 +212,10 @@ uint32_t LoadImmediate::fromLoadedValues(SIMDVector values, LoadType type)
     }
     throw CompilationError(CompilationStep::GENERAL, "Invalid load type", std::to_string(static_cast<unsigned>(type)));
 }
+
+bool LoadImmediate::innerEquals(const IntermediateInstruction& other) const
+{
+    if(auto otherLoad = dynamic_cast<const LoadImmediate*>(&other))
+        return type == otherLoad->type;
+    return false;
+}

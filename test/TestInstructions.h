@@ -37,9 +37,11 @@ public:
     void testCompoundConstants();
 
     void testALUInstructions();
-    void testLoadInstriction();
+    void testLoadInstruction();
 
     void testValueRanges();
+    
+    void testInstructionEquality();
 };
 
 #endif /* TEST_INSTRUCTIONS_H */

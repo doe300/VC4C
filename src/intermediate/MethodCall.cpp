@@ -103,6 +103,13 @@ bool MethodCall::matchesSignature(const Method& method) const
     return true;
 }
 
+bool MethodCall::innerEquals(const IntermediateInstruction& other) const
+{
+    if(auto otherCall = dynamic_cast<const MethodCall*>(&other))
+        return methodName == otherCall->methodName;
+    return false;
+}
+
 Return::Return(Value&& val) : IntermediateInstruction(Optional<Value>{})
 {
     setArgument(0, std::move(val));
@@ -143,4 +150,10 @@ bool Return::isNormalized() const
 Optional<Value> Return::getReturnValue() const
 {
     return getArgument(0);
+}
+
+bool Return::innerEquals(const IntermediateInstruction& other) const
+{
+    // no extra fields to check
+    return dynamic_cast<const Return*>(&other);
 }

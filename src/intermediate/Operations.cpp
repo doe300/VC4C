@@ -403,6 +403,13 @@ bool Operation::isSimpleOperation() const
     return !hasSideEffects() && !unpackMode.hasEffect() && !packMode.hasEffect();
 }
 
+bool Operation::innerEquals(const IntermediateInstruction& other) const
+{
+    if(auto otherOp = dynamic_cast<const Operation*>(&other))
+        return op == otherOp->op;
+    return false;
+}
+
 IntrinsicOperation::IntrinsicOperation(
     std::string&& opCode, Value&& dest, Value&& arg0, const ConditionCode cond, const SetFlag setFlags) :
     IntermediateInstruction(std::move(dest), cond, setFlags),
@@ -464,6 +471,13 @@ const Value& IntrinsicOperation::getFirstArg() const
 const Optional<Value> IntrinsicOperation::getSecondArg() const
 {
     return getArgument(1);
+}
+
+bool IntrinsicOperation::innerEquals(const IntermediateInstruction& other) const
+{
+    if(auto otherOp = dynamic_cast<const IntrinsicOperation*>(&other))
+        return opCode == otherOp->opCode;
+    return false;
 }
 
 MoveOperation::MoveOperation(const Value& dest, const Value& arg, const ConditionCode cond, const SetFlag setFlags) :
@@ -574,6 +588,12 @@ const Value& MoveOperation::getSource() const
 bool MoveOperation::isSimpleMove() const
 {
     return !hasSideEffects() && !unpackMode.hasEffect() && !packMode.hasEffect();
+}
+
+bool MoveOperation::innerEquals(const IntermediateInstruction& other) const
+{
+    // no extra fields to check
+    return dynamic_cast<const MoveOperation*>(&other);
 }
 
 VectorRotation::VectorRotation(const Value& dest, const Value& src, const Value& offset, RotationType type,
@@ -689,6 +709,13 @@ bool VectorRotation::isFullRotationAllowed() const
     return type != RotationType::PER_QUAD;
 }
 
+bool VectorRotation::innerEquals(const IntermediateInstruction& other) const
+{
+    if(auto otherRot = dynamic_cast<const VectorRotation*>(&other))
+        return type == otherRot->type;
+    return false;
+}
+
 LCOV_EXCL_START
 static std::string toTypeString(DelayType delay)
 {
@@ -743,6 +770,13 @@ qpu_asm::DecoratedInstruction Nop::convertToAsm(const FastMap<const Local*, Regi
 bool Nop::isNormalized() const
 {
     return true;
+}
+
+bool Nop::innerEquals(const IntermediateInstruction& other) const
+{
+    if(auto otherNop = dynamic_cast<const Nop*>(&other))
+        return type == otherNop->type;
+    return false;
 }
 
 Comparison::Comparison(std::string&& comp, Value&& dest, Value&& val0, Value&& val1) :
@@ -907,4 +941,16 @@ const Operation* CombinedOperation::getFirstOp() const
 const Operation* CombinedOperation::getSecondOP() const
 {
     return dynamic_cast<const Operation*>(op2.get());
+}
+
+bool CombinedOperation::innerEquals(const IntermediateInstruction& other) const
+{
+    if(auto otherComb = dynamic_cast<const CombinedOperation*>(&other))
+    {
+        if(op1 && (!otherComb->op1 || *op1 != *otherComb->op1))
+            return false;
+        if(op2 && (!otherComb->op2 || *op2 != *otherComb->op2))
+            return false;
+    }
+    return false;
 }

@@ -9,6 +9,7 @@
 #include "Bitfield.h"
 #include "GlobalValues.h"
 #include "HalfType.h"
+#include "Module.h"
 #include "Values.h"
 #include "analysis/ValueRange.h"
 #include "asm/ALUInstruction.h"
@@ -44,8 +45,9 @@ TestInstructions::TestInstructions()
     TEST_ADD(TestInstructions::testTypes);
     TEST_ADD(TestInstructions::testCompoundConstants);
     TEST_ADD(TestInstructions::testALUInstructions);
-    TEST_ADD(TestInstructions::testLoadInstriction);
+    TEST_ADD(TestInstructions::testLoadInstruction);
     TEST_ADD(TestInstructions::testValueRanges);
+    TEST_ADD(TestInstructions::testInstructionEquality);
 }
 
 // out-of-line virtual destructor
@@ -1570,7 +1572,7 @@ void TestInstructions::testALUInstructions()
     TEST_ASSERT(ins.toBinaryCode() == ins.as<ALUInstruction>()->toBinaryCode())
 }
 
-void TestInstructions::testLoadInstriction()
+void TestInstructions::testLoadInstruction()
 {
     using namespace vc4c::qpu_asm;
 
@@ -1744,4 +1746,165 @@ void TestInstructions::testValueRanges()
         analysis::ValueRange::getValueRange(intermediate::InstructionDecorations::BUILTIN_GROUP_ID))
     TEST_ASSERT_EQUALS(analysis::ValueRange(1.0, 3.0),
         analysis::ValueRange::getValueRange(intermediate::InstructionDecorations::BUILTIN_WORK_DIMENSIONS))
+}
+
+void TestInstructions::testInstructionEquality()
+{
+    Configuration config{};
+    Module module{config};
+    Method method(module);
+
+    intermediate::Operation op1(OP_AND, UNIFORM_REGISTER, UNIFORM_REGISTER, Value(Literal(16), TYPE_INT32));
+    op1.setCondition(COND_NEGATIVE_CLEAR);
+    op1.setPackMode(PACK_32_16A_S);
+    op1.setSetFlags(SetFlag::SET_FLAGS);
+    op1.setSignaling(SIGNAL_LOAD_COLOR_END);
+    op1.setUnpackMode(UNPACK_16B_32);
+
+    std::unique_ptr<intermediate::IntermediateInstruction> op2(op1.copyFor(method, "test"));
+
+    TEST_ASSERT_EQUALS(op1, *op2)
+    op1.setCondition(COND_ALWAYS);
+    TEST_ASSERT(op1 != *op2)
+    op1.setCondition(COND_NEGATIVE_CLEAR);
+    TEST_ASSERT_EQUALS(op1, *op2)
+    op1.setPackMode(PACK_NOP);
+    TEST_ASSERT(op1 != *op2)
+    op1.setPackMode(PACK_32_16A_S);
+    TEST_ASSERT_EQUALS(op1, *op2)
+    op1.setSetFlags(SetFlag::DONT_SET);
+    TEST_ASSERT(op1 != *op2)
+    op1.setSetFlags(SetFlag::SET_FLAGS);
+    TEST_ASSERT_EQUALS(op1, *op2)
+    op1.setSignaling(SIGNAL_NONE);
+    TEST_ASSERT(op1 != *op2)
+    op1.setSignaling(SIGNAL_LOAD_COLOR_END);
+    TEST_ASSERT_EQUALS(op1, *op2)
+    op1.setUnpackMode(UNPACK_NOP);
+    TEST_ASSERT(op1 != *op2)
+    op1.setUnpackMode(UNPACK_16B_32);
+    TEST_ASSERT_EQUALS(op1, *op2)
+    op1.setOutput(NO_VALUE);
+    TEST_ASSERT(op1 != *op2)
+    op1.setOutput(UNIFORM_REGISTER);
+    TEST_ASSERT_EQUALS(op1, *op2)
+    op1.op = OP_OR;
+    TEST_ASSERT(op1 != *op2)
+    op1.op = OP_AND;
+    TEST_ASSERT_EQUALS(op1, *op2)
+    op1.setArgument(0, INT_ZERO);
+    TEST_ASSERT(op1 != *op2)
+    op1.setArgument(0, UNIFORM_REGISTER);
+    TEST_ASSERT_EQUALS(op1, *op2)
+
+    {
+        intermediate::IntrinsicOperation inst("dummy", Value(NOP_REGISTER), Value(INT_ONE), Value(INT_MINUS_ONE));
+        op2.reset(inst.copyFor(method, ""));
+        TEST_ASSERT_EQUALS(inst, *op2)
+        inst.opCode = "another";
+        TEST_ASSERT(inst != *op2)
+    }
+
+    {
+        intermediate::MethodCall inst(Value(NOP_REGISTER), "dummy", {INT_ONE, INT_MINUS_ONE});
+        op2.reset(inst.copyFor(method, ""));
+        TEST_ASSERT_EQUALS(inst, *op2)
+        inst.methodName = "another";
+        TEST_ASSERT(inst != *op2)
+    }
+
+    // {
+    //     intermediate::Return inst{Value(INT_MINUS_ONE)};
+    //     op2.reset(inst.copyFor(method, ""));
+    //     TEST_ASSERT_EQUALS(inst, *op2)
+    // }
+
+    {
+        intermediate::MoveOperation inst{Value(NOP_REGISTER), Value(INT_MINUS_ONE)};
+        op2.reset(inst.copyFor(method, ""));
+        TEST_ASSERT_EQUALS(inst, *op2)
+        inst.setSource(Value(INT_ZERO));
+        TEST_ASSERT(inst != *op2)
+    }
+
+    {
+        intermediate::VectorRotation inst(Value(NOP_REGISTER), INT_ONE, INT_ZERO, intermediate::RotationType::FULL);
+        op2.reset(inst.copyFor(method, ""));
+        TEST_ASSERT_EQUALS(inst, *op2)
+        inst.setSource(Value(FLOAT_NAN));
+        TEST_ASSERT(inst != *op2)
+    }
+
+    {
+        intermediate::BranchLabel inst(*method.addNewLocal(TYPE_LABEL).local());
+        op2.reset(inst.copyFor(method, ""));
+        TEST_ASSERT_EQUALS(inst, *op2)
+    }
+
+    {
+        intermediate::Branch inst(method.addNewLocal(TYPE_LABEL).local(), COND_ZERO_CLEAR, UNIFORM_REGISTER);
+        op2.reset(inst.copyFor(method, ""));
+        TEST_ASSERT_EQUALS(inst, *op2)
+        inst.setCondition(COND_ZERO_SET);
+        TEST_ASSERT(inst != *op2)
+    }
+
+    {
+        intermediate::Nop inst(intermediate::DelayType::WAIT_SFU);
+        op2.reset(inst.copyFor(method, ""));
+        TEST_ASSERT_EQUALS(inst, *op2)
+        inst.type = intermediate::DelayType::WAIT_UNIFORM;
+        TEST_ASSERT(inst != *op2)
+    }
+
+    {
+        intermediate::Comparison inst(
+            intermediate::COMP_FALSE, Value(NOP_REGISTER), Value(INT_ONE), Value(INT_MINUS_ONE));
+        op2.reset(inst.copyFor(method, ""));
+        TEST_ASSERT_EQUALS(inst, *op2)
+        inst.opCode = "another";
+        TEST_ASSERT(inst != *op2)
+    }
+
+    {
+        intermediate::LoadImmediate inst(Value(NOP_REGISTER), Literal(16));
+        op2.reset(inst.copyFor(method, ""));
+        TEST_ASSERT_EQUALS(inst, *op2)
+        inst.setImmediate(Literal(42u));
+        TEST_ASSERT(inst != *op2)
+    }
+
+    {
+        intermediate::SemaphoreAdjustment inst(Semaphore::BARRIER_WORK_ITEM_9, true);
+        op2.reset(inst.copyFor(method, ""));
+        TEST_ASSERT_EQUALS(inst, *op2)
+    }
+
+    {
+        intermediate::PhiNode inst(Value(NOP_REGISTER),
+            {{Value(INT_ONE), method.addNewLocal(TYPE_LABEL).local()},
+                {Value(INT_MINUS_ONE), method.addNewLocal(TYPE_LABEL).local()}});
+        op2.reset(inst.copyFor(method, ""));
+        TEST_ASSERT_EQUALS(inst, *op2)
+    }
+
+    {
+        intermediate::MemoryBarrier inst(intermediate::MemoryScope::WORK_GROUP, intermediate::MemorySemantics::ACQUIRE);
+        op2.reset(inst.copyFor(method, ""));
+        TEST_ASSERT_EQUALS(inst, *op2)
+        inst.scope = intermediate::MemoryScope::DEVICE;
+        TEST_ASSERT(inst != *op2)
+    }
+
+    // {
+    //     intermediate::LifetimeBoundary inst(method.addNewLocal(TYPE_FLOAT), false);
+    //     op2.reset(inst.copyFor(method, ""));
+    //     TEST_ASSERT_EQUALS(inst, *op2)
+    // }
+
+    {
+        intermediate::MutexLock inst(intermediate::MutexAccess::LOCK);
+        op2.reset(inst.copyFor(method, ""));
+        TEST_ASSERT_EQUALS(inst, *op2)
+    }
 }
