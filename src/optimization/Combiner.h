@@ -132,7 +132,7 @@ namespace vc4c
          * Combines arithmetic operations if the result of the first operation is used as the second operation and the
          * operations allow combining (e.g. no side-effects).
          *
-         * Also, the combining is only done if an instruction ca be saved (e.g. intermediate result has single usage)
+         * Also, the combining is only done if an instruction can be saved (e.g. intermediate result has single usage)
          *
          * Example:
          *   %a = add %b, 3

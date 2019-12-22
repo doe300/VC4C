@@ -28,6 +28,7 @@
 #include "TestIntrinsics.h"
 #include "TestExpressions.h"
 #include "TestPatternMatching.h"
+#include "TestOptimizationSteps.h"
 
 #include "tools.h"
 #include "logger.h"
@@ -125,6 +126,7 @@ int main(int argc, char** argv)
     //only output errors
     logging::LOGGER.reset(new logging::ConsoleLogger(logging::Level::WARNING));
 
+    Test::registerSuite(Test::newInstance<TestOptimizationSteps>, "test-optimization-steps", "Runs unit tests on the single optimization steps");
     Test::registerSuite(Test::newInstance<TestOptimizations>, "test-optimizations", "Runs smoke tests on the single optimization steps");
     Test::registerSuite(Test::newInstance<TestOperators>, "test-operators", "Tests the implementation of some operators");
     Test::registerSuite(Test::newInstance<TestInstructions>, "test-instructions", "Tests some common instruction handling");

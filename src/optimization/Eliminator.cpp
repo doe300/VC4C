@@ -935,10 +935,20 @@ InstructionWalker optimizations::rewriteConstantSFUCall(
 {
     if(!it.has() || !(it->checkOutputRegister() & &Register::isSpecialFunctionsUnit))
         return it;
+    if(it->hasConditionalExecution())
+        // if we write conditionally to SFU, there might be another conditional write to SFU (if this is allowed at
+        // all!!)
+        return it;
+    if(remove_flag(it->getSideEffects(), intermediate::SideEffectType::REGISTER_WRITE) !=
+        intermediate::SideEffectType::NONE)
+        // there are other side-effects for this instruction writing into SFU, which we cannot remove
+        return it;
+    if(it->hasPackMode() || it->hasUnpackMode())
+        return it;
 
     auto constantValue = it->precalculate(3).first;
-    auto result = constantValue ? periphery::precalculateSFU(it->getOutput()->reg(), constantValue.value()) : NO_VALUE;
-    if(result)
+    if(auto result =
+            constantValue ? periphery::precalculateSFU(it->getOutput()->reg(), constantValue.value()) : NO_VALUE)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Replacing SFU call with constant input '" << it->to_string()

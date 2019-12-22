@@ -164,7 +164,7 @@ InstructionWalker optimizations::combineSameFlags(
     InstructionWalker checkIt = it.copy().previousInBlock();
     while(!checkIt.isStartOfBlock())
     {
-        if(checkIt.get() && checkIt->setFlags == SetFlag::SET_FLAGS)
+        if(checkIt.get() && checkIt->doesSetFlag())
         {
             if(checkIt.get<intermediate::MoveOperation>() != nullptr &&
                 checkIt.get<intermediate::MoveOperation>()->getSource() == src && checkIt->conditional == COND_ALWAYS)
@@ -187,6 +187,8 @@ InstructionWalker optimizations::combineSameFlags(
 InstructionWalker optimizations::combineFlagWithOutput(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
+    // XXX this currently never moves the value-moves to the flag-moves, only the flag-moves to the value-moves
+    // -> does not increase local liveness, but on the other side, we could save instructions...
     if(!it.has() || !it->doesSetFlag())
         // does not set flags
         return it;
@@ -201,7 +203,7 @@ InstructionWalker optimizations::combineFlagWithOutput(
         (in.checkRegister() && in.reg().hasSideEffectsOnRead()))
         // only remove this setting of flags, if we have no other side effects and don't execute conditionally
         return it;
-    const auto checkFunc = [&](InstructionWalker checkIt) -> bool {
+    const auto movesFromSameInput = [&](InstructionWalker checkIt) -> bool {
         return checkIt.has() && !checkIt->doesSetFlag() && !checkIt->hasSideEffects() &&
             checkIt.get<intermediate::MoveOperation>() &&
             (checkIt->assertArgument(0) == in ||
@@ -214,9 +216,16 @@ InstructionWalker optimizations::combineFlagWithOutput(
     while(!checkIt.isEndOfBlock())
     {
         // this is usually only executed few times, since setting of flags and usage thereof are close to each other
-        if(checkIt.has() && (checkIt->hasConditionalExecution() || checkIt->doesSetFlag()))
+        if(checkIt.has() &&
+            (checkIt->hasConditionalExecution() || checkIt->doesSetFlag() || checkIt->getOutput() == in))
+            /*
+             * Abort, since we cannot move a setting of flags over:
+             * - a conditional instruction (depending on this flags)
+             * - the next setting of flags
+             * - an instruction writing the flag source
+             */
             break;
-        if(checkFunc(checkIt))
+        if(movesFromSameInput(checkIt))
         {
             resultIt = checkIt;
             break;
@@ -234,8 +243,14 @@ InstructionWalker optimizations::combineFlagWithOutput(
 
             if(checkIt.has() &&
                 (checkIt->hasConditionalExecution() || checkIt->doesSetFlag() || checkIt->getOutput() == in))
+                /*
+                 * Abort, since we cannot move a setting of flags over:
+                 * - a conditional instruction (depending on the previous flags)
+                 * - the previous setting of flags
+                 * - an instruction writing the flag source
+                 */
                 break;
-            if(checkFunc(checkIt))
+            if(movesFromSameInput(checkIt))
             {
                 resultIt = checkIt;
                 break;

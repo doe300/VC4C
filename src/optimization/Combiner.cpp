@@ -766,17 +766,26 @@ InstructionWalker optimizations::combineSelectionWithZero(
         return it;
     if(it->getOutput().value() != nextIt->getOutput().value())
         return it;
-    if(it->conditional == COND_ALWAYS || nextIt->conditional == COND_ALWAYS ||
+    if(!it->hasConditionalExecution() || !nextIt->hasConditionalExecution() ||
         !it->conditional.isInversionOf(nextIt->conditional))
         return it;
     // For conditional moves, the source could be written conditionally
-    // TODO improve by removing the condition of the source and allow combining
-    // XXX actually would need to check if the condition is the same as the condition for the moves
-    if(it->hasConditionalExecution() || nextIt->hasConditionalExecution())
-        return it;
+    for(auto inst : {move, nextMove})
+    {
+        if(auto loc = inst->getSource().checkLocal())
+        {
+            // For now, don't combine if either source is written conditionally
+            // TODO improve by removing the condition of the source and allow combining
+            // XXX actually would need to check if the condition is the same as the condition for the moves
+            auto writers = loc->getUsers(LocalUse::Type::WRITER);
+            if(std::any_of(writers.begin(), writers.end(),
+                   [](const LocalUser* writer) -> bool { return writer->hasConditionalExecution(); }))
+                return it;
+        }
+    }
     // we have two consecutive moves to the same value, without side-effects and inverted conditions.
     // additionally, one of the moves writes a zero-vale
-    if(move->getSource().hasLiteral(INT_ZERO.literal()) && !nextMove->getSource().hasLiteral(INT_ZERO.literal()))
+    if(move->getSource().hasLiteral(0_lit) && !nextMove->getSource().hasLiteral(0_lit))
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Rewriting selection of either zero or " << nextMove->getSource().to_string()
@@ -786,7 +795,7 @@ InstructionWalker optimizations::combineSelectionWithZero(
         // to process this instruction again (e.g. loading literals)
         it.previousInBlock();
     }
-    else if(nextMove->getSource().hasLiteral(INT_ZERO.literal()))
+    else if(nextMove->getSource().hasLiteral(0_lit))
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Rewriting selection of either " << move->getSource().to_string() << " or zero using only one input"
@@ -871,7 +880,7 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                     else if(rot->type == RotationType::FULL)
                     {
                         // rotate upper and lower parts by given offset and reset rotation with load!
-                        auto lit = writer->assertArgument(0).literal().unsignedInt();
+                        auto lit = writer->assertArgument(0).getLiteralValue().value().unsignedInt();
                         auto offset = rot->getOffset().immediate().getRotationOffset();
                         auto upper = rotate_left_halfword(lit >> 16, *offset) << 16;
                         auto lower = rotate_left_halfword(lit & 0xFFFF, *offset);
@@ -1013,7 +1022,8 @@ InstructionWalker optimizations::combineArithmeticOperations(
     auto lastIt = it.getBasicBlock()->findWalkerForInstruction(singleWriter, it);
     if(lastIt)
     {
-        lastIt->reset(new Operation(op->op, it->getOutput().value(), origArg, precalc.value()));
+        lastIt->reset(
+            (new Operation(op->op, it->getOutput().value(), origArg, precalc.value()))->copyExtrasFrom(it.get()));
         it.erase();
         // don't skip next instruction
         it.previousInBlock();
@@ -1068,7 +1078,7 @@ static Optional<std::pair<Value, InstructionDecorations>> combineAdditions(
 //     else if(secondVal)
 //         resultVal = secondVal;
 //     if(range.typeSizeShift)
-//         (*range.typeSizeShift)->setArgument(0, std::move(resultVal->first));
+//         const_cast<intermediate::Operation*>(range.typeSizeShift)->setArgument(0, std::move(resultVal->first));
 //     else
 //         // TODO replace index variable with new index variable
 //         throw CompilationError(
