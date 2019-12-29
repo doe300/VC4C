@@ -29,6 +29,10 @@ static void handleSignal(int signal)
 {
     logging::error() << "Received signal: " << toName(signal) << logging::endl;
     vc4c::CompilationError::logBacktrace();
+
+    // registering a signal handler overrides the default behavior (of crahsing the program)
+    // to still abort correctly, we need to manually kill it
+    exit(signal);
 }
 
 static auto action = []() {

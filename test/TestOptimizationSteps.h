@@ -25,6 +25,13 @@ public:
     void testCombineArithmetics();
     void testRewriteConstantSFU();
 
+    void testSimplifyBranches();
+    void testCombineConstantLoads();
+    void testEliminateBitOperations();
+    void testCombineRotations();
+    void testEliminateMoves();
+    void testEliminateDeadCode();
+
 private:
     void testMethodsEquals(vc4c::Method& m1, vc4c::Method& m2);
 };

@@ -391,6 +391,12 @@ BasicBlock& Method::createAndInsertNewBlock(BasicBlockList::iterator position, c
 
 InstructionWalker Method::emplaceLabel(InstructionWalker it, intermediate::BranchLabel* label)
 {
+    if(basicBlocks.empty())
+    {
+        auto& newBlock = *basicBlocks.emplace(basicBlocks.begin(), *this, label);
+        updateCFGOnBlockInsertion(&newBlock);
+        return newBlock.walk();
+    }
     auto blockIt = begin();
     while(blockIt != end())
     {

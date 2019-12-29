@@ -28,6 +28,10 @@ TestOptimizationSteps::TestOptimizationSteps()
     TEST_ADD(TestOptimizationSteps::testSimplifyArithmetics);
     TEST_ADD(TestOptimizationSteps::testCombineArithmetics);
     TEST_ADD(TestOptimizationSteps::testRewriteConstantSFU);
+    TEST_ADD(TestOptimizationSteps::testSimplifyBranches);
+    TEST_ADD(TestOptimizationSteps::testCombineConstantLoads);
+    TEST_ADD(TestOptimizationSteps::testEliminateBitOperations);
+    TEST_ADD(TestOptimizationSteps::testCombineRotations);
 }
 
 static bool checkEquals(
@@ -45,17 +49,25 @@ void TestOptimizationSteps::testMethodsEquals(vc4c::Method& m1, vc4c::Method& m2
     auto inIt = m1.walkAllInstructions();
     auto outIt = m2.walkAllInstructions();
 
-    while(!inIt.isEndOfBlock() && !outIt.isEndOfBlock())
+    while(!inIt.isEndOfMethod() && !outIt.isEndOfMethod())
     {
         if(!checkEquals(inIt.get(), outIt.get()))
         {
             TEST_ASSERT_EQUALS(outIt.has() ? outIt->to_string() : "(null)", inIt.has() ? inIt->to_string() : "(null)")
         }
-        inIt.nextInBlock();
-        outIt.nextInBlock();
+        inIt.nextInMethod();
+        outIt.nextInMethod();
     }
-    TEST_ASSERT(inIt.isEndOfBlock())
-    TEST_ASSERT(outIt.isEndOfBlock())
+    while(!inIt.isEndOfMethod())
+    {
+        TEST_ASSERT_EQUALS("(no more input)", inIt.has() ? inIt->to_string() : "(null)")
+        inIt.nextInMethod();
+    }
+    while(!outIt.isEndOfMethod())
+    {
+        TEST_ASSERT_EQUALS("(no more output)", outIt.has() ? outIt->to_string() : "(null)")
+        outIt.nextInMethod();
+    }
 }
 
 void TestOptimizationSteps::testCombineSelectionWithZero()
@@ -924,5 +936,675 @@ void TestOptimizationSteps::testRewriteConstantSFU()
         it = rewriteConstantSFUCall(module, inputMethod, it, config);
         it.nextInBlock();
     }
+    testMethodsEquals(inputMethod, outputMethod);
+}
+
+void TestOptimizationSteps::testSimplifyBranches()
+{
+    using namespace vc4c::intermediate;
+    Configuration config{};
+    Module module{config};
+    Method inputMethod(module);
+    Method outputMethod(module);
+
+    // test simplification of successive branches to some label (inclusive fall-throughs in between)
+    {
+        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%one").walkEnd();
+        auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%one").walkEnd();
+
+        inIt.emplace(new Branch(inputMethod.findLocal("%one"), COND_ALWAYS, BOOL_TRUE));
+        inIt.nextInBlock();
+        inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%one.remove1").walkEnd();
+        inIt.emplace(new Branch(inputMethod.findLocal("%one"), COND_ALWAYS, BOOL_TRUE));
+        inIt.nextInBlock();
+        inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%one.remove2").walkEnd();
+        inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%one.remove3").walkEnd();
+        inIt.emplace(new Branch(inputMethod.findLocal("%one"), COND_ALWAYS, BOOL_TRUE));
+        inIt.nextInBlock();
+
+        outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%one.remove1").walkEnd();
+        outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%one.remove2").walkEnd();
+        outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%one.remove3").walkEnd();
+        outIt.emplace(new Branch(outputMethod.findLocal("%one"), COND_ALWAYS, BOOL_TRUE));
+        outIt.nextInBlock();
+    }
+
+    // test removal of branch to next instruction
+    {
+        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%second").walkEnd();
+        auto inNextLabel =
+            inputMethod.createAndInsertNewBlock(inputMethod.end(), "%second.next").getLabel()->getLabel();
+        inIt.emplace(new Branch(inNextLabel, COND_ALWAYS, BOOL_TRUE));
+        inIt.nextInBlock();
+
+        outputMethod.createAndInsertNewBlock(outputMethod.end(), "%second");
+        outputMethod.createAndInsertNewBlock(outputMethod.end(), "%second.next");
+    }
+
+    // test removal of if-else branch, if second branch points to next label
+    {
+        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%ifelse").walkEnd();
+        auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse").walkEnd();
+
+        auto inNextLabel =
+            inputMethod.createAndInsertNewBlock(inputMethod.end(), "%ifelse.next").getLabel()->getLabel();
+        outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse.next");
+
+        inIt.emplace(new Branch(inputMethod.findLocal("%ifelse"), COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        inIt.nextInBlock();
+        inIt.emplace(new Branch(inNextLabel, COND_ZERO_SET, UNIFORM_REGISTER));
+        inIt.nextInBlock();
+
+        outIt.emplace(new Branch(outputMethod.findLocal("%ifelse"), COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        outIt.nextInBlock();
+    }
+
+    // test not simplify of successive conditional branches to some label
+    {
+        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third").walkEnd();
+        auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third").walkEnd();
+
+        inIt.emplace(new Branch(inputMethod.findLocal("%third"), COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        inIt.nextInBlock();
+        inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third.notremove1").walkEnd();
+        inIt.emplace(new Branch(inputMethod.findLocal("%third"), COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        inIt.nextInBlock();
+        inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third.notremove2").walkEnd();
+        inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third.notremove3").walkEnd();
+        inIt.emplace(new Branch(inputMethod.findLocal("%third"), COND_ALWAYS, BOOL_TRUE));
+        inIt.nextInBlock();
+
+        outIt.emplace(new Branch(outputMethod.findLocal("%third"), COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        outIt.nextInBlock();
+        outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third.notremove1").walkEnd();
+        outIt.emplace(new Branch(outputMethod.findLocal("%third"), COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        outIt.nextInBlock();
+        outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third.notremove2").walkEnd();
+        outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third.notremove3").walkEnd();
+        outIt.emplace(new Branch(outputMethod.findLocal("%third"), COND_ALWAYS, BOOL_TRUE));
+        outIt.nextInBlock();
+    }
+
+    // test not simplify with different branch in between
+    {
+        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%other").walkEnd();
+        auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%other").walkEnd();
+
+        inIt.emplace(new Branch(inputMethod.findLocal("%other"), COND_ALWAYS, BOOL_TRUE));
+        inIt.nextInBlock();
+        inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%other.notremove1").walkEnd();
+        inIt.emplace(new Branch(inputMethod.findLocal("%one"), COND_ALWAYS, BOOL_TRUE));
+        inIt.nextInBlock();
+        inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%other.notremove2").walkEnd();
+        inIt.emplace(new Branch(inputMethod.findLocal("%other"), COND_ALWAYS, BOOL_TRUE));
+        inIt.nextInBlock();
+
+        outIt.emplace(new Branch(outputMethod.findLocal("%other"), COND_ALWAYS, BOOL_TRUE));
+        outIt.nextInBlock();
+        outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%other.notremove1").walkEnd();
+        outIt.emplace(new Branch(outputMethod.findLocal("%one"), COND_ALWAYS, BOOL_TRUE));
+        outIt.nextInBlock();
+        outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%other.notremove2").walkEnd();
+        outIt.emplace(new Branch(outputMethod.findLocal("%other"), COND_ALWAYS, BOOL_TRUE));
+        outIt.nextInBlock();
+    }
+
+    // test not simplify with different instruction in between
+    {
+        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%some").walkEnd();
+        auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%some").walkEnd();
+
+        inIt.emplace(new Branch(inputMethod.findLocal("%some"), COND_ALWAYS, BOOL_TRUE));
+        inIt.nextInBlock();
+        inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%some.notremove1").walkEnd();
+        inIt.emplace(new MoveOperation(UNIFORM_REGISTER, INT_ONE));
+        inIt.nextInBlock();
+        inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%some.notremove2").walkEnd();
+        inIt.emplace(new Branch(inputMethod.findLocal("%some"), COND_ALWAYS, BOOL_TRUE));
+        inIt.nextInBlock();
+
+        outIt.emplace(new Branch(outputMethod.findLocal("%some"), COND_ALWAYS, BOOL_TRUE));
+        outIt.nextInBlock();
+        outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%some.notremove1").walkEnd();
+        outIt.emplace(new MoveOperation(UNIFORM_REGISTER, INT_ONE));
+        outIt.nextInBlock();
+        outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%some.notremove2").walkEnd();
+        outIt.emplace(new Branch(outputMethod.findLocal("%some"), COND_ALWAYS, BOOL_TRUE));
+        outIt.nextInBlock();
+    }
+
+    // test not removal of if-else branch, if first branch points to next label
+    {
+        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%ifelse2").walkEnd();
+        auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse2").walkEnd();
+
+        auto inNextLabel =
+            inputMethod.createAndInsertNewBlock(inputMethod.end(), "%ifelse2.next").getLabel()->getLabel();
+        auto outNextLabel =
+            outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse2.next").getLabel()->getLabel();
+
+        inIt.emplace(new Branch(inNextLabel, COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        inIt.nextInBlock();
+        inIt.emplace(new Branch(inputMethod.findLocal("%ifelse2"), COND_ZERO_SET, UNIFORM_REGISTER));
+        inIt.nextInBlock();
+
+        outIt.emplace(new Branch(outNextLabel, COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        outIt.nextInBlock();
+        outIt.emplace(new Branch(outputMethod.findLocal("%ifelse2"), COND_ZERO_SET, UNIFORM_REGISTER));
+        outIt.nextInBlock();
+    }
+
+    // run pass
+    simplifyBranches(module, inputMethod, config);
+    testMethodsEquals(inputMethod, outputMethod);
+}
+
+void TestOptimizationSteps::testCombineConstantLoads()
+{
+    using namespace vc4c::intermediate;
+    Configuration config{};
+    Module module{config};
+    Method inputMethod(module);
+    Method outputMethod(module);
+
+    auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
+    auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%dummy").walkEnd();
+
+    // NOTE: Need to execute the optimization pass before adding the expected instructions, since the optimization pass
+    // checks for single writer, which we violate by reusing the local across methods!
+
+    auto first = inputMethod.addNewLocal(TYPE_INT32, "%first");
+    auto second = inputMethod.addNewLocal(TYPE_INT32, "%second");
+    auto third = inputMethod.addNewLocal(TYPE_INT32, "%third");
+
+    Value qpuNum(REG_QPU_NUMBER, TYPE_INT8);
+    auto fourth = inputMethod.addNewLocal(TYPE_INT32, "%fourth");
+    auto fifth = inputMethod.addNewLocal(TYPE_INT32, "%fifth");
+
+    auto sixth = inputMethod.addNewLocal(TYPE_INT32, "%sixth");
+    auto seventh = inputMethod.addNewLocal(TYPE_INT32, "%seventh");
+
+    auto eight = inputMethod.addNewLocal(TYPE_INT32, "%eigth");
+    auto nineth = inputMethod.addNewLocal(TYPE_INT32, "%nineth");
+
+    auto tenth = inputMethod.addNewLocal(TYPE_INT32, "%tenth");
+    auto eleventh = inputMethod.addNewLocal(TYPE_INT32, "%eleventh");
+
+    // test combine loading of constants (part 1)
+    {
+        inIt.emplace(new LoadImmediate(first, 123456_lit, COND_ALWAYS, SetFlag::SET_FLAGS));
+        inIt.nextInBlock();
+        inIt.emplace(new LoadImmediate(second, 123456_lit));
+        inIt.nextInBlock();
+        assign(inIt, UNIFORM_REGISTER) = second;
+        inIt.emplace(new LoadImmediate(third, 123456_lit));
+        inIt.nextInBlock();
+        assign(inIt, UNIFORM_REGISTER) = third;
+    }
+
+    // test combine read of constant registers (part 1)
+    {
+        assign(inIt, fourth) = (qpuNum, SIGNAL_LOAD_ALPHA);
+        assign(inIt, UNIFORM_REGISTER) = fourth;
+        assign(inIt, fifth) = qpuNum;
+        assign(inIt, UNIFORM_REGISTER) = fifth;
+    }
+
+    // test not combine loads with side-effects (part 1)
+    {
+        inIt.emplace(new LoadImmediate(sixth, 123456_lit));
+        inIt.nextInBlock();
+        assign(inIt, UNIFORM_REGISTER) = sixth;
+        inIt.emplace(new LoadImmediate(seventh, 123456_lit, COND_ALWAYS, SetFlag::SET_FLAGS));
+        inIt.nextInBlock();
+        assign(inIt, UNIFORM_REGISTER) = seventh;
+
+        assign(inIt, eight) = qpuNum;
+        assign(inIt, UNIFORM_REGISTER) = eight;
+        assign(inIt, nineth) = (qpuNum, SIGNAL_LOAD_COVERAGE);
+        assign(inIt, UNIFORM_REGISTER) = nineth;
+    }
+
+    // test not combine loads with different constants (part 1)
+    {
+        inIt.emplace(new LoadImmediate(tenth, 123456_lit));
+        inIt.nextInBlock();
+        assign(inIt, UNIFORM_REGISTER) = tenth;
+        inIt.emplace(new LoadImmediate(eleventh, 654321_lit));
+        inIt.nextInBlock();
+        assign(inIt, UNIFORM_REGISTER) = eleventh;
+    }
+
+    // run pass
+    combineLoadingConstants(module, inputMethod, config);
+
+    // test combine loading of constants (part 2)
+    {
+        outIt.emplace(new LoadImmediate(first, 123456_lit, COND_ALWAYS, SetFlag::SET_FLAGS));
+        outIt.nextInBlock();
+        assign(outIt, UNIFORM_REGISTER) = first;
+        assign(outIt, UNIFORM_REGISTER) = first;
+    }
+
+    // test combine read of constant registers (part 2)
+    {
+        assign(outIt, fourth) = (qpuNum, SIGNAL_LOAD_ALPHA);
+        assign(outIt, UNIFORM_REGISTER) = fourth;
+        assign(outIt, UNIFORM_REGISTER) = fourth;
+    }
+
+    // test not combine loads with side-effects (part 2)
+    {
+        outIt.emplace(new LoadImmediate(sixth, 123456_lit));
+        outIt.nextInBlock();
+        assign(outIt, UNIFORM_REGISTER) = sixth;
+        outIt.emplace(new LoadImmediate(seventh, 123456_lit, COND_ALWAYS, SetFlag::SET_FLAGS));
+        outIt.nextInBlock();
+        assign(outIt, UNIFORM_REGISTER) = seventh;
+
+        assign(outIt, eight) = qpuNum;
+        assign(outIt, UNIFORM_REGISTER) = eight;
+        assign(outIt, nineth) = (qpuNum, SIGNAL_LOAD_COVERAGE);
+        assign(outIt, UNIFORM_REGISTER) = nineth;
+    }
+
+    // test not combine loads with different constants (part 2)
+    {
+        outIt.emplace(new LoadImmediate(tenth, 123456_lit));
+        outIt.nextInBlock();
+        assign(outIt, UNIFORM_REGISTER) = tenth;
+        outIt.emplace(new LoadImmediate(eleventh, 654321_lit));
+        outIt.nextInBlock();
+        assign(outIt, UNIFORM_REGISTER) = eleventh;
+    }
+
+    testMethodsEquals(inputMethod, outputMethod);
+}
+
+void TestOptimizationSteps::testEliminateBitOperations()
+{
+    using namespace vc4c::intermediate;
+    Configuration config{};
+    Module module{config};
+    Method inputMethod(module);
+    Method outputMethod(module);
+
+    auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
+    auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%dummy").walkEnd();
+
+    auto a = assign(inIt, TYPE_INT32, "%a") = UNIFORM_REGISTER;
+    auto b = assign(inIt, TYPE_INT32, "%b") = UNIFORM_REGISTER;
+    assign(outIt, a) = UNIFORM_REGISTER;
+    assign(outIt, b) = UNIFORM_REGISTER;
+
+    // positive tests - optimization is applied
+    {
+        // (%a & %b) & %a -> %a & %b
+        auto c = assign(inIt, TYPE_INT32, "%c") = a & b;
+        auto d = assign(inIt, TYPE_INT32, "%d") = c & a;
+
+        // (%a & %b) & %b -> %a & %b
+        auto e = assign(inIt, TYPE_INT32, "%e") = c & b;
+
+        // %a & (%a & %b) -> %a & %b
+        auto f = assign(inIt, TYPE_INT32, "%f") = a & c;
+
+        // %b & (%a & %b) -> %a & %b
+        auto g = assign(inIt, TYPE_INT32, "%g") = b & c;
+
+        assign(outIt, c) = a & b;
+        assign(outIt, d) = c;
+        assign(outIt, e) = c;
+        assign(outIt, f) = c;
+        assign(outIt, g) = c;
+    }
+
+    {
+        // (%a | %b) | %a -> %a | %b
+        auto h = assign(inIt, TYPE_INT32, "%h") = a | b;
+        auto i = assign(inIt, TYPE_INT32, "%i") = h | a;
+
+        // (%a | %b) | %b -> %a | %b
+        auto j = assign(inIt, TYPE_INT32, "%j") = h | b;
+
+        // %a | (%a | %b) -> %a | %b
+        auto k = assign(inIt, TYPE_INT32, "%k") = a | h;
+
+        // %b | (%a | %b) -> %a | %b
+        auto l = assign(inIt, TYPE_INT32, "%l") = b | h;
+
+        assign(outIt, h) = a | b;
+        assign(outIt, i) = h;
+        assign(outIt, j) = h;
+        assign(outIt, k) = h;
+        assign(outIt, l) = h;
+    }
+
+    {
+        // (%a | %b) & %a -> %a
+        auto m = assign(inIt, TYPE_INT32, "%m") = a | b;
+        auto n = assign(inIt, TYPE_INT32, "%n") = m & a;
+
+        // (%a | %b) & %b -> %b
+        auto o = assign(inIt, TYPE_INT32, "%o") = m & b;
+
+        // %a & (%a | %b) -> %a
+        auto p = assign(inIt, TYPE_INT32, "%p") = a & m;
+
+        // %b & (%a | %b) -> %b
+        auto q = assign(inIt, TYPE_INT32, "%q") = b & m;
+
+        assign(outIt, m) = a | b;
+        assign(outIt, n) = a;
+        assign(outIt, o) = b;
+        assign(outIt, p) = a;
+        assign(outIt, q) = b;
+    }
+
+    {
+        // (%a & %b) | %a -> %a
+        auto r = assign(inIt, TYPE_INT32, "%r") = a & b;
+        auto s = assign(inIt, TYPE_INT32, "%s") = r | a;
+
+        // (%a & %b) | %b -> %b
+        auto t = assign(inIt, TYPE_INT32, "%t") = r | b;
+
+        // %a | (%a & %b) -> %a
+        auto u = assign(inIt, TYPE_INT32, "%u") = a | r;
+
+        // %b | (%a & %b) -> %b
+        auto v = assign(inIt, TYPE_INT32, "%v") = b | r;
+
+        assign(outIt, r) = a & b;
+        assign(outIt, s) = a;
+        assign(outIt, t) = b;
+        assign(outIt, u) = a;
+        assign(outIt, v) = b;
+    }
+
+    // check transfer of additional info (decorations, conditionals, flags) for replaced operations
+    {
+        auto w = assign(inIt, TYPE_INT32, "%w") = (a & b, SetFlag::SET_FLAGS, UNPACK_16A_32);
+        auto x = assign(inIt, TYPE_INT32, "%x") = (w & a, COND_CARRY_SET, PACK_32_8888);
+        auto y = assign(inIt, TYPE_INT32, "%y") = (w & b, SetFlag::SET_FLAGS);
+        auto z = assign(inIt, TYPE_INT32, "%z") = (w & a, SIGNAL_LOAD_COLOR, InstructionDecorations::UNSIGNED_RESULT);
+        assign(inIt, Value(REG_UNIFORM_ADDRESS, TYPE_INT32)) = w & a;
+
+        assign(outIt, w) = (a & b, SetFlag::SET_FLAGS, UNPACK_16A_32);
+        assign(outIt, x) = (w, COND_CARRY_SET, PACK_32_8888);
+        assign(outIt, y) = (w, SetFlag::SET_FLAGS);
+        assign(outIt, z) = (w, SIGNAL_LOAD_COLOR, InstructionDecorations::UNSIGNED_RESULT);
+        assign(outIt, Value(REG_UNIFORM_ADDRESS, TYPE_INT32)) = w;
+    }
+
+    // negative tests - optimization not applied
+
+    // no elimination if conditional execution on first operation
+    {
+        auto A = assign(inIt, TYPE_INT32, "%A") = (a & b, COND_NEGATIVE_CLEAR);
+        auto B = assign(inIt, TYPE_INT32, "%B") = A & a;
+
+        assign(outIt, A) = (a & b, COND_NEGATIVE_CLEAR);
+        assign(outIt, B) = A & a;
+    }
+
+    // check no elimination if reading input has side-effects
+    {
+        Value uniform(REG_UNIFORM, TYPE_INT32);
+        auto C = assign(inIt, TYPE_INT32, "%C") = (uniform & b, COND_NEGATIVE_CLEAR);
+        auto D = assign(inIt, TYPE_INT32, "%D") = C & uniform;
+
+        assign(outIt, C) = (uniform & b, COND_NEGATIVE_CLEAR);
+        assign(outIt, D) = C & uniform;
+    }
+
+    // check no elimination if second operation has unpack mode
+    {
+        auto E = assign(inIt, TYPE_INT32, "%E") = a & b;
+        auto F = assign(inIt, TYPE_INT32, "%F") = (E & a, UNPACK_16A_32);
+
+        assign(outIt, E) = a & b;
+        assign(outIt, F) = (E & a, UNPACK_16A_32);
+    }
+
+    // run pass
+    eliminateRedundantBitOp(module, inputMethod, config);
+    testMethodsEquals(inputMethod, outputMethod);
+}
+
+void TestOptimizationSteps::testCombineRotations()
+{
+    using namespace vc4c::intermediate;
+    Configuration config{};
+    Module module{config};
+    Method inputMethod(module);
+    Method outputMethod(module);
+
+    auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
+    auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%dummy").walkEnd();
+
+    auto in = assign(inIt, TYPE_INT32, "%in") = UNIFORM_REGISTER;
+    assign(outIt, in) = UNIFORM_REGISTER;
+
+    // positive tests - rotations are combined
+    {
+        // test basic rotation with constant immediate/r5 offset
+        auto a = inputMethod.addNewLocal(TYPE_INT32, "%a");
+        auto b = inputMethod.addNewLocal(TYPE_INT32, "%b");
+        assign(inIt, ROTATION_REGISTER) = 11_val;
+        assign(outIt, ROTATION_REGISTER) = 11_val;
+
+        inIt.emplace(new VectorRotation(a, in, SmallImmediate::fromRotationOffset(4), RotationType::FULL));
+        inIt->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+        inIt.nextInBlock();
+        inIt.emplace(new VectorRotation(b, a, VECTOR_ROTATE_R5, RotationType::ANY));
+        inIt->addDecorations(InstructionDecorations::ALLOW_RECIP);
+        inIt->setCondition(COND_NEGATIVE_SET);
+        inIt->setSetFlags(SetFlag::SET_FLAGS);
+        inIt.nextInBlock();
+
+        outIt.emplace(new VectorRotation(b, in, SmallImmediate::fromRotationOffset(15), RotationType::FULL));
+        outIt->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+        outIt->addDecorations(InstructionDecorations::ALLOW_RECIP);
+        outIt->setCondition(COND_NEGATIVE_SET);
+        outIt->setSetFlags(SetFlag::SET_FLAGS);
+        outIt.nextInBlock();
+    }
+
+    {
+        // test combination if first has unpack mode/second has pack mode
+        auto c = inputMethod.addNewLocal(TYPE_INT32, "%c");
+        auto d = inputMethod.addNewLocal(TYPE_INT32, "%d");
+
+        inIt.emplace(new VectorRotation(c, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
+        inIt->setUnpackMode(UNPACK_8A_32);
+        inIt.nextInBlock();
+        inIt.emplace(new VectorRotation(d, c, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
+        inIt->setPackMode(PACK_32_8888);
+        inIt.nextInBlock();
+
+        outIt.emplace(new VectorRotation(d, in, SmallImmediate::fromRotationOffset(3), RotationType::PER_QUAD));
+        outIt->setUnpackMode(UNPACK_8A_32);
+        outIt->setPackMode(PACK_32_8888);
+        outIt.nextInBlock();
+    }
+
+    {
+        // test simplification of special rotation values: 0/16 (full), 0/4 (quad), reduce to move
+        auto e = inputMethod.addNewLocal(TYPE_INT32, "%e");
+        auto f = inputMethod.addNewLocal(TYPE_INT32, "%f");
+        auto g = inputMethod.addNewLocal(TYPE_INT32, "%g");
+        auto h = inputMethod.addNewLocal(TYPE_INT32, "%h");
+        auto i = inputMethod.addNewLocal(TYPE_INT32, "%i");
+        auto j = inputMethod.addNewLocal(TYPE_INT32, "%j");
+
+        inIt.emplace(new VectorRotation(e, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
+        inIt.nextInBlock();
+        inIt.emplace(new VectorRotation(f, e, SmallImmediate::fromRotationOffset(3), RotationType::PER_QUAD));
+        inIt.nextInBlock();
+        inIt.emplace(new VectorRotation(g, in, SmallImmediate::fromRotationOffset(7), RotationType::FULL));
+        inIt.nextInBlock();
+        inIt.emplace(new VectorRotation(h, g, SmallImmediate::fromRotationOffset(9), RotationType::FULL));
+        inIt.nextInBlock();
+        assign(inIt, ROTATION_REGISTER) = 4_val;
+        inIt.emplace(new VectorRotation(i, in, VECTOR_ROTATE_R5, RotationType::PER_QUAD));
+        inIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+        inIt.nextInBlock();
+        assign(inIt, ROTATION_REGISTER) = 16_val;
+        inIt.emplace(new VectorRotation(j, in, VECTOR_ROTATE_R5, RotationType::FULL));
+        inIt->setPackMode(PACK_32_16B_S);
+        inIt.nextInBlock();
+
+        assign(outIt, f) = in;
+        assign(outIt, h) = in;
+        assign(outIt, ROTATION_REGISTER) = 4_val;
+        assign(outIt, i) = (in, InstructionDecorations::AUTO_VECTORIZED);
+        assign(outIt, ROTATION_REGISTER) = 16_val;
+        assign(outIt, j) = (in, PACK_32_16B_S);
+    }
+
+    // more tests see below
+
+    // negative tests - instructions are unchanged
+
+    {
+        // test no combination if rotation types do not overlap
+        auto A = inputMethod.addNewLocal(TYPE_INT32, "%A");
+        auto B = inputMethod.addNewLocal(TYPE_INT32, "%B");
+
+        inIt.emplace(new VectorRotation(A, in, SmallImmediate::fromRotationOffset(1), RotationType::FULL));
+        inIt.nextInBlock();
+        inIt.emplace(new VectorRotation(B, A, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
+        inIt.nextInBlock();
+
+        outIt.emplace(new VectorRotation(A, in, SmallImmediate::fromRotationOffset(1), RotationType::FULL));
+        outIt.nextInBlock();
+        outIt.emplace(new VectorRotation(B, A, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
+        outIt.nextInBlock();
+    }
+
+    {
+        // test no combination if first has pack mode
+        auto C = inputMethod.addNewLocal(TYPE_INT32, "%C");
+        auto D = inputMethod.addNewLocal(TYPE_INT32, "%D");
+
+        inIt.emplace(new VectorRotation(C, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
+        inIt->setPackMode(PACK_32_16A_S);
+        inIt.nextInBlock();
+        inIt.emplace(new VectorRotation(D, C, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
+        inIt.nextInBlock();
+
+        outIt.emplace(new VectorRotation(C, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
+        outIt->setPackMode(PACK_32_16A_S);
+        outIt.nextInBlock();
+        outIt.emplace(new VectorRotation(D, C, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
+        outIt.nextInBlock();
+    }
+
+    {
+        // test no combination if second has unpack mode
+        auto E = inputMethod.addNewLocal(TYPE_INT32, "%E");
+        auto F = inputMethod.addNewLocal(TYPE_INT32, "%F");
+
+        inIt.emplace(new VectorRotation(E, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
+        inIt.nextInBlock();
+        inIt.emplace(new VectorRotation(F, E, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
+        inIt->setUnpackMode(UNPACK_8A_32);
+        inIt.nextInBlock();
+
+        outIt.emplace(new VectorRotation(E, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
+        outIt.nextInBlock();
+        outIt.emplace(new VectorRotation(F, E, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
+        outIt->setUnpackMode(UNPACK_8A_32);
+        outIt.nextInBlock();
+    }
+
+    {
+        // test no removal of rotation which has side-effects
+        auto G = inputMethod.addNewLocal(TYPE_INT32, "%G");
+        auto H = inputMethod.addNewLocal(TYPE_INT32, "%H");
+
+        inIt.emplace(new VectorRotation(G, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
+        inIt->setSetFlags(SetFlag::SET_FLAGS);
+        inIt.nextInBlock();
+        inIt.emplace(new VectorRotation(H, G, SmallImmediate::fromRotationOffset(3), RotationType::PER_QUAD));
+        inIt.nextInBlock();
+
+        outIt.emplace(new VectorRotation(G, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
+        outIt->setSetFlags(SetFlag::SET_FLAGS);
+        outIt.nextInBlock();
+        outIt.emplace(new VectorRotation(H, G, SmallImmediate::fromRotationOffset(3), RotationType::PER_QUAD));
+        outIt.nextInBlock();
+    }
+
+    // NOTE: Since the optimization partially checks for single writers, we need to add the output instructions after
+    // the optimization is applied. Otherwise the write from the output method will fail that check.
+    auto k = inputMethod.addNewLocal(TYPE_INT32, "%k");
+    auto l = inputMethod.addNewLocal(TYPE_INT32, "%l");
+    auto m = inputMethod.addNewLocal(TYPE_INT32, "%m");
+    auto n = inputMethod.addNewLocal(TYPE_INT32, "%n");
+    auto o = inputMethod.addNewLocal(TYPE_INT32, "%o");
+    auto p = inputMethod.addNewLocal(TYPE_INT32, "%p");
+    auto r = inputMethod.addNewLocal(TYPE_INT32, "%r");
+    auto s = inputMethod.addNewLocal(TYPE_INT32, "%s");
+
+    {
+        // test rewrite rotation of constant to load of constant (move and load instructions) (part 1)
+        assign(inIt, k) = 116_val;
+        assign(inIt, ROTATION_REGISTER) = 7_val;
+        inIt.emplace(new VectorRotation(l, k, SmallImmediate::fromRotationOffset(3), RotationType::FULL));
+        inIt.nextInBlock();
+        inIt.emplace(new LoadImmediate(m, 1234_lit));
+        inIt.nextInBlock();
+        inIt.emplace(new VectorRotation(n, m, VECTOR_ROTATE_R5, RotationType::FULL));
+        inIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+        inIt.nextInBlock();
+    }
+
+    {
+        // test rewrite rotation of masked load to rotated load of mask (full and quad rotation) (part 1)
+        inIt.emplace(new LoadImmediate(o, 0x12340000, LoadType::PER_ELEMENT_SIGNED));
+        inIt.nextInBlock();
+        inIt.emplace(new VectorRotation(p, o, SmallImmediate::fromRotationOffset(4), RotationType::FULL));
+        inIt->setSetFlags(SetFlag::SET_FLAGS);
+        inIt.nextInBlock();
+        inIt.emplace(new LoadImmediate(r, 0x00001234, LoadType::PER_ELEMENT_UNSIGNED));
+        inIt.nextInBlock();
+        // TODO test per-quad rotation, full rotation is already tested above
+        inIt.emplace(new VectorRotation(s, r, SmallImmediate::fromRotationOffset(2), RotationType::FULL));
+        inIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+        inIt.nextInBlock();
+    }
+
+    // run pass
+    combineVectorRotations(module, inputMethod, config);
+
+    {
+        // test rewrite rotation of constant to load of constant (move and load instructions) (part 2)
+        assign(outIt, k) = 116_val;
+        assign(outIt, ROTATION_REGISTER) = 7_val;
+        assign(outIt, l) = k;
+        outIt.emplace(new LoadImmediate(m, 1234_lit));
+        outIt.nextInBlock();
+        outIt.emplace(new LoadImmediate(n, 1234_lit));
+        outIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+        outIt.nextInBlock();
+    }
+
+    {
+        // test rewrite rotation of masked load to rotated load of mask (full and quad rotation) (part 2)
+        // FIXME test fails due to second write in result method!!
+        outIt.emplace(new LoadImmediate(o, 0x12340000, LoadType::PER_ELEMENT_SIGNED));
+        outIt.nextInBlock();
+        outIt.emplace(new LoadImmediate(p, 0x34120000, LoadType::PER_ELEMENT_SIGNED));
+        outIt->setSetFlags(SetFlag::SET_FLAGS);
+        outIt.nextInBlock();
+        outIt.emplace(new LoadImmediate(r, 0x00001234, LoadType::PER_ELEMENT_UNSIGNED));
+        outIt.nextInBlock();
+        outIt.emplace(new LoadImmediate(s, 0x00002341, LoadType::PER_ELEMENT_UNSIGNED));
+        outIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+        outIt.nextInBlock();
+    }
+
     testMethodsEquals(inputMethod, outputMethod);
 }

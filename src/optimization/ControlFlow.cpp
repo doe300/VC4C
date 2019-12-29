@@ -920,7 +920,7 @@ static bool isLocalUsed(Method& method, const std::string& name)
 void optimizations::addStartStopSegment(const Module& module, Method& method, const Configuration& config)
 {
     auto it = method.walkAllInstructions();
-    if(!it.get<intermediate::BranchLabel>() ||
+    if(it.isEndOfMethod() || !it.get<intermediate::BranchLabel>() ||
         BasicBlock::DEFAULT_BLOCK != it.get<intermediate::BranchLabel>()->getLabel()->name)
     {
         it = method.emplaceLabel(

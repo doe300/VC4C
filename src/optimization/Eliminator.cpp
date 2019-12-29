@@ -754,14 +754,20 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
     return flag;
 }
 
+static bool canReplaceBitOp(const intermediate::Operation& op)
+{
+    return !op.hasUnpackMode() && !has_flag(op.getSideEffects(), intermediate::SideEffectType::REGISTER_READ);
+}
+
 bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method, const Configuration& config)
 {
+    // See https://en.wikipedia.org/wiki/Boolean_algebra#Monotone_laws
     bool replaced = false;
     auto it = method.walkAllInstructions();
     while(!it.isEndOfMethod())
     {
         auto op = it.get<intermediate::Operation>();
-        if(op && op->isSimpleOperation())
+        if(op && !op->hasConditionalExecution())
         {
             if(op->op == OP_AND)
             {
@@ -775,16 +781,21 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                     while(!it.isEndOfBlock())
                     {
                         auto op2 = it.get<intermediate::Operation>();
-                        if(op2 && op2->op == OP_AND && op2->readsLocal(out) && op2->readsLocal(in))
+                        if(op2 && op2->op == OP_AND && canReplaceBitOp(*op2) && op2->readsLocal(out) &&
+                            op2->readsLocal(in))
                         {
-                            auto mov = new intermediate::MoveOperation(
-                                op2->getOutput().value(), out->createReference(), op2->conditional, op2->setFlags);
+                            auto mov =
+                                new intermediate::MoveOperation(op2->getOutput().value(), out->createReference());
+                            mov->copyExtrasFrom(it.get());
+                            replaced = true;
                             it.reset(mov);
                         }
-                        else if(op2 && op2->op == OP_OR && op2->readsLocal(out) && op2->readsLocal(in))
+                        else if(op2 && op2->op == OP_OR && canReplaceBitOp(*op2) && op2->readsLocal(out) &&
+                            op2->readsLocal(in))
                         {
-                            auto mov = new intermediate::MoveOperation(
-                                op2->getOutput().value(), in->createReference(), op2->conditional, op2->setFlags);
+                            auto mov = new intermediate::MoveOperation(op2->getOutput().value(), in->createReference());
+                            mov->copyExtrasFrom(it.get());
+                            replaced = true;
                             it.reset(mov);
                         }
 
@@ -792,15 +803,12 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                     }
                 };
 
-                const auto& arg0 = op->assertArgument(0);
-                const auto& arg1 = op->assertArgument(1);
-
                 if(auto out = op->checkOutputLocal())
                 {
-                    if(arg0.checkLocal())
-                        foundAnd(out, arg0.local(), it);
-                    if(arg1.checkLocal())
-                        foundAnd(out, arg1.local(), it);
+                    if(auto loc = op->getFirstArg().checkLocal())
+                        foundAnd(out, loc, it);
+                    if(auto loc = op->getSecondArg() & &Value::checkLocal)
+                        foundAnd(out, loc, it);
                 }
             }
 
@@ -816,17 +824,20 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                     while(!it.isEndOfBlock())
                     {
                         auto op2 = it.get<intermediate::Operation>();
-                        if(op2 && op2->op == OP_AND && op2->readsLocal(out) && op2->readsLocal(in))
+                        if(op2 && op2->op == OP_AND && canReplaceBitOp(*op2) && op2->readsLocal(out) &&
+                            op2->readsLocal(in))
                         {
-                            auto mov = new intermediate::MoveOperation(
-                                op2->getOutput().value(), in->createReference(), op2->conditional, op2->setFlags);
+                            auto mov = new intermediate::MoveOperation(op2->getOutput().value(), in->createReference());
+                            mov->copyExtrasFrom(it.get());
                             replaced = true;
                             it.reset(mov);
                         }
-                        else if(op2 && op2->op == OP_OR && op2->readsLocal(out) && op2->readsLocal(in))
+                        else if(op2 && op2->op == OP_OR && canReplaceBitOp(*op2) && op2->readsLocal(out) &&
+                            op2->readsLocal(in))
                         {
-                            auto mov = new intermediate::MoveOperation(
-                                op2->getOutput().value(), out->createReference(), op2->conditional, op2->setFlags);
+                            auto mov =
+                                new intermediate::MoveOperation(op2->getOutput().value(), out->createReference());
+                            mov->copyExtrasFrom(it.get());
                             replaced = true;
                             it.reset(mov);
                         }
@@ -835,15 +846,12 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                     }
                 };
 
-                const auto& arg0 = op->assertArgument(0);
-                const auto& arg1 = op->assertArgument(1);
-
                 if(auto out = op->checkOutputLocal())
                 {
-                    if(arg0.checkLocal())
-                        foundOr(out, arg0.local(), it);
-                    if(arg1.checkLocal())
-                        foundOr(out, arg1.local(), it);
+                    if(auto loc = op->getFirstArg().checkLocal())
+                        foundOr(out, loc, it);
+                    if(auto loc = op->getSecondArg() & &Value::checkLocal)
+                        foundOr(out, loc, it);
                 }
             }
         }
