@@ -139,14 +139,14 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
         }
         if(auto rot = dynamic_cast<const intermediate::VectorRotation*>(inst))
         {
-            if(rot->type == intermediate::RotationType::FULL && rot->getOffset().immediate().getRotationOffset())
+            if(rot->type == intermediate::RotationType::FULL && rot->getOffset().getRotationOffset())
             {
                 // we rotate all the used elements by the offset (if known)
                 for(auto& val : newValues)
                 {
                     // TODO rotation in the correct (opposite to actual vector rotation) direction?
                     uint16_t tmp = static_cast<uint16_t>(val.second.to_ulong());
-                    tmp = rotate_left(tmp, rot->getOffset().immediate().getRotationOffset().value());
+                    tmp = rotate_left(tmp, rot->getOffset().getRotationOffset().value());
                     val.second = tmp;
                 }
             }

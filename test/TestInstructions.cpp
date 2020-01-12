@@ -1828,7 +1828,8 @@ void TestInstructions::testInstructionEquality()
     }
 
     {
-        intermediate::VectorRotation inst(Value(NOP_REGISTER), INT_ONE, INT_ZERO, intermediate::RotationType::FULL);
+        intermediate::VectorRotation inst(
+            Value(NOP_REGISTER), INT_ONE, SmallImmediate::fromRotationOffset(11), intermediate::RotationType::FULL);
         op2.reset(inst.copyFor(method, ""));
         TEST_ASSERT_EQUALS(inst, *op2)
         inst.setSource(Value(FLOAT_NAN));

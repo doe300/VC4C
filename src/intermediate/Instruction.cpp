@@ -317,6 +317,11 @@ SideEffectType IntermediateInstruction::getSideEffects() const
     return sideEffects;
 }
 
+bool IntermediateInstruction::hasOtherSideEffects(SideEffectType ignoreEffects) const
+{
+    return remove_flag(getSideEffects(), ignoreEffects) != SideEffectType::NONE;
+}
+
 bool IntermediateInstruction::hasUnpackMode() const
 {
     return unpackMode.hasEffect();

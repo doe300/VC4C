@@ -294,6 +294,7 @@ namespace vc4c
              */
             bool hasSideEffects() const;
             virtual SideEffectType getSideEffects() const;
+            bool hasOtherSideEffects(SideEffectType ignoreEffects) const;
 
             /*
              * Whether an unpack-mode is set
@@ -530,9 +531,9 @@ namespace vc4c
          */
         struct VectorRotation final : public MoveOperation
         {
-            VectorRotation(const Value& dest, const Value& src, const Value& offset, RotationType type,
+            VectorRotation(const Value& dest, const Value& src, const SmallImmediate& offset, RotationType type,
                 ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
-            VectorRotation(Value&& dest, Value&& src, Value&& offset, RotationType type,
+            VectorRotation(Value&& dest, Value&& src, SmallImmediate&& offset, RotationType type,
                 ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
             ~VectorRotation() override = default;
 
@@ -543,7 +544,7 @@ namespace vc4c
             Operation* combineWith(const std::string& otherOpCode) const;
             PrecalculatedValue precalculate(std::size_t numIterations) const override;
 
-            const Value& getOffset() const;
+            const SmallImmediate& getOffset() const;
 
             bool isSimpleMove() const override;
             bool isPerQuadRotationAllowed() const;

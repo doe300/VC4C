@@ -320,6 +320,8 @@ Value intermediate::getSourceValue(Value value)
         auto move = dynamic_cast<const MoveOperation*>(writer);
         if(move && move->isSimpleMove() && !move->hasConditionalExecution())
             value = move->getSource();
+        else
+            break;
     }
     return value;
 }

@@ -166,14 +166,12 @@ InstructionWalker normalization::handleContainer(
     intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
     intermediate::Operation* op = it.get<intermediate::Operation>();
     intermediate::VectorRotation* rot = it.get<intermediate::VectorRotation>();
-    if(rot != nullptr && rot->getSource().checkVector() && (rot->getOffset().isLiteralValue()))
+    if(rot != nullptr && rot->getSource().checkVector() && rot->getOffset().getRotationOffset())
     {
         Value src = rot->getSource();
         // vector rotation -> rotate container (if static offset)
         // TODO negative offset possible?
-        std::size_t offset = rot->getOffset().getLiteralValue() ?
-            rot->getOffset().getLiteralValue()->unsignedInt() :
-            rot->getOffset().immediate().getRotationOffset().value();
+        std::size_t offset = rot->getOffset().getRotationOffset().value();
         //"Rotates the order of the elements in the range [first,last), in such a way that the element pointed by middle
         // becomes the new first element."
         {
@@ -199,7 +197,7 @@ InstructionWalker normalization::handleContainer(
     // jump from previous block to next one intended, so no "else"
     // if the source is a container and the offset is a literal (already applied above), remove the rotation (see move
     // branch) if the source is a container and the offset is no literal, extract the container, but keep rotation
-    if(rot != nullptr && rot->getSource().checkVector() && !(rot->getOffset().isLiteralValue()))
+    if(rot != nullptr && rot->getSource().checkVector() && !rot->getOffset().getRotationOffset())
     {
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Rewriting rotation from container " << rot->to_string() << logging::endl);

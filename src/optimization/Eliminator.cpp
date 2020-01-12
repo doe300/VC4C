@@ -613,13 +613,13 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
      * behavior can be tested on CTS: api/test_api min_max_constant_args
      */
 
-    bool flag = false;
+    bool codeChanged = false;
     auto it = method.walkAllInstructions();
     while(!it.isEndOfMethod())
     {
         if(it.get<intermediate::MoveOperation>() &&
             !it->hasDecoration(intermediate::InstructionDecorations::PHI_NODE) && !it->hasPackMode() &&
-            !it->hasUnpackMode() && it->conditional == COND_ALWAYS && !it.get<intermediate::VectorRotation>())
+            !it->hasUnpackMode() && !it->hasConditionalExecution() && !it.get<intermediate::VectorRotation>())
         {
             // skip PHI-nodes, since they are read in another basic block (and the output is written more than once
             // anyway) as well as modification of the value, conditional execution and vector-rotations
@@ -644,23 +644,24 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                     *move->getOutput()->local()->getUsers(LocalUse::Type::READER).begin(),
                     it.getBasicBlock()->walkEnd()) :
                 Optional<InstructionWalker>{};
-
-            if(move->getSource() == move->getOutput().value() && move->isSimpleMove())
+            if(move->getSource() == move->getOutput().value() &&
+                !move->hasOtherSideEffects(intermediate::SideEffectType::SIGNAL))
             {
                 if(move->signal == SIGNAL_NONE)
                 {
                     CPPLOG_LAZY(
                         logging::Level::DEBUG, log << "Removing obsolete move: " << it->to_string() << logging::endl);
                     it.erase();
-                    flag = true;
+                    // don't skip next instruction
+                    it.previousInBlock();
+                    codeChanged = true;
                 }
                 else
                 {
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Removing obsolete move with nop: " << it->to_string() << logging::endl);
-                    auto nop = new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER, move->signal);
-                    it.reset(nop);
-                    flag = true;
+                    it.reset(new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER, move->signal));
+                    codeChanged = true;
                 }
             }
 
@@ -681,7 +682,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 it.erase();
                 // to not skip the next instruction
                 it.previousInBlock();
-                flag = true;
+                codeChanged = true;
             }
             else if(it->checkOutputRegister() && sourceUsedOnce && sourceWriter &&
                 (!(*sourceWriter)->hasSideEffects()
@@ -711,7 +712,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 it->setOutput(std::move(output));
                 it->setSetFlags(setFlags);
                 it->addDecorations(sourceDecorations);
-                flag = true;
+                codeChanged = true;
             }
             else if(move->getSource().checkRegister() && destUsedOnce &&
                 (destUsedOnceWithoutLiteral || has_flag(move->getSource().reg().file, RegisterFile::PHYSICAL_ANY) ||
@@ -743,15 +744,15 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                     (*destinationReader)->getOutput()->local()->reference =
                         std::make_pair(const_cast<Local*>(oldLocal), ANY_ELEMENT);
                 it.erase();
-                flag = true;
                 // to not skip the next instruction
                 it.previousInBlock();
+                codeChanged = true;
             }
         }
         it.nextInMethod();
     }
 
-    return flag;
+    return codeChanged;
 }
 
 static bool canReplaceBitOp(const intermediate::Operation& op)
@@ -947,8 +948,7 @@ InstructionWalker optimizations::rewriteConstantSFUCall(
         // if we write conditionally to SFU, there might be another conditional write to SFU (if this is allowed at
         // all!!)
         return it;
-    if(remove_flag(it->getSideEffects(), intermediate::SideEffectType::REGISTER_WRITE) !=
-        intermediate::SideEffectType::NONE)
+    if(it->hasOtherSideEffects(intermediate::SideEffectType::REGISTER_WRITE))
         // there are other side-effects for this instruction writing into SFU, which we cannot remove
         return it;
     if(it->hasPackMode() || it->hasUnpackMode())

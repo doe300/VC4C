@@ -423,13 +423,21 @@ namespace vc4c
     // Texture Memory Unit
     // if we leave TMU auto-swap enabled, we only need to write to TMU0, otherwise, we need to access both TMUs
     /*
-     * Writing this register triggers a load from memory via the TMU0.
+     * Writing this register triggers a load from memory (RAM/L2) via the TMU0 into the TMU "receive" FIFO. To retrieve
+     * the value from TMU "receive" FIFO, the corresponding signal must be issued.
      *
      * Depending on whether the T-coordinate was written before, this load is a texture load (if written) or a general
      * 32-bit load (otherwise).
      *
-     * NOTE: Loads from TMU are element-wise, so with a single load, 16 values from 16 different memory-locations can be
-     * read. NOTE: For general loads, the address is automatically clamped to align 4 Byte!
+     * NOTE: Loads from outside of the allocated memory area HANG the program (with exception of the "address" 0 to not
+     * load at all)!
+     * NOTE: Loads from TMU are element-wise, so with a single load, 16 values from 16 different
+     * memory-locations can be read. To not load any value for a single SIMD element, write the value 0 into the address
+     * register for that element.
+     * NOTE: For general loads, the address is automatically clamped to align 4 Byte!
+     * NOTE: There is a delay of at least 8 instructions between writing the TMU address and issuing the TMU load
+     * signal, which corresponds to the 8 cycles required to load the values from L2 into the TMU "receive" FIFO. Loads
+     * directly from RAM take up to 20 cycles to be available.
      */
     static constexpr Register REG_TMU0_ADDRESS{RegisterFile::PHYSICAL_ANY, 56};
     /*

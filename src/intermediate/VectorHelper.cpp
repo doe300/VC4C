@@ -94,7 +94,7 @@ InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const
     else
     {
         // if the offset is not known, write it into r5
-        appliedOffset = ROTATION_REGISTER;
+        appliedOffset = Value(VECTOR_ROTATE_R5, TYPE_INT8);
         if(direction == Direction::UP)
             // r5 = offset
             assign(it, ROTATION_REGISTER) = offset;
@@ -138,7 +138,7 @@ InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const
                 }
             }
         }
-        it.emplace(new VectorRotation(dest, src, appliedOffset, type));
+        it.emplace(new VectorRotation(dest, src, appliedOffset.immediate(), type));
         it.nextInBlock();
     }
     return it;
