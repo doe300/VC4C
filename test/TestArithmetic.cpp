@@ -99,8 +99,6 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
 
     TEST_ADD(TestArithmetic::testSignedIntMultiplication);
     TEST_ADD(TestArithmetic::testSignedShortMultiplication);
-    TEST_ADD(TestArithmetic::testSignedIntMultiplication);
-    TEST_ADD(TestArithmetic::testSignedShortMultiplication);
     TEST_ADD(TestArithmetic::testSignedCharMultiplication);
     TEST_ADD(TestArithmetic::testUnsignedIntMultiplication);
     TEST_ADD(TestArithmetic::testUnsignedShortMultiplication);

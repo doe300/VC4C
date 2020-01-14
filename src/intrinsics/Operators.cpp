@@ -25,47 +25,22 @@ using namespace vc4c::operators;
 InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(
     Method& method, InstructionWalker it, IntrinsicOperation& op)
 {
-    Value opDest = op.getOutput().value();
-
-    const Value& arg0 = op.assertArgument(0);
-    const Value& arg1 = op.assertArgument(1);
-
-    // convert operands to positive
-    Value op1Sign = UNDEFINED_VALUE;
-    Value op2Sign = UNDEFINED_VALUE;
-    Value op1Pos = method.addNewLocal(arg0.type, "%unsigned");
-    Value op2Pos = method.addNewLocal(arg1.type, "%unsigned");
-
-    it = insertMakePositive(it, method, arg0, op1Pos, op1Sign);
-    it = insertMakePositive(it, method, arg1, op2Pos, op2Sign);
-
-    op.setArgument(0, std::move(op1Pos));
-    op.setArgument(1, std::move(op2Pos));
-
-    // use new temporary result, so we can store the final result in the correct value
-    const Value tmpDest = method.addNewLocal(opDest.type, "%result");
-    op.setOutput(tmpDest);
-
-    // do unsigned multiplication
+    /*
+     * For 2's-complement, the unsigned and signed multiplication is identical
+     *
+     * See LLVM language reference for mul operation:
+     * "Because LLVM integers use a two’s complement representation, and the result is the same width as the operands,
+     * this instruction returns the correct result for both signed and unsigned integers." -
+     * https://llvm.org/docs/LangRef.html#mul-instruction
+     *
+     * Similarly, for the Mesa VC4 driver, smul is directly mapped to umul, which is implemented identically to the
+     * unsigned integer multiplication below, see
+     * https://gitlab.freedesktop.org/mesa/mesa/blob/master/src/gallium/drivers/vc4/vc4_program.c (function
+     * ntq_emit_alu)
+     */
     it = intrinsifyUnsignedIntegerMultiplication(method, it, op);
-    // skip the original instruction
-    it.nextInBlock();
-
-    if(op1Sign.hasLiteral(0_lit) && op2Sign.hasLiteral(0_lit))
-    {
-        // if both operands are marked with (unsigned), we don't need to invert the result
-        it.emplace(new MoveOperation(opDest, tmpDest));
-        it.nextInBlock();
-        return it;
-    }
-    else
-    {
-        // if exactly one operand was negative, invert sign of result
-        const Value eitherSign = method.addNewLocal(TYPE_INT32.toVectorType(tmpDest.type.getVectorWidth()));
-        it.emplace(new Operation(OP_XOR, eitherSign, op1Sign, op2Sign));
-        it.nextInBlock();
-        return insertRestoreSign(it, method, tmpDest, opDest, eitherSign);
-    }
+    it->decoration = remove_flag(it->decoration, InstructionDecorations::UNSIGNED_RESULT);
+    return it;
 }
 
 InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(

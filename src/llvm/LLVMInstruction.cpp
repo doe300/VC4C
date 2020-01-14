@@ -235,6 +235,60 @@ bool CallSite::mapInstruction(Method& method)
             OP_AND, output, shifted, Value(Literal(arguments.at(0).type.getScalarWidthMask()), TYPE_INT32)));
         return true;
     }
+    if(methodName.find("llvm.sadd.sat") == 0)
+    {
+        if(arguments.at(0).type.getScalarBitCount() == 32)
+        {
+            // 32-bit signed add_sat intrinsic function, map to same implementation as in _integer.h std-lib header
+            method.appendToEnd((new intermediate::MethodCall(
+                                    std::move(output), "vc4cl_saturated_add", {arguments.at(0), arguments.at(1)}))
+                                   ->addDecorations(decorations));
+            return true;
+        }
+    }
+    if(methodName.find("llvm.uadd.sat") == 0)
+    {
+        // 16-/32-bit unsigned add_sat intrinsic function, map to same implementation as in _integer.h std-lib header:
+        // x > ((result_t)UINT_MAX) - y ? UINT_MAX : x + y
+        auto tmp = method.addNewLocal(arguments.at(1).type);
+        method.appendToEnd(new intermediate::Operation(OP_SUB, Value(tmp), INT_MINUS_ONE, Value(arguments.at(1))));
+        auto cond = method.addNewLocal(TYPE_BOOL.toVectorType(output.type.getVectorWidth()));
+        method.appendToEnd(new intermediate::Comparison(
+            intermediate::COMP_UNSIGNED_GT, Value(cond), Value(arguments.at(0)), std::move(tmp)));
+        method.appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, cond, COND_ALWAYS, SetFlag::SET_FLAGS));
+        method.appendToEnd((new intermediate::MoveOperation(Value(dest), INT_MINUS_ONE, COND_ZERO_CLEAR))
+                               ->addDecorations(decorations));
+        method.appendToEnd((new intermediate::Operation(
+                                OP_ADD, std::move(dest), Value(arguments.at(0)), Value(arguments.at(1)), COND_ZERO_SET))
+                               ->addDecorations(decorations));
+        return true;
+    }
+    if(methodName.find("llvm.ssub.sat") == 0)
+    {
+        if(arguments.at(0).type.getScalarBitCount() == 32)
+        {
+            // 32-bit signed sub_sat intrinsic function, map to same implementation as in _integer.h std-lib header
+            method.appendToEnd((new intermediate::MethodCall(
+                                    std::move(output), "vc4cl_saturated_sub", {arguments.at(0), arguments.at(1)}))
+                                   ->addDecorations(decorations));
+            return true;
+        }
+    }
+    if(methodName.find("llvm.usub.sat") == 0)
+    {
+        // 16-/32-bit unsigned sub_sat intrinsic function, map to same implementation as in _integer.h std-lib header:
+        // x < y ? (result_t)0 : x - y
+        auto cond = method.addNewLocal(TYPE_BOOL.toVectorType(output.type.getVectorWidth()));
+        method.appendToEnd(new intermediate::Comparison(
+            intermediate::COMP_UNSIGNED_LT, Value(cond), Value(arguments.at(0)), Value(arguments.at(1))));
+        method.appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, cond, COND_ALWAYS, SetFlag::SET_FLAGS));
+        method.appendToEnd(
+            (new intermediate::MoveOperation(Value(dest), INT_ZERO, COND_ZERO_CLEAR))->addDecorations(decorations));
+        method.appendToEnd((new intermediate::Operation(
+                                OP_SUB, std::move(dest), Value(arguments.at(0)), Value(arguments.at(1)), COND_ZERO_SET))
+                               ->addDecorations(decorations));
+        return true;
+    }
     if(methodName.find("shuffle2") == 0)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
@@ -533,7 +587,7 @@ bool Selection::mapInstruction(Method& method)
     else
         method.appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, cond, COND_ALWAYS, SetFlag::SET_FLAGS));
 
-    method.appendToEnd(new intermediate::MoveOperation(std::move(dest), std::move(opt1), COND_ZERO_CLEAR));
+    method.appendToEnd(new intermediate::MoveOperation(Value(dest), std::move(opt1), COND_ZERO_CLEAR));
     method.appendToEnd(new intermediate::MoveOperation(std::move(dest), std::move(opt2), COND_ZERO_SET));
     return true;
 }
