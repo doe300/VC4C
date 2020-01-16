@@ -22,6 +22,9 @@ using namespace vc4c::operators;
 // TODO optimize "exact" divisions. How? no need to calculate remainder?!
 // first need to find a case where the flag is set!
 
+// see VC4CLStdLib (_intrinsics.h)
+static constexpr unsigned char VC4CL_UNSIGNED{1};
+
 InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(
     Method& method, InstructionWalker it, IntrinsicOperation& op)
 {
@@ -82,6 +85,91 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(
 
     it.reset(new Operation(OP_ADD, op.getOutput().value(), resLo, resHi));
     it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+
+    return it;
+}
+
+InstructionWalker intermediate::intrinsifyIntegerMultiplicationHighPart(
+    Method& method, InstructionWalker it, const MethodCall* call)
+{
+    auto arg0 = call->assertArgument(0);
+    auto arg1 = call->assertArgument(1);
+    bool isUnsigned = call->getArgument(2) && call->assertArgument(2).getLiteralValue() &&
+        call->assertArgument(2).getLiteralValue()->unsignedInt() == VC4CL_UNSIGNED;
+
+    // Similar to the Mesa implementation in
+    // https://gitlab.freedesktop.org/mesa/mesa/blob/master/src/compiler/nir/nir_lower_alu.c (function lower_alu_instr,
+    // case nir_op_imul_high), we need to do the absolute value and reapplication of the sign for signed mul_hi
+
+    if(!isUnsigned)
+    {
+        auto minusArg0 = assign(it, arg0.type, "%mul_hi.arg0Abs") = -as_signed{arg0};
+        arg0 = assign(it, arg0.type, "%mul_hi.arg0Abs") = max(as_signed{arg0}, as_signed{minusArg0});
+        auto minusArg1 = assign(it, arg1.type, "%mul_hi.arg1Abs") = -as_signed{arg1};
+        arg1 = assign(it, arg1.type, "%mul_hi.arg1Abs") = max(as_signed{arg1}, as_signed{minusArg1});
+    }
+
+    /*
+     *                               |    a[0]     .    a[1]     |
+     *    *                          |    b[0]     .    b[1]     |
+     *   ---------------------------------------------------------
+     *   |      .      .      .      |xxxxxx.xxxxxx.xxxxxx.xxxxxx|
+     *
+     *                               |        a[1] * b[1]        |
+     * +               |        a[1] * b[0]        |
+     * +               |        a[0] * b[1]        |
+     * + |        a[0] * b[0]        |
+     *
+     */
+    // see #intrinsifyUnsignedIntegerMultiplication for comments on the implementation and signed/unsigned
+    // (non-)distinction
+    // NOTE: in contrast to the normal multiplication, we need to take 16-bit portions, since for 24-bit multiplication,
+    // we lose the upper 16 bits (2 * 24 = 48 > 32)!
+
+    auto outputType = call->getOutput()->type;
+    auto arg0Hi = assign(it, outputType, "%mul_hi.arg0Hi") = as_unsigned{arg0} >> 16_val;
+    auto arg1Hi = assign(it, outputType, "%mul_hi.arg1Hi") = as_unsigned{arg1} >> 16_val;
+    auto arg0Lo = assign(it, outputType, "%mul_hi.arg0Lo") = arg0 & 0xFFFF_val;
+    auto arg1Lo = assign(it, outputType, "%mul_hi.arg1Lo") = arg1 & 0xFFFF_val;
+
+    auto resHiLo = assign(it, outputType, "%mul_hi.resHiLo") = mul24(arg0Hi, arg1Lo);
+    auto resLoHi = assign(it, outputType, "%mul_hi.resLoHi") = mul24(arg0Lo, arg1Hi);
+    auto resLo = assign(it, outputType, "%mul_hi.resLo") = mul24(arg0Lo, arg1Lo);
+    auto resOverflow = assign(it, outputType, "%mul_hi.of") = 0_val;
+    resLo = assign(it, outputType, "%mul_hi.resLo") = as_unsigned{resLo} >> 16_val;
+    auto resMid = assign(it, outputType, "%mul_hi.resMid") = (resHiLo + resLoHi, SetFlag::SET_FLAGS);
+    assign(it, resOverflow) = (resOverflow + 1_val, COND_CARRY_SET);
+    resMid = assign(it, outputType, "%mul_hi.resMid") = (resMid + resLo, SetFlag::SET_FLAGS);
+    assign(it, resOverflow) = (resOverflow + 1_val, COND_CARRY_SET);
+    resMid = assign(it, outputType, "%mul_hi.resMid") = as_unsigned{resMid} >> 16_val;
+    resOverflow = assign(it, outputType, "%mul_hi.of") = resOverflow << 16_val;
+    resMid = assign(it, outputType, "%mul_hi.resMid") = resMid + resOverflow;
+
+    auto resHi = assign(it, outputType, "%mul_hi.resHi") = mul24(arg0Hi, arg1Hi);
+
+    if(!isUnsigned)
+    {
+        auto out = assign(it, outputType, "%mul_hi.out") = resMid + resHi;
+        auto arg0Neg = assign(it, arg0.type, "%mul_hi.arg0Sign") = as_signed{call->assertArgument(0)} >> 31_val;
+        auto arg1Neg = assign(it, arg1.type, "%mul_hi.arg1Sign") = as_signed{call->assertArgument(1)} >> 31_val;
+        auto sign = assign(it, outputType, "%mul_hi.sign") = arg0Neg ^ arg1Neg;
+        /*
+         * This is a short-circuit of (sign & (-out - 1)) | (~sign & out) with
+         * - out = the unsigned result and
+         * - sign = ((x >> 31) ^ (y >> 31)) (either sign set)
+         *
+         * (sign & (-out - 1)) | (~sign & out)
+         * <=> (sign & ~out) | (~sign & out)
+         * <=> sign ^ out
+         */
+        out = assign(it, outputType, "%mul_hi.out") = sign ^ out;
+        it.reset((new MoveOperation(call->getOutput().value(), std::move(out)))->copyExtrasFrom(call));
+    }
+    else
+    {
+        it.reset(new Operation(OP_ADD, call->getOutput().value(), resMid, resHi));
+        it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+    }
 
     return it;
 }

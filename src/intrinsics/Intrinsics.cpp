@@ -432,7 +432,8 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryI
     {"vc4cl_v8max",
         Intrinsic{intrinsifyBinaryALUInstruction(OP_V8MAX.name, false),
             [](const Value& val0, const Value& val1) { return OP_V8MAX(val0, val1).first.value(); }}},
-    {"vc4cl_vstore3", Intrinsic{intrinsifyDMAAccess(DMAAccess::WRITE, true)}}};
+    {"vc4cl_vstore3", Intrinsic{intrinsifyDMAAccess(DMAAccess::WRITE, true)}},
+    {"vc4cl_mul_hi", Intrinsic{intrinsifyIntegerMultiplicationHighPart}}};
 
 const static std::map<std::string, Intrinsic, std::greater<std::string>> ternaryIntrinsicMapping = {
     {"vc4cl_dma_copy", Intrinsic{intrinsifyDMAAccess(DMAAccess::COPY, false)}},
@@ -705,6 +706,9 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
             isPowerTwo(arg0.getLiteralValue()->unsignedInt() + 1))
         {
             // x * (2^k - 1) = x * 2^k - x = x << k - x
+            // This is a special case of the "binary method", but since the "binary method" only applies shifts and
+            // adds, we handle shift and minus separately.
+            // TODO could make more general, similar to "binary method" implementation/integrate into that
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying multiplication with left-shift and minus: " << op->to_string() << logging::endl);
             auto tmp = assign(it, arg1.type, "%mul_shift") =
@@ -1167,6 +1171,12 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
         it.erase();
         // so next instruction is not skipped
         it.previousInBlock();
+    }
+    else if(op->opCode == "fneg")
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying unary floating-point negation to binary operation" << logging::endl);
+        it.reset((new Operation(OP_FSUB, op->getOutput().value(), FLOAT_ZERO, op->getFirstArg()))->copyExtrasFrom(op));
     }
     return it;
 }
