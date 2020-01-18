@@ -18,6 +18,8 @@
 using namespace vc4c;
 using namespace vc4c::qpu_asm;
 
+// TODO can also remove address/uniform for lowered parameter on both sides!
+
 static void writeStream(std::ostream& stream, const std::array<uint8_t, 8>& buf, const OutputMode mode)
 {
     if(mode == OutputMode::BINARY)

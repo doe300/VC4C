@@ -64,13 +64,8 @@ static Optional<Value> getDimensionalArgument(const intermediate::IntrinsicOpera
         {
             if(auto rot = dynamic_cast<const intermediate::VectorRotation*>(reader))
             {
-                if(auto offset = rot->getOffset().checkImmediate())
-                    rotationOffsets.emplace(offset->getRotationOffset().value_or(*offset));
-                else
-                {
-                    rotationOffsets.clear();
-                    break;
-                }
+                auto offset = rot->getOffset();
+                rotationOffsets.emplace(offset.getRotationOffset().value_or(offset));
             }
             else if(auto move = dynamic_cast<const intermediate::MoveOperation*>(reader))
             {

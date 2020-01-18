@@ -172,12 +172,78 @@ static NODISCARD std::pair<InstructionWalker, InstructionWalker> insert64BitWrit
     return std::make_pair(it, startIt);
 }
 
-std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineMemoryAccess(Method& method)
+static Optional<FastSet<const IntermediateInstruction*>> checkAllWritersArePhiNodesOrSelections(
+    const Local* local, const IntermediateInstruction* excludedInstruction)
+{
+    bool allWritersArePhiNodes = true;
+    bool allWritersAreSelections = true;
+    FastSet<const IntermediateInstruction*> phiNodes;
+    FastSet<const IntermediateInstruction*> selections;
+    local->forUsers(LocalUse::Type::WRITER, [&](const LocalUser* writer) {
+        if(excludedInstruction == writer)
+            // skip the (possible write) we are currently processing
+            return;
+        if(writer->hasDecoration(InstructionDecorations::PHI_NODE))
+        {
+            if(auto loc = writer->assertArgument(0).checkLocal())
+                phiNodes.emplace(writer);
+            else
+                allWritersArePhiNodes = false;
+            allWritersAreSelections = false;
+        }
+        else if(dynamic_cast<const MoveOperation*>(writer) && writer->hasConditionalExecution())
+        {
+            // TODO more precise check? E.g. for same setting of flag?
+            if(auto loc = writer->assertArgument(0).checkLocal())
+                selections.emplace(writer);
+            else
+                allWritersAreSelections = false;
+            allWritersArePhiNodes = false;
+        }
+        else
+        {
+            allWritersArePhiNodes = false;
+            allWritersAreSelections = false;
+        }
+    });
+    if(allWritersArePhiNodes)
+        return phiNodes;
+    if(allWritersAreSelections)
+        return selections;
+    return {};
+}
+
+// Memory is accessed conditionally (either address X or address Y, ...), e.g. for phi-nodes of select-statements
+// (?:-operator).
+struct ConditionalMemoryAccess
+{
+    // The instruction doing the conditional write, e.g. the phi-node or the conditional move for a select-statement
+    const IntermediateInstruction* conditionalWrite;
+    Variant<const Local*, const IntermediateInstruction*> source;
+
+    inline bool operator==(const ConditionalMemoryAccess& other) const noexcept
+    {
+        return conditionalWrite == other.conditionalWrite;
+    }
+};
+
+template <>
+struct std::hash<ConditionalMemoryAccess> : private std::hash<const IntermediateInstruction*>
+{
+    inline std::size_t operator()(const ConditionalMemoryAccess& access) const noexcept
+    {
+        return std::hash<const IntermediateInstruction*>::operator()(access.conditionalWrite);
+    }
+};
+
+MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
 {
     // TODO lower local/private struct-elements into VPM?! At least for single structs
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Determining memory access for kernel: " << method.name << logging::endl);
     MemoryAccessMap mapping;
     FastSet<InstructionWalker> allWalkers;
+    FastMap<InstructionWalker, FastSet<const ConditionalMemoryAccess*>> conditionalWrittenMemoryAccesses;
+    FastSet<ConditionalMemoryAccess> conditionalAddressWrites;
     for(const auto& param : method.parameters)
     {
         if(!param.type.getPointerType())
@@ -577,62 +643,78 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
                         mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
                     }
                 }
+                else if(auto conditonalWrites = checkAllWritersArePhiNodesOrSelections(local, it.get()))
+                {
+                    // if the local is a PHI result from different memory addresses, we can still map it, if the
+                    // source addresses have the same access type. Since the "original" access types of the sources
+                    // might not yet be determined and the source of a phi-node might be another phi-node, we first
+                    // collect all the information and in the end find the greatest common memory access type for
+                    // all memory accesses using the same phi-node. The same is true for memory addresses written via
+                    // select-statements (?:-operators).
+
+                    auto& nodes =
+                        conditionalWrittenMemoryAccesses.emplace(it, FastSet<const ConditionalMemoryAccess*>{})
+                            .first->second;
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Conditionally written local '" << local->to_string()
+                            << "' will not be mapped, these sources will be mapped instead: " << logging::endl);
+                    for(auto writer : *conditonalWrites)
+                    {
+                        if(const Local* loc = writer->assertArgument(0).local())
+                        {
+                            loc = loc->getBase(true);
+                            if(loc->residesInMemory() || loc->is<Parameter>())
+                            {
+                                auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, loc});
+                                if(tmp.second)
+                                {
+                                    nodes.emplace(&*tmp.first);
+                                    CPPLOG_LAZY(logging::Level::DEBUG,
+                                        log << "\tconditional write " << writer->to_string()
+                                            << " to memory area: " << loc->to_string(true) << logging::endl);
+                                }
+                                continue;
+                            }
+                            if(loc->getSingleWriter() &&
+                                (loc->getSingleWriter()->hasDecoration(InstructionDecorations::PHI_NODE) ||
+                                    loc->getSingleWriter()->hasConditionalExecution()))
+                            {
+                                auto writer = loc->getSingleWriter();
+                                auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, writer});
+                                if(tmp.second)
+                                {
+                                    nodes.emplace(&*tmp.first);
+                                    CPPLOG_LAZY(logging::Level::DEBUG,
+                                        log << "\tconditional write " << writer->to_string()
+                                            << " to conditional write: " << writer->to_string() << logging::endl);
+                                }
+                                continue;
+                            }
+                        }
+                        throw CompilationError(CompilationStep::NORMALIZER,
+                            "Unhandled case of conditional address write used as source for memory access",
+                            writer->to_string());
+                    }
+
+                    // delete the original (wrong) mapping, since it is not a proper memory area
+                    mapping.erase(local);
+                }
                 else
                 {
-                    bool allWritersArePhiNodes = true;
-                    FastSet<const Local*> phiSources;
-                    local->forUsers(LocalUse::Type::WRITER, [&](const LocalUser* writer) {
-                        // skip the (possible write) we are currently processing
-                        if(it.get() == writer)
-                            return;
-                        if(writer->hasDecoration(InstructionDecorations::PHI_NODE))
-                        {
-                            if(auto loc = writer->assertArgument(0).checkLocal())
-                                phiSources.emplace(loc->getBase(true));
-                            else
-                                allWritersArePhiNodes = false;
-                        }
-                        else
-                            allWritersArePhiNodes = false;
+                    // parameters MUST be handled before and there is no other type of memory objects
+                    // FIXME this is called e.g. for pointers dereferenced which are loaded from memory (from
+                    // pointers-to-pointers), e.g. for ./testing/bullet/jointSolver.cl
+                    CPPLOG_LAZY_BLOCK(logging::Level::ERROR, {
+                        logging::error() << "Failed to find memory area for local: " << local->to_string(true)
+                                         << logging::endl;
+                        for(const auto& writer : local->getUsers(LocalUse::Type::WRITER))
+                            logging::error() << "\tWriter: " << writer->to_string() << logging::endl;
+                        for(const auto& reader : local->getUsers(LocalUse::Type::READER))
+                            logging::error() << "\tReader: " << reader->to_string() << logging::endl;
                     });
-                    if(allWritersArePhiNodes)
-                    {
-                        // if the local is a PHI result from different memory addresses, we can still map it, if the
-                        // source addresses have the same access type
 
-                        // TODO can use TMU if all sources support it?! Could also use VPM, when dynamically selecting
-                        // VPM base address
-
-                        // add the instruction to all actual memory locations and update access types
-                        for(const auto source : phiSources)
-                        {
-                            auto& map = mapping[source];
-                            map.accessInstructions.emplace(it);
-                            map.preferred = MemoryAccessType::RAM_READ_WRITE_VPM;
-                            map.fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
-                        }
-
-                        // delete the original (wrong) mapping, since it is not a proper memory area
-                        mapping.erase(local);
-                        CPPLOG_LAZY_BLOCK(logging::Level::DEBUG, {
-                            auto& log = logging::debug()
-                                << "Phi-node local '" << local->to_string()
-                                << "' will not be mapped, these source locals will be mapped instead: ";
-                            for(auto loc : phiSources)
-                                log << loc->to_string() << ", ";
-                            log << logging::endl;
-                        });
-
-                        // TODO this passes, but it will fail when doing the actual mapping, since it only checks the
-                        // direct base of the source/destination, which is the phi-node output local, which is not
-                        // mapped correctly!
-                        throw CompilationError(CompilationStep::NORMALIZER,
-                            "Accessing memory through a phi-node is not implemented yet", local->to_string(true));
-                    }
-                    else
-                        // parameters MUST be handled before and there is no other type of memory objects
-                        throw CompilationError(
-                            CompilationStep::NORMALIZER, "Invalid local type for memory area", local->to_string(true));
+                    throw CompilationError(
+                        CompilationStep::NORMALIZER, "Invalid local type for memory area", local->to_string(true));
                 }
             }
             if(it.has())
@@ -641,7 +723,50 @@ std::pair<MemoryAccessMap, FastSet<InstructionWalker>> normalization::determineM
         it.nextInMethod();
     }
 
-    return std::make_pair(std::move(mapping), std::move(allWalkers));
+    // 1. map phi-nodes to source access types
+    FastMap<const ConditionalMemoryAccess*, MemoryAccess*> conditionalAccesses;
+    FastMap<const Local*, FastSet<const Local*>> conditionalLocalMappings;
+    for(const auto& conditionalWrite : conditionalAddressWrites)
+    {
+        if(VariantNamespace::holds_alternative<const IntermediateInstruction*>(conditionalWrite.source))
+            // TODO how to handle phi-inputs also coming from phi-nodes? E.g. for ./testing/clNN/im2col.cl!
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "Memory accessed via recursive conditional address writes is not supported yet",
+                conditionalWrite.conditionalWrite->to_string());
+        auto loc = VariantNamespace::get<const Local*>(conditionalWrite.source);
+        auto mappingIt = mapping.find(loc);
+        if(mappingIt == mapping.end())
+            // TODO what to do if the memory area is not yet mapped (i.e. only accessed via phi-nodes)?
+            // Would need to run the above checks/mappings recursive?!
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "Memory which is only accessed via conditional address writes is not supported yet", loc->to_string());
+        conditionalAccesses.emplace(&conditionalWrite, &mappingIt->second);
+        conditionalLocalMappings[conditionalWrite.conditionalWrite->checkOutputLocal()].emplace(loc);
+    }
+
+    // 2. map memory access instructions to phi-nodes, determine best common access type
+    for(const auto& conditionalAccessedMemory : conditionalWrittenMemoryAccesses)
+    {
+        FastSet<MemoryAccessType> preferredTypes;
+        for(const auto* access : conditionalAccessedMemory.second)
+        {
+            auto& memoryAccess = *conditionalAccesses.at(access);
+            memoryAccess.accessInstructions.emplace(conditionalAccessedMemory.first);
+            preferredTypes.emplace(memoryAccess.preferred);
+        }
+
+        if(preferredTypes.size() > 1)
+        {
+            // TODO would need to fall back to the allowed fall-backs until something matches
+            // also will need to update the MemoryAccesses for the source locals
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "Mapping conditionally addressed memory access to memory areas with different memory access types is "
+                "not supported yet",
+                conditionalAccessedMemory.first->to_string());
+        }
+    }
+
+    return MemoryAccessInfo{std::move(mapping), std::move(allWalkers), std::move(conditionalLocalMappings)};
 }
 
 static MemoryInfo canLowerToRegisterReadOnly(Method& method, const Local* baseAddr, MemoryAccess& access)

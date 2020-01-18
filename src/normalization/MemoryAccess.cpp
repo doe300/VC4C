@@ -766,7 +766,7 @@ void normalization::resolveStackAllocation(
  *
  * buffer is both inside and outside of function scope (where allowed)
  * - : is not allowed by OpenCL
- * (*) could lower into VPM if the highest index accessed is known and fits?
+ * (*) is lowered into VPM if the highest index accessed is known and fits
  * GD: global data segment of kernel buffer
  * RAM: load via TMU if possible (not written to), otherwise use VPM
  *
@@ -817,16 +817,14 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
      */
 
     // determine preferred and fall-back memory access type for each memory are
-    MemoryAccessMap memoryMapping;
-    FastSet<InstructionWalker> memoryInstructions;
-    std::tie(memoryMapping, memoryInstructions) = determineMemoryAccess(method);
+    auto memoryAccessInfo = determineMemoryAccess(method);
 
     FastMap<const Local*, MemoryInfo> infos;
     {
         // gather more information about the memory areas and modify the access types. E.g. if the preferred access type
         // cannot be used, use the fall-back
-        infos.reserve(memoryMapping.size());
-        for(auto& mapping : memoryMapping)
+        infos.reserve(memoryAccessInfo.memoryAccesses.size());
+        for(auto& mapping : memoryAccessInfo.memoryAccesses)
         {
             auto it = infos.emplace(mapping.first, checkMemoryMapping(method, mapping.first, mapping.second));
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -842,12 +840,11 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
     FastSet<BasicBlock*> affectedBlocks;
 
     // TODO sort locals by where to put them and then call 1. check of mapping and 2. mapping on all
-    for(auto& memIt : memoryInstructions)
+    for(auto& memIt : memoryAccessInfo.accessInstructions)
     {
         auto mem = memIt.get<const MemoryInstruction>();
-        const auto srcBaseLocal = mem->getSource().checkLocal() ? mem->getSource().local()->getBase(true) : nullptr;
-        const auto dstBaseLocal =
-            mem->getDestination().checkLocal() ? mem->getDestination().local()->getBase(true) : nullptr;
+        auto srcBaseLocal = mem->getSource().checkLocal() ? mem->getSource().local()->getBase(true) : nullptr;
+        auto dstBaseLocal = mem->getDestination().checkLocal() ? mem->getDestination().local()->getBase(true) : nullptr;
 
         auto srcInfoIt = srcBaseLocal ? infos.find(srcBaseLocal) : infos.end();
         const MemoryInfo& srcInfo = srcInfoIt != infos.end() ?
@@ -861,6 +858,22 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
         if(srcInfo.type == MemoryAccessType::RAM_READ_WRITE_VPM || dstInfo.type == MemoryAccessType::RAM_READ_WRITE_VPM)
             affectedBlocks.emplace(InstructionWalker{memIt}.getBasicBlock());
 
+        // TODO Fail here preemptively, since the actual mapping  will only check the
+        // direct base of the source/destination, which is the phi-node output local, which is not
+        // mapped correctly! And here, we actually know the reason, so we can show better error messages.
+        // TODO to solve this, we would need to be able to pass (and handle) all MemoryInfo for all phi-node accessed
+        // memory areas for src/dest.
+        if(srcInfo.local &&
+            memoryAccessInfo.additionalAreaMappings.find(srcInfo.local) !=
+                memoryAccessInfo.additionalAreaMappings.end())
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "Reading memory through a phi-node is not implemented yet", memIt->to_string());
+        if(dstInfo.local &&
+            memoryAccessInfo.additionalAreaMappings.find(dstInfo.local) !=
+                memoryAccessInfo.additionalAreaMappings.end())
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "Writing memory through a phi-node is not implemented yet", memIt->to_string());
+
         mapMemoryAccess(method, memIt, const_cast<MemoryInstruction*>(mem), srcInfo, dstInfo);
         // TODO mark local for prefetch/write-back (if necessary)
     }
@@ -872,86 +885,3 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
 
     // TODO clean up no longer used (all kernels!) globals and stack allocations
 }
-
-/*
- * TODO
-void cacheWorkGroupDMAAccess(const Module& module, Method& method, const Configuration& config)
-{
-    auto memoryAccessRanges = determineAccessRanges(method, localsMap);
-    for(auto& pair : memoryAccessRanges)
-    {
-        bool allUniformPartsEqual;
-        analysis::IntegerRange offsetRange;
-        std::tie(allUniformPartsEqual, offsetRange) = checkWorkGroupUniformParts(pair.second);
-        if(!allUniformPartsEqual)
-        {
-            logging::debug() << "Cannot cache memory location " << pair.first->to_string()
-                             << " in VPM, since the work-group uniform parts of the address calculations differ, which "
-                                "is not yet supported!"
-                             << logging::endl;
-            continue;
-        }
-        if((offsetRange.maxValue - offsetRange.minValue) >= config.availableVPMSize ||
-            (offsetRange.maxValue < offsetRange.minValue))
-        {
-            // if the other local is already mapped to VPM, insert copy instruction. Otherwise let other local handle
-            // this
-            auto memAreas = mem->getMemoryAreas();
-            if(std::all_of(memAreas.begin(), memAreas.end(),
-                   [&](const Local* l) -> bool { return vpmAreas.find(l) != vpmAreas.end(); }))
-            {
-                // TODO insert copy from/to VPM. Need to do via read/write
-                throw CompilationError(
-                    CompilationStep::NORMALIZER, "Copying from/to VPM is not yet implemented", mem->to_string());
-            }
-            ++it;
-            // this also checks for any over/underflow when converting the range to unsigned int in the next steps
-            logging::debug() << "Cannot cache memory location " << pair.first->to_string()
-                             << " in VPM, the accessed range is too big: [" << offsetRange.minValue << ", "
-                             << offsetRange.maxValue << "]" << logging::endl;
-            continue;
-        }
-        logging::debug() << "Memory location " << pair.first->to_string()
-                         << " is accessed via DMA in the dynamic range [" << offsetRange.minValue << ", "
-                         << offsetRange.maxValue << "]" << logging::endl;
-
-        auto accessedType = pair.first->type.toArrayType(static_cast<unsigned>(
-            offsetRange.maxValue - offsetRange.minValue + 1 / * bounds of range are inclusive! * /));
-
-        // TODO the local is not correct, at least not if there is a work-group uniform offset
-        auto vpmArea = method.vpm->addArea(pair.first, accessedType, false);
-        if(vpmArea == nullptr)
-        {
-            logging::debug() << "Memory location " << pair.first->to_string() << " with dynamic access range ["
-                             << offsetRange.minValue << ", " << offsetRange.maxValue
-                             << "] cannot be cached in VPM, since it does not fit" << logging::endl;
-            continue;
-        }
-
-        // TODO insert load memory area into VPM at start of kernel (after all the required offsets/indices are
-        // calculated)
-        // TODO calculate address from base address and work-group uniform parts
-        // TODO insert store VPM into memory area at end of kernel
-        // TODO rewrite memory accesses to only access the correct VPM area
-
-        for(auto& entry : pair.second)
-            rewriteIndexCalculation(method, entry);
-
-        // TODO now, combine access to memory with VPM access
-        // need to make sure, only 1 kernel accesses RAM/writes the configuration, how?
-        // -> need some lightweight synchronization (e.g. status value in VPM?? One kernel would need to
-        // poll!!)
-        // TODO if minValue  != 0, need then to deduct it from the group-uniform address too!
-        // use base pointer as memory pointer (for read/write-back) and offset as VPM offset. maximum
-        // offset is the number of elements to copy/cache
-
-        // TODO insert initial read from DMA, final write to DMA
-        // even for writes, need to read, since memory in between might be untouched?
-
-        // TODO if it can be proven that all values in the range are guaranteed to be written (and not read before),
-        // we can skip the initial loading. This guarantee needs to hold across all work-items in a group!
-    }
-
-    // XXX
-}
-*/

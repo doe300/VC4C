@@ -459,6 +459,10 @@ bool StructType::operator==(const ComplexType& other) const
 unsigned int StructType::getStructSize(const int index) const
 {
     unsigned int size = 0;
+    // TODO an empty struct has a size of at least 1?!? On the other hand, empty structs are not allowed (by the
+    // grammar) in C (which OpenCL is based on), see
+    // https://stackoverflow.com/questions/24685399/c-empty-struct-what-does-this-mean-do
+    // Testing with compiler explorer, clang allows empty structs for OpenCL and reports a size of 0!
     if(isPacked)
     {
         // packed -> no padding

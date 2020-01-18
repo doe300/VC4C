@@ -45,6 +45,20 @@ namespace vc4c
             FastMap<const Local*, std::pair<FastAccessList<MemoryAccessRange>, const periphery::VPMArea*>>;
         using MemoryAccessMap = SortedMap<const Local*, MemoryAccess, analysis::LocalUsageOrdering>;
 
+        /**
+         * Container for information returned from the memory access check
+         */
+        struct MemoryAccessInfo
+        {
+            // The mapping from accessed memory areas to the types of accesses
+            MemoryAccessMap memoryAccesses;
+            // The instructions accessing memory
+            FastSet<InstructionWalker> accessInstructions;
+            // Additional mapping from the locals accessed as memory areas to the actual memory areas accessed. This is
+            // relevant e.g. if the memory area accessed is determined via a phi-node or a select-statement (?:).
+            FastMap<const Local*, FastSet<const Local*>> additionalAreaMappings;
+        };
+
         /*
          * Basic algorithm to determine the preferred and fall-back (e.g. if access-types not supported by preferred)
          * way of
@@ -52,7 +66,7 @@ namespace vc4c
          * b) mapping the memory access types (read, write, copy, fill) to the available memory access types (TMU, VPM,
          * etc.)
          */
-        std::pair<MemoryAccessMap, FastSet<InstructionWalker>> determineMemoryAccess(Method& method);
+        MemoryAccessInfo determineMemoryAccess(Method& method);
 
         /*
          * Returns the constant value which will be read from the given memory access instruction.

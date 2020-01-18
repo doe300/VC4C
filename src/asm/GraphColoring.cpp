@@ -548,6 +548,8 @@ void GraphColoring::createGraph()
             node.reserveEdgesSize(interferenceNode.second.getEdgesSize());
         interferenceNode.second.forAllEdges(
             [&](const analysis::InterferenceNode& neighbor, const analysis::Interference& edge) -> bool {
+                // TODO can we here somehow only run for one half of the edges? since now we want to add every edge
+                // twice (for each adjacent node)
                 node.getOrCreateEdge(&graph.assertNode(neighbor.key)).data = edge.data;
                 return true;
             });
