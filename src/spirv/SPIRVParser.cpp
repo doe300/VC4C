@@ -1722,9 +1722,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     case spv::Op::OpControlBarrier:
         // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation of "barrier()" is reverted back
         // to this OpControlBarrier, create a function call to the "barrier()" function
-        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "barrier",
-            parsed_instruction->type_id, {getWord(parsed_instruction, 1)}));
+        instructions.emplace_back(new SPIRVCallSite(*currentMethod, "barrier", {getWord(parsed_instruction, 1)}));
         return SPV_SUCCESS;
     case spv::Op::OpMemoryBarrier:
         instructions.emplace_back(

@@ -729,6 +729,9 @@ AddressSpace spirv2qasm::toAddressSpace(const spv::StorageClass storageClass)
     case spv::StorageClass::CrossWorkgroup:
         return AddressSpace::GLOBAL;
     case spv::StorageClass::UniformConstant:
+    case spv::StorageClass::Input:
+        // "Visible across all functions in the current invocation. Variables declared with this storage class are
+        // read-only [...]" - SPIR-V specification, section 3.7. Storage Class
         return AddressSpace::CONSTANT;
     case spv::StorageClass::Workgroup:
         return AddressSpace::LOCAL;

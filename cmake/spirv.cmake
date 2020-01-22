@@ -12,8 +12,8 @@ endif()
 if(SPIRV_TRANSLATOR_ROOT)
 	message(STATUS "Khronos OpenCL toolkit: ${SPIRV_TRANSLATOR_ROOT}")
 	# The translator uses the built-in clang
-	find_program(SPIRV_CLANG_FOUND clang NAMES clang clang-3.9 clang-4.0 clang-5.0 clang-6.0)
-	find_program(LLVM_LINK_FOUND llvm-link NAMES llvm-link llvm-link-3.9 llvm-link-4.0 llvm-link-5.0 llvm-link-6.0)
+	find_program(SPIRV_CLANG_FOUND clang NAMES clang clang-3.9 clang-4.0 clang-5.0 clang-6.0 clang-7 clang-8 clang-9)
+	find_program(LLVM_LINK_FOUND llvm-link NAMES llvm-link llvm-link-3.9 llvm-link-4.0 llvm-link-5.0 llvm-link-6.0 llvm-link-7 llvm-link-8 llvm-link-9)
 	find_file(SPIRV_LLVM_SPIR_FOUND llvm-spirv PATHS ${SPIRV_TRANSLATOR_ROOT} NO_DEFAULT_PATH)
 	if(SPIRV_CLANG_FOUND)
 		message(STATUS "Khronos OpenCL compiler: ${SPIRV_CLANG_FOUND}")
@@ -82,7 +82,7 @@ if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
 		# the headers are already included by linking the targets
 		set(SPIRV_Tools_HEADERS "")
 		# we need to export these targets, since they are required by VC4CC which we export
-		export(TARGETS SPIRV-Headers SPIRV-Tools SPIRV-Tools-opt SPIRV-Tools-link FILE spirv-exports.cmake)
+		# export(TARGETS SPIRV-Headers SPIRV-Tools SPIRV-Tools-opt SPIRV-Tools-link FILE spirv-exports.cmake)
 	else()
 		#Add SPIR-V headers project
 		ExternalProject_Add(SPIRV-Headers-project

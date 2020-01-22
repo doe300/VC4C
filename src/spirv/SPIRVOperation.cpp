@@ -264,10 +264,16 @@ SPIRVCallSite::SPIRVCallSite(const uint32_t id, SPIRVMethod& method, const std::
 {
 }
 
+SPIRVCallSite::SPIRVCallSite(SPIRVMethod& method, const std::string& methodName, std::vector<uint32_t>&& arguments) :
+    SPIRVOperation(UNDEFINED_ID, method, intermediate::InstructionDecorations::NONE), typeID(UNDEFINED_ID),
+    methodName(methodName), arguments(std::move(arguments))
+{
+}
+
 void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
     MethodMapping& methods, AllocationMapping& memoryAllocated)
 {
-    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
+    Value dest = id == UNDEFINED_ID ? UNDEFINED_VALUE : toNewLocal(*method.method, id, typeID, types, localTypes);
     std::string calledFunction = methodName.value_or("");
     if(methodID)
         calledFunction = methods.at(methodID.value()).method->name;
@@ -308,12 +314,23 @@ void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constant
         }
         calledFunction = "vstore" + std::to_string(num);
     }
-    CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Generating intermediate call-site to '" << calledFunction << "' with " << args.size()
-            << " parameters into " << dest.to_string(true) << logging::endl);
-    method.method->appendToEnd(
-        (new intermediate::MethodCall(std::move(dest), std::move(calledFunction), std::move(args)))
-            ->addDecorations(decorations));
+    if(dest.isUndefined())
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating intermediate call-site to void-function '" << calledFunction << "' with " << args.size()
+                << " parameters" << logging::endl);
+        method.method->appendToEnd(
+            (new intermediate::MethodCall(std::move(calledFunction), std::move(args)))->addDecorations(decorations));
+    }
+    else
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Generating intermediate call-site to '" << calledFunction << "' with " << args.size()
+                << " parameters into " << dest.to_string(true) << logging::endl);
+        method.method->appendToEnd(
+            (new intermediate::MethodCall(std::move(dest), std::move(calledFunction), std::move(args)))
+                ->addDecorations(decorations));
+    }
 }
 
 Optional<Value> SPIRVCallSite::precalculate(

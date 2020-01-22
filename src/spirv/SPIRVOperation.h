@@ -99,6 +99,7 @@ namespace vc4c
                 std::vector<uint32_t>&& arguments);
             SPIRVCallSite(uint32_t id, SPIRVMethod& method, const std::string& methodName, uint32_t resultType,
                 std::vector<uint32_t>&& arguments);
+            SPIRVCallSite(SPIRVMethod& method, const std::string& methodName, std::vector<uint32_t>&& arguments);
             ~SPIRVCallSite() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,

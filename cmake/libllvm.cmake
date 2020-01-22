@@ -3,7 +3,7 @@
 ####
 
 # We cannot use SPIRV-LLVM/clang with libLLVM from default clang. So if SPIRV-LLVM is configured, force to use its libLLVM
-if(SPIRV_CLANG_FOUND)
+if(SPIRV_CLANG_FOUND AND NOT SPIRV_TRANSLATOR_ROOT)
 	set(LLVM_CONFIG_PATH ${SPIRV_COMPILER_ROOT}/llvm-config)
 endif()
 # LLVM_CONFIG_PATH can be used to configure the path for the llvm-config program.
