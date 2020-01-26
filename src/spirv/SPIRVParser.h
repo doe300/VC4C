@@ -91,7 +91,7 @@ namespace vc4c
 #else
 namespace vc4c
 {
-    namespace spirv2qasm
+    namespace spirv
     {
         class SPIRVParser final : public Parser
         {
@@ -107,7 +107,7 @@ namespace vc4c
                 throw CompilationError(CompilationStep::GENERAL, "SPIR-V frontend is not active!");
             }
         };
-    } // namespace spirv2qasm
+    } // namespace spirv
 } // namespace vc4c
 #endif
 

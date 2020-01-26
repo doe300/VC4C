@@ -843,4 +843,4 @@ std::string spirv::demangleFunctionName(const std::string& name)
     return name;
 #endif
 }
-#endif /* SPIRV_HEADER */
+#endif /* SPIRV_FRONTEND */
