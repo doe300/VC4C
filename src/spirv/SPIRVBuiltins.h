@@ -21,7 +21,7 @@ namespace vc4c
     class Method;
     struct Configuration;
 
-    namespace spirv2qasm
+    namespace spirv
     {
         /**
          * Custom local type to represent a SPIR-V built-in value (e.g. local IDs) located in "constant memory".
@@ -98,7 +98,7 @@ namespace vc4c
          */
         void lowerBuiltins(Module& module, Method& method, InstructionWalker it, const Configuration& config);
 
-    } // namespace spirv2qasm
+    } // namespace spirv
 } // namespace vc4c
 
 #endif

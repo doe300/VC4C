@@ -71,8 +71,8 @@ std::unique_ptr<LifetimeGraph> LifetimeGraph::createLifetimeGraph(Method& method
 
     // TODO how to handle stack allocations without explicit lifetime boundaries?? E.g. for
     // testing/local_private_sotrage.cl
-    method.forAllInstructions([&liveLocals, &graph](const intermediate::IntermediateInstruction* inst) -> void {
-        if(auto lifetimeInst = dynamic_cast<const intermediate::LifetimeBoundary*>(inst))
+    method.forAllInstructions([&liveLocals, &graph](const intermediate::IntermediateInstruction& inst) -> void {
+        if(auto lifetimeInst = dynamic_cast<const intermediate::LifetimeBoundary*>(&inst))
         {
             const Local* local = lifetimeInst->getStackAllocation().local();
             if(lifetimeInst->isLifetimeEnd)

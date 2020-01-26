@@ -254,7 +254,7 @@ void TestIntrinsicFunctions::onMismatch(const std::string& expected, const std::
     TEST_ASSERT_EQUALS(expected, result)
 }
 
-template <typename In, typename Out, std::size_t N, typename Limits = In, typename Comparison = std::equal_to<Out>>
+template <typename In, typename Out, std::size_t N, typename Limits = In, typename Comparison = CompareEqual<Out>>
 static void testUnaryFunction(std::stringstream& code, const std::string& options, const std::function<Out(In)>& op,
     const std::function<void(const std::string&, const std::string&)>& onError)
 {
@@ -266,7 +266,7 @@ static void testUnaryFunction(std::stringstream& code, const std::string& option
         in, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
-template <typename In, typename Out, typename Comparison = std::equal_to<Out>>
+template <typename In, typename Out, typename Comparison = CompareEqual<Out>>
 static void testUnaryFunctionWithConstant(std::stringstream& code, const std::string& options, In in,
     const std::function<Out(In)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
 {
@@ -277,7 +277,7 @@ static void testUnaryFunctionWithConstant(std::stringstream& code, const std::st
         tmpIn, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
-template <typename In, typename Out, std::size_t N, typename Comparison = std::equal_to<Out>>
+template <typename In, typename Out, std::size_t N, typename Comparison = CompareEqual<Out>>
 static void testBinaryOperationWithSecondConstants(std::stringstream& code, const std::string& options, In constant,
     const std::function<Out(In, In)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
 {
@@ -292,7 +292,7 @@ static void testBinaryOperationWithSecondConstants(std::stringstream& code, cons
         in0, tmpIn1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
-template <typename In, typename Out, std::size_t N, typename Comparison = std::equal_to<Out>>
+template <typename In, typename Out, std::size_t N, typename Comparison = CompareEqual<Out>>
 static void testBinaryFunction(std::stringstream& code, const std::string& options,
     const std::function<Out(In, In)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
 {
@@ -305,7 +305,7 @@ static void testBinaryFunction(std::stringstream& code, const std::string& optio
         in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
-template <typename In, typename Out, typename Comparison = std::equal_to<Out>>
+template <typename In, typename Out, typename Comparison = CompareEqual<Out>>
 static void testBinaryFunctionWithConstants(std::stringstream& code, const std::string& options, In in0, In in1,
     const std::function<Out(In, In)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
 {
@@ -1655,6 +1655,11 @@ struct EqualNaN
     bool operator()(float a, float b) const noexcept
     {
         return (std::isnan(a) && std::isnan(b) && std::signbit(a) == std::signbit(b)) || a == b;
+    }
+
+    std::string difference(float a, float b) const
+    {
+        return {};
     }
 };
 

@@ -204,16 +204,18 @@ namespace vc4c
          * If the current instruction is a combined instruction, the function is executed for both single instructions
          */
         inline void forAllInstructions(
-            const std::function<void(const intermediate::IntermediateInstruction*)>& func) const
+            const std::function<void(const intermediate::IntermediateInstruction&)>& func) const
         {
             auto combined = get<const intermediate::CombinedOperation>();
             if(combined != nullptr)
             {
-                func(combined->getFirstOp());
-                func(combined->getSecondOP());
+                if(auto first = combined->getFirstOp())
+                    func(*first);
+                if(auto second = combined->getSecondOP())
+                    func(*second);
             }
-            else
-                func(get());
+            else if(auto ins = get())
+                func(*ins);
         }
 
         /*
@@ -393,16 +395,18 @@ namespace vc4c
          * If the current instruction is a combined instruction, the function is executed for both single instructions
          */
         inline void forAllInstructions(
-            const std::function<void(const intermediate::IntermediateInstruction*)>& func) const
+            const std::function<void(const intermediate::IntermediateInstruction&)>& func) const
         {
             auto combined = get<const intermediate::CombinedOperation>();
             if(combined != nullptr)
             {
-                func(combined->getFirstOp());
-                func(combined->getSecondOP());
+                if(auto first = combined->getFirstOp())
+                    func(*first);
+                if(auto second = combined->getSecondOP())
+                    func(*second);
             }
-            else
-                func(get());
+            else if(auto ins = get())
+                func(*ins);
         }
 
         /*

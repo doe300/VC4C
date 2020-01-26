@@ -17,12 +17,12 @@
 #include <cstring>
 
 // out-of-line destructor
-vc4c::spirv2qasm::SPIRVParser::~SPIRVParser() = default;
+vc4c::spirv::SPIRVParser::~SPIRVParser() = default;
 
 #ifdef SPIRV_FRONTEND
 
 using namespace vc4c;
-using namespace vc4c::spirv2qasm;
+using namespace vc4c::spirv;
 
 SPIRVParser::SPIRVParser(std::istream& input, const bool isSPIRVText) :
     isTextInput(isSPIRVText), input(input), currentMethod(nullptr), module(nullptr)
@@ -334,21 +334,21 @@ static std::vector<uint32_t> parseArguments(const spv_parsed_instruction_t* inst
 static intermediate::Sampler parseSampler(const spv_parsed_instruction_t* instruction)
 {
     intermediate::Sampler tmp(0);
-    switch(static_cast<SpvSamplerAddressingMode>(getWord(instruction, 3)))
+    switch(static_cast<spv::SamplerAddressingMode>(getWord(instruction, 3)))
     {
-    case SpvSamplerAddressingModeNone:
+    case spv::SamplerAddressingMode::None:
         tmp.setAddressingMode(intermediate::AddressingMode::NONE);
         break;
-    case SpvSamplerAddressingModeClampToEdge:
+    case spv::SamplerAddressingMode::ClampToEdge:
         tmp.setAddressingMode(intermediate::AddressingMode::CLAMP_TO_EDGE);
         break;
-    case SpvSamplerAddressingModeClamp:
+    case spv::SamplerAddressingMode::Clamp:
         tmp.setAddressingMode(intermediate::AddressingMode::CLAMP);
         break;
-    case SpvSamplerAddressingModeRepeat:
+    case spv::SamplerAddressingMode::Repeat:
         tmp.setAddressingMode(intermediate::AddressingMode::REPEAT);
         break;
-    case SpvSamplerAddressingModeRepeatMirrored:
+    case spv::SamplerAddressingMode::RepeatMirrored:
         tmp.setAddressingMode(intermediate::AddressingMode::MIRRORED_REPEAT);
         break;
     default:
@@ -358,12 +358,12 @@ static intermediate::Sampler parseSampler(const spv_parsed_instruction_t* instru
 
     tmp.setNormalizedCoordinates(getWord(instruction, 4));
 
-    switch(static_cast<SpvSamplerFilterMode>(getWord(instruction, 5)))
+    switch(static_cast<spv::SamplerFilterMode>(getWord(instruction, 5)))
     {
-    case SpvSamplerFilterModeNearest:
+    case spv::SamplerFilterMode::Nearest:
         tmp.setFilterMode(intermediate::FilterMode::NEAREST);
         break;
-    case SpvSamplerFilterModeLinear:
+    case spv::SamplerFilterMode::Linear:
         tmp.setFilterMode(intermediate::FilterMode::LINEAR);
         break;
     default:
@@ -546,20 +546,21 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     }
     case spv::Op::OpMemoryModel:
-        if(getWord(parsed_instruction, 1) != SpvAddressingModelLogical &&
-            getWord(parsed_instruction, 1) != SpvAddressingModelPhysical32)
+    {
+        auto addressingModel = static_cast<spv::AddressingModel>(getWord(parsed_instruction, 1));
+        auto memoryModel = static_cast<spv::MemoryModel>(getWord(parsed_instruction, 2));
+        if(addressingModel != spv::AddressingModel::Logical && addressingModel != spv::AddressingModel::Physical32)
             throw CompilationError(CompilationStep::PARSER, "Invalid addressing-mode");
-        if(getWord(parsed_instruction, 2) != SpvMemoryModelSimple &&
-            getWord(parsed_instruction, 2) != SpvMemoryModelOpenCL)
+        if(memoryModel != spv::MemoryModel::Simple && memoryModel != spv::MemoryModel::OpenCL)
             throw CompilationError(CompilationStep::PARSER, "Invalid memory model");
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Using a " << (getWord(parsed_instruction, 1) == SpvAddressingModelLogical ? "logical" : "physical")
-                << " " << (getWord(parsed_instruction, 2) == SpvMemoryModelSimple ? "simple" : "OpenCL")
-                << " memory model" << logging::endl);
+            log << "Using a " << (addressingModel == spv::AddressingModel::Logical ? "logical" : "physical") << " "
+                << (memoryModel == spv::MemoryModel::Simple ? "simple" : "OpenCL") << " memory model" << logging::endl);
         return SPV_SUCCESS;
+    }
     case spv::Op::OpEntryPoint: // an entry point is an OpenCL kernel
     {
-        if(getWord(parsed_instruction, 1) != SpvExecutionModelKernel)
+        if(static_cast<spv::ExecutionModel>(getWord(parsed_instruction, 1)) != spv::ExecutionModel::Kernel)
             throw CompilationError(CompilationStep::PARSER, "Invalid execution model");
         SPIRVMethod& m = getOrCreateMethod(*module, methods, getWord(parsed_instruction, 2));
         m.method->isKernel = true;
@@ -568,17 +569,19 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     }
     case spv::Op::OpExecutionMode:
+    {
+        auto executionMode = static_cast<spv::ExecutionMode>(getWord(parsed_instruction, 2));
         // only Kernel or native execution modes are supported
-        if(getWord(parsed_instruction, 2) == SpvExecutionModeLocalSize)
+        if(executionMode == spv::ExecutionMode::LocalSize)
             //"Indicates the work-group size in the x, y, and z dimensions"
             metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES] = {
                 getWord(parsed_instruction, 3), getWord(parsed_instruction, 4), getWord(parsed_instruction, 5)};
-        else if(getWord(parsed_instruction, 2) == SpvExecutionModeLocalSizeHint)
+        else if(executionMode == spv::ExecutionMode::LocalSizeHint)
             //"A hint to the compiler, which indicates the most likely to be used work-group size in the x, y, and z
             // dimensions"
             metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES_HINT] = {
                 getWord(parsed_instruction, 3), getWord(parsed_instruction, 4), getWord(parsed_instruction, 5)};
-        else if(getWord(parsed_instruction, 2) == SpvExecutionModeVecTypeHint)
+        else if(executionMode == spv::ExecutionMode::VecTypeHint)
             /*
              * "A hint to the compiler, which indicates that most operations used in the entry point are explicitly
              * vectorized using a particular vector type. The 16 high-order bits of Vector Type operand specify the
@@ -589,18 +592,21 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
                 log << "Vector type hint is currently not supported: "
                     << static_cast<uint16_t>(getWord(parsed_instruction, 3) >> 16) << " x "
                     << toScalarType(static_cast<uint16_t>(getWord(parsed_instruction, 3) & 0xFFFF)) << logging::endl);
-        else if(getWord(parsed_instruction, 2) != SpvExecutionModeContractionOff)
+        else if(executionMode != spv::ExecutionMode::ContractionOff)
             throw CompilationError(CompilationStep::PARSER, "Invalid execution mode");
         return SPV_SUCCESS;
+    }
     case spv::Op::OpExecutionModeId:
+    {
+        auto executionMode = static_cast<spv::ExecutionMode>(getWord(parsed_instruction, 2));
         // only Kernel or native execution modes are supported
-        if(getWord(parsed_instruction, 2) == SpvExecutionModeLocalSizeId)
+        if(executionMode == spv::ExecutionMode::LocalSizeId)
             //"Indicates the work-group size in the x, y, and z dimensions"
             metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES] = {
                 constantMappings.at(getWord(parsed_instruction, 3)).getScalar()->unsignedInt(),
                 constantMappings.at(getWord(parsed_instruction, 4)).getScalar()->unsignedInt(),
                 constantMappings.at(getWord(parsed_instruction, 5)).getScalar()->unsignedInt()};
-        else if(getWord(parsed_instruction, 2) == SpvExecutionModeLocalSizeHintId)
+        else if(executionMode == spv::ExecutionMode::LocalSizeHintId)
             //"A hint to the compiler, which indicates the most likely to be used work-group size in the x, y, and z
             // dimensions"
             metadataMappings[getWord(parsed_instruction, 1)][MetaDataType::WORK_GROUP_SIZES_HINT] = {
@@ -610,6 +616,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         else
             throw CompilationError(CompilationStep::PARSER, "Invalid execution mode");
         return SPV_SUCCESS;
+    }
     case spv::Op::OpCapability:
         return checkCapability(static_cast<spv::Capability>(getWord(parsed_instruction, 1)));
     case spv::Op::OpTypeVoid:
@@ -990,7 +997,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         {
             // OpVariables outside of any function are global data
             isConstant = isConstant ||
-                static_cast<SpvStorageClass>(getWord(parsed_instruction, 3)) == SpvStorageClassUniformConstant;
+                static_cast<spv::StorageClass>(getWord(parsed_instruction, 3)) == spv::StorageClass::UniformConstant;
             // replace the '%' and add the leading '@' to match the LLVM front-end
             name = "@" + (name.find('%') == 0 ? name.substr(1) : name);
             module->globalData.emplace_back(Global(name, type, CompoundConstant(val), isConstant));
@@ -1922,8 +1929,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     }
 
     // unhandled op-code
-    logging::warn() << "Unhandled instruction-type: " << static_cast<SpvOp>(parsed_instruction->opcode)
-                    << logging::endl;
+    logging::warn() << "Unhandled instruction-type: " << parsed_instruction->opcode << logging::endl;
     return SPV_UNSUPPORTED;
 }
 

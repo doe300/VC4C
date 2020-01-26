@@ -416,7 +416,7 @@ void precompilation::linkSPIRVModules(
     }
 
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Linking " << sources.size() << " input modules..." << logging::endl);
-    spirv2qasm::linkSPIRVModules(convertedInputs, *result.stream);
+    spirv::linkSPIRVModules(convertedInputs, *result.stream);
 #endif
     PROFILE_END(LinkSPIRVModules);
 }

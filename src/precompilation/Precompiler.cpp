@@ -54,7 +54,7 @@ void Precompiler::precompile(std::istream& input, std::unique_ptr<std::istream>&
     PROFILE_START(Precompile);
     Precompiler precompiler(config, input, Precompiler::getSourceType(input), inputFile);
     if(config.frontend != Frontend::DEFAULT)
-        precompiler.run(output, config.frontend == Frontend::LLVM_IR ? SourceType::LLVM_IR_TEXT : SourceType::SPIRV_BIN,
+        precompiler.run(output, config.frontend == Frontend::LLVM_IR ? SourceType::LLVM_IR_BIN : SourceType::SPIRV_BIN,
             options, outputFile);
     else
     {

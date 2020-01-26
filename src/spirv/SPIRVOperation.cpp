@@ -19,7 +19,7 @@
 #include <cstdbool>
 
 using namespace vc4c;
-using namespace vc4c::spirv2qasm;
+using namespace vc4c::spirv;
 
 static Value toNewLocal(Method& method, const uint32_t id, const uint32_t typeID, const TypeMapping& typeMappings,
     LocalTypeMapping& localTypes)
@@ -1212,14 +1212,14 @@ Optional<Value> SPIRVImageQuery::precalculate(
     return NO_VALUE;
 }
 
-vc4c::spirv2qasm::SPIRVMemoryBarrier::SPIRVMemoryBarrier(
+vc4c::spirv::SPIRVMemoryBarrier::SPIRVMemoryBarrier(
     SPIRVMethod& method, const uint32_t scopeID, const uint32_t semanticsID) :
     SPIRVOperation(UNDEFINED_ID, method, intermediate::InstructionDecorations::NONE),
     scopeID(scopeID), semanticsID(semanticsID)
 {
 }
 
-void vc4c::spirv2qasm::SPIRVMemoryBarrier::mapInstruction(TypeMapping& types, ConstantMapping& constants,
+void vc4c::spirv::SPIRVMemoryBarrier::mapInstruction(TypeMapping& types, ConstantMapping& constants,
     LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated)
 {
     const Value scope = getValue(scopeID, *method.method, types, constants, memoryAllocated, localTypes);
@@ -1235,7 +1235,7 @@ void vc4c::spirv2qasm::SPIRVMemoryBarrier::mapInstruction(TypeMapping& types, Co
             static_cast<intermediate::MemorySemantics>(semantics.getLiteralValue()->unsignedInt())));
 }
 
-Optional<Value> vc4c::spirv2qasm::SPIRVMemoryBarrier::precalculate(
+Optional<Value> vc4c::spirv::SPIRVMemoryBarrier::precalculate(
     const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
 {
     return NO_VALUE;

@@ -139,7 +139,7 @@ namespace vc4c
          * NOTE: Users of this function should assume the order of traversal to be arbitrary!
          */
         void forAllInstructions(
-            const std::function<void(const intermediate::IntermediateInstruction*)>& consumer) const;
+            const std::function<void(const intermediate::IntermediateInstruction&)>& consumer) const;
         /*
          * Calculates the number of instructions within the method from the sizes of the basic blocks
          */

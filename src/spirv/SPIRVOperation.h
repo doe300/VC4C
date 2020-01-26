@@ -22,7 +22,7 @@ namespace vc4c
         enum class InstructionDecorations : uint32_t;
     } // namespace intermediate
 
-    namespace spirv2qasm
+    namespace spirv
     {
         static constexpr uint32_t UNDEFINED_ID{0};
         static constexpr uint32_t UNDEFINED_SCALAR{0xFFFFFFFF};
@@ -429,7 +429,7 @@ namespace vc4c
             const uint32_t sourceID;
             const std::string foldOperation;
         };
-    } // namespace spirv2qasm
+    } // namespace spirv
 } // namespace vc4c
 
 #endif

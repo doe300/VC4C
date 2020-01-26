@@ -26,18 +26,18 @@ static bool isIfElseWrite(const FastSet<const LocalUser*>& users)
 }
 
 static LivenessChanges analyzeLivenessChangesInner(
-    const intermediate::IntermediateInstruction* instr, LivenessAnalysisCache& cache)
+    const intermediate::IntermediateInstruction& instr, LivenessAnalysisCache& cache)
 {
     PROFILE_START(LivenessChangesAnalysis);
     LivenessChanges changes;
     auto& conditionalWrites = cache.first;
     auto& conditionalReads = cache.second;
 
-    if(dynamic_cast<const intermediate::BranchLabel*>(instr))
+    if(dynamic_cast<const intermediate::BranchLabel*>(&instr))
         // labels do not change any lifetime, since we do not track label lifetimes
         return changes;
 
-    instr->forUsedLocals([&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) {
+    instr.forUsedLocals([&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) {
         if(has_flag(type, LocalUse::Type::WRITER) &&
             !inst.hasDecoration(vc4c::intermediate::InstructionDecorations::ELEMENT_INSERTION))
         {
@@ -85,7 +85,9 @@ static LivenessChanges analyzeLivenessChangesInner(
 LivenessChanges LivenessChangesAnalysis::analyzeLivenessChanges(const intermediate::IntermediateInstruction* instr,
     const LivenessChanges& previousChanges, LivenessAnalysisCache& cache)
 {
-    return analyzeLivenessChangesInner(instr, cache);
+    if(instr)
+        return analyzeLivenessChangesInner(*instr, cache);
+    return {};
 }
 
 LCOV_EXCL_START
@@ -133,7 +135,7 @@ FastSet<const Local*> LivenessAnalysis::analyzeIncomingLiveLocals(
     {
         --it;
         if(*it)
-            prevVal = updateLiveness(std::move(prevVal), analyzeLivenessChangesInner(it->get(), c));
+            prevVal = updateLiveness(std::move(prevVal), analyzeLivenessChangesInner(*it->get(), c));
     } while(it != block.begin());
     return prevVal;
 }
@@ -181,7 +183,8 @@ void LivenessAnalysis::updateWithChanges(
 FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::IntermediateInstruction* instr,
     const FastSet<const Local*>& nextResult, LivenessAnalysisCache& cache)
 {
-    return updateLiveness(FastSet<const Local*>{nextResult}, analyzeLivenessChangesInner(instr, cache));
+    auto changes = instr ? analyzeLivenessChangesInner(*instr, cache) : LivenessChanges{};
+    return updateLiveness(FastSet<const Local*>{nextResult}, changes);
 }
 
 static FastSet<const Local*> updateLiveness(

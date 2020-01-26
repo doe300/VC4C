@@ -61,6 +61,7 @@ static std::unique_ptr<Parser> getParser(std::istream& stream)
         throw CompilationError(CompilationStep::GENERAL, "No LLVM IR text front-end available!");
 #endif
     case SourceType::LLVM_IR_BIN:
+        logging::info() << "Using LLVM module frontend..." << logging::endl;
 #ifdef USE_LLVM_LIBRARY
         return std::unique_ptr<Parser>(new llvm2qasm::BitcodeReader(stream, SourceType::LLVM_IR_BIN));
 #else
@@ -71,7 +72,7 @@ static std::unique_ptr<Parser> getParser(std::istream& stream)
         throw CompilationError(CompilationStep::GENERAL, "SPIR-V text needs to be first converted to SPIR-V binary!");
     case SourceType::SPIRV_BIN:
         logging::info() << "Using SPIR-V frontend..." << logging::endl;
-        return std::unique_ptr<Parser>(new spirv2qasm::SPIRVParser(stream, false));
+        return std::unique_ptr<Parser>(new spirv::SPIRVParser(stream, false));
     case SourceType::OPENCL_C:
         throw CompilationError(CompilationStep::GENERAL, "OpenCL code needs to be first compiled with CLang!");
     case SourceType::QPUASM_BIN:

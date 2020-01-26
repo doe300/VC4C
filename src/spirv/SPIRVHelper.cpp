@@ -22,9 +22,9 @@
 #endif
 
 using namespace vc4c;
-using namespace vc4c::spirv2qasm;
+using namespace vc4c::spirv;
 
-std::string spirv2qasm::getOpenCLMethodName(const uint32_t instructionID)
+std::string spirv::getOpenCLMethodName(const uint32_t instructionID)
 {
     switch(static_cast<OpenCLLIB::Entrypoints>(instructionID))
     {
@@ -340,7 +340,7 @@ std::string spirv2qasm::getOpenCLMethodName(const uint32_t instructionID)
     }
 }
 
-std::string spirv2qasm::getErrorMessage(spv_result_t error)
+std::string spirv::getErrorMessage(spv_result_t error)
 {
     switch(error)
     {
@@ -602,7 +602,7 @@ static const std::set<spv::Capability> supportedCapabilites = {
     // support for half floating-point type only as pointer-type
     spv::Capability::Float16Buffer, spv::Capability::Int64, spv::Capability::Float64};
 
-spv_result_t spirv2qasm::checkCapability(const spv::Capability cap)
+spv_result_t spirv::checkCapability(const spv::Capability cap)
 {
     // see https://www.khronos.org/registry/spir-v/specs/1.0/SPIRV.html#Capability
     /*
@@ -623,7 +623,7 @@ spv_result_t spirv2qasm::checkCapability(const spv::Capability cap)
     return SPV_UNSUPPORTED;
 }
 
-spv_result_t spirv2qasm::checkExtension(const std::string& extension)
+spv_result_t spirv::checkExtension(const std::string& extension)
 {
     if(extension == "SPV_KHR_no_integer_wrap_decoration")
         // Adds support for integer wrap/nowrap decorations, similar to LLVM nsw/nuw flags
@@ -633,7 +633,7 @@ spv_result_t spirv2qasm::checkExtension(const std::string& extension)
     return SPV_UNSUPPORTED;
 }
 
-Optional<uint32_t> spirv2qasm::getDecoration(
+Optional<uint32_t> spirv::getDecoration(
     const std::vector<std::pair<spv::Decoration, uint32_t>>& decorations, const spv::Decoration deco)
 {
     for(const auto& pair : decorations)
@@ -663,7 +663,7 @@ static ParameterDecorations toDecoration(spv::FunctionParameterAttribute attribu
     }
 }
 
-void spirv2qasm::setParameterDecorations(
+void spirv::setParameterDecorations(
     Parameter& param, const std::vector<std::pair<spv::Decoration, uint32_t>>& decorations)
 {
     if(auto decoration = getDecoration(decorations, spv::Decoration::FuncParamAttr))
@@ -695,7 +695,7 @@ void spirv2qasm::setParameterDecorations(
     // otherwise proven, assume that memory object declarations might alias each other."
 }
 
-DataType spirv2qasm::getIntegerType(const uint32_t bitWidth, const uint32_t signedness)
+DataType spirv::getIntegerType(const uint32_t bitWidth, const uint32_t signedness)
 {
     if(bitWidth > 64)
         throw CompilationError(CompilationStep::PARSER, "Unsupported bit-width for integer", std::to_string(bitWidth));
@@ -717,7 +717,7 @@ DataType spirv2qasm::getIntegerType(const uint32_t bitWidth, const uint32_t sign
     return DataType{static_cast<uint8_t>(bitWidth), 1, false};
 }
 
-AddressSpace spirv2qasm::toAddressSpace(const spv::StorageClass storageClass)
+AddressSpace spirv::toAddressSpace(const spv::StorageClass storageClass)
 {
     switch(storageClass)
     {
@@ -742,7 +742,7 @@ AddressSpace spirv2qasm::toAddressSpace(const spv::StorageClass storageClass)
     return AddressSpace::PRIVATE;
 }
 
-void spirv2qasm::consumeSPIRVMessage(
+void spirv::consumeSPIRVMessage(
     spv_message_level_t level, const char* source, const spv_position_t& position, const char* message)
 {
     std::string levelText;
@@ -772,7 +772,7 @@ void spirv2qasm::consumeSPIRVMessage(
             << position.column << ": " << message << logging::endl);
 }
 
-std::vector<uint32_t> spirv2qasm::readStreamOfWords(std::istream* in)
+std::vector<uint32_t> spirv::readStreamOfWords(std::istream* in)
 {
     std::vector<uint32_t> words;
     words.reserve(static_cast<std::size_t>(in->rdbuf()->in_avail()));
@@ -785,7 +785,7 @@ std::vector<uint32_t> spirv2qasm::readStreamOfWords(std::istream* in)
     return words;
 }
 
-void spirv2qasm::linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output)
+void spirv::linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output)
 {
 #ifndef SPIRV_FRONTEND
     throw CompilationError(CompilationStep::LINKER, "SPIRV-Tools linker is not available!");
@@ -818,7 +818,7 @@ void spirv2qasm::linkSPIRVModules(const std::vector<std::istream*>& inputModules
 #endif
 }
 
-std::string spirv2qasm::demangleFunctionName(const std::string& name)
+std::string spirv::demangleFunctionName(const std::string& name)
 {
     if(name.find("_Z") != 0)
         return name;

@@ -366,8 +366,8 @@ static void fixLocals(const InstructionWalker it, FastMap<const Local*, LocalUsa
         // this duplicate check is required to map the influence combined operations have on each other (blocking each
         // others physical files)
         RegisterFile blockedFiles = RegisterFile::NONE;
-        it.forAllInstructions([&blockedFiles](const intermediate::IntermediateInstruction* instr) {
-            for(const Value& arg : instr->getArguments())
+        it.forAllInstructions([&blockedFiles](const intermediate::IntermediateInstruction& instr) {
+            for(const Value& arg : instr.getArguments())
             {
                 if(arg.getLiteralValue())
                     blockedFiles = add_flag(blockedFiles, RegisterFile::PHYSICAL_B);
@@ -724,8 +724,8 @@ static RegisterFile getBlockedInputs(
     const InstructionWalker it, const ColoredGraph& graph, const Local* toSkip = nullptr)
 {
     RegisterFile blockedFiles = RegisterFile::NONE;
-    it.forAllInstructions([&graph, toSkip, &blockedFiles](const intermediate::IntermediateInstruction* instr) {
-        for(const auto& arg : instr->getArguments())
+    it.forAllInstructions([&graph, toSkip, &blockedFiles](const intermediate::IntermediateInstruction& instr) {
+        for(const auto& arg : instr.getArguments())
         {
             if(toSkip != nullptr && arg.hasLocal(toSkip))
                 continue;
@@ -744,8 +744,8 @@ static RegisterFile getBlockedInputs(
 static NODISCARD LocalUse checkUser(const SortedMap<const LocalUser*, LocalUse>& users, const InstructionWalker it)
 {
     LocalUse use;
-    it.forAllInstructions([&users, &use](const intermediate::IntermediateInstruction* instr) {
-        auto it = users.find(instr);
+    it.forAllInstructions([&users, &use](const intermediate::IntermediateInstruction& instr) {
+        auto it = users.find(&instr);
         if(it != users.end())
         {
             use.numReads += it->second.numReads;

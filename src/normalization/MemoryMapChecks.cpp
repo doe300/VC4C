@@ -227,14 +227,18 @@ struct ConditionalMemoryAccess
     }
 };
 
-template <>
-struct std::hash<ConditionalMemoryAccess> : private std::hash<const IntermediateInstruction*>
+namespace std
 {
-    inline std::size_t operator()(const ConditionalMemoryAccess& access) const noexcept
+    template <>
+    struct hash<ConditionalMemoryAccess> : private std::hash<const IntermediateInstruction*>
     {
-        return std::hash<const IntermediateInstruction*>::operator()(access.conditionalWrite);
-    }
-};
+        inline std::size_t operator()(const ConditionalMemoryAccess& access) const noexcept
+        {
+            return std::hash<const IntermediateInstruction*>::operator()(access.conditionalWrite);
+        }
+    };
+
+} // namespace std
 
 MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
 {

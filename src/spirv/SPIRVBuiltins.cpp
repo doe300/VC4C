@@ -14,7 +14,7 @@
 #ifdef SPIRV_FRONTEND
 
 using namespace vc4c;
-using namespace vc4c::spirv2qasm;
+using namespace vc4c::spirv;
 
 SPIRVBuiltin::~SPIRVBuiltin() noexcept = default;
 
@@ -25,31 +25,31 @@ Local::RAIILock SPIRVBuiltin::getUsersLock() const
 }
 
 // get_work_dim - scalar integer
-SPIRVBuiltin spirv2qasm::BUILTIN_WORK_DIMENSIONS{
+SPIRVBuiltin spirv::BUILTIN_WORK_DIMENSIONS{
     spv::BuiltIn::WorkDim, TYPE_INT8, "%builtin_work_dimensions", "vc4cl_work_dimensions", false};
 // get_global_size - int3 vector
-SPIRVBuiltin spirv2qasm::BUILTIN_GLOBAL_SIZE{
+SPIRVBuiltin spirv::BUILTIN_GLOBAL_SIZE{
     spv::BuiltIn::GlobalSize, TYPE_INT32.toVectorType(3), "%builtin_global_size", "vc4cl_global_size", true};
 // get_global_id - int3 vector
-SPIRVBuiltin spirv2qasm::BUILTIN_GLOBAL_ID{
+SPIRVBuiltin spirv::BUILTIN_GLOBAL_ID{
     spv::BuiltIn::GlobalInvocationId, TYPE_INT32.toVectorType(3), "%builtin_global_id", "vc4cl_global_id", true};
 // get_local_size - int3 vector
-SPIRVBuiltin spirv2qasm::BUILTIN_LOCAL_SIZE{
+SPIRVBuiltin spirv::BUILTIN_LOCAL_SIZE{
     spv::BuiltIn::WorkgroupSize, TYPE_INT8.toVectorType(3), "%builtin_local_size", "vc4cl_local_size", true};
 // get_local_id - int3 vector
-SPIRVBuiltin spirv2qasm::BUILTIN_LOCAL_ID{
+SPIRVBuiltin spirv::BUILTIN_LOCAL_ID{
     spv::BuiltIn::LocalInvocationId, TYPE_INT8.toVectorType(3), "%builtin_local_id", "vc4cl_local_id", true};
 // get_num_groups - int3 vector
-SPIRVBuiltin spirv2qasm::BUILTIN_NUM_GROUPS{
+SPIRVBuiltin spirv::BUILTIN_NUM_GROUPS{
     spv::BuiltIn::NumWorkgroups, TYPE_INT32.toVectorType(3), "%builtin_num_groups", "vc4cl_num_groups", true};
 // get_group_id - int3 vector
-SPIRVBuiltin spirv2qasm::BUILTIN_GROUP_ID{
+SPIRVBuiltin spirv::BUILTIN_GROUP_ID{
     spv::BuiltIn::WorkgroupId, TYPE_INT32.toVectorType(3), "%builtin_group_id", "vc4cl_group_id", true};
 // get_global_offset - int3 vector
-SPIRVBuiltin spirv2qasm::BUILTIN_GLOBAL_OFFSET{
+SPIRVBuiltin spirv::BUILTIN_GLOBAL_OFFSET{
     spv::BuiltIn::GlobalOffset, TYPE_INT32.toVectorType(3), "%builtin_global_offset", "vc4cl_global_offset", true};
 
-std::string spirv2qasm::BUILTIN_INTRINSIC{"load_builtin"};
+std::string spirv::BUILTIN_INTRINSIC{"load_builtin"};
 
 static Optional<Value> getDimensionalArgument(const intermediate::IntrinsicOperation& intrinsicOp)
 {
@@ -97,7 +97,7 @@ static Optional<Value> getDimensionalArgument(const intermediate::IntrinsicOpera
     return NO_VALUE;
 }
 
-void spirv2qasm::lowerBuiltins(Module& module, Method& method, InstructionWalker it, const Configuration& config)
+void spirv::lowerBuiltins(Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     auto intrinsicOp = it.get<intermediate::IntrinsicOperation>();
     const SPIRVBuiltin* builtInt = nullptr;

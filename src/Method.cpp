@@ -200,13 +200,14 @@ InstructionWalker Method::walkAllInstructions()
     return begin()->walk();
 }
 
-void Method::forAllInstructions(const std::function<void(const intermediate::IntermediateInstruction*)>& consumer) const
+void Method::forAllInstructions(const std::function<void(const intermediate::IntermediateInstruction&)>& consumer) const
 {
     for(const BasicBlock& bb : *this)
     {
         for(const auto& instr : bb.instructions)
         {
-            consumer(instr.get());
+            if(instr)
+                consumer(*instr.get());
         }
     }
 }

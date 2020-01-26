@@ -277,7 +277,7 @@ void TestArithmetic::onMismatch(const std::string& expected, const std::string& 
     TEST_ASSERT_EQUALS(expected, result)
 }
 
-template <typename T, typename Comparison = std::equal_to<T>>
+template <typename T, typename Comparison = CompareEqual<T>>
 static void testUnaryOperation(vc4c::Configuration& config, const std::string& options, const std::function<T(T)>& op,
     const std::function<void(const std::string&, const std::string&)>& onError, bool allowZero = true)
 {
@@ -291,7 +291,7 @@ static void testUnaryOperation(vc4c::Configuration& config, const std::string& o
     checkUnaryResults<T, T>(in, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
-template <typename T, typename Comparison = std::equal_to<T>>
+template <typename T, typename Comparison = CompareEqual<T>>
 static void testBinaryOperation(vc4c::Configuration& config, const std::string& options,
     const std::function<T(T, T)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
 {
@@ -307,7 +307,7 @@ static void testBinaryOperation(vc4c::Configuration& config, const std::string& 
         in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
-template <typename T, std::size_t N, typename Comparison = std::equal_to<T>>
+template <typename T, std::size_t N, typename Comparison = CompareEqual<T>>
 static void testTernaryOperator(vc4c::Configuration& config, const std::string& options,
     const std::function<T(T, T)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
 {
@@ -349,7 +349,7 @@ static void testSelectOperation(vc4c::Configuration& config, const std::string& 
     auto in1 = generateInput<T, N * 12>(true);
 
     auto out = runEmulation<T, T, N, 12>(code, {in0, in1});
-    checkBinaryResults<T, T, N * 12, std::equal_to<T>, T>(in0, in1, out, op, "select", onError);
+    checkBinaryResults<T, T, N * 12, CompareEqual<T>, T>(in0, in1, out, op, "select", onError);
 }
 
 template <typename C, typename T = typename C::first_argument_type>

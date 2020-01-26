@@ -14,8 +14,13 @@ $SCAN_BUILD \
     -enable-checker alpha.core.BoolAssignment \
     -enable-checker alpha.security.ArrayBoundV2 \
     -enable-checker nullability.NullableDereferenced \
+    -enable-checker optin.cplusplus.UninitializedObject \
     -enable-checker optin.performance.Padding \
     -enable-checker optin.portability.UnixAPI \
     -enable-checker security.FloatLoopCounter \
+    -enable-checker security.insecureAPI.DeprecatedOrUnsafeBufferHandling \
     -enable-checker security.insecureAPI.strcpy \
+    -enable-checker valist.CopyToSelf \
+    -enable-checker valist.Uninitialized \
+    -enable-checker valist.Unterminated \
     make -j$(nproc)

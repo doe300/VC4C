@@ -11,7 +11,6 @@
 
 #include "spirv-tools/libspirv.hpp"
 #include "spirv/unified1/OpenCL.std.h"
-#include "spirv/unified1/spirv.h"
 #include "spirv/unified1/spirv.hpp11"
 
 #include "../Locals.h"
@@ -20,7 +19,7 @@
 
 namespace vc4c
 {
-    namespace spirv2qasm
+    namespace spirv
     {
         std::string getOpenCLMethodName(uint32_t instructionID);
         std::string getErrorMessage(spv_result_t error);
@@ -40,7 +39,7 @@ namespace vc4c
 
         std::string demangleFunctionName(const std::string& name);
 
-    } // namespace spirv2qasm
+    } // namespace spirv
 } // namespace vc4c
 
 #endif

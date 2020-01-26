@@ -88,8 +88,8 @@ static Method& inlineMethod(
                 }
                 // insert instructions
                 calledMethod->forAllInstructions([&it, &currentMethod, &methodEndLabel, &newLocalPrefix, &call](
-                                                     const intermediate::IntermediateInstruction* instr) -> void {
-                    if(auto ret = dynamic_cast<const intermediate::Return*>(instr))
+                                                     const intermediate::IntermediateInstruction& instr) -> void {
+                    if(auto ret = dynamic_cast<const intermediate::Return*>(&instr))
                     {
                         if(auto retVal = ret->getReturnValue())
                         {
@@ -111,12 +111,11 @@ static Method& inlineMethod(
                     {
                         // prefix locals with destination of call
                         // copy instructions
-                        if(dynamic_cast<const intermediate::BranchLabel*>(instr) != nullptr)
+                        if(dynamic_cast<const intermediate::BranchLabel*>(&instr) != nullptr)
                             it = currentMethod.emplaceLabel(it,
-                                dynamic_cast<intermediate::BranchLabel*>(
-                                    instr->copyFor(currentMethod, newLocalPrefix)));
+                                dynamic_cast<intermediate::BranchLabel*>(instr.copyFor(currentMethod, newLocalPrefix)));
                         else
-                            it.emplace(instr->copyFor(currentMethod, newLocalPrefix));
+                            it.emplace(instr.copyFor(currentMethod, newLocalPrefix));
                     }
                     it.nextInMethod();
                 });

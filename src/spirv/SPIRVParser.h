@@ -16,7 +16,6 @@
 #ifdef SPIRV_FRONTEND
 
 #include "spirv-tools/libspirv.hpp"
-#include "spirv/unified1/spirv.h"
 #include "spirv/unified1/spirv.hpp11"
 
 #include "../performance.h"
@@ -24,7 +23,7 @@
 
 namespace vc4c
 {
-    namespace spirv2qasm
+    namespace spirv
     {
         class SPIRVParser final : public Parser
         {
@@ -87,7 +86,7 @@ namespace vc4c
             std::pair<spv_result_t, Optional<Value>> calculateConstantOperation(
                 const spv_parsed_instruction_t* instruction);
         };
-    } // namespace spirv2qasm
+    } // namespace spirv
 } // namespace vc4c
 #else
 namespace vc4c

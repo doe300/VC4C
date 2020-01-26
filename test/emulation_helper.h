@@ -128,7 +128,10 @@ std::array<T, N> generateInput(bool allowNull,
     return arr;
 }
 
-template <typename Result, typename Input, std::size_t N, typename Comparison = std::equal_to<Result>>
+template <typename T>
+struct CompareEqual;
+
+template <typename Result, typename Input, std::size_t N, typename Comparison = CompareEqual<Result>>
 void checkUnaryResults(const std::array<Input, N>& input, const std::array<Result, N>& output,
     const std::function<Result(Input)>& op, const std::string& opName,
     const std::function<void(const std::string&, const std::string&)>& onError)
@@ -138,15 +141,16 @@ void checkUnaryResults(const std::array<Input, N>& input, const std::array<Resul
     {
         if(!c(output[i], op(input[i])))
         {
-            auto result = std::to_string(output[i]);
-            auto expected = opName + " " + std::to_string(input[i]) + " = " + std::to_string(op(input[i])) +
-                (N > 1 ? (" for element " + std::to_string(i)) : "");
+            auto result = Test::Formats::to_string(output[i]);
+            auto expected = opName + " " + Test::Formats::to_string(input[i]) + " = " +
+                Test::Formats::to_string(op(input[i])) +
+                (N > 1 ? (" for element " + Test::Formats::to_string(i)) : "") + c.difference(output[i], op(input[i]));
             onError(expected, result);
         }
     }
 }
 
-template <typename Result, typename Input, std::size_t N, typename Comparison = std::equal_to<Result>,
+template <typename Result, typename Input, std::size_t N, typename Comparison = CompareEqual<Result>,
     typename Input2 = Input>
 void checkBinaryResults(const std::array<Input, N>& input0, const std::array<Input2, N>& input1,
     const std::array<Result, N>& output, const std::function<Result(Input, Input2)>& op, const std::string& opName,
@@ -157,15 +161,17 @@ void checkBinaryResults(const std::array<Input, N>& input0, const std::array<Inp
     {
         if(!c(output[i], op(input0[i], input1[i])))
         {
-            auto result = std::to_string(output[i]);
-            auto expected = std::to_string(input0[i]) + " " + opName + " " + std::to_string(input1[i]) + " = " +
-                std::to_string(op(input0[i], input1[i])) + (N > 1 ? (" for element " + std::to_string(i)) : "");
+            auto result = Test::Formats::to_string(output[i]);
+            auto expected = Test::Formats::to_string(input0[i]) + " " + opName + " " +
+                Test::Formats::to_string(input1[i]) + " = " + Test::Formats::to_string(op(input0[i], input1[i])) +
+                (N > 1 ? (" for element " + Test::Formats::to_string(i)) : "") +
+                c.difference(output[i], op(input0[i], input1[i]));
             onError(expected, result);
         }
     }
 }
 
-template <typename Result, typename Input, std::size_t N, typename Comparison = std::equal_to<Result>,
+template <typename Result, typename Input, std::size_t N, typename Comparison = CompareEqual<Result>,
     typename Input2 = Input, typename Input3 = Input>
 void checkTernaryResults(const std::array<Input, N>& input0, const std::array<Input2, N>& input1,
     const std::array<Input3, N>& input2, const std::array<Result, N>& output,
@@ -177,10 +183,12 @@ void checkTernaryResults(const std::array<Input, N>& input0, const std::array<In
     {
         if(!c(output[i], op(input0[i], input1[i], input2[i])))
         {
-            auto result = std::to_string(output[i]);
-            auto expected = std::to_string(input0[i]) + " " + opName + " " + std::to_string(input1[i]) + ", " +
-                std::to_string(input2[i]) + " = " + std::to_string(op(input0[i], input1[i], input2[i])) +
-                (N > 1 ? (" for element " + std::to_string(i)) : "");
+            auto result = Test::Formats::to_string(output[i]);
+            auto expected = Test::Formats::to_string(input0[i]) + " " + opName + " " +
+                Test::Formats::to_string(input1[i]) + ", " + Test::Formats::to_string(input2[i]) + " = " +
+                Test::Formats::to_string(op(input0[i], input1[i], input2[i])) +
+                (N > 1 ? (" for element " + Test::Formats::to_string(i)) : "") +
+                c.difference(output[i], op(input0[i], input1[i], input2[i]));
             onError(expected, result);
         }
     }
@@ -191,12 +199,12 @@ std::string toString(const C& container)
 {
     return std::accumulate(container.begin(), container.end(), std::string{},
         [](const std::string s, const typename C::value_type v) -> std::string {
-            return s + ", " + std::to_string(v);
+            return s + ", " + Test::Formats::to_string(v);
         });
 }
 
 template <typename Result, typename Input, std::size_t N, std::size_t GroupSize = 16,
-    typename Comparison = std::equal_to<Result>>
+    typename Comparison = CompareEqual<Result>>
 void checkUnaryReducedResults(const std::array<Input, N>& input, const std::array<Result, N>& output,
     const std::function<Result(const std::array<Input, GroupSize>&)>& op, const std::string& opName,
     const std::function<void(const std::string&, const std::string&)>& onError)
@@ -208,16 +216,19 @@ void checkUnaryReducedResults(const std::array<Input, N>& input, const std::arra
         auto group = reinterpret_cast<const std::array<Input, GroupSize>*>(&input[i]);
         if(!c(output[i / GroupSize], op(*group)))
         {
-            auto result = std::to_string(output[i / GroupSize]);
-            auto expected = opName + " " + toString(*group) + " = " + std::to_string(op(*group)) +
-                (N > 1 ? (" for element " + std::to_string(i) + " (group " + std::to_string(i / GroupSize) + ')') : "");
+            auto result = Test::Formats::to_string(output[i / GroupSize]);
+            auto expected = opName + " " + toString(*group) + " = " + Test::Formats::to_string(op(*group)) +
+                (N > 1 ? (" for element " + Test::Formats::to_string(i) + " (group " +
+                             Test::Formats::to_string(i / GroupSize) + ')') :
+                         "") +
+                c.difference(output[i / GroupSize], op(*group));
             onError(expected, result);
         }
     }
 }
 
 template <typename Result, typename Input, std::size_t N, std::size_t GroupSize = 16,
-    typename Comparison = std::equal_to<Result>>
+    typename Comparison = CompareEqual<Result>>
 void checkBinaryReducedResults(const std::array<Input, N>& input0, const std::array<Input, N>& input1,
     const std::array<Result, N>& output,
     const std::function<Result(const std::array<Input, GroupSize>&, const std::array<Input, GroupSize>&)>& op,
@@ -231,17 +242,20 @@ void checkBinaryReducedResults(const std::array<Input, N>& input0, const std::ar
         auto group1 = reinterpret_cast<const std::array<Input, GroupSize>*>(&input1[i]);
         if(!c(output[i / GroupSize], op(*group0, *group1)))
         {
-            auto result = std::to_string(output[i / GroupSize]);
+            auto result = Test::Formats::to_string(output[i / GroupSize]);
             auto expected = opName + " {" + toString(*group0) + "}, {" + toString(*group1) +
-                "} = " + std::to_string(op(*group0, *group1)) +
-                (N > 1 ? (" for element " + std::to_string(i) + " (group " + std::to_string(i / GroupSize) + ')') : "");
+                "} = " + Test::Formats::to_string(op(*group0, *group1)) +
+                (N > 1 ? (" for element " + Test::Formats::to_string(i) + " (group " +
+                             Test::Formats::to_string(i / GroupSize) + ')') :
+                         "") +
+                c.difference(output[i / GroupSize], op(*group0, *group1));
             onError(expected, result);
         }
     }
 }
 
 template <typename Result, typename Input, std::size_t N, std::size_t GroupSize = 16,
-    typename Comparison = std::equal_to<std::array<Result, GroupSize>>>
+    typename Comparison = CompareEqual<std::array<Result, GroupSize>>>
 void checkUnaryGroupedResults(const std::array<Input, N>& input, const std::array<Result, N>& output,
     const std::function<std::array<Result, GroupSize>(const std::array<Input, GroupSize>&)>& op,
     const std::string& opName, const std::function<void(const std::string&, const std::string&)>& onError)
@@ -256,14 +270,17 @@ void checkUnaryGroupedResults(const std::array<Input, N>& input, const std::arra
         {
             auto result = toString(*outputGroup);
             auto expected = opName + " " + toString(*inputGroup) + " = " + toString(op(*inputGroup)) +
-                (N > 1 ? (" for element " + std::to_string(i) + " (group " + std::to_string(i / GroupSize) + ')') : "");
+                (N > 1 ? (" for element " + Test::Formats::to_string(i) + " (group " +
+                             Test::Formats::to_string(i / GroupSize) + ')') :
+                         "") +
+                c.difference(*outputGroup, op(*inputGroup));
             onError(expected, result);
         }
     }
 }
 
 template <typename Result, typename Input, std::size_t N, std::size_t GroupSize = 16,
-    typename Comparison = std::equal_to<std::array<Result, GroupSize>>>
+    typename Comparison = CompareEqual<std::array<Result, GroupSize>>>
 void checkBinaryGroupedResults(const std::array<Input, N>& input0, const std::array<Input, N>& input1,
     const std::array<Result, N>& output,
     const std::function<std::array<Result, GroupSize>(
@@ -282,14 +299,17 @@ void checkBinaryGroupedResults(const std::array<Input, N>& input0, const std::ar
             auto result = toString(*outputGroup);
             auto expected = opName + " {" + toString(*inputGroup0) + "}, {" + toString(*inputGroup1) +
                 "} = " + toString(op(*inputGroup0, *inputGroup1)) +
-                (N > 1 ? (" for element " + std::to_string(i) + " (group " + std::to_string(i / GroupSize) + ')') : "");
+                (N > 1 ? (" for element " + Test::Formats::to_string(i) + " (group " +
+                             Test::Formats::to_string(i / GroupSize) + ')') :
+                         "") +
+                c.difference(*outputGroup, op(*inputGroup0, *inputGroup1));
             onError(expected, result);
         }
     }
 }
 
 template <typename Result, typename Input, std::size_t N, std::size_t GroupSize = 16,
-    typename Comparison = std::equal_to<std::array<Result, GroupSize>>>
+    typename Comparison = CompareEqual<std::array<Result, GroupSize>>>
 void checkTrinaryGroupedResults(const std::array<Input, N>& input0, const std::array<Input, N>& input1,
     const std::array<Input, N>& input2, const std::array<Result, N>& output,
     const std::function<std::array<Result, GroupSize>(const std::array<Input, GroupSize>&,
@@ -309,7 +329,10 @@ void checkTrinaryGroupedResults(const std::array<Input, N>& input0, const std::a
             auto result = toString(*outputGroup);
             auto expected = opName + " {" + toString(*inputGroup0) + "}, {" + toString(*inputGroup1) + "}, {" +
                 toString(*inputGroup2) + "} = " + toString(op(*inputGroup0, *inputGroup1, *inputGroup2)) +
-                (N > 1 ? (" for element " + std::to_string(i) + " (group " + std::to_string(i / GroupSize) + ')') : "");
+                (N > 1 ? (" for element " + Test::Formats::to_string(i) + " (group " +
+                             Test::Formats::to_string(i / GroupSize) + ')') :
+                         "") +
+                c.difference(*outputGroup, op(*inputGroup0, *inputGroup1, *inputGroup2));
             onError(expected, result);
         }
     }
@@ -332,7 +355,7 @@ void checkUnaryGroupedUnevenResults(const std::array<Input, GroupSize * NumGroup
         {
             auto result = toString(*outputGroup);
             auto expected = opName + " " + toString(*inputGroup) + " = " + toString(op(*inputGroup)) +
-                (" for group " + std::to_string(i) + ')');
+                (" for group " + Test::Formats::to_string(i) + ')');
             onError(expected, result);
         }
     }
@@ -407,6 +430,15 @@ std::array<Result, VectorWidth * LocalSize * NumGroups> runEmulation(std::string
     return output;
 }
 
+template <typename T>
+struct CompareEqual : public std::equal_to<T>
+{
+    std::string difference(T a, T b) const
+    {
+        return {};
+    }
+};
+
 template <std::size_t ULP>
 struct CompareULP
 {
@@ -418,6 +450,13 @@ struct CompareULP
             return true;
         auto delta = a * ULP * std::numeric_limits<float>::epsilon();
         return Test::Comparisons::inMaxDistance(a, b, delta);
+    }
+
+    std::string difference(float a, float b) const
+    {
+        auto realDelta = static_cast<std::size_t>(std::ceil(static_cast<double>(std::max(a, b) - std::min(a, b)) /
+            (static_cast<double>(b) * static_cast<double>(std::numeric_limits<float>::epsilon()))));
+        return " (error of " + std::to_string(realDelta) + ", allowed are " + std::to_string(ULP) + " ULP)";
     }
 };
 
@@ -437,6 +476,11 @@ struct CompareArrayULP
                 return false;
         }
         return true;
+    }
+
+    std::string difference(const std::array<float, N>& a, const std::array<float, N>& b) const
+    {
+        return {};
     }
 };
 

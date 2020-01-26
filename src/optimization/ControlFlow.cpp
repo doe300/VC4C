@@ -1476,6 +1476,8 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
         {
             LCOV_EXCL_START
             CPPLOG_LAZY_BLOCK(logging::Level::ERROR, {
+                logging::error() << "Failed to merge block " << pair.second->to_string() << " into "
+                                 << pair.first->to_string() << logging::endl;
                 if(!sourceBlock->empty())
                 {
                     logging::error() << "Block was not empty: " << logging::endl;
