@@ -174,6 +174,7 @@ InstructionWalker normalization::handleContainer(
         std::size_t offset = rot->getOffset().getRotationOffset().value();
         //"Rotates the order of the elements in the range [first,last), in such a way that the element pointed by middle
         // becomes the new first element."
+        if(rot->type == intermediate::RotationType::PER_QUAD)
         {
             // TODO per-quad rotation. First need to find a code, where this is actually used...
             throw CompilationError(
@@ -202,6 +203,7 @@ InstructionWalker normalization::handleContainer(
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Rewriting rotation from container " << rot->to_string() << logging::endl);
         auto tmp = method.addNewLocal(rot->getSource().type);
+        // insert vector assembly and use the resulting vector in the rotation
         it = copyVector(method, it, tmp, move->getSource());
         it->setArgument(0, std::move(tmp));
     }

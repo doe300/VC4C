@@ -447,7 +447,10 @@ InstructionWalker intermediate::insertFloatingPointConversion(
         it.emplace((new intermediate::Operation(OP_FMUL, dest, src, OpCode::getRightIdentity(OP_FMUL).value()))
                        ->setPackMode(PACK_FLOAT_TO_HALF_TRUNCATE));
     else
-        throw CompilationError(CompilationStep::GENERAL, "Unsupported floating-point conversion");
+        // XXX conversion from/to double would not be that hard (extract exponent, deduct bias, add new bias, extract
+        // mantissa, shift), but we cannot store the resulting 64-bit value...
+        throw CompilationError(CompilationStep::GENERAL, "Unsupported floating-point conversion",
+            src.to_string() + " to " + dest.to_string());
     return it.nextInBlock();
 }
 

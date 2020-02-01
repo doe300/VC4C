@@ -371,7 +371,9 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> unaryIn
             [](const Value& val) {
                 return std::isnan(val.literal().real()) || std::isinf(val.literal().real()) ? INT_ONE : INT_ZERO;
             }}},
-    {"vc4cl_vload3", Intrinsic{intrinsifyDMAAccess(DMAAccess::READ, true)}}};
+    {"vc4cl_vload3", Intrinsic{intrinsifyDMAAccess(DMAAccess::READ, true)}},
+    /* simply set the event to something so it is initialized */
+    {"vc4cl_set_event", Intrinsic{intrinsifyValueRead(INT_ZERO), [](const Value& val) -> Value { return INT_ZERO; }}}};
 
 const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryIntrinsicMapping = {
     {"vc4cl_fmax",
@@ -1168,6 +1170,20 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
         it = insertZeroExtension(
             it, method, op->getFirstArg(), op->getOutput().value(), true, op->conditional, op->setFlags);
         // remove 'zext'
+        it.erase();
+        // so next instruction is not skipped
+        it.previousInBlock();
+    }
+    // floating point conversion
+    else if(op->opCode == "fpext")
+    {
+        if(saturateResult)
+        {
+            throw CompilationError(CompilationStep::OPTIMIZER,
+                "Saturation on floating-point conversion is not supported", op->to_string());
+        }
+        it = insertFloatingPointConversion(it, method, op->getFirstArg(), op->getOutput().value());
+        // remove 'fpext'
         it.erase();
         // so next instruction is not skipped
         it.previousInBlock();

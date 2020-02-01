@@ -147,21 +147,22 @@ InstructionWalker periphery::insertReadVectorFromTMU(
     // 2) trigger loading of TMU
     nop(it, intermediate::DelayType::WAIT_TMU, tmu.signal);
     // 3) read value from R4
-    // FIXME in both cases, result values are unsigned!! (Same behavior as for VPM?!)
-    if(dest.type.getScalarBitCount() == 8)
+    // FIXME in both cases, result values are unsigned (as in zero-, not sign-extended)!! (Same behavior as for VPM?!)
+    if(dest.type.getScalarBitCount() <= 8)
     {
         Value tmp = assign(it, TYPE_INT32.toVectorType(dest.type.getVectorWidth()), "%tmu_result") = TMU_READ_REGISTER;
         return insertExtractByteElements(method, it, dest, tmp, addresses);
     }
-    else if(dest.type.getScalarBitCount() == 16)
+    else if(dest.type.getScalarBitCount() <= 16)
     {
         Value tmp = assign(it, TYPE_INT32.toVectorType(dest.type.getVectorWidth()), "%tmu_result") = TMU_READ_REGISTER;
         return insertExtractHalfWordElements(method, it, dest, tmp, addresses);
     }
-    else
-    {
+    else if(dest.type.getScalarBitCount() <= 32)
         assign(it, dest) = TMU_READ_REGISTER;
-    }
+    else
+        throw CompilationError(
+            CompilationStep::GENERAL, "Cannot read values larger than 32-bit via TMU", dest.to_string());
     return it;
 }
 
