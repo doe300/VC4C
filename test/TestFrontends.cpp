@@ -145,7 +145,7 @@ void TestFrontends::testSourceTypeDetection()
 
     {
         std::ifstream in{"./testing/formats/test.txt"};
-        TEST_ASSERT_EQUALS(SourceType::UNKNOWN, Precompiler::getSourceType(in))
+        TEST_ASSERT_EQUALS(SourceType::OPENCL_C, Precompiler::getSourceType(in))
     }
 }
 

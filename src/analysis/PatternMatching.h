@@ -5,6 +5,7 @@
 #include "../Variant.h"
 #include "../asm/OpCodes.h"
 #include "../intermediate/operators.h"
+#include "../performance.h"
 
 #include <functional>
 #include <vector>
@@ -70,6 +71,8 @@ namespace vc4c
              * modes), an exception will be thrown!
              */
             NODISCARD InstructionPattern operator=(vc4c::operators::OperationWrapper&& op) &&;
+
+            std::string to_string(FastMap<const void*, std::string>& placeholderNames) const;
         };
 
         /**
@@ -153,7 +156,12 @@ namespace vc4c
             return ValuePattern{Ignored{}};
         }
 
-        using OperationPattern = Variant<OpCode, Placeholder<OpCode>, Ignored>;
+        struct OperationPattern
+        {
+            Variant<OpCode, Placeholder<OpCode>, Ignored> pattern;
+
+            std::string to_string(FastMap<const void*, std::string>& placeholderNames) const;
+        };
 
         /**
          * Creates an OperationPattern which matches the given operation.
@@ -199,7 +207,12 @@ namespace vc4c
             Placeholder<ConditionCode> cond;
         };
 
-        using ConditionPattern = Variant<ConditionCode, Placeholder<ConditionCode>, InvertedCondition, Ignored>;
+        struct ConditionPattern
+        {
+            Variant<ConditionCode, Placeholder<ConditionCode>, InvertedCondition, Ignored> pattern;
+
+            std::string to_string(FastMap<const void*, std::string>& placeholderNames) const;
+        };
 
         /**
          * Creates an ConditionPattern which matches the given condition code.
@@ -258,7 +271,12 @@ namespace vc4c
             return ConditionPattern{Ignored{}};
         }
 
-        using FlagPattern = Variant<SetFlag, Placeholder<SetFlag>, Ignored>;
+        struct FlagPattern
+        {
+            Variant<SetFlag, Placeholder<SetFlag>, Ignored> pattern;
+
+            std::string to_string(FastMap<const void*, std::string>& placeholderNames) const;
+        };
 
         /**
          * Creates an FlagPattern which matches the given flag state.
@@ -309,6 +327,9 @@ namespace vc4c
             ValuePattern secondArgument;
             ConditionPattern condition = anyCondition();
             FlagPattern flags = anyFlags();
+
+            std::string to_string(FastMap<const void*, std::string>& placeholderNames) const;
+            std::string to_string() const;
         };
 
         // Helper type to store temporary unary instruction
@@ -380,6 +401,8 @@ namespace vc4c
              * following instructions from within the pattern or triggers a signal with side-effects.
              */
             bool allowGaps = true;
+
+            std::string to_string() const;
         };
 
         /**

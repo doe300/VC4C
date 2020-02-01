@@ -36,6 +36,98 @@ InstructionPattern ValuePattern::operator=(vc4c::operators::OperationWrapper&& o
         match(op.conditional), match(op.setFlags)};
 }
 
+static std::string getPlaceholderName(
+    std::string&& type, const void* ptr, FastMap<const void*, std::string>& placeholderNames)
+{
+    auto it = placeholderNames.find(ptr);
+    if(it == placeholderNames.end())
+    {
+        it =
+            placeholderNames.emplace(ptr, "$<" + std::move(type) + std::to_string(placeholderNames.size()) + ">").first;
+    }
+    return it->second;
+}
+
+std::string ValuePattern::to_string(FastMap<const void*, std::string>& placeholderNames) const
+{
+    if(auto val = VariantNamespace::get_if<Value>(&pattern))
+        return val->to_string();
+    if(auto val = VariantNamespace::get_if<Placeholder<Value>>(&pattern))
+        return getPlaceholderName("val", &val->get(), placeholderNames);
+    if(auto loc = VariantNamespace::get_if<Placeholder<const Local*>>(&pattern))
+        return getPlaceholderName("val", &loc->get(), placeholderNames);
+    if(auto lit = VariantNamespace::get_if<Placeholder<Literal>>(&pattern))
+        return getPlaceholderName("val", &lit->get(), placeholderNames);
+    if(VariantNamespace::get_if<Ignored>(&pattern))
+        return "(any value)";
+    throw CompilationError(CompilationStep::GENERAL, "Unhandled ValuePattern type");
+}
+
+std::string OperationPattern::to_string(FastMap<const void*, std::string>& placeholderNames) const
+{
+    if(auto code = VariantNamespace::get_if<OpCode>(&pattern))
+        return code->name;
+    if(auto code = VariantNamespace::get_if<Placeholder<OpCode>>(&pattern))
+        return getPlaceholderName("op", &code->get(), placeholderNames);
+    if(VariantNamespace::get_if<Ignored>(&pattern))
+        return "(any op)";
+    throw CompilationError(CompilationStep::GENERAL, "Unhandled OperationPattern type");
+}
+
+std::string ConditionPattern::to_string(FastMap<const void*, std::string>& placeholderNames) const
+{
+    if(auto code = VariantNamespace::get_if<ConditionCode>(&pattern))
+        return code->to_string();
+    if(auto code = VariantNamespace::get_if<Placeholder<ConditionCode>>(&pattern))
+        return getPlaceholderName("cond", &code->get(), placeholderNames);
+    if(auto code = VariantNamespace::get_if<InvertedCondition>(&pattern))
+        return "!" + getPlaceholderName("cond", &code->cond.get(), placeholderNames);
+    if(VariantNamespace::get_if<Ignored>(&pattern))
+        return "(any cond)";
+    throw CompilationError(CompilationStep::GENERAL, "Unhandled ConditionPattern type");
+}
+
+std::string FlagPattern::to_string(FastMap<const void*, std::string>& placeholderNames) const
+{
+    if(auto flags = VariantNamespace::get_if<SetFlag>(&pattern))
+        return vc4c::toString(*flags);
+    if(auto code = VariantNamespace::get_if<Placeholder<SetFlag>>(&pattern))
+        return getPlaceholderName("flag", &code->get(), placeholderNames);
+    if(VariantNamespace::get_if<Ignored>(&pattern))
+        return "(any flag)";
+    throw CompilationError(CompilationStep::GENERAL, "Unhandled FlagPattern type");
+}
+
+std::string InstructionPattern::to_string(FastMap<const void*, std::string>& placeholderNames) const
+{
+    // just to make sure the operands are processed in the right order, otherwise we might get $<val0> = $<op1> $<val2>
+    // ...
+    auto tmp = operation.to_string(placeholderNames);
+    tmp += " " + firstArgument.to_string(placeholderNames);
+    tmp += ", " + secondArgument.to_string(placeholderNames);
+    tmp += " (" + condition.to_string(placeholderNames) + ", ";
+    tmp += flags.to_string(placeholderNames) + ")";
+    return output.to_string(placeholderNames) + " = " + std::move(tmp);
+}
+
+std::string InstructionPattern::to_string() const
+{
+    FastMap<const void*, std::string> placeholders;
+    return to_string(placeholders);
+}
+
+std::string Pattern::to_string() const
+{
+    FastMap<const void*, std::string> placeholders;
+    std::string instructions{};
+    for(const auto& ins : parts)
+    {
+        instructions.append(ins.to_string(placeholders)).append(allowGaps ? "; ... " : "; ");
+    }
+    instructions.erase(instructions.find_last_of(';'), std::string::npos);
+    return instructions;
+}
+
 using MatchCache = std::unordered_map<const void*, Variant<Value, OpCode, ConditionCode, SetFlag>>;
 
 // The caches are tracked to be able to check whether two captures on the same local value actually capture the same
@@ -160,10 +252,10 @@ static void updateMatch(const SubExpression& sub, ValuePattern& pattern)
 static bool matchesOperation(
     OpCode op, const OperationPattern& pattern, const MatchCache& previousCache, MatchCache& newCache)
 {
-    if(VariantNamespace::get_if<Ignored>(&pattern))
+    if(VariantNamespace::get_if<Ignored>(&pattern.pattern))
         // accepts everything, even not set operations
         return true;
-    if(auto code = VariantNamespace::get_if<Placeholder<OpCode>>(&pattern))
+    if(auto code = VariantNamespace::get_if<Placeholder<OpCode>>(&pattern.pattern))
     {
         auto ptr = &code->get();
         if(!matchesCache(op, ptr, previousCache, newCache))
@@ -171,24 +263,24 @@ static bool matchesOperation(
         newCache.emplace(ptr, op);
         return true;
     }
-    if(auto code = VariantNamespace::get_if<OpCode>(&pattern))
+    if(auto code = VariantNamespace::get_if<OpCode>(&pattern.pattern))
         return op == *code;
     throw CompilationError(CompilationStep::GENERAL, "Unhandled OperationPattern type");
 }
 
 static void updateMatch(OpCode op, OperationPattern& pattern)
 {
-    if(auto code = VariantNamespace::get_if<Placeholder<OpCode>>(&pattern))
+    if(auto code = VariantNamespace::get_if<Placeholder<OpCode>>(&pattern.pattern))
         code->get() = op;
 }
 
 static bool matchesCondition(
     ConditionCode code, const ConditionPattern& pattern, const MatchCache& previousCache, MatchCache& newCache)
 {
-    if(VariantNamespace::get_if<Ignored>(&pattern))
+    if(VariantNamespace::get_if<Ignored>(&pattern.pattern))
         // accepts everything, even not set conditions
         return true;
-    if(auto cond = VariantNamespace::get_if<Placeholder<ConditionCode>>(&pattern))
+    if(auto cond = VariantNamespace::get_if<Placeholder<ConditionCode>>(&pattern.pattern))
     {
         auto ptr = &cond->get();
         if(!matchesCache(code, ptr, previousCache, newCache))
@@ -196,7 +288,7 @@ static bool matchesCondition(
         newCache.emplace(ptr, code);
         return true;
     }
-    if(auto cond = VariantNamespace::get_if<InvertedCondition>(&pattern))
+    if(auto cond = VariantNamespace::get_if<InvertedCondition>(&pattern.pattern))
     {
         auto realCode = code.invert();
         auto ptr = &cond->cond.get();
@@ -205,25 +297,25 @@ static bool matchesCondition(
         newCache.emplace(ptr, realCode);
         return true;
     }
-    if(auto cond = VariantNamespace::get_if<ConditionCode>(&pattern))
+    if(auto cond = VariantNamespace::get_if<ConditionCode>(&pattern.pattern))
         return code == *cond;
     throw CompilationError(CompilationStep::GENERAL, "Unhandled ConditionPattern type");
 }
 
 static void updateMatch(ConditionCode code, ConditionPattern& pattern)
 {
-    if(auto cond = VariantNamespace::get_if<Placeholder<ConditionCode>>(&pattern))
+    if(auto cond = VariantNamespace::get_if<Placeholder<ConditionCode>>(&pattern.pattern))
         cond->get() = code;
-    if(auto cond = VariantNamespace::get_if<InvertedCondition>(&pattern))
+    if(auto cond = VariantNamespace::get_if<InvertedCondition>(&pattern.pattern))
         cond->cond.get() = code.invert();
 }
 
 static bool matchesFlag(SetFlag flag, const FlagPattern& pattern, const MatchCache& previousCache, MatchCache& newCache)
 {
-    if(VariantNamespace::get_if<Ignored>(&pattern))
+    if(VariantNamespace::get_if<Ignored>(&pattern.pattern))
         // accepts everything, even not set conditions
         return true;
-    if(auto state = VariantNamespace::get_if<Placeholder<SetFlag>>(&pattern))
+    if(auto state = VariantNamespace::get_if<Placeholder<SetFlag>>(&pattern.pattern))
     {
         auto ptr = &state->get();
         if(!matchesCache(flag, ptr, previousCache, newCache))
@@ -231,14 +323,14 @@ static bool matchesFlag(SetFlag flag, const FlagPattern& pattern, const MatchCac
         newCache.emplace(ptr, flag);
         return true;
     }
-    if(auto state = VariantNamespace::get_if<SetFlag>(&pattern))
+    if(auto state = VariantNamespace::get_if<SetFlag>(&pattern.pattern))
         return flag == *state;
     throw CompilationError(CompilationStep::GENERAL, "Unhandled ConditionPattern type");
 }
 
 static void updateMatch(SetFlag flag, FlagPattern& pattern)
 {
-    if(auto state = VariantNamespace::get_if<Placeholder<SetFlag>>(&pattern))
+    if(auto state = VariantNamespace::get_if<Placeholder<SetFlag>>(&pattern.pattern))
         state->get() = flag;
 }
 
