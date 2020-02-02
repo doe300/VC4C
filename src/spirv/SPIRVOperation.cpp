@@ -854,9 +854,7 @@ void SPIRVShuffle::mapInstruction(TypeMapping& types, ConstantMapping& constants
         if(allIndicesUndef)
             index = UNDEFINED_VALUE;
         else
-        {
-            index = Value(std::move(indices), TYPE_INT8);
-        }
+            index = Value(std::move(indices), TYPE_INT8.toVectorType(numIndex));
     }
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating intermediate operations for mixing " << src0.to_string() << " and " << src1.to_string()

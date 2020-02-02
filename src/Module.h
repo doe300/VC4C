@@ -39,6 +39,13 @@ namespace vc4c
          * The module's methods
          */
         MethodList methods;
+        /*
+         * Additional function name aliases.
+         *
+         * E.g. the inlining will check this map and if the called function name is a key in this map, it will try to
+         * find a function with the mapped value as name to be inlined.
+         */
+        FastMap<std::string, std::string> functionAliases;
 
         inline MethodList::iterator begin()
         {

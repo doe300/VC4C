@@ -32,8 +32,8 @@ static const Method* matchSignatures(
     return nullptr;
 }
 
-static Method& inlineMethod(
-    const std::string& localPrefix, const std::vector<std::unique_ptr<Method>>& methods, Method& currentMethod)
+static Method& inlineMethod(const std::string& localPrefix, const std::vector<std::unique_ptr<Method>>& methods,
+    const FastMap<std::string, std::string>& functionAliases, Method& currentMethod)
 {
     auto it = currentMethod.walkAllInstructions();
     while(!it.isEndOfMethod())
@@ -42,7 +42,23 @@ static Method& inlineMethod(
         if(auto call = it.get<intermediate::MethodCall>())
         {
             // search for method with matching signature
-            if(auto calledMethod = matchSignatures(methods, call))
+            auto calledMethod = matchSignatures(methods, call);
+            if(!calledMethod)
+            {
+                // if not find directly, try aliasing
+                auto aliasIt = functionAliases.find(call->methodName);
+                if(aliasIt != functionAliases.end())
+                {
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Using alias '" << aliasIt->second << "' for call-site: " << call->to_string()
+                            << logging::endl);
+                    // we need to rewrite the call-site function name, since this is checked in
+                    // CallSite#matchesSignature(...)
+                    call->methodName = aliasIt->second;
+                    calledMethod = matchSignatures(methods, call);
+                }
+            }
+            if(calledMethod)
             {
                 const std::size_t numInstructions = currentMethod.countInstructions();
                 // recursively search for used methods
@@ -52,7 +68,7 @@ static Method& inlineMethod(
                             std::string("%") + (calledMethod->name + ".") + std::to_string(rand())) +
                     '.';
                 const Local* methodEndLabel = currentMethod.findOrCreateLocal(TYPE_LABEL, newLocalPrefix + "after");
-                inlineMethod(newLocalPrefix, methods, const_cast<Method&>(*calledMethod));
+                inlineMethod(newLocalPrefix, methods, functionAliases, const_cast<Method&>(*calledMethod));
                 // at this point, the called method has already inlined all other methods
 
                 // Starting at lowest level (here), insert in parent
@@ -149,6 +165,6 @@ void normalization::inlineMethods(const Module& module, Method& kernel, const Co
     CPPLOG_LAZY(logging::Level::INFO, log << "-----" << logging::endl);
     CPPLOG_LAZY(logging::Level::INFO, log << "Inlining functions for kernel: " << kernel.name << logging::endl);
     // Starting at kernel
-    inlineMethod("", module.methods, kernel);
+    inlineMethod("", module.methods, module.functionAliases, kernel);
     CPPLOG_LAZY(logging::Level::INFO, log << "-----" << logging::endl);
 }

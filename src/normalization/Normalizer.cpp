@@ -38,7 +38,7 @@ static void propagateGroupUniforms(Module& module, Method& method, InstructionWa
     static const auto check = [](const Value& arg) -> bool {
         if(arg.checkRegister())
             return arg.hasRegister(REG_UNIFORM) || arg.hasRegister(REG_ELEMENT_NUMBER);
-        if(arg.checkImmediate() || arg.checkLiteral())
+        if(arg.checkImmediate() || arg.checkLiteral() || arg.checkVector())
             return true;
         if(auto local = arg.checkLocal())
         {

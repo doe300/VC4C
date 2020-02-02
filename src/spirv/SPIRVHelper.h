@@ -19,6 +19,8 @@
 
 namespace vc4c
 {
+    class Module;
+
     namespace spirv
     {
         std::string getOpenCLMethodName(uint32_t instructionID);
@@ -38,6 +40,8 @@ namespace vc4c
         void linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output);
 
         std::string demangleFunctionName(const std::string& name);
+
+        void addFunctionAliases(Module& module);
 
     } // namespace spirv
 } // namespace vc4c

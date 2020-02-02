@@ -90,12 +90,13 @@ Optional<Value> CompoundConstant::toValue() const
     {
         if(container->size() <= NATIVE_VECTOR_SIZE &&
             std::all_of(container->begin(), container->end(),
-                [](const CompoundConstant& elem) -> bool { return elem.getScalar().has_value(); }))
+                [](const CompoundConstant& elem) -> bool { return elem.getScalar() || elem.isUndefined(); }))
         {
             SIMDVector vector;
             for(unsigned i = 0; i < std::min(container->size(), NATIVE_VECTOR_SIZE); ++i)
             {
-                vector[i] = *(*container)[i].getScalar();
+                if(auto lit = (*container)[i].getScalar())
+                    vector[i] = *lit;
             }
             return Value(std::move(vector), type);
         }

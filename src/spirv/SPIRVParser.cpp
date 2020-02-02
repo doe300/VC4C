@@ -201,6 +201,8 @@ void SPIRVParser::parse(Module& module)
     {
         module.methods.emplace_back(method.second.method.release());
     }
+
+    addFunctionAliases(module);
 }
 
 spv_result_t SPIRVParser::parseHeader(
@@ -799,8 +801,16 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         // - Composites: Members are set recursively to the null constant according to the null value of their
         // constituent types."
         auto type = typeMappings.at(parsed_instruction->type_id);
-        if(type.isScalarType() || type.isVectorType() || type.getPointerType())
+        if(type.isScalarType() || type.getPointerType())
             constantMappings.emplace(parsed_instruction->result_id, CompoundConstant(type, Literal(0u)));
+        else if(type.isVectorType())
+        {
+            auto element = CompoundConstant(type.getElementType(), Literal(0u));
+            constantMappings.emplace(parsed_instruction->result_id,
+                CompoundConstant(type,
+                    {element, element, element, element, element, element, element, element, element, element, element,
+                        element, element, element, element, element}));
+        }
         else if(type.getArrayType())
             // TODO correct?
             constantMappings.emplace(parsed_instruction->result_id, CompoundConstant(type, Literal(0u)));
