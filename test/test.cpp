@@ -118,6 +118,11 @@ static Test::Suite* newIntrinsicsTest()
     return new TestIntrinsicFunctions(config);
 }
 
+static Test::Suite* newOptimizationsTest()
+{
+    return new TestOptimizations(config);
+}
+
 /*
  * 
  */
@@ -127,7 +132,7 @@ int main(int argc, char** argv)
     logging::LOGGER.reset(new logging::ConsoleLogger(logging::Level::WARNING));
 
     Test::registerSuite(Test::newInstance<TestOptimizationSteps>, "test-optimization-steps", "Runs unit tests on the single optimization steps");
-    Test::registerSuite(Test::newInstance<TestOptimizations>, "test-optimizations", "Runs smoke tests on the single optimization steps");
+    Test::registerSuite(newOptimizationsTest, "test-optimizations", "Runs smoke tests on the single optimization steps");
     Test::registerSuite(Test::newInstance<TestOperators>, "test-operators", "Tests the implementation of some operators");
     Test::registerSuite(Test::newInstance<TestInstructions>, "test-instructions", "Tests some common instruction handling");
     Test::registerSuite(Test::newInstance<TestFrontends>, "test-frontend", "Tests various functions of the default front-end");

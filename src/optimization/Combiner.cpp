@@ -980,21 +980,30 @@ InstructionWalker optimizations::combineArithmeticOperations(
         return it;
     if(it->getArguments().size() != 2)
         return it;
-    if(!it->readsLiteral())
-        // even if we could combine, we cannot save an instruction (since we cannot pre-calculate anything)
-        return it;
     if(it->hasConditionalExecution() || !op->isSimpleOperation())
         return it;
     if(!it->readsLocal())
         return it;
 
     // exactly one local and one literal operand
-    const auto& literalArg = it->getArguments()[0].isLiteralValue() ? it->getArguments()[0] : it->getArguments()[1];
-    const auto& localArg = it->getArguments()[0].isLiteralValue() ? it->getArguments()[1] : it->getArguments()[0];
+    Value literalArg = UNDEFINED_VALUE;
+    Value localArg = UNDEFINED_VALUE;
+    if(it->getArguments()[0].getConstantValue() & &Value::getLiteralValue)
+    {
+        literalArg = *it->getArguments()[0].getConstantValue();
+        localArg = it->getArguments()[1];
+    }
+    else if(it->getArguments()[1].getConstantValue() & &Value::getLiteralValue)
+    {
+        literalArg = *it->getArguments()[1].getConstantValue();
+        localArg = it->getArguments()[0];
+    }
+    else
+        // even if we could combine, we cannot save an instruction (since we cannot pre-calculate anything)
+        return it;
 
     auto singleWriter = localArg.getSingleWriter();
-    if(!singleWriter || !singleWriter->readsLiteral())
-        // same as above, we cannot pre-calculate anything
+    if(!singleWriter || singleWriter->getArguments().size() != 2)
         return it;
 
     auto writerOp = dynamic_cast<const Operation*>(singleWriter);
@@ -1009,10 +1018,21 @@ InstructionWalker optimizations::combineArithmeticOperations(
         // we cannot remove or modify the writer, so abort here
         return it;
 
-    const auto& otherLiteralArg = singleWriter->getArguments()[0].isLiteralValue() ? singleWriter->getArguments()[0] :
-                                                                                     singleWriter->getArguments()[1];
-    const auto& origArg = singleWriter->getArguments()[0].isLiteralValue() ? singleWriter->getArguments()[1] :
-                                                                             singleWriter->getArguments()[0];
+    Value otherLiteralArg = UNDEFINED_VALUE;
+    Value origArg = UNDEFINED_VALUE;
+    if(singleWriter->getArguments()[0].getConstantValue() & &Value::getLiteralValue)
+    {
+        otherLiteralArg = *singleWriter->getArguments()[0].getConstantValue();
+        origArg = singleWriter->getArguments()[1];
+    }
+    else if(singleWriter->getArguments()[1].getConstantValue() & &Value::getLiteralValue)
+    {
+        otherLiteralArg = *singleWriter->getArguments()[1].getConstantValue();
+        origArg = singleWriter->getArguments()[0];
+    }
+    else
+        // same as above, we cannot pre-calculate anything
+        return it;
 
     if(!op->op.isCommutative() && (it->getArgument(0) != localArg || singleWriter->getArgument(0) != origArg))
         // we cannot transform e.g. (a op b) op c to b op (a op c)

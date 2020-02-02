@@ -855,6 +855,90 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                         foundOr(out, loc, it);
                 }
             }
+
+            if(op->op == OP_ASR && !op->doesSetFlag() && !op->hasPackMode())
+            {
+                /*
+                 * %y = asr %x, const1
+                 * %z = and %y, const2
+                 *
+                 * if const2 <= 2^const1:
+                 * %y = shr %x, const1
+                 * %z = and %y, const2
+                 */
+                // the mask of bits from the input which are only shifted, not modified. I.e. this is the bit-mask of
+                // the result which is not set to leading ones or zeroes.
+                uint32_t mask{0xFFFFFFFF};
+                if(auto lit = op->getSecondArg() & &Value::getLiteralValue)
+                {
+                    // only last bits are actually used by ALU, see OP_ASR documentation
+                    auto offset = lit->unsignedInt() & 0x1F;
+                    offset = 32 - offset;
+                    mask = (1u << offset) - 1u;
+                }
+                auto out = op->checkOutputLocal();
+                if(mask != uint32_t{0xFFFFFFFF} && out &&
+                    std::all_of(out->getUsers().begin(), out->getUsers().end(),
+                        [&](const std::pair<const LocalUser*, LocalUse> user) -> bool {
+                            if(!user.second.readsLocal())
+                                return true;
+                            if(auto userOp = dynamic_cast<const intermediate::Operation*>(user.first))
+                            {
+                                auto otherArg = userOp->findOtherArgument(*op->getOutput());
+                                auto otherLit =
+                                    (otherArg ? otherArg->getConstantValue() : NO_VALUE) & &Value::getLiteralValue;
+                                return userOp->op == OP_AND && !userOp->hasUnpackMode() && otherLit &&
+                                    isPowerTwo(otherLit->unsignedInt() + 1u) && otherLit->unsignedInt() <= mask;
+                            }
+                            return false;
+                        }))
+                {
+                    // if all of our readers are simple ANDs with a constant mask which covers less or equal bits than
+                    // the mask of we calculated, we know that all the sign-extended bits are not used. Therefore the
+                    // (actually relevant part of the) result for the ASR is the same as for SHR -> simplify.
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Replacing arithmetic shift with simpler bit-wise shift: " << op->to_string()
+                            << logging::endl);
+                    op->op = OP_SHR;
+                    replaced = true;
+                }
+            }
+            // fall-through on purpose, since we can improve on the above even further with the check below
+            if(op->op == OP_SHR && !op->hasUnpackMode() && !op->doesSetFlag())
+            {
+                /*
+                 * %b = shl %a, const1
+                 * %c = shr %b, const2
+                 *
+                 * if const1 == const2:
+                 * %c = and %a, 2^const1
+                 */
+                auto writer = dynamic_cast<const intermediate::Operation*>(op->getFirstArg().getSingleWriter());
+                // the mask of bits from the input which are only shifted, not modified. I.e. this is the bit-mask of
+                // the result which is not set to leading zeroes.
+                uint32_t mask{0xFFFFFFFF};
+                if(auto lit = op->getSecondArg() & &Value::getLiteralValue)
+                {
+                    // only last bits are actually used by ALU, see OP_SHR documentation
+                    auto offset = lit->unsignedInt() & 0x1F;
+                    offset = 32 - offset;
+                    mask = (1u << offset) - 1u;
+                }
+                if(mask != uint32_t{0xFFFFFFFF} && writer && writer->op == OP_SHL && !writer->hasPackMode() &&
+                    writer->getSecondArg() &&
+                    writer->getSecondArg()->getConstantValue() == op->getSecondArg()->getConstantValue())
+                {
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Replacing redundant left and right shift with same offset to and with mask: "
+                            << op->to_string() << logging::endl);
+                    auto input = writer->getFirstArg();
+                    // (a << x) >> x -> (a & 2^x)
+                    op->replaceValue(op->getFirstArg(), input, LocalUse::Type::READER);
+                    op->replaceValue(*op->getSecondArg(), Value(Literal(mask), TYPE_INT32), LocalUse::Type::READER);
+                    op->op = OP_AND;
+                    replaced = true;
+                }
+            }
         }
 
         it.nextInMethod();

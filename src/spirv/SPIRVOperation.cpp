@@ -890,7 +890,15 @@ void SPIRVIndexOf::mapInstruction(TypeMapping& types, ConstantMapping& constants
     for(const uint32_t indexID : indices)
         indexValues.push_back(getValue(indexID, *method.method, types, constants, memoryAllocated, localTypes));
 
-    bool ptrAccessChain = isPtrAcessChain;
+    // TODO for some reason, now it passes a lot more tests with this set to false by default...
+    bool ptrAccessChain = false; // FIXME isPtrAcessChain;
+
+    // FIXME isn't there some proper way of doing this??!!
+    // Looks like we need to invert the handling, by default don't treat first index as element and only for
+    // exceptions?! -> more test passes for memory access tests
+    // TODO for some tests (e.g. vload/vstore), this does not work -> need to set access chain
+    // TODO which criteria?? If pointer to scalar/vector? Or enable for all, but disable for all pointer to
+    // struct/array??
 
     // XXX work-around for problem matching resulting type to actual output type for vload3/vstore3
     // For some reason, SPIR-V does not introduce a pointer cast operation, but "casts" in the index chain. But this

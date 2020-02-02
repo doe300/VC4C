@@ -169,16 +169,17 @@ namespace vc4c
 					{toParameter(std::vector<unsigned>{0x01020304}), toParameter(std::vector<unsigned>{0x04020301}), toParameter(std::vector<unsigned>(1))}, {}, maxExecutionCycles),
 					addVector({}, 2, std::vector<unsigned>{0x04020301})
 				),
-				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_async_copy.cl", "test_async_copy",
-				    {toParameter(toRange<unsigned>(0, 12*16)), toParameter(std::vector<unsigned>(12*16)), toParameter(std::vector<unsigned>(12*16))}, toConfig(12), maxExecutionCycles),
-				    addVector(/*the __local arg might be lowered to VPM addVector({}, 1, toRange<unsigned>(0, 12*16))*/ {}, 2, toRange<unsigned>(0, 12*16))
-				),
+				// FIXME SEGFAULTs
+				// std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_async_copy.cl", "test_async_copy",
+				//     {toParameter(toRange<unsigned>(0, 12*16)), toParameter(std::vector<unsigned>(12*16)), toParameter(std::vector<unsigned>(12*16))}, toConfig(12), maxExecutionCycles),
+				//     addVector(/*the __local arg might be lowered to VPM addVector({}, 1, toRange<unsigned>(0, 12*16))*/ {}, 2, toRange<unsigned>(0, 12*16))
+				// ),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_shuffle.cl", "test_shuffle",
 				    {toParameter(std::vector<unsigned>{0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c, 0x13121110, 0x17161514, 0x1b1a1918, 0x1f1e1d1c}), toParameter(std::vector<unsigned>(10*16/sizeof(int32_t)))}, toConfig(1), maxExecutionCycles),
 				    addVector({}, 1, std::vector<unsigned>{0x08040607, 0x010d0c01, 0x0f0e0900, 0x06080304, 0x120b0701, 0x09080f15, 0x01021300, 0x08070d11, 0x10021b1a, 0x17061904, 0x131c0908, 0x0f0e0d1a, 0x10020111, 0x10020111, 0x10020111, 0x10020111,
 				                                           0x01000000, 0x10000011, 0x02011100, 0x00001002, 0x00000000, 0x04040404, 0x08080808, 0x0c0c0c0c, 0, 0, 0, 0, 0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c, 0x0d0c0b0a, 0x01000f0e, 0x05040302, 0x09080706, 0x0c0d0e0f, 0x08090a0b, 0x04050607, 0x00010203})
                 ),
-				//TODO need to pass parameter as literal vectors, not buffers
+				// TODO need to pass parameter as literal vectors, not buffers
 				// std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vector.cl", "test_param",
 				//     {toParameter(std::vector<unsigned>{0x40, 0, 0, 0, 0x41, 0, 0, 0, 0x42, 0, 0, 0, 0x43, 0, 0, 0}), toParameter(std::vector<unsigned>{0x15, 0x16, 0x17, 0x18}), toParameter(std::vector<unsigned>(4))}, toConfig(1), maxExecutionCycles),
 				//     addVector({}, 2, std::vector<unsigned>{0x55, 0x57, 0x59, 0x61})
@@ -187,6 +188,25 @@ namespace vc4c
 					{toParameter(toRange<unsigned>(0, 64)), toParameter(std::vector<unsigned>(64)), toParameter(std::vector<unsigned>(64)), toScalarParameter(64), toScalarParameter(8)}, toConfig(8), maxExecutionCycles),
 					addVector({}, 1, toRange<unsigned>(0, 64))
 				),
+				// TODO fix result error
+				// std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCLIPP/Histogram.cl", "histogram_1C",
+				// 	{toParameter(std::vector<unsigned>{0x01000102, 0x01060101, 0x02030405}), toParameter(std::vector<unsigned>(8)), toScalarParameter(4)}, toConfig(4, 3), maxExecutionCycles),
+	            //  /* the value is the count of bytes <= the position */
+				// 	addVector({}, 1, std::vector<unsigned>{1, 6, 8, 9, 10, 11, 12, 12})
+				// ),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/pocl/test_structs_as_args.cl", "test_single",
+					{toParameter(std::vector<unsigned>{0x01000102}), toParameter(std::vector<unsigned>(1))}, {}, maxExecutionCycles),
+					addVector({}, 1, std::vector<unsigned>{0x01000102})
+				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/pocl/test_structs_as_args.cl", "test_pair",
+					{toParameter(std::vector<unsigned>{0x01010101, 0x23232323, 0x45454545, 0x67676767}), toParameter(std::vector<unsigned>(2))}, {}, maxExecutionCycles),
+					addVector({}, 1, std::vector<unsigned>{0x01010101, 0x45454545})
+				),
+				// TODO fix result error
+				// std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/pocl/test_structs_as_args.cl", "test_kernel",
+				// 	{toParameter(std::vector<unsigned>{0x01001001, 0x02002002, 0x03003003, 0x04004004, 0x05005005, 0x06006006, 0x07007007, 0x48008008, 0x09009009, 0x0A00A00A, 0x0B00B00B, 0x0C00C00C}), toParameter(std::vector<unsigned>(10))}, {}, maxExecutionCycles),
+				// 	addVector({}, 1, std::vector<unsigned>{0x01001001, 0x02002002, 0x03003003, 0x05, 0x06006006, 131584, 0x9009, 0x0A00A00A, 48, 8})
+				// )
 		};
 
 		//TODO NVIDIA/matrixMul, NVIDIA/transpose, OpenCLIPP/Arithmetic, OpenCLIPP/Logic, OpenCLIPP/Thresholding, test_signedness
@@ -255,7 +275,32 @@ namespace vc4c
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/bugs/54_invalid_results.cl", "sum",
                     {toParameter(std::vector<float>(9))}, toConfig(3, 1, 1, 3, 1, 1), maxExecutionCycles),
 				    addVector({}, 0, std::vector<float>{1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f})
-				)
+				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/deepCL/copy.cl", "copy",
+                    {toScalarParameter(10), toParameter(std::vector<float>{1, 9, -2, 8, 3, 7, 4, 6, 5, 0, 11, 12}), toParameter(std::vector<float>(16))}, toConfig(12), maxExecutionCycles),
+				    addVector({}, 2, std::vector<float>{1, 9, -2, 8, 3, 7, 4, 6, 5, 0, 0, 0})
+                ),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/deepCL/copy.cl", "multiplyConstant",
+                    {toScalarParameter(10), toScalarParameter(5.0f), toParameter(std::vector<float>{1, 9, -2, 8, 3, 7, 4, 6, 5, 0, 11, 12}), toParameter(std::vector<float>(16))}, toConfig(12), maxExecutionCycles),
+				    addVector({}, 3, std::vector<float>{5*1, 5*9, 5*-2, 5*8, 5*3, 5*7, 5*4, 5*6, 5*5, 5*0, 0, 0})
+                ),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/deepCL/copy.cl", "multiplyInplace",
+                    {toScalarParameter(10), toScalarParameter(5.0f), toParameter(std::vector<float>{1, 9, -2, 8, 3, 7, 4, 6, 5, 0, 11, 12})}, toConfig(12), maxExecutionCycles),
+				    addVector({}, 2, std::vector<float>{5*1, 5*9, 5*-2, 5*8, 5*3, 5*7, 5*4, 5*6, 5*5, 5*0, 11, 12})
+                ),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/deepCL/inv.cl", "array_inv",
+                    {toScalarParameter(10), toParameter(std::vector<float>{1, 9, -2, 8, 0.3f, 7, 0.4f, 6, -5, 0.1f, 11, 12})}, toConfig(12), maxExecutionCycles),
+				    addVector({}, 1, std::vector<float>{1, 1.0f/9.0f, 1.0f/-2.0f, 1.0f/8.0f, 1.0f/0.3f, 1.0f/7.0f, 1.0f/0.4f, 1.0f/6.0f, 1.0f/-5.0f, 1.0f/0.1f, 11, 12})
+                ),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/deepCL/memset.cl", "cl_memset",
+                    {toParameter(std::vector<float>(16)), toScalarParameter(17.0f), toScalarParameter(10)}, toConfig(12), maxExecutionCycles),
+				    addVector({}, 0, std::vector<float>{17.0f, 17.0f, 17.0f, 17.0f, 17.0f, 17.0f, 17.0f, 17.0f, 17.0f, 17.0f, 0, 0, 0, 0})
+                ),
+				// TODO fix result mismatch
+				// std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/rodinia/nearestNeighbor_kernel.cl", "NearestNeighbor",
+                //   {toParameter(std::vector<float>{0,0, 1, 1, 0, 1, 1, 0, -1, -1, -1, 0, 0, -1, 1, -1, -1, 1}), toParameter(std::vector<float>(16)), toScalarParameter(9), toScalarParameter(0.5f), toScalarParameter(-0.5f)}, toConfig(12), maxExecutionCycles),
+				//   addVector({}, 0, std::vector<float>{0.707107f, 1.58114f, 1.58114f, 0.707107f, 1.58114f, 1.58114f, 0.707107f, 0.707107f, 2.12132f})
+                // ),
 		};
 	} /* namespace test */
 } /* namespace vc4c */

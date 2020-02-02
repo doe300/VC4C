@@ -108,7 +108,7 @@ namespace vc4c
         bool eliminateRedundantMoves(const Module& module, Method& method, const Configuration& config);
 
         /*
-         * Transform bit ("and" and "or") operations
+         * Transform bit operations where some calculations are redundant
          *
          * Example:
          *  %1 = and %2, %3
@@ -141,6 +141,21 @@ namespace vc4c
          * becomes:
          *  %1 = or %2, %3
          *  %4 = %1
+         *
+         * And:
+         *  %y = asr %x, const1
+         *  %z = and %y, const2
+         *
+         * becomes, if const2 <= 2^const1:
+         *  %y = shr %x, const1
+         *  %z = and %y, const2
+         *
+         * And:
+         *  %b = shl %a, sameConst
+         *  %c = shr %b, sameConst
+         *
+         * becomes:
+         *  %c = and %a, 2^sameConst
          */
         bool eliminateRedundantBitOp(const Module& module, Method& method, const Configuration& config);
 

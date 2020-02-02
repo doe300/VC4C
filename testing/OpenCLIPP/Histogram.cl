@@ -29,7 +29,8 @@
    const int gy = get_global_id(1);\
    const int2 pos = { gx, gy };
 
-#define HIST_SIZE 256
+// ORIGINAL: #define HIST_SIZE 256
+#define HIST_SIZE 8
 
 // Histogram on a 1 channel image that has a range of 0-255
 //    hist must be an array of 256 32b integers, all initialized to 0

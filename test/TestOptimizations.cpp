@@ -18,7 +18,7 @@ using namespace vc4c;
 // TODO can we somehow get rid of this?
 static const std::string requiredOptimization = "loop-work-groups";
 
-TestOptimizations::TestOptimizations() : TestEmulator(true)
+TestOptimizations::TestOptimizations(const vc4c::Configuration& config) : TestEmulator(true, config)
 {
     // test once all functions without optimizations enabled
     TEST_ADD_WITH_STRING(TestOptimizations::testHelloWorld, "");
@@ -93,7 +93,6 @@ void TestOptimizations::testEmptyIterator(std::string passParamName)
      *
      * This test just checks that no optimization steps throw exceptions or crash when finding an empty iterator.
      */
-    Configuration config{};
     Module mod{config};
     Method method{mod};
     method.appendToEnd(new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL).local()));
@@ -107,7 +106,6 @@ void TestOptimizations::testEmptyIterator(std::string passParamName)
 
 void TestOptimizations::testEmptyKernel(std::string passParamName)
 {
-    Configuration config{};
     Module mod{config};
     Method method{mod};
 

@@ -17,7 +17,7 @@
 class TestOptimizations : public TestEmulator
 {
 public:
-    TestOptimizations();
+    TestOptimizations(const vc4c::Configuration& config = {});
     ~TestOptimizations() override;
 
     void testEmptyIterator(std::string passParamName);

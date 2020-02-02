@@ -1367,8 +1367,152 @@ void TestOptimizationSteps::testEliminateBitOperations()
         assign(outIt, F) = (E & a, UNPACK_16A_32);
     }
 
+    // positive check again, this time split (part 1)
+    Value a0 = UNDEFINED_VALUE;
+    Value b0 = UNDEFINED_VALUE;
+    Value c0 = UNDEFINED_VALUE;
+    Value d0 = UNDEFINED_VALUE;
+    Value e0 = UNDEFINED_VALUE;
+    Value f0 = UNDEFINED_VALUE;
+    Value g0 = UNDEFINED_VALUE;
+    Value h0 = UNDEFINED_VALUE;
+    Value i0 = UNDEFINED_VALUE;
+    Value j0 = UNDEFINED_VALUE;
+    Value k0 = UNDEFINED_VALUE;
+    Value l0 = UNDEFINED_VALUE;
+    Value m0 = UNDEFINED_VALUE;
+    Value n0 = UNDEFINED_VALUE;
+    Value o0 = UNDEFINED_VALUE;
+    Value p0 = UNDEFINED_VALUE;
+    Value q0 = UNDEFINED_VALUE;
+    Value r0 = UNDEFINED_VALUE;
+    Value s0 = UNDEFINED_VALUE;
+    Value t0 = UNDEFINED_VALUE;
+    Value u0 = UNDEFINED_VALUE;
+
+    {
+        // (%a asr 16) & 0xFFF -> (%a shr 16) & 0xFFF
+        a0 = assign(inIt, TYPE_INT32, "%a0") = as_signed{a} >> 16_val;
+        b0 = assign(inIt, TYPE_INT32, "%b0") = a0 & 0xFFF_val;
+    }
+
+    {
+        // (%a shl 15) shr 15 -> %a & 0x1FFFF
+        c0 = assign(inIt, TYPE_INT32, "%c0") = a << 15_val;
+        d0 = assign(inIt, TYPE_INT32, "%d0") = as_unsigned{c0} >> 15_val;
+    }
+
+    // negative tests again (part 1)
+    // check transfer of additional info (decorations, conditionals, flags) for replaced operations (part 1)
+    {
+        e0 = assign(inIt, TYPE_INT32, "%e0") = (as_signed{b} >> 16_val, InstructionDecorations::EXACT_OPERATION);
+        f0 = assign(inIt, TYPE_INT32, "%f0") = (0xFF_val & e0, COND_CARRY_SET, PACK_32_16A);
+        g0 = assign(inIt, TYPE_INT32, "%g0") =
+            (b << 14_val, InstructionDecorations::EXACT_OPERATION, SetFlag::SET_FLAGS, SIGNAL_LOAD_ALPHA);
+        h0 = assign(inIt, TYPE_INT32, "%h0") = (as_unsigned{g0} >> 14_val, InstructionDecorations::EXACT_OPERATION);
+    }
+
+    // check no replacement if asr has pack mode (part 1)
+    {
+        i0 = assign(inIt, TYPE_INT32, "%i0") = (as_signed{b} >> 14_val, PACK_32_8888);
+        j0 = assign(inIt, TYPE_INT32, "%j0") = i0 & 0xFF_val;
+    }
+
+    // check no replacement if asr sets flags (since e.g. negative flag would differ) (part 1)
+    {
+        k0 = assign(inIt, TYPE_INT32, "%k0") = (as_signed{b} >> 14_val, SetFlag::SET_FLAGS);
+        l0 = assign(inIt, TYPE_INT32, "%l0") = k0 & 0xFF_val;
+    }
+
+    // check no replacement if asr has non-and readers (part 1)
+    {
+        m0 = assign(inIt, TYPE_INT32, "%m0") = (as_signed{b} >> 14_val, SetFlag::SET_FLAGS);
+        n0 = assign(inIt, TYPE_INT32, "%n0") = m0 & 0xFF_val;
+        o0 = assign(inIt, TYPE_INT32, "%o0") = m0 + 0xFF_val;
+    }
+
+    // check no replacement if and mask bigger than asr offset (part 1)
+    {
+        p0 = assign(inIt, TYPE_INT32, "%p0") = (as_signed{b} >> 18_val, SetFlag::SET_FLAGS);
+        q0 = assign(inIt, TYPE_INT32, "%q0") = p0 & 0xFFFF_val;
+    }
+
+    // check no replacement if shl/shr offsets do not match (part 1)
+    {
+        r0 = assign(inIt, TYPE_INT32, "%r0") = a << 16_val;
+        s0 = assign(inIt, TYPE_INT32, "%s0") = as_unsigned{r0} >> 15_val;
+    }
+
+    // check no replacement if shr has unpack mode (part 1)
+    {
+        t0 = assign(inIt, TYPE_INT32, "%t0") = a << 16_val;
+        u0 = assign(inIt, TYPE_INT32, "%u0") = (as_unsigned{t0} >> 15_val, PACK_32_16B);
+    }
+
+    // NOTE: Since the optimization partially checks for single writers, we need to add the output instructions after
+    // the optimization is applied. Otherwise the write from the output method will fail that check.
     // run pass
     eliminateRedundantBitOp(module, inputMethod, config);
+
+    // positive check again, this time split (part 2)
+    {
+        // (%a asr 16) & 0xFFF -> (%a shr 16) & 0xFFF
+        assign(outIt, a0) = as_unsigned{a} >> 16_val;
+        assign(outIt, b0) = a0 & 0xFFF_val;
+    }
+
+    {
+        // (%a shl 15) shr 15 -> %a & 0x1FFFF
+        assign(outIt, c0) = a << 15_val;
+        assign(outIt, d0) = a & 0x1FFFF_val;
+    }
+
+    // check transfer of additional info (decorations, conditionals, flags) for replaced operations (part 2)
+    {
+        assign(outIt, e0) = (as_unsigned{b} >> 16_val, InstructionDecorations::EXACT_OPERATION);
+        assign(outIt, f0) = (0xFF_val & e0, COND_CARRY_SET, PACK_32_16A);
+        assign(outIt, g0) =
+            (b << 14_val, InstructionDecorations::EXACT_OPERATION, SetFlag::SET_FLAGS, SIGNAL_LOAD_ALPHA);
+        assign(outIt, h0) = (b & 0x3FFFF_val, InstructionDecorations::EXACT_OPERATION);
+    }
+
+    // check no replacement if asr has pack mode (part 2)
+    {
+        assign(outIt, i0) = (as_signed{b} >> 14_val, PACK_32_8888);
+        assign(outIt, j0) = i0 & 0xFF_val;
+    }
+
+    // check no replacement if asr sets flags (since e.g. negative flag would differ) (part 2)
+    {
+        assign(outIt, k0) = (as_signed{b} >> 14_val, SetFlag::SET_FLAGS);
+        assign(outIt, l0) = k0 & 0xFF_val;
+    }
+
+    // check no replacement if asr has non-and readers (part 2)
+    {
+        assign(outIt, m0) = (as_signed{b} >> 14_val, SetFlag::SET_FLAGS);
+        assign(outIt, n0) = m0 & 0xFF_val;
+        assign(outIt, o0) = m0 + 0xFF_val;
+    }
+
+    // check no replacement if and mask bigger than asr offset (part 2)
+    {
+        assign(outIt, p0) = (as_signed{b} >> 18_val, SetFlag::SET_FLAGS);
+        assign(outIt, q0) = p0 & 0xFFFF_val;
+    }
+
+    // check no replacement if shl/shr offsets do not match (part 2)
+    {
+        assign(outIt, r0) = a << 16_val;
+        assign(outIt, s0) = as_unsigned{r0} >> 15_val;
+    }
+
+    // check no replacement if shr has unpack mode (part 2)
+    {
+        assign(outIt, t0) = a << 16_val;
+        assign(outIt, u0) = (as_unsigned{t0} >> 15_val, PACK_32_16B);
+    }
+
     testMethodsEquals(inputMethod, outputMethod);
 }
 
@@ -1593,7 +1737,6 @@ void TestOptimizationSteps::testCombineRotations()
 
     {
         // test rewrite rotation of masked load to rotated load of mask (full and quad rotation) (part 2)
-        // FIXME test fails due to second write in result method!!
         outIt.emplace(new LoadImmediate(o, 0x12340000, LoadType::PER_ELEMENT_SIGNED));
         outIt.nextInBlock();
         outIt.emplace(new LoadImmediate(p, 0x34120000, LoadType::PER_ELEMENT_SIGNED));
