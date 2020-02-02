@@ -6,6 +6,8 @@
 
 #include "GlobalValues.h"
 
+#include "log.h"
+
 #include <algorithm>
 
 using namespace vc4c;
@@ -137,14 +139,14 @@ Global::Global(const std::string& name, DataType globalType, CompoundConstant&& 
     if(!globalType.getPointerType())
         throw CompilationError(CompilationStep::GENERAL, "Global value needs to have a pointer type", to_string());
     if(isConstant != (globalType.getPointerType()->addressSpace == AddressSpace::CONSTANT))
-        throw CompilationError(
-            CompilationStep::GENERAL, "Constness attributes of global and pointer to global do not match", to_string());
+        CPPLOG_LAZY(logging::Level::WARNING,
+            log << "Constness attributes of global and pointer to global do not match" << to_string() << logging::endl);
 }
 
 LCOV_EXCL_START
 std::string Global::to_string(bool withContent) const
 {
-    return (name + ": ") + initialValue.to_string(withContent) + (isConstant ? " (const)" : "");
+    return Local::to_string(false) + ": " + initialValue.to_string(withContent) + (isConstant ? " (const)" : "");
 }
 LCOV_EXCL_STOP
 

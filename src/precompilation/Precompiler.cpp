@@ -496,6 +496,7 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
     {
         // the result of this does not have the correct output-format (but can be handled by the LLVM front-end)
         tempStream << input.rdbuf();
+        // TODO currently, we cannot convert LLVM IR text -> SPIR-V (text), since the LLVM assembly is not implemented
     }
     else if(inputType == SourceType::LLVM_IR_BIN)
     {

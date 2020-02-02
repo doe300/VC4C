@@ -93,7 +93,6 @@ namespace vc4c
         void compileOpenCLWithDefaultHeader(
             OpenCLSource&& source, const std::string& userOptions, LLVMIRResult& result);
         void linkInStdlibModule(LLVMIRSource&& source, const std::string& userOptions, LLVMIRResult& result);
-        void assembleLLVMIR(LLVMIRTextSource&& source, const std::string& userOptions, LLVMIRResult& result);
         void compileOpenCLToLLVMText(OpenCLSource&& source, const std::string& userOptions, LLVMIRTextResult& result);
         void compileLLVMToSPIRV(LLVMIRSource&& source, const std::string& userOptions, SPIRVResult& result);
         void assembleSPIRV(SPIRVTextSource&& source, const std::string& userOptions, SPIRVResult& result);

@@ -65,8 +65,7 @@ static std::unique_ptr<Parser> getParser(std::istream& stream)
 #ifdef USE_LLVM_LIBRARY
         return std::unique_ptr<Parser>(new llvm2qasm::BitcodeReader(stream, SourceType::LLVM_IR_BIN));
 #else
-        throw CompilationError(
-            CompilationStep::GENERAL, "LLVM-IR binary needs to be first converted to SPIR-V binary or LLVM-IR text!");
+        throw CompilationError(CompilationStep::GENERAL, "No LLVM IR module front-end available!");
 #endif
     case SourceType::SPIRV_TEXT:
         throw CompilationError(CompilationStep::GENERAL, "SPIR-V text needs to be first converted to SPIR-V binary!");
