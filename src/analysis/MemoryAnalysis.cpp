@@ -149,7 +149,7 @@ static const intermediate::IntermediateInstruction* getSingleWriter(
 static Optional<ValueRange> addNumEntries(const Local* baseAddress, Optional<ValueRange> range,
     const intermediate::MemoryInstruction* memInst, const Local* local)
 {
-    const auto& numEntries = memInst->getNumEntries();
+    const auto& numEntries = memInst ? memInst->getNumEntries() : UNDEFINED_VALUE;
     if(numEntries == INT_ONE)
         return range;
     if(!range || !*range)
@@ -165,7 +165,7 @@ static Optional<ValueRange> addNumEntries(const Local* baseAddress, Optional<Val
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Determining number of accessed entries with differing base and accessed types is not yet "
                    "supported: "
-                << memInst->to_string() << logging::endl);
+                << (memInst ? memInst->to_string() : "(none)") << logging::endl);
         return RANGE_UINT;
     }
 

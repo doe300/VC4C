@@ -38,7 +38,7 @@ TestFrontends::TestFrontends()
     TEST_ADD(TestFrontends::testDisassembler);
 
     TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::OPENCL_C);
-#ifndef USE_LLVM_LIBRARY
+#ifdef USE_LLVM_LIBRARY
     TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::LLVM_IR_TEXT);
 #endif
     TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::LLVM_IR_BIN);
