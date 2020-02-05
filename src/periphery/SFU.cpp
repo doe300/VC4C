@@ -6,6 +6,7 @@
 
 #include "SFU.h"
 
+#include "../SIMDVector.h"
 #include "../intermediate/operators.h"
 
 #include <cmath>
@@ -50,7 +51,7 @@ Optional<Value> periphery::precalculateSFU(Register sfuReg, const Value& input)
     if(auto vector = input.checkVector())
     {
         SIMDVector result = vector->transform(elemFunc);
-        return Value(std::move(result), input.type);
+        return Value(SIMDVectorHolder::storeVector(std::move(result), vector->getStorage()), input.type);
     }
     return NO_VALUE;
 }

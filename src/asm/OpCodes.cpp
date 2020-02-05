@@ -7,6 +7,7 @@
 #include "OpCodes.h"
 
 #include "../HalfType.h"
+#include "../SIMDVector.h"
 #include "../Values.h"
 #include "../analysis/ValueRange.h"
 #include "../intrinsics/Operators.h"
@@ -317,7 +318,7 @@ Optional<Value> Unpack::operator()(const Value& val) const
         auto elemType = val.type.toVectorType(1);
         SIMDVector result = vector->transform(
             [&](Literal lit) -> Literal { return unpackLiteral(*this, lit, elemType.isFloatingType()); });
-        return Value(std::move(result), val.type);
+        return Value(SIMDVectorHolder::storeVector(std::move(result), vector->getStorage()), val.type);
     }
     // can only unpack literals
     if(auto lit = val.getLiteralValue())
@@ -563,7 +564,7 @@ Optional<Value> Pack::operator()(const Value& val, const VectorFlags& flags) con
             auto elem = (*vector)[i];
             result[i] = packLiteral(*this, elem, elemType.isFloatingType(), flags[i]);
         }
-        return Value(std::move(result), val.type);
+        return Value(SIMDVectorHolder::storeVector(std::move(result), vector->getStorage()), val.type);
     }
     // can only pack literals
     if(auto lit = val.getLiteralValue())
@@ -1073,7 +1074,11 @@ PrecalculatedValue OpCode::operator()(const Value& firstOperand, const Optional<
             res[i] = *std::move(tmp.first)->getLiteralValue();
             flags[i] = tmp.second[0];
         }
-        return std::make_pair(Value(std::move(res), resultType), flags);
+        // TODO this could lead to a lot of vectors in the global storage!
+        return std::make_pair(Value(SIMDVectorHolder::storeVector(
+                                        std::move(res), (firstVector ? firstVector : secondVector)->getStorage()),
+                                  resultType),
+            flags);
     }
 
     if(firstOperand.isUndefined() || (numOperands > 1 && secondVal && secondVal->isUndefined()))

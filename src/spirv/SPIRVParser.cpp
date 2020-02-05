@@ -428,7 +428,7 @@ static Optional<CompoundConstant> specializeConstant(const uint32_t resultID, Da
     return {};
 }
 
-static SPIRVMethod& getOrCreateMethod(const Module& module, MethodMapping& methods, const uint32_t id)
+static SPIRVMethod& getOrCreateMethod(Module& module, MethodMapping& methods, const uint32_t id)
 {
     if(methods.find(id) == methods.end())
         methods.emplace(id, SPIRVMethod(id, module));

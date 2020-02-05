@@ -6,6 +6,7 @@
 #include "VectorHelper.h"
 
 #include "../Profiler.h"
+#include "../SIMDVector.h"
 #include "log.h"
 #include "operators.h"
 

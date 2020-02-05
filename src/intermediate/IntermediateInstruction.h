@@ -788,7 +788,7 @@ namespace vc4c
             const LoadType type;
 
             static SIMDVector toLoadedValues(uint32_t mask, LoadType type);
-            static uint32_t fromLoadedValues(SIMDVector values, LoadType type);
+            static uint32_t fromLoadedValues(const SIMDVector& values, LoadType type);
 
         protected:
             bool innerEquals(const IntermediateInstruction& other) const override;

@@ -6,6 +6,7 @@
 
 #include "Helper.h"
 
+#include "../SIMDVector.h"
 #include "CompilationError.h"
 #include "TypeConversions.h"
 #include "config.h"
@@ -38,8 +39,8 @@ InstructionWalker intermediate::insertMakePositive(
             tmpDest[i] = isNegative ? Literal(-elem.signedInt()) : elem;
             tmpNegative[i] = isNegative ? Literal(-1) : Literal(0u);
         }
-        dest = Value(std::move(tmpDest), src.type);
-        writeIsNegative = Value(std::move(tmpNegative), src.type);
+        dest = Value(SIMDVectorHolder::storeVector(std::move(tmpDest), vector->getStorage()), src.type);
+        writeIsNegative = Value(SIMDVectorHolder::storeVector(std::move(tmpNegative), vector->getStorage()), src.type);
     }
     else if(src.getSingleWriter() != nullptr &&
         src.getSingleWriter()->hasDecoration(InstructionDecorations::UNSIGNED_RESULT))

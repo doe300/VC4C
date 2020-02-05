@@ -6,6 +6,7 @@
 
 #include "IntermediateInstruction.h"
 
+#include "../SIMDVector.h"
 #include "../asm/LoadInstruction.h"
 #include "../helper.h"
 #include "../periphery/VPM.h"
@@ -52,16 +53,12 @@ std::string LoadImmediate::to_string() const
             createAdditionalInfoString();
     case LoadType::PER_ELEMENT_SIGNED:
 
-        return (getOutput()->to_string(true) + " = loadsi ") +
-            (Value(toLoadedValues(assertArgument(0).literal().unsignedInt(), LoadType::PER_ELEMENT_SIGNED),
-                 TYPE_INT32.toVectorType(16)))
-                .to_string() +
+        return (getOutput()->to_string(true) + " = loadsi ") + TYPE_INT32.toVectorType(16).to_string() + " " +
+            toLoadedValues(assertArgument(0).literal().unsignedInt(), LoadType::PER_ELEMENT_SIGNED).to_string() +
             createAdditionalInfoString();
     case LoadType::PER_ELEMENT_UNSIGNED:
-        return (getOutput()->to_string(true) + " = loadui ") +
-            (Value(toLoadedValues(assertArgument(0).literal().unsignedInt(), LoadType::PER_ELEMENT_UNSIGNED),
-                 TYPE_INT8.toVectorType(16)))
-                .to_string() +
+        return (getOutput()->to_string(true) + " = loadui ") + TYPE_INT8.toVectorType(16).to_string() + " " +
+            toLoadedValues(assertArgument(0).literal().unsignedInt(), LoadType::PER_ELEMENT_UNSIGNED).to_string() +
             createAdditionalInfoString();
     }
     throw CompilationError(
@@ -95,12 +92,18 @@ PrecalculatedValue LoadImmediate::precalculate(const std::size_t numIterations) 
         return PrecalculatedValue{getArgument(0), ElementFlags::fromValue(assertArgument(0))};
     case LoadType::PER_ELEMENT_SIGNED:
     {
-        auto val = Value(toLoadedValues(assertArgument(0).literal().unsignedInt(), type), TYPE_INT32.toVectorType(16));
+        // since there are only a few possible combinations (4 per type), using the global vector store is okay here
+        auto val =
+            Value(GLOBAL_VECTOR_HOLDER.storeVector(toLoadedValues(assertArgument(0).literal().unsignedInt(), type)),
+                TYPE_INT32.toVectorType(16));
         return PrecalculatedValue{val, VectorFlags::fromValue(val)};
     }
     case LoadType::PER_ELEMENT_UNSIGNED:
     {
-        auto val = Value(toLoadedValues(assertArgument(0).literal().unsignedInt(), type), TYPE_INT8.toVectorType(16));
+        // since there are only a few possible combinations (4 per type), using the global vector store is okay here
+        auto val =
+            Value(GLOBAL_VECTOR_HOLDER.storeVector(toLoadedValues(assertArgument(0).literal().unsignedInt(), type)),
+                TYPE_INT8.toVectorType(16));
         return PrecalculatedValue{val, VectorFlags::fromValue(val)};
     }
     }
@@ -180,7 +183,7 @@ SIMDVector LoadImmediate::toLoadedValues(uint32_t mask, vc4c::intermediate::Load
     return values;
 }
 
-uint32_t LoadImmediate::fromLoadedValues(SIMDVector values, LoadType type)
+uint32_t LoadImmediate::fromLoadedValues(const SIMDVector& values, LoadType type)
 {
     if(type == LoadType::PER_ELEMENT_SIGNED)
     {

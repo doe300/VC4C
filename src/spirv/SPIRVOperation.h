@@ -33,7 +33,7 @@ namespace vc4c
             std::vector<std::pair<uint32_t, uint32_t>> parameters;
             const uint32_t id;
 
-            SPIRVMethod(uint32_t id, const Module& module) : method(new Method(module)), id(id) {}
+            SPIRVMethod(uint32_t id, Module& module) : method(new Method(module)), id(id) {}
         };
 
         using TypeMapping = std::map<uint32_t, DataType>;

@@ -7,6 +7,7 @@
 #ifndef VC4C_TOOLS_EMULATOR_H
 #define VC4C_TOOLS_EMULATOR_H
 
+#include "../SIMDVector.h"
 #include "../Values.h"
 #include "../asm/OpCodes.h"
 #include "../performance.h"

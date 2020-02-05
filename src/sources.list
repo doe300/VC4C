@@ -30,6 +30,8 @@ target_sources(${VC4C_LIBRARY_NAME}
     Profiler.cpp
     Profiler.h
     signals.cpp
+    SIMDVector.cpp
+    SIMDVector.h
     ThreadPool.cpp
     ThreadPool.h
     Types.cpp

@@ -1119,7 +1119,7 @@ static Register toRegister(Address addr, bool isfileB)
     return Register{isfileB ? RegisterFile::PHYSICAL_B : RegisterFile::PHYSICAL_A, addr};
 }
 
-static VectorFlags generateImmediateFlags(SIMDVector vector)
+static VectorFlags generateImmediateFlags(const SIMDVector& vector)
 {
     VectorFlags flags;
     for(uint8_t i = 0; i < vector.size(); ++i)

@@ -676,136 +676,8 @@ namespace vc4c
 
     constexpr SmallImmediate VECTOR_ROTATE_R5{48};
 
-    /*
-     * Content type for Values containing a whole SIMD vector
-     */
-    class SIMDVector
-    {
-        // TODO save some more space by splitting values (32-bit) and types (3/8 bit)
-        // e.g. splitting values and types using the underlying type, we get from 16*64-bit (=128B) to 16*32-bit +
-        // 16*8-bit (=80B)
-        // TODO also could rewrite as pointer to array, smaller for compilation/slower for emulation, but how to
-        // maintain element memory? Global in module?
-        using Elements = std::array<Literal, NATIVE_VECTOR_SIZE>;
-
-    public:
-        constexpr explicit SIMDVector(Literal defaultValue = UNDEFINED_LITERAL) noexcept :
-            elements({defaultValue, defaultValue, defaultValue, defaultValue, defaultValue, defaultValue, defaultValue,
-                defaultValue, defaultValue, defaultValue, defaultValue, defaultValue, defaultValue, defaultValue,
-                defaultValue, defaultValue})
-        {
-        }
-
-        constexpr SIMDVector(std::initializer_list<Literal> list) noexcept : SIMDVector()
-        {
-            std::copy_n(list.begin(), std::min(NATIVE_VECTOR_SIZE, list.size()), elements.begin());
-        }
-
-        SIMDVector(const SIMDVector&) = default;
-        SIMDVector(SIMDVector&&) noexcept = default;
-        ~SIMDVector() noexcept = default;
-
-        SIMDVector& operator=(const SIMDVector&) = default;
-        SIMDVector& operator=(SIMDVector&&) noexcept = default;
-
-        inline bool operator==(const SIMDVector& other) const noexcept
-        {
-            return elements == other.elements;
-        }
-
-        inline bool operator!=(const SIMDVector& other) const noexcept
-        {
-            return elements != other.elements;
-        }
-
-        Elements::iterator begin() noexcept
-        {
-            return elements.begin();
-        }
-
-        inline Elements::const_iterator begin() const noexcept
-        {
-            return elements.begin();
-        }
-
-        Elements::iterator end() noexcept
-        {
-            return elements.end();
-        }
-
-        inline Elements::const_iterator end() const noexcept
-        {
-            return elements.end();
-        }
-
-        inline Literal& operator[](std::size_t index) noexcept
-        {
-            return elements[index];
-        }
-
-        inline Literal operator[](std::size_t index) const noexcept
-        {
-            return elements[index];
-        }
-
-        inline Literal& at(std::size_t index)
-        {
-            return elements.at(index);
-        }
-
-        inline Literal at(std::size_t index) const
-        {
-            return elements.at(index);
-        }
-
-        constexpr uint8_t size() const noexcept
-        {
-            return NATIVE_VECTOR_SIZE;
-        }
-
-        /**
-         * Determines whether all elements of this vector have the same value
-         */
-        bool isAllSame() const noexcept;
-
-        /**
-         * Determines whether all element-values correspond to their element number,  e.g. 1, 2, 3, 4, ...
-         *
-         * If withOffset is set to true, an arbitrary initial offset is allowed, e.g. 5, 6, 7, 8, ...
-         *
-         * If withFactor is set to true, an arbitrary factor is allowed, e.g. 0, 4, 8, 12, 16, ...
-         *
-         * If ignoreUndefined is set, elements which are undefined are assumed to have the value matching the element
-         * number (with offset or factor), e.g. 0, 1, 2, 3, undefined, 5, ... will return true.
-         *
-         * NOTE: The parameters withOffset and withFactor cannot be set at the same time
-         */
-        bool isElementNumber(bool withOffset = false, bool withFactor = false, bool ignoreUndefined = true) const
-            noexcept;
-
-        /**
-         * Returns whether all elements contained are undefined
-         */
-        bool isUndefined() const;
-
-        SIMDVector transform(const std::function<Literal(Literal)>& transformOp) const &;
-        SIMDVector transform(const std::function<Literal(Literal)>& transformOp) &&;
-
-        /*
-         * Rotates the elements of this vector UPWARDS by the given offset.
-         */
-        SIMDVector rotate(uint8_t offset) const &;
-        SIMDVector rotate(uint8_t offset) &&;
-        SIMDVector rotatePerQuad(uint8_t offset) const &;
-        SIMDVector rotatePerQuad(uint8_t offset) &&;
-
-        std::string to_string(bool withLiterals = false) const;
-
-    private:
-        Elements elements;
-    };
-
     class Local;
+    class SIMDVector;
     namespace intermediate
     {
         class IntermediateInstruction;
@@ -821,7 +693,7 @@ namespace vc4c
         /*
          * Contains the data actually stored in this Value
          */
-        Variant<Literal, Register, Local*, SmallImmediate, SIMDVector, VariantNamespace::monostate> data;
+        Variant<Literal, Register, Local*, SmallImmediate, const SIMDVector*, VariantNamespace::monostate> data;
         /*
          * The data-type of the Value
          */
@@ -829,7 +701,7 @@ namespace vc4c
 
         Value(const Literal& lit, DataType type) noexcept;
         Value(Register reg, DataType type) noexcept;
-        Value(SIMDVector&& vector, DataType type);
+        Value(const SIMDVector* vector, DataType type);
         Value(const Value& val) = default;
         Value(Value&& val) noexcept = default;
         Value(Local* local, DataType type) noexcept;
@@ -891,14 +763,10 @@ namespace vc4c
             return loc ? *loc : nullptr;
         }
 
-        SIMDVector* checkVector() noexcept
-        {
-            return VariantNamespace::get_if<SIMDVector>(&data);
-        }
-
         const SIMDVector* checkVector() const noexcept
         {
-            return VariantNamespace::get_if<SIMDVector>(&data);
+            auto vec = VariantNamespace::get_if<const SIMDVector*>(&data);
+            return vec ? *vec : nullptr;
         }
 
         /*
@@ -1061,14 +929,9 @@ namespace vc4c
             return VariantNamespace::get<SmallImmediate>(data);
         }
 
-        SIMDVector& vector()
-        {
-            return VariantNamespace::get<SIMDVector>(data);
-        }
-
         const SIMDVector& vector() const
         {
-            return VariantNamespace::get<SIMDVector>(data);
+            return *VariantNamespace::get<const SIMDVector*>(data);
         }
     };
 
@@ -1178,12 +1041,6 @@ namespace std
         {
             return std::hash<unsigned char>::operator()(val.value);
         }
-    };
-
-    template <>
-    struct hash<vc4c::SIMDVector>
-    {
-        size_t operator()(const vc4c::SIMDVector& val) const noexcept;
     };
 
     template <>

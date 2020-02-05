@@ -39,7 +39,7 @@ const std::string Method::MAX_GROUP_ID_Z("%max_group_id_z");
 // TODO track locals via thread-not-safe shared_ptr. Method itself tracks as weak_ptr,
 // so local is erased when there is no more use. Local#reference also is shared_ptr
 
-Method::Method(const Module& module) :
+Method::Method(Module& module) :
     isKernel(false), name(), returnType(TYPE_UNKNOWN),
     vpm(new periphery::VPM(module.compilationConfig.availableVPMSize)), module(module)
 {

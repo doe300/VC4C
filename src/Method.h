@@ -76,7 +76,7 @@ namespace vc4c
          */
         std::unique_ptr<periphery::VPM> vpm;
 
-        explicit Method(const Module& module);
+        explicit Method(Module& module);
         Method(const Method&) = delete;
         Method(Method&&) = delete;
         ~Method();
@@ -266,7 +266,7 @@ namespace vc4c
         /*
          * The module the method belongs to
          */
-        const Module& module;
+        Module& module;
 
         /*
          * Moves the block from origin to destination (is inserted before destination)

@@ -9,6 +9,7 @@
 
 #include "GlobalValues.h"
 #include "Method.h"
+#include "SIMDVector.h"
 #include "performance.h"
 
 namespace vc4c
@@ -18,7 +19,7 @@ namespace vc4c
      *
      * The module-class manages shared data, like globals and contains the list of methods
      */
-    class Module : private NonCopyable, public TypeHolder
+    class Module : private NonCopyable, public TypeHolder, public SIMDVectorHolder
     {
         using MethodList = std::vector<std::unique_ptr<Method>>;
 

@@ -1313,8 +1313,10 @@ void TestInstructions::testValue()
 
     TEST_ASSERT(INT_ONE.isUniform())
     TEST_ASSERT(UNDEFINED_VALUE.isUniform())
-    TEST_ASSERT(Value(SIMDVector{Literal{13}}, TYPE_INT32).isUniform())
-    TEST_ASSERT(Value(SIMDVector{}, TYPE_INT32).isUniform())
+    SIMDVector vec{Literal{13}};
+    TEST_ASSERT(Value(&vec, TYPE_INT32).isUniform())
+    vec = SIMDVector{};
+    TEST_ASSERT(Value(&vec, TYPE_INT32).isUniform())
     TEST_ASSERT(UNIFORM_REGISTER.isUniform())
     TEST_ASSERT(Value(SmallImmediate(5), TYPE_INT8).isUniform())
     TEST_ASSERT(!ELEMENT_NUMBER_REGISTER.isUniform())
@@ -1322,8 +1324,10 @@ void TestInstructions::testValue()
 
     TEST_ASSERT(INT_ONE.isUnsignedInteger())
     TEST_ASSERT(!UNDEFINED_VALUE.isUnsignedInteger())
-    TEST_ASSERT(Value(SIMDVector{Literal{13}}, TYPE_INT32).isUnsignedInteger())
-    TEST_ASSERT(!Value(SIMDVector{}, TYPE_INT32).isUnsignedInteger())
+    vec = SIMDVector{Literal{13}};
+    TEST_ASSERT(Value(&vec, TYPE_INT32).isUnsignedInteger())
+    vec = SIMDVector{};
+    TEST_ASSERT(!Value(&vec, TYPE_INT32).isUnsignedInteger())
     TEST_ASSERT(ELEMENT_NUMBER_REGISTER.isUnsignedInteger())
     TEST_ASSERT(Value(SmallImmediate(5), TYPE_INT8).isUnsignedInteger())
     TEST_ASSERT(!UNIFORM_REGISTER.isUnsignedInteger())
@@ -1513,7 +1517,8 @@ void TestInstructions::testCompoundConstants()
         TEST_ASSERT(constant.isUndefined())
         TEST_ASSERT(constant.isZeroInitializer())
         TEST_ASSERT(!!constant.getCompound())
-        TEST_ASSERT_EQUALS(Value(SIMDVector{}, TYPE_INT16), constant.toValue())
+        SIMDVector vec{};
+        TEST_ASSERT_EQUALS(Value(&vec, TYPE_INT16), constant.toValue())
     }
 
     // vector
@@ -1526,9 +1531,8 @@ void TestInstructions::testCompoundConstants()
         TEST_ASSERT(!constant.isZeroInitializer())
         TEST_ASSERT(!constant.getScalar())
         TEST_ASSERT(!!constant.getCompound())
-        TEST_ASSERT_EQUALS(Value(SIMDVector({Literal(42), Literal(42), Literal(42), Literal(42), Literal(42)}),
-                               TYPE_INT16.toVectorType(5)),
-            constant.toValue())
+        SIMDVector vec({Literal(42), Literal(42), Literal(42), Literal(42), Literal(42)});
+        TEST_ASSERT_EQUALS(Value(&vec, TYPE_INT16.toVectorType(5)), constant.toValue())
     }
 }
 
@@ -1683,7 +1687,8 @@ void TestInstructions::testValueRanges()
 
     // constant vector range
     {
-        Value constant(SIMDVector({Literal(-16.4f), Literal(15.0f), Literal(-3.2f)}), TYPE_FLOAT);
+        SIMDVector vec({Literal(-16.4f), Literal(15.0f), Literal(-3.2f)});
+        Value constant(&vec, TYPE_FLOAT);
         auto range = analysis::ValueRange::getValueRange(constant);
         TEST_ASSERT(range.hasExplicitBoundaries())
         TEST_ASSERT(!range.isUnsigned())
@@ -1696,7 +1701,8 @@ void TestInstructions::testValueRanges()
         TEST_ASSERT_EQUALS(Value(Literal(15), TYPE_INT8), range.getUpperLimit(TYPE_INT8))
         TEST_ASSERT(!range.getSingletonValue())
 
-        constant = Value(SIMDVector{}, TYPE_INT32);
+        vec = SIMDVector{};
+        constant = Value(&vec, TYPE_INT32);
         range = analysis::ValueRange::getValueRange(constant);
         TEST_ASSERT(!range.hasExplicitBoundaries())
     }

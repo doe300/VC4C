@@ -6,6 +6,7 @@
 
 #include "GlobalValues.h"
 
+#include "SIMDVector.h"
 #include "log.h"
 
 #include <algorithm>
@@ -100,7 +101,9 @@ Optional<Value> CompoundConstant::toValue() const
                 if(auto lit = (*container)[i].getScalar())
                     vector[i] = *lit;
             }
-            return Value(std::move(vector), type);
+            // Since this should be called only very rarely (and we don't have access to the module), we use the global
+            // vector store
+            return Value(GLOBAL_VECTOR_HOLDER.storeVector(std::move(vector)), type);
         }
     }
     return NO_VALUE;

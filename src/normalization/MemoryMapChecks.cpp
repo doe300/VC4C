@@ -8,6 +8,7 @@
 
 #include "../GlobalValues.h"
 #include "../Profiler.h"
+#include "../SIMDVector.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/operators.h"

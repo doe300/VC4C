@@ -6,6 +6,7 @@
 
 #include "Operators.h"
 
+#include "../Module.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/operators.h"
 #include "../periphery/SFU.h"
@@ -478,7 +479,7 @@ static std::pair<Literal, Literal> calculateConstant(Literal divisor, unsigned a
     return std::make_pair(Literal(factor), Literal(shift));
 }
 
-static std::pair<Value, Value> calculateConstant(const Value& divisor, unsigned accuracy)
+static std::pair<Value, Value> calculateConstant(Module& module, const Value& divisor, unsigned accuracy)
 {
     if(auto vector = divisor.checkVector())
     {
@@ -488,7 +489,8 @@ static std::pair<Value, Value> calculateConstant(const Value& divisor, unsigned 
         {
             std::tie(factors[i], shifts[i]) = calculateConstant((*vector)[i], accuracy);
         }
-        return std::make_pair(Value(std::move(factors), divisor.type), Value(std::move(shifts), divisor.type));
+        return std::make_pair(Value(module.storeVector(std::move(factors)), divisor.type),
+            Value(module.storeVector(std::move(shifts)), divisor.type));
     }
 
     const Literal div = divisor.getLiteralValue().value();
@@ -520,7 +522,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
      * - values >= 16500 trigger overflow in multiplication with factor or shifts of >= 32 positions
      */
     static constexpr unsigned accuracy = 16100;
-    auto constants = calculateConstant(op.assertArgument(1), accuracy);
+    auto constants = calculateConstant(method.module, op.assertArgument(1), accuracy);
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Intrinsifying unsigned division by " << op.assertArgument(1).to_string(false, true)
             << " by multiplication with " << constants.first.to_string(false, true) << " and right-shift by "

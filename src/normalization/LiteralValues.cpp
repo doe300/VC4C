@@ -7,6 +7,7 @@
 #include "LiteralValues.h"
 
 #include "../InstructionWalker.h"
+#include "../Module.h"
 #include "../Profiler.h"
 #include "../intermediate/VectorHelper.h"
 #include "log.h"
@@ -180,18 +181,10 @@ InstructionWalker normalization::handleContainer(
             throw CompilationError(
                 CompilationStep::NORMALIZER, "Rotating constant vectors is currently not supported", it->to_string());
         }
-        offset = (16 - offset);
         // need to rotate all (possible non-existing) 16 elements, so use a temporary vector with 16 elements and rotate
         // it
-        auto& sourceContainer = src.vector();
-        SIMDVector tmp(sourceContainer);
-        // TODO use SIMDVector#rotate?!
-        std::rotate(tmp.begin(), tmp.begin() + offset, tmp.end());
-        for(std::size_t i = 0; i < sourceContainer.size(); ++i)
-        {
-            sourceContainer[i] = tmp[i];
-        }
-        rot->setSource(std::move(src));
+        SIMDVector tmp = src.vector().rotate(static_cast<uint8_t>(offset));
+        rot->setSource(Value(method.module.storeVector(std::move(tmp)), src.type));
         // TODO next step could be optimized, if we used the vector-rotation to extract an element
         // In which case, a simple copy suffices?? At least, we don't need to set the other elements
     }

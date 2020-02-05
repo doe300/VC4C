@@ -140,8 +140,7 @@ namespace vc4c
     static_assert(assert_assignable<SIMDVector>::value, "SIMDVector is not assignable!");
     static_assert(std::is_destructible<SIMDVector>::value, "SIMDVector is not destructible!");
     static_assert(assert_hashable<SIMDVector>::value, "SIMDVector is not hashable!");
-    static_assert(assert_literal<SIMDVector>::value, "SIMDVector is not trivial");
-    static_assert(sizeof(SIMDVector) <= NATIVE_VECTOR_SIZE * sizeof(Literal), "SIMDVector is unnecessarily big");
+    static_assert(assert_trivial<SIMDVector>::value, "SIMDVector is not trivial");
 
     static_assert(!std::is_default_constructible<Value>::value, "Value is default constructible!");
     static_assert(assert_assignable<Value>::value, "Value is not assignable!");
@@ -150,6 +149,7 @@ namespace vc4c
     static_assert(assert_hashable<Value>::value, "Value is not hashable!");
     static_assert(assert_stringifyable<Value>::value, "Value is not stringify-able!");
     static_assert(assert_trivial<Value>::value, "Value is not trivial");
+    static_assert(sizeof(Value) <= (2 * sizeof(void*) + sizeof(Literal)), "Value is unnecessarily big");
     /*
      * Method/Module types
      *

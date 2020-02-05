@@ -36,6 +36,7 @@ InstructionPattern ValuePattern::operator=(vc4c::operators::OperationWrapper&& o
         match(op.conditional), match(op.setFlags)};
 }
 
+LCOV_EXCL_START
 static std::string getPlaceholderName(
     std::string&& type, const void* ptr, FastMap<const void*, std::string>& placeholderNames)
 {
@@ -127,6 +128,7 @@ std::string Pattern::to_string() const
     instructions.erase(instructions.find_last_of(';'), std::string::npos);
     return instructions;
 }
+LCOV_EXCL_STOP
 
 using MatchCache = std::unordered_map<const void*, Variant<Value, OpCode, ConditionCode, SetFlag>>;
 

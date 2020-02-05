@@ -6,6 +6,7 @@
 
 #include "LoadInstruction.h"
 
+#include "../SIMDVector.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../periphery/VPM.h"
 
